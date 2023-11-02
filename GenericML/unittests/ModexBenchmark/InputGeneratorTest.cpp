@@ -6,6 +6,7 @@
 
 #include "GenericML/ModexBenchmark/InputGenerator.h"
 #include "GenericML/ModexBenchmark/InputGenerationSchema.h"
+#include "LLCL/Runtime/Runtime.h"
 #include "gtest/gtest.h"
 #include <limits>
 
@@ -71,6 +72,12 @@ TestInputSchemaErrorReporter::reportedNoErrors() const {
   return testing::AssertionFailure()
          << "reported " << errors.size()
          << " errors, including: " << errors.front();
+}
+
+static std::unique_ptr<LLCL::Runtime> createRuntimeForTest() {
+  return std::make_unique<LLCL::Runtime>(
+      LLCL::createLeakCheckAllocator(LLCL::createMallocAllocator()),
+      LLCL::createSingleThreadWorkQueue());
 }
 
 TEST(UniformInputRandomDistribution, F32Default) {
@@ -231,5 +238,173 @@ TEST(InputRandomDistribution, Multiple) {
   EXPECT_EQ((std::vector<ReportedError>{
                 {{"normal"}, "Normal distribution not yet implemented"},
                 {{}, "Only one random distribution may be specified"}}),
+            errorReporter.errors);
+}
+
+namespace {
+class TestRandomDistribution final : public InputRandomDistribution {
+public:
+  TestRandomDistribution(
+      DType dtype, std::function<void(void *out, size_t numElements)> fillFn)
+      : InputRandomDistribution(dtype), fillFn(std::move(fillFn)) {}
+
+  void fill(void *out, size_t numElements) const override {
+    fillFn(out, numElements);
+  }
+
+private:
+  std::function<void(void *out, size_t numElements)> fillFn;
+};
+} // namespace
+
+TEST(RandomInputDataGenerator, FromDistribution) {
+  int numCalls = 0;
+  void *lastFillCallOut = nullptr;
+  size_t lastFillCallNumElements = 0;
+  auto gen =
+      createRandomInputDataGenerator(std::make_unique<TestRandomDistribution>(
+          DType::f32, [&](void *out, size_t numElements) {
+            ++numCalls;
+            lastFillCallOut = out;
+            lastFillCallNumElements = numElements;
+          }));
+  ASSERT_NE(nullptr, gen);
+  auto runtime = createRuntimeForTest();
+  ErrorOr<GML::Tensor> tensorOr =
+      gen->generate(*runtime, TensorShape({1, 2, 3}));
+  ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
+  EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
+  EXPECT_EQ(DType(DType::f32), tensorOr->getEltType());
+  EXPECT_EQ(1, numCalls);
+  EXPECT_EQ(tensorOr->getBuffer(), lastFillCallOut);
+  EXPECT_EQ(size_t{1 * 2 * 3}, lastFillCallNumElements);
+}
+
+TEST(RandomInputDataGenerator, Basic) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationRandom spec;
+  spec.uniform = InputGenerationRandomUniform{};
+  auto gen = createRandomInputDataGenerator(DType::f32, spec, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(nullptr, gen);
+  auto runtime = createRuntimeForTest();
+  ErrorOr<GML::Tensor> tensorOr =
+      gen->generate(*runtime, TensorShape({1, 2, 3}));
+  ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
+  EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
+  EXPECT_EQ(DType(DType::f32), tensorOr->getEltType());
+}
+
+TEST(RandomInputDataGenerator, NoShape) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationRandom spec;
+  spec.uniform = InputGenerationRandomUniform{};
+  auto gen = createRandomInputDataGenerator(DType::f32, spec, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(nullptr, gen);
+  auto runtime = createRuntimeForTest();
+  ErrorOr<GML::Tensor> tensorOr =
+      gen->generate(*runtime, TensorShape(kDynamicallyRanked));
+  ASSERT_TRUE(tensorOr.isError());
+  // TODO: Ideally we would be able to detect this at generator creation time,
+  // not at generation time.  But that might be tricky, so we can do that
+  // later.
+  EXPECT_STREQ("Random input requires fully defined input shape",
+               tensorOr.getError());
+}
+
+TEST(RandomInputDataGenerator, ConstructionError) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationRandom spec;
+  spec.uniform = InputGenerationRandomUniform{};
+  spec.uniform->min = "cheesecake";
+  auto gen = createRandomInputDataGenerator(DType::f32, spec, errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ(
+      (std::vector<ReportedError>{
+          {{"uniform", "min"}, "Unable to parse 'cheesecake' as f32 value"}}),
+      errorReporter.errors);
+}
+
+TEST(ConstantInputDataGenerator, Unimplemented) {
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createConstantInputDataGenerator(DType::f32, "123", errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ((std::vector<ReportedError>{
+                {{}, "Constant input generation not yet implemented"}}),
+            errorReporter.errors);
+}
+
+TEST(InputDataGenerator, None) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationData spec;
+  // TODO: The None case should default to a reasonable distribution for the
+  // dtype instead of erroring.
+  auto gen = createInputDataGenerator(DType::f32, spec, errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ(
+      (std::vector<ReportedError>{{{}, "No data generation source specified"}}),
+      errorReporter.errors);
+}
+
+TEST(InputDataGenerator, Random) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationData spec;
+  spec.random = InputGenerationRandom{};
+  spec.random->uniform = InputGenerationRandomUniform{};
+  auto gen = createInputDataGenerator(DType::f32, spec, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  EXPECT_NE(nullptr, gen);
+  // TODO: Check that we got a random input data generator somehow.
+}
+
+TEST(InputDataGenerator, RandomNoDType) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationData spec;
+  spec.random = InputGenerationRandom{};
+  spec.random->uniform = InputGenerationRandomUniform{};
+  auto gen = createInputDataGenerator(std::nullopt, spec, errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ(
+      (std::vector<ReportedError>{
+          {{"random"}, "Random input data source requires dtype to be known"}}),
+      errorReporter.errors);
+}
+
+TEST(InputDataGenerator, Constant) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationData spec;
+  spec.constant = "123";
+  auto gen = createInputDataGenerator(DType::f32, spec, errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ(
+      (std::vector<ReportedError>{
+          {{"constant"}, "Constant input generation not yet implemented"}}),
+      errorReporter.errors);
+}
+
+TEST(InputDataGenerator, ConstantNoDType) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationData spec;
+  spec.constant = "123";
+  auto gen = createInputDataGenerator(std::nullopt, spec, errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ((std::vector<ReportedError>{
+                {{"constant"},
+                 "Constant input data source requires dtype to be known"}}),
+            errorReporter.errors);
+}
+
+TEST(InputDataGenerator, Multiple) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationData spec;
+  spec.random = InputGenerationRandom{};
+  spec.random->uniform = InputGenerationRandomUniform{};
+  spec.constant = "123";
+  auto gen = createInputDataGenerator(DType::f32, spec, errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ((std::vector<ReportedError>{
+                {{"constant"}, "Constant input generation not yet implemented"},
+                {{}, "Only one data generation source may be specified"}}),
             errorReporter.errors);
 }

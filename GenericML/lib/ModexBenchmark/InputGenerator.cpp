@@ -53,7 +53,6 @@ static bool parseDefaultedF32Value(const std::optional<std::string> &value,
 }
 
 namespace M::ModexBench::Detail {
-
 class UniformInputRandomDistribution final : public InputRandomDistribution {
 public:
   explicit UniformInputRandomDistribution(DType dtype, float min, float max)
@@ -65,7 +64,6 @@ private:
   float min;
   float max;
 };
-
 } // namespace M::ModexBench::Detail
 
 namespace MBD = ModexBench::Detail;
@@ -139,4 +137,92 @@ M::ModexBench::createInputRandomDistribution(
     return nullptr;
   }
   return dist;
+}
+
+namespace M::ModexBench::Detail {
+class RandomInputDataGenerator final : public InputDataGenerator {
+public:
+  explicit RandomInputDataGenerator(
+      std::unique_ptr<InputRandomDistribution> dist)
+      : dist(std::move(dist)) {}
+
+  ErrorOr<GML::Tensor> generate(LLCL::CompactRuntimePtr runtime,
+                                const TensorShape &shape) const override;
+
+private:
+  std::unique_ptr<InputRandomDistribution> dist;
+};
+} // namespace M::ModexBench::Detail
+
+ErrorOr<GML::Tensor>
+MBD::RandomInputDataGenerator::generate(LLCL::CompactRuntimePtr runtime,
+                                        const TensorShape &shape) const {
+  if (!shape.isStatic())
+    return Error("Random input requires fully defined input shape");
+  GML::Tensor tensor = GML::Tensor::createOwned({shape, dist->getDType()},
+                                                runtime, std::nullopt);
+  dist->fill(tensor.getMutableBuffer(), shape.getNumElements());
+  return std::move(tensor);
+}
+
+std::unique_ptr<InputDataGenerator>
+M::ModexBench::createRandomInputDataGenerator(
+    std::unique_ptr<InputRandomDistribution> distribution) {
+  return std::make_unique<MBD::RandomInputDataGenerator>(
+      std::move(distribution));
+}
+
+std::unique_ptr<InputDataGenerator>
+M::ModexBench::createRandomInputDataGenerator(
+    DType dtype, const InputGenerationRandom &spec,
+    InputSchemaErrorReporter &errorReporter) {
+  auto dist = createInputRandomDistribution(dtype, spec, errorReporter);
+  if (!dist)
+    return nullptr;
+  return createRandomInputDataGenerator(std::move(dist));
+}
+
+std::unique_ptr<InputDataGenerator>
+M::ModexBench::createConstantInputDataGenerator(
+    DType dtype, StringRef constant, InputSchemaErrorReporter &errorReporter) {
+  errorReporter.reportError("Constant input generation not yet implemented");
+  return nullptr;
+}
+
+std::unique_ptr<InputDataGenerator> M::ModexBench::createInputDataGenerator(
+    std::optional<DType> dtype, const InputGenerationData &spec,
+    InputSchemaErrorReporter &errorReporter) {
+  int numSpecified = 0;
+  std::unique_ptr<InputDataGenerator> gen;
+  if (spec.random) {
+    ++numSpecified;
+    errorReporter.enterScope("random");
+    if (dtype)
+      gen = createRandomInputDataGenerator(*dtype, *spec.random, errorReporter);
+    else
+      errorReporter.reportError(
+          "Random input data source requires dtype to be known");
+    errorReporter.exitScope("random");
+  }
+  if (spec.constant) {
+    ++numSpecified;
+    errorReporter.enterScope("constant");
+    if (dtype)
+      gen = createConstantInputDataGenerator(*dtype, *spec.constant,
+                                             errorReporter);
+    else
+      errorReporter.reportError(
+          "Constant input data source requires dtype to be known");
+    errorReporter.exitScope("constant");
+  }
+  if (numSpecified == 0) {
+    errorReporter.reportError("No data generation source specified");
+    return nullptr;
+  }
+  if (numSpecified > 1) {
+    errorReporter.reportError(
+        "Only one data generation source may be specified");
+    return nullptr;
+  }
+  return gen;
 }

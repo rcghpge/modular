@@ -8,6 +8,7 @@
 #define GENERICML_MODEX_BENCHMARK_INPUT_GENERATOR_H
 
 #include "GenericML/Support/Tensor.h"
+#include "Support/ForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
 #include <memory>
 
@@ -57,8 +58,8 @@ public:
 
   // TODO(akirchhoff): This should be revised when we have a better batching
   // story
-  virtual GML::Tensor generate(LLCL::CompactRuntimePtr runtime,
-                               const std::optional<TensorShape> &shape) = 0;
+  virtual ErrorOr<GML::Tensor> generate(LLCL::CompactRuntimePtr runtime,
+                                        const TensorShape &shape) const = 0;
 };
 
 std::unique_ptr<InputDataGenerator> createRandomInputDataGenerator(
@@ -69,8 +70,12 @@ std::unique_ptr<InputDataGenerator>
 createRandomInputDataGenerator(DType dtype, const InputGenerationRandom &spec,
                                InputSchemaErrorReporter &errorReporter);
 
+std::unique_ptr<InputDataGenerator>
+createConstantInputDataGenerator(DType dtype, StringRef constant,
+                                 InputSchemaErrorReporter &errorReporter);
+
 struct InputGenerationData;
-std::unique_ptr<InputGenerationData>
+std::unique_ptr<InputDataGenerator>
 createInputDataGenerator(std::optional<DType> dtype,
                          const InputGenerationData &spec,
                          InputSchemaErrorReporter &errorReporter);
