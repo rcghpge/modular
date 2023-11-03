@@ -76,10 +76,6 @@ def MGP_TensorExtractOpInterface : OpInterface<"MGPTensorExtractOpInterface"> {
     InterfaceMethod<
       "Get the input tensor",
       "::mlir::Value", "getTensor", (ins), "return $_op.getTensor();"
-    >,
-    InterfaceMethod<
-      "Get the input tensor as a mutable operand",
-      "::mlir::OpOperand&", "getTensorMutable", (ins), "return $_op.getTensorMutable();"
     >
   ];
 }

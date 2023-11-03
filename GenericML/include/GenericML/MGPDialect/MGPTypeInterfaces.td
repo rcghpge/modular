@@ -26,11 +26,4 @@ def MGP_TensorTypeInterface : TypeInterface<"MGPTensorTypeInterface"> {
   ];
 }
 
-def MGP_BufferTypeInterface : TypeInterface<"MGPBufferTypeInterface"> {
-  let description = [{
-    Types that represent runtime buffers.
-  }];
-  let cppNamespace = "::M::MGP";
-}
-
-#endif  // GENERICML_MGPDIALECT_MGPTENSORTYPEINTERFACE_TD
+#endif  // GENERICML_MGPDIALECT_MGPTYPEINTERFACES_TD

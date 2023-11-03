@@ -14,7 +14,6 @@
 #define GRAPHRT_MEF_MEFTYPES_H
 
 #include "GraphRT/MEF/MEFEncoding.h"
-#include "mlir/IR/Builders.h"
 
 namespace M {
 

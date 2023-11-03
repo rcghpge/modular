@@ -37,16 +37,11 @@ struct TensorBufferDialectInterface
   TensorBufferDialectInterface(Dialect *dialect) : Base(dialect) {}
   virtual MGPTensorExtractOpInterface
   createExtract(OpBuilder *builder, mlir::Location loc, Value tensor) = 0;
-  /// Create a new chain that depends on the existing `chains`
   virtual GRT::GRTChainOpInterface
-  createChain(OpBuilder *builder, mlir::Location loc, ValueRange chains) = 0;
-  /// Create a new chain that will protect access to the extracted buffer of a
-  /// tensor.
-  virtual GRT::GRTChainOpInterface createChainForTensor(OpBuilder *builder,
-                                                        mlir::Location loc,
-                                                        Value tensor) = 0;
+  createChain(OpBuilder *builder, mlir::Location loc, Value tensor) = 0;
   virtual Type createChainType(OpBuilder *builder) = 0;
   virtual Type createBufferType(OpBuilder *builder, Type spec) = 0;
+  // virtual Type createTensorType(OpBuilder *builder, Type input) = 0;
 
   /// Adds to BuilderContext all the type and buffer builder instances
   /// for the devices relevant to this dialect which are in use in the given
@@ -64,14 +59,11 @@ struct CpuTensorBufferDialectInterface : public TensorBufferDialectInterface {
   using TensorBufferDialectInterface::TensorBufferDialectInterface;
   virtual MGPTensorExtractOpInterface
   createExtract(OpBuilder *builder, mlir::Location loc, Value tensor) override;
-  virtual GRT::GRTChainOpInterface createChain(OpBuilder *builder,
-                                               mlir::Location loc,
-                                               ValueRange chains) override;
-  virtual GRT::GRTChainOpInterface createChainForTensor(OpBuilder *builder,
-                                                        mlir::Location loc,
-                                                        Value tensor) override;
+  virtual GRT::GRTChainOpInterface
+  createChain(OpBuilder *builder, mlir::Location loc, Value tensor) override;
   virtual Type createChainType(OpBuilder *builder) override;
   virtual Type createBufferType(OpBuilder *builder, Type tensorType) override;
+  // virtual Type createTensorType(OpBuilder *builder, Type input) override;
 
   void addBuilders(ModelOp modelOp,
                    BufferBuilderContext &builderContext) override;
