@@ -10,16 +10,61 @@
 import mobi
 
 
-fn test_empty_module() raises:
-    var builder = mobi.Builder()
+fn test_types() raises:
+    let builder = mobi.Builder()
+    let m = builder.new_module()
+    let scalarShape = DynamicVector[Int64]()
+    let intScalar = builder.si(m, 32, scalarShape.data, len(scalarShape))
 
-    var m = builder.new_module()
+    # CHECK: True
+    print(builder.type_is_tensor(intScalar))
+    # CHECK: True
+    print(builder.type_is_si_tensor(intScalar))
+    # CHECK: False
+    print(builder.type_is_ui_tensor(intScalar))
+    # CHECK: False
+    print(builder.type_is_bool_tensor(intScalar))
+    # CHECK: 32
+    print(builder.tensor_dtype_width(intScalar))
+    # CHECK: 0
+    print(builder.tensor_rank(intScalar))
+
+    var boolShape = DynamicVector[Int64]()
+    boolShape.push_back(2)
+    boolShape.push_back(3)
+    let boolTensor = builder.bool(m, boolShape.data, len(boolShape))
+
+    # CHECK: True
+    print(builder.type_is_tensor(boolTensor))
+    # CHECK: False
+    print(builder.type_is_si_tensor(boolTensor))
+    # CHECK: False
+    print(builder.type_is_ui_tensor(boolTensor))
+    # CHECK: True
+    print(builder.type_is_bool_tensor(boolTensor))
+    # CHECK: 8
+    print(builder.tensor_dtype_width(boolTensor))
+    # CHECK: 2
+    print(builder.tensor_rank(boolTensor))
+    # CHECK: 2
+    print(builder.tensor_dim(boolTensor, 0))
+    # CHECK: 3
+    print(builder.tensor_dim(boolTensor, 1))
+
+    scalarShape._del_old()
+    boolShape._del_old()
+
+
+fn test_empty_module() raises:
+    let builder = mobi.Builder()
+
+    let m = builder.new_module()
     # CHECK: module {
     print(builder.module_to_string(m))
 
 
 fn test_empty_graph() raises:
-    var builder = mobi.Builder()
+    let builder = mobi.Builder()
 
     var m = builder.new_module()
 
@@ -27,7 +72,7 @@ fn test_empty_graph() raises:
 
     let outs = builder.new_arity()
 
-    var unknown = builder.unknown_loc(m)
+    let unknown = builder.unknown_loc(m)
     _ = builder.new_graph(m, unknown, "empty_graph", ins, outs)
 
     # CHECK: builtin.module
@@ -37,23 +82,23 @@ fn test_empty_graph() raises:
 
 
 fn test_identity_graph() raises:
-    var builder = mobi.Builder()
+    let builder = mobi.Builder()
 
     var m = builder.new_module()
 
     var ins = builder.new_arity()
-    var scalarShape = DynamicVector[Int64]()
-    var intScalar = builder.i32(m, scalarShape.data, scalarShape.__len__())
+    let scalarShape = DynamicVector[Int64]()
+    let intScalar = builder.si(m, 32, scalarShape.data, len(scalarShape))
     builder.add_type(ins, intScalar)
 
     var outs = builder.new_arity()
     builder.add_type(outs, intScalar)
 
-    var unknown = builder.unknown_loc(m)
+    let unknown = builder.unknown_loc(m)
     var g = builder.new_graph(m, unknown, "identity_graph", ins, outs)
 
     var rets = builder.new_tuple()
-    var arg0 = builder.get_input(g, 0)
+    let arg0 = builder.get_input(g, 0)
     builder.add_symbol(rets, arg0)
 
     let void = builder.new_arity()
@@ -68,27 +113,27 @@ fn test_identity_graph() raises:
 
 
 fn test_tuple_copy() raises:
-    var builder = mobi.Builder()
+    let builder = mobi.Builder()
 
     var m = builder.new_module()
 
     var ins = builder.new_arity()
-    var scalarShape = DynamicVector[Int64]()
-    var intScalar = builder.i32(m, scalarShape.data, scalarShape.__len__())
+    let scalarShape = DynamicVector[Int64]()
+    let intScalar = builder.si(m, 32, scalarShape.data, len(scalarShape))
     builder.add_type(ins, intScalar)
 
     var outs = builder.new_arity()
     builder.add_type(outs, intScalar)
 
-    var unknown = builder.unknown_loc(m)
+    let unknown = builder.unknown_loc(m)
     var g = builder.new_graph(m, unknown, "tuple_copy_test", ins, outs)
 
     var t = builder.new_tuple()
-    var arg0 = builder.get_input(g, 0)
+    let arg0 = builder.get_input(g, 0)
     builder.add_symbol(t, arg0)
 
     var t2 = builder.new_tuple()
-    var el = builder.get_symbol(t, 0)
+    let el = builder.get_symbol(t, 0)
     builder.add_symbol(t2, el)
 
     let void = builder.new_arity()
@@ -103,32 +148,32 @@ fn test_tuple_copy() raises:
 
 
 fn test_const_op() raises:
-    var builder = mobi.Builder()
+    let builder = mobi.Builder()
 
     var m = builder.new_module()
 
     let void = builder.new_arity()
 
     var outs = builder.new_arity()
-    var scalarShape = DynamicVector[Int64]()
-    var intScalar = builder.i32(m, scalarShape.data, scalarShape.__len__())
+    let scalarShape = DynamicVector[Int64]()
+    let intScalar = builder.si(m, 32, scalarShape.data, len(scalarShape))
     builder.add_type(outs, intScalar)
 
-    var unknown = builder.unknown_loc(m)
+    let unknown = builder.unknown_loc(m)
     var g = builder.new_graph(m, unknown, "const_op", void, outs)
 
     var attrs = builder.new_attr_map()
     var val: Int32 = 1
-    var a = builder.tensor_attr(
+    let a = builder.tensor_attr(
         m, "value", Pointer[Int32].address_of(val).bitcast[AnyType](), intScalar
     )
     builder.add_attr(attrs, a)
 
     let noIns = builder.new_tuple()
-    var x = builder.new_op(g, unknown, "mo.constant", noIns, outs, attrs)
+    let x = builder.new_op(g, unknown, "mo.constant", noIns, outs, attrs)
 
     var rets = builder.new_tuple()
-    var x0 = builder.get_symbol(x, 0)
+    let x0 = builder.get_symbol(x, 0)
     builder.add_symbol(rets, x0)
 
     let noAttrs = builder.new_attr_map()
@@ -141,28 +186,28 @@ fn test_const_op() raises:
 
 
 fn test_execution() raises:
-    var builder = mobi.Builder()
+    let builder = mobi.Builder()
 
     var m = builder.new_module()
 
     var ins = builder.new_arity()
-    var scalarShape = DynamicVector[Int64]()
-    var intScalar = builder.i32(m, scalarShape.data, scalarShape.__len__())
+    let scalarShape = DynamicVector[Int64]()
+    let intScalar = builder.si(m, 32, scalarShape.data, len(scalarShape))
     builder.add_type(ins, intScalar)
 
     var outs = builder.new_arity()
     builder.add_type(outs, intScalar)
 
-    var unknown = builder.unknown_loc(m)
+    let unknown = builder.unknown_loc(m)
     var g = builder.new_graph(m, unknown, "identity_graph", ins, outs)
 
     var rets = builder.new_tuple()
-    var arg0 = builder.get_input(g, 0)
+    let arg0 = builder.get_input(g, 0)
     builder.add_symbol(rets, arg0)
 
-    var void = builder.new_arity()
+    let void = builder.new_arity()
 
-    var attrs = builder.new_attr_map()
+    let attrs = builder.new_attr_map()
 
     _ = builder.new_op(g, unknown, "mo.output", rets, void, attrs)
 
@@ -176,6 +221,7 @@ fn test_execution() raises:
 
 
 fn main() raises:
+    test_types()
     test_empty_module()
     test_empty_graph()
     test_identity_graph()

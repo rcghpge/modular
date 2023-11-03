@@ -141,19 +141,19 @@ struct Module:
 
     fn i32(self, *dims: Int64) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return self.builder.i32(self.m, shape.data, len(shape))
+        return self.builder.si(self.m, 32, shape.data, len(shape))
 
     fn i32(self, dims: TensorShape) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return self.builder.i32(self.m, shape.data, len(shape))
+        return self.builder.si(self.m, 32, shape.data, len(shape))
 
     fn i64(self, *dims: Int64) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return self.builder.i64(self.m, shape.data, len(shape))
+        return self.builder.si(self.m, 64, shape.data, len(shape))
 
     fn i64(self, dims: TensorShape) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return self.builder.i64(self.m, shape.data, len(shape))
+        return self.builder.si(self.m, 64, shape.data, len(shape))
 
     fn f32(self, *dims: Int64) raises -> TypePtr:
         let shape = _dynamic_vector(dims)

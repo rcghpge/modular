@@ -33,9 +33,9 @@ public:
   int64_t dynamicDim();
 
   Type f32(llvm::ArrayRef<int64_t> shape);
-  Type si32(llvm::ArrayRef<int64_t> shape);
-  Type si64(llvm::ArrayRef<int64_t> shape);
-  Type boolType(llvm::ArrayRef<int64_t> shape);
+  Type ui(uint64_t width, llvm::ArrayRef<int64_t> shape);
+  Type si(uint64_t width, llvm::ArrayRef<int64_t> shape);
+  Type bool_(llvm::ArrayRef<int64_t> shape);
 
   Attr tensorAttr(llvm::StringRef name, llvm::ArrayRef<uint8_t> data, Type t);
 

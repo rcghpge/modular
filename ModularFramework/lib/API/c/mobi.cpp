@@ -160,20 +160,62 @@ MODULAR_API_EXPORT M_Type *MOBI_f32(M_Module *m, int64_t *dims, int64_t rank) {
   return new M_Type{m->module.f32(ArrayRef<int64_t>(dims, rank))};
 }
 
-MODULAR_API_EXPORT M_Type *MOBI_si32(M_Module *m, int64_t *dims, int64_t rank) {
-  return new M_Type{m->module.si32(ArrayRef<int64_t>(dims, rank))};
+MODULAR_API_EXPORT M_Type *MOBI_si(M_Module *m, uint64_t width, int64_t *dims,
+                                   int64_t rank) {
+  return new M_Type{m->module.si(width, ArrayRef<int64_t>(dims, rank))};
 }
 
-MODULAR_API_EXPORT M_Type *MOBI_si64(M_Module *m, int64_t *dims, int64_t rank) {
-  return new M_Type{m->module.si64(ArrayRef<int64_t>(dims, rank))};
+MODULAR_API_EXPORT M_Type *MOBI_ui(M_Module *m, uint64_t width, int64_t *dims,
+                                   int64_t rank) {
+  return new M_Type{m->module.ui(width, ArrayRef<int64_t>(dims, rank))};
 }
 
 MODULAR_API_EXPORT M_Type *MOBI_bool(M_Module *m, int64_t *dims, int64_t rank) {
-  return new M_Type{m->module.boolType(ArrayRef<int64_t>(dims, rank))};
+  return new M_Type{m->module.bool_(ArrayRef<int64_t>(dims, rank))};
 }
 
 MODULAR_API_EXPORT M_Arity *MOBI_newArity() { return new M_Arity{Arity()}; }
 
 MODULAR_API_EXPORT void MOBI_addType(M_Arity *a, M_Type *t) {
   a->arity.add(t->type);
+}
+
+MODULAR_API_EXPORT uint64_t MOBI_typeIsTensor(M_Type *t) {
+  return isa<M::MO::TensorType>(t->type.getVal());
+}
+
+MODULAR_API_EXPORT bool MOBI_typeIsFloatTensor(M_Type *t) {
+  return isa<M::MO::TensorType>(t->type.getVal()) &&
+         dyn_cast<M::MO::TensorType>(t->type.getVal()).getDtype().isFloat();
+}
+
+MODULAR_API_EXPORT bool MOBI_typeIsSITensor(M_Type *t) {
+  return isa<M::MO::TensorType>(t->type.getVal()) &&
+         dyn_cast<M::MO::TensorType>(t->type.getVal()).getDtype().isSInt();
+}
+
+MODULAR_API_EXPORT bool MOBI_typeIsUITensor(M_Type *t) {
+  return isa<M::MO::TensorType>(t->type.getVal()) &&
+         dyn_cast<M::MO::TensorType>(t->type.getVal()).getDtype().isUInt();
+}
+
+MODULAR_API_EXPORT bool MOBI_typeIsBoolTensor(M_Type *t) {
+  return isa<M::MO::TensorType>(t->type.getVal()) &&
+         dyn_cast<M::MO::TensorType>(t->type.getVal()).getDtype().isBool();
+}
+
+MODULAR_API_EXPORT uint64_t MOBI_getTensorTypeDTypeWidth(M_Type *t) {
+  return dyn_cast<M::MO::TensorType>(t->type.getVal())
+      .getDtype()
+      .getWidthInBits();
+}
+
+MODULAR_API_EXPORT uint64_t MOBI_getTensorTypeRank(M_Type *t) {
+  return dyn_cast<M::MO::TensorType>(t->type.getVal()).getRank();
+}
+
+// Doesn't currently support parametric dimensions.
+// Dynamic dims return ShapedDim::kDynamic.
+MODULAR_API_EXPORT int64_t MOBI_getTensorTypeDim(M_Type *t, uint64_t dim) {
+  return dyn_cast<M::MO::TensorType>(t->type.getVal()).getIntDim(dim);
 }

@@ -246,25 +246,27 @@ struct Builder:
             fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr
         ]("MOBI_f32")(module, dims, rank)
 
-    fn i32(
+    fn ui(
         self,
         module: ModulePtr,
+        width: UInt64,
         dims: Pointer[Int64],
         rank: Int64,
     ) raises -> TypePtr:
         return self.lib.get_function[
-            fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr
-        ]("MOBI_si32")(module, dims, rank)
+            fn (ModulePtr, UInt64, Pointer[Int64], Int64) -> TypePtr
+        ]("MOBI_ui")(module, width, dims, rank)
 
-    fn i64(
+    fn si(
         self,
         module: ModulePtr,
+        width: UInt64,
         dims: Pointer[Int64],
         rank: Int64,
     ) raises -> TypePtr:
         return self.lib.get_function[
-            fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr
-        ]("MOBI_si64")(module, dims, rank)
+            fn (ModulePtr, UInt64, Pointer[Int64], Int64) -> TypePtr
+        ]("MOBI_si")(module, width, dims, rank)
 
     fn bool(
         self,
@@ -283,6 +285,46 @@ struct Builder:
         return self.lib.get_function[fn (ArityPtr, TypePtr) -> NoneType](
             "MOBI_addType"
         )(arity, t)
+
+    fn type_is_float_tensor(self, t: TypePtr) raises -> Bool:
+        return self.lib.get_function[fn (TypePtr) -> Bool](
+            "MOBI_typeIsFloatTensor"
+        )(t)
+
+    fn type_is_si_tensor(self, t: TypePtr) raises -> Bool:
+        return self.lib.get_function[fn (TypePtr) -> Bool](
+            "MOBI_typeIsSITensor"
+        )(t)
+
+    fn type_is_ui_tensor(self, t: TypePtr) raises -> Bool:
+        return self.lib.get_function[fn (TypePtr) -> Bool](
+            "MOBI_typeIsUITensor"
+        )(t)
+
+    fn type_is_bool_tensor(self, t: TypePtr) raises -> Bool:
+        return self.lib.get_function[fn (TypePtr) -> Bool](
+            "MOBI_typeIsBoolTensor"
+        )(t)
+
+    fn type_is_tensor(self, t: TypePtr) raises -> Bool:
+        return self.lib.get_function[fn (TypePtr) -> Bool]("MOBI_typeIsTensor")(
+            t
+        )
+
+    fn tensor_dtype_width(self, t: TypePtr) raises -> UInt64:
+        return self.lib.get_function[fn (TypePtr) -> UInt64](
+            "MOBI_getTensorTypeDTypeWidth"
+        )(t)
+
+    fn tensor_rank(self, t: TypePtr) raises -> UInt64:
+        return self.lib.get_function[fn (TypePtr) -> UInt64](
+            "MOBI_getTensorTypeRank"
+        )(t)
+
+    fn tensor_dim(self, t: TypePtr, dim: UInt64) raises -> Int64:
+        return self.lib.get_function[fn (TypePtr, UInt64) -> Int64](
+            "MOBI_getTensorTypeDim"
+        )(t, dim)
 
     ### Execution helpers
 
