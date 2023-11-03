@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "modular-engine"
-version = "0.4.0"
+version = "@MODULAR_VERSION_MAJOR@.@MODULAR_VERSION_MINOR@.@MODULAR_VERSION_PATCH@"
 dependencies = [
   "numpy >= 1.18",
 ]

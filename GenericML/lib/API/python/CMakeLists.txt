@@ -16,18 +16,8 @@ modular_find_python3_development()
 
 include(AddPyBind11)
 
-# Use pyproject.toml as a single source of truth for the version of the Modular
-# Python framework.
-execute_process(
-  COMMAND ${Python3_EXECUTABLE} -c "import tomli; f = open('${CMAKE_CURRENT_SOURCE_DIR}/pyproject.toml', 'rb'); proj = tomli.load(f)['project']; print(proj['name'].replace('-', '_') + '-' + proj['version'])"
-  RESULT_VARIABLE TOMLI_RESULT
-  OUTPUT_VARIABLE MODULAR_PYPROJECT_NAME_VERSION
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-)
-if(TOMLI_RESULT)
-  message(FATAL_ERROR "Failed to parse pyproject.toml for Modular python bindings.")
-endif()
+# Hardcode version to 0.0.0 for local test target modular-pybind-ext
+set(MODULAR_PYPROJECT_NAME_VERSION "modular_engine-0.0.0")
 
 # Package the built extension into a wheel.
 set(WHEEL_DIR ${CMAKE_CURRENT_BINARY_DIR})
@@ -93,8 +83,8 @@ set(MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:monnx>)
 # TODO(#7439): /dev/null is not portable to Windows.
 if(STOCK_TENSORFLOW_FOUND)
   set(EXTERNAL_TF_EXES
-      "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-translate;"
-      "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-opt")
+    "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-translate;"
+    "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-opt")
   list(APPEND MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:tf>)
 endif()
 
@@ -102,6 +92,18 @@ set(modular_python_package_sources
   ${CMAKE_CURRENT_SOURCE_DIR}/modular/engine/api.py
   ${CMAKE_CURRENT_SOURCE_DIR}/modular/engine/core.pyi
 )
+
+# Note that ${CMAKE_CURRENT_BINARY_DIR} == ${WHEEL_DIR} so the configured/generated pyproject.toml works for local wheel building for target modular-pybind-ext as well.
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/pyproject.toml.in
+  ${CMAKE_CURRENT_BINARY_DIR}/pyproject.toml.in
+  @ONLY)
+
+file(GENERATE
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/pyproject.toml
+  INPUT ${CMAKE_CURRENT_BINARY_DIR}/pyproject.toml.in
+)
+
 add_custom_command(OUTPUT ${MODULAR_PACKED_WHEEL_NAME}
   COMMAND ${Python3_EXECUTABLE} -m build --wheel --outdir ${WHEEL_DIR} > /dev/null
   COMMAND ${Python3_EXECUTABLE} -m wheel unpack ${WHEEL_DIR}/${WHEEL_BASENAME}.whl --dest ${WHEEL_DIR} > /dev/null
@@ -140,7 +142,7 @@ add_subdirectory(notebooks)
 
 # Set up wheel directory structure by copying the pyproject.toml and setup.py
 # files needed for setuptools to build the wheel.
-install(FILES pyproject.toml setup.py
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/pyproject.toml ${CMAKE_CURRENT_SOURCE_DIR}/setup.py
   DESTINATION modular-engine-wheel
   COMPONENT ai-engine-wheel
 )
@@ -158,5 +160,5 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/modular
 # wheel.
 install(TARGETS core
   DESTINATION modular-engine-wheel/modular/engine
-  COMPONENT ai-engine-wheel 
+  COMPONENT ai-engine-wheel
 )
