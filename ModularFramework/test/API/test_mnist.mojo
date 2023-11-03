@@ -3,7 +3,6 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-# UNSUPPORTED: address
 # UNSUPPORTED: windows
 # RUN: mojo -I %mobi_pkg_dir %s | FileCheck %s
 
