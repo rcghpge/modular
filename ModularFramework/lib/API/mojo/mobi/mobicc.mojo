@@ -136,12 +136,12 @@ struct Builder:
         self,
         module: ModulePtr,
         name: StringRef,
-        fileName: StringRef,
+        file_name: StringRef,
         type: TypePtr,
     ) raises -> AttrPtr:
         return self.lib.get_function[
             fn (ModulePtr, StringRef, StringRef, TypePtr) -> AttrPtr
-        ]("MOBI_tensorAttrFromFile")(module, name, fileName, type)
+        ]("MOBI_tensorAttrFromFile")(module, name, file_name, type)
 
     fn new_attr_map(self) raises -> AttrMapPtr:
         return self.lib.get_function[fn () -> AttrMapPtr]("MOBI_newAttrMap")()
@@ -317,13 +317,13 @@ struct Builder:
     fn add_f32_tensor_from_file(
         self,
         inout t: TensorTuplePtr,
-        fileName: StringRef,
+        file_name: StringRef,
         dims: Pointer[Int64],
         rank: Int64,
     ) raises:
         self.lib.get_function[
             fn (TensorTuplePtr, StringRef, Pointer[Int64], Int64) -> NoneType
-        ]("MOF_addF32TensorFromFile")(t, fileName, dims, rank)
+        ]("MOF_addF32TensorFromFile")(t, file_name, dims, rank)
 
     fn execute_module(
         self,

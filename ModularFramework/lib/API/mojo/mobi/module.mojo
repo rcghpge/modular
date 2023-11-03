@@ -54,13 +54,13 @@ struct Module:
             raise Error("Execution error")
         self.builder.debug_print_tensors(rtOuts)
 
-    fn debug_print_execute(self, fileName: StringRef, spec: TensorSpec) raises:
+    fn debug_print_execute(self, file_name: StringRef, spec: TensorSpec) raises:
         var rtArgs = self.builder.new_rt_tuple()
         var shape = DynamicVector[Int64]()
         for i in range(spec.rank()):
             shape.push_back(spec[i])
         self.builder.add_f32_tensor_from_file(
-            rtArgs, fileName, shape.data, spec.rank()
+            rtArgs, file_name, shape.data, spec.rank()
         )
         var rtOuts = self.builder.new_rt_tuple()
         let execCode = self.builder.execute_module(self.m, rtArgs, rtOuts)
@@ -106,9 +106,9 @@ struct Module:
         )
 
     fn f32_attr(
-        self, name: StringRef, t: TypePtr, fileName: StringRef
+        self, name: StringRef, t: TypePtr, file_name: StringRef
     ) raises -> AttrPtr:
-        return self.builder.tensor_attr_from_file(self.m, name, fileName, t)
+        return self.builder.tensor_attr_from_file(self.m, name, file_name, t)
 
     fn tensor_attr[
         dtype: DType

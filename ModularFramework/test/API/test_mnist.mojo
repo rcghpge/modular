@@ -38,17 +38,15 @@ def mnist():
         m.types(m.f32(1, 28, 28, 1)),
         m.types(m.f32(1, 10)),
     )
-    var cst = g.op(
+    let cst_data = Tensor[DType.float32](128, 10)
+    cst_data._to_buffer().fill(0.5)
+    let cst = g.op(
         "mo.constant",
         g.values(),
         m.types(m.f32(128, 10)),
-        m.attrs(
-            m.f32_attr(
-                "value", m.f32(128, 10), "/Users/mdan/modular/.derived/p0.bin"
-            )
-        ),
+        m.attrs(m.f32_attr("value", m.f32(128, 10), cst_data)),
     )
-    var cst_0 = g.op(
+    let cst_0 = g.op(
         "mo.constant",
         g.values(),
         m.types(m.f32(1, 10)),
@@ -69,57 +67,45 @@ def mnist():
             )
         ),
     )
-    var cst_1 = g.op(
+
+    let cst_1_data = Tensor[DType.float32](784, 128)
+    cst_1_data._to_buffer().fill(0.5)
+    let cst_1 = g.op(
         "mo.constant",
         g.values(),
         m.types(m.f32(784, 128)),
-        m.attrs(
-            m.f32_attr(
-                "value", m.f32(784, 128), "/Users/mdan/modular/.derived/p2.bin"
-            )
-        ),
+        m.attrs(m.f32_attr("value", m.f32(784, 128), cst_1_data)),
     )
-    var cst_2 = g.op(
+    let cst_2_data = Tensor[DType.float32](1, 128)
+    cst_2_data._to_buffer().fill(0.5)
+    let cst_2 = g.op(
         "mo.constant",
         g.values(),
         m.types(m.f32(1, 128)),
-        m.attrs(
-            m.f32_attr(
-                "value", m.f32(1, 128), "/Users/mdan/modular/.derived/p3.bin"
-            )
-        ),
+        m.attrs(m.f32_attr("value", m.f32(1, 128), cst_2_data)),
     )
-    var cst_3 = g.op(
+    let cst_3 = g.op(
         "mo.constant",
         g.values(),
         m.types(m.i32(2)),
         m.attrs(m.i32_attr("value", m.i32(2), -1, 784)),
     )
-    var p1 = g.op(
+    let p1 = g.op(
         "mo.reshape", g.values(g[0], cst_3[0]), m.types(m.f32(1, 784))
     )
-    var p2 = g.op(
+    let p2 = g.op(
         "mo.matmul", g.values(p1[0], cst_1[0]), m.types(m.f32(1, 128))
     )
-    var p3 = g.op("mo.add", g.values(p2[0], cst_2[0]), m.types(m.f32(1, 128)))
-    var p4 = g.op("mo.relu", g.values(p3[0]), m.types(m.f32(1, 128)))
-    var p5 = g.op("mo.matmul", g.values(p4[0], cst[0]), m.types(m.f32(1, 10)))
+    let p3 = g.op("mo.add", g.values(p2[0], cst_2[0]), m.types(m.f32(1, 128)))
+    let p4 = g.op("mo.relu", g.values(p3[0]), m.types(m.f32(1, 128)))
+    let p5 = g.op("mo.matmul", g.values(p4[0], cst[0]), m.types(m.f32(1, 10)))
     let p6 = g.op("mo.add", g.values(p5[0], cst_0[0]), m.types(m.f32(1, 10)))
     _ = g.op("mo.output", p6, m.types())
 
-    # print(m.__str__())
+    let input_tensor = Tensor[DType.float32](1, 28, 28, 1)
+    input_tensor._to_buffer().fill(0.5)
 
-    var input_tensor = Tensor[DType.float32](1, 28, 28, 1)
-    with open("/Users/mdan/modular/.derived/two.bin", "r") as f:
-        let str = f.read()
-        let buf_read = Buffer[28 * 28, DType.float32](
-            DTypePointer[DType.int8](str._buffer.data).bitcast[DType.float32]()
-        )
-        for i in range(28 * 28):
-            input_tensor[i] = buf_read[i]
-
-        _ = str ^
-    # CHECK{LITERAL}: tensor([[-8.4354, -5.9548, 11.6617, ..., -7.9491, -0.2343, -7.3118]], dtype=f32, shape=[1,10])
+    # CHECK{LITERAL}: tensor([[12575.9326, 12576.0059, 12576.0010, ..., 12576.0459, 12575.9717, 12575.9570]], dtype=f32, shape=[1,10])
     m.debug_print_execute(input_tensor)
 
 
