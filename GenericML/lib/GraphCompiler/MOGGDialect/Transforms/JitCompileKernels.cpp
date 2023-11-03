@@ -556,6 +556,12 @@ struct JitCompileKernels
         if (error.isError())
           return WalkResult::interrupt();
 
+        // Insert destructor calls (if needed) for the mojo representation of
+        // inputs values.
+        error = builder.addDestructorCallsForInputs();
+        if (error.isError())
+          return WalkResult::interrupt();
+
         // Replace the original kernel with a call to the compiled jit code.
         MOGG::ExecuteCompiledOp jitExecute = builder.createExecuteOperation(
             stubKernelName.get(), usedParamsAsAttr,

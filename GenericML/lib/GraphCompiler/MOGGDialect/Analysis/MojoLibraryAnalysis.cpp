@@ -303,6 +303,7 @@ MojoLibraryAnalysis::get(MLIRContext *ctx, const std::string &extraLibPaths) {
       INTRINSIC_TO_MOJO("top_k_shape", "$TopK::top_k_shape"),
       INTRINSIC_TO_MOJO("to_buffer", "$MOGG::to_buffer"),
       INTRINSIC_TO_MOJO("to_buffer_list", "$MOGG::to_buffer_list"),
+      INTRINSIC_TO_MOJO("destruct_buffer_list", "$MOGG::destruct_buffer_list"),
       INTRINSIC_TO_MOJO("to_shape", "$MOGG::to_shape"),
       INTRINSIC_TO_MOJO("buf_len", "$MOGG::bufferLength"),
       INTRINSIC_TO_MOJO("elementwise", "$MOGG::elementwise_wrapper"),
