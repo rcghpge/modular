@@ -28,7 +28,9 @@ class MGP_Type<string name, string typeMnemonic, list<Trait> traits = []>
 //===----------------------------------------------------------------------===//
 
 def MGP_CpuBufferType : MGP_Type<"CpuBuffer", "cpu.buffer",
-                         [DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
+                         [DeclareTypeInterfaceMethods<ShapedTypeInterface>,
+                          DeclareTypeInterfaceMethods<MGP_BufferTypeInterface>
+                         ]> {
   let summary = "Type of CPU-hosted, mutable, uninterpreted byte arrays, with "
                 "an optional statically known size.";
   let description = [{
