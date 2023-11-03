@@ -87,6 +87,10 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
     /// without constraints.
     static ErrorOr<ShapeAttr> broadcastShapes(ShapeAttr xSh, ShapeAttr ySh);
 
+    /// Calculate the minimal common shape that all the input shape attributes
+    /// can be broadcasted to. If not possible, returns a null attribute.
+    static TypedAttr getCommonBroadcastShape(ArrayRef<TypedAttr> shapeParams);
+
     /// Calculate which dimension indices in the final bcastedShape which are
     /// the result of broadcasting. Returns indices in sorted order.
     /// E.g. [1, 3, 4, 5].

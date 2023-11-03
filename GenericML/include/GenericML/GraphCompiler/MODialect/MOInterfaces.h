@@ -83,9 +83,6 @@ materializeReductionShapeInference(Reduction op,
 LogicalResult
 materializeScatterNdLikeShapeInference(ScatterNdLike op,
                                        ShapeFuncMaterializationState &state);
-
-ErrorOrSuccess elementwiseSinkStaticBroadcastTo(Operation *op,
-                                                mlir::RewriterBase &rewriter);
 } // namespace impl
 
 template <typename ConcreteType>

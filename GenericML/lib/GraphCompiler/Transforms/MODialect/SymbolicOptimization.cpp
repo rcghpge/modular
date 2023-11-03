@@ -2331,6 +2331,79 @@ struct SinkBroadcastsThroughReduction
   }
 };
 
+template <typename ElemwiseInterfaceT>
+struct SinkBroadcastsThroughElemwise
+    : public DeviceAwareRewritePattern<OpInterfaceRewritePattern,
+                                       ElemwiseInterfaceT> {
+  SinkBroadcastsThroughElemwise(MLIRContext *ctx)
+      : DeviceAwareRewritePattern<OpInterfaceRewritePattern,
+                                  ElemwiseInterfaceT>(ctx, 2) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(ElemwiseInterfaceT op,
+                             DeviceAwareRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+
+    // We first ensure the elementwise op has only broadcast inputs, and collect
+    // the input shapes of the broadcasts.
+    SmallVector<TypedAttr> shapeParams;
+    for (Value arg : op->getOperands()) {
+      auto bcastOp = arg.getDefiningOp<Static::BroadcastToOp>();
+      if (!bcastOp)
+        return rewriter.notifyMatchFailure(loc, "not preceded by broadcast");
+      shapeParams.emplace_back(bcastOp.getInput().getType().getShapeAttr());
+    }
+
+    // We calculate the smallest common shapes of the broadcast inputs.
+    TypedAttr commonBcastShape =
+        ShapeAttr::getCommonBroadcastShape(shapeParams);
+
+    // Here we cannot prove a better shape, so just use the existing shape
+    // annotation which we assume works well.
+    if (!commonBcastShape)
+      return rewriter.notifyMatchFailure(
+          loc, "No common shape can be proven for broadcasts.");
+
+    if (op->getNumResults() != 1)
+      return rewriter.notifyMatchFailure(
+          loc, "Assume only one result from elemwise op.");
+
+    TensorType oldTy = cast<TensorType>(op->getResult(0).getType());
+    if (commonBcastShape == oldTy.getShapeAttr())
+      return rewriter.notifyMatchFailure(
+          loc, "Already at the mode reduced broadcast form.");
+
+    // Clone the elemwise operator
+    TensorValue resVal = cast<TensorValue>(op->getResult(0));
+    Operation *clonedOp = rewriter.clone(*op);
+    TensorValue clonedResVal = cast<TensorValue>(clonedOp->getResult(0));
+
+    // Set the operands to inputs broadcast to the common shape
+    rewriter.setInsertionPoint(clonedOp);
+    for (size_t i = 0; i < op->getNumOperands(); i++) {
+      auto oldBcastOp =
+          op->getOperand(i).template getDefiningOp<Static::BroadcastToOp>();
+      TensorType targetType = oldBcastOp.getType().cloneWith(commonBcastShape);
+
+      // Only insert broadcast and replace operand if it changes shapes
+      if (oldBcastOp.getType() != targetType) {
+        TensorValue newOperand = rewriter.create<Static::BroadcastToOp>(
+            oldBcastOp->getLoc(), targetType, oldBcastOp.getInput());
+        clonedOp->setOperand(i, newOperand);
+      }
+    }
+    clonedResVal.setType(resVal.getType().cloneWith(commonBcastShape));
+
+    // To type check, insert a broadcast back to the original shape
+    rewriter.setInsertionPointAfter(clonedOp);
+    auto newResVal = rewriter.create<Static::BroadcastToOp>(
+        op->getLoc(), resVal.getType(), clonedResVal);
+    rewriter.replaceAllUsesWith(resVal, newResVal);
+
+    return success();
+  }
+};
+
 struct SymbolicOptimizationPass
     : public MO::impl::SymbolicOptimizationBase<SymbolicOptimizationPass> {
   using SymbolicOptimizationBase::SymbolicOptimizationBase;
@@ -2364,7 +2437,9 @@ struct SymbolicOptimizationPass
 
     // Broadcast swimming.
     patterns.add<SinkBroadcastsThroughReduction,
-                 CommuteBroadcastWithFlatennedArgNonzero>(context);
+                 CommuteBroadcastWithFlatennedArgNonzero,
+                 SinkBroadcastsThroughElemwise<ElementWiseBinary>,
+                 SinkBroadcastsThroughElemwise<ElementWiseUnary>>(context);
 
     // TODO(24646): Ensure these use device aware rewriter.
     TransposeOp::getCanonicalizationPatterns(patterns, context);

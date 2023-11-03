@@ -267,6 +267,45 @@ ErrorOr<ShapeAttr> ShapeAttr::broadcastShapes(ShapeAttr xSh, ShapeAttr ySh) {
                         xSh.getType());
 }
 
+TypedAttr ShapeAttr::getCommonBroadcastShape(ArrayRef<TypedAttr> shapeParams) {
+  // We collect all the statically ranked shapes first.
+  SmallVector<ShapeAttr> staticRankShapes;
+  for (TypedAttr p : shapeParams) {
+    if (auto shape = llvm::dyn_cast<ShapeAttr>(p)) {
+      staticRankShapes.emplace_back(shape);
+    }
+  }
+
+  // If all the shapes are dynamically ranked, we can only determine a common
+  // shape if they are all the same.
+  if (staticRankShapes.empty()) {
+    TypedAttr res = shapeParams.front();
+    auto notSameAsFirst = [res](TypedAttr other) { return res != other; };
+    if (llvm::any_of(shapeParams.drop_front(), notSameAsFirst))
+      return {};
+    return res;
+  }
+
+  // If we have both static and dynamic ranks, we can't do anything.
+  if (staticRankShapes.size() != shapeParams.size())
+    return {};
+
+  // At this point, we are dealing with all static ranks. We will go through all
+  // the shapes and successively reduce the common shape. If the rank of the
+  // common dimension drops below the maximum of the ranks, we terminate early.
+  ShapeAttr commonShape = staticRankShapes.pop_back_val();
+  while (!staticRankShapes.empty()) {
+    ShapeAttr nextShape = staticRankShapes.pop_back_val();
+    ErrorOr<ShapeAttr> maybeCommonShape =
+        ShapeAttr::broadcastShapes(commonShape, nextShape);
+    if (maybeCommonShape.isError())
+      return {};
+    commonShape = maybeCommonShape.takeValue();
+  }
+
+  return commonShape;
+}
+
 ErrorOr<SmallVector<int64_t>>
 ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
   if (beforeShape.hasUnknownDims() || bcastedShape.hasUnknownDims())
