@@ -245,24 +245,6 @@ def MO_SlidingWindow : MO_TensorOpInterfaceBase<"SlidingWindow"> {
   let verify = [{ return impl::verifySlidingWindow(cast<SlidingWindow>($_op)); }];
 }
 
-def MO_SinkStaticBroadcastTo :
-    MO_TensorOpInterfaceBase<"SinkStaticBroadcastToInterface"> {
-  let description = [{
-    Interface for ops that can commute with `mo.static.broadcast_to`.
-  }];
-
-  let methods = [
-    InterfaceMethod<
-      "Check if the op is preceded by `mo.static.broadcast_to`, and sink the "
-      "broadcast below the op if possible. Implementers can assume that "
-      "insertion point is set to the op when the interface method is called "
-      "and they should not erase the preceding `mo.static.broadcast_to` "
-      "operations.",
-      "ErrorOrSuccess", "sinkStaticBroadcastTo",
-      (ins "mlir::RewriterBase &":$rewriter)>,
-  ];
-}
-
 def MO_ElementWiseUnary : MO_TensorOpInterfaceBase<"ElementWiseUnary"> {
   let description = [{
     Interface for modeling unary element-wise operations.
