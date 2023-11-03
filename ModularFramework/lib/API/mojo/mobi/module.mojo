@@ -33,14 +33,14 @@ struct Module:
         self.builder = Builder()
         self.m = self.builder.new_module()
 
-    fn __init__(inout self, borrowed m: ModulePtr, borrowed builder: Builder):
+    fn __init__(inout self, m: ModulePtr, builder: Builder):
         self.m = m
         self.builder = builder
 
-    fn __str__(inout self) raises -> String:
+    fn __str__(self) raises -> String:
         return self.builder.module_to_string(self.m)
 
-    fn debug_print_execute(inout self, arg: Tensor[DType.float32]) raises:
+    fn debug_print_execute(self, arg: Tensor[DType.float32]) raises:
         var rtArgs = self.builder.new_rt_tuple()
         var shape = DynamicVector[Int64]()
         for i in range(arg.shape().rank()):
@@ -54,9 +54,7 @@ struct Module:
             raise Error("Execution error")
         self.builder.debug_print_tensors(rtOuts)
 
-    fn debug_print_execute(
-        inout self, fileName: StringRef, spec: TensorSpec
-    ) raises:
+    fn debug_print_execute(self, fileName: StringRef, spec: TensorSpec) raises:
         var rtArgs = self.builder.new_rt_tuple()
         var shape = DynamicVector[Int64]()
         for i in range(spec.rank()):
@@ -71,7 +69,7 @@ struct Module:
         self.builder.debug_print_tensors(rtOuts)
 
     fn i32_attr(
-        inout self, name: StringRef, t: TypePtr, *elements: Int32
+        self, name: StringRef, t: TypePtr, *elements: Int32
     ) raises -> AttrPtr:
         var data = DynamicVector[Int32]()
         for i in range(len(elements)):
@@ -81,7 +79,7 @@ struct Module:
         )
 
     fn i64_attr(
-        inout self, name: StringRef, t: TypePtr, *elements: Int64
+        self, name: StringRef, t: TypePtr, *elements: Int64
     ) raises -> AttrPtr:
         var data = DynamicVector[Int64]()
         for i in range(len(elements)):
@@ -91,7 +89,7 @@ struct Module:
         )
 
     fn f32_attr(
-        inout self, name: StringRef, t: TypePtr, *elements: Float32
+        self, name: StringRef, t: TypePtr, *elements: Float32
     ) raises -> AttrPtr:
         var data = DynamicVector[Float32]()
         for i in range(len(elements)):
@@ -101,82 +99,78 @@ struct Module:
         )
 
     fn f32_attr(
-        inout self, name: StringRef, t: TypePtr, value: Tensor[DType.float32]
+        self, name: StringRef, t: TypePtr, value: Tensor[DType.float32]
     ) raises -> AttrPtr:
         return self.builder.tensor_attr(
             self.m, name, value.data().bitcast[DType.invalid](), t
         )
 
     fn f32_attr(
-        inout self, name: StringRef, t: TypePtr, fileName: StringRef
+        self, name: StringRef, t: TypePtr, fileName: StringRef
     ) raises -> AttrPtr:
         return self.builder.tensor_attr_from_file(self.m, name, fileName, t)
 
     fn tensor_attr[
         dtype: DType
     ](
-        inout self, name: StringRef, t: TypePtr, value: Tensor[dtype]
+        self, name: StringRef, t: TypePtr, value: Tensor[dtype]
     ) raises -> AttrPtr:
         return self.builder.tensor_attr(
             self.m, name, value.data().bitcast[DType.invalid](), t
         )
 
-    fn type_of[dtype: DType](inout self, t: Tensor[dtype]) raises -> TypePtr:
+    fn type_of[dtype: DType](self, t: Tensor[dtype]) raises -> TypePtr:
         if dtype == DType.float32:
             return self.f32(t.shape())
         elif dtype == DType.uint32:
             return self.i32(t.shape())
         elif dtype == DType.uint32:
             return self.i64(t.shape())
-        else:
-            raise Error("not implemented")
-        return self.f32()
+        raise Error("not implemented")
 
-    fn attrs(inout self, *attrs: AttrPtr) raises -> AttrMap:
+    fn attrs(self, *attrs: AttrPtr) raises -> AttrMap:
         var m = self.builder.new_attr_map()
         for i in range(len(attrs)):
-            var a = attrs[i]
-            self.builder.add_attr(m, a)
+            self.builder.add_attr(m, attrs[i])
         return AttrMap(m, len(attrs))
 
     # TODO: Support TensorSpec overload.
 
-    fn dyn(inout self) raises -> Int64:
+    fn dyn(self) raises -> Int64:
         return self.builder.dynamic_dim(self.m)
 
-    fn i32(inout self, *dims: Int64) raises -> TypePtr:
+    fn i32(self, *dims: Int64) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
         return self.builder.i32(self.m, shape.data, len(shape))
 
-    fn i32(inout self, dims: TensorShape) raises -> TypePtr:
+    fn i32(self, dims: TensorShape) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
         return self.builder.i32(self.m, shape.data, len(shape))
 
-    fn i64(inout self, *dims: Int64) raises -> TypePtr:
+    fn i64(self, *dims: Int64) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
         return self.builder.i64(self.m, shape.data, len(shape))
 
-    fn i64(inout self, dims: TensorShape) raises -> TypePtr:
+    fn i64(self, dims: TensorShape) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
         return self.builder.i64(self.m, shape.data, len(shape))
 
-    fn f32(inout self, *dims: Int64) raises -> TypePtr:
+    fn f32(self, *dims: Int64) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
         return self.builder.f32(self.m, shape.data, len(shape))
 
-    fn f32(inout self, dims: TensorShape) raises -> TypePtr:
+    fn f32(self, dims: TensorShape) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
         return self.builder.f32(self.m, shape.data, len(shape))
 
-    fn bool(inout self, *dims: Int64) raises -> TypePtr:
+    fn bool(self, *dims: Int64) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
         return self.builder.bool(self.m, shape.data, len(shape))
 
-    fn types(inout self, *types: TypePtr) raises -> Arity:
+    fn types(self, *types: TypePtr) raises -> Arity:
         var a = self.builder.new_arity()
         for i in range(len(types)):
-            var t = types[i]
-            self.builder.add_type(a, t)
+            self.builder.add_type(a, types[i])
         return Arity(a, len(types))
 
     fn graph(
@@ -185,7 +179,7 @@ struct Module:
         in_types: Arity,
         out_types: Arity,
     ) raises -> Graph:
-        var unknown = self.builder.unknown_loc(self.m)
+        let unknown = self.builder.unknown_loc(self.m)
         let g = self.builder.new_graph(
             self.m, unknown, name, in_types.a, out_types.a
         )

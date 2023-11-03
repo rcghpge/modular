@@ -48,7 +48,7 @@ struct Tup:
         self.l = existing.l
         self.builder = existing.builder ^
 
-    fn __getitem__(inout self, pos: UInt32) raises -> SymbolPtr:
+    fn __getitem__(self, pos: UInt32) raises -> SymbolPtr:
         return self.builder.get_symbol(self.t, pos)
 
     fn __len__(self) -> Int:

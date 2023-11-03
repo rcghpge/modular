@@ -109,8 +109,8 @@ struct Builder:
     ### Attr helers
 
     fn tensor_attr(
-        inout self,
-        inout module: ModulePtr,
+        self,
+        module: ModulePtr,
         name: StringRef,
         data: Pointer[AnyType],
         type: TypePtr,
@@ -120,8 +120,8 @@ struct Builder:
         ]("MOBI_tensorAttr")(module, name, data, type)
 
     fn tensor_attr(
-        inout self,
-        inout module: ModulePtr,
+        self,
+        module: ModulePtr,
         name: StringRef,
         data: DTypePointer[DType.invalid],
         type: TypePtr,
@@ -133,8 +133,8 @@ struct Builder:
         ]("MOBI_tensorAttr")(module, name, data, type)
 
     fn tensor_attr_from_file(
-        inout self,
-        inout module: ModulePtr,
+        self,
+        module: ModulePtr,
         name: StringRef,
         fileName: StringRef,
         type: TypePtr,
@@ -143,10 +143,10 @@ struct Builder:
             fn (ModulePtr, StringRef, StringRef, TypePtr) -> AttrPtr
         ]("MOBI_tensorAttrFromFile")(module, name, fileName, type)
 
-    fn new_attr_map(inout self) raises -> AttrMapPtr:
+    fn new_attr_map(self) raises -> AttrMapPtr:
         return self.lib.get_function[fn () -> AttrMapPtr]("MOBI_newAttrMap")()
 
-    fn add_attr(inout self, inout map: AttrMapPtr, inout a: AttrPtr) raises:
+    fn add_attr(self, inout map: AttrMapPtr, a: AttrPtr) raises:
         return self.lib.get_function[fn (AttrMapPtr, AttrPtr) -> NoneType](
             "MOBI_addAttr"
         )(map, a)
@@ -154,9 +154,9 @@ struct Builder:
     ### Graph helpers
 
     fn new_graph(
-        inout self,
+        self,
         inout module: ModulePtr,
-        inout loc: LocPtr,
+        loc: LocPtr,
         name: StringRef,
         inTypes: ArityPtr,
         outTypes: ArityPtr,
@@ -166,8 +166,8 @@ struct Builder:
         ]("MOBI_newGraph")(module, loc, name, inTypes, outTypes)
 
     fn get_input(
-        inout self,
-        inout graph: GraphPtr,
+        self,
+        graph: GraphPtr,
         pos: UInt32,
     ) raises -> SymbolPtr:
         return self.lib.get_function[fn (GraphPtr, UInt32) -> SymbolPtr](
@@ -175,9 +175,9 @@ struct Builder:
         )(graph, pos)
 
     fn new_op(
-        inout self,
+        self,
         inout graph: GraphPtr,
-        inout loc: LocPtr,
+        loc: LocPtr,
         name: StringRef,
         inputs: TuplePtr,
         outTypes: ArityPtr,
@@ -191,22 +191,22 @@ struct Builder:
 
     ### Location helpers
 
-    fn unknown_loc(inout self, inout module: ModulePtr) raises -> LocPtr:
+    fn unknown_loc(self, module: ModulePtr) raises -> LocPtr:
         return self.lib.get_function[fn (ModulePtr) -> LocPtr](
             "MOBI_unknownLoc"
         )(module)
 
     ### Module helpers
 
-    fn new_module(inout self) raises -> ModulePtr:
+    fn new_module(self) raises -> ModulePtr:
         return self.lib.get_function[fn () -> ModulePtr]("MOBI_newModule")()
 
-    fn debug_print_module(inout self, inout module: ModulePtr) raises:
+    fn debug_print_module(self, module: ModulePtr) raises:
         self.lib.get_function[fn (ModulePtr) -> NoneType](
             "MOBI_debugPrintModule"
         )(module)
 
-    fn module_to_string(inout self, inout module: ModulePtr) raises -> String:
+    fn module_to_string(self, module: ModulePtr) raises -> String:
         let ret = self.lib.get_function[
             fn (ModulePtr) -> DTypePointer[DType.int8]
         ]("MOBI_moduleToString")(module)
@@ -216,31 +216,29 @@ struct Builder:
 
     ### Symbol helers
 
-    fn new_tuple(inout self) raises -> TuplePtr:
+    fn new_tuple(self) raises -> TuplePtr:
         return self.lib.get_function[fn () -> TuplePtr]("MOBI_newTuple")()
 
-    fn add_symbol(inout self, inout t: TuplePtr, inout s: SymbolPtr) raises:
+    fn add_symbol(self, inout t: TuplePtr, s: SymbolPtr) raises:
         return self.lib.get_function[fn (TuplePtr, SymbolPtr) -> NoneType](
             "MOBI_addSymbol"
         )(t, s)
 
-    fn get_symbol(
-        inout self, inout t: TuplePtr, pos: UInt32
-    ) raises -> SymbolPtr:
+    fn get_symbol(self, t: TuplePtr, pos: UInt32) raises -> SymbolPtr:
         return self.lib.get_function[fn (TuplePtr, UInt32) -> SymbolPtr](
             "MOBI_getSymbol"
         )(t, pos)
 
     ### Type helers
 
-    fn dynamic_dim(inout self, inout module: ModulePtr) raises -> Int64:
+    fn dynamic_dim(self, module: ModulePtr) raises -> Int64:
         return self.lib.get_function[fn (ModulePtr) -> Int64](
             "MOBI_dynamicDim"
         )(module)
 
     fn f32(
-        inout self,
-        inout module: ModulePtr,
+        self,
+        module: ModulePtr,
         dims: Pointer[Int64],
         rank: Int64,
     ) raises -> TypePtr:
@@ -249,8 +247,8 @@ struct Builder:
         ]("MOBI_f32")(module, dims, rank)
 
     fn i32(
-        inout self,
-        inout module: ModulePtr,
+        self,
+        module: ModulePtr,
         dims: Pointer[Int64],
         rank: Int64,
     ) raises -> TypePtr:
@@ -259,8 +257,8 @@ struct Builder:
         ]("MOBI_si32")(module, dims, rank)
 
     fn i64(
-        inout self,
-        inout module: ModulePtr,
+        self,
+        module: ModulePtr,
         dims: Pointer[Int64],
         rank: Int64,
     ) raises -> TypePtr:
@@ -269,8 +267,8 @@ struct Builder:
         ]("MOBI_si64")(module, dims, rank)
 
     fn bool(
-        inout self,
-        inout module: ModulePtr,
+        self,
+        module: ModulePtr,
         dims: Pointer[Int64],
         rank: Int64,
     ) raises -> TypePtr:
@@ -278,10 +276,10 @@ struct Builder:
             fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr
         ]("MOBI_bool")(module, dims, rank)
 
-    fn new_arity(inout self) raises -> ArityPtr:
+    fn new_arity(self) raises -> ArityPtr:
         return self.lib.get_function[fn () -> ArityPtr]("MOBI_newArity")()
 
-    fn add_type(inout self, inout arity: ArityPtr, inout t: TypePtr) raises:
+    fn add_type(self, inout arity: ArityPtr, t: TypePtr) raises:
         return self.lib.get_function[fn (ArityPtr, TypePtr) -> NoneType](
             "MOBI_addType"
         )(arity, t)
@@ -290,20 +288,18 @@ struct Builder:
 
     # TODO: Merge with engine API
 
-    fn new_rt_tuple(inout self) raises -> TensorTuplePtr:
+    fn new_rt_tuple(self) raises -> TensorTuplePtr:
         return self.lib.get_function[fn () -> TensorTuplePtr](
             "MOF_newTensorTuple"
         )()
 
-    fn add_si32_rt_scalar(
-        inout self, inout t: TensorTuplePtr, value: Int32
-    ) raises:
+    fn add_si32_rt_scalar(self, inout t: TensorTuplePtr, value: Int32) raises:
         self.lib.get_function[fn (TensorTuplePtr, Int32) -> NoneType](
             "MOF_addI32Scalar"
         )(t, value)
 
     fn add_f32_tensor(
-        inout self,
+        self,
         inout t: TensorTuplePtr,
         data: DTypePointer[DType.invalid],
         dims: Pointer[Int64],
@@ -319,7 +315,7 @@ struct Builder:
         ]("MOF_addF32Tensor")(t, data, dims, rank)
 
     fn add_f32_tensor_from_file(
-        inout self,
+        self,
         inout t: TensorTuplePtr,
         fileName: StringRef,
         dims: Pointer[Int64],
@@ -330,16 +326,16 @@ struct Builder:
         ]("MOF_addF32TensorFromFile")(t, fileName, dims, rank)
 
     fn execute_module(
-        inout self,
-        inout module: ModulePtr,
-        inout args: TensorTuplePtr,
+        self,
+        module: ModulePtr,
+        args: TensorTuplePtr,
         inout outs: TensorTuplePtr,
     ) raises -> UInt32:
         return self.lib.get_function[
             fn (ModulePtr, TensorTuplePtr, TensorTuplePtr) -> UInt32
         ]("MOF_executeModule")(module, args, outs)
 
-    fn debug_print_tensors(inout self, inout t: TensorTuplePtr) raises:
+    fn debug_print_tensors(self, t: TensorTuplePtr) raises:
         self.lib.get_function[fn (TensorTuplePtr) -> NoneType](
             "MOF_debugPrintTensors"
         )(t)
