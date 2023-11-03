@@ -5,6 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/ModexBenchmark/InputGenerator.h"
+#include "GenericML/API/modular/c/tensor.h"
+#include "GenericML/API/modular/cpp/aliases.h"
 #include "GenericML/ModexBenchmark/InputGenerationSchema.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "gtest/gtest.h"
@@ -408,3 +410,269 @@ TEST(InputDataGenerator, Multiple) {
                 {{}, "Only one data generation source may be specified"}}),
             errorReporter.errors);
 }
+
+TEST(InputGenerator, Basic) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationInput spec;
+  spec.inputName = "example";
+  spec.shape = TensorSpec({1, 2, 3}, DType::f32);
+  spec.data = InputGenerationData{};
+  spec.data->random = InputGenerationRandom{};
+  spec.data->random->uniform = InputGenerationRandomUniform{};
+  auto gen = createInputGenerator(spec, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(nullptr, gen);
+  auto runtime = createRuntimeForTest();
+  auto inputOr = gen->generateInput(runtime->getCompactPtr(), 0);
+  ASSERT_FALSE(inputOr.isError()) << inputOr.getError();
+  ASSERT_NE(nullptr, *inputOr);
+  StatusPtr status(M_newStatus(), M_freeStatus);
+  ASSERT_NE(nullptr, status.get());
+  RuntimeConfigPtr config(M_newRuntimeConfig(), M_freeRuntimeConfig);
+  ASSERT_NE(nullptr, config);
+  RuntimeContextPtr ctx(M_newRuntimeContext(config.get(), status.get()),
+                        M_freeRuntimeContext);
+  ASSERT_NE(nullptr, ctx);
+  TensorMapPtr atm(M_newAsyncTensorMap(ctx.get()), M_freeAsyncTensorMap);
+  ASSERT_NE(nullptr, atm);
+  (*inputOr)->borrowInto(atm.get(), status.get());
+  EXPECT_FALSE(M_isError(status.get())) << M_getError(status.get());
+  EXPECT_EQ(size_t{1}, M_getTensorMapSize(atm.get(), status.get()));
+  TensorPtr tensor(M_getTensorByNameFrom(atm.get(), "example", status.get()),
+                   M_freeTensor);
+  ASSERT_NE(nullptr, tensor);
+  EXPECT_EQ(size_t{1 * 2 * 3}, M_getTensorNumElements(tensor.get()));
+  EXPECT_EQ(M_FLOAT32, M_getTensorType(tensor.get()));
+}
+
+TEST(InputGenerator, NoName) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationInput spec;
+  spec.shape = TensorSpec({1, 2, 3}, DType::f32);
+  spec.data = InputGenerationData{};
+  spec.data->random = InputGenerationRandom{};
+  spec.data->random->uniform = InputGenerationRandomUniform{};
+  auto gen = createInputGenerator(spec, errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ((std::vector<ReportedError>{
+                {{"input_name"}, "Input name must be specified"}}),
+            errorReporter.errors);
+}
+
+TEST(InputGenerator, IndexNYI) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationInput spec;
+  spec.inputIndex = 0;
+  spec.shape = TensorSpec({1, 2, 3}, DType::f32);
+  spec.data = InputGenerationData{};
+  spec.data->random = InputGenerationRandom{};
+  spec.data->random->uniform = InputGenerationRandomUniform{};
+  auto gen = createInputGenerator(spec, errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ((std::vector<ReportedError>{
+                {{"input_index"},
+                 "Inputs specified by index are not yet implemented"}}),
+            errorReporter.errors);
+}
+
+TEST(InputGenerator, NameAndIndex) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationInput spec;
+  spec.inputName = "example";
+  spec.inputIndex = 0;
+  spec.shape = TensorSpec({1, 2, 3}, DType::f32);
+  spec.data = InputGenerationData{};
+  spec.data->random = InputGenerationRandom{};
+  spec.data->random->uniform = InputGenerationRandomUniform{};
+  auto gen = createInputGenerator(spec, errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ((std::vector<ReportedError>{
+                {{}, "Cannot specify both input name and input index"}}),
+            errorReporter.errors);
+}
+
+namespace {
+class TestGeneratedInput final : public GeneratedInput {
+public:
+  explicit TestGeneratedInput(
+      std::function<void(M_AsyncTensorMap *atm, M_Status *status)> borrowIntoFn)
+      : borrowIntoFn(std::move(borrowIntoFn)) {}
+
+  void borrowInto(M_AsyncTensorMap *atm, M_Status *status) const override {
+    borrowIntoFn(atm, status);
+  }
+
+private:
+  std::function<void(M_AsyncTensorMap *atm, M_Status *status)> borrowIntoFn;
+};
+
+class TestInputGenerator final : public InputGenerator {
+public:
+  explicit TestInputGenerator(
+      std::function<ErrorOr<std::unique_ptr<GeneratedInput>>(size_t queryIndex)>
+          generateInputFn)
+      : generateInputFn(std::move(generateInputFn)) {}
+
+  ErrorOr<std::unique_ptr<GeneratedInput>>
+  generateInput(LLCL::CompactRuntimePtr runtime, size_t queryIndex) override {
+    // TODO: Not forwarding runtime for now, since I would like to get rid of
+    // the runtime parameter entirely later.
+    return generateInputFn(queryIndex);
+  }
+
+private:
+  std::function<ErrorOr<std::unique_ptr<GeneratedInput>>(size_t queryIndex)>
+      generateInputFn;
+};
+} // namespace
+
+TEST(QueryGenerator, NoInputs) {
+  auto gen = createQueryGenerator({});
+  ASSERT_NE(nullptr, gen);
+  EXPECT_EQ(-1, gen->getNumQueries());
+  StatusPtr status(M_newStatus(), M_freeStatus);
+  ASSERT_NE(nullptr, status);
+  RuntimeConfigPtr config(M_newRuntimeConfig(), M_freeRuntimeConfig);
+  ASSERT_NE(nullptr, config);
+  RuntimeContextPtr runtime(M_newRuntimeContext(config.get(), status.get()),
+                            M_freeRuntimeContext);
+  EXPECT_FALSE(M_isError(status.get())) << M_getError(status.get());
+  ASSERT_NE(nullptr, runtime);
+  auto allocRuntime = createRuntimeForTest();
+  auto queryOr =
+      gen->generateQuery(allocRuntime->getCompactPtr(), runtime.get(), 0);
+  EXPECT_FALSE(queryOr.isError()) << queryOr.getError();
+  EXPECT_NE(nullptr, *queryOr);
+  auto atm = (*queryOr)->getAsyncTensorMap();
+  EXPECT_NE(nullptr, atm);
+  EXPECT_EQ(size_t{0}, M_getTensorMapSize(atm, status.get()));
+}
+
+TEST(QueryGenerator, OneInput) {
+  int generateInputCalls = 0;
+  int lastGenerateQueryIndex = 0;
+  int borrowCalls = 0;
+  M_AsyncTensorMap *lastBorrowedATM = nullptr;
+  auto inputGen = std::make_unique<TestInputGenerator>([&](size_t queryIndex) {
+    ++generateInputCalls;
+    lastGenerateQueryIndex = queryIndex;
+    return std::make_unique<TestGeneratedInput>(
+        [&](M_AsyncTensorMap *atm, M_Status *status) {
+          ++borrowCalls;
+          lastBorrowedATM = atm;
+        });
+  });
+  std::vector<std::unique_ptr<InputGenerator>> inputGens;
+  inputGens.emplace_back(std::move(inputGen));
+  auto gen = createQueryGenerator(std::move(inputGens));
+  ASSERT_NE(nullptr, gen);
+  EXPECT_EQ(-1, gen->getNumQueries());
+  EXPECT_EQ(0, generateInputCalls);
+  StatusPtr status(M_newStatus(), M_freeStatus);
+  ASSERT_NE(nullptr, status);
+  RuntimeConfigPtr config(M_newRuntimeConfig(), M_freeRuntimeConfig);
+  ASSERT_NE(nullptr, config);
+  RuntimeContextPtr runtime(M_newRuntimeContext(config.get(), status.get()),
+                            M_freeRuntimeContext);
+  EXPECT_FALSE(M_isError(status.get())) << M_getError(status.get());
+  ASSERT_NE(nullptr, runtime);
+  auto allocRuntime = createRuntimeForTest();
+  auto queryOr =
+      gen->generateQuery(allocRuntime->getCompactPtr(), runtime.get(), 123);
+  EXPECT_FALSE(queryOr.isError()) << queryOr.getError();
+  EXPECT_NE(nullptr, *queryOr);
+  auto atm = (*queryOr)->getAsyncTensorMap();
+  EXPECT_NE(nullptr, atm);
+  EXPECT_EQ(1, generateInputCalls);
+  EXPECT_EQ(123, lastGenerateQueryIndex);
+  EXPECT_EQ(1, borrowCalls);
+  EXPECT_EQ(atm, lastBorrowedATM);
+}
+
+TEST(QueryGenerator, OneInputError) {
+  auto inputGen = std::make_unique<TestInputGenerator>(
+      [&](size_t queryIndex) { return Error("Tea kettle left on stove"); });
+  std::vector<std::unique_ptr<InputGenerator>> inputGens;
+  inputGens.emplace_back(std::move(inputGen));
+  auto gen = createQueryGenerator(std::move(inputGens));
+  ASSERT_NE(nullptr, gen);
+  StatusPtr status(M_newStatus(), M_freeStatus);
+  ASSERT_NE(nullptr, status);
+  RuntimeConfigPtr config(M_newRuntimeConfig(), M_freeRuntimeConfig);
+  ASSERT_NE(nullptr, config);
+  RuntimeContextPtr runtime(M_newRuntimeContext(config.get(), status.get()),
+                            M_freeRuntimeContext);
+  EXPECT_FALSE(M_isError(status.get())) << M_getError(status.get());
+  ASSERT_NE(nullptr, runtime);
+  auto allocRuntime = createRuntimeForTest();
+  auto queryOr =
+      gen->generateQuery(allocRuntime->getCompactPtr(), runtime.get(), 0);
+  ASSERT_TRUE(queryOr.isError());
+  EXPECT_STREQ("Tea kettle left on stove", queryOr.getError());
+}
+
+TEST(QueryGeneratorIntegration, Basic) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationSchema schema;
+  schema.inputs = std::vector<InputGenerationInput>{InputGenerationInput{}};
+  schema.inputs->at(0).inputName = "example";
+  schema.inputs->at(0).shape = TensorSpec({1, 2, 3}, DType::f32);
+  schema.inputs->at(0).data = InputGenerationData{};
+  schema.inputs->at(0).data->random = InputGenerationRandom{};
+  schema.inputs->at(0).data->random->uniform = InputGenerationRandomUniform{};
+  auto gen = createQueryGenerator(schema, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(nullptr, gen);
+  EXPECT_EQ(-1, gen->getNumQueries());
+  StatusPtr status(M_newStatus(), M_freeStatus);
+  ASSERT_NE(nullptr, status);
+  RuntimeConfigPtr config(M_newRuntimeConfig(), M_freeRuntimeConfig);
+  ASSERT_NE(nullptr, config);
+  RuntimeContextPtr runtime(M_newRuntimeContext(config.get(), status.get()),
+                            M_freeRuntimeContext);
+  EXPECT_FALSE(M_isError(status.get())) << M_getError(status.get());
+  ASSERT_NE(nullptr, runtime);
+  auto allocRuntime = createRuntimeForTest();
+  auto queryOr =
+      gen->generateQuery(allocRuntime->getCompactPtr(), runtime.get(), 0);
+  ASSERT_FALSE(queryOr.isError()) << queryOr.getError();
+  ASSERT_NE(nullptr, *queryOr);
+  auto atm = (*queryOr)->getAsyncTensorMap();
+  ASSERT_NE(nullptr, atm);
+  EXPECT_EQ(size_t{1}, M_getTensorMapSize(atm, status.get()));
+  TensorPtr tensor(M_getTensorByNameFrom(atm, "example", status.get()),
+                   M_freeTensor);
+  ASSERT_NE(nullptr, tensor);
+  EXPECT_EQ(size_t{1 * 2 * 3}, M_getTensorNumElements(tensor.get()));
+  EXPECT_EQ(M_FLOAT32, M_getTensorType(tensor.get()));
+}
+
+TEST(QueryGeneratorIntegration, ErrorPath) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationSchema schema;
+  schema.inputs = std::vector<InputGenerationInput>{InputGenerationInput{}};
+  schema.inputs->at(0).inputName = "example";
+  schema.inputs->at(0).shape = TensorSpec({1, 2, 3}, DType::f32);
+  schema.inputs->at(0).data = InputGenerationData{};
+  schema.inputs->at(0).data->random = InputGenerationRandom{};
+  schema.inputs->at(0).data->random->uniform = InputGenerationRandomUniform{};
+  schema.inputs->at(0).data->random->uniform->min = "steamship";
+  auto gen = createQueryGenerator(schema, errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ((std::vector<ReportedError>{
+                {{"inputs", "0", "data", "random", "uniform", "min"},
+                 "Unable to parse 'steamship' as f32 value"}}),
+            errorReporter.errors);
+}
+
+TEST(QueryGeneratorIntegration, UnspecifiedInputs) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationSchema schema;
+  auto gen = createQueryGenerator(schema, errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ(
+      (std::vector<ReportedError>{{{"inputs"}, "Inputs must be specified"}}),
+      errorReporter.errors);
+}
+
+// TODO: Test for duplicate input names or indices in schema

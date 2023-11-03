@@ -7,6 +7,7 @@
 #ifndef GENERICML_MODEX_BENCHMARK_INPUT_GENERATOR_H
 #define GENERICML_MODEX_BENCHMARK_INPUT_GENERATOR_H
 
+#include "GenericML/API/modular/c/types.h"
 #include "GenericML/Support/Tensor.h"
 #include "Support/ForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
@@ -79,6 +80,58 @@ std::unique_ptr<InputDataGenerator>
 createInputDataGenerator(std::optional<DType> dtype,
                          const InputGenerationData &spec,
                          InputSchemaErrorReporter &errorReporter);
+
+class GeneratedInput {
+public:
+  virtual ~GeneratedInput() = default;
+
+  virtual void borrowInto(M_AsyncTensorMap *atm, M_Status *status) const = 0;
+};
+
+class InputGenerator {
+public:
+  virtual ~InputGenerator() = default;
+
+  // TODO: This LLCL::CompactRuntimePtr is used only for access to an
+  // allocator.  This is kind of crappy and will make the benchmark tool harder
+  // to open-source later.  Should find a way to get rid of the requirement for
+  // it later.
+  virtual ErrorOr<std::unique_ptr<GeneratedInput>>
+  generateInput(LLCL::CompactRuntimePtr runtime, size_t queryIndex) = 0;
+};
+
+struct InputGenerationInput;
+std::unique_ptr<InputGenerator>
+createInputGenerator(const InputGenerationInput &spec,
+                     InputSchemaErrorReporter &errorReporter);
+
+class GeneratedQuery {
+public:
+  virtual ~GeneratedQuery() = default;
+
+  virtual M_AsyncTensorMap *getAsyncTensorMap() const;
+};
+
+class QueryGenerator {
+public:
+  virtual ~QueryGenerator() = default;
+
+  // Returns -1 if there is no fixed size and any number of queries can be
+  // generated.
+  // TODO: Want to get rid of the allocRuntime parameter if we can eventually.
+  virtual ssize_t getNumQueries() const = 0;
+  virtual ErrorOr<std::unique_ptr<GeneratedQuery>>
+  generateQuery(LLCL::CompactRuntimePtr allocRuntime,
+                M_RuntimeContext *runtimeContext, size_t queryIndex) const = 0;
+};
+
+std::unique_ptr<QueryGenerator> createQueryGenerator(
+    std::vector<std::unique_ptr<InputGenerator>> inputGenerators);
+
+struct InputGenerationSchema;
+std::unique_ptr<QueryGenerator>
+createQueryGenerator(const InputGenerationSchema &schema,
+                     InputSchemaErrorReporter &errorReporter);
 
 } // namespace M::ModexBench
 

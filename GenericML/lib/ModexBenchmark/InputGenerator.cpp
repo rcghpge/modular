@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/ModexBenchmark/InputGenerator.h"
+#include "GenericML/API/modular/cpp/aliases.h"
 #include "GenericML/ModexBenchmark/InputGenerationSchema.h"
 #include "Support/MathExtras.h"
 
@@ -225,4 +226,257 @@ std::unique_ptr<InputDataGenerator> M::ModexBench::createInputDataGenerator(
     return nullptr;
   }
   return gen;
+}
+
+static M_Dtype dtypeToCAPI(DType dty) {
+  switch (dty.getValue()) {
+  case DType::si8:
+    return M_INT8;
+  case DType::si16:
+    return M_INT16;
+  case DType::si32:
+    return M_INT32;
+  case DType::si64:
+    return M_INT64;
+  case DType::ui8:
+    return M_UINT8;
+  case DType::ui16:
+    return M_UINT16;
+  case DType::ui32:
+    return M_UINT32;
+  case DType::ui64:
+    return M_UINT64;
+  case DType::f16:
+    return M_FLOAT16;
+  case DType::f32:
+    return M_FLOAT32;
+  case DType::f64:
+    return M_FLOAT64;
+  case DType::kBool:
+    return M_BOOL;
+  default:
+    return M_UNKNOWN;
+  }
+}
+
+static TensorSpecPtr createTensorSpec(const char *name,
+                                      const TensorSpec &spec) {
+  // Copy is required because TensorShape stores ssize_t, but API takes
+  // int64_t, and these are not necessarily the same.
+  SmallVector<int64_t, 8> shapeCopy;
+  std::copy(spec.begin(), spec.end(), std::back_inserter(shapeCopy));
+  return TensorSpecPtr(M_newTensorSpec(shapeCopy.data(), spec.getRank(),
+                                       dtypeToCAPI(spec.getEltType()), name),
+                       M_freeTensorSpec);
+}
+
+namespace M::ModexBench::Detail {
+class GeneratedInputImpl final : public GeneratedInput {
+public:
+  static ErrorOr<GeneratedInputImpl> create(std::string name,
+                                            GML::Tensor tensor);
+
+  void borrowInto(M_AsyncTensorMap *atm, M_Status *status) const override;
+
+private:
+  GeneratedInputImpl(std::string name, TensorSpecPtr spec, GML::Tensor tensor);
+
+  std::string name;
+  TensorSpecPtr spec;
+  GML::Tensor tensor;
+};
+} // namespace M::ModexBench::Detail
+
+MBD::GeneratedInputImpl::GeneratedInputImpl(std::string name,
+                                            TensorSpecPtr spec,
+                                            GML::Tensor tensor)
+    : name(std::move(name)), spec(std::move(spec)), tensor(std::move(tensor)) {}
+
+ErrorOr<MBD::GeneratedInputImpl>
+MBD::GeneratedInputImpl::create(std::string name, GML::Tensor tensor) {
+  TensorSpecPtr spec = createTensorSpec(name.c_str(), tensor.getSpec());
+  if (!spec)
+    return Error(Twine("Unable to create M_TensorSpec for ") + name);
+  return GeneratedInputImpl(name, std::move(spec), std::move(tensor));
+}
+
+void MBD::GeneratedInputImpl::borrowInto(M_AsyncTensorMap *atm,
+                                         M_Status *status) const {
+  M_borrowTensorInto(atm, tensor.getBuffer(), spec.get(), status);
+}
+
+namespace M::ModexBench::Detail {
+class InputGeneratorImpl final : public InputGenerator {
+public:
+  InputGeneratorImpl(std::string name, std::optional<TensorSpec> shape,
+                     std::unique_ptr<InputDataGenerator> dataGenerator)
+      : name(std::move(name)), shape(std::move(shape)),
+        dataGenerator(std::move(dataGenerator)) {}
+
+  ErrorOr<std::unique_ptr<GeneratedInput>>
+  generateInput(LLCL::CompactRuntimePtr runtime, size_t queryIndex) override;
+
+private:
+  std::string name;
+  std::optional<TensorSpec> shape;
+  std::unique_ptr<InputDataGenerator> dataGenerator;
+};
+} // namespace M::ModexBench::Detail
+
+ErrorOr<std::unique_ptr<GeneratedInput>>
+MBD::InputGeneratorImpl::generateInput(LLCL::CompactRuntimePtr runtime,
+                                       size_t queryIndex) {
+  // TODO: Use query index.
+  auto tensorOr =
+      dataGenerator->generate(runtime, shape.value_or(TensorSpec()));
+  if (tensorOr.isError())
+    return tensorOr.takeError();
+  auto inputOr = GeneratedInputImpl::create(name, std::move(*tensorOr));
+  if (inputOr.isError())
+    return inputOr.takeError();
+  return std::make_unique<GeneratedInputImpl>(std::move(*inputOr));
+}
+
+std::unique_ptr<InputGenerator>
+M::ModexBench::createInputGenerator(const InputGenerationInput &spec,
+                                    InputSchemaErrorReporter &errorReporter) {
+  bool ok = true;
+  std::optional<std::variant<std::string, int>> nameOrIndex;
+  if (spec.inputName.has_value())
+    nameOrIndex = *spec.inputName;
+  if (spec.inputIndex.has_value()) {
+    if (nameOrIndex.has_value()) {
+      errorReporter.reportError(
+          "Cannot specify both input name and input index");
+      ok = false;
+    } else
+      nameOrIndex = *spec.inputIndex;
+  }
+  if (!nameOrIndex.has_value()) {
+    errorReporter.enterScope("input_name");
+    errorReporter.reportError("Input name must be specified");
+    errorReporter.exitScope("input_name");
+    ok = false;
+  }
+  if (nameOrIndex.has_value() && std::holds_alternative<int>(*nameOrIndex)) {
+    errorReporter.enterScope("input_index");
+    errorReporter.reportError(
+        "Inputs specified by index are not yet implemented");
+    errorReporter.exitScope("input_index");
+    ok = false;
+  }
+  std::optional<TensorSpec> shape = spec.shape;
+  std::unique_ptr<InputDataGenerator> dataGenerator;
+  errorReporter.enterScope("data");
+  dataGenerator = createInputDataGenerator(
+      shape.has_value() ? std::optional(shape->getEltType()) : std::nullopt,
+      spec.data.value_or(InputGenerationData()), errorReporter);
+  errorReporter.exitScope("data");
+  if (!dataGenerator)
+    ok = false;
+  if (!ok)
+    return nullptr;
+  assert(nameOrIndex.has_value() &&
+         std::holds_alternative<std::string>(*nameOrIndex));
+  return std::make_unique<MBD::InputGeneratorImpl>(
+      std::get<0>(std::move(*nameOrIndex)), std::move(shape),
+      std::move(dataGenerator));
+}
+
+namespace M::ModexBench::Detail {
+class GeneratedQueryImpl final : public GeneratedQuery {
+public:
+  GeneratedQueryImpl(TensorMapPtr atm,
+                     std::vector<std::unique_ptr<GeneratedInput>> tensors)
+      : atm(std::move(atm)), tensors(std::move(tensors)) {}
+
+  M_AsyncTensorMap *getAsyncTensorMap() const override;
+
+private:
+  TensorMapPtr atm;
+  std::vector<std::unique_ptr<GeneratedInput>> tensors;
+};
+} // namespace M::ModexBench::Detail
+
+M_AsyncTensorMap *MBD::GeneratedQueryImpl::getAsyncTensorMap() const {
+  return atm.get();
+}
+
+namespace M::ModexBench::Detail {
+class QueryGeneratorImpl final : public QueryGenerator {
+public:
+  explicit QueryGeneratorImpl(
+      std::vector<std::unique_ptr<InputGenerator>> inputGenerators)
+      : inputGenerators(std::move(inputGenerators)) {}
+
+  ssize_t getNumQueries() const override;
+  ErrorOr<std::unique_ptr<GeneratedQuery>>
+  generateQuery(LLCL::CompactRuntimePtr allocRuntime,
+                M_RuntimeContext *runtimeContext,
+                size_t queryIndex) const override;
+
+private:
+  std::vector<std::unique_ptr<InputGenerator>> inputGenerators;
+};
+} // namespace M::ModexBench::Detail
+
+ssize_t MBD::QueryGeneratorImpl::getNumQueries() const { return -1; }
+
+ErrorOr<std::unique_ptr<GeneratedQuery>>
+MBD::QueryGeneratorImpl::generateQuery(LLCL::CompactRuntimePtr allocRuntime,
+                                       M_RuntimeContext *runtimeContext,
+                                       size_t queryIndex) const {
+  std::vector<std::unique_ptr<GeneratedInput>> tensors;
+  for (auto &inputGenerator : inputGenerators) {
+    auto generatedInputOr =
+        inputGenerator->generateInput(allocRuntime, queryIndex);
+    // N.B.: We do not wrap the error with context about which input it is,
+    // since the input generator itself is best positioned to provide this
+    // information (it knows its name, for example, while we do not).
+    if (generatedInputOr.isError())
+      return generatedInputOr.takeError();
+    tensors.push_back(std::move(*generatedInputOr));
+  }
+  TensorMapPtr atm(M_newAsyncTensorMap(runtimeContext), M_freeAsyncTensorMap);
+  StatusPtr status(M_newStatus(), M_freeStatus);
+  for (auto &generatedInput : tensors) {
+    generatedInput->borrowInto(atm.get(), status.get());
+    if (M_isError(status.get()))
+      return Error(M_getError(status.get()));
+  }
+  return std::make_unique<MBD::GeneratedQueryImpl>(std::move(atm),
+                                                   std::move(tensors));
+}
+
+std::unique_ptr<QueryGenerator> M::ModexBench::createQueryGenerator(
+    std::vector<std::unique_ptr<InputGenerator>> inputGenerators) {
+  return std::make_unique<MBD::QueryGeneratorImpl>(std::move(inputGenerators));
+}
+
+std::unique_ptr<QueryGenerator>
+M::ModexBench::createQueryGenerator(const InputGenerationSchema &schema,
+                                    InputSchemaErrorReporter &errorReporter) {
+  bool ok = true;
+  std::vector<std::unique_ptr<InputGenerator>> inputGenerators;
+  errorReporter.enterScope("inputs");
+  if (schema.inputs.has_value()) {
+    int i = 0;
+    for (auto &inputSpec : *schema.inputs) {
+      std::string iStr = Twine(i).str();
+      errorReporter.enterScope(iStr);
+      auto generator = createInputGenerator(inputSpec, errorReporter);
+      if (generator)
+        inputGenerators.push_back(std::move(generator));
+      else
+        ok = false;
+      errorReporter.exitScope(iStr);
+    }
+  } else {
+    errorReporter.reportError("Inputs must be specified");
+    ok = false;
+  }
+  errorReporter.exitScope("inputs");
+  if (!ok)
+    return nullptr;
+  return createQueryGenerator(std::move(inputGenerators));
 }
