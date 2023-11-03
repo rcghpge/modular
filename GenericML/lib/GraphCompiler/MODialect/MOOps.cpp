@@ -357,6 +357,47 @@ void GraphOp::setDeviceSpecs(DeviceSpecCollectionAttr deviceSpecs) {
 // MO_OutputOp support
 //===----------------------------------------------------------------------===//
 
+/// Parse the output values for `mo.output`, sugaring `?` for unknown values.
+static ParseResult parseOutputValues(AsmParser &p,
+                                     KGEN::ParameterExprArrayAttr &valuesAttr) {
+  SmallVector<TypedAttr> values;
+  auto parseFn = [&]() -> ParseResult {
+    Type type = p.getBuilder().getIndexType();
+    if (succeeded(p.parseOptionalColon()) && KGEN::parseKGENType(p, type))
+      return failure();
+    if (succeeded(p.parseOptionalQuestion())) {
+      values.push_back(KGEN::UnknownAttr::get(type));
+      return success();
+    }
+    return KGEN::parseParamValue(p, values.emplace_back(), type);
+  };
+  if (p.parseCommaSeparatedList(OpAsmParser::Delimiter::OptionalLessGreater,
+                                parseFn))
+    return failure();
+  valuesAttr = ParameterExprArrayAttr::get(p.getContext(), values);
+  return success();
+}
+
+/// Print the output values for `mo.output`, sugaring `?` for unknown values.
+static void printOutputValues(AsmPrinter &p, Operation *op,
+                              ArrayRef<TypedAttr> values) {
+  if (values.empty())
+    return;
+  p << '<';
+  llvm::interleaveComma(values, p, [&](TypedAttr value) {
+    if (Type type = value.getType(); !type.isIndex()) {
+      p << ':';
+      KGEN::printKGENType(p, type);
+      p << ' ';
+    }
+    if (isa<KGEN::UnknownAttr>(value))
+      p << '?';
+    else
+      KGEN::printParamValue(p, value);
+  });
+  p << '>';
+}
+
 void OutputOp::walkDefinitions(
     function_ref<void(KGEN::ParamDeclAttr, const KGEN::ParamDefValue &)>
         walkDef) {

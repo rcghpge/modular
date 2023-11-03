@@ -34,10 +34,10 @@ std::string shapeTypedAttrToStr(TypedAttr attr);
 int64_t findDeclIdx(ShapeAttr shape, KGEN::ParamDeclAttr decl);
 
 /// Parse the parametric dimensions of a MOSH::ShapeAttr.
-ParseResult parseShapeValue(AsmParser &p, SmallVector<TypedAttr> &values);
+ParseResult parseShapeValue(AsmParser &p, SmallVectorImpl<TypedAttr> &values);
 
 /// Parse the parametric dimensions of a MOSH::ShapeAttr.
-ParseResult parseShapeValue(AsmParser &p, SmallVector<TypedAttr> &values,
+ParseResult parseShapeValue(AsmParser &p, SmallVectorImpl<TypedAttr> &values,
                             MOSH::ShapeType type);
 
 /// Print the parametric dimensions of a MOSH::ShapeAttr.

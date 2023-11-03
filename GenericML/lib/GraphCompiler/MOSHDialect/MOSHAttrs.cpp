@@ -97,22 +97,31 @@ int64_t M::MOSH::findDeclIdx(ShapeAttr shape, KGEN::ParamDeclAttr decl) {
 }
 
 ParseResult M::MOSH::parseShapeValue(AsmParser &p,
-                                     SmallVector<TypedAttr> &values) {
-  values = SmallVector<TypedAttr>();
+                                     SmallVectorImpl<TypedAttr> &values) {
+  values.clear();
   IndexType idxTy = p.getBuilder().getIndexType();
-  return p.parseCommaSeparatedList(
-      [&] { return KGEN::parseParamValue(p, values.emplace_back(), idxTy); });
+  return p.parseCommaSeparatedList([&]() -> ParseResult {
+    if (succeeded(p.parseOptionalQuestion())) {
+      values.push_back(KGEN::UnknownAttr::get(idxTy));
+      return success();
+    }
+    return KGEN::parseIndexParamValue(p, values.emplace_back());
+  });
 }
 
 ParseResult M::MOSH::parseShapeValue(AsmParser &p,
-                                     SmallVector<TypedAttr> &values,
+                                     SmallVectorImpl<TypedAttr> &values,
                                      ShapeType type) {
   return parseShapeValue(p, values);
 }
 
 void M::MOSH::printShapeValue(AsmPrinter &p, ArrayRef<TypedAttr> values) {
-  llvm::interleaveComma(
-      values, p, [&](TypedAttr value) { KGEN::printParamValue(p, value); });
+  llvm::interleaveComma(values, p, [&](TypedAttr value) {
+    if (isa<KGEN::UnknownAttr>(value))
+      p << '?';
+    else
+      KGEN::printParamValue(p, value);
+  });
 }
 
 void M::MOSH::printShapeValue(AsmPrinter &p, ArrayRef<TypedAttr> values,

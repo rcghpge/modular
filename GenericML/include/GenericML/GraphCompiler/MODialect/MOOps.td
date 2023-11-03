@@ -249,7 +249,7 @@ def MO_OutputOp : MO_ControlOp<"output", [
   );
 
   let assemblyFormat = [{
-    `` custom<ParameterValues>($parameters) attr-dict
+    `` custom<OutputValues>($parameters) attr-dict
     ($operands^ `:` type($operands))?
   }];
 
