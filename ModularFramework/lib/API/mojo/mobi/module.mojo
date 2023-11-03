@@ -126,7 +126,7 @@ struct Module:
             return self.i32(t.shape())
         elif dtype == DType.uint32:
             return self.i64(t.shape())
-        raise Error("not implemented")
+        raise "not implemented"
 
     fn attrs(self, *attrs: AttrPtr) raises -> AttrMap:
         var m = self.builder.new_attr_map()
