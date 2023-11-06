@@ -44,6 +44,10 @@ struct FuseBroadcastsPass
       if (!kernel.getInputFusionInterfaceAttr() && !isView)
         continue;
 
+      // Disable fusion on experimental new KGEN in MOGG for now.
+      if (kernel.getIsKGEN().value_or(false))
+        continue;
+
       // For catching the rare case of a broadcast taking a broadcast as arg AND
       // this kernel taking both as arg.
       DenseMap<Value, Value> alreadyFused;

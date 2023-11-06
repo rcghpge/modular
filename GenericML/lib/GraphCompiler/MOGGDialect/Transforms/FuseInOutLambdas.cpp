@@ -47,6 +47,10 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     if (isElemwise)
       return false;
 
+    // Disable fusion on experimental new KGEN in MOGG for now.
+    if (kernel.getIsKGEN().value_or(false))
+      return false;
+
     // Input fusion interface must be non null.
     auto inputFusion = SmallVector<StringAttr>(
         fusionInterfaces.getAsRange<StringAttr>())[inputIdx];
@@ -223,6 +227,10 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // Unreachable: Ambigious what we should actually fuse. Previous passes
     // should have maintained 1:1 relationship of output to output interfaces.
     if (fusionInterface.size() != kernel.getNumResults())
+      return false;
+
+    // Disable fusion on experimental new KGEN in MOGG for now.
+    if (kernel.getIsKGEN().value_or(false))
       return false;
 
     // Restrictive guard for now.
@@ -505,7 +513,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
           kernelToFuseInto.getInputFusionInterfaceAttr(),
           kernelToFuseInto.getOutputFusionInterfaceAttr(),
           kernelToFuseInto.getFusionBodyLambdaAttr(),
-          kernelToFuseInto.getIsViewOpAttr());
+          kernelToFuseInto.getIsViewOpAttr(), kernelToFuseInto.getIsKGENAttr());
       newDstKernel.getBody().takeBody(kernelToFuseInto.getBody());
       userToFuseIn.getResult(0).replaceAllUsesWith(newDstKernel.getResult(0));
 

@@ -45,6 +45,10 @@ struct FuseConstants : public impl::FuseConstantsBase<FuseConstants> {
     for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
       int32_t preFuseNumOperands = kernel.getNumOperands();
 
+      // Disable fusion on experimental new KGEN in MOGG for now.
+      if (kernel.getIsKGEN().value_or(false))
+        continue;
+
       // Traverse from the back to simplify removing operands.
       for (int32_t index = preFuseNumOperands - 1; index >= 0; --index) {
         if (canFuseOperand(kernel, index))

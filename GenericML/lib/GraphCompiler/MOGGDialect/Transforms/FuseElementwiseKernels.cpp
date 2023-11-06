@@ -145,11 +145,20 @@ void ElementwiseGraph::buildGraph(MOGG::KernelOp start) {
     searchList.pop_back();
     seenNodes.insert(op);
 
+    // Disable fusion on experimental new KGEN in MOGG for now.
+    if (op.getIsKGEN().value_or(false))
+      continue;
+
     // Traverse down the graph. If any operation exits into a non-elementwise
     // kernel then it is a leaf node.
     for (OpOperand &operand : op->getUses()) {
       if (auto isKernel = dyn_cast<MOGG::KernelOp>(operand.getOwner())) {
         unsigned index = operand.getOperandNumber();
+
+        if (isKernel.getIsKGEN().value_or(false)) {
+          leaves.insert(op);
+          continue;
+        }
 
         // We have to check that the kernel can accept a fusion on this operand.
         if (!isKernel.getInputFusionInterfaceAttr()) {
@@ -332,6 +341,10 @@ struct FuseElementwisePass
       // If the input operation is a kernel and is implemented by a lambda then
       // we can fuse it.
       if (auto otherKernel = dyn_cast<KernelOp>(edge)) {
+        // Don't fuse the KGEN kernels yet.
+        if (otherKernel.getIsKGEN().value_or(false))
+          return false;
+
         // If the other kernel has been marked a view operation we don't fuse it
         // here.
         if (otherKernel.getIsViewOp().value_or(false))

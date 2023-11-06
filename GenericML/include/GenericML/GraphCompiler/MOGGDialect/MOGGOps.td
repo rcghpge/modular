@@ -220,6 +220,9 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
     a view, e.g., a broadcast in the form of a view change followed by a copy. We
     can drop the copy and keep the view change op.
 
+    `isKGEN` Is an attribute which marks the MOGG kernel as being represented
+    using KGEN ops rather than a kernel composed of mogg ops.
+
     Kernels preserve the device of their original MO op.
   }];
 
@@ -228,7 +231,8 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
     OptionalAttr<ArrayAttr>:$inputFusionInterface,
     OptionalAttr<ArrayAttr>:$outputFusionInterface,
     OptionalAttr<StrAttr>:$fusionBodyLambda,
-    OptionalAttr<BoolAttr>:$isViewOp
+    OptionalAttr<BoolAttr>:$isViewOp,
+    OptionalAttr<BoolAttr>:$isKGEN
   );
   let results = (outs Variadic<MO_Tensor>:$results);
   let regions = (region SizedRegion<1>:$body);
