@@ -61,6 +61,7 @@ def AddFallbackShapeFunctions :
     "M::KGEN::LIT::LITDialect",
     "M::KGEN::POP::POPDialect",
     "M::MDialect",
+    "mlir::NVVM::NVVMDialect",
   ];
 }
 
