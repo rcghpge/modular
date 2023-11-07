@@ -5,7 +5,15 @@
 # ===----------------------------------------------------------------------=== #
 
 from .misc import Arity, AttrMap
-from .mobicc import AttrPtr, AttrMapPtr, ModulePtr, Builder, TypePtr, GraphPtr
+from .mobicc import (
+    AttrPtr,
+    AttrMapPtr,
+    LocPtr,
+    ModulePtr,
+    Builder,
+    TypePtr,
+    GraphPtr,
+)
 from tensor import Tensor, TensorSpec, TensorShape
 
 # TODO: DynamicVectors all need a _del_old() call.
@@ -25,6 +33,7 @@ fn _dynamic_vector(shape: VariadicList[Int64]) -> DynamicVector[Int64]:
     return v
 
 
+@value
 struct Module:
     var m: ModulePtr
     var builder: Builder
@@ -67,6 +76,9 @@ struct Module:
         if execCode != 0:
             raise Error("Execution error")
         self.builder.debug_print_tensors(rtOuts)
+
+    fn unknown_loc(self) raises -> LocPtr:
+        return self.builder.unknown_loc(self.m)
 
     fn i32_attr(
         self, name: StringRef, t: TypePtr, *elements: Int32
@@ -183,4 +195,4 @@ struct Module:
         let g = self.builder.new_graph(
             self.m, unknown, name, in_types.a, out_types.a
         )
-        return Graph(g, self.m, self.builder)
+        return Graph(g, self)

@@ -176,7 +176,7 @@ struct Builder:
 
     fn new_op(
         self,
-        inout graph: GraphPtr,
+        graph: GraphPtr,
         loc: LocPtr,
         name: StringRef,
         inputs: TuplePtr,

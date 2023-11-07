@@ -5,35 +5,43 @@
 # ===----------------------------------------------------------------------=== #
 
 from .misc import Arity, AttrMap, Tup
-from .mobicc import AttrPtr, Builder, ModulePtr, GraphPtr, SymbolPtr, TuplePtr
+from .mobicc import AttrPtr, Builder, GraphPtr, SymbolPtr, TuplePtr
 from .module import Module
+from .symbol import Symbol
 
+from memory.unsafe import Pointer
 from tensor import TensorShape
 
 
 # XXX abstraction boundary feels pretty weird here
 #     it's really unclear what functions should go here vs in module
+@value
 struct Graph:
+    # TODO(#23665): This should be an owning pointer.
     var g: GraphPtr
-    # TODO: yuck. this should be able to be a Pointer[Module]
-    #       but pointers to nontrivial Mojo types aren't supported yet.
-    #       for now we pass the Module object in to any methods that need it.
-    var m: ModulePtr
-    var builder: Builder
+    var m: Module
 
-    fn __init__(inout self, g: GraphPtr, m: ModulePtr, builder: Builder):
+    fn __init__(inout self, g: GraphPtr, m: Module):
         self.g = g
         self.m = m
-        self.builder = builder
 
-    fn __getitem__(self, pos: UInt32) raises -> SymbolPtr:
-        return self.builder.get_input(self.g, pos)
+    fn __getitem__(self, pos: UInt32) raises -> Symbol:
+        return Symbol(self.m.builder.get_input(self.g, pos), self)
 
-    fn values(self, *values: SymbolPtr) raises -> Tup:
-        var t = self.builder.new_tuple()
+    fn values(self, *values: Symbol) raises -> Tup:
+        var t = self.m.builder.new_tuple()
         for i in range(len(values)):
-            self.builder.add_symbol(t, values[i])
-        return Tup(t, len(values), self.builder)
+            let val = __get_address_as_lvalue(values[i])
+            self.m.builder.add_symbol(t, val.s)
+        return Tup(t, len(values), self)
+
+    fn op(
+        inout self,
+        name: StringRef,
+        input: Symbol,
+        out_types: Arity,
+    ) raises -> Tup:
+        return self.op(name, Tup(input), out_types)
 
     fn op(
         inout self,
@@ -41,12 +49,12 @@ struct Graph:
         inputs: Tup,
         out_types: Arity,
     ) raises -> Tup:
-        let loc = self.builder.unknown_loc(self.m)
-        let attrs = self.builder.new_attr_map()
-        let outputs = self.builder.new_op(
+        let loc = self.m.unknown_loc()
+        let attrs = self.m.builder.new_attr_map()
+        let outputs = self.m.builder.new_op(
             self.g, loc, name, inputs.t, out_types.a, attrs
         )
-        return Tup(outputs, out_types.l, self.builder)
+        return Tup(outputs, out_types.l, self)
 
     fn op(
         inout self,
@@ -55,11 +63,11 @@ struct Graph:
         out_types: Arity,
         attrs: AttrMap,
     ) raises -> Tup:
-        let loc = self.builder.unknown_loc(self.m)
-        let outputs = self.builder.new_op(
+        let loc = self.m.builder.unknown_loc(self.m.m)
+        let outputs = self.m.builder.new_op(
             self.g, loc, name, inputs.t, out_types.a, attrs.m
         )
-        return Tup(outputs, out_types.l, self.builder)
+        return Tup(outputs, out_types.l, self)
 
     fn constant[
         dtype: DType
@@ -74,7 +82,7 @@ struct Graph:
     fn constant[
         dtype: DType
     ](inout self, m: Module, value: Tensor[dtype]) raises -> Tup:
-        debug_assert(m.m == self.m, "Module pointer mismatch")
+        debug_assert(m.m == self.m.m, "Module pointer mismatch")
         let type = m.type_of(value)
         return self.op(
             "mo.constant",
@@ -86,7 +94,7 @@ struct Graph:
     fn constant[
         dtype: DType = DType.float32
     ](inout self, m: Module, value: Float32) raises -> Tup:
-        debug_assert(m.m == self.m, "Module pointer mismatch")
+        debug_assert(m.m == self.m.m, "Module pointer mismatch")
         constrained[dtype == DType.float32]()  # TODO: add more float types
         return self.op(
             "mo.constant",
@@ -98,7 +106,7 @@ struct Graph:
     fn constant[
         dtype: DType = DType.uint64
     ](inout self, m: Module, value: Int) raises -> Tup:
-        debug_assert(m.m == self.m, "Module pointer mismatch")
+        debug_assert(m.m == self.m.m, "Module pointer mismatch")
         let arity: Arity
         let attr: AttrPtr
 

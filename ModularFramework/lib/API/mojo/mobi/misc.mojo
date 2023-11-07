@@ -4,7 +4,9 @@
 #
 # ===----------------------------------------------------------------------=== #
 
+from .graph import Graph
 from .mobicc import AttrMapPtr, ArityPtr, TuplePtr, SymbolPtr
+from .symbol import Symbol
 
 
 struct AttrMap:
@@ -32,24 +34,35 @@ struct Arity:
 
 
 struct Tup:
-    var t: TuplePtr
-    var l: Int
-    var builder: Builder
+    """Tuple of symbols output by an operation."""
 
-    fn __init__(inout self, t: TuplePtr, l: Int, builder: Builder):
+    # `Pointer` to the `M_Tuple` of symbols.
+    var t: TuplePtr
+    # Length of this `Tup`.
+    var l: Int
+    # Computation graph.
+    var g: Graph
+
+    fn __init__(inout self, t: TuplePtr, l: Int, g: Graph):
         self.t = t
         self.l = l
-        self.builder = builder
+        self.g = g
+
+    fn __init__(inout self, symbol: Symbol) raises:
+        self.g = symbol.g
+        self.l = 1
+        self.t = self.g.m.builder.new_tuple()
+        self.g.m.builder.add_symbol(self.t, symbol.s)
 
     # Request: @unique_value decorator for types
     # which acts like Value but only implements __moveinit__
     fn __moveinit__(inout self, owned existing: Self):
         self.t = existing.t ^
         self.l = existing.l
-        self.builder = existing.builder ^
+        self.g = existing.g
 
-    fn __getitem__(self, pos: UInt32) raises -> SymbolPtr:
-        return self.builder.get_symbol(self.t, pos)
+    fn __getitem__(self, pos: UInt32) raises -> Symbol:
+        return Symbol(self.g.m.builder.get_symbol(self.t, pos), self.g)
 
     fn __len__(self) -> Int:
         return self.l

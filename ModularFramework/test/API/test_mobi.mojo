@@ -52,7 +52,7 @@ fn test_basic_add() raises:
 fn test_add_constant() raises:
     var m = mobi.Module()
     var g = m.graph("add_constant", m.types(m.f32(1)), m.types(m.f32(1)))
-    var x = g.op(
+    let x = g.op(
         "mo.constant",
         g.values(),
         m.types(m.f32(1)),
