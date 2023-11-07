@@ -136,6 +136,18 @@ SmallVector<Operation *> M::MGP::getDataflowOrder(Block *block) {
   return dataflowOrder;
 }
 
+bool M::MGP::isExactlyOnce(Operation *op) {
+  op = op->getParentOp();
+  while (op) {
+    if (auto modelOp = dyn_cast<ModelOp>(op))
+      return true;
+    if (isa<GRT::GRTControlFlowInterface>(op))
+      return false;
+    op = op->getParentOp();
+  }
+  return true;
+}
+
 bool M::MGP::isAtMostOnce(Operation *op) {
   op = op->getParentOp();
   while (op) {

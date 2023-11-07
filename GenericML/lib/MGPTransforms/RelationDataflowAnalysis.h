@@ -267,6 +267,16 @@ public:
     setEmpty(domainMap.relation, v);
   }
 
+  /// If the relation does not have an entry for v, set it to {}.
+  void setDefault(Relation &relation, V v) const {
+    if (!relation.contains(v))
+      setEmpty(relation, v);
+  }
+
+  void setDefault(DomainMap &domainMap, V v) const {
+    setDefault(domainMap.relation, v);
+  }
+
   /// Given entry v |-> existing, updates domainMap so that
   /// v |-> (set lub existing), and sets the domainMap.changed to true
   /// if the new value is different from the old.

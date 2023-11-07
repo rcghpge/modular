@@ -258,7 +258,7 @@ void ForwardsRelationDataflowAnalysis::flowControlFlow(
 void ForwardsRelationDataflowAnalysis::flowDefault(Operation *op,
                                                    DomainMap &domainMap) {
   for (Value result : op->getResults())
-    setEmpty(domainMap, result);
+    setDefault(domainMap, result);
 }
 
 void ForwardsRelationDataflowAnalysis::flowBlock(Block *block,
@@ -277,7 +277,7 @@ void ForwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
 
   // Start with the 'init' block args.
   for (Value arg : initBlock->getArguments())
-    setEmpty(domainMap, arg);
+    setDefault(domainMap, arg);
 
   // Flow forwards through 'init' block.
   flowBlock(initBlock, domainMap, flowOp);
@@ -287,9 +287,10 @@ void ForwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
        llvm::zip(initBlock->getTerminator()->getOperands(),
                  executeBlock->getArguments()))
     setEntries(domainMap, arg, getEntriesAndId(domainMap, output));
-  // Start remaining 'execute' args start.
+
+  // Start the remaining 'execute' args.
   for (Value arg : llvm::drop_begin(executeBlock->getArguments(), 2))
-    setEmpty(domainMap, arg);
+    setDefault(domainMap, arg);
 
   // Flow forwards through 'execute' block.
   flowBlock(executeBlock, domainMap, flowOp);
@@ -425,8 +426,8 @@ void BackwardsRelationDataflowAnalysis::flowControlFlow(
     GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
     const FlowOp &flowOp) {
   if (cfOp->getNumOperands() > cfOp.getInputs().size()) {
-    // Bind the loop or condition input to empty.
-    setEmpty(domainMap, &cfOp->getOpOperand(0));
+    // Bind the loop or condition inputs.
+    setDefault(domainMap, &cfOp->getOpOperand(0));
   }
 
   switch (cfOp.getFlavor()) {
@@ -438,8 +439,8 @@ void BackwardsRelationDataflowAnalysis::flowControlFlow(
          llvm::zip(cfOp->getResults(), firstOutput->getOpOperands()))
       setEntries(domainMap, &output, operandCombination(domainMap, result));
     if (firstOutput->getNumOperands() > cfOp->getNumResults()) {
-      // Bind the condition output to empty.
-      setEmpty(domainMap, &firstOutput->getOpOperands().back());
+      // Bind the condition outputs.
+      setDefault(domainMap, &firstOutput->getOpOperands().back());
     }
 
     // Until fixed point...
@@ -488,7 +489,7 @@ void BackwardsRelationDataflowAnalysis::flowDefault(Operation *op,
     return;
 
   for (const OpOperand &operand : op->getOpOperands())
-    setEmpty(domainMap, &operand);
+    setDefault(domainMap, &operand);
 }
 
 void BackwardsRelationDataflowAnalysis::flowBlock(Block *block,
@@ -507,7 +508,7 @@ void BackwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
 
   // Start with the 'execute' block outputs.
   for (const OpOperand &output : execBlock->getTerminator()->getOpOperands())
-    setEmpty(domainMap, &output);
+    setDefault(domainMap, &output);
 
   // Flow backwards through 'execute' block.
   flowBlock(execBlock, domainMap, flowOp);

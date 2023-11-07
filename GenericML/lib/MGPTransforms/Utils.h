@@ -42,6 +42,9 @@ T cloneWithArgs(OpBuilder &builder, T origOp, TypeRange resultTypes,
 /// does not have operands defined by operations later in the vector.
 SmallVector<Operation *> getDataflowOrder(Block *block);
 
+/// Returns true if op can be executed exactly once in overall model.
+bool isExactlyOnce(Operation *op);
+
 /// Returns true if op can be executed at most once in overall model.
 bool isAtMostOnce(Operation *op);
 
