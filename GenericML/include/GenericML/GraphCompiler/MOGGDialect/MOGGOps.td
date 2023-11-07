@@ -526,6 +526,25 @@ def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders"> {
 // MOGG Runtime compiled code representation ops.
 //===----------------------------------------------------------------------===//
 
+def MOGG_ChainPlaceholderOp: MOGG_Op<"runtime_chain_placeholder", [Pure]> {
+  let summary = "Launders the runtime chain into KGEN land";
+  let description = [{
+    Returns a legal runtime chain of whatever type mojo uses to reference
+    a chain.
+  }];
+  let results = (outs AnyType:$results);
+}
+
+def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure]> {
+  let summary = "Converts a MOGG value to a KGEN value";
+  let description = [{
+    Converts a mogg/mo value to a kgen value.
+  }];
+
+  let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape]>:$input);
+  let results = (outs AnyType:$results);
+}
+
 def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel", [
     MO_HasDeviceInterface]> {
   let summary = "Loads pairs of (symbol, compiled object) into the runtime "

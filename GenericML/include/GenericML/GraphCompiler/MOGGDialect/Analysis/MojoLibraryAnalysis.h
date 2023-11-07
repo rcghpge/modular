@@ -78,6 +78,11 @@ public:
     return kernelHasDecorator(kernel, DECORATOR_TAKES_INDICES);
   }
 
+  // Returns true if this is one of the new experimental kgen-in-mogg kernels.
+  bool kernelIsExperimentalKGEN(KGEN::GeneratorOp kernel) {
+    return kernelHasDecorator(kernel, DECORATOR_EXPERIMENTAL);
+  }
+
   /// This ModuleOp is free standing meaning it is not embedded into the IR. It
   /// contains all the bindings (KGEN) that were pulled from the libraries.
   OwningOpRef<mlir::ModuleOp> mojoBindings;

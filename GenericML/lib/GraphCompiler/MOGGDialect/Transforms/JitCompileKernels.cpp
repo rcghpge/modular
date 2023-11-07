@@ -233,6 +233,16 @@ createMangledName(MOGG::KernelOp op,
                   size_t &kernelsDefiningParams) {
   std::string name = "__gen__";
 
+  // TODO: For now we just mangle each experimental KGEN kernel as a unique
+  // entity. We can't mangle in the same way like before. We'll need to figure
+  // this out.
+  static int numKgenExperimentalKernels = 0;
+  if (op.getIsKGEN().value_or(false)) {
+    numKgenExperimentalKernels++;
+    return name + "EXPERIMENTAL_KGEN_" +
+           std::to_string(numKgenExperimentalKernels - 1);
+  }
+
   // Each kernel which defines params can be assumed to be unique. No params can
   // be defined twice.
   auto outParams = op.getOutputParamDecls();
@@ -410,6 +420,10 @@ struct JitCompileKernels
         return signalPassFailure();
       }
     }
+
+    // Strip all KGEN forward decls. There is now nothing they can be lowered
+    // to.
+    m.walk([](KGEN::ExternGeneratorOp op) { op.erase(); });
   }
 
   void setMojoBindingsToNotExported(ModuleOp module) {
