@@ -32,8 +32,8 @@ struct Arity:
 
     fn __init__(inout self, t: Type) raises:
         self.l = 1
-        self.a = t.builder.new_arity()
-        t.builder.add_type(self.a, t.t)
+        self.a = mobicc.new_arity()
+        mobicc.add_type(self.a, t.t)
 
     fn __len__(self) -> Int:
         return self.l
@@ -57,8 +57,8 @@ struct Tup:
     fn __init__(inout self, symbol: Symbol) raises:
         self.g = symbol.g
         self.l = 1
-        self.t = self.g.m.builder.new_tuple()
-        self.g.m.builder.add_symbol(self.t, symbol.s)
+        self.t = mobicc.new_tuple()
+        mobicc.add_symbol(self.t, symbol.s)
 
     # Request: @unique_value decorator for types
     # which acts like Value but only implements __moveinit__
@@ -68,7 +68,7 @@ struct Tup:
         self.g = existing.g
 
     fn __getitem__(self, pos: UInt32) raises -> Symbol:
-        return Symbol(self.g.m.builder.get_symbol(self.t, pos), self.g)
+        return Symbol(mobicc.get_symbol(self.t, pos), self.g)
 
     fn __len__(self) -> Int:
         return self.l

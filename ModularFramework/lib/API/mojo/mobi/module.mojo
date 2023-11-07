@@ -10,7 +10,6 @@ from .mobicc import (
     AttrMapPtr,
     LocPtr,
     ModulePtr,
-    Builder,
     TypePtr,
     GraphPtr,
 )
@@ -36,47 +35,41 @@ fn _dynamic_vector(shape: VariadicList[Int64]) -> DynamicVector[Int64]:
 @value
 struct Module:
     var m: ModulePtr
-    var builder: Builder
 
     fn __init__(inout self) raises:
-        self.builder = Builder()
-        self.m = self.builder.new_module()
+        self.m = mobicc.new_module()
 
-    fn __init__(inout self, m: ModulePtr, builder: Builder):
+    fn __init__(inout self, m: ModulePtr):
         self.m = m
-        self.builder = builder
 
     fn __str__(self) raises -> String:
-        return self.builder.module_to_string(self.m)
+        return mobicc.module_to_string(self.m)
 
     fn debug_print_execute(self, inout arg: Tensor[DType.float32]) raises:
-        var rtArgs = self.builder.new_rt_tuple()
-        var shape = DynamicVector[Int64]()
-        for i in range(arg.shape().rank()):
-            shape.push_back(arg.dim(i))
-        self.builder.add_f32_tensor(rtArgs, arg)
-        var rtOuts = self.builder.new_rt_tuple()
-        let execCode = self.builder.execute_module(self.m, rtArgs, rtOuts)
+        var rtArgs = mobicc.new_rt_tuple()
+        mobicc.add_f32_tensor(rtArgs, arg)
+        var rtOuts = mobicc.new_rt_tuple()
+        let execCode = mobicc.execute_module(self.m, rtArgs, rtOuts)
         if execCode != 0:
             raise Error("Execution error")
-        self.builder.debug_print_tensors(rtOuts)
+        mobicc.debug_print_tensors(rtOuts)
 
     fn debug_print_execute(self, file_name: StringRef, spec: TensorSpec) raises:
-        var rtArgs = self.builder.new_rt_tuple()
+        var rtArgs = mobicc.new_rt_tuple()
         var shape = DynamicVector[Int64]()
         for i in range(spec.rank()):
             shape.push_back(spec[i])
-        self.builder.add_f32_tensor_from_file(
+        mobicc.add_f32_tensor_from_file(
             rtArgs, file_name, shape.data, spec.rank()
         )
-        var rtOuts = self.builder.new_rt_tuple()
-        let execCode = self.builder.execute_module(self.m, rtArgs, rtOuts)
+        var rtOuts = mobicc.new_rt_tuple()
+        let execCode = mobicc.execute_module(self.m, rtArgs, rtOuts)
         if execCode != 0:
             raise Error("Execution error")
-        self.builder.debug_print_tensors(rtOuts)
+        mobicc.debug_print_tensors(rtOuts)
 
     fn unknown_loc(self) raises -> LocPtr:
-        return self.builder.unknown_loc(self.m)
+        return mobicc.unknown_loc(self.m)
 
     fn i32_attr(
         self, name: StringRef, t: TypePtr, *elements: Int32
@@ -84,9 +77,7 @@ struct Module:
         var data = DynamicVector[Int32]()
         for i in range(len(elements)):
             data.push_back(elements[i])
-        return self.builder.tensor_attr(
-            self.m, name, data.data.bitcast[AnyType](), t
-        )
+        return mobicc.tensor_attr(self.m, name, data.data.bitcast[AnyType](), t)
 
     fn i64_attr(
         self, name: StringRef, t: TypePtr, *elements: Int64
@@ -94,9 +85,7 @@ struct Module:
         var data = DynamicVector[Int64]()
         for i in range(len(elements)):
             data.push_back(elements[i])
-        return self.builder.tensor_attr(
-            self.m, name, data.data.bitcast[AnyType](), t
-        )
+        return mobicc.tensor_attr(self.m, name, data.data.bitcast[AnyType](), t)
 
     fn f32_attr(
         self, name: StringRef, t: TypePtr, *elements: Float32
@@ -104,28 +93,26 @@ struct Module:
         var data = DynamicVector[Float32]()
         for i in range(len(elements)):
             data.push_back(elements[i])
-        return self.builder.tensor_attr(
-            self.m, name, data.data.bitcast[AnyType](), t
-        )
+        return mobicc.tensor_attr(self.m, name, data.data.bitcast[AnyType](), t)
 
     fn f32_attr(
         self, name: StringRef, t: TypePtr, value: Tensor[DType.float32]
     ) raises -> AttrPtr:
-        return self.builder.tensor_attr(
+        return mobicc.tensor_attr(
             self.m, name, value.data().bitcast[DType.invalid](), t
         )
 
     fn f32_attr(
         self, name: StringRef, t: TypePtr, file_name: StringRef
     ) raises -> AttrPtr:
-        return self.builder.tensor_attr_from_file(self.m, name, file_name, t)
+        return mobicc.tensor_attr_from_file(self.m, name, file_name, t)
 
     fn tensor_attr[
         dtype: DType
     ](
         self, name: StringRef, t: TypePtr, value: Tensor[dtype]
     ) raises -> AttrPtr:
-        return self.builder.tensor_attr(
+        return mobicc.tensor_attr(
             self.m, name, value.data().bitcast[DType.invalid](), t
         )
 
@@ -139,48 +126,48 @@ struct Module:
         raise "not implemented"
 
     fn attrs(self, *attrs: AttrPtr) raises -> AttrMap:
-        var m = self.builder.new_attr_map()
+        var m = mobicc.new_attr_map()
         for i in range(len(attrs)):
-            self.builder.add_attr(m, attrs[i])
+            mobicc.add_attr(m, attrs[i])
         return AttrMap(m, len(attrs))
 
     # TODO: Support TensorSpec overload.
 
     fn dyn(self) raises -> Int64:
-        return self.builder.dynamic_dim(self.m)
+        return mobicc.dynamic_dim(self.m)
 
     fn i32(self, *dims: Int64) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return self.builder.si(self.m, 32, shape.data, len(shape))
+        return mobicc.si(self.m, 32, shape.data, len(shape))
 
     fn i32(self, dims: TensorShape) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return self.builder.si(self.m, 32, shape.data, len(shape))
+        return mobicc.si(self.m, 32, shape.data, len(shape))
 
     fn i64(self, *dims: Int64) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return self.builder.si(self.m, 64, shape.data, len(shape))
+        return mobicc.si(self.m, 64, shape.data, len(shape))
 
     fn i64(self, dims: TensorShape) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return self.builder.si(self.m, 64, shape.data, len(shape))
+        return mobicc.si(self.m, 64, shape.data, len(shape))
 
     fn f32(self, *dims: Int64) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return self.builder.f32(self.m, shape.data, len(shape))
+        return mobicc.f32(self.m, shape.data, len(shape))
 
     fn f32(self, dims: TensorShape) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return self.builder.f32(self.m, shape.data, len(shape))
+        return mobicc.f32(self.m, shape.data, len(shape))
 
     fn bool(self, *dims: Int64) raises -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return self.builder.bool(self.m, shape.data, len(shape))
+        return mobicc.bool(self.m, shape.data, len(shape))
 
     fn types(self, *types: TypePtr) raises -> Arity:
-        var a = self.builder.new_arity()
+        var a = mobicc.new_arity()
         for i in range(len(types)):
-            self.builder.add_type(a, types[i])
+            mobicc.add_type(a, types[i])
         return Arity(a, len(types))
 
     fn graph(
@@ -189,8 +176,6 @@ struct Module:
         in_types: Arity,
         out_types: Arity,
     ) raises -> Graph:
-        let unknown = self.builder.unknown_loc(self.m)
-        let g = self.builder.new_graph(
-            self.m, unknown, name, in_types.a, out_types.a
-        )
+        let unknown = mobicc.unknown_loc(self.m)
+        let g = mobicc.new_graph(self.m, unknown, name, in_types.a, out_types.a)
         return Graph(g, self)

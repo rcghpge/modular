@@ -18,10 +18,6 @@ struct Symbol:
     var s: SymbolPtr
     var g: Graph
 
-    fn builder(self) -> Builder:
-        """Returns a `builder` handle to the underlying shared library."""
-        return self.g.m.builder
-
     fn type(self) -> Type:
         """Returns the type of this symbol."""
-        return Type(self.builder().typeof(self.s), self.builder())
+        return Type(mobicc.typeof(self.s))

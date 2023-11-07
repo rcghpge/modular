@@ -4,7 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from .mobicc import Builder, TypePtr
+from .mobicc import TypePtr
 
 
 @value
@@ -18,7 +18,6 @@ struct Type:
 
     # Pointer to `Type` implementation.
     var t: TypePtr
-    var builder: Builder
 
     def __del__(owned self) -> None:
-        self.builder.del_type(self.t)
+        mobicc.del_type(self.t)

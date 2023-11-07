@@ -4,12 +4,15 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from debug import trap
 from memory.unsafe import Pointer
 from os import getenv
 from sys import external_call
 from tensor import Tensor, TensorShape
-from sys.ffi import RTLD, DLHandle
+from sys.ffi import (
+    RTLD,
+    DLHandle,
+    _get_dylib_function as _ffi_get_dylib_function,
+)
 
 
 struct _Attr:
@@ -84,296 +87,326 @@ alias TypePtr = Pointer[_Type]
 alias TensorTuplePtr = Pointer[_TensorTuple]
 
 
-struct Builder:
-    """A builder for MO graphs. Wraps functins in the Builder C API."""
+# Init fns inspired by gpu.host._utils
+fn _init_dylib(ignored: Pointer[NoneType]) -> Pointer[NoneType]:
+    let _mof_lib_path = getenv("MODULAR_MOF_LIB_PATH")
+    let ptr = Pointer[DLHandle].alloc(1)
+    __get_address_as_lvalue(ptr.address) = DLHandle(
+        _mof_lib_path, RTLD.NOW | RTLD.GLOBAL
+    )
+    return ptr.bitcast[NoneType]()
 
-    var lib: DLHandle
 
-    fn __init__(inout self) raises:
-        let mof_lib = getenv("MODULAR_MOF_LIB_PATH")
-        if mof_lib == "":
-            raise "MODULAR_MOF_LIB_PATH must be set"
+fn _destroy_dylib(ptr: Pointer[NoneType]):
+    __get_address_as_lvalue(ptr.bitcast[DLHandle]().address)._del_old()
+    ptr.free()
 
-        # TODO: Any chance to just be able to use external_call?
-        # Or does that only work with things statically linked into compiler?
-        self.lib = DLHandle(mof_lib, RTLD.NOW | RTLD.GLOBAL)
 
-    fn __copyinit__(inout self, other: Builder):
-        self.lib = other.lib
+@always_inline
+fn _get_dylib_function[T: AnyType](name: StringRef) -> T:
+    return _ffi_get_dylib_function["MOF_LIB", _init_dylib, _destroy_dylib, T](
+        name
+    )
 
-    fn __del__(owned self):
-        # TODO: self.lib._del_old() when we have refcounts.
-        # For now, we leak this handle, in exchange for the ability to freely
-        # copy Builders around.
-        pass
 
-    fn func[T: AnyType](self, name: StringRef) -> T:
-        """`dlsym()`s a function called `name` in shared library `self.lib`."""
-        var f = self.lib.get_function[T](name)
-        let ptr = Pointer.address_of(f).bitcast[Pointer[NoneType]]().load()
-        if not ptr:
-            print("cannot load " + String(name) + " from shared library")
-            trap()
+@always_inline
+fn MOBI_func[T: AnyType](name: StringRef) -> T:
+    """`dlsym()`s a function called `name` in shared library `.lib`."""
+    var f = _get_dylib_function[T](name)
+    let ptr = Pointer.address_of(f).bitcast[Pointer[NoneType]]().load()
+    if not ptr:
+        print("cannot load " + String(name) + " from shared library")
+        trap()
+    return f
 
-        return f
 
-    ### Attr helers
+### Attr helpers
 
-    fn tensor_attr(
-        self,
-        module: ModulePtr,
-        name: StringRef,
-        data: Pointer[AnyType],
-        type: TypePtr,
-    ) -> AttrPtr:
-        return self.func[
-            fn (ModulePtr, StringRef, Pointer[AnyType], TypePtr) -> AttrPtr
-        ]("MOBI_tensorAttr")(module, name, data, type)
 
-    fn tensor_attr(
-        self,
-        module: ModulePtr,
-        name: StringRef,
-        data: DTypePointer[DType.invalid],
-        type: TypePtr,
-    ) -> AttrPtr:
-        return self.func[
-            fn (
-                ModulePtr, StringRef, DTypePointer[DType.invalid], TypePtr
-            ) -> AttrPtr
-        ]("MOBI_tensorAttr")(module, name, data, type)
+fn tensor_attr(
+    module: ModulePtr,
+    name: StringRef,
+    data: Pointer[AnyType],
+    type: TypePtr,
+) -> AttrPtr:
+    return MOBI_func[
+        fn (ModulePtr, StringRef, Pointer[AnyType], TypePtr) -> AttrPtr
+    ]("MOBI_tensorAttr")(module, name, data, type)
 
-    fn tensor_attr_from_file(
-        self,
-        module: ModulePtr,
-        name: StringRef,
-        file_name: StringRef,
-        type: TypePtr,
-    ) -> AttrPtr:
-        return self.func[
-            fn (ModulePtr, StringRef, StringRef, TypePtr) -> AttrPtr
-        ]("MOBI_tensorAttrFromFile")(module, name, file_name, type)
 
-    fn new_attr_map(self) -> AttrMapPtr:
-        return self.func[fn () -> AttrMapPtr]("MOBI_newAttrMap")()
+fn tensor_attr(
+    module: ModulePtr,
+    name: StringRef,
+    data: DTypePointer[DType.invalid],
+    type: TypePtr,
+) -> AttrPtr:
+    return MOBI_func[
+        fn (
+            ModulePtr, StringRef, DTypePointer[DType.invalid], TypePtr
+        ) -> AttrPtr
+    ]("MOBI_tensorAttr")(module, name, data, type)
 
-    fn add_attr(self, inout map: AttrMapPtr, a: AttrPtr):
-        return self.func[fn (AttrMapPtr, AttrPtr) -> NoneType]("MOBI_addAttr")(
-            map, a
-        )
 
-    ### Graph helpers
+fn tensor_attr_from_file(
+    module: ModulePtr,
+    name: StringRef,
+    file_name: StringRef,
+    type: TypePtr,
+) -> AttrPtr:
+    return MOBI_func[fn (ModulePtr, StringRef, StringRef, TypePtr) -> AttrPtr](
+        "MOBI_tensorAttrFromFile"
+    )(module, name, file_name, type)
 
-    fn new_graph(
-        self,
-        inout module: ModulePtr,
-        loc: LocPtr,
-        name: StringRef,
-        inTypes: ArityPtr,
-        outTypes: ArityPtr,
-    ) -> GraphPtr:
-        return self.func[
-            fn (ModulePtr, LocPtr, StringRef, ArityPtr, ArityPtr) -> GraphPtr
-        ]("MOBI_newGraph")(module, loc, name, inTypes, outTypes)
 
-    fn get_input(
-        self,
-        graph: GraphPtr,
-        pos: UInt32,
-    ) -> SymbolPtr:
-        return self.func[fn (GraphPtr, UInt32) -> SymbolPtr]("MOBI_getInput")(
-            graph, pos
-        )
+fn new_attr_map() -> AttrMapPtr:
+    return MOBI_func[fn () -> AttrMapPtr]("MOBI_newAttrMap")()
 
-    fn new_op(
-        self,
-        graph: GraphPtr,
-        loc: LocPtr,
-        name: StringRef,
-        inputs: TuplePtr,
-        outTypes: ArityPtr,
-        attrs: AttrMapPtr,
-    ) -> TuplePtr:
-        return self.func[
-            fn (
-                GraphPtr, LocPtr, StringRef, TuplePtr, ArityPtr, AttrMapPtr
-            ) -> TuplePtr
-        ]("MOBI_newOp")(graph, loc, name, inputs, outTypes, attrs)
 
-    ### Location helpers
+fn add_attr(inout map: AttrMapPtr, a: AttrPtr):
+    return MOBI_func[fn (AttrMapPtr, AttrPtr) -> NoneType]("MOBI_addAttr")(
+        map, a
+    )
 
-    fn unknown_loc(self, module: ModulePtr) -> LocPtr:
-        return self.func[fn (ModulePtr) -> LocPtr]("MOBI_unknownLoc")(module)
 
-    ### Module helpers
+### Graph helpers
 
-    fn new_module(self) -> ModulePtr:
-        return self.func[fn () -> ModulePtr]("MOBI_newModule")()
 
-    fn debug_print_module(self, module: ModulePtr):
-        self.func[fn (ModulePtr) -> NoneType]("MOBI_debugPrintModule")(module)
+fn new_graph(
+    inout module: ModulePtr,
+    loc: LocPtr,
+    name: StringRef,
+    inTypes: ArityPtr,
+    outTypes: ArityPtr,
+) -> GraphPtr:
+    return MOBI_func[
+        fn (ModulePtr, LocPtr, StringRef, ArityPtr, ArityPtr) -> GraphPtr
+    ]("MOBI_newGraph")(module, loc, name, inTypes, outTypes)
 
-    fn module_to_string(self, module: ModulePtr) -> String:
-        let ret = self.func[fn (ModulePtr) -> DTypePointer[DType.int8]](
-            "MOBI_moduleToString"
-        )(module)
-        let sRet = String(ret)
-        ret.free()
-        return sRet
 
-    ### Symbol helers
+fn get_input(
+    graph: GraphPtr,
+    pos: UInt32,
+) -> SymbolPtr:
+    return MOBI_func[fn (GraphPtr, UInt32) -> SymbolPtr]("MOBI_getInput")(
+        graph, pos
+    )
 
-    fn new_tuple(self) -> TuplePtr:
-        return self.func[fn () -> TuplePtr]("MOBI_newTuple")()
 
-    fn add_symbol(self, inout t: TuplePtr, s: SymbolPtr):
-        return self.func[fn (TuplePtr, SymbolPtr) -> NoneType](
-            "MOBI_addSymbol"
-        )(t, s)
+fn new_op(
+    graph: GraphPtr,
+    loc: LocPtr,
+    name: StringRef,
+    inputs: TuplePtr,
+    outTypes: ArityPtr,
+    attrs: AttrMapPtr,
+) -> TuplePtr:
+    return MOBI_func[
+        fn (
+            GraphPtr, LocPtr, StringRef, TuplePtr, ArityPtr, AttrMapPtr
+        ) -> TuplePtr
+    ]("MOBI_newOp")(graph, loc, name, inputs, outTypes, attrs)
 
-    fn get_symbol(self, t: TuplePtr, pos: UInt32) -> SymbolPtr:
-        return self.func[fn (TuplePtr, UInt32) -> SymbolPtr]("MOBI_getSymbol")(
-            t, pos
-        )
 
-    ### Type helers
+### Location helpers
 
-    fn dynamic_dim(self, module: ModulePtr) -> Int64:
-        return self.func[fn (ModulePtr) -> Int64]("MOBI_dynamicDim")(module)
 
-    fn f32(
-        self,
-        module: ModulePtr,
-        dims: Pointer[Int64],
-        rank: Int64,
-    ) -> TypePtr:
-        return self.func[fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr](
-            "MOBI_f32"
-        )(module, dims, rank)
+fn unknown_loc(module: ModulePtr) -> LocPtr:
+    return MOBI_func[fn (ModulePtr) -> LocPtr]("MOBI_unknownLoc")(module)
 
-    fn ui(
-        self,
-        module: ModulePtr,
-        width: UInt64,
-        dims: Pointer[Int64],
-        rank: Int64,
-    ) -> TypePtr:
-        return self.func[
-            fn (ModulePtr, UInt64, Pointer[Int64], Int64) -> TypePtr
-        ]("MOBI_ui")(module, width, dims, rank)
 
-    fn si(
-        self,
-        module: ModulePtr,
-        width: UInt64,
-        dims: Pointer[Int64],
-        rank: Int64,
-    ) -> TypePtr:
-        return self.func[
-            fn (ModulePtr, UInt64, Pointer[Int64], Int64) -> TypePtr
-        ]("MOBI_si")(module, width, dims, rank)
+### Module helpers
 
-    fn bool(
-        self,
-        module: ModulePtr,
-        dims: Pointer[Int64],
-        rank: Int64,
-    ) -> TypePtr:
-        return self.func[fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr](
-            "MOBI_bool"
-        )(module, dims, rank)
 
-    fn new_arity(self) -> ArityPtr:
-        return self.func[fn () -> ArityPtr]("MOBI_newArity")()
+fn new_module() -> ModulePtr:
+    return MOBI_func[fn () -> ModulePtr]("MOBI_newModule")()
 
-    fn add_type(self, inout arity: ArityPtr, t: TypePtr):
-        return self.func[fn (ArityPtr, TypePtr) -> NoneType]("MOBI_addType")(
-            arity, t
-        )
 
-    fn type_is_float_tensor(self, t: TypePtr) -> Bool:
-        return self.func[fn (TypePtr) -> Bool]("MOBI_typeIsFloatTensor")(t)
+fn debug_print_module(module: ModulePtr):
+    MOBI_func[fn (ModulePtr) -> NoneType]("MOBI_debugPrintModule")(module)
 
-    fn type_is_si_tensor(self, t: TypePtr) -> Bool:
-        return self.func[fn (TypePtr) -> Bool]("MOBI_typeIsSITensor")(t)
 
-    fn type_is_ui_tensor(self, t: TypePtr) -> Bool:
-        return self.func[fn (TypePtr) -> Bool]("MOBI_typeIsUITensor")(t)
+fn module_to_string(module: ModulePtr) -> String:
+    let ret = MOBI_func[fn (ModulePtr) -> DTypePointer[DType.int8]](
+        "MOBI_moduleToString"
+    )(module)
+    let sRet = String(ret)
+    ret.free()
+    return sRet
 
-    fn type_is_bool_tensor(self, t: TypePtr) -> Bool:
-        return self.func[fn (TypePtr) -> Bool]("MOBI_typeIsBoolTensor")(t)
 
-    fn type_is_tensor(self, t: TypePtr) -> Bool:
-        return self.func[fn (TypePtr) -> Bool]("MOBI_typeIsTensor")(t)
+### Symbol helers
 
-    fn tensor_dtype_width(self, t: TypePtr) -> UInt64:
-        return self.func[fn (TypePtr) -> UInt64](
-            "MOBI_getTensorTypeDTypeWidth"
-        )(t)
 
-    fn tensor_rank(self, t: TypePtr) -> UInt64:
-        return self.func[fn (TypePtr) -> UInt64]("MOBI_getTensorTypeRank")(t)
+fn new_tuple() -> TuplePtr:
+    return MOBI_func[fn () -> TuplePtr]("MOBI_newTuple")()
 
-    fn tensor_dim(self, t: TypePtr, dim: UInt64) -> Int64:
-        return self.func[fn (TypePtr, UInt64) -> Int64](
-            "MOBI_getTensorTypeDim"
-        )(t, dim)
 
-    fn typeof(self, s: SymbolPtr) -> TypePtr:
-        """The result must be freed by the caller using `del_type()`."""
-        return self.func[fn (SymbolPtr) -> TypePtr]("MOBI_typeOfSymbol")(s)
+fn add_symbol(inout t: TuplePtr, s: SymbolPtr):
+    return MOBI_func[fn (TuplePtr, SymbolPtr) -> NoneType]("MOBI_addSymbol")(
+        t, s
+    )
 
-    fn del_type(self, owned t: TypePtr) -> None:
-        self.func[fn (TypePtr) -> None]("MOBI_freeType")(t)
 
-    ### Execution helpers
+fn get_symbol(t: TuplePtr, pos: UInt32) -> SymbolPtr:
+    return MOBI_func[fn (TuplePtr, UInt32) -> SymbolPtr]("MOBI_getSymbol")(
+        t, pos
+    )
 
-    # TODO: Merge with engine API
 
-    fn new_rt_tuple(self) -> TensorTuplePtr:
-        return self.func[fn () -> TensorTuplePtr]("MOF_newTensorTuple")()
+### Type helers
 
-    fn add_si32_rt_scalar(self, inout t: TensorTuplePtr, value: Int32):
-        self.func[fn (TensorTuplePtr, Int32) -> NoneType]("MOF_addI32Scalar")(
-            t, value
-        )
 
-    fn add_f32_tensor(self, inout out: TensorTuplePtr, inout tensor: Tensor):
-        # Mojo` TensorShape` is ABI compatible with `M::TensorShape`.
-        # See Kernels/unittests/TensorTest.{cpp,mojo}.
-        # So just pass a pointer to `shape` across the shared library boundary.
-        let shape_ptr = Pointer.address_of(tensor._spec.shape._rep).bitcast[
-            TensorShape
-        ]()
-        let data_ptr = tensor.data().bitcast[DType.invalid]()
-        self.func[
-            fn (
-                TensorTuplePtr,
-                DTypePointer[DType.invalid],
-                Pointer[TensorShape],
-            ) -> NoneType
-        ]("MOF_addF32Tensor")(out, data_ptr, shape_ptr)
+fn dynamic_dim(module: ModulePtr) -> Int64:
+    return MOBI_func[fn (ModulePtr) -> Int64]("MOBI_dynamicDim")(module)
 
-    fn add_f32_tensor_from_file(
-        self,
-        inout t: TensorTuplePtr,
-        file_name: StringRef,
-        dims: Pointer[Int64],
-        rank: Int64,
-    ):
-        self.func[
-            fn (TensorTuplePtr, StringRef, Pointer[Int64], Int64) -> NoneType
-        ]("MOF_addF32TensorFromFile")(t, file_name, dims, rank)
 
-    fn execute_module(
-        self,
-        module: ModulePtr,
-        args: TensorTuplePtr,
-        inout outs: TensorTuplePtr,
-    ) -> UInt32:
-        return self.func[
-            fn (ModulePtr, TensorTuplePtr, TensorTuplePtr) -> UInt32
-        ]("MOF_executeModule")(module, args, outs)
+fn f32(
+    module: ModulePtr,
+    dims: Pointer[Int64],
+    rank: Int64,
+) -> TypePtr:
+    return MOBI_func[fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr](
+        "MOBI_f32"
+    )(module, dims, rank)
 
-    fn debug_print_tensors(self, t: TensorTuplePtr):
-        self.func[fn (TensorTuplePtr) -> NoneType]("MOF_debugPrintTensors")(t)
+
+fn ui(
+    module: ModulePtr,
+    width: UInt64,
+    dims: Pointer[Int64],
+    rank: Int64,
+) -> TypePtr:
+    return MOBI_func[fn (ModulePtr, UInt64, Pointer[Int64], Int64) -> TypePtr](
+        "MOBI_ui"
+    )(module, width, dims, rank)
+
+
+fn si(
+    module: ModulePtr,
+    width: UInt64,
+    dims: Pointer[Int64],
+    rank: Int64,
+) -> TypePtr:
+    return MOBI_func[fn (ModulePtr, UInt64, Pointer[Int64], Int64) -> TypePtr](
+        "MOBI_si"
+    )(module, width, dims, rank)
+
+
+fn bool(
+    module: ModulePtr,
+    dims: Pointer[Int64],
+    rank: Int64,
+) -> TypePtr:
+    return MOBI_func[fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr](
+        "MOBI_bool"
+    )(module, dims, rank)
+
+
+fn new_arity() -> ArityPtr:
+    return MOBI_func[fn () -> ArityPtr]("MOBI_newArity")()
+
+
+fn add_type(inout arity: ArityPtr, t: TypePtr):
+    return MOBI_func[fn (ArityPtr, TypePtr) -> NoneType]("MOBI_addType")(
+        arity, t
+    )
+
+
+fn type_is_float_tensor(t: TypePtr) -> Bool:
+    return MOBI_func[fn (TypePtr) -> Bool]("MOBI_typeIsFloatTensor")(t)
+
+
+fn type_is_si_tensor(t: TypePtr) -> Bool:
+    return MOBI_func[fn (TypePtr) -> Bool]("MOBI_typeIsSITensor")(t)
+
+
+fn type_is_ui_tensor(t: TypePtr) -> Bool:
+    return MOBI_func[fn (TypePtr) -> Bool]("MOBI_typeIsUITensor")(t)
+
+
+fn type_is_bool_tensor(t: TypePtr) -> Bool:
+    return MOBI_func[fn (TypePtr) -> Bool]("MOBI_typeIsBoolTensor")(t)
+
+
+fn type_is_tensor(t: TypePtr) -> Bool:
+    return MOBI_func[fn (TypePtr) -> Bool]("MOBI_typeIsTensor")(t)
+
+
+fn tensor_dtype_width(t: TypePtr) -> UInt64:
+    return MOBI_func[fn (TypePtr) -> UInt64]("MOBI_getTensorTypeDTypeWidth")(t)
+
+
+fn tensor_rank(t: TypePtr) -> UInt64:
+    return MOBI_func[fn (TypePtr) -> UInt64]("MOBI_getTensorTypeRank")(t)
+
+
+fn tensor_dim(t: TypePtr, dim: UInt64) -> Int64:
+    return MOBI_func[fn (TypePtr, UInt64) -> Int64]("MOBI_getTensorTypeDim")(
+        t, dim
+    )
+
+
+fn typeof(s: SymbolPtr) -> TypePtr:
+    """The result must be freed by the caller using `del_type()`."""
+    return MOBI_func[fn (SymbolPtr) -> TypePtr]("MOBI_typeOfSymbol")(s)
+
+
+fn del_type(t: TypePtr) -> None:
+    return MOBI_func[fn (TypePtr) -> None]("MOBI_freeType")(t)
+
+
+### Execution helpers
+
+# TODO: Merge with engine API
+
+
+fn new_rt_tuple() -> TensorTuplePtr:
+    return MOBI_func[fn () -> TensorTuplePtr]("MOF_newTensorTuple")()
+
+
+fn add_si32_rt_scalar(inout t: TensorTuplePtr, value: Int32):
+    MOBI_func[fn (TensorTuplePtr, Int32) -> NoneType]("MOF_addI32Scalar")(
+        t, value
+    )
+
+
+fn add_f32_tensor(inout out: TensorTuplePtr, inout tensor: Tensor):
+    # Mojo` TensorShape` is ABI compatible with `M::TensorShape`.
+    # See Kernels/unittests/TensorTest.{cpp,mojo}.
+    # So just pass a pointer to `shape` across the shared library boundary.
+    let shape_ptr = Pointer.address_of(tensor._spec.shape._rep).bitcast[
+        TensorShape
+    ]()
+    let data_ptr = tensor.data().bitcast[DType.invalid]()
+    MOBI_func[
+        fn (
+            TensorTuplePtr,
+            DTypePointer[DType.invalid],
+            Pointer[TensorShape],
+        ) -> NoneType
+    ]("MOF_addF32Tensor")(out, data_ptr, shape_ptr)
+
+
+fn add_f32_tensor_from_file(
+    inout t: TensorTuplePtr,
+    file_name: StringRef,
+    dims: Pointer[Int64],
+    rank: Int64,
+):
+    MOBI_func[
+        fn (TensorTuplePtr, StringRef, Pointer[Int64], Int64) -> NoneType
+    ]("MOF_addF32TensorFromFile")(t, file_name, dims, rank)
+
+
+fn execute_module(
+    module: ModulePtr,
+    args: TensorTuplePtr,
+    inout outs: TensorTuplePtr,
+) -> UInt32:
+    return MOBI_func[fn (ModulePtr, TensorTuplePtr, TensorTuplePtr) -> UInt32](
+        "MOF_executeModule"
+    )(module, args, outs)
+
+
+fn debug_print_tensors(t: TensorTuplePtr):
+    MOBI_func[fn (TensorTuplePtr) -> NoneType]("MOF_debugPrintTensors")(t)

@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from .misc import Arity, AttrMap, Tup
-from .mobicc import AttrPtr, Builder, GraphPtr, SymbolPtr, TuplePtr
+from .mobicc import AttrPtr, GraphPtr, SymbolPtr, TuplePtr
 from .module import Module
 from .symbol import Symbol
 from .type import Type
@@ -27,13 +27,13 @@ struct Graph:
         self.m = m
 
     fn __getitem__(self, pos: UInt32) raises -> Symbol:
-        return Symbol(self.m.builder.get_input(self.g, pos), self)
+        return Symbol(mobicc.get_input(self.g, pos), self)
 
     fn values(self, *values: Symbol) raises -> Tup:
-        var t = self.m.builder.new_tuple()
+        var t = mobicc.new_tuple()
         for i in range(len(values)):
             let val = __get_address_as_lvalue(values[i])
-            self.m.builder.add_symbol(t, val.s)
+            mobicc.add_symbol(t, val.s)
         return Tup(t, len(values), self)
 
     fn op(
@@ -59,8 +59,8 @@ struct Graph:
         out_types: Arity,
     ) raises -> Tup:
         let loc = self.m.unknown_loc()
-        let attrs = self.m.builder.new_attr_map()
-        let outputs = self.m.builder.new_op(
+        let attrs = mobicc.new_attr_map()
+        let outputs = mobicc.new_op(
             self.g, loc, name, inputs.t, out_types.a, attrs
         )
         return Tup(outputs, out_types.l, self)
@@ -72,8 +72,8 @@ struct Graph:
         out_types: Arity,
         attrs: AttrMap,
     ) raises -> Tup:
-        let loc = self.m.builder.unknown_loc(self.m.m)
-        let outputs = self.m.builder.new_op(
+        let loc = self.m.unknown_loc()
+        let outputs = mobicc.new_op(
             self.g, loc, name, inputs.t, out_types.a, attrs.m
         )
         return Tup(outputs, out_types.l, self)
