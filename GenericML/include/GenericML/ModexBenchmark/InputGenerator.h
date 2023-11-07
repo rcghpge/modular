@@ -109,7 +109,7 @@ class GeneratedQuery {
 public:
   virtual ~GeneratedQuery() = default;
 
-  virtual M_AsyncTensorMap *getAsyncTensorMap() const;
+  virtual M_AsyncTensorMap *getAsyncTensorMap() const = 0;
 };
 
 class QueryGenerator {
