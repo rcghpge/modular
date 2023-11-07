@@ -49,14 +49,12 @@ struct Module:
     fn __str__(self) raises -> String:
         return self.builder.module_to_string(self.m)
 
-    fn debug_print_execute(self, arg: Tensor[DType.float32]) raises:
+    fn debug_print_execute(self, inout arg: Tensor[DType.float32]) raises:
         var rtArgs = self.builder.new_rt_tuple()
         var shape = DynamicVector[Int64]()
         for i in range(arg.shape().rank()):
             shape.push_back(arg.dim(i))
-        self.builder.add_f32_tensor(
-            rtArgs, arg.data().bitcast[DType.invalid](), shape.data, arg.rank()
-        )
+        self.builder.add_f32_tensor(rtArgs, arg)
         var rtOuts = self.builder.new_rt_tuple()
         let execCode = self.builder.execute_module(self.m, rtArgs, rtOuts)
         if execCode != 0:

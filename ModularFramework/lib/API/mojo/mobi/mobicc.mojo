@@ -8,7 +8,7 @@ from debug import trap
 from memory.unsafe import Pointer
 from os import getenv
 from sys import external_call
-from tensor import Tensor
+from tensor import Tensor, TensorShape
 from sys.ffi import RTLD, DLHandle
 
 
@@ -338,21 +338,21 @@ struct Builder:
             t, value
         )
 
-    fn add_f32_tensor(
-        self,
-        inout t: TensorTuplePtr,
-        data: DTypePointer[DType.invalid],
-        dims: Pointer[Int64],
-        rank: Int64,
-    ):
+    fn add_f32_tensor(self, inout out: TensorTuplePtr, inout tensor: Tensor):
+        # Mojo` TensorShape` is ABI compatible with `M::TensorShape`.
+        # See Kernels/unittests/TensorTest.{cpp,mojo}.
+        # So just pass a pointer to `shape` across the shared library boundary.
+        let shape_ptr = Pointer.address_of(tensor._spec.shape._rep).bitcast[
+            TensorShape
+        ]()
+        let data_ptr = tensor.data().bitcast[DType.invalid]()
         self.func[
             fn (
                 TensorTuplePtr,
                 DTypePointer[DType.invalid],
-                Pointer[Int64],
-                Int64,
+                Pointer[TensorShape],
             ) -> NoneType
-        ]("MOF_addF32Tensor")(t, data, dims, rank)
+        ]("MOF_addF32Tensor")(out, data_ptr, shape_ptr)
 
     fn add_f32_tensor_from_file(
         self,

@@ -101,7 +101,7 @@ def mnist():
     let p6 = g.op("mo.add", g.values(p5[0], cst_0[0]), m.types(m.f32(1, 10)))
     _ = g.op("mo.output", p6, m.types())
 
-    let input_tensor = Tensor[DType.float32](1, 28, 28, 1)
+    var input_tensor = Tensor[DType.float32](1, 28, 28, 1)
     input_tensor._to_buffer().fill(0.5)
 
     # CHECK{LITERAL}: tensor([[12575.9326, 12576.0059, 12576.0010, ..., 12576.0459, 12575.9717, 12575.9570]], dtype=f32, shape=[1,10])
