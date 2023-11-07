@@ -232,6 +232,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MGP::createConcatInPlacePass());
   pm.addPass(MGP::createDeferAllocsPass());
   pm.addPass(MGP::createExecInvariantCodeMotionPass());
+  pm.addPass(MGP::createVerifyModelArgumentsPass());
   pm.addPass(MGP::createPredicateAssertDependenciesPass());
   if (opts.enableMemoryPlanning)
     pm.addPass(MGP::createStaticMemoryPlannerPass());

@@ -77,44 +77,54 @@ class PredicateAssertDependenciesPass
           propagateUp(operand);
       }
 
-      // TODO(#19098): Propagate the assert dependencies on all users of the
-      // values that contributed to the assertions in the current block.
       llvm::MapVector<Operation *, llvm::SetVector<AssertOp>>
           operationsThatDependOnAsserts;
+      const auto storeAssertionDependenciesForOp =
+          [&](Operation *op, const SetVector<AssertOp> &asserts) {
+            auto &assertsItDependsOn = operationsThatDependOnAsserts[op];
+            uint64_t before = assertsItDependsOn.size();
+            assertsItDependsOn.insert(asserts.begin(), asserts.end());
+
+            // This is the equivalent of checking if the op was already
+            // visited with that set of asserts.
+            if (assertsItDependsOn.size() == before)
+              return false;
+
+            // This does not guarantee that the created chains are optimal (no
+            // need for simplification) because the order in which we visit
+            // these operations is arbitrary. SimplifyChains pass can take
+            // care of simplification. The purpose of this statement is to
+            // avoid recursing when we know for sure we do not need to. This
+            // is because the dependent operations will naturally inherit the
+            // dependencies of this operation. If we predicate at this
+            // operation, no need to visit descendent operations.
+            auto inputChains = getInputChainOpOperands(op);
+            if (!inputChains.empty())
+              return false;
+
+            return true;
+          };
+
+      // TODO(#19098): Propagate the assert dependencies on all users of the
+      // values that contributed to the assertions in the current block.
       const std::function<void(Value, llvm::SetVector<AssertOp>)>
           propagateDown = [&](Value val, const SetVector<AssertOp> &asserts) {
             // These types should be excluded because they will create false
             // dependencies.
             auto op = val.getDefiningOp();
-            if (op) {
-              auto &assertsItDependsOn = operationsThatDependOnAsserts[op];
-              uint64_t before = assertsItDependsOn.size();
-              assertsItDependsOn.insert(asserts.begin(), asserts.end());
-
-              // This is the equivalent of checking if the op was already
-              // visited with that set of asserts.
-              if (assertsItDependsOn.size() == before)
-                return;
-
-              // This does not guarantee that the created chains are optimal (no
-              // need for simplification) because the order in which we visit
-              // these operations is arbitrary. SimplifyChains pass can take
-              // care of simplification. The purpose of this statement is to
-              // avoid recursing when we know for sure we do not need to. This
-              // is because the dependent operations will naturally inherit the
-              // dependencies of this operation. If we predicate at this
-              // operation, no need to visit descendent operations.
-              auto inputChains = getInputChainOpOperands(op);
-              if (!inputChains.empty())
-                return;
-            }
+            if (op && !storeAssertionDependenciesForOp(op, asserts))
+              return;
 
             if (val.getType().isa<EXCLUDED_TYPES>())
               return;
 
             for (auto user : val.getUsers()) {
-              for (auto result : user->getResults())
-                propagateDown(result, asserts);
+              if (!user->getNumResults())
+                storeAssertionDependenciesForOp(user, asserts);
+              else {
+                for (auto result : user->getResults())
+                  propagateDown(result, asserts);
+              }
             }
           };
 

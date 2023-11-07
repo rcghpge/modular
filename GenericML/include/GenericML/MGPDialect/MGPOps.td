@@ -1091,6 +1091,35 @@ def CpuTensorSpecWithDTypeOp : MGP_Op<"cpu.tensor_spec.with_dtype", [
 }
 
 //===----------------------------------------------------------------------===//
+// CpuTensorSpecEqualStaticOp
+//===----------------------------------------------------------------------===//
+
+def CpuTensorSpecEqualStaticOp : MGP_Op<"cpu.tensor_spec.equal.static", [Pure]> {
+  let summary = "Returns true if a tensor spec matches static expectations";
+  let description = [{
+    Mostly used to validate user provided tensors by checking if the tensor has
+    the same shape as the program expects. This is necessary because a user can
+    provide inputs of different shapes which are not always validated by
+    frameworks. Only statically known information is considered in the
+    comparison.
+
+    Example:
+    ```mlir
+    %spec : !mgp.cpu.tensor_spec<2x?xf32>
+    // Will return true if first dimension is 2 and data type is f32.
+    %valid = mgp.cpu.tensor_spec.equal.static %spec : !mgp.cpu.tensor_spec<?x?xf32>
+    ```
+  }];
+
+  let arguments = (ins MGP_CpuTensorSpecType: $spec,
+                   UI64ArrayElementsAttr:$rawDims);
+  let results = (outs I1:$result);
+  let assemblyFormat = [{
+    $spec attr-dict `:` custom<TensorSpecTypeWithRawDims>(type($spec), $rawDims)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // CpuTensorSpecDimsDynamicOp
 //===----------------------------------------------------------------------===//
 

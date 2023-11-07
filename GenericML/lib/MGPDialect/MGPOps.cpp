@@ -842,6 +842,17 @@ LogicalResult CpuTensorSpecWithDTypeOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// CpuTensorSpecEqualStaticOp
+//===----------------------------------------------------------------------===//
+
+static void printTensorSpecTypeWithRawDims(AsmPrinter &p,
+                                           const CpuTensorSpecEqualStaticOp &op,
+                                           Type specType,
+                                           IntArrayElementsAttr rawDims) {
+  p << specType;
+}
+
+//===----------------------------------------------------------------------===//
 // CpuTensorSpecDimsDynamicOp
 //===----------------------------------------------------------------------===//
 

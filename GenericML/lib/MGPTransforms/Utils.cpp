@@ -419,7 +419,7 @@ Value InitState::getContext() { return contextCreateOp.getResult(); }
 
 ExecuteState::ExecuteState(MLIRContext *context, Block *execute)
     : execute(execute), builder(context) {
-  assert(execute->getNumArguments() >= 2);
+  assert(execute->getNumArguments() >= kExtraArgStartIdx);
   assert(isa<MEF::ChainType>(execute->getArgument(0).getType()));
   assert(isa<ContextType>(execute->getArgument(1).getType()));
 }
@@ -438,5 +438,5 @@ TypedValue<MGP::ContextType> ExecuteState::getContext() const {
 
 /// Returns the additional arguments to 'execute' block
 iterator_range<mlir::BlockArgument *> ExecuteState::getExtraArgs() const {
-  return llvm::drop_begin(execute->getArguments(), 2);
+  return llvm::drop_begin(execute->getArguments(), kExtraArgStartIdx);
 }

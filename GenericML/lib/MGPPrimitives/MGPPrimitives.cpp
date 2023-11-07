@@ -588,6 +588,33 @@ static void mgp_cpu_tensor_spec_with_dtype(const TensorSpec &tensorSpec,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.cpu.tensor_spec.dims.static
+//===----------------------------------------------------------------------===//
+
+/// Fulfills the result with dimensions of tensor spec which were known at
+/// compile time.
+static void mgp_cpu_tensor_spec_equal_static(
+    const TensorSpec &tensorSpec, Result<bool> result,
+    MEFAttr<ArrayRef<uint64_t>> rawDims, Runtime &runtime) {
+  TimeTraceScope scope(
+      MGPProfilerEntry::create("mgp.cpu.tensor_spec.equal.static"));
+  if (tensorSpec.getRank() != rawDims.size()) {
+    std::move(result).emplace(false);
+    return;
+  }
+
+  for (size_t i = 0; i < rawDims->size(); ++i) {
+    const uint64_t expectedDimension = (*rawDims)[i];
+    if (rawSizeToRuntimeSize(expectedDimension) != expectedDimension) {
+      std::move(result).emplace(false);
+      return;
+    }
+  }
+
+  std::move(result).emplace(true);
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.cpu.tensor_spec.dims.dynamic
 //===----------------------------------------------------------------------===//
 
@@ -1351,6 +1378,8 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
                 mgp_cpu_tensor_spec_create_dynamic);
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.with_dtype",
                 mgp_cpu_tensor_spec_with_dtype);
+  ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.equal.static",
+                mgp_cpu_tensor_spec_equal_static);
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.dims.dynamic",
                 mgp_cpu_tensor_spec_dims_dynamic);
   ADD_PRIMITIVE(registry, "mgp.cpu.tensor_spec.size", mgp_cpu_tensor_spec_size);

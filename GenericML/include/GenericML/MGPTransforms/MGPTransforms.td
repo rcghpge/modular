@@ -486,4 +486,24 @@ def PredicateAssertDependenciesPass : Pass<"predicate-asserts-deps", "MGP::Model
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// VerifyModelArgumentsPass
+//===----------------------------------------------------------------------===//
+
+def VerifyModelArgumentsPass : Pass<"verify-model-arguments", "MGP::ModelOp"> {
+  let summary = "Ensures that user provided model arguments match the static "
+                "expectations";
+  let description = [{
+    This pass will add runtime shape comparison checks to dynamically verify
+    that the tensors a user provides match the statically known expectations of
+    the model arguments.
+
+    Example:
+    ```mlir
+    %valid = mgp.cpu.tensor_spec.equal.static %arg2 : !mgp.tensor<2x4xf32>
+    %ch = mgp.assert %valid, "Tensor type mismatch for argument 0"
+    ```
+  }];
+}
+
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD

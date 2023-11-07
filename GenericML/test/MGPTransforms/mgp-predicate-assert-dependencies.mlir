@@ -236,3 +236,24 @@ mgp.model @no_predication : mof init {
   %5 = mgp.assert %4, "input shapes must match"
   mef.output %arg0 : !mef.chain
 }
+
+// CHECK-LABEL: mgp.model @on_output_op
+// CHECK:      } execute (%[[MAIN_CHAIN:.*]]: !mef.chain, {{.*}}) {
+// CHECK:        %[[ASSERT1:.*]] = mgp.assert
+// CHECK:        %[[ASSERT2:.*]] = mgp.assert
+// CHECK-NEXT:   %[[OUTPUT_CHAIN:.*]] = grt.chain.create (%[[ASSERT1]], %[[ASSERT2]])
+// CHECK-NEXT:   mef.output %[[OUTPUT_CHAIN]], {{.*}}
+
+mgp.model @on_output_op : mof init {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 1
+  mef.output %0, %1 : !mef.chain, !mgp.context
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.cpu.tensor<2x4xf32>, %arg3: !mgp.cpu.tensor<2x4xf32>) -> (!mef.chain, !mgp.cpu.tensor<2x4xf32>, !mgp.cpu.tensor<2x4xf32>) {
+  %0 = mgp.cpu.tensor.extract.shape %arg2 : !mgp.cpu.tensor<2x4xf32>
+  %1 = mgp.cpu.tensor_spec.equal.static %0 : !mgp.cpu.tensor_spec<2x4xunk>
+  %2 = mgp.assert %1, "Tensor type mismatch for argument 0"
+  %3 = mgp.cpu.tensor.extract.shape %arg3 : !mgp.cpu.tensor<2x4xf32>
+  %4 = mgp.cpu.tensor_spec.equal.static %3 : !mgp.cpu.tensor_spec<2x4xunk>
+  %5 = mgp.assert %4, "Tensor type mismatch for argument 1"
+  mef.output %arg0, %arg2, %arg3 : !mef.chain, !mgp.cpu.tensor<2x4xf32>, !mgp.cpu.tensor<2x4xf32>
+}

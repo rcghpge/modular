@@ -127,6 +127,7 @@ struct InitState {
 
 /// Helper for modifying the 'execute' block.
 struct ExecuteState {
+  static constexpr int64_t kExtraArgStartIdx = 2;
   ExecuteState(MLIRContext *context, Block *execute);
 
   /// Returns 'root' chain, ie the first argument to the 'execute' block.
