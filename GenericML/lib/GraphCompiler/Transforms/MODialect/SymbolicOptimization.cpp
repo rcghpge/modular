@@ -2096,7 +2096,7 @@ template <typename ReshapeOpType>
 struct SinkSplitThroughStaticReshapeLikeOpsPattern
     : public DeviceAwareRewritePattern<OpRewritePattern, SplitOp> {
   SinkSplitThroughStaticReshapeLikeOpsPattern(MLIRContext *ctx)
-      : DeviceAwareRewritePattern<OpRewritePattern, SplitOp>(ctx, 2) {}
+      : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
   deviceAwareMatchAndRewrite(SplitOp op,
