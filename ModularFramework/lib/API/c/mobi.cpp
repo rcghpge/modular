@@ -26,7 +26,7 @@ using namespace mlir;
 
 MODULAR_API_EXPORT M_Attr *MOBI_tensorAttr(M_Module *m, StringRef name,
                                            void *data, M_Type *t) {
-  auto moType = dyn_cast<M::MO::TensorType>(t->type.getVal());
+  auto moType = cast<M::MO::TensorType>(t->type.getVal());
   auto dims = moType.getIntDims();
   int64_t size = moType.getDtype().getSizeInBytes();
   for (auto d : dims) {
@@ -43,7 +43,7 @@ MODULAR_API_EXPORT M_Attr *MOBI_tensorAttr(M_Module *m, StringRef name,
 MODULAR_API_EXPORT M_Attr *MOBI_tensorAttrFromFile(M_Module *m, StringRef name,
                                                    StringRef fileName,
                                                    M_Type *t) {
-  auto moType = dyn_cast<M::MO::TensorType>(t->type.getVal());
+  auto moType = cast<M::MO::TensorType>(t->type.getVal());
   auto dims = moType.getIntDims();
   int64_t size = moType.getDtype().getSizeInBytes();
   for (auto d : dims) {
@@ -186,36 +186,34 @@ MODULAR_API_EXPORT uint64_t MOBI_typeIsTensor(M_Type *t) {
 
 MODULAR_API_EXPORT bool MOBI_typeIsFloatTensor(M_Type *t) {
   return isa<M::MO::TensorType>(t->type.getVal()) &&
-         dyn_cast<M::MO::TensorType>(t->type.getVal()).getDtype().isFloat();
+         cast<M::MO::TensorType>(t->type.getVal()).getDtype().isFloat();
 }
 
 MODULAR_API_EXPORT bool MOBI_typeIsSITensor(M_Type *t) {
   return isa<M::MO::TensorType>(t->type.getVal()) &&
-         dyn_cast<M::MO::TensorType>(t->type.getVal()).getDtype().isSInt();
+         cast<M::MO::TensorType>(t->type.getVal()).getDtype().isSInt();
 }
 
 MODULAR_API_EXPORT bool MOBI_typeIsUITensor(M_Type *t) {
   return isa<M::MO::TensorType>(t->type.getVal()) &&
-         dyn_cast<M::MO::TensorType>(t->type.getVal()).getDtype().isUInt();
+         cast<M::MO::TensorType>(t->type.getVal()).getDtype().isUInt();
 }
 
 MODULAR_API_EXPORT bool MOBI_typeIsBoolTensor(M_Type *t) {
   return isa<M::MO::TensorType>(t->type.getVal()) &&
-         dyn_cast<M::MO::TensorType>(t->type.getVal()).getDtype().isBool();
+         cast<M::MO::TensorType>(t->type.getVal()).getDtype().isBool();
 }
 
 MODULAR_API_EXPORT uint64_t MOBI_getTensorTypeDTypeWidth(M_Type *t) {
-  return dyn_cast<M::MO::TensorType>(t->type.getVal())
-      .getDtype()
-      .getWidthInBits();
+  return cast<M::MO::TensorType>(t->type.getVal()).getDtype().getWidthInBits();
 }
 
 MODULAR_API_EXPORT uint64_t MOBI_getTensorTypeRank(M_Type *t) {
-  return dyn_cast<M::MO::TensorType>(t->type.getVal()).getRank();
+  return cast<M::MO::TensorType>(t->type.getVal()).getRank();
 }
 
 // Doesn't currently support parametric dimensions.
 // Dynamic dims return ShapedDim::kDynamic.
 MODULAR_API_EXPORT int64_t MOBI_getTensorTypeDim(M_Type *t, uint64_t dim) {
-  return dyn_cast<M::MO::TensorType>(t->type.getVal()).getIntDim(dim);
+  return cast<M::MO::TensorType>(t->type.getVal()).getIntDim(dim);
 }

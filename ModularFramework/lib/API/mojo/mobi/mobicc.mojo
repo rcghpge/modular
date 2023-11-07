@@ -4,6 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 
+from debug import trap
 from memory.unsafe import Pointer
 from os import getenv
 from sys import external_call
@@ -106,7 +107,7 @@ struct Builder:
         # copy Builders around.
         pass
 
-    fn func[T: AnyType](self, name: StringRef) raises -> T:
+    fn func[T: AnyType](self, name: StringRef) -> T:
         """`dlsym()`s a function called `name` in shared library `self.lib`.
 
         Parameters:
@@ -124,7 +125,8 @@ struct Builder:
         var f = self.lib.get_function[T](name)
         let ptr = Pointer.address_of(f).bitcast[Pointer[NoneType]]().load()
         if not ptr:
-            raise "cannot load " + String(name) + " from shared library"
+            print("cannot load " + String(name) + " from shared library")
+            trap()
 
         return f
 
@@ -136,7 +138,7 @@ struct Builder:
         name: StringRef,
         data: Pointer[AnyType],
         type: TypePtr,
-    ) raises -> AttrPtr:
+    ) -> AttrPtr:
         return self.func[
             fn (ModulePtr, StringRef, Pointer[AnyType], TypePtr) -> AttrPtr
         ]("MOBI_tensorAttr")(module, name, data, type)
@@ -147,7 +149,7 @@ struct Builder:
         name: StringRef,
         data: DTypePointer[DType.invalid],
         type: TypePtr,
-    ) raises -> AttrPtr:
+    ) -> AttrPtr:
         return self.func[
             fn (
                 ModulePtr, StringRef, DTypePointer[DType.invalid], TypePtr
@@ -160,15 +162,15 @@ struct Builder:
         name: StringRef,
         file_name: StringRef,
         type: TypePtr,
-    ) raises -> AttrPtr:
+    ) -> AttrPtr:
         return self.func[
             fn (ModulePtr, StringRef, StringRef, TypePtr) -> AttrPtr
         ]("MOBI_tensorAttrFromFile")(module, name, file_name, type)
 
-    fn new_attr_map(self) raises -> AttrMapPtr:
+    fn new_attr_map(self) -> AttrMapPtr:
         return self.func[fn () -> AttrMapPtr]("MOBI_newAttrMap")()
 
-    fn add_attr(self, inout map: AttrMapPtr, a: AttrPtr) raises:
+    fn add_attr(self, inout map: AttrMapPtr, a: AttrPtr):
         return self.func[fn (AttrMapPtr, AttrPtr) -> NoneType]("MOBI_addAttr")(
             map, a
         )
@@ -182,7 +184,7 @@ struct Builder:
         name: StringRef,
         inTypes: ArityPtr,
         outTypes: ArityPtr,
-    ) raises -> GraphPtr:
+    ) -> GraphPtr:
         return self.func[
             fn (ModulePtr, LocPtr, StringRef, ArityPtr, ArityPtr) -> GraphPtr
         ]("MOBI_newGraph")(module, loc, name, inTypes, outTypes)
@@ -191,7 +193,7 @@ struct Builder:
         self,
         graph: GraphPtr,
         pos: UInt32,
-    ) raises -> SymbolPtr:
+    ) -> SymbolPtr:
         return self.func[fn (GraphPtr, UInt32) -> SymbolPtr]("MOBI_getInput")(
             graph, pos
         )
@@ -204,7 +206,7 @@ struct Builder:
         inputs: TuplePtr,
         outTypes: ArityPtr,
         attrs: AttrMapPtr,
-    ) raises -> TuplePtr:
+    ) -> TuplePtr:
         return self.func[
             fn (
                 GraphPtr, LocPtr, StringRef, TuplePtr, ArityPtr, AttrMapPtr
@@ -213,18 +215,18 @@ struct Builder:
 
     ### Location helpers
 
-    fn unknown_loc(self, module: ModulePtr) raises -> LocPtr:
+    fn unknown_loc(self, module: ModulePtr) -> LocPtr:
         return self.func[fn (ModulePtr) -> LocPtr]("MOBI_unknownLoc")(module)
 
     ### Module helpers
 
-    fn new_module(self) raises -> ModulePtr:
+    fn new_module(self) -> ModulePtr:
         return self.func[fn () -> ModulePtr]("MOBI_newModule")()
 
-    fn debug_print_module(self, module: ModulePtr) raises:
+    fn debug_print_module(self, module: ModulePtr):
         self.func[fn (ModulePtr) -> NoneType]("MOBI_debugPrintModule")(module)
 
-    fn module_to_string(self, module: ModulePtr) raises -> String:
+    fn module_to_string(self, module: ModulePtr) -> String:
         let ret = self.func[fn (ModulePtr) -> DTypePointer[DType.int8]](
             "MOBI_moduleToString"
         )(module)
@@ -234,22 +236,22 @@ struct Builder:
 
     ### Symbol helers
 
-    fn new_tuple(self) raises -> TuplePtr:
+    fn new_tuple(self) -> TuplePtr:
         return self.func[fn () -> TuplePtr]("MOBI_newTuple")()
 
-    fn add_symbol(self, inout t: TuplePtr, s: SymbolPtr) raises:
+    fn add_symbol(self, inout t: TuplePtr, s: SymbolPtr):
         return self.func[fn (TuplePtr, SymbolPtr) -> NoneType](
             "MOBI_addSymbol"
         )(t, s)
 
-    fn get_symbol(self, t: TuplePtr, pos: UInt32) raises -> SymbolPtr:
+    fn get_symbol(self, t: TuplePtr, pos: UInt32) -> SymbolPtr:
         return self.func[fn (TuplePtr, UInt32) -> SymbolPtr]("MOBI_getSymbol")(
             t, pos
         )
 
     ### Type helers
 
-    fn dynamic_dim(self, module: ModulePtr) raises -> Int64:
+    fn dynamic_dim(self, module: ModulePtr) -> Int64:
         return self.func[fn (ModulePtr) -> Int64]("MOBI_dynamicDim")(module)
 
     fn f32(
@@ -257,7 +259,7 @@ struct Builder:
         module: ModulePtr,
         dims: Pointer[Int64],
         rank: Int64,
-    ) raises -> TypePtr:
+    ) -> TypePtr:
         return self.func[fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr](
             "MOBI_f32"
         )(module, dims, rank)
@@ -268,7 +270,7 @@ struct Builder:
         width: UInt64,
         dims: Pointer[Int64],
         rank: Int64,
-    ) raises -> TypePtr:
+    ) -> TypePtr:
         return self.func[
             fn (ModulePtr, UInt64, Pointer[Int64], Int64) -> TypePtr
         ]("MOBI_ui")(module, width, dims, rank)
@@ -279,7 +281,7 @@ struct Builder:
         width: UInt64,
         dims: Pointer[Int64],
         rank: Int64,
-    ) raises -> TypePtr:
+    ) -> TypePtr:
         return self.func[
             fn (ModulePtr, UInt64, Pointer[Int64], Int64) -> TypePtr
         ]("MOBI_si")(module, width, dims, rank)
@@ -289,12 +291,12 @@ struct Builder:
         module: ModulePtr,
         dims: Pointer[Int64],
         rank: Int64,
-    ) raises -> TypePtr:
+    ) -> TypePtr:
         return self.func[fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr](
             "MOBI_bool"
         )(module, dims, rank)
 
-    fn new_arity(self) raises -> ArityPtr:
+    fn new_arity(self) -> ArityPtr:
         return self.func[fn () -> ArityPtr]("MOBI_newArity")()
 
     fn del_arity(self, a: ArityPtr) raises -> None:
@@ -310,30 +312,30 @@ struct Builder:
             arity, t
         )
 
-    fn type_is_float_tensor(self, t: TypePtr) raises -> Bool:
+    fn type_is_float_tensor(self, t: TypePtr) -> Bool:
         return self.func[fn (TypePtr) -> Bool]("MOBI_typeIsFloatTensor")(t)
 
-    fn type_is_si_tensor(self, t: TypePtr) raises -> Bool:
+    fn type_is_si_tensor(self, t: TypePtr) -> Bool:
         return self.func[fn (TypePtr) -> Bool]("MOBI_typeIsSITensor")(t)
 
-    fn type_is_ui_tensor(self, t: TypePtr) raises -> Bool:
+    fn type_is_ui_tensor(self, t: TypePtr) -> Bool:
         return self.func[fn (TypePtr) -> Bool]("MOBI_typeIsUITensor")(t)
 
-    fn type_is_bool_tensor(self, t: TypePtr) raises -> Bool:
+    fn type_is_bool_tensor(self, t: TypePtr) -> Bool:
         return self.func[fn (TypePtr) -> Bool]("MOBI_typeIsBoolTensor")(t)
 
-    fn type_is_tensor(self, t: TypePtr) raises -> Bool:
+    fn type_is_tensor(self, t: TypePtr) -> Bool:
         return self.func[fn (TypePtr) -> Bool]("MOBI_typeIsTensor")(t)
 
-    fn tensor_dtype_width(self, t: TypePtr) raises -> UInt64:
+    fn tensor_dtype_width(self, t: TypePtr) -> UInt64:
         return self.func[fn (TypePtr) -> UInt64](
             "MOBI_getTensorTypeDTypeWidth"
         )(t)
 
-    fn tensor_rank(self, t: TypePtr) raises -> UInt64:
+    fn tensor_rank(self, t: TypePtr) -> UInt64:
         return self.func[fn (TypePtr) -> UInt64]("MOBI_getTensorTypeRank")(t)
 
-    fn tensor_dim(self, t: TypePtr, dim: UInt64) raises -> Int64:
+    fn tensor_dim(self, t: TypePtr, dim: UInt64) -> Int64:
         return self.func[fn (TypePtr, UInt64) -> Int64](
             "MOBI_getTensorTypeDim"
         )(t, dim)
@@ -342,10 +344,10 @@ struct Builder:
 
     # TODO: Merge with engine API
 
-    fn new_rt_tuple(self) raises -> TensorTuplePtr:
+    fn new_rt_tuple(self) -> TensorTuplePtr:
         return self.func[fn () -> TensorTuplePtr]("MOF_newTensorTuple")()
 
-    fn add_si32_rt_scalar(self, inout t: TensorTuplePtr, value: Int32) raises:
+    fn add_si32_rt_scalar(self, inout t: TensorTuplePtr, value: Int32):
         self.func[fn (TensorTuplePtr, Int32) -> NoneType]("MOF_addI32Scalar")(
             t, value
         )
@@ -356,7 +358,7 @@ struct Builder:
         data: DTypePointer[DType.invalid],
         dims: Pointer[Int64],
         rank: Int64,
-    ) raises:
+    ):
         self.func[
             fn (
                 TensorTuplePtr,
@@ -372,7 +374,7 @@ struct Builder:
         file_name: StringRef,
         dims: Pointer[Int64],
         rank: Int64,
-    ) raises:
+    ):
         self.func[
             fn (TensorTuplePtr, StringRef, Pointer[Int64], Int64) -> NoneType
         ]("MOF_addF32TensorFromFile")(t, file_name, dims, rank)
@@ -382,10 +384,10 @@ struct Builder:
         module: ModulePtr,
         args: TensorTuplePtr,
         inout outs: TensorTuplePtr,
-    ) raises -> UInt32:
+    ) -> UInt32:
         return self.func[
             fn (ModulePtr, TensorTuplePtr, TensorTuplePtr) -> UInt32
         ]("MOF_executeModule")(module, args, outs)
 
-    fn debug_print_tensors(self, t: TensorTuplePtr) raises:
+    fn debug_print_tensors(self, t: TensorTuplePtr):
         self.func[fn (TensorTuplePtr) -> NoneType]("MOF_debugPrintTensors")(t)
