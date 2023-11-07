@@ -186,7 +186,7 @@ MojoLibraryAnalysis::get(MLIRContext *ctx, const std::string &extraLibPaths) {
       MO_TO_MOJO(MO::AndOp, "$math::$math::logical_and"),
       MO_TO_MOJO(MO::ArgMaxOp, "argmax"),
       MO_TO_MOJO(MO::ArgMinOp, "argmin"),
-      MO_TO_MOJO(MO::AvgPoolOp, "$Pool::avg_pool"),
+      MO_TO_MOJO(MO::AvgPoolOp, "$MOGG::avg_pool"),
       MO_TO_MOJO(MO::BottomKOp, "$MOGG::bottom_k"),
       MO_TO_MOJO(MO::BroadcastShapeOp, "$MOGG::broadcast_shape"),
       MO_TO_MOJO(MO::ConcatOp, "$MOGG::concat"),
