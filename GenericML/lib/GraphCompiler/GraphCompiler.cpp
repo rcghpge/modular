@@ -18,7 +18,6 @@
 #include "GenericML/GraphCompiler/Transforms/MOQDialect/MOQTransforms.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
-#include "KGEN/ToolCommon/InitAllDialects.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"

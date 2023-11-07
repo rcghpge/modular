@@ -29,9 +29,10 @@ def MOToMOGG : Pass<"mo-to-mogg", "ModuleOp"> {
       "M::KGEN::KGENDialect",
       "M::KGEN::LIT::LITDialect",
       "M::KGEN::POP::POPDialect",
-      "mlir::index::IndexDialect",
-      "M::DebugInfo::DebugInfoDialect",
       "M::HLCF::HLCFDialect",
+      "M::DebugInfo::DebugInfoDialect",
+      "mlir::NVVM::NVVMDialect",
+      "mlir::index::IndexDialect",
   ];
 }
 

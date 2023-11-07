@@ -20,6 +20,9 @@
 #include "Support/ML/TensorShape.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
+#include "mlir/Dialect/Index/IR/IndexDialect.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+
 #include "LoweringHelper.h"
 
 using namespace M;
