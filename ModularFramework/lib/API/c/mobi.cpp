@@ -217,3 +217,15 @@ MODULAR_API_EXPORT uint64_t MOBI_getTensorTypeRank(M_Type *t) {
 MODULAR_API_EXPORT int64_t MOBI_getTensorTypeDim(M_Type *t, uint64_t dim) {
   return cast<M::MO::TensorType>(t->type.getVal()).getIntDim(dim);
 }
+
+/// Retrieves the type of `symbol`.
+/// The caller is responsible for freeing the returning `M_Type *` using
+/// `MOBI_freeType()`.
+///
+/// Returns a pointer to a new `M_Type` containing `symbol`'s type on success.
+MODULAR_API_EXPORT M_Type *MOBI_typeOfSymbol(M_Symbol *symbol) {
+  return new M_Type{MOBI::Type(symbol->symbol.getVal().getType())};
+}
+
+/// Deallocates memory associated with type `t`.
+MODULAR_API_EXPORT void MOBI_freeType(M_Type *t) { delete t; }

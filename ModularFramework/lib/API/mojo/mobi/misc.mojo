@@ -7,6 +7,7 @@
 from .graph import Graph
 from .mobicc import AttrMapPtr, ArityPtr, TuplePtr, SymbolPtr
 from .symbol import Symbol
+from .type import Type
 
 
 struct AttrMap:
@@ -28,6 +29,11 @@ struct Arity:
     fn __init__(inout self, a: ArityPtr, l: Int):
         self.a = a
         self.l = l
+
+    fn __init__(inout self, t: Type) raises:
+        self.l = 1
+        self.a = t.builder.new_arity()
+        t.builder.add_type(self.a, t.t)
 
     fn __len__(self) -> Int:
         return self.l

@@ -108,20 +108,7 @@ struct Builder:
         pass
 
     fn func[T: AnyType](self, name: StringRef) -> T:
-        """`dlsym()`s a function called `name` in shared library `self.lib`.
-
-        Parameters:
-            T: Type of the function.
-
-        Args:
-            name: Name of the function to `dlsym()`.
-
-        Returns:
-            `dlsym()`ed function.
-
-        Raises:
-            If the function can't be `dlsym()`ed.
-        """
+        """`dlsym()`s a function called `name` in shared library `self.lib`."""
         var f = self.lib.get_function[T](name)
         let ptr = Pointer.address_of(f).bitcast[Pointer[NoneType]]().load()
         if not ptr:
@@ -299,15 +286,7 @@ struct Builder:
     fn new_arity(self) -> ArityPtr:
         return self.func[fn () -> ArityPtr]("MOBI_newArity")()
 
-    fn del_arity(self, a: ArityPtr) raises -> None:
-        """Frees the memory associated with type range `a`.
-
-        Args:
-            a: Pointer to `Arity` to be freed.
-        """
-        return self.func[fn (ArityPtr) -> None]("MOBI_freeArity")(a)
-
-    fn add_type(self, inout arity: ArityPtr, t: TypePtr) raises:
+    fn add_type(self, inout arity: ArityPtr, t: TypePtr):
         return self.func[fn (ArityPtr, TypePtr) -> NoneType]("MOBI_addType")(
             arity, t
         )
@@ -339,6 +318,13 @@ struct Builder:
         return self.func[fn (TypePtr, UInt64) -> Int64](
             "MOBI_getTensorTypeDim"
         )(t, dim)
+
+    fn typeof(self, s: SymbolPtr) -> TypePtr:
+        """The result must be freed by the caller using `del_type()`."""
+        return self.func[fn (SymbolPtr) -> TypePtr]("MOBI_typeOfSymbol")(s)
+
+    fn del_type(self, owned t: TypePtr) -> None:
+        self.func[fn (TypePtr) -> None]("MOBI_freeType")(t)
 
     ### Execution helpers
 

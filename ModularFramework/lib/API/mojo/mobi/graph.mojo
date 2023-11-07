@@ -8,6 +8,7 @@ from .misc import Arity, AttrMap, Tup
 from .mobicc import AttrPtr, Builder, GraphPtr, SymbolPtr, TuplePtr
 from .module import Module
 from .symbol import Symbol
+from .type import Type
 
 from memory.unsafe import Pointer
 from tensor import TensorShape
@@ -34,6 +35,14 @@ struct Graph:
             let val = __get_address_as_lvalue(values[i])
             self.m.builder.add_symbol(t, val.s)
         return Tup(t, len(values), self)
+
+    fn op(
+        inout self,
+        name: StringRef,
+        input: Symbol,
+        out_type: Type,
+    ) raises -> Tup:
+        return self.op(name, Tup(input), Arity(out_type))
 
     fn op(
         inout self,
