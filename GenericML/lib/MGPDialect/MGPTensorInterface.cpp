@@ -24,6 +24,36 @@ TensorBufferDialectInterface::getAllInterfaces(ModelOp modelOp) {
   return interfaces;
 }
 
+BufferBuilderContext
+TensorBufferDialectInterface::getAllBufferBuilders(ModelOp modelOp) {
+  DenseSet<TensorBufferDialectInterface *> interfaces =
+      getAllInterfaces(modelOp);
+  BufferBuilderContext builderContext(
+      DeviceRefAttr::get(modelOp.getContext(), kCPULabel, 0));
+
+  // First create the host device's builder, since other builder may need
+  // to refer to it.
+  for (TensorBufferDialectInterface *interface : interfaces)
+    interface->addHostBuilder(modelOp, builderContext);
+
+  // Then create the rest of the builders.
+  for (TensorBufferDialectInterface *interface : interfaces)
+    interface->addNonHostBuilders(modelOp, builderContext);
+
+  return builderContext;
+}
+
+BufferBuilder *TensorBufferDialectInterface::getBuilderForOp(
+    const BufferBuilderContext &builderContext, Operation *op) {
+  if (auto interface =
+          dyn_cast<TensorBufferDialectInterface>(op->getDialect())) {
+    DeviceRefAttr device = interface->getDevice(builderContext, op);
+    return builderContext.getBufferBuilder(device);
+  }
+
+  return builderContext.getHostBufferBuilder();
+}
+
 MGPTensorExtractOpInterface CpuTensorBufferDialectInterface::createExtract(
     OpBuilder *builder, mlir::Location loc, Value tensor) {
   return dyn_cast<MGPTensorExtractOpInterface>(
@@ -52,7 +82,7 @@ Type CpuTensorBufferDialectInterface::createBufferType(OpBuilder *builder,
       dyn_cast<CpuTensorType>(tensorType).getTensorSpec());
 }
 
-void CpuTensorBufferDialectInterface::addBuilders(
+void CpuTensorBufferDialectInterface::addHostBuilder(
     ModelOp modelOp, BufferBuilderContext &builderContext) {
   // The type builder is easy.
   builderContext.registerTypeBuilder(builderContext.getHostDevice(),
@@ -82,6 +112,9 @@ void CpuTensorBufferDialectInterface::addBuilders(
   builderContext.registerBufferBuilder(builderContext.getHostDevice(),
                                        std::move(cpuBufferBuilder));
 }
+
+void CpuTensorBufferDialectInterface::addNonHostBuilders(
+    ModelOp modelOp, BufferBuilderContext &builderContext) {}
 
 DeviceRefAttr CpuTensorBufferDialectInterface::getDevice(
     const BufferBuilderContext &builderContext, Operation *op) {

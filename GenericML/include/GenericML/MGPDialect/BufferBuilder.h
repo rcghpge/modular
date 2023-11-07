@@ -431,6 +431,9 @@ struct BufferizedTensor {
 //===----------------------------------------------------------------------===//
 
 /// Collects the type and buffer builders for every device in a model.
+///
+/// Not thread safe. Should only be used per-model and not shared across
+/// models.
 class BufferBuilderContext {
 public:
   BufferBuilderContext(DeviceRefAttr hostDevice) : hostDevice(hostDevice) {}

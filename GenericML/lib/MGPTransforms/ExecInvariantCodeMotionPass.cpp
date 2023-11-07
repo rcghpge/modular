@@ -7,6 +7,7 @@
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 
 #include "GenericML/MGPDialect/BufferBuilder.h"
+#include "GenericML/MGPDialect/MGPDialect.h"
 #include "GenericML/MGPDialect/MGPOpInterfaces.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
@@ -55,9 +56,7 @@ class ExecInvariantCodeMotionPass
   /// Returns true if op returns a buffer and could be moved to the 'init'
   /// block.
   static bool isLiftableBufferOp(Operation *op) {
-    if (auto liftableOp = dyn_cast<MGPLiftableBufferCreateOpInterface>(op))
-      return liftableOp.isLiftable();
-    return false;
+    return isLiftableTrivialBufferOp(op) || isa<CpuBufferAllocSpecOp>(op);
   }
 
   /// Returns true if op returns a buffer and could be moved to the 'init'
@@ -65,14 +64,7 @@ class ExecInvariantCodeMotionPass
   /// the buffer. Otherwise, assume the cost of caching and retrieving the
   /// buffer outweighs the cost of simply executing the op.
   static bool isLiftableTrivialBufferOp(Operation *op) {
-    if (isLiftableBufferOp(op)) {
-      // If the op takes a tensor spec operand then assume it's not 'trivial',
-      // and thus should be lifted into the 'init' block even if no other
-      // 'init' block computations depend on it.
-      return llvm::all_of(op->getOperandTypes(),
-                          [](Type ty) { return !isa<CpuTensorSpecType>(ty); });
-    }
-    return false;
+    return isa<CpuBufferAllocStaticOp, CpuBufferConstantOp>(op);
   }
 
   /// Predicate for liftable chain op, i.e., operation which produces a single
@@ -80,7 +72,7 @@ class ExecInvariantCodeMotionPass
   /// init block, so that dependency is preserved in the exec block.
   static bool isLiftableChainOp(Operation *op) {
     return op->getNumResults() == 1 &&
-           isa<MEF::MEFChainTypeInterface>(op->getResultTypes().front());
+           isa<MEF::ChainType>(op->getResultTypes().front());
   }
 
   /// Returns true if the result of op cannot be cached, but it is ok for the
@@ -117,7 +109,7 @@ class ExecInvariantCodeMotionPass
 
     // We'll consider kernel launches to be re-orderable, though technically
     // they may have side-effects.
-    if (isa<MGPKernelExecuteOpInterface>(op))
+    if (isa<MGP::CpuKernelExecuteOp>(op))
       return true;
 
     // No luck.
@@ -127,19 +119,6 @@ class ExecInvariantCodeMotionPass
   //===----------------------------------------------------------------------===//
   // Utils
   //===----------------------------------------------------------------------===//
-
-  /// Returns the buffer builder appropriate for the device which will execute
-  /// op.
-  BufferBuilder *getBuilderForOp(Operation *op) {
-    if (auto tensorBufferInterface =
-            dyn_cast<TensorBufferDialectInterface>(op->getDialect())) {
-      DeviceRefAttr device =
-          tensorBufferInterface->getDevice(*builderContext, op);
-      return builderContext->getBufferBuilder(device);
-    }
-
-    return builderContext->getHostBufferBuilder();
-  }
 
   static void expandByTransitiveInputs(DenseSet<Operation *> &ops) {
     SmallVector<Operation *> worklist(ops.begin(), ops.end());
@@ -327,7 +306,8 @@ class ExecInvariantCodeMotionPass
       // Although not required, this makes debugging easier.
       execBuilder.setInsertionPoint(&op);
 
-      BufferBuilder *builder = getBuilderForOp(&op);
+      BufferBuilder *builder =
+          TensorBufferDialectInterface::getBuilderForOp(*builderContext, &op);
 
       if (isLiftableChainOp(&op)) {
         Value oldChain = op.getResult(0);
@@ -367,7 +347,6 @@ class ExecInvariantCodeMotionPass
         //    completed.
         //  - recover the cached buffer in the 'execute' block.
         //  - replace all uses with the recovered buffer.
-        BufferBuilder *builder = getBuilderForOp(&op);
         auto origBuffer = op.getResult(0);
         auto [bufferCacheOutChain, currBufferSlot] = builder->cache(
             initBuilder, op.getLoc(), placeholderBufferCacheInputChain,
@@ -439,13 +418,9 @@ class ExecInvariantCodeMotionPass
     ExecuteState executeState(modelOp.getContext(), modelOp.getExecuteBlock());
 
     // Recover type and buffer builders appropriate for the model.
-    DenseSet<TensorBufferDialectInterface *> interfaces =
-        TensorBufferDialectInterface::getAllInterfaces(modelOp);
-    BufferBuilderContext theBuilderContext(
-        DeviceRefAttr::get(modelOp.getContext(), kCPULabel, 0));
+    BufferBuilderContext theBuilderContext =
+        TensorBufferDialectInterface::getAllBufferBuilders(modelOp);
     builderContext = &theBuilderContext;
-    for (TensorBufferDialectInterface *interface : interfaces)
-      interface->addBuilders(modelOp, *builderContext);
 
     initLiftableUseCountMaps(executeState);
     findUnliftableOpsAndOpsToRecompute(executeState);

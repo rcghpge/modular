@@ -38,16 +38,56 @@ def MGP_BufferAllocOpInterface : OpInterface<"MGPBufferAllocOpInterface"> {
 
 def MGP_LiftableBufferCreateOpInterface : OpInterface<"MGPLiftableBufferCreateOpInterface"> {
   let description = [{
-    Interface for ops which return a buffer, either by allocation or
-    construction (eg a constant). Such ops can typically be moved to the
-    'init' block, and the resulting buffer can be cached within an
-    `!mgp.context` slot if necessary.
+    Interface for ops which may return a buffer as their only result and can be
+    safely moved from the 'execute' to the 'init' block. The buffer may be from
+    an allocation or a constant. The buffer can be cached within an
+    `!mgp.context` slot if it is still needed by the 'execute' block.
   }];
   let cppNamespace = "::M::MGP";
   let methods = [
     InterfaceMethod<
-      "Returns true if op is liftable to the 'init' block.",
-      "bool", "isLiftable", (ins), "return true;"
+      "Returns the buffer created by the liftable op, or null if op is not liftable.",
+      "mlir::Value", "getOutBuffer", (ins),
+      "return $_op->getNumResults() == 1 ? $_op->getResult(0) : nullptr;"
+    >,
+    InterfaceMethod<
+      "Returns true if the op is 'trivial', in the sense that the op latency is "
+      "comparable to that of retrieving a buffer from an `!mgp.context` slot.",
+      "bool", "isTrivial", (ins), "", "return false;"
+    >,
+  ];
+}
+
+def MGP_LiftableChainCreateOpInterface : OpInterface<"MGPLiftableChainCreateOpInterface"> {
+  let description = [{
+    Interface for ops which may return a chain-like type as their only result and
+    can be safely moved from the 'execute' to the 'init' block. The chain
+    indicates the op has completed. Any execution serialization enforced by the
+    result chain must be maintained after the op is moved.
+
+    If the op performs observable side effects then 'safely moved' means it is
+    ok for those side effects to occur once on 'init' instead of once per
+    'execute'.
+  }];
+  let cppNamespace = "::M::MGP";
+  let methods = [
+    InterfaceMethod<
+      "Returns the chain created by the liftable op, or null if op is not liftable.",
+      "mlir::Value", "getOutChain", (ins),
+      "return $_op->getNumResults() == 1 ? $_op->getResult(0) : nullptr;"
+    >,
+  ];
+}
+
+def MGP_InOutSemanticsOpInterface : OpInterface<"MGPInOutSemanticsOpInterface"> {
+  let description = [{
+    Interface for ops which may mutate some of their operands.
+  }];
+  let cppNamespace = "::M::MGP";
+  let methods = [
+    InterfaceMethod<
+      "Returns the InOutSemantics for the operand at the given index.",
+      "::M::InOutSignatureAttr::InOutSemantics", "getInOutSemantics", (ins "size_t":$index)
     >,
   ];
 }

@@ -442,6 +442,16 @@ LogicalResult CpuBufferReallocSpecOp::inferReturnTypes(
 void CpuBufferReallocSpecOp::setInChain(Value chain) { setOperand(0, chain); }
 
 //===----------------------------------------------------------------------===//
+// CpuBufferSetWithIndex
+//===----------------------------------------------------------------------===//
+
+InOutSignatureAttr::InOutSemantics
+CpuBufferSetWithIndexOp::getInOutSemantics(size_t index) {
+  assert(index < getNumOperands());
+  return index == 0 ? InOutSignatureAttr::kOut : InOutSignatureAttr::kIn;
+}
+
+//===----------------------------------------------------------------------===//
 // CpuBufferConcatOp
 //===----------------------------------------------------------------------===//
 
@@ -614,6 +624,16 @@ LogicalResult CpuBufferSplitBorrowOp::verify() {
                          << expectedInType << " vs " << getInBuffer().getType()
                          << ").";
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CpuBufferSetOp
+//===----------------------------------------------------------------------===//
+
+InOutSignatureAttr::InOutSemantics
+CpuBufferSetOp::getInOutSemantics(size_t index) {
+  assert(index == 0);
+  return InOutSignatureAttr::kOut;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1087,6 +1107,15 @@ static bool isSubtype(Type ty1, Type ty2) {
     return isSubtype(cpuTensorTy1, cpuTensorTy2);
 
   return ty1 == ty2;
+}
+
+InOutSignatureAttr::InOutSemantics
+CpuKernelExecuteOp::getInOutSemantics(size_t index) {
+  assert(index < getNumOperands());
+  // inChain, theContext, and inDimensions always read-only
+  if (index < 2 || index >= 2 + getArgs().size())
+    return InOutSignatureAttr::kIn;
+  return getCInOutSignature()[index - 2];
 }
 
 //===----------------------------------------------------------------------===//

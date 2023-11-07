@@ -38,7 +38,7 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
     Pure,
     ConstantLike,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>]> {
+    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>]> {
   let summary = [{
     Creates a buffer hosted on the CPU whose data is aliased with
     the bytes in the given attribute.
@@ -90,8 +90,12 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
   let hasFolder = 1;
 
   let extraClassDeclaration = [{
-     /// Returns the buffer's alignment.
-     std::optional<uint64_t> getOptAlign();
+    /// Returns the buffer's alignment.
+    std::optional<uint64_t> getOptAlign();
+  }];
+
+  let extraClassDefinition = [{
+    bool CpuBufferConstantOp::isTrivial() { return true; }
   }];
 
   let builders = [
@@ -197,7 +201,7 @@ def CpuBufferGetCachedOp : MGP_Op<"cpu.buffer.get_cached", [
 def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
-    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>]> {
+    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>]> {
   let summary = [{
     Allocates an uninitialized buffer on the CPU with size taken from
     statically known constant.
@@ -236,6 +240,10 @@ def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
     $inChain `,` $aSize (`,` `align` $bRawAlign^)? attr-dict
   }];
   let hasVerifier = 1;
+
+  let extraClassDefinition = [{
+    bool CpuBufferAllocStaticOp::isTrivial() { return true; }
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -244,7 +252,8 @@ def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
 
 def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>]> {
+    DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
+    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>]> {
   let summary = [{
     Allocates an uninitialized buffer on the CPU with size taken from index
     operand.
@@ -279,6 +288,10 @@ def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
     $inChain `,` $runtimeSize (`,` `align` $rawAlign^)? attr-dict
   }];
   let hasVerifier = 1;
+
+  let extraClassDefinition = [{
+    bool CpuBufferAllocDynamicOp::isTrivial() { return true; }
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -533,7 +546,9 @@ def CpuBufferReallocSpecOp : MGP_Op<"cpu.buffer.realloc.spec", [
 // CpuBufferSetWithIndex
 //===----------------------------------------------------------------------===//
 
-def CpuBufferSetWithIndexOp : MGP_Op<"cpu.buffer.set_with_index"> {
+def CpuBufferSetWithIndexOp : MGP_Op<"cpu.buffer.set_with_index", [
+    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
+    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>]> {
   let summary = "Set a buffer with the values from index inputs.";
   let description = [{
     The runtime index values will be sign extended or truncated based on the
@@ -595,7 +610,8 @@ def CpuBufferCopyOp : MGP_Op<"cpu.buffer.copy", [
 // CpuBufferConcatOp
 //===----------------------------------------------------------------------===//
 
-def CpuBufferConcatOp : MGP_Op<"cpu.buffer.concat"> {
+def CpuBufferConcatOp : MGP_Op<"cpu.buffer.concat", [
+    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>]> {
   let summary = "Concatenates a sequence of input buffers into an output "
                 "buffer.";
   let description = [{
@@ -820,7 +836,8 @@ def CpuBufferSplitBorrowOp : MGP_Op<"cpu.buffer.split.borrow", [
 //===----------------------------------------------------------------------===//
 
 def CpuBufferSetOp : MGP_Op<"cpu.buffer.set", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>]> {
   let summary = [{
     Set each byte of the given buffer to the given value (default = 0).
   }];
@@ -1583,7 +1600,8 @@ def CASLookupOp : MGP_Op<"cas.lookup", [
 // CASStoreOp
 //===----------------------------------------------------------------------===//
 
-def CASStoreOp : MGP_Op<"cas.store"> {
+def CASStoreOp : MGP_Op<"cas.store", [
+    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>]> {
   let summary = "Insert a copy of an !mgp.cpu.buffer in the CAS instance at the "
                 "given slot under the given key.";
   let description = [{
@@ -1656,7 +1674,8 @@ def ToGRTBoolOp : MGP_Op<"to_grt_bool"> {
 // AssertOp
 //===----------------------------------------------------------------------===//
 
-def AssertOp : MGP_Op<"assert"> {
+def AssertOp : MGP_Op<"assert", [
+    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>]> {
   let summary = "Assert that a boolean condition is true.";
   let description = [{
     Return an error with the given message if the condition is false.
@@ -1744,7 +1763,9 @@ def CpuKernelLoadArchiveOp : MGP_Op<"cpu.kernel.load_archive"> {
 def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
     AttrSizedOperandSegments,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGP_KernelExecuteOpInterface>]> {
+    DeclareOpInterfaceMethods<MGP_KernelExecuteOpInterface>,
+    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
+    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>]> {
   let summary = "Executes a kernel loaded into the compiled kernel context.";
   let description = [{
     Executes a kernel already loaded into the compiled kernel context at the
