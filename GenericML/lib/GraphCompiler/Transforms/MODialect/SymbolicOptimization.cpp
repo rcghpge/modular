@@ -1769,8 +1769,7 @@ struct SplitToSlicePattern
 /// patterns. This is the converse of SplitToSlicePattern.
 struct SliceToSplitPattern
     : public DeviceAwareRewritePattern<OpRewritePattern, SliceOp> {
-  SliceToSplitPattern(MLIRContext *ctx)
-      : DeviceAwareRewritePattern<OpRewritePattern, SliceOp>(ctx, 2) {}
+  SliceToSplitPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
 
   LogicalResult
   deviceAwareMatchAndRewrite(MO::SliceOp op,
