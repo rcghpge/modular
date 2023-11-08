@@ -18,6 +18,3 @@ struct Type:
 
     # Pointer to `Type` implementation.
     var t: TypePtr
-
-    def __del__(owned self) -> None:
-        mobicc.del_type(self.t)
