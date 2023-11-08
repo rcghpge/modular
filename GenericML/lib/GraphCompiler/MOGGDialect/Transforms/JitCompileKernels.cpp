@@ -7,8 +7,8 @@
 #include <string>
 #include <unordered_map>
 
-#include "GenericML/GraphCompiler/KGENStubBuilder/Builder.h"
-#include "GenericML/GraphCompiler/KGENStubBuilder/StubCompiler.h"
+#include "GenericML/GraphCompiler/MOGGSupport/KGENStubBuilder.h"
+#include "GenericML/GraphCompiler/MOGGSupport/KGENStubCompiler.h"
 
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
