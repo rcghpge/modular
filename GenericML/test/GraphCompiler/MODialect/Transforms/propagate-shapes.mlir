@@ -227,3 +227,18 @@ mo.graph @non_mo_tensor_input<D0 -> D1>(
   // CHECK-NEXT: mo.output %[[INPUT]], %[[SHAPE]] : !mo.tensor<[[[D0]]], f32>, !mosh.ape
   mo.output<D0> %input, %shape : !mo.tensor<[D0], f32>, !mosh.ape
 }
+
+// CHECK-LABEL: mo.graph @internal_dim_param_as_output_binding
+// CHECK-SAME:  <[[D0:.*]] -> [[RES:.*]]: !mosh.ape>
+// CHECK-SAME:    %[[INPUT:.*]]: !mo.tensor<[[[D0]]], f32>
+// CHECK-SAME:  ) -> !mo.tensor<[[RES]], si64> no_inline {
+mo.graph @internal_dim_param_as_output_binding<D0 -> res: !mosh.ape>(
+  %input: !mo.tensor<[D0], f32>
+) -> !mo.tensor<res, si64> {
+
+  // CHECK-NEXT: %[[RES:.*]] = mo.arg_nonzero<() -> [[D2:.*]]>(%[[INPUT]]) : (!mo.tensor<[[[D0]]], f32>) -> !mo.tensor<[[[D2]], 1], si64>
+  %res = mo.arg_nonzero<() -> D2>(%input) : (!mo.tensor<[D0], f32>) -> !mo.tensor<[D2, 1], si64>
+
+  // CHECK-NEXT: mo.output<:!mosh.ape [[[D2]], 1]> %[[RES]] : !mo.tensor<[[[D2]], 1], si64>
+  mo.output<:!mosh.ape [D2, 1]> %res : !mo.tensor<[D2, 1], si64>
+}
