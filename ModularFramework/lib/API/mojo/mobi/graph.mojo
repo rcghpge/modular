@@ -82,40 +82,39 @@ struct Graph:
         dtype: DType
     ](
         inout self,
-        m: Module,
         shape: TensorShape,
         value: DTypePointer[dtype],
     ) raises -> Tup:
-        return self.constant[dtype](m, Tensor[dtype](value, shape))
+        return self.constant[dtype](Tensor[dtype](value, shape))
 
     fn constant[
         dtype: DType
-    ](inout self, m: Module, value: Tensor[dtype]) raises -> Tup:
-        debug_assert(m.m == self.m.m, "Module pointer mismatch")
+    ](inout self, value: Tensor[dtype]) raises -> Symbol:
+        let m = self.m
         let type = m.type_of(value)
         return self.op(
             "mo.constant",
             self.values(),
             m.types(type),
             m.attrs(m.tensor_attr("const", type, value)),
-        )
+        )[0]
 
     fn constant[
         dtype: DType = DType.float32
-    ](inout self, m: Module, value: Float32) raises -> Tup:
-        debug_assert(m.m == self.m.m, "Module pointer mismatch")
+    ](inout self, value: Float32) raises -> Symbol:
         constrained[dtype == DType.float32]()  # TODO: add more float types
+        let m = self.m
         return self.op(
             "mo.constant",
             self.values(),
             m.types(m.f32()),
             m.attrs(m.f32_attr("const", m.f32(), value)),
-        )
+        )[0]
 
     fn constant[
         dtype: DType = DType.uint64
-    ](inout self, m: Module, value: Int) raises -> Tup:
-        debug_assert(m.m == self.m.m, "Module pointer mismatch")
+    ](inout self, value: Int) raises -> Symbol:
+        let m = self.m
         let arity: Arity
         let attr: AttrPtr
 
@@ -132,4 +131,7 @@ struct Graph:
             attr = m.i64_attr("XXX", m.i64(), value)
 
             raise Error("Unimplemented")
-        return self.op("mo.constant", self.values(), arity, m.attrs(attr))
+        return self.op("mo.constant", self.values(), arity, m.attrs(attr))[0]
+
+    fn output(inout self, outs: Tup) raises:
+        _ = self.op("mo.output", outs, self.m.types())
