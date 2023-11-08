@@ -1040,7 +1040,8 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
                        MEFAttr<StringRef> dKernelName,
                        MEFAttr<uint64_t> eNumOutDimensions, Runtime &runtime,
                        EncodedLocation loc) {
-  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.kernel.execute"));
+  TimeTraceScope scope(
+      MGPProfilerEntry::create("mgp.cpu.kernel.execute", *dKernelName));
   CompiledKernelsContext &kernelsCtx =
       ctx.getStateSlotPayload<CompiledKernelsContext>(
           static_cast<size_t>(*aSlot));
@@ -1213,10 +1214,17 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
 
   // If the kernel has output dimensions then it must be synchronous and those
   // values can be copied out now.
+  assert(numOutDimensions == 0 || outputChain.chain.isReady());
   for (size_t i = 0; i < numOutDimensions; ++i) {
-    // Note we must copy rather than move the result reference since it is
+    // Note we must copy rather than move the result references since they are
     // needed by the MEF executor.
-    outDimensions[i].copy().emplace<size_t>(dimensions[numInDimensions + i]);
+    if (outputChain.chain.isError()) {
+      outDimensions[i].copy().setToError(
+          {outputChain.chain.getDiagnostic().getMessage().copy(),
+           outputChain.chain.getDiagnostic().getLocation().copy()});
+    } else {
+      outDimensions[i].copy().emplace<size_t>(dimensions[numInDimensions + i]);
+    }
   }
 
 #if MODULAR_PARANOID
