@@ -18,6 +18,22 @@ using namespace M;
 using namespace MO;
 
 //===----------------------------------------------------------------------===//
+// MOGraphVisualizationInterface
+//===----------------------------------------------------------------------===//
+namespace {
+struct MOGraphVisualizationInterface : public GraphVisualizationInterface {
+
+  using GraphVisualizationInterface::GraphVisualizationInterface;
+
+  FailureOr<VisualizationInfo>
+  populateVisualizationInfo(Operation *op) override {
+    return VisualizationInfo{op->getName().getStringRef(),
+                             /* isModularOp = */ true};
+  }
+};
+} // namespace
+
+//===----------------------------------------------------------------------===//
 // MODialect
 //===----------------------------------------------------------------------===//
 
@@ -25,6 +41,8 @@ void MODialect::initialize() {
   registerAttributes();
   registerTypes();
   registerOperations();
+
+  addInterfaces<MOGraphVisualizationInterface>();
 }
 
 Operation *MODialect::materializeConstant(OpBuilder &b, Attribute value,
@@ -49,22 +67,6 @@ ModuleOp MODialect::getShapeFuncModule() {
   }
   return *shapeFuncModule;
 }
-
-//===----------------------------------------------------------------------===//
-// MOGraphVisualizationInterface
-//===----------------------------------------------------------------------===//
-namespace {
-struct MOGraphVisualizationInterface : public GraphVisualizationInterface {
-
-  using GraphVisualizationInterface::GraphVisualizationInterface;
-
-  FailureOr<VisualizationInfo>
-  populateVisualizationInfo(Operation *op) override {
-    return VisualizationInfo{op->getName().getStringRef(),
-                             /* isModularOp = */ true};
-  }
-};
-} // namespace
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions

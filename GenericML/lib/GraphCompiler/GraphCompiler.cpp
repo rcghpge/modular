@@ -137,6 +137,12 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.constantFold)
     pm.addPass(MO::createConstantFold());
 
+  if (opts.genVizSpec) {
+    pm.addPass(MO::createGenVizSpec({opts.vizOutputDir}));
+    // TODO: Add an early return here. When genVizSpec flag is added, there is
+    // no reason to continue compilation after the needed file is generated.
+  }
+
   MO::AddDevicesPassOptions addDevicesOpts;
   addDevicesOpts.enableExtraDevices = opts.enableExtraDevices;
   addDevicesOpts.defaultDeviceLabel = opts.defaultDeviceLabel;

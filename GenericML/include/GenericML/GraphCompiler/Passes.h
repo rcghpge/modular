@@ -103,6 +103,17 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc("If true, statically plan as many buffer allocations as "
                      "possible."),
       llvm::cl::init(false)};
+  Option<bool> genVizSpec{
+      *this, "gen-viz-spec",
+      llvm::cl::desc(
+          "If true, generates a visualization spec compatible with Netron."),
+      llvm::cl::init(false)};
+  Option<std::string> vizOutputDir{
+      *this, "viz-output-dir",
+      llvm::cl::desc(
+          "If genVizSpec, can be used to specify the output directory for "
+          "the visualization spec."),
+      llvm::cl::init("")};
 };
 
 // Registers a runtime for use by the MO-to-MGP pipeline when invoked via the

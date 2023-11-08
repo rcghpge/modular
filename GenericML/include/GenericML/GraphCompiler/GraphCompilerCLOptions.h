@@ -42,6 +42,16 @@ public:
       cl::desc("If true, statically plan as many buffer allocations as "
                "possible."),
       cl::init(false)};
+  cl::opt<bool> genVizSpec{
+      "gen-viz-spec",
+      cl::desc(
+          "If true, generates a visualization spec compatible with Netron."),
+      cl::init(false)};
+  cl::opt<std::string> vizOutputDir{
+      "viz-output-dir",
+      cl::desc("If genVizSpec, can be used to specify the output directory for "
+               "the visualization spec."),
+      cl::init("")};
 };
 
 } // namespace M::MO

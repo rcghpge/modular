@@ -232,6 +232,8 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
       moToMgpOptions.defaultDeviceLabel.setValue(options->defaultDeviceLabel);
       moToMgpOptions.enableMemoryPlanning.setValue(
           options->enableMemoryPlanning);
+      moToMgpOptions.genVizSpec.setValue(options->genVizSpec);
+      moToMgpOptions.vizOutputDir.setValue(options->vizOutputDir);
     }
     if (mofCtx->getCustomOpsPath())
       moToMgpOptions.extraLibPaths = mofCtx->getCustomOpsPath()->string();
