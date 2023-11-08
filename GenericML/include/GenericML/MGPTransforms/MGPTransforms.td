@@ -430,6 +430,8 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
       mef.output %ch0, %out_tensor : !mef.chain, !mgp.cpu.tensor<?xf32>
     }
     ```
+
+    TODO(#24751): Possible improvements to this pass are tracked in this issue.
   }];
 }
 

@@ -125,8 +125,8 @@ struct MOOpPattern : public RewritePattern {
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     // skip non-mo ops and container/output mo ops
-    if (!isa<MO::MODialect>(op->getDialect()) || isa<MO::GraphOp>(op) ||
-        isa<MO::OutputOp>(op))
+    if (!isa_and_nonnull<MO::MODialect>(op->getDialect()) ||
+        isa<MO::GraphOp>(op) || isa<MO::OutputOp>(op))
       return failure();
 
     auto maybeResults = selectMOGGOp(op);
