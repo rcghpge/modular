@@ -242,3 +242,28 @@ mo.graph @internal_dim_param_as_output_binding<D0 -> res: !mosh.ape>(
   // CHECK-NEXT: mo.output<:!mosh.ape [[[D2]], 1]> %[[RES]] : !mo.tensor<[[[D2]], 1], si64>
   mo.output<:!mosh.ape [D2, 1]> %res : !mo.tensor<[D2, 1], si64>
 }
+
+// CHECK-LABEL: mo.graph @out_of_order_instructions
+// CHECK-SAME:  <[[D0:.*]] -> [[OUT:.*]]>(
+// CHECK-SAME:   %[[SCALAR:.*]]: !mo.tensor<[], f32>,
+// CHECK-SAME:   %[[DUMMY:.*]]: !mo.tensor<[[[D0]]], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[OUT]]], f32> no_inline {
+mo.graph @out_of_order_instructions<D0 -> out>(
+  %scalar: !mo.tensor<[], f32>,
+  %dummy: !mo.tensor<[D0], f32> // this is used solely to help define `D0`
+) -> !mo.tensor<[out], f32> {
+
+  // CHECK-NEXT: kgen.param.declare [[D1:.*]] = <add([[D0]], 1)>
+  // CHECK-NEXT: kgen.param.declare [[D2:.*]] = <mul([[D1]], [[D1]])>
+  // CHECK-NEXT: kgen.param.declare [[D3:.*]] = <div([[D2]], [[D0]])>
+  kgen.param.declare D3 = <div(D2, D0)>
+  kgen.param.declare D2 = <mul(D1, D1)>
+
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.broadcast_to(%[[SCALAR]]) : !mo.tensor<[], f32> -> !mo.tensor<[[[D3]]], f32>
+  %res = mo.static.broadcast_to(%scalar) : !mo.tensor<[], f32> -> !mo.tensor<[D3], f32>
+
+  kgen.param.declare D1 = <add(D0, 1)>
+
+  // CHECK-NEXT: mo.output<[[D3]]> %[[RES]] : !mo.tensor<[[[D3]]], f32>
+  mo.output<D3> %res : !mo.tensor<[D3], f32>
+}
