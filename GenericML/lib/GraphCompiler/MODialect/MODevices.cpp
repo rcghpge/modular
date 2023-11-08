@@ -129,8 +129,12 @@ Operation *DeviceAnnots::stampAny(Operation *op) const {
   return op;
 }
 
+bool DeviceAnnots::isConsistentWith(DeviceRefAttr thatDevice) const {
+  return !device || !thatDevice || device == thatDevice;
+}
+
 bool DeviceAnnots::isConsistentWith(const DeviceAnnots &that) const {
-  if (device && that.device && device != that.device)
+  if (!isConsistentWith(that.device))
     return false;
   if (device && that.device && isViaCpu != that.isViaCpu)
     return false;

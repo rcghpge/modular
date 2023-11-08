@@ -233,12 +233,12 @@ struct ConvertBatchMatmulToMatmulPattern
   deviceAwareMatchAndRewrite(MO::BatchMatmulOp op,
                              DeviceAwareRewriter &rewriter) const override {
     Value input, weight;
-    Operation *broadcast = nullptr, *optRebindOp = nullptr;
+    Operation *broadcast = nullptr;
     auto weightBcastP =
         m_Op<Static::BroadcastToOp>(&broadcast, m_MOMatrix(m_Any(&weight)));
     if (!m_Op<BatchMatmulOp>(
              m_Any(&input),
-             m_Optional(m_Op<RebindOp>(&optRebindOp, weightBcastP),
+             m_Optional(m_Op<RebindOp>(rewriter.pushOp(), weightBcastP),
                         weightBcastP))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
@@ -262,7 +262,7 @@ struct ConvertBatchMatmulToMatmulPattern
       return rewriter.notifyMatchFailure(op, "Broadcast not on batch axis");
     }
 
-    if (!rewriter.addOps({broadcast, optRebindOp})) {
+    if (!rewriter.addOps({broadcast})) {
       return rewriter.notifyMatchFailure(
           op, "matched ops have inconsistent devices");
     }
@@ -495,10 +495,7 @@ struct FlattenNestedConcatPattern
       auto nestedConcatOp = input.getDefiningOp<ConcatOp>();
       if (nestedConcatOp && nestedConcatOp->hasOneUse() &&
           tryGetConstantInt(nestedConcatOp.getAxis()) == axis) {
-        if (!rewriter.addOp(nestedConcatOp)) {
-          return rewriter.notifyMatchFailure(
-              op, "matched ops have inconsistent devices");
-        }
+        rewriter.pushOp(nestedConcatOp);
         llvm::append_range(flattenedInputs, nestedConcatOp.getInputs());
         foundSingleUserNestedConcat = true;
       } else {
@@ -510,6 +507,11 @@ struct FlattenNestedConcatPattern
     if (!foundSingleUserNestedConcat) {
       return rewriter.notifyMatchFailure(
           op, "failed to find single-user nested concat");
+    }
+
+    if (!rewriter.addOps()) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
     }
 
     // Replace the old concat with a new concat that operate on the flattened
@@ -538,16 +540,16 @@ struct Pow2Pattern : public DeviceAwareRewritePattern<OpRewritePattern, PowOp> {
   deviceAwareMatchAndRewrite(MO::PowOp op,
                              DeviceAwareRewriter &rewriter) const override {
     Value input;
-    Operation *broadcastOp = nullptr;
-    if (!m_Op<PowOp>(m_Any(&input), m_Op<Static::BroadcastToOp>(
-                                        &broadcastOp, m_ScalarConstant(2.0)))
+    if (!m_Op<PowOp>(m_Any(&input),
+                     m_Op<Static::BroadcastToOp>(rewriter.pushOp(),
+                                                 m_ScalarConstant(2.0)))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
     if (!input)
       return rewriter.notifyMatchFailure(op, "null input value");
 
-    if (!rewriter.addOp(broadcastOp)) {
+    if (!rewriter.addOps()) {
       return rewriter.notifyMatchFailure(
           op, "matched ops have inconsistent devices");
     }
@@ -575,16 +577,16 @@ struct Pow3Pattern : public DeviceAwareRewritePattern<OpRewritePattern, PowOp> {
   deviceAwareMatchAndRewrite(MO::PowOp op,
                              DeviceAwareRewriter &rewriter) const override {
     Value input;
-    Operation *broadcastOp = nullptr;
-    if (!m_Op<PowOp>(m_Any(&input), m_Op<Static::BroadcastToOp>(
-                                        &broadcastOp, m_ScalarConstant(3.0)))
+    if (!m_Op<PowOp>(m_Any(&input),
+                     m_Op<Static::BroadcastToOp>(rewriter.pushOp(),
+                                                 m_ScalarConstant(3.0)))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
     if (!input)
       return rewriter.notifyMatchFailure(op, "null input value");
 
-    if (!rewriter.addOp(broadcastOp)) {
+    if (!rewriter.addOps()) {
       return rewriter.notifyMatchFailure(
           op, "matched ops have inconsistent devices");
     }
@@ -657,10 +659,6 @@ struct GathersToSplitPattern
       if (idx < 0 || idx >= inputAxis0Dim || idxToGather.contains(idx))
         continue;
 
-      // Device annotations must be consistent.
-      if (!rewriter.addOp(userGatherOp))
-        continue;
-
       // Update dominant gather and make sure all gathers are in the same block
       if (!dominantGatherOp)
         dominantGatherOp = userGatherOp;
@@ -672,6 +670,7 @@ struct GathersToSplitPattern
       if (userGatherOp->isBeforeInBlock(dominantGatherOp))
         dominantGatherOp = userGatherOp;
 
+      rewriter.pushOp(userGatherOp);
       idxToGather.try_emplace(idx, userGatherOp);
     }
 
@@ -679,6 +678,11 @@ struct GathersToSplitPattern
     if (idxToGather.size() != inputAxis0Dim) {
       return rewriter.notifyMatchFailure(
           op, "not enough qualified gather users for input");
+    }
+
+    if (!rewriter.addOps()) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
     }
 
     // Construct split
@@ -722,35 +726,31 @@ struct GeluPattern : public DeviceAwareRewritePattern<OpRewritePattern, MulOp> {
   LogicalResult
   deviceAwareMatchAndRewrite(MO::MulOp op,
                              DeviceAwareRewriter &rewriter) const override {
+    // Abbreviate the helper to try to keep things readable.
+    auto po = [&rewriter]() { return rewriter.pushOp(); };
 
     Value input, input_erf;
-    Operation *sqrt2Broadcast = nullptr, *invSqrt2Broadcast = nullptr,
-              *erfOp = nullptr, *divOp = nullptr, *mulOp = nullptr,
-              *oneBroadcastOp = nullptr, *addOp = nullptr,
-              *halfBroadcastOp = nullptr, *mul1Op = nullptr, *mul2Op = nullptr;
     // gelu = x * 1/2 * (1 + erf(x/sqrt(2)))
     auto sq2 = m_Op<Static::BroadcastToOp>(
-        &sqrt2Broadcast, m_ScalarConstant(llvm::numbers::sqrt2f));
+        po(), m_ScalarConstant(llvm::numbers::sqrt2f));
     auto divsq2 = m_Op<Static::BroadcastToOp>(
-        &invSqrt2Broadcast, m_ScalarConstant(llvm::numbers::inv_sqrt2f));
+        po(), m_ScalarConstant(llvm::numbers::inv_sqrt2f));
 
     auto x_erf = m_Any(&input_erf);
-    auto erf = m_Op<ErfOp>(&erfOp, m_Optional(m_Op<DivOp>(&divOp, x_erf, sq2),
-                                              m_BinaryCommutativeOp<MulOp>(
-                                                  &mulOp, x_erf, divsq2)));
-    auto one =
-        m_Op<Static::BroadcastToOp>(&oneBroadcastOp, m_ScalarConstant(1.0f));
-    auto add = m_BinaryCommutativeOp<AddOp>(&addOp, one, erf);
+    auto erf = m_Op<ErfOp>(
+        po(), m_Optional(m_Op<DivOp>(po(), x_erf, sq2),
+                         m_BinaryCommutativeOp<MulOp>(po(), x_erf, divsq2)));
+    auto one = m_Op<Static::BroadcastToOp>(po(), m_ScalarConstant(1.0f));
+    auto add = m_BinaryCommutativeOp<AddOp>(po(), one, erf);
 
-    auto half =
-        m_Op<Static::BroadcastToOp>(&halfBroadcastOp, m_ScalarConstant(0.5f));
+    auto half = m_Op<Static::BroadcastToOp>(po(), m_ScalarConstant(0.5f));
     auto x = m_Any(&input);
     // TODO: write an associative commutative matcher?
-    auto gelu = m_Optional(
-        m_BinaryCommutativeOp<MulOp>(
-            &mul1Op, m_BinaryCommutativeOp<MulOp>(&mul2Op, x, half), add),
-        m_BinaryCommutativeOp<MulOp>(
-            &mul1Op, half, m_BinaryCommutativeOp<MulOp>(&mul2Op, x, add)));
+    auto gelu =
+        m_Optional(m_BinaryCommutativeOp<MulOp>(
+                       po(), m_BinaryCommutativeOp<MulOp>(po(), x, half), add),
+                   m_BinaryCommutativeOp<MulOp>(
+                       po(), half, m_BinaryCommutativeOp<MulOp>(po(), x, add)));
 
     if (!gelu.match(op->getResult(0)))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
@@ -760,9 +760,7 @@ struct GeluPattern : public DeviceAwareRewritePattern<OpRewritePattern, MulOp> {
     if (!(input == input_erf))
       return rewriter.notifyMatchFailure(op, "inputs don't match");
 
-    if (!rewriter.addOps({sqrt2Broadcast, invSqrt2Broadcast, erfOp, divOp,
-                          mulOp, oneBroadcastOp, addOp, halfBroadcastOp, mul1Op,
-                          mul2Op})) {
+    if (!rewriter.addOps()) {
       return rewriter.notifyMatchFailure(
           op, "matched ops have inconsistent devices");
     }
@@ -810,7 +808,7 @@ struct SinkTransposeThroughUnaryOpPattern
     if (!transpose.hasOneUse())
       return rewriter.notifyMatchFailure(op, "transpose op has multiple uses");
 
-    if (!rewriter.addOp(opaqueTransposeOp)) {
+    if (!rewriter.addOps({opaqueTransposeOp})) {
       return rewriter.notifyMatchFailure(
           op, "matched ops have inconsistent devices");
     }
@@ -863,11 +861,10 @@ struct SinkTransposeThroughBinaryOpPattern
   deviceAwareMatchAndRewrite(ElementWiseBinary op,
                              DeviceAwareRewriter &rewriter) const override {
     TensorValue input1, input2, perm1, perm2;
-    Operation *leftTransposeOp = nullptr, *rightTransposeOp = nullptr;
     auto transpose1P =
-        m_Op<TransposeOp>(&leftTransposeOp, m_Any(&input1), m_Any(&perm1));
+        m_Op<TransposeOp>(rewriter.pushOp(), m_Any(&input1), m_Any(&perm1));
     auto transpose2P =
-        m_Op<TransposeOp>(&rightTransposeOp, m_Any(&input2), m_Any(&perm2));
+        m_Op<TransposeOp>(rewriter.pushOp(), m_Any(&input2), m_Any(&perm2));
     auto binaryP = m_Op<ElementWiseBinary>(transpose1P, transpose2P);
     if (!binaryP.match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
@@ -892,7 +889,7 @@ struct SinkTransposeThroughBinaryOpPattern
     if (input1Ty.getShapeAttr() != input2Ty.getShapeAttr())
       return rewriter.notifyMatchFailure(op, "input shapes are different");
 
-    if (!rewriter.addOps({leftTransposeOp, rightTransposeOp})) {
+    if (!rewriter.addOps()) {
       return rewriter.notifyMatchFailure(
           op, "matched ops have inconsistent devices");
     }
@@ -971,7 +968,7 @@ struct SinkTransposeThroughStaticBroadcastToOpPattern
     if (!maybePermVec.has_value())
       return rewriter.notifyMatchFailure(op, "permutation isn't constant");
 
-    if (!rewriter.addOp(opaqueTransposeOp)) {
+    if (!rewriter.addOps({opaqueTransposeOp})) {
       return rewriter.notifyMatchFailure(
           op, "matched ops have inconsistent devices");
     }
@@ -1085,15 +1082,13 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
 
     // Match pattern and get results.
     TensorValue inputTensor, elemwiseTensor;
-    Operation *reshapeOp = nullptr, *broadcastOp = nullptr,
-              *elementwiseOp1 = nullptr, *elementwiseOp2 = nullptr;
-    auto reshapeP = m_Op<ReshapeOpType>(&reshapeOp, m_Any(&inputTensor));
+    auto reshapeP = m_Op<ReshapeOpType>(rewriter.pushOp(), m_Any(&inputTensor));
     auto broadcastP =
-        m_Op<Static::BroadcastToOp>(&broadcastOp, m_Any(&elemwiseTensor));
+        m_Op<Static::BroadcastToOp>(rewriter.pushOp(), m_Any(&elemwiseTensor));
     auto elemwiseOpP1 =
-        m_Op<ElementWiseBinary>(&elementwiseOp1, reshapeP, broadcastP);
+        m_Op<ElementWiseBinary>(rewriter.pushOp(), reshapeP, broadcastP);
     auto elemwiseOpP2 =
-        m_Op<ElementWiseBinary>(&elementwiseOp2, broadcastP, reshapeP);
+        m_Op<ElementWiseBinary>(rewriter.pushOp(), broadcastP, reshapeP);
 
     // whether the reshaped argument was the LHS or RHS
     bool reshapedWasLeftOriginally;
@@ -1157,8 +1152,7 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
                 "tensor do not match.");
     }
 
-    if (!rewriter.addOps(
-            {reshapeOp, broadcastOp, elementwiseOp1, elementwiseOp2})) {
+    if (!rewriter.addOps()) {
       return rewriter.notifyMatchFailure(
           op, "matched ops have inconsistent devices");
     }
@@ -1219,8 +1213,7 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp
   deviceAwareMatchAndRewrite(ElementWiseUnary op,
                              DeviceAwareRewriter &rewriter) const override {
     TensorValue inputTensor;
-    Operation *reshapeOp = nullptr;
-    auto reshapeP = m_Op<ReshapeOpType>(&reshapeOp, m_Any(&inputTensor));
+    auto reshapeP = m_Op<ReshapeOpType>(rewriter.pushOp(), m_Any(&inputTensor));
     auto elemwiseOpP = m_Op<ElementWiseUnary>(reshapeP);
 
     if (!elemwiseOpP.match(op))
@@ -1240,7 +1233,7 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp
     if (inputType.hasUnknownShape())
       return rewriter.notifyMatchFailure(op, "Shape must be known");
 
-    if (!rewriter.addOp(reshapeOp)) {
+    if (!rewriter.addOps()) {
       return rewriter.notifyMatchFailure(
           op, "matched ops have inconsistent devices");
     }
@@ -1285,9 +1278,10 @@ struct SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp
   deviceAwareMatchAndRewrite(ElementWiseBinary op,
                              DeviceAwareRewriter &rewriter) const override {
     TensorValue input1Tensor, input2Tensor;
-    Operation *reshapeOp1 = nullptr, *reshapeOp2 = nullptr;
-    auto reshapeP1 = m_Op<ReshapeOpType>(&reshapeOp1, m_Any(&input1Tensor));
-    auto reshapeP2 = m_Op<ReshapeOpType>(&reshapeOp2, m_Any(&input2Tensor));
+    auto reshapeP1 =
+        m_Op<ReshapeOpType>(rewriter.pushOp(), m_Any(&input1Tensor));
+    auto reshapeP2 =
+        m_Op<ReshapeOpType>(rewriter.pushOp(), m_Any(&input2Tensor));
     auto elemwiseOpP = m_Op<ElementWiseBinary>(reshapeP1, reshapeP2);
 
     if (!elemwiseOpP.match(op))
@@ -1313,7 +1307,7 @@ struct SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp
           op, "Don't sink reshape that squeezes final dim.");
     }
 
-    if (!rewriter.addOps({reshapeOp1, reshapeOp2})) {
+    if (!rewriter.addOps()) {
       return rewriter.notifyMatchFailure(
           op, "matched ops have inconsistent devices");
     }
@@ -1366,16 +1360,14 @@ struct SplitAndSqueezesPattern
   static bool isSqueezingReshape(DeviceAwareRewriter &rewriter, Operation *op,
                                  ArrayRef<TypedAttr> inferredInDims,
                                  size_t squeezeAxis) {
-    if (!rewriter.addOp(op))
-      return false;
+    rewriter.pushOp(op);
 
     // TODO(#13348) remove this check once we have shape inference for SplitOp
     if (auto rebindOp = dyn_cast<RebindOp>(op)) {
       if (!rebindOp->hasOneUse())
         return false;
       op = *rebindOp->user_begin();
-      if (!rewriter.addOp(op))
-        return false;
+      rewriter.pushOp(op);
     }
 
     auto reshapeOp = dyn_cast<Static::ReshapeOp>(op);
@@ -1473,6 +1465,11 @@ struct SplitAndSqueezesPattern
         return rewriter.notifyMatchFailure(
             op, "a result isn't consumed by a reshape that squeezes");
       }
+    }
+
+    if (!rewriter.addOps()) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
     }
 
     // Construct transpose permutation and zero axis value (before split op)
@@ -1599,9 +1596,8 @@ struct BroadcastReshapePattern
   deviceAwareMatchAndRewrite(Static::ReshapeOp op,
                              DeviceAwareRewriter &rewriter) const override {
     Value input;
-    Operation *broadcastOp = nullptr;
     if (!m_Op<Static::ReshapeOp>(
-             m_Op<Static::BroadcastToOp>(&broadcastOp, m_Any(&input)))
+             m_Op<Static::BroadcastToOp>(rewriter.pushOp(), m_Any(&input)))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
@@ -1618,7 +1614,7 @@ struct BroadcastReshapePattern
       if (inType.getIntDim(i) != 1)
         return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
-    if (!rewriter.addOp(broadcastOp)) {
+    if (!rewriter.addOps()) {
       return rewriter.notifyMatchFailure(
           op, "matched ops have inconsistent devices");
     }
@@ -1918,10 +1914,7 @@ struct MergeParallelMatmulPattern
     SmallVector<MatmulOpType> matmulUsers;
     for (Operation *user : activations.getUsers()) {
       if (auto matmulOp = dyn_cast<MatmulOpType>(user)) {
-        if (!rewriter.addOp(matmulOp)) {
-          return rewriter.notifyMatchFailure(
-              op, "matched ops have inconsistent devices");
-        }
+        rewriter.pushOp(matmulOp);
         matmulUsers.push_back(matmulOp);
       }
     }
@@ -1966,6 +1959,11 @@ struct MergeParallelMatmulPattern
       return rewriter.notifyMatchFailure(
           op, "Parallel matmuls must have the same number of rows, a static "
               "number of columns and constant weights");
+    }
+
+    if (!rewriter.addOps()) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
     }
 
     Location loc = op.getLoc();
@@ -2090,11 +2088,7 @@ struct SinkSplitThroughElementwisePattern
         return rewriter.notifyMatchFailure(
             op, "Split result use is not an elementwise operation");
       }
-      if (!rewriter.addOp(user)) {
-        return rewriter.notifyMatchFailure(
-            op, "matched ops have inconsistent devices");
-      }
-
+      rewriter.pushOp(user);
       elementwiseValues.push_back(user->getResult(0));
     }
 
@@ -2165,6 +2159,11 @@ struct SinkSplitThroughElementwisePattern
         })) {
       return rewriter.notifyMatchFailure(
           op, "Constants are being broadcasted differently");
+    }
+
+    if (!rewriter.addOps()) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
     }
 
     Location loc = op.getLoc();
@@ -2291,11 +2290,12 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
           op, "Users must be identical non-scalar reshapes");
     }
 
-    for (Operation *user : users) {
-      if (!rewriter.addOp(user)) {
-        return rewriter.notifyMatchFailure(
-            op, "Matched ops have inconsistent devices");
-      }
+    for (Operation *user : users)
+      rewriter.pushOp(user);
+
+    if (!rewriter.addOps()) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
     }
 
     auto splitType = op.getType(0).cast<TensorType>();
@@ -2742,14 +2742,6 @@ struct SymbolicOptimizationPass
       return signalPassFailure();
   }
   void runOnOperation() override {
-    GraphOp graphOp = getOperation();
-
-    LLVM_DEBUG({
-      llvm::dbgs() << "-------- before SymbolicOptimization ----------\n";
-      printGraph(llvm::dbgs(), graphOp);
-      llvm::dbgs() << "--------------------------------------------\n";
-    });
-
     // First run all the optimizations with slices turned into split when
     // possible.
     optimizeWithPattern<SliceToSplitPattern>();
@@ -2757,12 +2749,6 @@ struct SymbolicOptimizationPass
     // all of the other patterns too. Without it, split patterns would never
     // apply because they would be turned into slices too early.
     optimizeWithPattern<SplitToSlicePattern>();
-
-    LLVM_DEBUG({
-      llvm::dbgs() << "-------- after SymbolicOptimization ----------\n";
-      printGraph(llvm::dbgs(), graphOp);
-      llvm::dbgs() << "--------------------------------------------\n";
-    });
   }
 };
 

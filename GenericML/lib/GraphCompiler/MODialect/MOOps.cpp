@@ -10,6 +10,7 @@
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
+#include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
@@ -1877,7 +1878,10 @@ static LogicalResult materializeShapeInference(RebindOp op,
   return failure();
 }
 
-LogicalResult RebindOp::canonicalize(RebindOp op, PatternRewriter &rewriter) {
+LogicalResult RebindOp::canonicalize(RebindOp op,
+                                     PatternRewriter &origRewriter) {
+  DeviceAwareRewriter rewriter(op, origRewriter);
+
   // We fold if the result and operand types are the same.
   if (op.getInput().getType() == op.getType()) {
     assert(op.getOutputParamDecls().empty());
@@ -1886,7 +1890,7 @@ LogicalResult RebindOp::canonicalize(RebindOp op, PatternRewriter &rewriter) {
   }
 
   // We materialize the parameter declarations explicitly.
-  LogicalResult paramsResolved = materializeShapeInference(op, rewriter);
+  LogicalResult paramsResolved = materializeShapeInference(op, origRewriter);
 
   // Likely already processed, or doesn't help shape inference.
   if (op.getInput().getDefiningOp<RebindOp>())

@@ -54,8 +54,12 @@ ErrorOr<DeviceSpecCollectionAttr> getDeviceSpecsOrDefault(GraphOp graphOp);
 
 /// Captures all device-related annotations from one or more operations, and
 /// allows them to be 'stamped' onto new ops.
-class DeviceAnnots {
-public:
+struct DeviceAnnots {
+  /// The 'device' attribute of the original op, or null.
+  DeviceRefAttr device;
+  /// True if original op had the 'is_via_cpu' attribute.
+  bool isViaCpu = false;
+
   /// Returns the device annotations for operation.
   static DeviceAnnots forOp(Operation *op);
 
@@ -77,15 +81,13 @@ public:
     return op;
   }
 
+  /// Return true if these annotations are consistent with the given device,
+  /// which may be null.
+  bool isConsistentWith(DeviceRefAttr thatDevice) const;
+
   /// Returns true if this and that agree in their annotations where they
   /// are given.
   bool isConsistentWith(const DeviceAnnots &that) const;
-
-private:
-  /// The 'device' attribute of the original op, or null.
-  DeviceRefAttr device;
-  /// True if original op had the 'is_via_cpu' attribute.
-  bool isViaCpu = false;
 };
 
 //===----------------------------------------------------------------------===//
@@ -103,6 +105,9 @@ struct DeviceAwareRewriter {
   DeviceAnnots deviceAnnots;
   /// The underlying rewriter.
   mlir::RewriterBase &rewriter;
+  /// Accumulated operations which may be bound by patterns, in addition
+  /// to the 'anchor' op given to the constructor.
+  SmallVector<Operation *> matchedOps;
 
   /// Constructs device-aware rewriter using rewriter, and adds the initial
   /// operation to it, on the assumption that op will be replaced by the
@@ -110,17 +115,25 @@ struct DeviceAwareRewriter {
   DeviceAwareRewriter(Operation *op, mlir::RewriterBase &rewriter)
       : deviceAnnots(DeviceAnnots::forOp(op)), rewriter(rewriter) {}
 
-  /// Captures the device annotations for operation in this, on the assumption
-  /// the operation will be replaced by the rewriter. Returns false if this and
-  /// op have conflicting annotations. No-op if op is null.
-  [[nodiscard]] bool addOp(Operation *op) { return deviceAnnots.addOp(op); }
+  /// Pushes an operation onto matchedOps for later checking by addOps.
+  void pushOp(Operation *op) { matchedOps.emplace_back(op); }
 
-  /// Captures the device annotations for all operations, on the assumption
-  /// they will all be replaced by the rewriter. Returns false if any ops
-  /// have conflicting annotations. No-op for null ops.
-  [[nodiscard]] bool addOps(const std::initializer_list<Operation *> &ops) {
+  /// Pushes a null operation onto matchedOps, and returns its address.
+  /// Can be passed to a op-matching pattern to be assigned if the pattern
+  /// matches, then later checked by addOps.
+  Operation **pushOp() { return &matchedOps.emplace_back(nullptr); }
+
+  /// Captures the device annotations for all additional operations, including
+  /// those captured in matchedOps, and those given in the argument, on the
+  /// assumption they will all be replaced by the rewriter. Returns false if
+  /// any ops have conflicting annotations. Null ops are ignored.
+  [[nodiscard]] bool
+  addOps(const std::initializer_list<Operation *> &ops = {}) {
     return llvm::all_of(
-        ops, [this](Operation *op) { return deviceAnnots.addOp(op); });
+               matchedOps,
+               [this](Operation *op) { return deviceAnnots.addOp(op); }) &&
+           llvm::all_of(
+               ops, [this](Operation *op) { return deviceAnnots.addOp(op); });
   }
 
   /// Like OpBuilder::create, but the new op is stamped.
@@ -164,6 +177,10 @@ struct DeviceAwareRewriter {
   Ty getType(Args &&...args) {
     return rewriter.getType<Ty>(std::forward<Args>(args)...);
   }
+  template <typename Attr, typename... Args>
+  Attr getAttr(Args &&...args) {
+    return rewriter.getAttr<Attr>(std::forward<Args>(args)...);
+  }
   void setInsertionPoint(Operation *op) { rewriter.setInsertionPoint(op); }
   void replaceOp(Operation *op, ValueRange newValues) {
     rewriter.replaceOp(op, newValues);
@@ -187,6 +204,14 @@ struct DeviceAwareRewriter {
   void eraseOp(Operation *op) { rewriter.eraseOp(op); }
   Operation *create(const OperationState &state) {
     return rewriter.create(state);
+  }
+  IndexType getIndexType() { return rewriter.getIndexType(); }
+  BoolAttr getBoolAttr(bool value) { return rewriter.getBoolAttr(value); }
+  NamedAttribute getNamedAttr(StringRef name, Attribute val) {
+    return rewriter.getNamedAttr(name, val);
+  }
+  DictionaryAttr getDictionaryAttr(ArrayRef<NamedAttribute> value) {
+    return rewriter.getDictionaryAttr(value);
   }
 };
 

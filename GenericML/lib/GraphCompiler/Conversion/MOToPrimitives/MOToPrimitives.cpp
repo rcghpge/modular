@@ -556,8 +556,8 @@ MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
 }
 
 /// Returns the lowered tensor that the rebind's result should map to.
-static Value getRebindResMgpTensor(MO::RebindOp rebindOp,
-                                   MGP::MOGraphLoweringState &loweringState) {
+static Value getRebindResTensor(MO::RebindOp rebindOp,
+                                MGP::MOGraphLoweringState &loweringState) {
   MGP::MOOpLoweringState opLoweringState(loweringState, rebindOp,
                                          getDeviceOrDefault(rebindOp));
 
@@ -627,7 +627,7 @@ LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
     return rebindOp.emitOpError(
         "rebind lowering doesn't support unknown shapes");
 
-  Value loweredOutput = getRebindResMgpTensor(rebindOp, loweringState);
+  Value loweredOutput = getRebindResTensor(rebindOp, loweringState);
   loweringState.emplaceExecuteLoweredValue(resTensor, loweredOutput);
 
   // Establish the lowered form of the rebind's result parameters.

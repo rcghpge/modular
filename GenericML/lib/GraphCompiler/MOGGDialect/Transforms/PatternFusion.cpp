@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
+#include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
@@ -85,7 +86,7 @@ struct PackParamCache {
   std::atomic<int64_t> paramId = 0;
 };
 
-Value lowerMatmulPackingFunc(Location loc, PatternRewriter &rewriter,
+Value lowerMatmulPackingFunc(Location loc, MO::DeviceAwareRewriter &rewriter,
                              PackParamCache &cache, Value weight,
                              Type inputDtype, Type resultDtype,
                              bool transpose) {
@@ -152,16 +153,17 @@ Value lowerMatmulPackingFunc(Location loc, PatternRewriter &rewriter,
 
   mlir::DictionaryAttr kgenParams = rewriter.getDictionaryAttr(attrs);
   // Pack the mm weights.
-  // TODO: Need to propagate any device annotations.
   return rewriter.create<MO::LayoutTransformOp>(
       loc, /*outputTypes=*/packedWeightsType, weight, kgenParams);
 }
 
-struct GatherSumPattern : public OpRewritePattern<MO::ReduceAddOp> {
-  GatherSumPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+struct GatherSumPattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::ReduceAddOp> {
+  GatherSumPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(MO::ReduceAddOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::ReduceAddOp op,
+                             MO::DeviceAwareRewriter &rewriter) const override {
     Value input, indices, gatherAxis, reduceAxis;
 
     if (!m_Op<MO::ReduceAddOp>(
@@ -196,19 +198,14 @@ static LogicalResult validate2DTranspose(Value perm) {
   return success();
 }
 
-struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
+struct MatmulConstBPattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::MatmulOp> {
   MatmulConstBPattern(MLIRContext *ctx, PackParamCache &cache)
-      : OpRewritePattern(ctx, 3), cache(cache) {}
+      : DeviceAwareRewritePattern(ctx, 3), cache(cache) {}
 
-  LogicalResult matchAndRewrite(MO::MatmulOp op,
-                                PatternRewriter &rewriter) const override {
-    // HACK HACK HACK https://github.com/modularml/modular/issues/22959
-    // Restrict to host only.
-    if (!MO::isOnHost(op))
-      return rewriter.notifyMatchFailure(
-          op, Twine("Matmul will execute on device '") +
-                  MO::getDeviceOrDefault(op).getLabel() + "'");
-
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::MatmulOp op,
+                             MO::DeviceAwareRewriter &rewriter) const override {
     Value input = op.getInputA();
     Value weight, perm;
     Operation *transpose = nullptr;
@@ -244,6 +241,18 @@ struct MatmulConstBPattern : public OpRewritePattern<MO::MatmulOp> {
         return rewriter.notifyMatchFailure(op, "invalid transpose");
     }
 
+    if (!rewriter.addOps({transpose})) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
+
+    if (!rewriter.deviceAnnots.isConsistentWith(
+            MO::getHostDevice(op->getParentOfType<MO::GraphOp>()))) {
+      // TODO(#25114): Support outside of host.
+      return rewriter.notifyMatchFailure(
+          op, "packing is only supported on the host device");
+    }
+
     // TODO once we have layout inference across transpose op, we can remove
     // this check and layout annotation; or we might remove this `transpose`
     // flag from the packing shape function altogether.
@@ -274,18 +283,21 @@ private:
   PackParamCache &cache;
 };
 
-struct MatmulTranspBPattern : public OpRewritePattern<MO::MatmulOp> {
-  MatmulTranspBPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+struct MatmulTranspBPattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::MatmulOp> {
+  MatmulTranspBPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(MO::MatmulOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::MatmulOp op,
+                             MO::DeviceAwareRewriter &rewriter) const override {
     Value input, weight, perm;
 
-    auto weightTransP =
-        m_Op<MO::TransposeOp>(m_Any(&weight), m_MOVector(m_Any(&perm)));
+    auto weightTransP = m_Op<MO::TransposeOp>(rewriter.pushOp(), m_Any(&weight),
+                                              m_MOVector(m_Any(&perm)));
     if (!m_Op<MO::MatmulOp>(
              m_Any(&input),
-             m_Optional(m_Op<MO::RebindOp>(weightTransP), weightTransP))
+             m_Optional(m_Op<MO::RebindOp>(rewriter.pushOp(), weightTransP),
+                        weightTransP))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
@@ -314,6 +326,11 @@ struct MatmulTranspBPattern : public OpRewritePattern<MO::MatmulOp> {
     }
     // Let matmul take in the non-transposed weight, and update weight layout
 
+    if (!rewriter.addOps()) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
+
     // TODO once we have layout inference across transpose op, we can remove
     // this layout annotation.
     auto rebWeight = rewriter.create<MO::RebindOp>(
@@ -324,21 +341,26 @@ struct MatmulTranspBPattern : public OpRewritePattern<MO::MatmulOp> {
   }
 };
 
-struct BatchMatmulAdjBPattern : public OpRewritePattern<MO::BatchMatmulOp> {
-  BatchMatmulAdjBPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+struct BatchMatmulAdjBPattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern,
+                                           MO::BatchMatmulOp> {
+  BatchMatmulAdjBPattern(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(MO::BatchMatmulOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::BatchMatmulOp op,
+                             MO::DeviceAwareRewriter &rewriter) const override {
     Value input, weight, perm;
 
     if (isBMMSmall(op))
       return rewriter.notifyMatchFailure(op, "BatchedMatmul is too small");
 
-    auto weightTransP =
-        m_Op<MO::TransposeOp>(m_Any(&weight), m_MOVector(m_Any(&perm)));
+    auto weightTransP = m_Op<MO::TransposeOp>(rewriter.pushOp(), m_Any(&weight),
+                                              m_MOVector(m_Any(&perm)));
     if (!m_Op<MO::BatchMatmulOp>(
              m_Any(&input),
-             m_Optional(m_Op<MO::RebindOp>(weightTransP), weightTransP))
+             m_Optional(m_Op<MO::RebindOp>(rewriter.pushOp(), weightTransP),
+                        weightTransP))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
@@ -362,6 +384,11 @@ struct BatchMatmulAdjBPattern : public OpRewritePattern<MO::BatchMatmulOp> {
       if (permValues[i] != i)
         return rewriter.notifyMatchFailure(op, "perm not adjoint");
 
+    if (!rewriter.addOps()) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
+
     // Take the non-transposed weight.
     op.setOperand(1, weight);
 
@@ -372,11 +399,13 @@ struct BatchMatmulAdjBPattern : public OpRewritePattern<MO::BatchMatmulOp> {
   }
 };
 
-struct ConcatZeroAxisPattern : public OpRewritePattern<MO::ConcatOp> {
-  ConcatZeroAxisPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+struct ConcatZeroAxisPattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::ConcatOp> {
+  ConcatZeroAxisPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(MO::ConcatOp concat,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::ConcatOp concat,
+                             MO::DeviceAwareRewriter &rewriter) const override {
     // Doing this manually, I don't think the patterns can support variadic
     // inputs yet
     std::optional<int64_t> axis =
@@ -415,8 +444,10 @@ struct ConcatZeroAxisPattern : public OpRewritePattern<MO::ConcatOp> {
   }
 };
 
-struct ConvConstFilterPattern : public OpRewritePattern<MO::ConvOp> {
-  ConvConstFilterPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 3) {}
+struct ConvConstFilterPattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::ConvOp> {
+  ConvConstFilterPattern(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 3) {}
 
   /// Return an integer attribute that represents the output width of `op`, or
   /// -1 if output width is dynamic.
@@ -433,8 +464,9 @@ struct ConvConstFilterPattern : public OpRewritePattern<MO::ConvOp> {
     return IntegerAttr::get(IndexType::get(op.getContext()), -1);
   }
 
-  LogicalResult matchAndRewrite(MO::ConvOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::ConvOp op,
+                             MO::DeviceAwareRewriter &rewriter) const override {
     // Define some meta variables.
     MLIRContext *ctx = op.getContext();
     Location loc = op.getLoc();
@@ -452,6 +484,14 @@ struct ConvConstFilterPattern : public OpRewritePattern<MO::ConvOp> {
       return rewriter.notifyMatchFailure(
           op, "currently only pack constant num_groups");
     }
+
+    if (!rewriter.deviceAnnots.isConsistentWith(
+            MO::getHostDevice(op->getParentOfType<MO::GraphOp>()))) {
+      // TODO(#25114): Support outside of host.
+      return rewriter.notifyMatchFailure(
+          op, "packing is only supported on the host device");
+    }
+
     int64_t numGroups = *maybeNumGroups;
 
     // Create shape parameters for the new type.
@@ -502,11 +542,13 @@ struct ConvConstFilterPattern : public OpRewritePattern<MO::ConvOp> {
   }
 };
 
-struct SplitZeroAxisPattern : public OpRewritePattern<MO::SplitOp> {
-  SplitZeroAxisPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+struct SplitZeroAxisPattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::SplitOp> {
+  SplitZeroAxisPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
 
-  LogicalResult matchAndRewrite(MO::SplitOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::SplitOp op,
+                             MO::DeviceAwareRewriter &rewriter) const override {
     std::optional<int64_t> axis =
         MO::tryGetConstantInt(cast<MO::TensorValue>(op.getAxis()));
     if (!axis.has_value() || axis.value() != 0)
@@ -526,41 +568,52 @@ struct SplitZeroAxisPattern : public OpRewritePattern<MO::SplitOp> {
   }
 };
 
-struct LayerNormPattern : public OpRewritePattern<MO::AddOp> {
-  LayerNormPattern(MLIRContext *ctx) : OpRewritePattern(ctx, 6) {}
+struct LayerNormPattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::AddOp> {
+  LayerNormPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 6) {}
 
-  LogicalResult matchAndRewrite(MO::AddOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::AddOp op,
+                             MO::DeviceAwareRewriter &rewriter) const override {
+    // Abbreviate the helper to try to keep things readable.
+    auto po = [&rewriter]() { return rewriter.pushOp(); };
+
     // x = input
     // layernorm = gamma * (x - mean(x)) / sqrt(var(x) + eps) + beta
     Value gamma, beta, eps;
-    auto gam = m_Op<MO::Static::BroadcastToOp>(m_Any(&gamma));
-    auto bet = m_Op<MO::Static::BroadcastToOp>(m_Any(&beta));
-    auto ep = m_Op<MO::Static::BroadcastToOp>(m_Any(&eps));
+    auto gam = m_Op<MO::Static::BroadcastToOp>(po(), m_Any(&gamma));
+    auto bet = m_Op<MO::Static::BroadcastToOp>(po(), m_Any(&beta));
+    auto ep = m_Op<MO::Static::BroadcastToOp>(po(), m_Any(&eps));
 
     auto last_axis = m_Optional(m_ScalarConstant(2), m_ScalarConstant(-1));
     // TODO: Current capture system can't distinguish multiple uses of the same
     // value in the pattern, need to fix, this might be slightly risky
     Value input;
     auto x = m_Ranked(3, m_Any(&input));
-    auto mean = m_Op<MO::Static::BroadcastToOp>(m_Op<MO::MeanOp>(x, last_axis));
-    auto diff = m_Op<MO::SubOp>(x, mean);
-    auto var = m_Op<MO::MeanOp>(m_Op<MO::MulOp>(diff, diff), last_axis);
+    auto mean = m_Op<MO::Static::BroadcastToOp>(
+        po(), m_Op<MO::MeanOp>(po(), x, last_axis));
+    auto diff = m_Op<MO::SubOp>(po(), x, mean);
+    auto var =
+        m_Op<MO::MeanOp>(po(), m_Op<MO::MulOp>(po(), diff, diff), last_axis);
     // pytorch specific pattern
-    auto p_ratio =
-        m_Op<MO::DivOp>(diff, m_Op<MO::Static::BroadcastToOp>(m_Op<MO::SqrtOp>(
-                                  m_BinaryCommutativeOp<MO::AddOp>(var, ep))));
+    auto p_ratio = m_Op<MO::DivOp>(
+        po(), diff,
+        m_Op<MO::Static::BroadcastToOp>(
+            po(), m_Op<MO::SqrtOp>(
+                      po(), m_BinaryCommutativeOp<MO::AddOp>(po(), var, ep))));
     auto p_layernorm = m_BinaryCommutativeOp<MO::AddOp>(
-        m_BinaryCommutativeOp<MO::MulOp>(gam, p_ratio), bet);
+        po(), m_BinaryCommutativeOp<MO::MulOp>(po(), gam, p_ratio), bet);
 
     // TF specific Pattern
     auto t_rDenom = m_BinaryCommutativeOp<MO::MulOp>(
-        gam, m_Op<MO::Static::BroadcastToOp>(
-                 m_Op<MO::RsqrtOp>(m_BinaryCommutativeOp<MO::AddOp>(var, ep))));
-    auto t_term1 = m_BinaryCommutativeOp<MO::MulOp>(x, t_rDenom);
-    auto t_term2 = m_BinaryCommutativeOp<MO::MulOp>(mean, t_rDenom);
-    auto t_term3 = m_Op<MO::SubOp>(bet, t_term2);
-    auto t_layernorm = m_BinaryCommutativeOp<MO::AddOp>(t_term1, t_term3);
+        po(), gam,
+        m_Op<MO::Static::BroadcastToOp>(
+            po(), m_Op<MO::RsqrtOp>(
+                      po(), m_BinaryCommutativeOp<MO::AddOp>(po(), var, ep))));
+    auto t_term1 = m_BinaryCommutativeOp<MO::MulOp>(po(), x, t_rDenom);
+    auto t_term2 = m_BinaryCommutativeOp<MO::MulOp>(po(), mean, t_rDenom);
+    auto t_term3 = m_Op<MO::SubOp>(po(), bet, t_term2);
+    auto t_layernorm = m_BinaryCommutativeOp<MO::AddOp>(po(), t_term1, t_term3);
 
     if (!t_layernorm.match(op.getResult()) &&
         !p_layernorm.match(op.getResult()))
@@ -568,6 +621,11 @@ struct LayerNormPattern : public OpRewritePattern<MO::AddOp> {
 
     if (!input || !beta || !gamma || !eps)
       return rewriter.notifyMatchFailure(op, "null input value");
+
+    if (!rewriter.addOps()) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
 
     // Handle Scalar beta and gamma
     auto betaType = beta.getType().cast<MO::TensorType>();
