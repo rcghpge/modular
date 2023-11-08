@@ -8,6 +8,7 @@
 #include "GenericML/Driver/CXXDriverAPI.h"
 #include "GenericML/Driver/CompileDriver.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
+#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
@@ -155,7 +156,8 @@ bool isConstantFoldable(Operation *op) {
           dyn_cast<KGEN::ParamOpInterface>(op) ||
           dyn_cast<KGEN::ParamConstantOp>(op) ||
           dyn_cast<KGEN::ParamDeclareOp>(op)) &&
-         !dyn_cast<MOControlOpInterface>(op);
+         !dyn_cast<MOControlOpInterface>(op) &&
+         !dyn_cast<MO::LayoutTransformOp>(op);
 }
 
 /// Simple struct holding results of a model execution.

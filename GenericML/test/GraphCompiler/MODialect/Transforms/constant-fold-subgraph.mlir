@@ -140,8 +140,8 @@ mo.graph @repeated_application(%e0 : !mo.tensor<[], si32>) -> !mo.tensor<[], si3
 // CHECK: %[[G1:.*]] = mo.constant {value = #M.dense_array<1.
 // CHECK: %[[G2:.*]] = mo.static.broadcast_to(%[[G1]])
 // CHECK: %[[G3:.*]] = mo.layout.transform(%[[G2]]
-// CHECK: subgraph %[[G1]] %[[G2]] %[[G3]]
-// CHECK: outputs %[[G3]]
+// CHECK: subgraph %[[G1]] %[[G2]]
+// CHECK: outputs %[[G2]]
 mo.graph @shape_func() -> (!mo.tensor<[?, ?], f32>) {
   %g1 = mo.constant {value = #M.dense_array<1.> : tensor<1xf32>} : !mo.tensor<[1], f32>
   %g2 = mo.static.broadcast_to(%g1):!mo.tensor<[1], f32> -> !mo.tensor<[768,768], f32, {layout = #mo.layout<KN>}>

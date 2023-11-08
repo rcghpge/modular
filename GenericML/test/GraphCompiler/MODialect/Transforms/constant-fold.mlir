@@ -134,11 +134,12 @@ mo.graph @repeated_application(%e0 : !mo.tensor<[], si32>) -> !mo.tensor<[], si3
 }
 
 // CHECK: shape_func
-// CHECK-DAG: kgen.param.declare MMPackSh0 = <
-// CHECK-DAG: kgen.param.declare MMPackSh1 = <
-// CHECK-DAG: %[[A0:.*]] = mo.constant {value = dense_resource<{{.*}}> : !M.array<
-// CHECK-DAG: %[[A1:.*]] = mo.rebind(%[[A0]])
-// CHECK: mo.output %[[A1]]
+// CHECK:   %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<1xf32>} : !mo.tensor<[1], f32>
+// CHECK:   %[[VAL1:.*]] = mo.static.broadcast_to(%[[VAL0]]) : !mo.tensor<[1], f32> -> !mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}>
+// CHECK:   mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> MMPackSh0, MMPackSh1>(%1) {kgenParams = {a_type = f32, c_type = f32, transpose_in_0 = false}} : (!mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}>)
+// CHECK:   %[[VAL2:.*]] = mo.layout.transform(%[[VAL1]]) {kgenParams = {a_type = f32, c_type = f32}} : !mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}> -> !mo.tensor<[MMPackSh0, MMPackSh1], f32, {layout = #mo.layout<KNkni>}>
+// CHECK:   %[[VAL3:.*]] = mo.rebind(%[[VAL2]]) : !mo.tensor<[MMPackSh0, MMPackSh1], f32, {layout = #mo.layout<KNkni>}> -> !mo.tensor<[?, ?], f32>
+// CHECK:   mo.output %[[VAL3]] : !mo.tensor<[?, ?], f32>
 mo.graph @shape_func() -> (!mo.tensor<[?, ?], f32>) {
   %1 = mo.constant {value = #M.dense_array<1.> : tensor<1xf32>} : !mo.tensor<[1], f32>
   %2 = mo.static.broadcast_to(%1):!mo.tensor<[1], f32> -> !mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}>
