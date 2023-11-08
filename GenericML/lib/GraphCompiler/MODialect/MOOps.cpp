@@ -13,6 +13,7 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
+#include "GenericML/Support/Dims.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
@@ -1132,7 +1133,7 @@ LogicalResult SplitOp::verify() {
   if (inputTy.hasStaticShape() && axisOr) {
     int64_t axis = *axisOr;
     int64_t inputRank = inputTy.getRank();
-    int64_t normalizedAxis = (axis < 0) ? axis + inputRank : axis;
+    int64_t normalizedAxis = normalizeAxis(axis, inputRank);
     if ((normalizedAxis < 0) || (inputRank <= normalizedAxis))
       return emitError("split axis must be in range [-rank, rank)");
 

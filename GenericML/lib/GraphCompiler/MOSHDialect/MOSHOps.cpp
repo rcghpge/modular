@@ -12,6 +12,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/ShapeFuncHelpers.h"
+#include "GenericML/Support/Dims.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
@@ -33,14 +34,6 @@ namespace Arith = mlir::arith;
 //===----------------------------------------------------------------------===//
 // Shape ops
 //===----------------------------------------------------------------------===//
-
-/// Normalize axis by incrementing negative axis with given rank. For
-/// instance, for a rank-3 tensor, the `-1` axis is the last axis, i.e., axis
-/// `2`, which is `-1 + 3`.
-static int64_t normalizeAxis(const APInt &axisApInt, int64_t rank) {
-  int64_t axis = axisApInt.getSExtValue();
-  return (axis < 0) ? rank + axis : axis;
-}
 
 OpFoldResult BroadcastOp::fold(FoldAdaptor adaptor) {
   auto xShape = dyn_cast_or_null<ShapeAttr>(adaptor.getInputX());
@@ -144,7 +137,8 @@ OpFoldResult GetDimOp::fold(FoldAdaptor adaptor) {
   auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput());
   auto dim = dyn_cast_or_null<IntegerAttr>(adaptor.getDim());
   if (input && dim)
-    return input.getValues()[normalizeAxis(dim.getValue(), input.getRank())];
+    return input.getValues()[normalizeAxis(dim.getValue().getSExtValue(),
+                                           input.getRank())];
   return {};
 }
 
@@ -176,7 +170,7 @@ OpFoldResult NumElementsOp::fold(FoldAdaptor adaptor) {
 
 /// Clamps `axisApInt` to the range [0, rank].
 static int64_t clampAxis(const APInt &axisApInt, int64_t rank) {
-  int64_t axis = normalizeAxis(axisApInt, rank);
+  int64_t axis = normalizeAxis(axisApInt.getSExtValue(), rank);
   return std::max(std::min(axis, rank), (int64_t)0);
 }
 

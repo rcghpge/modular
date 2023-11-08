@@ -6,12 +6,14 @@
 
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
+#include "GenericML/GraphCompiler/Analysis/MODialect/StaticReshapeDimensionsMappingAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/GraphCompiler/Matchers.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "GenericML/Support/DataflowUtils.h"
+#include "GenericML/Support/Dims.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/ML/Permutation.h"
 
@@ -1719,8 +1721,7 @@ struct SplitToSlicePattern
     if (axis == 0)
       return rewriter.notifyMatchFailure(
           op, "Avoid clashing with MGP optimization when axis == 0");
-    if (axis < 0)
-      axis = inTy.getRank() + axis;
+    axis = normalizeAxis(axis, inTy.getRank());
 
     // We must have constant split sizes.
     std::optional<SmallVector<int64_t>> maybeSplits =
@@ -1761,6 +1762,134 @@ struct SplitToSlicePattern
 
     rewriter.eraseOp(op);
     return mlir::success();
+  }
+};
+
+/// A pattern that replaces several slices into one split to enable split
+/// patterns. This is the converse of SplitToSlicePattern.
+struct SliceToSplitPattern
+    : public DeviceAwareRewritePattern<OpRewritePattern, SliceOp> {
+  SliceToSplitPattern(MLIRContext *ctx)
+      : DeviceAwareRewritePattern<OpRewritePattern, SliceOp>(ctx, 2) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::SliceOp op,
+                             DeviceAwareRewriter &rewriter) const override {
+    SmallVector<SliceOp> sliceOps;
+    Value input = op.getInput();
+    for (auto user : input.getUsers()) {
+      if (auto sliceOp = dyn_cast<SliceOp>(user))
+        sliceOps.push_back(sliceOp);
+    }
+
+    if (sliceOps.size() == 1)
+      return rewriter.notifyMatchFailure(op, "Only one slice op");
+
+    if (!llvm::all_of(sliceOps, [](SliceOp sliceOp) {
+          return sliceOp.getStart().getDefiningOp<ConstantOp>() &&
+                 sliceOp.getStop().getDefiningOp<ConstantOp>();
+        })) {
+      return rewriter.notifyMatchFailure(
+          op, "Start and step operands must be constants");
+    }
+
+    auto inputType = input.getType().cast<TensorType>();
+    int64_t sliceDimension;
+    const auto sliceHasStaticRankKnownShapeAndSlicesOneDimension =
+        [&](SliceOp sliceOp) {
+          auto type = sliceOp.getResult().getType();
+          if (!type.hasRank())
+            return false;
+
+          if (type.hasUnknownShape())
+            return false;
+
+          int64_t differentDimensions = 0;
+          int64_t i = 0;
+          for (auto [before, after] :
+               llvm::zip(inputType.getDims(), type.getDims())) {
+            if (before != after) {
+              sliceDimension = i;
+              ++differentDimensions;
+            }
+            ++i;
+          }
+
+          return differentDimensions == 1;
+        };
+
+    if (!llvm::all_of(sliceOps,
+                      sliceHasStaticRankKnownShapeAndSlicesOneDimension)) {
+      return rewriter.notifyMatchFailure(
+          op, "All slices must have a static rank, a known shape and slice "
+              "through only one dimension");
+    }
+
+    if (llvm::any_of(sliceOps, [&](SliceOp sliceOp) {
+          return sliceOp.getType().getIntDim(sliceDimension) ==
+                 ShapedType::kDynamic;
+        })) {
+      return rewriter.notifyMatchFailure(
+          op, "Sliced dimension must be statically known for all slices");
+    }
+
+    int64_t nElements = 0;
+    for (SliceOp sliceOp : sliceOps)
+      nElements += sliceOp.getType().getIntDim(sliceDimension);
+
+    if (nElements != inputType.getIntDim(sliceDimension)) {
+      return rewriter.notifyMatchFailure(
+          op, "Union of slices must cover all of the input");
+    }
+
+    const auto getSliceValue = [&](Value value) {
+      return SmallVector<APInt>(value.getDefiningOp<ConstantOp>()
+                                    .getValue()
+                                    .cast<IntArrayElementsAttr>()
+                                    .getValues())[sliceDimension]
+          .getSExtValue();
+    };
+
+    std::sort(sliceOps.begin(), sliceOps.end(), [&](SliceOp lhs, SliceOp rhs) {
+      return getSliceValue(lhs.getStart()) < getSliceValue(rhs.getStop());
+    });
+
+    for (uint64_t i = 1; i < sliceOps.size(); ++i) {
+      if (getSliceValue(sliceOps[i].getStart()) <
+          getSliceValue(sliceOps[i - 1].getStop())) {
+        return rewriter.notifyMatchFailure(op, "Slices are overlapping");
+      }
+    }
+
+    Location loc = op.getLoc();
+    rewriter.setInsertionPoint(op);
+
+    SmallVector<Type> splitTypes;
+    for (SliceOp sliceOp : sliceOps)
+      splitTypes.push_back(sliceOp.getType());
+
+    SmallVector<int64_t> splitSizes;
+    for (SliceOp sliceOp : sliceOps) {
+      splitSizes.push_back(getSliceValue(sliceOp.getStop()) -
+                           getSliceValue(sliceOp.getStart()));
+    }
+    auto splitSizesOp = rewriter.create<ConstantOp>(loc, splitSizes);
+
+    SmallVector<Value> originalSliceValues;
+    for (SliceOp sliceOp : sliceOps)
+      originalSliceValues.push_back(sliceOp.getResult());
+
+    auto splitAxis =
+        rewriter.create<ConstantOp>(loc, sliceDimension).getResult();
+
+    auto splitOp = rewriter.create<SplitOp>(
+        loc, splitTypes, input, splitSizesOp.getResult(), splitAxis);
+
+    rewriter.replaceAllUsesWith(originalSliceValues, splitOp.getResults());
+    for (SliceOp sliceOp : sliceOps)
+      rewriter.eraseOp(sliceOp);
+
+    return success();
   }
 };
 
@@ -1889,9 +2018,34 @@ struct MergeParallelMatmulPattern
   }
 };
 
+// Returns true if the split operates on the last dimension and that the
+// dimension is statically known.
+static bool isStaticSplit(SplitOp op) {
+  auto inputType = op.getInput().getType().cast<TensorType>();
+  if (!inputType.hasRank())
+    return false;
+
+  auto axisOr = tryGetConstantInt(op.getAxis());
+  if (!axisOr)
+    return false;
+
+  int64_t axis = normalizeAxis(*axisOr, inputType.getRank());
+  if (!isa<IntegerAttr>(inputType.getDim(axis)))
+    return false;
+
+  return true;
+}
+
+static bool allResultsAreUsed(Operation *op) {
+  return llvm::all_of(op->getResults(),
+                      [](Value result) { return !result.getUsers().empty(); });
+}
+
 /// A pattern that will move a split/ operation after identical elementwise
 /// operations if certain conditions are met
 /// CONDITIONS:
+/// - Split on the last axis.
+/// - Last axis of the split is statically known.
 /// - Split must be uniform (same size).
 /// - Elementwise must be the same.
 /// - Elementwise operand use must be the same.
@@ -1912,30 +2066,21 @@ struct SinkSplitThroughElementwisePattern
   LogicalResult
   deviceAwareMatchAndRewrite(SplitOp op,
                              DeviceAwareRewriter &rewriter) const override {
-    auto inputType = op.getInput().getType().cast<TensorType>();
-    if (!inputType.hasRank())
-      return rewriter.notifyMatchFailure(op, "Input must be statically ranked");
-
-    auto axisOr = tryGetConstantInt(op.getAxis());
-    if (!axisOr)
-      return rewriter.notifyMatchFailure(op, "Split axis is not a constant");
-
-    uint64_t lastAxis = inputType.getRank() - 1;
-    uint64_t axis = *axisOr;
-    if (axis != lastAxis)
-      return rewriter.notifyMatchFailure(op, "Split axis must be the last dim");
-
-    if (op.getNumResults() != llvm::range_size(op->getUsers()))
-      return rewriter.notifyMatchFailure(op, "Not all results are used");
+    if (!isStaticSplit(op) || !allResultsAreUsed(op)) {
+      return rewriter.notifyMatchFailure(
+          op, "Split op must be statically ranked and have one use and one "
+              "user per result");
+    }
 
     auto firstResultType = op.getResults().front().getType().cast<TensorType>();
+    int64_t splitAxis = normalizeAxis(*tryGetConstantInt(op.getAxis()),
+                                      firstResultType.getRank());
+
+    if (splitAxis != static_cast<int64_t>(firstResultType.getRank() - 1))
+      return rewriter.notifyMatchFailure(op, "Split must be on last axis");
+
     SmallVector<Value> elementwiseValues;
     for (auto result : op.getResults()) {
-      if (!result.hasOneUse()) {
-        return rewriter.notifyMatchFailure(op,
-                                           "Split results must have one use");
-      }
-
       if (result.getType() != firstResultType) {
         return rewriter.notifyMatchFailure(
             op, "Split results don't have the same size");
@@ -2025,6 +2170,7 @@ struct SinkSplitThroughElementwisePattern
 
     Location loc = op.getLoc();
     rewriter.setInsertionPoint(op);
+    auto inputType = op.getInput().getType().cast<TensorType>();
     uint64_t lastDimSize =
         inputType.getDims().back().cast<IntegerAttr>().getInt();
 
@@ -2045,7 +2191,7 @@ struct SinkSplitThroughElementwisePattern
       Value broadcast = concatenatedConstants;
       if (broadcastOp) {
         auto broadcastType =
-            broadcastOp.getType().cloneWithNewDim(lastAxis, lastDimSize);
+            broadcastOp.getType().cloneWithNewDim(splitAxis, lastDimSize);
         broadcast = rewriter
                         .create<Static::BroadcastToOp>(loc, broadcastType,
                                                        concatenatedConstants)
@@ -2053,15 +2199,15 @@ struct SinkSplitThroughElementwisePattern
       }
 
       elementwiseOperands.resize(2);
-      elementwiseOperands[firstUseIndex] = broadcast;
-      elementwiseOperands[1 - firstUseIndex] = op.getInput();
+      elementwiseOperands[1 - firstUseIndex] = broadcast;
+      elementwiseOperands[firstUseIndex] = op.getInput();
     } else {
       elementwiseOperands.push_back(op.getInput());
     }
 
     auto elementwiseType =
         firstOwner->getResultTypes().front().cast<TensorType>().cloneWithNewDim(
-            lastAxis, lastDimSize);
+            splitAxis, lastDimSize);
     OperationState elementwiseOpState(loc, firstOwner->getName(),
                                       elementwiseOperands, elementwiseType);
     auto newElementwise = rewriter.create(elementwiseOpState)->getResult(0);
@@ -2090,8 +2236,25 @@ struct SinkSplitThroughElementwisePattern
   }
 };
 
-/// A pattern that will sink a split operation through a reshape-like operation
-/// such as Static::ReshapeOp and RebindOp.
+/// This pattern will sink a split operation through a ReshapeOpType (usually a
+/// static reshape or a rebind op).
+/// CONDITIONS:
+/// - Split axis is statically known.
+/// - Split dimension is statically known.
+/// - All split results are used at least once.
+/// - Split must be uniform (same size).
+/// - All split users must be `ReshapeOpType`.
+/// - The reshape must not mix dynamic and static dimensions.
+/// - The split axis must not be mixed with left dimensions after the reshape.
+/// - [Unchecked] Row major-like memory layout.
+/// BEFORE:
+/// -> split -> reshape ->
+///          -> reshape ->
+///          -> reshape ->
+/// AFTER:
+/// -> reshape -> split ->
+///                     ->
+///                     ->
 template <typename ReshapeOpType>
 struct SinkSplitThroughStaticReshapeLikeOpsPattern
     : public DeviceAwareRewritePattern<OpRewritePattern, SplitOp> {
@@ -2101,93 +2264,134 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
   LogicalResult
   deviceAwareMatchAndRewrite(SplitOp op,
                              DeviceAwareRewriter &rewriter) const override {
-    auto inputType = op.getInput().getType().cast<TensorType>();
-    if (!inputType.hasRank())
-      return rewriter.notifyMatchFailure(op, "Input must be statically ranked");
+    if (!isStaticSplit(op) || !allResultsAreUsed(op)) {
+      return rewriter.notifyMatchFailure(
+          op, "Split op must be statically ranked, operate on last statically "
+              "known axis and have one use and one user per result");
+    }
 
-    auto axisOr = tryGetConstantInt(op.getAxis());
-    if (!axisOr)
-      return rewriter.notifyMatchFailure(op, "Split axis is not a constant");
-    uint64_t axis = *axisOr;
-
-    uint64_t lastAxis = inputType.getRank() - 1;
-    if (axis != lastAxis)
-      return rewriter.notifyMatchFailure(op, "Split axis must be the last dim");
+    auto resultTypes = op->getResultTypes();
+    if (!llvm::all_of(resultTypes, [&](Type resultType) {
+          return resultType == resultTypes.front();
+        })) {
+      return rewriter.notifyMatchFailure(op, "Split is not uniform");
+    }
 
     auto users = op->getUsers();
-    if (llvm::range_size(users) != op.getNumResults())
-      return rewriter.notifyMatchFailure(op, "Not all results are used");
-
-    if (!llvm::all_of(users, [](Operation *user) {
-          return llvm::isa<ReshapeOpType>(user);
-        })) {
-      return rewriter.notifyMatchFailure(op, "Users are not reshapes");
-    }
-
-    auto firstReshapeOutputType =
-        users.begin()->getResultTypes().front().cast<TensorType>();
-    auto firstReshapeOutputShape = firstReshapeOutputType.getDims();
-    if (!llvm::all_of(users, [&](Operation *reshape) {
-          auto otherReshapeOutputShape =
-              reshape->getResultTypes().front().cast<TensorType>().getDims();
-          if (otherReshapeOutputShape.empty()) {
+    if (!llvm::all_of(users, [&](Operation *user) {
+          auto reshapeOp = llvm::dyn_cast<ReshapeOpType>(user);
+          if (!reshapeOp)
             return false;
-          }
 
-          return firstReshapeOutputShape.drop_back() ==
-                 otherReshapeOutputShape.drop_back();
+          auto type = reshapeOp.getType();
+
+          return type.getRank() &&
+                 type == cast<ReshapeOpType>(*users.begin()).getType();
         })) {
       return rewriter.notifyMatchFailure(
-          op, "Reshapes are not identical on other dimensions or they have "
-              "scalar inputs or outputs");
-    }
-
-    if (llvm::any_of(llvm::zip(op.getResults(), users), [&](auto result_user) {
-          auto [result, user] = result_user;
-          return user->getResult(0)
-                     .getType()
-                     .template cast<TensorType>()
-                     .getDims()
-                     .back() !=
-                 result.getType().template cast<TensorType>().getDims().back();
-        })) {
-      return rewriter.notifyMatchFailure(
-          op, "Reshape is tempering with the split dimension");
+          op, "Users must be identical non-scalar reshapes");
     }
 
     for (Operation *user : users) {
       if (!rewriter.addOp(user)) {
         return rewriter.notifyMatchFailure(
-            op, "matched ops have inconsistent devices");
+            op, "Matched ops have inconsistent devices");
       }
     }
+
+    auto splitType = op.getType(0).cast<TensorType>();
+    auto shapeBeforeReshape = splitType.getDims();
+    auto shapeAfterReshape = users.begin()
+                                 ->getResults()
+                                 .front()
+                                 .getType()
+                                 .cast<TensorType>()
+                                 .getDims();
+    const StaticReshapeDimensionsMappingAnalysis
+        staticReshapeDimensionsMappingAnalysis(shapeBeforeReshape,
+                                               shapeAfterReshape);
+    if (!staticReshapeDimensionsMappingAnalysis)
+      return rewriter.notifyMatchFailure(op, "Unsupported reshape");
+
+    int64_t splitAxis =
+        normalizeAxis(*tryGetConstantInt(op.getAxis()), splitType.getRank());
+
+    uint64_t mappedSplitAxis = splitAxis;
+    // Will stop at the first non 1 dimension, dynamic dimension included. This
+    // is because 1s are ignored by the analysis and they serve no real purpose
+    // in the reshape.
+    while (mappedSplitAxis < splitType.getRank() &&
+           splitType.getIntDim(mappedSplitAxis) == 1) {
+      ++mappedSplitAxis;
+    }
+
+    // If there is no non-1 dimension and or if that dimension is dynamic, then
+    // the reshape is unsupported. This is because there is no way to split it
+    // with the new dimensions.
+    const bool couldNotFindAnotherAxis = mappedSplitAxis == splitType.getRank();
+    if (couldNotFindAnotherAxis ||
+        !isa<IntegerAttr>(splitType.getDim(mappedSplitAxis)))
+      return rewriter.notifyMatchFailure(op, "Trailing ones is unsupported");
+
+    // If the dimension was expanded and it was not mixed with other dimensions
+    // or if it was contracted but the mixing was done with dimensions that are
+    // on the right, then it can proceed. This assumes a row major memory
+    // layout.
+    // What mixing means is that two dimensions from the original shape
+    // contributed to the same dimension in the reshaped shape. This prevents a
+    // split unless the split axis is the leftmost of the mixed dimensions (in
+    // row major).
+    const bool couldMix =
+        staticReshapeDimensionsMappingAnalysis
+            .backwardMapping()[staticReshapeDimensionsMappingAnalysis
+                                   .forwardMapping()[mappedSplitAxis]
+                                   .front()]
+            .size() > 1;
+    const bool mixedButSplitAxisIsFirst =
+        staticReshapeDimensionsMappingAnalysis
+            .backwardMapping()[staticReshapeDimensionsMappingAnalysis
+                                   .forwardMapping()[mappedSplitAxis]
+                                   .front()]
+            .front() == static_cast<int64_t>(mappedSplitAxis);
+    if (couldMix && !mixedButSplitAxisIsFirst) {
+      return rewriter.notifyMatchFailure(op,
+                                         "Reshape is mixing static dimensions");
+    }
+
+    // The new split axis is the left most axis in the shape after the reshape.
+    const int64_t newSplitAxis =
+        staticReshapeDimensionsMappingAnalysis.forwardMapping()[mappedSplitAxis]
+            .front();
 
     Location loc = op->getLoc();
     rewriter.setInsertionPoint(op);
 
-    auto newReshapeType = firstReshapeOutputType.cloneWithNewDim(
-        firstReshapeOutputType.getRank() - 1,
-        inputType.getDims().back().cast<IntegerAttr>().getInt());
+    auto firstReshapeType = cast<ReshapeOpType>(*users.begin()).getType();
+    SmallVector<TypedAttr> newReshapeShape(firstReshapeType.getDims());
+    newReshapeShape[newSplitAxis] = rewriter.getIndexAttr(
+        newReshapeShape[newSplitAxis].cast<IntegerAttr>().getInt() *
+        op->getNumResults());
+    auto newReshapeType = TensorType::get(
+        ShapeAttr::get(newReshapeShape, rewriter.getType<MOSH::ShapeType>()),
+        firstReshapeType.getDtype());
     auto newReshape =
         rewriter.create<ReshapeOpType>(loc, newReshapeType, op.getInput())
             .getResult();
 
-    SmallVector<Type> newSplitTypes;
-    for (Operation *user : users)
-      newSplitTypes.push_back(user->getResult(0).getType());
+    SmallVector<Type> newSplitTypes(op.getNumResults(), firstReshapeType);
+    SmallVector<int64_t> newSplitSizes(
+        op.getNumResults(), firstReshapeType.getIntDim(newSplitAxis));
     SmallVector<Value> newSplitOpOperands = op.getOperands();
     newSplitOpOperands[0] = newReshape;
+    newSplitOpOperands[1] = rewriter.create<ConstantOp>(loc, newSplitSizes);
     newSplitOpOperands[2] =
-        rewriter
-            .create<ConstantOp>(loc,
-                                int64_t(firstReshapeOutputType.getRank() - 1))
-            .getResult();
+        rewriter.create<ConstantOp>(loc, int64_t(newSplitAxis)).getResult();
     OperationState splitOpState(loc, op->getName(), newSplitOpOperands,
                                 newSplitTypes, op->getAttrs(),
                                 op->getSuccessors());
     auto newSplit = rewriter.create(splitOpState);
 
-    SmallVector<Operation *> reshapeOps(op->getUsers());
+    SmallVector<Operation *> reshapeOps(users);
     SmallVector<Value> splitResults(newSplit->getResults());
     for (uint64_t i = 0; i < reshapeOps.size(); ++i) {
       rewriter.replaceAllUsesWith(reshapeOps[i]->getResult(0), splitResults[i]);
@@ -2272,8 +2476,7 @@ struct SinkBroadcastsThroughReduction
       return rewriter.notifyMatchFailure(
           loc, "Axis is not within [-rank, rank - 1]");
 
-    if (axis < 0)
-      axis += input.getType().getRank();
+    axis = normalizeAxis(axis, input.getType().getRank());
 
     // Here we want to map the axes we are reducing on in the broadcasted tensor
     // to on the non-broadcasted input.
@@ -2484,6 +2687,10 @@ struct SymbolicOptimizationPass
     MLIRContext *context = &getContext();
 
     RewritePatternSet patterns(context);
+    if constexpr (sizeof...(PatternTypes))
+      // Pattern that should execute now.
+      patterns.add<PatternTypes...>(context);
+
     // Transpose swimming.
     patterns.add<SinkTransposeThroughUnaryOpPattern,
                  SinkTransposeThroughBinaryOpPattern,
@@ -2531,10 +2738,6 @@ struct SymbolicOptimizationPass
                  GathersToSplitPattern, GeluPattern, GemvPattern,
                  SplitAndSqueezesPattern>(context);
 
-    if constexpr (sizeof...(PatternTypes))
-      // Pattern that should execute now.
-      patterns.add<PatternTypes...>(context);
-
     if (failed(
             applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
       return signalPassFailure();
@@ -2548,11 +2751,12 @@ struct SymbolicOptimizationPass
       llvm::dbgs() << "--------------------------------------------\n";
     });
 
-    // First run all the default optimizations.
-    optimizeWithPattern();
+    // First run all the optimizations with slices turned into split when
+    // possible.
+    optimizeWithPattern<SliceToSplitPattern>();
     // Once all split operation patterns have run, convert them to slice and run
-    // all of the other patterns too. This prevents this pattern from preventing
-    // split patterns from occuring because of ordering.
+    // all of the other patterns too. Without it, split patterns would never
+    // apply because they would be turned into slices too early.
     optimizeWithPattern<SplitToSlicePattern>();
 
     LLVM_DEBUG({
