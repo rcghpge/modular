@@ -33,7 +33,7 @@ struct Arity:
     fn __init__(inout self, t: Type):
         self.l = 1
         self.a = mobicc.new_arity()
-        mobicc.add_type(self.a, t.t)
+        mobicc.add_type(self.a, t.type_ptr())
 
     fn __len__(self) -> Int:
         return self.l
