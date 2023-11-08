@@ -42,14 +42,6 @@ def MOShape_BroadcastOp : MOSH_Op<"broadcast", [Commutative, Pure]> {
 
   let assemblyFormat = "`(` operands `)` attr-dict";
   let hasFolder = 1;
-
-  let extraClassDeclaration = [{
-    /// Returns the forward shape function (building it in the given module if
-    /// necessary) assuming both shapes are statically ranked, and the smaller
-    /// rank is provided.
-    static KGEN::FuncOp getForwardShapeFunc(Location loc, ModuleOp module,
-      size_t smallerRank, mlir::RewriterBase &rewriter);
-  }];
 }
 
 def MOShape_ConcatOp : MOSH_Op<"concat", [Pure]> {
