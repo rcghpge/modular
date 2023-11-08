@@ -16,6 +16,7 @@
 #include "MOF/MOBI/Symbol.h"
 #include "MOF/MOBI/Type.h"
 #include "Support/Buffer.h"
+#include "Support/ML/TensorSpec.h"
 #include "mlir/IR/MLIRContext.h"
 
 using namespace M::MOF::Builder;
@@ -151,6 +152,23 @@ MODULAR_API_EXPORT M_Symbol *MOBI_getSymbol(M_Tuple *t, uint32_t pos) {
 }
 
 /// Type
+
+MODULAR_API_EXPORT M_Type *MOBI_typeFromSpec(M_Module *m, const void *spec) {
+  const M::TensorSpec &tensorSpec = *(const M::TensorSpec *)spec;
+  SmallVector<int64_t> dims(tensorSpec.begin(), tensorSpec.end());
+  return new M_Type{M::MO::TensorType::get(
+      dims, *M::MO::toMLIRType(m->module.getContext(), tensorSpec.getEltType()),
+      /*metadata=*/{})};
+}
+
+MODULAR_API_EXPORT void MOBI_specFromType(M_Type *t, void *spec) {
+  M::TensorSpec &tensorSpec = *(M::TensorSpec *)spec;
+  auto tensorTy = cast<M::MO::TensorType>(t->type.getVal());
+  assert(tensorTy.hasRank() && "no unranked TensorSpec support yet");
+
+  tensorSpec = M::TensorSpec(tensorTy.getIntDims(),
+                             *M::MO::fromMLIRType(tensorTy.getElementType()));
+}
 
 MODULAR_API_EXPORT int64_t MOBI_dynamicDim(M_Module *m) {
   return m->module.dynamicDim();

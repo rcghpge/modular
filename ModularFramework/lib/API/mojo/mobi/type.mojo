@@ -5,7 +5,8 @@
 # ===----------------------------------------------------------------------=== #
 
 from debug import trap
-from .mobicc import TypePtr
+from tensor import TensorSpec
+from .mobicc import ModulePtr, TypePtr
 
 
 @value
@@ -19,6 +20,11 @@ struct TensorType:
     """
 
     var t: TypePtr
+
+    def spec(self) -> TensorSpec:
+        var result = TensorSpec()
+        mobicc.spec_from_type(self.t, result)
+        return result
 
 
 @value
@@ -47,6 +53,9 @@ struct Type:
         self.variant = __mlir_op.`kgen.variant.create`[
             _type = Self.type, index = Self.tensor.value
         ](TensorType(type))
+
+    fn __init__(inout self, m: ModulePtr, spec: TensorSpec):
+        self.__init__(mobicc.type_from_spec(m, spec))
 
     fn unwrap_tensor(self) -> TensorType:
         if not Bool(

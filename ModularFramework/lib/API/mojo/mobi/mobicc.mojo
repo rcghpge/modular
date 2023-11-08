@@ -13,6 +13,7 @@ from sys.ffi import (
     DLHandle,
     _get_dylib_function as _ffi_get_dylib_function,
 )
+from tensor import TensorSpec
 
 
 struct _Attr:
@@ -254,6 +255,19 @@ fn get_symbol(t: TuplePtr, pos: UInt32) -> SymbolPtr:
 
 
 ### Type helers
+
+
+fn type_from_spec(m: ModulePtr, spec: TensorSpec) -> TypePtr:
+    return MOBI_func[fn (ModulePtr, TensorSpec) -> TypePtr](
+        "MOBI_typeFromSpec"
+    )(m, spec)
+
+
+fn spec_from_type(t: TypePtr, inout spec: TensorSpec) -> None:
+    let spec_ptr = Pointer.address_of(spec)
+    return MOBI_func[fn (TypePtr, Pointer[TensorSpec]) -> NoneType](
+        "MOBI_specFromType"
+    )(t, spec_ptr)
 
 
 fn dynamic_dim(module: ModulePtr) -> Int64:

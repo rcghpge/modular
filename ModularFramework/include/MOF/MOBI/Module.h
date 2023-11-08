@@ -39,6 +39,8 @@ public:
 
   Attr tensorAttr(llvm::StringRef name, llvm::ArrayRef<uint8_t> data, Type t);
 
+  MLIRContext *getContext();
+
 private:
   mlir::ModuleOp op;
   mlir::OpBuilder builder;
