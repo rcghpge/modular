@@ -30,7 +30,7 @@ struct Arity:
         self.a = a
         self.l = l
 
-    fn __init__(inout self, t: Type) raises:
+    fn __init__(inout self, t: Type):
         self.l = 1
         self.a = mobicc.new_arity()
         mobicc.add_type(self.a, t.t)
@@ -54,7 +54,7 @@ struct Tup:
         self.l = l
         self.g = g
 
-    fn __init__(inout self, symbol: Symbol) raises:
+    fn __init__(inout self, symbol: Symbol):
         self.g = symbol.g
         self.l = 1
         self.t = mobicc.new_tuple()
@@ -67,7 +67,7 @@ struct Tup:
         self.l = existing.l
         self.g = existing.g
 
-    fn __getitem__(self, pos: UInt32) raises -> Symbol:
+    fn __getitem__(self, pos: UInt32) -> Symbol:
         return Symbol(mobicc.get_symbol(self.t, pos), self.g)
 
     fn __len__(self) -> Int:

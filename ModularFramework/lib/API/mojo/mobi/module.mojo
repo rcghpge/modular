@@ -42,7 +42,7 @@ struct Module:
     fn __init__(inout self, m: ModulePtr):
         self.m = m
 
-    fn __str__(self) raises -> String:
+    fn __str__(self) -> String:
         return mobicc.module_to_string(self.m)
 
     fn debug_print_execute(self, inout arg: Tensor[DType.float32]) raises:
@@ -68,20 +68,16 @@ struct Module:
             raise Error("Execution error")
         mobicc.debug_print_tensors(rtOuts)
 
-    fn unknown_loc(self) raises -> LocPtr:
+    fn unknown_loc(self) -> LocPtr:
         return mobicc.unknown_loc(self.m)
 
-    fn i32_attr(
-        self, name: StringRef, t: TypePtr, *elements: Int32
-    ) raises -> AttrPtr:
+    fn i32_attr(self, name: StringRef, t: TypePtr, *elements: Int32) -> AttrPtr:
         var data = DynamicVector[Int32]()
         for i in range(len(elements)):
             data.push_back(elements[i])
         return mobicc.tensor_attr(self.m, name, data.data.bitcast[AnyType](), t)
 
-    fn i64_attr(
-        self, name: StringRef, t: TypePtr, *elements: Int64
-    ) raises -> AttrPtr:
+    fn i64_attr(self, name: StringRef, t: TypePtr, *elements: Int64) -> AttrPtr:
         var data = DynamicVector[Int64]()
         for i in range(len(elements)):
             data.push_back(elements[i])
@@ -89,7 +85,7 @@ struct Module:
 
     fn f32_attr(
         self, name: StringRef, t: TypePtr, *elements: Float32
-    ) raises -> AttrPtr:
+    ) -> AttrPtr:
         var data = DynamicVector[Float32]()
         for i in range(len(elements)):
             data.push_back(elements[i])
@@ -97,21 +93,19 @@ struct Module:
 
     fn f32_attr(
         self, name: StringRef, t: TypePtr, value: Tensor[DType.float32]
-    ) raises -> AttrPtr:
+    ) -> AttrPtr:
         return mobicc.tensor_attr(
             self.m, name, value.data().bitcast[DType.invalid](), t
         )
 
     fn f32_attr(
         self, name: StringRef, t: TypePtr, file_name: StringRef
-    ) raises -> AttrPtr:
+    ) -> AttrPtr:
         return mobicc.tensor_attr_from_file(self.m, name, file_name, t)
 
     fn tensor_attr[
         dtype: DType
-    ](
-        self, name: StringRef, t: TypePtr, value: Tensor[dtype]
-    ) raises -> AttrPtr:
+    ](self, name: StringRef, t: TypePtr, value: Tensor[dtype]) -> AttrPtr:
         return mobicc.tensor_attr(
             self.m, name, value.data().bitcast[DType.invalid](), t
         )
@@ -125,7 +119,7 @@ struct Module:
             return self.i64(t.shape())
         raise "not implemented"
 
-    fn attrs(self, *attrs: AttrPtr) raises -> AttrMap:
+    fn attrs(self, *attrs: AttrPtr) -> AttrMap:
         var m = mobicc.new_attr_map()
         for i in range(len(attrs)):
             mobicc.add_attr(m, attrs[i])
@@ -133,38 +127,38 @@ struct Module:
 
     # TODO: Support TensorSpec overload.
 
-    fn dyn(self) raises -> Int64:
+    fn dyn(self) -> Int64:
         return mobicc.dynamic_dim(self.m)
 
-    fn i32(self, *dims: Int64) raises -> TypePtr:
+    fn i32(self, *dims: Int64) -> TypePtr:
         let shape = _dynamic_vector(dims)
         return mobicc.si(self.m, 32, shape.data, len(shape))
 
-    fn i32(self, dims: TensorShape) raises -> TypePtr:
+    fn i32(self, dims: TensorShape) -> TypePtr:
         let shape = _dynamic_vector(dims)
         return mobicc.si(self.m, 32, shape.data, len(shape))
 
-    fn i64(self, *dims: Int64) raises -> TypePtr:
+    fn i64(self, *dims: Int64) -> TypePtr:
         let shape = _dynamic_vector(dims)
         return mobicc.si(self.m, 64, shape.data, len(shape))
 
-    fn i64(self, dims: TensorShape) raises -> TypePtr:
+    fn i64(self, dims: TensorShape) -> TypePtr:
         let shape = _dynamic_vector(dims)
         return mobicc.si(self.m, 64, shape.data, len(shape))
 
-    fn f32(self, *dims: Int64) raises -> TypePtr:
+    fn f32(self, *dims: Int64) -> TypePtr:
         let shape = _dynamic_vector(dims)
         return mobicc.f32(self.m, shape.data, len(shape))
 
-    fn f32(self, dims: TensorShape) raises -> TypePtr:
+    fn f32(self, dims: TensorShape) -> TypePtr:
         let shape = _dynamic_vector(dims)
         return mobicc.f32(self.m, shape.data, len(shape))
 
-    fn bool(self, *dims: Int64) raises -> TypePtr:
+    fn bool(self, *dims: Int64) -> TypePtr:
         let shape = _dynamic_vector(dims)
         return mobicc.bool(self.m, shape.data, len(shape))
 
-    fn types(self, *types: TypePtr) raises -> Arity:
+    fn types(self, *types: TypePtr) -> Arity:
         var a = mobicc.new_arity()
         for i in range(len(types)):
             mobicc.add_type(a, types[i])
@@ -175,7 +169,7 @@ struct Module:
         name: StringRef,
         in_types: Arity,
         out_types: Arity,
-    ) raises -> Graph:
+    ) -> Graph:
         let unknown = mobicc.unknown_loc(self.m)
         let g = mobicc.new_graph(self.m, unknown, name, in_types.a, out_types.a)
         return Graph(g, self)

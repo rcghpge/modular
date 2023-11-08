@@ -26,10 +26,10 @@ struct Graph:
         self.g = g
         self.m = m
 
-    fn __getitem__(self, pos: UInt32) raises -> Symbol:
+    fn __getitem__(self, pos: UInt32) -> Symbol:
         return Symbol(mobicc.get_input(self.g, pos), self)
 
-    fn values(self, *values: Symbol) raises -> Tup:
+    fn values(self, *values: Symbol) -> Tup:
         var t = mobicc.new_tuple()
         for i in range(len(values)):
             let val = __get_address_as_lvalue(values[i])
@@ -41,7 +41,7 @@ struct Graph:
         name: StringRef,
         input: Symbol,
         out_type: Type,
-    ) raises -> Tup:
+    ) -> Tup:
         return self.op(name, Tup(input), Arity(out_type))
 
     fn op(
@@ -49,7 +49,7 @@ struct Graph:
         name: StringRef,
         input: Symbol,
         out_types: Arity,
-    ) raises -> Tup:
+    ) -> Tup:
         return self.op(name, Tup(input), out_types)
 
     fn op(
@@ -57,7 +57,7 @@ struct Graph:
         name: StringRef,
         inputs: Tup,
         out_types: Arity,
-    ) raises -> Tup:
+    ) -> Tup:
         let loc = self.m.unknown_loc()
         let attrs = mobicc.new_attr_map()
         let outputs = mobicc.new_op(
@@ -71,7 +71,7 @@ struct Graph:
         inputs: Tup,
         out_types: Arity,
         attrs: AttrMap,
-    ) raises -> Tup:
+    ) -> Tup:
         let loc = self.m.unknown_loc()
         let outputs = mobicc.new_op(
             self.g, loc, name, inputs.t, out_types.a, attrs.m
@@ -101,7 +101,7 @@ struct Graph:
 
     fn constant[
         dtype: DType = DType.float32
-    ](inout self, value: Float32) raises -> Symbol:
+    ](inout self, value: Float32) -> Symbol:
         constrained[dtype == DType.float32]()  # TODO: add more float types
         let m = self.m
         return self.op(
