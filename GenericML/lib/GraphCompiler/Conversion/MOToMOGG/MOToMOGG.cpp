@@ -43,17 +43,18 @@ struct MOOpPattern : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    auto maybeResults =
-        MOToMOGGUtils::lowerOpToMOGG(op, moToMojoKernels, mojoLibraryAnalysis);
-    if (!maybeResults.has_value())
+    OpBuilder insertPoint{op};
+    auto maybeOp = MOToMOGGUtils::lowerOpToMOGG(
+        op, insertPoint, moToMojoKernels, mojoLibraryAnalysis);
+    if (!maybeOp.has_value())
       return failure();
 
-    ErrorOr<ValueRange> &results = maybeResults.value();
+    ErrorOr<Operation *> &results = maybeOp.value();
     if (results.isError()) {
       op->emitOpError("[MO_TO_MOGG] ") << results.getError();
       return failure();
     } else {
-      rewriter.replaceOp(op, results.takeValue());
+      rewriter.replaceOp(op, results.takeValue()->getResults());
       return mlir::success();
     }
   }
