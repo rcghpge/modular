@@ -330,7 +330,7 @@ struct ConvertBatchMatmulBatchSizeOneToMatmulPattern
     auto requiredOneDims = rank - 2;
 
     for (size_t i = 0, e = (requiredOneDims); i < e; i++)
-      if ((aType.getIntDim(i) != 1) || (aType.getIntDim(i) != 1))
+      if ((aType.getIntDim(i) != 1) || (bType.getIntDim(i) != 1))
         return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
     auto resTy = op.getResult().getType();
