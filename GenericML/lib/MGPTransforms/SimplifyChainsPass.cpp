@@ -70,6 +70,20 @@ class SimplifyChainsPass
     return {};
   }
 
+  /// If chain is defined by a grt.chain.create operation then accumulate
+  /// all of its operands into primitiveChains. Otherwise adds chain directly
+  /// to primitiveChains.
+  void accumulatePrimitiveChains(IndexSet<Value> &valueIndex,
+                                 IndexSet<Value>::Set &primitiveChains,
+                                 Value chain) {
+    if (auto chainCreateOp = chain.getDefiningOp<GRT::ChainCreateOp>()) {
+      for (auto operand : chainCreateOp.getOperands())
+        accumulatePrimitiveChains(valueIndex, primitiveChains, operand);
+    } else {
+      valueIndex.addToSet(primitiveChains, chain);
+    }
+  }
+
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
 
@@ -86,10 +100,11 @@ class SimplifyChainsPass
     // to only do rewrites which are invariant w.r.t. that.
 
     modelOp.walk([&](GRT::ChainCreateOp chainCreateOp) {
-      ValueSetVector valuesSet;
-      accumulatePrimitiveChains(valuesSet, chainCreateOp.getResult());
-      SmallVector<Value> values = valuesSet.takeVector();
-      dependencies.simplify(values);
+      IndexSet<Value>::Set valuesSet = valueIndex.emptySet();
+      accumulatePrimitiveChains(valueIndex, valuesSet,
+                                chainCreateOp.getResult());
+      dependencies.simplify(valuesSet);
+      SmallVector<Value> values = valueIndex.setToVector(valuesSet);
       if (values.empty()) {
         // Instead of creating a fresh chain, try to reuse the 'execute'
         // block's %arg0 if it is also always ready.
@@ -99,7 +114,7 @@ class SimplifyChainsPass
           chainCreateOp.getResult().replaceAllUsesWith(replacementValue);
           chainCreateOp.erase();
         } else {
-          chainCreateOp->setOperands(values);
+          chainCreateOp->setOperands({});
         }
       } else if (values.size() == 1 &&
                  isa<MEF::ChainType>(values[0].getType())) {

@@ -85,6 +85,11 @@ bool AsyncDataflowDependencies::isAlwaysReady(Value value) const {
   return valueAnalysis.index->setContains(alwaysReadyPredicate, value);
 }
 
+const AsyncDataflowDependencies::ValueSet &
+AsyncDataflowDependencies::getAlwaysReady() const {
+  return alwaysReadyPredicate;
+}
+
 bool AsyncDataflowDependencies::impliesReady(Value lhs, Value rhs) const {
   return lhs == rhs ||
          valueAnalysis.containsEntry(impliesReadyRelation, lhs, rhs);
@@ -95,24 +100,21 @@ AsyncDataflowDependencies::downwardsImpliesReadySet(Value rhs) const {
   return valueAnalysis.getEntriesAndId(inverseImpliesReadyRelation, rhs);
 }
 
-void AsyncDataflowDependencies::simplify(SmallVectorImpl<Value> &values) const {
-  // CAUTION: Don't underflow ip1.
-  // CAUTION: Size of values changes inside loop body.
-  for (size_t ip1 = values.size(); ip1 > 0; --ip1) {
-    size_t i = ip1 - 1;
-    bool redundant = isAlwaysReady(values[i]);
-    if (!redundant) {
-      for (size_t j = 0; j < values.size(); ++j) {
-        if (j == i)
-          continue;
-        if (impliesReady(values[j], values[i])) {
-          redundant = true;
-          break;
-        }
-      }
-    }
-    if (redundant)
-      values.erase(values.begin() + i);
+const AsyncDataflowDependencies::ValueSet &
+AsyncDataflowDependencies::strictUpwardsImpliesReadySet(Value lhs) const {
+  return valueAnalysis.getEntries(impliesReadyRelation, lhs);
+}
+
+void AsyncDataflowDependencies::simplify(ValueSet &values) const {
+  // No need to wait for values which are always ready.
+  values.reset(getAlwaysReady());
+
+  // For every value...
+  for (auto itr = values.set_bits_begin(), e = values.set_bits_end(); itr != e;
+       ++itr) {
+    // No need to also wait for values which are known to be ready if the
+    // current value is ready.
+    values.reset(strictUpwardsImpliesReadySet(valueAnalysis.index->getV(*itr)));
   }
 }
 

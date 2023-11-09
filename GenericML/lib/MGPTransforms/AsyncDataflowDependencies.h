@@ -147,6 +147,9 @@ public:
   /// grt.chain.create (). The predicate may not be complete.
   bool isAlwaysReady(Value value) const;
 
+  /// Returns the values which are always ready.
+  const ValueSet &getAlwaysReady() const;
+
   /// The impliesReady(%lhs, %rhs) partial order is true only if at runtime
   ///   valueOf(%lhs)->isReady() =>
   ///     if %rhs is bound then valueOf(%rhs)->isReady()
@@ -167,6 +170,10 @@ public:
   /// arbitrarily within the block of the input model.
   ValueSet downwardsImpliesReadySet(Value rhs) const;
 
+  /// Returns the set
+  ///   { %rhs | impliesReady(%lhs, %rhs) }
+  const ValueSet &strictUpwardsImpliesReadySet(Value lhs) const;
+
   /// Assuming
   ///   ... = some.op(values)
   /// (for strict some.op), removes as many values from 'values' without
@@ -181,9 +188,7 @@ public:
   /// This can be used to simply the arguments to grt.chain.create ops. Since
   /// impliesReady includes the identity relation this will also remove outright
   /// duplicates.
-  ///
-  /// CAUTION: O(values.size()^2) implementation.
-  void simplify(SmallVectorImpl<Value> &values) const;
+  void simplify(ValueSet &values) const;
 
   /// The areDisjoint(lhsOp, rhsOp) relation is true only if lhsOp and rhsOp
   /// can never overlap in their execution over all execution paths. Here

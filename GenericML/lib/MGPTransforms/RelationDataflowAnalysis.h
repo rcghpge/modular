@@ -163,7 +163,7 @@ public:
   }
 
   /// Returns the set bound to v.
-  Set getEntries(const Relation &relation, V v) const {
+  const Set &getEntries(const Relation &relation, V v) const {
     auto itr = relation.find(v);
     LLVM_DEBUG({
       if (itr == relation.end()) {
@@ -177,7 +177,7 @@ public:
     return itr->second;
   }
 
-  Set getEntries(const DomainMap &domainMap, V v) const {
+  const Set &getEntries(const DomainMap &domainMap, V v) const {
     return getEntries(domainMap.relation, v);
   }
 
@@ -363,8 +363,10 @@ public:
   [[nodiscard]] Relation inverse(const Relation &relation) const {
     Relation result = emptyRelation();
     for (const auto &[lhs, set] : relation) {
-      for (const auto rhs : index->setToVector(set))
-        add(result, rhs, lhs);
+      size_t lhsIndex = index->getIndex(lhs);
+      for (auto rhsItr = set.set_bits_begin(), e = set.set_bits_end();
+           rhsItr != e; ++rhsItr)
+        result[index->getV(*rhsItr)].set(lhsIndex);
     }
     return result;
   }
