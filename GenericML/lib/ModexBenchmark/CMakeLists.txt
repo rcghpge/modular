@@ -7,6 +7,7 @@
 add_genericml_library(ModexBenchmark
   InputGenerationSchema.cpp
   InputGenerator.cpp
+  MLPerfIntegration.cpp
   Main.cpp
 
   LINK_LIBS PUBLIC

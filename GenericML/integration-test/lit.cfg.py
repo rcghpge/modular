@@ -17,6 +17,11 @@ config.name = "GenericML Integration Tests"
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = [".mlir", ".yaml"]
 
+# excludes: Directories to not search for tests within.
+# TODO(akirchhoff): The "testdata" directory we have should be renamed to
+# "Inputs" for consistency with the LLVM convention.
+config.excludes.add("testdata")
+
 # test_source_root: The root path where tests are located.
 config.test_source_root = os.path.dirname(__file__)
 

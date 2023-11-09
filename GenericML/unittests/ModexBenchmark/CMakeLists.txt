@@ -15,6 +15,7 @@ add_modular_unittest(
   ModexBenchmarkTests
 
   InputGeneratorTest.cpp
+  MLPerfIntegrationTest.cpp
 
   LINK_LIBS PRIVATE
   ModexBenchmark

@@ -50,6 +50,7 @@ struct InputGenerationSchema {
   std::optional<std::vector<InputGenerationInput>> inputs;
 };
 
+ErrorOr<InputGenerationSchema> readInputGenerationSchema(StringRef path);
 bool roundTripInputGenerationSchema(StringRef path);
 
 } // namespace M::ModexBench

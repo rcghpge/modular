@@ -9,6 +9,8 @@
 
 namespace M {
 
+inline constexpr const char *kModexBenchProductName = "modex benchmark";
+
 int modexBenchmarkMain(int argc, char **argv);
 
 } // namespace M

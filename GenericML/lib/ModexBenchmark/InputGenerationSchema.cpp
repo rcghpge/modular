@@ -49,20 +49,27 @@ void llvm::yaml::MappingTraits<InputGenerationSchema>::mapping(
   io.mapOptional("inputs", schema.inputs);
 }
 
-bool ModexBench::roundTripInputGenerationSchema(StringRef path) {
+ErrorOr<InputGenerationSchema>
+ModexBench::readInputGenerationSchema(StringRef path) {
   InputGenerationSchema schema;
-  {
-    std::string error;
-    auto buffer = mlir::openInputFile(path, &error);
-    if (!buffer) {
-      llvm::errs() << error;
-      return false;
-    }
-    llvm::yaml::Input yin(*buffer);
-    yin >> schema;
-    if (yin.error())
-      return false;
+  std::string error;
+  auto buffer = mlir::openInputFile(path, &error);
+  if (!buffer)
+    return Error(std::move(error));
+  llvm::yaml::Input yin(*buffer);
+  yin >> schema;
+  if (yin.error())
+    return Error("YAML parse error");
+  return std::move(schema);
+}
+
+bool ModexBench::roundTripInputGenerationSchema(StringRef path) {
+  auto schemaOr = readInputGenerationSchema(path);
+  if (schemaOr.isError()) {
+    llvm::errs() << schemaOr.getError() << '\n';
+    return false;
   }
+  InputGenerationSchema schema = std::move(*schemaOr);
   // TODO(akirchhoff): Validate
   llvm::outs() << "Input generation schema is valid\n";
   {
