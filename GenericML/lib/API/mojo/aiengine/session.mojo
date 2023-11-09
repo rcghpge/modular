@@ -7,7 +7,7 @@
 from ._context import *
 from ._status import *
 from sys.ffi import DLHandle
-from ._compilation import CompiledModel
+from ._compilation import CompiledModel, CompileConfig
 from ._model import Model
 from ._tensormap import *
 from ._engine import _EngineImpl
@@ -32,8 +32,13 @@ struct _InferenceSessionImpl:
         """
         Compiles the model given model path.
         """
+        let config = CompileConfig(self.engine.lib)
+        config.set_model_path(model_path)
         return CompiledModel(
-            self.context.borrow_ptr(), model_path, self.engine.lib, session ^
+            self.context.borrow_ptr(),
+            self.engine.lib,
+            config ^,
+            session ^,
         )
 
     fn load_model(

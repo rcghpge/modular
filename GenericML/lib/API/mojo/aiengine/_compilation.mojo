@@ -118,12 +118,10 @@ struct CompiledModel:
     fn __init__(
         inout self,
         borrowed ctx: CRuntimeContext,
-        path: StringRef,
         borrowed lib: DLHandle,
+        owned config: CompileConfig,
         owned session: InferenceSession,
     ) raises:
-        let config = CompileConfig(lib)
-        config.set_model_path(path)
         let status = Status(lib)
         self.ptr = call_dylib_func[CCompiledModel](
             lib,
