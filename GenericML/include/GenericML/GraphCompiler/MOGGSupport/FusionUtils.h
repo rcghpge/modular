@@ -28,6 +28,23 @@ MOGG::CallOp createMOGGSlice(mlir::OpBuilder &builder, mlir::Location loc,
                              const SmallVector<int64_t> &stop,
                              const SmallVector<int64_t> &step);
 
+/// Fuse small constant inputs to `kernel` into the kernel, and erase the
+/// original constant op if it has no remaining users.
+///
+/// Example:
+///   %const = mo.constant ...
+///   %res   = mogg.kernel(%const, ...) {
+///     ...
+///   }
+///
+/// ===>
+///
+///   %res = mogg.kernel(...) {
+///     %const = mo.constant ...
+///     ...
+///   }
+void fuseConstant(MOGG::KernelOp kernel);
+
 } // namespace M::MOGG
 
 #endif // GENERICML_GRAPH_COMPILER_MOGGSUPPORT_FUSIONUTILS_H
