@@ -3,7 +3,7 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
-
+//
 #include "ConstantFold.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
