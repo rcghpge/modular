@@ -9,7 +9,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Utils.h"
+#include "GenericML/GraphCompiler/MOGGSupport/FusionUtils.h"
 
 #include "mlir/IR/IRMapping.h"
 

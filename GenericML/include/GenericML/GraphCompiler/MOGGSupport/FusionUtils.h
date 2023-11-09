@@ -3,8 +3,8 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
-#ifndef GENERICML_GRAPH_COMPILER_MOGGDIALECT_UTILS_H
-#define GENERICML_GRAPH_COMPILER_MOGGDIALECT_UTILS_H
+#ifndef GENERICML_GRAPH_COMPILER_MOGGSUPPORT_FUSIONUTILS_H
+#define GENERICML_GRAPH_COMPILER_MOGGSUPPORT_FUSIONUTILS_H
 
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 
@@ -30,4 +30,4 @@ MOGG::CallOp createMOGGSlice(mlir::OpBuilder &builder, mlir::Location loc,
 
 } // namespace M::MOGG
 
-#endif // GENERICML_GRAPH_COMPILER_MOGGDIALECT_UTILS_H
+#endif // GENERICML_GRAPH_COMPILER_MOGGSUPPORT_FUSIONUTILS_H

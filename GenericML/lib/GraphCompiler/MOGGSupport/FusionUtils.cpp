@@ -3,12 +3,8 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
-//
-// This file implements the MO dialect operations.
-//
-//===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MOGGDialect/Utils.h"
+#include "GenericML/GraphCompiler/MOGGSupport/FusionUtils.h"
 
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MojoParameters.h"

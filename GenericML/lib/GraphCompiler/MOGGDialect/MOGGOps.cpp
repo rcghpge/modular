@@ -11,7 +11,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Utils.h"
+#include "GenericML/GraphCompiler/MOGGSupport/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GenericML/MGPDialect/MGPOps.h"
