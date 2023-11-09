@@ -135,7 +135,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     // no reason to continue compilation after the needed file is generated.
   }
 
-  maybeApplyShapeInferencePipeline(pm, opts);
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
