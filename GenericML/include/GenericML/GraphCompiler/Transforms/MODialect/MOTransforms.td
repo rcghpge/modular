@@ -254,6 +254,25 @@ def ConstantFoldSubgraphTest : Pass<"constant-fold-subgraph-test", "ModuleOp"> {
   }];
 }
 
+def SupportConversionsTest : Pass<"support-conversions-test", "ModuleOp"> {
+  let summary = "Testing only pass for testing MO Conversion support library.";
+  let description = [{
+    This is a testing only pass. It looks for hard-coded, unregistered ops and
+    expands them using helper libraries located in
+    GenericML/GraphCompiler/Conversion/MO/Support/*.
+    ```
+    mo.graph @const_program() -> (!mo.tensor<[2], f32>) {
+      ...
+      // Pattern rewrite looks for "prelu" and expands op with decomposed
+      // operators in MO to execute a "prelu" operation:
+      %2 = "prelu"(%0, %1) : (!mo.tensor<[2], f32>, !mo.tensor<[1], f32>) -> !mo.tensor<[2], f32>
+      mo.output %2 : !mo.tensor<[5], f32>
+    }
+    ```
+    See SupportConversionsTest.cpp for more registered rewrite patterns.
+  }];
+}
+
 def AddDevicesPass : Pass<"add-devices", "GraphOp"> {
   let summary = "Adds `device_specs` and `device` attributes to the `mo.graph`.";
   let description = [{
