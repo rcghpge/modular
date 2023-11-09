@@ -16,7 +16,7 @@
 #include "MOF/MOBI/Symbol.h"
 #include "MOF/MOBI/Type.h"
 #include "Support/Buffer.h"
-#include "Support/ML/TensorSpec.h"
+#include "Support/ML/TensorShape.h"
 #include "mlir/IR/MLIRContext.h"
 
 using namespace M::MOF::Builder;
@@ -153,21 +153,29 @@ MODULAR_API_EXPORT M_Symbol *MOBI_getSymbol(M_Tuple *t, uint32_t pos) {
 
 /// Type
 
-MODULAR_API_EXPORT M_Type *MOBI_typeFromSpec(M_Module *m, const void *spec) {
-  const M::TensorSpec &tensorSpec = *(const M::TensorSpec *)spec;
-  SmallVector<int64_t> dims(tensorSpec.begin(), tensorSpec.end());
-  return new M_Type{M::MO::TensorType::get(
-      dims, *M::MO::toMLIRType(m->module.getContext(), tensorSpec.getEltType()),
-      /*metadata=*/{})};
+MODULAR_API_EXPORT M_Type *MOBI_typeFromSpec(M_Module *m, uint8_t dtype,
+                                             const void *shape) {
+  const M::TensorShape &tensorShape = *(const M::TensorShape *)shape;
+  SmallVector<int64_t> dims(tensorShape.begin(), tensorShape.end());
+  auto outTy = M::MO::TensorType::get(
+      dims, *M::MO::toMLIRType(m->module.getContext(), M::DType(dtype)),
+      /*metadata=*/{});
+  return new M_Type{outTy};
 }
 
-MODULAR_API_EXPORT void MOBI_specFromType(M_Type *t, void *spec) {
-  M::TensorSpec &tensorSpec = *(M::TensorSpec *)spec;
+MODULAR_API_EXPORT void MOBI_shapeFromType(M_Type *t, void *shape) {
+  M::TensorShape &tensorShape = *(M::TensorShape *)shape;
   auto tensorTy = cast<M::MO::TensorType>(t->type.getVal());
-  assert(tensorTy.hasRank() && "no unranked TensorSpec support yet");
+  assert(tensorTy.hasRank() && "no unranked TensorShape support yet");
 
-  tensorSpec = M::TensorSpec(tensorTy.getIntDims(),
-                             *M::MO::fromMLIRType(tensorTy.getElementType()));
+  tensorShape = M::TensorShape(tensorTy.getIntDims());
+}
+
+MODULAR_API_EXPORT uint8_t MOBI_dtypeFromType(M_Type *t) {
+  // Directly return type `t`'s element type as `uint8_t` since Mojo's DType is
+  // ABI compatible.
+  auto tensorTy = cast<M::MO::TensorType>(t->type.getVal());
+  return tensorTy.getDtype().getValue();
 }
 
 MODULAR_API_EXPORT int64_t MOBI_dynamicDim(M_Module *m) {

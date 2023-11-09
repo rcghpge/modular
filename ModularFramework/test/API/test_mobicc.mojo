@@ -6,7 +6,7 @@
 # UNSUPPORTED: windows
 # RUN: mojo -I %mobi_pkg_dir %s | FileCheck %s
 
-from tensor import TensorSpec
+from tensor import TensorShape, TensorSpec
 from testing import assert_equal
 
 import mobi
@@ -62,11 +62,23 @@ fn test_types() raises:
     print("Testing type_from_spec() and spec_from_type().")
     let spec1 = TensorSpec(DType.float32, 2, 3, 5, 7)
 
-    let t = mobicc.type_from_spec(m, spec1)
-    var spec2 = TensorSpec()
-    mobicc.spec_from_type(t, spec2)
+    let t1 = mobicc.type_from_spec(m, spec1.dtype(), spec1.shape)
+    var shape2 = TensorShape()
+    mobicc.shape_from_type(t1, shape2)
+
+    let dtype = mobicc.dtype_from_type(t1)
+    let spec2 = TensorSpec(dtype, shape2)
 
     _ = assert_equal(spec1.__str__(), spec2.__str__())
+
+    # Test that type_from_spec() and shape_from_type() support dynamic dims.
+    let dyn_dim = mobicc.dynamic_dim(m).to_int()
+    let shape3 = TensorShape(dyn_dim, dyn_dim, dyn_dim)
+    let t2 = mobicc.type_from_spec(m, DType.float32, shape3)
+    var shape4 = TensorShape()
+    mobicc.shape_from_type(t2, shape4)
+
+    _ = assert_equal(shape3.__str__(), shape4.__str__())
 
     # CHECK: 🔥
     print("🔥")

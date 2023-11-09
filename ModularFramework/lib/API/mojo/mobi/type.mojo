@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from debug import trap
-from tensor import TensorSpec
+from tensor import TensorShape
 from .mobicc import ModulePtr, TypePtr
 
 
@@ -21,9 +21,12 @@ struct TensorType:
 
     var t: TypePtr
 
-    def spec(self) -> TensorSpec:
-        var result = TensorSpec()
-        mobicc.spec_from_type(self.t, result)
+    def dtype(self) -> DType:
+        return mobicc.dtype_from_type(self.t)
+
+    def shape(self) -> TensorShape:
+        var result = TensorShape()
+        mobicc.shape_from_type(self.t, result)
         return result
 
 
@@ -54,8 +57,8 @@ struct Type:
             _type = Self.type, index = Self.tensor.value
         ](TensorType(type))
 
-    fn __init__(inout self, m: ModulePtr, spec: TensorSpec):
-        self.__init__(mobicc.type_from_spec(m, spec))
+    fn __init__(inout self, m: ModulePtr, dtype: DType, shape: TensorShape):
+        self.__init__(mobicc.type_from_spec(m, dtype, shape))
 
     fn unwrap_tensor(self) -> TensorType:
         if not Bool(
