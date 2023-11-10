@@ -13,6 +13,7 @@ from .mobicc import (
     TypePtr,
     GraphPtr,
 )
+from .type import Type
 from tensor import Tensor, TensorSpec, TensorShape
 
 # TODO: DynamicVectors all need a _del_old() call.
@@ -164,6 +165,9 @@ struct Module:
         for i in range(len(types)):
             mobicc.add_type(a, types[i])
         return Arity(a, len(types))
+
+    fn type(inout self, spec: TensorSpec) -> Type:
+        return Type(mobicc.type_from_spec(self.m, spec))
 
     fn graph(
         inout self,

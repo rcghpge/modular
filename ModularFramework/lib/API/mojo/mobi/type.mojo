@@ -7,7 +7,7 @@
 from debug import trap
 from tensor import TensorShape, TensorSpec
 from tensor import TensorSpec
-from .mobicc import ModulePtr, TypePtr
+from .mobicc import TypePtr
 
 
 @value
@@ -60,9 +60,6 @@ struct Type:
         self.variant = __mlir_op.`kgen.variant.create`[
             _type = Self.type, index = Self.tensor.value
         ](TensorType(type))
-
-    fn __init__(inout self, m: ModulePtr, spec: TensorSpec):
-        self.__init__(mobicc.type_from_spec(m, spec))
 
     fn unwrap_tensor(self) -> TensorType:
         if not Bool(

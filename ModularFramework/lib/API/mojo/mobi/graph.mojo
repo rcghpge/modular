@@ -70,7 +70,7 @@ struct Graph:
         inputs: Tup,
         out_spec: TensorSpec,
     ) -> Tup:
-        return self.op(name, inputs, Arity(Type(self.m.m, out_spec)))
+        return self.op(name, inputs, Arity(self.m.type(out_spec)))
 
     fn op(
         inout self,
