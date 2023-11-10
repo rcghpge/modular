@@ -92,6 +92,12 @@ fn test_tensor_spec():
 
     shape_vec._del_old()
 
+    # Check that dynamic dims work.
+    # CHECK: True
+    let shape = TensorShape(-9223372036854775808)
+    let spec = TensorSpec(DType.float32, shape)
+    print(shape == spec.shape)
+
 
 # CHECK: test_serialize
 fn test_serialize():
