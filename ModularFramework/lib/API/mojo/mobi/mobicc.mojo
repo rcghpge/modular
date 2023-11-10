@@ -13,7 +13,7 @@ from sys.ffi import (
     DLHandle,
     _get_dylib_function as _ffi_get_dylib_function,
 )
-from tensor import TensorShape
+from tensor import TensorSpec
 
 
 struct _Attr:
@@ -257,23 +257,17 @@ fn get_symbol(t: TuplePtr, pos: UInt32) -> SymbolPtr:
 ### Type helers
 
 
-fn type_from_spec(m: ModulePtr, dtype: DType, shape: TensorShape) -> TypePtr:
-    return MOBI_func[fn (ModulePtr, UInt8, TensorShape) -> TypePtr](
+fn type_from_spec(m: ModulePtr, spec: TensorSpec) -> TypePtr:
+    return MOBI_func[fn (ModulePtr, TensorSpec) -> TypePtr](
         "MOBI_typeFromSpec"
-    )(m, dtype._as_i8(), shape)
+    )(m, spec)
 
 
-fn dtype_from_type(t: TypePtr) -> DType:
-    return DType._from_ui8(
-        MOBI_func[fn (TypePtr) -> __mlir_type.ui8]("MOBI_dtypeFromType")(t)
-    )
-
-
-fn shape_from_type(t: TypePtr, inout shape: TensorShape) -> None:
-    let shape_ptr = Pointer.address_of(shape)
-    return MOBI_func[fn (TypePtr, Pointer[TensorShape]) -> NoneType](
-        "MOBI_shapeFromType"
-    )(t, shape_ptr)
+fn spec_from_type(t: TypePtr, inout spec: TensorSpec) -> None:
+    let spec_ptr = Pointer.address_of(spec)
+    return MOBI_func[fn (TypePtr, Pointer[TensorSpec]) -> NoneType](
+        "MOBI_specFromType"
+    )(t, spec_ptr)
 
 
 fn dynamic_dim(module: ModulePtr) -> Int64:
