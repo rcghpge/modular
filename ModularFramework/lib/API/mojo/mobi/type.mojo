@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from debug import trap
-from tensor import TensorShape
+from tensor import TensorShape, TensorSpec
 from .mobicc import ModulePtr, TypePtr
 
 
@@ -28,6 +28,11 @@ struct TensorType:
         var result = TensorShape()
         mobicc.shape_from_type(self.t, result)
         return result
+
+    def spec(self) -> TensorSpec:
+        # TODO: TensorSpec will cast the shape to a Rep16 shape
+        #       which breaks dynamic dims.
+        return TensorSpec(self.dtype(), self.shape())
 
 
 @value
@@ -59,6 +64,9 @@ struct Type:
 
     fn __init__(inout self, m: ModulePtr, dtype: DType, shape: TensorShape):
         self.__init__(mobicc.type_from_spec(m, dtype, shape))
+
+    fn __init__(inout self, m: ModulePtr, spec: TensorSpec):
+        self.__init__(mobicc.type_from_spec(m, spec.dtype(), spec.shape))
 
     fn unwrap_tensor(self) -> TensorType:
         if not Bool(

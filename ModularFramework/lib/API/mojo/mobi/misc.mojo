@@ -54,11 +54,62 @@ struct Tup:
         self.l = l
         self.g = g
 
+    fn __init__(inout self, symbols: VariadicList[Symbol]) raises:
+        if len(symbols) < 1:
+            raise "Must pass at least 1 symbol"
+        self.g = symbols[0].g
+        self.l = len(symbols)
+        self.t = mobicc.new_tuple()
+        for symbol in symbols:
+            mobicc.add_symbol(self.t, symbol.s)
+
+    fn __init__(inout self, symbols: DynamicVector[Symbol]) raises:
+        if len(symbols) < 1:
+            raise "Must pass at least 1 symbol"
+        self.g = symbols[0].g
+        self.l = len(symbols)
+        self.t = mobicc.new_tuple()
+        for i in range(len(symbols)):
+            mobicc.add_symbol(self.t, symbols[i].s)
+
     fn __init__(inout self, symbol: Symbol):
         self.g = symbol.g
         self.l = 1
         self.t = mobicc.new_tuple()
         mobicc.add_symbol(self.t, symbol.s)
+
+    fn __init__(inout self, symbols: (Symbol, Symbol)):
+        let s0 = symbols.get[0, Symbol]()
+        let s1 = symbols.get[1, Symbol]()
+        self.g = s0.g
+        self.l = 2
+        self.t = mobicc.new_tuple()
+        mobicc.add_symbol(self.t, s0.s)
+        mobicc.add_symbol(self.t, s1.s)
+
+    fn __init__(inout self, symbols: (Symbol, Symbol, Symbol)):
+        let s0 = symbols.get[0, Symbol]()
+        let s1 = symbols.get[1, Symbol]()
+        let s2 = symbols.get[2, Symbol]()
+        self.g = s0.g
+        self.l = 3
+        self.t = mobicc.new_tuple()
+        mobicc.add_symbol(self.t, s0.s)
+        mobicc.add_symbol(self.t, s1.s)
+        mobicc.add_symbol(self.t, s2.s)
+
+    fn __init__(inout self, symbols: (Symbol, Symbol, Symbol, Symbol)):
+        let s0 = symbols.get[0, Symbol]()
+        let s1 = symbols.get[1, Symbol]()
+        let s2 = symbols.get[2, Symbol]()
+        let s3 = symbols.get[3, Symbol]()
+        self.g = s0.g
+        self.l = 4
+        self.t = mobicc.new_tuple()
+        mobicc.add_symbol(self.t, s0.s)
+        mobicc.add_symbol(self.t, s1.s)
+        mobicc.add_symbol(self.t, s2.s)
+        mobicc.add_symbol(self.t, s3.s)
 
     # Request: @unique_value decorator for types
     # which acts like Value but only implements __moveinit__

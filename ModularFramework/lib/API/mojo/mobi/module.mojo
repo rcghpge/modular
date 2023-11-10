@@ -33,14 +33,15 @@ fn _dynamic_vector(shape: VariadicList[Int64]) -> DynamicVector[Int64]:
 
 
 @value
+@register_passable
 struct Module:
     var m: ModulePtr
 
-    fn __init__(inout self) raises:
-        self.m = mobicc.new_module()
+    fn __init__() raises -> Self:
+        return Self(mobicc.new_module())
 
-    fn __init__(inout self, m: ModulePtr):
-        self.m = m
+    fn __init__(m: ModulePtr) -> Self:
+        return Self {m: m}
 
     fn __str__(self) -> String:
         return mobicc.module_to_string(self.m)

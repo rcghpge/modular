@@ -11,29 +11,28 @@ from .symbol import Symbol
 from .type import Type
 
 from memory.unsafe import Pointer
-from tensor import TensorShape
+from tensor import TensorShape, TensorSpec
 
 
 # XXX abstraction boundary feels pretty weird here
 #     it's really unclear what functions should go here vs in module
 @value
+@register_passable
 struct Graph:
     # TODO(#23665): This should be an owning pointer.
     var g: GraphPtr
     var m: Module
 
-    fn __init__(inout self, g: GraphPtr, m: Module):
-        self.g = g
-        self.m = m
+    fn __init__(g: GraphPtr, m: Module) -> Self:
+        return Self {g: g, m: m}
 
     fn __getitem__(self, pos: UInt32) -> Symbol:
         return Symbol(mobicc.get_input(self.g, pos), self)
 
     fn values(self, *values: Symbol) -> Tup:
         var t = mobicc.new_tuple()
-        for i in range(len(values)):
-            let val = __get_address_as_lvalue(values[i])
-            mobicc.add_symbol(t, val.s)
+        for s in values:
+            mobicc.add_symbol(t, s.s)
         return Tup(t, len(values), self)
 
     fn op(
@@ -64,6 +63,14 @@ struct Graph:
             self.g, loc, name, inputs.t, out_types.a, attrs
         )
         return Tup(outputs, out_types.l, self)
+
+    fn op(
+        inout self,
+        name: StringRef,
+        inputs: Tup,
+        out_spec: TensorSpec,
+    ) -> Tup:
+        return self.op(name, inputs, Arity(Type(self.m.m, out_spec)))
 
     fn op(
         inout self,
