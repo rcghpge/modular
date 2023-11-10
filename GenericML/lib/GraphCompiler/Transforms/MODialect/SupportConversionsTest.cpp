@@ -30,6 +30,21 @@ public:
   }
 };
 
+class ConvertReluPattern : public ConversionPattern {
+public:
+  ConvertReluPattern(TypeConverter &typeConverter, MLIRContext *ctx)
+      : ConversionPattern(typeConverter, "relu", /*benefit=*/1, ctx) {}
+
+  LogicalResult
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto x = cast<MO::TensorValue>(operands[0]);
+    auto result = convertRelu(rewriter, op->getLoc(), x);
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
 class ConvertRelu6Pattern : public ConversionPattern {
 public:
   ConvertRelu6Pattern(TypeConverter &typeConverter, MLIRContext *ctx)
@@ -59,7 +74,8 @@ class SupportConversionTestPass
     TypeConverter converter;
     converter.addConversion([](TensorType t) { return t; });
     RewritePatternSet patterns{ctx};
-    patterns.add<ConvertPreluPattern, ConvertRelu6Pattern>(converter, ctx);
+    patterns.add<ConvertPreluPattern, ConvertReluPattern, ConvertRelu6Pattern>(
+        converter, ctx);
     MO::MOConversionTarget target(*ctx);
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
