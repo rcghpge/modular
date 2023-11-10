@@ -147,16 +147,16 @@ ErrorOrSuccess InputDataParser::parseImpl(llvm::cl::Option &options,
   return success();
 }
 
-/// Replace any non GML::Tensor tensors in results with their GML::Tensor
-/// equivalents.
+/// Replace any non output-conform results with their output-conforming
+/// equivalents (such as `GML::Tensor`).
 static void
-convertResultsToGenericTensors(const ExecutableModel *model,
-                               MutableArrayRef<AnyAsyncValueRef> results) {
+convertResultsToGenericValues(const ExecutableModel *model,
+                              MutableArrayRef<AnyAsyncValueRef> results) {
   for (auto &result : results) {
     assert(result.isReady() && "tensor result should be ready");
     if (result.isError() || result.isType<GML::Tensor>())
       continue;
-    result = model->convertToGenericTensor(std::move(result));
+    result = model->convertToGenericValue(std::move(result));
     await(result);
   }
 }
@@ -249,7 +249,7 @@ outputTensorResults(const ExecutableModel *model,
   if (results.empty())
     return success();
 
-  convertResultsToGenericTensors(model, results);
+  convertResultsToGenericValues(model, results);
 
   // If --result-output-style=binary, write output tensors to files and return.
   if (outputStyle == Kernels::ResultOutputStyle::kBinary) {
@@ -350,7 +350,12 @@ outputTensorResults(const ExecutableModel *model,
           hasError = true;
         }
       } else {
-        llvm::outs() << "<unknown type>";
+        // Not a value that can be printed generically, let the framework
+        // specific model implementation handle it.
+        if (auto err = model->printValue(result, outputStyle, precision)) {
+          llvm::outs() << "<error: " << err.getError() << '>';
+          hasError = true;
+        }
       }
     }
   }
@@ -374,7 +379,7 @@ static ErrorOrSuccess populateTensorResults(
   if (results.empty())
     return success();
 
-  convertResultsToGenericTensors(model, results);
+  convertResultsToGenericValues(model, results);
 
   size_t outIdx = 0;
 
