@@ -30,6 +30,21 @@ public:
   }
 };
 
+class ConvertRelu6Pattern : public ConversionPattern {
+public:
+  ConvertRelu6Pattern(TypeConverter &typeConverter, MLIRContext *ctx)
+      : ConversionPattern(typeConverter, "relu6", /*benefit=*/1, ctx) {}
+
+  LogicalResult
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto x = cast<MO::TensorValue>(operands[0]);
+    auto result = convertRelu6(rewriter, op->getLoc(), x);
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
 namespace M::MO {
 
 #define GEN_PASS_DEF_SUPPORTCONVERSIONSTEST
@@ -44,7 +59,7 @@ class SupportConversionTestPass
     TypeConverter converter;
     converter.addConversion([](TensorType t) { return t; });
     RewritePatternSet patterns{ctx};
-    patterns.add<ConvertPreluPattern>(converter, ctx);
+    patterns.add<ConvertPreluPattern, ConvertRelu6Pattern>(converter, ctx);
     MO::MOConversionTarget target(*ctx);
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))

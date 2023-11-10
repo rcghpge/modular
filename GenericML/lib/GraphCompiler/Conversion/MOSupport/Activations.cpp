@@ -20,4 +20,13 @@ TensorValue convertPRelu(OpBuilder &builder, Location loc, TensorValue x,
   return builder.create<AddOp>(loc, max, minXAlpha);
 }
 
+TensorValue convertRelu6(OpBuilder &builder, Location loc, TensorValue x) {
+  auto six = builder.create<ConstantOp>(loc, 6.f);
+  auto zero = builder.create<ConstantOp>(loc, 0.f);
+  auto broadcastSix = builder.create<BroadcastToOp>(loc, six, x);
+  auto broadcastZero = builder.create<BroadcastToOp>(loc, zero, x);
+  auto min = builder.create<MinOp>(loc, x, broadcastSix);
+  return builder.create<MaxOp>(loc, broadcastZero, min);
+}
+
 } // namespace M::MO
