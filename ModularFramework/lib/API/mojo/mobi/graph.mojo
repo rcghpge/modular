@@ -103,7 +103,7 @@ struct Graph:
             "mo.constant",
             self.values(),
             m.types(type),
-            m.attrs(m.tensor_attr("const", type, value)),
+            m.attrs(m.tensor_attr("value", type, value)),
         )[0]
 
     fn constant[
@@ -115,30 +115,25 @@ struct Graph:
             "mo.constant",
             self.values(),
             m.types(m.f32()),
-            m.attrs(m.f32_attr("const", m.f32(), value)),
+            m.attrs(m.f32_attr("value", m.f32(), value)),
         )[0]
 
     fn constant[
-        dtype: DType = DType.uint64
+        dtype: DType = DType.int64
     ](inout self, value: Int) raises -> Symbol:
+        return self.constant(value, dtype)
+
+    fn constant(inout self, value: Int, dtype: DType) raises -> Symbol:
         let m = self.m
-        let arity: Arity
-        let attr: AttrPtr
 
-        if dtype == DType.uint64:
-            arity = m.types(m.i64())
-            attr = m.i64_attr("const", m.i64(), value)
-        elif dtype == DType.uint32:
-            arity = m.types(m.i32())
-            attr = m.i32_attr("const", m.i32(), value)
-        else:
-            # These are unused, but the compiler thinks that they might be
-            # uninitialized if we don't set them
-            arity = m.types(m.i64())
-            attr = m.i64_attr("XXX", m.i64(), value)
+        var val_copy = value
+        let t = mobicc.type_from_spec(m.m, TensorSpec(dtype, TensorShape()))
+        let value_ptr = Pointer[Int].address_of(val_copy).bitcast[AnyType]()
+        let attr = mobicc.tensor_attr(m.m, "value", value_ptr, t)
 
-            raise Error("Unimplemented")
-        return self.op("mo.constant", self.values(), arity, m.attrs(attr))[0]
+        return self.op("mo.constant", self.values(), m.types(t), m.attrs(attr))[
+            0
+        ]
 
     fn output(inout self, outs: Tup) raises:
         _ = self.op("mo.output", outs, self.m.types())

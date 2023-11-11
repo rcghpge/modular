@@ -113,13 +113,7 @@ struct Module:
         )
 
     fn type_of[dtype: DType](self, t: Tensor[dtype]) raises -> TypePtr:
-        if dtype == DType.float32:
-            return self.f32(t.shape())
-        elif dtype == DType.uint32:
-            return self.i32(t.shape())
-        elif dtype == DType.uint32:
-            return self.i64(t.shape())
-        raise "not implemented"
+        return mobicc.type_from_spec(self.m, t.spec())
 
     fn attrs(self, *attrs: AttrPtr) -> AttrMap:
         var m = mobicc.new_attr_map()
