@@ -397,41 +397,6 @@ void KernelOp::setInsertionPointToTop(OpBuilder &builder) {
     builder.setInsertionPointToStart(&getRegion().front());
 }
 
-bool KernelOp::inlineLambdas() {
-  KernelOp kernel = *this;
-  bool changed = false;
-  mlir::SymbolTable symtable{kernel};
-
-  // Inline lambdas.
-  kernel.walk([&](MOGG::LambdaInvokeOp invoke) {
-    auto name = invoke.getLambda().getLeafReference().strref();
-    auto lambda = symtable.lookup<MOGG::LambdaOp>(name);
-
-    if (lambda) {
-      inlineInvoke(invoke, lambda);
-      invoke.erase();
-      changed = true;
-    }
-  });
-
-  // Remove any now unused lambdas.
-  kernel.walk([&](MOGG::LambdaOp lambda) {
-    if (mlir::SymbolTable::symbolKnownUseEmpty(lambda, kernel)) {
-      lambda.erase();
-      changed = true;
-    }
-  });
-
-  // If we touched any of the invokes we must disable fusion on the inputs &
-  // outputs as we will have removed the input/output lambda.
-  if (changed) {
-    kernel.removeInputFusionInterfaceAttr();
-    kernel.removeOutputFusionInterfaceAttr();
-  }
-
-  return changed;
-}
-
 /// Disables future fusion on this input.
 void KernelOp::disableInputFusionOnInput(size_t index) {
   std::optional<ArrayAttr> inputLambdas = getInputFusionInterfaceAttr();

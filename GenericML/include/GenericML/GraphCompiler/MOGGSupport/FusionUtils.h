@@ -17,6 +17,11 @@ namespace M::MOGG {
 SmallVector<Value> inlineInvoke(MOGG::LambdaInvokeOp invokeOp,
                                 MOGG::LambdaOp invokeTarget);
 
+/// This inlines all lambdas which are only invoked within other lambdas
+/// and removed any unused lambdas. Returns true if there was any
+/// modification
+bool inlineLambdasInKernel(KernelOp kernel);
+
 /// Create a call to the reshape kernel directly in MOGG.
 MOGG::CallOp createMOGGReshape(mlir::OpBuilder &builder, mlir::Location loc,
                                Value tensorIn, MO::TensorType newShape);

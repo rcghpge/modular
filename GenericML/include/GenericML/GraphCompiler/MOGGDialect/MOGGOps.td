@@ -261,11 +261,6 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
     /// exist.
     OutputPlaceholdersOp getOutputPlaceholder();
 
-    /// This inlines all lambdas which are only invoked within other lambdas
-    /// and removed any unused lambdas. Returns true if there was any
-    /// modification
-    bool inlineLambdas();
-
     /// Disables future fusion on this input.
     void disableInputFusionOnInput(size_t index);
 

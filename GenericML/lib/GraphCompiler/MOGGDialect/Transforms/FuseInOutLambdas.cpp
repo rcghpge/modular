@@ -119,7 +119,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     }
 
     // Inline all the lambdas in the op we are pulling in.
-    srcKernel.inlineLambdas();
+    inlineLambdasInKernel(srcKernel);
 
     OpBuilder builder{ctx};
     dstKernel.setInsertionPointToTop(builder);
@@ -352,7 +352,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     }
 
     // Inline all the lambdas in the op we are pulling in.
-    userToFuseIn.inlineLambdas();
+    inlineLambdasInKernel(userToFuseIn);
 
     OpBuilder builder{ctx};
     kernelToFuseInto.setInsertionPointToTop(builder);
