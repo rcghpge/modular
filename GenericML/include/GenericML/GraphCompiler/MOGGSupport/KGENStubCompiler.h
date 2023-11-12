@@ -34,10 +34,10 @@ public:
   /// within it that can be executed at runtime.
   ErrorOrSuccess compile(mlir::ArrayAttr combinedSymbolName);
 
-private:
   /// Run the KGEN elaboration passes on the module.
   LogicalResult elaborateKGEN();
 
+private:
   /// Lower to an binary object.
   ErrorOrSuccess compileToLLVM(mlir::ArrayAttr combinedSymbolName);
 

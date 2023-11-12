@@ -15,6 +15,8 @@
 
 #include "GenericML/GraphCompiler/MOGGDialect/MojoDecorators.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 
 //===----------------------------------------------------------------------===//
 // Forward Declarations
@@ -52,6 +54,16 @@ public:
   inline KGEN::GeneratorOp getMojoFunctionNamed(StringRef name) {
     return cast_or_null<KGEN::GeneratorOp>(
         mlir::SymbolTable(*mojoBindings).lookup(name));
+  }
+
+  // When we compile we only want to compile the functions we add so the first
+  // step is to unmark all the other externals.
+  void markAllFunctionsAsNotExported() {
+    for (auto func : mojoBindings->getOps<KGEN::FuncOp>())
+      func.setNotExported();
+
+    for (auto func : mojoBindings->getOps<KGEN::GeneratorOp>())
+      func.setNotExported();
   }
 
   // Return true if the provided kernel or shape function has the input
