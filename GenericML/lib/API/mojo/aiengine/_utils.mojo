@@ -36,8 +36,8 @@ fn exchange[T: AnyRegType](inout old_var: T, owned new_value: T) -> T:
     contained in `old_var`.
     """
     let old = old_var
-    old_var = new_value ^
-    return old ^
+    old_var = new_value
+    return old
 
 
 # ======================================================================#
