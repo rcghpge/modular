@@ -209,6 +209,7 @@ public:
     quantizedPerAxis,
     function,
     chain,
+    any,
   };
 };
 

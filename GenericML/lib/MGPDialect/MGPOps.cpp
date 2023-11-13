@@ -1442,14 +1442,6 @@ LogicalResult ModelOp::verify() {
                 "of ShapedType, but argument "
              << i << " is of type " << type << ".";
   }
-  for (size_t i = 0, e = modelType.getNumResults(); i < e; ++i) {
-    Type type = modelType.getResult(i);
-    if (!type.isa<ShapedType>())
-      return emitOpError()
-             << "expected the 'execute' entry point to return results "
-                "of ShapedType, but result "
-             << i << " is of type " << type << ".";
-  }
   return success();
 }
 

@@ -1198,8 +1198,14 @@ LogicalResult TypeEmitter::emitType(Type type) {
     return emitUniformQuantizedPerAxisType(qType);
 
   // Chains are super easy, just emit the byte that says "I'm a chain".
-  if (auto chainType = dyn_cast<MEF::ChainType>(type)) {
+  if (isa<MEF::ChainType>(type)) {
     emitter->emitByte(MEF::TypeKind::chain);
+    return success();
+  }
+
+  // Interface for foreign types.
+  if (isa<MEF::MEFAnyTypeInterface>(type)) {
+    emitter->emitByte(MEF::TypeKind::any);
     return success();
   }
 

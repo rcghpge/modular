@@ -21,4 +21,13 @@ def MEF_ChainTypeInterface : TypeInterface<"MEFChainTypeInterface"> {
   let cppNamespace = "::M::MEF";
 }
 
+def MEF_AnyTypeInterface : TypeInterface<"MEFAnyTypeInterface"> {
+  let description = [{
+    This interface allows foreign types to be used as model input and output
+    types. These types are represented in the runtime by AnyAsyncValueRefs of
+    arbitrary type.
+  }];
+  let cppNamespace = "::M::MEF";
+}
+
 #endif  // GRAPHRT_MEFDIALECT_MEFTYPEINTERFACES_TD
