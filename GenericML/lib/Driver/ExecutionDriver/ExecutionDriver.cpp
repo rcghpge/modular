@@ -478,11 +478,11 @@ executeModelSynchronously(Runtime &runtime, ExecutableModel &executableModel,
 
 /// Repeatedly evaluate the model (numRuns to be exact) and capture and print
 /// the runtime for each evaluation.
-static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
-                                   const ExecutorDriverCLOptions &options,
-                                   ArrayRef<QuantTensorSpec> inputSpecs,
-                                   unsigned int numRuns,
-                                   unsigned int numWarmup) {
+static ErrorOr<std::unique_ptr<ExecutableModel>>
+executeModel(const Model *model, Runtime &runtime,
+             const ExecutorDriverCLOptions &options,
+             ArrayRef<QuantTensorSpec> inputSpecs, unsigned int numRuns,
+             unsigned int numWarmup) {
   std::unique_ptr<llvm::raw_fd_ostream> optTimingOs;
   if (!options.saveTimings.empty()) {
     std::error_code errorCode;
@@ -597,7 +597,7 @@ static ErrorOrSuccess executeModel(const Model *model, Runtime &runtime,
     llvm::outs().flush();
   }
 
-  return success();
+  return executableModel;
 }
 
 /// Given an array of compile-time QuantTensorSpecs and an array of run-time
@@ -682,23 +682,29 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
                       "You can set an larger value using --num-warmup.\n";
       numWarmup = 1;
     }
+
     // Execute the model for the warmup runs only.
-    if (auto err = executeModel(model, runtime, options, inputSpecs,
-                                /*numRuns=*/0, numWarmup))
-      return failure(options.reportError(err.getError()));
+    auto executableModelOr = executeModel(model, runtime, options, inputSpecs,
+                                          /*numRuns=*/0, numWarmup);
+    if (executableModelOr.isError())
+      return failure(options.reportError(executableModelOr.getError()));
+
+    std::unique_ptr<ExecutableModel> executableModel =
+        executableModelOr.takeValue();
     // Run the actual benchmark.
     if (auto err = benchmarkModel(
-            model, runtime, options.benchmarkName, options, inputSpecs,
-            options.benchmarkScenario, options.benchmarkOutputDir,
+            std::move(executableModel), runtime, options.benchmarkName, options,
+            inputSpecs, options.benchmarkScenario, options.benchmarkOutputDir,
             options.benchmarkNoLogPrefix, options.benchmarkMinDurationMs,
             options.benchmarkMinQueryCount))
       return failure(options.reportError(err.getError()));
 
   } else {
-    if (auto err = executeModel(model, runtime, options, inputSpecs,
-                                options.numRuns.getValue(),
-                                options.numWarmup.getValue()))
-      return failure(options.reportError(err.getError()));
+    auto executableModelOr =
+        executeModel(model, runtime, options, inputSpecs,
+                     options.numRuns.getValue(), options.numWarmup.getValue());
+    if (executableModelOr.isError())
+      return failure(options.reportError(executableModelOr.getError()));
   }
   return success();
 }

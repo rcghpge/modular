@@ -48,8 +48,8 @@ createTensorGenerators(InputGenerationKind inputGenKind,
                        size_t minimumCpuAlignment, Runtime &runtime);
 
 ErrorOrSuccess
-benchmarkModel(const Model *model, Runtime &runtime, StringRef benchmarkName,
-               const ExecutorDriverCLOptions &options,
+benchmarkModel(std::unique_ptr<ExecutableModel> model, Runtime &runtime,
+               StringRef benchmarkName, const ExecutorDriverCLOptions &options,
                ArrayRef<QuantTensorSpec> inputSpecs, BenchmarkScenario scenario,
                StringRef outputDir, bool benchmarkNoLogPrefix,
                uint64_t min_duration_ms, uint64_t min_query_count);
