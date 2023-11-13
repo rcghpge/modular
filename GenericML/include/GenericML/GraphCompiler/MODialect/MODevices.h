@@ -36,6 +36,8 @@ DeviceRefAttr getDeviceOrDefault(GraphOp graphOp, TensorType type);
 /// specs annotation, or <"cpu", 0> if the graph has no such annotation.
 DeviceRefAttr getHostDevice(GraphOp graphOp);
 
+// (See also getHostDeviceAny, declared in MOOps.h so can be used in MOOps.td)
+
 /// Returns true if op should execute on the 'host'.
 bool isOnHost(Operation *op);
 

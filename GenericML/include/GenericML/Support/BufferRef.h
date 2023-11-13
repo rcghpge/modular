@@ -175,6 +175,12 @@ public:
                           const LLCL::EncodedLocation &loc, size_t offset = 0,
                           size_t size = std::numeric_limits<size_t>::max());
 
+  /// As above, but the borrow may be of any type.
+  BufferRef
+  createSafeBorrowedSlice(AnyAsyncValueRef borrow, BufferRef &borroweBufferRef,
+                          const LLCL::EncodedLocation &loc, size_t offset = 0,
+                          size_t size = std::numeric_limits<size_t>::max());
+
   /// Creates a 'foreign' reference to the already allocated foreign buffer
   /// object. The corresponding ForeignBufferInterface must have been already
   /// registered under id. The buffer is considered immutable. The given foreign

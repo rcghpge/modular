@@ -433,7 +433,11 @@ def MO_RebindOp : MO_ControlOp<"rebind", [
 // ConstantOp
 //===----------------------------------------------------------------------===//
 
-def MO_ConstantOp : MO_TensorOp<"constant", [ConstantLike, Pure]> {
+def MO_ConstantOp : MO_TensorOp<"constant", [
+    ConstantLike,
+    Pure,
+    DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface>,
+]> {
   let summary = "constant MO operation";
   let description = [{
     Op to store constant tensors in model.
@@ -484,6 +488,9 @@ def MO_ConstantOp : MO_TensorOp<"constant", [ConstantLike, Pure]> {
     OpBuilder<(ins "bool":$value)>,
   ];
 
+  let extraClassDeclaration = [{
+    bool preferResultsDevice() { return true; }
+  }];
 }
 
 

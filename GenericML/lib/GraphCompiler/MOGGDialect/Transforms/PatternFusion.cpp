@@ -246,8 +246,7 @@ struct MatmulConstBPattern
           op, "matched ops have inconsistent devices");
     }
 
-    if (!rewriter.deviceAnnots.isConsistentWith(
-            MO::getHostDevice(op->getParentOfType<MO::GraphOp>()))) {
+    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDeviceAny(op))) {
       // TODO(#25114): Support outside of host.
       return rewriter.notifyMatchFailure(
           op, "packing is only supported on the host device");
@@ -485,8 +484,7 @@ struct ConvConstFilterPattern
           op, "currently only pack constant num_groups");
     }
 
-    if (!rewriter.deviceAnnots.isConsistentWith(
-            MO::getHostDevice(op->getParentOfType<MO::GraphOp>()))) {
+    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDeviceAny(op))) {
       // TODO(#25114): Support outside of host.
       return rewriter.notifyMatchFailure(
           op, "packing is only supported on the host device");

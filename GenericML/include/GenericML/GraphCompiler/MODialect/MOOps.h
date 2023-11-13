@@ -32,6 +32,15 @@ using M::KGEN::ParamDeclAttr;
 using M::KGEN::ParameterExprArrayAttr;
 using M::KGEN::SignatureType;
 
+namespace M::MO {
+/// Returns the #M.device_ref for the 'host' device of the graph containing op.
+/// Returns <"cpu", 0> if the graph has no 'device_spec' annotation.
+///
+/// Forward declared so can be used in MOOps.td, see MODevices.h for rest of
+/// helpers and MODevices.cpp for implementation.
+DeviceRefAttr getHostDeviceAny(Operation *op);
+} // namespace M::MO
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
 //===----------------------------------------------------------------------===//

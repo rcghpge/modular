@@ -22,18 +22,14 @@ DeviceRefAttr MO::getDeviceOrDefault(MOHasDeviceInterface op) {
     return device;
 
   // Fallback to the 'host' device.
-  GraphOp graphOp = op->getParentOfType<GraphOp>();
-  assert(graphOp && "missing containing GraphOp");
-  return getHostDevice(graphOp);
+  return getHostDeviceAny(op);
 }
 
 DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {
   if (auto hasDeviceOp = dyn_cast<MOHasDeviceInterface>(op))
     return getDeviceOrDefault(hasDeviceOp);
-
-  GraphOp graphOp = op->getParentOfType<GraphOp>();
-  assert(graphOp && "missing containing GraphOp");
-  return getHostDevice(graphOp);
+  else
+    return getHostDeviceAny(op);
 }
 
 bool MO::isViaHostAny(Operation *op) {
@@ -63,9 +59,14 @@ DeviceRefAttr MO::getHostDevice(GraphOp graphOp) {
   return DeviceRefAttr::get(graphOp.getContext(), kCPULabel, 0);
 }
 
+DeviceRefAttr MO::getHostDeviceAny(Operation *op) {
+  auto graphOp = op->getParentOfType<GraphOp>();
+  assert(graphOp && "operation is not contained within a MO::GraphOp");
+  return getHostDevice(graphOp);
+}
+
 bool MO::isOnHost(Operation *op) {
-  return getDeviceOrDefaultAny(op) ==
-         getHostDevice(op->getParentOfType<GraphOp>());
+  return getDeviceOrDefaultAny(op) == getHostDeviceAny(op);
 }
 
 ErrorOr<DeviceSpecCollectionAttr> MO::getDeviceSpecsOrDefault(GraphOp graphOp) {
