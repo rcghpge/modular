@@ -91,7 +91,7 @@ public:
   }
 
   // Returns true if this is one of the new experimental kgen-in-mogg kernels.
-  bool kernelIsExperimentalKGEN(KGEN::GeneratorOp kernel) {
+  inline bool kernelIsExperimentalKGEN(KGEN::GeneratorOp kernel) {
     return kernelHasDecorator(kernel, DECORATOR_EXPERIMENTAL);
   }
 

@@ -26,6 +26,7 @@
 #include "KGEN/ToolCommon/InitAllDialects.h"
 #include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 
 namespace M::MO {
 

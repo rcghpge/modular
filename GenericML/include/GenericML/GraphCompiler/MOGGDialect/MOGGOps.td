@@ -158,6 +158,7 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
     IsolatedFromAbove,
     SingleBlock,
     SymbolTable,
+    DeclInterface,
     DeclareOpInterfaceMethods<MO_ParamDeclaration>,
     MO_HasDeviceInterface]> {
   let summary = "A representation of a kernel which can be fused into and compiled";
@@ -293,6 +294,9 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
     /// placeholders if they exist.
     void setInsertionPointToTop(OpBuilder& builder);
 
+    /// Returns the KGEN input parameters this depends on. Necessary to implement the DeclInterface.
+    ArrayRef<ParamDeclAttr> getInputParams() { return {}; }
+    ArrayRef<ParamDeclAttr> getResultParams() { return {}; }
   }];
 
 }
