@@ -12,6 +12,7 @@ from ._status import Status
 from ._utils import *
 from ._tensor_spec import EngineTensorSpec
 from tensor import TensorSpec
+from pathlib import Path
 
 
 struct _EngineImpl:
@@ -27,6 +28,9 @@ struct _EngineImpl:
         let engine_lib = getenv("MODULAR_AI_ENGINE_LIB_PATH")
         if engine_lib == "":
             raise "cannot find ai engine library. Please set MODULAR_AI_ENGINE_LIB_PATH."
+
+        if not Path(engine_lib).exists():
+            raise "ai engine library not found at " + String(engine_lib)
 
         self.lib = DLHandle(engine_lib)
         self.can_close_lib = True
