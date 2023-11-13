@@ -104,14 +104,14 @@ fn _destroy_dylib(ptr: Pointer[NoneType]):
 
 
 @always_inline
-fn _get_dylib_function[T: AnyType](name: StringRef) -> T:
+fn _get_dylib_function[T: AnyRegType](name: StringRef) -> T:
     return _ffi_get_dylib_function["MOF_LIB", _init_dylib, _destroy_dylib, T](
         name
     )
 
 
 @always_inline
-fn MOBI_func[T: AnyType](name: StringRef) -> T:
+fn MOBI_func[T: AnyRegType](name: StringRef) -> T:
     """`dlsym()`s a function called `name` in shared library `.lib`."""
     var f = _get_dylib_function[T](name)
     let ptr = Pointer.address_of(f).bitcast[Pointer[NoneType]]().load()
@@ -127,11 +127,11 @@ fn MOBI_func[T: AnyType](name: StringRef) -> T:
 fn tensor_attr(
     module: ModulePtr,
     name: StringRef,
-    data: Pointer[AnyType],
+    data: Pointer[AnyRegType],
     type: TypePtr,
 ) -> AttrPtr:
     return MOBI_func[
-        fn (ModulePtr, StringRef, Pointer[AnyType], TypePtr) -> AttrPtr
+        fn (ModulePtr, StringRef, Pointer[AnyRegType], TypePtr) -> AttrPtr
     ]("MOBI_tensorAttr")(module, name, data, type)
 
 

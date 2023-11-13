@@ -174,7 +174,10 @@ fn test_const_op() raises:
     var attrs = mobicc.new_attr_map()
     var val: Int32 = 1
     let a = mobicc.tensor_attr(
-        m, "value", Pointer[Int32].address_of(val).bitcast[AnyType](), intScalar
+        m,
+        "value",
+        Pointer[Int32].address_of(val).bitcast[AnyRegType](),
+        intScalar,
     )
     mobicc.add_attr(attrs, a)
 

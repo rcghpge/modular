@@ -93,7 +93,7 @@ struct Model:
         return TensorMap(outputs, self.lib, self.session.copy())
 
     fn _execute_view[
-        key_type: AnyType, value_type: AnyType
+        key_type: AnyRegType, value_type: AnyRegType
     ](
         self, inputs: VariadicList[Tuple[key_type, value_type]]
     ) raises -> TensorMap:

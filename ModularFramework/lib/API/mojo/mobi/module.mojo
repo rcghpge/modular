@@ -77,13 +77,17 @@ struct Module:
         var data = DynamicVector[Int32]()
         for i in range(len(elements)):
             data.push_back(elements[i])
-        return mobicc.tensor_attr(self.m, name, data.data.bitcast[AnyType](), t)
+        return mobicc.tensor_attr(
+            self.m, name, data.data.bitcast[AnyRegType](), t
+        )
 
     fn i64_attr(self, name: StringRef, t: TypePtr, *elements: Int64) -> AttrPtr:
         var data = DynamicVector[Int64]()
         for i in range(len(elements)):
             data.push_back(elements[i])
-        return mobicc.tensor_attr(self.m, name, data.data.bitcast[AnyType](), t)
+        return mobicc.tensor_attr(
+            self.m, name, data.data.bitcast[AnyRegType](), t
+        )
 
     fn f32_attr(
         self, name: StringRef, t: TypePtr, *elements: Float32
@@ -91,7 +95,9 @@ struct Module:
         var data = DynamicVector[Float32]()
         for i in range(len(elements)):
             data.push_back(elements[i])
-        return mobicc.tensor_attr(self.m, name, data.data.bitcast[AnyType](), t)
+        return mobicc.tensor_attr(
+            self.m, name, data.data.bitcast[AnyRegType](), t
+        )
 
     fn f32_attr(
         self, name: StringRef, t: TypePtr, value: Tensor[DType.float32]

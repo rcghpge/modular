@@ -30,7 +30,7 @@ struct CString:
 
 
 @always_inline("nodebug")
-fn exchange[T: AnyType](inout old_var: T, owned new_value: T) -> T:
+fn exchange[T: AnyRegType](inout old_var: T, owned new_value: T) -> T:
     """
     Assign `new_value` to `old_var` and returns the value previously
     contained in `old_var`.
@@ -49,7 +49,7 @@ fn exchange[T: AnyType](inout old_var: T, owned new_value: T) -> T:
 
 @value
 @register_passable("trivial")
-struct SingleArgCallable[ResultTy: AnyType, ArgTy: AnyType]:
+struct SingleArgCallable[ResultTy: AnyRegType, ArgTy: AnyRegType]:
     var func: fn (ArgTy) -> ResultTy
 
     @always_inline("nodebug")
@@ -59,7 +59,9 @@ struct SingleArgCallable[ResultTy: AnyType, ArgTy: AnyType]:
 
 @value
 @register_passable("trivial")
-struct TwoArgCallable[ResultTy: AnyType, Arg1Ty: AnyType, Arg2Ty: AnyType]:
+struct TwoArgCallable[
+    ResultTy: AnyRegType, Arg1Ty: AnyRegType, Arg2Ty: AnyRegType
+]:
     var func: fn (Arg1Ty, Arg2Ty) -> ResultTy
 
     @always_inline("nodebug")
@@ -70,7 +72,10 @@ struct TwoArgCallable[ResultTy: AnyType, Arg1Ty: AnyType, Arg2Ty: AnyType]:
 @value
 @register_passable("trivial")
 struct ThreeArgCallable[
-    ResultTy: AnyType, Arg1Ty: AnyType, Arg2Ty: AnyType, Arg3Ty: AnyType
+    ResultTy: AnyRegType,
+    Arg1Ty: AnyRegType,
+    Arg2Ty: AnyRegType,
+    Arg3Ty: AnyRegType,
 ]:
     var func: fn (Arg1Ty, Arg2Ty, Arg3Ty) -> ResultTy
 
@@ -82,11 +87,11 @@ struct ThreeArgCallable[
 @value
 @register_passable("trivial")
 struct FourArgCallable[
-    ResultTy: AnyType,
-    Arg1Ty: AnyType,
-    Arg2Ty: AnyType,
-    Arg3Ty: AnyType,
-    Arg4Ty: AnyType,
+    ResultTy: AnyRegType,
+    Arg1Ty: AnyRegType,
+    Arg2Ty: AnyRegType,
+    Arg3Ty: AnyRegType,
+    Arg4Ty: AnyRegType,
 ]:
     var func: fn (Arg1Ty, Arg2Ty, Arg3Ty, Arg4Ty) -> ResultTy
 
@@ -99,7 +104,7 @@ struct FourArgCallable[
 
 @always_inline("nodebug")
 fn call_dylib_func[
-    ResultTy: AnyType
+    ResultTy: AnyRegType
 ](borrowed lib: DLHandle, name: StringRef) -> ResultTy:
     """Call function `name` in dylib with one result and no arguments."""
     return lib.get_function[SingleArgCallable[ResultTy, NoneType]](name)(None)
@@ -107,7 +112,7 @@ fn call_dylib_func[
 
 @always_inline("nodebug")
 fn call_dylib_func[
-    ArgTy: AnyType
+    ArgTy: AnyRegType
 ](borrowed lib: DLHandle, name: StringRef, arg: ArgTy) -> None:
     """Call function `name` in dylib with no result and one argument."""
     lib.get_function[SingleArgCallable[NoneType, ArgTy]](name)(arg)
@@ -115,7 +120,7 @@ fn call_dylib_func[
 
 @always_inline("nodebug")
 fn call_dylib_func[
-    ResultTy: AnyType, ArgTy: AnyType
+    ResultTy: AnyRegType, ArgTy: AnyRegType
 ](borrowed lib: DLHandle, name: StringRef, arg: ArgTy) -> ResultTy:
     """Call function `name` in dylib with one result and one argument."""
     return lib.get_function[SingleArgCallable[ResultTy, ArgTy]](name)(arg)
@@ -123,7 +128,7 @@ fn call_dylib_func[
 
 @always_inline("nodebug")
 fn call_dylib_func[
-    Arg1Ty: AnyType, Arg2Ty: AnyType
+    Arg1Ty: AnyRegType, Arg2Ty: AnyRegType
 ](borrowed lib: DLHandle, name: StringRef, arg1: Arg1Ty, arg2: Arg2Ty):
     """Call function `name` in dylib with no result and two arguments."""
     lib.get_function[TwoArgCallable[NoneType, Arg1Ty, Arg2Ty]](name)(arg1, arg2)
@@ -131,7 +136,7 @@ fn call_dylib_func[
 
 @always_inline("nodebug")
 fn call_dylib_func[
-    ResultTy: AnyType, Arg1Ty: AnyType, Arg2Ty: AnyType
+    ResultTy: AnyRegType, Arg1Ty: AnyRegType, Arg2Ty: AnyRegType
 ](
     borrowed lib: DLHandle, name: StringRef, arg1: Arg1Ty, arg2: Arg2Ty
 ) -> ResultTy:
@@ -143,7 +148,10 @@ fn call_dylib_func[
 
 @always_inline("nodebug")
 fn call_dylib_func[
-    ResultTy: AnyType, Arg1Ty: AnyType, Arg2Ty: AnyType, Arg3Ty: AnyType
+    ResultTy: AnyRegType,
+    Arg1Ty: AnyRegType,
+    Arg2Ty: AnyRegType,
+    Arg3Ty: AnyRegType,
 ](
     borrowed lib: DLHandle,
     name: StringRef,
@@ -159,10 +167,10 @@ fn call_dylib_func[
 
 @always_inline("nodebug")
 fn call_dylib_func[
-    Arg1Ty: AnyType,
-    Arg2Ty: AnyType,
-    Arg3Ty: AnyType,
-    Arg4Ty: AnyType,
+    Arg1Ty: AnyRegType,
+    Arg2Ty: AnyRegType,
+    Arg3Ty: AnyRegType,
+    Arg4Ty: AnyRegType,
 ](
     borrowed lib: DLHandle,
     name: StringRef,
@@ -179,11 +187,11 @@ fn call_dylib_func[
 
 @always_inline("nodebug")
 fn call_dylib_func[
-    ResultTy: AnyType,
-    Arg1Ty: AnyType,
-    Arg2Ty: AnyType,
-    Arg3Ty: AnyType,
-    Arg4Ty: AnyType,
+    ResultTy: AnyRegType,
+    Arg1Ty: AnyRegType,
+    Arg2Ty: AnyRegType,
+    Arg3Ty: AnyRegType,
+    Arg4Ty: AnyRegType,
 ](
     borrowed lib: DLHandle,
     name: StringRef,
