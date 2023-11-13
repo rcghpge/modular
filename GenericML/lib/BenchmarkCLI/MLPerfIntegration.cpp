@@ -4,14 +4,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/ModexBenchmark/MLPerfIntegration.h"
+#include "GenericML/BenchmarkCLI/MLPerfIntegration.h"
 #include "GenericML/API/modular/cpp/aliases.h"
-#include "GenericML/ModexBenchmark/InputGenerator.h"
-#include "GenericML/ModexBenchmark/Main.h"
+#include "GenericML/BenchmarkCLI/InputGenerator.h"
+#include "GenericML/BenchmarkCLI/Main.h"
 #include "mlperf-loadgen/loadgen.h"
 
 using namespace M;
-using namespace M::ModexBench;
+using namespace M::BenchmarkCLI;
 
 static constexpr size_t kDefaultSampleCount = 1000;
 
@@ -37,7 +37,7 @@ QuerySampleLibrary::~QuerySampleLibrary() {
 }
 
 std::string &QuerySampleLibrary::Name() const {
-  static std::string *name = new std::string(kModexBenchProductName);
+  static std::string *name = new std::string(kBenchmarkCLIProductName);
   return *name;
 }
 size_t QuerySampleLibrary::TotalSampleCount() { return sampleCount; }
@@ -80,7 +80,7 @@ SystemUnderTest::SystemUnderTest(QuerySampleLibrary *qsl,
     : qsl(qsl), runtimeContext(runtimeContext), model(model) {}
 
 std::string &SystemUnderTest::Name() const {
-  static std::string *name = new std::string(kModexBenchProductName);
+  static std::string *name = new std::string(kBenchmarkCLIProductName);
   return *name;
 }
 

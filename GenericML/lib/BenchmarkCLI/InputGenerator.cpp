@@ -4,13 +4,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/ModexBenchmark/InputGenerator.h"
+#include "GenericML/BenchmarkCLI/InputGenerator.h"
 #include "GenericML/API/modular/cpp/aliases.h"
-#include "GenericML/ModexBenchmark/InputGenerationSchema.h"
+#include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
 #include "Support/MathExtras.h"
 
 using namespace M;
-using namespace M::ModexBench;
+using namespace M::BenchmarkCLI;
 
 template <typename Fn>
 static auto withinScope(InputSchemaErrorReporter &errorReporter,
@@ -53,7 +53,7 @@ static bool parseDefaultedF32Value(const std::optional<std::string> &value,
   return parseF32Value(*value, out, errorReporter);
 }
 
-namespace M::ModexBench::Detail {
+namespace M::BenchmarkCLI::Detail {
 class UniformInputRandomDistribution final : public InputRandomDistribution {
 public:
   explicit UniformInputRandomDistribution(DType dtype, float min, float max)
@@ -65,11 +65,11 @@ private:
   float min;
   float max;
 };
-} // namespace M::ModexBench::Detail
+} // namespace M::BenchmarkCLI::Detail
 
-namespace MBD = ModexBench::Detail;
+namespace BCD = BenchmarkCLI::Detail;
 
-void MBD::UniformInputRandomDistribution::fill(void *out,
+void BCD::UniformInputRandomDistribution::fill(void *out,
                                                size_t numElements) const {
   assert(getDType() == DType::f32);
   float *outF32 = static_cast<float *>(out);
@@ -77,7 +77,7 @@ void MBD::UniformInputRandomDistribution::fill(void *out,
 }
 
 std::unique_ptr<InputRandomDistribution>
-M::ModexBench::createUniformInputRandomDistribution(
+M::BenchmarkCLI::createUniformInputRandomDistribution(
     DType dtype, const InputGenerationRandomUniform &spec,
     InputSchemaErrorReporter &errorReporter) {
   if (dtype != DType::f32) {
@@ -102,7 +102,7 @@ M::ModexBench::createUniformInputRandomDistribution(
 }
 
 std::unique_ptr<InputRandomDistribution>
-M::ModexBench::createNormalInputRandomDistribution(
+M::BenchmarkCLI::createNormalInputRandomDistribution(
     DType dtype, const InputGenerationRandomNormal &spec,
     InputSchemaErrorReporter &errorReporter) {
   errorReporter.reportError("Normal distribution not yet implemented");
@@ -110,7 +110,7 @@ M::ModexBench::createNormalInputRandomDistribution(
 }
 
 std::unique_ptr<InputRandomDistribution>
-M::ModexBench::createInputRandomDistribution(
+M::BenchmarkCLI::createInputRandomDistribution(
     DType dtype, const InputGenerationRandom &spec,
     InputSchemaErrorReporter &errorReporter) {
   int numSpecified = 0;
@@ -140,7 +140,7 @@ M::ModexBench::createInputRandomDistribution(
   return dist;
 }
 
-namespace M::ModexBench::Detail {
+namespace M::BenchmarkCLI::Detail {
 class RandomInputDataGenerator final : public InputDataGenerator {
 public:
   explicit RandomInputDataGenerator(
@@ -153,10 +153,10 @@ public:
 private:
   std::unique_ptr<InputRandomDistribution> dist;
 };
-} // namespace M::ModexBench::Detail
+} // namespace M::BenchmarkCLI::Detail
 
 ErrorOr<GML::Tensor>
-MBD::RandomInputDataGenerator::generate(LLCL::CompactRuntimePtr runtime,
+BCD::RandomInputDataGenerator::generate(LLCL::CompactRuntimePtr runtime,
                                         const TensorShape &shape) const {
   if (!shape.isStatic())
     return Error("Random input requires fully defined input shape");
@@ -167,14 +167,14 @@ MBD::RandomInputDataGenerator::generate(LLCL::CompactRuntimePtr runtime,
 }
 
 std::unique_ptr<InputDataGenerator>
-M::ModexBench::createRandomInputDataGenerator(
+M::BenchmarkCLI::createRandomInputDataGenerator(
     std::unique_ptr<InputRandomDistribution> distribution) {
-  return std::make_unique<MBD::RandomInputDataGenerator>(
+  return std::make_unique<BCD::RandomInputDataGenerator>(
       std::move(distribution));
 }
 
 std::unique_ptr<InputDataGenerator>
-M::ModexBench::createRandomInputDataGenerator(
+M::BenchmarkCLI::createRandomInputDataGenerator(
     DType dtype, const InputGenerationRandom &spec,
     InputSchemaErrorReporter &errorReporter) {
   auto dist = createInputRandomDistribution(dtype, spec, errorReporter);
@@ -184,13 +184,13 @@ M::ModexBench::createRandomInputDataGenerator(
 }
 
 std::unique_ptr<InputDataGenerator>
-M::ModexBench::createConstantInputDataGenerator(
+M::BenchmarkCLI::createConstantInputDataGenerator(
     DType dtype, StringRef constant, InputSchemaErrorReporter &errorReporter) {
   errorReporter.reportError("Constant input generation not yet implemented");
   return nullptr;
 }
 
-std::unique_ptr<InputDataGenerator> M::ModexBench::createInputDataGenerator(
+std::unique_ptr<InputDataGenerator> M::BenchmarkCLI::createInputDataGenerator(
     std::optional<DType> dtype, const InputGenerationData &spec,
     InputSchemaErrorReporter &errorReporter) {
   int numSpecified = 0;
@@ -270,7 +270,7 @@ static TensorSpecPtr createTensorSpec(const char *name,
                        M_freeTensorSpec);
 }
 
-namespace M::ModexBench::Detail {
+namespace M::BenchmarkCLI::Detail {
 class GeneratedInputImpl final : public GeneratedInput {
 public:
   static ErrorOr<GeneratedInputImpl> create(std::string name,
@@ -285,27 +285,27 @@ private:
   TensorSpecPtr spec;
   GML::Tensor tensor;
 };
-} // namespace M::ModexBench::Detail
+} // namespace M::BenchmarkCLI::Detail
 
-MBD::GeneratedInputImpl::GeneratedInputImpl(std::string name,
+BCD::GeneratedInputImpl::GeneratedInputImpl(std::string name,
                                             TensorSpecPtr spec,
                                             GML::Tensor tensor)
     : name(std::move(name)), spec(std::move(spec)), tensor(std::move(tensor)) {}
 
-ErrorOr<MBD::GeneratedInputImpl>
-MBD::GeneratedInputImpl::create(std::string name, GML::Tensor tensor) {
+ErrorOr<BCD::GeneratedInputImpl>
+BCD::GeneratedInputImpl::create(std::string name, GML::Tensor tensor) {
   TensorSpecPtr spec = createTensorSpec(name.c_str(), tensor.getSpec());
   if (!spec)
     return Error(Twine("Unable to create M_TensorSpec for ") + name);
   return GeneratedInputImpl(name, std::move(spec), std::move(tensor));
 }
 
-void MBD::GeneratedInputImpl::borrowInto(M_AsyncTensorMap *atm,
+void BCD::GeneratedInputImpl::borrowInto(M_AsyncTensorMap *atm,
                                          M_Status *status) const {
   M_borrowTensorInto(atm, tensor.getBuffer(), spec.get(), status);
 }
 
-namespace M::ModexBench::Detail {
+namespace M::BenchmarkCLI::Detail {
 class InputGeneratorImpl final : public InputGenerator {
 public:
   InputGeneratorImpl(std::string name, std::optional<TensorSpec> shape,
@@ -321,10 +321,10 @@ private:
   std::optional<TensorSpec> shape;
   std::unique_ptr<InputDataGenerator> dataGenerator;
 };
-} // namespace M::ModexBench::Detail
+} // namespace M::BenchmarkCLI::Detail
 
 ErrorOr<std::unique_ptr<GeneratedInput>>
-MBD::InputGeneratorImpl::generateInput(LLCL::CompactRuntimePtr runtime,
+BCD::InputGeneratorImpl::generateInput(LLCL::CompactRuntimePtr runtime,
                                        size_t queryIndex) {
   // TODO: Use query index.
   auto tensorOr =
@@ -338,8 +338,8 @@ MBD::InputGeneratorImpl::generateInput(LLCL::CompactRuntimePtr runtime,
 }
 
 std::unique_ptr<InputGenerator>
-M::ModexBench::createInputGenerator(const InputGenerationInput &spec,
-                                    InputSchemaErrorReporter &errorReporter) {
+M::BenchmarkCLI::createInputGenerator(const InputGenerationInput &spec,
+                                      InputSchemaErrorReporter &errorReporter) {
   bool ok = true;
   std::optional<std::variant<std::string, int>> nameOrIndex;
   if (spec.inputName.has_value())
@@ -378,12 +378,12 @@ M::ModexBench::createInputGenerator(const InputGenerationInput &spec,
     return nullptr;
   assert(nameOrIndex.has_value() &&
          std::holds_alternative<std::string>(*nameOrIndex));
-  return std::make_unique<MBD::InputGeneratorImpl>(
+  return std::make_unique<BCD::InputGeneratorImpl>(
       std::get<0>(std::move(*nameOrIndex)), std::move(shape),
       std::move(dataGenerator));
 }
 
-namespace M::ModexBench::Detail {
+namespace M::BenchmarkCLI::Detail {
 class GeneratedQueryImpl final : public GeneratedQuery {
 public:
   GeneratedQueryImpl(TensorMapPtr atm,
@@ -396,13 +396,13 @@ private:
   TensorMapPtr atm;
   std::vector<std::unique_ptr<GeneratedInput>> tensors;
 };
-} // namespace M::ModexBench::Detail
+} // namespace M::BenchmarkCLI::Detail
 
-M_AsyncTensorMap *MBD::GeneratedQueryImpl::getAsyncTensorMap() const {
+M_AsyncTensorMap *BCD::GeneratedQueryImpl::getAsyncTensorMap() const {
   return atm.get();
 }
 
-namespace M::ModexBench::Detail {
+namespace M::BenchmarkCLI::Detail {
 class QueryGeneratorImpl final : public QueryGenerator {
 public:
   explicit QueryGeneratorImpl(
@@ -418,12 +418,12 @@ public:
 private:
   std::vector<std::unique_ptr<InputGenerator>> inputGenerators;
 };
-} // namespace M::ModexBench::Detail
+} // namespace M::BenchmarkCLI::Detail
 
-ssize_t MBD::QueryGeneratorImpl::getNumQueries() const { return -1; }
+ssize_t BCD::QueryGeneratorImpl::getNumQueries() const { return -1; }
 
 ErrorOr<std::unique_ptr<GeneratedQuery>>
-MBD::QueryGeneratorImpl::generateQuery(LLCL::CompactRuntimePtr allocRuntime,
+BCD::QueryGeneratorImpl::generateQuery(LLCL::CompactRuntimePtr allocRuntime,
                                        M_RuntimeContext *runtimeContext,
                                        size_t queryIndex) const {
   std::vector<std::unique_ptr<GeneratedInput>> tensors;
@@ -444,18 +444,18 @@ MBD::QueryGeneratorImpl::generateQuery(LLCL::CompactRuntimePtr allocRuntime,
     if (M_isError(status.get()))
       return Error(M_getError(status.get()));
   }
-  return std::make_unique<MBD::GeneratedQueryImpl>(std::move(atm),
+  return std::make_unique<BCD::GeneratedQueryImpl>(std::move(atm),
                                                    std::move(tensors));
 }
 
-std::unique_ptr<QueryGenerator> M::ModexBench::createQueryGenerator(
+std::unique_ptr<QueryGenerator> M::BenchmarkCLI::createQueryGenerator(
     std::vector<std::unique_ptr<InputGenerator>> inputGenerators) {
-  return std::make_unique<MBD::QueryGeneratorImpl>(std::move(inputGenerators));
+  return std::make_unique<BCD::QueryGeneratorImpl>(std::move(inputGenerators));
 }
 
 std::unique_ptr<QueryGenerator>
-M::ModexBench::createQueryGenerator(const InputGenerationSchema &schema,
-                                    InputSchemaErrorReporter &errorReporter) {
+M::BenchmarkCLI::createQueryGenerator(const InputGenerationSchema &schema,
+                                      InputSchemaErrorReporter &errorReporter) {
   bool ok = true;
   std::vector<std::unique_ptr<InputGenerator>> inputGenerators;
   errorReporter.enterScope("inputs");

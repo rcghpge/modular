@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MODEX_BENCHMARK_INPUT_GENERATOR_H
-#define GENERICML_MODEX_BENCHMARK_INPUT_GENERATOR_H
+#ifndef GENERICML_BENCHMARK_CLI_INPUT_GENERATOR_H
+#define GENERICML_BENCHMARK_CLI_INPUT_GENERATOR_H
 
 #include "GenericML/API/modular/c/types.h"
 #include "GenericML/Support/Tensor.h"
@@ -13,7 +13,7 @@
 #include "Support/LLVMForwardDecls.h"
 #include <memory>
 
-namespace M::ModexBench {
+namespace M::BenchmarkCLI {
 
 class InputSchemaErrorReporter {
 public:
@@ -133,6 +133,6 @@ std::unique_ptr<QueryGenerator>
 createQueryGenerator(const InputGenerationSchema &schema,
                      InputSchemaErrorReporter &errorReporter);
 
-} // namespace M::ModexBench
+} // namespace M::BenchmarkCLI
 
-#endif // GENERICML_MODEX_BENCHMARK_INPUT_GENERATOR_H
+#endif // GENERICML_BENCHMARK_CLI_INPUT_GENERATOR_H

@@ -4,6 +4,14 @@
 #
 ##===----------------------------------------------------------------------===##
 
-# RUN: not modex benchmark --input-generation-schema=%s --round-trip-input-generation-schema %t 2>&1 | FileCheck %s
-# CHECK: {{.*}}.yaml:9:1: error: unknown key 'outputs'
-outputs: []
+add_genericml_library(BenchmarkCLI
+  InputGenerationSchema.cpp
+  InputGenerator.cpp
+  MLPerfIntegration.cpp
+  Main.cpp
+
+  LINK_LIBS PUBLIC
+  MSupport
+  mlperf-loadgen
+  modular-framework-common
+)

@@ -4,16 +4,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/ModexBenchmark/InputGenerator.h"
+#include "GenericML/BenchmarkCLI/InputGenerator.h"
 #include "GenericML/API/modular/c/tensor.h"
 #include "GenericML/API/modular/cpp/aliases.h"
-#include "GenericML/ModexBenchmark/InputGenerationSchema.h"
+#include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "gtest/gtest.h"
 #include <limits>
 
 using namespace M;
-using namespace M::ModexBench;
+using namespace M::BenchmarkCLI;
 
 namespace {
 

@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MODEX_BENCHMARK_INPUT_GENERATION_SCHEMA_H
-#define GENERICML_MODEX_BENCHMARK_INPUT_GENERATION_SCHEMA_H
+#ifndef GENERICML_BENCHMARK_CLI_INPUT_GENERATION_SCHEMA_H
+#define GENERICML_BENCHMARK_CLI_INPUT_GENERATION_SCHEMA_H
 
 #include "Support/LLVMForwardDecls.h"
 #include "Support/LLVMYAMLForwardDecls.h"
@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace M::ModexBench {
+namespace M::BenchmarkCLI {
 
 struct InputGenerationRandomUniform {
   std::optional<std::string> min;
@@ -53,15 +53,16 @@ struct InputGenerationSchema {
 ErrorOr<InputGenerationSchema> readInputGenerationSchema(StringRef path);
 bool roundTripInputGenerationSchema(StringRef path);
 
-} // namespace M::ModexBench
+} // namespace M::BenchmarkCLI
 
 LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(
-    M::ModexBench::InputGenerationRandomUniform)
-LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::ModexBench::InputGenerationRandomNormal)
-LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::ModexBench::InputGenerationRandom)
-LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::ModexBench::InputGenerationData)
-LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::ModexBench::InputGenerationInput)
-LLVM_FWD_YAML_IS_SEQUENCE_VECTOR(M::ModexBench::InputGenerationInput)
-LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::ModexBench::InputGenerationSchema)
+    M::BenchmarkCLI::InputGenerationRandomUniform)
+LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(
+    M::BenchmarkCLI::InputGenerationRandomNormal)
+LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::BenchmarkCLI::InputGenerationRandom)
+LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::BenchmarkCLI::InputGenerationData)
+LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::BenchmarkCLI::InputGenerationInput)
+LLVM_FWD_YAML_IS_SEQUENCE_VECTOR(M::BenchmarkCLI::InputGenerationInput)
+LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::BenchmarkCLI::InputGenerationSchema)
 
-#endif // GENERICML_MODEX_BENCHMARK_INPUT_GENERATION_SCHEMA_H
+#endif // GENERICML_BENCHMARK_CLI_INPUT_GENERATION_SCHEMA_H

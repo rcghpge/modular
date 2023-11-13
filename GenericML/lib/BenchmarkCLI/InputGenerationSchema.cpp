@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/ModexBenchmark/InputGenerationSchema.h"
+#include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/Support/YAMLTraits.h"
 
 using namespace M;
-using namespace M::ModexBench;
+using namespace M::BenchmarkCLI;
 
 void llvm::yaml::MappingTraits<InputGenerationRandomUniform>::mapping(
     llvm::yaml::IO &io, InputGenerationRandomUniform &uniform) {
@@ -50,7 +50,7 @@ void llvm::yaml::MappingTraits<InputGenerationSchema>::mapping(
 }
 
 ErrorOr<InputGenerationSchema>
-ModexBench::readInputGenerationSchema(StringRef path) {
+BenchmarkCLI::readInputGenerationSchema(StringRef path) {
   InputGenerationSchema schema;
   std::string error;
   auto buffer = mlir::openInputFile(path, &error);
@@ -63,7 +63,7 @@ ModexBench::readInputGenerationSchema(StringRef path) {
   return std::move(schema);
 }
 
-bool ModexBench::roundTripInputGenerationSchema(StringRef path) {
+bool BenchmarkCLI::roundTripInputGenerationSchema(StringRef path) {
   auto schemaOr = readInputGenerationSchema(path);
   if (schemaOr.isError()) {
     llvm::errs() << schemaOr.getError() << '\n';

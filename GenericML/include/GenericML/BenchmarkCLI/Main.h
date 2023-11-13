@@ -4,15 +4,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MODEX_BENCHMARK_MAIN_H
-#define GENERICML_MODEX_BENCHMARK_MAIN_H
+#ifndef GENERICML_BENCHMARK_CLI_MAIN_H
+#define GENERICML_BENCHMARK_CLI_MAIN_H
 
 namespace M {
 
-inline constexpr const char *kModexBenchProductName = "modex benchmark";
+inline constexpr const char *kBenchmarkCLIProductName = "max benchmark";
 
-int modexBenchmarkMain(int argc, char **argv);
+int maxBenchmarkMain(int argc, char **argv);
 
 } // namespace M
 
-#endif // GENERICML_MODEX_BENCHMARK_MAIN_H
+#endif // GENERICML_BENCHMARK_CLI_MAIN_H

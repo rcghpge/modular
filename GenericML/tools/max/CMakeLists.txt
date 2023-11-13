@@ -4,14 +4,11 @@
 #
 ##===----------------------------------------------------------------------===##
 
-add_genericml_library(ModexBenchmark
-  InputGenerationSchema.cpp
-  InputGenerator.cpp
-  MLPerfIntegration.cpp
-  Main.cpp
+add_modular_tool(max
+  max.cpp
 
-  LINK_LIBS PUBLIC
+  LINK_LIBS PRIVATE
+  BenchmarkCLI
+  MCrashReporting
   MSupport
-  mlperf-loadgen
-  modular-framework-common
 )

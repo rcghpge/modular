@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_MODEXBENCHMARK_MLPERF_INTEGRATION_H
-#define GENERICML_MODEXBENCHMARK_MLPERF_INTEGRATION_H
+#ifndef GENERICML_BENCHMARK_CLI_MLPERF_INTEGRATION_H
+#define GENERICML_BENCHMARK_CLI_MLPERF_INTEGRATION_H
 
 #include "GenericML/API/modular/c/types.h"
 #include "LLCL/Runtime/CompactRuntimePtr.h"
@@ -14,7 +14,7 @@
 #include "mlperf-loadgen/system_under_test.h"
 #include <atomic>
 
-namespace M::ModexBench {
+namespace M::BenchmarkCLI {
 
 class GeneratedQuery;
 class QueryGenerator;
@@ -69,6 +69,6 @@ private:
   M_AsyncModel *model;
 };
 
-} // namespace M::ModexBench
+} // namespace M::BenchmarkCLI
 
-#endif // GENERICML_MODEXBENCHMARK_MLPERF_INTEGRATION_H
+#endif // GENERICML_BENCHMARK_CLI_MLPERF_INTEGRATION_H

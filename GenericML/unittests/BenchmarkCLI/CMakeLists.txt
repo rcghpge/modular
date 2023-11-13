@@ -9,14 +9,14 @@ add_modular_unittest(
   check-genericml
 
   SUITE_NAME
-  ModexBenchmarkUnitTests
+  BenchmarkCLIUnitTests
 
   TEST_NAME
-  ModexBenchmarkTests
+  BenchmarkCLITests
 
   InputGeneratorTest.cpp
   MLPerfIntegrationTest.cpp
 
   LINK_LIBS PRIVATE
-  ModexBenchmark
+  BenchmarkCLI
 )

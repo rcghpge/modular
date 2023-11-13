@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/ModexBenchmark/Main.h"
+#include "GenericML/BenchmarkCLI/Main.h"
 #include "Config/Version.h"
 #include "GenericML/API/modular/cpp/aliases.h"
-#include "GenericML/ModexBenchmark/InputGenerationSchema.h"
-#include "GenericML/ModexBenchmark/InputGenerator.h"
-#include "GenericML/ModexBenchmark/MLPerfIntegration.h"
+#include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
+#include "GenericML/BenchmarkCLI/InputGenerator.h"
+#include "GenericML/BenchmarkCLI/MLPerfIntegration.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "Support/CommandLine.h"
 #include "Support/ErrorOr.h"
@@ -22,7 +22,7 @@
 #include <iostream>
 
 using namespace M;
-using namespace M::ModexBench;
+using namespace M::BenchmarkCLI;
 
 namespace {
 
@@ -151,17 +151,17 @@ createQueryGeneratorFromPath(StringRef schemaPath) {
   return createQueryGenerator(schema, errorReporter);
 }
 
-int M::modexBenchmarkMain(int argc, char **argv) {
+int M::maxBenchmarkMain(int argc, char **argv) {
   ClOptions opts;
 
   llvm::cl::SetVersionPrinter([](llvm::raw_ostream &os) {
     ModularVersion version = getModularVersion();
-    os << llvm::formatv("{0} {1}.{2}.{3}{4} ({5})\n", kModexBenchProductName,
+    os << llvm::formatv("{0} {1}.{2}.{3}{4} ({5})\n", kBenchmarkCLIProductName,
                         version.major, version.minor, version.patch,
                         version.label, version.revision);
     os << "Modular version " << M_version() << "\n";
   });
-  llvm::cl::ParseCommandLineOptions(argc, argv, kModexBenchProductName);
+  llvm::cl::ParseCommandLineOptions(argc, argv, kBenchmarkCLIProductName);
 
   llvm::outs() << "Modular Benchmarking Tool\n";
   llvm::outs() << "Modular version: " << M_version() << "\n";
