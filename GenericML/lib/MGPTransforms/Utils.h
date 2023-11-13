@@ -97,13 +97,14 @@ void accumulatePrimitiveChains(ValueSetVector &primitiveChains, Value chain);
 void moveAllBefore(Operation *origTargetOp, Operation *origAnchorOp);
 
 /// Returns a chain value which will be ready only when all of chains (which
-/// cannot be empty) are ready.
-Value waitForChains(OpBuilder &builder, mlir::Location loc,
+/// cannot be empty) are ready. Works with any kind (cpu/cuda) of chains.
+Value waitForChains(OpBuilder &builder, mlir::Location loc, Operation *op,
                     ArrayRef<Value> chains);
 
 /// Mutates op in-place to ensure its input chain is ready only when all of
-/// additionalChains are also ready. Returns failure if op doesn't have any
-/// input chain to merge with.
+/// additionalChains are also ready. Requires an input operation to build the
+/// chain for (necessary for CUDA which requires context and slot). Returns
+/// failure if op doesn't have any input chain to merge with.
 LogicalResult alsoWaitForChains(OpBuilder &builder, Operation *op,
                                 ArrayRef<Value> additionalChains);
 

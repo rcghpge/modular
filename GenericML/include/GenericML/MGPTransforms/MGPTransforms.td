@@ -136,9 +136,9 @@ def RemoveRedundantTensorExtractsPass : Pass<"remove-redundant-tensor-extracts",
     This pass avoid unnecessary mgp.cpu.tensor.{create,extract} operations in
     two situations:
 
-    1. If the result of a mgp.cpu.tensor.create op is exclusively consumed by
-       mgp.cpu.tensor.extract ops, remove them in favor of the original buffer,
-       tensor spec and chain used by the mgp.cpu.tensor.create. Eg:
+    1. If the result of a (mgp.cpu/cuda).tensor.create op is exclusively consumed by
+       tensor.extract ops, remove them in favor of the original buffer,
+       tensor spec and chain used by the tensor.create. Eg:
     ```mlir
           %tensor0 = mgp.cpu.tensor.create %ch0, %inputBuf0, %inputSpec0
           %tensor1 = mgp.cpu.tensor.create %ch1, %inputBuf1, %inputSpec1
@@ -154,13 +154,13 @@ def RemoveRedundantTensorExtractsPass : Pass<"remove-redundant-tensor-extracts",
                        %inputBuf0, %inputSpec0,  %inputBuf1, %inputSpec1)
     ```
        Assumes:
-        - All buffers passed to mgp.cpu.tensor.create will not be further
+        - All buffers passed to tensor.create will not be further
           mutated once the chain to that op is ready. This is currently true
           for the GraphCompiler, but need not be true in general.
         - Ops have buffer annotations indicating which are in 'write' positions.
 
-    2. Ensures values of type !mgp.cpu.tensor not otherwise the result of an
-       mgp.cpu.tensor.create op (eg block arguments or the results of other
+    2. Ensures values of type !(mgp.cpu/cuda).tensor not otherwise the result of an
+       tensor.create op (eg block arguments or the results of other
        primitives) are extracted at most once. Eg:
     ```mlir
           execute(%tensor : !mgp.cpu.tensor) {

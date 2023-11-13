@@ -579,6 +579,13 @@ Type CpuTensorType::getElementType() const {
 }
 
 //===----------------------------------------------------------------------===//
+// ODS-Generated Definitions
+//===----------------------------------------------------------------------===//
+
+#define GET_TYPEDEF_CLASSES
+#include "GenericML/MGPDialect/MGPTypes.cpp.inc"
+
+//===----------------------------------------------------------------------===//
 // MGPDialect type support
 //===----------------------------------------------------------------------===//
 
@@ -588,13 +595,6 @@ void MGPDialect::registerTypes() {
 #include "GenericML/MGPDialect/MGPTypes.cpp.inc"
       >();
 }
-
-//===----------------------------------------------------------------------===//
-// ODS-Generated Definitions
-//===----------------------------------------------------------------------===//
-
-#define GET_TYPEDEF_CLASSES
-#include "GenericML/MGPDialect/MGPTypes.cpp.inc"
 
 //===----------------------------------------------------------------------===//
 // CpuBufferType (cont.)

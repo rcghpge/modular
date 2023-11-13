@@ -6,6 +6,7 @@
 
 #include "./Utils.h"
 
+#include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "GraphRT/MEFDialect/MEFChainIndicatesFinishedInterface.h"
 #include "GraphRT/MEFDialect/MEFNonStrictInterface.h"
@@ -251,7 +252,7 @@ SmallVector<OpOperand *> M::MGP::allUsingOpOperands(Value buffer,
 SmallVector<OpOperand *, 1> M::MGP::getInputChainOpOperands(Operation *op) {
   SmallVector<OpOperand *, 1> result;
   for (auto &operand : op->getOpOperands()) {
-    if (isa<MEF::ChainType>(operand.get().getType()))
+    if (isa<MEF::MEFChainTypeInterface>(operand.get().getType()))
       result.emplace_back(&operand);
   }
   return result;
@@ -298,8 +299,9 @@ void M::MGP::moveAllBefore(Operation *origTargetOp, Operation *origAnchorOp) {
 /// to primitiveChains.
 void M::MGP::accumulatePrimitiveChains(ValueSetVector &primitiveChains,
                                        Value chain) {
-  if (auto chainCreateOp = chain.getDefiningOp<GRT::ChainCreateOp>()) {
-    for (auto operand : chainCreateOp.getOperands())
+  if (auto chainCreateOp =
+          chain.getDefiningOp<GRT::GRTChainCreateOpInterface>()) {
+    for (auto operand : chainCreateOp.getInputChains())
       accumulatePrimitiveChains(primitiveChains, operand);
   } else {
     primitiveChains.insert(chain);
@@ -308,10 +310,10 @@ void M::MGP::accumulatePrimitiveChains(ValueSetVector &primitiveChains,
 
 /// As for waitForChains, but reuse existingUniqueChainCreateOp instead of
 /// creating a new op if it is non-null.
-static Value
-waitForChainsReusing(OpBuilder &builder, mlir::Location loc,
-                     GRT::ChainCreateOp existingUniqueChainCreateOp,
-                     ArrayRef<Value> chains) {
+static Value waitForChainsReusing(
+    OpBuilder &builder, mlir::Location loc, Operation *op,
+    GRT::GRTGatedOnChainOpInterface existingUniqueChainCreateOp,
+    ArrayRef<Value> chains) {
   assert(!chains.empty());
 
   if (chains.size() == 1)
@@ -319,17 +321,34 @@ waitForChainsReusing(OpBuilder &builder, mlir::Location loc,
 
   if (existingUniqueChainCreateOp) {
     // Just update the operands to the existing merge op.
-    existingUniqueChainCreateOp->setOperands(chains);
-    return existingUniqueChainCreateOp.getResult();
+    existingUniqueChainCreateOp.setInputChains(chains);
+    return dyn_cast<GRT::GRTChainCreateOpInterface>(
+               existingUniqueChainCreateOp.getOperation())
+        .getChainResult();
   }
 
-  return builder.create<GRT::ChainCreateOp>(loc, chains).getResult();
+  // Get interface to build a new chain. Default to MGP if dialect is not found,
+  // or interface does not exist for dialect.
+  MGP::TensorBufferDialectInterface *interface;
+  if (!op->getDialect()) {
+    auto type = MGP::ContextType::get(builder.getContext());
+    interface = dyn_cast<MGP::TensorBufferDialectInterface>(&type.getDialect());
+  } else {
+    interface = dyn_cast<MGP::TensorBufferDialectInterface>(op->getDialect());
+    if (!interface) {
+      auto type = MGP::ContextType::get(builder.getContext());
+      interface =
+          dyn_cast<MGP::TensorBufferDialectInterface>(&type.getDialect());
+    }
+  }
+  auto chainCreate = interface->createChain(&builder, loc, op, chains);
+  return chainCreate.getChainResult();
 }
 
 Value M::MGP::waitForChains(OpBuilder &builder, mlir::Location loc,
-                            ArrayRef<Value> chains) {
-  return waitForChainsReusing(builder, loc, /*existingUniqueChainCreateOp=*/{},
-                              chains);
+                            Operation *op, ArrayRef<Value> chains) {
+  return waitForChainsReusing(builder, loc, op,
+                              /*existingUniqueChainCreateOp=*/{}, chains);
 }
 
 LogicalResult M::MGP::alsoWaitForChains(OpBuilder &builder, Operation *op,
@@ -338,8 +357,9 @@ LogicalResult M::MGP::alsoWaitForChains(OpBuilder &builder, Operation *op,
     return success();
 
   auto existingInChainOpOperands = getInputChainOpOperands(op);
-  if (existingInChainOpOperands.empty())
+  if (existingInChainOpOperands.empty()) {
     return failure();
+  }
 
   for (OpOperand *inChainOpOperand : existingInChainOpOperands) {
     Value inChain = inChainOpOperand->get();
@@ -377,18 +397,19 @@ LogicalResult M::MGP::alsoWaitForChains(OpBuilder &builder, Operation *op,
     // Is inChain the only use of a grt.chain.create operation?
     // If so we can modify that operation directly instead of creating a
     // new operation.
-    GRT::ChainCreateOp existingUniqueChainCreateOp = nullptr;
+    GRT::GRTGatedOnChainOpInterface existingUniqueChainCreateOp = nullptr;
     if (inChain.hasOneUse()) {
-      if (auto chainCreateOp = inChain.getDefiningOp<GRT::ChainCreateOp>())
+      if (auto chainCreateOp =
+              inChain.getDefiningOp<GRT::GRTGatedOnChainOpInterface>())
         existingUniqueChainCreateOp = chainCreateOp;
     }
 
     // Wait on the merge of the accumulated primitive chains.
     auto insertPoint = builder.saveInsertionPoint();
     builder.setInsertionPoint(op);
-    Value newInChain =
-        waitForChainsReusing(builder, op->getLoc(), existingUniqueChainCreateOp,
-                             existingPrimitiveChains.takeVector());
+    Value newInChain = waitForChainsReusing(
+        builder, op->getLoc(), op, existingUniqueChainCreateOp,
+        existingPrimitiveChains.takeVector());
     builder.restoreInsertionPoint(insertPoint);
     op->setOperand(inChainOpOperand->getOperandNumber(), newInChain);
   }

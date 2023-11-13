@@ -22,7 +22,9 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 //===----------------------------------------------------------------------===//
 
 def ChainCreateOp : GRTOp<"chain.create", [Pure, Commutative,
-    DeclareOpInterfaceMethods<GRT_ChainOpInterface>]> {
+    DeclareOpInterfaceMethods<GRT_ChainCreateOpInterface>,
+    DeclareOpInterfaceMethods<GRT_GatedOnChainOpInterface>
+    ]> {
   let summary = "Return a ready !mef.chain when all inputs (if any) are ready";
 
   let description = [{
@@ -47,6 +49,14 @@ def ChainCreateOp : GRTOp<"chain.create", [Pure, Commutative,
   let builders = [
     OpBuilder<(ins)>
   ];
+  let extraClassDefinition = [{
+      llvm::SmallVector<mlir::Value> ChainCreateOp::getInputChains() {
+        return this->getOperands();
+      }
+      void ChainCreateOp::setInputChains(::mlir::ValueRange inChains) {
+        return getOperation()->setOperands(inChains);
+      }
+  }];
 }
 
 //===----------------------------------------------------------------------===//

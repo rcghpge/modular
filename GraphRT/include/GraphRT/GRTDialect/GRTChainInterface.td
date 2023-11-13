@@ -13,15 +13,32 @@
 
 include "mlir/IR/OpBase.td"
 
-def GRT_ChainOpInterface : OpInterface<"GRTChainOpInterface"> {
+def GRT_ChainCreateOpInterface : OpInterface<"GRTChainCreateOpInterface"> {
   let description = [{
-    Operation that creates a chain.
+    Operation that creates a new chain.
   }];
   let cppNamespace = "::M::GRT";
   let methods = [
     InterfaceMethod<
       "Get the resulting chain",
       "::mlir::Value", "getChainResult", (ins), "return $_op.getResult();"
+    >,
+    InterfaceMethod<
+      "Get the input chains that this chain depends on",
+      "::llvm::SmallVector<::mlir::Value>", "getInputChains", (ins)
+    >
+  ];
+}
+
+def GRT_GatedOnChainOpInterface : OpInterface<"GRTGatedOnChainOpInterface"> {
+  let description = [{
+    Chain operations that depend on other chains/inputs. Allows changing what is being depended on.
+  }];
+  let cppNamespace = "::M::GRT";
+  let methods = [
+    InterfaceMethod<
+      "Set the inputs that this chain depends on",
+      "void", "setInputChains", (ins "::mlir::ValueRange":$inChains)
     >
   ];
 }

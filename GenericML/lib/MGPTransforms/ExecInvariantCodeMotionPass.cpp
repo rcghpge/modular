@@ -752,8 +752,12 @@ class ExecInvariantCodeMotionPass
         // let CSE clean up any duplication for those new chains.
         // The remaining references to oldChain remain in-place, since those
         // ops will likewise be lifted.
-        Value newChain = builder->fromMEFChain(
-            executeState->builder, op->getLoc(), executeState->getRootChain());
+        Value newChain;
+        if (isa<MEF::ChainType>(oldChain.getType()))
+          newChain = executeState->getRootChain();
+        else
+          newChain = builder->fromMEFChain(executeState->builder, op->getLoc(),
+                                           executeState->getRootChain());
         oldChain.replaceUsesWithIf(newChain, isOpOperandUnliftable);
         LLVM_DEBUG(llvm::dbgs() << "will lift chain op and replace old chain:\n"
                                 << oldChain << "\nwith:\n"

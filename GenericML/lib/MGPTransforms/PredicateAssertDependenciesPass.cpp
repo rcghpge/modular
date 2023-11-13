@@ -137,6 +137,12 @@ class PredicateAssertDependenciesPass
         if (inputChains.empty())
           continue;
 
+        // TODO(#25422): Don't handle any non-mef chains for now
+        if (llvm::any_of(inputChains, [](OpOperand *operand) {
+              return !isa<MEF::ChainType>(operand->get().getType());
+            }))
+          continue;
+
         llvm::SetVector<AssertOp> diff = asserts;
         if (op->getNumResults()) {
           auto it = valuesThatFeedAsserts.find(op->getResult(0));

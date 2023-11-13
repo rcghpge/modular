@@ -312,8 +312,8 @@ public:
 
   /// If using the relation to represent a predicate, includes v in the
   /// predicate.
-  void setTrue(Relation &relaiton, V v) const {
-    setEntries(relaiton, v, index->unitSet(index->distinguished));
+  void setTrue(Relation &relation, V v) const {
+    setEntries(relation, v, index->unitSet(index->distinguished));
   }
 
   void setTrue(DomainMap &domainMap, V v) const {

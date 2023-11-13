@@ -60,15 +60,17 @@ MGPTensorExtractOpInterface CpuTensorBufferDialectInterface::createExtract(
       *builder->create<CpuTensorExtractOp>(loc, tensor));
 }
 
-GRT::GRTChainOpInterface CpuTensorBufferDialectInterface::createChain(
-    OpBuilder *builder, mlir::Location loc, ValueRange chains) {
-  return dyn_cast<GRT::GRTChainOpInterface>(
+GRT::GRTChainCreateOpInterface CpuTensorBufferDialectInterface::createChain(
+    OpBuilder *builder, mlir::Location loc, Operation *op, ValueRange chains) {
+  return dyn_cast<GRT::GRTChainCreateOpInterface>(
       *builder->create<GRT::ChainCreateOp>(loc, chains));
 }
 
-GRT::GRTChainOpInterface CpuTensorBufferDialectInterface::createChainForTensor(
-    OpBuilder *builder, mlir::Location loc, Value tensor) {
-  return dyn_cast<GRT::GRTChainOpInterface>(
+GRT::GRTChainCreateOpInterface
+CpuTensorBufferDialectInterface::createChainForTensor(OpBuilder *builder,
+                                                      mlir::Location loc,
+                                                      Value tensor) {
+  return dyn_cast<GRT::GRTChainCreateOpInterface>(
       *builder->create<GRT::ChainCreateOp>(loc));
 }
 
