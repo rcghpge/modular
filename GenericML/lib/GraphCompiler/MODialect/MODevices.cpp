@@ -32,13 +32,6 @@ DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {
     return getHostDeviceAny(op);
 }
 
-bool MO::isViaHostAny(Operation *op) {
-  if (auto hasDeviceOp = dyn_cast<MOHasDeviceInterface>(op))
-    return hasDeviceOp.isViaHost();
-
-  return false;
-}
-
 DeviceRefAttr MO::getDeviceOrDefault(GraphOp graphOp, TensorType type) {
   // Check the type annotation.
   DeviceRefAttr device = type.getDeviceRef();
@@ -91,23 +84,16 @@ ErrorOr<DeviceSpecCollectionAttr> MO::getDeviceSpecsOrDefault(GraphOp graphOp) {
 
 DeviceAnnots DeviceAnnots::forOp(Operation *op) {
   DeviceAnnots metadata;
-  if (auto hasDevice = dyn_cast<MOHasDeviceInterface>(op)) {
+  if (auto hasDevice = dyn_cast<MOHasDeviceInterface>(op))
     metadata.device = hasDevice.getDeviceRef();
-    metadata.isViaCpu = hasDevice.isViaHost();
-    assert((metadata.device || !metadata.isViaCpu) &&
-           "operation should only have an is_via_host attribute if it also has "
-           "a device attribute");
-  }
   return metadata;
 }
 
 bool DeviceAnnots::add(const DeviceAnnots &that) {
   if (!isConsistentWith(that))
     return false;
-  if (!device) {
+  if (!device)
     device = that.device;
-    isViaCpu = that.isViaCpu;
-  }
   return true;
 }
 
@@ -121,8 +107,6 @@ Operation *DeviceAnnots::stampAny(Operation *op) const {
   if (auto hasDevice = dyn_cast<MOHasDeviceInterface>(op)) {
     if (device && !hasDevice.getDeviceRef())
       hasDevice.setDeviceRef(device);
-    if (isViaCpu)
-      hasDevice.setIsViaHost();
   }
   // If the op does not support device annotations then we'll just ignore
   // the annotation and trust the AssingDevicesPass will check everything is
@@ -135,9 +119,5 @@ bool DeviceAnnots::isConsistentWith(DeviceRefAttr thatDevice) const {
 }
 
 bool DeviceAnnots::isConsistentWith(const DeviceAnnots &that) const {
-  if (!isConsistentWith(that.device))
-    return false;
-  if (device && that.device && isViaCpu != that.isViaCpu)
-    return false;
-  return true;
+  return isConsistentWith(that.device);
 }

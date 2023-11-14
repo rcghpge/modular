@@ -245,17 +245,9 @@ public:
   /// must have already been lowered to their index typed dimensios. It is
   /// possible for the kernel to return output dimensions, however this is
   /// only used by synchronous shape functions.
-  ///
-  /// If isViaHost is true, the kernel is implemented in two parts:
-  ///  - the host side kernel, which is given arguments so as to be able
-  ///    to call/launch...
-  ///  - the device side kernel
-  /// The kernelExecute will just setup the correct execution op for the
-  /// host side kernel.
   virtual Value
   kernelExecute(OpBuilder &builder, Location loc, StringRef kernelName,
-                bool isViaHost, Value inChain,
-                TypedValue<MGP::ContextType> execContext,
+                Value inChain, TypedValue<MGP::ContextType> execContext,
                 ArrayRef<Value> buffers,
                 ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
                 ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
@@ -345,8 +337,7 @@ public:
 
   Value
   kernelExecute(OpBuilder &builder, Location loc, StringRef kernelName,
-                bool isViaHost, Value inChain,
-                TypedValue<MGP::ContextType> execContext,
+                Value inChain, TypedValue<MGP::ContextType> execContext,
                 ArrayRef<Value> buffers,
                 ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
                 ArrayRef<Value> inDimensions, uint64_t numOutDimensions,

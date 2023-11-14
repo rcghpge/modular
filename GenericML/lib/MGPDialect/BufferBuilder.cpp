@@ -125,9 +125,8 @@ Value CpuBufferBuilder::kernelLoadArchive(
 }
 
 Value CpuBufferBuilder::kernelExecute(
-    OpBuilder &builder, Location loc, StringRef kernelName, bool isViaHost,
-    Value inChain, TypedValue<MGP::ContextType> execContext,
-    ArrayRef<Value> buffers,
+    OpBuilder &builder, Location loc, StringRef kernelName, Value inChain,
+    TypedValue<MGP::ContextType> execContext, ArrayRef<Value> buffers,
     ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
     ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
     SmallVectorImpl<Value> &outDimensions) {

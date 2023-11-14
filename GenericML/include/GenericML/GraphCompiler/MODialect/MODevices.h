@@ -23,10 +23,6 @@ DeviceRefAttr getDeviceOrDefault(MOHasDeviceInterface op);
 /// As above, but for any operation.
 DeviceRefAttr getDeviceOrDefaultAny(Operation *op);
 
-/// Returns true if op is annotated to execute via the host. In this case
-/// the op will have both a host and device-specific implementation.
-bool isViaHostAny(Operation *op);
-
 /// Returns the #M.device_ref annotation for type which appears in the
 /// the given MO graphOp. Returns the 'host' device if there is no such
 /// annotation on the type itself.
@@ -59,8 +55,6 @@ ErrorOr<DeviceSpecCollectionAttr> getDeviceSpecsOrDefault(GraphOp graphOp);
 struct DeviceAnnots {
   /// The 'device' attribute of the original op, or null.
   DeviceRefAttr device;
-  /// True if original op had the 'is_via_cpu' attribute.
-  bool isViaCpu = false;
 
   /// Returns the device annotations for operation.
   static DeviceAnnots forOp(Operation *op);

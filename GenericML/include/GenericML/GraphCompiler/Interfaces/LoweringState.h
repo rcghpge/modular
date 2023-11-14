@@ -435,14 +435,14 @@ struct MOOpLoweringState {
                                            label);
   }
   Value
-  kernelExecute(StringRef kernelName, bool isViaHost, Value inChain,
+  kernelExecute(StringRef kernelName, Value inChain,
                 TypedValue<MGP::ContextType> execContext,
                 SmallVector<Value> buffers,
                 ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
                 SmallVector<Value> inDimensions, uint64_t numOutDimensions,
                 SmallVectorImpl<Value> &outDimensions) {
     return bufferBuilder->kernelExecute(
-        builder, loc, kernelName, isViaHost, inChain, execContext, buffers,
+        builder, loc, kernelName, inChain, execContext, buffers,
         bufferSemantics, inDimensions, numOutDimensions, outDimensions);
   }
 

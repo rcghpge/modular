@@ -265,7 +265,6 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   SmallVector<Value> outDimensions;
   auto outChain = opLoweringState.kernelExecute(
       /*kernelName=*/getKernelName(),
-      /*isViaHost=*/isViaHost(),
       /*inChain=*/loweringState.getExecuteChain(),
       /*execContext=*/loweringState.getExecuteMgpContext(),
       /*args=*/operands,
