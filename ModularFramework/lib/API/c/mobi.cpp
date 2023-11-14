@@ -139,6 +139,11 @@ MODULAR_API_EXPORT char *MOBI_moduleToString(const M_Module *const m) {
   return copy;
 }
 
+MODULAR_API_EXPORT bool MOBI_moduleVerify(const M_Module *const m) {
+  auto op = m->module.getModuleOp();
+  return op.verify().succeeded();
+}
+
 MODULAR_API_EXPORT void MOBI_debugPrintModule(const M_Module *const m) {
   m->module.getModuleOp()->print(outs());
 }

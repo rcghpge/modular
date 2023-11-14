@@ -222,6 +222,10 @@ fn new_module() -> ModulePtr:
     return MOBI_func[fn () -> ModulePtr]("MOBI_newModule")()
 
 
+fn module_verify(module: ModulePtr) -> Bool:
+    return MOBI_func[fn (ModulePtr) -> Bool]("MOBI_moduleVerify")(module)
+
+
 fn debug_print_module(module: ModulePtr):
     MOBI_func[fn (ModulePtr) -> NoneType]("MOBI_debugPrintModule")(module)
 
