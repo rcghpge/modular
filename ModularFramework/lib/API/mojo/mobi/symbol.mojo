@@ -8,6 +8,8 @@ from .graph import Graph
 from .mobicc import SymbolPtr
 from .type import Type
 
+from tensor import Tensor, TensorShape, TensorSpec
+
 
 @value
 @register_passable
@@ -25,3 +27,35 @@ struct Symbol:
     fn type(self) -> Type:
         """Returns the type of this symbol."""
         return Type(mobicc.typeof(self.s))
+
+    fn __getitem__(self, span: slice) raises -> Symbol:
+        # TODO: Since `mo.slice` clamps out of range start/stop operands, it
+        # should be safe to leave unspecified `end` as `_int_max_value()`.
+        # However, since this will produce a dynamic dim shape that is prone to
+        # producing downstream dynamic rank, enforce statically known `end`.
+        if not span._has_end():
+            raise "slice expects stop to be specified"
+
+        let spec = self.type().unwrap_tensor().spec()
+        if spec.rank() != 1:
+            raise "__getitem__ with slice object on `Symbol` only supports 1D tensors"
+
+        # Allocated pointers are moved into `Tensor`, which frees them.
+        let start_ptr = DTypePointer[DType.int64].alloc(1)
+        start_ptr.store(0, span.start)
+        let end_ptr = DTypePointer[DType.int64].alloc(1)
+        end_ptr.store(0, span.end)
+        let step_ptr = DTypePointer[DType.int64].alloc(1)
+        step_ptr.store(0, span.step)
+
+        var g = self.g
+        return g.op(
+            "mo.slice",
+            (
+                self,
+                g.constant(Tensor(start_ptr, TensorShape(1))),
+                g.constant(Tensor(end_ptr, TensorShape(1))),
+                g.constant(Tensor(step_ptr, TensorShape(1))),
+            ),
+            TensorSpec(DType.int64, span.__len__()),
+        )[0]
