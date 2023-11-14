@@ -13,6 +13,7 @@ from ._tensormap import *
 from ._engine import _EngineImpl
 from memory.unsafe import Pointer
 from os.atomic import Atomic
+from utils.optional import Optional
 
 
 struct _InferenceSessionImpl:
@@ -27,13 +28,22 @@ struct _InferenceSessionImpl:
         self.ref_count = 1
 
     fn compile_model(
-        self, model_path: StringRef, owned session: InferenceSession
+        self,
+        model_path: StringRef,
+        user_defined_ops_path: Optional[StringRef],
+        owned session: InferenceSession,
     ) raises -> CompiledModel:
         """
         Compiles the model given model path.
+
+        Raises: an Error if the path to the model file does
+        not exist on the filesystem.
         """
         let config = CompileConfig(self.engine.lib)
+        if user_defined_ops_path:
+            config.set_replace_ops_path(user_defined_ops_path.value())
         config.set_model_path(model_path)
+
         return CompiledModel(
             self.context.borrow_ptr(),
             self.engine.lib,
@@ -42,12 +52,17 @@ struct _InferenceSessionImpl:
         )
 
     fn load_model(
-        self, model_path: StringRef, owned session: InferenceSession
+        self,
+        model_path: StringRef,
+        user_defined_ops_path: Optional[StringRef],
+        owned session: InferenceSession,
     ) raises -> Model:
         """
         Compiles and initializes model given path.
         """
-        let compiled_model = self.compile_model(model_path, session.copy())
+        let compiled_model = self.compile_model(
+            model_path, user_defined_ops_path, session.copy()
+        )
         let model = Model(
             self.context.borrow_ptr(),
             compiled_model.borrow_ptr(),
@@ -83,20 +98,32 @@ struct InferenceSession:
         _ = __get_address_as_lvalue(self.ptr.address).ref_count.fetch_add(1)
         return Self {ptr: self.ptr}
 
-    fn compile_model(self, model_path: StringRef) raises -> CompiledModel:
+    fn compile_model(
+        self,
+        model_path: StringRef,
+        user_defined_ops_path: Optional[StringRef] = None,
+    ) raises -> CompiledModel:
         """
-        Compiles the model given model path.
+        If provided, Replaces Modular ops with user-defined ops using the provided
+        path-to-mojopkg and then compiles the model using the provided
+        model path.
         """
         return __get_address_as_lvalue(self.ptr.address).compile_model(
-            model_path, self.copy()
+            model_path, user_defined_ops_path, self.copy()
         )
 
-    fn load_model(self, model_path: StringRef) raises -> Model:
+    fn load_model(
+        self,
+        model_path: StringRef,
+        user_defined_ops_path: Optional[StringRef] = None,
+    ) raises -> Model:
         """
-        Compiles and initializes model given path.
+        Replaces Modular ops with user-defined ops using the provided
+        path-to-mojopkg and then compiles and initializes the model
+        using the provided model path.
         """
         return __get_address_as_lvalue(self.ptr.address).load_model(
-            model_path, self.copy()
+            model_path, user_defined_ops_path, self.copy()
         )
 
     fn get_as_engine_tensor_spec(

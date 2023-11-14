@@ -148,6 +148,22 @@ fn call_dylib_func[
 
 @always_inline("nodebug")
 fn call_dylib_func[
+    Arg1Ty: AnyRegType, Arg2Ty: AnyRegType, Arg3Ty: AnyRegType
+](
+    borrowed lib: DLHandle,
+    name: StringRef,
+    arg1: Arg1Ty,
+    arg2: Arg2Ty,
+    arg3: Arg3Ty,
+):
+    """Call function `name` in dylib with no result and three arguments."""
+    lib.get_function[ThreeArgCallable[NoneType, Arg1Ty, Arg2Ty, Arg3Ty]](name)(
+        arg1, arg2, arg3
+    )
+
+
+@always_inline("nodebug")
+fn call_dylib_func[
     ResultTy: AnyRegType,
     Arg1Ty: AnyRegType,
     Arg2Ty: AnyRegType,
