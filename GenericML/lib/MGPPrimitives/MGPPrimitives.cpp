@@ -1028,8 +1028,12 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
                        MEFAttr<StringRef> dKernelName,
                        MEFAttr<uint64_t> eNumOutDimensions, Runtime &runtime,
                        EncodedLocation loc) {
+#if MODULAR_PARANOID
   TimeTraceScope scope(
       MGPProfilerEntry::create("mgp.cpu.kernel.execute", *dKernelName));
+#else
+  TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.kernel.execute"));
+#endif
   CompiledKernelsContext &kernelsCtx =
       ctx.getStateSlotPayload<CompiledKernelsContext>(
           static_cast<size_t>(*aSlot));
