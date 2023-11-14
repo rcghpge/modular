@@ -107,21 +107,32 @@ struct Graph:
         )[0]
 
     fn constant[
-        dtype: DType = DType.float32
-    ](inout self, value: Float32) -> Symbol:
-        constrained[dtype == DType.float32]()  # TODO: add more float types
+        dtype: DType
+    ](inout self, value: SIMD[dtype, 1]) raises -> Symbol:
         let m = self.m
-        return self.op(
-            "mo.constant",
-            self.values(),
-            m.types(m.f32()),
-            m.attrs(m.f32_attr("value", m.f32(), value)),
-        )[0]
 
-    fn constant[
-        dtype: DType = DType.int64
-    ](inout self, value: Int) raises -> Symbol:
-        return self.constant(value, dtype)
+        var val_copy = value
+        let t = mobicc.type_from_spec(m.m, TensorSpec(dtype, TensorShape()))
+        let value_ptr = DTypePointer[dtype].address_of(val_copy).bitcast[
+            DType.invalid
+        ]()
+        let attr = mobicc.tensor_attr(m.m, "value", value_ptr, t)
+
+        return self.op("mo.constant", self.values(), m.types(t), m.attrs(attr))[
+            0
+        ]
+
+    fn constant(inout self, value: Bool) raises -> Symbol:
+        let v: SIMD[DType.bool, 1] = value
+        return self.constant(v)
+
+    fn constant(inout self, value: Int) raises -> Symbol:
+        let v: Int64 = value
+        return self.constant(v)
+
+    fn constant(inout self, value: FloatLiteral) raises -> Symbol:
+        let v: Float32 = value
+        return self.constant(v)
 
     fn constant(inout self, value: Int, dtype: DType) raises -> Symbol:
         let m = self.m

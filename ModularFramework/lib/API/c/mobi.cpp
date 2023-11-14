@@ -18,6 +18,7 @@
 #include "Support/Buffer.h"
 #include "Support/ML/TensorSpec.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Verifier.h"
 #include "llvm/ADT/bit.h"
 
 using namespace M::MOF::Builder;
@@ -114,6 +115,7 @@ static MLIRContext *newContext() {
   M::MOF::registerAllDialects(registry);
   ctx.appendDialectRegistry(registry);
   ctx.loadAllAvailableDialects();
+  ctx.printStackTraceOnDiagnostic(true);
   return &ctx;
 }
 
@@ -139,9 +141,8 @@ MODULAR_API_EXPORT char *MOBI_moduleToString(const M_Module *const m) {
   return copy;
 }
 
-MODULAR_API_EXPORT bool MOBI_moduleVerify(const M_Module *const m) {
-  auto op = m->module.getModuleOp();
-  return op.verify().succeeded();
+MODULAR_API_EXPORT bool MOBI_moduleVerify(M_Module *m) {
+  return mlir::verify(m->module.getModuleOp()).succeeded();
 }
 
 MODULAR_API_EXPORT void MOBI_debugPrintModule(const M_Module *const m) {
