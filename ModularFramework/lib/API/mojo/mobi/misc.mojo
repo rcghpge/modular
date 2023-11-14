@@ -115,8 +115,7 @@ struct Tup:
         self.g = symbols[0].g
         self.l = 0
         self.t = mobicc.new_tuple()
-        for i in range(len(symbols)):
-            let sym = symbols[i]
+        for sym in symbols:
             self.l += 1
             mobicc.add_symbol(self.t, sym.s)
 
