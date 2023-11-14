@@ -111,6 +111,15 @@ struct Tup:
         mobicc.add_symbol(self.t, s2.s)
         mobicc.add_symbol(self.t, s3.s)
 
+    fn __init__(inout self, *symbols: Symbol) raises:
+        self.g = symbols[0].g
+        self.l = 0
+        self.t = mobicc.new_tuple()
+        for i in range(len(symbols)):
+            let sym = symbols[i]
+            self.l += 1
+            mobicc.add_symbol(self.t, sym.s)
+
     # Request: @unique_value decorator for types
     # which acts like Value but only implements __moveinit__
     fn __moveinit__(inout self, owned existing: Self):
