@@ -14,7 +14,9 @@
 #include "llvm/ADT/StringRef.h"
 
 #include "GenericML/GraphCompiler/MOGGDialect/MojoDecorators.h"
+#include "KGEN/HLCFDialect/HLCFDialect.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/LITDialect/LITDialect.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 
