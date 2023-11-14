@@ -434,6 +434,12 @@ struct ConcatZeroAxisPattern
       }
     }
 
+    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDeviceAny(concat))) {
+      // TODO(#25626): Support outside of host.
+      return rewriter.notifyMatchFailure(
+          concat, "concat optimizations only supported on host");
+    }
+
     rewriter.replaceOpWithNewOp<MOGG::ConcatOp>(
         concat,
         /*outputTypes=*/concat->getResultTypes(),
@@ -555,6 +561,12 @@ struct SplitZeroAxisPattern
     // Ensure input isn't constant
     if (op.getInput().getDefiningOp<MO::ConstantOp>())
       return rewriter.notifyMatchFailure(op, "input is a constant");
+
+    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDeviceAny(op))) {
+      // TODO(#25626): Support outside of host.
+      return rewriter.notifyMatchFailure(
+          op, "split optimizations only supported on host");
+    }
 
     rewriter.replaceOpWithNewOp<MOGG::SplitOp>(
         op,
