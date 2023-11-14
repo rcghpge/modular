@@ -50,7 +50,10 @@ public:
                                  cl::desc("Enable jitting of MOGG kernels."),
                                  cl::init(true)};
   cl::opt<std::string> customOpsPath{
-      "user-ops", cl::desc("Replace MO ops with give ops"), cl::init("")};
+      "user-ops",
+      cl::desc("Path to a mojo package containing user op definitions used to "
+               "replace MO ops."),
+      cl::init("")};
 };
 
 class MOFContext {
