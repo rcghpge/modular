@@ -27,6 +27,10 @@ namespace CompiledKernelABI {
 struct ABIList {
   size_t numElems;
   void *elements; // Currently always points to ABITensors
+
+  /// Constructor
+  ABIList(size_t numElems, void *elements)
+      : numElems(numElems), elements(elements) {}
 };
 
 // ABI version of GML::Tensor.
@@ -34,6 +38,9 @@ struct ABIList {
 struct ABITensor {
   ssize_t *dims; // Shape, with implied rank
   void *dataPtr; // The underlying buffer
+
+  /// Constructor
+  ABITensor(ssize_t *dims, void *dataPtr) : dims(dims), dataPtr(dataPtr) {}
 };
 
 /// Holds marshalled data for the duration of an ABI call. Unlike a
@@ -47,12 +54,21 @@ struct CompiledKernelCall {
   /// The accumulated pointer arguments.
   SmallVector<void *, 8> inputPointers;
 
+  // NOTE The follow memory vectors contain object that are either
+  // 1. Referenced via `.get()` by `inputPointers`.
+  // 2. Referenced via `.data()` by objects in other memory vector.
+  //
+  // Both requires the pointer reference to remain the same after the memory
+  // vector expansion; this requires the underlying memory to be allocated on
+  // the heap, and moved during vector expansion. Thus we use `std::vector<T>`
+  // and `std::unique_ptr<T>` instead of `SmallVector<T>` and `T`.
+
   /// ABI Shapes, in the form of arrays of ssize_ts.
-  SmallVector<SmallVector<ssize_t>> dimsMemory;
+  SmallVector<std::vector<ssize_t>> dimsMemory;
   /// ABI Tensors, which combine raw buffers with shapes.
-  SmallVector<SmallVector<ABITensor>> tensorsMemory;
+  SmallVector<std::vector<ABITensor>> tensorsMemory;
   /// ABI Lists, which hold pointers to arbitrary marshalled objects.
-  SmallVector<ABIList> listMemory;
+  SmallVector<std::unique_ptr<ABIList>> listMemory;
 
   CompiledKernelCall(size_t numPointers) { inputPointers.reserve(numPointers); }
 

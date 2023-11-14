@@ -79,11 +79,11 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
     for (AnyAsyncValueRef &ref : runtimeList.elements) {
       if (ref.isType<GML::Tensor>()) {
         auto &runtimeTensor = ref.get<GML::Tensor>();
+        const TensorShape &shape = runtimeTensor.getShape();
         ssize_t *dims =
-            dimsMemory.emplace_back(runtimeTensor.getSpec().getDimsCopy())
-                .data();
+            dimsMemory.emplace_back(shape.begin(), shape.end()).data();
         void *data = const_cast<void *>(runtimeTensor.getBuffer());
-        abiTensors.emplace_back(ABITensor{dims, data});
+        abiTensors.emplace_back(dims, data);
       } else {
         return Error(Twine("Invalid list element type: ") +
                      ref.getPointer()->getTypeID().getTypeName());
@@ -91,9 +91,9 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
     }
 
     // Convert an entire list to its ABI structure.
-    auto &abiList = listMemory.emplace_back(
-        ABIList{runtimeList.elements.size(), abiTensors.data()});
-    inputPointers.push_back((void *)&abiList);
+    auto &abiListPtr = listMemory.emplace_back(std::make_unique<ABIList>(
+        runtimeList.elements.size(), abiTensors.data()));
+    inputPointers.push_back(abiListPtr.get());
 
   } else {
     return Error(Twine("Invalid input type: ") +
