@@ -455,10 +455,12 @@ struct MOOpLoweringState {
   /// Returns the bufferized form for the MO tensor value.
   BufferizedTensor getBufferizedInput(Value moTensor);
 
-  /// Returns the lowered form for all of the op operands, i.e.,
-  /// - !mo.tensor gets lowered to (buffer, spec), and `spec` is excluded if
-  ///   `keepTensorSpec == false`.
-  /// - !mo.list gets lowered to !mgp.list
+  /// Returns the lowered form for all of the op's operands:
+  /// - !mo.tensor operands are represented by the extracted buffer of their
+  ///   lowered tensor. (If keepTensorSpec is true, then the corresponding
+  ///   extracted tensor spec is also included, however this is only required
+  ///   when lowering the generic MOGG::ExtOp.)
+  /// - all other operands are represented directly by their lowered form.
   SmallVector<Value> getLoweredOperands(bool keepTensorSpec = false);
 
   /// Returns the tensor spec to represent the given MO tensor type, accounting

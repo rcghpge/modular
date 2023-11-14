@@ -25,7 +25,8 @@ namespace M::MGP {
 // TensorBufferDialectInterface
 //===----------------------------------------------------------------------===//
 
-/// Interface for dialects using tensors, buffers and chains.
+/// Interface for dialects which must manipulate device-specific tensors,
+/// buffers and chain values.
 struct TensorBufferDialectInterface
     : public mlir::DialectInterface::Base<TensorBufferDialectInterface> {
 
@@ -41,7 +42,13 @@ struct TensorBufferDialectInterface
   static BufferBuilder *
   getBuilderForOp(const BufferBuilderContext &builderContext, Operation *op);
 
+  /// Returns the buffer builder appropriate for the device which will store
+  /// values of type.
+  static BufferBuilder *
+  getBuilderForType(const BufferBuilderContext &builderContext, Type type);
+
   TensorBufferDialectInterface(Dialect *dialect) : Base(dialect) {}
+
   virtual MGPTensorExtractOpInterface
   createExtract(OpBuilder *builder, mlir::Location loc, Value tensor) = 0;
   /// Create a new chain that depends on the existing `chains`. Input op is the
@@ -55,8 +62,8 @@ struct TensorBufferDialectInterface
   virtual GRT::GRTChainCreateOpInterface
   createChainForTensor(OpBuilder *builder, mlir::Location loc,
                        Value tensor) = 0;
-  virtual Type createChainType(OpBuilder *builder) = 0;
-  virtual Type createBufferType(OpBuilder *builder, Type spec) = 0;
+  virtual Type createChainType(OpBuilder *builder, Type tensorType) = 0;
+  virtual Type createBufferType(OpBuilder *builder, Type tensorType) = 0;
 
   /// Adds to BuilderContext the type and buffer builder for the 'host' device
   /// for this MGP::ModelOp if it is associated with this dialect.
@@ -69,10 +76,18 @@ struct TensorBufferDialectInterface
   virtual void addNonHostBuilders(ModelOp modelOp,
                                   BufferBuilderContext &builderContext) = 0;
 
-  /// Returns the device for the given op given the builder context for the
-  /// MGP::ModelOp we are working on.
-  virtual DeviceRefAttr getDevice(const BufferBuilderContext &builderContext,
-                                  Operation *op) = 0;
+  /// Returns the device on which the op will be executed, given the builder
+  /// context for the entire MGP::ModelOp we are working on.
+  virtual DeviceRefAttr
+  getExecutionDevice(const BufferBuilderContext &builderContext,
+                     Operation *op) = 0;
+
+  /// Returns the device on which a value of type will be stored, given the
+  /// builder context for the entire MGP::ModelOp we are working on.
+  virtual DeviceRefAttr
+  getStorageDevice(const BufferBuilderContext &builderContext, Type type) = 0;
+
+  virtual void vtableAnchor();
 };
 
 //===----------------------------------------------------------------------===//
@@ -82,6 +97,7 @@ struct TensorBufferDialectInterface
 /// Concrete TensorBufferDialectInterface for the MGP dialect.
 struct CpuTensorBufferDialectInterface : public TensorBufferDialectInterface {
   using TensorBufferDialectInterface::TensorBufferDialectInterface;
+
   virtual MGPTensorExtractOpInterface
   createExtract(OpBuilder *builder, mlir::Location loc, Value tensor) override;
   virtual GRT::GRTChainCreateOpInterface
@@ -90,15 +106,17 @@ struct CpuTensorBufferDialectInterface : public TensorBufferDialectInterface {
   virtual GRT::GRTChainCreateOpInterface
   createChainForTensor(OpBuilder *builder, mlir::Location loc,
                        Value tensor) override;
-  virtual Type createChainType(OpBuilder *builder) override;
+  virtual Type createChainType(OpBuilder *builder, Type tensorType) override;
   virtual Type createBufferType(OpBuilder *builder, Type tensorType) override;
 
   void addHostBuilder(ModelOp modelOp,
                       BufferBuilderContext &builderContext) override;
   void addNonHostBuilders(ModelOp modelOp,
                           BufferBuilderContext &builderContext) override;
-  DeviceRefAttr getDevice(const BufferBuilderContext &builderContext,
-                          Operation *op) override;
+  DeviceRefAttr getExecutionDevice(const BufferBuilderContext &builderContext,
+                                   Operation *op) override;
+  DeviceRefAttr getStorageDevice(const BufferBuilderContext &builderContext,
+                                 Type type) override;
 };
 
 } // namespace M::MGP

@@ -13,6 +13,10 @@
 
 namespace M::MGP {
 
+//===----------------------------------------------------------------------===//
+// TensorBufferDialectInterface
+//===----------------------------------------------------------------------===//
+
 DenseSet<TensorBufferDialectInterface *>
 TensorBufferDialectInterface::getAllInterfaces(ModelOp modelOp) {
   DenseSet<TensorBufferDialectInterface *> interfaces;
@@ -47,12 +51,29 @@ BufferBuilder *TensorBufferDialectInterface::getBuilderForOp(
     const BufferBuilderContext &builderContext, Operation *op) {
   if (auto interface =
           dyn_cast<TensorBufferDialectInterface>(op->getDialect())) {
-    DeviceRefAttr device = interface->getDevice(builderContext, op);
+    DeviceRefAttr device = interface->getExecutionDevice(builderContext, op);
     return builderContext.getBufferBuilder(device);
   }
 
   return builderContext.getHostBufferBuilder();
 }
+
+BufferBuilder *TensorBufferDialectInterface::getBuilderForType(
+    const BufferBuilderContext &builderContext, Type type) {
+  if (auto interface =
+          dyn_cast<TensorBufferDialectInterface>(&type.getDialect())) {
+    DeviceRefAttr device = interface->getStorageDevice(builderContext, type);
+    return builderContext.getBufferBuilder(device);
+  }
+
+  return builderContext.getHostBufferBuilder();
+}
+
+void TensorBufferDialectInterface::vtableAnchor() {}
+
+//===----------------------------------------------------------------------===//
+// CpuTensorBufferDialectInterface
+//===----------------------------------------------------------------------===//
 
 MGPTensorExtractOpInterface CpuTensorBufferDialectInterface::createExtract(
     OpBuilder *builder, mlir::Location loc, Value tensor) {
@@ -74,14 +95,15 @@ CpuTensorBufferDialectInterface::createChainForTensor(OpBuilder *builder,
       *builder->create<GRT::ChainCreateOp>(loc));
 }
 
-Type CpuTensorBufferDialectInterface::createChainType(OpBuilder *builder) {
+Type CpuTensorBufferDialectInterface::createChainType(OpBuilder *builder,
+                                                      Type tensorType) {
+  assert(isa<CpuTensorType>(tensorType));
   return builder->getType<MEF::ChainType>();
 }
 
 Type CpuTensorBufferDialectInterface::createBufferType(OpBuilder *builder,
                                                        Type tensorType) {
-  return CpuBufferType::get(
-      dyn_cast<CpuTensorType>(tensorType).getTensorSpec());
+  return CpuBufferType::get(cast<CpuTensorType>(tensorType).getTensorSpec());
 }
 
 void CpuTensorBufferDialectInterface::addHostBuilder(
@@ -118,8 +140,13 @@ void CpuTensorBufferDialectInterface::addHostBuilder(
 void CpuTensorBufferDialectInterface::addNonHostBuilders(
     ModelOp modelOp, BufferBuilderContext &builderContext) {}
 
-DeviceRefAttr CpuTensorBufferDialectInterface::getDevice(
+DeviceRefAttr CpuTensorBufferDialectInterface::getExecutionDevice(
     const BufferBuilderContext &builderContext, Operation *op) {
+  return builderContext.getHostDevice();
+}
+
+DeviceRefAttr CpuTensorBufferDialectInterface::getStorageDevice(
+    const BufferBuilderContext &builderContext, Type type) {
   return builderContext.getHostDevice();
 }
 
