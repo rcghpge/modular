@@ -44,11 +44,6 @@ public:
     return getRegisteredMojoFunctionFor(name, registeredMojoKernelSymbol);
   }
 
-  // Returns true if a registered Mojo symbol using the name exists.
-  inline bool hasRegisteredMojoKernelFor(StringRef name) {
-    return registeredMojoKernelSymbol.contains(name);
-  }
-
   // Looks up a registered Mojo shape function using the name that was used for
   // registration.
   inline KGEN::GeneratorOp getRegisteredMojoShapeFunctionFor(StringRef name) {
