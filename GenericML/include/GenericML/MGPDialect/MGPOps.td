@@ -1836,7 +1836,7 @@ def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
                       Variadic<Index>:$outDimensions);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aSlot `,` $bKernelIndex `]` `,`
-    custom<BufferSignature>($args, type($args), $cInOutSignature) `,`
+    custom<InOutArgsSignature>($args, type($args), $cInOutSignature) `,`
     ( `(` $inDimensions^ `)` `,` )?
     `name` $dKernelName
     ( `,` `out_dims` $eNumOutDimensions^ )? attr-dict

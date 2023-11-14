@@ -15,46 +15,93 @@
 
 namespace M::GML {
 
-// Data structures used in MOGG/MGP ABI
+//===----------------------------------------------------------------------===//
+// CompiledKernelCall
+//===----------------------------------------------------------------------===//
+
+// Data structures supporting the MOGG/MGP ABI
 namespace CompiledKernelABI {
 
+// ABI version of GML::List.
 // NOTE the layout must match the mojo `ABI_List`
-struct List {
+struct ABIList {
   size_t numElems;
-  void *elements;
+  void *elements; // Currently always points to ABITensors
 };
 
+// ABI version of GML::Tensor.
 // NOTE the layout must match the mojo `ABI_Tensor`
-struct Tensor {
-  ssize_t *dims;
-  void *dataPtr;
+struct ABITensor {
+  ssize_t *dims; // Shape, with implied rank
+  void *dataPtr; // The underlying buffer
+};
+
+/// Holds marshalled data for the duration of an ABI call. Unlike a
+/// KGEN::OutputChain, this instance lives only until the ABI call returns,
+/// and it is the responsibility of the called kernel to unmarshal this data
+/// before returning, even if the kernel is asynchronous.
+///
+/// TODO: Remove this once we have a unified representation of values across
+///       the ABI.
+struct CompiledKernelCall {
+  /// The accumulated pointer arguments.
+  SmallVector<void *, 8> inputPointers;
+
+  /// ABI Shapes, in the form of arrays of ssize_ts.
+  SmallVector<SmallVector<ssize_t>> dimsMemory;
+  /// ABI Tensors, which combine raw buffers with shapes.
+  SmallVector<SmallVector<ABITensor>> tensorsMemory;
+  /// ABI Lists, which hold pointers to arbitrary marshalled objects.
+  SmallVector<ABIList> listMemory;
+
+  CompiledKernelCall(size_t numPointers) { inputPointers.reserve(numPointers); }
+
+  /// Pushes the marshalled form of the given AnyAsyncValueRef onto the
+  /// given pointers vector, possibly pushing additional intermediate
+  /// datastructures onto the above fields. Returns error if input is
+  /// not supported.
+  ErrorOrSuccess pushObject(AnyAsyncValueRef input, char inOutType,
+                            KGEN::OutputChain &outputChain,
+                            StringRef kernelName, const EncodedLocation &loc);
 };
 
 } // namespace CompiledKernelABI
 
 //
 // This is the ABI for calling a compiled kernel:
-//   I = number of input arguments (tensor buffer or list)
-//   O = number of output tensor buffers
-//   N = number of input dimension values (for dynamic dims only)
-//   M = number of output dimension values (for compiled shape functions only)
+//   I = number of 'in' arguments
+//   O = number of 'out' tensor buffers
+//   N = number of 'in' dimension values (for dynamic dims only)
+//   M = number of 'out' dimension values (for compiled shape functions only)
 //   void* args[I + O], ssize_t dims[N + M], OutputChain*
 //
-// Both args and dims take inputs followed by outputs. Dimensions known
-// statically are already accounted for in the compiled kernel and do not need
-// to be passed in dims.
+// Both args and dims take 'in' args (ie read only) followed by 'out' args
+// (ie write only). Arguments representing tensors are passed as their
+// underlying buffers (in args), combined with their dynamic dimensions (in
+// dims). Statically known dimensions are not passed since they have already
+// been accounted for in the compilation of the kernel. That is, rather than
+// passing `GML::Tensor`s as `CompiledKernelABI::Tensor` with a runtime
+// representation of the entire shape, we instead passed `GML::BufferRefs`
+// as their underlying buffer pointers, and a dimension for each dynamic
+// dimension parameter from the original `!mo.tensor` type.
 //
 // We currently only support static ranks in compiled kernels, so no ranks
-// are passed at runtime.
+// are passed at runtime, and no dynamic rank parameters are supported.
 //
-// NOTE that standalone tensors are passed throught the ABI with a shape
-// optimization instead of as a `CompiledKernelABI::Tensor`. Specifically, it's
-// passed as a buffer pointer in `void* args[]`, and dynamic dimensions in
-// `ssize_t dims[]`, where dynamic dimensions with the same symbols (e.g., `[D0,
-// D0]`) share the same value from `dims[]`, in hopes to enable more
-// optimization opportunities in downstream compilation.
+// Each void* arg can be:
+//  - The underlying buffer of a GML::BufferRef (for `!mgp.cpu.buffer`s).
+//    The lifetime is managed by the `KGEN::OutputChain`.
+//  - The underlying buffer of a CUDA::CUDABuffer (for `!cuda.buffer`s)
+//    The lifetime is managed by the CUDABuffer itself.
+//  - A `CompiledKernelABI::ABIList*` (for `!mgp.list`s). The lifetime is
+//    managed by the `CompiledKernelCall`, and the called kernel shim is
+//    responsible for unmarshalling before returning.
 //
 using CompiledKernelFn = void(void **, ssize_t *, KGEN::OutputChain *);
+
+//===----------------------------------------------------------------------===//
+// CompiledKernelsContext
+//===----------------------------------------------------------------------===//
 
 // Holds all the loaded compiled kernels. Will be held within a state slot
 // of the mgp.context.
