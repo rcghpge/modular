@@ -14,6 +14,30 @@
 using namespace M;
 using namespace MGP;
 
+TypedValue<MGP::ContextType> M::MGP::getContextForBlock(Block *block) {
+  while (true) {
+    // First look for a block argument.
+    for (Value arg : block->getArguments()) {
+      if (isa<MGP::ContextType>(arg.getType()))
+        return cast<TypedValue<MGP::ContextType>>(arg);
+    }
+    // Next look for a mgp.context.create op.
+    for (auto createOp : block->getOps<MGP::ContextCreateOp>()) {
+      return createOp.getResult();
+    }
+    // Next, try one level up.
+    assert(!isa<ModelOp>(block->getParentOp()) &&
+           "unable to locate an !mgp.context");
+    block = block->getParentOp()->getBlock();
+  }
+  assert(false && "unable to locate an !mgp.context");
+}
+
+//===----------------------------------------------------------------------===//
+// CAUTION: The following methods are deprecated in favor of the
+//          MGPInOutSemanticsOpInterface.
+//===----------------------------------------------------------------------===//
+
 namespace {
 /// Name of attribute describing number of CpuBufferType operands which
 /// will be written to by the operation, ie used as outputs. All

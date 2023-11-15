@@ -742,9 +742,6 @@ class ExecInvariantCodeMotionPass
       // Although not required, this makes debugging easier.
       executeState->builder.setInsertionPoint(op);
 
-      BufferBuilder *builder =
-          TensorBufferDialectInterface::getBuilderForOp(*builderContext, op);
-
       if (Value oldChain = getLiftableChainOp(op)) {
         // We will lift op to the 'init' block. Any references to its oldChain
         // which will remain in the 'execute' block must be replaced with (the
@@ -752,12 +749,12 @@ class ExecInvariantCodeMotionPass
         // let CSE clean up any duplication for those new chains.
         // The remaining references to oldChain remain in-place, since those
         // ops will likewise be lifted.
-        Value newChain;
-        if (isa<MEF::ChainType>(oldChain.getType()))
-          newChain = executeState->getRootChain();
-        else
-          newChain = builder->fromMEFChain(executeState->builder, op->getLoc(),
-                                           executeState->getRootChain());
+        BufferBuilder *bufferBuilder =
+            TensorBufferDialectInterface::getBuilderForTypeStorage(
+                *builderContext, oldChain.getType());
+        auto newChain = bufferBuilder->fromMEFChain(
+            executeState->builder, op->getLoc(), executeState->getContext(),
+            executeState->getRootChain());
         oldChain.replaceUsesWithIf(newChain, isOpOperandUnliftable);
         LLVM_DEBUG(llvm::dbgs() << "will lift chain op and replace old chain:\n"
                                 << oldChain << "\nwith:\n"
@@ -782,8 +779,13 @@ class ExecInvariantCodeMotionPass
                      "in the 'execute' block");
               for (Value res : use.getOwner()->getResults()) {
                 if (isa<MEF::MEFChainTypeInterface>(res.getType())) {
-                  potentialBufferActionChains.push_back(builder->toMEFChain(
-                      initState->builder, op->getLoc(), res));
+                  BufferBuilder *bufferBuilder =
+                      TensorBufferDialectInterface::getBuilderForTypeStorage(
+                          *builderContext, res.getType());
+                  potentialBufferActionChains.push_back(
+                      bufferBuilder->toMEFChain(initState->builder,
+                                                op->getLoc(),
+                                                initState->getContext(), res));
                 }
               }
             }
@@ -792,18 +794,22 @@ class ExecInvariantCodeMotionPass
           // Cache the buffer in the 'init' block, but only once all the
           // chains associated with side effects on all the buffers have
           // completed.
-          auto [bufferCacheOutChain, currBufferSlot] =
-              builder->cache(initState->builder, op->getLoc(),
-                             placeholderBufferCacheInputChain,
-                             initState->contextCreateOp, oldBuffer);
+          BufferBuilder *bufferBuilder =
+              TensorBufferDialectInterface::getBuilderForTypeStorage(
+                  *builderContext, oldBuffer.getType());
+          auto [bufferCacheOutChain, currBufferSlot] = bufferBuilder->cache(
+              initState->builder, op->getLoc(), initState->getContext(),
+              placeholderBufferCacheInputChain, initState->contextCreateOp,
+              oldBuffer);
 
           // The final 'init' block chain must wait for this new cache op.
           finalOutChains.push_back(bufferCacheOutChain);
 
           // Recover the cached buffer in the 'execute' block.
-          auto newBuffer = builder->getCached(
-              executeState->builder, op->getLoc(), executeState->getRootChain(),
-              executeState->getContext(), currBufferSlot, oldBuffer.getType());
+          auto newBuffer = bufferBuilder->getCached(
+              executeState->builder, op->getLoc(), executeState->getContext(),
+              executeState->getRootChain(), currBufferSlot,
+              oldBuffer.getType());
 
           // Replace old uses that will remain in the 'execute' block.
           oldBuffer.replaceUsesWithIf(newBuffer, isOpOperandUnliftable);

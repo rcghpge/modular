@@ -151,6 +151,13 @@ public:
   virtual Type tensorType(MLIRContext *ctx,
                           CpuTensorSpecType tensorSpecType) = 0;
 
+  /// Returns Type representing device specific buffer with optional size.
+  virtual Type bufferType(MLIRContext *ctx,
+                          std::optional<uint64_t> optSize) = 0;
+
+  /// Returns Type representing device specific chain.
+  virtual Type chainType(MLIRContext *ctx) = 0;
+
   virtual void vtableAnchor();
 };
 
@@ -165,6 +172,12 @@ public:
   Type tensorType(MLIRContext *ctx, CpuTensorSpecType tensorSpecType) override {
     return CpuTensorType::get(ctx, tensorSpecType);
   }
+
+  Type bufferType(MLIRContext *ctx, std::optional<uint64_t> optSize) override {
+    return CpuBufferType::get(ctx, optSize);
+  }
+
+  Type chainType(MLIRContext *ctx) override { return MEF::ChainType::get(ctx); }
 };
 
 //===----------------------------------------------------------------------===//
@@ -172,50 +185,62 @@ public:
 //===----------------------------------------------------------------------===//
 
 /// A BufferBuilder provides methods for building device-dependent buffer,
-/// tensor and kernel ops. All chains (input and output) must be !mef.chains,
-/// even if the device has a device-specific 'chain' like type. Since an
-/// instance of this class is created for each device in the model, derived
-/// classes may accumulate device-specific lowering state therein.
+/// tensor, chain and kernel ops. Unless called out otherwise, all chains
+/// (both input and output) must be !mef.chains, even if the device has a
+/// device-specific 'chain' like type. Since an instance of this class is
+/// created for each device in the model, derived classes may accumulate
+/// device-specific lowering state therein.
 class BufferBuilder {
 public:
   virtual ~BufferBuilder() = default;
 
+  /// Returns the !mgp.context appropriate for op, or null if none can be found.
+  virtual TypedValue<MGP::ContextType> getContextForOp(Operation *op);
+
   /// Returns Value representing the constant buffer with given attribute as
   /// its contents.
   virtual Value bufferConstant(OpBuilder &builder, Location loc,
+                               TypedValue<MGP::ContextType> context,
                                ElementsAttr value) = 0;
 
   /// Returns the Values representing the buffer and tensor spec of the tensor
   /// Value.
   virtual std::pair<Value, TypedValue<CpuTensorSpecType>>
-  tensorExtract(OpBuilder &builder, Location loc, Value tensor) = 0;
+  tensorExtract(OpBuilder &builder, Location loc,
+                TypedValue<MGP::ContextType> context, Value tensor) = 0;
 
   /// Returns the Value representing the shape of the tensor Value, as
   /// an !mgp.cpu.tensor_spec with unknown dtype.
   virtual TypedValue<CpuTensorSpecType>
-  tensorExtractShape(OpBuilder &builder, Location loc, Value tensor) = 0;
+  tensorExtractShape(OpBuilder &builder, Location loc,
+                     TypedValue<MGP::ContextType> context, Value tensor) = 0;
 
   /// Return the Value representing a tensor constructed from the Values
   /// representing its buffer and tensor spec.
-  virtual Value tensorCreate(OpBuilder &builder, Location loc, Value inChain,
-                             Value buffer,
+  virtual Value tensorCreate(OpBuilder &builder, Location loc,
+                             TypedValue<MGP::ContextType> context,
+                             Value inChain, Value buffer,
                              TypedValue<CpuTensorSpecType> tensorSpec) = 0;
 
   /// Returns the Value representing the buffer of given statically known size
   /// and alignment. The alignment may be ignored for some devices.
   virtual Value bufferAllocStatic(OpBuilder &builder, Location loc,
+                                  TypedValue<MGP::ContextType> context,
                                   Value inChain, uint64_t size,
                                   uint64_t alignment) = 0;
 
   /// Returns the Value representing the buffer of size matching the given
   /// tensor spec and alignment. The alignment may be ignored for some devices.
-  virtual Value bufferAllocSpec(OpBuilder &builder, Location loc, Value inChain,
+  virtual Value bufferAllocSpec(OpBuilder &builder, Location loc,
+                                TypedValue<MGP::ContextType> context,
+                                Value inChain,
                                 TypedValue<MGP::CpuTensorSpecType> tensorSpec,
                                 uint64_t alignment) = 0;
 
   /// Returns the chain indicating when srcBuffer on the host device has been
   /// transferred to dstBuffer on this builder's device.
   virtual Value bufferTransferFromHost(OpBuilder &builder, Location loc,
+                                       TypedValue<MGP::ContextType> context,
                                        Value inChain,
                                        TypedValue<MGP::CpuBufferType> srcBuffer,
                                        Value dstBuffer) = 0;
@@ -223,32 +248,34 @@ public:
   /// Returns the chain indicating when srcBuffer on this builder's device has
   /// been transferred to dstBuffer on the dstDevice.
   virtual Value
-  bufferTransferToHost(OpBuilder &builder, Location loc, Value inChain,
+  bufferTransferToHost(OpBuilder &builder, Location loc,
+                       TypedValue<MGP::ContextType> context, Value inChain,
                        Value srcBuffer,
                        TypedValue<MGP::CpuBufferType> dstBuffer) = 0;
 
   /// Return the chain indicating tensor has been printed.
   virtual Value debugTensorPrint(OpBuilder &builder, Location loc,
+                                 TypedValue<MGP::ContextType> context,
                                  Value inChain, Value tensor,
                                  StringAttr label) = 0;
 
   /// Returns the chain indicating the given archive with given kernel and
   /// constant names has been loaded into the runtime.
   virtual Value kernelLoadArchive(OpBuilder &builder, Location loc,
-                                  Value inChain,
-                                  TypedValue<MGP::ContextType> initContext,
-                                  ElementsAttr archive, ArrayAttr kernelNames,
+                                  TypedValue<MGP::ContextType> context,
+                                  Value inChain, ElementsAttr archive,
+                                  ArrayAttr kernelNames,
                                   ArrayAttr constantNames) = 0;
 
   /// Returns the chain indicating the given kernel has completed execution
   /// on the given operands. Type parameters from the operand !mo.tensor types
-  /// must have already been lowered to their index typed dimensios. It is
+  /// must have already been lowered to their index typed dimensions. It is
   /// possible for the kernel to return output dimensions, however this is
   /// only used by synchronous shape functions.
   virtual Value
-  kernelExecute(OpBuilder &builder, Location loc, StringRef kernelName,
-                Value inChain, TypedValue<MGP::ContextType> execContext,
-                ArrayRef<Value> buffers,
+  kernelExecute(OpBuilder &builder, Location loc,
+                TypedValue<MGP::ContextType> context, StringRef kernelName,
+                Value inChain, ArrayRef<Value> buffers,
                 ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
                 ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
                 SmallVectorImpl<Value> &outDimensions) = 0;
@@ -263,6 +290,7 @@ public:
   /// mgp.model op.
   virtual std::pair<TypedValue<MEF::ChainType>, size_t>
   cache(OpBuilder &initBuilder, Location loc,
+        TypedValue<MGP::ContextType> context,
         TypedValue<MEF::ChainType> inChain, ContextCreateOp contextCreateOp,
         Value buffer) = 0;
 
@@ -270,22 +298,31 @@ public:
   /// !mgp.context. Note that the input chain is always a !mef.chain,
   /// irrespective of the native chain type for this builder.
   virtual Value getCached(OpBuilder &builder, Location loc,
-                          TypedValue<MEF::ChainType> inChain,
-                          TypedValue<MGP::ContextType> execContext,
-                          size_t bufferSlot, Type expectedBufferType) = 0;
+                          TypedValue<MGP::ContextType> context,
+                          TypedValue<MEF::ChainType> inChain, size_t bufferSlot,
+                          Type expectedBufferType) = 0;
 
   /// Returns the join of all the given chain values, which must be all native
   /// to this builder.
   virtual Value chainCreate(OpBuilder &builder, Location loc,
+                            TypedValue<MGP::ContextType> context,
                             ArrayRef<Value> inChains) = 0;
 
   /// Returns the given chain, in builder native form, as a !mef.chain.
   virtual TypedValue<MEF::ChainType>
-  toMEFChain(OpBuilder &builder, Location loc, Value inChain) = 0;
+  toMEFChain(OpBuilder &builder, Location loc,
+             TypedValue<MGP::ContextType> context, Value inChain) = 0;
 
   /// Returns the given !mef.chain as a chain in builder native form.
   virtual Value fromMEFChain(OpBuilder &builder, Location loc,
+                             TypedValue<MGP::ContextType> context,
                              TypedValue<MEF::ChainType> inChain) = 0;
+
+  /// Returns the given chain in a form that matches the given type, which must
+  /// either be a chain type native to this builder, or !mef.chain.
+  virtual Value matchingChain(OpBuilder &builder, Location loc,
+                              TypedValue<MGP::ContextType> context,
+                              Value inChain, Type typeToMatch) = 0;
 
   virtual void vtableAnchor();
 };
@@ -300,66 +337,85 @@ public:
   ~CpuBufferBuilder() override = default;
 
   Value bufferConstant(OpBuilder &builder, Location loc,
+                       TypedValue<MGP::ContextType> context,
                        ElementsAttr data) override;
 
   std::pair<Value, TypedValue<CpuTensorSpecType>>
-  tensorExtract(OpBuilder &builder, Location loc, Value tensor) override;
+  tensorExtract(OpBuilder &builder, Location loc,
+                TypedValue<MGP::ContextType> context, Value tensor) override;
 
   TypedValue<CpuTensorSpecType>
-  tensorExtractShape(OpBuilder &builder, Location loc, Value tensor) override;
+  tensorExtractShape(OpBuilder &builder, Location loc,
+                     TypedValue<MGP::ContextType> context,
+                     Value tensor) override;
 
-  Value tensorCreate(OpBuilder &builder, Location loc, Value inChain,
+  Value tensorCreate(OpBuilder &builder, Location loc,
+                     TypedValue<MGP::ContextType> context, Value inChain,
                      Value buffer,
                      TypedValue<CpuTensorSpecType> tensorSpec) override;
 
-  Value bufferAllocStatic(OpBuilder &builder, Location loc, Value inChain,
+  Value bufferAllocStatic(OpBuilder &builder, Location loc,
+                          TypedValue<MGP::ContextType> context, Value inChain,
                           uint64_t size, uint64_t alignment) override;
 
-  Value bufferAllocSpec(OpBuilder &builder, Location loc, Value inChain,
+  Value bufferAllocSpec(OpBuilder &builder, Location loc,
+                        TypedValue<MGP::ContextType> context, Value inChain,
                         TypedValue<MGP::CpuTensorSpecType> tensorSpec,
                         uint64_t alignment) override;
 
-  Value bufferTransferFromHost(OpBuilder &builder, Location loc, Value inChain,
+  Value bufferTransferFromHost(OpBuilder &builder, Location loc,
+                               TypedValue<MGP::ContextType> context,
+                               Value inChain,
                                TypedValue<MGP::CpuBufferType> srcBuffer,
                                Value dstBuffer) override;
 
-  Value bufferTransferToHost(OpBuilder &builder, Location loc, Value inChain,
-                             Value srcBuffer,
+  Value bufferTransferToHost(OpBuilder &builder, Location loc,
+                             TypedValue<MGP::ContextType> context,
+                             Value inChain, Value srcBuffer,
                              TypedValue<MGP::CpuBufferType> dstBuffer) override;
 
-  Value debugTensorPrint(OpBuilder &builder, Location loc, Value inChain,
+  Value debugTensorPrint(OpBuilder &builder, Location loc,
+                         TypedValue<MGP::ContextType> context, Value inChain,
                          Value tensor, StringAttr label) override;
 
-  Value kernelLoadArchive(OpBuilder &builder, Location loc, Value inChain,
-                          TypedValue<MGP::ContextType> initContext,
+  Value kernelLoadArchive(OpBuilder &builder, Location loc,
+                          TypedValue<MGP::ContextType> context, Value inChain,
                           ElementsAttr archive, ArrayAttr kernelNames,
                           ArrayAttr constantNames) override;
 
   Value
-  kernelExecute(OpBuilder &builder, Location loc, StringRef kernelName,
-                Value inChain, TypedValue<MGP::ContextType> execContext,
-                ArrayRef<Value> buffers,
+  kernelExecute(OpBuilder &builder, Location loc,
+                TypedValue<MGP::ContextType> context, StringRef kernelName,
+                Value inChain, ArrayRef<Value> buffers,
                 ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
                 ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
                 SmallVectorImpl<Value> &outDimensions) override;
 
   Value chainCreate(OpBuilder &builder, Location loc,
+                    TypedValue<MGP::ContextType> context,
                     ArrayRef<Value> inChains) override;
 
   std::pair<TypedValue<MEF::ChainType>, size_t>
-  cache(OpBuilder &builder, Location loc, TypedValue<MEF::ChainType> inChain,
-        ContextCreateOp contextCreateOp, Value buffer) override;
+  cache(OpBuilder &builder, Location loc, TypedValue<MGP::ContextType> context,
+        TypedValue<MEF::ChainType> inChain, ContextCreateOp contextCreateOp,
+        Value buffer) override;
 
   Value getCached(OpBuilder &builder, Location loc,
-                  TypedValue<MEF::ChainType> inChain,
-                  TypedValue<MGP::ContextType> execContext, size_t slot,
+                  TypedValue<MGP::ContextType> context,
+                  TypedValue<MEF::ChainType> inChain, size_t slot,
                   Type expectedBufferType) override;
 
   TypedValue<MEF::ChainType> toMEFChain(OpBuilder &builder, Location loc,
+                                        TypedValue<MGP::ContextType> context,
                                         Value inChain) override;
 
   Value fromMEFChain(OpBuilder &builder, Location loc,
+                     TypedValue<MGP::ContextType> context,
                      TypedValue<MEF::ChainType> inChain) override;
+
+  Value matchingChain(OpBuilder &builder, Location loc,
+                      TypedValue<MGP::ContextType> context, Value inChain,
+                      Type typeToMatch) override;
 
   /// Track this compiled kernel as corresponding to this index in the
   /// compiled kernels context.
@@ -473,6 +529,9 @@ public:
 
   /// Return the 'host' device.
   DeviceRefAttr getHostDevice() const { return hostDevice; }
+
+  /// Returns the type builder to use for the 'host' device.
+  TypeBuilder *getHostTypeBuilder() const { return getTypeBuilder(hostDevice); }
 
   /// Returns the buffer builder to use for the 'host' device.
   BufferBuilder *getHostBufferBuilder() const {

@@ -378,13 +378,14 @@ struct MOOpLoweringState {
   OpBuilder &builder;
   mlir::Operation *opBeingLowered;
   mlir::Location loc;
+  TypedValue<MGP::ContextType> context;
   BufferBuilder *bufferBuilder;
 
   MOOpLoweringState(MGP::MOGraphLoweringState &loweringState,
                     mlir::Operation *op, DeviceRefAttr device)
       : loweringState(loweringState),
         builder(loweringState.getExecuteOpBuilder()), opBeingLowered(op),
-        loc(op->getLoc()),
+        loc(op->getLoc()), context(loweringState.getExecuteMgpContext()),
         bufferBuilder(loweringState.getBufferBuilder(device)) {}
 
   //
@@ -395,55 +396,55 @@ struct MOOpLoweringState {
   //
 
   Value bufferConstant(ElementsAttr value) {
-    return bufferBuilder->bufferConstant(builder, loc, value);
+    return bufferBuilder->bufferConstant(builder, loc, context, value);
   }
   std::pair<Value, TypedValue<CpuTensorSpecType>>
   tensorExtract(Value loweredTensor) {
-    return bufferBuilder->tensorExtract(builder, loc, loweredTensor);
+    return bufferBuilder->tensorExtract(builder, loc, context, loweredTensor);
   }
   TypedValue<CpuTensorSpecType> tensorExtractShape(Value loweredTensor) {
-    return bufferBuilder->tensorExtractShape(builder, loc, loweredTensor);
+    return bufferBuilder->tensorExtractShape(builder, loc, context,
+                                             loweredTensor);
   }
   Value tensorCreate(Value inChain, Value buffer,
                      TypedValue<CpuTensorSpecType> tensorSpec) {
-    return bufferBuilder->tensorCreate(builder, loc, inChain, buffer,
+    return bufferBuilder->tensorCreate(builder, loc, context, inChain, buffer,
                                        tensorSpec);
   }
   Value bufferAllocStatic(Value inChain, uint64_t size) {
     return bufferBuilder->bufferAllocStatic(
-        builder, loc, inChain, size, loweringState.getMinimumCpuAlignment());
+        builder, loc, context, inChain, size,
+        loweringState.getMinimumCpuAlignment());
   }
   Value bufferAllocSpec(Value inChain,
                         TypedValue<MGP::CpuTensorSpecType> tensorSpec) {
     return bufferBuilder->bufferAllocSpec(
-        builder, loc, inChain, tensorSpec,
+        builder, loc, context, inChain, tensorSpec,
         loweringState.getMinimumCpuAlignment());
   }
   Value bufferTransferFromHost(Value inChain,
                                TypedValue<MGP::CpuBufferType> srcBuffer,
                                Value dstBuffer) {
-    return bufferBuilder->bufferTransferFromHost(builder, loc, inChain,
+    return bufferBuilder->bufferTransferFromHost(builder, loc, context, inChain,
                                                  srcBuffer, dstBuffer);
   }
   Value bufferTransferToHost(Value inChain, Value srcBuffer,
                              TypedValue<MGP::CpuBufferType> dstBuffer) {
-    return bufferBuilder->bufferTransferToHost(builder, loc, inChain, srcBuffer,
-                                               dstBuffer);
+    return bufferBuilder->bufferTransferToHost(builder, loc, context, inChain,
+                                               srcBuffer, dstBuffer);
   }
   Value debugTensorPrint(Value inChain, Value tensor, StringAttr label) {
-    return bufferBuilder->debugTensorPrint(builder, loc, inChain, tensor,
-                                           label);
+    return bufferBuilder->debugTensorPrint(builder, loc, context, inChain,
+                                           tensor, label);
   }
   Value
-  kernelExecute(StringRef kernelName, Value inChain,
-                TypedValue<MGP::ContextType> execContext,
-                SmallVector<Value> buffers,
+  kernelExecute(StringRef kernelName, Value inChain, ArrayRef<Value> buffers,
                 ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
-                SmallVector<Value> inDimensions, uint64_t numOutDimensions,
+                ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
                 SmallVectorImpl<Value> &outDimensions) {
     return bufferBuilder->kernelExecute(
-        builder, loc, kernelName, inChain, execContext, buffers,
-        bufferSemantics, inDimensions, numOutDimensions, outDimensions);
+        builder, loc, context, kernelName, inChain, buffers, bufferSemantics,
+        inDimensions, numOutDimensions, outDimensions);
   }
 
   /// Creates an operation of specific op type at the current insertion point.

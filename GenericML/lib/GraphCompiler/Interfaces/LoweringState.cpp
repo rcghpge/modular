@@ -28,8 +28,8 @@ TypedValue<MGP::CpuTensorSpecType>
 MOGraphLoweringState::getShape(Location loc, Value loweredTensor,
                                DeviceRefAttr device) {
   OpBuilder &builder = getExecuteOpBuilder();
-  return getBufferBuilder(device)->tensorExtractShape(builder, loc,
-                                                      loweredTensor);
+  return getBufferBuilder(device)->tensorExtractShape(
+      builder, loc, getExecuteMgpContext(), loweredTensor);
 }
 
 MGP::CpuTensorSpecDimsDynamicOp
@@ -41,7 +41,7 @@ MOGraphLoweringState::getDynamicDims(Location loc, Value loweredTensor,
   // tensor.extract op anyway.
   TypedValue<MGP::CpuTensorSpecType> tensorSpec =
       getBufferBuilder(device)
-          ->tensorExtract(builder, loc, loweredTensor)
+          ->tensorExtract(builder, loc, getExecuteMgpContext(), loweredTensor)
           .second;
   return builder.create<MGP::CpuTensorSpecDimsDynamicOp>(
       loc, /*spec=*/tensorSpec, /*rawDims=*/tensorSpec.getType().getRawDims());

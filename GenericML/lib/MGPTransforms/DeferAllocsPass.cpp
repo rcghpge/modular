@@ -8,6 +8,7 @@
 
 #include "Cache/CacheDialect/CacheAttrs.h"
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
@@ -36,6 +37,10 @@ class DeferAllocsPass : public impl::DeferAllocsPassBase<DeferAllocsPass> {
   void runOnOperation() override {
     ModelOp model = getOperation();
     ExecuteState execState(model.getContext(), model.getExecuteBlock());
+    // Recover type and buffer builders appropriate for the model.
+    BufferBuilderContext builderContext =
+        TensorBufferDialectInterface::getAllBufferBuilders(model);
+
     // This helps prevent infinite loop in case an op write to multiple buffers
     DenseSet<Operation *> movedAllocOps;
 
@@ -56,8 +61,8 @@ class DeferAllocsPass : public impl::DeferAllocsPassBase<DeferAllocsPass> {
             // The allocation must only be triggered once the writing op's
             // input chain is ready.
             Value writerInChain = writerChainOpOperand->get();
-            auto res =
-                alsoWaitForChains(execState.builder, allocOp, {writerInChain});
+            auto res = alsoWaitForChains(execState.builder, builderContext,
+                                         allocOp, {writerInChain});
             assert(succeeded(res) && "All buffer allocation ops are assumed to "
                                      "accept an input chain");
           }

@@ -311,7 +311,8 @@ void M::MGP::accumulatePrimitiveChains(ValueSetVector &primitiveChains,
 /// As for waitForChains, but reuse existingUniqueChainCreateOp instead of
 /// creating a new op if it is non-null.
 static Value waitForChainsReusing(
-    OpBuilder &builder, mlir::Location loc, Operation *op,
+    OpBuilder &builder, mlir::Location loc, TypedValue<ContextType> context,
+    BufferBuilder *bufferBuilder,
     GRT::GRTGatedOnChainOpInterface existingUniqueChainCreateOp,
     ArrayRef<Value> chains) {
   assert(!chains.empty());
@@ -327,32 +328,21 @@ static Value waitForChainsReusing(
         .getChainResult();
   }
 
-  // Get interface to build a new chain. Default to MGP if dialect is not found,
-  // or interface does not exist for dialect.
-  MGP::TensorBufferDialectInterface *interface;
-  if (!op->getDialect()) {
-    auto type = MGP::ContextType::get(builder.getContext());
-    interface = dyn_cast<MGP::TensorBufferDialectInterface>(&type.getDialect());
-  } else {
-    interface = dyn_cast<MGP::TensorBufferDialectInterface>(op->getDialect());
-    if (!interface) {
-      auto type = MGP::ContextType::get(builder.getContext());
-      interface =
-          dyn_cast<MGP::TensorBufferDialectInterface>(&type.getDialect());
-    }
-  }
-  auto chainCreate = interface->createChain(&builder, loc, op, chains);
-  return chainCreate.getChainResult();
+  return bufferBuilder->chainCreate(builder, loc, context, chains);
 }
 
 Value M::MGP::waitForChains(OpBuilder &builder, mlir::Location loc,
-                            Operation *op, ArrayRef<Value> chains) {
-  return waitForChainsReusing(builder, loc, op,
+                            TypedValue<ContextType> context,
+                            BufferBuilder *bufferBuilder,
+                            ArrayRef<Value> chains) {
+  return waitForChainsReusing(builder, loc, context, bufferBuilder,
                               /*existingUniqueChainCreateOp=*/{}, chains);
 }
 
-LogicalResult M::MGP::alsoWaitForChains(OpBuilder &builder, Operation *op,
-                                        ArrayRef<Value> additionalChains) {
+LogicalResult
+M::MGP::alsoWaitForChains(OpBuilder &builder,
+                          const BufferBuilderContext &builderContext,
+                          Operation *op, ArrayRef<Value> additionalChains) {
   if (additionalChains.empty())
     return success();
 
@@ -361,15 +351,37 @@ LogicalResult M::MGP::alsoWaitForChains(OpBuilder &builder, Operation *op,
     return failure();
   }
 
+  // Use the op to find the builder for the op's device. However, we can't
+  // assume all the chains we will be working with below are appropriate for
+  // that device. For example, an op such as:
+  //    cuda.host_to_device %ch, %host_buf, %dev_buf
+  // will have an 'execution' device of cuda, accepts a !mef.chain, and may
+  // be required to also wait for both !mef.chains associated with %host_buf
+  // and !cuda.chains associated with %dev_buf.
+
+  BufferBuilder *bufferBuilder =
+      TensorBufferDialectInterface::getBuilderForOpExecution(builderContext,
+                                                             op);
+  TypedValue<ContextType> context = bufferBuilder->getContextForOp(op);
+
   for (OpOperand *inChainOpOperand : existingInChainOpOperands) {
     Value inChain = inChainOpOperand->get();
+
+    // If necessary, convert the additional chains to match the inChain's
+    // flavor, which is either !mef.chain or the device-specific chain
+    // associated with bufferBuilder.
+    SmallVector<Value> deviceCorrectAdditionalChains;
+    for (Value additionalChain : additionalChains) {
+      deviceCorrectAdditionalChains.emplace_back(bufferBuilder->matchingChain(
+          builder, op->getLoc(), context, additionalChain, inChain.getType()));
+    }
 
     // Though the SimplifyChainsPass and CSE can clean things up, a few
     // simple syntactic tests can avoid unnecessary changes.
     ValueSetVector existingPrimitiveChains;
     accumulatePrimitiveChains(existingPrimitiveChains, inChain);
     ValueSetVector newPrimitiveChains;
-    for (auto additionalChain : additionalChains)
+    for (auto additionalChain : deviceCorrectAdditionalChains)
       accumulatePrimitiveChains(newPrimitiveChains, additionalChain);
 
     if (llvm::set_is_subset(newPrimitiveChains, existingPrimitiveChains)) {
@@ -378,10 +390,10 @@ LogicalResult M::MGP::alsoWaitForChains(OpBuilder &builder, Operation *op,
     }
 
     if (llvm::set_is_subset(existingPrimitiveChains, newPrimitiveChains) &&
-        additionalChains.size() == 1) {
+        deviceCorrectAdditionalChains.size() == 1) {
       // Just switch to using the additional chain.
       op->setOperand(inChainOpOperand->getOperandNumber(),
-                     additionalChains.front());
+                     deviceCorrectAdditionalChains.front());
       continue;
     }
 
@@ -394,7 +406,7 @@ LogicalResult M::MGP::alsoWaitForChains(OpBuilder &builder, Operation *op,
     for (Value newChain : newPrimitiveChains)
       existingPrimitiveChains.insert(newChain);
 
-    // Is inChain the only use of a grt.chain.create operation?
+    // Is inChain the only use of the chain.create operation?
     // If so we can modify that operation directly instead of creating a
     // new operation.
     GRT::GRTGatedOnChainOpInterface existingUniqueChainCreateOp = nullptr;
@@ -404,12 +416,21 @@ LogicalResult M::MGP::alsoWaitForChains(OpBuilder &builder, Operation *op,
         existingUniqueChainCreateOp = chainCreateOp;
     }
 
-    // Wait on the merge of the accumulated primitive chains.
+    // Create or reuse a chain.create op to combine the existing and new
+    // chains.
+    //
+    // Here we need to switch to using a buffer builder appropriate for
+    // inChain, which could be a plain old !mef.chain even though the
+    // op may be for some other exotic device with a different native chain
+    // representation.
+    BufferBuilder *chainBufferBuilder =
+        TensorBufferDialectInterface::getBuilderForTypeStorage(
+            builderContext, inChain.getType());
     auto insertPoint = builder.saveInsertionPoint();
     builder.setInsertionPoint(op);
     Value newInChain = waitForChainsReusing(
-        builder, op->getLoc(), op, existingUniqueChainCreateOp,
-        existingPrimitiveChains.takeVector());
+        builder, op->getLoc(), context, chainBufferBuilder,
+        existingUniqueChainCreateOp, existingPrimitiveChains.takeVector());
     builder.restoreInsertionPoint(insertPoint);
     op->setOperand(inChainOpOperand->getOperandNumber(), newInChain);
   }
@@ -444,7 +465,9 @@ void InitState::updateFinalChain(Value newChain) {
 };
 
 /// Returns the 'init' block's context.
-Value InitState::getContext() { return contextCreateOp.getResult(); }
+TypedValue<ContextType> InitState::getContext() {
+  return contextCreateOp.getResult();
+}
 
 //===----------------------------------------------------------------------===//
 // ExecuteState
@@ -465,8 +488,8 @@ TypedValue<MEF::ChainType> ExecuteState::getRootChain() const {
 }
 
 /// Returns MGP context argument to the 'execute' block.
-TypedValue<MGP::ContextType> ExecuteState::getContext() const {
-  return cast<TypedValue<MGP::ContextType>>(execute->getArgument(1));
+TypedValue<ContextType> ExecuteState::getContext() const {
+  return cast<TypedValue<ContextType>>(execute->getArgument(1));
 }
 
 /// Returns the additional arguments to 'execute' block

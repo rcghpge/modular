@@ -37,33 +37,24 @@ struct TensorBufferDialectInterface
   /// Adds to builderContext builder for all the devices in the given model.
   static BufferBuilderContext getAllBufferBuilders(ModelOp modelOp);
 
+  /// Returns the type builder appropriate for the device which will store
+  /// values of type.
+  static TypeBuilder *getTypeBuilder(const BufferBuilderContext &builderContext,
+                                     Type type);
+
   /// Returns the buffer builder appropriate for the device which will execute
   /// op.
   static BufferBuilder *
-  getBuilderForOp(const BufferBuilderContext &builderContext, Operation *op);
+  getBuilderForOpExecution(const BufferBuilderContext &builderContext,
+                           Operation *op);
 
   /// Returns the buffer builder appropriate for the device which will store
   /// values of type.
   static BufferBuilder *
-  getBuilderForType(const BufferBuilderContext &builderContext, Type type);
+  getBuilderForTypeStorage(const BufferBuilderContext &builderContext,
+                           Type type);
 
   TensorBufferDialectInterface(Dialect *dialect) : Base(dialect) {}
-
-  virtual MGPTensorExtractOpInterface
-  createExtract(OpBuilder *builder, mlir::Location loc, Value tensor) = 0;
-  /// Create a new chain that depends on the existing `chains`. Input op is the
-  /// op the chains will be used with/from.
-  virtual GRT::GRTChainCreateOpInterface createChain(OpBuilder *builder,
-                                                     mlir::Location loc,
-                                                     Operation *op,
-                                                     ValueRange chains) = 0;
-  /// Create a new chain that will protect access to the extracted buffer of a
-  /// tensor.
-  virtual GRT::GRTChainCreateOpInterface
-  createChainForTensor(OpBuilder *builder, mlir::Location loc,
-                       Value tensor) = 0;
-  virtual Type createChainType(OpBuilder *builder, Type tensorType) = 0;
-  virtual Type createBufferType(OpBuilder *builder, Type tensorType) = 0;
 
   /// Adds to BuilderContext the type and buffer builder for the 'host' device
   /// for this MGP::ModelOp if it is associated with this dialect.
@@ -97,17 +88,6 @@ struct TensorBufferDialectInterface
 /// Concrete TensorBufferDialectInterface for the MGP dialect.
 struct CpuTensorBufferDialectInterface : public TensorBufferDialectInterface {
   using TensorBufferDialectInterface::TensorBufferDialectInterface;
-
-  virtual MGPTensorExtractOpInterface
-  createExtract(OpBuilder *builder, mlir::Location loc, Value tensor) override;
-  virtual GRT::GRTChainCreateOpInterface
-  createChain(OpBuilder *builder, mlir::Location loc, Operation *op,
-              ValueRange chains) override;
-  virtual GRT::GRTChainCreateOpInterface
-  createChainForTensor(OpBuilder *builder, mlir::Location loc,
-                       Value tensor) override;
-  virtual Type createChainType(OpBuilder *builder, Type tensorType) override;
-  virtual Type createBufferType(OpBuilder *builder, Type tensorType) override;
 
   void addHostBuilder(ModelOp modelOp,
                       BufferBuilderContext &builderContext) override;

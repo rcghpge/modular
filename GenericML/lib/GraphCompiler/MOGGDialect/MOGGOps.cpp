@@ -197,9 +197,8 @@ LoadCompiledKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   MGP::BufferBuilder *bufferBuilder =
       loweringState.getBufferBuilder(MO::getDeviceOrDefault(*this));
   Value outChain = bufferBuilder->kernelLoadArchive(
-      builder, getLoc(),
+      builder, getLoc(), loweringState.getInitMgpContext(),
       /*inChain=*/loweringState.getInitChain(),
-      /*initContext=*/loweringState.getInitMgpContext(),
       /*archive=*/getValue(),
       /*kernelNames=*/getSymbols(),
       /*constantNames=*/{});
@@ -266,7 +265,6 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   auto outChain = opLoweringState.kernelExecute(
       /*kernelName=*/getKernelName(),
       /*inChain=*/loweringState.getExecuteChain(),
-      /*execContext=*/loweringState.getExecuteMgpContext(),
       /*args=*/operands,
       /*bufferSemantics=*/operandSemantics,
       /*inDimensions=*/inDimensions,

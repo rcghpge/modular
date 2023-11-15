@@ -23,6 +23,10 @@ void TypeBuilder::vtableAnchor() {}
 // BufferBuilder
 //===----------------------------------------------------------------------===//
 
+TypedValue<MGP::ContextType> BufferBuilder::getContextForOp(Operation *op) {
+  return getContextForBlock(op->getBlock());
+}
+
 void BufferBuilder::vtableAnchor() {}
 
 //===----------------------------------------------------------------------===//
@@ -30,12 +34,14 @@ void BufferBuilder::vtableAnchor() {}
 //===----------------------------------------------------------------------===//
 
 Value CpuBufferBuilder::bufferConstant(OpBuilder &builder, Location loc,
+                                       TypedValue<MGP::ContextType> context,
                                        ElementsAttr value) {
   return builder.create<CpuBufferConstantOp>(loc, /*value=*/value);
 }
 
 std::pair<Value, TypedValue<CpuTensorSpecType>>
 CpuBufferBuilder::tensorExtract(OpBuilder &builder, Location loc,
+                                TypedValue<MGP::ContextType> context,
                                 Value tensor) {
   auto extractOp = builder.create<CpuTensorExtractOp>(loc, /*tensor=*/tensor);
   return {extractOp.getBufferResult(), extractOp.getTensorSpecResult()};
@@ -43,11 +49,13 @@ CpuBufferBuilder::tensorExtract(OpBuilder &builder, Location loc,
 
 TypedValue<CpuTensorSpecType>
 CpuBufferBuilder::tensorExtractShape(OpBuilder &builder, Location loc,
+                                     TypedValue<MGP::ContextType> context,
                                      Value tensor) {
   return builder.create<CpuTensorExtractShapeOp>(loc, /*tensor=*/tensor);
 }
 
 Value CpuBufferBuilder::tensorCreate(OpBuilder &builder, Location loc,
+                                     TypedValue<MGP::ContextType> context,
                                      Value inChain, Value buffer,
                                      TypedValue<CpuTensorSpecType> tensorSpec) {
   return builder.create<CpuTensorCreateOp>(
@@ -59,6 +67,7 @@ Value CpuBufferBuilder::tensorCreate(OpBuilder &builder, Location loc,
 }
 
 Value CpuBufferBuilder::bufferAllocStatic(OpBuilder &builder, Location loc,
+                                          TypedValue<MGP::ContextType> context,
                                           Value inChain, uint64_t size,
                                           uint64_t alignment) {
   return builder.create<CpuBufferAllocStaticOp>(loc,
@@ -68,8 +77,9 @@ Value CpuBufferBuilder::bufferAllocStatic(OpBuilder &builder, Location loc,
 }
 
 Value CpuBufferBuilder::bufferAllocSpec(
-    OpBuilder &builder, Location loc, Value inChain,
-    TypedValue<MGP::CpuTensorSpecType> tensorSpec, uint64_t alignment) {
+    OpBuilder &builder, Location loc, TypedValue<MGP::ContextType> context,
+    Value inChain, TypedValue<MGP::CpuTensorSpecType> tensorSpec,
+    uint64_t alignment) {
   return builder.create<CpuBufferAllocSpecOp>(loc,
                                               /*inChain=*/inChain,
                                               /*runtimeSpec=*/tensorSpec,
@@ -77,18 +87,21 @@ Value CpuBufferBuilder::bufferAllocSpec(
 }
 
 Value CpuBufferBuilder::bufferTransferFromHost(
-    OpBuilder &builder, Location loc, Value inChain,
-    TypedValue<M::MGP::CpuBufferType> srcBuffer, Value dstBuffer) {
+    OpBuilder &builder, Location loc, TypedValue<MGP::ContextType> context,
+    Value inChain, TypedValue<M::MGP::CpuBufferType> srcBuffer,
+    Value dstBuffer) {
   llvm::llvm_unreachable_internal("not implemented");
 }
 
 Value CpuBufferBuilder::bufferTransferToHost(
-    OpBuilder &builder, Location loc, Value inChain, Value srcBuffer,
+    OpBuilder &builder, Location loc, TypedValue<MGP::ContextType> context,
+    Value inChain, Value srcBuffer,
     TypedValue<M::MGP::CpuBufferType> dstBuffer) {
   llvm::llvm_unreachable_internal("not implemented");
 }
 
 Value CpuBufferBuilder::debugTensorPrint(OpBuilder &builder, Location loc,
+                                         TypedValue<MGP::ContextType> context,
                                          Value inChain, Value tensor,
                                          StringAttr label) {
   return builder.create<DebugCpuTensorPrintOp>(loc, /*inChain=*/inChain,
@@ -96,10 +109,11 @@ Value CpuBufferBuilder::debugTensorPrint(OpBuilder &builder, Location loc,
                                                /*label=*/label);
 }
 
-Value CpuBufferBuilder::kernelLoadArchive(
-    OpBuilder &builder, Location loc, Value inChain,
-    TypedValue<MGP::ContextType> initContext, ElementsAttr archive,
-    ArrayAttr kernelNames, ArrayAttr constantNames) {
+Value CpuBufferBuilder::kernelLoadArchive(OpBuilder &builder, Location loc,
+                                          TypedValue<MGP::ContextType> context,
+                                          Value inChain, ElementsAttr archive,
+                                          ArrayAttr kernelNames,
+                                          ArrayAttr constantNames) {
   assert((constantNames == nullptr || constantNames.empty()) &&
          "CPU archives do not currently support constants");
 
@@ -118,15 +132,15 @@ Value CpuBufferBuilder::kernelLoadArchive(
   return builder.create<CpuKernelLoadArchiveOp>(
       loc,
       /*inChain=*/inChain,
-      /*theContext=*/initContext,
+      /*theContext=*/context,
       /*aSlot=*/slot,
       /*bArchive=*/archive,
       /*cKernelNames=*/kernelNamesAttr);
 }
 
 Value CpuBufferBuilder::kernelExecute(
-    OpBuilder &builder, Location loc, StringRef kernelName, Value inChain,
-    TypedValue<MGP::ContextType> execContext, ArrayRef<Value> buffers,
+    OpBuilder &builder, Location loc, TypedValue<MGP::ContextType> context,
+    StringRef kernelName, Value inChain, ArrayRef<Value> buffers,
     ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
     ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
     SmallVectorImpl<Value> &outDimensions) {
@@ -135,7 +149,7 @@ Value CpuBufferBuilder::kernelExecute(
   auto executeOp = builder.create<MGP::CpuKernelExecuteOp>(
       loc,
       /*inChain=*/inChain,
-      /*theContext=*/execContext,
+      /*theContext=*/context,
       /*buffers=*/buffers,
       /*inDimensions=*/inDimensions,
       /*aSlot=*/slot,
@@ -159,6 +173,7 @@ Value CpuBufferBuilder::kernelExecute(
 }
 
 Value CpuBufferBuilder::chainCreate(OpBuilder &builder, Location loc,
+                                    TypedValue<MGP::ContextType> context,
                                     ArrayRef<Value> inChains) {
   return builder.create<GRT::ChainCreateOp>(
       loc,
@@ -168,6 +183,7 @@ Value CpuBufferBuilder::chainCreate(OpBuilder &builder, Location loc,
 
 std::pair<TypedValue<MEF::ChainType>, size_t>
 CpuBufferBuilder::cache(OpBuilder &initBuilder, Location loc,
+                        TypedValue<MGP::ContextType> context,
                         TypedValue<MEF::ChainType> inChain,
                         ContextCreateOp contextCreateOp, Value buffer) {
   size_t bufferSlot = contextCreateOp.getNumSlots();
@@ -179,25 +195,34 @@ CpuBufferBuilder::cache(OpBuilder &initBuilder, Location loc,
 }
 
 Value CpuBufferBuilder::getCached(OpBuilder &builder, Location loc,
+                                  TypedValue<MGP::ContextType> context,
                                   TypedValue<MEF::ChainType> inChain,
-                                  TypedValue<MGP::ContextType> execContext,
                                   size_t bufferSlot, Type expectedBufferType) {
   auto bufferType = dyn_cast<CpuBufferType>(expectedBufferType);
   assert(bufferType &&
          "expected buffer type should be MGP::CpuBufferType for this builder");
   return builder.create<CpuBufferGetCachedOp>(
-      loc, /*inChain=*/inChain, /*theContext=*/execContext,
+      loc, /*inChain=*/inChain, /*theContext=*/context,
       /*aSlot=*/bufferSlot, /*bRawSize=*/bufferType.getRawSize().getUInt());
 }
 
 TypedValue<MEF::ChainType>
-CpuBufferBuilder::toMEFChain(OpBuilder &builder, Location loc, Value inChain) {
+CpuBufferBuilder::toMEFChain(OpBuilder &builder, Location loc,
+                             TypedValue<MGP::ContextType> context,
+                             Value inChain) {
   assert(isa<MEF::ChainType>(inChain.getType()) &&
          "chain should be of type MEF::ChainType for this builder");
   return cast<TypedValue<MEF::ChainType>>(inChain);
 }
 
 Value CpuBufferBuilder::fromMEFChain(OpBuilder &builder, Location loc,
+                                     TypedValue<MGP::ContextType> context,
                                      TypedValue<MEF::ChainType> inChain) {
+  return inChain;
+}
+
+Value CpuBufferBuilder::matchingChain(OpBuilder &builder, Location loc,
+                                      TypedValue<MGP::ContextType> context,
+                                      Value inChain, Type typeToMatch) {
   return inChain;
 }

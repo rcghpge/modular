@@ -17,10 +17,21 @@
 
 namespace M::MGP {
 
-// NOTE: It would be much better if we had an MGPWritesBuffersInterface
-// for ops so they can self-describe which of their buffer arguments they
-// write to. However mop ops have no ODS definition so there's nowhere
-// to carry such an interface. Instead we must make do with attributes.
+/// Returns the !mgp.context in use in block, which can be found from:
+///  - a block argument, such as the second argument to the 'execute' block,
+///    or a control flow sub-block.
+///  - the result of a mgp.context.create in the block, such as would be
+///    found in the 'init' block.
+///  - the parent block, if in a control flow sub-block which has not
+///    carried the !mgp.context downwards. Though using the returned value
+///    is illegal in the sub-block, the fixupIsolatedFromAbove can be used
+///    to repair the model.
+TypedValue<MGP::ContextType> getContextForBlock(Block *block);
+
+//===----------------------------------------------------------------------===//
+// CAUTION: The following methods are deprecated in favor of the
+//          MGPInOutSemanticsOpInterface.
+//===----------------------------------------------------------------------===//
 
 // NOTE: We unfortunately  have two conventions for output buffer argument
 // positions: at the front (eg mgp, kgen) and at the back (mop). Sigh.

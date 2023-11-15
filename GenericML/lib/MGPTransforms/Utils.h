@@ -7,6 +7,7 @@
 #ifndef GENERICML_MGPTRANSFORMS_UTILS_H
 #define GENERICML_MGPTRANSFORMS_UTILS_H
 
+#include "GenericML/MGPDialect/BufferBuilder.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -97,15 +98,23 @@ void accumulatePrimitiveChains(ValueSetVector &primitiveChains, Value chain);
 void moveAllBefore(Operation *origTargetOp, Operation *origAnchorOp);
 
 /// Returns a chain value which will be ready only when all of chains (which
-/// cannot be empty) are ready. Works with any kind (cpu/cuda) of chains.
-Value waitForChains(OpBuilder &builder, mlir::Location loc, Operation *op,
-                    ArrayRef<Value> chains);
+/// cannot be empty) are ready. All chains must use the 'native' chain type
+/// of the given buffer builder.
+Value waitForChains(OpBuilder &builder, mlir::Location loc,
+                    TypedValue<ContextType> context,
+                    BufferBuilder *bufferBuilder, ArrayRef<Value> chains);
 
 /// Mutates op in-place to ensure its input chain is ready only when all of
-/// additionalChains are also ready. Requires an input operation to build the
-/// chain for (necessary for CUDA which requires context and slot). Returns
-/// failure if op doesn't have any input chain to merge with.
-LogicalResult alsoWaitForChains(OpBuilder &builder, Operation *op,
+/// additionalChains are also ready. Returns failure if op doesn't have any
+/// input chain to merge with.
+///
+/// It is valid to mix-and-match both !mef.chain types and device-specific
+/// chain types. For example, the op could be in the cuda dialect, could be
+/// gated by a !mef.chain, and additionalChains may include both !mef.chains
+/// and !cuda.chains for the same device as op.
+LogicalResult alsoWaitForChains(OpBuilder &builder,
+                                const BufferBuilderContext &builderContext,
+                                Operation *op,
                                 ArrayRef<Value> additionalChains);
 
 /// Helper for modifying the 'init' block.
@@ -122,7 +131,7 @@ struct InitState {
   void updateFinalChain(Value newChain);
 
   /// Returns the 'init' block's context.
-  Value getContext();
+  TypedValue<ContextType> getContext();
 
   Block *init;
   OpBuilder builder;
@@ -140,7 +149,7 @@ struct ExecuteState {
   TypedValue<MEF::ChainType> getRootChain() const;
 
   /// Returns MGP context argument to the 'execute' block.
-  TypedValue<MGP::ContextType> getContext() const;
+  TypedValue<ContextType> getContext() const;
 
   /// Returns the additional arguments to 'execute' block
   iterator_range<mlir::BlockArgument *> getExtraArgs() const;
