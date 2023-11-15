@@ -130,8 +130,8 @@ public:
   /// Load the given binary which supplies the given kernel names into the
   /// context. The kernels can be retrieved by index of their kernel name
   /// within kernelNames.
-  ErrorOrSuccess load(ArrayRef<uint8_t> binary,
-                      ArrayRef<StringRef> kernelNames);
+  ErrorOrSuccess load(ArrayRef<uint8_t> binary, ArrayRef<StringRef> kernelNames,
+                      size_t kernelIndex = 0);
 
   /// Returns the compiled kernel at the given index.
   CompiledKernelFn *getKernel(size_t index) const {

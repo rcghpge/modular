@@ -108,7 +108,8 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
 //===----------------------------------------------------------------------===//
 
 ErrorOrSuccess CompiledKernelsContext::load(ArrayRef<uint8_t> binary,
-                                            ArrayRef<StringRef> kernelNames) {
+                                            ArrayRef<StringRef> kernelNames,
+                                            size_t kernelIndex) {
   // We have two problems here:
   //  - Compiled kernels from different models may share the same names.
   //  - The same model, with the same complied kernels, may be setup more
@@ -125,13 +126,12 @@ ErrorOrSuccess CompiledKernelsContext::load(ArrayRef<uint8_t> binary,
     return err.takeError();
 
   // Load the compiled kernels into our table.
-  size_t index = 0;
   for (StringRef kernelName : kernelNames) {
     auto symOr = engine->lookup(dylibName, kernelName);
     if (symOr.isError())
       return symOr.takeError();
-    addKernel(kernelName, index, symOr.takeValue().getFunctionPointer());
-    index++;
+    addKernel(kernelName, kernelIndex, symOr.takeValue().getFunctionPointer());
+    kernelIndex++;
   }
 
   return success();
