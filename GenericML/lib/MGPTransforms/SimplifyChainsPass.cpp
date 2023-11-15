@@ -7,7 +7,9 @@
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GraphRT/GRTDialect/GRTChainInterface.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "GraphRT/MEFDialect/MEFTypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
@@ -76,8 +78,13 @@ class SimplifyChainsPass
   void accumulatePrimitiveChains(IndexSet<Value> &valueIndex,
                                  IndexSet<Value>::Set &primitiveChains,
                                  Value chain) {
-    if (auto chainCreateOp = chain.getDefiningOp<GRT::ChainCreateOp>()) {
-      for (auto operand : chainCreateOp.getOperands())
+    // Only use chains where the input is settable. These ops assume that the
+    // input and output chains have the same type.
+    if (auto chainCreateOp =
+            chain.getDefiningOp<GRT::GRTGatedOnChainOpInterface>()) {
+      for (auto operand : dyn_cast<GRT::GRTChainCreateOpInterface>(
+                              chainCreateOp.getOperation())
+                              .getInputChains())
         accumulatePrimitiveChains(valueIndex, primitiveChains, operand);
     } else {
       valueIndex.addToSet(primitiveChains, chain);
@@ -99,31 +106,34 @@ class SimplifyChainsPass
     // we don't update the dependencies analysis results, we must be careful
     // to only do rewrites which are invariant w.r.t. that.
 
-    modelOp.walk([&](GRT::ChainCreateOp chainCreateOp) {
+    modelOp.walk([&](GRT::GRTChainCreateOpInterface chainCreateOp) {
       IndexSet<Value>::Set valuesSet = valueIndex.emptySet();
       accumulatePrimitiveChains(valueIndex, valuesSet,
-                                chainCreateOp.getResult());
+                                chainCreateOp.getChainResult());
       dependencies.simplify(valuesSet);
       SmallVector<Value> values = valueIndex.setToVector(valuesSet);
-      if (values.empty()) {
+      if (values.empty() &&
+          dyn_cast<GRT::ChainCreateOp>(chainCreateOp.getOperation())) {
         // Instead of creating a fresh chain, try to reuse the 'execute'
         // block's %arg0 if it is also always ready.
         Value replacementValue =
             getAlwaysReadyRootChain(dependencies, modelOp, chainCreateOp);
         if (replacementValue) {
-          chainCreateOp.getResult().replaceAllUsesWith(replacementValue);
+          chainCreateOp.getChainResult().replaceAllUsesWith(replacementValue);
           chainCreateOp.erase();
         } else {
           chainCreateOp->setOperands({});
         }
       } else if (values.size() == 1 &&
-                 isa<MEF::ChainType>(values[0].getType())) {
+                 isa<MEF::MEFChainTypeInterface>(values[0].getType())) {
         // Since grt.chain.create can accept arguments of non mef.chain
         // type, we have to be careful with singleton calls.
-        chainCreateOp.getResult().replaceAllUsesWith(values.front());
+        chainCreateOp.getChainResult().replaceAllUsesWith(values.front());
         chainCreateOp.erase();
       } else {
-        chainCreateOp->setOperands(values);
+        if (auto chainSetOp = dyn_cast<GRT::GRTGatedOnChainOpInterface>(
+                chainCreateOp.getOperation()))
+          chainSetOp.setInputChains(values);
       }
     });
   }

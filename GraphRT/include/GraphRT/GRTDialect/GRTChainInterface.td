@@ -32,7 +32,9 @@ def GRT_ChainCreateOpInterface : OpInterface<"GRTChainCreateOpInterface"> {
 
 def GRT_GatedOnChainOpInterface : OpInterface<"GRTGatedOnChainOpInterface"> {
   let description = [{
-    Chain operations that depend on other chains/inputs. Allows changing what is being depended on.
+    Chain operations that depend on other chains/inputs. Allows changing what
+    is being depended on. Ops implementing this interface must have the same
+    type input chains as output chains.
   }];
   let cppNamespace = "::M::GRT";
   let methods = [

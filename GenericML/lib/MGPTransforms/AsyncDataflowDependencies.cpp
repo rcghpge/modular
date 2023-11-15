@@ -257,17 +257,17 @@ void AsyncDataflowDependencies::setupMaybeSameAs() {
 ///  - The control flow rules.
 void AsyncDataflowDependencies::flowAlwaysReady(Operation *op,
                                                 ValueDomainMap &domainMap) {
-  if (auto chainCreateOp = dyn_cast<GRT::ChainCreateOp>(op)) {
+  if (auto chainCreateOp = dyn_cast<GRT::GRTChainCreateOpInterface>(op)) {
     // This is equivalent to:
     //   if (isTrue(o) for all o in mergeOp.getOperands())
     //     setTrue(mergeOp.getResult())
     // but writen to mirror how flowControlFlow works with the relation.
     ValueSet set = domainMap.bottom;
-    for (Value operand : chainCreateOp.getOperands()) {
+    for (Value operand : chainCreateOp.getInputChains()) {
       domainMap.leastUpperBound(
           set, valueAnalysis.getEntriesAndId(domainMap, operand));
     }
-    valueAnalysis.setEntries(domainMap, chainCreateOp.getResult(), set);
+    valueAnalysis.setEntries(domainMap, chainCreateOp.getChainResult(), set);
   } else if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op)) {
     valueAnalysis.flowControlFlow(
         cfOp, domainMap,
