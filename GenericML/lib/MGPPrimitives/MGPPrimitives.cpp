@@ -1111,7 +1111,8 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   // Since we have the kernel name available, and since it's tedious to
   // plumb it into the compiled kernel, start the tracing now. This profiling
   // entry may be augmented by additional details on the Mojo side.
-  outputChain.trace(*dKernelName);
+  outputChain.trace(Twine(*bKernelIndex).str(),
+                    [kernelName = *dKernelName]() { return kernelName.str(); });
 
   // Execute the kernel:
   //  - Asynchronous kernels will have copied everything out of the three
