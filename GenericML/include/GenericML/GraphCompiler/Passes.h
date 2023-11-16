@@ -94,6 +94,12 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc("Include all host devices instead of just the CPU during "
                      "compilation."),
       llvm::cl::init(false)};
+  Option<bool> enableFakeCudaDevice{
+      *this, "enable-fake-cuda-device",
+      llvm::cl::desc(
+          "If true, compile assuming a single CUDA GPU is available. "
+          "For testing only."),
+      llvm::cl::init(false)};
   Option<std::string> defaultDeviceLabel{
       *this, "default-device-label",
       llvm::cl::desc(

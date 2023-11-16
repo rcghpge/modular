@@ -144,6 +144,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   MO::AddDevicesPassOptions addDevicesOpts;
   addDevicesOpts.enableExtraDevices = opts.enableExtraDevices;
+  addDevicesOpts.enableFakeCudaDevice = opts.enableFakeCudaDevice;
   addDevicesOpts.defaultDeviceLabel = opts.defaultDeviceLabel;
   pm.addPass(MO::createAddDevicesPass(addDevicesOpts, optRuntime));
 

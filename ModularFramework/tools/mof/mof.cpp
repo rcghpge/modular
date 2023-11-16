@@ -235,6 +235,8 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
       moToMgpOptions.minimumCpuAlignment.setValue(options->minimumCpuAlignment);
       moToMgpOptions.cacheDir.setValue(options->cacheDir);
       moToMgpOptions.enableExtraDevices.setValue(options->enableExtraDevices);
+      moToMgpOptions.enableFakeCudaDevice.setValue(
+          options->enableFakeCudaDevice);
       moToMgpOptions.defaultDeviceLabel.setValue(options->defaultDeviceLabel);
       moToMgpOptions.enableMemoryPlanning.setValue(
           options->enableMemoryPlanning);

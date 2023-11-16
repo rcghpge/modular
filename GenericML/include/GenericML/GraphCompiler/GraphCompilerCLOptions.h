@@ -31,6 +31,12 @@ public:
                "Default is false, which will include just the host CPU."),
       cl::init(false)};
 
+  cl::opt<bool> enableFakeCudaDevice{
+      "enable-fake-cuda-device",
+      cl::desc("If true, compile assuming a single CUDA GPU is available. "
+               "For testing only."),
+      cl::init(false)};
+
   cl::opt<std::string> defaultDeviceLabel{
       "default-device-label",
       cl::desc("If non-empty, assign as many ops as possible to the device "

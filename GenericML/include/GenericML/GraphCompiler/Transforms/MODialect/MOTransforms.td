@@ -291,6 +291,9 @@ def AddDevicesPass : Pass<"add-devices", "GraphOp"> {
   let options = [
     Option<"enableExtraDevices", "enable-extra-devices", "bool", "false",
            "Include all host devices instead of just the CPU during compilation.">,
+    Option<"enableFakeCudaDevice", "enable-fake-cuda-device", "bool", "false",
+           "Include a simulated CUDA device for testing on hosts without an "
+           "actual GPU.">,
     Option<"defaultDeviceLabel", "default-device-label", "std::string", "\"\"",
            "If non-empty, assign as many ops as possible to the device "
            "with the given label (and device id zero).">,
