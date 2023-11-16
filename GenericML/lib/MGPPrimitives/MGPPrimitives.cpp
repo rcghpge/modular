@@ -1028,7 +1028,7 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
                        MEFAttr<StringRef> dKernelName,
                        MEFAttr<uint64_t> eNumOutDimensions, Runtime &runtime,
                        EncodedLocation loc) {
-#if MODULAR_PARANOID
+#if MODULAR_DEBUG
   TimeTraceScope scope(
       MGPProfilerEntry::create("mgp.cpu.kernel.execute", *dKernelName));
 #else
