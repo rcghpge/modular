@@ -19,6 +19,7 @@
 
 #include "./Utils.h"
 
+#include <mlir/IR/Matchers.h>
 #include <numeric>
 
 #define DEBUG_TYPE "symbolic-optimization"
@@ -594,6 +595,77 @@ struct Pow3Pattern : public DeviceAwareRewritePattern<OpRewritePattern, PowOp> {
     Value sq = rewriter.create<MulOp>(op->getLoc(), input, input).getResult();
     rewriter.replaceOpWithNewOp<MulOp>(op, sq, input);
 
+    return mlir::success();
+  }
+};
+
+/// A pattern that detects explicit zero padding before convolution
+/// The pattern will only fire if the pad op has constant padding dimentions
+/// and a constant zero padding value
+///
+/// The pattern also ensure that Batch/Channels are not explicitly padded
+/// before fusing the pad with the conv
+///
+/// TODO : Longer term, should probably extend this to pooling
+///
+/// Example:
+///
+/// input : tensor<[...]>
+///   tmp = pad(input, pads, 0.0)
+///   res = conv(tmp, weight, strides, dilations, paddings)
+/// ===>
+///   res = conv(tmp, weight, strides, dilations, pads[2:-2] + paddings)
+struct PadConvPattern
+    : public DeviceAwareRewritePattern<OpRewritePattern, ConvOp> {
+  PadConvPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::ConvOp op,
+                             DeviceAwareRewriter &rewriter) const override {
+    Value input, filter, strides, dilations, pads, pads2, groups;
+    if (!m_Op<ConvOp>(m_Op<PadOp>(rewriter.pushOp(), m_Any(&input),
+                                  m_Any(&pads), m_ScalarConstant(0.0)),
+                      m_Any(&filter), m_Any(&strides), m_Any(&dilations),
+                      m_Any(&pads2), m_Any(&groups))
+             .match(op)) {
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+    }
+
+    if (!input || !filter || !strides || !dilations || !pads || !pads2 ||
+        !groups) {
+      return rewriter.notifyMatchFailure(op, "null input value");
+    }
+
+    if (!rewriter.addOps()) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
+
+    std::optional<SmallVector<int64_t>> maybePads =
+        tryGetConstantOfRank<int64_t>(cast<TensorValue>(pads), 2);
+
+    if (!maybePads.has_value())
+      return rewriter.notifyMatchFailure(op, "can't rewrite dynamic padding");
+
+    auto constPads = maybePads.value();
+    if (constPads[0] != 0 || constPads[1] != 0 || constPads.end()[-2] != 0 ||
+        constPads.end()[-1] != 0) {
+      return rewriter.notifyMatchFailure(
+          op, "is padding more than the image dimensions");
+    }
+
+    auto loc = op.getLoc();
+    Value new_pads = rewriter.create<ConstantOp>(
+        loc, SmallVector<int64_t>{constPads.begin() + 2, constPads.end() - 2});
+    // Cast, sometimes this comes in as si32
+    pads2 = rewriter.create<CastOp>(
+        loc, cast<TensorType>(pads2.getType()).cloneWith(M::DType::si64),
+        pads2);
+
+    new_pads = rewriter.create<AddOp>(loc, new_pads, pads2);
+
+    op.getInputMutable().assign(input);
+    op.getPaddingsMutable().assign(new_pads);
     return mlir::success();
   }
 };
@@ -2735,7 +2807,7 @@ struct SymbolicOptimizationPass
     // Miscellaneous rewrites.
     patterns.add<FlattenNestedConcatPattern, Pow2Pattern, Pow3Pattern,
                  GathersToSplitPattern, GeluPattern, GemvPattern,
-                 SplitAndSqueezesPattern>(context);
+                 SplitAndSqueezesPattern, PadConvPattern>(context);
 
     if (failed(
             applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
