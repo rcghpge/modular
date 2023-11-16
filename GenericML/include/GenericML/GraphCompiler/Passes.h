@@ -43,9 +43,12 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc("Path used by the CAS subsystem to establish its backing "
                      "store. If non-empty then models will be rewritten to "
                      "outline dense_attributes to the given CAS instance.")};
-  Option<std::string> extraLibPaths{
-      *this, "extra-lib-paths",
-      llvm::cl::desc("Extra library paths to load kernel sources from.")};
+  Option<std::string> kernelLibraryPaths{
+      *this, "kernel-library-paths",
+      llvm::cl::desc(
+          "Path to mojo packages containing mojo kernel definitions used to "
+          "replace MO ops. If multiple packages are specified, they must be "
+          "semicolon separated.")};
   Option<bool> useShapeInference{
       *this, "mo-shape-inference",
       llvm::cl::desc("Run shape inference on the input before other "

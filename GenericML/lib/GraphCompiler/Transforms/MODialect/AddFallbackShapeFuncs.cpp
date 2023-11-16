@@ -125,7 +125,7 @@ struct AddFallbackShapeFunctions
     OpBuilder builder{graph.getContext()};
 
     auto mojoLibraryAnalysis =
-        MOGG::MojoLibraryAnalysis::get(graph.getContext(), extraLibPaths);
+        MOGG::MojoLibraryAnalysis::get(graph.getContext(), kernelLibraryPaths);
     if (mojoLibraryAnalysis.isError())
       return signalPassFailure();
 

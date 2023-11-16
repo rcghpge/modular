@@ -102,7 +102,7 @@ maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
   buildShapeInferencePipeline(pm);
   pm.addPass(MO::createSymbolicOptimization());
   pm.addPass(MO::createPropagateShapes());
-  pm.addPass(MO::createAddFallbackShapeFunctions({opts.extraLibPaths}));
+  pm.addPass(MO::createAddFallbackShapeFunctions({opts.kernelLibraryPaths}));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MO::createSymbolicOptimization());
@@ -164,7 +164,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(MO::createConstantFold());
 
   pm.addPass(MO::createHoistParameterExpressions());
-  pm.addPass(MO::createMOToMOGG({opts.extraLibPaths}));
+  pm.addPass(MO::createMOToMOGG({opts.kernelLibraryPaths}));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
@@ -213,7 +213,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   jitOpts.minimumCpuAlignment = moToPrimOpts.minimumCpuAlignment;
   jitOpts.saveTempPrefix = opts.saveTempPrefix;
   jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
-  jitOpts.extraLibPaths = opts.extraLibPaths;
+  jitOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
   pm.addPass(MOGG::createJitCompileKernels(jitOpts));
 
   pm.addPass(MGP::createMOToPrimitives(moToPrimOpts));

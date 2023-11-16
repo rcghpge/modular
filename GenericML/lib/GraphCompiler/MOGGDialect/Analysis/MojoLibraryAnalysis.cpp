@@ -113,12 +113,13 @@ static ErrorOr<OwningOpRef<ModuleOp>> parseExtraLib(MLIRContext *ctx,
 
 // Load a `;` delimited string list of kernels.
 static ErrorOrSuccess
-loadUserProvidedKernels(ModuleOp baseModule, const std::string &extraLibPaths) {
-  if (extraLibPaths.empty())
+loadUserProvidedKernels(ModuleOp baseModule,
+                        const std::string &kernelLibraryPaths) {
+  if (kernelLibraryPaths.empty())
     return success();
 
   SmallVector<StringRef> paths;
-  llvm::SplitString(StringRef{extraLibPaths}, paths, ";");
+  llvm::SplitString(StringRef{kernelLibraryPaths}, paths, ";");
 
   // The symbol table of the main IR file we should add user provided files to.
   mlir::SymbolTable mainSymTable{baseModule};
@@ -178,7 +179,8 @@ MojoLibraryAnalysis::MojoLibraryAnalysis(
       registeredShapeFunctionSymbol(std::move(registeredShapeFunctionSymbol)) {}
 
 ErrorOr<MojoLibraryAnalysis>
-MojoLibraryAnalysis::get(MLIRContext *ctx, const std::string &extraLibPaths) {
+MojoLibraryAnalysis::get(MLIRContext *ctx,
+                         const std::string &kernelLibraryPaths) {
   /// Define the mapping of MO operations and intrinsics to the mojo code.
   /// TODO(#23802): Get rid of this mapping (except for types).
   llvm::StringMap<StringLiteral> moToMojoKernels{
@@ -327,7 +329,7 @@ MojoLibraryAnalysis::get(MLIRContext *ctx, const std::string &extraLibPaths) {
                          MojoMoggBindings::size};
   mojoBindings = mlir::parseSourceString<mlir::ModuleOp>(source, ctx);
   assert(mojoBindings);
-  assert(!loadUserProvidedKernels(*mojoBindings, extraLibPaths).isError());
+  assert(!loadUserProvidedKernels(*mojoBindings, kernelLibraryPaths).isError());
 
   // Iterate over the avaliable generators and check if each matches a mo
   // operation.

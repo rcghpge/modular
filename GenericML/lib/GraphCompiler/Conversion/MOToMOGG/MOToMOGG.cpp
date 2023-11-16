@@ -62,7 +62,7 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
     auto *ctx = &getContext();
     RewritePatternSet patterns{ctx};
     auto mojoLibraryAnalysis =
-        MOGG::MojoLibraryAnalysis::get(ctx, extraLibPaths);
+        MOGG::MojoLibraryAnalysis::get(ctx, kernelLibraryPaths);
     if (mojoLibraryAnalysis.isError())
       return signalPassFailure();
     patterns.add<MOOpPattern>(ctx, *mojoLibraryAnalysis);

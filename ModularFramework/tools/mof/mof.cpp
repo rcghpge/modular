@@ -49,10 +49,11 @@ public:
   cl::opt<bool> enableJitKernels{"enable-jit-kernels",
                                  cl::desc("Enable jitting of MOGG kernels."),
                                  cl::init(true)};
-  cl::opt<std::string> customOpsPath{
-      "user-ops",
-      cl::desc("Path to a mojo package containing user op definitions used to "
-               "replace MO ops."),
+  cl::opt<std::string> kernelLibraryPaths{
+      "kernel-library-paths",
+      cl::desc("Path to mojo packages containing mojo kernel definitions used "
+               "to replace MO ops. If multiple packages are specified, they "
+               "must be semicolon separated."),
       cl::init("")};
 };
 
@@ -100,15 +101,22 @@ public:
 
   ErrorOrSuccess setConfigs(ArrayRef<std::unique_ptr<DriverConfig>> configs) {
     for (auto &config : configs) {
-      if (auto customOpConfig = dyn_cast<CustomOpsDriverConfig>(config.get()))
-        userOpsPath = customOpConfig->getPath();
+      if (auto kernelLibraryConfig =
+              dyn_cast<KernelLibraryDriverConfig>(config.get())) {
+        if (kernelLibraryPaths.empty()) {
+          kernelLibraryPaths = kernelLibraryConfig->getPath().string();
+        } else {
+          kernelLibraryPaths = kernelLibraryPaths + ";" +
+                               kernelLibraryConfig->getPath().string();
+        }
+      }
     }
     return success();
   }
 
   const CASConfig &getCasConfig() { return commonCasConfig; }
-  const std::optional<std::filesystem::path> &getCustomOpsPath() const {
-    return userOpsPath;
+  const std::string &getKernelLibraryPaths() const {
+    return kernelLibraryPaths;
   }
   const CUDA::CUDARuntimeOptions &getCUDARuntimeOptions() const {
     return cudaRuntimeOptions;
@@ -125,7 +133,7 @@ private:
   // and establish any other global registration etc.
   void setup() {
     // Start from a blank slate in case the options have been reset.
-    userOpsPath = {};
+    kernelLibraryPaths = {};
     commonCasConfig = {};
     cudaRuntimeOptions = {};
 
@@ -133,8 +141,7 @@ private:
     // These options must to apply to all models to be executed for the
     // lifetime of this context.
     if (clOptions) {
-      if (!clOptions->customOpsPath.empty())
-        userOpsPath = clOptions->customOpsPath.getValue();
+      kernelLibraryPaths = clOptions->kernelLibraryPaths.getValue();
       clOptions->overrideCUDARuntimeOptions(cudaRuntimeOptions);
     }
 
@@ -149,7 +156,8 @@ private:
 
   /// Collect options in their 'plain old data' representation, collected
   /// either from the command line options or set programatically.
-  std::optional<std::filesystem::path> userOpsPath;
+  // A semicolon separated list of kernel library paths.
+  std::string kernelLibraryPaths;
   CASConfig commonCasConfig;
   CUDA::CUDARuntimeOptions cudaRuntimeOptions;
 };
@@ -238,8 +246,7 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
       moToMgpOptions.genVizSpec.setValue(options->genVizSpec);
       moToMgpOptions.vizOutputDir.setValue(options->vizOutputDir);
     }
-    if (mofCtx->getCustomOpsPath())
-      moToMgpOptions.extraLibPaths = mofCtx->getCustomOpsPath()->string();
+    moToMgpOptions.kernelLibraryPaths = mofCtx->getKernelLibraryPaths();
 
     std::unique_ptr<Runtime> runtime;
     if (options) {

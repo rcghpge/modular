@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg=extra-lib-paths="%extra_test_lib" --fuse-in-out-lambdas --cse | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg=kernel-library-paths="%extra_test_lib" --fuse-in-out-lambdas --cse | FileCheck %s
 
 // CHECK: mo.graph @input_output_fusion(%[[ARG0:.*]]: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> no_inline {
 // CHECK-NEXT: %0 = mogg.kernel (%[[ARG0]]) : (%[[ARG1:.*]]: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32>{

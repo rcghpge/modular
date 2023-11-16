@@ -130,6 +130,6 @@ model = session.load(model_path, options)
 ## Usage with `mt`
 
 ```bash
-mt --execute mo-model.mlir --user-ops=user_ops.mojopkg
+mt --execute mo-model.mlir --kernel-library-paths=user_ops.mojopkg
 
 ```

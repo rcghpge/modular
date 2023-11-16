@@ -16,14 +16,14 @@ using namespace M;
 void M_useKernelsFrom(M_CompileConfig *compileConfig, const char *path,
                       M_Status *status) {
 
-  auto customOpsPath = std::filesystem::path(std::string(path));
+  auto kernelLibraryPath = std::filesystem::path(std::string(path));
   std::error_code ec;
-  if (!std::filesystem::exists(customOpsPath, ec)) {
+  if (!std::filesystem::exists(kernelLibraryPath, ec)) {
     detail::setError(status,
-                     Error::getStaticString("invalid path to custom ops"));
+                     Error::getStaticString("invalid path to kernel library"));
     return;
   }
 
   auto &config = compileConfig->config;
-  config.setCustomOpsPath(std::move(customOpsPath));
+  config.setKernelLibraryPath(std::move(kernelLibraryPath));
 }

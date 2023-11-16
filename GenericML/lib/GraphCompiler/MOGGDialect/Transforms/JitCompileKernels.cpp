@@ -43,7 +43,7 @@ struct JitCompileKernels
     MLIRContext *ctx = m.getContext();
 
     auto mojoLibraryAnalysisOrErr =
-        MOGG::MojoLibraryAnalysis::get(ctx, extraLibPaths);
+        MOGG::MojoLibraryAnalysis::get(ctx, kernelLibraryPaths);
     assert(!mojoLibraryAnalysisOrErr.isError());
     MOGG::MojoLibraryAnalysis mojoLibraryAnalysis =
         mojoLibraryAnalysisOrErr.takeValue();

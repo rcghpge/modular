@@ -15,7 +15,7 @@
 namespace M {
 class DriverConfig {
 public:
-  enum OptionKind { kTF, kTorch, kMOF, kONNX, kCustomOps };
+  enum OptionKind { kTF, kTorch, kMOF, kONNX, kKernelLibrary };
 
   DriverConfig(OptionKind kind, llvm::StringLiteral name)
       : Kind(kind), configName(name) {}
@@ -31,21 +31,21 @@ private:
   const llvm::StringLiteral configName;
 };
 
-class CustomOpsDriverConfig : public DriverConfig {
+class KernelLibraryDriverConfig : public DriverConfig {
 
 public:
-  CustomOpsDriverConfig(std::filesystem::path path)
-      : DriverConfig(OptionKind::kCustomOps, "custom-ops-path"),
-        customOpsPath(std::move(path)) {}
+  KernelLibraryDriverConfig(std::filesystem::path path)
+      : DriverConfig(OptionKind::kKernelLibrary, "kernel-library-path"),
+        kernelLibraryPath(std::move(path)) {}
 
   static bool classof(const DriverConfig *config) {
-    return config->getKind() == OptionKind::kCustomOps;
+    return config->getKind() == OptionKind::kKernelLibrary;
   }
 
-  const std::filesystem::path &getPath() const { return customOpsPath; }
+  const std::filesystem::path &getPath() const { return kernelLibraryPath; }
 
 private:
-  std::filesystem::path customOpsPath;
+  std::filesystem::path kernelLibraryPath;
 };
 
 } // namespace M
