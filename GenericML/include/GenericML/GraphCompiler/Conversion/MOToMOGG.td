@@ -19,11 +19,9 @@ def MOToMOGG : Pass<"mo-to-mogg", "ModuleOp"> {
   }];
 
   let options = [
-    Option<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      /*default=*/"",
-      "Path to mojo packages containing mojo kernel definitions used "
-      "to replace MO ops. If multiple packages are specified, "
-      "they must be semicolon separated.">,
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+      "Paths to mojo packages containing mojo kernel definitions used "
+      "to replace MO ops.">,
   ];
 
   let dependentDialects = [

@@ -43,10 +43,8 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
             "Prints the generated KGEN stub for use in tests and debugging">,
     Option<"createMOGGReproducers", "create-mogg-reproducers", "bool", /*default=*/"false",
             "Creates isolated reproducers of each kernel in a new mo graph.">,
-    Option<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      /*default=*/"",
-      "Path to mojo packages containing mojo kernel definitions to be loaded. "
-      "If multiple packages are specified, they must be semicolon separated.">,
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
     Option<"minimumCpuAlignment", "min-cpu-alignment", "size_t",
       /*default=*/"kPreferredMemoryAlignment",
      "Minimum alignment for all CPU buffers (both constants and allocated)">,

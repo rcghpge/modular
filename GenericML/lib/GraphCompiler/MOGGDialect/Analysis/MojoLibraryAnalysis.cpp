@@ -114,19 +114,16 @@ static ErrorOr<OwningOpRef<ModuleOp>> parseExtraLib(MLIRContext *ctx,
 // Load a `;` delimited string list of kernels.
 static ErrorOrSuccess
 loadUserProvidedKernels(ModuleOp baseModule,
-                        const std::string &kernelLibraryPaths) {
+                        ArrayRef<std::string> kernelLibraryPaths) {
   if (kernelLibraryPaths.empty())
     return success();
-
-  SmallVector<StringRef> paths;
-  llvm::SplitString(StringRef{kernelLibraryPaths}, paths, ";");
 
   // The symbol table of the main IR file we should add user provided files to.
   mlir::SymbolTable mainSymTable{baseModule};
 
   // Load each of the extra user libraries and appending them to the main
   // module.
-  for (StringRef path : paths) {
+  for (StringRef path : kernelLibraryPaths) {
     auto userModuleOr = parseExtraLib(baseModule.getContext(), path);
     if (userModuleOr.isError())
       return userModuleOr.takeError();
@@ -180,7 +177,7 @@ MojoLibraryAnalysis::MojoLibraryAnalysis(
 
 ErrorOr<MojoLibraryAnalysis>
 MojoLibraryAnalysis::get(MLIRContext *ctx,
-                         const std::string &kernelLibraryPaths) {
+                         ArrayRef<std::string> kernelLibraryPaths) {
   /// Define the mapping of MO operations and intrinsics to the mojo code.
   /// TODO(#23802): Get rid of this mapping (except for types).
   llvm::StringMap<StringLiteral> moToMojoKernels{

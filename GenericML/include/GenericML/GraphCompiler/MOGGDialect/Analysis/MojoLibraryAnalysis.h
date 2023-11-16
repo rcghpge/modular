@@ -33,8 +33,8 @@ public:
   /// Wrapper around the constructor for error checking purposes. The standard
   /// Mojo kernel library is directly embedded. Only the extra library paths
   /// must be provided.
-  static ErrorOr<MojoLibraryAnalysis> get(MLIRContext *ctx,
-                                          const std::string &extraLibPaths);
+  static ErrorOr<MojoLibraryAnalysis>
+  get(MLIRContext *ctx, ArrayRef<std::string> kernelLibraryPaths);
   ~MojoLibraryAnalysis() = default;
 
   /// Move constructor for MojoLibraryAnalysis::get.

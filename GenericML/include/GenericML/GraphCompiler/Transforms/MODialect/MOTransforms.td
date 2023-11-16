@@ -47,10 +47,8 @@ def AddFallbackShapeFunctions :
   }];
 
   let options = [
-    Option<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      /*default=*/"",
-      "Path to mojo packages containing mojo kernel definitions to be loaded. "
-      "If multiple packages are specified, they must be semicolon separated.">,
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+      "Paths to mojo packages containing mojo kernel definitions to be loaded. ">,
   ];
 
   let dependentDialects = [

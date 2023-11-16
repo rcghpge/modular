@@ -49,12 +49,10 @@ public:
   cl::opt<bool> enableJitKernels{"enable-jit-kernels",
                                  cl::desc("Enable jitting of MOGG kernels."),
                                  cl::init(true)};
-  cl::opt<std::string> kernelLibraryPaths{
+  cl::list<std::string> kernelLibraryPaths{
       "kernel-library-paths",
-      cl::desc("Path to mojo packages containing mojo kernel definitions used "
-               "to replace MO ops. If multiple packages are specified, they "
-               "must be semicolon separated."),
-      cl::init("")};
+      cl::desc("Paths to mojo packages containing mojo kernel definitions used "
+               "to replace MO ops.")};
 };
 
 class MOFContext {
@@ -103,19 +101,14 @@ public:
     for (auto &config : configs) {
       if (auto kernelLibraryConfig =
               dyn_cast<KernelLibraryDriverConfig>(config.get())) {
-        if (kernelLibraryPaths.empty()) {
-          kernelLibraryPaths = kernelLibraryConfig->getPath().string();
-        } else {
-          kernelLibraryPaths = kernelLibraryPaths + ";" +
-                               kernelLibraryConfig->getPath().string();
-        }
+        kernelLibraryPaths.push_back(kernelLibraryConfig->getPath().string());
       }
     }
     return success();
   }
 
   const CASConfig &getCasConfig() { return commonCasConfig; }
-  const std::string &getKernelLibraryPaths() const {
+  ArrayRef<std::string> getKernelLibraryPaths() const {
     return kernelLibraryPaths;
   }
   const CUDA::CUDARuntimeOptions &getCUDARuntimeOptions() const {
@@ -141,7 +134,9 @@ private:
     // These options must to apply to all models to be executed for the
     // lifetime of this context.
     if (clOptions) {
-      kernelLibraryPaths = clOptions->kernelLibraryPaths.getValue();
+      kernelLibraryPaths =
+          SmallVector<std::string>(clOptions->kernelLibraryPaths.begin(),
+                                   clOptions->kernelLibraryPaths.end());
       clOptions->overrideCUDARuntimeOptions(cudaRuntimeOptions);
     }
 
@@ -157,7 +152,7 @@ private:
   /// Collect options in their 'plain old data' representation, collected
   /// either from the command line options or set programatically.
   // A semicolon separated list of kernel library paths.
-  std::string kernelLibraryPaths;
+  SmallVector<std::string> kernelLibraryPaths;
   CASConfig commonCasConfig;
   CUDA::CUDARuntimeOptions cudaRuntimeOptions;
 };

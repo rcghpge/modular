@@ -153,12 +153,10 @@ public:
                               cl::desc("Display Model Input and output Specs"),
                               cl::init(false)};
 
-  cl::opt<std::string> kernelLibraryPaths{
+  cl::list<std::string> kernelLibraryPaths{
       "kernel-library-paths",
-      cl::desc("Path to mojo packages containing mojo kernel definitions used "
-               "to replace MO and Framework ops. If multiple packages are "
-               "specified, they must be semicolon separated."),
-      cl::init("")};
+      cl::desc("Paths to mojo packages containing mojo kernel definitions used "
+               "to replace MO and Framework ops.")};
 
   /// Reads a model specification from the YAML file set via the
   /// "model-specification" option.
@@ -525,11 +523,8 @@ int main(int argc, char **argv) {
     api.setExportedName(compileConfig.get(), clOptions.exportedName.c_str());
 
   if (api.useKernelsFrom && !clOptions.kernelLibraryPaths.empty()) {
-    SmallVector<StringRef> paths;
-    llvm::SplitString(StringRef{clOptions.kernelLibraryPaths}, paths, ";");
-    for (StringRef path : paths) {
+    for (auto &path : clOptions.kernelLibraryPaths)
       api.useKernelsFrom(compileConfig.get(), path.data(), status.get());
-    }
   }
 
   if (api.isError(status.get())) {

@@ -115,7 +115,7 @@ NEEDS_NO_FALLBACK(MO::GatherNdOp)
 struct AddFallbackShapeFunctions
     : public impl::AddFallbackShapeFunctionsBase<AddFallbackShapeFunctions> {
 
-  AddFallbackShapeFunctions() : AddFallbackShapeFunctionsBase({""}) {}
+  AddFallbackShapeFunctions() : AddFallbackShapeFunctionsBase() {}
 
   AddFallbackShapeFunctions(const AddFallbackShapeFunctionsOptions &opts)
       : AddFallbackShapeFunctionsBase(opts) {}
