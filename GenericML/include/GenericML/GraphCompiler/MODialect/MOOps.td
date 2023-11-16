@@ -436,7 +436,7 @@ def MO_RebindOp : MO_ControlOp<"rebind", [
 def MO_ConstantOp : MO_TensorOp<"constant", [
     ConstantLike,
     Pure,
-    DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface>,
+    DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["preferResultsDevice"]>,
 ]> {
   let summary = "constant MO operation";
   let description = [{
@@ -487,10 +487,6 @@ def MO_ConstantOp : MO_TensorOp<"constant", [
     /// Create a new rank-0 (scalar) tensor mo.constant of boolean value.
     OpBuilder<(ins "bool":$value)>,
   ];
-
-  let extraClassDeclaration = [{
-    bool preferResultsDevice() { return true; }
-  }];
 }
 
 
@@ -1424,7 +1420,8 @@ class MO_ReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
 }
 
 def MO_MeanOp : MO_ReductionOp<"mean", [
-    DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface>]> {
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
+]> {
   let summary = "Mean reduction operation";
   let description = [{
     Reduce `input` elements across `axis` to their mean value, and change that
@@ -1443,16 +1440,11 @@ def MO_MeanOp : MO_ReductionOp<"mean", [
       !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
-
-  let extraClassDeclaration = [{
-    DeviceRefAttr getOperandDevice(size_t index) {
-      // Axis is on the host.
-      return index == 1 ? MO::getHostDeviceAny(getOperation()) : nullptr;
-    }
-  }];
 }
 
-def MO_ReduceMulOp : MO_ReductionOp<"reduce.mul"> {
+def MO_ReduceMulOp : MO_ReductionOp<"reduce.mul", [
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
+]> {
   let summary = "Product reduction operation";
   let description = [{
     Reduce `input` elements across `axis` to their product, and change that
@@ -1473,7 +1465,9 @@ def MO_ReduceMulOp : MO_ReductionOp<"reduce.mul"> {
   }];
 }
 
-def MO_ReduceAddOp : MO_ReductionOp<"reduce.add"> {
+def MO_ReduceAddOp : MO_ReductionOp<"reduce.add", [
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
+]> {
   let summary = "Sum reduction operation";
   let description = [{
     Reduce `input` elements across `axis` to their sum, and change that axis's
@@ -1495,7 +1489,9 @@ def MO_ReduceAddOp : MO_ReductionOp<"reduce.add"> {
   let hasFolder = 1;
 }
 
-def MO_ReduceMinOp : MO_ReductionOp<"reduce.min"> {
+def MO_ReduceMinOp : MO_ReductionOp<"reduce.min", [
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
+]> {
   let summary = "Minimum reduction operation";
   let description = [{
     Reduce `input` elements across `axis` to their minimum, and change that
@@ -1516,7 +1512,9 @@ def MO_ReduceMinOp : MO_ReductionOp<"reduce.min"> {
   }];
 }
 
-def MO_ReduceMaxOp : MO_ReductionOp<"reduce.max"> {
+def MO_ReduceMaxOp : MO_ReductionOp<"reduce.max", [
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
+]> {
   let summary = "Maximum reduction operation";
   let description = [{
     Reduce `input` elements across `axis` to their maximum, and change that
@@ -2304,7 +2302,8 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape"> {
 def MO_ConcatOp : MO_TensorOp<"concat", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Concat Operation";
   let description = [{
@@ -2405,6 +2404,7 @@ def MO_SplitOp : MO_TensorOp<"split", [
 def MO_TransposeOp : MO_TensorOp<"transpose", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Transpose Operation";
   let description = [{
@@ -2529,6 +2529,7 @@ def MO_PadOp : MO_TensorOp<"pad", [
 def MO_GatherOp : MO_TensorOp<"gather", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Gather Operation";
   let description = [{

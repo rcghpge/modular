@@ -805,7 +805,7 @@ LogicalResult Static::BroadcastToOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// MO_ConstantOp support
+// ConstantOp support
 //===----------------------------------------------------------------------===//
 
 LogicalResult ConstantOp::canonicalize(ConstantOp op,
@@ -922,6 +922,8 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
 }
 
+bool ConstantOp::preferResultsDevice() { return true; }
+
 //===----------------------------------------------------------------------===//
 // MO_ConstantScalarOp support
 //===----------------------------------------------------------------------===//
@@ -954,7 +956,7 @@ LogicalResult ConstantScalarOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// MO_ConcatOp support
+// ConcatOp
 //===----------------------------------------------------------------------===//
 
 OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
@@ -1079,6 +1081,12 @@ LogicalResult ConcatOp::canonicalize(ConcatOp op, PatternRewriter &rewriter) {
   return failure();
 }
 
+DeviceRefAttr ConcatOp::getOperandDevice(size_t index) {
+  return index == getAxisMutable().getOperandNumber()
+             ? MO::getHostDeviceAny(getOperation())
+             : nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // MO_SplitOp support
 //===----------------------------------------------------------------------===//
@@ -1161,7 +1169,7 @@ LogicalResult SplitOp::fold(FoldAdaptor adaptor,
 }
 
 //===----------------------------------------------------------------------===//
-// MO_GatherOp support
+// GatherOp support
 //===----------------------------------------------------------------------===//
 
 /// Return an empty array with the given element type.
@@ -1258,6 +1266,12 @@ LogicalResult GatherOp::verify() {
   }
 
   return success();
+}
+
+DeviceRefAttr GatherOp::getOperandDevice(size_t index) {
+  return index == getAxisMutable().getOperandNumber()
+             ? MO::getHostDeviceAny(getOperation())
+             : nullptr;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1973,8 +1987,8 @@ LogicalResult RebindOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// MO_MeanOp support
-//===----------------------------------------------------------------------===//
+// MeanOp
+// ===----------------------------------------------------------------------===//
 
 LogicalResult MeanOp::canonicalize(MeanOp op, PatternRewriter &rewriter) {
   return canonicalizeStaticNegativeIndicesInPlace(op, 1);
@@ -1989,8 +2003,14 @@ void MeanOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   buildReductionOp<MeanOp>(odsBuilder, odsState, input, axis, outputTy);
 }
 
+DeviceRefAttr MeanOp::getOperandDevice(size_t index) {
+  return index == getAxisMutable().getOperandNumber()
+             ? MO::getHostDeviceAny(getOperation())
+             : nullptr;
+}
+
 //===----------------------------------------------------------------------===//
-// MO_ReduceMulOp support
+// ReduceMulOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult ReduceMulOp::canonicalize(ReduceMulOp op,
@@ -2008,8 +2028,14 @@ void ReduceMulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   buildReductionOp<ReduceMulOp>(odsBuilder, odsState, input, axis, outputTy);
 }
 
+DeviceRefAttr ReduceMulOp::getOperandDevice(size_t index) {
+  return index == getAxisMutable().getOperandNumber()
+             ? MO::getHostDeviceAny(getOperation())
+             : nullptr;
+}
+
 //===----------------------------------------------------------------------===//
-// MO_ReduceAddOp support
+// ReduceAddOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult ReduceAddOp::canonicalize(ReduceAddOp op,
@@ -2044,8 +2070,14 @@ void ReduceAddOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   buildReductionOp<ReduceAddOp>(odsBuilder, odsState, input, axis, outputTy);
 }
 
+DeviceRefAttr ReduceAddOp::getOperandDevice(size_t index) {
+  return index == getAxisMutable().getOperandNumber()
+             ? MO::getHostDeviceAny(getOperation())
+             : nullptr;
+}
+
 //===----------------------------------------------------------------------===//
-// MO_ReduceMinOp support
+// ReduceMinOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult ReduceMinOp::canonicalize(ReduceMinOp op,
@@ -2064,8 +2096,14 @@ void ReduceMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   buildReductionOp<ReduceMinOp>(odsBuilder, odsState, input, axis, outputTy);
 }
 
+DeviceRefAttr ReduceMinOp::getOperandDevice(size_t index) {
+  return index == getAxisMutable().getOperandNumber()
+             ? MO::getHostDeviceAny(getOperation())
+             : nullptr;
+}
+
 //===----------------------------------------------------------------------===//
-// MO_ReduceMaxOp support
+// ReduceMaxOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult ReduceMaxOp::canonicalize(ReduceMaxOp op,
@@ -2081,6 +2119,12 @@ void ReduceMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 void ReduceMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                         TensorValue input, int64_t axis, TensorType outputTy) {
   buildReductionOp<ReduceMaxOp>(odsBuilder, odsState, input, axis, outputTy);
+}
+
+DeviceRefAttr ReduceMaxOp::getOperandDevice(size_t index) {
+  return index == getAxisMutable().getOperandNumber()
+             ? MO::getHostDeviceAny(getOperation())
+             : nullptr;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2599,7 +2643,7 @@ OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
-// MO_TransposeOp
+// TransposeOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult TransposeOp::canonicalize(TransposeOp op,
@@ -2714,6 +2758,12 @@ LogicalResult TransposeOp::verify() {
   }
 
   return success();
+}
+
+DeviceRefAttr TransposeOp::getOperandDevice(size_t index) {
+  return index == getPermMutable().getOperandNumber()
+             ? MO::getHostDeviceAny(getOperation())
+             : nullptr;
 }
 
 //===----------------------------------------------------------------------===//
