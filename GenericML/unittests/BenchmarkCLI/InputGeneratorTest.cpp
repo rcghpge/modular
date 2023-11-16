@@ -175,15 +175,120 @@ TEST(UniformInputRandomDistribution, F32InvertedError) {
             errorReporter.errors);
 }
 
-TEST(UniformInputRandomDistribution, NonF32) {
+TEST(UniformInputRandomDistribution, SI32Default) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandomUniform spec;
   auto dist =
       createUniformInputRandomDistribution(DType::si32, spec, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(dist, nullptr);
+  std::array<int32_t, 500> samples;
+  std::fill(samples.begin(), samples.end(), 12345);
+  dist->fill(samples.data(), 500);
+  int lt_0 = 0;
+  int gt_0 = 0;
+  for (int32_t sample : samples) {
+    if (sample < 0)
+      ++lt_0;
+    if (sample > 0)
+      ++gt_0;
+  }
+  EXPECT_GT(lt_0, 0)
+      << "Should have generated at least a few values less than 0";
+  EXPECT_GT(gt_0, 0)
+      << "Should have generated at least a few values greater than 0";
+}
+
+TEST(UniformInputRandomDistribution, SI32Explicit) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationRandomUniform spec;
+  spec.min = "3";
+  spec.max = "20";
+  auto dist =
+      createUniformInputRandomDistribution(DType::si32, spec, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(dist, nullptr);
+  std::array<int32_t, 500> samples;
+  std::fill(samples.begin(), samples.end(), 12345);
+  dist->fill(samples.data(), 500);
+  int lt_3 = 0;
+  int lt_12 = 0;
+  int ge_12 = 0;
+  int gt_20 = 0;
+  for (int32_t sample : samples) {
+    if (sample < -3)
+      ++lt_3;
+    if (sample < 12)
+      ++lt_12;
+    if (sample >= 12)
+      ++ge_12;
+    if (sample > 20)
+      ++gt_20;
+  }
+  EXPECT_EQ(0, lt_3) << "Unexpectedly generated values less than 3";
+  EXPECT_EQ(0, gt_20) << "Unexpectedly generated values greater than 20";
+  EXPECT_GT(lt_12, 0)
+      << "Should have generated at least a few values less than 12";
+  EXPECT_GT(ge_12, 0) << "Should have generated at least a few values >= 12";
+}
+
+TEST(UniformInputRandomDistribution, SI32ExplicitInclusive) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationRandomUniform spec;
+  spec.min = "3";
+  spec.max = "4";
+  auto dist =
+      createUniformInputRandomDistribution(DType::si32, spec, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(dist, nullptr);
+  std::array<int32_t, 500> samples;
+  std::fill(samples.begin(), samples.end(), 12345);
+  dist->fill(samples.data(), 500);
+  int eq_3 = 0;
+  int eq_4 = 0;
+  for (int32_t sample : samples) {
+    if (sample == 3)
+      ++eq_3;
+    if (sample == 4)
+      ++eq_4;
+  }
+  EXPECT_GT(eq_3, 0) << "Should have generated at least a few '3' values";
+  EXPECT_GT(eq_4, 0) << "Should have generated at least a few '4' values";
+}
+
+TEST(UniformInputRandomDistribution, SI32ParseError) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationRandomUniform spec;
+  spec.min = "sea urchin";
+  auto dist =
+      createUniformInputRandomDistribution(DType::si32, spec, errorReporter);
   EXPECT_EQ(nullptr, dist);
-  EXPECT_EQ(
-      (std::vector<ReportedError>{{{}, "Only f32 supported at this time"}}),
-      errorReporter.errors);
+  EXPECT_EQ((std::vector<ReportedError>{
+                {{"min"}, "Unable to parse 'sea urchin' as si32 value"}}),
+            errorReporter.errors);
+}
+
+TEST(UniformInputRandomDistribution, SI32InvertedError) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationRandomUniform spec;
+  spec.min = "5";
+  spec.max = "3";
+  auto dist =
+      createUniformInputRandomDistribution(DType::si32, spec, errorReporter);
+  EXPECT_EQ(nullptr, dist);
+  EXPECT_EQ((std::vector<ReportedError>{{{}, "'min' is greater than 'max'"}}),
+            errorReporter.errors);
+}
+
+TEST(UniformInputRandomDistribution, UnsupportedType) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationRandomUniform spec;
+  auto dist =
+      createUniformInputRandomDistribution(DType::f16, spec, errorReporter);
+  EXPECT_EQ(nullptr, dist);
+  EXPECT_EQ((std::vector<ReportedError>{
+                {{}, "Only f32 and si32 supported at this time"}}),
+            errorReporter.errors);
 }
 
 TEST(NormalInputRandomDistribution, Unimplemented) {

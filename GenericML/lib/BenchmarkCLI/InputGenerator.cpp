@@ -21,6 +21,8 @@ static auto withinScope(InputSchemaErrorReporter &errorReporter,
   return std::move(result);
 }
 
+// TODO: Reduce duplication between the SI32 and F32 cases here.
+
 static bool parseF32Value(StringRef value, float &out,
                           InputSchemaErrorReporter &errorReporter) {
   double outD;
@@ -53,10 +55,43 @@ static bool parseDefaultedF32Value(const std::optional<std::string> &value,
   return parseF32Value(*value, out, errorReporter);
 }
 
+static bool parseSI32Value(StringRef value, int32_t &out,
+                           InputSchemaErrorReporter &errorReporter) {
+  if (value.getAsInteger(0, out)) {
+    errorReporter.reportError("Unable to parse '" + llvm::Twine(value) +
+                              "' as si32 value");
+    return false;
+  }
+  return true;
+}
+
+[[maybe_unused]] static bool
+parseDefaultedSI32Value(StringRef value, int32_t &out, int32_t defaultValue,
+                        InputSchemaErrorReporter &errorReporter) {
+  if (value.empty()) {
+    out = defaultValue;
+    return true;
+  }
+  return parseSI32Value(value, out, errorReporter);
+}
+
+static bool parseDefaultedSI32Value(const std::optional<std::string> &value,
+                                    int32_t &out, int32_t defaultValue,
+                                    InputSchemaErrorReporter &errorReporter) {
+  if (!value.has_value() || value->empty()) {
+    out = defaultValue;
+    return true;
+  }
+  return parseSI32Value(*value, out, errorReporter);
+}
+
 namespace M::BenchmarkCLI::Detail {
-class UniformInputRandomDistribution final : public InputRandomDistribution {
+
+class UniformFloatInputRandomDistribution final
+    : public InputRandomDistribution {
 public:
-  explicit UniformInputRandomDistribution(DType dtype, float min, float max)
+  explicit UniformFloatInputRandomDistribution(DType dtype, float min,
+                                               float max)
       : InputRandomDistribution(dtype), min(min), max(max) {}
 
   void fill(void *out, size_t numElements) const override;
@@ -65,25 +100,43 @@ private:
   float min;
   float max;
 };
+
+class UniformIntegerInputRandomDistribution final
+    : public InputRandomDistribution {
+public:
+  explicit UniformIntegerInputRandomDistribution(DType dtype, int32_t min,
+                                                 int32_t max)
+      : InputRandomDistribution(dtype), min(min), max(max) {}
+
+  void fill(void *out, size_t numElements) const override;
+
+private:
+  int32_t min;
+  int32_t max;
+};
+
 } // namespace M::BenchmarkCLI::Detail
 
 namespace BCD = BenchmarkCLI::Detail;
 
-void BCD::UniformInputRandomDistribution::fill(void *out,
-                                               size_t numElements) const {
+void BCD::UniformFloatInputRandomDistribution::fill(void *out,
+                                                    size_t numElements) const {
   assert(getDType() == DType::f32);
   float *outF32 = static_cast<float *>(out);
   fillWithRandomFloats({outF32, numElements}, min, max);
 }
 
-std::unique_ptr<InputRandomDistribution>
-M::BenchmarkCLI::createUniformInputRandomDistribution(
+void BCD::UniformIntegerInputRandomDistribution::fill(
+    void *out, size_t numElements) const {
+  assert(getDType() == DType::si32);
+  int32_t *outSI32 = static_cast<int32_t *>(out);
+  fillWithRandomInts({outSI32, numElements}, min, max);
+}
+
+static std::unique_ptr<InputRandomDistribution>
+createUniformFloatInputRandomDistribution(
     DType dtype, const InputGenerationRandomUniform &spec,
     InputSchemaErrorReporter &errorReporter) {
-  if (dtype != DType::f32) {
-    errorReporter.reportError("Only f32 supported at this time");
-    return nullptr;
-  }
   float min, max;
   bool minOK = withinScope(errorReporter, "min", [&]() {
     return parseDefaultedF32Value(spec.min, min, -1.0f, errorReporter);
@@ -97,8 +150,48 @@ M::BenchmarkCLI::createUniformInputRandomDistribution(
     errorReporter.reportError("'min' is greater than 'max'");
     return nullptr;
   }
-  return std::make_unique<Detail::UniformInputRandomDistribution>(dtype, min,
-                                                                  max);
+  return std::make_unique<BCD::UniformFloatInputRandomDistribution>(dtype, min,
+                                                                    max);
+}
+
+static std::unique_ptr<InputRandomDistribution>
+createUniformIntegerInputRandomDistribution(
+    DType dtype, const InputGenerationRandomUniform &spec,
+    InputSchemaErrorReporter &errorReporter) {
+  int32_t min, max;
+  bool minOK = withinScope(errorReporter, "min", [&]() {
+    return parseDefaultedSI32Value(
+        spec.min, min, std::numeric_limits<int32_t>::lowest(), errorReporter);
+  });
+  bool maxOK = withinScope(errorReporter, "max", [&]() {
+    return parseDefaultedSI32Value(
+        spec.max, max, std::numeric_limits<int32_t>::max(), errorReporter);
+  });
+  if (!minOK || !maxOK)
+    return nullptr;
+  if (min > max) {
+    errorReporter.reportError("'min' is greater than 'max'");
+    return nullptr;
+  }
+  return std::make_unique<BCD::UniformIntegerInputRandomDistribution>(dtype,
+                                                                      min, max);
+}
+
+std::unique_ptr<InputRandomDistribution>
+M::BenchmarkCLI::createUniformInputRandomDistribution(
+    DType dtype, const InputGenerationRandomUniform &spec,
+    InputSchemaErrorReporter &errorReporter) {
+  switch (dtype.getValue()) {
+  case DType::f32:
+    return createUniformFloatInputRandomDistribution(dtype, spec,
+                                                     errorReporter);
+  case DType::si32:
+    return createUniformIntegerInputRandomDistribution(dtype, spec,
+                                                       errorReporter);
+  default:
+    errorReporter.reportError("Only f32 and si32 supported at this time");
+    return nullptr;
+  }
 }
 
 std::unique_ptr<InputRandomDistribution>
