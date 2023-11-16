@@ -275,8 +275,8 @@ public:
   virtual Value
   kernelExecute(OpBuilder &builder, Location loc,
                 TypedValue<MGP::ContextType> context, StringRef kernelName,
-                Value inChain, ArrayRef<Value> buffers,
-                ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
+                Value inChain, ArrayRef<Value> args,
+                ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
                 ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
                 SmallVectorImpl<Value> &outDimensions) = 0;
 
@@ -386,8 +386,8 @@ public:
   Value
   kernelExecute(OpBuilder &builder, Location loc,
                 TypedValue<MGP::ContextType> context, StringRef kernelName,
-                Value inChain, ArrayRef<Value> buffers,
-                ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
+                Value inChain, ArrayRef<Value> args,
+                ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
                 ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
                 SmallVectorImpl<Value> &outDimensions) override;
 
@@ -460,7 +460,7 @@ struct BufferizedTensor {
   /// The mgp.cpu.tensor_spec describing the shape and dtype of tensor
   /// at runtime.
   ///
-  /// TODO(|#17379): Avoid committing to a tensor spec, and instead just
+  /// TODO(#17379): Avoid committing to a tensor spec, and instead just
   /// capture the index-typed values holding dynamic dimensions, or the
   /// 'shape' (ie a spec with unknown dtype) if the tensor has dynamic rank.
   /// I think this change is best done when finishing supprot for dynamic

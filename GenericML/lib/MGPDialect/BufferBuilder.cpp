@@ -140,8 +140,8 @@ Value CpuBufferBuilder::kernelLoadArchive(OpBuilder &builder, Location loc,
 
 Value CpuBufferBuilder::kernelExecute(
     OpBuilder &builder, Location loc, TypedValue<MGP::ContextType> context,
-    StringRef kernelName, Value inChain, ArrayRef<Value> buffers,
-    ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
+    StringRef kernelName, Value inChain, ArrayRef<Value> args,
+    ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
     ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
     SmallVectorImpl<Value> &outDimensions) {
   uint64_t index = getCompiledKernelIndex(kernelName);
@@ -150,12 +150,12 @@ Value CpuBufferBuilder::kernelExecute(
       loc,
       /*inChain=*/inChain,
       /*theContext=*/context,
-      /*buffers=*/buffers,
+      /*buffers=*/args,
       /*inDimensions=*/inDimensions,
       /*aSlot=*/slot,
       /*bKernelIndex=*/index,
       /*cInOutSignature=*/
-      InOutSignatureAttr::get(builder.getContext(), bufferSemantics),
+      InOutSignatureAttr::get(builder.getContext(), inOutSemantics),
       /*dKernelName=*/kernelName,
       /*eNumOutDimensions=*/numOutDimensions);
 
@@ -164,7 +164,7 @@ Value CpuBufferBuilder::kernelExecute(
   // once transitioned away from num{Front,Back}OutputBuffers
   // convention.
   MGP::setNumBackOutputBuffers(
-      executeOp, llvm::count(bufferSemantics, InOutSignatureAttr::kOut));
+      executeOp, llvm::count(inOutSemantics, InOutSignatureAttr::kOut));
 
   for (Value outDimension : executeOp.getOutDimensions())
     outDimensions.emplace_back(outDimension);

@@ -611,7 +611,8 @@ def CpuBufferCopyOp : MGP_Op<"cpu.buffer.copy", [
 //===----------------------------------------------------------------------===//
 
 def CpuBufferConcatOp : MGP_Op<"cpu.buffer.concat", [
-    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>]> {
+    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
+    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>]> {
   let summary = "Concatenates a sequence of input buffers into an output "
                 "buffer.";
   let description = [{

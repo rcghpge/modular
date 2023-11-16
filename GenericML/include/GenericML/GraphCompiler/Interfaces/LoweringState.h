@@ -280,6 +280,10 @@ public:
   ErrorOr<SmallVector<Value>> lowerShapeAttrDynDims(MOSH::ShapeAttr shapeAttr,
                                                     Location loc);
 
+  const BufferBuilderContext &getBufferBuilderContext() const {
+    return builderContext;
+  }
+
   /// Register the given type builder for the given device.
   void registerTypeBuilder(DeviceRefAttr device,
                            std::unique_ptr<TypeBuilder> typeBuilder) {

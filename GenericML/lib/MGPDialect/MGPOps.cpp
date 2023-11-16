@@ -448,7 +448,9 @@ void CpuBufferReallocSpecOp::setInChain(Value chain) { setOperand(0, chain); }
 InOutSignatureAttr::InOutSemantics
 CpuBufferSetWithIndexOp::getInOutSemantics(size_t index) {
   assert(index < getNumOperands());
-  return index == 0 ? InOutSignatureAttr::kOut : InOutSignatureAttr::kIn;
+  return index == getBufferMutable().getOperandNumber()
+             ? InOutSignatureAttr::kOut
+             : InOutSignatureAttr::kIn;
 }
 
 //===----------------------------------------------------------------------===//
@@ -476,6 +478,14 @@ LogicalResult CpuBufferConcatOp::verify() {
                          << expectedOutType << " vs "
                          << getOutBuffer().getType() << ").";
   return success();
+}
+
+InOutSignatureAttr::InOutSemantics
+CpuBufferConcatOp::getInOutSemantics(size_t index) {
+  assert(index < getNumOperands());
+  return index == getOutBufferMutable().getOperandNumber()
+             ? InOutSignatureAttr::kOut
+             : InOutSignatureAttr::kIn;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1123,10 +1133,11 @@ static bool isSubtype(Type ty1, Type ty2) {
 InOutSignatureAttr::InOutSemantics
 CpuKernelExecuteOp::getInOutSemantics(size_t index) {
   assert(index < getNumOperands());
-  // inChain, theContext, and inDimensions always read-only
-  if (index < 2 || index >= 2 + getArgs().size())
+  const size_t firstArgsIndex = getTheContextMutable().getOperandNumber() + 1;
+  const size_t endArgsIndex = firstArgsIndex + getArgs().size();
+  if (index < firstArgsIndex || index >= endArgsIndex)
     return InOutSignatureAttr::kIn;
-  return getCInOutSignature()[index - 2];
+  return getCInOutSignature()[index - firstArgsIndex];
 }
 
 //===----------------------------------------------------------------------===//
