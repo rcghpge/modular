@@ -4,6 +4,9 @@
 #
 # ===----------------------------------------------------------------------=== #
 
+from tensor import Tensor, TensorSpec, TensorShape
+from utils.vector import DynamicVector
+
 from .misc import Arity, AttrMap
 from .mobicc import (
     AttrPtr,
@@ -14,7 +17,6 @@ from .mobicc import (
     GraphPtr,
 )
 from .type import Type
-from tensor import Tensor, TensorSpec, TensorShape
 
 # TODO: DynamicVectors all need a _del_old() call.
 
