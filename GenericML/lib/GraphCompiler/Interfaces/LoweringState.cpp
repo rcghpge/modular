@@ -281,29 +281,67 @@ MOGraphLoweringState::lowerExpressionImpl(ParameterLoweringState &state,
 // MOOpLoweringState
 //===----------------------------------------------------------------------===//
 
-BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {
-  Value loweredTensor = loweringState.lookupExecuteLoweredValue(moTensor);
-  assert(loweredTensor && "referenced SSA value has not been lowered");
-  auto [buffer, tensorSpec] = tensorExtract(loweredTensor);
-  return BufferizedTensor(buffer, tensorSpec);
-}
-
 SmallVector<Value> MOOpLoweringState::getLoweredOperands(bool keepTensorSpec) {
   SmallVector<Value> loweredOperands;
   for (Value operand : opBeingLowered->getOperands()) {
     Value loweredInput = loweringState.lookupExecuteLoweredValue(operand);
 
     if (isa<MO::TensorType>(operand.getType())) {
-      auto [buffer, tensorSpec] = tensorExtract(loweredInput);
-      loweredOperands.push_back(buffer);
+      BufferizedTensor bufferizedInput = getBufferizedInput(operand);
+      loweredOperands.push_back(bufferizedInput.buffer);
       if (keepTensorSpec)
-        loweredOperands.push_back(tensorSpec);
-
+        loweredOperands.push_back(bufferizedInput.tensorSpec);
     } else {
       loweredOperands.push_back(loweredInput);
     }
   }
   return loweredOperands;
+}
+
+FailureOr<SmallVector<MOOutputStorage>>
+MOOpLoweringState::createOutputStorage(Value inChain) {
+  FailureOr<SmallVector<TypedValue<MGP::CpuTensorSpecType>>> tensorSpecsOr =
+      createOutputTensorSpecs();
+  if (failed(tensorSpecsOr))
+    return failure();
+  SmallVector<BufferizedTensor> bufferizedTensors;
+  bufferizedTensors.reserve(tensorSpecsOr->size());
+  for (auto [spec, result] :
+       llvm::zip(*tensorSpecsOr, opBeingLowered->getResults())) {
+    bufferizedTensors.emplace_back(
+        createBuffer(inChain, spec, result.getType()));
+  }
+  return bufferizedTensors;
+}
+
+Value MOOpLoweringState::kernelExecute(
+    StringRef kernelName, Value inChain, ArrayRef<Value> args,
+    ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
+    ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
+    SmallVectorImpl<Value> &outDimensions) {
+  MGP::BufferBuilder *bufferBuilder =
+      loweringState.getBufferBuilder(MO::getDeviceOrDefaultAny(opBeingLowered));
+  return bufferBuilder->kernelExecute(
+      builder, loc, context, kernelName, inChain, args, inOutSemantics,
+      inDimensions, numOutDimensions, outDimensions);
+}
+
+void MOOpLoweringState::createOutputs(
+    Value inChain, SmallVector<MOOutputStorage> &loweredOutputsStorage) {
+  for (const auto &[idx, outputStorage] :
+       llvm::enumerate(loweredOutputsStorage)) {
+    createOutputTensor(opBeingLowered->getResult(idx), inChain,
+                       outputStorage.buffer, outputStorage.tensorSpec);
+  }
+}
+
+BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {
+  Value loweredTensor = loweringState.lookupExecuteLoweredValue(moTensor);
+  assert(loweredTensor && "referenced SSA value has not been lowered");
+  auto [buffer, tensorSpec] =
+      getStorageBufferBuilder(moTensor.getType())
+          ->tensorExtract(builder, loc, context, loweredTensor);
+  return BufferizedTensor(buffer, tensorSpec);
 }
 
 FailureOr<TypedValue<MGP::CpuTensorSpecType>>
@@ -343,7 +381,7 @@ MOOpLoweringState::createOutputTensorSpecs() {
   tensorSpecs.reserve(opBeingLowered->getNumResults());
   for (Type type : opBeingLowered->getResults().getType()) {
     auto moTensorType = dyn_cast<MO::TensorType>(type);
-    assert(moTensorType && "expected op to return only MO tensor types");
+    assert(moTensorType && "result of op is not a !mo.tensor");
     FailureOr<TypedValue<MGP::CpuTensorSpecType>> tensorSpecOr =
         createTensorSpec(moTensorType);
     if (failed(tensorSpecOr))
@@ -355,34 +393,32 @@ MOOpLoweringState::createOutputTensorSpecs() {
 
 BufferizedTensor
 MOOpLoweringState::createBuffer(Value inChain,
-                                TypedValue<CpuTensorSpecType> tensorSpec) {
+                                TypedValue<CpuTensorSpecType> tensorSpec,
+                                Type moTensorType) {
+  BufferBuilder *bufferBuilder = getStorageBufferBuilder(moTensorType);
   std::optional<uint64_t> optSize = tensorSpec.getType().getSizeInBytes();
   if (optSize) {
     // Statically sized. We don't actually need the tensor spec value to
     // allocate, and it may end up being eliminated by DCE.
-    return BufferizedTensor(bufferAllocStatic(inChain, *optSize), tensorSpec);
+    return BufferizedTensor(
+        bufferBuilder->bufferAllocStatic(builder, loc, context, inChain,
+                                         *optSize, minimumCpuAlignment),
+        tensorSpec);
   } else {
     // Dynamically sized.
-    return BufferizedTensor(bufferAllocSpec(inChain, tensorSpec), tensorSpec);
+    return BufferizedTensor(
+        bufferBuilder->bufferAllocSpec(builder, loc, context, inChain,
+                                       tensorSpec, minimumCpuAlignment),
+        tensorSpec);
   }
-}
-
-FailureOr<SmallVector<BufferizedTensor>>
-MOOpLoweringState::createOutputBuffers(Value inChain) {
-  FailureOr<SmallVector<TypedValue<MGP::CpuTensorSpecType>>> tensorSpecsOr =
-      createOutputTensorSpecs();
-  if (failed(tensorSpecsOr))
-    return failure();
-  return llvm::map_to_vector(
-      *tensorSpecsOr, [&](TypedValue<MGP::CpuTensorSpecType> tensorSpec) {
-        return createBuffer(inChain, tensorSpec);
-      });
 }
 
 void MOOpLoweringState::createOutputTensor(
     Value moTensor, Value inChain, Value buffer,
     TypedValue<MGP::CpuTensorSpecType> tensorSpec) {
-  Value loweredTensor = tensorCreate(inChain, buffer, tensorSpec);
+  Value loweredTensor =
+      getStorageBufferBuilder(moTensor.getType())
+          ->tensorCreate(builder, loc, context, inChain, buffer, tensorSpec);
   loweringState.emplaceExecuteLoweredValue(moTensor, loweredTensor);
 }
 
@@ -395,9 +431,9 @@ void MOOpLoweringState::createOutputTensors(
                        tensorSpec);
 }
 
-void MOOpLoweringState::createOutputTensors(
-    Value inChain, SmallVector<BufferizedTensor> &bufferizedOutputs) {
-  for (const auto &[idx, bufferizedOutput] : llvm::enumerate(bufferizedOutputs))
-    createOutputTensor(opBeingLowered->getResult(idx), inChain,
-                       bufferizedOutput.buffer, bufferizedOutput.tensorSpec);
+BufferBuilder *MOOpLoweringState::getStorageBufferBuilder(Type moTensorType) {
+  auto type = dyn_cast<MO::TensorType>(moTensorType);
+  assert(type && "expecting !mo.tensor type");
+  return loweringState.getBufferBuilder(
+      MO::getDeviceOrDefault(loweringState.getGraph(), type));
 }

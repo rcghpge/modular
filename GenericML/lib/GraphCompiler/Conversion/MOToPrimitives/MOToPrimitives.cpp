@@ -494,44 +494,42 @@ MOGraphLowering::lowerParamConstant(KGEN::ParamConstantOp paramConstOp) {
 
 LogicalResult
 MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
-  // NOTE: This op is for CPU only.
-  MGP::MOOpLoweringState opLoweringState(loweringState, toTensorOp,
-                                         loweringState.getHostDevice());
+  assert(MO::isOnHost(toTensorOp) && "mo.index.to_tensor is for host only");
+  MGP::MOOpLoweringState opLoweringState(loweringState, toTensorOp);
 
   // Setup output buffer.
-  FailureOr<SmallVector<MGP::BufferizedTensor>> bufferizedOutputsOr =
-      opLoweringState.createOutputBuffers(loweringState.getExecuteChain());
-  if (failed(bufferizedOutputsOr))
+  FailureOr<SmallVector<MGP::MOOutputStorage>> loweredOutputStorageOr =
+      opLoweringState.createOutputStorage(loweringState.getExecuteChain());
+  if (failed(loweredOutputStorageOr))
     return failure();
-  auto &bufferizedOutput = (*bufferizedOutputsOr)[0];
-  assert(isa<MGP::CpuBufferType>(bufferizedOutput.buffer.getType()) &&
-         "must be on CPU");
+  auto &outputStorage = (*loweredOutputStorageOr)[0];
+  assert(isa<MGP::CpuBufferType>(outputStorage.buffer.getType()) &&
+         "expecting !mgp.cpu.buffer output");
 
   // Fill the buffer with the index value.
   Value loweredIndexVal =
       loweringState.lookupExecuteLoweredValue(toTensorOp.getInput());
   auto bufferSetOp = opLoweringState.create<MGP::CpuBufferSetWithIndexOp>(
-      /*buffer=*/bufferizedOutput.buffer, /*value=*/loweredIndexVal);
+      /*buffer=*/outputStorage.buffer, /*value=*/loweredIndexVal);
 
   // Setup output tensor.
-  opLoweringState.createOutputTensors(bufferSetOp.getOutChain(),
-                                      *bufferizedOutputsOr);
+  opLoweringState.createOutputs(bufferSetOp.getOutChain(),
+                                *loweredOutputStorageOr);
   return success();
 }
 
 LogicalResult
 MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
-  // NOTE: This op is for CPU only.
-  MGP::MOOpLoweringState opLoweringState(loweringState, toTensorOp,
-                                         loweringState.getHostDevice());
+  assert(MO::isOnHost(toTensorOp) && "mo.shape.to_tensor is for host only");
+  MGP::MOOpLoweringState opLoweringState(loweringState, toTensorOp);
 
   // Setup output buffer.
-  FailureOr<SmallVector<MGP::BufferizedTensor>> bufferizedOutputsOr =
-      opLoweringState.createOutputBuffers(loweringState.getExecuteChain());
-  if (failed(bufferizedOutputsOr))
+  FailureOr<SmallVector<MGP::MOOutputStorage>> loweredOutputsStorageOr =
+      opLoweringState.createOutputStorage(loweringState.getExecuteChain());
+  if (failed(loweredOutputsStorageOr))
     return failure();
-  auto &bufferizedOutput = (*bufferizedOutputsOr)[0];
-  assert(isa<MGP::CpuBufferType>(bufferizedOutput.buffer.getType()) &&
+  auto &outputStorage = (*loweredOutputsStorageOr)[0];
+  assert(isa<MGP::CpuBufferType>(outputStorage.buffer.getType()) &&
          "must be on CPU");
 
   // Fill the buffer with the runtime dimensions.
@@ -540,26 +538,25 @@ MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
   auto loweredTensorSpec =
       cast<TypedValue<MGP::CpuTensorSpecType>>(loweredShape);
   // Note loweredTensorSpec is the encoding for the shape we are trying to
-  // reify as a tensor, whereas bufferizedOutput.tensorSpec just describes
+  // reify as a tensor, whereas outputStorage.tensorSpec just describes
   // the statically known shape of our output tensor.
   auto dynDimsOp = opLoweringState.create<MGP::CpuTensorSpecDimsDynamicOp>(
       /*spec=*/loweredTensorSpec,
       /*rawDims=*/loweredTensorSpec.getType().getRawDims());
   auto bufferSetOp = opLoweringState.create<MGP::CpuBufferSetWithIndexOp>(
-      /*buffer=*/bufferizedOutput.buffer,
+      /*buffer=*/outputStorage.buffer,
       /*values=*/dynDimsOp.getResults());
 
   // Setup output tensor.
-  opLoweringState.createOutputTensors(bufferSetOp.getOutChain(),
-                                      *bufferizedOutputsOr);
+  opLoweringState.createOutputs(bufferSetOp.getOutChain(),
+                                *loweredOutputsStorageOr);
   return success();
 }
 
 /// Returns the lowered tensor that the rebind's result should map to.
 static Value getRebindResTensor(MO::RebindOp rebindOp,
                                 MGP::MOGraphLoweringState &loweringState) {
-  MGP::MOOpLoweringState opLoweringState(loweringState, rebindOp,
-                                         getDeviceOrDefault(rebindOp));
+  MGP::MOOpLoweringState opLoweringState(loweringState, rebindOp);
 
   MO::TensorValue inputTensor = rebindOp.getInput();
   MO::TensorType inputTy = inputTensor.getType();
@@ -609,12 +606,12 @@ static Value getRebindResTensor(MO::RebindOp rebindOp,
   }
 
   // Create the output tensor.
-  Value buffer = opLoweringState.tensorExtract(loweredInput).first;
+  Value buffer = opLoweringState.tensorExtract(loweredInput, inputTy).first;
   TypedValue<MGP::CpuTensorSpecType> tensorSpec =
       opLoweringState.create<MGP::CpuTensorSpecCreateOp>(outSpecTy,
                                                          runtimeDims);
   return opLoweringState.tensorCreate(loweringState.getExecuteChain(), buffer,
-                                      tensorSpec);
+                                      tensorSpec, inputTy);
 }
 
 LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
@@ -659,14 +656,14 @@ LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
 }
 
 LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
-  MGP::MOOpLoweringState opLoweringState(loweringState, constOp,
-                                         getDeviceOrDefault(constOp));
+  MGP::MOOpLoweringState opLoweringState(loweringState, constOp);
 
   ErrorOr<ElementsAttr> elementsOr = lowerElementsAttr(constOp.getValue());
   if (elementsOr)
     return constOp->emitOpError(elementsOr.getError());
 
-  Value buffer = opLoweringState.bufferConstant(*elementsOr);
+  Value buffer = opLoweringState.bufferConstant(*elementsOr,
+                                                constOp.getResult().getType());
   FailureOr<TypedValue<MGP::CpuTensorSpecType>> tensorSpecOr =
       opLoweringState.createTensorSpec(constOp.getType());
   if (failed(tensorSpecOr))
@@ -679,8 +676,7 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
 
 LogicalResult
 MOGraphLowering::lowerStaticReshape(MO::Static::ReshapeOp reshapeOp) {
-  MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp,
-                                         getDeviceOrDefault(reshapeOp));
+  MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp);
 
   // Get the bufferized input.
   MGP::BufferizedTensor bufferizedInput =
@@ -701,8 +697,7 @@ MOGraphLowering::lowerStaticReshape(MO::Static::ReshapeOp reshapeOp) {
 LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
   // Note the lowering is currently identical to Static::ReshapeOp.
   // TODO(#12718): Validate user-annotated shape.
-  MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp,
-                                         getDeviceOrDefault(reshapeOp));
+  MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp);
 
   // Get the bufferized input.
   MGP::BufferizedTensor bufferizedInput =
@@ -721,53 +716,47 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
 
 LogicalResult
 MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
-  MGP::MOOpLoweringState opLoweringState(loweringState, printOp,
-                                         getDeviceOrDefault(printOp));
+  MGP::MOOpLoweringState opLoweringState(loweringState, printOp);
   auto loweredTensor =
       loweringState.lookupExecuteLoweredValue(printOp.getInput());
   Value outChain = opLoweringState.debugTensorPrint(
-      loweringState.getExecuteChain(), loweredTensor, printOp.getLabelAttr());
+      loweringState.getExecuteChain(), loweredTensor, printOp.getLabelAttr(),
+      printOp.getInput().getType());
   loweringState.setExecuteChain(outChain);
   return success();
 }
 
 LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
+  MGP::MOOpLoweringState opLoweringState(loweringState, transferOp);
+
   DeviceRefAttr srcDevice = getDeviceOrDefault(loweringState.getGraph(),
                                                transferOp.getInput().getType());
-  if (!srcDevice) {
-    return transferOp->emitOpError(
-        "requires operand tensor type to be annotated with the source device.");
-  }
   DeviceRefAttr dstDevice = transferOp.getDestDeviceAttr();
   DeviceRefAttr hostDevice = loweringState.getHostDevice();
   if (srcDevice == dstDevice) {
-    return transferOp->emitOpError("transfer between the same device ")
+    return transferOp->emitOpError("mo.transfer between the same device ")
            << srcDevice << " is not supported.";
   }
 
-  MGP::MOOpLoweringState opSrcLoweringState(loweringState, transferOp,
-                                            srcDevice);
   MGP::BufferizedTensor bufferizedInput =
-      opSrcLoweringState.getBufferizedInput(transferOp.getInput());
-
-  MGP::MOOpLoweringState opDstLoweringState(loweringState, transferOp,
-                                            dstDevice);
-  FailureOr<SmallVector<MGP::BufferizedTensor>> bufferizedOutputsOr =
-      opDstLoweringState.createOutputBuffers(loweringState.getExecuteChain());
-  if (failed(bufferizedOutputsOr))
+      opLoweringState.getBufferizedInput(transferOp.getInput());
+  FailureOr<SmallVector<MGP::MOOutputStorage>> loweredOutputsStorageOr =
+      opLoweringState.createOutputStorage(loweringState.getExecuteChain());
+  if (failed(loweredOutputsStorageOr))
     return failure();
-  SmallVector<MGP::BufferizedTensor> &bufferizedOutputs = *bufferizedOutputsOr;
+  auto &loweredOutputsStorage = *loweredOutputsStorageOr;
 
   Value outChain;
   if (srcDevice == hostDevice) {
-    outChain = opDstLoweringState.bufferTransferFromHost(
+    outChain = opLoweringState.bufferTransferFromHost(
         loweringState.getExecuteChain(),
         cast<TypedValue<MGP::CpuBufferType>>(bufferizedInput.buffer),
-        bufferizedOutputs[0].buffer);
+        loweredOutputsStorage[0].buffer, transferOp.getResult().getType());
   } else if (dstDevice == hostDevice) {
-    outChain = opSrcLoweringState.bufferTransferToHost(
+    outChain = opLoweringState.bufferTransferToHost(
         loweringState.getExecuteChain(), bufferizedInput.buffer,
-        cast<TypedValue<MGP::CpuBufferType>>(bufferizedOutputs[0].buffer));
+        cast<TypedValue<MGP::CpuBufferType>>(loweredOutputsStorage[0].buffer),
+        transferOp.getInput().getType());
   } else {
     return transferOp->emitOpError("transfer from ")
            << srcDevice << " to " << dstDevice
@@ -776,12 +765,15 @@ LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
            << hostDevice << ".";
   }
 
-  opDstLoweringState.createOutputTensors(outChain, bufferizedOutputs);
+  opLoweringState.createOutputs(outChain, loweredOutputsStorage);
   return success();
 }
 
 LogicalResult MOGraphLowering::lowerListAppend(MO::ListAppendOp listAppendOp) {
-  // Collect lowered input tensors
+  assert(MO::isOnHost(listAppendOp) && "mo.list.append is for host only");
+  MGP::MOOpLoweringState opLoweringState(loweringState, listAppendOp);
+
+  // Collect lowered inputs.
   Value mgpInputList =
       loweringState.lookupExecuteLoweredValue(listAppendOp.getInput());
   Value mgpElementTensor =
@@ -791,8 +783,6 @@ LogicalResult MOGraphLowering::lowerListAppend(MO::ListAppendOp listAppendOp) {
   MGP::ListType mgpOutputListTy = lowerListType(listAppendOp.getType());
 
   // Construct the corresponding mgp.list.insert op
-  MGP::MOOpLoweringState opLoweringState(loweringState, listAppendOp,
-                                         getDeviceOrDefault(listAppendOp));
   Value mgpOutputTensor = opLoweringState.create<MGP::ListAppendOp>(
       mgpOutputListTy, mgpInputList, mgpElementTensor);
   loweringState.emplaceExecuteLoweredValue(listAppendOp, mgpOutputTensor);
@@ -801,6 +791,9 @@ LogicalResult MOGraphLowering::lowerListAppend(MO::ListAppendOp listAppendOp) {
 }
 
 LogicalResult MOGraphLowering::lowerListCreate(MO::ListCreateOp listCreateOp) {
+  assert(MO::isOnHost(listCreateOp) && "mo.list.create is for host only");
+  MGP::MOOpLoweringState opLoweringState(loweringState, listCreateOp);
+
   // Collect lowered input tensors
   SmallVector<Value> mgpInputTensors;
   for (Value input : listCreateOp.getInputs()) {
@@ -811,8 +804,6 @@ LogicalResult MOGraphLowering::lowerListCreate(MO::ListCreateOp listCreateOp) {
   MGP::ListType mgpOutputListTy = lowerListType(listCreateOp.getType());
 
   // Construct the corresponding mgp.list.create op
-  MGP::MOOpLoweringState opLoweringState(loweringState, listCreateOp,
-                                         getDeviceOrDefault(listCreateOp));
   Value mgpOutputList = opLoweringState.create<MGP::ListCreateOp>(
       mgpOutputListTy, mgpInputTensors);
   loweringState.emplaceExecuteLoweredValue(listCreateOp, mgpOutputList);
@@ -821,15 +812,16 @@ LogicalResult MOGraphLowering::lowerListCreate(MO::ListCreateOp listCreateOp) {
 }
 
 LogicalResult MOGraphLowering::lowerListGet(MO::ListGetOp listGetOp) {
-  // Collect lowered input tensors
+  assert(MO::isOnHost(listGetOp) && "mo.list.get is for host only");
+  MGP::MOOpLoweringState opLoweringState(loweringState, listGetOp);
+
+  // Collect lowered inputs.
   Value mgpInputList =
       loweringState.lookupExecuteLoweredValue(listGetOp.getInput());
   Value mgpIndexTensor =
       loweringState.lookupExecuteLoweredValue(listGetOp.getIndex());
 
   // Construct the corresponding mgp.list.create op
-  MGP::MOOpLoweringState opLoweringState(loweringState, listGetOp,
-                                         getDeviceOrDefault(listGetOp));
   Value mgpOutputTensor =
       opLoweringState.create<MGP::ListGetOp>(mgpInputList, mgpIndexTensor);
   loweringState.emplaceExecuteLoweredValue(listGetOp, mgpOutputTensor);
@@ -838,7 +830,10 @@ LogicalResult MOGraphLowering::lowerListGet(MO::ListGetOp listGetOp) {
 }
 
 LogicalResult MOGraphLowering::lowerListInsert(MO::ListInsertOp listInsertOp) {
-  // Collect lowered input tensors
+  assert(MO::isOnHost(listInsertOp) && "mo.list.insert is for host only");
+  MGP::MOOpLoweringState opLoweringState(loweringState, listInsertOp);
+
+  // Collect lowered inputs.
   Value mgpInputList =
       loweringState.lookupExecuteLoweredValue(listInsertOp.getInput());
   Value mgpElementTensor =
@@ -850,8 +845,6 @@ LogicalResult MOGraphLowering::lowerListInsert(MO::ListInsertOp listInsertOp) {
   MGP::ListType mgpOutputListTy = lowerListType(listInsertOp.getType());
 
   // Construct the corresponding mgp.list.insert op
-  MGP::MOOpLoweringState opLoweringState(loweringState, listInsertOp,
-                                         getDeviceOrDefault(listInsertOp));
   Value mgpOutputTensor = opLoweringState.create<MGP::ListInsertOp>(
       mgpOutputListTy, mgpInputList, mgpElementTensor, mgpIndexTensor);
   loweringState.emplaceExecuteLoweredValue(listInsertOp, mgpOutputTensor);
@@ -860,13 +853,8 @@ LogicalResult MOGraphLowering::lowerListInsert(MO::ListInsertOp listInsertOp) {
 }
 
 LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
-  if (getDeviceOrDefault(ifOp) != loweringState.getHostDevice()) {
-    ifOp->emitOpError("op must be assigned to the host");
-    return failure();
-  }
-
-  MGP::MOOpLoweringState opLoweringState(loweringState, ifOp,
-                                         getDeviceOrDefault(ifOp));
+  assert(MO::isOnHost(ifOp) && "mo.if is for host only");
+  MGP::MOOpLoweringState opLoweringState(loweringState, ifOp);
   Value mainChain = loweringState.getExecuteChain();
 
   // Lower the condition.
@@ -955,13 +943,8 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
 }
 
 LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
-  if (getDeviceOrDefault(whileOp) != loweringState.getHostDevice()) {
-    whileOp->emitOpError("op must be assigned to the host");
-    return failure();
-  }
-
-  MGP::MOOpLoweringState opLoweringState(loweringState, whileOp,
-                                         getDeviceOrDefault(whileOp));
+  assert(MO::isOnHost(whileOp) && "mo.while is for host only");
+  MGP::MOOpLoweringState opLoweringState(loweringState, whileOp);
 
   // We'll need to thread the 'execute' chain through the while loop's 'cond'
   // and 'body' blocks.
@@ -1058,12 +1041,17 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   // additional variables between the output chain, context and, the condition,
   // and fix the condition to be an i1.
   {
-    auto condOutputOp = cast<MEF::OutputOp>(
+    auto origYieldOp =
+        cast<MO::YieldOp>(whileOp.getCondRegion().front().getTerminator());
+    assert(origYieldOp->getNumOperands() == 1); // condition
+    Type condMoTensorType = origYieldOp.getOperand(0).getType();
+
+    auto loweredCondOutputOp = cast<MEF::OutputOp>(
         loweredWhileOp.getCondRegion().front().getTerminator());
-    assert(condOutputOp->getNumOperands() ==
-           3); // chain, context, and condition
-    Value loweredOutputChain = condOutputOp->getOperand(0);
-    Value loweredCondTensor = condOutputOp->getOperand(2);
+    assert(loweredCondOutputOp->getNumOperands() ==
+           3); // chain, context, condition
+    Value loweredOutputChain = loweredCondOutputOp->getOperand(0);
+    Value loweredCondTensor = loweredCondOutputOp->getOperand(2);
 
     SmallVector<Value> condOutputOpOperands;
     condOutputOpOperands.reserve(loweredWhileOp->getNumResults() + 1);
@@ -1077,15 +1065,17 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
         llvm::drop_begin(loweredWhileOp.getCondRegion().getArguments()));
 
     // i1 condition
-    opLoweringState.builder.setInsertionPoint(condOutputOp);
-    Value condBuffer = opLoweringState.tensorExtract(loweredCondTensor).first;
+    opLoweringState.builder.setInsertionPoint(loweredCondOutputOp);
+    Value condBuffer =
+        opLoweringState.tensorExtract(loweredCondTensor, condMoTensorType)
+            .first;
     Value loweredInputChain = loweredWhileOp.getCondRegion().getArgument(0);
     Value condBool =
         opLoweringState.create<MGP::ToGRTBoolOp>(loweredInputChain, condBuffer);
     condOutputOpOperands.emplace_back(condBool);
 
-    condOutputOp.getOperandsMutable().clear();
-    condOutputOp.getOperandsMutable().append(condOutputOpOperands);
+    loweredCondOutputOp.getOperandsMutable().clear();
+    loweredCondOutputOp.getOperandsMutable().append(condOutputOpOperands);
   }
 
   // Capture the lowered outputs.

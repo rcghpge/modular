@@ -375,6 +375,12 @@ inline SmallVector<MO::TensorType> castToMoTensorTypes(TypeRange types) {
 // MOOpLoweringState
 //===----------------------------------------------------------------------===//
 
+/// Currently only !mo.tensors may be returned from MO ops. As we add
+/// support for additional types, this type will need to change to be
+/// a variant for all output storage + additional metadata representations
+/// we need to manage the DPS convention.
+using MOOutputStorage = BufferizedTensor;
+
 /// Helper class for managing the value-semantic to buffer-semantic transition
 /// when lowering a single MO op.
 struct MOOpLoweringState {
@@ -383,90 +389,57 @@ struct MOOpLoweringState {
   mlir::Operation *opBeingLowered;
   mlir::Location loc;
   TypedValue<MGP::ContextType> context;
-  BufferBuilder *bufferBuilder;
+  uint64_t minimumCpuAlignment;
 
   MOOpLoweringState(MGP::MOGraphLoweringState &loweringState,
-                    mlir::Operation *op, DeviceRefAttr device)
+                    mlir::Operation *op)
       : loweringState(loweringState),
         builder(loweringState.getExecuteOpBuilder()), opBeingLowered(op),
         loc(op->getLoc()), context(loweringState.getExecuteMgpContext()),
-        bufferBuilder(loweringState.getBufferBuilder(device)) {}
+        minimumCpuAlignment(loweringState.getMinimumCpuAlignment()) {}
 
-  //
-  // The following methods redirect to the loweringState.bufferBuilder, but
-  // use the builder and location from this builder state.
-  // However, loadKernelArchive is not implemented since it does not apply to
-  // a single MO op.
-  //
+  //===-----------------------------------------------------------------===//
+  // Main API
+  //===-----------------------------------------------------------------===//
 
-  Value bufferConstant(ElementsAttr value) {
-    return bufferBuilder->bufferConstant(builder, loc, context, value);
-  }
-  std::pair<Value, TypedValue<CpuTensorSpecType>>
-  tensorExtract(Value loweredTensor) {
-    return bufferBuilder->tensorExtract(builder, loc, context, loweredTensor);
-  }
-  TypedValue<CpuTensorSpecType> tensorExtractShape(Value loweredTensor) {
-    return bufferBuilder->tensorExtractShape(builder, loc, context,
-                                             loweredTensor);
-  }
-  Value tensorCreate(Value inChain, Value buffer,
-                     TypedValue<CpuTensorSpecType> tensorSpec) {
-    return bufferBuilder->tensorCreate(builder, loc, context, inChain, buffer,
-                                       tensorSpec);
-  }
-  Value bufferAllocStatic(Value inChain, uint64_t size) {
-    return bufferBuilder->bufferAllocStatic(
-        builder, loc, context, inChain, size,
-        loweringState.getMinimumCpuAlignment());
-  }
-  Value bufferAllocSpec(Value inChain,
-                        TypedValue<MGP::CpuTensorSpecType> tensorSpec) {
-    return bufferBuilder->bufferAllocSpec(
-        builder, loc, context, inChain, tensorSpec,
-        loweringState.getMinimumCpuAlignment());
-  }
-  Value bufferTransferFromHost(Value inChain,
-                               TypedValue<MGP::CpuBufferType> srcBuffer,
-                               Value dstBuffer) {
-    return bufferBuilder->bufferTransferFromHost(builder, loc, context, inChain,
-                                                 srcBuffer, dstBuffer);
-  }
-  Value bufferTransferToHost(Value inChain, Value srcBuffer,
-                             TypedValue<MGP::CpuBufferType> dstBuffer) {
-    return bufferBuilder->bufferTransferToHost(builder, loc, context, inChain,
-                                               srcBuffer, dstBuffer);
-  }
-  Value debugTensorPrint(Value inChain, Value tensor, StringAttr label) {
-    return bufferBuilder->debugTensorPrint(builder, loc, context, inChain,
-                                           tensor, label);
-  }
+  /// Returns the lowered form for all of the op's operands:
+  /// - !mo.tensor operands are passed as the buffer extracted from the lowered
+  ///   tensors. Both the buffer and tensor will match the storage device
+  ///   associated with the !mo.tensor type.
+  /// - In addition, if keepTensorSpec is true, then the corresponding
+  ///   extracted tensor spec is also passed. However this is only required
+  ///   when lowering the generic MOGG::ExtOp.
+  /// - All other operands are passed in the lowered form directly.
+  SmallVector<Value> getLoweredOperands(bool keepTensorSpec = false);
+
+  /// Returns the storage for all of the op's results, which will be passed in
+  /// destination-passing-style.
+  ///  - !mo.tensor results are passed as a freshly allocated buffer. The buffer
+  ///    will match the storage device associated with the !mo.tensor result.
+  ///  - A tensor spec will also be created, and paired with the buffer in the
+  ///    results.
+  ///  - No other types are currently supported in output form.
+  FailureOr<SmallVector<MOOutputStorage>> createOutputStorage(Value inChain);
+
+  /// Call the given kernel, which should execute on the same device as the
+  /// op being lowered.
   Value
-  kernelExecute(StringRef kernelName, Value inChain, ArrayRef<Value> buffers,
-                ArrayRef<InOutSignatureAttr::InOutSemantics> bufferSemantics,
+  kernelExecute(StringRef kernelName, Value inChain, ArrayRef<Value> args,
+                ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
                 ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
-                SmallVectorImpl<Value> &outDimensions) {
-    return bufferBuilder->kernelExecute(
-        builder, loc, context, kernelName, inChain, buffers, bufferSemantics,
-        inDimensions, numOutDimensions, outDimensions);
-  }
+                SmallVectorImpl<Value> &outDimensions);
 
-  /// Creates an operation of specific op type at the current insertion point.
-  template <typename OpTy, typename... Args>
-  OpTy create(Args &&...args) {
-    return builder.create<OpTy, Args...>(loc, std::forward<Args>(args)...);
-  }
+  /// Create the outputs from the storage and additional metadata created for
+  /// the call. Associate the outputs with the original MO op results.
+  void createOutputs(Value inChain,
+                     SmallVector<MOOutputStorage> &loweredOutputsStorage);
+
+  //===-----------------------------------------------------------------===//
+  // Input and Output helpers
+  //===-----------------------------------------------------------------===//
 
   /// Returns the bufferized form for the MO tensor value.
   BufferizedTensor getBufferizedInput(Value moTensor);
-
-  /// Returns the lowered form for all of the op's operands:
-  /// - !mo.tensor operands are represented by the extracted buffer of their
-  ///   lowered tensor. (If keepTensorSpec is true, then the corresponding
-  ///   extracted tensor spec is also included, however this is only required
-  ///   when lowering the generic MOGG::ExtOp.)
-  /// - all other operands are represented directly by their lowered form.
-  SmallVector<Value> getLoweredOperands(bool keepTensorSpec = false);
 
   /// Returns the tensor spec to represent the given MO tensor type, accounting
   /// for any dynamic ranks or dimensions.
@@ -478,15 +451,14 @@ struct MOOpLoweringState {
   createOutputTensorSpecs();
 
   /// Returns the bufferized form for a buffer sizes to match the given
-  /// tensor spec.
+  /// tensor spec and storage device of moTensorType.
   BufferizedTensor createBuffer(Value inChain,
-                                TypedValue<CpuTensorSpecType> tensorSpec);
-
-  /// Returns the bufferized form for the op's outputs.
-  FailureOr<SmallVector<BufferizedTensor>> createOutputBuffers(Value inChain);
+                                TypedValue<CpuTensorSpecType> tensorSpec,
+                                Type moTensorType);
 
   /// Creates a tensor from the given buffer and tensor spec, and associates it
-  /// with the given original MO tensor.
+  /// with the given original MO tensor. The tensor will be created on the
+  /// storage device of moTensor.
   void createOutputTensor(Value moTensor, Value inChain, Value buffer,
                           TypedValue<MGP::CpuTensorSpecType> tensorSpec);
 
@@ -496,10 +468,63 @@ struct MOOpLoweringState {
       Value inChain, SmallVector<Value> &buffers,
       SmallVector<TypedValue<MGP::CpuTensorSpecType>> &tensorSpecs);
 
-  /// Create tensors matching all the op outputs in bufferized form, and
-  /// associates them with the original MO tensor results.
-  void createOutputTensors(Value inChain,
-                           SmallVector<BufferizedTensor> &bufferizedOutputs);
+  //===-----------------------------------------------------------------===//
+  // MLIR create helpers
+  //===-----------------------------------------------------------------===//
+
+  /// Creates an operation of specific op type at the current insertion point.
+  template <typename OpTy, typename... Args>
+  OpTy create(Args &&...args) {
+    return builder.create<OpTy, Args...>(loc, std::forward<Args>(args)...);
+  }
+
+  /// Returns the buffer builder appropriate for the device on which the
+  /// given !mo.tensor should be stored.
+  BufferBuilder *getStorageBufferBuilder(Type moTensorType);
+
+  //
+  // These all redirect to the similarly named BufferBuilder method using
+  // the builder appropriate for the storage device of the given moTensorType.
+  //
+
+  std::pair<Value, TypedValue<CpuTensorSpecType>>
+  tensorExtract(Value loweredTensor, Type moTensorType) {
+    return getStorageBufferBuilder(moTensorType)
+        ->tensorExtract(builder, loc, context, loweredTensor);
+  }
+
+  Value tensorCreate(Value inChain, Value buffer,
+                     TypedValue<CpuTensorSpecType> tensorSpec,
+                     Type moTensorType) {
+    return getStorageBufferBuilder(moTensorType)
+        ->tensorCreate(builder, loc, context, inChain, buffer, tensorSpec);
+  }
+
+  Value bufferConstant(ElementsAttr value, Type moTensorType) {
+    return getStorageBufferBuilder(moTensorType)
+        ->bufferConstant(builder, loc, context, value);
+  }
+
+  Value debugTensorPrint(Value inChain, Value tensor, StringAttr label,
+                         Type moTensorType) {
+    return getStorageBufferBuilder(moTensorType)
+        ->debugTensorPrint(builder, loc, context, inChain, tensor, label);
+  }
+
+  Value bufferTransferFromHost(Value inChain,
+                               TypedValue<MGP::CpuBufferType> srcBuffer,
+                               Value dstBuffer, Type dstMoTensorType) {
+    return getStorageBufferBuilder(dstMoTensorType)
+        ->bufferTransferFromHost(builder, loc, context, inChain, srcBuffer,
+                                 dstBuffer);
+  }
+  Value bufferTransferToHost(Value inChain, Value srcBuffer,
+                             TypedValue<MGP::CpuBufferType> dstBuffer,
+                             Type srcMoTensorType) {
+    return getStorageBufferBuilder(srcMoTensorType)
+        ->bufferTransferToHost(builder, loc, context, inChain, srcBuffer,
+                               dstBuffer);
+  }
 };
 
 } // namespace M::MGP

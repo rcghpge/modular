@@ -1423,7 +1423,8 @@ class MO_ReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
   ];
 }
 
-def MO_MeanOp : MO_ReductionOp<"mean"> {
+def MO_MeanOp : MO_ReductionOp<"mean", [
+    DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface>]> {
   let summary = "Mean reduction operation";
   let description = [{
     Reduce `input` elements across `axis` to their mean value, and change that
@@ -1441,6 +1442,13 @@ def MO_MeanOp : MO_ReductionOp<"mean"> {
     %res = mo.mean(%arg, %axis) : (
       !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
+  }];
+
+  let extraClassDeclaration = [{
+    DeviceRefAttr getOperandDevice(size_t index) {
+      // Axis is on the host.
+      return index == 1 ? MO::getHostDeviceAny(getOperation()) : nullptr;
+    }
   }];
 }
 
