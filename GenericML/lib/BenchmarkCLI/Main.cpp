@@ -151,6 +151,42 @@ createQueryGeneratorFromPath(StringRef schemaPath) {
   return createQueryGenerator(schema, errorReporter);
 }
 
+static ErrorOr<double> estimateLatency(M_RuntimeContext *runtimeContext,
+                                       M_AsyncModel *model,
+                                       QueryGenerator &queryGenerator,
+                                       LLCL::CompactRuntimePtr allocRuntime) {
+  ErrorOr<std::unique_ptr<GeneratedQuery>> queryOr =
+      queryGenerator.generateQuery(allocRuntime, runtimeContext, 0);
+  if (queryOr.isError())
+    return Error(llvm::Twine("Unable to generate sample query: ") +
+                 queryOr.getError());
+  M_AsyncTensorMap *inputs = (*queryOr)->getAsyncTensorMap();
+  StatusPtr status(M_newStatus(), M_freeStatus);
+  if (!status)
+    return Error("Failed to create M_Status (out of memory?)");
+  auto start = std::chrono::steady_clock::now();
+  auto end = start;
+  int iterations = 0;
+  // Run enough iterations to last at least a second.  That way we will be less
+  // affected by noise for super tiny models.
+  while (std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
+             .count() < 1000) {
+    ++iterations;
+    M_AsyncTensorMap *outputs =
+        M_executeModelSync(runtimeContext, model, inputs, status.get());
+    end = std::chrono::steady_clock::now();
+    if (outputs)
+      M_freeAsyncTensorMap(outputs);
+    if (M_isError(status.get()))
+      return Error(llvm::Twine("While executing model: ") +
+                   M_getError(status.get()));
+  }
+  constexpr double kNsPerSec = 1e9;
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
+             .count() /
+         kNsPerSec / iterations;
+}
+
 int M::maxBenchmarkMain(int argc, char **argv) {
   ClOptions opts;
 
@@ -229,13 +265,35 @@ int M::maxBenchmarkMain(int argc, char **argv) {
   // unnecessary resources.
   LLCL::Runtime allocRuntime(LLCL::createMallocAllocator(),
                              LLCL::createSingleThreadWorkQueue());
-  QuerySampleLibrary qsl(allocRuntime.getCompactPtr(), runtimeContext.get(),
-                         std::move(queryGenerator));
-  SystemUnderTest sut(&qsl, runtimeContext.get(), model.get());
   mlperf::TestSettings mlperfTestSettings;
   mlperfTestSettings.scenario = opts.mlPerfScenario;
   mlperf::LogSettings mlperfLogSettings;
   mlperfLogSettings.log_output.copy_summary_to_stdout = true;
+
+  {
+    llvm::outs() << "Estimating latency for query generation... ";
+    ErrorOr<double> estimatedLatencyOr =
+        estimateLatency(runtimeContext.get(), model.get(), *queryGenerator,
+                        allocRuntime.getCompactPtr());
+    if (estimatedLatencyOr.isError()) {
+      llvm::errs() << "Error estimating latency: "
+                   << estimatedLatencyOr.getError() << "\n";
+      return EXIT_FAILURE;
+    }
+    llvm::outs() << "OK\n";
+    constexpr double kNsPerSec = 1e9;
+    mlperfTestSettings.single_stream_expected_latency_ns =
+        *estimatedLatencyOr * kNsPerSec;
+    // N.B.: If we start supporting queries consisting of more than one sample,
+    // this computation will need to change to take that into account.
+    mlperfTestSettings.multi_stream_expected_latency_ns =
+        *estimatedLatencyOr * kNsPerSec;
+    mlperfTestSettings.multi_stream_samples_per_query = 1;
+  }
+
+  QuerySampleLibrary qsl(allocRuntime.getCompactPtr(), runtimeContext.get(),
+                         std::move(queryGenerator));
+  SystemUnderTest sut(&qsl, runtimeContext.get(), model.get());
 
   llvm::outs() << "Benchmarking\n";
   // MLPerf uses C++ <iostream> for IO.  To prevent incorrect interleaving, we
