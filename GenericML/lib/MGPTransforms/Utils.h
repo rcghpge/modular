@@ -68,16 +68,18 @@ SmallVector<Value> getGatingOperands(Operation *op);
 /// Returns true if opOperand is a 'gating operand' for its operation.
 bool isGatingOperand(const OpOperand *opOperand);
 
-/// Returns all the OpOperands which are 'reading' or 'writing' occurrences
-/// of buffer, depending on the isReading flag.
-SmallVector<OpOperand *> allUsingOpOperands(Value buffer, bool isReading);
+/// Returns all the OpOperands which are used with 'in' semantics.
+SmallVector<OpOperand *> allReadingUsers(Value value);
+
+/// Returns all the OpOperands which are used with 'out' or 'mut' semantics.
+SmallVector<OpOperand *> allMutatingUsers(Value value);
+
+/// Returns the unique OpOperand which is used with 'out' or 'mut' semantics.
+/// Returns nullptr if either no mutator or multiple mutators.
+OpOperand *getUniqueMutator(Value value);
 
 /// Return the OpOperands for all input chains to op.
 SmallVector<OpOperand *, 1> getInputChainOpOperands(Operation *op);
-
-/// Returns the unique writer to the given buffer. Returns nullptr if either
-/// no writer or multiple writers.
-Operation *getUniqueWriter(Value buffer);
 
 /// Returns the 'earliest' operation (in block operations order) which uses
 /// one of results as an operand.

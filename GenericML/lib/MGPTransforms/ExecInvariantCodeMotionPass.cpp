@@ -10,6 +10,7 @@
 #include "GenericML/MGPDialect/MGPOpInterfaces.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
+#include "GenericML/MGPDialect/MGPUtils.h"
 #include "GenericML/MGPTransforms/IndexSet.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
@@ -113,18 +114,6 @@ bool isRecomputableOp(Operation *op) {
 /// the 'init' block without causing unintended side effects.
 bool canBeLifted(Operation *op) {
   return canBeConveyed(op) || isRecomputableOp(op);
-}
-
-/// Returns true if operand is mutated by op.
-bool isMutated(OpOperand &opOperand) {
-  if (auto inOutSemanticsOp =
-          dyn_cast<MGPInOutSemanticsOpInterface>(opOperand.getOwner())) {
-    InOutSignatureAttr::InOutSemantics inOut =
-        inOutSemanticsOp.getInOutSemantics(opOperand.getOperandNumber());
-    return inOut == InOutSignatureAttr::kOut ||
-           inOut == InOutSignatureAttr::kMut;
-  }
-  return false;
 }
 
 // NOTE: In the following analyses we are using the existing 'dense' machinery

@@ -19,6 +19,8 @@
 
 using namespace mlir;
 
+#define DEBUG_TYPE "mgp-defer-allocs"
+
 namespace M::MGP {
 
 // Generate support code for DeferAllocsPass
@@ -49,22 +51,25 @@ class DeferAllocsPass : public impl::DeferAllocsPassBase<DeferAllocsPass> {
       if (movedAllocOps.contains(op))
         return;
       if (auto allocOp = dyn_cast<MGPBufferAllocOpInterface>(op)) {
-        // For the unique writer to the allocated buffer...
-        if (Operation *writerOp = getUniqueWriter(allocOp.getOutBuffer())) {
-          // For the input chain(s) to that writer....
-          for (OpOperand *writerChainOpOperand :
-               getInputChainOpOperands(writerOp)) {
-            // Move the allocation to just before the writing op.
+        // For the unique mutator of the allocated buffer...
+        if (OpOperand *mutator = getUniqueMutator(allocOp.getOutBuffer())) {
+          // For the input chain(s) to that mutator....
+          for (OpOperand *mutatorChainOpOperand :
+               getInputChainOpOperands(mutator->getOwner())) {
+            // Move the allocation to just before the mutating op.
             // (Note that this may mean we revisit the same allocation again.)
-            allocOp->moveBefore(writerOp);
+            allocOp->moveBefore(mutator->getOwner());
             movedAllocOps.insert(allocOp);
-            // The allocation must only be triggered once the writing op's
+            // The allocation must only be triggered once the mutating op's
             // input chain is ready.
-            Value writerInChain = writerChainOpOperand->get();
+            Value mutatorInChain = mutatorChainOpOperand->get();
+            LLVM_DEBUG(llvm::dbgs() << "adding chain:\n  " << mutatorInChain
+                                    << "\nto op:\n  " << allocOp << "\n");
+            execState.builder.setInsertionPoint(allocOp);
             auto res = alsoWaitForChains(execState.builder, builderContext,
-                                         allocOp, {writerInChain});
-            assert(succeeded(res) && "All buffer allocation ops are assumed to "
-                                     "accept an input chain");
+                                         allocOp, {mutatorInChain});
+            assert(succeeded(res) && "all allocation ops must accept an input "
+                                     "chain to control their timing");
           }
         }
       }

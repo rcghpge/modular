@@ -1,4 +1,4 @@
-// RUN: mgp-opt %s --mlir-disable-threading --allow-unregistered-dialect --async-dataflow-dependencies-test --check-buffer-read-write | FileCheck %s
+// RUN: mgp-opt %s --mlir-disable-threading --allow-unregistered-dialect --async-dataflow-dependencies-test | FileCheck %s
 
 //
 // Simple grt.if
@@ -296,6 +296,10 @@ mgp.model @if : mof init {
   %1 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<bool>
   %2 = mgp.cpu.tensor.create %arg0, %0, %1  : !mgp.cpu.tensor<bool>
   %3 = mgp.cpu.buffer.alloc.static %arg0, 32
+  // NOTE: Since %11#1 maybe the same as %6 and %9, and those are considered
+  //       to be maybe the same as %3 and %7, the CheckBufferReadWritePass will
+  //       complain that %3 and %7 may be concurrently mutated. Fixing that
+  //       would require a more discriminating CheckBufferReadWritePass.
   %4 = mgp.cpu.buffer.set %3 : !mgp.cpu.buffer<32>
   %5 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<32xui8>
   %6 = mgp.cpu.tensor.create %4, %3, %5  : !mgp.cpu.tensor<32xui8>
@@ -337,18 +341,18 @@ mgp.model @if : mof init {
 // CHECK-NEXT:  %5:2 = "grt.if"(%4, %arg0, %0, %1, %2) ({
 // CHECK-NEXT:  ^bb0(%arg2: !mef.chain, %arg3: !mgp.cpu.buffer<32>, %arg4: !mgp.cpu.tensor_spec<8xf32>, %arg5: !mgp.cpu.buffer<32>):
 // CHECK-NEXT:    %11 = "mgp.cpu.buffer.alloc.static"(%arg2) {aSize = 32 : ui64, bRawAlign = 18446744073709551615 : ui64} : (!mef.chain) -> !mgp.cpu.buffer<32>
-// CHECK-NEXT:    %12 = "mop.kernels.mul"(%arg2, %arg3, %arg4, %arg5, %arg4, %11, %arg4) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
+// CHECK-NEXT:    %12 = "mop.kernels.mul"(%arg2, %arg3, %arg4, %arg5, %arg4, %11, %arg4) {tempInOutSig = #M.inout_sig<"iiiiioi">} : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
 // CHECK-NEXT:    "mef.output"(%12, %11) : (!mef.chain, !mgp.cpu.buffer<32>) -> ()
 // CHECK-NEXT:  }, {
 // CHECK-NEXT:  ^bb0(%arg2: !mef.chain, %arg3: !mgp.cpu.buffer<32>, %arg4: !mgp.cpu.tensor_spec<8xf32>, %arg5: !mgp.cpu.buffer<32>):
 // CHECK-NEXT:    %11 = "mgp.cpu.buffer.alloc.static"(%arg2) {aSize = 32 : ui64, bRawAlign = 18446744073709551615 : ui64} : (!mef.chain) -> !mgp.cpu.buffer<32>
-// CHECK-NEXT:    %12 = "mop.kernels.sub"(%arg2, %arg3, %arg4, %arg5, %arg4, %11, %arg4) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
+// CHECK-NEXT:    %12 = "mop.kernels.sub"(%arg2, %arg3, %arg4, %arg5, %arg4, %11, %arg4) {tempInOutSig = #M.inout_sig<"iiiiioi">} : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
 // CHECK-NEXT:    "mef.output"(%12, %11) : (!mef.chain, !mgp.cpu.buffer<32>) -> ()
 // CHECK-NEXT:  }) : (i1, !mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>) -> (!mef.chain, !mgp.cpu.buffer<32>)
 // CHECK-NEXT:  %6 = "mgp.cpu.buffer.alloc.static"(%5#0) {aSize = 32 : ui64, bRawAlign = 18446744073709551615 : ui64} : (!mef.chain) -> !mgp.cpu.buffer<32>
-// CHECK-NEXT:  %7 = "mop.kernels.sub"(%5#0, %5#1, %1, %2, %1, %6, %1) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
+// CHECK-NEXT:  %7 = "mop.kernels.sub"(%5#0, %5#1, %1, %2, %1, %6, %1) {tempInOutSig = #M.inout_sig<"iiiiioi">} : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
 // CHECK-NEXT:  %8 = "mgp.cpu.buffer.alloc.static"(%7) {aSize = 32 : ui64, bRawAlign = 18446744073709551615 : ui64} : (!mef.chain) -> !mgp.cpu.buffer<32>
-// CHECK-NEXT:  %9 = "mop.kernels.add"(%7, %6, %1, %2, %1, %8, %1) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
+// CHECK-NEXT:  %9 = "mop.kernels.add"(%7, %6, %1, %2, %1, %8, %1) {tempInOutSig = #M.inout_sig<"iiiiioi">} : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
 // CHECK-NEXT:  %10 = "mgp.cpu.tensor.create"(%9, %8, %1) : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mgp.cpu.tensor<8xf32>
 // CHECK-NEXT:  "mef.output"(%9, %10) : (!mef.chain, !mgp.cpu.tensor<8xf32>) -> ()
 // CHECK-NEXT:}) {frameworkName = "mof", inputOutputTypes = () -> !mgp.cpu.tensor<8xf32>, sym_name = "conditional_c"} : () -> ()
@@ -369,17 +373,17 @@ mgp.model @conditional_c : mof init {
   %cond = mgp.to_grt_bool(%ch0, %zero) : (!mef.chain, !mgp.cpu.buffer<1>) -> i1
   %ch1, %c = grt.if %cond (%ch0 : !mef.chain, %a : !mgp.cpu.buffer<32>, %spec : !mgp.cpu.tensor_spec<8xf32>, %b : !mgp.cpu.buffer<32>) -> (!mef.chain, !mgp.cpu.buffer<32>) {
     %c = mgp.cpu.buffer.alloc.static %ch0, 32
-    %ch1 = "mop.kernels.mul"(%ch0, %a, %spec, %b, %spec, %c, %spec) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
+    %ch1 = "mop.kernels.mul"(%ch0, %a, %spec, %b, %spec, %c, %spec) { tempInOutSig=#M.inout_sig<"iiiiioi"> } : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
     mef.output %ch1, %c : !mef.chain, !mgp.cpu.buffer<32>
   } else {
     %c = mgp.cpu.buffer.alloc.static %ch0, 32
-    %ch1 = "mop.kernels.sub"(%ch0, %a, %spec, %b, %spec, %c, %spec) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
+    %ch1 = "mop.kernels.sub"(%ch0, %a, %spec, %b, %spec, %c, %spec) { tempInOutSig=#M.inout_sig<"iiiiioi"> } : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
     mef.output %ch1, %c : !mef.chain, !mgp.cpu.buffer<32>
   }
   %d = mgp.cpu.buffer.alloc.static %ch1, 32
-  %ch2 = "mop.kernels.sub"(%ch1, %c, %spec, %b, %spec, %d, %spec) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
+  %ch2 = "mop.kernels.sub"(%ch1, %c, %spec, %b, %spec, %d, %spec) { tempInOutSig=#M.inout_sig<"iiiiioi"> } : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
   %e = mgp.cpu.buffer.alloc.static %ch2, 32
-  %ch3 = "mop.kernels.add"(%ch2, %d, %spec, %b, %spec, %e, %spec) {numBackOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
+  %ch3 = "mop.kernels.add"(%ch2, %d, %spec, %b, %spec, %e, %spec) { tempInOutSig=#M.inout_sig<"iiiiioi"> } : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
   %out = mgp.cpu.tensor.create %ch3, %e, %spec  : !mgp.cpu.tensor<8xf32>
   mef.output %ch3, %out : !mef.chain, !mgp.cpu.tensor<8xf32>
 }

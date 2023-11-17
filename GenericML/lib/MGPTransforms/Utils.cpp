@@ -239,14 +239,34 @@ bool M::MGP::isGatingOperand(const OpOperand *opOperand) {
   return false;
 }
 
-SmallVector<OpOperand *> M::MGP::allUsingOpOperands(Value buffer,
-                                                    bool isReading) {
+SmallVector<OpOperand *> M::MGP::allReadingUsers(Value value) {
   SmallVector<OpOperand *> result;
-  for (OpOperand &bufferUse : buffer.getUses()) {
-    if (isReading == isBufferReadingOpOperand(bufferUse))
-      result.emplace_back(&bufferUse);
+  for (OpOperand &use : value.getUses()) {
+    if (!isMutated(use))
+      result.emplace_back(&use);
   }
   return result;
+}
+
+SmallVector<OpOperand *> M::MGP::allMutatingUsers(Value value) {
+  SmallVector<OpOperand *> result;
+  for (OpOperand &use : value.getUses()) {
+    if (isMutated(use))
+      result.emplace_back(&use);
+  }
+  return result;
+}
+
+OpOperand *M::MGP::getUniqueMutator(Value vaule) {
+  OpOperand *candidate = nullptr;
+  for (OpOperand &use : vaule.getUses()) {
+    if (isMutated(use)) {
+      if (candidate)
+        return nullptr;
+      candidate = &use;
+    }
+  }
+  return candidate;
 }
 
 SmallVector<OpOperand *, 1> M::MGP::getInputChainOpOperands(Operation *op) {
@@ -256,13 +276,6 @@ SmallVector<OpOperand *, 1> M::MGP::getInputChainOpOperands(Operation *op) {
       result.emplace_back(&operand);
   }
   return result;
-}
-
-Operation *M::MGP::getUniqueWriter(Value buffer) {
-  auto writingOpOperands = allUsingOpOperands(buffer, /*isReading=*/false);
-  if (writingOpOperands.size() != 1)
-    return nullptr;
-  return writingOpOperands.front()->getOwner();
 }
 
 Operation *M::MGP::earliestUsingOp(mlir::ResultRange results) {
@@ -430,12 +443,9 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
     BufferBuilder *chainBufferBuilder =
         TensorBufferDialectInterface::getBuilderForTypeStorage(
             builderContext, inChain.getType());
-    auto insertPoint = builder.saveInsertionPoint();
-    builder.setInsertionPoint(op);
     Value newInChain = waitForChainsReusing(
         builder, op->getLoc(), context, chainBufferBuilder,
         existingUniqueChainCreateOp, existingPrimitiveChains.takeVector());
-    builder.restoreInsertionPoint(insertPoint);
     op->setOperand(inChainOpOperand->getOperandNumber(), newInChain);
   }
   return success();

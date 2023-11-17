@@ -159,13 +159,6 @@ Value CpuBufferBuilder::kernelExecute(
       /*dKernelName=*/kernelName,
       /*eNumOutDimensions=*/numOutDimensions);
 
-  // Downstream passes may need to distinguish input from output buffers.
-  // TODO: Redundant with in/out signature, will be removed
-  // once transitioned away from num{Front,Back}OutputBuffers
-  // convention.
-  MGP::setNumBackOutputBuffers(
-      executeOp, llvm::count(inOutSemantics, InOutSignatureAttr::kOut));
-
   for (Value outDimension : executeOp.getOutDimensions())
     outDimensions.emplace_back(outDimension);
 

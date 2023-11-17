@@ -28,30 +28,30 @@ namespace M::MGP {
 ///    to repair the model.
 TypedValue<MGP::ContextType> getContextForBlock(Block *block);
 
-//===----------------------------------------------------------------------===//
-// CAUTION: The following methods are deprecated in favor of the
-//          MGPInOutSemanticsOpInterface.
-//===----------------------------------------------------------------------===//
+/// Record the given op has the given in/out semantics.
+///
+/// Only to be used for ops without an ODS definition. All others should
+/// implement the MGPInOutSemanticsOpInterface interface.
+void setInOutSignature(Operation *op, InOutSignatureAttr inOutSig);
 
-// NOTE: We unfortunately  have two conventions for output buffer argument
-// positions: at the front (eg mgp, kgen) and at the back (mop). Sigh.
+/// Removes any attribute for in/out semantics added by setInOutSignature.
+///
+/// Ops without ODS definitions which will be interpreted by MEF cannot
+/// retain the attribute without modifying the primitive's implementation.
+void removeInOutSignature(Operation *op);
 
-/// Add attribute to op to record it has numOutputs output buffers at
-/// the front (as per mgp and kgen convention).
-void setNumFrontOutputBuffers(Operation *op, size_t numFrontOutputs);
+/// Returns the in/out semantics for operand.
+InOutSignatureAttr::InOutSemantics getInOutSemantics(OpOperand &opOperand);
 
-/// Add attribute to op to record it has numOutputs output buffers at
-/// the back (as per mop convention).
-void setNumBackOutputBuffers(Operation *op, size_t numBackOutputs);
+/// Returns true if operand is mutated by its op (ie it has either an 'out'
+/// or an 'in/out' semantics).
+bool isMutated(OpOperand &opOperand);
 
-/// Removes any attribute for output buffers, both front and back.
-void removeNumOutputBuffers(Operation *op);
-
-/// Returns true if opOperand will be read by the operation.
-bool isBufferReadingOpOperand(OpOperand &opOperand);
-
-/// Returns true if opOperand will be written by the operation.
-bool isBufferWritingOpOperand(OpOperand &opOperand);
+/// Returns true if operand is read by its op (ie it has either an 'in'
+/// or 'in/out' semantics).
+///
+/// CAUTION: This does not mean 'read only'.
+bool isRead(OpOperand &opOperand);
 
 } // namespace M::MGP
 

@@ -35,7 +35,8 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   assert(MO::isOnHost(*this) && "mogg.ext.op is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, *this);
 
-  // Gather lowered input operands.
+  // Gather lowered input operands. Buffer operands will be followed by
+  // their corresponding tensor specs.
   SmallVector<Value> loweredInputOperands =
       opLoweringState.getLoweredOperands(/*keepTensorSpec=*/true);
 
@@ -50,14 +51,23 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   //   [inChain,
   //    in_buf1, in_spec1, ..., in_bufN, in_specN,
   //    out_buf1, out_spec1, ... out_specM, out_specM]
+  size_t numOperands =
+      1 + loweredInputOperands.size() + loweredOutputsStorage.size() * 2;
   SmallVector<Value> operands;
-  operands.reserve(1 + loweredInputOperands.size() +
-                   loweredOutputsStorage.size() * 2);
+  SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
+  operands.reserve(numOperands);
+  operandSemantics.reserve(numOperands);
   operands.push_back(loweringState.getExecuteChain());
-  operands.append(loweredInputOperands);
-  for (auto &bufferized : loweredOutputsStorage) {
-    operands.push_back(bufferized.buffer);
-    operands.push_back(bufferized.tensorSpec);
+  operandSemantics.push_back(InOutSignatureAttr::kIn);
+  for (Value input : loweredInputOperands) { // includes buffers and specs
+    operands.emplace_back(input);
+    operandSemantics.push_back(InOutSignatureAttr::kIn);
+  }
+  for (auto &output : loweredOutputsStorage) {
+    operands.push_back(output.buffer);
+    operandSemantics.push_back(InOutSignatureAttr::kOut);
+    operands.push_back(output.tensorSpec);
+    operandSemantics.push_back(InOutSignatureAttr::kIn);
   }
 
   // There is no primitive for external calls, instead we invoke
@@ -73,7 +83,8 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
       loweringState.getExecuteOpBuilder().create(opState);
 
   // Downstream passes may need to distinguish input from output buffers.
-  MGP::setNumBackOutputBuffers(invokeOp, loweredOutputsStorage.size());
+  MGP::setInOutSignature(
+      invokeOp, InOutSignatureAttr::get(getContext(), operandSemantics));
 
   // Create the outputs, but only once the op has completed.
   opLoweringState.createOutputs(invokeOp->getResult(0), loweredOutputsStorage);
@@ -111,11 +122,6 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
       /*inChain=*/loweringState.getExecuteChain(),
       /*outBuffer=*/loweredOutputsStorage[0].buffer,
       /*inBuffers=*/loweredOperands);
-
-  // Make sure downstream passes recognise the first buffer arg as an output.
-  // CAUTION: This is different from the mop output argument convention used
-  // elsewhere here.
-  MGP::setNumFrontOutputBuffers(concatOp, 1);
 
   // Create the output tensors, but only once the op has completed.
   opLoweringState.createOutputs(concatOp.getOutChain(), loweredOutputsStorage);

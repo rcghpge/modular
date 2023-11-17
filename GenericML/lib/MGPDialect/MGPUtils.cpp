@@ -14,7 +14,12 @@
 using namespace M;
 using namespace MGP;
 
-TypedValue<MGP::ContextType> M::MGP::getContextForBlock(Block *block) {
+namespace {
+/// Name of attribute holding the 'temporary' #M.inout_sig.
+constexpr StringRef kInOutSigAttribute = "tempInOutSig";
+} // namespace
+
+TypedValue<MGP::ContextType> MGP::getContextForBlock(Block *block) {
   while (true) {
     // First look for a block argument.
     for (Value arg : block->getArguments()) {
@@ -33,86 +38,45 @@ TypedValue<MGP::ContextType> M::MGP::getContextForBlock(Block *block) {
   assert(false && "unable to locate an !mgp.context");
 }
 
-//===----------------------------------------------------------------------===//
-// CAUTION: The following methods are deprecated in favor of the
-//          MGPInOutSemanticsOpInterface.
-//===----------------------------------------------------------------------===//
-
-namespace {
-/// Name of attribute describing number of CpuBufferType operands which
-/// will be written to by the operation, ie used as outputs. All
-/// other CpuBufferType operands are consider to be read-only, ie used as
-/// inputs. We must support two conventions depending on relative order
-/// of output buffers w.r.t. input buffers.
-constexpr const char *kNumFrontOutputBuffers = "numFrontOutputBuffers";
-constexpr const char *kNumBackOutputBuffers = "numBackOutputBuffers";
-} // namespace
-
-void M::MGP::setNumFrontOutputBuffers(Operation *op, size_t numFrontOutputs) {
-  OpBuilder builder(op->getContext());
-  op->setAttr(kNumFrontOutputBuffers,
-              builder.getUI32IntegerAttr(numFrontOutputs));
+void MGP::setInOutSignature(Operation *op, InOutSignatureAttr inOutSig) {
+  assert(!isa<MGPInOutSemanticsOpInterface>(op) &&
+         "op already implements MGPInOutSemanticsOpInterface");
+  assert(inOutSig.size() == op->getNumOperands() &&
+         "mismatched operation and in/out signature arity");
+  op->setAttr(kInOutSigAttribute, inOutSig);
 }
 
-void M::MGP::setNumBackOutputBuffers(Operation *op, size_t numBackOutputs) {
-  OpBuilder builder(op->getContext());
-  op->setAttr(kNumBackOutputBuffers,
-              builder.getUI32IntegerAttr(numBackOutputs));
+void MGP::removeInOutSignature(Operation *op) {
+  op->removeAttr(kInOutSigAttribute);
 }
 
-void M::MGP::removeNumOutputBuffers(Operation *op) {
-  op->removeAttr(kNumFrontOutputBuffers);
-  op->removeAttr(kNumBackOutputBuffers);
-}
+InOutSignatureAttr::InOutSemantics
+MGP::getInOutSemantics(OpOperand &opOperand) {
+  Operation *op = opOperand.getOwner();
 
-static size_t getNumFrontOutputBuffers(Operation *op) {
-  auto numFrontOutputsAttr =
-      op->getAttrOfType<IntegerAttr>(kNumFrontOutputBuffers);
-  if (!numFrontOutputsAttr)
-    return 0;
-  return static_cast<size_t>(numFrontOutputsAttr.getUInt());
-}
+  // Ops with ODS definitions (the majority) convey in/out semantics via the
+  // interface.
+  if (auto inOutSemanticsOp = dyn_cast<MGPInOutSemanticsOpInterface>(op))
+    return inOutSemanticsOp.getInOutSemantics(opOperand.getOperandNumber());
 
-static size_t getNumBackOutputBuffers(Operation *op) {
-  auto numBackOutputsAttr =
-      op->getAttrOfType<IntegerAttr>(kNumBackOutputBuffers);
-  if (!numBackOutputsAttr)
-    return 0;
-  return static_cast<size_t>(numBackOutputsAttr.getUInt());
-}
-
-/// Returns true if n'th operand to op is written to.
-static bool isWrittenTo(Operation *op, size_t n) {
-  // Is opOperand in the first numFrontOutputBuffer's buffer operands?
-  size_t numFrontOutputBuffers = getNumFrontOutputBuffers(op);
-  for (size_t i = 0; i <= n && numFrontOutputBuffers > 0; ++i) {
-    if (isa<CpuBufferType>(op->getOperand(i).getType())) {
-      if (i == n)
-        return true;
-      --numFrontOutputBuffers;
-    }
+  // All other ops may supply an #M.InOutSignature directly.
+  if (auto inOutAttr =
+          op->getAttrOfType<InOutSignatureAttr>(kInOutSigAttribute)) {
+    assert(inOutAttr.size() == op->getNumOperands() &&
+           "mismatched operation and in/out signature arity");
+    return inOutAttr[opOperand.getOperandNumber()];
   }
 
-  // Is opOperand in the last numBackOutputBuffer's buffer operands?
-  size_t numBackOutputBuffers = getNumBackOutputBuffers(op);
-  for (size_t ip1 = op->getNumOperands();
-       ip1 >= n + 1 && numBackOutputBuffers > 0; --ip1) {
-    if (isa<CpuBufferType>(op->getOperand(ip1 - 1).getType())) {
-      if (ip1 == n + 1)
-        return true;
-      --numBackOutputBuffers;
-    }
-  }
-
-  return false;
+  // Assume 'in' only.
+  return InOutSignatureAttr::kIn;
 }
 
-bool M::MGP::isBufferReadingOpOperand(OpOperand &opOperand) {
-  return isa<CpuBufferType>(opOperand.get().getType()) &&
-         !isWrittenTo(opOperand.getOwner(), opOperand.getOperandNumber());
+bool MGP::isMutated(OpOperand &opOperand) {
+  InOutSignatureAttr::InOutSemantics inOut = getInOutSemantics(opOperand);
+  return inOut == InOutSignatureAttr::kOut || inOut == InOutSignatureAttr::kMut;
 }
 
-bool M::MGP::isBufferWritingOpOperand(OpOperand &opOperand) {
-  return isa<CpuBufferType>(opOperand.get().getType()) &&
-         isWrittenTo(opOperand.getOwner(), opOperand.getOperandNumber());
+bool MGP::isRead(OpOperand &opOperand) {
+  InOutSignatureAttr::InOutSemantics inOut = getInOutSemantics(opOperand);
+  return inOut == InOutSignatureAttr::kIn || inOut == InOutSignatureAttr::kMut;
 }
