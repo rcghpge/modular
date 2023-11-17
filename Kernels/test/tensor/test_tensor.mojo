@@ -47,6 +47,13 @@ fn test_tensor_init():
     # CHECK: 0.0
     print(tensor[0, 0, 0])
 
+    let t2 = Tensor[DType.float32](
+        TensorShape(1, 2, 3), 0.1, 0.2, 0.3, 0.4, 0.5, 0.6
+    )
+
+    # CHECK: 0.6
+    print(t2[0, 1, 2])
+
 
 # CHECK-LABEL: test_tensor_equality
 fn test_tensor_equality():
