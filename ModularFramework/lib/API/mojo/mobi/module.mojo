@@ -49,40 +49,6 @@ struct Module:
     fn __str__(self) -> String:
         return mobicc.module_to_string(self.m)
 
-    fn execute_unary[
-        dtype: DType
-    ](self, inout arg: Tensor[dtype]) raises -> Tensor[dtype]:
-        var rtArgs = mobicc.new_rt_tuple()
-        mobicc.add_tensor[dtype](rtArgs, arg)
-        var rtOuts = mobicc.new_rt_tuple()
-        let execCode = mobicc.execute_module(self.m, rtArgs, rtOuts)
-        if execCode != 0:
-            raise Error("Execution error")
-        return mobicc.get_tensor[dtype](rtOuts, 0)
-
-    fn debug_print_execute(self, inout arg: Tensor[DType.float32]) raises:
-        var rtArgs = mobicc.new_rt_tuple()
-        mobicc.add_f32_tensor(rtArgs, arg)
-        var rtOuts = mobicc.new_rt_tuple()
-        let execCode = mobicc.execute_module(self.m, rtArgs, rtOuts)
-        if execCode != 0:
-            raise Error("Execution error")
-        mobicc.debug_print_tensors(rtOuts)
-
-    fn debug_print_execute(self, file_name: StringRef, spec: TensorSpec) raises:
-        var rtArgs = mobicc.new_rt_tuple()
-        var shape = DynamicVector[Int64]()
-        for i in range(spec.rank()):
-            shape.push_back(spec[i])
-        mobicc.add_f32_tensor_from_file(
-            rtArgs, file_name, shape.data, spec.rank()
-        )
-        var rtOuts = mobicc.new_rt_tuple()
-        let execCode = mobicc.execute_module(self.m, rtArgs, rtOuts)
-        if execCode != 0:
-            raise Error("Execution error")
-        mobicc.debug_print_tensors(rtOuts)
-
     fn unknown_loc(self) -> LocPtr:
         return mobicc.unknown_loc(self.m)
 
@@ -139,8 +105,6 @@ struct Module:
         for i in range(len(attrs)):
             mobicc.add_attr(m, attrs[i])
         return AttrMap(m, len(attrs))
-
-    # TODO: Support TensorSpec overload.
 
     fn dyn(self) -> Int64:
         return mobicc.dynamic_dim(self.m)

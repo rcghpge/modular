@@ -66,11 +66,6 @@ fn test_add_constant() raises:
     # CHECK: mo.add
     print(m.__str__())
 
-    # CHECK{LITERAL}: tensor([[2.0000]], dtype=f32, shape=[1])
-    var testInput = Tensor[DType.float32](1)
-    testInput[Index(0)] = 1
-    m.debug_print_execute(testInput)
-
 
 fn main() raises:
     test_empty_graph()

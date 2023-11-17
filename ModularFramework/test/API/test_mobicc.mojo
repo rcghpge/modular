@@ -197,39 +197,6 @@ fn test_const_op() raises:
     print(mobicc.module_to_string(m))
 
 
-fn test_execution() raises:
-    var m = mobicc.new_module()
-
-    var ins = mobicc.new_arity()
-    let scalarShape = DynamicVector[Int64]()
-    let intScalar = mobicc.si(m, 32, scalarShape.data, len(scalarShape))
-    mobicc.add_type(ins, intScalar)
-
-    var outs = mobicc.new_arity()
-    mobicc.add_type(outs, intScalar)
-
-    let unknown = mobicc.unknown_loc(m)
-    let g = mobicc.new_graph(m, unknown, "identity_graph", ins, outs)
-
-    var rets = mobicc.new_tuple()
-    let arg0 = mobicc.get_input(g, 0)
-    mobicc.add_symbol(rets, arg0)
-
-    let void = mobicc.new_arity()
-
-    let attrs = mobicc.new_attr_map()
-
-    _ = mobicc.new_op(g, unknown, "mo.output", rets, void, attrs)
-
-    var rtArgs = mobicc.new_rt_tuple()
-    mobicc.add_si32_rt_scalar(rtArgs, 1)
-    var rtOuts = mobicc.new_rt_tuple()
-    _ = mobicc.execute_module(m, rtArgs, rtOuts)
-
-    # CHECK{LITERAL}: tensor([[1]], dtype=si32, shape=[])
-    mobicc.debug_print_tensors(rtOuts)
-
-
 fn main() raises:
     test_types()
     test_empty_module()
@@ -237,4 +204,3 @@ fn main() raises:
     test_identity_graph()
     test_tuple_copy()
     test_const_op()
-    test_execution()

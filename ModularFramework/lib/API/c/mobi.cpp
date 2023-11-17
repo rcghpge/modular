@@ -6,9 +6,9 @@
 
 #include "MOF/API/c/mobi.h"
 
+#include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "MOF/API/c/detail/mobi.h"
-#include "MOF/InitAllDialects.h"
 #include "MOF/MOBI/Attr.h"
 #include "MOF/MOBI/Graph.h"
 #include "MOF/MOBI/Loc.h"
@@ -112,7 +112,7 @@ static MLIRContext *newContext() {
   // TODO: Attach the context to modules instead? Let user control it?
   static MLIRContext ctx;
   mlir::DialectRegistry registry;
-  M::MOF::registerAllDialects(registry);
+  M::MO::loadDialects(registry);
   ctx.appendDialectRegistry(registry);
   ctx.loadAllAvailableDialects();
   ctx.printStackTraceOnDiagnostic(true);
