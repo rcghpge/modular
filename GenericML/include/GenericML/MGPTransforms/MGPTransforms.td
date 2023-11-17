@@ -233,6 +233,36 @@ def DeferAllocsPass : Pass<"defer-allocs", "MGP::ModelOp"> {
 }
 
 //===----------------------------------------------------------------------===//
+// DeferTensorCreateExecPass
+//===----------------------------------------------------------------------===//
+
+def DeferTensorCreateExecPass : Pass<"defer-tensor-create-exec", "MGP::ModelOp"> {
+  let summary = "Defers execution of mgp_cpu_tensor_create until its buffer has no uses.";
+  let description = [{
+    Ensures mgp.cpu.tensor.create operations which are operands to mef.output are deferred 
+    till their buffers have no other uses. Eg:
+    ```mlir
+      %buf = mgp.cpu.buffer.alloc.static %bufChain, 24
+      %spec    : !mgp.cpu.tensor_spec<?xf32>
+      %out_op = op1(%opChain, out: %buf, ...)
+      %in_op = op2(%out_op, in:% buf, ...)
+      %tensor = mgp.cpu.tensor.create %out_op, %buf, %spec
+      mef.output %ch0, %tensor
+      // where %buf is in an 'output' position
+    ```
+    becomes:
+    ```
+      %buf = mgp.cpu.buffer.alloc.static %bufChain, 24
+      %spec    : !mgp.cpu.tensor_spec<?xf32>
+      %out_op = op1(%opChain, out: %buf, ...)
+      %in_op = op2(%out_op, in:% buf, ...)
+      %ch = grt.chain.create (%out_op, %in_op)
+      %tensor = mgp.cpu.tensor.create %ch, %buf, %spec
+      mef.output %ch0, %tensor
+    ```
+  }];
+}
+//===----------------------------------------------------------------------===//
 // LookupCachedConstantsPass
 //===----------------------------------------------------------------------===//
 

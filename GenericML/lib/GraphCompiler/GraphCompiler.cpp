@@ -234,6 +234,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MGP::createRemoveRedundantTensorExtractsPass());
+  pm.addPass(MGP::createDeferTensorCreateExecPass());
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addPass(MGP::createConcatInPlacePass());
   pm.addPass(MGP::createDeferAllocsPass());

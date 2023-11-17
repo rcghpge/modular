@@ -6,6 +6,8 @@
 
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 
+#include "./AsyncDataflowDependencies.h"
+#include "./Utils.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GraphRT/GRTDialect/GRTChainInterface.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
@@ -15,9 +17,6 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/STLExtras.h"
-
-#include "./AsyncDataflowDependencies.h"
-#include "./Utils.h"
 
 using namespace mlir;
 
@@ -93,7 +92,6 @@ class SimplifyChainsPass
 
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
-
     // Construct the dependencies from the model. The transforms we
     // do below will preserve these dependencies since we never introduce
     // new bound values or add new dependencies.
