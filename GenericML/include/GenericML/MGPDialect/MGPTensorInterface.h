@@ -54,6 +54,13 @@ struct TensorBufferDialectInterface
   getBuilderForTypeStorage(const BufferBuilderContext &builderContext,
                            Type type);
 
+  /// Returns the given inChain in a form that matches the given type.
+  /// The chains/types may mix !mef.chain and at most one 'exotic' dialect.
+  static Value matchingChain(const BufferBuilderContext &builderContext,
+                             OpBuilder &builder, Location loc,
+                             TypedValue<MGP::ContextType> context,
+                             Value inChain, Type typeToMatch);
+
   TensorBufferDialectInterface(Dialect *dialect) : Base(dialect) {}
 
   /// Adds to BuilderContext the type and buffer builder for the 'host' device

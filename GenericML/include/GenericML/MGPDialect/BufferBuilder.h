@@ -318,12 +318,6 @@ public:
                              TypedValue<MGP::ContextType> context,
                              TypedValue<MEF::ChainType> inChain) = 0;
 
-  /// Returns the given chain in a form that matches the given type, which must
-  /// either be a chain type native to this builder, or !mef.chain.
-  virtual Value matchingChain(OpBuilder &builder, Location loc,
-                              TypedValue<MGP::ContextType> context,
-                              Value inChain, Type typeToMatch) = 0;
-
   virtual void vtableAnchor();
 };
 
@@ -412,10 +406,6 @@ public:
   Value fromMEFChain(OpBuilder &builder, Location loc,
                      TypedValue<MGP::ContextType> context,
                      TypedValue<MEF::ChainType> inChain) override;
-
-  Value matchingChain(OpBuilder &builder, Location loc,
-                      TypedValue<MGP::ContextType> context, Value inChain,
-                      Type typeToMatch) override;
 
   /// Track this compiled kernel as corresponding to this index in the
   /// compiled kernels context.

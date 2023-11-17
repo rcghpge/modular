@@ -220,9 +220,3 @@ Value CpuBufferBuilder::fromMEFChain(OpBuilder &builder, Location loc,
                                      TypedValue<MEF::ChainType> inChain) {
   return inChain;
 }
-
-Value CpuBufferBuilder::matchingChain(OpBuilder &builder, Location loc,
-                                      TypedValue<MGP::ContextType> context,
-                                      Value inChain, Type typeToMatch) {
-  return inChain;
-}

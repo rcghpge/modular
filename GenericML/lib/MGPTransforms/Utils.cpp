@@ -351,29 +351,33 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
     return failure();
   }
 
-  // Use the op to find the builder for the op's device. However, we can't
-  // assume all the chains we will be working with below are appropriate for
-  // that device. For example, an op such as:
-  //    cuda.host_to_device %ch, %host_buf, %dev_buf
-  // will have an 'execution' device of cuda, accepts a !mef.chain, and may
-  // be required to also wait for both !mef.chains associated with %host_buf
-  // and !cuda.chains associated with %dev_buf.
-
-  BufferBuilder *bufferBuilder =
-      TensorBufferDialectInterface::getBuilderForOpExecution(builderContext,
-                                                             op);
-  TypedValue<ContextType> context = bufferBuilder->getContextForOp(op);
+  TypedValue<ContextType> context =
+      TensorBufferDialectInterface::getBuilderForOpExecution(builderContext, op)
+          ->getContextForOp(op);
 
   for (OpOperand *inChainOpOperand : existingInChainOpOperands) {
     Value inChain = inChainOpOperand->get();
 
-    // If necessary, convert the additional chains to match the inChain's
-    // flavor, which is either !mef.chain or the device-specific chain
-    // associated with bufferBuilder.
+    // Since different devices may use different chain types, we need to be
+    // careful here. We have three devices at play:
+    //  - the device for the op we wish to change
+    //  - the device for inChain, which may be different that the above.
+    //  - the device for an additionalChain, which may be different again.
+    //
+    // For example, an op such as:
+    //    cuda.host_to_device %ch, %host_buf, %dev_buf
+    // will have an 'execution' device of cuda, has an inChain of !mef.chain,
+    // but may be required to also wait for both !mef.chains associated with
+    // %host_buf and !cuda.chains associated with %dev_buf.
+    //
+    // So in the following we need to make sure that each additionalChain
+    // is joined with inChain in a dialect appropriate way.
     SmallVector<Value> deviceCorrectAdditionalChains;
     for (Value additionalChain : additionalChains) {
-      deviceCorrectAdditionalChains.emplace_back(bufferBuilder->matchingChain(
-          builder, op->getLoc(), context, additionalChain, inChain.getType()));
+      deviceCorrectAdditionalChains.emplace_back(
+          TensorBufferDialectInterface::matchingChain(
+              builderContext, builder, op->getLoc(), context, additionalChain,
+              inChain.getType()));
     }
 
     // Though the SimplifyChainsPass and CSE can clean things up, a few
