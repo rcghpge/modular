@@ -1324,6 +1324,80 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp
   }
 };
 
+/// Drops reshape ops through SoftmaxOp as long as the reshape doesn't affect
+/// the last axis (the compute axis of softmax).
+///                    ┌─────┐     ┌─────┐
+///                    │input│     │input│
+///                    └──┬──┘     └──┬──┘
+///                       │           │
+///                    reshape        │
+///                       │           │
+///                    softmax ──► softmax
+///                       │           │
+///                       │        reshape
+///                       │           │
+///                    ┌──┴───┐    ┌──┴───┐
+///                    │output│    │output│
+///                    └──────┘    └──────┘
+struct SinkStaticReshapeOpThroughSoftmaxOp
+    : public DeviceAwareRewritePattern<OpRewritePattern, SoftmaxOp> {
+  SinkStaticReshapeOpThroughSoftmaxOp(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 2) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(SoftmaxOp op,
+                             DeviceAwareRewriter &rewriter) const override {
+    TensorValue inputTensor;
+    auto reshapeP =
+        m_Op<Static::ReshapeOp>(rewriter.pushOp(), m_Any(&inputTensor));
+    auto softmaxOpP = m_Op<SoftmaxOp>(reshapeP);
+
+    if (!softmaxOpP.match(op))
+      return rewriter.notifyMatchFailure(op, "Pattern not matched.");
+
+    if (!inputTensor)
+      return rewriter.notifyMatchFailure(op, "Null values found in pattern.");
+
+    // TODO(#18823) find a more general solution
+    if (isValueFromReshapeThatSqueezesFinalDims(op.getInput())) {
+      return rewriter.notifyMatchFailure(
+          op, "Don't sink reshape that squeezes final dim.");
+    }
+
+    TensorType inputTy = inputTensor.getType();
+    TensorType reshapedTy = op.getInput().getType();
+    // This avoids sinking reshape that modifies the last axis, which is the
+    // compute axis of softmax.
+    if (!inputTy.hasRank() || !reshapedTy.hasRank())
+      return rewriter.notifyMatchFailure(op, "Shape must be ranked");
+    if (inputTy.getRank() > 0 &&
+        inputTy.getTypedShapeAttr().getValues().back() !=
+            reshapedTy.getTypedShapeAttr().getValues().back())
+      return rewriter.notifyMatchFailure(op, "Last axis is modified");
+
+    // This avoids creating a softmax op with unknown shapes.
+    if (inputTy.hasUnknownShape())
+      return rewriter.notifyMatchFailure(op, "Shape must be known");
+
+    if (!rewriter.addOps()) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
+
+    auto newOp = cast<SoftmaxOp>(rewriter.clone(*op));
+
+    // We cannot assume output will be the same dtype as input (e.g. mo.cast)
+    DType outputDType = newOp.getResult().getType().getDtype();
+    newOp.getInputMutable().set(inputTensor);
+    newOp.getResult().setType(inputTensor.getType().cloneWith(outputDType));
+    TensorValue output = rewriter.create<Static::ReshapeOp>(
+        op->getLoc(), op.getResult().getType(), newOp.getResult());
+
+    rewriter.replaceAllUsesWith(op.getResult(), output);
+    return mlir::success();
+  }
+};
+
 /// Sinks operands which are reshapes through binary operators if
 /// it can be proven `input1` and `input2` are the same shape
 /// ┌──────┐     ┌──────┐    ┌──────┐   ┌──────┐
@@ -2770,7 +2844,7 @@ struct SymbolicOptimizationPass
     // Reshape/Rebind insertion/swimming.
     patterns.add<
         ElementWiseUnaryVectorPattern, ElementWiseBinaryVectorPattern,
-        BroadcastReshapePattern,
+        BroadcastReshapePattern, SinkStaticReshapeOpThroughSoftmaxOp,
         SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp<
             Static::ReshapeOp>,
         SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp<RebindOp>,
