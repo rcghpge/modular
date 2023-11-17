@@ -49,6 +49,17 @@ struct Module:
     fn __str__(self) -> String:
         return mobicc.module_to_string(self.m)
 
+    fn execute_unary[
+        dtype: DType
+    ](self, inout arg: Tensor[dtype]) raises -> Tensor[dtype]:
+        var rtArgs = mobicc.new_rt_tuple()
+        mobicc.add_tensor[dtype](rtArgs, arg)
+        var rtOuts = mobicc.new_rt_tuple()
+        let execCode = mobicc.execute_module(self.m, rtArgs, rtOuts)
+        if execCode != 0:
+            raise Error("Execution error")
+        return mobicc.get_tensor[dtype](rtOuts, 0)
+
     fn debug_print_execute(self, inout arg: Tensor[DType.float32]) raises:
         var rtArgs = mobicc.new_rt_tuple()
         mobicc.add_f32_tensor(rtArgs, arg)

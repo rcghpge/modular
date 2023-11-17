@@ -423,6 +423,36 @@ fn add_f32_tensor(inout out: TensorTuplePtr, inout tensor: Tensor):
     ]("MOF_addF32Tensor")(out, data_ptr, shape_ptr)
 
 
+fn add_tensor(inout out: TensorTuplePtr, inout tensor: Tensor):
+    # Mojo` TensorSpec` is ABI compatible with `M::TensorSpec`.
+    # See Kernels/unittests/TensorTest.{cpp,mojo}.
+    # So just pass a pointer to `spec` across the shared library boundary.
+    let spec_ptr = Pointer.address_of(tensor._spec)
+    let data_ptr = tensor.data().bitcast[DType.invalid]()
+    MOBI_func[
+        fn (
+            TensorTuplePtr,
+            DTypePointer[DType.invalid],
+            Pointer[TensorSpec],
+        ) -> NoneType
+    ]("MOF_addTensor")(out, data_ptr, spec_ptr)
+
+
+fn get_tensor[
+    dtype: DType
+](inout t: TensorTuplePtr, index: Int) -> Tensor[dtype]:
+    # Get an owned tensor out of a TensorTuplePtr.
+    # I don't recommend doing this more than once right now.
+    # We don't have a clean ownership model here, and we're going to get rid
+    # of this interface in the next couple of days and use InferenceEngine instead.
+    let data_ptr: DTypePointer[dtype]
+    let spec_ptr: Pointer[TensorSpec]
+    data_ptr, spec_ptr = MOBI_func[
+        fn (TensorTuplePtr, Int) -> (DTypePointer[dtype], Pointer[TensorSpec])
+    ]("MOF_getTensor")(t, index)
+    return Tensor(data_ptr, __get_address_as_owned_value(spec_ptr.address))
+
+
 fn add_f32_tensor_from_file(
     inout t: TensorTuplePtr,
     file_name: StringRef,
