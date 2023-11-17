@@ -172,12 +172,16 @@ MODULAR_API_EXPORT M_Type *MOBI_typeFromSpec(M_Module *m, const void *spec) {
       /*metadata=*/{})};
 }
 
-MODULAR_API_EXPORT void MOBI_specFromType(M_Type *t, void *spec) {
-  M::TensorSpec &tensorSpec = *llvm::bit_cast<M::TensorSpec *>(spec);
+MODULAR_API_EXPORT uint8_t MOBI_specFromType(M_Type *t, int64_t *dims,
+                                             int64_t *rank) {
   auto tensorTy = cast<M::MO::TensorType>(t->type.getVal());
   assert(tensorTy.hasRank() && "no unranked TensorSpec support yet");
 
-  tensorSpec = M::TensorSpec(tensorTy.getIntDims(), tensorTy.getDtype());
+  *rank = tensorTy.getRank();
+  for (int i = 0; i < *rank; ++i)
+    dims[i] = tensorTy.getIntDim(i);
+
+  return tensorTy.getDtype().getValue();
 }
 
 MODULAR_API_EXPORT int64_t MOBI_dynamicDim(M_Module *m) {

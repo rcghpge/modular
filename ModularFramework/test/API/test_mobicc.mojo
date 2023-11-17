@@ -66,8 +66,7 @@ fn test_types() raises:
     )
 
     let t = mobicc.type_from_spec(m, spec1)
-    var spec2 = TensorSpec()
-    mobicc.spec_from_type(t, spec2)
+    var spec2 = mobicc.spec_from_type(t)
 
     _ = assert_equal(spec1.__str__(), spec2.__str__())
 

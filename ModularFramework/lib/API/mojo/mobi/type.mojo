@@ -29,9 +29,7 @@ struct TensorType:
         return self.spec().shape
 
     def spec(self) -> TensorSpec:
-        var result = TensorSpec()
-        mobicc.spec_from_type(self.t, result)
-        return result
+        return mobicc.spec_from_type(self.t)
 
 
 @value

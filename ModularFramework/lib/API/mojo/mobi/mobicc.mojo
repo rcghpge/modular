@@ -4,6 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 
+from memory.buffer import _MAX_RANK
 from memory.unsafe import Pointer
 from os import getenv
 from sys import external_call
@@ -267,11 +268,28 @@ fn type_from_spec(m: ModulePtr, spec: TensorSpec) -> TypePtr:
     )(m, spec)
 
 
-fn spec_from_type(t: TypePtr, inout spec: TensorSpec) -> None:
-    let spec_ptr = Pointer.address_of(spec)
-    return MOBI_func[fn (TypePtr, Pointer[TensorSpec]) -> NoneType](
-        "MOBI_specFromType"
-    )(t, spec_ptr)
+fn spec_from_type(t: TypePtr) -> TensorSpec:
+    let dims = DTypePointer[DType.int64].alloc(_MAX_RANK)
+    let rank = DTypePointer[DType.int64].alloc(1)
+
+    let dtype = MOBI_func[
+        fn (
+            TypePtr, DTypePointer[DType.int64], DTypePointer[DType.int64]
+        ) -> UInt8
+    ]("MOBI_specFromType")(t, dims, rank)
+
+    var dims_vec = DynamicVector[Int]()
+    for i in range(rank.load().to_int()):
+        dims_vec.push_back(dims[i].to_int())
+
+    let result_spec = TensorSpec(DType._from_ui8(dtype.value), dims_vec)
+
+    dims_vec._del_old()
+
+    rank.free()
+    dims.free()
+
+    return result_spec
 
 
 fn dynamic_dim(module: ModulePtr) -> Int64:
