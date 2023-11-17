@@ -280,14 +280,34 @@ TEST(UniformInputRandomDistribution, SI32InvertedError) {
             errorReporter.errors);
 }
 
+namespace {
+using IntegerTypes = testing::Types<int8_t, uint8_t, int16_t, uint16_t, int32_t,
+                                    uint32_t, int64_t, uint64_t>;
+}
+template <typename T>
+class UniformInputRandomDistributionInteger : public testing::Test {};
+TYPED_TEST_SUITE(UniformInputRandomDistributionInteger, IntegerTypes);
+
+TYPED_TEST(UniformInputRandomDistributionInteger, Default) {
+  constexpr DType dtype = DTypeForCXXType<TypeParam>::kind;
+  static_assert(dtype != DType::invalid, "No DType for TypeParam");
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationRandomUniform spec;
+  auto dist = createUniformInputRandomDistribution(dtype, spec, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(dist, nullptr);
+  std::array<TypeParam, 500> samples;
+  std::fill(samples.begin(), samples.end(), 0);
+  dist->fill(samples.data(), 500);
+}
+
 TEST(UniformInputRandomDistribution, UnsupportedType) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandomUniform spec;
   auto dist =
       createUniformInputRandomDistribution(DType::f16, spec, errorReporter);
   EXPECT_EQ(nullptr, dist);
-  EXPECT_EQ((std::vector<ReportedError>{
-                {{}, "Only f32 and si32 supported at this time"}}),
+  EXPECT_EQ((std::vector<ReportedError>{{{}, "Unsupported dtype f16"}}),
             errorReporter.errors);
 }
 

@@ -8,6 +8,7 @@
 #include "GenericML/API/modular/cpp/aliases.h"
 #include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
 #include "Support/MathExtras.h"
+#include <type_traits>
 
 using namespace M;
 using namespace M::BenchmarkCLI;
@@ -21,10 +22,8 @@ static auto withinScope(InputSchemaErrorReporter &errorReporter,
   return std::move(result);
 }
 
-// TODO: Reduce duplication between the SI32 and F32 cases here.
-
-static bool parseF32Value(StringRef value, float &out,
-                          InputSchemaErrorReporter &errorReporter) {
+static bool parseElementValue(StringRef value, float &out,
+                              InputSchemaErrorReporter &errorReporter) {
   double outD;
   bool ok = !value.getAsDouble(outD);
   if (ok)
@@ -35,54 +34,41 @@ static bool parseF32Value(StringRef value, float &out,
   return ok;
 }
 
-[[maybe_unused]] static bool
-parseDefaultedF32Value(StringRef value, float &out, float defaultValue,
-                       InputSchemaErrorReporter &errorReporter) {
-  if (value.empty()) {
-    out = defaultValue;
-    return true;
-  }
-  return parseF32Value(value, out, errorReporter);
-}
-
-static bool parseDefaultedF32Value(const std::optional<std::string> &value,
-                                   float &out, float defaultValue,
-                                   InputSchemaErrorReporter &errorReporter) {
-  if (!value.has_value() || value->empty()) {
-    out = defaultValue;
-    return true;
-  }
-  return parseF32Value(*value, out, errorReporter);
-}
-
-static bool parseSI32Value(StringRef value, int32_t &out,
-                           InputSchemaErrorReporter &errorReporter) {
+template <typename T>
+static std::enable_if_t<
+    std::is_integral_v<T> && DTypeForCXXType<T>::kind != DType::invalid, bool>
+parseElementValue(StringRef value, T &out,
+                  InputSchemaErrorReporter &errorReporter) {
   if (value.getAsInteger(0, out)) {
     errorReporter.reportError("Unable to parse '" + llvm::Twine(value) +
-                              "' as si32 value");
+                              "' as " + DTypeForCXXType<T>::kind.getAsString() +
+                              " value");
     return false;
   }
   return true;
 }
 
+template <typename T>
 [[maybe_unused]] static bool
-parseDefaultedSI32Value(StringRef value, int32_t &out, int32_t defaultValue,
-                        InputSchemaErrorReporter &errorReporter) {
+parseDefaultedElementValue(StringRef value, T &out, T defaultValue,
+                           InputSchemaErrorReporter &errorReporter) {
   if (value.empty()) {
     out = defaultValue;
     return true;
   }
-  return parseSI32Value(value, out, errorReporter);
+  return parseElementValue(value, out, errorReporter);
 }
 
-static bool parseDefaultedSI32Value(const std::optional<std::string> &value,
-                                    int32_t &out, int32_t defaultValue,
-                                    InputSchemaErrorReporter &errorReporter) {
+template <typename T>
+static bool
+parseDefaultedElementValue(const std::optional<std::string> &value, T &out,
+                           T defaultValue,
+                           InputSchemaErrorReporter &errorReporter) {
   if (!value.has_value() || value->empty()) {
     out = defaultValue;
     return true;
   }
-  return parseSI32Value(*value, out, errorReporter);
+  return parseElementValue(*value, out, errorReporter);
 }
 
 namespace M::BenchmarkCLI::Detail {
@@ -101,18 +87,18 @@ private:
   float max;
 };
 
+template <typename T>
 class UniformIntegerInputRandomDistribution final
     : public InputRandomDistribution {
 public:
-  explicit UniformIntegerInputRandomDistribution(DType dtype, int32_t min,
-                                                 int32_t max)
+  explicit UniformIntegerInputRandomDistribution(DType dtype, T min, T max)
       : InputRandomDistribution(dtype), min(min), max(max) {}
 
   void fill(void *out, size_t numElements) const override;
 
 private:
-  int32_t min;
-  int32_t max;
+  T min;
+  T max;
 };
 
 } // namespace M::BenchmarkCLI::Detail
@@ -126,11 +112,12 @@ void BCD::UniformFloatInputRandomDistribution::fill(void *out,
   fillWithRandomFloats({outF32, numElements}, min, max);
 }
 
-void BCD::UniformIntegerInputRandomDistribution::fill(
+template <typename T>
+void BCD::UniformIntegerInputRandomDistribution<T>::fill(
     void *out, size_t numElements) const {
-  assert(getDType() == DType::si32);
-  int32_t *outSI32 = static_cast<int32_t *>(out);
-  fillWithRandomInts({outSI32, numElements}, min, max);
+  assert(getDType() == DTypeForCXXType<T>::kind);
+  T *outT = static_cast<T *>(out);
+  fillWithRandomInts({outT, numElements}, min, max);
 }
 
 static std::unique_ptr<InputRandomDistribution>
@@ -139,10 +126,10 @@ createUniformFloatInputRandomDistribution(
     InputSchemaErrorReporter &errorReporter) {
   float min, max;
   bool minOK = withinScope(errorReporter, "min", [&]() {
-    return parseDefaultedF32Value(spec.min, min, -1.0f, errorReporter);
+    return parseDefaultedElementValue(spec.min, min, -1.0f, errorReporter);
   });
   bool maxOK = withinScope(errorReporter, "max", [&]() {
-    return parseDefaultedF32Value(spec.max, max, 1.0f, errorReporter);
+    return parseDefaultedElementValue(spec.max, max, 1.0f, errorReporter);
   });
   if (!minOK || !maxOK)
     return nullptr;
@@ -154,18 +141,19 @@ createUniformFloatInputRandomDistribution(
                                                                     max);
 }
 
+template <typename T>
 static std::unique_ptr<InputRandomDistribution>
 createUniformIntegerInputRandomDistribution(
     DType dtype, const InputGenerationRandomUniform &spec,
     InputSchemaErrorReporter &errorReporter) {
-  int32_t min, max;
+  T min, max;
   bool minOK = withinScope(errorReporter, "min", [&]() {
-    return parseDefaultedSI32Value(
-        spec.min, min, std::numeric_limits<int32_t>::lowest(), errorReporter);
+    return parseDefaultedElementValue(
+        spec.min, min, std::numeric_limits<T>::lowest(), errorReporter);
   });
   bool maxOK = withinScope(errorReporter, "max", [&]() {
-    return parseDefaultedSI32Value(
-        spec.max, max, std::numeric_limits<int32_t>::max(), errorReporter);
+    return parseDefaultedElementValue(
+        spec.max, max, std::numeric_limits<T>::max(), errorReporter);
   });
   if (!minOK || !maxOK)
     return nullptr;
@@ -173,8 +161,8 @@ createUniformIntegerInputRandomDistribution(
     errorReporter.reportError("'min' is greater than 'max'");
     return nullptr;
   }
-  return std::make_unique<BCD::UniformIntegerInputRandomDistribution>(dtype,
-                                                                      min, max);
+  return std::make_unique<BCD::UniformIntegerInputRandomDistribution<T>>(
+      dtype, min, max);
 }
 
 std::unique_ptr<InputRandomDistribution>
@@ -185,11 +173,33 @@ M::BenchmarkCLI::createUniformInputRandomDistribution(
   case DType::f32:
     return createUniformFloatInputRandomDistribution(dtype, spec,
                                                      errorReporter);
+  case DType::si8:
+    return createUniformIntegerInputRandomDistribution<int8_t>(dtype, spec,
+                                                               errorReporter);
+  case DType::ui8:
+    return createUniformIntegerInputRandomDistribution<uint8_t>(dtype, spec,
+                                                                errorReporter);
+  case DType::si16:
+    return createUniformIntegerInputRandomDistribution<int16_t>(dtype, spec,
+                                                                errorReporter);
+  case DType::ui16:
+    return createUniformIntegerInputRandomDistribution<uint16_t>(dtype, spec,
+                                                                 errorReporter);
   case DType::si32:
-    return createUniformIntegerInputRandomDistribution(dtype, spec,
-                                                       errorReporter);
+    return createUniformIntegerInputRandomDistribution<int32_t>(dtype, spec,
+                                                                errorReporter);
+  case DType::ui32:
+    return createUniformIntegerInputRandomDistribution<uint32_t>(dtype, spec,
+                                                                 errorReporter);
+  case DType::si64:
+    return createUniformIntegerInputRandomDistribution<int64_t>(dtype, spec,
+                                                                errorReporter);
+  case DType::ui64:
+    return createUniformIntegerInputRandomDistribution<uint64_t>(dtype, spec,
+                                                                 errorReporter);
   default:
-    errorReporter.reportError("Only f32 and si32 supported at this time");
+    errorReporter.reportError(llvm::Twine("Unsupported dtype ") +
+                              dtype.getAsString());
     return nullptr;
   }
 }
