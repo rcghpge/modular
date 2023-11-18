@@ -2573,7 +2573,7 @@ void ShapeOfOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 //===----------------------------------------------------------------------===//
-// MO_SliceOp
+// SliceOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult SliceOp::verify() {
@@ -2640,6 +2640,14 @@ OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
   }
 
   return getInput();
+}
+
+DeviceRefAttr SliceOp::getOperandDevice(size_t index) {
+  return (index == getStartMutable().getOperandNumber() ||
+          index == getStopMutable().getOperandNumber() ||
+          index == getStepMutable().getOperandNumber())
+             ? MO::getHostDeviceAny(getOperation())
+             : nullptr;
 }
 
 //===----------------------------------------------------------------------===//

@@ -51,6 +51,7 @@ LogicalResult ExtOp::lower(MGP::MOGraphLoweringState &loweringState) {
   //   [inChain,
   //    in_buf1, in_spec1, ..., in_bufN, in_specN,
   //    out_buf1, out_spec1, ... out_specM, out_specM]
+  // Note that loweredInputOperands already includes both the bufs and specs.
   size_t numOperands =
       1 + loweredInputOperands.size() + loweredOutputsStorage.size() * 2;
   SmallVector<Value> operands;

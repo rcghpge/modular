@@ -1272,7 +1272,8 @@ def MO_SelectOp : MO_TensorOp<"select", [Pure, MO_SameOperandsAndResultShape]>{
 
 def MO_SliceOp : MO_TensorOp<"slice", [
   MO_DefaultParameterization,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Slice operation";
   let description = [{
@@ -2260,10 +2261,10 @@ def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to"> {
 
     ```mlir
     %from: !mo.tensor<[3], f32>
-    %res1 = mo.static.broadcast(%from)
+    %res1 = mo.static.broadcast_to(%from)
       : !mo.tensor<[3], f32> -> !mo.tensor<[2, 3], f32>
     kgen.param.declare N = <...>
-    %res2 = mo.static.broadcast(%from)
+    %res2 = mo.static.broadcast_to(%from)
       : !mo.tensor<[3], f32> -> !mo.tensor<[N, 3], f32>
     ```
   }];
