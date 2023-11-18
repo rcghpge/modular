@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 
 import os
-import subprocess
+from pathlib import Path
 
 from lit.llvm import llvm_config
 
@@ -39,3 +39,8 @@ llvm_config.with_environment(
 )
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
+
+mojo_user_package = (
+    Path(config.modular_src_root) / "All" / "test" / "API" / "test_user_op"
+)
+config.substitutions.append(("%mojo_user_pkg", mojo_user_package))
