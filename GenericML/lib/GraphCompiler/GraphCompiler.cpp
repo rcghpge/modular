@@ -148,6 +148,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   addDevicesOpts.defaultDeviceLabel = opts.defaultDeviceLabel;
   pm.addPass(MO::createAddDevicesPass(addDevicesOpts, optRuntime));
 
+  pm.addPass(MO::createHackyPatternFusionForModconPass());
   pm.addPass(MO::createAssignDevicesPass());
   pm.addPass(MO::createInferLayouts());
 

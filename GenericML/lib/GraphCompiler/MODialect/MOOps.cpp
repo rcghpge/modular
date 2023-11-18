@@ -1679,6 +1679,16 @@ LogicalResult BatchMatmulOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_MultiHeadFlashAttentionOp
+//===----------------------------------------------------------------------===//
+
+DeviceRefAttr MultiHeadFlashAttentionOp::getOperandDevice(size_t index) {
+  return index == getScaleMutable().getOperandNumber()
+             ? MO::getHostDeviceAny(getOperation())
+             : nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // MO_PadOp support
 //===----------------------------------------------------------------------===//
 

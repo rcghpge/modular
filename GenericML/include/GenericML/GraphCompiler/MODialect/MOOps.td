@@ -3937,4 +3937,41 @@ def MO_ConcatFromListOp : MO_TensorOp<"concat_from_list", [
   let hasVerifier = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// "Custom" GPU only ops
+//===----------------------------------------------------------------------===//
+
+// TODO: Make into custom ops. Currently there's no way to mark custom ops as
+// GPU only, because device specificity is tied to individual ops. We will need
+// to support CPU only and GPU only custom ops, but that's not possible at the
+// moment.
+
+//===----------------------------------------------------------------------===//
+// MultiHeadAttentionOp
+//===----------------------------------------------------------------------===//
+
+// TODO(#26018): Turn into a custom op once we have a way to constrain custom
+// ops to GPU only
+
+def MO_MultiHeadFlashAttentionOp : MO_TensorOp<"multi_head_flash_attention", [
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
+]> {
+  let summary = "Multi headed attention op for GPU";
+  let description = [{
+    TODO: Write description
+  }];
+
+  let arguments = (ins MO_Tensor:$q,
+                       MO_Tensor:$k,
+                       MO_Tensor:$v,
+                       MO_Rank3Tensor:$mask,
+                       MO_RankedScalarFloatTensor:$scale);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD
