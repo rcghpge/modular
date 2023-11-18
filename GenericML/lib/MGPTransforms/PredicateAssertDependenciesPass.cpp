@@ -6,8 +6,11 @@
 
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 
+#include "GenericML/MGPDialect/BufferBuilder.h"
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "GraphRT/MEFDialect/MEFTypes.h"
 #include "GraphRT/MIPDialect/MIPOps.h"
 #include "llvm-project/llvm/include/llvm/ADT/SetOperations.h"
 #include "mlir/IR/Builders.h"
@@ -15,7 +18,7 @@
 
 #include "./Utils.h"
 
-#define EXCLUDED_TYPES MGP::ContextType, MEF::ChainType
+#define EXCLUDED_TYPES MGP::ContextType, MEF::MEFChainTypeInterface
 
 using namespace mlir;
 
@@ -43,6 +46,14 @@ class PredicateAssertDependenciesPass
   void runOnOperation() override {
     auto &ctx = getContext();
     OpBuilder builder(&ctx);
+
+    // TODO(#19098): The rewrite is done over the blocks in the IR. There is
+    // discontinuity between blocks meaning no uses are tracked across blocks.
+    // This means we are not yet tracking dependencies across blocks which may
+    // cause errors that would have been prevented with the assertion.
+    ModelOp model = getOperation();
+    BufferBuilderContext builderCtx =
+        TensorBufferDialectInterface::getAllBufferBuilders(model);
 
     auto perBlockRewrite = [&](Block *block) {
       // First, build a mapping of values and the assertions that they
@@ -97,7 +108,7 @@ class PredicateAssertDependenciesPass
             // avoid recursing when we know for sure we do not need to. This
             // is because the dependent operations will naturally inherit the
             // dependencies of this operation. If we predicate at this
-            // operation, no need to visit descendent operations.
+            // operation, no need to visit descendant operations.
             auto inputChains = getInputChainOpOperands(op);
             if (!inputChains.empty())
               return false;
@@ -137,12 +148,6 @@ class PredicateAssertDependenciesPass
         if (inputChains.empty())
           continue;
 
-        // TODO(#25422): Don't handle any non-mef chains for now
-        if (llvm::any_of(inputChains, [](OpOperand *operand) {
-              return !isa<MEF::ChainType>(operand->get().getType());
-            }))
-          continue;
-
         llvm::SetVector<AssertOp> diff = asserts;
         if (op->getNumResults()) {
           auto it = valuesThatFeedAsserts.find(op->getResult(0));
@@ -154,23 +159,27 @@ class PredicateAssertDependenciesPass
         if (diff.empty())
           continue;
 
-        SmallVector<Value> chains = {inputChains.front()->get()};
-        for (AssertOp assert : diff)
-          chains.push_back(assert.getResult());
+        auto bufferBuilder =
+            TensorBufferDialectInterface::getBuilderForTypeStorage(
+                builderCtx, inputChains.front()->get().getType());
+
+        builder.setInsertionPoint(op);
+        SmallVector<Value> chains;
+        for (AssertOp assert : diff) {
+          chains.push_back(bufferBuilder->fromMEFChain(
+              builder, op->getLoc(),
+              dyn_cast<TypedValue<ContextType>>(
+                  Value(model.getExecuteBlock()->getArgument(1))),
+              assert.getResult()));
+        }
 
         // For readability.
         builder.setInsertionPoint(op);
-        auto newChain =
-            builder.create<GRT::ChainCreateOp>(op->getLoc(), chains);
-        op->setOperand(inputChains.front()->getOperandNumber(), newChain);
+        if (failed(alsoWaitForChains(builder, builderCtx, op, chains)))
+          op->emitError("Could not wait on additional chains");
       }
     };
 
-    // TODO(#19098): The rewrite is done over the blocks in the IR. There is
-    // discontinuity between blocks meaning no uses are tracked across blocks.
-    // This means we are not yet tracking dependencies across blocks which may
-    // cause errors that would have been prevented with the assertion.
-    ModelOp model = getOperation();
     model->walk(perBlockRewrite);
   }
 };
