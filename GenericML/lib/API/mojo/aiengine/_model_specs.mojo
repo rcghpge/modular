@@ -33,7 +33,7 @@ struct CTensorNameArray:
         call_dylib_func(lib, Self.FreeTensorNameArrayFnName, self)
 
 
-struct TensorNamesIterator:
+struct TensorNamesIterator(Sized):
     var ptr: CTensorNameArray
     var current: Int
     var length: Int
@@ -58,7 +58,7 @@ struct TensorNamesIterator:
         return 1
 
 
-struct TensorNames:
+struct TensorNames(Sized):
     var ptr: CTensorNameArray
     var lib: DLHandle
     var length: Int
@@ -99,7 +99,7 @@ struct TensorNames:
         self.ptr.free(self.lib)
 
 
-struct InputTensorNames:
+struct InputTensorNames(Sized):
     """Collection of model input names."""
 
     var names: TensorNames
@@ -126,10 +126,10 @@ struct InputTensorNames:
         return self.names.__iter__()
 
     fn __len__(self) -> Int:
-        return self.names.__len__()
+        return len(self.names)
 
 
-struct OutputTensorNames:
+struct OutputTensorNames(Sized):
     """Collection of model output names."""
 
     var names: TensorNames
@@ -153,4 +153,4 @@ struct OutputTensorNames:
         return self.names.__iter__()
 
     fn __len__(self) -> Int:
-        return self.names.__len__()
+        return len(self.names)

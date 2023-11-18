@@ -59,7 +59,7 @@ struct CTensor:
         call_dylib_func(lib, Self.FreeTensorFnName, self)
 
 
-struct EngineTensor:
+struct EngineTensor(Sized):
     var ptr: CTensor
     var lib: DLHandle
     var session: InferenceSession
@@ -100,11 +100,11 @@ struct EngineTensor:
         ).get_as_tensor_spec()
 
     fn buffer[type: DType](self) raises -> Buffer[Dim(), type]:
-        return Buffer[Dim(), type](self.data[type](), self.__len__())
+        return Buffer[Dim(), type](self.data[type](), len(self))
 
     fn buffer(self) -> Buffer[Dim(), DType.invalid]:
         return Buffer[Dim(), DType.invalid](
-            self.data(), self.__len__() * self.dtype().sizeof()
+            self.data(), len(self) * self.dtype().sizeof()
         )
 
     fn tensor[type: DType](self) raises -> Tensor[type]:
@@ -112,7 +112,7 @@ struct EngineTensor:
         memcpy(
             tensor.data(),
             self.data[type](),
-            self.__len__(),
+            len(self),
         )
         return tensor ^
 

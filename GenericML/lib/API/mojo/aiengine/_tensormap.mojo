@@ -72,7 +72,7 @@ struct CTensorMap:
         call_dylib_func(lib, Self.FreeAsyncTensorMapFnName, self)
 
 
-struct TensorMap:
+struct TensorMap(SizedRaising):
     var ptr: CTensorMap
     var lib: DLHandle
     var session: InferenceSession

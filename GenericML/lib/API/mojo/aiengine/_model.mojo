@@ -98,7 +98,7 @@ struct Model:
         self, inputs: VariadicList[Tuple[key_type, value_type]]
     ) raises -> TensorMap:
         let input_map = TensorMap(self.ctx, self.lib, self.session.copy())
-        for i in range(inputs.__len__()):
+        for i in range(len(inputs)):
             let pair = inputs[i]
 
             @parameter

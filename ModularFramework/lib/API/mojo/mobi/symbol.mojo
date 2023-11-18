@@ -57,5 +57,5 @@ struct Symbol:
                 g.constant(Tensor(end_ptr, TensorShape(1))),
                 g.constant(Tensor(step_ptr, TensorShape(1))),
             ),
-            TensorSpec(DType.int64, span.__len__()),
+            TensorSpec(DType.int64, len(span)),
         )[0]
