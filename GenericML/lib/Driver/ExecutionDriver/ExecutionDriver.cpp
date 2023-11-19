@@ -28,6 +28,10 @@
 #include <fstream>
 #include <numeric>
 
+#ifdef MODULAR_PROFILING_NSIGHT
+#include "Support/CUDA/Profile.h"
+#endif // MODULAR_PROFILING_NSIGHT
+
 using namespace M;
 using mlir::MLIRContext;
 
@@ -557,7 +561,12 @@ executeModel(const Model *model, Runtime &runtime,
     std::chrono::high_resolution_clock::time_point startTime, endTime;
     auto entry = ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1)>::create(
         "executeModel.run");
+
     startTime = std::chrono::high_resolution_clock::now();
+#ifdef MODULAR_PROFILING_NSIGHT
+    if (auto err = M::CUDA::profileStart())
+      return err.takeError();
+#endif
     // If not printing any results we need to still check they are error free.
     // Otherwise, we need only wait for the results and errors will be
     // reported when printing the results below.
@@ -568,7 +577,12 @@ executeModel(const Model *model, Runtime &runtime,
     if (resultsOr.isError())
       return resultsOr.takeError();
     auto results = std::move(*resultsOr);
+#ifdef MODULAR_PROFILING_NSIGHT
+    if (auto err = M::CUDA::profileStop())
+      return err.takeError();
+#endif
     endTime = std::chrono::high_resolution_clock::now();
+
     std::move(entry).record();
 
     if (options.resultOutputStyle != Kernels::ResultOutputStyle::kNone) {
