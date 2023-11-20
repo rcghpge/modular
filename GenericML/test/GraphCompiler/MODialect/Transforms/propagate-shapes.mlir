@@ -138,25 +138,22 @@ mo.graph @nested_div_mul_simplification<D0, D1 -> D2>(
 }
 
 // CHECK-LABEL: mo.graph @param_expr_cse
-// CHECK-SAME: <[[D0:.*]], [[D1:.*]] -> [[D2:.*]], [[D4:.*]]>(
-mo.graph @param_expr_cse<D0, D1 -> D2, D3, D4>(
-  // CHECK-SAME: %[[ARG:.*]]: !mo.tensor<[[[D0]], [[D1]], 20], f32>
-  %arg: !mo.tensor<[D0, D1, 20], f32>
-// CHECK-SAME: ) -> !mo.tensor<[[[D2]], 42, [[D4]]], f32> no_inline {
-) -> !mo.tensor<[D2, D3, D4], f32> {
-  // CHECK-NEXT: kgen.param.declare [[D5:.*]] = <mul_nuw([[D0]], 20)>
-  // CHECK-NEXT: kgen.param.declare [[D7:.*]] = <add([[D0]], 20)>
-  kgen.param.declare D5 = <mul_nuw(D0, 20)>
-  kgen.param.declare D6 = <mul_nuw(D0, 20)>
-  kgen.param.declare D7 = <add(D0, 20)>
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]] -> [[D2:.*]], [[D3:.*]]>(
+// CHECK-SAME:   %[[ARG:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]]], f32> no_inline {
+mo.graph @param_expr_cse<D0, D1 -> D2, D3>(
+  %arg: !mo.tensor<[D0, D1], f32>
+) -> !mo.tensor<[D2, D3], f32> {
+  // CHECK-NEXT: kgen.param.declare [[D5:.*]] = <add(div(add(mul_nuw([[D0]], [[D1]]), [[D1]]), 20), 30)>
+  kgen.param.declare D5 = <add(div(add(mul_nuw(D0, D1), D1), 20), 30)>
+  kgen.param.declare D6 = <add(div(add(mul_nuw(D0, D1), D1), 20), 30)>
+
   // CHECK-NEXT: %[[RESHAPED:.*]] = mo.static.reshape(%[[ARG]])
-  // CHECK-SAME: : !mo.tensor<[[[D0]], [[D1]], 20], f32> -> !mo.tensor<[[[D5]], [[D5]], [[D7]]], f32>
-  %reshaped = mo.static.reshape(%arg) : !mo.tensor<[D0, D1, 20], f32> -> !mo.tensor<[D5, D6, D7], f32>
-  // CHECK-NEXT: %[[RES:.*]] = mo.static.broadcast_to(%[[RESHAPED]])
-  // CHECK-SAME: : !mo.tensor<[[[D5]], [[D5]], [[D7]]], f32> -> !mo.tensor<[[[D5]], 42, [[D5]]], f32>
-  %res = mo.static.broadcast_to(%reshaped) : !mo.tensor<[D5, D6, D7], f32> -> !mo.tensor<[D6, 42, D5], f32>
-  // CHECK-NEXT: mo.output<[[D5]], [[D5]]> %[[RES]] : !mo.tensor<[[[D5]], 42, [[D5]]], f32>
-  mo.output<D6, 42, D5> %res : !mo.tensor<[D6, 42, D5], f32>
+  // CHECK-SAME: : !mo.tensor<[[[D0]], [[D1]]], f32> -> !mo.tensor<[[[D5]], [[D5]]], f32>
+  %res = mo.static.reshape(%arg) : !mo.tensor<[D0, D1], f32> -> !mo.tensor<[D5, D6], f32>
+
+  // CHECK-NEXT: mo.output<[[D5]], [[D5]]> %[[RES]] : !mo.tensor<[[[D5]], [[D5]]], f32>
+  mo.output<D5, D6> %res : !mo.tensor<[D5, D6], f32>
 }
 
 // CHECK-LABEL: mo.graph @param_expr_apply_no_cse
@@ -203,17 +200,16 @@ mo.graph @fold_nested_max<D0, bs -> out>(
   %dummy: !mo.tensor<[bs], f32> // this is used solely to help define `bs`
 ) -> !mo.tensor<[out, 768], f32> {
 
-  // CHECK-NEXT: kgen.param.declare [[D1:.*]] = <max([[BS]], 1)>
   kgen.param.declare D1 = <max(bs, 1)>
   kgen.param.declare D2 = <max(D1, bs)>
 
-  // CHECK-NEXT: %[[INPUT_RS:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[[[D0]]], f32> -> !mo.tensor<[[[D1]], 768], f32>
+  // CHECK-NEXT: %[[INPUT_RS:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[[[D0]]], f32> -> !mo.tensor<[max([[BS]], 1), 768], f32>
   %input_rs = mo.static.reshape(%input) : !mo.tensor<[D0], f32> -> !mo.tensor<[D1, 768], f32>
 
   // Simplified and removed.
   %res = mo.static.broadcast_to(%input_rs) : !mo.tensor<[D1, 768], f32> -> !mo.tensor<[D2, 768], f32>
 
-  // CHECK-NEXT: mo.output<[[D1]]> %[[INPUT_RS]] : !mo.tensor<[[[D1]], 768], f32>
+  // CHECK-NEXT: mo.output<max([[BS]], 1)> %[[INPUT_RS]] : !mo.tensor<[max([[BS]], 1), 768], f32>
   mo.output<D2> %res : !mo.tensor<[D2, 768], f32>
 }
 
@@ -253,9 +249,7 @@ mo.graph @out_of_order_instructions<D0 -> out>(
   %dummy: !mo.tensor<[D0], f32> // this is used solely to help define `D0`
 ) -> !mo.tensor<[out], f32> {
 
-  // CHECK-NEXT: kgen.param.declare [[D1:.*]] = <add([[D0]], 1)>
-  // CHECK-NEXT: kgen.param.declare [[D2:.*]] = <mul([[D1]], [[D1]])>
-  // CHECK-NEXT: kgen.param.declare [[D3:.*]] = <div([[D2]], [[D0]])>
+  // CHECK-NEXT: kgen.param.declare [[D3:.*]] = <div(add(mul([[D0]], [[D0]]), mul([[D0]], 2), 1), [[D0]])>
   kgen.param.declare D3 = <div(D2, D0)>
   kgen.param.declare D2 = <mul(D1, D1)>
 
@@ -266,4 +260,19 @@ mo.graph @out_of_order_instructions<D0 -> out>(
 
   // CHECK-NEXT: mo.output<[[D3]]> %[[RES]] : !mo.tensor<[[[D3]]], f32>
   mo.output<D3> %res : !mo.tensor<[D3], f32>
+}
+
+// CHECK-LABEL: mo.graph @nested_mul
+mo.graph @nested_mul<D0>() {
+
+  // These KGEN expressions are all folded away
+
+  // NOTE that this gets canonicalized into `mul(D0, 2)`
+  kgen.param.declare P0 = <add(D0, D0)>
+  kgen.param.declare P1 = <mod(P0, D0)>
+  kgen.param.declare P2: i1 = <eq(P1, 0)>
+  kgen.param.declare P3: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "error" : !kgen.string}, P2)>
+
+  // CHECK-NEXT: mo.output
+  mo.output
 }

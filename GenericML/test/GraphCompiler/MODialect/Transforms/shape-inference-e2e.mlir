@@ -234,24 +234,17 @@ mo.graph @broadcasted_binary_elwise(
   // CHECK-SAME:)>
   // CHECK-DAG: kgen.param.declare [[CH1:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions are not broadcastable" : !kgen.string}, [[P15]])>
 
-  // CHECK-DAG: kgen.param.declare [[P8:.*]] = <max([[D17]], 12)>
-  // CHECK-DAG: kgen.param.declare [[P16:.*]] =
-  // CHECK-SAME: <max(
-  // CHECK-DAG: [[D16]]
-  // CHECK-DAG:,
-  // CHECK-DAG: [[D18]]
-  // CHECK-SAME:)>
   %shape1 = mo.shape_of(%arg0) : (!mo.tensor<[?, 12, ?], f32>) -> !mo.tensor<[3], si64>
   %shape2 = mo.shape_of(%arg1) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[2], si64>
   %shape = mo.broadcast_shape(%shape1, %shape2) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
 
-  // CHECK-DAG: %[[VAL0:.*]] = mo.static.broadcast_to(%arg0) : !mo.tensor<[[[D15]], 12, [[D16]]], f32> -> !mo.tensor<[[[D15]], [[P8]], [[P16]]], f32>
-  // CHECK-DAG: %[[VAL1:.*]] = mo.static.broadcast_to(%arg1) : !mo.tensor<[[[D17]], [[D18]]], f32> -> !mo.tensor<[[[D15]], [[P8]], [[P16]]], f32>
+  // CHECK-DAG: %[[VAL0:.*]] = mo.static.broadcast_to(%arg0) : !mo.tensor<[[[D15]], 12, [[D16]]], f32> -> !mo.tensor<[[[D15]], max([[D17]], 12), max({{.*}})], f32>
+  // CHECK-DAG: %[[VAL1:.*]] = mo.static.broadcast_to(%arg1) : !mo.tensor<[[[D17]], [[D18]]], f32> -> !mo.tensor<[[[D15]], max([[D17]], 12), max({{.*}})], f32>
   %0 = mo.broadcast_to(%arg0, %shape) : (!mo.tensor<[?, 12, ?], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
   %1 = mo.broadcast_to(%arg1, %shape) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
-  // CHECK-NEXT: %[[RES:.*]] = mo.add(%[[VAL0]], %[[VAL1]]) : !mo.tensor<[[[D15]], [[P8]], [[P16]]], f32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.add(%[[VAL0]], %[[VAL1]]) : !mo.tensor<[[[D15]], max([[D17]], 12), max({{.*}})], f32>
   %3 = mo.add(%0, %1) : !mo.tensor<[?, ?, ?], f32>
-  // CHECK-NEXT: mo.output<[[P8]], [[P16]]> %[[RES]] : !mo.tensor<[[[D15]], [[P8]], [[P16]]], f32>
+  // CHECK-NEXT: mo.output<max([[D17]], 12), max({{.*}})> %[[RES]] : !mo.tensor<[[[D15]], max([[D17]], 12), max({{.*}})], f32>
   mo.output %3 : !mo.tensor<[?, ?, ?], f32>
 }
 
@@ -283,9 +276,7 @@ mo.graph @scalar_to_tensor_reshapes_before_staticization(
   %arg: !mo.tensor<[?, ?], si32>
   // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D0]]], si32> no_inline {
 ) -> !mo.tensor<[?, ?], si32> {
-  // CHECK-DAG: kgen.param.declare [[P0:.*]] = <mul_nuw([[D0]], [[D1]])>
-  // CHECK-DAG: kgen.param.declare [[P1:.*]] = <mul_nuw([[D0]], [[D0]])>
-  // CHECK-DAG: kgen.param.declare [[P2:.*]]: i1 = <eq([[P0]], [[P1]])>
+  // CHECK-DAG: kgen.param.declare [[P2:.*]]: i1 = <eq(mul_nuw([[D0]], [[D0]]), mul_nuw([[D0]], [[D1]]))>
   // CHECK-DAG: kgen.param.declare [[P3:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "number of elements must be equal" : !kgen.string}, [[P2]])>
   %scalar_one = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
   %scalar_zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si32>
@@ -856,8 +847,7 @@ mo.graph @binary_logical_op(
   // CHECK-NEXT: %[[AND:.*]] = mo.and(%[[LHS]], %[[RHS_REB]]) : !mo.tensor<[[[D0]], [[D1]]], bool>
   %and = mo.and(%lhs, %rhs) : !mo.tensor<[?, ?], bool>
 
-  // CHECK-NEXT: kgen.param.declare [[EQ1:.*]]: i1 = <and(eq([[D3]], [[D1]]), eq([[D0]], [[D2]]))>
-  // CHECK-NEXT: kgen.param.declare [[CH1:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input shapes must match" : !kgen.string}, [[EQ1]])>
+  // CHECK-NEXT: kgen.param.declare [[CH1:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input shapes must match" : !kgen.string}, [[EQ0]])>
   // CHECK-NEXT: %[[XOR:.*]] = mo.xor(%[[AND]], %[[RHS_REB]]) : !mo.tensor<[[[D0]], [[D1]]], bool>
   %xor = mo.xor(%and, %rhs) : !mo.tensor<[?, ?], bool>
 
@@ -898,9 +888,8 @@ mo.graph @bottom_k(%input : !mo.tensor<[5, 5], si64>, %sorted : !mo.tensor<[], b
 
 // CHECK-LABEL: mo.graph @unsqueeze_shape_dynamic_shape
 // CHECK-SAME: <[[D1:.*]], [[D2:.*]] -> [[D3:.*]]>(
-// CHECK: kgen.param.declare [[P1:.*]] = <add([[D1]], [[D2]])>
-// CHECK: %[[OUT:.*]] = mo.unsqueeze_shape(%[[__:.*]], %[[__:.*]]) : (!mo.tensor<[[[D1]]], si32>, !mo.tensor<[[[D2]]], si32>) -> !mo.tensor<[[[P1]]], si32>
-// CHECK-NEXT: mo.output<[[P1]]> %[[OUT]]
+// CHECK: %[[OUT:.*]] = mo.unsqueeze_shape(%[[__:.*]], %[[__:.*]]) : (!mo.tensor<[[[D1]]], si32>, !mo.tensor<[[[D2]]], si32>) -> !mo.tensor<[add([[D1]], [[D2]])], si32>
+// CHECK-NEXT: mo.output<add([[D1]], [[D2]])> %[[OUT]]
 mo.graph @unsqueeze_shape_dynamic_shape(%input_shape: !mo.tensor<[?], si32>, %indices: !mo.tensor<[?], si32>) -> !mo.tensor<[?], si32> {
   %res = mo.unsqueeze_shape(%input_shape, %indices) : (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<[?], si32>
   mo.output %res : !mo.tensor<[?], si32>
@@ -910,8 +899,7 @@ mo.graph @unsqueeze_shape_dynamic_shape(%input_shape: !mo.tensor<[?], si32>, %in
 // CHECK: <[[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]] -> [[D5:.*]]>(
 // CHECK: %[[RESULT0:.*]] = kgen.param.constant: !mosh.ape = <[[[D1]], [[D2]], [[D3]]]>
 // CHECK-NEXT: %[[RESULT1:.*]] = mo.shape.to_tensor(%[[RESULT0]])
-// CHECK-NEXT: kgen.param.declare [[P1:.*]] = <add([[D4]], 3)>
-// CHECK: %[[RESULT_SHAPE:.*]] = mo.unsqueeze_shape(%[[RESULT1]], %[[__:.*]]) : (!mo.tensor<[3], si32>, !mo.tensor<[[[D4]]], si32>) -> !mo.tensor<[[[P1]]], si32>
+// CHECK: %[[RESULT_SHAPE:.*]] = mo.unsqueeze_shape(%[[RESULT1]], %[[__:.*]]) : (!mo.tensor<[3], si32>, !mo.tensor<[[[D4]]], si32>) -> !mo.tensor<[add([[D4]], 3)], si32>
 // CHECK: %[[OUT:.*]] = mo.reshape<() -> [[SH1:.*]]: !mosh.ape>(%[[___:.*]], %[[RESULT_SHAPE]])
 // CHECK-NEXT: mo.output<:!mosh.ape [[SH1]]> %[[OUT]]
 mo.graph @unsqueeze_shape_dynamic_shape_with_reshape(%input_tensor: !mo.tensor<[?, ?, ?], si32>, %indices: !mo.tensor<[?], si32>) -> !mo.tensor<?, si32> {
@@ -922,8 +910,7 @@ mo.graph @unsqueeze_shape_dynamic_shape_with_reshape(%input_tensor: !mo.tensor<[
 }
 
 // CHECK-LABEL:  mo.graph @gather_nd
-// CHECK:         kgen.param.declare [[P30:.*]] = <add([[D5:.*]], 1)>
-// CHECK-NEXT:    kgen.param.declare [[P31:.*]]: !mosh.ape = <apply(:(!mosh.ape, index, index) -> !mosh.ape "mosh.slice", [[[D1:.*]], [[D2:.*]], [[D3:.*]]], [[P30]], 3)>
+// CHECK:         kgen.param.declare [[P31:.*]]: !mosh.ape = <apply(:(!mosh.ape, index, index) -> !mosh.ape "mosh.slice", [[[D1:.*]], [[D2:.*]], [[D3:.*]]], add([[D5:.*]], 1), 3)>
 // CHECK-NEXT:    kgen.param.declare [[P32:.*]]: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape, !mosh.ape) -> !mosh.ape "mosh.concat", [[[D4:.*]]], [], [[P31]])>
 // CHECK-NEXT:    %[[GATHER:.*]] = mo.gather_nd({{.*}}) {batchDims = 1 : i64} : (!mo.tensor<[[[D1:.*]], [[D2:.*]], [[D3:.*]]], si64>, !mo.tensor<[[[D4]], [[D5]]], si64>) -> !mo.tensor<[[P32]], si64>
 // CHECK-NEXT:    mo.output<:!mosh.ape [[P32]]> %0 : !mo.tensor<[[P32]], si64>
@@ -944,9 +931,8 @@ mo.graph @gather_nd_with_last_dim(%input: !mo.tensor<[?, ?, ?], si64>, %indices:
 
 // CHECK-LABEL: mo.graph @squeeze_shape_dynamic_shape
 // CHECK-SAME: <[[D1:.*]], [[D2:.*]] -> [[D3:.*]]>(
-// CHECK: kgen.param.declare [[P1:.*]] = <add(mul([[D2]], -1), [[D1]])>
-// CHECK: %[[OUT:.*]] = mo.squeeze_shape(%[[__:.*]], %[[__:.*]]) : (!mo.tensor<[[[D1]]], si32>, !mo.tensor<[[[D2]]], si32>) -> !mo.tensor<[[[P1]]], si32>
-// CHECK-NEXT: mo.output<[[P1]]> %[[OUT]]
+// CHECK: %[[OUT:.*]] = mo.squeeze_shape(%[[__:.*]], %[[__:.*]]) : (!mo.tensor<[[[D1]]], si32>, !mo.tensor<[[[D2]]], si32>) -> !mo.tensor<[add(mul([[D2]], -1), [[D1]])], si32>
+// CHECK-NEXT: mo.output<add(mul([[D2]], -1), [[D1]])> %[[OUT]]
 mo.graph @squeeze_shape_dynamic_shape(%input_shape: !mo.tensor<[?], si32>, %indices: !mo.tensor<[?], si32>) -> !mo.tensor<[?], si32> {
   %res = mo.squeeze_shape(%input_shape, %indices) : (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<[?], si32>
   mo.output %res : !mo.tensor<[?], si32>
@@ -956,8 +942,7 @@ mo.graph @squeeze_shape_dynamic_shape(%input_shape: !mo.tensor<[?], si32>, %indi
 // CHECK: <[[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]] -> [[D5:.*]]>(
 // CHECK: %[[RESULT0:.*]] = kgen.param.constant: !mosh.ape = <[[[D1]], [[D2]], [[D3]]]>
 // CHECK-NEXT: %[[RESULT1:.*]] = mo.shape.to_tensor(%[[RESULT0]])
-// CHECK-NEXT: kgen.param.declare [[P1:.*]] = <add(mul([[D4]], -1), 3)>
-// CHECK: %[[RESULT_SHAPE:.*]] = mo.squeeze_shape(%[[RESULT1]], %[[__:.*]]) : (!mo.tensor<[3], si32>, !mo.tensor<[[[D4]]], si32>) -> !mo.tensor<[[[P1]]], si32>
+// CHECK: %[[RESULT_SHAPE:.*]] = mo.squeeze_shape(%[[RESULT1]], %[[__:.*]]) : (!mo.tensor<[3], si32>, !mo.tensor<[[[D4]]], si32>) -> !mo.tensor<[add(mul([[D4]], -1), 3)], si32>
 // CHECK: %[[OUT:.*]] = mo.reshape<() -> [[SH1:.*]]: !mosh.ape>(%[[___:.*]], %[[RESULT_SHAPE]])
 // CHECK-NEXT: mo.output<:!mosh.ape [[SH1]]> %[[OUT]]
 mo.graph @squeeze_shape_dynamic_shape_with_reshape(%input_tensor: !mo.tensor<[?, ?, ?], si32>, %indices: !mo.tensor<[?], si32>) -> !mo.tensor<?, si32> {
@@ -1073,20 +1058,20 @@ mo.graph @nested_broadcast_shapes(
   %sh1 = mo.broadcast_shape(%cond_sh, %then_sh) : (!mo.tensor<[2], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[2], si32>
   %sh2 = mo.broadcast_shape(%sh1, %else_sh) : (!mo.tensor<[2], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[2], si32>
 
-  // CHECK-NEXT: kgen.param.declare [[D6:.*]] = <max([[D0]], [[D2]])>
-  // CHECK-NEXT: kgen.param.declare [[D7:.*]] = <max([[D1]], [[D3]])>
-
-  // CHECK-NEXT: %[[COND_B:.*]] = mo.static.broadcast_to(%[[COND]]) : !mo.tensor<[[[D0]], [[D1]]], bool> -> !mo.tensor<[[[D6]], [[D7]]], bool>
-  // CHECK-NEXT: %[[THEN_B:.*]] = mo.static.broadcast_to(%[[THEN]]) : !mo.tensor<[[[D0]], [[D1]]], si32> -> !mo.tensor<[[[D6]], [[D7]]], si32>
-  // CHECK-NEXT: %[[ELSE_B:.*]] = mo.static.broadcast_to(%[[ELSE]]) : !mo.tensor<[[[D2]], [[D3]]], si32> -> !mo.tensor<[[[D6]], [[D7]]], si32>
+  // CHECK-NEXT: %[[COND_B:.*]] = mo.static.broadcast_to(%[[COND]]) : !mo.tensor<[[[D0]], [[D1]]], bool> -> !mo.tensor<[max([[D0]], [[D2]]), max([[D1]], [[D3]])], bool>
+  // CHECK-NEXT: %[[THEN_B:.*]] = mo.static.broadcast_to(%[[THEN]]) : !mo.tensor<[[[D0]], [[D1]]], si32> -> !mo.tensor<[max([[D0]], [[D2]]), max([[D1]], [[D3]])], si32>
+  // CHECK-NEXT: %[[ELSE_B:.*]] = mo.static.broadcast_to(%[[ELSE]]) : !mo.tensor<[[[D2]], [[D3]]], si32> -> !mo.tensor<[max([[D0]], [[D2]]), max([[D1]], [[D3]])], si32>
   %cond_b = mo.broadcast_to(%cond, %sh2) : (!mo.tensor<[?, ?], bool>, !mo.tensor<[2], si32>)   -> !mo.tensor<[?, ?], bool>
   %then_b = mo.broadcast_to(%then, %sh2) : (!mo.tensor<[?, ?], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[?, ?], si32>
   %else_b = mo.broadcast_to(%else, %sh2) : (!mo.tensor<[?, ?], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[?, ?], si32>
 
   // CHECK-NEXT: %[[RES:.*]] = mo.select(%[[COND_B]], %[[THEN_B]], %[[ELSE_B]]) :
-  // CHECK-SAME: (!mo.tensor<[[[D6]], [[D7]]], bool>, !mo.tensor<[[[D6]], [[D7]]], si32>, !mo.tensor<[[[D6]], [[D7]]], si32>) -> !mo.tensor<[[[D6]], [[D7]]], si32>
+  // CHECK-SAME: (!mo.tensor<[max([[D0]], [[D2]]), max([[D1]], [[D3]])], bool>,
+  // CHECK-SAME:  !mo.tensor<[max([[D0]], [[D2]]), max([[D1]], [[D3]])], si32>,
+  // CHECK-SAME:  !mo.tensor<[max([[D0]], [[D2]]), max([[D1]], [[D3]])], si32>
+  // CHECK-SAME: ) -> !mo.tensor<[max([[D0]], [[D2]]), max([[D1]], [[D3]])], si32>
   %res = mo.select(%cond_b, %then_b, %else_b) : (!mo.tensor<[?, ?], bool>, !mo.tensor<[?, ?], si32>, !mo.tensor<[?, ?], si32>) -> !mo.tensor<[?, ?], si32>
 
-  // CHECK-NEXT: mo.output<[[D6]], [[D7]]> %[[RES]] : !mo.tensor<[[[D6]], [[D7]]], si32>
+  // CHECK-NEXT: mo.output<max([[D0]], [[D2]]), max([[D1]], [[D3]])> %[[RES]] : !mo.tensor<[max([[D0]], [[D2]]), max([[D1]], [[D3]])], si32>
   mo.output %res : !mo.tensor<[?, ?], si32>
 }

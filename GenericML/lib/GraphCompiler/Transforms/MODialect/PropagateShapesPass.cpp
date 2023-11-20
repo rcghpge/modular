@@ -41,21 +41,6 @@ bool isParamDeclOpPure(KGEN::ParamDeclareOp paramDeclOp) {
   return true;
 }
 
-bool canParamOperatorBeNested(KGEN::ParamOperatorAttr paramOperator) {
-  if (!isParamOperatorPure(paramOperator))
-    return false;
-
-  switch (paramOperator.getOpcode()) {
-  case KGEN::POC::Add:
-  case KGEN::POC::Max:
-    [[fallthrough]];
-  case KGEN::POC::MulNuw:
-    return true;
-  default:
-    return false;
-  }
-}
-
 // Assume `useDefGraph` is constructed for `graphOp`, remove all the dead
 // `kgen.param.declare` ops (basically aggressive DCE applied to
 // `kgen.param.declare`s).
@@ -382,7 +367,55 @@ struct PropagateShapesPass
     scheduleBlock(graphOp.getBodyBlock(), useDefGraph, scheduledOps);
   }
 
+  /// Return the depth of a KGEN param operator, where
+  /// - <add(D0, 1)> has depth 1
+  /// - <add(mul(D0, 2), 1)> has depth 2
+  size_t getParamAttrDepth(KGEN::ParamOperatorAttr paramOperator) {
+    if (!paramAttrToDepth.contains(paramOperator)) {
+      size_t depth = 0;
+      for (TypedAttr operand : paramOperator.getOperands()) {
+        if (auto nestedParamOperator =
+                dyn_cast<KGEN::ParamOperatorAttr>(operand)) {
+          depth = std::max(depth, getParamAttrDepth(nestedParamOperator));
+        }
+      }
+      depth += 1;
+      paramAttrToDepth[paramOperator] = depth;
+    }
+    return paramAttrToDepth.at(paramOperator);
+  }
+
+  bool canParamOperatorBeNested(KGEN::ParamOperatorAttr paramOperator) {
+    if (!isParamOperatorPure(paramOperator))
+      return false;
+
+    // A heuristic to avoid having super nested KGEN expression which cannot be
+    // folded away. `kMaxDepth` should be picked such that, folding for
+    // practical models should only require at most this amount of expression
+    // nesting.
+    constexpr size_t kMaxDepth = 2;
+    if (getParamAttrDepth(paramOperator) > kMaxDepth)
+      return false;
+
+    // Be conservative and only allow nesting for expressions shape inference
+    // care about folding, this mainly keeps the IR easy to read (also helps in
+    // case we ever want to expose the `!mo.tensor` symbolic shapes to users).
+    switch (paramOperator.getOpcode()) {
+    case KGEN::POC::Add:
+    case KGEN::POC::Max:
+    case KGEN::POC::Mul:
+      [[fallthrough]];
+    case KGEN::POC::MulNuw:
+      return true;
+    default:
+      return false;
+    }
+  }
+
   void runOnOperation() override {
+    // Clear state variables (in case the pass instance is reused)
+    paramAttrToDepth.clear();
+
     GraphOp graphOp = getOperation();
     topoSortWithParameters(graphOp);
 
@@ -409,13 +442,13 @@ struct PropagateShapesPass
 
     // TODO(#9008) inline inputs to `mosh.assert`
     // A replacer to help replacing parameters in an op with its evaluated form.
+    // TODO(#26115) we should switch to replacing manually via
+    // `evaluator.getReboundAttribute(shapeAttr)` for each op, since we only
+    // care about specific region of an op, and to avoid having 2 caches -- 1 in
+    // replacer and 1 in evaluator.
     mlir::AttrTypeReplacer replacer;
     replacer.addReplacement([&](KGEN::ParamDeclRefAttr declRef) -> Attribute {
       Attribute resolvedAttr = evaluator.getReboundAttribute(declRef);
-      // Don't replace parameter by param expression, so that we don't have
-      // expressions inside shapes, like `!mo.tensor<[add(D0, 42), 10], f32>`
-      if (isa<KGEN::ParamOperatorAttr>(resolvedAttr))
-        return declRef;
       return resolvedAttr;
     });
 
@@ -451,30 +484,35 @@ struct PropagateShapesPass
         KGEN::ParamDeclAttr declAttr = declOp.getParamDecl();
         auto reboundDeclAttr =
             cast<TypedAttr>(evaluator.getReboundAttribute(declOp.getValue()));
+
         auto paramOperatorAttr =
             dyn_cast<KGEN::ParamOperatorAttr>(reboundDeclAttr);
-        // Short circuit if the expression cannot be nested.
+        // If the param expression cannot be nested, we either map the decl to
+        // itself or to a previous decl that has the same expression. The goal
+        // here is maximize textual equality for expression, e.g.,
+        // - `D0` and `D0` for decls that map to themselves or other decls.
+        // - `add(D0, 2)` and `add(D0, 2)` for decls that map to expressions.
+        // This enables more simplifications.
         if (paramOperatorAttr && !canParamOperatorBeNested(paramOperatorAttr)) {
-          mapDeclaredParamToItself(declAttr);
-          continue;
-        }
-
-        auto declRefAttr = KGEN::ParamDeclRefAttr::get(declAttr);
-        // Try to perform CSE on the fly.
-        if (paramOperatorAttr && isParamOperatorPure(paramOperatorAttr)) {
-          // If we find an existing decl that maps to this expression, map this
-          // decl to a reference of that existing decl.
+          // CSE on the fly for expression that cannot be nested, which helps
+          // the following scenario, where we'd otherwise lose textual equality
+          // for `D0` and `D1`:
+          //   kgen.param.declare D0 = <...nested_expr_e1...>
+          //   kgen.param.declare D1 = <...nested_expr_e1...>
+          //   static.broadcast_to(...) : <[D0], f32> -> <[D1], f32>
           if (auto existingDeclRef = exprToDeclRef.lookup(paramOperatorAttr)) {
             evaluator.setParameterValue(declAttr, existingDeclRef);
 
             // Else we remember this decl has this expression.
           } else {
-            exprToDeclRef.try_emplace(paramOperatorAttr, declRefAttr);
-            evaluator.setParameterValue(declAttr, reboundDeclAttr);
+            auto declRefAttr = KGEN::ParamDeclRefAttr::get(declAttr);
+            if (isParamOperatorPure(paramOperatorAttr))
+              exprToDeclRef.try_emplace(paramOperatorAttr, declRefAttr);
+            mapDeclaredParamToItself(declAttr);
           }
 
-          // Can't CSE, catch-all path.
         } else {
+          // The param expression can be nested, so we just record it as is.
           evaluator.setParameterValue(declAttr, reboundDeclAttr);
         }
       }
@@ -491,4 +529,7 @@ struct PropagateShapesPass
     useDefGraph.calculate(paramCache);
     removeDeadParamDeclares(graphOp, useDefGraph);
   }
+
+  // State variables used by the pass
+  DenseMap<KGEN::ParamOperatorAttr, size_t> paramAttrToDepth;
 };
