@@ -276,3 +276,24 @@ mo.graph @nested_mul<D0>() {
   // CHECK-NEXT: mo.output
   mo.output
 }
+
+// CHECK-LABEL: mo.graph @range_based_folding
+// CHECK-SAME:  <[[D0:.*]] -> [[O3:.*]]>(
+// CHECK-SAME:    %[[IN:.*]]: !mo.tensor<[], f32>
+// CHECK-SAME:  ) -> !mo.tensor<[[[D0]], 0, 0, [[O3]]], f32> no_inline {
+mo.graph @range_based_folding<D0 -> O0, O1, O2, O3>(
+  %in: !mo.tensor<[], f32>
+) -> !mo.tensor<[O0, O1, O2, O3], f32> {
+
+  kgen.param.declare P0 = <max(D0, 0)> // D0
+  kgen.param.declare P1 = <max(mul_nuw(D0, -1), 0)> // 0
+  kgen.param.declare P2 = <min(D0, 0)> // 0
+  kgen.param.declare P3 = <min(mul_nuw(D0, -1), 0)> // mul_nuw(D0, -1)
+
+  // CHECK-NEXT: %[[OUT:.*]] = mo.static.broadcast_to(%[[IN]])
+  // CHECK-SAME: : !mo.tensor<[], f32> -> !mo.tensor<[[[D0]], 0, 0, mul_nuw([[D0]], -1)], f32>
+  %out = mo.static.broadcast_to(%in) : !mo.tensor<[], f32> -> !mo.tensor<[P0, P1, P2, P3], f32>
+
+  // CHECK-NEXT: mo.output<mul_nuw([[D0]], -1)> %[[OUT]] : !mo.tensor<[[[D0]], 0, 0, mul_nuw([[D0]], -1)], f32>
+  mo.output<P0, P1, P2, P3> %out : !mo.tensor<[P0, P1, P2, P3], f32>
+}

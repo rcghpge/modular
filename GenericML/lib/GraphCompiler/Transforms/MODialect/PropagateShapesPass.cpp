@@ -412,6 +412,103 @@ struct PropagateShapesPass
     }
   }
 
+  /// Track `attr` as definitely non-negative.
+  void markDefinitelyNonNegative(TypedAttr attr) {
+    definitelyNonNegativeAttrs.insert(attr);
+  }
+
+  /// A conservative predicate that returns true iff `attr` is provable to be
+  /// non-positive, and return false we can't claim anything.
+  bool isDefinitelyNonPositive(TypedAttr attr) {
+    if (auto intAttr = dyn_cast<IntegerAttr>(attr))
+      return intAttr.getValue().isNonPositive();
+
+    auto exprAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr);
+    if (!exprAttr || exprAttr.getNumOperands() != 2)
+      return false;
+
+    // If we have an integer operand, it'll be `rhs` because the order is
+    // canonicalized by attribute type.
+    TypedAttr lhs = exprAttr.getOperand(0);
+    TypedAttr rhs = exprAttr.getOperand(1);
+
+    // mul(non_negative_expr, -1) must be non-positive
+    if (llvm::is_contained({KGEN::POC::Mul, KGEN::POC::MulNuw},
+                           exprAttr.getOpcode())) {
+      auto intAttr = dyn_cast<IntegerAttr>(rhs);
+      if (intAttr && intAttr.getInt() == -1 && isDefinitelyNonNegative(lhs))
+        return true;
+    }
+
+    return false;
+  }
+
+  /// A conservative predicate that returns true iff `attr` is provable to be
+  /// non-negative, and return false we can't claim anything.
+  bool isDefinitelyNonNegative(TypedAttr attr) {
+    if (auto intAttr = dyn_cast<IntegerAttr>(attr))
+      return intAttr.getValue().isNonNegative();
+
+    if (auto iter = definitelyNonNegativeAttrs.contains(attr))
+      return true;
+
+    auto exprAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr);
+    if (!exprAttr)
+      return false;
+
+    // If operands are all non-negative, maximum result will preserve the
+    // property.
+    if (exprAttr.getOpcode() == KGEN::POC::Max) {
+      return llvm::all_of(exprAttr.getOperands(), [&](TypedAttr operand) {
+        return isDefinitelyNonNegative(operand);
+      });
+    }
+
+    return false;
+  }
+
+  /// This function serves as shape inference system's extension to KGEN
+  /// folders. It leverages things like range information to enable more
+  /// expression folding.
+  TypedAttr tryFoldExprAttr(TypedAttr attr) {
+    // Only fold certain binary expression for now.
+    auto exprAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr);
+    if (!exprAttr || exprAttr.getNumOperands() != 2)
+      return attr;
+
+    // If we have an integer operand, it'll be `rhs` because the order is
+    // canonicalized by attribute type.
+    TypedAttr lhs = exprAttr.getOperand(0);
+    TypedAttr rhs = exprAttr.getOperand(1);
+
+    if (exprAttr.getOpcode() == KGEN::POC::Max) {
+      auto intAttr = dyn_cast<IntegerAttr>(rhs);
+      if (intAttr && intAttr.getInt() == 0) {
+        // max(non_negative_expr, 0) = non_negative_expr
+        if (isDefinitelyNonNegative(lhs))
+          return lhs;
+
+        // max(non_positive_expr, 0) = 0
+        if (isDefinitelyNonPositive(lhs))
+          return rhs;
+      }
+
+    } else if (exprAttr.getOpcode() == KGEN::POC::Min) {
+      auto intAttr = dyn_cast<IntegerAttr>(rhs);
+      if (intAttr && intAttr.getInt() == 0) {
+        // min(non_positive_expr, 0) = non_positive_expr
+        if (isDefinitelyNonPositive(lhs))
+          return lhs;
+
+        // min(non_negative_expr, 0) = 0
+        if (isDefinitelyNonNegative(lhs))
+          return rhs;
+      }
+    }
+
+    return exprAttr;
+  }
+
   void runOnOperation() override {
     // Clear state variables (in case the pass instance is reused)
     paramAttrToDepth.clear();
@@ -434,10 +531,21 @@ struct PropagateShapesPass
       evaluator.setParameterValue(paramDecl,
                                   KGEN::ParamDeclRefAttr::get(paramDecl));
     };
+    auto markIntParamDeclAsNonNegative = [&](KGEN::ParamDeclAttr paramDecl) {
+      if (paramDecl.getType().isIntOrIndex())
+        markDefinitelyNonNegative(KGEN::ParamDeclRefAttr::get(paramDecl));
+    };
     llvm::for_each(graphOp.getInputParams(), mapDeclaredParamToItself);
+    // The integer input parameters to graph are dynamic dimensions, so they
+    // must be non-negative.
+    llvm::for_each(graphOp.getInputParams(), markIntParamDeclAsNonNegative);
     graphOp.walk([&](ParamDeclarationInterface paramDeclItf) {
-      llvm::for_each(paramDeclItf.getOutputParamDecls(),
-                     mapDeclaredParamToItself);
+      ArrayRef<KGEN::ParamDeclAttr> outputDecls =
+          paramDeclItf.getOutputParamDecls();
+      llvm::for_each(outputDecls, mapDeclaredParamToItself);
+      // The integer output parameters of an op are dynamic dimensions used in
+      // its output shape, so they must be non-negative.
+      llvm::for_each(outputDecls, markIntParamDeclAsNonNegative);
     });
 
     // TODO(#9008) inline inputs to `mosh.assert`
@@ -484,6 +592,9 @@ struct PropagateShapesPass
         KGEN::ParamDeclAttr declAttr = declOp.getParamDecl();
         auto reboundDeclAttr =
             cast<TypedAttr>(evaluator.getReboundAttribute(declOp.getValue()));
+
+        // Apply shape-inference specific folding
+        reboundDeclAttr = tryFoldExprAttr(reboundDeclAttr);
 
         auto paramOperatorAttr =
             dyn_cast<KGEN::ParamOperatorAttr>(reboundDeclAttr);
@@ -532,4 +643,5 @@ struct PropagateShapesPass
 
   // State variables used by the pass
   DenseMap<KGEN::ParamOperatorAttr, size_t> paramAttrToDepth;
+  DenseSet<TypedAttr> definitelyNonNegativeAttrs;
 };
