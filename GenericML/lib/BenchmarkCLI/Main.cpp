@@ -241,6 +241,8 @@ int M::maxBenchmarkMain(int argc, char **argv) {
   }
   RuntimeContextPtr runtimeContext = std::move(*runtimeContextOr);
 
+  M_emitTelemetryEvent(runtimeContext.get(), "max", "benchmark");
+
   llvm::outs() << "MLPerf scenario: " << opts.mlPerfScenario
                << " (use --mlperf-scenario to change)\n";
 

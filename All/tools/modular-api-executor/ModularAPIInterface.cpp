@@ -101,6 +101,7 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
 
   GET_SYMBOL(newRuntimeContext, M_newRuntimeContext);
   GET_SYMBOL(freeRuntimeContext, M_freeRuntimeContext);
+  GET_SYMBOL(emitTelemetryEvent, M_emitTelemetryEvent);
 
   GET_SYMBOL(newCompileConfig, M_newCompileConfig);
   GET_SYMBOL(freeCompileConfig, M_freeCompileConfig);
