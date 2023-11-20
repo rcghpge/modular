@@ -28,6 +28,17 @@ struct Symbol:
         """Returns the type of this symbol."""
         return Type(mobicc.typeof(self.s))
 
+    fn __str__(self) raises -> String:
+        let spec = self.type().unwrap_tensor().spec()
+        var shape = String("[")
+        for i in range(spec.rank()):
+            if i > 0:
+                shape += ", "
+            shape += "?" if spec[i] < 0 else String(spec[i])
+        shape += "]"
+        let dtype = String(spec.dtype().__str__())
+        return "Symbol(mo.tensor<" + shape + ", " + dtype + ">)"
+
     fn __getitem__(self, span: slice) raises -> Symbol:
         # TODO: Since `mo.slice` clamps out of range start/stop operands, it
         # should be safe to leave unspecified `end` as `_int_max_value()`.
