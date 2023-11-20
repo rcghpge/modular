@@ -129,11 +129,14 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   }
   pm.addPass(MOQ::createLegalizeMOQOpsToMO());
 
-  if (opts.genVizSpec) {
+// TODO: This will be replaced with opts.genVizSpec flag once some issues in the
+// option piplines are resolved.
+#ifndef MODULAR_PRODUCTION
+  if (std::getenv("GENERATE_VISUALIZATION") != nullptr)
     pm.addPass(MO::createGenVizSpec({opts.vizOutputDir}));
     // TODO: Add an early return here. When genVizSpec flag is added, there is
     // no reason to continue compilation after the needed file is generated.
-  }
+#endif // !MODULAR_PRODUCTION
 
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());

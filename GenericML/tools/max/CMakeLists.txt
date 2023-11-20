@@ -11,4 +11,5 @@ add_modular_tool(max
   BenchmarkCLI
   MCrashReporting
   MSupport
+  VisualizeCLI
 )

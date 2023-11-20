@@ -7,6 +7,7 @@
 #include "Config/Version.h"
 #include "GenericML/API/modular/c/common.h"
 #include "GenericML/BenchmarkCLI/Main.h"
+#include "GenericML/VisualizeCLI/Main.h"
 #include "Support/CrashReporting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/InitLLVM.h"
@@ -21,7 +22,9 @@ static void usage(llvm::raw_ostream &os) {
   os << "usage: " << kMAXProductName
      << " <subcommand> <args...>\n"
         "Available subcommands:\n"
-        "  benchmark - Benchmark a model with the Modular AI Engine\n";
+        "  benchmark - Benchmark a model with the Modular AI Engine\n"
+        "  visualize - Generate a file that can be used to visualize a model "
+        "with Netron.app\n";
 }
 
 static int handleHelp(int argc, char **argv) {
@@ -62,6 +65,7 @@ int main(int argc, char **argv) {
                      .Case("--help", handleHelp)
                      .Case("--version", handleVersion)
                      .Case("benchmark", maxBenchmarkMain)
+                     .Case("visualize", maxVisualizeMain)
                      .Default(handleUnknownSubcommand);
   return handler(argc - 1, argv + 1);
 }
