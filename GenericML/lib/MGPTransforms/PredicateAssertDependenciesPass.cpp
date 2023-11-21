@@ -54,6 +54,11 @@ class PredicateAssertDependenciesPass
     ModelOp model = getOperation();
     BufferBuilderContext builderCtx =
         TensorBufferDialectInterface::getAllBufferBuilders(model);
+    // Chains from each assert need to be converted to the correct chain type
+    // for the output op. We cache these conversions to avoid doing them many
+    // times. CSE will get them but we want to avoid generating too many.
+    llvm::DenseMap<BufferBuilder *, llvm::DenseMap<AssertOp, Value>>
+        chainFromMEFCache;
 
     auto perBlockRewrite = [&](Block *block) {
       // First, build a mapping of values and the assertions that they
@@ -163,14 +168,25 @@ class PredicateAssertDependenciesPass
             TensorBufferDialectInterface::getBuilderForTypeStorage(
                 builderCtx, inputChains.front()->get().getType());
 
+        if (chainFromMEFCache.find(bufferBuilder) == chainFromMEFCache.end())
+          chainFromMEFCache[bufferBuilder] = llvm::DenseMap<AssertOp, Value>();
+        auto cache = chainFromMEFCache[bufferBuilder];
+
         builder.setInsertionPoint(op);
         SmallVector<Value> chains;
         for (AssertOp assert : diff) {
-          chains.push_back(bufferBuilder->fromMEFChain(
-              builder, op->getLoc(),
-              dyn_cast<TypedValue<ContextType>>(
-                  Value(model.getExecuteBlock()->getArgument(1))),
-              assert.getResult()));
+          auto it = cache.find(assert);
+          if (it != cache.end()) {
+            chains.push_back(it->second);
+          } else {
+            auto chain = bufferBuilder->fromMEFChain(
+                builder, op->getLoc(),
+                dyn_cast<TypedValue<ContextType>>(
+                    Value(model.getExecuteBlock()->getArgument(1))),
+                assert.getResult());
+            cache[assert] = chain;
+            chains.push_back(chain);
+          }
         }
 
         // For readability.
