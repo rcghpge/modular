@@ -114,3 +114,4 @@ struct EngineTensorSpec:
 
     fn __del__(owned self):
         self.ptr.free(self.lib)
+        _ = self.session ^

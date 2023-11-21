@@ -118,6 +118,7 @@ struct EngineTensor(Sized):
 
     fn __del__(owned self):
         self.ptr.free(self.lib)
+        _ = self.session ^
 
 
 @register_passable
