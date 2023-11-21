@@ -466,12 +466,18 @@ LogicalResult IfOp::verify() {
     return emitOpError("expected no arguments to 'else' block");
 
   // The 'then' block results must match the mo.if results.
-  auto thenOutput = cast<YieldOp>(thenBlock->getTerminator());
+  auto thenTerminator = thenBlock->getTerminator();
+  if (!isa<YieldOp>(thenTerminator))
+    return emitOpError("'then' block expected to be terminated by a YieldOp");
+  auto thenOutput = cast<YieldOp>(thenTerminator);
   if (failed(checkOperandTypes(thenOutput, getResultTypes())))
     return failure();
 
   // The 'else' block results must match the mo.if results.
-  auto elseOutput = cast<YieldOp>(elseBlock->getTerminator());
+  auto elseTerminator = elseBlock->getTerminator();
+  if (!isa<YieldOp>(elseTerminator))
+    return emitOpError("'else' block expected to be terminated by a YieldOp");
+  auto elseOutput = cast<YieldOp>(elseTerminator);
   return checkOperandTypes(elseOutput, getResultTypes());
 }
 
@@ -547,13 +553,19 @@ LogicalResult WhileOp::verify() {
   // We don't construct a scalar bool type and use checkOperandTypes because
   // it is valid for the type to have additional type attributes (such as
   // for a storage device).
-  auto condOutput = cast<MO::YieldOp>(condBlock->getTerminator());
+  auto condTerminator = condBlock->getTerminator();
+  if (!isa<YieldOp>(condTerminator))
+    return emitOpError("cond block expected to be terminated by a YieldOp");
+  auto condOutput = cast<YieldOp>(condTerminator);
   if (failed(outputsOneBool(condOutput)))
     condOutput->emitOpError()
         << "expected single operand of type '!mo.tensor<[], bool>'.";
 
   // The 'body' block returns a result for each mo.while result.
-  auto bodyOutput = cast<MO::YieldOp>(bodyBlock->getTerminator());
+  auto bodyTerminator = bodyBlock->getTerminator();
+  if (!isa<YieldOp>(bodyTerminator))
+    return emitOpError("body block expected to be terminated by a YieldOp");
+  auto bodyOutput = cast<YieldOp>(bodyTerminator);
   if (failed(checkOperandTypes(bodyOutput, getResultTypes())))
     return failure();
 
