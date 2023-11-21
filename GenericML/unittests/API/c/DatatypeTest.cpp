@@ -8,11 +8,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "./APITest.h"
-#include "GenericML/API/modular/c/common.h"
+#include "modular/c/common.h"
 #include "gtest/gtest.h"
 
-TEST_F(APITest, DtypeSize) {
+TEST(ModularEngineTest, DtypeSize) {
   EXPECT_EQ(M_sizeOf(M_UNKNOWN), 0u);
   EXPECT_EQ(M_sizeOf(M_INT8), sizeof(int8_t));
   EXPECT_EQ(M_sizeOf(M_INT16), sizeof(int16_t));
