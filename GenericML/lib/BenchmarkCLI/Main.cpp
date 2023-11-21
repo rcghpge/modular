@@ -241,8 +241,6 @@ int M::maxBenchmarkMain(int argc, char **argv) {
   }
   RuntimeContextPtr runtimeContext = std::move(*runtimeContextOr);
 
-  M_emitTelemetryEvent(runtimeContext.get(), "max", "benchmark");
-
   llvm::outs() << "MLPerf scenario: " << opts.mlPerfScenario
                << " (use --mlperf-scenario to change)\n";
 
@@ -259,6 +257,8 @@ int M::maxBenchmarkMain(int argc, char **argv) {
     if (modelOr.isError()) {
       llvm::outs() << "Error (took " << duration << "s)\n";
       llvm::errs() << "Error compiling model: " << modelOr.getError() << "\n";
+      M_emitTelemetryEvent(runtimeContext.get(), "max", "benchmark.error",
+                           modelOr.getError());
       return EXIT_FAILURE;
     }
     llvm::outs() << "OK (took " << duration << "s)\n";
@@ -271,6 +271,8 @@ int M::maxBenchmarkMain(int argc, char **argv) {
         prepareModel(runtimeContext.get(), compiledModel.get(), status.get());
     if (modelOr.isError()) {
       llvm::errs() << "Error preparing model: " << modelOr.getError() << "\n";
+      M_emitTelemetryEvent(runtimeContext.get(), "max", "benchmark.error",
+                           modelOr.getError());
       return EXIT_FAILURE;
     }
     model = std::move(*modelOr);
@@ -294,6 +296,8 @@ int M::maxBenchmarkMain(int argc, char **argv) {
     if (estimatedLatencyOr.isError()) {
       llvm::errs() << "Error estimating latency: "
                    << estimatedLatencyOr.getError() << "\n";
+      M_emitTelemetryEvent(runtimeContext.get(), "max", "benchmark.error",
+                           estimatedLatencyOr.getError());
       return EXIT_FAILURE;
     }
     llvm::outs() << "OK\n";
@@ -320,5 +324,6 @@ int M::maxBenchmarkMain(int argc, char **argv) {
   std::cout << std::flush;
   llvm::outs() << "Benchmark finished\n";
 
+  M_emitTelemetryEvent(runtimeContext.get(), "max", "benchmark.success", "");
   return EXIT_SUCCESS;
 }
