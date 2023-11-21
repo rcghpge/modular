@@ -73,7 +73,7 @@ private:
 
 } // namespace
 
-TEST(QuerySampleLibrary, Basic) {
+TEST(QuerySampleLibrary, basic) {
   int generateCalls = 0;
   size_t lastQueryIndex = 0;
   std::vector<LivenessTrackingQuery *> liveQueries;

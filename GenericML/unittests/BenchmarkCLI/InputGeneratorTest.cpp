@@ -82,7 +82,7 @@ static std::unique_ptr<LLCL::Runtime> createRuntimeForTest() {
       LLCL::createSingleThreadWorkQueue());
 }
 
-TEST(UniformInputRandomDistribution, F32Default) {
+TEST(UniformInputRandomDistribution, f32Default) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandomUniform spec;
   auto dist =
@@ -113,7 +113,7 @@ TEST(UniformInputRandomDistribution, F32Default) {
       << "Should have generated at least a few values less than 0";
 }
 
-TEST(UniformInputRandomDistribution, F32Explicit) {
+TEST(UniformInputRandomDistribution, f32Explicit) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandomUniform spec;
   spec.min = "3.5";
@@ -151,7 +151,7 @@ TEST(UniformInputRandomDistribution, F32Explicit) {
       << "Should have generated at least a few values greater than 11.75";
 }
 
-TEST(UniformInputRandomDistribution, F32ParseError) {
+TEST(UniformInputRandomDistribution, f32ParseError) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandomUniform spec;
   spec.min = "sea urchin";
@@ -163,7 +163,7 @@ TEST(UniformInputRandomDistribution, F32ParseError) {
             errorReporter.errors);
 }
 
-TEST(UniformInputRandomDistribution, F32InvertedError) {
+TEST(UniformInputRandomDistribution, f32InvertedError) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandomUniform spec;
   spec.min = "5";
@@ -175,7 +175,7 @@ TEST(UniformInputRandomDistribution, F32InvertedError) {
             errorReporter.errors);
 }
 
-TEST(UniformInputRandomDistribution, SI32Default) {
+TEST(UniformInputRandomDistribution, si32Default) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandomUniform spec;
   auto dist =
@@ -199,7 +199,7 @@ TEST(UniformInputRandomDistribution, SI32Default) {
       << "Should have generated at least a few values greater than 0";
 }
 
-TEST(UniformInputRandomDistribution, SI32Explicit) {
+TEST(UniformInputRandomDistribution, si32Explicit) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandomUniform spec;
   spec.min = "3";
@@ -232,7 +232,7 @@ TEST(UniformInputRandomDistribution, SI32Explicit) {
   EXPECT_GT(ge_12, 0) << "Should have generated at least a few values >= 12";
 }
 
-TEST(UniformInputRandomDistribution, SI32ExplicitInclusive) {
+TEST(UniformInputRandomDistribution, si32ExplicitInclusive) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandomUniform spec;
   spec.min = "3";
@@ -256,7 +256,7 @@ TEST(UniformInputRandomDistribution, SI32ExplicitInclusive) {
   EXPECT_GT(eq_4, 0) << "Should have generated at least a few '4' values";
 }
 
-TEST(UniformInputRandomDistribution, SI32ParseError) {
+TEST(UniformInputRandomDistribution, si32ParseError) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandomUniform spec;
   spec.min = "sea urchin";
@@ -268,7 +268,7 @@ TEST(UniformInputRandomDistribution, SI32ParseError) {
             errorReporter.errors);
 }
 
-TEST(UniformInputRandomDistribution, SI32InvertedError) {
+TEST(UniformInputRandomDistribution, si32InvertedError) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandomUniform spec;
   spec.min = "5";
@@ -301,7 +301,7 @@ TYPED_TEST(UniformInputRandomDistributionInteger, Default) {
   dist->fill(samples.data(), 500);
 }
 
-TEST(UniformInputRandomDistribution, UnsupportedType) {
+TEST(UniformInputRandomDistribution, unsupportedType) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandomUniform spec;
   auto dist =
@@ -311,7 +311,7 @@ TEST(UniformInputRandomDistribution, UnsupportedType) {
             errorReporter.errors);
 }
 
-TEST(NormalInputRandomDistribution, Unimplemented) {
+TEST(NormalInputRandomDistribution, unimplemented) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandomNormal spec;
   auto dist =
@@ -322,7 +322,7 @@ TEST(NormalInputRandomDistribution, Unimplemented) {
             errorReporter.errors);
 }
 
-TEST(InputRandomDistribution, None) {
+TEST(InputRandomDistribution, none) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandom spec;
   // TODO: The None case should default to a reasonable distribution for the
@@ -334,7 +334,7 @@ TEST(InputRandomDistribution, None) {
       errorReporter.errors);
 }
 
-TEST(InputRandomDistribution, Uniform) {
+TEST(InputRandomDistribution, uniform) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandom spec;
   spec.uniform = InputGenerationRandomUniform{};
@@ -344,7 +344,7 @@ TEST(InputRandomDistribution, Uniform) {
   // expected.
 }
 
-TEST(InputRandomDistribution, Normal) {
+TEST(InputRandomDistribution, normal) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandom spec;
   spec.normal = InputGenerationRandomNormal{};
@@ -355,7 +355,7 @@ TEST(InputRandomDistribution, Normal) {
             errorReporter.errors);
 }
 
-TEST(InputRandomDistribution, Multiple) {
+TEST(InputRandomDistribution, multiple) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandom spec;
   spec.uniform = InputGenerationRandomUniform{};
@@ -384,7 +384,7 @@ private:
 };
 } // namespace
 
-TEST(RandomInputDataGenerator, FromDistribution) {
+TEST(RandomInputDataGenerator, fromDistribution) {
   int numCalls = 0;
   void *lastFillCallOut = nullptr;
   size_t lastFillCallNumElements = 0;
@@ -407,7 +407,7 @@ TEST(RandomInputDataGenerator, FromDistribution) {
   EXPECT_EQ(size_t{1 * 2 * 3}, lastFillCallNumElements);
 }
 
-TEST(RandomInputDataGenerator, Basic) {
+TEST(RandomInputDataGenerator, basic) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandom spec;
   spec.uniform = InputGenerationRandomUniform{};
@@ -422,7 +422,7 @@ TEST(RandomInputDataGenerator, Basic) {
   EXPECT_EQ(DType(DType::f32), tensorOr->getEltType());
 }
 
-TEST(RandomInputDataGenerator, NoShape) {
+TEST(RandomInputDataGenerator, noShape) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandom spec;
   spec.uniform = InputGenerationRandomUniform{};
@@ -440,7 +440,7 @@ TEST(RandomInputDataGenerator, NoShape) {
                tensorOr.getError());
 }
 
-TEST(RandomInputDataGenerator, ConstructionError) {
+TEST(RandomInputDataGenerator, constructionError) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandom spec;
   spec.uniform = InputGenerationRandomUniform{};
@@ -453,7 +453,7 @@ TEST(RandomInputDataGenerator, ConstructionError) {
       errorReporter.errors);
 }
 
-TEST(ConstantInputDataGenerator, Unimplemented) {
+TEST(ConstantInputDataGenerator, unimplemented) {
   TestInputSchemaErrorReporter errorReporter;
   auto gen = createConstantInputDataGenerator(DType::f32, "123", errorReporter);
   EXPECT_EQ(nullptr, gen);
@@ -462,7 +462,7 @@ TEST(ConstantInputDataGenerator, Unimplemented) {
             errorReporter.errors);
 }
 
-TEST(InputDataGenerator, None) {
+TEST(InputDataGenerator, none) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationData spec;
   // TODO: The None case should default to a reasonable distribution for the
@@ -474,7 +474,7 @@ TEST(InputDataGenerator, None) {
       errorReporter.errors);
 }
 
-TEST(InputDataGenerator, Random) {
+TEST(InputDataGenerator, random) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationData spec;
   spec.random = InputGenerationRandom{};
@@ -485,7 +485,7 @@ TEST(InputDataGenerator, Random) {
   // TODO: Check that we got a random input data generator somehow.
 }
 
-TEST(InputDataGenerator, RandomNoDType) {
+TEST(InputDataGenerator, randomNoDType) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationData spec;
   spec.random = InputGenerationRandom{};
@@ -498,7 +498,7 @@ TEST(InputDataGenerator, RandomNoDType) {
       errorReporter.errors);
 }
 
-TEST(InputDataGenerator, Constant) {
+TEST(InputDataGenerator, constant) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationData spec;
   spec.constant = "123";
@@ -510,7 +510,7 @@ TEST(InputDataGenerator, Constant) {
       errorReporter.errors);
 }
 
-TEST(InputDataGenerator, ConstantNoDType) {
+TEST(InputDataGenerator, constantNoDType) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationData spec;
   spec.constant = "123";
@@ -522,7 +522,7 @@ TEST(InputDataGenerator, ConstantNoDType) {
             errorReporter.errors);
 }
 
-TEST(InputDataGenerator, Multiple) {
+TEST(InputDataGenerator, multiple) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationData spec;
   spec.random = InputGenerationRandom{};
@@ -536,7 +536,7 @@ TEST(InputDataGenerator, Multiple) {
             errorReporter.errors);
 }
 
-TEST(InputGenerator, Basic) {
+TEST(InputGenerator, basic) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationInput spec;
   spec.inputName = "example";
@@ -570,7 +570,7 @@ TEST(InputGenerator, Basic) {
   EXPECT_EQ(M_FLOAT32, M_getTensorType(tensor.get()));
 }
 
-TEST(InputGenerator, NoName) {
+TEST(InputGenerator, noName) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationInput spec;
   spec.shape = TensorSpec({1, 2, 3}, DType::f32);
@@ -584,7 +584,7 @@ TEST(InputGenerator, NoName) {
             errorReporter.errors);
 }
 
-TEST(InputGenerator, IndexNYI) {
+TEST(InputGenerator, indexNYI) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationInput spec;
   spec.inputIndex = 0;
@@ -600,7 +600,7 @@ TEST(InputGenerator, IndexNYI) {
             errorReporter.errors);
 }
 
-TEST(InputGenerator, NameAndIndex) {
+TEST(InputGenerator, nameAndIndex) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationInput spec;
   spec.inputName = "example";
@@ -651,7 +651,7 @@ private:
 };
 } // namespace
 
-TEST(QueryGenerator, NoInputs) {
+TEST(QueryGenerator, noInputs) {
   auto gen = createQueryGenerator({});
   ASSERT_NE(nullptr, gen);
   EXPECT_EQ(-1, gen->getNumQueries());
@@ -673,7 +673,7 @@ TEST(QueryGenerator, NoInputs) {
   EXPECT_EQ(size_t{0}, M_getTensorMapSize(atm, status.get()));
 }
 
-TEST(QueryGenerator, OneInput) {
+TEST(QueryGenerator, oneInput) {
   int generateInputCalls = 0;
   int lastGenerateQueryIndex = 0;
   int borrowCalls = 0;
@@ -714,7 +714,7 @@ TEST(QueryGenerator, OneInput) {
   EXPECT_EQ(atm, lastBorrowedATM);
 }
 
-TEST(QueryGenerator, OneInputError) {
+TEST(QueryGenerator, oneInputError) {
   auto inputGen = std::make_unique<TestInputGenerator>(
       [&](size_t queryIndex) { return Error("Tea kettle left on stove"); });
   std::vector<std::unique_ptr<InputGenerator>> inputGens;
@@ -736,7 +736,7 @@ TEST(QueryGenerator, OneInputError) {
   EXPECT_STREQ("Tea kettle left on stove", queryOr.getError());
 }
 
-TEST(QueryGeneratorIntegration, Basic) {
+TEST(QueryGeneratorIntegration, basic) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationSchema schema;
   schema.inputs = std::vector<InputGenerationInput>{InputGenerationInput{}};
@@ -772,7 +772,7 @@ TEST(QueryGeneratorIntegration, Basic) {
   EXPECT_EQ(M_FLOAT32, M_getTensorType(tensor.get()));
 }
 
-TEST(QueryGeneratorIntegration, ErrorPath) {
+TEST(QueryGeneratorIntegration, errorPath) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationSchema schema;
   schema.inputs = std::vector<InputGenerationInput>{InputGenerationInput{}};
@@ -790,7 +790,7 @@ TEST(QueryGeneratorIntegration, ErrorPath) {
             errorReporter.errors);
 }
 
-TEST(QueryGeneratorIntegration, UnspecifiedInputs) {
+TEST(QueryGeneratorIntegration, unspecifiedInputs) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationSchema schema;
   auto gen = createQueryGenerator(schema, errorReporter);
