@@ -189,6 +189,7 @@ struct EngineTensorView:
         return __get_address_as_lvalue(bitcast[Tensor[type]](self.ptr).address)
 
 
+@value
 @register_passable
 struct _Numpy:
     var np: Pointer[PythonObject]
@@ -209,6 +210,7 @@ struct _Numpy:
         self.np.free()
 
 
+@value
 @register_passable
 struct EngineNumpyView:
     """A non-owning register_passable view of a numpy array.
