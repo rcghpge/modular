@@ -254,6 +254,25 @@ fn test_image_to_grayscale():
     print(gray_scale_image[255, 255])
 
 
+# CHECK-LABEL: test_add
+fn test_add():
+    print("== test_add")
+    var a = Tensor[DType.float32](2, 2)
+    var b = Tensor[DType.float32](2, 2)
+
+    for i in range(2):
+        for j in range(2):
+            a[Index(i, j)] = 3
+            b[Index(i, j)] = 2
+
+    try:
+        # CHECK{LITERAL}: Tensor([[5.0, 5.0],
+        # CHECK{LITERAL}: [5.0, 5.0]], dtype=float32, shape=2x2)
+        print(a + b)
+    except:
+        print("Error")
+
+
 # CHECK-LABEL: test_pow
 fn test_pow():
     print("== test_pow")
@@ -341,6 +360,7 @@ fn main():
     test_tensor_rand()
     test_euclidean_distance()
     test_image_to_grayscale()
+    test_add()
     test_pow()
     test_print()
     test_print_small()
