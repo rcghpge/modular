@@ -10,7 +10,6 @@ from .symbol import Symbol
 from .graph import Graph
 from .type import Type
 from .misc import Tup
-from .util import tensor
 
 from tensor import Tensor, TensorShape, TensorSpec
 
@@ -42,6 +41,15 @@ def _has_dynamic_dims(shape: TensorShape) -> Bool:
         if shape[i] < 0:
             return True
     return False
+
+
+fn _tensor[
+    N: Int
+](shape: TensorShape, data: StaticIntTuple[N]) -> Tensor[DType.int64]:
+    let ptr = DTypePointer[DType.int64].alloc(N)
+    for i in range(N):
+        ptr.store(i, data[i])
+    return Tensor(ptr, shape)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -166,7 +174,7 @@ def unsqueeze(v: Symbol, axis: Int) -> Symbol:
 
     let new_shape = g.op(
         "mo.unsqueeze_shape",
-        (shape_of(v), g.constant(tensor[DType.int64](TensorShape(1), axis))),
+        (shape_of(v), g.constant(Tensor[DType.int64](TensorShape(1), axis))),
         TensorSpec(DType.int64, spec.rank() + 1),
     )[0]
 
@@ -240,7 +248,7 @@ def split[
     axis: Int, N: Int, split_sizes: StaticIntTuple[N]
 ](x: Symbol) -> Tuple[Symbol, Symbol]:
     var g = x.g
-    let sizes = g.constant(tensor[N](TensorShape(N), split_sizes))
+    let sizes = g.constant(_tensor[N](TensorShape(N), split_sizes))
 
     let spec = x.type().unwrap_tensor().spec()
     let out_shape = _fill_vector(spec.rank(), g.m.dyn().to_int())
@@ -490,7 +498,9 @@ def mul(lhs: Symbol, rhs: Symbol) -> Symbol:
 
 def div(lhs: Symbol, rhs: Symbol) -> Symbol:
     var g = lhs.g
-    let p = elementwise_broadcast(lhs, rhs)
+    # Cast to satisfy `mo.div`'s SameOperandsAndResultTypes OpTrait.
+    let cast_rhs = cast(rhs, lhs.type().unwrap_tensor().dtype())
+    let p = elementwise_broadcast(lhs, cast_rhs)
     return g.op("mo.div", p, p.get[0, Symbol]().type())[0]
 
 

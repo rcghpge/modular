@@ -7,6 +7,7 @@
 from .graph import Graph
 from .mobicc import SymbolPtr
 from .type import Type
+import mobi.functional as G
 
 from tensor import Tensor, TensorShape, TensorSpec
 
@@ -70,3 +71,187 @@ struct Symbol:
             ),
             TensorSpec(DType.int64, len(span)),
         )[0]
+
+    fn transpose(self) raises -> Symbol:
+        return G.transpose(self, -1, -2)
+
+    fn transpose(self, dim1: Int, dim2: Int) raises -> Symbol:
+        return G.transpose(self, dim1, dim2)
+
+    fn __matmul__(self, rhs: Symbol) raises -> Symbol:
+        return G.matmul(self, rhs)
+
+    fn __add__(self, rhs: Symbol) raises -> Symbol:
+        return G.add(self, rhs)
+
+    fn __add__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
+        var g = self.g
+        return self + g.constant(rhs)
+
+    fn __add__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+        var g = self.g
+        return self + g.constant(rhs)
+
+    fn __add__(self, rhs: Int) raises -> Symbol:
+        var g = self.g
+        return self + g.constant(rhs)
+
+    fn __add__(self, rhs: FloatLiteral) raises -> Symbol:
+        var g = self.g
+        return self + g.constant(rhs)
+
+    fn __sub__(self, rhs: Symbol) raises -> Symbol:
+        return G.sub(self, rhs)
+
+    fn __sub__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
+        var g = self.g
+        return self - g.constant(rhs)
+
+    fn __sub__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+        var g = self.g
+        return self - g.constant(rhs)
+
+    fn __sub__(self, rhs: Int) raises -> Symbol:
+        var g = self.g
+        return self - g.constant(rhs)
+
+    fn __sub__(self, rhs: FloatLiteral) raises -> Symbol:
+        var g = self.g
+        return self - g.constant(rhs)
+
+    fn __mul__(self, rhs: Symbol) raises -> Symbol:
+        return G.mul(self, rhs)
+
+    fn __mul__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
+        var g = self.g
+        return self * g.constant(rhs)
+
+    fn __mul__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+        var g = self.g
+        return self * g.constant(rhs)
+
+    fn __mul__(self, rhs: Int) raises -> Symbol:
+        var g = self.g
+        return self * g.constant(rhs)
+
+    fn __mul__(self, rhs: FloatLiteral) raises -> Symbol:
+        var g = self.g
+        return self * g.constant(rhs)
+
+    fn __truediv__(self, rhs: Symbol) raises -> Symbol:
+        return G.div(self, rhs)
+
+    fn __truediv__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
+        var g = self.g
+        return self / g.constant(rhs)
+
+    fn __truediv__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+        var g = self.g
+        return self / g.constant(rhs)
+
+    fn __truediv__(self, rhs: Int) raises -> Symbol:
+        var g = self.g
+        return self / g.constant(rhs)
+
+    fn __truediv__(self, rhs: FloatLiteral) raises -> Symbol:
+        var g = self.g
+        return self / g.constant(rhs)
+
+    fn __pow__(self, rhs: Symbol) raises -> Symbol:
+        return G.pow(self, rhs)
+
+    fn __pow__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
+        var g = self.g
+        return self ** g.constant(rhs)
+
+    fn __pow__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+        var g = self.g
+        return self ** g.constant(rhs)
+
+    fn __pow__(self, rhs: Int) raises -> Symbol:
+        var g = self.g
+        return self ** g.constant(rhs)
+
+    fn __pow__(self, rhs: FloatLiteral) raises -> Symbol:
+        var g = self.g
+        return self ** g.constant(rhs)
+
+    fn __radd__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) + self
+
+    fn __radd__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) + self
+
+    fn __radd__(self, rhs: Int) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) + self
+
+    fn __radd__(self, rhs: FloatLiteral) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) + self
+
+    fn __rsub__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) - self
+
+    fn __rsub__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) - self
+
+    fn __rsub__(self, rhs: Int) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) - self
+
+    fn __rsub__(self, rhs: FloatLiteral) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) - self
+
+    fn __rmul__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) * self
+
+    fn __rmul__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) * self
+
+    fn __rmul__(self, rhs: Int) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) * self
+
+    fn __rmul__(self, rhs: FloatLiteral) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) * self
+
+    fn __rtruediv__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) / self
+
+    fn __rtruediv__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) / self
+
+    fn __rtruediv__(self, rhs: Int) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) / self
+
+    fn __rtruediv__(self, rhs: FloatLiteral) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) / self
+
+    fn __rpow__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) ** self
+
+    fn __rpow__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) ** self
+
+    fn __rpow__(self, rhs: Int) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) ** self
+
+    fn __rpow__(self, rhs: FloatLiteral) raises -> Symbol:
+        var g = self.g
+        return g.constant(rhs) ** self
