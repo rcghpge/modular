@@ -6,6 +6,7 @@
 
 #include "GenericML/VisualizeCLI/Main.h"
 #include "Config/Version.h"
+#include "GenericML/API/modular/c/experimental/custom_ops.h"
 #include "GenericML/API/modular/cpp/aliases.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "Support/CommandLine.h"
@@ -25,6 +26,10 @@ namespace {
 struct ClOptions {
   cl::opt<std::string> modelPath{llvm::cl::Positional, llvm::cl::Required,
                                  cl::desc("Path to model file/directory")};
+#ifndef MODULAR_PRODUCTION
+  cl::opt<std::string> customOpsPath{
+      "custom-ops-path", cl::desc("Path to custom ops"), cl::init("")};
+#endif // MODULAR_PRODUCTION
 };
 
 } // namespace
@@ -46,6 +51,15 @@ static ErrorOr<CompiledModelPtr> compileModel(const ClOptions &opts,
   CompileConfigPtr compileConfig(M_newCompileConfig(), M_freeCompileConfig);
   if (!compileConfig)
     return Error("Failed to create M_CompileConfig (out of memory?)");
+
+#ifndef MODULAR_PRODUCTION
+  if (opts.customOpsPath != "") {
+    M_useKernelsFrom(compileConfig.get(), opts.customOpsPath.c_str(), status);
+    if (M_isError(status))
+      return Error(M_getError(status));
+  }
+#endif // MODULAR_PRODUCTION
+
   M_setModelPath(compileConfig.get(), opts.modelPath.c_str());
   CompiledModelPtr model(
       M_compileModel(runtimeContext, compileConfig.get(), status),
