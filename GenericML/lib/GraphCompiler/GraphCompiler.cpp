@@ -244,7 +244,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MGP::createDeferAllocsPass());
   pm.addPass(MGP::createExecInvariantCodeMotionPass());
   pm.addPass(MGP::createVerifyModelArgumentsPass());
-  pm.addPass(MGP::createPredicateAssertDependenciesPass());
+  // TODO(#26193): Disabled due to combinatorial explosion.
+  // pm.addPass(MGP::createPredicateAssertDependenciesPass());
   if (opts.enableMemoryPlanning)
     pm.addPass(MGP::createStaticMemoryPlannerPass());
   pm.addPass(MGP::createStripBufferAttributesPass());

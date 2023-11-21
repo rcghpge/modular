@@ -20,6 +20,8 @@
 
 using namespace mlir;
 
+#define DEBUG_TYPE "mgp-simplify-chains-pass"
+
 namespace M::MGP {
 
 // Generate support code for SimplifyChainsPass
@@ -97,12 +99,19 @@ class SimplifyChainsPass
     // new bound values or add new dependencies.
     IndexSet<Value> valueIndex = createValueIndexSet(modelOp);
     IndexSet<Operation *> operationIndex = createOperationIndexSet(modelOp);
+
+    LLVM_DEBUG(llvm::dbgs()
+               << "SimplifyChainsPass: analyzing " << valueIndex.size()
+               << " values and " << operationIndex.size() << " operations\n");
+
     AsyncDataflowDependencies dependencies(
         &valueIndex, &operationIndex, AsyncDataflowDependencies::kImpliesReady);
 
     // CAUTION: We'll be making in-place updates as we go. However, since
     // we don't update the dependencies analysis results, we must be careful
     // to only do rewrites which are invariant w.r.t. that.
+
+    LLVM_DEBUG(llvm::dbgs() << "SimplifyChainsPass: rewriting\n");
 
     modelOp.walk([&](GRT::GRTChainCreateOpInterface chainCreateOp) {
       IndexSet<Value>::Set valuesSet = valueIndex.emptySet();
@@ -134,6 +143,8 @@ class SimplifyChainsPass
           chainSetOp.setInputChains(values);
       }
     });
+
+    LLVM_DEBUG(llvm::dbgs() << "SimplifyChainsPass: done\n");
   }
 };
 
