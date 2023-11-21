@@ -30,12 +30,8 @@ using namespace mlir;
 MODULAR_API_EXPORT M_Attr *MOBI_tensorAttr(M_Module *m, StringRef name,
                                            void *data, M_Type *t) {
   auto moType = cast<M::MO::TensorType>(t->type.getVal());
-  auto dims = moType.getIntDims();
-  int64_t size = moType.getDtype().getSizeInBytes();
-  for (auto d : dims) {
-    assert(d >= 0 && "the caller should enforce this");
-    size *= d;
-  }
+  size_t size =
+      moType.getDtype().getSizeInBytes() * moType.getNumElements().value();
   return new M_Attr{
       m->module.tensorAttr(name,
                            ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(data),

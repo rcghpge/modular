@@ -79,13 +79,6 @@ struct Module:
         )
 
     fn f32_attr(
-        self, name: StringRef, t: TypePtr, value: Tensor[DType.float32]
-    ) -> AttrPtr:
-        return mobicc.tensor_attr(
-            self.m, name, value.data().bitcast[DType.invalid](), t
-        )
-
-    fn f32_attr(
         self, name: StringRef, t: TypePtr, file_name: StringRef
     ) -> AttrPtr:
         return mobicc.tensor_attr_from_file(self.m, name, file_name, t)
@@ -95,9 +88,9 @@ struct Module:
 
     fn tensor_attr[
         dtype: DType
-    ](self, name: StringRef, t: TypePtr, value: Tensor[dtype]) -> AttrPtr:
+    ](self, name: StringRef, t: TypePtr, owned value: Tensor[dtype]) -> AttrPtr:
         return mobicc.tensor_attr(
-            self.m, name, value.data().bitcast[DType.invalid](), t
+            self.m, name, value._steal_ptr().bitcast[DType.invalid](), t
         )
 
     fn type_of[dtype: DType](self, t: Tensor[dtype]) raises -> TypePtr:

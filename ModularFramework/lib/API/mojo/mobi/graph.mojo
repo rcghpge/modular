@@ -92,12 +92,13 @@ struct Graph:
         shape: TensorShape,
         value: DTypePointer[dtype],
     ) raises -> Tup:
-        """Takes ownership of `value`. Frees `value` after this call."""
+        """Takes ownership of `value` to avoid a copy."""
         return self.constant[dtype](Tensor[dtype](value, shape))
 
     fn constant[
         dtype: DType
-    ](inout self, value: Tensor[dtype]) raises -> Symbol:
+    ](inout self, owned value: Tensor[dtype]) raises -> Symbol:
+        """Takes ownership of `value` to avoid a copy."""
         let m = self.m
         let type = m.type_of(value)
         return self.op(

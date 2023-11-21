@@ -43,7 +43,7 @@ def mnist():
         "mo.constant",
         g.values(),
         m.types(m.f32(128, 10)),
-        m.attrs(m.f32_attr("value", m.f32(128, 10), cst_data)),
+        m.attrs(m.tensor_attr("value", m.f32(128, 10), cst_data)),
     )
     let cst_0 = g.op(
         "mo.constant",
@@ -73,7 +73,7 @@ def mnist():
         "mo.constant",
         g.values(),
         m.types(m.f32(784, 128)),
-        m.attrs(m.f32_attr("value", m.f32(784, 128), cst_1_data)),
+        m.attrs(m.tensor_attr("value", m.f32(784, 128), cst_1_data)),
     )
     let cst_2_data = Tensor[DType.float32](1, 128)
     cst_2_data._to_buffer().fill(0.5)
@@ -81,7 +81,7 @@ def mnist():
         "mo.constant",
         g.values(),
         m.types(m.f32(1, 128)),
-        m.attrs(m.f32_attr("value", m.f32(1, 128), cst_2_data)),
+        m.attrs(m.tensor_attr("value", m.f32(1, 128), cst_2_data)),
     )
     let cst_3 = g.op(
         "mo.constant",

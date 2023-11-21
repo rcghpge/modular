@@ -43,6 +43,8 @@ public:
   MLIRContext *getContext();
 
 private:
+  Attr denseResourceAttr(StringRef name, ArrayRef<char> data, Type t);
+
   mlir::ModuleOp op;
   mlir::OpBuilder builder;
 };
