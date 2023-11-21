@@ -149,6 +149,16 @@ fn tensor_attr(
     ]("MOBI_tensorAttr")(module, name, data, type)
 
 
+fn string_attr(
+    module: ModulePtr,
+    name: StringRef,
+    value: StringRef,
+) -> AttrPtr:
+    return MOBI_func[fn (ModulePtr, StringRef, StringRef) -> AttrPtr](
+        "MOBI_stringAttr"
+    )(module, name, value)
+
+
 fn tensor_attr_from_file(
     module: ModulePtr,
     name: StringRef,

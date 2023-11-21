@@ -73,6 +73,11 @@ MODULAR_API_EXPORT M_Attr *MOBI_tensorAttrFromFile(M_Module *m, StringRef name,
       t->type)};
 }
 
+MODULAR_API_EXPORT M_Attr *MOBI_stringAttr(M_Module *m, StringRef name,
+                                           StringRef value) {
+  return new M_Attr{m->module.stringAttr(name, value)};
+}
+
 MODULAR_API_EXPORT M_AttrMap *MOBI_newAttrMap() { return new M_AttrMap(); }
 
 MODULAR_API_EXPORT void MOBI_addAttr(M_AttrMap *m, M_Attr *a) {

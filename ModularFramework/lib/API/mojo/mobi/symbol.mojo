@@ -72,6 +72,11 @@ struct Symbol:
             TensorSpec(DType.int64, len(span)),
         )[0]
 
+    fn print(self, label: StringRef = "debug_tensor") raises:
+        var g = self.g
+        let attrs = g.m.attrs(g.m.string_attr("label", label))
+        _ = g.op("mo.debug.tensor.print", self, g.m.types(), attrs)
+
     fn transpose(self) raises -> Symbol:
         return G.transpose(self, -1, -2)
 

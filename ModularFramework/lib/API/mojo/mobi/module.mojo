@@ -90,6 +90,9 @@ struct Module:
     ) -> AttrPtr:
         return mobicc.tensor_attr_from_file(self.m, name, file_name, t)
 
+    fn string_attr(self, name: StringRef, value: StringRef) -> AttrPtr:
+        return mobicc.string_attr(self.m, name, value)
+
     fn tensor_attr[
         dtype: DType
     ](self, name: StringRef, t: TypePtr, value: Tensor[dtype]) -> AttrPtr:

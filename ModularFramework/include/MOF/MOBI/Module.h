@@ -37,6 +37,7 @@ public:
   Type si(uint64_t width, llvm::ArrayRef<int64_t> shape);
   Type bool_(llvm::ArrayRef<int64_t> shape);
 
+  Attr stringAttr(llvm::StringRef name, llvm::StringRef value);
   Attr tensorAttr(llvm::StringRef name, llvm::ArrayRef<uint8_t> data, Type t);
 
   MLIRContext *getContext();
