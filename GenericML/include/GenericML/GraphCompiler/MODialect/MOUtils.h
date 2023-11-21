@@ -31,10 +31,14 @@ namespace M::MO {
 
 namespace detail {
 template <typename inT, typename outT>
-static SmallVector<outT>
+static std::optional<SmallVector<outT>>
 denseResourceAttrToVecDirect(DenseResourceElementsAttr attr) {
-  ArrayRef<inT> data = attr.getRawHandle().getBlob()->getDataAs<inT>();
-  return SmallVector<outT>(data.begin(), data.end());
+  // If the resources section got removed in the IR, `blob` will be nullptr.
+  if (mlir::AsmResourceBlob *blob = attr.getRawHandle().getBlob()) {
+    ArrayRef<inT> data = blob->getDataAs<inT>();
+    return SmallVector<outT>(data.begin(), data.end());
+  }
+  return std::nullopt;
 }
 
 /**

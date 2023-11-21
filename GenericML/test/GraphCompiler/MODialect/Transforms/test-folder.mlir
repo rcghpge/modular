@@ -122,6 +122,18 @@ mo.graph @fold_add0_no_fold_f64(%arg0: !mo.tensor<[5, 500, 100], f64>) -> !mo.te
 // CHECK-NEXT: mo.static.broadcast_to
 // CHECK-NEXT: %[[OUT:.*]] = mo.add
 
+mo.graph @fold_add0_no_fold_f64_missing_resource(%arg0: !mo.tensor<[5, 500, 100], f64>) -> !mo.tensor<[5, 500, 100], f64> {
+    %0 = mo.constant {value = dense_resource<missing> : tensor<1x1xf64>} : !mo.tensor<[1, 1], f64>
+    %1 = mo.static.broadcast_to(%0) : !mo.tensor<[1, 1], f64> -> !mo.tensor<[5, 500, 100], f64>
+    %2 = mo.add(%arg0, %1) : !mo.tensor<[5, 500, 100], f64>
+    mo.output %2 : !mo.tensor<[5, 500, 100], f64>
+}
+// CHECK-LABEL: mo.graph @fold_add0_no_fold_f64
+// CHECK:(%[[ARG0:.*]]: !mo.tensor<
+// CHECK-NEXT: mo.constant
+// CHECK-NEXT: mo.static.broadcast_to
+// CHECK-NEXT: %[[OUT:.*]] = mo.add
+
 mo.graph @fold_slice(%arg0: !mo.tensor<[5, 500], f64>, 
     %start: !mo.tensor<[2], si64>,
     %stop: !mo.tensor<[2], si64>) -> !mo.tensor<[5, 500], f64> {
