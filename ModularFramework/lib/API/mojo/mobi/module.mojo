@@ -155,3 +155,6 @@ struct Module:
         let unknown = mobicc.unknown_loc(self.m)
         let g = mobicc.new_graph(self.m, unknown, name, in_types.a, out_types.a)
         return Graph(g, self)
+
+    fn verify(self) -> Bool:
+        return mobicc.module_verify(self.m)
