@@ -92,6 +92,7 @@ struct Graph:
         shape: TensorShape,
         value: DTypePointer[dtype],
     ) raises -> Tup:
+        """Takes ownership of `value`. Frees `value` after this call."""
         return self.constant[dtype](Tensor[dtype](value, shape))
 
     fn constant[
