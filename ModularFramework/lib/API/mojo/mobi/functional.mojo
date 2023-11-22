@@ -376,6 +376,95 @@ def gather(input: Symbol, indices: Symbol, axis: Int) -> Symbol:
     )[0]
 
 
+@value
+struct SliceSymbol:
+    var start: Symbol
+    var stop: Symbol
+    var step: Symbol
+
+    fn __init__(inout self, stop: Symbol) raises:
+        var g = stop.g
+        self.__init__(g.constant(0), stop)
+
+    fn __init__(inout self, start: Symbol, stop: Symbol) raises:
+        var g = stop.g
+        self.__init__(start, stop, g.constant(1))
+
+    fn __init__(inout self, start_stop: (Symbol, Symbol)) raises:
+        self.__init__(start_stop.get[0, Symbol](), start_stop.get[1, Symbol]())
+
+    fn __init__(inout self, start: Symbol, stop: Symbol, step: Symbol):
+        self.start = start
+        self.stop = stop
+        self.step = step
+
+    fn __init__(inout self, start_stop_step: (Symbol, Symbol, Symbol)):
+        self.__init__(
+            start_stop_step.get[0, Symbol](),
+            start_stop_step.get[1, Symbol](),
+            start_stop_step.get[2, Symbol](),
+        )
+
+
+def slice_(input: Symbol, borrowed *slices: SliceSymbol) -> Symbol:
+    return slice_(input, slices)
+
+
+def slice_(input: Symbol, slices: VariadicListMem[SliceSymbol]) -> Symbol:
+    let spec = input.type().unwrap_tensor().spec()
+    var dims = DynamicVector[Int]()
+
+    for slice in slices:
+        dims.push_back(input.g.m.dyn().to_int())
+    for i in range(len(slices), spec.rank()):
+        dims.push_back(spec[i])
+
+    let shape = TensorShape(dims)
+    dims._del_old()
+
+    return slice_(input, shape, slices)
+
+
+def slice_(
+    input: Symbol, shape: TensorShape, borrowed *slices: SliceSymbol
+) -> Symbol:
+    return slice_(input, shape, slices)
+
+
+def slice_(
+    input: Symbol, shape: TensorShape, slices: VariadicListMem[SliceSymbol]
+) -> Symbol:
+    var starts = DynamicVector[Symbol]()
+    var stops = DynamicVector[Symbol]()
+    var steps = DynamicVector[Symbol]()
+
+    var g = input.g
+    let spec = input.type().unwrap_tensor().spec()
+
+    let int_max_value = slice(None, None, None).end
+    for dim in range(spec.rank()):
+        let slice: SliceSymbol = __get_address_as_lvalue(slices[dim])
+        starts.push_back(slice.start if dim < len(slices) else g.constant(0))
+        stops.push_back(
+            slice.stop if dim < len(slices) else g.constant(int_max_value)
+        )
+        steps.push_back(slice.step if dim < len(slices) else g.constant(1))
+
+    let start = stack[axis=0](starts)
+    let stop = stack[axis=0](stops)
+    let step = stack[axis=0](steps)
+
+    starts._del_old()
+    stops._del_old()
+    steps._del_old()
+
+    return g.op(
+        "mo.slice",
+        (input, start, stop, step),
+        TensorSpec(spec.dtype(), shape),
+    )[0]
+
+
 # ===----------------------------------------------------------------------=== #
 #  Broadcast helpers
 # ===----------------------------------------------------------------------=== #

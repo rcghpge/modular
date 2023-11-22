@@ -27,3 +27,16 @@ fn execute(m: Module, temp_path: Path, *tensors: Tensor) raises -> TensorMap:
     temp_path.path._strref_keepalive()
 
     return result_map ^
+
+
+fn execute(m: Module, temp_path: Path, tensors: TensorMap) raises -> TensorMap:
+    with open(temp_path, "w") as f:
+        f.write(m.__str__())
+
+    let session = InferenceSession()
+    let model = session.load_model(temp_path.path._strref_dangerous())
+
+    let result_map = model.execute(tensors)
+    temp_path.path._strref_keepalive()
+
+    return result_map ^

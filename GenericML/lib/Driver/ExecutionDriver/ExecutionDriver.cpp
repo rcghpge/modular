@@ -180,7 +180,10 @@ static ErrorOrSuccess awaitAndCheck(MutableArrayRef<AnyAsyncValueRef> results) {
 /// Helper that prints diagnostics if an AnyAsyncValueRef is an error.
 static LogicalResult printDiagIfError(const AnyAsyncValueRef &res) {
   if (auto *diag = res.getDiagnosticIfPresent()) {
-    llvm::outs() << "<error: " << diag->getMessage() << '>';
+    llvm::outs() << "<error: " << diag->getMessage() << '>' << "\n";
+    auto loc = diag->decodeLocation();
+    llvm::outs() << "loc: " << loc.filename << ':' << loc.line << ':'
+                 << loc.column << "\n";
     return failure();
   }
   return success();

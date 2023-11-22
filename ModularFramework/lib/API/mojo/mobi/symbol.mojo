@@ -40,11 +40,24 @@ struct Symbol:
         let dtype = String(spec.dtype().__str__())
         return "Symbol(mo.tensor<" + shape + ", " + dtype + ">)"
 
+    fn __getitem__(self, *spans: G.SliceSymbol) raises -> Symbol:
+        return G.slice_(self, spans)
+
     fn __getitem__(self, span: slice) raises -> Symbol:
         # TODO: Since `mo.slice` clamps out of range start/stop operands, it
         # should be safe to leave unspecified `end` as `_int_max_value()`.
         # However, since this will produce a dynamic dim shape that is prone to
         # producing downstream dynamic rank, enforce statically known `end`.
+        # var g = self.g
+        # return G.slice_(
+        #     self,
+        #     G.SliceSymbol(
+        #         g.constant(span.start),
+        #         g.constant(span.end),
+        #         g.constant(span.step),
+        #     ),
+        # )
+
         if not span._has_end():
             raise "slice expects stop to be specified"
 

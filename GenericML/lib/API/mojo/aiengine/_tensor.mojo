@@ -121,6 +121,7 @@ struct EngineTensor(Sized):
         _ = self.session ^
 
 
+@value
 @register_passable
 struct EngineTensorView:
     """A non-owning register_passable view of a tensor
