@@ -14,6 +14,7 @@ add_modular_unittest(
   TEST_NAME
   BenchmarkCLITests
 
+  APIBridgeTest.cpp
   InputGeneratorTest.cpp
   MLPerfIntegrationTest.cpp
 

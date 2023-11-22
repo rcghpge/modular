@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/BenchmarkCLI/InputGenerator.h"
+#include "GenericML/BenchmarkCLI/APIBridge.h"
 #include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
 #include "Support/MathExtras.h"
 #include "modular/cpp/aliases.h"
@@ -331,48 +332,6 @@ std::unique_ptr<InputDataGenerator> M::BenchmarkCLI::createInputDataGenerator(
   return gen;
 }
 
-static M_Dtype dtypeToCAPI(DType dty) {
-  switch (dty.getValue()) {
-  case DType::si8:
-    return M_INT8;
-  case DType::si16:
-    return M_INT16;
-  case DType::si32:
-    return M_INT32;
-  case DType::si64:
-    return M_INT64;
-  case DType::ui8:
-    return M_UINT8;
-  case DType::ui16:
-    return M_UINT16;
-  case DType::ui32:
-    return M_UINT32;
-  case DType::ui64:
-    return M_UINT64;
-  case DType::f16:
-    return M_FLOAT16;
-  case DType::f32:
-    return M_FLOAT32;
-  case DType::f64:
-    return M_FLOAT64;
-  case DType::kBool:
-    return M_BOOL;
-  default:
-    return M_UNKNOWN;
-  }
-}
-
-static TensorSpecPtr createTensorSpec(const char *name,
-                                      const TensorSpec &spec) {
-  // Copy is required because TensorShape stores ssize_t, but API takes
-  // int64_t, and these are not necessarily the same.
-  SmallVector<int64_t, 8> shapeCopy;
-  std::copy(spec.begin(), spec.end(), std::back_inserter(shapeCopy));
-  return TensorSpecPtr(M_newTensorSpec(shapeCopy.data(), spec.getRank(),
-                                       dtypeToCAPI(spec.getEltType()), name),
-                       M_freeTensorSpec);
-}
-
 namespace M::BenchmarkCLI::Detail {
 class GeneratedInputImpl final : public GeneratedInput {
 public:
@@ -397,7 +356,7 @@ BCD::GeneratedInputImpl::GeneratedInputImpl(std::string name,
 
 ErrorOr<BCD::GeneratedInputImpl>
 BCD::GeneratedInputImpl::create(std::string name, GML::Tensor tensor) {
-  TensorSpecPtr spec = createTensorSpec(name.c_str(), tensor.getSpec());
+  TensorSpecPtr spec = tensorSpecToCAPI(name.c_str(), tensor.getSpec());
   if (!spec)
     return Error(Twine("Unable to create M_TensorSpec for ") + name);
   return GeneratedInputImpl(name, std::move(spec), std::move(tensor));

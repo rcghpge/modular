@@ -5,6 +5,7 @@
 ##===----------------------------------------------------------------------===##
 
 add_genericml_library(BenchmarkCLI
+  APIBridge.cpp
   InputGenerationSchema.cpp
   InputGenerator.cpp
   MLPerfIntegration.cpp
