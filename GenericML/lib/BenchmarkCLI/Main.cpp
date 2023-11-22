@@ -53,6 +53,8 @@ struct ClOptions {
       llvm::cl::Hidden};
   cl::opt<std::string> customOpsPath{
       "custom-ops-path", cl::desc("Path to custom ops"), cl::init("")};
+  cl::opt<size_t> numThreads{"num-threads",
+                             cl::desc("Number of threads to use"), cl::init(0)};
 };
 
 } // namespace
@@ -74,10 +76,13 @@ static llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 }
 } // namespace mlperf
 
-static ErrorOr<RuntimeContextPtr> makeRuntimeContext(M_Status *status) {
+static ErrorOr<RuntimeContextPtr> makeRuntimeContext(M_Status *status,
+                                                     size_t numThreads) {
   RuntimeConfigPtr runtimeConfig(M_newRuntimeConfig(), M_freeRuntimeConfig);
   if (!runtimeConfig)
     return Error("Failed to create M_RuntimeConfig (out of memory?)");
+
+  M_setNumThreads(runtimeConfig.get(), numThreads);
   RuntimeContextPtr context(M_newRuntimeContext(runtimeConfig.get(), status),
                             M_freeRuntimeContext);
   if (!context)
@@ -229,7 +234,7 @@ int M::maxBenchmarkMain(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  auto runtimeContextOr = makeRuntimeContext(status.get());
+  auto runtimeContextOr = makeRuntimeContext(status.get(), opts.numThreads);
   if (runtimeContextOr.isError()) {
     llvm::errs() << "Error: Failed to create runtime context: "
                  << runtimeContextOr.getError() << "\n";
