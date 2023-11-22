@@ -53,5 +53,20 @@ fn test_tokenization() raises:
     _ = model ^
 
 
+fn test_decode() raises:
+    let model = create_dummy_model()
+
+    let encoded = model.encode("abcab")
+    let token_ids = encoded.get_token_ids()
+
+    # CHECK: abcab
+    print(model.decode(token_ids))
+
+    token_ids._del_old()
+
+    _ = model ^
+
+
 fn main() raises:
     test_tokenization()
+    test_decode()
