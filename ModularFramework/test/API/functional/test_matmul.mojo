@@ -51,6 +51,8 @@ fn assert_tensors_almost_equal[
 
 
 fn test_matmul() raises:
+    # TODO: test with non-equal dimensions so we don't just accidentally
+    # get the broadcasting right :P
     alias name = "test_matmul"
     alias dim = 2
     alias hidden_dim = 2

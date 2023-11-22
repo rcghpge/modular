@@ -158,6 +158,34 @@ def stack[axis: Int](*values: Symbol) -> Symbol:
     return stack[axis](_dynamic_vector(values))
 
 
+def squeeze(v: Symbol, axis: Int) -> Symbol:
+    var g = v.g
+    let spec = v.type().unwrap_tensor().spec()
+    # Negative values treated the same as unsqueeze
+    if axis < 0:
+        axis += spec.rank() + 1
+
+    let new_shape = g.op(
+        "mo.squeeze_shape",
+        (
+            shape_of(v),
+            g.constant(Tensor[DType.int64](TensorShape(1), axis)),
+        ),
+        TensorSpec(DType.int64, spec.rank() - 1),
+    )[0]
+
+    var dims = DynamicVector[Int]()
+    for i in range(spec.rank()):
+        if i != axis:
+            dims.push_back(spec[i])
+
+    return g.op(
+        "mo.reshape",
+        (v, new_shape),
+        TensorSpec(spec.dtype(), TensorShape(dims)),
+    )[0]
+
+
 def unsqueeze(v: Symbol, axis: Int) -> Symbol:
     var g = v.g
     let spec = v.type().unwrap_tensor().spec()
@@ -306,6 +334,8 @@ def transpose(input: Symbol, x: Int, y: Int) -> Symbol:
 
 
 def dim(v: Symbol, dim: Int) -> Symbol:
+    if dim < 0:
+        dim += v.type().unwrap_tensor().spec().rank()
     return reshape(shape_of(v)[dim : dim + 1], TensorShape())
 
 
@@ -330,7 +360,7 @@ def index[axis: Int = 0](v: Symbol, idx: Int) -> Symbol:
             slice_dims.push_back(spec[i])
             indexed_dims.push_back(spec[i])
             start.store(i, 0)
-            stop.store(i, 0x7FFFFFFFFFFFFFFF)
+            stop.store(i, slice(None, None, None).end)
         step.store(i, 1)
 
     let slice = g.op(
@@ -344,7 +374,7 @@ def index[axis: Int = 0](v: Symbol, idx: Int) -> Symbol:
         TensorSpec(spec.dtype(), TensorShape(slice_dims)),
     )[0]
 
-    return reshape(slice, TensorShape(indexed_dims))
+    return squeeze(slice, axis)
 
 
 def gather(input: Symbol, indices: Symbol, axis: Int) -> Symbol:
@@ -441,14 +471,22 @@ def slice_(
     var g = input.g
     let spec = input.type().unwrap_tensor().spec()
 
-    let int_max_value = slice(None, None, None).end
-    for dim in range(spec.rank()):
+    fn ensure_constant(value: Symbol) raises -> Symbol:
+        let spec = value.type().unwrap_tensor().spec()
+        if spec.num_elements() != 1:
+            raise "slice indicies must be singular"
+        return value if spec.rank() == 0 else reshape(value, TensorShape())
+
+    let slice_max_value = slice(None, None, None).end
+    for dim in range(len(slices)):
         let slice: SliceSymbol = __get_address_as_lvalue(slices[dim])
-        starts.push_back(slice.start if dim < len(slices) else g.constant(0))
-        stops.push_back(
-            slice.stop if dim < len(slices) else g.constant(int_max_value)
-        )
-        steps.push_back(slice.step if dim < len(slices) else g.constant(1))
+        starts.push_back(ensure_constant(slice.start))
+        stops.push_back(ensure_constant(slice.stop))
+        steps.push_back(ensure_constant(slice.step))
+    for dim in range(len(slices), spec.rank()):
+        starts.push_back(g.constant(0))
+        stops.push_back(g.constant(slice_max_value))
+        steps.push_back(g.constant(1))
 
     let start = stack[axis=0](starts)
     let stop = stack[axis=0](stops)
@@ -717,9 +755,9 @@ def matmul_by_matrix(lhs: Symbol, rhs: Symbol) -> Symbol:
 
     let reshape_shape = stack[axis=0](
         g.constant(-1),
-        dim(lhs, 1),
+        dim(lhs, -1),
     )
-    let reshape_dims = TensorShape(g.m.dyn().to_int(), rhs_spec[-1])
+    let reshape_dims = TensorShape(g.m.dyn().to_int(), lhs_spec[-1])
 
     let final_shape = concat[axis=0](
         shape_of(lhs)[: lhs_spec.rank() - 1],
