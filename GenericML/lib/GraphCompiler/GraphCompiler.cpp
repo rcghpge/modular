@@ -82,6 +82,7 @@ void M::MO::registerPasses() {
   MOQ::registerLegalizeMOQOpsToMOPass();
   MOQ::registerLowerQDQOperatorsToMOPass();
   MOQ::registerSimplifyQDQPatternsPass();
+  MOQ::registerDynamicQuantizeQ4MatmulForModconPass();
 
   mlir::registerCSEPass();
   mlir::registerSCCPPass();
