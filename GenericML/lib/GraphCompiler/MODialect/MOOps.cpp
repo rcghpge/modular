@@ -2167,7 +2167,7 @@ DeviceRefAttr ReduceMaxOp::getOperandDevice(size_t index) {
 }
 
 //===----------------------------------------------------------------------===//
-// MO_ReshapeOp support
+// ReshapeOp
 //===----------------------------------------------------------------------===//
 
 template <typename T>
@@ -2318,6 +2318,8 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
 
   return {};
 }
+
+bool ReshapeOp::preferResultsDevice() { return true; }
 
 //===----------------------------------------------------------------------===//
 // MO_UnsqueezeShapeOp support
@@ -2471,7 +2473,7 @@ LogicalResult SqueezeShapeOp::canonicalize(SqueezeShapeOp op,
 }
 
 //===----------------------------------------------------------------------===//
-// MOStatic_ReshapeOp
+// Static::ReshapeOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult Static::ReshapeOp::canonicalize(Static::ReshapeOp op,
@@ -2571,6 +2573,8 @@ LogicalResult Static::ReshapeOp::verify() {
 
   return success();
 }
+
+bool Static::ReshapeOp::preferResultsDevice() { return true; }
 
 //===----------------------------------------------------------------------===//
 // MO_ShapeOfOp

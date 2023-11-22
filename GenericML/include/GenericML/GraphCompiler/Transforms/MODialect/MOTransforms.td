@@ -332,6 +332,14 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
     The pass is a no-op if the graph op has no `#M.device_spec_collection`
     attribute, or the collection contains just the 'host' device.
   }];
+
+  let options = [
+    Option<"smallTensorLimit", "small-tensor-limit", "int64_t", "64",
+           "Maximum number of elements a tensor may have to be considered "
+           "'small'. Ops which take and return only 'small' tensors are "
+           "themselves considered 'small', and need not be placed on the "
+           "overall graph's default device.">,
+  ];
 }
 
 def HackyPatternFusionForModconPass : Pass<"hacky-pattern-fusion", "GraphOp"> {

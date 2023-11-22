@@ -1903,7 +1903,10 @@ def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to"> {
   ];
 }
 
-def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [DeclareOpInterfaceMethods<MO_Parameterization>]> {
+def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
+  DeclareOpInterfaceMethods<MO_Parameterization>,
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["preferResultsDevice"]>,
+]> {
   let summary = "Reshape operation";
   let description = [{
     Return a tensor with the same underlying data, but different shape.
@@ -2274,7 +2277,9 @@ def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to"> {
   let hasCanonicalizeMethod = 1;
 }
 
-def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape"> {
+def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape", [
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["preferResultsDevice"]>,
+]> {
   let summary = "Reshape operation for parametric shapes";
   let description = [{
     Return a tensor with the same underlying data, but different shape. The
