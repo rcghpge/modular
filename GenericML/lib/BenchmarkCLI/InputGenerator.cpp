@@ -5,9 +5,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/BenchmarkCLI/InputGenerator.h"
-#include "GenericML/API/modular/cpp/aliases.h"
 #include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
 #include "Support/MathExtras.h"
+#include "modular/cpp/aliases.h"
 #include <type_traits>
 
 using namespace M;

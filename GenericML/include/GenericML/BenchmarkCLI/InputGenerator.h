@@ -7,10 +7,10 @@
 #ifndef GENERICML_BENCHMARK_CLI_INPUT_GENERATOR_H
 #define GENERICML_BENCHMARK_CLI_INPUT_GENERATOR_H
 
-#include "GenericML/API/modular/c/types.h"
 #include "GenericML/Support/Tensor.h"
 #include "Support/ForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
+#include "modular/c/types.h"
 #include <memory>
 
 namespace M::BenchmarkCLI {

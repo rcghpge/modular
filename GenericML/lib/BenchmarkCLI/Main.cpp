@@ -6,8 +6,6 @@
 
 #include "GenericML/BenchmarkCLI/Main.h"
 #include "Config/Version.h"
-#include "GenericML/API/modular/c/custom_ops.h"
-#include "GenericML/API/modular/cpp/aliases.h"
 #include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
 #include "GenericML/BenchmarkCLI/InputGenerator.h"
 #include "GenericML/BenchmarkCLI/MLPerfIntegration.h"
@@ -16,6 +14,8 @@
 #include "Support/ErrorOr.h"
 #include "mlperf-loadgen/loadgen.h"
 #include "mlperf-loadgen/test_settings.h"
+#include "modular/c/custom_ops.h"
+#include "modular/cpp/aliases.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"

@@ -5,10 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/BenchmarkCLI/MLPerfIntegration.h"
-#include "GenericML/API/modular/cpp/aliases.h"
 #include "GenericML/BenchmarkCLI/InputGenerator.h"
 #include "GenericML/BenchmarkCLI/Main.h"
 #include "mlperf-loadgen/loadgen.h"
+#include "modular/cpp/aliases.h"
 
 using namespace M;
 using namespace M::BenchmarkCLI;

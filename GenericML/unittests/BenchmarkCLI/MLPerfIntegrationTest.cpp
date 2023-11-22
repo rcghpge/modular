@@ -5,9 +5,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/BenchmarkCLI/MLPerfIntegration.h"
-#include "GenericML/API/modular/cpp/aliases.h"
 #include "GenericML/BenchmarkCLI/InputGenerator.h"
 #include "LLCL/Runtime/Runtime.h"
+#include "modular/cpp/aliases.h"
 #include "gtest/gtest.h"
 
 using namespace M;

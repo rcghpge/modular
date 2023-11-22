@@ -5,10 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/BenchmarkCLI/InputGenerator.h"
-#include "GenericML/API/modular/c/tensor.h"
-#include "GenericML/API/modular/cpp/aliases.h"
 #include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
 #include "LLCL/Runtime/Runtime.h"
+#include "modular/c/tensor.h"
+#include "modular/cpp/aliases.h"
 #include "gtest/gtest.h"
 #include <limits>
 
