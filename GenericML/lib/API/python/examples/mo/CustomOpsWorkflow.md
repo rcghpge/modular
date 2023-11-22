@@ -115,16 +115,9 @@ M_useKernelsFrom(compileConfig, "user_ops.mojopkg", status);
 ```
 
 ```python
-@dataclass
-class CustomOptions(engine.ExperimentalLoadOptions):
-    type: str = "experimental"
-    custom_ops_path: str = field(default="")
-
-...
-options = CustomOptions()
+options = engine.CommonLoadOptions()
 options.custom_ops_path = custom_ops_path
 model = session.load(model_path, options)
-...
 ```
 
 ## Usage with `mt`
@@ -132,4 +125,4 @@ model = session.load(model_path, options)
 ```bash
 mt --execute mo-model.mlir --kernel-library-paths=user_ops.mojopkg
 
-```
+``

@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MODULAR_C_EXPERIMENTAL_CUSTOM_OPS_H
-#define MODULAR_C_EXPERIMENTAL_CUSTOM_OPS_H
+#ifndef MODULAR_C_CUSTOM_OPS_H
+#define MODULAR_C_CUSTOM_OPS_H
 
 #include "modular/c/symbol_export.h"
 #include "modular/c/types.h"

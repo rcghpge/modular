@@ -4,10 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "modular/c/experimental/custom_ops.h"
+#include "modular/c/custom_ops.h"
 #include "GenericML/API/c/detail/types.h"
 
-#include "../detail/helpers.h"
+#include "detail/helpers.h"
 
 #include <filesystem>
 

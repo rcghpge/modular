@@ -9,7 +9,7 @@
 
 #include "Support/ErrorOr.h"
 #include "modular/c/common.h"
-#include "modular/c/experimental/custom_ops.h"
+#include "modular/c/custom_ops.h"
 #include "modular/c/tensorflow/config.h"
 #include "modular/cpp/aliases.h"
 

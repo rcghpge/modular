@@ -6,7 +6,7 @@
 
 #include "GenericML/BenchmarkCLI/Main.h"
 #include "Config/Version.h"
-#include "GenericML/API/modular/c/experimental/custom_ops.h"
+#include "GenericML/API/modular/c/custom_ops.h"
 #include "GenericML/API/modular/cpp/aliases.h"
 #include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
 #include "GenericML/BenchmarkCLI/InputGenerator.h"

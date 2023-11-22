@@ -41,19 +41,12 @@ def without_custom_ops():
     print(f"Output: {output['output']}")
 
 
-# TODO: Move to an experimental modular engine package
-@dataclass
-class CustomOptions(engine.ExperimentalLoadOptions):
-    type: str = "experimental"
-    custom_ops_path: str = field(default="")
-
-
 def with_custom_ops(custom_ops_path: str):
     print("With Custom Ops...")
     script_dir = os.path.dirname(os.path.abspath(__file__))
     model_path = Path(script_dir, "mo-custom-op-model.mlir")
     session = engine.InferenceSession()
-    options = CustomOptions()
+    options = engine.CommonLoadOptions()
     options.custom_ops_path = custom_ops_path
     model = session.load(model_path, options)
     output = model.execute(input=np.ones((5)))
