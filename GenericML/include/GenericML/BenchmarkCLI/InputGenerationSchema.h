@@ -51,7 +51,7 @@ struct InputGenerationSchema {
 };
 
 ErrorOr<InputGenerationSchema> readInputGenerationSchema(StringRef path);
-bool roundTripInputGenerationSchema(StringRef path);
+void dumpInputGenerationSchema(const InputGenerationSchema &schema);
 
 } // namespace M::BenchmarkCLI
 

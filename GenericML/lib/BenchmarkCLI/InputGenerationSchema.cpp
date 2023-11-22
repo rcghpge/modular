@@ -63,19 +63,10 @@ BenchmarkCLI::readInputGenerationSchema(StringRef path) {
   return std::move(schema);
 }
 
-bool BenchmarkCLI::roundTripInputGenerationSchema(StringRef path) {
-  auto schemaOr = readInputGenerationSchema(path);
-  if (schemaOr.isError()) {
-    llvm::errs() << schemaOr.getError() << '\n';
-    return false;
-  }
-  InputGenerationSchema schema = std::move(*schemaOr);
-  // TODO(akirchhoff): Validate
-  llvm::outs() << "Input generation schema is valid\n";
-  {
-    llvm::outs() << "Round-tripped input generation schema:\n";
-    llvm::yaml::Output yout(llvm::outs());
-    yout << schema;
-  }
-  return true;
+void BenchmarkCLI::dumpInputGenerationSchema(
+    const InputGenerationSchema &schema) {
+  llvm::yaml::Output yout(llvm::outs());
+  // YAMLTraits requires non-const even when outputting, but we don't actually
+  // modify the item being output during output, so this should still be safe.
+  yout << const_cast<InputGenerationSchema &>(schema);
 }

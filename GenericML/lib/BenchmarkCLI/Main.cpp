@@ -217,9 +217,21 @@ int M::maxBenchmarkMain(int argc, char **argv) {
   llvm::outs() << "Modular Benchmarking Tool\n";
   llvm::outs() << "Modular version: " << M_version() << "\n";
 
-  if (opts.roundTripInputGenerationSchema) {
-    if (!roundTripInputGenerationSchema(opts.inputGenerationSchemaPath))
+  InputGenerationSchema inputGenerationSchema;
+  if (!opts.inputGenerationSchemaPath.empty()) {
+    auto schemaOr = readInputGenerationSchema(opts.inputGenerationSchemaPath);
+    if (schemaOr.isError()) {
+      llvm::errs() << "Error parsing input generation schema: "
+                   << schemaOr.getError() << "\n";
       return EXIT_FAILURE;
+    }
+    inputGenerationSchema = schemaOr.takeValue();
+  }
+
+  if (opts.roundTripInputGenerationSchema) {
+    llvm::outs() << "Input generation schema is valid\n";
+    llvm::outs() << "Round-tripped input generation schema:\n";
+    dumpInputGenerationSchema(inputGenerationSchema);
     return EXIT_SUCCESS;
   }
 
