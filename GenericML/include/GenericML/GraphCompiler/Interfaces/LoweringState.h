@@ -106,12 +106,13 @@ public:
   struct ExecuteState {
     ExecuteState(MLIRContext *ctx) : builder(ctx) {}
 
-    /// The original input chain to the invokable, ready when the argument
-    /// tensors are ready.
-    Value invokableInputChain;
+    /// The input chain passed as the first argument to the 'execute' block,
+    /// or an equivalent SSA value in a control flow sub-block.
+    TypedValue<MEF::ChainType> rootChain;
 
-    /// The "main thread" chain in the execute phase.
-    Value chain;
+    /// The current side-effect chain, used to strictly sequence side-effecting
+    /// operations such as for printing.
+    TypedValue<MEF::ChainType> currentChain;
 
     /// The MGP context, passed in as the second argument.
     TypedValue<MGP::ContextType> mgpContext;
@@ -193,8 +194,8 @@ public:
   OpBuilder &getExecuteOpBuilder() { return execute.builder; }
 
   /// Set the MGP context for use in the 'execute' block.
-  void setExecuteMgpContext(TypedValue<MGP::ContextType> mgpContext) {
-    execute.mgpContext = mgpContext;
+  void setExecuteMgpContext(Value mgpContext) {
+    execute.mgpContext = cast<TypedValue<MGP::ContextType>>(mgpContext);
   }
 
   /// Return the MGP context appropriate for the 'execute' block.
@@ -202,16 +203,27 @@ public:
     return execute.mgpContext;
   }
 
-  // Global side effect chain, currently reserved exclusively for asserts.
-  // Consumers of tensor specs must block on this chain. This is not intended
-  // for general side effects.
-  // TODO: Remove the need for this by wiring dependencies on asserts locally.
-  void setExecuteChain(Value chain) { execute.chain = chain; }
+  /// Sets the 'root' chain for the 'execute' block to chain.
+  void setRootExecuteChain(Value chain) {
+    execute.rootChain = cast<TypedValue<MEF::ChainType>>(chain);
+  }
 
-  /// Return the global side effect chain in the execute phase. Consumers of
-  /// tensor specs must block on this chain.
-  // TODO: Remove the need for this by wiring dependencies on asserts locally.
-  Value getExecuteChain() { return execute.chain; }
+  /// Returns the 'root' chain of the 'execute' block. This can be used for
+  /// all non-side-effecting operations.
+  ///
+  /// May not be the same as getCurrentExecuteChain if the chain has been
+  /// updated in order to enforce the ordering of side effecting operations,
+  /// such as printing.
+  TypedValue<MEF::ChainType> getExecuteChain() { return execute.rootChain; }
+
+  /// Returns the 'current' chain of the 'execute' block. This can be used for
+  /// all side-effecting operations.
+  Value getCurrentExecuteChain() { return execute.currentChain; }
+
+  /// Updates the 'current' chain of the 'execute' block.
+  void setCurrentExecuteChain(Value chain) {
+    execute.currentChain = cast<TypedValue<MEF::ChainType>>(chain);
+  }
 
   /// Return the runtime SSA value that the given graph SSA value is lowered to.
   /// The key is an arbitrary SSA value in the mo.graph, most often (but not

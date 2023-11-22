@@ -335,9 +335,9 @@ LogicalResult MOGraphLowering::createModelOp() {
   loweringState.getExecuteOpBuilder().setInsertionPointToEnd(executeBlock);
 
   // Extract chain and MGP context from arguments
-  loweringState.setExecuteChain(executeBlock->getArgument(0));
-  loweringState.setExecuteMgpContext(
-      cast<TypedValue<MGP::ContextType>>(executeBlock->getArgument(1)));
+  loweringState.setRootExecuteChain(executeBlock->getArgument(0));
+  loweringState.setCurrentExecuteChain(executeBlock->getArgument(0));
+  loweringState.setExecuteMgpContext(executeBlock->getArgument(1));
 
   // Establish buffer builders for all the devices. This may require some
   // extra device-specific setup in the 'init' block.
@@ -376,7 +376,7 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
 
   // Figure out what values to return.  We always return a chain.
   SmallVector<Value> operands;
-  operands.push_back(loweringState.getExecuteChain());
+  operands.push_back(loweringState.getCurrentExecuteChain());
 
   for (Value operand : output.getOperands())
     operands.push_back(loweringState.lookupExecuteLoweredValue(operand));
@@ -390,10 +390,10 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
 LogicalResult MOGraphLowering::lowerYield(MO::YieldOp yield) {
   // Execute phase lowering.
 
-  // Figure out what values to return. We always implicitly return the main
-  // chain.
+  // Figure out what values to return. We always implicitly return the current
+  // 'execute' block chain.
   SmallVector<Value> operands;
-  operands.push_back(loweringState.getExecuteChain());
+  operands.push_back(loweringState.getCurrentExecuteChain());
 
   // If we are yielding from a while then it will expect the context as well.
   if (isa<MO::WhileOp>(yield->getParentOp()))
@@ -720,9 +720,10 @@ MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
   auto loweredTensor =
       loweringState.lookupExecuteLoweredValue(printOp.getInput());
   Value outChain = opLoweringState.debugTensorPrint(
-      loweringState.getExecuteChain(), loweredTensor, printOp.getLabelAttr(),
-      printOp.getInput().getType());
-  loweringState.setExecuteChain(outChain);
+      loweringState.getCurrentExecuteChain(), loweredTensor,
+      printOp.getLabelAttr(), printOp.getInput().getType());
+  loweringState.setCurrentExecuteChain(
+      cast<TypedValue<MEF::ChainType>>(outChain));
   return success();
 }
 
@@ -855,20 +856,20 @@ LogicalResult MOGraphLowering::lowerListInsert(MO::ListInsertOp listInsertOp) {
 LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   assert(MO::isOnHost(ifOp) && "mo.if is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, ifOp);
-  Value mainChain = loweringState.getExecuteChain();
+  Value currentChain = loweringState.getCurrentExecuteChain();
 
   // Lower the condition.
   MGP::BufferizedTensor bufferizedCond =
       opLoweringState.getBufferizedInput(ifOp.getCond());
   Value condBool = opLoweringState.create<MGP::ToGRTBoolOp>(
-      mainChain, bufferizedCond.buffer);
+      loweringState.getExecuteChain(), bufferizedCond.buffer);
 
   SmallVector<Value> operands;
   operands.push_back(condBool);
 
   SmallVector<Type> resultTypes;
   // Always return the main chain
-  resultTypes.emplace_back(mainChain.getType());
+  resultTypes.emplace_back(currentChain.getType());
   for (Type type : ifOp.getResultTypes())
     resultTypes.emplace_back(
         loweringState.getTypeConverter().convertType(type));
@@ -892,7 +893,7 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
     return failure();
 
   // Reset the main chain between blocks
-  loweringState.setExecuteChain(mainChain);
+  loweringState.setCurrentExecuteChain(currentChain);
 
   // Lower Else Block
   if (failed(lower_block(ifOp.getElseRegion(), outputIf.getElseRegion())))
@@ -929,7 +930,7 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
     return failure();
 
   // Set the outputs
-  loweringState.setExecuteChain(outputIf.getResult(0));
+  loweringState.setCurrentExecuteChain(outputIf.getResult(0));
   for (size_t i = 1, e = resultTypes.size(); i < e; i++) {
     loweringState.emplaceExecuteLoweredValue(ifOp.getResult(i - 1),
                                              outputIf.getResult(i));
@@ -946,14 +947,16 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   assert(MO::isOnHost(whileOp) && "mo.while is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, whileOp);
 
-  // We'll need to thread the 'execute' chain through the while loop's 'cond'
-  // and 'body' blocks.
-  Value mainChain = loweringState.getExecuteChain();
+  // We'll need to thread the current 'execute' chain through the while loop's
+  // 'cond' and 'body' blocks.
+  Value rootChain = loweringState.getExecuteChain();
+  Value currentChain = loweringState.getCurrentExecuteChain();
+  bool currentIsRoot = currentChain == rootChain;
 
   // Collect the lowered form of all the outer SSA values which (may) appear
   // in the final grt.while 'cond' and 'body' blocks.
   SmallVector<Value> loweredFreeValues;
-  loweredFreeValues.emplace_back(mainChain);
+  loweredFreeValues.emplace_back(currentChain);
   loweredFreeValues.emplace_back(loweringState.getExecuteMgpContext());
   for (Value value : whileOp.getInputs())
     loweredFreeValues.emplace_back(
@@ -986,8 +989,12 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
 
     // Establish the block's arguments. The chain comes first.
     auto loweredChainArg =
-        outputRegion.addArgument(mainChain.getType(), whileOp.getLoc());
-    loweringState.setExecuteChain(loweredChainArg);
+        outputRegion.addArgument(currentChain.getType(), whileOp.getLoc());
+    loweringState.setCurrentExecuteChain(loweredChainArg);
+    if (currentIsRoot)
+      loweringState.setRootExecuteChain(loweredChainArg);
+    // else: if the block needs to reference the root chain then an
+    //       additional block argument will be added by fixupIsolatedFromAbove.
 
     auto contextArg = outputRegion.addArgument(
         loweringState.getExecuteMgpContext().getType(), whileOp.getLoc());
@@ -1080,7 +1087,8 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
 
   // Capture the lowered outputs.
   assert(loweredWhileOp.getNumResults() == whileOp.getNumResults() + 2);
-  loweringState.setExecuteChain(loweredWhileOp.getResult(0));
+  loweringState.setCurrentExecuteChain(loweredWhileOp.getResult(0));
+  loweringState.setRootExecuteChain(rootChain);
   for (size_t i = 0, e = whileOp.getNumResults(); i < e; i++) {
     loweringState.emplaceExecuteLoweredValue(whileOp.getResult(i),
                                              loweredWhileOp.getResult(i + 2));
