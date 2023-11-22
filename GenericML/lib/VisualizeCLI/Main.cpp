@@ -6,7 +6,7 @@
 
 #include "GenericML/VisualizeCLI/Main.h"
 #include "Config/Version.h"
-#include "GenericML/API/modular/c/experimental/custom_ops.h"
+#include "GenericML/API/modular/c/custom_ops.h"
 #include "GenericML/API/modular/cpp/aliases.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "Support/CommandLine.h"
