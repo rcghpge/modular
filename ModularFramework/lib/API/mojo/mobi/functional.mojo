@@ -547,7 +547,23 @@ def elementwise_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
         TensorSpec(DType.int64, broadcast_rank),
     )[0]
 
-    let broadcast_dims = _fill_vector(broadcast_rank, g.m.dyn().to_int())
+    # Implement basic numpy-style broadcast, but with dynamic dims allowed
+    # 1. the smaller shape is filled with 1s from the left
+    # 2. if either dim is 1 it is promoted to the other value
+    # 3. if either dim is dynamic, we can't predict, so output dynamic
+    var broadcast_dims = DynamicVector[Int]()
+    let larger = lhs_spec if lhs_spec.rank() > rhs_spec.rank() else rhs_spec
+    let smaller = rhs_spec if lhs_spec.rank() > rhs_spec.rank() else lhs_spec
+    let offset = larger.rank() - smaller.rank()
+    let dyn = g.m.dyn().to_int()
+    for i in range(offset):
+        broadcast_dims.push_back(larger[i])
+    for i in range(offset, broadcast_rank):
+        let d1 = larger[i]
+        let d2 = smaller[i - offset]
+        broadcast_dims.push_back(
+            d1 if d1 == d2 or d2 == 1 else (d2 if d1 == 1 else dyn)
+        )
 
     let broadcast_lhs = g.op(
         "mo.broadcast_to",
