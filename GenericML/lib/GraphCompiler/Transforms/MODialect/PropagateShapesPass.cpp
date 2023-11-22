@@ -449,7 +449,7 @@ struct PropagateShapesPass
     if (auto intAttr = dyn_cast<IntegerAttr>(attr))
       return intAttr.getValue().isNonNegative();
 
-    if (auto iter = definitelyNonNegativeAttrs.contains(attr))
+    if (definitelyNonNegativeAttrs.contains(attr))
       return true;
 
     auto exprAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr);
