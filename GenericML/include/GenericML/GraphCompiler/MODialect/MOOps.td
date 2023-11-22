@@ -100,6 +100,7 @@ def MO_TransferOp : MO_Op<"transfer", [
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 //===----------------------------------------------------------------------===//

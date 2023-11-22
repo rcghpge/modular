@@ -243,6 +243,23 @@ LogicalResult TransferOp::verify() {
   return success();
 }
 
+LogicalResult TransferOp::canonicalize(TransferOp outerOp,
+                                       PatternRewriter &rewriter) {
+  // transfer(transfer(input)) = input, provided devices line up.
+  TypedValue<TensorType> intermediate = outerOp.getInput();
+  auto innerOp = intermediate.getDefiningOp<TransferOp>();
+  if (!innerOp)
+    return failure();
+  TypedValue<TensorType> input = innerOp.getInput();
+  if (outerOp.getDestDeviceAttr() !=
+      MO::getDeviceOrDefault(outerOp->getParentOfType<GraphOp>(),
+                             input.getType()))
+    return failure();
+
+  rewriter.replaceOp(outerOp, input);
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // MO_IndexToTensorOp support
 //===----------------------------------------------------------------------===//
