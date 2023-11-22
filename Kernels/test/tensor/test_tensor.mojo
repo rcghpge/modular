@@ -273,6 +273,63 @@ fn test_add():
         print("Error")
 
 
+# CHECK-LABEL: test_sub
+fn test_sub():
+    print("== test_sub")
+    var a = Tensor[DType.float32](2, 2)
+    var b = Tensor[DType.float32](2, 2)
+
+    for i in range(2):
+        for j in range(2):
+            a[Index(i, j)] = 3
+            b[Index(i, j)] = 2
+
+    try:
+        # CHECK{LITERAL}: Tensor([[1.0, 1.0],
+        # CHECK{LITERAL}: [1.0, 1.0]], dtype=float32, shape=2x2)
+        print(a - b)
+    except:
+        print("Error")
+
+
+# CHECK-LABEL: test_mul
+fn test_mul():
+    print("== test_mul")
+    var a = Tensor[DType.float32](2, 2)
+    var b = Tensor[DType.float32](2, 2)
+
+    for i in range(2):
+        for j in range(2):
+            a[Index(i, j)] = 3
+            b[Index(i, j)] = 2
+
+    try:
+        # CHECK{LITERAL}: Tensor([[6.0, 6.0],
+        # CHECK{LITERAL}: [6.0, 6.0]], dtype=float32, shape=2x2)
+        print(a * b)
+    except:
+        print("Error")
+
+
+# CHECK-LABEL: test_div
+fn test_div():
+    print("== test_div")
+    var a = Tensor[DType.float32](2, 2)
+    var b = Tensor[DType.float32](2, 2)
+
+    for i in range(2):
+        for j in range(2):
+            a[Index(i, j)] = 3
+            b[Index(i, j)] = 2
+
+    try:
+        # CHECK{LITERAL}: Tensor([[1.5, 1.5],
+        # CHECK{LITERAL}: [1.5, 1.5]], dtype=float32, shape=2x2)
+        print(a / b)
+    except:
+        print("Error")
+
+
 # CHECK-LABEL: test_pow
 fn test_pow():
     print("== test_pow")
@@ -361,6 +418,9 @@ fn main():
     test_euclidean_distance()
     test_image_to_grayscale()
     test_add()
+    test_sub()
+    test_mul()
+    test_div()
     test_pow()
     test_print()
     test_print_small()
