@@ -51,10 +51,8 @@ struct ClOptions {
       cl::desc("Validate and round trip the provided input generation schema "
                "and do not proceed to run benchmarking"),
       llvm::cl::Hidden};
-#ifndef MODULAR_PRODUCTION
   cl::opt<std::string> customOpsPath{
       "custom-ops-path", cl::desc("Path to custom ops"), cl::init("")};
-#endif // MODULAR_PRODUCTION
 };
 
 } // namespace
@@ -94,13 +92,11 @@ static ErrorOr<CompiledModelPtr> compileModel(const ClOptions &opts,
   if (!compileConfig)
     return Error("Failed to create M_CompileConfig (out of memory?)");
 
-#ifndef MODULAR_PRODUCTION
   if (opts.customOpsPath != "") {
     M_useKernelsFrom(compileConfig.get(), opts.customOpsPath.c_str(), status);
     if (M_isError(status))
       return Error(M_getError(status));
   }
-#endif // MODULAR_PRODUCTION
 
   M_setModelPath(compileConfig.get(), opts.modelPath.c_str());
   CompiledModelPtr model(
