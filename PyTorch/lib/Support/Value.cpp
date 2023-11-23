@@ -184,7 +184,7 @@ std::string M::Torch::valueToString(const LLCL::AnyAsyncValueRef &value) {
     ss << "\"" << *stringValue << "\"";
   else if (double *doubleValue = dyn_cast<double>(value))
     ss << *doubleValue;
-  else if (long *longValue = dyn_cast<long>(value))
+  else if (int64_t *longValue = dyn_cast<int64_t>(value))
     ss << *longValue;
   else if (bool *boolValue = dyn_cast<bool>(value))
     ss << *boolValue;
@@ -215,8 +215,8 @@ bool M::Torch::valueEqual(const LLCL::AnyAsyncValueRef &lhs,
   } else if (double *ldouble = dyn_cast<double>(lhs)) {
     if (double *rdouble = dyn_cast<double>(rhs))
       return *ldouble == *rdouble;
-  } else if (long *llong = dyn_cast<long>(lhs)) {
-    if (long *rlong = dyn_cast<long>(rhs))
+  } else if (int64_t *llong = dyn_cast<int64_t>(lhs)) {
+    if (int64_t *rlong = dyn_cast<int64_t>(rhs))
       return *llong == *rlong;
   } else if (bool *lbool = dyn_cast<bool>(lhs)) {
     if (bool *rbool = dyn_cast<bool>(rhs))
@@ -249,8 +249,8 @@ bool M::Torch::valueLessThan(const LLCL::AnyAsyncValueRef &lhs,
   } else if (double *ldouble = dyn_cast<double>(lhs)) {
     if (double *rdouble = dyn_cast<double>(rhs))
       return *ldouble < *rdouble;
-  } else if (long *llong = dyn_cast<long>(lhs)) {
-    if (long *rlong = dyn_cast<long>(rhs))
+  } else if (int64_t *llong = dyn_cast<int64_t>(lhs)) {
+    if (int64_t *rlong = dyn_cast<int64_t>(rhs))
       return *llong < *rlong;
   } else if (bool *lbool = dyn_cast<bool>(lhs)) {
     if (bool *rbool = dyn_cast<bool>(rhs))
@@ -276,8 +276,8 @@ size_t M::Torch::valueHash(const LLCL::AnyAsyncValueRef &value) {
     return std::hash<std::string>()(*stringValue);
   else if (double *doubleValue = dyn_cast<double>(value))
     return std::hash<double>()(*doubleValue);
-  else if (long *longValue = dyn_cast<long>(value))
-    return std::hash<long>()(*longValue);
+  else if (int64_t *longValue = dyn_cast<int64_t>(value))
+    return std::hash<int64_t>()(*longValue);
   else if (bool *boolValue = dyn_cast<bool>(value))
     return std::hash<bool>()(*boolValue);
   else if (GML::Tensor *tensor = dyn_cast<GML::Tensor>(value))

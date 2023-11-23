@@ -144,7 +144,7 @@ TEST_F(ValueTest, VariantDictKeys) {
       LLCL::AnyAsyncValueRef::createReady<std::string>(getRuntime(), "a"));
 
   list.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<long>(getRuntime(), 2));
+      LLCL::AnyAsyncValueRef::createReady<int64_t>(getRuntime(), 2));
 
   Dict dict1;
   Dict dict2;
@@ -171,7 +171,7 @@ TEST_F(ValueTest, YamlTest0) {
 
   dict1.getElements()[Variant(
       LLCL::AnyAsyncValueRef::createReady<double>(getRuntime(), 1.0))] =
-      LLCL::AnyAsyncValueRef::createReady<long>(getRuntime(), 5);
+      LLCL::AnyAsyncValueRef::createReady<int64_t>(getRuntime(), 5);
 
   std::string ystring = toYamlString(dict1);
 
@@ -204,7 +204,7 @@ TEST_F(ValueTest, YamlTest1) {
       LLCL::AnyAsyncValueRef::createReady<std::string>(getRuntime(), "a"));
 
   list.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<long>(getRuntime(), 2));
+      LLCL::AnyAsyncValueRef::createReady<int64_t>(getRuntime(), 2));
 
   Dict dict1;
 
