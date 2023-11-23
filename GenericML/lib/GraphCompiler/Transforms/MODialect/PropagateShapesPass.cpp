@@ -500,6 +500,7 @@ struct PropagateShapesPass
     // canonicalized by attribute type.
     TypedAttr lhs = operands[0];
     TypedAttr rhs = operands[1];
+    MLIRContext *ctx = lhs.getContext();
 
     if (opcode == KGEN::POC::Max) {
       // max(non_negative_expr, non_positive_expr) = non_negative_expr
@@ -518,6 +519,15 @@ struct PropagateShapesPass
       // min(non_positive_expr, non_negative_expr) = non_positive_expr
       if (isDefinitelyNonPositive(lhs) && isDefinitelyNonNegative(rhs))
         return lhs;
+
+    } else if (opcode == KGEN::POC::LT) {
+      // lt(non_negative_expr, non_positive_expr) = false
+      if (isDefinitelyNonNegative(lhs) && isDefinitelyNonPositive(rhs))
+        return BoolAttr::get(ctx, false);
+
+      // lt(non_positive_expr, non_negative_expr) = true
+      if (isDefinitelyNonPositive(lhs) && isDefinitelyNonNegative(rhs))
+        return BoolAttr::get(ctx, true);
 
     } else if (opcode == KGEN::POC::EQ) {
       MLIRContext *ctx = lhs.getContext();

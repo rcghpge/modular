@@ -956,8 +956,6 @@ mo.graph @squeeze_shape_dynamic_shape_with_reshape(%input_tensor: !mo.tensor<[?,
 // CHECK-SAME: <[[D0:.*]]>(%[[INPUT:.*]]: !mo.tensor<[10, [[D0]], 20], f32>) -> !mo.tensor<[10, [[D0]], 20], f32>
 mo.graph @slice_entire_dynamic_axis(%arg0: !mo.tensor<[10, ?, 20], f32>) -> (!mo.tensor<[?, ?, ?], f32>) {
 
-  // CHECK-NEXT: kgen.param.declare [[COND:.*]]: i1 = <ge([[D0]], 0)>
-  // CHECK-NEXT: kgen.param.declare {{.*}}: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "clamped stop must be greater/less than or equal to start when step is positive/negative" : !kgen.string}, [[COND]])>
   %axis0 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si32>
   %index0 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
   %index1 = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
@@ -1013,9 +1011,6 @@ mo.graph @slice_out_a_third_of_constant_axis(
   %1234 = mo.gather(%1220, %24, %19) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si32>) -> !mo.tensor<[1], si64>
   %1235 = mo.concat[%19 : !mo.tensor<[], si32>] (%4, %1233) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[3], si64>
   %1236 = mo.concat[%19 : !mo.tensor<[], si32>] (%1232, %1234) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[3], si64>
-
-  // CHECK-DAG: kgen.param.declare [[COND:.*]]: i1 = <ge([[D0]], 0)>
-  // CHECK-DAG: kgen.param.declare {{.*}}: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "clamped stop must be greater/less than or equal to start when step is positive/negative" : !kgen.string}, [[COND]])>
 
   // CHECK-NEXT: %[[RES:.*]] = mo.slice(%[[INPUT]], %[[START]], %[[STOP]], %[[STEP]])
   // CHECK-SAME: : (!mo.tensor<[50, [[D0]], 2304], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[50, [[D0]], 768], f32>
