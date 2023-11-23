@@ -39,8 +39,8 @@ public:
 
   None(const None &other) = default;
 
-  None operator=(None other) { return *this; };
-  None &operator=(None &other) = default;
+  None &operator=(const None &other) = default;
+  None &operator=(None &&other);
 
   /// Returns the string representation "<none>".
   std::string to_string() const;

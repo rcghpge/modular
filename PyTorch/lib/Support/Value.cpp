@@ -12,6 +12,8 @@
 using namespace M;
 using namespace M::Torch;
 
+None &None::operator=(None &&other) { return *this; }
+
 bool None::operator==(const None &other) const { return true; }
 
 bool None::operator<(const None &other) const { return false; }
