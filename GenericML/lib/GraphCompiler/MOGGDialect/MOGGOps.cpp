@@ -579,8 +579,11 @@ LogicalResult KernelOp::verify() {
   mlir::SymbolTable symTable{*this};
   if (inputInterfaces.has_value()) {
     for (auto interface : inputInterfaces->getAsValueRange<StringAttr>()) {
-      if (!interface.empty() &&
-          !dyn_cast_or_null<LambdaOp>(symTable.lookup(interface))) {
+      if (interface.empty())
+        continue;
+
+      Operation *lambda = symTable.lookup(interface);
+      if (!lambda || !isa<LambdaOp, KGEN::ParamDeclareRegionOp>(lambda)) {
         return emitError("Could not find lambda op specified in the input "
                          "fusion interface as \"")
                << interface.str() << "\"";
@@ -590,8 +593,11 @@ LogicalResult KernelOp::verify() {
 
   if (outputInterfaces.has_value()) {
     for (auto interface : outputInterfaces->getAsValueRange<StringAttr>()) {
-      if (!interface.empty() &&
-          !dyn_cast_or_null<LambdaOp>(symTable.lookup(interface))) {
+      if (interface.empty())
+        continue;
+
+      Operation *lambda = symTable.lookup(interface);
+      if (!lambda || !isa<LambdaOp, KGEN::ParamDeclareRegionOp>(lambda)) {
         return emitError("Could not find lambda op specified in the output "
                          "fusion interface as \"")
                << interface.str() << "\"";
