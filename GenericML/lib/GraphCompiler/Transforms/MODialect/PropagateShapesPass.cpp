@@ -467,21 +467,41 @@ struct PropagateShapesPass
     return false;
   }
 
+  /// A conservative predicate that returns true iff `attr` is provable to be
+  /// negative, and return false we can't claim anything.
+  bool isDefinitelyNegative(TypedAttr attr) {
+    if (auto intAttr = dyn_cast<IntegerAttr>(attr))
+      return intAttr.getValue().isNegative();
+
+    return false;
+  }
+
+  /// A conservative predicate that returns true iff `attr` is provable to be
+  /// positive, and return false we can't claim anything.
+  bool isDefinitelyPositive(TypedAttr attr) {
+    if (auto intAttr = dyn_cast<IntegerAttr>(attr))
+      return intAttr.getValue().isStrictlyPositive();
+
+    return false;
+  }
+
   /// This function serves as shape inference system's extension to KGEN
   /// folders. It leverages things like range information to enable more
-  /// expression folding.
-  TypedAttr tryFoldExprAttr(TypedAttr attr) {
+  /// expression folding, and applies it only to `opcode(operands)`, assuming
+  /// `operands` have been folded as much as possible.
+  ///
+  /// Return null if we can't apply any special folding.
+  TypedAttr tryFoldExprAttr(KGEN::POC opcode, ArrayRef<TypedAttr> operands) {
     // Only fold certain binary expression for now.
-    auto exprAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr);
-    if (!exprAttr || exprAttr.getNumOperands() != 2)
-      return attr;
+    if (operands.size() != 2)
+      return {};
 
     // If we have an integer operand, it'll be `rhs` because the order is
     // canonicalized by attribute type.
-    TypedAttr lhs = exprAttr.getOperand(0);
-    TypedAttr rhs = exprAttr.getOperand(1);
+    TypedAttr lhs = operands[0];
+    TypedAttr rhs = operands[1];
 
-    if (exprAttr.getOpcode() == KGEN::POC::Max) {
+    if (opcode == KGEN::POC::Max) {
       auto intAttr = dyn_cast<IntegerAttr>(rhs);
       if (intAttr && intAttr.getInt() == 0) {
         // max(non_negative_expr, 0) = non_negative_expr
@@ -493,7 +513,7 @@ struct PropagateShapesPass
           return rhs;
       }
 
-    } else if (exprAttr.getOpcode() == KGEN::POC::Min) {
+    } else if (opcode == KGEN::POC::Min) {
       auto intAttr = dyn_cast<IntegerAttr>(rhs);
       if (intAttr && intAttr.getInt() == 0) {
         // min(non_positive_expr, 0) = non_positive_expr
@@ -504,9 +524,42 @@ struct PropagateShapesPass
         if (isDefinitelyNonNegative(lhs))
           return rhs;
       }
+
+    } else if (opcode == KGEN::POC::EQ) {
+      MLIRContext *ctx = lhs.getContext();
+      // eq(non_negative_expr, negative_expr) = false
+      if ((isDefinitelyNonNegative(lhs) && isDefinitelyNegative(rhs)) ||
+          (isDefinitelyNonNegative(rhs) && isDefinitelyNegative(lhs)))
+        return BoolAttr::get(ctx, false);
+
+      // eq(non_positive_expr, positive_expr) = false
+      if ((isDefinitelyNonPositive(lhs) && isDefinitelyPositive(rhs)) ||
+          (isDefinitelyNonPositive(rhs) && isDefinitelyPositive(lhs)))
+        return BoolAttr::get(ctx, false);
     }
 
-    return exprAttr;
+    return {};
+  }
+
+  /// This function serves as shape inference system's extension to KGEN
+  /// folders. It leverages things like range information to enable more
+  /// expression folding, and applies it recursively to all expression nested
+  /// inside `attr`.
+  TypedAttr tryFoldExprAttr(TypedAttr attr) {
+    auto exprAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr);
+    if (!exprAttr)
+      return attr;
+
+    KGEN::POC opcode = exprAttr.getOpcode();
+    SmallVector<TypedAttr> foldedOperands;
+    for (TypedAttr operand : exprAttr.getOperands())
+      foldedOperands.push_back(tryFoldExprAttr(operand));
+
+    if (TypedAttr foldedAttr = tryFoldExprAttr(opcode, foldedOperands))
+      return foldedAttr;
+
+    // Otherwise fallback to KGEN's folding hooks.
+    return KGEN::ParamOperatorAttr::get(opcode, foldedOperands);
   }
 
   void runOnOperation() override {

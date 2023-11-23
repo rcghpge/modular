@@ -1077,17 +1077,14 @@ mo.graph @nested_broadcast_shapes(
 }
 
 // CHECK-LABEL: mo.graph @onnx_select_neg_ones_bcast
-// CHECK-SAME:  <[[D0:.*]] -> [[D1:.*]]>(
+// CHECK-SAME:  <[[D0:.*]]>(
 // CHECK-SAME:    %[[IN:.*]]: !mo.tensor<[1, 32, [[D0]], 10], si64>
-// CHECK-SAME:  ) -> !mo.tensor<[1, 32, [[D1]], 10], si64> no_inline {
+// CHECK-SAME:  ) -> !mo.tensor<[1, 32, [[D0]], 10], si64> no_inline {
 mo.graph @onnx_select_neg_ones_bcast(
   %in: !mo.tensor<[1, 32, ?, 10], si64>
 ) -> !mo.tensor<[1, 32, ?, 10], si64> {
   // Such pattern appears frequently in ONNX models exported from PyTorch.
 
-  // TODO a subsequent patch will clear these
-  // CHECK:      kgen.param.declare {{.*}}: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions are not broadcastable" : !kgen.string}, {{.*}})>
-  // CHECK-NEXT: kgen.param.declare [[D2:.*]] = <max(cond(eq([[D0]], -1), 1, [[D0]]), [[D0]])>
   %ones = mo.constant {value = #M.dense_array<1, 1, 1, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
   %neg_ones = mo.constant {value = #M.dense_array<-1, -1, -1, -1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
 
@@ -1098,10 +1095,9 @@ mo.graph @onnx_select_neg_ones_bcast(
   %cond = mo.equal(%in_shape, %neg_ones) : (!mo.tensor<[4], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[4], bool>
   %selected_shape = mo.select(%cond, %ones, %in_shape) : (!mo.tensor<[4], bool>, !mo.tensor<[4], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[4], si64>
 
-  // CHECK-NEXT: %[[RES:.*]] = mo.static.broadcast_to(%[[IN:.*]]) : !mo.tensor<[1, 32, [[D0]], 10], si64> -> !mo.tensor<[1, 32, [[D2]], 10], si64>
   %target_shape = mo.broadcast_shape(%add_shape, %selected_shape) : (!mo.tensor<[4], si32>, !mo.tensor<[4], si64>) -> !mo.tensor<[4], si64>
   %res = mo.broadcast_to(%in, %target_shape) : (!mo.tensor<[1, 32, ?, 10], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 32, ?, 10], si64>
 
-  // CHECK-NEXT: mo.output<[[D2]]> %[[RES]] : !mo.tensor<[1, 32, [[D2]], 10], si64>
+  // CHECK-NEXT: mo.output %[[IN]] : !mo.tensor<[1, 32, [[D0]], 10], si64>
   mo.output %res : !mo.tensor<[1, 32, ?, 10], si64>
 }
