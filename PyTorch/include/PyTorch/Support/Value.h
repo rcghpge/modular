@@ -37,6 +37,11 @@ class None {
 public:
   None() = default;
 
+  None(const None &other) = default;
+
+  None operator=(None other) { return *this; };
+  None &operator=(None &other) = default;
+
   /// Returns the string representation "<none>".
   std::string to_string() const;
 
@@ -46,6 +51,64 @@ public:
   /// Returns false for all instances of `None`.
   bool operator<(const None &other) const;
 };
+
+raw_ostream &operator<<(raw_ostream &os, const None &variant);
+std::ostream &operator<<(std::ostream &os, const None &variant);
+
+// Enum class to flag special keys used for `DenseMapInfo`.
+enum class DenseMapInfoKey {
+  Empty = 0,
+  Tombstone = 1,
+  Value = 2,
+};
+
+raw_ostream &operator<<(raw_ostream &os, const DenseMapInfoKey &variant);
+std::ostream &operator<<(std::ostream &os, const DenseMapInfoKey &variant);
+
+/// Wrapper around `AnyAsyncValueRef` providing methods required for using
+/// `AnyAsyncValueRef` as a map key (`hash`, `to_string`, `==`) as well as
+/// Simplifying string and YAML representations.
+class Variant {
+public:
+  Variant();
+
+  Variant(const LLCL::AnyAsyncValueRef &other);
+  Variant(const Variant &other);
+  Variant(const DenseMapInfoKey &info);
+
+  /// Returns the string representation of the wrapped `AnyAsyncValueRef`.
+  std::string to_string() const;
+
+  DenseMapInfoKey getInfo() const;
+
+  /// Returns a reference to the wrapped `AnyAsyncValueRef`.
+  const LLCL::AnyAsyncValueRef &getValue() const;
+
+  /// Copy assignment operator required for assignment to `Variant`. Note
+  /// that the implementation copies the value ref and increments the ref count.
+  Variant &operator=(const Variant &other);
+  Variant &operator=(Variant &&other);
+
+private:
+  DenseMapInfoKey info;
+  LLCL::AnyAsyncValueRef value;
+};
+
+/// Defines equality on the underlying `AnyAsyncValueRef`s. See `Value.h` for
+/// details.
+bool operator==(const Variant &lhs, const Variant &rhs);
+
+/// Defines inequality on the underlying `AnyAsyncValueRef`s. See `Value.h` for
+/// details.
+bool operator!=(const Variant &lhs, const Variant &rhs);
+
+/// Defines the less-than operator on the underlying `AnyAsyncValueRef`s. See
+/// `Value.h` for details.
+bool operator<(const Variant &lhs, const Variant &rhs);
+
+/// Writes the string representation of `Variant` to a stream.
+raw_ostream &operator<<(raw_ostream &os, const Variant &variant);
+std::ostream &operator<<(std::ostream &os, const Variant &variant);
 
 /// This prints the (nested) values to stdout. Leaf node tensors are printed
 /// with `Kernels::printTensor`.
@@ -89,6 +152,8 @@ size_t hashCombine(size_t seed, size_t value);
 
 namespace std {
 
+std::string to_string(const M::Torch::DenseMapInfoKey &value);
+
 /// Computes the hash for `None`, which is constant 0.
 template <>
 struct hash<M::Torch::None> {
@@ -97,6 +162,16 @@ struct hash<M::Torch::None> {
 
 /// Returns the string representation "<none>".
 std::string to_string(const M::Torch::None &none);
+
+/// Computes the hash function of the underlying `AnyAsyncValueRef`.
+template <>
+struct hash<M::Torch::Variant> {
+  size_t operator()(const M::Torch::Variant &value) const;
+};
+
+/// Returns the string representation of `Variant`. Delegates to the
+/// individual key types.
+std::string to_string(const M::Torch::Variant &variant);
 
 } // namespace std
 

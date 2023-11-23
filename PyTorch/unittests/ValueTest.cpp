@@ -66,9 +66,9 @@ TEST_F(ValueTest, ListTest) {
 
   List list3;
 
-  for (LLCL::AnyAsyncValueRef &elem : list1.getElements()) {
+  for (M::Torch::Variant &elem : list1.getElements()) {
     list3.getElements().push_back(
-        LLCL::AnyAsyncValueRef::copy(elem.getPointer()));
+        LLCL::AnyAsyncValueRef::copy(elem.getValue().getPointer()));
   }
 
   // Lists contain the same tensors, and are the same.
@@ -104,21 +104,24 @@ TEST_F(ValueTest, DictTest) {
   Dict dict1;
   Dict dict2;
   Dict dict3;
-  Dict dict4;
-  Dict dict5;
 
-  dict1.getElements()["a"] =
+  dict1.getElements()[LLCL::AnyAsyncValueRef::createReady<std::string>(
+      getRuntime(), "a")] =
       LLCL::AnyAsyncValueRef::createReady<None>(getRuntime());
 
-  dict2.getElements()["a"] =
+  dict2.getElements()[LLCL::AnyAsyncValueRef::createReady<std::string>(
+      getRuntime(), "a")] =
       LLCL::AnyAsyncValueRef::createReady<None>(getRuntime());
 
-  dict3.getElements()["b"] =
+  dict3.getElements()[LLCL::AnyAsyncValueRef::createReady<std::string>(
+      getRuntime(), "b")] =
       LLCL::AnyAsyncValueRef::createReady<None>(getRuntime());
 
   GML::Tensor tensor = makeTensor(1);
-  dict3.getElements()["b"] = LLCL::AnyAsyncValueRef::createReady<GML::Tensor>(
-      getRuntime(), std::move(tensor));
+  dict3.getElements()[LLCL::AnyAsyncValueRef::createReady<std::string>(
+      getRuntime(), "b")] =
+      LLCL::AnyAsyncValueRef::createReady<GML::Tensor>(getRuntime(),
+                                                       std::move(tensor));
 
   ASSERT_EQ(std::to_string(dict1), "Dict{\"a\": <none>}");
 }
@@ -126,19 +129,19 @@ TEST_F(ValueTest, DictTest) {
 TEST_F(ValueTest, VariantDictKeys) {
   List list;
   list.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<Variant>(getRuntime(), "a"));
+      LLCL::AnyAsyncValueRef::createReady<std::string>(getRuntime(), "a"));
 
   list.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<Variant>(getRuntime(), 2));
+      LLCL::AnyAsyncValueRef::createReady<long>(getRuntime(), 2));
 
   Dict dict1;
   Dict dict2;
 
-  dict1.getElements()[ValueKey(
+  dict1.getElements()[Variant(
       LLCL::AnyAsyncValueRef::createReady<List>(getRuntime(), list))] =
       LLCL::AnyAsyncValueRef::createReady<None>(getRuntime());
 
-  dict2.getElements()[ValueKey(
+  dict2.getElements()[Variant(
       LLCL::AnyAsyncValueRef::createReady<List>(getRuntime(), list))] =
       LLCL::AnyAsyncValueRef::createReady<None>(getRuntime());
 
