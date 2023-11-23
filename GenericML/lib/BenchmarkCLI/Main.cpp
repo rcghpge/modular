@@ -6,6 +6,7 @@
 
 #include "GenericML/BenchmarkCLI/Main.h"
 #include "Config/Version.h"
+#include "GenericML/BenchmarkCLI/InputGenerationDefaults.h"
 #include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
 #include "GenericML/BenchmarkCLI/InputGenerator.h"
 #include "GenericML/BenchmarkCLI/MLPerfIntegration.h"
@@ -154,22 +155,6 @@ private:
 };
 } // namespace
 
-static std::unique_ptr<QueryGenerator>
-createQueryGeneratorFromPath(StringRef schemaPath) {
-  InputGenerationSchema schema;
-  if (!schemaPath.empty()) {
-    auto schemaOr = readInputGenerationSchema(schemaPath);
-    if (schemaOr.isError()) {
-      llvm::errs() << "Error parsing input generation schema: "
-                   << schemaOr.getError() << '\n';
-      return nullptr;
-    }
-    schema = std::move(*schemaOr);
-  }
-  StandardInputSchemaErrorReporter errorReporter;
-  return createQueryGenerator(schema, errorReporter);
-}
-
 static ErrorOr<double> estimateLatency(M_RuntimeContext *runtimeContext,
                                        M_AsyncModel *model,
                                        QueryGenerator &queryGenerator,
@@ -239,11 +224,6 @@ int M::maxBenchmarkMain(int argc, char **argv) {
     return EXIT_SUCCESS;
   }
 
-  std::unique_ptr<QueryGenerator> queryGenerator =
-      createQueryGeneratorFromPath(opts.inputGenerationSchemaPath);
-  if (!queryGenerator)
-    return EXIT_FAILURE;
-
   StatusPtr status(M_newStatus(), M_freeStatus);
   if (!status) {
     llvm::errs() << "Error: Failed to create M_Status (out of memory?)\n";
@@ -282,6 +262,24 @@ int M::maxBenchmarkMain(int argc, char **argv) {
     compiledModel = std::move(*modelOr);
   }
 
+  applyInputGenerationDefaults(inputGenerationSchema, compiledModel.get(),
+                               status.get());
+  if (M_isError(status.get())) {
+    llvm::errs() << "Error applying defaults to input generation schema: "
+                 << M_getError(status.get()) << "\n";
+    M_emitTelemetryEvent(runtimeContext.get(), kTelemetryLoggerName,
+                         kTelemetryErrorEventName, M_getError(status.get()));
+    return EXIT_FAILURE;
+  }
+
+  std::unique_ptr<QueryGenerator> queryGenerator;
+  {
+    StandardInputSchemaErrorReporter errorReporter;
+    queryGenerator = createQueryGenerator(inputGenerationSchema, errorReporter);
+  }
+  if (!queryGenerator)
+    return EXIT_FAILURE;
+
   ModelPtr model(nullptr, M_freeModel);
   {
     auto modelOr =
@@ -311,6 +309,8 @@ int M::maxBenchmarkMain(int argc, char **argv) {
         estimateLatency(runtimeContext.get(), model.get(), *queryGenerator,
                         allocRuntime.getCompactPtr());
     if (estimatedLatencyOr.isError()) {
+      llvm::outs() << "Error\n";
+      llvm::outs().flush();
       llvm::errs() << "Error estimating latency: "
                    << estimatedLatencyOr.getError() << "\n";
       M_emitTelemetryEvent(runtimeContext.get(), kTelemetryLoggerName,
