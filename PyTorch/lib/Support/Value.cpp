@@ -305,6 +305,7 @@ std::string std::to_string(const M::Torch::DenseMapInfoKey &value) {
   case DenseMapInfoKey::Tombstone:
     return "<tombstone>";
   }
+  llvm_unreachable("invalid Torch::DenseMapInfoKey");
 }
 
 std::string std::to_string(const M::Torch::Variant &value) {
