@@ -6,7 +6,7 @@
 # RUN: %mojo -debug-level full %s | FileCheck %s
 
 from math import iota, sqrt
-from random import rand, seed
+from random import rand, seed, randn
 
 from tensor import Tensor, TensorShape
 
@@ -192,6 +192,32 @@ fn test_tensor_rand():
                 print(tensor[i, j, k])
 
 
+# CHECK: test_tensor_randn
+fn test_tensor_randn():
+    print("== test_tensor_randn")
+
+    let tensor = randn[DType.float32](TensorShape(3, 3, 3))
+
+    for i in range(3):
+        for j in range(3):
+            for k in range(3):
+                print(tensor[i, j, k])
+
+
+# CHECK: test_tensor_astype
+fn test_tensor_astype():
+    print("== test_tensor_astype")
+    var a = Tensor[DType.float32](2, 2)
+
+    for i in range(2):
+        for j in range(2):
+            a[Index(i, j)] = i + 2 * j
+
+    # CHECK{LITERAL}: Tensor([[0, 2],
+    # CHECK{LITERAL}: [1, 3]], dtype=int64, shape=2x2)
+    print(a.astype[DType.int64]())
+
+
 # CHECK: test_euclidean_distance
 fn test_euclidean_distance():
     print("== test_euclidean_distance")
@@ -273,6 +299,34 @@ fn test_add():
         print("Error")
 
 
+# CHECK-LABEL: test_add_scalar
+fn test_add_scalar():
+    print("== test_add_scalar")
+    var a = Tensor[DType.float32](2, 2)
+
+    for i in range(2):
+        for j in range(2):
+            a[Index(i, j)] = 3
+
+    # CHECK{LITERAL}: Tensor([[5.0, 5.0],
+    # CHECK{LITERAL}: [5.0, 5.0]], dtype=float32, shape=2x2)
+    print(a + 2.0)
+
+
+# CHECK-LABEL: test_radd_scalar
+fn test_radd_scalar():
+    print("== test_radd_scalar")
+    var a = Tensor[DType.float32](2, 2)
+
+    for i in range(2):
+        for j in range(2):
+            a[Index(i, j)] = 3
+
+    # CHECK{LITERAL}: Tensor([[5.0, 5.0],
+    # CHECK{LITERAL}: [5.0, 5.0]], dtype=float32, shape=2x2)
+    print(2.0 + a)
+
+
 # CHECK-LABEL: test_sub
 fn test_sub():
     print("== test_sub")
@@ -290,6 +344,34 @@ fn test_sub():
         print(a - b)
     except:
         print("Error")
+
+
+# CHECK-LABEL: test_sub_scalar
+fn test_sub_scalar():
+    print("== test_sub_scalar")
+    var a = Tensor[DType.float32](2, 2)
+
+    for i in range(2):
+        for j in range(2):
+            a[Index(i, j)] = 3
+
+    # CHECK{LITERAL}: Tensor([[1.0, 1.0],
+    # CHECK{LITERAL}: [1.0, 1.0]], dtype=float32, shape=2x2)
+    print(a - 2.0)
+
+
+# CHECK-LABEL: test_rsub_scalar
+fn test_rsub_scalar():
+    print("== test_rsub_scalar")
+    var a = Tensor[DType.float32](2, 2)
+
+    for i in range(2):
+        for j in range(2):
+            a[Index(i, j)] = 3
+
+    # CHECK{LITERAL}: Tensor([[-1.0, -1.0],
+    # CHECK{LITERAL}: [-1.0, -1.0]], dtype=float32, shape=2x2)
+    print(2.0 - a)
 
 
 # CHECK-LABEL: test_mul
@@ -311,6 +393,34 @@ fn test_mul():
         print("Error")
 
 
+# CHECK-LABEL: test_mul_scalar
+fn test_mul_scalar():
+    print("== test_mul_scalar")
+    var a = Tensor[DType.float32](2, 2)
+
+    for i in range(2):
+        for j in range(2):
+            a[Index(i, j)] = 3
+
+    # CHECK{LITERAL}: Tensor([[6.0, 6.0],
+    # CHECK{LITERAL}: [6.0, 6.0]], dtype=float32, shape=2x2)
+    print(a * 2.0)
+
+
+# CHECK-LABEL: test_rmul_scalar
+fn test_rmul_scalar():
+    print("== test_rmul_scalar")
+    var a = Tensor[DType.float32](2, 2)
+
+    for i in range(2):
+        for j in range(2):
+            a[Index(i, j)] = 3
+
+    # CHECK{LITERAL}: Tensor([[6.0, 6.0],
+    # CHECK{LITERAL}: [6.0, 6.0]], dtype=float32, shape=2x2)
+    print(2.0 * a)
+
+
 # CHECK-LABEL: test_div
 fn test_div():
     print("== test_div")
@@ -328,6 +438,34 @@ fn test_div():
         print(a / b)
     except:
         print("Error")
+
+
+# CHECK-LABEL: test_div_scalar
+fn test_div_scalar():
+    print("== test_div_scalar")
+    var a = Tensor[DType.float32](2, 2)
+
+    for i in range(2):
+        for j in range(2):
+            a[Index(i, j)] = 3
+
+    # CHECK{LITERAL}: Tensor([[1.5, 1.5],
+    # CHECK{LITERAL}: [1.5, 1.5]], dtype=float32, shape=2x2)
+    print(a / 2.0)
+
+
+# CHECK-LABEL: test_rdiv_scalar
+fn test_rdiv_scalar():
+    print("== test_rdiv_scalar")
+    var a = Tensor[DType.float32](2, 2)
+
+    for i in range(2):
+        for j in range(2):
+            a[Index(i, j)] = 3
+
+    # CHECK{LITERAL}: Tensor([[0.5, 0.5],
+    # CHECK{LITERAL}: [0.5, 0.5]], dtype=float32, shape=2x2)
+    print(1.5 / a)
 
 
 # CHECK-LABEL: test_pow
@@ -415,12 +553,22 @@ fn main():
     test_tensor_indexing2()
     test_tensor_fill()
     test_tensor_rand()
+    test_tensor_randn()
+    test_tensor_astype()
     test_euclidean_distance()
     test_image_to_grayscale()
     test_add()
+    test_add_scalar()
+    test_radd_scalar()
     test_sub()
+    test_sub_scalar()
+    test_rsub_scalar()
     test_mul()
+    test_mul_scalar()
+    test_rmul_scalar()
     test_div()
+    test_div_scalar()
+    test_rdiv_scalar()
     test_pow()
     test_print()
     test_print_small()
