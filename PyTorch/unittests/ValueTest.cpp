@@ -13,9 +13,11 @@
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "PyTorch/Support/Dict.h"
+#include "PyTorch/Support/FormatYAML.h"
 #include "PyTorch/Support/List.h"
 
 #include "gtest/gtest.h"
+#include <llvm/Support/YAMLTraits.h>
 
 using namespace M;
 using namespace M::Torch;
@@ -54,6 +56,16 @@ static List makeTensorList(size_t size) {
   }
 
   return list;
+}
+
+template <typename T>
+static std::string toYamlString(T t) {
+  std::string yamlString;
+  llvm::raw_string_ostream yamlStream(yamlString);
+  llvm::yaml::Output yamlOutput(yamlStream);
+  yamlOutput << t;
+  yamlStream.flush();
+  return yamlString;
 }
 
 TEST_F(ValueTest, ListTest) {
@@ -147,6 +159,79 @@ TEST_F(ValueTest, VariantDictKeys) {
 
   ASSERT_EQ(dict1, dict2);
   ASSERT_EQ(std::to_string(dict1), "Dict{List[\"a\", 2]: <none>}");
+}
+
+TEST_F(ValueTest, YamlTest0) {
+
+  Dict dict1;
+
+  dict1.getElements()[Variant(
+      LLCL::AnyAsyncValueRef::createReady<std::string>(getRuntime(), "a"))] =
+      LLCL::AnyAsyncValueRef::createReady<None>(getRuntime());
+
+  dict1.getElements()[Variant(
+      LLCL::AnyAsyncValueRef::createReady<double>(getRuntime(), 1.0))] =
+      LLCL::AnyAsyncValueRef::createReady<long>(getRuntime(), 5);
+
+  std::string ystring = toYamlString(dict1);
+
+  // Test YAML string.
+  ASSERT_EQ(ystring, "---\n"
+                     "dict:\n"
+                     "  - key:\n"
+                     "      string:          a\n"
+                     "    value:\n"
+                     "      none:            {}\n"
+                     "  - key:\n"
+                     "      double:          1\n"
+                     "    value:\n"
+                     "      long:            5\n"
+                     "...\n");
+
+  llvm::yaml::Input yin(ystring);
+
+  Dict dict2;
+  yin >> dict2;
+
+  // Test round tripping through YAML.
+  ASSERT_EQ(dict1, dict2);
+}
+
+TEST_F(ValueTest, YamlTest1) {
+
+  List list;
+  list.getElements().push_back(
+      LLCL::AnyAsyncValueRef::createReady<std::string>(getRuntime(), "a"));
+
+  list.getElements().push_back(
+      LLCL::AnyAsyncValueRef::createReady<long>(getRuntime(), 2));
+
+  Dict dict1;
+
+  dict1.getElements()[Variant(
+      LLCL::AnyAsyncValueRef::createReady<List>(getRuntime(), list))] =
+      LLCL::AnyAsyncValueRef::createReady<None>(getRuntime());
+
+  // Test YAML string.
+  std::string ystring = toYamlString(dict1);
+
+  ASSERT_EQ(ystring, "---\n"
+                     "dict:\n"
+                     "  - key:\n"
+                     "      list:\n"
+                     "        list:\n"
+                     "          - string:          a\n"
+                     "          - long:            2\n"
+                     "    value:\n"
+                     "      none:            {}\n"
+                     "...\n");
+
+  llvm::yaml::Input yin(ystring);
+
+  Dict dict2;
+  yin >> dict2;
+
+  ASSERT_EQ(dict1, dict2);
 }
 
 } // namespace
