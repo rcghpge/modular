@@ -502,28 +502,22 @@ struct PropagateShapesPass
     TypedAttr rhs = operands[1];
 
     if (opcode == KGEN::POC::Max) {
-      auto intAttr = dyn_cast<IntegerAttr>(rhs);
-      if (intAttr && intAttr.getInt() == 0) {
-        // max(non_negative_expr, 0) = non_negative_expr
-        if (isDefinitelyNonNegative(lhs))
-          return lhs;
+      // max(non_negative_expr, non_positive_expr) = non_negative_expr
+      if (isDefinitelyNonNegative(lhs) && isDefinitelyNonPositive(rhs))
+        return lhs;
 
-        // max(non_positive_expr, 0) = 0
-        if (isDefinitelyNonPositive(lhs))
-          return rhs;
-      }
+      // max(non_positive_expr, non_negative_expr) = non_negative_expr
+      if (isDefinitelyNonPositive(lhs) && isDefinitelyNonNegative(rhs))
+        return rhs;
 
     } else if (opcode == KGEN::POC::Min) {
-      auto intAttr = dyn_cast<IntegerAttr>(rhs);
-      if (intAttr && intAttr.getInt() == 0) {
-        // min(non_positive_expr, 0) = non_positive_expr
-        if (isDefinitelyNonPositive(lhs))
-          return lhs;
+      // min(non_negative_expr, non_positive_expr) = non_positive_expr
+      if (isDefinitelyNonNegative(lhs) && isDefinitelyNonPositive(rhs))
+        return rhs;
 
-        // min(non_negative_expr, 0) = 0
-        if (isDefinitelyNonNegative(lhs))
-          return rhs;
-      }
+      // min(non_positive_expr, non_negative_expr) = non_positive_expr
+      if (isDefinitelyNonPositive(lhs) && isDefinitelyNonNegative(rhs))
+        return lhs;
 
     } else if (opcode == KGEN::POC::EQ) {
       MLIRContext *ctx = lhs.getContext();

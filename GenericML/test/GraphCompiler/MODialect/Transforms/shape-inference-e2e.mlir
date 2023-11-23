@@ -952,38 +952,36 @@ mo.graph @squeeze_shape_dynamic_shape_with_reshape(%input_tensor: !mo.tensor<[?,
   mo.output %res : !mo.tensor<?, si32>
 }
 
-// CHECK-LABEL: mo.graph @slice_output_partial_inference
-// CHECK-SAME: <[[D0:.*]] -> [[D1:.*]]>(%[[INPUT:.*]]: !mo.tensor<[10, [[D0]], 20], f32>) -> !mo.tensor<[10, [[D1]], 20], f32>
-mo.graph @slice_output_partial_inference(%arg0: !mo.tensor<[10, ?, 20], f32>) -> (!mo.tensor<[?, ?, ?], f32>) {
+// CHECK-LABEL: mo.graph @slice_entire_dynamic_axis
+// CHECK-SAME: <[[D0:.*]]>(%[[INPUT:.*]]: !mo.tensor<[10, [[D0]], 20], f32>) -> !mo.tensor<[10, [[D0]], 20], f32>
+mo.graph @slice_entire_dynamic_axis(%arg0: !mo.tensor<[10, ?, 20], f32>) -> (!mo.tensor<[?, ?, ?], f32>) {
 
-  // CHECK-DAG: %[[START:.*]] = mo.constant {value = #M.dense_array<0, 0, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
-  // CHECK-DAG: %[[PARAMS:.*]] = kgen.param.constant: !mosh.ape = <[10, [[D0]], 20]>
-  // CHECK-DAG: %[[STOP:.*]] = mo.shape.to_tensor(%[[PARAMS]]) -> !mo.tensor<[3], si64>
-  // CHECK-DAG: %[[STEP:.*]] = mo.constant {value = #M.dense_array<1, 1, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-NEXT: kgen.param.declare [[COND:.*]]: i1 = <ge([[D0]], 0)>
+  // CHECK-NEXT: kgen.param.declare {{.*}}: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "clamped stop must be greater/less than or equal to start when step is positive/negative" : !kgen.string}, [[COND]])>
   %axis0 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si32>
   %index0 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
   %index1 = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
   %index2 = mo.constant {value = #M.dense_array<2> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
   %starts = mo.constant {value = #M.dense_array<0, 0, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
   %steps = mo.constant {value = #M.dense_array<1, 1, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  // Essentially %ends = mo.shape_of(%arg0)
   %shape = mo.shape_of(%arg0) : (!mo.tensor<[10, ?, 20], f32>) -> !mo.tensor<[3], si64>
   %gather0 = mo.gather(%shape, %index0, %axis0) : (!mo.tensor<[3], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si32>) -> !mo.tensor<[1], si64>
   %gather1 = mo.gather(%shape, %index1, %axis0) : (!mo.tensor<[3], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si32>) -> !mo.tensor<[1], si64>
   %gather2 = mo.gather(%shape, %index2, %axis0) : (!mo.tensor<[3], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si32>) -> !mo.tensor<[1], si64>
   %ends = mo.concat[%axis0 : !mo.tensor<[], si32>](%gather0, %gather1, %gather2) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[3], si64>
 
-  // CHECK: %[[RES:.*]] = mo.slice(%[[INPUT]], %[[START]], %[[STOP]], %[[STEP]])
-  // CHECK-SAME: : (!mo.tensor<[10, [[D0]], 20], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[10, [[OUT_DIM:.*]], 20], f32>
+  // This gets folded away as an identity op
   %output = mo.slice(%arg0, %starts, %ends, %steps) : (!mo.tensor<[10, ?, 20], f32>, !mo.tensor<[3], si64>,!mo.tensor<[3], si64>,!mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
 
-  // CHECK: mo.output<[[OUT_DIM]]> %[[RES]] : !mo.tensor<[10, [[OUT_DIM]], 20], f32>
+  // CHECK: mo.output %[[INPUT]] : !mo.tensor<[10, [[D0]], 20], f32>
   mo.output %output : !mo.tensor<[?, ?, ?], f32>
 }
 
 // Taken from clip-dynamic-per-tensor-weight-type-quint8-optimized
 // CHECK-LABEL: mo.graph @slice_out_a_third
-// CHECK-SAME: <[[D0:.*]] -> [[D1:.*]]>(%[[INPUT:.*]]: !mo.tensor<[50, [[D0]], 2304], f32>) -> !mo.tensor<[50, [[D1]], 768], f32>
-mo.graph @slice_out_a_third(
+// CHECK-SAME: <[[D0:.*]]>(%[[INPUT:.*]]: !mo.tensor<[50, [[D0]], 2304], f32>) -> !mo.tensor<[50, [[D0]], 768], f32>
+mo.graph @slice_out_a_third_of_constant_axis(
   %1207: !mo.tensor<[50, ?, 2304], f32>
 ) -> !mo.tensor<[?, ?, ?], f32> {
 
@@ -1016,11 +1014,14 @@ mo.graph @slice_out_a_third(
   %1235 = mo.concat[%19 : !mo.tensor<[], si32>] (%4, %1233) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[3], si64>
   %1236 = mo.concat[%19 : !mo.tensor<[], si32>] (%1232, %1234) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[3], si64>
 
-  // CHECK: %[[RES:.*]] = mo.slice(%[[INPUT]], %[[START]], %[[STOP]], %[[STEP]])
-  // CHECK-SAME: : (!mo.tensor<[50, [[D0]], 2304], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[50, [[OUT_DIM:.*]], 768], f32>
+  // CHECK-DAG: kgen.param.declare [[COND:.*]]: i1 = <ge([[D0]], 0)>
+  // CHECK-DAG: kgen.param.declare {{.*}}: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "clamped stop must be greater/less than or equal to start when step is positive/negative" : !kgen.string}, [[COND]])>
+
+  // CHECK-NEXT: %[[RES:.*]] = mo.slice(%[[INPUT]], %[[START]], %[[STOP]], %[[STEP]])
+  // CHECK-SAME: : (!mo.tensor<[50, [[D0]], 2304], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[50, [[D0]], 768], f32>
   %1237 = mo.slice(%1207, %1235, %1236, %2) : (!mo.tensor<[50, ?, 2304], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
 
-  // CHECK: mo.output<[[OUT_DIM]]> %[[RES]] : !mo.tensor<[50, [[OUT_DIM]], 768], f32>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<[50, [[D0]], 768], f32>
   mo.output %1237 : !mo.tensor<[?, ?, ?], f32>
 }
 
