@@ -20,10 +20,10 @@ fn test_tensor():
     let tensor = Tensor[DType.float32](TensorShape(5, 2, 3))
 
     # CHECK: 5x2x3
-    print(tensor.shape().__str__())
+    print(str(tensor.shape()))
 
     # CHECK: 5x2x3xfloat32
-    print(tensor.spec().__str__())
+    print(str(tensor.spec()))
 
     # CHECK: 5
     print(tensor.spec()[0])
@@ -528,7 +528,7 @@ fn test_print_small():
     # CHECK{LITERAL}: [9, 10, 11]]], dtype=index, shape=2x2x3)
     let tensor = Tensor[DType.index](2, 2, 3)
     iota(tensor.data(), tensor.num_elements())
-    print(tensor.__str__())
+    print(str(tensor))
 
 
 # CHECK-LABEL: test_print_large
@@ -542,7 +542,7 @@ fn test_print_large():
     # CHECK{LITERAL}: [1482183, 1482184, 1482185, ..., 1482513, 1482514, 1482515]]], dtype=index, shape=212x21x333)
     let tensor = Tensor[DType.index](212, 21, 333)
     iota(tensor.data(), tensor.num_elements())
-    print(tensor.__str__())
+    print(str(tensor))
 
 
 fn main():

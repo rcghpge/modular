@@ -16,28 +16,28 @@ fn test_tensor_shape():
     print("== test_tensor_shape")
 
     # CHECK: 1
-    print(TensorShape(1).__str__())
+    print(str(TensorShape(1)))
 
     # CHECK: 1x2
-    print(TensorShape(1, 2).__str__())
+    print(str(TensorShape(1, 2)))
 
     # CHECK: 1x2x3
-    print(TensorShape(1, 2, 3).__str__())
+    print(str(TensorShape(1, 2, 3)))
 
     # CHECK: 1x2x3x4
-    print(TensorShape(1, 2, 3, 4).__str__())
+    print(str(TensorShape(1, 2, 3, 4)))
 
     # CHECK: 1x2x3x4x5x6
-    print(TensorShape(1, 2, 3, 4, 5, 6).__str__())
+    print(str(TensorShape(1, 2, 3, 4, 5, 6)))
 
     # CHECK: 1x2x3x4x5x6x7
-    print(TensorShape(1, 2, 3, 4, 5, 6, 7).__str__())
+    print(str(TensorShape(1, 2, 3, 4, 5, 6, 7)))
 
     # CHECK: 1x2x3x4x5x6x7x8x9x10
-    print(TensorShape(1, 2, 3, 4, 5, 6, 7, 8, 9, 10).__str__())
+    print(str(TensorShape(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)))
 
     # CHECK: 1048576x2147483648x3298534883328
-    print(TensorShape(1048576, 2147483648, 3298534883328).__str__())
+    print(str(TensorShape(1048576, 2147483648, 3298534883328)))
 
     # CHECK: True
     print(TensorShape(1, 2, 3, 4) == TensorShape(1, 2, 3, 4))
@@ -60,10 +60,10 @@ fn test_tensor_spec():
     print("== test_tensor_spec")
 
     # CHECK: 1x2x3xfloat32
-    print(TensorSpec(DType.float32, 1, 2, 3).__str__())
+    print(str(TensorSpec(DType.float32, 1, 2, 3)))
 
     # CHECK: 1x2x3x4x5x6xfloat32
-    print(TensorSpec(DType.float32, 1, 2, 3, 4, 5, 6).__str__())
+    print(str(TensorSpec(DType.float32, 1, 2, 3, 4, 5, 6)))
 
     # CHECK: True
     print(
@@ -88,7 +88,7 @@ fn test_tensor_spec():
         shape_vec.push_back(i)
 
     # CHECK: 1x2x3x4xfloat32
-    print(TensorSpec(DType.float32, shape_vec).__str__())
+    print(str(TensorSpec(DType.float32, shape_vec)))
 
     shape_vec._del_old()
 
