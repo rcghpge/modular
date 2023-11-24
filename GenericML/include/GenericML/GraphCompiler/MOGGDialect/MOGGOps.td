@@ -233,7 +233,8 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
     OptionalAttr<ArrayAttr>:$outputFusionInterface,
     OptionalAttr<StrAttr>:$fusionBodyLambda,
     OptionalAttr<BoolAttr>:$isViewOp,
-    OptionalAttr<BoolAttr>:$isKGEN
+    OptionalAttr<BoolAttr>:$isKGEN,
+    OptionalAttr<StrAttr>:$summary
   );
   let results = (outs Variadic<MO_Tensor>:$results);
   let regions = (region SizedRegion<1>:$body);
@@ -592,7 +593,8 @@ def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel", [
   let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List]>>:$operands,
                        StrAttr:$kernelName,
                        ArrayAttr:$usedParams,
-                       MO_ParamDecls:$outputParamDecls);
+                       MO_ParamDecls:$outputParamDecls,
+                       StrAttr:$summary);
   let results = (outs Variadic<MO_Tensor>:$results);
 }
 

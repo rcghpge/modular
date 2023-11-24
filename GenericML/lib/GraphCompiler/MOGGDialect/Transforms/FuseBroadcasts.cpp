@@ -281,6 +281,9 @@ struct FuseBroadcastsPass
     // Ensure the block is in topologically sorted order. This is needed for
     // somewhat contrived test cases.
     mlir::sortTopologically(&leafBlock);
+
+    // Update the leaf's summary to capture the producer's summary.
+    leaf.setSummaryAttr(getSummaryString({producerKernel, leaf}));
   }
 };
 

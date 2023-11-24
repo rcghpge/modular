@@ -269,7 +269,8 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
       /*inOutSemantics=*/operandSemantics,
       /*inDimensions=*/inDimensions,
       /*numOutDimensions=*/static_cast<uint64_t>(getOutputParamDecls().size()),
-      /*outDimensions*/ outDimensions);
+      /*outDimensions=*/outDimensions,
+      /*summary=*/getSummary());
 
   // Each of the parameter outputs now maps onto a concrete dimension value.
   for (const auto &[param, value] :

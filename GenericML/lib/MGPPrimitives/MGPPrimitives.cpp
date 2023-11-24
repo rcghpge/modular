@@ -1025,12 +1025,12 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
                        Result<Chain> outChain, RemainingResults outDimensions,
                        MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bKernelIndex,
                        MEFAttr<StringRef> cInOutSignature,
-                       MEFAttr<StringRef> dKernelName,
+                       MEFAttr<StringRef> dSummary,
                        MEFAttr<uint64_t> eNumOutDimensions, Runtime &runtime,
                        EncodedLocation loc) {
 #if MODULAR_DEBUG
   TimeTraceScope scope(
-      MGPProfilerEntry::create("mgp.cpu.kernel.execute", *dKernelName));
+      MGPProfilerEntry::create("mgp.cpu.kernel.execute", *dSummary));
 #else
   TimeTraceScope scope(MGPProfilerEntry::create("mgp.cpu.kernel.execute"));
 #endif
@@ -1039,14 +1039,6 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
           static_cast<size_t>(*aSlot));
   size_t kernelIndex = static_cast<size_t>(*bKernelIndex);
   CompiledKernelFn *kernelPtr = kernelsCtx.getKernel(kernelIndex);
-
-#if MODULAR_PARANOID
-  // The kernel name is redundant since it can be retrieved using the
-  // kernel index, however we retain it for debuggability and unit testing.
-  // At least check it is consistent.
-  assert(*dKernelName == kernelsCtx.getKernelName(kernelIndex) &&
-         "kernel name is inconsistent with kernel index");
-#endif
 
   // The operands are:
   //  [input_1, ..., input_numInputs,
@@ -1088,7 +1080,7 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   // input/output buffers, and other types of arguments.
   for (size_t i = 0; i < numInputs; ++i) {
     auto errOr = call.pushObject(std::move(operands[i]), inOutSignature[i],
-                                 outputChain, *dKernelName, loc);
+                                 outputChain, *dSummary, loc);
     if (errOr.isError()) {
       outChain.copy().setToError({errOr.takeError(), std::move(loc)});
       setOutDimensionsToChainError();
@@ -1112,7 +1104,7 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   // plumb it into the compiled kernel, start the tracing now. This profiling
   // entry may be augmented by additional details on the Mojo side.
   outputChain.trace(Twine(*bKernelIndex).str(),
-                    [kernelName = *dKernelName]() { return kernelName.str(); });
+                    [summary = *dSummary]() { return summary.str(); });
 
   // Execute the kernel:
   //  - Asynchronous kernels will have copied everything out of the three

@@ -18,7 +18,7 @@ using namespace M::GML;
 
 ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
     AnyAsyncValueRef input, char inOutType, KGEN::OutputChain &outputChain,
-    StringRef kernelName, const EncodedLocation &loc) {
+    StringRef summary, const EncodedLocation &loc) {
 #if MODULAR_PARANOID
   switch (inOutType) {
   case 'i': {

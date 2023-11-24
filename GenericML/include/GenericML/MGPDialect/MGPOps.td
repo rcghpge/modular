@@ -1801,6 +1801,9 @@ def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
     Executes a kernel already loaded into the compiled kernel context at the
     given slot within the `!mgp.context`.
 
+    Note that the summary attribute is only used for debugging and profiling.
+    The actual kernel to execute is determined only by the kernel index.
+
     Example:
     ```mlir
     %ch0 : !mef.chain
@@ -1816,7 +1819,7 @@ def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
                     (in %buf0 : !mgp.cpu.buffer,
                      in %buf1 : !mgp.cpu.buffer<8>,
                      out %buf2 : !mgp.cpu.buffer<48>),
-                    (%dim0, %dim1), name "kernel1", out_dims 1
+                    (%dim0, %dim1), summary "kernel1", out_dims 1
     %ch1 : !mef.chain
     %dim2 : index
     ```
@@ -1831,7 +1834,7 @@ def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
                        UI64Attr:$aSlot,                                      // 0
                        UI64Attr:$bKernelIndex,                               // 1
                        M_InOutSignatureAttr:$cInOutSignature,                // 2
-                       StrAttr:$dKernelName,                                 // 3
+                       StrAttr:$dSummary,                                    // 3
                        DefaultValuedAttr<UI64Attr, "0">:$eNumOutDimensions); // 4
   let results = (outs ChainType:$outChain,
                       Variadic<Index>:$outDimensions);
@@ -1839,7 +1842,7 @@ def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
     $inChain `,` $theContext `[` $aSlot `,` $bKernelIndex `]` `,`
     custom<InOutArgsSignature>($args, type($args), $cInOutSignature) `,`
     ( `(` $inDimensions^ `)` `,` )?
-    `name` $dKernelName
+    `summary` $dSummary
     ( `,` `out_dims` $eNumOutDimensions^ )? attr-dict
   }];
 

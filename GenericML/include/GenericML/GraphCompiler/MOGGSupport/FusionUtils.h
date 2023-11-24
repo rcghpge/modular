@@ -12,6 +12,13 @@ using namespace M;
 
 namespace M::MOGG {
 
+/// Returns a compact, human readable 'summary' of op, which can be used
+/// at runtime for debugging and profiling.
+StringAttr getSummaryString(Operation *op);
+
+/// Returns a compact, human readable 'summary' of the combination of ops.
+StringAttr getSummaryString(ArrayRef<Operation *> ops);
+
 /// Inline the given lambda into the call site of the invoke and return the new
 /// results which have replaced the old operation.
 SmallVector<Value> inlineInvoke(MOGG::LambdaInvokeOp invokeOp,

@@ -387,7 +387,7 @@ func.func @kernel_execute_invalid(%ch0 : !mef.chain, %ctx : !mgp.context, %buf0 
       { aSlot = 0 : ui64,
         bKernelIndex = 3 : ui64,
         cInOutSignature = #M.inout_sig<"ioo">,
-        dKernelName = "kernel",
+        dSummary = "kernel",
         eNumOutDimensions = 1 : ui64,
         operandSegmentSizes = array<i32: 1, 1, 2, 2> }
       : (!mef.chain, !mgp.context, !mgp.cpu.buffer, !mgp.cpu.buffer<8>, index, index) -> (!mef.chain, index)

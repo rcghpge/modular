@@ -565,6 +565,9 @@ struct FuseElementwisePass
 
     // Remove the argument we have effectively inlined.
     leaf.removeOperandAtIndex(idx);
+
+    // Update the leaf's summary to capture the producer's summary.
+    leaf.setSummaryAttr(getSummaryString({producerKernel, leaf}));
   }
 
   // Replace all loads from `inputLambdaToReplace` in `leafElemwiseLambda` with

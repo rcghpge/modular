@@ -5,8 +5,8 @@
 // CHECK: %[[X:.*]] = mgp.cpu.tensor.create %[[CHAIN]], %{{.*}}, %{{.*}}  : !mgp.cpu.tensor<2xf32>
 // CHECK: %[[Y:.*]] = mgp.cpu.tensor.create %[[CHAIN]], %{{.*}}, %{{.*}}  : !mgp.cpu.tensor<f32>
 // CHECK: %[[OUT:.*]]:4 = grt.while (%[[CHAIN]]: !mef.chain, %[[CTX]]: !mgp.context, %[[X]]: !mgp.cpu.tensor<2xf32>, %[[Y]]: !mgp.cpu.tensor<f32>) {
-// CHECK: %[[MEAN:.*]] = mgp.cpu.kernel.execute {{.*}}, name "{{.*}}mo_mean{{.*}}"
-// CHECK: %[[CH1:.*]] = mgp.cpu.kernel.execute {{.*}}, name "{{.*}}mo_greater{{.*}}"
+// CHECK: %[[MEAN:.*]] = mgp.cpu.kernel.execute {{.*}}, summary "mo.mean{{.*}}"
+// CHECK: %[[CH1:.*]] = mgp.cpu.kernel.execute {{.*}}, summary "mo.greater{{.*}}"
 // CHECK-NEXT: %[[COND_TEN:.*]] = mgp.cpu.tensor.create %[[CH1]]
 // CHECK-NEXT: %[[COND_BUF:.*]], {{.*}} = mgp.cpu.tensor.extract %{{.*}} : !mgp.cpu.tensor<bool>
 // CHECK-NEXT: %[[COND_SCALAR:.*]] = mgp.to_grt_bool(%[[CHAIN]], %[[COND_BUF]]) : (!mef.chain, !mgp.cpu.buffer<1>) -> i1

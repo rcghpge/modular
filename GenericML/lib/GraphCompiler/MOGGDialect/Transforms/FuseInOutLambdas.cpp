@@ -482,6 +482,10 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       originalOuts.erase();
       userToFuseIn.replaceAllUsesWith(kernelToFuseInto);
 
+      // Capture the fusion within the summary.
+      kernelToFuseInto.setSummaryAttr(
+          getSummaryString({kernelToFuseInto, userToFuseIn}));
+
       return kernelToFuseInto;
     }
     // Matmul with mixed precision (bad case): Matmul kernels actually take in
@@ -507,13 +511,18 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
       builder.setInsertionPoint(kernelToFuseInto);
       auto newDstKernel = builder.create<MOGG::KernelOp>(
-          loc, combinedPlaceholders.getResultTypes(),
-          kernelToFuseInto.getOperands(),
-          kernelToFuseInto.getOutputParamDeclsAttr(),
+          loc,
+          /*results=*/combinedPlaceholders.getResultTypes(),
+          /*operands=*/kernelToFuseInto.getOperands(),
+          /*outputParamDecls=*/kernelToFuseInto.getOutputParamDeclsAttr(),
+          /*inputFusionInterface=*/
           kernelToFuseInto.getInputFusionInterfaceAttr(),
+          /*outputFusionInterface=*/
           kernelToFuseInto.getOutputFusionInterfaceAttr(),
-          kernelToFuseInto.getFusionBodyLambdaAttr(),
-          kernelToFuseInto.getIsViewOpAttr(), kernelToFuseInto.getIsKGENAttr());
+          /*fusionBodyLambda=*/kernelToFuseInto.getFusionBodyLambdaAttr(),
+          /*isViewOp=*/kernelToFuseInto.getIsViewOpAttr(),
+          /*isKGEN=*/kernelToFuseInto.getIsKGENAttr(),
+          /*summary=*/getSummaryString({kernelToFuseInto, userToFuseIn}));
       newDstKernel.getBody().takeBody(kernelToFuseInto.getBody());
       userToFuseIn.getResult(0).replaceAllUsesWith(newDstKernel.getResult(0));
 
@@ -527,6 +536,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // there is a third case at all is because performance is slightly better
     // than having two outputs.
     userToFuseIn.replaceAllUsesWith(kernelToFuseInto);
+    kernelToFuseInto.setSummaryAttr(
+        getSummaryString({kernelToFuseInto, userToFuseIn}));
 
     return kernelToFuseInto;
   }

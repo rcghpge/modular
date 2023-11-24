@@ -318,12 +318,12 @@ Value MOOpLoweringState::kernelExecute(
     StringRef kernelName, Value inChain, ArrayRef<Value> args,
     ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
     ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
-    SmallVectorImpl<Value> &outDimensions) {
+    SmallVectorImpl<Value> &outDimensions, StringRef summary) {
   MGP::BufferBuilder *bufferBuilder =
       loweringState.getBufferBuilder(MO::getDeviceOrDefaultAny(opBeingLowered));
   return bufferBuilder->kernelExecute(
       builder, loc, context, kernelName, inChain, args, inOutSemantics,
-      inDimensions, numOutDimensions, outDimensions);
+      inDimensions, numOutDimensions, outDimensions, summary);
 }
 
 void MOOpLoweringState::createOutputs(

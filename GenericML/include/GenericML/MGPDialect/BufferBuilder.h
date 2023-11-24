@@ -272,13 +272,18 @@ public:
   /// must have already been lowered to their index typed dimensions. It is
   /// possible for the kernel to return output dimensions, however this is
   /// only used by synchronous shape functions.
+  ///
+  /// The kernel to execute is determined from the kernelName, which must
+  /// match one of the kernel names in the loaded archive. The summary may be
+  /// an arbitrary (and not necessarily unique) label for use in debugging
+  /// and profiling.
   virtual Value
   kernelExecute(OpBuilder &builder, Location loc,
                 TypedValue<MGP::ContextType> context, StringRef kernelName,
                 Value inChain, ArrayRef<Value> args,
                 ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
                 ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
-                SmallVectorImpl<Value> &outDimensions) = 0;
+                SmallVectorImpl<Value> &outDimensions, StringRef summary) = 0;
 
   /// Places the given buffer into a freshly allocated slot within the
   /// given !mgp.context. Returns the chain which indicates when the buffer
@@ -377,13 +382,12 @@ public:
                           ElementsAttr archive, ArrayAttr kernelNames,
                           ArrayAttr constantNames) override;
 
-  Value
-  kernelExecute(OpBuilder &builder, Location loc,
-                TypedValue<MGP::ContextType> context, StringRef kernelName,
-                Value inChain, ArrayRef<Value> args,
-                ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
-                ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
-                SmallVectorImpl<Value> &outDimensions) override;
+  Value kernelExecute(
+      OpBuilder &builder, Location loc, TypedValue<MGP::ContextType> context,
+      StringRef kernelName, Value inChain, ArrayRef<Value> args,
+      ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
+      ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
+      SmallVectorImpl<Value> &outDimensions, StringRef summary) override;
 
   Value chainCreate(OpBuilder &builder, Location loc,
                     TypedValue<MGP::ContextType> context,

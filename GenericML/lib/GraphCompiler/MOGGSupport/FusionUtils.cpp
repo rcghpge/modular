@@ -6,6 +6,7 @@
 
 #include "GenericML/GraphCompiler/MOGGSupport/FusionUtils.h"
 
+#include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MojoParameters.h"
 #include "GenericML/GraphCompiler/Support/MOGGTypeTraits.h"
@@ -15,6 +16,57 @@
 #include "llvm/ADT/SmallVectorExtras.h"
 
 namespace M::MOGG {
+
+StringAttr getSummaryString(Operation *op) {
+  if (auto kernelOp = dyn_cast<MOGG::KernelOp>(op)) {
+    if (auto summaryAttr = kernelOp.getSummaryAttr())
+      return summaryAttr;
+  }
+
+  std::string name;
+  if (auto shapeFuncOp = dyn_cast<MO::InvokeShapeFuncOp>(op)) {
+    name = shapeFuncOp.getShapeFuncName();
+  } else if (auto layoutTranformOp = dyn_cast<MO::LayoutTransformOp>(op)) {
+    name = layoutTranformOp->getName().getIdentifier().getValue();
+    name += "_";
+    name += layoutTranformOp.getInput()
+                .getType()
+                .getLayoutAttr()
+                .getFormat()
+                .getValue();
+    name += "_to_";
+    name += layoutTranformOp.getResult()
+                .getType()
+                .getLayoutAttr()
+                .getFormat()
+                .getValue();
+  } else {
+    name = op->getName().getIdentifier().getValue();
+  }
+
+  if (auto fileLineLoc = dyn_cast<mlir::FileLineColLoc>(op->getLoc())) {
+    if (fileLineLoc.getLine() > 0) {
+      name += ":";
+      name += std::to_string(fileLineLoc.getLine());
+    }
+  }
+
+  return StringAttr::get(op->getContext(), name);
+}
+
+StringAttr getSummaryString(ArrayRef<Operation *> ops) {
+  assert(!ops.empty());
+
+  if (ops.size() == 1)
+    return getSummaryString(ops.front());
+
+  std::string str;
+  llvm::raw_string_ostream os(str);
+  llvm::interleave(
+      ops, os, [&os](Operation *op) { os << getSummaryString(op).getValue(); },
+      "+");
+  return StringAttr::get(ops.front()->getContext(), str);
+}
 
 bool inlineLambdasInKernel(KernelOp kernel) {
   bool changed = false;

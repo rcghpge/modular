@@ -143,7 +143,8 @@ Value CpuBufferBuilder::kernelExecute(
     StringRef kernelName, Value inChain, ArrayRef<Value> args,
     ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
     ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
-    SmallVectorImpl<Value> &outDimensions) {
+    SmallVectorImpl<Value> &outDimensions, StringRef summary) {
+  // Use the kernel name to determine the index.
   uint64_t index = getCompiledKernelIndex(kernelName);
 
   auto executeOp = builder.create<MGP::CpuKernelExecuteOp>(
@@ -156,7 +157,8 @@ Value CpuBufferBuilder::kernelExecute(
       /*bKernelIndex=*/index,
       /*cInOutSignature=*/
       InOutSignatureAttr::get(builder.getContext(), inOutSemantics),
-      /*dKernelName=*/kernelName,
+      // Use the summary for debugging and profiling.
+      /*dSummary=*/summary,
       /*eNumOutDimensions=*/numOutDimensions);
 
   for (Value outDimension : executeOp.getOutDimensions())
