@@ -43,25 +43,22 @@ MODULAR_API_EXPORT M_Attr *MOBI_tensorAttrFromFile(M_Module *m, StringRef name,
                                                    StringRef fileName,
                                                    M_Type *t) {
   auto moType = cast<M::MO::TensorType>(t->type.getVal());
-  auto dims = moType.getIntDims();
-  int64_t size = moType.getDtype().getSizeInBytes();
-  for (auto d : dims) {
-    assert(d >= 0 && "the caller should enforce this");
-    size *= d;
-  }
+  assert(moType.getNumElements().has_value() &&
+         "tensor attrs should always be statically sized");
+  int64_t size =
+      moType.getDtype().getSizeInBytes() * moType.getNumElements().value();
 
   auto buff = M::Buffer::getFile(std::filesystem::path{fileName.str()});
-  if (buff.isError()) {
+  if (buff.isError())
     errs() << buff.takeError() << "\n";
-  }
   assert(!buff.isError());
-  auto buff_size = static_cast<int64_t>((*buff)->getBufferSize());
-  if (buff_size != size) {
-    errs() << "Size mismatch, want " << size << " got " << buff_size << "\n";
-  }
-  assert(buff_size == size);
-  auto data = (*buff)->getBufferStart();
 
+  auto buff_size = static_cast<int64_t>((*buff)->getBufferSize());
+  if (buff_size != size)
+    errs() << "Size mismatch, want " << size << " got " << buff_size << "\n";
+  assert(buff_size == size);
+
+  auto data = (*buff)->getBufferStart();
   return new M_Attr{m->module.tensorAttr(
       name,
       ArrayRef<uint8_t>(reinterpret_cast<const uint8_t *>(data),
@@ -144,10 +141,6 @@ MODULAR_API_EXPORT char *MOBI_moduleToString(const M_Module *const m) {
 
 MODULAR_API_EXPORT bool MOBI_moduleVerify(M_Module *m) {
   return mlir::verify(m->module.getModuleOp()).succeeded();
-}
-
-MODULAR_API_EXPORT void MOBI_debugPrintModule(const M_Module *const m) {
-  m->module.getModuleOp()->print(outs());
 }
 
 /// Symbol

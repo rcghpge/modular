@@ -14,12 +14,12 @@ from memory.unsafe import Pointer
 from tensor import TensorShape, TensorSpec
 
 
-# XXX abstraction boundary feels pretty weird here
-#     it's really unclear what functions should go here vs in module
+# TODO: Try to drop these special annotations.
+# TODO: Move all factories into Module (or vice-versa), it's confusing
+# if they're in two places.
 @value
 @register_passable
 struct Graph:
-    # TODO(#23665): This should be an owning pointer.
     var g: GraphPtr
     var m: Module
 
@@ -97,7 +97,7 @@ struct Graph:
 
     fn constant[
         dtype: DType
-    ](inout self, owned value: Tensor[dtype]) raises -> Symbol:
+    ](inout self, value: Tensor[dtype]) raises -> Symbol:
         """Takes ownership of `value` to avoid a copy."""
         let m = self.m
         let type = m.type_of(value)

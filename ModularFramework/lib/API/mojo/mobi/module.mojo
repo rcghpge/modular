@@ -88,9 +88,9 @@ struct Module:
 
     fn tensor_attr[
         dtype: DType
-    ](self, name: StringRef, t: TypePtr, owned value: Tensor[dtype]) -> AttrPtr:
+    ](self, name: StringRef, t: TypePtr, value: Tensor[dtype]) -> AttrPtr:
         return mobicc.tensor_attr(
-            self.m, name, value._steal_ptr().bitcast[DType.invalid](), t
+            self.m, name, value.data().bitcast[DType.invalid](), t
         )
 
     fn type_of[dtype: DType](self, t: Tensor[dtype]) raises -> TypePtr:
@@ -152,5 +152,6 @@ struct Module:
         let g = mobicc.new_graph(self.m, unknown, name, in_types.a, out_types.a)
         return Graph(g, self)
 
-    fn verify(self) -> Bool:
-        return mobicc.module_verify(self.m)
+    fn verify(self) raises:
+        if not mobicc.module_verify(self.m):
+            raise "Module did not verify"

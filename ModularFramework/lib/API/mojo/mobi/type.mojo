@@ -10,6 +10,9 @@ from tensor import TensorSpec
 from .mobicc import TypePtr
 
 
+# TODO: Clean up, should be able to avoid the variant if we use traits.
+
+
 @value
 @register_passable
 struct TensorType:

@@ -23,8 +23,7 @@ fn test_matmul() raises:
         m.types(m.f32(1, 2, 2)),
     )
     g.output(g[0] @ g[1])
-
-    testing.assert_true(m.verify())
+    m.verify()
 
     # TODO: We really need tabular initializers, impossible to read a matrix
     # this way.
@@ -68,8 +67,7 @@ fn test_batch_matmul() raises:
         m.types(m.f32(1, 2, 2)),
     )
     g.output(g[0] @ g[1])
-
-    testing.assert_true(m.verify())
+    m.verify()
 
     # TODO: We really need tabular initializers, impossible to read a matrix
     # this way.

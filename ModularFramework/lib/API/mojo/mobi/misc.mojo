@@ -11,6 +11,8 @@ from .mobicc import AttrMapPtr, ArityPtr, TuplePtr, SymbolPtr
 from .symbol import Symbol
 from .type import Type
 
+# TODO: Move these to symbol/type/attr.
+
 
 struct AttrMap:
     var m: AttrMapPtr
@@ -42,13 +44,8 @@ struct Arity:
 
 
 struct Tup:
-    """Tuple of symbols output by an operation."""
-
-    # `Pointer` to the `M_Tuple` of symbols.
     var t: TuplePtr
-    # Length of this `Tup`.
     var l: Int
-    # Computation graph.
     var g: Graph
 
     fn __init__(inout self, t: TuplePtr, l: Int, g: Graph):
