@@ -207,6 +207,7 @@ ErrorOrSuccess MEFFileImpl::enumeratePrimitiveNames(
   if (primNameReader.parseVBR(numPrimitives))
     return errorResult;
   primitives.reserve(numPrimitives);
+  decodedPrimitiveNames.reserve(numPrimitives);
 
   // Read until we run out of names.
   while (!primNameReader.empty()) {
@@ -339,6 +340,7 @@ ErrorOrSuccess MEFFile::installPrimitives(const PrimitiveRegistry &registry) {
                    << "registering primitive '" << primitiveName
                    << "' with opcode " << mefFile->primitives.size() << "\n");
         mefFile->primitives.push_back(primitiveImpl);
+        mefFile->decodedPrimitiveNames.push_back(primitiveName);
         return success();
       });
 }

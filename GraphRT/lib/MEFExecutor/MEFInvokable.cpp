@@ -621,9 +621,14 @@ void MEFExecutor::decrementOperandsNotReadyCounts(
       frame.setLocationData(decoder.locOffset);
 
       // Run it.
-      LLVM_DEBUG(llvm::dbgs() << "invoking primitive with opcode "
-                              << decoder.opcode << "\n");
-      invokableImpl(frame);
+      LLVM_DEBUG(llvm::dbgs()
+                 << "invoking primitive '"
+                 << mefFile->decodedPrimitiveNames[decoder.opcode] << "\n");
+      {
+        TimeTraceScope scope(PrimitiveProfilerEntry::create(
+            mefFile->decodedPrimitiveNames[decoder.opcode]));
+        invokableImpl(frame);
+      }
     } else {
       // Otherwise, automatically propagate errors to the result values.
       for (size_t i = 0; i != decoder.numResults; ++i)

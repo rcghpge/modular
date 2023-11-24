@@ -21,10 +21,9 @@
 
 namespace M::GML {
 
-/// If enabled, the lifetime of every owning BufferRef is tracable.
-/// Name: "mem.buffer.owned"
+/// Profiler entry for tracking the lifetimes of owned buffers.
 using BufferRefLifetimeProfilerEntry =
-    ProfilerEntry<Trace::EnableTrace(Trace::kMem, 2)>;
+    ProfilerEntry<Trace::EnableTrace(Trace::kMem, 3)>;
 
 /// A reference (aka smart pointer) to an underlying buffer of known size but
 /// uninterpreted and possibly uninitialized bytes, along with metadata needed

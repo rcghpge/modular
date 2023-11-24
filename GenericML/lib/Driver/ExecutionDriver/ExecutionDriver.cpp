@@ -500,12 +500,12 @@ executeModel(const Model *model, Runtime &runtime,
           Twine("failed to open timings file: " + errorCode.message()));
   }
 
-  TIME_PROFILER_SCOPE(Trace::kOther, 1, "executeModel");
+  TimeTraceScope scope(DriverProfilerEntry::create("executeModel"));
 
   // Setup once.
   std::unique_ptr<ExecutableModel> executableModel;
   {
-    TIME_PROFILER_SCOPE(Trace::kOther, 1, "executeModel.setup");
+    TimeTraceScope scope(DriverProfilerEntry ::create("executeModel.setup"));
     auto executableModel1Or = model->setup(runtime);
     if (executableModel1Or.isError())
       return executableModel1Or.takeError();
@@ -534,7 +534,7 @@ executeModel(const Model *model, Runtime &runtime,
     llvm::outs().flush();
   }
   for (unsigned i = 0; i < numWarmup; ++i) {
-    TIME_PROFILER_SCOPE(Trace::kOther, 1, "executeModel.warmup");
+    TimeTraceScope scope(DriverProfilerEntry ::create("executeModel.warmup"));
     auto args = buildArgs(runtime, inputTensorGenerators);
 
     // Execute the model synchronously. Propagate any error back to caller.

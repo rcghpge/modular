@@ -13,6 +13,7 @@
 #define GENERICML_DRIVER_EXECUTIONDRIVER_H
 
 #include "LLCL/ForwardDecls.h"
+#include "LLCL/Support/Profiling.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "llvm/ADT/SmallVector.h"
@@ -25,6 +26,9 @@ class Tensor;
 namespace M {
 class Model;
 class ExecutorDriverCLOptions;
+
+/// Profiler entry for main execute/benchmark events.
+using DriverProfilerEntry = ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1)>;
 
 enum class InputGenerationKind {
   kRandom, // generate inputs with random elements, distribution depends on type

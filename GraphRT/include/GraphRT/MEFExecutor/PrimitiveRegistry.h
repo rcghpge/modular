@@ -12,12 +12,25 @@
 #include "GraphRT/MEFExecutor/PrimitiveDescriptor.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Support/Chain.h"
+#include "LLCL/Support/Profiling.h"
 #include "Support/ErrorOr.h"
 #include "Support/ReferenceCounted.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/TypeName.h"
 
 namespace M {
+
+//===----------------------------------------------------------------------===//
+// PrimitiveProfilerEntry
+//===----------------------------------------------------------------------===//
+
+/// Profiling entry for *all* GraphRT primitives, irrespective of dialect.
+using PrimitiveProfilerEntry =
+    ProfilerEntry<Trace::EnableTrace(Trace::kPrimitives, 1)>;
+
+//===----------------------------------------------------------------------===//
+// PrimitiveRegistry
+//===----------------------------------------------------------------------===//
 
 /// This represents a mapping between the names of the MLIR opcodes to the
 /// implementations of those functions, along with type mappings.

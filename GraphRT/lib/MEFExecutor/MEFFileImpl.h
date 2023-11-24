@@ -55,8 +55,10 @@ public:
   ArrayRef<uint8_t> attributes;
   ArrayRef<uint8_t> invokableBodies;
 
-  /// This is the list of primitive implementations arranged by their ID.
+  /// This is the list of primitive implementations and their decoded names
+  /// arranged by their ID.
   std::vector<PrimitiveRegistry::PrimitiveImplFn> primitives;
+  std::vector<StringRef> decodedPrimitiveNames;
 
   /// This contains all of the MEFInvokable records inline in dense memory even
   /// though clients treat them like individual objects.  Their lifetime is
