@@ -13,7 +13,7 @@ from ._tensormap import *
 from ._engine import _EngineImpl
 from memory.unsafe import Pointer
 from os.atomic import Atomic
-from utils.optional import Optional
+from utils._optional import Optional
 
 
 struct _InferenceSessionImpl:
