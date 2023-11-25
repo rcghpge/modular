@@ -457,19 +457,23 @@ def MOGG_LambdaOp : MOGG_Op<"lambda",
   }];
 }
 
-def MOGG_AllocateMemoryOp : MOGG_Op<"allocate_tensors"> {
+def MOGG_StackAllocateTensorsOp : MOGG_Op<"stack_allocate_tensors"> {
   let results = (outs Variadic<MO_Tensor>:$results);
 
-  let summary = "This represents an inner kernel allocation of memory";
+  let summary = "Allocates statically sized NDBuffers on the host's stack.";
   let description = [{
-    This op will be lowered to either a stack or heap allocation of the given
-    tensor which can then be used as a normal buffer within the kernel.
+    Each result of this op is an NDBuffer:
+     - Only statically shaped `!mo.tensor` types are allowed.
+     - The shapes should be 'small' so as to not blow the stack.
+     - The NDBuffer will be backed by a stack allocated buffer on the host
+       stack.
+     - Obviously these NDBuffers may only be used for host-side temporaries
+       within the kernel and cannot be returned to the caller.
 
     Example:
     ```mlir
-      %alloc = mogg.allocate_tensors : !mo.tensor<[2, 3], f32>
+      %tensors:2 = mogg.stack_allocate_tensors : (!mo.tensor<[2, 3], f32>, !mo.tensor<[4], f32>)
     ```
-    This returns a tensor with an internal memory allocation.
   }];
 
   let assemblyFormat = [{

@@ -110,12 +110,22 @@ def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
 }
 
 def SoftFuse: Pass<"soft-fuse", "MO::GraphOp"> {
-  let summary = "Soft fuse kernels together";
+  let summary = "Fuse a sequence of kernels into a single kernel.";
   let description = [{
-    When we have mogg blocks of trivial kernels we can soft fuse them together.
-    Soft fusion is the process of colocating kernels into the same invocation.
+    This pass will combine a sequence of MOGG::KernelOp invocations into a
+    single invocation. The original kernels will be called in some topological
+    order. Intermediate tensors may be stack-allocated within the fused kernel.
+
+    Generally only 'small' kernels and 'small' intermediate tensors may be
+    fused.
   }];
   let dependentDialects = ["M::MOGG::MOGGDialect"];
+
+  let options = [
+    Option<"smallTensorLimit", "small-tensor-limit", "int64_t", "1024",
+           "Maximum number of elements a tensor may have to be considered "
+           "'small'. These may be stack allocated within the fused kernel.">,
+  ];
 }
 
 def FuseInOutLambdas: Pass<"fuse-in-out-lambdas", "MO::GraphOp"> {
@@ -128,11 +138,15 @@ def FuseInOutLambdas: Pass<"fuse-in-out-lambdas", "MO::GraphOp"> {
 }
 
 def MarkTrivialKernels: Pass<"mark-trivial-kernels", "MO::GraphOp"> {
-  let summary = "Statically detect if kernels are trivial";
+  let summary = "Decide which `MOGG::KernelOp`s can be sequentially fused.";
   let description = [{
-    Check if a kernel is trivial and only contains calls to `single_thread_blocking_override`
-    compatible kernels. If so then we are able to potentially avoid the async overhead.
-    This enables soft fusion of those kernels.
+    Adds the attribute `single_thread_blocking_override=true` to all
+    `MOGG::KernelOp` which can be fused into a sequence of kernel calls.
+    Such a sequence can avoid the overhead of the LLCL::AsyncValue machinery
+    to coordinate dataflow between kernel calls.
+
+    On CPU this is only enabled for 'trivial' kernels, ie those with small
+    input and output shapes. For GPU this is enabled generally.
   }];
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }

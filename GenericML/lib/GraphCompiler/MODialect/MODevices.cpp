@@ -28,8 +28,9 @@ DeviceRefAttr MO::getDeviceOrDefault(MOHasDeviceInterface op) {
 DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {
   if (auto hasDeviceOp = dyn_cast<MOHasDeviceInterface>(op))
     return getDeviceOrDefault(hasDeviceOp);
-  else
-    return getHostDeviceAny(op);
+
+  // Fallback to the 'host' device.
+  return getHostDeviceAny(op);
 }
 
 DeviceRefAttr MO::getDeviceOrDefault(GraphOp graphOp, TensorType type) {
@@ -37,6 +38,14 @@ DeviceRefAttr MO::getDeviceOrDefault(GraphOp graphOp, TensorType type) {
   DeviceRefAttr device = type.getDeviceRef();
   if (device)
     return device;
+
+  // Fallback to the 'host' device.
+  return getHostDevice(graphOp);
+}
+
+DeviceRefAttr MO::getDeviceOrDefaultAny(GraphOp graphOp, Type type) {
+  if (auto tensorType = dyn_cast<TensorType>(type))
+    return getDeviceOrDefault(graphOp, tensorType);
 
   // Fallback to the 'host' device.
   return getHostDevice(graphOp);
@@ -60,6 +69,10 @@ DeviceRefAttr MO::getHostDeviceAny(Operation *op) {
 
 bool MO::isOnHost(Operation *op) {
   return getDeviceOrDefaultAny(op) == getHostDeviceAny(op);
+}
+
+bool MO::isOnHost(GraphOp graphOp, Type type) {
+  return getDeviceOrDefaultAny(graphOp, type) == getHostDevice(graphOp);
 }
 
 ErrorOr<DeviceSpecCollectionAttr> MO::getDeviceSpecsOrDefault(GraphOp graphOp) {

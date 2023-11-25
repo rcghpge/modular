@@ -28,6 +28,9 @@ DeviceRefAttr getDeviceOrDefaultAny(Operation *op);
 /// annotation on the type itself.
 DeviceRefAttr getDeviceOrDefault(GraphOp graphOp, TensorType type);
 
+/// As above, but for any type.
+DeviceRefAttr getDeviceOrDefaultAny(GraphOp graphOp, Type type);
+
 /// Returns the #M.device_ref for the 'host' device of graphOp from its device
 /// specs annotation, or <"cpu", 0> if the graph has no such annotation.
 DeviceRefAttr getHostDevice(GraphOp graphOp);
@@ -36,6 +39,9 @@ DeviceRefAttr getHostDevice(GraphOp graphOp);
 
 /// Returns true if op should execute on the 'host'.
 bool isOnHost(Operation *op);
+
+/// Return true if a value of type should be stored on the 'host'.
+bool isOnHost(GraphOp graphOp, Type type);
 
 /// Returns the #M.device_spec_collection annotation for graphOp, or a
 /// description of just the current CPU device (ignoring any other device types)

@@ -334,7 +334,7 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
   }];
 
   let options = [
-    Option<"smallTensorLimit", "small-tensor-limit", "int64_t", "64",
+    Option<"smallTensorLimit", "small-tensor-limit", "int64_t", "1024",
            "Maximum number of elements a tensor may have to be considered "
            "'small'. Ops which take and return only 'small' tensors are "
            "themselves considered 'small', and need not be placed on the "
