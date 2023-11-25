@@ -118,7 +118,9 @@ struct Graph:
         let value_ptr = DTypePointer[dtype].address_of(val_copy).bitcast[
             DType.invalid
         ]()
-        let attr = mobicc.tensor_attr(m.m, "value", value_ptr, t)
+        let attr = mobicc.tensor_attr(
+            m.m, "value", value_ptr, t, is_owned=False
+        )
 
         return self.op("mo.constant", self.values(), m.types(t), m.attrs(attr))[
             0
@@ -142,7 +144,9 @@ struct Graph:
         var val_copy = value
         let t = mobicc.type_from_spec(m.m, TensorSpec(dtype, TensorShape()))
         let value_ptr = Pointer[Int].address_of(val_copy).bitcast[AnyRegType]()
-        let attr = mobicc.tensor_attr(m.m, "value", value_ptr, t)
+        let attr = mobicc.tensor_attr(
+            m.m, "value", value_ptr, t, is_owned=False
+        )
 
         return self.op("mo.constant", self.values(), m.types(t), m.attrs(attr))[
             0

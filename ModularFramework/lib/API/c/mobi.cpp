@@ -21,6 +21,7 @@
 #include "mlir/IR/Verifier.h"
 #include "llvm/ADT/bit.h"
 
+using namespace M;
 using namespace M::MOF::Builder;
 using namespace llvm;
 using namespace mlir;
@@ -28,7 +29,7 @@ using namespace mlir;
 /// Attr
 
 MODULAR_API_EXPORT M_Attr *MOBI_tensorAttr(M_Module *m, StringRef name,
-                                           void *data, M_Type *t) {
+                                           void *data, M_Type *t, bool owned) {
   auto moType = cast<M::MO::TensorType>(t->type.getVal());
   size_t size =
       moType.getDtype().getSizeInBytes() * moType.getNumElements().value();
@@ -36,7 +37,7 @@ MODULAR_API_EXPORT M_Attr *MOBI_tensorAttr(M_Module *m, StringRef name,
       m->module.tensorAttr(name,
                            ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(data),
                                              static_cast<size_t>(size)),
-                           t->type)};
+                           t->type, owned)};
 }
 
 MODULAR_API_EXPORT M_Attr *MOBI_tensorAttrFromFile(M_Module *m, StringRef name,
@@ -48,22 +49,23 @@ MODULAR_API_EXPORT M_Attr *MOBI_tensorAttrFromFile(M_Module *m, StringRef name,
   int64_t size =
       moType.getDtype().getSizeInBytes() * moType.getNumElements().value();
 
-  auto buff = M::Buffer::getFile(std::filesystem::path{fileName.str()});
-  if (buff.isError())
-    errs() << buff.takeError() << "\n";
-  assert(!buff.isError());
+  auto bufferOr = M::Buffer::getFile(std::filesystem::path{fileName.str()});
+  if (bufferOr.isError())
+    errs() << bufferOr.takeError() << "\n";
+  assert(!bufferOr.isError());
+  M::BufferRef buffer = bufferOr.takeValue();
 
-  auto buff_size = static_cast<int64_t>((*buff)->getBufferSize());
+  auto buff_size = static_cast<int64_t>(buffer->getBufferSize());
   if (buff_size != size)
     errs() << "Size mismatch, want " << size << " got " << buff_size << "\n";
   assert(buff_size == size);
 
-  auto data = (*buff)->getBufferStart();
+  auto data = buffer->getBufferStart();
   return new M_Attr{m->module.tensorAttr(
       name,
       ArrayRef<uint8_t>(reinterpret_cast<const uint8_t *>(data),
                         static_cast<size_t>(size)),
-      t->type)};
+      t->type, /*owned=*/false)};
 }
 
 MODULAR_API_EXPORT M_Attr *MOBI_stringAttr(M_Module *m, StringRef name,

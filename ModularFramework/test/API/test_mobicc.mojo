@@ -178,6 +178,7 @@ fn test_const_op() raises:
         "value",
         Pointer[Int32].address_of(val).bitcast[AnyRegType](),
         intScalar,
+        is_owned=False,
     )
     mobicc.add_attr(attrs, a)
 

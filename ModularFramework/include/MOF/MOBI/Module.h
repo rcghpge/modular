@@ -38,13 +38,14 @@ public:
   Type bool_(llvm::ArrayRef<int64_t> shape);
 
   Attr stringAttr(llvm::StringRef name, llvm::StringRef value);
-  Attr tensorAttr(llvm::StringRef name, llvm::ArrayRef<uint8_t> data, Type t);
+  // Guaranteed to take ownership of `data` with a dense resource if `owned`.
+  // Otherwise, copies `data`; may use dense resource or ArrayElementsAttr.
+  Attr tensorAttr(llvm::StringRef name, llvm::ArrayRef<uint8_t> data, Type t,
+                  bool owned);
 
   MLIRContext *getContext();
 
 private:
-  Attr denseResourceAttr(StringRef name, ArrayRef<char> data, Type t);
-
   mlir::ModuleOp op;
   mlir::OpBuilder builder;
 };

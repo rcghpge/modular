@@ -57,7 +57,7 @@ struct Module:
         for i in range(len(elements)):
             data.push_back(elements[i])
         return mobicc.tensor_attr(
-            self.m, name, data.data.bitcast[AnyRegType](), t
+            self.m, name, data.data.bitcast[AnyRegType](), t, is_owned=False
         )
 
     fn i64_attr(self, name: StringRef, t: TypePtr, *elements: Int64) -> AttrPtr:
@@ -65,7 +65,7 @@ struct Module:
         for i in range(len(elements)):
             data.push_back(elements[i])
         return mobicc.tensor_attr(
-            self.m, name, data.data.bitcast[AnyRegType](), t
+            self.m, name, data.data.bitcast[AnyRegType](), t, is_owned=False
         )
 
     fn f32_attr(
@@ -75,7 +75,7 @@ struct Module:
         for i in range(len(elements)):
             data.push_back(elements[i])
         return mobicc.tensor_attr(
-            self.m, name, data.data.bitcast[AnyRegType](), t
+            self.m, name, data.data.bitcast[AnyRegType](), t, is_owned=False
         )
 
     fn f32_attr(
@@ -90,7 +90,23 @@ struct Module:
         dtype: DType
     ](self, name: StringRef, t: TypePtr, value: Tensor[dtype]) -> AttrPtr:
         return mobicc.tensor_attr(
-            self.m, name, value.data().bitcast[DType.invalid](), t
+            self.m,
+            name,
+            value.data().bitcast[DType.invalid](),
+            t,
+            is_owned=False,
+        )
+
+    fn tensor_attr_take_ownership[
+        dtype: DType
+    ](self, name: StringRef, t: TypePtr, owned value: Tensor[dtype]) -> AttrPtr:
+        # Intentionally takes ownership of `value` to avoid extra copies.
+        return mobicc.tensor_attr(
+            self.m,
+            name,
+            value._steal_ptr().bitcast[DType.invalid](),
+            t,
+            is_owned=True,
         )
 
     fn type_of[dtype: DType](self, t: Tensor[dtype]) raises -> TypePtr:

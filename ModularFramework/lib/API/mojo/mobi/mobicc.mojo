@@ -130,10 +130,11 @@ fn tensor_attr(
     name: StringRef,
     data: Pointer[AnyRegType],
     type: TypePtr,
+    is_owned: Bool,
 ) -> AttrPtr:
     return MOBI_func[
-        fn (ModulePtr, StringRef, Pointer[AnyRegType], TypePtr) -> AttrPtr
-    ]("MOBI_tensorAttr")(module, name, data, type)
+        fn (ModulePtr, StringRef, Pointer[AnyRegType], TypePtr, Bool) -> AttrPtr
+    ]("MOBI_tensorAttr")(module, name, data, type, is_owned)
 
 
 fn tensor_attr(
@@ -141,12 +142,13 @@ fn tensor_attr(
     name: StringRef,
     data: DTypePointer[DType.invalid],
     type: TypePtr,
+    is_owned: Bool,
 ) -> AttrPtr:
     return MOBI_func[
         fn (
-            ModulePtr, StringRef, DTypePointer[DType.invalid], TypePtr
+            ModulePtr, StringRef, DTypePointer[DType.invalid], TypePtr, Bool
         ) -> AttrPtr
-    ]("MOBI_tensorAttr")(module, name, data, type)
+    ]("MOBI_tensorAttr")(module, name, data, type, is_owned)
 
 
 fn string_attr(
