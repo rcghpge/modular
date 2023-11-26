@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from .misc import Arity, AttrMap, Tup
-from .mobicc import AttrPtr, GraphPtr, SymbolPtr, TuplePtr
+from .mobicc import AttrPtr, GraphPtr, SymbolPtr, TuplePtr, TypePtr
 from .module import Module
 from .symbol import Symbol
 from .type import Type
@@ -85,6 +85,8 @@ struct Graph:
         )
         return Tup(outputs, out_types.l, self)
 
+    # TODO: Separate DType/Tensor/TensorSpec adapters from Graph.
+
     fn constant[
         dtype: DType
     ](
@@ -151,6 +153,20 @@ struct Graph:
         return self.op("mo.constant", self.values(), m.types(t), m.attrs(attr))[
             0
         ]
+
+    fn constant(inout self, t: TypePtr, *values: Int64) raises -> Symbol:
+        # TODO: This isn't great, can't overload to Int32
+        # TODO: Fix the checks once we have Mojo structured types
+        if not (
+            mobicc.type_is_si_tensor(t) and (mobicc.tensor_dtype_width(t) == 64)
+        ):
+            raise "Type must be an i64 tensor"
+        return self.op(
+            "mo.constant",
+            self.values(),
+            self.m.types(t),
+            self.m.attrs(self.m.i64_attr("value", t, values)),
+        )[0]
 
     fn output(inout self, outs: Tup) raises:
         _ = self.op("mo.output", outs, self.m.types())

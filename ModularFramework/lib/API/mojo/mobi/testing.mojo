@@ -6,7 +6,7 @@
 
 from sys.param_env import env_get_string
 from tensor import Tensor, TensorShape, TensorSpec
-from testing import assert_true, assert_almost_equal
+from testing import assert_true, assert_almost_equal, assert_equal
 
 from aiengine import EngineTensorView, InferenceSession, TensorMap
 
@@ -37,13 +37,24 @@ fn assert_tensors_almost_equal[
         )
 
 
+fn assert_tensors_equal[
+    dtype: DType
+](a: Tensor[dtype], b: Tensor[dtype]) raises:
+    assert_true(a.spec() == b.spec())
+    assert_no_dynamic_dims(a.spec())
+    assert_no_dynamic_dims(b.spec())
+
+    for i in range(a.num_elements()):
+        assert_equal[dtype](a[i], b[i])
+
+
 fn execute_unary[
-    dtype: DType = DType.float32
-](module: Module, name: StringRef, input: Tensor[dtype]) raises -> Tensor[
-    dtype
+    intype: DType = DType.float32, outtype: DType = DType.float32
+](module: Module, name: StringRef, input: Tensor[intype]) raises -> Tensor[
+    outtype
 ]:
     let result_map = execute(module, name, input)
-    return result_map.get[dtype]("output0")
+    return result_map.get[outtype]("output0")
 
 
 fn execute_binary[

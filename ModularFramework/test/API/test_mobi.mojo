@@ -11,16 +11,6 @@ from tensor import Tensor
 from utils.index import Index
 
 
-fn test_empty_graph() raises:
-    var m = mobi.Module()
-    _ = m.graph("empty_graph", m.types(), m.types())
-
-    # CHECK: builtin.module
-    # CHECK: mo.graph
-    # CHECK: sym_name = "empty_graph"
-    print(m.__str__())
-
-
 fn test_identity_graph() raises:
     var m = mobi.Module()
     var g = m.graph(
@@ -30,6 +20,7 @@ fn test_identity_graph() raises:
     )
     _ = g.op(name="mo.output", inputs=g.values(g[0]), out_types=m.types())
 
+    m.verify()
     # CHECK: module {
     # CHECK:   mo.graph @identity_graph([[arg:.*]]: !mo.tensor<[], si32>) -> !mo.tensor<[], si32>
     # CHECK:     mo.output [[arg]] : !mo.tensor<[], si32>
@@ -44,6 +35,7 @@ fn test_basic_add() raises:
     let y = g.op("mo.add", g.values(g[0], g[1]), m.types(m.i32()))
     _ = g.op("mo.output", y, m.types())
 
+    m.verify()
     # CHECK-LABEL: @basic_add
     # CHECK: mo.add
     print(m.__str__())
@@ -61,14 +53,27 @@ fn test_add_constant() raises:
     let y = g.op("mo.add", g.values(g[0], x[0]), m.types(m.f32(1)))
     _ = g.op("mo.output", y, m.types())
 
+    m.verify()
     # CHECK-LABEL: @add_constant
     # CHECK: mo.constant {value = #M.dense_array<1.000000e+00> : tensor<1xf32>}
     # CHECK: mo.add
     print(m.__str__())
 
 
+fn test_int_constant_helper() raises:
+    var m = mobi.Module()
+    var g = m.graph("int_constant_helper", m.types(), m.types(m.i64(2)))
+    let x = g.constant(m.i64(2), 1, 2)
+    _ = g.op("mo.output", x, m.types())
+
+    m.verify()
+    # CHECK-LABEL: @int_constant_helper
+    # CHECK: mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>}
+    print(m.__str__())
+
+
 fn main() raises:
-    test_empty_graph()
     test_identity_graph()
     test_basic_add()
     test_add_constant()
+    test_int_constant_helper()

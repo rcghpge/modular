@@ -27,7 +27,7 @@ struct Symbol:
 
     fn type(self) -> Type:
         """Returns the type of this symbol."""
-        return Type(mobicc.typeof(self.s))
+        return Type(mobicc.get_symbol_type(self.s))
 
     fn __str__(self) raises -> String:
         let spec = self.type().unwrap_tensor().spec()

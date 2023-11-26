@@ -360,6 +360,18 @@ fn add_type(inout arity: ArityPtr, t: TypePtr):
     )
 
 
+# TODO: These specialized helpers are a stop-gap until we have sufficient
+# type manipulation primitives to write the logic in Mojo.
+fn arg_reduction_type(
+    module: ModulePtr,
+    input: TypePtr,
+    axis: Int64,
+) -> TypePtr:
+    return MOBI_func[fn (ModulePtr, TypePtr, Int64) -> TypePtr](
+        "MOBI_argReductionType"
+    )(module, input, axis)
+
+
 fn type_is_float_tensor(t: TypePtr) -> Bool:
     return MOBI_func[fn (TypePtr) -> Bool]("MOBI_typeIsFloatTensor")(t)
 
@@ -394,9 +406,8 @@ fn tensor_dim(t: TypePtr, dim: UInt64) -> Int64:
     )
 
 
-fn typeof(s: SymbolPtr) -> TypePtr:
-    """The result must be freed by the caller using `del_type()`."""
-    return MOBI_func[fn (SymbolPtr) -> TypePtr]("MOBI_typeOfSymbol")(s)
+fn get_symbol_type(s: SymbolPtr) -> TypePtr:
+    return MOBI_func[fn (SymbolPtr) -> TypePtr]("MOBI_getSymbolType")(s)
 
 
 fn del_type(t: TypePtr) -> None:

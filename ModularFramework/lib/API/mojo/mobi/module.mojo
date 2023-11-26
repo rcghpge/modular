@@ -7,12 +7,13 @@
 from tensor import Tensor, TensorSpec, TensorShape
 from utils.vector import DynamicVector
 
-from .misc import Arity, AttrMap
+from .misc import Arity, AttrMap, Symbol
 from .mobicc import (
     AttrPtr,
     AttrMapPtr,
     LocPtr,
     ModulePtr,
+    SymbolPtr,
     TypePtr,
     GraphPtr,
 )
@@ -53,6 +54,11 @@ struct Module:
         return mobicc.unknown_loc(self.m)
 
     fn i32_attr(self, name: StringRef, t: TypePtr, *elements: Int32) -> AttrPtr:
+        return self.i32_attr(name, t, elements)
+
+    fn i32_attr(
+        self, name: StringRef, t: TypePtr, elements: VariadicList[Int32]
+    ) -> AttrPtr:
         var data = DynamicVector[Int32]()
         for i in range(len(elements)):
             data.push_back(elements[i])
@@ -61,6 +67,11 @@ struct Module:
         )
 
     fn i64_attr(self, name: StringRef, t: TypePtr, *elements: Int64) -> AttrPtr:
+        return self.i64_attr(name, t, elements)
+
+    fn i64_attr(
+        self, name: StringRef, t: TypePtr, elements: VariadicList[Int64]
+    ) -> AttrPtr:
         var data = DynamicVector[Int64]()
         for i in range(len(elements)):
             data.push_back(elements[i])
@@ -143,6 +154,11 @@ struct Module:
         for i in range(len(types)):
             mobicc.add_type(a, types[i])
         return Arity(a, len(types))
+
+    fn arg_reduction_type(self, input: TypePtr, axis: Int64) -> Arity:
+        var a = mobicc.new_arity()
+        mobicc.add_type(a, mobicc.arg_reduction_type(self.m, input, axis))
+        return Arity(a, 1)
 
     fn type(inout self, spec: TensorSpec) -> Type:
         return Type(mobicc.type_from_spec(self.m, spec))

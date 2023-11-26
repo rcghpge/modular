@@ -14,6 +14,9 @@ from .misc import Tup
 from tensor import Tensor, TensorShape, TensorSpec
 
 
+# TODO: Move to .ops/, break down.
+
+
 # ===----------------------------------------------------------------------=== #
 #  File local utilities
 # ===----------------------------------------------------------------------=== #
@@ -721,6 +724,17 @@ def mean(v: Symbol, dim: Int) -> Symbol:
         "mo.mean",
         (v, g.constant(dim)),
         TensorSpec(spec.dtype(), TensorShape(dims)),
+    )[0]
+
+
+fn arg_max(v: Symbol, axis: Int64) raises -> Symbol:
+    var g = v.g
+    let m = g.m
+    # TODO: Replace with Mojo logic once we have properly shadowed types.
+    return g.op(
+        "mo.arg_max",
+        g.values(v, g.constant(axis)),
+        m.arg_reduction_type(v.type().type_ptr(), axis),
     )[0]
 
 

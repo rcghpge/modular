@@ -1,0 +1,59 @@
+# ===----------------------------------------------------------------------=== #
+#
+# This file is Modular Inc proprietary.
+#
+# ===----------------------------------------------------------------------=== #
+# RUN: mojo -I %mobi_pkg_dir -I %test_utils_pkg_dir -D TEMP_DIR=%T "%s"
+
+from tensor import Tensor, TensorShape
+
+from mobi import Module
+from mobi import testing
+from mobi import functional
+
+
+fn test_arg_max() raises:
+    alias name = "test_arg_max"
+
+    var m = Module()
+    var g = m.graph(
+        name,
+        m.types(m.f32(2, 3)),
+        m.types(m.i64(2, 1)),
+    )
+    g.output(functional.arg_max(g[0], 1))
+    m.verify()
+
+    let x = Tensor[DType.float32](
+        TensorShape(2, 3), -2.0, -1.0, 0.0, 3.0, 2.0, 1.0
+    )
+    let expected = Tensor[DType.int64](TensorShape(2, 1), 2, 0)
+
+    let actual = testing.execute_unary[outtype = DType.int64](m, name, x)
+    testing.assert_tensors_equal(expected, actual)
+
+
+fn test_arg_max_neg_axis() raises:
+    alias name = "test_arg_max_neg_axis"
+
+    var m = Module()
+    var g = m.graph(
+        name,
+        m.types(m.f32(2, 3)),
+        m.types(m.i64(2, 1)),
+    )
+    g.output(functional.arg_max(g[0], -1))
+    m.verify()
+
+    let x = Tensor[DType.float32](
+        TensorShape(2, 3), -2.0, -1.0, 0.0, 3.0, 2.0, 1.0
+    )
+    let expected = Tensor[DType.int64](TensorShape(2, 1), 2, 0)
+
+    let actual = testing.execute_unary[outtype = DType.int64](m, name, x)
+    testing.assert_tensors_equal(expected, actual)
+
+
+def main():
+    test_arg_max()
+    test_arg_max_neg_axis()
