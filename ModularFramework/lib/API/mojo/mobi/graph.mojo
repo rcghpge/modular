@@ -97,7 +97,7 @@ struct Graph:
 
     fn constant[
         dtype: DType
-    ](inout self, value: Tensor[dtype]) raises -> Symbol:
+    ](inout self, owned value: Tensor[dtype]) raises -> Symbol:
         """Takes ownership of `value` to avoid a copy."""
         let m = self.m
         let type = m.type_of(value)

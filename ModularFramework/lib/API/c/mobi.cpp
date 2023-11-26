@@ -33,11 +33,9 @@ MODULAR_API_EXPORT M_Attr *MOBI_tensorAttr(M_Module *m, StringRef name,
   auto moType = cast<M::MO::TensorType>(t->type.getVal());
   size_t size =
       moType.getDtype().getSizeInBytes() * moType.getNumElements().value();
-  return new M_Attr{
-      m->module.tensorAttr(name,
-                           ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(data),
-                                             static_cast<size_t>(size)),
-                           t->type, owned)};
+  return new M_Attr{m->module.tensorAttr(
+      name, ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(data), size), t->type,
+      owned)};
 }
 
 MODULAR_API_EXPORT M_Attr *MOBI_tensorAttrFromFile(M_Module *m, StringRef name,

@@ -88,17 +88,6 @@ struct Module:
 
     fn tensor_attr[
         dtype: DType
-    ](self, name: StringRef, t: TypePtr, value: Tensor[dtype]) -> AttrPtr:
-        return mobicc.tensor_attr(
-            self.m,
-            name,
-            value.data().bitcast[DType.invalid](),
-            t,
-            is_owned=False,
-        )
-
-    fn tensor_attr_take_ownership[
-        dtype: DType
     ](self, name: StringRef, t: TypePtr, owned value: Tensor[dtype]) -> AttrPtr:
         # Intentionally takes ownership of `value` to avoid extra copies.
         return mobicc.tensor_attr(
