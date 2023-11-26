@@ -112,6 +112,11 @@ struct InferenceSession:
             model_path, user_defined_ops_path, self.copy()
         )
 
+    fn load_model(self, path: Path) raises -> Model:
+        let model = self.load_model(path.path._strref_dangerous())
+        path.path._strref_keepalive()
+        return model ^
+
     fn load_model(
         self,
         model_path: StringRef,
