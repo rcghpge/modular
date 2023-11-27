@@ -238,6 +238,11 @@ struct EngineNumpyView:
         let self_type = __get_address_as_lvalue(self.ptr.address).dtype
         if self_type == self.np.float32:
             return DType.float32
+        if self_type == self.np.float64:
+            return DType.float64
+        if self_type == self.np.int32:
+            return DType.int32
+
         raise "Unknown datatype"
 
     fn spec(self) raises -> TensorSpec:
