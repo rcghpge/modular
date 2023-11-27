@@ -44,20 +44,19 @@ std::ostream &M::Torch::operator<<(std::ostream &os,
 Variant::Variant() : info(DenseMapInfoKey::Empty), value() {}
 
 Variant::Variant(const LLCL::AnyAsyncValueRef &other)
-    : info(DenseMapInfoKey::Empty) {
+    : info(DenseMapInfoKey::Empty), value() {
   if (other.isValueAvailable()) {
     info = DenseMapInfoKey::Value;
     value = other.copy();
   }
 }
 
-Variant::Variant(const Variant &other) : info(other.info) {
+Variant::Variant(const Variant &other) : info(other.info), value() {
   if (info == DenseMapInfoKey::Value && other.value.isValueAvailable())
     value = other.getValue().copy();
 }
 
-Variant::Variant(const DenseMapInfoKey &info)
-    : info(info), value(LLCL::AnyAsyncValueRef()) {}
+Variant::Variant(const DenseMapInfoKey &info) : info(info), value() {}
 
 std::string Variant::to_string() const { return valueToString(value); }
 
@@ -172,23 +171,23 @@ ErrorOrSuccess M::Torch::printGenericValue(const LLCL::AnyAsyncValueRef &value,
 
 std::string M::Torch::valueToString(const LLCL::AnyAsyncValueRef &value) {
   std::stringstream ss;
-  if (List *list = dyn_cast<List>(value))
+  if (auto *list = dyn_cast<List>(value))
     ss << *list;
-  else if (Tuple *tuple = dyn_cast<Tuple>(value))
+  else if (auto *tuple = dyn_cast<Tuple>(value))
     ss << *tuple;
-  else if (Dict *dict = dyn_cast<Dict>(value))
+  else if (auto *dict = dyn_cast<Dict>(value))
     ss << *dict;
-  else if (None *none = dyn_cast<None>(value))
+  else if (auto *none = dyn_cast<None>(value))
     ss << *none;
-  else if (std::string *stringValue = dyn_cast<std::string>(value))
+  else if (auto *stringValue = dyn_cast<std::string>(value))
     ss << "\"" << *stringValue << "\"";
-  else if (double *doubleValue = dyn_cast<double>(value))
+  else if (auto *doubleValue = dyn_cast<double>(value))
     ss << *doubleValue;
-  else if (int64_t *longValue = dyn_cast<int64_t>(value))
+  else if (auto *longValue = dyn_cast<int64_t>(value))
     ss << *longValue;
-  else if (bool *boolValue = dyn_cast<bool>(value))
+  else if (auto *boolValue = dyn_cast<bool>(value))
     ss << *boolValue;
-  else if (GML::Tensor *tensor = dyn_cast<GML::Tensor>(value))
+  else if (auto *tensor = dyn_cast<GML::Tensor>(value))
     ss << tensor->getBuffer();
   else
     return "<unknown>";
@@ -197,32 +196,32 @@ std::string M::Torch::valueToString(const LLCL::AnyAsyncValueRef &value) {
 
 bool M::Torch::valueEqual(const LLCL::AnyAsyncValueRef &lhs,
                           const LLCL::AnyAsyncValueRef &rhs) {
-  if (List *llist = dyn_cast<List>(lhs)) {
-    if (List *rlist = dyn_cast<List>(rhs))
+  if (auto *llist = dyn_cast<List>(lhs)) {
+    if (auto *rlist = dyn_cast<List>(rhs))
       return *llist == *rlist;
-  } else if (Tuple *ltuple = dyn_cast<Tuple>(lhs)) {
-    if (Tuple *rtuple = dyn_cast<Tuple>(rhs))
+  } else if (auto *ltuple = dyn_cast<Tuple>(lhs)) {
+    if (auto *rtuple = dyn_cast<Tuple>(rhs))
       return *ltuple == *rtuple;
-  } else if (Dict *ldict = dyn_cast<Dict>(lhs)) {
-    if (Dict *rdict = dyn_cast<Dict>(rhs))
+  } else if (auto *ldict = dyn_cast<Dict>(lhs)) {
+    if (auto *rdict = dyn_cast<Dict>(rhs))
       return *ldict == *rdict;
-  } else if (None *lnone = dyn_cast<None>(lhs)) {
-    if (None *rnone = dyn_cast<None>(rhs))
+  } else if (auto *lnone = dyn_cast<None>(lhs)) {
+    if (auto *rnone = dyn_cast<None>(rhs))
       return *lnone == *rnone;
-  } else if (std::string *lstring = dyn_cast<std::string>(lhs)) {
-    if (std::string *rstring = dyn_cast<std::string>(rhs))
+  } else if (auto *lstring = dyn_cast<std::string>(lhs)) {
+    if (auto *rstring = dyn_cast<std::string>(rhs))
       return *lstring == *rstring;
-  } else if (double *ldouble = dyn_cast<double>(lhs)) {
-    if (double *rdouble = dyn_cast<double>(rhs))
+  } else if (auto *ldouble = dyn_cast<double>(lhs)) {
+    if (auto *rdouble = dyn_cast<double>(rhs))
       return *ldouble == *rdouble;
-  } else if (int64_t *llong = dyn_cast<int64_t>(lhs)) {
-    if (int64_t *rlong = dyn_cast<int64_t>(rhs))
+  } else if (auto *llong = dyn_cast<int64_t>(lhs)) {
+    if (auto *rlong = dyn_cast<int64_t>(rhs))
       return *llong == *rlong;
-  } else if (bool *lbool = dyn_cast<bool>(lhs)) {
-    if (bool *rbool = dyn_cast<bool>(rhs))
+  } else if (auto *lbool = dyn_cast<bool>(lhs)) {
+    if (auto *rbool = dyn_cast<bool>(rhs))
       return *lbool == *rbool;
-  } else if (GML::Tensor *ltensor = dyn_cast<GML::Tensor>(lhs)) {
-    if (GML::Tensor *rtensor = dyn_cast<GML::Tensor>(rhs))
+  } else if (auto *ltensor = dyn_cast<GML::Tensor>(lhs)) {
+    if (auto *rtensor = dyn_cast<GML::Tensor>(rhs))
       // Consider tensors equal if the underlying data pointer is the same.
       return ltensor->getBuffer() == rtensor->getBuffer();
   }
@@ -231,32 +230,32 @@ bool M::Torch::valueEqual(const LLCL::AnyAsyncValueRef &lhs,
 
 bool M::Torch::valueLessThan(const LLCL::AnyAsyncValueRef &lhs,
                              const LLCL::AnyAsyncValueRef &rhs) {
-  if (List *llist = dyn_cast<List>(lhs)) {
-    if (List *rlist = dyn_cast<List>(rhs))
+  if (auto *llist = dyn_cast<List>(lhs)) {
+    if (auto *rlist = dyn_cast<List>(rhs))
       return *llist < *rlist;
-  } else if (Tuple *ltuple = dyn_cast<Tuple>(lhs)) {
-    if (Tuple *rtuple = dyn_cast<Tuple>(rhs))
+  } else if (auto *ltuple = dyn_cast<Tuple>(lhs)) {
+    if (auto *rtuple = dyn_cast<Tuple>(rhs))
       return *ltuple < *rtuple;
-  } else if (Dict *ldict = dyn_cast<Dict>(lhs)) {
-    if (Dict *rdict = dyn_cast<Dict>(rhs))
+  } else if (auto *ldict = dyn_cast<Dict>(lhs)) {
+    if (auto *rdict = dyn_cast<Dict>(rhs))
       return *ldict < *rdict;
-  } else if (None *lnone = dyn_cast<None>(lhs)) {
-    if (None *rnone = dyn_cast<None>(rhs))
+  } else if (auto *lnone = dyn_cast<None>(lhs)) {
+    if (auto *rnone = dyn_cast<None>(rhs))
       return *lnone < *rnone;
-  } else if (std::string *lstring = dyn_cast<std::string>(lhs)) {
-    if (std::string *rstring = dyn_cast<std::string>(rhs))
+  } else if (auto *lstring = dyn_cast<std::string>(lhs)) {
+    if (auto *rstring = dyn_cast<std::string>(rhs))
       return *lstring < *rstring;
-  } else if (double *ldouble = dyn_cast<double>(lhs)) {
-    if (double *rdouble = dyn_cast<double>(rhs))
+  } else if (auto *ldouble = dyn_cast<double>(lhs)) {
+    if (auto *rdouble = dyn_cast<double>(rhs))
       return *ldouble < *rdouble;
-  } else if (int64_t *llong = dyn_cast<int64_t>(lhs)) {
-    if (int64_t *rlong = dyn_cast<int64_t>(rhs))
+  } else if (auto *llong = dyn_cast<int64_t>(lhs)) {
+    if (auto *rlong = dyn_cast<int64_t>(rhs))
       return *llong < *rlong;
-  } else if (bool *lbool = dyn_cast<bool>(lhs)) {
-    if (bool *rbool = dyn_cast<bool>(rhs))
+  } else if (auto *lbool = dyn_cast<bool>(lhs)) {
+    if (auto *rbool = dyn_cast<bool>(rhs))
       return *lbool < *rbool;
-  } else if (GML::Tensor *ltensor = dyn_cast<GML::Tensor>(lhs)) {
-    if (GML::Tensor *rtensor = dyn_cast<GML::Tensor>(rhs))
+  } else if (auto *ltensor = dyn_cast<GML::Tensor>(lhs)) {
+    if (auto *rtensor = dyn_cast<GML::Tensor>(rhs))
       // Consider tensors equal if the underlying data pointer is the same.
       return ltensor->getBuffer() < rtensor->getBuffer();
   }
@@ -264,23 +263,23 @@ bool M::Torch::valueLessThan(const LLCL::AnyAsyncValueRef &lhs,
 }
 
 size_t M::Torch::valueHash(const LLCL::AnyAsyncValueRef &value) {
-  if (List *list = dyn_cast<List>(value))
+  if (auto *list = dyn_cast<List>(value))
     return std::hash<ListLike>()(*list);
-  else if (Tuple *tuple = dyn_cast<Tuple>(value))
+  else if (auto *tuple = dyn_cast<Tuple>(value))
     return std::hash<ListLike>()(*tuple);
-  else if (Dict *dict = dyn_cast<Dict>(value))
+  else if (auto *dict = dyn_cast<Dict>(value))
     return std::hash<Dict>()(*dict);
-  else if (None *none = dyn_cast<None>(value))
+  else if (auto *none = dyn_cast<None>(value))
     return std::hash<None>()(*none);
-  else if (std::string *stringValue = dyn_cast<std::string>(value))
+  else if (auto *stringValue = dyn_cast<std::string>(value))
     return std::hash<std::string>()(*stringValue);
-  else if (double *doubleValue = dyn_cast<double>(value))
+  else if (auto *doubleValue = dyn_cast<double>(value))
     return std::hash<double>()(*doubleValue);
-  else if (int64_t *longValue = dyn_cast<int64_t>(value))
+  else if (auto *longValue = dyn_cast<int64_t>(value))
     return std::hash<int64_t>()(*longValue);
-  else if (bool *boolValue = dyn_cast<bool>(value))
+  else if (auto *boolValue = dyn_cast<bool>(value))
     return std::hash<bool>()(*boolValue);
-  else if (GML::Tensor *tensor = dyn_cast<GML::Tensor>(value))
+  else if (auto *tensor = dyn_cast<GML::Tensor>(value))
     return reinterpret_cast<size_t>(tensor->getBuffer());
   else
     return std::numeric_limits<size_t>::max();

@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This is a file provides YAMLIO serialization and deserialization interfaces
+// This file provides YAMLIO serialization and deserialization interfaces
 // for types found in GenericML such as TensorSpec and QuantSpec.
 //
 //===----------------------------------------------------------------------===//

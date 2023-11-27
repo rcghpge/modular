@@ -234,4 +234,41 @@ TEST_F(ValueTest, YamlTest1) {
   ASSERT_EQ(dict1, dict2);
 }
 
+TEST_F(ValueTest, YamlTest2) {
+
+  Tuple tuple;
+  tuple.getElements().push_back(
+      LLCL::AnyAsyncValueRef::createReady<double>(getRuntime(), 1.5f));
+
+  tuple.getElements().push_back(
+      LLCL::AnyAsyncValueRef::createReady<bool>(getRuntime(), true));
+
+  Dict dict1;
+
+  dict1.getElements()[Variant(
+      LLCL::AnyAsyncValueRef::createReady<Tuple>(getRuntime(), tuple))] =
+      LLCL::AnyAsyncValueRef::createReady<double>(getRuntime(), 3.5f);
+
+  // Test YAML string.
+  std::string ystring = toYamlString(dict1);
+
+  ASSERT_EQ(ystring, "---\n"
+                     "dict:\n"
+                     "  - key:\n"
+                     "      tuple:\n"
+                     "        tuple:\n"
+                     "          - double:          1.5\n"
+                     "          - bool:            true\n"
+                     "    value:\n"
+                     "      double:          3.5\n"
+                     "...\n");
+
+  llvm::yaml::Input yin(ystring);
+
+  Dict dict2;
+  yin >> dict2;
+
+  ASSERT_EQ(dict1, dict2);
+}
+
 } // namespace
