@@ -7,6 +7,7 @@
 #include "GenericML/Driver/ExecutionDriver.h"
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "GenericML/Driver/DriverInternals.h"
+#include "GenericML/FormatYAML/FormatYAML.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/Tensor.h"
 #include "Kernels/Misc.h"
@@ -188,25 +189,6 @@ static LogicalResult printDiagIfError(const AnyAsyncValueRef &res) {
   }
   return success();
 }
-
-/// TensorResultInfo struct and corresponding MappingTraits to help write output
-/// information to YAML when --result-output-style=binary.
-namespace {
-struct TensorResultInfo {
-  std::string name;
-  std::string shape;
-};
-} // namespace
-
-LLVM_YAML_IS_SEQUENCE_VECTOR(TensorResultInfo)
-
-template <>
-struct llvm::yaml::MappingTraits<TensorResultInfo> {
-  static void mapping(IO &io, TensorResultInfo &info) {
-    io.mapRequired("name", info.name);
-    io.mapRequired("shape", info.shape);
-  }
-};
 
 /// Helper to wite YAML with tensor result info.
 static LogicalResult

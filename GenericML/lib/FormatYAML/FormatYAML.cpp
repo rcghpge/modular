@@ -12,6 +12,7 @@
 #include "GenericML/FormatYAML/FormatYAML.h"
 #include "GenericML/Support/ModelSpec.h"
 #include "GenericML/Support/QuantSpec.h"
+#include "GenericML/Support/ResultInfo.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
 #include "llvm/Support/Regex.h"
@@ -361,4 +362,15 @@ M::loadModelSpecFromYAML(std::unique_ptr<llvm::MemoryBuffer> yamlBuffer) {
   if (yin.error())
     return Error("unable to parse the model spec from the YAML buffer");
   return modelSpec;
+}
+
+void llvm::yaml::MappingTraits<M::TensorResultInfo>::mapping(
+    IO &io, M::TensorResultInfo &info) {
+  io.mapRequired("name", info.name);
+  io.mapRequired("shape", info.shape);
+}
+
+void llvm::yaml::MappingTraits<std::shared_ptr<M::ResultInfo>>::mapping(
+    IO &io, std::shared_ptr<M::ResultInfo> &info) {
+  info->map(io);
 }
