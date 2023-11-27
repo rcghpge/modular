@@ -107,6 +107,7 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
   GET_SYMBOL(freeCompileConfig, M_freeCompileConfig);
   GET_SYMBOL(setNumThreads, M_setNumThreads);
   GET_SYMBOL(setModelPath, M_setModelPath);
+  GET_SYMBOL(setDevice, M_setDevice);
 
   auto useKernelsOr =
       fallibleGetSymbol(dylib, "M_useKernelsFrom", useKernelsFrom);

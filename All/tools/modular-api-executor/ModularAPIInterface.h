@@ -72,6 +72,7 @@ public:
   decltype(&M_freeTensorSpec) freeTensorSpec = nullptr;
 
   decltype(&M_executeModelSync) executeModelSync = nullptr;
+  decltype(&M_setDevice) setDevice = nullptr;
 };
 } // namespace M
 

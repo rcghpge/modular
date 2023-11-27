@@ -158,6 +158,9 @@ public:
       cl::desc("Paths to mojo packages containing mojo kernel definitions used "
                "to replace MO and Framework ops.")};
 
+  cl::opt<bool> gpu{"gpu", cl::desc("Enable execution using a GPU device."),
+                    cl::init(false)};
+
   /// Reads a model specification from the YAML file set via the
   /// "model-specification" option.
   ErrorOr<ModelSpec> readModelSpecification() {
@@ -519,6 +522,8 @@ int main(int argc, char **argv) {
   CompileConfigPtr compileConfig = {api.newCompileConfig(),
                                     api.freeCompileConfig};
   api.setModelPath(compileConfig.get(), clOptions.inputFilename.c_str());
+  if (clOptions.gpu)
+    api.setDevice(compileConfig.get(), "cuda", true, 1);
   if (!clOptions.exportedName.empty())
     api.setExportedName(compileConfig.get(), clOptions.exportedName.c_str());
 

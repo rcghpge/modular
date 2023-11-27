@@ -15,7 +15,7 @@
 namespace M {
 class DriverConfig {
 public:
-  enum OptionKind { kTF, kTorch, kMOF, kONNX, kKernelLibrary };
+  enum OptionKind { kTF, kTorch, kMOF, kONNX, kKernelLibrary, kDevice };
 
   DriverConfig(OptionKind kind, llvm::StringLiteral name)
       : Kind(kind), configName(name) {}
@@ -46,6 +46,30 @@ public:
 
 private:
   std::filesystem::path kernelLibraryPath;
+};
+
+class DeviceConfig : public DriverConfig {
+public:
+  DeviceConfig(std::string defaultDeviceLabel, bool enableExtraDevices,
+               size_t deviceID)
+      : DriverConfig(OptionKind::kDevice, "device-configuration"),
+        defaultDeviceLabel(std::move(defaultDeviceLabel)),
+        enableExtraDevices(enableExtraDevices), deviceID(deviceID) {}
+
+  static bool classof(const DriverConfig *config) {
+    return config->getKind() == OptionKind::kDevice;
+  }
+
+  const std::string &getDefaultDeviceLabel() const {
+    return defaultDeviceLabel;
+  }
+  bool shouldEnableExtraDevices() const { return enableExtraDevices; }
+  size_t getDeviceID() const { return deviceID; }
+
+private:
+  std::string defaultDeviceLabel;
+  bool enableExtraDevices;
+  size_t deviceID;
 };
 
 } // namespace M
