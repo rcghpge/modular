@@ -6,11 +6,13 @@
 
 #include "GenericML/BenchmarkCLI/Main.h"
 #include "Config/Version.h"
+#include "GenericML/BenchmarkCLI/APIBridge.h"
 #include "GenericML/BenchmarkCLI/InputGenerationDefaults.h"
 #include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
 #include "GenericML/BenchmarkCLI/InputGenerator.h"
 #include "GenericML/BenchmarkCLI/MLPerfIntegration.h"
 #include "LLCL/Runtime/Runtime.h"
+#include "PyTorch/API/modular/c/pytorch/config.h"
 #include "Support/CommandLine.h"
 #include "Support/ErrorOr.h"
 #include "mlperf-loadgen/loadgen.h"
@@ -95,29 +97,25 @@ static ErrorOr<RuntimeContextPtr> makeRuntimeContext(M_Status *status,
   return std::move(context);
 }
 
-static ErrorOr<CompiledModelPtr> compileModel(const ClOptions &opts,
-                                              M_RuntimeContext *runtimeContext,
-                                              M_Status *status) {
-  CompileConfigPtr compileConfig(M_newCompileConfig(), M_freeCompileConfig);
-  if (!compileConfig)
-    return Error("Failed to create M_CompileConfig (out of memory?)");
-
-  if (opts.customOpsPath != "") {
-    M_useKernelsFrom(compileConfig.get(), opts.customOpsPath.c_str(), status);
-    if (M_isError(status))
-      return Error(M_getError(status));
+static ErrorOrSuccess setTorchInputSpecs(M_CompileConfig *config,
+                                         const InputGenerationSchema &schema) {
+  if (!schema.inputs)
+    return success();
+  std::vector<TensorSpecPtr> specOwners;
+  std::vector<M_TensorSpec *> specPointers;
+  for (const auto &input : *schema.inputs) {
+    if (!input.inputName || !input.shape)
+      continue;
+    TensorSpecPtr capiSpec =
+        tensorSpecToCAPI(input.inputName->c_str(), *input.shape);
+    if (!capiSpec)
+      return Error(llvm::Twine("M_newTensorSpec failed for input ") +
+                   *input.inputName + " (out of memory?)");
+    specPointers.push_back(capiSpec.get());
+    specOwners.push_back(std::move(capiSpec));
   }
-
-  M_setModelPath(compileConfig.get(), opts.modelPath.c_str());
-  CompiledModelPtr model(
-      M_compileModel(runtimeContext, compileConfig.get(), status),
-      M_freeCompiledModel);
-  if (!model)
-    return Error(M_getError(status));
-  M_waitForCompilation(model.get(), status);
-  if (M_isError(status))
-    return Error(M_getError(status));
-  return std::move(model);
+  M_setTorchInputSpecs(config, specPointers.data(), specPointers.size());
+  return success();
 }
 
 static ErrorOr<ModelPtr> prepareModel(M_RuntimeContext *runtimeContext,
@@ -241,25 +239,52 @@ int M::maxBenchmarkMain(int argc, char **argv) {
   llvm::outs() << "MLPerf scenario: " << opts.mlPerfScenario
                << " (use --mlperf-scenario to change)\n";
 
+  CompileConfigPtr compileConfig(M_newCompileConfig(), M_freeCompileConfig);
+  if (!compileConfig) {
+    llvm::errs()
+        << "Error: Failed to create M_CompileConfig (out of memory?)\n";
+    return EXIT_FAILURE;
+  }
+  M_setModelPath(compileConfig.get(), opts.modelPath.c_str());
+  if (!opts.customOpsPath.empty()) {
+    M_useKernelsFrom(compileConfig.get(), opts.customOpsPath.c_str(),
+                     status.get());
+    if (M_isError(status.get())) {
+      llvm::errs() << "Error: Unable to use custom kernels: "
+                   << M_getError(status.get()) << "\n";
+      return EXIT_FAILURE;
+    }
+  }
+  if (auto result =
+          setTorchInputSpecs(compileConfig.get(), inputGenerationSchema)) {
+    llvm::errs() << "Error: Failed to set input specs for PyTorch: "
+                 << result.getError() << "\n";
+    return EXIT_FAILURE;
+  }
+
   CompiledModelPtr compiledModel(nullptr, M_freeCompiledModel);
   llvm::outs() << "Compiling model... ";
   {
     auto start = std::chrono::steady_clock::now();
-    auto modelOr = compileModel(opts, runtimeContext.get(), status.get());
+    compiledModel =
+        CompiledModelPtr(M_compileModelSync(runtimeContext.get(),
+                                            compileConfig.get(), status.get()),
+                         M_freeCompiledModel);
     auto end = std::chrono::steady_clock::now();
     double duration =
         std::chrono::duration_cast<std::chrono::microseconds>(end - start)
             .count() *
         1.0e-6;
-    if (modelOr.isError()) {
+    if (!compiledModel) {
       llvm::outs() << "Error (took " << duration << "s)\n";
-      llvm::errs() << "Error compiling model: " << modelOr.getError() << "\n";
+      llvm::outs().flush();
+      llvm::errs() << "Error compiling model: " << M_getError(status.get())
+                   << "\n";
       M_emitTelemetryEvent(runtimeContext.get(), kTelemetryLoggerName,
-                           kTelemetryErrorEventName, modelOr.getError());
+                           kTelemetryErrorEventName, M_getError(status.get()));
       return EXIT_FAILURE;
     }
     llvm::outs() << "OK (took " << duration << "s)\n";
-    compiledModel = std::move(*modelOr);
   }
 
   applyInputGenerationDefaults(inputGenerationSchema, compiledModel.get(),
