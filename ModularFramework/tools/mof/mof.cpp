@@ -53,6 +53,18 @@ public:
       "kernel-library-paths",
       cl::desc("Paths to mojo packages containing mojo kernel definitions used "
                "to replace MO ops.")};
+
+  void fillInLoweringOptions(MO::MoToMgpOptions &moToMgpOptions) const {
+    moToMgpOptions.compiledFrameworkLabel = "mof";
+    moToMgpOptions.minimumCpuAlignment.setValue(minimumCpuAlignment);
+    moToMgpOptions.cacheDir.setValue(cacheDir);
+    moToMgpOptions.enableExtraDevices.setValue(enableExtraDevices);
+    moToMgpOptions.enableFakeCudaDevice.setValue(enableFakeCudaDevice);
+    moToMgpOptions.defaultDeviceLabel.setValue(defaultDeviceLabel);
+    moToMgpOptions.enableMemoryPlanning.setValue(enableMemoryPlanning);
+    moToMgpOptions.genVizSpec.setValue(genVizSpec);
+    moToMgpOptions.vizOutputDir.setValue(vizOutputDir);
+  }
 };
 
 class MOFContext {
@@ -230,19 +242,9 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
 
     // The MO graph dialect can be lowered to TFP, which is MEF emittable.
     MO::MoToMgpOptions moToMgpOptions;
+    if (options)
+      options->fillInLoweringOptions(moToMgpOptions);
     moToMgpOptions.compiledFrameworkLabel = "mof";
-    if (options) {
-      moToMgpOptions.minimumCpuAlignment.setValue(options->minimumCpuAlignment);
-      moToMgpOptions.cacheDir.setValue(options->cacheDir);
-      moToMgpOptions.enableExtraDevices.setValue(options->enableExtraDevices);
-      moToMgpOptions.enableFakeCudaDevice.setValue(
-          options->enableFakeCudaDevice);
-      moToMgpOptions.defaultDeviceLabel.setValue(options->defaultDeviceLabel);
-      moToMgpOptions.enableMemoryPlanning.setValue(
-          options->enableMemoryPlanning);
-      moToMgpOptions.genVizSpec.setValue(options->genVizSpec);
-      moToMgpOptions.vizOutputDir.setValue(options->vizOutputDir);
-    }
     moToMgpOptions.kernelLibraryPaths = mofCtx->getKernelLibraryPaths();
 
     std::unique_ptr<Runtime> runtime;
@@ -252,7 +254,8 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
       // TODO: Would prefer to just call mofCtx->run, however we have a
       // std::unique_ptr<MemoryBuffer> vs llvm::MemoryBufferRef mismatch.
       // So need to first refactor to use M::BufferRef throughout.
-      runtime = options->createRuntime();
+      runtime = std::make_unique<Runtime>(
+          createMallocAllocator(), createThreadPoolWorkQueue(/*numThreads=*/0));
       mofCtx->setRuntimeContextObjects(*runtime);
     }
 
