@@ -10,7 +10,7 @@ from ._utils import *
 from ._status import *
 from tensor import TensorSpec
 from ._dtypes import EngineDType
-from utils.vector import DynamicVector
+from utils.vector import DynamicVector2 as DynamicVector
 from .session import InferenceSession
 
 
@@ -76,12 +76,11 @@ struct EngineTensorSpec:
         let name_str: CString = name.data
         for i in range(rank):
             shape.push_back(spec[i])
-        let data = DTypePointer[DType.int64](shape.data)
         self.ptr = call_dylib_func[CTensorSpec](
-            lib, Self.NewTensorSpecFnName, data, rank, dtype, name_str
+            lib, Self.NewTensorSpecFnName, shape.data, rank, dtype, name_str
         )
         _ = name
-        shape._del_old()
+        _ = shape
         self.lib = lib
         self.session = session ^
 
@@ -95,7 +94,6 @@ struct EngineTensorSpec:
             shape.push_back(self[i])
         let dtype = self.ptr.get_dtype(self.lib)
         let spec = TensorSpec(dtype.to_dtype(), shape)
-        shape._del_old()
         return spec
 
     fn get_name(self) -> String:

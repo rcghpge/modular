@@ -7,7 +7,7 @@
 
 from tensor import TensorShape, TensorSpec
 
-from utils.vector import DynamicVector
+from utils.vector import DynamicVector2 as DynamicVector
 from utils._serialize import _serialize_as_tensor
 
 
@@ -52,8 +52,6 @@ fn test_tensor_shape():
     # CHECK: True
     print(TensorShape(shapes=shape_vec) == TensorShape(1, 2, 3, 4))
 
-    shape_vec._del_old()
-
 
 # CHECK: test_tensor_spec
 fn test_tensor_spec():
@@ -89,8 +87,6 @@ fn test_tensor_spec():
 
     # CHECK: 1x2x3x4xfloat32
     print(str(TensorSpec(DType.float32, shape_vec)))
-
-    shape_vec._del_old()
 
     # Check that dynamic dims work.
     # CHECK: True

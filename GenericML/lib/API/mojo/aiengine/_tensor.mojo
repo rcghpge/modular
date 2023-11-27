@@ -14,7 +14,7 @@ from tensor import Tensor
 from .session import InferenceSession
 from python import PythonObject
 from python import Python
-from utils.vector import DynamicVector
+from utils.vector import DynamicVector2 as DynamicVector
 from utils.list import Dim
 
 
@@ -248,9 +248,7 @@ struct EngineNumpyView:
             var array_shape = __get_address_as_lvalue(self.ptr.address).shape
             for dim in array_shape:
                 shape.push_back(dim.__index__())
-            let spec = TensorSpec(ty, shape)
-            shape._del_old()
-            return spec ^
+            return TensorSpec(ty, shape)
 
         if self.dtype().is_int8():
             return get_spec[DType.int8]()

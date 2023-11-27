@@ -4,7 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from utils.vector import DynamicVector
+from utils.vector import DynamicVector2 as DynamicVector
 
 from .graph import Graph
 from .mobicc import AttrMapPtr, ArityPtr, TuplePtr, SymbolPtr

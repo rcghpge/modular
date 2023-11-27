@@ -14,7 +14,7 @@ from tensor import Tensor, TensorShape, TensorSpec
 
 @value
 @register_passable
-struct Symbol:
+struct Symbol(CollectionElement):
     """Represents the result of an operation in `graph`, a graph input, or an
     MLIR block argument.
     """

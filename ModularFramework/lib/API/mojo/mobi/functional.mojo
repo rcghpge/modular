@@ -12,6 +12,7 @@ from .type import Type
 from .misc import Tup
 
 from tensor import Tensor, TensorShape, TensorSpec
+from utils.vector import DynamicVector2 as DynamicVector
 
 
 # TODO: Move to .ops/, break down.
@@ -23,20 +24,13 @@ from tensor import Tensor, TensorShape, TensorSpec
 
 
 fn _fill_vector[
-    type: AnyRegType
+    type: CollectionElement
 ](size: Int, value: type) -> DynamicVector[type]:
     var filled = DynamicVector[type]()
     for _ in range(size):
         filled.push_back(value)
 
     return filled
-
-
-fn _dynamic_vector[T: AnyRegType](list: VariadicList[T]) -> DynamicVector[T]:
-    var vec = DynamicVector[T]()
-    for value in list:
-        vec.push_back(value)
-    return vec
 
 
 def _has_dynamic_dims(shape: TensorShape) -> Bool:
@@ -97,7 +91,10 @@ def concat[axis: Int](*values: Symbol) -> Symbol:
 
 
 def concat[axis: Int](values: VariadicList[Symbol]) -> Symbol:
-    return concat[axis](_dynamic_vector(values))
+    var vec = DynamicVector[Symbol](len(values))
+    for value in values:
+        vec.append(value)
+    return concat[axis](vec)
 
 
 def concat[axis: Int](values: DynamicVector[Symbol]) -> Symbol:
@@ -138,15 +135,11 @@ def concat[axis: Int](values: DynamicVector[Symbol]) -> Symbol:
         dims.push_back(spec.shape[i])
     dims[positive_axis] = concat_dim
 
-    let result = g.op(
+    return g.op(
         "mo.concat",
         concat_args,
         TensorSpec(spec.dtype(), TensorShape(dims)),
     )[0]
-
-    concat_args._del_old()
-
-    return result
 
 
 def stack[axis: Int](values: DynamicVector[Symbol]) -> Symbol:
@@ -158,7 +151,10 @@ def stack[axis: Int](values: DynamicVector[Symbol]) -> Symbol:
 
 
 def stack[axis: Int](*values: Symbol) -> Symbol:
-    return stack[axis](_dynamic_vector(values))
+    var vec = DynamicVector[Symbol](len(values))
+    for value in values:
+        vec.append(value)
+    return stack[axis](vec)
 
 
 def squeeze(v: Symbol, axis: Int) -> Symbol:
@@ -250,7 +246,10 @@ def reshape(v: Symbol, *dims: Int) -> Symbol:
 def reshape(v: Symbol, *dims: Symbol) -> Symbol:
     var g = v.g
     let rank = len(dims)
-    let shape = stack[axis=0](_dynamic_vector(dims))
+    var vec = DynamicVector[Symbol](len(dims))
+    for dim in dims:
+        vec.append(dim)
+    let shape = stack[axis=0](vec)
 
     var reshape_dims = DynamicVector[Int]()
     for _ in range(rank):
@@ -452,10 +451,7 @@ def slice_(input: Symbol, slices: VariadicListMem[SliceSymbol]) -> Symbol:
     for i in range(len(slices), spec.rank()):
         dims.push_back(spec[i])
 
-    let shape = TensorShape(dims)
-    dims._del_old()
-
-    return slice_(input, shape, slices)
+    return slice_(input, dims, slices)
 
 
 def slice_(
@@ -494,11 +490,6 @@ def slice_(
     let start = stack[axis=0](starts)
     let stop = stack[axis=0](stops)
     let step = stack[axis=0](steps)
-
-    starts._del_old()
-    stops._del_old()
-    steps._del_old()
-
     return g.op(
         "mo.slice",
         (input, start, stop, step),

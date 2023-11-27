@@ -15,6 +15,7 @@ from sys.ffi import (
     _get_dylib_function as _ffi_get_dylib_function,
 )
 from tensor import TensorSpec
+from utils.vector import DynamicVector2 as DynamicVector
 
 
 struct _Attr:
@@ -295,8 +296,6 @@ fn spec_from_type(t: TypePtr) -> TensorSpec:
         dims_vec.push_back(dims[i].to_int())
 
     let result_spec = TensorSpec(DType._from_ui8(dtype.value), dims_vec)
-
-    dims_vec._del_old()
 
     rank.free()
     dims.free()
