@@ -363,4 +363,14 @@ def HackyPatternFusionForModconPass : Pass<"hacky-pattern-fusion", "GraphOp"> {
   }];
 }
 
+def DebugPrintAllTensorsPass : Pass<"debug-print-all-tensors", "GraphOp"> {
+  let summary = "Print all intermediate tensors as they are produced.";
+  let description = [{
+    This pass emits a mo.debug.tensor.print for every mo.tensor typed value
+    in the graph, including the inputs. The graph is topologically sorted to
+    ensure the model won't end up with a cycle due to the chains which must
+    serialize the underlying prints. For debugging only.
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_TD

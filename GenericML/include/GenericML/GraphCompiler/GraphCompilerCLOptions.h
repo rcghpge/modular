@@ -58,6 +58,13 @@ public:
       cl::desc("If genVizSpec, can be used to specify the output directory for "
                "the visualization spec."),
       cl::init("")};
+  cl::opt<bool> debugPrintAllTensors{
+      "debug-print-all-tensors",
+      cl::desc("If enabled, print all intermediate tensors. The usual "
+               "'result-output-style', 'print-precision' and "
+               "'binary-output-dir' flags may be used to control the "
+               "printed format and saved location."),
+      cl::init(false)};
 };
 
 } // namespace M::MO

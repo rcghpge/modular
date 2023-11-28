@@ -717,11 +717,15 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
 LogicalResult
 MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, printOp);
-  auto loweredTensor =
-      loweringState.lookupExecuteLoweredValue(printOp.getInput());
+
+  // Get the bufferized input.
+  MGP::BufferizedTensor bufferizedInput =
+      opLoweringState.getBufferizedInput(printOp.getInput());
+
   Value outChain = opLoweringState.debugTensorPrint(
-      loweringState.getCurrentExecuteChain(), loweredTensor,
-      printOp.getLabelAttr(), printOp.getInput().getType());
+      loweringState.getCurrentExecuteChain(), bufferizedInput.buffer,
+      bufferizedInput.tensorSpec, printOp.getLabelAttr(),
+      printOp.getInput().getType());
   loweringState.setCurrentExecuteChain(
       cast<TypedValue<MEF::ChainType>>(outChain));
   return success();

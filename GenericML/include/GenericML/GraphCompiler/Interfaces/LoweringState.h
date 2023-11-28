@@ -517,10 +517,12 @@ struct MOOpLoweringState {
         ->bufferConstant(builder, loc, context, value);
   }
 
-  Value debugTensorPrint(Value inChain, Value tensor, StringAttr label,
-                         Type moTensorType) {
+  Value debugTensorPrint(Value inChain, Value buffer,
+                         TypedValue<CpuTensorSpecType> tensorSpec,
+                         StringAttr label, Type moTensorType) {
     return getStorageBufferBuilder(moTensorType)
-        ->debugTensorPrint(builder, loc, context, inChain, tensor, label);
+        ->debugTensorPrint(builder, loc, context, inChain, buffer, tensorSpec,
+                           label);
   }
 
   Value bufferTransferFromHost(Value inChain,

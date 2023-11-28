@@ -1440,33 +1440,36 @@ def CpuTensorExtractShapeOp : MGP_Op<"cpu.tensor.extract.shape", [
 // DebugCpuTensorPrintOp
 //===----------------------------------------------------------------------===//
 
-def DebugCpuTensorPrintOp : MGP_Op<"debug.cpu.tensor.print"> {
+def DebugCpuTensorPrintOp : MGP_Op<"debug.cpu.tensor.print", [
+    TypesMatchWith<"Spec and buffer must agree on sizes",
+                   "spec", "buffer",
+                   "CpuBufferType::get($_self.cast<CpuTensorSpecType>())">]> {
   let summary = "Prints a debug representation of argument tensor. For "
                 "debugging and testing only.";
   let description = [{
-    Prints a debug representation of argument tensor. If a label attribute
-    is supplied the tensor contents is printed with that label. Otherwise
-    just the tensor metadata is printed. For debugging and testing only.
+    Prints a debug representation of argument tensor, given as a pair of
+    buffer and tensor spec. If a label attribute is supplied the tensor
+    contents is printed with that label. Otherwise just the tensor metadata
+    is printed. For debugging and testing only.
 
     Example:
     ```mlir
-    %tensor : !mgp.cpu.tensor<8x64xf32>
-    %ch0 : !mef.chain
-    %ch1 = mgp.debug.cpu.tensor.print %ch0, %tensor : !mgp.cpu.tensor<8x64xf32>
-    %ch1 : !mef.chain
-
-    %tensor : !mgp.cpu.tensor<8x64xf32>
-    %ch0 : !mef.chain
-    %ch1 = mgp.debug.cpu.tensor.print %ch0, %tensor, "label" : !mgp.cpu.tensor<8x64xf32>
-    %ch1 : !mef.chain
+    %buf: !mgp.cpu.buffer<2048>
+    %spec: !mgp.cpu.tensor_spec<8x64xf32>
+    %ch0: !mef.chain
+    %ch1 = mgp.debug.cpu.tensor.print %ch0, %buf, %spec, "label" : !mgp.cpu.tensor_spec<8x64xf32>
+    %ch1: !mef.chain
     ```
   }];
 
-  let arguments = (ins ChainType:$inChain, MGP_CpuTensorType: $tensor,
+  let arguments = (ins ChainType:$inChain,
+                       MGP_CpuBufferType: $buffer,
+                       MGP_CpuTensorSpecType: $spec,
                        DefaultValuedAttr<StrAttr, "\"\"">: $label);
   let results = (outs ChainType: $outChain);
   let assemblyFormat = [{
-    $inChain `,` $tensor (`,` $label^)? attr-dict `:` qualified(type($tensor))
+    $inChain `,` $buffer `,` $spec (`,` $label^)? attr-dict
+    `:` qualified(type($spec))
   }];
 }
 

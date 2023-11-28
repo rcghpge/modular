@@ -114,6 +114,9 @@ maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
 void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
                                  const MoToMgpOptions &opts,
                                  Runtime *optRuntime) {
+  if (opts.debugPrintAllTensors)
+    pm.addPass(MO::createDebugPrintAllTensorsPass());
+
   // Create the options for MoToPrimitives.
   MGP::MOToPrimitivesOptions moToPrimOpts;
   moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;

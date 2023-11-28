@@ -253,10 +253,12 @@ public:
                        Value srcBuffer,
                        TypedValue<MGP::CpuBufferType> dstBuffer) = 0;
 
-  /// Return the chain indicating tensor has been printed.
+  /// Return the chain indicating tensor, in the form of buffer and tensor spec,
+  /// has been printed.
   virtual Value debugTensorPrint(OpBuilder &builder, Location loc,
                                  TypedValue<MGP::ContextType> context,
-                                 Value inChain, Value tensor,
+                                 Value inChain, Value buffer,
+                                 TypedValue<MGP::CpuTensorSpecType> spec,
                                  StringAttr label) = 0;
 
   /// Returns the chain indicating the given archive with given kernel and
@@ -375,7 +377,8 @@ public:
 
   Value debugTensorPrint(OpBuilder &builder, Location loc,
                          TypedValue<MGP::ContextType> context, Value inChain,
-                         Value tensor, StringAttr label) override;
+                         Value buffer, TypedValue<MGP::CpuTensorSpecType> spec,
+                         StringAttr label) override;
 
   Value kernelLoadArchive(OpBuilder &builder, Location loc,
                           TypedValue<MGP::ContextType> context, Value inChain,

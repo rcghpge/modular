@@ -16,6 +16,7 @@
 #include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
 #include "GenericML/Support/CASConfig.h"
+#include "GenericML/Support/DebugPrint.h"
 #include "GenericML/Support/HostDeviceSpecs.h"
 #include "GenericML/Support/ModelCollection.h"
 #include "GraphRT/MEFExecutor/MEFFile.h"
@@ -64,6 +65,7 @@ public:
     moToMgpOptions.enableMemoryPlanning.setValue(enableMemoryPlanning);
     moToMgpOptions.genVizSpec.setValue(genVizSpec);
     moToMgpOptions.vizOutputDir.setValue(vizOutputDir);
+    moToMgpOptions.debugPrintAllTensors.setValue(debugPrintAllTensors);
   }
 };
 
@@ -129,6 +131,8 @@ public:
 
   // Transfer options from this context into the runtime.
   void setRuntimeContextObjects(Runtime &runtime) {
+    runtime.emplaceContextIfMissing<DebugTensorPrintOptions>(
+        debugTensorPrintOptions);
     runtime.emplaceContextIfMissing<CUDA::CUDARuntimeOptions>(
         cudaRuntimeOptions);
   }
@@ -150,6 +154,10 @@ private:
           SmallVector<std::string>(clOptions->kernelLibraryPaths.begin(),
                                    clOptions->kernelLibraryPaths.end());
       clOptions->overrideCUDARuntimeOptions(cudaRuntimeOptions);
+
+      debugTensorPrintOptions.style = clOptions->resultOutputStyle;
+      debugTensorPrintOptions.precision = clOptions->printPrecision;
+      debugTensorPrintOptions.binaryDir = clOptions->binaryOutputDir;
     }
 
     // Register the extra compile-time and runtime support.
@@ -167,6 +175,7 @@ private:
   SmallVector<std::string> kernelLibraryPaths;
   CASConfig commonCasConfig;
   CUDA::CUDARuntimeOptions cudaRuntimeOptions;
+  DebugTensorPrintOptions debugTensorPrintOptions;
 };
 
 } // namespace

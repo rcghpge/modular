@@ -3633,10 +3633,12 @@ def MO_LayerNormOp : MO_TensorOp<"layer_norm"> {
 }
 
 //===----------------------------------------------------------------------===//
-// Print
+// DebugTensorPrintOp
 //===----------------------------------------------------------------------===//
 
-def DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print"> {
+def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["preferResultsDevice"]>,
+]> {
   let summary = "Prints a debug representation of argument input";
   let description = [{
     Prints a debug representation of argument input. If a label attribute

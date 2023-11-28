@@ -122,6 +122,13 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
           "If genVizSpec, can be used to specify the output directory for "
           "the visualization spec."),
       llvm::cl::init("")};
+  Option<bool> debugPrintAllTensors{
+      *this, "debug-print-all-tensors",
+      llvm::cl::desc("If enabled, print all intermediate tensors. The usual "
+                     "'result-output-style', 'print-precision' and "
+                     "'binary-output-dir' flags may be used to control the "
+                     "printed format and saved location."),
+      llvm::cl::init(false)};
 };
 
 // Registers a runtime for use by the MO-to-MGP pipeline when invoked via the

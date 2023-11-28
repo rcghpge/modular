@@ -7,12 +7,12 @@
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
 #include "GenericML/Support/CompiledKernelsContext.h"
 #include "GenericML/Support/Context.h"
+#include "GenericML/Support/DebugPrint.h"
 #include "GenericML/Support/HostDeviceSpecs.h"
 #include "GenericML/Support/List.h"
 #include "GenericML/Support/StateSlot.h"
 #include "GenericML/Support/Tensor.h"
 #include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
-#include "Kernels/Misc.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AsyncValue.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
@@ -686,20 +686,26 @@ static void mgp_cpu_tensor_extract_shape(AsyncValueRef<Tensor> tensor,
 // mgp.debug.cpu.tensor.print
 //===----------------------------------------------------------------------===//
 
-static void mgp_debug_cpu_tensor_print(Chain inChain, const Tensor &tensor,
-                                       Result<Chain> outChain,
-                                       MEFAttr<StringRef> label,
-                                       Runtime &runtime) {
+static void
+mgp_debug_cpu_tensor_print(Chain inChain, const GML::BufferRef &buffer,
+                           const TensorSpec &spec, Result<Chain> outChain,
+                           MEFAttr<StringRef> label, Runtime &runtime) {
   if (label->empty()) {
-    llvm::outs() << tensor << "\n";
+    // Metadata only.
+    llvm::outs() << "Tensor(" << spec << ", " << buffer << ")\n";
+    llvm::outs().flush();
   } else {
-    llvm::outs() << *label << " = ";
-    if (auto errOr = Kernels::printTensor(tensor.getBuffer(), tensor.getSpec(),
-                                          Kernels::ResultOutputStyle::kCompact))
+    // Buffer contents, using tensor spec for shape.
+    DebugTensorPrintOptions opts;
+    DebugTensorPrintOptions *options =
+        runtime.getContext<DebugTensorPrintOptions>();
+    if (!options)
+      options = &opts;
+    std::string labelWithDevice = (Twine(*label) + "_" + kCPULabel).str();
+    if (auto errOr =
+            options->printTensor(buffer.getBuffer(), spec, labelWithDevice))
       return std::move(outChain).setToError(errOr.takeError());
-    llvm::outs() << "\n";
   }
-  llvm::outs().flush();
   std::move(outChain).emplace();
 }
 
@@ -713,9 +719,10 @@ static void mgp_debug_cpu_buffer_print(Chain inChain,
                                        MEFAttr<StringRef> label,
                                        Runtime &runtime) {
   if (label->empty()) {
+    //  Metadata only.
     llvm::outs() << buffer << "\n";
+    llvm::outs().flush();
   } else {
-    llvm::outs() << *label << " = ";
     TensorSpec spec;
     if (buffer.getSize() % sizeof(uint64_t) == 0) {
       spec = TensorSpec(
@@ -729,11 +736,16 @@ static void mgp_debug_cpu_buffer_print(Chain inChain,
       spec = TensorSpec({buffer.getSize()},
                         DType::getInt(8, /*isSigned=*/false).value());
     }
-    if (auto errOr = Kernels::printTensor(buffer.getBuffer(), spec,
-                                          Kernels::ResultOutputStyle::kCompact))
+    DebugTensorPrintOptions opts;
+    DebugTensorPrintOptions *options =
+        runtime.getContext<DebugTensorPrintOptions>();
+    if (!options)
+      options = &opts;
+    std::string labelWithDevice = (Twine(*label) + "_" + kCPULabel).str();
+    if (auto errOr =
+            options->printTensor(buffer.getBuffer(), spec, labelWithDevice))
       return std::move(outChain).setToError(errOr.takeError());
   }
-  llvm::outs().flush();
   std::move(outChain).emplace();
 }
 

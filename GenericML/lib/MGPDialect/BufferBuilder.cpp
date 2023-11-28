@@ -100,12 +100,13 @@ Value CpuBufferBuilder::bufferTransferToHost(
   llvm::llvm_unreachable_internal("not implemented");
 }
 
-Value CpuBufferBuilder::debugTensorPrint(OpBuilder &builder, Location loc,
-                                         TypedValue<MGP::ContextType> context,
-                                         Value inChain, Value tensor,
-                                         StringAttr label) {
+Value CpuBufferBuilder::debugTensorPrint(
+    OpBuilder &builder, Location loc, TypedValue<MGP::ContextType> context,
+    Value inChain, Value buffer, TypedValue<MGP::CpuTensorSpecType> spec,
+    StringAttr label) {
   return builder.create<DebugCpuTensorPrintOp>(loc, /*inChain=*/inChain,
-                                               /*tensor=*/tensor,
+                                               /*buffer=*/buffer,
+                                               /*spec=*/spec,
                                                /*label=*/label);
 }
 
