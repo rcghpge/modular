@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Support/ResultInfo.h"
-#include <llvm/Support/YAMLTraits.h>
+#include "llvm/Support/YAMLTraits.h"
 
 using namespace M;
 
@@ -34,4 +34,53 @@ TensorResultInfo &TensorResultInfo::operator=(TensorResultInfo &other) {
 void TensorResultInfo::map(llvm::yaml::IO &io) {
   io.mapRequired("name", name);
   io.mapRequired("shape", shape);
+}
+
+ProcessedResults::ProcessedResults() : resultInfos(), counter(0), tensors(){};
+
+void ProcessedResults::insertResultInfo(std::shared_ptr<ResultInfo> info) {
+  resultInfos.push_back(info);
+}
+
+std::string ProcessedResults::insertTensor(GML::Tensor *tensor) {
+  // If this tensor exists in the results already, instead of inserting it
+  // again, return the existing name.
+  if (containsTensor(tensor))
+    return getTensorName(tensor);
+  std::string name = "__tensor_" + std::to_string(counter) + "__";
+  tensors.insert({name, tensor});
+  ++counter;
+  return name;
+}
+
+void ProcessedResults::insertTensor(const std::string &name,
+                                    GML::Tensor *tensor) {
+  tensors.insert({name, tensor});
+}
+
+bool ProcessedResults::containsTensor(GML::Tensor *tensor) const {
+  for (auto &[existingName, existingTensor] : tensors) {
+    if (tensor->getBuffer() == existingTensor->getBuffer() &&
+        tensor->getSizeInBytes() == existingTensor->getSizeInBytes())
+      return true;
+  }
+  return false;
+}
+
+std::string ProcessedResults::getTensorName(GML::Tensor *tensor) const {
+  for (auto &[existingName, existingTensor] : tensors) {
+    if (tensor->getBuffer() == existingTensor->getBuffer() &&
+        tensor->getSizeInBytes() == existingTensor->getSizeInBytes())
+      return existingName;
+  }
+  return "";
+}
+
+SmallVector<std::shared_ptr<ResultInfo>> &ProcessedResults::getResultInfos() {
+  return resultInfos;
+}
+
+const std::map<std::string, GML::Tensor *> &
+ProcessedResults::getTensors() const {
+  return tensors;
 }

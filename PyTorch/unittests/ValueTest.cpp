@@ -68,6 +68,12 @@ static std::string toYamlString(T t) {
   return yamlString;
 }
 
+static void assertTensorBufferEqual(const GML::Tensor &lhs,
+                                    const GML::Tensor &rhs) {
+  ASSERT_EQ(lhs.getBuffer(), rhs.getBuffer());
+  ASSERT_EQ(lhs.getSizeInBytes(), rhs.getSizeInBytes());
+}
+
 TEST_F(ValueTest, ListTest) {
   List list1 = makeTensorList(3);
 
@@ -269,6 +275,143 @@ TEST_F(ValueTest, YamlTest2) {
   yin >> dict2;
 
   ASSERT_EQ(dict1, dict2);
+}
+
+// Tests serializing `VariantResultInfo` containing composed types to YAML.
+TEST_F(ValueTest, ResultInfoTest) {
+
+  Tuple tuple;
+  tuple.getElements().push_back(
+      LLCL::AnyAsyncValueRef::createReady<double>(getRuntime(), 1.5f));
+
+  tuple.getElements().push_back(
+      LLCL::AnyAsyncValueRef::createReady<bool>(getRuntime(), true));
+
+  Dict dict;
+
+  dict.getElements()[Variant(
+      LLCL::AnyAsyncValueRef::createReady<Tuple>(getRuntime(), tuple))] =
+      LLCL::AnyAsyncValueRef::createReady<TensorResultInfo>(
+          getRuntime(), "tensor1", "2x4xf32");
+
+  std::shared_ptr<ResultInfo> resultInfo = std::make_shared<VariantResultInfo>(
+      "outputName",
+      LLCL::AnyAsyncValueRef::createReady<Dict>(getRuntime(), dict));
+
+  // Test YAML string.
+  std::string ystring = toYamlString(resultInfo);
+
+  ASSERT_EQ(ystring, "---\n"
+                     "name:            outputName\n"
+                     "variant:\n"
+                     "  dict:\n"
+                     "    dict:\n"
+                     "      - key:\n"
+                     "          tuple:\n"
+                     "            tuple:\n"
+                     "              - double:          1.5\n"
+                     "              - bool:            true\n"
+                     "        value:\n"
+                     "          tensor-result-info:\n"
+                     "            name:            tensor1\n"
+                     "            shape:           2x4xf32\n"
+                     "...\n");
+}
+
+// Tests converting composed types containing `GML::Tensor` to composed types
+// containing `TensorResultInfo` for tensor leaf nodes.
+TEST_F(ValueTest, ResultConversionTest) {
+
+  // Create 4 different tensors.
+  GML::Tensor tensor = makeTensor(8);
+  LLCL::AnyAsyncValueRef wrappedTensor =
+      LLCL::AnyAsyncValueRef::createReady<GML::Tensor>(getRuntime(),
+                                                       std::move(tensor));
+
+  List list = makeTensorList(3);
+
+  Dict dict;
+
+  // Reuse some of the tensors occuring in the list in the dictionary as well.
+  dict.getElements()[Variant(LLCL::AnyAsyncValueRef::createReady<std::string>(
+      getRuntime(), "a"))] = list.getElements()[0];
+
+  dict.getElements()[Variant(LLCL::AnyAsyncValueRef::createReady<std::string>(
+      getRuntime(), "b"))] = wrappedTensor;
+
+  dict.getElements()[Variant(LLCL::AnyAsyncValueRef::createReady<std::string>(
+      getRuntime(), "c"))] = list.getElements()[2];
+
+  Tuple tuple;
+  tuple.getElements().push_back(
+      LLCL::AnyAsyncValueRef::createReady<List>(getRuntime(), list));
+  tuple.getElements().push_back(
+      LLCL::AnyAsyncValueRef::createReady<Dict>(getRuntime(), dict));
+
+  // Conversion for YAML and binary serialization.
+  LLCL::AnyAsyncValueRef in =
+      LLCL::AnyAsyncValueRef::createReady<Tuple>(getRuntime(), tuple);
+  ProcessedResults processedResults;
+  LLCL::AnyAsyncValueRef out =
+      Torch::getResultForBinaryOutput(in, processedResults);
+
+  std::shared_ptr<ResultInfo> resultInfo =
+      std::make_shared<VariantResultInfo>("outputName", out);
+
+  // Check that each tensor is only captured once.
+  ASSERT_EQ(processedResults.getTensors().size(), 4ULL);
+
+  // Check all tensors are collected in depth-first preorder, and named
+  // correctly.
+  assertTensorBufferEqual(*processedResults.getTensors().at("__tensor_0__"),
+                          list.getElements()[0].getValue().get<GML::Tensor>());
+  assertTensorBufferEqual(*processedResults.getTensors().at("__tensor_1__"),
+                          list.getElements()[1].getValue().get<GML::Tensor>());
+  assertTensorBufferEqual(*processedResults.getTensors().at("__tensor_2__"),
+                          list.getElements()[2].getValue().get<GML::Tensor>());
+  assertTensorBufferEqual(*processedResults.getTensors().at("__tensor_3__"),
+                          wrappedTensor.get<GML::Tensor>());
+
+  // Test YAML string.
+  std::string ystring = toYamlString(resultInfo);
+
+  ASSERT_EQ(ystring, "---\n"
+                     "name:            outputName\n"
+                     "variant:\n"
+                     "  tuple:\n"
+                     "    tuple:\n"
+                     "      - list:\n"
+                     "          list:\n"
+                     "            - tensor-result-info:\n"
+                     "                name:            __tensor_0__\n"
+                     "                shape:           '0xf32'\n"
+                     "            - tensor-result-info:\n"
+                     "                name:            __tensor_1__\n"
+                     "                shape:           1xf32\n"
+                     "            - tensor-result-info:\n"
+                     "                name:            __tensor_2__\n"
+                     "                shape:           2xf32\n"
+                     "      - dict:\n"
+                     "          dict:\n"
+                     "            - key:\n"
+                     "                string:          a\n"
+                     "              value:\n"
+                     "                tensor-result-info:\n"
+                     "                  name:            __tensor_0__\n"
+                     "                  shape:           '0xf32'\n"
+                     "            - key:\n"
+                     "                string:          b\n"
+                     "              value:\n"
+                     "                tensor-result-info:\n"
+                     "                  name:            __tensor_3__\n"
+                     "                  shape:           8xf32\n"
+                     "            - key:\n"
+                     "                string:          c\n"
+                     "              value:\n"
+                     "                tensor-result-info:\n"
+                     "                  name:            __tensor_2__\n"
+                     "                  shape:           2xf32\n"
+                     "...\n");
 }
 
 } // namespace
