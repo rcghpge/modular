@@ -24,6 +24,7 @@ add_modular_testsuite(check-genericml-integration
   tf-opt
 
   DEPENDS
+  mtorch
   tf
   )
 endif()
