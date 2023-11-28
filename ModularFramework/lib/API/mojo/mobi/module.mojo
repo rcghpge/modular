@@ -5,7 +5,9 @@
 # ===----------------------------------------------------------------------=== #
 
 from tensor import Tensor, TensorSpec, TensorShape
-from utils.vector import DynamicVector
+
+# FIXME(#26590): Migrate to DynamicVector.
+from utils.vector import _OldDynamicVector as DynamicVector
 
 from .misc import Arity, AttrMap, Symbol
 from .mobicc import (
@@ -18,8 +20,6 @@ from .mobicc import (
     GraphPtr,
 )
 from .type import Type
-
-# TODO: DynamicVectors all need a _del_old() call.
 
 
 fn _dynamic_vector(shape: TensorShape) -> DynamicVector[Int64]:

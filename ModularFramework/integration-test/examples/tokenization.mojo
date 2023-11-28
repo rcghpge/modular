@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 # RUN: mojo -I %tokenizer_dir %s | FileCheck "%s"
 from sentence_piece import BPETokenizer
-from utils.vector import DynamicVector2
+from utils.vector import DynamicVector2 as DynamicVector
 
 
 fn create_dummy_model() raises -> BPETokenizer:
