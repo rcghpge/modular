@@ -8,7 +8,7 @@
 
 from tensor import TensorSpec
 from testing import assert_equal
-from utils.vector import DynamicVector
+from utils.vector import DynamicVector2 as DynamicVector
 
 import mobi
 from mobi import mobicc
@@ -18,7 +18,7 @@ from mobi.mobicc import TypePtr
 fn test_types() raises:
     let m = mobicc.new_module()
     let scalarShape = DynamicVector[Int64]()
-    let intScalar = mobicc.si(m, 32, scalarShape.data, len(scalarShape))
+    let intScalar = mobicc.si(m, 32, Pointer[Int64](), 0)
 
     # CHECK: True
     print(mobicc.type_is_tensor(intScalar))
@@ -36,7 +36,9 @@ fn test_types() raises:
     var boolShape = DynamicVector[Int64]()
     boolShape.push_back(2)
     boolShape.push_back(3)
-    let boolTensor = mobicc.bool(m, boolShape.data, len(boolShape))
+    let boolTensor = mobicc.bool(
+        m, rebind[Pointer[Int64]](boolShape.data), len(boolShape)
+    )
 
     # CHECK: True
     print(mobicc.type_is_tensor(boolTensor))
@@ -55,8 +57,8 @@ fn test_types() raises:
     # CHECK: 3
     print(mobicc.tensor_dim(boolTensor, 1))
 
-    scalarShape._del_old()
-    boolShape._del_old()
+    _ = scalarShape
+    _ = boolShape
 
     # Test roundtripping between `TensorSpec` and `mobi.Type`.
     # CHECK-LABEL: type_from_spec
@@ -101,7 +103,9 @@ fn test_identity_graph() raises:
 
     var ins = mobicc.new_arity()
     let scalarShape = DynamicVector[Int64]()
-    let intScalar = mobicc.si(m, 32, scalarShape.data, len(scalarShape))
+    let intScalar = mobicc.si(
+        m, 32, rebind[Pointer[Int64]](scalarShape.data), len(scalarShape)
+    )
     mobicc.add_type(ins, intScalar)
 
     var outs = mobicc.new_arity()
@@ -130,7 +134,9 @@ fn test_tuple_copy() raises:
 
     var ins = mobicc.new_arity()
     let scalarShape = DynamicVector[Int64]()
-    let intScalar = mobicc.si(m, 32, scalarShape.data, len(scalarShape))
+    let intScalar = mobicc.si(
+        m, 32, rebind[Pointer[Int64]](scalarShape.data), len(scalarShape)
+    )
     mobicc.add_type(ins, intScalar)
 
     var outs = mobicc.new_arity()
@@ -165,7 +171,9 @@ fn test_const_op() raises:
 
     var outs = mobicc.new_arity()
     let scalarShape = DynamicVector[Int64]()
-    let intScalar = mobicc.si(m, 32, scalarShape.data, len(scalarShape))
+    let intScalar = mobicc.si(
+        m, 32, rebind[Pointer[Int64]](scalarShape.data), len(scalarShape)
+    )
     mobicc.add_type(outs, intScalar)
 
     let unknown = mobicc.unknown_loc(m)
