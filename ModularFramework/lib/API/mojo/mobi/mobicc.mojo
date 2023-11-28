@@ -245,12 +245,17 @@ fn debug_print_module(module: ModulePtr):
 
 
 fn module_to_string(module: ModulePtr) -> String:
-    let ret = MOBI_func[fn (ModulePtr) -> DTypePointer[DType.int8]](
+    var len: Int64 = 0
+    let ret = MOBI_func[fn (ModulePtr, Pointer[Int64]) -> Pointer[Int8]](
         "MOBI_moduleToString"
-    )(module)
-    let sRet = String(ret)
-    ret.free()
-    return sRet
+    )(module, Pointer[Int64].address_of(len))
+    return String(ret, len.to_int())
+
+
+fn module_to_bytecode(module: ModulePtr, file_name: String) -> Bool:
+    return MOBI_func[fn (ModulePtr, StringRef) -> Bool](
+        "MOBI_moduleToBytecode"
+    )(module, file_name._strref_dangerous())
 
 
 ### Symbol helers

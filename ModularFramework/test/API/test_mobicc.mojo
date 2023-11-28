@@ -4,8 +4,10 @@
 #
 # ===----------------------------------------------------------------------=== #
 # UNSUPPORTED: windows
-# RUN: mojo -I %mobi_pkg_dir %s | FileCheck %s
+# RUN: mojo -I %mobi_pkg_dir -D TEMP_DIR=%T %s | FileCheck %s
+# RUN: mt -execute %T/module_to_bytecode.bin | FileCheck %s --check-prefix=CHECK-MTB
 
+from sys.param_env import env_get_string
 from tensor import TensorSpec
 from testing import assert_equal
 from utils.vector import DynamicVector
@@ -13,6 +15,9 @@ from utils.vector import DynamicVector
 import mobi
 from mobi import mobicc
 from mobi.mobicc import TypePtr
+
+
+alias TEMP_DIR = Path(env_get_string["TEMP_DIR"]())
 
 
 fn test_types() raises:
@@ -206,6 +211,52 @@ fn test_const_op() raises:
     print(mobicc.module_to_string(m))
 
 
+fn test_bytecode_output() raises:
+    var m = mobicc.new_module()
+
+    let void = mobicc.new_arity()
+
+    var outs = mobicc.new_arity()
+    let scalarShape = DynamicVector[Int64]()
+    let intScalar = mobicc.si(
+        m, 32, rebind[Pointer[Int64]](scalarShape.data), len(scalarShape)
+    )
+    mobicc.add_type(outs, intScalar)
+
+    let unknown = mobicc.unknown_loc(m)
+    let g = mobicc.new_graph(m, unknown, "bytecode_output", void, outs)
+
+    var attrs = mobicc.new_attr_map()
+    var val: Int32 = 7
+    let a = mobicc.tensor_attr(
+        m,
+        "value",
+        Pointer[Int32].address_of(val).bitcast[AnyRegType](),
+        intScalar,
+        is_owned=False,
+    )
+    mobicc.add_attr(attrs, a)
+
+    let noIns = mobicc.new_tuple()
+    let x = mobicc.new_op(g, unknown, "mo.constant", noIns, outs, attrs)
+
+    var rets = mobicc.new_tuple()
+    let x0 = mobicc.get_symbol(x, 0)
+    mobicc.add_symbol(rets, x0)
+
+    let noAttrs = mobicc.new_attr_map()
+
+    _ = mobicc.new_op(g, unknown, "mo.output", rets, void, noAttrs)
+
+    # CHECK: True
+    # CHECK-MTB{LITERAL}: 'bytecode_output' returned tensor([[7]], dtype=si32, shape=[])
+    print(
+        mobicc.module_to_bytecode(
+            m, (TEMP_DIR / "module_to_bytecode.bin").__str__()
+        )
+    )
+
+
 fn main() raises:
     test_types()
     test_empty_module()
@@ -213,3 +264,4 @@ fn main() raises:
     test_identity_graph()
     test_tuple_copy()
     test_const_op()
+    test_bytecode_output()

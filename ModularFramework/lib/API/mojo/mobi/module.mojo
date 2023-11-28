@@ -176,3 +176,8 @@ struct Module:
     fn verify(self) raises:
         if not mobicc.module_verify(self.m):
             raise "Module did not verify"
+
+    fn save_to_file(self, path: Path) raises:
+        # TODO: Add an overload that takes FileHandle.
+        if not mobicc.module_to_bytecode(self.m, path.__str__()):
+            raise "Error writing to file"

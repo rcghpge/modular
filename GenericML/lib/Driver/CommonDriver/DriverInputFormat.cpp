@@ -109,6 +109,10 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
                           std::regex(R"(\bmtfl\.)"))) {
       return FileFormat::kMTFLDialect;
     }
+    if (std::regex_search(fileContents.begin(), fileContents.end(), m,
+                          std::regex(R"(\bmo\.)"))) {
+      return FileFormat::kMODialect;
+    }
   }
   return FileFormat::kUnknown;
 }

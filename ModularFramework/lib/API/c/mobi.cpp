@@ -125,18 +125,27 @@ MODULAR_API_EXPORT M_Module *MOBI_newModule() {
   return m;
 }
 
-MODULAR_API_EXPORT char *MOBI_moduleToString(const M_Module *const m) {
-  SmallVector<char> buffer;
-  raw_svector_ostream os(buffer);
+MODULAR_API_EXPORT char *MOBI_moduleToString(const M_Module *const m,
+                                             int64_t *len) {
+  std::string buffer;
+  raw_string_ostream os(buffer);
   m->module.getModuleOp()->print(os);
 
   // TODO: Do it without so many copies.
-  char *copy = reinterpret_cast<char *>(std::malloc(buffer.size() + 1));
+  char *copy = reinterpret_cast<char *>(std::malloc(buffer.size()));
   memcpy(copy, buffer.data(), buffer.size());
+  *len = buffer.size();
 
-  // Null terminate the module so that the caller can figure out its length.
-  copy[buffer.size()] = '\0';
   return copy;
+}
+
+MODULAR_API_EXPORT bool MOBI_moduleToBytecode(const M_Module *const m,
+                                              StringRef fileName) {
+  std::error_code ec;
+  raw_fd_stream fs(fileName, ec);
+  if (ec)
+    return false;
+  return writeBytecodeToFile(m->module.getModuleOp(), fs).succeeded();
 }
 
 MODULAR_API_EXPORT bool MOBI_moduleVerify(M_Module *m) {
