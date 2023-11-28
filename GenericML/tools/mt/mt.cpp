@@ -53,6 +53,10 @@ public:
 class GenericDriverCLOptions : public DriverCommandOptions,
                                public DriverInputFormatOptions,
                                public CommonCLOptions {
+private:
+  llvm::cl::OptionCategory GenericDriverCLOptionsCategory{
+      "Generic driver options"};
+
 public:
   using CommonCLOptions::CommonCLOptions;
 
@@ -61,7 +65,8 @@ public:
   //===--------------------------------------------------------------------===//
 
   cl::opt<std::string> loadLib{
-      "load", cl::desc("Load the specified framework directly."), cl::init("")};
+      "load", cl::desc("Load the specified framework directly."), cl::init(""),
+      llvm::cl::cat(GenericDriverCLOptionsCategory)};
 
   //===--------------------------------------------------------------------===//
   // Specify a 'scenario' to run.
@@ -72,19 +77,20 @@ public:
       cl::desc("List of scenarios to run. Only has meaning with the -execute "
                "command. Each scenario's strings are passed directly to the "
                "loaded framework."),
-  };
+      llvm::cl::cat(GenericDriverCLOptionsCategory)};
 
   //===--------------------------------------------------------------------===//
   // Sink for all unparsed options.
   //===--------------------------------------------------------------------===//
 
   cl::list<std::string> forceUnparsed{
-      "X", cl::desc("Arguments to be passed to the framework.")};
+      "X", cl::desc("Arguments to be passed to the framework."),
+      llvm::cl::cat(GenericDriverCLOptionsCategory)};
 
   cl::list<std::string> unparsed{
       llvm::cl::Sink,
       cl::desc("Arguments to be passed directly to the framework."),
-  };
+      llvm::cl::cat(GenericDriverCLOptionsCategory)};
 };
 } // namespace
 

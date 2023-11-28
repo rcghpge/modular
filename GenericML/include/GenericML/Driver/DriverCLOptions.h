@@ -70,6 +70,10 @@ private:
 /// can use these without duplicating them.
 class ExecutorDriverCLOptions : public LLCL::RuntimeCLOptions,
                                 public CommonCLOptions {
+private:
+  llvm::cl::OptionCategory ExecutorDriverOptionsCategory{
+      "Executor driver command line options"};
+
 public:
   using CommonCLOptions::CommonCLOptions;
 
@@ -80,24 +84,24 @@ public:
       "num-warmup",
       cl::desc("Execute inference model N times in warmup mode (default 0). "
                "This option is only used if \"num-runs\" > 1."),
-      cl::init(0)};
+      cl::init(0), llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   /// This specifies the number of times we should execute the model.
   cl::opt<unsigned> numRuns{
       "num-runs", cl::desc("Execute inference model N times (default 1)."),
-      cl::init(1)};
+      cl::init(1), llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   /// Benchmarks the model using the mlperf infrastructure.
   cl::opt<bool> benchmarkMode{
       "benchmark",
       cl::desc("If set, benchmarks the model using the mlperf infrastructure."),
-      cl::init(false)};
+      cl::init(false), llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   /// This specifies the name of the benchmark. Typically the benchmark name is
   /// the same as the model name.
-  cl::opt<std::string> benchmarkName{"benchmark-name",
-                                     cl::desc("The name of the benchmark."),
-                                     cl::init("benchmark")};
+  cl::opt<std::string> benchmarkName{
+      "benchmark-name", cl::desc("The name of the benchmark."),
+      cl::init("benchmark"), llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   /// This specifies the benchmarking workload scenario during benchmarking.
   /// The valid options are "online" and "batched"
@@ -112,7 +116,8 @@ public:
               BenchmarkScenario::kBatched, "batched",
               "Batched benchmarking execution mode. Corresponds to mlperf's "
               "'multi stream' model).")),
-      cl::init(BenchmarkScenario::kOnline)};
+      cl::init(BenchmarkScenario::kOnline),
+      llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   /// This specifies the output directory which will contain the benchmarking
   /// logs. The default is to query the MODULAR_DERIVED_PATH env variable, if
@@ -122,7 +127,8 @@ public:
       "benchmark-output-dir",
       cl::desc("The output directory to place the benchmarking logs."),
       cl::init(
-          llvm::sys::Process::GetEnv("MODULAR_DERIVED_PATH").value_or("."))};
+          llvm::sys::Process::GetEnv("MODULAR_DERIVED_PATH").value_or(".")),
+      llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   /// This specifies whether to prefix the benchmarking logs or not. If the
   /// option is not set, then the default prefix
@@ -132,21 +138,21 @@ public:
       cl::desc(
           "Don't add prefix to mlperf results. If this option is not "
           "used the prefix will be modular_<benchmark_name>_benchmark_log_"),
-      cl::init(false)};
+      cl::init(false), llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   cl::opt<uint64_t> benchmarkMinDurationMs{
       "benchmark-min-duration-ms",
       cl::desc(
           "Minimum duration to run the benchmarks, in milliseconds. "
           "Corresponds to mlperf's min_duration_ms configuration parameter."),
-      cl::init(10'000)};
+      cl::init(10'000), llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   cl::opt<uint64_t> benchmarkMinQueryCount{
       "benchmark-min-query-count",
       cl::desc(
           "Minimum number of queries to run in benchmark mode. Corresponds to "
           "mlperf's min_query_count configuration parameter."),
-      cl::init(100)};
+      cl::init(100), llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   /// This tells the execution driver how to initialize model inputs.
   cl::opt<InputGenerationKind> inputGenKind{
@@ -165,7 +171,8 @@ public:
           clEnumValN(InputGenerationKind::kOnes,
                      stringifyEnum(InputGenerationKind::kOnes),
                      "All input tensors are ones")),
-      cl::init(InputGenerationKind::kZeros)};
+      cl::init(InputGenerationKind::kZeros),
+      llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   cl::list<TensorSpec, bool, TensorSpecParser> inputSpecs{
       "input-specs",
@@ -173,14 +180,16 @@ public:
           "Specify input specifications. Required when the model has "
           "no or partially fixed shapes or data types. Input shapes "
           "('--input-shapes') can be provided additionally, but must match the"
-          "model's input specs.")};
+          "model's input specs."),
+      llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   cl::list<TensorShape, bool, TensorShapeParser> inputShapes{
       "input-shapes",
       cl::desc("Specify input shapes. Required when the model has "
                "dynamic input shapes. If specified and the model has static "
                "input shapes, it must match the model's input shapes. An "
-               "empty value means scalar.")};
+               "empty value means scalar."),
+      llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   cl::list<InputDataSpec, bool, InputDataParser> inputData{
       "input-data",
@@ -199,14 +208,15 @@ public:
           "input file may only be used once. If Cycle is specified, there is "
           "no limit on the number of times a tensor in the input file can be "
           "used. If Truncate is specified, the file size need not be an exact "
-          "multiple of the tensor size (the remainder will be ignored).")};
+          "multiple of the tensor size (the remainder will be ignored)."),
+      llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   cl::opt<size_t> minimumCpuAlignment{
       "minimum-cpu-alignment",
       cl::desc(
           "The minimum byte alignment for all CPU-allocated buffers. Default "
           "is 64 bytes for compatability with the stock TensorFlow runtime."),
-      cl::init(64)};
+      cl::init(64), llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   /// This tells the execution driver how to print output tensors;
   cl::opt<Kernels::ResultOutputStyle> resultOutputStyle{
@@ -226,18 +236,19 @@ public:
               "specified with --binary-output-dir=<output_dir>."),
           clEnumValN(Kernels::ResultOutputStyle::kNone, "none",
                      "Do not display any result details")),
-      cl::init(Kernels::ResultOutputStyle::kCompact)};
+      cl::init(Kernels::ResultOutputStyle::kCompact),
+      llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   cl::opt<unsigned> printPrecision{
       "print-precision",
       cl::desc("Specify precision of floating-point outputs (full-mode only)"),
-      cl::init(6)};
+      cl::init(6), llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   cl::opt<std::string> binaryOutputDir{
       "binary-output-dir",
       cl::desc(
           "If --result-output-style=binary, specify the output directory."),
-      cl::init("")};
+      cl::init(""), llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   /// If set, save the execution time of every non-warmup run to given file.
   cl::opt<std::string> saveTimings{
@@ -245,7 +256,7 @@ public:
       cl::desc("Optional filename to capture the execution latency (in "
                "nanonseconds) per run. Use '-' to output to stdout. Does "
                "not include warmup runs. Ignored in --benchmark mode."),
-      cl::init("")};
+      cl::init(""), llvm::cl::cat(ExecutorDriverOptionsCategory)};
 };
 
 /// This command enum specifies what action we're supposed to take, which is
@@ -267,6 +278,10 @@ enum class DriverCommand {
 /// This class provides the basic driver command options. It essentially
 /// exposes the `DriverCommand` enum with some additional options.
 class DriverCommandOptions {
+private:
+  llvm::cl::OptionCategory DriverCommandOptionsCategory{
+      "Common driver commands"};
+
 public:
   cl::opt<DriverCommand> command{
       cl::desc("Command to execute"),
@@ -281,7 +296,7 @@ public:
                      "Get the version of the loaded framework."),
           clEnumValN(DriverCommand::frameworkHelp, "framework-help",
                      "Get the framework help string.")),
-      llvm::cl::Required};
+      llvm::cl::Required, llvm::cl::cat(DriverCommandOptionsCategory)};
 
   /// Return true if the selected output format is binary and shouldn't be
   /// dumped to the console.
@@ -321,6 +336,10 @@ public:
 /// to determine whether there is an accuracy discrepancy between the TFLP and
 /// FlatBuffer outputs.
 class VerifyGraphDriverCLOptions : public ExecutorDriverCLOptions {
+private:
+  llvm::cl::OptionCategory VerifyGraphDriverCLOptionsCategory{
+      "Graph verification options"};
+
 public:
   using ExecutorDriverCLOptions::ExecutorDriverCLOptions;
 
@@ -328,13 +347,13 @@ public:
       "atol",
       cl::desc("Absolute tolerance for determining whether there's an accuracy "
                "discrepancy between TFLP and stock-tflite."),
-      cl::init(1.0E-5)};
+      cl::init(1.0E-5), llvm::cl::cat(VerifyGraphDriverCLOptionsCategory)};
 
   cl::opt<double> rtol{
       "rtol",
       cl::desc("Relative tolerance for determining whether there's an "
                "accuracy discrepancy between TFLP and stock-tflite."),
-      cl::init(1.0E-8)};
+      cl::init(1.0E-8), llvm::cl::cat(VerifyGraphDriverCLOptionsCategory)};
 };
 
 } // namespace M

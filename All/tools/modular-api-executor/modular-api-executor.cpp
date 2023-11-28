@@ -126,37 +126,47 @@ namespace {
 
 /// Contains the core CLI options for modular-api-executor.
 class ModularExecutorDriverCLOptions : public ExecutorDriverCLOptions {
+private:
+  llvm::cl::OptionCategory ExecutorDriverCLOptionsCategory{
+      "Modular executor driver command line options"};
+
 public:
   using ExecutorDriverCLOptions::ExecutorDriverCLOptions;
 
   cl::opt<std::string> exportedName{
       "exported-name",
       cl::desc("Signature name of TF model in model with multiple signature."),
-      cl::init("")};
+      cl::init(""), llvm::cl::cat(ExecutorDriverCLOptionsCategory)};
 
   cl::opt<std::string> modelSpecificationFile{
-      "model-specification", cl::desc("Path to the model specification file.")};
+      "model-specification", cl::desc("Path to the model specification file."),
+      llvm::cl::cat(ExecutorDriverCLOptionsCategory)};
 
   cl::opt<bool> frameworkVersion{
-      "framework-version",
-      cl::desc("Prints the external framework's version.")};
+      "framework-version", cl::desc("Prints the external framework's version."),
+      llvm::cl::cat(ExecutorDriverCLOptionsCategory)};
 
   cl::list<std::string> inputNames{
-      "input-names", cl::desc("Specify input names. This is always required "
-                              "and it must match the model's input names")};
+      "input-names",
+      cl::desc("Specify input names. This is always required "
+               "and it must match the model's input names"),
+      llvm::cl::cat(ExecutorDriverCLOptionsCategory)};
 
   cl::list<std::string> outputNames{
-      "output-names", cl::desc("Specify output names. This is always required "
-                               "and it must match the model's output names")};
+      "output-names",
+      cl::desc("Specify output names. This is always required "
+               "and it must match the model's output names"),
+      llvm::cl::cat(ExecutorDriverCLOptionsCategory)};
 
-  cl::opt<bool> printMetadata{"print-metadata",
-                              cl::desc("Display Model Input and output Specs"),
-                              cl::init(false)};
+  cl::opt<bool> printMetadata{
+      "print-metadata", cl::desc("Display Model Input and output Specs"),
+      cl::init(false), llvm::cl::cat(ExecutorDriverCLOptionsCategory)};
 
   cl::list<std::string> kernelLibraryPaths{
       "kernel-library-paths",
       cl::desc("Paths to mojo packages containing mojo kernel definitions used "
-               "to replace MO and Framework ops.")};
+               "to replace MO and Framework ops."),
+      llvm::cl::cat(ExecutorDriverCLOptionsCategory)};
 
   cl::opt<bool> gpu{"gpu", cl::desc("Enable execution using a GPU device."),
                     cl::init(false)};

@@ -44,16 +44,20 @@ namespace {
 class MOFDriverCLOptions : public DriverCLOptions,
                            public MO::GraphCompilerCLOptions,
                            public CUDA::CUDARuntimeCLOptions {
+private:
+  llvm::cl::OptionCategory MOFDriverCLOptionsCategory{"MOF driver options"};
+
 public:
   using DriverCLOptions::DriverCLOptions;
 
-  cl::opt<bool> enableJitKernels{"enable-jit-kernels",
-                                 cl::desc("Enable jitting of MOGG kernels."),
-                                 cl::init(true)};
+  cl::opt<bool> enableJitKernels{
+      "enable-jit-kernels", cl::desc("Enable jitting of MOGG kernels."),
+      cl::init(true), llvm::cl::cat(MOFDriverCLOptionsCategory)};
   cl::list<std::string> kernelLibraryPaths{
       "kernel-library-paths",
       cl::desc("Paths to mojo packages containing mojo kernel definitions used "
-               "to replace MO ops.")};
+               "to replace MO ops."),
+      llvm::cl::cat(MOFDriverCLOptionsCategory)};
 
   void fillInLoweringOptions(MO::MoToMgpOptions &moToMgpOptions) const {
     moToMgpOptions.compiledFrameworkLabel = "mof";
@@ -263,8 +267,7 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
       // TODO: Would prefer to just call mofCtx->run, however we have a
       // std::unique_ptr<MemoryBuffer> vs llvm::MemoryBufferRef mismatch.
       // So need to first refactor to use M::BufferRef throughout.
-      runtime = std::make_unique<Runtime>(
-          createMallocAllocator(), createThreadPoolWorkQueue(/*numThreads=*/0));
+      runtime = options->createRuntime();
       mofCtx->setRuntimeContextObjects(*runtime);
     }
 

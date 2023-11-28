@@ -85,6 +85,10 @@ inline bool isValidFileFormat(FileFormat format) {
 FileFormat sniffInputFormat(StringRef fileExtension, StringRef fileContents);
 
 class DriverInputFormatOptions {
+private:
+  llvm::cl::OptionCategory DriverInputFormatCategory{
+      "Driver input format options"};
+
 public:
   /// Allow the user to override the input file format.  The default is to
   /// autosense what the input is.
@@ -99,7 +103,7 @@ public:
                             "Input is a TF SavedModel directory"),
                  clEnumValN(FileFormat::kONNXProtobuf, "onnx-proto",
                             "Input is an ONNX model protobuf file")),
-      cl::init(FileFormat::kUnknown)};
+      cl::init(FileFormat::kUnknown), llvm::cl::cat(DriverInputFormatCategory)};
 
   /// Return the input format the user specified, allowing them to specify
   /// something manually on the command line, but otherwise autosensing an
