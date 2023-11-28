@@ -78,8 +78,8 @@ BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
     buffer = (void *)&kDummyTargetOfEmptyBuffer;
   }
 
-  auto profilerEntry =
-      BufferRefLifetimeProfilerEntry::create("mem.buffer.owned", [size]() {
+  auto profilerEntry = BufferRefLifetimeProfilerEntry::create(
+      StringLiteral("mem.buffer.owned"), [size]() {
         return Twine("size:").concat(Twine(size)).concat("B").str();
       });
 

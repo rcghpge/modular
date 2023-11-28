@@ -18,6 +18,7 @@
 #include "llvm/Support/Process.h"
 
 #include <filesystem>
+#include <variant>
 
 namespace llvm {
 class MemoryBuffer;

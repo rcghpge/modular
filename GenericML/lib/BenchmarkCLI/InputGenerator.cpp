@@ -10,6 +10,7 @@
 #include "Support/MathExtras.h"
 #include "modular/cpp/aliases.h"
 #include <type_traits>
+#include <variant>
 
 using namespace M;
 using namespace M::BenchmarkCLI;

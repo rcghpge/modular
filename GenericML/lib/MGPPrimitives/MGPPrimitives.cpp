@@ -757,8 +757,8 @@ static void mgp_debug_cpu_spin_wait(Chain inChain, Result<Chain> outChain,
                                     Runtime &runtime) {
   std::chrono::microseconds delay(*delayUs);
   addTask(runtime, [delay, outChain = outChain.copy()]() mutable {
-    TimeTraceScope scope(
-        MGPProfilerEntry::create("mgp.debug.cpu.spin_wait task"));
+    TimeTraceScope scope(MGPProfilerEntry::create(
+        StringLiteral("mgp.debug.cpu.spin_wait task")));
     size_t numLoops = 0;
     LLCL::BusyWaitSpinWaiter spinner(delay);
     while (!spinner.wait())
@@ -1022,7 +1022,7 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
 
   // Start tracing the kernel. This entry will also be used by any sub-tasks
   // launched by the kernel.
-  outputChain.trace(*dSummary);
+  outputChain.trace(InternableString(*dSummary));
 
   // Execute the kernel:
   //  - Asynchronous kernels will have copied everything out of the three

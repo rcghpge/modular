@@ -624,9 +624,17 @@ void MEFExecutor::decrementOperandsNotReadyCounts(
       LLVM_DEBUG(llvm::dbgs()
                  << "invoking primitive '"
                  << mefFile->decodedPrimitiveNames[decoder.opcode] << "\n");
-      {
+
+      if constexpr (PrimitiveProfilerEntry::isEnabled()) {
         TimeTraceScope scope(PrimitiveProfilerEntry::create(
-            mefFile->decodedPrimitiveNames[decoder.opcode]));
+            InternableString(mefFile->decodedPrimitiveNames[decoder.opcode])
+#if MEF_INCLUDE_LINE_NUMBERS
+                ,
+            frame.copyLocation().decode().line
+#endif
+            ));
+        invokableImpl(frame);
+      } else {
         invokableImpl(frame);
       }
     } else {
