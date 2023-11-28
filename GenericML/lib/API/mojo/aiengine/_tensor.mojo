@@ -14,7 +14,7 @@ from tensor import Tensor
 from .session import InferenceSession
 from python import PythonObject
 from python import Python
-from utils.vector import DynamicVector2 as DynamicVector
+from utils.vector import DynamicVector
 from utils.list import Dim
 
 

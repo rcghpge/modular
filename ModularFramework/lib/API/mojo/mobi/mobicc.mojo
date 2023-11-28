@@ -15,7 +15,7 @@ from sys.ffi import (
     _get_dylib_function as _ffi_get_dylib_function,
 )
 from tensor import TensorSpec
-from utils.vector import DynamicVector2 as DynamicVector
+from utils.vector import DynamicVector
 
 
 struct _Attr:
