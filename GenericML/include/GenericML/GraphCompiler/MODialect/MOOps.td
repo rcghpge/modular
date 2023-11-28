@@ -1591,6 +1591,7 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
     MO_ShapeLikeIfRanked:$strides,
     MO_ShapeLikeIfRanked:$dilations,
     MO_ShapeLikeIfRanked:$paddings,
+    BoolAttr:$count_boundary,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 

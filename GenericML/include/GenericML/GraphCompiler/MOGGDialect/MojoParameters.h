@@ -47,6 +47,10 @@ static constexpr llvm::StringLiteral PARAMETER_RESIZE_ANTIALIASING =
 /// Cum Sum op
 static constexpr llvm::StringLiteral PARAMETER_CUM_SUM_EXCLUSIVE = "exclusive";
 
+/// AvgPool op
+static constexpr llvm::StringLiteral PARAMETER_AVG_POOL_COUNT_BOUNDARY =
+    "count_boundary";
+
 /// ROI Align op
 static constexpr llvm::StringLiteral PARAMETER_ROI_ALIGNMENT = "aligned";
 static constexpr llvm::StringLiteral PARAMETER_ROI_ALIGNMENT_MODE = "mode";

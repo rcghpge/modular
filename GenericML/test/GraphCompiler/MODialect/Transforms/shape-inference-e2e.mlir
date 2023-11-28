@@ -663,13 +663,13 @@ mo.graph @avg_pool2d_dyn_input_dims(
   %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
 
-  // CHECK-NEXT: %[[RES:.*]] = mo.avg_pool(%[[INPUT]]) [filter_shape = %[[FS]], strides = %[[ST]], dilations = %[[DI]], paddings = %[[PA]]] : (
+  // CHECK-NEXT: %[[RES:.*]] = mo.avg_pool(%[[INPUT]]) [filter_shape = %[[FS]], strides = %[[ST]], dilations = %[[DI]], paddings = %[[PA]]] {count_boundary = false} : (
   // CHECK-SAME:   !mo.tensor<[[[D0]], 20, 30, [[D1]]], f32>,
   // CHECK-SAME:   !mo.tensor<[2], si64>,
   // CHECK-SAME:   !mo.tensor<[2], si64>,
   // CHECK-SAME:   !mo.tensor<[2], si64>
   // CHECK-SAME: ) -> !mo.tensor<[[[D0]], 9, 14, [[D1]]], f32>
-  %0 = mo.avg_pool(%input) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] : (
+  %0 = mo.avg_pool(%input) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] {count_boundary = false} : (
     !mo.tensor<[?, 20, 30, ?], f32>,
     !mo.tensor<[2], si64>,
     !mo.tensor<[2], si64>,

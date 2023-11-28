@@ -32,7 +32,7 @@ mo.graph @avg_pool_fallback_shape_func<() -> D0, D1, D2, D3>(
   %paddings: !mo.tensor<[4], si64>
 ) -> !mo.tensor<[D0, D1, D2, D3], f32> {
 
-  %res = mo.avg_pool<() -> D4, D5, D6, D7>(%input) [filter_shape = %filter_shape, strides = %strides, dilations = %dilations, paddings = %paddings] :
+  %res = mo.avg_pool<() -> D4, D5, D6, D7>(%input) [filter_shape = %filter_shape, strides = %strides, dilations = %dilations, paddings = %paddings] {count_boundary = false} :
     (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>)
     -> !mo.tensor<[D4, D5, D6, D7], f32>
 
