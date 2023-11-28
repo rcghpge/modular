@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 # RUN: mojo -I %tokenizer_dir %s | FileCheck "%s"
 from sentence_piece import BPETokenizer
-from utils.vector import DynamicVector
+from utils.vector import DynamicVector2
 
 
 fn create_dummy_model() raises -> BPETokenizer:
@@ -47,9 +47,6 @@ fn test_tokenization() raises:
         # CHECK-NOT: False
         print(tokens[i] == expected[i])
 
-    tokens._del_old()
-    expected._del_old()
-
     _ = model ^
 
 
@@ -61,8 +58,6 @@ fn test_decode() raises:
 
     # CHECK: abcab
     print(model.decode(token_ids))
-
-    token_ids._del_old()
 
     _ = model ^
 
