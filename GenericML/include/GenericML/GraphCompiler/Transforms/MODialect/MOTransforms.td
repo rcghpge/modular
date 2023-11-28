@@ -342,6 +342,36 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
   ];
 }
 
+def NameInputDimsPass : Pass<"name-input-dims", "ModuleOp"> {
+  let summary = "Symbolically refine the input shapes to the model by giving dimensions name.";
+  let description = [{
+    Give names to the input dimensions of inputs. Each name is a character long.
+
+    The character '-' is reserved for dimensions we don't care about renaming.
+
+    Dimensions with the same name have the same value at runtime.
+
+    We use this fact to make input shapes more specific:
+
+    Example1:
+      [4, ?, ?], [?, ?, ?], refined with --dim-names=ABC,ACB will become:
+      [4, B, C], [4, C, B]... (since 4 = A, and 4 is more "specific").
+
+    With "specificity" increasing with the following symbols:
+       ? (least specific) --> D1 --> 4 (integer, most specific)
+
+    Example2:
+      [3, 2, 5, ?, ?, 3], [3, 2, ?, 4, ?, 3], with dim-names=--AB--,--AB--:
+
+      [3, 2, 5, 4, ?, 3], [3, 2, 5, 4, ?, 3] as the last ? had no name due to
+      the '-'
+  }];
+  let options = [
+    ListOption<"inputShapeNames", "dim-names", "std::string",
+      "Named dimensions.">,
+  ];
+}
+
 def HackyPatternFusionForModconPass : Pass<"hacky-pattern-fusion", "GraphOp"> {
   let summary = "Apply pattern fusions that must be done prior to device"
                 " assignment.";
