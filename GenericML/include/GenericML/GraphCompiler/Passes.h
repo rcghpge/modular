@@ -132,6 +132,12 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
   ListOption<std::string> dimNames{
       *this, "dim-names",
       llvm::cl::desc("Named dimensions for each input of the MO graph")};
+  Option<size_t> softFusionNonHostKernelLimit{
+      *this, "soft-fusion-non-host-kernel-limit",
+      llvm::cl::desc(
+          "Maximum number of non-host kernels to place in a single soft fused "
+          "kernel."),
+      llvm::cl::init(3)};
 };
 
 // Registers a runtime for use by the MO-to-MGP pipeline when invoked via the

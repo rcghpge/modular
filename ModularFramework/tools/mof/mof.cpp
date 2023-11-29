@@ -70,6 +70,8 @@ public:
     moToMgpOptions.genVizSpec.setValue(genVizSpec);
     moToMgpOptions.vizOutputDir.setValue(vizOutputDir);
     moToMgpOptions.debugPrintAllTensors.setValue(debugPrintAllTensors);
+    moToMgpOptions.softFusionNonHostKernelLimit.setValue(
+        softFusionNonHostKernelLimit);
   }
 };
 

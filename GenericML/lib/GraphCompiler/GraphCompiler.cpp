@@ -199,10 +199,12 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     // Mark trivial kernels as being syncronous.
     pm.addPass(MOGG::createMarkTrivialKernels());
 
-    // Soft fuse trivial kernels where possible.
+    // Soft fuse trivial and non-host kernels where possible.
     if (opts.fuseJitKernels) {
       pm.addPass(MOGG::createInlineLambdas());
-      pm.addPass(MOGG::createSoftFuse());
+      MOGG::SoftFuseOptions softFuseOpts;
+      softFuseOpts.nonHostKernelLimit = opts.softFusionNonHostKernelLimit;
+      pm.addPass(MOGG::createSoftFuse(softFuseOpts));
     }
   }
 

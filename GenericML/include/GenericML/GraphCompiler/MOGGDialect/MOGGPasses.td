@@ -125,6 +125,9 @@ def SoftFuse: Pass<"soft-fuse", "MO::GraphOp"> {
     Option<"smallTensorLimit", "small-tensor-limit", "int64_t", "1024",
            "Maximum number of elements a tensor may have to be considered "
            "'small'. These may be stack allocated within the fused kernel.">,
+    Option<"nonHostKernelLimit", "non-host-kernel-limit", "size_t", "3",
+           "Maximum number of non-host kernels to place in a single fused "
+           "kernel.">,
   ];
 }
 

@@ -70,6 +70,12 @@ public:
                "'binary-output-dir' flags may be used to control the "
                "printed format and saved location."),
       cl::init(false), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+  cl::opt<size_t> softFusionNonHostKernelLimit{
+      "soft-fusion-non-host-kernel-limit",
+      cl::desc(
+          "Maximum number of non-host kernels to place in a single soft fused "
+          "kernel."),
+      cl::init(3), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 };
 
 } // namespace M::MO
