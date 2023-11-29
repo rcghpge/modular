@@ -18,12 +18,16 @@ struct CRuntimeConfig:
 
     alias FreeRuntimeConfigFnName = "M_freeRuntimeConfig"
     alias SetNumThreadsFnName = "M_setNumThreads"
+    alias SetDeviceFnName = "M_setDevice"
 
     fn set_num_threads(self, lib: DLHandle, num_threads: Int):
         call_dylib_func(lib, Self.SetNumThreadsFnName, self.ptr, num_threads)
 
     fn free(self, lib: DLHandle):
         call_dylib_func(lib, Self.FreeRuntimeConfigFnName, self)
+
+    fn set_device(self, borrowed lib: DLHandle, device: StringRef):
+        call_dylib_func(lib, Self.SetDeviceFnName, self, device.data, 0)
 
 
 struct RuntimeConfig:
@@ -32,13 +36,20 @@ struct RuntimeConfig:
 
     alias NewRuntimeConfigFnName = "M_newRuntimeConfig"
 
-    fn __init__(inout self, lib: DLHandle, num_threads: Optional[Int] = None):
+    fn __init__(
+        inout self,
+        lib: DLHandle,
+        device: StringRef = "cpu",
+        num_threads: Optional[Int] = None,
+    ):
         self.ptr = call_dylib_func[CRuntimeConfig](
             lib, Self.NewRuntimeConfigFnName
         )
         if num_threads:
             self.ptr.set_num_threads(lib, num_threads.value())
         self.lib = lib
+        if device == "cuda":
+            self.ptr.set_device(self.lib, device)
 
     fn __moveinit__(inout self, owned existing: Self):
         self.ptr = exchange[CRuntimeConfig](

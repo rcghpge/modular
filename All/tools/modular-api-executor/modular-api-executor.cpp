@@ -520,6 +520,8 @@ int main(int argc, char **argv) {
   StatusPtr status{api.newStatus(), api.freeStatus};
   RuntimeConfigPtr runtimeConfig{api.newRuntimeConfig(), api.freeRuntimeConfig};
   api.setNumThreads(runtimeConfig.get(), clOptions.getNumThreads());
+  if (clOptions.gpu)
+    api.setDevice(runtimeConfig.get(), "cuda", /*deviceID=*/0);
   RuntimeContextPtr context = {
       api.newRuntimeContext(runtimeConfig.get(), status.get()),
       api.freeRuntimeContext};
@@ -532,8 +534,6 @@ int main(int argc, char **argv) {
   CompileConfigPtr compileConfig = {api.newCompileConfig(),
                                     api.freeCompileConfig};
   api.setModelPath(compileConfig.get(), clOptions.inputFilename.c_str());
-  if (clOptions.gpu)
-    api.setDevice(compileConfig.get(), "cuda", true, 1);
   if (!clOptions.exportedName.empty())
     api.setExportedName(compileConfig.get(), clOptions.exportedName.c_str());
 

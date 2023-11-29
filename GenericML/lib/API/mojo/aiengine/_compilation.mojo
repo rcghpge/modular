@@ -38,12 +38,6 @@ struct CCompileConfig:
         if status:
             raise Error(status.__str__())
 
-    fn set_device(self, device: StringRef, borrowed lib: DLHandle):
-        if device == "cuda":
-            call_dylib_func(
-                lib, Self.SetDeviceFnName, self, device.data, True, 0
-            )
-
     fn free(self, borrowed lib: DLHandle):
         call_dylib_func(lib, Self.FreeCompileConfigFnName, self)
 
@@ -75,11 +69,6 @@ struct CompileConfig:
     fn set_replace_ops_path(self, path: StringRef) raises:
         """Replace Modular kernels with user-defined kernels."""
         self.ptr.replace_ops(path, self.lib)
-
-    fn set_device(self, device: StringRef):
-        """Sets the GPU device (if desired) to use for compilation and execution.
-        """
-        self.ptr.set_device(device, self.lib)
 
     fn borrow_ptr(self) -> CCompileConfig:
         return self.ptr

@@ -21,9 +21,11 @@ struct _InferenceSessionImpl:
     var context: RuntimeContext
     var ref_count: Atomic[DType.int64]
 
-    fn __init__(inout self, num_threads: Optional[Int] = None) raises:
+    fn __init__(
+        inout self, device: StringRef = "cpu", num_threads: Optional[Int] = None
+    ) raises:
         self.engine = _EngineImpl()
-        let config = RuntimeConfig(self.engine.lib, num_threads)
+        let config = RuntimeConfig(self.engine.lib, device, num_threads)
         self.context = RuntimeContext(config ^, self.engine.lib)
         self.ref_count = 1
 
@@ -31,7 +33,6 @@ struct _InferenceSessionImpl:
         self,
         model_path: StringRef,
         user_defined_ops_path: Optional[StringRef],
-        device: StringRef,
         owned session: InferenceSession,
     ) raises -> CompiledModel:
         """
@@ -44,7 +45,6 @@ struct _InferenceSessionImpl:
         if user_defined_ops_path:
             config.set_replace_ops_path(user_defined_ops_path.value())
         config.set_model_path(model_path)
-        config.set_device(device)
 
         return CompiledModel(
             self.context.borrow_ptr(),
@@ -57,14 +57,13 @@ struct _InferenceSessionImpl:
         self,
         model_path: StringRef,
         user_defined_ops_path: Optional[StringRef],
-        device: StringRef,
         owned session: InferenceSession,
     ) raises -> Model:
         """
         Compiles and initializes model given path.
         """
         let compiled_model = self.compile_model(
-            model_path, user_defined_ops_path, device, session.copy()
+            model_path, user_defined_ops_path, session.copy()
         )
         let model = Model(
             self.context.borrow_ptr(),
@@ -92,9 +91,13 @@ struct _InferenceSessionImpl:
 struct InferenceSession:
     var ptr: Pointer[_InferenceSessionImpl]
 
-    fn __init__(num_threads: Optional[Int] = None) raises -> Self:
+    fn __init__(
+        device: StringRef = "cpu", num_threads: Optional[Int] = None
+    ) raises -> Self:
         let ptr = Pointer[_InferenceSessionImpl].alloc(1)
-        __get_address_as_uninit_lvalue(ptr.address).__init__(num_threads)
+        __get_address_as_uninit_lvalue(ptr.address).__init__(
+            device, num_threads
+        )
         return Self {ptr: ptr}
 
     fn copy(self) -> Self:
@@ -104,7 +107,6 @@ struct InferenceSession:
     fn compile_model(
         self,
         model_path: StringRef,
-        device: StringRef = "cpu",
         user_defined_ops_path: Optional[StringRef] = None,
     ) raises -> CompiledModel:
         """
@@ -113,7 +115,7 @@ struct InferenceSession:
         model path.
         """
         return __get_address_as_lvalue(self.ptr.address).compile_model(
-            model_path, user_defined_ops_path, device, self.copy()
+            model_path, user_defined_ops_path, self.copy()
         )
 
     fn load_model(self, path: Path) raises -> Model:
@@ -125,7 +127,6 @@ struct InferenceSession:
         self,
         model_path: StringRef,
         user_defined_ops_path: Optional[StringRef] = None,
-        device: StringRef = "cpu",
     ) raises -> Model:
         """
         Replaces Modular ops with user-defined ops using the provided
@@ -133,7 +134,7 @@ struct InferenceSession:
         using the provided model path.
         """
         return __get_address_as_lvalue(self.ptr.address).load_model(
-            model_path, user_defined_ops_path, device, self.copy()
+            model_path, user_defined_ops_path, self.copy()
         )
 
     fn get_as_engine_tensor_spec(

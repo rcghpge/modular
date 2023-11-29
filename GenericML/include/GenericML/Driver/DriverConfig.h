@@ -50,25 +50,19 @@ private:
 
 class DeviceConfig : public DriverConfig {
 public:
-  DeviceConfig(std::string defaultDeviceLabel, bool enableExtraDevices,
-               size_t deviceID)
+  DeviceConfig(std::string device, size_t deviceID)
       : DriverConfig(OptionKind::kDevice, "device-configuration"),
-        defaultDeviceLabel(std::move(defaultDeviceLabel)),
-        enableExtraDevices(enableExtraDevices), deviceID(deviceID) {}
+        device(std::move(device)), deviceID(deviceID) {}
 
   static bool classof(const DriverConfig *config) {
     return config->getKind() == OptionKind::kDevice;
   }
 
-  const std::string &getDefaultDeviceLabel() const {
-    return defaultDeviceLabel;
-  }
-  bool shouldEnableExtraDevices() const { return enableExtraDevices; }
+  const std::string &getDevice() const { return device; }
   size_t getDeviceID() const { return deviceID; }
 
 private:
-  std::string defaultDeviceLabel;
-  bool enableExtraDevices;
+  std::string device;
   size_t deviceID;
 };
 
