@@ -21,9 +21,9 @@ struct _InferenceSessionImpl:
     var context: RuntimeContext
     var ref_count: Atomic[DType.int64]
 
-    fn __init__(inout self) raises:
+    fn __init__(inout self, num_threads: Optional[Int] = None) raises:
         self.engine = _EngineImpl()
-        let config = RuntimeConfig(self.engine.lib)
+        let config = RuntimeConfig(self.engine.lib, num_threads)
         self.context = RuntimeContext(config ^, self.engine.lib)
         self.ref_count = 1
 
@@ -92,9 +92,9 @@ struct _InferenceSessionImpl:
 struct InferenceSession:
     var ptr: Pointer[_InferenceSessionImpl]
 
-    fn __init__() raises -> Self:
+    fn __init__(num_threads: Optional[Int] = None) raises -> Self:
         let ptr = Pointer[_InferenceSessionImpl].alloc(1)
-        __get_address_as_uninit_lvalue(ptr.address).__init__()
+        __get_address_as_uninit_lvalue(ptr.address).__init__(num_threads)
         return Self {ptr: ptr}
 
     fn copy(self) -> Self:

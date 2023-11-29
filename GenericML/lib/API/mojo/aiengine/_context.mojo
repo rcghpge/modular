@@ -6,6 +6,7 @@
 
 from memory.unsafe import DTypePointer
 from sys.ffi import DLHandle
+from utils._optional import Optional
 from ._utils import *
 from ._status import Status
 
@@ -16,8 +17,12 @@ struct CRuntimeConfig:
     var ptr: DTypePointer[DType.invalid]
 
     alias FreeRuntimeConfigFnName = "M_freeRuntimeConfig"
+    alias SetNumThreadsFnName = "M_setNumThreads"
 
-    fn free(self, borrowed lib: DLHandle):
+    fn set_num_threads(self, lib: DLHandle, num_threads: Int):
+        call_dylib_func(lib, Self.SetNumThreadsFnName, self.ptr, num_threads)
+
+    fn free(self, lib: DLHandle):
         call_dylib_func(lib, Self.FreeRuntimeConfigFnName, self)
 
 
@@ -27,10 +32,12 @@ struct RuntimeConfig:
 
     alias NewRuntimeConfigFnName = "M_newRuntimeConfig"
 
-    fn __init__(inout self, borrowed lib: DLHandle):
+    fn __init__(inout self, lib: DLHandle, num_threads: Optional[Int] = None):
         self.ptr = call_dylib_func[CRuntimeConfig](
             lib, Self.NewRuntimeConfigFnName
         )
+        if num_threads:
+            self.ptr.set_num_threads(lib, num_threads.value())
         self.lib = lib
 
     fn __moveinit__(inout self, owned existing: Self):
@@ -56,7 +63,7 @@ struct CRuntimeContext:
 
     alias FreeRuntimeContextFnName = "M_freeRuntimeContext"
 
-    fn free(self, borrowed lib: DLHandle):
+    fn free(self, lib: DLHandle):
         call_dylib_func(lib, Self.FreeRuntimeContextFnName, self)
 
 
@@ -66,9 +73,7 @@ struct RuntimeContext:
 
     alias NewRuntimeContextFnName = "M_newRuntimeContext"
 
-    fn __init__(
-        inout self, owned config: RuntimeConfig, borrowed lib: DLHandle
-    ) raises:
+    fn __init__(inout self, owned config: RuntimeConfig, lib: DLHandle) raises:
         let status = Status(lib)
         self.ptr = call_dylib_func[CRuntimeContext](
             lib,
