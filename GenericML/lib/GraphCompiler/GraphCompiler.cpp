@@ -123,7 +123,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.compiledFrameworkLabel.hasValue())
     moToPrimOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
 
-  pm.addPass(MO::createNameInputDimsPass());
+  pm.addPass(MO::createNameInputDimsPass({opts.dimNames}));
 
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());

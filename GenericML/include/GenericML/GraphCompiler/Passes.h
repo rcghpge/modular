@@ -129,6 +129,9 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
                      "'binary-output-dir' flags may be used to control the "
                      "printed format and saved location."),
       llvm::cl::init(false)};
+  ListOption<std::string> dimNames{
+      *this, "dim-names",
+      llvm::cl::desc("Named dimensions for each input of the MO graph")};
 };
 
 // Registers a runtime for use by the MO-to-MGP pipeline when invoked via the
