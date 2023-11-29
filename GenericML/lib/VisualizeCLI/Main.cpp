@@ -114,6 +114,12 @@ int M::maxVisualizeMain(int argc, char **argv) {
   }
   (void)M::setProcessEnv("GENERATE_VISUALIZATION", "");
 
-  // TODO: Add to the spec and instructions for how to use with Netron.
+#ifndef MODULAR_PRODUCTION
+  llvm::outs() << "\nModular maxviz file saved to "
+                  "modular/.derived/visualization-specs/\n";
+
+  llvm::outs()
+      << "To visualize model, drop maxviz file into https://netron.app/\n";
+#endif // !MODULAR_PRODUCTION
   return EXIT_SUCCESS;
 }
