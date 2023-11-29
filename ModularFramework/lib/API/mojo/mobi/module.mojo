@@ -181,3 +181,8 @@ struct Module:
         # TODO: Add an overload that takes FileHandle.
         if not mobicc.module_to_bytecode(self.m, path.__str__()):
             raise "Error writing to file"
+
+    fn save_readable_ir_to_file(self, path: Path) raises:
+        # TODO: Add an overload that takes FileHandle.
+        with open(path.__str__(), "w") as f:
+            f.write(self.__str__())
