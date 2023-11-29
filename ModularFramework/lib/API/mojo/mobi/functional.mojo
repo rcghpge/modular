@@ -60,6 +60,22 @@ def arange(stop: Symbol) -> Symbol:
     return arange(g.constant(0, dtype), stop, g.constant(1, dtype))
 
 
+def arange(start: Symbol, stop: Symbol) -> Symbol:
+    var g = stop.g
+    let dtype = stop.type().unwrap_tensor().dtype()
+    return arange(start, stop, g.constant(1, dtype))
+
+
+def arange(start: Int, stop: Symbol, step: Int) -> Symbol:
+    # We can define this more generally, but hack it in a bit for now.
+    # The more general one is a bit awkward since it should be parameterized
+    # on dtype (unlike the others), and start/step should take a variant
+    # of SIMD[dtype, 1] | Symbol with conditional logic depending on the variant.
+    var g = stop.g
+    let dtype = stop.type().unwrap_tensor().dtype()
+    return arange(g.constant(start, dtype), stop, g.constant(step, dtype))
+
+
 def arange(start: Symbol, stop: Symbol, step: Symbol) -> Symbol:
     # Use stop to get the dtype since it's supplied in all cases
     var g = stop.g
@@ -245,6 +261,17 @@ def reshape(v: Symbol, *dims: Int) -> Symbol:
 
 def reshape(v: Symbol, *dims: Symbol) -> Symbol:
     var g = v.g
+    for dim in dims:
+        if dim.type().unwrap_tensor().spec().rank() > 1:
+            raise "reshape: got multi-dimensional shape"
+
+    if len(dims) == 1:
+        # Special case: we're maybe passing in a dynamic reshape shape
+        let shape = dims[0]
+        let shape_spec = shape.type().unwrap_tensor().spec()
+        if shape_spec[0] > 1:  # only specialize for statically known rank > 1
+            return reshape(shape_spec[0], v, shape)
+
     let rank = len(dims)
     var vec = DynamicVector[Symbol](len(dims))
     for dim in dims:
@@ -274,9 +301,20 @@ fn reshape(rank: Int, v: Symbol, shape: Symbol) raises -> Symbol:
     )
 
 
-def split[
-    axis: Int, N: Int, split_sizes: StaticIntTuple[N]
-](x: Symbol) -> Tuple[Symbol, Symbol]:
+fn reshape_like(v: Symbol, like: Symbol) raises -> Symbol:
+    let shape = like.type().unwrap_tensor().spec().shape
+    return reshape(v, shape_of(like), shape)
+
+
+def split[axis: Int](x: Symbol, split_sizes: (Int, Int)) -> (Symbol, Symbol):
+    let tup = split[axis, N=2](
+        x,
+        StaticIntTuple[2](split_sizes.get[0, Int](), split_sizes.get[1, Int]()),
+    )
+    return (tup[0], tup[1])
+
+
+def split[axis: Int, N: Int](x: Symbol, split_sizes: StaticIntTuple[N]) -> Tup:
     var g = x.g
     let sizes = g.constant(_tensor[N](TensorShape(N), split_sizes))
 
@@ -284,12 +322,11 @@ def split[
     let out_shape = _fill_vector(spec.rank(), g.m.dyn().to_int())
     let split_ty = g.m.type(TensorSpec(spec.dtype(), out_shape)).type_ptr()
 
-    let p = g.op(
+    return g.op(
         "mo.split",
         Tup(x, sizes, g.constant(axis)),
         g.m.types(split_ty, split_ty),
     )
-    return p[0], p[1]
 
 
 def transpose_matrix(matrix: Symbol) -> Symbol:
@@ -647,6 +684,11 @@ def pow(lhs: Symbol, rhs: Symbol) -> Symbol:
     return g.op("mo.pow", p, p.get[0, Symbol]().type())[0]
 
 
+def outer(lhs: Symbol, rhs: Symbol) -> Symbol:
+    """Outer product of two vectors. This function does not broadcast."""
+    return reshape(lhs, -1, 1) * reshape(rhs, 1, -1)
+
+
 # ===----------------------------------------------------------------------=== #
 #  Unary tensor ops
 # ===----------------------------------------------------------------------=== #
@@ -727,6 +769,51 @@ fn arg_max(v: Symbol, axis: Int64) raises -> Symbol:
         g.values(v, g.constant(axis)),
         m.arg_reduction_type(v.type().type_ptr(), axis),
     )[0]
+
+
+# ===----------------------------------------------------------------------=== #
+#  Complex
+#    These operations assume that all tensors have last dim == 2,
+#    representing real and imaginary parts.
+#    MO "supports" complex tensors but we don't have kernels for them yet,
+#    nor standard ways to convert real to complex and vice versa.
+# ===----------------------------------------------------------------------=== #
+
+
+def as_complex(real: Symbol, imag: Symbol) -> Symbol:
+    return stack[axis= -1](real, imag)
+
+
+def as_interleaved_complex(interleaved: Symbol) -> Symbol:
+    """Reshape the input tensor as complex, interpreting the last dimension
+    as being alternating (real, imag) pairs."""
+    var g = interleaved.g
+    let rank = interleaved.type().unwrap_tensor().spec().rank()
+    let shape = shape_of(interleaved)
+    let back_dims = g.constant(Tensor[DType.int64](TensorShape(2), -1, 2))
+    let new_shape = concat[axis=0](shape[: rank - 1], back_dims)
+    return reshape(interleaved, new_shape)
+
+
+def as_real(complex: Symbol) -> (Symbol, Symbol):
+    let real: Symbol
+    let imag: Symbol
+    real, imag = split[axis= -1](complex, (1, 1))
+    return (squeeze(real, axis=-1), squeeze(imag, axis=-1))
+
+
+def mul_complex(lhs: Symbol, rhs: Symbol) -> Symbol:
+    """Multiply complex-like real valued tensors."""
+    let l_real: Symbol
+    let l_imag: Symbol
+    let r_real: Symbol
+    let r_imag: Symbol
+    l_real, l_imag = as_real(lhs)
+    r_real, r_imag = as_real(rhs)
+
+    let out_real = (l_real * r_real) - (l_imag * r_imag)
+    let out_imag = (l_real * r_imag) + (l_imag * r_real)
+    return as_complex(out_real, out_imag)
 
 
 # ===----------------------------------------------------------------------=== #

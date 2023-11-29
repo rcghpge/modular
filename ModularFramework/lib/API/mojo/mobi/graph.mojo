@@ -170,3 +170,29 @@ struct Graph:
 
     fn output(inout self, outs: Tup) raises:
         _ = self.op("mo.output", outs, self.m.types())
+
+    fn arange[
+        dtype: DType
+    ](
+        inout self,
+        start: SIMD[dtype, 1],
+        stop: SIMD[dtype, 1],
+        step: SIMD[dtype, 1],
+    ) raises -> Symbol:
+        return self.op(
+            "mo.range",
+            (
+                self.constant[dtype](start),
+                self.constant[dtype](stop),
+                self.constant[dtype](step),
+            ),
+            TensorSpec(dtype, self.m.dyn().to_int()),
+        )[0]
+
+    fn arange[dtype: DType](inout self, stop: SIMD[dtype, 1]) raises -> Symbol:
+        return self.arange[dtype](0, stop, 1)
+
+    fn arange[
+        dtype: DType
+    ](inout self, start: SIMD[dtype, 1], stop: SIMD[dtype, 1]) raises -> Symbol:
+        return self.arange[dtype](start, stop, 1)
