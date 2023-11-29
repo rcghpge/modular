@@ -267,7 +267,8 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
       // TODO: Would prefer to just call mofCtx->run, however we have a
       // std::unique_ptr<MemoryBuffer> vs llvm::MemoryBufferRef mismatch.
       // So need to first refactor to use M::BufferRef throughout.
-      runtime = options->createRuntime();
+      runtime = std::make_unique<Runtime>(
+          createMallocAllocator(), createThreadPoolWorkQueue(/*numThreads=*/0));
       mofCtx->setRuntimeContextObjects(*runtime);
     }
 

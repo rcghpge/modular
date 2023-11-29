@@ -18,6 +18,7 @@
 #include "Support/ML/SizeUtils.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
@@ -426,7 +427,9 @@ executeModelSynchronously(Runtime &runtime, ExecutableModel &executableModel,
                              .concat(")")
                              .str()));
 #endif
+
   auto results = executableModel.execute(args);
+
 #if MODULAR_PARANOID
   // NOTE: Sleeping here would give the model a chance to attempt to
   // emplace it's final output results before we have called await.
@@ -462,12 +465,6 @@ executeModelSynchronously(Runtime &runtime, ExecutableModel &executableModel,
     }
   }
 #endif
-  if (auto &optProfiler = runtime.getProfiler()) {
-    // Make sure any borrowed strings accumulated during profiling are
-    // converted to owned strings before the MEFFile they are borrowed from
-    // is destroyed.
-    optProfiler->intern();
-  }
   return results;
 }
 
@@ -656,6 +653,14 @@ static void saveInputSpecs(ArrayRef<QuantTensorSpec> specs,
 LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
                           LLCL::Runtime &runtime,
                           const ExecutorDriverCLOptions &options) {
+  // Make sure any borrowed strings accumulated during profiling are
+  // converted to owned strings before the MEFFile they are borrowed from
+  // is destroyed.
+  auto scopeExit = llvm::make_scope_exit([&runtime]() {
+    if (auto &optProfiler = runtime.getProfiler()) {
+      optProfiler->intern();
+    }
+  });
 
   SmallVector<TensorSpec> userInputSpecs;
   if (!options.inputSpecs.empty()) {
@@ -727,6 +732,15 @@ M::runModelWithData(MLIRContext *ctx, const Model *model,
                     llvm::SmallVector<void *> &outputs) {
   assert(inputs.size() == model->getInputSpecs().size() &&
          "Wrong number of inputs to the model.");
+
+  // Make sure any borrowed strings accumulated during profiling are
+  // converted to owned strings before the MEFFile they are borrowed from
+  // is destroyed.
+  auto scopeExit = llvm::make_scope_exit([&runtime]() {
+    if (auto &optProfiler = runtime.getProfiler()) {
+      optProfiler->intern();
+    }
+  });
 
   // Setup the model.
   auto executableModelOr = model->setup(runtime);
