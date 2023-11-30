@@ -28,10 +28,17 @@ fn create_dummy_model() raises -> BPETokenizer:
 fn test_tokenization() raises:
     let model = create_dummy_model()
 
-    let encoded = model.encode("xabcabaabcdd")
+    let encoded = model.encode("xabcabaabcddxabcabaabcdd")
     let tokens = encoded.get_tokens()
 
     var expected = DynamicVector[StringRef]()
+    expected.push_back("x")
+    expected.push_back("abc")
+    expected.push_back("ab")
+    expected.push_back("a")
+    expected.push_back("ab")
+    expected.push_back("cd")
+    expected.push_back("d")
     expected.push_back("x")
     expected.push_back("abc")
     expected.push_back("ab")
@@ -53,10 +60,10 @@ fn test_tokenization() raises:
 fn test_decode() raises:
     let model = create_dummy_model()
 
-    let encoded = model.encode("abcab")
+    let encoded = model.encode("qrcbaabccdabqrcbaabccdab")
     let token_ids = encoded.get_token_ids()
 
-    # CHECK: abcab
+    # CHECK: qrcbaabccdabqrcbaabccdab
     print(model.decode(token_ids))
 
     _ = model ^
