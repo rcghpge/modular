@@ -17,6 +17,7 @@ add_modular_unittest(
   APIBridgeTest.cpp
   InputGeneratorTest.cpp
   MLPerfIntegrationTest.cpp
+  NPYMetadataTest.cpp
 
   LINK_LIBS PRIVATE
   BenchmarkCLI

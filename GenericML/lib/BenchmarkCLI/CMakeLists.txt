@@ -11,6 +11,7 @@ add_genericml_library(BenchmarkCLI
   InputGenerator.cpp
   MLPerfIntegration.cpp
   Main.cpp
+  NPYMetadata.cpp
 
   LINK_LIBS PUBLIC
   MSupport
