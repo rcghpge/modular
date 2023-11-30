@@ -14,7 +14,7 @@ from tensor import Tensor, TensorShape, TensorSpec
 
 @value
 @register_passable
-struct Symbol(CollectionElement):
+struct Symbol(CollectionElement, Stringable):
     """Represents the result of an operation in `graph`, a graph input, or an
     MLIR block argument.
     """
@@ -29,8 +29,12 @@ struct Symbol(CollectionElement):
         """Returns the type of this symbol."""
         return Type(mobicc.get_symbol_type(self.s))
 
-    fn __str__(self) raises -> String:
-        let spec = self.type().unwrap_tensor().spec()
+    fn __str__(self) -> String:
+        let spec: TensorSpec
+        try:
+            spec = self.type().unwrap_tensor().spec()
+        except e:
+            return "Symbol(unknown)"
         var shape = String("[")
         for i in range(spec.rank()):
             if i > 0:
@@ -95,6 +99,10 @@ struct Symbol(CollectionElement):
 
     fn transpose(self, dim1: Int, dim2: Int) raises -> Symbol:
         return G.transpose(self, dim1, dim2)
+
+    fn __neg__(self) raises -> Symbol:
+        var g = self.g
+        return g.op("mo.negative", self, self.type())[0]
 
     fn __matmul__(self, rhs: Symbol) raises -> Symbol:
         return G.matmul(self, rhs)
