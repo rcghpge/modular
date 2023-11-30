@@ -503,6 +503,41 @@ struct PropagateShapesPass
     MLIRContext *ctx = lhs.getContext();
 
     if (opcode == KGEN::POC::Max) {
+      // TODO: need a pattern matcher real bad...
+      // <max(add(A, B), B)>
+      // `lhs` and `rhs` are the operands to the max
+      auto maxAddOptimization = [&](TypedAttr maxLHS,
+                                    TypedAttr maxRHS) -> TypedAttr {
+        // Assume add operand is on the lhs.
+        auto lhsOp = dyn_cast<M::KGEN::ParamOperatorAttr>(maxLHS);
+        if (!lhsOp || lhsOp.getOpcode() != KGEN::POC::Add)
+          return {};
+
+        if (lhsOp.getNumOperands() != 2)
+          return {};
+
+        // ensure add operands are parameters
+        TypedAttr addLHS = lhsOp.getOperand(0);
+        TypedAttr addRHS = lhsOp.getOperand(1);
+
+        // If both params `A` and `B` are non negative, then `add(A, B) >= B`
+        // and the max of both sides is `add(A, B)`
+        if (!isDefinitelyNonNegative(addLHS) ||
+            !isDefinitelyNonNegative(addRHS))
+          return {};
+
+        // Trick to handle `<max(add(A, B), B)>` and `<max(add(A, B), A)>`
+        if (addLHS == rhs || addRHS == maxRHS)
+          return maxLHS;
+
+        return {};
+      };
+      // Check with both permutations
+      if (auto maybeMaxAddOptimization = maxAddOptimization(lhs, rhs))
+        return maybeMaxAddOptimization;
+      if (auto maybeMaxAddOptimization = maxAddOptimization(rhs, lhs))
+        return maybeMaxAddOptimization;
+
       // max(non_negative_expr, non_positive_expr) = non_negative_expr
       if (isDefinitelyNonNegative(lhs) && isDefinitelyNonPositive(rhs))
         return lhs;

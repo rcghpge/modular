@@ -297,3 +297,43 @@ mo.graph @range_based_folding<D0 -> O0, O1, O2, O3>(
   // CHECK-NEXT: mo.output<mul_nuw([[D0]], -1)> %[[OUT]] : !mo.tensor<[[[D0]], 0, 0, mul_nuw([[D0]], -1)], f32>
   mo.output<P0, P1, P2, P3> %out : !mo.tensor<[P0, P1, P2, P3], f32>
 }
+
+
+// This optimization simplifies statements of the form `<max(add(A, B), B)>`
+// where we know `A, B >= 0`. We know `A, B >= 0` because they appear in a shape.
+// As a result `A + B >= B` and `<max(add(A, B), B)> = add(A, B)`
+
+// CHECK-LABEL: mo.graph @propagate_max_add_optimization
+// CHECK-SAME: <
+// CHECK-SAME: [[A:[a-zA-Z0-9_]*]], [[B:[a-zA-Z0-9_]*]] ->
+// CHECK-SAME: [[D1:[a-zA-Z0-9_]*]], [[D2:[a-zA-Z0-9_]*]], [[D3:[a-zA-Z0-9_]*]], [[D4:[a-zA-Z0-9_]*]]
+// CHECK-SAME: >
+// CHECK-SAME: (
+// CHECK-SAME: [[IN:%[a-zA-Z0-9_]*]]: !mo.tensor<[[[A]], [[B]]], f32>
+// CHECK-SAME: ) ->
+// CHECK-SAME: (!mo.tensor<[[[D1]], 1], f32>, !mo.tensor<[[[D2]], 1], f32>,
+// CHECK-SAME: !mo.tensor<[[[D3]], 1], f32>, !mo.tensor<[[[D4]], 1], f32>)
+mo.graph @propagate_max_add_optimization<A, B -> D1, D2, D3, D4>
+  (%arg0: !mo.tensor<[A, B], f32>) ->
+  (!mo.tensor<[D1, 1], f32>, !mo.tensor<[D2, 1], f32>, !mo.tensor<[D3, 1], f32>, !mo.tensor<[D4, 1], f32>)
+{
+  kgen.param.declare expr1 = <max(add(A, B), B)>
+  kgen.param.declare expr2 = <max(add(A, B), A)>
+  kgen.param.declare expr3 = <max(A, add(A, B))>
+  kgen.param.declare expr4 = <max(B, add(A, B))>
+
+  // NOTE: no A and B exist which fufill this rebind safely, but we just have it
+  // to easily test the simplification of this MAX property.
+  // CHECK-NEXT: [[V0:%.*]] = mo.rebind([[IN]]) : !mo.tensor<[[[A]], [[B]]], f32> -> !mo.tensor<[add([[A]], [[B]]), 1], f32>
+  // CHECK-NEXT: [[V1:%.*]] = mo.rebind([[IN]]) : !mo.tensor<[[[A]], [[B]]], f32> -> !mo.tensor<[add([[A]], [[B]]), 1], f32>
+  // CHECK-NEXT: [[V2:%.*]] = mo.rebind([[IN]]) : !mo.tensor<[[[A]], [[B]]], f32> -> !mo.tensor<[add([[A]], [[B]]), 1], f32>
+  // CHECK-NEXT: [[V3:%.*]] = mo.rebind([[IN]]) : !mo.tensor<[[[A]], [[B]]], f32> -> !mo.tensor<[add([[A]], [[B]]), 1], f32>
+  %a = mo.rebind(%arg0): !mo.tensor<[A, B], f32> -> !mo.tensor<[expr1, 1], f32>
+  %b = mo.rebind(%arg0): !mo.tensor<[A, B], f32> -> !mo.tensor<[expr2, 1], f32>
+  %c = mo.rebind(%arg0): !mo.tensor<[A, B], f32> -> !mo.tensor<[expr3, 1], f32>
+  %d = mo.rebind(%arg0): !mo.tensor<[A, B], f32> -> !mo.tensor<[expr4, 1], f32>
+
+  // CHECK-NEXT: mo.output
+  // CHECK-SAME: [[V0]], [[V1]], [[V2]], [[V3]]
+  mo.output<expr1, expr2, expr3, expr4> %a, %b, %c, %d : !mo.tensor<[expr1, 1], f32>, !mo.tensor<[expr2, 1], f32>, !mo.tensor<[expr3, 1], f32>, !mo.tensor<[expr4, 1], f32>
+}
