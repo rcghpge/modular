@@ -9,6 +9,7 @@
 #include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
 #include "Support/MathExtras.h"
 #include "modular/cpp/aliases.h"
+#include "llvm/ADT/APFloat.h"
 #include <type_traits>
 #include <variant>
 
@@ -33,6 +34,15 @@ static bool parseElementValue(StringRef value, float &out,
   else
     errorReporter.reportError("Unable to parse '" + llvm::Twine(value) +
                               "' as f32 value");
+  return ok;
+}
+
+static bool parseElementValue(StringRef value, double &out,
+                              InputSchemaErrorReporter &errorReporter) {
+  bool ok = !value.getAsDouble(out);
+  if (!ok)
+    errorReporter.reportError("Unable to parse '" + llvm::Twine(value) +
+                              "' as f64 value");
   return ok;
 }
 
@@ -75,18 +85,53 @@ parseDefaultedElementValue(const std::optional<std::string> &value, T &out,
 
 namespace M::BenchmarkCLI::Detail {
 
+template <DType::Cases kDType>
+struct FloatGenerationTraits {};
+
+template <>
+struct FloatGenerationTraits<DType::f16> {
+  using StorageType = uint16_t;
+  using GenerationType = float;
+
+  static uint16_t generationToStorage(float v) {
+    APFloat f(v);
+    // Ignore floating point exceptions during conversion.
+    bool losesInfo;
+    static_cast<void>(f.convert(APFloat::IEEEhalf(),
+                                APFloat::rmNearestTiesToEven, &losesInfo));
+    // Also ignore info loss.
+    return static_cast<uint16_t>(f.bitcastToAPInt().getZExtValue());
+  }
+};
+
+template <>
+struct FloatGenerationTraits<DType::f32> {
+  using StorageType = float;
+  using GenerationType = float;
+};
+
+template <>
+struct FloatGenerationTraits<DType::f64> {
+  using StorageType = double;
+  using GenerationType = double;
+};
+
+template <DType::Cases kDType>
 class UniformFloatInputRandomDistribution final
     : public InputRandomDistribution {
+  using StorageType = typename FloatGenerationTraits<kDType>::StorageType;
+  using GenerationType = typename FloatGenerationTraits<kDType>::GenerationType;
+
 public:
-  explicit UniformFloatInputRandomDistribution(DType dtype, float min,
-                                               float max)
-      : InputRandomDistribution(dtype), min(min), max(max) {}
+  explicit UniformFloatInputRandomDistribution(GenerationType min,
+                                               GenerationType max)
+      : InputRandomDistribution(kDType), min(min), max(max) {}
 
   void fill(void *out, size_t numElements) const override;
 
 private:
-  float min;
-  float max;
+  GenerationType min;
+  GenerationType max;
 };
 
 template <typename T>
@@ -107,11 +152,25 @@ private:
 
 namespace BCD = BenchmarkCLI::Detail;
 
-void BCD::UniformFloatInputRandomDistribution::fill(void *out,
-                                                    size_t numElements) const {
-  assert(getDType() == DType::f32);
-  float *outF32 = static_cast<float *>(out);
-  fillWithRandomFloats({outF32, numElements}, min, max);
+template <DType::Cases kDType>
+void BCD::UniformFloatInputRandomDistribution<kDType>::fill(
+    void *out, size_t numElements) const {
+  using StorageType = typename BCD::FloatGenerationTraits<kDType>::StorageType;
+  using GenerationType =
+      typename BCD::FloatGenerationTraits<kDType>::GenerationType;
+  assert(getDType() == kDType);
+  MutableArrayRef<StorageType> outStorage{static_cast<StorageType *>(out),
+                                          numElements};
+  if constexpr (std::is_same_v<StorageType, GenerationType>) {
+    fillWithRandomFloats(outStorage, min, max);
+  } else {
+    std::uniform_real_distribution<GenerationType> distribution(min, max);
+    std::default_random_engine randEngine(/*seed=*/0);
+    std::generate(outStorage.begin(), outStorage.end(), [&]() {
+      return FloatGenerationTraits<kDType>::generationToStorage(
+          distribution(randEngine));
+    });
+  }
 }
 
 template <typename T>
@@ -122,16 +181,21 @@ void BCD::UniformIntegerInputRandomDistribution<T>::fill(
   fillWithRandomInts({outT, numElements}, min, max);
 }
 
+template <DType::Cases kDType>
 static std::unique_ptr<InputRandomDistribution>
 createUniformFloatInputRandomDistribution(
-    DType dtype, const InputGenerationRandomUniform &spec,
+    const InputGenerationRandomUniform &spec,
     InputSchemaErrorReporter &errorReporter) {
-  float min, max;
+  using GenerationType =
+      typename BCD::FloatGenerationTraits<kDType>::GenerationType;
+  GenerationType min, max;
   bool minOK = withinScope(errorReporter, "min", [&]() {
-    return parseDefaultedElementValue(spec.min, min, -1.0f, errorReporter);
+    return parseDefaultedElementValue(spec.min, min, GenerationType(-1),
+                                      errorReporter);
   });
   bool maxOK = withinScope(errorReporter, "max", [&]() {
-    return parseDefaultedElementValue(spec.max, max, 1.0f, errorReporter);
+    return parseDefaultedElementValue(spec.max, max, GenerationType(1),
+                                      errorReporter);
   });
   if (!minOK || !maxOK)
     return nullptr;
@@ -139,8 +203,8 @@ createUniformFloatInputRandomDistribution(
     errorReporter.reportError("'min' is greater than 'max'");
     return nullptr;
   }
-  return std::make_unique<BCD::UniformFloatInputRandomDistribution>(dtype, min,
-                                                                    max);
+  return std::make_unique<BCD::UniformFloatInputRandomDistribution<kDType>>(
+      min, max);
 }
 
 template <typename T>
@@ -172,9 +236,15 @@ M::BenchmarkCLI::createUniformInputRandomDistribution(
     DType dtype, const InputGenerationRandomUniform &spec,
     InputSchemaErrorReporter &errorReporter) {
   switch (dtype.getValue()) {
+  case DType::f16:
+    return createUniformFloatInputRandomDistribution<DType::f16>(spec,
+                                                                 errorReporter);
   case DType::f32:
-    return createUniformFloatInputRandomDistribution(dtype, spec,
-                                                     errorReporter);
+    return createUniformFloatInputRandomDistribution<DType::f32>(spec,
+                                                                 errorReporter);
+  case DType::f64:
+    return createUniformFloatInputRandomDistribution<DType::f64>(spec,
+                                                                 errorReporter);
   case DType::si8:
     return createUniformIntegerInputRandomDistribution<int8_t>(dtype, spec,
                                                                errorReporter);

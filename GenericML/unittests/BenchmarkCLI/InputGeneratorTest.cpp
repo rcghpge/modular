@@ -9,6 +9,7 @@
 #include "LLCL/Runtime/Runtime.h"
 #include "modular/c/tensor.h"
 #include "modular/cpp/aliases.h"
+#include "llvm/ADT/APFloat.h"
 #include "gtest/gtest.h"
 #include <limits>
 
@@ -175,6 +176,69 @@ TEST(UniformInputRandomDistribution, f32InvertedError) {
             errorReporter.errors);
 }
 
+TEST(UniformInputRandomDistribution, f64Default) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationRandomUniform spec;
+  auto dist =
+      createUniformInputRandomDistribution(DType::f64, spec, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(dist, nullptr);
+  std::array<double, 500> samples;
+  std::fill(samples.begin(), samples.end(),
+            std::numeric_limits<double>::quiet_NaN());
+  dist->fill(samples.data(), 500);
+  int lt_neg_1 = 0;
+  int lt_0 = 0;
+  int gt_1 = 0;
+  for (double sample : samples) {
+    if (sample < -1.0)
+      ++lt_neg_1;
+    if (sample < 0.0)
+      ++lt_0;
+    if (sample > 1.0)
+      ++gt_1;
+  }
+  EXPECT_EQ(0, lt_neg_1) << "Unexpectedly generated values less than -1";
+  EXPECT_EQ(0, gt_1) << "Unexpectedly generated values greater than 1";
+  // This one is technically non-deterministic, but it should only fail with a
+  // probability of 2^-500, which is almost never going to occur if the code is
+  // correct.
+  EXPECT_GT(lt_0, 0)
+      << "Should have generated at least a few values less than 0";
+}
+
+TEST(UniformInputRandomDistribution, f16Default) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationRandomUniform spec;
+  auto dist =
+      createUniformInputRandomDistribution(DType::f16, spec, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(dist, nullptr);
+  std::array<uint16_t, 500> samples;
+  std::fill(samples.begin(), samples.end(), 0xFFFFU);
+  dist->fill(samples.data(), 500);
+  int lt_neg_1 = 0;
+  int lt_0 = 0;
+  int gt_1 = 0;
+  for (uint16_t sampleAsUInt : samples) {
+    double sample =
+        APFloat(APFloat::IEEEhalf(), APInt(16, sampleAsUInt)).convertToDouble();
+    if (sample < -1.0)
+      ++lt_neg_1;
+    if (sample < 0.0)
+      ++lt_0;
+    if (sample > 1.0)
+      ++gt_1;
+  }
+  EXPECT_EQ(0, lt_neg_1) << "Unexpectedly generated values less than -1";
+  EXPECT_EQ(0, gt_1) << "Unexpectedly generated values greater than 1";
+  // This one is technically non-deterministic, but it should only fail with a
+  // probability of 2^-500, which is almost never going to occur if the code is
+  // correct.
+  EXPECT_GT(lt_0, 0)
+      << "Should have generated at least a few values less than 0";
+}
+
 TEST(UniformInputRandomDistribution, si32Default) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandomUniform spec;
@@ -305,9 +369,9 @@ TEST(UniformInputRandomDistribution, unsupportedType) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandomUniform spec;
   auto dist =
-      createUniformInputRandomDistribution(DType::f16, spec, errorReporter);
+      createUniformInputRandomDistribution(DType::f8, spec, errorReporter);
   EXPECT_EQ(nullptr, dist);
-  EXPECT_EQ((std::vector<ReportedError>{{{}, "Unsupported dtype f16"}}),
+  EXPECT_EQ((std::vector<ReportedError>{{{}, "Unsupported dtype f8"}}),
             errorReporter.errors);
 }
 
