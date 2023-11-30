@@ -100,6 +100,11 @@ struct FuseBroadcastsPass
       if (!kernel.getOutputParamDecls().empty())
         continue;
 
+      // Don't fuse reshapes into new API kernels until we figure out views
+      // TODO(26678)
+      if (kernel.getIsKGEN().value_or(false))
+        continue;
+
       int32_t preFuseNumOperands = kernel.getNumOperands();
 
       // For safety we check which have already been fused and won't fuse
