@@ -88,7 +88,7 @@ ErrorOr<std::string> getFileContentIdentity(const llvm::MemoryBufferRef &file,
 /// Saves an intermediate file with a dump of `module` if --saved-temps is set.
 inline void
 writeIntermediateFileIfRequested(const std::string &identifier, ModuleOp module,
-                                 CommonCLOptions *options,
+                                 const CommonCLOptions *options,
                                  const llvm::MemoryBufferRef &file) {
   std::string ext = "." + identifier + ".mlir";
   if (options && options->saveTemps) {

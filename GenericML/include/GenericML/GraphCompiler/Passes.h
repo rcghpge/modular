@@ -7,14 +7,17 @@
 #ifndef GENERICML_MO_GRAPHCOMPILER_PASSES_H
 #define GENERICML_MO_GRAPHCOMPILER_PASSES_H
 
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/GraphCompiler.h"
-#include "GenericML/GraphCompiler/GraphCompilerCLOptions.h"
 #include "LLCL/ForwardDecls.h"
+#include "Support/AlignedAlloc.h"
+#include "mlir/Pass/PassOptions.h"
 
 namespace M::MO {
 
-/// Collects all the options which influence buildMoToMgpPipeline.
+/// Collects mlir options which influence buildMoToMgpPipeline.
+///
+/// See also GraphCompilerCLOptions for the corresponding mt command line
+/// options.
 struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
   Option<std::string> compiledFrameworkLabel{
       *this, "compiled-framework-label",

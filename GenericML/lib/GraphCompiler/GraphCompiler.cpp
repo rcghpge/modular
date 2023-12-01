@@ -117,12 +117,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.debugPrintAllTensors)
     pm.addPass(MO::createDebugPrintAllTensorsPass());
 
-  // Create the options for MoToPrimitives.
-  MGP::MOToPrimitivesOptions moToPrimOpts;
-  moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
-  if (opts.compiledFrameworkLabel.hasValue())
-    moToPrimOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
-
   pm.addPass(MO::createNameInputDimsPass({opts.dimNames}));
 
   pm.addPass(mlir::createCSEPass());
@@ -223,12 +217,17 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   // If we are jitting then we need to compile the jit kernels as well.
   MOGG::JitCompileKernelsOptions jitOpts;
   jitOpts.useSearch = opts.useKgenSearch;
-  jitOpts.minimumCpuAlignment = moToPrimOpts.minimumCpuAlignment;
+  jitOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
   jitOpts.saveTempPrefix = opts.saveTempPrefix;
   jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
   jitOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
   pm.addPass(MOGG::createJitCompileKernels(jitOpts));
 
+  // Create the options for MoToPrimitives.
+  MGP::MOToPrimitivesOptions moToPrimOpts;
+  moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
+  if (opts.compiledFrameworkLabel.hasValue())
+    moToPrimOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
   pm.addPass(MGP::createMOToPrimitives(moToPrimOpts));
 
   if (opts.cacheBuffersAcrossExecutes)

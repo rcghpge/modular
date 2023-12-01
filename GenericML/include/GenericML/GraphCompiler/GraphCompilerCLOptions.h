@@ -7,11 +7,16 @@
 #ifndef GENERICML_GRAPHCOMPILER_GRAPHCOMPILERCLOPTIONS_H
 #define GENERICML_GRAPHCOMPILER_GRAPHCOMPILERCLOPTIONS_H
 
+#include "GenericML/GraphCompiler/Passes.h"
 #include "Support/CommandLine.h"
 
 namespace M::MO {
 
-/// Collects command line options which influence M::MO::buildMoToMgpPipeline.
+/// Collects mt command line options which influence
+/// M::MO::buildMoToMgpPipeline.
+///
+/// See also MoToMgpOptions for the corresponding MLIR xxx-opt command line
+/// options.
 class GraphCompilerCLOptions {
 private:
   llvm::cl::OptionCategory GraphCompilerCLOptionsCategory{
@@ -52,11 +57,13 @@ public:
       cl::desc("If true, statically plan as many buffer allocations as "
                "possible."),
       cl::init(false), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+
   cl::opt<bool> genVizSpec{
       "gen-viz-spec",
       cl::desc(
           "If true, generates a visualization spec compatible with Netron."),
       cl::init(false), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+
   cl::opt<std::string> vizOutputDir{
       "viz-output-dir",
       cl::desc("If genVizSpec, can be used to specify the output directory for "
@@ -70,12 +77,43 @@ public:
                "'binary-output-dir' flags may be used to control the "
                "printed format and saved location."),
       cl::init(false), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+
   cl::opt<size_t> softFusionNonHostKernelLimit{
       "soft-fusion-non-host-kernel-limit",
       cl::desc(
           "Maximum number of non-host kernels to place in a single soft fused "
           "kernel."),
       cl::init(3), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+
+  cl::opt<bool> cacheBuffersAcrossExecutes{
+      "cache-buffers-across-executes",
+      cl::desc("If true, allow all buffer allocations to be cached and reused "
+               "across calls to the model's 'execute'. If a buffer's size "
+               "changes between calls due to dynamic shapes then the buffer "
+               "will be reallocated."),
+      cl::init(false), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+
+  cl::list<std::string> kernelLibraryPaths{
+      "kernel-library-paths",
+      cl::desc("Paths to mojo packages containing mojo kernel definitions used "
+               "to replace TF and MO ops."),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+
+  void overrideLoweringOptions(MoToMgpOptions &moToMgpOptions) const {
+    moToMgpOptions.cacheDir = cacheDir.getValue();
+    moToMgpOptions.enableExtraDevices = enableExtraDevices.getValue();
+    moToMgpOptions.enableFakeCudaDevice = enableFakeCudaDevice.getValue();
+    moToMgpOptions.defaultDeviceLabel = defaultDeviceLabel.getValue();
+    moToMgpOptions.enableMemoryPlanning = enableMemoryPlanning.getValue();
+    moToMgpOptions.genVizSpec = genVizSpec.getValue();
+    moToMgpOptions.vizOutputDir = vizOutputDir.getValue();
+    moToMgpOptions.debugPrintAllTensors = debugPrintAllTensors.getValue();
+    moToMgpOptions.softFusionNonHostKernelLimit =
+        softFusionNonHostKernelLimit.getValue();
+    moToMgpOptions.cacheBuffersAcrossExecutes =
+        cacheBuffersAcrossExecutes.getValue();
+    moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
+  }
 };
 
 } // namespace M::MO

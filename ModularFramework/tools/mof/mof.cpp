@@ -14,9 +14,7 @@
 #include "GenericML/Driver/Utils.h"
 #include "GenericML/GraphCompiler/GraphCompilerCLOptions.h"
 #include "GenericML/GraphCompiler/Passes.h"
-#include "GenericML/MGPPrimitives/MGPPrimitives.h"
 #include "GenericML/Support/CASConfig.h"
-#include "GenericML/Support/DebugPrint.h"
 #include "GenericML/Support/HostDeviceSpecs.h"
 #include "GenericML/Support/ModelCollection.h"
 #include "GraphRT/MEFExecutor/MEFFile.h"
@@ -24,7 +22,6 @@
 #include "MOF/Driver/DriverImpl.h"
 #include "MOF/ModularModel/ModularModelFile.h"
 #include "Support/ErrorOr.h"
-#include "Support/FileSystemExtras.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -50,25 +47,43 @@ private:
 public:
   using DriverCLOptions::DriverCLOptions;
 
-  cl::list<std::string> kernelLibraryPaths{
-      "kernel-library-paths",
-      cl::desc("Paths to mojo packages containing mojo kernel definitions used "
-               "to replace MO ops."),
-      llvm::cl::cat(MOFDriverCLOptionsCategory)};
+  void overrideLoweringOptions(MOFLoweringOptions &mofLoweringOptions,
+                               MO::MoToMgpOptions &moToMgpOptions) const {
+    overrideCUDARuntimeOptions(mofLoweringOptions.cudaRuntimeOptions);
+    mofLoweringOptions.debugTensorPrintOptions.style = resultOutputStyle;
+    mofLoweringOptions.debugTensorPrintOptions.precision = printPrecision;
+    mofLoweringOptions.debugTensorPrintOptions.binaryDir = binaryOutputDir;
 
-  void fillInLoweringOptions(MO::MoToMgpOptions &moToMgpOptions) const {
+    GraphCompilerCLOptions::overrideLoweringOptions(moToMgpOptions);
     moToMgpOptions.compiledFrameworkLabel = "mof";
-    moToMgpOptions.minimumCpuAlignment.setValue(minimumCpuAlignment);
-    moToMgpOptions.cacheDir.setValue(cacheDir);
-    moToMgpOptions.enableExtraDevices.setValue(enableExtraDevices);
-    moToMgpOptions.enableFakeCudaDevice.setValue(enableFakeCudaDevice);
-    moToMgpOptions.defaultDeviceLabel.setValue(defaultDeviceLabel);
-    moToMgpOptions.enableMemoryPlanning.setValue(enableMemoryPlanning);
-    moToMgpOptions.genVizSpec.setValue(genVizSpec);
-    moToMgpOptions.vizOutputDir.setValue(vizOutputDir);
-    moToMgpOptions.debugPrintAllTensors.setValue(debugPrintAllTensors);
-    moToMgpOptions.softFusionNonHostKernelLimit.setValue(
-        softFusionNonHostKernelLimit);
+    moToMgpOptions.minimumCpuAlignment = minimumCpuAlignment.getValue();
+    moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
+  }
+};
+
+/// Union of configuration gathered from MOFContext::setConfigs().
+struct MOFConfig {
+  SmallVector<std::string> kernelLibraryPaths;
+  std::optional<std::string> defaultDeviceLabel;
+  std::optional<bool> enableExtraDevices;
+  std::optional<size_t> deviceID;
+  CASConfig commonCasConfig;
+
+  void overrideLoweringOptions(MOFLoweringOptions &mofLoweringOptions,
+                               MO::MoToMgpOptions &moToMgpOptions) const {
+    if (deviceID && defaultDeviceLabel && *defaultDeviceLabel == "cuda") {
+      mofLoweringOptions.cudaRuntimeOptions.deviceOptions.emplace_back()
+          .deviceId = *deviceID;
+    }
+
+    moToMgpOptions.compiledFrameworkLabel = "mof";
+    moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
+    if (defaultDeviceLabel)
+      moToMgpOptions.defaultDeviceLabel = *defaultDeviceLabel;
+    if (enableExtraDevices)
+      moToMgpOptions.enableExtraDevices = *enableExtraDevices;
+    if (commonCasConfig.getCacheDir())
+      moToMgpOptions.cacheDir = commonCasConfig.getCacheDir()->getPath().str();
   }
 };
 
@@ -77,20 +92,26 @@ public:
   /// Constructor when invoking from command line.
   MOFContext(int &argc, char **argv)
       : clOptions(std::make_unique<MOFDriverCLOptions>(argc, argv,
-                                                       /*skipInitLLVM=*/true)),
-        commonCasConfig{} {
+                                                       /*skipInitLLVM=*/true)) {
     setup();
   }
 
   /// Constructor when invoking via API.
-  MOFContext() = default;
+  MOFContext() { setup(); }
 
   ~MOFContext() {
     if (clOptions)
       llvm::cl::ResetCommandLineParser();
   }
 
-  MOFDriverCLOptions *getOptions() { return clOptions.get(); }
+  const CommonCLOptions *getCommonCLOptions() const { return clOptions.get(); }
+  const ExecutorDriverCLOptions *getExecutorDriverCLOptions() const {
+    return clOptions.get();
+  }
+  bool getEnableMEFMetadata() const {
+    return clOptions ? clOptions->enableMEFMetadata : true;
+  }
+  bool getSaveTemps() const { return clOptions ? clOptions->saveTemps : false; }
 
   ErrorOrSuccess setOptions(ArrayRef<std::string> opts) {
     if (!clOptions)
@@ -112,73 +133,44 @@ public:
     return success();
   }
 
-  void setCasConfig(const CASConfig &casConfig) { commonCasConfig = casConfig; }
+  ErrorOrSuccess setConfigs(ArrayRef<std::unique_ptr<DriverConfig>> configs,
+                            const CASConfig &casConfig) {
+    if (!mofConfig)
+      mofConfig = std::make_unique<MOFConfig>();
+    mofConfig->commonCasConfig = casConfig;
 
-  ErrorOrSuccess setConfigs(ArrayRef<std::unique_ptr<DriverConfig>> configs) {
-    for (auto &config : configs) {
+    for (auto &driverConfig : configs) {
       if (auto kernelLibraryConfig =
-              dyn_cast<KernelLibraryDriverConfig>(config.get())) {
-        kernelLibraryPaths.push_back(kernelLibraryConfig->getPath().string());
+              dyn_cast<KernelLibraryDriverConfig>(driverConfig.get())) {
+        mofConfig->kernelLibraryPaths.push_back(
+            kernelLibraryConfig->getPath().string());
+      } else if (auto deviceConfig =
+                     dyn_cast<DeviceConfig>(driverConfig.get())) {
+        mofConfig->defaultDeviceLabel = deviceConfig->getDevice();
+        mofConfig->deviceID = deviceConfig->getDeviceID();
+        mofConfig->enableExtraDevices = !deviceConfig->getDevice().empty();
       }
     }
     return success();
   }
 
-  const CASConfig &getCasConfig() { return commonCasConfig; }
-  ArrayRef<std::string> getKernelLibraryPaths() const {
-    return kernelLibraryPaths;
-  }
-  const CUDA::CUDARuntimeOptions &getCUDARuntimeOptions() const {
-    return cudaRuntimeOptions;
-  }
-
-  // Transfer options from this context into the runtime.
-  void setRuntimeContextObjects(Runtime &runtime) {
-    runtime.emplaceContextIfMissing<DebugTensorPrintOptions>(
-        debugTensorPrintOptions);
-    runtime.emplaceContextIfMissing<CUDA::CUDARuntimeOptions>(
-        cudaRuntimeOptions);
+  void overrideLoweringOptions(MOFLoweringOptions &mofLoweringOptions,
+                               MO::MoToMgpOptions &moToMgpOptions) {
+    if (clOptions)
+      clOptions->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
+    if (mofConfig)
+      mofConfig->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
   }
 
 private:
-  // Transfer options from the command line into this context (if available),
-  // and establish any other global registration etc.
   void setup() {
-    // Start from a blank slate in case the options have been reset.
-    kernelLibraryPaths = {};
-    commonCasConfig = {};
-    cudaRuntimeOptions = {};
-
-    // Transfer command line options into our POD options.
-    // These options must to apply to all models to be executed for the
-    // lifetime of this context.
-    if (clOptions) {
-      kernelLibraryPaths =
-          SmallVector<std::string>(clOptions->kernelLibraryPaths.begin(),
-                                   clOptions->kernelLibraryPaths.end());
-      clOptions->overrideCUDARuntimeOptions(cudaRuntimeOptions);
-
-      debugTensorPrintOptions.style = clOptions->resultOutputStyle;
-      debugTensorPrintOptions.precision = clOptions->printPrecision;
-      debugTensorPrintOptions.binaryDir = clOptions->binaryOutputDir;
-    }
-
     // Register the extra compile-time and runtime support.
     static llvm::once_flag onceFlag;
     llvm::call_once(onceFlag, []() { M::CUDA::registerCUDA(); });
   }
 
-  /// If invoked from the command line, all the command line options relevant
-  /// to this framework. Otherwise null.
   std::unique_ptr<MOFDriverCLOptions> clOptions;
-
-  /// Collect options in their 'plain old data' representation, collected
-  /// either from the command line options or set programatically.
-  // A semicolon separated list of kernel library paths.
-  SmallVector<std::string> kernelLibraryPaths;
-  CASConfig commonCasConfig;
-  CUDA::CUDARuntimeOptions cudaRuntimeOptions;
-  DebugTensorPrintOptions debugTensorPrintOptions;
+  std::unique_ptr<MOFConfig> mofConfig;
 };
 
 } // namespace
@@ -212,8 +204,7 @@ ErrorOrSuccess M_setOptions(FrameworkContextHandle ctx,
 ErrorOrSuccess M_setConfigs(FrameworkContextHandle ctx,
                             ArrayRef<std::unique_ptr<DriverConfig>> configs,
                             const CASConfig &casConfig) {
-  ctx.unwrap<MOFContext>()->setCasConfig(casConfig);
-  return ctx.unwrap<MOFContext>()->setConfigs(configs);
+  return ctx.unwrap<MOFContext>()->setConfigs(configs, casConfig);
 }
 
 bool M_isBinary(FrameworkContextHandle ctx, const llvm::MemoryBufferRef &file,
@@ -224,12 +215,18 @@ bool M_isBinary(FrameworkContextHandle ctx, const llvm::MemoryBufferRef &file,
 ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
                                  const llvm::MemoryBufferRef &file,
                                  raw_ostream &os, FileFormat &format) {
-  auto *mofCtx = ctxHandle.unwrap<MOFContext>();
-  // CAUTION: Options will be null for C API calls.
-  auto *options = mofCtx->getOptions();
-  auto casConfig = mofCtx->getCasConfig();
+  auto *mofContext = ctxHandle.unwrap<MOFContext>();
   mlir::MLIRContext ctx;
   mlir::OwningOpRef<mlir::ModuleOp> module;
+
+#ifdef MODULAR_PRODUCTION
+  ctx.printOpOnDiagnostic(false);
+#endif // MODULAR_PRODUCTION
+
+  // Gather all the options from all the sources.
+  MOFLoweringOptions mofLoweringOptions;
+  MO::MoToMgpOptions moToMgpOptions;
+  mofContext->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
 
   // Convert the input file to an MLIR module.
   switch (format) {
@@ -250,30 +247,19 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
   // We have an MLIR model, try to lower it to a MEF-capable encoding.
   switch (format) {
   case FileFormat::kMODialect: {
-    writeIntermediateFileIfRequested("mo", module.get(), options, file);
+    writeIntermediateFileIfRequested("mo", module.get(),
+                                     mofContext->getCommonCLOptions(), file);
 
-    // The MO graph dialect can be lowered to TFP, which is MEF emittable.
-    MO::MoToMgpOptions moToMgpOptions;
-    if (options)
-      options->fillInLoweringOptions(moToMgpOptions);
-    moToMgpOptions.compiledFrameworkLabel = "mof";
-    moToMgpOptions.kernelLibraryPaths = mofCtx->getKernelLibraryPaths();
-
-    std::unique_ptr<Runtime> runtime;
-    if (options) {
-      // Create a runtime to use during compilation. It will convey global
-      // options to the passes which need them.
-      // TODO: Would prefer to just call mofCtx->run, however we have a
-      // std::unique_ptr<MemoryBuffer> vs llvm::MemoryBufferRef mismatch.
-      // So need to first refactor to use M::BufferRef throughout.
-      runtime = std::make_unique<Runtime>(
-          createMallocAllocator(), createThreadPoolWorkQueue(/*numThreads=*/0));
-      mofCtx->setRuntimeContextObjects(*runtime);
-    }
+    // Create a runtime to use during compilation. It will convey global
+    // options to the passes which need them.
+    std::unique_ptr<Runtime> runtime = std::make_unique<Runtime>(
+        createMallocAllocator(), createThreadPoolWorkQueue(/*numThreads=*/0));
+    mofLoweringOptions.setupRuntimeOptions(*runtime);
 
     if (failed(lowerMOToMGP(module.get(), moToMgpOptions, runtime.get())))
       return Error("unable to lower MO to MGP");
-    writeIntermediateFileIfRequested("mgp", module.get(), options, file);
+    writeIntermediateFileIfRequested("mgp", module.get(),
+                                     mofContext->getCommonCLOptions(), file);
 
     format = FileFormat::kMGPDialect;
     break;
@@ -289,8 +275,8 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
     return Error("cannot lower to MEF data of format " + identity);
   }
 
-  bool enableMEFMetadata = options ? options->enableMEFMetadata : true;
-  if (failed(convertToMEF(module.get(), os, enableMEFMetadata)))
+  if (failed(
+          convertToMEF(module.get(), os, mofContext->getEnableMEFMetadata())))
     return Error("unable to convert file to a MEF binary");
   return success();
 }
@@ -346,21 +332,26 @@ ErrorOrSuccess M_loadModels(FrameworkContextHandle ctx,
 int M_runBinaryFile(FrameworkContextHandle ctx,
                     std::unique_ptr<llvm::MemoryBuffer> &&fileBuffer,
                     DriverHandle modelBinaryHandle) {
-  auto *mofCtx = ctx.unwrap<MOFContext>();
-  auto *clOptions = mofCtx->getOptions();
+  auto *mofContext = ctx.unwrap<MOFContext>();
+  MOFLoweringOptions mofLoweringOptions;
+  MO::MoToMgpOptions moToMgpOptions;
+  mofContext->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
+  const ExecutorDriverCLOptions *driverOptions =
+      mofContext->getExecutorDriverCLOptions();
+  assert(driverOptions && "cannot run a binary file via the API");
+
   std::unique_ptr<ModelCollection> models;
   if (auto err = M_loadModels(ctx, fileBuffer->getMemBufferRef(),
                               modelBinaryHandle, models)) {
-    return clOptions->reportError("unable to load models: " +
-                                  Twine(err.getError()));
+    return driverOptions->reportError("unable to load models: " +
+                                      Twine(err.getError()));
   }
 
-  auto runModels = [mofCtx, clOptions, models = models.get()](
-                       Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
-    mofCtx->setRuntimeContextObjects(runtime);
+  auto runModels = [&](Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
+    mofLoweringOptions.setupRuntimeOptions(runtime);
     for (const auto &model : (*models)) {
-      if (failed(runModel(ctx, model.get(), runtime, *clOptions))) {
-        if (clOptions->stopOnFirstError())
+      if (failed(runModel(ctx, model.get(), runtime, *driverOptions))) {
+        if (driverOptions->stopOnFirstError())
           return failure();
       }
     }
@@ -369,24 +360,29 @@ int M_runBinaryFile(FrameworkContextHandle ctx,
 
   // Run it.
   return setupMLIRAndRunWithLeakCheckedRuntime(
-      *clOptions, "Modular model", std::move(fileBuffer), runModels);
+      *driverOptions, "Modular model", std::move(fileBuffer), runModels);
 }
 
 int M_runModelWithData(FrameworkContextHandle ctx,
                        std::unique_ptr<llvm::MemoryBuffer> &&fileBuffer,
                        const M::Model *model, DriverHandle inputsHandle,
                        DriverHandle outputsHandle) {
-  auto *mofCtx = ctx.unwrap<MOFContext>();
-  auto *clOptions = mofCtx->getOptions();
+  auto *mofContext = ctx.unwrap<MOFContext>();
+  MOFLoweringOptions mofLoweringOptions;
+  MO::MoToMgpOptions moToMgpOptions;
+  mofContext->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
+  const ExecutorDriverCLOptions *driverOptions =
+      mofContext->getExecutorDriverCLOptions();
+  assert(driverOptions && "cannot run a binary file via the API");
+
   auto inputs = inputsHandle.unwrap<llvm::SmallVector<const void *>>();
   auto outputs = outputsHandle.unwrap<llvm::SmallVector<void *>>();
 
-  auto runModels = [mofCtx, clOptions, model, inputs, outputs](
-                       Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
-    mofCtx->setRuntimeContextObjects(runtime);
-    if (runModelWithData(ctx, model, runtime, *clOptions, *inputs, *outputs)
+  auto runModels = [&](Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
+    mofLoweringOptions.setupRuntimeOptions(runtime);
+    if (runModelWithData(ctx, model, runtime, *driverOptions, *inputs, *outputs)
             .isError()) {
-      if (clOptions->stopOnFirstError())
+      if (driverOptions->stopOnFirstError())
         return failure();
     }
 
@@ -395,7 +391,7 @@ int M_runModelWithData(FrameworkContextHandle ctx,
 
   // Run it.
   return setupMLIRAndRunWithLeakCheckedRuntime(
-      *clOptions, "Modular model", std::move(fileBuffer), runModels);
+      *driverOptions, "Modular model", std::move(fileBuffer), runModels);
 }
 
 ErrorOrSuccess M_openPath(M::FrameworkContextHandle ctx,
