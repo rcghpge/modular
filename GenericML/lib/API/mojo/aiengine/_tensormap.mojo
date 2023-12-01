@@ -134,6 +134,12 @@ struct TensorMap(SizedRaising):
         let tensor = mof_tensor.tensor[type]()
         return tensor ^
 
+    fn buffer[type: DType](self, key: StringRef) raises -> Buffer[Dim(), type]:
+        let tensor_ptr = self.ptr.get_tensor_by_name(key.data, self.lib)
+        return EngineTensor(tensor_ptr, self.lib, self.session.copy()).buffer[
+            type
+        ]()
+
     fn __len__(self) raises -> Int:
         return self.ptr.size(self.lib)
 
