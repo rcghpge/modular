@@ -1621,8 +1621,9 @@ struct SplitAndSqueezesPattern
     // Construct transpose permutation and zero axis value (before split op)
     Location loc = op.getLoc();
     SmallVector<int64_t> permVec(inputRank);
-    std::iota(permVec.begin(), permVec.end(), 0);
-    std::swap(permVec[0], permVec[splitAxis]);
+    std::iota(permVec.begin() + 1, permVec.begin() + splitAxis + 1, 0);
+    std::iota(permVec.begin() + splitAxis + 1, permVec.end(), splitAxis + 1);
+    permVec[0] = splitAxis;
     Value perm = rewriter.create<ConstantOp>(loc, permVec);
     Value zeroAxis = rewriter.create<ConstantOp>(loc, 0);
 

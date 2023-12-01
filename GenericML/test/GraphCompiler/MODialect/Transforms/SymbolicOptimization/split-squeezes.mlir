@@ -203,3 +203,45 @@ mo.graph @split_squeezes_non_squeezing_reshape<D0 -> D1, D2>(
   // CHECK-SAME: !mo.tensor<[100], f32>, !mo.tensor<[[[D6]], 10], f32>
   mo.output<100, D6> %res_reshape1, %res_reshape2 : !mo.tensor<[100], f32>, !mo.tensor<[D6, 10], f32>
 }
+
+// CHECK-LABEL: rotary_embeddings_2
+// CHECK: %0 = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK: %1 = mo.constant {value = #M.dense_array<0, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK: %2 = mo.constant {value = #M.dense_array<9223372036854775807, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK: %3 = mo.constant {value = #M.dense_array<0, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK: %4 = mo.constant {value = #M.dense_array<9223372036854775807, 4> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK: %5 = mo.constant {value = #M.dense_array<2, 0, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+// CHECK: %6 = mo.constant {value = #M.dense_array<2, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK: %7 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+// CHECK: %8 = mo.constant {value = #M.dense_array<2, 1, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+// CHECK: %9 = mo.transpose(%arg0, %5) : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 2], f32>
+// CHECK: %10 = mo.static.reshape(%9) : !mo.tensor<[2, 2, 2], f32> -> !mo.tensor<[4, 2], f32>
+// CHECK: %11:2 = mo.split[%7 : !mo.tensor<[], si64>] (%10, %6) : (!mo.tensor<[4, 2], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+
+mo.graph @rotary_embeddings_2(%arg0: !mo.tensor<[2, 2, 2], f32>, %arg1: !mo.tensor<[1, 2, 2], f32>) -> !mo.tensor<[2, 2], f32> no_inline {
+  %0 = mo.constant {value = #M.dense_array<1, 1, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  %1 = mo.constant {value = #M.dense_array<0, 0, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  %2 = mo.constant {value = #M.dense_array<9223372036854775807, 9223372036854775807, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  %3 = mo.constant {value = #M.dense_array<0, 0, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  %4 = mo.constant {value = #M.dense_array<9223372036854775807, 9223372036854775807, 2> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  %5 = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  %6 = mo.constant {value = #M.dense_array<0, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  %7 = mo.constant {value = #M.dense_array<9223372036854775807, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  %8 = mo.constant {value = #M.dense_array<0, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  %9 = mo.constant {value = #M.dense_array<9223372036854775807, 4> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  %10 = mo.constant {value = #M.dense_array<2, 1, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  %13 = mo.slice(%arg0, %1, %2, %0) : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 1], f32>
+  %14 = mo.slice(%arg0, %3, %4, %0) : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 1], f32>
+  %15 = mo.static.reshape(%13) : !mo.tensor<[2, 2, 1], f32> -> !mo.tensor<[2, 2], f32>
+  %16 = mo.static.reshape(%14) : !mo.tensor<[2, 2, 1], f32> -> !mo.tensor<[2, 2], f32>
+  %17 = mo.transpose(%arg1, %10) : (!mo.tensor<[1, 2, 2], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 1], f32>
+  %18 = mo.static.reshape(%17) : !mo.tensor<[2, 2, 1], f32> -> !mo.tensor<[1, 4], f32>
+  %19 = mo.slice(%18, %6, %7, %5) : (!mo.tensor<[1, 4], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[1, 2], f32>
+  %20 = mo.slice(%18, %8, %9, %5) : (!mo.tensor<[1, 4], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[1, 2], f32>
+  %21 = mo.static.broadcast_to(%20) : !mo.tensor<[1, 2], f32> -> !mo.tensor<[2, 2], f32>
+  %22 = mo.mul(%15, %21) : !mo.tensor<[2, 2], f32>
+  %23 = mo.static.broadcast_to(%19) : !mo.tensor<[1, 2], f32> -> !mo.tensor<[2, 2], f32>
+  %24 = mo.mul(%16, %23) : !mo.tensor<[2, 2], f32>
+  %25 = mo.add(%22, %24) : !mo.tensor<[2, 2], f32>
+  mo.output %25 : !mo.tensor<[2, 2], f32>
+}
