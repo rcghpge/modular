@@ -3638,6 +3638,8 @@ def MO_LayerNormOp : MO_TensorOp<"layer_norm"> {
 //===----------------------------------------------------------------------===//
 
 def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
+  MemoryEffects<[MemWrite]>,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["preferResultsDevice"]>,
 ]> {
   let summary = "Prints a debug representation of argument input";
