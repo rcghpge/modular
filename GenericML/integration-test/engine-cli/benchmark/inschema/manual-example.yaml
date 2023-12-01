@@ -4,7 +4,7 @@
 #
 ##===----------------------------------------------------------------------===##
 
-# RUN: max benchmark --input-generation-schema=%s --round-trip-input-generation-schema %t | FileCheck %s
+# RUN: max-engine benchmark --input-generation-schema=%s --round-trip-input-generation-schema %t | FileCheck %s
 # CHECK: Input generation schema is valid
 # CHECK: Round-tripped input generation schema:
 # CHECK: inputs:

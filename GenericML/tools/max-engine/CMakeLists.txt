@@ -4,6 +4,12 @@
 #
 ##===----------------------------------------------------------------------===##
 
-# RUN: not max benchmark --input-generation-schema=%s --round-trip-input-generation-schema %t 2>&1 | FileCheck %s
-# CHECK: {{.*}}.yaml:9:1: error: unknown key 'outputs'
-outputs: []
+add_modular_tool(max-engine
+  max-engine.cpp
+
+  LINK_LIBS PRIVATE
+  BenchmarkCLI
+  MCrashReporting
+  MSupport
+  VisualizeCLI
+)

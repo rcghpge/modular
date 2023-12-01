@@ -9,9 +9,9 @@
 
 namespace M {
 
-inline constexpr const char *kBenchmarkCLIProductName = "max benchmark";
+inline constexpr const char *kBenchmarkCLIProductName = "max-engine benchmark";
 
-int maxBenchmarkMain(int argc, char **argv);
+int engineCLIBenchmarkMain(int argc, char **argv);
 
 } // namespace M
 
