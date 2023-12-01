@@ -50,9 +50,6 @@ private:
 public:
   using DriverCLOptions::DriverCLOptions;
 
-  cl::opt<bool> enableJitKernels{
-      "enable-jit-kernels", cl::desc("Enable jitting of MOGG kernels."),
-      cl::init(true), llvm::cl::cat(MOFDriverCLOptionsCategory)};
   cl::list<std::string> kernelLibraryPaths{
       "kernel-library-paths",
       cl::desc("Paths to mojo packages containing mojo kernel definitions used "
