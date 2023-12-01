@@ -389,8 +389,8 @@ TEST(NormalInputRandomDistribution, unimplemented) {
 TEST(InputRandomDistribution, none) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandom spec;
-  // TODO: The None case should default to a reasonable distribution for the
-  // dtype instead of erroring.
+  // Note: The user should never experience this case in practice due to the
+  // defaulting in InputGenerationDefaults.
   auto dist = createInputRandomDistribution(DType::f32, spec, errorReporter);
   EXPECT_EQ(nullptr, dist);
   EXPECT_EQ(
@@ -529,8 +529,8 @@ TEST(ConstantInputDataGenerator, unimplemented) {
 TEST(InputDataGenerator, none) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationData spec;
-  // TODO: The None case should default to a reasonable distribution for the
-  // dtype instead of erroring.
+  // Note: The user should never experience this case in practice due to the
+  // defaulting in InputGenerationDefaults.
   auto gen = createInputDataGenerator(DType::f32, spec, errorReporter);
   EXPECT_EQ(nullptr, gen);
   EXPECT_EQ(
