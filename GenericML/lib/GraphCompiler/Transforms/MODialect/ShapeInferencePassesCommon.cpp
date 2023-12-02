@@ -150,4 +150,14 @@ LogicalResult FoldConsecutiveRebinds::deviceAwareMatchAndRewrite(
   return success();
 }
 
+MaterializeShapeFuncs::MaterializeShapeFuncs(
+    MLIRContext *ctx, ShapeFuncMaterializationState *state)
+    : OpInterfaceRewritePattern(ctx), state(state) {}
+LogicalResult
+MaterializeShapeFuncs::matchAndRewrite(ShapeInferenceMaterialization op,
+                                       PatternRewriter &rewriter) const {
+  state->setRewriter(rewriter);
+  return op.materializeShapeInference(*state);
+}
+
 } // namespace M::MO::ShapeInferencePassCommon

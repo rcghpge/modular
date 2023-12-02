@@ -73,6 +73,21 @@ class FoldConsecutiveRebinds
                              DeviceAwareRewriter &rewriter) const override;
 };
 
+class MaterializeShapeFuncs
+    : public mlir::OpInterfaceRewritePattern<ShapeInferenceMaterialization> {
+public:
+  using OpInterfaceRewritePattern<
+      ShapeInferenceMaterialization>::OpInterfaceRewritePattern;
+
+  MaterializeShapeFuncs(MLIRContext *ctx, ShapeFuncMaterializationState *state);
+
+  LogicalResult matchAndRewrite(ShapeInferenceMaterialization op,
+                                PatternRewriter &rewriter) const final;
+
+private:
+  ShapeFuncMaterializationState *state;
+};
+
 } // namespace M::MO::ShapeInferencePassCommon
 
 #endif // GENERICML_GRAPHCOMPILER_TRANSFORMS_MODIALECT_SHAPEINFERENCEPASSES_COMMON_H
