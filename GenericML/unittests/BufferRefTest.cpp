@@ -210,7 +210,10 @@ public:
   const void *getBuffer(const void *object) const override {
     return cast(object)->buffer;
   }
-  void deleteObject(void *object) const override {
+  void *getMutableBuffer(void *object) const override {
+    return cast(object)->buffer;
+  }
+  void deleteObject(void *object, size_t size) const override {
     assert(!cast(object)->deleted && "already deleted");
     cast(object)->deleted = true;
   }

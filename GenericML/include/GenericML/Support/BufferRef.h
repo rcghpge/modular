@@ -182,12 +182,16 @@ public:
 
   /// Creates a 'foreign' reference to the already allocated foreign buffer
   /// object. The corresponding ForeignBufferInterface must have been already
-  /// registered under id. The buffer is considered immutable. The given foreign
-  /// object must outlive the returned buffer reference. If it is not possible
-  /// statically guarantee this lifetime relation then an AnyAsyncValueRef may
-  /// be given to keep the foreign object alive while the returned buffer
-  /// reference is alive. It is valid for size to be zero, and the resulting
-  /// reference will not be 'null'.
+  /// registered under id. The given foreign object must outlive the
+  /// returned buffer reference. If it is not possible statically guarantee
+  /// this lifetime relation then an AnyAsyncValueRef may be given to keep the
+  /// foreign object alive while the returned buffer reference is alive. It
+  /// is valid for size to be zero, and the resulting reference will not be
+  /// 'null'.
+  static BufferRef createForeign(ForeignBufferInterfaceID id,
+                                 const void *object, size_t size,
+                                 std::optional<size_t> alignment,
+                                 AnyAsyncValueRef owningRef = {});
   static BufferRef createForeign(ForeignBufferInterfaceID id, void *object,
                                  size_t size, std::optional<size_t> alignment,
                                  AnyAsyncValueRef owningRef = {});
@@ -225,7 +229,9 @@ public:
   void *getMutableBuffer() {
     assert((ownership == kNull || mutability == kMutable) &&
            "buffer is immutable");
-    assert(ownership != kForeign && "foreign buffers assumed immutable");
+    if (ownership == kForeign) // typically false
+      return ForeignBufferInterfaceRegistry::getMutableBuffer(
+          nativeOrForeign.id, bufferOrObject);
     return bufferOrObject;
   }
   const void *getBuffer() const {

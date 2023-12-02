@@ -93,6 +93,14 @@ public:
                "will be reallocated."),
       cl::init(false), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
+  cl::opt<size_t> minPinnedHostBufferSize{
+      "min-pinned-host-buffer-size",
+      llvm::cl::desc(
+          "If non-zero, replace host-side allocations with pinned allocations "
+          "when the buffer is at least this size in bytes, and is the source "
+          "or target of a host/device memory transfer."),
+      llvm::cl::init(0)};
+
   cl::list<std::string> kernelLibraryPaths{
       "kernel-library-paths",
       cl::desc("Paths to mojo packages containing mojo kernel definitions used "
@@ -112,6 +120,7 @@ public:
         softFusionNonHostKernelLimit.getValue();
     moToMgpOptions.cacheBuffersAcrossExecutes =
         cacheBuffersAcrossExecutes.getValue();
+    moToMgpOptions.minPinnedHostBufferSize = minPinnedHostBufferSize.getValue();
     moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
   }
 };

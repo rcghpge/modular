@@ -141,6 +141,13 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
           "Maximum number of non-host kernels to place in a single soft fused "
           "kernel."),
       llvm::cl::init(3)};
+  Option<size_t> minPinnedHostBufferSize{
+      *this, "min-pinned-host-buffer-size",
+      llvm::cl::desc(
+          "If non-zero, replace host-side allocations with pinned allocations "
+          "when the buffer is at least this size in bytes, and is the source "
+          "or target of a host/device memory transfer."),
+      llvm::cl::init(0)};
 };
 
 // Registers a runtime for use by the MO-to-MGP pipeline when invoked via the

@@ -146,6 +146,32 @@ BufferRef BufferRef::createBorrowed(const void *buffer, size_t size,
   );
 }
 
+BufferRef BufferRef::createForeign(ForeignBufferInterfaceID id,
+                                   const void *object, size_t size,
+                                   std::optional<size_t> alignment,
+                                   AnyAsyncValueRef owningRef) {
+  assert(object && "foreign object cannot be null");
+  // Note that even if size is 0 we are obliged to create a non-null
+  // BufferRef so as to retain ownership of object.
+  if (alignment && size)
+    assert(llvm::isAddrAligned(
+               llvm::Align(*alignment),
+               ForeignBufferInterfaceRegistry::getBuffer(id, object)) &&
+           "buffer is not aligned as per purported alignment");
+
+  return BufferRef(
+      id, const_cast<void *>(object), size, {} /*std::move(owningRef)*/,
+      makeMaybeAlign(alignment), kForeign, kLocal, kImmutable,
+      /*profilerEntry=*/{}
+#if MODULAR_PARANOID
+      ,
+      /*resource=*/LLCL::Resource::allocate(
+          Twine("foreign(size=").concat(Twine(size)).concat("B)").str()),
+      /*use=*/{}
+#endif
+  );
+}
+
 BufferRef BufferRef::createForeign(ForeignBufferInterfaceID id, void *object,
                                    size_t size, std::optional<size_t> alignment,
                                    AnyAsyncValueRef owningRef) {
@@ -160,7 +186,7 @@ BufferRef BufferRef::createForeign(ForeignBufferInterfaceID id, void *object,
 
   return BufferRef(
       id, object, size, {} /*std::move(owningRef)*/, makeMaybeAlign(alignment),
-      kForeign, kLocal, kImmutable,
+      kForeign, kLocal, kMutable,
       /*profilerEntry=*/{}
 #if MODULAR_PARANOID
       ,
@@ -238,7 +264,7 @@ BufferRef::~BufferRef() {
     break;
   case kForeign:
     ForeignBufferInterfaceRegistry::deleteObject(nativeOrForeign.id,
-                                                 bufferOrObject);
+                                                 bufferOrObject, size);
     break;
   }
 }
