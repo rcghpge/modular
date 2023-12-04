@@ -5,10 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "PyTorch/Support/Value.h"
+#include "GenericML/Support/Tensor.h"
 #include "PyTorch/Support/Dict.h"
 #include "PyTorch/Support/List.h"
-#include "Support/LLVMCompilerForwardDecls.h"
-#include <llvm/Support/YAMLTraits.h>
+#include "Support/LLVMForwardDecls.h"
 
 using namespace M;
 using namespace M::Torch;
