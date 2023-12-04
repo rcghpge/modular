@@ -12,6 +12,7 @@ add_genericml_library(BenchmarkCLI
   MLPerfIntegration.cpp
   Main.cpp
   NPYMetadata.cpp
+  NPYReader.cpp
 
   LINK_LIBS PUBLIC
   MSupport
