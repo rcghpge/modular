@@ -237,6 +237,14 @@ public:
                                 TypedValue<MGP::CpuTensorSpecType> tensorSpec,
                                 uint64_t alignment) = 0;
 
+  /// Returns the Value representing the buffer of size matching a dynamic
+  /// value. The alignment may be ignored for some devices.
+  virtual Value bufferAllocDynamic(OpBuilder &builder, Location loc,
+                                   Type bufType,
+                                   TypedValue<MGP::ContextType> context,
+                                   Value inChain, Value size,
+                                   uint64_t alignment) = 0;
+
   /// Returns the chain indicating when srcBuffer on the host device has been
   /// transferred to dstBuffer on this builder's device.
   virtual Value bufferTransferFromHost(OpBuilder &builder, Location loc,
@@ -374,6 +382,10 @@ public:
                         TypedValue<MGP::ContextType> context, Value inChain,
                         TypedValue<MGP::CpuTensorSpecType> tensorSpec,
                         uint64_t alignment) override;
+
+  Value bufferAllocDynamic(OpBuilder &builder, Location loc, Type bufType,
+                           TypedValue<MGP::ContextType> context, Value inChain,
+                           Value size, uint64_t alignment) override;
 
   Value bufferTransferFromHost(OpBuilder &builder, Location loc,
                                TypedValue<MGP::ContextType> context,

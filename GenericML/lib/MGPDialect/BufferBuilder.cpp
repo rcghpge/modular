@@ -86,6 +86,18 @@ Value CpuBufferBuilder::bufferAllocSpec(
                                               /*rawAlign=*/alignment);
 }
 
+Value CpuBufferBuilder::bufferAllocDynamic(OpBuilder &builder, Location loc,
+                                           Type bufType,
+                                           TypedValue<MGP::ContextType> context,
+                                           Value inChain, Value size,
+                                           uint64_t alignment) {
+  return builder.create<CpuBufferAllocDynamicOp>(loc,
+                                                 /*outBuffer=*/bufType,
+                                                 /*inChain=*/inChain,
+                                                 /*aSize=*/size,
+                                                 /*bRawAlign=*/alignment);
+}
+
 Value CpuBufferBuilder::bufferTransferFromHost(
     OpBuilder &builder, Location loc, TypedValue<MGP::ContextType> context,
     Value inChain, TypedValue<M::MGP::CpuBufferType> srcBuffer,
