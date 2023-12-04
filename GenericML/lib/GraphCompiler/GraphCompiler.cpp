@@ -264,6 +264,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(MGP::createStaticMemoryPlannerPass());
   pm.addPass(MGP::createStripBufferAttributesPass());
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addPass(mlir::createCSEPass());
 }

@@ -325,6 +325,17 @@ public:
                              TypedValue<MGP::ContextType> context,
                              TypedValue<MEF::ChainType> inChain) = 0;
 
+  /// Borrow a section of a buffer
+  virtual Value borrowSectionStatic(OpBuilder &builder, Location loc,
+                                    Value inChain, Value inBuffer,
+                                    uint64_t offset, uint64_t size) = 0;
+
+  /// Borrow a dynamic section of a buffer
+  virtual Value borrowSectionDynamic(OpBuilder &builder, Location loc,
+                                     Value inChain, Value inBuffer, Value scale,
+                                     uint64_t unscaledOffset,
+                                     uint64_t unscaledSize) = 0;
+
   virtual void vtableAnchor();
 };
 
@@ -413,6 +424,15 @@ public:
   Value fromMEFChain(OpBuilder &builder, Location loc,
                      TypedValue<MGP::ContextType> context,
                      TypedValue<MEF::ChainType> inChain) override;
+
+  Value borrowSectionStatic(OpBuilder &builder, Location loc, Value inChain,
+                            Value inBuffer, uint64_t offset,
+                            uint64_t size) override;
+
+  Value borrowSectionDynamic(OpBuilder &builder, Location loc, Value inChain,
+                             Value inBuffer, Value scale,
+                             uint64_t unscaledOffset,
+                             uint64_t unscaledSize) override;
 
   /// Track this compiled kernel as corresponding to this index in the
   /// compiled kernels context.

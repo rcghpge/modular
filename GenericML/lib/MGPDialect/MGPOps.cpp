@@ -319,6 +319,10 @@ LogicalResult CpuBufferAllocStaticOp::inferReturnTypes(
 
 void CpuBufferAllocStaticOp::setInChain(Value chain) { setOperand(chain); }
 
+uint64_t CpuBufferAllocStaticOp::getRawAlign() { return getBRawAlign(); }
+
+uint64_t CpuBufferAllocStaticOp::getSize() { return getASize(); }
+
 //===----------------------------------------------------------------------===//
 // CpuBufferAllocDynamicOp
 //===----------------------------------------------------------------------===//

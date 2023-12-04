@@ -36,6 +36,56 @@ def MGP_BufferAllocOpInterface : OpInterface<"MGPBufferAllocOpInterface"> {
   ];
 }
 
+def MGP_StaticAllocOpInterface : OpInterface<"MGPStaticAllocOpInterface"> {
+  let description = [{
+    Interface for ops which statically allocate buffers.
+  }];
+  let cppNamespace = "::M::MGP";
+  let methods = [
+    InterfaceMethod<
+      "Returns the input chain gating this op's allocation.",
+      "mlir::Value", "getInChain", (ins)
+    >,
+    InterfaceMethod<
+      "The size of the allocation",
+      "uint64_t", "getSize", (ins)
+    >,
+    InterfaceMethod<
+      "The alignment of the allocation",
+      "uint64_t", "getRawAlign", (ins)
+    >,
+    InterfaceMethod<
+      "Returns the buffer allocated by this op.",
+      "mlir::Value", "getOutBuffer", (ins)
+    >,
+  ];
+}
+
+def MGP_SpecAllocOpInterface : OpInterface<"MGPSpecAllocOpInterface"> {
+  let description = [{
+    Interface for ops which allocate buffers according to a spec.
+  }];
+  let cppNamespace = "::M::MGP";
+  let methods = [
+    InterfaceMethod<
+      "Returns the input chain gating this op's allocation.",
+      "mlir::Value", "getInChain", (ins)
+    >,
+    InterfaceMethod<
+      "The tensor spec of the allocation",
+      "mlir::TypedValue<M::MGP::CpuTensorSpecType>", "getRuntimeSpec", (ins)
+    >,
+    InterfaceMethod<
+      "The alignment of the allocation",
+      "uint64_t", "getRawAlign", (ins)
+    >,
+    InterfaceMethod<
+      "Returns the buffer allocated by this op.",
+      "mlir::Value", "getOutBuffer", (ins)
+    >,
+  ];
+}
+
 def MGP_LiftableBufferCreateOpInterface : OpInterface<"MGPLiftableBufferCreateOpInterface"> {
   let description = [{
     Interface for ops which may return a buffer as their only result and can be

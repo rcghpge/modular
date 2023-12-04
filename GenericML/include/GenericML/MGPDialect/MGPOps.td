@@ -201,6 +201,7 @@ def CpuBufferGetCachedOp : MGP_Op<"cpu.buffer.get_cached", [
 def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface>,
+    DeclareOpInterfaceMethods<MGP_StaticAllocOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>]> {
   let summary = [{
     Allocates an uninitialized buffer on the CPU with size taken from
@@ -301,6 +302,7 @@ def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
 def CpuBufferAllocSpecOp : MGP_Op<"cpu.buffer.alloc.spec", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface>,
+    DeclareOpInterfaceMethods<MGP_SpecAllocOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>]> {
   let summary = [{
     Allocates an uninitialized buffer on the CPU with size taken from tensor

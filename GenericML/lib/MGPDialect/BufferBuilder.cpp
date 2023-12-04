@@ -216,3 +216,19 @@ Value CpuBufferBuilder::fromMEFChain(OpBuilder &builder, Location loc,
                                      TypedValue<MEF::ChainType> inChain) {
   return inChain;
 }
+
+Value CpuBufferBuilder::borrowSectionStatic(OpBuilder &builder, Location loc,
+                                            Value inChain, Value inBuffer,
+                                            uint64_t offset, uint64_t size) {
+  return builder.create<CpuBufferSectionBorrowStaticOp>(loc, inChain, inBuffer,
+                                                        offset, size);
+}
+
+Value CpuBufferBuilder::borrowSectionDynamic(OpBuilder &builder, Location loc,
+                                             Value inChain, Value inBuffer,
+                                             Value scale,
+                                             uint64_t unscaledOffset,
+                                             uint64_t unscaledSize) {
+  return builder.create<CpuBufferSectionBorrowDynamicOp>(
+      loc, inChain, inBuffer, scale, unscaledOffset, unscaledSize);
+}
