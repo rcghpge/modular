@@ -485,14 +485,12 @@ executeModel(const Model *model, Runtime &runtime,
           Twine("failed to open timings file: " + errorCode.message()));
   }
 
-  TimeTraceScope scope(
-      DriverProfilerEntry::create(StringLiteral("executeModel")));
+  TimeTraceScope scope(DriverProfilerEntry::create("executeModel"));
 
   // Setup once.
   std::unique_ptr<ExecutableModel> executableModel;
   {
-    TimeTraceScope scope(
-        DriverProfilerEntry ::create(StringLiteral("executeModel.setup")));
+    TimeTraceScope scope(DriverProfilerEntry ::create("executeModel.setup"));
     auto executableModel1Or = model->setup(runtime);
     if (executableModel1Or.isError())
       return executableModel1Or.takeError();
@@ -521,8 +519,7 @@ executeModel(const Model *model, Runtime &runtime,
     llvm::outs().flush();
   }
   for (unsigned i = 0; i < numWarmup; ++i) {
-    TimeTraceScope scope(
-        DriverProfilerEntry::create(StringLiteral("executeModel.warmup")));
+    TimeTraceScope scope(DriverProfilerEntry::create("executeModel.warmup"));
     auto args = buildArgs(runtime, inputTensorGenerators);
 
     // Execute the model synchronously. Propagate any error back to caller.
@@ -550,7 +547,7 @@ executeModel(const Model *model, Runtime &runtime,
 
     // Execute the model synchronously.
     std::chrono::high_resolution_clock::time_point startTime, endTime;
-    auto entry = DriverProfilerEntry::create(StringLiteral("executeModel.run"));
+    auto entry = DriverProfilerEntry::create("executeModel.run");
 
     startTime = std::chrono::high_resolution_clock::now();
 #ifdef MODULAR_PROFILING_NSIGHT
