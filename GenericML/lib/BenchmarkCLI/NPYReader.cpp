@@ -6,9 +6,9 @@
 
 #include "GenericML/BenchmarkCLI/NPYReader.h"
 #include "GenericML/BenchmarkCLI/NPYMetadata.h"
-#include "GenericML/Support/Tensor.h"
-#include "LLCL/Runtime/AsyncValueRef.h"
+#include "GenericML/BenchmarkCLI/Tensor.h"
 #include "Support/ErrorOr.h"
+#include "Support/ML/TensorSpec.h"
 #include "llvm/Support/BinaryByteStream.h"
 #include "llvm/Support/BinaryStreamReader.h"
 #include "llvm/Support/JSON.h"
@@ -55,8 +55,7 @@ static DType descrToDType(StringRef descr) {
       .Default(DType::invalid);
 }
 
-ErrorOr<GML::Tensor> M::BenchmarkCLI::readNPYFile(
-    LLCL::CompactRuntimePtr runtime,
+ErrorOr<Tensor> M::BenchmarkCLI::readNPYFile(
     std::unique_ptr<llvm::MemoryBuffer> npyFileBuffer) {
   llvm::MemoryBufferByteStream stream(std::move(npyFileBuffer),
                                       llvm::endianness::little);
@@ -104,11 +103,6 @@ ErrorOr<GML::Tensor> M::BenchmarkCLI::readNPYFile(
   error = reader.readBytes(tensorData, spec.getSizeInBytes());
   if (error)
     return toModularError(std::move(error));
-  auto ownerRef =
-      LLCL::AsyncValueRef<std::unique_ptr<llvm::MemoryBuffer>>::createReady(
-          runtime, std::move(npyFileBuffer));
-  auto bufferRef = GML::BufferRef::createBorrowed(
-      static_cast<const void *>(tensorData.data()), tensorData.size(),
-      std::nullopt, GML::BufferRef::kConstant, std::move(ownerRef));
-  return GML::Tensor(std::move(bufferRef), std::move(spec));
+  return Tensor(std::move(spec), static_cast<const void *>(tensorData.data()),
+                Tensor::own(std::move(npyFileBuffer)));
 }

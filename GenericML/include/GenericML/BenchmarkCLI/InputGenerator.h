@@ -7,13 +7,20 @@
 #ifndef GENERICML_BENCHMARK_CLI_INPUT_GENERATOR_H
 #define GENERICML_BENCHMARK_CLI_INPUT_GENERATOR_H
 
-#include "GenericML/Support/Tensor.h"
 #include "Support/ForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
+#include "Support/ML/DType.h"
 #include "modular/c/types.h"
+#include "llvm/ADT/Twine.h"
 #include <memory>
 
+namespace M {
+class TensorShape;
+} // namespace M
+
 namespace M::BenchmarkCLI {
+
+class Tensor;
 
 class InputSchemaErrorReporter {
 public:
@@ -59,8 +66,7 @@ public:
 
   // TODO(akirchhoff): This should be revised when we have a better batching
   // story
-  virtual ErrorOr<GML::Tensor> generate(LLCL::CompactRuntimePtr runtime,
-                                        const TensorShape &shape) const = 0;
+  virtual ErrorOr<Tensor> generate(const TensorShape &shape) const = 0;
 };
 
 std::unique_ptr<InputDataGenerator> createRandomInputDataGenerator(
@@ -92,12 +98,8 @@ class InputGenerator {
 public:
   virtual ~InputGenerator() = default;
 
-  // TODO: This LLCL::CompactRuntimePtr is used only for access to an
-  // allocator.  This is kind of crappy and will make the benchmark tool harder
-  // to open-source later.  Should find a way to get rid of the requirement for
-  // it later.
   virtual ErrorOr<std::unique_ptr<GeneratedInput>>
-  generateInput(LLCL::CompactRuntimePtr runtime, size_t queryIndex) = 0;
+  generateInput(size_t queryIndex) = 0;
 };
 
 struct InputGenerationInput;
@@ -118,11 +120,9 @@ public:
 
   // Returns -1 if there is no fixed size and any number of queries can be
   // generated.
-  // TODO: Want to get rid of the allocRuntime parameter if we can eventually.
   virtual ssize_t getNumQueries() const = 0;
   virtual ErrorOr<std::unique_ptr<GeneratedQuery>>
-  generateQuery(LLCL::CompactRuntimePtr allocRuntime,
-                M_RuntimeContext *runtimeContext, size_t queryIndex) const = 0;
+  generateQuery(M_RuntimeContext *runtimeContext, size_t queryIndex) const = 0;
 };
 
 std::unique_ptr<QueryGenerator> createQueryGenerator(

@@ -5,8 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/BenchmarkCLI/NPYReader.h"
-#include "GenericML/Support/Tensor.h"
-#include "LLCL/Runtime/Runtime.h"
+#include "GenericML/BenchmarkCLI/Tensor.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "gtest/gtest.h"
 #include <filesystem>
@@ -30,11 +29,9 @@ TEST(readNPYFile, basic) {
                                               /*IsText=*/false,
                                               /*RequiresNullTerminator=*/false);
   ASSERT_TRUE(bufferOr) << bufferOr.getError().message();
-  LLCL::Runtime runtime(LLCL::createMallocAllocator(),
-                        LLCL::createSingleThreadWorkQueue());
-  auto tensorOr = readNPYFile(runtime.getCompactPtr(), std::move(*bufferOr));
+  auto tensorOr = readNPYFile(std::move(*bufferOr));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
-  GML::Tensor tensor = tensorOr.takeValue();
+  Tensor tensor = tensorOr.takeValue();
   EXPECT_EQ(TensorSpec({1, 2, 3}, DType::si64), tensor.getSpec());
   auto data = static_cast<const int64_t *>(tensor.getBuffer());
   EXPECT_EQ(0, data[0]);

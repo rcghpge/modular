@@ -9,6 +9,7 @@
 #include "GenericML/BenchmarkCLI/Main.h"
 #include "mlperf-loadgen/loadgen.h"
 #include "modular/cpp/aliases.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace M;
 using namespace M::BenchmarkCLI;
@@ -24,9 +25,9 @@ static size_t pickSampleCount(const QueryGenerator &qgen) {
 }
 
 QuerySampleLibrary::QuerySampleLibrary(
-    LLCL::CompactRuntimePtr allocRuntime, M_RuntimeContext *runtimeContext,
+    M_RuntimeContext *runtimeContext,
     std::unique_ptr<QueryGenerator> queryGenerator)
-    : allocRuntime(allocRuntime), runtimeContext(runtimeContext),
+    : runtimeContext(runtimeContext),
       sampleCount(pickSampleCount(*queryGenerator)),
       queryGenerator(std::move(queryGenerator)),
       loadedSamples(
@@ -58,8 +59,7 @@ void QuerySampleLibrary::UnloadSamplesFromRam(
 
 void QuerySampleLibrary::loadSample(mlperf::QuerySampleIndex index) {
   assert(index < sampleCount);
-  auto queryOr =
-      queryGenerator->generateQuery(allocRuntime, runtimeContext, index);
+  auto queryOr = queryGenerator->generateQuery(runtimeContext, index);
   if (queryOr.isError()) {
     llvm::errs() << "Error loading sample " << index << ": "
                  << queryOr.getError() << "\n";

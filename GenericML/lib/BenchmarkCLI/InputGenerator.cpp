@@ -7,6 +7,7 @@
 #include "GenericML/BenchmarkCLI/InputGenerator.h"
 #include "GenericML/BenchmarkCLI/APIBridge.h"
 #include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
+#include "GenericML/BenchmarkCLI/Tensor.h"
 #include "Support/MathExtras.h"
 #include "modular/cpp/aliases.h"
 #include "llvm/ADT/APFloat.h"
@@ -322,23 +323,23 @@ public:
       std::unique_ptr<InputRandomDistribution> dist)
       : dist(std::move(dist)) {}
 
-  ErrorOr<GML::Tensor> generate(LLCL::CompactRuntimePtr runtime,
-                                const TensorShape &shape) const override;
+  ErrorOr<Tensor> generate(const TensorShape &shape) const override;
 
 private:
   std::unique_ptr<InputRandomDistribution> dist;
 };
 } // namespace M::BenchmarkCLI::Detail
 
-ErrorOr<GML::Tensor>
-BCD::RandomInputDataGenerator::generate(LLCL::CompactRuntimePtr runtime,
-                                        const TensorShape &shape) const {
+ErrorOr<Tensor>
+BCD::RandomInputDataGenerator::generate(const TensorShape &shape) const {
   if (!shape.isStatic())
     return Error("Random input requires fully defined input shape");
-  GML::Tensor tensor = GML::Tensor::createOwned({shape, dist->getDType()},
-                                                runtime, std::nullopt);
-  dist->fill(tensor.getMutableBuffer(), shape.getNumElements());
-  return std::move(tensor);
+  TensorSpec spec(shape, dist->getDType());
+  std::unique_ptr<uint8_t[]> data =
+      std::make_unique<uint8_t[]>(spec.getSizeInBytes());
+  dist->fill(data.get(), spec.getNumElements());
+  const void *dataPtr = data.get();
+  return Tensor(spec, dataPtr, Tensor::own(std::move(data)));
 }
 
 std::unique_ptr<InputDataGenerator>
@@ -406,27 +407,25 @@ std::unique_ptr<InputDataGenerator> M::BenchmarkCLI::createInputDataGenerator(
 namespace M::BenchmarkCLI::Detail {
 class GeneratedInputImpl final : public GeneratedInput {
 public:
-  static ErrorOr<GeneratedInputImpl> create(std::string name,
-                                            GML::Tensor tensor);
+  static ErrorOr<GeneratedInputImpl> create(std::string name, Tensor tensor);
 
   void borrowInto(M_AsyncTensorMap *atm, M_Status *status) const override;
 
 private:
-  GeneratedInputImpl(std::string name, TensorSpecPtr spec, GML::Tensor tensor);
+  GeneratedInputImpl(std::string name, TensorSpecPtr spec, Tensor tensor);
 
   std::string name;
   TensorSpecPtr spec;
-  GML::Tensor tensor;
+  Tensor tensor;
 };
 } // namespace M::BenchmarkCLI::Detail
 
 BCD::GeneratedInputImpl::GeneratedInputImpl(std::string name,
-                                            TensorSpecPtr spec,
-                                            GML::Tensor tensor)
+                                            TensorSpecPtr spec, Tensor tensor)
     : name(std::move(name)), spec(std::move(spec)), tensor(std::move(tensor)) {}
 
 ErrorOr<BCD::GeneratedInputImpl>
-BCD::GeneratedInputImpl::create(std::string name, GML::Tensor tensor) {
+BCD::GeneratedInputImpl::create(std::string name, Tensor tensor) {
   TensorSpecPtr spec = tensorSpecToCAPI(name.c_str(), tensor.getSpec());
   if (!spec)
     return Error(Twine("Unable to create M_TensorSpec for ") + name);
@@ -447,7 +446,7 @@ public:
         dataGenerator(std::move(dataGenerator)) {}
 
   ErrorOr<std::unique_ptr<GeneratedInput>>
-  generateInput(LLCL::CompactRuntimePtr runtime, size_t queryIndex) override;
+  generateInput(size_t queryIndex) override;
 
 private:
   std::string name;
@@ -457,11 +456,9 @@ private:
 } // namespace M::BenchmarkCLI::Detail
 
 ErrorOr<std::unique_ptr<GeneratedInput>>
-BCD::InputGeneratorImpl::generateInput(LLCL::CompactRuntimePtr runtime,
-                                       size_t queryIndex) {
+BCD::InputGeneratorImpl::generateInput(size_t queryIndex) {
   // TODO: Use query index.
-  auto tensorOr =
-      dataGenerator->generate(runtime, shape.value_or(TensorSpec()));
+  auto tensorOr = dataGenerator->generate(shape.value_or(TensorSpec()));
   if (tensorOr.isError())
     return tensorOr.takeError();
   auto inputOr = GeneratedInputImpl::create(name, std::move(*tensorOr));
@@ -544,8 +541,7 @@ public:
 
   ssize_t getNumQueries() const override;
   ErrorOr<std::unique_ptr<GeneratedQuery>>
-  generateQuery(LLCL::CompactRuntimePtr allocRuntime,
-                M_RuntimeContext *runtimeContext,
+  generateQuery(M_RuntimeContext *runtimeContext,
                 size_t queryIndex) const override;
 
 private:
@@ -556,13 +552,11 @@ private:
 ssize_t BCD::QueryGeneratorImpl::getNumQueries() const { return -1; }
 
 ErrorOr<std::unique_ptr<GeneratedQuery>>
-BCD::QueryGeneratorImpl::generateQuery(LLCL::CompactRuntimePtr allocRuntime,
-                                       M_RuntimeContext *runtimeContext,
+BCD::QueryGeneratorImpl::generateQuery(M_RuntimeContext *runtimeContext,
                                        size_t queryIndex) const {
   std::vector<std::unique_ptr<GeneratedInput>> tensors;
   for (auto &inputGenerator : inputGenerators) {
-    auto generatedInputOr =
-        inputGenerator->generateInput(allocRuntime, queryIndex);
+    auto generatedInputOr = inputGenerator->generateInput(queryIndex);
     // N.B.: We do not wrap the error with context about which input it is,
     // since the input generator itself is best positioned to provide this
     // information (it knows its name, for example, while we do not).

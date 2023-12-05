@@ -7,7 +7,6 @@
 #ifndef GENERICML_BENCHMARK_CLI_MLPERF_INTEGRATION_H
 #define GENERICML_BENCHMARK_CLI_MLPERF_INTEGRATION_H
 
-#include "LLCL/Runtime/CompactRuntimePtr.h"
 #include "Support/ForwardDecls.h"
 #include "mlperf-loadgen/query_sample_library.h"
 #include "mlperf-loadgen/system_under_test.h"
@@ -21,8 +20,7 @@ class QueryGenerator;
 
 class QuerySampleLibrary final : public mlperf::QuerySampleLibrary {
 public:
-  QuerySampleLibrary(LLCL::CompactRuntimePtr allocRuntime,
-                     M_RuntimeContext *runtimeContext,
+  QuerySampleLibrary(M_RuntimeContext *runtimeContext,
                      std::unique_ptr<QueryGenerator> queryGenerator);
   ~QuerySampleLibrary();
 
@@ -43,7 +41,6 @@ private:
   void loadSample(mlperf::QuerySampleIndex index);
   void unloadSample(mlperf::QuerySampleIndex index);
 
-  LLCL::CompactRuntimePtr allocRuntime;
   M_RuntimeContext *runtimeContext;
   size_t sampleCount;
   std::unique_ptr<QueryGenerator> queryGenerator;

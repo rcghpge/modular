@@ -6,7 +6,7 @@
 
 #include "GenericML/BenchmarkCLI/InputGenerator.h"
 #include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
-#include "LLCL/Runtime/Runtime.h"
+#include "GenericML/BenchmarkCLI/Tensor.h"
 #include "modular/c/tensor.h"
 #include "modular/cpp/aliases.h"
 #include "llvm/ADT/APFloat.h"
@@ -75,12 +75,6 @@ TestInputSchemaErrorReporter::reportedNoErrors() const {
   return testing::AssertionFailure()
          << "reported " << errors.size()
          << " errors, including: " << errors.front();
-}
-
-static std::unique_ptr<LLCL::Runtime> createRuntimeForTest() {
-  return std::make_unique<LLCL::Runtime>(
-      LLCL::createLeakCheckAllocator(LLCL::createMallocAllocator()),
-      LLCL::createSingleThreadWorkQueue());
 }
 
 TEST(UniformInputRandomDistribution, f32Default) {
@@ -460,9 +454,7 @@ TEST(RandomInputDataGenerator, fromDistribution) {
             lastFillCallNumElements = numElements;
           }));
   ASSERT_NE(nullptr, gen);
-  auto runtime = createRuntimeForTest();
-  ErrorOr<GML::Tensor> tensorOr =
-      gen->generate(*runtime, TensorShape({1, 2, 3}));
+  ErrorOr<Tensor> tensorOr = gen->generate(TensorShape({1, 2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
   EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
   EXPECT_EQ(DType(DType::f32), tensorOr->getEltType());
@@ -478,9 +470,7 @@ TEST(RandomInputDataGenerator, basic) {
   auto gen = createRandomInputDataGenerator(DType::f32, spec, errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  auto runtime = createRuntimeForTest();
-  ErrorOr<GML::Tensor> tensorOr =
-      gen->generate(*runtime, TensorShape({1, 2, 3}));
+  ErrorOr<Tensor> tensorOr = gen->generate(TensorShape({1, 2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
   EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
   EXPECT_EQ(DType(DType::f32), tensorOr->getEltType());
@@ -493,9 +483,7 @@ TEST(RandomInputDataGenerator, noShape) {
   auto gen = createRandomInputDataGenerator(DType::f32, spec, errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  auto runtime = createRuntimeForTest();
-  ErrorOr<GML::Tensor> tensorOr =
-      gen->generate(*runtime, TensorShape(kDynamicallyRanked));
+  ErrorOr<Tensor> tensorOr = gen->generate(TensorShape(kDynamicallyRanked));
   ASSERT_TRUE(tensorOr.isError());
   // TODO: Ideally we would be able to detect this at generator creation time,
   // not at generation time.  But that might be tricky, so we can do that
@@ -611,8 +599,7 @@ TEST(InputGenerator, basic) {
   auto gen = createInputGenerator(spec, errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  auto runtime = createRuntimeForTest();
-  auto inputOr = gen->generateInput(runtime->getCompactPtr(), 0);
+  auto inputOr = gen->generateInput(0);
   ASSERT_FALSE(inputOr.isError()) << inputOr.getError();
   ASSERT_NE(nullptr, *inputOr);
   StatusPtr status(M_newStatus(), M_freeStatus);
@@ -703,9 +690,7 @@ public:
       : generateInputFn(std::move(generateInputFn)) {}
 
   ErrorOr<std::unique_ptr<GeneratedInput>>
-  generateInput(LLCL::CompactRuntimePtr runtime, size_t queryIndex) override {
-    // TODO: Not forwarding runtime for now, since I would like to get rid of
-    // the runtime parameter entirely later.
+  generateInput(size_t queryIndex) override {
     return generateInputFn(queryIndex);
   }
 
@@ -727,9 +712,7 @@ TEST(QueryGenerator, noInputs) {
                             M_freeRuntimeContext);
   EXPECT_FALSE(M_isError(status.get())) << M_getError(status.get());
   ASSERT_NE(nullptr, runtime);
-  auto allocRuntime = createRuntimeForTest();
-  auto queryOr =
-      gen->generateQuery(allocRuntime->getCompactPtr(), runtime.get(), 0);
+  auto queryOr = gen->generateQuery(runtime.get(), 0);
   EXPECT_FALSE(queryOr.isError()) << queryOr.getError();
   EXPECT_NE(nullptr, *queryOr);
   auto atm = (*queryOr)->getAsyncTensorMap();
@@ -765,9 +748,7 @@ TEST(QueryGenerator, oneInput) {
                             M_freeRuntimeContext);
   EXPECT_FALSE(M_isError(status.get())) << M_getError(status.get());
   ASSERT_NE(nullptr, runtime);
-  auto allocRuntime = createRuntimeForTest();
-  auto queryOr =
-      gen->generateQuery(allocRuntime->getCompactPtr(), runtime.get(), 123);
+  auto queryOr = gen->generateQuery(runtime.get(), 123);
   EXPECT_FALSE(queryOr.isError()) << queryOr.getError();
   EXPECT_NE(nullptr, *queryOr);
   auto atm = (*queryOr)->getAsyncTensorMap();
@@ -793,9 +774,7 @@ TEST(QueryGenerator, oneInputError) {
                             M_freeRuntimeContext);
   EXPECT_FALSE(M_isError(status.get())) << M_getError(status.get());
   ASSERT_NE(nullptr, runtime);
-  auto allocRuntime = createRuntimeForTest();
-  auto queryOr =
-      gen->generateQuery(allocRuntime->getCompactPtr(), runtime.get(), 0);
+  auto queryOr = gen->generateQuery(runtime.get(), 0);
   ASSERT_TRUE(queryOr.isError());
   EXPECT_STREQ("Tea kettle left on stove", queryOr.getError());
 }
@@ -821,9 +800,7 @@ TEST(QueryGeneratorIntegration, basic) {
                             M_freeRuntimeContext);
   EXPECT_FALSE(M_isError(status.get())) << M_getError(status.get());
   ASSERT_NE(nullptr, runtime);
-  auto allocRuntime = createRuntimeForTest();
-  auto queryOr =
-      gen->generateQuery(allocRuntime->getCompactPtr(), runtime.get(), 0);
+  auto queryOr = gen->generateQuery(runtime.get(), 0);
   ASSERT_FALSE(queryOr.isError()) << queryOr.getError();
   ASSERT_NE(nullptr, *queryOr);
   auto atm = (*queryOr)->getAsyncTensorMap();

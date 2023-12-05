@@ -13,6 +13,7 @@ add_genericml_library(BenchmarkCLI
   Main.cpp
   NPYMetadata.cpp
   NPYReader.cpp
+  Tensor.cpp
 
   LINK_LIBS PUBLIC
   MSupport

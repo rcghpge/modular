@@ -6,7 +6,6 @@
 
 #include "GenericML/BenchmarkCLI/MLPerfIntegration.h"
 #include "GenericML/BenchmarkCLI/InputGenerator.h"
-#include "LLCL/Runtime/Runtime.h"
 #include "modular/cpp/aliases.h"
 #include "gtest/gtest.h"
 
@@ -24,8 +23,7 @@ public:
 
   ssize_t getNumQueries() const override { return -1; }
   ErrorOr<std::unique_ptr<GeneratedQuery>>
-  generateQuery(LLCL::CompactRuntimePtr allocRuntime,
-                M_RuntimeContext *runtimeContext,
+  generateQuery(M_RuntimeContext *runtimeContext,
                 size_t queryIndex) const override {
     return generateQueryFn(queryIndex);
   }
@@ -77,8 +75,6 @@ TEST(QuerySampleLibrary, basic) {
   int generateCalls = 0;
   size_t lastQueryIndex = 0;
   std::vector<LivenessTrackingQuery *> liveQueries;
-  LLCL::Runtime allocRuntime(LLCL::createMallocAllocator(),
-                             LLCL::createSingleThreadWorkQueue());
   StatusPtr status(M_newStatus(), M_freeStatus);
   ASSERT_NE(nullptr, status);
   RuntimeConfigPtr config(M_newRuntimeConfig(), M_freeRuntimeConfig);
@@ -88,7 +84,7 @@ TEST(QuerySampleLibrary, basic) {
   EXPECT_FALSE(M_isError(status.get())) << M_getError(status.get());
   ASSERT_NE(nullptr, runtimeContext);
   QuerySampleLibrary qsl(
-      allocRuntime.getCompactPtr(), runtimeContext.get(),
+      runtimeContext.get(),
       std::make_unique<TestQueryGenerator>([&](size_t queryIndex) {
         ++generateCalls;
         lastQueryIndex = queryIndex;

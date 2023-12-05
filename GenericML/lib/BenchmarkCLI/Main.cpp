@@ -11,7 +11,6 @@
 #include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
 #include "GenericML/BenchmarkCLI/InputGenerator.h"
 #include "GenericML/BenchmarkCLI/MLPerfIntegration.h"
-#include "LLCL/Runtime/Runtime.h"
 #include "PyTorch/API/modular/c/pytorch/config.h"
 #include "Support/CommandLine.h"
 #include "Support/ErrorOr.h"
@@ -155,10 +154,9 @@ private:
 
 static ErrorOr<double> estimateLatency(M_RuntimeContext *runtimeContext,
                                        M_AsyncModel *model,
-                                       QueryGenerator &queryGenerator,
-                                       LLCL::CompactRuntimePtr allocRuntime) {
+                                       QueryGenerator &queryGenerator) {
   ErrorOr<std::unique_ptr<GeneratedQuery>> queryOr =
-      queryGenerator.generateQuery(allocRuntime, runtimeContext, 0);
+      queryGenerator.generateQuery(runtimeContext, 0);
   if (queryOr.isError())
     return Error(llvm::Twine("Unable to generate sample query: ") +
                  queryOr.getError());
@@ -318,11 +316,6 @@ int M::engineCLIBenchmarkMain(int argc, char **argv) {
     model = std::move(*modelOr);
   }
 
-  // The work queue of this runtime is never used (it's used only for the
-  // allocator), so we use a single-thread work queue to avoid using
-  // unnecessary resources.
-  LLCL::Runtime allocRuntime(LLCL::createMallocAllocator(),
-                             LLCL::createSingleThreadWorkQueue());
   mlperf::TestSettings mlperfTestSettings;
   mlperfTestSettings.scenario = opts.mlPerfScenario;
   mlperf::LogSettings mlperfLogSettings;
@@ -331,8 +324,7 @@ int M::engineCLIBenchmarkMain(int argc, char **argv) {
   {
     llvm::outs() << "Estimating latency for query generation... ";
     ErrorOr<double> estimatedLatencyOr =
-        estimateLatency(runtimeContext.get(), model.get(), *queryGenerator,
-                        allocRuntime.getCompactPtr());
+        estimateLatency(runtimeContext.get(), model.get(), *queryGenerator);
     if (estimatedLatencyOr.isError()) {
       llvm::outs() << "Error\n";
       llvm::outs().flush();
@@ -354,8 +346,7 @@ int M::engineCLIBenchmarkMain(int argc, char **argv) {
     mlperfTestSettings.multi_stream_samples_per_query = 1;
   }
 
-  QuerySampleLibrary qsl(allocRuntime.getCompactPtr(), runtimeContext.get(),
-                         std::move(queryGenerator));
+  QuerySampleLibrary qsl(runtimeContext.get(), std::move(queryGenerator));
   SystemUnderTest sut(&qsl, runtimeContext.get(), model.get());
 
   llvm::outs() << "Benchmarking\n";
