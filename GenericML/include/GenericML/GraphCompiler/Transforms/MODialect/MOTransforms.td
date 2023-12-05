@@ -403,4 +403,21 @@ def DebugPrintAllTensorsPass : Pass<"debug-print-all-tensors", "GraphOp"> {
   }];
 }
 
+def SplatLargeConstants :
+    Pass<"splat-large-constants", "GraphOp"> {
+  let summary = "Will splat a large constant for development purposes";
+  let description = [{
+    This pass will replace a large constant with a splatted version by
+    broadcasting a single scalar value. This pass does not preserve correctness
+    so it should be used for development purposes only (especially for large
+    models).
+  }];
+
+  let options = [
+    // Default is 100M elements.
+    Option<"numElements", "num-elements", "int", "100000000",
+      "Threshold number of elements in the constant's dense array">,
+  ];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_TD
