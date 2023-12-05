@@ -1032,9 +1032,8 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
     dimensions[numInDimensions + i] = -1;
 #endif
 
-  // Start tracing the kernel. This entry will also be used by any sub-tasks
-  // launched by the kernel.
-  outputChain.trace(InternableString(*dSummary));
+  // Start profiling the kernel.
+  auto profilerEntry = MGPProfilerEntry::create(*dSummary);
 
   // Execute the kernel:
   //  - Asynchronous kernels will have copied everything out of the three
@@ -1045,15 +1044,24 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   //    at runtime.
   kernelPtr(call.inputPointers.data(), dimensions.data(), &outputChain);
 
-  if (outputChain.chain.isError()) {
+  if (outChain.copy().isError()) {
     // The kernel failed while trying to launch.
     setOutDimensionsToChainError();
     return;
   }
 
+  // Stop profiling when the kernel *finishes* (and the completion
+  // callback is scheduled).
+  if constexpr (MGPProfilerEntry::isEnabled()) {
+    outChain.copy().andThenSync(
+        [profilerEntry = std::move(profilerEntry)]() mutable {
+          std::move(profilerEntry).record();
+        });
+  }
+
   // If the kernel has output dimensions then it must be synchronous and those
   // values can be copied out now.
-  assert(numOutDimensions == 0 || outputChain.chain.isReady());
+  assert(numOutDimensions == 0 || outChain.copy().isReady());
   for (size_t i = 0; i < numOutDimensions; ++i)
     outDimensions[i].copy().emplace<size_t>(dimensions[numInDimensions + i]);
 
