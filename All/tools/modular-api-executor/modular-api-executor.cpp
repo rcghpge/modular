@@ -86,9 +86,6 @@ static M_Dtype convertToCDataType(DType ty) {
   }
 }
 
-// cannot import anything from C api detail files, so redefine constant here.
-static constexpr int64_t apiDynamicDimension = -1;
-
 /// Convert TensorSpec from API to GenericML TensorSpec.
 static M::TensorSpec getTensorSpec(const ModularAPIInterface &api,
                                    M_TensorSpec *spec) {
