@@ -505,12 +505,113 @@ TEST(RandomInputDataGenerator, constructionError) {
       errorReporter.errors);
 }
 
-TEST(ConstantInputDataGenerator, unimplemented) {
+namespace {
+using NativeFloatTypes = testing::Types<float, double>;
+}
+template <typename T>
+class ConstantInputDataGeneratorInteger : public testing::Test {};
+TYPED_TEST_SUITE(ConstantInputDataGeneratorInteger, IntegerTypes);
+template <typename T>
+class ConstantInputDataGeneratorNativeFloat : public testing::Test {};
+TYPED_TEST_SUITE(ConstantInputDataGeneratorNativeFloat, NativeFloatTypes);
+class ConstantInputDataGeneratorError : public testing::TestWithParam<DType> {};
+INSTANTIATE_TEST_SUITE_P(ConstantInputDataGeneratorError,
+                         ConstantInputDataGeneratorError,
+                         testing::Values(DType::si8, DType::ui8, DType::si16,
+                                         DType::ui16, DType::si32, DType::ui32,
+                                         DType::si64, DType::ui64, DType::f16,
+                                         DType::f32, DType::f64, DType::kBool));
+
+TYPED_TEST(ConstantInputDataGeneratorInteger, basic) {
+  constexpr DType dtype = DTypeForCXXType<TypeParam>::kind;
+  static_assert(dtype != DType::invalid, "No DType for TypeParam");
   TestInputSchemaErrorReporter errorReporter;
-  auto gen = createConstantInputDataGenerator(DType::f32, "123", errorReporter);
+  auto gen = createConstantInputDataGenerator(dtype, "123", errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(nullptr, gen);
+  ErrorOr<Tensor> tensorOr = gen->generate(TensorShape({1, 2, 3}));
+  ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
+  EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
+  EXPECT_EQ(dtype, tensorOr->getEltType());
+  const TypeParam *data = static_cast<const TypeParam *>(tensorOr->getBuffer());
+  for (int i = 0; i < 6; ++i)
+    EXPECT_EQ(TypeParam{123}, data[i]) << "At index " << i;
+}
+
+TYPED_TEST(ConstantInputDataGeneratorNativeFloat, basic) {
+  constexpr DType dtype = DTypeForCXXType<TypeParam>::kind;
+  static_assert(dtype != DType::invalid, "No DType for TypeParam");
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createConstantInputDataGenerator(dtype, "-1.23", errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(nullptr, gen);
+  ErrorOr<Tensor> tensorOr = gen->generate(TensorShape({1, 2, 3}));
+  ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
+  EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
+  EXPECT_EQ(dtype, tensorOr->getEltType());
+  const TypeParam *data = static_cast<const TypeParam *>(tensorOr->getBuffer());
+  for (int i = 0; i < 6; ++i)
+    EXPECT_EQ(static_cast<TypeParam>(-1.23), data[i]) << "At index " << i;
+}
+
+TEST_P(ConstantInputDataGeneratorError, error) {
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen =
+      createConstantInputDataGenerator(GetParam(), "beetle", errorReporter);
   EXPECT_EQ(nullptr, gen);
-  EXPECT_EQ((std::vector<ReportedError>{
-                {{}, "Constant input generation not yet implemented"}}),
+  DType dtypeInMessage = GetParam();
+  // Implementation detail leaks through for f16, but it probably doesn't
+  // matter.
+  if (dtypeInMessage == DType::f16)
+    dtypeInMessage = DType::f32;
+  EXPECT_EQ(
+      (std::vector<ReportedError>{{{},
+                                   (Twine("Unable to parse 'beetle' as ") +
+                                    dtypeInMessage.getAsString() + " value")
+                                       .str()}}),
+      errorReporter.errors);
+}
+
+TEST(ConstantInputDataGeneratorOther, float16) {
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen =
+      createConstantInputDataGenerator(DType::f16, "-1.23", errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(nullptr, gen);
+  ErrorOr<Tensor> tensorOr = gen->generate(TensorShape({1, 2, 3}));
+  ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
+  EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
+  EXPECT_EQ(DType(DType::f16), tensorOr->getEltType());
+  const uint16_t *data = static_cast<const uint16_t *>(tensorOr->getBuffer());
+  // -1.23 as a float16's byte representation is equivalent to uint16_t 48364.
+  // Verify in Python with: np.array([-1.23], dtype=np.float16).view(np.uint16)
+  for (int i = 0; i < 6; ++i)
+    EXPECT_EQ(48364, data[i]) << "At index " << i;
+}
+
+TEST(ConstantInputDataGeneratorOther, boolean) {
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen =
+      createConstantInputDataGenerator(DType::kBool, "true", errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(nullptr, gen);
+  ErrorOr<Tensor> tensorOr = gen->generate(TensorShape({1, 2, 3}));
+  ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
+  EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
+  EXPECT_EQ(DType(DType::kBool), tensorOr->getEltType());
+  const bool *data = static_cast<const bool *>(tensorOr->getBuffer());
+  for (int i = 0; i < 6; ++i)
+    EXPECT_TRUE(data[i]) << "At index " << i;
+}
+
+TEST(ConstantInputDataGeneratorOther, unimplemented) {
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createConstantInputDataGenerator(DType::getComplex(DType::f32),
+                                              "123", errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ((std::vector<ReportedError>{{{},
+                                         "Constant input generation for dtype "
+                                         "'complex<f32>' not supported"}}),
             errorReporter.errors);
 }
 
@@ -553,13 +654,17 @@ TEST(InputDataGenerator, randomNoDType) {
 TEST(InputDataGenerator, constant) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationData spec;
-  spec.constant = "123";
+  spec.constant = "123.4";
   auto gen = createInputDataGenerator(DType::f32, spec, errorReporter);
-  EXPECT_EQ(nullptr, gen);
-  EXPECT_EQ(
-      (std::vector<ReportedError>{
-          {{"constant"}, "Constant input generation not yet implemented"}}),
-      errorReporter.errors);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(nullptr, gen);
+  ErrorOr<Tensor> tensorOr = gen->generate(TensorShape({1, 2, 3}));
+  ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
+  EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
+  EXPECT_EQ(DType(DType::f32), tensorOr->getEltType());
+  const float *data = static_cast<const float *>(tensorOr->getBuffer());
+  for (int i = 0; i < 6; ++i)
+    EXPECT_EQ(123.4f, data[i]) << "At index " << i;
 }
 
 TEST(InputDataGenerator, constantNoDType) {
@@ -583,7 +688,6 @@ TEST(InputDataGenerator, multiple) {
   auto gen = createInputDataGenerator(DType::f32, spec, errorReporter);
   EXPECT_EQ(nullptr, gen);
   EXPECT_EQ((std::vector<ReportedError>{
-                {{"constant"}, "Constant input generation not yet implemented"},
                 {{}, "Only one data generation source may be specified"}}),
             errorReporter.errors);
 }

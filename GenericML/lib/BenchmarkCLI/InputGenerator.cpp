@@ -26,6 +26,21 @@ static auto withinScope(InputSchemaErrorReporter &errorReporter,
   return std::move(result);
 }
 
+static bool parseElementValue(StringRef value, bool &out,
+                              InputSchemaErrorReporter &errorReporter) {
+  if (value == "false") {
+    out = false;
+    return true;
+  }
+  if (value == "true") {
+    out = true;
+    return true;
+  }
+  errorReporter.reportError("Unable to parse '" + llvm::Twine(value) +
+                            "' as bool value");
+  return false;
+}
+
 static bool parseElementValue(StringRef value, float &out,
                               InputSchemaErrorReporter &errorReporter) {
   double outD;
@@ -87,10 +102,29 @@ parseDefaultedElementValue(const std::optional<std::string> &value, T &out,
 namespace M::BenchmarkCLI::Detail {
 
 template <DType::Cases kDType>
-struct FloatGenerationTraits {};
+struct DTypeGenerationTraits {};
+
+#define NATIVELY_REPRESENTED(dt)                                               \
+  template <>                                                                  \
+  struct DTypeGenerationTraits<dt> {                                           \
+    using StorageType = CXXTypeForDType<dt>::CXXType;                          \
+    using GenerationType = StorageType;                                        \
+  }
+NATIVELY_REPRESENTED(DType::si8);
+NATIVELY_REPRESENTED(DType::ui8);
+NATIVELY_REPRESENTED(DType::si16);
+NATIVELY_REPRESENTED(DType::ui16);
+NATIVELY_REPRESENTED(DType::si32);
+NATIVELY_REPRESENTED(DType::ui32);
+NATIVELY_REPRESENTED(DType::si64);
+NATIVELY_REPRESENTED(DType::ui64);
+NATIVELY_REPRESENTED(DType::f32);
+NATIVELY_REPRESENTED(DType::f64);
+NATIVELY_REPRESENTED(DType::kBool);
+#undef NATIVELY_REPRESENTED
 
 template <>
-struct FloatGenerationTraits<DType::f16> {
+struct DTypeGenerationTraits<DType::f16> {
   using StorageType = uint16_t;
   using GenerationType = float;
 
@@ -105,23 +139,11 @@ struct FloatGenerationTraits<DType::f16> {
   }
 };
 
-template <>
-struct FloatGenerationTraits<DType::f32> {
-  using StorageType = float;
-  using GenerationType = float;
-};
-
-template <>
-struct FloatGenerationTraits<DType::f64> {
-  using StorageType = double;
-  using GenerationType = double;
-};
-
 template <DType::Cases kDType>
 class UniformFloatInputRandomDistribution final
     : public InputRandomDistribution {
-  using StorageType = typename FloatGenerationTraits<kDType>::StorageType;
-  using GenerationType = typename FloatGenerationTraits<kDType>::GenerationType;
+  using StorageType = typename DTypeGenerationTraits<kDType>::StorageType;
+  using GenerationType = typename DTypeGenerationTraits<kDType>::GenerationType;
 
 public:
   explicit UniformFloatInputRandomDistribution(GenerationType min,
@@ -156,9 +178,9 @@ namespace BCD = BenchmarkCLI::Detail;
 template <DType::Cases kDType>
 void BCD::UniformFloatInputRandomDistribution<kDType>::fill(
     void *out, size_t numElements) const {
-  using StorageType = typename BCD::FloatGenerationTraits<kDType>::StorageType;
+  using StorageType = typename BCD::DTypeGenerationTraits<kDType>::StorageType;
   using GenerationType =
-      typename BCD::FloatGenerationTraits<kDType>::GenerationType;
+      typename BCD::DTypeGenerationTraits<kDType>::GenerationType;
   assert(getDType() == kDType);
   MutableArrayRef<StorageType> outStorage{static_cast<StorageType *>(out),
                                           numElements};
@@ -168,7 +190,7 @@ void BCD::UniformFloatInputRandomDistribution<kDType>::fill(
     std::uniform_real_distribution<GenerationType> distribution(min, max);
     std::default_random_engine randEngine(/*seed=*/0);
     std::generate(outStorage.begin(), outStorage.end(), [&]() {
-      return FloatGenerationTraits<kDType>::generationToStorage(
+      return DTypeGenerationTraits<kDType>::generationToStorage(
           distribution(randEngine));
     });
   }
@@ -188,7 +210,7 @@ createUniformFloatInputRandomDistribution(
     const InputGenerationRandomUniform &spec,
     InputSchemaErrorReporter &errorReporter) {
   using GenerationType =
-      typename BCD::FloatGenerationTraits<kDType>::GenerationType;
+      typename BCD::DTypeGenerationTraits<kDType>::GenerationType;
   GenerationType min, max;
   bool minOK = withinScope(errorReporter, "min", [&]() {
     return parseDefaultedElementValue(spec.min, min, GenerationType(-1),
@@ -359,11 +381,78 @@ M::BenchmarkCLI::createRandomInputDataGenerator(
   return createRandomInputDataGenerator(std::move(dist));
 }
 
+namespace M::BenchmarkCLI::Detail {
+template <typename T>
+class ConstantInputDataGenerator final : public InputDataGenerator {
+public:
+  explicit ConstantInputDataGenerator(DType dtype, T value)
+      : dtype(dtype), value(value) {}
+
+  ErrorOr<Tensor> generate(const TensorShape &shape) const override;
+
+private:
+  DType dtype;
+  T value;
+};
+} // namespace M::BenchmarkCLI::Detail
+
+template <typename T>
+ErrorOr<Tensor>
+BCD::ConstantInputDataGenerator<T>::generate(const TensorShape &shape) const {
+  if (!shape.isStatic())
+    return Error("Constant input requires fully defined input shape");
+  TensorSpec spec(shape, dtype);
+  std::unique_ptr<T[]> data = std::make_unique<T[]>(spec.getNumElements());
+  std::fill(data.get(), data.get() + spec.getNumElements(), value);
+  const void *dataPtr = data.get();
+  return Tensor(spec, dataPtr, Tensor::own(std::move(data)));
+}
+
+template <DType::Cases kDType>
+static std::unique_ptr<InputDataGenerator>
+createConstantInputDataGeneratorImpl(StringRef constant,
+                                     InputSchemaErrorReporter &errorReporter) {
+  using StorageType = typename BCD::DTypeGenerationTraits<kDType>::StorageType;
+  using GenerationType =
+      typename BCD::DTypeGenerationTraits<kDType>::GenerationType;
+  GenerationType generationValue;
+  if (!parseElementValue(constant, generationValue, errorReporter))
+    return nullptr;
+  StorageType storageValue;
+  if constexpr (std::is_same_v<StorageType, GenerationType>)
+    storageValue = generationValue;
+  else
+    storageValue = BCD::DTypeGenerationTraits<kDType>::generationToStorage(
+        generationValue);
+  return std::make_unique<BCD::ConstantInputDataGenerator<StorageType>>(
+      kDType, storageValue);
+}
+
 std::unique_ptr<InputDataGenerator>
 M::BenchmarkCLI::createConstantInputDataGenerator(
     DType dtype, StringRef constant, InputSchemaErrorReporter &errorReporter) {
-  errorReporter.reportError("Constant input generation not yet implemented");
-  return nullptr;
+  switch (dtype.getValue()) {
+#define DTYPE_CASE(dt)                                                         \
+  case dt:                                                                     \
+    return createConstantInputDataGeneratorImpl<dt>(constant, errorReporter)
+    DTYPE_CASE(DType::f16);
+    DTYPE_CASE(DType::f32);
+    DTYPE_CASE(DType::f64);
+    DTYPE_CASE(DType::si8);
+    DTYPE_CASE(DType::ui8);
+    DTYPE_CASE(DType::si16);
+    DTYPE_CASE(DType::ui16);
+    DTYPE_CASE(DType::si32);
+    DTYPE_CASE(DType::ui32);
+    DTYPE_CASE(DType::si64);
+    DTYPE_CASE(DType::ui64);
+    DTYPE_CASE(DType::kBool);
+#undef DTYPE_CASE
+  default:
+    errorReporter.reportError(Twine("Constant input generation for dtype '") +
+                              dtype.getAsString() + "' not supported");
+    return nullptr;
+  }
 }
 
 std::unique_ptr<InputDataGenerator> M::BenchmarkCLI::createInputDataGenerator(
