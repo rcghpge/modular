@@ -10,7 +10,7 @@ from ._utils import *
 from ._status import *
 from tensor import TensorSpec
 from ._dtypes import EngineDType
-from utils.vector import DynamicVector
+from collections.vector import DynamicVector
 from .session import InferenceSession
 
 

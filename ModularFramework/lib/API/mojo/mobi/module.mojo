@@ -7,7 +7,7 @@
 from tensor import Tensor, TensorSpec, TensorShape
 
 # FIXME(#26590): Migrate to DynamicVector.
-from utils.vector import _OldDynamicVector as DynamicVector
+from collections.vector import _OldDynamicVector as DynamicVector
 
 from .misc import Arity, AttrMap, Symbol
 from .mobicc import (

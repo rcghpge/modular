@@ -10,7 +10,7 @@
 from sys.param_env import env_get_string
 from tensor import TensorSpec
 from testing import assert_equal
-from utils.vector import DynamicVector
+from collections.vector import DynamicVector
 
 import mobi
 from mobi import mobicc

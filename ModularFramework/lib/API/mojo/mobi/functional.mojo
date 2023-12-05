@@ -12,7 +12,7 @@ from .type import Type
 from .misc import Tup
 
 from tensor import Tensor, TensorShape, TensorSpec
-from utils.vector import DynamicVector
+from collections.vector import DynamicVector
 
 
 # TODO: Move to .ops/, break down.
