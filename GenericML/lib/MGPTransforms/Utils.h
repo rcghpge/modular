@@ -13,6 +13,7 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/SetOperations.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 
 namespace M::MGP {
@@ -39,8 +40,16 @@ T cloneWithArgs(OpBuilder &builder, T origOp, TypeRange resultTypes,
   return result;
 }
 
+/// Accumulates into freeValues all the values in block (and its sub-blocks)
+/// which are bound by a proper ancestor of bindingBlock.
+void accumFreeValues(mlir::SetVector<Value> &freeValues, Block *block,
+                     Block *bindingBlock);
+
 /// Returns the operations in block in a dataflow order, ie s.t. an operation
 /// does not have operands defined by operations later in the vector.
+///
+/// See also mlir::sortTopologically, this implementation has the advantage
+/// of spelling out dataflow cycles when they arise.
 SmallVector<Operation *> getDataflowOrder(Block *block);
 
 /// Returns true if op can be executed exactly once in overall model.

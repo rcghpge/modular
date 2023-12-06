@@ -20,21 +20,6 @@ using namespace M;
 using namespace M::MGP;
 using namespace mlir;
 
-/// Accumulates all the values in block (and its sub-blocks) which are bound
-/// by a proper ancestor of bindingBlock.
-static void accumFreeValues(SetVector<Value> &outerValues, Block *block,
-                            Block *bindingBlock) {
-  for (Operation &inOp : block->getOperations()) {
-    for (Value inValue : inOp.getOperands()) {
-      if (inValue.getParentRegion()->isProperAncestor(
-              bindingBlock->getParent()))
-        outerValues.insert(inValue);
-    }
-    for (Region &subRegion : inOp.getRegions())
-      accumFreeValues(outerValues, &subRegion.front(), bindingBlock);
-  }
-}
-
 [[maybe_unused]] static SetVector<Value> getValues(Operation *op) {
   SetVector<Value> result;
   for (Value value : op->getResults())
@@ -66,8 +51,10 @@ static bool checkRewrite(Operation *inOp, Operation *outOp) {
 
 /// Rewrites inBlock into outBlock, where freeValues will instead be bound
 /// by new arguments in outBlock. If mustAlsoReturn is true, freeValues will
-/// also become new block outputs. If, in addition, beforeLastOutput is true,
-/// any new block outputs will come just before the existing last block output.
+/// also become new block outputs (as needed for a grt.while). If, in addition,
+/// beforeLastOutput is true, any new block outputs will come just before the
+/// existing last block output (as needed for the output of a grt.while 'cond'
+/// block).
 ///
 /// Could be reused at higher dialects provided they implement
 /// GRTControlFlowInterface for the control flow ops, and we don't depend
@@ -107,14 +94,23 @@ static void fixup(OpBuilder &builder, Block *inBlock,
           assert(n > 0);
           --n;
         }
-        for (size_t i = 0; i < n; ++i)
-          outOperands.emplace_back(mapping.lookup(inOutputOp->getOperand(i)));
+        for (size_t i = 0; i < n; ++i) {
+          Value outOperand = mapping.lookupOrNull(inOutputOp->getOperand(i));
+          assert(outOperand && "unmapped operand");
+          outOperands.emplace_back(outOperand);
+        }
         // Include the additional arguments.
-        for (Value inFreeValue : freeValues)
-          outOperands.emplace_back(mapping.lookup(inFreeValue));
-        if (beforeLastOutput)
+        for (Value inFreeValue : freeValues) {
+          Value outFreeValue = mapping.lookupOrNull(inFreeValue);
+          assert(outFreeValue && "unmapped free value");
+          outOperands.emplace_back(outFreeValue);
+        }
+        if (beforeLastOutput) {
           // Rewrite last operand.
-          outOperands.emplace_back(mapping.lookup(inOutputOp->getOperand(n)));
+          Value outOperand = mapping.lookupOrNull(inOutputOp->getOperand(n));
+          assert(outOperand && "unmapped operand");
+          outOperands.emplace_back(outOperand);
+        }
         Operation *outOutputOp =
             builder.create<MEF::OutputOp>(inOp->getLoc(), outOperands);
         assert(checkRewrite(inOutputOp, outOutputOp) &&
@@ -137,11 +133,17 @@ static void fixup(OpBuilder &builder, Block *inBlock,
 
       // Rewrite existing operands.
       SmallVector<Value> outOperands;
-      for (Value operand : inCfOp->getOperands())
-        outOperands.emplace_back(mapping.lookup(operand));
+      for (Value operand : inCfOp->getOperands()) {
+        Value outOperand = mapping.lookupOrNull(operand);
+        assert(outOperand && "unmapped operand");
+        outOperands.emplace_back(outOperand);
+      }
       // Include the additional arguments.
-      for (Value inSubFreeValue : subFreeValues)
-        outOperands.emplace_back(mapping.lookup(inSubFreeValue));
+      for (Value inSubFreeValue : subFreeValues) {
+        Value outSubFreeValue = mapping.lookupOrNull(inSubFreeValue);
+        assert(outSubFreeValue && "unmapped sub free value");
+        outOperands.emplace_back(outSubFreeValue);
+      }
 
       // New op continues to return existing results (possibly excluding last).
       size_t n = inCfOp->getNumResults();

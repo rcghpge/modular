@@ -17,6 +17,19 @@
 using namespace M;
 using namespace M::MGP;
 
+void M::MGP::accumFreeValues(mlir::SetVector<Value> &freeValues, Block *block,
+                             Block *bindingBlock) {
+  for (Operation &inOp : block->getOperations()) {
+    for (Value inValue : inOp.getOperands()) {
+      if (inValue.getParentRegion()->isProperAncestor(
+              bindingBlock->getParent()))
+        freeValues.insert(inValue);
+    }
+    for (Region &subRegion : inOp.getRegions())
+      accumFreeValues(freeValues, &subRegion.front(), bindingBlock);
+  }
+}
+
 #if MODULAR_DEBUG
 /// Finds a cycle starting at op. Recursive, so should only be used as
 /// a diagnostic where we are about to hard fail anyway.
@@ -42,27 +55,36 @@ static bool findCycle(SmallVectorImpl<Operation *> &stack, Operation *op) {
 }
 #endif
 
-/// Return true if currOp needs to be visited.
+/// Return true if currOp needs to be visited. Will assert fail if a cycle
+/// is detected.
 static bool shouldStartVisiting(DenseMap<Operation *, bool> &visited,
-                                Operation *currOp) {
+                                Operation *currOp, Block *block) {
+  if (currOp->getBlock() != block) {
+    // We've already accounted for outer values when visiting the block
+    // containing currOp.
+    return false;
+  }
+
   auto itr = visited.find(currOp);
   if (itr == visited.end()) {
+    // Start visiting.
     visited.insert({currOp, false});
     return true;
   }
-  if (itr->second)
+
+  if (itr->second) {
+    // We've finished visiting.
     return false;
-#if MODULAR_DEBUG
-  if (!itr->second) {
-    llvm::dbgs() << "model contains a dataflow cycle involving op:\n  ";
-    currOp->print(llvm::dbgs(), mlir::OpPrintingFlags().printGenericOpForm());
-    llvm::dbgs() << "\n";
   }
+
+#if MODULAR_DEBUG
+  llvm::dbgs() << "model contains a dataflow cycle involving op:\n  ";
+  currOp->print(llvm::dbgs(), mlir::OpPrintingFlags().printGenericOpForm());
+  llvm::dbgs() << "\n";
+
   SmallVector<Operation *> stack;
   findCycle(stack, currOp);
-  Operation *modelOp = currOp->getParentOp();
-  while (modelOp && !isa<mlir::ModuleOp>(modelOp->getParentOp()))
-    modelOp = modelOp->getParentOp();
+  ModelOp modelOp = currOp->getParentOfType<ModelOp>();
   if (modelOp) {
     llvm::dbgs() << "within:\n";
     llvm::dbgs() << "----------------------------------------\n";
@@ -70,8 +92,51 @@ static bool shouldStartVisiting(DenseMap<Operation *, bool> &visited,
     llvm::dbgs() << "\n----------------------------------------\n";
   }
 #endif
+
   assert(itr->second && "model contains cycle involving op");
   return false;
+};
+
+namespace {
+/// Records a pending operand to visit.
+struct Frame {
+  Operation *frameOp;
+  size_t nextOperandIndex;
+  /// If frameOp is a control flow op, and we've not yet run
+  /// fixupIsolatedFromAbove, then it may contain free values.
+  /// Capture those and treat them as if they were additional operands
+  /// to the op (which is what they'll show up as after fixupIsolatedFromAbove).
+  llvm::SetVector<Value> freeValues;
+
+  /// Returns the next operand of frameOp to visit, or null if done.
+  Value next() {
+    if (nextOperandIndex >= frameOp->getNumOperands() + freeValues.size())
+      return {};
+    else if (nextOperandIndex < frameOp->getNumOperands())
+      return frameOp->getOperand(nextOperandIndex++);
+    else
+      return freeValues[nextOperandIndex++ - frameOp->getNumOperands()];
+  }
+
+  Frame(Operation *frameOp, size_t nextOperandIndex)
+      : frameOp(frameOp), nextOperandIndex(nextOperandIndex) {
+    for (Region &subRegion : frameOp->getRegions()) {
+      Block *subBlock = &subRegion.front();
+      accumFreeValues(freeValues, subBlock, subBlock);
+    }
+  }
+};
+} // namespace
+
+/// Pushes onto stack the frame necessary to visit currOp, if any.
+static void startVisiting(DenseMap<Operation *, bool> &visited,
+                          SmallVector<Frame> &stack, Operation *currOp,
+                          Block *block) {
+  if (!shouldStartVisiting(visited, currOp, block))
+    return;
+
+  // Start with first operand (if any).
+  stack.emplace_back(currOp, 0);
 };
 
 /// Records that currOp has been fully visited.
@@ -90,40 +155,20 @@ static void visitInDataflowOrder(Operation *op,
                                  SmallVectorImpl<Operation *> &dataflowOrder,
                                  DenseMap<Operation *, bool> &visited) {
   Block *block = op->getBlock();
-
-  if (!shouldStartVisiting(visited, op))
-    return;
-
-  struct Frame {
-    Operation *frameOp;
-    size_t nextOperandIndex;
-    Frame(Operation *frameOp, size_t nextOperandIndex)
-        : frameOp(frameOp), nextOperandIndex(nextOperandIndex) {}
-  };
   SmallVector<Frame> stack;
 
-  // Start with first operand of op, if any.
-  stack.emplace_back(op, 0);
+  startVisiting(visited, stack, op, block);
 
   while (!stack.empty()) {
-    Frame frame = stack.back();
-    stack.pop_back();
-    if (frame.nextOperandIndex >= frame.frameOp->getNumOperands()) {
-      // We've visited all the inputs of frame.parent
+    Frame &frame = stack.back();
+    Value nextOperand = frame.next();
+    if (!nextOperand) {
+      // We've visited all the operands and free values of frame.frameOp.
       finishVisiting(visited, frame.frameOp);
       dataflowOrder.push_back(frame.frameOp);
-    } else {
-      // We're about to visit frame.parent->getOperand(frame.nextInputIndex),
-      // so remember we need to continue with next operand when done, if any.
-      stack.emplace_back(frame.frameOp, frame.nextOperandIndex + 1);
-
-      Value operand = frame.frameOp->getOperand(frame.nextOperandIndex);
-      if (Operation *inputOp = operand.getDefiningOp()) {
-        if (inputOp->getBlock() == block &&
-            shouldStartVisiting(visited, inputOp))
-          // Start with first operand of inputOp, if any.
-          stack.emplace_back(inputOp, 0);
-      }
+      stack.pop_back();
+    } else if (Operation *inputOp = nextOperand.getDefiningOp()) {
+      startVisiting(visited, stack, inputOp, block);
     }
   }
 }
