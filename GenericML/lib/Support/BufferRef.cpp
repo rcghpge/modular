@@ -79,7 +79,9 @@ BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
   }
 
   auto profilerEntry = BufferRefLifetimeProfilerEntry::create(
-      "mem.buffer.owned", (uint64_t)size);
+      StringLiteral("mem.buffer.owned"), [size]() {
+        return Twine("size:").concat(Twine(size)).concat("B").str();
+      });
 
   return BufferRef(
       buffer, size, /*owningRef=*/{}, makeMaybeAlign(alignment), kOwned, kLocal,
