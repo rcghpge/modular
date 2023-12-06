@@ -5,6 +5,7 @@
 ##===----------------------------------------------------------------------===##
 
 include(AddPython)
+include(RTTIExceptions)
 
 add_modular_unittest(
   TOP_LEVEL_CHECK
@@ -19,11 +20,9 @@ add_modular_unittest(
   InferenceSessionTest.cpp
 )
 
-target_compile_options(llvm_gtest_main PRIVATE -frtti -fexceptions)
-target_compile_options(llvm_gtest PRIVATE -frtti -fexceptions)
-target_compile_options(InferenceSessionTest PRIVATE
-   -frtti -fexceptions
-)
+set_rtti_exceptions(llvm_gtest_main)
+set_rtti_exceptions(llvm_gtest)
+set_rtti_exceptions(InferenceSessionTest)
 
 # find_package(Python3) has to be called before including pybind11 so that
 # pybind11 picks up the correct Python development paths.
