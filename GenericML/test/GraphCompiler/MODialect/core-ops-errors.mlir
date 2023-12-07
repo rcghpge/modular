@@ -61,11 +61,11 @@ mo.graph @if_op_type_mismatch(%arg0: !mo.tensor<[2, ?, 1], f32>, %arg1: !mo.tens
 // -----
 
 mo.graph @while_op_type_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
-  %0:2 = mo.while (%arg0 : !mo.tensor<[2], f32>, %cond: !mo.tensor<[], bool>) {
+  %0:2 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %cond as %condi: !mo.tensor<[], bool>) {
     // expected-error@+1 {{'mo.yield' op expected single operand of type '!mo.tensor<[], bool>'.}}
-    mo.yield %arg0 : !mo.tensor<[2], f32>
+    mo.yield %argi0 : !mo.tensor<[2], f32>
   } do {
-    mo.yield %arg0, %cond : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
+    mo.yield %argi0, %condi : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
   }
   mo.output %0#0 : !mo.tensor<[2], f32>
 }
@@ -73,11 +73,11 @@ mo.graph @while_op_type_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.te
 // -----
 
 mo.graph @while_op_type_mismatch_body(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
-  %0:3 = mo.while (%arg0 : !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond: !mo.tensor<[], bool>) {
-    mo.yield %cond : !mo.tensor<[], bool>
+  %0:3 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %arg1 as %argi1: !mo.tensor<[3], f32>, %cond as %condi: !mo.tensor<[], bool>) {
+    mo.yield %condi : !mo.tensor<[], bool>
   } do {
     // expected-error@+1 {{'mo.yield' op operand #0 has type '!mo.tensor<[3], f32>' but expected '!mo.tensor<[2], f32>'}}
-    mo.yield %arg1, %arg0, %cond : !mo.tensor<[3], f32>, !mo.tensor<[2], f32>, !mo.tensor<[], bool>
+    mo.yield %argi1, %argi0, %condi : !mo.tensor<[3], f32>, !mo.tensor<[2], f32>, !mo.tensor<[], bool>
   }
   mo.output %0#0 : !mo.tensor<[2], f32>
 }

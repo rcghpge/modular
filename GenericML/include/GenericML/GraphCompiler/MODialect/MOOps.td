@@ -262,10 +262,10 @@ def MO_OutputOp : MO_ControlOp<"output", [
 //===----------------------------------------------------------------------===//
 
 def IfOp : MO_ControlOp<"if",
-          [SingleBlockImplicitTerminator<"MO::YieldOp">]> {
+          [SingleBlockImplicitTerminator<"MO::YieldOp">, HasOnlyGraphRegion]> {
   let summary = "if operation";
   let description = [{
-    The "mo.if" operation takes an i1 condition, a 'then' block and an 'else'
+    The `mo.if` operation takes an i1 condition, a 'then' block and an 'else'
     block. If the condition is true, the 'then' block is run and the "mo.if"
     operation returns the results of that block, otherwise the "else" block is
     run and its values are returned.
@@ -308,23 +308,22 @@ def IfOp : MO_ControlOp<"if",
 
 def WhileOp : MO_ControlOp<"while",
           [SingleBlockImplicitTerminator<"MO::YieldOp">,
-          IsolatedFromAbove]> {
+          HasOnlyGraphRegion]> {
   let summary = "while control flow operation";
   let description = [{
-    The "mo.while" operation takes 'cond' and 'body' blocks. While the 'cond'
+    The `mo.while` operation takes 'cond' and 'body' blocks. While the 'cond'
     block evaluates to the true condition, the 'body' block is executed.
 
-    Both the 'cond' and 'body' blocks have access to the outer SSA values listed
-    in the "mo.while" signature. The 'cond' block must return a single
-    `!mo.tensor<[], bool>` 'scalar' condition result, using a "mo.yield"
-    operation. The 'body' block must return results with the same types as
-    the "mo.while" signature, again using a "mo.yield". It is not possible
-    for the 'cond' or 'body' blocks to access outer SSA values not listed in
-    the signature, even if those values never need to be 'updated' by the 'body'
-    block.
+    The 'cond' and 'body' blocks have access to both the values listed in the
+    `mo.while` signature and any other outer bound values. The 'cond' block
+    must return a single `!mo.tensor<[], bool>` 'scalar' condition result,
+    using a `mo.yield` operation. The 'body' block must return results with the
+    same types as the `mo.while` signature, again using a `mo.yield`. The
+    signature must include an 'as' clause for every input so as to rename it
+    to a fresh SSA value.
 
-    The results of the "mo.while" op are the results of the last executed
-    'body' block, or the "mo.while" signature arguments if 'cond' never
+    The results of the `mo.while` op are the results of the last executed
+    'body' block, or the `mo.while` signature arguments if 'cond' never
     evaluated to true.
 
     Example:
@@ -332,19 +331,26 @@ def WhileOp : MO_ControlOp<"while",
     ```mlir
       %x: !mo.tensor<[2], f32>
       %y: !mo.tensor<[], f32>
-      %res:2 = mo.while (%x: !mo.tensor<[2], f32>, %y: !mo.tensor<[], f32>) {
+      %res = mo.while (%x as %inner_x: !mo.tensor<[2], f32>) {
         %zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
         %shape = mo.constant {value = #M.dense_array<> : tensor<0xsi64>} : !mo.tensor<[0], si64>
-        %mean0 = mo.mean (%x, %zero) : (!mo.tensor<[2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1], f32>
+        %mean0 = mo.mean (%inner_x, %zero) : (!mo.tensor<[2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1], f32>
         %mean1 = mo.reshape (%mean0, %shape) : (!mo.tensor<[1], f32>, !mo.tensor<[0], si64>) -> !mo.tensor<[], f32>
         %cond = mo.greater (%y, %mean1) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[], bool>
         mo.yield %cond : !mo.tensor<[], bool>
       } do {
-        %new_x = mo.add(%x, %x) : !mo.tensor<[2], f32>
-        mo.yield %new_x, %y : !mo.tensor<[2], f32>, !mo.tensor<f32>
+        %new_x = mo.add(%inner_x, %inner_x) : !mo.tensor<[2], f32>
+        mo.yield %new_x : !mo.tensor<[2], f32>
       }
-      %res#1: !mo.tensor<[2], f32>
+      %res: !mo.tensor<[2], f32>
     ```
+
+    It is legal for the same output SSA value to appear in both the input
+    signature and be used free. The former will refer to the 'current' value,
+    as updated by the `mo.while` 'body'. The latter will refer to the original
+    value. Though confusing this situation can be introduced by common passes
+    such as canonicalization, for example when it replaces a locally bound
+    constant with the SSA value for the same constant bound in an outer scope.
   }];
 
   let arguments = (ins Variadic<AnyType>:$inputs);

@@ -125,12 +125,15 @@ ParseResult IfOp::parse(OpAsmParser &parser, OperationState &state) {
       parser.resolveOperand(condOperand,
                             IntegerType::get(state.getContext(), 1),
                             state.operands) ||
-      parseParenOperandListWithShadowing(parser, state, argumentInfo) ||
+      parseParenOperandListWithShadowing(parser, state, argumentInfo,
+                                         /*isIsolatedFromAbove=*/true) ||
       parser.parseArrowTypeList(state.types) ||
       parser.parseOptionalAttrDictWithKeyword(state.attributes) ||
-      parseRegionWithShadowing(parser, argumentInfo, *thenRegion) ||
+      parseRegion(parser, argumentInfo, *thenRegion,
+                  /*isIsolatedFromAbove=*/true) ||
       parser.parseKeyword("else") ||
-      parseRegionWithShadowing(parser, argumentInfo, *elseRegion))
+      parseRegion(parser, argumentInfo, *elseRegion,
+                  /*isIsolatedFromAbove=*/true))
     return failure();
 
   return success();
@@ -139,13 +142,14 @@ ParseResult IfOp::parse(OpAsmParser &parser, OperationState &state) {
 void IfOp::print(OpAsmPrinter &p) {
   p << ' ' << getCond() << ' ';
   printParenOperandListWithShadowing(p, getInputs(),
-                                     getThenRegion().getArguments());
+                                     getThenRegion().getArguments(),
+                                     /*isIsolatedFromAbove=*/true);
   p.printArrowTypeList(getResultTypes());
   p << ' ';
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
-  printRegionWithShadowing(p, getInputs(), getThenRegion());
+  printRegion(p, getInputs(), getThenRegion(), /*isIsolatedFromAbove=*/true);
   p << " else ";
-  printRegionWithShadowing(p, getInputs(), getElseRegion());
+  printRegion(p, getInputs(), getElseRegion(), /*isIsolatedFromAbove=*/true);
 }
 
 //===----------------------------------------------------------------------===//
@@ -156,11 +160,14 @@ ParseResult WhileOp::parse(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::Argument> argumentInfo;
   Region *condRegion = result.addRegion();
   Region *bodyRegion = result.addRegion();
-  if (parseParenOperandListWithShadowing(parser, result, argumentInfo) ||
+  if (parseParenOperandListWithShadowing(parser, result, argumentInfo,
+                                         /*isIsolatedFromAbove=*/true) ||
       parser.parseOptionalAttrDictWithKeyword(result.attributes) ||
-      parseRegionWithShadowing(parser, argumentInfo, *condRegion) ||
+      parseRegion(parser, argumentInfo, *condRegion,
+                  /*isIsolatedFromAbove=*/true) ||
       parser.parseKeyword("do") ||
-      parseRegionWithShadowing(parser, argumentInfo, *bodyRegion))
+      parseRegion(parser, argumentInfo, *bodyRegion,
+                  /*isIsolatedFromAbove=*/true))
     return failure();
 
   // The op's return types match those of the signature arguments.
@@ -174,12 +181,13 @@ ParseResult WhileOp::parse(OpAsmParser &parser, OperationState &result) {
 void WhileOp::print(OpAsmPrinter &p) {
   p << ' ';
   printParenOperandListWithShadowing(p, getInputs(),
-                                     getCondRegion().getArguments());
+                                     getCondRegion().getArguments(),
+                                     /*isIsolatedFromAbove=*/true);
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
   p << ' ';
-  printRegionWithShadowing(p, getInputs(), getCondRegion());
+  printRegion(p, getInputs(), getCondRegion(), /*isIsolatedFromAbove=*/true);
   p << " do ";
-  printRegionWithShadowing(p, getInputs(), getBodyRegion());
+  printRegion(p, getInputs(), getBodyRegion(), /*isIsolatedFromAbove=*/true);
 }
 
 LogicalResult WhileOp::verify() {
@@ -214,9 +222,10 @@ ParseResult RepeatI32Op::parse(OpAsmParser &parser, OperationState &result) {
           countOperand,
           IntegerType::get(result.getContext(), 32, IntegerType::Signed),
           result.operands) ||
-      parseParenOperandListWithShadowing(parser, result, argumentInfo) ||
+      parseParenOperandListWithShadowing(parser, result, argumentInfo,
+                                         /*isIsolatedFromAbove=*/true) ||
       parser.parseOptionalAttrDictWithKeyword(result.attributes) ||
-      parseRegionWithShadowing(parser, argumentInfo, *body))
+      parseRegion(parser, argumentInfo, *body, /*isIsolatedFromAbove=*/true))
     return failure();
 
   // The result types are the same as the operands (ignoring 'tripCount').
@@ -230,10 +239,11 @@ ParseResult RepeatI32Op::parse(OpAsmParser &parser, OperationState &result) {
 void RepeatI32Op::print(OpAsmPrinter &p) {
   p << ' ' << getTripCount() << ' ';
   printParenOperandListWithShadowing(p, getInputs(),
-                                     getBodyRegion().getArguments());
+                                     getBodyRegion().getArguments(),
+                                     /*isIsolatedFromAbove=*/true);
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
   p << ' ';
-  printRegionWithShadowing(p, getInputs(), getBodyRegion());
+  printRegion(p, getInputs(), getBodyRegion(), /*isIsolatedFromAbove=*/true);
 }
 
 LogicalResult RepeatI32Op::verify() {
@@ -259,7 +269,8 @@ ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::Argument> operandInfo;
   llvm::SMLoc argLoc;
   if (parser.getCurrentLocation(&argLoc) ||
-      parseParenOperandListWithShadowing(parser, result, operandInfo))
+      parseParenOperandListWithShadowing(parser, result, operandInfo,
+                                         /*isIsolatedFromAbove=*/true))
     return failure();
 
   if (operandInfo.empty() || !operandInfo[0].type.isa<MEF::ChainType>())
@@ -298,11 +309,9 @@ void BenchmarkOp::print(OpAsmPrinter &p) {
                         [&](Value arg) { p << arg << ": " << arg.getType(); });
   p << ") ";
   p.printOptionalAttrDict(getOperation()->getAttrs());
-  // Reuse the argument names provided to the op for the arg names within
-  // the region.
-  p.shadowRegionArgs(getCodeUnderTest(), getOperands());
   p << " ";
-  p.printRegion(getCodeUnderTest(), /*printEntryBlockArgs=*/false);
+  printRegion(p, getOperands(), getCodeUnderTest(),
+              /*isIsolatedFromAbove=*/true);
 }
 
 LogicalResult BenchmarkOp::verify() {

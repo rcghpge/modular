@@ -469,7 +469,7 @@ LogicalResult OutputOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// IfOp support
+// IfOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult IfOp::verify() {
@@ -499,7 +499,7 @@ LogicalResult IfOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// WhileOp support
+// WhileOp
 //===----------------------------------------------------------------------===//
 
 ParseResult WhileOp::parse(OpAsmParser &parser, OperationState &result) {
@@ -507,11 +507,14 @@ ParseResult WhileOp::parse(OpAsmParser &parser, OperationState &result) {
   Region *condRegion = result.addRegion();
   Region *bodyRegion = result.addRegion();
 
-  if (parseParenOperandListWithShadowing(parser, result, argumentInfo) ||
+  if (parseParenOperandListWithShadowing(parser, result, argumentInfo,
+                                         /*isIsolatedFromAbove=*/false) ||
       parser.parseOptionalAttrDictWithKeyword(result.attributes) ||
-      parseRegionWithShadowing(parser, argumentInfo, *condRegion) ||
+      parseRegion(parser, argumentInfo, *condRegion,
+                  /*isIsolatedFromAbove=*/false) ||
       parser.parseKeyword("do") ||
-      parseRegionWithShadowing(parser, argumentInfo, *bodyRegion))
+      parseRegion(parser, argumentInfo, *bodyRegion,
+                  /*isIsolatedFromAbove=*/false))
     return failure();
 
   // The op's return types match those of the signature arguments.
@@ -525,12 +528,13 @@ ParseResult WhileOp::parse(OpAsmParser &parser, OperationState &result) {
 void WhileOp::print(OpAsmPrinter &p) {
   p << ' ';
   printParenOperandListWithShadowing(p, getInputs(),
-                                     getCondRegion().getArguments());
+                                     getCondRegion().getArguments(),
+                                     /*isIsolatedFromAbove=*/false);
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
   p << ' ';
-  printRegionWithShadowing(p, getInputs(), getCondRegion());
+  printRegion(p, getInputs(), getCondRegion(), /*isIsolatedFromAbove=*/false);
   p << " do ";
-  printRegionWithShadowing(p, getInputs(), getBodyRegion());
+  printRegion(p, getInputs(), getBodyRegion(), /*isIsolatedFromAbove=*/false);
 }
 
 /// Returns success if yieldOp's single operand is of the MO scalar boolean
@@ -575,8 +579,8 @@ LogicalResult WhileOp::verify() {
     return emitOpError("cond block expected to be terminated by a YieldOp");
   auto condOutput = cast<YieldOp>(condTerminator);
   if (failed(outputsOneBool(condOutput)))
-    condOutput->emitOpError()
-        << "expected single operand of type '!mo.tensor<[], bool>'.";
+    return condOutput->emitOpError()
+           << "expected single operand of type '!mo.tensor<[], bool>'.";
 
   // The 'body' block returns a result for each mo.while result.
   auto bodyTerminator = bodyBlock->getTerminator();
@@ -585,6 +589,12 @@ LogicalResult WhileOp::verify() {
   auto bodyOutput = cast<YieldOp>(bodyTerminator);
   if (failed(checkOperandTypes(bodyOutput, getResultTypes())))
     return failure();
+
+  // It would be nice to check that no lhs SSA value of an 'as clause
+  // appears free in the body. However, common passes, such as
+  // canonicalization, may replace locally bound SSA values with outer SSA
+  // values which also happen to be passed as inputs, which would violates
+  // this rule.
 
   return success();
 }

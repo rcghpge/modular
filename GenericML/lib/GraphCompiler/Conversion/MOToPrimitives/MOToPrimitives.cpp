@@ -395,10 +395,6 @@ LogicalResult MOGraphLowering::lowerYield(MO::YieldOp yield) {
   SmallVector<Value> operands;
   operands.push_back(loweringState.getCurrentExecuteChain());
 
-  // If we are yielding from a while then it will expect the context as well.
-  if (isa<MO::WhileOp>(yield->getParentOp()))
-    operands.push_back(loweringState.getExecuteMgpContext());
-
   for (Value operand : yield.getOperands())
     operands.push_back(loweringState.lookupExecuteLoweredValue(operand));
 
@@ -860,6 +856,9 @@ LogicalResult MOGraphLowering::lowerListInsert(MO::ListInsertOp listInsertOp) {
 LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   assert(MO::isOnHost(ifOp) && "mo.if is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, ifOp);
+
+  // We'll need to thread the current 'execute' chain through the if
+  // 'then' and 'else' blocks.
   Value currentChain = loweringState.getCurrentExecuteChain();
 
   // Lower the condition.
@@ -872,7 +871,7 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   operands.push_back(condBool);
 
   SmallVector<Type> resultTypes;
-  // Always return the main chain
+  // Always return the current 'execute' chain
   resultTypes.emplace_back(currentChain.getType());
   for (Type type : ifOp.getResultTypes())
     resultTypes.emplace_back(
@@ -883,7 +882,7 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
 
   auto lower_block = [&](Region &inputRegion,
                          Region &outputRegion) -> LogicalResult {
-    // Enter a new Block
+    // Enter the lowered region's unique block.
     Block &newBlock = outputRegion.emplaceBlock();
     opLoweringState.builder.setInsertionPointToEnd(&newBlock);
 
@@ -903,45 +902,14 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   if (failed(lower_block(ifOp.getElseRegion(), outputIf.getElseRegion())))
     return failure();
 
-  // This function finds all of the SSA values implicitly captured by
-  // the GRT::IfOp and returns them for argument inlining.
-  // Note: The function does not de-duplicate if the Values are
-  // used repeatedly, need to handle that below
-  llvm::SetVector<Value> uniqueCaptures;
-  operationIsIsolatedFromAbove(outputIf, &uniqueCaptures,
-                               /* allowIsolated */ true);
-  uniqueCaptures.erase(llvm::find(uniqueCaptures, condBool));
-
-  // Pass captures as inputs
-  outputIf.getInputsMutable().append(llvm::to_vector(uniqueCaptures));
-
-  auto isolate_region = [&](Region &region) -> LogicalResult {
-    for (Value capture : uniqueCaptures) {
-      auto arg = region.addArgument(capture.getType(), ifOp.getLoc());
-      capture.replaceUsesWithIf(arg, [&](OpOperand &use) {
-        return region.findAncestorOpInRegion(*use.getOwner());
-      });
-    }
-    return success();
-  };
-
-  // Isolate Then Block
-  if (failed(isolate_region(outputIf.getThenRegion())))
-    return failure();
-
-  // Isolate Else Block
-  if (failed(isolate_region(outputIf.getElseRegion())))
-    return failure();
-
   // Set the outputs
   loweringState.setCurrentExecuteChain(outputIf.getResult(0));
-  for (size_t i = 1, e = resultTypes.size(); i < e; i++) {
-    loweringState.emplaceExecuteLoweredValue(ifOp.getResult(i - 1),
-                                             outputIf.getResult(i));
-  }
+  for (auto [origResult, loweredResult] :
+       llvm::zip(ifOp.getResults(), llvm::drop_begin(outputIf.getResults())))
+    loweringState.emplaceExecuteLoweredValue(origResult, loweredResult);
 
-  // since we moved the insertion points for the then/else, reset to the main
-  // block
+  // Since we moved the insertion points for the then/else, reset to the main
+  // block.
   opLoweringState.builder.setInsertionPointAfter(outputIf);
 
   return success();
@@ -960,18 +928,11 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   // Collect the lowered form of all the outer SSA values which (may) appear
   // in the final grt.while 'cond' and 'body' blocks.
   SmallVector<Value> loweredFreeValues;
+  loweredFreeValues.reserve(1 + whileOp.getInputs().size());
   loweredFreeValues.emplace_back(currentChain);
-  loweredFreeValues.emplace_back(loweringState.getExecuteMgpContext());
   for (Value value : whileOp.getInputs())
     loweredFreeValues.emplace_back(
         loweringState.lookupExecuteLoweredValue(value));
-
-  // It would be nice to collect SSA values from the outer scope which are used
-  // by the 'cond' or 'body' blocks without being mentioned by the signature,
-  // and automatically include those in the grt.while signature. That would
-  // avoid a lot of tedious boilerplate in MO for naming and returning SAA
-  // values which are only read and never 'updated' by the 'body' block. However
-  // MLIR does not allow 'partially isolated' regions.
 
   // We now know the grt.while op's result types and signature.
   SmallVector<Value> operands;
@@ -991,7 +952,7 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
     Block &newBlock = outputRegion.emplaceBlock();
     opLoweringState.builder.setInsertionPointToEnd(&newBlock);
 
-    // Establish the block's arguments. The chain comes first.
+    // Establish the block's arguments. The current 'execute' chain comes first.
     auto loweredChainArg =
         outputRegion.addArgument(currentChain.getType(), whileOp.getLoc());
     loweringState.setCurrentExecuteChain(loweredChainArg);
@@ -1000,16 +961,11 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
     // else: if the block needs to reference the root chain then an
     //       additional block argument will be added by fixupIsolatedFromAbove.
 
-    auto contextArg = outputRegion.addArgument(
-        loweringState.getExecuteMgpContext().getType(), whileOp.getLoc());
-
     // Then an arg for each of the original region args.
     // We'll use the loweredFreeValues since they have the lowered types
-    // already. Skip the chain and the context.
-    for (size_t i = 0; i < loweredFreeValues.size() - 2; ++i) {
-      Value loweredFreeValue = loweredFreeValues[2 + i];
-      Value arg = inputRegion.getArguments()[i];
-
+    // already, though we skip the chain.
+    for (auto [loweredFreeValue, arg] : llvm::zip(
+             llvm::drop_begin(loweredFreeValues), inputRegion.getArguments())) {
       Value loweredArg =
           outputRegion.addArgument(loweredFreeValue.getType(), arg.getLoc());
       loweringState.emplaceExecuteLoweredValue(arg, loweredArg);
@@ -1019,15 +975,6 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
     if (failed(lowerBlock(&inputRegion.getBlocks().front())))
       return failure();
 
-    // Remap any uses of the top level mgp context in the while body with the
-    // one in the region argument.
-    outputRegion.getBlocks().front().walk([&](Operation *op) {
-      for (size_t i = 0, e = op->getNumOperands(); i < e; ++i) {
-        if (op->getOperand(i) == loweringState.getExecuteMgpContext()) {
-          op->setOperand(i, contextArg);
-        }
-      }
-    });
     return success();
   };
 
@@ -1049,7 +996,7 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
     return failure();
 
   // Now repair the lowered 'cond' block's mef.output to include all the
-  // additional variables between the output chain, context and, the condition,
+  // additional variables between the output chain and the condition,
   // and fix the condition to be an i1.
   {
     auto origYieldOp =
@@ -1059,10 +1006,9 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
 
     auto loweredCondOutputOp = cast<MEF::OutputOp>(
         loweredWhileOp.getCondRegion().front().getTerminator());
-    assert(loweredCondOutputOp->getNumOperands() ==
-           3); // chain, context, condition
+    assert(loweredCondOutputOp->getNumOperands() == 2); // chain, condition
     Value loweredOutputChain = loweredCondOutputOp->getOperand(0);
-    Value loweredCondTensor = loweredCondOutputOp->getOperand(2);
+    Value loweredCondTensor = loweredCondOutputOp->getOperand(1);
 
     SmallVector<Value> condOutputOpOperands;
     condOutputOpOperands.reserve(loweredWhileOp->getNumResults() + 1);
@@ -1090,13 +1036,12 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   }
 
   // Capture the lowered outputs.
-  assert(loweredWhileOp.getNumResults() == whileOp.getNumResults() + 2);
+  assert(loweredWhileOp.getNumResults() == 1 + whileOp.getNumResults());
   loweringState.setCurrentExecuteChain(loweredWhileOp.getResult(0));
   loweringState.setRootExecuteChain(rootChain);
-  for (size_t i = 0, e = whileOp.getNumResults(); i < e; i++) {
-    loweringState.emplaceExecuteLoweredValue(whileOp.getResult(i),
-                                             loweredWhileOp.getResult(i + 2));
-  }
+  for (auto [origResult, loweredResult] : llvm::zip(
+           whileOp.getResults(), llvm::drop_begin(loweredWhileOp.getResults())))
+    loweringState.emplaceExecuteLoweredValue(origResult, loweredResult);
 
   // Since we moved the insertion points for the 'cond' and 'body' blocks,
   // reset back to the main block
@@ -1211,7 +1156,7 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
     }
 
     // Lower mo.while to grf.while, recursively lowering the body of
-    // the 'cond' and 'body' blocks..
+    // the 'cond' and 'body' blocks.
     if (auto whileOp = dyn_cast<MO::WhileOp>(op)) {
       if (failed(lowerWhile(whileOp)))
         return failure();
@@ -1267,11 +1212,14 @@ LogicalResult MOGraphLowering::run() {
 
   OpBuilder b(graph);
   MGP::ModelOp model = loweringState.getModelOp();
-  MGP::fixupIsolatedFromAbove(b, model);
-  // Ok, we're done with the original mo.graph, so remove it.
-  graph.erase();
+  // Bind any free variables in grt.if and grt.while control flow ops.
+  // Adds and returns the new model to the module.
+  (void)MGP::fixupIsolatedFromAbove(b, model);
   // We've fixed up the MGP model, so remove the old one.
   model.erase();
+  // We're also done with the original mo.graph.
+  graph.erase();
+
   return success();
 }
 
