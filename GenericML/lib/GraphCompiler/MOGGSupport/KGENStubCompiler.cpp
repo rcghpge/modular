@@ -72,10 +72,16 @@ LogicalResult StubCompiler::elaborateKGEN() {
 
   LogicalResult res = success();
   {
+    auto fileLine = graphOp->getLoc()->findInstanceOf<mlir::FileLineColLoc>();
+    llvm::StringMap<Telemetry::MetricAttributeValue> attrs;
+
+    if (fileLine)
+      attrs["filename"] = fileLine.getFilename().str();
+
     [[maybe_unused]] auto timeScope =
         runtime.emplaceContextIfMissing<M::Telemetry::TelemetryContext>()
             .createUInt64Timer<std::chrono::milliseconds>(
-                "mogg.kgen.elaboration.time", M::Telemetry::Level::L2);
+                "mogg.kgen.elaboration.time", M::Telemetry::Level::L2, attrs);
 
     auto cacheBackends = KGEN::getMojoCacheBackends(runtime);
     if (cacheBackends.isError()) {
