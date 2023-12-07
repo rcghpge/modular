@@ -46,8 +46,8 @@ environment-pass = [
   "SCCACHE_REGION",
   "SCCACHE_S3_KEY_PREFIX",
 ]
-manylinux-x86_64-image = "ghcr.io/modularml/modular/ai-engine-packaging-x86_64:sha-85d1b47"
-manylinux-aarch64-image = "ghcr.io/modularml/modular/ai-engine-packaging-aarch64:sha-85d1b47"
+manylinux-x86_64-image = "ghcr.io/modularml/modular/ai-engine-packaging-x86_64:sha-f93bd2b"
+manylinux-aarch64-image = "ghcr.io/modularml/modular/ai-engine-packaging-aarch64:sha-f93bd2b"
 skip = ["cp36-* cp37-*, *-manylinux_i686", "*-musllinux*"]
 
 # These requirements of numpy and pytest should already be satisfied, but this future-proofs us a bit
