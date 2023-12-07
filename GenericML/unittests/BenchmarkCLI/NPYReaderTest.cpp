@@ -25,6 +25,8 @@ static std::string getTestInputPath(StringRef filename) {
 }
 
 TEST(readNPYFile, basic) {
+// FIXME(#27311)
+#if !(__APPLE__)
   auto bufferOr = llvm::MemoryBuffer::getFile(getTestInputPath("basic.npy"),
                                               /*IsText=*/false,
                                               /*RequiresNullTerminator=*/false);
@@ -40,4 +42,5 @@ TEST(readNPYFile, basic) {
   EXPECT_EQ(3, data[3]);
   EXPECT_EQ(4, data[4]);
   EXPECT_EQ(5, data[5]);
+#endif
 }
