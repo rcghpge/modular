@@ -48,6 +48,9 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
     Option<"minimumCpuAlignment", "min-cpu-alignment", "size_t",
       /*default=*/"kPreferredMemoryAlignment",
      "Minimum alignment for all CPU buffers (both constants and allocated)">,
+    Option<"splitBinaryCompile", "split-binary-compile", "bool",
+      /*default=*/"false",
+     "Split compilation of kernels into seperate output kernel binaries">,
   ];
 }
 

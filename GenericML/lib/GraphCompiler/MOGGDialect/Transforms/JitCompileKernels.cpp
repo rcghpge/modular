@@ -78,13 +78,17 @@ struct JitCompileKernels
       return deviceSpecsOr.takeError();
     DeviceSpecAttr hostDeviceSpec = deviceSpecsOr->getHostDeviceSpec();
 
+    // We can optionally override
+    DenseMap<Operation *, std::string> unusedOverrideMap;
+
     // For each (virtual) device used by the graph...
     for (DeviceSpecAttr deviceSpec : deviceSpecsOr->getDevices()) {
       auto err = compileToBinary(
           graph, mojoLibraryAnalysis, deviceSpec, hostDeviceSpec,
-          dumpStub.getValue(), createMOGGReproducers.getValue(),
-          useSearch.getValue(), saveTempPrefix.getValue(),
-          minimumCpuAlignment.getValue());
+          unusedOverrideMap, dumpStub.getValue(),
+          createMOGGReproducers.getValue(), useSearch.getValue(),
+          saveTempPrefix.getValue(), minimumCpuAlignment.getValue(),
+          splitBinaryCompile.getValue());
 
       if (err.isError())
         return err.takeError();
