@@ -127,7 +127,8 @@ public:
   /// arguments. This fills in one AsyncValue for each result.  The caller is
   /// allowed to take from the `arguments` async values.
   SmallVector<AnyAsyncValueRef, 1>
-  invoke(MutableArrayRef<AnyAsyncValueRef> arguments, Runtime &runtime) const;
+  createResultValuesAndInvoke(MutableArrayRef<AnyAsyncValueRef> arguments,
+                              Runtime &runtime) const;
 
   /// Add a new reference to this object.  The lifetime of invokables are
   /// generally tied to the file they are loaded from (e.g. a MEFFile) so they

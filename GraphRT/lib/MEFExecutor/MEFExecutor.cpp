@@ -11,6 +11,7 @@
 
 #include "GraphRT/MEFExecutor/MEFInvokable.h"
 #include "GraphRT/MEFExecutor/PrimitiveDescriptor.h"
+#include "LLCL/Runtime/Algorithms.h"
 using namespace M;
 
 //===----------------------------------------------------------------------===//
@@ -24,12 +25,24 @@ void MEFInvokable::vtableAnchor() {}
 /// Invoke this using the specified runtime, passing the specified
 /// arguments. This fills in one AsyncValue for each result.  The caller is
 /// allowed to take from the `arguments` async values.
-SmallVector<AnyAsyncValueRef, 1>
-MEFInvokable::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
-                     Runtime &runtime) const {
+SmallVector<AnyAsyncValueRef, 1> MEFInvokable::createResultValuesAndInvoke(
+    MutableArrayRef<AnyAsyncValueRef> arguments, Runtime &runtime) const {
   SmallVector<AnyAsyncValueRef, 1> results;
   results.resize(getNumResults());
-  invoke(arguments, results, runtime);
+
+  // Final entry point before we fall off to model code.
+  // We want to make sure only one of our worker threads run this.
+  // NOTE: The invoke needs to be synchronous here so that we ensure the
+  // `AsyncValues` for results are created before we return to await(results).
+  // The result values are created in the execute() call after the first set of
+  // primitives has been scheduled.
+  AnyAsyncValueRef finished = AnyAsyncValueRef::allocate<Chain>(runtime);
+  addTask(runtime, [&, finished = finished.copy()]() mutable {
+    invoke(arguments, results, runtime);
+    std::move(finished).emplace<Chain>();
+  });
+
+  await(finished);
   return results;
 }
 
