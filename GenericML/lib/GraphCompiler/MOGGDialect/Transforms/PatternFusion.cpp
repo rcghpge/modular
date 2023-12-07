@@ -637,6 +637,12 @@ struct LayerNormPattern
           op, "matched ops have inconsistent devices");
     }
 
+    // TODO(#27337): remove when gpu kernel exists
+    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDeviceAny(op))) {
+      return rewriter.notifyMatchFailure(op,
+                                         "Layer norm only implemented on cpu");
+    }
+
     // Handle Scalar beta and gamma
     auto betaType = beta.getType().cast<MO::TensorType>();
     if (betaType && betaType.getRank() == 0) {
