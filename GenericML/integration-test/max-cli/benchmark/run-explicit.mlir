@@ -1,4 +1,4 @@
-// RUN: max-engine benchmark --input-generation-schema=%S/../Inputs/relu100x100x3-schema.yaml %S/../Inputs/relu100x100x3 | FileCheck %s
+// RUN: max benchmark --input-generation-schema=%S/../Inputs/relu100x100x3-schema.yaml %S/../Inputs/relu100x100x3 | FileCheck %s
 // CHECK: Modular Benchmarking Tool
 // CHECK: Modular version: {{.+}}
 // CHECK: MLPerf scenario: Single Stream (use --mlperf-scenario to change)

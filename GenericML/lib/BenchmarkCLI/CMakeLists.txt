@@ -27,5 +27,5 @@ add_genericml_library(BenchmarkCLI
 # have not run yet, so this target doesn't exist.  target_link_libraries is a
 # little more lax -- it resolves target names at generation time, after all
 # CMakeLists have run.  modular-framework-torch-ext should move back up into
-# LINK_LIBS once max-engine is moved out of GenericML.
+# LINK_LIBS once the MAX CLI is moved out of GenericML.
 target_link_libraries(BenchmarkCLI PRIVATE modular-framework-torch-ext)

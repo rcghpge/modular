@@ -1,6 +1,6 @@
-// RUN: max-engine benchmark --input-generation-schema=%S/Inputs/sqrt300x300x30-schema.yaml %S/Inputs/sqrt300x300x30 | FileCheck %s --check-prefix=CHECK-DEFAULT
+// RUN: max benchmark --input-generation-schema=%S/Inputs/sqrt300x300x30-schema.yaml %S/Inputs/sqrt300x300x30 | FileCheck %s --check-prefix=CHECK-DEFAULT
 // RUN: mojo package --parsing-stdlib %mojo_user_pkg -o %t.mojopkg
-// RUN: max-engine benchmark --input-generation-schema=%S/Inputs/sqrt300x300x30-schema.yaml %S/Inputs/sqrt300x300x30 --custom-ops-path=%t.mojopkg | FileCheck %s --check-prefix=CHECK-WITH-CUSTOM-OPS
+// RUN: max benchmark --input-generation-schema=%S/Inputs/sqrt300x300x30-schema.yaml %S/Inputs/sqrt300x300x30 --custom-ops-path=%t.mojopkg | FileCheck %s --check-prefix=CHECK-WITH-CUSTOM-OPS
 
 // CHECK-DEFAULT: Modular Benchmarking Tool
 // CHECK-DEFAULT: Modular version: {{.+}}

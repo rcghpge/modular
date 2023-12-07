@@ -19,7 +19,7 @@ if (NOT BENCHMARKING)
 add_modular_testsuite(check-genericml-integration
   TOOLS
   FileCheck
-  max-engine
+  max
   mt
   tf-opt
 

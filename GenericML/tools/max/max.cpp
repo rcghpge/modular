@@ -16,10 +16,10 @@
 
 using namespace M;
 
-static constexpr const char *kEngineCLIProductName = "max-engine";
+static constexpr const char *kMAXProductName = "max";
 
 static void usage(llvm::raw_ostream &os) {
-  os << "usage: " << kEngineCLIProductName
+  os << "usage: " << kMAXProductName
      << " <subcommand> <args...>\n"
         "Available subcommands:\n"
         "  benchmark - Benchmark a model with the Modular AI Engine\n"
@@ -34,9 +34,9 @@ static int handleHelp(int argc, char **argv) {
 
 static int handleVersion(int argc, char **argv) {
   ModularVersion version = getModularVersion();
-  llvm::outs() << llvm::formatv(
-      "{0} {1}.{2}.{3}{4} ({5})\n", kEngineCLIProductName, version.major,
-      version.minor, version.patch, version.label, version.revision);
+  llvm::outs() << llvm::formatv("{0} {1}.{2}.{3}{4} ({5})\n", kMAXProductName,
+                                version.major, version.minor, version.patch,
+                                version.label, version.revision);
   llvm::outs() << "Modular version " << M_version() << "\n";
   return EXIT_SUCCESS;
 }
@@ -49,7 +49,7 @@ static int handleUnknownSubcommand(int argc, char **argv) {
 
 int main(int argc, char **argv) {
   llvm::InitLLVM initLLVM(argc, argv);
-  initCrashpadForProgram(argv[0], kEngineCLIProductName);
+  initCrashpadForProgram(argv[0], kMAXProductName);
   llvm::setBugReportMsg(
       "Please submit a bug report to eap@modular.com and include the crash "
       "backtrace along with your command line invocation.\n");
@@ -64,8 +64,8 @@ int main(int argc, char **argv) {
   auto handler = llvm::StringSwitch<HandlerFunc>(argv[1])
                      .Case("--help", handleHelp)
                      .Case("--version", handleVersion)
-                     .Case("benchmark", engineCLIBenchmarkMain)
-                     .Case("visualize", engineCLIVisualizeMain)
+                     .Case("benchmark", maxBenchmarkMain)
+                     .Case("visualize", maxVisualizeMain)
                      .Default(handleUnknownSubcommand);
   return handler(argc - 1, argv + 1);
 }

@@ -27,7 +27,7 @@
 using namespace M;
 using namespace M::BenchmarkCLI;
 
-static constexpr const char *kTelemetryLoggerName = "max-engine";
+static constexpr const char *kTelemetryLoggerName = "max";
 static constexpr const char *kTelemetryErrorEventName = "benchmark.error";
 static constexpr const char *kTelemetrySuccessEventName = "benchmark.success";
 
@@ -187,7 +187,7 @@ static ErrorOr<double> estimateLatency(M_RuntimeContext *runtimeContext,
          kNsPerSec / iterations;
 }
 
-int M::engineCLIBenchmarkMain(int argc, char **argv) {
+int M::maxBenchmarkMain(int argc, char **argv) {
   ClOptions opts;
 
   llvm::cl::SetVersionPrinter([](llvm::raw_ostream &os) {

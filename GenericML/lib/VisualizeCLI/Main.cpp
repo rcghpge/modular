@@ -72,7 +72,7 @@ static ErrorOr<CompiledModelPtr> compileModel(const ClOptions &opts,
   return std::move(model);
 }
 
-int M::engineCLIVisualizeMain(int argc, char **argv) {
+int M::maxVisualizeMain(int argc, char **argv) {
 
   // TODO: this is a temp workaround for some issues in the options pipeline. It
   // will be replaced with a proper flag soon.

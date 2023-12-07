@@ -9,9 +9,9 @@
 
 namespace M {
 
-inline constexpr const char *maxVisualize = "max-engine visualize";
+inline constexpr const char *maxVisualize = "max visualize";
 
-int engineCLIVisualizeMain(int argc, char **argv);
+int maxVisualizeMain(int argc, char **argv);
 
 } // namespace M
 

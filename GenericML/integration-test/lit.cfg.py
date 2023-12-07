@@ -30,7 +30,7 @@ tool_dirs = [
     config.mlir_tools_dir,
     config.llvm_tools_dir,
 ]
-tools = ["max-engine", "mt"]
+tools = ["max", "mt"]
 
 llvm_config.with_environment(
     "PYTHONPATH",
