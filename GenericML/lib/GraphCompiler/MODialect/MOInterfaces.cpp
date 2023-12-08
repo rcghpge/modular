@@ -409,6 +409,29 @@ ShapeFuncMaterializationState::getUsedShapeFuncsAfterElaboration() {
 }
 
 //===----------------------------------------------------------------------===//
+// PadLike
+//===----------------------------------------------------------------------===//
+
+LogicalResult impl::verifyPadLike(PadLike op) {
+  TensorType inputTy = op.getInput().getType();
+  TensorType paddingsTy = op.getPaddings().getType();
+  TensorType resTy = op.getType();
+  if (inputTy.hasRank()) {
+    if (!resTy.hasRank())
+      return op.emitOpError("result must be ranked if input is ranked");
+    if ((int64_t)inputTy.getRank() != paddingsTy.getIntDim(0))
+      return op.emitOpError("paddings shape does not match static input rank");
+  } else {
+    if (resTy.hasRank())
+      return op.emitOpError("result must be unranked if input is unranked");
+    if (isa<IntegerAttr>(paddingsTy.getDim(0)))
+      return op.emitOpError("paddings shape does not match dynamic input rank");
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

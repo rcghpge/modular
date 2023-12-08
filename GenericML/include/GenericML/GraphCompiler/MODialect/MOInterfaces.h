@@ -36,6 +36,7 @@ class ParameterizationInterface;
 class Reduction;
 class ScatterLike;
 class ScatterNdLike;
+class PadLike;
 class SlidingWindow;
 class ShapeFuncMaterializationState;
 
@@ -64,6 +65,7 @@ LogicalResult verifyReduction(Reduction op);
 LogicalResult verifyScatterLike(ScatterLike op);
 LogicalResult verifyScatterNdLike(ScatterNdLike op);
 LogicalResult verifySlidingWindow(SlidingWindow op);
+LogicalResult verifyPadLike(PadLike op);
 LogicalResult verifyMOSameOperandsAndResultElementType(Operation *op);
 LogicalResult verifyMOSameOperandsAndResultShapeAttr(Operation *op);
 LogicalResult verifyMOSameOperandsAndResultShape(Operation *op);
@@ -83,6 +85,10 @@ materializeReductionShapeInference(Reduction op,
 LogicalResult
 materializeScatterNdLikeShapeInference(ScatterNdLike op,
                                        ShapeFuncMaterializationState &state);
+
+LogicalResult
+materializePadLikeShapeInference(PadLike op,
+                                 ShapeFuncMaterializationState &state);
 } // namespace impl
 
 template <typename ConcreteType>
@@ -194,6 +200,18 @@ public:
   materializeShapeInference(ShapeFuncMaterializationState &state) {
     auto reduction = mlir::cast<ScatterNdLike>(this->getOperation());
     return impl::materializeScatterNdLikeShapeInference(reduction, state);
+  }
+};
+
+template <typename ConcreteType>
+class PadShapeInferenceMaterialization
+    : public mlir::OpTrait::TraitBase<ConcreteType,
+                                      PadShapeInferenceMaterialization> {
+public:
+  LogicalResult
+  materializeShapeInference(ShapeFuncMaterializationState &state) {
+    auto pad = mlir::cast<PadLike>(this->getOperation());
+    return impl::materializePadLikeShapeInference(pad, state);
   }
 };
 

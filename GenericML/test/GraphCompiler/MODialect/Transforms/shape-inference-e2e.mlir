@@ -781,10 +781,10 @@ mo.graph @pad(
   // CHECK-NEXT: %[[PADDINGS:.*]] = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
   %paddings = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
 
-  // CHECK-NEXT: %[[RES:.*]] = mo.pad(%[[INPUT]], %[[PADDINGS]], %[[CONSTANT]]) : (
+  // CHECK-NEXT: %[[RES:.*]] = mo.pad.constant(%[[INPUT]], %[[PADDINGS]], %[[CONSTANT]]) : (
   // CHECK-SAME:   !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[], f32>
   // CHECK-SAME: ) -> !mo.tensor<[32, 73], f32>
-  %res = mo.pad(%input, %paddings, %constant) : (
+  %res = mo.pad.constant(%input, %paddings, %constant) : (
     !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[], f32>
   ) -> !mo.tensor<[?, ?], f32>
 

@@ -453,6 +453,23 @@ def MO_SameFirstArgumentOutputShapesParameterization : MO_TensorOpInterfaceBase<
   }];
 }
 
+def MO_PadLike : MO_TensorOpInterfaceBase<"PadLike", [MO_ParamDeclaration]> {
+  let description = [{
+    Interface for modeling pad operations.
+  }];
+
+  let methods = [
+    InterfaceMethod<"Get input as a TypedValue",
+      "TensorValue", "getInput", (ins)>,
+    InterfaceMethod<"Get padding tensor as a TypedValue",
+      "TensorValue", "getPaddings", (ins)>,
+    InterfaceMethod<"Get result tensor type",
+      "TensorType", "getType", (ins)>
+  ];
+
+  let verify = [{ return impl::verifyPadLike(cast<PadLike>($_op)); }];
+}
+
 //===----------------------------------------------------------------------===//
 // Traits
 //===----------------------------------------------------------------------===//
@@ -529,5 +546,15 @@ def MO_SameOperandsElementType :
 /// the transformation.
 def MO_SameFirstOperandAndResultsElementType :
     MO_OpTrait<"MOSameFirstOperandAndResultsElementType">;
+
+/// Should not be used outside this file.
+def _MO_PadShapeInferenceMaterialization
+  : MO_OpTrait<"PadShapeInferenceMaterialization">;
+
+def MO_PadLikeTraits: TraitList<[
+  MO_PadLike,
+  MO_DefaultParameterization,
+  MO_ShapeInferenceMaterialization,
+  _MO_PadShapeInferenceMaterialization]>;
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_TD

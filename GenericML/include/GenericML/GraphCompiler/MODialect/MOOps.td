@@ -2492,11 +2492,8 @@ def MO_TileOp : MO_TensorOp<"tile", [
   let hasVerifier = 1;
 }
 
-def MO_PadOp : MO_TensorOp<"pad", [
-  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
-]> {
-  let summary = "Pad Operation";
+def MO_PadConstantOp : MO_TensorOp<"pad.constant", [MO_PadLikeTraits]> {
+  let summary = "Constant mode pad Operation";
   let description = [{
     Pad the `input` tensor with a scalar tensor `constant` according to the
     `paddings`. Assume input has rank `N`, the `paddings` tensor should have
@@ -2514,13 +2511,12 @@ def MO_PadOp : MO_TensorOp<"pad", [
     %paddings = mo.constant {
       value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>
     } : !mo.tensor<[2, 2], si64>
-    %output   = mo.pad(%input, %paddings, %constant) : (
+    %output =   mo.pad.constant(%input, %paddings, %constant) : (
       !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>, !mo.tensor<[], f32>
     ) -> !mo.tensor<[3, 5], f32>
     ```
   }];
 
-  // TODO(#7987) support a padding_mode argument
   let arguments = (ins
     MO_Tensor:$input,
     MO_PaddingLike:$paddings,
@@ -2533,7 +2529,6 @@ def MO_PadOp : MO_TensorOp<"pad", [
   }];
 
   let hasCanonicalizeMethod = 1;
-  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

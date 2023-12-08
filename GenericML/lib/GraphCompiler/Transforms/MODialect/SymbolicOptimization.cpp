@@ -600,7 +600,7 @@ struct Pow3Pattern : public DeviceAwareRewritePattern<OpRewritePattern, PowOp> {
 };
 
 /// A pattern that detects explicit zero padding before convolution
-/// The pattern will only fire if the pad op has constant padding dimentions
+/// The pattern will only fire if the pad op has constant padding dimensions
 /// and a constant zero padding value
 ///
 /// The pattern also ensure that Batch/Channels are not explicitly padded
@@ -623,8 +623,8 @@ struct PadConvPattern
   deviceAwareMatchAndRewrite(MO::ConvOp op,
                              DeviceAwareRewriter &rewriter) const override {
     Value input, filter, strides, dilations, pads, pads2, groups;
-    if (!m_Op<ConvOp>(m_Op<PadOp>(rewriter.pushOp(), m_Any(&input),
-                                  m_Any(&pads), m_ScalarConstant(0.0)),
+    if (!m_Op<ConvOp>(m_Op<PadConstantOp>(rewriter.pushOp(), m_Any(&input),
+                                          m_Any(&pads), m_ScalarConstant(0.0)),
                       m_Any(&filter), m_Any(&strides), m_Any(&dilations),
                       m_Any(&pads2), m_Any(&groups))
              .match(op)) {

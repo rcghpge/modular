@@ -10,8 +10,8 @@ mo.graph @pad_conv(
   %pads = mo.constant {value = #M.dense_array<0, 0, 2, 2, 0, 0, 0, 0> : tensor<4x2xsi64>} : !mo.tensor<[4, 2], si64>
   %pads2 = mo.constant {value = #M.dense_array<1, 0, 1, 0> : tensor<4xsi64>} : !mo.tensor<[4], si32>
   %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  
-  %tmp = mo.pad(%input, %pads, %constant) : (
+
+  %tmp = mo.pad.constant(%input, %pads, %constant) : (
     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[4, 2], si64>, !mo.tensor<[], f32>
   ) -> !mo.tensor<[?, ?, ?, ?], f32>
   %res = mo.conv(%tmp, %filter) [strides = %ones, dilations = %ones, paddings = %pads2, num_groups = %num_groups] : (
@@ -40,8 +40,8 @@ mo.graph @pad_channels_conv(
   %pads = mo.constant {value = #M.dense_array<0, 0, 0, 0, 0, 0, 1, 1> : tensor<4x2xsi64>} : !mo.tensor<[4, 2], si64>
   %pads2 = mo.constant {value = #M.dense_array<1, 0, 1, 0> : tensor<4xsi64>} : !mo.tensor<[4], si32>
   %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  
-  %tmp = mo.pad(%input, %pads, %constant) : (
+
+  %tmp = mo.pad.constant(%input, %pads, %constant) : (
     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[4, 2], si64>, !mo.tensor<[], f32>
   ) -> !mo.tensor<[?, ?, ?, ?], f32>
   %res = mo.conv(%tmp, %filter) [strides = %ones, dilations = %ones, paddings = %pads2, num_groups = %num_groups] : (
@@ -58,7 +58,7 @@ mo.graph @pad_channels_conv(
   //CHECK:   %[[VAL2:.*]] = mo.constant {value = #M.dense_array<0, 0, 0, 0, 0, 0, 1, 1> : tensor<4x2xsi64>} : !mo.tensor<[4, 2], si64>
   //CHECK:   %[[VAL3:.*]] = mo.constant {value = #M.dense_array<1, 0, 1, 0> : tensor<4xsi64>} : !mo.tensor<[4], si32>
   //CHECK:   %[[VAL4:.*]] = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  //CHECK:   %[[VAL5:.*]] = mo.pad(%[[ARG0]], %[[VAL2]], %[[VAL0]]) : (!mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[4, 2], si64>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?, ?, ?], f32>
+  //CHECK:   %[[VAL5:.*]] = mo.pad.constant(%[[ARG0]], %[[VAL2]], %[[VAL0]]) : (!mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[4, 2], si64>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?, ?, ?], f32>
   //CHECK:   %[[VAL6:.*]] = mo.conv(%[[VAL5]], %[[ARG1]]) [strides = %[[VAL1]], dilations = %[[VAL1]], paddings = %[[VAL3]], num_groups = %[[VAL4]]] : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[1, 1, 3, 9], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, ?, ?], f32>
 //CHECK:   mo.output %[[VAL6]] : !mo.tensor<[?, ?, ?, ?], f32>
 //CHECK: }
