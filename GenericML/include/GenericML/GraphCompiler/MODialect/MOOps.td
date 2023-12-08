@@ -3201,6 +3201,48 @@ def MO_ArgMinOp : MO_ArgMinMaxOp<"arg_min"> {
 }
 
 //===----------------------------------------------------------------------===//
+// RandomNormalOp
+//===----------------------------------------------------------------------===//
+
+def MO_RandomNormalOp : MO_TensorOp<"random.normal",
+    [DeclareOpInterfaceMethods<MO_DefaultParameterization>]> {
+  let summary = "Creates a tensor with random values from a normal distribution.";
+  let description = [{
+    Creates a tensor with shape `shape` populated with random
+    values from a normal distribution, with the mean of the distribution equal
+    to `mean` and the standard deviation equal to `variance`.
+
+  Example:
+    ```mlir
+    %size = mo.constant {
+      value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %mean = mo.constant {
+      value = #M.dense_array<2.0> : tensor<1xf32> } : !mo.tensor<[], f32>
+    %variance = mo.constant {
+      value = #M.dense_array<0.5> : tensor<1xf32> } : !mo.tensor<[], f32>
+    %seed = mo.constant {
+      value = #M.dense_array<1> : tensor<1xsi64> } : !mo.tensor<[], si64>
+    %res = mo.random.normal(%size, %mean, %variance, %seed) :
+          (!mo.tensor<[4], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>,
+          !mo.tensor<[], si64>) -> !mo.tensor<[1, 1, 7, 8], f32>
+    ```
+  }];
+  // TODO(#27409): Add staticization
+  let arguments = (ins
+    MO_IndicesTensor:$shape,
+    MO_RankedScalarFloatTensor:$mean,
+    MO_RankedScalarFloatTensor:$variance,
+    MO_RankedScalarIndexTensor:$seed,
+    MO_ParamDecls:$outputParamDecls);
+
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // Range
 //===----------------------------------------------------------------------===//
 
@@ -3275,16 +3317,7 @@ def MO_ResizeLinearOp : MO_TensorOp<"resize.linear",
     When set to true, the antialias attribute causes an antialiasing filter to be applied
     when downscaling.
 
-    Example:
-    ```mlir
-    %input : !mo.tensor<[1, 1, 2, 2], f32>
-    %size = mo.constant {
-      value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %res = mo.resize.linear(%input, %size) {
-      coordinate_transform_mode = 0, antialias = true}:
-      (!mo.tensor<[1, 1, 2, 2], f32>, !mo.tensor<[4], si64>) ->
-        !mo.tensor<[1, 1, 7, 8], f32>
-    ```
+
   }];
   let arguments = (ins
     MO_Tensor:$input,
