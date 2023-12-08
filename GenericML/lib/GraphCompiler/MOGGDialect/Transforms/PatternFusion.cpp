@@ -571,8 +571,7 @@ struct SplitZeroAxisPattern
     rewriter.replaceOpWithNewOp<MOGG::SplitOp>(
         op,
         /*outputTypes=*/op->getResultTypes(),
-        /*input=*/op.getInput(),
-        /*splitSizes=*/op.getSplitSizes());
+        /*input=*/op.getInput());
 
     return mlir::success();
   }

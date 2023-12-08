@@ -5,7 +5,6 @@
 // CHECK-SAME:   %[[CH:.*]]: !mef.chain,
 // CHECK-SAME:   %[[CTX:.*]]: !mgp.context,
 // CHECK-SAME:   %[[INPUT:.*]]: !mgp.cpu.tensor<?x8xf32>,
-// CHECK-SAME:   %[[SPLIT_SIZES:.*]]: !mgp.cpu.tensor<2xsi64>
 // CHECK-SAME:   %[[DUMMY:.*]]: !mgp.cpu.tensor<?x?xsi64>
 // CHECK-SAME: ) -> (!mef.chain, !mgp.cpu.tensor<?x8xf32>, !mgp.cpu.tensor<?x8xf32>) {
 // CHECK-NEXT:   %{{.*}}, %[[DUMMY_SPEC:.*]] = mgp.cpu.tensor.extract %[[DUMMY]] : !mgp.cpu.tensor<?x?xsi64>
@@ -26,12 +25,10 @@
 // those parameters from the mogg e2e testing.
 mo.graph @mogg_split<D0, D1, D2>(
   %input: !mo.tensor<[D0, 8], f32>,
-  %split_sizes: !mo.tensor<[2], si64>,
   %dummy: !mo.tensor<[D1, D2], si64>
 ) -> (!mo.tensor<[D1, 8], f32>, !mo.tensor<[D2, 8], f32>) {
 
-  %res:2 = mogg.split(%input, %split_sizes) : (
-    !mo.tensor<[D0, 8], f32>, !mo.tensor<[2], si64>
+  %res:2 = mogg.split(%input) : (!mo.tensor<[D0, 8], f32>
   ) -> (!mo.tensor<[D1, 8], f32>, !mo.tensor<[D2, 8], f32>)
 
   mo.output %res#0, %res#1 : !mo.tensor<[D1, 8], f32>, !mo.tensor<[D2, 8], f32>
