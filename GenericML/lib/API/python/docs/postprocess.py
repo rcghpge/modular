@@ -38,7 +38,10 @@ def remove_empty_dd(soup):
     unselectable with the `:empty` pseudo-selector."""
     for dd in soup.find_all("dd"):
         # Check it has no raw text (either string vals or child tags)
-        if not dd.text:
+        for dl in dd.find_all("dl"):
+            if not dl.text.strip():
+                dl.extract()
+        if not dd.text.strip():
             dd.replace_with(Comment("No definition provided."))
     return soup
 
