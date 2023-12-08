@@ -65,6 +65,7 @@ HAS_FALLBACK(MO::MaxPoolOp)
 HAS_FALLBACK(MO::MeanOp)
 HAS_FALLBACK(MO::NonMaximumSuppressionOp)
 HAS_FALLBACK(MO::PadConstantOp)
+HAS_FALLBACK(MO::PadReflectOp)
 HAS_FALLBACK(MO::RangeOp)
 HAS_FALLBACK(MO::ReduceAddOp)
 HAS_FALLBACK(MO::ReduceMaxOp)
@@ -150,6 +151,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::MeanOp)
       CALL_FALLBACK(MO::NonMaximumSuppressionOp)
       CALL_FALLBACK(MO::PadConstantOp)
+      CALL_FALLBACK(MO::PadReflectOp)
       CALL_FALLBACK(MO::RangeOp)
       CALL_FALLBACK(MO::ReduceAddOp)
       CALL_FALLBACK(MO::ReduceMaxOp)
@@ -373,6 +375,13 @@ void Fallback<MO::NonMaximumSuppressionOp>::build(
 
 void Fallback<MO::PadConstantOp>::build(GraphOp &graph, OpBuilder &builder,
                                         MO::PadConstantOp op) {
+  SmallVector<Value> shapeFuncInputs({op.getInput(), op.getPaddings()});
+  buildForOpResult(graph, builder, op, "pad_shape", shapeFuncInputs,
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
+}
+
+void Fallback<MO::PadReflectOp>::build(GraphOp &graph, OpBuilder &builder,
+                                       MO::PadReflectOp op) {
   SmallVector<Value> shapeFuncInputs({op.getInput(), op.getPaddings()});
   buildForOpResult(graph, builder, op, "pad_shape", shapeFuncInputs,
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});

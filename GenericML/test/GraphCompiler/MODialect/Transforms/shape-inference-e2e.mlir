@@ -769,11 +769,11 @@ mo.graph @concat_neg_axis(
   mo.output %res : !mo.tensor<[?, ?, ?], f32>
 }
 
-// CHECK-LABEL: mo.graph @pad(
+// CHECK-LABEL: mo.graph @pad_constant(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[2, 3], f32>,
 // CHECK-SAME:   %[[CONSTANT:.*]]: !mo.tensor<[], f32>
 // CHECK-SAME: ) -> !mo.tensor<[32, 73], f32> no_inline {
-mo.graph @pad(
+mo.graph @pad_constant(
   %input: !mo.tensor<[2, 3], f32>,
   %constant: !mo.tensor<[], f32>
 ) -> !mo.tensor<[?, ?], f32> {
@@ -786,6 +786,27 @@ mo.graph @pad(
   // CHECK-SAME: ) -> !mo.tensor<[32, 73], f32>
   %res = mo.pad.constant(%input, %paddings, %constant) : (
     !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[], f32>
+  ) -> !mo.tensor<[?, ?], f32>
+
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[32, 73], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
+}
+
+// CHECK-LABEL: mo.graph @pad_reflect(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[2, 3], f32>
+// CHECK-SAME: ) -> !mo.tensor<[32, 73], f32> no_inline {
+mo.graph @pad_reflect(
+  %input: !mo.tensor<[2, 3], f32>
+) -> !mo.tensor<[?, ?], f32> {
+
+  // CHECK-NEXT: %[[PADDINGS:.*]] = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+  %paddings = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+
+  // CHECK-NEXT: %[[RES:.*]] = mo.pad.reflect(%[[INPUT]], %[[PADDINGS]]) : (
+  // CHECK-SAME:   !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si32>
+  // CHECK-SAME: ) -> !mo.tensor<[32, 73], f32>
+  %res = mo.pad.reflect(%input, %paddings) : (
+    !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si32>
   ) -> !mo.tensor<[?, ?], f32>
 
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[32, 73], f32>

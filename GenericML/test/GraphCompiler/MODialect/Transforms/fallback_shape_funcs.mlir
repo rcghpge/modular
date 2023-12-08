@@ -249,7 +249,7 @@ mo.graph @gather_fallback_shape_func<D0, D1 -> D2, D3, D4>(
 //
 // CHECK-NEXT: mo.output<[[D5]], [[D6]], [[D7]]> %[[RES]] : !mo.tensor<[[[D5]], [[D6]], [[D7]]], f32>
 
-mo.graph @pad_fallback_shape_func<() -> D0, D1, D2>(
+mo.graph @pad_constant_fallback_shape_func<() -> D0, D1, D2>(
   %input : !mo.tensor<[1, 2, 3], f32>,
   %paddings : !mo.tensor<[3, 2], si32>,
   %scalar: !mo.tensor<[], f32>
@@ -260,7 +260,7 @@ mo.graph @pad_fallback_shape_func<() -> D0, D1, D2>(
 
   mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
 }
-// CHECK-LABEL: mo.graph @pad_fallback_shape_func
+// CHECK-LABEL: mo.graph @pad_constant_fallback_shape_func
 // CHECK-SAME: <() -> [[D0:.*]], [[D1:.*]], [[D2:.*]]>(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[1, 2, 3], f32>,
 // CHECK-SAME:   %[[PADDINGS:.*]]: !mo.tensor<[3, 2], si32>
@@ -272,6 +272,32 @@ mo.graph @pad_fallback_shape_func<() -> D0, D1, D2>(
 //
 // CHECK-NEXT: %[[RES:.*]] = mo.pad.constant(%[[INPUT]], %[[PADDINGS]], %[[AXIS]]) :
 // CHECK-SAME:   (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[3, 2], si32>, !mo.tensor<[], f32>)
+// CHECK-SAME:   -> !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
+//
+// CHECK-NEXT: mo.output<[[D3]], [[D4]], [[D5]]> %[[RES]] : !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
+
+mo.graph @pad_reflect_fallback_shape_func<() -> D0, D1, D2>(
+  %input : !mo.tensor<[1, 2, 3], f32>,
+  %paddings : !mo.tensor<[3, 2], si32>
+) -> !mo.tensor<[D0, D1, D2], f32> {
+
+  %res = mo.pad.reflect<() -> D3, D4, D5>(%input, %paddings) :
+    (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[3, 2], si32>) -> !mo.tensor<[D3, D4, D5], f32>
+
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK-LABEL: mo.graph @pad_reflect_fallback_shape_func
+// CHECK-SAME: <() -> [[D0:.*]], [[D1:.*]], [[D2:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[1, 2, 3], f32>,
+// CHECK-SAME:   %[[PADDINGS:.*]]: !mo.tensor<[3, 2], si32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32> no_inline {
+//
+// CHECK-NEXT: mo.invoke_shape_func["pad_shape"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[PADDINGS]])
+// CHECK-SAME:   {dataDeptTensors = [1 : i32]} :
+// CHECK-SAME:   (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[3, 2], si32>)
+//
+// CHECK-NEXT: %[[RES:.*]] = mo.pad.reflect(%[[INPUT]], %[[PADDINGS]]) :
+// CHECK-SAME:   (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[3, 2], si32>)
 // CHECK-SAME:   -> !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
 //
 // CHECK-NEXT: mo.output<[[D3]], [[D4]], [[D5]]> %[[RES]] : !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
