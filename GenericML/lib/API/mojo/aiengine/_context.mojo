@@ -9,6 +9,11 @@ from sys.ffi import DLHandle
 from utils._optional import Optional
 from ._utils import *
 from ._status import Status
+from sys.param_env import is_defined
+
+alias MODULAR_RELEASE_PACKAGE_BUILD = is_defined[
+    "MODULAR_RELEASE_PACKAGE_BUILD"
+]()
 
 
 @value
@@ -48,8 +53,19 @@ struct RuntimeConfig:
         if num_threads:
             self.ptr.set_num_threads(lib, num_threads.value())
         self.lib = lib
-        if device == "cuda":
-            self.ptr.set_device(self.lib, device)
+
+        @parameter
+        if MODULAR_RELEASE_PACKAGE_BUILD:
+            if device != "cpu":
+                print(
+                    "The device",
+                    device,
+                    "is not valid. The device must be set to 'cpu'.",
+                )
+            return
+        else:
+            if device == "cuda":
+                self.ptr.set_device(self.lib, device)
 
     fn __moveinit__(inout self, owned existing: Self):
         self.ptr = exchange[CRuntimeConfig](

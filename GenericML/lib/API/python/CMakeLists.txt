@@ -16,6 +16,10 @@ modular_find_python3_development()
 
 include(AddPyBind11)
 
+if (MODULAR_RELEASE_PACKAGE_BUILD)
+  add_compile_definitions(MODULAR_RELEASE_PACKAGE_BUILD=1)
+endif()
+
 # Hardcode version to 0.0.0 for local test target modular-pybind-ext
 set(MODULAR_PYPROJECT_NAME_VERSION "modular_engine-0.0.0")
 
