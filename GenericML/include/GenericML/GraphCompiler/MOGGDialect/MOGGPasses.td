@@ -181,4 +181,31 @@ def InlineLambdas: Pass<"inline-lambdas", "MO::GraphOp"> {
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }
 
+def SimplifyKGENParameters: Pass<"simplify-kgen-parameters", "MO::GraphOp"> {
+  let summary = "Globalizes statically known parameters to reduce duplication";
+  let description = [{
+    This pass will declare statically known parameters globally in the GraphOp
+    to reduce the number of duplication in the KGEN kernels.
+  }];
+  let dependentDialects = [
+    "M::MDialect",
+    "M::MOGG::MOGGDialect",
+    "M::KGEN::KGENDialect",
+  ];
+}
+
+def InlineKGENParameters: Pass<"inline-kgen-parameters", "MO::GraphOp"> {
+  let summary = "Inlines statically known parameters inside MOGG kernel ops";
+  let description = [{
+    This pass will essentially do the opposite of SimplifyKGENParameters. It
+    will inline statically known KGEN parameters into kernels to prepare for
+    JITing.
+  }];
+  let dependentDialects = [
+    "M::MDialect",
+    "M::MOGG::MOGGDialect",
+    "M::KGEN::KGENDialect",
+  ];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGPASSES_TD
