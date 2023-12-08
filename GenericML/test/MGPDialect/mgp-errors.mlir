@@ -340,16 +340,6 @@ mgp.model @mismatchedContextType : tfl init {
   mef.output %ch, %x : !mef.chain, tensor<2xf32>
 }
 
-// -----
-
-// expected-error@+1 {{'mgp.model' op expected the 'execute' entry point to take arguments of ShapedType, but argument 0 is of type 'index'.}}
-mgp.model @invalidExecuteArgType : tfl init {
-  %ch = grt.chain.create ()
-  %ctx = mgp.context.create 1
-  mef.output %ch, %ctx : !mef.chain, !mgp.context
-} execute (%ch: !mef.chain, %ctx: !mgp.context, %x: index) -> (!mef.chain, index) {
-  mef.output %ch, %x : !mef.chain, index
-}
 
 // -----
 

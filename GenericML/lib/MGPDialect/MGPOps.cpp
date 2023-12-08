@@ -1443,22 +1443,7 @@ LogicalResult ModelOp::verifyRegions() {
 }
 
 /// Verifies the input/output type signature.
-LogicalResult ModelOp::verify() {
-  // Ensure that ModelOp's arguments and results are RankedTensorTypes.
-  // TODO(#4753): We don't want to require args to be tensors, but don't
-  // yet have a protocol for tying the M::Model subclass input and output
-  // handling with the types declared here.
-  FunctionType modelType = getInputOutputTypes();
-  for (size_t i = 0, e = modelType.getNumInputs(); i < e; ++i) {
-    Type type = modelType.getInput(i);
-    if (!type.isa<ShapedType>())
-      return emitOpError()
-             << "expected the 'execute' entry point to take arguments "
-                "of ShapedType, but argument "
-             << i << " is of type " << type << ".";
-  }
-  return success();
-}
+LogicalResult ModelOp::verify() { return success(); }
 
 //===----------------------------------------------------------------------===//
 // MGPDialect op support

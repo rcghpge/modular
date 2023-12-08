@@ -2039,9 +2039,6 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,
     tools can inspect to determine which API to establish to mediate
     between framework-specific values and representations used by the model.
 
-    Currently only input and result types which implement the `ShapedType`
-    interface are supported.
-
     Additional attributes may be supplied. Currently the following attribute
     names have special meaning:
      - argument_names
