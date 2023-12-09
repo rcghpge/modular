@@ -134,6 +134,67 @@ loadUserProvidedKernels(ModuleOp baseModule,
                    "auxillary binding library");
     mlir::SymbolTable userSymTable{*userModule};
 
+    // Remap only exposed kernel functions if their name collides with an
+    // existing function.
+    for (KGEN::GeneratorOp op : userModule->getOps<KGEN::GeneratorOp>()) {
+      // We will insert a slightly mangled version of the current name if it
+      // already exists in the mlir file we intend to compile.
+      std::string newSymName = op.getSymName().str();
+
+      // If there's no collision we can copy directly obviously.
+      if (mainSymTable.lookup(newSymName) == nullptr)
+        continue;
+
+      bool isMOGGKernel = false;
+
+      // Check if it has a decorator.
+      for (TypedAttr decorator : op.getDecorators()) {
+        // Decorators are expected to the the apply of a symbol.
+        auto apply = dyn_cast<KGEN::ParamOperatorAttr>(decorator);
+        if (!apply)
+          continue;
+
+        // The first operand is expected to be the symbol we are applying.
+        auto sym = dyn_cast<KGEN::SymbolConstantAttr>(apply.getOperand(0));
+        if (!sym)
+          continue;
+
+        StringRef decoratorName = sym.getSymbol().getLeafReference().strref();
+        isMOGGKernel |=
+            decoratorName.startswith(DECORATOR_REGISTER_OVERRIDE) ||
+            decoratorName.startswith(DECORATOR_REGISTER_SHAPE_FUNC) ||
+            decoratorName.startswith(DECORATOR_REGISTER_KERNEL);
+      }
+
+      // Only duplicate kernels.
+      if (!isMOGGKernel)
+        continue;
+
+      // Create a new symbol which is unique in both files.
+      while (mainSymTable.lookup(newSymName) != nullptr ||
+             userSymTable.lookup(newSymName) != nullptr) {
+        newSymName = getUniqueSymbolName(newSymName, mainSymTable);
+        newSymName = getUniqueSymbolName(newSymName, userSymTable);
+      }
+
+      auto oldAttr =
+          FlatSymbolRefAttr::get(userModule->getContext(), op.getSymNameAttr());
+
+      // Update any references to the old symbol with the new symbol.
+      mlir::AttrTypeReplacer symbolUpdater;
+      symbolUpdater.addReplacement(
+          [&](FlatSymbolRefAttr attr) -> std::optional<FlatSymbolRefAttr> {
+            if (attr == oldAttr)
+              return FlatSymbolRefAttr::get(userModule->getContext(),
+                                            newSymName);
+            return std::nullopt;
+          });
+      symbolUpdater.recursivelyReplaceElementsIn(
+          *userModule, /*replaceAttrs=*/true, /*replaceLocs=*/false,
+          /*replaceTypes=*/true);
+      op.setSymName(newSymName);
+    }
+
     // Copy all the functions over into the new module. We will not check if
     // duplicates are identical and will assume there's no version issues.
     for (mlir::FunctionOpInterface op :
