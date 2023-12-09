@@ -16,6 +16,10 @@ using namespace core;
 
 namespace py = pybind11;
 
+/// Recursively converts the `value` containing nested generic
+/// `Dict`, `List`, `Tuple`, `None`, `GML::Tensor` and primitive type values
+/// to a nested pybind object value composed of `array`, `dict`, `list`,
+/// `tuple`, `none`, `double`, `long` and `bool`. Tensor data arrays are copied.
 py::object processValueResult(ValuePtr value) {
   switch (M_Torch_getValueType(value.get())) {
   case M_Torch_ValueType::M_TORCH_DICT_VALUE: {

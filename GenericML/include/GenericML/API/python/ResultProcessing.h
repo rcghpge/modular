@@ -20,6 +20,7 @@ namespace py = pybind11;
 
 namespace core {
 
+/// Creates a new `py::array` by copying the tensor data from a `GML::Tensor`.
 py::object processTensorResult(TensorPtr outTensor) {
   TensorSpecPtr tensorSpec{M_getTensorSpec(outTensor.get()), &M_freeTensorSpec};
   size_t numDims = M_getRank(tensorSpec.get());
