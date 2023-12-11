@@ -21,6 +21,7 @@
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/ADT/ConcatenationTree.h"
 #include "Support/ErrorOr.h"
+#include "Support/LLVMAlignToMacro.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorShape.h"
@@ -145,7 +146,9 @@ public:
     // whether we need padding before this to make sure it ends up at the right
     // address.
     size_t curOffset = getOffset().value;
-    size_t neededPadding = llvm::alignTo(curOffset, alignment) - curOffset;
+    size_t size;
+    CHECKED_LLVM_ALIGN_TO(size, curOffset, alignment);
+    size_t neededPadding = size - curOffset;
 
     // Emit dummy padding bytes to get up to the right offset.
     while (neededPadding--)
