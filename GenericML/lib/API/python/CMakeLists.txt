@@ -93,6 +93,7 @@ if(STOCK_TENSORFLOW_FOUND)
 endif()
 
 set(modular_python_package_sources
+  ${CMAKE_CURRENT_SOURCE_DIR}/modular/engine/__init__.py
   ${CMAKE_CURRENT_SOURCE_DIR}/modular/engine/api.py
   ${CMAKE_CURRENT_SOURCE_DIR}/modular/engine/core.pyi
 )
