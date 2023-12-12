@@ -1045,7 +1045,7 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   //    at runtime.
   kernelPtr(call.inputPointers.data(), dimensions.data(), &outputChain);
 
-  if (outputChain.chain.isError()) {
+  if (outChain.copy().isError()) {
     // The kernel failed while trying to launch.
     setOutDimensionsToChainError();
     return;
@@ -1053,7 +1053,7 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
 
   // If the kernel has output dimensions then it must be synchronous and those
   // values can be copied out now.
-  assert(numOutDimensions == 0 || outputChain.chain.isReady());
+  assert(numOutDimensions == 0 || outChain.copy().isReady());
   for (size_t i = 0; i < numOutDimensions; ++i)
     outDimensions[i].copy().emplace<size_t>(dimensions[numInDimensions + i]);
 
@@ -1066,12 +1066,8 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   memset(p, 0xef, s);
 #endif
 
-  // If the kernel is asynchronous then it will have 'forked' the
-  // output chain and launched sub-tasks to do the actual work. We can
-  // thus stop profiling the 'main' kernel.
-  // If the kernel is synchronous then profiling is already finished and
-  // this call will be a no-op.
-  std::move(outputChain).recordProfilerEntries();
+  // The OutputChain destructor will clean things up if it was not forked
+  // by the called Mojo kernel.
 }
 
 //===----------------------------------------------------------------------===//
