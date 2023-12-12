@@ -65,6 +65,31 @@ def AddFallbackShapeFunctions :
   ];
 }
 
+def SymbolicizeFallbackShapeFunctions :
+    Pass<"symbolicize-fallback-shape-funcs", "GraphOp"> {
+  let summary = "Symbolically fold fallback shape functions in the graph";
+  let description = [{
+    This pass examines all fallback shape function calls in the `mo.graph` ops,
+    and attempts to interpret the shape function body symbolically; if
+    succeeded, replaces the shape function call with `kgen.param.declare`s for
+    the shape function call's output parameters (and assertions in the shape
+    function).
+  }];
+
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::index::IndexDialect",
+    "M::DebugInfo::DebugInfoDialect",
+    "M::HLCF::HLCFDialect",
+    "M::KGEN::KGENDialect",
+    "M::KGEN::LIT::LITDialect",
+    "M::KGEN::POP::POPDialect",
+    "M::MDialect",
+    "M::MOGG::MOGGDialect",
+    "mlir::NVVM::NVVMDialect",
+  ];
+}
+
 def InlineShapeFunctions : Pass<"inline-shape-funcs", "ModuleOp"> {
   let summary = "Inlines shape functions into the graph.";
   let description = [{
