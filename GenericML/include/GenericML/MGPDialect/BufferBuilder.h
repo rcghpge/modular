@@ -335,12 +335,16 @@ public:
 
   /// Borrow a section of a buffer
   virtual Value borrowSectionStatic(OpBuilder &builder, Location loc,
-                                    Value inChain, Value inBuffer,
-                                    uint64_t offset, uint64_t size) = 0;
+                                    Value inChain,
+                                    TypedValue<MGP::ContextType> context,
+                                    Value inBuffer, uint64_t offset,
+                                    uint64_t size) = 0;
 
   /// Borrow a dynamic section of a buffer
   virtual Value borrowSectionDynamic(OpBuilder &builder, Location loc,
-                                     Value inChain, Value inBuffer, Value scale,
+                                     Value inChain,
+                                     TypedValue<MGP::ContextType> context,
+                                     Value inBuffer, Value scale,
                                      uint64_t unscaledOffset,
                                      uint64_t unscaledSize) = 0;
 
@@ -438,10 +442,12 @@ public:
                      TypedValue<MEF::ChainType> inChain) override;
 
   Value borrowSectionStatic(OpBuilder &builder, Location loc, Value inChain,
+                            TypedValue<MGP::ContextType> context,
                             Value inBuffer, uint64_t offset,
                             uint64_t size) override;
 
   Value borrowSectionDynamic(OpBuilder &builder, Location loc, Value inChain,
+                             TypedValue<MGP::ContextType> context,
                              Value inBuffer, Value scale,
                              uint64_t unscaledOffset,
                              uint64_t unscaledSize) override;

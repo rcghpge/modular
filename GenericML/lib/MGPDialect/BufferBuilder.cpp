@@ -229,18 +229,18 @@ Value CpuBufferBuilder::fromMEFChain(OpBuilder &builder, Location loc,
   return inChain;
 }
 
-Value CpuBufferBuilder::borrowSectionStatic(OpBuilder &builder, Location loc,
-                                            Value inChain, Value inBuffer,
-                                            uint64_t offset, uint64_t size) {
+Value CpuBufferBuilder::borrowSectionStatic(
+    OpBuilder &builder, Location loc, Value inChain,
+    TypedValue<MGP::ContextType> context, Value inBuffer, uint64_t offset,
+    uint64_t size) {
   return builder.create<CpuBufferSectionBorrowStaticOp>(loc, inChain, inBuffer,
                                                         offset, size);
 }
 
-Value CpuBufferBuilder::borrowSectionDynamic(OpBuilder &builder, Location loc,
-                                             Value inChain, Value inBuffer,
-                                             Value scale,
-                                             uint64_t unscaledOffset,
-                                             uint64_t unscaledSize) {
+Value CpuBufferBuilder::borrowSectionDynamic(
+    OpBuilder &builder, Location loc, Value inChain,
+    TypedValue<MGP::ContextType> context, Value inBuffer, Value scale,
+    uint64_t unscaledOffset, uint64_t unscaledSize) {
   return builder.create<CpuBufferSectionBorrowDynamicOp>(
       loc, inChain, inBuffer, scale, unscaledOffset, unscaledSize);
 }

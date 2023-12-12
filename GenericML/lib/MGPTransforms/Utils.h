@@ -136,7 +136,7 @@ struct InitState {
   size_t allocSlot();
 
   /// Returns the current final 'init' chain result.
-  Value getFinalChain();
+  TypedValue<MEF::ChainType> getFinalChain();
 
   /// Update the final 'init' chain result.
   void updateFinalChain(Value newChain);

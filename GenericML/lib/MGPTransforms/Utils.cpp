@@ -516,7 +516,9 @@ size_t InitState::allocSlot() {
 }
 
 /// Returns the current final 'init' chain result.
-Value InitState::getFinalChain() { return init->back().getOperand(0); }
+TypedValue<MEF::ChainType> InitState::getFinalChain() {
+  return cast<TypedValue<MEF::ChainType>>(init->back().getOperand(0));
+}
 
 /// Update the final 'init' chain result.
 void InitState::updateFinalChain(Value newChain) {
