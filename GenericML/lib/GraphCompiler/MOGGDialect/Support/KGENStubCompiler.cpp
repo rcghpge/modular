@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MOGGSupport/KGENStubCompiler.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
 
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"

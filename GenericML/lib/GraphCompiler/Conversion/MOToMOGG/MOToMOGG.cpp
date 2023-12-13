@@ -12,7 +12,7 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
-#include "GenericML/GraphCompiler/MOGGSupport/MOToMOGGUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MOToMOGGUtils.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 using namespace M;

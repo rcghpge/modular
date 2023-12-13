@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MOGGSupport/MOGGCompiler.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/PatternMatch.h"
@@ -14,7 +14,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
-#include "GenericML/GraphCompiler/MOGGSupport/NameMangling.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/NameMangling.h"
 #include "GenericML/Support/Tensor.h"
 
 #include "KGEN/Compiler/KGENCompiler.h"
@@ -23,7 +23,7 @@
 
 #include "mlir/IR/IRMapping.h"
 
-#include <GenericML/GraphCompiler/MOGGSupport/MOGGCompiler.h>
+#include <GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h>
 using namespace M;
 
 namespace M::MOGG {

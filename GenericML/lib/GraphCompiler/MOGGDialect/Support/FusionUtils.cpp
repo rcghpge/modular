@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MOGGSupport/FusionUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 
 #include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MojoParameters.h"
-#include "GenericML/GraphCompiler/Support/MOGGTypeTraits.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"

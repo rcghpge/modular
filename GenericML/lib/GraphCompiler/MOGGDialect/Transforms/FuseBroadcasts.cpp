@@ -11,7 +11,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
-#include "GenericML/GraphCompiler/MOGGSupport/FusionUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/Support/Tensor.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Transforms/TopologicalSortUtils.h"

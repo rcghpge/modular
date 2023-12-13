@@ -7,7 +7,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
-#include "GenericML/GraphCompiler/MOGGSupport/FusionUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 
 using namespace M;
 

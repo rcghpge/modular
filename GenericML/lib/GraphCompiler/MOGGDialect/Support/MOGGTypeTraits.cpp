@@ -12,7 +12,7 @@
 // If you want to add a new supported type, add it to `allDTypeTraits` below
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Support/MOGGTypeTraits.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
 
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
