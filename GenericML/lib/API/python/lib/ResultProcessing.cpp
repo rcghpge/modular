@@ -4,23 +4,51 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MODULAR_PYTHON_PYTORCH_RESULTPROCESSING_H
-#define MODULAR_PYTHON_PYTORCH_RESULTPROCESSING_H
-
-#include "GenericML/API/modular/cpp/aliases.h"
 #include "GenericML/API/python/ResultProcessing.h"
+#include "GenericML/API/modular/c/value.h"
+#include "GenericML/API/modular/cpp/aliases.h"
+#include "PyTorch/API/modular/c/pytorch/types.h"
 #include "PyTorch/API/modular/c/pytorch/value.h"
+#include "pybind11/numpy.h"
+#include "pybind11/pybind11.h"
+#include "python/Types.h"
+#include <vector>
 
 using namespace M;
-using namespace core;
 
 namespace py = pybind11;
+
+/// Creates a new `py::array` by copying the tensor data from a `GML::Tensor`.
+py::object core::processTensorResult(TensorPtr outTensor) {
+  TensorSpecPtr tensorSpec{M_getTensorSpec(outTensor.get()), &M_freeTensorSpec};
+  size_t numDims = M_getRank(tensorSpec.get());
+  std::vector<int64_t> shape;
+  for (size_t d = 0; d < numDims; ++d)
+    shape.push_back(M_getDimAt(tensorSpec.get(), d));
+
+  // TODO(8114): Currently always copy out.
+  // The underlying M::TensorMap -> GML::Tensor -> M::BufferRef is borrowed,
+  // so we cannot release its buffer to Python.
+
+  size_t numElements = M_getTensorNumElements(outTensor.get());
+  M_Dtype type = M_getTensorType(outTensor.get());
+  size_t outputTensorSizeInBytes = M_sizeOf(type) * numElements;
+  const void *outTensorSrcBuffer = M_getTensorData(outTensor.get());
+  // `outTensorDestBuffer` is the underlying buffer backing the ouput tensor
+  //  returned to Python. This will be garbage collected by Python as per
+  // usual.
+  void *outTensorDestBuffer = ::operator new(outputTensorSizeInBytes);
+  std::memcpy(outTensorDestBuffer, outTensorSrcBuffer, outputTensorSizeInBytes);
+  py::array outNdArray =
+      py::array(mapDType(type), shape, /*strides=*/{}, outTensorDestBuffer);
+  return outNdArray;
+}
 
 /// Recursively converts the `value` containing nested generic
 /// `Dict`, `List`, `Tuple`, `None`, `GML::Tensor` and primitive type values
 /// to a nested pybind object value composed of `array`, `dict`, `list`,
 /// `tuple`, `none`, `double`, `long` and `bool`. Tensor data arrays are copied.
-py::object processValueResult(ValuePtr value) {
+py::object core::processValueResult(ValuePtr value) {
   switch (M_Torch_getValueType(value.get())) {
   case M_Torch_ValueType::M_TORCH_DICT_VALUE: {
     M_Torch_AsyncDict *dict = M_Torch_getDictFromValue(value.get());
@@ -77,5 +105,3 @@ py::object processValueResult(ValuePtr value) {
     throw std::runtime_error("Unhandled value type.");
   }
 }
-
-#endif // MODULAR_PYTHON_PYTORCH_RESULTPROCESSING_H

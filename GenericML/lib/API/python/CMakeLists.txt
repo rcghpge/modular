@@ -16,6 +16,8 @@ modular_find_python3_development()
 
 include(AddPyBind11)
 
+add_subdirectory(lib)
+
 if (MODULAR_RELEASE_PACKAGE_BUILD)
   add_compile_definitions(MODULAR_RELEASE_PACKAGE_BUILD=1)
 endif()

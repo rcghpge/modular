@@ -16,6 +16,7 @@ target_link_libraries(core
   modular-framework-common
   modular-framework-tf-ext
   modular-framework-torch-ext
+  ModularFrameworkPython
   MSupport
 )
 add_dependencies(modular-engine core)

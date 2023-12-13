@@ -1,0 +1,171 @@
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
+
+#include "GenericML/API/python/InputProcessing.h"
+#include "GenericML/API/modular/c/value.h"
+#include "GenericML/API/modular/cpp/aliases.h"
+#include "GenericML/API/python/Types.h"
+#include "PyTorch/API/modular/c/pytorch/types.h"
+#include "PyTorch/API/modular/c/pytorch/value.h"
+#include "pybind11/numpy.h"
+#include "pybind11/pybind11.h"
+#include "llvm/ADT/StringRef.h"
+#include <vector>
+
+using namespace M;
+
+namespace py = pybind11;
+
+/// Verifies that the array in the pybind object `obj` has the same shape and
+/// data type as the tensor spec.
+void core::verifyTensorInputSpecs(const py::object &obj,
+                                  const TensorSpec &inputTensorSpec) {
+  const auto tensor = obj.cast<py::array>();
+
+  // Assert the input tensor has the same tensor specification
+  // Assert same dtype.
+  if (pybind11::dtype expectedDtype = mapDType(inputTensorSpec.getDtype());
+      !tensor.dtype().is(expectedDtype))
+    throw std::runtime_error(
+        "Input tensor has incompatible type. Expected type " +
+        printDType(inputTensorSpec.getDtype()) + " but got " +
+        printDType(mapPybind11Type(tensor.dtype())) + " instead.");
+
+  // Assert same number of dims
+  if (unsigned long expectedNDim = inputTensorSpec.getShape().size();
+      (unsigned long)tensor.ndim() != expectedNDim) {
+    throw std::runtime_error(
+        "Input tensor has incompatible number of dimensions. Expected "
+        "number of dimensions to be " +
+        std::to_string(expectedNDim) + " but input has " +
+        std::to_string(tensor.ndim()) + " dimensions.");
+  }
+
+  // Assert same shape
+  std::vector<int64_t> inputShape;
+  for (ssize_t d = 0, ndim = tensor.ndim(); d < ndim; ++d) {
+    int64_t expectedDim = M_getDimAt(inputTensorSpec.getSpec(), d);
+    if (expectedDim != apiDynamicDimension && expectedDim != tensor.shape(d)) {
+      throw std::runtime_error(
+          "Input tensor has incompatible dimension along axis " +
+          std::to_string(d) + ". Expected " + std::to_string(expectedDim) +
+          " but found " + std::to_string(tensor.shape(d)) + ".");
+    }
+  }
+}
+
+/// Borrows the data from the array in the pybind object `obj` into a new
+/// `GML::Tensor` wrapped in an `AsyncValue` and sets it's name to `name`.
+M_AsyncValue *core::processTensorInput(const py::object &obj,
+                                       const std::string &name,
+                                       M_RuntimeContext *context,
+                                       M_Status *status) {
+  const auto tensor = obj.cast<py::array>();
+
+  std::vector<int64_t> inputShape;
+  for (ssize_t d = 0; d < tensor.ndim(); ++d)
+    inputShape.push_back(tensor.shape(d));
+
+  TensorSpecPtr tensorSpec{M_newTensorSpec(inputShape.data(), inputShape.size(),
+                                           mapPybind11Type(tensor.dtype()),
+                                           name.c_str()),
+                           &M_freeTensorSpec};
+  // tensor points to a buffer owned by the input py::array.
+  // Since .execute() is synchronous currently, the tensor will survive at
+  // least as long as we need it: we won't use the input tensor anymore
+  // after .execute() returns.
+  //
+  // TODO(#7919): Figure out lifetime management for input tensors in the
+  // asynchronous case.
+  return M_createBorrowedTensor(tensor.data(), tensorSpec.get(), context);
+  if (M_isError(status))
+    throw std::runtime_error(M_getError(status));
+}
+
+/// Borrows the data from the array in the pybind object `obj` into a new
+/// `GML::Tensor` wrapped in an `AsyncValue`.
+M_AsyncValue *core::processTensorInput(const py::object &obj,
+                                       M_RuntimeContext *context,
+                                       M_Status *status) {
+  std::string name("");
+  return processTensorInput(obj, name, context, status);
+}
+
+/// Recursively converts the pybind object `pyObj` containing a value composed
+/// of `array`, `dict`, `list`, `tuple`, `none`, `double`, `long`, `bool`
+/// objects to a nested value of generic composed (`Dict`, `List`, Tuple`),
+/// tensor (`GML::Tensor`) and primitive types. Tensor data arrays are borrowed
+/// and not copied.
+M_AsyncValue *core::processValueInput(const py::object &pyObj,
+                                      M_RuntimeContext *context,
+                                      M_Status *status) {
+  if (py::isinstance<py::array>(pyObj))
+    return processTensorInput(pyObj, context, status);
+
+  if (py::isinstance<py::dict>(pyObj)) {
+    const auto pyDict = pyObj.cast<py::dict>();
+    M_AsyncValue *dictValue = M_Torch_createDictAsyncValue(context);
+    M_Torch_AsyncDict *dict = M_Torch_getDictFromValue(dictValue);
+    for (auto elem : pyDict) {
+      M_AsyncValue *key =
+          processValueInput(elem.first.cast<py::object>(), context, status);
+      M_AsyncValue *value =
+          processValueInput(elem.second.cast<py::object>(), context, status);
+      M_Torch_borrowIntoDict(dict, key, value);
+      M_freeValue(key);
+      M_freeValue(value);
+    }
+    M_Torch_freeDict(dict);
+    return dictValue;
+  }
+
+  if (py::isinstance<py::list>(pyObj)) {
+    const auto pyList = pyObj.cast<py::list>();
+    M_AsyncValue *listValue = M_Torch_createListAsyncValue(context);
+    M_Torch_AsyncList *list = M_Torch_getListFromValue(listValue);
+    for (auto elem : pyList) {
+      M_AsyncValue *value =
+          processValueInput(elem.cast<py::object>(), context, status);
+      M_Torch_borrowIntoList(list, value);
+      M_freeValue(value);
+    }
+    M_Torch_freeList(list);
+    return listValue;
+  }
+
+  if (py::isinstance<py::tuple>(pyObj)) {
+    const auto pyTuple = pyObj.cast<py::tuple>();
+    M_AsyncValue *tupleValue = M_Torch_createTupleAsyncValue(context);
+    M_Torch_AsyncTuple *tuple = M_Torch_getTupleFromValue(tupleValue);
+    for (auto elem : pyTuple) {
+      M_AsyncValue *value =
+          processValueInput(elem.cast<py::object>(), context, status);
+      M_Torch_borrowIntoTuple(tuple, value);
+      M_freeValue(value);
+    }
+    M_Torch_freeTuple(tuple);
+    return tupleValue;
+  }
+
+  if (py::isinstance<py::none>(pyObj))
+    return M_Torch_createNoneAsyncValue(context);
+
+  if (py::isinstance<py::str>(pyObj)) {
+    std::string str = pyObj.cast<std::string>();
+    return M_createStringAsyncValue(str.c_str(), context);
+  }
+
+  if (py::isinstance<py::float_>(pyObj))
+    return M_createDoubleAsyncValue(pyObj.cast<double>(), context);
+
+  if (py::isinstance<py::int_>(pyObj))
+    return M_createLongAsyncValue(pyObj.cast<int64_t>(), context);
+
+  if (py::isinstance<py::bool_>(pyObj))
+    return M_createBoolAsyncValue(pyObj.cast<bool>(), context);
+
+  return nullptr;
+}

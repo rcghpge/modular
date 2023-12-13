@@ -33,6 +33,7 @@ include(AddPyBind11)
 target_link_libraries(InferenceSessionTest PRIVATE
   ${Python3_LIBRARIES}
   modular-framework-common
+  ModularFrameworkPython
   pybind11::embed
 )
 
