@@ -340,6 +340,29 @@ def MOGG_SetParameterOp : MOGG_Op<"set_param"> {
    }];
 }
 
+def MOGG_ShapeToTensorOp : MOGG_Op<"shape_to_tensor"> {
+  let summary = "Convert a MOGG shape value to a tensor value";
+  let description = [{
+    Convert the input `!mogg.shape` value to a `!mo.tensor`, where elements of
+    the output tensor will have the same value as individual dimensions in the
+    input shape.
+
+    Example:
+    ```
+    %shape  = mogg.param_shape_to_value -> !mogg.shape<[50, D1, 150]>
+    %tensor = mogg.shape_to_tensor(%shape) : !mogg.shape<[50, D1, 150]> -> !mo.tensor<[3], si64>
+    ```
+  }];
+
+  let arguments = (ins MOGG_Shape:$shape);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+     `(` $shape`)` attr-dict `:` type($shape) `->` type($result)
+  }];
+  // TODO simple verifier on input rank and output number of elements.
+}
+
 
 def MOGG_CallOp : MOGG_Op<"call"> {
   let summary = "Represents a KGEN function to call";
