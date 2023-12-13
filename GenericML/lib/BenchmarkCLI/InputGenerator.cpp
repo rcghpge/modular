@@ -7,10 +7,12 @@
 #include "GenericML/BenchmarkCLI/InputGenerator.h"
 #include "GenericML/BenchmarkCLI/APIBridge.h"
 #include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
+#include "GenericML/BenchmarkCLI/NPYReader.h"
 #include "GenericML/BenchmarkCLI/Tensor.h"
 #include "Support/MathExtras.h"
 #include "modular/cpp/aliases.h"
 #include "llvm/ADT/APFloat.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include <type_traits>
 #include <variant>
 
@@ -465,6 +467,102 @@ M::BenchmarkCLI::createConstantInputDataGenerator(
   }
 }
 
+namespace M::BenchmarkCLI::Detail {
+class FileInputDataGenerator final : public InputDataGenerator {
+public:
+  explicit FileInputDataGenerator(Tensor wholeTensor);
+
+  ssize_t getNumQueries() const override;
+  ErrorOr<Tensor> generate(size_t queryIndex,
+                           const TensorShape &shape) const override;
+
+private:
+  std::shared_ptr<Tensor> wholeTensor;
+};
+} // namespace M::BenchmarkCLI::Detail
+
+BCD::FileInputDataGenerator::FileInputDataGenerator(Tensor wholeTensor)
+    : wholeTensor(std::make_shared<Tensor>(std::move(wholeTensor))) {}
+
+ssize_t BCD::FileInputDataGenerator::getNumQueries() const {
+  return wholeTensor->getSpec()[0];
+}
+
+ErrorOr<Tensor>
+BCD::FileInputDataGenerator::generate(size_t queryIndex,
+                                      const TensorShape &shape) const {
+  TensorShape actualShape(wholeTensor->getSpec().begin() + 1,
+                          wholeTensor->getSpec().end());
+  if (ErrorOrSuccess error = shape.isRefinedBy(actualShape); error.isError())
+    return Error(Twine("Declared shape ") + shape.getAsString() +
+                 " incompatible with file intrinsic shape " +
+                 actualShape.getAsString() + ": " + error.getError());
+  TensorSpec sliceSpec(actualShape, wholeTensor->getEltType());
+  const void *sliceData =
+      reinterpret_cast<const char *>(wholeTensor->getBuffer()) +
+      queryIndex * sliceSpec.getSizeInBytes();
+  // wholeTensor is a shared_ptr, so this Tensor::own merely owns one shared
+  // reference to the wholeTensor, not transferring exclusive ownership.
+  return Tensor(std::move(sliceSpec), sliceData, Tensor::own(wholeTensor));
+}
+
+std::unique_ptr<InputDataGenerator>
+M::BenchmarkCLI::createFileInputDataGenerator(
+    std::optional<DType> dtype, const InputGenerationFile &spec,
+    InputSchemaErrorReporter &errorReporter) {
+  auto bufferOr = llvm::MemoryBuffer::getFile(spec.path,
+                                              /*IsText=*/false,
+                                              /*RequiresNullTerminator=*/false);
+  if (!bufferOr) {
+    errorReporter.enterScope("path");
+    errorReporter.reportError(Twine("Unable to open input file: ") +
+                              bufferOr.getError().message());
+    errorReporter.exitScope("path");
+    return nullptr;
+  }
+  StringRef format;
+  if (spec.format.has_value()) {
+    format = *spec.format;
+  } else if (hasNPYFileMagic(**bufferOr)) {
+    format = "npy";
+  } else {
+    errorReporter.enterScope("format");
+    errorReporter.reportError(
+        "Format not specified and unable to automatically detect");
+    errorReporter.exitScope("format");
+    return nullptr;
+  }
+  Tensor tensor;
+  if (format == "npy") {
+    ErrorOr<Tensor> tensorOr = readNPYFile(std::move(*bufferOr));
+    if (tensorOr.isError()) {
+      errorReporter.reportError(Twine("Unable to read NPY file: ") +
+                                tensorOr.getError());
+      return nullptr;
+    }
+    tensor = tensorOr.takeValue();
+  } else {
+    errorReporter.enterScope("format");
+    errorReporter.reportError("Unknown file format");
+    errorReporter.exitScope("format");
+    return nullptr;
+  }
+  if (dtype.has_value() && tensor.getSpec().getEltType() != dtype) {
+    errorReporter.reportError(
+        Twine("Data type of file input '") +
+        tensor.getSpec().getEltType().getAsString() +
+        "' inconsistent with previously declared dtype '" +
+        dtype->getAsString() + "'");
+    return nullptr;
+  }
+  if (tensor.getSpec().getRank() == 0) {
+    errorReporter.reportError(
+        "Tensors sourced from input file must have rank > 0");
+    return nullptr;
+  }
+  return std::make_unique<BCD::FileInputDataGenerator>(std::move(tensor));
+}
+
 std::unique_ptr<InputDataGenerator> M::BenchmarkCLI::createInputDataGenerator(
     std::optional<DType> dtype, const InputGenerationData &spec,
     InputSchemaErrorReporter &errorReporter) {
@@ -490,6 +588,12 @@ std::unique_ptr<InputDataGenerator> M::BenchmarkCLI::createInputDataGenerator(
       errorReporter.reportError(
           "Constant input data source requires dtype to be known");
     errorReporter.exitScope("constant");
+  }
+  if (spec.file) {
+    ++numSpecified;
+    errorReporter.enterScope("file");
+    gen = createFileInputDataGenerator(dtype, *spec.file, errorReporter);
+    errorReporter.exitScope("file");
   }
   if (numSpecified == 0) {
     errorReporter.reportError("No data generation source specified");

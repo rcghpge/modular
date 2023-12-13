@@ -31,10 +31,15 @@ struct InputGenerationRandom {
   std::optional<InputGenerationRandomNormal> normal;
 };
 
+struct InputGenerationFile {
+  std::string path;
+  std::optional<std::string> format;
+};
+
 struct InputGenerationData {
   std::optional<InputGenerationRandom> random;
   std::optional<std::string> constant;
-  // TODO(akirchhoff): File input
+  std::optional<InputGenerationFile> file;
   // TODO(akirchhoff): Record input
 };
 
@@ -60,6 +65,7 @@ LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(
 LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(
     M::BenchmarkCLI::InputGenerationRandomNormal)
 LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::BenchmarkCLI::InputGenerationRandom)
+LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::BenchmarkCLI::InputGenerationFile)
 LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::BenchmarkCLI::InputGenerationData)
 LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::BenchmarkCLI::InputGenerationInput)
 LLVM_FWD_YAML_IS_SEQUENCE_VECTOR(M::BenchmarkCLI::InputGenerationInput)

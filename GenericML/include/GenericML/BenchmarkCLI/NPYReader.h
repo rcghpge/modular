@@ -18,8 +18,13 @@ namespace M::BenchmarkCLI {
 
 class Tensor;
 
-// Read a NumPy NPY file out of the given memory buffer.  The returned tensor
-// will own the memory buffer.  The tensor data is not copied.
+/// Determines whether the memory buffer begins with an NPY file header
+/// signature.  If so, the file is likely an NPY file that should be read with
+/// readNPYFile.
+bool hasNPYFileMagic(const llvm::MemoryBuffer &buffer);
+
+/// Read a NumPy NPY file out of the given memory buffer.  The returned tensor
+/// will own the memory buffer.  The tensor data is not copied.
 ErrorOr<Tensor> readNPYFile(std::unique_ptr<llvm::MemoryBuffer> npyFileBuffer);
 
 } // namespace M::BenchmarkCLI

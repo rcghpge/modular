@@ -41,3 +41,19 @@ TEST(readNPYFile, basic) {
   EXPECT_EQ(4, data[4]);
   EXPECT_EQ(5, data[5]);
 }
+
+TEST(hasNPYFileMagic, npy) {
+  auto bufferOr = llvm::MemoryBuffer::getFile(getTestInputPath("basic.npy"),
+                                              /*IsText=*/false,
+                                              /*RequiresNullTerminator=*/false);
+  ASSERT_TRUE(bufferOr) << bufferOr.getError().message();
+  EXPECT_TRUE(hasNPYFileMagic(**bufferOr));
+}
+
+TEST(hasNPYFileMagic, empty) {
+  auto bufferOr = llvm::MemoryBuffer::getFile(getTestInputPath("empty.dat"),
+                                              /*IsText=*/false,
+                                              /*RequiresNullTerminator=*/false);
+  ASSERT_TRUE(bufferOr) << bufferOr.getError().message();
+  EXPECT_FALSE(hasNPYFileMagic(**bufferOr));
+}

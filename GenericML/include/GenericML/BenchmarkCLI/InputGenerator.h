@@ -83,6 +83,12 @@ std::unique_ptr<InputDataGenerator>
 createConstantInputDataGenerator(DType dtype, StringRef constant,
                                  InputSchemaErrorReporter &errorReporter);
 
+struct InputGenerationFile;
+std::unique_ptr<InputDataGenerator>
+createFileInputDataGenerator(std::optional<DType> dtype,
+                             const InputGenerationFile &spec,
+                             InputSchemaErrorReporter &errorReporter);
+
 struct InputGenerationData;
 std::unique_ptr<InputDataGenerator>
 createInputDataGenerator(std::optional<DType> dtype,

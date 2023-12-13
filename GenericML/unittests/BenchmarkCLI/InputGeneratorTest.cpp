@@ -7,14 +7,28 @@
 #include "GenericML/BenchmarkCLI/InputGenerator.h"
 #include "GenericML/BenchmarkCLI/InputGenerationSchema.h"
 #include "GenericML/BenchmarkCLI/Tensor.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "modular/c/tensor.h"
 #include "modular/cpp/aliases.h"
 #include "llvm/ADT/APFloat.h"
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include <filesystem>
 #include <limits>
 
 using namespace M;
 using namespace M::BenchmarkCLI;
+
+// We do not expose any CLI tool to test this with llvm-lit instead, so dig
+// around inside the source tree so we can do this from a unit test.  LLVM has
+// a utility to do this, getInputFileDirectory, but its use is discouraged (and
+// requires a different CMake function to be used to add the unit test
+// instead), so we dig around like this instead (sorry).
+static std::string getTestInputPath(StringRef filename) {
+  return (std::filesystem::path(std::getenv("MODULAR_PATH")) / "GenericML" /
+          "unittests" / "BenchmarkCLI" / "Inputs" / std::string_view(filename))
+      .string();
+}
 
 namespace {
 
@@ -622,6 +636,159 @@ TEST(ConstantInputDataGeneratorOther, unimplemented) {
             errorReporter.errors);
 }
 
+TEST(FileInputDataGenerator, basic) {
+  InputGenerationFile spec;
+  spec.path = getTestInputPath("basic.npy");
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createFileInputDataGenerator(std::nullopt, spec, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(nullptr, gen);
+  ErrorOr<Tensor> tensorOr =
+      gen->generate(/*queryIndex=*/0, TensorShape(kDynamicallyRanked));
+  ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
+  Tensor tensor = tensorOr.takeValue();
+  EXPECT_EQ(TensorSpec({2, 3}, DType::si64), tensor.getSpec());
+  auto data = static_cast<const int64_t *>(tensor.getBuffer());
+  EXPECT_EQ(0, data[0]);
+  EXPECT_EQ(1, data[1]);
+  EXPECT_EQ(2, data[2]);
+  EXPECT_EQ(3, data[3]);
+  EXPECT_EQ(4, data[4]);
+  EXPECT_EQ(5, data[5]);
+}
+
+TEST(FileInputDataGenerator, specifiedShape) {
+  InputGenerationFile spec;
+  spec.path = getTestInputPath("basic.npy");
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createFileInputDataGenerator(std::nullopt, spec, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(nullptr, gen);
+  ErrorOr<Tensor> tensorOr =
+      gen->generate(/*queryIndex=*/0, TensorShape({2, 3}));
+  ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
+  tensorOr = gen->generate(
+      /*queryIndex=*/0, TensorShape({mlir::ShapedType::kDynamic, int64_t{3}}));
+  ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
+  tensorOr = gen->generate(
+      /*queryIndex=*/0, TensorShape({int64_t{2}, mlir::ShapedType::kDynamic}));
+  ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
+  tensorOr = gen->generate(/*queryIndex=*/0, TensorShape(kDynamicallyRanked));
+  ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
+}
+
+TEST(FileInputDataGenerator, multiQuery) {
+  InputGenerationFile spec;
+  spec.path = getTestInputPath("multable.npy");
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createFileInputDataGenerator(std::nullopt, spec, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(nullptr, gen);
+  EXPECT_EQ(3, gen->getNumQueries());
+  for (size_t i = 0; i < 3; ++i) {
+    ErrorOr<Tensor> tensorOr =
+        gen->generate(/*queryIndex=*/i, TensorShape({3}));
+    ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
+    EXPECT_EQ(TensorSpec({3}, DType::si64), tensorOr->getSpec());
+    auto data = static_cast<const int64_t *>(tensorOr->getBuffer());
+    EXPECT_EQ(int64_t{0}, data[0]);
+    EXPECT_EQ(int64_t(i), data[1]);
+    EXPECT_EQ(int64_t(2 * i), data[2]);
+  }
+}
+
+TEST(FileInputDataGenerator, dtypeMismatch) {
+  InputGenerationFile spec;
+  spec.path = getTestInputPath("basic.npy");
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createFileInputDataGenerator(DType::f32, spec, errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ((std::vector<ReportedError>{
+                {{},
+                 "Data type of file input 'si64' inconsistent with previously "
+                 "declared dtype 'f32'"}}),
+            errorReporter.errors);
+}
+
+TEST(FileInputDataGenerator, shapeMismatch) {
+  InputGenerationFile spec;
+  spec.path = getTestInputPath("basic.npy");
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createFileInputDataGenerator(std::nullopt, spec, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(nullptr, gen);
+  ErrorOr<Tensor> tensorOr =
+      gen->generate(/*queryIndex=*/0, TensorShape({5, 6}));
+  ASSERT_TRUE(tensorOr.isError());
+  EXPECT_STREQ("Declared shape 5x6 incompatible with file intrinsic shape 2x3: "
+               "Specified shape 2x3 has dimension which doesn't match the "
+               "required shape 5x6 at index 0.",
+               tensorOr.getError());
+}
+
+TEST(FileInputDataGenerator, pathNotExist) {
+  InputGenerationFile spec;
+  spec.path = "path-that-does-not-exist";
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createFileInputDataGenerator(std::nullopt, spec, errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  using namespace testing;
+  EXPECT_THAT(
+      errorReporter.errors,
+      ElementsAre(AllOf(Field("scope", &ReportedError::scope,
+                              Eq(std::vector<std::string>{"path"})),
+                        Field("detail", &ReportedError::detail,
+                              StartsWith("Unable to open input file: ")))));
+}
+
+TEST(FileInputDataGenerator, formatDetectionFail) {
+  InputGenerationFile spec;
+  spec.path = getTestInputPath("empty.dat");
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createFileInputDataGenerator(std::nullopt, spec, errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ((std::vector<ReportedError>{
+                {{"format"},
+                 "Format not specified and unable to automatically detect"}}),
+            errorReporter.errors);
+}
+
+TEST(FileInputDataGenerator, badFormat) {
+  InputGenerationFile spec;
+  spec.path = getTestInputPath("basic.npy");
+  spec.format = "bogus";
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createFileInputDataGenerator(std::nullopt, spec, errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ((std::vector<ReportedError>{{{"format"}, "Unknown file format"}}),
+            errorReporter.errors);
+}
+
+TEST(FileInputDataGenerator, npyReadError) {
+  InputGenerationFile spec;
+  spec.path = getTestInputPath("empty.dat");
+  spec.format = "npy";
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createFileInputDataGenerator(std::nullopt, spec, errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ((std::vector<ReportedError>{
+                {{},
+                 "Unable to read NPY file: Stream Error: The stream is too "
+                 "short to perform the requested operation."}}),
+            errorReporter.errors);
+}
+
+TEST(FileInputDataGenerator, zeroRank) {
+  InputGenerationFile spec;
+  spec.path = getTestInputPath("zero-rank.npy");
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createFileInputDataGenerator(std::nullopt, spec, errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ((std::vector<ReportedError>{
+                {{}, "Tensors sourced from input file must have rank > 0"}}),
+            errorReporter.errors);
+}
+
 TEST(InputDataGenerator, none) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationData spec;
@@ -687,6 +854,29 @@ TEST(InputDataGenerator, constantNoDType) {
                 {{"constant"},
                  "Constant input data source requires dtype to be known"}}),
             errorReporter.errors);
+}
+
+TEST(InputDataGenerator, file) {
+  InputGenerationData spec;
+  spec.file = InputGenerationFile{};
+  spec.file->path = getTestInputPath("basic.npy");
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createInputDataGenerator(std::nullopt, spec, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(nullptr, gen);
+  EXPECT_EQ(1, gen->getNumQueries());
+  ErrorOr<Tensor> tensorOr =
+      gen->generate(/*queryIndex=*/0, TensorShape({2, 3}));
+  ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
+  Tensor tensor = tensorOr.takeValue();
+  EXPECT_EQ(TensorSpec({2, 3}, DType::si64), tensor.getSpec());
+  auto data = static_cast<const int64_t *>(tensor.getBuffer());
+  EXPECT_EQ(0, data[0]);
+  EXPECT_EQ(1, data[1]);
+  EXPECT_EQ(2, data[2]);
+  EXPECT_EQ(3, data[3]);
+  EXPECT_EQ(4, data[4]);
+  EXPECT_EQ(5, data[5]);
 }
 
 TEST(InputDataGenerator, multiple) {
@@ -980,6 +1170,20 @@ TEST(QueryGeneratorIntegration, basic) {
   ASSERT_NE(nullptr, tensor);
   EXPECT_EQ(size_t{1 * 2 * 3}, M_getTensorNumElements(tensor.get()));
   EXPECT_EQ(M_FLOAT32, M_getTensorType(tensor.get()));
+}
+
+TEST(QueryGeneratorIntegration, numQueries) {
+  TestInputSchemaErrorReporter errorReporter;
+  InputGenerationSchema schema;
+  schema.inputs = std::vector<InputGenerationInput>{InputGenerationInput{}};
+  schema.inputs->at(0).inputName = "example";
+  schema.inputs->at(0).data = InputGenerationData{};
+  schema.inputs->at(0).data->file = InputGenerationFile{};
+  schema.inputs->at(0).data->file->path = getTestInputPath("basic.npy");
+  auto gen = createQueryGenerator(schema, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(nullptr, gen);
+  EXPECT_EQ(1, gen->getNumQueries());
 }
 
 TEST(QueryGeneratorIntegration, errorPath) {

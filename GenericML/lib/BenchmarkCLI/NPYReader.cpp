@@ -55,6 +55,12 @@ static DType descrToDType(StringRef descr) {
       .Default(DType::invalid);
 }
 
+bool M::BenchmarkCLI::hasNPYFileMagic(const llvm::MemoryBuffer &buffer) {
+  return buffer.getBufferSize() >= sizeof(kSignature) &&
+         std::memcmp(buffer.getBufferStart(), kSignature, sizeof(kSignature)) ==
+             0;
+}
+
 ErrorOr<Tensor> M::BenchmarkCLI::readNPYFile(
     std::unique_ptr<llvm::MemoryBuffer> npyFileBuffer) {
   llvm::MemoryBufferByteStream stream(std::move(npyFileBuffer),
