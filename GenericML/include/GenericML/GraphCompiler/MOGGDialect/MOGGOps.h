@@ -14,6 +14,7 @@
 #include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/OpImplementation.h"

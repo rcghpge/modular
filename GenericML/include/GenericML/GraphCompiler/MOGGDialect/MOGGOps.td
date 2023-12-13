@@ -12,6 +12,7 @@
 #define GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOOPS_TD
 
 include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.td"
+include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.td"
 include "GenericML/GraphCompiler/MODialect/MOTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOAttrs.td"
 include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
@@ -157,6 +158,7 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
     SymbolTable,
     DeclInterface,
     DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+    DeclareOpInterfaceMethods<MOGG_CompilableKernel>,
     MO_HasDeviceInterface]> {
   let summary = "A representation of a kernel which can be fused into and compiled";
   let description = [{
