@@ -236,12 +236,30 @@ struct EngineNumpyView:
 
     fn dtype(self) raises -> DType:
         let self_type = __get_address_as_lvalue(self.ptr.address).dtype
+        if self_type == self.np.int8:
+            return DType.int8
+        if self_type == self.np.int16:
+            return DType.int16
+        if self_type == self.np.int32:
+            return DType.int32
+        if self_type == self.np.int64:
+            return DType.int64
+
+        if self_type == self.np.uint8:
+            return DType.uint8
+        if self_type == self.np.uint16:
+            return DType.uint16
+        if self_type == self.np.uint32:
+            return DType.uint32
+        if self_type == self.np.uint64:
+            return DType.uint64
+
+        if self_type == self.np.float16:
+            return DType.float16
         if self_type == self.np.float32:
             return DType.float32
         if self_type == self.np.float64:
             return DType.float64
-        if self_type == self.np.int32:
-            return DType.int32
 
         raise "Unknown datatype"
 
