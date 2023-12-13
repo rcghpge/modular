@@ -1032,9 +1032,10 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
     dimensions[numInDimensions + i] = -1;
 #endif
 
-  // Start tracing the kernel. This entry will also be used by any sub-tasks
-  // launched by the kernel.
-  outputChain.trace(InternableString(*dSummary));
+  // Start profiling the kernel. Note that this entry is not available as
+  // a 'parent' for Mojo-side profiling entries since we can't push this
+  // entry onto the per-thread stack.
+  auto profilerEntry = MGPProfilerEntry::create(*dSummary);
 
   // Execute the kernel:
   //  - Asynchronous kernels will have copied everything out of the three
@@ -1044,6 +1045,14 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   //    vectors are known at kernel compile time and do not need to be passed
   //    at runtime.
   kernelPtr(call.inputPointers.data(), dimensions.data(), &outputChain);
+
+  // Stop profiling when the kernel finishes.
+  if (profilerEntry.isEnabled()) {
+    outChain.copy().andThenSync(
+        [profilerEntry = std::move(profilerEntry)]() mutable {
+          std::move(profilerEntry).record();
+        });
+  }
 
   if (outChain.copy().isError()) {
     // The kernel failed while trying to launch.
