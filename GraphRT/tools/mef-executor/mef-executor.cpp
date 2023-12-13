@@ -105,8 +105,7 @@ static ErrorOrSuccess runTestcase(const GRTTestcase &test,
                test.getName().data());
         fflush(stdout);
 
-        auto results = test.getBody()->createResultValuesAndInvoke(
-            /*arguments=*/{}, runtime);
+        auto results = test.getBody()->invoke(/*arguments=*/{}, runtime);
 
         // Block until the invokable results are fully resolved.
         await(results);
