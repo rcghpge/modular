@@ -1,4 +1,4 @@
-sphinx==7.2
+sphinx==7.1.2
 sphinx_rtd_theme
 Jinja2
 beautifulsoup4
