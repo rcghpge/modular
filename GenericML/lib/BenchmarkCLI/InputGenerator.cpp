@@ -345,15 +345,21 @@ public:
       std::unique_ptr<InputRandomDistribution> dist)
       : dist(std::move(dist)) {}
 
-  ErrorOr<Tensor> generate(const TensorShape &shape) const override;
+  ssize_t getNumQueries() const override;
+  ErrorOr<Tensor> generate(size_t queryIndex,
+                           const TensorShape &shape) const override;
 
 private:
   std::unique_ptr<InputRandomDistribution> dist;
 };
 } // namespace M::BenchmarkCLI::Detail
 
+ssize_t BCD::RandomInputDataGenerator::getNumQueries() const { return -1; }
+
 ErrorOr<Tensor>
-BCD::RandomInputDataGenerator::generate(const TensorShape &shape) const {
+BCD::RandomInputDataGenerator::generate(size_t queryIndex,
+                                        const TensorShape &shape) const {
+  // TODO: Use query index.
   if (!shape.isStatic())
     return Error("Random input requires fully defined input shape");
   TensorSpec spec(shape, dist->getDType());
@@ -388,7 +394,9 @@ public:
   explicit ConstantInputDataGenerator(DType dtype, T value)
       : dtype(dtype), value(value) {}
 
-  ErrorOr<Tensor> generate(const TensorShape &shape) const override;
+  ssize_t getNumQueries() const override { return -1; }
+  ErrorOr<Tensor> generate(size_t queryIndex,
+                           const TensorShape &shape) const override;
 
 private:
   DType dtype;
@@ -398,7 +406,9 @@ private:
 
 template <typename T>
 ErrorOr<Tensor>
-BCD::ConstantInputDataGenerator<T>::generate(const TensorShape &shape) const {
+BCD::ConstantInputDataGenerator<T>::generate(size_t queryIndex,
+                                             const TensorShape &shape) const {
+  (void)queryIndex; // Constants do not change based on query index.
   if (!shape.isStatic())
     return Error("Constant input requires fully defined input shape");
   TensorSpec spec(shape, dtype);
@@ -534,6 +544,7 @@ public:
       : name(std::move(name)), shape(std::move(shape)),
         dataGenerator(std::move(dataGenerator)) {}
 
+  ssize_t getNumQueries() const override;
   ErrorOr<std::unique_ptr<GeneratedInput>>
   generateInput(size_t queryIndex) override;
 
@@ -544,10 +555,14 @@ private:
 };
 } // namespace M::BenchmarkCLI::Detail
 
+ssize_t BCD::InputGeneratorImpl::getNumQueries() const {
+  return dataGenerator->getNumQueries();
+}
+
 ErrorOr<std::unique_ptr<GeneratedInput>>
 BCD::InputGeneratorImpl::generateInput(size_t queryIndex) {
-  // TODO: Use query index.
-  auto tensorOr = dataGenerator->generate(shape.value_or(TensorSpec()));
+  auto tensorOr =
+      dataGenerator->generate(queryIndex, shape.value_or(TensorSpec()));
   if (tensorOr.isError())
     return tensorOr.takeError();
   auto inputOr = GeneratedInputImpl::create(name, std::move(*tensorOr));
@@ -624,9 +639,10 @@ M_AsyncTensorMap *BCD::GeneratedQueryImpl::getAsyncTensorMap() const {
 namespace M::BenchmarkCLI::Detail {
 class QueryGeneratorImpl final : public QueryGenerator {
 public:
-  explicit QueryGeneratorImpl(
+  QueryGeneratorImpl(
+      ssize_t numQueries,
       std::vector<std::unique_ptr<InputGenerator>> inputGenerators)
-      : inputGenerators(std::move(inputGenerators)) {}
+      : numQueries(numQueries), inputGenerators(std::move(inputGenerators)) {}
 
   ssize_t getNumQueries() const override;
   ErrorOr<std::unique_ptr<GeneratedQuery>>
@@ -634,11 +650,12 @@ public:
                 size_t queryIndex) const override;
 
 private:
+  ssize_t numQueries;
   std::vector<std::unique_ptr<InputGenerator>> inputGenerators;
 };
 } // namespace M::BenchmarkCLI::Detail
 
-ssize_t BCD::QueryGeneratorImpl::getNumQueries() const { return -1; }
+ssize_t BCD::QueryGeneratorImpl::getNumQueries() const { return numQueries; }
 
 ErrorOr<std::unique_ptr<GeneratedQuery>>
 BCD::QueryGeneratorImpl::generateQuery(M_RuntimeContext *runtimeContext,
@@ -665,8 +682,36 @@ BCD::QueryGeneratorImpl::generateQuery(M_RuntimeContext *runtimeContext,
 }
 
 std::unique_ptr<QueryGenerator> M::BenchmarkCLI::createQueryGenerator(
-    std::vector<std::unique_ptr<InputGenerator>> inputGenerators) {
-  return std::make_unique<BCD::QueryGeneratorImpl>(std::move(inputGenerators));
+    std::vector<std::unique_ptr<InputGenerator>> inputGenerators,
+    InputSchemaErrorReporter &errorReporter) {
+  ssize_t numQueries = -1;
+  size_t numQueriesSource;
+  bool numQueriesConflict = false;
+  for (auto [genIndex, inputGen] : llvm::enumerate(inputGenerators)) {
+    ssize_t inputNumQueries = inputGen->getNumQueries();
+    if (inputNumQueries == -1)
+      continue;
+    if (numQueries == -1) {
+      numQueries = inputNumQueries;
+      numQueriesSource = genIndex;
+    } else if (numQueries != inputNumQueries) {
+      errorReporter.enterScope("inputs");
+      errorReporter.enterScope(Twine(genIndex).str());
+      errorReporter.reportError("Query count " + Twine(inputNumQueries) +
+                                " inconsistent with other inputs");
+      errorReporter.exitScope(Twine(genIndex).str());
+      errorReporter.enterScope(Twine(numQueriesSource).str());
+      errorReporter.reportError("Note: Conflicting query count (" +
+                                Twine(numQueries) + ") came from this input");
+      errorReporter.exitScope(Twine(numQueriesSource).str());
+      errorReporter.exitScope("inputs");
+      numQueriesConflict = true;
+    }
+  }
+  if (numQueriesConflict)
+    return nullptr;
+  return std::make_unique<BCD::QueryGeneratorImpl>(numQueries,
+                                                   std::move(inputGenerators));
 }
 
 std::unique_ptr<QueryGenerator>
@@ -694,5 +739,5 @@ M::BenchmarkCLI::createQueryGenerator(const InputGenerationSchema &schema,
   errorReporter.exitScope("inputs");
   if (!ok)
     return nullptr;
-  return createQueryGenerator(std::move(inputGenerators));
+  return createQueryGenerator(std::move(inputGenerators), errorReporter);
 }

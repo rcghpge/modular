@@ -454,7 +454,8 @@ TEST(RandomInputDataGenerator, fromDistribution) {
             lastFillCallNumElements = numElements;
           }));
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr = gen->generate(TensorShape({1, 2, 3}));
+  ErrorOr<Tensor> tensorOr =
+      gen->generate(/*queryIndex=*/0, TensorShape({1, 2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
   EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
   EXPECT_EQ(DType(DType::f32), tensorOr->getEltType());
@@ -470,7 +471,8 @@ TEST(RandomInputDataGenerator, basic) {
   auto gen = createRandomInputDataGenerator(DType::f32, spec, errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr = gen->generate(TensorShape({1, 2, 3}));
+  ErrorOr<Tensor> tensorOr =
+      gen->generate(/*queryIndex=*/0, TensorShape({1, 2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
   EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
   EXPECT_EQ(DType(DType::f32), tensorOr->getEltType());
@@ -483,7 +485,8 @@ TEST(RandomInputDataGenerator, noShape) {
   auto gen = createRandomInputDataGenerator(DType::f32, spec, errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr = gen->generate(TensorShape(kDynamicallyRanked));
+  ErrorOr<Tensor> tensorOr =
+      gen->generate(/*queryIndex=*/0, TensorShape(kDynamicallyRanked));
   ASSERT_TRUE(tensorOr.isError());
   // TODO: Ideally we would be able to detect this at generator creation time,
   // not at generation time.  But that might be tricky, so we can do that
@@ -529,7 +532,8 @@ TYPED_TEST(ConstantInputDataGeneratorInteger, basic) {
   auto gen = createConstantInputDataGenerator(dtype, "123", errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr = gen->generate(TensorShape({1, 2, 3}));
+  ErrorOr<Tensor> tensorOr =
+      gen->generate(/*queryIndex=*/0, TensorShape({1, 2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
   EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
   EXPECT_EQ(dtype, tensorOr->getEltType());
@@ -545,7 +549,8 @@ TYPED_TEST(ConstantInputDataGeneratorNativeFloat, basic) {
   auto gen = createConstantInputDataGenerator(dtype, "-1.23", errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr = gen->generate(TensorShape({1, 2, 3}));
+  ErrorOr<Tensor> tensorOr =
+      gen->generate(/*queryIndex=*/0, TensorShape({1, 2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
   EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
   EXPECT_EQ(dtype, tensorOr->getEltType());
@@ -578,7 +583,8 @@ TEST(ConstantInputDataGeneratorOther, float16) {
       createConstantInputDataGenerator(DType::f16, "-1.23", errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr = gen->generate(TensorShape({1, 2, 3}));
+  ErrorOr<Tensor> tensorOr =
+      gen->generate(/*queryIndex=*/0, TensorShape({1, 2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
   EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
   EXPECT_EQ(DType(DType::f16), tensorOr->getEltType());
@@ -595,7 +601,8 @@ TEST(ConstantInputDataGeneratorOther, boolean) {
       createConstantInputDataGenerator(DType::kBool, "true", errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr = gen->generate(TensorShape({1, 2, 3}));
+  ErrorOr<Tensor> tensorOr =
+      gen->generate(/*queryIndex=*/0, TensorShape({1, 2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
   EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
   EXPECT_EQ(DType(DType::kBool), tensorOr->getEltType());
@@ -635,6 +642,7 @@ TEST(InputDataGenerator, random) {
   auto gen = createInputDataGenerator(DType::f32, spec, errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   EXPECT_NE(nullptr, gen);
+  EXPECT_EQ(-1, gen->getNumQueries());
   // TODO: Check that we got a random input data generator somehow.
 }
 
@@ -658,7 +666,9 @@ TEST(InputDataGenerator, constant) {
   auto gen = createInputDataGenerator(DType::f32, spec, errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr = gen->generate(TensorShape({1, 2, 3}));
+  EXPECT_EQ(-1, gen->getNumQueries());
+  ErrorOr<Tensor> tensorOr =
+      gen->generate(/*queryIndex=*/0, TensorShape({1, 2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
   EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
   EXPECT_EQ(DType(DType::f32), tensorOr->getEltType());
@@ -703,6 +713,7 @@ TEST(InputGenerator, basic) {
   auto gen = createInputGenerator(spec, errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
+  EXPECT_EQ(-1, gen->getNumQueries());
   auto inputOr = gen->generateInput(0);
   ASSERT_FALSE(inputOr.isError()) << inputOr.getError();
   ASSERT_NE(nullptr, *inputOr);
@@ -788,24 +799,30 @@ private:
 
 class TestInputGenerator final : public InputGenerator {
 public:
-  explicit TestInputGenerator(
+  TestInputGenerator(
+      ssize_t numQueries,
       std::function<ErrorOr<std::unique_ptr<GeneratedInput>>(size_t queryIndex)>
           generateInputFn)
-      : generateInputFn(std::move(generateInputFn)) {}
+      : numQueries(numQueries), generateInputFn(std::move(generateInputFn)) {}
 
+  ssize_t getNumQueries() const override { return numQueries; }
   ErrorOr<std::unique_ptr<GeneratedInput>>
   generateInput(size_t queryIndex) override {
     return generateInputFn(queryIndex);
   }
 
 private:
+  ssize_t numQueries;
   std::function<ErrorOr<std::unique_ptr<GeneratedInput>>(size_t queryIndex)>
       generateInputFn;
 };
 } // namespace
 
 TEST(QueryGenerator, noInputs) {
-  auto gen = createQueryGenerator({});
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createQueryGenerator(
+      std::vector<std::unique_ptr<InputGenerator>>{}, errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
   EXPECT_EQ(-1, gen->getNumQueries());
   StatusPtr status(M_newStatus(), M_freeStatus);
@@ -829,18 +846,21 @@ TEST(QueryGenerator, oneInput) {
   int lastGenerateQueryIndex = 0;
   int borrowCalls = 0;
   M_AsyncTensorMap *lastBorrowedATM = nullptr;
-  auto inputGen = std::make_unique<TestInputGenerator>([&](size_t queryIndex) {
-    ++generateInputCalls;
-    lastGenerateQueryIndex = queryIndex;
-    return std::make_unique<TestGeneratedInput>(
-        [&](M_AsyncTensorMap *atm, M_Status *status) {
-          ++borrowCalls;
-          lastBorrowedATM = atm;
-        });
-  });
+  auto inputGen =
+      std::make_unique<TestInputGenerator>(-1, [&](size_t queryIndex) {
+        ++generateInputCalls;
+        lastGenerateQueryIndex = queryIndex;
+        return std::make_unique<TestGeneratedInput>(
+            [&](M_AsyncTensorMap *atm, M_Status *status) {
+              ++borrowCalls;
+              lastBorrowedATM = atm;
+            });
+      });
   std::vector<std::unique_ptr<InputGenerator>> inputGens;
   inputGens.emplace_back(std::move(inputGen));
-  auto gen = createQueryGenerator(std::move(inputGens));
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createQueryGenerator(std::move(inputGens), errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
   EXPECT_EQ(-1, gen->getNumQueries());
   EXPECT_EQ(0, generateInputCalls);
@@ -865,10 +885,12 @@ TEST(QueryGenerator, oneInput) {
 
 TEST(QueryGenerator, oneInputError) {
   auto inputGen = std::make_unique<TestInputGenerator>(
-      [&](size_t queryIndex) { return Error("Tea kettle left on stove"); });
+      -1, [&](size_t queryIndex) { return Error("Tea kettle left on stove"); });
   std::vector<std::unique_ptr<InputGenerator>> inputGens;
   inputGens.emplace_back(std::move(inputGen));
-  auto gen = createQueryGenerator(std::move(inputGens));
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createQueryGenerator(std::move(inputGens), errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
   StatusPtr status(M_newStatus(), M_freeStatus);
   ASSERT_NE(nullptr, status);
@@ -881,6 +903,49 @@ TEST(QueryGenerator, oneInputError) {
   auto queryOr = gen->generateQuery(runtime.get(), 0);
   ASSERT_TRUE(queryOr.isError());
   EXPECT_STREQ("Tea kettle left on stove", queryOr.getError());
+}
+
+TEST(QueryGenerator, numQueriesMatch) {
+  std::vector<std::unique_ptr<InputGenerator>> inputGens;
+  inputGens.emplace_back(std::make_unique<TestInputGenerator>(
+      1234, [&](size_t queryIndex) { return Error("Not to be called"); }));
+  inputGens.emplace_back(std::make_unique<TestInputGenerator>(
+      1234, [&](size_t queryIndex) { return Error("Not to be called"); }));
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createQueryGenerator(std::move(inputGens), errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(nullptr, gen);
+  EXPECT_EQ(1234, gen->getNumQueries());
+}
+
+TEST(QueryGenerator, numQueriesPrecedence) {
+  std::vector<std::unique_ptr<InputGenerator>> inputGens;
+  inputGens.emplace_back(std::make_unique<TestInputGenerator>(
+      -1, [&](size_t queryIndex) { return Error("Not to be called"); }));
+  inputGens.emplace_back(std::make_unique<TestInputGenerator>(
+      1234, [&](size_t queryIndex) { return Error("Not to be called"); }));
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createQueryGenerator(std::move(inputGens), errorReporter);
+  EXPECT_TRUE(errorReporter.reportedNoErrors());
+  ASSERT_NE(nullptr, gen);
+  EXPECT_EQ(1234, gen->getNumQueries());
+}
+
+TEST(QueryGenerator, numQueriesMismatch) {
+  std::vector<std::unique_ptr<InputGenerator>> inputGens;
+  inputGens.emplace_back(std::make_unique<TestInputGenerator>(
+      1234, [&](size_t queryIndex) { return Error("Not to be called"); }));
+  inputGens.emplace_back(std::make_unique<TestInputGenerator>(
+      4321, [&](size_t queryIndex) { return Error("Not to be called"); }));
+  TestInputSchemaErrorReporter errorReporter;
+  auto gen = createQueryGenerator(std::move(inputGens), errorReporter);
+  EXPECT_EQ(nullptr, gen);
+  EXPECT_EQ(
+      (std::vector<ReportedError>{
+          {{"inputs", "1"}, "Query count 4321 inconsistent with other inputs"},
+          {{"inputs", "0"},
+           "Note: Conflicting query count (1234) came from this input"}}),
+      errorReporter.errors);
 }
 
 TEST(QueryGeneratorIntegration, basic) {

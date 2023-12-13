@@ -64,9 +64,11 @@ class InputDataGenerator {
 public:
   virtual ~InputDataGenerator() = default;
 
+  virtual ssize_t getNumQueries() const = 0;
   // TODO(akirchhoff): This should be revised when we have a better batching
   // story
-  virtual ErrorOr<Tensor> generate(const TensorShape &shape) const = 0;
+  virtual ErrorOr<Tensor> generate(size_t queryIndex,
+                                   const TensorShape &shape) const = 0;
 };
 
 std::unique_ptr<InputDataGenerator> createRandomInputDataGenerator(
@@ -98,6 +100,7 @@ class InputGenerator {
 public:
   virtual ~InputGenerator() = default;
 
+  virtual ssize_t getNumQueries() const = 0;
   virtual ErrorOr<std::unique_ptr<GeneratedInput>>
   generateInput(size_t queryIndex) = 0;
 };
@@ -126,7 +129,8 @@ public:
 };
 
 std::unique_ptr<QueryGenerator> createQueryGenerator(
-    std::vector<std::unique_ptr<InputGenerator>> inputGenerators);
+    std::vector<std::unique_ptr<InputGenerator>> inputGenerators,
+    InputSchemaErrorReporter &errorReporter);
 
 struct InputGenerationSchema;
 std::unique_ptr<QueryGenerator>
