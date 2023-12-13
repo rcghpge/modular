@@ -27,7 +27,8 @@ experimental-string-processing = true
 archs = ["native"]
 before-all = "{project}/utils/build/engine_packaging/scripts/before-all.sh"
 before-build = "{project}/utils/build/engine_packaging/scripts/before-build.sh"
-build = "cp{38,39,310,311,312}-manylinux*"
+# TODO(#27617): Restore Python 3.12 wheel building.
+build = "cp{38,39,310,311}-manylinux*"
 build-frontend = "build"
 environment-pass = [
   "AWS_ACCESS_KEY_ID",
