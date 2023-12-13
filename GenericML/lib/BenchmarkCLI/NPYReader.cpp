@@ -104,5 +104,5 @@ ErrorOr<Tensor> M::BenchmarkCLI::readNPYFile(
   if (error)
     return toModularError(std::move(error));
   return Tensor(std::move(spec), static_cast<const void *>(tensorData.data()),
-                Tensor::own(std::move(npyFileBuffer)));
+                Tensor::own(std::move(stream)));
 }
