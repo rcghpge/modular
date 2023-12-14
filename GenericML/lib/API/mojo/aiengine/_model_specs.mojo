@@ -23,7 +23,9 @@ struct CTensorNameArray:
     alias FreeTensorNameArrayFnName = "M_freeTensorNameArray"
     alias GetTensorNameAtFnName = "M_getTensorNameAt"
 
-    fn get_name_at(self, idx: Int, lib: DLHandle) -> String:
+    fn get_name_at(self, idx: Int, lib: DLHandle) raises -> String:
+        if not self.ptr:
+            raise "failed to get tensor name"
         let name = call_dylib_func[CString](
             lib, Self.GetTensorNameAtFnName, self, idx
         )
@@ -47,7 +49,7 @@ struct TensorNamesIterator(Sized):
         self.length = length
         self.lib = lib
 
-    fn __next__(inout self) -> String:
+    fn __next__(inout self) raises -> String:
         let next = self.ptr.get_name_at(self.current, self.lib)
         self.current += 1
         return next
@@ -69,13 +71,14 @@ struct TensorNames(Sized):
         ptr: CCompiledModel,
         length: Int,
         lib: DLHandle,
-    ) raises:
+    ):
         let status = Status(lib)
         self.ptr = call_dylib_func[CTensorNameArray](
             lib, fn_name, ptr, status.borrow_ptr()
         )
         if status:
-            raise Error(status.__str__())
+            print(status.__str__())
+            self.ptr = DTypePointer[DType.invalid]()
         self.length = length
         self.lib = lib
 
@@ -86,7 +89,7 @@ struct TensorNames(Sized):
         self.length = existing.length
         self.lib = existing.lib
 
-    fn __getitem__(self, idx: Int) -> String:
+    fn __getitem__(self, idx: Int) raises -> String:
         return self.ptr.get_name_at(idx, self.lib)
 
     fn __iter__(self) -> TensorNamesIterator:
@@ -111,7 +114,7 @@ struct InputTensorNames(Sized):
         ptr: CCompiledModel,
         length: Int,
         lib: DLHandle,
-    ) raises:
+    ):
         self.names = TensorNames(
             Self.GetInputTensorNamesFnName, ptr, length, lib
         )
@@ -119,7 +122,7 @@ struct InputTensorNames(Sized):
     fn __moveinit__(inout self, owned existing: Self):
         self.names = existing.names ^
 
-    fn __getitem__(self, idx: Int) -> String:
+    fn __getitem__(self, idx: Int) raises -> String:
         return self.names[idx]
 
     fn __iter__(self) -> TensorNamesIterator:
@@ -141,12 +144,12 @@ struct OutputTensorNames(Sized):
         ptr: CCompiledModel,
         length: Int,
         lib: DLHandle,
-    ) raises:
+    ):
         self.names = TensorNames(
             Self.GetOutputTensorNamesFnName, ptr, length, lib
         )
 
-    fn __getitem__(self, idx: Int) -> String:
+    fn __getitem__(self, idx: Int) raises -> String:
         return self.names[idx]
 
     fn __iter__(self) -> TensorNamesIterator:

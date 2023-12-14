@@ -116,6 +116,7 @@ struct CCompiledModel:
         call_dylib_func(lib, Self.FreeCompiledModelFnName, self)
 
 
+@value
 struct CompiledModel:
     """Memory managed CompiledModel pointer."""
 
@@ -126,27 +127,6 @@ struct CompiledModel:
     alias CompileModelFnName = "M_compileModelSync"
     alias GetModelInputSpecByNameFnName = "M_getModelInputSpecByName"
     alias GetModelOutputSpecByNameFnName = "M_getModelOutputSpecByName"
-
-    fn __init__(
-        inout self,
-        borrowed ctx: CRuntimeContext,
-        borrowed lib: DLHandle,
-        owned config: CompileConfig,
-        owned session: InferenceSession,
-    ) raises:
-        let status = Status(lib)
-        self.ptr = call_dylib_func[CCompiledModel](
-            lib,
-            Self.CompileModelFnName,
-            ctx,
-            config.borrow_ptr(),
-            status.borrow_ptr(),
-        )
-        _ = config ^
-        if status:
-            raise Error(status.__str__())
-        self.lib = lib
-        self.session = session ^
 
     fn __moveinit__(inout self, owned existing: Self):
         self.ptr = exchange[CCompiledModel](

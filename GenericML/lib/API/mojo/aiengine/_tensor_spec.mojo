@@ -46,6 +46,7 @@ struct CTensorSpec:
         call_dylib_func(lib, Self.FreeTensorSpecFnName, self)
 
 
+@value
 struct EngineTensorSpec:
     var ptr: CTensorSpec
     var lib: DLHandle

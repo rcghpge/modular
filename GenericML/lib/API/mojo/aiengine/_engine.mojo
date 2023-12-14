@@ -15,6 +15,16 @@ from tensor import TensorSpec
 from pathlib import Path
 
 
+fn get_engine_path() raises -> String:
+    let engine_lib = getenv("MODULAR_AI_ENGINE_LIB_PATH")
+    if engine_lib == "":
+        raise "cannot find ai engine library. Please set MODULAR_AI_ENGINE_LIB_PATH."
+
+    if not Path(engine_lib).exists():
+        raise "ai engine library not found at " + String(engine_lib)
+    return String(engine_lib)
+
+
 struct _EngineImpl:
     """Represents an instance of Modular AI Engine."""
 
@@ -24,15 +34,8 @@ struct _EngineImpl:
 
     alias VersionFnName = "M_version"
 
-    fn __init__(inout self) raises:
-        let engine_lib = getenv("MODULAR_AI_ENGINE_LIB_PATH")
-        if engine_lib == "":
-            raise "cannot find ai engine library. Please set MODULAR_AI_ENGINE_LIB_PATH."
-
-        if not Path(engine_lib).exists():
-            raise "ai engine library not found at " + String(engine_lib)
-
-        self.lib = DLHandle(engine_lib)
+    fn __init__(inout self, path: StringRef):
+        self.lib = DLHandle(path)
         self.can_close_lib = True
 
     fn __moveinit__(inout self, owned existing: Self):
@@ -62,4 +65,7 @@ fn get_version() raises -> String:
     Returns:
         Version as string.
     """
-    return _EngineImpl().get_version()
+    let path = get_engine_path()
+    let version = _EngineImpl(path._strref_dangerous()).get_version()
+    path._strref_keepalive()
+    return version

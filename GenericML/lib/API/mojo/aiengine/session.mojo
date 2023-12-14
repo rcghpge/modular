@@ -7,10 +7,10 @@
 from ._context import *
 from ._status import *
 from sys.ffi import DLHandle
-from ._compilation import CompiledModel, CompileConfig
-from ._model import Model
+from ._compilation import *
+from ._model import *
 from ._tensormap import *
-from ._engine import _EngineImpl
+from ._engine import _EngineImpl, get_engine_path
 from memory.unsafe import Pointer
 from os.atomic import Atomic
 from utils._optional import Optional
@@ -22,9 +22,12 @@ struct _InferenceSessionImpl:
     var ref_count: Atomic[DType.int64]
 
     fn __init__(
-        inout self, device: StringRef = "cpu", num_threads: Optional[Int] = None
-    ) raises:
-        self.engine = _EngineImpl()
+        inout self,
+        lib_path: StringRef,
+        device: StringRef = "cpu",
+        num_threads: Optional[Int] = None,
+    ):
+        self.engine = _EngineImpl(lib_path)
         let config = RuntimeConfig(self.engine.lib, device, num_threads)
         self.context = RuntimeContext(config ^, self.engine.lib)
         self.ref_count = 1
@@ -41,15 +44,29 @@ struct _InferenceSessionImpl:
         Raises: an Error if the path to the model file does
         not exist on the filesystem.
         """
+        let context = self.context.borrow_ptr()
+        if not context.ptr:
+            raise "failed to compile model"
         let config = CompileConfig(self.engine.lib)
         if user_defined_ops_path:
             config.set_replace_ops_path(user_defined_ops_path.value())
         config.set_model_path(model_path)
 
-        return CompiledModel(
-            self.context.borrow_ptr(),
+        let status = Status(self.engine.lib)
+        let compiled_model_ptr = call_dylib_func[CCompiledModel](
             self.engine.lib,
-            config ^,
+            CompiledModel.CompileModelFnName,
+            self.context.borrow_ptr(),
+            config.borrow_ptr(),
+            status.borrow_ptr(),
+        )
+        _ = config ^
+        if status:
+            raise status.__str__()
+
+        return CompiledModel(
+            compiled_model_ptr,
+            self.engine.lib,
             session ^,
         )
 
@@ -65,11 +82,22 @@ struct _InferenceSessionImpl:
         let compiled_model = self.compile_model(
             model_path, user_defined_ops_path, session.copy()
         )
-        let model = Model(
+
+        let status = Status(self.engine.lib)
+        let model_ptr = call_dylib_func[CModel](
+            self.engine.lib,
+            Model.InitModelFnName,
             self.context.borrow_ptr(),
             compiled_model.borrow_ptr(),
-            self.engine.lib,
-            session ^,
+            status.borrow_ptr(),
+        )
+        if status:
+            raise status.__str__()
+
+        model_ptr.await_model(self.engine.lib)
+
+        let model = Model(
+            self.context.borrow_ptr(), model_ptr, self.engine.lib, session ^
         )
         # Keep compiled model alive until model has been awaited.
         _ = compiled_model ^
@@ -80,13 +108,22 @@ struct _InferenceSessionImpl:
         name: StringRef,
         spec: TensorSpec,
         owned session: InferenceSession,
-    ) -> EngineTensorSpec:
+    ) raises -> EngineTensorSpec:
+        let context = self.context.borrow_ptr()
+        if not context.ptr:
+            raise "failed to create tensor spec"
         return EngineTensorSpec(name, spec, self.engine.lib, session ^)
 
-    fn new_tensor_map(self, owned session: InferenceSession) -> TensorMap:
+    fn new_tensor_map(
+        self, owned session: InferenceSession
+    ) raises -> TensorMap:
+        let context = self.context.borrow_ptr()
+        if not context.ptr:
+            raise "failed to create tensor map"
         return TensorMap(self.context.borrow_ptr(), self.engine.lib, session ^)
 
 
+@value
 @register_passable
 struct InferenceSession:
     var ptr: Pointer[_InferenceSessionImpl]
@@ -94,11 +131,24 @@ struct InferenceSession:
     fn __init__(
         device: StringRef = "cpu", num_threads: Optional[Int] = None
     ) raises -> Self:
+        let path = get_engine_path()
+        let self = Self._allocateAndInit(
+            path._strref_dangerous(), device, num_threads
+        )
+        path._strref_keepalive()
+        return Self {ptr: self}
+
+    @staticmethod
+    fn _allocateAndInit(
+        lib_path: StringRef,
+        device: StringRef,
+        num_threads: Optional[Int],
+    ) raises -> Pointer[_InferenceSessionImpl]:
         let ptr = Pointer[_InferenceSessionImpl].alloc(1)
         __get_address_as_uninit_lvalue(ptr.address).__init__(
-            device, num_threads
+            lib_path, device, num_threads
         )
-        return Self {ptr: ptr}
+        return ptr
 
     fn copy(self) -> Self:
         _ = __get_address_as_lvalue(self.ptr.address).ref_count.fetch_add(1)
@@ -139,12 +189,12 @@ struct InferenceSession:
 
     fn get_as_engine_tensor_spec(
         self, name: StringRef, spec: TensorSpec
-    ) -> EngineTensorSpec:
+    ) raises -> EngineTensorSpec:
         return __get_address_as_lvalue(
             self.ptr.address
         ).get_as_engine_tensor_spec(name, spec, self.copy())
 
-    fn new_tensor_map(self) -> TensorMap:
+    fn new_tensor_map(self) raises -> TensorMap:
         return __get_address_as_lvalue(self.ptr.address).new_tensor_map(
             self.copy()
         )

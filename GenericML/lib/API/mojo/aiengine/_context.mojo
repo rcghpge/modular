@@ -100,7 +100,7 @@ struct RuntimeContext:
 
     alias NewRuntimeContextFnName = "M_newRuntimeContext"
 
-    fn __init__(inout self, owned config: RuntimeConfig, lib: DLHandle) raises:
+    fn __init__(inout self, owned config: RuntimeConfig, lib: DLHandle):
         let status = Status(lib)
         self.ptr = call_dylib_func[CRuntimeContext](
             lib,
@@ -109,7 +109,8 @@ struct RuntimeContext:
             status.borrow_ptr(),
         )
         if status:
-            raise Error(status.__str__())
+            print(status.__str__())
+            self.ptr = DTypePointer[DType.invalid]()
         _ = config ^
         self.lib = lib
 

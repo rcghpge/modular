@@ -40,6 +40,7 @@ struct CModel:
         call_dylib_func(lib, Self.FreeModelFnName, self)
 
 
+@value
 struct Model:
     """Memory managed CModel."""
 
@@ -50,25 +51,6 @@ struct Model:
 
     alias InitModelFnName = "M_initModel"
     alias ExecuteFnName = "M_executeModelSync"
-
-    fn __init__(
-        inout self,
-        context: CRuntimeContext,
-        source: CCompiledModel,
-        lib: DLHandle,
-        owned session: InferenceSession,
-    ) raises:
-        self.ctx = context
-        let status = Status(lib)
-        self.ptr = call_dylib_func[CModel](
-            lib, Self.InitModelFnName, context, source, status.borrow_ptr()
-        )
-        if status:
-            raise status.__str__()
-
-        self.ptr.await_model(lib)
-        self.lib = lib
-        self.session = session ^
 
     fn __moveinit__(inout self, owned existing: Self):
         self.ctx = existing.ctx
