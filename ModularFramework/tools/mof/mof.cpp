@@ -233,7 +233,7 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
   case FileFormat::kMODialect:
     [[fallthrough]];
   case FileFormat::kMGPDialect:
-    module = parseMODialect(file.getBuffer(), &ctx);
+    module = parseMODialect(file, &ctx);
     break;
 
   default: {
