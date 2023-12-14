@@ -56,14 +56,25 @@ skip = ["cp36-* cp37-*, *-manylinux_i686", "*-musllinux*"]
 # itself requires (numpy) in addition to the implicitly-installed `pytest` package inside the
 # `cibuildwheel` testing environment.
 
-# These tests use generated models from `MODULAR_DERIVED_PATH` and require this environment variable to be set
-# TODO: Renable the PyTorch API tests once we have `import modular.pytorch` working.
 before-test = [
-  "pip install -r {project}/TensorFlow/integration-test/API/python/pytests/requirements.txt"
-  # "pip install -r {project}/PyTorch/integration-test/API/python/pytests/requirements.txt",
-  # "pip install {project}/.derived/third-party/stock-pytorch/download/*.whl"
+  "pip install -r {project}/TensorFlow/integration-test/API/python/pytests/requirements.txt",
+  "pip install -r {project}/PyTorch/integration-test/API/python/pytests/requirements.txt",
+  # `modular.pytorch` is required for testing.
+  "pip install {project}/PyTorch/lib/API/python",
+  # PyTorch integration tests implicitly depend on `modular.utils`.
+  "pip install {project}/Support/python",
+  # TODO(#14847): PyTorch tests have an implicit requirement on the same stock
+  # PyTorch we use for fallback ops and TorchScript import, due to coupling.
+  # Add `torch` to requirements.txt when these are decoupled.
+  # So install the stock PyTorch downloaded above for this python version.
+  "pip install $(ls {project}/.derived/third-party/stock-pytorch/download/*cp$(python -c 'import sys; print(f\"{sys.version_info.major}{sys.version_info.minor}\")')*.whl | head -n 1)"
 ]
-test-command = "MODULAR_DERIVED_PATH={project}/.derived pytest {project}/TensorFlow/integration-test/API/python/pytests"
+# These tests use generated models from `MODULAR_DERIVED_PATH` and require this
+# environment variable to be set.
+test-command = [
+  "MODULAR_DERIVED_PATH={project}/.derived pytest {project}/TensorFlow/integration-test/API/python/pytests",
+  "MODULAR_DERIVED_PATH={project}/.derived pytest {project}/PyTorch/integration-test/API/python/pytests/test_ops.py",
+]
 
 
 [tool.cibuildwheel.linux]
