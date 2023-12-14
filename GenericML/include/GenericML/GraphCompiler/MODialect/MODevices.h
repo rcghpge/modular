@@ -215,6 +215,9 @@ struct DeviceAwareRewriter {
   DictionaryAttr getDictionaryAttr(ArrayRef<NamedAttribute> value) {
     return rewriter.getDictionaryAttr(value);
   }
+  DenseIntElementsAttr getI64VectorAttr(ArrayRef<int64_t> values) {
+    return rewriter.getI64VectorAttr(values);
+  }
 };
 
 //===----------------------------------------------------------------------===//

@@ -88,10 +88,15 @@ struct PackParamCache {
 
 Value lowerMatmulPackingFunc(Location loc, MO::DeviceAwareRewriter &rewriter,
                              PackParamCache &cache, Value weight,
-                             Type inputDtype, Type resultDtype,
-                             bool transpose) {
+                             MO::TensorType inputType,
+                             MO::TensorType resultType, bool transpose) {
+
   MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
   MO::TensorType packedWeightsType;
+
+  Type inputEleType = inputType.getElementType();
+  Type weightsEleType = weightsType.getElementType();
+  Type resultEleType = resultType.getElementType();
 
   // First we check the cache. If we've already lowered this same tensor &
   // transpose combination then we will want to lower to the exact same
@@ -106,9 +111,19 @@ Value lowerMatmulPackingFunc(Location loc, MO::DeviceAwareRewriter &rewriter,
       packedWeightsType = itr->second;
   }
 
+  // Propagate shape information for the "pack_b" mojo function (#27398).
   SmallVector<mlir::NamedAttribute> attrs;
-  attrs.push_back(rewriter.getNamedAttr("a_type", TypeAttr::get(inputDtype)));
-  attrs.push_back(rewriter.getNamedAttr("c_type", TypeAttr::get(resultDtype)));
+  attrs.push_back(rewriter.getNamedAttr("a_type", TypeAttr::get(inputEleType)));
+  attrs.push_back(rewriter.getNamedAttr(
+      "a_shape", rewriter.getI64VectorAttr(inputType.getIntDims())));
+  attrs.push_back(
+      rewriter.getNamedAttr("b_type", TypeAttr::get(weightsEleType)));
+  attrs.push_back(rewriter.getNamedAttr(
+      "b_shape", rewriter.getI64VectorAttr(weightsType.getIntDims())));
+  attrs.push_back(
+      rewriter.getNamedAttr("c_type", TypeAttr::get(resultEleType)));
+  attrs.push_back(rewriter.getNamedAttr(
+      "c_shape", rewriter.getI64VectorAttr(resultType.getIntDims())));
 
   // If we haven't lowered the shape function, lower it now so we have
   // parameterized shapes.
@@ -268,11 +283,11 @@ struct MatmulConstBPattern
       weight.setType(weightsType.cloneWith(preTranspWeightsLayout));
     }
 
-    Type inputDtype = op.getInputA().getType().getElementType();
-    Type resultDtype = op.getType().getElementType();
+    MO::TensorType inputType = op.getInputA().getType();
+    MO::TensorType resultType = op.getType();
     Value packedWeights =
-        lowerMatmulPackingFunc(op->getLoc(), rewriter, cache, weight,
-                               inputDtype, resultDtype, transpose);
+        lowerMatmulPackingFunc(op->getLoc(), rewriter, cache, weight, inputType,
+                               resultType, transpose);
 
     op.setOperand(1, packedWeights);
     return mlir::success();
