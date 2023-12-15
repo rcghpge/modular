@@ -7,12 +7,15 @@
 #include "Config/Version.h"
 #include "GenericML/API/modular/c/common.h"
 #include "GenericML/BenchmarkCLI/Main.h"
-#include "GenericML/VisualizeCLI/Main.h"
 #include "Support/CrashReporting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/raw_ostream.h"
 #include <iostream>
+
+#ifndef MODULAR_PRODUCTION
+#include "GenericML/VisualizeCLI/Main.h"
+#endif // MODULAR_PRODUCTION
 
 using namespace M;
 
@@ -23,8 +26,11 @@ static void usage(llvm::raw_ostream &os) {
      << " <subcommand> <args...>\n"
         "Available subcommands:\n"
         "  benchmark - Benchmark a model with the Modular AI Engine\n"
+#ifndef MODULAR_PRODUCTION
         "  visualize - Generate a file that can be used to visualize a model "
-        "with Netron.app\n";
+        "with Netron.app\n"
+#endif // MODULAR_PRODUCTION
+      ;
 }
 
 static int handleHelp(int argc, char **argv) {
@@ -65,7 +71,9 @@ int main(int argc, char **argv) {
                      .Case("--help", handleHelp)
                      .Case("--version", handleVersion)
                      .Case("benchmark", maxBenchmarkMain)
+#ifndef MODULAR_PRODUCTION
                      .Case("visualize", maxVisualizeMain)
+#endif // MODULAR_PRODUCTION
                      .Default(handleUnknownSubcommand);
   return handler(argc - 1, argv + 1);
 }
