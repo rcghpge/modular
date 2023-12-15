@@ -2822,6 +2822,37 @@ DeviceRefAttr TransposeOp::getOperandDevice(size_t index) {
 // MO_TileOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult TileOp::canonicalize(TileOp op, PatternRewriter &rewriter) {
+  TensorType inputTy = op.getInput().getType();
+  if (!inputTy.hasRank())
+    return failure();
+
+  // Extract constant repeats.
+  auto maybeRepeatsVec = tryGetConstantIntVector(op.getRepeats());
+  if (!maybeRepeatsVec.has_value())
+    return failure();
+  ArrayRef<int64_t> repeatsVec(maybeRepeatsVec.value());
+
+  // Check if the tile operation can be replaced with a broadcast. Each repeats
+  // value leaves the input dimension unchanged or the input dimension must be
+  // a broadcast.
+  for (auto [inDim, repeats] : llvm::zip(inputTy.getIntDims(), repeatsVec)) {
+    if (repeats < 1 || (repeats > 1 && inDim != 1))
+      return failure();
+  }
+
+  TensorType shapeTy =
+      TensorType::get({(int64_t)inputTy.getRank()},
+                      rewriter.getIntegerType(64, /*isSigned=*/true));
+  TensorValue inputShape =
+      rewriter.create<ShapeOfOp>(op.getLoc(), shapeTy, op.getInput());
+  TensorValue bcastShape = rewriter.create<BroadcastShapeOp>(
+      op.getLoc(), shapeTy, inputShape, op.getRepeats());
+  rewriter.replaceOpWithNewOp<BroadcastToOp>(
+      op, op.getType(), op.getInput(), bcastShape, op.getOutputParamDecls());
+  return success();
+}
+
 LogicalResult TileOp::verify() {
   // The permutation has known shape iff the argument and result are
   // statically ranked.

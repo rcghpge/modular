@@ -863,3 +863,14 @@ mo.graph @tile_dynamic(%input: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], f3
   %res = mo.tile(%input, %repeats) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
+
+// CHECK: mo.graph @tile_broadcast(%[[INPUT:.*]]: !mo.tensor<[1, ?], f32>) -> !mo.tensor<[?, ?], f32> no_inline {
+mo.graph @tile_broadcast(%input: !mo.tensor<[1, ?], f32>) -> !mo.tensor<[?, ?], f32> {
+  // CHECK: %[[REPEATS:.*]] = mo.constant {value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %repeats = mo.constant {value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK: %[[SHAPE_OF:.*]] = mo.shape_of(%[[INPUT]]) : (!mo.tensor<[1, ?], f32>) -> !mo.tensor<[2], si64>
+  // CHECK: %[[BCST:.*]] = mo.broadcast_shape(%[[SHAPE_OF]], %[[REPEATS]]) : (!mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], si64>
+  // CHECK: mo.broadcast_to(%[[INPUT]], %[[BCST]]) : (!mo.tensor<[1, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
+  %res = mo.tile(%input, %repeats) : (!mo.tensor<[1, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
+}

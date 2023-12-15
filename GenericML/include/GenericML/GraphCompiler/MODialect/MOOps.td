@@ -2489,6 +2489,7 @@ def MO_TileOp : MO_TensorOp<"tile", [
     `:` functional-type(operands, results)
   }];
 
+  let hasCanonicalizeMethod = 1;
   let hasVerifier = 1;
 }
 
