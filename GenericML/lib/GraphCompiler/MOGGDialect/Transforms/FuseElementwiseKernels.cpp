@@ -12,9 +12,11 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/Support/Tensor.h"
+#include "KGEN/POPDialect/POPTypes.h"
 
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Transforms/TopologicalSortUtils.h"
+#include "llvm/ADT/SetOperations.h"
 
 using namespace M;
 
@@ -25,566 +27,365 @@ namespace M::MOGG {
 
 namespace {
 
-// A graph chained elementwise kernels. Each node is an elementwise operations
-// (with view operations allowed). The leaves of the graph are the operations
-// which do not feed into other elementwise ops. The roots are operations which
-// do not consume elementwise or view changing inputs.
-struct ElementwiseGraph {
-  void buildGraph(MOGG::KernelOp kernel);
-
-  void printGraphAsDot();
-
-  llvm::SetVector<MOGG::KernelOp> roots;
-  llvm::SetVector<MOGG::KernelOp> leaves;
-};
-
-void ElementwiseGraph::printGraphAsDot() {
-  llvm::errs() << "digraph {\n";
-
-  // Each node in the dot format needs an ID, we can just use the size of this
-  // map.
-  DenseMap<Operation *, size_t> nodeIds;
-  auto getId = [&nodeIds](Operation *kernel) -> size_t {
-    auto itr = nodeIds.find(kernel);
-    if (itr != nodeIds.end())
-      return itr->second;
-
-    size_t newId = nodeIds.size() + 1;
-    nodeIds[kernel] = newId;
-    return newId;
-  };
-
-  llvm::SmallVector<Operation *> toPrint;
-
-  DenseSet<Operation *> hasPrinted;
-  auto printNode = [&](Operation *op) {
-    // Only print each once.
-    if (hasPrinted.contains(op))
-      return;
-    hasPrinted.insert(op);
-
-    // If we are not a kernel or a non fusable kernel then we
-    auto kernel = dyn_cast<MOGG::KernelOp>(op);
-    bool isTerminator = !kernel || !kernel.getFusionBodyLambda();
-
-    size_t opId = getId(op);
-    if (!isTerminator) {
-      std::string shape = "ellipse";
-
-      if (leaves.contains(kernel))
-        shape = "triangle";
-
-      llvm::errs() << opId
-                   << " [color=\"green\", label=\"elementwise\", shape=\""
-                   << shape << "\"]\n";
-    } else {
-      llvm::errs() << opId << " [color=\"red\", label=\"non-fused-op\"]"
-                   << "\n";
-    }
-
-    // Print the children of nodes within the graph. (ignore terminators)
-    if (!isTerminator) {
-      for (Operation *user : op->getUsers()) {
-        llvm::errs() << opId << " -> " << getId(user) << ";\n";
-        toPrint.push_back(user);
-      }
-    }
-  };
-
-  // Start from the top and recursively print all the nodes.
-  for (MOGG::KernelOp root : roots)
-    toPrint.push_back(root);
-
-  while (!toPrint.empty()) {
-    Operation *op = toPrint.back();
-    toPrint.pop_back();
-    printNode(op);
+static SmallVector<int> getFusionIndices(KernelOp src, KernelOp dst) {
+  SmallVector<int> indices;
+  auto srcOutputInterfaces =
+      src.getOutputFusionInterfaceAttr().getAsValueRange<StringAttr>();
+  auto dstInputInterfaces =
+      dst.getInputFusionInterfaceAttr().getAsValueRange<StringAttr>();
+  for (auto [i, operand] : llvm::enumerate(dst.getOperands())) {
+    auto srcInterface = *(srcOutputInterfaces.begin() + 0);
+    auto dstInterface = *(dstInputInterfaces.begin() + i);
+    if (operand.getDefiningOp() == src && !srcInterface.empty() &&
+        !dstInterface.empty())
+      indices.push_back(i);
   }
 
-  llvm::errs() << "}\n";
+  return indices;
 }
 
-void ElementwiseGraph::buildGraph(MOGG::KernelOp start) {
-  llvm::SmallDenseSet<MOGG::KernelOp> seenNodes;
+static inline bool isAnElementwiseKernel(Operation *op) {
+  auto kernelOp = dyn_cast<KernelOp>(op);
+  if (!kernelOp)
+    return false;
 
-  // All kernels in the graph must be in the same region.
-  auto region = start->getParentRegion();
+  if (kernelOp.getIsViewOp().value_or(false))
+    return false;
 
-  SmallVector<MOGG::KernelOp> searchList;
-  searchList.push_back(start);
+  if (!kernelOp.getFusionBodyLambda())
+    return false;
 
-  // We will process outputs and add to the leaves and process inputs and add to
-  // the roots if the current op is the end of the chain.
-  auto process = [&searchList, &seenNodes,
-                  region](KernelOp current, Operation *userOrProducer,
-                          llvm::SetVector<KernelOp> &endpoint) {
-    // Must be in same region to be connected.
-    if (region != userOrProducer->getParentRegion()) {
-      endpoint.insert(current);
-      return;
-    }
+  return true;
+}
 
-    if (auto useOrP = dyn_cast<KernelOp>(userOrProducer)) {
-      // If the user or producer is anything but an elementwise kernel then we
-      // are a leaf/root. Elementwise = is considered implementable just by
-      // application of an elementwise lambda across all elements.
-      if (!useOrP.getFusionBodyLambda()) {
-        endpoint.insert(current);
-      } else {
-        if (!seenNodes.contains(useOrP))
-          searchList.push_back(useOrP);
-      }
-    } else {
-      // All other ops are exits.
-      endpoint.insert(current);
-    }
-  };
+static bool isASrcElementwiseKernel(Operation *op) {
+  if (!isAnElementwiseKernel(op))
+    return false;
 
-  while (!searchList.empty()) {
-    MOGG::KernelOp op = searchList.back();
-    searchList.pop_back();
-    seenNodes.insert(op);
+  auto kernelOp = cast<KernelOp>(op);
+  if (!kernelOp.getOutputFusionInterface())
+    return false;
 
-    // Disable fusion on experimental new KGEN in MOGG for now.
-    if (op.getIsKGEN().value_or(false))
-      continue;
+  return true;
+}
 
-    // Traverse down the graph. If any operation exits into a non-elementwise
-    // kernel then it is a leaf node.
-    for (OpOperand &operand : op->getUses()) {
-      if (auto isKernel = dyn_cast<MOGG::KernelOp>(operand.getOwner())) {
-        unsigned index = operand.getOperandNumber();
+static bool isADstElementwiseKernel(Operation *op) {
+  if (!isAnElementwiseKernel(op))
+    return false;
 
-        if (isKernel.getIsKGEN().value_or(false)) {
-          leaves.insert(op);
-          continue;
-        }
+  auto kernelOp = cast<KernelOp>(op);
+  if (!kernelOp.getInputFusionInterface())
+    return false;
 
-        // We have to check that the kernel can accept a fusion on this operand.
-        if (!isKernel.getInputFusionInterfaceAttr()) {
-          leaves.insert(op);
-          continue;
-        }
+  return true;
+}
 
-        auto str =
-            cast<StringAttr>(isKernel.getInputFusionInterfaceAttr()[index]);
-        if (str == "") {
-          leaves.insert(op);
-          continue;
-        }
-
-        // If it can then add it to the graph.
-        process(op, isKernel, leaves);
-      } else {
-        // If it is used by any non kernel op then it is a leaf.
-        leaves.insert(op);
-      }
-    }
-
-    // If we have no fusion interface then we cannot search through those
-    // operands.
-    if (!op.getInputFusionInterfaceAttr()) {
-      roots.insert(op);
-      continue;
-    }
-
-    // Traverse upwards.
-    for (auto [operand, attr] :
-         llvm::zip(op.getOperands(), op.getInputFusionInterfaceAttr())) {
-      Operation *edge = operand.getDefiningOp();
-
-      // If the fusion interface is null then we shouldn't fuse through these
-      // operands.
-      if (cast<StringAttr>(attr) == "")
-        continue;
-
-      // Block arguments will appear as null.
-      if (edge)
-        process(op, edge, roots);
-      else
-        roots.insert(op);
-    }
+static inline bool kernelsAreCompatible(KernelOp src, KernelOp dst) {
+  if (src->getBlock() != dst->getBlock() ||
+      src.getIsKGEN() != dst.getIsKGEN()) {
+    return false;
   }
+
+  return true;
 }
-
-// Implements fusion by applying the algorithm:
-// 1. Build a graph of elementwise kernels by looking through the outputs and
-//    inputs of each elementwise kernel. This gives us a view of which
-//    elementwise kernel is dominated by all elementwise kernels in a cluster of
-//    kernels.
-// 2. For each leaf node in that graph, if the input is an elementwise kernel
-//    fuse it into the body of the leaf kernel.
-
-// Bear in mind what a kernel looks like:
-
-// clang-format off
-/*
-%2 = mogg.kernel (%0, %1) : (%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4],f32>) -> !mo.tensor<[4], f32>{
-  mogg.lambda @input_0_fn_0 ...
-  mogg.lambda @input_1_fn_1 ...
-  mogg.lambda @output_0_fn ...
-  mogg.lambda @elemwise_compute_lambda ...
-} {fusionBodyLambda = "elemwise_compute_lambda",
-  inputFusionInterface = ["input_0_fn_0", "input_1_fn"],
-  outputFusionInterface = ["output_0_fn"]}
-*/
-// clang-format on
-// The `fusionBodyLambda` is used to identify the body we fuse and the
-// `inputFusionInterface` are used to identify the lambdas associated for a
-// given input. It tells us that accesses to operand 0 (%0) are implemented by
-// an invoke of the lambda `input_0_fn_0` so to fuse the producer of `%0` into
-// this kernel we need to replace those invokes.
-
-// The fusion itself is applied by the following steps. The kernel being fused
-// into the leaf is referred to by 'other'.
-// 1. Add all operands of the other kernel to the leaf kernel, and add new args
-//    to the body.
-// 2. For each input lambda on the other kernel clone it into the leaf kernel
-//    and remap to refer to the added arguments.
-// 3. Take the elementwise lambda from the other kernel and replace the lambda
-//    invoke of the argument we are replacing (remember we are fusing the other
-//    body into a use of the other kernel). Remap each input invocation to point
-//    to the cloned input lambdas.
-// 4. Remove the old argument and associated lambda.
-// 5. Update the attributes to reflect the new inputs.
 
 struct FuseElementwisePass
     : public impl::FuseElementwiseBase<FuseElementwisePass> {
   using FuseElementwiseBase::FuseElementwiseBase;
 
   void runOnOperation() override {
-    MO::GraphOp graph = getOperation();
+    // Elementwise fusion consists of fusing a src kernel into a dst kernel. The
+    // src kernel is used by the dst kernel. Certain patterns like diamond
+    // patterns can cause inefficient fusion (duplicate values in the body of
+    // the elementwise). To fix this, src kernels are processed in reverse
+    // topological order. Note that this is not strictly necessary. When kernels
+    // are ultimately lowered to KGEN, CSE takes care of this.
 
-    // Build a graph of all reachable elementwise kernels from each one. After
-    // the graph is created it is fused but the old kernel is not removed, it
-    // just will just no longer be used in that kernel.
-    for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
-      // Skip non elementwise kernels.
-      if (!kernel.getFusionBodyLambda() ||
-          kernel.getIsViewOp().value_or(false) ||
-          !kernel.getInputFusionInterface())
-        continue;
+    // First find all blocks that contain src elementwise kernels.
+    MO::GraphOp graphOp = getOperation();
+    llvm::SmallPtrSet<Block *, 2> blocksThatContainSrcElementwiseKernels;
+    graphOp.walk([&](KernelOp kernelOp) {
+      if (isASrcElementwiseKernel(kernelOp))
+        blocksThatContainSrcElementwiseKernels.insert(kernelOp->getBlock());
+    });
 
-      // The graph of reachable elementwise ops from this kernel
-      ElementwiseGraph reachableOps;
-      reachableOps.buildGraph(kernel);
-
-      bool printed = false;
-
-      // Traverse up from each operation and fuse all connected operations
-      // downwards into it.
-      for (MOGG::KernelOp leaf : reachableOps.leaves) {
-        // Map of the operands we've already fused in. This is for the case of:
-        // %0 = op(...)
-        // %1 = op(%0)
-        // %2 = op(%0, %1)
-        // We don't want to have multiple copies of %0 fused in.
-
-        // Skip any node which exposes no interface op
-        if (!leaf.getInputFusionInterface())
-          continue;
-
-        DenseMap<Value, Value> alreadyFused;
-
-        // On each leaf in the graph we will continuously fuse until nothing is
-        // left to fuse down.
-        while (true) {
-          int32_t idx = getInputToFuse(leaf, reachableOps);
-          if (idx == -1)
-            break;
-
-          // Print the graph but only if it hasn't already been printed and only
-          // if we actually fused as we don't care about graphs which don't get
-          // fused.
-          if (!printed && dumpDotGraph.getValue()) {
-            printed = true;
-            reachableOps.printGraphAsDot();
-          }
-
-          fuseInputAtIndex(leaf, idx, alreadyFused);
-        }
-
-        // The above inline's a producer's compute lambda to the top
-        // of a leaf. Because the search is done greedily in a DFS we may insert
-        // certain computation out of order. E.g. we use a value before it is
-        // defined (though it is guaranteed to be defined later).
-        // We fix this by topologically sorting the fusion body lambda.
-        mlir::SymbolTable leafSymTable{leaf};
-        StringRef lambdaName = leaf.getFusionBodyLambda().value();
-        auto leafElemwiseLambda =
-            cast<LambdaOp>(leafSymTable.lookup(lambdaName));
-        for (mlir::Region &region : leafElemwiseLambda->getRegions()) {
-          for (mlir::Block &blk : region.getBlocks()) {
-            mlir::sortTopologically(&blk);
-          }
-        }
+    // Then, for each block, sort its contents in topological order and gather
+    // all src elementwise kernels.
+    SmallVector<KernelOp> srcElementwiseKernels;
+    for (Block *block : blocksThatContainSrcElementwiseKernels) {
+      auto kernelOpsInBlock = block->getOps<KernelOp>();
+      SmallVector<Operation *> kernelOpsInBlockAsArray(kernelOpsInBlock.begin(),
+                                                       kernelOpsInBlock.end());
+      // Not actually sorting because we must not temper with parametric shape
+      // logic.
+      mlir::computeTopologicalSorting(kernelOpsInBlockAsArray);
+      for (Operation *op : kernelOpsInBlockAsArray) {
+        if (isASrcElementwiseKernel(op))
+          srcElementwiseKernels.push_back(cast<KernelOp>(op));
       }
     }
-  }
 
-  /// Return the index of the input to fuse or -1 if nothing can be fused.
-  int32_t getInputToFuse(MOGG::KernelOp leaf, ElementwiseGraph &reachableOps) {
-    for (int32_t index = 0, e = leaf.getNumOperands(); index < e; ++index) {
-      // Block arguments have no defining op and obviously cant be fused.
-      Operation *edge = leaf.getOperand(index).getDefiningOp();
-      if (!edge)
-        continue;
+    // Finally, iterate through the src elementwise kernels in the reverse
+    // topological sort and fuse with dst elementwise kernels.
+    DenseSet<KernelOp> dstElementwiseKernels;
+    for (KernelOp srcKernel : llvm::reverse(srcElementwiseKernels)) {
+      auto users = srcKernel->getUsers();
+      DenseSet<Operation *> uniqueUsers(users.begin(), users.end());
 
-      // Only fuse within the same region and not across, i.e, control flow.
-      if (edge->getParentRegion() != leaf->getParentRegion())
-        continue;
-
-      // The kernel must expose an input lambda to fuse into.
-      if (cast<StringAttr>(leaf.getInputFusionInterfaceAttr()[index]) == "")
-        continue;
-
-      // If the input operation is a kernel and is implemented by a lambda then
-      // we can fuse it.
-      if (auto otherKernel = dyn_cast<KernelOp>(edge)) {
-        // Don't fuse the KGEN kernels yet.
-        if (otherKernel.getIsKGEN().value_or(false))
+      const auto canFuseWith = [&](Operation *dstOp) {
+        if (!isADstElementwiseKernel(dstOp))
           return false;
 
-        // If the other kernel has been marked a view operation we don't fuse it
-        // here.
-        if (otherKernel.getIsViewOp().value_or(false))
-          continue;
+        auto dstKernel = cast<KernelOp>(dstOp);
+        if (!kernelsAreCompatible(srcKernel, dstKernel))
+          return false;
 
-        // Each leaf is already guaranteed to be a standalone or fused kernel so
-        // we won't fuse them again.
-        if (reachableOps.leaves.contains(otherKernel))
-          continue;
+        return true;
+      };
 
-        if (otherKernel.getFusionBodyLambda())
-          return index;
+      // Do not attempt to fuse if the operation will not be DCE-ed later.
+      if (!llvm::all_of(uniqueUsers, canFuseWith))
+        continue;
+
+      for (Operation *dstOp : uniqueUsers) {
+        auto dstKernel = cast<KernelOp>(dstOp);
+        fuseSrcKernelIntoDstKernel(srcKernel, dstKernel);
+        dstElementwiseKernels.insert(dstKernel);
       }
     }
-    return -1;
+
+    // The fusion may have re-ordered the contents of the dst kernels. Sort them
+    // topologically.
+    for (KernelOp dstKernel : dstElementwiseKernels)
+      dstKernel.walk([](Block *block) { mlir::sortTopologically(block); });
   }
 
-  /// Fuse the input of the given index of the kernel into this kernel.
-  void fuseInputAtIndex(MOGG::KernelOp leaf, int32_t idx,
-                        DenseMap<Value, Value> &alreadyFused) {
-    IRMapping remapper;
-    Value operandBeingReplaced = leaf.getOperand(idx);
+  // The fusion itself is applied by the following steps.
+  // 1. Add all operands of the src kernel to the dst kernel, and add new args
+  //    to the body.
+  // 2. For each input lambda on the src kernel clone it into the dst kernel
+  //    and remap to refer to the added arguments.
+  // 3. Take the elementwise lambda from the src kernel and replace the lambda
+  //    invoke of the argument we are replacing (remember we are fusing the
+  //    src body into a use of the src kernel). Remap each input invocation
+  //    to point to the cloned input lambdas.
+  // 4. Remove the old argument and associated lambda.
+  // 5. Update the attributes to reflect the new inputs.
+  void fuseSrcKernelIntoDstKernel(MOGG::KernelOp srcKernel,
+                                  KernelOp dstKernel) {
+    auto fusionIndices = getFusionIndices(srcKernel, dstKernel);
+    // This assumes that srcKernel has a single output. When that changes, we
+    // will have to create a mapping.
+    Value previouslyFusedValue;
+    // Iterating in reverse to get the right index (each iteration will erase an
+    // operand and a fusion interface). The first iteration, we actually fuse.
+    // The subsequent iterations will use previouslyFusedValue.
+    for (int fusionIndex : llvm::reverse(fusionIndices)) {
+      // The input lambda we are going to replace with the fused body.
+      ArrayAttr dstHooks = dstKernel.getInputFusionInterfaceAttr();
+      StringAttr inputLambdaToReplace = cast<StringAttr>(dstHooks[fusionIndex]);
 
-    // We already check everything in the getInputToFuse method so we know this
-    // index is a KernelOp
-    KernelOp producerKernel =
-        cast<KernelOp>(operandBeingReplaced.getDefiningOp());
+      // Get the output placeholder operation in the block we are inserting
+      // into. We want to this to be at the top as that simplifies other
+      // transforms so we use this as the start of the block.
+      MOGG::OutputPlaceholdersOp dstOuts = dstKernel.getOutputPlaceholder();
 
-    // The input lambda we are going to replace with the fused body.
-    ArrayAttr leafHooks = leaf.getInputFusionInterfaceAttr();
-    StringAttr inputLambdaToReplace = cast<StringAttr>(leafHooks[idx]);
+      // Symbol tables for the both the incoming kernel and the kernel we are
+      // fusing into.
+      mlir::SymbolTable dstSymTable{dstKernel};
+      mlir::SymbolTable producerSymTable{srcKernel};
 
-    // Get the output placeholder operation in the block we are inserting into.
-    // We want to this to be at the top as that simplifies other transforms so
-    // we use this as the start of the block.
-    MOGG::OutputPlaceholdersOp leafOuts;
-    for (auto ph : leaf.getOps<MOGG::OutputPlaceholdersOp>()) {
-      assert(!leafOuts && "Only one placeholder expected");
-      leafOuts = ph;
-    }
+      // Add the new lambdas to the top of the dst kernel after the output
+      // placeholders.
+      mlir::OpBuilder inserter{dstOuts->getContext()};
+      dstKernel.setInsertionPointToTop(inserter);
 
-    // Symbol tables for the both the incoming kernel and the kernel we are
-    // fusing into.
-    mlir::SymbolTable leafSymTable{leaf};
-    mlir::SymbolTable producerSymTable{producerKernel};
+      // Get the main elementwise block in the kernel we are fusing into.
+      StringRef dstMainBody = *dstKernel.getFusionBodyLambda();
+      auto dstElemwiseLambda = cast<LambdaOp>(dstSymTable.lookup(dstMainBody));
 
-    Block &oldBlock = producerKernel.getBody().front();
-    Block &leafBlock = leaf.getBody().front();
-
-    // Add the new lambdas to the top of the leaf kernel after the output
-    // placeholders.
-    mlir::OpBuilder inserter{leafOuts->getContext()};
-    leaf.setInsertionPointToTop(inserter);
-
-    // Get the main elementwise block in the kernel we are fusing into.
-    StringRef leafMainBody = *leaf.getFusionBodyLambda();
-    auto leafElemwiseLambda = cast<LambdaOp>(leafSymTable.lookup(leafMainBody));
-
-    // If we've already fused then early exit by just reusing the value we have
-    // already replaced.
-    auto itr = alreadyFused.find(operandBeingReplaced);
-    if (itr != alreadyFused.end()) {
-      replaceLoadWithExistingUse(leaf, inputLambdaToReplace, leafElemwiseLambda,
-                                 inserter, itr->second);
-      leaf.removeOperandAtIndex(idx);
-      return;
-    }
-
-    llvm::StringMap<StringRef> oldNameToNew;
-
-    // Clone each of the input lambdas for the inputs we don't already have.
-    ArrayAttr otherInputLambdas = producerKernel.getInputFusionInterfaceAttr();
-    ArrayAttr leafInputLambdas = leaf.getInputFusionInterfaceAttr();
-
-    llvm::SmallDenseMap<Value, size_t> leafOperands;
-    for (size_t i = 0, e = leaf->getNumOperands(); i < e; ++i) {
-      Value operand = leaf->getOperand(i);
-      leafOperands[operand] = i;
-    }
-
-    // Add the operands to the graph level op and remap the values from the
-    // incoming kernel.
-    for (size_t i = 0, e = producerKernel->getNumOperands(); i < e; ++i) {
-      // The values on the kernel being fused in.
-      Value otherOperand = producerKernel->getOperand(i);
-      Value otherBlockArg = oldBlock.getArgument(i);
-
-      // Get the lambda which loads this operand in the other kernel. If the
-      // kernel doesn't expose any input attributes or only exposes null
-      // attributes then we should add the null attribute.
-      LambdaOp otherLambdaLoad = nullptr;
-      if (otherInputLambdas) {
-        StringRef name = cast<StringAttr>(otherInputLambdas[i]).getValue();
-        if (name != "")
-          otherLambdaLoad = cast<LambdaOp>(producerSymTable.lookup(name));
+      // If we've already fused then early exit by just reusing the value we
+      // have already replaced. This occurs when the srcKernel feeds into many
+      // arguments of the dstKernel.
+      if (previouslyFusedValue) {
+        replaceLoadWithExistingUse(dstKernel, inputLambdaToReplace,
+                                   dstElemwiseLambda, inserter,
+                                   previouslyFusedValue);
+        dstKernel.removeOperandAtIndex(fusionIndex);
+        continue;
       }
 
-      auto itr = leafOperands.find(otherOperand);
+      llvm::StringMap<StringRef> oldNameToNew;
 
-      // If we already have this operand then reuse the current copy. Otherwise
-      // add a new argument and operand.
-      if (itr != leafOperands.end()) {
-        size_t leafInIndex = itr->second;
-        remapper.map(otherBlockArg, leafBlock.getArgument(leafInIndex));
+      // Clone each of the input lambdas for the inputs we don't already have.
+      ArrayAttr srcInputLambdas = srcKernel.getInputFusionInterfaceAttr();
+      ArrayAttr dstInputLambdas = dstKernel.getInputFusionInterfaceAttr();
 
-        // All loads from the old lambda should point to the lambda which exists
-        // in this kernel.
-        StringRef leafName =
-            cast<StringAttr>(leafInputLambdas[leafInIndex]).getValue();
+      llvm::SmallDenseMap<Value, size_t> dstOperands;
+      for (size_t i = 0, e = dstKernel->getNumOperands(); i < e; ++i) {
+        Value operand = dstKernel->getOperand(i);
+        dstOperands[operand] = i;
+      }
 
-        if (otherLambdaLoad)
-          oldNameToNew[otherLambdaLoad.getSymName()] = leafName;
-      } else {
-        // Add the new operand to the kernel + body.
-        Value leafBlockArg = leaf.addOperand(otherOperand);
-        remapper.map(otherBlockArg, leafBlockArg);
+      IRMapping remapper;
+      Block &oldBlock = srcKernel.getBody().front();
+      Block &dstBlock = dstKernel.getBody().front();
+      // Add the operands to the graph level op and remap the values from the
+      // incoming kernel.
+      for (size_t i = 0, e = srcKernel->getNumOperands(); i < e; ++i) {
+        // The values on the kernel being fused in.
+        Value srcOperand = srcKernel->getOperand(i);
+        Value srcBlockArg = oldBlock.getArgument(i);
 
-        if (!otherLambdaLoad) {
-          leaf.setInputFusionInterface(leaf.getNumOperands() - 1, "");
-          continue;
+        // Get the lambda which loads this operand in the src kernel. If the
+        // kernel doesn't expose any input attributes or only exposes null
+        // attributes then we should add the null attribute.
+        LambdaOp srcLambda = nullptr;
+        if (srcInputLambdas) {
+          StringRef name = cast<StringAttr>(srcInputLambdas[i]).getValue();
+          if (!name.empty())
+            srcLambda = cast<LambdaOp>(producerSymTable.lookup(name));
         }
 
-        // As we have added a new input we need to clone the lambda which loads
-        // that input.
-        auto newLoadLambda = cast<LambdaOp>(otherLambdaLoad->clone(remapper));
+        auto itr = dstOperands.find(srcOperand);
+        if (itr != dstOperands.end()) {
+          // The input of the srcKernel is already an input of the dstKernel,
+          // re-use the already existing lambda or completely nullify it.
+          size_t dstInIndex = itr->second;
+          remapper.map(srcBlockArg, dstBlock.getArgument(dstInIndex));
 
-        // Add the lambda to the kernel.
-        leafSymTable.insert(newLoadLambda, inserter.getInsertionPoint());
+          StringRef dstLambdaName =
+              cast<StringAttr>(dstInputLambdas[dstInIndex]).getValue();
 
-        // Add to the input interfaces so they can then be fused into later.
-        leaf.setInputFusionInterface(leaf.getNumOperands() - 1,
-                                     newLoadLambda.getSymName());
-
-        // Remap so any uses of the old lambda can be remapped onto the new
-        // lambda when we fuse the main elementwise body.
-        oldNameToNew[otherLambdaLoad.getSymName()] = newLoadLambda.getSymName();
-      }
-    }
-
-    StringRef mainBody = *producerKernel.getFusionBodyLambda();
-    auto otherElemwiseLambda =
-        cast<LambdaOp>(producerSymTable.lookup(mainBody));
-
-    // Clone the block.
-    auto newOp = cast<LambdaOp>(otherElemwiseLambda->clone(remapper));
-
-    // Track the calls to the output lambda[s] so they can be removed.
-    llvm::SmallDenseSet<StringRef> outputFns;
-    ArrayAttr outputHooks = leaf.getOutputFusionInterfaceAttr();
-    for (StringRef name : outputHooks.getAsValueRange<StringAttr>())
-      outputFns.insert(name);
-
-    auto returnOp =
-        cast<MOGG::OutputOp>(newOp.getBody().front().getTerminator());
-
-    // When we inline the new body we will have lambda invokes representing
-    // loads from the input lambdas. These symbols will be references to lambdas
-    // in the other kernel so we need to remap onto the ones in this kernel.
-    for (auto invokeOp :
-         llvm::make_early_inc_range(newOp.getOps<MOGG::LambdaInvokeOp>())) {
-      StringRef oldName = invokeOp.getLambda().getLeafReference().strref();
-
-      // Remove all references to the old stores.
-      if (outputFns.contains(oldName)) {
-        // Add the values we previously stored as the output.
-        for (Value arg : invokeOp.getOperands()) {
-          // Add everything but indices.
-          if (!isa<MOGG::IndicesType>(arg.getType()))
-            returnOp->insertOperands(returnOp.getNumOperands(), arg);
-        }
-
-        invokeOp.erase();
-      } else {
-        auto itr = oldNameToNew.find(oldName);
-        if (itr != oldNameToNew.end()) {
-          invokeOp.setLambdaAttr(
-              FlatSymbolRefAttr::get(invokeOp.getContext(), itr->second));
+          if (!srcLambda || dstLambdaName.empty())
+            dstKernel.setInputFusionInterface(dstInIndex, "");
+          else
+            oldNameToNew[srcLambda.getSymName()] = dstLambdaName;
+        } else {
+          // Otherwise, just add the new operand and the lambda that comes with
+          // it.
+          Value dstBlockArg = dstKernel.addOperand(srcOperand);
+          remapper.map(srcBlockArg, dstBlockArg);
+          if (srcLambda) {
+            // As we have added a new input we need to clone the lambda which
+            // loads that input.
+            auto newLambda = cast<LambdaOp>(srcLambda->clone(remapper));
+            // Add the lambda to the kernel.
+            dstSymTable.insert(newLambda, inserter.getInsertionPoint());
+            // Add to the input interfaces so they can then be fused into later.
+            dstKernel.setInputFusionInterface(dstKernel.getNumOperands() - 1,
+                                              newLambda.getSymName());
+            // Remap so any uses of the old lambda can be remapped onto the new
+            // lambda when we fuse the main elementwise body.
+            oldNameToNew[srcLambda.getSymName()] = newLambda.getSymName();
+          } else {
+            dstKernel.setInputFusionInterface(dstKernel.getNumOperands() - 1,
+                                              "");
+          }
         }
       }
-    }
 
-    // Add the new lambda to the table.
-    leafSymTable.insert(newOp, inserter.getInsertionPoint());
-    inserter.setInsertionPointAfter(newOp);
+      StringRef mainBody = *srcKernel.getFusionBodyLambda();
+      auto srcElementwiseLambda =
+          cast<LambdaOp>(producerSymTable.lookup(mainBody));
 
-    // Replace all uses of the old input lambda inside the main body with the
-    // inlined body of the replacement lambda. The only reason we don't replace
-    // it with a call is because it returns void so we would need to create a
-    // new one for a legal call.
-    auto uses =
-        *leafSymTable.getSymbolUses(inputLambdaToReplace, leafElemwiseLambda);
-    for (auto use : llvm::make_early_inc_range(uses)) {
-      auto toReplace = cast<MOGG::LambdaInvokeOp>(use.getUser());
+      // Clone the block.
+      auto newOp = cast<LambdaOp>(srcElementwiseLambda->clone(remapper));
 
-      // Inline the first invoke and then reuse those values.
-      auto itr = alreadyFused.find(operandBeingReplaced);
-      if (itr == alreadyFused.end()) {
-        auto newValues = inlineInvoke(toReplace, newOp);
-        assert(
-            newValues.size() == 1 &&
-            "Currently assuming one return from elementwise ops when fusing");
-        alreadyFused[operandBeingReplaced] = newValues[0];
-      } else {
-        toReplace->replaceAllUsesWith(ValueRange{itr->second});
+      // Track the calls to the output lambda[s] so they can be removed.
+      llvm::SmallDenseSet<StringRef> outputFns;
+      ArrayAttr outputHooks = dstKernel.getOutputFusionInterfaceAttr();
+      for (StringRef name : outputHooks.getAsValueRange<StringAttr>())
+        outputFns.insert(name);
+
+      auto returnOp =
+          cast<MOGG::OutputOp>(newOp.getBody().front().getTerminator());
+
+      // When we inline the new body we will have lambda invokes representing
+      // loads from the input lambdas. These symbols will be references to
+      // lambdas in the other kernel so we need to remap onto the ones in this
+      // kernel.
+      for (auto invokeOp :
+           llvm::make_early_inc_range(newOp.getOps<MOGG::LambdaInvokeOp>())) {
+        StringRef oldName = invokeOp.getLambda().getLeafReference().strref();
+
+        // Remove all references to the old stores.
+        if (outputFns.contains(oldName)) {
+          // Add the values we previously stored as the output.
+          for (Value arg : invokeOp.getOperands()) {
+            // Add everything but indices.
+            if (!isa<MOGG::IndicesType>(arg.getType()))
+              returnOp->insertOperands(returnOp.getNumOperands(), arg);
+          }
+
+          invokeOp.erase();
+        } else {
+          auto itr = oldNameToNew.find(oldName);
+          if (itr != oldNameToNew.end()) {
+            invokeOp.setLambdaAttr(
+                FlatSymbolRefAttr::get(invokeOp.getContext(), itr->second));
+          }
+        }
       }
 
-      // Remove the lambda if we didn't already remove it.
-      auto op = SymbolTable::lookupSymbolIn(leaf, toReplace.getLambda());
-      if (op)
-        op->erase();
+      // Add the new lambda to the table.
+      dstSymTable.insert(newOp, inserter.getInsertionPoint());
+      inserter.setInsertionPointAfter(newOp);
 
-      // Remove the call to the old input lambda.
-      toReplace.erase();
+      // Replace all uses of the old input lambda inside the main body with the
+      // inlined body of the replacement lambda. The only reason we don't
+      // replace it with a call is because it returns void so we would need to
+      // create a new one for a legal call.
+      auto uses =
+          *dstSymTable.getSymbolUses(inputLambdaToReplace, dstElemwiseLambda);
+      for (auto use : llvm::make_early_inc_range(uses)) {
+        auto toReplace = cast<MOGG::LambdaInvokeOp>(use.getUser());
+        // Inline the first invoke and then reuse those values.
+        if (!previouslyFusedValue) {
+          auto newValues = inlineInvoke(toReplace, newOp);
+          assert(
+              newValues.size() == 1 &&
+              "Currently assuming one return from elementwise ops when fusing");
+          previouslyFusedValue = newValues.front();
+        } else {
+          toReplace->replaceAllUsesWith(ValueRange{previouslyFusedValue});
+        }
+
+        // Remove the lambda if we didn't already remove it.
+        auto op = SymbolTable::lookupSymbolIn(dstKernel, toReplace.getLambda());
+        if (op)
+          op->erase();
+
+        // Remove the call to the old input lambda.
+        toReplace.erase();
+      }
+
+      // All uses have been inlined so get rid of the new lambda.
+      newOp.erase();
+
+      // Remove the argument we have effectively inlined.
+      dstKernel.removeOperandAtIndex(fusionIndex);
+
+      // Update the dst's summary to capture the producer's summary.
+      dstKernel.setSummaryAttr(getSummaryString({srcKernel, dstKernel}));
     }
-
-    // All uses have been inlined so get rid of the new lambda.
-    newOp.erase();
-
-    // Remove the argument we have effectively inlined.
-    leaf.removeOperandAtIndex(idx);
-
-    // Update the leaf's summary to capture the producer's summary.
-    leaf.setSummaryAttr(getSummaryString({producerKernel, leaf}));
   }
 
-  // Replace all loads from `inputLambdaToReplace` in `leafElemwiseLambda` with
+  // Replace all loads from `inputLambdaToReplace` in `dstElemwiseLambda` with
   // the existing value `newVal`.
-  void replaceLoadWithExistingUse(MOGG::KernelOp leaf,
+  void replaceLoadWithExistingUse(MOGG::KernelOp dst,
                                   StringAttr inputLambdaToReplace,
-                                  MOGG::LambdaOp leafElemwiseLambda,
+                                  MOGG::LambdaOp dstElemwiseLambda,
                                   mlir::OpBuilder &builder, Value newVal) {
-    mlir::SymbolTable leafSymTable{leaf};
+    mlir::SymbolTable dstSymTable{dst};
 
     // The input lambda we should remove.
     auto lambdaToRemove =
-        cast<LambdaOp>(leafSymTable.lookup(inputLambdaToReplace));
+        cast<LambdaOp>(dstSymTable.lookup(inputLambdaToReplace));
 
     // Replace all uses inside the body of this lambda with the value we
     // already fused in.
-    auto uses = *leafSymTable.getSymbolUses(lambdaToRemove, leafElemwiseLambda);
+    auto uses = *dstSymTable.getSymbolUses(lambdaToRemove, dstElemwiseLambda);
     for (auto use : llvm::make_early_inc_range(uses)) {
       auto toReplace = cast<MOGG::LambdaInvokeOp>(use.getUser());
       toReplace.replaceAllUsesWith(ValueRange{newVal});

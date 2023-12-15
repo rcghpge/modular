@@ -429,3 +429,35 @@ mo.graph @with_bcasts(%arg0 : !mo.tensor<[], si32>) -> !mo.tensor<[500, 5, 4], s
 
 // CHECK: mogg.kernel
 // CHECK: mogg.call "mo.static.broadcast_to"
+
+mo.graph @duplication(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>, !mo.tensor<[4, 3], f32>) {
+  %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
+  %1 = mo.add(%0, %0) : !mo.tensor<[4, 3], f32>
+  %2 = mo.sub(%0, %0) : !mo.tensor<[4, 3], f32>
+  mo.output %1, %2 : !mo.tensor<[4, 3], f32>, !mo.tensor<[4, 3], f32>
+}
+
+// CHECK-LABEL: @duplication
+// CHECK: mogg.kernel
+// CHECK: mo.sqrt
+// CHECK: mo.add
+// CHECK: mogg.kernel
+// CHECK: mo.sqrt
+// CHECK: mo.sub
+
+mo.graph @controlFlow(%arg0: !mo.tensor<[4, 3], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[4, 3], f32>) {
+  %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[4, 3], f32> {
+    %1 = mo.mul(%arg0, %arg0) : !mo.tensor<[4, 3], f32>
+    %2 = mo.mul(%1, %1) : !mo.tensor<[4, 3], f32>
+    mo.yield %2 : !mo.tensor<[4, 3], f32>
+  } else {
+    mo.yield %arg0 : !mo.tensor<[4, 3], f32>
+  }
+  mo.output %0 : !mo.tensor<[4, 3], f32>
+}
+
+// CHECK-LABEL: @controlFlow
+// CHECK-NEXT:  mo.if
+// CHECK-NEXT:  mogg.kernel
+// CHECK:       mo.mul
+// CHECK-NEXT:  mo.mul
