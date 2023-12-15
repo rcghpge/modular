@@ -23,8 +23,8 @@ public:
   cl::opt<std::string> crashDir{"crash-dir",
                                 cl::desc("Filesystem path of crash dump dir"),
                                 llvm::cl::Optional};
-  cl::opt<size_t> num_threads{"num-threads", cl::desc("Number of threads"),
-                              cl::init(0)};
+  cl::opt<size_t> numThreads{"num-threads", cl::desc("Number of threads"),
+                             cl::init(0)};
 
   cl::list<std::string> inputNames{
       "input-names", cl::desc("Specify input names. This is always required "
