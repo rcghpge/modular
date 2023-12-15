@@ -439,7 +439,8 @@ struct MOOpLoweringState {
   kernelExecute(StringRef kernelName, Value inChain, ArrayRef<Value> args,
                 ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
                 ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
-                SmallVectorImpl<Value> &outDimensions, StringRef summary);
+                SmallVectorImpl<Value> &outDimensions, StringRef summary,
+                bool isAsync);
 
   /// Create the outputs from the storage and additional metadata created for
   /// the call. Associate the outputs with the original MO op results.

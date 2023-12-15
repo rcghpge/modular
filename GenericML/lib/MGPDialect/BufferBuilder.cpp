@@ -156,7 +156,7 @@ Value CpuBufferBuilder::kernelExecute(
     StringRef kernelName, Value inChain, ArrayRef<Value> args,
     ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
     ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
-    SmallVectorImpl<Value> &outDimensions, StringRef summary) {
+    SmallVectorImpl<Value> &outDimensions, StringRef summary, bool isAsync) {
   // Use the kernel name to determine the index.
   uint64_t index = getCompiledKernelIndex(kernelName);
 
@@ -172,7 +172,8 @@ Value CpuBufferBuilder::kernelExecute(
       InOutSignatureAttr::get(builder.getContext(), inOutSemantics),
       // Use the summary for debugging and profiling.
       /*dSummary=*/summary,
-      /*eNumOutDimensions=*/numOutDimensions);
+      /*eNumOutDimensions=*/numOutDimensions,
+      /*fWillBecomeAsync=*/isAsync);
 
   for (Value outDimension : executeOp.getOutDimensions())
     outDimensions.emplace_back(outDimension);

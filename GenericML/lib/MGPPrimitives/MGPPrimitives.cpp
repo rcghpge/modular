@@ -958,14 +958,13 @@ static void mgp_cpu_kernel_load_archive(Chain inChain, Context &ctx,
 // mgp.cpu.kernel.execute
 //===----------------------------------------------------------------------===//
 
-static void
-mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
-                       Result<Chain> outChain, RemainingResults outDimensions,
-                       MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bKernelIndex,
-                       MEFAttr<StringRef> cInOutSignature,
-                       MEFAttr<StringRef> dSummary,
-                       MEFAttr<uint64_t> eNumOutDimensions, Runtime &runtime,
-                       EncodedLocation loc) {
+static void mgp_cpu_kernel_execute(
+    Chain inChain, Context &ctx, RemainingArguments operands,
+    Result<Chain> outChain, RemainingResults outDimensions,
+    MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bKernelIndex,
+    MEFAttr<StringRef> cInOutSignature, MEFAttr<StringRef> dSummary,
+    MEFAttr<uint64_t> eNumOutDimensions, MEFAttr<bool> fIsAsync,
+    Runtime &runtime, EncodedLocation loc) {
   CompiledKernelsContext &kernelsCtx =
       ctx.getStateSlotPayload<CompiledKernelsContext>(
           static_cast<size_t>(*aSlot));
@@ -1004,7 +1003,7 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   outputChain.transfer(operands.copyAsVector());
 
   // Hold on to ABI intermediate datastructures until the kernel returns.
-  // Asynchrorous kernels are responsible for unmarshalling what they need
+  // Asynchronous kernels are responsible for unmarshalling what they need
   // before returning.
   CompiledKernelABI::CompiledKernelCall call(numInputs);
 
@@ -1044,7 +1043,22 @@ mgp_cpu_kernel_execute(Chain inChain, Context &ctx, RemainingArguments operands,
   //  - The dimensions of the buffers inside inputPointers and dimensions
   //    vectors are known at kernel compile time and do not need to be passed
   //    at runtime.
-  kernelPtr(call.inputPointers.data(), dimensions.data(), &outputChain);
+  if (*fIsAsync) {
+    // TODO(#27757): In order to transition to Mojo async/await without losing
+    //               model performance we need to launch some kernels within
+    //               a sub-task on the C++ side. Eventually this will instead
+    //               be managed on the Mojo side.
+    assert(numOutDimensions == 0);
+    runtime.getWorkQueue()->addTask(
+        [kernelPtr, call = std::move(call), dimensions = std::move(dimensions),
+         forkedOutputChain = outputChain.fork()]() mutable {
+          kernelPtr(call.inputPointers.data(), dimensions.data(),
+                    &forkedOutputChain);
+          // The forked output chain will be cleaned up by its destructor.
+        });
+  } else {
+    kernelPtr(call.inputPointers.data(), dimensions.data(), &outputChain);
+  }
 
   // Stop profiling when the kernel finishes.
   if (profilerEntry.isEnabled()) {

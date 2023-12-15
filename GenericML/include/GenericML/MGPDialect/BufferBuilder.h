@@ -293,7 +293,8 @@ public:
                 Value inChain, ArrayRef<Value> args,
                 ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
                 ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
-                SmallVectorImpl<Value> &outDimensions, StringRef summary) = 0;
+                SmallVectorImpl<Value> &outDimensions, StringRef summary,
+                bool isAsync) = 0;
 
   /// Places the given buffer into a freshly allocated slot within the
   /// given !mgp.context. Returns the chain which indicates when the buffer
@@ -412,12 +413,14 @@ public:
                           ElementsAttr archive, ArrayAttr kernelNames,
                           ArrayAttr constantNames) override;
 
-  Value kernelExecute(
-      OpBuilder &builder, Location loc, TypedValue<MGP::ContextType> context,
-      StringRef kernelName, Value inChain, ArrayRef<Value> args,
-      ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
-      ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
-      SmallVectorImpl<Value> &outDimensions, StringRef summary) override;
+  Value
+  kernelExecute(OpBuilder &builder, Location loc,
+                TypedValue<MGP::ContextType> context, StringRef kernelName,
+                Value inChain, ArrayRef<Value> args,
+                ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
+                ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
+                SmallVectorImpl<Value> &outDimensions, StringRef summary,
+                bool isAsync) override;
 
   Value chainCreate(OpBuilder &builder, Location loc,
                     TypedValue<MGP::ContextType> context,

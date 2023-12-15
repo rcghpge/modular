@@ -233,7 +233,8 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
     OptionalAttr<StrAttr>:$fusionBodyLambda,
     OptionalAttr<BoolAttr>:$isViewOp,
     OptionalAttr<BoolAttr>:$isKGEN,
-    OptionalAttr<StrAttr>:$summary
+    OptionalAttr<StrAttr>:$summary,
+    OptionalAttr<BoolAttr>:$isAsync
   );
   let results = (outs Variadic<MO_Tensor>:$results);
   let regions = (region SizedRegion<1>:$body);
@@ -599,7 +600,8 @@ def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel", [
    MO_HasDeviceInterface]> {
   let summary = "Executes a compiled kernel on a given device.";
   let description = [{
-    Executes a compiled kernel with the given name and operands.
+    Executes a compiled kernel with the given name and operands on the given
+    device.
 
     This will use the kernel name to look up the compiled object (loaded by
     `LoadCompiledKernelOp`), and call into the kernel with the lowered operands and
@@ -613,14 +615,16 @@ def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel", [
     values. These are exported into MGP land where they will be translated
     into calls into the parameter system.
 
-    The ABI and calling primitive depend on the device.
+    If `isAsync` is true, the kernel is implemented using the Mojo async/await
+    scheme. Otherwise the kernel is synchronous.
   }];
 
   let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List]>>:$operands,
                        StrAttr:$kernelName,
                        ArrayAttr:$usedParams,
                        MO_ParamDecls:$outputParamDecls,
-                       StrAttr:$summary);
+                       StrAttr:$summary,
+                       BoolAttr:$isAsync);
   let results = (outs Variadic<MO_Tensor>:$results);
 }
 

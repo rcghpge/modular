@@ -87,6 +87,13 @@ public:
     return kernelHasDecorator(kernel, DECORATOR_ELEMENTWISE);
   }
 
+  // Returns true if the kernel is to be implemented by a Mojo async function.
+  inline bool kernelIsAsync(KGEN::GeneratorOp kernel) {
+    // TODO(#27757): Temporary until Mojo async kernels can be written and
+    // this is obvious from the kernel's signature.
+    return kernelHasDecorator(kernel, DECORATOR_WILL_BECOME_ASYNC);
+  }
+
   // Returns true if the kernel is expecting to take indices as last arg.
   inline bool kernelIsViewOp(KGEN::GeneratorOp kernel) {
     return kernelHasDecorator(kernel, DECORATOR_VIEW);

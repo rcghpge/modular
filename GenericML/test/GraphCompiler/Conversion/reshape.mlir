@@ -33,7 +33,7 @@ mo.graph @reshape_static_input_static_output(%arg: !mo.tensor<[4], f32>) -> !mo.
 // CHECK-NEXT: %[[SHAPE_BUF:.*]], %[[SHAPE_SPEC:.*]] = mgp.cpu.tensor.extract %[[SHAPE]] : !mgp.cpu.tensor<2xsi64>
 
 // Invoke fallback shape function
-// CHECK: %[[IGNORED_CH:.*]], %[[OUT_DIMS:.*]]:2 = mgp.cpu.kernel.execute {{.*}}, summary "reshape_shape{{.*}}", out_dims 2
+// CHECK: %[[IGNORED_CH:.*]], %[[OUT_DIMS:.*]]:2 = mgp.cpu.kernel.execute {{.*}}, summary "reshape_shape{{.*}}" out_dims 2
 
 // Create output tensor with same buffer and new spec
 // CHECK-NEXT: %[[OUT_SPEC:.*]] = mgp.cpu.tensor_spec.create %[[OUT_DIMS]]#0, %[[OUT_DIMS]]#1 : !mgp.cpu.tensor_spec<?x?xf32>

@@ -522,7 +522,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
           /*fusionBodyLambda=*/kernelToFuseInto.getFusionBodyLambdaAttr(),
           /*isViewOp=*/kernelToFuseInto.getIsViewOpAttr(),
           /*isKGEN=*/kernelToFuseInto.getIsKGENAttr(),
-          /*summary=*/getSummaryString({kernelToFuseInto, userToFuseIn}));
+          /*summary=*/getSummaryString({kernelToFuseInto, userToFuseIn}),
+          /*isAsync=*/kernelToFuseInto.getIsAsyncAttr());
       newDstKernel.getBody().takeBody(kernelToFuseInto.getBody());
       userToFuseIn.getResult(0).replaceAllUsesWith(newDstKernel.getResult(0));
 

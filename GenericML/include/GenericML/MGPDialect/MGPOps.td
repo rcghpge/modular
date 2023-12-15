@@ -1824,7 +1824,7 @@ def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
                     (in %buf0 : !mgp.cpu.buffer,
                      in %buf1 : !mgp.cpu.buffer<8>,
                      out %buf2 : !mgp.cpu.buffer<48>),
-                    (%dim0, %dim1), summary "kernel1", out_dims 1
+                    (%dim0, %dim1), summary "kernel1" out_dims 1
     %ch1 : !mef.chain
     %dim2 : index
     ```
@@ -1836,11 +1836,12 @@ def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
                        MGP_ContextType:$theContext,
                        Variadic<AnyTypeOf<[MGP_CpuBufferType, MGP_List]>>:$args,
                        Variadic<Index>:$inDimensions,
-                       UI64Attr:$aSlot,                                      // 0
-                       UI64Attr:$bKernelIndex,                               // 1
-                       M_InOutSignatureAttr:$cInOutSignature,                // 2
-                       StrAttr:$dSummary,                                    // 3
-                       DefaultValuedAttr<UI64Attr, "0">:$eNumOutDimensions); // 4
+                       UI64Attr:$aSlot,                                     // 0
+                       UI64Attr:$bKernelIndex,                              // 1
+                       M_InOutSignatureAttr:$cInOutSignature,               // 2
+                       StrAttr:$dSummary,                                   // 3
+                       DefaultValuedAttr<UI64Attr, "0">:$eNumOutDimensions, // 4
+                       DefaultValuedAttr<BoolAttr, "false">:$fIsAsync);     // 5
   let results = (outs ChainType:$outChain,
                       Variadic<Index>:$outDimensions);
   let assemblyFormat = [{
@@ -1848,7 +1849,9 @@ def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
     custom<InOutArgsSignature>($args, type($args), $cInOutSignature) `,`
     ( `(` $inDimensions^ `)` `,` )?
     `summary` $dSummary
-    ( `,` `out_dims` $eNumOutDimensions^ )? attr-dict
+    ( `out_dims` $eNumOutDimensions^ )?
+    ( `is_async` $fIsAsync^ )?
+    attr-dict
   }];
 
   let hasVerifier = 1;

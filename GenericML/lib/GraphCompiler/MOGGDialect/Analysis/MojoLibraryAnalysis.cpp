@@ -355,7 +355,7 @@ MojoLibraryAnalysis::get(MLIRContext *ctx,
   assert(mojoBindings);
   assert(!loadUserProvidedKernels(*mojoBindings, kernelLibraryPaths).isError());
 
-  // Iterate over the avaliable generators and check if each matches a mo
+  // Iterate over the available generators and check if each matches a mo
   // operation.
   DenseMap<StringRef, SmallVector<Candidate>> candidates;
   for (auto generator : mojoBindings->getOps<KGEN::GeneratorOp>()) {
