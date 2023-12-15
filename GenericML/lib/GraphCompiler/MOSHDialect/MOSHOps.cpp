@@ -136,9 +136,15 @@ TypedAttr GetDimOp::emitStaticCall(TypedAttr inputShape, int64_t axis) {
 OpFoldResult GetDimOp::fold(FoldAdaptor adaptor) {
   auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput());
   auto dim = dyn_cast_or_null<IntegerAttr>(adaptor.getDim());
-  if (input && dim)
-    return input.getValues()[normalizeAxis(dim.getValue().getSExtValue(),
-                                           input.getRank())];
+  if (input && dim) {
+    auto normalizedAxis =
+        normalizeAxis(dim.getValue().getSExtValue(), input.getRank());
+    ArrayRef<TypedAttr> values = input.getValues();
+    assert((normalizedAxis >= 0) &&
+           (normalizedAxis < static_cast<int64_t>(values.size())) &&
+           "Normalized axis must be in range [0, rank]");
+    return values[normalizedAxis];
+  }
   return {};
 }
 
