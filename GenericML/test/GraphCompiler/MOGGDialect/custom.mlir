@@ -13,3 +13,12 @@ mo.graph @input_output_fusion(%arg0: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f3
   %2 = mo.relu(%1) : !mo.tensor<[2], f32>
   mo.output %2 : !mo.tensor<[2], f32>
 }
+
+mo.graph @custom_with_params(%arg0: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> no_inline {
+  %1 = mo.custom {symbol = "test_custom_op_params", extra_param = 42, extra_param2 = "My String Param"}(%arg0) (!mo.tensor<[2], f32>) -> !mo.tensor<[2], f32>
+  mo.output %1 : !mo.tensor<[2], f32>
+}
+
+// Check the parameters have survived into MOGG.
+// CHECK-LABEL: mo.graph @custom_with_params
+// CHECK: mogg.call "test_custom_op_params" []({{.*}}) {extra_param = 42 : i64, extra_param2 = "My String Param"}
