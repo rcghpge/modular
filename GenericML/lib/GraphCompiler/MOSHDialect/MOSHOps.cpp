@@ -168,12 +168,6 @@ OpFoldResult NumElementsOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
-/// Clamps `axisApInt` to the range [0, rank].
-static int64_t clampAxis(const APInt &axisApInt, int64_t rank) {
-  int64_t axis = normalizeAxis(axisApInt.getSExtValue(), rank);
-  return std::max(std::min(axis, rank), (int64_t)0);
-}
-
 OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
   auto inputAttr = dyn_cast_or_null<ShapeAttr>(adaptor.getInput());
   auto startAttr = dyn_cast_or_null<IntegerAttr>(adaptor.getStart());
@@ -185,8 +179,14 @@ OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
   // semantics these arguments may fall outside the rank of the `ShapeAttr`.
   // TODO: is this really needed? Maybe we should just enforce this in IR.
   int64_t rank = inputAttr.getRank();
-  int64_t end = clampAxis(endAttr.getValue(), rank);
-  int64_t start = clampAxis(startAttr.getValue(), rank);
+  int64_t end = clampAxis(endAttr.getValue().getSExtValue(), rank);
+  int64_t start = clampAxis(startAttr.getValue().getSExtValue(), rank);
+
+  // Ensure that the indices we use to create slicedDims are valid.
+  if (start > end) {
+    assert(false && "start index must be less than end index");
+    return {};
+  }
 
   auto it = inputAttr.getValues().begin();
   SmallVector<TypedAttr> slicedDims(it + start, it + end);
