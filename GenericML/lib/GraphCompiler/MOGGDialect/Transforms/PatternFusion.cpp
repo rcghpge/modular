@@ -20,8 +20,7 @@
 #include <numeric>
 
 using namespace M;
-using namespace mlir;
-using namespace mlir::matchers;
+using namespace graph_compiler::matchers;
 
 namespace M::MOGG {
 

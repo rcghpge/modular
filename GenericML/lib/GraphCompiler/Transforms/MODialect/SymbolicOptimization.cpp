@@ -19,15 +19,13 @@
 
 #include "./Utils.h"
 
-#include <mlir/IR/Matchers.h>
 #include <numeric>
 
 #define DEBUG_TYPE "symbolic-optimization"
 
 using namespace M;
 using namespace MO;
-using namespace mlir::matchers;
-using mlir::m_Op;
+using namespace graph_compiler::matchers;
 
 namespace M::MO {
 #define GEN_PASS_DEF_SYMBOLICOPTIMIZATION

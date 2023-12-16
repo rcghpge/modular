@@ -13,6 +13,8 @@
 // until such a time that mojo is capable of expressing this kind of
 // functionality
 //
+// The code in this file is forked and heavily modified from mlir/IR/Matchers.h
+//
 //===----------------------------------------------------------------------===//
 
 #ifndef GENERICML_GRAPHCOMPILER_MATCHERS_H
@@ -20,34 +22,236 @@
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
-#include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpDefinition.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/raw_ostream.h"
+#include <string>
 
-namespace mlir {
+namespace graph_compiler {
+
+template <typename UnnamedType>
+std::string stringifyMLIRObject(UnnamedType &&obj) {
+  std::string strRepr;
+  llvm::raw_string_ostream stream(strRepr);
+  obj.print(stream);
+
+  return strRepr;
+}
+// Class to Log the execution of patterns for debug purposes
+// It strives to be as minimal as possible, keeping track
+// only of nodes that were visited on the way to a failure
+// Future extensions could log the entire graph traversal
+// for cleaner debugging.
+class Logger {
+public:
+  // Push an mlir op/value onto the traversal stack
+  template <typename T>
+  void push(T &&val) {
+    stack.push_back(stringifyMLIRObject(val));
+  }
+  // Pop back to a fork if a particular fork was
+  // sucessful, not as interesting to look at
+  template <typename T>
+  void pop(T &&val) {
+    auto string = stringifyMLIRObject(val);
+    // Clear anything that is on the stack
+    // Before this op was found good, i.e.,
+    // one branch of an optional was wrong
+    auto pos = std::find(stack.rbegin(), stack.rend(), string);
+    stack.erase(stack.end() - std::distance(stack.rbegin(), pos), stack.end());
+  }
+  // Mark a match failure along with the pattern that
+  // was attempting to match
+  void markDeadEnd(const std::string &pattern) {
+    stack.emplace_back("Hit a Dead End at " + pattern + "! Rewinding Stack.");
+  }
+  // Print out the collected events
+  void print(llvm::raw_ostream &os) {
+    tabs = "";
+    for (auto i = stack.rbegin(), e = stack.rend(); i != e; ++i) {
+      if ((*i).rfind("Hit a Dead End", 0) == 0)
+        tabs = "";
+      os << tabs + *i << '\n';
+      tabs += " ";
+    }
+  }
+
+private:
+  std::vector<std::string> stack;
+  std::string tabs = "";
+};
+
+// Utility to print the log
+inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os, Logger &log) {
+  log.print(os);
+  return os;
+}
 
 namespace detail {
+
+/// Terminal matcher, always returns true.
+struct AnyValueMatcher {
+  bool match(mlir::Value op, Logger *log = nullptr) const { return true; }
+};
+/// Trait to check whether T provides a 'match' method with type
+/// `MatchTarget` (Value, Operation, or Attribute).
+template <typename T, typename MatchTarget>
+using has_compatible_matcher_t = decltype(std::declval<T>().match(
+    std::declval<MatchTarget>(), std::declval<Logger *>()));
+
+/// Statically switch to a Value matcher.
+template <typename MatcherClass>
+std::enable_if_t<llvm::is_detected<detail::has_compatible_matcher_t,
+                                   MatcherClass, mlir::Value>::value,
+                 bool>
+matchOperandOrValue(mlir::Value op, MatcherClass &matcher,
+                    Logger *log = nullptr) {
+  return matcher.match(op, log);
+}
+
+/// Statically switch to an Operation matcher.
+template <typename MatcherClass>
+std::enable_if_t<llvm::is_detected<detail::has_compatible_matcher_t,
+                                   MatcherClass, mlir::Operation *>::value,
+                 bool>
+matchOperandOrValue(mlir::Value op, MatcherClass &matcher,
+                    Logger *log = nullptr) {
+  if (auto *defOp = op.getDefiningOp())
+    return matcher.match(defOp, log);
+  return false;
+}
+
+/// Statically switch to a Value matcher.
+template <typename MatcherClass>
+std::enable_if_t<llvm::is_detected<detail::has_compatible_matcher_t,
+                                   MatcherClass, mlir::Value>::value,
+                 bool>
+matchOperandOrValueAtIndex(mlir::Operation *op, unsigned idx,
+                           MatcherClass &matcher, Logger *log = nullptr) {
+  return matcher.match(op->getOperand(idx), log);
+}
+
+/// Statically switch to an Operation matcher.
+template <typename MatcherClass>
+std::enable_if_t<llvm::is_detected<detail::has_compatible_matcher_t,
+                                   MatcherClass, mlir::Operation *>::value,
+                 bool>
+matchOperandOrValueAtIndex(mlir::Operation *op, unsigned idx,
+                           MatcherClass &matcher, Logger *log = nullptr) {
+  if (auto *defOp = op->getOperand(idx).getDefiningOp())
+    return matcher.match(defOp, log);
+  return false;
+}
+
+template <typename TupleT, class CallbackT, std::size_t... Is>
+constexpr void enumerateImpl(TupleT &&tuple, CallbackT &&callback,
+                             std::index_sequence<Is...>) {
+
+  (callback(std::integral_constant<std::size_t, Is>{}, std::get<Is>(tuple)),
+   ...);
+}
+
+template <typename... Tys, typename CallbackT>
+constexpr void enumerate(std::tuple<Tys...> &tuple, CallbackT &&callback) {
+  detail::enumerateImpl(tuple, std::forward<CallbackT>(callback),
+                        std::make_index_sequence<sizeof...(Tys)>{});
+}
+
+/// RecursivePatternMatcher that composes.
+/// Heavily modified from upstream to support logging
+/// Including SIFNAE to get the right names for pattern ops
+template <typename OpType, typename... OperandMatchers>
+struct RecursivePatternMatcher {
+  RecursivePatternMatcher(OperandMatchers... matchers)
+      : operandMatchers(matchers...) {}
+  using yes = char[1];
+  using no = char[2];
+  bool match(mlir::Operation *op, Logger *log = nullptr) {
+    if (log)
+      log->push(*op);
+    if (!llvm::isa<OpType>(op)) {
+      if (log)
+        log->markDeadEnd(std::string("OpPattern " + getName() +
+                                     " didn't match MLIR OpType"));
+      return false;
+    }
+    if (op->getNumOperands() != sizeof...(OperandMatchers)) {
+      if (log)
+        log->markDeadEnd(std::string(
+            "OpPattern \"" + getName() + "\" had " +
+            std::to_string(sizeof...(OperandMatchers)) +
+            " while the mlir op had " + std::to_string(op->getNumOperands())));
+      return false;
+    }
+    bool res = true;
+    enumerate(operandMatchers, [&](size_t index, auto &matcher) {
+      res &= matchOperandOrValueAtIndex(op, index, matcher, log);
+    });
+    if (log && res)
+      log->pop(*op);
+    return res;
+  }
+
+  // Template black magic
+  template <typename T>
+  using has_name_t = decltype(std::declval<T>().getOperationName());
+
+  template <class Q = OpType>
+  typename std::enable_if<llvm::is_detected<has_name_t, Q>::value,
+                          std::string>::type
+  getName() {
+    return Q::getOperationName().str();
+  }
+
+  template <class Q = OpType>
+  typename std::enable_if<!llvm::is_detected<has_name_t, Q>::value,
+                          std::string>::type
+  getName() {
+    return "Interface Op";
+  }
+
+  std::tuple<OperandMatchers...> operandMatchers;
+};
 
 /// RecursivePatternMatcher that composes.
 template <typename... OperandMatchers>
 struct UnregisteredRecursivePatternMatcher {
-  UnregisteredRecursivePatternMatcher(StringRef opName,
+  UnregisteredRecursivePatternMatcher(mlir::StringRef opName,
                                       OperandMatchers... matchers)
       : opName(opName), operandMatchers(matchers...) {}
-  bool match(Operation *op) {
-    if (op->getName().getStringRef() != opName &&
-        op->getNumOperands() != sizeof...(OperandMatchers))
+  bool match(mlir::Operation *op, Logger *log = nullptr) {
+    if (log)
+      log->push(*op);
+    if (op->getName().getStringRef() != opName) {
+      if (log)
+        log->markDeadEnd(std::string("OpPattern " + opName.str() +
+                                     " didn't match MLIR OpType"));
       return false;
+    }
+    if (op->getNumOperands() != sizeof...(OperandMatchers)) {
+      if (log)
+        log->markDeadEnd(std::string(
+            "OpPattern " + opName.str() + " had " +
+            std::to_string(sizeof...(OperandMatchers)) +
+            " while the mlir op had " + std::to_string(op->getNumOperands())));
+      return false;
+    }
     bool res = true;
-    mlir::detail::enumerate(operandMatchers, [&](size_t idx, auto &matcher) {
-      res &= mlir::detail::matchOperandOrValueAtIndex(op, idx, matcher);
+    enumerate(operandMatchers, [&](size_t idx, auto &matcher) {
+      res &= matchOperandOrValueAtIndex(op, idx, matcher, log);
     });
+
+    if (log && res)
+      log->pop(*op);
+
     return res;
   }
 
 private:
-  StringRef opName;
+  llvm::StringRef opName;
   std::tuple<OperandMatchers...> operandMatchers;
 };
 
@@ -55,10 +259,11 @@ template <typename T, typename Matcher>
 struct Capture {
   Capture(T *bindDest, Matcher matcher)
       : bindDest(*bindDest), matcher(matcher) {}
-  bool match(T op) {
-    if (!matcher.match(op))
+  bool match(T op, Logger *log = nullptr) {
+    if (!matcher.match(op, log))
       return false;
-
+    // Don't log a sucessful capture, it was already
+    // logged in the match. May revisit in the future
     bindDest = op;
     return true;
   }
@@ -74,15 +279,23 @@ Capture(T, Matcher) -> Capture<T, Matcher>;
 
 template <typename U, typename Matcher>
 struct StringAttrMatcher {
-  StringAttrMatcher(StringRef name, U value, Matcher matcher)
+  StringAttrMatcher(llvm::StringRef name, U value, Matcher matcher)
       : name(name), value(value), matcher(matcher) {}
-  bool match(Operation *op) {
-    return op->hasAttr(name) && op->getAttrOfType<StringAttr>(name) == value &&
-           matcher.match(op);
+  bool match(mlir::Operation *op, Logger *log = nullptr) {
+    if (log)
+      log->push(*op);
+    bool res =
+        op->hasAttr(name) && op->getAttrOfType<mlir::StringAttr>(name) == value;
+    if (!res && log)
+      log->markDeadEnd("StringAttrPattern");
+    res &= matcher.match(op, log);
+    if (log && res)
+      log->pop(*op);
+    return res;
   }
 
 private:
-  StringRef name;
+  llvm::StringRef name;
   U value;
   Matcher matcher;
 };
@@ -91,22 +304,35 @@ private:
 template <typename U, typename Matcher>
 StringAttrMatcher(U, Matcher) -> StringAttrMatcher<U, Matcher>;
 
+// Find a scalar constant that matches a particular variable.
+// Almost certainly need to do dtype dispatch on this in the future.
 template <typename T>
 struct MOScalarConstantMatcher {
   MOScalarConstantMatcher(T targetValue) : targetValue(targetValue) {}
 
-  bool match(Value val) {
-    auto tensorVal = dyn_cast<M::MO::TensorValue>(val);
+  bool match(mlir::Value val, Logger *log = nullptr) {
+    if (log)
+      log->push(val);
+    auto tensorVal = llvm::dyn_cast<M::MO::TensorValue>(val);
     if (!tensorVal)
       return false;
 
-    std::optional<SmallVector<T>> maybeInt =
+    std::optional<llvm::SmallVector<T>> maybeInt =
         M::MO::tryGetConstantOfRank<T>(tensorVal, 0);
     // TODO: Make this approximate for floating point numbers?
-    if (maybeInt.has_value())
-      return maybeInt.value().front() == targetValue;
-
-    return false;
+    bool res = false;
+    if (maybeInt.has_value()) {
+      res = maybeInt.value().front() == targetValue;
+      if (log && !res)
+        log->markDeadEnd("MOScalarConstant expected" +
+                         std::to_string(targetValue));
+    } else {
+      if (log)
+        log->markDeadEnd("MOScalarConstant did not find a constant");
+    }
+    if (log && res)
+      log->pop(val);
+    return res;
   }
 
 private:
@@ -117,21 +343,37 @@ private:
 template <typename T>
 MOScalarConstantMatcher(T) -> MOScalarConstantMatcher<T>;
 
+// Check a value for a particular rank
 template <typename Matcher>
 struct MORankedValueMatcher {
   MORankedValueMatcher(int64_t targetRank, Matcher matcher)
       : targetRank(targetRank), matcher(matcher) {}
-  bool match(Value op) {
-    if (auto type = dyn_cast<ShapedType>(op.getType())) {
-      return type.hasRank() && type.getRank() == targetRank &&
-             matcher.match(op);
+  bool match(mlir::Value op, Logger *log = nullptr) {
+    if (log)
+      log->push(op);
+    bool res = false;
+    if (auto type = llvm::dyn_cast<mlir::ShapedType>(op.getType())) {
+      res = type.hasRank() && type.getRank() == targetRank;
+      if (!res && log) {
+        log->markDeadEnd("MORankedValue expected " +
+                         std::to_string(targetRank));
+        return false;
+      }
+      res &= matcher.match(op, log);
     }
-    if (auto type = dyn_cast<M::MO::TensorType>(op.getType())) {
-      return type.hasRank() &&
-             static_cast<int64_t>(type.getRank()) == targetRank &&
-             matcher.match(op);
+    if (auto type = llvm::dyn_cast<M::MO::TensorType>(op.getType())) {
+      res =
+          type.hasRank() && static_cast<int64_t>(type.getRank()) == targetRank;
+      if (!res && log) {
+        log->markDeadEnd("MORankedValue expected " +
+                         std::to_string(targetRank));
+        return false;
+      }
+      res &= matcher.match(op, log);
     }
-    return false;
+    if (log && res)
+      log->pop(op);
+    return res;
   }
 
 private:
@@ -139,46 +381,41 @@ private:
   Matcher matcher;
 };
 
+// Check a Value for a partciular Type
 template <typename T, typename Matcher>
 struct TypeMatcher {
   TypeMatcher(Matcher matcher) : matcher(matcher) {}
-  bool match(Value op) {
-    if (dyn_cast<T>(op.getType()))
-      return matcher.match(op);
-    return false;
+  bool match(mlir::Value op, Logger *log = nullptr) {
+    bool res = false;
+    if (log)
+      log->push(op);
+    if (llvm::dyn_cast<T>(op.getType()))
+      res = matcher.match(op, log);
+    else if (log)
+      log->markDeadEnd("TypeMatcher");
+    if (log && res)
+      log->pop(op);
+    return res;
   }
 
 private:
   Matcher matcher;
 };
 
-/// Statically switch to a Value matcher.
-template <typename MatcherClass>
-std::enable_if_t<llvm::is_detected<detail::has_compatible_matcher_t,
-                                   MatcherClass, Value>::value,
-                 bool>
-matchOperandOrValue(Value op, MatcherClass &matcher) {
-  return matcher.match(op);
-}
-
-/// Statically switch to an Operation matcher.
-template <typename MatcherClass>
-std::enable_if_t<llvm::is_detected<detail::has_compatible_matcher_t,
-                                   MatcherClass, Operation *>::value,
-                 bool>
-matchOperandOrValue(Value op, MatcherClass &matcher) {
-  if (auto *defOp = op.getDefiningOp())
-    return matcher.match(defOp);
-  return false;
-}
-
+// Return true if either pattern 1 or pottern2
+// match the subgraph
 template <typename Matcher1, typename Matcher2>
 struct OptionalMatcher {
   OptionalMatcher(Matcher1 matcher1, Matcher2 matcher2)
       : matcher1(matcher1), matcher2(matcher2) {}
-  bool match(Value op) {
-    return matchOperandOrValue(op, matcher1) ||
-           matchOperandOrValue(op, matcher2);
+  bool match(mlir::Value op, Logger *log = nullptr) {
+    if (log)
+      log->push(op);
+    bool res = matchOperandOrValue(op, matcher1, log) ||
+               matchOperandOrValue(op, matcher2, log);
+    if (log && res)
+      log->pop(op);
+    return res;
   }
 
 private:
@@ -186,34 +423,102 @@ private:
   Matcher2 matcher2;
 };
 
+// Check if an op is Constant Like
+// Used for cross-dialect checks
+struct constant_op_matcher {
+  bool match(mlir::Operation *op, Logger *log = nullptr) {
+    if (log)
+      log->push(*op);
+    bool res = op->hasTrait<mlir::OpTrait::ConstantLike>();
+    if (log && res)
+      log->pop(*op);
+    else if (log)
+      log->markDeadEnd("ConstantOpMatcher");
+    return res;
+  }
+};
+
+/// The matcher that matches operations that have the `ConstantLike` trait, and
+/// binds the folded attribute value.
+template <typename AttrT>
+struct constant_op_binder {
+  AttrT *bind_value;
+
+  /// Creates a matcher instance that binds the constant attribute value to
+  /// bind_value if match succeeds.
+  constant_op_binder(AttrT *bind_value) : bind_value(bind_value) {}
+  /// Creates a matcher instance that doesn't bind if match succeeds.
+  constant_op_binder() : bind_value(nullptr) {}
+
+  bool match(mlir::Operation *op, Logger *log = nullptr) {
+    if (log)
+      log->push(*op);
+    if (!op->hasTrait<mlir::OpTrait::ConstantLike>()) {
+      if (log)
+        log->markDeadEnd("ConstantOpBinder");
+      return false;
+    }
+
+    // Fold the constant to an attribute.
+    llvm::SmallVector<mlir::OpFoldResult, 1> foldedOp;
+    mlir::LogicalResult result = op->fold(/*operands=*/std::nullopt, foldedOp);
+    (void)result;
+    assert(succeeded(result) && "expected ConstantLike op to be foldable");
+
+    if (auto attr =
+            llvm::dyn_cast<AttrT>(foldedOp.front().get<mlir::Attribute>())) {
+      if (bind_value)
+        *bind_value = attr;
+      if (log)
+        log->pop(*op);
+      else if (log)
+        log->markDeadEnd("ConstantOpBinder");
+      return true;
+    }
+    return false;
+  }
+};
+
+template <typename AttrT>
+inline detail::constant_op_binder<AttrT> m_Constant(AttrT *bind_value) {
+  return detail::constant_op_binder<AttrT>(bind_value);
+}
+
 } // namespace detail
 
+namespace matchers {
+
 template <typename OpType, typename... Matchers>
-auto m_Op(Operation **bindDest, Matchers... matchers) {
+auto m_Op(Matchers... matchers) {
+  return detail::RecursivePatternMatcher<OpType, Matchers...>(matchers...);
+}
+
+template <typename OpType, typename... Matchers>
+auto m_Op(mlir::Operation **bindDest, Matchers... matchers) {
   return detail::Capture(bindDest, m_Op<OpType, Matchers...>(matchers...));
 }
 
 template <typename... Matchers>
-auto m_Op(StringRef opName, Matchers... matchers) {
+auto m_Op(llvm::StringRef opName, Matchers... matchers) {
   return detail::UnregisteredRecursivePatternMatcher<Matchers...>(opName,
                                                                   matchers...);
 }
 
 template <typename... Matchers>
-auto m_Op(Operation **bindDest, StringRef opName, Matchers... matchers) {
+auto m_Op(mlir::Operation **bindDest, llvm::StringRef opName,
+          Matchers... matchers) {
   return detail::Capture(bindDest, m_Op(opName, matchers...));
 }
 
-namespace matchers {
-
 template <typename Matcher>
-auto m_StringAttr(StringRef attrName, StringRef opName, Matcher matcher) {
+auto m_StringAttr(llvm::StringRef attrName, llvm::StringRef opName,
+                  Matcher matcher) {
   return detail::StringAttrMatcher(attrName, opName, matcher);
 }
 
 template <typename... Matchers>
-auto m_StringAttr(Operation **bindDest, StringRef attrName, StringRef opName,
-                  Matchers... matchers) {
+auto m_StringAttr(mlir::Operation **bindDest, llvm::StringRef attrName,
+                  llvm::StringRef opName, Matchers... matchers) {
   return detail::Capture(bindDest, m_StringAttr(attrName, opName, matchers...));
 }
 
@@ -238,7 +543,7 @@ auto m_Typed(Matcher matcher) {
 }
 
 template <typename T, typename Matcher>
-auto m_Typed(Value *val, Matcher matcher) {
+auto m_Typed(mlir::Value *val, Matcher matcher) {
   return detail::Capture(val, m_Typed<T, Matcher>(matcher));
 }
 
@@ -269,13 +574,64 @@ auto m_BinaryCommutativeOp(Matcher1 matcher1, Matcher2 matcher2) {
 }
 
 template <typename OpType, typename Matcher1, typename Matcher2>
-auto m_BinaryCommutativeOp(Operation **bindDest, Matcher1 matcher1,
+auto m_BinaryCommutativeOp(mlir::Operation **bindDest, Matcher1 matcher1,
                            Matcher2 matcher2) {
   return m_Optional(m_Op<OpType>(bindDest, matcher1, matcher2),
                     m_Op<OpType>(bindDest, matcher2, matcher1));
 }
 
-} // namespace matchers
-} // namespace mlir
+inline auto m_Any() { return detail::AnyValueMatcher(); }
+inline auto m_Any(mlir::Value *val) { return detail::Capture(val, m_Any()); }
 
+inline auto m_Constant() { return detail::constant_op_matcher(); }
+
+inline auto m_Constant(mlir::Value *val) {
+  return detail::Capture(val, m_Constant());
+}
+
+/// Matches a value from a constant foldable operation and writes the value to
+/// bind_value.
+template <typename AttrT>
+inline detail::constant_op_binder<AttrT> m_Constant(AttrT *bind_value) {
+  return detail::constant_op_binder<AttrT>(bind_value);
+}
+/// Entry point for matching a pattern over a Value.
+template <typename Pattern>
+inline bool matchPattern(mlir::Value value, const Pattern &pattern) {
+  assert(value);
+  // TODO: handle other cases
+  if (auto *op = value.getDefiningOp())
+    return const_cast<Pattern &>(pattern).match(op);
+  return false;
+}
+
+/// Entry point for matching a pattern over an Operation.
+template <typename Pattern>
+inline bool matchPattern(mlir::Operation *op, const Pattern &pattern) {
+  assert(op);
+  return const_cast<Pattern &>(pattern).match(op);
+}
+
+} // namespace matchers
+} // namespace graph_compiler
+
+namespace M {
+namespace MO {
+
+/// Returns a parameter constant attribute through a variant of ToTensor ops if
+/// possible. Otherwise returns a null attribute.
+template <typename ToTensorOpTy>
+static TypedAttr getParamConstThrough(TensorValue inputVal) {
+  if (auto toTensorOp = inputVal.template getDefiningOp<ToTensorOpTy>()) {
+    TypedAttr value;
+    if (graph_compiler::matchers::matchPattern(
+            toTensorOp.getInput(),
+            graph_compiler::matchers::m_Constant(&value)))
+      return value;
+  }
+  return {};
+}
+
+} // namespace MO
+} // namespace M
 #endif // GENERICML_GRAPHCOMPILER_MATCHERS_H

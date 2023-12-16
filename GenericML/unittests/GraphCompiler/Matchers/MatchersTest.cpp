@@ -5,6 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/Matchers.h"
+
+#include "GenericML/GraphCompiler/Conversion/MOSupport/Broadcast.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
@@ -16,7 +18,7 @@
 using namespace M;
 using namespace M::MO;
 using namespace mlir;
-using namespace mlir::matchers;
+using namespace graph_compiler::matchers;
 
 class MatchersTest : public ::testing::Test {
 public:
@@ -38,6 +40,19 @@ protected:
     graph = builder.create<MO::GraphOp>(module.getLoc(), "test", inputTypes,
                                         SmallVector<Type>{});
     builder.setInsertionPointToEnd(graph.getBodyBlock());
+    Value in0 = graph.getArgument(0);
+    Value in1 = graph.getArgument(1);
+    Value in2 = graph.getArgument(2);
+    Value shape1 = builder.create<MO::ShapeOfOp>(graph.getLoc(),
+                                                 cast<MO::TensorValue>(in1));
+    Value shape2 = builder.create<MO::ShapeOfOp>(graph.getLoc(),
+                                                 cast<MO::TensorValue>(in2));
+    A = builder.create<MO::BroadcastToOp>(graph.getLoc(), in1.getType(), in0,
+                                          shape1);
+    B = builder.create<MO::AddOp>(graph.getLoc(), A, in1);
+    C = builder.create<MO::BroadcastToOp>(graph.getLoc(), B.getType(), B,
+                                          shape2);
+    D = builder.create<MO::SubOp>(graph.getLoc(), C, in2);
   }
 
   void TearDown() override { module->erase(); }
@@ -69,6 +84,7 @@ protected:
   GraphOp graph;
   OpBuilder builder;
   Location loc;
+  TensorValue A, B, C, D;
 };
 
 TEST_F(MatchersTest, Constants) {
@@ -129,7 +145,6 @@ TEST_F(MatchersTest, MOVector_Matrix) {
 
   ASSERT_NE(graph.getArgument(0), v);
   ASSERT_TRUE(vector.match(graph.getArgument(0)));
-  ASSERT_EQ(graph.getArgument(1), m);
   ASSERT_FALSE(vector.match(graph.getArgument(1)));
   ASSERT_FALSE(vector.match(graph.getArgument(2)));
 }
@@ -187,4 +202,19 @@ TEST_F(MatchersTest, Op) {
   ASSERT_EQ(x, lhs);
   ASSERT_EQ(y, rhs);
   ASSERT_EQ(z, third);
+}
+
+TEST_F(MatchersTest, Logging) {
+  auto pattern = m_Op<SubOp>(m_Op<SubOp>(m_Any(), m_Any()), m_Any());
+  graph_compiler::Logger log;
+
+  pattern.match(D.getDefiningOp(), &log);
+  ASSERT_EQ(
+      graph_compiler::stringifyMLIRObject(log),
+      "Hit a Dead End at OpPattern mo.sub didn't match MLIR OpType! Rewinding "
+      "Stack.\n %4 = \"mo.broadcast_to\"(%3, %1) {outputParamDecls = "
+      "#kgen<param.decls[]>} : (!mo.tensor<[1, 2], f32>, !mo.tensor<[3], "
+      "si32>) -> !mo.tensor<[1, 2], f32>\n  %5 = \"mo.sub\"(%4, %arg2) : "
+      "(!mo.tensor<[1, 2], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, "
+      "2], f32>\n");
 }

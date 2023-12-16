@@ -16,7 +16,6 @@
 #include "GenericML/GraphCompiler/MODialect/MOUtils.h"
 #include "KGEN/KGENDialect/KGENTypes.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"
-#include "mlir/IR/Matchers.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
@@ -109,18 +108,6 @@ std::optional<SmallVector<int64_t>> tryGetConstantIntVector(TensorValue val);
 /// RebindOp that takes in a ConstantOp), convert it to a boolean vector, else
 /// return None.
 std::optional<SmallVector<bool>> tryGetConstantBoolVector(TensorValue val);
-
-/// Returns a parameter constant attribute through a variant of ToTensor ops if
-/// possible. Otherwise returns a null attribute.
-template <typename ToTensorOpTy>
-static TypedAttr getParamConstThrough(TensorValue inputVal) {
-  if (auto toTensorOp = inputVal.template getDefiningOp<ToTensorOpTy>()) {
-    TypedAttr value;
-    if (mlir::matchPattern(toTensorOp.getInput(), mlir::m_Constant(&value)))
-      return value;
-  }
-  return {};
-}
 
 /// If any of the input/output tensor type's metadata changed, update the given
 /// GraphOp's function type and signature to reflect those changes as well.
