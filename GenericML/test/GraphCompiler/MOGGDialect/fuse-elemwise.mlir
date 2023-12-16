@@ -47,7 +47,7 @@ mo.graph @rightmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<
 // CHECK-NEXT:}
 // CHECK-NEXT: mogg.call "elementwise" [@elemwise_compute_lambda]
 // CHECK-NEXT: mogg.output
-// CHECK-NEXT:} {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn", "input_0_fn_1"], outputFusionInterface = ["output_0_fn"], summary = "mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sub{{.*}}+mo.add{{.*}}"}
+// CHECK-NEXT:} {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn", "input_0_fn_1"], isAsync = true, outputFusionInterface = ["output_0_fn"], summary = "mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sub{{.*}}+mo.add{{.*}}"}
 // CHECK:  mo.output %[[KERNEL_OUT]]
 
 
@@ -77,7 +77,7 @@ mo.graph @leftmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[
 // CHECK-NEXT:}
 // CHECK-NEXT: mogg.call "elementwise" [@elemwise_compute_lambda]
 // CHECK-NEXT: mogg.output
-// CHECK-NEXT:} {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_1_fn", "input_0_fn_0"], outputFusionInterface = ["output_0_fn"], summary = "mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sub{{.*}}+mo.add{{.*}}"}
+// CHECK-NEXT:} {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_1_fn", "input_0_fn_0"], isAsync = true, outputFusionInterface = ["output_0_fn"], summary = "mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sub{{.*}}+mo.add{{.*}}"}
 // CHECK:  mo.output %[[KERNEL_OUT]]
 
 
