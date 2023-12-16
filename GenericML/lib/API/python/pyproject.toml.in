@@ -50,11 +50,6 @@ manylinux-x86_64-image = "ghcr.io/modularml/modular/ai-engine-packaging-x86_64:s
 manylinux-aarch64-image = "ghcr.io/modularml/modular/ai-engine-packaging-aarch64:sha-f93bd2b"
 skip = ["cp36-* cp37-*, *-manylinux_i686", "*-musllinux*"]
 
-# These requirements of numpy and pytest should already be satisfied, but this future-proofs us a bit
-# in case the testing requirements change over time vs. the minimum of what the Python wheel
-# itself requires (numpy) in addition to the implicitly-installed `pytest` package inside the
-# `cibuildwheel` testing environment.
-
 before-test = [
   "pip install -r {project}/TensorFlow/integration-test/API/python/pytests/requirements.txt",
   "pip install -r {project}/PyTorch/integration-test/API/python/pytests/requirements.txt",
@@ -68,6 +63,7 @@ before-test = [
   # So install the stock PyTorch downloaded above for this python version.
   "pip install $(ls {project}/.derived/third-party/stock-pytorch/download/*cp$(python -c 'import sys; print(f\"{sys.version_info.major}{sys.version_info.minor}\")')*.whl | head -n 1)"
 ]
+
 # These tests use generated models from `MODULAR_DERIVED_PATH` and require this
 # environment variable to be set.
 test-command = [

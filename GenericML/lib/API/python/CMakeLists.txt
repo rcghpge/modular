@@ -78,6 +78,9 @@ add_custom_target(modular-pybind-ext ${ext_all} DEPENDS ${MODULAR_PACKED_WHEEL_H
 add_dependencies(modular-pybind-ext modular-engine)
 add_subdirectory(bindings/modular/engine)
 
+# Needs to be added after cmake knows about `core` defined in bindings/modular/engine
+add_subdirectory(tuf_packaging)
+
 set(MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:monnx>)
 
 # The wheel is built in the build directory.
