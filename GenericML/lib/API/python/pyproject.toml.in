@@ -27,7 +27,7 @@ experimental-string-processing = true
 archs = ["native"]
 before-all = "{project}/utils/build/engine_packaging/scripts/before-all.sh"
 before-build = "{project}/utils/build/engine_packaging/scripts/before-build.sh @MODULAR_VERSION_MAJOR@ @MODULAR_VERSION_MINOR@ @MODULAR_VERSION_PATCH@"
-build = "cp{38,39,310,311,312}-manylinux*"
+build = "cp{38,39,310,311}-manylinux*"
 build-frontend = "build"
 environment-pass = [
   "AWS_ACCESS_KEY_ID",
