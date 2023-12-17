@@ -18,7 +18,7 @@ inline int64_t normalizeAxis(int64_t axis, int64_t rank) {
 }
 
 /// Clamp axis to the range [0, rank].
-static int64_t clampAxis(int64_t axis, int64_t rank) {
+inline int64_t clampAxis(int64_t axis, int64_t rank) {
   int64_t normalizedAxis = normalizeAxis(axis, rank);
   return std::max(std::min(normalizedAxis, rank), (int64_t)0);
 }
