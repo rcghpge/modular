@@ -21,6 +21,10 @@
 
 using namespace M;
 
+static constexpr const char *kTelemetryLoggerName = "max";
+static constexpr const char *kTelemetryErrorEventName = "visualize.error";
+static constexpr const char *kTelemetrySuccessEventName = "visualize.success";
+
 namespace {
 
 struct ClOptions {
@@ -110,6 +114,8 @@ int M::maxVisualizeMain(int argc, char **argv) {
   auto modelOr = compileModel(opts, runtimeContext.get(), status.get());
   if (modelOr.isError()) {
     llvm::errs() << "Error compiling model: " << modelOr.getError() << "\n";
+    M_emitTelemetryEvent(runtimeContext.get(), kTelemetryLoggerName,
+                         kTelemetryErrorEventName, M_getError(status.get()));
     return EXIT_FAILURE;
   }
   (void)M::setProcessEnv("GENERATE_VISUALIZATION", "");
@@ -121,5 +127,7 @@ int M::maxVisualizeMain(int argc, char **argv) {
   llvm::outs()
       << "To visualize model, drop maxviz file into https://netron.app/\n";
 #endif // !MODULAR_PRODUCTION
+  M_emitTelemetryEvent(runtimeContext.get(), kTelemetryLoggerName,
+                       kTelemetrySuccessEventName, "");
   return EXIT_SUCCESS;
 }
