@@ -12,17 +12,22 @@
 #include "GenericML/EngineCLI/Benchmark/InputGenerator.h"
 #include "GenericML/EngineCLI/Benchmark/MLPerfIntegration.h"
 #include "PyTorch/API/modular/c/pytorch/config.h"
-#include "Support/CommandLine.h"
+#include "Support/Driver/DriverSupport.h"
 #include "Support/ErrorOr.h"
 #include "mlperf-loadgen/loadgen.h"
 #include "mlperf-loadgen/test_settings.h"
 #include "modular/c/custom_ops.h"
 #include "modular/cpp/aliases.h"
-#include "llvm/ADT/ScopeExit.h"
+#include "llvm/Option/ArgList.h"
+#include "llvm/Option/OptTable.h"
+#include "llvm/Option/Option.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include <chrono>
 #include <iostream>
+
+#define DRIVER_OPTIONS_PATH "BenchmarkOptions.inc"
+#include "Support/Driver/OptTable.inc"
 
 using namespace M;
 using namespace M::BenchmarkCLI;
@@ -33,34 +38,18 @@ static constexpr const char *kTelemetrySuccessEventName = "benchmark.success";
 
 namespace {
 
+struct BenchmarkOptTable : public llvm::opt::PrecomputedOptTable {
+  BenchmarkOptTable()
+      : llvm::opt::PrecomputedOptTable(InfoTable, PrefixTable) {}
+};
+
 struct ClOptions {
-  cl::opt<std::string> modelPath{llvm::cl::Positional, llvm::cl::Required,
-                                 cl::desc("Path to model file/directory")};
-  cl::opt<mlperf::TestScenario> mlPerfScenario{
-      "mlperf-scenario",
-      cl::desc("MLPerf Inference scenario to test (see "
-               "https://mlcommons.org/en/inference-datacenter-30/"
-               "#scenarios-and-metrics for definitions)"),
-      cl::init(mlperf::TestScenario::SingleStream),
-      cl::values(
-          clEnumValN(mlperf::TestScenario::SingleStream, "single-stream",
-                     "Single stream"),
-          clEnumValN(mlperf::TestScenario::MultiStream, "multiple-stream-2.0",
-                     "Multiple Stream 2.0"),
-          clEnumValN(mlperf::TestScenario::Server, "server", "Server"),
-          clEnumValN(mlperf::TestScenario::Offline, "offline", "Offline"))};
-  cl::opt<std::string> inputGenerationSchemaPath{
-      "input-generation-schema",
-      cl::desc("Path to input generation schema file")};
-  cl::opt<bool> roundTripInputGenerationSchema{
-      "round-trip-input-generation-schema",
-      cl::desc("Validate and round trip the provided input generation schema "
-               "and do not proceed to run benchmarking"),
-      llvm::cl::Hidden};
-  cl::opt<std::string> customOpsPath{
-      "custom-ops-path", cl::desc("Path to custom ops"), cl::init("")};
-  cl::opt<size_t> numThreads{"num-threads",
-                             cl::desc("Number of threads to use"), cl::init(0)};
+  std::string modelPath;
+  mlperf::TestScenario mlPerfScenario = mlperf::TestScenario::SingleStream;
+  std::string inputGenerationSchemaPath;
+  bool roundTripInputGenerationSchema = false;
+  std::string customOpsPath;
+  size_t numThreads = 0;
 };
 
 } // namespace
@@ -81,6 +70,81 @@ static llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
   llvm::report_fatal_error("Unknown mlperf::TestScenario value");
 }
 } // namespace mlperf
+
+static void printVersion(llvm::raw_ostream &os) {
+  ModularVersion version = getModularVersion();
+  os << llvm::formatv("{0} {1}.{2}.{3}{4} ({5})\n", kBenchmarkCLIProductName,
+                      version.major, version.minor, version.patch,
+                      version.label, version.revision);
+  os << "Modular version " << M_version() << "\n";
+}
+
+static std::optional<mlperf::TestScenario> parseMLPerfScenario(StringRef str) {
+  return llvm::StringSwitch<std::optional<mlperf::TestScenario>>(str)
+      .Case("single-stream", mlperf::TestScenario::SingleStream)
+      .Case("multiple-stream-2.0", mlperf::TestScenario::MultiStream)
+      .Case("server", mlperf::TestScenario::Server)
+      .Case("offline", mlperf::TestScenario::Offline)
+      .Default(std::nullopt);
+}
+
+static ClOptions parseOptions(const State &state) {
+  ClOptions opts;
+  BenchmarkOptTable optTable;
+  unsigned missingIndex = 0;
+  unsigned missingCount = 0;
+  auto args = optTable.ParseArgs(state.arguments, missingIndex, missingCount);
+  if (int exitCode = state.rejectUnknownArguments(args, options::OPT_UNKNOWN))
+    std::exit(exitCode);
+  if (args.hasArg(options::OPT_help))
+    std::exit(state.printHelp(
+#include "BenchmarkOptionsHelpText.inc"
+        ));
+  if (args.hasArg(options::OPT_version)) {
+    printVersion(llvm::outs());
+    std::exit(EXIT_SUCCESS);
+  }
+  if (!args.hasArg(options::OPT_INPUT))
+    std::exit(state.reportError("no model path provided"));
+  if (args.hasMultipleArgs(options::OPT_INPUT))
+    std::exit(state.reportError("must provide at most one model path"));
+  opts.modelPath = args.getLastArgValue(options::OPT_INPUT);
+  if (args.hasMultipleArgs(options::OPT_mlperf_scenario))
+    std::exit(state.reportError("must provide at most one MLPerf scenario"));
+  if (args.hasArg(options::OPT_mlperf_scenario)) {
+    if (auto scenario = parseMLPerfScenario(
+            args.getLastArgValue(options::OPT_mlperf_scenario));
+        scenario.has_value())
+      opts.mlPerfScenario = *scenario;
+    else
+      std::exit(
+          state.reportError("unrecognized MLPerf scenario `" +
+                            args.getLastArgValue(options::OPT_mlperf_scenario) +
+                            "' (known scenarios: single-stream, "
+                            "multiple-stream-2.0, server, offline)"));
+  }
+  if (args.hasMultipleArgs(options::OPT_input_generation_schema))
+    std::exit(
+        state.reportError("must provide at most one input generation schema"));
+  if (args.hasArg(options::OPT_input_generation_schema))
+    opts.inputGenerationSchemaPath =
+        args.getLastArgValue(options::OPT_input_generation_schema);
+  opts.roundTripInputGenerationSchema =
+      args.hasArg(options::OPT_round_trip_input_generation_schema);
+  if (args.hasMultipleArgs(options::OPT_custom_ops_path))
+    std::exit(state.reportError("must provide at most one custom ops path"));
+  if (args.hasArg(options::OPT_custom_ops_path))
+    opts.customOpsPath = args.getLastArgValue(options::OPT_custom_ops_path);
+  if (args.hasMultipleArgs(options::OPT_num_threads))
+    std::exit(state.reportError("must provide at most one number of threads"));
+  if (args.hasArg(options::OPT_num_threads) &&
+      args.getLastArgValue(options::OPT_num_threads)
+          .getAsInteger(10, opts.numThreads))
+    std::exit(state.reportError("invalid value `" +
+                                args.getLastArgValue(options::OPT_num_threads) +
+                                "' for --num-threads"));
+  return opts;
+}
 
 static ErrorOr<RuntimeContextPtr> makeRuntimeContext(M_Status *status,
                                                      size_t numThreads) {
@@ -188,16 +252,9 @@ static ErrorOr<double> estimateLatency(M_RuntimeContext *runtimeContext,
 }
 
 int M::maxBenchmarkMain(int argc, char **argv) {
-  ClOptions opts;
-
-  llvm::cl::SetVersionPrinter([](llvm::raw_ostream &os) {
-    ModularVersion version = getModularVersion();
-    os << llvm::formatv("{0} {1}.{2}.{3}{4} ({5})\n", kBenchmarkCLIProductName,
-                        version.major, version.minor, version.patch,
-                        version.label, version.revision);
-    os << "Modular version " << M_version() << "\n";
-  });
-  llvm::cl::ParseCommandLineOptions(argc, argv, kBenchmarkCLIProductName);
+  State state(kBenchmarkCLIProductName,
+              {argv + 1, static_cast<size_t>(argc) - 1});
+  ClOptions opts = parseOptions(state);
 
   llvm::outs() << "Modular Benchmarking Tool\n";
   llvm::outs() << "Modular version: " << M_version() << "\n";

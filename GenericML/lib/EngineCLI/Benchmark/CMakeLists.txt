@@ -4,6 +4,13 @@
 #
 ##===----------------------------------------------------------------------===##
 
+# TODO: Switch to add_driver_option_tablegen once all subcommands hooked up.
+set(LLVM_TARGET_DEFINITIONS BenchmarkOptions.td)
+tablegen(LLVM BenchmarkOptions.inc -gen-opt-parser-defs)
+tablegen(DRIVER BenchmarkOptionsHelpText.inc -gen-help-text)
+tablegen(DRIVER max-benchmark.1 -gen-man-page)
+add_public_tablegen_target(EngineCLIDriverBenchmarkOptions)
+
 add_genericml_library(EngineCLIBenchmark
   APIBridge.cpp
   InputGenerationDefaults.cpp
@@ -15,11 +22,17 @@ add_genericml_library(EngineCLIBenchmark
   NPYReader.cpp
   Tensor.cpp
 
+  DEPENDS
+  EngineCLIDriverBenchmarkOptions
+
   LINK_LIBS PUBLIC
   MSupport
+  MSupportDriver
   mlperf-loadgen
   modular-framework-common
 )
+
+target_include_directories(EngineCLIBenchmark PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 
 # Can't go into LINK_LIBS above because of a layering violation.
 # add_genericml_library checks that all targets listed in LINK_LIBS exist.  But
