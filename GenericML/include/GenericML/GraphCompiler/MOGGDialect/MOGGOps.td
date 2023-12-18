@@ -33,35 +33,6 @@ class MOGG_LowerableOp<string mnemonic, list<Trait> traits = []>
     : MOGG_Op<mnemonic, traits # [DeclareOpInterfaceMethods<LowerableToMGPInterface, ["lower"]>]>;
 
 //===----------------------------------------------------------------------===//
-// MOGG subgraph ops
-//===----------------------------------------------------------------------===//
-
-def MOGG_ExtOp : MOGG_LowerableOp<"ext.op", [Pure]> {
-  let summary = "MOGG representation of an external library kernel";
-  let description = [{
-    This is a generic subgraph to represent calls to kernel libraries.
-
-    It contains the name of the kernel, variadic inputs and outputs, and a body
-    region for holding the externally called library for lowering.
-
-    These kernel libraries must always be on the 'host' device.
-  }];
-
-  let arguments = (ins
-    StrAttr:$opName,
-    Variadic<MO_Tensor>:$operands
-  );
-
-  let results = (outs Variadic<MO_Tensor>:$results);
-
-  let assemblyFormat = [{
-    $opName attr-dict `(`($operands^)?`)`
-      (`:` type($operands)^)? (`->` type($results)^)?
-  }];
-}
-
-
-//===----------------------------------------------------------------------===//
 // Internal helper ops
 //===----------------------------------------------------------------------===//
 

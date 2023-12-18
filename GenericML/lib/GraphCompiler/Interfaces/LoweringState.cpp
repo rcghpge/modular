@@ -281,7 +281,7 @@ MOGraphLoweringState::lowerExpressionImpl(ParameterLoweringState &state,
 // MOOpLoweringState
 //===----------------------------------------------------------------------===//
 
-SmallVector<Value> MOOpLoweringState::getLoweredOperands(bool keepTensorSpec) {
+SmallVector<Value> MOOpLoweringState::getLoweredOperands() {
   SmallVector<Value> loweredOperands;
   for (Value operand : opBeingLowered->getOperands()) {
     Value loweredInput = loweringState.lookupExecuteLoweredValue(operand);
@@ -289,8 +289,6 @@ SmallVector<Value> MOOpLoweringState::getLoweredOperands(bool keepTensorSpec) {
     if (isa<MO::TensorType>(operand.getType())) {
       BufferizedTensor bufferizedInput = getBufferizedInput(operand);
       loweredOperands.push_back(bufferizedInput.buffer);
-      if (keepTensorSpec)
-        loweredOperands.push_back(bufferizedInput.tensorSpec);
     } else {
       loweredOperands.push_back(loweredInput);
     }

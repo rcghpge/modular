@@ -418,11 +418,8 @@ struct MOOpLoweringState {
   /// - !mo.tensor operands are passed as the buffer extracted from the lowered
   ///   tensors. Both the buffer and tensor will match the storage device
   ///   associated with the !mo.tensor type.
-  /// - In addition, if keepTensorSpec is true, then the corresponding
-  ///   extracted tensor spec is also passed. However this is only required
-  ///   when lowering the generic MOGG::ExtOp.
   /// - All other operands are passed in the lowered form directly.
-  SmallVector<Value> getLoweredOperands(bool keepTensorSpec = false);
+  SmallVector<Value> getLoweredOperands();
 
   /// Returns the storage for all of the op's results, which will be passed in
   /// destination-passing-style.

@@ -173,37 +173,6 @@ TEST_F(MatchersTest, Typed) {
   ASSERT_EQ(graph.getArgument(0), typed);
 }
 
-TEST_F(MatchersTest, Op) {
-  MO::TensorValue x = getIntConst({});
-  MO::TensorValue y = getIntConst({});
-  MO::TensorValue z = getIntConst({});
-  MO::TensorValue add = builder.create<MO::AddOp>(loc, x, y);
-  MO::TensorValue mul = builder.create<MO::MulOp>(loc, add, z);
-  Operation *pow3 = builder.create<MOGG::ExtOp>(
-      loc, mul.getType(), "mop.kernels.pow3", SmallVector<Value>{mul});
-
-  Value lhs, rhs, third;
-  Operation *addop, *mulop, *pow3op;
-
-  auto p_x = m_Any(&lhs);
-  auto p_y = m_Any(&rhs);
-  auto p_z = m_Any(&third);
-  auto add_pattern = m_Op(&addop, "mo.add", p_x, p_y);
-  auto mul_pattern = m_Op<MO::MulOp>(&mulop, add_pattern, p_z);
-  auto pow3_pattern = m_StringAttr(&pow3op, "opName", "mop.kernels.pow3",
-                                   m_Op("mogg.ext.op", mul_pattern));
-
-  ASSERT_TRUE(add_pattern.match(add.getDefiningOp()));
-  ASSERT_TRUE(mul_pattern.match(mul.getDefiningOp()));
-  ASSERT_TRUE(pow3_pattern.match(pow3));
-  ASSERT_EQ(pow3, pow3op);
-  ASSERT_EQ(mul.getDefiningOp(), mulop);
-  ASSERT_EQ(add.getDefiningOp(), addop);
-  ASSERT_EQ(x, lhs);
-  ASSERT_EQ(y, rhs);
-  ASSERT_EQ(z, third);
-}
-
 TEST_F(MatchersTest, Logging) {
   auto pattern = m_Op<SubOp>(m_Op<SubOp>(m_Any(), m_Any()), m_Any());
   graph_compiler::Logger log;
