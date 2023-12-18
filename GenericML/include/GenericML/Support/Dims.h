@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
 
 namespace M {
 
@@ -25,7 +25,7 @@ inline int64_t clampAxis(int64_t axis, int64_t rank) {
 
 /// Normalize each dim in `dims` to the positive dim equivalent if it is
 /// negative.
-inline void normalizeNegativeDims(llvm::SmallVector<int64_t> &dims,
+inline void normalizeNegativeDims(llvm::MutableArrayRef<int64_t> dims,
                                   size_t rank) {
   for (auto [i, dim] : llvm::enumerate(dims))
     dims[i] = normalizeAxis(dim, rank);
