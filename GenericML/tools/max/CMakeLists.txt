@@ -5,17 +5,17 @@
 ##===----------------------------------------------------------------------===##
 
 if (MODULAR_RELEASE_PACKAGE_BUILD)
-  set(VisualizeCLI_if_enabled)
+  set(EngineCLIVisualize_if_enabled)
 else ()
-  set(VisualizeCLI_if_enabled VisualizeCLI)
+  set(EngineCLIVisualize_if_enabled EngineCLIVisualize)
 endif ()
 
 add_modular_tool(max
   max.cpp
 
   LINK_LIBS PRIVATE
-  BenchmarkCLI
+  EngineCLIBenchmark
+  ${EngineCLIVisualize_if_enabled}
   MCrashReporting
   MSupport
-  ${VisualizeCLI_if_enabled}
 )

@@ -6,7 +6,7 @@
 
 #include "Config/Version.h"
 #include "GenericML/API/modular/c/common.h"
-#include "GenericML/BenchmarkCLI/Main.h"
+#include "GenericML/EngineCLI/Benchmark/Main.h"
 #include "Support/CrashReporting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/InitLLVM.h"
@@ -14,7 +14,7 @@
 #include <iostream>
 
 #ifndef MODULAR_PRODUCTION
-#include "GenericML/VisualizeCLI/Main.h"
+#include "GenericML/EngineCLI/Visualize/Main.h"
 #endif // MODULAR_PRODUCTION
 
 using namespace M;
