@@ -175,17 +175,20 @@ struct ModelResult {
 /// Run a Model to get the constant outputs to a subgraph. Returns a mapping
 /// from output Vale to ElementsAttr containing the constant resulting from
 /// folding.
-ErrorOr<ModelResult> executeModel(MLIRContext *ctx, const Model *model,
-                                  SubgraphsInfo subgraphsInfo,
-                                  LLCL::Runtime &runtime) {
+std::variant<EncodedDiagnostic, ModelResult>
+executeModel(MLIRContext *ctx, const Model *model, SubgraphsInfo subgraphsInfo,
+             LLCL::Runtime &runtime) {
   auto executableModelOr = model->setup(runtime);
   if (executableModelOr.isError())
-    return executableModelOr.takeError();
+    return EncodedDiagnostic(executableModelOr.takeError(),
+                             model->getLocation().copy());
 
   auto executableModel = executableModelOr.takeValue();
   auto setupErrorOrSuccess = executableModel->waitForModelSetup();
   if (setupErrorOrSuccess.isError())
-    return Error("Model setup failed, not ready for execution");
+    return EncodedDiagnostic(
+        Error("Model setup failed, not ready for execution"),
+        model->getLocation().copy());
 
   SmallVector<AnyAsyncValueRef> inputTensorsInMEFIndexOrder;
   for (auto subgraph : subgraphsInfo.subgraphs) {
@@ -210,12 +213,13 @@ ErrorOr<ModelResult> executeModel(MLIRContext *ctx, const Model *model,
   auto results = executableModel->execute(inputTensorsInMEFIndexOrder);
 
   if (results.empty())
-    return Error("Failed to execute model");
+    return EncodedDiagnostic("Failed to execute model",
+                             model->getLocation().copy());
 
   LLCL::await(results);
   for (auto &result : results)
     if (result.isError())
-      return Error(result.getDiagnostic().getMessage().get());
+      return result.takeDiagnostic();
 
   MutableArrayRef<AnyAsyncValueRef> resultCopy(results.data(), results.size());
 
@@ -240,30 +244,28 @@ ErrorOr<ModelResult> executeModel(MLIRContext *ctx, const Model *model,
     for (auto op : subgraph.outputs) {
       SmallVector<std::pair<ElementsAttr, TensorShape>> opTensors;
       for (size_t i = 0; i < op->getNumResults(); i++) {
-        const auto &tensor = outputTensorRefs[outIdx];
+        AnyAsyncValueRef &tensor = outputTensorRefs[outIdx];
         if (tensor.isError())
-          return Error(tensor.getDiagnostic().getMessage().get());
+          return tensor.takeDiagnostic();
 
         // Copy output tensor into storage.
         assert(tensor.isReady() &&
                "We already awaited, tensor should be ready");
-        auto *t = dyn_cast<GML::Tensor>(tensor);
-        assert(t && "Output from subgraph execution should be a tensor");
+        GML::Tensor &t = tensor.get<GML::Tensor>();
         // Output shape has runtime-dependent size so we need to read out what
         // the size is.
-        TensorShape shape = t->getShape();
+        TensorShape shape = t.getShape();
         ArrayType arrayType =
             ArrayType::get(op->getContext(), shape.getNumElements(),
-                           toMLIRType(ctx, t->getEltType()).get());
-        opTensors.push_back(
-            {getAttrForTensorDataCopy(
-                 arrayType,
-                 subgraphsInfo.constantSubgraphName + "_" +
-                     std::to_string(outIdx),
-                 {reinterpret_cast<const char *>(t->getBuffer()),
-                  t->getSizeInBytes()},
-                 resourceManager),
-             shape});
+                           toMLIRType(ctx, t.getEltType()).get());
+        opTensors.push_back({getAttrForTensorDataCopy(
+                                 arrayType,
+                                 subgraphsInfo.constantSubgraphName + "_" +
+                                     std::to_string(outIdx),
+                                 {reinterpret_cast<const char *>(t.getBuffer()),
+                                  t.getSizeInBytes()},
+                                 resourceManager),
+                             shape});
         outIdx++;
       }
       opToTensors[op] = opTensors;
@@ -274,13 +276,12 @@ ErrorOr<ModelResult> executeModel(MLIRContext *ctx, const Model *model,
   llvm::DenseMap<StringAttr, int64_t> params;
   for (auto subgraph : subgraphsInfo.subgraphs) {
     for (auto paramName : subgraph.paramDeclarations()) {
-      const auto &tensor = outputTensorRefs[outIdx];
+      auto &tensor = outputTensorRefs[outIdx];
       if (tensor.isError())
-        return Error(tensor.getDiagnostic().getMessage().get());
+        return tensor.takeDiagnostic();
       assert(tensor.isReady() && "We already awaited, tensor should be ready");
-      auto *t = dyn_cast<GML::Tensor>(tensor);
-      assert(t && "Output from subgraph execution should be a tensor");
-      params[paramName] = reinterpret_cast<const int64_t *>(t->getBuffer())[0];
+      GML::Tensor &t = tensor.get<GML::Tensor>();
+      params[paramName] = reinterpret_cast<const int64_t *>(t.getBuffer())[0];
       outIdx++;
     }
   }
@@ -930,20 +931,24 @@ void ConstantFoldPass::runOnOperation() {
           subgraphsInfo.constantSubgraphName);
       assert(model != nullptr &&
              "Model should exist, make sure names above match.");
-      ErrorOr<ModelResult> valuesToTensorsOr =
+      std::variant<EncodedDiagnostic, ModelResult> valuesToTensorsOr =
           executeModel(ctx, model, subgraphsInfo, runtime);
-      if (failed(valuesToTensorsOr)) {
-        mlir::emitError(module.getLoc(),
-                        "[ConstantFold] " +
-                            Twine(valuesToTensorsOr.takeError().get()));
+      if (std::holds_alternative<EncodedDiagnostic>(valuesToTensorsOr)) {
+        EncodedDiagnostic &err = std::get<EncodedDiagnostic>(valuesToTensorsOr);
+        LLCL::DecodedLocation decoded = err.getLocation().decode();
+        auto loc =
+            mlir::FileLineColLoc::get(module.getContext(), decoded.filename,
+                                      decoded.line, decoded.column);
+        mlir::emitError(loc, "[ConstantFold] " + Twine(err.getMessage().get()));
         return signalPassFailure();
       }
+      auto valuesToTensors = std::get<ModelResult>(valuesToTensorsOr);
       auto it = executionResults.find(subgraphsInfo.orig);
       if (it != executionResults.end()) {
-        it->second.push_back({valuesToTensorsOr.takeValue(), subgraphsInfo});
+        it->second.push_back({valuesToTensors, subgraphsInfo});
       } else {
         executionResults[subgraphsInfo.orig] = {
-            {valuesToTensorsOr.takeValue(), subgraphsInfo}};
+            {valuesToTensors, subgraphsInfo}};
       }
     }
 
