@@ -5,10 +5,9 @@
 # ===----------------------------------------------------------------------=== #
 """Implements the engine package."""
 
-from ._engine import get_version
+from .engine import get_version
 from .session import InferenceSession
-from ._dtypes import EngineDType
-from ._model import Model
-from ._tensor_spec import EngineTensorSpec
-from ._tensormap import TensorMap
-from ._tensor import EngineTensorView, EngineNumpyView
+from .model import Model
+from .tensor_spec import EngineTensorSpec
+from .tensor_map import TensorMap
+from .tensor import EngineTensorView, EngineNumpyView

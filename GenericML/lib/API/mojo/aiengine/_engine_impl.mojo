@@ -10,12 +10,11 @@ from sys.ffi import DLHandle
 from memory.unsafe import DTypePointer
 from ._status import Status
 from ._utils import *
-from ._tensor_spec import EngineTensorSpec
 from tensor import TensorSpec
 from pathlib import Path
 
 
-fn get_engine_path() raises -> String:
+fn _get_engine_path() raises -> String:
     let engine_lib = getenv("MODULAR_AI_ENGINE_LIB_PATH")
     if engine_lib == "":
         raise "cannot find ai engine library. Please set MODULAR_AI_ENGINE_LIB_PATH."
@@ -57,15 +56,3 @@ struct _EngineImpl:
     fn __del__(owned self):
         if self.can_close_lib:
             self.lib._del_old()
-
-
-fn get_version() raises -> String:
-    """Returns version of modular AI engine.
-
-    Returns:
-        Version as string.
-    """
-    let path = get_engine_path()
-    let version = _EngineImpl(path._strref_dangerous()).get_version()
-    path._strref_keepalive()
-    return version

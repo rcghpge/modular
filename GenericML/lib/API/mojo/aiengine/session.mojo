@@ -8,9 +8,9 @@ from ._context import *
 from ._status import *
 from sys.ffi import DLHandle
 from ._compilation import *
-from ._model import *
-from ._tensormap import *
-from ._engine import _EngineImpl, get_engine_path
+from .model import *
+from .tensor_map import *
+from ._engine_impl import _EngineImpl, _get_engine_path
 from memory.unsafe import Pointer
 from os.atomic import Atomic
 from utils._optional import Optional
@@ -131,7 +131,7 @@ struct InferenceSession:
     fn __init__(
         device: StringRef = "cpu", num_threads: Optional[Int] = None
     ) raises -> Self:
-        let path = get_engine_path()
+        let path = _get_engine_path()
         let self = Self._allocateAndInit(
             path._strref_dangerous(), device, num_threads
         )
