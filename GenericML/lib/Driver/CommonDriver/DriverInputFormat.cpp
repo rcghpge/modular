@@ -131,3 +131,28 @@ DriverInputFormatOptions::getInputFormat(StringRef fileExtension,
     return inputFormat;
   return sniffInputFormat(fileExtension, fileContents);
 }
+
+bool M::isTFSavedModelDirectory(const std::filesystem::path &dirPath) {
+  std::error_code ec;
+  if (!std::filesystem::is_directory(dirPath, ec) || ec)
+    return false;
+
+  // From:
+  // https://github.com/tensorflow/tensorflow/blob/847bf3aee436d72f530d855a0112c6ee614d5f58/tensorflow/cc/saved_model/loader.cc#L500-L510
+
+  // SavedModel proto filename.
+  constexpr const char *kSavedModelFilenamePb = "saved_model.pb";
+
+  // SavedModel chunked proto filename.
+  constexpr const char *kSavedModelFilenameCpb = "saved_model.cpb";
+
+  // SavedModel text format proto filename.
+  constexpr const char *kSavedModelFilenamePbTxt = "saved_model.pbtxt";
+
+  auto fileExists = [&](const std::string &filename) {
+    return std::filesystem::exists(dirPath / filename, ec) && !ec;
+  };
+  return fileExists(kSavedModelFilenamePb) ||
+         fileExists(kSavedModelFilenameCpb) ||
+         fileExists(kSavedModelFilenamePbTxt);
+}

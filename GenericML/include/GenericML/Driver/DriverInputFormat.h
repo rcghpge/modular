@@ -11,6 +11,8 @@
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
 
+#include <filesystem>
+
 namespace llvm {
 class MemoryBuffer;
 }
@@ -83,6 +85,9 @@ inline bool isValidFileFormat(FileFormat format) {
 /// Use heuristics to determine what kind of file the input file contents
 /// represent.
 FileFormat sniffInputFormat(StringRef fileExtension, StringRef fileContents);
+
+/// Check if the given directory is a TensorFlow SavedModel directory.
+bool isTFSavedModelDirectory(const std::filesystem::path &dirPath);
 
 class DriverInputFormatOptions {
 private:

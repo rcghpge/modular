@@ -218,10 +218,10 @@ int main(int argc, char **argv) {
       }
 
       if (info.isInputDirectory) {
-        // If the input file is a directory, we will just assume that it is a TF
-        // SavedModel. If other directory formats come up, we will need to
-        // modify this logic.
-        info.format = FileFormat::kTFSavedModel;
+        if (isTFSavedModelDirectory(info.inputPath))
+          info.format = FileFormat::kTFSavedModel;
+        else
+          return options.reportError("unable to detect input model format");
       } else {
         // The input file is not a directory, so we open and sniff the format.
         // In case the input file is MEF, it has to be aligned to the maximum
