@@ -9,7 +9,7 @@
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "mlir/IR/PatternMatch.h"
-
+#include "llvm/ADT/PagedVector.h"
 namespace M::MO {
 
 //===----------------------------------------------------------------------===//
@@ -109,7 +109,14 @@ struct DeviceAwareRewriter {
   mlir::RewriterBase &rewriter;
   /// Accumulated operations which may be bound by patterns, in addition
   /// to the 'anchor' op given to the constructor.
-  SmallVector<Operation *> matchedOps;
+  ///
+  /// NOTE: central to the use of `pushOp()` is returning a stable memory
+  /// address for a pointer (Operation**). llvm::SmallVector may resize and
+  /// change these addresses as we insert more addresses to track in the Vector.
+  ///
+  /// llvm::PagedVector does not re-allocate memory if we do not do deletion of
+  /// elements so is used to guarantee stable addressing.
+  llvm::PagedVector<Operation *, sizeof(Operation *) * 16> matchedOps;
 
   /// Constructs device-aware rewriter using rewriter, and adds the initial
   /// operation to it, on the assumption that op will be replaced by the
@@ -118,12 +125,21 @@ struct DeviceAwareRewriter {
       : deviceAnnots(DeviceAnnots::forOp(op)), rewriter(rewriter) {}
 
   /// Pushes an operation onto matchedOps for later checking by addOps.
-  void pushOp(Operation *op) { matchedOps.emplace_back(op); }
+  void pushOp(Operation *op) {
+    // Update the size of the paged vector
+    matchedOps.resize(matchedOps.size() + 1);
+
+    // Update the newly allowed last element
+    matchedOps[matchedOps.size() - 1] = op;
+  }
 
   /// Pushes a null operation onto matchedOps, and returns its address.
   /// Can be passed to a op-matching pattern to be assigned if the pattern
   /// matches, then later checked by addOps.
-  Operation **pushOp() { return &matchedOps.emplace_back(nullptr); }
+  Operation **pushOp() {
+    matchedOps.resize(matchedOps.size() + 1);
+    return &matchedOps[matchedOps.size() - 1];
+  }
 
   /// Captures the device annotations for all additional operations, including
   /// those captured in matchedOps, and those given in the argument, on the
@@ -132,7 +148,7 @@ struct DeviceAwareRewriter {
   [[nodiscard]] bool
   addOps(const std::initializer_list<Operation *> &ops = {}) {
     return llvm::all_of(
-               matchedOps,
+               matchedOps.materialized(),
                [this](Operation *op) { return deviceAnnots.addOp(op); }) &&
            llvm::all_of(
                ops, [this](Operation *op) { return deviceAnnots.addOp(op); });
