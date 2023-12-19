@@ -5,10 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/EngineCLI/Benchmark/InputGenerator.h"
-#include "GenericML/EngineCLI/Benchmark/APIBridge.h"
-#include "GenericML/EngineCLI/Benchmark/InputGenerationSchema.h"
 #include "GenericML/EngineCLI/Benchmark/NPYReader.h"
 #include "GenericML/EngineCLI/Benchmark/Tensor.h"
+#include "GenericML/EngineCLI/Common/APIBridge.h"
+#include "GenericML/EngineCLI/Common/InputGenerationSchema.h"
 #include "Support/MathExtras.h"
 #include "modular/cpp/aliases.h"
 #include "llvm/ADT/APFloat.h"
@@ -17,6 +17,7 @@
 #include <variant>
 
 using namespace M;
+using namespace M::EngineCLI;
 using namespace M::BenchmarkCLI;
 
 template <typename Fn>

@@ -4,14 +4,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/EngineCLI/Benchmark/APIBridge.h"
+#include "GenericML/EngineCLI/Common/APIBridge.h"
 #include "Support/ML/TensorSpec.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "modular/cpp/aliases.h"
 #include "gtest/gtest.h"
 
 using namespace M;
-using namespace M::BenchmarkCLI;
+using namespace M::EngineCLI;
 
 static constexpr auto kDynamic = mlir::ShapedType::kDynamic;
 

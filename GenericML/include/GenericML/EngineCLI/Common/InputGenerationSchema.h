@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_ENGINECLI_BENCHMARK_INPUT_GENERATION_SCHEMA_H
-#define GENERICML_ENGINECLI_BENCHMARK_INPUT_GENERATION_SCHEMA_H
+#ifndef GENERICML_ENGINECLI_COMMON_INPUTGENERATIONSCHEMA_H
+#define GENERICML_ENGINECLI_COMMON_INPUTGENERATIONSCHEMA_H
 
 #include "Support/LLVMForwardDecls.h"
 #include "Support/LLVMYAMLForwardDecls.h"
@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace M::BenchmarkCLI {
+namespace M::EngineCLI {
 
 struct InputGenerationRandomUniform {
   std::optional<std::string> min;
@@ -58,17 +58,15 @@ struct InputGenerationSchema {
 ErrorOr<InputGenerationSchema> readInputGenerationSchema(StringRef path);
 void dumpInputGenerationSchema(const InputGenerationSchema &schema);
 
-} // namespace M::BenchmarkCLI
+} // namespace M::EngineCLI
 
-LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(
-    M::BenchmarkCLI::InputGenerationRandomUniform)
-LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(
-    M::BenchmarkCLI::InputGenerationRandomNormal)
-LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::BenchmarkCLI::InputGenerationRandom)
-LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::BenchmarkCLI::InputGenerationFile)
-LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::BenchmarkCLI::InputGenerationData)
-LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::BenchmarkCLI::InputGenerationInput)
-LLVM_FWD_YAML_IS_SEQUENCE_VECTOR(M::BenchmarkCLI::InputGenerationInput)
-LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::BenchmarkCLI::InputGenerationSchema)
+LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::EngineCLI::InputGenerationRandomUniform)
+LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::EngineCLI::InputGenerationRandomNormal)
+LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::EngineCLI::InputGenerationRandom)
+LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::EngineCLI::InputGenerationFile)
+LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::EngineCLI::InputGenerationData)
+LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::EngineCLI::InputGenerationInput)
+LLVM_FWD_YAML_IS_SEQUENCE_VECTOR(M::EngineCLI::InputGenerationInput)
+LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::EngineCLI::InputGenerationSchema)
 
-#endif // GENERICML_ENGINECLI_BENCHMARK_INPUT_GENERATION_SCHEMA_H
+#endif // GENERICML_ENGINECLI_COMMON_INPUTGENERATIONSCHEMA_H

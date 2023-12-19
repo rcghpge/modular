@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/EngineCLI/Benchmark/InputGenerationSchema.h"
+#include "GenericML/EngineCLI/Common/InputGenerationSchema.h"
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/Support/YAMLTraits.h"
 
 using namespace M;
-using namespace M::BenchmarkCLI;
+using namespace M::EngineCLI;
 
 void llvm::yaml::MappingTraits<InputGenerationRandomUniform>::mapping(
     llvm::yaml::IO &io, InputGenerationRandomUniform &uniform) {
@@ -50,7 +50,7 @@ void llvm::yaml::MappingTraits<InputGenerationSchema>::mapping(
 }
 
 ErrorOr<InputGenerationSchema>
-BenchmarkCLI::readInputGenerationSchema(StringRef path) {
+EngineCLI::readInputGenerationSchema(StringRef path) {
   InputGenerationSchema schema;
   std::string error;
   auto buffer = mlir::openInputFile(path, &error);
@@ -63,8 +63,7 @@ BenchmarkCLI::readInputGenerationSchema(StringRef path) {
   return std::move(schema);
 }
 
-void BenchmarkCLI::dumpInputGenerationSchema(
-    const InputGenerationSchema &schema) {
+void EngineCLI::dumpInputGenerationSchema(const InputGenerationSchema &schema) {
   llvm::yaml::Output yout(llvm::outs());
   // YAMLTraits requires non-const even when outputting, but we don't actually
   // modify the item being output during output, so this should still be safe.

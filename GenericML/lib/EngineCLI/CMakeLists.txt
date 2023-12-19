@@ -4,5 +4,6 @@
 #
 ##===----------------------------------------------------------------------===##
 
+add_subdirectory(Common)
 add_subdirectory(Benchmark)
 add_subdirectory(Visualize)

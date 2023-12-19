@@ -9,10 +9,15 @@
 
 #include "modular/c/types.h"
 
-namespace M::BenchmarkCLI {
-
+namespace M::EngineCLI {
 struct InputGenerationSchema;
 struct InputGenerationInput;
+} // namespace M::EngineCLI
+
+namespace M::BenchmarkCLI {
+
+// TODO: Reparent BenchmarkCLI so this using is no longer necessary.
+using namespace M::EngineCLI;
 
 void applyInputGenerationDefaults(InputGenerationSchema &schema,
                                   const M_AsyncCompiledModel *model,

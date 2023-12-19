@@ -14,7 +14,6 @@ add_modular_unittest(
   TEST_NAME
   EngineCLIBenchmarkTests
 
-  APIBridgeTest.cpp
   InputGeneratorTest.cpp
   MLPerfIntegrationTest.cpp
   NPYMetadataTest.cpp

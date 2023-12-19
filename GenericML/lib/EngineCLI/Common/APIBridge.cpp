@@ -4,14 +4,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/EngineCLI/Benchmark/APIBridge.h"
+#include "GenericML/EngineCLI/Common/APIBridge.h"
 #include "Support/ML/TensorSpec.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 
 using namespace M;
-using namespace M::BenchmarkCLI;
+using namespace M::EngineCLI;
 
-M_Dtype M::BenchmarkCLI::dtypeToCAPI(DType dty) {
+M_Dtype M::EngineCLI::dtypeToCAPI(DType dty) {
   switch (dty.getValue()) {
   case DType::si8:
     return M_INT8;
@@ -42,7 +42,7 @@ M_Dtype M::BenchmarkCLI::dtypeToCAPI(DType dty) {
   }
 }
 
-DType M::BenchmarkCLI::capiToDType(M_Dtype dty) {
+DType M::EngineCLI::capiToDType(M_Dtype dty) {
   switch (dty) {
   case M_INT8:
     return DType::si8;
@@ -73,8 +73,8 @@ DType M::BenchmarkCLI::capiToDType(M_Dtype dty) {
   }
 }
 
-TensorSpecPtr M::BenchmarkCLI::tensorSpecToCAPI(const char *name,
-                                                const TensorSpec &spec) {
+TensorSpecPtr M::EngineCLI::tensorSpecToCAPI(const char *name,
+                                             const TensorSpec &spec) {
   // TODO: There is no way to represent dynamically-ranked tensors (#26162) or
   // static-rank tensors with dynamic dimensions (#26301).  The C API only
   // documents a way to create specs for fully-static shapes.
@@ -89,7 +89,7 @@ TensorSpecPtr M::BenchmarkCLI::tensorSpecToCAPI(const char *name,
                        M_freeTensorSpec);
 }
 
-TensorSpec M::BenchmarkCLI::capiToTensorSpec(const M_TensorSpec *spec) {
+TensorSpec M::EngineCLI::capiToTensorSpec(const M_TensorSpec *spec) {
   SmallVector<int64_t, 8> shape;
   size_t rank = M_getRank(spec);
   for (size_t axis = 0; axis < rank; ++axis) {

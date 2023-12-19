@@ -8,6 +8,7 @@ add_genericml_library(EngineCLIVisualize
   Main.cpp
 
   LINK_LIBS PUBLIC
+  EngineCLICommon
   MSupport
   modular-framework-common
 )

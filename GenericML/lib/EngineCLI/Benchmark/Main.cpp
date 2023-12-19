@@ -6,12 +6,12 @@
 
 #include "GenericML/EngineCLI/Benchmark/Main.h"
 #include "Config/Version.h"
-#include "GenericML/EngineCLI/Benchmark/APIBridge.h"
 #include "GenericML/EngineCLI/Benchmark/InputGenerationDefaults.h"
-#include "GenericML/EngineCLI/Benchmark/InputGenerationSchema.h"
 #include "GenericML/EngineCLI/Benchmark/InputGenerator.h"
 #include "GenericML/EngineCLI/Benchmark/MLPerfIntegration.h"
-#include "PyTorch/API/modular/c/pytorch/config.h"
+#include "GenericML/EngineCLI/Common/APIBridge.h"
+#include "GenericML/EngineCLI/Common/InputGenerationSchema.h"
+#include "GenericML/EngineCLI/Common/TorchSupport.h"
 #include "Support/Driver/DriverSupport.h"
 #include "Support/ErrorOr.h"
 #include "mlperf-loadgen/loadgen.h"
@@ -30,6 +30,7 @@
 #include "Support/Driver/OptTable.inc"
 
 using namespace M;
+using namespace M::EngineCLI;
 using namespace M::BenchmarkCLI;
 
 static constexpr const char *kTelemetryLoggerName = "max";
@@ -158,27 +159,6 @@ static ErrorOr<RuntimeContextPtr> makeRuntimeContext(M_Status *status,
   if (!context)
     return Error(M_getError(status));
   return std::move(context);
-}
-
-static ErrorOrSuccess setTorchInputSpecs(M_CompileConfig *config,
-                                         const InputGenerationSchema &schema) {
-  if (!schema.inputs)
-    return success();
-  std::vector<TensorSpecPtr> specOwners;
-  std::vector<M_TensorSpec *> specPointers;
-  for (const auto &input : *schema.inputs) {
-    if (!input.inputName || !input.shape)
-      continue;
-    TensorSpecPtr capiSpec =
-        tensorSpecToCAPI(input.inputName->c_str(), *input.shape);
-    if (!capiSpec)
-      return Error(llvm::Twine("M_newTensorSpec failed for input ") +
-                   *input.inputName + " (out of memory?)");
-    specPointers.push_back(capiSpec.get());
-    specOwners.push_back(std::move(capiSpec));
-  }
-  M_setTorchInputSpecs(config, specPointers.data(), specPointers.size());
-  return success();
 }
 
 static ErrorOr<ModelPtr> prepareModel(M_RuntimeContext *runtimeContext,

@@ -18,7 +18,20 @@ namespace M {
 class TensorShape;
 } // namespace M
 
+namespace M::EngineCLI {
+struct InputGenerationRandomUniform;
+struct InputGenerationRandomNormal;
+struct InputGenerationRandom;
+struct InputGenerationFile;
+struct InputGenerationData;
+struct InputGenerationInput;
+struct InputGenerationSchema;
+} // namespace M::EngineCLI
+
 namespace M::BenchmarkCLI {
+
+// TODO: Reparent BenchmarkCLI so this using is no longer necessary.
+using namespace M::EngineCLI;
 
 class Tensor;
 
@@ -43,19 +56,16 @@ private:
   DType dtype;
 };
 
-struct InputGenerationRandomUniform;
 std::unique_ptr<InputRandomDistribution>
 createUniformInputRandomDistribution(DType dtype,
                                      const InputGenerationRandomUniform &spec,
                                      InputSchemaErrorReporter &errorReporter);
 
-struct InputGenerationRandomNormal;
 std::unique_ptr<InputRandomDistribution>
 createNormalInputRandomDistribution(DType dtype,
                                     const InputGenerationRandomNormal &spec,
                                     InputSchemaErrorReporter &errorReporter);
 
-struct InputGenerationRandom;
 std::unique_ptr<InputRandomDistribution>
 createInputRandomDistribution(DType dtype, const InputGenerationRandom &spec,
                               InputSchemaErrorReporter &errorReporter);
@@ -74,7 +84,6 @@ public:
 std::unique_ptr<InputDataGenerator> createRandomInputDataGenerator(
     std::unique_ptr<InputRandomDistribution> distribution);
 
-struct InputGenerationRandom;
 std::unique_ptr<InputDataGenerator>
 createRandomInputDataGenerator(DType dtype, const InputGenerationRandom &spec,
                                InputSchemaErrorReporter &errorReporter);
@@ -83,13 +92,11 @@ std::unique_ptr<InputDataGenerator>
 createConstantInputDataGenerator(DType dtype, StringRef constant,
                                  InputSchemaErrorReporter &errorReporter);
 
-struct InputGenerationFile;
 std::unique_ptr<InputDataGenerator>
 createFileInputDataGenerator(std::optional<DType> dtype,
                              const InputGenerationFile &spec,
                              InputSchemaErrorReporter &errorReporter);
 
-struct InputGenerationData;
 std::unique_ptr<InputDataGenerator>
 createInputDataGenerator(std::optional<DType> dtype,
                          const InputGenerationData &spec,
@@ -111,7 +118,6 @@ public:
   generateInput(size_t queryIndex) = 0;
 };
 
-struct InputGenerationInput;
 std::unique_ptr<InputGenerator>
 createInputGenerator(const InputGenerationInput &spec,
                      InputSchemaErrorReporter &errorReporter);
@@ -138,7 +144,6 @@ std::unique_ptr<QueryGenerator> createQueryGenerator(
     std::vector<std::unique_ptr<InputGenerator>> inputGenerators,
     InputSchemaErrorReporter &errorReporter);
 
-struct InputGenerationSchema;
 std::unique_ptr<QueryGenerator>
 createQueryGenerator(const InputGenerationSchema &schema,
                      InputSchemaErrorReporter &errorReporter);

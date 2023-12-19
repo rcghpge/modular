@@ -5,11 +5,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/EngineCLI/Benchmark/InputGenerationDefaults.h"
-#include "GenericML/EngineCLI/Benchmark/APIBridge.h"
-#include "GenericML/EngineCLI/Benchmark/InputGenerationSchema.h"
+#include "GenericML/EngineCLI/Common/APIBridge.h"
+#include "GenericML/EngineCLI/Common/InputGenerationSchema.h"
 #include "modular/cpp/aliases.h"
 
 using namespace M;
+using namespace M::EngineCLI;
 using namespace M::BenchmarkCLI;
 
 void M::BenchmarkCLI::applyInputGenerationDefaults(

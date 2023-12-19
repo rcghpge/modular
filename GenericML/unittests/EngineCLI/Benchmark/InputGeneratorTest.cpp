@@ -5,8 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/EngineCLI/Benchmark/InputGenerator.h"
-#include "GenericML/EngineCLI/Benchmark/InputGenerationSchema.h"
 #include "GenericML/EngineCLI/Benchmark/Tensor.h"
+#include "GenericML/EngineCLI/Common/InputGenerationSchema.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "modular/c/tensor.h"
 #include "modular/cpp/aliases.h"
