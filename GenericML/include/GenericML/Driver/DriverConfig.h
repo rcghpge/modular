@@ -15,7 +15,15 @@
 namespace M {
 class DriverConfig {
 public:
-  enum OptionKind { kTF, kTorch, kMOF, kONNX, kKernelLibrary, kDevice };
+  enum OptionKind {
+    kTF,
+    kTorch,
+    kMOF,
+    kONNX,
+    kKernelLibrary,
+    kVisualization,
+    kDevice
+  };
 
   DriverConfig(OptionKind kind, llvm::StringLiteral name)
       : Kind(kind), configName(name) {}
@@ -46,6 +54,23 @@ public:
 
 private:
   std::filesystem::path kernelLibraryPath;
+};
+
+class VisualizationConfig : public DriverConfig {
+
+public:
+  VisualizationConfig(std::filesystem::path path)
+      : DriverConfig(OptionKind::kVisualization, "viz-spec-dir"),
+        visualizationPath(std::move(path)) {}
+
+  static bool classof(const DriverConfig *config) {
+    return config->getKind() == OptionKind::kVisualization;
+  }
+
+  const std::filesystem::path &getPath() const { return visualizationPath; }
+
+private:
+  std::filesystem::path visualizationPath;
 };
 
 class DeviceConfig : public DriverConfig {

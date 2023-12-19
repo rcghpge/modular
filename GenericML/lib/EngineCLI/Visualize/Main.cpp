@@ -19,6 +19,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include <chrono>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 
 using namespace M;
@@ -32,11 +33,15 @@ namespace {
 
 struct ClOptions {
   cl::opt<std::string> modelPath{llvm::cl::Positional, llvm::cl::Required,
-                                 cl::desc("Path to model file/directory")};
+                                 cl::desc("Path to model")};
   cl::opt<std::string> inputGenerationSchemaPath{
       "input-generation-schema",
       cl::desc("Path to input generation schema file "
                "(only used for compile-time shape specifications)")};
+
+  cl::opt<std::string> visualizationDir{
+      "output-directory", cl::desc("Path to directory for output maxviz file."),
+      cl::init("")};
   cl::opt<std::string> customOpsPath{
       "custom-ops-path", cl::desc("Path to custom ops"), cl::init("")};
   cl::opt<size_t> numThreads{"num-threads",
@@ -69,6 +74,9 @@ compileModel(const ClOptions &opts,
           setTorchInputSpecs(compileConfig.get(), inputGenerationSchema))
     return Error(Twine("Failed to set input specs for PyTorch: ") +
                  result.getError());
+
+  M_enableVisualization(compileConfig.get(), opts.visualizationDir.c_str());
+
   if (opts.customOpsPath != "") {
     M_useKernelsFrom(compileConfig.get(), opts.customOpsPath.c_str(), status);
     if (M_isError(status))
@@ -141,8 +149,14 @@ int M::maxVisualizeMain(int argc, char **argv) {
   (void)M::setProcessEnv("GENERATE_VISUALIZATION", "");
 
 #ifndef MODULAR_PRODUCTION
-  llvm::outs() << "\nModular maxviz file saved to "
-                  "modular/.derived/visualization-specs/\n";
+  std::string output;
+  if (!opts.visualizationDir.empty()) {
+    output = std::filesystem::current_path() /
+             std::filesystem::path(opts.visualizationDir.c_str());
+  } else {
+    output = std::filesystem::current_path();
+  }
+  llvm::outs() << "\nModular maxviz file saved to " << output << "\n";
 
   llvm::outs()
       << "To visualize model, drop maxviz file into https://netron.app/\n";
