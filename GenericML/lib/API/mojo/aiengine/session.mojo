@@ -86,7 +86,7 @@ struct _InferenceSessionImpl:
         let status = Status(self.engine.lib)
         let model_ptr = call_dylib_func[CModel](
             self.engine.lib,
-            Model.InitModelFnName,
+            Model._InitModelFnName,
             self.context.borrow_ptr(),
             compiled_model.borrow_ptr(),
             status.borrow_ptr(),

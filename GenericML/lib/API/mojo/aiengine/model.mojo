@@ -15,44 +15,57 @@ from sys.intrinsics import _mlirtype_is_eq
 
 @value
 struct Model:
-    """Memory managed CModel."""
+    """A loaded model that you can execute.
 
-    var ctx: CRuntimeContext
-    var ptr: CModel
-    var lib: DLHandle
-    var session: InferenceSession
+    Do not instantiate this class directly. Instead, create it with InferenceSession.
+    """
 
-    alias InitModelFnName = "M_initModel"
-    alias ExecuteFnName = "M_executeModelSync"
+    var _ctx: CRuntimeContext
+    var _ptr: CModel
+    var _lib: DLHandle
+    var _session: InferenceSession
+
+    alias _InitModelFnName = "M_initModel"
+    alias _ExecuteFnName = "M_executeModelSync"
 
     fn __moveinit__(inout self, owned existing: Self):
-        self.ctx = existing.ctx
-        self.ptr = exchange[CModel](
-            existing.ptr, DTypePointer[DType.invalid].get_null()
+        """Move initializer for model.
+
+        Args:
+          existing: Model to move.
+        """
+        self._ctx = existing._ctx
+        self._ptr = exchange[CModel](
+            existing._ptr, DTypePointer[DType.invalid].get_null()
         )
-        self.lib = existing.lib
-        self.session = existing.session ^
+        self._lib = existing._lib
+        self._session = existing._session ^
 
     fn execute(self, inputs: TensorMap) raises -> TensorMap:
-        let status = Status(self.lib)
+        """Execute model with given inputs.
+
+        Args:
+          inputs: A tensor map with input names as keys and inputs as values.
+        """
+        let status = Status(self._lib)
         let outputs = call_dylib_func[CTensorMap](
-            self.lib,
-            Self.ExecuteFnName,
-            self.ctx,
-            self.ptr,
+            self._lib,
+            Self._ExecuteFnName,
+            self._ctx,
+            self._ptr,
             inputs.borrow_ptr(),
             status.borrow_ptr(),
         )
         if status:
             raise status.__str__()
-        return TensorMap(outputs, self.lib, self.session.copy())
+        return TensorMap(outputs, self._lib, self._session.copy())
 
     fn _execute_view[
         key_type: AnyRegType, value_type: AnyRegType
     ](
         self, inputs: VariadicList[Tuple[key_type, value_type]]
     ) raises -> TensorMap:
-        let input_map = TensorMap(self.ctx, self.lib, self.session.copy())
+        let input_map = TensorMap(self._ctx, self._lib, self._session.copy())
         for i in range(len(inputs)):
             let pair = inputs[i]
 
@@ -88,18 +101,38 @@ struct Model:
     fn execute(
         self, *inputs: Tuple[StringRef, EngineTensorView]
     ) raises -> TensorMap:
+        """Execute model with given inputs.
+
+        Args:
+          inputs: A variadic list of tuples with first element of tuple is
+                  input name and second element is non owning view of a Tensor.
+        """
         return self._execute_view[StringRef, EngineTensorView](inputs)
 
     fn execute(
         self, *inputs: Tuple[StringLiteral, EngineTensorView]
     ) raises -> TensorMap:
+        """Execute model with given inputs.
+
+        Args:
+          inputs: A variadic list of tuples with first element of tuple is
+                  input name and second element is non owning view of a Tensor.
+        """
         return self._execute_view[StringLiteral, EngineTensorView](inputs)
 
     fn execute(
         self, *inputs: Tuple[StringLiteral, EngineNumpyView]
     ) raises -> TensorMap:
+        """Execute model with given inputs.
+
+        Args:
+          inputs: A variadic list of tuples with first element of tuple is
+                  input name and second element is non owning view of a Numpy
+                  array.
+        """
         return self._execute_view[StringLiteral, EngineNumpyView](inputs)
 
     fn __del__(owned self):
-        self.ptr.free(self.lib)
-        _ = self.session ^
+        """Destructor for Model."""
+        self._ptr.free(self._lib)
+        _ = self._session ^
