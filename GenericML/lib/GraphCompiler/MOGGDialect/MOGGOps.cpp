@@ -21,6 +21,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringMap.h"
 
@@ -490,6 +491,43 @@ void KernelOp::fuseBodyIntoNewWithSkip(
   }
 }
 
+// Verify that all the `mogg.set_param` set the symbolic dimensions properly.
+static LogicalResult verifyKernelSetParam(KernelOp kernel) {
+  llvm::SmallSet<StringRef, 4> symbolicDimSet;
+
+  if (kernel.getOps<MOGG::SetParameterOp>().empty())
+    return success();
+
+  // Check that each symbolic dim gets assigned at most once.
+  for (auto op : kernel.getOps<MOGG::SetParameterOp>()) {
+    if (!symbolicDimSet.insert(op.getParamName()).second)
+      return mlir::emitError(op->getLoc(),
+                             "Symbolic dimension has been assigned more than "
+                             "once");
+  }
+
+  // Check that the output (at most one) has all the symbolic dimensions
+  // assigned by `mogg.set_param`.
+  for (auto outputPlaceholder : kernel.getOps<MOGG::OutputPlaceholdersOp>()) {
+    if (!llvm::all_of(outputPlaceholder.getResults(), [&](mlir::OpResult res) {
+          auto resType = cast<MO::TensorType>(res.getType());
+
+          return llvm::all_of(
+              resType.getTypedShapeAttr().getValues(),
+              [&](mlir::TypedAttr dim) {
+                auto symblicDim = dyn_cast<KGEN::ParamDeclRefAttr>(dim);
+                if (!symblicDim)
+                  return true;
+                return symbolicDimSet.contains(symblicDim.getName());
+              });
+        }))
+      return mlir::emitError(outputPlaceholder->getLoc(),
+                             "Not all symbolic dimensions are assigned");
+  }
+
+  return success();
+}
+
 LogicalResult KernelOp::verify() {
   if (llvm::range_size(getOps<MOGG::OutputPlaceholdersOp>()) > 1)
     return emitError("A KernelOp must have at most one output placeholder op");
@@ -552,6 +590,12 @@ LogicalResult KernelOp::verify() {
                "Number of operands does not match number of body arguments ")
            << " (" << getNumOperands() << " vs " << numArguments << ")";
   }
+
+  // Verify that symbolic dims are set properly in the kernel.
+  auto setParamCheck =
+      verifyKernelSetParam(mlir::cast<KernelOp>(getOperation()));
+  if (mlir::failed(setParamCheck))
+    return setParamCheck;
 
   return success();
 }
