@@ -24,6 +24,7 @@
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "MEFModel.h"
+#include "Support/Buffer.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Value.h"
@@ -611,7 +612,7 @@ SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig, ModuleOp module,
 // Models need to ensure that their backing buffer lives as long as they do.
 struct ModelsWithBuffer {
   std::unique_ptr<ModelCollection> models;
-  std::unique_ptr<llvm::MemoryBuffer> buffer;
+  BufferRef buffer;
 };
 
 /// Replace a constant subgraph with results from executing it. Replaces outputs
@@ -827,35 +828,17 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
   if (failed(runPipeline(pm, module)))
     return Error("Failed to run MOToMGP pipeline");
 
-  // Convert to MEF. We write it to a file and then read it back in. LLVM
-  // doesn't seem to provide a way to write and read it directly from a
-  // buffer.
-  llvm::SmallString<128> filename;
-  std::error_code e =
-      llvm::sys::fs::createTemporaryFile("mo", "subgraph_mef", filename);
-  if (e.value() != 0)
-    return Error("Cannot open temp file: " + e.message());
-  {
-    std::error_code e;
-    llvm::raw_fd_ostream os(filename, e);
-    if (failed(convertToMEF(module, os, false)))
-      return Error("unable to convert file to a MEF binary");
-  }
-  // Delete file when we leave scope.
-  llvm::FileRemover remover(filename);
+  auto buf = M::WriteableBuffer::get(0, /*alignment=*/0x4000);
+  if (failed(convertToMEF(module, *buf, false)))
+    return Error("unable to convert file to a MEF binary");
 
-  std::string errorMsg;
-  std::unique_ptr<llvm::MemoryBuffer> file =
-      mlir::openInputFile(filename, llvm::Align(0x4000), &errorMsg);
-  if (!file)
-    return Error(errorMsg);
-  auto mefFileOr = MEFFile::open(file->getBuffer());
+  auto mefFileOr = MEFFile::open(buf->Buffer::getBuffer());
   if (mefFileOr.isError())
     return mefFileOr.takeError();
   auto modelsOr = loadMGPMEFFile(std::move(*mefFileOr));
   if (modelsOr.isError())
     return modelsOr.takeError();
-  return {ModelsWithBuffer{std::move(*modelsOr), std::move(file)}};
+  return {ModelsWithBuffer{std::move(*modelsOr), std::move(buf)}};
 }
 
 void ConstantFoldPass::runOnOperation() {
