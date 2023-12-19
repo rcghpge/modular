@@ -1,3 +1,3 @@
 // RUN: not max staple 2>&1 | FileCheck %s
 // CHECK: Unknown subcommand `staple'
-// CHECK: usage: max <subcommand> <args...>
+// CHECK: Try max --help to see available subcommands.

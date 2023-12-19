@@ -8,6 +8,9 @@
 #include "GenericML/API/modular/c/common.h"
 #include "GenericML/EngineCLI/Benchmark/Main.h"
 #include "Support/CrashReporting.h"
+#include "Support/Driver/DriverSupport.h"
+#include "llvm/Option/ArgList.h"
+#include "llvm/Option/Option.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/raw_ostream.h"
@@ -17,26 +20,18 @@
 #include "GenericML/EngineCLI/Visualize/Main.h"
 #endif // MODULAR_PRODUCTION
 
+#define DRIVER_OPTIONS_PATH "DriverOptions.inc"
+#include "Support/Driver/OptTable.inc"
+
 using namespace M;
 
 static constexpr const char *kMAXProductName = "max";
 
-static void usage(llvm::raw_ostream &os) {
-  os << "usage: " << kMAXProductName
-     << " <subcommand> <args...>\n"
-        "Available subcommands:\n"
-        "  benchmark - Benchmark a model with the Modular AI Engine\n"
-#ifndef MODULAR_PRODUCTION
-        "  visualize - Generate a file that can be used to visualize a model "
-        "with Netron.app\n"
-#endif // MODULAR_PRODUCTION
-      ;
-}
-
-static int handleHelp(int argc, char **argv) {
-  usage(llvm::outs());
-  return EXIT_SUCCESS;
-}
+namespace {
+struct DriverOptTable : public llvm::opt::PrecomputedOptTable {
+  DriverOptTable() : llvm::opt::PrecomputedOptTable(InfoTable, PrefixTable) {}
+};
+} // namespace
 
 static int handleVersion(int argc, char **argv) {
   ModularVersion version = getModularVersion();
@@ -49,7 +44,8 @@ static int handleVersion(int argc, char **argv) {
 
 static int handleUnknownSubcommand(int argc, char **argv) {
   llvm::errs() << "Unknown subcommand `" << argv[0] << "'\n";
-  usage(llvm::errs());
+  llvm::errs() << "Try " << kMAXProductName
+               << " --help to see available subcommands.\n";
   return EXIT_FAILURE;
 }
 
@@ -60,20 +56,37 @@ int main(int argc, char **argv) {
       "Please submit a bug report to eap@modular.com and include the crash "
       "backtrace along with your command line invocation.\n");
 
-  if (argc < 2) {
-    llvm::errs() << "Subcommand must be provided\n";
-    usage(llvm::errs());
-    return EXIT_FAILURE;
+  State state(kMAXProductName, {argv + 1, static_cast<size_t>(argc) - 1});
+  if (state.arguments.empty())
+    return state.reportError("Subcommand must be provided\n"
+                             "Try " +
+                             Twine(kMAXProductName) +
+                             " --help to see available subcommands.");
+  unsigned index = 0;
+  DriverOptTable optTable;
+  llvm::opt::InputArgList args(state.arguments.begin(), state.arguments.end());
+  auto firstArg = optTable.ParseOneArg(args, index);
+  switch (firstArg->getOption().getID()) {
+  case options::OPT_help:
+    return state.printHelp(
+#include "DriverOptionsHelpText.inc"
+    );
+  case options::OPT_version:
+    return handleVersion(argc - index, argv + index);
+  case options::OPT_INPUT:
+    // Usual case.  Break out and handle below.
+    break;
+  default:
+    return state.reportError("unrecognized argument `" +
+                             firstArg->getSpelling() + "'");
   }
 
   using HandlerFunc = int (*)(int argc, char **argv);
-  auto handler = llvm::StringSwitch<HandlerFunc>(argv[1])
-                     .Case("--help", handleHelp)
-                     .Case("--version", handleVersion)
+  auto handler = llvm::StringSwitch<HandlerFunc>(firstArg->getAsString(args))
                      .Case("benchmark", maxBenchmarkMain)
 #ifndef MODULAR_PRODUCTION
                      .Case("visualize", maxVisualizeMain)
 #endif // MODULAR_PRODUCTION
                      .Default(handleUnknownSubcommand);
-  return handler(argc - 1, argv + 1);
+  return handler(argc - index, argv + index);
 }

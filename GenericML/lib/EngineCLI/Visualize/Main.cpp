@@ -11,16 +11,21 @@
 #include "GenericML/EngineCLI/Common/InputGenerationSchema.h"
 #include "GenericML/EngineCLI/Common/TorchSupport.h"
 #include "LLCL/Runtime/Runtime.h"
-#include "Support/CommandLine.h"
+#include "Support/Driver/DriverSupport.h"
 #include "Support/ErrorOr.h"
 #include "Support/Process.h"
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/Option/ArgList.h"
+#include "llvm/Option/Option.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+
+#define DRIVER_OPTIONS_PATH "VisualizeOptions.inc"
+#include "Support/Driver/OptTable.inc"
 
 using namespace M;
 using namespace M::EngineCLI;
@@ -31,31 +36,70 @@ static constexpr const char *kTelemetrySuccessEventName = "visualize.success";
 
 namespace {
 
-struct ClOptions {
-  cl::opt<std::string> modelPath{llvm::cl::Positional, llvm::cl::Required,
-                                 cl::desc("Path to model")};
-  cl::opt<std::string> inputGenerationSchemaPath{
-      "input-generation-schema",
-      cl::desc("Path to input generation schema file "
-               "(only used for compile-time shape specifications)")};
+struct VisualizeOptTable : public llvm::opt::PrecomputedOptTable {
+  VisualizeOptTable()
+      : llvm::opt::PrecomputedOptTable(InfoTable, PrefixTable) {}
+};
 
-  cl::opt<std::string> visualizationDir{
-      "output-directory", cl::desc("Path to directory for output maxviz file."),
-      cl::init("")};
-  cl::opt<std::string> customOpsPath{
-      "custom-ops-path", cl::desc("Path to custom ops"), cl::init("")};
-  cl::opt<size_t> numThreads{"num-threads",
-                             cl::desc("Number of threads to use"), cl::init(0)};
+struct ClOptions {
+  std::string modelPath;
+  std::string inputGenerationSchemaPath;
+  std::string visualizationDir;
+  std::string customOpsPath;
 };
 
 } // namespace
 
-static ErrorOr<RuntimeContextPtr> makeRuntimeContext(M_Status *status,
-                                                     size_t numThreads) {
+static void printVersion(llvm::raw_ostream &os) {
+  ModularVersion version = getModularVersion();
+  os << llvm::formatv("{0} {1}.{2}.{3}{4} ({5})\n", maxVisualize, version.major,
+                      version.minor, version.patch, version.label,
+                      version.revision);
+  os << "Modular version " << M_version() << "\n";
+}
+
+static ClOptions parseOptions(const State &state) {
+  ClOptions opts;
+  VisualizeOptTable optTable;
+  unsigned missingIndex = 0;
+  unsigned missingCount = 0;
+  auto args = optTable.ParseArgs(state.arguments, missingIndex, missingCount);
+  if (int exitCode = state.rejectUnknownArguments(args, options::OPT_UNKNOWN))
+    std::exit(exitCode);
+  if (args.hasArg(options::OPT_help))
+    std::exit(state.printHelp(
+#include "VisualizeOptionsHelpText.inc"
+        ));
+  if (args.hasArg(options::OPT_version)) {
+    printVersion(llvm::outs());
+    std::exit(EXIT_SUCCESS);
+  }
+  if (!args.hasArg(options::OPT_INPUT))
+    std::exit(state.reportError("no model path provided"));
+  if (args.hasMultipleArgs(options::OPT_INPUT))
+    std::exit(state.reportError("must provide at most one model path"));
+  opts.modelPath = args.getLastArgValue(options::OPT_INPUT);
+  if (args.hasMultipleArgs(options::OPT_input_generation_schema))
+    std::exit(
+        state.reportError("must provide at most one input generation schema"));
+  if (args.hasArg(options::OPT_input_generation_schema))
+    opts.inputGenerationSchemaPath =
+        args.getLastArgValue(options::OPT_input_generation_schema);
+  if (args.hasMultipleArgs(options::OPT_output_directory))
+    std::exit(state.reportError("must provide at most one custom ops path"));
+  if (args.hasArg(options::OPT_output_directory))
+    opts.visualizationDir = args.getLastArgValue(options::OPT_output_directory);
+  if (args.hasMultipleArgs(options::OPT_custom_ops_path))
+    std::exit(state.reportError("must provide at most one custom ops path"));
+  if (args.hasArg(options::OPT_custom_ops_path))
+    opts.customOpsPath = args.getLastArgValue(options::OPT_custom_ops_path);
+  return opts;
+}
+
+static ErrorOr<RuntimeContextPtr> makeRuntimeContext(M_Status *status) {
   RuntimeConfigPtr runtimeConfig(M_newRuntimeConfig(), M_freeRuntimeConfig);
   if (!runtimeConfig)
     return Error("Failed to create M_RuntimeConfig (out of memory?)");
-  M_setNumThreads(runtimeConfig.get(), numThreads);
   RuntimeContextPtr context(M_newRuntimeContext(runtimeConfig.get(), status),
                             M_freeRuntimeContext);
   if (!context)
@@ -99,16 +143,8 @@ int M::maxVisualizeMain(int argc, char **argv) {
 
   (void)M::setProcessEnv("GENERATE_VISUALIZATION", "1");
 
-  ClOptions opts;
-
-  llvm::cl::SetVersionPrinter([](llvm::raw_ostream &os) {
-    ModularVersion version = getModularVersion();
-    os << llvm::formatv("{0} {1}.{2}.{3}{4} ({5})\n", maxVisualize,
-                        version.major, version.minor, version.patch,
-                        version.label, version.revision);
-    os << "Modular version " << M_version() << "\n";
-  });
-  llvm::cl::ParseCommandLineOptions(argc, argv, maxVisualize);
+  State state(maxVisualize, {argv + 1, static_cast<size_t>(argc) - 1});
+  ClOptions opts = parseOptions(state);
 
   llvm::outs() << "Modular Visualization Tool\n";
   llvm::outs() << "Modular version: " << M_version() << "\n";
@@ -130,7 +166,7 @@ int M::maxVisualizeMain(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  auto runtimeContextOr = makeRuntimeContext(status.get(), opts.numThreads);
+  auto runtimeContextOr = makeRuntimeContext(status.get());
   if (runtimeContextOr.isError()) {
     llvm::errs() << "Error: Failed to create runtime context: "
                  << runtimeContextOr.getError() << "\n";

@@ -4,12 +4,11 @@
 #
 ##===----------------------------------------------------------------------===##
 
-# TODO: Switch to add_driver_option_tablegen once all subcommands hooked up.
-set(LLVM_TARGET_DEFINITIONS BenchmarkOptions.td)
-tablegen(LLVM BenchmarkOptions.inc -gen-opt-parser-defs)
-tablegen(DRIVER BenchmarkOptionsHelpText.inc -gen-help-text)
-tablegen(DRIVER max-benchmark.1 -gen-man-page)
-add_public_tablegen_target(EngineCLIDriverBenchmarkOptions)
+add_driver_option_tablegen(
+  EngineCLI BenchmarkOptions.td
+  MANUAL_NAME max-benchmark
+  MARKDOWN_NAME benchmark
+)
 
 add_genericml_library(EngineCLIBenchmark
   InputGenerationDefaults.cpp
@@ -21,7 +20,7 @@ add_genericml_library(EngineCLIBenchmark
   Tensor.cpp
 
   DEPENDS
-  EngineCLIDriverBenchmarkOptions
+  EngineCLIDriverOptions
 
   LINK_LIBS PUBLIC
   EngineCLICommon
