@@ -48,7 +48,8 @@ void core::verifyTensorInputSpecs(const py::object &obj,
   std::vector<int64_t> inputShape;
   for (ssize_t d = 0, ndim = tensor.ndim(); d < ndim; ++d) {
     int64_t expectedDim = M_getDimAt(inputTensorSpec.getSpec(), d);
-    if (expectedDim != apiDynamicDimension && expectedDim != tensor.shape(d)) {
+    if (expectedDim != M_getDynamicDimensionValue() &&
+        expectedDim != tensor.shape(d)) {
       throw std::runtime_error(
           "Input tensor has incompatible dimension along axis " +
           std::to_string(d) + ". Expected " + std::to_string(expectedDim) +

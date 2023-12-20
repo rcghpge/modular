@@ -89,6 +89,7 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
   VAR = VAR##Or.takeValue();
 
   GET_SYMBOL(version, M_version);
+  GET_SYMBOL(getDynamicDimensionValue, M_getDynamicDimensionValue);
 
   GET_SYMBOL(isError, M_isError);
   GET_SYMBOL(getError, M_getError);

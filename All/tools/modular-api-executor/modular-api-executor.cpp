@@ -94,7 +94,7 @@ static M::TensorSpec getTensorSpec(const ModularAPIInterface &api,
   size_t numDims = api.getRank(spec);
   inputShape.reserve(numDims);
   for (size_t i = 0; i < numDims; ++i) {
-    if (api.getDimAt(spec, i) == apiDynamicDimension) {
+    if (api.getDimAt(spec, i) == api.getDynamicDimensionValue()) {
       // Shapes in the GML::Tensor layer need to follow MLIR convention where
       // dynamic dimensions are represented by constant kDynamic which is equal
       // to std::numeric_limits<int64_t>::min()
