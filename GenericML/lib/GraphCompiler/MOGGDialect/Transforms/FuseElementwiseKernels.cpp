@@ -147,9 +147,16 @@ struct FuseElementwisePass
       if (!llvm::all_of(uniqueUsers, canFuseWith))
         continue;
 
+      bool isKGEN = srcKernel.getIsKGEN().value_or(false);
       for (Operation *dstOp : uniqueUsers) {
         auto dstKernel = cast<KernelOp>(dstOp);
-        fuseSrcKernelIntoDstKernel(srcKernel, dstKernel);
+        if (isKGEN)
+          fuseSrcKernelIntoDstKernelKGEN(srcKernel, dstKernel);
+        else
+          fuseSrcKernelIntoDstKernelMOGG(srcKernel, dstKernel);
+
+        // Update the dst's summary to capture the producer's summary.
+        dstKernel.setSummaryAttr(getSummaryString({srcKernel, dstKernel}));
         dstElementwiseKernels.insert(dstKernel);
       }
     }
@@ -171,8 +178,8 @@ struct FuseElementwisePass
   //    to point to the cloned input lambdas.
   // 4. Remove the old argument and associated lambda.
   // 5. Update the attributes to reflect the new inputs.
-  void fuseSrcKernelIntoDstKernel(MOGG::KernelOp srcKernel,
-                                  KernelOp dstKernel) {
+  void fuseSrcKernelIntoDstKernelMOGG(MOGG::KernelOp srcKernel,
+                                      KernelOp dstKernel) {
     auto fusionIndices = getFusionIndices(srcKernel, dstKernel);
     // This assumes that srcKernel has a single output. When that changes, we
     // will have to create a mapping.
@@ -183,17 +190,18 @@ struct FuseElementwisePass
     for (int fusionIndex : llvm::reverse(fusionIndices)) {
       // The input lambda we are going to replace with the fused body.
       ArrayAttr dstHooks = dstKernel.getInputFusionInterfaceAttr();
-      StringAttr inputLambdaToReplace = cast<StringAttr>(dstHooks[fusionIndex]);
+      StringAttr dstKernelInputLambdaName =
+          cast<StringAttr>(dstHooks[fusionIndex]);
 
       // Get the output placeholder operation in the block we are inserting
       // into. We want to this to be at the top as that simplifies other
       // transforms so we use this as the start of the block.
       MOGG::OutputPlaceholdersOp dstOuts = dstKernel.getOutputPlaceholder();
 
-      // Symbol tables for the both the incoming kernel and the kernel we are
-      // fusing into.
+      // Symbol tables for both the incoming kernel and the kernel we are fusing
+      // into.
       mlir::SymbolTable dstSymTable{dstKernel};
-      mlir::SymbolTable producerSymTable{srcKernel};
+      mlir::SymbolTable srcSymTable{srcKernel};
 
       // Add the new lambdas to the top of the dst kernel after the output
       // placeholders.
@@ -208,7 +216,7 @@ struct FuseElementwisePass
       // have already replaced. This occurs when the srcKernel feeds into many
       // arguments of the dstKernel.
       if (previouslyFusedValue) {
-        replaceLoadWithExistingUse(dstKernel, inputLambdaToReplace,
+        replaceLoadWithExistingUse(dstKernel, dstKernelInputLambdaName,
                                    dstElemwiseLambda, inserter,
                                    previouslyFusedValue);
         dstKernel.removeOperandAtIndex(fusionIndex);
@@ -244,7 +252,7 @@ struct FuseElementwisePass
         if (srcInputLambdas) {
           StringRef name = cast<StringAttr>(srcInputLambdas[i]).getValue();
           if (!name.empty())
-            srcLambda = cast<LambdaOp>(producerSymTable.lookup(name));
+            srcLambda = cast<LambdaOp>(srcSymTable.lookup(name));
         }
 
         auto itr = dstOperands.find(srcOperand);
@@ -286,8 +294,7 @@ struct FuseElementwisePass
       }
 
       StringRef mainBody = *srcKernel.getFusionBodyLambda();
-      auto srcElementwiseLambda =
-          cast<LambdaOp>(producerSymTable.lookup(mainBody));
+      auto srcElementwiseLambda = cast<LambdaOp>(srcSymTable.lookup(mainBody));
 
       // Clone the block.
       auto newOp = cast<LambdaOp>(srcElementwiseLambda->clone(remapper));
@@ -336,8 +343,8 @@ struct FuseElementwisePass
       // inlined body of the replacement lambda. The only reason we don't
       // replace it with a call is because it returns void so we would need to
       // create a new one for a legal call.
-      auto uses =
-          *dstSymTable.getSymbolUses(inputLambdaToReplace, dstElemwiseLambda);
+      auto uses = *dstSymTable.getSymbolUses(dstKernelInputLambdaName,
+                                             dstElemwiseLambda);
       for (auto use : llvm::make_early_inc_range(uses)) {
         auto toReplace = cast<MOGG::LambdaInvokeOp>(use.getUser());
         // Inline the first invoke and then reuse those values.
@@ -365,23 +372,20 @@ struct FuseElementwisePass
 
       // Remove the argument we have effectively inlined.
       dstKernel.removeOperandAtIndex(fusionIndex);
-
-      // Update the dst's summary to capture the producer's summary.
-      dstKernel.setSummaryAttr(getSummaryString({srcKernel, dstKernel}));
     }
   }
 
-  // Replace all loads from `inputLambdaToReplace` in `dstElemwiseLambda` with
-  // the existing value `newVal`.
+  // Replace all loads from `dstKernelInputLambdaName` in `dstElemwiseLambda`
+  // with the existing value `newVal`.
   void replaceLoadWithExistingUse(MOGG::KernelOp dst,
-                                  StringAttr inputLambdaToReplace,
+                                  StringAttr dstKernelInputLambdaName,
                                   MOGG::LambdaOp dstElemwiseLambda,
                                   mlir::OpBuilder &builder, Value newVal) {
     mlir::SymbolTable dstSymTable{dst};
 
     // The input lambda we should remove.
     auto lambdaToRemove =
-        cast<LambdaOp>(dstSymTable.lookup(inputLambdaToReplace));
+        cast<LambdaOp>(dstSymTable.lookup(dstKernelInputLambdaName));
 
     // Replace all uses inside the body of this lambda with the value we
     // already fused in.
@@ -393,6 +397,132 @@ struct FuseElementwisePass
     }
 
     lambdaToRemove.erase();
+  }
+
+  static KGEN::ParamDeclareRegionOp findLambda(KernelOp kernelOp,
+                                               StringAttr name) {
+    // FIXME: Use mlir::SymbolTable dstSymTable{kernelOp};
+    for (auto op : kernelOp.getBody().getOps<KGEN::ParamDeclareRegionOp>()) {
+      if (op.getParamDecl().getName() == name)
+        return op;
+    }
+
+    return nullptr;
+  }
+
+  // The KGEN equivalent of fusion consists of replacing calls of the old input
+  // lambda with calls to the elementwise lambda in the source kernel. This is
+  // possible because they have the same signature.
+  void fuseSrcKernelIntoDstKernelKGEN(KernelOp srcKernel, KernelOp dstKernel) {
+    auto fusionIndices = getFusionIndices(srcKernel, dstKernel);
+    if (fusionIndices.empty())
+      return;
+
+    IRMapping mapper;
+    OpBuilder builder{dstKernel.getContext()};
+
+    ArrayAttr dstKernelHooks = dstKernel.getInputFusionInterfaceAttr();
+    MOGG::OutputPlaceholdersOp dstOutput = dstKernel.getOutputPlaceholder();
+    auto dstConverterOps = dstKernel.getOps<ToKGENOp>();
+    SmallVector<ToKGENOp> dstConverterOpsArray(dstConverterOps.begin(),
+                                               dstConverterOps.end());
+    ToKGENOp entryPoint = dstConverterOpsArray.back();
+
+    /// ASSUMPTION: Single output kernel.
+    KGEN::ParamDeclareRegionOp srcOutputLambda = findLambda(
+        srcKernel,
+        cast<StringAttr>(srcKernel.getOutputFusionInterfaceAttr()[0]));
+    KGEN::ParamDeclareRegionOp srcElementwiseLambda =
+        findLambda(srcKernel, srcKernel.getFusionBodyLambdaAttr());
+
+    // Add each of the new operands to the kernel body we are fusing into and
+    // the corresponding input lambdas.
+    /// FIXME: (#18013) Simplify duplicate operands.
+    builder.setInsertionPointAfter(entryPoint);
+    mlir::SymbolTable dstSymTable{dstKernel};
+    llvm::StringMap<int> srcInputLambdaPositions;
+    for (auto [srcOperand, srcArgument, srcInputLambdaName] : llvm::zip(
+             srcKernel.getOperands(), srcKernel.getBody().getArguments(),
+             srcKernel.getInputFusionInterface()->getAsRange<StringAttr>())) {
+      Value dstArgument = dstKernel.addOperand(srcOperand);
+      mapper.map(srcArgument, dstArgument);
+      srcInputLambdaPositions[srcInputLambdaName] =
+          dstKernel.getNumOperands() - 1;
+    }
+
+    for (Operation &srcOp : srcKernel.getBody().getOps()) {
+      if (auto moggCallOp = dyn_cast<MOGG::CallOp>(srcOp)) {
+        if (moggCallOp.getMojoKernelTarget() == "mark_output_chain_ready")
+          continue;
+      }
+
+      if (isa<KGEN::CallOp, MOGG::OutputOp>(srcOp))
+        continue;
+
+      if (auto srcOutput = dyn_cast<MOGG::OutputPlaceholdersOp>(srcOp)) {
+        /// ASSUMPTION: Single output kernel.
+        // The duplicate ToKGEN will be CSE-ed.
+        mapper.map(srcOutput.getResult(0), dstOutput.getResult(0));
+        continue;
+      }
+
+      auto lambda = dyn_cast<KGEN::ParamDeclareRegionOp>(srcOp);
+      if (lambda == srcOutputLambda)
+        continue;
+
+      auto newOp = builder.clone(srcOp, mapper);
+
+      // Symbols have to be added through the table to avoid duplication.
+      if (lambda) {
+        auto newName = dstSymTable.insert(newOp, builder.getInsertionPoint());
+        auto oldName = lambda.getParamDecl().getName();
+        if (srcInputLambdaPositions.contains(oldName)) {
+          dstKernel.setInputFusionInterface(srcInputLambdaPositions[oldName],
+                                            newName);
+        }
+      }
+    }
+
+    auto &dstKernelBody = dstKernel.getBody().front();
+    for (int fusionIndex : llvm::reverse(fusionIndices)) {
+      builder.setInsertionPointAfter(entryPoint);
+
+      // The input lambda we are going to replace with the fused body.
+      auto dstKernelArgument = dstKernelBody.getArgument(fusionIndex);
+
+      StringAttr dstKernelInputLambdaName =
+          cast<StringAttr>(dstKernelHooks[fusionIndex]);
+      KGEN::ParamDeclareRegionOp dstInputLambda =
+          findLambda(dstKernel, dstKernelInputLambdaName);
+
+      // Now replace all references to the input lambda with the new lambda.
+      mlir::AttrTypeReplacer walker;
+      walker.addReplacement([&](KGEN::ParamDeclRefAttr attr)
+                                -> std::optional<KGEN::ParamDeclRefAttr> {
+        if (attr.getName() == dstKernelInputLambdaName)
+          return KGEN::ParamDeclRefAttr::get(
+              srcKernel.getFusionBodyLambdaAttr(),
+              srcElementwiseLambda.getParamDecl().getType());
+        return std::nullopt;
+      });
+      walker.recursivelyReplaceElementsIn(dstKernel, /*replaceAttrs=*/true,
+                                          /*replaceLocs=*/false,
+                                          /*replaceTypes=*/true);
+
+      dstInputLambda.erase();
+
+      // By composition we've already guaranteed the pointer is not going to be
+      // accessed. What this means is that although this tensor is used by some
+      // function calls, it's never actually read/written from/to. This is
+      // because functions (including lambdas) have access to more than their
+      // operands. They can capture values outside of their scope and that's how
+      // ambdas actually access the right tensor. This one will never be
+      // accessed but it is necessary to not have to temper with the KGEN code.
+      builder.setInsertionPoint(entryPoint);
+      dstKernelArgument.replaceAllUsesWith(
+          dstKernelBody.getArgument(dstKernelBody.getNumArguments() - 1));
+      dstKernel.removeOperandAtIndex(fusionIndex);
+    }
   }
 };
 
