@@ -60,7 +60,6 @@ struct JitCompileKernels
     for (auto graph : m.getOps<MO::GraphOp>()) {
       auto errOr = this->runPass(graph, mojoLibraryAnalysis);
       if (errOr.isError()) {
-        graph.emitError() << "[JitCompileKernels] " << errOr.getError();
         return signalPassFailure();
       }
     }
@@ -70,12 +69,12 @@ struct JitCompileKernels
     m.walk([](KGEN::ExternGeneratorOp op) { op.erase(); });
   }
 
-  ErrorOrSuccess runPass(MO::GraphOp graph,
-                         MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
+  CompileDiagnosticOrSuccess
+  runPass(MO::GraphOp graph, MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
     ErrorOr<DeviceSpecCollectionAttr> deviceSpecsOr =
         MO::getDeviceSpecsOrDefault(graph);
     if (deviceSpecsOr)
-      return deviceSpecsOr.takeError();
+      return graph->emitError(deviceSpecsOr.takeError().get());
     DeviceSpecAttr hostDeviceSpec = deviceSpecsOr->getHostDeviceSpec();
 
     // We can optionally override
