@@ -72,7 +72,7 @@ struct _InferenceSessionImpl:
 
     fn load_model(
         self,
-        model_path: StringRef,
+        model_path: Path,
         user_defined_ops_path: Optional[StringRef],
         owned session: InferenceSession,
     ) raises -> Model:
@@ -80,8 +80,11 @@ struct _InferenceSessionImpl:
         Compiles and initializes model given path.
         """
         let compiled_model = self.compile_model(
-            model_path, user_defined_ops_path, session.copy()
+            model_path.path._strref_dangerous(),
+            user_defined_ops_path,
+            session.copy(),
         )
+        model_path.path._strref_keepalive()
 
         let status = Status(self.engine.lib)
         let model_ptr = call_dylib_func[CModel](
@@ -156,14 +159,9 @@ struct InferenceSession:
         _ = __get_address_as_lvalue(self.ptr.address).ref_count.fetch_add(1)
         return Self {ptr: self.ptr}
 
-    fn load_model(self, path: Path) raises -> Model:
-        let model = self.load_model(path.path._strref_dangerous())
-        path.path._strref_keepalive()
-        return model ^
-
     fn load_model(
         self,
-        model_path: StringRef,
+        model_path: Path,
         user_defined_ops_path: Optional[StringRef] = None,
     ) raises -> Model:
         """
