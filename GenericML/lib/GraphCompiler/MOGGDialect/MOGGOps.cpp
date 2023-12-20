@@ -491,6 +491,26 @@ void KernelOp::fuseBodyIntoNewWithSkip(
   }
 }
 
+KGEN::ParamDeclareRegionOp KernelOp::findLambda(StringAttr name) {
+  for (auto op : getBody().getOps<KGEN::ParamDeclareRegionOp>()) {
+    if (op.getParamDecl().getName() == name)
+      return op;
+  }
+
+  return nullptr;
+}
+
+StringAttr KernelOp::getInputFusionInterfaceAt(size_t index) {
+  auto ctx = getContext();
+  auto inputLambdaNamesOpt = getInputFusionInterface();
+  if (!inputLambdaNamesOpt)
+    return StringAttr::get(ctx, "");
+
+  auto inputLambdaNames = *inputLambdaNamesOpt;
+
+  return inputLambdaNames[index].cast<StringAttr>();
+}
+
 // Verify that all the `mogg.set_param` set the symbolic dimensions properly.
 static LogicalResult verifyKernelSetParam(KernelOp kernel) {
   llvm::SmallSet<StringRef, 4> symbolicDimSet;

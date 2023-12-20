@@ -266,9 +266,16 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
     /// placeholders if they exist.
     void setInsertionPointToTop(OpBuilder& builder);
 
-    /// Returns the KGEN input parameters this depends on. Necessary to implement the DeclInterface.
+    /// Returns the KGEN input parameters this depends on. Necessary to
+    /// implement the DeclInterface.
     ArrayRef<ParamDeclAttr> getInputParams() { return {}; }
     ArrayRef<ParamDeclAttr> getResultParams() { return {}; }
+
+    /// Finds a lambda in the body of the op.
+    KGEN::ParamDeclareRegionOp findLambda(StringAttr name);
+
+    /// Returns an input lambda or an empty string if it does not exist.
+    StringAttr getInputFusionInterfaceAt(size_t index);
   }];
 
 }

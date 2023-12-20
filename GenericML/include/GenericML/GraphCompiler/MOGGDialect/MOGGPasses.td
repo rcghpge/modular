@@ -208,4 +208,16 @@ def InlineKGENParameters: Pass<"inline-kgen-parameters", "MO::GraphOp"> {
   ];
 }
 
+def SimplifyKernelOperands: Pass<"simplify-kernel-operands", "MO::GraphOp"> {
+  let summary = "Gets rid of duplicate kernel operands";
+  let description = [{
+    This pass uniques kernel operands.
+  }];
+  let dependentDialects = [
+    "M::MDialect",
+    "M::MOGG::MOGGDialect",
+    "M::KGEN::KGENDialect",
+  ];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGPASSES_TD

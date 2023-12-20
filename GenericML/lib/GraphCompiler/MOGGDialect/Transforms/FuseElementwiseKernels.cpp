@@ -399,17 +399,6 @@ struct FuseElementwisePass
     lambdaToRemove.erase();
   }
 
-  static KGEN::ParamDeclareRegionOp findLambda(KernelOp kernelOp,
-                                               StringAttr name) {
-    // FIXME: Use mlir::SymbolTable dstSymTable{kernelOp};
-    for (auto op : kernelOp.getBody().getOps<KGEN::ParamDeclareRegionOp>()) {
-      if (op.getParamDecl().getName() == name)
-        return op;
-    }
-
-    return nullptr;
-  }
-
   // The KGEN equivalent of fusion consists of replacing calls of the old input
   // lambda with calls to the elementwise lambda in the source kernel. This is
   // possible because they have the same signature.
@@ -429,11 +418,10 @@ struct FuseElementwisePass
     ToKGENOp entryPoint = dstConverterOpsArray.back();
 
     /// ASSUMPTION: Single output kernel.
-    KGEN::ParamDeclareRegionOp srcOutputLambda = findLambda(
-        srcKernel,
+    KGEN::ParamDeclareRegionOp srcOutputLambda = srcKernel.findLambda(
         cast<StringAttr>(srcKernel.getOutputFusionInterfaceAttr()[0]));
     KGEN::ParamDeclareRegionOp srcElementwiseLambda =
-        findLambda(srcKernel, srcKernel.getFusionBodyLambdaAttr());
+        srcKernel.findLambda(srcKernel.getFusionBodyLambdaAttr());
 
     // Add each of the new operands to the kernel body we are fusing into and
     // the corresponding input lambdas.
@@ -493,7 +481,7 @@ struct FuseElementwisePass
       StringAttr dstKernelInputLambdaName =
           cast<StringAttr>(dstKernelHooks[fusionIndex]);
       KGEN::ParamDeclareRegionOp dstInputLambda =
-          findLambda(dstKernel, dstKernelInputLambdaName);
+          dstKernel.findLambda(dstKernelInputLambdaName);
 
       // Now replace all references to the input lambda with the new lambda.
       mlir::AttrTypeReplacer walker;

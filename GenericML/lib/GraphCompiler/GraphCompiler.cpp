@@ -168,6 +168,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   pm.addPass(MO::createHoistParameterExpressions());
   pm.addPass(MO::createMOToMOGG({opts.kernelLibraryPaths}));
+  pm.addPass(MOGG::createSimplifyKernelOperands());
   pm.addPass(MOGG::createSimplifyKGENParameters());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
@@ -177,15 +178,18 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(MOGG::createFuseElementwise());
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
+    pm.addPass(MOGG::createSimplifyKernelOperands());
 
     // Fuse broadcasts.
     pm.addPass(MOGG::createFuseBroadcasts());
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
+    pm.addPass(MOGG::createSimplifyKernelOperands());
 
     // Fuse into big ops. I.E epilogue fusion into matmul.
     pm.addPass(MOGG::createFuseInOutLambdas());
     pm.addPass(mlir::createCSEPass());
+    pm.addPass(MOGG::createSimplifyKernelOperands());
   }
 
   if (opts.performTrivialKernelOpt) {
@@ -212,6 +216,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   // Add cleanup passes to catch e.g used/duplicated constants.
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
+  pm.addPass(MOGG::createSimplifyKernelOperands());
   pm.addPass(MOGG::createInlineKGENParameters());
 
   // If we are jitting then we need to compile the jit kernels as well.
