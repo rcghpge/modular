@@ -97,10 +97,12 @@ struct _InferenceSessionImpl:
         model_ptr.await_model(self.engine.lib)
 
         let model = Model(
-            self.context.borrow_ptr(), model_ptr, self.engine.lib, session ^
+            self.context.borrow_ptr(),
+            model_ptr,
+            self.engine.lib,
+            session ^,
+            compiled_model ^,
         )
-        # Keep compiled model alive until model has been awaited.
-        _ = compiled_model ^
         return model ^
 
     fn get_as_engine_tensor_spec(
@@ -153,20 +155,6 @@ struct InferenceSession:
     fn copy(self) -> Self:
         _ = __get_address_as_lvalue(self.ptr.address).ref_count.fetch_add(1)
         return Self {ptr: self.ptr}
-
-    fn compile_model(
-        self,
-        model_path: StringRef,
-        user_defined_ops_path: Optional[StringRef] = None,
-    ) raises -> CompiledModel:
-        """
-        If provided, Replaces Modular ops with user-defined ops using the provided
-        path-to-mojopkg and then compiles the model using the provided
-        model path.
-        """
-        return __get_address_as_lvalue(self.ptr.address).compile_model(
-            model_path, user_defined_ops_path, self.copy()
-        )
 
     fn load_model(self, path: Path) raises -> Model:
         let model = self.load_model(path.path._strref_dangerous())

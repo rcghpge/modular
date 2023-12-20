@@ -149,6 +149,9 @@ struct OutputTensorNames(Sized):
             Self.GetOutputTensorNamesFnName, ptr, length, lib
         )
 
+    fn __moveinit__(inout self, owned existing: Self):
+        self.names = existing.names ^
+
     fn __getitem__(self, idx: Int) raises -> String:
         return self.names[idx]
 

@@ -4,6 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 from ._model_impl import CModel
+from ._compilation import CompiledModel
 from ._context import CRuntimeContext
 from sys.ffi import DLHandle
 from ._utils import *
@@ -11,6 +12,7 @@ from ._status import Status
 from .tensor_map import *
 from ._tensor_impl import *
 from sys.intrinsics import _mlirtype_is_eq
+from ._model_specs import *
 
 
 @value
@@ -24,6 +26,7 @@ struct Model:
     var _ptr: CModel
     var _lib: DLHandle
     var _session: InferenceSession
+    var _compiled_model: CompiledModel
 
     alias _InitModelFnName = "M_initModel"
     alias _ExecuteFnName = "M_executeModelSync"
@@ -40,6 +43,7 @@ struct Model:
         )
         self._lib = existing._lib
         self._session = existing._session ^
+        self._compiled_model = existing._compiled_model ^
 
     fn execute(self, inputs: TensorMap) raises -> TensorMap:
         """Execute model with given inputs.
@@ -132,7 +136,28 @@ struct Model:
         """
         return self._execute_view[StringLiteral, EngineNumpyView](inputs)
 
+    fn num_model_inputs(self) raises -> Int:
+        """Gets the number of inputs of the model."""
+
+        return self._compiled_model.num_model_inputs()
+
+    fn get_model_input_names(self) raises -> InputTensorNames:
+        """Gets the names of model inputs."""
+
+        return self._compiled_model.get_model_input_names()
+
+    fn num_model_outputs(self) raises -> Int:
+        """Gets the number of inputs of the model."""
+
+        return self._compiled_model.num_model_outputs()
+
+    fn get_model_output_names(self) raises -> OutputTensorNames:
+        """Gets the names of model outputs."""
+
+        return self._compiled_model.get_model_output_names()
+
     fn __del__(owned self):
         """Destructor for Model."""
         self._ptr.free(self._lib)
+        _ = self._compiled_model ^
         _ = self._session ^
