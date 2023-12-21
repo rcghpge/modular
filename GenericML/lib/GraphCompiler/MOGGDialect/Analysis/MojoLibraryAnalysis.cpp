@@ -244,8 +244,6 @@ MojoLibraryAnalysis::get(MLIRContext *ctx,
   llvm::StringMap<StringLiteral> moToMojoKernels{
       MO_TO_MOJO(MO::AddOp, "$math::$math::add"),
       MO_TO_MOJO(MO::AndOp, "$math::$math::logical_and"),
-      MO_TO_MOJO(MO::ArgMaxOp, "argmax"),
-      MO_TO_MOJO(MO::ArgMinOp, "argmin"),
       MO_TO_MOJO(MO::CeilOp, "$math::$math::ceil"),
       MO_TO_MOJO(MO::CosOp, "$math::$math::cos"),
       MO_TO_MOJO(MO::DivOp, "$math::$math::div"),
