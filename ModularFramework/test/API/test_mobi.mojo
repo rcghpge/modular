@@ -63,7 +63,7 @@ fn test_add_constant() raises:
 fn test_int_constant_helper() raises:
     var m = mobi.Module()
     var g = m.graph("int_constant_helper", m.types(), m.types(m.i64(2)))
-    let x = g.constant(m.i64(2), 1, 2)
+    let x = g.i64_constant(m.i64(2), 1, 2)
     _ = g.op("mo.output", x, m.types())
 
     m.verify()

@@ -240,10 +240,6 @@ fn module_verify(module: ModulePtr) -> Bool:
     return MOBI_func[fn (ModulePtr) -> Bool]("MOBI_moduleVerify")(module)
 
 
-fn debug_print_module(module: ModulePtr):
-    MOBI_func[fn (ModulePtr) -> NoneType]("MOBI_debugPrintModule")(module)
-
-
 fn module_to_string(module: ModulePtr) -> String:
     var len: Int64 = 0
     let ret = MOBI_func[fn (ModulePtr, Pointer[Int64]) -> Pointer[Int8]](
@@ -261,19 +257,27 @@ fn module_to_bytecode(module: ModulePtr, file_name: String) -> Bool:
 ### Symbol helers
 
 
+fn symbol_to_string(symbol: SymbolPtr) -> String:
+    var len: Int64 = 0
+    let ret = MOBI_func[fn (SymbolPtr, Pointer[Int64]) -> Pointer[Int8]](
+        "MOBI_symbolToString"
+    )(symbol, Pointer[Int64].address_of(len))
+    return String(ret, len.to_int())
+
+
 fn new_tuple() -> TuplePtr:
     return MOBI_func[fn () -> TuplePtr]("MOBI_newTuple")()
 
 
-fn add_symbol(inout t: TuplePtr, s: SymbolPtr):
+fn add_symbol(inout tup: TuplePtr, symbol: SymbolPtr):
     return MOBI_func[fn (TuplePtr, SymbolPtr) -> NoneType]("MOBI_addSymbol")(
-        t, s
+        tup, symbol
     )
 
 
-fn get_symbol(t: TuplePtr, pos: UInt32) -> SymbolPtr:
+fn get_symbol(tup: TuplePtr, pos: UInt32) -> SymbolPtr:
     return MOBI_func[fn (TuplePtr, UInt32) -> SymbolPtr]("MOBI_getSymbol")(
-        t, pos
+        tup, pos
     )
 
 

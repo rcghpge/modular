@@ -154,7 +154,7 @@ struct Graph:
             0
         ]
 
-    fn constant(inout self, t: TypePtr, *values: Int64) raises -> Symbol:
+    fn i64_constant(inout self, t: TypePtr, *values: Int64) raises -> Symbol:
         # TODO: This isn't great, can't overload to Int32
         # TODO: Fix the checks once we have Mojo structured types
         if not (
@@ -166,6 +166,18 @@ struct Graph:
             self.values(),
             self.m.types(t),
             self.m.attrs(self.m.i64_attr("value", t, values)),
+        )[0]
+
+    fn f32_constant(inout self, t: TypePtr, *values: Float32) raises -> Symbol:
+        # TODO: This isn't great, can't overload to Float64
+        # TODO: Fix the checks once we have Mojo structured types
+        if not mobicc.type_is_float_tensor(t):
+            raise "Type must be an f32 tensor"
+        return self.op(
+            "mo.constant",
+            self.values(),
+            self.m.types(t),
+            self.m.attrs(self.m.f32_attr("value", t, values)),
         )[0]
 
     fn output(inout self, outs: Tup) raises:

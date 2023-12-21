@@ -30,7 +30,7 @@ fn test_print() raises:
     # CHECK{LITERAL}: [3.0000, 4.0000]],
     # CHECK{LITERAL}: [[5.0000, 6.0000],
     # CHECK{LITERAL}: [7.0000, 8.0000]]], dtype=f32, shape=[2,2,2])
-    _ = testing.execute(m, name, x)
+    _ = testing.execute_base(m, name, x)
 
 
 def main():

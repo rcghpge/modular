@@ -82,6 +82,11 @@ struct Module:
     fn f32_attr(
         self, name: StringRef, t: TypePtr, *elements: Float32
     ) -> AttrPtr:
+        return self.f32_attr(name, t, elements)
+
+    fn f32_attr(
+        self, name: StringRef, t: TypePtr, elements: VariadicList[Float32]
+    ) -> AttrPtr:
         var data = DynamicVector[Float32]()
         for i in range(len(elements)):
             data.push_back(elements[i])

@@ -142,6 +142,19 @@ MODULAR_API_EXPORT char *MOBI_moduleToString(const M_Module *const m,
   return copy;
 }
 
+MODULAR_API_EXPORT char *MOBI_symbolToString(const M_Symbol *s, int64_t *len) {
+  std::string buffer;
+  raw_string_ostream os(buffer);
+  s->symbol.getVal().print(os);
+
+  // TODO: Do it without so many copies.
+  char *copy = reinterpret_cast<char *>(std::malloc(buffer.size()));
+  memcpy(copy, buffer.data(), buffer.size());
+  *len = buffer.size();
+
+  return copy;
+}
+
 MODULAR_API_EXPORT bool MOBI_moduleToBytecode(const M_Module *const m,
                                               StringRef fileName) {
   std::error_code ec;

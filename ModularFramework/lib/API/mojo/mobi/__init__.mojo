@@ -6,6 +6,7 @@
 
 from .graph import Graph
 from .module import Module
+from .symbol import Symbol
 
 from .functional import gather
 from .functional import reshape
