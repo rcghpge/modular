@@ -29,15 +29,13 @@ namespace {
 
 static SmallVector<int> getFusionIndices(KernelOp src, KernelOp dst) {
   SmallVector<int> indices;
-  auto srcOutputInterfaces =
-      src.getOutputFusionInterfaceAttr().getAsValueRange<StringAttr>();
-  auto dstInputInterfaces =
-      dst.getInputFusionInterfaceAttr().getAsValueRange<StringAttr>();
+  auto srcInterface = src.getOutputFusionInterfaceAt(0);
   for (auto [i, operand] : llvm::enumerate(dst.getOperands())) {
-    auto srcInterface = *(srcOutputInterfaces.begin() + 0);
-    auto dstInterface = *(dstInputInterfaces.begin() + i);
-    if (operand.getDefiningOp() == src && !srcInterface.empty() &&
-        !dstInterface.empty())
+    if (operand.getDefiningOp() != src)
+      continue;
+
+    auto dstInterface = dst.getInputFusionInterfaceAt(i);
+    if (!srcInterface.empty() && !dstInterface.empty())
       indices.push_back(i);
   }
 
@@ -59,6 +57,10 @@ static inline bool isAnElementwiseKernel(Operation *op) {
 }
 
 static bool isASrcElementwiseKernel(Operation *op) {
+  /// ASSUMPTION: Single output kernel.
+  if (op->getNumResults() != 1)
+    return false;
+
   if (!isAnElementwiseKernel(op))
     return false;
 
@@ -80,11 +82,28 @@ static bool isADstElementwiseKernel(Operation *op) {
   return true;
 }
 
+static bool compatibleFusionInterfaces(KernelOp src, KernelOp dst) {
+  auto srcInterface = src.getOutputFusionInterfaceAt(0);
+  for (auto [i, operand] : llvm::enumerate(dst.getOperands())) {
+    if (operand.getDefiningOp() != src)
+      continue;
+
+    auto dstInterface = dst.getInputFusionInterfaceAt(i);
+    if (srcInterface.empty() || dstInterface.empty())
+      return false;
+  }
+
+  return true;
+}
+
 static inline bool kernelsAreCompatible(KernelOp src, KernelOp dst) {
   if (src->getBlock() != dst->getBlock() ||
       src.getIsKGEN() != dst.getIsKGEN()) {
     return false;
   }
+
+  if (!compatibleFusionInterfaces(src, dst))
+    return false;
 
   return true;
 }
@@ -404,40 +423,41 @@ struct FuseElementwisePass
   // possible because they have the same signature.
   void fuseSrcKernelIntoDstKernelKGEN(KernelOp srcKernel, KernelOp dstKernel) {
     auto fusionIndices = getFusionIndices(srcKernel, dstKernel);
-    if (fusionIndices.empty())
-      return;
+    assert(!fusionIndices.empty());
 
     IRMapping mapper;
     OpBuilder builder{dstKernel.getContext()};
 
-    ArrayAttr dstKernelHooks = dstKernel.getInputFusionInterfaceAttr();
     MOGG::OutputPlaceholdersOp dstOutput = dstKernel.getOutputPlaceholder();
     auto dstConverterOps = dstKernel.getOps<ToKGENOp>();
-    SmallVector<ToKGENOp> dstConverterOpsArray(dstConverterOps.begin(),
-                                               dstConverterOps.end());
-    ToKGENOp entryPoint = dstConverterOpsArray.back();
+    if (dstConverterOps.empty()) {
+      dstKernel.setInsertionPointToTop(builder);
+    } else {
+      SmallVector<ToKGENOp> dstConverterOpsArray(dstConverterOps.begin(),
+                                                 dstConverterOps.end());
+      builder.setInsertionPointAfter(dstConverterOpsArray.back());
+    }
 
-    /// ASSUMPTION: Single output kernel.
     KGEN::ParamDeclareRegionOp srcOutputLambda = srcKernel.findLambda(
         cast<StringAttr>(srcKernel.getOutputFusionInterfaceAttr()[0]));
     KGEN::ParamDeclareRegionOp srcElementwiseLambda =
         srcKernel.findLambda(srcKernel.getFusionBodyLambdaAttr());
+    assert(srcElementwiseLambda);
 
     // Add each of the new operands to the kernel body we are fusing into and
     // the corresponding input lambdas.
-    /// FIXME: (#18013) Simplify duplicate operands.
-    builder.setInsertionPointAfter(entryPoint);
-    mlir::SymbolTable dstSymTable{dstKernel};
     llvm::StringMap<int> srcInputLambdaPositions;
-    for (auto [srcOperand, srcArgument, srcInputLambdaName] : llvm::zip(
-             srcKernel.getOperands(), srcKernel.getBody().getArguments(),
-             srcKernel.getInputFusionInterface()->getAsRange<StringAttr>())) {
+    uint64_t srcOperandIndex = 0;
+    for (auto [srcOperand, srcArgument] : llvm::zip(
+             srcKernel.getOperands(), srcKernel.getBody().getArguments())) {
       Value dstArgument = dstKernel.addOperand(srcOperand);
       mapper.map(srcArgument, dstArgument);
-      srcInputLambdaPositions[srcInputLambdaName] =
-          dstKernel.getNumOperands() - 1;
+      srcInputLambdaPositions[srcKernel.getInputFusionInterfaceAt(
+          srcOperandIndex++)] = dstKernel.getNumOperands() - 1;
     }
 
+    StringAttr renamedSrcElementwiseLambda;
+    mlir::SymbolTable dstSymTable{dstKernel};
     for (Operation &srcOp : srcKernel.getBody().getOps()) {
       if (auto moggCallOp = dyn_cast<MOGG::CallOp>(srcOp)) {
         if (moggCallOp.getMojoKernelTarget() == "mark_output_chain_ready")
@@ -448,7 +468,6 @@ struct FuseElementwisePass
         continue;
 
       if (auto srcOutput = dyn_cast<MOGG::OutputPlaceholdersOp>(srcOp)) {
-        /// ASSUMPTION: Single output kernel.
         // The duplicate ToKGEN will be CSE-ed.
         mapper.map(srcOutput.getResult(0), dstOutput.getResult(0));
         continue;
@@ -468,18 +487,20 @@ struct FuseElementwisePass
           dstKernel.setInputFusionInterface(srcInputLambdaPositions[oldName],
                                             newName);
         }
+
+        if (lambda == srcElementwiseLambda)
+          renamedSrcElementwiseLambda = newName;
       }
     }
 
+    assert(renamedSrcElementwiseLambda);
+
     auto &dstKernelBody = dstKernel.getBody().front();
     for (int fusionIndex : llvm::reverse(fusionIndices)) {
-      builder.setInsertionPointAfter(entryPoint);
-
-      // The input lambda we are going to replace with the fused body.
       auto dstKernelArgument = dstKernelBody.getArgument(fusionIndex);
 
       StringAttr dstKernelInputLambdaName =
-          cast<StringAttr>(dstKernelHooks[fusionIndex]);
+          dstKernel.getInputFusionInterfaceAt(fusionIndex);
       KGEN::ParamDeclareRegionOp dstInputLambda =
           dstKernel.findLambda(dstKernelInputLambdaName);
 
@@ -489,7 +510,7 @@ struct FuseElementwisePass
                                 -> std::optional<KGEN::ParamDeclRefAttr> {
         if (attr.getName() == dstKernelInputLambdaName)
           return KGEN::ParamDeclRefAttr::get(
-              srcKernel.getFusionBodyLambdaAttr(),
+              renamedSrcElementwiseLambda,
               srcElementwiseLambda.getParamDecl().getType());
         return std::nullopt;
       });
@@ -504,9 +525,9 @@ struct FuseElementwisePass
       // function calls, it's never actually read/written from/to. This is
       // because functions (including lambdas) have access to more than their
       // operands. They can capture values outside of their scope and that's how
-      // ambdas actually access the right tensor. This one will never be
-      // accessed but it is necessary to not have to temper with the KGEN code.
-      builder.setInsertionPoint(entryPoint);
+      // lambdas actually access the right tensor. This one will never be
+      // accessed but it is necessary to not have to temper with the KGEN code
+      // (changing the signature of whatever was taking in that argument).
       dstKernelArgument.replaceAllUsesWith(
           dstKernelBody.getArgument(dstKernelBody.getNumArguments() - 1));
       dstKernel.removeOperandAtIndex(fusionIndex);

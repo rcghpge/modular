@@ -320,6 +320,8 @@ OutputPlaceholdersOp KernelOp::getOutputPlaceholder() {
   if (placeholder.empty())
     return nullptr;
 
+  assert(llvm::range_size(placeholder) == 1);
+
   return *placeholder.begin();
 }
 
@@ -511,6 +513,17 @@ StringAttr KernelOp::getInputFusionInterfaceAt(size_t index) {
   return inputLambdaNames[index].cast<StringAttr>();
 }
 
+StringAttr KernelOp::getOutputFusionInterfaceAt(size_t index) {
+  auto ctx = getContext();
+  auto inputLambdaNamesOpt = getOutputFusionInterface();
+  if (!inputLambdaNamesOpt)
+    return StringAttr::get(ctx, "");
+
+  auto inputLambdaNames = *inputLambdaNamesOpt;
+
+  return inputLambdaNames[index].cast<StringAttr>();
+}
+
 // Verify that all the `mogg.set_param` set the symbolic dimensions properly.
 static LogicalResult verifyKernelSetParam(KernelOp kernel) {
   llvm::SmallSet<StringRef, 4> symbolicDimSet;
@@ -571,17 +584,32 @@ LogicalResult KernelOp::verify() {
            << ")";
   }
 
+  DenseSet<StringRef> fusionInterfaces;
   mlir::SymbolTable symTable{*this};
+
   if (inputInterfaces.has_value()) {
     for (auto interface : inputInterfaces->getAsValueRange<StringAttr>()) {
       if (interface.empty())
         continue;
 
+      if (!fusionInterfaces.insert(interface).second)
+        return emitError("Fusion interfaces must be unique");
+
       Operation *lambda = symTable.lookup(interface);
-      if (!lambda || !isa<LambdaOp, KGEN::ParamDeclareRegionOp>(lambda)) {
+      if (!lambda)
         return emitError("Could not find lambda op specified in the input "
                          "fusion interface as \"")
                << interface.str() << "\"";
+
+      if (getIsKGEN().value_or(false) &&
+          !isa<KGEN::ParamDeclareRegionOp>(lambda)) {
+        return emitError("Input lambda \"")
+               << interface.str() << "\""
+               << "is not a " << KGEN::ParamDeclareRegionOp::getOperationName();
+      } else if (!getIsKGEN().value_or(false) && !isa<LambdaOp>(lambda)) {
+        return emitError("Input lambda \"")
+               << interface.str() << "\""
+               << "is not a " << LambdaOp::getOperationName();
       }
     }
   }
@@ -591,18 +619,30 @@ LogicalResult KernelOp::verify() {
       if (interface.empty())
         continue;
 
+      if (!fusionInterfaces.insert(interface).second)
+        return emitError("Fusion interfaces must be unique");
+
       Operation *lambda = symTable.lookup(interface);
-      if (!lambda || !isa<LambdaOp, KGEN::ParamDeclareRegionOp>(lambda)) {
+      if (!lambda)
         return emitError("Could not find lambda op specified in the output "
                          "fusion interface as \"")
                << interface.str() << "\"";
+
+      if (getIsKGEN().value_or(false) &&
+          !isa<KGEN::ParamDeclareRegionOp>(lambda)) {
+        return emitError("Output lambda \"")
+               << interface.str() << "\""
+               << "is not a " << KGEN::ParamDeclareRegionOp::getOperationName();
+      } else if (!getIsKGEN().value_or(false) && !isa<LambdaOp>(lambda)) {
+        return emitError("Output lambda \"")
+               << interface.str() << "\""
+               << "is not a " << LambdaOp::getOperationName();
       }
     }
   }
 
-  if (getBody().empty()) {
+  if (getBody().empty())
     return emitError("Region cannot be empty");
-  }
 
   uint64_t numArguments = llvm::range_size(getBody().getArguments());
   if (getNumOperands() != numArguments) {

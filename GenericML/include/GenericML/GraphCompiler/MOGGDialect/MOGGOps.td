@@ -276,6 +276,9 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
 
     /// Returns an input lambda or an empty string if it does not exist.
     StringAttr getInputFusionInterfaceAt(size_t index);
+
+    /// Returns an output lambda or an empty string if it does not exist.
+    StringAttr getOutputFusionInterfaceAt(size_t index);
   }];
 
 }
