@@ -136,7 +136,7 @@ MODULAR_API_EXPORT char *MOBI_moduleToString(const M_Module *const m,
   memcpy(copy, buffer.data(), buffer.size());
   *len = buffer.size();
 
-  // Null terminate the module for convenient use with APIs expecting this.
+  // Null terminate module string for convenient use with APIs expecting this.
   copy[buffer.size()] = '\0';
 
   return copy;
