@@ -31,3 +31,6 @@ add_modular_tool(max
 )
 
 target_include_directories(max PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+
+# Copy all generated Markdown files to a convenient location.
+collect_driver_markdown(EngineCLIDriverOptions)
