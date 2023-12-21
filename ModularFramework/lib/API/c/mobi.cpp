@@ -132,9 +132,12 @@ MODULAR_API_EXPORT char *MOBI_moduleToString(const M_Module *const m,
   m->module.getModuleOp()->print(os);
 
   // TODO: Do it without so many copies.
-  char *copy = reinterpret_cast<char *>(std::malloc(buffer.size()));
+  char *copy = reinterpret_cast<char *>(std::malloc(buffer.size() + 1));
   memcpy(copy, buffer.data(), buffer.size());
   *len = buffer.size();
+
+  // Null terminate the module for convenient use with APIs expecting this.
+  copy[buffer.size()] = '\0';
 
   return copy;
 }
