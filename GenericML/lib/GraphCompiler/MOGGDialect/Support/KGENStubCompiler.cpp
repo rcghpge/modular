@@ -48,6 +48,15 @@ LogicalResult StubCompiler::elaborateKGEN() {
 
   mlir::PassManager pm(kgenModule->getContext());
 
+  // Set the environment (defines) for the module.
+  ErrorOr<KGEN::EnvAttr> env = KGEN::EnvAttr::parseDefines(
+      kgenModule->getContext(),
+      {"-D", "MODULAR_LLCL_MAX_PROFILING_LEVEL=" STRINGIFY(
+                 MODULAR_LLCL_MAX_PROFILING_LEVEL)});
+  if (env.isError())
+    return kgenModule->emitError(env.takeError().get());
+  kgenModule->setAttr(KGEN::EnvAttr::getEnvAttrName(), env.takeValue());
+
   // Retrieve the target info from the device spec, however 'complete' it with
   // additional fields derived from the 'core' fields.
   ErrorOr<TargetInfoAttr> targetInfoOr = getTargetInfoFor(
@@ -57,8 +66,11 @@ LogicalResult StubCompiler::elaborateKGEN() {
   if (targetInfoOr)
     return kgenModule->emitError(targetInfoOr.getError());
 
+  KGEN::CompilationOptions compilationOptions;
+  compilationOptions.enableSearch = shouldSearch;
+
   KGEN::populateElaborateModulePasses(pm, runtime, *targetInfoOr, buildInfo,
-                                      {shouldSearch});
+                                      compilationOptions);
 
   if (!saveTempsPrefix.empty()) {
     std::string outPath = saveTempsPrefix + ".kgen.prelaboration.mlir";
