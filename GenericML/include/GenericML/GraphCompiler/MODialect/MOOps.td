@@ -821,6 +821,7 @@ def MO_NegativeOp : MO_ElementWiseUnaryMonoTypeOp<"negative"> {
     ```mlir
     %arg: !mo.tensor<[2, 3], f32>
     %res = mo.negative(%arg) : !mo.tensor<[2, 3], f32>
+    ```
   }];
 
   let arguments = (ins MO_SignedTensor:$input);
@@ -871,6 +872,7 @@ def MO_SinOp : MO_ElementWiseUnaryFloatMonoTypeOp<"sin"> {
     ```mlir
     %arg : !mo.tensor<[2, 3], f32>
     %res = mo.sin(%arg) : !mo.tensor<[2, 3], f32>
+    ```
   }];
   let arguments = (ins MO_FloatTensor:$input);
 }
