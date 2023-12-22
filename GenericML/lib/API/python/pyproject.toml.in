@@ -52,7 +52,8 @@ skip = ["cp36-* cp37-*, *-manylinux_i686", "*-musllinux*"]
 
 before-test = [
   "pip install -r {project}/TensorFlow/integration-test/API/python/pytests/requirements.txt",
-  "pip install -r {project}/PyTorch/integration-test/API/python/pytests/requirements.txt",
+  "pip install -r {project}/PyTorch/integration-test/python/pytests/requirements.txt",
+  "pip install -r {project}/PyTorch/integration-test/python/pytorch_op_tests/requirements.txt",
   # `modular.pytorch` is required for testing.
   "pip install {project}/PyTorch/lib/API/python",
   # PyTorch integration tests implicitly depend on `modular.utils`.
@@ -68,7 +69,7 @@ before-test = [
 # environment variable to be set.
 test-command = [
   "MODULAR_DERIVED_PATH={project}/.derived pytest {project}/TensorFlow/integration-test/API/python/pytests",
-  "MODULAR_DERIVED_PATH={project}/.derived pytest {project}/PyTorch/integration-test/API/python/pytests/test_ops.py",
+  "MODULAR_DERIVED_PATH={project}/.derived pytest {project}/PyTorch/integration-test/python/pytests/test_ops.py",
 ]
 
 
