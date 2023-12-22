@@ -51,6 +51,9 @@ LogicalResult StubCompiler::elaborateKGEN() {
 
   // Set the environment (defines) for the module.
   NamedAttrList envAttrs;
+#ifdef MODULAR_PARANOID
+  envAttrs.set("MODULAR_PARANOID", BoolAttr::get(ctx, true));
+#endif // MODULAR_PARANOID
   envAttrs.set(
       "MODULAR_LLCL_MAX_PROFILING_LEVEL",
       IntegerAttr::get(IndexType::get(ctx), MODULAR_LLCL_MAX_PROFILING_LEVEL));
