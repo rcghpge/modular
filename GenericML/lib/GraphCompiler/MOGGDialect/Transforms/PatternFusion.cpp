@@ -468,21 +468,6 @@ struct ConvConstFilterPattern
   ConvConstFilterPattern(MLIRContext *ctx)
       : DeviceAwareRewritePattern(ctx, 3) {}
 
-  /// Return an integer attribute that represents the output width of `op`, or
-  /// -1 if output width is dynamic.
-  static IntegerAttr tryGetOutputWidth(MO::ConvOp op) {
-    MO::TensorType resTy = op.getType();
-    // NOTE we assume output has NHWC layout here
-    if (resTy.hasRank()) {
-      if (auto attr =
-              dyn_cast<IntegerAttr>(resTy.getTypedShapeAttr().getValues()[2])) {
-        return attr;
-      }
-    }
-
-    return IntegerAttr::get(IndexType::get(op.getContext()), -1);
-  }
-
   LogicalResult
   deviceAwareMatchAndRewrite(MO::ConvOp op,
                              MO::DeviceAwareRewriter &rewriter) const override {
@@ -510,8 +495,6 @@ struct ConvConstFilterPattern
           op, "packing is only supported on the host device");
     }
 
-    int64_t numGroups = *maybeNumGroups;
-
     // Create shape parameters for the new type.
     SmallVector<KGEN::ParamDeclAttr> paramDecls;
     auto graphOp = op->getParentOfType<MO::GraphOp>();
@@ -525,19 +508,54 @@ struct ConvConstFilterPattern
     //
     // Do so through the `kgenParams` attribute dictionary, which `mogg.call`
     // passes to the KGEN function call as parameters.
+    int64_t numGroups = *maybeNumGroups;
     auto numGroupsAttr =
         rewriter.getNamedAttr("num_groups", rewriter.getIndexAttr(numGroups));
     SmallVector<NamedAttribute> namedParams{numGroupsAttr};
     DictionaryAttr kernelKgenParams = rewriter.getDictionaryAttr(namedParams);
 
-    IntegerAttr outWidthAttr = tryGetOutputWidth(op);
-    namedParams.push_back(rewriter.getNamedAttr("WO", outWidthAttr));
+    // Pass input, filter, and output shape to `pack_conv_filter_shape`.
+    MO::TensorValue input = op.getFilter();
+    MO::TensorType inputType = input.getType();
+    MO::TensorType outputType = op.getType();
+    namedParams.push_back(rewriter.getNamedAttr(
+        "input_shape", rewriter.getI64VectorAttr(inputType.getIntDims())));
+    namedParams.push_back(rewriter.getNamedAttr(
+        "filter_shape", rewriter.getI64VectorAttr(filterType.getIntDims())));
+    namedParams.push_back(rewriter.getNamedAttr(
+        "output_shape", rewriter.getI64VectorAttr(outputType.getIntDims())));
+
+    // Get static or default dynamic values.
+    auto getMaybeStaticI64VectorAttr = [&](MO::TensorValue val) {
+      if (auto maybeVal = MO::tryGetConstantIntVector(val)) {
+        return rewriter.getI64VectorAttr(maybeVal.value());
+      } else {
+        SmallVector<int64_t> dynamicDims;
+        MO::TensorType valType = val.getType();
+
+        if (valType.hasStaticShape())
+          dynamicDims.insert(dynamicDims.end(), *valType.getNumElements(),
+                             mlir::ShapedType::kDynamic);
+        else
+          dynamicDims.push_back(mlir::ShapedType::kDynamic);
+
+        return rewriter.getI64VectorAttr(dynamicDims);
+      }
+    };
+
+    // Pass convolution attributes to `pack_conv_filter_shape`.
+    namedParams.push_back(rewriter.getNamedAttr(
+        "strides", getMaybeStaticI64VectorAttr(op.getStrides())));
+    namedParams.push_back(rewriter.getNamedAttr(
+        "dilations", getMaybeStaticI64VectorAttr(op.getDilations())));
+    namedParams.push_back(rewriter.getNamedAttr(
+        "paddings", getMaybeStaticI64VectorAttr(op.getPaddings())));
+
     DictionaryAttr shapeFuncKgenParams =
         rewriter.getDictionaryAttr(namedParams);
 
     // Invoke the pack filter fallback shape function.
     // TODO(#18770) Find a better registration mechanism.
-    SmallVector<mlir::NamedAttribute> attrs;
     rewriter.create<MO::InvokeShapeFuncOp>(
         loc, SmallVector<Value>{filter}, "pack_conv_filter_shape",
         paramDeclsAttr, shapeFuncKgenParams, ArrayAttr{});
