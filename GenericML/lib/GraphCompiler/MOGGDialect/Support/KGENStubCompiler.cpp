@@ -34,11 +34,8 @@ LogicalResult StubCompiler::elaborateKGEN() {
   MLIRContext *ctx = kgenModule->getContext();
 
   // Create a runtime for KGEN to evaluate the kernels.
-  LLCL::Runtime runtime(
-      LLCL::createLeakCheckAllocator(LLCL::createMallocAllocator()),
-      LLCL::createThreadPoolWorkQueue(
-          /*numThreads=*/
-          M::getHostMachineInfo()->numPhysicalCores));
+  std::unique_ptr<LLCL::Runtime> runtime =
+      LLCL::createRuntime(LLCL::RuntimeOptions().withLeakCheckedAllocator());
 
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmParser();
@@ -72,7 +69,7 @@ LogicalResult StubCompiler::elaborateKGEN() {
   KGEN::CompilationOptions compilationOptions;
   compilationOptions.enableSearch = shouldSearch;
 
-  KGEN::populateElaborateModulePasses(pm, runtime, *targetInfoOr, buildInfo,
+  KGEN::populateElaborateModulePasses(pm, *runtime, *targetInfoOr, buildInfo,
                                       compilationOptions);
 
   if (!saveTempsPrefix.empty()) {
@@ -94,11 +91,11 @@ LogicalResult StubCompiler::elaborateKGEN() {
       attrs["filename"] = fileLine.getFilename().str();
 
     [[maybe_unused]] auto timeScope =
-        runtime.emplaceContextIfMissing<M::Telemetry::TelemetryContext>()
+        runtime->emplaceContextIfMissing<M::Telemetry::TelemetryContext>()
             .createUInt64Timer<std::chrono::milliseconds>(
                 "mogg.kgen.elaboration.time", M::Telemetry::Level::L2, attrs);
 
-    auto cacheBackends = KGEN::getMojoCacheBackends(runtime);
+    auto cacheBackends = KGEN::getMojoCacheBackends(*runtime);
     if (cacheBackends.isError()) {
       // Just run the passes.
       res = pm.run(kgenModule);
@@ -109,7 +106,7 @@ LogicalResult StubCompiler::elaborateKGEN() {
           RCRef<Cache::RegionCache>::create(std::move(cacheBackends->first)),
           RCRef<Cache::TransformCache>::create(
               std::move(cacheBackends->second)),
-          runtime.getReadyChain().copy(), pm, /*deflateTarget=*/false);
+          runtime->getReadyChain().copy(), pm, /*deflateTarget=*/false);
       LLCL::await(ready);
       if (ready.isError()) {
         LLCL::EncodedDiagnostic diag = ready.takeDiagnostic();
@@ -135,10 +132,8 @@ LogicalResult StubCompiler::elaborateKGEN() {
 }
 
 ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
-  LLCL::Runtime runtime(
-      LLCL::createLeakCheckAllocator(LLCL::createMallocAllocator()),
-      LLCL::createThreadPoolWorkQueue(
-          /*numThreads=*/M::getHostMachineInfo()->numPhysicalCores));
+  std::unique_ptr<LLCL::Runtime> runtime =
+      LLCL::createRuntime(LLCL::RuntimeOptions().withLeakCheckedAllocator());
   mlir::PassManager mgr(ctx);
 
   // Compile to LLVM.
@@ -165,7 +160,7 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
     compilationOptions.setSaveTemps(saveTempsPrefix);
 
   auto compilerOr = KGEN::ObjectCompiler::create(
-      runtime, mgr, ".mojo_cache", compilationOptions, /*isJit=*/true);
+      *runtime, mgr, ".mojo_cache", compilationOptions, /*isJit=*/true);
   if (compilerOr.isError())
     return compilerOr.takeError();
   llvm::MapVector<StringAttr, KGEN::ExportedSymbol> exportedSymbols =

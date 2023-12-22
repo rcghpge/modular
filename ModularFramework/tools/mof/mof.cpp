@@ -252,8 +252,7 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
 
     // Create a runtime to use during compilation. It will convey global
     // options to the passes which need them.
-    std::unique_ptr<Runtime> runtime = std::make_unique<Runtime>(
-        createMallocAllocator(), createThreadPoolWorkQueue(/*numThreads=*/0));
+    std::unique_ptr<Runtime> runtime = LLCL::createRuntime();
     mofLoweringOptions.setupRuntimeOptions(*runtime);
 
     if (failed(lowerMOToMGP(module.get(), moToMgpOptions, runtime.get())))

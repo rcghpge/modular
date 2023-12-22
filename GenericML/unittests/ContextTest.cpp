@@ -27,13 +27,8 @@ struct PayloadB : public ReferenceCounted<PayloadB> {
 };
 
 static LLCL::Runtime *GetRuntime() {
-  static LLCL::Runtime *runtime = []() {
-    std::unique_ptr<Allocator> allocator =
-        LLCL::createProfilingAllocator(LLCL::createMallocAllocator());
-    std::unique_ptr<LLCL::WorkQueue> workQueue =
-        LLCL::createSingleThreadWorkQueue();
-    return new LLCL::Runtime(std::move(allocator), std::move(workQueue));
-  }();
+  static LLCL::Runtime *runtime =
+      LLCL::createRuntime(LLCL::RuntimeOptions().forDebug()).release();
   return runtime;
 }
 

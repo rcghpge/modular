@@ -900,8 +900,7 @@ void ConstantFoldPass::runOnOperation() {
 
     // Execute MEF one subgraph at a time.
     // TODO: #18077 this should be an argument to the pass.
-    LLCL::Runtime runtime(LLCL::createMallocAllocator(),
-                          LLCL::createThreadPoolWorkQueue());
+    std::unique_ptr<LLCL::Runtime> runtime = LLCL::createRuntime();
 
     // We have to consolidate rewrites to the same graphop as the rewrites of
     // one subgraph may invalidate ops in another subgraph (due to fold hooks).
@@ -915,7 +914,7 @@ void ConstantFoldPass::runOnOperation() {
       assert(model != nullptr &&
              "Model should exist, make sure names above match.");
       std::variant<EncodedDiagnostic, ModelResult> valuesToTensorsOr =
-          executeModel(ctx, model, subgraphsInfo, runtime);
+          executeModel(ctx, model, subgraphsInfo, *runtime);
       if (std::holds_alternative<EncodedDiagnostic>(valuesToTensorsOr)) {
         EncodedDiagnostic &err = std::get<EncodedDiagnostic>(valuesToTensorsOr);
         LLCL::DecodedLocation decoded = err.getLocation().decode();
