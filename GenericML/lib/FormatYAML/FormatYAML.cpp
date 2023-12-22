@@ -65,7 +65,11 @@ LLVM_YAML_IS_SEQUENCE_VECTOR(M::QuantSpec::ScaleZeroPointPair);
 static void fromYAML(llvm::yaml::IO &io, QuantTensorSpec &quantTensorSpec) {
   // Read the "shape" field and parse it into a TensorSpec.
   std::string shapeStr;
-  io.mapRequired("shape", shapeStr);
+  io.mapOptional("shape", shapeStr);
+  if (shapeStr.empty()) {
+    quantTensorSpec = QuantTensorSpec();
+    return;
+  }
   auto errorOrTensorSpec = TensorSpec::parseFromString(shapeStr);
   if (failed(errorOrTensorSpec)) {
     io.setError(errorOrTensorSpec.getError());
@@ -367,7 +371,7 @@ M::loadModelSpecFromYAML(std::unique_ptr<llvm::MemoryBuffer> yamlBuffer) {
 void llvm::yaml::MappingTraits<M::TensorResultInfo>::mapping(
     IO &io, M::TensorResultInfo &info) {
   io.mapRequired("name", info.name);
-  io.mapRequired("shape", info.shape);
+  io.mapOptional("shape", info.shape);
 }
 
 void llvm::yaml::MappingTraits<std::shared_ptr<M::ResultInfo>>::mapping(
