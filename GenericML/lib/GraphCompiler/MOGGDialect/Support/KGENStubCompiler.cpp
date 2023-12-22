@@ -31,6 +31,8 @@
 namespace M::MOGG::Stub {
 
 LogicalResult StubCompiler::elaborateKGEN() {
+  MLIRContext *ctx = kgenModule->getContext();
+
   // Create a runtime for KGEN to evaluate the kernels.
   LLCL::Runtime runtime(
       LLCL::createLeakCheckAllocator(LLCL::createMallocAllocator()),
@@ -42,25 +44,23 @@ LogicalResult StubCompiler::elaborateKGEN() {
   llvm::InitializeNativeTargetAsmParser();
   llvm::InitializeNativeTargetAsmPrinter();
 
-  BuildInfoAttr buildInfo =
-      BuildInfoAttr::getForCurrentBuild(kgenModule->getContext());
+  BuildInfoAttr buildInfo = BuildInfoAttr::getForCurrentBuild(ctx);
   setBuildInfo(kgenModule, buildInfo);
 
-  mlir::PassManager pm(kgenModule->getContext());
+  mlir::PassManager pm(ctx);
 
   // Set the environment (defines) for the module.
-  ErrorOr<KGEN::EnvAttr> env = KGEN::EnvAttr::parseDefines(
-      kgenModule->getContext(),
-      {"-D", "MODULAR_LLCL_MAX_PROFILING_LEVEL=" STRINGIFY(
-                 MODULAR_LLCL_MAX_PROFILING_LEVEL)});
-  if (env.isError())
-    return kgenModule->emitError(env.takeError().get());
-  kgenModule->setAttr(KGEN::EnvAttr::getEnvAttrName(), env.takeValue());
+  NamedAttrList envAttrs;
+  envAttrs.set(
+      "MODULAR_LLCL_MAX_PROFILING_LEVEL",
+      IntegerAttr::get(IndexType::get(ctx), MODULAR_LLCL_MAX_PROFILING_LEVEL));
+  kgenModule->setAttr(KGEN::EnvAttr::getEnvAttrName(),
+                      KGEN::EnvAttr::get(envAttrs.getDictionary(ctx)));
 
   // Retrieve the target info from the device spec, however 'complete' it with
   // additional fields derived from the 'core' fields.
   ErrorOr<TargetInfoAttr> targetInfoOr = getTargetInfoFor(
-      kgenModule->getContext(), deviceSpec.getTarget().getTripleStr(),
+      ctx, deviceSpec.getTarget().getTripleStr(),
       deviceSpec.getTarget().getArch(), deviceSpec.getTarget().getFeatures(),
       deviceSpec.getTarget().getTuneCpu());
   if (targetInfoOr)
@@ -111,9 +111,9 @@ LogicalResult StubCompiler::elaborateKGEN() {
       if (ready.isError()) {
         LLCL::EncodedDiagnostic diag = ready.takeDiagnostic();
         LLCL::DecodedLocation loc = diag.decodeLocation();
-        mlir::emitError(FileLineColLoc::get(kgenModule.getContext(),
-                                            loc.filename, loc.line, loc.column),
-                        diag.getMessage().get());
+        mlir::emitError(
+            FileLineColLoc::get(ctx, loc.filename, loc.line, loc.column),
+            diag.getMessage().get());
         res = failure();
       }
     }
