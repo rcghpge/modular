@@ -157,17 +157,6 @@ def MarkTrivialKernels: Pass<"mark-trivial-kernels", "MO::GraphOp"> {
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }
 
-def AddExplicitChainReady: Pass<"add-explicit-chain-ready", "MO::GraphOp"> {
-  let summary = "Adds a chain ready if needed";
-  let description = [{
-    When we mark kernels as being single thread blocking we are opting them into
-    behaviour which prevents them from setting the chain ready themselves.
-    Instead the chain ready should be set at the end of a cluster of these
-    calls. This pass will detect when we need to insert such a call.
-  }];
-  let dependentDialects = ["M::MOGG::MOGGDialect"];
-}
-
 def InlineLambdas: Pass<"inline-lambdas", "MO::GraphOp"> {
   let summary = "Inline lambda invokes and remove unused lambdas";
   let description = [{

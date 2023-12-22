@@ -1054,10 +1054,14 @@ static void mgp_cpu_kernel_execute(
          forkedOutputChain = outputChain.fork()]() mutable {
           kernelPtr(call.inputPointers.data(), dimensions.data(),
                     &forkedOutputChain);
+          if (not forkedOutputChain.chain.isError())
+            forkedOutputChain.markReady();
           // The forked output chain will be cleaned up by its destructor.
         });
   } else {
     kernelPtr(call.inputPointers.data(), dimensions.data(), &outputChain);
+    if (!outputChain.chain.isError())
+      outputChain.markReady();
   }
 
   // Stop profiling when the kernel finishes.
