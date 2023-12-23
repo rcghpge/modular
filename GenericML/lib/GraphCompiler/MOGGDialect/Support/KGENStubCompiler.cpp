@@ -41,9 +41,6 @@ LogicalResult StubCompiler::elaborateKGEN() {
   llvm::InitializeNativeTargetAsmParser();
   llvm::InitializeNativeTargetAsmPrinter();
 
-  BuildInfoAttr buildInfo = BuildInfoAttr::getForCurrentBuild(ctx);
-  setBuildInfo(kgenModule, buildInfo);
-
   mlir::PassManager pm(ctx);
 
   // Set the environment (defines) for the module.
@@ -51,6 +48,11 @@ LogicalResult StubCompiler::elaborateKGEN() {
 #ifdef MODULAR_PARANOID
   envAttrs.set("MODULAR_PARANOID", BoolAttr::get(ctx, true));
 #endif // MODULAR_PARANOID
+  envAttrs.set("BUILD_TYPE", StringAttr::get(STRINGIFY(BUILD_TYPE),
+                                             KGEN::StringType::get(ctx)));
+  envAttrs.set("KERNELS_BUILD_TYPE",
+               StringAttr::get(STRINGIFY(KERNELS_BUILD_TYPE),
+                               KGEN::StringType::get(ctx)));
   envAttrs.set(
       "MODULAR_LLCL_MAX_PROFILING_LEVEL",
       IntegerAttr::get(IndexType::get(ctx), MODULAR_LLCL_MAX_PROFILING_LEVEL));
@@ -69,7 +71,7 @@ LogicalResult StubCompiler::elaborateKGEN() {
   KGEN::CompilationOptions compilationOptions;
   compilationOptions.enableSearch = shouldSearch;
 
-  KGEN::populateElaborateModulePasses(pm, *runtime, *targetInfoOr, buildInfo,
+  KGEN::populateElaborateModulePasses(pm, *runtime, *targetInfoOr,
                                       compilationOptions);
 
   if (!saveTempsPrefix.empty()) {
@@ -132,6 +134,9 @@ LogicalResult StubCompiler::elaborateKGEN() {
 }
 
 ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
+  static constexpr llvm::StringLiteral kKernelsBuildType =
+      STRINGIFY(KERNELS_BUILD_TYPE);
+
   std::unique_ptr<LLCL::Runtime> runtime =
       LLCL::createRuntime(LLCL::RuntimeOptions().withLeakCheckedAllocator());
   mlir::PassManager mgr(ctx);
@@ -144,13 +149,11 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   compilationOptions.targetCpu = target.getArch();
   compilationOptions.targetFeatures = target.getFeatures();
 
-#ifdef JIT_KERNELS_OPTIMIZATION_LEVEL
-  compilationOptions.optimizationLevel = 0;
-#endif // JIT_KERNELS_OPTIMIZATION_LEVEL
+  if (kKernelsBuildType == "debug")
+    compilationOptions.optimizationLevel = 0;
 
-#ifdef JIT_KERNELS_DEBUG_MODE
-  compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
-#endif // JIT_KERNELS_DEBUG_MODE
+  if (llvm::is_contained({"debug", "relwithdebinfo"}, kKernelsBuildType))
+    compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
 
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmParser();
