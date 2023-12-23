@@ -77,8 +77,12 @@ struct CompiledKernelCall {
   /// datastructures onto the above fields. Returns error if input is
   /// not supported.
   ErrorOrSuccess pushObject(AnyAsyncValueRef input, char inOutType,
-                            KGEN::OutputChain &outputChain, StringRef summary,
-                            const EncodedLocation &loc);
+                            StringRef summary, const EncodedLocation &loc
+#if MODULAR_PARANOID
+                            ,
+                            SmallVectorImpl<LLCL::ResourceUse> &uses
+#endif
+  );
 };
 
 } // namespace CompiledKernelABI

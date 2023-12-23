@@ -995,12 +995,17 @@ static void mgp_cpu_kernel_execute(
     }
   };
 
-  // Create an OutputChain to manage the kernel's asynchronous execution.
-  KGEN::OutputChain outputChain(outChain.copy(), outChain.copyLocation());
+#if MODULAR_PARANOID
+  /// All 'uses' of 'resources' needed by this call which should be considered
+  /// active while the call is in flight. This can be used to capture which
+  /// of the refs below are for BufferRefs which are being read, written or
+  /// modified while the call is active, and thus detect use-after-free and
+  /// data races over BufferRefs.
+  SmallVector<LLCL::ResourceUse> uses;
+#endif
 
-  // Hold on to all the operands until the kernel completes (possibly
-  // asynchronously).
-  outputChain.transfer(operands.copyAsVector());
+  // Create an OutputChain to convey context into the Mojo kernel.
+  KGEN::OutputChain outputChain(outChain.copy(), outChain.copyLocation());
 
   // Hold on to ABI intermediate datastructures until the kernel returns.
   // Asynchronous kernels are responsible for unmarshalling what they need
@@ -1010,8 +1015,13 @@ static void mgp_cpu_kernel_execute(
   // Put the kernel arguments into the ABI void* array. This will mix the
   // input/output buffers, and other types of arguments.
   for (size_t i = 0; i < numInputs; ++i) {
-    auto errOr = call.pushObject(std::move(operands[i]), inOutSignature[i],
-                                 outputChain, *dSummary, loc);
+    auto errOr =
+        call.pushObject(operands[i].copy(), inOutSignature[i], *dSummary, loc
+#if MODULAR_PARANOID
+                        ,
+                        uses
+#endif
+        );
     if (errOr.isError()) {
       outChain.copy().setToError({errOr.takeError(), std::move(loc)});
       setOutDimensionsToChainError();
@@ -1036,32 +1046,46 @@ static void mgp_cpu_kernel_execute(
   // entry onto the per-thread stack.
   auto profilerEntry = MGPProfilerEntry::create(*dSummary);
 
-  // Execute the kernel:
-  //  - Asynchronous kernels will have copied everything out of the three
-  //    pointer arguments by the time this call returns.
-  //  - Synchronous kernels wil have completed upon return.
-  //  - The dimensions of the buffers inside inputPointers and dimensions
-  //    vectors are known at kernel compile time and do not need to be passed
-  //    at runtime.
+  // Execute the kernel. Currently, all Mojo kernels are synchronous (and if
+  // they launch sub-tasks they will LLCL::await until all such sub-tasks have
+  // completed). However, if requested, the kernel will be launched in a
+  // sub-task.
+  //
+  // TODO(#27757): When we finish transitioning to Mojo async/await kernels
+  // we'll need a similar async vs sync distinction, however async kernels will
+  // not need to be wrapped by a sub-task. Instead, we'll just wire the
+  // completion handler of the Mojo Coroutine to emplace the outChain directly.
   if (*fIsAsync) {
-    // TODO(#27757): In order to transition to Mojo async/await without losing
-    //               model performance we need to launch some kernels within
-    //               a sub-task on the C++ side. Eventually this will instead
-    //               be managed on the Mojo side.
     assert(numOutDimensions == 0);
     runtime.getWorkQueue()->addTask(
-        [kernelPtr, call = std::move(call), dimensions = std::move(dimensions),
-         forkedOutputChain = outputChain.fork()]() mutable {
-          kernelPtr(call.inputPointers.data(), dimensions.data(),
-                    &forkedOutputChain);
-          if (not forkedOutputChain.chain.isError())
-            forkedOutputChain.markReady();
-          // The forked output chain will be cleaned up by its destructor.
+        [kernelPtr, outputChain = std::move(outputChain),
+         call = std::move(call), dimensions = std::move(dimensions),
+         operands = operands.copyAsVector(), outChain = outChain.copy()
+#if MODULAR_PARANOID
+                                                 ,
+         uses = std::move(uses)
+#endif
+    ]() mutable {
+          kernelPtr(call.inputPointers.data(), dimensions.data(), &outputChain);
+          if (!outChain.isError())
+            std::move(outChain).emplace();
+#if MODULAR_PARANOID
+          // Release uses of the operands before the operands themselves go out
+          // of scope.
+          uses.clear();
+#endif
+          // We wish to hold the operands alive until the kernel is finished.
+          (void)operands;
         });
   } else {
     kernelPtr(call.inputPointers.data(), dimensions.data(), &outputChain);
-    if (!outputChain.chain.isError())
-      outputChain.markReady();
+    if (!outChain.copy().isError())
+      std::move(outChain).emplace();
+#if MODULAR_PARANOID
+    // Release uses to the operands before the operands themselves go out
+    // of scope.
+    uses.clear();
+#endif
   }
 
   // Stop profiling when the kernel finishes.
@@ -1092,9 +1116,6 @@ static void mgp_cpu_kernel_execute(
   void *p = alloca(s);
   memset(p, 0xef, s);
 #endif
-
-  // The OutputChain destructor will clean things up if it was not forked
-  // by the called Mojo kernel.
 }
 
 //===----------------------------------------------------------------------===//

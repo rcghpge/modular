@@ -17,8 +17,13 @@ using namespace M::GML;
 //===----------------------------------------------------------------------===//
 
 ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
-    AnyAsyncValueRef input, char inOutType, KGEN::OutputChain &outputChain,
-    StringRef summary, const EncodedLocation &loc) {
+    AnyAsyncValueRef input, char inOutType, StringRef summary,
+    const EncodedLocation &loc
+#if MODULAR_PARANOID
+    ,
+    SmallVectorImpl<LLCL::ResourceUse> &uses
+#endif
+) {
 #if MODULAR_PARANOID
   switch (inOutType) {
   case 'i': {
@@ -27,8 +32,7 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
       // Record that we'll be reading this buffer while the kernel is
       // in-flight.
       buffer.collectAccessUses(
-          outputChain.uses,
-          (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
+          uses, (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
           LLCL::kReadingResourceUse);
 
     } else if (input.isType<List>()) {
@@ -39,7 +43,7 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
         if (ref.isType<GML::Tensor>()) {
           auto &tensor = ref.get<GML::Tensor>();
           tensor.getBufferRef().collectAccessUses(
-              outputChain.uses,
+              uses,
               (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
               LLCL::kReadingResourceUse);
         }
@@ -53,8 +57,7 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
       // Record that we'll be writing this buffers while the kernel is
       // in-flight.
       buffer.collectAccessUses(
-          outputChain.uses,
-          (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
+          uses, (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
           LLCL::kWritingResourceUse);
     }
     break;

@@ -46,7 +46,7 @@ LogicalResult StubCompiler::elaborateKGEN() {
   // Set the environment (defines) for the module.
   NamedAttrList envAttrs;
 #ifdef MODULAR_PARANOID
-  envAttrs.set("MODULAR_PARANOID", BoolAttr::get(ctx, true));
+  envAttrs.set("MODULAR_PARANOID", IntegerAttr::get(IndexType::get(ctx), 1));
 #endif // MODULAR_PARANOID
   envAttrs.set("BUILD_TYPE", StringAttr::get(STRINGIFY(BUILD_TYPE),
                                              KGEN::StringType::get(ctx)));
