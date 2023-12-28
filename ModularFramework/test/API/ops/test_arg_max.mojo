@@ -9,7 +9,7 @@ from tensor import Tensor, TensorShape
 
 from mobi import Module
 from mobi import testing
-from mobi import functional
+from mobi import ops
 
 
 fn test_arg_max() raises:
@@ -21,7 +21,7 @@ fn test_arg_max() raises:
         m.types(m.f32(2, 3)),
         m.types(m.i64(2, 1)),
     )
-    g.output(functional.arg_max(g[0], 1))
+    g.output(ops.arg_max(g[0], 1))
     m.verify()
 
     let x = Tensor[DType.float32](
@@ -42,7 +42,7 @@ fn test_arg_max_neg_axis() raises:
         m.types(m.f32(2, 3)),
         m.types(m.i64(2, 1)),
     )
-    g.output(functional.arg_max(g[0], -1))
+    g.output(ops.arg_max(g[0], -1))
     m.verify()
 
     let x = Tensor[DType.float32](

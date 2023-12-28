@@ -7,7 +7,7 @@
 from .graph import Graph
 from .mobicc import SymbolPtr
 from .type import Type
-import mobi.functional as G
+from .ops import *
 
 from tensor import Tensor, TensorShape, TensorSpec
 
@@ -44,24 +44,10 @@ struct Symbol(CollectionElement, Stringable):
         let dtype = String(spec.dtype().__str__())
         return "Symbol(mo.tensor<" + shape + ", " + dtype + ">)"
 
-    fn __getitem__(self, *spans: G.SliceSymbol) raises -> Symbol:
-        return G.slice_(self, spans)
+    fn __getitem__(self, *spans: SliceSymbol) raises -> Symbol:
+        return slice_(self, spans)
 
     fn __getitem__(self, span: slice) raises -> Symbol:
-        # TODO: Since `mo.slice` clamps out of range start/stop operands, it
-        # should be safe to leave unspecified `end` as `_int_max_value()`.
-        # However, since this will produce a dynamic dim shape that is prone to
-        # producing downstream dynamic rank, enforce statically known `end`.
-        # var g = self.g
-        # return G.slice_(
-        #     self,
-        #     G.SliceSymbol(
-        #         g.constant(span.start),
-        #         g.constant(span.end),
-        #         g.constant(span.step),
-        #     ),
-        # )
-
         if not span._has_end():
             raise "slice expects stop to be specified"
 
@@ -95,20 +81,20 @@ struct Symbol(CollectionElement, Stringable):
         _ = g.op("mo.debug.tensor.print", self, g.m.types(), attrs)
 
     fn transpose(self) raises -> Symbol:
-        return G.transpose(self, -1, -2)
+        return transpose(self, -1, -2)
 
     fn transpose(self, dim1: Int, dim2: Int) raises -> Symbol:
-        return G.transpose(self, dim1, dim2)
+        return transpose(self, dim1, dim2)
 
     fn __neg__(self) raises -> Symbol:
         var g = self.g
         return g.op("mo.negative", self, self.type())[0]
 
     fn __matmul__(self, rhs: Symbol) raises -> Symbol:
-        return G.matmul(self, rhs)
+        return matmul(self, rhs)
 
     fn __add__(self, rhs: Symbol) raises -> Symbol:
-        return G.add(self, rhs)
+        return add(self, rhs)
 
     fn __add__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
         var g = self.g
@@ -127,7 +113,7 @@ struct Symbol(CollectionElement, Stringable):
         return self + g.constant(rhs)
 
     fn __sub__(self, rhs: Symbol) raises -> Symbol:
-        return G.sub(self, rhs)
+        return sub(self, rhs)
 
     fn __sub__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
         var g = self.g
@@ -146,7 +132,7 @@ struct Symbol(CollectionElement, Stringable):
         return self - g.constant(rhs)
 
     fn __mul__(self, rhs: Symbol) raises -> Symbol:
-        return G.mul(self, rhs)
+        return mul(self, rhs)
 
     fn __mul__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
         var g = self.g
@@ -165,7 +151,7 @@ struct Symbol(CollectionElement, Stringable):
         return self * g.constant(rhs)
 
     fn __truediv__(self, rhs: Symbol) raises -> Symbol:
-        return G.div(self, rhs)
+        return div(self, rhs)
 
     fn __truediv__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
         var g = self.g
@@ -184,7 +170,7 @@ struct Symbol(CollectionElement, Stringable):
         return self / g.constant(rhs)
 
     fn __pow__(self, rhs: Symbol) raises -> Symbol:
-        return G.pow(self, rhs)
+        return pow(self, rhs)
 
     fn __pow__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
         var g = self.g
