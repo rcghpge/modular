@@ -114,7 +114,6 @@ fn _get_dylib_function[T: AnyRegType](name: StringRef) -> T:
 
 @always_inline
 fn MOBI_func[T: AnyRegType](name: StringRef) -> T:
-    """`dlsym()`s a function called `name` in shared library `.lib`."""
     var f = _get_dylib_function[T](name)
     let ptr = Pointer.address_of(f).bitcast[Pointer[NoneType]]().load()
     if not ptr:
@@ -284,6 +283,50 @@ fn get_symbol(tup: TuplePtr, pos: UInt32) -> SymbolPtr:
 ### Type helers
 
 
+fn type_to_string(type: TypePtr) -> String:
+    var len: Int64 = 0
+    let ret = MOBI_func[fn (TypePtr, Pointer[Int64]) -> Pointer[Int8]](
+        "MOBI_typeToString"
+    )(type, Pointer[Int64].address_of(len))
+    return String(ret, len.to_int())
+
+
+fn new_dtype(m: ModulePtr, dtype: DType) -> TypePtr:
+    return MOBI_func[fn (ModulePtr, UInt8) -> TypePtr]("MOBI_newDType")(
+        m, dtype._as_i8()
+    )
+
+
+fn new_tensor_type(
+    m: ModulePtr, dtype: TypePtr, dims: DynamicVector[Int64], ranked: Bool
+) -> TypePtr:
+    return MOBI_func[
+        fn (ModulePtr, TypePtr, Bool, Pointer[Int64], Int32) -> TypePtr
+    ]("MOBI_newTensorType")(
+        m, dtype, ranked, Pointer[Int64](dims.data.value), len(dims)
+    )
+
+
+fn get_tensor_dtype(s: SymbolPtr) -> DType:
+    let dtype = MOBI_func[fn (SymbolPtr) -> UInt8]("MOBI_getTensorDType")(s)
+    return DType._from_ui8(dtype.value)
+
+
+fn get_tensor_shape(s: SymbolPtr) -> DynamicVector[Int64]:
+    var rank: Int32 = 0
+    let dims = MOBI_func[fn (SymbolPtr, Pointer[Int32]) -> Pointer[Int64]](
+        "MOBI_getTensorShape"
+    )(s, Pointer.address_of(rank))
+    var dimsVec = DynamicVector[Int64]()
+    for i in range(rank):
+        dimsVec.append(dims[i])
+    return dimsVec
+
+
+fn is_tensor_ranked(s: SymbolPtr) -> Bool:
+    return MOBI_func[fn (SymbolPtr) -> Bool]("MOBI_isTensorRanked")(s)
+
+
 fn type_from_spec(m: ModulePtr, spec: TensorSpec) -> TypePtr:
     return MOBI_func[fn (ModulePtr, TensorSpec) -> TypePtr](
         "MOBI_typeFromSpec"
@@ -312,8 +355,8 @@ fn spec_from_type(t: TypePtr) -> TensorSpec:
     return result_spec
 
 
-fn dynamic_dim(module: ModulePtr) -> Int64:
-    return MOBI_func[fn (ModulePtr) -> Int64]("MOBI_dynamicDim")(module)
+fn dynamic_dim() -> Int64:
+    return MOBI_func[fn () -> Int64]("MOBI_dynamicDim")()
 
 
 fn f32(
@@ -370,6 +413,8 @@ fn add_type(inout arity: ArityPtr, t: TypePtr):
 
 # TODO: These specialized helpers are a stop-gap until we have sufficient
 # type manipulation primitives to write the logic in Mojo.
+# Note: Most type manipulation logic will become obsolete in HiMO, where
+# all output types are inferred.
 fn arg_reduction_type(
     module: ModulePtr,
     input: TypePtr,

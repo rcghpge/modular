@@ -6,6 +6,8 @@
 
 from math import max
 
+from mobi.motype import ElementType, MOTensor, dyn
+
 from tensor import TensorSpec, TensorShape
 
 
@@ -17,22 +19,16 @@ def _has_dynamic_dims(shape: TensorShape) -> Bool:
 
 
 def rsqrt(v: Symbol) -> Symbol:
-    var g = v.g
-    return g.op(
-        "mo.rsqrt",
-        cast(v, DType.float32),  # rsqrt expects a float
-        TensorSpec(DType.float32, v.type().unwrap_tensor().shape()),
-    )[0]
+    let f32_v = cast(v, DType.float32)  # TODO: add missing rsqrt coverage.
+    return v.g.op("mo.rsqrt", f32_v, f32_v.tensor_type())[0]
 
 
 def softmax(v: Symbol) -> Symbol:
-    """Computes softmax on the last axis."""
     var g = v.g
     return g.op("mo.softmax", v, v.type())[0]
 
 
 def silu(v: Symbol) -> Symbol:
-    """See https://pytorch.org/docs/stable/generated/torch.nn.SiLU.html ."""
     return mul(v, sigmoid(v))
 
 
@@ -100,35 +96,34 @@ def elementwise_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
     let broadcast_shape = g.op(
         "mo.broadcast_shape",
         (lhs_shape, rhs_shape),
-        TensorSpec(DType.int64, broadcast_rank),
+        MOTensor(DType.int64, Int64(broadcast_rank)),
     )[0]
 
     # Implement basic numpy-style broadcast, but with dynamic dims allowed
     # 1. the smaller shape is filled with 1s from the left
     # 2. if either dim is 1 it is promoted to the other value
     # 3. if either dim is dynamic, we can't predict, so output dynamic
-    var broadcast_dims = DynamicVector[Int]()
+    var broadcast_dims = DynamicVector[Int64]()
     let larger = lhs_spec if lhs_spec.rank() > rhs_spec.rank() else rhs_spec
     let smaller = rhs_spec if lhs_spec.rank() > rhs_spec.rank() else lhs_spec
     let offset = larger.rank() - smaller.rank()
-    let dyn = g.m.dyn().to_int()
     for i in range(offset):
         broadcast_dims.push_back(larger[i])
     for i in range(offset, broadcast_rank):
         let d1 = larger[i]
         let d2 = smaller[i - offset]
         broadcast_dims.push_back(
-            d1 if d1 == d2 or d2 == 1 else (d2 if d1 == 1 else dyn)
+            d1 if d1 == d2 or d2 == 1 else (d2 if d1 == 1 else dyn())
         )
 
     let broadcast_lhs = g.op(
         "mo.broadcast_to",
         (lhs, broadcast_shape),
-        TensorSpec(lhs_spec.dtype(), broadcast_dims),
+        MOTensor(lhs_spec.dtype(), broadcast_dims),
     )[0]
     let broadcast_rhs = g.op(
         "mo.broadcast_to",
         (rhs, broadcast_shape),
-        TensorSpec(rhs_spec.dtype(), broadcast_dims),
+        MOTensor(rhs_spec.dtype(), broadcast_dims),
     )[0]
     return (broadcast_lhs, broadcast_rhs)

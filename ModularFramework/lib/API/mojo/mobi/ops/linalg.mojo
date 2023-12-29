@@ -6,6 +6,8 @@
 
 from math import max
 
+from mobi.motype import ElementType, MOTensor, dyn
+
 from tensor import TensorSpec, TensorShape
 
 
@@ -35,9 +37,7 @@ def arange(start: Symbol, stop: Symbol, step: Symbol) -> Symbol:
     # Use stop to get the dtype since it's supplied in all cases
     var g = stop.g
     let dtype = stop.type().unwrap_tensor().dtype()
-    return g.op(
-        "mo.range", (start, stop, step), TensorSpec(dtype, g.m.dyn().to_int())
-    )[0]
+    return g.op("mo.range", (start, stop, step), MOTensor(dtype, dyn()))[0]
 
 
 def outer(lhs: Symbol, rhs: Symbol) -> Symbol:
@@ -53,11 +53,11 @@ def batch_matmul(lhs: Symbol, rhs: Symbol) -> Symbol:
 
     let lhs_spec = broadcast_lhs.type().unwrap_tensor().spec()
     let rhs_spec = broadcast_rhs.type().unwrap_tensor().spec()
-    var dims = DynamicVector[Int]()
+    var dims = DynamicVector[Int64]()
     for i in range(lhs_spec.rank() - 1):
         dims.push_back(lhs_spec[i])
     dims.push_back(rhs_spec[-1])
-    let out_spec = TensorSpec(lhs_spec.dtype(), dims)
+    let out_spec = MOTensor(lhs_spec.dtype(), dims)
 
     return g.op("mo.batch_matmul", (broadcast_lhs, broadcast_rhs), out_spec)[0]
 
@@ -88,7 +88,7 @@ def matmul_by_matrix(lhs: Symbol, rhs: Symbol) -> Symbol:
     let matmul_out = g.op(
         "mo.matmul",
         (reshape(lhs, reshape_shape, reshape_dims), rhs),
-        TensorSpec(lhs_spec.dtype(), g.m.dyn().to_int(), rhs_spec[-1]),
+        MOTensor(lhs_spec.dtype(), dyn(), Int64(rhs_spec[-1])),
     )[0]
 
     return reshape(matmul_out, final_shape, final_dims)
@@ -123,14 +123,14 @@ def matmul_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
     let broadcast_dims_shape = g.op(
         "mo.broadcast_shape",
         (lhs_broadcast_dims, rhs_broadcast_dims),
-        TensorSpec(DType.int64, broadcast_rank - 2),
+        MOTensor(DType.int64, Int64(broadcast_rank - 2)),
     )[0]
 
-    var lhs_final_dims = DynamicVector[Int]()
-    var rhs_final_dims = DynamicVector[Int]()
+    var lhs_final_dims = DynamicVector[Int64]()
+    var rhs_final_dims = DynamicVector[Int64]()
     for _ in range(broadcast_rank - 2):
-        lhs_final_dims.push_back(g.m.dyn().to_int())
-        rhs_final_dims.push_back(g.m.dyn().to_int())
+        lhs_final_dims.push_back(dyn())
+        rhs_final_dims.push_back(dyn())
     lhs_final_dims.push_back(lhs_spec[-2])
     lhs_final_dims.push_back(lhs_spec[-1])
     rhs_final_dims.push_back(rhs_spec[-2])
@@ -143,7 +143,7 @@ def matmul_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
     let broadcast_lhs = g.op(
         "mo.broadcast_to",
         (lhs, lhs_broadcast_shape),
-        TensorSpec(lhs_spec.dtype(), lhs_final_dims),
+        MOTensor(lhs_spec.dtype(), lhs_final_dims),
     )[0]
 
     let rhs_broadcast_shape = concat[axis=0](
@@ -153,7 +153,7 @@ def matmul_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
     let broadcast_rhs = g.op(
         "mo.broadcast_to",
         (rhs, rhs_broadcast_shape),
-        TensorSpec(rhs_spec.dtype(), rhs_final_dims),
+        MOTensor(rhs_spec.dtype(), rhs_final_dims),
     )[0]
 
     return (broadcast_lhs, broadcast_rhs)

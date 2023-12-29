@@ -6,6 +6,8 @@
 
 from tensor import TensorSpec, TensorShape
 
+from mobi.motype import ElementType, MOTensor, dyn
+
 
 def mean(v: Symbol, dim: Int) -> Symbol:
     # Mean along axis `dim`, leaving a singleton dimension in its place.
@@ -17,7 +19,7 @@ def mean(v: Symbol, dim: Int) -> Symbol:
     if dim < 0 or dim >= spec.rank():
         raise "dim out of range"
 
-    var dims = DynamicVector[Int]()
+    var dims = DynamicVector[Int64]()
     var reshape_dims = DynamicVector[Int]()
     for i in range(spec.rank()):
         if i == dim:
@@ -29,7 +31,7 @@ def mean(v: Symbol, dim: Int) -> Symbol:
     return g.op(
         "mo.mean",
         (v, g.constant(dim)),
-        TensorSpec(spec.dtype(), TensorShape(dims)),
+        MOTensor(spec.dtype(), dims),
     )[0]
 
 

@@ -30,7 +30,9 @@ public:
 
   Loc unknownLoc();
 
-  int64_t dynamicDim();
+  Type newDType(DType value);
+  Type newTensorType(Type elementType, bool ranked,
+                     llvm::ArrayRef<int64_t> dims);
 
   Type f32(llvm::ArrayRef<int64_t> shape);
   Type ui(uint64_t width, llvm::ArrayRef<int64_t> shape);

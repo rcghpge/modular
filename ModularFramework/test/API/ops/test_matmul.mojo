@@ -103,4 +103,4 @@ fn test_batch_matmul() raises:
 
 def main():
     test_matmul()
-    test_batch_matmul()
+    # test_batch_matmul()

@@ -7,6 +7,7 @@
 from tensor import TensorSpec, TensorShape
 
 from mobi.misc import Tup
+from mobi.motype import ElementType, MOTensor, dyn
 
 
 fn _fill_vector[
@@ -41,7 +42,7 @@ def index[axis: Int = 0](v: Symbol, idx: Int) -> Symbol:
     var g = v.g
     let spec = v.type().unwrap_tensor().spec()
 
-    var slice_dims = DynamicVector[Int]()
+    var slice_dims = DynamicVector[Int64]()
     var indexed_dims = DynamicVector[Int]()
     let start = DTypePointer[DType.int64].alloc(spec.rank())
     let stop = DTypePointer[DType.int64].alloc(spec.rank())
@@ -66,7 +67,7 @@ def index[axis: Int = 0](v: Symbol, idx: Int) -> Symbol:
             g.constant[DType.int64](Tensor(stop, TensorShape(spec.rank()))),
             g.constant[DType.int64](Tensor(step, TensorShape(spec.rank()))),
         ),
-        TensorSpec(spec.dtype(), TensorShape(slice_dims)),
+        MOTensor(spec.dtype(), slice_dims),
     )[0]
 
     return squeeze(slice, axis)
@@ -86,7 +87,7 @@ def gather(input: Symbol, indices: Symbol, axis: Int) -> Symbol:
             + String(input_spec.rank())
         )
 
-    var dims = DynamicVector[Int]()
+    var dims = DynamicVector[Int64]()
     for i in range(input_spec.rank()):
         if i == axis:
             for j in range(indices_spec.rank()):
@@ -97,7 +98,7 @@ def gather(input: Symbol, indices: Symbol, axis: Int) -> Symbol:
     return g.op(
         "mo.gather",
         (input, indices, g.constant(axis)),
-        TensorSpec(input_spec.dtype(), TensorShape(dims)),
+        MOTensor(input_spec.dtype(), dims),
     )[0]
 
 
@@ -183,23 +184,29 @@ def slice_(
     let start = stack[axis=0](starts)
     let stop = stack[axis=0](stops)
     let step = stack[axis=0](steps)
+
+    var dims = DynamicVector[Int64]()
+    for i in range(shape.rank()):
+        dims.append(shape[i])
+
     return g.op(
         "mo.slice",
         (input, start, stop, step),
-        TensorSpec(spec.dtype(), shape),
+        MOTensor(spec.dtype(), dims),
     )[0]
 
 
 def cast(v: Symbol, dtype: DType) -> Symbol:
-    var g = v.g
-    let out_spec = TensorSpec(dtype, v.type().unwrap_tensor().shape())
-    return g.op("mo.cast", v, out_spec)[0]
+    var t = v.tensor_type()
+    t.dtype = ElementType(dtype)
+    return v.g.op("mo.cast", v, t)[0]
 
 
 def shape_of(v: Symbol) -> Symbol:
-    var g = v.g
-    let spec = v.type().unwrap_tensor().spec()
-    return g.op("mo.shape_of", v, TensorSpec(DType.int64, spec.rank()))[0]
+    let t = v.tensor_type()
+    return v.g.op("mo.shape_of", v, MOTensor(DType.int64, Int64(len(t.dims))))[
+        0
+    ]
 
 
 def concat[axis: Int](*values: Symbol) -> Symbol:
@@ -246,16 +253,12 @@ def concat[axis: Int](values: DynamicVector[Symbol]) -> Symbol:
     for i in range(len(values)):
         concat_args.push_back(values[i])
 
-    var dims = DynamicVector[Int](rank)
+    var dims = DynamicVector[Int64](rank)
     for i in range(rank):
         dims.push_back(spec.shape[i])
     dims[positive_axis] = concat_dim
 
-    return g.op(
-        "mo.concat",
-        concat_args,
-        TensorSpec(spec.dtype(), TensorShape(dims)),
-    )[0]
+    return g.op("mo.concat", concat_args, MOTensor(spec.dtype(), dims))[0]
 
 
 def stack[axis: Int](values: DynamicVector[Symbol]) -> Symbol:
@@ -285,10 +288,10 @@ def squeeze(v: Symbol, axis: Int) -> Symbol:
             shape_of(v),
             g.constant(Tensor[DType.int64](TensorShape(1), axis)),
         ),
-        TensorSpec(DType.int64, spec.rank() - 1),
+        MOTensor(DType.int64, Int64(spec.rank() - 1)),
     )[0]
 
-    var dims = DynamicVector[Int]()
+    var dims = DynamicVector[Int64]()
     for i in range(spec.rank()):
         if i != axis:
             dims.push_back(spec[i])
@@ -296,7 +299,7 @@ def squeeze(v: Symbol, axis: Int) -> Symbol:
     return g.op(
         "mo.reshape",
         (v, new_shape),
-        TensorSpec(spec.dtype(), TensorShape(dims)),
+        MOTensor(spec.dtype(), dims),
     )[0]
 
 
@@ -314,13 +317,14 @@ def unsqueeze(v: Symbol, axis: Int) -> Symbol:
             + String(spec.rank())
         )
 
+    # TODO: Bug - passing spec.rank() + 1 into a variadic Int64 corrupts it.
     let new_shape = g.op(
         "mo.unsqueeze_shape",
         (shape_of(v), g.constant(Tensor[DType.int64](TensorShape(1), axis))),
-        TensorSpec(DType.int64, spec.rank() + 1),
+        MOTensor(DType.int64, Int64(spec.rank() + 1)),
     )[0]
 
-    var dims = DynamicVector[Int]()
+    var dims = DynamicVector[Int64]()
     for i in range(spec.rank()):
         if i == axis:
             dims.push_back(1)
@@ -331,7 +335,7 @@ def unsqueeze(v: Symbol, axis: Int) -> Symbol:
     return g.op(
         "mo.reshape",
         (v, new_shape),
-        TensorSpec(spec.dtype(), TensorShape(dims)),
+        MOTensor(spec.dtype(), dims),
     )[0]
 
 
@@ -340,18 +344,18 @@ def reshape(v: Symbol, shape: TensorShape) -> Symbol:
 
     var symbols = DynamicVector[Symbol]()
     let shape_data = DTypePointer[DType.int64].alloc(shape.rank())
-    var reshape_dims = DynamicVector[Int]()
+    var reshape_dims = DynamicVector[Int64]()
 
     for i in range(shape.rank()):
         let dim = shape[i]
         symbols.push_back(g.constant(dim))
-        reshape_dims.push_back(g.m.dyn().to_int() if dim == -1 else dim)
+        reshape_dims.push_back(dyn() if dim == -1 else dim)
         shape_data.store(i, dim)
 
     let shape_ = g.constant(Tensor(shape_data, TensorShape(shape.rank())))
 
     let dtype = v.type().unwrap_tensor().dtype()
-    return g.op("mo.reshape", (v, shape_), TensorSpec(dtype, reshape_dims))[0]
+    return g.op("mo.reshape", (v, shape_), MOTensor(dtype, reshape_dims))[0]
 
 
 def reshape(v: Symbol, *dims: Int) -> Symbol:
@@ -377,27 +381,36 @@ def reshape(v: Symbol, *dims: Symbol) -> Symbol:
         vec.append(dim)
     let shape = stack[axis=0](vec)
 
-    var reshape_dims = DynamicVector[Int]()
+    var reshape_dims = DynamicVector[Int64]()
     for _ in range(rank):
-        reshape_dims.push_back(g.m.dyn().to_int())
+        reshape_dims.push_back(dyn())
 
     let dtype = v.type().unwrap_tensor().dtype()
-    return g.op("mo.reshape", (v, shape), TensorSpec(dtype, reshape_dims))[0]
+    return g.op("mo.reshape", (v, shape), MOTensor(dtype, reshape_dims))[0]
 
 
 fn reshape(v: Symbol, shape: Symbol, out_shape: TensorShape) raises -> Symbol:
     var g = v.g
     let dtype = v.type().unwrap_tensor().dtype()
-    let result = g.op("mo.reshape", (v, shape), TensorSpec(dtype, out_shape))[0]
+    var reshape_dims = DynamicVector[Int64]()
+    for i in range(out_shape.rank()):
+        reshape_dims.push_back(out_shape[i])
+    let result = g.op("mo.reshape", (v, shape), MOTensor(dtype, reshape_dims))[
+        0
+    ]
     return result
 
 
 fn reshape(rank: Int, v: Symbol, shape: Symbol) raises -> Symbol:
-    return reshape(
-        v,
-        shape,
-        TensorShape(_fill_vector(rank, v.g.m.dyn().to_int())),
-    )
+    var g = v.g
+    let dtype = v.type().unwrap_tensor().dtype()
+    var reshape_dims = DynamicVector[Int64]()
+    for _ in range(rank):
+        reshape_dims.push_back(dyn())
+    let result = g.op("mo.reshape", (v, shape), MOTensor(dtype, reshape_dims))[
+        0
+    ]
+    return result
 
 
 fn reshape_like(v: Symbol, like: Symbol) raises -> Symbol:
@@ -444,7 +457,7 @@ def transpose(input: Symbol, x: Int, y: Int) -> Symbol:
     if x < 0 or x >= spec.rank() or y < 0 or y >= spec.rank():
         raise "transpose dim outside range"
 
-    var dims = DynamicVector[Int]()
+    var dims = DynamicVector[Int64]()
     let ptr = DTypePointer[DType.int64].alloc(spec.rank())
     for i in range(spec.rank()):
         dims.push_back(spec[i])
@@ -462,5 +475,5 @@ def transpose(input: Symbol, x: Int, y: Int) -> Symbol:
     return g.op(
         "mo.transpose",
         (input, transpose_indices),
-        TensorSpec(spec.dtype(), TensorShape(dims)),
+        MOTensor(spec.dtype(), dims),
     )[0]

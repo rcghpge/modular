@@ -124,7 +124,7 @@ struct Module:
         return AttrMap(m, len(attrs))
 
     fn dyn(self) -> Int64:
-        return mobicc.dynamic_dim(self.m)
+        return mobicc.dynamic_dim()
 
     fn i32(self, *dims: Int64) -> TypePtr:
         let shape = _dynamic_vector(dims)

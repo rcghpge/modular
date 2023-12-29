@@ -9,22 +9,18 @@ from .mobicc import AttrPtr, GraphPtr, SymbolPtr, TuplePtr, TypePtr
 from .module import Module
 from .symbol import Symbol
 from .type import Type
+from .motype import MOTensor, dyn
+from .motype import Type as MOType
 
 from memory.unsafe import Pointer
 from tensor import TensorShape, TensorSpec
 
 
-# TODO: Try to drop these special annotations.
-# TODO: Move all factories into Module (or vice-versa), it's confusing
-# if they're in two places.
 @value
 @register_passable
 struct Graph:
     var g: GraphPtr
     var m: Module
-
-    fn __init__(g: GraphPtr, m: Module) -> Self:
-        return Self {g: g, m: m}
 
     fn __getitem__(self, pos: UInt32) -> Symbol:
         return Symbol(mobicc.get_input(self.g, pos), self)
@@ -35,42 +31,44 @@ struct Graph:
             mobicc.add_symbol(t, s.s)
         return Tup(t, len(values), self)
 
-    fn op(
-        inout self,
-        name: StringRef,
-        input: Symbol,
-        out_type: Type,
-    ) -> Tup:
+    fn op(inout self, name: StringRef, input: Symbol, out_type: Type) -> Tup:
         return self.op(name, Tup(input), Arity(out_type))
 
-    fn op(
-        inout self,
-        name: StringRef,
-        input: Symbol,
-        out_types: Arity,
-    ) -> Tup:
+    fn op[
+        T: MOType
+    ](inout self, name: StringRef, input: Symbol, out_type: T) -> Tup:
+        return self.op(name, Tup(input), Arity(Type(out_type.to_mlir(self.m))))
+
+    fn op(inout self, name: StringRef, input: Symbol, out_types: Arity) -> Tup:
         return self.op(name, Tup(input), out_types)
 
-    fn op(
-        inout self,
-        name: StringRef,
-        inputs: Tup,
-        out_types: Arity,
-    ) -> Tup:
-        let loc = self.m.unknown_loc()
-        let attrs = mobicc.new_attr_map()
-        let outputs = mobicc.new_op(
-            self.g, loc, name, inputs.t, out_types.a, attrs
+    fn op(inout self, name: StringRef, inputs: Tup, out_types: Arity) -> Tup:
+        return self.op(
+            name, inputs, out_types, AttrMap(mobicc.new_attr_map(), 0)
         )
-        return Tup(outputs, out_types.l, self)
 
-    fn op(
+    fn op[
+        T: MOType
+    ](inout self, name: StringRef, inputs: Tup, out_type: T) -> Tup:
+        return self.op(
+            name,
+            inputs,
+            Arity(Type(out_type.to_mlir(self.m))),
+            AttrMap(mobicc.new_attr_map(), 0),
+        )
+
+    fn op[
+        T: MOType
+    ](
         inout self,
         name: StringRef,
         inputs: Tup,
-        out_spec: TensorSpec,
+        out_type: T,
+        attrs: AttrMap,
     ) -> Tup:
-        return self.op(name, inputs, Arity(self.m.type(out_spec)))
+        return self.op(
+            name, inputs, Arity(Type(out_type.to_mlir(self.m))), attrs
+        )
 
     fn op(
         inout self,
@@ -89,11 +87,7 @@ struct Graph:
 
     fn constant[
         dtype: DType
-    ](
-        inout self,
-        shape: TensorShape,
-        value: DTypePointer[dtype],
-    ) raises -> Tup:
+    ](inout self, shape: TensorShape, value: DTypePointer[dtype]) raises -> Tup:
         """Takes ownership of `value` to avoid a copy."""
         return self.constant[dtype](Tensor[dtype](value, shape))
 
@@ -198,7 +192,7 @@ struct Graph:
                 self.constant[dtype](stop),
                 self.constant[dtype](step),
             ),
-            TensorSpec(dtype, self.m.dyn().to_int()),
+            MOTensor(dtype, dyn()),
         )[0]
 
     fn arange[dtype: DType](inout self, stop: SIMD[dtype, 1]) raises -> Symbol:

@@ -26,6 +26,13 @@ using namespace M::MOF::Builder;
 using namespace llvm;
 using namespace mlir;
 
+char *unownedString(const std::string &buffer, int64_t *len) {
+  char *cstr = new char[buffer.size() + 1];
+  std::strcpy(cstr, buffer.c_str());
+  *len = buffer.size() + 1; // TODO: Why?
+  return cstr;
+}
+
 /// Attr
 
 MODULAR_API_EXPORT M_Attr *MOBI_tensorAttr(M_Module *m, StringRef name,
@@ -147,7 +154,6 @@ MODULAR_API_EXPORT char *MOBI_symbolToString(const M_Symbol *s, int64_t *len) {
   raw_string_ostream os(buffer);
   s->symbol.getVal().print(os);
 
-  // TODO: Do it without so many copies.
   char *copy = reinterpret_cast<char *>(std::malloc(buffer.size()));
   memcpy(copy, buffer.data(), buffer.size());
   *len = buffer.size();
@@ -182,6 +188,38 @@ MODULAR_API_EXPORT M_Symbol *MOBI_getSymbol(M_Tuple *t, uint32_t pos) {
 
 /// Type
 
+MODULAR_API_EXPORT char *MOBI_typeToString(M_Type *t, int64_t *len) {
+  return unownedString(t->type.toString(), len);
+}
+
+MODULAR_API_EXPORT M_Type *MOBI_newDType(M_Module *m, uint8_t value) {
+  return new M_Type{m->module.newDType(M::DType(value))};
+}
+
+MODULAR_API_EXPORT M_Type *MOBI_newTensorType(M_Module *m, M_Type *dtype,
+                                              bool ranked, int64_t *dims,
+                                              int32_t rank) {
+  return new M_Type{m->module.newTensorType(
+      dtype->type, ranked, llvm::ArrayRef<int64_t>(dims, rank))};
+}
+
+MODULAR_API_EXPORT uint8_t MOBI_getTensorDType(M_Symbol *s) {
+  return s->symbol.getTensorDType().getValue();
+}
+
+MODULAR_API_EXPORT int64_t *MOBI_getTensorShape(M_Symbol *s, int32_t *rank) {
+  SmallVector<int64_t> dims = s->symbol.getTensorShape();
+  *rank = dims.size();
+  int64_t *retval = new int64_t[*rank];
+  for (size_t i = 0; i < dims.size(); i++)
+    retval[i] = dims[i];
+  return retval;
+}
+
+MODULAR_API_EXPORT bool MOBI_isTensorRanked(M_Symbol *s) {
+  return s->symbol.getTensorDType().getValue();
+}
+
 MODULAR_API_EXPORT M_Type *MOBI_typeFromSpec(M_Module *m, const void *spec) {
   const M::TensorSpec &tensorSpec =
       *llvm::bit_cast<const M::TensorSpec *>(spec);
@@ -203,9 +241,7 @@ MODULAR_API_EXPORT uint8_t MOBI_specFromType(M_Type *t, int64_t *dims,
   return tensorTy.getDtype().getValue();
 }
 
-MODULAR_API_EXPORT int64_t MOBI_dynamicDim(M_Module *m) {
-  return m->module.dynamicDim();
-}
+MODULAR_API_EXPORT int64_t MOBI_dynamicDim() { return ShapedType::kDynamic; }
 
 MODULAR_API_EXPORT M_Type *MOBI_f32(M_Module *m, int64_t *dims, int64_t rank) {
   return new M_Type{m->module.f32(ArrayRef<int64_t>(dims, rank))};

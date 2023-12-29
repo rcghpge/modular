@@ -69,7 +69,7 @@ fn test_types() raises:
     # CHECK-LABEL: type_from_spec
     print("Testing type_from_spec() and spec_from_type().")
     let spec1 = TensorSpec(
-        DType.float32, 2, 3, 5, 7, mobicc.dynamic_dim(m).to_int()
+        DType.float32, 2, 3, 5, 7, mobicc.dynamic_dim().to_int()
     )
 
     let t = mobicc.type_from_spec(m, spec1)

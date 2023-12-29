@@ -7,6 +7,7 @@
 from .graph import Graph
 from .mobicc import SymbolPtr
 from .type import Type
+from .motype import *
 from .ops import *
 
 from tensor import Tensor, TensorShape, TensorSpec
@@ -26,8 +27,14 @@ struct Symbol(CollectionElement, Stringable):
         return Self {s: s, g: g}
 
     fn type(self) -> Type:
-        """Returns the type of this symbol."""
         return Type(mobicc.get_symbol_type(self.s))
+
+    fn tensor_type(self) -> MOTensor:
+        # TODO: Assert that this is an actual Tensor type, raise otherwise.
+        let ranked = mobicc.is_tensor_ranked(self.s)
+        let dims = mobicc.get_tensor_shape(self.s)
+        let dtype = mobicc.get_tensor_dtype(self.s)
+        return MOTensor(ElementType(dtype), dims, ranked)
 
     fn __str__(self) -> String:
         let spec: TensorSpec
@@ -72,7 +79,7 @@ struct Symbol(CollectionElement, Stringable):
                 g.constant(Tensor(end_ptr, TensorShape(1))),
                 g.constant(Tensor(step_ptr, TensorShape(1))),
             ),
-            TensorSpec(DType.int64, len(span)),
+            MOTensor(DType.int64, Int64(len(span))),
         )[0]
 
     fn print(self, label: StringRef = "debug_tensor") raises:
