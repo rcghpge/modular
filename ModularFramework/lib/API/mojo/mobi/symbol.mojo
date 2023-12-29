@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from .graph import Graph
-from .mobicc import SymbolPtr
+from .mobicc import SymbolPtr, TuplePtr
 from .type import Type
 from .motype import *
 from .ops import *
@@ -14,17 +14,12 @@ from tensor import Tensor, TensorShape, TensorSpec
 
 
 @value
-@register_passable
+@register_passable  # TODO: Use with Tuple shouldn't require reg-only.
 struct Symbol(CollectionElement, Stringable):
-    """Represents the result of an operation in `graph`, a graph input, or an
-    MLIR block argument.
-    """
-
     var s: SymbolPtr
-    var g: Graph
 
-    fn __init__(s: SymbolPtr, g: Graph) -> Self:
-        return Self {s: s, g: g}
+    fn graph(self) -> Graph:
+        return Graph(mobicc.get_symbol_graph(self.s))
 
     fn type(self) -> Type:
         return Type(mobicc.get_symbol_type(self.s))
@@ -70,7 +65,7 @@ struct Symbol(CollectionElement, Stringable):
         let step_ptr = DTypePointer[DType.int64].alloc(1)
         step_ptr.store(0, span.step)
 
-        var g = self.g
+        var g = self.graph()
         return g.op(
             "mo.slice",
             (
@@ -83,7 +78,7 @@ struct Symbol(CollectionElement, Stringable):
         )[0]
 
     fn print(self, label: StringRef = "debug_tensor") raises:
-        var g = self.g
+        var g = self.graph()
         let attrs = g.m.attrs(g.m.string_attr("label", label))
         _ = g.op("mo.debug.tensor.print", self, g.m.types(), attrs)
 
@@ -94,7 +89,7 @@ struct Symbol(CollectionElement, Stringable):
         return transpose(self, dim1, dim2)
 
     fn __neg__(self) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.op("mo.negative", self, self.type())[0]
 
     fn __matmul__(self, rhs: Symbol) raises -> Symbol:
@@ -104,173 +99,222 @@ struct Symbol(CollectionElement, Stringable):
         return add(self, rhs)
 
     fn __add__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self + g.constant(rhs)
 
     fn __add__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self + g.constant(rhs)
 
     fn __add__(self, rhs: Int) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self + g.constant(rhs)
 
     fn __add__(self, rhs: FloatLiteral) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self + g.constant(rhs)
 
     fn __sub__(self, rhs: Symbol) raises -> Symbol:
         return sub(self, rhs)
 
     fn __sub__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self - g.constant(rhs)
 
     fn __sub__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self - g.constant(rhs)
 
     fn __sub__(self, rhs: Int) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self - g.constant(rhs)
 
     fn __sub__(self, rhs: FloatLiteral) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self - g.constant(rhs)
 
     fn __mul__(self, rhs: Symbol) raises -> Symbol:
         return mul(self, rhs)
 
     fn __mul__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self * g.constant(rhs)
 
     fn __mul__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self * g.constant(rhs)
 
     fn __mul__(self, rhs: Int) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self * g.constant(rhs)
 
     fn __mul__(self, rhs: FloatLiteral) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self * g.constant(rhs)
 
     fn __truediv__(self, rhs: Symbol) raises -> Symbol:
         return div(self, rhs)
 
     fn __truediv__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self / g.constant(rhs)
 
     fn __truediv__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self / g.constant(rhs)
 
     fn __truediv__(self, rhs: Int) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self / g.constant(rhs)
 
     fn __truediv__(self, rhs: FloatLiteral) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self / g.constant(rhs)
 
     fn __pow__(self, rhs: Symbol) raises -> Symbol:
         return pow(self, rhs)
 
     fn __pow__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self ** g.constant(rhs)
 
     fn __pow__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self ** g.constant(rhs)
 
     fn __pow__(self, rhs: Int) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self ** g.constant(rhs)
 
     fn __pow__(self, rhs: FloatLiteral) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return self ** g.constant(rhs)
 
     fn __radd__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) + self
 
     fn __radd__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) + self
 
     fn __radd__(self, rhs: Int) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) + self
 
     fn __radd__(self, rhs: FloatLiteral) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) + self
 
     fn __rsub__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) - self
 
     fn __rsub__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) - self
 
     fn __rsub__(self, rhs: Int) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) - self
 
     fn __rsub__(self, rhs: FloatLiteral) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) - self
 
     fn __rmul__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) * self
 
     fn __rmul__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) * self
 
     fn __rmul__(self, rhs: Int) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) * self
 
     fn __rmul__(self, rhs: FloatLiteral) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) * self
 
     fn __rtruediv__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) / self
 
     fn __rtruediv__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) / self
 
     fn __rtruediv__(self, rhs: Int) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) / self
 
     fn __rtruediv__(self, rhs: FloatLiteral) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) / self
 
     fn __rpow__[dtype: DType](self, rhs: Tensor[dtype]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) ** self
 
     fn __rpow__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) ** self
 
     fn __rpow__(self, rhs: Int) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) ** self
 
     fn __rpow__(self, rhs: FloatLiteral) raises -> Symbol:
-        var g = self.g
+        var g = self.graph()
         return g.constant(rhs) ** self
+
+
+@value
+struct Tup:
+    var t: TuplePtr
+
+    fn __init__(inout self):
+        self.t = mobicc.new_tuple()
+
+    fn __init__(inout self, *symbols: Symbol):
+        self.__init__(symbols)
+
+    fn __init__(inout self, symbols: VariadicList[Symbol]):
+        self.t = mobicc.new_tuple()
+        for symbol in symbols:
+            mobicc.add_symbol(self.t, symbol.s)
+
+    fn __init__(inout self, symbols: DynamicVector[Symbol]):
+        self.t = mobicc.new_tuple()
+        for i in range(len(symbols)):
+            mobicc.add_symbol(self.t, symbols[i].s)
+
+    fn __init__(inout self, symbol: Symbol):
+        self.t = mobicc.new_tuple()
+        mobicc.add_symbol(self.t, symbol.s)
+
+    fn __init__(inout self, symbols: (Symbol, Symbol)):
+        self.__init__(symbols.get[0, Symbol]().s, symbols.get[1, Symbol]().s)
+
+    fn __init__(inout self, symbols: (Symbol, Symbol, Symbol)):
+        self.__init__(
+            symbols.get[0, Symbol]().s,
+            symbols.get[1, Symbol]().s,
+            symbols.get[2, Symbol]().s,
+        )
+
+    fn __init__(inout self, symbols: (Symbol, Symbol, Symbol, Symbol)):
+        self.__init__(
+            symbols.get[0, Symbol]().s,
+            symbols.get[1, Symbol]().s,
+            symbols.get[2, Symbol]().s,
+            symbols.get[3, Symbol]().s,
+        )
+
+    fn __getitem__(self, pos: UInt32) -> Symbol:
+        return Symbol(mobicc.get_symbol(self.t, pos))
+
+    fn __len__(self) -> Int:
+        return mobicc.tuple_size(self.t)

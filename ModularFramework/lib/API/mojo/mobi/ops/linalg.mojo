@@ -12,13 +12,13 @@ from tensor import TensorSpec, TensorShape
 
 
 def arange(stop: Symbol) -> Symbol:
-    var g = stop.g
+    var g = stop.graph()
     let dtype = stop.type().unwrap_tensor().dtype()
     return arange(g.constant(0, dtype), stop, g.constant(1, dtype))
 
 
 def arange(start: Symbol, stop: Symbol) -> Symbol:
-    var g = stop.g
+    var g = stop.graph()
     let dtype = stop.type().unwrap_tensor().dtype()
     return arange(start, stop, g.constant(1, dtype))
 
@@ -28,14 +28,14 @@ def arange(start: Int, stop: Symbol, step: Int) -> Symbol:
     # The more general one is a bit awkward since it should be parameterized
     # on dtype (unlike the others), and start/step should take a variant
     # of SIMD[dtype, 1] | Symbol with conditional logic depending on the variant.
-    var g = stop.g
+    var g = stop.graph()
     let dtype = stop.type().unwrap_tensor().dtype()
     return arange(g.constant(start, dtype), stop, g.constant(step, dtype))
 
 
 def arange(start: Symbol, stop: Symbol, step: Symbol) -> Symbol:
     # Use stop to get the dtype since it's supplied in all cases
-    var g = stop.g
+    var g = stop.graph()
     let dtype = stop.type().unwrap_tensor().dtype()
     return g.op("mo.range", (start, stop, step), MOTensor(dtype, dyn()))[0]
 
@@ -46,7 +46,7 @@ def outer(lhs: Symbol, rhs: Symbol) -> Symbol:
 
 
 def batch_matmul(lhs: Symbol, rhs: Symbol) -> Symbol:
-    var g = lhs.g
+    var g = lhs.graph()
     let broadcast_lhs: Symbol
     let broadcast_rhs: Symbol
     broadcast_lhs, broadcast_rhs = matmul_broadcast(lhs, rhs)
@@ -63,7 +63,7 @@ def batch_matmul(lhs: Symbol, rhs: Symbol) -> Symbol:
 
 
 def matmul_by_matrix(lhs: Symbol, rhs: Symbol) -> Symbol:
-    var g = lhs.g
+    var g = lhs.graph()
     let lhs_spec = lhs.type().unwrap_tensor().spec()
     let rhs_spec = rhs.type().unwrap_tensor().spec()
     if rhs_spec.rank() != 2:
@@ -103,7 +103,7 @@ def matmul(lhs: Symbol, rhs: Symbol) -> Symbol:
 
 
 def matmul_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
-    var g = lhs.g
+    var g = lhs.graph()
     let lhs_spec = lhs.type().unwrap_tensor().spec()
     let rhs_spec = rhs.type().unwrap_tensor().spec()
 

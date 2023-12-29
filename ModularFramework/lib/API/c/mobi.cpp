@@ -94,6 +94,10 @@ MODULAR_API_EXPORT M_Graph *MOBI_newGraph(M_Module *m, M_Loc *l,
       m->module.newGraph(l->loc, name, inTypes->arity, outTypes->arity)};
 }
 
+MODULAR_API_EXPORT M_Module *MOBI_getGraphModule(M_Graph *g) {
+  return new M_Module{g->graph.getModule()};
+}
+
 MODULAR_API_EXPORT M_Symbol *MOBI_getInput(M_Graph *g, uint32_t pos) {
   return new M_Symbol{g->graph.getArg(pos)};
 }
@@ -149,18 +153,6 @@ MODULAR_API_EXPORT char *MOBI_moduleToString(const M_Module *const m,
   return copy;
 }
 
-MODULAR_API_EXPORT char *MOBI_symbolToString(const M_Symbol *s, int64_t *len) {
-  std::string buffer;
-  raw_string_ostream os(buffer);
-  s->symbol.getVal().print(os);
-
-  char *copy = reinterpret_cast<char *>(std::malloc(buffer.size()));
-  memcpy(copy, buffer.data(), buffer.size());
-  *len = buffer.size();
-
-  return copy;
-}
-
 MODULAR_API_EXPORT bool MOBI_moduleToBytecode(const M_Module *const m,
                                               StringRef fileName) {
   std::error_code ec;
@@ -176,7 +168,19 @@ MODULAR_API_EXPORT bool MOBI_moduleVerify(M_Module *m) {
 
 /// Symbol
 
+MODULAR_API_EXPORT M_Graph *MOBI_getSymbolGraph(M_Symbol *s) {
+  return new M_Graph{s->symbol.getGraph()};
+}
+
+MODULAR_API_EXPORT char *MOBI_symbolToString(M_Symbol *s, int64_t *len) {
+  return unownedString(s->symbol.toString(), len);
+}
+
 MODULAR_API_EXPORT M_Tuple *MOBI_newTuple() { return new M_Tuple{Tuple()}; }
+
+MODULAR_API_EXPORT uint32_t MOBI_tupleSize(M_Tuple *t) {
+  return t->tuple.size();
+}
 
 MODULAR_API_EXPORT void MOBI_addSymbol(M_Tuple *t, M_Symbol *s) {
   t->tuple.add(s->symbol);

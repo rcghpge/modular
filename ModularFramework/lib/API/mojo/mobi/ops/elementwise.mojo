@@ -19,12 +19,13 @@ def _has_dynamic_dims(shape: TensorShape) -> Bool:
 
 
 def rsqrt(v: Symbol) -> Symbol:
+    var g = v.graph()
     let f32_v = cast(v, DType.float32)  # TODO: add missing rsqrt coverage.
-    return v.g.op("mo.rsqrt", f32_v, f32_v.tensor_type())[0]
+    return g.op("mo.rsqrt", f32_v, f32_v.tensor_type())[0]
 
 
 def softmax(v: Symbol) -> Symbol:
-    var g = v.g
+    var g = v.graph()
     return g.op("mo.softmax", v, v.type())[0]
 
 
@@ -33,40 +34,40 @@ def silu(v: Symbol) -> Symbol:
 
 
 def sigmoid(v: Symbol) -> Symbol:
-    var g = v.g
+    var g = v.graph()
     return g.op("mo.sigmoid", v, v.type())[0]
 
 
 def sin(v: Symbol) -> Symbol:
-    var g = v.g
+    var g = v.graph()
     return g.op("mo.sin", v, v.type())[0]
 
 
 def cos(v: Symbol) -> Symbol:
-    var g = v.g
+    var g = v.graph()
     return g.op("mo.cos", v, v.type())[0]
 
 
 def add(lhs: Symbol, rhs: Symbol) -> Symbol:
-    var g = lhs.g
+    var g = lhs.graph()
     let p = elementwise_broadcast(lhs, rhs)
     return g.op("mo.add", p, p.get[0, Symbol]().type())[0]
 
 
 def sub(lhs: Symbol, rhs: Symbol) -> Symbol:
-    var g = lhs.g
+    var g = lhs.graph()
     let p = elementwise_broadcast(lhs, rhs)
     return g.op("mo.sub", p, p.get[0, Symbol]().type())[0]
 
 
 def mul(lhs: Symbol, rhs: Symbol) -> Symbol:
-    var g = lhs.g
+    var g = lhs.graph()
     let p = elementwise_broadcast(lhs, rhs)
     return g.op("mo.mul", p, p.get[0, Symbol]().type())[0]
 
 
 def div(lhs: Symbol, rhs: Symbol) -> Symbol:
-    var g = lhs.g
+    var g = lhs.graph()
     # Cast to satisfy `mo.div`'s SameOperandsAndResultTypes OpTrait.
     let cast_rhs = cast(rhs, lhs.type().unwrap_tensor().dtype())
     let p = elementwise_broadcast(lhs, cast_rhs)
@@ -74,13 +75,13 @@ def div(lhs: Symbol, rhs: Symbol) -> Symbol:
 
 
 def pow(lhs: Symbol, rhs: Symbol) -> Symbol:
-    var g = lhs.g
+    var g = lhs.graph()
     let p = elementwise_broadcast(lhs, rhs)
     return g.op("mo.pow", p, p.get[0, Symbol]().type())[0]
 
 
 def elementwise_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
-    var g = lhs.g
+    var g = lhs.graph()
     let lhs_spec = lhs.type().unwrap_tensor().spec()
     let rhs_spec = rhs.type().unwrap_tensor().spec()
 

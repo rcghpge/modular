@@ -9,6 +9,7 @@ from tensor import Tensor, TensorShape
 
 from mobi import Module
 from mobi import testing
+from mobi.symbol import Tup
 
 
 fn test_print() raises:
@@ -21,7 +22,7 @@ fn test_print() raises:
         m.types(),
     )
     g[0].print()
-    g.output(g.values())
+    g.output(Tup())
     m.verify()
 
     let x = Tensor[DType.float32](TensorShape(2, 2, 2), 1, 2, 3, 4, 5, 6, 7, 8)

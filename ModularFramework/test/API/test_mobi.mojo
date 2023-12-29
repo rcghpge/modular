@@ -18,7 +18,7 @@ fn test_identity_graph() raises:
         in_types=m.types(m.i32()),
         out_types=m.types(m.i32()),
     )
-    _ = g.op(name="mo.output", inputs=g.values(g[0]), out_types=m.types())
+    _ = g.op(name="mo.output", inputs=g[0], out_types=m.types())
 
     m.verify()
     # CHECK: module {
@@ -32,7 +32,7 @@ fn test_identity_graph() raises:
 fn test_basic_add() raises:
     var m = mobi.Module()
     var g = m.graph("basic_add", m.types(m.i32(), m.i32()), m.types(m.i32()))
-    let y = g.op("mo.add", g.values(g[0], g[1]), m.types(m.i32()))
+    let y = g.op("mo.add", (g[0], g[1]), m.types(m.i32()))
     _ = g.op("mo.output", y, m.types())
 
     m.verify()
@@ -46,11 +46,10 @@ fn test_add_constant() raises:
     var g = m.graph("add_constant", m.types(m.f32(1)), m.types(m.f32(1)))
     let x = g.op(
         "mo.constant",
-        g.values(),
         m.types(m.f32(1)),
         m.attrs(m.f32_attr("value", m.f32(1), 1.0)),
     )
-    let y = g.op("mo.add", g.values(g[0], x[0]), m.types(m.f32(1)))
+    let y = g.op("mo.add", (g[0], x[0]), m.types(m.f32(1)))
     _ = g.op("mo.output", y, m.types())
 
     m.verify()

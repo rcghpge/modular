@@ -6,7 +6,7 @@
 
 from tensor import TensorSpec, TensorShape
 
-from mobi.misc import Tup
+from mobi.symbol import Tup
 from mobi.motype import ElementType, MOTensor, dyn
 
 
@@ -39,7 +39,7 @@ def index[axis: Int = 0](v: Symbol, idx: Int) -> Symbol:
     """Index a tensor at a specific dim on a single axis.
     The output is a tensor omitting the dim `axis` and returning only the
     part of the tensor at at the specified index of the `axis` dimension."""
-    var g = v.g
+    var g = v.graph()
     let spec = v.type().unwrap_tensor().spec()
 
     var slice_dims = DynamicVector[Int64]()
@@ -74,7 +74,7 @@ def index[axis: Int = 0](v: Symbol, idx: Int) -> Symbol:
 
 
 def gather(input: Symbol, indices: Symbol, axis: Int) -> Symbol:
-    var g = input.g
+    var g = input.graph()
     let input_spec = input.type().unwrap_tensor().spec()
     let indices_spec = indices.type().unwrap_tensor().spec()
     if axis < 0:
@@ -109,11 +109,11 @@ struct SliceSymbol:
     var step: Symbol
 
     fn __init__(inout self, stop: Symbol) raises:
-        var g = stop.g
+        var g = stop.graph()
         self.__init__(g.constant(0), stop)
 
     fn __init__(inout self, start: Symbol, stop: Symbol) raises:
-        var g = stop.g
+        var g = stop.graph()
         self.__init__(start, stop, g.constant(1))
 
     fn __init__(inout self, start_stop: (Symbol, Symbol)) raises:
@@ -137,11 +137,12 @@ def slice_(input: Symbol, borrowed *slices: SliceSymbol) -> Symbol:
 
 
 def slice_(input: Symbol, slices: VariadicListMem[SliceSymbol]) -> Symbol:
+    let g = input.graph()
     let spec = input.type().unwrap_tensor().spec()
     var dims = DynamicVector[Int]()
 
     for slice in slices:
-        dims.push_back(input.g.m.dyn().to_int())
+        dims.push_back(g.m.dyn().to_int())
     for i in range(len(slices), spec.rank()):
         dims.push_back(spec[i])
 
@@ -157,11 +158,11 @@ def slice_(
 def slice_(
     input: Symbol, shape: TensorShape, slices: VariadicListMem[SliceSymbol]
 ) -> Symbol:
+    var g = input.graph()
     var starts = DynamicVector[Symbol]()
     var stops = DynamicVector[Symbol]()
     var steps = DynamicVector[Symbol]()
 
-    var g = input.g
     let spec = input.type().unwrap_tensor().spec()
 
     fn ensure_constant(value: Symbol) raises -> Symbol:
@@ -197,16 +198,16 @@ def slice_(
 
 
 def cast(v: Symbol, dtype: DType) -> Symbol:
+    var g = v.graph()
     var t = v.tensor_type()
     t.dtype = ElementType(dtype)
-    return v.g.op("mo.cast", v, t)[0]
+    return g.op("mo.cast", v, t)[0]
 
 
 def shape_of(v: Symbol) -> Symbol:
+    var g = v.graph()
     let t = v.tensor_type()
-    return v.g.op("mo.shape_of", v, MOTensor(DType.int64, Int64(len(t.dims))))[
-        0
-    ]
+    return g.op("mo.shape_of", v, MOTensor(DType.int64, Int64(len(t.dims))))[0]
 
 
 def concat[axis: Int](*values: Symbol) -> Symbol:
@@ -224,7 +225,7 @@ def concat[axis: Int](values: DynamicVector[Symbol]) -> Symbol:
     if not len(values):
         raise "must concat at least 1 value"
     let v0 = values[0]
-    var g = values[0].g
+    var g = values[0].graph()
 
     let spec = v0.type().unwrap_tensor().spec()
     let rank = spec.rank()
@@ -277,7 +278,7 @@ def stack[axis: Int](*values: Symbol) -> Symbol:
 
 
 def squeeze(v: Symbol, axis: Int) -> Symbol:
-    var g = v.g
+    var g = v.graph()
     let spec = v.type().unwrap_tensor().spec()
     if axis < 0:
         axis += spec.rank()
@@ -304,7 +305,7 @@ def squeeze(v: Symbol, axis: Int) -> Symbol:
 
 
 def unsqueeze(v: Symbol, axis: Int) -> Symbol:
-    var g = v.g
+    var g = v.graph()
     let spec = v.type().unwrap_tensor().spec()
     # Negative values add an extra 1, as -1 adds a new dim at the _end_.
     if axis < 0:
@@ -340,7 +341,7 @@ def unsqueeze(v: Symbol, axis: Int) -> Symbol:
 
 
 def reshape(v: Symbol, shape: TensorShape) -> Symbol:
-    var g = v.g
+    var g = v.graph()
 
     var symbols = DynamicVector[Symbol]()
     let shape_data = DTypePointer[DType.int64].alloc(shape.rank())
@@ -363,7 +364,7 @@ def reshape(v: Symbol, *dims: Int) -> Symbol:
 
 
 def reshape(v: Symbol, *dims: Symbol) -> Symbol:
-    var g = v.g
+    var g = v.graph()
     for dim in dims:
         if dim.type().unwrap_tensor().spec().rank() > 1:
             raise "reshape: got multi-dimensional shape"
@@ -390,7 +391,7 @@ def reshape(v: Symbol, *dims: Symbol) -> Symbol:
 
 
 fn reshape(v: Symbol, shape: Symbol, out_shape: TensorShape) raises -> Symbol:
-    var g = v.g
+    var g = v.graph()
     let dtype = v.type().unwrap_tensor().dtype()
     var reshape_dims = DynamicVector[Int64]()
     for i in range(out_shape.rank()):
@@ -402,7 +403,7 @@ fn reshape(v: Symbol, shape: Symbol, out_shape: TensorShape) raises -> Symbol:
 
 
 fn reshape(rank: Int, v: Symbol, shape: Symbol) raises -> Symbol:
-    var g = v.g
+    var g = v.graph()
     let dtype = v.type().unwrap_tensor().dtype()
     var reshape_dims = DynamicVector[Int64]()
     for _ in range(rank):
@@ -427,7 +428,7 @@ def split[axis: Int](x: Symbol, split_sizes: (Int, Int)) -> (Symbol, Symbol):
 
 
 def split[axis: Int, N: Int](x: Symbol, split_sizes: StaticIntTuple[N]) -> Tup:
-    var g = x.g
+    var g = x.graph()
     let sizes = g.constant(_tensor[N](TensorShape(N), split_sizes))
 
     let spec = x.type().unwrap_tensor().spec()
@@ -436,7 +437,7 @@ def split[axis: Int, N: Int](x: Symbol, split_sizes: StaticIntTuple[N]) -> Tup:
 
     return g.op(
         "mo.split",
-        Tup(x, sizes, g.constant(axis)),
+        (x, sizes, g.constant(axis)),
         g.m.types(split_ty, split_ty),
     )
 
@@ -446,7 +447,7 @@ def transpose_matrix(matrix: Symbol) -> Symbol:
 
 
 def transpose(input: Symbol, x: Int, y: Int) -> Symbol:
-    var g = input.g
+    var g = input.graph()
     let spec = input.type().unwrap_tensor().spec()
     if spec.rank() < 2:
         raise "transpose input must have rank >= 2"

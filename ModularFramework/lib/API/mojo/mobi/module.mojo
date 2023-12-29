@@ -9,7 +9,7 @@ from tensor import Tensor, TensorSpec, TensorShape
 # FIXME(#26590): Migrate to DynamicVector.
 from collections.vector import _OldDynamicVector as DynamicVector
 
-from .misc import Arity, AttrMap, Symbol
+from .misc import Arity, AttrMap
 from .mobicc import (
     AttrPtr,
     AttrMapPtr,
@@ -19,6 +19,7 @@ from .mobicc import (
     TypePtr,
     GraphPtr,
 )
+from .symbol import Symbol
 from .type import Type
 
 
@@ -43,9 +44,6 @@ struct Module:
 
     fn __init__() raises -> Self:
         return Self(mobicc.new_module())
-
-    fn __init__(m: ModulePtr) -> Self:
-        return Self {m: m}
 
     fn __str__(self) -> String:
         return mobicc.module_to_string(self.m)

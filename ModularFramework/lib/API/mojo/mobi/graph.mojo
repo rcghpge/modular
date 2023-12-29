@@ -4,10 +4,10 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from .misc import Arity, AttrMap, Tup
+from .misc import Arity, AttrMap
 from .mobicc import AttrPtr, GraphPtr, SymbolPtr, TuplePtr, TypePtr
 from .module import Module
-from .symbol import Symbol
+from .symbol import Symbol, Tup
 from .type import Type
 from .motype import MOTensor, dyn
 from .motype import Type as MOType
@@ -17,19 +17,16 @@ from tensor import TensorShape, TensorSpec
 
 
 @value
-@register_passable
 struct Graph:
     var g: GraphPtr
     var m: Module
 
-    fn __getitem__(self, pos: UInt32) -> Symbol:
-        return Symbol(mobicc.get_input(self.g, pos), self)
+    fn __init__(inout self, g: GraphPtr):
+        self.g = g
+        self.m = Module(mobicc.get_graph_module(self.g))
 
-    fn values(self, *values: Symbol) -> Tup:
-        var t = mobicc.new_tuple()
-        for s in values:
-            mobicc.add_symbol(t, s.s)
-        return Tup(t, len(values), self)
+    fn __getitem__(self, pos: UInt32) -> Symbol:
+        return Symbol(mobicc.get_input(self.g, pos))
 
     fn op(inout self, name: StringRef, input: Symbol, out_type: Type) -> Tup:
         return self.op(name, Tup(input), Arity(out_type))
@@ -70,6 +67,19 @@ struct Graph:
             name, inputs, Arity(Type(out_type.to_mlir(self.m))), attrs
         )
 
+    fn op[
+        T: MOType
+    ](inout self, name: StringRef, out_type: T, attrs: AttrMap,) -> Tup:
+        return self.op(name, Arity(Type(out_type.to_mlir(self.m))), attrs)
+
+    fn op(
+        inout self,
+        name: StringRef,
+        out_types: Arity,
+        attrs: AttrMap,
+    ) -> Tup:
+        return self.op(name, Tup(), out_types, attrs)
+
     fn op(
         inout self,
         name: StringRef,
@@ -81,7 +91,7 @@ struct Graph:
         let outputs = mobicc.new_op(
             self.g, loc, name, inputs.t, out_types.a, attrs.m
         )
-        return Tup(outputs, out_types.l, self)
+        return Tup(outputs)
 
     # TODO: Separate DType/Tensor/TensorSpec adapters from Graph.
 
@@ -99,7 +109,6 @@ struct Graph:
         let type = m.type_of(value)
         return self.op(
             "mo.constant",
-            self.values(),
             m.types(type),
             m.attrs(m.tensor_attr("value", type, value)),
         )[0]
@@ -118,9 +127,7 @@ struct Graph:
             m.m, "value", value_ptr, t, is_owned=False
         )
 
-        return self.op("mo.constant", self.values(), m.types(t), m.attrs(attr))[
-            0
-        ]
+        return self.op("mo.constant", Tup(), m.types(t), m.attrs(attr))[0]
 
     fn constant(inout self, value: Bool) raises -> Symbol:
         let v: SIMD[DType.bool, 1] = value
@@ -144,9 +151,7 @@ struct Graph:
             m.m, "value", value_ptr, t, is_owned=False
         )
 
-        return self.op("mo.constant", self.values(), m.types(t), m.attrs(attr))[
-            0
-        ]
+        return self.op("mo.constant", Tup(), m.types(t), m.attrs(attr))[0]
 
     fn i64_constant(inout self, t: TypePtr, *values: Int64) raises -> Symbol:
         # TODO: This isn't great, can't overload to Int32
@@ -157,7 +162,6 @@ struct Graph:
             raise "Type must be an i64 tensor"
         return self.op(
             "mo.constant",
-            self.values(),
             self.m.types(t),
             self.m.attrs(self.m.i64_attr("value", t, values)),
         )[0]
@@ -169,7 +173,6 @@ struct Graph:
             raise "Type must be an f32 tensor"
         return self.op(
             "mo.constant",
-            self.values(),
             self.m.types(t),
             self.m.attrs(self.m.f32_attr("value", t, values)),
         )[0]

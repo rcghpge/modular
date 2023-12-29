@@ -41,13 +41,11 @@ def mnist():
     cst_data._to_buffer().fill(0.5)
     let cst = g.op(
         "mo.constant",
-        g.values(),
         m.types(m.f32(128, 10)),
         m.attrs(m.tensor_attr("value", m.f32(128, 10), cst_data)),
     )
     let cst_0 = g.op(
         "mo.constant",
-        g.values(),
         m.types(m.f32(1, 10)),
         m.attrs(
             m.f32_attr(
@@ -71,7 +69,6 @@ def mnist():
     cst_1_data._to_buffer().fill(0.5)
     let cst_1 = g.op(
         "mo.constant",
-        g.values(),
         m.types(m.f32(784, 128)),
         m.attrs(m.tensor_attr("value", m.f32(784, 128), cst_1_data)),
     )
@@ -79,26 +76,20 @@ def mnist():
     cst_2_data._to_buffer().fill(0.5)
     let cst_2 = g.op(
         "mo.constant",
-        g.values(),
         m.types(m.f32(1, 128)),
         m.attrs(m.tensor_attr("value", m.f32(1, 128), cst_2_data)),
     )
     let cst_3 = g.op(
         "mo.constant",
-        g.values(),
         m.types(m.i32(2)),
         m.attrs(m.i32_attr("value", m.i32(2), -1, 784)),
     )
-    let p1 = g.op(
-        "mo.reshape", g.values(g[0], cst_3[0]), m.types(m.f32(1, 784))
-    )
-    let p2 = g.op(
-        "mo.matmul", g.values(p1[0], cst_1[0]), m.types(m.f32(1, 128))
-    )
-    let p3 = g.op("mo.add", g.values(p2[0], cst_2[0]), m.types(m.f32(1, 128)))
-    let p4 = g.op("mo.relu", g.values(p3[0]), m.types(m.f32(1, 128)))
-    let p5 = g.op("mo.matmul", g.values(p4[0], cst[0]), m.types(m.f32(1, 10)))
-    let p6 = g.op("mo.add", g.values(p5[0], cst_0[0]), m.types(m.f32(1, 10)))
+    let p1 = g.op("mo.reshape", (g[0], cst_3[0]), m.types(m.f32(1, 784)))
+    let p2 = g.op("mo.matmul", (p1[0], cst_1[0]), m.types(m.f32(1, 128)))
+    let p3 = g.op("mo.add", (p2[0], cst_2[0]), m.types(m.f32(1, 128)))
+    let p4 = g.op("mo.relu", (p3[0]), m.types(m.f32(1, 128)))
+    let p5 = g.op("mo.matmul", (p4[0], cst[0]), m.types(m.f32(1, 10)))
+    let p6 = g.op("mo.add", (p5[0], cst_0[0]), m.types(m.f32(1, 10)))
     _ = g.op("mo.output", p6, m.types())
 
     # CHECK: min_mnist

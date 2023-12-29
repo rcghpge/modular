@@ -21,6 +21,8 @@ namespace M::MOF::Builder {
 class Module {
 public:
   Module(mlir::Location loc);
+  Module(mlir::ModuleOp op, mlir::OpBuilder builder)
+      : op(op), builder(builder) {}
 
   const mlir::ModuleOp &getModuleOp() const { return op; }
   mlir::OpBuilder &getBuilder() { return builder; }

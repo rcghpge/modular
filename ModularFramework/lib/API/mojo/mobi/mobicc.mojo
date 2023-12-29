@@ -197,6 +197,10 @@ fn new_graph(
     ]("MOBI_newGraph")(module, loc, name, inTypes, outTypes)
 
 
+fn get_graph_module(graph: GraphPtr) -> ModulePtr:
+    return MOBI_func[fn (GraphPtr) -> ModulePtr]("MOBI_getGraphModule")(graph)
+
+
 fn get_input(
     graph: GraphPtr,
     pos: UInt32,
@@ -264,8 +268,16 @@ fn symbol_to_string(symbol: SymbolPtr) -> String:
     return String(ret, len.to_int())
 
 
+fn get_symbol_graph(symbol: SymbolPtr) -> GraphPtr:
+    return MOBI_func[fn (SymbolPtr) -> GraphPtr]("MOBI_getSymbolGraph")(symbol)
+
+
 fn new_tuple() -> TuplePtr:
     return MOBI_func[fn () -> TuplePtr]("MOBI_newTuple")()
+
+
+fn tuple_size(tup: TuplePtr) -> Int:
+    return MOBI_func[fn (TuplePtr) -> Int]("MOBI_tupleSize")(tup)
 
 
 fn add_symbol(inout tup: TuplePtr, symbol: SymbolPtr):

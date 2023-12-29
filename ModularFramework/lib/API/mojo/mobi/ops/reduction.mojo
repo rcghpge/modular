@@ -12,7 +12,7 @@ from mobi.motype import ElementType, MOTensor, dyn
 def mean(v: Symbol, dim: Int) -> Symbol:
     # Mean along axis `dim`, leaving a singleton dimension in its place.
     # Similar to v.mean(dim, keepdim=True) in torch.
-    var g = v.g
+    var g = v.graph()
     let spec = v.type().unwrap_tensor().spec()
     if dim < 0:
         dim += spec.rank()
@@ -36,11 +36,11 @@ def mean(v: Symbol, dim: Int) -> Symbol:
 
 
 fn arg_max(v: Symbol, axis: Int64) raises -> Symbol:
-    var g = v.g
+    var g = v.graph()
     let m = g.m
     # TODO: Replace with Mojo logic once we have properly shadowed types.
     return g.op(
         "mo.arg_max",
-        g.values(v, g.constant(axis)),
+        (v, g.constant(axis)),
         m.arg_reduction_type(v.type().type_ptr(), axis),
     )[0]
