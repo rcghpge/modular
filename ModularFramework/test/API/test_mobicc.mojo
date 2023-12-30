@@ -65,18 +65,6 @@ fn test_types() raises:
     _ = scalarShape
     _ = boolShape
 
-    # Test roundtripping between `TensorSpec` and `mobi.Type`.
-    # CHECK-LABEL: type_from_spec
-    print("Testing type_from_spec() and spec_from_type().")
-    let spec1 = TensorSpec(
-        DType.float32, 2, 3, 5, 7, mobicc.dynamic_dim().to_int()
-    )
-
-    let t = mobicc.type_from_spec(m, spec1)
-    var spec2 = mobicc.spec_from_type(t)
-
-    _ = assert_equal(spec1.__str__(), spec2.__str__())
-
     # CHECK: 🔥
     print("🔥")
 

@@ -6,21 +6,10 @@
 
 from tensor import Tensor, TensorSpec, TensorShape
 
-# FIXME(#26590): Migrate to DynamicVector.
-from collections.vector import _OldDynamicVector as DynamicVector
-
-from .misc import Arity, AttrMap
-from .mobicc import (
-    AttrPtr,
-    AttrMapPtr,
-    LocPtr,
-    ModulePtr,
-    SymbolPtr,
-    TypePtr,
-    GraphPtr,
-)
+from .misc import AttrMap
+from .motype import Arity
+from .mobicc import AttrPtr, LocPtr, ModulePtr, TypePtr
 from .symbol import Symbol
-from .type import Type
 
 
 fn _dynamic_vector(shape: TensorShape) -> DynamicVector[Int64]:
@@ -60,9 +49,7 @@ struct Module:
         var data = DynamicVector[Int32]()
         for i in range(len(elements)):
             data.push_back(elements[i])
-        return mobicc.tensor_attr(
-            self.m, name, data.data.bitcast[AnyRegType](), t, is_owned=False
-        )
+        return mobicc.tensor_attr(self.m, name, data, t, False)
 
     fn i64_attr(self, name: StringRef, t: TypePtr, *elements: Int64) -> AttrPtr:
         return self.i64_attr(name, t, elements)
@@ -73,9 +60,18 @@ struct Module:
         var data = DynamicVector[Int64]()
         for i in range(len(elements)):
             data.push_back(elements[i])
-        return mobicc.tensor_attr(
-            self.m, name, data.data.bitcast[AnyRegType](), t, is_owned=False
-        )
+        return self.i64_attr(name, t, data)
+
+    fn i64_attr(self, name: StringRef, t: TypePtr, element: Int) -> AttrPtr:
+        # This special overload prevents the DynamicVector overload from
+        # stealing precedence due to unpredictable resolution order around
+        # implicit casting.
+        return self.i64_attr(name, t, Int64(element))
+
+    fn i64_attr(
+        self, name: StringRef, t: TypePtr, elements: DynamicVector[Int64]
+    ) -> AttrPtr:
+        return mobicc.tensor_attr(self.m, name, elements, t, False)
 
     fn f32_attr(
         self, name: StringRef, t: TypePtr, *elements: Float32
@@ -88,9 +84,7 @@ struct Module:
         var data = DynamicVector[Float32]()
         for i in range(len(elements)):
             data.push_back(elements[i])
-        return mobicc.tensor_attr(
-            self.m, name, data.data.bitcast[AnyRegType](), t, is_owned=False
-        )
+        return mobicc.tensor_attr(self.m, name, data, t, False)
 
     fn f32_attr(
         self, name: StringRef, t: TypePtr, file_name: StringRef
@@ -126,45 +120,37 @@ struct Module:
 
     fn i32(self, *dims: Int64) -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return mobicc.si(self.m, 32, shape.data, len(shape))
+        return mobicc.si(self.m, 32, shape, len(shape))
 
     fn i32(self, dims: TensorShape) -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return mobicc.si(self.m, 32, shape.data, len(shape))
+        return mobicc.si(self.m, 32, shape, len(shape))
 
     fn i64(self, *dims: Int64) -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return mobicc.si(self.m, 64, shape.data, len(shape))
+        return mobicc.si(self.m, 64, shape, len(shape))
 
     fn i64(self, dims: TensorShape) -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return mobicc.si(self.m, 64, shape.data, len(shape))
+        return mobicc.si(self.m, 64, shape, len(shape))
 
     fn f32(self, *dims: Int64) -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return mobicc.f32(self.m, shape.data, len(shape))
+        return mobicc.f32(self.m, shape, len(shape))
 
     fn f32(self, dims: TensorShape) -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return mobicc.f32(self.m, shape.data, len(shape))
+        return mobicc.f32(self.m, shape, len(shape))
 
     fn bool(self, *dims: Int64) -> TypePtr:
         let shape = _dynamic_vector(dims)
-        return mobicc.bool(self.m, shape.data, len(shape))
+        return mobicc.bool(self.m, shape, len(shape))
 
     fn types(self, *types: TypePtr) -> Arity:
         var a = mobicc.new_arity()
         for i in range(len(types)):
             mobicc.add_type(a, types[i])
-        return Arity(a, len(types))
-
-    fn arg_reduction_type(self, input: TypePtr, axis: Int64) -> Arity:
-        var a = mobicc.new_arity()
-        mobicc.add_type(a, mobicc.arg_reduction_type(self.m, input, axis))
-        return Arity(a, 1)
-
-    fn type(inout self, spec: TensorSpec) -> Type:
-        return Type(mobicc.type_from_spec(self.m, spec))
+        return Arity(a)
 
     fn graph(
         inout self,

@@ -16,7 +16,7 @@ def as_interleaved_complex(interleaved: Symbol) -> Symbol:
     """Reshape the input tensor as complex, interpreting the last dimension
     as being alternating (real, imag) pairs."""
     var g = interleaved.graph()
-    let rank = interleaved.type().unwrap_tensor().spec().rank()
+    let rank = interleaved.tensor_type().rank()
     let shape = shape_of(interleaved)
     let back_dims = g.i64_constant(g.m.i64(2), -1, 2)
     let new_shape = concat[axis=0](shape[: rank - 1], back_dims)

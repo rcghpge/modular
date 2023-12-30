@@ -64,6 +64,13 @@ fn test_tensor_dtype_shortcut() raises:
     )
 
 
+fn test_tensor_int_overload() raises:
+    assert_equal(
+        MOTensor(DType.float32, 1).to_string(mobi.Module()),
+        "!mo.tensor<[1], f32>",
+    )
+
+
 fn main() raises:
     test_dtype_to_string()
     test_dtype()
@@ -72,3 +79,4 @@ fn main() raises:
     test_tensor_dynamic_dims()
     test_tensor_scalar()
     test_tensor_dtype_shortcut()
+    test_tensor_int_overload()

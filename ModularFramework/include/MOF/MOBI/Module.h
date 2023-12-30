@@ -47,8 +47,6 @@ public:
   Attr tensorAttr(llvm::StringRef name, llvm::ArrayRef<uint8_t> data, Type t,
                   bool owned);
 
-  Type argReductionType(Type &input, int64_t axis);
-
   MLIRContext *getContext();
 
 private:

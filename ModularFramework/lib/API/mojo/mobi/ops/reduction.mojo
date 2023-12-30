@@ -9,38 +9,32 @@ from tensor import TensorSpec, TensorShape
 from mobi.motype import ElementType, MOTensor, dyn
 
 
-def mean(v: Symbol, dim: Int) -> Symbol:
-    # Mean along axis `dim`, leaving a singleton dimension in its place.
-    # Similar to v.mean(dim, keepdim=True) in torch.
+fn mean(v: Symbol, axis: Int) raises -> Symbol:
     var g = v.graph()
-    let spec = v.type().unwrap_tensor().spec()
-    if dim < 0:
-        dim += spec.rank()
-    if dim < 0 or dim >= spec.rank():
-        raise "dim out of range"
+    var v_type = v.tensor_type()
 
-    var dims = DynamicVector[Int64]()
-    var reshape_dims = DynamicVector[Int]()
-    for i in range(spec.rank()):
-        if i == dim:
-            dims.push_back(1)  # mean sets reduce dim to 1
-        else:
-            dims.push_back(spec[i])
-            reshape_dims.push_back(spec[i])
+    var norm_axis = axis
+    if norm_axis < 0:
+        norm_axis += v_type.rank()
+    if norm_axis < 0 or norm_axis >= v_type.rank():
+        raise "axis out of range"
 
-    return g.op(
-        "mo.mean",
-        (v, g.constant(dim)),
-        MOTensor(spec.dtype(), dims),
-    )[0]
+    v_type.dims[norm_axis] = 1
+
+    return g.op("mo.mean", (v, g.constant(norm_axis)), v_type)[0]
 
 
-fn arg_max(v: Symbol, axis: Int64) raises -> Symbol:
+fn arg_max(v: Symbol, axis: Int) raises -> Symbol:
     var g = v.graph()
-    let m = g.m
-    # TODO: Replace with Mojo logic once we have properly shadowed types.
-    return g.op(
-        "mo.arg_max",
-        (v, g.constant(axis)),
-        m.arg_reduction_type(v.type().type_ptr(), axis),
-    )[0]
+    var v_type = v.tensor_type()
+
+    var norm_axis = axis
+    if norm_axis < 0:
+        norm_axis += v_type.rank()
+    if norm_axis < 0 or norm_axis >= v_type.rank():
+        raise "axis out of range"
+
+    v_type.dtype = ElementType(DType.int64)
+    v_type.dims[norm_axis] = 1
+
+    return g.op("mo.arg_max", (v, g.constant(norm_axis)), v_type)[0]

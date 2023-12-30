@@ -233,18 +233,6 @@ MODULAR_API_EXPORT M_Type *MOBI_typeFromSpec(M_Module *m, const void *spec) {
       /*metadata=*/{})};
 }
 
-MODULAR_API_EXPORT uint8_t MOBI_specFromType(M_Type *t, int64_t *dims,
-                                             int64_t *rank) {
-  auto tensorTy = cast<M::MO::TensorType>(t->type.getVal());
-  assert(tensorTy.hasRank() && "no unranked TensorSpec support yet");
-
-  *rank = tensorTy.getRank();
-  for (int i = 0; i < *rank; ++i)
-    dims[i] = tensorTy.getIntDim(i);
-
-  return tensorTy.getDtype().getValue();
-}
-
 MODULAR_API_EXPORT int64_t MOBI_dynamicDim() { return ShapedType::kDynamic; }
 
 MODULAR_API_EXPORT M_Type *MOBI_f32(M_Module *m, int64_t *dims, int64_t rank) {
@@ -267,13 +255,12 @@ MODULAR_API_EXPORT M_Type *MOBI_bool(M_Module *m, int64_t *dims, int64_t rank) {
 
 MODULAR_API_EXPORT M_Arity *MOBI_newArity() { return new M_Arity{Arity()}; }
 
-MODULAR_API_EXPORT void MOBI_addType(M_Arity *a, M_Type *t) {
-  a->arity.add(t->type);
+MODULAR_API_EXPORT uint32_t MOBI_aritySize(M_Arity *a) {
+  return a->arity.size();
 }
 
-MODULAR_API_EXPORT M_Type *MOBI_argReductionType(M_Module *m, M_Type *input,
-                                                 int64_t axis) {
-  return new M_Type{m->module.argReductionType(input->type, axis)};
+MODULAR_API_EXPORT void MOBI_addType(M_Arity *a, M_Type *t) {
+  a->arity.add(t->type);
 }
 
 MODULAR_API_EXPORT uint64_t MOBI_typeIsTensor(M_Type *t) {

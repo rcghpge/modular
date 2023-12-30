@@ -4,13 +4,11 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from .misc import Arity, AttrMap
+from .misc import AttrMap
 from .mobicc import AttrPtr, GraphPtr, SymbolPtr, TuplePtr, TypePtr
 from .module import Module
 from .symbol import Symbol, Tup
-from .type import Type
-from .motype import MOTensor, dyn
-from .motype import Type as MOType
+from .motype import dyn, MOType, MOTensor, Arity
 
 from memory.unsafe import Pointer
 from tensor import TensorShape, TensorSpec
@@ -23,18 +21,15 @@ struct Graph:
 
     fn __init__(inout self, g: GraphPtr):
         self.g = g
-        self.m = Module(mobicc.get_graph_module(self.g))
+        self.m = Module(mobicc.get_graph_module(g))
 
     fn __getitem__(self, pos: UInt32) -> Symbol:
         return Symbol(mobicc.get_input(self.g, pos))
 
-    fn op(inout self, name: StringRef, input: Symbol, out_type: Type) -> Tup:
-        return self.op(name, Tup(input), Arity(out_type))
-
     fn op[
         T: MOType
     ](inout self, name: StringRef, input: Symbol, out_type: T) -> Tup:
-        return self.op(name, Tup(input), Arity(Type(out_type.to_mlir(self.m))))
+        return self.op(name, Tup(input), Arity(out_type.to_mlir(self.m)))
 
     fn op(inout self, name: StringRef, input: Symbol, out_types: Arity) -> Tup:
         return self.op(name, Tup(input), out_types)
@@ -50,7 +45,7 @@ struct Graph:
         return self.op(
             name,
             inputs,
-            Arity(Type(out_type.to_mlir(self.m))),
+            Arity(out_type.to_mlir(self.m)),
             AttrMap(mobicc.new_attr_map(), 0),
         )
 
@@ -63,14 +58,12 @@ struct Graph:
         out_type: T,
         attrs: AttrMap,
     ) -> Tup:
-        return self.op(
-            name, inputs, Arity(Type(out_type.to_mlir(self.m))), attrs
-        )
+        return self.op(name, inputs, Arity(out_type.to_mlir(self.m)), attrs)
 
     fn op[
         T: MOType
     ](inout self, name: StringRef, out_type: T, attrs: AttrMap,) -> Tup:
-        return self.op(name, Arity(Type(out_type.to_mlir(self.m))), attrs)
+        return self.op(name, Arity(out_type.to_mlir(self.m)), attrs)
 
     fn op(
         inout self,
@@ -154,6 +147,26 @@ struct Graph:
         return self.op("mo.constant", Tup(), m.types(t), m.attrs(attr))[0]
 
     fn i64_constant(inout self, t: TypePtr, *values: Int64) raises -> Symbol:
+        # TODO: Fix the checks once we have Mojo structured types
+        if not (
+            mobicc.type_is_si_tensor(t) and (mobicc.tensor_dtype_width(t) == 64)
+        ):
+            raise "Type must be an i64 tensor"
+        return self.op(
+            "mo.constant",
+            self.m.types(t),
+            self.m.attrs(self.m.i64_attr("value", t, values)),
+        )[0]
+
+    fn i64_constant(inout self, t: TypePtr, value: Int) raises -> Symbol:
+        # This special overload prevents the DynamicVector overload from
+        # stealing precedence due to unpredictable resolution order around
+        # implicit casting.
+        return self.i64_constant(t, Int64(value))
+
+    fn i64_constant(
+        inout self, t: TypePtr, values: DynamicVector[Int64]
+    ) raises -> Symbol:
         # TODO: This isn't great, can't overload to Int32
         # TODO: Fix the checks once we have Mojo structured types
         if not (
@@ -167,7 +180,6 @@ struct Graph:
         )[0]
 
     fn f32_constant(inout self, t: TypePtr, *values: Float32) raises -> Symbol:
-        # TODO: This isn't great, can't overload to Float64
         # TODO: Fix the checks once we have Mojo structured types
         if not mobicc.type_is_float_tensor(t):
             raise "Type must be an f32 tensor"

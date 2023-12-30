@@ -137,6 +137,21 @@ fn tensor_attr(
     ]("MOBI_tensorAttr")(module, name, data, type, is_owned)
 
 
+# TODO: Rename these to data_attr.
+fn tensor_attr[
+    T: CollectionElement
+](
+    module: ModulePtr,
+    name: StringRef,
+    data: DynamicVector[T],
+    type: TypePtr,
+    is_owned: Bool,
+) -> AttrPtr:
+    return MOBI_func[
+        fn (ModulePtr, StringRef, AnyPointer[T], TypePtr, Bool) -> AttrPtr
+    ]("MOBI_tensorAttr")(module, name, data.data, type, is_owned)
+
+
 fn tensor_attr(
     module: ModulePtr,
     name: StringRef,
@@ -345,28 +360,6 @@ fn type_from_spec(m: ModulePtr, spec: TensorSpec) -> TypePtr:
     )(m, spec)
 
 
-fn spec_from_type(t: TypePtr) -> TensorSpec:
-    let dims = DTypePointer[DType.int64].alloc(_MAX_RANK)
-    let rank = DTypePointer[DType.int64].alloc(1)
-
-    let dtype = MOBI_func[
-        fn (
-            TypePtr, DTypePointer[DType.int64], DTypePointer[DType.int64]
-        ) -> UInt8
-    ]("MOBI_specFromType")(t, dims, rank)
-
-    var dims_vec = DynamicVector[Int]()
-    for i in range(rank.load().to_int()):
-        dims_vec.push_back(dims[i].to_int())
-
-    let result_spec = TensorSpec(DType._from_ui8(dtype.value), dims_vec)
-
-    rank.free()
-    dims.free()
-
-    return result_spec
-
-
 fn dynamic_dim() -> Int64:
     return MOBI_func[fn () -> Int64]("MOBI_dynamicDim")()
 
@@ -379,6 +372,16 @@ fn f32(
     return MOBI_func[fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr](
         "MOBI_f32"
     )(module, dims, rank)
+
+
+fn f32(
+    module: ModulePtr,
+    dims: DynamicVector[Int64],
+    rank: Int64,
+) -> TypePtr:
+    return MOBI_func[fn (ModulePtr, AnyPointer[Int64], Int64) -> TypePtr](
+        "MOBI_f32"
+    )(module, dims.data, rank)
 
 
 fn ui(
@@ -403,6 +406,17 @@ fn si(
     )(module, width, dims, rank)
 
 
+fn si(
+    module: ModulePtr,
+    width: UInt64,
+    dims: DynamicVector[Int64],
+    rank: Int64,
+) -> TypePtr:
+    return MOBI_func[
+        fn (ModulePtr, UInt64, AnyPointer[Int64], Int64) -> TypePtr
+    ]("MOBI_si")(module, width, dims.data, rank)
+
+
 fn bool(
     module: ModulePtr,
     dims: Pointer[Int64],
@@ -413,28 +427,28 @@ fn bool(
     )(module, dims, rank)
 
 
+fn bool(
+    module: ModulePtr,
+    dims: DynamicVector[Int64],
+    rank: Int64,
+) -> TypePtr:
+    return MOBI_func[fn (ModulePtr, AnyPointer[Int64], Int64) -> TypePtr](
+        "MOBI_bool"
+    )(module, dims.data, rank)
+
+
 fn new_arity() -> ArityPtr:
     return MOBI_func[fn () -> ArityPtr]("MOBI_newArity")()
+
+
+fn arity_size(tup: ArityPtr) -> Int:
+    return MOBI_func[fn (ArityPtr) -> Int]("MOBI_aritySize")(tup)
 
 
 fn add_type(inout arity: ArityPtr, t: TypePtr):
     return MOBI_func[fn (ArityPtr, TypePtr) -> NoneType]("MOBI_addType")(
         arity, t
     )
-
-
-# TODO: These specialized helpers are a stop-gap until we have sufficient
-# type manipulation primitives to write the logic in Mojo.
-# Note: Most type manipulation logic will become obsolete in HiMO, where
-# all output types are inferred.
-fn arg_reduction_type(
-    module: ModulePtr,
-    input: TypePtr,
-    axis: Int64,
-) -> TypePtr:
-    return MOBI_func[fn (ModulePtr, TypePtr, Int64) -> TypePtr](
-        "MOBI_argReductionType"
-    )(module, input, axis)
 
 
 fn type_is_float_tensor(t: TypePtr) -> Bool:

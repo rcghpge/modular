@@ -6,7 +6,6 @@
 
 from .graph import Graph
 from .mobicc import SymbolPtr, TuplePtr
-from .type import Type
 from .motype import *
 from .ops import *
 
@@ -21,9 +20,6 @@ struct Symbol(CollectionElement, Stringable):
     fn graph(self) -> Graph:
         return Graph(mobicc.get_symbol_graph(self.s))
 
-    fn type(self) -> Type:
-        return Type(mobicc.get_symbol_type(self.s))
-
     fn tensor_type(self) -> MOTensor:
         # TODO: Assert that this is an actual Tensor type, raise otherwise.
         let ranked = mobicc.is_tensor_ranked(self.s)
@@ -32,19 +28,7 @@ struct Symbol(CollectionElement, Stringable):
         return MOTensor(ElementType(dtype), dims, ranked)
 
     fn __str__(self) -> String:
-        let spec: TensorSpec
-        try:
-            spec = self.type().unwrap_tensor().spec()
-        except e:
-            return "Symbol(unknown)"
-        var shape = String("[")
-        for i in range(spec.rank()):
-            if i > 0:
-                shape += ", "
-            shape += "?" if spec[i] < 0 else String(spec[i])
-        shape += "]"
-        let dtype = String(spec.dtype().__str__())
-        return "Symbol(mo.tensor<" + shape + ", " + dtype + ">)"
+        return mobicc.symbol_to_string(self.s)
 
     fn __getitem__(self, *spans: SliceSymbol) raises -> Symbol:
         return slice_(self, spans)
@@ -53,28 +37,20 @@ struct Symbol(CollectionElement, Stringable):
         if not span._has_end():
             raise "slice expects stop to be specified"
 
-        let spec = self.type().unwrap_tensor().spec()
-        if spec.rank() != 1:
+        let spec = self.tensor_type()
+        if len(spec.dims) != 1:
             raise "__getitem__ with slice object on `Symbol` only supports 1D tensors"
-
-        # Allocated pointers are moved into `Tensor`, which frees them.
-        let start_ptr = DTypePointer[DType.int64].alloc(1)
-        start_ptr.store(0, span.start)
-        let end_ptr = DTypePointer[DType.int64].alloc(1)
-        end_ptr.store(0, span.end)
-        let step_ptr = DTypePointer[DType.int64].alloc(1)
-        step_ptr.store(0, span.step)
 
         var g = self.graph()
         return g.op(
             "mo.slice",
             (
                 self,
-                g.constant(Tensor(start_ptr, TensorShape(1))),
-                g.constant(Tensor(end_ptr, TensorShape(1))),
-                g.constant(Tensor(step_ptr, TensorShape(1))),
+                g.i64_constant(g.m.i64(1), span.start),
+                g.i64_constant(g.m.i64(1), span.end),
+                g.i64_constant(g.m.i64(1), span.step),
             ),
-            MOTensor(DType.int64, Int64(len(span))),
+            MOTensor(DType.int64, len(span)),
         )[0]
 
     fn print(self, label: StringRef = "debug_tensor") raises:
@@ -90,7 +66,7 @@ struct Symbol(CollectionElement, Stringable):
 
     fn __neg__(self) raises -> Symbol:
         var g = self.graph()
-        return g.op("mo.negative", self, self.type())[0]
+        return g.op("mo.negative", self, self.tensor_type())[0]
 
     fn __matmul__(self, rhs: Symbol) raises -> Symbol:
         return matmul(self, rhs)

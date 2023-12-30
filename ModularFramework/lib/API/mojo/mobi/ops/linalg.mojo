@@ -13,13 +13,13 @@ from tensor import TensorSpec, TensorShape
 
 def arange(stop: Symbol) -> Symbol:
     var g = stop.graph()
-    let dtype = stop.type().unwrap_tensor().dtype()
+    let dtype = stop.tensor_type().dtype.dtype
     return arange(g.constant(0, dtype), stop, g.constant(1, dtype))
 
 
 def arange(start: Symbol, stop: Symbol) -> Symbol:
     var g = stop.graph()
-    let dtype = stop.type().unwrap_tensor().dtype()
+    let dtype = stop.tensor_type().dtype.dtype
     return arange(start, stop, g.constant(1, dtype))
 
 
@@ -29,14 +29,14 @@ def arange(start: Int, stop: Symbol, step: Int) -> Symbol:
     # on dtype (unlike the others), and start/step should take a variant
     # of SIMD[dtype, 1] | Symbol with conditional logic depending on the variant.
     var g = stop.graph()
-    let dtype = stop.type().unwrap_tensor().dtype()
+    let dtype = stop.tensor_type().dtype.dtype
     return arange(g.constant(start, dtype), stop, g.constant(step, dtype))
 
 
 def arange(start: Symbol, stop: Symbol, step: Symbol) -> Symbol:
     # Use stop to get the dtype since it's supplied in all cases
     var g = stop.graph()
-    let dtype = stop.type().unwrap_tensor().dtype()
+    let dtype = stop.tensor_type().dtype.dtype
     return g.op("mo.range", (start, stop, step), MOTensor(dtype, dyn()))[0]
 
 
@@ -51,52 +51,51 @@ def batch_matmul(lhs: Symbol, rhs: Symbol) -> Symbol:
     let broadcast_rhs: Symbol
     broadcast_lhs, broadcast_rhs = matmul_broadcast(lhs, rhs)
 
-    let lhs_spec = broadcast_lhs.type().unwrap_tensor().spec()
-    let rhs_spec = broadcast_rhs.type().unwrap_tensor().spec()
+    let lhs_type = broadcast_lhs.tensor_type()
+    let rhs_type = broadcast_rhs.tensor_type()
     var dims = DynamicVector[Int64]()
-    for i in range(lhs_spec.rank() - 1):
-        dims.push_back(lhs_spec[i])
-    dims.push_back(rhs_spec[-1])
-    let out_spec = MOTensor(lhs_spec.dtype(), dims)
+    for i in range(lhs_type.rank() - 1):
+        dims.push_back(lhs_type.dims[i])
+    dims.push_back(rhs_type.dim(-1))
+    let out_type = MOTensor(lhs_type.dtype, dims)
 
-    return g.op("mo.batch_matmul", (broadcast_lhs, broadcast_rhs), out_spec)[0]
+    return g.op("mo.batch_matmul", (broadcast_lhs, broadcast_rhs), out_type)[0]
 
 
 def matmul_by_matrix(lhs: Symbol, rhs: Symbol) -> Symbol:
     var g = lhs.graph()
-    let lhs_spec = lhs.type().unwrap_tensor().spec()
-    let rhs_spec = rhs.type().unwrap_tensor().spec()
-    if rhs_spec.rank() != 2:
+    let lhs_type = lhs.tensor_type()
+    let rhs_type = rhs.tensor_type()
+    if rhs_type.rank() != 2:
         raise "rhs must be a matrix"
 
     let reshape_shape = stack[axis=0](
         g.constant(-1),
         dim(lhs, -1),
     )
-    let reshape_dims = TensorShape(g.m.dyn().to_int(), lhs_spec[-1])
 
     let final_shape = concat[axis=0](
-        shape_of(lhs)[: lhs_spec.rank() - 1],
+        shape_of(lhs)[: lhs_type.rank() - 1],
         reshape(dim(rhs, 1), TensorShape(1)),
     )
 
-    var final_dims = DynamicVector[Int]()
-    for i in range(lhs_spec.rank() - 1):
-        final_dims.push_back(lhs_spec[i])
-    final_dims.push_back(rhs_spec[-1])
+    var final_dims = DynamicVector[Int64]()
+    for i in range(lhs_type.rank() - 1):
+        final_dims.push_back(lhs_type.dim(i))
+    final_dims.push_back(rhs_type.dim(-1))
 
     let matmul_out = g.op(
         "mo.matmul",
-        (reshape(lhs, reshape_shape, reshape_dims), rhs),
-        MOTensor(lhs_spec.dtype(), dyn(), Int64(rhs_spec[-1])),
+        (reshape(lhs, reshape_shape, dyn(), lhs_type.dim(-1)), rhs),
+        MOTensor(lhs_type.dtype, dyn(), rhs_type.dim(-1)),
     )[0]
 
     return reshape(matmul_out, final_shape, final_dims)
 
 
 def matmul(lhs: Symbol, rhs: Symbol) -> Symbol:
-    let rhs_spec = rhs.type().unwrap_tensor().spec()
-    if rhs_spec.rank() > 2:
+    let rhs_type = rhs.tensor_type()
+    if rhs_type.rank() > 2:
         return batch_matmul(lhs, rhs)
     else:
         return matmul_by_matrix(lhs, rhs)
@@ -104,11 +103,11 @@ def matmul(lhs: Symbol, rhs: Symbol) -> Symbol:
 
 def matmul_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
     var g = lhs.graph()
-    let lhs_spec = lhs.type().unwrap_tensor().spec()
-    let rhs_spec = rhs.type().unwrap_tensor().spec()
+    let lhs_type = lhs.tensor_type()
+    let rhs_type = rhs.tensor_type()
 
-    let lhs_rank = lhs_spec.rank()
-    let rhs_rank = rhs_spec.rank()
+    let lhs_rank = lhs_type.rank()
+    let rhs_rank = rhs_type.rank()
 
     let broadcast_rank = max(lhs_rank, rhs_rank)
     let lhs_shape = shape_of(lhs)
@@ -123,7 +122,7 @@ def matmul_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
     let broadcast_dims_shape = g.op(
         "mo.broadcast_shape",
         (lhs_broadcast_dims, rhs_broadcast_dims),
-        MOTensor(DType.int64, Int64(broadcast_rank - 2)),
+        MOTensor(DType.int64, broadcast_rank - 2),
     )[0]
 
     var lhs_final_dims = DynamicVector[Int64]()
@@ -131,10 +130,10 @@ def matmul_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
     for _ in range(broadcast_rank - 2):
         lhs_final_dims.push_back(dyn())
         rhs_final_dims.push_back(dyn())
-    lhs_final_dims.push_back(lhs_spec[-2])
-    lhs_final_dims.push_back(lhs_spec[-1])
-    rhs_final_dims.push_back(rhs_spec[-2])
-    rhs_final_dims.push_back(rhs_spec[-1])
+    lhs_final_dims.push_back(lhs_type.dim(-2))
+    lhs_final_dims.push_back(lhs_type.dim(-1))
+    rhs_final_dims.push_back(rhs_type.dim(-2))
+    rhs_final_dims.push_back(rhs_type.dim(-1))
 
     let lhs_broadcast_shape = concat[axis=0](
         broadcast_dims_shape, lhs_matrix_dims
@@ -143,7 +142,7 @@ def matmul_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
     let broadcast_lhs = g.op(
         "mo.broadcast_to",
         (lhs, lhs_broadcast_shape),
-        MOTensor(lhs_spec.dtype(), lhs_final_dims),
+        MOTensor(lhs_type.dtype, lhs_final_dims),
     )[0]
 
     let rhs_broadcast_shape = concat[axis=0](
@@ -153,7 +152,7 @@ def matmul_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
     let broadcast_rhs = g.op(
         "mo.broadcast_to",
         (rhs, rhs_broadcast_shape),
-        MOTensor(rhs_spec.dtype(), rhs_final_dims),
+        MOTensor(rhs_type.dtype, rhs_final_dims),
     )[0]
 
     return (broadcast_lhs, broadcast_rhs)
