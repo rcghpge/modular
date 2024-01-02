@@ -11,35 +11,6 @@ from mobi.motype import ElementType, MOTensor, dyn
 from tensor import TensorSpec, TensorShape
 
 
-def arange(stop: Symbol) -> Symbol:
-    var g = stop.graph()
-    let dtype = stop.tensor_type().dtype.dtype
-    return arange(g.constant(0, dtype), stop, g.constant(1, dtype))
-
-
-def arange(start: Symbol, stop: Symbol) -> Symbol:
-    var g = stop.graph()
-    let dtype = stop.tensor_type().dtype.dtype
-    return arange(start, stop, g.constant(1, dtype))
-
-
-def arange(start: Int, stop: Symbol, step: Int) -> Symbol:
-    # We can define this more generally, but hack it in a bit for now.
-    # The more general one is a bit awkward since it should be parameterized
-    # on dtype (unlike the others), and start/step should take a variant
-    # of SIMD[dtype, 1] | Symbol with conditional logic depending on the variant.
-    var g = stop.graph()
-    let dtype = stop.tensor_type().dtype.dtype
-    return arange(g.constant(start, dtype), stop, g.constant(step, dtype))
-
-
-def arange(start: Symbol, stop: Symbol, step: Symbol) -> Symbol:
-    # Use stop to get the dtype since it's supplied in all cases
-    var g = stop.graph()
-    let dtype = stop.tensor_type().dtype.dtype
-    return g.op("mo.range", (start, stop, step), MOTensor(dtype, dyn()))
-
-
 def outer(lhs: Symbol, rhs: Symbol) -> Symbol:
     """Outer product of two vectors. This function does not broadcast."""
     return reshape(lhs, -1, 1) * reshape(rhs, 1, -1)
@@ -70,7 +41,7 @@ def matmul_by_matrix(lhs: Symbol, rhs: Symbol) -> Symbol:
         raise "rhs must be a matrix"
 
     let reshape_shape = stack[axis=0](
-        g.constant(-1),
+        g.scalar(Int64(-1)),
         dim(lhs, -1),
     )
 

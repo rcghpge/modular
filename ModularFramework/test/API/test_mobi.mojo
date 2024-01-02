@@ -6,7 +6,7 @@
 # UNSUPPORTED: windows
 # RUN: mojo -I %mobi_pkg_dir %s | FileCheck %s
 
-from tensor import Tensor
+from tensor import Tensor, TensorShape
 from utils.index import Index
 
 from mobi import *
@@ -60,20 +60,7 @@ fn test_add_constant() raises:
     print(m.__str__())
 
 
-fn test_int_constant_helper() raises:
-    var m = Module()
-    var g = m.graph("int_constant_helper", Arity(), Arity(m.i64(2)))
-    let x = g.i64_constant(m.i64(2), 1, 2)
-    _ = g.nvop("mo.output", x)
-
-    m.verify()
-    # CHECK-LABEL: @int_constant_helper
-    # CHECK: mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>}
-    print(m.__str__())
-
-
 fn main() raises:
     test_identity_graph()
     test_basic_add()
     test_add_constant()
-    test_int_constant_helper()

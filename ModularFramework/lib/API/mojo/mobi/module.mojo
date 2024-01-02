@@ -97,8 +97,21 @@ struct Module:
 
     fn tensor_attr[
         dtype: DType
-    ](self, name: StringRef, t: TypePtr, owned value: Tensor[dtype]) -> AttrPtr:
+    ](self, name: StringRef, values: DynamicVector[SIMD[dtype, 1]]) -> AttrPtr:
+        let t = MOTensor(dtype, len(values)).to_mlir(self)
+        return mobicc.tensor_attr(
+            self.m,
+            name,
+            values,
+            t,
+            is_owned=False,
+        )
+
+    fn tensor_attr[
+        dtype: DType
+    ](self, name: StringRef, owned value: Tensor[dtype]) -> AttrPtr:
         # Intentionally takes ownership of `value` to avoid extra copies.
+        let t = MOTensor(value.spec()).to_mlir(self)
         return mobicc.tensor_attr(
             self.m,
             name,
@@ -106,9 +119,6 @@ struct Module:
             t,
             is_owned=True,
         )
-
-    fn type_of[dtype: DType](self, t: Tensor[dtype]) raises -> TypePtr:
-        return mobicc.type_from_spec(self.m, t.spec())
 
     fn attrs(self, *attrs: AttrPtr) -> AttrMap:
         var m = mobicc.new_attr_map()

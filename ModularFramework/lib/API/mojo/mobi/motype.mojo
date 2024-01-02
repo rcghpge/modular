@@ -4,6 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 
+from tensor import TensorSpec
 
 from .module import Module
 from .mobicc import ArityPtr, TypePtr
@@ -24,6 +25,7 @@ trait MOType:
 
 @value
 struct ElementType(MOType):
+    # TODO: This mey be insufficient, if we ever need parametric dtypes.
     var dtype: DType
 
     fn to_mlir(self, m: Module) -> TypePtr:
@@ -43,40 +45,54 @@ struct MOTensor(MOType):
     var dims: DynamicVector[Int64]
     var ranked: Bool
 
+    # ===------------------------------------------------------------------=== #
+    # Constructors
+    # ===------------------------------------------------------------------=== #
+
     fn __init__(inout self, dtype: ElementType, *dims: Int64):
         self.dtype = dtype
-        self.dims = DynamicVector[Int64]()
+        self.dims = DynamicVector[Int64](len(dims))
         for d in dims:
             self.dims.append(d)
         self.ranked = True
 
     fn __init__(inout self, dtype: ElementType, dims: VariadicList[Int64]):
         self.dtype = dtype
-        self.dims = DynamicVector[Int64]()
+        self.dims = DynamicVector[Int64](len(dims))
         for d in dims:
             self.dims.append(d)
         self.ranked = True
 
-    fn __init__(inout self, dtype: ElementType):
-        self.dtype = dtype
-        self.dims = DynamicVector[Int64]()
-        self.ranked = True
-
     fn __init__(inout self, dtype: ElementType, ranked: Bool):
         self.dtype = dtype
-        self.dims = DynamicVector[Int64]()
+        self.dims = DynamicVector[Int64](0)
         self.ranked = ranked
 
     fn __init__(inout self, dtype: ElementType, dim: Int):
         # This special overload prevents the DynamicVector overload from
         # stealing precedence due to unpredictable resolution order around
         # implicit casting.
+        # The ambiguity is between *Int64 and DynamicVector.
         self.__init__(dtype, Int64(dim))
 
     fn __init__(inout self, dtype: ElementType, dims: DynamicVector[Int64]):
         self.dtype = dtype
         self.dims = dims
         self.ranked = True
+
+    # ===------------------------------------------------------------------=== #
+    # Auxiliary factories
+    # ===------------------------------------------------------------------=== #
+
+    fn __init__(inout self, spec: TensorSpec):
+        var dims = DynamicVector[Int64](spec.rank())
+        for i in range(spec.rank()):
+            dims.append(spec[i])
+        self.__init__(spec.dtype(), dims)
+
+    # ===------------------------------------------------------------------=== #
+    # MOType trait
+    # ===------------------------------------------------------------------=== #
 
     fn to_mlir(self, m: Module) -> TypePtr:
         return mobicc.new_tensor_type(
@@ -86,26 +102,9 @@ struct MOTensor(MOType):
     fn to_string(self, m: Module) -> String:
         return mobicc.type_to_string(self.to_mlir(m))
 
-    fn rank(self) -> Int:
-        return len(self.dims)
-
-    # TODO: Add shape arithmetics here, or in a separate Shape type.
-
-    fn dim(self, pos: Int) raises -> Int64:
-        if not self.ranked:
-            raise "Cannot get dim of unranked type"
-        var i = pos
-        if i < 0:
-            i = i + self.rank()
-        return self.dims[i]
-
-    fn num_elements(self) -> Int64:
-        var n: Int64 = 1
-        for i in range(self.rank()):
-            if self.dims[i] == dyn():
-                return dyn()
-            n *= self.dims[i]
-        return n
+    # ===------------------------------------------------------------------=== #
+    # Basic accessors
+    # ===------------------------------------------------------------------=== #
 
     fn is_static(self) -> Bool:
         if not self.ranked:
@@ -114,6 +113,17 @@ struct MOTensor(MOType):
             if self.dims[i] == dyn():
                 return False
         return True
+
+    fn rank(self) -> Int:
+        return len(self.dims)
+
+    fn dim(self, pos: Int) raises -> Int64:
+        if not self.ranked:
+            raise "Cannot get dim of unranked type"
+        var i = pos
+        if i < 0:
+            i = i + self.rank()
+        return self.dims[i]
 
     fn __eq__(self, other: MOTensor) -> Bool:
         if self.dtype.dtype != other.dtype.dtype:
@@ -127,6 +137,20 @@ struct MOTensor(MOType):
                 if self.dims[i] != other.dims[i]:
                     return False
         return True
+
+    # ===------------------------------------------------------------------=== #
+    # Shape arithmetic
+    # ===------------------------------------------------------------------=== #
+
+    fn num_elements(self) -> Int64:
+        var n: Int64 = 1
+        for i in range(self.rank()):
+            if self.dims[i] == dyn():
+                return dyn()
+            n *= self.dims[i]
+        return n
+
+    # TODO: Add shape arithmetics here, or in a separate Shape type.
 
 
 @value

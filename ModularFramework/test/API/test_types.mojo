@@ -57,17 +57,32 @@ fn test_tensor_scalar() raises:
     assert_equal(s, "!mo.tensor<[], f32>")
 
 
-fn test_tensor_dtype_shortcut() raises:
+fn test_dtype_cast() raises:
     assert_equal(
         MOTensor(DType.float32, 1, 2, 3).to_string(mobi.Module()),
         "!mo.tensor<[1, 2, 3], f32>",
     )
 
 
-fn test_tensor_int_overload() raises:
+fn test_int_cast() raises:
     assert_equal(
         MOTensor(DType.float32, 1).to_string(mobi.Module()),
         "!mo.tensor<[1], f32>",
+    )
+
+
+fn test_tensor_spec_cast() raises:
+    assert_equal(
+        MOTensor(TensorSpec(DType.float32)).to_string(mobi.Module()),
+        "!mo.tensor<[], f32>",
+    )
+    assert_equal(
+        MOTensor(TensorSpec(DType.float64, 1)).to_string(mobi.Module()),
+        "!mo.tensor<[1], f64>",
+    )
+    assert_equal(
+        MOTensor(TensorSpec(DType.int32, 1, 2)).to_string(mobi.Module()),
+        "!mo.tensor<[1, 2], si32>",
     )
 
 
@@ -78,5 +93,6 @@ fn main() raises:
     test_tensor_unranked()
     test_tensor_dynamic_dims()
     test_tensor_scalar()
-    test_tensor_dtype_shortcut()
-    test_tensor_int_overload()
+    test_dtype_cast()
+    test_int_cast()
+    test_tensor_spec_cast()

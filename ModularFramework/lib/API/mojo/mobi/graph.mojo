@@ -14,10 +14,17 @@ from memory.unsafe import Pointer
 from tensor import TensorShape, TensorSpec
 
 
+# TODO: Drop inout self - it's not reflective of any Mojo-side mutation.
+
+
 @value
 struct Graph:
     var g: GraphPtr
     var m: Module
+
+    # ===------------------------------------------------------------------=== #
+    # Constructors and basic accessors
+    # ===------------------------------------------------------------------=== #
 
     fn __init__(inout self, g: GraphPtr):
         self.g = g
@@ -25,6 +32,10 @@ struct Graph:
 
     fn __getitem__(self, pos: UInt32) -> Symbol:
         return Symbol(mobicc.get_input(self.g, pos))
+
+    # ===------------------------------------------------------------------=== #
+    # nvop - the most generic op builder
+    # ===------------------------------------------------------------------=== #
 
     fn nvop(inout self, name: StringRef, inputs: Tup) -> Tup:
         return self.nvop(
@@ -57,7 +68,10 @@ struct Graph:
         )
         return Tup(outputs)
 
-    # Shorthand helpers for single-valued ops.
+    # ===------------------------------------------------------------------=== #
+    # op - shorthands for single-result ops
+    # ===------------------------------------------------------------------=== #
+
     # TODO: s/T/Arity/ when MOTensor can be autoboxed inside an Arity.
 
     fn op[
@@ -72,7 +86,7 @@ struct Graph:
 
     fn op[
         T: MOType
-    ](inout self, name: StringRef, out_type: T, attrs: AttrMap,) -> Symbol:
+    ](inout self, name: StringRef, out_type: T, attrs: AttrMap) -> Symbol:
         return self.nvop(name, Arity(out_type.to_mlir(self.m)), attrs)[0]
 
     fn op[
@@ -88,116 +102,41 @@ struct Graph:
             0
         ]
 
-    # TODO: Separate DType/Tensor/TensorSpec adapters from Graph.
-
-    fn constant[
-        dtype: DType
-    ](inout self, shape: TensorShape, value: DTypePointer[dtype]) raises -> Tup:
-        """Takes ownership of `value` to avoid a copy."""
-        return self.constant[dtype](Tensor[dtype](value, shape))
+    # ===------------------------------------------------------------------=== #
+    # Factories for various nullary ops
+    # ===------------------------------------------------------------------=== #
 
     fn constant[
         dtype: DType
     ](inout self, owned value: Tensor[dtype]) raises -> Symbol:
-        """Takes ownership of `value` to avoid a copy."""
-        let m = self.m
-        let type = m.type_of(value)
-        return self.nvop(
+        # Note: Unlike TensorSpec, Tensor *is* the canonical "tensor value" for
+        # MO attributes. So we don't need extra auxiliaty structures for it.
+        return self.op(
             "mo.constant",
-            Arity(type),
-            m.attrs(m.tensor_attr("value", type, value)),
-        )[0]
+            MOTensor(value.spec()),
+            self.m.attrs(self.m.tensor_attr("value", value)),
+        )
 
-    fn constant[
+    fn vector[
         dtype: DType
-    ](inout self, value: SIMD[dtype, 1]) raises -> Symbol:
-        let m = self.m
-
-        var val_copy = value
-        let t = mobicc.type_from_spec(m.m, TensorSpec(dtype, TensorShape()))
-        let value_ptr = DTypePointer[dtype].address_of(val_copy).bitcast[
-            DType.invalid
-        ]()
-        let attr = mobicc.tensor_attr(
-            m.m, "value", value_ptr, t, is_owned=False
+    ](inout self, owned values: DynamicVector[SIMD[dtype, 1]]) raises -> Symbol:
+        return self.op(
+            "mo.constant",
+            MOTensor(dtype, len(values)),
+            self.m.attrs(self.m.tensor_attr[dtype]("value", values)),
         )
 
-        return self.nvop("mo.constant", Tup(), Arity(t), m.attrs(attr))[0]
+    fn scalar[
+        dtype: DType
+    ](inout self, value: SIMD[dtype, 1], rank: Int = 0) raises -> Symbol:
+        # Note: while this could generalize to something like splat, the
+        # canonical way of achieving that is using a broadcast instead.
+        var shape = DynamicVector[Int](rank)
+        for i in range(rank):
+            shape.append(1)
+        return self.constant[dtype](Tensor(shape, value))
 
-    fn constant(inout self, value: Bool) raises -> Symbol:
-        let v: SIMD[DType.bool, 1] = value
-        return self.constant(v)
-
-    fn constant(inout self, value: Int) raises -> Symbol:
-        let v: Int64 = value
-        return self.constant(v)
-
-    fn constant(inout self, value: FloatLiteral) raises -> Symbol:
-        let v: Float32 = value
-        return self.constant(v)
-
-    fn constant(inout self, value: Int, dtype: DType) raises -> Symbol:
-        let m = self.m
-
-        var val_copy = value
-        let t = mobicc.type_from_spec(m.m, TensorSpec(dtype, TensorShape()))
-        let value_ptr = Pointer[Int].address_of(val_copy).bitcast[AnyRegType]()
-        let attr = mobicc.tensor_attr(
-            m.m, "value", value_ptr, t, is_owned=False
-        )
-
-        return self.nvop("mo.constant", Tup(), Arity(t), m.attrs(attr))[0]
-
-    fn i64_constant(inout self, t: TypePtr, *values: Int64) raises -> Symbol:
-        # TODO: Fix the checks once we have Mojo structured types
-        if not (
-            mobicc.type_is_si_tensor(t) and (mobicc.tensor_dtype_width(t) == 64)
-        ):
-            raise "Type must be an i64 tensor"
-        return self.nvop(
-            "mo.constant",
-            Arity(t),
-            self.m.attrs(self.m.i64_attr("value", t, values)),
-        )[0]
-
-    fn i64_constant(inout self, t: TypePtr, value: Int) raises -> Symbol:
-        # This special overload prevents the DynamicVector overload from
-        # stealing precedence due to unpredictable resolution order around
-        # implicit casting.
-        return self.i64_constant(t, Int64(value))
-
-    fn i64_constant(
-        inout self, t: TypePtr, values: DynamicVector[Int64]
-    ) raises -> Symbol:
-        # TODO: This isn't great, can't overload to Int32
-        # TODO: Fix the checks once we have Mojo structured types
-        if not (
-            mobicc.type_is_si_tensor(t) and (mobicc.tensor_dtype_width(t) == 64)
-        ):
-            raise "Type must be an i64 tensor"
-        return self.nvop(
-            "mo.constant",
-            Arity(t),
-            self.m.attrs(self.m.i64_attr("value", t, values)),
-        )[0]
-
-    fn f32_constant(inout self, t: TypePtr, *values: Float32) raises -> Symbol:
-        # TODO: Fix the checks once we have Mojo structured types
-        if not mobicc.type_is_float_tensor(t):
-            raise "Type must be an f32 tensor"
-        return self.nvop(
-            "mo.constant",
-            Arity(t),
-            self.m.attrs(self.m.f32_attr("value", t, values)),
-        )[0]
-
-    fn output(inout self) raises:
-        _ = self.nvop("mo.output", Tup())
-
-    fn output(inout self, outs: Tup) raises:
-        _ = self.nvop("mo.output", outs)
-
-    fn arange[
+    fn range[
         dtype: DType
     ](
         inout self,
@@ -208,17 +147,15 @@ struct Graph:
         return self.op(
             "mo.range",
             (
-                self.constant[dtype](start),
-                self.constant[dtype](stop),
-                self.constant[dtype](step),
+                self.scalar[dtype](start),
+                self.scalar[dtype](stop),
+                self.scalar[dtype](step),
             ),
-            MOTensor(dtype, dyn()),
+            MOTensor(dtype, len(range(start, stop, step))),
         )
 
-    fn arange[dtype: DType](inout self, stop: SIMD[dtype, 1]) raises -> Symbol:
-        return self.arange[dtype](0, stop, 1)
+    fn output(inout self) raises:
+        _ = self.nvop("mo.output", Tup())
 
-    fn arange[
-        dtype: DType
-    ](inout self, start: SIMD[dtype, 1], stop: SIMD[dtype, 1]) raises -> Symbol:
-        return self.arange[dtype](start, stop, 1)
+    fn output(inout self, outs: Tup) raises:
+        _ = self.nvop("mo.output", outs)

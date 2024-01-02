@@ -8,6 +8,9 @@
 # and imaginary parts.
 
 
+from tensor import TensorShape
+
+
 def as_complex(real: Symbol, imag: Symbol) -> Symbol:
     return stack[axis= -1](real, imag)
 
@@ -18,7 +21,7 @@ def as_interleaved_complex(interleaved: Symbol) -> Symbol:
     var g = interleaved.graph()
     let rank = interleaved.tensor_type().rank()
     let shape = shape_of(interleaved)
-    let back_dims = g.i64_constant(g.m.i64(2), -1, 2)
+    let back_dims = g.constant(Tensor[DType.int64](TensorShape(2), -1, 2))
     let new_shape = concat[axis=0](shape[: rank - 1], back_dims)
     return reshape(interleaved, new_shape)
 

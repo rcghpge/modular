@@ -21,7 +21,7 @@ fn mean(v: Symbol, axis: Int) raises -> Symbol:
 
     v_type.dims[norm_axis] = 1
 
-    return g.op("mo.mean", (v, g.constant(norm_axis)), v_type)
+    return g.op("mo.mean", (v, g.scalar(Int64(norm_axis))), v_type)
 
 
 fn arg_max(v: Symbol, axis: Int) raises -> Symbol:
@@ -37,4 +37,4 @@ fn arg_max(v: Symbol, axis: Int) raises -> Symbol:
     v_type.dtype = ElementType(DType.int64)
     v_type.dims[norm_axis] = 1
 
-    return g.op("mo.arg_max", (v, g.constant(norm_axis)), v_type)
+    return g.op("mo.arg_max", (v, g.scalar(Int64(norm_axis))), v_type)
