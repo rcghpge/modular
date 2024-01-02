@@ -15,7 +15,7 @@ fn test_basic_i64() raises:
     var m = Module()
     var g = m.graph("test_basic_i64", Arity(), Arity(m.i64(1)))
     let y = g.i64_constant(m.i64(1), 1)
-    _ = g.op("mo.output", y, Arity())
+    _ = g.nvop("mo.output", y)
 
     let ir = y.__str__()
     assert_not_equal(ir.find("value = #M.dense_array<1> : tensor<1xsi64>"), -1)

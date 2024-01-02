@@ -19,7 +19,7 @@ fn test_identity_graph() raises:
         in_types=Arity(m.i32()),
         out_types=Arity(m.i32()),
     )
-    _ = g.op(name="mo.output", inputs=g[0], out_types=Arity())
+    _ = g.nvop(name="mo.output", inputs=g[0])
 
     m.verify()
     # CHECK: module {
@@ -33,8 +33,8 @@ fn test_identity_graph() raises:
 fn test_basic_add() raises:
     var m = Module()
     var g = m.graph("basic_add", Arity(m.i32(), m.i32()), Arity(m.i32()))
-    let y = g.op("mo.add", (g[0], g[1]), Arity(m.i32()))
-    _ = g.op("mo.output", y, Arity())
+    let y = g.op("mo.add", (g[0], g[1]), MOTensor(DType.int32))
+    _ = g.nvop("mo.output", y)
 
     m.verify()
     # CHECK-LABEL: @basic_add
@@ -47,11 +47,11 @@ fn test_add_constant() raises:
     var g = m.graph("add_constant", Arity(m.f32(1)), Arity(m.f32(1)))
     let x = g.op(
         "mo.constant",
-        Arity(m.f32(1)),
+        MOTensor(DType.float32, 1),
         m.attrs(m.f32_attr("value", m.f32(1), 1.0)),
     )
-    let y = g.op("mo.add", (g[0], x[0]), Arity(m.f32(1)))
-    _ = g.op("mo.output", y, Arity())
+    let y = g.op("mo.add", (g[0], x), MOTensor(DType.float32, 1))
+    _ = g.nvop("mo.output", y)
 
     m.verify()
     # CHECK-LABEL: @add_constant
@@ -64,7 +64,7 @@ fn test_int_constant_helper() raises:
     var m = Module()
     var g = m.graph("int_constant_helper", Arity(), Arity(m.i64(2)))
     let x = g.i64_constant(m.i64(2), 1, 2)
-    _ = g.op("mo.output", x, Arity())
+    _ = g.nvop("mo.output", x)
 
     m.verify()
     # CHECK-LABEL: @int_constant_helper

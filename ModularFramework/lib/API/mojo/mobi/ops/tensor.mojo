@@ -70,7 +70,7 @@ def index[axis: Int = 0](v: Symbol, idx: Int) -> Symbol:
             g.i64_constant(g.m.i64(rank), step),
         ),
         MOTensor(v_type.dtype, slice_dims),
-    )[0]
+    )
 
     return squeeze(slice, axis)
 
@@ -102,7 +102,7 @@ def gather(input: Symbol, indices: Symbol, axis: Int) -> Symbol:
         "mo.gather",
         (input, indices, g.constant(axis)),
         MOTensor(input_type.dtype, dims),
-    )[0]
+    )
 
 
 @value
@@ -194,24 +194,20 @@ def slice_(
         dims.append(shape[i])
 
     return g.op(
-        "mo.slice",
-        (input, start, stop, step),
-        MOTensor(input_t.dtype, dims),
-    )[0]
+        "mo.slice", (input, start, stop, step), MOTensor(input_t.dtype, dims)
+    )
 
 
 def cast(v: Symbol, dtype: ElementType) -> Symbol:
     var g = v.graph()
     var t = v.tensor_type()
     t.dtype = dtype
-    return g.op("mo.cast", v, t)[0]
+    return g.op("mo.cast", v, t)
 
 
 def shape_of(v: Symbol) -> Symbol:
     var g = v.graph()
-    return g.op(
-        "mo.shape_of", v, MOTensor(DType.int64, v.tensor_type().rank())
-    )[0]
+    return g.op("mo.shape_of", v, MOTensor(DType.int64, v.tensor_type().rank()))
 
 
 def concat[axis: Int](*values: Symbol) -> Symbol:
@@ -269,7 +265,7 @@ def concat[axis: Int](values: DynamicVector[Symbol]) -> Symbol:
         dims.push_back(v0_type.dims[i])
     dims[norm_axis] = concat_dim
 
-    return g.op("mo.concat", concat_args, MOTensor(v0_type.dtype, dims))[0]
+    return g.op("mo.concat", concat_args, MOTensor(v0_type.dtype, dims))
 
 
 def stack[axis: Int](values: DynamicVector[Symbol]) -> Symbol:
@@ -299,7 +295,7 @@ def squeeze(v: Symbol, axis: Int) -> Symbol:
         "mo.squeeze_shape",
         (shape_of(v), g.i64_constant(g.m.i64(1), axis)),
         MOTensor(DType.int64, rank - 1),
-    )[0]
+    )
 
     var squeezed_dims = DynamicVector[Int64]()
     for i in range(rank):
@@ -308,7 +304,7 @@ def squeeze(v: Symbol, axis: Int) -> Symbol:
 
     return g.op(
         "mo.reshape", (v, new_shape), MOTensor(v_type.dtype, squeezed_dims)
-    )[0]
+    )
 
 
 def unsqueeze(v: Symbol, axis: Int) -> Symbol:
@@ -330,7 +326,7 @@ def unsqueeze(v: Symbol, axis: Int) -> Symbol:
         "mo.unsqueeze_shape",
         (shape_of(v), g.constant(Tensor[DType.int64](TensorShape(1), axis))),
         MOTensor(DType.int64, v_type.rank() + 1),
-    )[0]
+    )
 
     var dims = DynamicVector[Int64]()
     for i in range(v_type.rank()):
@@ -340,11 +336,7 @@ def unsqueeze(v: Symbol, axis: Int) -> Symbol:
     if axis == v_type.rank():
         dims.push_back(1)
 
-    return g.op(
-        "mo.reshape",
-        (v, new_shape),
-        MOTensor(v_type.dtype, dims),
-    )[0]
+    return g.op("mo.reshape", (v, new_shape), MOTensor(v_type.dtype, dims))
 
 
 def reshape(v: Symbol, shape: TensorShape) -> Symbol:
@@ -364,7 +356,7 @@ def reshape(v: Symbol, shape: TensorShape) -> Symbol:
 
     return g.op(
         "mo.reshape", (v, shape_), MOTensor(v.tensor_type().dtype, reshape_dims)
-    )[0]
+    )
 
 
 def reshape(v: Symbol, *dims: Int) -> Symbol:
@@ -395,7 +387,7 @@ def reshape(v: Symbol, *dims: Symbol) -> Symbol:
         reshape_dims.push_back(dyn())
 
     let dtype = v.tensor_type().dtype
-    return g.op("mo.reshape", (v, shape), MOTensor(dtype, reshape_dims))[0]
+    return g.op("mo.reshape", (v, shape), MOTensor(dtype, reshape_dims))
 
 
 fn reshape(v: Symbol, shape: Symbol, out_shape: TensorShape) raises -> Symbol:
@@ -407,7 +399,7 @@ fn reshape(v: Symbol, shape: Symbol, out_shape: TensorShape) raises -> Symbol:
         "mo.reshape",
         (v, shape),
         MOTensor(v.tensor_type().dtype.dtype, reshape_dims),
-    )[0]
+    )
     return result
 
 
@@ -417,7 +409,7 @@ fn reshape(
     var g = v.graph()
     let result = g.op(
         "mo.reshape", (v, shape), MOTensor(v.tensor_type().dtype, out_shape)
-    )[0]
+    )
     return result
 
 
@@ -425,7 +417,7 @@ fn reshape(v: Symbol, shape: Symbol, *out_shape: Int64) raises -> Symbol:
     var g = v.graph()
     let result = g.op(
         "mo.reshape", (v, shape), MOTensor(v.tensor_type().dtype, out_shape)
-    )[0]
+    )
     return result
 
 
@@ -438,7 +430,7 @@ fn reshape(rank: Int64, v: Symbol, shape: Symbol) raises -> Symbol:
         "mo.reshape",
         (v, shape),
         MOTensor(v.tensor_type().dtype.dtype, reshape_dims),
-    )[0]
+    )
     return result
 
 
@@ -464,7 +456,7 @@ def split[axis: Int, N: Int](x: Symbol, split_sizes: StaticIntTuple[N]) -> Tup:
         out_dims.append(dyn())
     let split_type = MOTensor(x_type.dtype, out_dims).to_mlir(g.m)
 
-    return g.op(
+    return g.nvop(
         "mo.split",
         (x, sizes, g.constant(axis)),
         Arity(split_type, split_type),
@@ -506,4 +498,4 @@ def transpose(input: Symbol, x: Int, y: Int) -> Symbol:
         "mo.transpose",
         (input, transpose_indices),
         MOTensor(input_type.dtype, dims),
-    )[0]
+    )

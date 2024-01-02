@@ -51,12 +51,12 @@ struct Symbol(CollectionElement, Stringable):
                 g.i64_constant(g.m.i64(1), span.step),
             ),
             MOTensor(DType.int64, len(span)),
-        )[0]
+        )
 
     fn print(self, label: StringRef = "debug_tensor") raises:
         var g = self.graph()
         let attrs = g.m.attrs(g.m.string_attr("label", label))
-        _ = g.op("mo.debug.tensor.print", self, Arity(), attrs)
+        _ = g.nvop("mo.debug.tensor.print", self, Arity(), attrs)
 
     fn transpose(self) raises -> Symbol:
         return transpose(self, -1, -2)
@@ -66,7 +66,7 @@ struct Symbol(CollectionElement, Stringable):
 
     fn __neg__(self) raises -> Symbol:
         var g = self.graph()
-        return g.op("mo.negative", self, self.tensor_type())[0]
+        return g.op("mo.negative", self, self.tensor_type())
 
     fn __matmul__(self, rhs: Symbol) raises -> Symbol:
         return matmul(self, rhs)

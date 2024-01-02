@@ -21,12 +21,12 @@ def _has_dynamic_dims(shape: TensorShape) -> Bool:
 def rsqrt(v: Symbol) -> Symbol:
     var g = v.graph()
     let f32_v = cast(v, DType.float32)  # TODO: add missing rsqrt coverage.
-    return g.op("mo.rsqrt", f32_v, f32_v.tensor_type())[0]
+    return g.op("mo.rsqrt", f32_v, f32_v.tensor_type())
 
 
 def softmax(v: Symbol) -> Symbol:
     var g = v.graph()
-    return g.op("mo.softmax", v, v.tensor_type())[0]
+    return g.op("mo.softmax", v, v.tensor_type())
 
 
 def silu(v: Symbol) -> Symbol:
@@ -35,35 +35,35 @@ def silu(v: Symbol) -> Symbol:
 
 def sigmoid(v: Symbol) -> Symbol:
     var g = v.graph()
-    return g.op("mo.sigmoid", v, v.tensor_type())[0]
+    return g.op("mo.sigmoid", v, v.tensor_type())
 
 
 def sin(v: Symbol) -> Symbol:
     var g = v.graph()
-    return g.op("mo.sin", v, v.tensor_type())[0]
+    return g.op("mo.sin", v, v.tensor_type())
 
 
 def cos(v: Symbol) -> Symbol:
     var g = v.graph()
-    return g.op("mo.cos", v, v.tensor_type())[0]
+    return g.op("mo.cos", v, v.tensor_type())
 
 
 def add(lhs: Symbol, rhs: Symbol) -> Symbol:
     var g = lhs.graph()
     let opnds = elementwise_broadcast(lhs, rhs)
-    return g.op("mo.add", opnds, opnds.get[0, Symbol]().tensor_type())[0]
+    return g.op("mo.add", opnds, opnds.get[0, Symbol]().tensor_type())
 
 
 def sub(lhs: Symbol, rhs: Symbol) -> Symbol:
     var g = lhs.graph()
     let opnds = elementwise_broadcast(lhs, rhs)
-    return g.op("mo.sub", opnds, opnds.get[0, Symbol]().tensor_type())[0]
+    return g.op("mo.sub", opnds, opnds.get[0, Symbol]().tensor_type())
 
 
 def mul(lhs: Symbol, rhs: Symbol) -> Symbol:
     var g = lhs.graph()
     let opnds = elementwise_broadcast(lhs, rhs)
-    return g.op("mo.mul", opnds, opnds.get[0, Symbol]().tensor_type())[0]
+    return g.op("mo.mul", opnds, opnds.get[0, Symbol]().tensor_type())
 
 
 def div(lhs: Symbol, rhs: Symbol) -> Symbol:
@@ -71,13 +71,13 @@ def div(lhs: Symbol, rhs: Symbol) -> Symbol:
     # TODO: This needs proper type promotion, as do all binary ops.
     let cast_rhs = cast(rhs, lhs.tensor_type().dtype)
     let opnds = elementwise_broadcast(lhs, cast_rhs)
-    return g.op("mo.div", opnds, opnds.get[0, Symbol]().tensor_type())[0]
+    return g.op("mo.div", opnds, opnds.get[0, Symbol]().tensor_type())
 
 
 def pow(lhs: Symbol, rhs: Symbol) -> Symbol:
     var g = lhs.graph()
     let opnds = elementwise_broadcast(lhs, rhs)
-    return g.op("mo.pow", opnds, opnds.get[0, Symbol]().tensor_type())[0]
+    return g.op("mo.pow", opnds, opnds.get[0, Symbol]().tensor_type())
 
 
 def elementwise_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
@@ -98,7 +98,7 @@ def elementwise_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
         "mo.broadcast_shape",
         (lhs_shape, rhs_shape),
         MOTensor(DType.int64, bcast_rank),
-    )[0]
+    )
 
     # This follows NumPy broadcasting semantics:
     #   1. The smaller shape is filled with 1 from the left
@@ -121,10 +121,10 @@ def elementwise_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
         "mo.broadcast_to",
         (lhs, broadcast_shape),
         MOTensor(lhs_type.dtype, broadcast_dims),
-    )[0]
+    )
     let broadcast_rhs = g.op(
         "mo.broadcast_to",
         (rhs, broadcast_shape),
         MOTensor(rhs_type.dtype, broadcast_dims),
-    )[0]
+    )
     return (broadcast_lhs, broadcast_rhs)

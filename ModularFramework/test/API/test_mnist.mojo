@@ -30,11 +30,11 @@ from mobi import *
 #   }
 
 
-def mnist():
+def test_mnist_low_level():
     var m = Module()
 
     var g = m.graph(
-        "min_mnist",
+        "test_mnist_low_level",
         Arity(m.f32(1, 28, 28, 1)),
         Arity(m.f32(1, 10)),
     )
@@ -42,12 +42,12 @@ def mnist():
     cst_data._to_buffer().fill(0.5)
     let cst = g.op(
         "mo.constant",
-        Arity(m.f32(128, 10)),
+        MOTensor(DType.float32, 128, 10),
         m.attrs(m.tensor_attr("value", m.f32(128, 10), cst_data)),
     )
     let cst_0 = g.op(
         "mo.constant",
-        Arity(m.f32(1, 10)),
+        MOTensor(DType.float32, 1, 10),
         m.attrs(
             m.f32_attr(
                 "value",
@@ -70,32 +70,94 @@ def mnist():
     cst_1_data._to_buffer().fill(0.5)
     let cst_1 = g.op(
         "mo.constant",
-        Arity(m.f32(784, 128)),
+        MOTensor(DType.float32, 784, 128),
         m.attrs(m.tensor_attr("value", m.f32(784, 128), cst_1_data)),
     )
     let cst_2_data = Tensor[DType.float32](1, 128)
     cst_2_data._to_buffer().fill(0.5)
     let cst_2 = g.op(
         "mo.constant",
-        Arity(m.f32(1, 128)),
+        MOTensor(DType.float32, 1, 128),
         m.attrs(m.tensor_attr("value", m.f32(1, 128), cst_2_data)),
     )
     let cst_3 = g.op(
         "mo.constant",
-        Arity(m.i32(2)),
+        MOTensor(DType.int32, 2),
         m.attrs(m.i32_attr("value", m.i32(2), -1, 784)),
     )
-    let p1 = g.op("mo.reshape", (g[0], cst_3[0]), Arity(m.f32(1, 784)))
-    let p2 = g.op("mo.matmul", (p1[0], cst_1[0]), Arity(m.f32(1, 128)))
-    let p3 = g.op("mo.add", (p2[0], cst_2[0]), Arity(m.f32(1, 128)))
-    let p4 = g.op("mo.relu", (p3[0]), Arity(m.f32(1, 128)))
-    let p5 = g.op("mo.matmul", (p4[0], cst[0]), Arity(m.f32(1, 10)))
-    let p6 = g.op("mo.add", (p5[0], cst_0[0]), Arity(m.f32(1, 10)))
-    _ = g.op("mo.output", p6, Arity())
+    let p1 = g.op("mo.reshape", (g[0], cst_3), MOTensor(DType.float32, 1, 784))
+    let p2 = g.op("mo.matmul", (p1, cst_1), MOTensor(DType.float32, 1, 128))
+    let p3 = g.op("mo.add", (p2, cst_2), MOTensor(DType.float32, 1, 128))
+    let p4 = g.op("mo.relu", p3, MOTensor(DType.float32, 1, 128))
+    let p5 = g.op("mo.matmul", (p4, cst), MOTensor(DType.float32, 1, 10))
+    let p6 = g.op("mo.add", (p5, cst_0), MOTensor(DType.float32, 1, 10))
+    _ = g.nvop("mo.output", p6)
 
-    # CHECK: min_mnist
+    # CHECK: test_mnist_low_level
+    m.verify()
+    print(m.__str__())
+
+
+def test_mnist_helpers():
+    var m = Module()
+
+    var g = m.graph(
+        "test_mnist_helpers",
+        Arity(m.f32(1, 28, 28, 1)),
+        Arity(m.f32(1, 10)),
+    )
+    let cst_data = Tensor[DType.float32](128, 10)
+    cst_data._to_buffer().fill(0.5)
+    let cst = g.constant(cst_data)
+
+    let cst_0 = g.op(
+        "mo.constant",
+        MOTensor(DType.float32, 1, 10),
+        m.attrs(
+            m.f32_attr(
+                "value",
+                m.f32(1, 10),
+                -0.0675942451,
+                0.0063267909,
+                7.43086217e-4,
+                -0.0126994187,
+                0.0148473661,
+                0.108896509,
+                -0.0398316309,
+                0.0461452715,
+                -0.0281771384,
+                -0.0431172103,
+            )
+        ),
+    )
+
+    let cst_1_data = Tensor[DType.float32](784, 128)
+    cst_1_data._to_buffer().fill(0.5)
+    let cst_1 = g.constant(cst_1_data)
+
+    let cst_2_data = Tensor[DType.float32](1, 128)
+    cst_2_data._to_buffer().fill(0.5)
+    let cst_2 = g.constant(cst_2_data)
+
+    let cst_3 = g.op(
+        "mo.constant",
+        MOTensor(DType.int32, 2),
+        m.attrs(m.i32_attr("value", m.i32(2), -1, 784)),
+    )
+
+    let p1 = ops.reshape(g[0], cst_3, 1, 784)
+    let p2 = p1 @ cst_1
+    let p3 = p2 + cst_2
+    let p4 = g.op("mo.relu", p3, MOTensor(DType.float32, 1, 128))
+    let p5 = p4 @ cst
+    let p6 = p5 + cst_0
+    _ = g.output(p6)
+
+    # CHECK: test_mnist_helpers
+    m.verify()
     print(m.__str__())
 
 
 def main():
-    mnist()
+    test_mnist_low_level()
+    test_mnist_helpers()

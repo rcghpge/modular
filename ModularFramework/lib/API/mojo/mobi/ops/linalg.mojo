@@ -37,7 +37,7 @@ def arange(start: Symbol, stop: Symbol, step: Symbol) -> Symbol:
     # Use stop to get the dtype since it's supplied in all cases
     var g = stop.graph()
     let dtype = stop.tensor_type().dtype.dtype
-    return g.op("mo.range", (start, stop, step), MOTensor(dtype, dyn()))[0]
+    return g.op("mo.range", (start, stop, step), MOTensor(dtype, dyn()))
 
 
 def outer(lhs: Symbol, rhs: Symbol) -> Symbol:
@@ -59,7 +59,7 @@ def batch_matmul(lhs: Symbol, rhs: Symbol) -> Symbol:
     dims.push_back(rhs_type.dim(-1))
     let out_type = MOTensor(lhs_type.dtype, dims)
 
-    return g.op("mo.batch_matmul", (broadcast_lhs, broadcast_rhs), out_type)[0]
+    return g.op("mo.batch_matmul", (broadcast_lhs, broadcast_rhs), out_type)
 
 
 def matmul_by_matrix(lhs: Symbol, rhs: Symbol) -> Symbol:
@@ -88,7 +88,7 @@ def matmul_by_matrix(lhs: Symbol, rhs: Symbol) -> Symbol:
         "mo.matmul",
         (reshape(lhs, reshape_shape, dyn(), lhs_type.dim(-1)), rhs),
         MOTensor(lhs_type.dtype, dyn(), rhs_type.dim(-1)),
-    )[0]
+    )
 
     return reshape(matmul_out, final_shape, final_dims)
 
@@ -123,7 +123,7 @@ def matmul_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
         "mo.broadcast_shape",
         (lhs_broadcast_dims, rhs_broadcast_dims),
         MOTensor(DType.int64, broadcast_rank - 2),
-    )[0]
+    )
 
     var lhs_final_dims = DynamicVector[Int64]()
     var rhs_final_dims = DynamicVector[Int64]()
@@ -143,7 +143,7 @@ def matmul_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
         "mo.broadcast_to",
         (lhs, lhs_broadcast_shape),
         MOTensor(lhs_type.dtype, lhs_final_dims),
-    )[0]
+    )
 
     let rhs_broadcast_shape = concat[axis=0](
         broadcast_dims_shape, rhs_matrix_dims
@@ -153,6 +153,6 @@ def matmul_broadcast(lhs: Symbol, rhs: Symbol) -> (Symbol, Symbol):
         "mo.broadcast_to",
         (rhs, rhs_broadcast_shape),
         MOTensor(rhs_type.dtype, rhs_final_dims),
-    )[0]
+    )
 
     return (broadcast_lhs, broadcast_rhs)
