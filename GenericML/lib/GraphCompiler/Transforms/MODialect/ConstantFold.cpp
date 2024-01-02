@@ -576,8 +576,7 @@ SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig, ModuleOp module,
               newOutput);
         }
         newOutput.getType().walk([&](KGEN::ParamDeclRefAttr ref) {
-          outputParams.insert(KGEN::ParamDeclAttr::get(
-              ref.getContext(), ref.getName(), ref.getType()));
+          outputParams.insert(KGEN::ParamDeclAttr::get(ref));
         });
         newOutputs.push_back(newOutput);
       }
