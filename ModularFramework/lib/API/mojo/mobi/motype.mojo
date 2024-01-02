@@ -133,9 +133,15 @@ struct MOTensor(MOType):
 struct Arity:
     var a: ArityPtr
 
-    fn __init__(inout self, t: TypePtr):
+    fn __init__(inout self, *types: TypePtr):
         self.a = mobicc.new_arity()
-        mobicc.add_type(self.a, t)
+        for t in types:
+            mobicc.add_type(self.a, t)
+
+    # TODO: Add MOType constructors once we have a way to store trait pointers.
 
     fn __len__(self) -> Int:
         return mobicc.arity_size(self.a)
+
+    fn to_mlir(self, m: Module) -> ArityPtr:
+        return self.a

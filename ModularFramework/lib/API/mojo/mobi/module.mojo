@@ -10,6 +10,7 @@ from .misc import AttrMap
 from .motype import Arity
 from .mobicc import AttrPtr, LocPtr, ModulePtr, TypePtr
 from .symbol import Symbol
+from .motype import MOType
 
 
 fn _dynamic_vector(shape: TensorShape) -> DynamicVector[Int64]:
@@ -145,12 +146,6 @@ struct Module:
     fn bool(self, *dims: Int64) -> TypePtr:
         let shape = _dynamic_vector(dims)
         return mobicc.bool(self.m, shape, len(shape))
-
-    fn types(self, *types: TypePtr) -> Arity:
-        var a = mobicc.new_arity()
-        for i in range(len(types)):
-            mobicc.add_type(a, types[i])
-        return Arity(a)
 
     fn graph(
         inout self,

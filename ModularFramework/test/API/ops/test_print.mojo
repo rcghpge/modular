@@ -7,9 +7,7 @@
 
 from tensor import Tensor, TensorShape
 
-from mobi import Module
-from mobi import testing
-from mobi.symbol import Tup
+from mobi import *
 
 
 fn test_print() raises:
@@ -18,11 +16,11 @@ fn test_print() raises:
     var m = Module()
     var g = m.graph(
         name,
-        m.types(m.f32(m.dyn(), m.dyn(), 2)),
-        m.types(),
+        Arity(m.f32(m.dyn(), m.dyn(), 2)),
+        Arity(),
     )
     g[0].print()
-    g.output(Tup())
+    g.output()
     m.verify()
 
     let x = Tensor[DType.float32](TensorShape(2, 2, 2), 1, 2, 3, 4, 5, 6, 7, 8)

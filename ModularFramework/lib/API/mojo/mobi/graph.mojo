@@ -26,44 +26,18 @@ struct Graph:
     fn __getitem__(self, pos: UInt32) -> Symbol:
         return Symbol(mobicc.get_input(self.g, pos))
 
-    fn op[
-        T: MOType
-    ](inout self, name: StringRef, input: Symbol, out_type: T) -> Tup:
-        return self.op(name, Tup(input), Arity(out_type.to_mlir(self.m)))
-
-    fn op(inout self, name: StringRef, input: Symbol, out_types: Arity) -> Tup:
-        return self.op(name, Tup(input), out_types)
+    fn op(inout self, name: StringRef, inputs: Tup) -> Tup:
+        return self.op(
+            name,
+            inputs,
+            Arity(mobicc.new_arity()),
+            AttrMap(mobicc.new_attr_map(), 0),
+        )
 
     fn op(inout self, name: StringRef, inputs: Tup, out_types: Arity) -> Tup:
         return self.op(
             name, inputs, out_types, AttrMap(mobicc.new_attr_map(), 0)
         )
-
-    fn op[
-        T: MOType
-    ](inout self, name: StringRef, inputs: Tup, out_type: T) -> Tup:
-        return self.op(
-            name,
-            inputs,
-            Arity(out_type.to_mlir(self.m)),
-            AttrMap(mobicc.new_attr_map(), 0),
-        )
-
-    fn op[
-        T: MOType
-    ](
-        inout self,
-        name: StringRef,
-        inputs: Tup,
-        out_type: T,
-        attrs: AttrMap,
-    ) -> Tup:
-        return self.op(name, inputs, Arity(out_type.to_mlir(self.m)), attrs)
-
-    fn op[
-        T: MOType
-    ](inout self, name: StringRef, out_type: T, attrs: AttrMap,) -> Tup:
-        return self.op(name, Arity(out_type.to_mlir(self.m)), attrs)
 
     fn op(
         inout self,
@@ -82,9 +56,38 @@ struct Graph:
     ) -> Tup:
         let loc = self.m.unknown_loc()
         let outputs = mobicc.new_op(
-            self.g, loc, name, inputs.t, out_types.a, attrs.m
+            self.g, loc, name, inputs.t, out_types.to_mlir(self.m), attrs.m
         )
         return Tup(outputs)
+
+    # These MOType helpers allow a shorthand expression for single-valued ops.
+    # TODO: Drop MOType constructors when they can be autoboxed inside an Arity.
+
+    fn op[
+        T: MOType
+    ](inout self, name: StringRef, inputs: Tup, out_type: T) -> Tup:
+        return self.op(
+            name,
+            inputs,
+            Arity(out_type.to_mlir(self.m)),
+            AttrMap(mobicc.new_attr_map(), 0),
+        )
+
+    fn op[
+        T: MOType
+    ](inout self, name: StringRef, out_type: T, attrs: AttrMap,) -> Tup:
+        return self.op(name, Arity(out_type.to_mlir(self.m)), attrs)
+
+    fn op[
+        T: MOType
+    ](
+        inout self,
+        name: StringRef,
+        inputs: Tup,
+        out_type: T,
+        attrs: AttrMap,
+    ) -> Tup:
+        return self.op(name, inputs, Arity(out_type.to_mlir(self.m)), attrs)
 
     # TODO: Separate DType/Tensor/TensorSpec adapters from Graph.
 
@@ -102,7 +105,7 @@ struct Graph:
         let type = m.type_of(value)
         return self.op(
             "mo.constant",
-            m.types(type),
+            Arity(type),
             m.attrs(m.tensor_attr("value", type, value)),
         )[0]
 
@@ -120,7 +123,7 @@ struct Graph:
             m.m, "value", value_ptr, t, is_owned=False
         )
 
-        return self.op("mo.constant", Tup(), m.types(t), m.attrs(attr))[0]
+        return self.op("mo.constant", Tup(), Arity(t), m.attrs(attr))[0]
 
     fn constant(inout self, value: Bool) raises -> Symbol:
         let v: SIMD[DType.bool, 1] = value
@@ -144,7 +147,7 @@ struct Graph:
             m.m, "value", value_ptr, t, is_owned=False
         )
 
-        return self.op("mo.constant", Tup(), m.types(t), m.attrs(attr))[0]
+        return self.op("mo.constant", Tup(), Arity(t), m.attrs(attr))[0]
 
     fn i64_constant(inout self, t: TypePtr, *values: Int64) raises -> Symbol:
         # TODO: Fix the checks once we have Mojo structured types
@@ -154,7 +157,7 @@ struct Graph:
             raise "Type must be an i64 tensor"
         return self.op(
             "mo.constant",
-            self.m.types(t),
+            Arity(t),
             self.m.attrs(self.m.i64_attr("value", t, values)),
         )[0]
 
@@ -175,7 +178,7 @@ struct Graph:
             raise "Type must be an i64 tensor"
         return self.op(
             "mo.constant",
-            self.m.types(t),
+            Arity(t),
             self.m.attrs(self.m.i64_attr("value", t, values)),
         )[0]
 
@@ -185,12 +188,15 @@ struct Graph:
             raise "Type must be an f32 tensor"
         return self.op(
             "mo.constant",
-            self.m.types(t),
+            Arity(t),
             self.m.attrs(self.m.f32_attr("value", t, values)),
         )[0]
 
+    fn output(inout self) raises:
+        _ = self.op("mo.output", Tup())
+
     fn output(inout self, outs: Tup) raises:
-        _ = self.op("mo.output", outs, self.m.types())
+        _ = self.op("mo.output", outs)
 
     fn arange[
         dtype: DType

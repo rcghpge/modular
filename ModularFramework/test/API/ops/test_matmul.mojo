@@ -7,8 +7,7 @@
 
 from tensor import Tensor, TensorShape
 
-from mobi import Module
-from mobi import testing
+from mobi import *
 
 
 fn test_matmul() raises:
@@ -19,8 +18,8 @@ fn test_matmul() raises:
     var m = Module()
     var g = m.graph(
         name,
-        m.types(m.f32(1, 2, 3), m.f32(3, 2)),
-        m.types(m.f32(1, 2, 2)),
+        Arity(m.f32(1, 2, 3), m.f32(3, 2)),
+        Arity(m.f32(1, 2, 2)),
     )
     g.output(g[0] @ g[1])
     m.verify()
@@ -63,8 +62,8 @@ fn test_batch_matmul() raises:
     var m = Module()
     var g = m.graph(
         name,
-        m.types(m.f32(1, 2, 3), m.f32(3, 2)),
-        m.types(m.f32(1, 2, 2)),
+        Arity(m.f32(1, 2, 3), m.f32(3, 2)),
+        Arity(m.f32(1, 2, 2)),
     )
     g.output(g[0] @ g[1])
     m.verify()

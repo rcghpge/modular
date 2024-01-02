@@ -13,7 +13,7 @@ from tensor import Tensor, TensorShape, TensorSpec
 
 
 @value
-@register_passable  # TODO: Use with Tuple shouldn't require reg-only.
+@register_passable  # TODO: Use with Tuple shouldn't require reg-only?
 struct Symbol(CollectionElement, Stringable):
     var s: SymbolPtr
 
@@ -56,7 +56,7 @@ struct Symbol(CollectionElement, Stringable):
     fn print(self, label: StringRef = "debug_tensor") raises:
         var g = self.graph()
         let attrs = g.m.attrs(g.m.string_attr("label", label))
-        _ = g.op("mo.debug.tensor.print", self, g.m.types(), attrs)
+        _ = g.op("mo.debug.tensor.print", self, Arity(), attrs)
 
     fn transpose(self) raises -> Symbol:
         return transpose(self, -1, -2)
@@ -254,19 +254,6 @@ struct Tup:
     fn __init__(inout self):
         self.t = mobicc.new_tuple()
 
-    fn __init__(inout self, *symbols: Symbol):
-        self.__init__(symbols)
-
-    fn __init__(inout self, symbols: VariadicList[Symbol]):
-        self.t = mobicc.new_tuple()
-        for symbol in symbols:
-            mobicc.add_symbol(self.t, symbol.s)
-
-    fn __init__(inout self, symbols: DynamicVector[Symbol]):
-        self.t = mobicc.new_tuple()
-        for i in range(len(symbols)):
-            mobicc.add_symbol(self.t, symbols[i].s)
-
     fn __init__(inout self, symbol: Symbol):
         self.t = mobicc.new_tuple()
         mobicc.add_symbol(self.t, symbol.s)
@@ -288,6 +275,19 @@ struct Tup:
             symbols.get[2, Symbol]().s,
             symbols.get[3, Symbol]().s,
         )
+
+    fn __init__(inout self, *symbols: Symbol):
+        self.__init__(symbols)
+
+    fn __init__(inout self, symbols: VariadicList[Symbol]):
+        self.t = mobicc.new_tuple()
+        for symbol in symbols:
+            mobicc.add_symbol(self.t, symbol.s)
+
+    fn __init__(inout self, symbols: DynamicVector[Symbol]):
+        self.t = mobicc.new_tuple()
+        for i in range(len(symbols)):
+            mobicc.add_symbol(self.t, symbols[i].s)
 
     fn __getitem__(self, pos: UInt32) -> Symbol:
         return Symbol(mobicc.get_symbol(self.t, pos))

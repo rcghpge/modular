@@ -7,7 +7,7 @@
 from tensor import TensorSpec, TensorShape
 
 from mobi.symbol import Tup
-from mobi.motype import ElementType, MOTensor, dyn
+from mobi.motype import *
 
 
 # TODO: Add checks or extend to unranked support, where static shapes assumed.
@@ -467,7 +467,7 @@ def split[axis: Int, N: Int](x: Symbol, split_sizes: StaticIntTuple[N]) -> Tup:
     return g.op(
         "mo.split",
         (x, sizes, g.constant(axis)),
-        g.m.types(split_type, split_type),
+        Arity(split_type, split_type),
     )
 
 

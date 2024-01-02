@@ -7,10 +7,8 @@
 
 from tensor import Tensor, TensorShape
 
-from mobi import Module
-from mobi import testing
+from mobi import *
 from mobi.ops import squeeze
-from mobi.symbol import Tup
 
 
 fn test_squeeze() raises:
@@ -19,8 +17,8 @@ fn test_squeeze() raises:
     var m = Module()
     var g = m.graph(
         name,
-        m.types(m.f32(m.dyn(), 1, 3)),
-        m.types(m.f32(m.dyn(), 3)),
+        Arity(m.f32(m.dyn(), 1, 3)),
+        Arity(m.f32(m.dyn(), 3)),
     )
     g.output(squeeze(g[0], 1))
     m.verify()

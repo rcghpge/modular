@@ -6,9 +6,10 @@
 # UNSUPPORTED: windows
 # RUN: mojo -I %mobi_pkg_dir %s | FileCheck %s
 
-import mobi
 from tensor import Tensor, TensorSpec, TensorShape
 from utils.index import Index
+
+from mobi import *
 
 # Based on the MNIST example at https://www.tensorflow.org/datasets/keras_example:
 #
@@ -30,23 +31,23 @@ from utils.index import Index
 
 
 def mnist():
-    var m = mobi.Module()
+    var m = Module()
 
     var g = m.graph(
         "min_mnist",
-        m.types(m.f32(1, 28, 28, 1)),
-        m.types(m.f32(1, 10)),
+        Arity(m.f32(1, 28, 28, 1)),
+        Arity(m.f32(1, 10)),
     )
     let cst_data = Tensor[DType.float32](128, 10)
     cst_data._to_buffer().fill(0.5)
     let cst = g.op(
         "mo.constant",
-        m.types(m.f32(128, 10)),
+        Arity(m.f32(128, 10)),
         m.attrs(m.tensor_attr("value", m.f32(128, 10), cst_data)),
     )
     let cst_0 = g.op(
         "mo.constant",
-        m.types(m.f32(1, 10)),
+        Arity(m.f32(1, 10)),
         m.attrs(
             m.f32_attr(
                 "value",
@@ -69,28 +70,28 @@ def mnist():
     cst_1_data._to_buffer().fill(0.5)
     let cst_1 = g.op(
         "mo.constant",
-        m.types(m.f32(784, 128)),
+        Arity(m.f32(784, 128)),
         m.attrs(m.tensor_attr("value", m.f32(784, 128), cst_1_data)),
     )
     let cst_2_data = Tensor[DType.float32](1, 128)
     cst_2_data._to_buffer().fill(0.5)
     let cst_2 = g.op(
         "mo.constant",
-        m.types(m.f32(1, 128)),
+        Arity(m.f32(1, 128)),
         m.attrs(m.tensor_attr("value", m.f32(1, 128), cst_2_data)),
     )
     let cst_3 = g.op(
         "mo.constant",
-        m.types(m.i32(2)),
+        Arity(m.i32(2)),
         m.attrs(m.i32_attr("value", m.i32(2), -1, 784)),
     )
-    let p1 = g.op("mo.reshape", (g[0], cst_3[0]), m.types(m.f32(1, 784)))
-    let p2 = g.op("mo.matmul", (p1[0], cst_1[0]), m.types(m.f32(1, 128)))
-    let p3 = g.op("mo.add", (p2[0], cst_2[0]), m.types(m.f32(1, 128)))
-    let p4 = g.op("mo.relu", (p3[0]), m.types(m.f32(1, 128)))
-    let p5 = g.op("mo.matmul", (p4[0], cst[0]), m.types(m.f32(1, 10)))
-    let p6 = g.op("mo.add", (p5[0], cst_0[0]), m.types(m.f32(1, 10)))
-    _ = g.op("mo.output", p6, m.types())
+    let p1 = g.op("mo.reshape", (g[0], cst_3[0]), Arity(m.f32(1, 784)))
+    let p2 = g.op("mo.matmul", (p1[0], cst_1[0]), Arity(m.f32(1, 128)))
+    let p3 = g.op("mo.add", (p2[0], cst_2[0]), Arity(m.f32(1, 128)))
+    let p4 = g.op("mo.relu", (p3[0]), Arity(m.f32(1, 128)))
+    let p5 = g.op("mo.matmul", (p4[0], cst[0]), Arity(m.f32(1, 10)))
+    let p6 = g.op("mo.add", (p5[0], cst_0[0]), Arity(m.f32(1, 10)))
+    _ = g.op("mo.output", p6, Arity())
 
     # CHECK: min_mnist
     print(m.__str__())
