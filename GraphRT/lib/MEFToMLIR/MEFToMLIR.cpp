@@ -11,7 +11,7 @@
 #include "GraphRT/MEFToMLIR.h"
 #include "GraphRT/MEF/MEFReader.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
-#include "Support/Compiler/MLIRDenseAttrStorage.h"
+#include "Support/Compiler/MLIRDenseAttr.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/MDialect/MTypes.h"
 #include "mlir/AsmParser/AsmParser.h"
