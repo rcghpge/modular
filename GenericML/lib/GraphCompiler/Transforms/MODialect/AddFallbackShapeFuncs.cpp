@@ -136,6 +136,16 @@ struct AddFallbackShapeFunctions
       if (op.getOutputParamDecls().empty())
         return mlir::WalkResult::advance();
 
+      // NOTE this is a temporary guard that ensures we only symbolicize the
+      // following ops' fallback shape functions in the experimental shape
+      // inference path.
+      if (restricted &&
+          !isa<MO::ArgMaxOp, MO::ArgMinOp, MO::AvgPoolOp, MO::ConvOp,
+               MO::ConvTransposeOp, MO::GatherOp, MO::MaxPoolOp, MO::MeanOp,
+               MO::PadLike, MO::RangeOp, MO::Reduction, MO::TransposeOp,
+               MO::TileOp, MO::RangeOp, MO::SliceOp>(op.getOperation()))
+        return mlir::WalkResult::advance();
+
       // Call the fallbacks.
       builder.setInsertionPoint(op);
       CALL_FALLBACK(MO::ArgMaxOp)

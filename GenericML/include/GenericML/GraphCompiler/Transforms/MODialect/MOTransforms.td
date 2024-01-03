@@ -49,6 +49,8 @@ def AddFallbackShapeFunctions :
   let options = [
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
       "Paths to mojo packages containing mojo kernel definitions to be loaded. ">,
+    Option<"restricted", "restricted", "bool", "false",
+      "If set to true, only add fallback shape functions for a limited set of ops.">,
   ];
 
   let dependentDialects = [

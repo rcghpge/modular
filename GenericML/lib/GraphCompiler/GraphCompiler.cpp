@@ -45,7 +45,7 @@ void M::MO::loadDialects(mlir::DialectRegistry &registry) {
 }
 
 void M::MO::registerShapeInferencePipeline() {
-  mlir::PassPipelineRegistration<>(
+  mlir::PassPipelineRegistration<ShapeInferenceOptions>(
       "shape-inference", "Run the end-to-end shape inference pipeline.",
       buildShapeInferencePipeline);
 }
@@ -102,7 +102,9 @@ maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
     return;
   if (opts.constantFold)
     pm.addPass(MO::createConstantFold());
-  buildShapeInferencePipeline(pm);
+  ShapeInferenceOptions shapeInferenceOpts;
+  shapeInferenceOpts.isExperimentalMode = opts.useExperimentalShapeInference;
+  buildShapeInferencePipeline(pm, shapeInferenceOpts);
   pm.addPass(MO::createSymbolicOptimization());
   pm.addPass(MO::createPropagateShapes());
   pm.addPass(MO::createAddFallbackShapeFunctions({opts.kernelLibraryPaths}));
@@ -269,8 +271,18 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCSEPass());
 }
 
-void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm) {
+void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
+                                        const ShapeInferenceOptions &opts) {
   pm.addPass(MO::createResolveUnknownParameters());
+  if (opts.isExperimentalMode) {
+    // these will handle ops with simple shape functions like
+    // mo.matmul, mo.concat, mo.gather, mo.range, etc.
+    AddFallbackShapeFunctionsOptions passOpts;
+    passOpts.restricted = true;
+    pm.addPass(MO::createAddFallbackShapeFunctions(passOpts));
+    pm.addPass(MO::createSymbolicizeFallbackShapeFunctions());
+  }
+  // this handles this rest
   pm.addPass(MO::createShapeInferenceMaterialization());
 
   // Convert most scalar <--> tensor reshapes into rebind, which will be merged
@@ -278,6 +290,12 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm) {
   // reshapes for shape inputs.
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(MO::createStaticizeShapes());
+
+  // Staticization might open up new opportunities for symbolicizing fallback
+  // shape functions. This is simialr to why we run symbolic shape function
+  // materialization during staticization.
+  if (opts.isExperimentalMode)
+    pm.addPass(MO::createSymbolicizeFallbackShapeFunctions());
   pm.addPass(MO::createInlineShapeFunctions());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());

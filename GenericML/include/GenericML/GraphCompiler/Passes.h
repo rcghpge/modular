@@ -148,6 +148,22 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
           "when the buffer is at least this size in bytes, and is the source "
           "or target of a host/device memory transfer."),
       llvm::cl::init(0)};
+  Option<bool> useExperimentalShapeInference{
+      *this, "use-experimental-shape-inference",
+      llvm::cl::desc("If enabled, pre-emptively materialize fallback shape"
+                     "functions for certains ops, and use the "
+                     "SymbolicizeFallbackShapeFunctionsPass"),
+      llvm::cl::init(false)};
+};
+
+struct ShapeInferenceOptions
+    : public mlir::PassPipelineOptions<ShapeInferenceOptions> {
+  Option<bool> isExperimentalMode{
+      *this, "experimental",
+      llvm::cl::desc("If enabled, pre-emptively materialize fallback shape"
+                     "functions for certains ops, and use the "
+                     "SymbolicizeFallbackShapeFunctionsPass"),
+      llvm::cl::init(false)};
 };
 
 // Registers a runtime for use by the MO-to-MGP pipeline when invoked via the
@@ -172,7 +188,8 @@ void buildMoToMgpPipeline(mlir::OpPassManager &pm, const MoToMgpOptions &opts,
 void registerShapeInferencePipeline();
 
 // Create the end-to-end shape inference pipeline.
-void buildShapeInferencePipeline(mlir::OpPassManager &pm);
+void buildShapeInferencePipeline(mlir::OpPassManager &pm,
+                                 const ShapeInferenceOptions &opts);
 
 } // namespace M::MO
 
