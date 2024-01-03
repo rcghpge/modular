@@ -26,27 +26,25 @@ namespace {
 
 struct ValueTest : ::testing::Test {};
 
-static LLCL::Runtime *getRuntime() {
-  static LLCL::Runtime *runtime =
-      LLCL::createRuntime(LLCL::RuntimeOptions().forDebug()).release();
-  return runtime;
+static std::unique_ptr<LLCL::Runtime> getRuntime() {
+  return LLCL::createUniqueRuntime(LLCL::RuntimeOptions().forDebug());
 }
 
-static GML::Tensor makeTensor(size_t size) {
+static GML::Tensor makeTensor(LLCL::Runtime &runtime, size_t size) {
   M::TensorSpec spec({size}, DType::f32);
   GML::Tensor result =
-      GML::Tensor::createOwned(std::move(spec), getRuntime(), /*alignment=*/{});
+      GML::Tensor::createOwned(std::move(spec), runtime, /*alignment=*/{});
   return result;
 }
 
-static List makeTensorList(size_t size) {
+static List makeTensorList(LLCL::Runtime &runtime, size_t size) {
   List list;
   for (size_t i = 0; i < size; ++i) {
     TensorSpec spec({i}, M::DType::f32);
 
-    GML::Tensor tensor = makeTensor(i);
+    GML::Tensor tensor = makeTensor(runtime, i);
     list.getElements().push_back(
-        LLCL::AnyAsyncValueRef::createReady<GML::Tensor>(getRuntime(),
+        LLCL::AnyAsyncValueRef::createReady<GML::Tensor>(runtime,
                                                          std::move(tensor)));
   }
 
@@ -70,9 +68,10 @@ static void assertTensorBufferEqual(const GML::Tensor &lhs,
 }
 
 TEST_F(ValueTest, ListTest) {
-  List list1 = makeTensorList(3);
+  auto runtime = getRuntime();
+  List list1 = makeTensorList(*runtime, 3);
 
-  List list2 = makeTensorList(3);
+  List list2 = makeTensorList(*runtime, 3);
 
   // Lists contain distinct tensors, and are not the same.
   ASSERT_NE(list1, list2);
@@ -89,21 +88,22 @@ TEST_F(ValueTest, ListTest) {
 }
 
 TEST_F(ValueTest, TupleOfNoneTest) {
+  auto runtime = getRuntime();
   Tuple tuple1;
   Tuple tuple2;
   Tuple tuple3;
 
   tuple1.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<None>(getRuntime()));
+      LLCL::AnyAsyncValueRef::createReady<None>(*runtime));
   tuple2.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<None>(getRuntime()));
+      LLCL::AnyAsyncValueRef::createReady<None>(*runtime));
   tuple3.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<None>(getRuntime()));
+      LLCL::AnyAsyncValueRef::createReady<None>(*runtime));
 
   tuple1.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<None>(getRuntime()));
+      LLCL::AnyAsyncValueRef::createReady<None>(*runtime));
   tuple2.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<None>(getRuntime()));
+      LLCL::AnyAsyncValueRef::createReady<None>(*runtime));
 
   ASSERT_EQ(tuple1, tuple2);
   ASSERT_NE(tuple1, tuple3);
@@ -114,65 +114,62 @@ TEST_F(ValueTest, TupleOfNoneTest) {
 }
 
 TEST_F(ValueTest, DictTest) {
+  auto runtime = getRuntime();
   Dict dict1;
   Dict dict2;
   Dict dict3;
 
   dict1.getElements()[LLCL::AnyAsyncValueRef::createReady<std::string>(
-      getRuntime(), "a")] =
-      LLCL::AnyAsyncValueRef::createReady<None>(getRuntime());
+      *runtime, "a")] = LLCL::AnyAsyncValueRef::createReady<None>(*runtime);
 
   dict2.getElements()[LLCL::AnyAsyncValueRef::createReady<std::string>(
-      getRuntime(), "a")] =
-      LLCL::AnyAsyncValueRef::createReady<None>(getRuntime());
+      *runtime, "a")] = LLCL::AnyAsyncValueRef::createReady<None>(*runtime);
 
   dict3.getElements()[LLCL::AnyAsyncValueRef::createReady<std::string>(
-      getRuntime(), "b")] =
-      LLCL::AnyAsyncValueRef::createReady<None>(getRuntime());
+      *runtime, "b")] = LLCL::AnyAsyncValueRef::createReady<None>(*runtime);
 
-  GML::Tensor tensor = makeTensor(1);
-  dict3.getElements()[LLCL::AnyAsyncValueRef::createReady<std::string>(
-      getRuntime(), "b")] =
-      LLCL::AnyAsyncValueRef::createReady<GML::Tensor>(getRuntime(),
+  GML::Tensor tensor = makeTensor(*runtime, 1);
+  dict3.getElements()[LLCL::AnyAsyncValueRef::createReady<std::string>(*runtime,
+                                                                       "b")] =
+      LLCL::AnyAsyncValueRef::createReady<GML::Tensor>(*runtime,
                                                        std::move(tensor));
 
   ASSERT_EQ(std::to_string(dict1), "Dict{\"a\": <none>}");
 }
 
 TEST_F(ValueTest, VariantDictKeys) {
+  auto runtime = getRuntime();
   List list;
   list.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<std::string>(getRuntime(), "a"));
+      LLCL::AnyAsyncValueRef::createReady<std::string>(*runtime, "a"));
 
   list.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<int64_t>(getRuntime(), 2));
+      LLCL::AnyAsyncValueRef::createReady<int64_t>(*runtime, 2));
 
   Dict dict1;
   Dict dict2;
 
-  dict1.getElements()[Variant(
-      LLCL::AnyAsyncValueRef::createReady<List>(getRuntime(), list))] =
-      LLCL::AnyAsyncValueRef::createReady<None>(getRuntime());
+  dict1.getElements()[Variant(LLCL::AnyAsyncValueRef::createReady<List>(
+      *runtime, list))] = LLCL::AnyAsyncValueRef::createReady<None>(*runtime);
 
-  dict2.getElements()[Variant(
-      LLCL::AnyAsyncValueRef::createReady<List>(getRuntime(), list))] =
-      LLCL::AnyAsyncValueRef::createReady<None>(getRuntime());
+  dict2.getElements()[Variant(LLCL::AnyAsyncValueRef::createReady<List>(
+      *runtime, list))] = LLCL::AnyAsyncValueRef::createReady<None>(*runtime);
 
   ASSERT_EQ(dict1, dict2);
   ASSERT_EQ(std::to_string(dict1), "Dict{List[\"a\", 2]: <none>}");
 }
 
 TEST_F(ValueTest, YamlTest0) {
+  auto runtime = getRuntime();
 
   Dict dict1;
 
-  dict1.getElements()[Variant(
-      LLCL::AnyAsyncValueRef::createReady<std::string>(getRuntime(), "a"))] =
-      LLCL::AnyAsyncValueRef::createReady<None>(getRuntime());
+  dict1.getElements()[Variant(LLCL::AnyAsyncValueRef::createReady<std::string>(
+      *runtime, "a"))] = LLCL::AnyAsyncValueRef::createReady<None>(*runtime);
 
   dict1.getElements()[Variant(
-      LLCL::AnyAsyncValueRef::createReady<double>(getRuntime(), 1.0))] =
-      LLCL::AnyAsyncValueRef::createReady<int64_t>(getRuntime(), 5);
+      LLCL::AnyAsyncValueRef::createReady<double>(*runtime, 1.0))] =
+      LLCL::AnyAsyncValueRef::createReady<int64_t>(*runtime, 5);
 
   std::string ystring = toYamlString(dict1);
 
@@ -199,19 +196,19 @@ TEST_F(ValueTest, YamlTest0) {
 }
 
 TEST_F(ValueTest, YamlTest1) {
+  auto runtime = getRuntime();
 
   List list;
   list.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<std::string>(getRuntime(), "a"));
+      LLCL::AnyAsyncValueRef::createReady<std::string>(*runtime, "a"));
 
   list.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<int64_t>(getRuntime(), 2));
+      LLCL::AnyAsyncValueRef::createReady<int64_t>(*runtime, 2));
 
   Dict dict1;
 
-  dict1.getElements()[Variant(
-      LLCL::AnyAsyncValueRef::createReady<List>(getRuntime(), list))] =
-      LLCL::AnyAsyncValueRef::createReady<None>(getRuntime());
+  dict1.getElements()[Variant(LLCL::AnyAsyncValueRef::createReady<List>(
+      *runtime, list))] = LLCL::AnyAsyncValueRef::createReady<None>(*runtime);
 
   // Test YAML string.
   std::string ystring = toYamlString(dict1);
@@ -236,19 +233,20 @@ TEST_F(ValueTest, YamlTest1) {
 }
 
 TEST_F(ValueTest, YamlTest2) {
+  auto runtime = getRuntime();
 
   Tuple tuple;
   tuple.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<double>(getRuntime(), 1.5f));
+      LLCL::AnyAsyncValueRef::createReady<double>(*runtime, 1.5f));
 
   tuple.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<bool>(getRuntime(), true));
+      LLCL::AnyAsyncValueRef::createReady<bool>(*runtime, true));
 
   Dict dict1;
 
   dict1.getElements()[Variant(
-      LLCL::AnyAsyncValueRef::createReady<Tuple>(getRuntime(), tuple))] =
-      LLCL::AnyAsyncValueRef::createReady<double>(getRuntime(), 3.5f);
+      LLCL::AnyAsyncValueRef::createReady<Tuple>(*runtime, tuple))] =
+      LLCL::AnyAsyncValueRef::createReady<double>(*runtime, 3.5f);
 
   // Test YAML string.
   std::string ystring = toYamlString(dict1);
@@ -274,24 +272,24 @@ TEST_F(ValueTest, YamlTest2) {
 
 // Tests serializing `VariantResultInfo` containing composed types to YAML.
 TEST_F(ValueTest, ResultInfoTest) {
+  auto runtime = getRuntime();
 
   Tuple tuple;
   tuple.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<double>(getRuntime(), 1.5f));
+      LLCL::AnyAsyncValueRef::createReady<double>(*runtime, 1.5f));
 
   tuple.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<bool>(getRuntime(), true));
+      LLCL::AnyAsyncValueRef::createReady<bool>(*runtime, true));
 
   Dict dict;
 
   dict.getElements()[Variant(
-      LLCL::AnyAsyncValueRef::createReady<Tuple>(getRuntime(), tuple))] =
-      LLCL::AnyAsyncValueRef::createReady<TensorResultInfo>(
-          getRuntime(), "tensor1", "2x4xf32");
+      LLCL::AnyAsyncValueRef::createReady<Tuple>(*runtime, tuple))] =
+      LLCL::AnyAsyncValueRef::createReady<TensorResultInfo>(*runtime, "tensor1",
+                                                            "2x4xf32");
 
   std::shared_ptr<ResultInfo> resultInfo = std::make_shared<VariantResultInfo>(
-      "outputName",
-      LLCL::AnyAsyncValueRef::createReady<Dict>(getRuntime(), dict));
+      "outputName", LLCL::AnyAsyncValueRef::createReady<Dict>(*runtime, dict));
 
   // Test YAML string.
   std::string ystring = toYamlString(resultInfo);
@@ -316,36 +314,37 @@ TEST_F(ValueTest, ResultInfoTest) {
 // Tests converting composed types containing `GML::Tensor` to composed types
 // containing `TensorResultInfo` for tensor leaf nodes.
 TEST_F(ValueTest, ResultConversionTest) {
+  auto runtime = getRuntime();
 
   // Create 4 different tensors.
-  GML::Tensor tensor = makeTensor(8);
+  GML::Tensor tensor = makeTensor(*runtime, 8);
   LLCL::AnyAsyncValueRef wrappedTensor =
-      LLCL::AnyAsyncValueRef::createReady<GML::Tensor>(getRuntime(),
+      LLCL::AnyAsyncValueRef::createReady<GML::Tensor>(*runtime,
                                                        std::move(tensor));
 
-  List list = makeTensorList(3);
+  List list = makeTensorList(*runtime, 3);
 
   Dict dict;
 
   // Reuse some of the tensors occuring in the list in the dictionary as well.
   dict.getElements()[Variant(LLCL::AnyAsyncValueRef::createReady<std::string>(
-      getRuntime(), "a"))] = list.getElements()[0];
+      *runtime, "a"))] = list.getElements()[0];
 
   dict.getElements()[Variant(LLCL::AnyAsyncValueRef::createReady<std::string>(
-      getRuntime(), "b"))] = wrappedTensor;
+      *runtime, "b"))] = wrappedTensor;
 
   dict.getElements()[Variant(LLCL::AnyAsyncValueRef::createReady<std::string>(
-      getRuntime(), "c"))] = list.getElements()[2];
+      *runtime, "c"))] = list.getElements()[2];
 
   Tuple tuple;
   tuple.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<List>(getRuntime(), list));
+      LLCL::AnyAsyncValueRef::createReady<List>(*runtime, list));
   tuple.getElements().push_back(
-      LLCL::AnyAsyncValueRef::createReady<Dict>(getRuntime(), dict));
+      LLCL::AnyAsyncValueRef::createReady<Dict>(*runtime, dict));
 
   // Conversion for YAML and binary serialization.
   LLCL::AnyAsyncValueRef in =
-      LLCL::AnyAsyncValueRef::createReady<Tuple>(getRuntime(), tuple);
+      LLCL::AnyAsyncValueRef::createReady<Tuple>(*runtime, tuple);
   ProcessedResults processedResults;
   LLCL::AnyAsyncValueRef out =
       Torch::getResultForBinaryOutput(in, processedResults);

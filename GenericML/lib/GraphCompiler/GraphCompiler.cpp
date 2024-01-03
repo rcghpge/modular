@@ -19,6 +19,7 @@
 #include "GenericML/GraphCompiler/Transforms/MOQDialect/MOQTransforms.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
+#include "LLCL/Runtime/Runtime.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
@@ -50,18 +51,10 @@ void M::MO::registerShapeInferencePipeline() {
       buildShapeInferencePipeline);
 }
 
-static Runtime *&getMoToMgpRuntime() {
-  static Runtime *theRuntime = nullptr;
-  return theRuntime;
-}
-
-void M::MO::registerMoToMgpRuntimeForTesting(Runtime &runtime) {
-  getMoToMgpRuntime() = &runtime;
-}
-
 static void buildMoToMgpPipelineDefaultRuntime(mlir::OpPassManager &pm,
                                                const MoToMgpOptions &opts) {
-  buildMoToMgpPipeline(pm, opts, getMoToMgpRuntime());
+  // Requires a runtime to have already been established.
+  buildMoToMgpPipeline(pm, opts, LLCL::Runtime::getCurrentRuntime());
 }
 
 void M::MO::registerMoToMgpPipeline() {
@@ -116,8 +109,7 @@ maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
 }
 
 void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
-                                 const MoToMgpOptions &opts,
-                                 Runtime *optRuntime) {
+                                 const MoToMgpOptions &opts, Runtime &runtime) {
   if (opts.debugPrintAllTensors)
     pm.addPass(MO::createDebugPrintAllTensorsPass());
 
@@ -149,7 +141,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   addDevicesOpts.enableExtraDevices = opts.enableExtraDevices;
   addDevicesOpts.enableFakeCudaDevice = opts.enableFakeCudaDevice;
   addDevicesOpts.defaultDeviceLabel = opts.defaultDeviceLabel;
-  pm.addPass(MO::createAddDevicesPass(addDevicesOpts, optRuntime));
+  pm.addPass(MO::createAddDevicesPass(addDevicesOpts, runtime));
 
   pm.addPass(MO::createHackyPatternFusionForModconPass());
   pm.addPass(MO::createAssignDevicesPass());
@@ -240,7 +232,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.cacheDir.hasValue() && !opts.cacheDir.empty()) {
     Cache::DeflateConstantsOptions deflateOpts;
     deflateOpts.cacheDir = opts.cacheDir;
-    pm.addPass(Cache::createDeflateConstants(deflateOpts));
+    pm.addPass(Cache::createDeflateConstantsPass(deflateOpts, runtime));
 
     MGP::LookupCachedConstantsPassOptions lookupOpts;
     lookupOpts.cacheDir = opts.cacheDir;

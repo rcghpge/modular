@@ -20,10 +20,8 @@ static LLCL::EncodedLocation unknownLoc() {
   return LLCL::UnknownLocationDecoder::getEncodedLocation();
 }
 
-static LLCL::Runtime *getRuntime() {
-  static LLCL::Runtime *runtime =
-      LLCL::createRuntime(LLCL::RuntimeOptions().forDebug()).release();
-  return runtime;
+static std::unique_ptr<LLCL::Runtime> getRuntime() {
+  return LLCL::createUniqueRuntime(LLCL::RuntimeOptions().forDebug());
 }
 
 TEST(BufferRef, Default) {
@@ -41,7 +39,7 @@ TEST(BufferRef, Default) {
 TEST(BufferRef, CreateOwned) {
   auto runtime = getRuntime();
   uint8_t data[4] = {1, 2, 3, 4};
-  BufferRef ref = BufferRef::createOwned(runtime, /*size=*/4,
+  BufferRef ref = BufferRef::createOwned(*runtime, /*size=*/4,
                                          /*alignment=*/128, /*copyFrom=*/data);
   ASSERT_TRUE(ref);
   ASSERT_TRUE(llvm::isAddrAligned(llvm::Align(128), ref.getBuffer()));
@@ -50,7 +48,7 @@ TEST(BufferRef, CreateOwned) {
 
 TEST(BufferRef, CreateEmptyOwned) {
   auto runtime = getRuntime();
-  BufferRef ref = BufferRef::createOwned(runtime, /*size=*/0,
+  BufferRef ref = BufferRef::createOwned(*runtime, /*size=*/0,
                                          /*alignment=*/128);
   ASSERT_TRUE(ref);
   ASSERT_EQ(ref.getSize(), 0u);
@@ -80,9 +78,9 @@ TEST(BufferRef, CreateEmptyBorrowed) {
 TEST(BufferRef, CreateSafeBorrowed) {
   auto runtime = getRuntime();
   BufferRef owned =
-      BufferRef::createOwned(runtime, /*size=*/8, /*alignment=*/64);
+      BufferRef::createOwned(*runtime, /*size=*/8, /*alignment=*/64);
   auto borrow =
-      AsyncValueRef<BufferRef>::createReady(runtime, std::move(owned));
+      AsyncValueRef<BufferRef>::createReady(*runtime, std::move(owned));
   {
     BufferRef borrowed =
         BufferRef::createSafeBorrowedSlice(borrow.copy(), unknownLoc());
@@ -97,9 +95,9 @@ TEST(BufferRef, CreateSafeBorrowed) {
 TEST(BufferRef, CreateSafeBorrowedSlice) {
   auto runtime = getRuntime();
   BufferRef owned =
-      BufferRef::createOwned(runtime, /*size=*/8, /*alignment=*/64);
+      BufferRef::createOwned(*runtime, /*size=*/8, /*alignment=*/64);
   auto borrow =
-      AsyncValueRef<BufferRef>::createReady(runtime, std::move(owned));
+      AsyncValueRef<BufferRef>::createReady(*runtime, std::move(owned));
   BufferRef borrowed = BufferRef::createSafeBorrowedSlice(
       borrow.copy(), unknownLoc(), /*offset=*/2, /*size=*/4);
   ASSERT_EQ(borrowed.getSize(), 4u);
@@ -110,7 +108,7 @@ TEST(BufferRef, CreateSafeBorrowedSlice) {
 TEST(BufferRef, Move) {
   auto runtime = getRuntime();
   BufferRef ref =
-      BufferRef::createOwned(runtime, sizeof(int), /*alignment=*/16);
+      BufferRef::createOwned(*runtime, sizeof(int), /*alignment=*/16);
   const void *data = ref.getBuffer();
 
   BufferRef ref2 = std::move(ref);
@@ -122,7 +120,7 @@ TEST(BufferRef, BorrowError) {
   auto runtime = getRuntime();
 
   BufferRef ref =
-      BufferRef::createOwned(runtime, sizeof(int), /*alignment=*/16);
+      BufferRef::createOwned(*runtime, sizeof(int), /*alignment=*/16);
   BufferRef bor = ref.borrow(BufferRef::kExecute);
   ErrorOr<BufferRef> bor2OrErr = bor.borrowOrError(BufferRef::kConstant);
   ASSERT_TRUE(bor2OrErr.isError());
@@ -133,7 +131,7 @@ TEST(BufferRef, BorrowError) {
 TEST(BufferRef, Borrow) {
   auto runtime = getRuntime();
   BufferRef ref =
-      BufferRef::createOwned(runtime, sizeof(int), /*alignment=*/16);
+      BufferRef::createOwned(*runtime, sizeof(int), /*alignment=*/16);
   BufferRef bor = ref.borrow(BufferRef::kExecute);
   ASSERT_EQ(bor.getBuffer(), ref.getBuffer());
   ASSERT_EQ(bor.getSize(), ref.getSize());
@@ -147,10 +145,10 @@ TEST(BufferRef, Borrow) {
 TEST(BufferRef, DeepCopy) {
   auto runtime = getRuntime();
   BufferRef ref =
-      BufferRef::createOwned(runtime, sizeof(int), /*alignment=*/16);
+      BufferRef::createOwned(*runtime, sizeof(int), /*alignment=*/16);
   memset(ref.getMutableBuffer(), 42, sizeof(int));
   BufferRef bor = ref.borrow(BufferRef::kExecute);
-  BufferRef copy = bor.deepCopy(runtime);
+  BufferRef copy = bor.deepCopy(*runtime);
   ASSERT_NE(copy.getBuffer(), bor.getBuffer());
   ASSERT_EQ(memcmp(bor.getBuffer(), copy.getBuffer(), sizeof(int)), 0);
   ASSERT_EQ(copy.getSize(), bor.getSize());
@@ -173,7 +171,7 @@ TEST(BufferRef, Destructor) {
 
   {
     BufferRef ref =
-        BufferRef::createOwned(runtime, sizeof(int), /*alignment=*/16);
+        BufferRef::createOwned(*runtime, sizeof(int), /*alignment=*/16);
     BufferRef ref2 = std::move(ref);
     // Will deallocate.
   }
@@ -182,7 +180,7 @@ TEST(BufferRef, Destructor) {
 TEST(BufferRef, ReleaseBufferIfOwned) {
   auto runtime = getRuntime();
   uint8_t data[] = {1, 2, 3, 4};
-  BufferRef ref = BufferRef::createOwned(runtime, 4,
+  BufferRef ref = BufferRef::createOwned(*runtime, 4,
                                          /*alignment=*/{}, data);
   const void *released = ref.releaseBufferIfOwned();
   ASSERT_TRUE(released != nullptr);

@@ -252,10 +252,10 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
 
     // Create a runtime to use during compilation. It will convey global
     // options to the passes which need them.
-    std::unique_ptr<Runtime> runtime = LLCL::createRuntime();
-    mofLoweringOptions.setupRuntimeOptions(*runtime);
+    auto ownedRuntime = LLCL::createRuntimeIfNeeded();
+    mofLoweringOptions.setupRuntimeOptions(*ownedRuntime);
 
-    if (failed(lowerMOToMGP(module.get(), moToMgpOptions, runtime.get())))
+    if (failed(lowerMOToMGP(module.get(), moToMgpOptions, *ownedRuntime)))
       return Error("unable to lower MO to MGP");
     writeIntermediateFileIfRequested("mgp", module.get(),
                                      mofContext->getCommonCLOptions(), file);

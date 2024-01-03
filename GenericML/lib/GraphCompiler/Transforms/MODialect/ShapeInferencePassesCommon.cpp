@@ -95,11 +95,11 @@ LogicalResult elaborateModule(ModuleOp moduleOp) {
   moduleOp->setAttr(KGEN::EnvAttr::getEnvAttrName(),
                     KGEN::EnvAttr::get(envAttrs.getDictionary(ctx)));
 
-  std::unique_ptr<LLCL::Runtime> runtime =
-      LLCL::createRuntime(LLCL::RuntimeOptions().withLeakCheckedAllocator());
+  auto ownedRuntime = LLCL::createRuntimeIfNeeded(
+      LLCL::RuntimeOptions().withLeakCheckedAllocator());
   mlir::PassManager pm(ctx);
   KGEN::populateElaborateModulePasses(
-      pm, *runtime, *target, {/*enableSearch=*/false},
+      pm, *ownedRuntime, *target, {/*enableSearch=*/false},
       [](KGEN::PackageLinkOp packageLink, TargetInfoAttr) {
         // TODO(#22819): For now, do not compile packages on-demand, and instead
         // stitch the pre-elaborated module into the module being built.

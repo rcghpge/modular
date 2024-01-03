@@ -26,10 +26,8 @@ struct PayloadB : public ReferenceCounted<PayloadB> {
   char c;
 };
 
-static LLCL::Runtime *GetRuntime() {
-  static LLCL::Runtime *runtime =
-      LLCL::createRuntime(LLCL::RuntimeOptions().forDebug()).release();
-  return runtime;
+static std::unique_ptr<LLCL::Runtime> getRuntime() {
+  return LLCL::createUniqueRuntime(LLCL::RuntimeOptions().forDebug());
 }
 
 #ifndef NDEBUG
@@ -53,7 +51,7 @@ TEST(ContextTest, StateSlotTest) {
 }
 
 TEST(ContextTest, getOrCreateBufferTest) {
-  auto runtime = GetRuntime();
+  auto runtime = getRuntime();
   {
     // Add scope to make sure that the allocator outlives the context.
     Context ctx(/*numSlots=*/1);
@@ -62,13 +60,13 @@ TEST(ContextTest, getOrCreateBufferTest) {
     auto &stateSlot = ctx.getStateSlot(/*slotIndex=*/0);
     {
       auto buffer = stateSlot.getOrCreateBuffer(
-          /*bufferIndex=*/0, runtime, /*size=*/1, /*alignment=*/{});
+          /*bufferIndex=*/0, *runtime, /*size=*/1, /*alignment=*/{});
       EXPECT_EQ(buffer.getOwnership(), GML::BufferRef::kBorrowed);
 
       // getOrCreateBuffer call with the same slot and the same size returns a
       // cached buffer.
       auto buffer2 = stateSlot.getOrCreateBuffer(
-          /*bufferIndex=*/0, runtime, /*size=*/1, /*alignment=*/{});
+          /*bufferIndex=*/0, *runtime, /*size=*/1, /*alignment=*/{});
       EXPECT_EQ(buffer.getBuffer(), buffer2.getBuffer());
 
       // We're done with the above buffers, so safe to reallocate.
@@ -76,7 +74,7 @@ TEST(ContextTest, getOrCreateBufferTest) {
 
     // Call with a different size will allocate a new buffer.
     auto buffer3 = stateSlot.getOrCreateBuffer(
-        /*bufferIndex=*/0, runtime, /*size=*/2, /*alignment=*/{});
+        /*bufferIndex=*/0, *runtime, /*size=*/2, /*alignment=*/{});
     EXPECT_NE(buffer3.getSize(), 1UL);
   }
 }

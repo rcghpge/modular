@@ -15,19 +15,17 @@
 
 using namespace M;
 
-static LLCL::Runtime *getRuntime() {
-  static LLCL::Runtime *runtime =
-      LLCL::createRuntime(LLCL::RuntimeOptions().forDebug()).release();
-  return runtime;
+static std::unique_ptr<LLCL::Runtime> getRuntime() {
+  return LLCL::createUniqueRuntime(LLCL::RuntimeOptions().forDebug());
 }
 
 constexpr size_t kN = 4;
 constexpr size_t kM = 6;
 
-static GML::Tensor makeTensor() {
+static GML::Tensor makeTensor(LLCL::Runtime &runtime) {
   M::TensorSpec spec({kN, kM}, *DType::getInt(8, /*isSigned=*/false));
   GML::Tensor result =
-      GML::Tensor::createOwned(std::move(spec), getRuntime(), /*alignment=*/{});
+      GML::Tensor::createOwned(std::move(spec), runtime, /*alignment=*/{});
   for (size_t i = 0, e = result.getSizeInBytes(); i < e; ++i)
     result.getMutableBuffer<uint8_t>()[i] = static_cast<uint8_t>(i);
   return result;
@@ -47,8 +45,8 @@ static bool haveSameContents(GML::Tensor &lhs, GML::Tensor &rhs) {
 
 TEST(Tensor, ReleaseBufferRef) {
   auto runtime = getRuntime();
-  GML::Tensor tensor = makeTensor();
-  GML::Tensor tensor2 = tensor.deepCopy(runtime);
+  GML::Tensor tensor = makeTensor(*runtime);
+  GML::Tensor tensor2 = tensor.deepCopy(*runtime);
   GML::BufferRef ref = tensor.releaseBufferRef();
   ASSERT_TRUE(tensor.getBuffer() == nullptr);
   ASSERT_EQ(ref.getSize(), tensor2.getSizeInBytes());
@@ -58,15 +56,16 @@ TEST(Tensor, ReleaseBufferRef) {
 
 TEST(Tensor, DeepCopy) {
   auto runtime = getRuntime();
-  GML::Tensor tensor = makeTensor();
-  GML::Tensor deepCopy = tensor.deepCopy(runtime);
+  GML::Tensor tensor = makeTensor(*runtime);
+  GML::Tensor deepCopy = tensor.deepCopy(*runtime);
   ASSERT_TRUE(haveSameContents(tensor, deepCopy));
   incrementContents(tensor);
   ASSERT_FALSE(haveSameContents(tensor, deepCopy));
 }
 
 TEST(Tensor, Borrow) {
-  GML::Tensor tensor = makeTensor();
+  auto runtime = getRuntime();
+  GML::Tensor tensor = makeTensor(*runtime);
   GML::Tensor borrow = tensor.borrow(GML::BufferRef::kExecute);
   ASSERT_TRUE(haveSameContents(tensor, borrow));
   incrementContents(tensor);
@@ -74,10 +73,10 @@ TEST(Tensor, Borrow) {
 }
 
 TEST(Tensor, FromBuffer) {
-  LLCL::Runtime *runtime = getRuntime();
+  auto runtime = getRuntime();
   TensorSpec spec({kN, kM}, *DType::getInt(8, /*isSigned=*/false));
   GML::BufferRef ref =
-      GML::BufferRef::createOwned(runtime, kN * kM, /*alignment=*/{});
+      GML::BufferRef::createOwned(*runtime, kN * kM, /*alignment=*/{});
 
   const void *data = ref.getBuffer();
   GML::Tensor tensor(std::move(ref), std::move(spec));

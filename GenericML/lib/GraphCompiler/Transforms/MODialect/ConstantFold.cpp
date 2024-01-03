@@ -808,12 +808,14 @@ private:
   // for execution. Returns the models along with a buffer that needs to
   // live as long as they do. This needs to be a member of the pass so it
   // can access runPipeline.
-  ErrorOr<ModelsWithBuffer> lowerSubgraphs(ModuleOp module);
+  ErrorOr<ModelsWithBuffer> lowerSubgraphs(ModuleOp module,
+                                           LLCL::Runtime &runtime);
 
   std::shared_ptr<const ConstantFoldPolicy> policy;
 };
 
-ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
+ErrorOr<ModelsWithBuffer>
+ConstantFoldPass::lowerSubgraphs(ModuleOp module, LLCL::Runtime &runtime) {
   // Lower module to MGP.
   mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
       module.getContext(), mlir::OpPassManager::Nesting::Implicit);
@@ -822,7 +824,7 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
   moOpts.constantFold = false;
   // Use MOF executor so we don't depend on a framework.
   moOpts.compiledFrameworkLabel = "mof";
-  MO::buildMoToMgpPipeline(pm, moOpts);
+  MO::buildMoToMgpPipeline(pm, moOpts, runtime);
   // Run pipeline needs to run on a module.
   if (failed(runPipeline(pm, module)))
     return Error("Failed to run MOToMGP pipeline");
@@ -889,17 +891,17 @@ void ConstantFoldPass::runOnOperation() {
       return;
     }
 
-    ErrorOr<ModelsWithBuffer> modelsOr = lowerSubgraphs(module);
+    // TODO: #18077 this should be an argument to the pass.
+    auto ownedRuntime = LLCL::createRuntimeIfNeeded(
+        LLCL::RuntimeOptions().withLeakCheckedAllocator());
+
+    ErrorOr<ModelsWithBuffer> modelsOr = lowerSubgraphs(module, *ownedRuntime);
     if (failed(modelsOr)) {
       mlir::emitError(module.getLoc(),
                       "[ConstantFold] Unable to load models: " +
                           Twine(modelsOr.getError()));
       return signalPassFailure();
     }
-
-    // Execute MEF one subgraph at a time.
-    // TODO: #18077 this should be an argument to the pass.
-    std::unique_ptr<LLCL::Runtime> runtime = LLCL::createRuntime();
 
     // We have to consolidate rewrites to the same graphop as the rewrites of
     // one subgraph may invalidate ops in another subgraph (due to fold hooks).
@@ -913,7 +915,7 @@ void ConstantFoldPass::runOnOperation() {
       assert(model != nullptr &&
              "Model should exist, make sure names above match.");
       std::variant<EncodedDiagnostic, ModelResult> valuesToTensorsOr =
-          executeModel(ctx, model, subgraphsInfo, *runtime);
+          executeModel(ctx, model, subgraphsInfo, *ownedRuntime);
       if (std::holds_alternative<EncodedDiagnostic>(valuesToTensorsOr)) {
         EncodedDiagnostic &err = std::get<EncodedDiagnostic>(valuesToTensorsOr);
         LLCL::DecodedLocation decoded = err.getLocation().decode();

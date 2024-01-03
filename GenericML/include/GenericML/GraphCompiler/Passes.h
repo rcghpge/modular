@@ -166,25 +166,18 @@ struct ShapeInferenceOptions
       llvm::cl::init(false)};
 };
 
-// Registers a runtime for use by the MO-to-MGP pipeline when invoked via the
-// MlirOptMain testing driver. The main entry point should call this before
-// MlirOptMain if required.
-//
-// FOR TESTING ONLY: Production compilation paths should call
-// buildMoToMgpPipeline directly with the appropriate options and runtime
-// arguments.
-void registerMoToMgpRuntimeForTesting(Runtime &runtime);
-
-// Registers the MO-to-MGP pipeline for use by testing tools.
+/// Registers the MO-to-MGP pipeline for use by testing tools.
+/// The passes will use the current runtime, which must be established by the
+/// tool.
 void registerMoToMgpPipeline();
 
-// Creates the canonical MO-to-MGP pipeline for the given options. If a runtime
-// is provided it may be used by passes to derive runtime context information
-// and run compilation sub-tasks.
+/// Creates the canonical MO-to-MGP pipeline for the given options. Passes may
+/// use the given runtime to extract host information, execute sub-graphs, and
+/// parallelize compilation.
 void buildMoToMgpPipeline(mlir::OpPassManager &pm, const MoToMgpOptions &opts,
-                          Runtime *optRuntime = nullptr);
+                          Runtime &runtime);
 
-// Registers the end-to-end shape inference pipeline.
+/// Registers the end-to-end shape inference pipeline for use by testing tools.
 void registerShapeInferencePipeline();
 
 // Create the end-to-end shape inference pipeline.
