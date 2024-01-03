@@ -404,8 +404,9 @@ struct PropagateShapesPass
     case KGEN::POC::Add:
     case KGEN::POC::Max:
     case KGEN::POC::Mul:
-      [[fallthrough]];
     case KGEN::POC::MulNuw:
+      [[fallthrough]];
+    case KGEN::POC::Xor:
       return true;
     default:
       return false;
@@ -556,6 +557,17 @@ struct PropagateShapesPass
         return lhs;
 
     } else if (opcode == KGEN::POC::LT) {
+      // NOTE we have to put this logic here because for some reason the KGEN
+      // folder doesn't consider it valid to fold things like
+      // `lt(9223372036854775807, 100)`, maybe due to potential overflow? But we
+      // know this is safe as far as shape inference is concerned.
+      auto intLhs = dyn_cast<IntegerAttr>(lhs);
+      auto intRhs = dyn_cast<IntegerAttr>(rhs);
+      if (intLhs && intRhs) {
+        bool isLessThan = intLhs.getValue().slt(intRhs.getValue());
+        return BoolAttr::get(ctx, isLessThan);
+      }
+
       // lt(non_negative_expr, non_positive_expr) = false
       if (isDefinitelyNonNegative(lhs) && isDefinitelyNonPositive(rhs))
         return BoolAttr::get(ctx, false);
