@@ -187,10 +187,11 @@ int M::maxVisualizeMain(int argc, char **argv) {
 #ifndef MODULAR_PRODUCTION
   std::string output;
   if (!opts.visualizationDir.empty()) {
-    output = std::filesystem::current_path() /
-             std::filesystem::path(opts.visualizationDir.c_str());
+    output = (std::filesystem::current_path() /
+              std::filesystem::path(opts.visualizationDir.c_str()))
+                 .string();
   } else {
-    output = std::filesystem::current_path();
+    output = std::filesystem::current_path().string();
   }
   llvm::outs() << "\nModular maxviz file saved to " << output << "\n";
 
