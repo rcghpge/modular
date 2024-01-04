@@ -20,16 +20,22 @@ constexpr std::string_view modularFrameworkLibraryName =
     "modular-framework-common.dll";
 constexpr std::string_view modularTFExtensionLibraryName =
     "modular-framework-tf-ext.dll";
+constexpr std::string_view modularONNXExtensionLibraryName =
+    "modular-framework-onnx-ext.dll";
 #elif defined(__APPLE__)
 constexpr std::string_view modularFrameworkLibraryName =
     "libmodular-framework-common.dylib";
 constexpr std::string_view modularTFExtensionLibraryName =
     "libmodular-framework-tf-ext.dylib";
+constexpr std::string_view modularONNXExtensionLibraryName =
+    "libmodular-framework-onnx-ext.dylib";
 #else
 constexpr std::string_view modularFrameworkLibraryName =
     "libmodular-framework-common.so";
 constexpr std::string_view modularTFExtensionLibraryName =
     "libmodular-framework-tf-ext.so";
+constexpr std::string_view modularONNXExtensionLibraryName =
+    "libmodular-framework-onnx-ext.so";
 #endif
 } // namespace
 
@@ -54,10 +60,6 @@ static M::ErrorOr<llvm::sys::DynamicLibrary> fallibleModularLoad() {
   return fallibleLibraryLoad(modularFrameworkLibraryName);
 }
 
-static M::ErrorOr<llvm::sys::DynamicLibrary> fallibleModularExtLoad() {
-  return fallibleLibraryLoad(modularTFExtensionLibraryName);
-}
-
 template <typename SymbolTy>
 M::ErrorOr<SymbolTy>
 fallibleGetSymbol(llvm::sys::DynamicLibrary &dynamicLibrary,
@@ -74,12 +76,17 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
   if (dylibOr.isError())
     return dylibOr.takeError();
 
-  auto tfLibOr = fallibleModularExtLoad();
+  auto tfLibOr = fallibleLibraryLoad(modularTFExtensionLibraryName);
   if (tfLibOr.isError())
     return tfLibOr.takeError();
 
+  auto onnxLibOr = fallibleLibraryLoad(modularONNXExtensionLibraryName);
+  if (onnxLibOr.isError())
+    return onnxLibOr.takeError();
+
   llvm::sys::DynamicLibrary dylib = dylibOr.takeValue();
   llvm::sys::DynamicLibrary tfLib = tfLibOr.takeValue();
+  llvm::sys::DynamicLibrary onnxLib = onnxLibOr.takeValue();
 
 #define STRINGIFY_SYMBOL(x) #x
 #define GET_SYMBOL(VAR, SYMBOL_NAME)                                           \
@@ -122,6 +129,12 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
   if (exportedNameOr.isError())
     return exportedNameOr.takeError();
   setExportedName = exportedNameOr.takeValue();
+
+  auto enableMemoryPlanningOr = fallibleGetSymbol(
+      onnxLib, "M_enableMemoryPlanning", enableMemoryPlanning);
+  if (enableMemoryPlanningOr.isError())
+    return enableMemoryPlanningOr.takeError();
+  enableMemoryPlanning = enableMemoryPlanningOr.takeValue();
 
   GET_SYMBOL(compileModel, M_compileModel);
   GET_SYMBOL(waitForCompilation, M_waitForCompilation);

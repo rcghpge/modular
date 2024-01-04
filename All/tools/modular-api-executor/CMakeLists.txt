@@ -8,6 +8,11 @@ add_modular_tool(modular-api-executor
   ModularAPIInterface.cpp
   modular-api-executor.cpp
 
+  DEPENDS
+  modular-framework-common
+  modular-framework-tf-ext
+  modular-framework-onnx-ext
+
   LINK_LIBS PUBLIC
   ExternalFrameworksSupport
   GenericMLExecutionDriver
@@ -22,6 +27,9 @@ add_modular_tool(modular-api-executor
 
 target_include_directories(modular-api-executor PUBLIC
   ${MODULAR_SOURCE_DIR}/TensorFlow/include/TensorFlow/API)
+
+target_include_directories(modular-api-executor PUBLIC
+  ${MODULAR_SOURCE_DIR}/ONNX/include/ONNX/API)
 
 target_include_directories(modular-api-executor PUBLIC
   ${MODULAR_SOURCE_DIR}/GenericML/include/GenericML/API)
