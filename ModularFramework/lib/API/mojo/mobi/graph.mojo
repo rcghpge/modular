@@ -114,7 +114,7 @@ struct Graph:
         return self.op(
             "mo.constant",
             MOTensor(value.spec()),
-            self.m.attrs(self.m.attr_new_tensor("value", value)),
+            self.m.attrs(self.m.tensor_attr("value", value)),
         )
 
     fn vector[
@@ -123,7 +123,7 @@ struct Graph:
         return self.op(
             "mo.constant",
             MOTensor(dtype, len(values)),
-            self.m.attrs(self.m.attr_new_tensor[dtype]("value", values)),
+            self.m.attrs(self.m.tensor_attr[dtype]("value", values)),
         )
 
     fn scalar[

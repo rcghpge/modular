@@ -95,7 +95,7 @@ struct Module:
     fn attr_new_string(self, name: StringRef, value: StringRef) -> AttrPtr:
         return mobicc.attr_new_string(self.m, name, value)
 
-    fn attr_new_tensor[
+    fn tensor_attr[
         dtype: DType
     ](self, name: StringRef, values: DynamicVector[SIMD[dtype, 1]]) -> AttrPtr:
         let t = MOTensor(dtype, len(values)).to_mlir(self)
@@ -107,7 +107,7 @@ struct Module:
             is_owned=False,
         )
 
-    fn attr_new_tensor[
+    fn tensor_attr[
         dtype: DType
     ](self, name: StringRef, owned value: Tensor[dtype]) -> AttrPtr:
         # Intentionally takes ownership of `value` to avoid extra copies.

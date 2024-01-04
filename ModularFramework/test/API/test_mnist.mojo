@@ -43,7 +43,7 @@ def test_mnist_low_level():
     let cst = g.op(
         "mo.constant",
         MOTensor(DType.float32, 128, 10),
-        m.attrs(m.attr_new_tensor("value", cst_data)),
+        m.attrs(m.tensor_attr("value", cst_data)),
     )
     let cst_0 = g.op(
         "mo.constant",
@@ -71,14 +71,14 @@ def test_mnist_low_level():
     let cst_1 = g.op(
         "mo.constant",
         MOTensor(DType.float32, 784, 128),
-        m.attrs(m.attr_new_tensor("value", cst_1_data)),
+        m.attrs(m.tensor_attr("value", cst_1_data)),
     )
     let cst_2_data = Tensor[DType.float32](1, 128)
     cst_2_data._to_buffer().fill(0.5)
     let cst_2 = g.op(
         "mo.constant",
         MOTensor(DType.float32, 1, 128),
-        m.attrs(m.attr_new_tensor("value", cst_2_data)),
+        m.attrs(m.tensor_attr("value", cst_2_data)),
     )
     let cst_3 = g.op(
         "mo.constant",
