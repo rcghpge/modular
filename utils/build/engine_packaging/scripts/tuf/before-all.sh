@@ -69,7 +69,6 @@ echo "Install engine dylibs for wheel"
 build GeneratedTests install-ai-engine-dylibs
 
 echo "Building dylib wheel"
-# pip install the dylibs so that the test works
 rm -rf .derived/build/install/modular-engine-dylibs/dist/  .derived/build/install/modular-engine-dylibs/build
 python -m build --wheel .derived/build/install/modular-engine-dylibs
 
