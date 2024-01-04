@@ -4,18 +4,10 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from memory.buffer import _MAX_RANK
 from memory.unsafe import Pointer
 from os import getenv
-from sys import external_call
-from tensor import Tensor, TensorShape
-from sys.ffi import (
-    RTLD,
-    DLHandle,
-    _get_dylib_function as _ffi_get_dylib_function,
-)
-from tensor import TensorSpec
-from collections.vector import DynamicVector
+from tensor import Tensor
+from sys.ffi import RTLD, DLHandle, _get_dylib_function
 
 
 struct _Attr:
@@ -90,13 +82,15 @@ alias TypePtr = Pointer[_Type]
 alias TensorTuplePtr = Pointer[_TensorTuple]
 
 
-# Init fns inspired by gpu.host._utils
+# ===----------------------------------------------------------------------===#
+# Library Load
+# ===----------------------------------------------------------------------===#
+
+
 fn _init_dylib(ignored: Pointer[NoneType]) -> Pointer[NoneType]:
     let _mof_lib_path = getenv("MODULAR_MOF_LIB_PATH")
     let ptr = Pointer[DLHandle].alloc(1)
-    __get_address_as_lvalue(ptr.address) = DLHandle(
-        _mof_lib_path, RTLD.NOW | RTLD.GLOBAL
-    )
+    ptr.store(DLHandle(_mof_lib_path, RTLD.NOW | RTLD.GLOBAL))
     return ptr.bitcast[NoneType]()
 
 
@@ -106,15 +100,8 @@ fn _destroy_dylib(ptr: Pointer[NoneType]):
 
 
 @always_inline
-fn _get_dylib_function[T: AnyRegType](name: StringRef) -> T:
-    return _ffi_get_dylib_function["MOF_LIB", _init_dylib, _destroy_dylib, T](
-        name
-    )
-
-
-@always_inline
 fn MOBI_func[T: AnyRegType](name: StringRef) -> T:
-    var f = _get_dylib_function[T](name)
+    var f = _get_dylib_function["MOF_LIB", _init_dylib, _destroy_dylib, T](name)
     let ptr = Pointer.address_of(f).bitcast[Pointer[NoneType]]().load()
     if not ptr:
         print("cannot load " + String(name) + " from shared library")
@@ -122,23 +109,19 @@ fn MOBI_func[T: AnyRegType](name: StringRef) -> T:
     return f
 
 
-### Attr helpers
+# Note: Keep sections below in sync with mobicc.mojo, including order, grouping
+# and naming.
+
+# Note: Please keep the following naming convention: conept_function. For
+# example graph_new, etc.
 
 
-fn tensor_attr(
-    module: ModulePtr,
-    name: StringRef,
-    data: Pointer[AnyRegType],
-    type: TypePtr,
-    is_owned: Bool,
-) -> AttrPtr:
-    return MOBI_func[
-        fn (ModulePtr, StringRef, Pointer[AnyRegType], TypePtr, Bool) -> AttrPtr
-    ]("MOBI_tensorAttr")(module, name, data, type, is_owned)
+# ===----------------------------------------------------------------------===#
+# Attribute factories
+# ===----------------------------------------------------------------------===#
 
 
-# TODO: Rename these to data_attr.
-fn tensor_attr[
+fn attr_new_tensor[
     T: CollectionElement
 ](
     module: ModulePtr,
@@ -149,10 +132,10 @@ fn tensor_attr[
 ) -> AttrPtr:
     return MOBI_func[
         fn (ModulePtr, StringRef, AnyPointer[T], TypePtr, Bool) -> AttrPtr
-    ]("MOBI_tensorAttr")(module, name, data.data, type, is_owned)
+    ]("MOBI_attrNewTensor")(module, name, data.data, type, is_owned)
 
 
-fn tensor_attr(
+fn attr_new_tensor(
     module: ModulePtr,
     name: StringRef,
     data: DTypePointer[DType.invalid],
@@ -163,44 +146,51 @@ fn tensor_attr(
         fn (
             ModulePtr, StringRef, DTypePointer[DType.invalid], TypePtr, Bool
         ) -> AttrPtr
-    ]("MOBI_tensorAttr")(module, name, data, type, is_owned)
+    ]("MOBI_attrNewTensor")(module, name, data, type, is_owned)
 
 
-fn string_attr(
-    module: ModulePtr,
-    name: StringRef,
-    value: StringRef,
-) -> AttrPtr:
-    return MOBI_func[fn (ModulePtr, StringRef, StringRef) -> AttrPtr](
-        "MOBI_stringAttr"
-    )(module, name, value)
-
-
-fn tensor_attr_from_file(
+fn attr_new_tensor_from_file(
     module: ModulePtr,
     name: StringRef,
     file_name: StringRef,
     type: TypePtr,
 ) -> AttrPtr:
     return MOBI_func[fn (ModulePtr, StringRef, StringRef, TypePtr) -> AttrPtr](
-        "MOBI_tensorAttrFromFile"
+        "MOBI_attrNewTensorFromFile"
     )(module, name, file_name, type)
 
 
-fn new_attr_map() -> AttrMapPtr:
-    return MOBI_func[fn () -> AttrMapPtr]("MOBI_newAttrMap")()
+fn attr_new_string(
+    module: ModulePtr,
+    name: StringRef,
+    value: StringRef,
+) -> AttrPtr:
+    return MOBI_func[fn (ModulePtr, StringRef, StringRef) -> AttrPtr](
+        "MOBI_attrNewString"
+    )(module, name, value)
 
 
-fn add_attr(inout map: AttrMapPtr, a: AttrPtr):
-    return MOBI_func[fn (AttrMapPtr, AttrPtr) -> NoneType]("MOBI_addAttr")(
-        map, a
-    )
+# ===----------------------------------------------------------------------===#
+# AttrMap support
+# ===----------------------------------------------------------------------===#
 
 
-### Graph helpers
+fn attrmap_new() -> AttrMapPtr:
+    return MOBI_func[fn () -> AttrMapPtr]("MOBI_attrmapNew")()
 
 
-fn new_graph(
+fn attrmap_add_attr(inout map: AttrMapPtr, a: AttrPtr):
+    return MOBI_func[fn (AttrMapPtr, AttrPtr) -> NoneType](
+        "MOBI_attrmapAddAttr"
+    )(map, a)
+
+
+# ===----------------------------------------------------------------------===#
+# Graph support
+# ===----------------------------------------------------------------------===#
+
+
+fn graph_new(
     inout module: ModulePtr,
     loc: LocPtr,
     name: StringRef,
@@ -209,23 +199,23 @@ fn new_graph(
 ) -> GraphPtr:
     return MOBI_func[
         fn (ModulePtr, LocPtr, StringRef, ArityPtr, ArityPtr) -> GraphPtr
-    ]("MOBI_newGraph")(module, loc, name, inTypes, outTypes)
+    ]("MOBI_graphNew")(module, loc, name, inTypes, outTypes)
 
 
-fn get_graph_module(graph: GraphPtr) -> ModulePtr:
-    return MOBI_func[fn (GraphPtr) -> ModulePtr]("MOBI_getGraphModule")(graph)
+fn graph_get_module(graph: GraphPtr) -> ModulePtr:
+    return MOBI_func[fn (GraphPtr) -> ModulePtr]("MOBI_graphGetModule")(graph)
 
 
-fn get_input(
+fn graph_get_arg(
     graph: GraphPtr,
     pos: UInt32,
 ) -> SymbolPtr:
-    return MOBI_func[fn (GraphPtr, UInt32) -> SymbolPtr]("MOBI_getInput")(
+    return MOBI_func[fn (GraphPtr, UInt32) -> SymbolPtr]("MOBI_graphGetArg")(
         graph, pos
     )
 
 
-fn new_op(
+fn graph_new_op(
     graph: GraphPtr,
     loc: LocPtr,
     name: StringRef,
@@ -237,21 +227,25 @@ fn new_op(
         fn (
             GraphPtr, LocPtr, StringRef, TuplePtr, ArityPtr, AttrMapPtr
         ) -> TuplePtr
-    ]("MOBI_newOp")(graph, loc, name, inputs, outTypes, attrs)
+    ]("MOBI_graphNewOp")(graph, loc, name, inputs, outTypes, attrs)
 
 
-### Location helpers
+# ===----------------------------------------------------------------------===#
+# Location helpers
+# ===----------------------------------------------------------------------===#
 
 
-fn unknown_loc(module: ModulePtr) -> LocPtr:
-    return MOBI_func[fn (ModulePtr) -> LocPtr]("MOBI_unknownLoc")(module)
+fn loc_new_unknown(module: ModulePtr) -> LocPtr:
+    return MOBI_func[fn (ModulePtr) -> LocPtr]("MOBI_locNewUnknown")(module)
 
 
-### Module helpers
+# ===----------------------------------------------------------------------===#
+# Module support
+# ===----------------------------------------------------------------------===#
 
 
-fn new_module() -> ModulePtr:
-    return MOBI_func[fn () -> ModulePtr]("MOBI_newModule")()
+fn module_new() -> ModulePtr:
+    return MOBI_func[fn () -> ModulePtr]("MOBI_moduleNew")()
 
 
 fn module_verify(module: ModulePtr) -> Bool:
@@ -272,7 +266,13 @@ fn module_to_bytecode(module: ModulePtr, file_name: String) -> Bool:
     )(module, file_name._strref_dangerous())
 
 
-### Symbol helers
+# ===----------------------------------------------------------------------===#
+# Symbol support
+# ===----------------------------------------------------------------------===#
+
+
+fn symbol_get_graph(symbol: SymbolPtr) -> GraphPtr:
+    return MOBI_func[fn (SymbolPtr) -> GraphPtr]("MOBI_symbolGetGraph")(symbol)
 
 
 fn symbol_to_string(symbol: SymbolPtr) -> String:
@@ -283,31 +283,69 @@ fn symbol_to_string(symbol: SymbolPtr) -> String:
     return String(ret, len.to_int())
 
 
-fn get_symbol_graph(symbol: SymbolPtr) -> GraphPtr:
-    return MOBI_func[fn (SymbolPtr) -> GraphPtr]("MOBI_getSymbolGraph")(symbol)
-
-
-fn new_tuple() -> TuplePtr:
-    return MOBI_func[fn () -> TuplePtr]("MOBI_newTuple")()
+fn tuple_new() -> TuplePtr:
+    return MOBI_func[fn () -> TuplePtr]("MOBI_tupleNew")()
 
 
 fn tuple_size(tup: TuplePtr) -> Int:
     return MOBI_func[fn (TuplePtr) -> Int]("MOBI_tupleSize")(tup)
 
 
-fn add_symbol(inout tup: TuplePtr, symbol: SymbolPtr):
-    return MOBI_func[fn (TuplePtr, SymbolPtr) -> NoneType]("MOBI_addSymbol")(
-        tup, symbol
-    )
+fn tuple_add_symbol(inout tup: TuplePtr, symbol: SymbolPtr):
+    return MOBI_func[fn (TuplePtr, SymbolPtr) -> NoneType](
+        "MOBI_tupleAddSymbol"
+    )(tup, symbol)
 
 
-fn get_symbol(tup: TuplePtr, pos: UInt32) -> SymbolPtr:
+fn tuple_get_symbol(tup: TuplePtr, pos: UInt32) -> SymbolPtr:
     return MOBI_func[fn (TuplePtr, UInt32) -> SymbolPtr]("MOBI_getSymbol")(
         tup, pos
     )
 
 
-### Type helers
+# ===----------------------------------------------------------------------===#
+# Type helpers
+# ===----------------------------------------------------------------------===#
+
+
+fn dtype_new(m: ModulePtr, dtype: DType) -> TypePtr:
+    return MOBI_func[fn (ModulePtr, UInt8) -> TypePtr]("MOBI_dTypeNew")(
+        m, dtype._as_i8()
+    )
+
+
+fn dim_type_new_dynamic() -> Int64:
+    return MOBI_func[fn () -> Int64]("MOBI_dimTypeNewDynamic")()
+
+
+fn tensor_type_new(
+    m: ModulePtr, dtype: TypePtr, dims: DynamicVector[Int64], ranked: Bool
+) -> TypePtr:
+    return MOBI_func[
+        fn (ModulePtr, TypePtr, Bool, Pointer[Int64], Int32) -> TypePtr
+    ]("MOBI_tensorTypeNew")(
+        m, dtype, ranked, Pointer[Int64](dims.data.value), len(dims)
+    )
+
+
+fn tensor_type_get_dtype(s: SymbolPtr) -> DType:
+    let dtype = MOBI_func[fn (SymbolPtr) -> UInt8]("MOBI_tensorTypeGetDType")(s)
+    return DType._from_ui8(dtype.value)
+
+
+fn tensor_type_get_shape(s: SymbolPtr) -> DynamicVector[Int64]:
+    var rank: Int32 = 0
+    let dims = MOBI_func[fn (SymbolPtr, Pointer[Int32]) -> Pointer[Int64]](
+        "MOBI_tensorTypeGetShape"
+    )(s, Pointer.address_of(rank))
+    var dimsVec = DynamicVector[Int64]()
+    for i in range(rank):
+        dimsVec.append(dims[i])
+    return dimsVec
+
+
+fn tensor_type_is_ranked(s: SymbolPtr) -> Bool:
+    return MOBI_func[fn (SymbolPtr) -> Bool]("MOBI_tensorTypeIsRanked")(s)
 
 
 fn type_to_string(type: TypePtr) -> String:
@@ -318,50 +356,23 @@ fn type_to_string(type: TypePtr) -> String:
     return String(ret, len.to_int())
 
 
-fn new_dtype(m: ModulePtr, dtype: DType) -> TypePtr:
-    return MOBI_func[fn (ModulePtr, UInt8) -> TypePtr]("MOBI_newDType")(
-        m, dtype._as_i8()
+fn arity_new() -> ArityPtr:
+    return MOBI_func[fn () -> ArityPtr]("MOBI_arityNew")()
+
+
+fn arity_size(tup: ArityPtr) -> Int:
+    return MOBI_func[fn (ArityPtr) -> Int]("MOBI_aritySize")(tup)
+
+
+fn arity_add_type(inout arity: ArityPtr, t: TypePtr):
+    return MOBI_func[fn (ArityPtr, TypePtr) -> NoneType]("MOBI_arityAddType")(
+        arity, t
     )
 
 
-fn new_tensor_type(
-    m: ModulePtr, dtype: TypePtr, dims: DynamicVector[Int64], ranked: Bool
-) -> TypePtr:
-    return MOBI_func[
-        fn (ModulePtr, TypePtr, Bool, Pointer[Int64], Int32) -> TypePtr
-    ]("MOBI_newTensorType")(
-        m, dtype, ranked, Pointer[Int64](dims.data.value), len(dims)
-    )
-
-
-fn get_tensor_dtype(s: SymbolPtr) -> DType:
-    let dtype = MOBI_func[fn (SymbolPtr) -> UInt8]("MOBI_getTensorDType")(s)
-    return DType._from_ui8(dtype.value)
-
-
-fn get_tensor_shape(s: SymbolPtr) -> DynamicVector[Int64]:
-    var rank: Int32 = 0
-    let dims = MOBI_func[fn (SymbolPtr, Pointer[Int32]) -> Pointer[Int64]](
-        "MOBI_getTensorShape"
-    )(s, Pointer.address_of(rank))
-    var dimsVec = DynamicVector[Int64]()
-    for i in range(rank):
-        dimsVec.append(dims[i])
-    return dimsVec
-
-
-fn is_tensor_ranked(s: SymbolPtr) -> Bool:
-    return MOBI_func[fn (SymbolPtr) -> Bool]("MOBI_isTensorRanked")(s)
-
-
-fn type_from_spec(m: ModulePtr, spec: TensorSpec) -> TypePtr:
-    return MOBI_func[fn (ModulePtr, TensorSpec) -> TypePtr](
-        "MOBI_typeFromSpec"
-    )(m, spec)
-
-
-fn dynamic_dim() -> Int64:
-    return MOBI_func[fn () -> Int64]("MOBI_dynamicDim")()
+# ===----------------------------------------------------------------------===#
+# ... to delete ...
+# ===----------------------------------------------------------------------===#
 
 
 fn f32(
@@ -435,59 +446,3 @@ fn bool(
     return MOBI_func[fn (ModulePtr, AnyPointer[Int64], Int64) -> TypePtr](
         "MOBI_bool"
     )(module, dims.data, rank)
-
-
-fn new_arity() -> ArityPtr:
-    return MOBI_func[fn () -> ArityPtr]("MOBI_newArity")()
-
-
-fn arity_size(tup: ArityPtr) -> Int:
-    return MOBI_func[fn (ArityPtr) -> Int]("MOBI_aritySize")(tup)
-
-
-fn add_type(inout arity: ArityPtr, t: TypePtr):
-    return MOBI_func[fn (ArityPtr, TypePtr) -> NoneType]("MOBI_addType")(
-        arity, t
-    )
-
-
-fn type_is_float_tensor(t: TypePtr) -> Bool:
-    return MOBI_func[fn (TypePtr) -> Bool]("MOBI_typeIsFloatTensor")(t)
-
-
-fn type_is_si_tensor(t: TypePtr) -> Bool:
-    return MOBI_func[fn (TypePtr) -> Bool]("MOBI_typeIsSITensor")(t)
-
-
-fn type_is_ui_tensor(t: TypePtr) -> Bool:
-    return MOBI_func[fn (TypePtr) -> Bool]("MOBI_typeIsUITensor")(t)
-
-
-fn type_is_bool_tensor(t: TypePtr) -> Bool:
-    return MOBI_func[fn (TypePtr) -> Bool]("MOBI_typeIsBoolTensor")(t)
-
-
-fn type_is_tensor(t: TypePtr) -> Bool:
-    return MOBI_func[fn (TypePtr) -> Bool]("MOBI_typeIsTensor")(t)
-
-
-fn tensor_dtype_width(t: TypePtr) -> UInt64:
-    return MOBI_func[fn (TypePtr) -> UInt64]("MOBI_getTensorTypeDTypeWidth")(t)
-
-
-fn tensor_rank(t: TypePtr) -> UInt64:
-    return MOBI_func[fn (TypePtr) -> UInt64]("MOBI_getTensorTypeRank")(t)
-
-
-fn tensor_dim(t: TypePtr, dim: UInt64) -> Int64:
-    return MOBI_func[fn (TypePtr, UInt64) -> Int64]("MOBI_getTensorTypeDim")(
-        t, dim
-    )
-
-
-fn get_symbol_type(s: SymbolPtr) -> TypePtr:
-    return MOBI_func[fn (SymbolPtr) -> TypePtr]("MOBI_getSymbolType")(s)
-
-
-fn del_type(t: TypePtr) -> None:
-    return MOBI_func[fn (TypePtr) -> None]("MOBI_freeType")(t)

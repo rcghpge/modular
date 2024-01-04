@@ -6,11 +6,11 @@
 
 from tensor import Tensor, TensorSpec, TensorShape
 
-from .misc import AttrMap
-from .motype import Arity
+from .attr import AttrMap
+from .type import Arity
 from .mobicc import AttrPtr, LocPtr, ModulePtr, TypePtr
 from .symbol import Symbol
-from .motype import MOType
+from .type import MOType
 
 
 fn _dynamic_vector(shape: TensorShape) -> DynamicVector[Int64]:
@@ -33,13 +33,13 @@ struct Module:
     var m: ModulePtr
 
     fn __init__() raises -> Self:
-        return Self(mobicc.new_module())
+        return Self(mobicc.module_new())
 
     fn __str__(self) -> String:
         return mobicc.module_to_string(self.m)
 
-    fn unknown_loc(self) -> LocPtr:
-        return mobicc.unknown_loc(self.m)
+    fn loc_new_unknown(self) -> LocPtr:
+        return mobicc.loc_new_unknown(self.m)
 
     fn i32_attr(self, name: StringRef, t: TypePtr, *elements: Int32) -> AttrPtr:
         return self.i32_attr(name, t, elements)
@@ -50,7 +50,7 @@ struct Module:
         var data = DynamicVector[Int32]()
         for i in range(len(elements)):
             data.push_back(elements[i])
-        return mobicc.tensor_attr(self.m, name, data, t, False)
+        return mobicc.attr_new_tensor(self.m, name, data, t, False)
 
     fn i64_attr(self, name: StringRef, t: TypePtr, *elements: Int64) -> AttrPtr:
         return self.i64_attr(name, t, elements)
@@ -72,7 +72,7 @@ struct Module:
     fn i64_attr(
         self, name: StringRef, t: TypePtr, elements: DynamicVector[Int64]
     ) -> AttrPtr:
-        return mobicc.tensor_attr(self.m, name, elements, t, False)
+        return mobicc.attr_new_tensor(self.m, name, elements, t, False)
 
     fn f32_attr(
         self, name: StringRef, t: TypePtr, *elements: Float32
@@ -85,21 +85,21 @@ struct Module:
         var data = DynamicVector[Float32]()
         for i in range(len(elements)):
             data.push_back(elements[i])
-        return mobicc.tensor_attr(self.m, name, data, t, False)
+        return mobicc.attr_new_tensor(self.m, name, data, t, False)
 
     fn f32_attr(
         self, name: StringRef, t: TypePtr, file_name: StringRef
     ) -> AttrPtr:
-        return mobicc.tensor_attr_from_file(self.m, name, file_name, t)
+        return mobicc.attr_new_tensor_from_file(self.m, name, file_name, t)
 
-    fn string_attr(self, name: StringRef, value: StringRef) -> AttrPtr:
-        return mobicc.string_attr(self.m, name, value)
+    fn attr_new_string(self, name: StringRef, value: StringRef) -> AttrPtr:
+        return mobicc.attr_new_string(self.m, name, value)
 
-    fn tensor_attr[
+    fn attr_new_tensor[
         dtype: DType
     ](self, name: StringRef, values: DynamicVector[SIMD[dtype, 1]]) -> AttrPtr:
         let t = MOTensor(dtype, len(values)).to_mlir(self)
-        return mobicc.tensor_attr(
+        return mobicc.attr_new_tensor(
             self.m,
             name,
             values,
@@ -107,12 +107,12 @@ struct Module:
             is_owned=False,
         )
 
-    fn tensor_attr[
+    fn attr_new_tensor[
         dtype: DType
     ](self, name: StringRef, owned value: Tensor[dtype]) -> AttrPtr:
         # Intentionally takes ownership of `value` to avoid extra copies.
         let t = MOTensor(value.spec()).to_mlir(self)
-        return mobicc.tensor_attr(
+        return mobicc.attr_new_tensor(
             self.m,
             name,
             value._steal_ptr().bitcast[DType.invalid](),
@@ -121,13 +121,13 @@ struct Module:
         )
 
     fn attrs(self, *attrs: AttrPtr) -> AttrMap:
-        var m = mobicc.new_attr_map()
+        var m = mobicc.attrmap_new()
         for i in range(len(attrs)):
-            mobicc.add_attr(m, attrs[i])
+            mobicc.attrmap_add_attr(m, attrs[i])
         return AttrMap(m, len(attrs))
 
     fn dyn(self) -> Int64:
-        return mobicc.dynamic_dim()
+        return mobicc.dim_type_new_dynamic()
 
     fn i32(self, *dims: Int64) -> TypePtr:
         let shape = _dynamic_vector(dims)
@@ -163,8 +163,8 @@ struct Module:
         in_types: Arity,
         out_types: Arity,
     ) -> Graph:
-        let unknown = mobicc.unknown_loc(self.m)
-        let g = mobicc.new_graph(self.m, unknown, name, in_types.a, out_types.a)
+        let unknown = mobicc.loc_new_unknown(self.m)
+        let g = mobicc.graph_new(self.m, unknown, name, in_types.a, out_types.a)
         return Graph(g, self)
 
     fn verify(self) raises:

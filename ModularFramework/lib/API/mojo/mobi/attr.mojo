@@ -4,11 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from collections.vector import DynamicVector
-
 from .mobicc import AttrMapPtr
-
-# TODO: Move these to attr.
 
 
 struct AttrMap:

@@ -4,11 +4,11 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from .misc import AttrMap
+from .attr import AttrMap
 from .mobicc import AttrPtr, GraphPtr, SymbolPtr, TuplePtr, TypePtr
 from .module import Module
 from .symbol import Symbol, Tup
-from .motype import dyn, MOType, MOTensor, Arity
+from .type import dyn, MOType, MOTensor, Arity
 
 from memory.unsafe import Pointer
 from tensor import TensorShape, TensorSpec
@@ -28,10 +28,10 @@ struct Graph:
 
     fn __init__(inout self, g: GraphPtr):
         self.g = g
-        self.m = Module(mobicc.get_graph_module(g))
+        self.m = Module(mobicc.graph_get_module(g))
 
     fn __getitem__(self, pos: UInt32) -> Symbol:
-        return Symbol(mobicc.get_input(self.g, pos))
+        return Symbol(mobicc.graph_get_arg(self.g, pos))
 
     # ===------------------------------------------------------------------=== #
     # nvop - the most generic op builder
@@ -41,13 +41,13 @@ struct Graph:
         return self.nvop(
             name,
             inputs,
-            Arity(mobicc.new_arity()),
-            AttrMap(mobicc.new_attr_map(), 0),
+            Arity(mobicc.arity_new()),
+            AttrMap(mobicc.attrmap_new(), 0),
         )
 
     fn nvop(inout self, name: StringRef, inputs: Tup, out_types: Arity) -> Tup:
         return self.nvop(
-            name, inputs, out_types, AttrMap(mobicc.new_attr_map(), 0)
+            name, inputs, out_types, AttrMap(mobicc.attrmap_new(), 0)
         )
 
     fn nvop(
@@ -62,8 +62,8 @@ struct Graph:
         out_types: Arity,
         attrs: AttrMap,
     ) -> Tup:
-        let loc = self.m.unknown_loc()
-        let outputs = mobicc.new_op(
+        let loc = self.m.loc_new_unknown()
+        let outputs = mobicc.graph_new_op(
             self.g, loc, name, inputs.t, out_types.to_mlir(self.m), attrs.m
         )
         return Tup(outputs)
@@ -81,7 +81,7 @@ struct Graph:
             name,
             inputs,
             Arity(out_type.to_mlir(self.m)),
-            AttrMap(mobicc.new_attr_map(), 0),
+            AttrMap(mobicc.attrmap_new(), 0),
         )[0]
 
     fn op[
@@ -114,7 +114,7 @@ struct Graph:
         return self.op(
             "mo.constant",
             MOTensor(value.spec()),
-            self.m.attrs(self.m.tensor_attr("value", value)),
+            self.m.attrs(self.m.attr_new_tensor("value", value)),
         )
 
     fn vector[
@@ -123,7 +123,7 @@ struct Graph:
         return self.op(
             "mo.constant",
             MOTensor(dtype, len(values)),
-            self.m.attrs(self.m.tensor_attr[dtype]("value", values)),
+            self.m.attrs(self.m.attr_new_tensor[dtype]("value", values)),
         )
 
     fn scalar[

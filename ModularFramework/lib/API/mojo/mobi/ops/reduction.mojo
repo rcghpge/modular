@@ -6,7 +6,7 @@
 
 from tensor import TensorSpec, TensorShape
 
-from mobi.motype import ElementType, MOTensor, dyn
+from mobi.type import ElementType, MOTensor, dyn
 
 
 fn mean(v: Symbol, axis: Int) raises -> Symbol:

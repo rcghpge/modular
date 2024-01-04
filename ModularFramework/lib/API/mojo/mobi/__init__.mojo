@@ -4,9 +4,9 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from .motype import dyn
-from .motype import Arity
-from .motype import MOTensor
+from .type import dyn
+from .type import Arity
+from .type import MOTensor
 from .graph import Graph
 from .module import Module
 from .symbol import Symbol

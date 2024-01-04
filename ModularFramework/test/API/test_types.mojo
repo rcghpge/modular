@@ -8,7 +8,7 @@
 
 from testing import *
 
-from mobi.motype import *
+from mobi.type import *
 
 
 fn test_dtype_to_string() raises:

@@ -6,10 +6,13 @@
 
 add_mojo_package(mobi-mojo-api
   PRIVATE
+  attr
   graph
-  misc
-  module
   mobicc
+  module
+  symbol
+  testing
+  type
 )
 
 set(MOBI_PACKAGE_PATH "${MODULAR_BINARY_DIR}/ModularFramework/lib/API/mojo/mobi/mobi.mojopkg")

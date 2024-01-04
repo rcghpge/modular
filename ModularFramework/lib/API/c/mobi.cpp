@@ -4,11 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MOF/API/c/mobi.h"
-
+#include "MOF/API/c/detail/mobi.h"
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
-#include "MOF/API/c/detail/mobi.h"
+#include "MOF/API/c/symbol_export.h"
 #include "MOF/MOBI/Attr.h"
 #include "MOF/MOBI/Graph.h"
 #include "MOF/MOBI/Loc.h"
@@ -33,10 +32,26 @@ char *unownedString(const std::string &buffer, int64_t *len) {
   return cstr;
 }
 
-/// Attr
+static MLIRContext *newContext() {
+  // TODO: Attach the context to modules instead? Let user control it?
+  static MLIRContext ctx;
+  mlir::DialectRegistry registry;
+  M::MO::loadDialects(registry);
+  ctx.appendDialectRegistry(registry);
+  ctx.loadAllAvailableDialects();
+  ctx.printStackTraceOnDiagnostic(true);
+  return &ctx;
+}
 
-MODULAR_API_EXPORT M_Attr *MOBI_tensorAttr(M_Module *m, StringRef name,
-                                           void *data, M_Type *t, bool owned) {
+// Note: Keep sections below in sync with mobi.cpp.
+
+//===----------------------------------------------------------------------===//
+// Attribute factories
+//===----------------------------------------------------------------------===//
+
+MODULAR_API_EXPORT M_Attr *MOBI_attrNewTensor(M_Module *m, StringRef name,
+                                              void *data, M_Type *t,
+                                              bool owned) {
   auto moType = cast<M::MO::TensorType>(t->type.getVal());
   size_t size =
       moType.getDtype().getSizeInBytes() * moType.getNumElements().value();
@@ -45,9 +60,10 @@ MODULAR_API_EXPORT M_Attr *MOBI_tensorAttr(M_Module *m, StringRef name,
       owned)};
 }
 
-MODULAR_API_EXPORT M_Attr *MOBI_tensorAttrFromFile(M_Module *m, StringRef name,
-                                                   StringRef fileName,
-                                                   M_Type *t) {
+MODULAR_API_EXPORT M_Attr *MOBI_attrNewTensorFromFile(M_Module *m,
+                                                      StringRef name,
+                                                      StringRef fileName,
+                                                      M_Type *t) {
   auto moType = cast<M::MO::TensorType>(t->type.getVal());
   assert(moType.getNumElements().has_value() &&
          "tensor attrs should always be statically sized");
@@ -73,20 +89,26 @@ MODULAR_API_EXPORT M_Attr *MOBI_tensorAttrFromFile(M_Module *m, StringRef name,
       t->type, /*owned=*/false)};
 }
 
-MODULAR_API_EXPORT M_Attr *MOBI_stringAttr(M_Module *m, StringRef name,
-                                           StringRef value) {
+MODULAR_API_EXPORT M_Attr *MOBI_attrNewString(M_Module *m, StringRef name,
+                                              StringRef value) {
   return new M_Attr{m->module.stringAttr(name, value)};
 }
 
-MODULAR_API_EXPORT M_AttrMap *MOBI_newAttrMap() { return new M_AttrMap(); }
+//===----------------------------------------------------------------------===//
+// AttrMap support
+//===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT void MOBI_addAttr(M_AttrMap *m, M_Attr *a) {
+MODULAR_API_EXPORT M_AttrMap *MOBI_attrmapNew() { return new M_AttrMap(); }
+
+MODULAR_API_EXPORT void MOBI_attrmapAddAttr(M_AttrMap *m, M_Attr *a) {
   m->map.add(a->attr);
 }
 
-/// Graph
+//===----------------------------------------------------------------------===//
+// Graph support
+//===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT M_Graph *MOBI_newGraph(M_Module *m, M_Loc *l,
+MODULAR_API_EXPORT M_Graph *MOBI_graphNew(M_Module *m, M_Loc *l,
                                           llvm::StringRef name,
                                           const M_Arity *inTypes,
                                           const M_Arity *outTypes) {
@@ -94,46 +116,45 @@ MODULAR_API_EXPORT M_Graph *MOBI_newGraph(M_Module *m, M_Loc *l,
       m->module.newGraph(l->loc, name, inTypes->arity, outTypes->arity)};
 }
 
-MODULAR_API_EXPORT M_Module *MOBI_getGraphModule(M_Graph *g) {
+MODULAR_API_EXPORT M_Module *MOBI_graphGetModule(M_Graph *g) {
   return new M_Module{g->graph.getModule()};
 }
 
-MODULAR_API_EXPORT M_Symbol *MOBI_getInput(M_Graph *g, uint32_t pos) {
+MODULAR_API_EXPORT M_Symbol *MOBI_graphGetArg(M_Graph *g, uint32_t pos) {
   return new M_Symbol{g->graph.getArg(pos)};
 }
 
-MODULAR_API_EXPORT M_Tuple *
-MOBI_newOp(M_Graph *g, M_Loc *l, llvm::StringRef name, const M_Tuple *inputs,
-           const M_Arity *outTypes, const M_AttrMap *attrs) {
+MODULAR_API_EXPORT M_Tuple *MOBI_graphNewOp(M_Graph *g, M_Loc *l,
+                                            llvm::StringRef name,
+                                            const M_Tuple *inputs,
+                                            const M_Arity *outTypes,
+                                            const M_AttrMap *attrs) {
   return new M_Tuple{
       g->graph.newOp(l->loc, name, inputs->tuple, outTypes->arity, attrs->map)};
 }
 
-/// Location
+//===----------------------------------------------------------------------===//
+// Location helpers
+//===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT M_Loc *MOBI_unknownLoc(M_Module *m) {
+MODULAR_API_EXPORT M_Loc *MOBI_locNewUnknown(M_Module *m) {
   return new M_Loc{m->module.unknownLoc()};
 }
 
-/// Module
+//===----------------------------------------------------------------------===//
+// Module support
+//===----------------------------------------------------------------------===//
 
-static MLIRContext *newContext() {
-  // TODO: Attach the context to modules instead? Let user control it?
-  static MLIRContext ctx;
-  mlir::DialectRegistry registry;
-  M::MO::loadDialects(registry);
-  ctx.appendDialectRegistry(registry);
-  ctx.loadAllAvailableDialects();
-  ctx.printStackTraceOnDiagnostic(true);
-  return &ctx;
-}
-
-MODULAR_API_EXPORT M_Module *MOBI_newModule() {
+MODULAR_API_EXPORT M_Module *MOBI_moduleNew() {
   static MLIRContext *ctx = newContext();
   Location testLoc = UnknownLoc::get(ctx);
 
   auto *m = new M_Module{Module(testLoc)};
   return m;
+}
+
+MODULAR_API_EXPORT bool MOBI_moduleVerify(M_Module *m) {
+  return mlir::verify(m->module.getModuleOp()).succeeded();
 }
 
 MODULAR_API_EXPORT char *MOBI_moduleToString(const M_Module *const m,
@@ -142,15 +163,7 @@ MODULAR_API_EXPORT char *MOBI_moduleToString(const M_Module *const m,
   raw_string_ostream os(buffer);
   m->module.getModuleOp()->print(os);
 
-  // TODO: Do it without so many copies.
-  char *copy = reinterpret_cast<char *>(std::malloc(buffer.size() + 1));
-  memcpy(copy, buffer.data(), buffer.size());
-  *len = buffer.size();
-
-  // Null terminate module string for convenient use with APIs expecting this.
-  copy[buffer.size()] = '\0';
-
-  return copy;
+  return unownedString(buffer, len);
 }
 
 MODULAR_API_EXPORT bool MOBI_moduleToBytecode(const M_Module *const m,
@@ -162,13 +175,11 @@ MODULAR_API_EXPORT bool MOBI_moduleToBytecode(const M_Module *const m,
   return writeBytecodeToFile(m->module.getModuleOp(), fs).succeeded();
 }
 
-MODULAR_API_EXPORT bool MOBI_moduleVerify(M_Module *m) {
-  return mlir::verify(m->module.getModuleOp()).succeeded();
-}
+//===----------------------------------------------------------------------===//
+// Symbol support
+//===----------------------------------------------------------------------===//
 
-/// Symbol
-
-MODULAR_API_EXPORT M_Graph *MOBI_getSymbolGraph(M_Symbol *s) {
+MODULAR_API_EXPORT M_Graph *MOBI_symbolGetGraph(M_Symbol *s) {
   return new M_Graph{s->symbol.getGraph()};
 }
 
@@ -176,13 +187,13 @@ MODULAR_API_EXPORT char *MOBI_symbolToString(M_Symbol *s, int64_t *len) {
   return unownedString(s->symbol.toString(), len);
 }
 
-MODULAR_API_EXPORT M_Tuple *MOBI_newTuple() { return new M_Tuple{Tuple()}; }
+MODULAR_API_EXPORT M_Tuple *MOBI_tupleNew() { return new M_Tuple{Tuple()}; }
 
 MODULAR_API_EXPORT uint32_t MOBI_tupleSize(M_Tuple *t) {
   return t->tuple.size();
 }
 
-MODULAR_API_EXPORT void MOBI_addSymbol(M_Tuple *t, M_Symbol *s) {
+MODULAR_API_EXPORT void MOBI_tupleAddSymbol(M_Tuple *t, M_Symbol *s) {
   t->tuple.add(s->symbol);
 }
 
@@ -190,28 +201,31 @@ MODULAR_API_EXPORT M_Symbol *MOBI_getSymbol(M_Tuple *t, uint32_t pos) {
   return new M_Symbol{t->tuple.getItem(pos)};
 }
 
-/// Type
+//===----------------------------------------------------------------------===//
+// Type helpers
+//===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT char *MOBI_typeToString(M_Type *t, int64_t *len) {
-  return unownedString(t->type.toString(), len);
-}
-
-MODULAR_API_EXPORT M_Type *MOBI_newDType(M_Module *m, uint8_t value) {
+MODULAR_API_EXPORT M_Type *MOBI_dTypeNew(M_Module *m, uint8_t value) {
   return new M_Type{m->module.newDType(M::DType(value))};
 }
 
-MODULAR_API_EXPORT M_Type *MOBI_newTensorType(M_Module *m, M_Type *dtype,
+MODULAR_API_EXPORT int64_t MOBI_dimTypeNewDynamic() {
+  return ShapedType::kDynamic;
+}
+
+MODULAR_API_EXPORT M_Type *MOBI_tensorTypeNew(M_Module *m, M_Type *dtype,
                                               bool ranked, int64_t *dims,
                                               int32_t rank) {
   return new M_Type{m->module.newTensorType(
       dtype->type, ranked, llvm::ArrayRef<int64_t>(dims, rank))};
 }
 
-MODULAR_API_EXPORT uint8_t MOBI_getTensorDType(M_Symbol *s) {
+MODULAR_API_EXPORT uint8_t MOBI_tensorTypeGetDType(M_Symbol *s) {
   return s->symbol.getTensorDType().getValue();
 }
 
-MODULAR_API_EXPORT int64_t *MOBI_getTensorShape(M_Symbol *s, int32_t *rank) {
+MODULAR_API_EXPORT int64_t *MOBI_tensorTypeGetShape(M_Symbol *s,
+                                                    int32_t *rank) {
   SmallVector<int64_t> dims = s->symbol.getTensorShape();
   *rank = dims.size();
   int64_t *retval = new int64_t[*rank];
@@ -220,20 +234,27 @@ MODULAR_API_EXPORT int64_t *MOBI_getTensorShape(M_Symbol *s, int32_t *rank) {
   return retval;
 }
 
-MODULAR_API_EXPORT bool MOBI_isTensorRanked(M_Symbol *s) {
+MODULAR_API_EXPORT bool MOBI_tensorTypeIsRanked(M_Symbol *s) {
   return s->symbol.getTensorDType().getValue();
 }
 
-MODULAR_API_EXPORT M_Type *MOBI_typeFromSpec(M_Module *m, const void *spec) {
-  const M::TensorSpec &tensorSpec =
-      *llvm::bit_cast<const M::TensorSpec *>(spec);
-  SmallVector<int64_t> dims(tensorSpec.begin(), tensorSpec.end());
-  return new M_Type{M::MO::TensorType::get(
-      dims, *M::MO::toMLIRType(m->module.getContext(), tensorSpec.getEltType()),
-      /*metadata=*/{})};
+MODULAR_API_EXPORT char *MOBI_typeToString(M_Type *t, int64_t *len) {
+  return unownedString(t->type.toString(), len);
 }
 
-MODULAR_API_EXPORT int64_t MOBI_dynamicDim() { return ShapedType::kDynamic; }
+MODULAR_API_EXPORT M_Arity *MOBI_arityNew() { return new M_Arity{Arity()}; }
+
+MODULAR_API_EXPORT uint32_t MOBI_aritySize(M_Arity *a) {
+  return a->arity.size();
+}
+
+MODULAR_API_EXPORT void MOBI_arityAddType(M_Arity *a, M_Type *t) {
+  a->arity.add(t->type);
+}
+
+//===----------------------------------------------------------------------===//
+// ... to delete ...
+//===----------------------------------------------------------------------===//
 
 MODULAR_API_EXPORT M_Type *MOBI_f32(M_Module *m, int64_t *dims, int64_t rank) {
   return new M_Type{m->module.f32(ArrayRef<int64_t>(dims, rank))};
@@ -252,57 +273,3 @@ MODULAR_API_EXPORT M_Type *MOBI_ui(M_Module *m, uint64_t width, int64_t *dims,
 MODULAR_API_EXPORT M_Type *MOBI_bool(M_Module *m, int64_t *dims, int64_t rank) {
   return new M_Type{m->module.bool_(ArrayRef<int64_t>(dims, rank))};
 }
-
-MODULAR_API_EXPORT M_Arity *MOBI_newArity() { return new M_Arity{Arity()}; }
-
-MODULAR_API_EXPORT uint32_t MOBI_aritySize(M_Arity *a) {
-  return a->arity.size();
-}
-
-MODULAR_API_EXPORT void MOBI_addType(M_Arity *a, M_Type *t) {
-  a->arity.add(t->type);
-}
-
-MODULAR_API_EXPORT uint64_t MOBI_typeIsTensor(M_Type *t) {
-  return isa<M::MO::TensorType>(t->type.getVal());
-}
-
-MODULAR_API_EXPORT bool MOBI_typeIsFloatTensor(M_Type *t) {
-  return isa<M::MO::TensorType>(t->type.getVal()) &&
-         cast<M::MO::TensorType>(t->type.getVal()).getDtype().isFloat();
-}
-
-MODULAR_API_EXPORT bool MOBI_typeIsSITensor(M_Type *t) {
-  return isa<M::MO::TensorType>(t->type.getVal()) &&
-         cast<M::MO::TensorType>(t->type.getVal()).getDtype().isSInt();
-}
-
-MODULAR_API_EXPORT bool MOBI_typeIsUITensor(M_Type *t) {
-  return isa<M::MO::TensorType>(t->type.getVal()) &&
-         cast<M::MO::TensorType>(t->type.getVal()).getDtype().isUInt();
-}
-
-MODULAR_API_EXPORT bool MOBI_typeIsBoolTensor(M_Type *t) {
-  return isa<M::MO::TensorType>(t->type.getVal()) &&
-         cast<M::MO::TensorType>(t->type.getVal()).getDtype().isBool();
-}
-
-MODULAR_API_EXPORT uint64_t MOBI_getTensorTypeDTypeWidth(M_Type *t) {
-  return cast<M::MO::TensorType>(t->type.getVal()).getDtype().getWidthInBits();
-}
-
-MODULAR_API_EXPORT uint64_t MOBI_getTensorTypeRank(M_Type *t) {
-  return cast<M::MO::TensorType>(t->type.getVal()).getRank();
-}
-
-// Doesn't currently support parametric dimensions.
-// Dynamic dims return ShapedDim::kDynamic.
-MODULAR_API_EXPORT int64_t MOBI_getTensorTypeDim(M_Type *t, uint64_t dim) {
-  return cast<M::MO::TensorType>(t->type.getVal()).getIntDim(dim);
-}
-
-MODULAR_API_EXPORT M_Type *MOBI_getSymbolType(M_Symbol *symbol) {
-  return new M_Type{MOBI::Type(symbol->symbol.getVal().getType())};
-}
-
-MODULAR_API_EXPORT void MOBI_freeType(M_Type *t) { delete t; }

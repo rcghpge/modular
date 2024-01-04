@@ -7,7 +7,7 @@
 from tensor import TensorSpec, TensorShape
 
 from mobi.symbol import Tup
-from mobi.motype import *
+from mobi.type import *
 
 
 # TODO: Add checks or extend to unranked support, where static shapes assumed.

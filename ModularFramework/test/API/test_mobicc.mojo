@@ -8,82 +8,30 @@
 # RUN: mt -execute %T/module_to_bytecode.bin | FileCheck %s --check-prefix=CHECK-MTB
 
 from sys.param_env import env_get_string
-from tensor import TensorSpec
 from testing import assert_equal
-from collections.vector import DynamicVector
 
-import mobi
+# import mobi
 from mobi import mobicc
-from mobi.mobicc import TypePtr
 
 
 alias TEMP_DIR = Path(env_get_string["TEMP_DIR"]())
 
 
-fn test_types() raises:
-    let m = mobicc.new_module()
-    let scalarShape = DynamicVector[Int64]()
-    let intScalar = mobicc.si(m, 32, Pointer[Int64](), 0)
-
-    # CHECK: True
-    print(mobicc.type_is_tensor(intScalar))
-    # CHECK: True
-    print(mobicc.type_is_si_tensor(intScalar))
-    # CHECK: False
-    print(mobicc.type_is_ui_tensor(intScalar))
-    # CHECK: False
-    print(mobicc.type_is_bool_tensor(intScalar))
-    # CHECK: 32
-    print(mobicc.tensor_dtype_width(intScalar))
-    # CHECK: 0
-    print(mobicc.tensor_rank(intScalar))
-
-    var boolShape = DynamicVector[Int64]()
-    boolShape.push_back(2)
-    boolShape.push_back(3)
-    let boolTensor = mobicc.bool(
-        m, rebind[Pointer[Int64]](boolShape.data), len(boolShape)
-    )
-
-    # CHECK: True
-    print(mobicc.type_is_tensor(boolTensor))
-    # CHECK: False
-    print(mobicc.type_is_si_tensor(boolTensor))
-    # CHECK: False
-    print(mobicc.type_is_ui_tensor(boolTensor))
-    # CHECK: True
-    print(mobicc.type_is_bool_tensor(boolTensor))
-    # CHECK: 8
-    print(mobicc.tensor_dtype_width(boolTensor))
-    # CHECK: 2
-    print(mobicc.tensor_rank(boolTensor))
-    # CHECK: 2
-    print(mobicc.tensor_dim(boolTensor, 0))
-    # CHECK: 3
-    print(mobicc.tensor_dim(boolTensor, 1))
-
-    _ = scalarShape
-    _ = boolShape
-
-    # CHECK: 🔥
-    print("🔥")
-
-
 fn test_empty_module() raises:
-    let m = mobicc.new_module()
+    let m = mobicc.module_new()
     # CHECK: module {
     print(mobicc.module_to_string(m))
 
 
 fn test_empty_graph() raises:
-    var m = mobicc.new_module()
+    var m = mobicc.module_new()
 
-    let ins = mobicc.new_arity()
+    let ins = mobicc.arity_new()
 
-    let outs = mobicc.new_arity()
+    let outs = mobicc.arity_new()
 
-    let unknown = mobicc.unknown_loc(m)
-    _ = mobicc.new_graph(m, unknown, "empty_graph", ins, outs)
+    let unknown = mobicc.loc_new_unknown(m)
+    _ = mobicc.graph_new(m, unknown, "empty_graph", ins, outs)
 
     # CHECK: builtin.module
     # CHECK: mo.graph
@@ -92,30 +40,30 @@ fn test_empty_graph() raises:
 
 
 fn test_identity_graph() raises:
-    var m = mobicc.new_module()
+    var m = mobicc.module_new()
 
-    var ins = mobicc.new_arity()
+    var ins = mobicc.arity_new()
     let scalarShape = DynamicVector[Int64]()
     let intScalar = mobicc.si(
         m, 32, rebind[Pointer[Int64]](scalarShape.data), len(scalarShape)
     )
-    mobicc.add_type(ins, intScalar)
+    mobicc.arity_add_type(ins, intScalar)
 
-    var outs = mobicc.new_arity()
-    mobicc.add_type(outs, intScalar)
+    var outs = mobicc.arity_new()
+    mobicc.arity_add_type(outs, intScalar)
 
-    let unknown = mobicc.unknown_loc(m)
-    let g = mobicc.new_graph(m, unknown, "identity_graph", ins, outs)
+    let unknown = mobicc.loc_new_unknown(m)
+    let g = mobicc.graph_new(m, unknown, "identity_graph", ins, outs)
 
-    var rets = mobicc.new_tuple()
-    let arg0 = mobicc.get_input(g, 0)
-    mobicc.add_symbol(rets, arg0)
+    var rets = mobicc.tuple_new()
+    let arg0 = mobicc.graph_get_arg(g, 0)
+    mobicc.tuple_add_symbol(rets, arg0)
 
-    let void = mobicc.new_arity()
+    let void = mobicc.arity_new()
 
-    let attrs = mobicc.new_attr_map()
+    let attrs = mobicc.attrmap_new()
 
-    _ = mobicc.new_op(g, unknown, "mo.output", rets, void, attrs)
+    _ = mobicc.graph_new_op(g, unknown, "mo.output", rets, void, attrs)
 
     # CHECK: mo.graph @identity_graph
     # CHECK: mo.output
@@ -123,34 +71,34 @@ fn test_identity_graph() raises:
 
 
 fn test_tuple_copy() raises:
-    var m = mobicc.new_module()
+    var m = mobicc.module_new()
 
-    var ins = mobicc.new_arity()
+    var ins = mobicc.arity_new()
     let scalarShape = DynamicVector[Int64]()
     let intScalar = mobicc.si(
         m, 32, rebind[Pointer[Int64]](scalarShape.data), len(scalarShape)
     )
-    mobicc.add_type(ins, intScalar)
+    mobicc.arity_add_type(ins, intScalar)
 
-    var outs = mobicc.new_arity()
-    mobicc.add_type(outs, intScalar)
+    var outs = mobicc.arity_new()
+    mobicc.arity_add_type(outs, intScalar)
 
-    let unknown = mobicc.unknown_loc(m)
-    let g = mobicc.new_graph(m, unknown, "tuple_copy_test", ins, outs)
+    let unknown = mobicc.loc_new_unknown(m)
+    let g = mobicc.graph_new(m, unknown, "tuple_copy_test", ins, outs)
 
-    var t = mobicc.new_tuple()
-    let arg0 = mobicc.get_input(g, 0)
-    mobicc.add_symbol(t, arg0)
+    var t = mobicc.tuple_new()
+    let arg0 = mobicc.graph_get_arg(g, 0)
+    mobicc.tuple_add_symbol(t, arg0)
 
-    var t2 = mobicc.new_tuple()
-    let el = mobicc.get_symbol(t, 0)
-    mobicc.add_symbol(t2, el)
+    var t2 = mobicc.tuple_new()
+    let el = mobicc.tuple_get_symbol(t, 0)
+    mobicc.tuple_add_symbol(t2, el)
 
-    let void = mobicc.new_arity()
+    let void = mobicc.arity_new()
 
-    let attrs = mobicc.new_attr_map()
+    let attrs = mobicc.attrmap_new()
 
-    _ = mobicc.new_op(g, unknown, "mo.output", t2, void, attrs)
+    _ = mobicc.graph_new_op(g, unknown, "mo.output", t2, void, attrs)
 
     # CHECK: mo.graph @tuple_copy_test
     # CHECK: mo.output
@@ -158,41 +106,41 @@ fn test_tuple_copy() raises:
 
 
 fn test_const_op() raises:
-    var m = mobicc.new_module()
+    var m = mobicc.module_new()
 
-    let void = mobicc.new_arity()
+    let void = mobicc.arity_new()
 
-    var outs = mobicc.new_arity()
+    var outs = mobicc.arity_new()
     let scalarShape = DynamicVector[Int64]()
     let intScalar = mobicc.si(
         m, 32, rebind[Pointer[Int64]](scalarShape.data), len(scalarShape)
     )
-    mobicc.add_type(outs, intScalar)
+    mobicc.arity_add_type(outs, intScalar)
 
-    let unknown = mobicc.unknown_loc(m)
-    let g = mobicc.new_graph(m, unknown, "const_op", void, outs)
+    let unknown = mobicc.loc_new_unknown(m)
+    let g = mobicc.graph_new(m, unknown, "const_op", void, outs)
 
-    var attrs = mobicc.new_attr_map()
+    var attrs = mobicc.attrmap_new()
     var val: Int32 = 1
-    let a = mobicc.tensor_attr(
+    let a = mobicc.attr_new_tensor(
         m,
         "value",
-        Pointer[Int32].address_of(val).bitcast[AnyRegType](),
+        DTypePointer[DType.int32].address_of(val).bitcast[DType.invalid](),
         intScalar,
         is_owned=False,
     )
-    mobicc.add_attr(attrs, a)
+    mobicc.attrmap_add_attr(attrs, a)
 
-    let noIns = mobicc.new_tuple()
-    let x = mobicc.new_op(g, unknown, "mo.constant", noIns, outs, attrs)
+    let noIns = mobicc.tuple_new()
+    let x = mobicc.graph_new_op(g, unknown, "mo.constant", noIns, outs, attrs)
 
-    var rets = mobicc.new_tuple()
-    let x0 = mobicc.get_symbol(x, 0)
-    mobicc.add_symbol(rets, x0)
+    var rets = mobicc.tuple_new()
+    let x0 = mobicc.tuple_get_symbol(x, 0)
+    mobicc.tuple_add_symbol(rets, x0)
 
-    let noAttrs = mobicc.new_attr_map()
+    let noAttrs = mobicc.attrmap_new()
 
-    _ = mobicc.new_op(g, unknown, "mo.output", rets, void, noAttrs)
+    _ = mobicc.graph_new_op(g, unknown, "mo.output", rets, void, noAttrs)
 
     # CHECK: mo.graph @const_op
     # CHECK: mo.constant
@@ -200,41 +148,41 @@ fn test_const_op() raises:
 
 
 fn test_bytecode_output() raises:
-    var m = mobicc.new_module()
+    var m = mobicc.module_new()
 
-    let void = mobicc.new_arity()
+    let void = mobicc.arity_new()
 
-    var outs = mobicc.new_arity()
+    var outs = mobicc.arity_new()
     let scalarShape = DynamicVector[Int64]()
     let intScalar = mobicc.si(
         m, 32, rebind[Pointer[Int64]](scalarShape.data), len(scalarShape)
     )
-    mobicc.add_type(outs, intScalar)
+    mobicc.arity_add_type(outs, intScalar)
 
-    let unknown = mobicc.unknown_loc(m)
-    let g = mobicc.new_graph(m, unknown, "bytecode_output", void, outs)
+    let unknown = mobicc.loc_new_unknown(m)
+    let g = mobicc.graph_new(m, unknown, "bytecode_output", void, outs)
 
-    var attrs = mobicc.new_attr_map()
+    var attrs = mobicc.attrmap_new()
     var val: Int32 = 7
-    let a = mobicc.tensor_attr(
+    let a = mobicc.attr_new_tensor(
         m,
         "value",
-        Pointer[Int32].address_of(val).bitcast[AnyRegType](),
+        DTypePointer[DType.int32].address_of(val).bitcast[DType.invalid](),
         intScalar,
         is_owned=False,
     )
-    mobicc.add_attr(attrs, a)
+    mobicc.attrmap_add_attr(attrs, a)
 
-    let noIns = mobicc.new_tuple()
-    let x = mobicc.new_op(g, unknown, "mo.constant", noIns, outs, attrs)
+    let noIns = mobicc.tuple_new()
+    let x = mobicc.graph_new_op(g, unknown, "mo.constant", noIns, outs, attrs)
 
-    var rets = mobicc.new_tuple()
-    let x0 = mobicc.get_symbol(x, 0)
-    mobicc.add_symbol(rets, x0)
+    var rets = mobicc.tuple_new()
+    let x0 = mobicc.tuple_get_symbol(x, 0)
+    mobicc.tuple_add_symbol(rets, x0)
 
-    let noAttrs = mobicc.new_attr_map()
+    let noAttrs = mobicc.attrmap_new()
 
-    _ = mobicc.new_op(g, unknown, "mo.output", rets, void, noAttrs)
+    _ = mobicc.graph_new_op(g, unknown, "mo.output", rets, void, noAttrs)
 
     # CHECK: True
     # CHECK-MTB{LITERAL}: 'bytecode_output' returned tensor([[7]], dtype=si32, shape=[])
@@ -246,7 +194,6 @@ fn test_bytecode_output() raises:
 
 
 fn main() raises:
-    test_types()
     test_empty_module()
     test_empty_graph()
     test_identity_graph()
