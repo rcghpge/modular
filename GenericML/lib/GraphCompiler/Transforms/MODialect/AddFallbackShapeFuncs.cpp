@@ -449,7 +449,9 @@ void Fallback<MO::ResizeLinearOp>::build(GraphOp &graph, OpBuilder &builder,
 
 void Fallback<MO::RoiAlignOp>::build(GraphOp &graph, OpBuilder &builder,
                                      MO::RoiAlignOp op) {
-  buildForOpResult(graph, builder, op, "roi_align_shape", op.getOperands(),
+  // The shape function doesn't need spatial_scale and sampling_ratio.
+  buildForOpResult(graph, builder, op, "roi_align_shape",
+                   op.getOperands().take_front(4),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{2, 3});
 }
 
