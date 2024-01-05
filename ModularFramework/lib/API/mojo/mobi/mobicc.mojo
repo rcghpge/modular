@@ -257,6 +257,9 @@ fn module_to_string(module: ModulePtr) -> String:
     let ret = MOBI_func[fn (ModulePtr, Pointer[Int64]) -> Pointer[Int8]](
         "MOBI_moduleToString"
     )(module, Pointer[Int64].address_of(len))
+    debug_assert(
+        ret[len.to_int()] == 0, "String expects null-terminated buffers"
+    )
     return String(ret, len.to_int())
 
 

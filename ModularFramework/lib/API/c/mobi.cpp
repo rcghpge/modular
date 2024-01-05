@@ -26,9 +26,9 @@ using namespace llvm;
 using namespace mlir;
 
 char *unownedString(const std::string &buffer, int64_t *len) {
-  char *cstr = new char[buffer.size() + 1];
+  *len = buffer.size() + 1; // Include terminator.
+  char *cstr = reinterpret_cast<char *>(std::malloc(*len));
   std::strcpy(cstr, buffer.c_str());
-  *len = buffer.size() + 1; // TODO: Why?
   return cstr;
 }
 
