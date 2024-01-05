@@ -81,6 +81,11 @@ HAS_FALLBACK(MO::ScatterAddOp)
 HAS_FALLBACK(MO::ScatterMaxOp)
 HAS_FALLBACK(MO::ScatterMinOp)
 HAS_FALLBACK(MO::ScatterMulOp)
+HAS_FALLBACK(MO::ScatterNdOp)
+HAS_FALLBACK(MO::ScatterNdAddOp)
+HAS_FALLBACK(MO::ScatterNdMaxOp)
+HAS_FALLBACK(MO::ScatterNdMinOp)
+HAS_FALLBACK(MO::ScatterNdMulOp)
 HAS_FALLBACK(MO::SliceOp)
 HAS_FALLBACK(MO::SplitOp)
 HAS_FALLBACK(MO::TopKOp)
@@ -98,7 +103,6 @@ struct Fallback<MO::CustomOp> {
 // fallback or an explict vouch that they need no fallback.
 NEEDS_NO_FALLBACK(MO::BatchMatmulOp)
 NEEDS_NO_FALLBACK(MO::MatmulOp)
-NEEDS_NO_FALLBACK(MO::ScatterNdOp)
 NEEDS_NO_FALLBACK(MO::Static::BroadcastToOp)
 NEEDS_NO_FALLBACK(MO::GatherNdOp)
 
@@ -144,8 +148,8 @@ struct AddFallbackShapeFunctions
                MO::ConvOp, MO::ConvTransposeOp, MO::GatherOp, MO::MaxPoolOp,
                MO::MeanOp, MO::PadLike, MO::RangeOp, MO::Reduction,
                MO::ResizeLinearOp, MO::ResizeNearestOp, MO::RoiAlignOp,
-               MO::ScatterLike, MO::SliceOp, MO::SplitOp, MO::TopKOp,
-               MO::TransposeOp, MO::TileOp>(op.getOperation()))
+               MO::ScatterLike, MO::ScatterNdLike, MO::SliceOp, MO::SplitOp,
+               MO::TopKOp, MO::TransposeOp, MO::TileOp>(op.getOperation()))
         return mlir::WalkResult::advance();
 
       // Call the fallbacks.
@@ -180,6 +184,11 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ScatterMaxOp)
       CALL_FALLBACK(MO::ScatterMinOp)
       CALL_FALLBACK(MO::ScatterMulOp)
+      CALL_FALLBACK(MO::ScatterNdOp)
+      CALL_FALLBACK(MO::ScatterNdAddOp)
+      CALL_FALLBACK(MO::ScatterNdMaxOp)
+      CALL_FALLBACK(MO::ScatterNdMinOp)
+      CALL_FALLBACK(MO::ScatterNdMulOp)
       CALL_FALLBACK(MO::SliceOp)
       CALL_FALLBACK(MO::SplitOp)
       CALL_FALLBACK(MO::TopKOp)
@@ -258,6 +267,18 @@ static void buildForScatterLikeOp(GraphOp &graph, OpBuilder &builder,
       op.getLoc(), op->getOperands(), "scatter_elements_shape", shapeParams,
       /*kgenAttrs*/ DictionaryAttr{},
       /*Data dependent input indices*/ builder.getI32ArrayAttr({3}));
+}
+
+static void buildForScatterNdLikeOp(GraphOp &graph, OpBuilder &builder,
+                                    MO::ScatterNdLike op) {
+  KGEN::ParamDeclArrayAttr shapeParams =
+      getNewParameterMapping(graph, op.getResult().getType());
+
+  // Create the shape function.
+  builder.create<MO::InvokeShapeFuncOp>(
+      op.getLoc(), op->getOperands(), "scatter_nd_shape", shapeParams,
+      /*kgenAttrs*/ DictionaryAttr{},
+      /*Data dependent input indices*/ builder.getI32ArrayAttr({}));
 }
 
 void buildForOpResult(GraphOp &graph, OpBuilder &builder, TensorValue res,
@@ -471,6 +492,21 @@ BUILD_SCATTER_LIKE_OP(MO::ScatterMinOp)
 BUILD_SCATTER_LIKE_OP(MO::ScatterMulOp)
 
 #undef BUILD_SCATTER_LIKE_OP
+
+// ScatterNdLike ops
+
+#define BUILD_SCATTER_ND_LIKE_OP(OP)                                           \
+  void Fallback<OP>::build(GraphOp &graph, OpBuilder &builder, OP op) {        \
+    buildForScatterNdLikeOp(graph, builder, op);                               \
+  }
+
+BUILD_SCATTER_ND_LIKE_OP(MO::ScatterNdOp)
+BUILD_SCATTER_ND_LIKE_OP(MO::ScatterNdAddOp)
+BUILD_SCATTER_ND_LIKE_OP(MO::ScatterNdMaxOp)
+BUILD_SCATTER_ND_LIKE_OP(MO::ScatterNdMinOp)
+BUILD_SCATTER_ND_LIKE_OP(MO::ScatterNdMulOp)
+
+#undef BUILD_SCATTER_ND_LIKE_OP
 
 void Fallback<MO::SliceOp>::build(GraphOp &graph, OpBuilder &builder,
                                   MO::SliceOp op) {

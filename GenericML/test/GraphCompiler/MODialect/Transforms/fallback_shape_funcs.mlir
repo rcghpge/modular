@@ -397,6 +397,37 @@ mo.graph @scatter_fallback_shape_func<D0, D1, D2, D3, D4, D5 -> D6, D7>(
 // CHECK-NEXT: }
 
 
+mo.graph @scatter_nd_fallback_shape_func<D0, D1, D2, D3, D4, D5 -> D6, D7>(
+  %input: !mo.tensor<[D0, D1], f32>,
+  %updates: !mo.tensor<[D2, D3], f32>,
+  %indices: !mo.tensor<[D4, D5], si32>
+) -> !mo.tensor<[D6, D7], f32> {
+
+  %res = mo.scatter_nd<() -> D8, D9>(%input, %updates, %indices) : (
+    !mo.tensor<[D0, D1], f32>, !mo.tensor<[D2, D3], f32>, !mo.tensor<[D4, D5], si32>
+  ) -> !mo.tensor<[D8, D9], f32>
+
+  mo.output<D8, D9> %res : !mo.tensor<[D8, D9], f32>
+}
+// CHECK-LABEL: mo.graph @scatter_nd_fallback_shape_func
+// CHECK-SAME:    <[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]], [[D5:.*]] -> [[D6:.*]], [[D7:.*]]>(
+// CHECK-SAME:    %[[INPUT:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>,
+// CHECK-SAME:    %[[UPDATES:.*]]: !mo.tensor<[[[D2]], [[D3]]], f32>,
+// CHECK-SAME:    %[[INDICES:.*]]: !mo.tensor<[[[D4]], [[D5]]], si32>
+// CHECK-SAME:  ) -> !mo.tensor<[[[D6]], [[D7]]], f32> no_inline {
+//
+// CHECK-NEXT:   mo.invoke_shape_func["scatter_nd_shape"]<() -> [[D8:.*]], [[D9:.*]]>(%[[INPUT]], %[[UPDATES]], %[[INDICES]])
+// CHECK-SAME:     {dataDeptTensors = []} :
+// CHECK-SAME:     (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>, !mo.tensor<[[[D4]], [[D5]]], si32>)
+//
+// CHECK-NEXT:   %[[RES:.*]] = mo.scatter_nd(%[[INPUT]], %[[UPDATES]], %[[INDICES]]) : (
+// CHECK-SAME:     !mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>, !mo.tensor<[[[D4]], [[D5]]], si32>
+// CHECK-SAME:   ) -> !mo.tensor<[[[D8]], [[D9]]], f32>
+//
+// CHECK-NEXT:   mo.output<[[D8]], [[D9]]> %[[RES]] : !mo.tensor<[[[D8]], [[D9]]], f32>
+// CHECK-NEXT: }
+
+
 mo.graph @slice_fallback_shape_func<() -> D0, D1, D2>(
   %input: !mo.tensor<[1, 2, 3], f32>,
   %start: !mo.tensor<[3], si32>,

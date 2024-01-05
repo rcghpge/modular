@@ -2929,7 +2929,8 @@ def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [MO_ScatterNdLikeTraits]> {
                        MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 

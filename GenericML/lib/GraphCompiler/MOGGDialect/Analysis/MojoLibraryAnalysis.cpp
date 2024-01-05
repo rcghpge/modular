@@ -307,6 +307,7 @@ MojoLibraryAnalysis::get(MLIRContext *ctx,
 
       INTRINSIC_TO_MOJO("scatter_shape",
                         "$GatherScatter::scatter_elements_shape"),
+      INTRINSIC_TO_MOJO("scatter_nd_shape", "$GatherScatter::scatter_nd_shape"),
       INTRINSIC_TO_MOJO("slice_shape", "$Slice::slice_shape"),
       INTRINSIC_TO_MOJO("split_ith_output_shape",
                         "$MOGG::split_ith_output_shape"),
