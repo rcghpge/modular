@@ -54,6 +54,7 @@ struct Fallback {
 HAS_FALLBACK(MO::ArgMaxOp)
 HAS_FALLBACK(MO::ArgMinOp)
 HAS_FALLBACK(MO::AvgPoolOp)
+HAS_FALLBACK(MO::BatchMatmulOp)
 HAS_FALLBACK(MO::BottomKOp)
 HAS_FALLBACK(MO::BroadcastToOp)
 HAS_FALLBACK(MO::ConcatOp)
@@ -102,7 +103,6 @@ struct Fallback<MO::CustomOp> {
 
 // Eventually all ops must be accounted for here. They either must have a
 // fallback or an explict vouch that they need no fallback.
-NEEDS_NO_FALLBACK(MO::BatchMatmulOp)
 NEEDS_NO_FALLBACK(MO::MatmulOp)
 NEEDS_NO_FALLBACK(MO::Static::BroadcastToOp)
 
@@ -144,13 +144,13 @@ struct AddFallbackShapeFunctions
       // following ops' fallback shape functions in the experimental shape
       // inference path.
       if (restricted &&
-          !isa<MO::ArgMaxOp, MO::ArgMinOp, MO::AvgPoolOp, MO::BottomKOp,
-               MO::ConvOp, MO::ConvTransposeOp, MO::GatherOp, MO::GatherNdOp,
-               MO::MaxPoolOp, MO::MeanOp, MO::PadLike, MO::RangeOp,
-               MO::Reduction, MO::ResizeLinearOp, MO::ResizeNearestOp,
-               MO::RoiAlignOp, MO::ScatterLike, MO::ScatterNdLike, MO::SliceOp,
-               MO::SplitOp, MO::TopKOp, MO::TransposeOp, MO::TileOp>(
-              op.getOperation()))
+          !isa<MO::ArgMaxOp, MO::ArgMinOp, MO::AvgPoolOp, MO::BatchMatmulOp,
+               MO::BottomKOp, MO::ConvOp, MO::ConvTransposeOp, MO::GatherOp,
+               MO::GatherNdOp, MO::MaxPoolOp, MO::MeanOp, MO::PadLike,
+               MO::RangeOp, MO::Reduction, MO::ResizeLinearOp,
+               MO::ResizeNearestOp, MO::RoiAlignOp, MO::ScatterLike,
+               MO::ScatterNdLike, MO::SliceOp, MO::SplitOp, MO::TopKOp,
+               MO::TransposeOp, MO::TileOp>(op.getOperation()))
         return mlir::WalkResult::advance();
 
       // Call the fallbacks.
@@ -158,6 +158,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ArgMaxOp)
       CALL_FALLBACK(MO::ArgMinOp)
       CALL_FALLBACK(MO::AvgPoolOp)
+      CALL_FALLBACK(MO::BatchMatmulOp)
       CALL_FALLBACK(MO::BottomKOp)
       CALL_FALLBACK(MO::BroadcastToOp)
       CALL_FALLBACK(MO::ConcatOp)
@@ -315,6 +316,13 @@ void Fallback<MO::AvgPoolOp>::build(GraphOp &graph, OpBuilder &builder,
   buildForOpResult(graph, builder, op, "pool_shape", op.getOperands(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{1, 2, 3, 4});
+}
+
+void Fallback<MO::BatchMatmulOp>::build(GraphOp &graph, OpBuilder &builder,
+                                        MO::BatchMatmulOp op) {
+  buildForOpResult(graph, builder, op, "batch_matmul_shape", op.getOperands(),
+                   /*kgenParams=*/{},
+                   /*dataDepInputIdxs=*/{});
 }
 
 void Fallback<MO::BottomKOp>::build(GraphOp &graph, OpBuilder &builder,
