@@ -249,6 +249,36 @@ mo.graph @gather_fallback_shape_func<D0, D1 -> D2, D3, D4>(
 //
 // CHECK-NEXT: mo.output<[[D5]], [[D6]], [[D7]]> %[[RES]] : !mo.tensor<[[[D5]], [[D6]], [[D7]]], f32>
 
+
+mo.graph @gather_nd_fallback_shape_func<D0, D1 -> D2, D3>(
+  %input : !mo.tensor<[D0, D1, 20], f32>,
+  %indices : !mo.tensor<[D0, 1], si32>
+) -> !mo.tensor<[D2, D3], f32> {
+
+  %res = mo.gather_nd<() -> D4, D5>(%input, %indices)
+    { batchDims = 1 } :
+    (!mo.tensor<[D0, D1, 20], f32>, !mo.tensor<[D0, 1], si32>) -> !mo.tensor<[D4, D5], f32>
+
+  mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>
+}
+// CHECK-LABEL: mo.graph @gather_nd_fallback_shape_func
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]] -> [[D2:.*]], [[D3:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[D0]], [[D1]], 20], f32>,
+// CHECK-SAME:   %[[INDICES:.*]]: !mo.tensor<[[[D0]], 1], si32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]]], f32> no_inline {
+//
+// CHECK-NEXT: mo.invoke_shape_func["gather_nd_shape"]<() -> [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[INDICES]])
+// CHECK-SAME:   {dataDeptTensors = [], kgenParams = {batch_dims = 1 : i64, output_rank = 2 : index}} :
+// CHECK-SAME:   (!mo.tensor<[[[D0]], [[D1]], 20], f32>, !mo.tensor<[[[D0]], 1], si32>)
+//
+// CHECK-NEXT: %[[RES:.*]] = mo.gather_nd(%[[INPUT]], %[[INDICES]])
+// CHECK-SAME:   {batchDims = 1 : i64} :
+// CHECK-SAME:   (!mo.tensor<[[[D0]], [[D1]], 20], f32>, !mo.tensor<[[[D0]], 1], si32>)
+// CHECK-SAME:   -> !mo.tensor<[[[D4]], [[D5]]], f32>
+//
+// CHECK-NEXT: mo.output<[[D4]], [[D5]]> %[[RES]] : !mo.tensor<[[[D4]], [[D5]]], f32>
+
+
 mo.graph @pad_constant_fallback_shape_func<() -> D0, D1, D2>(
   %input : !mo.tensor<[1, 2, 3], f32>,
   %paddings : !mo.tensor<[3, 2], si32>,

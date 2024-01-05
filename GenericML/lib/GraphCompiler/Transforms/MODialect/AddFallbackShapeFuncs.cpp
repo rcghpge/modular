@@ -61,6 +61,7 @@ HAS_FALLBACK(MO::ConcatFromListOp)
 HAS_FALLBACK(MO::ConvOp)
 HAS_FALLBACK(MO::ConvTransposeOp)
 HAS_FALLBACK(MO::GatherOp)
+HAS_FALLBACK(MO::GatherNdOp)
 HAS_FALLBACK(MO::MaxPoolOp)
 HAS_FALLBACK(MO::MeanOp)
 HAS_FALLBACK(MO::NonMaximumSuppressionOp)
@@ -104,7 +105,6 @@ struct Fallback<MO::CustomOp> {
 NEEDS_NO_FALLBACK(MO::BatchMatmulOp)
 NEEDS_NO_FALLBACK(MO::MatmulOp)
 NEEDS_NO_FALLBACK(MO::Static::BroadcastToOp)
-NEEDS_NO_FALLBACK(MO::GatherNdOp)
 
 // Creates the fallback for this op if it has parameters still needing decls.
 #define CALL_FALLBACK(MOOp)                                                    \
@@ -145,11 +145,12 @@ struct AddFallbackShapeFunctions
       // inference path.
       if (restricted &&
           !isa<MO::ArgMaxOp, MO::ArgMinOp, MO::AvgPoolOp, MO::BottomKOp,
-               MO::ConvOp, MO::ConvTransposeOp, MO::GatherOp, MO::MaxPoolOp,
-               MO::MeanOp, MO::PadLike, MO::RangeOp, MO::Reduction,
-               MO::ResizeLinearOp, MO::ResizeNearestOp, MO::RoiAlignOp,
-               MO::ScatterLike, MO::ScatterNdLike, MO::SliceOp, MO::SplitOp,
-               MO::TopKOp, MO::TransposeOp, MO::TileOp>(op.getOperation()))
+               MO::ConvOp, MO::ConvTransposeOp, MO::GatherOp, MO::GatherNdOp,
+               MO::MaxPoolOp, MO::MeanOp, MO::PadLike, MO::RangeOp,
+               MO::Reduction, MO::ResizeLinearOp, MO::ResizeNearestOp,
+               MO::RoiAlignOp, MO::ScatterLike, MO::ScatterNdLike, MO::SliceOp,
+               MO::SplitOp, MO::TopKOp, MO::TransposeOp, MO::TileOp>(
+              op.getOperation()))
         return mlir::WalkResult::advance();
 
       // Call the fallbacks.
@@ -164,6 +165,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ConvOp)
       CALL_FALLBACK(MO::ConvTransposeOp)
       CALL_FALLBACK(MO::GatherOp)
+      CALL_FALLBACK(MO::GatherNdOp)
       CALL_FALLBACK(MO::MaxPoolOp)
       CALL_FALLBACK(MO::MeanOp)
       CALL_FALLBACK(MO::NonMaximumSuppressionOp)
@@ -391,6 +393,21 @@ void Fallback<MO::GatherOp>::build(GraphOp &graph, OpBuilder &builder,
   buildForOpResult(graph, builder, op, "gather_shape", op.getOperands(),
                    /*kgenParams=*/{{"output_rank", outputRankAttr}},
                    /*dataDepInputIdxs=*/{2});
+}
+
+void Fallback<MO::GatherNdOp>::build(GraphOp &graph, OpBuilder &builder,
+                                     MO::GatherNdOp op) {
+  TensorType outputTy = op.getType();
+  assert(outputTy.hasRank() && "Unranked tensor isn't supported");
+  IntegerAttr outputRankAttr = builder.getIndexAttr(outputTy.getRank());
+
+  buildForOpResult(graph, builder, op, "gather_nd_shape", op.getOperands(),
+                   /*kgenParams=*/
+                   {
+                       {"output_rank", outputRankAttr},
+                       {"batch_dims", op.getBatchDims()},
+                   },
+                   /*dataDepInputIdxs=*/{});
 }
 
 void Fallback<MO::MaxPoolOp>::build(GraphOp &graph, OpBuilder &builder,
