@@ -176,18 +176,18 @@ struct ModelResult {
 /// Run a Model to get the constant outputs to a subgraph. Returns a mapping
 /// from output Vale to ElementsAttr containing the constant resulting from
 /// folding.
-std::variant<EncodedDiagnostic, ModelResult>
-executeModel(MLIRContext *ctx, const Model *model, SubgraphsInfo subgraphsInfo,
-             LLCL::Runtime &runtime) {
+LLCL::ErrorDiagnosticOr<ModelResult> executeModel(MLIRContext *ctx,
+                                                  const Model *model,
+                                                  SubgraphsInfo subgraphsInfo,
+                                                  LLCL::Runtime &runtime) {
   auto executableModelOr = model->setup(runtime);
   if (executableModelOr.isError())
-    return EncodedDiagnostic(executableModelOr.takeError(),
-                             model->getLocation().copy());
+    return executableModelOr.takeError();
 
   auto executableModel = executableModelOr.takeValue();
   auto setupErrorOrSuccess = executableModel->waitForModelSetup();
   if (setupErrorOrSuccess.isError())
-    return EncodedDiagnostic(
+    return LLCL::EncodedDiagnostic(
         Error("Model setup failed, not ready for execution"),
         model->getLocation().copy());
 
@@ -214,13 +214,13 @@ executeModel(MLIRContext *ctx, const Model *model, SubgraphsInfo subgraphsInfo,
   auto results = executableModel->execute(inputTensorsInMEFIndexOrder);
 
   if (results.empty())
-    return EncodedDiagnostic("Failed to execute model",
-                             model->getLocation().copy());
+    return LLCL::EncodedDiagnostic("Failed to execute model",
+                                   model->getLocation().copy());
 
   LLCL::await(results);
   for (auto &result : results)
     if (result.isError())
-      return result.takeDiagnostic();
+      return LLCL::EncodedDiagnostic(result.takeDiagnostic());
 
   MutableArrayRef<AnyAsyncValueRef> resultCopy(results.data(), results.size());
 
@@ -247,7 +247,7 @@ executeModel(MLIRContext *ctx, const Model *model, SubgraphsInfo subgraphsInfo,
       for (size_t i = 0; i < op->getNumResults(); i++) {
         AnyAsyncValueRef &tensor = outputTensorRefs[outIdx];
         if (tensor.isError())
-          return tensor.takeDiagnostic();
+          return LLCL::EncodedDiagnostic(tensor.takeDiagnostic());
 
         // Copy output tensor into storage.
         assert(tensor.isReady() &&
@@ -279,7 +279,7 @@ executeModel(MLIRContext *ctx, const Model *model, SubgraphsInfo subgraphsInfo,
     for (auto paramName : subgraph.paramDeclarations()) {
       auto &tensor = outputTensorRefs[outIdx];
       if (tensor.isError())
-        return tensor.takeDiagnostic();
+        return LLCL::EncodedDiagnostic(tensor.takeDiagnostic());
       assert(tensor.isReady() && "We already awaited, tensor should be ready");
       GML::Tensor &t = tensor.get<GML::Tensor>();
       params[paramName] = reinterpret_cast<const int64_t *>(t.getBuffer())[0];
@@ -914,18 +914,18 @@ void ConstantFoldPass::runOnOperation() {
           subgraphsInfo.constantSubgraphName);
       assert(model != nullptr &&
              "Model should exist, make sure names above match.");
-      std::variant<EncodedDiagnostic, ModelResult> valuesToTensorsOr =
+      LLCL::ErrorDiagnosticOr<ModelResult> valuesToTensorsOr =
           executeModel(ctx, model, subgraphsInfo, *ownedRuntime);
-      if (std::holds_alternative<EncodedDiagnostic>(valuesToTensorsOr)) {
-        EncodedDiagnostic &err = std::get<EncodedDiagnostic>(valuesToTensorsOr);
-        LLCL::DecodedLocation decoded = err.getLocation().decode();
+      if (valuesToTensorsOr.isError()) {
+        LLCL::EncodedDiagnostic err = valuesToTensorsOr.takeError();
+        auto decoded = err.decodeLocation();
         auto loc =
             mlir::FileLineColLoc::get(module.getContext(), decoded.filename,
                                       decoded.line, decoded.column);
         mlir::emitError(loc, "[ConstantFold] " + Twine(err.getMessage().get()));
         return signalPassFailure();
       }
-      auto valuesToTensors = std::get<ModelResult>(valuesToTensorsOr);
+      auto valuesToTensors = valuesToTensorsOr.takeValue();
       auto it = executionResults.find(subgraphsInfo.orig);
       if (it != executionResults.end()) {
         it->second.push_back({valuesToTensors, subgraphsInfo});

@@ -63,7 +63,7 @@ public:
 
   /// Calls the model's setup function using `runtime` and returns the results
   /// immediately. This function does not await the results to be ready.
-  ErrorOr<std::unique_ptr<ExecutableModel>>
+  LLCL::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
   setup(Runtime &runtime) const override;
 
   static StringLiteral getEntityName() { return "mgp.model"; }

@@ -493,8 +493,8 @@ executeModel(const Model *model, Runtime &runtime,
     TimeTraceScope scope(DriverProfilerEntry ::create("executeModel.setup"));
     auto executableModel1Or = model->setup(runtime);
     if (executableModel1Or.isError())
-      return executableModel1Or.takeError();
-    auto executableModel1 = std::move(*executableModel1Or);
+      return executableModel1Or.takeError().getMessage().copy();
+    auto executableModel1 = executableModel1Or.takeValue();
     auto errorOrSuccess = executableModel1->waitForModelSetup();
     if (errorOrSuccess.isError())
       return errorOrSuccess.takeError();
@@ -742,8 +742,8 @@ M::runModelWithData(MLIRContext *ctx, const Model *model,
   // Setup the model.
   auto executableModelOr = model->setup(runtime);
   if (executableModelOr.isError())
-    return executableModelOr.takeError();
-  auto executableModel = std::move(*executableModelOr);
+    return executableModelOr.takeError().getMessage().copy();
+  auto executableModel = executableModelOr.takeValue();
   auto unitOr = executableModel->waitForModelSetup();
   if (unitOr.isError())
     return unitOr.takeError();

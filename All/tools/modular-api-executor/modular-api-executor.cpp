@@ -233,7 +233,7 @@ public:
 
   const M_RuntimeContext *getContext() const { return modelState.context; };
 
-  ErrorOr<std::unique_ptr<ExecutableModel>>
+  LLCL::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
   setup(Runtime &runtime) const override;
 
   ~ModularModel() override = default;
@@ -400,7 +400,7 @@ private:
 
 /// Initialize the model using `runtime`, allocating memory, setting up data
 /// structures, or whatever else the model needs.  This never blocks.
-ErrorOr<std::unique_ptr<ExecutableModel>>
+LLCL::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
 ModularModel::setup(Runtime &runtime) const {
   checkUniqueRuntime(runtime);
   checkKnownCallingThread(runtime);
@@ -409,8 +409,8 @@ ModularModel::setup(Runtime &runtime) const {
   ModelPtr initializedModel = {
       api.initModel(modelState.context, modelState.compiledModel, status.get()),
       api.freeModel};
-  return std::make_unique<ModularExecutableModel>(this, runtime,
-                                                  std::move(initializedModel));
+  return {std::make_unique<ModularExecutableModel>(
+      this, runtime, std::move(initializedModel))};
 }
 
 template <typename SpecFunc>
