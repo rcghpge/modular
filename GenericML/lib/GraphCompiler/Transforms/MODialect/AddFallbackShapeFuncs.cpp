@@ -63,6 +63,7 @@ HAS_FALLBACK(MO::ConvOp)
 HAS_FALLBACK(MO::ConvTransposeOp)
 HAS_FALLBACK(MO::GatherOp)
 HAS_FALLBACK(MO::GatherNdOp)
+HAS_FALLBACK(MO::LinAlg::SolveOp)
 HAS_FALLBACK(MO::MaxPoolOp)
 HAS_FALLBACK(MO::MeanOp)
 HAS_FALLBACK(MO::NonMaximumSuppressionOp)
@@ -146,8 +147,8 @@ struct AddFallbackShapeFunctions
       if (restricted &&
           !isa<MO::ArgMaxOp, MO::ArgMinOp, MO::AvgPoolOp, MO::BatchMatmulOp,
                MO::BottomKOp, MO::ConvOp, MO::ConvTransposeOp, MO::GatherOp,
-               MO::GatherNdOp, MO::MaxPoolOp, MO::MeanOp, MO::PadLike,
-               MO::RangeOp, MO::Reduction, MO::ResizeLinearOp,
+               MO::GatherNdOp, MO::LinAlg::SolveOp, MO::MaxPoolOp, MO::MeanOp,
+               MO::PadLike, MO::RangeOp, MO::Reduction, MO::ResizeLinearOp,
                MO::ResizeNearestOp, MO::RoiAlignOp, MO::ScatterLike,
                MO::ScatterNdLike, MO::SliceOp, MO::SplitOp, MO::TopKOp,
                MO::TransposeOp, MO::TileOp>(op.getOperation()))
@@ -167,6 +168,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ConvTransposeOp)
       CALL_FALLBACK(MO::GatherOp)
       CALL_FALLBACK(MO::GatherNdOp)
+      CALL_FALLBACK(MO::LinAlg::SolveOp)
       CALL_FALLBACK(MO::MaxPoolOp)
       CALL_FALLBACK(MO::MeanOp)
       CALL_FALLBACK(MO::NonMaximumSuppressionOp)
@@ -415,6 +417,13 @@ void Fallback<MO::GatherNdOp>::build(GraphOp &graph, OpBuilder &builder,
                        {"output_rank", outputRankAttr},
                        {"batch_dims", op.getBatchDims()},
                    },
+                   /*dataDepInputIdxs=*/{});
+}
+
+void Fallback<MO::LinAlg::SolveOp>::build(GraphOp &graph, OpBuilder &builder,
+                                          MO::LinAlg::SolveOp op) {
+  buildForOpResult(graph, builder, op, "matrix_solve_shape", op.getOperands(),
+                   /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{});
 }
 
