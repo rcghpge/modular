@@ -490,7 +490,7 @@ executeModel(const Model *model, Runtime &runtime,
   // Setup once.
   std::unique_ptr<ExecutableModel> executableModel;
   {
-    TimeTraceScope scope(DriverProfilerEntry ::create("executeModel.setup"));
+    TimeTraceScope scope(DriverProfilerEntry::create("executeModel.setup"));
     auto executableModel1Or = model->setup(runtime);
     if (executableModel1Or.isError())
       return executableModel1Or.takeError().getMessage().copy();

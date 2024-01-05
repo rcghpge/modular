@@ -8,6 +8,7 @@
 #include "PyTorch/Support/List.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include <numeric>
+#include <sstream>
 
 using namespace M;
 using namespace M::Torch;

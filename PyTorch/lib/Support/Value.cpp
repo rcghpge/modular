@@ -9,6 +9,7 @@
 #include "PyTorch/Support/Dict.h"
 #include "PyTorch/Support/List.h"
 #include "Support/LLVMForwardDecls.h"
+#include <sstream>
 
 using namespace M;
 using namespace M::Torch;

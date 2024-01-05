@@ -8,6 +8,7 @@
 #include "PyTorch/Support/Dict.h"
 #include "PyTorch/Support/Value.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include <sstream>
 #include <utility>
 
 using namespace M;
