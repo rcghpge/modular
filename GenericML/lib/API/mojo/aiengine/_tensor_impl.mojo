@@ -9,7 +9,8 @@ from sys.ffi import DLHandle
 from ._utils import *
 from ._dtypes import *
 from ._tensor_spec_impl import *
-from memory.unsafe import bitcast, Pointer
+from memory.unsafe import bitcast
+from memory.anypointer import AnyPointer
 from tensor import Tensor
 from .session import InferenceSession
 from python import PythonObject
@@ -124,19 +125,19 @@ struct EngineTensor(Sized):
 @value
 @register_passable
 struct _Numpy:
-    var np: Pointer[PythonObject]
+    var np: AnyPointer[PythonObject]
 
     fn __init__() raises -> Self:
-        let np_ptr = Pointer[PythonObject].alloc(1)
-        __get_address_as_uninit_lvalue(np_ptr.address) = Python.import_module(
+        let np_ptr = AnyPointer[PythonObject].alloc(1)
+        __get_address_as_uninit_lvalue(np_ptr.value) = Python.import_module(
             "numpy"
         )
 
         return Self {np: np_ptr}
 
     fn __getattr__(self, attr: StringLiteral) raises -> PythonObject:
-        return __get_address_as_lvalue(self.np.address).__getattr__(attr)
+        return __get_address_as_lvalue(self.np.value).__getattr__(attr)
 
     fn __del__(owned self):
-        _ = __get_address_as_owned_value(self.np.address)
+        _ = __get_address_as_owned_value(self.np.value)
         self.np.free()

@@ -11,12 +11,12 @@ from ._compilation import *
 from .model import *
 from .tensor_map import *
 from ._engine_impl import _EngineImpl, _get_engine_path
-from memory.unsafe import Pointer
+from memory.anypointer import AnyPointer
 from os.atomic import Atomic
 from utils._optional import Optional
 
 
-struct _InferenceSessionImpl:
+struct _InferenceSessionImpl(Movable):
     var engine: _EngineImpl
     var context: RuntimeContext
     var ref_count: Atomic[DType.int64]
@@ -31,6 +31,11 @@ struct _InferenceSessionImpl:
         let config = RuntimeConfig(self.engine.lib, device, num_threads)
         self.context = RuntimeContext(config ^, self.engine.lib)
         self.ref_count = 1
+
+    fn __moveinit__(inout self, owned existing: Self):
+        self.engine = existing.engine ^
+        self.context = existing.context ^
+        self.ref_count = existing.ref_count.fetch_add(0)
 
     fn compile_model(
         self,
@@ -131,7 +136,7 @@ struct _InferenceSessionImpl:
 @value
 @register_passable
 struct InferenceSession:
-    var ptr: Pointer[_InferenceSessionImpl]
+    var ptr: AnyPointer[_InferenceSessionImpl]
 
     fn __init__(
         device: StringRef = "cpu", num_threads: Optional[Int] = None
@@ -148,15 +153,15 @@ struct InferenceSession:
         lib_path: StringRef,
         device: StringRef,
         num_threads: Optional[Int],
-    ) raises -> Pointer[_InferenceSessionImpl]:
-        let ptr = Pointer[_InferenceSessionImpl].alloc(1)
-        __get_address_as_uninit_lvalue(ptr.address).__init__(
+    ) raises -> AnyPointer[_InferenceSessionImpl]:
+        let ptr = AnyPointer[_InferenceSessionImpl].alloc(1)
+        __get_address_as_uninit_lvalue(ptr.value).__init__(
             lib_path, device, num_threads
         )
         return ptr
 
     fn copy(self) -> Self:
-        _ = __get_address_as_lvalue(self.ptr.address).ref_count.fetch_add(1)
+        _ = __get_address_as_lvalue(self.ptr.value).ref_count.fetch_add(1)
         return Self {ptr: self.ptr}
 
     fn load_model(
@@ -169,7 +174,7 @@ struct InferenceSession:
         path-to-mojopkg and then compiles and initializes the model
         using the provided model path.
         """
-        return __get_address_as_lvalue(self.ptr.address).load_model(
+        return __get_address_as_lvalue(self.ptr.value).load_model(
             model_path, user_defined_ops_path, self.copy()
         )
 
@@ -177,19 +182,16 @@ struct InferenceSession:
         self, name: StringRef, spec: TensorSpec
     ) raises -> EngineTensorSpec:
         return __get_address_as_lvalue(
-            self.ptr.address
+            self.ptr.value
         ).get_as_engine_tensor_spec(name, spec, self.copy())
 
     fn new_tensor_map(self) raises -> TensorMap:
-        return __get_address_as_lvalue(self.ptr.address).new_tensor_map(
+        return __get_address_as_lvalue(self.ptr.value).new_tensor_map(
             self.copy()
         )
 
     fn __del__(owned self):
-        if (
-            __get_address_as_lvalue(self.ptr.address).ref_count.fetch_sub(1)
-            != 1
-        ):
+        if __get_address_as_lvalue(self.ptr.value).ref_count.fetch_sub(1) != 1:
             # There are others holding reference to this session. Keep the
             # session alive and let other reference holders deal with
             # managing it.
@@ -197,5 +199,5 @@ struct InferenceSession:
 
         # Now we know that there is only active reference to this session
         # and that is held by us. So go ahead and call destructor on it.
-        _ = __get_address_as_owned_value(self.ptr.address)
+        _ = __get_address_as_owned_value(self.ptr.value)
         self.ptr.free()
