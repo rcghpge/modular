@@ -140,10 +140,12 @@ struct AddFallbackShapeFunctions
       // following ops' fallback shape functions in the experimental shape
       // inference path.
       if (restricted &&
-          !isa<MO::ArgMaxOp, MO::ArgMinOp, MO::AvgPoolOp, MO::ConvOp,
-               MO::ConvTransposeOp, MO::GatherOp, MO::MaxPoolOp, MO::MeanOp,
-               MO::PadLike, MO::RangeOp, MO::Reduction, MO::TransposeOp,
-               MO::TileOp, MO::RangeOp, MO::SliceOp>(op.getOperation()))
+          !isa<MO::ArgMaxOp, MO::ArgMinOp, MO::AvgPoolOp, MO::BottomKOp,
+               MO::ConvOp, MO::ConvTransposeOp, MO::GatherOp, MO::MaxPoolOp,
+               MO::MeanOp, MO::PadLike, MO::RangeOp, MO::Reduction,
+               MO::ResizeLinearOp, MO::ResizeNearestOp, MO::RoiAlignOp,
+               MO::ScatterLike, MO::SliceOp, MO::SplitOp, MO::TopKOp,
+               MO::TransposeOp, MO::TileOp>(op.getOperation()))
         return mlir::WalkResult::advance();
 
       // Call the fallbacks.
