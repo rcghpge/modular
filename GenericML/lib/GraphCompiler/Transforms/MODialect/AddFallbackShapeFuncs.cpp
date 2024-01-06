@@ -91,8 +91,10 @@ HAS_FALLBACK(MO::ScatterNdMinOp)
 HAS_FALLBACK(MO::ScatterNdMulOp)
 HAS_FALLBACK(MO::SliceOp)
 HAS_FALLBACK(MO::SplitOp)
+HAS_FALLBACK(MO::SqueezeShapeOp)
 HAS_FALLBACK(MO::TopKOp)
 HAS_FALLBACK(MO::TransposeOp)
+HAS_FALLBACK(MO::UnsqueezeShapeOp)
 HAS_FALLBACK(MO::ArgNonzeroOp)
 HAS_FALLBACK(MO::TileOp)
 
@@ -150,8 +152,9 @@ struct AddFallbackShapeFunctions
                MO::GatherNdOp, MO::LinAlg::SolveOp, MO::MaxPoolOp, MO::MeanOp,
                MO::PadLike, MO::RangeOp, MO::Reduction, MO::ResizeLinearOp,
                MO::ResizeNearestOp, MO::RoiAlignOp, MO::ScatterLike,
-               MO::ScatterNdLike, MO::SliceOp, MO::SplitOp, MO::TopKOp,
-               MO::TransposeOp, MO::TileOp>(op.getOperation()))
+               MO::ScatterNdLike, MO::SliceOp, MO::SplitOp, MO::SqueezeShapeOp,
+               MO::TopKOp, MO::TransposeOp, MO::TileOp, MO::UnsqueezeShapeOp>(
+              op.getOperation()))
         return mlir::WalkResult::advance();
 
       // Call the fallbacks.
@@ -196,8 +199,10 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ScatterNdMulOp)
       CALL_FALLBACK(MO::SliceOp)
       CALL_FALLBACK(MO::SplitOp)
+      CALL_FALLBACK(MO::SqueezeShapeOp)
       CALL_FALLBACK(MO::TopKOp)
       CALL_FALLBACK(MO::TransposeOp)
+      CALL_FALLBACK(MO::UnsqueezeShapeOp)
       CALL_FALLBACK(MO::ArgNonzeroOp)
       CALL_FALLBACK(MO::TileOp)
 
@@ -558,6 +563,12 @@ void Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
   }
 }
 
+void Fallback<MO::SqueezeShapeOp>::build(GraphOp &graph, OpBuilder &builder,
+                                         MO::SqueezeShapeOp op) {
+  buildForOpResult(graph, builder, op, "squeeze_shape_shape", op.getOperands(),
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{});
+}
+
 void Fallback<MO::TopKOp>::build(GraphOp &graph, OpBuilder &builder,
                                  MO::TopKOp op) {
   buildForOpResult(graph, builder, op.getValues(), "top_k_shape",
@@ -572,6 +583,13 @@ void Fallback<MO::TransposeOp>::build(GraphOp &graph, OpBuilder &builder,
                                       MO::TransposeOp op) {
   buildForOpResult(graph, builder, op, "transpose_shape", op.getOperands(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
+}
+
+void Fallback<MO::UnsqueezeShapeOp>::build(GraphOp &graph, OpBuilder &builder,
+                                           MO::UnsqueezeShapeOp op) {
+  buildForOpResult(graph, builder, op, "unsqueeze_shape_shape",
+                   op.getOperands(),
+                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{});
 }
 
 void Fallback<MO::ArgNonzeroOp>::build(GraphOp &graph, OpBuilder &builder,

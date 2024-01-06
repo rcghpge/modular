@@ -316,7 +316,10 @@ MojoLibraryAnalysis::get(MLIRContext *ctx,
       INTRINSIC_TO_MOJO("slice_shape", "$Slice::slice_shape"),
       INTRINSIC_TO_MOJO("split_ith_output_shape",
                         "$MOGG::split_ith_output_shape"),
+      INTRINSIC_TO_MOJO("squeeze_shape_shape", "$MOGG::squeeze_shape_shape"),
       INTRINSIC_TO_MOJO("transpose_shape", "$MOGG::transpose_shape"),
+      INTRINSIC_TO_MOJO("unsqueeze_shape_shape",
+                        "$MOGG::unsqueeze_shape_shape"),
       INTRINSIC_TO_MOJO("arg_nonzero_shape", "$ArgNonzero::arg_nonzero_shape"),
 
       // Layout transformations

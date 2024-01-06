@@ -580,6 +580,31 @@ mo.graph @split_variadic_output<D0 -> D1>(
 // CHECK-NEXT: mo.output<[[D2]]> %[[RES]]#0, %[[RES]]#1 : !mo.tensor<[[[D2]], 10], f32>, !mo.tensor<[5, 10], f32>
 
 
+mo.graph @squeeze_shape_fallback_shape_func<D0, D1 -> D2>(
+  %input:   !mo.tensor<[D0], si64>,
+  %indices: !mo.tensor<[D1], si64>
+) -> !mo.tensor<[D2], si64> {
+
+  %res = mo.squeeze_shape<() -> D3>(%input, %indices) :
+    (!mo.tensor<[D0], si64>, !mo.tensor<[D1], si64>) -> !mo.tensor<[D3], si64>
+
+  mo.output<D3> %res : !mo.tensor<[D3], si64>
+}
+// CHECK-LABEL: mo.graph @squeeze_shape_fallback_shape_func
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]] -> [[D2:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[D0]]], si64>,
+// CHECK-SAME:   %[[INDICES:.*]]: !mo.tensor<[[[D1]]], si64>
+// CHECK-SAME: ) -> !mo.tensor<[[[D2]]], si64> no_inline {
+//
+// CHECK-NEXT: mo.invoke_shape_func["squeeze_shape_shape"]<() -> [[D3:.*]]>(%[[INPUT]], %[[INDICES]])
+// CHECK-SAME:   {dataDeptTensors = []} : (!mo.tensor<[[[D0]]], si64>, !mo.tensor<[[[D1]]], si64>)
+//
+// CHECK-NEXT: %[[RES:.*]] = mo.squeeze_shape(%[[INPUT]], %[[INDICES]]) :
+// CHECK-SAME:   (!mo.tensor<[[[D0]]], si64>, !mo.tensor<[[[D1]]], si64>) -> !mo.tensor<[[[D3]]], si64>
+//
+// CHECK-NEXT: mo.output<[[D3]]> %[[RES]] : !mo.tensor<[[[D3]]], si64>
+
+
 mo.graph @transpose<D1, D2 -> D3, D4>(%arg0: !mo.tensor<[D1, D2], f32>, %arg1: !mo.tensor<[2], si64>) -> !mo.tensor<[D3, D4], f32> {
   %0 = mo.rebind<() -> D5, D6>(%arg0) : !mo.tensor<[D1, D2], f32> -> !mo.tensor<[D5, D6], f32>
   %1 = mo.transpose<() -> D7, D8>(%0, %arg1) : (!mo.tensor<[D5, D6], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D7, D8], f32>
@@ -707,3 +732,28 @@ mo.graph @roi_align_fallback_shape_func<D0, D1, D2, D3 -> D4, D5, D6, D7>(
 // CHECK-SAME:    : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[1, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
 //
 // CHECK-NEXT:  mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> %[[OUTPUT]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
+
+
+mo.graph @unsqueeze_shape_fallback_shape_func<D0, D1 -> D2>(
+  %input:   !mo.tensor<[D0], si64>,
+  %indices: !mo.tensor<[D1], si64>
+) -> !mo.tensor<[D2], si64> {
+
+  %res = mo.unsqueeze_shape<() -> D3>(%input, %indices) :
+    (!mo.tensor<[D0], si64>, !mo.tensor<[D1], si64>) -> !mo.tensor<[D3], si64>
+
+  mo.output<D3> %res : !mo.tensor<[D3], si64>
+}
+// CHECK-LABEL: mo.graph @unsqueeze_shape_fallback_shape_func
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]] -> [[D2:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[D0]]], si64>,
+// CHECK-SAME:   %[[INDICES:.*]]: !mo.tensor<[[[D1]]], si64>
+// CHECK-SAME: ) -> !mo.tensor<[[[D2]]], si64> no_inline {
+//
+// CHECK-NEXT: mo.invoke_shape_func["unsqueeze_shape_shape"]<() -> [[D3:.*]]>(%[[INPUT]], %[[INDICES]])
+// CHECK-SAME:   {dataDeptTensors = []} : (!mo.tensor<[[[D0]]], si64>, !mo.tensor<[[[D1]]], si64>)
+//
+// CHECK-NEXT: %[[RES:.*]] = mo.unsqueeze_shape(%[[INPUT]], %[[INDICES]]) :
+// CHECK-SAME:   (!mo.tensor<[[[D0]]], si64>, !mo.tensor<[[[D1]]], si64>) -> !mo.tensor<[[[D3]]], si64>
+//
+// CHECK-NEXT: mo.output<[[D3]]> %[[RES]] : !mo.tensor<[[[D3]]], si64>
