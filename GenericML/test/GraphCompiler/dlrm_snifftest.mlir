@@ -11,7 +11,7 @@ mo.graph @dlrm(%arg0: !mo.tensor<[?, 8, 100], si32>, %arg1: !mo.tensor<[?, 256],
   %3 = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
   %4 = mo.constant {value = #M.dense_array<32> : tensor<1xsi32>} : !mo.tensor<[1], si32>
   %5 = mo.constant {value = #M.dense_array<9> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  %6 = mo.constant {value = #M.dense_array<false> : tensor<i1>} : !mo.tensor<[], bool>
+  %6 = mo.constant {value = #M.dense_array<0> : tensor<i8>} : !mo.tensor<[], bool>
   %7 = mo.constant {value = #M.dense_array<0, 2, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %8 = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[1], si64>
   %9 = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[1], si64>

@@ -163,7 +163,7 @@ bool isConstantFoldable(Operation *op) {
 
 /// Simple struct holding results of a model execution.
 struct ModelResult {
-  /// Mapping from subgraph output operaation to the constants that should
+  /// Mapping from subgraph output operation to the constants that should
   /// replace it. Also includes the output shape so that unknown shapes in the
   /// constant graph can be resolved.
   llvm::DenseMap<Operation *, SmallVector<std::pair<ElementsAttr, TensorShape>>>
@@ -953,7 +953,7 @@ void ConstantFoldPass::runOnOperation() {
     pm.addPass(mlir::createCanonicalizerPass());
     if (failed(runPipeline(pm, getOperation()))) {
       mlir::emitError(getOperation().getLoc(),
-                      "[ConstantFold] Failed to run cannonicalization pass");
+                      "[ConstantFold] Failed to run canonicalization pass");
       return;
     }
   }

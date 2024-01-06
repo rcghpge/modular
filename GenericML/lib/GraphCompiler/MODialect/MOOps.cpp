@@ -130,7 +130,8 @@ M::MO::tryGetConstantBoolVector(TensorValue val) {
 }
 
 template <typename Adaptor>
-OpFoldResult foldElemwiseOp(MO::TensorType resTy, Adaptor adaptor,
+OpFoldResult foldElemwiseOp(MLIRContext *ctx, MO::TensorType resTy,
+                            Adaptor adaptor,
                             std::function<int64_t(int64_t, int64_t)> lambda,
                             size_t bitwidth = 64, bool isSigned = true) {
   auto xAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputX());
@@ -152,8 +153,15 @@ OpFoldResult foldElemwiseOp(MO::TensorType resTy, Adaptor adaptor,
   for (size_t idx = 0, e = xArr.size(); idx < e; idx++)
     res[idx] = APInt(bitwidth, lambda(xArr[idx], yArr[idx]), isSigned);
 
-  auto rankedResTy =
-      RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
+  RankedTensorType rankedResTy;
+  // The tensor is a bool, so we should return an i8 attr.
+  if (resTy.getElementType().isInteger(1) && bitwidth == 8)
+    rankedResTy = RankedTensorType::get(
+        resTy.getIntDims(), IntegerType::get(ctx, 8, IntegerType::Signless));
+  else
+    rankedResTy =
+        RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
+
   return IntArrayElementsAttr::get(rankedResTy, res);
 }
 
@@ -652,7 +660,7 @@ OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
   auto yAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputY());
 
   if (xAttr && yAttr) {
-    return foldElemwiseOp(getType(), adaptor,
+    return foldElemwiseOp(getContext(), getType(), adaptor,
                           [](int64_t x, int64_t y) { return x + y; });
   } else {
     // We normally would reject non-constant inputs, but if one of the inputs is
@@ -703,12 +711,13 @@ OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
 // faster-rcnn-inception-resnet-v2
 OpFoldResult GreaterEqualOp::fold(FoldAdaptor adaptor) {
   return foldElemwiseOp(
-      getType(), adaptor, [](int64_t x, int64_t y) { return x >= y; },
-      /*bitwidth=*/1, /*isSigned=*/false);
+      getContext(), getType(), adaptor,
+      [](int64_t x, int64_t y) { return x >= y; },
+      /*bitwidth=*/8, /*isSigned=*/false);
 }
 
 OpFoldResult DivOp::fold(FoldAdaptor adaptor) {
-  return foldElemwiseOp(getType(), adaptor,
+  return foldElemwiseOp(getContext(), getType(), adaptor,
                         [](int64_t x, int64_t y) { return x / y; });
 }
 //===----------------------------------------------------------------------===//
@@ -869,6 +878,28 @@ OpFoldResult ConstantOp::fold(FoldAdaptor adaptor) {
   return getValueAttr();
 }
 
+LogicalResult ConstantOp::verify() {
+  auto valType = cast<ShapedType>(getValue().getType()).getElementType();
+  auto resType = getResult().getType().getElementType();
+  // TODO(#28523): Restrict the value type of booleans to i8.
+  if (resType.isInteger(1)) {
+    if (!(valType.isInteger(1) || valType.isInteger(8) ||
+          valType.isInteger(32) || valType.isInteger(64))) {
+      return emitOpError("for boolean tensors, the element type of the value "
+                         "must be an integer type, but got ")
+             << valType;
+    }
+    return success();
+  }
+  if (valType != resType) {
+    llvm::errs() << " not equal emitting error\n";
+    return emitOpError("element type of the value (")
+           << valType << ") must match the element type of the result ("
+           << resType << ")";
+  }
+  return success();
+}
+
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                        ArrayRef<int64_t> values) {
   auto type =
@@ -900,8 +931,11 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                        ArrayRef<bool> values) {
   auto type =
       MO::TensorType::get({(int64_t)values.size()}, odsBuilder.getI1Type());
-  auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
-      values, mlir::IntegerType::Signless);
+  auto rankedAttrTy =
+      RankedTensorType::get(values.size(), odsBuilder.getI8Type());
+  SmallVector<APInt> APIntVals =
+      llvm::map_to_vector(values, [&](bool val) { return APInt(8, val); });
+  auto valueAttr = IntArrayElementsAttr::get(rankedAttrTy, APIntVals);
   build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
 }
 
@@ -957,8 +991,9 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                        bool value) {
   auto type =
       MO::TensorType::get(SmallVector<int64_t>{}, odsBuilder.getI1Type());
-  auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
-      ArrayRef<bool>(SmallVector<bool>{value}), mlir::IntegerType::Signless);
+  auto rankedAttrTy = RankedTensorType::get(1, odsBuilder.getI8Type());
+  auto valueAttr = IntArrayElementsAttr::get(
+      rankedAttrTy, ArrayRef<APInt>(APInt(8, value, /*isSigned=*/false)));
   build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
 }
 
@@ -1230,7 +1265,8 @@ OpFoldResult GatherOp::fold(FoldAdaptor adaptor) {
     return getEmptyArray(inputElems.getElementType());
 
   if (idxElems && idxElems.empty())
-    return getEmptyArray(idxElems.getElementType());
+    // DType of empty array must match
+    return getEmptyArray(getResult().getType().getElementType());
 
   if (!inputElems || !idxElems)
     return {};

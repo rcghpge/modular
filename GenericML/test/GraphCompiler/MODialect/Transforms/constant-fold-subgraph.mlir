@@ -59,7 +59,7 @@ mo.graph @multiple_subgraphs(%r1 : !mo.tensor<[2], si32>) -> (!mo.tensor<[2], si
 mo.graph @if_not_handled(%e1 : !mo.tensor<[2], si32>) -> (!mo.tensor<[2], si32>) {
   %e2 = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi32>} :
 				!mo.tensor<[2], si32>
-  %e3 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} :
+  %e3 = mo.constant {value = #M.dense_array<1> : tensor<1xi8>} :
 				!mo.tensor<[], bool>
 
   %e4 = mo.if(%e3 : !mo.tensor<[], bool>) -> !mo.tensor<[2], si32> {

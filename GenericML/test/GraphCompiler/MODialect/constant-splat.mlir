@@ -12,7 +12,7 @@ mo.graph @base_case() -> (!mo.tensor<[2, 3], si32>) {
 // CHECK-LABEL:  mo.graph @control_flow
 // foo
 // CHECK-NEXT:    %[[CST:.*]] = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[1], si32>
-// CHECK-NEXT:    %[[COND:.*]] = mo.constant {value = #M.dense_array<true> : tensor<1xi1>} : !mo.tensor<[], bool>
+// CHECK-NEXT:    %[[COND:.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xi8>} : !mo.tensor<[], bool>
 // CHECK-NEXT:    %[[RET:.*]] = mo.if(%[[COND]] : !mo.tensor<[], bool>) -> !mo.tensor<[2, 3], si32> {
 // CHECK-NEXT:      %[[BCAST0:.*]] = mo.static.broadcast_to(%[[CST]]) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 3], si32>
 // CHECK-NEXT:      mo.yield %[[BCAST0]] : !mo.tensor<[2, 3], si32>
@@ -22,7 +22,7 @@ mo.graph @base_case() -> (!mo.tensor<[2, 3], si32>) {
 // CHECK-NEXT:    }
 // CHECK-NEXT:    mo.output %[[RET]] : !mo.tensor<[2, 3], si32>
 mo.graph @control_flow() -> (!mo.tensor<[2, 3], si32>) {
-  %cond = mo.constant {value = #M.dense_array<1> : tensor<1xi1>} : !mo.tensor<[], bool>
+  %cond = mo.constant {value = #M.dense_array<1> : tensor<1xi8>} : !mo.tensor<[], bool>
   %ret = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2, 3], si32> {
     %cst = mo.constant {value = #M.dense_array<1, 0, 0, 1, 0, 1> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
     mo.yield %cst : !mo.tensor<[2, 3], si32>

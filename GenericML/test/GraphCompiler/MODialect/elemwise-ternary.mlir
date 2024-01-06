@@ -10,7 +10,7 @@ mo.graph @select(%cond: !mo.tensor<[2, 3], bool>, %x: !mo.tensor<[2, 3], f32>, %
 // CHECK: mo.graph @select_int_folder() -> !mo.tensor<[2, 3], si32> no_inline {
 mo.graph @select_int_folder() -> (!mo.tensor<[2, 3], si32>) {
   // CHECK: %[[RES:.*]] = mo.constant {value = #M.dense_array<1, 8, 9, 4, 11, 6> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
-  %cond = mo.constant {value = #M.dense_array<1, 0, 0, 1, 0, 1> : tensor<2x3xi1>} : !mo.tensor<[2, 3], bool>
+  %cond = mo.constant {value = #M.dense_array<1, 0, 0, 1, 0, 1> : tensor<2x3xi8>} : !mo.tensor<[2, 3], bool>
   %then = mo.constant {value = #M.dense_array<1, 2, 3, 4, 5, 6> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
   %else = mo.constant {value = #M.dense_array<7, 8, 9, 10, 11, 12> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
   %res = mo.select(%cond, %then, %else) : (

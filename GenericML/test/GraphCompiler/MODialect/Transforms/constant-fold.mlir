@@ -65,7 +65,7 @@ mo.graph @if_not_handled(%e1 : !mo.tensor<[2], si32>) -> (!mo.tensor<[2], si32>)
 				!mo.tensor<[2], si32>
   // CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<0, 6>
   // CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<1>
-  %e3 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} :
+  %e3 = mo.constant {value = #M.dense_array<1> : tensor<1xi8>} :
 				!mo.tensor<[], bool>
 
   // CHECK-NEXT: mo.if

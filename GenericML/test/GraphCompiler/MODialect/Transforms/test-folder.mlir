@@ -134,7 +134,7 @@ mo.graph @fold_add0_no_fold_f64_missing_resource(%arg0: !mo.tensor<[5, 500, 100]
 // CHECK-NEXT: mo.static.broadcast_to
 // CHECK-NEXT: %[[OUT:.*]] = mo.add
 
-mo.graph @fold_slice(%arg0: !mo.tensor<[5, 500], f64>, 
+mo.graph @fold_slice(%arg0: !mo.tensor<[5, 500], f64>,
     %start: !mo.tensor<[2], si64>,
     %stop: !mo.tensor<[2], si64>) -> !mo.tensor<[5, 500], f64> {
     %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
@@ -149,7 +149,7 @@ mo.graph @fold_slice(%arg0: !mo.tensor<[5, 500], f64>,
 // There is some combination which should be able to produce the equiv of:
 // np.arange(0, 15).reshape(3, 5)[::-1, ::-1]
 // Which is the reverse with the same shape.
-mo.graph @no_fold_slice_reverse(%arg0: !mo.tensor<[5, 500], f64>, 
+mo.graph @no_fold_slice_reverse(%arg0: !mo.tensor<[5, 500], f64>,
     %start: !mo.tensor<[2], si64>,
     %stop: !mo.tensor<[2], si64>) -> !mo.tensor<[5, 500], f64> {
     %step = mo.constant {value = #M.dense_array<-1, -1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
@@ -163,7 +163,7 @@ mo.graph @no_fold_slice_reverse(%arg0: !mo.tensor<[5, 500], f64>,
 // CHECK-NEXT: mo.output %[[OUT]]
 
 
-mo.graph @no_fold_slice_unknown(%arg0: !mo.tensor<[5, ?], f64>, 
+mo.graph @no_fold_slice_unknown(%arg0: !mo.tensor<[5, ?], f64>,
     %start: !mo.tensor<[2], si64>,
     %stop: !mo.tensor<[2], si64>) -> !mo.tensor<[5, ?], f64> {
     %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
@@ -175,7 +175,7 @@ mo.graph @no_fold_slice_unknown(%arg0: !mo.tensor<[5, ?], f64>,
 // CHECK-NEXT: %[[OUT:.*]] = mo.slice
 // CHECK-NEXT: mo.output %[[OUT]]
 
-mo.graph @no_fold_slice_shape_mismatch(%arg0: !mo.tensor<[5, 500], f64>, 
+mo.graph @no_fold_slice_shape_mismatch(%arg0: !mo.tensor<[5, 500], f64>,
     %start: !mo.tensor<[2], si64>,
     %stop: !mo.tensor<[2], si64>) -> !mo.tensor<[5, 250], f64> {
     %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
@@ -188,7 +188,7 @@ mo.graph @no_fold_slice_shape_mismatch(%arg0: !mo.tensor<[5, 500], f64>,
 // CHECK-NEXT: mo.output %[[OUT]]
 
 
-mo.graph @fold_slice_parameter<N, M>(%arg0: !mo.tensor<[N, M], f64>, 
+mo.graph @fold_slice_parameter<N, M>(%arg0: !mo.tensor<[N, M], f64>,
     %start: !mo.tensor<[2], si64>,
     %stop: !mo.tensor<[2], si64>) -> !mo.tensor<[N, M], f64> {
     %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
@@ -200,7 +200,7 @@ mo.graph @fold_slice_parameter<N, M>(%arg0: !mo.tensor<[N, M], f64>,
 // CHECK-NEXT: mo.output %[[ARG0]] : !mo.tensor<[N, M], f64>
 
 
-mo.graph @no_fold_slice_parameter<N, M>(%arg0: !mo.tensor<[N, M], f64>, 
+mo.graph @no_fold_slice_parameter<N, M>(%arg0: !mo.tensor<[N, M], f64>,
     %start: !mo.tensor<[2], si64>,
     %stop: !mo.tensor<[2], si64>) -> !mo.tensor<[M, N], f64> {
     %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
@@ -266,7 +266,7 @@ mo.graph @fold_select_same(%cond : !mo.tensor<[5], bool>, %arg0 : !mo.tensor<[5]
 // CHECK-NEXT: mo.output %[[ARG0]]
 
 mo.graph @fold_select_true(%arg0 : !mo.tensor<[5], f32>, %arg1 : !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32> {
-    %cond = mo.constant {value = #M.dense_array<true, true, true, true, true> : !M.array<5xi1>} : !mo.tensor<[5], bool>
+    %cond = mo.constant {value = #M.dense_array<1, 1, 1, 1, 1> : !M.array<5xi8>} : !mo.tensor<[5], bool>
     %res = mo.select(%cond, %arg0, %arg1) : (!mo.tensor<[5], bool>, !mo.tensor<[5], f32>, !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32>
     mo.output %res : !mo.tensor<[5], f32>
 }
@@ -275,7 +275,7 @@ mo.graph @fold_select_true(%arg0 : !mo.tensor<[5], f32>, %arg1 : !mo.tensor<[5],
 // CHECK-NEXT: mo.output %[[ARG0]]
 
 mo.graph @fold_select_false(%arg0 : !mo.tensor<[5], f32>, %arg1 : !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32> {
-    %cond = mo.constant {value = #M.dense_array<false, false, false, false, false> : !M.array<5xi1>} : !mo.tensor<[5], bool>
+    %cond = mo.constant {value = #M.dense_array<0, 0, 0, 0, 0> : !M.array<5xi8>} : !mo.tensor<[5], bool>
     %res = mo.select(%cond, %arg0, %arg1) : (!mo.tensor<[5], bool>, !mo.tensor<[5], f32>, !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32>
     mo.output %res : !mo.tensor<[5], f32>
 }
@@ -284,7 +284,7 @@ mo.graph @fold_select_false(%arg0 : !mo.tensor<[5], f32>, %arg1 : !mo.tensor<[5]
 // CHECK-NEXT: mo.output %[[ARG1]]
 
 mo.graph @no_fold_select(%arg0 : !mo.tensor<[5], f32>, %arg1 : !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32> {
-    %cond = mo.constant {value = #M.dense_array<true, false, true, true, true> : !M.array<5xi1>} : !mo.tensor<[5], bool>
+    %cond = mo.constant {value = #M.dense_array<1, 0, 1, 1, 1> : !M.array<5xi8>} : !mo.tensor<[5], bool>
     %res = mo.select(%cond, %arg0, %arg1) : (!mo.tensor<[5], bool>, !mo.tensor<[5], f32>, !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32>
     mo.output %res : !mo.tensor<[5], f32>
 }

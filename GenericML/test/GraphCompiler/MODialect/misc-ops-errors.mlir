@@ -206,6 +206,27 @@ mo.graph @concat_partial_dyn_rank(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.ten
 
 // -----
 
+
+//===----------------------------------------------------------------------===//
+// ConstantOp
+//===----------------------------------------------------------------------===//
+
+mo.graph @constant_dtype() -> !mo.tensor<[1, 2], si32> {
+  // expected-error @below {{'mo.constant' op element type of the value ('si64') must match the element type of the result ('si32')}}
+  %res = mo.constant {value = #M.dense_array<1, 2> : tensor<1x2xsi64>} : !mo.tensor<[1, 2], si32>
+  mo.output %res : !mo.tensor<[1, 2], si32>
+}
+
+// -----
+
+mo.graph @constant_dtype_bool() -> !mo.tensor<[], bool> {
+  // expected-error @below {{'mo.constant' op for boolean tensors, the element type of the value must be an integer type, but got 'f32'}}
+  %res = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], bool>
+  mo.output %res : !mo.tensor<[], bool>
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // CumSumOp
 //===----------------------------------------------------------------------===//

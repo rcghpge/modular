@@ -278,7 +278,7 @@ mo.graph @scalar_to_tensor_reshapes_before_staticization(
   // CHECK-DAG: kgen.param.declare [[P2:.*]]: i1 = <eq(mul_nuw([[D0]], [[D0]]), mul_nuw([[D0]], [[D1]]))>
   // CHECK-DAG: kgen.param.declare [[P3:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "number of elements must be equal" : !kgen.string}, [[P2]])>
   %scalar_one = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
-  %scalar_zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si32>
+  %scalar_zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
   %tensor_zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[1], si32>
   %tensor_one = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
   // CHECK-NEXT: %[[RES:.*]] = mo.rebind(%[[ARG]])
@@ -976,7 +976,7 @@ mo.graph @squeeze_shape_dynamic_shape_with_reshape(%input_tensor: !mo.tensor<[?,
 // CHECK-SAME: <[[D0:.*]]>(%[[INPUT:.*]]: !mo.tensor<[10, [[D0]], 20], f32>) -> !mo.tensor<[10, [[D0]], 20], f32>
 mo.graph @slice_entire_dynamic_axis(%arg0: !mo.tensor<[10, ?, 20], f32>) -> (!mo.tensor<[?, ?, ?], f32>) {
 
-  %axis0 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si32>
+  %axis0 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
   %index0 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
   %index1 = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
   %index2 = mo.constant {value = #M.dense_array<2> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
