@@ -6,111 +6,52 @@
 
 from tensor import Tensor, TensorSpec, TensorShape
 
-from .attr import AttrMap
 from .type import Arity
 from .mobicc import AttrPtr, LocPtr, ModulePtr, TypePtr
 from .symbol import Symbol
-from .type import MOType
-
-
-fn _dynamic_vector(shape: TensorShape) -> DynamicVector[Int64]:
-    var v = DynamicVector[Int64]()
-    for i in range(shape.rank()):
-        v.push_back(shape[i])
-    return v
-
-
-fn _dynamic_vector(shape: VariadicList[Int64]) -> DynamicVector[Int64]:
-    var v = DynamicVector[Int64]()
-    for i in range(len(shape)):
-        v.push_back(shape[i])
-    return v
+from .type import MOTensor, MOType
 
 
 @value
-@register_passable
 struct Module:
     var m: ModulePtr
 
-    fn __init__() raises -> Self:
-        return Self(mobicc.module_new())
+    # ===------------------------------------------------------------------=== #
+    # Constructors and basic accessors
+    # ===------------------------------------------------------------------=== #
+
+    fn __init__(inout self):
+        self.__init__(mobicc.module_new())
 
     fn __str__(self) -> String:
         return mobicc.module_to_string(self.m)
 
-    fn loc_new_unknown(self) -> LocPtr:
+    # ===------------------------------------------------------------------=== #
+    # High level utilities
+    # ===------------------------------------------------------------------=== #
+
+    fn verify(self) raises:
+        if not mobicc.module_verify(self.m):
+            raise "Module did not verify"
+
+    fn save_to_file(self, path: Path) raises:
+        if not mobicc.module_to_bytecode(self.m, path.__str__()):
+            raise "Error writing to file"
+
+    # ===------------------------------------------------------------------=== #
+    # Location factories
+    # ===------------------------------------------------------------------=== #
+
+    fn unknown_loc(self) -> LocPtr:
         return mobicc.loc_new_unknown(self.m)
 
-    fn i32_attr(self, name: StringRef, t: TypePtr, *elements: Int32) -> AttrPtr:
-        return self.i32_attr(name, t, elements)
-
-    fn i32_attr(
-        self, name: StringRef, t: TypePtr, elements: VariadicList[Int32]
-    ) -> AttrPtr:
-        var data = DynamicVector[Int32]()
-        for i in range(len(elements)):
-            data.push_back(elements[i])
-        return mobicc.attr_new_tensor(self.m, name, data, t, False)
-
-    fn i64_attr(self, name: StringRef, t: TypePtr, *elements: Int64) -> AttrPtr:
-        return self.i64_attr(name, t, elements)
-
-    fn i64_attr(
-        self, name: StringRef, t: TypePtr, elements: VariadicList[Int64]
-    ) -> AttrPtr:
-        var data = DynamicVector[Int64]()
-        for i in range(len(elements)):
-            data.push_back(elements[i])
-        return self.i64_attr(name, t, data)
-
-    fn i64_attr(self, name: StringRef, t: TypePtr, element: Int) -> AttrPtr:
-        # This special overload prevents the DynamicVector overload from
-        # stealing precedence due to unpredictable resolution order around
-        # implicit casting.
-        return self.i64_attr(name, t, Int64(element))
-
-    fn i64_attr(
-        self, name: StringRef, t: TypePtr, elements: DynamicVector[Int64]
-    ) -> AttrPtr:
-        return mobicc.attr_new_tensor(self.m, name, elements, t, False)
-
-    fn f32_attr(
-        self, name: StringRef, t: TypePtr, *elements: Float32
-    ) -> AttrPtr:
-        return self.f32_attr(name, t, elements)
-
-    fn f32_attr(
-        self, name: StringRef, t: TypePtr, elements: VariadicList[Float32]
-    ) -> AttrPtr:
-        var data = DynamicVector[Float32]()
-        for i in range(len(elements)):
-            data.push_back(elements[i])
-        return mobicc.attr_new_tensor(self.m, name, data, t, False)
-
-    fn f32_attr(
-        self, name: StringRef, t: TypePtr, file_name: StringRef
-    ) -> AttrPtr:
-        return mobicc.attr_new_tensor_from_file(self.m, name, file_name, t)
-
-    fn attr_new_string(self, name: StringRef, value: StringRef) -> AttrPtr:
-        return mobicc.attr_new_string(self.m, name, value)
-
-    fn tensor_attr[
-        dtype: DType
-    ](self, name: StringRef, values: DynamicVector[SIMD[dtype, 1]]) -> AttrPtr:
-        let t = MOTensor(dtype, len(values)).to_mlir(self)
-        return mobicc.attr_new_tensor(
-            self.m,
-            name,
-            values,
-            t,
-            is_owned=False,
-        )
+    # ===------------------------------------------------------------------=== #
+    # Attribute factories
+    # ===------------------------------------------------------------------=== #
 
     fn tensor_attr[
         dtype: DType
     ](self, name: StringRef, owned value: Tensor[dtype]) -> AttrPtr:
-        # Intentionally takes ownership of `value` to avoid extra copies.
         let t = MOTensor(value.spec()).to_mlir(self)
         return mobicc.attr_new_tensor(
             self.m,
@@ -120,42 +61,42 @@ struct Module:
             is_owned=True,
         )
 
-    fn attrs(self, *attrs: AttrPtr) -> AttrMap:
-        var m = mobicc.attrmap_new()
-        for i in range(len(attrs)):
-            mobicc.attrmap_add_attr(m, attrs[i])
-        return AttrMap(m, len(attrs))
+    fn tensor_resource_attr(
+        self, name: StringRef, file_name: StringRef, type: MOTensor
+    ) -> AttrPtr:
+        return mobicc.attr_new_tensor_from_file(
+            self.m, name, file_name, type.to_mlir(self)
+        )
 
-    fn dyn(self) -> Int64:
-        return mobicc.dim_type_new_dynamic()
+    fn vector_attr[
+        dtype: DType
+    ](self, name: StringRef, values: DynamicVector[SIMD[dtype, 1]]) -> AttrPtr:
+        return mobicc.attr_new_tensor(
+            self.m,
+            name,
+            values,
+            MOTensor(dtype, len(values)).to_mlir(self),
+            is_owned=False,
+        )
 
-    fn i32(self, *dims: Int64) -> TypePtr:
-        let shape = _dynamic_vector(dims)
-        return mobicc.si(self.m, 32, shape, len(shape))
+    fn scalar_attr[
+        dtype: DType
+    ](
+        inout self, name: StringRef, value: SIMD[dtype, 1], rank: Int = 0
+    ) raises -> AttrPtr:
+        # Note: while this could generalize to something like splat, MO doesn't
+        # really make use of those.
+        var shape = DynamicVector[Int](rank)
+        for i in range(rank):
+            shape.append(1)
+        return self.tensor_attr[dtype](name, Tensor(shape, value))
 
-    fn i32(self, dims: TensorShape) -> TypePtr:
-        let shape = _dynamic_vector(dims)
-        return mobicc.si(self.m, 32, shape, len(shape))
+    fn string_attr(self, name: StringRef, value: StringRef) -> AttrPtr:
+        return mobicc.attr_new_string(self.m, name, value)
 
-    fn i64(self, *dims: Int64) -> TypePtr:
-        let shape = _dynamic_vector(dims)
-        return mobicc.si(self.m, 64, shape, len(shape))
-
-    fn i64(self, dims: TensorShape) -> TypePtr:
-        let shape = _dynamic_vector(dims)
-        return mobicc.si(self.m, 64, shape, len(shape))
-
-    fn f32(self, *dims: Int64) -> TypePtr:
-        let shape = _dynamic_vector(dims)
-        return mobicc.f32(self.m, shape, len(shape))
-
-    fn f32(self, dims: TensorShape) -> TypePtr:
-        let shape = _dynamic_vector(dims)
-        return mobicc.f32(self.m, shape, len(shape))
-
-    fn bool(self, *dims: Int64) -> TypePtr:
-        let shape = _dynamic_vector(dims)
-        return mobicc.bool(self.m, shape, len(shape))
+    # ===------------------------------------------------------------------=== #
+    # Graph factories
+    # ===------------------------------------------------------------------=== #
 
     fn graph(
         inout self,
@@ -167,16 +108,18 @@ struct Module:
         let g = mobicc.graph_new(self.m, unknown, name, in_types.a, out_types.a)
         return Graph(g, self)
 
-    fn verify(self) raises:
-        if not mobicc.module_verify(self.m):
-            raise "Module did not verify"
+    # ===------------------------------------------------------------------=== #
+    # Type convenience helpers
+    # ===------------------------------------------------------------------=== #
 
-    fn save_to_file(self, path: Path) raises:
-        # TODO: Add an overload that takes FileHandle.
-        if not mobicc.module_to_bytecode(self.m, path.__str__()):
-            raise "Error writing to file"
+    fn i32(self, *dims: Int64) -> TypePtr:
+        return MOTensor(DType.int32, dims).to_mlir(self)
 
-    fn save_readable_ir_to_file(self, path: Path) raises:
-        # TODO: Add an overload that takes FileHandle.
-        with open(path.__str__(), "w") as f:
-            f.write(self.__str__())
+    fn i64(self, *dims: Int64) -> TypePtr:
+        return MOTensor(DType.int64, dims).to_mlir(self)
+
+    fn f32(self, *dims: Int64) -> TypePtr:
+        return MOTensor(DType.float32, dims).to_mlir(self)
+
+    fn bool(self, *dims: Int64) -> TypePtr:
+        return MOTensor(DType.bool, dims).to_mlir(self)

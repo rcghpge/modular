@@ -43,25 +43,27 @@ def test_mnist_low_level():
     let cst = g.op(
         "mo.constant",
         MOTensor(DType.float32, 128, 10),
-        m.attrs(m.tensor_attr("value", cst_data)),
+        AttrMap(m.tensor_attr("value", cst_data)),
     )
     let cst_0 = g.op(
         "mo.constant",
         MOTensor(DType.float32, 1, 10),
-        m.attrs(
-            m.f32_attr(
+        AttrMap(
+            m.tensor_attr(
                 "value",
-                m.f32(1, 10),
-                -0.0675942451,
-                0.0063267909,
-                7.43086217e-4,
-                -0.0126994187,
-                0.0148473661,
-                0.108896509,
-                -0.0398316309,
-                0.0461452715,
-                -0.0281771384,
-                -0.0431172103,
+                Tensor[DType.float32](
+                    TensorShape(1, 10),
+                    -0.0675942451,
+                    0.0063267909,
+                    7.43086217e-4,
+                    -0.0126994187,
+                    0.0148473661,
+                    0.108896509,
+                    -0.0398316309,
+                    0.0461452715,
+                    -0.0281771384,
+                    -0.0431172103,
+                ),
             )
         ),
     )
@@ -71,19 +73,21 @@ def test_mnist_low_level():
     let cst_1 = g.op(
         "mo.constant",
         MOTensor(DType.float32, 784, 128),
-        m.attrs(m.tensor_attr("value", cst_1_data)),
+        AttrMap(m.tensor_attr("value", cst_1_data)),
     )
     let cst_2_data = Tensor[DType.float32](1, 128)
     cst_2_data._to_buffer().fill(0.5)
     let cst_2 = g.op(
         "mo.constant",
         MOTensor(DType.float32, 1, 128),
-        m.attrs(m.tensor_attr("value", cst_2_data)),
+        AttrMap(m.tensor_attr("value", cst_2_data)),
     )
     let cst_3 = g.op(
         "mo.constant",
         MOTensor(DType.int32, 2),
-        m.attrs(m.i32_attr("value", m.i32(2), -1, 784)),
+        AttrMap(
+            m.tensor_attr("value", Tensor[DType.int32](TensorShape(2), -1, 784))
+        ),
     )
     let p1 = g.op("mo.reshape", (g[0], cst_3), MOTensor(DType.float32, 1, 784))
     let p2 = g.op("mo.matmul", (p1, cst_1), MOTensor(DType.float32, 1, 128))
@@ -110,25 +114,20 @@ def test_mnist_helpers():
     cst_data._to_buffer().fill(0.5)
     let cst = g.constant(cst_data)
 
-    let cst_0 = g.op(
-        "mo.constant",
-        MOTensor(DType.float32, 1, 10),
-        m.attrs(
-            m.f32_attr(
-                "value",
-                m.f32(1, 10),
-                -0.0675942451,
-                0.0063267909,
-                7.43086217e-4,
-                -0.0126994187,
-                0.0148473661,
-                0.108896509,
-                -0.0398316309,
-                0.0461452715,
-                -0.0281771384,
-                -0.0431172103,
-            )
-        ),
+    let cst_0 = g.constant(
+        Tensor[DType.float32](
+            TensorShape(1, 10),
+            -0.0675942451,
+            0.0063267909,
+            7.43086217e-4,
+            -0.0126994187,
+            0.0148473661,
+            0.108896509,
+            -0.0398316309,
+            0.0461452715,
+            -0.0281771384,
+            -0.0431172103,
+        )
     )
 
     let cst_1_data = Tensor[DType.float32](784, 128)
@@ -139,11 +138,7 @@ def test_mnist_helpers():
     cst_2_data._to_buffer().fill(0.5)
     let cst_2 = g.constant(cst_2_data)
 
-    let cst_3 = g.op(
-        "mo.constant",
-        MOTensor(DType.int32, 2),
-        m.attrs(m.i32_attr("value", m.i32(2), -1, 784)),
-    )
+    let cst_3 = g.constant(Tensor[DType.int32](TensorShape(2), -1, 784))
 
     let p1 = ops.reshape(g[0], cst_3, 1, 784)
     let p2 = p1 @ cst_1

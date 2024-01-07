@@ -48,7 +48,7 @@ fn test_add_constant() raises:
     let x = g.op(
         "mo.constant",
         MOTensor(DType.float32, 1),
-        m.attrs(m.f32_attr("value", m.f32(1), 1.0)),
+        AttrMap(m.scalar_attr("value", Float32(1.0), rank=1)),
     )
     let y = g.op("mo.add", (g[0], x), MOTensor(DType.float32, 1))
     _ = g.nvop("mo.output", y)

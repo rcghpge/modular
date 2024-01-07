@@ -175,14 +175,18 @@ fn attr_new_string(
 # ===----------------------------------------------------------------------===#
 
 
-fn attrmap_new() -> AttrMapPtr:
-    return MOBI_func[fn () -> AttrMapPtr]("MOBI_attrmapNew")()
+fn attr_map_new() -> AttrMapPtr:
+    return MOBI_func[fn () -> AttrMapPtr]("MOBI_attrMapNew")()
 
 
-fn attrmap_add_attr(inout map: AttrMapPtr, a: AttrPtr):
+fn attr_map_add_attr(inout m: AttrMapPtr, a: AttrPtr):
     return MOBI_func[fn (AttrMapPtr, AttrPtr) -> NoneType](
-        "MOBI_attrmapAddAttr"
-    )(map, a)
+        "MOBI_attrMapAddAttr"
+    )(m, a)
+
+
+fn attr_map_size(m: AttrMapPtr) -> Int:
+    return MOBI_func[fn (AttrMapPtr) -> Int]("MOBI_attrMapSize")(m)
 
 
 # ===----------------------------------------------------------------------===#
@@ -371,81 +375,3 @@ fn arity_add_type(inout arity: ArityPtr, t: TypePtr):
     return MOBI_func[fn (ArityPtr, TypePtr) -> NoneType]("MOBI_arityAddType")(
         arity, t
     )
-
-
-# ===----------------------------------------------------------------------===#
-# ... to delete ...
-# ===----------------------------------------------------------------------===#
-
-
-fn f32(
-    module: ModulePtr,
-    dims: Pointer[Int64],
-    rank: Int64,
-) -> TypePtr:
-    return MOBI_func[fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr](
-        "MOBI_f32"
-    )(module, dims, rank)
-
-
-fn f32(
-    module: ModulePtr,
-    dims: DynamicVector[Int64],
-    rank: Int64,
-) -> TypePtr:
-    return MOBI_func[fn (ModulePtr, AnyPointer[Int64], Int64) -> TypePtr](
-        "MOBI_f32"
-    )(module, dims.data, rank)
-
-
-fn ui(
-    module: ModulePtr,
-    width: UInt64,
-    dims: Pointer[Int64],
-    rank: Int64,
-) -> TypePtr:
-    return MOBI_func[fn (ModulePtr, UInt64, Pointer[Int64], Int64) -> TypePtr](
-        "MOBI_ui"
-    )(module, width, dims, rank)
-
-
-fn si(
-    module: ModulePtr,
-    width: UInt64,
-    dims: Pointer[Int64],
-    rank: Int64,
-) -> TypePtr:
-    return MOBI_func[fn (ModulePtr, UInt64, Pointer[Int64], Int64) -> TypePtr](
-        "MOBI_si"
-    )(module, width, dims, rank)
-
-
-fn si(
-    module: ModulePtr,
-    width: UInt64,
-    dims: DynamicVector[Int64],
-    rank: Int64,
-) -> TypePtr:
-    return MOBI_func[
-        fn (ModulePtr, UInt64, AnyPointer[Int64], Int64) -> TypePtr
-    ]("MOBI_si")(module, width, dims.data, rank)
-
-
-fn bool(
-    module: ModulePtr,
-    dims: Pointer[Int64],
-    rank: Int64,
-) -> TypePtr:
-    return MOBI_func[fn (ModulePtr, Pointer[Int64], Int64) -> TypePtr](
-        "MOBI_bool"
-    )(module, dims, rank)
-
-
-fn bool(
-    module: ModulePtr,
-    dims: DynamicVector[Int64],
-    rank: Int64,
-) -> TypePtr:
-    return MOBI_func[fn (ModulePtr, AnyPointer[Int64], Int64) -> TypePtr](
-        "MOBI_bool"
-    )(module, dims.data, rank)

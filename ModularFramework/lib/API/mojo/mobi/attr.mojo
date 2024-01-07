@@ -4,16 +4,28 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from .mobicc import AttrMapPtr
+from .mobicc import AttrMapPtr, AttrPtr
 
 
+@value
 struct AttrMap:
     var m: AttrMapPtr
-    var l: Int
 
-    fn __init__(inout self, m: AttrMapPtr, l: Int):
-        self.m = m
-        self.l = l
+    # ===------------------------------------------------------------------=== #
+    # Basic constructors
+    # ===------------------------------------------------------------------=== #
+
+    fn __init__(inout self, *attrs: AttrPtr):
+        self.__init__(attrs)
+
+    fn __init__(inout self, attrs: VariadicList[AttrPtr]):
+        self.m = mobicc.attr_map_new()
+        for i in range(len(attrs)):
+            mobicc.attr_map_add_attr(self.m, attrs[i])
+
+    # ===------------------------------------------------------------------=== #
+    # Basic accessors
+    # ===------------------------------------------------------------------=== #
 
     fn __len__(self) -> Int:
-        return self.l
+        return mobicc.attr_map_size(self.m)

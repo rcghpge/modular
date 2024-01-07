@@ -38,17 +38,10 @@ struct Graph:
     # ===------------------------------------------------------------------=== #
 
     fn nvop(inout self, name: StringRef, inputs: Tup) -> Tup:
-        return self.nvop(
-            name,
-            inputs,
-            Arity(mobicc.arity_new()),
-            AttrMap(mobicc.attrmap_new(), 0),
-        )
+        return self.nvop(name, inputs, Arity(), AttrMap())
 
     fn nvop(inout self, name: StringRef, inputs: Tup, out_types: Arity) -> Tup:
-        return self.nvop(
-            name, inputs, out_types, AttrMap(mobicc.attrmap_new(), 0)
-        )
+        return self.nvop(name, inputs, out_types, AttrMap())
 
     fn nvop(
         inout self, name: StringRef, out_types: Arity, attrs: AttrMap
@@ -62,7 +55,7 @@ struct Graph:
         out_types: Arity,
         attrs: AttrMap,
     ) -> Tup:
-        let loc = self.m.loc_new_unknown()
+        let loc = self.m.unknown_loc()
         let outputs = mobicc.graph_new_op(
             self.g, loc, name, inputs.t, out_types.to_mlir(self.m), attrs.m
         )
@@ -78,10 +71,7 @@ struct Graph:
         T: MOType
     ](inout self, name: StringRef, inputs: Tup, out_type: T) -> Symbol:
         return self.nvop(
-            name,
-            inputs,
-            Arity(out_type.to_mlir(self.m)),
-            AttrMap(mobicc.attrmap_new(), 0),
+            name, inputs, Arity(out_type.to_mlir(self.m)), AttrMap()
         )[0]
 
     fn op[
@@ -114,16 +104,16 @@ struct Graph:
         return self.op(
             "mo.constant",
             MOTensor(value.spec()),
-            self.m.attrs(self.m.tensor_attr("value", value)),
+            AttrMap(self.m.tensor_attr("value", value)),
         )
 
     fn vector[
         dtype: DType
-    ](inout self, owned values: DynamicVector[SIMD[dtype, 1]]) raises -> Symbol:
+    ](inout self, values: DynamicVector[SIMD[dtype, 1]]) raises -> Symbol:
         return self.op(
             "mo.constant",
             MOTensor(dtype, len(values)),
-            self.m.attrs(self.m.tensor_attr[dtype]("value", values)),
+            AttrMap(self.m.vector_attr[dtype]("value", values)),
         )
 
     fn scalar[

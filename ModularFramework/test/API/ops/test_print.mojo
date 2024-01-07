@@ -16,7 +16,7 @@ fn test_print() raises:
     var m = Module()
     var g = m.graph(
         name,
-        Arity(m.f32(m.dyn(), m.dyn(), 2)),
+        Arity(m.f32(dyn(), dyn(), 2)),
         Arity(),
     )
     g[0].print()

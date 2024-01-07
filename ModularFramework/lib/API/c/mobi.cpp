@@ -98,9 +98,13 @@ MODULAR_API_EXPORT M_Attr *MOBI_attrNewString(M_Module *m, StringRef name,
 // AttrMap support
 //===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT M_AttrMap *MOBI_attrmapNew() { return new M_AttrMap(); }
+MODULAR_API_EXPORT M_AttrMap *MOBI_attrMapNew() { return new M_AttrMap(); }
 
-MODULAR_API_EXPORT void MOBI_attrmapAddAttr(M_AttrMap *m, M_Attr *a) {
+MODULAR_API_EXPORT uint32_t MOBI_attrMapSize(M_AttrMap *m) {
+  return m->map.size();
+}
+
+MODULAR_API_EXPORT void MOBI_attrMapAddAttr(M_AttrMap *m, M_Attr *a) {
   m->map.add(a->attr);
 }
 
@@ -250,26 +254,4 @@ MODULAR_API_EXPORT uint32_t MOBI_aritySize(M_Arity *a) {
 
 MODULAR_API_EXPORT void MOBI_arityAddType(M_Arity *a, M_Type *t) {
   a->arity.add(t->type);
-}
-
-//===----------------------------------------------------------------------===//
-// ... to delete ...
-//===----------------------------------------------------------------------===//
-
-MODULAR_API_EXPORT M_Type *MOBI_f32(M_Module *m, int64_t *dims, int64_t rank) {
-  return new M_Type{m->module.f32(ArrayRef<int64_t>(dims, rank))};
-}
-
-MODULAR_API_EXPORT M_Type *MOBI_si(M_Module *m, uint64_t width, int64_t *dims,
-                                   int64_t rank) {
-  return new M_Type{m->module.si(width, ArrayRef<int64_t>(dims, rank))};
-}
-
-MODULAR_API_EXPORT M_Type *MOBI_ui(M_Module *m, uint64_t width, int64_t *dims,
-                                   int64_t rank) {
-  return new M_Type{m->module.ui(width, ArrayRef<int64_t>(dims, rank))};
-}
-
-MODULAR_API_EXPORT M_Type *MOBI_bool(M_Module *m, int64_t *dims, int64_t rank) {
-  return new M_Type{m->module.bool_(ArrayRef<int64_t>(dims, rank))};
 }

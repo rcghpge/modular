@@ -4,6 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 
+from .attr import AttrMap
 from .type import dyn
 from .type import Arity
 from .type import MOTensor

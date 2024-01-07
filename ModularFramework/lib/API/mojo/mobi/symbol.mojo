@@ -4,6 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 
+from .attr import AttrMap
 from .graph import Graph
 from .mobicc import SymbolPtr, TuplePtr
 from .type import *
@@ -86,7 +87,7 @@ struct Symbol(CollectionElement, Stringable):
 
     fn print(self, label: StringRef = "debug_tensor") raises:
         var g = self.graph()
-        let attrs = g.m.attrs(g.m.attr_new_string("label", label))
+        let attrs = AttrMap(g.m.string_attr("label", label))
         _ = g.nvop("mo.debug.tensor.print", self, Arity(), attrs)
 
     fn transpose(self) raises -> Symbol:
