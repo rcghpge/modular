@@ -298,12 +298,13 @@ int M::maxBenchmarkMain(int argc, char **argv) {
   }
 
   CompiledModelPtr compiledModel(nullptr, M_freeCompiledModel);
+  M_CompileConfig *compileConfigPtr = compileConfig.release();
   llvm::outs() << "Compiling model... ";
   {
     auto start = std::chrono::steady_clock::now();
     compiledModel =
         CompiledModelPtr(M_compileModelSync(runtimeContext.get(),
-                                            compileConfig.get(), status.get()),
+                                            &compileConfigPtr, status.get()),
                          M_freeCompiledModel);
     auto end = std::chrono::steady_clock::now();
     double duration =

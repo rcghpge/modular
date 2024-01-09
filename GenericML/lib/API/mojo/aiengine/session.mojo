@@ -56,7 +56,6 @@ struct _InferenceSessionImpl(Movable):
         if user_defined_ops_path:
             config.set_replace_ops_path(user_defined_ops_path.value())
         config.set_model_path(model_path)
-
         let status = Status(self.engine.lib)
         let compiled_model_ptr = call_dylib_func[CCompiledModel](
             self.engine.lib,

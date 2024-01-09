@@ -271,7 +271,7 @@ struct CompiledModelPhase {
     log(threaded, "INFO: Compiling %s", externalModel->path.c_str());
     StatusPtr status(M_newStatus(), M_freeStatus);
     result.compiledModel = M_compileModel(runtimeContext->context,
-                                          result.compileConfig, status.get());
+                                          &result.compileConfig, status.get());
     RETURN_IF_ERROR(status);
     M_waitForCompilation(result.compiledModel, status.get());
     RETURN_IF_ERROR(status);

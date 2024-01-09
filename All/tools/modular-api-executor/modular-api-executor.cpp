@@ -543,8 +543,9 @@ int main(int argc, char **argv) {
     llvm::errs() << "Error: " << api.getError(status.get()) << "\n";
     exit(EXIT_FAILURE);
   }
+  M_CompileConfig *configPtr = compileConfig.release();
   CompiledModelPtr compiledModel{
-      api.compileModel(context.get(), compileConfig.get(), status.get()),
+      api.compileModel(context.get(), &configPtr, status.get()),
       api.freeCompiledModel};
 
   api.waitForCompilation(compiledModel.get(), status.get());

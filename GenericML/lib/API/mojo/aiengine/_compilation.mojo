@@ -45,36 +45,37 @@ struct CCompileConfig:
 struct CompileConfig:
     """Memory managed version of Engine's Compile Config."""
 
-    var ptr: CCompileConfig
+    var ptr: Pointer[CCompileConfig]
     var lib: DLHandle
 
     alias NewCompileConfigFnName = "M_newCompileConfig"
 
     fn __init__(inout self, borrowed lib: DLHandle):
-        self.ptr = call_dylib_func[CCompileConfig](
-            lib, Self.NewCompileConfigFnName
-        )
+        self.ptr = Pointer[CCompileConfig].alloc(1)
+        __get_address_as_uninit_lvalue(self.ptr.address) = call_dylib_func[
+            CCompileConfig
+        ](lib, Self.NewCompileConfigFnName)
         self.lib = lib
 
     fn __moveinit__(inout self, owned existing: Self):
-        self.ptr = exchange[CCompileConfig](
-            existing.ptr, DTypePointer[DType.invalid].get_null()
-        )
+        self.ptr = existing.ptr
         self.lib = existing.lib
 
     fn set_model_path(self, path: StringRef):
         """Sets the path of model to compile."""
-        self.ptr.set_model_path(path, self.lib)
+        __get_address_as_lvalue(self.ptr.address).set_model_path(path, self.lib)
 
     fn set_replace_ops_path(self, path: StringRef) raises:
         """Replace Modular kernels with user-defined kernels."""
-        self.ptr.replace_ops(path, self.lib)
+        __get_address_as_lvalue(self.ptr.address).replace_ops(path, self.lib)
 
-    fn borrow_ptr(self) -> CCompileConfig:
+    fn borrow_ptr(self) -> Pointer[CCompileConfig]:
         return self.ptr
 
     fn __del__(owned self):
-        self.ptr.free(self.lib)
+        __get_address_as_lvalue(self.ptr.address).free(self.lib)
+        _ = __get_address_as_owned_value(self.ptr.address)
+        self.ptr.free()
 
 
 @value

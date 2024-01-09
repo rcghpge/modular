@@ -128,8 +128,9 @@ compileModel(const ClOptions &opts,
                    M_getError(status));
   }
   M_setModelPath(compileConfig.get(), opts.modelPath.c_str());
+  M_CompileConfig *compileConfigPtr = compileConfig.release();
   CompiledModelPtr model(
-      M_compileModelSync(runtimeContext, compileConfig.get(), status),
+      M_compileModelSync(runtimeContext, &compileConfigPtr, status),
       M_freeCompiledModel);
   if (!model)
     return Error(M_getError(status));
