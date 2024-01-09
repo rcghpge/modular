@@ -146,9 +146,11 @@ struct AddFallbackShapeFunctions
       // NOTE this is a temporary guard that ensures we don't symbolicize the
       // following ops' fallback shape functions in the experimental shape
       // inference path.
+      // TODO(#28624) remove `BroadcastToOp` here
       // TODO(#28538) remove `ReshapeOp` here
       // TODO(#28539) remove `ArgNonzeroOp` here
-      if (restricted && isa<MO::ReshapeOp, MO::ArgNonzeroOp>(op.getOperation()))
+      if (restricted && isa<MO::BroadcastToOp, MO::ReshapeOp, MO::ArgNonzeroOp>(
+                            op.getOperation()))
         return mlir::WalkResult::advance();
 
       // Call the fallbacks.
