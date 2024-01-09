@@ -52,11 +52,6 @@ LogicalResult impl::checkMatmulCompatibility(Operation *op, TensorValue A,
   // broadcasting is not supported).
   SmallVector<TensorValue> tensors{A, B, C};
 
-  if (failed(verifyMatchingRanks(tensors))) {
-    return op->emitOpError(
-        "input and output ranks must be all dynamic, or all static and match");
-  }
-
   TensorType aType = A.getType();
   TensorType bType = B.getType();
 

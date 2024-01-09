@@ -30,30 +30,6 @@ mo.graph @batch_matmul_mismatched_result_batches(%arg0: !mo.tensor<[2, 10, 20], 
 
 // -----
 
-mo.graph @batch_matmul_unranked_input_ranked_output(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?, ?], f32> {
-  // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
-  %0 = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<[?, ?, ?], f32>
-  mo.output %0 : !mo.tensor<[?, ?, ?], f32>
-}
-
-// -----
-
-mo.graph @batch_matmul_ranked_input_unranked_output(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
-  %0 = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
-  mo.output %0 : !mo.tensor<?, f32>
-}
-
-// -----
-
-mo.graph @batch_matmul_mismatched_ranks(%arg0: !mo.tensor<[1, 10, 10], f32>, %arg1: !mo.tensor<[1, 1, 10, 10], f32>) -> !mo.tensor<[1, 10, 10], f32> {
-  // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
-  %0 = mo.batch_matmul(%arg0, %arg1) : (!mo.tensor<[1, 10, 10], f32>, !mo.tensor<[1, 1, 10, 10], f32>) -> !mo.tensor<[1, 10, 10], f32>
-  mo.output %0 : !mo.tensor<[1, 10, 10], f32>
-}
-
-// -----
-
 //===----------------------------------------------------------------------===//
 // MatmulOp
 //===----------------------------------------------------------------------===//

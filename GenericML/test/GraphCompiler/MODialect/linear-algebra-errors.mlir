@@ -107,13 +107,3 @@ mo.graph @linalg_solve_wrong_dtype() -> !mo.tensor<[1, 2, 3], f64> {
 }
 
 // -----
-
-mo.graph @linalg_solve_mismatched_ranks() -> !mo.tensor<[2, 3], f32> {
-  %0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<1x2x2xf32>} : !mo.tensor<[1, 2, 2], f32>
-  %1 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<1x2x3xf32>} : !mo.tensor<[2, 3], f32>
-  // expected-error@+1 {{input and output ranks must be all dynamic, or all static and match}}
-  %4 = mo.linalg.solve(%0, %1) : (!mo.tensor<[1, 2, 2], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
-  mo.output %4 : !mo.tensor<[2, 3], f32>
-}
-
-// -----

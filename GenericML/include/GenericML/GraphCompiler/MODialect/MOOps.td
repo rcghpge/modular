@@ -3469,8 +3469,10 @@ def MO_MatmulOp : MO_DotBase<"matmul"> {
   }];
 }
 
-def MO_BatchMatmulOp : MO_DotBase<"batch_matmul", [
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
+def MO_BatchMatmulOp : MO_TensorOp<"batch_matmul", [
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
+  MO_MatmulLike,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
 ]> {
   let summary = "Batched matrix-matrix multiplication";
   let description = [{
@@ -3583,8 +3585,7 @@ def MO_BandPartOp : MO_LinalgOp<"band_part", [
 
 def MO_SolveOp : MO_LinalgOp<"solve", [
     MO_SameOperandsAndResultElementType,
-    DeclareOpInterfaceMethods<MO_Parameterization>,
-    DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+    DeclareOpInterfaceMethods<MO_DefaultParameterization>,
     DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
   let summary = "Solves systems of Linear Equations";
   let description = [{
