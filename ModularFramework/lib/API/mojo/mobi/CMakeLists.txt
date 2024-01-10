@@ -4,8 +4,7 @@
 #
 ##===----------------------------------------------------------------------===##
 
-add_mojo_package(mobi-mojo-api
-  PRIVATE
+add_mojo_package(mobi-mojo-api PRIVATE
   attr
   graph
   mobicc
