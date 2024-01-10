@@ -7,6 +7,7 @@
 #include "GenericML/EngineCLI/Visualize/Main.h"
 #include "Config/Version.h"
 #include "GenericML/API/modular/c/custom_ops.h"
+#include "GenericML/API/modular/c/internal/telemetry.h"
 #include "GenericML/API/modular/cpp/aliases.h"
 #include "GenericML/EngineCLI/Common/InputGenerationSchema.h"
 #include "GenericML/EngineCLI/Common/TorchSupport.h"
@@ -174,13 +175,16 @@ int M::maxVisualizeMain(int argc, char **argv) {
     return EXIT_FAILURE;
   }
   RuntimeContextPtr runtimeContext = std::move(*runtimeContextOr);
+  auto telemetryCtx = M_unwrapTelemetryContext(runtimeContext.get());
+  auto logger = telemetryCtx->getLogger(kTelemetryLoggerName);
 
   auto modelOr = compileModel(opts, inputGenerationSchema, runtimeContext.get(),
                               status.get());
   if (modelOr.isError()) {
     llvm::errs() << "Error compiling model: " << modelOr.getError() << "\n";
-    M_emitTelemetryEvent(runtimeContext.get(), kTelemetryLoggerName,
-                         kTelemetryErrorEventName, M_getError(status.get()));
+    logger->emitEvent(kTelemetryErrorEventName,
+                      Telemetry::Logs::Severity::kInfo, Telemetry::Level::L1,
+                      M_getError(status.get()));
     return EXIT_FAILURE;
   }
   (void)M::setProcessEnv("GENERATE_VISUALIZATION", "");
@@ -199,7 +203,7 @@ int M::maxVisualizeMain(int argc, char **argv) {
   llvm::outs()
       << "To visualize model, drop maxviz file into https://netron.app/\n";
 #endif // !MODULAR_PRODUCTION
-  M_emitTelemetryEvent(runtimeContext.get(), kTelemetryLoggerName,
-                       kTelemetrySuccessEventName, "");
+  logger->emitEvent(kTelemetrySuccessEventName,
+                    Telemetry::Logs::Severity::kInfo, Telemetry::Level::L1, "");
   return EXIT_SUCCESS;
 }

@@ -17,6 +17,7 @@
 #include "mlperf-loadgen/loadgen.h"
 #include "mlperf-loadgen/test_settings.h"
 #include "modular/c/custom_ops.h"
+#include "modular/c/internal/telemetry.h"
 #include "modular/cpp/aliases.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/OptTable.h"
@@ -297,6 +298,11 @@ int M::maxBenchmarkMain(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
+  M::Telemetry::TelemetryContext *telemetryCtx =
+      M_unwrapTelemetryContext(runtimeContext.get());
+  std::shared_ptr<Telemetry::Logs::Logger> logger =
+      telemetryCtx->getLogger(kTelemetryLoggerName);
+
   CompiledModelPtr compiledModel(nullptr, M_freeCompiledModel);
   M_CompileConfig *compileConfigPtr = compileConfig.release();
   llvm::outs() << "Compiling model... ";
@@ -316,8 +322,9 @@ int M::maxBenchmarkMain(int argc, char **argv) {
       llvm::outs().flush();
       llvm::errs() << "Error compiling model: " << M_getError(status.get())
                    << "\n";
-      M_emitTelemetryEvent(runtimeContext.get(), kTelemetryLoggerName,
-                           kTelemetryErrorEventName, M_getError(status.get()));
+      logger->emitEvent(kTelemetryErrorEventName,
+                        Telemetry::Logs::Severity::kInfo, Telemetry::Level::L1,
+                        M_getError(status.get()));
       return EXIT_FAILURE;
     }
     llvm::outs() << "OK (took " << duration << "s)\n";
@@ -328,8 +335,9 @@ int M::maxBenchmarkMain(int argc, char **argv) {
   if (M_isError(status.get())) {
     llvm::errs() << "Error applying defaults to input generation schema: "
                  << M_getError(status.get()) << "\n";
-    M_emitTelemetryEvent(runtimeContext.get(), kTelemetryLoggerName,
-                         kTelemetryErrorEventName, M_getError(status.get()));
+    logger->emitEvent(kTelemetryErrorEventName,
+                      Telemetry::Logs::Severity::kInfo, Telemetry::Level::L1,
+                      M_getError(status.get()));
     return EXIT_FAILURE;
   }
 
@@ -347,8 +355,9 @@ int M::maxBenchmarkMain(int argc, char **argv) {
         prepareModel(runtimeContext.get(), compiledModel.get(), status.get());
     if (modelOr.isError()) {
       llvm::errs() << "Error preparing model: " << modelOr.getError() << "\n";
-      M_emitTelemetryEvent(runtimeContext.get(), kTelemetryLoggerName,
-                           kTelemetryErrorEventName, modelOr.getError());
+      logger->emitEvent(kTelemetryErrorEventName,
+                        Telemetry::Logs::Severity::kInfo, Telemetry::Level::L1,
+                        modelOr.getError());
       return EXIT_FAILURE;
     }
     model = std::move(*modelOr);
@@ -368,9 +377,9 @@ int M::maxBenchmarkMain(int argc, char **argv) {
       llvm::outs().flush();
       llvm::errs() << "Error estimating latency: "
                    << estimatedLatencyOr.getError() << "\n";
-      M_emitTelemetryEvent(runtimeContext.get(), kTelemetryLoggerName,
-                           kTelemetryErrorEventName,
-                           estimatedLatencyOr.getError());
+      logger->emitEvent(kTelemetryErrorEventName,
+                        Telemetry::Logs::Severity::kInfo, Telemetry::Level::L1,
+                        estimatedLatencyOr.getError());
       return EXIT_FAILURE;
     }
     llvm::outs() << "OK\n";
@@ -396,7 +405,7 @@ int M::maxBenchmarkMain(int argc, char **argv) {
   std::cout << std::flush;
   llvm::outs() << "Benchmark finished\n";
 
-  M_emitTelemetryEvent(runtimeContext.get(), kTelemetryLoggerName,
-                       kTelemetrySuccessEventName, "");
+  logger->emitEvent(kTelemetrySuccessEventName,
+                    Telemetry::Logs::Severity::kInfo, Telemetry::Level::L1, "");
   return EXIT_SUCCESS;
 }

@@ -33,7 +33,6 @@ public:
 
   decltype(&M_newRuntimeContext) newRuntimeContext = nullptr;
   decltype(&M_freeRuntimeContext) freeRuntimeContext = nullptr;
-  decltype(&M_emitTelemetryEvent) emitTelemetryEvent = nullptr;
 
   decltype(&M_newCompileConfig) newCompileConfig = nullptr;
   decltype(&M_freeCompileConfig) freeCompileConfig = nullptr;
