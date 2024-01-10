@@ -537,6 +537,12 @@ struct MOOpLoweringState {
         ->bufferTransferToHost(builder, loc, context, inChain, srcBuffer,
                                dstBuffer);
   }
+  Value bufferTransferDevice(Value inChain, Value srcBuffer, Value dstBuffer,
+                             Type srcMoTensorType) {
+    return getStorageBufferBuilder(srcMoTensorType)
+        ->bufferTransferDevice(builder, loc, context, inChain, srcBuffer,
+                               dstBuffer);
+  }
 };
 
 } // namespace M::MGP

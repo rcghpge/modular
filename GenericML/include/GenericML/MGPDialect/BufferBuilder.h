@@ -254,12 +254,20 @@ public:
                                        Value dstBuffer) = 0;
 
   /// Returns the chain indicating when srcBuffer on this builder's device has
-  /// been transferred to dstBuffer on the dstDevice.
+  /// been transferred to dstBuffer on the host.
   virtual Value
   bufferTransferToHost(OpBuilder &builder, Location loc,
                        TypedValue<MGP::ContextType> context, Value inChain,
                        Value srcBuffer,
                        TypedValue<MGP::CpuBufferType> dstBuffer) = 0;
+
+  /// Returns a chain indicating when srcBuffer on this builder's device has
+  /// been transferred to dstBuffer (which resides on a different device).
+  /// inChain is a device specific chain on the srcBuffer's device.
+  virtual Value bufferTransferDevice(OpBuilder &builder, Location loc,
+                                     TypedValue<MGP::ContextType> context,
+                                     Value inChain, Value srcBuffer,
+                                     Value dstBuffer) = 0;
 
   /// Return the chain indicating tensor, in the form of buffer and tensor spec,
   /// has been printed.
@@ -402,6 +410,11 @@ public:
                              TypedValue<MGP::ContextType> context,
                              Value inChain, Value srcBuffer,
                              TypedValue<MGP::CpuBufferType> dstBuffer) override;
+
+  Value bufferTransferDevice(OpBuilder &builder, Location loc,
+                             TypedValue<MGP::ContextType> context,
+                             Value inChain, Value srcBuffer,
+                             Value dstBuffer) override;
 
   Value debugTensorPrint(OpBuilder &builder, Location loc,
                          TypedValue<MGP::ContextType> context, Value inChain,

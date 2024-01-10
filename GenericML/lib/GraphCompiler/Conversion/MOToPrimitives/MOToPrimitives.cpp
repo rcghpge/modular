@@ -759,11 +759,9 @@ LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
         cast<TypedValue<MGP::CpuBufferType>>(loweredOutputsStorage[0].buffer),
         transferOp.getInput().getType());
   } else {
-    return transferOp->emitOpError("transfer from ")
-           << srcDevice << " to " << dstDevice
-           << " is not currently supported: either the source or destination "
-              "device must be the host device "
-           << hostDevice << ".";
+    outChain = opLoweringState.bufferTransferDevice(
+        loweringState.getExecuteChain(), bufferizedInput.buffer,
+        loweredOutputsStorage[0].buffer, transferOp.getInput().getType());
   }
 
   opLoweringState.createOutputs(outChain, loweredOutputsStorage);

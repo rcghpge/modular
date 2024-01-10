@@ -112,6 +112,12 @@ Value CpuBufferBuilder::bufferTransferToHost(
   llvm::llvm_unreachable_internal("not implemented");
 }
 
+Value CpuBufferBuilder::bufferTransferDevice(
+    OpBuilder &builder, Location loc, TypedValue<MGP::ContextType> context,
+    Value inChain, Value srcBuffer, Value dstBuffer) {
+  llvm::llvm_unreachable_internal("not implemented");
+}
+
 Value CpuBufferBuilder::debugTensorPrint(
     OpBuilder &builder, Location loc, TypedValue<MGP::ContextType> context,
     Value inChain, Value buffer, TypedValue<MGP::CpuTensorSpecType> spec,

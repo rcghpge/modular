@@ -86,17 +86,24 @@ Value TensorBufferDialectInterface::matchingChain(
     Type typeToMatch) {
   bool inIsMef = isa<MEF::ChainType>(inChain.getType());
   bool matchIsMef = isa<MEF::ChainType>(typeToMatch);
-  if (inIsMef == matchIsMef) {
+  if (inChain.getType() == typeToMatch) {
     return inChain;
   } else if (inIsMef) {
     BufferBuilder *bufferBuilder =
         getBuilderForTypeStorage(builderContext, typeToMatch);
     return bufferBuilder->fromMEFChain(
         builder, loc, context, cast<TypedValue<MEF::ChainType>>(inChain));
-  } else { // matchIsMef
+  } else if (matchIsMef) {
     BufferBuilder *bufferBuilder =
         getBuilderForTypeStorage(builderContext, inChain.getType());
     return bufferBuilder->toMEFChain(builder, loc, context, inChain);
+  } else {
+    BufferBuilder *bufferBuilder =
+        getBuilderForTypeStorage(builderContext, inChain.getType());
+    auto mefChain = bufferBuilder->toMEFChain(builder, loc, context, inChain);
+    bufferBuilder = getBuilderForTypeStorage(builderContext, typeToMatch);
+    return bufferBuilder->fromMEFChain(
+        builder, loc, context, cast<TypedValue<MEF::ChainType>>(mefChain));
   }
 }
 
