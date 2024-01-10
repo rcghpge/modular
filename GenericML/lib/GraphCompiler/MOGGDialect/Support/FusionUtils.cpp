@@ -261,10 +261,6 @@ static void fuseInputAtIndex(MOGG::KernelOp kernel, int32_t idx) {
 }
 
 void fuseConstant(MOGG::KernelOp kernel) {
-  // Disable fusion on experimental new KGEN in MOGG for now.
-  if (kernel.getIsKGEN().value_or(false))
-    return;
-
   // Traverse from the back to simplify removing operands.
   int32_t preFuseNumOperands = kernel.getNumOperands();
   for (int32_t index = preFuseNumOperands - 1; index >= 0; --index) {
