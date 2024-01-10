@@ -15,13 +15,20 @@ from pathlib import Path
 
 
 fn _get_engine_path() raises -> String:
-    let engine_lib = getenv("MODULAR_AI_ENGINE_LIB_PATH")
-    if engine_lib == "":
-        raise "cannot find ai engine library. Please set MODULAR_AI_ENGINE_LIB_PATH."
+    let engine_lib_path_str_ptr = external_call[
+        "KGEN_CompilerRT_getConfigValue", DTypePointer[DType.int8]
+    ]("max.engine_lib")
 
-    if not Path(engine_lib).exists():
-        raise "ai engine library not found at " + String(engine_lib)
-    return String(engine_lib)
+    # this transfers ownership of the underlying data buffer allocated in
+    # `KGEN_CompilerRT_getConfigValue` so that it can be destroyed by Mojo.
+    let engine_lib_path = String(engine_lib_path_str_ptr)
+
+    if not engine_lib_path:
+        raise "cannot get the location of AI engine library from modular.cfg"
+
+    if not Path(engine_lib_path).exists():
+        raise "AI engine library not found at " + engine_lib_path
+    return engine_lib_path
 
 
 struct _EngineImpl:

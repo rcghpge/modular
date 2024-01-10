@@ -88,9 +88,26 @@ alias TensorTuplePtr = Pointer[_TensorTuple]
 
 
 fn _init_dylib(ignored: Pointer[NoneType]) -> Pointer[NoneType]:
-    let _mof_lib_path = getenv("MODULAR_MOF_LIB_PATH")
+    let mof_lib_path_str_ptr = external_call[
+        "KGEN_CompilerRT_getConfigValue", DTypePointer[DType.int8]
+    ]("max.graph_lib")
+
+    # this transfers ownership of the underlying data buffer allocated in
+    # `KGEN_CompilerRT_getConfigValue` so that it can be destroyed by Mojo.
+    let mof_lib_path = String(mof_lib_path_str_ptr)
+
+    if mof_lib_path == "" or not Path(mof_lib_path).exists():
+        print(
+            "cannot load MO framework library. Tried finding it at "
+            + mof_lib_path
+        )
+        trap()
+
     let ptr = Pointer[DLHandle].alloc(1)
-    ptr.store(DLHandle(_mof_lib_path, RTLD.NOW | RTLD.GLOBAL))
+    ptr.store(
+        DLHandle(mof_lib_path._strref_dangerous(), RTLD.NOW | RTLD.GLOBAL)
+    )
+    mof_lib_path._strref_keepalive()
     return ptr.bitcast[NoneType]()
 
 
