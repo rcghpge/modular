@@ -62,6 +62,15 @@ mo.graph @reduce_add_fold(%input: !mo.tensor<[?, ?, 1], f32>) -> (!mo.tensor<[?,
   mo.output %output : !mo.tensor<[?, ?, 1], f32>
 }
 
+// CHECK: mo.graph @reduce_add_no_fold(%[[INPUT:.*]]: !mo.tensor<[?, ?, 10], f32>) -> !mo.tensor<[?, ?, 1], f32> no_inline {
+mo.graph @reduce_add_no_fold(%input: !mo.tensor<[?, ?, 10], f32>) -> (!mo.tensor<[?, ?, 1], f32>) {
+  // Make sure the reduction is not removed since the input reduction dimension is not 1
+  // CHECK: mo.reduce.add(%[[INPUT]], %[[AXIS:[a-zA-Z0-9_]*]]) : (!mo.tensor<[?, ?, 10], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, 1], f32>
+  %axis = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %output = mo.reduce.add(%input, %axis) : (!mo.tensor<[?, ?, 10], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, 1], f32>
+  mo.output %output : !mo.tensor<[?, ?, 1], f32>
+}
+
 // CHECK: mo.graph @reduce_min(%[[INPUT:.*]]: !mo.tensor<[?, ?, 5], f32>) -> !mo.tensor<[?, ?, 1], f32> no_inline {
 mo.graph @reduce_min(%input: !mo.tensor<[?, ?, 5], f32>) -> (!mo.tensor<[?, ?, 1], f32>) {
   // CHECK: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[], si64>

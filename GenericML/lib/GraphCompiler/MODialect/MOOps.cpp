@@ -2122,7 +2122,7 @@ LogicalResult ReduceAddOp::canonicalize(ReduceAddOp op,
 
 OpFoldResult ReduceAddOp::fold(FoldAdaptor adaptor) {
   auto axisArr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getAxis());
-  TensorType inputTy = getType();
+  TensorType inputTy = getInput().getType();
 
   if (!axisArr || !inputTy.hasRank())
     return {};
