@@ -164,6 +164,10 @@ struct ShapeInferenceOptions
                      "functions for certains ops, and use the "
                      "SymbolicizeFallbackShapeFunctionsPass"),
       llvm::cl::init(false)};
+  ListOption<std::string> kernelLibraryPaths{
+      *this, "kernel-library-paths",
+      llvm::cl::desc(
+          "Paths to mojo packages containing mojo shape function definitions")};
 };
 
 /// Registers the MO-to-MGP pipeline for use by testing tools.

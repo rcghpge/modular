@@ -97,6 +97,7 @@ maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
     pm.addPass(MO::createConstantFold());
   ShapeInferenceOptions shapeInferenceOpts;
   shapeInferenceOpts.isExperimentalMode = opts.useExperimentalShapeInference;
+  shapeInferenceOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
   buildShapeInferencePipeline(pm, shapeInferenceOpts);
   pm.addPass(MO::createSymbolicOptimization());
   pm.addPass(MO::createPropagateShapes());
@@ -271,8 +272,10 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
     // mo.matmul, mo.concat, mo.gather, mo.range, etc.
     AddFallbackShapeFunctionsOptions passOpts;
     passOpts.restricted = true;
+    passOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
     pm.addPass(MO::createAddFallbackShapeFunctions(passOpts));
-    pm.addPass(MO::createSymbolicizeFallbackShapeFunctions());
+    pm.addPass(
+        MO::createSymbolicizeFallbackShapeFunctions({opts.kernelLibraryPaths}));
   }
   // this handles this rest
   pm.addPass(MO::createShapeInferenceMaterialization());
@@ -287,7 +290,8 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
   // shape functions. This is simialr to why we run symbolic shape function
   // materialization during staticization.
   if (opts.isExperimentalMode)
-    pm.addPass(MO::createSymbolicizeFallbackShapeFunctions());
+    pm.addPass(
+        MO::createSymbolicizeFallbackShapeFunctions({opts.kernelLibraryPaths}));
   pm.addPass(MO::createInlineShapeFunctions());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());

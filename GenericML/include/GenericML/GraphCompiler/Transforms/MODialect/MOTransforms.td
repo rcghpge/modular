@@ -48,7 +48,7 @@ def AddFallbackShapeFunctions :
 
   let options = [
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo kernel definitions to be loaded. ">,
+      "Paths to mojo packages containing mojo shape functions to be loaded. ">,
     Option<"restricted", "restricted", "bool", "false",
       "If set to true, only add fallback shape functions for a limited set of ops.">,
   ];
@@ -77,6 +77,11 @@ def SymbolicizeFallbackShapeFunctions :
     the shape function call's output parameters (and assertions in the shape
     function).
   }];
+
+  let options = [
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+      "Paths to mojo packages containing mojo shape functions to be loaded. ">,
+  ];
 
   let dependentDialects = [
     "mlir::LLVM::LLVMDialect",
