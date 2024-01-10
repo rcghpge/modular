@@ -43,20 +43,7 @@ LogicalResult StubCompiler::elaborateKGEN() {
   mlir::PassManager pm(ctx);
 
   // Set the environment (defines) for the module.
-  NamedAttrList envAttrs;
-#ifdef MODULAR_PARANOID
-  envAttrs.set("MODULAR_PARANOID", IntegerAttr::get(IndexType::get(ctx), 1));
-#endif // MODULAR_PARANOID
-  envAttrs.set("BUILD_TYPE", StringAttr::get(STRINGIFY(BUILD_TYPE),
-                                             KGEN::StringType::get(ctx)));
-  envAttrs.set("KERNELS_BUILD_TYPE",
-               StringAttr::get(STRINGIFY(KERNELS_BUILD_TYPE),
-                               KGEN::StringType::get(ctx)));
-  envAttrs.set(
-      "MODULAR_LLCL_MAX_PROFILING_LEVEL",
-      IntegerAttr::get(IndexType::get(ctx), MODULAR_LLCL_MAX_PROFILING_LEVEL));
-  kgenModule->setAttr(KGEN::EnvAttr::getEnvAttrName(),
-                      KGEN::EnvAttr::get(envAttrs.getDictionary(ctx)));
+  KGEN::setModularEnvAttr(kgenModule);
 
   // Retrieve the target info from the device spec, however 'complete' it with
   // additional fields derived from the 'core' fields.

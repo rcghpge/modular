@@ -80,20 +80,7 @@ LogicalResult elaborateModule(ModuleOp moduleOp) {
   setTargetInfo(moduleOp, *target);
 
   // Set the environment (defines) for the module.
-  NamedAttrList envAttrs;
-#ifdef MODULAR_PARANOID
-  envAttrs.set("MODULAR_PARANOID", IntegerAttr::get(IndexType::get(ctx), 1));
-#endif // MODULAR_PARANOID
-  envAttrs.set("BUILD_TYPE", StringAttr::get(STRINGIFY(BUILD_TYPE),
-                                             KGEN::StringType::get(ctx)));
-  envAttrs.set("KERNELS_BUILD_TYPE",
-               StringAttr::get(STRINGIFY(KERNELS_BUILD_TYPE),
-                               KGEN::StringType::get(ctx)));
-  envAttrs.set(
-      "MODULAR_LLCL_MAX_PROFILING_LEVEL",
-      IntegerAttr::get(IndexType::get(ctx), MODULAR_LLCL_MAX_PROFILING_LEVEL));
-  moduleOp->setAttr(KGEN::EnvAttr::getEnvAttrName(),
-                    KGEN::EnvAttr::get(envAttrs.getDictionary(ctx)));
+  KGEN::setModularEnvAttr(moduleOp);
 
   auto ownedRuntime = LLCL::createRuntimeIfNeeded(
       LLCL::RuntimeOptions().withLeakCheckedAllocator());
