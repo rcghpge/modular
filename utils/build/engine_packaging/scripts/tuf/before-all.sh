@@ -41,7 +41,7 @@ build-external-torchvision
 
 # Build LLVM.
 # Note: LLDB Python breaks because manylinux ships with a statically linked Python interpreter.
-DISABLE_LLDB_PYTHON_SCRIPTING=TRUE \
+DISABLE_LLDB_PYTHON_SCRIPTING=true \
 cmake-llvm --sanitizer=none --build-type=release \
   -D CMAKE_C_COMPILER=/usr/bin/clang-15 \
   -D CMAKE_CXX_COMPILER=/usr/bin/clang++-15 \
