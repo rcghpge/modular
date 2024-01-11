@@ -14,6 +14,7 @@
 
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTypes.h"
+#include "GenericML/Support/Assert.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -477,9 +478,10 @@ public:
   /// Get the index of the kernel in the compiled kernels context.
   size_t getCompiledKernelIndex(StringRef name) {
     auto itr = compiledKernelsToIndex.find(name);
-    assert(itr != compiledKernelsToIndex.end() &&
-           "All kernels must be accounted for through lowering the load "
-           "kernels.");
+    GENERICML_ASSERT(itr != compiledKernelsToIndex.end())
+        << "All kernels must be accounted for through lowering the load "
+           "kernels, but "
+        << name << " is missing.";
     return itr->second;
   }
 
