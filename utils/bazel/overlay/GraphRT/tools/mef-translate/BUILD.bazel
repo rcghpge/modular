@@ -1,0 +1,19 @@
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],
+)
+
+cc_binary(
+    name = "mef-translate",
+    srcs = glob(["*.cpp"]),
+    deps = [
+        "//GraphRT:GRTDialect",
+        "//GraphRT:MEFToMLIR",
+        "//GraphRT:MIPDialect",
+        "//GraphRT:MLIRToMEF",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TranslateLib",
+    ],
+)

@@ -1,0 +1,16 @@
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],
+)
+
+cc_binary(
+    name = "mef-executor",
+    srcs = glob(["*.cpp"]),
+    deps = [
+        "//GraphRT:GRTRuntime",
+        "//GraphRT:MEFExecutor",
+        "//GraphRT:Primitives",
+        "//LLCL:Runtime",
+        "//Support:CommonCLOptions",
+    ],
+)

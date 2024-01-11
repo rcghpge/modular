@@ -1,0 +1,13 @@
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],
+)
+
+cc_binary(
+    name = "graphrt-opt",
+    srcs = glob(["*.cpp"]),
+    deps = [
+        "//GraphRT:AllDialects",
+        "@llvm-project//mlir:MlirOptLib",
+    ],
+)
