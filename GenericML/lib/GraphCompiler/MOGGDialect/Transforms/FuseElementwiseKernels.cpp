@@ -459,11 +459,6 @@ struct FuseElementwisePass
     StringAttr renamedSrcElementwiseLambda;
     mlir::SymbolTable dstSymTable{dstKernel};
     for (Operation &srcOp : srcKernel.getBody().getOps()) {
-      if (auto moggCallOp = dyn_cast<MOGG::CallOp>(srcOp)) {
-        if (moggCallOp.getMojoKernelTarget() == "mark_output_chain_ready")
-          continue;
-      }
-
       if (isa<KGEN::CallOp, MOGG::OutputOp>(srcOp))
         continue;
 
