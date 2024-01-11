@@ -94,13 +94,17 @@ fn _init_dylib(ignored: Pointer[NoneType]) -> Pointer[NoneType]:
 
     # this transfers ownership of the underlying data buffer allocated in
     # `KGEN_CompilerRT_getConfigValue` so that it can be destroyed by Mojo.
-    let mof_lib_path = String(mof_lib_path_str_ptr)
+    let pathlen = len(StringRef(mof_lib_path_str_ptr))
+    let mof_lib_path = String(
+        mof_lib_path_str_ptr, pathlen + 1
+    )  # account for the terminator
 
-    if mof_lib_path == "" or not Path(mof_lib_path).exists():
-        print(
-            "cannot load MO framework library. Tried finding it at "
-            + mof_lib_path
-        )
+    if not mof_lib_path:
+        print("cannot get the location of graph library from modular.cfg")
+        trap()
+
+    if not Path(mof_lib_path).exists():
+        print("cannot load graph library. Checked path " + mof_lib_path)
         trap()
 
     let ptr = Pointer[DLHandle].alloc(1)

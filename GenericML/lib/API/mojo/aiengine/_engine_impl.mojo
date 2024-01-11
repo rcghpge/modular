@@ -21,7 +21,10 @@ fn _get_engine_path() raises -> String:
 
     # this transfers ownership of the underlying data buffer allocated in
     # `KGEN_CompilerRT_getConfigValue` so that it can be destroyed by Mojo.
-    let engine_lib_path = String(engine_lib_path_str_ptr)
+    let pathlen = len(StringRef(engine_lib_path_str_ptr))
+    let engine_lib_path = String(
+        engine_lib_path_str_ptr, pathlen + 1
+    )  # account for the terminator
 
     if not engine_lib_path:
         raise "cannot get the location of AI engine library from modular.cfg"
