@@ -125,8 +125,8 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
 LogicalResult impl::verifyReduction(Reduction op) {
   // TODO: test
   if (failed(verifyMatchingRanks({op.getInput(), op.getResult()})))
-    return op.emitOpError(
-        "input and ranks ranks must be both dynamic, or both static and match");
+    return op.emitOpError("input and output must either both have dynamic "
+                          "ranks or both have the same size static ranks");
 
   TensorValue axisArr = op.getAxis();
   TensorType inputTy = op.getInput().getType();

@@ -855,7 +855,7 @@ mo.graph @arg_max_bad_axis_shape(%arg: !mo.tensor<[7, 7], f32>, %axis: !mo.tenso
 // -----
 
 mo.graph @arg_max_bad_rank(%arg: !mo.tensor<[7, 7], f32>, %axis: !mo.tensor<[], si64>) -> !mo.tensor<[7, 1, 1], si64> {
-  // expected-error@+1 {{'mo.arg_max' op input and ranks ranks must be both dynamic, or both static and match}}
+  // expected-error@+1 {{'mo.arg_max' op input and output must either both have dynamic ranks or both have the same size static ranks}}
   %res = mo.arg_max(%arg, %axis) : (!mo.tensor<[7, 7], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[7, 1, 1], si64>
   mo.output %res : !mo.tensor<[7, 1, 1], si64>
 }
