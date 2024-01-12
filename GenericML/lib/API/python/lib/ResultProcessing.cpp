@@ -21,9 +21,12 @@ namespace py = pybind11;
 /// Creates a new `py::array` by copying the tensor data from a `GML::Tensor`.
 py::object core::processTensorResult(TensorPtr outTensor) {
   TensorSpecPtr tensorSpec{M_getTensorSpec(outTensor.get()), &M_freeTensorSpec};
-  size_t numDims = M_getRank(tensorSpec.get());
+  int64_t numDims = M_getRank(tensorSpec.get());
+  if (numDims == M_getDynamicRankValue())
+    throw std::runtime_error("dynamic ranked tensor is not supported yet.");
+
   std::vector<int64_t> shape;
-  for (size_t d = 0; d < numDims; ++d)
+  for (size_t d = 0; d < (size_t)numDims; ++d)
     shape.push_back(M_getDimAt(tensorSpec.get(), d));
 
   // TODO(8114): Currently always copy out.

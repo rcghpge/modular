@@ -58,6 +58,9 @@ struct EngineTensorSpec:
         return self.ptr.get_dim_at(idx, self.lib)
 
     fn get_as_tensor_spec(self) -> TensorSpec:
+        if self.ptr.is_dynamically_ranked(self.lib):
+            print("tensors with dynamic rank are not supported here")
+            trap()
         var shape = DynamicVector[Int]()
         let rank = self.ptr.get_rank(self.lib)
         for i in range(rank):

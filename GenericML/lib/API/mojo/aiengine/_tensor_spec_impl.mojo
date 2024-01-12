@@ -28,6 +28,7 @@ struct CTensorSpec:
     alias GetRankFnName = "M_getRank"
     alias GetNameFnName = "M_getName"
     alias GetDTypeFnName = "M_getDtype"
+    alias IsDynamicallyRankedFnName = "M_isDynamicRanked"
 
     fn get_dim_at(self, idx: Int, lib: DLHandle) -> Int:
         return call_dylib_func[Int](lib, Self.GetDimAtFnName, self, idx)
@@ -41,6 +42,12 @@ struct CTensorSpec:
 
     fn get_dtype(self, lib: DLHandle) -> EngineDType:
         return call_dylib_func[EngineDType](lib, Self.GetDTypeFnName, self)
+
+    fn is_dynamically_ranked(self, lib: DLHandle) -> Bool:
+        let is_dynamic = call_dylib_func[Int](
+            lib, Self.IsDynamicallyRankedFnName, self
+        )
+        return is_dynamic == 1
 
     fn free(self, borrowed lib: DLHandle):
         call_dylib_func(lib, Self.FreeTensorSpecFnName, self)

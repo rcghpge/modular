@@ -59,7 +59,7 @@ TEST(APIBridge, tensorSpecToCAPIBasic) {
   ASSERT_NE(cSpec, nullptr);
   EXPECT_STREQ("example", M_getName(cSpec.get()));
   EXPECT_EQ(M_FLOAT32, M_getDtype(cSpec.get()));
-  EXPECT_EQ(size_t{3}, M_getRank(cSpec.get()));
+  EXPECT_EQ(int64_t{3}, M_getRank(cSpec.get()));
   EXPECT_EQ(int64_t{1}, M_getDimAt(cSpec.get(), 0));
   EXPECT_EQ(int64_t{2}, M_getDimAt(cSpec.get(), 1));
   EXPECT_EQ(int64_t{3}, M_getDimAt(cSpec.get(), 2));
@@ -74,7 +74,7 @@ TEST(APIBridge, DISABLED_tensorSpecToCAPIUndefinedDims) {
   TensorSpecPtr cSpec = tensorSpecToCAPI("example", spec);
   ASSERT_NE(cSpec, nullptr);
   EXPECT_EQ(M_FLOAT32, M_getDtype(cSpec.get()));
-  EXPECT_EQ(size_t{3}, M_getRank(cSpec.get()));
+  EXPECT_EQ(int64_t{3}, M_getRank(cSpec.get()));
   // However, the C API has a more restrictive requirement that all undefined
   // dimensions are specifically -1.
   EXPECT_EQ(int64_t{-1}, M_getDimAt(cSpec.get(), 0));

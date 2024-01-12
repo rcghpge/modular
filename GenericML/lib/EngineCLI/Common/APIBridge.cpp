@@ -91,10 +91,13 @@ TensorSpecPtr M::EngineCLI::tensorSpecToCAPI(const char *name,
 
 TensorSpec M::EngineCLI::capiToTensorSpec(const M_TensorSpec *spec) {
   SmallVector<int64_t, 8> shape;
-  size_t rank = M_getRank(spec);
-  for (size_t axis = 0; axis < rank; ++axis) {
+  int64_t rank = M_getRank(spec);
+  assert(rank >= 0 && "dynamic ranked specs are not supported");
+  for (size_t axis = 0, e = (size_t)rank; axis < e; ++axis) {
     int64_t cDim = M_getDimAt(spec, axis);
-    shape.push_back(cDim == -1 ? mlir::ShapedType::kDynamic : cDim);
+    shape.push_back(cDim == M_getDynamicDimensionValue()
+                        ? mlir::ShapedType::kDynamic
+                        : cDim);
   }
   return TensorSpec(shape, capiToDType(M_getDtype(spec)));
 }
