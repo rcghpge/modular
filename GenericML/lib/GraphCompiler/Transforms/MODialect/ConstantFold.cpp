@@ -38,6 +38,53 @@
 
 #include <numeric>
 
+using namespace M;
+
+namespace {
+
+// A foreign buffer interface used to greedily deallocate `AsmResourceBlob`s.
+// When all uses of a `dense_resource` are in its constant subgraph, we want
+// graph execution to greedily deallocate it.
+// This is in an effort to reduce peak memory usage during subgraph model
+// execution in constant folding.
+// Before transferring ownership, the `dense_resource` is previously owned by
+// the `mlir::Context`.
+// So giving ownership to the foreign buffer allows GraphRT to greedily
+// free the constant rather than waiting for the `mlir::Context` to free it.
+class ResourceBufferInterface : public GML::ForeignBufferInterface {
+public:
+  ResourceBufferInterface()
+      : ForeignBufferInterface("ResourceBufferInterface") {}
+
+  ~ResourceBufferInterface() override = default;
+
+  /// Returns the underlying buffer of the foreign buffer object.
+  const void *getBuffer(const void *object) const override {
+    return static_cast<const mlir::AsmResourceBlob *>(object)->getData().data();
+  }
+
+  void *getMutableBuffer(void *object) const override {
+    assert(false && "can't mutate resource");
+  }
+
+  /// Deletes the foreign buffer object.
+  void deleteObject(void *object, size_t size) const override {
+    auto blob = static_cast<mlir::AsmResourceBlob *>(object);
+    auto &deleter = blob->getDeleter();
+    assert(deleter && "blob should have deleter");
+
+    // Destroy this resource, destroying the deleter and its captured vars.
+    *blob = mlir::AsmResourceBlob();
+  }
+};
+
+} // namespace
+
+static GML::ForeignBufferInterfaceID registerResourceBufferInterface() {
+  return GML::ForeignBufferInterfaceRegistry::registerInterface(
+      std::make_unique<ResourceBufferInterface>());
+}
+
 namespace M::MO {
 #define GEN_PASS_DEF_CONSTANTFOLD
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
@@ -173,13 +220,47 @@ struct ModelResult {
   llvm::DenseMap<StringAttr, int64_t> parameters;
 };
 
+/// Creates a a tensor from a `dense_resource`.
+/// If the constant op's users are all in this subgraph, then this returns a
+/// tensor that owns the underlying resource blob.
+/// Otherwise the returned tensor's data is borrowed.
+static GML::Tensor
+denseResourceAsTensor(ConstantOp constant,
+                      DenseResourceElementsAttr denseResource,
+                      const Subgraph &subgraph,
+                      GML::ForeignBufferInterfaceID resourceInterfaceID) {
+  // It is safe to take ownership of blob data if all users are in this
+  // set.
+  llvm::SetVector<Operation *> constantUsers;
+  for (Operation *user : constant->getUsers())
+    constantUsers.insert(user);
+
+  mlir::AsmResourceBlob *blob = denseResource.getRawHandle().getBlob();
+  TensorType ttype = dyn_cast<TensorType>(constant.getType());
+  TensorSpec spec(dyn_cast<MOSH::ShapeAttr>(ttype.getShapeAttr()).getIntDims(),
+                  ttype.getDtype());
+
+  llvm::SetVector<Operation *> nonConstUsers(constantUsers);
+  nonConstUsers.set_subtract(subgraph.ops);
+  if (nonConstUsers.empty()) {
+    GML::BufferRef blobBuffer = GML::BufferRef::createForeign(
+        resourceInterfaceID, blob, blob->getData().size(),
+        blob->getDataAlignment());
+    return GML::Tensor(std::move(blobBuffer), std::move(spec));
+  }
+
+  return GML::Tensor::createBorrowed(blob->getData().data(), spec,
+                                     blob->getDataAlignment(),
+                                     GML::BufferRef::Lifetime::kConstant);
+}
+
 /// Run a Model to get the constant outputs to a subgraph. Returns a mapping
-/// from output Vale to ElementsAttr containing the constant resulting from
+/// from output Value to ElementsAttr containing the constant resulting from
 /// folding.
-LLCL::ErrorDiagnosticOr<ModelResult> executeModel(MLIRContext *ctx,
-                                                  const Model *model,
-                                                  SubgraphsInfo subgraphsInfo,
-                                                  LLCL::Runtime &runtime) {
+LLCL::ErrorDiagnosticOr<ModelResult>
+executeModel(MLIRContext *ctx, const Model *model,
+             const SubgraphsInfo &subgraphsInfo, LLCL::Runtime &runtime,
+             GML::ForeignBufferInterfaceID resourceInterfaceID) {
   auto executableModelOr = model->setup(runtime);
   if (executableModelOr.isError())
     return executableModelOr.takeError();
@@ -192,22 +273,14 @@ LLCL::ErrorDiagnosticOr<ModelResult> executeModel(MLIRContext *ctx,
         model->getLocation().copy());
 
   SmallVector<AnyAsyncValueRef> inputTensorsInMEFIndexOrder;
-  for (auto subgraph : subgraphsInfo.subgraphs) {
+  for (const Subgraph &subgraph : subgraphsInfo.subgraphs) {
     for (ConstantOp constant : subgraph.constants()) {
-      auto denseElems =
-          dyn_cast<DenseResourceElementsAttr>(constant.getValueAttr());
-      if (denseElems) {
-        auto blob = denseElems.getRawHandle().getBlob();
-        TensorType ttype = dyn_cast<TensorType>(constant.getType());
-        TensorSpec spec(
-            dyn_cast<MOSH::ShapeAttr>(ttype.getShapeAttr()).getIntDims(),
-            ttype.getDtype());
-        GML::Tensor tensor = GML::Tensor::createBorrowed(
-            blob->getData().data(), spec, blob->getDataAlignment(),
-            GML::BufferRef::Lifetime::kConstant);
+      if (auto denseResource =
+              dyn_cast<DenseResourceElementsAttr>(constant.getValueAttr())) {
         inputTensorsInMEFIndexOrder.push_back(
-            AsyncValueRef<GML::Tensor>::createReady(runtime,
-                                                    std::move(tensor)));
+            AsyncValueRef<GML::Tensor>::createReady(
+                runtime, denseResourceAsTensor(constant, denseResource,
+                                               subgraph, resourceInterfaceID)));
       }
     }
   }
@@ -241,7 +314,7 @@ LLCL::ErrorDiagnosticOr<ModelResult> executeModel(MLIRContext *ctx,
       opToTensors;
   auto resourceManager = DenseResourceElementsHandle::getManagerInterface(ctx);
   size_t outIdx = 0;
-  for (auto subgraph : subgraphsInfo.subgraphs) {
+  for (const Subgraph &subgraph : subgraphsInfo.subgraphs) {
     for (auto op : subgraph.outputs) {
       SmallVector<std::pair<ElementsAttr, TensorShape>> opTensors;
       for (size_t i = 0; i < op->getNumResults(); i++) {
@@ -275,7 +348,7 @@ LLCL::ErrorDiagnosticOr<ModelResult> executeModel(MLIRContext *ctx,
 
   // Get parameters now. They come after the constants.
   llvm::DenseMap<StringAttr, int64_t> params;
-  for (auto subgraph : subgraphsInfo.subgraphs) {
+  for (const Subgraph &subgraph : subgraphsInfo.subgraphs) {
     for (auto paramName : subgraph.paramDeclarations()) {
       auto &tensor = outputTensorRefs[outIdx];
       if (tensor.isError())
@@ -496,11 +569,11 @@ constantSubgraphs(MO::GraphOp graph,
 /// Large constants in the subgraph are transformed into inputs to the new
 /// graph.
 SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig, ModuleOp module,
-                             SmallVector<Subgraph> subgraphs,
+                             const SmallVector<Subgraph> &subgraphs,
                              int64_t &name_counter) {
   // Add large constants as inputs
   llvm::SmallVector<Type> argTypes;
-  for (auto subgraph : subgraphs) {
+  for (const Subgraph &subgraph : subgraphs) {
     for (ConstantOp constant : subgraph.constants()) {
       auto dense = dyn_cast<DenseResourceElementsAttr>(constant.getValueAttr());
       if (dense)
@@ -508,7 +581,7 @@ SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig, ModuleOp module,
     }
   }
   llvm::SmallVector<Type> resultTypes;
-  for (Subgraph subgraph : subgraphs) {
+  for (const Subgraph &subgraph : subgraphs) {
     for (auto op : subgraph.outputs) {
       for (auto result : op->getResults()) {
         resultTypes.push_back(result.getType());
@@ -523,7 +596,7 @@ SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig, ModuleOp module,
 
   llvm::MapVector<ConstantOp, BlockArgument> inputConstants;
   int64_t idx = 0;
-  for (auto subgraph : subgraphs) {
+  for (const Subgraph &subgraph : subgraphs) {
     for (ConstantOp constant : subgraph.constants()) {
       auto dense = dyn_cast<DenseResourceElementsAttr>(constant.getValueAttr());
       if (dense) {
@@ -534,7 +607,7 @@ SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig, ModuleOp module,
   }
 
   SmallVector<Operation *, 8> opsSorted;
-  for (Subgraph subgraph : subgraphs)
+  for (const Subgraph &subgraph : subgraphs)
     for (auto op : subgraph.ops)
       opsSorted.push_back(op);
   // Topologically sort so definitions come before uses.
@@ -558,7 +631,7 @@ SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig, ModuleOp module,
   }
   llvm::SmallVector<Value> newOutputs;
   llvm::SetVector<KGEN::ParamDeclAttr> outputParams;
-  for (auto subgraph : subgraphs) {
+  for (const Subgraph &subgraph : subgraphs) {
     for (auto op : subgraph.outputs) {
       for (auto result : op->getResults()) {
         Value newOutput = oldToNew.lookup<Value>(result);
@@ -586,7 +659,7 @@ SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig, ModuleOp module,
   // Add parameter declaration/definitions that are used in the subgraph. They
   // are converted to indexes and then to tensors so that we can output them.
   Type indexType = IndexType::get(ctx);
-  for (auto subgraph : subgraphs) {
+  for (const Subgraph &subgraph : subgraphs) {
     for (auto param : subgraph.paramDeclarations()) {
       Value index = builder.create<KGEN::ParamConstantOp>(
           loc, indexType, KGEN::ParamDeclRefAttr::get(ctx, param, indexType));
@@ -625,14 +698,14 @@ void replaceConstantOps(GraphOp graph, OpBuilder &builder,
   // we have removed anything, then remove them later when they are not depended
   // on.
   SmallVector<Operation *> allOps;
-  for (auto subgraph : subgraphsInfo.subgraphs)
+  for (const Subgraph &subgraph : subgraphsInfo.subgraphs)
     for (auto op : subgraph.ops)
       allOps.push_back(op);
   auto filtered = llvm::make_filter_range(allOps, [&](Operation *op) {
     return llvm::all_of(op->getResults(), [&](OpResult r) {
-      return llvm::all_of(subgraphsInfo.subgraphs, [&](Subgraph subgraph) {
-        return subgraph.fullyContains(r);
-      });
+      return llvm::all_of(
+          subgraphsInfo.subgraphs,
+          [&](const Subgraph &subgraph) { return subgraph.fullyContains(r); });
     });
   });
   llvm::SmallVector<Operation *> internalOps(filtered.begin(), filtered.end());
@@ -772,7 +845,7 @@ struct FactorMemIncrease : public ConstantFoldPolicy {
 
   // Calculate the size in bytes of memory used by the outputs of a
   // subgraph.
-  static int64_t outputMemUsage(Subgraph subgraph) {
+  static int64_t outputMemUsage(const Subgraph &subgraph) {
     int64_t outputSize = 0;
     for (auto output : subgraph.outputs)
       outputSize += valueSize(subgraph, output);
@@ -781,7 +854,7 @@ struct FactorMemIncrease : public ConstantFoldPolicy {
 
   // Calculate the size in bytes of memory used by all constant ops in the
   // subgraph.
-  static int64_t constantMemUsage(Subgraph subgraph) {
+  static int64_t constantMemUsage(const Subgraph &subgraph) {
     int64_t internalSize = 0;
     for (auto op : subgraph.ops) {
       if (!subgraph.outputs.contains(op)) {
@@ -849,6 +922,9 @@ void ConstantFoldPass::runOnOperation() {
   // 3. Lowers and executes each GraphOp from the previous step.
   // 4. Replaces subgraph outputs with outputs from the previous step.
 
+  GML::ForeignBufferInterfaceID resourceInterfaceID =
+      registerResourceBufferInterface();
+
   MLIRContext *ctx = &getContext();
 
   for (int i = 0; i < iterations.getValue(); i++) {
@@ -880,6 +956,7 @@ void ConstantFoldPass::runOnOperation() {
       if (subgraphs.empty())
         return mlir::WalkResult::advance();
       builder.setInsertionPointToEnd(module.getBody());
+
       subgraphReplacements.push_back(
           cloneSubgraphs(builder, graph, module, subgraphs, name_counter));
       return WalkResult::advance();
@@ -908,14 +985,13 @@ void ConstantFoldPass::runOnOperation() {
     llvm::DenseMap<GraphOp,
                    llvm::SmallVector<std::pair<ModelResult, SubgraphsInfo>>>
         executionResults;
-    for (size_t i = 0; i < subgraphReplacements.size(); i++) {
-      SubgraphsInfo subgraphsInfo = subgraphReplacements[i];
+    for (const SubgraphsInfo &subgraphsInfo : subgraphReplacements) {
       const Model *model = modelsOr.get().models->getModelNamed(
           subgraphsInfo.constantSubgraphName);
       assert(model != nullptr &&
              "Model should exist, make sure names above match.");
-      LLCL::ErrorDiagnosticOr<ModelResult> valuesToTensorsOr =
-          executeModel(ctx, model, subgraphsInfo, *ownedRuntime);
+      LLCL::ErrorDiagnosticOr<ModelResult> valuesToTensorsOr = executeModel(
+          ctx, model, subgraphsInfo, *ownedRuntime, resourceInterfaceID);
       if (valuesToTensorsOr.isError()) {
         LLCL::EncodedDiagnostic err = valuesToTensorsOr.takeError();
         auto decoded = err.decodeLocation();
@@ -937,9 +1013,9 @@ void ConstantFoldPass::runOnOperation() {
 
     // Replace output expressions with constants. Also handles DCE.
     for (auto [graph, results] : executionResults) {
-      for (auto r : results) {
-        ModelResult &modelResult = r.first;
-        SubgraphsInfo &subgraphsInfo = r.second;
+      for (const auto &r : results) {
+        const ModelResult &modelResult = r.first;
+        const SubgraphsInfo &subgraphsInfo = r.second;
         replaceConstantOps(graph, builder, modelResult, subgraphsInfo);
       }
     }

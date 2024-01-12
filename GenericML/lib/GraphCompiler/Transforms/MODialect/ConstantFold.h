@@ -9,8 +9,6 @@
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
-#include "mlir/Analysis/DataFlow/SparseAnalysis.h"
-#include "mlir/IR/Value.h"
 
 namespace M::MO {
 struct Subgraph {
@@ -18,7 +16,9 @@ struct Subgraph {
   // Outputs are Value in the constant subgraph that have uses outside of the
   // subgraph. Outputs may depend on other outputs.
   llvm::SetVector<Operation *> outputs;
-  Subgraph(llvm::SetVector<Operation *> ops) : ops(ops) { findOutputs(); }
+  Subgraph(llvm::SetVector<Operation *> ops) : ops(std::move(ops)) {
+    findOutputs();
+  }
 
   /// Remove operation from subgraph. Also removes any dependents in the
   /// subgraph.
