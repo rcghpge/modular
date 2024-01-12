@@ -81,7 +81,7 @@ fn execute_no_args(m: Module, name: StringRef) raises -> TensorMap:
         f.write(m.__str__())
 
     let session = InferenceSession()
-    let model = session.load_model(temp_path.path._strref_dangerous())
+    let model = session.load_model(temp_path)
 
     let input_map = session.new_tensor_map()
     let result_map = model.execute(input_map)
@@ -110,7 +110,7 @@ fn execute_n_args[
         f.write(m.__str__())
 
     let session = InferenceSession()
-    let model = session.load_model(temp_path.path._strref_dangerous())
+    let model = session.load_model(temp_path)
 
     let input_map = session.new_tensor_map()
     input_map.borrow("input0", t1)
@@ -137,7 +137,7 @@ fn execute_base(
         f.write(m.__str__())
 
     let session = InferenceSession()
-    let model = session.load_model(temp_path.path._strref_dangerous())
+    let model = session.load_model(temp_path)
 
     let input_map = session.new_tensor_map()
     for i in range(len(tensors)):
