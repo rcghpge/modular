@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --canonicalize --shape-inference | FileCheck %s
+// RUN: mo-opt %s --canonicalize --shape-inference=experimental=false | FileCheck %s
 
 // CHECK-NOT: kgen.func
 
