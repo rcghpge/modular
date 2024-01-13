@@ -35,25 +35,27 @@ void core::verifyTensorInputSpecs(const py::object &obj,
         printDType(mapPybind11Type(tensor.dtype())) + " instead.");
 
   // Assert same number of dims
-  if (unsigned long expectedNDim = inputTensorSpec.getShape().size();
-      (unsigned long)tensor.ndim() != expectedNDim) {
-    throw std::runtime_error(
-        "Input tensor has incompatible number of dimensions. Expected "
-        "number of dimensions to be " +
-        std::to_string(expectedNDim) + " but input has " +
-        std::to_string(tensor.ndim()) + " dimensions.");
-  }
-
-  // Assert same shape
-  std::vector<int64_t> inputShape;
-  for (ssize_t d = 0, ndim = tensor.ndim(); d < ndim; ++d) {
-    int64_t expectedDim = M_getDimAt(inputTensorSpec.getSpec(), d);
-    if (expectedDim != M_getDynamicDimensionValue() &&
-        expectedDim != tensor.shape(d)) {
+  auto shapeOr = inputTensorSpec.getShape();
+  if (shapeOr) {
+    const std::vector<std::optional<int64_t>> &shape = *shapeOr;
+    if (unsigned long expectedNDim = shape.size();
+        (unsigned long)tensor.ndim() != expectedNDim) {
       throw std::runtime_error(
-          "Input tensor has incompatible dimension along axis " +
-          std::to_string(d) + ". Expected " + std::to_string(expectedDim) +
-          " but found " + std::to_string(tensor.shape(d)) + ".");
+          "Input tensor has incompatible number of dimensions. Expected "
+          "number of dimensions to be " +
+          std::to_string(expectedNDim) + " but input has " +
+          std::to_string(tensor.ndim()) + " dimensions.");
+    }
+
+    // Assert same shape
+    for (ssize_t d = 0, ndim = tensor.ndim(); d < ndim; ++d) {
+      auto expectedDimOr = shape.at(d);
+      if (expectedDimOr && *expectedDimOr != tensor.shape(d)) {
+        throw std::runtime_error(
+            "Input tensor has incompatible dimension along axis " +
+            std::to_string(d) + ". Expected " + std::to_string(*expectedDimOr) +
+            " but found " + std::to_string(tensor.shape(d)) + ".");
+      }
     }
   }
 }
