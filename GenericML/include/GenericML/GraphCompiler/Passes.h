@@ -153,7 +153,7 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc("If enabled, pre-emptively materialize fallback shape"
                      "functions for certains ops, and use the "
                      "SymbolicizeFallbackShapeFunctionsPass"),
-      llvm::cl::init(false)};
+      llvm::cl::init(true)};
 };
 
 struct ShapeInferenceOptions
@@ -163,7 +163,7 @@ struct ShapeInferenceOptions
       llvm::cl::desc("If enabled, pre-emptively materialize fallback shape"
                      "functions for certains ops, and use the "
                      "SymbolicizeFallbackShapeFunctionsPass"),
-      llvm::cl::init(false)};
+      llvm::cl::init(true)};
   ListOption<std::string> kernelLibraryPaths{
       *this, "kernel-library-paths",
       llvm::cl::desc(
