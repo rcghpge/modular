@@ -5,21 +5,20 @@
 ##===----------------------------------------------------------------------===##
 
 add_mojo_package(mobi-mojo-api PRIVATE
-  attr
-  graph
-  mobicc
-  module
-  symbol
-  testing
-  type
+  graph/attr
+  graph/graph
+  graph/mobicc
+  graph/module
+  graph/symbol
+  graph/testing
+  graph/type
 
-  ops/__init__
-  ops/complex
-  ops/elementwise
-  ops/linalg
-  ops/reduction
-  ops/shaping
-  ops/slicing
+  graph/ops/complex
+  graph/ops/elementwise
+  graph/ops/linalg
+  graph/ops/reduction
+  graph/ops/shaping
+  graph/ops/slicing
 )
 # TODO: Remove this dependency over time as only `testing.mojo` in this
 # directory requires the AI Engine Mojo package.  The core `mobi-mojo-api`

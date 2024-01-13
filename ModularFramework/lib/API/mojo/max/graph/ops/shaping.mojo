@@ -6,8 +6,8 @@
 
 from tensor import TensorSpec, TensorShape
 
-from mobi.symbol import Tup
-from mobi.type import *
+from max.graph.symbol import Tup
+from max.graph.type import ElementType
 
 
 # TODO: Add checks or extend to unranked support, where static shapes assumed.

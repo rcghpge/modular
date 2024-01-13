@@ -8,10 +8,9 @@
 # RUN: mt -execute %T/module_to_bytecode.bin | FileCheck %s --check-prefix=CHECK-MTB
 
 from sys.param_env import env_get_string
-from testing import assert_equal
+from testing import *
 
-# import mobi
-from mobi import mobicc
+from max.graph import mobicc
 
 
 alias TEMP_DIR = Path(env_get_string["TEMP_DIR"]())

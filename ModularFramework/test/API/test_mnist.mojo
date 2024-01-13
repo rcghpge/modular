@@ -9,7 +9,7 @@
 from tensor import Tensor, TensorSpec, TensorShape
 from utils.index import Index
 
-from mobi import *
+from max.graph import *
 
 # Based on the MNIST example at https://www.tensorflow.org/datasets/keras_example:
 #

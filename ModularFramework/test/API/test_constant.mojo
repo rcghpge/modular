@@ -6,10 +6,10 @@
 # UNSUPPORTED: windows
 # RUN: mojo -I %mobi_pkg_dir %s
 
-from testing import *
 from tensor import TensorShape
+from testing import *
 
-from mobi import *
+from max.graph import *
 
 
 fn test_basic_tensor() raises:

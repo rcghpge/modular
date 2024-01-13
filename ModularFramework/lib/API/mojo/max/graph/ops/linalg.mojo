@@ -6,7 +6,7 @@
 
 from math import max
 
-from mobi.type import ElementType, MOTensor, dyn
+from max.graph.type import ElementType, MOTensor, dyn
 
 from tensor import TensorSpec, TensorShape
 

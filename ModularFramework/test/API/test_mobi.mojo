@@ -9,7 +9,7 @@
 from tensor import Tensor, TensorShape
 from utils.index import Index
 
-from mobi import *
+from max.graph import *
 
 
 fn test_identity_graph() raises:

@@ -7,7 +7,7 @@
 
 from tensor import Tensor, TensorShape
 
-from mobi import *
+from max.graph import *
 
 
 fn test_add_basic() raises:

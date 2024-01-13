@@ -7,8 +7,7 @@
 
 from tensor import Tensor, TensorShape
 
-from mobi import *
-from mobi.ops import squeeze
+from max.graph import *
 
 
 fn test_squeeze() raises:
@@ -20,7 +19,7 @@ fn test_squeeze() raises:
         Arity(m.f32(dyn(), 1, 3)),
         Arity(m.f32(dyn(), 3)),
     )
-    g.output(squeeze(g[0], 1))
+    g.output(ops.squeeze(g[0], 1))
     m.verify()
 
     let x = Tensor[DType.float32](TensorShape(1, 1, 3), 1, 2, 3)
