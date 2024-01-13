@@ -25,13 +25,11 @@ add_mojo_package(mobi-mojo-api PRIVATE
 # package shouldn't have a dependency on the AI Engine.
 add_dependencies(mobi-mojo-api engine-mojo-api)
 
-set(MOBI_PACKAGE_PATH "${MODULAR_BINARY_DIR}/ModularFramework/lib/API/mojo/mobi/mobi.mojopkg")
-
 # This install rule is consumed by the install-ai-engine-mobi target defined in
 # ModularFramework/lib/API/CMakeLists.txt which describes the installation
 # process in more detail.
 install(
-  FILES ${MOBI_PACKAGE_PATH}
+  FILES $<TARGET_PROPERTY:mobi-mojo-api,PACKAGE_LOCATION>
   DESTINATION "modular-ai-engine-tuf/pkg"
   COMPONENT ai-engine-mobi
 )
