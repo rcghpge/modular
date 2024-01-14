@@ -4,7 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 # UNSUPPORTED: windows
-# RUN: mojo -I %mobi_pkg_dir %s | FileCheck %s
+# RUN: mojo %s | FileCheck %s
 
 from tensor import Tensor, TensorShape
 from utils.index import Index

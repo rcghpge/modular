@@ -4,11 +4,10 @@
 #
 # ===----------------------------------------------------------------------=== #
 # UNSUPPORTED: windows
-# RUN: mojo -I %mobi_pkg_dir -D TEMP_DIR=%T %s | FileCheck %s
+# RUN: mojo -D TEMP_DIR=%T %s | FileCheck %s
 # RUN: mt -execute %T/module_to_bytecode.bin | FileCheck %s --check-prefix=CHECK-MTB
 
 from sys.param_env import env_get_string
-from testing import *
 
 from max.graph import mobicc
 

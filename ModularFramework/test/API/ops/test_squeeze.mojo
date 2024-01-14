@@ -3,7 +3,7 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-# RUN: mojo -I %mobi_pkg_dir -I %test_utils_pkg_dir -D TEMP_DIR=%T "%s"
+# RUN: mojo -D TEMP_DIR=%T "%s"
 
 from tensor import Tensor, TensorShape
 
