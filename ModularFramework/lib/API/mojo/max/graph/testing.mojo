@@ -144,7 +144,7 @@ fn execute_base(
         let input_name = "input" + String(i)
         input_map.borrow(
             input_name._strref_dangerous(),
-            __get_value_from_ref(tensors[i]),
+            tensors[i],
         )
         input_name._strref_keepalive()
 

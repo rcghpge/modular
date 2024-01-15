@@ -160,7 +160,7 @@ def slice_(
 
     let slice_max_value = slice(None, None, None).end
     for dim in range(len(slices)):
-        let slice: SliceSymbol = __get_value_from_ref(slices[dim])
+        let slice: SliceSymbol = slices[dim]
         starts.push_back(ensure_constant(slice.start))
         stops.push_back(ensure_constant(slice.stop))
         steps.push_back(ensure_constant(slice.step))
