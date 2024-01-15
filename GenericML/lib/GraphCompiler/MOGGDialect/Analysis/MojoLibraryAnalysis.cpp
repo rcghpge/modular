@@ -53,7 +53,7 @@ bool MojoLibraryAnalysis::kernelHasDecorator(KGEN::GeneratorOp kernel,
 
     /// FIXME: This will give a false positive when a decorator is a prefix of
     /// another one.
-    return sym.getSymbol().getLeafReference().strref().startswith(
+    return sym.getSymbol().getLeafReference().strref().starts_with(
         decoratorName);
   };
 
@@ -161,9 +161,9 @@ loadUserProvidedKernels(ModuleOp baseModule,
 
         StringRef decoratorName = sym.getSymbol().getLeafReference().strref();
         isMOGGKernel |=
-            decoratorName.startswith(DECORATOR_REGISTER_OVERRIDE) ||
-            decoratorName.startswith(DECORATOR_REGISTER_SHAPE_FUNC) ||
-            decoratorName.startswith(DECORATOR_REGISTER_KERNEL);
+            decoratorName.starts_with(DECORATOR_REGISTER_OVERRIDE) ||
+            decoratorName.starts_with(DECORATOR_REGISTER_SHAPE_FUNC) ||
+            decoratorName.starts_with(DECORATOR_REGISTER_KERNEL);
       }
 
       // Only duplicate kernels.
@@ -382,16 +382,16 @@ MojoLibraryAnalysis::get(MLIRContext *ctx,
         continue;
 
       StringRef decoratorName = sym.getSymbol().getLeafReference().strref();
-      if (decoratorName.startswith(DECORATOR_REGISTER_OVERRIDE)) {
+      if (decoratorName.starts_with(DECORATOR_REGISTER_OVERRIDE)) {
         auto asString = cast<StringAttr>(apply.getOperand(1)).strref();
         auto intPriority = cast<IntegerAttr>(apply.getOperand(2));
         candidate.priority = intPriority.getInt();
         candidates[asString].push_back(candidate);
-      } else if (decoratorName.startswith(DECORATOR_REGISTER_SHAPE_FUNC)) {
+      } else if (decoratorName.starts_with(DECORATOR_REGISTER_SHAPE_FUNC)) {
         auto asString = cast<StringAttr>(apply.getOperand(1)).str();
         registeredShapeFunctionSymbol[asString] =
             candidate.generator.getSymName();
-      } else if (decoratorName.startswith(DECORATOR_REGISTER_KERNEL)) {
+      } else if (decoratorName.starts_with(DECORATOR_REGISTER_KERNEL)) {
         auto asString = cast<StringAttr>(apply.getOperand(1)).strref();
         candidates[asString].push_back(candidate);
       }

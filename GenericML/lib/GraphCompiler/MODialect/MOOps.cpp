@@ -1254,7 +1254,7 @@ LogicalResult SplitOp::verify() {
 LogicalResult SplitOp::fold(FoldAdaptor adaptor,
                             SmallVectorImpl<OpFoldResult> &results) {
   // If the split is splitting into one tensor then it is identity.
-  if (getNumResults() == 1) {
+  if (getNumResults() == 1 && getInput().getType() == getResult(0).getType()) {
     results.push_back(getInput());
     return success();
   }
@@ -2151,7 +2151,8 @@ OpFoldResult ReduceAddOp::fold(FoldAdaptor adaptor) {
   axis = (axis + rank) % rank;
 
   // If we are reducing along a dimension of 1
-  if (inputTy.getIntDim(axis) == 1)
+  if (inputTy.getIntDim(axis) == 1 &&
+      getInput().getType() == getResult().getType())
     return getInput();
   return {};
 }
