@@ -104,6 +104,10 @@ std::optional<bool> tryGetConstantBool(TensorValue val);
 /// return None.
 std::optional<SmallVector<int64_t>> tryGetConstantIntVector(TensorValue val);
 
+/// If `val` comes from a list.create op whose inputs are all scalar integer
+/// constants, convert it to an integer vector, else return None.
+std::optional<SmallVector<int64_t>> tryGetConstantIntVector(ListValue val);
+
 /// If `val` comes from a constant integer 1D tensor (defined by a ConstantOp or
 /// RebindOp that takes in a ConstantOp), convert it to a boolean vector, else
 /// return None.

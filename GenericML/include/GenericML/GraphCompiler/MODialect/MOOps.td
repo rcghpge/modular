@@ -410,7 +410,7 @@ def MO_RebindOp : MO_ControlOp<"rebind", [
   let summary = "tensor parameter rebind op";
   let description = [{
     Op to represent "rebinding" a value of `!mo.tensor<...>` type to another
-    `!mo.tensor<...>`. Currently, this op can be ued to convert all attributes
+    `!mo.tensor<...>`. Currently, this op can be used to convert all attributes
     of `!mo.tensor` types, inlcuding shape, element type, and metadata.
 
     Examples:
@@ -3819,7 +3819,7 @@ def MO_BottomKOp : MO_TensorOp<"bottom_k", [
 // List ops
 //===----------------------------------------------------------------------===//
 
-def MO_ListAppendOp : MO_TensorOp<"list.append", []> {
+def MO_ListAppendOp : MO_TensorOp<"list.append", [Pure]> {
   let summary = "List append Operation";
   let description = [{
     Creates a new list that's the result of appending an element to the end of a
@@ -3849,7 +3849,7 @@ def MO_ListAppendOp : MO_TensorOp<"list.append", []> {
   let hasVerifier = 1;
 }
 
-def MO_ListCreateOp : MO_TensorOp<"list.create", []> {
+def MO_ListCreateOp : MO_TensorOp<"list.create", [Pure]> {
   let summary = "List create Operation";
   let description = [{
     Create a new list which contains the given inputs (currently limited to
@@ -3877,7 +3877,7 @@ def MO_ListCreateOp : MO_TensorOp<"list.create", []> {
   let hasVerifier = 1;
 }
 
-def MO_ListGetOp : MO_TensorOp<"list.get", []> {
+def MO_ListGetOp : MO_TensorOp<"list.get", [Pure]> {
   let summary = "List get Operation";
   let description = [{
     Retrive the element at given (base zero) index of the list. The index can be
@@ -3906,7 +3906,7 @@ def MO_ListGetOp : MO_TensorOp<"list.get", []> {
   let hasVerifier = 1;
 }
 
-def MO_ListInsertOp : MO_TensorOp<"list.insert", []> {
+def MO_ListInsertOp : MO_TensorOp<"list.insert", [Pure]> {
   let summary = "List insert Operation";
   let description = [{
     Creates a new list that's the result of inserting an element at given (base
@@ -3985,7 +3985,7 @@ def MO_CustomOp : MO_TensorOp<"custom", [
 }
 
 def MO_ConcatFromListOp : MO_TensorOp<"concat_from_list", [
-  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>, Pure
 ]> {
   let summary = "Concat Operation that takes in a list of tensors";
   let description = [{
@@ -4023,6 +4023,7 @@ def MO_ConcatFromListOp : MO_TensorOp<"concat_from_list", [
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 //===----------------------------------------------------------------------===//

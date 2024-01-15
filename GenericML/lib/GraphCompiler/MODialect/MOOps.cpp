@@ -122,6 +122,25 @@ M::MO::tryGetConstantIntVector(TensorValue val) {
   return std::nullopt;
 }
 
+std::optional<SmallVector<int64_t>>
+M::MO::tryGetConstantIntVector(ListValue val) {
+  auto listCreateOp = dyn_cast_or_null<ListCreateOp>(val.getDefiningOp());
+  if (!listCreateOp)
+    return std::nullopt;
+
+  SmallVector<int64_t> vec;
+  for (auto inp : listCreateOp->getOperands()) {
+    auto moTensorVal = dyn_cast<TensorValue>(inp);
+    if (!moTensorVal)
+      return std::nullopt;
+    auto maybeVal = tryGetConstantInt(moTensorVal);
+    if (!maybeVal)
+      return std::nullopt;
+    vec.push_back((*maybeVal));
+  }
+  return vec;
+}
+
 std::optional<SmallVector<bool>>
 M::MO::tryGetConstantBoolVector(TensorValue val) {
   if (val.getType().getElementType().isInteger(1))
@@ -3153,6 +3172,15 @@ LogicalResult ConcatFromListOp::verify() {
   }
 
   return success();
+}
+
+LogicalResult ConcatFromListOp::canonicalize(ConcatFromListOp op,
+                                             PatternRewriter &rewriter) {
+  if (auto constList = tryGetConstantIntVector(op.getInput())) {
+    rewriter.replaceOpWithNewOp<ConstantOp>(op, *constList);
+    return success();
+  }
+  return failure();
 }
 
 //===----------------------------------------------------------------------===//
