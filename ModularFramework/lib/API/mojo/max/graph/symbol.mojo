@@ -63,7 +63,7 @@ struct Symbol(CollectionElement, Stringable):
     # ===------------------------------------------------------------------=== #
 
     fn __getitem__(self, *spans: SliceSymbol) raises -> Symbol:
-        return slice_(self, spans)
+        return slice_(self, spans ^)
 
     fn __getitem__(self, span: slice) raises -> Symbol:
         if not span._has_end():

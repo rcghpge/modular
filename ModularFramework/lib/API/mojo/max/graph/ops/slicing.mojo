@@ -120,7 +120,7 @@ struct SliceSymbol:
 
 
 def slice_(input: Symbol, borrowed *slices: SliceSymbol) -> Symbol:
-    return slice_(input, slices)
+    return slice_(input, slices ^)
 
 
 def slice_(input: Symbol, slices: VariadicListMem[SliceSymbol]) -> Symbol:
@@ -133,13 +133,13 @@ def slice_(input: Symbol, slices: VariadicListMem[SliceSymbol]) -> Symbol:
     for i in range(len(slices), input_type.rank()):
         dims.push_back(input_type.dims[i].to_int())
 
-    return slice_(input, dims, slices)
+    return slice_(input, dims, slices ^)
 
 
 def slice_(
     input: Symbol, shape: TensorShape, borrowed *slices: SliceSymbol
 ) -> Symbol:
-    return slice_(input, shape, slices)
+    return slice_(input, shape, slices ^)
 
 
 def slice_(
