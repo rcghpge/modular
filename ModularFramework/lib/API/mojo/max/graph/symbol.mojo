@@ -110,7 +110,7 @@ struct Symbol(CollectionElement, Stringable):
         var g = self.graph()
         return self + g.constant(rhs)
 
-    fn __add__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+    fn __add__[dtype: DType](self, rhs: Scalar[dtype]) raises -> Symbol:
         var g = self.graph()
         return self + g.scalar(rhs)
 
@@ -129,7 +129,7 @@ struct Symbol(CollectionElement, Stringable):
         var g = self.graph()
         return self - g.constant(rhs)
 
-    fn __sub__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+    fn __sub__[dtype: DType](self, rhs: Scalar[dtype]) raises -> Symbol:
         var g = self.graph()
         return self - g.scalar(rhs)
 
@@ -148,7 +148,7 @@ struct Symbol(CollectionElement, Stringable):
         var g = self.graph()
         return self * g.constant(rhs)
 
-    fn __mul__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+    fn __mul__[dtype: DType](self, rhs: Scalar[dtype]) raises -> Symbol:
         var g = self.graph()
         return self * g.scalar(rhs)
 
@@ -167,7 +167,7 @@ struct Symbol(CollectionElement, Stringable):
         var g = self.graph()
         return self / g.constant(rhs)
 
-    fn __truediv__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+    fn __truediv__[dtype: DType](self, rhs: Scalar[dtype]) raises -> Symbol:
         var g = self.graph()
         return self / g.scalar(rhs)
 
@@ -186,7 +186,7 @@ struct Symbol(CollectionElement, Stringable):
         var g = self.graph()
         return self ** g.constant(rhs)
 
-    fn __pow__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+    fn __pow__[dtype: DType](self, rhs: Scalar[dtype]) raises -> Symbol:
         var g = self.graph()
         return self ** g.scalar(rhs)
 
@@ -202,7 +202,7 @@ struct Symbol(CollectionElement, Stringable):
         var g = self.graph()
         return g.constant(rhs) + self
 
-    fn __radd__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+    fn __radd__[dtype: DType](self, rhs: Scalar[dtype]) raises -> Symbol:
         var g = self.graph()
         return g.scalar(rhs) + self
 
@@ -218,7 +218,7 @@ struct Symbol(CollectionElement, Stringable):
         var g = self.graph()
         return g.constant(rhs) - self
 
-    fn __rsub__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+    fn __rsub__[dtype: DType](self, rhs: Scalar[dtype]) raises -> Symbol:
         var g = self.graph()
         return g.scalar(rhs) - self
 
@@ -234,7 +234,7 @@ struct Symbol(CollectionElement, Stringable):
         var g = self.graph()
         return g.constant(rhs) * self
 
-    fn __rmul__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+    fn __rmul__[dtype: DType](self, rhs: Scalar[dtype]) raises -> Symbol:
         var g = self.graph()
         return g.scalar(rhs) * self
 
@@ -250,7 +250,7 @@ struct Symbol(CollectionElement, Stringable):
         var g = self.graph()
         return g.constant(rhs) / self
 
-    fn __rtruediv__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+    fn __rtruediv__[dtype: DType](self, rhs: Scalar[dtype]) raises -> Symbol:
         var g = self.graph()
         return g.scalar(rhs) / self
 
@@ -266,7 +266,7 @@ struct Symbol(CollectionElement, Stringable):
         var g = self.graph()
         return g.constant(rhs) ** self
 
-    fn __rpow__[dtype: DType](self, rhs: SIMD[dtype, 1]) raises -> Symbol:
+    fn __rpow__[dtype: DType](self, rhs: Scalar[dtype]) raises -> Symbol:
         var g = self.graph()
         return g.scalar(rhs) ** self
 

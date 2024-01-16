@@ -24,8 +24,8 @@ fn assert_tensors_almost_equal[
 ](
     a: Tensor[dtype],
     b: Tensor[dtype],
-    atol: SIMD[dtype, 1] = 1e-8,
-    rtol: SIMD[dtype, 1] = 1e-5,
+    atol: Scalar[dtype] = 1e-8,
+    rtol: Scalar[dtype] = 1e-5,
 ) raises:
     assert_true(a.spec() == b.spec())
     assert_no_dynamic_dims(a.spec())

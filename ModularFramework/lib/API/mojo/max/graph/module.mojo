@@ -70,7 +70,7 @@ struct Module:
 
     fn vector_attr[
         dtype: DType
-    ](self, name: StringRef, values: DynamicVector[SIMD[dtype, 1]]) -> AttrPtr:
+    ](self, name: StringRef, values: DynamicVector[Scalar[dtype]]) -> AttrPtr:
         return mobicc.attr_new_tensor(
             self.m,
             name,
@@ -82,7 +82,7 @@ struct Module:
     fn scalar_attr[
         dtype: DType
     ](
-        inout self, name: StringRef, value: SIMD[dtype, 1], rank: Int = 0
+        inout self, name: StringRef, value: Scalar[dtype], rank: Int = 0
     ) raises -> AttrPtr:
         # Note: while this could generalize to something like splat, MO doesn't
         # really make use of those.

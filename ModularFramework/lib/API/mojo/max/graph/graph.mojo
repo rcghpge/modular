@@ -109,7 +109,7 @@ struct Graph:
 
     fn vector[
         dtype: DType
-    ](inout self, values: DynamicVector[SIMD[dtype, 1]]) raises -> Symbol:
+    ](inout self, values: DynamicVector[Scalar[dtype]]) raises -> Symbol:
         return self.op(
             "mo.constant",
             MOTensor(dtype, len(values)),
@@ -118,7 +118,7 @@ struct Graph:
 
     fn scalar[
         dtype: DType
-    ](inout self, value: SIMD[dtype, 1], rank: Int = 0) raises -> Symbol:
+    ](inout self, value: Scalar[dtype], rank: Int = 0) raises -> Symbol:
         # Note: while this could generalize to something like splat, the
         # canonical way of achieving that is using a broadcast instead.
         var shape = DynamicVector[Int](rank)
@@ -130,9 +130,9 @@ struct Graph:
         dtype: DType
     ](
         inout self,
-        start: SIMD[dtype, 1],
-        stop: SIMD[dtype, 1],
-        step: SIMD[dtype, 1],
+        start: Scalar[dtype],
+        stop: Scalar[dtype],
+        step: Scalar[dtype],
     ) raises -> Symbol:
         return self.op(
             "mo.range",
