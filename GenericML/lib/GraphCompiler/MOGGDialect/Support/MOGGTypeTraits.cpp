@@ -117,6 +117,10 @@ MOGGTypeTraits ui32() {
   return MOGGTypeTraits("uint32", KGEN::KGENDType::ui32, DType::ui32);
 }
 
+MOGGTypeTraits ui64() {
+  return MOGGTypeTraits("uint64", KGEN::KGENDType::ui64, DType::ui64);
+}
+
 MOGGTypeTraits si8() {
   return MOGGTypeTraits("int8", KGEN::KGENDType::si8, DType::si8);
 }
@@ -163,6 +167,9 @@ MOGGTypeTraits::convertToSIMD(mlir::MLIRContext *context, const void *data,
   else if (moggType == DType::ui32)
     return convertIntsToSIMD<uint32_t>(moggType, kgenType, context, data,
                                        numElems);
+  else if (moggType == DType::ui64)
+    return convertIntsToSIMD<uint64_t>(moggType, kgenType, context, data,
+                                       numElems);
   else if (moggType == DType::si8)
     return convertIntsToSIMD<int8_t>(moggType, kgenType, context, data,
                                      numElems);
@@ -181,8 +188,8 @@ MOGGTypeTraits::convertToSIMD(mlir::MLIRContext *context, const void *data,
 }
 
 llvm::SmallVector<MOGGTypeTraits> allTypeTraits() {
-  return {f16(),  bf16(), f32(),  f64(),  ui8(),  ui16(),
-          ui32(), si8(),  si16(), si32(), si64(), b()};
+  return {f16(),  bf16(), f32(),  f64(),  ui8(),  ui16(), ui32(),
+          ui64(), si8(),  si16(), si32(), si64(), b()};
 }
 
 ErrorOr<MOGGTypeTraits> MOGGTypeTraits::lookupType(Type type) {
@@ -200,6 +207,8 @@ ErrorOr<MOGGTypeTraits> MOGGTypeTraits::lookupType(Type type) {
     return ui16();
   } else if (type.isUnsignedInteger(32)) {
     return ui32();
+  } else if (type.isUnsignedInteger(64)) {
+    return ui64();
   } else if (type.isSignedInteger(8)) {
     return si8();
   } else if (type.isSignedInteger(16)) {
@@ -234,6 +243,8 @@ ErrorOr<MOGGTypeTraits> MOGGTypeTraits::lookupDType(DType dtype) {
     return ui16();
   else if (dtype == DType::ui32)
     return ui32();
+  else if (dtype == DType::ui64)
+    return ui64();
   else if (dtype == DType::si8)
     return si8();
   else if (dtype == DType::si16)

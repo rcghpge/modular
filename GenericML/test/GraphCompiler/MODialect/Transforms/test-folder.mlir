@@ -55,6 +55,16 @@ mo.graph @fold_cast(%arg0 : !mo.tensor<[100, ?, 50], f32>) -> (!mo.tensor<[100, 
     mo.output %output : !mo.tensor<[100, ?, 50], f32>
 }
 
+mo.graph @fold_cast_ui64_fp64(%arg0 : !mo.tensor<[100, ?, 50], f64>) -> (!mo.tensor<[100, ?, 50], ui64>) {
+    %output = mo.cast(%arg0) : (!mo.tensor<[100, ?, 50], f64>) -> !mo.tensor<[100, ?, 50],ui64>
+    mo.output %output : !mo.tensor<[100, ?, 50], ui64>
+}
+// CHECK-LABEL: mo.graph @fold_cast_ui64_fp64
+// CHECK: (%[[ARG0:.*]]: !mo.tensor<[100, ?, 50], f64>)
+// CHECK-NEXT: %[[OUT:.*]] = mo.cast(%[[ARG0]])
+// CHECK-NEXT: mo.output %[[OUT]] : !mo.tensor<[100, ?, 50], ui64>
+
+
 mo.graph @fold_add0_f64_lhs(%arg0: !mo.tensor<[5, 500, 100], f64>) -> !mo.tensor<[5, 500, 100], f64> {
     %0 = mo.constant {value = #M.dense_array<0.000000e+00> : tensor<1x1xf64>} : !mo.tensor<[1, 1], f64>
     %1 = mo.static.broadcast_to(%0) : !mo.tensor<[1, 1], f64> -> !mo.tensor<[5, 500, 100], f64>
