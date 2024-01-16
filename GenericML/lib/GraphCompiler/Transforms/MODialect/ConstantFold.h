@@ -11,6 +11,7 @@
 #include "KGEN/KGENDialect/KGENParameters.h"
 
 namespace M::MO {
+
 struct Subgraph {
   llvm::SetVector<Operation *> ops;
   // Outputs are Value in the constant subgraph that have uses outside of the
@@ -61,6 +62,7 @@ private:
     }
   }
 };
+
 SmallVector<Subgraph>
 constantSubgraphs(MO::GraphOp graph,
                   KGEN::ParameterCollector::Analysis &paramCache);

@@ -17,6 +17,7 @@
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "GenericML/MGPDialect/MGPDialect.h"
 #include "GenericML/Support/Model.h"
+#include "GenericML/Support/ResourceBufferInterface.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MEFExecutor/MEFFile.h"
 #include "KGEN/KGENDialect/KGENOps.h"
@@ -39,55 +40,14 @@
 #include <numeric>
 
 using namespace M;
-
-namespace {
-
-// A foreign buffer interface used to greedily deallocate `AsmResourceBlob`s.
-// When all uses of a `dense_resource` are in its constant subgraph, we want
-// graph execution to greedily deallocate it.
-// This is in an effort to reduce peak memory usage during subgraph model
-// execution in constant folding.
-// Before transferring ownership, the `dense_resource` is previously owned by
-// the `mlir::Context`.
-// So giving ownership to the foreign buffer allows GraphRT to greedily
-// free the constant rather than waiting for the `mlir::Context` to free it.
-class ResourceBufferInterface : public GML::ForeignBufferInterface {
-public:
-  ResourceBufferInterface()
-      : ForeignBufferInterface("ResourceBufferInterface") {}
-
-  ~ResourceBufferInterface() override = default;
-
-  /// Returns the underlying buffer of the foreign buffer object.
-  const void *getBuffer(const void *object) const override {
-    return static_cast<const mlir::AsmResourceBlob *>(object)->getData().data();
-  }
-
-  void *getMutableBuffer(void *object) const override {
-    assert(false && "can't mutate resource");
-  }
-
-  /// Deletes the foreign buffer object.
-  void deleteObject(void *object, size_t size) const override {
-    auto blob = static_cast<mlir::AsmResourceBlob *>(object);
-    auto &deleter = blob->getDeleter();
-    assert(deleter && "blob should have deleter");
-
-    // Destroy this resource, destroying the deleter and its captured vars.
-    *blob = mlir::AsmResourceBlob();
-  }
-};
-
-} // namespace
-
-static GML::ForeignBufferInterfaceID registerResourceBufferInterface() {
-  return GML::ForeignBufferInterfaceRegistry::registerInterface(
-      std::make_unique<ResourceBufferInterface>());
-}
+using namespace M::MO;
 
 namespace M::MO {
 #define GEN_PASS_DEF_CONSTANTFOLD
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+} // namespace M::MO
+
+namespace {
 
 // Holds all the information necessary to execute and replace all constant
 // subgraphs in a single graph op.
@@ -104,7 +64,27 @@ struct ValueParamCompare {
   }
 };
 
-llvm::SetVector<StringAttr> Subgraph::paramDeclarations() const {
+/// Simple struct holding results of a model execution.
+struct ModelResult {
+  /// Mapping from subgraph output operation to the constants that should
+  /// replace it. Also includes the output shape so that unknown shapes in the
+  /// constant graph can be resolved.
+  llvm::DenseMap<Operation *, SmallVector<std::pair<ElementsAttr, TensorShape>>>
+      constants;
+  /// Mapping from parameter name in subgraph to the value that it should be
+  /// defined as.
+  llvm::DenseMap<StringAttr, int64_t> parameters;
+};
+
+// Models need to ensure that their backing buffer lives as long as they do.
+struct ModelsWithBuffer {
+  std::unique_ptr<ModelCollection> models;
+  BufferRef buffer;
+};
+
+} // namespace
+
+llvm::SetVector<StringAttr> M::MO::Subgraph::paramDeclarations() const {
   llvm::SetVector<StringAttr> params;
   for (auto op : ops) {
     op->walk([&](KGEN::ParamOpInterface paramOp) {
@@ -119,7 +99,7 @@ llvm::SetVector<StringAttr> Subgraph::paramDeclarations() const {
   return params;
 }
 
-llvm::SmallVector<ConstantOp> Subgraph::constants() const {
+llvm::SmallVector<ConstantOp> M::MO::Subgraph::constants() const {
   auto filtered = llvm::make_filter_range(
       ops, [](Operation *op) { return dyn_cast<ConstantOp>(op); });
   return llvm::to_vector(llvm::map_range(
@@ -127,7 +107,8 @@ llvm::SmallVector<ConstantOp> Subgraph::constants() const {
 }
 
 /// Topologically sort parameters in a list of ops.
-llvm::SmallVector<Operation *> sortParams(llvm::ArrayRef<Operation *> ops) {
+static llvm::SmallVector<Operation *>
+sortParams(llvm::ArrayRef<Operation *> ops) {
   // ParameterUseDefGraph doesn't map from parameter to operations using it, so
   // we have to construct our own.
   llvm::DenseMap<StringAttr, llvm::SetVector<StringAttr>> uses;
@@ -188,7 +169,7 @@ llvm::SmallVector<Operation *> sortParams(llvm::ArrayRef<Operation *> ops) {
 // Convert a TensorType to a ShapedType so it can be used with functions in
 // Support. TensorType does not implement the ShapedType protocol so this is
 // necessary.
-ShapedType typeToShaped(TensorType type) {
+static ShapedType typeToShaped(TensorType type) {
   auto shapeAttr = dyn_cast<MOSH::ShapeAttr>(type.getShapeAttr());
   assert(shapeAttr && "Shapes in constants subgraph should all be infered");
   auto intDims = shapeAttr.getIntDims();
@@ -199,7 +180,7 @@ ShapedType typeToShaped(TensorType type) {
 
 /// Marker for ops that are constant foldable. Currently MO ops and KGEN param
 /// ops.
-bool isConstantFoldable(Operation *op) {
+static bool isConstantFoldable(Operation *op) {
   return (isa<MO::MODialect>(op->getDialect()) ||
           dyn_cast<KGEN::ParamOpInterface>(op) ||
           dyn_cast<KGEN::ParamConstantOp>(op) ||
@@ -207,18 +188,6 @@ bool isConstantFoldable(Operation *op) {
          !dyn_cast<MOControlOpInterface>(op) &&
          !dyn_cast<MO::LayoutTransformOp>(op);
 }
-
-/// Simple struct holding results of a model execution.
-struct ModelResult {
-  /// Mapping from subgraph output operation to the constants that should
-  /// replace it. Also includes the output shape so that unknown shapes in the
-  /// constant graph can be resolved.
-  llvm::DenseMap<Operation *, SmallVector<std::pair<ElementsAttr, TensorShape>>>
-      constants;
-  /// Mapping from parameter name in subgraph to the value that it should be
-  /// defined as.
-  llvm::DenseMap<StringAttr, int64_t> parameters;
-};
 
 /// Creates a a tensor from a `dense_resource`.
 /// If the constant op's users are all in this subgraph, then this returns a
@@ -257,7 +226,7 @@ denseResourceAsTensor(ConstantOp constant,
 /// Run a Model to get the constant outputs to a subgraph. Returns a mapping
 /// from output Value to ElementsAttr containing the constant resulting from
 /// folding.
-LLCL::ErrorDiagnosticOr<ModelResult>
+static LLCL::ErrorDiagnosticOr<ModelResult>
 executeModel(MLIRContext *ctx, const Model *model,
              const SubgraphsInfo &subgraphsInfo, LLCL::Runtime &runtime,
              GML::ForeignBufferInterfaceID resourceInterfaceID) {
@@ -365,8 +334,8 @@ executeModel(MLIRContext *ctx, const Model *model,
 /// The use-def graph has both declarations (no associated value) and
 /// definitions (x = y). We just need any parameter that is created so we search
 /// through both for the defining operation.
-Operation *lookupParamDef(const KGEN::ParameterUseDefGraph &paramUseDef,
-                          StringAttr name) {
+static Operation *lookupParamDef(const KGEN::ParameterUseDefGraph &paramUseDef,
+                                 StringAttr name) {
   Operation *def;
   auto defIt = paramUseDef.defs.find(name);
   auto declIt = paramUseDef.decls.find(name);
@@ -380,8 +349,8 @@ Operation *lookupParamDef(const KGEN::ParameterUseDefGraph &paramUseDef,
 }
 
 SmallVector<Subgraph>
-constantSubgraphs(MO::GraphOp graph,
-                  KGEN::ParameterCollector::Analysis &paramCache) {
+M::MO::constantSubgraphs(MO::GraphOp graph,
+                         KGEN::ParameterCollector::Analysis &paramCache) {
   // Recurse down consumers of ConstantOps, marking ops with all constant
   // inputs as constant. If inputs have not been visited yet, then we
   // recurse up the use chain on inputs until we determine if they are const
@@ -568,9 +537,10 @@ constantSubgraphs(MO::GraphOp graph,
 /// Return information to identify the new GraphOp.
 /// Large constants in the subgraph are transformed into inputs to the new
 /// graph.
-SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig, ModuleOp module,
-                             const SmallVector<Subgraph> &subgraphs,
-                             int64_t &name_counter) {
+static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
+                                    ModuleOp module,
+                                    const SmallVector<Subgraph> &subgraphs,
+                                    int64_t &name_counter) {
   // Add large constants as inputs
   llvm::SmallVector<Type> argTypes;
   for (const Subgraph &subgraph : subgraphs) {
@@ -681,18 +651,12 @@ SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig, ModuleOp module,
   return {orig, std::string(graphop.getName()), subgraphs};
 }
 
-// Models need to ensure that their backing buffer lives as long as they do.
-struct ModelsWithBuffer {
-  std::unique_ptr<ModelCollection> models;
-  BufferRef buffer;
-};
-
 /// Replace a constant subgraph with results from executing it. Replaces outputs
 /// with constant values, removes ops internal to the subgraph (DCE), and add
 /// parameters defined within the subgraph.
-void replaceConstantOps(GraphOp graph, OpBuilder &builder,
-                        const ModelResult &modelResult,
-                        const SubgraphsInfo &subgraphsInfo) {
+static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
+                               const ModelResult &modelResult,
+                               const SubgraphsInfo &subgraphsInfo) {
   MLIRContext *ctx = graph.getContext();
   // Find ops that are not used outside of the subgraph. Collect them now before
   // we have removed anything, then remove them later when they are not depended
@@ -767,6 +731,8 @@ void replaceConstantOps(GraphOp graph, OpBuilder &builder,
   }
 }
 
+namespace M::MO {
+
 // Interface for controlling whether or not a subgraph is constant folded.
 struct ConstantFoldPolicy {
   // Determines which subgraphs should be constant folded. Must return the
@@ -775,7 +741,7 @@ struct ConstantFoldPolicy {
   // the returned subgraphs will be constant folded.
   virtual SmallVector<Subgraph>
   shouldFold(SmallVector<Subgraph> subgraphs) const = 0;
-  virtual ~ConstantFoldPolicy(){};
+  virtual ~ConstantFoldPolicy() = default;
 };
 
 // Fold the largest subgraph that does not increase memory used by more than
@@ -818,7 +784,7 @@ struct FactorMemIncrease : public ConstantFoldPolicy {
     }
     return foldThese;
   }
-  ~FactorMemIncrease() override {}
+  ~FactorMemIncrease() override = default;
 
   // Size of Value in bytes.
   static int64_t valueSize(Value v) {
@@ -876,6 +842,10 @@ struct ConstantFoldPass
   ConstantFoldPass()
       : ConstantFoldBase(), policy(new FactorMemIncrease(2, 100)) {}
 
+  ConstantFoldPass(std::string_view label)
+      : ConstantFoldBase(), policy(new FactorMemIncrease(2, 100)),
+        compiledFrameworkLabel(label) {}
+
 private:
   // Lower a ModuleOp all the way to MGP, export it as MEF, then load it
   // for execution. Returns the models along with a buffer that needs to
@@ -885,6 +855,7 @@ private:
                                            LLCL::Runtime &runtime);
 
   std::shared_ptr<const ConstantFoldPolicy> policy;
+  std::string compiledFrameworkLabel;
 };
 
 ErrorOr<ModelsWithBuffer>
@@ -922,10 +893,13 @@ void ConstantFoldPass::runOnOperation() {
   // 3. Lowers and executes each GraphOp from the previous step.
   // 4. Replaces subgraph outputs with outputs from the previous step.
 
-  GML::ForeignBufferInterfaceID resourceInterfaceID =
-      registerResourceBufferInterface();
-
   MLIRContext *ctx = &getContext();
+
+  // Create separate resource buffer interfaces for different framework drivers.
+  // Otherwise crossing framework boundaries when calling
+  // `ResourceBufferInterface` member functions causes TypeID issues.
+  GML::ForeignBufferInterfaceID resourceInterfaceID =
+      GML::Support::registerResourceBufferInterface(compiledFrameworkLabel);
 
   for (int i = 0; i < iterations.getValue(); i++) {
     OpBuilder builder(ctx);
@@ -948,7 +922,7 @@ void ConstantFoldPass::runOnOperation() {
       // Can't constant fold cuda yet
       if (graph.getDeviceRef() && graph.getDeviceRef().getLabel() != kCPULabel)
         return mlir::WalkResult::skip();
-      auto subgraphs = constantSubgraphs(
+      auto subgraphs = M::MO::constantSubgraphs(
           graph, getAnalysis<KGEN::ParameterCollector::Analysis>());
       if (subgraphs.empty())
         return mlir::WalkResult::advance();
@@ -1036,3 +1010,8 @@ void ConstantFoldPass::runOnOperation() {
 }
 
 } // namespace M::MO
+
+std::unique_ptr<mlir::Pass>
+M::MO::createConstantFoldPass(std::string_view compiledFrameworkLabel) {
+  return std::make_unique<ConstantFoldPass>(compiledFrameworkLabel);
+}

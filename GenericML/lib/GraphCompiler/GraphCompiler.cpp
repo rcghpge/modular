@@ -15,9 +15,12 @@
 #include "GenericML/GraphCompiler/MOQDialect/MOQDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/Passes.h"
+#include "GenericML/GraphCompiler/Transforms/MODialect/ConstantFoldPass.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "GenericML/GraphCompiler/Transforms/MOQDialect/MOQTransforms.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
+#include "GenericML/Support/ForeignBufferInterface.h"
+#include "GenericML/Support/ResourceBufferInterface.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -94,7 +97,10 @@ maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
   if (!opts.useShapeInference)
     return;
   if (opts.constantFold)
-    pm.addPass(MO::createConstantFold());
+    pm.addPass(
+        MO::createConstantFoldPass(opts.compiledFrameworkLabel.hasValue()
+                                       ? opts.compiledFrameworkLabel.getValue()
+                                       : ""));
   ShapeInferenceOptions shapeInferenceOpts;
   shapeInferenceOpts.isExperimentalMode = opts.useExperimentalShapeInference;
   shapeInferenceOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
@@ -135,8 +141,13 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCSEPass());
 
   maybeApplyShapeInferencePipeline(pm, opts);
+
+  std::string_view compiledFrameworkLabel;
+  if (opts.compiledFrameworkLabel.hasValue())
+    compiledFrameworkLabel = opts.compiledFrameworkLabel;
+
   if (opts.constantFold)
-    pm.addPass(MO::createConstantFold());
+    pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel));
 
   MO::AddDevicesPassOptions addDevicesOpts;
   addDevicesOpts.enableExtraDevices = opts.enableExtraDevices;
@@ -159,7 +170,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCSEPass());
 
   if (opts.constantFold)
-    pm.addPass(MO::createConstantFold());
+    pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel));
 
   pm.addPass(MO::createHoistParameterExpressions());
   pm.addPass(MO::createMOToMOGG({opts.kernelLibraryPaths}));
