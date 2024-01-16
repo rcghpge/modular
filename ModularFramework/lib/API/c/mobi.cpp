@@ -25,7 +25,7 @@ using namespace M::MOF::Builder;
 using namespace llvm;
 using namespace mlir;
 
-char *unownedString(const std::string &buffer, int64_t *len) {
+static char *unownedString(const std::string &buffer, int64_t *len) {
   *len = buffer.size() + 1; // Include terminator.
   char *cstr = reinterpret_cast<char *>(std::malloc(*len));
   std::strcpy(cstr, buffer.c_str());
