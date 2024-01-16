@@ -92,7 +92,7 @@ llvm::SetVector<StringAttr> M::MO::Subgraph::paramDeclarations() const {
       paramOp.walkDeclarations(
           [&](KGEN::ParamDeclAttr decl) { params.insert(decl.getName()); });
       paramOp.walkDefinitions(
-          [&](KGEN::ParamDeclAttr decl, KGEN::ParamDefValue val) {
+          [&](KGEN::ParamDeclAttr decl, const KGEN::ParamDefValue &val) {
             params.insert(decl.getName());
           });
     });
@@ -121,7 +121,7 @@ sortParams(llvm::ArrayRef<Operation *> ops) {
         uses[decl.getName()] = {};
       });
       paramOp.walkDefinitions(
-          [&](KGEN::ParamDeclAttr decl, KGEN::ParamDefValue val) {
+          [&](KGEN::ParamDeclAttr decl, const KGEN::ParamDefValue &val) {
             llvm::SetVector<StringAttr> params;
             for (auto expr : val.exprs) {
               expr.walk([&](KGEN::ParamDeclRefAttr ref) {
@@ -509,7 +509,7 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
     auto paramOpInterface = dyn_cast<KGEN::ParamOpInterface>(op);
     if (paramOpInterface) {
       paramOpInterface.walkDefinitions(
-          [&](KGEN::ParamDeclAttr param, ParamDefValue val) {
+          [&](KGEN::ParamDeclAttr param, const ParamDefValue &val) {
             for (auto expr : val.exprs) {
               expr.walk(walkDeclRef);
               if (foundNonConst)
