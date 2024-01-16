@@ -19,6 +19,9 @@ add_mojo_package(mobi-mojo-api PRIVATE
   graph/ops/reduction
   graph/ops/shaping
   graph/ops/slicing
+
+  DOCS_DIR
+  ModularFramework/docs
 )
 # TODO: Remove this dependency over time as only `testing.mojo` in this
 # directory requires the AI Engine Mojo package.  The core `mobi-mojo-api`
