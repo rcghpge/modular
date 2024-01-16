@@ -428,6 +428,13 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
   // the users of a value when it has been determined to be constant.
   llvm::SmallVector<Operation *> workQueue;
   graph.walk([&](ConstantOp op) {
+    auto dense = dyn_cast<DenseResourceElementsAttr>(op.getValueAttr());
+    // If dense is present but doesn't have a resource behind it
+    // i.e., the blob is a nullptr, then skip it for constant folding
+    if (dense && !(dense.getRawHandle().getBlob())) {
+      nonConst.insert(op);
+      return;
+    }
     constSubgraphs.insert(op);
     for (auto user : op.getResult().getUsers())
       workQueue.push_back(user);
