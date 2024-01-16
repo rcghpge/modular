@@ -26,6 +26,7 @@
 #include "LLCL/Runtime/Runtime.h"
 #include "MEFModel.h"
 #include "Support/Buffer.h"
+#include "Support/Compiler/MLIRDenseAttr.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Value.h"
@@ -198,29 +199,91 @@ denseResourceAsTensor(ConstantOp constant,
                       DenseResourceElementsAttr denseResource,
                       const Subgraph &subgraph,
                       GML::ForeignBufferInterfaceID resourceInterfaceID) {
-  // It is safe to take ownership of blob data if all users are in this
-  // set.
-  llvm::SetVector<Operation *> constantUsers;
-  for (Operation *user : constant->getUsers())
-    constantUsers.insert(user);
-
   mlir::AsmResourceBlob *blob = denseResource.getRawHandle().getBlob();
   TensorType ttype = dyn_cast<TensorType>(constant.getType());
   TensorSpec spec(dyn_cast<MOSH::ShapeAttr>(ttype.getShapeAttr()).getIntDims(),
                   ttype.getDtype());
 
-  llvm::SetVector<Operation *> nonConstUsers(constantUsers);
-  nonConstUsers.set_subtract(subgraph.ops);
-  if (nonConstUsers.empty()) {
+  // Find all users of this constant op.
+  llvm::SetVector<Operation *> constantUsers;
+  for (Operation *user : constant->getUsers())
+    constantUsers.insert(user);
+
+  llvm::SetVector<Operation *> usersOutsideSubgraph(constantUsers);
+  usersOutsideSubgraph.set_subtract(subgraph.ops);
+  if (usersOutsideSubgraph.empty()) {
+    // It is safe to take ownership of blob data if all users are in this
+    // subgraph.
     GML::BufferRef blobBuffer = GML::BufferRef::createForeign(
-        resourceInterfaceID, blob, blob->getData().size(),
-        blob->getDataAlignment());
+        resourceInterfaceID, denseResource.getAsOpaquePointer(),
+        blob->getData().size(), blob->getDataAlignment());
     return GML::Tensor(std::move(blobBuffer), std::move(spec));
   }
 
+  // Otherwise borrow the blob data since it has other users.
   return GML::Tensor::createBorrowed(blob->getData().data(), spec,
                                      blob->getDataAlignment(),
                                      GML::BufferRef::Lifetime::kConstant);
+}
+
+/// Creates or retrieves an `ElementsAttr` with the same data as `tensor`.
+static ElementsAttr
+elementsAttrFromTensor(GML::Tensor &tensor, MLIRContext *ctx,
+                       GML::ForeignBufferInterfaceID resourceInterfaceID) {
+  // Output shape has runtime-dependent size so we need to read out what
+  // the size is.
+  TensorShape shape = tensor.getShape();
+  size_t numElements = shape.getNumElements();
+  ArrayType arrayType = ArrayType::get(
+      ctx, numElements, toMLIRType(ctx, tensor.getEltType()).get());
+  ArrayRef<char> tensorData(tensor.getBuffer<char>(), tensor.getSizeInBytes());
+  size_t elementByteAlign = llvm::PowerOf2Ceil(
+      llvm::divideCeil(arrayType.getElementTypeBitWidth(), CHAR_BIT));
+  // 1. Create an inline attribute for small tensor data.
+  if (!shouldUseOutOfLineAttrStorage(arrayType.getNumElements()))
+    return getInlineAttrForTensorDataCopy(arrayType, tensorData);
+
+  GML::BufferRef &bufferRef = tensor.getBufferRef();
+
+  // 2. Return the original `dense_resource` if it already exists.
+  if (void *opaqueResource =
+          bufferRef.maybeReleaseForeignObject(resourceInterfaceID)) {
+    // If `bufferRef` holds a foreign resource buffer we end up creating two
+    // `dense_resource`s that hold onto the same blob:
+    // - The original `dense_resource`.
+    // - The new `dense_resource` that holds onto a foreign buffer interface.
+    // Hence when the MLIRContext is destroyed, it wants to call the same blob
+    // destructor twice, causing a heap-buffer-overflow.
+    // To avoid this, return the original `dense_resource` instead of creating a
+    // new one.
+    return GML::Support::denseResourceFromOpaque(opaqueResource);
+  }
+
+  auto resourceManager = DenseResourceElementsHandle::getManagerInterface(ctx);
+  mlir::AsmResourceBlob blob;
+  if (GML::BufferRef::Ownership ownership = bufferRef.getOwnership();
+      ownership == GML::BufferRef::kBorrowed) {
+    // 3. Copy underlying data to a new `dense_resource` if the buffer is
+    //    borrowed.
+    blob = mlir::HeapAsmResourceBlob::allocateAndCopyWithAlign(
+        tensorData, elementByteAlign);
+  } else {
+    assert(llvm::is_contained(
+               {GML::BufferRef::kOwned, GML::BufferRef::kForeign}, ownership) &&
+           "invalid buffer ref ownership");
+
+    // 4. Otherwise, transfer ownership of the buffer ref to a new
+    // `dense_resource` if the buffer is owned.
+    blob = mlir::UnmanagedAsmResourceBlob::allocateWithAlign(
+        tensorData, elementByteAlign,
+        [bufferRef = std::move(bufferRef)](void *tensorData, size_t, size_t) {
+          // No-op that drops the `bufferRef` when the closure is
+          // destroyed.
+        });
+  }
+
+  return DenseResourceElementsAttr::get(
+      arrayType, resourceManager.insert("folded_const", std::move(blob)));
 }
 
 /// Run a Model to get the constant outputs to a subgraph. Returns a mapping
@@ -287,28 +350,20 @@ executeModel(MLIRContext *ctx, const Model *model,
     for (auto op : subgraph.outputs) {
       SmallVector<std::pair<ElementsAttr, TensorShape>> opTensors;
       for (size_t i = 0; i < op->getNumResults(); i++) {
-        AnyAsyncValueRef &tensor = outputTensorRefs[outIdx];
-        if (tensor.isError())
-          return LLCL::EncodedDiagnostic(tensor.takeDiagnostic());
+        AnyAsyncValueRef &tensorRef = outputTensorRefs[outIdx];
+        if (tensorRef.isError())
+          return LLCL::EncodedDiagnostic(tensorRef.takeDiagnostic());
 
-        // Copy output tensor into storage.
-        assert(tensor.isReady() &&
+        // Move output tensor into storage.
+        assert(tensorRef.isReady() &&
                "We already awaited, tensor should be ready");
-        GML::Tensor &t = tensor.get<GML::Tensor>();
-        // Output shape has runtime-dependent size so we need to read out what
-        // the size is.
-        TensorShape shape = t.getShape();
-        ArrayType arrayType =
-            ArrayType::get(op->getContext(), shape.getNumElements(),
-                           toMLIRType(ctx, t.getEltType()).get());
-        opTensors.push_back({getAttrForTensorDataCopy(
-                                 arrayType,
-                                 subgraphsInfo.constantSubgraphName + "_" +
-                                     std::to_string(outIdx),
-                                 {reinterpret_cast<const char *>(t.getBuffer()),
-                                  t.getSizeInBytes()},
-                                 resourceManager),
-                             shape});
+        GML::Tensor &tensor = tensorRef.get<GML::Tensor>();
+
+        // Create an `ElementsAttr`, possibly by taking ownership of `tensor`'s
+        // buffer.
+        opTensors.push_back(
+            {elementsAttrFromTensor(tensor, ctx, resourceInterfaceID),
+             tensor.getShape()});
         outIdx++;
       }
       opToTensors[op] = opTensors;
@@ -324,7 +379,7 @@ executeModel(MLIRContext *ctx, const Model *model,
         return LLCL::EncodedDiagnostic(tensor.takeDiagnostic());
       assert(tensor.isReady() && "We already awaited, tensor should be ready");
       GML::Tensor &t = tensor.get<GML::Tensor>();
-      params[paramName] = reinterpret_cast<const int64_t *>(t.getBuffer())[0];
+      params[paramName] = t.getBuffer<const int64_t>()[0];
       outIdx++;
     }
   }
@@ -677,7 +732,7 @@ static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
 
   for (auto [op, tensors] : modelResult.constants) {
     builder.setInsertionPoint(op);
-    llvm::SmallVector<Value> new_results;
+    llvm::SmallVector<Value> newResults;
     for (auto [opResult, constantTensor] :
          llvm::zip(op->getResults(), tensors)) {
       // Each result can either be a tensor or a shape.
@@ -698,22 +753,22 @@ static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
           // Rebind the shape so it matches what is expected. For example,
           // transform [1, 2] to [1, A] so that types shapes with
           // parameters match.
-          new_results.push_back(
+          newResults.push_back(
               builder.create<RebindOp>(op->getLoc(), type, constantOp));
         } else {
-          new_results.push_back(
+          newResults.push_back(
               builder.create<ConstantOp>(op->getLoc(), type, constant));
         }
       } else if (opResult.getType().isa<ShapeType>()) {
         auto intElems = dyn_cast<IntArrayElementsAttr>(constantTensor.first);
-        new_results.push_back(builder.create<KGEN::ParamConstantOp>(
+        newResults.push_back(builder.create<KGEN::ParamConstantOp>(
             op->getLoc(), ShapeAttr::get(intElems.asArrayRef<int64_t>(),
                                          MOSH::ShapeType::get(ctx))));
       } else {
         assert(false && "constants must be tensors or shapes");
       }
     }
-    op->replaceAllUsesWith(new_results);
+    op->replaceAllUsesWith(newResults);
     op->erase();
   }
   // Remove internal ops (DCE). Ops are removed in reverse topological ordering

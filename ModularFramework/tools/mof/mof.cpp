@@ -216,6 +216,11 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
                                  const llvm::MemoryBufferRef &file,
                                  raw_ostream &os, FileFormat &format) {
   auto *mofContext = ctxHandle.unwrap<MOFContext>();
+  // Create a runtime to use during compilation. It will convey global options
+  // to the passes which need them.
+  // This runtime must outlive `ctx` because `ConstantFoldPass` creates new
+  // attributes owned by `ctx` and hence must be declared before `ctx`.
+  auto ownedRuntime = LLCL::createRuntimeIfNeeded();
   mlir::MLIRContext ctx;
   mlir::OwningOpRef<mlir::ModuleOp> module;
 
@@ -250,9 +255,6 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
     writeIntermediateFileIfRequested("mo", module.get(),
                                      mofContext->getCommonCLOptions(), file);
 
-    // Create a runtime to use during compilation. It will convey global
-    // options to the passes which need them.
-    auto ownedRuntime = LLCL::createRuntimeIfNeeded();
     mofLoweringOptions.setupRuntimeOptions(*ownedRuntime);
 
     if (failed(lowerMOToMGP(module.get(), moToMgpOptions, *ownedRuntime)))
