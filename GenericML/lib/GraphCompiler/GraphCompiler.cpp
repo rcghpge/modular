@@ -154,9 +154,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   addDevicesOpts.enableFakeCudaDevice = opts.enableFakeCudaDevice;
   addDevicesOpts.defaultDeviceLabel = opts.defaultDeviceLabel;
   pm.addPass(MO::createAddDevicesPass(addDevicesOpts, runtime));
-
-  pm.addPass(MO::createHackyPatternFusionForModconPass());
-  pm.addPass(MO::createAssignDevicesPass());
   pm.addPass(MO::createInferLayouts());
 
   if (opts.usePatterns) {
@@ -172,6 +169,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
   }
+  pm.addPass(MO::createAssignDevicesPass());
 
   // If jiting simplify broadcast patterns to a single op that we can jit.
   pm.addPass(mlir::createCanonicalizerPass());

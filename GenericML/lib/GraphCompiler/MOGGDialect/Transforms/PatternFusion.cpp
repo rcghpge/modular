@@ -20,6 +20,7 @@
 #include <numeric>
 
 using namespace M;
+using namespace M::MO;
 using namespace graph_compiler::matchers;
 
 namespace M::MOGG {
@@ -220,6 +221,11 @@ struct MatmulConstBPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::MatmulOp op,
                              MO::DeviceAwareRewriter &rewriter) const override {
+    DeviceRefAttr device = op->getParentOfType<MO::GraphOp>().getDeviceRef();
+    // TODO: CUDA does not support pre-packing yet
+    if (device && device.getLabel() == M::kCUDALabel)
+      return failure();
+
     Value input = op.getInputA();
     Value weight, perm;
     Operation *transpose = nullptr;
@@ -702,6 +708,427 @@ struct LayerNormPattern
   }
 };
 
+// This is not a device-aware pattern. It must be run before device assignment.
+// Since batch matmul and soft max do not have CUDA kernels yet, they will be
+// assigned to CPU and device transfers will be inserted, preventing this
+// pattern from matching after device assignment.
+struct MultiHeadAttentionPatternGPU : public OpRewritePattern<TransposeOp> {
+  MultiHeadAttentionPatternGPU(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
+
+  // Resolve any specified `mulScalar` or `divScalar` to be a multiplicative f32
+  // scale, or return null if such conversion failed. If none of these scalars
+  // are specified (i.e., both null), return a new scalar 1 of type f32.
+  static Value resolveScale(Value mulScalar, Value divScalar, Location loc,
+                            mlir::RewriterBase &rewriter) {
+    auto tensorMulScalar = dyn_cast_or_null<TensorValue>(mulScalar);
+    auto tensorDivScalar = dyn_cast_or_null<TensorValue>(divScalar);
+
+    // TODO support non-f32 scalar
+    if (tensorMulScalar) {
+      // Note: mulScalar is annotated with the correct device in the pattern
+      // match.
+      if (tensorMulScalar.getType().getElementType().isF32())
+        return mulScalar;
+      return {};
+    }
+
+    if (tensorDivScalar) {
+      auto scalarType = tensorDivScalar.getType();
+      if (scalarType.getElementType().isF32()) {
+        auto one = rewriter.create<ConstantOp>(loc, 1.0f);
+        auto div = rewriter.create<DivOp>(loc, scalarType, one, divScalar);
+        div.setDeviceRef(getHostDeviceAny(div));
+        return div;
+      }
+      return {};
+    }
+
+    auto constant = rewriter.create<MO::ConstantOp>(loc, 1.0f);
+    constant.setDeviceRef(getHostDeviceAny(constant));
+    return constant;
+  }
+
+  template <typename UnaryOp, typename Matcher>
+  static auto m_OptionalUnary(Matcher matcher) {
+    return m_Optional(m_Op<UnaryOp>(matcher), matcher);
+  }
+
+  LogicalResult matchAndRewrite(TransposeOp op,
+                                PatternRewriter &rewriter) const override {
+    DeviceRefAttr device = op->getParentOfType<MO::GraphOp>().getDeviceRef();
+    // If the graph doesn't support CUDA, don't attempt to use this pattern.
+    if (!device || device.getLabel() != M::kCUDALabel)
+      return failure();
+    //   query_transpose = mo.transpose(query)
+    //   keyt_transpose = mo.transpose(keyT)
+    //   bmm1 = mo.batch_matmul(query_transpose, keyt_transpose)
+    //   mask = mo.slice(input_mask, start, stop, step)
+    // * bmm1 = (bmm1 * scalar) or (bmm1 / scalar)
+    // * bmm1 = mo.static.broadcast(bmm1) + mask
+
+    //   softmax = mo.softmax(bmm1)
+    // * broadcast = mo.static.broadcast_to(softmax)
+    //   bmm2 = mo.batch_matmul(broadcast, value)
+    //   res = mo.transpose(bmm2)
+    //
+    // ==>
+    //
+    //   res = "mop.kernels.multi_head_attention"(query, keyT, value, scale)
+    // or
+    //   res = "mop.kernels.multi_head_attention_masked"(
+    //          query, keyT, value, scale, mask)
+    //
+    // NOTE `*` means optional
+    Value query, keyT, value, mulScalar, divScalar, inputMask;
+
+    Operation *bmm1Op = nullptr, *queryTransposeOp = nullptr,
+              *keytTransposeOp = nullptr, *softmaxOp = nullptr,
+              *broadcastOp = nullptr, *slicedMaskOp = nullptr, *mulOp = nullptr;
+
+    // TODO
+    // 1. Check the static reshapes are actually squeeze/unsqueeze.
+    // 2. Remove the optional broadcasts once we have better shape inference
+    // (baby-llama has a scalar model input that's used as part of shape
+    // computation, and we can't reason through that at the moment).
+    auto queryTP = m_Op<TransposeOp>(&queryTransposeOp, m_Any(&query), m_Any());
+    auto optSqueezedQueryTP = m_OptionalUnary<Static::ReshapeOp>(queryTP);
+    auto optBcastSqueezedQueryTP =
+        m_OptionalUnary<Static::BroadcastToOp>(optSqueezedQueryTP);
+    auto optRebBcastSqueezedQueryTP =
+        m_OptionalUnary<RebindOp>(optBcastSqueezedQueryTP);
+    auto keyTP = m_Op<TransposeOp>(&keytTransposeOp, m_Any(&keyT), m_Any());
+    auto optSqueezedKeyTP = m_OptionalUnary<Static::ReshapeOp>(keyTP);
+    auto optBcastSqueezedKeyTP =
+        m_OptionalUnary<Static::BroadcastToOp>(optSqueezedKeyTP);
+    auto optRebBcastSqueezedKeyTP =
+        m_OptionalUnary<RebindOp>(optBcastSqueezedKeyTP);
+    auto bmm1P = m_Op<BatchMatmulOp>(&bmm1Op, optRebBcastSqueezedQueryTP,
+                                     optRebBcastSqueezedKeyTP);
+    auto mulBmm1P = m_BinaryCommutativeOp<MulOp>(
+        bmm1P, m_Op<Static::BroadcastToOp>(&mulOp, m_Any(&mulScalar)));
+    auto divBmm1P =
+        m_Op<DivOp>(bmm1P, m_Op<Static::BroadcastToOp>(m_Any(&divScalar)));
+    // TODO: make scale mandatory
+    auto scaledBmm1P = m_Optional(bmm1P, mulBmm1P, divBmm1P);
+    auto optRebScaledBmm1P = m_OptionalUnary<RebindOp>(scaledBmm1P);
+    auto optBcastRebScaledBmm1P =
+        m_OptionalUnary<Static::BroadcastToOp>(optRebScaledBmm1P);
+
+    // TODO: make mask also broadcast
+    auto slicedMaskP = m_Op<SliceOp>(&slicedMaskOp, m_Any(&inputMask), m_Any(),
+                                     m_Any(), m_Any());
+    auto broadcastMaskP = m_Op<Static::BroadcastToOp>(slicedMaskP);
+    auto maskedBmm1P =
+        m_BinaryCommutativeOp<AddOp>(optBcastRebScaledBmm1P, broadcastMaskP);
+    auto softmaxP = m_Op<SoftmaxOp>(&softmaxOp, maskedBmm1P);
+    auto broadcastP = m_Optional(
+        softmaxP, m_Op<Static::BroadcastToOp>(&broadcastOp, softmaxP));
+
+    auto valueTP = m_Op<TransposeOp>(m_Any(&value), m_Any());
+    auto optSqueezedValueTP = m_OptionalUnary<Static::ReshapeOp>(valueTP);
+    auto optBcastSqueezedValueTP =
+        m_OptionalUnary<Static::BroadcastToOp>(optSqueezedValueTP);
+    auto optRebBcastSqueezedValueTP =
+        m_OptionalUnary<RebindOp>(optBcastSqueezedValueTP);
+    auto bmm2P = m_Op<BatchMatmulOp>(broadcastP, optRebBcastSqueezedValueTP);
+    auto bmm2OptUnsqueezedP = m_OptionalUnary<Static::ReshapeOp>(bmm2P);
+    auto bmm2PTranspose = m_Op<TransposeOp>(bmm2OptUnsqueezedP, m_Any());
+
+    if (!bmm2PTranspose.match(op))
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    // Don't fuse if intermediate results are used elsewhere
+    if (!bmm1Op->hasOneUse())
+      return rewriter.notifyMatchFailure(op, "first bmm has multiple users");
+    if (!softmaxOp->hasOneUse())
+      return rewriter.notifyMatchFailure(op, "softmax has multiple users");
+    if (broadcastOp && !broadcastOp->hasOneUse())
+      return rewriter.notifyMatchFailure(op, "broadcast has multiple users");
+
+    // If the scale is a multiplication, set the device to host here since the
+    // value is used directly.
+    if (mulOp)
+      static_cast<MulOp>(mulOp).setDeviceRef(getHostDeviceAny(op));
+
+    Value scale = resolveScale(mulScalar, divScalar, op.getLoc(), rewriter);
+    if (!scale)
+      return rewriter.notifyMatchFailure(op, "failed to resolve scale");
+
+    // In the case where the implicit batch dimension is 1 and squeezed out
+    TensorValue mask = cast<SliceOp>(slicedMaskOp).getResult();
+    if (mask.getType().hasRank() && mask.getType().getRank() == 2) {
+      ArrayRef<TypedAttr> oldDims =
+          mask.getType().getTypedShapeAttr().getValues();
+      SmallVector<TypedAttr> newDims = {
+          mlir::IntegerAttr::get(rewriter.getIndexType(), 1)};
+      for (TypedAttr oldDim : oldDims)
+        newDims.push_back(oldDim);
+
+      auto shapeTy = MOSH::ShapeType::get(getContext());
+      auto newShape = ShapeAttr::get(newDims, shapeTy);
+      auto newTensorType = mask.getType().cloneWith(newShape);
+      mask = rewriter.create<Static::BroadcastToOp>(op->getLoc(), newTensorType,
+                                                    mask);
+    }
+    SmallVector<Value> kernelArgs{query, keyT, value, mask, scale};
+
+    // In the case we have batch size one which is squeezed out.
+    if (op->hasOneUse() && op.getType().hasRank() &&
+        op.getType().getRank() == 3) {
+      Operation *user;
+      user = *op->getUsers().begin();
+
+      // Expect a static reshape to add back the batch dimension
+      if (auto unsqueezeShape = dyn_cast<Static::ReshapeOp>(user)) {
+        if (unsqueezeShape.getType().hasRank() &&
+            unsqueezeShape.getType().getRank() == 4) {
+          rewriter.replaceOpWithNewOp<MultiHeadFlashAttentionOp>(
+              op, unsqueezeShape.getType(), kernelArgs);
+          return mlir::success();
+        }
+      }
+    } else if (op.getType().hasRank() && op.getType().getRank() == 4) {
+      // Replace with fused kernel call
+      rewriter.replaceOpWithNewOp<MultiHeadFlashAttentionOp>(op, op.getType(),
+                                                             kernelArgs);
+      return mlir::success();
+    }
+    return rewriter.notifyMatchFailure(op, "Unknown op.");
+  }
+};
+
+/// A helper to match multi-headed attention and it's variations
+struct MultiHeadAttentionPatternMatcher {
+  /*
+  Input values to the pattern.
+
+  Dimension names:
+    - (B)atch
+    - Attention (H)ead
+    - (S)equence Length
+    - Embedding (D)imension
+
+  We delineate the current tokens attended to (s) with those in the cache (S)
+
+  Pseudocode:
+    # Calculate Attention matrix
+    attentionMatrix = query @ keyT
+    norm = broadcast_to(normScalar, shape_of(attentionMatrix))
+
+    # Normalize and apply masking
+    attentionMatrixNorm = attentionMatrix * norm
+
+    # Masking optional, else `attentionMatrixNormMasked = attentionMatrixNorm`
+    attnMaskBCast = broadcast(attnMask, attentionMatrixNorm)
+    attentionMatrixNormMasked = attentionMatrixNorm + attnMaskBCast
+
+    # Apply softmax and reproject result
+    attentionMatrixSoftMax = softmax(attentionMatrixNormMasked)
+    answer = attentionMatrixSoftMax @ value
+  */
+  TensorValue query, // Q   , layout B,H,s,D
+      keyT,          // K^T , layout B,H,D,S
+      value,         // V   , layout B,H,S,D
+      attnMask,      //     , layout     s,S
+      normScalar;    // the factor for normalizing Q^K_t to be var. 1
+
+  // Intermediate values and their producing operations
+  Operation *attentionMatrixProducer = nullptr, *normProducer = nullptr,
+            *attentionMatrixNormProducer = nullptr,
+            *attentionMatrixSoftMaxProducer = nullptr,
+            *answerProducer = nullptr;
+
+  // Attention masking-related operations (optional, may remain nullptr)
+  Operation *attentionMaskBCastProducer = nullptr,
+            *attentionMatrixNormMaskedProducer = nullptr;
+
+  bool matchesPattern;
+  graph_compiler::Logger patternMatcherLogger;
+
+  MultiHeadAttentionPatternMatcher(BatchMatmulOp op) {
+    auto pQ = m_Any(&query);
+    auto pKT = m_Any(&keyT);
+    auto pV = m_Any(&value);
+
+    // TODO: normScalar is derived in some scenarios, it is usually 1 / sqrt(D)
+    auto pNorm = m_Op<Static::BroadcastToOp>(&normProducer, m_Any(&normScalar));
+
+    // match Q @ K_T
+    auto pAttentionMatrix =
+        m_Op<BatchMatmulOp>(&attentionMatrixProducer, pQ, pKT);
+
+    // normalize by scale
+    auto pNormalizedAttnMatrix = m_BinaryCommutativeOp<MulOp>(
+        &attentionMatrixNormProducer, pAttentionMatrix, pNorm);
+
+    // attention mask (optional)
+    auto pAttentionMaskBCast = m_Op<Static::BroadcastToOp>(
+        &attentionMaskBCastProducer, m_Any(&attnMask));
+    auto pMaskedNormalizedAttnMatrix = m_BinaryCommutativeOp<AddOp>(
+        &attentionMatrixNormMaskedProducer, pNormalizedAttnMatrix,
+        pAttentionMaskBCast);
+
+    // handle with and without attention mask via m_Optional
+    auto pMaybeMaskedNormalizedAttnMatrix =
+        m_Optional(pNormalizedAttnMatrix, pMaskedNormalizedAttnMatrix);
+
+    // softmax
+    auto pSoftmaxAttnMatrix = m_Op<SoftmaxOp>(&attentionMatrixSoftMaxProducer,
+                                              pMaybeMaskedNormalizedAttnMatrix);
+
+    // re-project using V
+    auto pAnswer = m_Op<BatchMatmulOp>(&answerProducer, pSoftmaxAttnMatrix, pV);
+
+    // attempt to match the pattern
+    matchesPattern = pAnswer.match(op, &patternMatcherLogger);
+  }
+
+  bool hasAttentionMask() {
+    return attentionMatrixNormMaskedProducer != nullptr;
+  }
+
+  ErrorOr<TensorValue>
+  extractCompatibleAttentionMask(PatternRewriter &rewriter) {
+    // Our kernels expect a mask of shape [s, S]. So try to extract this
+    if (!hasAttentionMask()) {
+      return Error("No attention mask in this pattern");
+    }
+
+    TensorValue fixedUpMask = attnMask;
+    if (!fixedUpMask.getType().hasRank())
+      return Error("Attention mask needs a known rank.");
+
+    // Target shape for the attention mask:
+    SmallVector<TypedAttr> bcastAttnMaskDims = {query.getType().getDim(2),
+                                                keyT.getType().getDim(3)};
+    ShapeAttr attnMaskTargetShapeAttr = ShapeAttr::get(
+        bcastAttnMaskDims, MOSH::ShapeType::get(rewriter.getContext()));
+
+    M::MO::TensorType attnMaskTargetShapeType = M::MO::TensorType::get(
+        attnMaskTargetShapeAttr, fixedUpMask.getType().getElementType());
+
+    if (fixedUpMask.getType().getRank() > 2) {
+      // Handles case where mask is of shape like [1, s, S].
+      if (attnMaskTargetShapeAttr.getSymbolicNumElements() !=
+          fixedUpMask.getType().getSymbolicNumElements())
+        return Error("Given mask cannot be reshaped to [s, S] shaped mask!");
+      fixedUpMask = rewriter.create<Static::ReshapeOp>(
+          fixedUpMask.getLoc(), attnMaskTargetShapeType, fixedUpMask);
+    }
+
+    // Manually broadcast out the attention mask to guarantee layout of s,S
+    // Handles case where mask is just a scalar which is equally applied.
+    fixedUpMask = rewriter.create<Static::BroadcastToOp>(
+        fixedUpMask.getLoc(), attnMaskTargetShapeType, fixedUpMask);
+
+    return fixedUpMask;
+  }
+
+  bool doesMatchPattern() { return matchesPattern; }
+
+  ErrorOrSuccess intermediateValuesHaveOneUse() {
+    // Checks all intermediate values are used once. The exception are
+    // `norm` and `attnMask` since their values are typically reused per
+    // attention layer.
+
+    if (!attentionMatrixProducer->hasOneUse())
+      return Error("attentionMatrix has multiple uses.");
+
+    if (!attentionMatrixNormProducer->hasOneUse())
+      return Error("attentionMatrixNorm has multiple uses.");
+
+    if (attentionMaskBCastProducer && !attentionMaskBCastProducer->hasOneUse())
+      return Error("attentionMaskBCastProducer has multiple uses.");
+
+    // Remember this is also optional
+    if (attentionMatrixNormMaskedProducer &&
+        !attentionMatrixNormMaskedProducer->hasOneUse())
+      return Error("attentionMatrixNormMasked has multiple uses.");
+
+    if (!attentionMatrixSoftMaxProducer->hasOneUse())
+      return Error("attentionMatrixSoftMax has multiple uses.");
+
+    return success();
+  }
+
+  std::string getPatternMatchingError() {
+    std::string errMsg;
+    llvm::raw_string_ostream st(errMsg);
+    patternMatcherLogger.print(st);
+    return errMsg;
+  }
+};
+
+// For MIN Llama 2 demo
+struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
+  MultiHeadAttentionPatternCPU(MLIRContext *ctx) : OpRewritePattern(ctx, 20) {}
+
+  LogicalResult matchAndRewrite(BatchMatmulOp op,
+                                PatternRewriter &rewriter) const override {
+    DeviceRefAttr device = op->getParentOfType<MO::GraphOp>().getDeviceRef();
+
+    // Just assume we want to use the CPU kernel only if the default device
+    // is cpu (e.g. if the default was CUDA, run on CUDA).
+    //
+    // That way avoid device logic for now.
+    if (device && device.getLabel() != M::kCPULabel)
+      return rewriter.notifyMatchFailure(op->getLoc(), "Devices are wrong.");
+
+    MultiHeadAttentionPatternMatcher matcher(op);
+
+    if (!matcher.doesMatchPattern()) {
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         matcher.getPatternMatchingError());
+    }
+
+    ErrorOrSuccess noMultipleUses = matcher.intermediateValuesHaveOneUse();
+    if (noMultipleUses.isError()) {
+      return rewriter.notifyMatchFailure(op->getLoc(),
+                                         noMultipleUses.getError());
+    }
+
+    // Attention masking case
+    if (matcher.hasAttentionMask()) {
+      ErrorOr<TensorValue> maybeAttentionMask =
+          matcher.extractCompatibleAttentionMask(rewriter);
+
+      if (maybeAttentionMask.isError())
+        return rewriter.notifyMatchFailure(op->getLoc(),
+                                           maybeAttentionMask.getError());
+
+      SmallVector<Value> inputValues = {
+          matcher.query, matcher.keyT, matcher.value,
+          maybeAttentionMask.takeValue(), matcher.normScalar};
+      SmallVector<Type> outputTypes = {op.getType()};
+      ValueRange inputs(inputValues);
+      TypeRange outputTy(outputTypes);
+      rewriter.setInsertionPointAfterValue(op);
+      auto result = rewriter.create<CustomOp>(op->getLoc(), outputTy, inputs,
+                                              "with_mask_fused_attention_cpu");
+
+      auto fused_kernel_result = cast<TensorValue>(result->getResult(0));
+      fused_kernel_result.setType(op.getType());
+      rewriter.replaceAllUsesWith(op, fused_kernel_result);
+    } else {
+      // No attention masking case
+      SmallVector<Value> inputValues = {matcher.query, matcher.keyT,
+                                        matcher.value, matcher.normScalar};
+      SmallVector<Type> outputTypes = {op.getType()};
+      ValueRange inputs(inputValues);
+      TypeRange outputTy(outputTypes);
+      rewriter.setInsertionPointAfterValue(op);
+      auto result = rewriter.create<CustomOp>(op->getLoc(), outputTy, inputs,
+                                              "no_mask_fused_attention_cpu");
+
+      auto fused_kernel_result = cast<TensorValue>(result->getResult(0));
+      fused_kernel_result.setType(op.getType());
+      rewriter.replaceAllUsesWith(op, fused_kernel_result);
+    }
+
+    return mlir::success();
+  }
+};
+
 } // namespace
 
 struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
@@ -717,7 +1144,9 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
 
     patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
                  ConcatZeroAxisPattern, ConvConstFilterPattern,
-                 SplitZeroAxisPattern, LayerNormPattern>(ctx);
+                 SplitZeroAxisPattern, LayerNormPattern,
+                 MultiHeadAttentionPatternCPU, MultiHeadAttentionPatternGPU>(
+        ctx);
 
     MO::GraphOp graphOp = getOperation();
     if (failed(applyPatternsAndFoldGreedily(graphOp, std::move(patterns))))

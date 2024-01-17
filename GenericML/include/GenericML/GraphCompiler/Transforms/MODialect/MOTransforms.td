@@ -413,27 +413,6 @@ def NameInputDimsPass : Pass<"name-input-dims", "ModuleOp"> {
   ];
 }
 
-def HackyPatternFusionForModconPass : Pass<"hacky-pattern-fusion", "GraphOp"> {
-  let summary = "Apply pattern fusions that must be done prior to device"
-                " assignment.";
-  let description = [{
-    Currently pattern fusion happens after device assignment.
-
-    However, some patterns (such as multi-headed attention) must run on CUDA
-    devices even though not all of the ops in the pattern have CUDA kernels yet.
-
-    This means that device transfers get inserted into the graph we'd like to
-    match before the pattern is applied.
-
-    Because of ongoing development and the addition of more kernels, the
-    location of these device transfer ops will most likely change a lot prior to
-    Modcon.
-
-    This pass is a temporary solution-- it does pattern matching for select ops
-    before device assignment is run.
-  }];
-}
-
 def DebugPrintAllTensorsPass : Pass<"debug-print-all-tensors", "GraphOp"> {
   let summary = "Print all intermediate tensors as they are produced.";
   let description = [{
