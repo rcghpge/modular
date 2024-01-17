@@ -1006,9 +1006,6 @@ static void mgp_cpu_kernel_execute(
   SmallVector<LLCL::ResourceUse> uses;
 #endif
 
-  // Create an MojoCallContext to convey context into the Mojo kernel.
-  KGEN::MojoCallContext callContext(outChain.copy(), outChain.copyLocation());
-
   // Hold on to ABI intermediate datastructures until the kernel returns.
   // Asynchronous kernels are responsible for unmarshalling what they need
   // before returning.
@@ -1056,68 +1053,73 @@ static void mgp_cpu_kernel_execute(
         });
   }
 
-  // Execute the kernel. Currently, all Mojo kernels are synchronous (and if
-  // they launch sub-tasks they will LLCL::await until all such sub-tasks have
-  // completed). However, if requested, the kernel will be launched in a
-  // sub-task.
-  //
-  // TODO(#27757): When we finish transitioning to Mojo async/await kernels
-  // we'll need a similar async vs sync distinction, however async kernels will
-  // not need to be wrapped by a sub-task. Instead, we'll just wire the
-  // completion handler of the Mojo Coroutine to emplace the outChain directly.
+  // Execute the kernel.
   if (*fIsAsync) {
-    GENERICML_ASSERT(numOutDimensions == 0);
-    runtime.getWorkQueue()->addTask(
-        [kernelPtr, callContext = std::move(callContext),
-         call = std::move(call), dimensions = std::move(dimensions),
-         operands = operands.copyAsVector(), outChain = outChain.copy()
+    //
+    // Asynchronous kernel call.
+    //
+    // For asynchronous kernels we'll allow the kernel to either set the
+    // outChain to an error before suspending, or emplace it / set it to an
+    // error when it fully completes. We must make sure the argument
+    // MojoCallContext and operands are all held alive until the chain is ready.
+    //
+    GENERICML_ASSERT(numOutDimensions == 0)
+        << "async kernels cannot return output dimensions";
+    auto callContext = std::make_unique<KGEN::MojoCallContext>(
+        outChain.copy(), outChain.copyLocation());
+    KGEN::MojoCallContext *callContextPtr = callContext.get();
+    outChain.copy().andThenSync([callContext = std::move(callContext),
+                                 operands = operands.copyAsVector()
 #if MODULAR_PARANOID
-                                                 ,
-         uses = std::move(uses)
+                                     ,
+                                 uses = std::move(uses)
 #endif
-    ]() mutable {
-          kernelPtr(call.inputPointers.data(), dimensions.data(), &callContext);
-          if (!outChain.isError())
-            std::move(outChain).emplace();
+    ]() {
 #if MODULAR_PARANOID
-          // Release uses of the operands before the operands themselves go out
-          // of scope.
-          uses.clear();
+      // Release uses of the operands before the operands themselves go out
+      // of scope.
+      uses.clear();
 #endif
-          // We wish to hold the operands alive until the kernel is finished.
-          (void)operands;
-        });
+      // callContext and operands can now be released.
+    });
+    kernelPtr(call.inputPointers.data(), dimensions.data(), callContextPtr);
+#if MODULAR_PARANOID
+    // If the kernel is asynchronous but accidentally depends on the stack
+    // at the time sub-tasks were launched, deliberately clobber that.
+    // Pick a modest size to clobber to avoid stack overflow.
+    const size_t s = 256;
+    void *p = alloca(s);
+    memset(p, 0xef, s);
+#endif
+
   } else {
+    //
+    // Synchronous kernel call.
+    //
+    // For synchronous kernels we'll check if the kernel has set the outChain
+    // to an error on return, otherwise we'll emplace the outChain to relieve
+    // kernels of that responsibility.
+    //
+    KGEN::MojoCallContext callContext(outChain.copy(), outChain.copyLocation());
     kernelPtr(call.inputPointers.data(), dimensions.data(), &callContext);
-    if (!outChain.copy().isError())
-      std::move(outChain).emplace();
 #if MODULAR_PARANOID
     // Release uses to the operands before the operands themselves go out
     // of scope.
     uses.clear();
 #endif
+    if (outChain.copy().isError()) {
+      // The kernel failed while trying to launch.
+      setOutDimensionsToChainError();
+      return;
+    }
+    // Any output dimensions can be copied out now.
+    for (size_t i = 0; i < numOutDimensions; ++i)
+      outDimensions[i].copy().emplace<size_t>(dimensions[numInDimensions + i]);
+    // We can mark the chain as ready.
+    GENERICML_ASSERT(!outChain.copy().isReady())
+        << "synchronous kernels should not emplace the output chain";
+    std::move(outChain).emplace();
   }
-
-  if (outChain.copy().isError()) {
-    // The kernel failed while trying to launch.
-    setOutDimensionsToChainError();
-    return;
-  }
-
-  // If the kernel has output dimensions then it must be synchronous and those
-  // values can be copied out now.
-  GENERICML_ASSERT(numOutDimensions == 0 || outChain.copy().isReady());
-  for (size_t i = 0; i < numOutDimensions; ++i)
-    outDimensions[i].copy().emplace<size_t>(dimensions[numInDimensions + i]);
-
-#if MODULAR_PARANOID
-  // If the kernel is asynchronous but accidentally depends on the stack
-  // at the time sub-tasks were launched, deliberately clobber that.
-  // Pick a modest size to clobber to avoid stack overflow.
-  const size_t s = 256;
-  void *p = alloca(s);
-  memset(p, 0xef, s);
-#endif
 }
 
 //===----------------------------------------------------------------------===//

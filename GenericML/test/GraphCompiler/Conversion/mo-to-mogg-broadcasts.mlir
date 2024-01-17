@@ -25,5 +25,5 @@ mo.graph @bcast_basic<N, L, M, K>(%arg0: !mo.tensor<[N, M, L], f32>) -> (!mo.ten
 // CHECK-NEXT:  mogg.output %[[OUT]] : !mo.tensor<[N, M, K], f32>
 
 // No fusion interfaces but it does have the indcies of the inputs which are broadcast and the isView marking.
-// CHECK-NEXT: } {isViewOp = true, summary = "mo.static.broadcast_to{{.*}}"}
+// CHECK-NEXT: } {isAsync = true, isViewOp = true, summary = "mo.static.broadcast_to{{.*}}"}
 // CHECK-NEXT: mo.output %[[KERNEL]] : !mo.tensor<[N, M, K], f32>
