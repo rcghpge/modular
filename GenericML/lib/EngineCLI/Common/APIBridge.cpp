@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/EngineCLI/Common/APIBridge.h"
+#include "GenericML/Support/Assert.h"
 #include "Support/ML/TensorSpec.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 
@@ -78,7 +79,8 @@ TensorSpecPtr M::EngineCLI::tensorSpecToCAPI(const char *name,
   // TODO: There is no way to represent dynamically-ranked tensors (#26162) or
   // static-rank tensors with dynamic dimensions (#26301).  The C API only
   // documents a way to create specs for fully-static shapes.
-  assert(spec.isStatic() && "C API cannot represent non-static shapes");
+  GENERICML_ASSERT(spec.isStatic())
+      << "C API cannot represent non-static shapes";
 
   // Copy is required because TensorShape stores ssize_t, but API takes
   // int64_t, and these are not necessarily the same.

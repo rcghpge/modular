@@ -13,6 +13,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/Support/Assert.h"
 #include "KGEN/LITDialect/LITAttrs.h"
 #include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
@@ -95,7 +96,7 @@ static ErrorOr<OwningOpRef<ModuleOp>> parseMojoPackage(MLIRContext *ctx,
     return Error::getStaticString("invalid package");
 
   mlir::AsmResourceBlob *blob = preElaboratedModule->getRawHandle().getBlob();
-  assert(blob && "invalid package");
+  GENERICML_ASSERT(blob) << "invalid package";
 
   llvm::StringRef moduleBuffer(blob->getData().data(), blob->getData().size());
 
@@ -360,8 +361,9 @@ MojoLibraryAnalysis::get(MLIRContext *ctx,
   llvm::StringRef source{reinterpret_cast<const char *>(MojoMoggBindings::data),
                          MojoMoggBindings::size};
   mojoBindings = mlir::parseSourceString<mlir::ModuleOp>(source, ctx);
-  assert(mojoBindings);
-  assert(!loadUserProvidedKernels(*mojoBindings, kernelLibraryPaths).isError());
+  GENERICML_ASSERT(mojoBindings);
+  auto loadError = loadUserProvidedKernels(*mojoBindings, kernelLibraryPaths);
+  GENERICML_ASSERT(!loadError.isError()) << loadError.takeError();
 
   // Iterate over the available generators and check if each matches a mo
   // operation.

@@ -9,6 +9,7 @@
 #ifndef GRAPHCOMPILER_TRANSFORMS_MODIALECT_MEFMODEL_H
 #define GRAPHCOMPILER_TRANSFORMS_MODIALECT_MEFMODEL_H
 
+#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/Model.h"
 #include "GraphRT/MEFExecutor/MEFInvokable.h"
 #include "LLCL/ForwardDecls.h"
@@ -42,7 +43,9 @@ public:
                ArrayRef<QuantTensorSpec> outputSpecs, EncodedLocation location)
       : Model(inputSpecs, outputSpecs), name(std::move(name)), initFn(initFn),
         executeFn(executeFn), location(std::move(location)) {
-    assert(frameworkLabel == CompiledFrameworkLabel::kModularModel);
+    GENERICML_ASSERT(frameworkLabel == CompiledFrameworkLabel::kModularModel)
+        << "Expected " << CompiledFrameworkLabel::kModularModel
+        << " label for model, but got " << frameworkLabel.getAsString();
   }
 
   ModularModel(std::string name, CompiledFrameworkLabel frameworkLabel,
@@ -54,7 +57,9 @@ public:
       : Model(inputSpecs, outputSpecs, inputNames, outputNames),
         name(std::move(name)), initFn(initFn), executeFn(executeFn),
         location(std::move(location)) {
-    assert(frameworkLabel == CompiledFrameworkLabel::kModularModel);
+    GENERICML_ASSERT(frameworkLabel == CompiledFrameworkLabel::kModularModel)
+        << "Expected " << CompiledFrameworkLabel::kModularModel
+        << " label for model, but got " << frameworkLabel.getAsString();
   }
 
   /// Returns a ModularModel from an mgp.model descriptor.

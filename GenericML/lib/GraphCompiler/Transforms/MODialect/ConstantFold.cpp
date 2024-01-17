@@ -16,6 +16,7 @@
 #include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "GenericML/MGPDialect/MGPDialect.h"
+#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/ResourceBufferInterface.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
@@ -172,7 +173,8 @@ sortParams(llvm::ArrayRef<Operation *> ops) {
 // necessary.
 static ShapedType typeToShaped(TensorType type) {
   auto shapeAttr = dyn_cast<MOSH::ShapeAttr>(type.getShapeAttr());
-  assert(shapeAttr && "Shapes in constants subgraph should all be infered");
+  GENERICML_ASSERT(shapeAttr)
+      << "Shapes in constants subgraph should all be infered";
   auto intDims = shapeAttr.getIntDims();
   int64_t size = std::accumulate(intDims.begin(), intDims.end(), 1,
                                  std::multiplies<int64_t>());
@@ -268,9 +270,9 @@ elementsAttrFromTensor(GML::Tensor &tensor, MLIRContext *ctx,
     blob = mlir::HeapAsmResourceBlob::allocateAndCopyWithAlign(
         tensorData, elementByteAlign);
   } else {
-    assert(llvm::is_contained(
-               {GML::BufferRef::kOwned, GML::BufferRef::kForeign}, ownership) &&
-           "invalid buffer ref ownership");
+    GENERICML_ASSERT(llvm::is_contained(
+        {GML::BufferRef::kOwned, GML::BufferRef::kForeign}, ownership))
+        << "invalid buffer ref ownership";
 
     // 4. Otherwise, transfer ownership of the buffer ref to a new
     // `dense_resource` if the buffer is owned.
@@ -330,8 +332,8 @@ executeModel(MLIRContext *ctx, const Model *model,
   MutableArrayRef<AnyAsyncValueRef> resultCopy(results.data(), results.size());
 
   const AnyAsyncValueRef &ch = resultCopy.front();
-  assert(ch.isReady() && isa<Chain>(ch) &&
-         "first result must be a ready chain");
+  GENERICML_ASSERT(ch.isReady() && isa<Chain>(ch))
+      << "first result must be a ready chain";
   resultCopy = resultCopy.drop_front();
   llvm::SmallVector<AnyAsyncValueRef> outputTensorRefs;
   outputTensorRefs.reserve(results.size());
@@ -355,8 +357,8 @@ executeModel(MLIRContext *ctx, const Model *model,
           return LLCL::EncodedDiagnostic(tensorRef.takeDiagnostic());
 
         // Move output tensor into storage.
-        assert(tensorRef.isReady() &&
-               "We already awaited, tensor should be ready");
+        GENERICML_ASSERT(tensorRef.isReady())
+            << "We already awaited, tensor should be ready";
         GML::Tensor &tensor = tensorRef.get<GML::Tensor>();
 
         // Create an `ElementsAttr`, possibly by taking ownership of `tensor`'s
@@ -377,7 +379,8 @@ executeModel(MLIRContext *ctx, const Model *model,
       auto &tensor = outputTensorRefs[outIdx];
       if (tensor.isError())
         return LLCL::EncodedDiagnostic(tensor.takeDiagnostic());
-      assert(tensor.isReady() && "We already awaited, tensor should be ready");
+      GENERICML_ASSERT(tensor.isReady())
+          << "We already awaited, tensor should be ready";
       GML::Tensor &t = tensor.get<GML::Tensor>();
       params[paramName] = t.getBuffer<const int64_t>()[0];
       outIdx++;
@@ -399,7 +402,7 @@ static Operation *lookupParamDef(const KGEN::ParameterUseDefGraph &paramUseDef,
   else if (declIt != paramUseDef.decls.end())
     def = declIt->second.declOp;
   else
-    assert(false && "Could not find def!");
+    GENERICML_ASSERT(false) << "Could not find def with name " << name;
   return def;
 }
 
@@ -564,11 +567,11 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
       for (auto user : result.getUsers())
         workQueue.push_back(user);
   }
-  assert(iter < bound_for_maximum_iterations &&
-         "Hit bound on maximum number of iterations for detecting constant "
+  GENERICML_ASSERT(iter < bound_for_maximum_iterations)
+      << "Hit bound on maximum number of iterations for detecting constant "
          "subgraphs. Either this graph op is VERY large (in which case this "
          "bound should be increased), or else somehow there is infinite "
-         "recursion (which is a bug)");
+         "recursion (which is a bug)";
 
   // Collect subgraphs from equivalence sets.
   SmallVector<Subgraph> subgraphs;
@@ -772,7 +775,9 @@ static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
             op->getLoc(), ShapeAttr::get(intElems.asArrayRef<int64_t>(),
                                          MOSH::ShapeType::get(ctx))));
       } else {
-        assert(false && "constants must be tensors or shapes");
+        GENERICML_ASSERT(false)
+            << "constants must be tensors or shapes but one is a "
+            << opResult.getType();
       }
     }
     op->replaceAllUsesWith(newResults);
@@ -1024,8 +1029,8 @@ void ConstantFoldPass::runOnOperation() {
     for (const SubgraphsInfo &subgraphsInfo : subgraphReplacements) {
       const Model *model = modelsOr.get().models->getModelNamed(
           subgraphsInfo.constantSubgraphName);
-      assert(model != nullptr &&
-             "Model should exist, make sure names above match.");
+      GENERICML_ASSERT(model != nullptr)
+          << "Model should exist, make sure names above match.";
       LLCL::ErrorDiagnosticOr<ModelResult> valuesToTensorsOr = executeModel(
           ctx, model, subgraphsInfo, *ownedRuntime, resourceInterfaceID);
       if (valuesToTensorsOr.isError()) {

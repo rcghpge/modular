@@ -7,6 +7,7 @@
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "GenericML/Driver/DriverInternals.h"
 #include "GenericML/Driver/ExecutionDriver.h"
+#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/BufferRef.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/QuantSpec.h"
@@ -170,10 +171,10 @@ public:
     return FileTensorGenerator(std::move(tensors), flags);
   }
   const GML::Tensor &getNextTensor() final {
-    assert((isSet(flags, TensorGeneratorFlag::kCycle) || !repeated) &&
-           "All tensors in FileTensor have already been generated. "
+    GENERICML_ASSERT((isSet(flags, TensorGeneratorFlag::kCycle) || !repeated))
+        << "All tensors in FileTensor have already been generated. "
            "Add Cycle attribute to --input-data to loop over "
-           "available tensors.");
+           "available tensors.";
     if (pos + 1 >= tensors.size())
       repeated = true;
     auto curr = pos;
@@ -183,7 +184,8 @@ public:
 
   const GML::Tensor &getTensor(size_t sampleIdx) const final {
     if (!isCycled())
-      assert(sampleIdx < tensors.size() && "Requested sampleIdx out of range");
+      GENERICML_ASSERT(sampleIdx < tensors.size())
+          << "Requested sampleIdx out of range";
     return tensors[sampleIdx % tensors.size()];
   }
 

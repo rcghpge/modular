@@ -6,6 +6,7 @@
 
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
 
+#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/HostDeviceSpecs.h"
 
 using namespace M;
@@ -63,7 +64,8 @@ DeviceRefAttr MO::getHostDevice(GraphOp graphOp) {
 
 DeviceRefAttr MO::getHostDeviceAny(Operation *op) {
   auto graphOp = op->getParentOfType<GraphOp>();
-  assert(graphOp && "operation is not contained within a MO::GraphOp");
+  GENERICML_ASSERT(graphOp)
+      << "operation is not contained within a MO::GraphOp";
   return getHostDevice(graphOp);
 }
 

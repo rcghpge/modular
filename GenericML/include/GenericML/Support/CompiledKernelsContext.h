@@ -7,6 +7,7 @@
 #ifndef GENERICML_SUPPORT_COMPILEDKERNELSCONTEXT_H
 #define GENERICML_SUPPORT_COMPILEDKERNELSCONTEXT_H
 
+#include "GenericML/Support/Assert.h"
 #include "KGEN/Compiler/ExecutionEngine.h"
 #include "KGEN/Compiler/ObjectCompiler.h"
 #include "KGEN/CompilerRT/OutputChain.h"
@@ -139,13 +140,15 @@ public:
 
   /// Returns the compiled kernel at the given index.
   CompiledKernelFn *getKernel(size_t index) const {
-    assert(index <= kernels.size() && "invalid compiled kernel index");
+    GENERICML_ASSERT(index <= kernels.size())
+        << "invalid compiled kernel index";
     return kernels[index];
   }
 
   /// Returns the symbol name for the compiled kernel at the given index.
   StringRef getKernelName(size_t index) const {
-    assert(index <= kernels.size() && "invalid compiled kernel index");
+    GENERICML_ASSERT(index <= kernels.size())
+        << "invalid compiled kernel index";
     return symbolTable[index];
   }
 

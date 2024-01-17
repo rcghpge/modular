@@ -10,6 +10,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
+#include "GenericML/Support/Assert.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 
 #include <numeric>
@@ -224,7 +225,7 @@ struct AddFallbackShapeFunctions
 KGEN::ParamDeclArrayAttr getNewParameterMapping(GraphOp &graph,
                                                 TensorType outTy) {
   // TODO(#20169)
-  assert(outTy.hasRank() && "dynamic rank isn't supported");
+  GENERICML_ASSERT(outTy.hasRank()) << "dynamic rank isn't supported";
 
   // New attrs. These are either the exact same as the old attribute or a new
   // attribute
@@ -381,7 +382,7 @@ void Fallback<MO::CustomOp>::build(
     MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
   auto shapeFunction =
       mojoLibraryAnalysis.getRegisteredMojoShapeFunctionFor(op.getSymbol());
-  assert(shapeFunction);
+  GENERICML_ASSERT(shapeFunction);
   auto shapeFunctionName = shapeFunction.getName();
 
   SmallVector<int32_t> dataDepInputIdxs(op->getNumOperands());
@@ -398,7 +399,7 @@ void Fallback<MO::CustomOp>::build(
 void Fallback<MO::GatherOp>::build(GraphOp &graph, OpBuilder &builder,
                                    MO::GatherOp op) {
   TensorType outputTy = op.getType();
-  assert(outputTy.hasRank() && "Unranked tensor isn't supported");
+  GENERICML_ASSERT(outputTy.hasRank()) << "Unranked tensor isn't supported";
   IntegerAttr outputRankAttr = builder.getIndexAttr(outputTy.getRank());
 
   buildForOpResult(graph, builder, op, "gather_shape", op.getOperands(),
@@ -409,7 +410,7 @@ void Fallback<MO::GatherOp>::build(GraphOp &graph, OpBuilder &builder,
 void Fallback<MO::GatherNdOp>::build(GraphOp &graph, OpBuilder &builder,
                                      MO::GatherNdOp op) {
   TensorType outputTy = op.getType();
-  assert(outputTy.hasRank() && "Unranked tensor isn't supported");
+  GENERICML_ASSERT(outputTy.hasRank()) << "Unranked tensor isn't supported";
   IntegerAttr outputRankAttr = builder.getIndexAttr(outputTy.getRank());
 
   buildForOpResult(graph, builder, op, "gather_nd_shape", op.getOperands(),

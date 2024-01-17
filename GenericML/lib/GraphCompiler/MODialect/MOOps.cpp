@@ -15,6 +15,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/GraphCompiler/Matchers.h"
+#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/Dims.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
@@ -246,12 +247,12 @@ LogicalResult TransferOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  assert(operands.size() == 1 && "mismatched operand arity");
+  GENERICML_ASSERT(operands.size() == 1) << "mismatched operand arity";
   auto sourceType = dyn_cast<TensorType>(operands[0].getType());
-  assert(sourceType && "mismatched operand types");
+  GENERICML_ASSERT(sourceType) << "mismatched operand types";
   auto destDeviceAttr = dyn_cast_if_present<DeviceRefAttr>(
       attributes.get(getDestDeviceAttrName(name)));
-  assert(destDeviceAttr && "mismatched operand types");
+  GENERICML_ASSERT(destDeviceAttr) << "mismatched operand types";
   inferredReturnTypes.emplace_back(sourceType.cloneWith(destDeviceAttr));
   return success();
 }
@@ -451,8 +452,8 @@ void OutputOp::walkDefinitions(
   auto graph = cast<GraphOp>(getOperation()->getParentOp());
   ArrayRef<KGEN::ParamDeclAttr> decls = graph.getResultParams();
   ArrayRef<TypedAttr> defs = this->getParameters();
-  assert(decls.size() == defs.size() &&
-         "output bindings and result parameters must have the same size");
+  GENERICML_ASSERT(decls.size() == defs.size())
+      << "output bindings and result parameters must have the same size";
 
   for (auto [decl, def] : llvm::zip(decls, defs))
     walkDef(decl, def);
@@ -893,7 +894,7 @@ LogicalResult ConstantOp::canonicalize(ConstantOp op,
 
 OpFoldResult ConstantOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
-  assert(operands.empty() && "constant has no operands");
+  GENERICML_ASSERT(operands.empty()) << "constant has no operands";
   return getValueAttr();
 }
 
@@ -1024,7 +1025,7 @@ bool ConstantOp::preferResultsDevice() { return true; }
 
 OpFoldResult ConstantScalarOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
-  assert(operands.empty() && "constant.scalar has no operands");
+  GENERICML_ASSERT(operands.empty()) << "constant.scalar has no operands";
   return getValueAttr();
 }
 
@@ -1994,7 +1995,7 @@ LogicalResult RebindOp::canonicalize(RebindOp op,
 
   // We fold if the result and operand types are the same.
   if (op.getInput().getType() == op.getType()) {
-    assert(op.getOutputParamDecls().empty());
+    GENERICML_ASSERT(op.getOutputParamDecls().empty());
     rewriter.replaceOp(op, op.getInput());
     return success();
   }
@@ -2656,8 +2657,8 @@ LogicalResult ShapeOfOp::verify() {
 
 void ShapeOfOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                       TensorValue input, int64_t width) {
-  assert(llvm::is_contained({32, 64}, width) &&
-         "`mo.shape_of` returns si32 or si64");
+  GENERICML_ASSERT(llvm::is_contained({32, 64}, width))
+      << "`mo.shape_of` returns si32 or si64";
   Type intTy = odsBuilder.getIntegerType(width, /*isSigned=*/true);
 
   int64_t outputSize = mlir::ShapedType::kDynamic;

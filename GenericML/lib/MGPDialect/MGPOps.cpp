@@ -11,6 +11,7 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "Cache/CacheDialect/CacheAttrs.h"
 #include "GenericML/MGPDialect/BufferBuilder.h"
+#include "GenericML/Support/Assert.h"
 #include "Support/Compiler/ParserUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/ErrorOr.h"
@@ -127,7 +128,7 @@ void CpuBufferConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 
 OpFoldResult CpuBufferConstantOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
-  assert(operands.empty() && "constant has no operands");
+  GENERICML_ASSERT(operands.empty()) << "constant has no operands";
   return getAValue();
 }
 
@@ -187,10 +188,10 @@ LogicalResult CpuBufferConstantOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  assert(operands.empty() && "mismatched operand arity");
+  GENERICML_ASSERT(operands.empty()) << "mismatched operand arity";
   auto elementsAttr = dyn_cast_if_present<ElementsAttr>(
       attributes.get(getAValueAttrName(name)));
-  assert(elementsAttr && "mismatched operand types");
+  GENERICML_ASSERT(elementsAttr) << "mismatched operand types";
   int64_t size = elementsAttr.size();
   inferredReturnTypes.emplace_back(CpuBufferType::get(context, size));
   return success();
@@ -239,7 +240,7 @@ LogicalResult CpuBufferGetCachedOp::inferReturnTypes(
   mlir::OperationName name(getOperationName(), context);
   auto rawSizeAttr = dyn_cast_if_present<IntegerAttr>(
       attributes.get(getBRawSizeAttrName(name)));
-  assert(rawSizeAttr && "mismatched operand types");
+  GENERICML_ASSERT(rawSizeAttr) << "mismatched operand types";
   inferredReturnTypes.emplace_back(CpuBufferType::get(context, rawSizeAttr));
   return success();
 }
@@ -255,11 +256,11 @@ static LogicalResult verifyAnyAllocOp(
     IndexType optRuntimeSizeType, CpuTensorSpecType optRuntimeSpecType,
     CpuBufferType resultBufferType) {
   // First validate our use of the util.
-  assert((optRuntimeSizeType != nullptr ? 1 : 0) +
-                 (optRuntimeSpecType != nullptr ? 1 : 0) +
-                 (optSize.has_value() ? 1 : 0) ==
-             1 &&
-         "expecting exactly one of static size, runtime size, or runtime spec");
+  GENERICML_ASSERT((optRuntimeSizeType != nullptr ? 1 : 0) +
+                       (optRuntimeSpecType != nullptr ? 1 : 0) +
+                       (optSize.has_value() ? 1 : 0) ==
+                   1)
+      << "expecting exactly one of static size, runtime size, or runtime spec";
 
   // Check the size and align static values.
   if (!isValidOptSize(optSize))
@@ -307,7 +308,7 @@ LogicalResult CpuBufferAllocStaticOp::inferReturnTypes(
   mlir::OperationName name(getOperationName(), context);
   auto sizeAttr = dyn_cast_if_present<mlir::IntegerAttr>(
       attributes.get(getASizeAttrName(name)));
-  assert(sizeAttr != nullptr && "mismatched operand attributes");
+  GENERICML_ASSERT(sizeAttr != nullptr) << "mismatched operand attributes";
   uint64_t size = sizeAttr.getUInt();
   // If the attribute happens to be invalid we'll still construct a result
   // type, but the verify will reject the overall op.
@@ -389,7 +390,7 @@ LogicalResult CpuBufferReallocStaticOp::inferReturnTypes(
   mlir::OperationName name(getOperationName(), context);
   auto sizeAttr = dyn_cast_if_present<mlir::IntegerAttr>(
       attributes.get(getCSizeAttrName(name)));
-  assert(sizeAttr != nullptr && "mismatched operand attributes");
+  GENERICML_ASSERT(sizeAttr != nullptr) << "mismatched operand attributes";
   std::optional<uint64_t> size = sizeAttr.getUInt();
   inferredReturnTypes.emplace_back(CpuBufferType::get(context, size));
   return success();
@@ -451,7 +452,7 @@ void CpuBufferReallocSpecOp::setInChain(Value chain) { setOperand(0, chain); }
 
 InOutSignatureAttr::InOutSemantics
 CpuBufferSetWithIndexOp::getInOutSemantics(size_t index) {
-  assert(index < getNumOperands());
+  GENERICML_ASSERT(index < getNumOperands());
   return index == getBufferMutable().getOperandNumber()
              ? InOutSignatureAttr::kOut
              : InOutSignatureAttr::kIn;
@@ -486,7 +487,7 @@ LogicalResult CpuBufferConcatOp::verify() {
 
 InOutSignatureAttr::InOutSemantics
 CpuBufferConcatOp::getInOutSemantics(size_t index) {
-  assert(index < getNumOperands());
+  GENERICML_ASSERT(index < getNumOperands());
   return index == getOutBufferMutable().getOperandNumber()
              ? InOutSignatureAttr::kOut
              : InOutSignatureAttr::kIn;
@@ -646,7 +647,7 @@ LogicalResult CpuBufferSplitBorrowOp::verify() {
 
 InOutSignatureAttr::InOutSemantics
 CpuBufferSetOp::getInOutSemantics(size_t index) {
-  assert(index == 0);
+  GENERICML_ASSERT(index == 0);
   return InOutSignatureAttr::kOut;
 }
 
@@ -658,8 +659,9 @@ void CpuTensorSpecCreateOp::build(OpBuilder &odsBuilder,
                                   OperationState &odsState,
                                   CpuTensorSpecType spec,
                                   ValueRange runtimeDims) {
-  assert(spec.hasRank() && "can only construct an mgp.cpu.tensor_spec.create "
-                           "for tensor specs of statically known rank");
+  GENERICML_ASSERT(spec.hasRank())
+      << "can only construct an mgp.cpu.tensor_spec.create "
+         "for tensor specs of statically known rank";
   CpuTensorSpecCreateOp::build(odsBuilder, odsState,
                                /*runtimeDims=*/runtimeDims,
                                /*aRawDims=*/spec.getRawDims(),
@@ -704,7 +706,7 @@ LogicalResult CpuTensorSpecCreateOp::verify() {
       getBRawDType());
   if (impliedSpecType == nullptr)
     return failure();
-  assert(impliedSpecType.hasRank());
+  GENERICML_ASSERT(impliedSpecType.hasRank());
   CpuTensorSpecType actualSpecType = getResult().getType();
   if (actualSpecType != impliedSpecType)
     return emitOpError()
@@ -728,7 +730,7 @@ LogicalResult CpuTensorSpecCreateOp::inferReturnTypes(
       attributes.get(getARawDimsAttrName(name)));
   auto rawDTypeAttr = dyn_cast_if_present<IntegerAttr>(
       attributes.get(getBRawDTypeAttrName(name)));
-  assert(rawDimsAttr && rawDTypeAttr && "mismatched operand type");
+  GENERICML_ASSERT(rawDimsAttr && rawDTypeAttr) << "mismatched operand type";
   inferredReturnTypes.emplace_back(
       CpuTensorSpecType::get(rawDimsAttr, rawDTypeAttr));
   return success();
@@ -791,7 +793,7 @@ LogicalResult CpuTensorSpecCreateDynamicOp::inferReturnTypes(
   mlir::OperationName name(getOperationName(), context);
   auto rawDimsAttr = dyn_cast_if_present<IntArrayElementsAttr>(
       attributes.get(getRawDimsAttrName(name)));
-  assert(rawDimsAttr && "mismatched operand type");
+  GENERICML_ASSERT(rawDimsAttr) << "mismatched operand type";
   inferredReturnTypes.emplace_back(
       CpuTensorSpecType::get(rawDimsAttr, /*rawDTypeOrNull=*/{}));
   return success();
@@ -842,12 +844,12 @@ LogicalResult CpuTensorSpecWithDTypeOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  assert(operands.size() == 1 && "mismatched operand arity");
+  GENERICML_ASSERT(operands.size() == 1) << "mismatched operand arity";
   auto tensorSpec = dyn_cast<CpuTensorSpecType>(operands[0].getType());
-  assert(tensorSpec && "mismatched operand type");
+  GENERICML_ASSERT(tensorSpec) << "mismatched operand type";
   auto rawDTypeAttr = dyn_cast_if_present<IntegerAttr>(
       attributes.get(getRawDTypeAttrName(name)));
-  assert(rawDTypeAttr && "mismatched operand type");
+  GENERICML_ASSERT(rawDTypeAttr) << "mismatched operand type";
   // Result type is the tensor spec operand type but with rawDType as its dtype.
   inferredReturnTypes.emplace_back(
       CpuTensorSpecType::get(context, tensorSpec.getOptDims(),
@@ -899,7 +901,7 @@ LogicalResult CpuTensorSpecDimsDynamicOp::verify() {
   CpuTensorSpecType actualSpecType = getSpec().getType();
   CpuTensorSpecType impliedSpecType = CpuTensorSpecType::get(
       getContext(), getRawDims(), actualSpecType.getRawDType().getUInt());
-  assert(impliedSpecType.hasRank());
+  GENERICML_ASSERT(impliedSpecType.hasRank());
   if (actualSpecType != impliedSpecType)
     return emitOpError() << "expected tensor spec type is " << actualSpecType
                          << ", but static dimensions arguments "
@@ -917,9 +919,9 @@ LogicalResult CpuTensorSpecDimsDynamicOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  assert(operands.size() == 1 && "mismatched operand arity");
+  GENERICML_ASSERT(operands.size() == 1) << "mismatched operand arity";
   auto specType = dyn_cast<CpuTensorSpecType>(operands[0].getType());
-  assert(specType && "mismatched operand type");
+  GENERICML_ASSERT(specType) << "mismatched operand type";
   for (size_t i = 0, e = specType.getNumDynamicDims(); i < e; ++i)
     inferredReturnTypes.emplace_back(IndexType::get(context));
   return success();
@@ -964,9 +966,9 @@ LogicalResult CpuTensorExtractOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  assert(operands.size() == 1 && "mismatched operand arity");
+  GENERICML_ASSERT(operands.size() == 1) << "mismatched operand arity";
   auto tensorType = dyn_cast<CpuTensorType>(operands[0].getType());
-  assert(tensorType && "mismatched operand type");
+  GENERICML_ASSERT(tensorType) << "mismatched operand type";
   inferredReturnTypes.emplace_back(CpuBufferType::get(tensorType));
   inferredReturnTypes.emplace_back(tensorType.getTensorSpec());
   return success();
@@ -980,9 +982,9 @@ LogicalResult CpuTensorExtractShapeOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  assert(operands.size() == 1 && "mismatched operand arity");
+  GENERICML_ASSERT(operands.size() == 1) << "mismatched operand arity";
   auto tensorType = dyn_cast<CpuTensorType>(operands[0].getType());
-  assert(tensorType && "mismatched operand type");
+  GENERICML_ASSERT(tensorType) << "mismatched operand type";
   // Result type is tensor operand's tensor spec type but with unknown dtype.
   inferredReturnTypes.emplace_back(CpuTensorSpecType::get(
       context, tensorType.getTensorSpec().getOptDims(), std::nullopt));
@@ -1024,7 +1026,7 @@ LogicalResult CASLookupOp::inferReturnTypes(
   mlir::OperationName name(getOperationName(), context);
   auto rawSizeAttr = dyn_cast_if_present<IntegerAttr>(
       attributes.get(getCRawSizeAttrName(name)));
-  assert(rawSizeAttr && "mismatched operand types");
+  GENERICML_ASSERT(rawSizeAttr) << "mismatched operand types";
   inferredReturnTypes.emplace_back(CpuBufferType::get(context, rawSizeAttr));
   return success();
 }
@@ -1059,7 +1061,7 @@ LogicalResult CpuKernelExecuteOp::inferReturnTypes(
   uint64_t numOutDimensions = 0;
   if (auto attr = attributes.get(getENumOutDimensionsAttrName(name))) {
     auto dNumOutDimensionsAttr = dyn_cast<IntegerAttr>(attr);
-    assert(dNumOutDimensionsAttr && "mismatched operand types");
+    GENERICML_ASSERT(dNumOutDimensionsAttr) << "mismatched operand types";
     numOutDimensions = dNumOutDimensionsAttr.getUInt();
   }
   inferredReturnTypes.emplace_back(MEF::ChainType::get(context));
@@ -1136,7 +1138,7 @@ static bool isSubtype(Type ty1, Type ty2) {
 
 InOutSignatureAttr::InOutSemantics
 CpuKernelExecuteOp::getInOutSemantics(size_t index) {
-  assert(index < getNumOperands());
+  GENERICML_ASSERT(index < getNumOperands());
   const size_t firstArgsIndex = getTheContextMutable().getOperandNumber() + 1;
   const size_t endArgsIndex = firstArgsIndex + getArgs().size();
   if (index < firstArgsIndex || index >= endArgsIndex)
@@ -1381,7 +1383,7 @@ void ModelOp::build(OpBuilder &builder, OperationState &state,
         sym_name, extraAttrsDict);
 
   // The 'init' entry point has no arguments.
-  assert(implicitInitSignature(builder).getInputs().empty());
+  GENERICML_ASSERT(implicitInitSignature(builder).getInputs().empty());
   Region *initRegion = state.regions[0].get();
   initRegion->emplaceBlock();
 
@@ -1403,7 +1405,7 @@ LogicalResult ModelOp::verifyRegions() {
   Block *initBlock = getInitBlock();
   if (auto output = dyn_cast<MEF::OutputOp>(initBlock->getTerminator())) {
     FunctionType implicitInitSig = implicitInitSignature(builder);
-    assert(implicitInitSig.getInputs().empty());
+    GENERICML_ASSERT(implicitInitSig.getInputs().empty());
     if (!initBlock->getArgumentTypes().empty())
       return emitOpError()
              << "expected no arguments to the 'init' body, but got "

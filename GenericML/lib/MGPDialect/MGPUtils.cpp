@@ -8,6 +8,7 @@
 
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTypes.h"
+#include "GenericML/Support/Assert.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/Support/ErrorHandling.h"
 
@@ -31,18 +32,18 @@ TypedValue<MGP::ContextType> MGP::getContextForBlock(Block *block) {
       return createOp.getResult();
     }
     // Next, try one level up.
-    assert(!isa<ModelOp>(block->getParentOp()) &&
-           "unable to locate an !mgp.context");
+    GENERICML_ASSERT(!isa<ModelOp>(block->getParentOp()))
+        << "unable to locate an !mgp.context";
     block = block->getParentOp()->getBlock();
   }
-  assert(false && "unable to locate an !mgp.context");
+  GENERICML_ASSERT(false) << "unable to locate an !mgp.context";
 }
 
 void MGP::setInOutSignature(Operation *op, InOutSignatureAttr inOutSig) {
-  assert(!isa<MGPInOutSemanticsOpInterface>(op) &&
-         "op already implements MGPInOutSemanticsOpInterface");
-  assert(inOutSig.size() == op->getNumOperands() &&
-         "mismatched operation and in/out signature arity");
+  GENERICML_ASSERT(!isa<MGPInOutSemanticsOpInterface>(op))
+      << "op already implements MGPInOutSemanticsOpInterface";
+  GENERICML_ASSERT(inOutSig.size() == op->getNumOperands())
+      << "mismatched operation and in/out signature arity";
   op->setAttr(kInOutSigAttribute, inOutSig);
 }
 
@@ -62,8 +63,8 @@ MGP::getInOutSemantics(OpOperand &opOperand) {
   // All other ops may supply an #M.InOutSignature directly.
   if (auto inOutAttr =
           op->getAttrOfType<InOutSignatureAttr>(kInOutSigAttribute)) {
-    assert(inOutAttr.size() == op->getNumOperands() &&
-           "mismatched operation and in/out signature arity");
+    GENERICML_ASSERT(inOutAttr.size() == op->getNumOperands())
+        << "mismatched operation and in/out signature arity";
     return inOutAttr[opOperand.getOperandNumber()];
   }
 

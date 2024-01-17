@@ -6,6 +6,7 @@
 
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
+#include "GenericML/Support/Assert.h"
 
 using namespace M;
 using namespace M::MGP;
@@ -335,7 +336,8 @@ void MOOpLoweringState::createOutputs(
 
 BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {
   Value loweredTensor = loweringState.lookupExecuteLoweredValue(moTensor);
-  assert(loweredTensor && "referenced SSA value has not been lowered");
+  GENERICML_ASSERT(loweredTensor)
+      << "referenced SSA value has not been lowered";
   auto [buffer, tensorSpec] =
       getStorageBufferBuilder(moTensor.getType())
           ->tensorExtract(builder, loc, context, loweredTensor);
@@ -379,7 +381,7 @@ MOOpLoweringState::createOutputTensorSpecs() {
   tensorSpecs.reserve(opBeingLowered->getNumResults());
   for (Type type : opBeingLowered->getResults().getType()) {
     auto moTensorType = dyn_cast<MO::TensorType>(type);
-    assert(moTensorType && "result of op is not a !mo.tensor");
+    GENERICML_ASSERT(moTensorType) << "result of op is not a !mo.tensor";
     FailureOr<TypedValue<MGP::CpuTensorSpecType>> tensorSpecOr =
         createTensorSpec(moTensorType);
     if (failed(tensorSpecOr))
@@ -431,7 +433,7 @@ void MOOpLoweringState::createOutputTensors(
 
 BufferBuilder *MOOpLoweringState::getStorageBufferBuilder(Type moTensorType) {
   auto type = dyn_cast<MO::TensorType>(moTensorType);
-  assert(type && "expecting !mo.tensor type");
+  GENERICML_ASSERT(type) << "expecting !mo.tensor type";
   return loweringState.getBufferBuilder(
       MO::getDeviceOrDefault(loweringState.getGraph(), type));
 }

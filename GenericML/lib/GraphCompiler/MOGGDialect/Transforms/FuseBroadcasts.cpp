@@ -12,6 +12,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/Tensor.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Transforms/TopologicalSortUtils.h"
@@ -271,13 +272,13 @@ struct FuseBroadcastsPass
     Operation *newView = nullptr;
     for (auto op : leaf.getOps<MOGG::CallOp>()) {
       if (op->getNumResults() == 1 && op->getResult(0).use_empty()) {
-        assert(newView == nullptr &&
-               "More than one view op detected in kernel being fused.");
+        GENERICML_ASSERT(newView == nullptr)
+            << "More than one view op detected in kernel being fused.";
         newView = op;
       }
     }
-    assert(newView &&
-           "Kernel was marked as a view but could not find a view op");
+    GENERICML_ASSERT(newView)
+        << "Kernel was marked as a view but could not find a view op";
 
     leafBlock.getArgument(idx).replaceAllUsesWith(newView->getResult(0));
     leaf.removeOperandAtIndex(idx);

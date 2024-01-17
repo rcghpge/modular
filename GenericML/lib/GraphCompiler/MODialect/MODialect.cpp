@@ -8,6 +8,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/Interfaces/GraphInterfaces.h"
+#include "GenericML/Support/Assert.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
 #include "mlir/Parser/Parser.h"
 
@@ -63,7 +64,8 @@ ModuleOp MODialect::getShapeFuncModule() {
     StringRef source{reinterpret_cast<const char *>(MojoMoshBindings::data),
                      MojoMoshBindings::size};
     shapeFuncModule = mlir::parseSourceString<ModuleOp>(source, getContext());
-    assert(shapeFuncModule && "could not load the embedded shape functions");
+    GENERICML_ASSERT(shapeFuncModule)
+        << "could not load the embedded shape functions";
   }
   return *shapeFuncModule;
 }

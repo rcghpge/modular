@@ -8,6 +8,7 @@
 
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
+#include "GenericML/Support/Assert.h"
 #include "GraphRT/MEFDialect/MEFChainIndicatesFinishedInterface.h"
 #include "GraphRT/MEFDialect/MEFNonStrictInterface.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -93,7 +94,7 @@ static bool shouldStartVisiting(DenseMap<Operation *, bool> &visited,
   }
 #endif
 
-  assert(itr->second && "model contains cycle involving op");
+  GENERICML_ASSERT(itr->second) << "model contains cycle involving op";
   return false;
 };
 
@@ -143,8 +144,8 @@ static void startVisiting(DenseMap<Operation *, bool> &visited,
 static void finishVisiting(DenseMap<Operation *, bool> &visited,
                            Operation *currOp) {
   auto itr = visited.find(currOp);
-  assert(itr != visited.end() && "never started visiting op");
-  assert(!itr->second && "finishing already finished op");
+  GENERICML_ASSERT(itr != visited.end()) << "never started visiting op";
+  GENERICML_ASSERT(!itr->second) << "finishing already finished op";
   itr->second = true;
 };
 
@@ -373,7 +374,7 @@ static Value waitForChainsReusing(
     BufferBuilder *bufferBuilder,
     GRT::GRTGatedOnChainOpInterface existingUniqueChainCreateOp,
     ArrayRef<Value> chains) {
-  assert(!chains.empty());
+  GENERICML_ASSERT(!chains.empty());
 
   if (chains.size() == 1)
     return chains.front();
@@ -503,8 +504,8 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
 InitState::InitState(MLIRContext *context, Block *init)
     : init(init), builder(context) {
   init->walk([this](ContextCreateOp op) { contextCreateOp = op; });
-  assert(contextCreateOp &&
-         "model is missing mgp.context.create op in init block");
+  GENERICML_ASSERT(contextCreateOp)
+      << "model is missing mgp.context.create op in init block";
   builder.setInsertionPoint(&init->back());
 }
 
@@ -536,9 +537,9 @@ TypedValue<ContextType> InitState::getContext() {
 
 ExecuteState::ExecuteState(MLIRContext *context, Block *execute)
     : execute(execute), builder(context) {
-  assert(execute->getNumArguments() >= kExtraArgStartIdx);
-  assert(isa<MEF::ChainType>(execute->getArgument(0).getType()));
-  assert(isa<ContextType>(execute->getArgument(1).getType()));
+  GENERICML_ASSERT(execute->getNumArguments() >= kExtraArgStartIdx);
+  GENERICML_ASSERT(isa<MEF::ChainType>(execute->getArgument(0).getType()));
+  GENERICML_ASSERT(isa<ContextType>(execute->getArgument(1).getType()));
 }
 
 /// Returns 'root' chain, ie the first argument to the 'execute' block.

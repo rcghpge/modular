@@ -7,6 +7,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_CONVERSION_PARAMETERLOWERING_H
 #define GENERICML_GRAPHCOMPILER_CONVERSION_PARAMETERLOWERING_H
 
+#include "GenericML/Support/Assert.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -83,7 +84,7 @@ public:
       auto placeholder = lowered.getDefiningOp<PlaceholderOp>();
       // The parameter verification should ensure we don't have duplicate
       // declarations, so we just assert
-      assert(placeholder && "duplicate declaration of parameter");
+      GENERICML_ASSERT(placeholder) << "duplicate declaration of parameter";
 
       // Otherwise, we update the mapping and return the placeholder.
       loweredParams.erase(declRef);

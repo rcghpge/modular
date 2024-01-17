@@ -6,6 +6,7 @@
 
 #include "GenericML/Support/StateSlot.h"
 
+#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/BufferRef.h"
 #include "Support/AlignedAlloc.h"
 
@@ -16,7 +17,7 @@ BufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
                                        LLCL::CompactRuntimePtr runtime,
                                        size_t size,
                                        std::optional<size_t> alignment) {
-  assert(bufferIndex < bufferCache.size());
+  GENERICML_ASSERT(bufferIndex < bufferCache.size());
   auto &entry = bufferCache[bufferIndex];
   updateCacheIfNeeded(entry, runtime, size, alignment);
   // Return a borrowed reference to the cached buffer. Since it's in the
@@ -26,7 +27,7 @@ BufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
 }
 
 ErrorOr<BufferRef> StateSlot::getBuffer(size_t bufferIndex) {
-  assert(bufferIndex < bufferCache.size());
+  GENERICML_ASSERT(bufferIndex < bufferCache.size());
   auto &entry = bufferCache[bufferIndex];
   if (entry.getBuffer() == nullptr)
     return Error("no buffer has been cached at the given index");
@@ -37,10 +38,10 @@ ErrorOr<BufferRef> StateSlot::getBuffer(size_t bufferIndex) {
 }
 
 ErrorOrSuccess StateSlot::setBuffer(size_t bufferIndex, BufferRef bufferRef) {
-  assert(bufferIndex < bufferCache.size());
-  assert(bufferRef.getOwnership() == BufferRef::kOwned ||
-         (bufferRef.getOwnership() == BufferRef::kBorrowed &&
-          bufferRef.getLifetime() >= BufferRef::kExecute));
+  GENERICML_ASSERT(bufferIndex < bufferCache.size());
+  GENERICML_ASSERT(bufferRef.getOwnership() == BufferRef::kOwned ||
+                   (bufferRef.getOwnership() == BufferRef::kBorrowed &&
+                    bufferRef.getLifetime() >= BufferRef::kExecute));
   auto &entry = bufferCache[bufferIndex];
   if (entry.getBuffer() != nullptr)
     return Error("buffer has already been cached at the given index");

@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Support/CompiledKernelsContext.h"
+#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/BufferRef.h"
 #include "GenericML/Support/List.h"
 #include "GenericML/Support/Tensor.h"
@@ -142,8 +143,8 @@ ErrorOrSuccess CompiledKernelsContext::load(ArrayRef<uint8_t> binary,
 
 void CompiledKernelsContext::addKernel(StringRef name, size_t index,
                                        void *kernel) {
-  assert(kernels.size() == index &&
-         "All kernels must be added to symbol table at the same time.");
+  GENERICML_ASSERT(kernels.size() == index)
+      << "All kernels must be added to symbol table at the same time.";
   kernels.push_back(reinterpret_cast<CompiledKernelFn *>(kernel));
   symbolTable.push_back(name);
 }

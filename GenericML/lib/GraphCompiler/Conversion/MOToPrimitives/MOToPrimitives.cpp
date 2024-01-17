@@ -15,6 +15,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
+#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/HostDeviceSpecs.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
@@ -231,8 +232,9 @@ LogicalResult MOGraphLowering::setupBufferBuildersForAllDevices(Location loc) {
   // We must always establish the buffer builder for the 'host' first,
   // since it may be needed by other device-specific builders.
   DeviceSpecAttr hostDeviceSpec = deviceSpecsOr->getHostDeviceSpec();
-  assert(hostDeviceSpec.getRef() == getHostDevice(loweringState.getGraph()) &&
-         "The 'host' device must be a CPU");
+  GENERICML_ASSERT(hostDeviceSpec.getRef() ==
+                   getHostDevice(loweringState.getGraph()))
+      << "The 'host' device must be a CPU";
   // We always know how to work with the host CPU device.
   if (failed(makeCPUBufferBuilder(hostDeviceSpec)))
     return failure();
@@ -287,9 +289,9 @@ LogicalResult MOGraphLowering::createModelOp() {
       graph->getAttrOfType<ArrayAttr>(kMgpModelArgumentNames);
   ArrayAttr resultNamesAttr =
       graph->getAttrOfType<ArrayAttr>(kMgpModelResultNames);
-  assert((argNamesAttr == nullptr) == (resultNamesAttr == nullptr) &&
-         "expected either both or neither of the `argument_names` and "
-         "`result_names` attributes.");
+  GENERICML_ASSERT((argNamesAttr == nullptr) == (resultNamesAttr == nullptr))
+      << "expected either both or neither of the `argument_names` and "
+         "`result_names` attributes.";
   if (argNamesAttr) {
     // Set the `argument_names` and `result_names` attributes.
     extraAttrs.emplace_back(b.getStringAttr(kMgpModelArgumentNames),
@@ -352,7 +354,7 @@ LogicalResult MOGraphLowering::createModelOp() {
 MGP::ListType MOGraphLowering::lowerListType(MO::ListType listTy) {
   auto outputTensorTy = dyn_cast<MO::TensorType>(listTy.getElementType());
   // TODO support other element type
-  assert(outputTensorTy && "only support lowering list of tensors");
+  GENERICML_ASSERT(outputTensorTy) << "only support lowering list of tensors";
 
   MLIRContext *ctx = listTy.getContext();
   MGP::CpuTensorSpecType outputTensorSpecTy =
@@ -490,7 +492,8 @@ MOGraphLowering::lowerParamConstant(KGEN::ParamConstantOp paramConstOp) {
 
 LogicalResult
 MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
-  assert(MO::isOnHost(toTensorOp) && "mo.index.to_tensor is for host only");
+  GENERICML_ASSERT(MO::isOnHost(toTensorOp))
+      << "mo.index.to_tensor is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, toTensorOp);
 
   // Setup output buffer.
@@ -499,8 +502,8 @@ MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
   if (failed(loweredOutputStorageOr))
     return failure();
   auto &outputStorage = (*loweredOutputStorageOr)[0];
-  assert(isa<MGP::CpuBufferType>(outputStorage.buffer.getType()) &&
-         "expecting !mgp.cpu.buffer output");
+  GENERICML_ASSERT(isa<MGP::CpuBufferType>(outputStorage.buffer.getType()))
+      << "expecting !mgp.cpu.buffer output";
 
   // Fill the buffer with the index value.
   Value loweredIndexVal =
@@ -516,7 +519,8 @@ MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
 
 LogicalResult
 MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
-  assert(MO::isOnHost(toTensorOp) && "mo.shape.to_tensor is for host only");
+  GENERICML_ASSERT(MO::isOnHost(toTensorOp))
+      << "mo.shape.to_tensor is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, toTensorOp);
 
   // Setup output buffer.
@@ -525,8 +529,8 @@ MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
   if (failed(loweredOutputsStorageOr))
     return failure();
   auto &outputStorage = (*loweredOutputsStorageOr)[0];
-  assert(isa<MGP::CpuBufferType>(outputStorage.buffer.getType()) &&
-         "must be on CPU");
+  GENERICML_ASSERT(isa<MGP::CpuBufferType>(outputStorage.buffer.getType()))
+      << "must be on CPU";
 
   // Fill the buffer with the runtime dimensions.
   auto loweredShape =
@@ -769,7 +773,8 @@ LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
 }
 
 LogicalResult MOGraphLowering::lowerListAppend(MO::ListAppendOp listAppendOp) {
-  assert(MO::isOnHost(listAppendOp) && "mo.list.append is for host only");
+  GENERICML_ASSERT(MO::isOnHost(listAppendOp))
+      << "mo.list.append is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, listAppendOp);
 
   // Collect lowered inputs.
@@ -790,7 +795,8 @@ LogicalResult MOGraphLowering::lowerListAppend(MO::ListAppendOp listAppendOp) {
 }
 
 LogicalResult MOGraphLowering::lowerListCreate(MO::ListCreateOp listCreateOp) {
-  assert(MO::isOnHost(listCreateOp) && "mo.list.create is for host only");
+  GENERICML_ASSERT(MO::isOnHost(listCreateOp))
+      << "mo.list.create is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, listCreateOp);
 
   // Collect lowered input tensors
@@ -811,7 +817,7 @@ LogicalResult MOGraphLowering::lowerListCreate(MO::ListCreateOp listCreateOp) {
 }
 
 LogicalResult MOGraphLowering::lowerListGet(MO::ListGetOp listGetOp) {
-  assert(MO::isOnHost(listGetOp) && "mo.list.get is for host only");
+  GENERICML_ASSERT(MO::isOnHost(listGetOp)) << "mo.list.get is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, listGetOp);
 
   // Collect lowered inputs.
@@ -829,7 +835,8 @@ LogicalResult MOGraphLowering::lowerListGet(MO::ListGetOp listGetOp) {
 }
 
 LogicalResult MOGraphLowering::lowerListInsert(MO::ListInsertOp listInsertOp) {
-  assert(MO::isOnHost(listInsertOp) && "mo.list.insert is for host only");
+  GENERICML_ASSERT(MO::isOnHost(listInsertOp))
+      << "mo.list.insert is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, listInsertOp);
 
   // Collect lowered inputs.
@@ -852,7 +859,7 @@ LogicalResult MOGraphLowering::lowerListInsert(MO::ListInsertOp listInsertOp) {
 }
 
 LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
-  assert(MO::isOnHost(ifOp) && "mo.if is for host only");
+  GENERICML_ASSERT(MO::isOnHost(ifOp)) << "mo.if is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, ifOp);
 
   // We'll need to thread the current 'execute' chain through the if
@@ -914,7 +921,7 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
 }
 
 LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
-  assert(MO::isOnHost(whileOp) && "mo.while is for host only");
+  GENERICML_ASSERT(MO::isOnHost(whileOp)) << "mo.while is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, whileOp);
 
   // We'll need to thread the current 'execute' chain through the while loop's
@@ -999,12 +1006,13 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   {
     auto origYieldOp =
         cast<MO::YieldOp>(whileOp.getCondRegion().front().getTerminator());
-    assert(origYieldOp->getNumOperands() == 1); // condition
+    GENERICML_ASSERT(origYieldOp->getNumOperands() == 1); // condition
     Type condMoTensorType = origYieldOp.getOperand(0).getType();
 
     auto loweredCondOutputOp = cast<MEF::OutputOp>(
         loweredWhileOp.getCondRegion().front().getTerminator());
-    assert(loweredCondOutputOp->getNumOperands() == 2); // chain, condition
+    GENERICML_ASSERT(loweredCondOutputOp->getNumOperands() ==
+                     2); // chain, condition
     Value loweredOutputChain = loweredCondOutputOp->getOperand(0);
     Value loweredCondTensor = loweredCondOutputOp->getOperand(1);
 
@@ -1034,7 +1042,8 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   }
 
   // Capture the lowered outputs.
-  assert(loweredWhileOp.getNumResults() == 1 + whileOp.getNumResults());
+  GENERICML_ASSERT(loweredWhileOp.getNumResults() ==
+                   1 + whileOp.getNumResults());
   loweringState.setCurrentExecuteChain(loweredWhileOp.getResult(0));
   loweringState.setRootExecuteChain(rootChain);
   for (auto [origResult, loweredResult] : llvm::zip(

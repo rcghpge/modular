@@ -14,6 +14,7 @@
 
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPTransforms/IndexSet.h"
+#include "GenericML/Support/Assert.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Builders.h"
@@ -173,7 +174,7 @@ public:
       }
     });
 
-    assert(itr != relation.end());
+    GENERICML_ASSERT(itr != relation.end());
     return itr->second;
   }
 
@@ -203,7 +204,7 @@ public:
         llvm::dbgs() << "\n";
       }
     });
-    assert(itr != relation.end());
+    GENERICML_ASSERT(itr != relation.end());
     return itr->second.test(0); // distinguished always has index 0
   }
 
@@ -217,7 +218,7 @@ public:
         llvm::dbgs() << "\n";
       }
     });
-    assert(itr != relation.end());
+    GENERICML_ASSERT(itr != relation.end());
     return index->setContains(itr->second, rhs);
   }
 
@@ -259,7 +260,7 @@ public:
     } else {
       // Even if we are setting to empty within a fixed-point iteration, an
       // empty entry must always be empty.
-      assert(itr->second.count() == 0);
+      GENERICML_ASSERT(itr->second.count() == 0);
     }
   }
 
@@ -289,7 +290,7 @@ public:
         llvm::dbgs() << "\n";
       }
     });
-    assert(itr != domainMap.relation.end());
+    GENERICML_ASSERT(itr != domainMap.relation.end());
 
     LLVM_DEBUG({
       llvm::dbgs() << "leastUpperBoundEntries(";
@@ -330,7 +331,7 @@ public:
         llvm::dbgs() << "\n";
       }
     });
-    assert(itr != relation.end());
+    GENERICML_ASSERT(itr != relation.end());
     index->addToSet(itr->second, rhs);
   }
 
@@ -344,7 +345,7 @@ public:
         llvm::dbgs() << "\n";
       }
     });
-    assert(itr != relation.end());
+    GENERICML_ASSERT(itr != relation.end());
     itr->second |= set;
   }
 

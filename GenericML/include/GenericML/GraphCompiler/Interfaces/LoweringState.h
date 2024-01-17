@@ -19,6 +19,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/MGPDialect/BufferBuilder.h"
+#include "GenericML/Support/Assert.h"
 #include "GraphRT/MIPDialect/MIPOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/DialectInterface.h"
@@ -142,7 +143,7 @@ public:
   // Initializes the client state, only to be called once.
   template <typename T>
   void initClientState(T &&initState) {
-    assert(!hasClientState());
+    GENERICML_ASSERT(!hasClientState());
     clientState = std::make_unique<T>(std::forward<T>(initState));
   }
 
@@ -255,7 +256,8 @@ public:
 
   /// Returns the check runtime op.
   MGP::CheckRuntimeOp getCheckRuntimeOp() {
-    assert(init.checkRuntimeOp && "no mgp.check.runtime op has been emitted");
+    GENERICML_ASSERT(init.checkRuntimeOp)
+        << "no mgp.check.runtime op has been emitted";
     return init.checkRuntimeOp;
   }
 

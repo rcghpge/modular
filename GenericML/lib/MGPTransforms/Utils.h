@@ -9,6 +9,7 @@
 
 #include "GenericML/MGPDialect/BufferBuilder.h"
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/Support/Assert.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Builders.h"
@@ -24,7 +25,7 @@ namespace M::MGP {
 template <typename T>
 T cloneWithArgs(OpBuilder &builder, T origOp, TypeRange resultTypes,
                 ValueRange operands) {
-  assert(!origOp->hasSuccessors());
+  GENERICML_ASSERT(!origOp->hasSuccessors());
   Operation *newOp =
       Operation::create(/*location=*/origOp->getLoc(),
                         /*name=*/origOp->getName(),
@@ -36,7 +37,7 @@ T cloneWithArgs(OpBuilder &builder, T origOp, TypeRange resultTypes,
                         /*numRegions=*/origOp->getNumRegions());
   builder.insert(newOp);
   T result = dyn_cast<T>(newOp);
-  assert(result);
+  GENERICML_ASSERT(result);
   return result;
 }
 

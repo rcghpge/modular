@@ -12,6 +12,7 @@
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "GenericML/MGPTransforms/IndexSet.h"
+#include "GenericML/Support/Assert.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "mlir/IR/Builders.h"
@@ -701,10 +702,11 @@ class ExecInvariantCodeMotionPass
         operationIndex->printV(llvm::dbgs(), op);
         llvm::dbgs() << "\n";
       });
-      assert(!unliftableOps.contains(op) &&
-             "attempting to clone an op which is unliftable");
-      assert(isRecomputableOp(op) &&
-             "attempting to clone an op which is not recomputable");
+      GENERICML_ASSERT(!unliftableOps.contains(op))
+          << "attempting to clone an op (" << *op << ") which is unliftable";
+      GENERICML_ASSERT(isRecomputableOp(op))
+          << "attempting to clone an op (" << *op
+          << ") which is not recomputable";
 
       // Although not required, this makes debugging easier.
       executeState->builder.setInsertionPoint(op);
@@ -763,9 +765,10 @@ class ExecInvariantCodeMotionPass
           // completed in the 'init' block before *all* buffers are cached.
           for (OpOperand &use : op->getUses()) {
             if (isMutated(use)) {
-              assert(!isOpOperandUnliftable(use) &&
-                     "attempting to lift buffer which will be further mutated "
-                     "in the 'execute' block");
+              GENERICML_ASSERT(!isOpOperandUnliftable(use))
+                  << "attempting to lift buffer (" << *op
+                  << ") which will be further mutated "
+                     "in the 'execute' block";
               for (Value res : use.getOwner()->getResults()) {
                 if (isa<MEF::MEFChainTypeInterface>(res.getType())) {
                   BufferBuilder *bufferBuilder =
@@ -812,9 +815,10 @@ class ExecInvariantCodeMotionPass
         }
 
       } else {
-        assert(isRecomputableOp(op) &&
-               "attempting to lift an op which is neither a liftable chain or "
-               "buffer op, nor a recomputable op");
+        GENERICML_ASSERT(isRecomputableOp(op))
+            << "attempting to lift an op (" << *op
+            << ") which is neither a liftable chain or "
+               "buffer op, nor a recomputable op";
         // Note that the op may have been cloned by the first pass.
       }
 
@@ -854,8 +858,8 @@ class ExecInvariantCodeMotionPass
   }
 
   void runOnOperation() override {
-    assert(!initState && !executeState && !valueIndex && !operandIndex &&
-           !operationIndex && !builderContext);
+    GENERICML_ASSERT(!initState && !executeState && !valueIndex &&
+                     !operandIndex && !operationIndex && !builderContext);
     ModelOp modelOp = getOperation();
     InitState theInitState(modelOp.getContext(), modelOp.getInitBlock());
     initState = &theInitState;

@@ -6,6 +6,7 @@
 
 #include "GenericML/MGPDialect/MGPTypes.h"
 #include "GenericML/MGPDialect/MGPDialect.h"
+#include "GenericML/Support/Assert.h"
 #include "Support/Compiler/MLIRDType.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
@@ -203,9 +204,9 @@ IntegerAttr CpuBufferType::getRawSize() const {
 /// Implements ShapedType::cloneWith
 ShapedType CpuBufferType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                     Type elementType) const {
-  assert(!shape && "cannot change shape in CpuBufferType::cloneWith");
-  assert(elementType.isUnsignedInteger(8) &&
-         "invalid dtype for CpuBufferType::cloneWith");
+  GENERICML_ASSERT(!shape) << "cannot change shape in CpuBufferType::cloneWith";
+  GENERICML_ASSERT(elementType.isUnsignedInteger(8))
+      << "invalid dtype for CpuBufferType::cloneWith";
   return CpuBufferType::get(getContext(), getOptSize());
 }
 
@@ -364,8 +365,9 @@ CpuTensorSpecType CpuTensorSpecType::get(ArrayRef<int64_t> shape,
                                          Type elementType) {
   ErrorOr<std::optional<DType>> errOrDType =
       DTypeType::fromMlirType(elementType);
-  assert(errOrDType.getError() == nullptr &&
-         "element type is not representable as a DType");
+  GENERICML_ASSERT(!errOrDType.isError())
+      << "element type is not representable as a DType: "
+      << errOrDType.takeError();
 
   SmallVector<std::optional<uint64_t>> dims;
   dims.reserve(shape.size());
@@ -391,8 +393,9 @@ CpuTensorSpecType CpuTensorSpecType::getChecked(
 CpuTensorSpecType CpuTensorSpecType::get(Type elementType) {
   ErrorOr<std::optional<DType>> errOrDType =
       DTypeType::fromMlirType(elementType);
-  assert(errOrDType.getError() == nullptr &&
-         "element type is not representable as a DType");
+  GENERICML_ASSERT(!errOrDType.isError())
+      << "element type is not representable as a DType: "
+      << errOrDType.takeError();
   return CpuTensorSpecType::get(elementType.getContext(),
                                 /*hasRank=*/false, {}, *errOrDType, {});
 }
@@ -464,7 +467,7 @@ Type CpuTensorSpecType::getElementType() const {
 
 /// ShapedTypeInterface::getShape.
 ArrayRef<int64_t> CpuTensorSpecType::getShape() const {
-  assert(getHasRank() && "tensor spec is dynamically ranked");
+  GENERICML_ASSERT(getHasRank()) << "tensor spec is dynamically ranked";
   return getShapeOrEmpty();
 }
 
@@ -477,7 +480,7 @@ CpuTensorSpecType::getOptDims() const {
 }
 
 ArrayRef<std::optional<uint64_t>> CpuTensorSpecType::getDims() const {
-  assert(getHasRank() && "tensor spec is dynamically ranked");
+  GENERICML_ASSERT(getHasRank()) << "tensor spec is dynamically ranked";
   return getDimsOrEmpty();
 }
 
@@ -488,7 +491,7 @@ size_t CpuTensorSpecType::getNumDynamicDims() const {
 }
 
 std::optional<uint64_t> CpuTensorSpecType::operator[](size_t i) const {
-  assert(i < getDims().size() && "shape index out of range");
+  GENERICML_ASSERT(i < getDims().size()) << "shape index out of range";
   return getDims()[i];
 }
 
@@ -522,7 +525,7 @@ std::optional<uint64_t> CpuTensorSpecType::getSizeInBytes() const {
   if (!numElems)
     return {}; // dynamic rank or dimension
   ssize_t bytes = optDType->getSizeInBytes(plainSizeToRuntimeSize(*numElems));
-  assert(bytes >= 0 && "overflow in getSizeInBytes");
+  GENERICML_ASSERT(bytes >= 0) << "overflow in getSizeInBytes";
   return static_cast<uint64_t>(bytes);
 }
 
@@ -532,7 +535,7 @@ std::optional<uint64_t> CpuTensorSpecType::getPreScaledSizeInBytes() const {
     return {}; // dynamic dtype
   uint64_t numElems = getPreScaledNumElements();
   ssize_t bytes = optDType->getSizeInBytes(plainSizeToRuntimeSize(numElems));
-  assert(bytes >= 0 && "overflow in getPreScaledSizeInBytes");
+  GENERICML_ASSERT(bytes >= 0) << "overflow in getPreScaledSizeInBytes";
   return static_cast<uint64_t>(bytes);
 }
 

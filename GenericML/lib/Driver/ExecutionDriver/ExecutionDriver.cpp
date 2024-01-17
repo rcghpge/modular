@@ -8,6 +8,7 @@
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "GenericML/Driver/DriverInternals.h"
 #include "GenericML/FormatYAML/FormatYAML.h"
+#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/ResultInfo.h"
 #include "GenericML/Support/Tensor.h"
@@ -160,7 +161,7 @@ static void
 convertResultsToGenericValues(const ExecutableModel *model,
                               MutableArrayRef<AnyAsyncValueRef> results) {
   for (auto &result : results) {
-    assert(result.isReady() && "tensor result should be ready");
+    GENERICML_ASSERT(result.isReady()) << "tensor result should be ready";
     if (result.isError() || result.isType<GML::Tensor>())
       continue;
     result = model->convertToGenericValue(std::move(result));
@@ -228,12 +229,12 @@ static LogicalResult outputResults(const ExecutableModel *model,
                                    Kernels::ResultOutputStyle outputStyle,
                                    unsigned precision, StringRef outputDir) {
   // We expect the first result to be a chain.
-  assert(!results.empty() && "must have at least one result");
+  GENERICML_ASSERT(!results.empty()) << "must have at least one result";
   const AnyAsyncValueRef &ch = results.front();
   if (failed(printDiagIfError(ch)))
     return mlir::failure();
-  assert(ch.isValueAvailable() && isa<Chain>(ch) &&
-         "first result must be a chain");
+  GENERICML_ASSERT(ch.isValueAvailable() && isa<Chain>(ch))
+      << "first result must be a chain";
   results = results.drop_front();
 
   if (results.empty())
@@ -245,7 +246,7 @@ static LogicalResult outputResults(const ExecutableModel *model,
   bool allResultsReady =
       std::all_of(results.begin(), results.end(),
                   [](AnyAsyncValueRef &result) { return result.isReady(); });
-  assert(allResultsReady && "model result must be ready");
+  GENERICML_ASSERT(allResultsReady) << "model result must be ready";
 
   // If --result-output-style=binary, write output tensors to files and return.
   if (outputStyle == Kernels::ResultOutputStyle::kBinary) {
@@ -359,12 +360,12 @@ static ErrorOrSuccess populateTensorResults(
     MLIRContext *context, llvm::SmallVector<void *> &outputs) {
   // We expect the first result to be a chain
   const AnyAsyncValueRef &ch = results.front();
-  assert(ch.isReady() && !ch.isError() && isa<Chain>(ch) &&
-         "first result must be a ready non-error chain");
+  GENERICML_ASSERT(ch.isReady() && !ch.isError() && isa<Chain>(ch))
+      << "first result must be a ready non-error chain";
   results = results.drop_front();
 
-  assert(outputs.size() == results.size() &&
-         "Wrong number of outputs in the model.");
+  GENERICML_ASSERT(outputs.size() == results.size())
+      << "Wrong number of outputs in the model.";
 
   if (results.empty())
     return success();
@@ -374,8 +375,8 @@ static ErrorOrSuccess populateTensorResults(
   size_t outIdx = 0;
 
   for (const AnyAsyncValueRef &result : results) {
-    assert(result.isReady() && !result.isError() &&
-           "model result must be ready and non-error");
+    GENERICML_ASSERT(result.isReady() && !result.isError())
+        << "model result must be ready and non-error";
     auto *tensor = dyn_cast<GML::Tensor>(result);
     if (!tensor)
       return Error("model result is not a GML::Tensor");
@@ -727,8 +728,10 @@ M::runModelWithData(MLIRContext *ctx, const Model *model,
                     const ExecutorDriverCLOptions &options,
                     const llvm::SmallVector<const void *> &inputs,
                     llvm::SmallVector<void *> &outputs) {
-  assert(inputs.size() == model->getInputSpecs().size() &&
-         "Wrong number of inputs to the model.");
+  GENERICML_ASSERT(inputs.size() == model->getInputSpecs().size())
+      << "Wrong number of inputs to the model. Model expects "
+      << model->getInputSpecs().size() << " but " << inputs.size()
+      << " provided.";
 
   // Make sure any borrowed strings accumulated during profiling are
   // converted to owned strings before the MEFFile they are borrowed from

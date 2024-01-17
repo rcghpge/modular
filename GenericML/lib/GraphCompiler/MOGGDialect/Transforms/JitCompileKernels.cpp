@@ -44,7 +44,8 @@ struct JitCompileKernels
 
     auto mojoLibraryAnalysisOrErr =
         MOGG::MojoLibraryAnalysis::get(ctx, kernelLibraryPaths);
-    assert(!mojoLibraryAnalysisOrErr.isError());
+    GENERICML_ASSERT(!mojoLibraryAnalysisOrErr.isError())
+        << mojoLibraryAnalysisOrErr.takeError();
     MOGG::MojoLibraryAnalysis mojoLibraryAnalysis =
         mojoLibraryAnalysisOrErr.takeValue();
 

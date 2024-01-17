@@ -12,6 +12,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/GraphCompiler/Matchers.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
+#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/DataflowUtils.h"
 #include "GenericML/Support/Dims.h"
 #include "KGEN/KGENDialect/KGENOps.h"
@@ -191,8 +192,8 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     // Make sure we don't drop parameter declarations from the original
     // argNonzero.
     ArrayRef<ParamDeclAttr> oldDecls = argNonzeroOp.getOutputParamDecls();
-    assert(oldDecls.size() == 1 &&
-           "mo.argNonzero declares more than one new param");
+    GENERICML_ASSERT(oldDecls.size() == 1)
+        << "mo.argNonzero declares more than one new param";
     argNonzeroOp.setOutputParamDecls({});
     auto numResAttr = KGEN::ParamOperatorAttr::get(
         KGEN::POC::MulNuw, SmallVector<TypedAttr>{bsAttr, wRef});
@@ -1646,7 +1647,7 @@ struct SplitAndSqueezesPattern
     // are compatible with the new result types.
     // TODO(#13348) remove once we have shape inference for SplitOp
     for (Value res : newSplitOp.getResults()) {
-      assert(res.hasOneUse() && "guards should've enforced this");
+      GENERICML_ASSERT(res.hasOneUse()) << "guards should've enforced this";
       if (auto rebindOp = dyn_cast<RebindOp>(*res.user_begin())) {
         TensorType oldResTy = rebindOp.getResult().getType();
         TensorType newResTy = permuteDims(oldResTy, permVec);
@@ -2285,7 +2286,7 @@ struct SinkSplitThroughElementwisePattern
                 op, "Input to the static broadcast must be a constant");
           }
         }
-        assert(constantOp);
+        GENERICML_ASSERT(constantOp);
 
         constantsToConcatenate.push_back(constantOp.getResult());
         auto constantOpType = constantOp.getType().cast<TensorType>();

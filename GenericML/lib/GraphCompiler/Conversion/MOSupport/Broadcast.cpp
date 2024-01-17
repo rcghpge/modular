@@ -8,6 +8,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
+#include "GenericML/Support/Assert.h"
 
 namespace M::MO {
 
@@ -16,8 +17,9 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
                                   TensorValue to) {
   Type elemType = builder.getIntegerType(64, /*isSigned=*/true);
 
-  assert(reshapeType.hasRank() &&
-         "reshapeType needs to be a statically ranked tensor type");
+  GENERICML_ASSERT(reshapeType.hasRank())
+      << "reshapeType needs to be a statically ranked tensor type but it is "
+      << reshapeType;
   auto type = TensorType::get({(int64_t)reshapeType.getRank()}, elemType);
 
   auto valueAttr = builder.getAttr<IntArrayElementsAttr>(
@@ -80,13 +82,13 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
 
   // Get the shapes of the inputs at runtime
   TensorType xType = x.getType();
-  assert(xType.hasRank());
+  GENERICML_ASSERT(xType.hasRank());
 
   auto xShape = builder.create<MO::ShapeOfOp>(
       x.getLoc(), TensorType::get({(int64_t)xType.getRank()}, intType), x);
 
   TensorType yType = y.getType();
-  assert(yType.hasRank());
+  GENERICML_ASSERT(yType.hasRank());
   auto yShape = builder.create<MO::ShapeOfOp>(
       y.getLoc(), TensorType::get({(int64_t)yType.getRank()}, intType), y);
 
@@ -111,17 +113,17 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
 
   // Get the shapes of the inputs at runtime
   TensorType xType = x.getType();
-  assert(xType.hasRank());
+  GENERICML_ASSERT(xType.hasRank());
   auto xShape = builder.create<MO::ShapeOfOp>(
       x.getLoc(), TensorType::get({(int64_t)xType.getRank()}, intType), x);
 
   TensorType yType = y.getType();
-  assert(yType.hasRank());
+  GENERICML_ASSERT(yType.hasRank());
   auto yShape = builder.create<MO::ShapeOfOp>(
       y.getLoc(), TensorType::get({(int64_t)yType.getRank()}, intType), y);
 
   TensorType zType = z.getType();
-  assert(zType.hasRank());
+  GENERICML_ASSERT(zType.hasRank());
   auto zShape = builder.create<MO::ShapeOfOp>(
       z.getLoc(), TensorType::get({(int64_t)zType.getRank()}, intType), z);
 
@@ -154,13 +156,14 @@ reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
   if ((xShape == yShape) && (xShape.hasStaticShape()))
     return {x, y};
 
-  assert(xShape.hasRank() && yShape.hasRank() &&
-         "broadcasting does not support dynamic rank");
+  GENERICML_ASSERT(xShape.hasRank() && yShape.hasRank())
+      << "broadcasting does not support dynamic rank";
 
   ErrorOr<ShapeAttr> errorOrBcastCommonShape = ShapeAttr::broadcastShapes(
       xShape.getTypedShapeAttr(), yShape.getTypedShapeAttr());
 
-  assert(!errorOrBcastCommonShape.isError() && "the shapes are incompatible");
+  GENERICML_ASSERT(!errorOrBcastCommonShape.isError())
+      << "the shapes are incompatible: " << errorOrBcastCommonShape.takeError();
 
   ShapeAttr bcastCommonShape = *errorOrBcastCommonShape;
 
@@ -184,17 +187,20 @@ reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
   if ((xShape == yShape) && (yShape == zShape) && (xShape.hasStaticShape()))
     return {x, y, z};
 
-  assert(xShape.hasRank() && yShape.hasRank() && zShape.hasRank() &&
-         "broadcasting does not support dynamic rank");
+  GENERICML_ASSERT(xShape.hasRank() && yShape.hasRank() && zShape.hasRank())
+      << "broadcasting does not support dynamic rank";
 
   ErrorOr<ShapeAttr> errorOrXYBcastCommonShape = ShapeAttr::broadcastShapes(
       xShape.getTypedShapeAttr(), yShape.getTypedShapeAttr());
-  assert(!errorOrXYBcastCommonShape.isError() && "the shapes are incompatible");
+  GENERICML_ASSERT(!errorOrXYBcastCommonShape.isError())
+      << "the shapes are incompatible: "
+      << errorOrXYBcastCommonShape.takeError();
 
   ErrorOr<ShapeAttr> errorOrBcastCommonShape = ShapeAttr::broadcastShapes(
       *errorOrXYBcastCommonShape, zShape.getTypedShapeAttr());
 
-  assert(!errorOrBcastCommonShape.isError() && "the shapes are incompatible");
+  GENERICML_ASSERT(!errorOrBcastCommonShape.isError())
+      << "the shapes are incompatible: " << errorOrBcastCommonShape.takeError();
 
   ShapeAttr bcastCommonShape = *errorOrBcastCommonShape;
 
@@ -215,8 +221,8 @@ TensorValue broadcastTo(OpBuilder &builder, Location loc, TensorValue x,
                         TensorValue y) {
   auto [newX, newY] = reifyImplicitBroadcasting(builder, loc, x, y);
 
-  assert((newY.getType() == unifyShapeType(y.getType())) &&
-         "don't use this helper unless you can guarantee x broadcasts to y");
+  GENERICML_ASSERT(newY.getType() == unifyShapeType(y.getType()))
+      << "don't use this helper unless you can guarantee x broadcasts to y";
 
   return newX;
 }

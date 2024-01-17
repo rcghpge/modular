@@ -7,6 +7,7 @@
 #ifndef GENERICML_SUPPORT_CONTEXT_H
 #define GENERICML_SUPPORT_CONTEXT_H
 
+#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/StateSlot.h"
 #include "Support/AlignedAlloc.h"
 
@@ -50,7 +51,8 @@ public:
 
   /// Returns true if the state slot at slotIndex has been set or emplaced.
   bool hasStateSlot(size_t slotIndex) {
-    assert(slotIndex < stateSlots.size() && "slotIndex is out of range");
+    GENERICML_ASSERT(slotIndex < stateSlots.size())
+        << "slotIndex is out of range";
     return stateSlots[slotIndex];
   }
 
@@ -64,8 +66,8 @@ public:
   /// allocations, which will all initially be null.
   template <typename T>
   T &setStateSlot(size_t slotIndex, RCRef<T> payload, size_t numBuffers = 0) {
-    assert(!stateSlots[slotIndex] &&
-           "StateSlot for the given slot has already been set or emplaced.");
+    GENERICML_ASSERT(!stateSlots[slotIndex])
+        << "StateSlot for the given slot has already been set or emplaced.";
     stateSlots[slotIndex].reset<T>(std::move(payload), numBuffers);
     return stateSlots[slotIndex].get<T>();
   }
@@ -76,8 +78,8 @@ public:
   /// initially be null.
   template <typename T, typename... Args>
   T &emplaceStateSlot(size_t slotIndex, size_t numBuffers, Args &&...args) {
-    assert(!stateSlots[slotIndex] &&
-           "StateSlot for the given slot has already been set or emplaced.");
+    GENERICML_ASSERT(!stateSlots[slotIndex])
+        << "StateSlot for the given slot has already been set or emplaced.";
     stateSlots[slotIndex].reset<T>(
         RCRef<T>::create(std::forward<Args>(args)...), numBuffers);
     return stateSlots[slotIndex].get<T>();
@@ -86,9 +88,10 @@ public:
   /// Returns the state slot at slotIndex. The state slot must have already
   /// been emplaced.
   StateSlot &getStateSlot(size_t slotIndex) {
-    assert(slotIndex < stateSlots.size() && "slotIndex is out of range");
-    assert(stateSlots[slotIndex] &&
-           "StateSlot for the given slot has not been set or emplaced");
+    GENERICML_ASSERT(slotIndex < stateSlots.size())
+        << "slotIndex is out of range";
+    GENERICML_ASSERT(stateSlots[slotIndex])
+        << "StateSlot for the given slot has not been set or emplaced";
     return stateSlots[slotIndex];
   }
 

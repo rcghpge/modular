@@ -9,6 +9,7 @@
 #include "Cache/CacheDialect/CacheAttrs.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
+#include "GenericML/Support/Assert.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "mlir/IR/Builders.h"
@@ -88,7 +89,7 @@ class ConcatInPlacePass
       // For each concat input buffer...
       for (Value inBuffer : concatOp.getInBuffers()) {
         auto bufferType = dyn_cast<MGP::CpuBufferType>(inBuffer.getType());
-        assert(bufferType);
+        GENERICML_ASSERT(bufferType);
         rawSizes.emplace_back(optSizeToRawSize(bufferType.getOptSize()));
         bufferTypes.emplace_back(bufferType);
         if (!bufferType.getOptSize()) {
@@ -116,7 +117,8 @@ class ConcatInPlacePass
                     concatOp->getLoc(),
                     /*spec=*/reallocSpecOp.getRuntimeSpec()));
           } else {
-            assert(false && "unexpected buffer allocation op");
+            GENERICML_ASSERT(false) << "unexpected buffer allocation op "
+                                    << *inBuffer.getDefiningOp();
           }
         }
       }
@@ -131,7 +133,9 @@ class ConcatInPlacePass
       // DeferAllocsPass
       Value blockRootChain =
           concatOp.getResult().getParentBlock()->getArgument(0);
-      assert(isa<MEF::ChainType>(blockRootChain.getType()));
+      GENERICML_ASSERT(isa<MEF::ChainType>(blockRootChain.getType()))
+          << "Block root should be a MEF::ChainType but it is a "
+          << blockRootChain.getType();
       allocOutputOp.setInChain(blockRootChain);
 
       // We are now ready to create the split op.

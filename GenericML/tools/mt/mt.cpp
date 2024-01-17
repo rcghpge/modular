@@ -8,6 +8,7 @@
 #include "GenericML/Driver/CXXDriverAPI.h"
 #include "GenericML/Driver/DriverAPI.h"
 #include "GenericML/Driver/DriverInputFormat.h"
+#include "GenericML/Support/Assert.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/Process.h"
 #include "llvm/ADT/StringExtras.h"
@@ -351,10 +352,10 @@ int main(int argc, char **argv) {
 
     // Otherwise we must be getting op-level information about the model or
     // executing the model.
-    assert((options.command == DriverCommand::printMetadata ||
-            options.command == DriverCommand::printConstantMetadata ||
-            options.command == DriverCommand::execute) &&
-           "unknown command");
+    GENERICML_ASSERT((options.command == DriverCommand::printMetadata ||
+                      options.command == DriverCommand::printConstantMetadata ||
+                      options.command == DriverCommand::execute))
+        << "unknown command ";
 
     auto binaryFileOr = dylib.openBinaryFile(frameworkCtx, *inputInfo.file);
     if (failed(binaryFileOr))

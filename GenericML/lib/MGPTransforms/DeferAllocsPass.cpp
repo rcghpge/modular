@@ -9,6 +9,7 @@
 #include "Cache/CacheDialect/CacheAttrs.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
+#include "GenericML/Support/Assert.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
@@ -68,8 +69,9 @@ class DeferAllocsPass : public impl::DeferAllocsPassBase<DeferAllocsPass> {
             execState.builder.setInsertionPoint(allocOp);
             auto res = alsoWaitForChains(execState.builder, builderContext,
                                          allocOp, {mutatorInChain});
-            assert(succeeded(res) && "all allocation ops must accept an input "
-                                     "chain to control their timing");
+            GENERICML_ASSERT(succeeded(res))
+                << "all allocation ops must accept an input "
+                   "chain to control their timing";
           }
         }
       }

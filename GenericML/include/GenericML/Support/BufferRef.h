@@ -7,6 +7,7 @@
 #ifndef GENERICML_SUPPORT_BUFFERREF_H
 #define GENERICML_SUPPORT_BUFFERREF_H
 
+#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/ForeignBufferInterface.h"
 #include "LLCL/Runtime/Allocator.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
@@ -227,8 +228,8 @@ public:
   /// reference is 'null' or has been moved out of. A zero sized buffer
   /// will not return nullptr.
   void *getMutableBuffer() {
-    assert((ownership == kNull || mutability == kMutable) &&
-           "buffer is immutable");
+    GENERICML_ASSERT((ownership == kNull || mutability == kMutable))
+        << "buffer is immutable";
     if (ownership == kForeign) // typically false
       return ForeignBufferInterfaceRegistry::getMutableBuffer(
           nativeOrForeign.id, bufferOrObject);

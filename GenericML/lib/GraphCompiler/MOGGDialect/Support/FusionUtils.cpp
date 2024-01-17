@@ -10,6 +10,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MojoParameters.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
+#include "GenericML/Support/Assert.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
@@ -55,7 +56,7 @@ StringAttr getSummaryString(Operation *op) {
 }
 
 StringAttr getSummaryString(ArrayRef<Operation *> ops) {
-  assert(!ops.empty());
+  GENERICML_ASSERT(!ops.empty());
 
   if (ops.size() == 1)
     return getSummaryString(ops.front());
@@ -118,9 +119,9 @@ SmallVector<Value> inlineInvoke(MOGG::LambdaInvokeOp invokeOp,
   for (Operation &op : invokeTarget.getBody().front()) {
     // Don't add the terminator obviously
     if (isa<MOGG::OutputOp>(op)) {
-      assert(invokeOp->getNumResults() == op.getNumOperands() &&
-             "[LAMBDA_INLINE] Return doesn't have same number of results as "
-             "caller.");
+      GENERICML_ASSERT(invokeOp->getNumResults() == op.getNumOperands())
+          << "[LAMBDA_INLINE] Return doesn't have same number of results as "
+             "caller.";
       if (invokeOp.use_empty())
         continue;
 

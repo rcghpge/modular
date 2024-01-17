@@ -9,6 +9,7 @@
 #include "GenericML/EngineCLI/Benchmark/Tensor.h"
 #include "GenericML/EngineCLI/Common/APIBridge.h"
 #include "GenericML/EngineCLI/Common/InputGenerationSchema.h"
+#include "GenericML/Support/Assert.h"
 #include "Support/MathExtras.h"
 #include "modular/cpp/aliases.h"
 #include "llvm/ADT/APFloat.h"
@@ -184,7 +185,7 @@ void BCD::UniformFloatInputRandomDistribution<kDType>::fill(
   using StorageType = typename BCD::DTypeGenerationTraits<kDType>::StorageType;
   using GenerationType =
       typename BCD::DTypeGenerationTraits<kDType>::GenerationType;
-  assert(getDType() == kDType);
+  GENERICML_ASSERT(getDType() == kDType);
   MutableArrayRef<StorageType> outStorage{static_cast<StorageType *>(out),
                                           numElements};
   if constexpr (std::is_same_v<StorageType, GenerationType>) {
@@ -202,7 +203,7 @@ void BCD::UniformFloatInputRandomDistribution<kDType>::fill(
 template <typename T>
 void BCD::UniformIntegerInputRandomDistribution<T>::fill(
     void *out, size_t numElements) const {
-  assert(getDType() == DTypeForCXXType<T>::kind);
+  GENERICML_ASSERT(getDType() == DTypeForCXXType<T>::kind);
   T *outT = static_cast<T *>(out);
   fillWithRandomInts({outT, numElements}, min, max);
 }
@@ -715,8 +716,8 @@ M::BenchmarkCLI::createInputGenerator(const InputGenerationInput &spec,
     ok = false;
   if (!ok)
     return nullptr;
-  assert(nameOrIndex.has_value() &&
-         std::holds_alternative<std::string>(*nameOrIndex));
+  GENERICML_ASSERT(nameOrIndex.has_value() &&
+                   std::holds_alternative<std::string>(*nameOrIndex));
   return std::make_unique<BCD::InputGeneratorImpl>(
       std::get<0>(std::move(*nameOrIndex)), std::move(shape),
       std::move(dataGenerator));

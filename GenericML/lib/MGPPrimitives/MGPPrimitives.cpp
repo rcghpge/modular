@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
+#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/CompiledKernelsContext.h"
 #include "GenericML/Support/Context.h"
 #include "GenericML/Support/DebugPrint.h"
@@ -373,8 +374,8 @@ static void mgp_cpu_buffer_split_borrow(
     } else {
       // The size of this output buffer in unknown at compile time, so
       // must be taken from a runtimeSize operand value.
-      assert(runtimeSizeIndex < runtimeSizes.size() &&
-             "mismatched runtimeSizes arity");
+      GENERICML_ASSERT(runtimeSizeIndex < runtimeSizes.size())
+          << "mismatched runtimeSizes arity";
       thisSize = runtimeSizes[runtimeSizeIndex].get<size_t>();
       runtimeSizeIndex++;
     }
@@ -933,7 +934,7 @@ static void mgp_cpu_kernel_load_archive(Chain inChain, Context &ctx,
   while (start < end) {
     size_t next = combined.find('\n', start);
     if (next == std::string::npos) {
-      assert(start + 1 == end && combined[start] == '\0');
+      GENERICML_ASSERT(start + 1 == end && combined[start] == '\0');
       break;
     } else {
       size_t len = next - start;
@@ -976,14 +977,15 @@ static void mgp_cpu_kernel_execute(
   //   inDimension_1, ..., inDimension_numInDimension]
   StringRef inOutSignature = *cInOutSignature;
   size_t numInputs = inOutSignature.size();
-  assert(numInputs <= operands.size() && "invalid inputs signature arity");
+  GENERICML_ASSERT(numInputs <= operands.size())
+      << "invalid inputs signature arity";
   size_t numInDimensions = operands.size() - numInputs;
 
   // The outDimensions are:
   //  [outDimension_1, ..., outDimension_numOutDimensions]
   size_t numOutDimensions = static_cast<size_t>(*eNumOutDimensions);
-  assert(numOutDimensions == outDimensions.size() &&
-         "invalid out dimensions count attribute");
+  GENERICML_ASSERT(numOutDimensions == outDimensions.size())
+      << "invalid out dimensions count attribute";
   for (auto &outDimension : outDimensions)
     outDimension = AsyncValueRef<size_t>::allocate(runtime);
 
@@ -1056,7 +1058,7 @@ static void mgp_cpu_kernel_execute(
   // not need to be wrapped by a sub-task. Instead, we'll just wire the
   // completion handler of the Mojo Coroutine to emplace the outChain directly.
   if (*fIsAsync) {
-    assert(numOutDimensions == 0);
+    GENERICML_ASSERT(numOutDimensions == 0);
     runtime.getWorkQueue()->addTask(
         [kernelPtr, outputChain = std::move(outputChain),
          call = std::move(call), dimensions = std::move(dimensions),
@@ -1104,7 +1106,7 @@ static void mgp_cpu_kernel_execute(
 
   // If the kernel has output dimensions then it must be synchronous and those
   // values can be copied out now.
-  assert(numOutDimensions == 0 || outChain.copy().isReady());
+  GENERICML_ASSERT(numOutDimensions == 0 || outChain.copy().isReady());
   for (size_t i = 0; i < numOutDimensions; ++i)
     outDimensions[i].copy().emplace<size_t>(dimensions[numInDimensions + i]);
 
@@ -1209,7 +1211,7 @@ static void mgp_list_insert(List &inputList, AnyAsyncValueRef element,
 //===----------------------------------------------------------------------===//
 
 static void mgp_model() {
-  assert(false && "mgp.model should never be invoked");
+  GENERICML_ASSERT(false) << "mgp.model should never be invoked";
 }
 
 //===----------------------------------------------------------------------===//

@@ -11,6 +11,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/Tensor.h"
 #include "KGEN/POPDialect/POPTypes.h"
 
@@ -369,9 +370,10 @@ struct FuseElementwisePass
         // Inline the first invoke and then reuse those values.
         if (!previouslyFusedValue) {
           auto newValues = inlineInvoke(toReplace, newOp);
-          assert(
-              newValues.size() == 1 &&
-              "Currently assuming one return from elementwise ops when fusing");
+          GENERICML_ASSERT(newValues.size() == 1)
+              << "Currently assuming one return from elementwise ops when "
+                 "fusing but got "
+              << newValues.size();
           previouslyFusedValue = newValues.front();
         } else {
           toReplace->replaceAllUsesWith(ValueRange{previouslyFusedValue});
@@ -423,7 +425,7 @@ struct FuseElementwisePass
   // possible because they have the same signature.
   void fuseSrcKernelIntoDstKernelKGEN(KernelOp srcKernel, KernelOp dstKernel) {
     auto fusionIndices = getFusionIndices(srcKernel, dstKernel);
-    assert(!fusionIndices.empty());
+    GENERICML_ASSERT(!fusionIndices.empty());
 
     IRMapping mapper;
     OpBuilder builder{dstKernel.getContext()};
@@ -442,7 +444,7 @@ struct FuseElementwisePass
         cast<StringAttr>(srcKernel.getOutputFusionInterfaceAttr()[0]));
     KGEN::ParamDeclareRegionOp srcElementwiseLambda =
         srcKernel.findLambda(srcKernel.getFusionBodyLambdaAttr());
-    assert(srcElementwiseLambda);
+    GENERICML_ASSERT(srcElementwiseLambda);
 
     // Add each of the new operands to the kernel body we are fusing into and
     // the corresponding input lambdas.
@@ -488,7 +490,7 @@ struct FuseElementwisePass
       }
     }
 
-    assert(renamedSrcElementwiseLambda);
+    GENERICML_ASSERT(renamedSrcElementwiseLambda);
 
     auto &dstKernelBody = dstKernel.getBody().front();
     for (int fusionIndex : llvm::reverse(fusionIndices)) {

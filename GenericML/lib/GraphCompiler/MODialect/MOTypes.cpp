@@ -13,6 +13,7 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
+#include "GenericML/Support/Assert.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/MLIRDType.h"
@@ -208,8 +209,9 @@ TensorType TensorType::get(TypedAttr shapeAttr, DType dtype,
 TensorType TensorType::get(TypedAttr shapeAttr, Type elementType,
                            DictionaryAttr metadata) {
   ErrorOr<DType> errOrDType = fromMLIRType(elementType);
-  assert(!errOrDType.isError() &&
-         "element type is not representable as a DType");
+  GENERICML_ASSERT(!errOrDType.isError())
+      << "element type is not representable as a DType: "
+      << errOrDType.takeError();
   return get(shapeAttr, *errOrDType, metadata);
 }
 
@@ -275,8 +277,9 @@ TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
     shapeRef = KGEN::UnknownAttr::get(shapeTy);
 
   ErrorOr<DType> errOrDType = fromMLIRType(dtype);
-  assert(!errOrDType.isError() &&
-         "element type is not representable as an M::DType");
+  GENERICML_ASSERT(!errOrDType.isError())
+      << "element type is not representable as an M::DType: "
+      << errOrDType.takeError();
   return TensorType::get(shapeRef, *errOrDType, metadata);
 }
 
@@ -330,7 +333,7 @@ bool TensorType::hasRank() const {
 }
 
 size_t TensorType::getRank() const {
-  assert(hasRank() && "cannot get rank if shape is not known");
+  GENERICML_ASSERT(hasRank()) << "cannot get rank if shape is not known";
   return getTypedShapeAttr().getRank();
 }
 
@@ -340,8 +343,9 @@ bool TensorType::hasStaticShape() const {
 
 Type TensorType::getElementType() const {
   ErrorOr<Type> errOrType = toMLIRType(getContext(), getDtype());
-  assert(!errOrType.isError() &&
-         "element type is not representable as an mlir Type");
+  GENERICML_ASSERT(!errOrType.isError())
+      << "element type is not representable as an mlir Type: "
+      << errOrType.takeError();
   return *errOrType;
 }
 
@@ -475,8 +479,9 @@ LogicalResult ListType::verify(function_ref<InFlightDiagnostic()> emitError,
 
 Type ScalarType::getDType() const {
   ErrorOr<Type> errOrType = toMLIRType(getContext(), getDtype());
-  assert(!errOrType.isError() &&
-         "scalar type is not representable as an mlir Type");
+  GENERICML_ASSERT(!errOrType.isError())
+      << "scalar type is not representable as an mlir Type: "
+      << errOrType.takeError();
   return *errOrType;
 }
 

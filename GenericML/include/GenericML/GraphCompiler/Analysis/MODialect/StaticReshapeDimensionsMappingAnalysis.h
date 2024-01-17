@@ -7,6 +7,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_STATICRESHAPEDIMENSIONSMAPPINGANALYSIS_H
 #define GENERICML_GRAPHCOMPILER_MODIALECT_STATICRESHAPEDIMENSIONSMAPPINGANALYSIS_H
 
+#include "GenericML/Support/Assert.h"
 #include "mlir/IR/BuiltinAttributes.h"
 
 #include <optional>
@@ -54,7 +55,7 @@ public:
   // After   : [1, 2, 3, 2, 2]
   // Forward : [[], [1], [2], [3, 4]]
   inline const DimensionsMapping &forwardMapping() const {
-    assert(isSupported);
+    GENERICML_ASSERT(isSupported);
     return forward;
   }
 
@@ -64,7 +65,7 @@ public:
   // After    : [1, 2, 3, 2, 2]
   // Backward : [[], [1], [2], [3], [3]]
   inline const DimensionsMapping &backwardMapping() const {
-    assert(isSupported);
+    GENERICML_ASSERT(isSupported);
     return backward;
   }
 

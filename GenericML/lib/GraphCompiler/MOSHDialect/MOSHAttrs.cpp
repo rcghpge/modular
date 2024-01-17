@@ -11,6 +11,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
+#include "GenericML/Support/Assert.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/ParserUtils.h"
 #include "mlir/IR/Builders.h"
@@ -64,7 +65,7 @@ OptionalParseResult M::MOSH::parseShapeAttrOrUnknown(AsmParser &p,
 }
 
 void M::MOSH::printShapeTypedAttr(AsmPrinter &p, TypedAttr shapeAttr) {
-  assert(isa<ShapeType>(shapeAttr.getType()));
+  GENERICML_ASSERT(isa<ShapeType>(shapeAttr.getType()));
   if (isa<KGEN::UnknownAttr>(shapeAttr)) {
     p << "?";
   } else if (auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(shapeAttr)) {
@@ -314,8 +315,10 @@ ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
   ArrayRef<TypedAttr> beforeDims = beforeShape.getValues();
   ArrayRef<TypedAttr> bcastedDims = bcastedShape.getValues();
 
-  assert(beforeDims.size() <= bcastedDims.size() &&
-         "Broadcasting can only increase rank");
+  GENERICML_ASSERT(beforeDims.size() <= bcastedDims.size())
+      << "Broadcasting can only increase rank but it is trying to decrease "
+         "rank from "
+      << beforeDims.size() << " to " << bcastedDims.size();
 
   // we will initially add in reverse sorted order since it's easier
   // as bcasting rules follow from the innermost dimensions

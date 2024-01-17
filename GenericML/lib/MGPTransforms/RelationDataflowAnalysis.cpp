@@ -6,6 +6,7 @@
 
 #include "./RelationDataflowAnalysis.h"
 
+#include "GenericML/Support/Assert.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "llvm/ADT/EquivalenceClasses.h"
@@ -24,7 +25,7 @@ using namespace M::MGP;
 void ForwardsRelationDataflowAnalysis::flowSimpleLoop(
     GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
     const FlowOp &flowOp) {
-  assert(cfOp->getNumRegions() == 1);
+  GENERICML_ASSERT(cfOp->getNumRegions() == 1);
   Block *bodyBlock = &cfOp->getRegion(0).front();
 
   // Flow the body sub block.
@@ -42,7 +43,7 @@ void ForwardsRelationDataflowAnalysis::flowConditionedLoop(
     GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
     const FlowOp &flowOp) {
   LLVM_DEBUG(llvm::dbgs() << "flowConditionedLoop begin\n");
-  assert(cfOp->getNumRegions() == 2);
+  GENERICML_ASSERT(cfOp->getNumRegions() == 2);
   Block *condBlock = &cfOp->getRegion(0).front();
   Block *bodyBlock = &cfOp->getRegion(1).front();
 
@@ -312,7 +313,7 @@ BackwardsRelationDataflowAnalysis::operandCombination(
 void BackwardsRelationDataflowAnalysis::flowSimpleLoop(
     GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
     const FlowOp &flowOp) {
-  assert(cfOp->getNumRegions() == 1);
+  GENERICML_ASSERT(cfOp->getNumRegions() == 1);
   Block *bodyBlock = &cfOp->getRegion(0).front();
 
   // Flow the body sub block.
@@ -331,7 +332,7 @@ void BackwardsRelationDataflowAnalysis::flowConditionedLoop(
     GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
     const FlowOp &flowOp) {
   LLVM_DEBUG(llvm::dbgs() << "flowConditionedLoop begin\n");
-  assert(cfOp->getNumRegions() == 2);
+  GENERICML_ASSERT(cfOp->getNumRegions() == 2);
   Block *condBlock = &cfOp->getRegion(0).front();
   Block *bodyBlock = &cfOp->getRegion(1).front();
 

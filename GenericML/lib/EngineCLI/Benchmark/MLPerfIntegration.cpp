@@ -7,6 +7,7 @@
 #include "GenericML/EngineCLI/Benchmark/MLPerfIntegration.h"
 #include "GenericML/EngineCLI/Benchmark/InputGenerator.h"
 #include "GenericML/EngineCLI/Benchmark/Main.h"
+#include "GenericML/Support/Assert.h"
 #include "mlperf-loadgen/loadgen.h"
 #include "modular/cpp/aliases.h"
 #include "llvm/Support/raw_ostream.h"
@@ -20,7 +21,7 @@ static size_t pickSampleCount(const QueryGenerator &qgen) {
   ssize_t qgenQueries = qgen.getNumQueries();
   if (qgenQueries == -1)
     return kDefaultSampleCount;
-  assert(qgenQueries >= 0);
+  GENERICML_ASSERT(qgenQueries >= 0);
   return static_cast<size_t>(qgenQueries);
 }
 
@@ -58,7 +59,7 @@ void QuerySampleLibrary::UnloadSamplesFromRam(
 }
 
 void QuerySampleLibrary::loadSample(mlperf::QuerySampleIndex index) {
-  assert(index < sampleCount);
+  GENERICML_ASSERT(index < sampleCount);
   auto queryOr = queryGenerator->generateQuery(runtimeContext, index);
   if (queryOr.isError()) {
     llvm::errs() << "Error loading sample " << index << ": "
@@ -70,7 +71,7 @@ void QuerySampleLibrary::loadSample(mlperf::QuerySampleIndex index) {
 }
 
 void QuerySampleLibrary::unloadSample(mlperf::QuerySampleIndex index) {
-  assert(index < sampleCount);
+  GENERICML_ASSERT(index < sampleCount);
   delete loadedSamples[index].exchange(nullptr);
 }
 

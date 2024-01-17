@@ -7,6 +7,7 @@
 #ifndef GENERICML_SUPPORT_STATESLOT_H
 #define GENERICML_SUPPORT_STATESLOT_H
 
+#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/BufferRef.h"
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
@@ -47,7 +48,7 @@ public:
   /// must match the type id of the state slot.
   template <typename T>
   T &get() {
-    assert(payload && "StateSlot has no payload");
+    GENERICML_ASSERT(payload) << "StateSlot has no payload";
     return *payload.get<T>();
   }
 
@@ -120,7 +121,7 @@ class StateSlotPayloadRef {
 public:
   StateSlotPayloadRef(AnyAsyncValueRef outer, T *payload)
       : outer(std::move(outer)), payload(payload) {
-    assert(payload && "StateSlotPayloadRef payload cannot be null");
+    GENERICML_ASSERT(payload) << "StateSlotPayloadRef payload cannot be null";
   }
 
   T &operator*() const { return *payload; }

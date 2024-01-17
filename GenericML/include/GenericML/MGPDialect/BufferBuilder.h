@@ -543,15 +543,16 @@ public:
                            std::unique_ptr<TypeBuilder> typeBuilder) {
     bool inserted =
         typeBuilderMap.insert({device, std::move(typeBuilder)}).second;
-    assert(inserted && "a type builder has already been registered for device");
+    GENERICML_ASSERT(inserted)
+        << "a type builder has already been registered for device";
   }
 
   /// Returns the type builder to use for device. The builder is owned by
   /// this object.
   TypeBuilder *getTypeBuilder(DeviceRefAttr device) const {
     auto itr = typeBuilderMap.find(device);
-    assert(itr != typeBuilderMap.end() &&
-           "no type builder has been registered for device");
+    GENERICML_ASSERT(itr != typeBuilderMap.end())
+        << "no type builder has been registered for device";
     return itr->second.get();
   }
 
@@ -560,23 +561,17 @@ public:
                              std::unique_ptr<BufferBuilder> bufferBuilder) {
     bool inserted =
         bufferBuilderMap.insert({device, std::move(bufferBuilder)}).second;
-    assert(inserted &&
-           "a buffer builder has already been registered for device");
+    GENERICML_ASSERT(inserted)
+        << "a buffer builder has already been registered for device";
   }
 
   /// Returns the buffer builder to use for device. The builder is owned by
   /// this object.
   BufferBuilder *getBufferBuilder(DeviceRefAttr device) const {
-    assert(device);
+    GENERICML_ASSERT(device);
     auto itr = bufferBuilderMap.find(device);
-#if MODULAR_DEBUG
-    if (itr == bufferBuilderMap.end()) {
-      llvm::errs() << "no buffer builder has been registered for device "
-                   << device << "\n";
-    }
-#endif
-    assert(itr != bufferBuilderMap.end() &&
-           "no buffer builder has been registered for device");
+    GENERICML_ASSERT(itr != bufferBuilderMap.end())
+        << "no buffer builder has been registered for device " << device;
     return itr->second.get();
   }
 

@@ -8,6 +8,7 @@
 
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTypes.h"
+#include "GenericML/Support/Assert.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "mlir/IR/Builders.h"
 
@@ -124,8 +125,8 @@ void CpuTensorBufferDialectInterface::addHostBuilder(
   // kernels.
   size_t slot = ~0;
   modelOp.walk([&slot](CpuKernelCreateContextOp createContextOp) {
-    assert(slot == (size_t)~0 &&
-           "MGP ModelOp contains multiple mgp.cpu.kernel.create_context ops");
+    GENERICML_ASSERT(slot == (size_t)~0)
+        << "MGP ModelOp contains multiple mgp.cpu.kernel.create_context ops";
     slot = createContextOp.getSlot();
   });
 

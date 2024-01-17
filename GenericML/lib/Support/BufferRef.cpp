@@ -6,6 +6,7 @@
 
 #include "GenericML/Support/BufferRef.h"
 
+#include "GenericML/Support/Assert.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "Support/ML/SizeUtils.h"
 #include "llvm/Support/Format.h"
@@ -64,7 +65,7 @@ BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
   if (size) {
     buffer =
         runtime->getAllocator()->allocateBytes(size, alignment.value_or(1));
-    assert(buffer && "allocator returned null");
+    GENERICML_ASSERT(buffer) << "allocator returned null";
     if (copyFrom) {
       LLCL::profiledMemcpy(buffer, copyFrom, size);
     } else {
@@ -97,10 +98,10 @@ BufferRef BufferRef::createBorrowed(void *buffer, size_t size,
                                     std::optional<size_t> alignment,
                                     Lifetime lifetime,
                                     LLCL::AnyAsyncValueRef owningRef) {
-  assert((size == 0 || buffer) && "borrowed buffer must be non-null");
-  assert((size == 0 || !alignment ||
-          llvm::isAddrAligned(llvm::Align(*alignment), buffer)) &&
-         "buffer is not aligned as per purported alignment");
+  GENERICML_ASSERT((size == 0 || buffer)) << "borrowed buffer must be non-null";
+  GENERICML_ASSERT((size == 0 || !alignment ||
+                    llvm::isAddrAligned(llvm::Align(*alignment), buffer)))
+      << "buffer is not aligned as per purported alignment";
   void *borrowedBuffer = size == 0 && buffer == nullptr
                              ? (void *)&kDummyTargetOfEmptyBuffer
                              : buffer;
@@ -121,10 +122,10 @@ BufferRef BufferRef::createBorrowed(const void *buffer, size_t size,
                                     std::optional<size_t> alignment,
                                     Lifetime lifetime,
                                     AnyAsyncValueRef owningRef) {
-  assert((size == 0 || buffer) && "borrowed buffer must be non-null");
-  assert((size == 0 || !alignment ||
-          llvm::isAddrAligned(llvm::Align(*alignment), buffer)) &&
-         "buffer is not aligned as per purported alignment");
+  GENERICML_ASSERT((size == 0 || buffer)) << "borrowed buffer must be non-null";
+  GENERICML_ASSERT((size == 0 || !alignment ||
+                    llvm::isAddrAligned(llvm::Align(*alignment), buffer)))
+      << "buffer is not aligned as per purported alignment";
   const void *borrowedBuffer = size == 0 && buffer == nullptr
                                    ? (void *)&kDummyTargetOfEmptyBuffer
                                    : buffer;
@@ -148,14 +149,14 @@ BufferRef BufferRef::createForeign(ForeignBufferInterfaceID id,
                                    const void *object, size_t size,
                                    std::optional<size_t> alignment,
                                    AnyAsyncValueRef owningRef) {
-  assert(object && "foreign object cannot be null");
+  GENERICML_ASSERT(object) << "foreign object cannot be null";
   // Note that even if size is 0 we are obliged to create a non-null
   // BufferRef so as to retain ownership of object.
   if (alignment && size)
-    assert(llvm::isAddrAligned(
-               llvm::Align(*alignment),
-               ForeignBufferInterfaceRegistry::getBuffer(id, object)) &&
-           "buffer is not aligned as per purported alignment");
+    GENERICML_ASSERT(llvm::isAddrAligned(
+        llvm::Align(*alignment),
+        ForeignBufferInterfaceRegistry::getBuffer(id, object)))
+        << "buffer is not aligned as per purported alignment";
 
   return BufferRef(
       id, const_cast<void *>(object), size, {} /*std::move(owningRef)*/,
@@ -173,14 +174,14 @@ BufferRef BufferRef::createForeign(ForeignBufferInterfaceID id,
 BufferRef BufferRef::createForeign(ForeignBufferInterfaceID id, void *object,
                                    size_t size, std::optional<size_t> alignment,
                                    AnyAsyncValueRef owningRef) {
-  assert(object && "foreign object cannot be null");
+  GENERICML_ASSERT(object) << "foreign object cannot be null";
   // Note that even if size is 0 we are obliged to create a non-null
   // BufferRef so as to retain ownership of object.
   if (alignment && size)
-    assert(llvm::isAddrAligned(
-               llvm::Align(*alignment),
-               ForeignBufferInterfaceRegistry::getBuffer(id, object)) &&
-           "buffer is not aligned as per purported alignment");
+    GENERICML_ASSERT(llvm::isAddrAligned(
+        llvm::Align(*alignment),
+        ForeignBufferInterfaceRegistry::getBuffer(id, object)))
+        << "buffer is not aligned as per purported alignment";
 
   return BufferRef(
       id, object, size, {} /*std::move(owningRef)*/, makeMaybeAlign(alignment),
@@ -198,15 +199,17 @@ BufferRef BufferRef::createForeign(ForeignBufferInterfaceID id, void *object,
 BufferRef BufferRef::createSafeBorrowedSlice(AsyncValueRef<BufferRef> borrow,
                                              const LLCL::EncodedLocation &loc,
                                              size_t offset, size_t size) {
-  assert(borrow.isValueAvailable() &&
-         "given AsyncValue reference must be ready and not an error");
+  GENERICML_ASSERT(borrow.isValueAvailable())
+      << "given AsyncValue reference must be ready and not an error";
   BufferRef &borroweBufferRef = borrow.get();
-  assert(borroweBufferRef && "cannot borrow from null buffer reference");
-  assert(offset <= borroweBufferRef.size && "given offset must be in range");
+  GENERICML_ASSERT(borroweBufferRef)
+      << "cannot borrow from null buffer reference";
+  GENERICML_ASSERT(offset <= borroweBufferRef.size)
+      << "given offset must be in range";
   if (size == std::numeric_limits<size_t>::max())
     size = borroweBufferRef.size - offset;
-  assert(offset + size <= borroweBufferRef.size &&
-         "given size must be in range");
+  GENERICML_ASSERT(offset + size <= borroweBufferRef.size)
+      << "given size must be in range";
 
   const void *newBuffer = borroweBufferRef.getBuffer<uint8_t>() + offset;
 
@@ -302,7 +305,8 @@ ErrorOr<BufferRef> BufferRef::borrowOrError(Lifetime borrowLifetime) const {
 
 BufferRef BufferRef::borrow(Lifetime borrowLifetime) const {
   ErrorOr<BufferRef> errOrBuf = borrowOrError(borrowLifetime);
-  assert(!errOrBuf.isError() && "borrow would overhang");
+  GENERICML_ASSERT(!errOrBuf.isError())
+      << "borrow would overhang: " << errOrBuf.takeError();
   return std::move(*errOrBuf);
 }
 
@@ -331,7 +335,7 @@ void BufferRef::reset() {
 }
 
 void *BufferRef::releaseMutableBufferIfOwned() {
-  assert(mutability == kMutable && "buffer is immutable");
+  GENERICML_ASSERT(mutability == kMutable) << "buffer is immutable";
   if (ownership != kOwned)
     return nullptr;
   void *bufferCopy = bufferOrObject;

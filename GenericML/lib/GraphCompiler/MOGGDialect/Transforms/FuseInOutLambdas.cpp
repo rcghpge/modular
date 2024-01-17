@@ -10,6 +10,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GenericML/Support/Assert.h"
 
 #include "mlir/IR/IRMapping.h"
 
@@ -456,7 +457,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         break;
       }
     }
-    assert(oldOutputOp);
+    GENERICML_ASSERT(oldOutputOp);
 
     // Finding the new placeholder that was inserted earlier.
     MOGG::OutputPlaceholdersOp newPlaceholder = nullptr;
@@ -466,7 +467,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         break;
       }
     }
-    assert((isMatmulOrConvolution && !isMixedPrecision) || newPlaceholder);
+    GENERICML_ASSERT((isMatmulOrConvolution && !isMixedPrecision) ||
+                     newPlaceholder);
 
     Location loc = kernelToFuseInto.getLoc();
     // TODO(#22349)

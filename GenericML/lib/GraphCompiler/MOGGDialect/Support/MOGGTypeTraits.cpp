@@ -16,6 +16,7 @@
 
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
+#include "GenericML/Support/Assert.h"
 #include "KGEN/POPDialect/POPAttrs.h"
 #include "llvm/ADT/APFloat.h"
 
@@ -184,7 +185,7 @@ MOGGTypeTraits::convertToSIMD(mlir::MLIRContext *context, const void *data,
                                       numElems);
   else if (moggType == DType::kBool)
     return convertBoolsToSIMD(moggType, kgenType, context, data, numElems);
-  assert(false && "Unimplemented DType");
+  GENERICML_ASSERT(false) << "Unimplemented DType " << moggType;
 }
 
 llvm::SmallVector<MOGGTypeTraits> allTypeTraits() {

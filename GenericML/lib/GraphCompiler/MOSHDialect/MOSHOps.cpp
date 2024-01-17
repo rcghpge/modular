@@ -12,6 +12,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/ShapeFuncHelpers.h"
+#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/Dims.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
@@ -95,7 +96,9 @@ LogicalResult ConcatOp::canonicalize(ConcatOp op, PatternRewriter &rewriter) {
 }
 
 TypedAttr EqualOp::asExpression(ShapeAttr shape1, ShapeAttr shape2) {
-  assert(shape1.getRank() == shape2.getRank());
+  GENERICML_ASSERT(shape1.getRank() == shape2.getRank())
+      << "Shapes must have same rank but they are " << shape1.getRank()
+      << " and " << shape2.getRank();
   SmallVector<TypedAttr> andOperands;
   for (auto [xDim, yDim] : llvm::zip(shape1.getValues(), shape2.getValues())) {
     andOperands.emplace_back(
@@ -140,9 +143,10 @@ OpFoldResult GetDimOp::fold(FoldAdaptor adaptor) {
     auto normalizedAxis =
         normalizeAxis(dim.getValue().getSExtValue(), input.getRank());
     ArrayRef<TypedAttr> values = input.getValues();
-    assert((normalizedAxis >= 0) &&
-           (normalizedAxis < static_cast<int64_t>(values.size())) &&
-           "Normalized axis must be in range [0, rank]");
+    GENERICML_ASSERT((normalizedAxis >= 0) &&
+                     (normalizedAxis < static_cast<int64_t>(values.size())))
+    "Normalized axis must be in range [0, " << values.size() << "] but it is "
+                                            << normalizedAxis;
     return values[normalizedAxis];
   }
   return {};
@@ -190,7 +194,8 @@ OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
 
   // Ensure that the indices we use to create slicedDims are valid.
   if (start > end) {
-    assert(false && "start index must be less than end index");
+    GENERICML_ASSERT(false) << "start index (" << start
+                            << ") must be less than end index (" << end << ")";
     return {};
   }
 

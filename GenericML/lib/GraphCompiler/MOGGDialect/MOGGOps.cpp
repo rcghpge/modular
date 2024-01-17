@@ -17,6 +17,7 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
+#include "GenericML/Support/Assert.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
@@ -33,17 +34,15 @@ using namespace MOGG;
 //===----------------------------------------------------------------------===//
 
 LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  assert(MO::isOnHost(*this) && "mogg.concat is for host only");
+  GENERICML_ASSERT(MO::isOnHost(*this)) << "mogg.concat is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, *this);
 
   // Gather the input buffers.
   SmallVector<Value> loweredOperands = opLoweringState.getLoweredOperands();
-  assert(llvm::all_of(loweredOperands,
-                      [](const Value loweredOperand) {
-                        return isa<MGP::CpuBufferType>(
-                            loweredOperand.getType());
-                      }) &&
-         "expecting !mgp.cpu.buffer inputs");
+  GENERICML_ASSERT(llvm::all_of(loweredOperands, [](const Value
+                                                        loweredOperand) {
+    return isa<MGP::CpuBufferType>(loweredOperand.getType());
+  })) << "expecting !mgp.cpu.buffer inputs";
 
   // Allocate the output buffer.
   FailureOr<SmallVector<MGP::MOOutputStorage>> loweredOutputsStorageOr =
@@ -51,9 +50,11 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
   if (failed(loweredOutputsStorageOr))
     return failure();
   auto &loweredOutputsStorage = *loweredOutputsStorageOr;
-  assert(loweredOutputsStorageOr->size() == 1);
-  assert(isa<MGP::CpuBufferType>(loweredOutputsStorage[0].buffer.getType()) &&
-         "expecting !mgp.cpu.buffer outputs");
+  GENERICML_ASSERT(loweredOutputsStorageOr->size() == 1);
+  GENERICML_ASSERT(
+      isa<MGP::CpuBufferType>(loweredOutputsStorage[0].buffer.getType()))
+      << "expecting !mgp.cpu.buffer outputs but got "
+      << loweredOutputsStorage[0].buffer.getType();
 
   auto concatOp = opLoweringState.create<MGP::CpuBufferConcatOp>(
       /*inChain=*/loweringState.getExecuteChain(),
@@ -70,13 +71,13 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  assert(MO::isOnHost(*this) && "mogg.split is for host only");
+  GENERICML_ASSERT(MO::isOnHost(*this)) << "mogg.split is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, *this);
 
   // Gather the input buffer.
   Value inputBuffer = opLoweringState.getBufferizedInput(getInput()).buffer;
-  assert(isa<MGP::CpuBufferType>(inputBuffer.getType()) &&
-         "expecting !mgp.cpu.buffer input");
+  GENERICML_ASSERT(isa<MGP::CpuBufferType>(inputBuffer.getType()))
+      << "expecting !mgp.cpu.buffer input but got " << inputBuffer.getType();
 
   // TODO Enable this.
   if (inputBuffer.getDefiningOp<MGP::CpuBufferConstantOp>())
@@ -320,7 +321,7 @@ OutputPlaceholdersOp KernelOp::getOutputPlaceholder() {
   if (placeholder.empty())
     return nullptr;
 
-  assert(llvm::range_size(placeholder) == 1);
+  GENERICML_ASSERT(llvm::range_size(placeholder) == 1);
 
   return *placeholder.begin();
 }
@@ -481,8 +482,8 @@ void KernelOp::fuseBodyIntoNewWithSkip(
         for (SymbolRefAttr sym : params->getAsRange<SymbolRefAttr>()) {
           StringRef name = sym.getLeafReference().strref();
           auto itr = oldLambdaNamesToNew.find(name);
-          assert(itr != oldLambdaNamesToNew.end() &&
-                 "First use of lambda inserted before the lambda itself");
+          GENERICML_ASSERT(itr != oldLambdaNamesToNew.end())
+              << "First use of lambda inserted before the lambda itself";
           newAttrs.push_back(FlatSymbolRefAttr::get(getContext(), itr->second));
         }
         newCall.setParamsAttr(builder.getArrayAttr(newAttrs));

@@ -6,6 +6,7 @@
 
 #include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
 
+#include "GenericML/Support/Assert.h"
 #include "GraphRT/GRTDialect/GRTControlFlowInterface.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "mlir/IR/IRMapping.h"
@@ -91,30 +92,30 @@ static void fixup(OpBuilder &builder, Block *inBlock,
         // Rewrite existing operands (possibly excluding last).
         size_t n = inOutputOp->getNumOperands();
         if (beforeLastOutput) {
-          assert(n > 0);
+          GENERICML_ASSERT(n > 0);
           --n;
         }
         for (size_t i = 0; i < n; ++i) {
           Value outOperand = mapping.lookupOrNull(inOutputOp->getOperand(i));
-          assert(outOperand && "unmapped operand");
+          GENERICML_ASSERT(outOperand) << "unmapped operand";
           outOperands.emplace_back(outOperand);
         }
         // Include the additional arguments.
         for (Value inFreeValue : freeValues) {
           Value outFreeValue = mapping.lookupOrNull(inFreeValue);
-          assert(outFreeValue && "unmapped free value");
+          GENERICML_ASSERT(outFreeValue) << "unmapped free value";
           outOperands.emplace_back(outFreeValue);
         }
         if (beforeLastOutput) {
           // Rewrite last operand.
           Value outOperand = mapping.lookupOrNull(inOutputOp->getOperand(n));
-          assert(outOperand && "unmapped operand");
+          GENERICML_ASSERT(outOperand) << "unmapped operand";
           outOperands.emplace_back(outOperand);
         }
         Operation *outOutputOp =
             builder.create<MEF::OutputOp>(inOp->getLoc(), outOperands);
-        assert(checkRewrite(inOutputOp, outOutputOp) &&
-               "invalid rewrite for output op");
+        GENERICML_ASSERT(checkRewrite(inOutputOp, outOutputOp))
+            << "invalid rewrite for output op";
         continue;
       }
     }
@@ -126,7 +127,7 @@ static void fixup(OpBuilder &builder, Block *inBlock,
       SetVector<Value> subFreeValues;
       for (Region &region : inCfOp->getRegions())
         accumFreeValues(subFreeValues, &region.front(), &region.front());
-      assert(llvm::all_of(subFreeValues, [&](Value subFreeValue) {
+      GENERICML_ASSERT(llvm::all_of(subFreeValues, [&](Value subFreeValue) {
         return subFreeValue.getParentBlock() == inBlock ||
                freeValues.contains(subFreeValue);
       }));
@@ -135,20 +136,20 @@ static void fixup(OpBuilder &builder, Block *inBlock,
       SmallVector<Value> outOperands;
       for (Value operand : inCfOp->getOperands()) {
         Value outOperand = mapping.lookupOrNull(operand);
-        assert(outOperand && "unmapped operand");
+        GENERICML_ASSERT(outOperand) << "unmapped operand";
         outOperands.emplace_back(outOperand);
       }
       // Include the additional arguments.
       for (Value inSubFreeValue : subFreeValues) {
         Value outSubFreeValue = mapping.lookupOrNull(inSubFreeValue);
-        assert(outSubFreeValue && "unmapped sub free value");
+        GENERICML_ASSERT(outSubFreeValue) << "unmapped sub free value";
         outOperands.emplace_back(outSubFreeValue);
       }
 
       // New op continues to return existing results (possibly excluding last).
       size_t n = inCfOp->getNumResults();
       if (beforeLastOutput) {
-        assert(n > 0);
+        GENERICML_ASSERT(n > 0);
         --n;
       }
       SmallVector<Type> outResultTypes;
@@ -166,8 +167,8 @@ static void fixup(OpBuilder &builder, Block *inBlock,
       // Create the new control flow op with empty sub-regions.
       GRT::GRTControlFlowInterface outCfOp =
           cloneWithArgs(builder, inCfOp, outResultTypes, outOperands);
-      assert(checkRewrite(inCfOp, outCfOp) &&
-             "invalid rewrite for control flow op");
+      GENERICML_ASSERT(checkRewrite(inCfOp, outCfOp))
+          << "invalid rewrite for control flow op";
 
       // Capture mappings for op results. Any additional results,
       // corresponding to the subOutputValues, can be ignored.
@@ -197,7 +198,7 @@ static void fixup(OpBuilder &builder, Block *inBlock,
 
     // Default case is just clone the op w.r.t. mapping.
     Operation *outOp = builder.clone(*inOp, mapping);
-    assert(checkRewrite(inOp, outOp) && "invalid rewrite of op");
+    GENERICML_ASSERT(checkRewrite(inOp, outOp)) << "invalid rewrite of op";
   }
 
   LLVM_DEBUG(llvm::dbgs() << "fixup end\n");

@@ -133,8 +133,8 @@ Value CpuBufferBuilder::kernelLoadArchive(OpBuilder &builder, Location loc,
                                           Value inChain, ElementsAttr archive,
                                           ArrayAttr kernelNames,
                                           ArrayAttr constantNames) {
-  assert((constantNames == nullptr || constantNames.empty()) &&
-         "CPU archives do not currently support constants");
+  GENERICML_ASSERT(constantNames == nullptr || constantNames.empty())
+      << "CPU archives do not currently support constants";
 
   // Collect the kernel symbols into an #M.multiline attribute, and keep track
   // of their symbol-to-index mappings.
@@ -214,8 +214,10 @@ Value CpuBufferBuilder::getCached(OpBuilder &builder, Location loc,
                                   TypedValue<MEF::ChainType> inChain,
                                   size_t bufferSlot, Type expectedBufferType) {
   auto bufferType = dyn_cast<CpuBufferType>(expectedBufferType);
-  assert(bufferType &&
-         "expected buffer type should be MGP::CpuBufferType for this builder");
+  GENERICML_ASSERT(bufferType)
+      << "expected buffer type should be MGP::CpuBufferType for this builder "
+         "but it is "
+      << expectedBufferType;
   return builder.create<CpuBufferGetCachedOp>(
       loc, /*inChain=*/inChain, /*theContext=*/context,
       /*aSlot=*/bufferSlot, /*bRawSize=*/bufferType.getRawSize().getUInt());
@@ -225,8 +227,9 @@ TypedValue<MEF::ChainType>
 CpuBufferBuilder::toMEFChain(OpBuilder &builder, Location loc,
                              TypedValue<MGP::ContextType> context,
                              Value inChain) {
-  assert(isa<MEF::ChainType>(inChain.getType()) &&
-         "chain should be of type MEF::ChainType for this builder");
+  GENERICML_ASSERT(isa<MEF::ChainType>(inChain.getType()))
+      << "chain should be of type MEF::ChainType for this builder but it is "
+      << inChain.getType();
   return cast<TypedValue<MEF::ChainType>>(inChain);
 }
 

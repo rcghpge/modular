@@ -8,6 +8,7 @@
 #define GENERICML_MGPTRANSFORMS_VALUEINDEX_H
 
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/Support/Assert.h"
 #include "mlir/IR/Value.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/EquivalenceClasses.h"
@@ -44,13 +45,13 @@ public:
   /// Returns the unique index of V in model, or the distinguished value.
   size_t getIndex(V v) const {
     auto itr = vIndexMap.find(v);
-    assert(itr != vIndexMap.end());
+    GENERICML_ASSERT(itr != vIndexMap.end());
     return itr->second;
   }
 
   /// Returns the V from model for unique index, or the distinguished value.
   V getV(size_t index) const {
-    assert(index < allVs.size());
+    GENERICML_ASSERT(index < allVs.size());
     return allVs[index];
   }
 
@@ -142,7 +143,7 @@ public:
   /// CAUTION: Not stable, use getStableCanonical when printing for unit tests.
   V getCanonical(const Equivalence &equivalence, V v) const {
     auto itr = equivalence.findLeader(getIndex(v));
-    assert(itr != equivalence.member_end());
+    GENERICML_ASSERT(itr != equivalence.member_end());
     return getV(*itr);
   }
 
@@ -153,7 +154,7 @@ public:
   /// CAUTION: Slow, use getCanonical during analysis.
   V getStableCanonical(const Equivalence &equivalence, V v) const {
     auto itr = equivalence.findLeader(getIndex(v));
-    assert(itr != equivalence.member_end());
+    GENERICML_ASSERT(itr != equivalence.member_end());
     size_t index = *itr;
     ++itr;
     while (itr != equivalence.member_end()) {

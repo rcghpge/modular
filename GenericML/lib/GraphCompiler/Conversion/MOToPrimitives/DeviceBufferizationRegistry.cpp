@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/Conversion/DeviceBufferizationRegistry.h"
+#include "GenericML/Support/Assert.h"
 
 using namespace M;
 using namespace M::MO;
@@ -14,7 +15,8 @@ void DeviceBufferizationRegistry::add(
     std::unique_ptr<DeviceSpecificDialect> deviceSpecificDialect) {
   std::lock_guard<std::mutex> guard(mu);
   bool inserted = map.insert({label, std::move(deviceSpecificDialect)}).second;
-  assert(inserted && "builder for label has already been registered");
+  GENERICML_ASSERT(inserted)
+      << "builder for label " << label << " has already been registered";
 }
 
 void DeviceBufferizationRegistry::callAllRegisterDialects(
