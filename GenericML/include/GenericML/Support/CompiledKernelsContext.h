@@ -10,7 +10,7 @@
 #include "GenericML/Support/Assert.h"
 #include "KGEN/Compiler/ExecutionEngine.h"
 #include "KGEN/Compiler/ObjectCompiler.h"
-#include "KGEN/CompilerRT/OutputChain.h"
+#include "KGEN/CompilerRT/MojoCallContext.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/BLAKE3.h"
 
@@ -44,10 +44,10 @@ struct ABITensor {
   ABITensor(ssize_t *dims, void *dataPtr) : dims(dims), dataPtr(dataPtr) {}
 };
 
-/// Holds marshalled data for the duration of an ABI call. Unlike a
-/// KGEN::OutputChain, this instance lives only until the ABI call returns,
-/// and it is the responsibility of the called kernel to unmarshal this data
-/// before returning, even if the kernel is asynchronous.
+/// Holds marshalled data for the duration of an ABI call. This instance lives
+/// only until the ABI call returns, and it is the responsibility of the called
+/// kernel to unmarshal this data before returning, even if the kernel is
+/// asynchronous.
 ///
 /// TODO: Remove this once we have a unified representation of values across
 ///       the ABI.
@@ -94,7 +94,7 @@ struct CompiledKernelCall {
 //   O = number of 'out' tensor buffers
 //   N = number of 'in' dimension values (for dynamic dims only)
 //   M = number of 'out' dimension values (for compiled shape functions only)
-//   void* args[I + O], ssize_t dims[N + M], OutputChain*
+//   void* args[I + O], ssize_t dims[N + M], KGEN::MojoCallContext*
 //
 // Both args and dims take 'in' args (ie read only) followed by 'out' args
 // (ie write only). Arguments representing tensors are passed as their
@@ -111,14 +111,24 @@ struct CompiledKernelCall {
 //
 // Each void* arg can be:
 //  - The underlying buffer of a GML::BufferRef (for `!mgp.cpu.buffer`s).
-//    The lifetime is managed by the `KGEN::OutputChain`.
+//    The lifetime is managed by the C++ runtime, possibly my moving
+//    referencs into a sub-task closure.
 //  - The underlying buffer of a CUDA::CUDABuffer (for `!cuda.buffer`s)
 //    The lifetime is managed by the CUDABuffer itself.
 //  - A `CompiledKernelABI::ABIList*` (for `!mgp.list`s). The lifetime is
 //    managed by the `CompiledKernelCall`, and the called kernel shim is
 //    responsible for unmarshalling before returning.
 //
-using CompiledKernelFn = void(void **, ssize_t *, KGEN::OutputChain *);
+// If the called kernel is synchronous then it may signal error using
+// MojoCallcontext::setToError. Otherwise, it is free to just return.
+//
+// If the called kernel is asynchronous then the C++ runtime will
+// keep all operands and the MojoCallContext alive until the kernel's coroutine
+// completes. That is signalled by the kernel eventually calling back to
+// MojoCallContext::{complete, setToError}. Note that the kernel must unmarshal
+// all other arguments before returning to the caller after hitting a
+// suspension point.
+using CompiledKernelFn = void(void **, ssize_t *, KGEN::MojoCallContext *);
 
 //===----------------------------------------------------------------------===//
 // CompiledKernelsContext

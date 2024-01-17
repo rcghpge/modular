@@ -534,11 +534,10 @@ def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders"> {
 // MOGG Runtime compiled code representation ops.
 //===----------------------------------------------------------------------===//
 
-def MOGG_ChainPlaceholderOp: MOGG_Op<"runtime_chain_placeholder", [Pure]> {
-  let summary = "Launders the runtime chain into KGEN land";
+def MOGG_MojoCallContextPlaceholderOp: MOGG_Op<"runtime_mojocallcontext_placeholder", [Pure]> {
+  let summary = "Launders the runtime MojoCallContext into KGEN land";
   let description = [{
-    Returns a legal runtime chain of whatever type mojo uses to reference
-    a chain.
+    Returns the MojoCallContextPtr passed to the Mojo kernel by the C++ runtime.
   }];
   let results = (outs AnyType:$results);
 }

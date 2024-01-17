@@ -1006,8 +1006,8 @@ static void mgp_cpu_kernel_execute(
   SmallVector<LLCL::ResourceUse> uses;
 #endif
 
-  // Create an OutputChain to convey context into the Mojo kernel.
-  KGEN::OutputChain outputChain(outChain.copy(), outChain.copyLocation());
+  // Create an MojoCallContext to convey context into the Mojo kernel.
+  KGEN::MojoCallContext callContext(outChain.copy(), outChain.copyLocation());
 
   // Hold on to ABI intermediate datastructures until the kernel returns.
   // Asynchronous kernels are responsible for unmarshalling what they need
@@ -1048,6 +1048,14 @@ static void mgp_cpu_kernel_execute(
   // entry onto the per-thread stack.
   auto profilerEntry = MGPProfilerEntry::create(*dSummary);
 
+  // Stop profiling when the kernel finishes.
+  if (profilerEntry.isEnabled()) {
+    outChain.copy().andThenSync(
+        [profilerEntry = std::move(profilerEntry)]() mutable {
+          std::move(profilerEntry).record();
+        });
+  }
+
   // Execute the kernel. Currently, all Mojo kernels are synchronous (and if
   // they launch sub-tasks they will LLCL::await until all such sub-tasks have
   // completed). However, if requested, the kernel will be launched in a
@@ -1060,7 +1068,7 @@ static void mgp_cpu_kernel_execute(
   if (*fIsAsync) {
     GENERICML_ASSERT(numOutDimensions == 0);
     runtime.getWorkQueue()->addTask(
-        [kernelPtr, outputChain = std::move(outputChain),
+        [kernelPtr, callContext = std::move(callContext),
          call = std::move(call), dimensions = std::move(dimensions),
          operands = operands.copyAsVector(), outChain = outChain.copy()
 #if MODULAR_PARANOID
@@ -1068,7 +1076,7 @@ static void mgp_cpu_kernel_execute(
          uses = std::move(uses)
 #endif
     ]() mutable {
-          kernelPtr(call.inputPointers.data(), dimensions.data(), &outputChain);
+          kernelPtr(call.inputPointers.data(), dimensions.data(), &callContext);
           if (!outChain.isError())
             std::move(outChain).emplace();
 #if MODULAR_PARANOID
@@ -1080,7 +1088,7 @@ static void mgp_cpu_kernel_execute(
           (void)operands;
         });
   } else {
-    kernelPtr(call.inputPointers.data(), dimensions.data(), &outputChain);
+    kernelPtr(call.inputPointers.data(), dimensions.data(), &callContext);
     if (!outChain.copy().isError())
       std::move(outChain).emplace();
 #if MODULAR_PARANOID
@@ -1088,14 +1096,6 @@ static void mgp_cpu_kernel_execute(
     // of scope.
     uses.clear();
 #endif
-  }
-
-  // Stop profiling when the kernel finishes.
-  if (profilerEntry.isEnabled()) {
-    outChain.copy().andThenSync(
-        [profilerEntry = std::move(profilerEntry)]() mutable {
-          std::move(profilerEntry).record();
-        });
   }
 
   if (outChain.copy().isError()) {
