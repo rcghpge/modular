@@ -161,6 +161,14 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   if (opts.usePatterns) {
     pm.addPass(MOGG::createPatternFusion());
+    // Layout optimizations in `PatternFusion` might add new shape function
+    // invocation for the inserted layout transformations, and in most (if not
+    // all) cases we can fold them away.
+    if (opts.useExperimentalShapeInference) {
+      pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(
+          {opts.kernelLibraryPaths}));
+      pm.addPass(MO::createPropagateShapes());
+    }
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
   }
