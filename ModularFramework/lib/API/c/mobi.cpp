@@ -8,12 +8,12 @@
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "MOF/API/c/symbol_export.h"
-#include "MOF/MOBI/Attr.h"
-#include "MOF/MOBI/Graph.h"
-#include "MOF/MOBI/Loc.h"
-#include "MOF/MOBI/Module.h"
-#include "MOF/MOBI/Symbol.h"
-#include "MOF/MOBI/Type.h"
+#include "MOF/GraphBuilder/Attr.h"
+#include "MOF/GraphBuilder/Graph.h"
+#include "MOF/GraphBuilder/Loc.h"
+#include "MOF/GraphBuilder/Module.h"
+#include "MOF/GraphBuilder/Symbol.h"
+#include "MOF/GraphBuilder/Type.h"
 #include "Support/Buffer.h"
 #include "Support/ML/TensorSpec.h"
 #include "mlir/IR/MLIRContext.h"
@@ -21,7 +21,7 @@
 #include "llvm/ADT/bit.h"
 
 using namespace M;
-using namespace M::MOF::Builder;
+using namespace M::MOF::GraphBuilder;
 using namespace llvm;
 using namespace mlir;
 

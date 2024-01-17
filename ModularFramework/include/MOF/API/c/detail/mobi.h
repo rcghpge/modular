@@ -7,45 +7,45 @@
 #ifndef MOF_API_C_DETAIL_MOBI_H
 #define MOF_API_C_DETAIL_MOBI_H
 
-#include "MOF/MOBI/Loc.h"
-#include "MOF/MOBI/Module.h"
-#include "MOF/MOBI/Symbol.h"
-#include "MOF/MOBI/Type.h"
+#include "MOF/GraphBuilder/Loc.h"
+#include "MOF/GraphBuilder/Module.h"
+#include "MOF/GraphBuilder/Symbol.h"
+#include "MOF/GraphBuilder/Type.h"
 
 struct M_Attr {
-  M::MOF::Builder::Attr attr;
+  M::MOF::GraphBuilder::Attr attr;
 };
 
 struct M_AttrMap {
-  M::MOF::Builder::AttrMap map;
+  M::MOF::GraphBuilder::AttrMap map;
 };
 
 struct M_Graph {
-  M::MOF::Builder::Graph graph;
+  M::MOF::GraphBuilder::Graph graph;
 };
 
 struct M_Loc {
-  M::MOF::Builder::Loc loc;
+  M::MOF::GraphBuilder::Loc loc;
 };
 
 struct M_Module {
-  M::MOF::Builder::Module module;
+  M::MOF::GraphBuilder::Module module;
 };
 
 struct M_Tuple {
-  M::MOF::Builder::Tuple tuple;
+  M::MOF::GraphBuilder::Tuple tuple;
 };
 
 struct M_Symbol {
-  M::MOF::Builder::Symbol symbol;
+  M::MOF::GraphBuilder::Symbol symbol;
 };
 
 struct M_Arity {
-  M::MOF::Builder::Arity arity;
+  M::MOF::GraphBuilder::Arity arity;
 };
 
 struct M_Type {
-  M::MOF::Builder::Type type;
+  M::MOF::GraphBuilder::Type type;
 };
 
 #endif // MOF_API_C_DETAIL_MOBI_H
