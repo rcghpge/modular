@@ -1,4 +1,6 @@
 sphinx==7.2
 sphinx_rtd_theme
 Jinja2
-beautifulsoup4
+beautifulsoup4 # TODO(scott): Remove this after docsite migration
+sphinx_markdown_builder @ git+ssh://git@github.com/modularml/sphinx-markdown-builder.git@v0.7.0
+munch

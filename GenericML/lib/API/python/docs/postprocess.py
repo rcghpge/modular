@@ -76,9 +76,17 @@ def main():
     parser.add_argument(
         "--dir", "-d", required=True, help="Path to directory of files."
     )
+    parser.add_argument(
+        "--docsite",
+        "-s",
+        required=True,
+        help="$MODULAR_DOCSITE_V2 (OFF or ON).",
+    )
     args = parser.parse_args()
 
     # Accept a directory
+    if args.docsite == "ON":
+        return
     if os.path.isdir(args.dir):
         for dirpath, _, filenames in os.walk(args.dir):
             for file in filenames:
