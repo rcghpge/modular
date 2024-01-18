@@ -4,12 +4,6 @@
 #
 ##===----------------------------------------------------------------------===##
 
-if (MODULAR_RELEASE_PACKAGE_BUILD)
-  set(EngineCLIVisualize_if_enabled)
-else ()
-  set(EngineCLIVisualize_if_enabled EngineCLIVisualize)
-endif ()
-
 add_driver_option_tablegen(
   EngineCLI DriverOptions.td
   MANUAL_NAME max
@@ -24,7 +18,7 @@ add_modular_tool(max
 
   LINK_LIBS PRIVATE
   EngineCLIBenchmark
-  ${EngineCLIVisualize_if_enabled}
+  EngineCLIVisualize
   MCrashReporting
   MSupport
   MSupportDriver

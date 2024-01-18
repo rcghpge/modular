@@ -122,7 +122,7 @@ compileModel(const ClOptions &opts,
 
   M_enableVisualization(compileConfig.get(), opts.visualizationDir.c_str());
 
-  if (opts.customOpsPath != "") {
+  if (!opts.customOpsPath.empty()) {
     M_useKernelsFrom(compileConfig.get(), opts.customOpsPath.c_str(), status);
     if (M_isError(status))
       return Error(Twine("Failed to set custom ops path: ") +
@@ -139,11 +139,6 @@ compileModel(const ClOptions &opts,
 }
 
 int M::maxVisualizeMain(int argc, char **argv) {
-
-  // TODO: this is a temp workaround for some issues in the options pipeline. It
-  // will be replaced with a proper flag soon.
-
-  (void)M::setProcessEnv("GENERATE_VISUALIZATION", "1");
 
   State state(maxVisualize, {argv + 1, static_cast<size_t>(argc) - 1});
   ClOptions opts = parseOptions(state);
@@ -187,9 +182,7 @@ int M::maxVisualizeMain(int argc, char **argv) {
                       M_getError(status.get()));
     return EXIT_FAILURE;
   }
-  (void)M::setProcessEnv("GENERATE_VISUALIZATION", "");
 
-#ifndef MODULAR_PRODUCTION
   std::string output;
   if (!opts.visualizationDir.empty()) {
     output = (std::filesystem::current_path() /
@@ -198,11 +191,11 @@ int M::maxVisualizeMain(int argc, char **argv) {
   } else {
     output = std::filesystem::current_path().string();
   }
+
   llvm::outs() << "\nModular maxviz file saved to " << output << "\n";
 
   llvm::outs()
       << "To visualize model, drop maxviz file into https://netron.app/\n";
-#endif // !MODULAR_PRODUCTION
   logger->emitEvent(kTelemetrySuccessEventName,
                     Telemetry::Logs::Severity::kInfo, Telemetry::Level::L1, "");
   return EXIT_SUCCESS;

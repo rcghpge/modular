@@ -7,6 +7,7 @@
 #include "Config/Version.h"
 #include "GenericML/API/modular/c/common.h"
 #include "GenericML/EngineCLI/Benchmark/Main.h"
+#include "GenericML/EngineCLI/Visualize/Main.h"
 #include "Support/CrashReporting.h"
 #include "Support/Driver/DriverSupport.h"
 #include "llvm/Option/ArgList.h"
@@ -15,10 +16,6 @@
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/raw_ostream.h"
 #include <iostream>
-
-#ifndef MODULAR_PRODUCTION
-#include "GenericML/EngineCLI/Visualize/Main.h"
-#endif // MODULAR_PRODUCTION
 
 #define DRIVER_OPTIONS_PATH "DriverOptions.inc"
 #include "Support/Driver/OptTable.inc"
@@ -84,9 +81,7 @@ int main(int argc, char **argv) {
   using HandlerFunc = int (*)(int argc, char **argv);
   auto handler = llvm::StringSwitch<HandlerFunc>(firstArg->getAsString(args))
                      .Case("benchmark", maxBenchmarkMain)
-#ifndef MODULAR_PRODUCTION
                      .Case("visualize", maxVisualizeMain)
-#endif // MODULAR_PRODUCTION
                      .Default(handleUnknownSubcommand);
   return handler(argc - index, argv + index);
 }
