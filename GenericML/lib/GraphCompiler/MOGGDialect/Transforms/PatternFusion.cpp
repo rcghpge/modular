@@ -898,7 +898,7 @@ struct MultiHeadAttentionPatternGPU : public OpRewritePattern<TransposeOp> {
 };
 
 /// A helper to match multi-headed attention and it's variations
-struct MultiHeadAttentionPatternMatcher {
+class MultiHeadAttentionPatternMatcher {
   /*
   Input values to the pattern.
 
@@ -926,6 +926,7 @@ struct MultiHeadAttentionPatternMatcher {
     attentionMatrixSoftMax = softmax(attentionMatrixNormMasked)
     answer = attentionMatrixSoftMax @ value
   */
+private:
   TensorValue query, // Q   , layout B,H,s,D
       keyT,          // K^T , layout B,H,D,S
       value,         // V   , layout B,H,S,D
@@ -942,30 +943,68 @@ struct MultiHeadAttentionPatternMatcher {
   Operation *attentionMaskBCastProducer = nullptr,
             *attentionMatrixNormMaskedProducer = nullptr;
 
-  bool matchesPattern;
   graph_compiler::Logger patternMatcherLogger;
 
-  MultiHeadAttentionPatternMatcher(BatchMatmulOp op) {
-    auto pQ = m_Any(&query);
-    auto pKT = m_Any(&keyT);
-    auto pV = m_Any(&value);
+  ErrorOrSuccess intermediateValuesHaveOneUse() {
+    // Checks all intermediate values are used once. The exception are
+    // `norm` and `attnMask` since their values are typically reused per
+    // attention layer.
+
+    if (!attentionMatrixProducer->hasOneUse())
+      return Error("attentionMatrix has multiple uses.");
+
+    if (!attentionMatrixNormProducer->hasOneUse())
+      return Error("attentionMatrixNorm has multiple uses.");
+
+    if (attentionMaskBCastProducer && !attentionMaskBCastProducer->hasOneUse())
+      return Error("attentionMaskBCastProducer has multiple uses.");
+
+    // Remember this is also optional
+    if (attentionMatrixNormMaskedProducer &&
+        !attentionMatrixNormMaskedProducer->hasOneUse())
+      return Error("attentionMatrixNormMasked has multiple uses.");
+
+    if (!attentionMatrixSoftMaxProducer->hasOneUse())
+      return Error("attentionMatrixSoftMax has multiple uses.");
+
+    return success();
+  }
+
+  std::string getPatternMatchingError() {
+    std::string errMsg;
+    llvm::raw_string_ostream st(errMsg);
+    patternMatcherLogger.print(st);
+    return errMsg;
+  }
+
+  MultiHeadAttentionPatternMatcher() = default;
+
+public:
+  static ErrorOr<MultiHeadAttentionPatternMatcher>
+  match(BatchMatmulOp finalOp) {
+    MultiHeadAttentionPatternMatcher matcher;
+
+    auto pQ = m_Any(&matcher.query);
+    auto pKT = m_Any(&matcher.keyT);
+    auto pV = m_Any(&matcher.value);
 
     // TODO: normScalar is derived in some scenarios, it is usually 1 / sqrt(D)
-    auto pNorm = m_Op<Static::BroadcastToOp>(&normProducer, m_Any(&normScalar));
+    auto pNorm = m_Op<Static::BroadcastToOp>(&matcher.normProducer,
+                                             m_Any(&matcher.normScalar));
 
     // match Q @ K_T
     auto pAttentionMatrix =
-        m_Op<BatchMatmulOp>(&attentionMatrixProducer, pQ, pKT);
+        m_Op<BatchMatmulOp>(&matcher.attentionMatrixProducer, pQ, pKT);
 
     // normalize by scale
     auto pNormalizedAttnMatrix = m_BinaryCommutativeOp<MulOp>(
-        &attentionMatrixNormProducer, pAttentionMatrix, pNorm);
+        &matcher.attentionMatrixNormProducer, pAttentionMatrix, pNorm);
 
     // attention mask (optional)
     auto pAttentionMaskBCast = m_Op<Static::BroadcastToOp>(
-        &attentionMaskBCastProducer, m_Any(&attnMask));
+        &matcher.attentionMaskBCastProducer, m_Any(&matcher.attnMask));
     auto pMaskedNormalizedAttnMatrix = m_BinaryCommutativeOp<AddOp>(
-        &attentionMatrixNormMaskedProducer, pNormalizedAttnMatrix,
+        &matcher.attentionMatrixNormMaskedProducer, pNormalizedAttnMatrix,
         pAttentionMaskBCast);
 
     // handle with and without attention mask via m_Optional
@@ -973,14 +1012,23 @@ struct MultiHeadAttentionPatternMatcher {
         m_Optional(pNormalizedAttnMatrix, pMaskedNormalizedAttnMatrix);
 
     // softmax
-    auto pSoftmaxAttnMatrix = m_Op<SoftmaxOp>(&attentionMatrixSoftMaxProducer,
-                                              pMaybeMaskedNormalizedAttnMatrix);
+    auto pSoftmaxAttnMatrix =
+        m_Op<SoftmaxOp>(&matcher.attentionMatrixSoftMaxProducer,
+                        pMaybeMaskedNormalizedAttnMatrix);
 
     // re-project using V
-    auto pAnswer = m_Op<BatchMatmulOp>(&answerProducer, pSoftmaxAttnMatrix, pV);
+    auto pAnswer =
+        m_Op<BatchMatmulOp>(&matcher.answerProducer, pSoftmaxAttnMatrix, pV);
 
     // attempt to match the pattern
-    matchesPattern = pAnswer.match(op, &patternMatcherLogger);
+    bool matchesPattern = pAnswer.match(finalOp, &matcher.patternMatcherLogger);
+    if (!matchesPattern)
+      return Error(matcher.getPatternMatchingError());
+
+    ErrorOrSuccess hasOneUse = matcher.intermediateValuesHaveOneUse();
+    if (hasOneUse.isError())
+      return hasOneUse.takeError();
+    return matcher;
   }
 
   bool hasAttentionMask() {
@@ -1024,39 +1072,10 @@ struct MultiHeadAttentionPatternMatcher {
     return fixedUpMask;
   }
 
-  bool doesMatchPattern() { return matchesPattern; }
-
-  ErrorOrSuccess intermediateValuesHaveOneUse() {
-    // Checks all intermediate values are used once. The exception are
-    // `norm` and `attnMask` since their values are typically reused per
-    // attention layer.
-
-    if (!attentionMatrixProducer->hasOneUse())
-      return Error("attentionMatrix has multiple uses.");
-
-    if (!attentionMatrixNormProducer->hasOneUse())
-      return Error("attentionMatrixNorm has multiple uses.");
-
-    if (attentionMaskBCastProducer && !attentionMaskBCastProducer->hasOneUse())
-      return Error("attentionMaskBCastProducer has multiple uses.");
-
-    // Remember this is also optional
-    if (attentionMatrixNormMaskedProducer &&
-        !attentionMatrixNormMaskedProducer->hasOneUse())
-      return Error("attentionMatrixNormMasked has multiple uses.");
-
-    if (!attentionMatrixSoftMaxProducer->hasOneUse())
-      return Error("attentionMatrixSoftMax has multiple uses.");
-
-    return success();
-  }
-
-  std::string getPatternMatchingError() {
-    std::string errMsg;
-    llvm::raw_string_ostream st(errMsg);
-    patternMatcherLogger.print(st);
-    return errMsg;
-  }
+  TensorValue getQuery() { return query; }
+  TensorValue getKeyT() { return keyT; }
+  TensorValue getValue() { return value; }
+  TensorValue getNormScalar() { return normScalar; }
 };
 
 // For MIN Llama 2 demo
@@ -1074,18 +1093,12 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
     if (device && device.getLabel() != M::kCPULabel)
       return rewriter.notifyMatchFailure(op->getLoc(), "Devices are wrong.");
 
-    MultiHeadAttentionPatternMatcher matcher(op);
+    ErrorOr<MultiHeadAttentionPatternMatcher> maybeMatcher =
+        MultiHeadAttentionPatternMatcher::match(op);
+    if (maybeMatcher.isError())
+      return rewriter.notifyMatchFailure(op.getLoc(), maybeMatcher.getError());
 
-    if (!matcher.doesMatchPattern()) {
-      return rewriter.notifyMatchFailure(op.getLoc(),
-                                         matcher.getPatternMatchingError());
-    }
-
-    ErrorOrSuccess noMultipleUses = matcher.intermediateValuesHaveOneUse();
-    if (noMultipleUses.isError()) {
-      return rewriter.notifyMatchFailure(op->getLoc(),
-                                         noMultipleUses.getError());
-    }
+    MultiHeadAttentionPatternMatcher matcher = maybeMatcher.takeValue();
 
     // Attention masking case
     if (matcher.hasAttentionMask()) {
@@ -1097,8 +1110,8 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
                                            maybeAttentionMask.getError());
 
       SmallVector<Value> inputValues = {
-          matcher.query, matcher.keyT, matcher.value,
-          maybeAttentionMask.takeValue(), matcher.normScalar};
+          matcher.getQuery(), matcher.getKeyT(), matcher.getValue(),
+          maybeAttentionMask.takeValue(), matcher.getNormScalar()};
       SmallVector<Type> outputTypes = {op.getType()};
       ValueRange inputs(inputValues);
       TypeRange outputTy(outputTypes);
@@ -1111,8 +1124,9 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
       rewriter.replaceAllUsesWith(op, fused_kernel_result);
     } else {
       // No attention masking case
-      SmallVector<Value> inputValues = {matcher.query, matcher.keyT,
-                                        matcher.value, matcher.normScalar};
+      SmallVector<Value> inputValues = {matcher.getQuery(), matcher.getKeyT(),
+                                        matcher.getValue(),
+                                        matcher.getNormScalar()};
       SmallVector<Type> outputTypes = {op.getType()};
       ValueRange inputs(inputValues);
       TypeRange outputTy(outputTypes);
