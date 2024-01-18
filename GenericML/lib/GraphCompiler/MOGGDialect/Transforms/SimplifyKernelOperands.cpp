@@ -6,7 +6,10 @@
 
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
+
 #include "llvm/ADT/StringSet.h"
+
+#include <optional>
 
 using namespace M;
 
@@ -31,12 +34,17 @@ struct SimplifyKernelOperands
 
       auto kernelArguments = kernelOp.getBody().front().getArguments();
 
-      struct CacheEntry {
+      struct CacheEntryWithLambda {
         Value argument;
         KGEN::ParamDeclareRegionOp inputLambda;
       };
+      struct CacheEntryWithoutLambda {
+        Value argument;
+      };
 
-      DenseMap<Value, CacheEntry> operandValueToCacheEntry;
+      DenseMap<Value, CacheEntryWithLambda> operandValueToCacheEntryWithLambda;
+      DenseMap<Value, CacheEntryWithoutLambda>
+          operandValueToCacheEntryWithoutLambda;
       SmallVector<uint64_t> indicesToErase;
 
       for (uint64_t currentIndex = 0, e = kernelOp->getNumOperands();
@@ -46,44 +54,55 @@ struct SimplifyKernelOperands
         KGEN::ParamDeclareRegionOp currentInputLambda = kernelOp.findLambda(
             kernelOp.getInputFusionInterfaceAt(currentIndex));
 
-        auto insertionPair = operandValueToCacheEntry.try_emplace(
-            currentOperandValue,
-            CacheEntry{currentArgument, currentInputLambda});
+        if (!currentInputLambda) {
+          // If there is no input lambda, replace with the older argument that
+          // was also not accessed via a lambda.
+          auto insertionPair =
+              operandValueToCacheEntryWithoutLambda.try_emplace(
+                  currentOperandValue,
+                  CacheEntryWithoutLambda{currentArgument});
+          if (insertionPair.second)
+            continue;
 
-        if (insertionPair.second)
-          continue;
+          auto &[previousArgument] = insertionPair.first->getSecond();
+          indicesToErase.push_back(currentIndex);
+          currentArgument.replaceAllUsesWith(previousArgument);
+        } else {
+          // Otherwise, replace with the older argument that was accessed via a
+          // lambda and also erase the unused lambda.
+          auto insertionPair = operandValueToCacheEntryWithLambda.try_emplace(
+              currentOperandValue,
+              CacheEntryWithLambda{currentArgument, currentInputLambda});
+          if (insertionPair.second)
+            continue;
 
-        auto &[previousArgument, previousInputLambda] =
-            insertionPair.first->getSecond();
+          auto &[previousArgument, previousInputLambda] =
+              insertionPair.first->getSecond();
+          indicesToErase.push_back(currentIndex);
+          currentArgument.replaceAllUsesWith(previousArgument);
 
-        // Cannot de-duplicate if the inputs are not accessed similarly.
-        if (bool(currentInputLambda) ^ bool(previousInputLambda))
-          continue;
+          auto currentInputLambdaName =
+              currentInputLambda.getParamDecl().getName();
+          auto previousInputLambdaName =
+              previousInputLambda.getParamDecl().getName();
+          auto previousInputLambdaType =
+              previousInputLambda.getParamDecl().getType();
 
-        indicesToErase.push_back(currentIndex);
-        currentArgument.replaceAllUsesWith(previousArgument);
-
-        auto currentInputLambdaName =
-            currentInputLambda.getParamDecl().getName();
-        auto previousInputLambdaName =
-            previousInputLambda.getParamDecl().getName();
-        auto previousInputLambdaType =
-            previousInputLambda.getParamDecl().getType();
-
-        // Replacing lambda calls. This is necessary because the replaced
-        // operand is accessed via a lambda and not directly.
-        mlir::AttrTypeReplacer walker;
-        walker.addReplacement([&](KGEN::ParamDeclRefAttr attr)
-                                  -> std::optional<KGEN::ParamDeclRefAttr> {
-          if (attr.getName() == currentInputLambdaName)
-            return KGEN::ParamDeclRefAttr::get(previousInputLambdaName,
-                                               previousInputLambdaType);
-          return std::nullopt;
-        });
-        walker.recursivelyReplaceElementsIn(kernelOp, /*replaceAttrs=*/true,
-                                            /*replaceLocs=*/false,
-                                            /*replaceTypes=*/true);
-        currentInputLambda.erase();
+          // Replacing lambda calls. This is necessary because the replaced
+          // operand is accessed via a lambda and not directly.
+          mlir::AttrTypeReplacer walker;
+          walker.addReplacement([&](KGEN::ParamDeclRefAttr attr)
+                                    -> std::optional<KGEN::ParamDeclRefAttr> {
+            if (attr.getName() == currentInputLambdaName)
+              return KGEN::ParamDeclRefAttr::get(previousInputLambdaName,
+                                                 previousInputLambdaType);
+            return std::nullopt;
+          });
+          walker.recursivelyReplaceElementsIn(kernelOp, /*replaceAttrs=*/true,
+                                              /*replaceLocs=*/false,
+                                              /*replaceTypes=*/true);
+          currentInputLambda.erase();
+        }
       }
 
       // Iterating in reverse order to preserve the indices.
