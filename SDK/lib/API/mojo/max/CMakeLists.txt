@@ -4,7 +4,7 @@
 #
 ##===----------------------------------------------------------------------===##
 
-add_mojo_package(mobi-mojo-api PRIVATE
+set(GRAPH_SRCS
   graph/attr
   graph/graph
   graph/mobicc
@@ -18,21 +18,41 @@ add_mojo_package(mobi-mojo-api PRIVATE
   graph/ops/linalg
   graph/ops/reduction
   graph/ops/shaping
-  graph/ops/slicing
+  graph/ops/slicing)
+
+set(ENGINE_SRCS
+  engine/engine
+  engine/model
+  engine/session
+  engine/tensor
+  engine/tensor_map
+  engine/tensor_spec
+
+  engine/_compilation
+  engine/_context
+  engine/_dtypes
+  engine/_engine_impl
+  engine/_model_impl
+  engine/_model_specs
+  engine/_status
+  engine/_tensor_impl
+  engine/_tensor_map_impl
+  engine/_tensor_spec_impl
+  engine/_utils)
+
+add_mojo_package(MojoMax PRIVATE
+  ${GRAPH_SRCS}
+  ${ENGINE_SRCS}
 
   DOCS_DIR
-  ModularFramework/docs
+  SDK/docs
 )
-# TODO: Remove this dependency over time as only `testing.mojo` in this
-# directory requires the AI Engine Mojo package.  The core `mobi-mojo-api`
-# package shouldn't have a dependency on the AI Engine.
-add_dependencies(mobi-mojo-api engine-mojo-api)
 
 # This install rule is consumed by the install-ai-engine-mobi target defined in
 # ModularFramework/lib/API/CMakeLists.txt which describes the installation
 # process in more detail.
 install(
-  FILES $<TARGET_PROPERTY:mobi-mojo-api,PACKAGE_LOCATION>
+  FILES $<TARGET_PROPERTY:MojoMax,PACKAGE_LOCATION>
   DESTINATION "modular-ai-engine-tuf/pkg"
   COMPONENT ai-engine-mobi
 )

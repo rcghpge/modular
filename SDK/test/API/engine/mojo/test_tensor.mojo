@@ -6,7 +6,7 @@
 # UNSUPPORTED: windows
 # RUN: %mojo -I %engine_pkg_dir -I %test_utils_pkg_dir %s | FileCheck %s
 
-from aiengine import EngineTensorView
+from max.engine import EngineTensorView
 from tensor import Tensor
 from test_utils import linear_fill
 from python import Python

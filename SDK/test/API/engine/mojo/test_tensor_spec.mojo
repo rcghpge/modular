@@ -6,7 +6,7 @@
 # UNSUPPORTED: windows
 # RUN: %mojo -I %engine_pkg_dir %s | FileCheck %s
 
-from aiengine import (
+from max.engine import (
     InferenceSession,
     EngineTensorSpec,
 )

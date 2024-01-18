@@ -8,7 +8,7 @@ from sys.param_env import env_get_string
 from tensor import Tensor, TensorShape, TensorSpec
 from testing import assert_true, assert_almost_equal, assert_equal
 
-from aiengine import EngineTensorView, InferenceSession, TensorMap
+from max.engine import EngineTensorView, InferenceSession, TensorMap
 
 
 alias TEMP_DIR = Path(env_get_string["TEMP_DIR", ""]())

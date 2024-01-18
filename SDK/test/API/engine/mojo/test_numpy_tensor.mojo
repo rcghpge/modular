@@ -8,7 +8,7 @@
 # REQUIRES: numpy
 # RUN: %mojo -I %engine_pkg_dir -I %test_utils_pkg_dir %s | FileCheck %s
 
-from aiengine import EngineNumpyView
+from max.engine import EngineNumpyView
 from test_utils import linear_fill
 from python import Python
 

@@ -6,7 +6,7 @@
 # UNSUPPORTED: windows
 # RUN: %mojo -I %engine_pkg_dir %s | FileCheck %s
 
-from aiengine import InferenceSession
+from max.engine import InferenceSession
 from tensor import TensorSpec, Tensor, TensorShape
 from utils.index import Index
 
