@@ -52,7 +52,8 @@ public:
   /// Returns true if the state slot at slotIndex has been set or emplaced.
   bool hasStateSlot(size_t slotIndex) {
     GENERICML_ASSERT(slotIndex < stateSlots.size())
-        << "slotIndex is out of range";
+        << "slotIndex " << slotIndex << " is out of range. "
+        << stateSlots.size() << " slots available.";
     return stateSlots[slotIndex];
   }
 
@@ -67,7 +68,8 @@ public:
   template <typename T>
   T &setStateSlot(size_t slotIndex, RCRef<T> payload, size_t numBuffers = 0) {
     GENERICML_ASSERT(!stateSlots[slotIndex])
-        << "StateSlot for the given slot has already been set or emplaced.";
+        << "StateSlot for the slot " << slotIndex
+        << " has already been set or emplaced.";
     stateSlots[slotIndex].reset<T>(std::move(payload), numBuffers);
     return stateSlots[slotIndex].get<T>();
   }
@@ -79,7 +81,8 @@ public:
   template <typename T, typename... Args>
   T &emplaceStateSlot(size_t slotIndex, size_t numBuffers, Args &&...args) {
     GENERICML_ASSERT(!stateSlots[slotIndex])
-        << "StateSlot for the given slot has already been set or emplaced.";
+        << "StateSlot for the slot " << slotIndex
+        << " has already been set or emplaced.";
     stateSlots[slotIndex].reset<T>(
         RCRef<T>::create(std::forward<Args>(args)...), numBuffers);
     return stateSlots[slotIndex].get<T>();
@@ -89,9 +92,11 @@ public:
   /// been emplaced.
   StateSlot &getStateSlot(size_t slotIndex) {
     GENERICML_ASSERT(slotIndex < stateSlots.size())
-        << "slotIndex is out of range";
+        << "slotIndex " << slotIndex << " is out of range. "
+        << stateSlots.size() << " slots available.";
     GENERICML_ASSERT(stateSlots[slotIndex])
-        << "StateSlot for the given slot has not been set or emplaced";
+        << "StateSlot for the slot " << slotIndex
+        << " has not been set or emplaced.";
     return stateSlots[slotIndex];
   }
 
