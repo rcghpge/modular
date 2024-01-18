@@ -252,8 +252,8 @@ int M::maxBenchmarkMain(int argc, char **argv) {
   }
 
   if (opts.roundTripInputGenerationSchema) {
-    llvm::outs() << "Input generation schema is valid\n";
-    llvm::outs() << "Round-tripped input generation schema:\n";
+    llvm::outs() << "Input data schema is valid\n";
+    llvm::outs() << "Round-tripped input data schema:\n";
     dumpInputGenerationSchema(inputGenerationSchema);
     return EXIT_SUCCESS;
   }

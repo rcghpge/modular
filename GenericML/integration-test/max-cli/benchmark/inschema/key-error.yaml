@@ -4,6 +4,6 @@
 #
 ##===----------------------------------------------------------------------===##
 
-# RUN: not max benchmark --input-generation-schema=%s --round-trip-input-generation-schema %t 2>&1 | FileCheck %s
+# RUN: not max benchmark --input-data-schema=%s --round-trip-input-data-schema %t 2>&1 | FileCheck %s
 # CHECK: {{.*}}.yaml:9:1: error: unknown key 'outputs'
 outputs: []

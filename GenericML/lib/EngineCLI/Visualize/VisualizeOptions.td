@@ -30,9 +30,9 @@ def : Separate<["-"], "o">,
 
 defm input_generation_schema
     : CommandOption<
-          ["--"], "input-generation-schema", CompilationOptionGroup, Index<1>,
+          ["--"], "input-data-schema", CompilationOptionGroup, Index<1>,
           MetaVarName<"PATH">,
-          HelpText<"Path to input generation schema file "
+          HelpText<"Path to input data schema file "
                    "(only used for compile-time shape specifications).">>;
 
 defm custom_ops_path

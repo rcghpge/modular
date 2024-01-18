@@ -10,7 +10,7 @@ include "Support/Driver/DriverCommand.td"
 include "../Common/DescriptionBase.td"
 include "BenchmarkDescription.td"
 
-def InputGenerationOptionGroup : OptionGroup<"Input generation options">,
+def InputGenerationOptionGroup : OptionGroup<"Input data options">,
                                  Index<1>;
 def BenchmarkOptionGroup : OptionGroup<"Benchmarking options">, Index<2>;
 def CompilationOptionGroup : OptionGroup<"Compilation options">, Index<3>;
@@ -37,15 +37,15 @@ defm mlperf_scenario
           Values<"single-stream,multiple-stream-2.0,server,offline">>;
 
 defm input_generation_schema
-    : CommandOption<["--"], "input-generation-schema",
+    : CommandOption<["--"], "input-data-schema",
                     InputGenerationOptionGroup, Index<1>, MetaVarName<"PATH">,
-                    HelpText<"Path to input generation schema file.">>;
+                    HelpText<"Path to input data schema file.">>;
 
 def round_trip_input_generation_schema
-    : Flag<["--"], "round-trip-input-generation-schema">,
+    : Flag<["--"], "round-trip-input-data-schema">,
       Group<InputGenerationOptionGroup>,
       Index<2>,
-      HelpText<"Validate and round trip the provided input generation schema "
+      HelpText<"Validate and round trip the provided input data schema "
                "and do not proceed to run benchmarking.">,
       Flags<[HelpHidden]>;
 

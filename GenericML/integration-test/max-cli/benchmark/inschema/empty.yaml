@@ -4,9 +4,9 @@
 #
 ##===----------------------------------------------------------------------===##
 
-# RUN: max benchmark --input-generation-schema=%s --round-trip-input-generation-schema %t | FileCheck %s
-# CHECK: Input generation schema is valid
-# CHECK-NEXT: Round-tripped input generation schema:
+# RUN: max benchmark --input-data-schema=%s --round-trip-input-data-schema %t | FileCheck %s
+# CHECK: Input data schema is valid
+# CHECK-NEXT: Round-tripped input data schema:
 # CHECK-NEXT: ---
 # CHECK-NEXT: {}
 # CHECK-NEXT: ...
