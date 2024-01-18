@@ -20,32 +20,6 @@ using namespace M;
 using llvm::MemoryBuffer;
 
 namespace {
-//===--------------------------------------------------------------------===//
-// Scenario structure and flag parsing
-//===--------------------------------------------------------------------===//
-
-/// This struct provides the backing data store behind a "scenario". It
-/// describes a command-line flag that takes one of 2 forms.
-///
-/// --scenario="--num-threads=3 --unchain=true"
-/// OR
-/// --scenario="nofail:--num-threads=3 --unchain=true"
-///
-/// The first option indicates that `mt` should abort on failure of the
-/// scenario, while the second indicates that `mt` should continue even if the
-/// scenario fails.
-struct Scenario {
-  bool abortOnFailure = true;
-  SmallVector<std::string> flags = {};
-};
-
-class ScenarioParser : public llvm::cl::parser<Scenario> {
-public:
-  using llvm::cl::parser<Scenario>::parser;
-
-  bool parse(llvm::cl::Option &O, StringRef ArgName, StringRef ArgValue,
-             Scenario &Val);
-};
 
 //===--------------------------------------------------------------------===//
 // GenericDriverCLOptions
@@ -70,17 +44,6 @@ public:
       llvm::cl::cat(GenericDriverCLOptionsCategory)};
 
   //===--------------------------------------------------------------------===//
-  // Specify a 'scenario' to run.
-  //===--------------------------------------------------------------------===//
-
-  cl::list<Scenario, bool, ScenarioParser> scenarios{
-      "scenario",
-      cl::desc("List of scenarios to run. Only has meaning with the -execute "
-               "command. Each scenario's strings are passed directly to the "
-               "loaded framework."),
-      llvm::cl::cat(GenericDriverCLOptionsCategory)};
-
-  //===--------------------------------------------------------------------===//
   // Sink for all unparsed options.
   //===--------------------------------------------------------------------===//
 
@@ -94,21 +57,6 @@ public:
       llvm::cl::cat(GenericDriverCLOptionsCategory)};
 };
 } // namespace
-
-//===--------------------------------------------------------------------===//
-// ScenarioParser implementation
-//===--------------------------------------------------------------------===//
-
-bool ScenarioParser::parse(llvm::cl::Option &O, StringRef ArgName,
-                           StringRef ArgValue, Scenario &Val) {
-  if (ArgValue.consume_front("nofail:"))
-    Val.abortOnFailure = false;
-
-  // The flags are what remains.
-  llvm::transform(llvm::split(ArgValue, ' '), std::back_inserter(Val.flags),
-                  [](StringRef s) { return s.str(); });
-  return false;
-}
 
 // TODO(#1639): Remove.
 /// Returns a string that describes the contents of the file. Given that this
@@ -369,36 +317,8 @@ int main(int argc, char **argv) {
 
     // Hand off the MEFFileHandle and the file buffer to the framework to
     // actually run the thing with all the various diagnostics.
-    if (options.scenarios.empty())
-      rc = dylib.runBinaryFile(frameworkCtx, std::move(inputInfo.file),
-                               binaryFile);
-
-    for (Scenario scenario : options.scenarios) {
-      printf("--- (mt) Running scenario: '%s", scenario.flags.front().c_str());
-      for (StringRef f : llvm::drop_begin(scenario.flags))
-        printf(" %s", f.data());
-      printf("' - %s \n", scenario.abortOnFailure ? "Aborting on failure."
-                                                  : "Not aborting on failure.");
-      fflush(stdout);
-
-      auto fileCopy = MemoryBuffer::getMemBufferCopy(
-          inputInfo.file->getBuffer(), inputInfo.file->getBufferIdentifier());
-
-      // Add any common flags to the scenario, this will ensure that the user
-      // can pass something like "result-output-style=full" to all scenarios
-      // without having to specify it each time.
-      scenario.flags.append(dylibOptions);
-
-      // Reset the options.
-      if (auto err = dylib.setOptions(frameworkCtx, scenario.flags))
-        return options.reportError(err.getError());
-
-      rc = dylib.runBinaryFile(frameworkCtx, std::move(fileCopy), binaryFile);
-      if (rc != EXIT_SUCCESS && scenario.abortOnFailure)
-        return rc;
-      else if (!scenario.abortOnFailure)
-        rc = EXIT_SUCCESS; // Reset `rc` for suppressed failures.
-    }
+    rc = dylib.runBinaryFile(frameworkCtx, std::move(inputInfo.file),
+                             binaryFile);
   }
 
   return rc;
