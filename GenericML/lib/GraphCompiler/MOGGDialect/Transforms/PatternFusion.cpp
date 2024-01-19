@@ -916,7 +916,6 @@ class MultiHeadAttentionPatternMatcher {
     norm = broadcast_to(normScalar, shape_of(attentionMatrix))
 
     # Normalize and apply masking
-    # This is optional, else `attentionMatrixNorm = attentionMatrix`
     attentionMatrixNorm = attentionMatrix * norm
 
     # Masking optional, else `attentionMatrixNormMasked = attentionMatrixNorm`
@@ -930,12 +929,9 @@ class MultiHeadAttentionPatternMatcher {
 private:
   TensorValue query, // Q   , layout B,H,s,D
       keyT,          // K^T , layout B,H,D,S
-      value;         // V   , layout B,H,S,D
-
-  // Optional Values
-  TensorValue attnMask; //     , layout     s,S
-
-  TensorValue normScalar; // the factor for normalizing Q^K_t to be var. 1
+      value,         // V   , layout B,H,S,D
+      attnMask,      //     , layout     s,S
+      normScalar;    // the factor for normalizing Q^K_t to be var. 1
 
   // Intermediate values and their producing operations
   Operation *attentionMatrixProducer = nullptr, *normProducer = nullptr,
@@ -951,15 +947,17 @@ private:
 
   ErrorOrSuccess intermediateValuesHaveOneUse() {
     // Checks all intermediate values are used once. The exception are
-    // `norm`, `attnMask`, `attentionMaskBCastProducer` since their values are
-    // typically reused per attention layer.
+    // `norm` and `attnMask` since their values are typically reused per
+    // attention layer.
 
     if (!attentionMatrixProducer->hasOneUse())
       return Error("attentionMatrix has multiple uses.");
 
-    if (attentionMatrixNormProducer &&
-        !attentionMatrixNormProducer->hasOneUse())
+    if (!attentionMatrixNormProducer->hasOneUse())
       return Error("attentionMatrixNorm has multiple uses.");
+
+    if (attentionMaskBCastProducer && !attentionMaskBCastProducer->hasOneUse())
+      return Error("attentionMaskBCastProducer has multiple uses.");
 
     // Remember this is also optional
     if (attentionMatrixNormMaskedProducer &&
@@ -1002,20 +1000,16 @@ public:
     auto pNormalizedAttnMatrix = m_BinaryCommutativeOp<MulOp>(
         &matcher.attentionMatrixNormProducer, pAttentionMatrix, pNorm);
 
-    // Normalization is optional
-    auto pMaybeNormalizedAttnMatrix =
-        m_Optional(pNormalizedAttnMatrix, pAttentionMatrix);
-
     // attention mask (optional)
     auto pAttentionMaskBCast = m_Op<Static::BroadcastToOp>(
         &matcher.attentionMaskBCastProducer, m_Any(&matcher.attnMask));
     auto pMaskedNormalizedAttnMatrix = m_BinaryCommutativeOp<AddOp>(
-        &matcher.attentionMatrixNormMaskedProducer, pMaybeNormalizedAttnMatrix,
+        &matcher.attentionMatrixNormMaskedProducer, pNormalizedAttnMatrix,
         pAttentionMaskBCast);
 
     // handle with and without attention mask via m_Optional
     auto pMaybeMaskedNormalizedAttnMatrix =
-        m_Optional(pMaybeNormalizedAttnMatrix, pMaskedNormalizedAttnMatrix);
+        m_Optional(pNormalizedAttnMatrix, pMaskedNormalizedAttnMatrix);
 
     // softmax
     auto pSoftmaxAttnMatrix =
@@ -1037,7 +1031,9 @@ public:
     return matcher;
   }
 
-  bool hasAttentionMask() { return attnMask != nullptr; }
+  bool hasAttentionMask() {
+    return attentionMatrixNormMaskedProducer != nullptr;
+  }
 
   ErrorOr<TensorValue>
   extractCompatibleAttentionMask(PatternRewriter &rewriter) {
@@ -1079,18 +1075,7 @@ public:
   TensorValue getQuery() { return query; }
   TensorValue getKeyT() { return keyT; }
   TensorValue getValue() { return value; }
-  TensorValue getNormScalar(OpBuilder &builder) {
-    if (normScalar)
-      return normScalar;
-
-    // Kernel still expects normalization, just set it to 1 to make it a no-op
-    TensorValue attnMatrix =
-        cast<TensorValue>(attentionMatrixProducer->getResult(0));
-    TensorValue one = builder.create<ConstantOp>(attnMatrix.getLoc(), 1.0);
-    return builder.create<CastOp>(
-        attnMatrix.getLoc(),
-        one.getType().cloneWith(attnMatrix.getType().getDtype()), one);
-  }
+  TensorValue getNormScalar() { return normScalar; }
 };
 
 // For MIN Llama 2 demo
@@ -1126,7 +1111,7 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
 
       SmallVector<Value> inputValues = {
           matcher.getQuery(), matcher.getKeyT(), matcher.getValue(),
-          maybeAttentionMask.takeValue(), matcher.getNormScalar(rewriter)};
+          maybeAttentionMask.takeValue(), matcher.getNormScalar()};
       SmallVector<Type> outputTypes = {op.getType()};
       ValueRange inputs(inputValues);
       TypeRange outputTy(outputTypes);
@@ -1141,7 +1126,7 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
       // No attention masking case
       SmallVector<Value> inputValues = {matcher.getQuery(), matcher.getKeyT(),
                                         matcher.getValue(),
-                                        matcher.getNormScalar(rewriter)};
+                                        matcher.getNormScalar()};
       SmallVector<Type> outputTypes = {op.getType()};
       ValueRange inputs(inputValues);
       TypeRange outputTy(outputTypes);
