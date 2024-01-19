@@ -1040,10 +1040,10 @@ static void mgp_cpu_kernel_execute(
     dimensions[numInDimensions + i] = -1;
 #endif
 
-  // Start profiling the kernel. Note that this entry is not available as
-  // a 'parent' for Mojo-side profiling entries since we can't push this
-  // entry onto the per-thread stack.
+  // Start profiling the kernel, and mark it as the 'current' event so that
+  // it can be picked up as the parent for Mojo trace entries which request it.
   auto profilerEntry = MGPProfilerEntry::create(*dSummary);
+  profilerEntry.setAsCurrentId();
 
   // Stop profiling when the kernel finishes.
   if (profilerEntry.isEnabled()) {
@@ -1120,6 +1120,11 @@ static void mgp_cpu_kernel_execute(
         << "synchronous kernels should not emplace the output chain";
     std::move(outChain).emplace();
   }
+
+  // Make sure our profiling entry (or any which the Mojo kernel may have
+  // designated as 'current') does not escape the scope of the Mojo kernel
+  // call, either synchronous or up to first await point for asynchronous.
+  MGPProfilerEntry::clearCurrentId();
 }
 
 //===----------------------------------------------------------------------===//
