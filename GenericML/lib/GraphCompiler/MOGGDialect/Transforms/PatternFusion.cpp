@@ -781,6 +781,58 @@ private:
     return success();
   }
 
+  ErrorOrSuccess hasExpectedRanks() {
+    auto checkRank =
+        [](TensorValue value, const std::string &valueName,
+           const SmallVector<int64_t> &allowedRanks) -> ErrorOrSuccess {
+      if (!value.getType().hasRank()) {
+        return Error(valueName + " is unranked");
+      }
+
+      int64_t rank = value.getType().getRank();
+      for (int64_t allowedRank : allowedRanks) {
+        if (allowedRank == rank)
+          return success();
+      }
+
+      std::string errMsg;
+      llvm::raw_string_ostream st(errMsg);
+      st << valueName << " has rank " << rank << " but expected one of: ";
+      for (int64_t allowedRank : allowedRanks)
+        st << allowedRank << " ";
+      return Error(errMsg);
+    };
+
+    // Allowed to elide the batch dimension
+    ErrorOrSuccess queryOk = checkRank(query, "query", {3, 4});
+    if (queryOk.isError())
+      return queryOk.takeError();
+
+    ErrorOrSuccess keyTOk = checkRank(keyT, "keyT", {3, 4});
+    if (keyTOk.isError())
+      return keyTOk.takeError();
+
+    ErrorOrSuccess valueOk = checkRank(value, "value", {3, 4});
+    if (valueOk.isError())
+      return valueOk.takeError();
+
+    if (attnMask) {
+      // May have a pre-broadcasted batch-dimension
+      ErrorOrSuccess attnMaskOk = checkRank(attnMask, "attnMask", {2, 3});
+      if (attnMaskOk.isError())
+        return attnMaskOk.takeError();
+    }
+
+    if (normScalar) {
+      // May have a pre-broadcasted batch-dimension
+      ErrorOrSuccess normScalarOk = checkRank(normScalar, "normScalar", {0, 1});
+      if (normScalarOk.isError())
+        return normScalarOk.takeError();
+    }
+
+    return success();
+  }
+
   std::string getPatternMatchingError() {
     std::string errMsg;
     llvm::raw_string_ostream st(errMsg);
@@ -839,6 +891,11 @@ public:
     ErrorOrSuccess hasOneUse = matcher.intermediateValuesHaveOneUse();
     if (hasOneUse.isError())
       return hasOneUse.takeError();
+
+    ErrorOrSuccess hasExpectedRanks = matcher.hasExpectedRanks();
+    if (hasExpectedRanks.isError())
+      return hasExpectedRanks.takeError();
+
     return matcher;
   }
 
@@ -858,8 +915,9 @@ public:
       return Error("Attention mask needs a known rank.");
 
     // Target shape for the attention mask:
-    SmallVector<TypedAttr> bcastAttnMaskDims = {query.getType().getDim(2),
-                                                keyT.getType().getDim(3)};
+    SmallVector<TypedAttr> bcastAttnMaskDims = {
+        query.getType().getDim(query.getType().getRank() - 2),
+        keyT.getType().getDim(query.getType().getRank() - 1)};
     ShapeAttr attnMaskTargetShapeAttr = ShapeAttr::get(
         bcastAttnMaskDims, MOSH::ShapeType::get(rewriter.getContext()));
 
@@ -929,7 +987,6 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
       rewriter.setInsertionPointAfterValue(op);
       auto result = rewriter.create<CustomOp>(op->getLoc(), outputTy, inputs,
                                               "with_mask_fused_attention_cpu");
-
       auto fused_kernel_result = cast<TensorValue>(result->getResult(0));
       fused_kernel_result.setType(op.getType());
       rewriter.replaceAllUsesWith(op, fused_kernel_result);
