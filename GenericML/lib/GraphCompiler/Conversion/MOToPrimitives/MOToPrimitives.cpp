@@ -269,10 +269,13 @@ LogicalResult MOGraphLowering::createModelOp() {
   // Convert the tensor types for the model signature over.
   SmallVector<Type> inputTypes, outputTypes;
   if (failed(loweringState.getTypeConverter().convertTypes(
-          graph.getArgumentTypes(), inputTypes)) ||
-      failed(loweringState.getTypeConverter().convertTypes(
-          graph.getResultTypes(), outputTypes))) {
-    return graph.emitOpError("failed to convert mo graph input/output types");
+          graph.getArgumentTypes(), inputTypes))) {
+    return graph.emitOpError("failed to convert mo graph input types")
+           << graph.getArgumentTypes() << " is not supported";
+  } else if (failed(loweringState.getTypeConverter().convertTypes(
+                 graph.getResultTypes(), outputTypes))) {
+    return graph.emitOpError("failed to convert mo graph output types -- ")
+           << graph.getResultTypes() << " is not supported";
   }
 
   // Preserve the MO::GraphOp argument locations in the MGP::ModelOp 'execute'
