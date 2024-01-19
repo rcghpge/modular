@@ -7,7 +7,7 @@
 set(GRAPH_SRCS
   graph/attr
   graph/graph
-  graph/mobicc
+  graph/capi
   graph/module
   graph/symbol
   graph/testing

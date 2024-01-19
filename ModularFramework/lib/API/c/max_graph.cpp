@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MOF/API/c/detail/mobi.h"
+#include "MOF/API/c/detail/max_graph.h"
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "MOF/API/c/symbol_export.h"
@@ -49,7 +49,7 @@ static MLIRContext *newContext() {
 // Attribute factories
 //===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT M_Attr *MOBI_attrNewTensor(M_Module *m, StringRef name,
+MODULAR_API_EXPORT M_Attr *MAXG_attrNewTensor(M_Module *m, StringRef name,
                                               void *data, M_Type *t,
                                               bool owned) {
   auto moType = cast<M::MO::TensorType>(t->type.getVal());
@@ -60,7 +60,7 @@ MODULAR_API_EXPORT M_Attr *MOBI_attrNewTensor(M_Module *m, StringRef name,
       owned)};
 }
 
-MODULAR_API_EXPORT M_Attr *MOBI_attrNewTensorFromFile(M_Module *m,
+MODULAR_API_EXPORT M_Attr *MAXG_attrNewTensorFromFile(M_Module *m,
                                                       StringRef name,
                                                       StringRef fileName,
                                                       M_Type *t) {
@@ -89,7 +89,7 @@ MODULAR_API_EXPORT M_Attr *MOBI_attrNewTensorFromFile(M_Module *m,
       t->type, /*owned=*/false)};
 }
 
-MODULAR_API_EXPORT M_Attr *MOBI_attrNewString(M_Module *m, StringRef name,
+MODULAR_API_EXPORT M_Attr *MAXG_attrNewString(M_Module *m, StringRef name,
                                               StringRef value) {
   return new M_Attr{m->module.stringAttr(name, value)};
 }
@@ -98,13 +98,13 @@ MODULAR_API_EXPORT M_Attr *MOBI_attrNewString(M_Module *m, StringRef name,
 // AttrMap support
 //===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT M_AttrMap *MOBI_attrMapNew() { return new M_AttrMap(); }
+MODULAR_API_EXPORT M_AttrMap *MAXG_attrMapNew() { return new M_AttrMap(); }
 
-MODULAR_API_EXPORT uint32_t MOBI_attrMapSize(M_AttrMap *m) {
+MODULAR_API_EXPORT uint32_t MAXG_attrMapSize(M_AttrMap *m) {
   return m->map.size();
 }
 
-MODULAR_API_EXPORT void MOBI_attrMapAddAttr(M_AttrMap *m, M_Attr *a) {
+MODULAR_API_EXPORT void MAXG_attrMapAddAttr(M_AttrMap *m, M_Attr *a) {
   m->map.add(a->attr);
 }
 
@@ -112,7 +112,7 @@ MODULAR_API_EXPORT void MOBI_attrMapAddAttr(M_AttrMap *m, M_Attr *a) {
 // Graph support
 //===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT M_Graph *MOBI_graphNew(M_Module *m, M_Loc *l,
+MODULAR_API_EXPORT M_Graph *MAXG_graphNew(M_Module *m, M_Loc *l,
                                           llvm::StringRef name,
                                           const M_Arity *inTypes,
                                           const M_Arity *outTypes) {
@@ -120,15 +120,15 @@ MODULAR_API_EXPORT M_Graph *MOBI_graphNew(M_Module *m, M_Loc *l,
       m->module.newGraph(l->loc, name, inTypes->arity, outTypes->arity)};
 }
 
-MODULAR_API_EXPORT M_Module *MOBI_graphGetModule(M_Graph *g) {
+MODULAR_API_EXPORT M_Module *MAXG_graphGetModule(M_Graph *g) {
   return new M_Module{g->graph.getModule()};
 }
 
-MODULAR_API_EXPORT M_Symbol *MOBI_graphGetArg(M_Graph *g, uint32_t pos) {
+MODULAR_API_EXPORT M_Symbol *MAXG_graphGetArg(M_Graph *g, uint32_t pos) {
   return new M_Symbol{g->graph.getArg(pos)};
 }
 
-MODULAR_API_EXPORT M_Tuple *MOBI_graphNewOp(M_Graph *g, M_Loc *l,
+MODULAR_API_EXPORT M_Tuple *MAXG_graphNewOp(M_Graph *g, M_Loc *l,
                                             llvm::StringRef name,
                                             const M_Tuple *inputs,
                                             const M_Arity *outTypes,
@@ -141,7 +141,7 @@ MODULAR_API_EXPORT M_Tuple *MOBI_graphNewOp(M_Graph *g, M_Loc *l,
 // Location helpers
 //===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT M_Loc *MOBI_locNewUnknown(M_Module *m) {
+MODULAR_API_EXPORT M_Loc *MAXG_locNewUnknown(M_Module *m) {
   return new M_Loc{m->module.unknownLoc()};
 }
 
@@ -149,7 +149,7 @@ MODULAR_API_EXPORT M_Loc *MOBI_locNewUnknown(M_Module *m) {
 // Module support
 //===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT M_Module *MOBI_moduleNew() {
+MODULAR_API_EXPORT M_Module *MAXG_moduleNew() {
   static MLIRContext *ctx = newContext();
   Location testLoc = UnknownLoc::get(ctx);
 
@@ -157,11 +157,11 @@ MODULAR_API_EXPORT M_Module *MOBI_moduleNew() {
   return m;
 }
 
-MODULAR_API_EXPORT bool MOBI_moduleVerify(M_Module *m) {
+MODULAR_API_EXPORT bool MAXG_moduleVerify(M_Module *m) {
   return mlir::verify(m->module.getModuleOp()).succeeded();
 }
 
-MODULAR_API_EXPORT char *MOBI_moduleToString(const M_Module *const m,
+MODULAR_API_EXPORT char *MAXG_moduleToString(const M_Module *const m,
                                              int64_t *len) {
   std::string buffer;
   raw_string_ostream os(buffer);
@@ -170,7 +170,7 @@ MODULAR_API_EXPORT char *MOBI_moduleToString(const M_Module *const m,
   return unownedString(buffer, len);
 }
 
-MODULAR_API_EXPORT bool MOBI_moduleToBytecode(const M_Module *const m,
+MODULAR_API_EXPORT bool MAXG_moduleToBytecode(const M_Module *const m,
                                               StringRef fileName) {
   std::error_code ec;
   raw_fd_stream fs(fileName, ec);
@@ -183,25 +183,25 @@ MODULAR_API_EXPORT bool MOBI_moduleToBytecode(const M_Module *const m,
 // Symbol support
 //===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT M_Graph *MOBI_symbolGetGraph(M_Symbol *s) {
+MODULAR_API_EXPORT M_Graph *MAXG_symbolGetGraph(M_Symbol *s) {
   return new M_Graph{s->symbol.getGraph()};
 }
 
-MODULAR_API_EXPORT char *MOBI_symbolToString(M_Symbol *s, int64_t *len) {
+MODULAR_API_EXPORT char *MAXG_symbolToString(M_Symbol *s, int64_t *len) {
   return unownedString(s->symbol.toString(), len);
 }
 
-MODULAR_API_EXPORT M_Tuple *MOBI_tupleNew() { return new M_Tuple{Tuple()}; }
+MODULAR_API_EXPORT M_Tuple *MAXG_tupleNew() { return new M_Tuple{Tuple()}; }
 
-MODULAR_API_EXPORT uint32_t MOBI_tupleSize(M_Tuple *t) {
+MODULAR_API_EXPORT uint32_t MAXG_tupleSize(M_Tuple *t) {
   return t->tuple.size();
 }
 
-MODULAR_API_EXPORT void MOBI_tupleAddSymbol(M_Tuple *t, M_Symbol *s) {
+MODULAR_API_EXPORT void MAXG_tupleAddSymbol(M_Tuple *t, M_Symbol *s) {
   t->tuple.add(s->symbol);
 }
 
-MODULAR_API_EXPORT M_Symbol *MOBI_getSymbol(M_Tuple *t, uint32_t pos) {
+MODULAR_API_EXPORT M_Symbol *MAXG_getSymbol(M_Tuple *t, uint32_t pos) {
   return new M_Symbol{t->tuple.getItem(pos)};
 }
 
@@ -209,26 +209,26 @@ MODULAR_API_EXPORT M_Symbol *MOBI_getSymbol(M_Tuple *t, uint32_t pos) {
 // Type helpers
 //===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT M_Type *MOBI_dTypeNew(M_Module *m, uint8_t value) {
+MODULAR_API_EXPORT M_Type *MAXG_dTypeNew(M_Module *m, uint8_t value) {
   return new M_Type{m->module.newDType(M::DType(value))};
 }
 
-MODULAR_API_EXPORT int64_t MOBI_dimTypeNewDynamic() {
+MODULAR_API_EXPORT int64_t MAXG_dimTypeNewDynamic() {
   return ShapedType::kDynamic;
 }
 
-MODULAR_API_EXPORT M_Type *MOBI_tensorTypeNew(M_Module *m, M_Type *dtype,
+MODULAR_API_EXPORT M_Type *MAXG_tensorTypeNew(M_Module *m, M_Type *dtype,
                                               bool ranked, int64_t *dims,
                                               int32_t rank) {
   return new M_Type{m->module.newTensorType(
       dtype->type, ranked, llvm::ArrayRef<int64_t>(dims, rank))};
 }
 
-MODULAR_API_EXPORT uint8_t MOBI_tensorTypeGetDType(M_Symbol *s) {
+MODULAR_API_EXPORT uint8_t MAXG_tensorTypeGetDType(M_Symbol *s) {
   return s->symbol.getTensorDType().getValue();
 }
 
-MODULAR_API_EXPORT int64_t *MOBI_tensorTypeGetShape(M_Symbol *s,
+MODULAR_API_EXPORT int64_t *MAXG_tensorTypeGetShape(M_Symbol *s,
                                                     int32_t *rank) {
   SmallVector<int64_t> dims = s->symbol.getTensorShape();
   *rank = dims.size();
@@ -238,20 +238,20 @@ MODULAR_API_EXPORT int64_t *MOBI_tensorTypeGetShape(M_Symbol *s,
   return retval;
 }
 
-MODULAR_API_EXPORT bool MOBI_tensorTypeIsRanked(M_Symbol *s) {
+MODULAR_API_EXPORT bool MAXG_tensorTypeIsRanked(M_Symbol *s) {
   return s->symbol.getTensorDType().getValue();
 }
 
-MODULAR_API_EXPORT char *MOBI_typeToString(M_Type *t, int64_t *len) {
+MODULAR_API_EXPORT char *MAXG_typeToString(M_Type *t, int64_t *len) {
   return unownedString(t->type.toString(), len);
 }
 
-MODULAR_API_EXPORT M_Arity *MOBI_arityNew() { return new M_Arity{Arity()}; }
+MODULAR_API_EXPORT M_Arity *MAXG_arityNew() { return new M_Arity{Arity()}; }
 
-MODULAR_API_EXPORT uint32_t MOBI_aritySize(M_Arity *a) {
+MODULAR_API_EXPORT uint32_t MAXG_aritySize(M_Arity *a) {
   return a->arity.size();
 }
 
-MODULAR_API_EXPORT void MOBI_arityAddType(M_Arity *a, M_Type *t) {
+MODULAR_API_EXPORT void MAXG_arityAddType(M_Arity *a, M_Type *t) {
   a->arity.add(t->type);
 }

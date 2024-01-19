@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MOF_API_C_DETAIL_MOBI_H
-#define MOF_API_C_DETAIL_MOBI_H
+#ifndef MOF_API_C_DETAIL_MAX_GRAPH_H
+#define MOF_API_C_DETAIL_MAX_GRAPH_H
 
 #include "MOF/GraphBuilder/Loc.h"
 #include "MOF/GraphBuilder/Module.h"
@@ -48,4 +48,4 @@ struct M_Type {
   M::MOF::GraphBuilder::Type type;
 };
 
-#endif // MOF_API_C_DETAIL_MOBI_H
+#endif // MOF_API_C_DETAIL_MAX_GRAPH_H

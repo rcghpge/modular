@@ -12,7 +12,7 @@ configure_lit_site_cfg(
 )
 
 
-add_modular_testsuite(check-mojo-graph-api
+add_modular_testsuite(check-mobi-mojo-api
   TOOLS
   mojo
 
