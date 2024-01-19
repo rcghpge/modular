@@ -11,6 +11,7 @@
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/Compiler/MLIRDType.h"
+#include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Builders.h"

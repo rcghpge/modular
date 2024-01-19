@@ -52,7 +52,7 @@ def MOGGDialect : Dialect {
   }];
 
   let cppNamespace = "::M::MOGG";
-  let dependentDialects = ["::M::MO::MODialect"];
+  let dependentDialects = ["::M::MO::MODialect", "::M::DebugInfo::DebugInfoDialect"];
 
   let extraClassDeclaration = [{
   private:
