@@ -48,11 +48,11 @@ add_mojo_package(MojoMax PRIVATE
   SDK/docs
 )
 
-# This install rule is consumed by the install-ai-engine-mobi target defined in
+# This install rule is consumed by the install-max-graph-c target defined in
 # ModularFramework/lib/API/CMakeLists.txt which describes the installation
 # process in more detail.
 install(
   FILES $<TARGET_PROPERTY:MojoMax,PACKAGE_LOCATION>
   DESTINATION "modular-ai-engine-tuf/pkg"
-  COMPONENT ai-engine-mobi
+  COMPONENT max-graph
 )

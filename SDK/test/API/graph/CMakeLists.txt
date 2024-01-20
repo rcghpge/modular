@@ -12,12 +12,12 @@ configure_lit_site_cfg(
 )
 
 
-add_modular_testsuite(check-mobi-mojo-api
+add_modular_testsuite(check-max-graph-mojo
   TOOLS
   mojo
 
   DEPENDS
-  mobi-c-api
+  max-graph-c
   MojoMax
 
   TOP_LEVEL_CHECK

@@ -43,7 +43,7 @@ static MLIRContext *newContext() {
   return &ctx;
 }
 
-// Note: Keep sections below in sync with mobi.cpp.
+// Note: Keep sections below in sync with max_graph.cpp.
 
 //===----------------------------------------------------------------------===//
 // Attribute factories
