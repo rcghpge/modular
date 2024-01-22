@@ -312,9 +312,6 @@ bool tryExpandDeclOpExpr(KGEN::ParamDeclareOp declOp,
         } else {
           auto dimAttr1 = shapeAttr1.getValues()[axis];
           auto dimAttr2 = shapeAttr2.getValues()[axis - rankDiff];
-          resDims.push_back(KGEN::ParamOperatorAttr::get(KGEN::POC::Max,
-                                                         {dimAttr1, dimAttr2}));
-
           // Insert assertions
           auto [dimAttr1IsOneDeclOp, dimAttr1IsOneDeclRef] =
               createDeclToKgenExpr("dim_1_is_one", boolType, KGEN::POC::EQ,
@@ -330,6 +327,17 @@ bool tryExpandDeclOpExpr(KGEN::ParamDeclareOp declOp,
                                     dimsEqualDeclRef});
           createAssert("dims_assert", "dimensions are not broadcastable",
                        dimsCompatibleDeclRef);
+
+          // def bcast(D1, D2):
+          //     assert `D1 == D2 or D1 == 1 or D2 == 1`
+          //     if D1 == 1:
+          //         return D2
+          //     else:
+          //         return D1
+          TypedAttr newResDim = KGEN::ParamOperatorAttr::get(
+              KGEN::POC::Cond,
+              {dimAttr1IsOneDeclOp.getValue(), dimAttr2, dimAttr1});
+          resDims.push_back(newResDim);
         }
       }
       declOp.setValueAttr(MOSH::ShapeAttr::get(resDims, shapeAttr1.getType()));

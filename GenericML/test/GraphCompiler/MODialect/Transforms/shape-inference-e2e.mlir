@@ -198,52 +198,31 @@ mo.graph @unresolved_rebinds(
 }
 
 // CHECK-LABEL: mo.graph @broadcasted_binary_elwise
-// CHECK-SAME: <[[D15:.*]], [[D16:.*]], [[D17:.*]], [[D18:.*]] -> [[D20:.*]], [[D21:.*]]>(
+// CHECK-SAME: <[[D21:.*]], [[D22:.*]], [[D23:.*]], [[D24:.*]] -> [[D27:.*]]>([[VARG0:%[a-zA-Z0-9_]*]]: !mo.tensor<[[[D21]], 12, [[D22]]], f32>, [[VARG1:%[a-zA-Z0-9_]*]]: !mo.tensor<[[[D23]], [[D24]]], f32>) -> !mo.tensor<[[[D21]], 12, [[D27]]], f32>
+// CHECK-DAG: kgen.param.declare dim_2_is_one32: i1 = <eq([[D23]], 1)>
+// CHECK-DAG: kgen.param.declare dims_equal33: i1 = <eq([[D23]], 12)>
+// CHECK-DAG: kgen.param.declare dims_compatible34: i1 = <or(dim_2_is_one32, dims_equal33)>
+// CHECK-DAG: kgen.param.declare dims_assert35: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions are not broadcastable" : !kgen.string}, dims_compatible34)>
+// CHECK-DAG: kgen.param.declare dim_1_is_one36: i1 = <eq([[D22]], 1)>
+// CHECK-DAG: kgen.param.declare dim_2_is_one37: i1 = <eq([[D24]], 1)>
+// CHECK-DAG: kgen.param.declare dims_equal38: i1 = <eq([[D22]], [[D24]])>
+// CHECK-DAG: kgen.param.declare dims_compatible39: i1 = <or(dim_1_is_one36, dim_2_is_one37, dims_equal38)>
+// CHECK-DAG: kgen.param.declare dims_assert40: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions are not broadcastable" : !kgen.string}, dims_compatible39)>
+// CHECK-DAG: kgen.param.declare [[D18:.*]] = <cond(eq([[D22]], 1), [[D24]], [[D22]])>
+// CHECK-NEXT: [[V0:%[a-zA-Z0-9_]*]] = mo.static.broadcast_to([[VARG0]]) : !mo.tensor<[[[D21]], 12, [[D22]]], f32> -> !mo.tensor<[[[D21]], 12, [[D18]]], f32>
+// CHECK-NEXT: [[V1:%[a-zA-Z0-9_]*]] = mo.static.broadcast_to([[VARG1]]) : !mo.tensor<[[[D23]], [[D24]]], f32> -> !mo.tensor<[[[D21]], 12, [[D18]]], f32>
+// CHECK-NEXT: [[V2:%[a-zA-Z0-9_]*]] = mo.add([[V0]], [[V1]]) : !mo.tensor<[[[D21]], 12, [[D18]]], f32>
+// CHECK-NEXT: mo.output<[[D18]]> [[V2]] : !mo.tensor<[[[D21]], 12, [[D18]]], f32>
 mo.graph @broadcasted_binary_elwise(
-  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[D15]], 12, [[D16]]], f32>,
-  // CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[[[D17]], [[D18]]], f32>
   %arg0: !mo.tensor<[?, 12, ?], f32>, %arg1: !mo.tensor<[?, ?], f32>
-// CHECK-SAME: ) -> !mo.tensor<[[[D15]], [[D20]], [[D21]]], f32> no_inline {
 ) -> (!mo.tensor<[?, ?, ?], f32>) {
-  // CHECK-DAG: kgen.param.declare [[P4:.*]]: i1 = <eq([[D17]], 1)>
-  // CHECK-DAG: kgen.param.declare [[P6:.*]]: i1 = <eq([[D17]], 12)>
-  // CHECK-DAG: kgen.param.declare [[P7:.*]]: i1 =
-  // CHECK-SAME: <or(
-  // CHECK-DAG: [[P4]]
-  // CHECK-DAG:,
-  // CHECK-DAG: [[P6]]
-  // CHECK-SAME:)>
-  // CHECK-DAG: kgen.param.declare [[CH0:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions are not broadcastable" : !kgen.string}, [[P7]])>
-
-  // CHECK-DAG: kgen.param.declare [[P11:.*]]: i1 = <eq([[D16]], 1)>
-  // CHECK-DAG: kgen.param.declare [[P12:.*]]: i1 = <eq([[D18]], 1)>
-  // CHECK-DAG: kgen.param.declare [[DIM_EQ:.*]]: i1 =
-  // CHECK-SAME: <eq(
-  // CHECK-DAG: [[D16]]
-  // CHECK-DAG:,
-  // CHECK-DAG: [[D18]]
-  // CHECK-SAME:)>
-  // CHECK-DAG: kgen.param.declare [[P15:.*]]: i1 =
-  // CHECK-SAME: <or(
-  // CHECK-DAG: [[P11]]
-  // CHECK-DAG:,
-  // CHECK-DAG: [[P12]]
-  // CHECK-DAG:,
-  // CHECK-DAG: [[DIM_EQ]]
-  // CHECK-SAME:)>
-  // CHECK-DAG: kgen.param.declare [[CH1:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions are not broadcastable" : !kgen.string}, [[P15]])>
-
   %shape1 = mo.shape_of(%arg0) : (!mo.tensor<[?, 12, ?], f32>) -> !mo.tensor<[3], si64>
   %shape2 = mo.shape_of(%arg1) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[2], si64>
   %shape = mo.broadcast_shape(%shape1, %shape2) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
 
-  // CHECK-DAG: %[[VAL0:.*]] = mo.static.broadcast_to(%arg0) : !mo.tensor<[[[D15]], 12, [[D16]]], f32> -> !mo.tensor<[[[D15]], max([[D17]], 12), max({{.*}})], f32>
-  // CHECK-DAG: %[[VAL1:.*]] = mo.static.broadcast_to(%arg1) : !mo.tensor<[[[D17]], [[D18]]], f32> -> !mo.tensor<[[[D15]], max([[D17]], 12), max({{.*}})], f32>
   %0 = mo.broadcast_to(%arg0, %shape) : (!mo.tensor<[?, 12, ?], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
   %1 = mo.broadcast_to(%arg1, %shape) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
-  // CHECK-NEXT: %[[RES:.*]] = mo.add(%[[VAL0]], %[[VAL1]]) : !mo.tensor<[[[D15]], max([[D17]], 12), max({{.*}})], f32>
   %3 = mo.add(%0, %1) : !mo.tensor<[?, ?, ?], f32>
-  // CHECK-NEXT: mo.output<max([[D17]], 12), max({{.*}})> %[[RES]] : !mo.tensor<[[[D15]], max([[D17]], 12), max({{.*}})], f32>
   mo.output %3 : !mo.tensor<[?, ?, ?], f32>
 }
 
@@ -1040,32 +1019,31 @@ mo.graph @slice_out_a_third_of_constant_axis(
   mo.output %1237 : !mo.tensor<[?, ?, ?], f32>
 }
 
-// CHECK-LABEL: mo.graph @nested_broadcast_shapes
-// CHECK-SAME:  <[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]] -> [[D4:.*]], [[D5:.*]]>(
-// CHECK-SAME:   %[[COND:.*]]: !mo.tensor<[[[D0]], [[D1]]], bool>,
-// CHECK-SAME:   %[[ELSE:.*]]: !mo.tensor<[[[D2]], [[D3]]], si32>
-// CHECK-SAME: ) -> !mo.tensor<[[[D4]], [[D5]]], si32> no_inline {
+// CHECK: mo.graph @nested_broadcast_shapes<[[D29:.*]], [[D30:.*]], [[D31:.*]], [[D32:.*]] -> [[D33:.*]], [[D34:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D29]], [[D30]]], bool>, [[VARG1:%.*]]: !mo.tensor<[[[D31]], [[D32]]], si32>) -> !mo.tensor<[[[D33]], [[D34]]], si32> no_inline {
+// CHECK-NEXT: [[V0:%.*]] = mo.cast([[VARG0]]) : (!mo.tensor<[[[D29]], [[D30]]], bool>) -> !mo.tensor<[[[D29]], [[D30]]], si32>
+// CHECK-DAG: kgen.param.declare dim_1_is_one39: i1 = <eq([[D29]], 1)>
+// CHECK-DAG: kgen.param.declare dim_2_is_one40: i1 = <eq([[D31]], 1)>
+// CHECK-DAG: kgen.param.declare dims_equal41: i1 = <eq([[D29]], [[D31]])>
+// CHECK-DAG: kgen.param.declare dims_compatible42: i1 = <or(dim_1_is_one39, dim_2_is_one40, dims_equal41)>
+// CHECK-DAG: kgen.param.declare dims_assert43: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions are not broadcastable" : !kgen.string}, dims_compatible42)>
+// CHECK-DAG: kgen.param.declare dim_1_is_one44: i1 = <eq([[D30]], 1)>
+// CHECK-DAG: kgen.param.declare dim_2_is_one45: i1 = <eq([[D32]], 1)>
+// CHECK-DAG: kgen.param.declare dims_equal46: i1 = <eq([[D30]], [[D32]])>
+// CHECK-DAG: kgen.param.declare dims_compatible47: i1 = <or(dim_1_is_one44, dim_2_is_one45, dims_equal46)>
+// CHECK-DAG: kgen.param.declare dims_assert48: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions are not broadcastable" : !kgen.string}, dims_compatible47)>
+// CHECK-DAG: kgen.param.declare [[D21:.*]] = <cond(eq([[D29]], 1), [[D31]], [[D29]])>
+// CHECK-DAG: kgen.param.declare [[D22:.*]] = <cond(eq([[D30]], 1), [[D32]], [[D30]])>
+// CHECK: [[V1:%.*]] = mo.static.broadcast_to([[VARG0]]) : !mo.tensor<[[[D29]], [[D30]]], bool> -> !mo.tensor<[[[D21]], [[D22]]], bool>
+// CHECK-NEXT: [[V2:%.*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[[[D29]], [[D30]]], si32> -> !mo.tensor<[[[D21]], [[D22]]], si32>
+// CHECK-NEXT: [[V3:%.*]] = mo.static.broadcast_to([[VARG1]]) : !mo.tensor<[[[D31]], [[D32]]], si32> -> !mo.tensor<[[[D21]], [[D22]]], si32>
+// CHECK-NEXT: [[V4:%.*]] = mo.select([[V1]], [[V2]], [[V3]]) : (!mo.tensor<[[[D21]], [[D22]]], bool>, !mo.tensor<[[[D21]], [[D22]]], si32>, !mo.tensor<[[[D21]], [[D22]]], si32>) -> !mo.tensor<[[[D21]], [[D22]]], si32>
+// CHECK-NEXT: mo.output<[[D21]], [[D22]]> [[V4]] : !mo.tensor<[[[D21]], [[D22]]], si32>
 mo.graph @nested_broadcast_shapes(
   %cond: !mo.tensor<[?, ?], bool>,
   %else: !mo.tensor<[?, ?], si32>
 ) -> !mo.tensor<[?, ?], si32> {
 
-  // CHECK-NEXT: %[[THEN:.*]] = mo.cast(%[[COND]]) : (!mo.tensor<[[[D0]], [[D1]]], bool>) -> !mo.tensor<[[[D0]], [[D1]]], si32>
   %then = mo.cast(%cond) : (!mo.tensor<[?, ?], bool>) -> !mo.tensor<[?, ?], si32>
-
-  // Asserts for dimension 0 between cond and else
-  // CHECK-NEXT: kgen.param.declare [[COND_DIM0_EQ_1:.*]]: i1 = <eq([[D0]], 1)>
-  // CHECK-NEXT: kgen.param.declare [[ELSE_DIM0_EQ_1:.*]]: i1 = <eq([[D2]], 1)>
-  // CHECK-NEXT: kgen.param.declare [[COND_ELSE_DIM0_EQ:.*]]: i1 = <eq([[D0]], [[D2]])>
-  // CHECK-NEXT: kgen.param.declare [[DIM0_COMPATIBLE:.*]]: i1 = <or([[COND_DIM0_EQ_1]], [[ELSE_DIM0_EQ_1]], [[COND_ELSE_DIM0_EQ]])>
-  // CHECK-NEXT: kgen.param.declare {{.*}}: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions are not broadcastable" : !kgen.string}, [[DIM0_COMPATIBLE]])>
-
-  // Asserts for dimension 1 between cond and else
-  // CHECK-NEXT: kgen.param.declare [[COND_DIM1_EQ_1:.*]]: i1 = <eq([[D1]], 1)>
-  // CHECK-NEXT: kgen.param.declare [[ELSE_DIM1_EQ_1:.*]]: i1 = <eq([[D3]], 1)>
-  // CHECK-NEXT: kgen.param.declare [[COND_ELSE_DIM1_EQ:.*]]: i1 = <eq([[D1]], [[D3]])>
-  // CHECK-NEXT: kgen.param.declare [[DIM1_COMPATIBLE:.*]]: i1 = <or([[COND_DIM1_EQ_1]], [[ELSE_DIM1_EQ_1]], [[COND_ELSE_DIM1_EQ]])>
-  // CHECK-NEXT: kgen.param.declare {{.*}}: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions are not broadcastable" : !kgen.string}, [[DIM1_COMPATIBLE]])>
 
   %cond_sh = mo.shape_of(%cond) : (!mo.tensor<[?, ?], bool>) -> !mo.tensor<[2], si32>
   %then_sh = mo.shape_of(%then) : (!mo.tensor<[?, ?], si32>) -> !mo.tensor<[2], si32>
@@ -1074,21 +1052,11 @@ mo.graph @nested_broadcast_shapes(
   %sh1 = mo.broadcast_shape(%cond_sh, %then_sh) : (!mo.tensor<[2], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[2], si32>
   %sh2 = mo.broadcast_shape(%sh1, %else_sh) : (!mo.tensor<[2], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[2], si32>
 
-  // CHECK-NEXT: %[[COND_B:.*]] = mo.static.broadcast_to(%[[COND]]) : !mo.tensor<[[[D0]], [[D1]]], bool> -> !mo.tensor<[max([[D0]], [[D2]]), max([[D1]], [[D3]])], bool>
-  // CHECK-NEXT: %[[THEN_B:.*]] = mo.static.broadcast_to(%[[THEN]]) : !mo.tensor<[[[D0]], [[D1]]], si32> -> !mo.tensor<[max([[D0]], [[D2]]), max([[D1]], [[D3]])], si32>
-  // CHECK-NEXT: %[[ELSE_B:.*]] = mo.static.broadcast_to(%[[ELSE]]) : !mo.tensor<[[[D2]], [[D3]]], si32> -> !mo.tensor<[max([[D0]], [[D2]]), max([[D1]], [[D3]])], si32>
   %cond_b = mo.broadcast_to(%cond, %sh2) : (!mo.tensor<[?, ?], bool>, !mo.tensor<[2], si32>)   -> !mo.tensor<[?, ?], bool>
   %then_b = mo.broadcast_to(%then, %sh2) : (!mo.tensor<[?, ?], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[?, ?], si32>
   %else_b = mo.broadcast_to(%else, %sh2) : (!mo.tensor<[?, ?], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[?, ?], si32>
 
-  // CHECK-NEXT: %[[RES:.*]] = mo.select(%[[COND_B]], %[[THEN_B]], %[[ELSE_B]]) :
-  // CHECK-SAME: (!mo.tensor<[max([[D0]], [[D2]]), max([[D1]], [[D3]])], bool>,
-  // CHECK-SAME:  !mo.tensor<[max([[D0]], [[D2]]), max([[D1]], [[D3]])], si32>,
-  // CHECK-SAME:  !mo.tensor<[max([[D0]], [[D2]]), max([[D1]], [[D3]])], si32>
-  // CHECK-SAME: ) -> !mo.tensor<[max([[D0]], [[D2]]), max([[D1]], [[D3]])], si32>
   %res = mo.select(%cond_b, %then_b, %else_b) : (!mo.tensor<[?, ?], bool>, !mo.tensor<[?, ?], si32>, !mo.tensor<[?, ?], si32>) -> !mo.tensor<[?, ?], si32>
-
-  // CHECK-NEXT: mo.output<max([[D0]], [[D2]]), max([[D1]], [[D3]])> %[[RES]] : !mo.tensor<[max([[D0]], [[D2]]), max([[D1]], [[D3]])], si32>
   mo.output %res : !mo.tensor<[?, ?], si32>
 }
 
