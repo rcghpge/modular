@@ -21,14 +21,12 @@ class MGP_BaseType<string name, string typeMnemonic, list<Trait> traits = []>
     : TypeDef<MGPDialect, name, traits> {
   let mnemonic = typeMnemonic;
 }
-def MGP_CpuTensorSpecType : MGP_BaseType<"CpuTensorSpec", "cpu.tensor_spec", [
+def MGP_TensorSpecType : MGP_BaseType<"TensorSpec", "tensor_spec", [
     DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
   let summary = "Type of tensor specs.";
   let description = [{
     This type represents the shape and dtype of a concrete tensor. The
     tensor could be an !mgp.cpu.tensor, or some other tensor representation.
-
-    TODO: Remove 'cpu' prefix.
 
     Both static and dynamic (aka unknown) aspects are supported:
      - The rank may be static (implied by the number of dimensions, ie the
@@ -82,9 +80,9 @@ def MGP_CpuTensorSpecType : MGP_BaseType<"CpuTensorSpec", "cpu.tensor_spec", [
 
     Examples:
     ```mlir
-    !mgp.cpu.tensor_spec<4x16xf32>
-    !mgp.cpu.tensor_spec<?x3xunk>
-    !mgp.cpu.tensor_spec<*xi32>
+    !mgp.tensor_spec<4x16xf32>
+    !mgp.tensor_spec<?x3xunk>
+    !mgp.tensor_spec<*xi32>
     ```
   }];
 

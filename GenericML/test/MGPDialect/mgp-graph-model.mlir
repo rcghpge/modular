@@ -9,8 +9,8 @@ module {
     mef.output %2, %1 : !mef.chain, !mgp.context
   } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.cpu.tensor<8xf32>) -> (!mef.chain, !mgp.cpu.tensor<8xf32>) {
     %3 = mgp.cpu.tensor.create %2, %0, %1 : !mgp.cpu.tensor<8xf32>
-    %2 = "mop.kernels.add"(%arg0, %bufferResult, %tensorSpecResult, %bufferResult_0, %tensorSpecResult_1, %0, %1) : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.cpu.tensor_spec<8xf32>) -> !mef.chain
-    %1 = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<8xf32>
+    %2 = "mop.kernels.add"(%arg0, %bufferResult, %tensorSpecResult, %bufferResult_0, %tensorSpecResult_1, %0, %1) : (!mef.chain, !mgp.cpu.buffer<32>, !mgp.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.tensor_spec<8xf32>, !mgp.cpu.buffer<32>, !mgp.tensor_spec<8xf32>) -> !mef.chain
+    %1 = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<8xf32>
     %0 = mgp.cpu.buffer.alloc.static %arg0, 32 {bRawAlign = 32 : ui64}
     %bufferResult, %tensorSpecResult = mgp.cpu.tensor.extract %arg2 : !mgp.cpu.tensor<8xf32>
     %bufferResult_0, %tensorSpecResult_1 = mgp.cpu.tensor.extract %arg2 : !mgp.cpu.tensor<8xf32>

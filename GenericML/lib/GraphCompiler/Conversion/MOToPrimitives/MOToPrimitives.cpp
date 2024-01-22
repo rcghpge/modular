@@ -360,7 +360,7 @@ MGP::ListType MOGraphLowering::lowerListType(MO::ListType listTy) {
   GENERICML_ASSERT(outputTensorTy) << "only support lowering list of tensors";
 
   MLIRContext *ctx = listTy.getContext();
-  MGP::CpuTensorSpecType outputTensorSpecTy =
+  MGP::TensorSpecType outputTensorSpecTy =
       MGP::createCpuTensorSpecType(outputTensorTy);
   DeviceRefAttr tensorDeviceRef =
       MO::getDeviceOrDefault(loweringState.getGraph(), outputTensorTy);
@@ -538,8 +538,7 @@ MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
   // Fill the buffer with the runtime dimensions.
   auto loweredShape =
       loweringState.lookupExecuteLoweredValue(toTensorOp.getInput());
-  auto loweredTensorSpec =
-      cast<TypedValue<MGP::CpuTensorSpecType>>(loweredShape);
+  auto loweredTensorSpec = cast<TypedValue<MGP::TensorSpecType>>(loweredShape);
   // Note loweredTensorSpec is the encoding for the shape we are trying to
   // reify as a tensor, whereas outputStorage.tensorSpec just describes
   // the statically known shape of our output tensor.
@@ -610,7 +609,7 @@ static Value getRebindResTensor(MO::RebindOp rebindOp,
 
   // Create the output tensor.
   Value buffer = opLoweringState.tensorExtract(loweredInput, inputTy).first;
-  TypedValue<MGP::CpuTensorSpecType> tensorSpec =
+  TypedValue<MGP::TensorSpecType> tensorSpec =
       opLoweringState.create<MGP::CpuTensorSpecCreateOp>(outSpecTy,
                                                          runtimeDims);
   return opLoweringState.tensorCreate(loweringState.getExecuteChain(), buffer,
@@ -648,7 +647,7 @@ LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
             "rebind declares parameter not appearing in its result");
       }
 
-      MGP::CpuTensorSpecType specTy = dynDims.getSpec().getType();
+      MGP::TensorSpecType specTy = dynDims.getSpec().getType();
       Value rtVal = dynDims->getResult(specTy.getDynamicDimIndex(idx));
       if (auto err = loweringState.lowerParamDecl(decl, rtVal))
         return rebindOp->emitOpError(err.getError());
@@ -667,7 +666,7 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
 
   Value buffer = opLoweringState.bufferConstant(*elementsOr,
                                                 constOp.getResult().getType());
-  FailureOr<TypedValue<MGP::CpuTensorSpecType>> tensorSpecOr =
+  FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
       opLoweringState.createTensorSpec(constOp.getType());
   if (failed(tensorSpecOr))
     return failure();
@@ -687,7 +686,7 @@ MOGraphLowering::lowerStaticReshape(MO::Static::ReshapeOp reshapeOp) {
   Value buffer = bufferizedInput.buffer;
 
   // Create a tensor result with spec matching the result type.
-  FailureOr<TypedValue<MGP::CpuTensorSpecType>> tensorSpecOr =
+  FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
       opLoweringState.createTensorSpec(reshapeOp.getType());
   if (failed(tensorSpecOr))
     return failure();
@@ -707,7 +706,7 @@ LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
       opLoweringState.getBufferizedInput(reshapeOp.getInput());
   Value buffer = bufferizedInput.buffer;
 
-  FailureOr<TypedValue<MGP::CpuTensorSpecType>> tensorSpecOr =
+  FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
       opLoweringState.createTensorSpec(reshapeOp.getType());
   if (failed(tensorSpecOr))
     return failure();

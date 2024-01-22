@@ -23,9 +23,9 @@ func.func @buffer_constant_invalid_elem_type() {
 // mgp.cpu.buffer.alloc.spec
 //
 
-func.func @buffer_alloc_static_spec(%ch : !mef.chain, %spec : !mgp.cpu.tensor_spec<4x8xf32>) {
-  // expected-error@+1 {{'mgp.cpu.buffer.alloc.spec' op expected tensor spec to not have statically known size (have '!mgp.cpu.tensor_spec<4x8xf32>').}}
-  %0 = mgp.cpu.buffer.alloc.spec %ch, %spec, align 64 : !mgp.cpu.tensor_spec<4x8xf32>
+func.func @buffer_alloc_static_spec(%ch : !mef.chain, %spec : !mgp.tensor_spec<4x8xf32>) {
+  // expected-error@+1 {{'mgp.cpu.buffer.alloc.spec' op expected tensor spec to not have statically known size (have '!mgp.tensor_spec<4x8xf32>').}}
+  %0 = mgp.cpu.buffer.alloc.spec %ch, %spec, align 64 : !mgp.tensor_spec<4x8xf32>
   mef.output %0 : !mgp.cpu.buffer
 }
 
@@ -36,9 +36,9 @@ func.func @buffer_alloc_static_spec(%ch : !mef.chain, %spec : !mgp.cpu.tensor_sp
 //
 
 func.func @spec_create_mismatched_dims(%dim : index) {
-  // expected-error@+1 {{'mgp.cpu.tensor_spec.create' op expected 2 dimension operands to match '!mgp.cpu.tensor_spec<?x64x?xf32>', but given 1.}}
-  %0 = mgp.cpu.tensor_spec.create %dim : !mgp.cpu.tensor_spec<?x64x?xf32>
-  mef.output %0 : !mgp.cpu.tensor_spec<?x64x?xf32>
+  // expected-error@+1 {{'mgp.cpu.tensor_spec.create' op expected 2 dimension operands to match '!mgp.tensor_spec<?x64x?xf32>', but given 1.}}
+  %0 = mgp.cpu.tensor_spec.create %dim : !mgp.tensor_spec<?x64x?xf32>
+  mef.output %0 : !mgp.tensor_spec<?x64x?xf32>
 }
 
 // -----
@@ -46,23 +46,23 @@ func.func @spec_create_mismatched_dims(%dim : index) {
 func.func @spec_create_bogus_type(%dim : index) {
   // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create' expected a !mgp.cpu.tensor_spec type.}}
   %0 = mgp.cpu.tensor_spec.create %dim : !mgp.cpu.tensor<?x64xf32>
-  mef.output %0 : !mgp.cpu.tensor_spec<?x64x?xf32>
+  mef.output %0 : !mgp.tensor_spec<?x64x?xf32>
 }
 
 // -----
 
 func.func @spec_create_unknown_elem_type(%dim : index) {
   // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create' expected !mgp.cpu.tensor_spec type to have a known element type.}}
-  %0 = mgp.cpu.tensor_spec.create %dim : !mgp.cpu.tensor_spec<?x64xunk>
-  mef.output %0 : !mgp.cpu.tensor_spec<?x64xunk>
+  %0 = mgp.cpu.tensor_spec.create %dim : !mgp.tensor_spec<?x64xunk>
+  mef.output %0 : !mgp.tensor_spec<?x64xunk>
 }
 
 // -----
 
 func.func @spec_create_dynamic_mismatched_dims(%dim : index, %dtype : !mgp.dtype) {
-  // expected-error@+1 {{'mgp.cpu.tensor_spec.create.dynamic' op expected 2 dimension operands to match '!mgp.cpu.tensor_spec<?x64x?xunk>', but given 1.}}
-  %0 = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim : !mgp.cpu.tensor_spec<?x64x?xunk>
-  mef.output %0 : !mgp.cpu.tensor_spec<?x64x?xunk>
+  // expected-error@+1 {{'mgp.cpu.tensor_spec.create.dynamic' op expected 2 dimension operands to match '!mgp.tensor_spec<?x64x?xunk>', but given 1.}}
+  %0 = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim : !mgp.tensor_spec<?x64x?xunk>
+  mef.output %0 : !mgp.tensor_spec<?x64x?xunk>
 }
 
 // -----
@@ -70,31 +70,31 @@ func.func @spec_create_dynamic_mismatched_dims(%dim : index, %dtype : !mgp.dtype
 func.func @spec_create_dynamic_bogus_type(%dim : index, %dtype : !mgp.dtype) {
   // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create.dynamic' expected a !mgp.cpu.tensor_spec type.}}
   %0 = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim : !mgp.cpu.tensor<?x64xf32>
-  mef.output %0 : !mgp.cpu.tensor_spec<?x64x?xf32>
+  mef.output %0 : !mgp.tensor_spec<?x64x?xf32>
 }
 
 // -----
 
 func.func @spec_create_dynamic_known_elem_type(%dim : index, %dtype : !mgp.dtype) {
   // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create.dynamic' expected !mgp.cpu.tensor_spec type to have an unknown element type.}}
-  %0 = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim : !mgp.cpu.tensor_spec<?x64xf32>
-  mef.output %0 : !mgp.cpu.tensor_spec<?x64xf32>
+  %0 = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim : !mgp.tensor_spec<?x64xf32>
+  mef.output %0 : !mgp.tensor_spec<?x64xf32>
 }
 
 // -----
 
 func.func @spec_create_dynamic_rank(%dim : index) {
   // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create' expected !mgp.cpu.tensor_spec type to have a statically known rank.}}
-  %0 = mgp.cpu.tensor_spec.create %dim : !mgp.cpu.tensor_spec<*xf32>
-  mef.output %0 : !mgp.cpu.tensor_spec<*xf32>
+  %0 = mgp.cpu.tensor_spec.create %dim : !mgp.tensor_spec<*xf32>
+  mef.output %0 : !mgp.tensor_spec<*xf32>
 }
 
 // -----
 
 func.func @spec_create_dynamic_dynamic_rank(%dim : index, %dtype : !mgp.dtype) {
   // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create.dynamic' expected !mgp.cpu.tensor_spec type to have a statically known rank.}}
-  %0 = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim : !mgp.cpu.tensor_spec<*xunk>
-  mef.output %0 : !mgp.cpu.tensor_spec<*xunk>
+  %0 = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim : !mgp.tensor_spec<*xunk>
+  mef.output %0 : !mgp.tensor_spec<*xunk>
 }
 
 // -----
@@ -103,18 +103,18 @@ func.func @spec_create_dynamic_dynamic_rank(%dim : index, %dtype : !mgp.dtype) {
 // mgp.cpu.tensor_spec.with_dtype
 //
 
-func.func @spec_with_known_dtype(%shape : !mgp.cpu.tensor_spec<?x3xf32>) { //  expected-note {{prior use here}}
-  // expected-error@+1 {{use of value '%shape' expects different type than prior uses: '!mgp.cpu.tensor_spec<?x3xunk>' vs '!mgp.cpu.tensor_spec<?x3xf32>'}}
-  %0 = mgp.cpu.tensor_spec.with_dtype %shape : !mgp.cpu.tensor_spec<?x3xf32>
-  mef.output %0 : !mgp.cpu.tensor_spec<?x3xf32>
+func.func @spec_with_known_dtype(%shape : !mgp.tensor_spec<?x3xf32>) { //  expected-note {{prior use here}}
+  // expected-error@+1 {{use of value '%shape' expects different type than prior uses: '!mgp.tensor_spec<?x3xunk>' vs '!mgp.tensor_spec<?x3xf32>'}}
+  %0 = mgp.cpu.tensor_spec.with_dtype %shape : !mgp.tensor_spec<?x3xf32>
+  mef.output %0 : !mgp.tensor_spec<?x3xf32>
 }
 
 // -----
 
-func.func @spec_with_unknown_dtype(%shape : !mgp.cpu.tensor_spec<?x3xunk>) {
+func.func @spec_with_unknown_dtype(%shape : !mgp.tensor_spec<?x3xunk>) {
   // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.with_dtype' expected an !mgp.cpu.tensor_spec type with known dtype.}}
-  %0 = mgp.cpu.tensor_spec.with_dtype %shape : !mgp.cpu.tensor_spec<?x3xunk>
-  mef.output %0 : !mgp.cpu.tensor_spec<?x3xunk>
+  %0 = mgp.cpu.tensor_spec.with_dtype %shape : !mgp.tensor_spec<?x3xunk>
+  mef.output %0 : !mgp.tensor_spec<?x3xunk>
 }
 
 // -----
@@ -123,17 +123,17 @@ func.func @spec_with_unknown_dtype(%shape : !mgp.cpu.tensor_spec<?x3xunk>) {
 // mgp.cpu.tensor_spec.dims.dynamic
 //
 
-func.func @spec_dims_mismatched_dims(%spec : !mgp.cpu.tensor_spec<?x64x?xf32>) {
+func.func @spec_dims_mismatched_dims(%spec : !mgp.tensor_spec<?x64x?xf32>) {
   // expected-error@+1 {{operation defines 2 results but was provided 1 to bind}}
-  %dim0 = mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.cpu.tensor_spec<?x64x?xf32>
+  %dim0 = mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<?x64x?xf32>
   mef.output %dim0 : index
 }
 
 // -----
 
-func.func @spec_dims_dynamic_rank(%spec : !mgp.cpu.tensor_spec<*xf32>) {
+func.func @spec_dims_dynamic_rank(%spec : !mgp.tensor_spec<*xf32>) {
   // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.dims.dynamic' expected !mgp.cpu.tensor_spec type to have a statically known rank.}}
-  %dim0 = mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.cpu.tensor_spec<*xf32>
+  %dim0 = mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<*xf32>
   mef.output %dim0 : index
 }
 
@@ -143,7 +143,7 @@ func.func @spec_dims_dynamic_rank(%spec : !mgp.cpu.tensor_spec<*xf32>) {
 // mgp.cpu.tensor.create
 //
 
-func.func @tensor_create_mismatched_size(%ch : !mef.chain, %buf : !mgp.cpu.buffer<61>, %spec : !mgp.cpu.tensor_spec<3x5xf32>) { // expected-note {{prior use here}}
+func.func @tensor_create_mismatched_size(%ch : !mef.chain, %buf : !mgp.cpu.buffer<61>, %spec : !mgp.tensor_spec<3x5xf32>) { // expected-note {{prior use here}}
   // expected-error@+1 {{use of value '%buf' expects different type than prior uses: '!mgp.cpu.buffer<60>' vs '!mgp.cpu.buffer<61>'}}
   %tensor = mgp.cpu.tensor.create %ch, %buf, %spec : !mgp.cpu.tensor<3x5xf32>
   mef.output %tensor : !mgp.cpu.tensor<3x5xf32>
@@ -151,7 +151,7 @@ func.func @tensor_create_mismatched_size(%ch : !mef.chain, %buf : !mgp.cpu.buffe
 
 // -----
 
-func.func @tensor_create_mismatched_size_with_buf_annot(%ch : !mef.chain, %buf : !mgp.cpu.buffer<61>, %spec : !mgp.cpu.tensor_spec<3x5xf32>) { // expected-note {{prior use here}}
+func.func @tensor_create_mismatched_size_with_buf_annot(%ch : !mef.chain, %buf : !mgp.cpu.buffer<61>, %spec : !mgp.tensor_spec<3x5xf32>) { // expected-note {{prior use here}}
   // expected-error@+1 {{use of value '%buf' expects different type than prior uses: '!mgp.cpu.buffer<60>' vs '!mgp.cpu.buffer<61>'}}
   %tensor = mgp.cpu.tensor.create %ch, %buf, %spec !mgp.cpu.buffer<60> : !mgp.cpu.tensor<3x5xf32>
   mef.output %tensor : !mgp.cpu.tensor<3x5xf32>
@@ -159,7 +159,7 @@ func.func @tensor_create_mismatched_size_with_buf_annot(%ch : !mef.chain, %buf :
 
 // -----
 
-func.func @tensor_create_mismatched_buf_and_spec_with_buf_annot(%ch : !mef.chain, %buf : !mgp.cpu.buffer<61>, %spec : !mgp.cpu.tensor_spec<3x5xf32>) {
+func.func @tensor_create_mismatched_buf_and_spec_with_buf_annot(%ch : !mef.chain, %buf : !mgp.cpu.buffer<61>, %spec : !mgp.tensor_spec<3x5xf32>) {
   // expected-error@+1 {{'mgp.cpu.tensor.create' op expected buffer type to match type implied by tensor spec ('!mgp.cpu.buffer<61>' vs '!mgp.cpu.buffer<60>')}}
   %tensor = mgp.cpu.tensor.create %ch, %buf, %spec !mgp.cpu.buffer<61> : !mgp.cpu.tensor<3x5xf32>
   mef.output %tensor : !mgp.cpu.tensor<3x5xf32>
@@ -174,7 +174,7 @@ func.func @tensor_create_mismatched_buf_and_spec_with_buf_annot(%ch : !mef.chain
 func.func @tensor_extract_mismatched_size(%tensor : !mgp.cpu.tensor<3x5xf32>) {
   %buf, %spec = mgp.cpu.tensor.extract %tensor : !mgp.cpu.tensor<3x5xf32>  // expected-note {{prior use here}}
   // expected-error@+1 {{use of value '%buf' expects different type than prior uses: '!mgp.cpu.buffer<61>' vs '!mgp.cpu.buffer<60>'}}
-  mef.output %buf, %spec : !mgp.cpu.buffer<61>, !mgp.cpu.tensor_spec<3x5xf32>
+  mef.output %buf, %spec : !mgp.cpu.buffer<61>, !mgp.tensor_spec<3x5xf32>
 }
 
 // -----
@@ -184,22 +184,22 @@ func.func @tensor_extract_mismatched_size(%tensor : !mgp.cpu.tensor<3x5xf32>) {
 //
 
 // expected-error@+1 {{tensor spec must have a rank between 0 and 8.}}
-func.func @spec_too_large(%x : !mgp.cpu.tensor_spec<1x2x3x4x5x6x7x8x9xf32>) {}
+func.func @spec_too_large(%x : !mgp.tensor_spec<1x2x3x4x5x6x7x8x9xf32>) {}
 
 // -----
 
 // expected-error@+1 {{unrecognized dtype 'ui33'.}}
-func.func @dtype_unsupported(%x : !mgp.cpu.tensor_spec<5x10xui33>) {}
+func.func @dtype_unsupported(%x : !mgp.tensor_spec<5x10xui33>) {}
 
 // -----
 
 // expected-error@+1 {{invalid dtype.}}
-func.func @dtype_invalid(%x : !mgp.cpu.tensor_spec<5x10xinvalid>) {}
+func.func @dtype_invalid(%x : !mgp.tensor_spec<5x10xinvalid>) {}
 
 // -----
 
 // expected-error@+1 {{unable to represent DType 'f8' as an MLIR type.}}
-func.func @dtype_unrepresentable(%x : !mgp.cpu.tensor_spec<5x10xf8>) {}
+func.func @dtype_unrepresentable(%x : !mgp.tensor_spec<5x10xf8>) {}
 
 // -----
 

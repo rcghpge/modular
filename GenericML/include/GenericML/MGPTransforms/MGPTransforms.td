@@ -243,7 +243,7 @@ def DeferTensorCreateExecPass : Pass<"defer-tensor-create-exec", "MGP::ModelOp">
     till their buffers have no other uses. Eg:
     ```mlir
       %buf = mgp.cpu.buffer.alloc.static %bufChain, 24
-      %spec    : !mgp.cpu.tensor_spec<?xf32>
+      %spec    : !mgp.tensor_spec<?xf32>
       %out_op = op1(%opChain, out: %buf, ...)
       %in_op = op2(%out_op, in:% buf, ...)
       %tensor = mgp.cpu.tensor.create %out_op, %buf, %spec
@@ -253,7 +253,7 @@ def DeferTensorCreateExecPass : Pass<"defer-tensor-create-exec", "MGP::ModelOp">
     becomes:
     ```
       %buf = mgp.cpu.buffer.alloc.static %bufChain, 24
-      %spec    : !mgp.cpu.tensor_spec<?xf32>
+      %spec    : !mgp.tensor_spec<?xf32>
       %out_op = op1(%opChain, out: %buf, ...)
       %in_op = op2(%out_op, in:% buf, ...)
       %ch = grt.chain.create (%out_op, %in_op)
@@ -409,12 +409,12 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
 
     } execute (%ch0: !mef.chain, %ctx: !mgp.context, %arg: !mgp.cpu.tensor<?xf32>) -> (!mef.chain, !mgp.cpu.tensor<?xf32>) {
       %const_buf     : !mgp.cpu.buffer
-      %const_spec    : !mgp.cpu.tensor_spec<?xf32>
-      %new_const_buf : !mgp.cpu.tensor_spec<?xf32>
-      %new_const_spec = spec_update_op(%const_spec) : (!mgp.cpu.tensor_spec<?xf32>) -> !mgp.cpu.tensor_spec<?xf32>
+      %const_spec    : !mgp.tensor_spec<?xf32>
+      %new_const_buf : !mgp.tensor_spec<?xf32>
+      %new_const_spec = spec_update_op(%const_spec) : (!mgp.tensor_spec<?xf32>) -> !mgp.tensor_spec<?xf32>
       %kernel_ch1 = kernel_op1(%ch0, %const_buf, %const_spec, %new_const_buf, %new_const_spec) : ... -> mef.chain
 
-      %out_spec : !mgp.cpu.tensor_spec<?xf32>
+      %out_spec : !mgp.tensor_spec<?xf32>
       %out_buf  : !mgp.cpu.buffer
       %kernel_ch2 = kernel_op2(%kernel_ch1, %arg_buf, %arg_spec, %new_const_buf, %new_const_spec, %out_buf, %out_spec) : ...
       %out_tensor = mgp.cpu.tensor.create %kernel_ch2, %out_buf, %out_spec  : !mgp.cpu.tensor<?xf32>
@@ -430,8 +430,8 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
 
       // moved from exec phase
       %const_buf     : !mgp.cpu.buffer
-      %const_spec    : !mgp.cpu.tensor_spec<?xf32>
-      %new_const_buf : !mgp.cpu.tensor_spec<?xf32>
+      %const_spec    : !mgp.tensor_spec<?xf32>
+      %new_const_buf : !mgp.tensor_spec<?xf32>
       %new_const_spec = spec_update_op(%const_spec) : ...
       %kernel_ch1 = kernel_op1(%ch0, %const_buf, %const_spec, %new_const_buf, %new_const_spec) : ... -> mef.chain
 
@@ -446,14 +446,14 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
 
     } execute (%ch0: !mef.chain, %ctx: !mgp.context, %arg: !mgp.cpu.tensor<?xf32>) -> (!mef.chain, !mgp.cpu.tensor<?xf32>) {
       // cloned
-      %const_spec : !mgp.cpu.tensor_spec<?xf32>
-      %new_const_spec = spec_update_op(%const_spec) : (!mgp.cpu.tensor_spec<?xf32>) -> !mgp.cpu.tensor_spec<?xf32>
+      %const_spec : !mgp.tensor_spec<?xf32>
+      %new_const_spec = spec_update_op(%const_spec) : (!mgp.tensor_spec<?xf32>) -> !mgp.tensor_spec<?xf32>
 
       // inserted
       %new_const_buf = mgp.cpu.buffer.get_cached %ch0, %ctx[1] : !mgp.cpu.buffer
 
       // references to `%kernel_ch1` become `%ch0`
-      %out_spec : !mgp.cpu.tensor_spec<?xf32>
+      %out_spec : !mgp.tensor_spec<?xf32>
       %out_buf  : !mgp.cpu.buffer
       %kernel_ch2 = kernel_op2(%ch0, %arg_buf, %arg_spec, %new_const_buf, %new_const_spec, %out_buf, %out_spec) : ... -> mef.chain
       %out_tensor = mgp.cpu.tensor.create %kernel_ch2, %out_buf, %out_spec  : !mgp.cpu.tensor<?xf32>

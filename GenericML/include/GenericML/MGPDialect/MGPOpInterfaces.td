@@ -73,7 +73,7 @@ def MGP_SpecAllocOpInterface : OpInterface<"MGPSpecAllocOpInterface"> {
     >,
     InterfaceMethod<
       "The tensor spec of the allocation",
-      "mlir::TypedValue<M::MGP::CpuTensorSpecType>", "getRuntimeSpec", (ins)
+      "mlir::TypedValue<M::MGP::TensorSpecType>", "getRuntimeSpec", (ins)
     >,
     InterfaceMethod<
       "The alignment of the allocation",

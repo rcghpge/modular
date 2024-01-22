@@ -8,12 +8,12 @@
 // CHECK-SAME:   %[[DUMMY:.*]]: !mgp.cpu.tensor<?x?xsi64>
 // CHECK-SAME: ) -> (!mef.chain, !mgp.cpu.tensor<?x8xf32>, !mgp.cpu.tensor<?x8xf32>) {
 // CHECK-NEXT:   %{{.*}}, %[[DUMMY_SPEC:.*]] = mgp.cpu.tensor.extract %[[DUMMY]] : !mgp.cpu.tensor<?x?xsi64>
-// CHECK-NEXT:   %[[DIMS:.*]]:2 = mgp.cpu.tensor_spec.dims.dynamic %[[DUMMY_SPEC]] : !mgp.cpu.tensor_spec<?x?xsi64>
+// CHECK-NEXT:   %[[DIMS:.*]]:2 = mgp.cpu.tensor_spec.dims.dynamic %[[DUMMY_SPEC]] : !mgp.tensor_spec<?x?xsi64>
 // CHECK-NEXT:   %[[INPUT_BUF:.*]], %{{.*}} = mgp.cpu.tensor.extract %[[INPUT]] : !mgp.cpu.tensor<?x8xf32>
-// CHECK-NEXT:   %[[SPLIT_SPEC1:.*]] = mgp.cpu.tensor_spec.create %[[DIMS]]#0 : !mgp.cpu.tensor_spec<?x8xf32>
-// CHECK-NEXT:   %[[SPLIT_SPEC2:.*]] = mgp.cpu.tensor_spec.create %[[DIMS]]#1 : !mgp.cpu.tensor_spec<?x8xf32>
-// CHECK-NEXT:   %[[SPLIT_SIZE1:.*]] = mgp.cpu.tensor_spec.size %[[SPLIT_SPEC1]] : !mgp.cpu.tensor_spec<?x8xf32>
-// CHECK-NEXT:   %[[SPLIT_SIZE2:.*]] = mgp.cpu.tensor_spec.size %[[SPLIT_SPEC2]] : !mgp.cpu.tensor_spec<?x8xf32>
+// CHECK-NEXT:   %[[SPLIT_SPEC1:.*]] = mgp.cpu.tensor_spec.create %[[DIMS]]#0 : !mgp.tensor_spec<?x8xf32>
+// CHECK-NEXT:   %[[SPLIT_SPEC2:.*]] = mgp.cpu.tensor_spec.create %[[DIMS]]#1 : !mgp.tensor_spec<?x8xf32>
+// CHECK-NEXT:   %[[SPLIT_SIZE1:.*]] = mgp.cpu.tensor_spec.size %[[SPLIT_SPEC1]] : !mgp.tensor_spec<?x8xf32>
+// CHECK-NEXT:   %[[SPLIT_SIZE2:.*]] = mgp.cpu.tensor_spec.size %[[SPLIT_SPEC2]] : !mgp.tensor_spec<?x8xf32>
 // CHECK-NEXT:   %[[SPLIT_BUFS:.*]]:2 = mgp.cpu.buffer.split.borrow %[[CH]], %[[INPUT_BUF]], %[[SPLIT_SIZE1]], %[[SPLIT_SIZE2]]
 // CHECK-SAME:   : !mgp.cpu.buffer  -> (!mgp.cpu.buffer, !mgp.cpu.buffer)
 // CHECK-NEXT:   %[[SPLIT_TENSOR1:.*]] = mgp.cpu.tensor.create %[[CH]], %[[SPLIT_BUFS]]#0, %[[SPLIT_SPEC1]]  : !mgp.cpu.tensor<?x8xf32>

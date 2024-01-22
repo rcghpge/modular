@@ -320,18 +320,18 @@ def CpuBufferAllocSpecOp : MGP_Op<"cpu.buffer.alloc.spec", [
     Example:
     ```mlir
     %ch : !mef.chain
-    %spec : !mgp.cpu.tensor_spec<?x64xf32>
+    %spec : !mgp.tensor_spec<?x64xf32>
 
-    %buf = mgp.cpu.buffer.alloc.spec %ch, %spec, align 8 : !mgp.cpu.tensor_spec<?x64xf32>
+    %buf = mgp.cpu.buffer.alloc.spec %ch, %spec, align 8 : !mgp.tensor_spec<?x64xf32>
     %buf : !mgp.cpu.buffer  // aligned to 8 bytes
 
-    %buf = mgp.cpu.buffer.alloc.spec %ch, %spec : !mgp.cpu.tensor_spec<?x64xf32>
+    %buf = mgp.cpu.buffer.alloc.spec %ch, %spec : !mgp.tensor_spec<?x64xf32>
     %buf : !mgp.cpu.buffer  // no specific alignment
     ```
   }];
 
   let arguments = (ins ChainType:$inChain,
-                   MGP_CpuTensorSpecType:$runtimeSpec,
+                   MGP_TensorSpecType:$runtimeSpec,
                    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$rawAlign);
   let results = (outs MGP_CpuBufferType:$outBuffer);
   let assemblyFormat = [{
@@ -516,14 +516,14 @@ def CpuBufferReallocSpecOp : MGP_Op<"cpu.buffer.realloc.spec", [
     Example:
     ```mlir
     %ctx : !mgp.context
-    %spec : !mgp.cpu.tensor_spec<?x64xf32>
+    %spec : !mgp.tensor_spec<?x64xf32>
     %ch : !mef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
-    %buf = mgp.cpu.buffer.realloc.spec %ch, %ctx[42, 2], %spec, align 8 : !mgp.cpu.tensor_spec<?x64xf32>
+    %buf = mgp.cpu.buffer.realloc.spec %ch, %ctx[42, 2], %spec, align 8 : !mgp.tensor_spec<?x64xf32>
     %buf : !mgp.cpu.buffer      // 8 bytes aligned
 
-    %buf = mgp.cpu.buffer.realloc.spec %ch, %ctx[42, 2] : %spec !mgp.cpu.tensor_spec<?x64xf32>
+    %buf = mgp.cpu.buffer.realloc.spec %ch, %ctx[42, 2] : %spec !mgp.tensor_spec<?x64xf32>
     %buf : !mgp.cpu.buffer<64>  // no specific alignment
     ```
   }];
@@ -532,7 +532,7 @@ def CpuBufferReallocSpecOp : MGP_Op<"cpu.buffer.realloc.spec", [
   // names.
   let arguments = (ins ChainType:$inChain,
                    MGP_ContextType:$theContext,
-                   MGP_CpuTensorSpecType:$runtimeSpec,
+                   MGP_TensorSpecType:$runtimeSpec,
                    UI64Attr:$aSlot,                                         // 0
                    UI64Attr:$bBuffer,                                       // 1
                    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign); // 3
@@ -990,11 +990,11 @@ def CpuTensorSpecCreateOp : MGP_Op<"cpu.tensor_spec.create", [Pure,
     %dim0 : index
     %dim1 : index
 
-    %spec = mgp.cpu.tensor_spec.create %dim0, %dim1 : !mgp.cpu.tensor_spec<?x?xf32>
-    %spec : !mgp.cpu.tensor_spec<?x?xf32>
+    %spec = mgp.cpu.tensor_spec.create %dim0, %dim1 : !mgp.tensor_spec<?x?xf32>
+    %spec : !mgp.tensor_spec<?x?xf32>
 
-    %spec = mgp.cpu.tensor_spec.create : !mgp.cpu.tensor_spec<32x4xf32>
-    %spec : !mgp.cpu.tensor_spec<32x4xf32>
+    %spec = mgp.cpu.tensor_spec.create : !mgp.tensor_spec<32x4xf32>
+    %spec : !mgp.tensor_spec<32x4xf32>
     ```
   }];
 
@@ -1005,7 +1005,7 @@ def CpuTensorSpecCreateOp : MGP_Op<"cpu.tensor_spec.create", [Pure,
   let arguments = (ins Variadic<Index>:$runtimeDims,
                    UI64ArrayElementsAttr:$aRawDims,  // 0
                    UI8Attr:$bRawDType);              // 1
-  let results = (outs MGP_CpuTensorSpecType:$result);
+  let results = (outs MGP_TensorSpecType:$result);
   let assemblyFormat = [{
     $runtimeDims attr-dict
     `:` custom<RawDimsAndDType>($aRawDims, $bRawDType)
@@ -1013,7 +1013,7 @@ def CpuTensorSpecCreateOp : MGP_Op<"cpu.tensor_spec.create", [Pure,
   let hasVerifier = 1;
 
   let builders = [
-    OpBuilder<(ins "CpuTensorSpecType":$spec,
+    OpBuilder<(ins "TensorSpecType":$spec,
                    CArg<"ValueRange", "{}">:$runtimeDims)>
   ];
 }
@@ -1043,11 +1043,11 @@ def CpuTensorSpecCreateDynamicOp : MGP_Op<"cpu.tensor_spec.create.dynamic", [
     %dim1 : index
     %dtype : !mgp.dtype
 
-    %spec = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim0, %dim1 : !mgp.cpu.tensor_spec<?x?x?>
-    %spec : !mgp.cpu.tensor_spec<?x?x?>
+    %spec = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim0, %dim1 : !mgp.tensor_spec<?x?x?>
+    %spec : !mgp.tensor_spec<?x?x?>
 
-    %spec = mgp.cpu.tensor_spec.create %dtype : !mgp.cpu.tensor_spec<32x4x?>
-    %spec : !mgp.cpu.tensor_spec<32x4x?>
+    %spec = mgp.cpu.tensor_spec.create %dtype : !mgp.tensor_spec<32x4x?>
+    %spec : !mgp.tensor_spec<32x4x?>
     ```
   }];
 
@@ -1056,7 +1056,7 @@ def CpuTensorSpecCreateDynamicOp : MGP_Op<"cpu.tensor_spec.create.dynamic", [
   let arguments = (ins MGP_DTypeType:$runtimeDType,
                    Variadic<Index>:$runtimeDims,
                    UI64ArrayElementsAttr:$rawDims);
-  let results = (outs MGP_CpuTensorSpecType:$result);
+  let results = (outs MGP_TensorSpecType:$result);
   let assemblyFormat = [{ $runtimeDType `,` $runtimeDims attr-dict
                           `:` custom<RawDims>($rawDims) }];
   let hasVerifier = 1;
@@ -1079,15 +1079,15 @@ def CpuTensorSpecWithDTypeOp : MGP_Op<"cpu.tensor_spec.with_dtype", [
 
     Example:
     ```mlir
-    %shape : !mgp.cpu.tensor_spec<?x3xunk>
-    %spec = mgp.cpu.tensor_spec.with_dtype %shape : !mgp.cpu.tensor_spec<?x3xf32>
-    %spec : !mgp.cpu.tensor_spec<?x3xf32>
+    %shape : !mgp.tensor_spec<?x3xunk>
+    %spec = mgp.cpu.tensor_spec.with_dtype %shape : !mgp.tensor_spec<?x3xf32>
+    %spec : !mgp.tensor_spec<?x3xf32>
     ```
   }];
 
-  let arguments = (ins MGP_CpuTensorSpecType:$tensorSpec,
+  let arguments = (ins MGP_TensorSpecType:$tensorSpec,
                    UI8Attr:$rawDType);
-  let results = (outs MGP_CpuTensorSpecType:$result);
+  let results = (outs MGP_TensorSpecType:$result);
   let assemblyFormat = [{
     $tensorSpec attr-dict `:` custom<RawDType>(type($tensorSpec), $rawDType)
   }];
@@ -1108,13 +1108,13 @@ def CpuTensorSpecEqualStaticOp : MGP_Op<"cpu.tensor_spec.equal.static", [Pure]> 
 
     Example:
     ```mlir
-    %spec : !mgp.cpu.tensor_spec<2x?xf32>
+    %spec : !mgp.tensor_spec<2x?xf32>
     // Will return true if first dimension is 2 and data type is f32.
-    %valid = mgp.cpu.tensor_spec.equal.static %spec : !mgp.cpu.tensor_spec<?x?xf32>
+    %valid = mgp.cpu.tensor_spec.equal.static %spec : !mgp.tensor_spec<?x?xf32>
     ```
   }];
 
-  let arguments = (ins MGP_CpuTensorSpecType: $spec,
+  let arguments = (ins MGP_TensorSpecType: $spec,
                    UI64ArrayElementsAttr:$rawDims);
   let results = (outs I1:$result);
   let assemblyFormat = [{
@@ -1140,20 +1140,20 @@ def CpuTensorSpecDimsDynamicOp : MGP_Op<"cpu.tensor_spec.dims.dynamic", [
 
     Example:
     ```mlir
-    %spec : !mgp.cpu.tensor_spec<?x?xf32>
-    %dim0, %dim1 = mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.cpu.tensor_spec<?x?xf32>
+    %spec : !mgp.tensor_spec<?x?xf32>
+    %dim0, %dim1 = mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<?x?xf32>
     %dim0, %dim1 : index, index
 
-    %spec : !mgp.cpu.tensor_spec<32x?xf32>
-    %dim = mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.cpu.tensor_spec<32x?xf32>
+    %spec : !mgp.tensor_spec<32x?xf32>
+    %dim = mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<32x?xf32>
     %dim : index
 
-    %spec : !mgp.cpu.tensor_spec<32x4xf32>
-    mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.cpu.tensor_spec<32x4xf32> // no-op
+    %spec : !mgp.tensor_spec<32x4xf32>
+    mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<32x4xf32> // no-op
     ```
   }];
 
-  let arguments = (ins MGP_CpuTensorSpecType: $spec,
+  let arguments = (ins MGP_TensorSpecType: $spec,
                    UI64ArrayElementsAttr:$rawDims);
   let results = (outs Variadic<Index>:$results);
   let assemblyFormat = [{
@@ -1179,13 +1179,13 @@ def CpuTensorSpecSizeOp : MGP_Op<"cpu.tensor_spec.size"> {
 
     Example:
     ```mlir
-    %spec : !mgp.cpu.tensor_spec<32x?xf32>
-    %size = mgp.cpu.tensor_spec.size %spec : !mgp.cpu.tensor_spec<32x?xf32>
+    %spec : !mgp.tensor_spec<32x?xf32>
+    %size = mgp.cpu.tensor_spec.size %spec : !mgp.tensor_spec<32x?xf32>
     %size : index
     ```
   }];
 
-  let arguments = (ins MGP_CpuTensorSpecType: $spec);
+  let arguments = (ins MGP_TensorSpecType: $spec);
   let results = (outs Index:$result);
   let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
 }
@@ -1206,13 +1206,13 @@ def CpuTensorSpecNumElemsOp : MGP_Op<"cpu.tensor_spec.num_elems"> {
 
     Example:
     ```mlir
-    %spec : !mgp.cpu.tensor_spec<32x?xf32>
-    %elems = mgp.cpu.tensor_spec.num_elems %spec : !mgp.cpu.tensor_spec<32x?xf32>
+    %spec : !mgp.tensor_spec<32x?xf32>
+    %elems = mgp.cpu.tensor_spec.num_elems %spec : !mgp.tensor_spec<32x?xf32>
     %elems : index
     ```
   }];
 
-  let arguments = (ins MGP_CpuTensorSpecType: $spec);
+  let arguments = (ins MGP_TensorSpecType: $spec);
   let results = (outs Index:$result);
   let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
 }
@@ -1230,13 +1230,13 @@ def CpuTensorSpecDTypeOp : MGP_Op<"cpu.tensor_spec.dtype"> {
 
     Example:
     ```mlir
-    %spec : !mgp.cpu.tensor_spec<32x?xunk>
-    %dtype = mgp.cpu.tensor_spec.dtype %spec : !mgp.cpu.tensor_spec<32x?xunk>
+    %spec : !mgp.tensor_spec<32x?xunk>
+    %dtype = mgp.cpu.tensor_spec.dtype %spec : !mgp.tensor_spec<32x?xunk>
     %dtype : !mgp.dtype
     ```
   }];
 
-  let arguments = (ins MGP_CpuTensorSpecType: $spec);
+  let arguments = (ins MGP_TensorSpecType: $spec);
   let results = (outs MGP_DTypeType:$result);
   let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
 }
@@ -1270,22 +1270,22 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
     ```mlir
     %ch : !mef.chain
 
-    %spec : !mgp.cpu.tensor_spec<4x16xf32>
+    %spec : !mgp.tensor_spec<4x16xf32>
     %buf : !mgp.cpu.buffer<256>
     %tensor = mgp.cpu.tensor.create %ch, %buf, %spec : !mgp.cpu.tensor<4x16xf32>
     %tensor : !mgp.cpu.tensor<4x16xf32>
 
-    %spec : !mgp.cpu.tensor_spec<?x16xf32>
+    %spec : !mgp.tensor_spec<?x16xf32>
     %buf : !mgp.cpu.buffer
     %tensor = mgp.cpu.tensor.create %ch, %buf, %spec : !mgp.cpu.tensor<?x16xf32>
     %tensor : !mgp.cpu.tensor<?x16xf32>
 
-    %spec : !mgp.cpu.tensor_spec<4x16xf32>
+    %spec : !mgp.tensor_spec<4x16xf32>
     %buf : !mgp.cpu.buffer
     %tensor = mgp.cpu.tensor.create %ch, %buf, %spec !mgp.cpu.buffer : !mgp.cpu.tensor<4x16xf32>
     %tensor : !mgp.cpu.tensor<4x16xf32>
 
-    %spec : !mgp.cpu.tensor_spec<4x?xf32>
+    %spec : !mgp.tensor_spec<4x?xf32>
     %buf : !mgp.cpu.buffer<16>
     %tensor = mgp.cpu.tensor.create %ch, %buf, %spec !mgp.cpu.buffer<16> : !mgp.cpu.tensor<4x?xf32>
     %tensor : !mgp.cpu.tensor<4x?xf32>
@@ -1321,7 +1321,7 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
 
   let arguments = (ins ChainType: $inChain,
                    MGP_CpuBufferType: $buffer,
-                   MGP_CpuTensorSpecType: $tensorSpec);
+                   MGP_TensorSpecType: $tensorSpec);
   let results = (outs MGP_CpuTensorType: $result);
   let assemblyFormat = [{
     $inChain `,` $buffer `,` $tensorSpec attr-dict
@@ -1357,12 +1357,12 @@ def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
     %tensor : !mgp.cpu.tensor<8x64xf32>
     %buf, %spec = mgp.cpu.tensor.extract %tensor : !mgp.cpu.tensor<8x64xf32>
     %buf : !mgp.cpu.buffer<2048>
-    %spec : !mgp.cpu.tensor_spec<8x64xf32>
+    %spec : !mgp.tensor_spec<8x64xf32>
 
     %tensor : !mgp.cpu.tensor<?x64xf32>
     %buf, %spec = mgp.cpu.tensor.extract %tensor : !mgp.cpu.tensor<?x64xf32>
     %buf : !mgp.cpu.buffer<>
-    %spec : !mgp.cpu.tensor_spec<?x64xf32>
+    %spec : !mgp.tensor_spec<?x64xf32>
     ```
 
     Tensors are immutable, but buffers are mutable. This means the
@@ -1400,7 +1400,7 @@ def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
 
   let arguments = (ins MGP_CpuTensorType: $tensor);
   let results = (outs MGP_CpuBufferType: $bufferResult,
-                      MGP_CpuTensorSpecType: $tensorSpecResult);
+                      MGP_TensorSpecType: $tensorSpecResult);
   let assemblyFormat = "$tensor attr-dict `:` qualified(type($tensor))";
 
   let extraClassDefinition = [{
@@ -1423,18 +1423,18 @@ def CpuTensorExtractShapeOp : MGP_Op<"cpu.tensor.extract.shape", [
   let description = [{
     Returns the tensor shape of a CPU tensor. The shape is represented as
     an `!mgp.cpu.tensor_spec` with unknown dtype, such as
-    `!mgp.cpu.tensor_spec<3x?xunk>` or `!mgp.cpu.tensor_spec<*xunk>`.
+    `!mgp.tensor_spec<3x?xunk>` or `!mgp.tensor_spec<*xunk>`.
 
     Example:
     ```mlir
     %tensor : !mgp.cpu.tensor<8x64xf32>
     %shape = mgp.cpu.tensor.extract.shape %tensor : !mgp.cpu.tensor<8x64xf32>
-    %shape : !mgp.cpu.tensor_spec<8x64xunk>
+    %shape : !mgp.tensor_spec<8x64xunk>
     ```
   }];
 
   let arguments = (ins MGP_CpuTensorType: $tensor);
-  let results = (outs MGP_CpuTensorSpecType: $result);
+  let results = (outs MGP_TensorSpecType: $result);
   let assemblyFormat = "$tensor attr-dict `:` qualified(type($tensor))";
 }
 
@@ -1445,7 +1445,7 @@ def CpuTensorExtractShapeOp : MGP_Op<"cpu.tensor.extract.shape", [
 def DebugCpuTensorPrintOp : MGP_Op<"debug.cpu.tensor.print", [
     TypesMatchWith<"Spec and buffer must agree on sizes",
                    "spec", "buffer",
-                   "CpuBufferType::get($_self.cast<CpuTensorSpecType>())">]> {
+                   "CpuBufferType::get($_self.cast<TensorSpecType>())">]> {
   let summary = "Prints a debug representation of argument tensor. For "
                 "debugging and testing only.";
   let description = [{
@@ -1457,16 +1457,16 @@ def DebugCpuTensorPrintOp : MGP_Op<"debug.cpu.tensor.print", [
     Example:
     ```mlir
     %buf: !mgp.cpu.buffer<2048>
-    %spec: !mgp.cpu.tensor_spec<8x64xf32>
+    %spec: !mgp.tensor_spec<8x64xf32>
     %ch0: !mef.chain
-    %ch1 = mgp.debug.cpu.tensor.print %ch0, %buf, %spec, "label" : !mgp.cpu.tensor_spec<8x64xf32>
+    %ch1 = mgp.debug.cpu.tensor.print %ch0, %buf, %spec, "label" : !mgp.tensor_spec<8x64xf32>
     %ch1: !mef.chain
     ```
   }];
 
   let arguments = (ins ChainType:$inChain,
                        MGP_CpuBufferType: $buffer,
-                       MGP_CpuTensorSpecType: $spec,
+                       MGP_TensorSpecType: $spec,
                        DefaultValuedAttr<StrAttr, "\"\"">: $label);
   let results = (outs ChainType: $outChain);
   let assemblyFormat = [{

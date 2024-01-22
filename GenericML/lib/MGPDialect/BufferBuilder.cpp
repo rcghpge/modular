@@ -39,7 +39,7 @@ Value CpuBufferBuilder::bufferConstant(OpBuilder &builder, Location loc,
   return builder.create<CpuBufferConstantOp>(loc, /*value=*/value);
 }
 
-std::pair<Value, TypedValue<CpuTensorSpecType>>
+std::pair<Value, TypedValue<TensorSpecType>>
 CpuBufferBuilder::tensorExtract(OpBuilder &builder, Location loc,
                                 TypedValue<MGP::ContextType> context,
                                 Value tensor) {
@@ -47,7 +47,7 @@ CpuBufferBuilder::tensorExtract(OpBuilder &builder, Location loc,
   return {extractOp.getBufferResult(), extractOp.getTensorSpecResult()};
 }
 
-TypedValue<CpuTensorSpecType>
+TypedValue<TensorSpecType>
 CpuBufferBuilder::tensorExtractShape(OpBuilder &builder, Location loc,
                                      TypedValue<MGP::ContextType> context,
                                      Value tensor) {
@@ -57,7 +57,7 @@ CpuBufferBuilder::tensorExtractShape(OpBuilder &builder, Location loc,
 Value CpuBufferBuilder::tensorCreate(OpBuilder &builder, Location loc,
                                      TypedValue<MGP::ContextType> context,
                                      Value inChain, Value buffer,
-                                     TypedValue<CpuTensorSpecType> tensorSpec) {
+                                     TypedValue<TensorSpecType> tensorSpec) {
   return builder.create<CpuTensorCreateOp>(
       loc,
       /*result=*/CpuTensorType::get(builder.getContext(), tensorSpec.getType()),
@@ -78,7 +78,7 @@ Value CpuBufferBuilder::bufferAllocStatic(OpBuilder &builder, Location loc,
 
 Value CpuBufferBuilder::bufferAllocSpec(
     OpBuilder &builder, Location loc, TypedValue<MGP::ContextType> context,
-    Value inChain, TypedValue<MGP::CpuTensorSpecType> tensorSpec,
+    Value inChain, TypedValue<MGP::TensorSpecType> tensorSpec,
     uint64_t alignment) {
   return builder.create<CpuBufferAllocSpecOp>(loc,
                                               /*inChain=*/inChain,
@@ -118,10 +118,11 @@ Value CpuBufferBuilder::bufferTransferDevice(
   llvm::llvm_unreachable_internal("not implemented");
 }
 
-Value CpuBufferBuilder::debugTensorPrint(
-    OpBuilder &builder, Location loc, TypedValue<MGP::ContextType> context,
-    Value inChain, Value buffer, TypedValue<MGP::CpuTensorSpecType> spec,
-    StringAttr label) {
+Value CpuBufferBuilder::debugTensorPrint(OpBuilder &builder, Location loc,
+                                         TypedValue<MGP::ContextType> context,
+                                         Value inChain, Value buffer,
+                                         TypedValue<MGP::TensorSpecType> spec,
+                                         StringAttr label) {
   return builder.create<DebugCpuTensorPrintOp>(loc, /*inChain=*/inChain,
                                                /*buffer=*/buffer,
                                                /*spec=*/spec,

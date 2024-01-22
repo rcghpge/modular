@@ -108,8 +108,7 @@ static void printDimsAndDType(AsmPrinter &p, bool hasRank,
   printDType(p, optDType);
 }
 
-ParseResult M::MGP::parseTensorSpec(AsmParser &p,
-                                    CpuTensorSpecType &tensorSpec) {
+ParseResult M::MGP::parseTensorSpec(AsmParser &p, TensorSpecType &tensorSpec) {
   bool hasRank;
   SmallVector<std::optional<uint64_t>> dims;
   std::optional<DType> optDType;
@@ -121,16 +120,16 @@ ParseResult M::MGP::parseTensorSpec(AsmParser &p,
 
   // Though the following get calls will invoke verify, the resulting errors
   // will be locationless and trigger a core dump. Try to be friendlier.
-  if (failed(CpuTensorSpecType::verify([&]() { return p.emitError(loc); },
-                                       hasRank, dims, optDType, shape)))
+  if (failed(TensorSpecType::verify([&]() { return p.emitError(loc); }, hasRank,
+                                    dims, optDType, shape)))
     return failure();
 
   tensorSpec =
-      CpuTensorSpecType::get(p.getContext(), hasRank, dims, optDType, shape);
+      TensorSpecType::get(p.getContext(), hasRank, dims, optDType, shape);
   return success();
 }
 
-void M::MGP::printTensorSpec(AsmPrinter &p, CpuTensorSpecType tensorSpec) {
+void M::MGP::printTensorSpec(AsmPrinter &p, TensorSpecType tensorSpec) {
   printDimsAndDType(p, tensorSpec.getHasRank(), tensorSpec.getDimsOrEmpty(),
                     tensorSpec.getOptDType(), tensorSpec.getShapeOrEmpty());
 }
@@ -172,14 +171,14 @@ CpuBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
   return CpuBufferType::get(context, rawSizeOrNull);
 }
 
-CpuBufferType CpuBufferType::get(CpuTensorSpecType tensorSpecType) {
+CpuBufferType CpuBufferType::get(TensorSpecType tensorSpecType) {
   return CpuBufferType::get(tensorSpecType.getContext(),
                             tensorSpecType.getSizeInBytes());
 }
 
 CpuBufferType
 CpuBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
-                          CpuTensorSpecType tensorSpecType) {
+                          TensorSpecType tensorSpecType) {
   return get(tensorSpecType);
 }
 
@@ -293,12 +292,12 @@ std::optional<DType> DTypeType::fromRawDType(uint8_t rawDType) {
 }
 
 //===----------------------------------------------------------------------===//
-// CpuTensorSpecType
+// TensorSpecType
 //===----------------------------------------------------------------------===//
 
 /// Verifies that the given dimensions represent a valid tensor shape, and
 /// that the element type in DType form is also representable as an MLIR type.
-LogicalResult CpuTensorSpecType::verify(
+LogicalResult TensorSpecType::verify(
     function_ref<InFlightDiagnostic()> emitError, bool hasRank,
     ArrayRef<std::optional<uint64_t>> dimsOrEmpty,
     std::optional<DType> optDType, ArrayRef<int64_t> shapeOrEmpty) {
@@ -338,31 +337,30 @@ LogicalResult CpuTensorSpecType::verify(
   return success();
 }
 
-CpuTensorSpecType
-CpuTensorSpecType::get(MLIRContext *context,
-                       std::optional<ArrayRef<std::optional<uint64_t>>> optDims,
-                       std::optional<DType> optDType) {
+TensorSpecType
+TensorSpecType::get(MLIRContext *context,
+                    std::optional<ArrayRef<std::optional<uint64_t>>> optDims,
+                    std::optional<DType> optDType) {
   if (optDims) {
     SmallVector<int64_t> shape;
     shape.reserve(optDims->size());
     for (const std::optional<uint64_t> &dim : *optDims)
       shape.emplace_back(optSizeToRawSignedSize(dim));
-    return CpuTensorSpecType::get(context, /*hasRank=*/true, *optDims, optDType,
-                                  shape);
+    return TensorSpecType::get(context, /*hasRank=*/true, *optDims, optDType,
+                               shape);
   } else {
-    return CpuTensorSpecType::get(context, /*hasRank=*/false, {}, optDType, {});
+    return TensorSpecType::get(context, /*hasRank=*/false, {}, optDType, {});
   }
 }
 
-CpuTensorSpecType CpuTensorSpecType::getChecked(
+TensorSpecType TensorSpecType::getChecked(
     function_ref<::mlir::InFlightDiagnostic()> emitError, MLIRContext *context,
     std::optional<ArrayRef<std::optional<uint64_t>>> optDims,
     std::optional<DType> optDType) {
-  return CpuTensorSpecType::get(context, optDims, optDType);
+  return TensorSpecType::get(context, optDims, optDType);
 }
 
-CpuTensorSpecType CpuTensorSpecType::get(ArrayRef<int64_t> shape,
-                                         Type elementType) {
+TensorSpecType TensorSpecType::get(ArrayRef<int64_t> shape, Type elementType) {
   ErrorOr<std::optional<DType>> errOrDType =
       DTypeType::fromMlirType(elementType);
   GENERICML_ASSERT(!errOrDType.isError())
@@ -374,34 +372,35 @@ CpuTensorSpecType CpuTensorSpecType::get(ArrayRef<int64_t> shape,
   for (auto dim : shape)
     dims.emplace_back(rawSignedSizeToOptSize(dim));
 
-  return CpuTensorSpecType::get(elementType.getContext(),
-                                /*hasRank=*/true, dims, *errOrDType, shape);
+  return TensorSpecType::get(elementType.getContext(),
+                             /*hasRank=*/true, dims, *errOrDType, shape);
 }
 
-CpuTensorSpecType CpuTensorSpecType::getChecked(
-    function_ref<::mlir::InFlightDiagnostic()> emitError,
-    ArrayRef<int64_t> shape, Type elementType) {
+TensorSpecType
+TensorSpecType::getChecked(function_ref<::mlir::InFlightDiagnostic()> emitError,
+                           ArrayRef<int64_t> shape, Type elementType) {
   ErrorOr<std::optional<DType>> errOrDType =
       DTypeType::fromMlirType(elementType);
   if (const auto *err = errOrDType.getError()) {
     emitError() << err;
     return {};
   }
-  return CpuTensorSpecType::get(shape, elementType);
+  return TensorSpecType::get(shape, elementType);
 }
 
-CpuTensorSpecType CpuTensorSpecType::get(Type elementType) {
+TensorSpecType TensorSpecType::get(Type elementType) {
   ErrorOr<std::optional<DType>> errOrDType =
       DTypeType::fromMlirType(elementType);
   GENERICML_ASSERT(!errOrDType.isError())
       << "element type is not representable as a DType: "
       << errOrDType.takeError();
-  return CpuTensorSpecType::get(elementType.getContext(),
-                                /*hasRank=*/false, {}, *errOrDType, {});
+  return TensorSpecType::get(elementType.getContext(),
+                             /*hasRank=*/false, {}, *errOrDType, {});
 }
 
-CpuTensorSpecType CpuTensorSpecType::getChecked(
-    function_ref<::mlir::InFlightDiagnostic()> emitError, Type elementType) {
+TensorSpecType
+TensorSpecType::getChecked(function_ref<::mlir::InFlightDiagnostic()> emitError,
+                           Type elementType) {
   ErrorOr<std::optional<DType>> errOrDType =
       DTypeType::fromMlirType(elementType);
   if (const auto *err = errOrDType.getError()) {
@@ -411,91 +410,93 @@ CpuTensorSpecType CpuTensorSpecType::getChecked(
   return get(elementType);
 }
 
-CpuTensorSpecType CpuTensorSpecType::get(MLIRContext *context,
-                                         ArrayRef<uint64_t> rawDims,
-                                         uint8_t rawDType) {
+TensorSpecType TensorSpecType::get(MLIRContext *context,
+                                   ArrayRef<uint64_t> rawDims,
+                                   uint8_t rawDType) {
   std::optional<DType> dtype = DTypeType::fromRawDType(rawDType);
   SmallVector<std::optional<uint64_t>> dims;
   dims.reserve(rawDims.size());
   for (auto dim : rawDims)
     dims.emplace_back(rawSizeToOptSize(dim));
 
-  return CpuTensorSpecType::get(context, std::optional(dims), dtype);
+  return TensorSpecType::get(context, std::optional(dims), dtype);
 }
 
-CpuTensorSpecType CpuTensorSpecType::getChecked(
-    function_ref<::mlir::InFlightDiagnostic()> emitError, MLIRContext *context,
-    ArrayRef<uint64_t> rawShape, uint8_t rawDType) {
-  return CpuTensorSpecType::get(context, rawShape, rawDType);
+TensorSpecType
+TensorSpecType::getChecked(function_ref<::mlir::InFlightDiagnostic()> emitError,
+                           MLIRContext *context, ArrayRef<uint64_t> rawShape,
+                           uint8_t rawDType) {
+  return TensorSpecType::get(context, rawShape, rawDType);
 }
 
-CpuTensorSpecType CpuTensorSpecType::get(IntArrayElementsAttr rawShape,
-                                         IntegerAttr rawDTypeOrNull) {
+TensorSpecType TensorSpecType::get(IntArrayElementsAttr rawShape,
+                                   IntegerAttr rawDTypeOrNull) {
   // The null rawDType is a convenience for unknown,
   // and the invalid DType encodes unknown.
   uint8_t rawDTypeValue =
       rawDTypeOrNull ? rawDTypeOrNull.getUInt() : DType().getValue();
-  return CpuTensorSpecType::get(rawShape.getContext(),
-                                rawShape.asArrayRef<uint64_t>(), rawDTypeValue);
+  return TensorSpecType::get(rawShape.getContext(),
+                             rawShape.asArrayRef<uint64_t>(), rawDTypeValue);
 }
 
-CpuTensorSpecType CpuTensorSpecType::getChecked(
-    function_ref<::mlir::InFlightDiagnostic()> emitError,
-    IntArrayElementsAttr rawShape, IntegerAttr rawDTypeOrNull) {
-  return CpuTensorSpecType::get(rawShape, rawDTypeOrNull);
+TensorSpecType
+TensorSpecType::getChecked(function_ref<::mlir::InFlightDiagnostic()> emitError,
+                           IntArrayElementsAttr rawShape,
+                           IntegerAttr rawDTypeOrNull) {
+  return TensorSpecType::get(rawShape, rawDTypeOrNull);
 }
 
 /// ShapedTypeInterface::hasRank.
-bool CpuTensorSpecType::hasRank() const { return getHasRank(); }
+bool TensorSpecType::hasRank() const { return getHasRank(); }
 
 /// ShapedTypeInterface::cloneWith.
 /// Returns clone with given element type, which must be representable as a
 /// dtype.
-ShapedType CpuTensorSpecType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
-                                        Type elementType) const {
+ShapedType TensorSpecType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
+                                     Type elementType) const {
   ArrayRef<int64_t> newShape = shape.value_or(getShape());
   Type newElementType = elementType ? elementType : getElementType();
-  return CpuTensorSpecType::get(newShape, newElementType);
+  return TensorSpecType::get(newShape, newElementType);
 }
 
 /// ShapedTypeInterface::getElementType.
 /// Returns dtype as an MLIR type. This is always well defined thanks to
 /// verify above.
-Type CpuTensorSpecType::getElementType() const {
+Type TensorSpecType::getElementType() const {
   return *DTypeType::toMLIRType(getContext(), getOptDType());
 }
 
 /// ShapedTypeInterface::getShape.
-ArrayRef<int64_t> CpuTensorSpecType::getShape() const {
+ArrayRef<int64_t> TensorSpecType::getShape() const {
   GENERICML_ASSERT(getHasRank()) << "tensor spec is dynamically ranked";
   return getShapeOrEmpty();
 }
 
 std::optional<ArrayRef<std::optional<uint64_t>>>
-CpuTensorSpecType::getOptDims() const {
+TensorSpecType::getOptDims() const {
   if (getHasRank())
     return getDimsOrEmpty();
   else
     return std::nullopt;
 }
 
-ArrayRef<std::optional<uint64_t>> CpuTensorSpecType::getDims() const {
+ArrayRef<std::optional<uint64_t>> TensorSpecType::getDims() const {
   GENERICML_ASSERT(getHasRank()) << "tensor spec is dynamically ranked";
   return getDimsOrEmpty();
 }
 
-size_t CpuTensorSpecType::getRank() const { return getDims().size(); }
+size_t TensorSpecType::getRank() const { return getDims().size(); }
 
-size_t CpuTensorSpecType::getNumDynamicDims() const {
+size_t TensorSpecType::getNumDynamicDims() const {
   return static_cast<size_t>(llvm::count(getDims(), std::nullopt));
 }
 
-std::optional<uint64_t> CpuTensorSpecType::operator[](size_t i) const {
+std::optional<uint64_t> TensorSpecType::operator[](size_t i) const {
   GENERICML_ASSERT(i < getDims().size()) << "shape index out of range";
   return getDims()[i];
 }
 
-std::optional<uint64_t> CpuTensorSpecType::getNumElements() const {
+std::optional<uint64_t> TensorSpecType::getNumElements() const {
   if (!getHasRank())
     return {}; // dynamic rank
   uint64_t prod = 1;
@@ -507,7 +508,7 @@ std::optional<uint64_t> CpuTensorSpecType::getNumElements() const {
   return prod;
 }
 
-uint64_t CpuTensorSpecType::getPreScaledNumElements() const {
+uint64_t TensorSpecType::getPreScaledNumElements() const {
   uint64_t prod = 1;
   for (const std::optional<uint64_t> &dim : getDims()) {
     if (!dim)
@@ -517,7 +518,7 @@ uint64_t CpuTensorSpecType::getPreScaledNumElements() const {
   return prod;
 }
 
-std::optional<uint64_t> CpuTensorSpecType::getSizeInBytes() const {
+std::optional<uint64_t> TensorSpecType::getSizeInBytes() const {
   std::optional<DType> optDType = getOptDType();
   if (!optDType)
     return {}; // dynamic dtype
@@ -529,7 +530,7 @@ std::optional<uint64_t> CpuTensorSpecType::getSizeInBytes() const {
   return static_cast<uint64_t>(bytes);
 }
 
-std::optional<uint64_t> CpuTensorSpecType::getPreScaledSizeInBytes() const {
+std::optional<uint64_t> TensorSpecType::getPreScaledSizeInBytes() const {
   std::optional<DType> optDType = getOptDType();
   if (!optDType)
     return {}; // dynamic dtype
@@ -539,7 +540,7 @@ std::optional<uint64_t> CpuTensorSpecType::getPreScaledSizeInBytes() const {
   return static_cast<uint64_t>(bytes);
 }
 
-IntArrayElementsAttr CpuTensorSpecType::getRawDims() const {
+IntArrayElementsAttr TensorSpecType::getRawDims() const {
   Type ui64 = IntegerType::get(getContext(), 64, IntegerType::Unsigned);
   SmallVector<APInt> rawDims;
   for (const std::optional<uint64_t> &dim : getDims()) {
@@ -551,7 +552,7 @@ IntArrayElementsAttr CpuTensorSpecType::getRawDims() const {
       ArrayType::get(static_cast<int64_t>(getRank()), ui64), rawDims);
 }
 
-IntegerAttr CpuTensorSpecType::getRawDType() const {
+IntegerAttr TensorSpecType::getRawDType() const {
   Type ui8 = IntegerType::get(getContext(), 8, IntegerType::Unsigned);
   return IntegerAttr::get(ui8, DTypeType::asRawDType(getOptDType()));
 }
@@ -563,7 +564,7 @@ IntegerAttr CpuTensorSpecType::getRawDType() const {
 /// ShapedTypeInterface::cloneWith.
 ShapedType CpuTensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                     Type elementType) const {
-  auto tensorSpec = mlir::dyn_cast<CpuTensorSpecType>(
+  auto tensorSpec = mlir::dyn_cast<TensorSpecType>(
       getTensorSpec().cloneWith(shape, elementType));
   return CpuTensorType::get(getContext(), tensorSpec);
 }

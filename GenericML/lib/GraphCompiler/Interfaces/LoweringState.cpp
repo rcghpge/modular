@@ -25,7 +25,7 @@ FailureOr<DeviceSpecCollectionAttr> MOGraphLoweringState::getDeviceSpecs() {
   return *deviceSpecsOr;
 }
 
-TypedValue<MGP::CpuTensorSpecType>
+TypedValue<MGP::TensorSpecType>
 MOGraphLoweringState::getShape(Location loc, Value loweredTensor,
                                DeviceRefAttr device) {
   OpBuilder &builder = getExecuteOpBuilder();
@@ -40,7 +40,7 @@ MOGraphLoweringState::getDynamicDims(Location loc, Value loweredTensor,
   // NOTE: We could use getShape here, however usually we'll also require the
   // loweredTensor's buffer in which case we'll be emitting a full
   // tensor.extract op anyway.
-  TypedValue<MGP::CpuTensorSpecType> tensorSpec =
+  TypedValue<MGP::TensorSpecType> tensorSpec =
       getBufferBuilder(device)
           ->tensorExtract(builder, loc, getExecuteMgpContext(), loweredTensor)
           .second;
@@ -267,7 +267,7 @@ MOGraphLoweringState::lowerExpressionImpl(ParameterLoweringState &state,
     // a fully dynamic spec.
     SmallVector<std::optional<uint64_t>> dummyShape(dimVals.size());
     auto specTy =
-        MGP::CpuTensorSpecType::get(loc.getContext(), dummyShape, DType::si64);
+        MGP::TensorSpecType::get(loc.getContext(), dummyShape, DType::si64);
     auto specOp =
         builder.create<MGP::CpuTensorSpecCreateOp>(loc, specTy, dimVals);
     return specOp.getResult();
@@ -299,7 +299,7 @@ SmallVector<Value> MOOpLoweringState::getLoweredOperands() {
 
 FailureOr<SmallVector<MOOutputStorage>>
 MOOpLoweringState::createOutputStorage(Value inChain) {
-  FailureOr<SmallVector<TypedValue<MGP::CpuTensorSpecType>>> tensorSpecsOr =
+  FailureOr<SmallVector<TypedValue<MGP::TensorSpecType>>> tensorSpecsOr =
       createOutputTensorSpecs();
   if (failed(tensorSpecsOr))
     return failure();
@@ -344,14 +344,14 @@ BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {
   return BufferizedTensor(buffer, tensorSpec);
 }
 
-FailureOr<TypedValue<MGP::CpuTensorSpecType>>
+FailureOr<TypedValue<MGP::TensorSpecType>>
 MOOpLoweringState::createTensorSpec(MO::TensorType moTensorType) {
   if (!moTensorType.hasRank()) {
     opBeingLowered->emitOpError(
         "dynamically ranked MO tensors are not yet supported");
     return failure();
   }
-  MGP::CpuTensorSpecType tensorSpecType =
+  MGP::TensorSpecType tensorSpecType =
       MGP::createCpuTensorSpecType(moTensorType);
   if (tensorSpecType.getSizeInBytes()) {
     // Statically shaped.
@@ -375,14 +375,14 @@ MOOpLoweringState::createTensorSpec(MO::TensorType moTensorType) {
       .getResult();
 }
 
-FailureOr<SmallVector<TypedValue<MGP::CpuTensorSpecType>>>
+FailureOr<SmallVector<TypedValue<MGP::TensorSpecType>>>
 MOOpLoweringState::createOutputTensorSpecs() {
-  SmallVector<TypedValue<MGP::CpuTensorSpecType>> tensorSpecs;
+  SmallVector<TypedValue<MGP::TensorSpecType>> tensorSpecs;
   tensorSpecs.reserve(opBeingLowered->getNumResults());
   for (Type type : opBeingLowered->getResults().getType()) {
     auto moTensorType = dyn_cast<MO::TensorType>(type);
     GENERICML_ASSERT(moTensorType) << "result of op is not a !mo.tensor";
-    FailureOr<TypedValue<MGP::CpuTensorSpecType>> tensorSpecOr =
+    FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
         createTensorSpec(moTensorType);
     if (failed(tensorSpecOr))
       return failure();
@@ -391,10 +391,8 @@ MOOpLoweringState::createOutputTensorSpecs() {
   return tensorSpecs;
 }
 
-BufferizedTensor
-MOOpLoweringState::createBuffer(Value inChain,
-                                TypedValue<CpuTensorSpecType> tensorSpec,
-                                Type moTensorType) {
+BufferizedTensor MOOpLoweringState::createBuffer(
+    Value inChain, TypedValue<TensorSpecType> tensorSpec, Type moTensorType) {
   BufferBuilder *bufferBuilder = getStorageBufferBuilder(moTensorType);
   std::optional<uint64_t> optSize = tensorSpec.getType().getSizeInBytes();
   if (optSize) {
@@ -415,7 +413,7 @@ MOOpLoweringState::createBuffer(Value inChain,
 
 void MOOpLoweringState::createOutputTensor(
     Value moTensor, Value inChain, Value buffer,
-    TypedValue<MGP::CpuTensorSpecType> tensorSpec) {
+    TypedValue<MGP::TensorSpecType> tensorSpec) {
   Value loweredTensor =
       getStorageBufferBuilder(moTensor.getType())
           ->tensorCreate(builder, loc, context, inChain, buffer, tensorSpec);
@@ -424,7 +422,7 @@ void MOOpLoweringState::createOutputTensor(
 
 void MOOpLoweringState::createOutputTensors(
     Value inChain, SmallVector<Value> &buffers,
-    SmallVector<TypedValue<MGP::CpuTensorSpecType>> &tensorSpecs) {
+    SmallVector<TypedValue<MGP::TensorSpecType>> &tensorSpecs) {
   for (const auto &[idx, buffer, tensorSpec] :
        llvm::enumerate(buffers, tensorSpecs))
     createOutputTensor(opBeingLowered->getResult(idx), inChain, buffer,

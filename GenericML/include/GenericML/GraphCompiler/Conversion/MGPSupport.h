@@ -13,23 +13,22 @@
 
 namespace M::MGP {
 
-inline MGP::CpuTensorSpecType createCpuTensorSpecType(MO::TensorType tensor) {
+inline MGP::TensorSpecType createCpuTensorSpecType(MO::TensorType tensor) {
   if (tensor.hasRank()) {
     SmallVector<int64_t> shape{}; // Defaults to empty shape
     if (isa<MOSH::ShapeAttr>(tensor.getShapeAttr()))
       shape = tensor.getIntDims();
-    return MGP::CpuTensorSpecType::get(shape, tensor.getElementType());
+    return MGP::TensorSpecType::get(shape, tensor.getElementType());
   } else {
-    return MGP::CpuTensorSpecType::get(tensor.getElementType());
+    return MGP::TensorSpecType::get(tensor.getElementType());
   }
 }
 
-inline MGP::CpuTensorSpecType createCpuTensorSpecType(mlir::ShapedType tensor) {
+inline MGP::TensorSpecType createCpuTensorSpecType(mlir::ShapedType tensor) {
   if (tensor.hasRank())
-    return MGP::CpuTensorSpecType::get(tensor.getShape(),
-                                       tensor.getElementType());
+    return MGP::TensorSpecType::get(tensor.getShape(), tensor.getElementType());
   else
-    return MGP::CpuTensorSpecType::get(tensor.getElementType());
+    return MGP::TensorSpecType::get(tensor.getElementType());
 }
 
 } // namespace M::MGP

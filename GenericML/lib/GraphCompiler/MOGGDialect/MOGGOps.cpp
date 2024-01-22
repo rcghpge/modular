@@ -85,7 +85,7 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // Create specs for the outputs. We don't need any buffers since this is
   // a split.
-  FailureOr<SmallVector<TypedValue<MGP::CpuTensorSpecType>>> outputSpecsOr =
+  FailureOr<SmallVector<TypedValue<MGP::TensorSpecType>>> outputSpecsOr =
       opLoweringState.createOutputTensorSpecs();
   if (failed(outputSpecsOr))
     return failure();
@@ -99,8 +99,8 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
   SmallVector<Type> outBufTypes;
   SmallVector<Value> runtimeSizes;
   SmallVector<uint64_t> rawSizes;
-  for (TypedValue<MGP::CpuTensorSpecType> outSpec : outputSpecs) {
-    MGP::CpuTensorSpecType outSpecTy = outSpec.getType();
+  for (TypedValue<MGP::TensorSpecType> outSpec : outputSpecs) {
+    MGP::TensorSpecType outSpecTy = outSpec.getType();
     std::optional<uint64_t> bufferSize = outSpecTy.getSizeInBytes();
     outBufTypes.emplace_back(MGP::CpuBufferType::get(getContext(), bufferSize));
     rawSizes.emplace_back(optSizeToRawSize(bufferSize));

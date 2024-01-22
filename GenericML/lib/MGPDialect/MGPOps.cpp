@@ -253,7 +253,7 @@ LogicalResult CpuBufferGetCachedOp::inferReturnTypes(
 static LogicalResult verifyAnyAllocOp(
     MLIRContext *context, llvm::function_ref<InFlightDiagnostic()> emitOpError,
     std::optional<uint64_t> optSize, uint64_t rawAlign,
-    IndexType optRuntimeSizeType, CpuTensorSpecType optRuntimeSpecType,
+    IndexType optRuntimeSizeType, TensorSpecType optRuntimeSpecType,
     CpuBufferType resultBufferType) {
   // First validate our use of the util.
   GENERICML_ASSERT((optRuntimeSizeType != nullptr ? 1 : 0) +
@@ -656,8 +656,7 @@ CpuBufferSetOp::getInOutSemantics(size_t index) {
 //===----------------------------------------------------------------------===//
 
 void CpuTensorSpecCreateOp::build(OpBuilder &odsBuilder,
-                                  OperationState &odsState,
-                                  CpuTensorSpecType spec,
+                                  OperationState &odsState, TensorSpecType spec,
                                   ValueRange runtimeDims) {
   GENERICML_ASSERT(spec.hasRank())
       << "can only construct an mgp.cpu.tensor_spec.create "
@@ -677,7 +676,7 @@ static ParseResult parseRawDimsAndDType(AsmParser &p,
   llvm::SMLoc loc;
   if (p.getCurrentLocation(&loc) || p.parseType(type))
     return failure();
-  auto tensorSpec = dyn_cast<CpuTensorSpecType>(type);
+  auto tensorSpec = dyn_cast<TensorSpecType>(type);
   if (tensorSpec == nullptr)
     return p.emitError(loc) << "expected a !mgp.cpu.tensor_spec type.";
   if (!tensorSpec.hasRank())
@@ -697,17 +696,17 @@ static ParseResult parseRawDimsAndDType(AsmParser &p,
 static void printRawDimsAndDType(AsmPrinter &p, const CpuTensorSpecCreateOp &op,
                                  IntArrayElementsAttr rawDims,
                                  IntegerAttr rawDType) {
-  p << CpuTensorSpecType::get(rawDims, rawDType);
+  p << TensorSpecType::get(rawDims, rawDType);
 }
 
 LogicalResult CpuTensorSpecCreateOp::verify() {
-  auto impliedSpecType = CpuTensorSpecType::getChecked(
-      [this]() { return emitOpError(); }, getContext(), getARawDims(),
-      getBRawDType());
+  auto impliedSpecType =
+      TensorSpecType::getChecked([this]() { return emitOpError(); },
+                                 getContext(), getARawDims(), getBRawDType());
   if (impliedSpecType == nullptr)
     return failure();
   GENERICML_ASSERT(impliedSpecType.hasRank());
-  CpuTensorSpecType actualSpecType = getResult().getType();
+  TensorSpecType actualSpecType = getResult().getType();
   if (actualSpecType != impliedSpecType)
     return emitOpError()
            << "expected result type is " << actualSpecType
@@ -732,7 +731,7 @@ LogicalResult CpuTensorSpecCreateOp::inferReturnTypes(
       attributes.get(getBRawDTypeAttrName(name)));
   GENERICML_ASSERT(rawDimsAttr && rawDTypeAttr) << "mismatched operand type";
   inferredReturnTypes.emplace_back(
-      CpuTensorSpecType::get(rawDimsAttr, rawDTypeAttr));
+      TensorSpecType::get(rawDimsAttr, rawDTypeAttr));
   return success();
 }
 
@@ -747,7 +746,7 @@ static ParseResult parseRawDims(AsmParser &p, IntArrayElementsAttr &rawDims) {
   llvm::SMLoc loc;
   if (p.getCurrentLocation(&loc) || p.parseType(type))
     return failure();
-  auto tensorSpec = dyn_cast<CpuTensorSpecType>(type);
+  auto tensorSpec = dyn_cast<TensorSpecType>(type);
   if (tensorSpec == nullptr)
     return p.emitError(loc) << "expected a !mgp.cpu.tensor_spec type.";
   if (!tensorSpec.hasRank())
@@ -765,16 +764,16 @@ static ParseResult parseRawDims(AsmParser &p, IntArrayElementsAttr &rawDims) {
 /// Prints a !mgp.cpu.tensor_spec type, but represented in 'raw form'.
 static void printRawDims(AsmPrinter &p, const CpuTensorSpecCreateDynamicOp &op,
                          IntArrayElementsAttr rawDims) {
-  p << CpuTensorSpecType::get(rawDims, /*rawDTypeOrNull=*/{});
+  p << TensorSpecType::get(rawDims, /*rawDTypeOrNull=*/{});
 }
 
 LogicalResult CpuTensorSpecCreateDynamicOp::verify() {
-  auto impliedSpecType = CpuTensorSpecType::getChecked(
+  auto impliedSpecType = TensorSpecType::getChecked(
       [this]() { return emitOpError(); }, getContext(), getRawDims(),
       /*rawDType=*/{});
   if (impliedSpecType == nullptr)
     return failure();
-  CpuTensorSpecType actualSpecType = getResult().getType();
+  TensorSpecType actualSpecType = getResult().getType();
   if (actualSpecType != impliedSpecType)
     return emitOpError() << "expected result type is " << actualSpecType
                          << ", but static dimensions suggest it should be "
@@ -795,7 +794,7 @@ LogicalResult CpuTensorSpecCreateDynamicOp::inferReturnTypes(
       attributes.get(getRawDimsAttrName(name)));
   GENERICML_ASSERT(rawDimsAttr) << "mismatched operand type";
   inferredReturnTypes.emplace_back(
-      CpuTensorSpecType::get(rawDimsAttr, /*rawDTypeOrNull=*/{}));
+      TensorSpecType::get(rawDimsAttr, /*rawDTypeOrNull=*/{}));
   return success();
 }
 
@@ -811,7 +810,7 @@ static ParseResult parseRawDType(AsmParser &p, Type &tensorSpec,
   llvm::SMLoc loc;
   if (p.getCurrentLocation(&loc) || p.parseType(type))
     return failure();
-  auto parsedTensorSpec = dyn_cast<CpuTensorSpecType>(type);
+  auto parsedTensorSpec = dyn_cast<TensorSpecType>(type);
   if (parsedTensorSpec == nullptr)
     return p.emitError(loc) << "expected a !mgp.cpu.tensor_spec type.";
   if (!parsedTensorSpec.getOptDType())
@@ -825,16 +824,16 @@ static ParseResult parseRawDType(AsmParser &p, Type &tensorSpec,
               ui8.isSignedInteger());
   rawDType = IntegerAttr::get(ui8, apint);
   // The tensor spec operand, however, must have an unknown dtype.
-  tensorSpec = CpuTensorSpecType::get(
-      p.getContext(), parsedTensorSpec.getOptDims(), std::nullopt);
+  tensorSpec = TensorSpecType::get(p.getContext(),
+                                   parsedTensorSpec.getOptDims(), std::nullopt);
   return success();
 }
 
 /// Prints a !mgp.cpu.tensor_spec type.
 static void printRawDType(AsmPrinter &p, const CpuTensorSpecWithDTypeOp op,
-                          CpuTensorSpecType tensorSpec, IntegerAttr rawDType) {
+                          TensorSpecType tensorSpec, IntegerAttr rawDType) {
   // Print as the tensor spec operand type, but with dtype taken from rawDType.
-  p.getStream() << CpuTensorSpecType::get(
+  p.getStream() << TensorSpecType::get(
       op->getContext(), tensorSpec.getOptDims(),
       DTypeType::fromRawDType(rawDType.getUInt()));
 }
@@ -845,15 +844,15 @@ LogicalResult CpuTensorSpecWithDTypeOp::inferReturnTypes(
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
   GENERICML_ASSERT(operands.size() == 1) << "mismatched operand arity";
-  auto tensorSpec = dyn_cast<CpuTensorSpecType>(operands[0].getType());
+  auto tensorSpec = dyn_cast<TensorSpecType>(operands[0].getType());
   GENERICML_ASSERT(tensorSpec) << "mismatched operand type";
   auto rawDTypeAttr = dyn_cast_if_present<IntegerAttr>(
       attributes.get(getRawDTypeAttrName(name)));
   GENERICML_ASSERT(rawDTypeAttr) << "mismatched operand type";
   // Result type is the tensor spec operand type but with rawDType as its dtype.
   inferredReturnTypes.emplace_back(
-      CpuTensorSpecType::get(context, tensorSpec.getOptDims(),
-                             DTypeType::fromRawDType(rawDTypeAttr.getUInt())));
+      TensorSpecType::get(context, tensorSpec.getOptDims(),
+                          DTypeType::fromRawDType(rawDTypeAttr.getUInt())));
   return success();
 }
 
@@ -880,7 +879,7 @@ parseTensorSpecTypeWithRawDims(AsmParser &p, Type &specType,
   llvm::SMLoc loc;
   if (p.getCurrentLocation(&loc) || p.parseType(specType))
     return failure();
-  auto tensorSpec = dyn_cast<CpuTensorSpecType>(specType);
+  auto tensorSpec = dyn_cast<TensorSpecType>(specType);
   if (tensorSpec == nullptr)
     return p.emitError(loc) << "expected !mgp.cpu.tensor_spec type.";
   if (!tensorSpec.hasRank())
@@ -898,8 +897,8 @@ static void printTensorSpecTypeWithRawDims(AsmPrinter &p,
 }
 
 LogicalResult CpuTensorSpecDimsDynamicOp::verify() {
-  CpuTensorSpecType actualSpecType = getSpec().getType();
-  CpuTensorSpecType impliedSpecType = CpuTensorSpecType::get(
+  TensorSpecType actualSpecType = getSpec().getType();
+  TensorSpecType impliedSpecType = TensorSpecType::get(
       getContext(), getRawDims(), actualSpecType.getRawDType().getUInt());
   GENERICML_ASSERT(impliedSpecType.hasRank());
   if (actualSpecType != impliedSpecType)
@@ -920,7 +919,7 @@ LogicalResult CpuTensorSpecDimsDynamicOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   GENERICML_ASSERT(operands.size() == 1) << "mismatched operand arity";
-  auto specType = dyn_cast<CpuTensorSpecType>(operands[0].getType());
+  auto specType = dyn_cast<TensorSpecType>(operands[0].getType());
   GENERICML_ASSERT(specType) << "mismatched operand type";
   for (size_t i = 0, e = specType.getNumDynamicDims(); i < e; ++i)
     inferredReturnTypes.emplace_back(IndexType::get(context));
@@ -986,7 +985,7 @@ LogicalResult CpuTensorExtractShapeOp::inferReturnTypes(
   auto tensorType = dyn_cast<CpuTensorType>(operands[0].getType());
   GENERICML_ASSERT(tensorType) << "mismatched operand type";
   // Result type is tensor operand's tensor spec type but with unknown dtype.
-  inferredReturnTypes.emplace_back(CpuTensorSpecType::get(
+  inferredReturnTypes.emplace_back(TensorSpecType::get(
       context, tensorType.getTensorSpec().getOptDims(), std::nullopt));
   return success();
 }

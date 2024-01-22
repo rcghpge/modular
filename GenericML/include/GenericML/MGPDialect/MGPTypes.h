@@ -46,10 +46,10 @@ namespace M::MGP {
 //===----------------------------------------------------------------------===//
 
 /// Parses a compact tensor type description.
-ParseResult parseTensorSpec(AsmParser &p, CpuTensorSpecType &tensorSpec);
+ParseResult parseTensorSpec(AsmParser &p, TensorSpecType &tensorSpec);
 
 /// Prints a compact tensor type description.
-void printTensorSpec(AsmPrinter &p, CpuTensorSpecType tensorSpec);
+void printTensorSpec(AsmPrinter &p, TensorSpecType tensorSpec);
 
 } // namespace M::MGP
 

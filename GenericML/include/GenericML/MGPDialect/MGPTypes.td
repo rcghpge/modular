@@ -110,7 +110,7 @@ def MGP_CpuBufferType : MGP_Type<"CpuBuffer", "cpu.buffer",
     /// Constructs a buffer type which matches the require size of the given
     /// tensor spec type. The buffer will have unknown size if the tensor spec
     /// has dynamic rank, dimensions or dtype.
-    TypeBuilderWithInferredContext<(ins "CpuTensorSpecType":$tensorSpecType)>,
+    TypeBuilderWithInferredContext<(ins "TensorSpecType":$tensorSpecType)>,
 
     /// Constructs a buffer type which matches the required size and any other
     /// properties of the given tensor type. The buffer will have unknown size
@@ -230,7 +230,7 @@ def MGP_CpuTensorType : MGP_Type<"CpuTensor", "cpu.tensor", [
     ```
   }];
 
-  let parameters = (ins "MGP::CpuTensorSpecType":$tensorSpec);
+  let parameters = (ins "MGP::TensorSpecType":$tensorSpec);
   let assemblyFormat = "`<` custom<TensorSpec>($tensorSpec) `>`";
 }
 

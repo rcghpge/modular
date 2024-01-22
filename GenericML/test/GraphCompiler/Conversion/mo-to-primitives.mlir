@@ -9,10 +9,10 @@
 // CHECK-SAME:   !mgp.cpu.tensor<3xf32>, !mgp.cpu.tensor<5x1xf32>, !mgp.cpu.tensor<5x1xf32>, !mgp.cpu.tensor<4xsi8>)
 // CHECK-SAME: {
 // CHECK-DAG:    %[[VAL0:.*]] = mgp.cpu.buffer.constant #M.aligned_bytes<"0x0000803F0000004000004040", align {{.*}}>
-// CHECK-DAG:    %[[VAL1:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<3xf32>
+// CHECK-DAG:    %[[VAL1:.*]] = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<3xf32>
 // CHECK:        %[[VAL2:.*]] = mgp.cpu.tensor.create %[[ARG0]], %[[VAL0]], %[[VAL1]] : !mgp.cpu.tensor<3xf32>
 // CHECK-DAG:    %[[VAL3:.*]] = mgp.cpu.buffer.constant dense_resource<mtfl_buffer> : !M.aligned_bytes<4, align 64>
-// CHECK-DAG:    %[[VAL4:.*]] = mgp.cpu.tensor_spec.create  : !mgp.cpu.tensor_spec<4xsi8>
+// CHECK-DAG:    %[[VAL4:.*]] = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<4xsi8>
 // CHECK:        %[[VAL5:.*]] = mgp.cpu.tensor.create %[[ARG0]], %[[VAL3]], %[[VAL4]] : !mgp.cpu.tensor<4xsi8>
 // CHECK:        mef.output %[[ARG0]], %[[ARG2]], %[[VAL2]], %[[VAL2]], %[[ARG3]], %[[ARG3]], %[[VAL5]]
 // CHECK:      }
@@ -29,9 +29,9 @@ mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<[2], f32>, %arg1: !m
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK-SAME: %[[ARG2:.*]]: !mgp.cpu.tensor<1x?xf32>, %[[ARG3:.*]]: !mgp.cpu.tensor<?xf32>) -> !mef.chain {
 // CHECK:   %[[BUF1:.*]], %[[SPEC1:.*]] = mgp.cpu.tensor.extract %[[ARG2]] : !mgp.cpu.tensor<1x?xf32>
-// CHECK:   %[[VAL0:.*]] = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC1]] : !mgp.cpu.tensor_spec<1x?xf32>
+// CHECK:   %[[VAL0:.*]] = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC1]] : !mgp.tensor_spec<1x?xf32>
 // CHECK:   %[[BUF2:.*]], %[[SPEC2:.*]] = mgp.cpu.tensor.extract %[[ARG3]] : !mgp.cpu.tensor<?xf32>
-// CHECK:   %[[VAL1:.*]] = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC2]] : !mgp.cpu.tensor_spec<?xf32>
+// CHECK:   %[[VAL1:.*]] = mgp.cpu.tensor_spec.dims.dynamic %[[SPEC2]] : !mgp.tensor_spec<?xf32>
 // CHECK:   mef.output %[[CHAIN]] : !mef.chain
 // CHECK: }
 mo.graph @foo<N>(%arg0: !mo.tensor<[1, N], f32>, %arg1: !mo.tensor<[N], f32>) {

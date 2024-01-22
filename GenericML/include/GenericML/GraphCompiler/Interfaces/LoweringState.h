@@ -262,8 +262,8 @@ public:
   }
 
   /// Returns the shape of a lowered tensor which is on the given device.
-  TypedValue<MGP::CpuTensorSpecType> getShape(Location loc, Value loweredTensor,
-                                              DeviceRefAttr device);
+  TypedValue<MGP::TensorSpecType> getShape(Location loc, Value loweredTensor,
+                                           DeviceRefAttr device);
 
   /// Returns the (op which produces the) dynamic dimensions for the given
   /// lowered tensor on the given device.
@@ -455,30 +455,30 @@ struct MOOpLoweringState {
 
   /// Returns the tensor spec to represent the given MO tensor type, accounting
   /// for any dynamic ranks or dimensions.
-  FailureOr<TypedValue<MGP::CpuTensorSpecType>>
+  FailureOr<TypedValue<MGP::TensorSpecType>>
   createTensorSpec(MO::TensorType moTensorType);
 
   /// Returns the tensor specs to represent all the op's outputs.
-  FailureOr<SmallVector<TypedValue<MGP::CpuTensorSpecType>>>
+  FailureOr<SmallVector<TypedValue<MGP::TensorSpecType>>>
   createOutputTensorSpecs();
 
   /// Returns the bufferized form for a buffer sizes to match the given
   /// tensor spec and storage device of moTensorType.
   BufferizedTensor createBuffer(Value inChain,
-                                TypedValue<CpuTensorSpecType> tensorSpec,
+                                TypedValue<TensorSpecType> tensorSpec,
                                 Type moTensorType);
 
   /// Creates a tensor from the given buffer and tensor spec, and associates it
   /// with the given original MO tensor. The tensor will be created on the
   /// storage device of moTensor.
   void createOutputTensor(Value moTensor, Value inChain, Value buffer,
-                          TypedValue<MGP::CpuTensorSpecType> tensorSpec);
+                          TypedValue<MGP::TensorSpecType> tensorSpec);
 
   /// Create tensors matching all the op outputs with given tensor specs and
   /// buffers, and associated them with the original MO tensor results.
   void createOutputTensors(
       Value inChain, SmallVector<Value> &buffers,
-      SmallVector<TypedValue<MGP::CpuTensorSpecType>> &tensorSpecs);
+      SmallVector<TypedValue<MGP::TensorSpecType>> &tensorSpecs);
 
   //===-----------------------------------------------------------------===//
   // MLIR create helpers
@@ -499,15 +499,14 @@ struct MOOpLoweringState {
   // the builder appropriate for the storage device of the given moTensorType.
   //
 
-  std::pair<Value, TypedValue<CpuTensorSpecType>>
+  std::pair<Value, TypedValue<TensorSpecType>>
   tensorExtract(Value loweredTensor, Type moTensorType) {
     return getStorageBufferBuilder(moTensorType)
         ->tensorExtract(builder, loc, context, loweredTensor);
   }
 
   Value tensorCreate(Value inChain, Value buffer,
-                     TypedValue<CpuTensorSpecType> tensorSpec,
-                     Type moTensorType) {
+                     TypedValue<TensorSpecType> tensorSpec, Type moTensorType) {
     return getStorageBufferBuilder(moTensorType)
         ->tensorCreate(builder, loc, context, inChain, buffer, tensorSpec);
   }
@@ -518,7 +517,7 @@ struct MOOpLoweringState {
   }
 
   Value debugTensorPrint(Value inChain, Value buffer,
-                         TypedValue<CpuTensorSpecType> tensorSpec,
+                         TypedValue<TensorSpecType> tensorSpec,
                          StringAttr label, Type moTensorType) {
     return getStorageBufferBuilder(moTensorType)
         ->debugTensorPrint(builder, loc, context, inChain, buffer, tensorSpec,

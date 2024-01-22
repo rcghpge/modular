@@ -3,10 +3,10 @@
 // CHECK-LABEL:  mgp.model @static
 // CHECK:        } execute (%[[ARG0:.*]]: !mef.chain, %[[ARG1:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<2x4xf32>, %[[ARG3:.*]]: !mgp.cpu.tensor<2x4xf32>) -> (!mef.chain, !mgp.cpu.tensor<2x4xf32>, !mgp.cpu.tensor<2x4xf32>) {
 // CHECK-NEXT:     %[[EXTRACT1:.*]] = mgp.cpu.tensor.extract.shape %[[ARG2]] : !mgp.cpu.tensor<2x4xf32>
-// CHECK-NEXT:     %[[EQUAL1:.*]] = mgp.cpu.tensor_spec.equal.static %[[EXTRACT1]] : !mgp.cpu.tensor_spec<2x4xunk>
+// CHECK-NEXT:     %[[EQUAL1:.*]] = mgp.cpu.tensor_spec.equal.static %[[EXTRACT1]] : !mgp.tensor_spec<2x4xunk>
 // CHECK-NEXT:     %[[ASSERT1:.*]] = mgp.assert %[[EQUAL1:.*]]
 // CHECK-NEXT:     %[[EXTRACT2:.*]] = mgp.cpu.tensor.extract.shape %[[ARG3]] : !mgp.cpu.tensor<2x4xf32>
-// CHECK-NEXT:     %[[EQUAL2:.*]] = mgp.cpu.tensor_spec.equal.static %[[EXTRACT2]] : !mgp.cpu.tensor_spec<2x4xunk>
+// CHECK-NEXT:     %[[EQUAL2:.*]] = mgp.cpu.tensor_spec.equal.static %[[EXTRACT2]] : !mgp.tensor_spec<2x4xunk>
 // CHECK-NEXT:     %[[ASSERT2:.*]] = mgp.assert %[[EQUAL2]]
 // CHECK-NEXT:     mef.output %[[ARG0]], %[[ARG2]], %[[ARG3]] : !mef.chain, !mgp.cpu.tensor<2x4xf32>, !mgp.cpu.tensor<2x4xf32>
 // CHECK-NEXT:   }
@@ -34,10 +34,10 @@ mgp.model @dynamic : mof init {
 // CHECK-LABEL:  mgp.model @mixed
 // CHECK:        } execute (%[[ARG0:.*]]: !mef.chain, %[[ARG1:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.cpu.tensor<?x4xf32>, %[[ARG3:.*]]: !mgp.cpu.tensor<?x4xf32>) -> (!mef.chain, !mgp.cpu.tensor<?x4xf32>, !mgp.cpu.tensor<?x4xf32>) {
 // CHECK-NEXT:     %[[EXTRACT1:.*]] = mgp.cpu.tensor.extract.shape %[[ARG2]] : !mgp.cpu.tensor<?x4xf32>
-// CHECK-NEXT:     %[[EQUAL1:.*]] = mgp.cpu.tensor_spec.equal.static %[[EXTRACT1]] : !mgp.cpu.tensor_spec<?x4xunk>
+// CHECK-NEXT:     %[[EQUAL1:.*]] = mgp.cpu.tensor_spec.equal.static %[[EXTRACT1]] : !mgp.tensor_spec<?x4xunk>
 // CHECK-NEXT:     %[[ASSERT1:.*]] = mgp.assert %[[EQUAL1:.*]]
 // CHECK-NEXT:     %[[EXTRACT2:.*]] = mgp.cpu.tensor.extract.shape %[[ARG3]] : !mgp.cpu.tensor<?x4xf32>
-// CHECK-NEXT:     %[[EQUAL2:.*]] = mgp.cpu.tensor_spec.equal.static %[[EXTRACT2]] : !mgp.cpu.tensor_spec<?x4xunk>
+// CHECK-NEXT:     %[[EQUAL2:.*]] = mgp.cpu.tensor_spec.equal.static %[[EXTRACT2]] : !mgp.tensor_spec<?x4xunk>
 // CHECK-NEXT:     %[[ASSERT2:.*]] = mgp.assert %[[EQUAL2]]
 // CHECK-NEXT:     mef.output %[[ARG0]], %[[ARG2]], %[[ARG3]] : !mef.chain, !mgp.cpu.tensor<?x4xf32>, !mgp.cpu.tensor<?x4xf32>
 // CHECK-NEXT:   }

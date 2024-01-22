@@ -85,7 +85,7 @@ void genericPrintMayBeDynamicBuffer(AsmPrinter &printer, const Operation *op,
 /// Checks the tensor spec, buffer type and result tensor types are consistent.
 template <typename BufferType, typename TensorType>
 LogicalResult genericTensorCreateVerify(Operation *op, BufferType bufferType,
-                                        CpuTensorSpecType tensorSpecType,
+                                        TensorSpecType tensorSpecType,
                                         TensorType tensorType) {
   if (tensorSpecType != tensorType.getTensorSpec())
     return op->emitOpError() << "expected spec to match result tensor spec"
@@ -118,10 +118,9 @@ LogicalResult genericTensorCreateVerify(Operation *op, BufferType bufferType,
 
 /// Checks the buffer type and tensor types are consistent.
 template <typename BufferType, typename TensorType>
-LogicalResult
-genericTensorExtractVerify(Operation *op, TensorType tensorType,
-                           BufferType resultBufferType,
-                           CpuTensorSpecType resultTensorSpecType) {
+LogicalResult genericTensorExtractVerify(Operation *op, TensorType tensorType,
+                                         BufferType resultBufferType,
+                                         TensorSpecType resultTensorSpecType) {
   if (tensorType.getTensorSpec() != resultTensorSpecType)
     return op->emitOpError()
            << "expected the result spec to match tensor's spec"
@@ -149,8 +148,7 @@ public:
 
   /// Returns Type representing device specific tensor with given tensor spec
   /// type.
-  virtual Type tensorType(MLIRContext *ctx,
-                          CpuTensorSpecType tensorSpecType) = 0;
+  virtual Type tensorType(MLIRContext *ctx, TensorSpecType tensorSpecType) = 0;
 
   /// Returns Type representing device specific buffer with optional size.
   virtual Type bufferType(MLIRContext *ctx,
@@ -170,7 +168,7 @@ class CpuTypeBuilder : public TypeBuilder {
 public:
   ~CpuTypeBuilder() override = default;
 
-  Type tensorType(MLIRContext *ctx, CpuTensorSpecType tensorSpecType) override {
+  Type tensorType(MLIRContext *ctx, TensorSpecType tensorSpecType) override {
     return CpuTensorType::get(ctx, tensorSpecType);
   }
 
@@ -206,13 +204,13 @@ public:
 
   /// Returns the Values representing the buffer and tensor spec of the tensor
   /// Value.
-  virtual std::pair<Value, TypedValue<CpuTensorSpecType>>
+  virtual std::pair<Value, TypedValue<TensorSpecType>>
   tensorExtract(OpBuilder &builder, Location loc,
                 TypedValue<MGP::ContextType> context, Value tensor) = 0;
 
   /// Returns the Value representing the shape of the tensor Value, as
   /// an !mgp.cpu.tensor_spec with unknown dtype.
-  virtual TypedValue<CpuTensorSpecType>
+  virtual TypedValue<TensorSpecType>
   tensorExtractShape(OpBuilder &builder, Location loc,
                      TypedValue<MGP::ContextType> context, Value tensor) = 0;
 
@@ -221,7 +219,7 @@ public:
   virtual Value tensorCreate(OpBuilder &builder, Location loc,
                              TypedValue<MGP::ContextType> context,
                              Value inChain, Value buffer,
-                             TypedValue<CpuTensorSpecType> tensorSpec) = 0;
+                             TypedValue<TensorSpecType> tensorSpec) = 0;
 
   /// Returns the Value representing the buffer of given statically known size
   /// and alignment. The alignment may be ignored for some devices.
@@ -235,7 +233,7 @@ public:
   virtual Value bufferAllocSpec(OpBuilder &builder, Location loc,
                                 TypedValue<MGP::ContextType> context,
                                 Value inChain,
-                                TypedValue<MGP::CpuTensorSpecType> tensorSpec,
+                                TypedValue<MGP::TensorSpecType> tensorSpec,
                                 uint64_t alignment) = 0;
 
   /// Returns the Value representing the buffer of size matching a dynamic
@@ -275,7 +273,7 @@ public:
   virtual Value debugTensorPrint(OpBuilder &builder, Location loc,
                                  TypedValue<MGP::ContextType> context,
                                  Value inChain, Value buffer,
-                                 TypedValue<MGP::CpuTensorSpecType> spec,
+                                 TypedValue<MGP::TensorSpecType> spec,
                                  StringAttr label) = 0;
 
   /// Returns the chain indicating the given archive with given kernel and
@@ -374,11 +372,11 @@ public:
                        TypedValue<MGP::ContextType> context,
                        ElementsAttr data) override;
 
-  std::pair<Value, TypedValue<CpuTensorSpecType>>
+  std::pair<Value, TypedValue<TensorSpecType>>
   tensorExtract(OpBuilder &builder, Location loc,
                 TypedValue<MGP::ContextType> context, Value tensor) override;
 
-  TypedValue<CpuTensorSpecType>
+  TypedValue<TensorSpecType>
   tensorExtractShape(OpBuilder &builder, Location loc,
                      TypedValue<MGP::ContextType> context,
                      Value tensor) override;
@@ -386,7 +384,7 @@ public:
   Value tensorCreate(OpBuilder &builder, Location loc,
                      TypedValue<MGP::ContextType> context, Value inChain,
                      Value buffer,
-                     TypedValue<CpuTensorSpecType> tensorSpec) override;
+                     TypedValue<TensorSpecType> tensorSpec) override;
 
   Value bufferAllocStatic(OpBuilder &builder, Location loc,
                           TypedValue<MGP::ContextType> context, Value inChain,
@@ -394,7 +392,7 @@ public:
 
   Value bufferAllocSpec(OpBuilder &builder, Location loc,
                         TypedValue<MGP::ContextType> context, Value inChain,
-                        TypedValue<MGP::CpuTensorSpecType> tensorSpec,
+                        TypedValue<MGP::TensorSpecType> tensorSpec,
                         uint64_t alignment) override;
 
   Value bufferAllocDynamic(OpBuilder &builder, Location loc, Type bufType,
@@ -419,7 +417,7 @@ public:
 
   Value debugTensorPrint(OpBuilder &builder, Location loc,
                          TypedValue<MGP::ContextType> context, Value inChain,
-                         Value buffer, TypedValue<MGP::CpuTensorSpecType> spec,
+                         Value buffer, TypedValue<MGP::TensorSpecType> spec,
                          StringAttr label) override;
 
   Value kernelLoadArchive(OpBuilder &builder, Location loc,
@@ -501,7 +499,7 @@ private:
 //===----------------------------------------------------------------------===//
 
 /// A representation of tensor as a pair of a buffer and its tensor spec.
-/// The tensor spec is always an MGP::CpuTensorSpecType, but the buffer type
+/// The tensor spec is always an MGP::TensorSpecType, but the buffer type
 /// depends on the device being lowered to.
 struct BufferizedTensor {
   /// The buffer holding the lowered tensor's contents. Will be written into
@@ -518,11 +516,11 @@ struct BufferizedTensor {
   /// 'shape' (ie a spec with unknown dtype) if the tensor has dynamic rank.
   /// I think this change is best done when finishing supprot for dynamic
   /// ranked MO tensors.
-  TypedValue<CpuTensorSpecType> tensorSpec;
+  TypedValue<TensorSpecType> tensorSpec;
 
   BufferizedTensor() = default;
 
-  BufferizedTensor(Value buffer, TypedValue<MGP::CpuTensorSpecType> tensorSpec)
+  BufferizedTensor(Value buffer, TypedValue<MGP::TensorSpecType> tensorSpec)
       : buffer(buffer), tensorSpec(tensorSpec) {}
 };
 
