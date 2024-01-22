@@ -15,9 +15,11 @@ configure_lit_site_cfg(
 add_modular_testsuite(check-max-graph-mojo
   TOOLS
   mojo
+  mt
 
   DEPENDS
   max-graph-c
+  mof
   MojoMax
 
   TOP_LEVEL_CHECK
