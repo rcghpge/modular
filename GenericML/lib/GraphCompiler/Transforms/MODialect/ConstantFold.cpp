@@ -184,7 +184,11 @@ static ShapedType typeToShaped(TensorType type) {
 /// Marker for ops that are constant foldable. Currently MO ops and KGEN param
 /// ops.
 static bool isConstantFoldable(Operation *op) {
-  return (isa<MO::MODialect>(op->getDialect()) ||
+  return ((isa<MO::MODialect>(op->getDialect()) &&
+           // TODO (#29484): Graphs with mo.list outputs can't be lowered to
+           // MGP.
+           llvm::all_of(op->getResultTypes(),
+                        [](Type ty) { return ty.isa<MO::TensorType>(); })) ||
           dyn_cast<KGEN::ParamOpInterface>(op) ||
           dyn_cast<KGEN::ParamConstantOp>(op) ||
           dyn_cast<KGEN::ParamDeclareOp>(op)) &&
