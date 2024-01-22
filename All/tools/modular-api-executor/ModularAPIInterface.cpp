@@ -22,6 +22,8 @@ constexpr std::string_view modularTFExtensionLibraryName =
     "modular-framework-tf-ext.dll";
 constexpr std::string_view modularONNXExtensionLibraryName =
     "modular-framework-onnx-ext.dll";
+constexpr std::string_view modularTorchExtensionLibraryName =
+    "modular-framework-torch-ext.dll";
 #elif defined(__APPLE__)
 constexpr std::string_view modularFrameworkLibraryName =
     "libmodular-framework-common.dylib";
@@ -29,6 +31,8 @@ constexpr std::string_view modularTFExtensionLibraryName =
     "libmodular-framework-tf-ext.dylib";
 constexpr std::string_view modularONNXExtensionLibraryName =
     "libmodular-framework-onnx-ext.dylib";
+constexpr std::string_view modularTorchExtensionLibraryName =
+    "libmodular-framework-torch-ext.dylib";
 #else
 constexpr std::string_view modularFrameworkLibraryName =
     "libmodular-framework-common.so";
@@ -36,6 +40,8 @@ constexpr std::string_view modularTFExtensionLibraryName =
     "libmodular-framework-tf-ext.so";
 constexpr std::string_view modularONNXExtensionLibraryName =
     "libmodular-framework-onnx-ext.so";
+constexpr std::string_view modularTorchExtensionLibraryName =
+    "libmodular-framework-torch-ext.so";
 #endif
 } // namespace
 
@@ -84,9 +90,14 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
   if (onnxLibOr.isError())
     return onnxLibOr.takeError();
 
+  auto torchLibOr = fallibleLibraryLoad(modularTorchExtensionLibraryName);
+  if (torchLibOr.isError())
+    return torchLibOr.takeError();
+
   llvm::sys::DynamicLibrary dylib = dylibOr.takeValue();
   llvm::sys::DynamicLibrary tfLib = tfLibOr.takeValue();
   llvm::sys::DynamicLibrary onnxLib = onnxLibOr.takeValue();
+  llvm::sys::DynamicLibrary torchLib = torchLibOr.takeValue();
 
 #define STRINGIFY_SYMBOL(x) #x
 #define GET_SYMBOL(VAR, SYMBOL_NAME)                                           \
@@ -134,6 +145,12 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
   if (enableMemoryPlanningOr.isError())
     return enableMemoryPlanningOr.takeError();
   enableMemoryPlanning = enableMemoryPlanningOr.takeValue();
+
+  auto setTorchInputSpecsOr =
+      fallibleGetSymbol(torchLib, "M_setTorchInputSpecs", setTorchInputSpecs);
+  if (setTorchInputSpecsOr.isError())
+    return setTorchInputSpecsOr.takeError();
+  setTorchInputSpecs = setTorchInputSpecsOr.takeValue();
 
   GET_SYMBOL(compileModel, M_compileModel);
   GET_SYMBOL(waitForCompilation, M_waitForCompilation);

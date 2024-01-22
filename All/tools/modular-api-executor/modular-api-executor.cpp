@@ -545,6 +545,29 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
   M_CompileConfig *configPtr = compileConfig.release();
+
+  // We need to set torch input specs on models in case we're actually running
+  // a torch model. For this, we prefer to use `input-specs` over `input-shapes`
+  // as the CLI argument input. This allows for us to directly get the dtype
+  // of the input tensors.
+  if (clOptions.inputSpecs.size() == clOptions.inputNames.size()) {
+    std::vector<TensorSpecPtr> specOwners;
+    std::vector<M_TensorSpec *> specPointers;
+    for (auto &&[inputIndex, input] : llvm::enumerate(clOptions.inputSpecs)) {
+      SmallVector<int64_t> inputShape;
+      for (auto dim : input.getDimsCopy())
+        inputShape.emplace_back((int64_t)dim);
+      TensorSpecPtr spec{
+          api.newTensorSpec(inputShape.data(), inputShape.size(),
+                            convertToCDataType(input.getEltType()),
+                            clOptions.inputNames[inputIndex].c_str()),
+          api.freeTensorSpec,
+      };
+      specPointers.push_back(spec.get());
+      specOwners.push_back(std::move(spec));
+    }
+    api.setTorchInputSpecs(configPtr, specPointers.data(), specPointers.size());
+  }
   CompiledModelPtr compiledModel{
       api.compileModel(context.get(), &configPtr, status.get()),
       api.freeCompiledModel};

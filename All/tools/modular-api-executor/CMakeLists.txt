@@ -12,6 +12,7 @@ add_modular_tool(modular-api-executor
   modular-framework-common
   modular-framework-tf-ext
   modular-framework-onnx-ext
+  modular-framework-torch-ext
 
   LINK_LIBS PUBLIC
   ExternalFrameworksSupport
@@ -30,6 +31,9 @@ target_include_directories(modular-api-executor PUBLIC
 
 target_include_directories(modular-api-executor PUBLIC
   ${MODULAR_SOURCE_DIR}/ONNX/include/ONNX/API)
+
+target_include_directories(modular-api-executor PUBLIC
+  ${MODULAR_SOURCE_DIR}/PyTorch/include/PyTorch/API)
 
 target_include_directories(modular-api-executor PUBLIC
   ${MODULAR_SOURCE_DIR}/GenericML/include/GenericML/API)
