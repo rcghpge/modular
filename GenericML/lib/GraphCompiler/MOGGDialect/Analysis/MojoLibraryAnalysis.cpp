@@ -196,11 +196,10 @@ loadUserProvidedKernels(ModuleOp baseModule,
       op.setSymName(newSymName);
     }
 
-    // Copy all the functions over into the new module. We will not check if
+    // Copy all the symbols over into the new module. We will not check if
     // duplicates are identical and will assume there's no version issues.
-    for (mlir::FunctionOpInterface op :
-         userModule->getOps<mlir::FunctionOpInterface>()) {
-      // Don't duplicate any functions.
+    for (auto op : userModule->getOps<mlir::SymbolOpInterface>()) {
+      // Don't duplicate.
       if (mainSymTable.lookup(op.getName()) != nullptr)
         continue;
       baseModule.getBody()->push_back(op.clone());
