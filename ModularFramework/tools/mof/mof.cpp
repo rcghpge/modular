@@ -12,6 +12,7 @@
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "GenericML/Driver/DriverInputFormat.h"
 #include "GenericML/Driver/Utils.h"
+#include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "GenericML/GraphCompiler/GraphCompilerCLOptions.h"
 #include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/Support/CASConfig.h"

@@ -8,6 +8,7 @@
 #include "GraphRT/MLIRToMEF.h"
 #include "Support/ADT/ConcatenationTree.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/Pass/PassManager.h"
 #include "llvm/Support/MemoryBuffer.h"
 
 using namespace M;

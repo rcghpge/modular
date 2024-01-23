@@ -117,6 +117,17 @@ maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCSEPass());
 }
 
+LogicalResult MO::lowerMOToMGP(ModuleOp module,
+                               const MoToMgpOptions &moToMgpOptions,
+                               Runtime &runtime) {
+  mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
+      module.getContext(), mlir::OpPassManager::Nesting::Implicit);
+
+  MO::buildMoToMgpPipeline(pm, moToMgpOptions, runtime);
+
+  return pm.run(module);
+}
+
 void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
                                  const MoToMgpOptions &opts, Runtime &runtime) {
   if (opts.debugPrintAllTensors)
