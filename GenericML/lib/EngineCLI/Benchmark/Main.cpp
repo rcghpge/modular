@@ -322,9 +322,8 @@ int M::maxBenchmarkMain(int argc, char **argv) {
       llvm::outs().flush();
       llvm::errs() << "Error compiling model: " << M_getError(status.get())
                    << "\n";
-      logger->emitEvent(kTelemetryErrorEventName,
-                        Telemetry::Logs::Severity::kInfo, Telemetry::Level::L1,
-                        M_getError(status.get()));
+      logger->emitL1Event(kTelemetryErrorEventName,
+                          {{"error", M_getError(status.get())}});
       return EXIT_FAILURE;
     }
     llvm::outs() << "OK (took " << duration << "s)\n";
@@ -335,9 +334,8 @@ int M::maxBenchmarkMain(int argc, char **argv) {
   if (M_isError(status.get())) {
     llvm::errs() << "Error applying defaults to input generation schema: "
                  << M_getError(status.get()) << "\n";
-    logger->emitEvent(kTelemetryErrorEventName,
-                      Telemetry::Logs::Severity::kInfo, Telemetry::Level::L1,
-                      M_getError(status.get()));
+    logger->emitL1Event(kTelemetryErrorEventName,
+                        {{"error", M_getError(status.get())}});
     return EXIT_FAILURE;
   }
 
@@ -355,9 +353,8 @@ int M::maxBenchmarkMain(int argc, char **argv) {
         prepareModel(runtimeContext.get(), compiledModel.get(), status.get());
     if (modelOr.isError()) {
       llvm::errs() << "Error preparing model: " << modelOr.getError() << "\n";
-      logger->emitEvent(kTelemetryErrorEventName,
-                        Telemetry::Logs::Severity::kInfo, Telemetry::Level::L1,
-                        modelOr.getError());
+      logger->emitL1Event(kTelemetryErrorEventName,
+                          {{"error", modelOr.getError()}});
       return EXIT_FAILURE;
     }
     model = std::move(*modelOr);
@@ -377,9 +374,8 @@ int M::maxBenchmarkMain(int argc, char **argv) {
       llvm::outs().flush();
       llvm::errs() << "Error estimating latency: "
                    << estimatedLatencyOr.getError() << "\n";
-      logger->emitEvent(kTelemetryErrorEventName,
-                        Telemetry::Logs::Severity::kInfo, Telemetry::Level::L1,
-                        estimatedLatencyOr.getError());
+      logger->emitL1Event(kTelemetryErrorEventName,
+                          {{"error", estimatedLatencyOr.getError()}});
       return EXIT_FAILURE;
     }
     llvm::outs() << "OK\n";
@@ -405,7 +401,6 @@ int M::maxBenchmarkMain(int argc, char **argv) {
   std::cout << std::flush;
   llvm::outs() << "Benchmark finished\n";
 
-  logger->emitEvent(kTelemetrySuccessEventName,
-                    Telemetry::Logs::Severity::kInfo, Telemetry::Level::L1, "");
+  logger->emitL1Event(kTelemetrySuccessEventName);
   return EXIT_SUCCESS;
 }

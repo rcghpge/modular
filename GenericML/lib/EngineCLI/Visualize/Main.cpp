@@ -177,9 +177,8 @@ int M::maxVisualizeMain(int argc, char **argv) {
                               status.get());
   if (modelOr.isError()) {
     llvm::errs() << "Error compiling model: " << modelOr.getError() << "\n";
-    logger->emitEvent(kTelemetryErrorEventName,
-                      Telemetry::Logs::Severity::kInfo, Telemetry::Level::L1,
-                      M_getError(status.get()));
+    logger->emitL1Event(kTelemetryErrorEventName,
+                        {{"error", M_getError(status.get())}});
     return EXIT_FAILURE;
   }
 
@@ -196,7 +195,6 @@ int M::maxVisualizeMain(int argc, char **argv) {
 
   llvm::outs()
       << "To visualize model, drop maxviz file into https://netron.app/\n";
-  logger->emitEvent(kTelemetrySuccessEventName,
-                    Telemetry::Logs::Severity::kInfo, Telemetry::Level::L1, "");
+  logger->emitL1Event(kTelemetrySuccessEventName);
   return EXIT_SUCCESS;
 }
