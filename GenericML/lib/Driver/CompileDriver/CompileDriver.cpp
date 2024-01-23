@@ -8,7 +8,6 @@
 #include "GraphRT/MLIRToMEF.h"
 #include "Support/ADT/ConcatenationTree.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/Pass/PassManager.h"
 #include "llvm/Support/MemoryBuffer.h"
 
 using namespace M;
@@ -25,15 +24,4 @@ LogicalResult M::convertToMEF(ModuleOp module, raw_ostream &os,
   });
 
   return success();
-}
-
-LogicalResult M::lowerMOToMGP(ModuleOp module,
-                              const MO::MoToMgpOptions &moToMgpOptions,
-                              Runtime &runtime) {
-  mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
-      module.getContext(), mlir::OpPassManager::Nesting::Implicit);
-
-  MO::buildMoToMgpPipeline(pm, moToMgpOptions, runtime);
-
-  return pm.run(module);
 }
