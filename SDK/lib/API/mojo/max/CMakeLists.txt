@@ -40,7 +40,7 @@ set(ENGINE_SRCS
   engine/_tensor_spec_impl
   engine/_utils)
 
-add_mojo_package(MojoMax PRIVATE
+add_mojo_package(max-mojo PRIVATE
   ${GRAPH_SRCS}
   ${ENGINE_SRCS}
 
@@ -52,7 +52,7 @@ add_mojo_package(MojoMax PRIVATE
 # ModularFramework/lib/API/CMakeLists.txt which describes the installation
 # process in more detail.
 install(
-  FILES $<TARGET_PROPERTY:MojoMax,PACKAGE_LOCATION>
+  FILES $<TARGET_PROPERTY:max-mojo,PACKAGE_LOCATION>
   DESTINATION "modular-ai-engine-tuf/pkg"
   COMPONENT max-graph
 )

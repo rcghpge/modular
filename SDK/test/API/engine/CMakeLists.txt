@@ -18,7 +18,7 @@ add_modular_testsuite(check-mojo-engine-api
 
   DEPENDS
   modular-framework-common
-  MojoMax
+  max-mojo
 
   TOP_LEVEL_CHECK
   check-sdk

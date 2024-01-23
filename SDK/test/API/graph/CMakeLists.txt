@@ -20,7 +20,7 @@ add_modular_testsuite(check-max-graph-mojo
   DEPENDS
   max-graph-c
   mof
-  MojoMax
+  max-mojo
 
   TOP_LEVEL_CHECK
   check-sdk
