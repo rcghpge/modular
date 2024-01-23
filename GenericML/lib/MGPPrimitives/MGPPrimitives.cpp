@@ -977,15 +977,19 @@ static void mgp_cpu_kernel_execute(
   //   inDimension_1, ..., inDimension_numInDimension]
   StringRef inOutSignature = *cInOutSignature;
   size_t numInputs = inOutSignature.size();
+#if MODULAR_DEBUG
   GENERICML_ASSERT(numInputs <= operands.size())
       << "invalid inputs signature arity";
+#endif
   size_t numInDimensions = operands.size() - numInputs;
 
   // The outDimensions are:
   //  [outDimension_1, ..., outDimension_numOutDimensions]
   size_t numOutDimensions = static_cast<size_t>(*eNumOutDimensions);
+#if MODULAR_DEBUG
   GENERICML_ASSERT(numOutDimensions == outDimensions.size())
       << "invalid out dimensions count attribute";
+#endif
   for (auto &outDimension : outDimensions)
     outDimension = AsyncValueRef<size_t>::allocate(runtime);
 
@@ -1046,7 +1050,7 @@ static void mgp_cpu_kernel_execute(
   profilerEntry.setAsCurrentId();
 
   // Stop profiling when the kernel finishes.
-  if (profilerEntry.isEnabled()) {
+  if constexpr (profilerEntry.isEnabled()) {
     outChain.copy().andThenSync(
         [profilerEntry = std::move(profilerEntry)]() mutable {
           std::move(profilerEntry).record();
@@ -1063,8 +1067,10 @@ static void mgp_cpu_kernel_execute(
     // error when it fully completes. We must make sure the argument
     // MojoCallContext and operands are all held alive until the chain is ready.
     //
+#if MODULAR_DEBUG
     GENERICML_ASSERT(numOutDimensions == 0)
         << "async kernels cannot return output dimensions";
+#endif
     auto callContext = std::make_unique<KGEN::MojoCallContext>(
         outChain.copy(), outChain.copyLocation());
     KGEN::MojoCallContext *callContextPtr = callContext.get();
@@ -1116,8 +1122,10 @@ static void mgp_cpu_kernel_execute(
     for (size_t i = 0; i < numOutDimensions; ++i)
       outDimensions[i].copy().emplace<size_t>(dimensions[numInDimensions + i]);
     // We can mark the chain as ready.
+#if MODULAR_DEBUG
     GENERICML_ASSERT(!outChain.copy().isReady())
         << "synchronous kernels should not emplace the output chain";
+#endif
     std::move(outChain).emplace();
   }
 
