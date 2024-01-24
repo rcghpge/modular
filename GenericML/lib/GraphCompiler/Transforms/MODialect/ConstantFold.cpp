@@ -188,7 +188,10 @@ static bool isConstantFoldable(Operation *op) {
            // TODO (#29484): Graphs with mo.list outputs can't be lowered to
            // MGP.
            llvm::all_of(op->getResultTypes(),
-                        [](Type ty) { return ty.isa<MO::TensorType>(); })) ||
+                        [](Type ty) {
+                          return isa<MO::TensorType>(ty) ||
+                                 isa<MOSH::ShapeType>(ty);
+                        })) ||
           dyn_cast<KGEN::ParamOpInterface>(op) ||
           dyn_cast<KGEN::ParamConstantOp>(op) ||
           dyn_cast<KGEN::ParamDeclareOp>(op)) &&
