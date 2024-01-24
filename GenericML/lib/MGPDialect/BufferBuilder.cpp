@@ -33,6 +33,10 @@ void BufferBuilder::vtableAnchor() {}
 // CpuBufferBuilder
 //===----------------------------------------------------------------------===//
 
+DeviceRefAttr CpuBufferBuilder::getDevice(OpBuilder &builder) {
+  return builder.getAttr<DeviceRefAttr>(kCPULabel, 0);
+}
+
 Value CpuBufferBuilder::bufferConstant(OpBuilder &builder, Location loc,
                                        TypedValue<MGP::ContextType> context,
                                        ElementsAttr value) {
@@ -238,6 +242,12 @@ Value CpuBufferBuilder::fromMEFChain(OpBuilder &builder, Location loc,
                                      TypedValue<MGP::ContextType> context,
                                      TypedValue<MEF::ChainType> inChain) {
   return inChain;
+}
+
+Value CpuBufferBuilder::toChainCreateOperand(
+    OpBuilder &builder, Location loc, TypedValue<MGP::ContextType> context,
+    BufferBuilder *chainBuilder, Value chain) {
+  return chainBuilder->toMEFChain(builder, loc, context, chain);
 }
 
 Value CpuBufferBuilder::borrowSectionStatic(

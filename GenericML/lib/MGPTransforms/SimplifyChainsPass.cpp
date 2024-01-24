@@ -132,9 +132,11 @@ class SimplifyChainsPass
           chainCreateOp->setOperands({});
         }
       } else if (values.size() == 1 &&
-                 isa<MEF::MEFChainTypeInterface>(values[0].getType())) {
-        // Since grt.chain.create can accept arguments of non mef.chain
-        // type, we have to be careful with singleton calls.
+                 values[0].getType() ==
+                     chainCreateOp.getChainResult().getType()) {
+        // We can only replace %x = <chain create op>(%y) with %y if %y and
+        // %x have the same type. This is because chain create ops may accept
+        // arbitrary values and/or chains of different types.
         chainCreateOp.getChainResult().replaceAllUsesWith(values.front());
         chainCreateOp.erase();
       } else {

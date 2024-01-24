@@ -26,7 +26,7 @@ fn test_add_basic() raises:
         TensorShape(1, 2, 3), -2.0, -1.0, 0.0, 1.0, 2.0, 3.0
     )
     let y = Tensor[DType.float32](
-        TensorShape(1, 2, 3), 1.0, 1.0, 0.0, 1.0, 0.0, 1.0
+        TensorShape(2, 3), 1.0, 1.0, 0.0, 1.0, 0.0, 1.0
     )
     let expected = Tensor[DType.float32](
         TensorShape(1, 2, 3), -1.0, 0.0, 0.0, 2.0, 2.0, 4.0

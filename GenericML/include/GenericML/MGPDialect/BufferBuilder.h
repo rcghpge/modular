@@ -193,6 +193,9 @@ class BufferBuilder {
 public:
   virtual ~BufferBuilder() = default;
 
+  /// Returns the device the builder represents.
+  virtual DeviceRefAttr getDevice(OpBuilder &builder) = 0;
+
   /// Returns the !mgp.context appropriate for op, or null if none can be found.
   virtual TypedValue<MGP::ContextType> getContextForOp(Operation *op);
 
@@ -341,6 +344,14 @@ public:
                              TypedValue<MGP::ContextType> context,
                              TypedValue<MEF::ChainType> inChain) = 0;
 
+  /// Returns the given chain, which is in builder native form, or a
+  /// !mef.chain, in a form that can be used as an operand to a chain
+  /// create op for this builder.
+  virtual Value toChainCreateOperand(OpBuilder &builder, Location loc,
+                                     TypedValue<MGP::ContextType> context,
+                                     BufferBuilder *chainBuilder,
+                                     Value chain) = 0;
+
   /// Borrow a section of a buffer
   virtual Value borrowSectionStatic(OpBuilder &builder, Location loc,
                                     Value inChain,
@@ -367,6 +378,8 @@ class CpuBufferBuilder : public BufferBuilder {
 public:
   CpuBufferBuilder(uint64_t slot) : slot(slot) {}
   ~CpuBufferBuilder() override = default;
+
+  DeviceRefAttr getDevice(OpBuilder &builder) override;
 
   Value bufferConstant(OpBuilder &builder, Location loc,
                        TypedValue<MGP::ContextType> context,
@@ -455,6 +468,10 @@ public:
   Value fromMEFChain(OpBuilder &builder, Location loc,
                      TypedValue<MGP::ContextType> context,
                      TypedValue<MEF::ChainType> inChain) override;
+
+  Value toChainCreateOperand(OpBuilder &builder, Location loc,
+                             TypedValue<MGP::ContextType> context,
+                             BufferBuilder *chainBuilder, Value chain) override;
 
   Value borrowSectionStatic(OpBuilder &builder, Location loc, Value inChain,
                             TypedValue<MGP::ContextType> context,

@@ -416,6 +416,9 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
 
   for (OpOperand *inChainOpOperand : existingInChainOpOperands) {
     Value inChain = inChainOpOperand->get();
+    BufferBuilder *chainBufferBuilder =
+        TensorBufferDialectInterface::getBuilderForTypeStorage(
+            builderContext, inChain.getType());
 
     // Since different devices may use different chain types, we need to be
     // careful here. We have three devices at play:
@@ -429,14 +432,23 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
     // but may be required to also wait for both !mef.chains associated with
     // %host_buf and !cuda.chains associated with %dev_buf.
     //
+    // Similarly, an op such as:
+    //    cuda.kernel.execute.via_cpu %cch, ...
+    // will have an 'execution' device of cuda, an inChain of !cuda.chain,
+    // but may be required to also wait for both !mef.chains and !cuda.chains.
+    //
     // So in the following we need to make sure that each additionalChain
     // is joined with inChain in a dialect appropriate way.
     SmallVector<Value> deviceCorrectAdditionalChains;
     for (Value additionalChain : additionalChains) {
+      BufferBuilder *additionalBufferBuilder =
+          TensorBufferDialectInterface::getBuilderForTypeStorage(
+              builderContext, additionalChain.getType());
+      // If matchChains is true, make sure the devices of the
       deviceCorrectAdditionalChains.emplace_back(
-          TensorBufferDialectInterface::matchingChain(
-              builderContext, builder, op->getLoc(), context, additionalChain,
-              inChain.getType()));
+          chainBufferBuilder->toChainCreateOperand(
+              builder, op->getLoc(), context, additionalBufferBuilder,
+              additionalChain));
     }
 
     // Though the SimplifyChainsPass and CSE can clean things up, a few
@@ -486,9 +498,6 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
     // inChain, which could be a plain old !mef.chain even though the
     // op may be for some other exotic device with a different native chain
     // representation.
-    BufferBuilder *chainBufferBuilder =
-        TensorBufferDialectInterface::getBuilderForTypeStorage(
-            builderContext, inChain.getType());
     Value newInChain = waitForChainsReusing(
         builder, op->getLoc(), context, chainBufferBuilder,
         existingUniqueChainCreateOp, existingPrimitiveChains.takeVector());

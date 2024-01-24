@@ -283,8 +283,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pinOpts.minPinnedHostBufferSize = opts.minPinnedHostBufferSize;
     pm.addPass(CUDA::createCUDAPinHostBuffersPass(pinOpts));
   }
-  // TODO(#26193): Disabled due to combinatorial explosion.
-  // pm.addPass(MGP::createPredicateAssertDependenciesPass());
+  pm.addPass(MGP::createPredicateAssertDependenciesPass());
   if (opts.enableMemoryPlanning)
     pm.addPass(MGP::createStaticMemoryPlannerPass());
   pm.addPass(MGP::createStripBufferAttributesPass());

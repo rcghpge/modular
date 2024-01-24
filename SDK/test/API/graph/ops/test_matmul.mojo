@@ -80,7 +80,7 @@ fn test_batch_matmul() raises:
         3.0,
     )
     let y = Tensor[DType.float32](
-        TensorShape(1, 3, 2),
+        TensorShape(3, 2),
         1.0,
         1.0,
         0.0,
