@@ -348,13 +348,15 @@ void Fallback<MO::BroadcastToOp>::build(GraphOp &graph, OpBuilder &builder,
 void Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
                                    MO::ConcatOp op) {
   // TODO we can't deduce parameter from types of variadic inputs
-  Type inputDType =
-      cast<TensorType>(op.getInputs().front().getType()).getElementType();
-  auto inputDTypeAttr = mlir::TypeAttr::get(inputDType);
+  auto inputTensorTy = cast<TensorType>(op.getInputs().front().getType());
+  auto inputDTypeAttr = mlir::TypeAttr::get(inputTensorTy.getElementType());
+  auto inputRankAttr = builder.getIndexAttr(inputTensorTy.getRank());
 
-  buildForOpResult(graph, builder, op, "concat_shape", op.getOperands(),
-                   /*kgenParams=*/{{"input_type", inputDTypeAttr}},
-                   /*dataDepInputIdxs=*/{0});
+  buildForOpResult(
+      graph, builder, op, "concat_shape", op.getOperands(),
+      /*kgenParams=*/
+      {{"input_type", inputDTypeAttr}, {"input_rank", inputRankAttr}},
+      /*dataDepInputIdxs=*/{0});
 }
 
 void Fallback<MO::ConcatFromListOp>::build(GraphOp &graph, OpBuilder &builder,
