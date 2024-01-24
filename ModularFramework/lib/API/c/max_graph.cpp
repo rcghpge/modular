@@ -39,7 +39,6 @@ static MLIRContext *newContext() {
   M::MO::loadDialects(registry);
   ctx.appendDialectRegistry(registry);
   ctx.loadAllAvailableDialects();
-  ctx.printStackTraceOnDiagnostic(true);
   return &ctx;
 }
 
