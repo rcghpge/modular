@@ -10,6 +10,7 @@
 #include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
+#include "KGEN/Package/Package.h"
 #include "Support/MArchTarget/Host.h"
 #include "mlir/Pass/PassManager.h"
 #include "llvm/Support/TargetSelect.h"
@@ -90,7 +91,8 @@ LogicalResult elaborateModule(ModuleOp moduleOp) {
       [](KGEN::PackageLinkOp packageLink, TargetInfoAttr) {
         // TODO(#22819): For now, do not compile packages on-demand, and instead
         // stitch the pre-elaborated module into the module being built.
-        return packageLink.getPreElaborationModuleAttr();
+        return KGEN::loadPreElaboratedBytecodeForLinking(
+            packageLink.getPreElaborationModuleAttr());
       });
   return pm.run(moduleOp);
 }

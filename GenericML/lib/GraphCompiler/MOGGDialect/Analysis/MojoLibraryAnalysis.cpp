@@ -17,6 +17,7 @@
 #include "KGEN/LITDialect/LITAttrs.h"
 #include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
+#include "KGEN/Package/Package.h"
 #include "Support/Compiler/OperationUtils.h"
 
 namespace {
@@ -89,19 +90,8 @@ static ErrorOr<OwningOpRef<ModuleOp>> parseMojoPackage(MLIRContext *ctx,
   if (!isa<KGEN::LIT::PackageOp>(b.front()))
     return Error::getStaticString("invalid package");
   auto packageOp = cast<KGEN::LIT::PackageOp>(b.front());
-
-  std::optional<mlir::DenseResourceElementsAttr> preElaboratedModule =
-      packageOp.getPreElaborationModule();
-  if (!preElaboratedModule)
-    return Error::getStaticString("invalid package");
-
-  mlir::AsmResourceBlob *blob = preElaboratedModule->getRawHandle().getBlob();
-  GENERICML_ASSERT(blob) << "invalid package";
-
-  llvm::StringRef moduleBuffer(blob->getData().data(), blob->getData().size());
-
-  auto kgenModule = mlir::parseSourceString<mlir::ModuleOp>(moduleBuffer, ctx);
-  return kgenModule;
+  return KGEN::loadPreElaboratedModuleForLinking(
+      packageOp.getPreElaborationModuleAttr());
 }
 
 static ErrorOr<OwningOpRef<ModuleOp>> parseExtraLib(MLIRContext *ctx,
