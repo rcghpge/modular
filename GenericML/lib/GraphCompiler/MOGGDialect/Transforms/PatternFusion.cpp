@@ -708,6 +708,14 @@ struct LayerNormPattern
   }
 };
 
+std::string
+getPatternMatchingError(graph_compiler::Logger &patternMatcherLogger) {
+  std::string errMsg;
+  llvm::raw_string_ostream st(errMsg);
+  patternMatcherLogger.print(st);
+  return errMsg;
+}
+
 /// A helper to match multi-headed attention and it's variations
 class MultiHeadAttentionPatternMatcher {
   /*
@@ -834,14 +842,6 @@ private:
 
     return success();
   }
-
-  std::string getPatternMatchingError() {
-    std::string errMsg;
-    llvm::raw_string_ostream st(errMsg);
-    patternMatcherLogger.print(st);
-    return errMsg;
-  }
-
   MultiHeadAttentionPatternMatcher() = default;
 
 public:
@@ -892,7 +892,7 @@ public:
     // attempt to match the pattern
     bool matchesPattern = pAnswer.match(finalOp, &matcher.patternMatcherLogger);
     if (!matchesPattern)
-      return Error(matcher.getPatternMatchingError());
+      return Error(getPatternMatchingError(matcher.patternMatcherLogger));
 
     ErrorOrSuccess hasOneUse = matcher.intermediateValuesHaveOneUse();
     if (hasOneUse.isError())
