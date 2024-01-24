@@ -6,8 +6,7 @@
 # UNSUPPORTED: windows
 # RUN: mojo %s | FileCheck %s
 
-from tensor import Tensor, TensorShape
-from utils.index import Index
+from tensor import Tensor
 
 from max.graph import *
 

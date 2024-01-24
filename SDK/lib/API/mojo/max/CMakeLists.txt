@@ -13,11 +13,11 @@ set(GRAPH_SRCS
   graph/testing
   graph/type
 
+  graph/ops/casting
   graph/ops/complex
   graph/ops/elementwise
   graph/ops/linalg
   graph/ops/reduction
-  graph/ops/shaping
   graph/ops/slicing)
 
 set(ENGINE_SRCS
