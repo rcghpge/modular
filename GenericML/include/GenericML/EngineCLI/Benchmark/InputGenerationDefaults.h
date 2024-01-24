@@ -27,7 +27,7 @@ void applyInputListDefaults(InputGenerationSchema &schema,
                             M_Status *status);
 void applyInputShapeDefaults(InputGenerationInput &inputSpec,
                              const M_AsyncCompiledModel *model,
-                             M_Status *status);
+                             bool overwriteBatch, M_Status *status);
 void applyInputDataDefaults(InputGenerationInput &inputSpec);
 
 } // namespace M::BenchmarkCLI

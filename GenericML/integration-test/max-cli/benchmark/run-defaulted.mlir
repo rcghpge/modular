@@ -1,5 +1,13 @@
-// RUN: not max benchmark %S/../Inputs/relu100x100x3 2>&1 | FileCheck %s
-// Until we have batching support, this won't work out of the box.  But we get
-// really far!  Check that we get at least that far.
-// CHECK: Estimating latency for query generation... Error
-// CHECK-NEXT: Error estimating latency: Unable to generate sample query: Random input requires fully defined input shape
+// RUN: max benchmark %S/../Inputs/relu100x100x3 2>&1 | FileCheck %s
+// CHECK: Modular Benchmarking Tool
+// CHECK: Modular version: {{.+}}
+// CHECK: MLPerf scenario: Single Stream (use --mlperf-scenario to change)
+// CHECK: Compiling model... OK (took {{.+}})
+// CHECK: Benchmarking
+// CHECK: Result is : VALID
+// CHECK: QPS w/ loadgen overhead : {{[0-9.e+-]+}}
+// CHECK: Min latency (ns) : {{[0-9]+}}
+// CHECK: Max latency (ns) : {{[0-9]+}}
+// CHECK: 50.00 percentile latency (ns) : {{[0-9]+}}
+// CHECK: 99.00 percentile latency (ns) : {{[0-9]+}}
+// CHECK: Benchmark finished
