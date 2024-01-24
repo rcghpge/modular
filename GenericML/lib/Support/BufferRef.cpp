@@ -15,7 +15,12 @@ using namespace M;
 using namespace M::GML;
 
 // We'll need an address for zero sized buffers. Use this as the target.
-static const uint64_t kDummyTargetOfEmptyBuffer = 0xdeadbeef;
+static constexpr uint64_t kDummyTargetOfEmptyBuffer = 0xdeadbeef;
+
+static void *getDummyTargetOfEmptyBuffer() {
+  return const_cast<void *>(
+      reinterpret_cast<const void *>(&kDummyTargetOfEmptyBuffer));
+}
 
 static constexpr llvm::MaybeAlign
 makeMaybeAlign(std::optional<size_t> alignment) {
@@ -76,7 +81,7 @@ BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
 #endif
     }
   } else {
-    buffer = (void *)&kDummyTargetOfEmptyBuffer;
+    buffer = getDummyTargetOfEmptyBuffer();
   }
 
   auto profilerEntry = BufferRefLifetimeProfilerEntry::create(
@@ -102,9 +107,8 @@ BufferRef BufferRef::createBorrowed(void *buffer, size_t size,
   GENERICML_ASSERT((size == 0 || !alignment ||
                     llvm::isAddrAligned(llvm::Align(*alignment), buffer)))
       << "buffer is not aligned as per purported alignment";
-  void *borrowedBuffer = size == 0 && buffer == nullptr
-                             ? (void *)&kDummyTargetOfEmptyBuffer
-                             : buffer;
+  void *borrowedBuffer =
+      size == 0 && buffer == nullptr ? getDummyTargetOfEmptyBuffer() : buffer;
   return BufferRef(
       borrowedBuffer, size, std::move(owningRef), makeMaybeAlign(alignment),
       kBorrowed, lifetime, kMutable,
@@ -126,9 +130,8 @@ BufferRef BufferRef::createBorrowed(const void *buffer, size_t size,
   GENERICML_ASSERT((size == 0 || !alignment ||
                     llvm::isAddrAligned(llvm::Align(*alignment), buffer)))
       << "buffer is not aligned as per purported alignment";
-  const void *borrowedBuffer = size == 0 && buffer == nullptr
-                                   ? (void *)&kDummyTargetOfEmptyBuffer
-                                   : buffer;
+  const void *borrowedBuffer =
+      size == 0 && buffer == nullptr ? getDummyTargetOfEmptyBuffer() : buffer;
   // We make up for the const cast on buffer by setting the reference to
   // be immutable. This will assert fail if a mutable buffer pointer is
   // requested.
