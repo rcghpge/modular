@@ -1049,14 +1049,6 @@ static void mgp_cpu_kernel_execute(
   auto profilerEntry = MGPProfilerEntry::create(*dSummary);
   profilerEntry.setAsCurrentId();
 
-  // Stop profiling when the kernel finishes.
-  if constexpr (profilerEntry.isEnabled()) {
-    outChain.copy().andThenSync(
-        [profilerEntry = std::move(profilerEntry)]() mutable {
-          std::move(profilerEntry).record();
-        });
-  }
-
   // Execute the kernel.
   if (*fIsAsync) {
     //
@@ -1071,23 +1063,26 @@ static void mgp_cpu_kernel_execute(
     GENERICML_ASSERT(numOutDimensions == 0)
         << "async kernels cannot return output dimensions";
 #endif
-    auto callContext = std::make_unique<KGEN::MojoCallContext>(
-        outChain.copy(), outChain.copyLocation());
-    KGEN::MojoCallContext *callContextPtr = callContext.get();
-    outChain.copy().andThenSync([callContext = std::move(callContext),
-                                 operands = operands.copyAsVector()
+    auto *callContextPtr =
+        new KGEN::MojoCallContext(outChain.copy(), outChain.copyLocation());
+    callContextPtr->setCompletionFunction(
+        [operands = operands.copyAsVector(),
+         profilerEntry = std::move(profilerEntry)
 #if MODULAR_PARANOID
-                                     ,
-                                 uses = std::move(uses)
+             ,
+         uses = std::move(uses)
 #endif
-    ]() {
+    ]() mutable {
 #if MODULAR_PARANOID
-      // Release uses of the operands before the operands themselves go out
-      // of scope.
-      uses.clear();
+          // Release uses of the operands before the operands themselves go out
+          // of scope.
+          uses.clear();
 #endif
-      // callContext and operands can now be released.
-    });
+          // Stop profiling.
+          std::move(profilerEntry).record();
+          // callContext and operands can now be released.
+          operands.clear();
+        });
     kernelPtr(call.inputPointers.data(), dimensions.data(), callContextPtr);
 #if MODULAR_PARANOID
     // If the kernel is asynchronous but accidentally depends on the stack
@@ -1108,6 +1103,8 @@ static void mgp_cpu_kernel_execute(
     //
     KGEN::MojoCallContext callContext(outChain.copy(), outChain.copyLocation());
     kernelPtr(call.inputPointers.data(), dimensions.data(), &callContext);
+    // Stop profiling.
+    std::move(profilerEntry).record();
 #if MODULAR_PARANOID
     // Release uses to the operands before the operands themselves go out
     // of scope.
@@ -1121,7 +1118,7 @@ static void mgp_cpu_kernel_execute(
     // Any output dimensions can be copied out now.
     for (size_t i = 0; i < numOutDimensions; ++i)
       outDimensions[i].copy().emplace<size_t>(dimensions[numInDimensions + i]);
-    // We can mark the chain as ready.
+      // We can mark the chain as ready.
 #if MODULAR_DEBUG
     GENERICML_ASSERT(!outChain.copy().isReady())
         << "synchronous kernels should not emplace the output chain";
