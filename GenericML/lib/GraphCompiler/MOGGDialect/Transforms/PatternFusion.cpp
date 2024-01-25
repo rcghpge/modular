@@ -716,6 +716,26 @@ getPatternMatchingError(graph_compiler::Logger &patternMatcherLogger) {
   return errMsg;
 }
 
+ErrorOrSuccess checkRank(TensorValue value, const std::string &valueName,
+                         const SmallVector<int64_t> &allowedRanks) {
+  if (!value.getType().hasRank()) {
+    return Error(valueName + " is unranked");
+  }
+
+  int64_t rank = value.getType().getRank();
+  for (int64_t allowedRank : allowedRanks) {
+    if (allowedRank == rank)
+      return success();
+  }
+
+  std::string errMsg;
+  llvm::raw_string_ostream st(errMsg);
+  st << valueName << " has rank " << rank << " but expected one of: ";
+  for (int64_t allowedRank : allowedRanks)
+    st << allowedRank << " ";
+  return Error(errMsg);
+};
+
 /// A helper for matching against the initial Q @ KT step of fused attention
 class MultiHeadAttentionPrologueMatcher {
 private:
@@ -750,6 +770,20 @@ public:
 
   TensorValue getQuery() { return query; }
   TensorValue getKeyT() { return keyT; }
+  ErrorOrSuccess hasExpectedRanks() {
+    // Allowed to elide the batch dimension
+    ErrorOrSuccess queryOk =
+        checkRank(query, "[MultiHeadAttentionPrologueMatcher] query", {3, 4});
+    if (queryOk.isError())
+      return queryOk.takeError();
+
+    ErrorOrSuccess keyTOk =
+        checkRank(keyT, "[MultiHeadAttentionPrologueMatcher] keyT", {3, 4});
+    if (keyTOk.isError())
+      return keyTOk.takeError();
+
+    return success();
+  }
 };
 
 /// A helper to match multi-headed attention and it's variations
@@ -786,9 +820,9 @@ class MultiHeadAttentionPatternMatcher {
     answer = attentionMatrixSoftMax @ value
   */
 private:
-  TensorValue query, // Q   , layout B,H,s,D
-      keyT,          // K^T , layout B,H,D,S
-      value;         // V   , layout B,H,S,D
+  ErrorOr<MultiHeadAttentionPrologueMatcher> prologueMatcher =
+      Error("Note set");
+  TensorValue value; // V   , layout B,H,S,D
 
   // Optional Values
   TensorValue attnMask; //     , layout     s,S
@@ -830,35 +864,9 @@ private:
   }
 
   ErrorOrSuccess hasExpectedRanks() {
-    auto checkRank =
-        [](TensorValue value, const std::string &valueName,
-           const SmallVector<int64_t> &allowedRanks) -> ErrorOrSuccess {
-      if (!value.getType().hasRank()) {
-        return Error(valueName + " is unranked");
-      }
-
-      int64_t rank = value.getType().getRank();
-      for (int64_t allowedRank : allowedRanks) {
-        if (allowedRank == rank)
-          return success();
-      }
-
-      std::string errMsg;
-      llvm::raw_string_ostream st(errMsg);
-      st << valueName << " has rank " << rank << " but expected one of: ";
-      for (int64_t allowedRank : allowedRanks)
-        st << allowedRank << " ";
-      return Error(errMsg);
-    };
-
-    // Allowed to elide the batch dimension
-    ErrorOrSuccess queryOk = checkRank(query, "query", {3, 4});
-    if (queryOk.isError())
-      return queryOk.takeError();
-
-    ErrorOrSuccess keyTOk = checkRank(keyT, "keyT", {3, 4});
-    if (keyTOk.isError())
-      return keyTOk.takeError();
+    ErrorOrSuccess prologueOK = prologueMatcher->hasExpectedRanks();
+    if (prologueOK.isError())
+      return prologueOK.takeError();
 
     ErrorOrSuccess valueOk = checkRank(value, "value", {3, 4});
     if (valueOk.isError())
@@ -940,12 +948,10 @@ public:
     if (!attentionMatrixProducer->hasOneUse())
       return Error("AttentionMatrix has more than one use!");
 
-    ErrorOr<MultiHeadAttentionPrologueMatcher> prologueMatcher =
+    matcher.prologueMatcher =
         MultiHeadAttentionPrologueMatcher::match(attentionMatrixProducer);
-    if (prologueMatcher.isError())
-      return prologueMatcher.takeError();
-    matcher.query = prologueMatcher->getQuery();
-    matcher.keyT = prologueMatcher->getKeyT();
+    if (matcher.prologueMatcher.isError())
+      return matcher.prologueMatcher.takeError();
 
     ErrorOrSuccess hasOneUse = matcher.intermediateValuesHaveOneUse();
     if (hasOneUse.isError())
@@ -972,6 +978,8 @@ public:
       return Error("Attention mask needs a known rank.");
 
     // Target shape for the attention mask:
+    TensorValue query = getQuery();
+    TensorValue keyT = getKeyT();
     SmallVector<TypedAttr> bcastAttnMaskDims = {
         query.getType().getDim(query.getType().getRank() - 2),
         keyT.getType().getDim(query.getType().getRank() - 1)};
@@ -998,18 +1006,21 @@ public:
     return fixedUpMask;
   }
 
-  TensorValue getQuery() { return query; }
-  TensorValue getKeyT() { return keyT; }
+  // layout B,H,s,D
+  TensorValue getQuery() { return prologueMatcher->getQuery(); }
+  // layout B,H,D,S
+  TensorValue getKeyT() { return prologueMatcher->getKeyT(); }
+
   TensorValue getValue() { return value; }
   TensorValue getNormScalar(OpBuilder &builder) {
     if (normScalar)
       return normScalar;
 
     // Kernel still expects normalization, just set it to 1 to make it a no-op
-    TensorValue one = builder.create<ConstantOp>(query.getLoc(), 1.0);
+    TensorValue one = builder.create<ConstantOp>(getQuery().getLoc(), 1.0);
     return builder.create<CastOp>(
-        query.getLoc(), one.getType().cloneWith(query.getType().getDtype()),
-        one);
+        getQuery().getLoc(),
+        one.getType().cloneWith(getQuery().getType().getDtype()), one);
   }
 };
 
