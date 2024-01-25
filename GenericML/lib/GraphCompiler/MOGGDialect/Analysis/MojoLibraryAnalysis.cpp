@@ -4,7 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/FileUtilities.h"
@@ -18,6 +17,7 @@
 #include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
 #include "KGEN/Package/Package.h"
+#include "Support/Compiler/BytecodeReaderWriter.h"
 #include "Support/Compiler/OperationUtils.h"
 
 namespace {
@@ -79,19 +79,13 @@ static ErrorOr<OwningOpRef<ModuleOp>> parseMojoPackage(MLIRContext *ctx,
   auto result = mlir::openInputFile(path, &errorMsg);
   if (!result)
     return Error(errorMsg);
-
-  Block b;
-  if (failed(mlir::readBytecodeFile(
-          *result, &b,
-          mlir::ParserConfig(ctx,
-                             /*verifyAfterParse=*/false)))) {
-    return Error::getStaticString("failed to parse package");
-  }
-  if (!isa<KGEN::LIT::PackageOp>(b.front()))
+  auto packageOp = readOpFromBytecodeFile<KGEN::LIT::PackageOp>(
+      *result, mlir::ParserConfig(ctx,
+                                  /*verifyAfterParse=*/false));
+  if (!packageOp)
     return Error::getStaticString("invalid package");
-  auto packageOp = cast<KGEN::LIT::PackageOp>(b.front());
   return KGEN::loadPreElaboratedModuleForLinking(
-      packageOp.getPreElaborationModuleAttr());
+      packageOp->getPreElaborationModuleAttr());
 }
 
 static ErrorOr<OwningOpRef<ModuleOp>> parseExtraLib(MLIRContext *ctx,
