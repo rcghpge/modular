@@ -271,7 +271,7 @@ static void buildForScatterLikeOp(GraphOp &graph, OpBuilder &builder,
 
   // Create the shape function.
   builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), op->getOperands(), "scatter_elements_shape", shapeParams,
+      op.getLoc(), op->getOperands(), "scatter_shape", shapeParams,
       /*kgenAttrs*/ DictionaryAttr{},
       /*Data dependent input indices*/ builder.getI32ArrayAttr({3}));
 }
