@@ -843,7 +843,12 @@ LogicalResult Static::BroadcastToOp::canonicalize(Static::BroadcastToOp op,
   }
 
   if (resTy.getShapeAttr() == inputTy.getShapeAttr()) {
-    rewriter.replaceAllUsesExcept(op, inputVal, op);
+    // Be careful not to drop any non-shape info like metadata in TensorType.
+    if (resTy == inputTy)
+      rewriter.replaceAllUsesExcept(op, inputVal, op);
+    else
+      rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, inputVal);
+
     return success();
   }
 

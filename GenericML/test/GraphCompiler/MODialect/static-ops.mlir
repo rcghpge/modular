@@ -51,6 +51,26 @@ mo.graph @static_broadcast_fold_consecutive_broadcast(%from: !mo.tensor<[3, 1], 
   mo.output %res2 : !mo.tensor<[5, 3, 5], f32>
 }
 
+// CHECK-LABEL: mo.graph @static_broadcast_no_fold_differing_metadata
+// CHECK-SAME:  <[[D0:.*]]>(
+// CHECK-SAME:    %[[INPUT:.*]]: !mo.tensor<[[[D0]], 3], f32>
+// CHECK-SAME:  ) -> !mo.tensor<[[[D0]], 3], f32, {layout = #mo.layout<NHWC>}> no_inline
+mo.graph @static_broadcast_no_fold_differing_metadata<D0>(
+  %input: !mo.tensor<[D0, 3], f32>
+) -> !mo.tensor<[D0, 3], f32, {layout = #mo.layout<NHWC>}> {
+  // Such pattern could show up from this sequence of passses
+  // 1. InferLayouts
+  // 2. SymbolicizeFallbackShapeFunctions
+  // 3. PropagateShapes
+
+  // CHECK-NEXT: %[[RESULT:.*]] = mo.rebind(%[[INPUT]])
+  // CHECK-SAME: : !mo.tensor<[D0, 3], f32> -> !mo.tensor<[D0, 3], f32, {layout = #mo.layout<NHWC>}>
+  %result = mo.static.broadcast_to(%input) : !mo.tensor<[D0, 3], f32> -> !mo.tensor<[D0, 3], f32, {layout = #mo.layout<NHWC>}>
+
+  // CHECK-NEXT: mo.output %[[RESULT]] : !mo.tensor<[D0, 3], f32, {layout = #mo.layout<NHWC>}>
+  mo.output %result: !mo.tensor<[D0, 3], f32, {layout = #mo.layout<NHWC>}>
+}
+
 //===----------------------------------------------------------------------===//
 // Static_ReshapeOp
 //===----------------------------------------------------------------------===//
