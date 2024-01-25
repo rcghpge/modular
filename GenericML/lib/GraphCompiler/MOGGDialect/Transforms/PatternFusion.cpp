@@ -785,6 +785,111 @@ public:
   }
 };
 
+/// A helper for matching against attention masking for fused attention
+/// Supports causal and explicit masking as well as the case where masking is
+/// optional.
+///
+/// Notes on masking:
+/// https://www.notion.so/modularai/Multi-Head-Attention-bbc2d300937a495da40c18b6a2028d22
+class MultiHeadAttentionMaskingMatcher {
+private:
+  Operation *attentionMatrixNormMaskedProducer = nullptr;
+
+  // May be optional
+  TensorValue patternInput;
+  TensorValue attentionMask;
+  Operation *attentionMaskBCastProducer = nullptr;
+
+  graph_compiler::Logger patternMatcherLogger;
+
+  MultiHeadAttentionMaskingMatcher() = default;
+
+public:
+  static ErrorOr<MultiHeadAttentionMaskingMatcher>
+  match(Operation *producingOp) {
+    MultiHeadAttentionMaskingMatcher matcher;
+
+    auto pPatternInput = m_Any(&matcher.patternInput);
+    auto pAttentionMaskBCast = m_Op<Static::BroadcastToOp>(
+        &matcher.attentionMaskBCastProducer, m_Any(&matcher.attentionMask));
+    auto pMaskedNormalizedAttnMatrix =
+        m_BinaryCommutativeOp<AddOp>(&matcher.attentionMatrixNormMaskedProducer,
+                                     pPatternInput, pAttentionMaskBCast);
+
+    // handle with and without attention mask via m_Optional
+    auto pCenterPattern =
+        m_Optional(pMaskedNormalizedAttnMatrix, pPatternInput);
+
+    if (!producingOp)
+      return Error(
+          "[MultiHeadAttentionMaskingMatcher] producing operation is nullptr.");
+
+    if (producingOp->getNumResults() != 1)
+      return Error("[MultiHeadAttentionMaskingMatcher] producing operation "
+                   "does not have one result.");
+
+    TensorValue producingOpResult =
+        cast<TensorValue>(producingOp->getResult(0));
+
+    // attempt to match the pattern
+    bool matchesPattern =
+        pCenterPattern.match(producingOpResult, &matcher.patternMatcherLogger);
+    if (!matchesPattern)
+      return Error("Attention Masking Component Does Not Match: " +
+                   getPatternMatchingError(matcher.patternMatcherLogger));
+
+    return matcher;
+  }
+
+  bool hasAttentionMask() { return attentionMask != nullptr; }
+  TensorValue getRawAttentionMask() { return attentionMask; }
+  TensorValue getPatternInput() { return patternInput; }
+
+  TensorValue extractCompatibleAttentionMask(OpBuilder &builder,
+                                             TensorValue query,
+                                             TensorValue keyT) {
+    // Our kernels expect a mask of shape [s, S]. So try to extract this
+    TensorValue fixedUpMask = attentionMask;
+
+    // Target shape for the attention mask:
+    SmallVector<TypedAttr> bcastAttnMaskDims = {
+        query.getType().getDim(query.getType().getRank() - 2),
+        keyT.getType().getDim(query.getType().getRank() - 1)};
+    ShapeAttr attnMaskTargetShapeAttr = ShapeAttr::get(
+        bcastAttnMaskDims, MOSH::ShapeType::get(query.getContext()));
+
+    M::MO::TensorType attnMaskTargetShapeType = M::MO::TensorType::get(
+        attnMaskTargetShapeAttr, fixedUpMask.getType().getElementType());
+
+    if (fixedUpMask.getType().getRank() > 2) {
+      // Handles case where mask is of shape like [1, s, S].
+      fixedUpMask = builder.create<Static::ReshapeOp>(
+          fixedUpMask.getLoc(), attnMaskTargetShapeType, fixedUpMask);
+    }
+
+    // Manually broadcast out the attention mask to guarantee layout of s,S
+    // Handles case where mask is just a scalar which is equally applied.
+    fixedUpMask = builder.create<Static::BroadcastToOp>(
+        fixedUpMask.getLoc(), attnMaskTargetShapeType, fixedUpMask);
+
+    return fixedUpMask;
+  }
+
+  ErrorOrSuccess hasExpectedRanks() {
+    // Allowed to elide the batch dimension
+    if (hasAttentionMask()) {
+      // May have a pre-broadcasted batch-dimension AND head-dimension
+      ErrorOrSuccess attnMaskOk =
+          checkRank(attentionMask,
+                    "[MultiHeadAttentionMaskingMatcher] attnMask", {2, 3, 4});
+      if (attnMaskOk.isError())
+        return attnMaskOk.takeError();
+    }
+
+    return success();
+  }
+};
+
 /// A helper for matching against normalization of the attentionMatrix
 ///
 /// attentionMatrix = Q @ KT
@@ -991,13 +1096,7 @@ private:
   ErrorOr<MultiHeadAttentionEpilogueMatcher> epilogueMatcher = Error("Not set");
   ErrorOr<MultiHeadAttentionNormalizationMatcher> normalizationMatcher =
       Error("Not set");
-
-  // Optional Values
-  TensorValue attentionMask; //     , layout     s,S
-  // Attention masking-related operations (optional, may remain nullptr)
-  Operation *attentionMaskBCastProducer = nullptr,
-            *attentionMatrixNormMaskedProducer = nullptr;
-  graph_compiler::Logger patternMatcherLogger;
+  ErrorOr<MultiHeadAttentionMaskingMatcher> maskingMatcher = Error("Not set.");
 
   ErrorOrSuccess hasExpectedRanks() {
     ErrorOrSuccess prologueOK = prologueMatcher->hasExpectedRanks();
@@ -1012,12 +1111,9 @@ private:
     if (normalizationOk.isError())
       return normalizationOk.takeError();
 
-    if (attentionMask) {
-      // May have a pre-broadcasted batch-dimension
-      ErrorOrSuccess attnMaskOk = checkRank(attentionMask, "attnMask", {2, 3});
-      if (attnMaskOk.isError())
-        return attnMaskOk.takeError();
-    }
+    ErrorOrSuccess maskingOk = maskingMatcher->hasExpectedRanks();
+    if (maskingOk.isError())
+      return maskingOk.takeError();
 
     return success();
   }
@@ -1045,27 +1141,16 @@ public:
 
     // **Step 3:
     // attention mask (optional)
-    TensorValue topOfMaskPatternValue; // should be the result of normalization
-    auto pTopOfPattern = m_Any(&topOfMaskPatternValue);
-    auto pAttentionMaskBCast = m_Op<Static::BroadcastToOp>(
-        &matcher.attentionMaskBCastProducer, m_Any(&matcher.attentionMask));
-    auto pMaskedNormalizedAttnMatrix =
-        m_BinaryCommutativeOp<AddOp>(&matcher.attentionMatrixNormMaskedProducer,
-                                     pTopOfPattern, pAttentionMaskBCast);
+    matcher.maskingMatcher =
+        MultiHeadAttentionMaskingMatcher::match(epilogueTopOfPatternProducer);
+    if (matcher.maskingMatcher.isError())
+      return matcher.maskingMatcher.takeError();
 
-    // handle with and without attention mask via m_Optional
-    auto pCenterPattern =
-        m_Optional(pMaskedNormalizedAttnMatrix, pTopOfPattern);
-
-    // attempt to match the pattern
-    bool matchesPattern = pCenterPattern.match(epilogueTopOfPattern,
-                                               &matcher.patternMatcherLogger);
-    if (!matchesPattern)
-      return Error("Attention Masking Component Does Not Match: " +
-                   getPatternMatchingError(matcher.patternMatcherLogger));
-    if (!topOfMaskPatternValue.hasOneUse())
+    TensorValue maskingTopOfPatternValue =
+        matcher.maskingMatcher->getPatternInput();
+    if (!maskingTopOfPatternValue.hasOneUse())
       return Error("Multiple use of top of mask pattern.");
-    Operation *topOfMaskPattern = topOfMaskPatternValue.getDefiningOp();
+    Operation *topOfMaskPattern = maskingTopOfPatternValue.getDefiningOp();
     if (!topOfMaskPattern)
       return Error("Top of mask pattern has no defining op.");
 
@@ -1098,46 +1183,12 @@ public:
     return matcher;
   }
 
-  bool hasAttentionMask() { return attentionMask != nullptr; }
+  bool hasAttentionMask() { return maskingMatcher->hasAttentionMask(); }
 
-  ErrorOr<TensorValue>
-  extractCompatibleAttentionMask(PatternRewriter &rewriter) {
-    // Our kernels expect a mask of shape [s, S]. So try to extract this
-    if (!hasAttentionMask()) {
-      return Error("No attention mask in this pattern");
-    }
-
-    TensorValue fixedUpMask = attentionMask;
-    if (!fixedUpMask.getType().hasRank())
-      return Error("Attention mask needs a known rank.");
-
-    // Target shape for the attention mask:
-    TensorValue query = getQuery();
-    TensorValue keyT = getKeyT();
-    SmallVector<TypedAttr> bcastAttnMaskDims = {
-        query.getType().getDim(query.getType().getRank() - 2),
-        keyT.getType().getDim(query.getType().getRank() - 1)};
-    ShapeAttr attnMaskTargetShapeAttr = ShapeAttr::get(
-        bcastAttnMaskDims, MOSH::ShapeType::get(rewriter.getContext()));
-
-    M::MO::TensorType attnMaskTargetShapeType = M::MO::TensorType::get(
-        attnMaskTargetShapeAttr, fixedUpMask.getType().getElementType());
-
-    if (fixedUpMask.getType().getRank() > 2) {
-      // Handles case where mask is of shape like [1, s, S].
-      if (attnMaskTargetShapeAttr.getSymbolicNumElements() !=
-          fixedUpMask.getType().getSymbolicNumElements())
-        return Error("Given mask cannot be reshaped to [s, S] shaped mask!");
-      fixedUpMask = rewriter.create<Static::ReshapeOp>(
-          fixedUpMask.getLoc(), attnMaskTargetShapeType, fixedUpMask);
-    }
-
-    // Manually broadcast out the attention mask to guarantee layout of s,S
-    // Handles case where mask is just a scalar which is equally applied.
-    fixedUpMask = rewriter.create<Static::BroadcastToOp>(
-        fixedUpMask.getLoc(), attnMaskTargetShapeType, fixedUpMask);
-
-    return fixedUpMask;
+  // layout s, S
+  TensorValue getAttentionMask(OpBuilder &builder) {
+    return maskingMatcher->extractCompatibleAttentionMask(builder, getQuery(),
+                                                          getKeyT());
   }
 
   // layout B,H,s,D
@@ -1180,7 +1231,7 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
     // Attention masking case
     if (matcher.hasAttentionMask()) {
       ErrorOr<TensorValue> maybeAttentionMask =
-          matcher.extractCompatibleAttentionMask(rewriter);
+          matcher.getAttentionMask(rewriter);
 
       if (maybeAttentionMask.isError())
         return rewriter.notifyMatchFailure(op->getLoc(),
