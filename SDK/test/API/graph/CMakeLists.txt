@@ -18,7 +18,6 @@ add_modular_testsuite(check-max-graph-mojo
   mt
 
   DEPENDS
-  max-graph-c
   mof
   max-mojo
 
