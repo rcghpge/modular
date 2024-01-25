@@ -716,6 +716,42 @@ getPatternMatchingError(graph_compiler::Logger &patternMatcherLogger) {
   return errMsg;
 }
 
+/// A helper for matching against the initial Q @ KT step of fused attention
+class MultiHeadAttentionPrologueMatcher {
+private:
+  // Should always be filled by match()
+  TensorValue query, // Q   , layout B,H,s,D
+      keyT;          // K^T , layout B,H,D,S
+
+  graph_compiler::Logger patternMatcherLogger;
+  MultiHeadAttentionPrologueMatcher() = default;
+
+public:
+  static ErrorOr<MultiHeadAttentionPrologueMatcher>
+  match(BatchMatmulOp producingOp) {
+    MultiHeadAttentionPrologueMatcher matcher;
+    auto pQ = m_Any(&matcher.query);
+    auto pKT = m_Any(&matcher.keyT);
+
+    // match Q @ K_T
+    Operation *attentionMatrixProducer = nullptr;
+    auto pAttentionMatrix =
+        m_Op<BatchMatmulOp>(&attentionMatrixProducer, pQ, pKT);
+
+    bool matches = pAttentionMatrix.match(producingOp.getOperation(),
+                                          &matcher.patternMatcherLogger);
+    if (!matches) {
+      return Error("[MultiHeadAttentionPrologueMatcher]: " +
+                   getPatternMatchingError(matcher.patternMatcherLogger));
+    }
+
+    return matcher;
+  }
+
+  TensorValue getQuery() { return query; }
+  TensorValue getKeyT() { return keyT; }
+};
+
 /// A helper to match multi-headed attention and it's variations
 class MultiHeadAttentionPatternMatcher {
   /*
@@ -731,7 +767,10 @@ class MultiHeadAttentionPatternMatcher {
 
   Pseudocode:
     # Calculate Attention matrix
+    **Step 1:
     attentionMatrix = query @ keyT
+
+    **Step 2:
     norm = broadcast_to(normScalar, shape_of(attentionMatrix))
 
     # Normalize and apply masking
@@ -756,9 +795,11 @@ private:
 
   TensorValue normScalar; // the factor for normalizing Q^K_t to be var. 1
 
+  // Intermediate values for checkpointing across separate patterns
+  TensorValue attentionMatrix;
+
   // Intermediate values and their producing operations
-  Operation *attentionMatrixProducer = nullptr, *normProducer = nullptr,
-            *attentionMatrixNormProducer = nullptr,
+  Operation *normProducer = nullptr, *attentionMatrixNormProducer = nullptr,
             *attentionMatrixSoftMaxProducer = nullptr,
             *answerProducer = nullptr;
 
@@ -772,9 +813,6 @@ private:
     // Checks all intermediate values are used once. The exception are
     // `norm`, `attnMask`, `attentionMaskBCastProducer` since their values are
     // typically reused per attention layer.
-
-    if (!attentionMatrixProducer->hasOneUse())
-      return Error("attentionMatrix has multiple uses.");
 
     if (attentionMatrixNormProducer &&
         !attentionMatrixNormProducer->hasOneUse())
@@ -849,17 +887,17 @@ public:
   match(BatchMatmulOp finalOp) {
     MultiHeadAttentionPatternMatcher matcher;
 
-    auto pQ = m_Any(&matcher.query);
-    auto pKT = m_Any(&matcher.keyT);
+    // Note we match things in a reverse-ward direction as we are given the
+    // very final operation. We then bubble our way up.
+
+    // **Step 2:
     auto pV = m_Any(&matcher.value);
+
+    auto pAttentionMatrix = m_Any(&matcher.attentionMatrix);
 
     // TODO: normScalar is derived in some scenarios, it is usually 1 / sqrt(D)
     auto pNorm = m_Op<Static::BroadcastToOp>(&matcher.normProducer,
                                              m_Any(&matcher.normScalar));
-
-    // match Q @ K_T
-    auto pAttentionMatrix =
-        m_Op<BatchMatmulOp>(&matcher.attentionMatrixProducer, pQ, pKT);
 
     // normalize by scale
     auto pNormalizedAttnMatrix = m_BinaryCommutativeOp<MulOp>(
@@ -878,7 +916,7 @@ public:
 
     // handle with and without attention mask via m_Optional
     auto pMaybeMaskedNormalizedAttnMatrix =
-        m_Optional(pMaybeNormalizedAttnMatrix, pMaskedNormalizedAttnMatrix);
+        m_Optional(pMaskedNormalizedAttnMatrix, pMaybeNormalizedAttnMatrix);
 
     // softmax
     auto pSoftmaxAttnMatrix =
@@ -893,6 +931,21 @@ public:
     bool matchesPattern = pAnswer.match(finalOp, &matcher.patternMatcherLogger);
     if (!matchesPattern)
       return Error(getPatternMatchingError(matcher.patternMatcherLogger));
+
+    // **Step 1: Match the prologue
+    BatchMatmulOp attentionMatrixProducer =
+        matcher.attentionMatrix.getDefiningOp<BatchMatmulOp>();
+    if (!attentionMatrixProducer)
+      return Error("AttentionMatrix has no BatchMatmulOp Producer!");
+    if (!attentionMatrixProducer->hasOneUse())
+      return Error("AttentionMatrix has more than one use!");
+
+    ErrorOr<MultiHeadAttentionPrologueMatcher> prologueMatcher =
+        MultiHeadAttentionPrologueMatcher::match(attentionMatrixProducer);
+    if (prologueMatcher.isError())
+      return prologueMatcher.takeError();
+    matcher.query = prologueMatcher->getQuery();
+    matcher.keyT = prologueMatcher->getKeyT();
 
     ErrorOrSuccess hasOneUse = matcher.intermediateValuesHaveOneUse();
     if (hasOneUse.isError())
@@ -953,12 +1006,10 @@ public:
       return normScalar;
 
     // Kernel still expects normalization, just set it to 1 to make it a no-op
-    TensorValue attnMatrix =
-        cast<TensorValue>(attentionMatrixProducer->getResult(0));
-    TensorValue one = builder.create<ConstantOp>(attnMatrix.getLoc(), 1.0);
+    TensorValue one = builder.create<ConstantOp>(query.getLoc(), 1.0);
     return builder.create<CastOp>(
-        attnMatrix.getLoc(),
-        one.getType().cloneWith(attnMatrix.getType().getDtype()), one);
+        query.getLoc(), one.getType().cloneWith(query.getType().getDtype()),
+        one);
   }
 };
 
