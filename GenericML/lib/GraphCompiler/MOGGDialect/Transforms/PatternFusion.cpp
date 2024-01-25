@@ -734,6 +734,55 @@ ErrorOrSuccess checkRank(TensorValue value, const std::string &valueName,
   for (int64_t allowedRank : allowedRanks)
     st << allowedRank << " ";
   return Error(errMsg);
+}
+
+/// A helper for matching against softmax(input) @ V for fused attention
+class MultiHeadAttentionEpilogueMatcher {
+private:
+  // Bottom of pattern
+  TensorValue value; // V   , layout B,H,S,D
+  Operation *reprojectProducer = nullptr;
+
+  // Top of the pattern
+  TensorValue softmaxInput;
+  Operation *softmaxProducer = nullptr;
+
+  graph_compiler::Logger patternMatcherLogger;
+  MultiHeadAttentionEpilogueMatcher() = default;
+
+public:
+  static ErrorOr<MultiHeadAttentionEpilogueMatcher>
+  match(BatchMatmulOp reprojection) {
+    MultiHeadAttentionEpilogueMatcher matcher;
+    auto pV = m_Any(&matcher.value);
+
+    // softmax
+    auto pSoftmaxAttnMatrix =
+        m_Op<SoftmaxOp>(&matcher.softmaxProducer, m_Any(&matcher.softmaxInput));
+
+    // re-project using V
+    auto pAnswer =
+        m_Op<BatchMatmulOp>(&matcher.reprojectProducer, pSoftmaxAttnMatrix, pV);
+
+    bool matches = pAnswer.match(reprojection, &matcher.patternMatcherLogger);
+    if (!matches)
+      return Error("[MultiHeadAttentionEpilogueMatcher]: " +
+                   getPatternMatchingError(matcher.patternMatcherLogger));
+
+    return matcher;
+  }
+  TensorValue getValue() { return value; }
+  TensorValue getSoftMaxInput() { return softmaxInput; }
+  TensorValue getTopOfPattern() { return getSoftMaxInput(); }
+  ErrorOrSuccess hasExpectedRanks() {
+    // Allowed to elide the batch dimension
+    ErrorOrSuccess valueOk =
+        checkRank(value, "[MultiHeadAttentionEpilogueMatcher] value", {3, 4});
+    if (valueOk.isError())
+      return valueOk.takeError();
+
+    return success();
+  }
 };
 
 /// A helper for matching against the initial Q @ KT step of fused attention
@@ -815,6 +864,7 @@ class MultiHeadAttentionPatternMatcher {
     attnMaskBCast = broadcast(attnMask, attentionMatrixNorm)
     attentionMatrixNormMasked = attentionMatrixNorm + attnMaskBCast
 
+    **Step 3:
     # Apply softmax and reproject result
     attentionMatrixSoftMax = softmax(attentionMatrixNormMasked)
     answer = attentionMatrixSoftMax @ value
@@ -822,7 +872,7 @@ class MultiHeadAttentionPatternMatcher {
 private:
   ErrorOr<MultiHeadAttentionPrologueMatcher> prologueMatcher =
       Error("Note set");
-  TensorValue value; // V   , layout B,H,S,D
+  ErrorOr<MultiHeadAttentionEpilogueMatcher> epilogueMatcher = Error("Not set");
 
   // Optional Values
   TensorValue attnMask; //     , layout     s,S
@@ -833,9 +883,7 @@ private:
   TensorValue attentionMatrix;
 
   // Intermediate values and their producing operations
-  Operation *normProducer = nullptr, *attentionMatrixNormProducer = nullptr,
-            *attentionMatrixSoftMaxProducer = nullptr,
-            *answerProducer = nullptr;
+  Operation *normProducer = nullptr, *attentionMatrixNormProducer = nullptr;
 
   // Attention masking-related operations (optional, may remain nullptr)
   Operation *attentionMaskBCastProducer = nullptr,
@@ -857,9 +905,6 @@ private:
         !attentionMatrixNormMaskedProducer->hasOneUse())
       return Error("attentionMatrixNormMasked has multiple uses.");
 
-    if (!attentionMatrixSoftMaxProducer->hasOneUse())
-      return Error("attentionMatrixSoftMax has multiple uses.");
-
     return success();
   }
 
@@ -868,9 +913,9 @@ private:
     if (prologueOK.isError())
       return prologueOK.takeError();
 
-    ErrorOrSuccess valueOk = checkRank(value, "value", {3, 4});
-    if (valueOk.isError())
-      return valueOk.takeError();
+    ErrorOrSuccess epilogueOk = epilogueMatcher->hasExpectedRanks();
+    if (epilogueOk.isError())
+      return epilogueOk.takeError();
 
     if (attnMask) {
       // May have a pre-broadcasted batch-dimension
@@ -897,10 +942,16 @@ public:
 
     // Note we match things in a reverse-ward direction as we are given the
     // very final operation. We then bubble our way up.
+    // **Step 3:
+    matcher.epilogueMatcher = MultiHeadAttentionEpilogueMatcher::match(finalOp);
+    if (matcher.epilogueMatcher.isError())
+      return matcher.epilogueMatcher.takeError();
+    TensorValue epilogueTopOfPattern =
+        matcher.epilogueMatcher->getTopOfPattern();
+    if (!epilogueTopOfPattern.hasOneUse())
+      return Error("Softmax input producer has more than one use.");
 
     // **Step 2:
-    auto pV = m_Any(&matcher.value);
-
     auto pAttentionMatrix = m_Any(&matcher.attentionMatrix);
 
     // TODO: normScalar is derived in some scenarios, it is usually 1 / sqrt(D)
@@ -923,20 +974,12 @@ public:
         pAttentionMaskBCast);
 
     // handle with and without attention mask via m_Optional
-    auto pMaybeMaskedNormalizedAttnMatrix =
+    auto pCenterPattern =
         m_Optional(pMaskedNormalizedAttnMatrix, pMaybeNormalizedAttnMatrix);
 
-    // softmax
-    auto pSoftmaxAttnMatrix =
-        m_Op<SoftmaxOp>(&matcher.attentionMatrixSoftMaxProducer,
-                        pMaybeMaskedNormalizedAttnMatrix);
-
-    // re-project using V
-    auto pAnswer =
-        m_Op<BatchMatmulOp>(&matcher.answerProducer, pSoftmaxAttnMatrix, pV);
-
     // attempt to match the pattern
-    bool matchesPattern = pAnswer.match(finalOp, &matcher.patternMatcherLogger);
+    bool matchesPattern = pCenterPattern.match(epilogueTopOfPattern,
+                                               &matcher.patternMatcherLogger);
     if (!matchesPattern)
       return Error(getPatternMatchingError(matcher.patternMatcherLogger));
 
@@ -1008,10 +1051,12 @@ public:
 
   // layout B,H,s,D
   TensorValue getQuery() { return prologueMatcher->getQuery(); }
+
   // layout B,H,D,S
   TensorValue getKeyT() { return prologueMatcher->getKeyT(); }
 
-  TensorValue getValue() { return value; }
+  // layout B,H,s,D
+  TensorValue getValue() { return epilogueMatcher->getValue(); }
   TensorValue getNormScalar(OpBuilder &builder) {
     if (normScalar)
       return normScalar;
