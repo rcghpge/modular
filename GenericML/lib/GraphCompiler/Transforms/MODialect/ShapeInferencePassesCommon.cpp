@@ -80,8 +80,8 @@ LogicalResult elaborateModule(ModuleOp moduleOp) {
 
   setTargetInfo(moduleOp, *target);
 
-  // Set the environment (defines) for the module.
-  KGEN::setModularEnvAttr(moduleOp);
+  // Extend the environment (defines) for the module.
+  KGEN::extendWithModularEnvAttr(moduleOp);
 
   auto ownedRuntime = LLCL::createRuntimeIfNeeded(
       LLCL::RuntimeOptions().withLeakCheckedAllocator());

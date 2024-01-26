@@ -43,7 +43,7 @@ LogicalResult StubCompiler::elaborateKGEN() {
   mlir::PassManager pm(ctx);
 
   // Set the environment (defines) for the module.
-  KGEN::setModularEnvAttr(kgenModule);
+  KGEN::extendWithModularEnvAttr(kgenModule);
 
   // Retrieve the target info from the device spec, however 'complete' it with
   // additional fields derived from the 'core' fields.
