@@ -12,10 +12,17 @@
 #ifndef GENERICML_FORMATYAML_H
 #define GENERICML_FORMATYAML_H
 
+#include "GenericML/Support/Dict.h"
+#include "GenericML/Support/List.h"
+#include "GenericML/Support/ResultInfo.h"
 #include "GenericML/Support/Tensor.h"
+#include "GenericML/Support/Value.h"
+#include "LLCL/Runtime/Runtime.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/LLVMYAMLForwardDecls.h"
+#include "llvm/Support/YAMLTraits.h"
+#include <optional>
 #include <string>
 
 namespace llvm {
@@ -62,5 +69,94 @@ template <>
 struct llvm::yaml::MappingTraits<std::shared_ptr<M::ResultInfo>> {
   static void mapping(IO &io, std::shared_ptr<M::ResultInfo> &info);
 };
+
+namespace M {
+using YamlDictKeyValuePair = std::pair<M::GML::Variant, M::GML::Variant>;
+
+/// VariantResultInfo class and corresponding MappingTraits to help write output
+/// information to YAML when --result-output-style=binary.
+class VariantResultInfo : public M::ResultInfo {
+public:
+  VariantResultInfo(std::string name, M::GML::Variant variant);
+
+  VariantResultInfo(const VariantResultInfo &) = default;
+  VariantResultInfo(VariantResultInfo &&) = default;
+  VariantResultInfo &operator=(const VariantResultInfo &) = default;
+  VariantResultInfo &operator=(VariantResultInfo &&) = default;
+
+  void map(llvm::yaml::IO &io) override;
+
+  M::GML::Variant variant;
+};
+
+/// Given a composed type model output (`out`), create a copy of the composed
+/// type, replacing `GML::Tensor` leaf nodes with `TensorResultInfo`s
+/// for YAML serialization. The `GML::Tensor`s are collected in
+/// `processedResults` for binary output. Note that the copy is not a deep copy,
+/// and parts of the original output (`out`) can still be referenced in the
+/// output.
+AnyAsyncValueRef
+getResultForBinaryOutput(const M::AnyAsyncValueRef &out,
+                         M::ProcessedResults &processedResults);
+} // namespace M
+
+LLVM_YAML_IS_SEQUENCE_VECTOR(M::GML::Variant)
+LLVM_YAML_IS_SEQUENCE_VECTOR(M::YamlDictKeyValuePair)
+
+template <>
+struct llvm::yaml::MappingTraits<M::GML::Variant> {
+  class NormalizedVariant {
+  public:
+    NormalizedVariant(IO &);
+    NormalizedVariant(IO &, M::GML::Variant &variant);
+    M::GML::Variant denormalize(IO &);
+    std::optional<std::string> stringValue;
+    std::optional<double> doubleValue;
+    std::optional<int64_t> longValue;
+    std::optional<bool> boolValue;
+    std::optional<M::GML::None> noneValue;
+    std::optional<M::GML::List> listValue;
+    std::optional<M::GML::Tuple> tupleValue;
+    std::optional<M::GML::Dict> dictValue;
+    std::optional<M::TensorResultInfo> tensorResultInfoValue;
+  };
+
+  static void mapping(IO &io, M::GML::Variant &variant);
+};
+
+namespace llvm::yaml {
+template <>
+struct llvm::yaml::MappingTraits<M::GML::None> {
+  static void mapping(IO &io, M::GML::None &list);
+};
+
+template <>
+struct llvm::yaml::MappingTraits<M::GML::List> {
+  static void mapping(IO &io, M::GML::List &list);
+};
+
+template <>
+struct llvm::yaml::MappingTraits<M::GML::Tuple> {
+  static void mapping(IO &io, M::GML::Tuple &tuple);
+};
+
+template <>
+struct llvm::yaml::MappingTraits<M::YamlDictKeyValuePair> {
+  static void mapping(IO &io, M::YamlDictKeyValuePair &kv);
+};
+
+template <>
+struct llvm::yaml::MappingTraits<M::GML::Dict> {
+  class NormalizedDict {
+  public:
+    NormalizedDict(IO &);
+    NormalizedDict(IO &, M::GML::Dict &dict);
+    M::GML::Dict denormalize(IO &);
+    std::vector<M::YamlDictKeyValuePair> normalizedDict;
+  };
+
+  static void mapping(IO &io, M::GML::Dict &dict);
+};
+} // namespace llvm::yaml
 
 #endif // GENERICML_FORMATYAML_H

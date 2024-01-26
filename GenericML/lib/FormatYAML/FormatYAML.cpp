@@ -19,6 +19,7 @@
 #include "llvm/Support/YAMLTraits.h"
 #include "llvm/Support/raw_ostream.h"
 #include <memory>
+#include <utility>
 
 using namespace M;
 
@@ -377,4 +378,188 @@ void llvm::yaml::MappingTraits<M::TensorResultInfo>::mapping(
 void llvm::yaml::MappingTraits<std::shared_ptr<M::ResultInfo>>::mapping(
     IO &io, std::shared_ptr<M::ResultInfo> &info) {
   info->map(io);
+}
+
+LLCL::AnyAsyncValueRef
+M::getResultForBinaryOutput(const LLCL::AnyAsyncValueRef &out,
+                            ProcessedResults &processedResults) {
+  M::LLCL::CompactRuntimePtr runtime = out.getRuntime();
+
+  if (GML::List *castListValue = dyn_cast<GML::List>(out)) {
+    // Create a new list.
+    LLCL::AnyAsyncValueRef out =
+        LLCL::AnyAsyncValueRef::createReady<GML::List>(runtime);
+    out.get<GML::List>().getElements().reserve(
+        castListValue->getElements().size());
+    for (const GML::Variant &elem : castListValue->getElements()) {
+      LLCL::AnyAsyncValueRef newElem =
+          getResultForBinaryOutput(elem.getValue(), processedResults);
+      out.get<GML::List>().getElements().push_back(newElem);
+    }
+    return out;
+  }
+  if (GML::Tuple *castTupleValue = dyn_cast<GML::Tuple>(out)) {
+    // Create a new tuple.
+    LLCL::AnyAsyncValueRef out =
+        LLCL::AnyAsyncValueRef::createReady<GML::Tuple>(runtime);
+    out.get<GML::Tuple>().getElements().reserve(
+        castTupleValue->getElements().size());
+    for (const GML::Variant &elem : castTupleValue->getElements()) {
+      LLCL::AnyAsyncValueRef newElem =
+          getResultForBinaryOutput(elem.getValue(), processedResults);
+      out.get<GML::Tuple>().getElements().push_back(newElem);
+    }
+    return out;
+  }
+  if (GML::Dict *castDictValue = dyn_cast<GML::Dict>(out)) {
+    // Create a new dict.
+    LLCL::AnyAsyncValueRef out =
+        LLCL::AnyAsyncValueRef::createReady<GML::Dict>(runtime);
+    out.get<GML::Dict>().getElements().reserve(
+        castDictValue->getElements().size());
+    for (const auto &[key, value] : castDictValue->getElements()) {
+      LLCL::AnyAsyncValueRef newKey =
+          getResultForBinaryOutput(key.getValue(), processedResults);
+      LLCL::AnyAsyncValueRef newValue =
+          getResultForBinaryOutput(value.getValue(), processedResults);
+      out.get<GML::Dict>().getElements().insert({newKey, newValue});
+    }
+    return out;
+  }
+  if (GML::Tensor *castTensorValue = dyn_cast<GML::Tensor>(out)) {
+    // Insert tensor if it isn't registered already.
+    std::string name = processedResults.insertTensor(castTensorValue);
+    // Replace tensor with `TensorResultInfo`. We re-export the tensor
+    // information, so if the tensors differ in shape due to a reshape, they are
+    // still the same if the underlying buffer (pointer and size) is the same.
+    LLCL::AnyAsyncValueRef out =
+        LLCL::AnyAsyncValueRef::createReady<TensorResultInfo>(runtime, name,
+                                                              *castTensorValue);
+    return out;
+  }
+  // Copy references to primitive types (string, double, long, bool, None).
+  return out.copy();
+}
+
+VariantResultInfo::VariantResultInfo(std::string name, GML::Variant variant)
+    : ResultInfo(std::move(name)), variant(variant) {}
+
+void VariantResultInfo::map(llvm::yaml::IO &io) {
+  io.mapRequired("name", name);
+  io.mapRequired("variant", variant);
+}
+
+llvm::yaml::MappingTraits<
+    M::GML::Variant>::NormalizedVariant::NormalizedVariant(IO &){};
+
+llvm::yaml::MappingTraits<M::GML::Variant>::NormalizedVariant::
+    NormalizedVariant(IO &, M::GML::Variant &variant) {
+  if (auto *castStringValue = dyn_cast<std::string>(variant.getValue()))
+    stringValue = *castStringValue;
+  else if (auto *castDoubleValue = dyn_cast<double>(variant.getValue()))
+    doubleValue = *castDoubleValue;
+  else if (auto *castLongValue = dyn_cast<int64_t>(variant.getValue()))
+    longValue = *castLongValue;
+  else if (auto *castBoolValue = dyn_cast<bool>(variant.getValue()))
+    boolValue = *castBoolValue;
+  else if (auto *castListValue = dyn_cast<GML::List>(variant.getValue()))
+    listValue = *castListValue;
+  else if (auto *castTupleValue = dyn_cast<GML::Tuple>(variant.getValue()))
+    tupleValue = *castTupleValue;
+  else if (auto *castDictValue = dyn_cast<GML::Dict>(variant.getValue()))
+    dictValue = *castDictValue;
+  else if (auto *castNoneValue = dyn_cast<GML::None>(variant.getValue()))
+    noneValue = *castNoneValue;
+  else if (auto *castTensorResultInfo =
+               dyn_cast<TensorResultInfo>(variant.getValue()))
+    tensorResultInfoValue = *castTensorResultInfo;
+  // Unsupported types are not mapped.
+}
+
+M::GML::Variant
+llvm::yaml::MappingTraits<M::GML::Variant>::NormalizedVariant::denormalize(
+    IO &) {
+  LLCL::Runtime &runtime = Runtime::getCurrentRuntime();
+  M::GML::Variant variant;
+  if (stringValue) {
+    variant =
+        LLCL::AnyAsyncValueRef::createReady<std::string>(runtime, *stringValue);
+  } else if (doubleValue) {
+    variant =
+        LLCL::AnyAsyncValueRef::createReady<double>(runtime, *doubleValue);
+  } else if (longValue) {
+    variant = LLCL::AnyAsyncValueRef::createReady<int64_t>(runtime, *longValue);
+  } else if (boolValue) {
+    variant = LLCL::AnyAsyncValueRef::createReady<bool>(runtime, *boolValue);
+  } else if (listValue) {
+    variant =
+        LLCL::AnyAsyncValueRef::createReady<GML::List>(runtime, *listValue);
+  } else if (tupleValue) {
+    variant =
+        LLCL::AnyAsyncValueRef::createReady<GML::Tuple>(runtime, *tupleValue);
+  } else if (dictValue) {
+    variant =
+        LLCL::AnyAsyncValueRef::createReady<GML::Dict>(runtime, *dictValue);
+  } else if (noneValue) {
+    variant =
+        LLCL::AnyAsyncValueRef::createReady<GML::None>(runtime, *noneValue);
+  }
+  return variant;
+}
+
+void llvm::yaml::MappingTraits<M::GML::Variant>::mapping(
+    IO &io, M::GML::Variant &variant) {
+  MappingNormalization<NormalizedVariant, M::GML::Variant> keys(io, variant);
+  io.mapOptional("string", keys->stringValue, std::optional<std::string>());
+  io.mapOptional("double", keys->doubleValue, std::optional<double>());
+  io.mapOptional("long", keys->longValue, std::optional<int64_t>());
+  io.mapOptional("bool", keys->boolValue, std::optional<bool>());
+  io.mapOptional("none", keys->noneValue, std::optional<M::GML::None>());
+  io.mapOptional("list", keys->listValue, std::optional<M::GML::List>());
+  io.mapOptional("tuple", keys->tupleValue, std::optional<M::GML::Tuple>());
+  io.mapOptional("dict", keys->dictValue, std::optional<M::GML::Dict>());
+  io.mapOptional("tensor-result-info", keys->tensorResultInfoValue,
+                 std::optional<TensorResultInfo>());
+}
+
+void llvm::yaml::MappingTraits<M::GML::None>::mapping(IO &io,
+                                                      M::GML::None &list) {}
+
+void llvm::yaml::MappingTraits<M::GML::List>::mapping(IO &io,
+                                                      M::GML::List &list) {
+  io.mapRequired("list", list.getElements());
+}
+
+void llvm::yaml::MappingTraits<M::GML::Tuple>::mapping(IO &io,
+                                                       M::GML::Tuple &tuple) {
+  io.mapRequired("tuple", tuple.getElements());
+}
+
+void llvm::yaml::MappingTraits<YamlDictKeyValuePair>::mapping(
+    IO &io, YamlDictKeyValuePair &kv) {
+  io.mapRequired("key", kv.first);
+  io.mapRequired("value", kv.second);
+}
+
+llvm::yaml::MappingTraits<M::GML::Dict>::NormalizedDict::NormalizedDict(IO &){};
+
+llvm::yaml::MappingTraits<M::GML::Dict>::NormalizedDict::NormalizedDict(
+    IO &, M::GML::Dict &dict) {
+  for (auto &entry : dict.getElements())
+    normalizedDict.emplace_back(entry.first, entry.second);
+}
+
+M::GML::Dict
+llvm::yaml::MappingTraits<M::GML::Dict>::NormalizedDict::denormalize(IO &) {
+  M::GML::Dict dict;
+  for (auto &entry : normalizedDict) {
+    dict.getElements().insert(std::make_pair(entry.first, entry.second));
+  }
+  return dict;
+}
+
+void llvm::yaml::MappingTraits<M::GML::Dict>::mapping(IO &io,
+                                                      M::GML::Dict &dict) {
+  MappingNormalization<NormalizedDict, M::GML::Dict> keys(io, dict);
+  io.mapRequired("dict", keys->normalizedDict);
 }

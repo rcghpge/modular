@@ -4,15 +4,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PyTorch/Support/Value.h"
+#include "GenericML/Support/Value.h"
+#include "GenericML/Support/Dict.h"
+#include "GenericML/Support/List.h"
 #include "GenericML/Support/Tensor.h"
-#include "PyTorch/Support/Dict.h"
-#include "PyTorch/Support/List.h"
 #include "Support/LLVMForwardDecls.h"
 #include <sstream>
 
 using namespace M;
-using namespace M::Torch;
+using namespace GML;
 
 None &None::operator=(None &&other) { return *this; }
 
@@ -22,23 +22,22 @@ bool None::operator<(const None &other) const { return false; }
 
 std::string None::to_string() const { return "<none>"; }
 
-raw_ostream &M::Torch::operator<<(raw_ostream &os, const None &none) {
+raw_ostream &M::GML::operator<<(raw_ostream &os, const None &none) {
   os << none.to_string();
   return os;
 }
 
-std::ostream &M::Torch::operator<<(std::ostream &os, const None &none) {
+std::ostream &M::GML::operator<<(std::ostream &os, const None &none) {
   os << none.to_string();
   return os;
 }
 
-raw_ostream &M::Torch::operator<<(raw_ostream &os,
-                                  const DenseMapInfoKey &info) {
+raw_ostream &M::GML::operator<<(raw_ostream &os, const DenseMapInfoKey &info) {
   os << std::to_string(info);
   return os;
 }
-std::ostream &M::Torch::operator<<(std::ostream &os,
-                                   const DenseMapInfoKey &info) {
+std::ostream &M::GML::operator<<(std::ostream &os,
+                                 const DenseMapInfoKey &info) {
   os << std::to_string(info);
   return os;
 }
@@ -82,7 +81,7 @@ Variant &Variant::operator=(Variant &&other) {
   return *this;
 }
 
-bool M::Torch::operator==(const Variant &lhs, const Variant &rhs) {
+bool M::GML::operator==(const Variant &lhs, const Variant &rhs) {
   if (lhs.getInfo() != rhs.getInfo() ||
       lhs.getInfo() == DenseMapInfoKey::Tombstone ||
       rhs.getInfo() == DenseMapInfoKey::Tombstone)
@@ -93,11 +92,11 @@ bool M::Torch::operator==(const Variant &lhs, const Variant &rhs) {
     return true;
 }
 
-bool M::Torch::operator!=(const Variant &lhs, const Variant &rhs) {
+bool M::GML::operator!=(const Variant &lhs, const Variant &rhs) {
   return !(lhs == rhs);
 }
 
-bool M::Torch::operator<(const Variant &lhs, const Variant &rhs) {
+bool M::GML::operator<(const Variant &lhs, const Variant &rhs) {
   if (lhs.getInfo() < rhs.getInfo())
     return true;
   else if (lhs.getInfo() > rhs.getInfo())
@@ -108,26 +107,26 @@ bool M::Torch::operator<(const Variant &lhs, const Variant &rhs) {
     return false;
 }
 
-raw_ostream &M::Torch::operator<<(raw_ostream &os, const Variant &variant) {
+raw_ostream &M::GML::operator<<(raw_ostream &os, const Variant &variant) {
   os << variant.to_string();
   return os;
 }
 
-std::ostream &M::Torch::operator<<(std::ostream &os, const Variant &variant) {
+std::ostream &M::GML::operator<<(std::ostream &os, const Variant &variant) {
   os << variant.to_string();
   return os;
 }
 
-ErrorOrSuccess M::Torch::printGenericValue(const LLCL::AnyAsyncValueRef &value,
-                                           Kernels::ResultOutputStyle style,
-                                           unsigned precision) {
+ErrorOrSuccess M::GML::printGenericValue(const LLCL::AnyAsyncValueRef &value,
+                                         Kernels::ResultOutputStyle style,
+                                         unsigned precision) {
   auto &os = llvm::outs();
   if (List *list = dyn_cast<List>(value)) {
     size_t size = list->getElements().size();
     os << "List[";
     for (auto [index, value] : llvm::enumerate(list->getElements())) {
       ErrorOrSuccess errorOr =
-          printGenericValue(value.getValue(), style, precision);
+          M::GML::printGenericValue(value.getValue(), style, precision);
       if (errorOr.isError())
         return errorOr;
       if (index < size - 1)
@@ -139,7 +138,7 @@ ErrorOrSuccess M::Torch::printGenericValue(const LLCL::AnyAsyncValueRef &value,
     os << "Tuple[";
     for (auto [index, value] : llvm::enumerate(tuple->getElements())) {
       ErrorOrSuccess errorOr =
-          printGenericValue(value.getValue(), style, precision);
+          M::GML::printGenericValue(value.getValue(), style, precision);
       if (errorOr.isError())
         return errorOr;
       if (index < size - 1)
@@ -152,7 +151,7 @@ ErrorOrSuccess M::Torch::printGenericValue(const LLCL::AnyAsyncValueRef &value,
     for (auto [index, value] : llvm::enumerate(dict->getElements())) {
       os << value.first << ": ";
       ErrorOrSuccess errorOr =
-          printGenericValue(value.second.getValue(), style, precision);
+          M::GML::printGenericValue(value.second.getValue(), style, precision);
       if (errorOr.isError())
         return errorOr;
       if (index < size - 1)
@@ -172,7 +171,7 @@ ErrorOrSuccess M::Torch::printGenericValue(const LLCL::AnyAsyncValueRef &value,
   return success();
 }
 
-std::string M::Torch::valueToString(const LLCL::AnyAsyncValueRef &value) {
+std::string M::GML::valueToString(const LLCL::AnyAsyncValueRef &value) {
   std::stringstream ss;
   if (List *list = dyn_cast<List>(value))
     ss << *list;
@@ -197,8 +196,8 @@ std::string M::Torch::valueToString(const LLCL::AnyAsyncValueRef &value) {
   return ss.str();
 };
 
-bool M::Torch::valueEqual(const LLCL::AnyAsyncValueRef &lhs,
-                          const LLCL::AnyAsyncValueRef &rhs) {
+bool M::GML::valueEqual(const LLCL::AnyAsyncValueRef &lhs,
+                        const LLCL::AnyAsyncValueRef &rhs) {
   if (List *llist = dyn_cast<List>(lhs)) {
     if (List *rlist = dyn_cast<List>(rhs))
       return *llist == *rlist;
@@ -231,8 +230,8 @@ bool M::Torch::valueEqual(const LLCL::AnyAsyncValueRef &lhs,
   return false;
 }
 
-bool M::Torch::valueLessThan(const LLCL::AnyAsyncValueRef &lhs,
-                             const LLCL::AnyAsyncValueRef &rhs) {
+bool M::GML::valueLessThan(const LLCL::AnyAsyncValueRef &lhs,
+                           const LLCL::AnyAsyncValueRef &rhs) {
   if (List *llist = dyn_cast<List>(lhs)) {
     if (List *rlist = dyn_cast<List>(rhs))
       return *llist < *rlist;
@@ -265,7 +264,7 @@ bool M::Torch::valueLessThan(const LLCL::AnyAsyncValueRef &lhs,
   return false;
 }
 
-size_t M::Torch::valueHash(const LLCL::AnyAsyncValueRef &value) {
+size_t M::GML::valueHash(const LLCL::AnyAsyncValueRef &value) {
   if (List *list = dyn_cast<List>(value))
     return std::hash<ListLike>()(*list);
   else if (Tuple *tuple = dyn_cast<Tuple>(value))
@@ -288,17 +287,15 @@ size_t M::Torch::valueHash(const LLCL::AnyAsyncValueRef &value) {
     return std::numeric_limits<size_t>::max();
 }
 
-size_t M::Torch::hashCombine(size_t seed, size_t value) {
+size_t M::GML::hashCombine(size_t seed, size_t value) {
   // Similar to `boost::hash_combine`, but with 64 bit support.
   // 2^64 / golden ratio in base 16.
   return seed ^ (value + 0x9e3779b97f4a7c15LLU + (seed << 6) + (seed >> 2));
 }
 
-std::string std::to_string(const M::Torch::None &none) {
-  return none.to_string();
-}
+std::string std::to_string(const None &none) { return none.to_string(); }
 
-std::string std::to_string(const M::Torch::DenseMapInfoKey &value) {
+std::string std::to_string(const DenseMapInfoKey &value) {
   switch (value) {
   case DenseMapInfoKey::Value:
     return "<set>";
@@ -310,12 +307,11 @@ std::string std::to_string(const M::Torch::DenseMapInfoKey &value) {
   llvm_unreachable("invalid Torch::DenseMapInfoKey");
 }
 
-std::string std::to_string(const M::Torch::Variant &value) {
-  return valueToString(value.getValue());
+std::string std::to_string(const GML::Variant &variant) {
+  return valueToString(variant.getValue());
 }
 
-size_t
-std::hash<M::Torch::Variant>::operator()(const M::Torch::Variant &value) const {
-  return M::Torch::hashCombine(static_cast<size_t>(value.getInfo()),
-                               M::Torch::valueHash(value.getValue()));
+size_t std::hash<GML::Variant>::operator()(const GML::Variant &variant) const {
+  return hashCombine(static_cast<size_t>(variant.getInfo()),
+                     valueHash(variant.getValue()));
 }

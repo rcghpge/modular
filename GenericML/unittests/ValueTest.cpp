@@ -8,19 +8,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PyTorch/Support/Value.h"
+#include "GenericML/Support/Value.h"
+#include "GenericML/FormatYAML/FormatYAML.h"
+#include "GenericML/Support/Dict.h"
+#include "GenericML/Support/List.h"
 #include "GenericML/Support/Tensor.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
-#include "PyTorch/Support/Dict.h"
-#include "PyTorch/Support/FormatYAML.h"
-#include "PyTorch/Support/List.h"
 
 #include "gtest/gtest.h"
 #include <llvm/Support/YAMLTraits.h>
 
 using namespace M;
-using namespace M::Torch;
+using namespace GML;
 
 namespace {
 
@@ -30,10 +30,10 @@ static std::unique_ptr<LLCL::Runtime> getRuntime() {
   return LLCL::createUniqueRuntime(LLCL::RuntimeOptions().forDebug());
 }
 
-static GML::Tensor makeTensor(LLCL::Runtime &runtime, size_t size) {
+static Tensor makeTensor(LLCL::Runtime &runtime, size_t size) {
   M::TensorSpec spec({size}, DType::f32);
-  GML::Tensor result =
-      GML::Tensor::createOwned(std::move(spec), runtime, /*alignment=*/{});
+  Tensor result =
+      Tensor::createOwned(std::move(spec), runtime, /*alignment=*/{});
   return result;
 }
 
@@ -42,10 +42,9 @@ static List makeTensorList(LLCL::Runtime &runtime, size_t size) {
   for (size_t i = 0; i < size; ++i) {
     TensorSpec spec({i}, M::DType::f32);
 
-    GML::Tensor tensor = makeTensor(runtime, i);
-    list.getElements().push_back(
-        LLCL::AnyAsyncValueRef::createReady<GML::Tensor>(runtime,
-                                                         std::move(tensor)));
+    Tensor tensor = makeTensor(runtime, i);
+    list.getElements().push_back(LLCL::AnyAsyncValueRef::createReady<Tensor>(
+        runtime, std::move(tensor)));
   }
 
   return list;
@@ -61,8 +60,7 @@ static std::string toYamlString(T t) {
   return yamlString;
 }
 
-static void assertTensorBufferEqual(const GML::Tensor &lhs,
-                                    const GML::Tensor &rhs) {
+static void assertTensorBufferEqual(const Tensor &lhs, const Tensor &rhs) {
   ASSERT_EQ(lhs.getBuffer(), rhs.getBuffer());
   ASSERT_EQ(lhs.getSizeInBytes(), rhs.getSizeInBytes());
 }
@@ -78,7 +76,7 @@ TEST_F(ValueTest, ListTest) {
 
   List list3;
 
-  for (M::Torch::Variant &elem : list1.getElements()) {
+  for (Variant &elem : list1.getElements()) {
     list3.getElements().push_back(
         LLCL::AnyAsyncValueRef::copy(elem.getValue().getPointer()));
   }
@@ -128,11 +126,10 @@ TEST_F(ValueTest, DictTest) {
   dict3.getElements()[LLCL::AnyAsyncValueRef::createReady<std::string>(
       *runtime, "b")] = LLCL::AnyAsyncValueRef::createReady<None>(*runtime);
 
-  GML::Tensor tensor = makeTensor(*runtime, 1);
+  Tensor tensor = makeTensor(*runtime, 1);
   dict3.getElements()[LLCL::AnyAsyncValueRef::createReady<std::string>(*runtime,
                                                                        "b")] =
-      LLCL::AnyAsyncValueRef::createReady<GML::Tensor>(*runtime,
-                                                       std::move(tensor));
+      LLCL::AnyAsyncValueRef::createReady<Tensor>(*runtime, std::move(tensor));
 
   ASSERT_EQ(std::to_string(dict1), "Dict{\"a\": <none>}");
 }
@@ -311,16 +308,15 @@ TEST_F(ValueTest, ResultInfoTest) {
                      "...\n");
 }
 
-// Tests converting composed types containing `GML::Tensor` to composed types
+// Tests converting composed types containing `Tensor` to composed types
 // containing `TensorResultInfo` for tensor leaf nodes.
 TEST_F(ValueTest, ResultConversionTest) {
   auto runtime = getRuntime();
 
   // Create 4 different tensors.
-  GML::Tensor tensor = makeTensor(*runtime, 8);
+  Tensor tensor = makeTensor(*runtime, 8);
   LLCL::AnyAsyncValueRef wrappedTensor =
-      LLCL::AnyAsyncValueRef::createReady<GML::Tensor>(*runtime,
-                                                       std::move(tensor));
+      LLCL::AnyAsyncValueRef::createReady<Tensor>(*runtime, std::move(tensor));
 
   List list = makeTensorList(*runtime, 3);
 
@@ -347,7 +343,7 @@ TEST_F(ValueTest, ResultConversionTest) {
       LLCL::AnyAsyncValueRef::createReady<Tuple>(*runtime, tuple);
   ProcessedResults processedResults;
   LLCL::AnyAsyncValueRef out =
-      Torch::getResultForBinaryOutput(in, processedResults);
+      M::getResultForBinaryOutput(in, processedResults);
 
   std::shared_ptr<ResultInfo> resultInfo =
       std::make_shared<VariantResultInfo>("outputName", out);
@@ -358,13 +354,13 @@ TEST_F(ValueTest, ResultConversionTest) {
   // Check all tensors are collected in depth-first preorder, and named
   // correctly.
   assertTensorBufferEqual(*processedResults.getTensors().at("__tensor_0__"),
-                          list.getElements()[0].getValue().get<GML::Tensor>());
+                          list.getElements()[0].getValue().get<Tensor>());
   assertTensorBufferEqual(*processedResults.getTensors().at("__tensor_1__"),
-                          list.getElements()[1].getValue().get<GML::Tensor>());
+                          list.getElements()[1].getValue().get<Tensor>());
   assertTensorBufferEqual(*processedResults.getTensors().at("__tensor_2__"),
-                          list.getElements()[2].getValue().get<GML::Tensor>());
+                          list.getElements()[2].getValue().get<Tensor>());
   assertTensorBufferEqual(*processedResults.getTensors().at("__tensor_3__"),
-                          wrappedTensor.get<GML::Tensor>());
+                          wrappedTensor.get<Tensor>());
 
   // Test YAML string.
   std::string ystring = toYamlString(resultInfo);

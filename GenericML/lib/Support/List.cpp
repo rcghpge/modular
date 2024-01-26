@@ -4,18 +4,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PyTorch/Support/List.h"
-#include "PyTorch/Support/Dict.h"
-#include "PyTorch/Support/Value.h"
+#include "GenericML/Support/List.h"
+#include "GenericML/Support/Dict.h"
+#include "GenericML/Support/Value.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include <sstream>
 #include <utility>
 
 using namespace M;
-using namespace M::Torch;
+using namespace M::GML;
 
-ListLike::ListLike(SmallVector<Variant> elements)
-    : elements(std::move(elements)) {}
+ListLike::ListLike(const SmallVector<Variant> &elements) : elements(elements) {}
 
 ListLike::ListLike(const ListLike &other) {
   for (const Variant &elem : other.getElements())
@@ -23,15 +22,23 @@ ListLike::ListLike(const ListLike &other) {
         LLCL::AnyAsyncValueRef::copy(elem.getValue().getPointer()));
 }
 
+ListLike::ListLike(ListLike &&other) : elements(std::move(other.elements)){};
+
+ListLike &ListLike::operator=(ListLike &&other) {
+  elements.clear();
+  elements = std::move(other.elements);
+  return *this;
+}
+
 SmallVector<Variant> &ListLike::getElements() { return elements; }
 const SmallVector<Variant> &ListLike::getElements() const { return elements; }
 
-raw_ostream &M::Torch::operator<<(raw_ostream &os, const ListLike &list) {
+raw_ostream &M::GML::operator<<(raw_ostream &os, const ListLike &list) {
   os << list.to_string();
   return os;
 }
 
-std::ostream &M::Torch::operator<<(std::ostream &os, const ListLike &list) {
+std::ostream &M::GML::operator<<(std::ostream &os, const ListLike &list) {
   os << list.to_string();
   return os;
 }
@@ -60,7 +67,7 @@ std::string Tuple::to_string() const {
   return ss.str();
 }
 
-bool M::Torch::operator==(const Tuple &lhs, const Tuple &rhs) {
+bool M::GML::operator==(const Tuple &lhs, const Tuple &rhs) {
   if (lhs.getElements().size() != rhs.getElements().size())
     return false;
   for (size_t i = 0; i < lhs.getElements().size(); ++i) {
@@ -70,11 +77,11 @@ bool M::Torch::operator==(const Tuple &lhs, const Tuple &rhs) {
   return true;
 }
 
-bool M::Torch::operator!=(const Tuple &lhs, const Tuple &rhs) {
+bool M::GML::operator!=(const Tuple &lhs, const Tuple &rhs) {
   return !(lhs == rhs);
 }
 
-bool M::Torch::operator<(const Tuple &lhs, const Tuple &rhs) {
+bool M::GML::operator<(const Tuple &lhs, const Tuple &rhs) {
   for (size_t i = 0; i < lhs.getElements().size(); ++i) {
     if (lhs.getElements()[i] < rhs.getElements()[i])
       return true;
@@ -82,6 +89,11 @@ bool M::Torch::operator<(const Tuple &lhs, const Tuple &rhs) {
   if (lhs.getElements().size() < rhs.getElements().size())
     return true;
   return false;
+}
+
+List::List(ArrayRef<AnyAsyncValueRef> values) {
+  for (auto &value : values)
+    elements.emplace_back(std::move(value));
 }
 
 List List::operator=(const List &other) {
@@ -98,6 +110,13 @@ List &List::operator=(List &&other) {
   return *this;
 }
 
+List List::copy() {
+  List listCopy;
+  for (const Variant &variant : elements)
+    listCopy.elements.push_back(variant.getValue().copy());
+  return listCopy;
+}
+
 std::string List::to_string() const {
   std::stringstream ss;
   ss << "List[";
@@ -108,7 +127,7 @@ std::string List::to_string() const {
   return ss.str();
 }
 
-bool M::Torch::operator==(const List &lhs, const List &rhs) {
+bool M::GML::operator==(const List &lhs, const List &rhs) {
   if (lhs.getElements().size() != rhs.getElements().size())
     return false;
   for (size_t i = 0; i < lhs.getElements().size(); ++i) {
@@ -118,11 +137,11 @@ bool M::Torch::operator==(const List &lhs, const List &rhs) {
   return true;
 }
 
-bool M::Torch::operator!=(const List &lhs, const List &rhs) {
+bool M::GML::operator!=(const List &lhs, const List &rhs) {
   return !(lhs == rhs);
 }
 
-bool M::Torch::operator<(const List &lhs, const List &rhs) {
+bool M::GML::operator<(const List &lhs, const List &rhs) {
   for (size_t i = 0; i < lhs.getElements().size(); ++i) {
     if (lhs.getElements()[i] < rhs.getElements()[i])
       return true;
@@ -134,17 +153,14 @@ bool M::Torch::operator<(const List &lhs, const List &rhs) {
 
 namespace std {
 
-std::string to_string(const M::Torch::List &list) { return list.to_string(); }
+std::string to_string(const List &list) { return list.to_string(); }
 
-std::string to_string(const M::Torch::Tuple &tuple) {
-  return tuple.to_string();
-}
+std::string to_string(const Tuple &tuple) { return tuple.to_string(); }
 
-size_t
-hash<M::Torch::ListLike>::operator()(const M::Torch::ListLike &list) const {
+size_t hash<ListLike>::operator()(const ListLike &list) const {
   std::size_t seed = list.getElements().size();
   for (auto &elem : list.getElements()) {
-    seed ^= M::Torch::hashCombine(seed, std::hash<M::Torch::Variant>()(elem));
+    seed ^= hashCombine(seed, std::hash<Variant>()(elem));
   }
   return seed;
 }

@@ -4,32 +4,31 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef PYTORCH_SUPPORT_VALUE_H
-#define PYTORCH_SUPPORT_VALUE_H
+#ifndef GENERICML_SUPPORT_VALUE_H
+#define GENERICML_SUPPORT_VALUE_H
 
 #include "Kernels/Misc.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
 
-namespace M::Torch {
+namespace M::GML {
 
 /// Base class for all container classes (`Dict`, `List`, `Tuple`). We implement
 /// a range of container and composed types to support gluing the C and Python
 /// APIs to the runtime types used inside a model. Models that interact with
 /// non-tensor inputs and outputs require a different set of runtime types.
-/// This is required for PyTorch because `IValue`s can't be used outside of
-/// `TorchInterface` due to symbol conflicts, and we want to avoid linking
-/// `TorchInterface` to the generic Python bindings (which would allow using
-/// `StockTorchInterface::IValue`s). On the other hand, `pybind11::dict` and
-/// friends cannot be passed deeper into our stack (beyond the Python bindings)
-/// due to requiring RTTI. The classes here are a lightweight implementation of
-/// similiar classes wrapped by PyTorch's `IValue`s and Python's `Dict`, `List`,
-/// `Tuple` and `None` types. The implementation does not depend on MLIR,
-/// Python, Pybind or PyTorch (all of which can lead to symbol or RTTI
-/// conflicts). The implementation does not require support for dynamic casts.
+/// This is required because, depending on the compiled model's internal values,
+/// they can't be used outside of the execution. On the other hand,
+/// `pybind11::dict` and friends cannot be passed deeper into our stack (beyond
+/// the Python bindings) due to requiring RTTI. The classes here are a
+/// lightweight implementation of similar classes wrapped by Python's `Dict`,
+/// `List`, `Tuple` and `None` types. The implementation does not depend on
+/// MLIR, Python, Pybind or framework-specific implementations (all of which can
+/// lead to symbol or RTTI conflicts). The implementation does not require
+/// support for dynamic casts.
 class Container {};
 
 /// Class representing the pythonic `None` value. Used to tunnel `None` between
-/// the C/Python API and PyTorch's `IValue`s.
+/// the C/Python API and `None` values in the compiled models.
 class None {
 public:
   None() = default;
@@ -49,8 +48,8 @@ public:
   bool operator<(const None &other) const;
 };
 
-raw_ostream &operator<<(raw_ostream &os, const None &variant);
-std::ostream &operator<<(std::ostream &os, const None &variant);
+raw_ostream &operator<<(raw_ostream &os, const None &none);
+std::ostream &operator<<(std::ostream &os, const None &none);
 
 // Enum class to flag special keys used for `DenseMapInfo`.
 enum class DenseMapInfoKey {
@@ -59,8 +58,8 @@ enum class DenseMapInfoKey {
   Value = 2,
 };
 
-raw_ostream &operator<<(raw_ostream &os, const DenseMapInfoKey &variant);
-std::ostream &operator<<(std::ostream &os, const DenseMapInfoKey &variant);
+raw_ostream &operator<<(raw_ostream &os, const DenseMapInfoKey &info);
+std::ostream &operator<<(std::ostream &os, const DenseMapInfoKey &info);
 
 /// Wrapper around `AnyAsyncValueRef` providing methods required for using
 /// `AnyAsyncValueRef` as a map key (`hash`, `to_string`, `==`) as well as
@@ -145,31 +144,31 @@ size_t valueHash(const LLCL::AnyAsyncValueRef &value);
 /// golden ratio.
 size_t hashCombine(size_t seed, size_t value);
 
-} // namespace M::Torch
+} // namespace M::GML
 
 namespace std {
 
-std::string to_string(const M::Torch::DenseMapInfoKey &value);
+std::string to_string(const M::GML::DenseMapInfoKey &value);
 
 /// Computes the hash for `None`, which is constant 0.
 template <>
-struct hash<M::Torch::None> {
-  size_t operator()(const M::Torch::None &none) const { return 0; }
+struct hash<M::GML::None> {
+  size_t operator()(const M::GML::None &none) const { return 0; }
 };
 
 /// Returns the string representation "<none>".
-std::string to_string(const M::Torch::None &none);
+std::string to_string(const M::GML::None &none);
 
 /// Computes the hash function of the underlying `AnyAsyncValueRef`.
 template <>
-struct hash<M::Torch::Variant> {
-  size_t operator()(const M::Torch::Variant &value) const;
+struct hash<M::GML::Variant> {
+  size_t operator()(const M::GML::Variant &value) const;
 };
 
 /// Returns the string representation of `Variant`. Delegates to the
 /// individual key types.
-std::string to_string(const M::Torch::Variant &variant);
+std::string to_string(const M::GML::Variant &variant);
 
 } // namespace std
 
-#endif // PYTORCH_SUPPORT_VALUE_H
+#endif // GENERICML_SUPPORT_VALUE_H

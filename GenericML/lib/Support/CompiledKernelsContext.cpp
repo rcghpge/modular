@@ -80,9 +80,9 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
     // Convert individual elements to their corresponding ABI structures.
     // NOTE: This is currently not closed under all argument types and cannot
     //       be extended by subclasses.
-    for (AnyAsyncValueRef &ref : runtimeList.elements) {
-      if (ref.isType<GML::Tensor>()) {
-        auto &runtimeTensor = ref.get<GML::Tensor>();
+    for (GML::Variant &ref : runtimeList.getElements()) {
+      if (ref.getValue().isType<GML::Tensor>()) {
+        auto &runtimeTensor = ref.getValue().get<GML::Tensor>();
         const TensorShape &shape = runtimeTensor.getShape();
         ssize_t *dims =
             dimsMemory.emplace_back(shape.begin(), shape.end()).data();
@@ -90,13 +90,13 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
         abiTensors.emplace_back(dims, data);
       } else {
         return Error(Twine("Invalid list element type: ") +
-                     ref.getPointer()->getTypeID().getTypeName());
+                     ref.getValue().getPointer()->getTypeID().getTypeName());
       }
     }
 
     // Convert an entire list to its ABI structure.
     auto &abiListPtr = listMemory.emplace_back(std::make_unique<ABIList>(
-        runtimeList.elements.size(), abiTensors.data()));
+        runtimeList.getElements().size(), abiTensors.data()));
     inputPointers.push_back(abiListPtr.get());
 
   } else {

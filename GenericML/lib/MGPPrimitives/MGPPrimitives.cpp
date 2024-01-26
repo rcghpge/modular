@@ -1140,7 +1140,7 @@ static void mgp_list_append(List &inputList, AnyAsyncValueRef element,
                             Result<List> output) {
   // Copy input list then append element into it.
   List newList = inputList.copy();
-  newList.elements.push_back(element.copy());
+  newList.getElements().push_back(element.copy());
   std::move(output).emplace(std::move(newList));
 }
 
@@ -1166,7 +1166,7 @@ static void mgp_list_get(List &inputList, Tensor &idxTensor,
         auto idx = *idxDataPtr;
 
         // Check index is in bound.
-        int64_t listSize = inputList.elements.size();
+        int64_t listSize = inputList.getElements().size();
         if (idx < -listSize || listSize <= idx) {
           return std::move(outputs).setAllToError(
               Twine("index ") + Twine(idx) +
@@ -1183,7 +1183,7 @@ static void mgp_list_get(List &inputList, Tensor &idxTensor,
         // single type into `Result<...>`> (2). we want to share the
         // underlying value as `AsyncValueRef` to avoid deep copying expensive
         // objects like `GML::Tensor`.
-        *outputs.begin() = inputList.elements[idx].copy();
+        *outputs.begin() = inputList.getElements()[idx].getValue().copy();
       });
 }
 
@@ -1200,7 +1200,7 @@ static void mgp_list_insert(List &inputList, AnyAsyncValueRef element,
         auto idx = *idxDataPtr;
 
         // Check index is in bound.
-        int64_t listSize = inputList.elements.size();
+        int64_t listSize = inputList.getElements().size();
         if (idx < -listSize || listSize < idx) {
           return std::move(output).setToError(
               Twine("index ") + Twine(idx) +
@@ -1213,7 +1213,8 @@ static void mgp_list_insert(List &inputList, AnyAsyncValueRef element,
 
         // Copy input list then insert element into it.
         List newList = inputList.copy();
-        newList.elements.insert(newList.elements.begin() + idx, element.copy());
+        newList.getElements().insert(newList.getElements().begin() + idx,
+                                     element.copy());
         std::move(output).emplace(std::move(newList));
       });
 }

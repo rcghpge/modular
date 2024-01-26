@@ -4,14 +4,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PyTorch/Support/Dict.h"
-#include "PyTorch/Support/List.h"
+#include "GenericML/Support/Dict.h"
+#include "GenericML/Support/List.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include <numeric>
 #include <sstream>
 
 using namespace M;
-using namespace M::Torch;
+using namespace M::GML;
 
 Dict::Dict(const Dict &other) {
   for (const auto &elem : other.getElements()) {
@@ -51,17 +51,17 @@ std::string Dict::to_string() const {
   return ss.str();
 }
 
-raw_ostream &M::Torch::operator<<(raw_ostream &os, const Dict &dict) {
+raw_ostream &M::GML::operator<<(raw_ostream &os, const Dict &dict) {
   os << dict.to_string();
   return os;
 }
 
-std::ostream &M::Torch::operator<<(std::ostream &os, const Dict &dict) {
+std::ostream &M::GML::operator<<(std::ostream &os, const Dict &dict) {
   os << dict.to_string();
   return os;
 }
 
-bool M::Torch::operator==(const Dict &lhs, const Dict &rhs) {
+bool M::GML::operator==(const Dict &lhs, const Dict &rhs) {
   if (lhs.getElements().size() != rhs.getElements().size())
     return false;
   for (auto &kv : lhs.getElements()) {
@@ -72,23 +72,22 @@ bool M::Torch::operator==(const Dict &lhs, const Dict &rhs) {
   return true;
 }
 
-bool M::Torch::operator!=(const Dict &lhs, const Dict &rhs) {
+bool M::GML::operator!=(const Dict &lhs, const Dict &rhs) {
   return !(lhs == rhs);
 }
 
-bool M::Torch::operator<(const Dict &lhs, const Dict &rhs) { return false; }
+bool M::GML::operator<(const Dict &lhs, const Dict &rhs) { return false; }
 
 namespace std {
 
-std::string to_string(const M::Torch::Dict &dict) { return dict.to_string(); }
+std::string to_string(const Dict &dict) { return dict.to_string(); }
 
-size_t hash<M::Torch::Dict>::operator()(const M::Torch::Dict &dict) const {
-  std::hash<M::Torch::Variant> h;
+size_t hash<Dict>::operator()(const Dict &dict) const {
+  std::hash<Variant> h;
   std::size_t seed = dict.getElements().size();
   for (auto &elem : dict.getElements()) {
-    seed = M::Torch::hashCombine(seed, h(elem.first));
-    seed = M::Torch::hashCombine(seed,
-                                 std::hash<M::Torch::Variant>()(elem.second));
+    seed = hashCombine(seed, h(elem.first));
+    seed = hashCombine(seed, std::hash<Variant>()(elem.second));
   }
   return seed;
 }
