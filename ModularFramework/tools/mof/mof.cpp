@@ -209,7 +209,7 @@ ErrorOrSuccess M_setConfigs(FrameworkContextHandle ctx,
 }
 
 bool M_isBinary(FrameworkContextHandle ctx, const llvm::MemoryBufferRef &file,
-                FileFormat &format) {
+                FileFormat format) {
   return false;
 }
 
