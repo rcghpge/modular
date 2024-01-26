@@ -25,7 +25,7 @@ public:
   Module(mlir::ModuleOp op, mlir::OpBuilder builder)
       : op(op), builder(builder) {}
 
-  const mlir::ModuleOp &getModuleOp() const { return op; }
+  mlir::ModuleOp getModuleOp() const { return op; }
   mlir::OpBuilder &getBuilder() { return builder; }
 
   Graph newGraph(Loc loc, llvm::StringRef name, const Arity &inTypes,

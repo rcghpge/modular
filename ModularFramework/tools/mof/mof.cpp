@@ -26,6 +26,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/ADT/bit.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/ToolOutputFile.h"
 
@@ -286,7 +287,28 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
 ErrorOrSuccess M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle,
                                            void *source, raw_ostream &os,
                                            FileFormat format) {
-  llvm_unreachable("M_compileToBinaryFromSource is unimplemented");
+  auto *mofContext = ctxHandle.unwrap<MOFContext>();
+  auto ownedRuntime = LLCL::createRuntimeIfNeeded();
+  ModuleOp moduleOp = ModuleOp::getFromOpaquePointer(source);
+
+#ifdef MODULAR_PRODUCTION
+  moduleOp.getContext()->printOpOnDiagnostic(false);
+#endif // MODULAR_PRODUCTION
+
+  // Gather all the options from all the sources.
+  MOFLoweringOptions mofLoweringOptions;
+  MO::MoToMgpOptions moToMgpOptions;
+  mofContext->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
+
+  mofLoweringOptions.setupRuntimeOptions(*ownedRuntime);
+
+  if (failed(lowerMOToMGP(moduleOp, moToMgpOptions, *ownedRuntime)))
+    return Error("unable to lower MO to MGP");
+
+  if (failed(convertToMEF(moduleOp, os, mofContext->getEnableMEFMetadata())))
+    return Error("unable to convert file to a MEF binary");
+
+  return success();
 }
 
 ErrorOrSuccess M_openBinaryFile(FrameworkContextHandle ctx,

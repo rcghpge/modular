@@ -18,6 +18,13 @@ class MemoryBuffer;
 }
 
 namespace M {
+
+/// Format for a framework object.
+/// This must be kept in sync with the Mojo `FrameworkFormat` enum.
+enum class FrameworkFormat : uint8_t {
+  MAXGraph = 0,
+};
+
 enum class FileFormat : uint8_t {
   kUnknown = 0,
 
@@ -75,6 +82,15 @@ enum class FileFormat : uint8_t {
   /// lowering to MGP.
   kTorchPDialect,
 };
+
+inline FileFormat frameworkToFileFormat(FrameworkFormat frameworkFormat) {
+  switch (frameworkFormat) {
+  case FrameworkFormat::MAXGraph:
+    return FileFormat::kMODialect;
+  }
+
+  llvm_unreachable("unknown framework format");
+}
 
 /// Helper to check if a format is within the valid range.
 inline bool isValidFileFormat(FileFormat format) {
