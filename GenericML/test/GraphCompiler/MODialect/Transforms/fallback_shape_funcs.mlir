@@ -179,7 +179,7 @@ mo.graph @concat_variadic_input<D0, D1, D2, D3 -> D4, D5>(
 // CHECK-SAME: ) -> !mo.tensor<[[[D4]], [[D5]]], f32> no_inline {
 //
 // CHECK-NEXT:   mo.invoke_shape_func["concat_shape"]<() -> [[D6:.*]], [[D7:.*]]>(%[[AXIS]], %[[INPUT1]], %[[INPUT2]])
-// CHECK-SAME:     {dataDeptTensors = [0 : i32], kgenParams = {input_type = f32}} :
+// CHECK-SAME:     {dataDeptTensors = [0 : i32], kgenParams = {input_rank = 2 : index, input_type = f32}} :
 // CHECK-SAME:     (!mo.tensor<[], si32>, !mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>)
 //
 // CHECK-NEXT:   %[[RES:.*]] = mo.concat[%[[AXIS]] : !mo.tensor<[], si32>] (%[[INPUT1]], %[[INPUT2]]) :
