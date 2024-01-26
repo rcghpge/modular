@@ -55,25 +55,3 @@ pip install \
 
 pip install pipx
 
-echo "Configuring to build dylib-wheel"
-
-# Configure and build Modular.
-cmake-modular --sanitizer=none --build-type=release \
-  -D CMAKE_C_COMPILER=/usr/bin/clang-15 \
-  -D CMAKE_CXX_COMPILER=/usr/bin/clang++-15 \
-  -D MODULAR_RELEASE_PACKAGE_BUILD=ON \
-  -D CMAKE_INSTALL_PREFIX=install \
-
-echo "Install engine dylibs for wheel"
-
-build GeneratedTests install-ai-engine-dylibs
-
-echo "Building dylib wheel"
-rm -rf .derived/build/install/modular-engine-dylibs/dist/  .derived/build/install/modular-engine-dylibs/build
-python -m build --wheel .derived/build/install/modular-engine-dylibs
-
-pip install wheel==0.42
-# Rename Python wheel to indicate to pip that it is compatible with all Python3 versions
-wheel tags --python-tag=py3 --abi-tag=none .derived/build/install/modular-engine-dylibs/dist/*.whl
-
-cp .derived/build/install/modular-engine-dylibs/dist/*py3-none*.whl .
