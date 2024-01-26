@@ -283,9 +283,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pinOpts.minPinnedHostBufferSize = opts.minPinnedHostBufferSize;
     pm.addPass(CUDA::createCUDAPinHostBuffersPass(pinOpts));
   }
-  pm.addPass(MGP::createPredicateAssertDependenciesPass());
   if (opts.enableMemoryPlanning)
     pm.addPass(MGP::createStaticMemoryPlannerPass());
+  pm.addPass(MGP::createPredicateAssertDependenciesPass());
   pm.addPass(MGP::createStripBufferAttributesPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
