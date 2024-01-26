@@ -11,7 +11,7 @@
 #include "GraphRT/MEFExecutor/MEFFile.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Runtime/Utils.h"
-#include "LLCL/Support/GenericUniquePtrSet.h"
+#include "Support/ADT/GenericUniquePtrSet.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "llvm/Support/ToolOutputFile.h"

@@ -11,7 +11,7 @@
 #include "GenericML/Support/BufferRef.h"
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
-#include "LLCL/Support/GenericRCRef.h"
+#include "Support/ADT/GenericRCRef.h"
 #include "Support/ErrorOr.h"
 #include "Support/TypeID.h"
 
@@ -33,7 +33,7 @@ public:
   /// space for numBuffers, initially all null.
   template <typename T>
   void reset(RCRef<T> &&newPayload, size_t numBuffers) {
-    payload = LLCL::GenericRCRef::fromRCRef<T>(std::move(newPayload));
+    payload = GenericRCRef::fromRCRef<T>(std::move(newPayload));
     bufferCache.clear();
     bufferCache.resize(numBuffers);
   }
@@ -94,7 +94,7 @@ private:
                                   std::optional<size_t> alignment);
 
   /// The state slot payload.
-  LLCL::GenericRCRef payload;
+  GenericRCRef payload;
 
   /// A place to hold pre-allocated or cached buffers. Tensors and other
   /// more refined types can be constructed from these buffers. Though these
