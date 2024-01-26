@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PyTorch/API/modular/c/pytorch/value.h"
 #include "modular/c/common.h"
 #include "modular/c/tensor.h"
 #include "modular/c/value.h"
@@ -33,16 +32,13 @@ struct AIEngineTorchValueTest : ::testing::Test {
 } // namespace
 
 TEST_F(AIEngineTorchValueTest, DictTest) {
-  ValuePtr dictValue = {M_Torch_createDictAsyncValue(context.get()),
-                        M_freeValue};
+  ValuePtr dictValue = {M_createDictAsyncValue(context.get()), M_freeValue};
 
-  EXPECT_EQ(M_Torch_getValueType(dictValue.get()),
-            M_Torch_ValueType::M_TORCH_DICT_VALUE);
+  EXPECT_EQ(M_getValueType(dictValue.get()), M_ValueType::M_DICT_VALUE);
 
-  M_Torch_AsyncDict *dict = M_Torch_getDictFromValue(dictValue.get());
+  M_AsyncDict *dict = M_getDictFromValue(dictValue.get());
 
-  ValuePtr noneValue = {M_Torch_createNoneAsyncValue(context.get()),
-                        M_freeValue};
+  ValuePtr noneValue = {M_createNoneAsyncValue(context.get()), M_freeValue};
 
   std::vector<float> inputTensor(10);
   int64_t shape[] = {2, 5};
@@ -54,7 +50,7 @@ TEST_F(AIEngineTorchValueTest, DictTest) {
                                                  context.get()),
                           M_freeValue};
 
-  M_Torch_borrowIntoDict(dict, noneValue.get(), tensorValue.get());
+  M_insertIntoDict(dict, noneValue.get(), tensorValue.get());
 
   std::string stringKey = "a";
   ValuePtr stringValue = {
@@ -63,82 +59,72 @@ TEST_F(AIEngineTorchValueTest, DictTest) {
   ValuePtr doubleValue = {M_createDoubleAsyncValue(2.0f, context.get()),
                           M_freeValue};
 
-  M_Torch_borrowIntoDict(dict, stringValue.get(), doubleValue.get());
+  M_insertIntoDict(dict, stringValue.get(), doubleValue.get());
 
-  ASSERT_EQ(M_Torch_getDictSize(dict), 2u);
+  ASSERT_EQ(M_getDictSize(dict), 2u);
 
-  ValuePtr retValue0 = {M_Torch_getDictValue(dict, 0), M_freeValue};
+  ValuePtr retValue0 = {M_getDictValue(dict, 0), M_freeValue};
   TensorPtr retTensor = {M_getTensorFromValue(retValue0.get()), M_freeTensor};
 
-  ValuePtr retKey1 = {M_Torch_getDictKey(dict, 1), M_freeValue};
-  ValuePtr retValue1 = {M_Torch_getDictValue(dict, 1), M_freeValue};
+  ValuePtr retKey1 = {M_getDictKey(dict, 1), M_freeValue};
+  ValuePtr retValue1 = {M_getDictValue(dict, 1), M_freeValue};
 
   EXPECT_EQ(M_getTensorData(retTensor.get()), inputTensor.data());
   EXPECT_EQ(std::string(M_getStringFromValue(retKey1.get())), "a");
   EXPECT_EQ(M_getDoubleFromValue(retValue1.get()), 2.0f);
 
-  M_Torch_freeDict(dict);
+  M_freeDict(dict);
 }
 
 TEST_F(AIEngineTorchValueTest, ListTest) {
-  ValuePtr listValue = {M_Torch_createListAsyncValue(context.get()),
-                        M_freeValue};
-  ValuePtr tupleValue = {M_Torch_createTupleAsyncValue(context.get()),
-                         M_freeValue};
-  ValuePtr dictValue = {M_Torch_createDictAsyncValue(context.get()),
-                        M_freeValue};
+  ValuePtr listValue = {M_createListAsyncValue(context.get()), M_freeValue};
+  ValuePtr tupleValue = {M_createTupleAsyncValue(context.get()), M_freeValue};
+  ValuePtr dictValue = {M_createDictAsyncValue(context.get()), M_freeValue};
 
-  EXPECT_EQ(M_Torch_getValueType(listValue.get()),
-            M_Torch_ValueType::M_TORCH_LIST_VALUE);
+  EXPECT_EQ(M_getValueType(listValue.get()), M_ValueType::M_LIST_VALUE);
 
-  M_Torch_AsyncList *list = M_Torch_getListFromValue(listValue.get());
+  M_AsyncList *list = M_getListFromValue(listValue.get());
 
-  M_Torch_borrowIntoList(list, tupleValue.get());
-  M_Torch_borrowIntoList(list, dictValue.get());
+  M_appendToList(list, tupleValue.get());
+  M_appendToList(list, dictValue.get());
 
-  ASSERT_EQ(M_Torch_getListSize(list), 2u);
+  ASSERT_EQ(M_getListSize(list), 2u);
 
-  ValuePtr retValue0 = {M_Torch_getListValue(list, 0), M_freeValue};
-  ValuePtr retValue1 = {M_Torch_getListValue(list, 1), M_freeValue};
+  ValuePtr retValue0 = {M_getListValue(list, 0), M_freeValue};
+  ValuePtr retValue1 = {M_getListValue(list, 1), M_freeValue};
 
-  EXPECT_EQ(M_Torch_getValueType(retValue0.get()),
-            M_Torch_ValueType::M_TORCH_TUPLE_VALUE);
-  EXPECT_EQ(M_Torch_getValueType(retValue1.get()),
-            M_Torch_ValueType::M_TORCH_DICT_VALUE);
+  EXPECT_EQ(M_getValueType(retValue0.get()), M_ValueType::M_TUPLE_VALUE);
+  EXPECT_EQ(M_getValueType(retValue1.get()), M_ValueType::M_DICT_VALUE);
 
-  M_Torch_freeList(list);
+  M_freeList(list);
 }
 
 TEST_F(AIEngineTorchValueTest, TupleTest) {
-  ValuePtr tupleValue = {M_Torch_createTupleAsyncValue(context.get()),
-                         M_freeValue};
+  ValuePtr tupleValue = {M_createTupleAsyncValue(context.get()), M_freeValue};
 
-  EXPECT_EQ(M_Torch_getValueType(tupleValue.get()),
-            M_Torch_ValueType::M_TORCH_TUPLE_VALUE);
+  EXPECT_EQ(M_getValueType(tupleValue.get()), M_ValueType::M_TUPLE_VALUE);
 
-  M_Torch_AsyncTuple *tuple = M_Torch_getTupleFromValue(tupleValue.get());
+  M_AsyncTuple *tuple = M_getTupleFromValue(tupleValue.get());
 
   ValuePtr longValue = {M_createLongAsyncValue(2u, context.get()), M_freeValue};
   ValuePtr boolValue = {M_createBoolAsyncValue(false, context.get()),
                         M_freeValue};
 
-  M_Torch_borrowIntoTuple(tuple, longValue.get());
-  M_Torch_borrowIntoTuple(tuple, boolValue.get());
+  M_borrowIntoTuple(tuple, longValue.get());
+  M_borrowIntoTuple(tuple, boolValue.get());
 
-  ASSERT_EQ(M_Torch_getTupleSize(tuple), 2u);
+  ASSERT_EQ(M_getTupleSize(tuple), 2u);
 
-  ValuePtr retValue0 = {M_Torch_getTupleValue(tuple, 0), M_freeValue};
-  ValuePtr retValue1 = {M_Torch_getTupleValue(tuple, 1), M_freeValue};
+  ValuePtr retValue0 = {M_getTupleValue(tuple, 0), M_freeValue};
+  ValuePtr retValue1 = {M_getTupleValue(tuple, 1), M_freeValue};
 
-  EXPECT_EQ(M_Torch_getValueType(retValue0.get()),
-            M_Torch_ValueType::M_TORCH_LONG_VALUE);
-  EXPECT_EQ(M_Torch_getValueType(retValue1.get()),
-            M_Torch_ValueType::M_TORCH_BOOL_VALUE);
+  EXPECT_EQ(M_getValueType(retValue0.get()), M_ValueType::M_LONG_VALUE);
+  EXPECT_EQ(M_getValueType(retValue1.get()), M_ValueType::M_BOOL_VALUE);
 
   EXPECT_EQ(M_getLongFromValue(retValue0.get()), 2u);
   EXPECT_EQ(M_getBoolFromValue(retValue1.get()), false);
 
-  M_Torch_freeTuple(tuple);
+  M_freeTuple(tuple);
 }
 
 TEST_F(AIEngineTorchValueTest, ValueMapTest) {

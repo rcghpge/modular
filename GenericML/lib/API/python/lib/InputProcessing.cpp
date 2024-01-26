@@ -8,8 +8,6 @@
 #include "GenericML/API/modular/c/value.h"
 #include "GenericML/API/modular/cpp/aliases.h"
 #include "GenericML/API/python/Types.h"
-#include "PyTorch/API/modular/c/pytorch/types.h"
-#include "PyTorch/API/modular/c/pytorch/value.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "llvm/ADT/StringRef.h"
@@ -110,51 +108,51 @@ M_AsyncValue *core::processValueInput(const py::object &pyObj,
 
   if (py::isinstance<py::dict>(pyObj)) {
     const auto pyDict = pyObj.cast<py::dict>();
-    M_AsyncValue *dictValue = M_Torch_createDictAsyncValue(context);
-    M_Torch_AsyncDict *dict = M_Torch_getDictFromValue(dictValue);
+    M_AsyncValue *dictValue = M_createDictAsyncValue(context);
+    M_AsyncDict *dict = M_getDictFromValue(dictValue);
     for (auto elem : pyDict) {
       M_AsyncValue *key =
           processValueInput(elem.first.cast<py::object>(), context, status);
       M_AsyncValue *value =
           processValueInput(elem.second.cast<py::object>(), context, status);
-      M_Torch_borrowIntoDict(dict, key, value);
+      M_insertIntoDict(dict, key, value);
       M_freeValue(key);
       M_freeValue(value);
     }
-    M_Torch_freeDict(dict);
+    M_freeDict(dict);
     return dictValue;
   }
 
   if (py::isinstance<py::list>(pyObj)) {
     const auto pyList = pyObj.cast<py::list>();
-    M_AsyncValue *listValue = M_Torch_createListAsyncValue(context);
-    M_Torch_AsyncList *list = M_Torch_getListFromValue(listValue);
+    M_AsyncValue *listValue = M_createListAsyncValue(context);
+    M_AsyncList *list = M_getListFromValue(listValue);
     for (auto elem : pyList) {
       M_AsyncValue *value =
           processValueInput(elem.cast<py::object>(), context, status);
-      M_Torch_borrowIntoList(list, value);
+      M_appendToList(list, value);
       M_freeValue(value);
     }
-    M_Torch_freeList(list);
+    M_freeList(list);
     return listValue;
   }
 
   if (py::isinstance<py::tuple>(pyObj)) {
     const auto pyTuple = pyObj.cast<py::tuple>();
-    M_AsyncValue *tupleValue = M_Torch_createTupleAsyncValue(context);
-    M_Torch_AsyncTuple *tuple = M_Torch_getTupleFromValue(tupleValue);
+    M_AsyncValue *tupleValue = M_createTupleAsyncValue(context);
+    M_AsyncTuple *tuple = M_getTupleFromValue(tupleValue);
     for (auto elem : pyTuple) {
       M_AsyncValue *value =
           processValueInput(elem.cast<py::object>(), context, status);
-      M_Torch_borrowIntoTuple(tuple, value);
+      M_borrowIntoTuple(tuple, value);
       M_freeValue(value);
     }
-    M_Torch_freeTuple(tuple);
+    M_freeTuple(tuple);
     return tupleValue;
   }
 
   if (py::isinstance<py::none>(pyObj))
-    return M_Torch_createNoneAsyncValue(context);
+    return M_createNoneAsyncValue(context);
 
   if (py::isinstance<py::str>(pyObj)) {
     std::string str = pyObj.cast<std::string>();

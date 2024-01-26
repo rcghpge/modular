@@ -7,8 +7,6 @@
 #include "GenericML/API/python/ResultProcessing.h"
 #include "GenericML/API/modular/c/value.h"
 #include "GenericML/API/modular/cpp/aliases.h"
-#include "PyTorch/API/modular/c/pytorch/types.h"
-#include "PyTorch/API/modular/c/pytorch/value.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "python/Types.h"
@@ -52,55 +50,54 @@ py::object core::processTensorResult(TensorPtr outTensor) {
 /// to a nested pybind object value composed of `array`, `dict`, `list`,
 /// `tuple`, `none`, `double`, `long` and `bool`. Tensor data arrays are copied.
 py::object core::processValueResult(ValuePtr value) {
-  switch (M_Torch_getValueType(value.get())) {
-  case M_Torch_ValueType::M_TORCH_DICT_VALUE: {
-    M_Torch_AsyncDict *dict = M_Torch_getDictFromValue(value.get());
+  switch (M_getValueType(value.get())) {
+  case M_ValueType::M_DICT_VALUE: {
+    M_AsyncDict *dict = M_getDictFromValue(value.get());
     py::dict pyDict;
-    size_t size = M_Torch_getDictSize(dict);
-    for (size_t i = 0, e = M_Torch_getDictSize(dict); i < e; ++i) {
+    size_t size = M_getDictSize(dict);
+    for (size_t i = 0, e = M_getDictSize(dict); i < e; ++i) {
       for (size_t i = 0; i < size; ++i) {
         pyDict[processValueResult(
-            ValuePtr(M_Torch_getDictKey(dict, i), M_freeValue))] =
-            processValueResult(
-                ValuePtr{M_Torch_getDictValue(dict, i), M_freeValue});
+            ValuePtr(M_getDictKey(dict, i), M_freeValue))] =
+            processValueResult(ValuePtr{M_getDictValue(dict, i), M_freeValue});
       }
     }
-    M_Torch_freeDict(dict);
+    M_freeDict(dict);
     return pyDict;
   }
-  case M_Torch_ValueType::M_TORCH_LIST_VALUE: {
-    M_Torch_AsyncList *list = M_Torch_getListFromValue(value.get());
-    size_t size = M_Torch_getListSize(list);
+  case M_ValueType::M_LIST_VALUE: {
+    M_AsyncList *list = M_getListFromValue(value.get());
+    size_t size = M_getListSize(list);
     py::list pyList;
     for (size_t i = 0; i < size; ++i) {
-      pyList.append(processValueResult(
-          ValuePtr{M_Torch_getListValue(list, i), M_freeValue}));
+      pyList.append(
+          processValueResult(ValuePtr{M_getListValue(list, i), M_freeValue}));
     }
-    M_Torch_freeList(list);
+    M_freeList(list);
     return pyList;
   }
-  case M_Torch_ValueType::M_TORCH_TUPLE_VALUE: {
-    M_Torch_AsyncTuple *tuple = M_Torch_getTupleFromValue(value.get());
-    size_t size = M_Torch_getTupleSize(tuple);
+  case M_ValueType::M_TUPLE_VALUE: {
+    M_AsyncTuple *tuple = M_getTupleFromValue(value.get());
+    size_t size = M_getTupleSize(tuple);
     py::tuple pyTuple(size);
     for (size_t i = 0; i < size; ++i) {
-      pyTuple[i] = processValueResult(
-          ValuePtr{M_Torch_getTupleValue(tuple, i), M_freeValue});
+      pyTuple[i] =
+          processValueResult(ValuePtr{M_getTupleValue(tuple, i), M_freeValue});
     }
-    M_Torch_freeTuple(tuple);
+    M_freeTuple(tuple);
     return pyTuple;
   }
-  case M_Torch_ValueType::M_TORCH_NONE_VALUE:
+  case M_ValueType::M_NONE_VALUE:
     return py::none();
-  case M_TORCH_STRING_VALUE:
+  case M_STRING_VALUE:
     return py::cast(M_getStringFromValue(value.get()));
-  case M_TORCH_LONG_VALUE:
+  case M_LONG_VALUE:
     return py::cast(M_getLongFromValue(value.get()));
-  case M_TORCH_DOUBLE_VALUE:
+  case M_DOUBLE_VALUE:
     return py::cast(M_getDoubleFromValue(value.get()));
-  case M_TORCH_BOOL_VALUE:
+  case M_BOOL_VALUE:
     return py::cast(M_getBoolFromValue(value.get()));
-  case M_Torch_ValueType::M_TORCH_TENSOR_VALUE: {
+  case M_ValueType::M_TENSOR_VALUE: {
     TensorPtr tensorPtr{M_getTensorFromValue(value.get()), &M_freeTensor};
     return processTensorResult(std::move(tensorPtr));
   }
