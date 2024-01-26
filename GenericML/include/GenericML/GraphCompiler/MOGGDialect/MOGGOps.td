@@ -546,6 +546,22 @@ def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders"> {
   }];
 }
 
+def MOGG_TensorCopyOp : MOGG_Op<"tensor_copy"> {
+  let summary = "Represents the copy intrinsic whose counterpart is in kgen library";
+  let description = [{
+    Represents the copy intrinsic that will be directly lowered to a call of
+    the copy function in mogg's kgen library. Conceptually, the `src` is
+    materialized to `dst`.
+
+    Example:
+    ```mlir
+      "mogg.tensor_copy"(%3, %4) : (!mo.tensor<[5, 4], si32>, !kgen.pointer<struct<...>>)
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$dst, AnyType:$src);
+}
+
 //===----------------------------------------------------------------------===//
 // MOGG Runtime compiled code representation ops.
 //===----------------------------------------------------------------------===//
