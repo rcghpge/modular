@@ -867,6 +867,44 @@ def CpuBufferSetOp : MGP_Op<"cpu.buffer.set", [
 }
 
 //===----------------------------------------------------------------------===//
+// CpuBufferUnsizeOp
+//===----------------------------------------------------------------------===//
+
+def CpuBufferUnsizeOp : MGP_Op<"cpu.buffer.unsize", [
+    DeclareOpInterfaceMethods<MGP_BufferUnsizeOpInterface>,
+    DeclareOpInterfaceMethods<GRTMayAliasInterface>, // The retrieved element is shallow copied
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = [{
+    Casts the input buffer to the output buffer -- does a shallow copy and returns a 
+    ref to the input buffer, but removes any static sizing.
+  }];
+  let description = [{
+    Returns a reference to a shallow copy of the input buffer whose underlying storage 
+    points into the input buffer, and removes all static sizing. 
+
+    Validation errors will occur if input is not a static size.
+
+    Example:
+    ```mlir
+    %in_buf : !mgp.cpu.buffer<256>
+    %out_buf =
+        mgp.cpu.buffer.unsize %in_buf
+        : !mgp.cpu.buffer<256>
+    %out_buf : !mgp.cpu.buffer<?>
+    ```
+    ```
+  }];
+
+  let arguments = (ins MGP_CpuBufferType:$inBuffer);
+  let results = (outs  MGP_CpuBufferType:$outBuffer);
+  let assemblyFormat = [{
+    $inBuffer attr-dict `:` qualified(type($inBuffer))
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // ContextCreateOp
 //===----------------------------------------------------------------------===//
 

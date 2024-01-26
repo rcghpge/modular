@@ -199,4 +199,21 @@ def MGP_CreateTensorOpInterface : OpInterface<"MGPCreateTensorOpInterface"> {
   ];
 }
 
+def MGP_BufferUnsizeOpInterface : OpInterface<"MGPBufferUnsizeOpInterface"> {
+  let description = [{
+    Interface for ops which unsize and alias a buffer
+  }];
+  let cppNamespace = "::M::MGP";
+  let methods = [
+    InterfaceMethod<
+      "Get the input buffer",
+      "::mlir::Value", "getInBuffer", (ins), "return $_op.getInBuffer();"
+    >,
+    InterfaceMethod<
+      "Get the output buffer",
+      "::mlir::Value", "getOutBuffer", (ins), "return $_op.getOutBuffer();"
+    >,
+  ];
+}
+
 #endif // GENERICML_MGPDIALECT_MGPOPINTERFACES_TD

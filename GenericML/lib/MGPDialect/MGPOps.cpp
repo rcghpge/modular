@@ -652,6 +652,31 @@ CpuBufferSetOp::getInOutSemantics(size_t index) {
 }
 
 //===----------------------------------------------------------------------===//
+// CpuBufferUnsizeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CpuBufferUnsizeOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  inferredReturnTypes.emplace_back(
+      CpuBufferType::get(context, std::optional<uint64_t>()));
+  return success();
+}
+
+LogicalResult CpuBufferUnsizeOp::verify() {
+  if (getInBuffer().getType().getOptSize().has_value())
+    return success();
+  else
+    return emitOpError(" Unsize must have a static buffer input");
+}
+bool CpuBufferUnsizeOp::mayAlias(size_t operandIndex, size_t resultIndex) {
+  // The resulting list contains shallow copies of input list elements and the
+  // appended element.
+  return true;
+}
+
+//===----------------------------------------------------------------------===//
 // CpuTensorSpecCreateOp
 //===----------------------------------------------------------------------===//
 

@@ -417,6 +417,16 @@ static Chain mgp_cpu_buffer_set(GML::BufferRef &buffer,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.cpu.buffer.unsize
+//===----------------------------------------------------------------------===//
+
+/// Move the resulting outputs AsyncValueRef to the inBuffer reference.
+static void mgp_cpu_buffer_unsize(AsyncValueRef<GML::BufferRef> inBuffer,
+                                  RemainingResults outputs) {
+  *outputs.begin() = std::move(inBuffer);
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.context.create
 //===----------------------------------------------------------------------===//
 
@@ -1259,6 +1269,7 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.split.borrow",
                 mgp_cpu_buffer_split_borrow);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.set", mgp_cpu_buffer_set);
+  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.unsize", mgp_cpu_buffer_unsize);
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
   ADD_PRIMITIVE(registry, "mgp.state_slot.create", mgp_state_slot_create);
   ADD_PRIMITIVE(registry, "mgp.check_runtime", mgp_check_runtime);

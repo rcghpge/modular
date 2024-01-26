@@ -116,6 +116,13 @@ Value CpuBufferBuilder::bufferTransferToHost(
   llvm::llvm_unreachable_internal("not implemented");
 }
 
+Value CpuBufferBuilder::bufferUnsize(OpBuilder &builder, Location loc,
+                                     TypedValue<MGP::ContextType> context,
+                                     Value inBuffer) {
+  return builder.create<CpuBufferUnsizeOp>(loc,
+                                           /*inBuffer=*/inBuffer);
+}
+
 Value CpuBufferBuilder::bufferTransferDevice(
     OpBuilder &builder, Location loc, TypedValue<MGP::ContextType> context,
     Value inChain, Value srcBuffer, Value dstBuffer) {

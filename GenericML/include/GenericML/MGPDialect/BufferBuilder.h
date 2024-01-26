@@ -102,12 +102,18 @@ LogicalResult genericTensorCreateVerify(Operation *op, BufferType bufferType,
     //   %z = reshape %x, %y : (tensor<?x?xf32>, tensor<2xui32>) ->
     //   tensor<8x16xf32>
     // Here %z will be created from the same buffer as %x, but will now have
-    // a known size. Conversely, in:
+    // a known size. This is not supported and will error out.
+
+    if (expectedBufferIsStatic && !bufferIsStatic)
+      op->emitOpError(
+          "Cannot have output buffer static but input buffer is dynamic");
+
+    // Conversely, in:
     //   %z = reshape %x, %y : (tensor<8x4xf32>, tensor<2xui32>) ->
     //   tensor<?x?xf32>
     // the buffer for %z will now have an unknown size.
-    // In this case there's nothing to check.
-    // no-op
+    // In this case an unsize op which casts from static to dynamic will be
+    // inserted.
   } else if (bufferType != expectedBufferType) {
     return op->emitOpError()
            << "expected buffer type to match type implied by tensor spec ("
@@ -271,6 +277,11 @@ public:
                                      Value inChain, Value srcBuffer,
                                      Value dstBuffer) = 0;
 
+  /// Returns the Value representing the buffer alias with the size dropped
+  virtual Value bufferUnsize(OpBuilder &builder, Location loc,
+                             TypedValue<MGP::ContextType> context,
+                             Value inBuffer) = 0;
+
   /// Return the chain indicating tensor, in the form of buffer and tensor spec,
   /// has been printed.
   virtual Value debugTensorPrint(OpBuilder &builder, Location loc,
@@ -427,6 +438,10 @@ public:
                              TypedValue<MGP::ContextType> context,
                              Value inChain, Value srcBuffer,
                              Value dstBuffer) override;
+
+  Value bufferUnsize(OpBuilder &builder, Location loc,
+                     TypedValue<MGP::ContextType> context,
+                     Value inBuffer) override;
 
   Value debugTensorPrint(OpBuilder &builder, Location loc,
                          TypedValue<MGP::ContextType> context, Value inChain,
