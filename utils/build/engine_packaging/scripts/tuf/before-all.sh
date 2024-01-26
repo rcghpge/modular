@@ -60,7 +60,6 @@ echo "Configuring to build dylib-wheel"
 cmake-modular --sanitizer=none --build-type=release \
   -D CMAKE_C_COMPILER=/usr/bin/clang-15 \
   -D CMAKE_CXX_COMPILER=/usr/bin/clang++-15 \
-  -D MODULAR_USE_NATIVE_ARCH=OFF \
   -D MODULAR_RELEASE_PACKAGE_BUILD=ON \
   -D CMAKE_INSTALL_PREFIX=install \
 
