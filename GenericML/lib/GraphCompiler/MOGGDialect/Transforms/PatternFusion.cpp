@@ -1056,7 +1056,7 @@ public:
 };
 
 /// A helper to match multi-headed attention and it's variations
-class MultiHeadAttentionPatternMatcher {
+class MultiHeadAttentionPatternHelper {
   /*
   Input values to the pattern.
 
@@ -1117,12 +1117,12 @@ private:
 
     return success();
   }
-  MultiHeadAttentionPatternMatcher() = default;
+  MultiHeadAttentionPatternHelper() = default;
 
 public:
-  static ErrorOr<MultiHeadAttentionPatternMatcher> match(BatchMatmulOp finalOp,
-                                                         OpBuilder &builder) {
-    MultiHeadAttentionPatternMatcher matcher;
+  static ErrorOr<MultiHeadAttentionPatternHelper> match(BatchMatmulOp finalOp,
+                                                        OpBuilder &builder) {
+    MultiHeadAttentionPatternHelper matcher;
 
     // Note we match things in a reverse-ward direction as we are given the
     // very final operation. We then bubble our way up.
@@ -1221,12 +1221,12 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
     if (device && device.getLabel() != M::kCPULabel)
       return rewriter.notifyMatchFailure(op->getLoc(), "Devices are wrong.");
 
-    ErrorOr<MultiHeadAttentionPatternMatcher> maybeMatcher =
-        MultiHeadAttentionPatternMatcher::match(op, rewriter);
+    ErrorOr<MultiHeadAttentionPatternHelper> maybeMatcher =
+        MultiHeadAttentionPatternHelper::match(op, rewriter);
     if (maybeMatcher.isError())
       return rewriter.notifyMatchFailure(op.getLoc(), maybeMatcher.getError());
 
-    MultiHeadAttentionPatternMatcher matcher = maybeMatcher.takeValue();
+    MultiHeadAttentionPatternHelper matcher = maybeMatcher.takeValue();
 
     // Attention masking case
     if (matcher.hasAttentionMask()) {
