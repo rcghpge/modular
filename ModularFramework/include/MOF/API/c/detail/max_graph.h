@@ -12,24 +12,12 @@
 #include "MOF/GraphBuilder/Symbol.h"
 #include "MOF/GraphBuilder/Type.h"
 
-struct M_Attr {
-  M::MOF::GraphBuilder::Attr attr;
-};
-
 struct M_AttrMap {
   M::MOF::GraphBuilder::AttrMap map;
 };
 
 struct M_Graph {
   M::MOF::GraphBuilder::Graph graph;
-};
-
-struct M_Loc {
-  M::MOF::GraphBuilder::Loc loc;
-};
-
-struct M_Module {
-  M::MOF::GraphBuilder::Module module;
 };
 
 struct M_Tuple {
@@ -42,10 +30,6 @@ struct M_Symbol {
 
 struct M_Arity {
   M::MOF::GraphBuilder::Arity arity;
-};
-
-struct M_Type {
-  M::MOF::GraphBuilder::Type type;
 };
 
 #endif // MOF_API_C_DETAIL_MAX_GRAPH_H

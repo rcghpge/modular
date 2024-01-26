@@ -16,6 +16,8 @@
 #include "MOF/GraphBuilder/Type.h"
 #include "Support/Buffer.h"
 #include "Support/ML/TensorSpec.h"
+#include "mlir-c/IR.h"
+#include "mlir/CAPI/IR.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Verifier.h"
 #include "llvm/ADT/bit.h"
@@ -32,14 +34,19 @@ static char *unownedString(const std::string &buffer, int64_t *len) {
   return cstr;
 }
 
-static MLIRContext *newContext() {
-  // TODO: Attach the context to modules instead? Let user control it?
-  static MLIRContext ctx;
-  mlir::DialectRegistry registry;
-  M::MO::loadDialects(registry);
-  ctx.appendDialectRegistry(registry);
-  ctx.loadAllAvailableDialects();
-  return &ctx;
+MlirNamedAttribute wrap(mlir::NamedAttribute attr) {
+  return MlirNamedAttribute{
+      wrap(attr.getName()),
+      wrap(attr.getValue()),
+  };
+}
+
+mlir::NamedAttribute unwrap(MlirNamedAttribute attr) {
+  return {unwrap(attr.name), unwrap(attr.attribute)};
+}
+
+MODULAR_API_EXPORT void MAXG_loadModularDialects(MlirDialectRegistry registry) {
+  M::MO::loadDialects(*unwrap(registry));
 }
 
 // Note: Keep sections below in sync with max_graph.cpp.
@@ -48,22 +55,21 @@ static MLIRContext *newContext() {
 // Attribute factories
 //===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT M_Attr *MAXG_attrNewTensor(M_Module *m, StringRef name,
-                                              void *data, M_Type *t,
-                                              bool owned) {
-  auto moType = cast<M::MO::TensorType>(t->type.getVal());
+MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewTensor(MlirModule m,
+                                                         StringRef name,
+                                                         void *data, MlirType t,
+                                                         bool owned) {
+  auto moType = cast<M::MO::TensorType>(unwrap(t));
   size_t size =
       moType.getDtype().getSizeInBytes() * moType.getNumElements().value();
-  return new M_Attr{m->module.tensorAttr(
-      name, ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(data), size), t->type,
-      owned)};
+  return wrap(Module(unwrap(m)).tensorAttr(
+      name, ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(data), size),
+      unwrap(t), owned));
 }
 
-MODULAR_API_EXPORT M_Attr *MAXG_attrNewTensorFromFile(M_Module *m,
-                                                      StringRef name,
-                                                      StringRef fileName,
-                                                      M_Type *t) {
-  auto moType = cast<M::MO::TensorType>(t->type.getVal());
+MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewTensorFromFile(
+    MlirModule m, StringRef name, StringRef fileName, MlirType t) {
+  auto moType = cast<M::MO::TensorType>(unwrap(t));
   assert(moType.getNumElements().has_value() &&
          "tensor attrs should always be statically sized");
   int64_t size =
@@ -81,16 +87,17 @@ MODULAR_API_EXPORT M_Attr *MAXG_attrNewTensorFromFile(M_Module *m,
   assert(buff_size == size);
 
   auto data = buffer->getBufferStart();
-  return new M_Attr{m->module.tensorAttr(
+  return wrap(Module(unwrap(m)).tensorAttr(
       name,
       ArrayRef<uint8_t>(reinterpret_cast<const uint8_t *>(data),
                         static_cast<size_t>(size)),
-      t->type, /*owned=*/false)};
+      unwrap(t), /*owned=*/false));
 }
 
-MODULAR_API_EXPORT M_Attr *MAXG_attrNewString(M_Module *m, StringRef name,
-                                              StringRef value) {
-  return new M_Attr{m->module.stringAttr(name, value)};
+MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewString(MlirModule m,
+                                                         StringRef name,
+                                                         StringRef value) {
+  return wrap(Module(unwrap(m)).stringAttr(name, value));
 }
 
 //===----------------------------------------------------------------------===//
@@ -103,79 +110,51 @@ MODULAR_API_EXPORT uint32_t MAXG_attrMapSize(M_AttrMap *m) {
   return m->map.size();
 }
 
-MODULAR_API_EXPORT void MAXG_attrMapAddAttr(M_AttrMap *m, M_Attr *a) {
-  m->map.add(a->attr);
+MODULAR_API_EXPORT void MAXG_attrMapAddAttr(M_AttrMap *m,
+                                            MlirNamedAttribute a) {
+  m->map.add(unwrap(a));
 }
 
 //===----------------------------------------------------------------------===//
 // Graph support
 //===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT M_Graph *MAXG_graphNew(M_Module *m, M_Loc *l,
+MODULAR_API_EXPORT M_Graph *MAXG_graphNew(MlirModule m, MlirLocation l,
                                           llvm::StringRef name,
                                           const M_Arity *inTypes,
                                           const M_Arity *outTypes) {
-  return new M_Graph{
-      m->module.newGraph(l->loc, name, inTypes->arity, outTypes->arity)};
+  return new M_Graph{Module(unwrap(m)).newGraph(unwrap(l), name, inTypes->arity,
+                                                outTypes->arity)};
 }
 
-MODULAR_API_EXPORT M_Module *MAXG_graphGetModule(M_Graph *g) {
-  return new M_Module{g->graph.getModule()};
+MODULAR_API_EXPORT MlirModule MAXG_graphGetModule(M_Graph *g) {
+  return wrap(g->graph.getModule().getModuleOp());
 }
 
 MODULAR_API_EXPORT M_Symbol *MAXG_graphGetArg(M_Graph *g, uint32_t pos) {
   return new M_Symbol{g->graph.getArg(pos)};
 }
 
-MODULAR_API_EXPORT M_Tuple *MAXG_graphNewOp(M_Graph *g, M_Loc *l,
+MODULAR_API_EXPORT M_Tuple *MAXG_graphNewOp(M_Graph *g, MlirLocation l,
                                             llvm::StringRef name,
                                             const M_Tuple *inputs,
                                             const M_Arity *outTypes,
                                             const M_AttrMap *attrs) {
-  return new M_Tuple{
-      g->graph.newOp(l->loc, name, inputs->tuple, outTypes->arity, attrs->map)};
-}
-
-//===----------------------------------------------------------------------===//
-// Location helpers
-//===----------------------------------------------------------------------===//
-
-MODULAR_API_EXPORT M_Loc *MAXG_locNewUnknown(M_Module *m) {
-  return new M_Loc{m->module.unknownLoc()};
+  return new M_Tuple{g->graph.newOp(unwrap(l), name, inputs->tuple,
+                                    outTypes->arity, attrs->map)};
 }
 
 //===----------------------------------------------------------------------===//
 // Module support
 //===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT M_Module *MAXG_moduleNew() {
-  static MLIRContext *ctx = newContext();
-  Location testLoc = UnknownLoc::get(ctx);
-
-  auto *m = new M_Module{Module(testLoc)};
-  return m;
-}
-
-MODULAR_API_EXPORT bool MAXG_moduleVerify(M_Module *m) {
-  return mlir::verify(m->module.getModuleOp()).succeeded();
-}
-
-MODULAR_API_EXPORT char *MAXG_moduleToString(const M_Module *const m,
-                                             int64_t *len) {
-  std::string buffer;
-  raw_string_ostream os(buffer);
-  m->module.getModuleOp()->print(os);
-
-  return unownedString(buffer, len);
-}
-
-MODULAR_API_EXPORT bool MAXG_moduleToBytecode(const M_Module *const m,
+MODULAR_API_EXPORT bool MAXG_moduleToBytecode(const MlirModule m,
                                               StringRef fileName) {
   std::error_code ec;
   raw_fd_stream fs(fileName, ec);
   if (ec)
     return false;
-  return writeBytecodeToFile(m->module.getModuleOp(), fs).succeeded();
+  return writeBytecodeToFile(unwrap(m), fs).succeeded();
 }
 
 //===----------------------------------------------------------------------===//
@@ -208,19 +187,19 @@ MODULAR_API_EXPORT M_Symbol *MAXG_getSymbol(M_Tuple *t, uint32_t pos) {
 // Type helpers
 //===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT M_Type *MAXG_dTypeNew(M_Module *m, uint8_t value) {
-  return new M_Type{m->module.newDType(M::DType(value))};
+MODULAR_API_EXPORT MlirType MAXG_dTypeNew(MlirModule m, uint8_t value) {
+  return wrap(Module(unwrap(m)).newDType(M::DType(value)));
 }
 
 MODULAR_API_EXPORT int64_t MAXG_dimTypeNewDynamic() {
   return ShapedType::kDynamic;
 }
 
-MODULAR_API_EXPORT M_Type *MAXG_tensorTypeNew(M_Module *m, M_Type *dtype,
-                                              bool ranked, int64_t *dims,
-                                              int32_t rank) {
-  return new M_Type{m->module.newTensorType(
-      dtype->type, ranked, llvm::ArrayRef<int64_t>(dims, rank))};
+MODULAR_API_EXPORT MlirType MAXG_tensorTypeNew(MlirModule m, MlirType dtype,
+                                               bool ranked, int64_t *dims,
+                                               int32_t rank) {
+  return wrap(Module(unwrap(m)).newTensorType(
+      unwrap(dtype), ranked, llvm::ArrayRef<int64_t>(dims, rank)));
 }
 
 MODULAR_API_EXPORT uint8_t MAXG_tensorTypeGetDType(M_Symbol *s) {
@@ -241,16 +220,12 @@ MODULAR_API_EXPORT bool MAXG_tensorTypeIsRanked(M_Symbol *s) {
   return s->symbol.getTensorDType().getValue();
 }
 
-MODULAR_API_EXPORT char *MAXG_typeToString(M_Type *t, int64_t *len) {
-  return unownedString(t->type.toString(), len);
-}
-
 MODULAR_API_EXPORT M_Arity *MAXG_arityNew() { return new M_Arity{Arity()}; }
 
 MODULAR_API_EXPORT uint32_t MAXG_aritySize(M_Arity *a) {
   return a->arity.size();
 }
 
-MODULAR_API_EXPORT void MAXG_arityAddType(M_Arity *a, M_Type *t) {
-  a->arity.add(t->type);
+MODULAR_API_EXPORT void MAXG_arityAddType(M_Arity *a, MlirType t) {
+  a->arity.add(unwrap(t));
 }

@@ -21,6 +21,7 @@ namespace M::MOF::GraphBuilder {
 class Module {
 public:
   Module(mlir::Location loc);
+  Module(mlir::ModuleOp op);
   Module(mlir::ModuleOp op, mlir::OpBuilder builder)
       : op(op), builder(builder) {}
 
@@ -30,17 +31,21 @@ public:
   Graph newGraph(Loc loc, llvm::StringRef name, const Arity &inTypes,
                  const Arity &outTypes);
 
-  Loc unknownLoc();
+  mlir::Type newDType(DType value);
+  mlir::Type newTensorType(mlir::Type elementType, bool ranked,
+                           llvm::ArrayRef<int64_t> dims);
 
-  Type newDType(DType value);
-  Type newTensorType(Type elementType, bool ranked,
-                     llvm::ArrayRef<int64_t> dims);
+  mlir::Type f32(llvm::ArrayRef<int64_t> shape);
+  mlir::Type ui(uint64_t width, llvm::ArrayRef<int64_t> shape);
+  mlir::Type si(uint64_t width, llvm::ArrayRef<int64_t> shape);
+  mlir::Type bool_(llvm::ArrayRef<int64_t> shape);
 
-  Attr stringAttr(llvm::StringRef name, llvm::StringRef value);
+  mlir::NamedAttribute stringAttr(llvm::StringRef name, llvm::StringRef value);
   // Guaranteed to take ownership of `data` with a dense resource if `owned`.
   // Otherwise, copies `data`; may use dense resource or ArrayElementsAttr.
-  Attr tensorAttr(llvm::StringRef name, llvm::ArrayRef<uint8_t> data, Type t,
-                  bool owned);
+  mlir::NamedAttribute tensorAttr(llvm::StringRef name,
+                                  llvm::ArrayRef<uint8_t> data, mlir::Type t,
+                                  bool owned);
 
   MLIRContext *getContext();
 
