@@ -11,9 +11,9 @@
 #include "GenericML/Support/BufferRef.h"
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
-#include "LLCL/Runtime/TypeID.h"
 #include "LLCL/Support/GenericRCRef.h"
 #include "Support/ErrorOr.h"
+#include "Support/TypeID.h"
 
 namespace M::GML {
 
@@ -84,7 +84,7 @@ public:
   ErrorOrSuccess setBuffer(size_t bufferIndex, BufferRef bufferRef);
 
   /// Returns the type id for the value held by this state slot.
-  LLCL::TypeID getTypeID() const { return payload.getTypeID(); }
+  M::TypeID getTypeID() const { return payload.getTypeID(); }
 
 private:
   /// Ensure the buffer in entry is allocated with size, reallocating

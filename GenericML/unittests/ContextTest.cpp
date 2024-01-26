@@ -7,7 +7,7 @@
 #include "GenericML/Support/Context.h"
 #include "LLCL/Runtime/Allocator.h"
 #include "LLCL/Runtime/Runtime.h"
-#include "LLCL/Runtime/TypeID.h"
+#include "Support/TypeID.h"
 
 #include "gtest/gtest.h"
 
