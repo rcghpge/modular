@@ -401,24 +401,12 @@ struct PropagateShapesPass
     // folded away. `kMaxDepth` should be picked such that, folding for
     // practical models should only require at most this amount of expression
     // nesting.
-    constexpr size_t kMaxDepth = 2;
-    if (getParamAttrDepth(paramOperator) > kMaxDepth)
+    constexpr size_t kMaxDepth = 4;
+    auto size = getParamAttrDepth(paramOperator);
+    if (size > kMaxDepth)
       return false;
 
-    // Be conservative and only allow nesting for expressions shape inference
-    // care about folding, this mainly keeps the IR easy to read (also helps in
-    // case we ever want to expose the `!mo.tensor` symbolic shapes to users).
-    switch (paramOperator.getOpcode()) {
-    case KGEN::POC::Add:
-    case KGEN::POC::Max:
-    case KGEN::POC::Mul:
-    case KGEN::POC::MulNuw:
-      [[fallthrough]];
-    case KGEN::POC::Xor:
-      return true;
-    default:
-      return false;
-    }
+    return true;
   }
 
   /// Track `attr` as definitely non-negative.

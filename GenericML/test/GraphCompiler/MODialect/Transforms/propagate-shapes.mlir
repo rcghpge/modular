@@ -137,24 +137,6 @@ mo.graph @nested_div_mul_simplification<D0, D1 -> D2>(
   mo.output<DIV> %res : !mo.tensor<[D0, DIV, 4, 5], f32>
 }
 
-// CHECK-LABEL: mo.graph @param_expr_cse
-// CHECK-SAME: <[[D0:.*]], [[D1:.*]] -> [[D2:.*]], [[D3:.*]]>(
-// CHECK-SAME:   %[[ARG:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>
-// CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]]], f32> no_inline {
-mo.graph @param_expr_cse<D0, D1 -> D2, D3>(
-  %arg: !mo.tensor<[D0, D1], f32>
-) -> !mo.tensor<[D2, D3], f32> {
-  // CHECK-NEXT: kgen.param.declare [[D5:.*]] = <add(div(add(mul_nuw([[D0]], [[D1]]), [[D1]]), 20), 30)>
-  kgen.param.declare D5 = <add(div(add(mul_nuw(D0, D1), D1), 20), 30)>
-  kgen.param.declare D6 = <add(div(add(mul_nuw(D0, D1), D1), 20), 30)>
-
-  // CHECK-NEXT: %[[RESHAPED:.*]] = mo.static.reshape(%[[ARG]])
-  // CHECK-SAME: : !mo.tensor<[[[D0]], [[D1]]], f32> -> !mo.tensor<[[[D5]], [[D5]]], f32>
-  %res = mo.static.reshape(%arg) : !mo.tensor<[D0, D1], f32> -> !mo.tensor<[D5, D6], f32>
-
-  // CHECK-NEXT: mo.output<[[D5]], [[D5]]> %[[RES]] : !mo.tensor<[[[D5]], [[D5]]], f32>
-  mo.output<D5, D6> %res : !mo.tensor<[D5, D6], f32>
-}
 
 // CHECK-LABEL: mo.graph @param_expr_apply_no_cse
 // CHECK-SAME: <[[SH0:.*]]: !mosh.ape -> [[D2:.*]], [[D3:.*]]>(
@@ -249,16 +231,15 @@ mo.graph @out_of_order_instructions<D0 -> out>(
   %dummy: !mo.tensor<[D0], f32> // this is used solely to help define `D0`
 ) -> !mo.tensor<[out], f32> {
 
-  // CHECK-NEXT: kgen.param.declare [[D3:.*]] = <div(add(mul([[D0]], [[D0]]), mul([[D0]], 2), 1), [[D0]])>
   kgen.param.declare D3 = <div(D2, D0)>
   kgen.param.declare D2 = <mul(D1, D1)>
 
-  // CHECK-NEXT: %[[RES:.*]] = mo.static.broadcast_to(%[[SCALAR]]) : !mo.tensor<[], f32> -> !mo.tensor<[[[D3]]], f32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.broadcast_to(%[[SCALAR]]) : !mo.tensor<[], f32> -> !mo.tensor<[div(add(mul([[D0]], [[D0]]), mul([[D0]], 2), 1), [[D0]])], f32>
   %res = mo.static.broadcast_to(%scalar) : !mo.tensor<[], f32> -> !mo.tensor<[D3], f32>
 
   kgen.param.declare D1 = <add(D0, 1)>
 
-  // CHECK-NEXT: mo.output<[[D3]]> %[[RES]] : !mo.tensor<[[[D3]]], f32>
+  // CHECK-NEXT: mo.output<div(add(mul([[D0]], [[D0]]), mul([[D0]], 2), 1), [[D0]])> %[[RES]] : !mo.tensor<[div(add(mul([[D0]], [[D0]]), mul([[D0]], 2), 1), [[D0]])], f32>
   mo.output<D3> %res : !mo.tensor<[D3], f32>
 }
 
@@ -338,23 +319,18 @@ mo.graph @propagate_max_add_optimization<A, B -> D1, D2, D3, D4>
   mo.output<expr1, expr2, expr3, expr4> %a, %b, %c, %d : !mo.tensor<[expr1, 1], f32>, !mo.tensor<[expr2, 1], f32>, !mo.tensor<[expr3, 1], f32>, !mo.tensor<[expr4, 1], f32>
 }
 
-// CHECK: mo.graph @expand_apply_mosh_broadcast<D0, D1 -> O0, O1>([[VARG0:%.*]]: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[O0, O1], f32>
+// CHECK: mo.graph @expand_apply_mosh_broadcast<[[D0:.*]], [[D1:.*]] -> O0, O1>([[VARG0:%.*]]: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[O0, O1], f32>
 mo.graph @expand_apply_mosh_broadcast<D0, D1 -> O0, O1>(
   %in: !mo.tensor<[D0, D1], f32>
 ) -> !mo.tensor<[O0, O1], f32> {
 
-  // CHECK-DAG: kgen.param.declare dim_1_is_one1: i1 = <eq(D0, 1)>
-  // CHECK-DAG: kgen.param.declare dim_2_is_one2: i1 = <eq(D1, 1)>
-  // CHECK-DAG: kgen.param.declare dims_equal3: i1 = <eq(D0, D1)>
-  // CHECK-DAG: kgen.param.declare dims_compatible4: i1 = <or(dim_1_is_one1, dim_2_is_one2, dims_equal3)>
-  // CHECK-DAG: kgen.param.declare dims_assert5: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions are not broadcastable" : !kgen.string}, dims_compatible4)>
-  // CHECK-DAG: kgen.param.declare R1 = <cond(eq(D0, 1), D1, D0)>
+  // CHECK-DAG: kgen.param.declare dims_assert5: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "dimensions are not broadcastable" : !kgen.string}, or(eq([[D0]], [[D1]]), eq([[D0]], 1), eq([[D1]], 1)))>
   kgen.param.declare NEW_SHAPE: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape) -> !mosh.ape "mosh.broadcast", [D0], [D1])>
   kgen.param.declare R1 = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", NEW_SHAPE, 0)>
 
   %out = mo.static.broadcast_to(%in): !mo.tensor<[D0, D1], f32> -> !mo.tensor<[R1, R1], f32>
 
-  // CHECK-NEXT: [[V0:%.*]] = mo.static.broadcast_to([[VARG0]]) : !mo.tensor<[D0, D1], f32> -> !mo.tensor<[R1, R1], f32>
-  // CHECK-NEXT: mo.output<R1, R1> [[V0]] : !mo.tensor<[R1, R1], f32>
+  // CHECK-NEXT: [[V0:%.*]] = mo.static.broadcast_to([[VARG0]]) : !mo.tensor<[[[D0]], [[D1]]], f32> -> !mo.tensor<[cond(eq([[D0]], 1), [[D1]], [[D0]]), cond(eq([[D0]], 1), [[D1]], [[D0]])], f32>
+  // CHECK-NEXT: mo.output<cond(eq([[D0]], 1), [[D1]], [[D0]]), cond(eq([[D0]], 1), [[D1]], [[D0]])> [[V0]] : !mo.tensor<[cond(eq([[D0]], 1), [[D1]], [[D0]]), cond(eq([[D0]], 1), [[D1]], [[D0]])], f32>
   mo.output<R1, R1> %out : !mo.tensor<[R1, R1], f32>
 }
