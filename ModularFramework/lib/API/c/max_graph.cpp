@@ -175,7 +175,7 @@ MODULAR_API_EXPORT uint32_t MAXG_tupleSize(M_Tuple *t) {
   return t->tuple.size();
 }
 
-MODULAR_API_EXPORT void MAXG_tupleAddSymbol(M_Tuple *t, M_Symbol *s) {
+MODULAR_API_EXPORT void MAXG_tupleAppendSymbol(M_Tuple *t, M_Symbol *s) {
   t->tuple.add(s->symbol);
 }
 
@@ -226,6 +226,6 @@ MODULAR_API_EXPORT uint32_t MAXG_aritySize(M_Arity *a) {
   return a->arity.size();
 }
 
-MODULAR_API_EXPORT void MAXG_arityAddType(M_Arity *a, MlirType t) {
+MODULAR_API_EXPORT void MAXG_arityAppendType(M_Arity *a, MlirType t) {
   a->arity.add(unwrap(t));
 }

@@ -54,16 +54,16 @@ fn test_identity_graph() raises:
         let intScalar = capi.tensor_type_new(
             m, capi.dtype_new(m, DType.int32), scalarShape, True
         )
-        capi.arity_add_type(ins, intScalar)
+        capi.arity_append_type(ins, intScalar)
 
         var outs = capi.arity_new()
-        capi.arity_add_type(outs, intScalar)
+        capi.arity_append_type(outs, intScalar)
 
         let g = capi.graph_new(m, unknown, "identity_graph", ins, outs)
 
         var rets = capi.tuple_new()
         let arg0 = capi.graph_get_arg(g, 0)
-        capi.tuple_add_symbol(rets, arg0)
+        capi.tuple_append_symbol(rets, arg0)
 
         let void = capi.arity_new()
 
@@ -88,20 +88,20 @@ fn test_tuple_copy() raises:
         let intScalar = capi.tensor_type_new(
             m, capi.dtype_new(m, DType.int32), scalarShape, True
         )
-        capi.arity_add_type(ins, intScalar)
+        capi.arity_append_type(ins, intScalar)
 
         var outs = capi.arity_new()
-        capi.arity_add_type(outs, intScalar)
+        capi.arity_append_type(outs, intScalar)
 
         let g = capi.graph_new(m, unknown, "tuple_copy_test", ins, outs)
 
         var t = capi.tuple_new()
         let arg0 = capi.graph_get_arg(g, 0)
-        capi.tuple_add_symbol(t, arg0)
+        capi.tuple_append_symbol(t, arg0)
 
         var t2 = capi.tuple_new()
         let el = capi.tuple_get_symbol(t, 0)
-        capi.tuple_add_symbol(t2, el)
+        capi.tuple_append_symbol(t2, el)
 
         let void = capi.arity_new()
 
@@ -128,7 +128,7 @@ fn test_const_op() raises:
         let intScalar = capi.tensor_type_new(
             m, capi.dtype_new(m, DType.int32), scalarShape, True
         )
-        capi.arity_add_type(outs, intScalar)
+        capi.arity_append_type(outs, intScalar)
 
         let g = capi.graph_new(m, unknown, "const_op", void, outs)
 
@@ -148,7 +148,7 @@ fn test_const_op() raises:
 
         var rets = capi.tuple_new()
         let x0 = capi.tuple_get_symbol(x, 0)
-        capi.tuple_add_symbol(rets, x0)
+        capi.tuple_append_symbol(rets, x0)
 
         let noAttrs = capi.attr_map_new()
 
@@ -173,7 +173,7 @@ fn test_bytecode_output() raises:
         let intScalar = capi.tensor_type_new(
             m, capi.dtype_new(m, DType.int32), scalarShape, True
         )
-        capi.arity_add_type(outs, intScalar)
+        capi.arity_append_type(outs, intScalar)
 
         let g = capi.graph_new(m, unknown, "bytecode_output", void, outs)
 
@@ -193,7 +193,7 @@ fn test_bytecode_output() raises:
 
         var rets = capi.tuple_new()
         let x0 = capi.tuple_get_symbol(x, 0)
-        capi.tuple_add_symbol(rets, x0)
+        capi.tuple_append_symbol(rets, x0)
 
         let noAttrs = capi.attr_map_new()
 
