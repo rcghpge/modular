@@ -26,10 +26,11 @@ PATCH_VERSION=$3
 
 source ./utils/start-modular.sh
 python3 -m pip install \
-  -e utils/build/engine_packaging[dev] \
   -e Support/python \
   -r KGEN/utils/requirements.txt \
   -r GenericML/lib/API/python/packaging-requirements.txt
+
+pip install pipx
 
 # Configure and build Modular.
 cmake-modular --sanitizer=none --build-type=release \

@@ -49,10 +49,11 @@ cmake-llvm --sanitizer=none --build-type=release \
 build-llvm
 
 pip install \
-  -e utils/build/engine_packaging[dev] \
   -e Support/python \
   -r KGEN/utils/requirements.txt \
   -r GenericML/lib/API/python/packaging-requirements.txt
+
+pip install pipx
 
 echo "Configuring to build dylib-wheel"
 
