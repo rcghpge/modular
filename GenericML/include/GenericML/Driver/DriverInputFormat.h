@@ -18,7 +18,7 @@ class MemoryBuffer;
 }
 
 namespace M {
-enum class FileFormat {
+enum class FileFormat : uint8_t {
   kUnknown = 0,
 
   /// This looks like a MEF file of unknown contents.

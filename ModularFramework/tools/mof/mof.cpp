@@ -215,7 +215,7 @@ bool M_isBinary(FrameworkContextHandle ctx, const llvm::MemoryBufferRef &file,
 
 ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
                                  const llvm::MemoryBufferRef &file,
-                                 raw_ostream &os, FileFormat &format) {
+                                 raw_ostream &os, FileFormat format) {
   auto *mofContext = ctxHandle.unwrap<MOFContext>();
   // Create a runtime to use during compilation. It will convey global options
   // to the passes which need them.
@@ -281,6 +281,12 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
           convertToMEF(module.get(), os, mofContext->getEnableMEFMetadata())))
     return Error("unable to convert file to a MEF binary");
   return success();
+}
+
+ErrorOrSuccess M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle,
+                                           void *source, raw_ostream &os,
+                                           FileFormat format) {
+  llvm_unreachable("M_compileToBinaryFromSource is unimplemented");
 }
 
 ErrorOrSuccess M_openBinaryFile(FrameworkContextHandle ctx,
