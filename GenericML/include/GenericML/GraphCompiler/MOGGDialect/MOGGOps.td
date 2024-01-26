@@ -296,6 +296,22 @@ def MOGG_ParamShapeToValueOp : MOGG_Op<"param_shape_to_value", [Pure]> {
   }];
 }
 
+def MOGG_ShapeFromKGENOp : MOGG_Op<"shape_from_kgen", [Pure]> {
+  let summary = "Gets a MOGG shape construct from KGEN";
+  let description = [{
+    Given a KGEN value which represents a shape launders that into MOGG
+    representation.
+  }];
+
+
+  let arguments = (ins AnyType:$shape);
+  let results = (outs MOGG_Shape:$result);
+
+  let assemblyFormat = [{
+    attr-dict `(` $shape `:` type($shape) `)` `->` type(results)
+  }];
+}
+
 def MOGG_SetParameterOp : MOGG_Op<"set_param"> {
   let summary = "Assign a param a value from the shape at index";
   let description = [{

@@ -382,17 +382,50 @@ void Fallback<MO::ConvTransposeOp>::build(GraphOp &graph, OpBuilder &builder,
 void Fallback<MO::CustomOp>::build(
     GraphOp &graph, OpBuilder &builder, MO::CustomOp op,
     MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
-  auto shapeFunction =
-      mojoLibraryAnalysis.getRegisteredMojoShapeFunctionFor(op.getSymbol());
-  GENERICML_ASSERT(shapeFunction);
-  auto shapeFunctionName = shapeFunction.getName();
 
-  SmallVector<int32_t> dataDepInputIdxs(op->getNumOperands());
+  auto mojoKernel =
+      mojoLibraryAnalysis.getRegisteredMojoKernelFor(op.getSymbol());
+
+  // TODO: Poke error through
+  GENERICML_ASSERT(mojoKernel) << "Could not find registered mojo kernel.";
+  StringRef shapeFunctionName;
+
+  // Mark all inputs by default.
+  SmallVector<Value> operands{op.getOperands().begin(), op.getOperands().end()};
+
+  // If we are dealing with a tensor API kernel then the kernel will have the
+  // shape function attached.
+  if (auto attr =
+          dyn_cast_or_null<mlir::UnitAttr>(mojoKernel->getAttr("_sliced"))) {
+    auto shapeFuncAttr =
+        dyn_cast_or_null<StringAttr>(mojoKernel->getAttr("_has_shape_func"));
+
+    // TODO: Poke error through.
+    assert(shapeFuncAttr && "Couldn't find shape function for mojo kernel");
+    shapeFunctionName = shapeFuncAttr;
+
+    auto shapeKernel = mojoLibraryAnalysis.getMojoFunctionNamed(shapeFuncAttr);
+
+    auto usedInputAttrs = cast<ArrayAttr>(shapeKernel->getAttr("_used_inputs"));
+
+    // Only pass the arguments which are actually used.
+    operands.clear();
+    for (APInt i : usedInputAttrs.getAsValueRange<IntegerAttr>())
+      operands.push_back(op.getOperands()[i.getLimitedValue()]);
+
+  } else {
+    auto shapeFunction =
+        mojoLibraryAnalysis.getRegisteredMojoShapeFunctionFor(op.getSymbol());
+    assert(shapeFunction);
+    shapeFunctionName = shapeFunction.getName();
+  }
+
+  SmallVector<int32_t> dataDepInputIdxs(operands.size());
   std::iota(dataDepInputIdxs.begin(), dataDepInputIdxs.end(), 0);
 
   for (auto [idx, res] : llvm::enumerate(op.getResults())) {
     buildForOpResult(graph, builder, cast<TensorValue>(res), shapeFunctionName,
-                     op.getOperands(),
+                     operands,
                      /*kgenParams=*/{{"output_idx", builder.getIndexAttr(idx)}},
                      /*dataDepInputIdxs=*/dataDepInputIdxs);
   }
