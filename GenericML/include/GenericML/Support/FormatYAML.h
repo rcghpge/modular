@@ -115,27 +115,27 @@ struct llvm::yaml::MappingTraits<M::GML::Variant> {
 
 namespace llvm::yaml {
 template <>
-struct llvm::yaml::MappingTraits<M::GML::None> {
+struct MappingTraits<M::GML::None> {
   static void mapping(IO &io, M::GML::None &list);
 };
 
 template <>
-struct llvm::yaml::MappingTraits<M::GML::List> {
+struct MappingTraits<M::GML::List> {
   static void mapping(IO &io, M::GML::List &list);
 };
 
 template <>
-struct llvm::yaml::MappingTraits<M::GML::Tuple> {
+struct MappingTraits<M::GML::Tuple> {
   static void mapping(IO &io, M::GML::Tuple &tuple);
 };
 
 template <>
-struct llvm::yaml::MappingTraits<M::YamlDictKeyValuePair> {
+struct MappingTraits<M::YamlDictKeyValuePair> {
   static void mapping(IO &io, M::YamlDictKeyValuePair &kv);
 };
 
 template <>
-struct llvm::yaml::MappingTraits<M::GML::Dict> {
+struct MappingTraits<M::GML::Dict> {
   class NormalizedDict {
   public:
     NormalizedDict(IO &);
