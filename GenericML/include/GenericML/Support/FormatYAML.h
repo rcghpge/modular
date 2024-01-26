@@ -63,6 +63,11 @@ struct llvm::yaml::MappingTraits<M::TensorResultInfo> {
   static void mapping(IO &io, M::TensorResultInfo &info);
 };
 
+template <>
+struct llvm::yaml::MappingTraits<M::VariantResultInfo> {
+  static void mapping(IO &io, M::VariantResultInfo &info);
+};
+
 LLVM_FWD_YAML_IS_SEQUENCE_VECTOR(std::shared_ptr<M::ResultInfo>)
 
 template <>
@@ -73,29 +78,13 @@ struct llvm::yaml::MappingTraits<std::shared_ptr<M::ResultInfo>> {
 namespace M {
 using YamlDictKeyValuePair = std::pair<M::GML::Variant, M::GML::Variant>;
 
-/// VariantResultInfo class and corresponding MappingTraits to help write output
-/// information to YAML when --result-output-style=binary.
-class VariantResultInfo : public M::ResultInfo {
-public:
-  VariantResultInfo(std::string name, M::GML::Variant variant);
-
-  VariantResultInfo(const VariantResultInfo &) = default;
-  VariantResultInfo(VariantResultInfo &&) = default;
-  VariantResultInfo &operator=(const VariantResultInfo &) = default;
-  VariantResultInfo &operator=(VariantResultInfo &&) = default;
-
-  void map(llvm::yaml::IO &io) override;
-
-  M::GML::Variant variant;
-};
-
 /// Given a composed type model output (`out`), create a copy of the composed
 /// type, replacing `GML::Tensor` leaf nodes with `TensorResultInfo`s
 /// for YAML serialization. The `GML::Tensor`s are collected in
 /// `processedResults` for binary output. Note that the copy is not a deep copy,
 /// and parts of the original output (`out`) can still be referenced in the
 /// output.
-AnyAsyncValueRef
+ErrorOr<AnyAsyncValueRef>
 getResultForBinaryOutput(const M::AnyAsyncValueRef &out,
                          M::ProcessedResults &processedResults);
 } // namespace M

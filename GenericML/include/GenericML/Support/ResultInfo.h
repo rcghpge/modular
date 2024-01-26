@@ -13,6 +13,7 @@
 #define GENERICML_SUPPORT_RESULTINFO_H
 
 #include "GenericML/Support/Tensor.h"
+#include "GenericML/Support/Value.h"
 #include "Support/ML/TensorSpec.h"
 #include <map>
 
@@ -46,6 +47,22 @@ public:
   void map(llvm::yaml::IO &io) override;
 
   std::string shape;
+};
+
+/// VariantResultInfo class and corresponding MappingTraits to help write output
+/// information to YAML when --result-output-style=binary.
+class VariantResultInfo : public M::ResultInfo {
+public:
+  VariantResultInfo(std::string name, M::GML::Variant variant);
+
+  VariantResultInfo(const VariantResultInfo &) = default;
+  VariantResultInfo(VariantResultInfo &&) = default;
+  VariantResultInfo &operator=(const VariantResultInfo &) = default;
+  VariantResultInfo &operator=(VariantResultInfo &&) = default;
+
+  void map(llvm::yaml::IO &io) override;
+
+  M::GML::Variant variant;
 };
 
 /// ProcessedResults holds metainformation about each model output in

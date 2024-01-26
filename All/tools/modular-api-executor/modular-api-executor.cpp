@@ -15,7 +15,7 @@
 #include "Support/ML/DType.h"
 #include "llvm/ADT/StringExtras.h"
 
-#include "GenericML/FormatYAML/FormatYAML.h"
+#include "GenericML/Support/FormatYAML.h"
 
 #include "ModularAPIInterface.h"
 #include "mlir/IR/BuiltinTypes.h"

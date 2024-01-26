@@ -9,8 +9,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Support/Value.h"
-#include "GenericML/FormatYAML/FormatYAML.h"
 #include "GenericML/Support/Dict.h"
+#include "GenericML/Support/FormatYAML.h"
 #include "GenericML/Support/List.h"
 #include "GenericML/Support/Tensor.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
@@ -343,7 +343,7 @@ TEST_F(ValueTest, ResultConversionTest) {
       LLCL::AnyAsyncValueRef::createReady<Tuple>(*runtime, tuple);
   ProcessedResults processedResults;
   LLCL::AnyAsyncValueRef out =
-      M::getResultForBinaryOutput(in, processedResults);
+      M::getResultForBinaryOutput(in, processedResults).takeValue();
 
   std::shared_ptr<ResultInfo> resultInfo =
       std::make_shared<VariantResultInfo>("outputName", out);

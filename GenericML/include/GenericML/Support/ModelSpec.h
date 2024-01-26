@@ -27,7 +27,7 @@ namespace M {
 /// specs, and the input and output layer names.
 ///
 /// Keep in sync with the description in Models/docs/README.md, the YAML
-/// conversion in GenericML/lib/FormatYAML/FormatYAML.cpp, and the Python
+/// conversion in GenericML/lib/Support/FormatYAML.cpp, and the Python
 /// reader in GenericML/tools/model/model/utils/manifest.py.
 class ModelSpec {
 public:

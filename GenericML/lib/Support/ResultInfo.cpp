@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Support/ResultInfo.h"
+#include "GenericML/Support/FormatYAML.h"
 #include "llvm/Support/YAMLTraits.h"
 
 using namespace M;
@@ -34,6 +35,14 @@ TensorResultInfo &TensorResultInfo::operator=(TensorResultInfo &other) {
 void TensorResultInfo::map(llvm::yaml::IO &io) {
   io.mapRequired("name", name);
   io.mapRequired("shape", shape);
+}
+
+VariantResultInfo::VariantResultInfo(std::string name, GML::Variant variant)
+    : ResultInfo(std::move(name)), variant(variant) {}
+
+void VariantResultInfo::map(llvm::yaml::IO &io) {
+  io.mapRequired("name", name);
+  io.mapRequired("variant", variant);
 }
 
 ProcessedResults::ProcessedResults() : resultInfos(), counter(0), tensors(){};

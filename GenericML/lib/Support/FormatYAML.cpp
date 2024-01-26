@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/FormatYAML/FormatYAML.h"
+#include "GenericML/Support/FormatYAML.h"
 #include "GenericML/Support/ModelSpec.h"
 #include "GenericML/Support/QuantSpec.h"
 #include "GenericML/Support/ResultInfo.h"
@@ -375,12 +375,18 @@ void llvm::yaml::MappingTraits<M::TensorResultInfo>::mapping(
   io.mapOptional("shape", info.shape);
 }
 
+void llvm::yaml::MappingTraits<M::VariantResultInfo>::mapping(
+    IO &io, M::VariantResultInfo &info) {
+  io.mapRequired("name", info.name);
+  io.mapRequired("variant", info.variant);
+}
+
 void llvm::yaml::MappingTraits<std::shared_ptr<M::ResultInfo>>::mapping(
     IO &io, std::shared_ptr<M::ResultInfo> &info) {
   info->map(io);
 }
 
-LLCL::AnyAsyncValueRef
+ErrorOr<LLCL::AnyAsyncValueRef>
 M::getResultForBinaryOutput(const LLCL::AnyAsyncValueRef &out,
                             ProcessedResults &processedResults) {
   M::LLCL::CompactRuntimePtr runtime = out.getRuntime();
@@ -391,10 +397,12 @@ M::getResultForBinaryOutput(const LLCL::AnyAsyncValueRef &out,
         LLCL::AnyAsyncValueRef::createReady<GML::List>(runtime);
     out.get<GML::List>().getElements().reserve(
         castListValue->getElements().size());
-    for (const GML::Variant &elem : castListValue->getElements()) {
-      LLCL::AnyAsyncValueRef newElem =
+    for (GML::Variant &elem : castListValue->getElements()) {
+      ErrorOr<LLCL::AnyAsyncValueRef> newElemOr =
           getResultForBinaryOutput(elem.getValue(), processedResults);
-      out.get<GML::List>().getElements().push_back(newElem);
+      if (newElemOr->isError())
+        return newElemOr.takeError();
+      out.get<GML::List>().getElements().push_back(newElemOr.takeValue());
     }
     return out;
   }
@@ -404,10 +412,12 @@ M::getResultForBinaryOutput(const LLCL::AnyAsyncValueRef &out,
         LLCL::AnyAsyncValueRef::createReady<GML::Tuple>(runtime);
     out.get<GML::Tuple>().getElements().reserve(
         castTupleValue->getElements().size());
-    for (const GML::Variant &elem : castTupleValue->getElements()) {
-      LLCL::AnyAsyncValueRef newElem =
+    for (GML::Variant &elem : castTupleValue->getElements()) {
+      ErrorOr<LLCL::AnyAsyncValueRef> newElemOr =
           getResultForBinaryOutput(elem.getValue(), processedResults);
-      out.get<GML::Tuple>().getElements().push_back(newElem);
+      if (newElemOr->isError())
+        return newElemOr.takeError();
+      out.get<GML::Tuple>().getElements().push_back(newElemOr.takeValue());
     }
     return out;
   }
@@ -417,12 +427,17 @@ M::getResultForBinaryOutput(const LLCL::AnyAsyncValueRef &out,
         LLCL::AnyAsyncValueRef::createReady<GML::Dict>(runtime);
     out.get<GML::Dict>().getElements().reserve(
         castDictValue->getElements().size());
-    for (const auto &[key, value] : castDictValue->getElements()) {
-      LLCL::AnyAsyncValueRef newKey =
+    for (auto &[key, value] : castDictValue->getElements()) {
+      ErrorOr<LLCL::AnyAsyncValueRef> newKeyOr =
           getResultForBinaryOutput(key.getValue(), processedResults);
-      LLCL::AnyAsyncValueRef newValue =
+      ErrorOr<LLCL::AnyAsyncValueRef> newValueOr =
           getResultForBinaryOutput(value.getValue(), processedResults);
-      out.get<GML::Dict>().getElements().insert({newKey, newValue});
+      if (newKeyOr.isError())
+        return newKeyOr.takeError();
+      if (newValueOr.isError())
+        return newValueOr.takeError();
+      out.get<GML::Dict>().getElements().insert(
+          {newKeyOr.takeValue(), newValueOr.takeValue()});
     }
     return out;
   }
@@ -438,15 +453,12 @@ M::getResultForBinaryOutput(const LLCL::AnyAsyncValueRef &out,
     return out;
   }
   // Copy references to primitive types (string, double, long, bool, None).
-  return out.copy();
-}
-
-VariantResultInfo::VariantResultInfo(std::string name, GML::Variant variant)
-    : ResultInfo(std::move(name)), variant(variant) {}
-
-void VariantResultInfo::map(llvm::yaml::IO &io) {
-  io.mapRequired("name", name);
-  io.mapRequired("variant", variant);
+  if (isa<std::string>(out) || isa<float>(out) || isa<double>(out) ||
+      isa<bool>(out) || isa<int32_t>(out) || isa<int64_t>(out) ||
+      isa<uint32_t>(out) || isa<uint64_t>(out) || isa<GML::None>(out))
+    return out.copy();
+  else
+    return Error("unknown result");
 }
 
 llvm::yaml::MappingTraits<
