@@ -1111,6 +1111,7 @@ private:
   ErrorOr<MultiHeadAttentionNormalizationMatcher> normalizationMatcher =
       Error("Not set");
   ErrorOr<MultiHeadAttentionMaskingMatcher> maskingMatcher = Error("Not set.");
+  OpBuilder *builder = nullptr;
 
   ErrorOrSuccess hasExpectedRanks() {
     ErrorOrSuccess prologueOK = prologueMatcher->hasExpectedRanks();
@@ -1131,12 +1132,14 @@ private:
 
     return success();
   }
+
   MultiHeadAttentionPatternHelper() = default;
 
 public:
   static ErrorOr<MultiHeadAttentionPatternHelper> match(BatchMatmulOp finalOp,
                                                         OpBuilder &builder) {
     MultiHeadAttentionPatternHelper matcher;
+    matcher.builder = &builder;
 
     // Note we match things in a reverse-ward direction as we are given the
     // very final operation.
@@ -1223,8 +1226,8 @@ public:
   bool hasAttentionMask() { return maskingMatcher->hasAttentionMask(); }
 
   // layout s, S
-  TensorValue getAttentionMask(OpBuilder &builder) {
-    return maskingMatcher->extractCompatibleAttentionMask(builder, getQuery(),
+  TensorValue getAttentionMask() {
+    return maskingMatcher->extractCompatibleAttentionMask(*builder, getQuery(),
                                                           getKeyT());
   }
 
@@ -1238,8 +1241,8 @@ public:
   TensorValue getValue() { return epilogueMatcher->getValue(); }
 
   // the factor for mul. Q^K_t to be variance 1
-  TensorValue getNormScalar(OpBuilder &builder) {
-    return normalizationMatcher->getScalarValueForMul(builder);
+  TensorValue getNormScalar() {
+    return normalizationMatcher->getScalarValueForMul(*builder);
   }
 };
 
@@ -1258,25 +1261,26 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
     if (device && device.getLabel() != M::kCPULabel)
       return rewriter.notifyMatchFailure(op->getLoc(), "Devices are wrong.");
 
-    ErrorOr<MultiHeadAttentionPatternHelper> maybeMatcher =
+    ErrorOr<MultiHeadAttentionPatternHelper> matcher =
         MultiHeadAttentionPatternHelper::match(op, rewriter);
-    if (maybeMatcher.isError())
-      return rewriter.notifyMatchFailure(op.getLoc(), maybeMatcher.getError());
+    if (matcher.isError())
+      return rewriter.notifyMatchFailure(op.getLoc(), matcher.getError());
 
-    MultiHeadAttentionPatternHelper matcher = maybeMatcher.takeValue();
-
+    // NOTE: the creation of `matcher` must imply future success()
+    // as it has a handle to the rewriter which can be used to create new ops.
+    // Creating new ops and then returning failure may result in the pass
+    // not converging (as the new ops will tend to be DCEd.).
     // Attention masking case
-    if (matcher.hasAttentionMask()) {
-      ErrorOr<TensorValue> maybeAttentionMask =
-          matcher.getAttentionMask(rewriter);
+    if (matcher->hasAttentionMask()) {
+      ErrorOr<TensorValue> maybeAttentionMask = matcher->getAttentionMask();
 
       if (maybeAttentionMask.isError())
         return rewriter.notifyMatchFailure(op->getLoc(),
                                            maybeAttentionMask.getError());
 
       SmallVector<Value> inputValues = {
-          matcher.getQuery(), matcher.getKeyT(), matcher.getValue(),
-          maybeAttentionMask.takeValue(), matcher.getNormScalar(rewriter)};
+          matcher->getQuery(), matcher->getKeyT(), matcher->getValue(),
+          maybeAttentionMask.takeValue(), matcher->getNormScalar()};
       SmallVector<Type> outputTypes = {op.getType()};
       ValueRange inputs(inputValues);
       TypeRange outputTy(outputTypes);
@@ -1288,9 +1292,9 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
       rewriter.replaceAllUsesWith(op, fused_kernel_result);
     } else {
       // No attention masking case
-      SmallVector<Value> inputValues = {matcher.getQuery(), matcher.getKeyT(),
-                                        matcher.getValue(),
-                                        matcher.getNormScalar(rewriter)};
+      SmallVector<Value> inputValues = {matcher->getQuery(), matcher->getKeyT(),
+                                        matcher->getValue(),
+                                        matcher->getNormScalar()};
       SmallVector<Type> outputTypes = {op.getType()};
       ValueRange inputs(inputValues);
       TypeRange outputTy(outputTypes);
