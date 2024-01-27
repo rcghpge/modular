@@ -843,7 +843,7 @@ public:
 
   bool hasAttentionMask() { return attentionMask != nullptr; }
   TensorValue getRawAttentionMask() { return attentionMask; }
-  TensorValue getPatternInput() { return patternInput; }
+  TensorValue getTopOfPattern() { return patternInput; }
 
   TensorValue extractCompatibleAttentionMask(OpBuilder &builder,
                                              TensorValue query,
@@ -1031,7 +1031,7 @@ private:
 
 public:
   static ErrorOr<MultiHeadAttentionPrologueMatcher>
-  match(BatchMatmulOp producingOp) {
+  match(Operation *producingOp) {
     MultiHeadAttentionPrologueMatcher matcher;
     auto pQ = m_Any(&matcher.query);
     auto pKT = m_Any(&matcher.keyT);
@@ -1041,8 +1041,8 @@ public:
     auto pAttentionMatrix =
         m_Op<BatchMatmulOp>(&attentionMatrixProducer, pQ, pKT);
 
-    bool matches = pAttentionMatrix.match(producingOp.getOperation(),
-                                          &matcher.patternMatcherLogger);
+    bool matches =
+        pAttentionMatrix.match(producingOp, &matcher.patternMatcherLogger);
     if (!matches) {
       return Error("[MultiHeadAttentionPrologueMatcher]: " +
                    getPatternMatchingError(matcher.patternMatcherLogger));
@@ -1090,7 +1090,7 @@ class MultiHeadAttentionPatternHelper {
     **Step 2:
     norm = broadcast_to(normScalar, shape_of(attentionMatrix))
 
-    ** Step 3:
+    **Step 3:
     # Normalize and apply masking
     # This is optional, else `attentionMatrixNorm = attentionMatrix`
     attentionMatrixNorm = attentionMatrix * norm
@@ -1139,53 +1139,76 @@ public:
     MultiHeadAttentionPatternHelper matcher;
 
     // Note we match things in a reverse-ward direction as we are given the
-    // very final operation. We then bubble our way up.
-    // **Step 4:
+    // very final operation.
+    //
+    // This is done by using a set of composable patterns:
+    //
+    //   D                     C                      B                   A
+    // <----[BOTTOM PATTERN] <---- [MIDDLE PATTERN] <---- [TOP PATTERN] <----
+    //
+    // In general each pattern matches against the **output** and we derive
+    // the **input**. This input is the output of the next pattern to match
+    // against. For example, we match BOTTOM against `D` and derive `C`
+    // we use against MIDDLE.
+    //
+    // The initial finalOp corresponds to `D` in this diagram.
+
+    // This helper functions ensures the input to each pattern has a defining
+    // op and has one use and returns the next Operation* to match against.
+    auto checkInputToPattern =
+        [](TensorValue topOfPattern,
+           const std::string &name) -> ErrorOr<Operation *> {
+      Twine errMsgRoot =
+          Twine("[MultiHeadAttentionPatternHelper] Intermediate value ") +
+          Twine(name) + Twine(": ");
+      if (!topOfPattern)
+        return Error(errMsgRoot + Twine("is nullptr!"));
+
+      if (!topOfPattern.hasOneUse())
+        return Error(errMsgRoot + Twine("has more than one use!"));
+
+      Operation *definingOp = topOfPattern.getDefiningOp();
+      if (!definingOp)
+        return Error(errMsgRoot + Twine("has no defining op!"));
+
+      return definingOp;
+    };
+
+    // **Step 4: Match epilogue
     matcher.epilogueMatcher = MultiHeadAttentionEpilogueMatcher::match(finalOp);
     if (matcher.epilogueMatcher.isError())
       return matcher.epilogueMatcher.takeError();
-    TensorValue epilogueTopOfPattern =
-        matcher.epilogueMatcher->getTopOfPattern();
-    if (!epilogueTopOfPattern.hasOneUse())
-      return Error("Softmax result has more than one use.");
-    Operation *epilogueTopOfPatternProducer =
-        epilogueTopOfPattern.getDefiningOp();
-    if (!epilogueTopOfPatternProducer)
-      return Error("Softmax result does not have a defining op.");
 
-    // **Step 3:
-    // attention mask (optional)
+    ErrorOr<Operation *> maskPatternBottom = checkInputToPattern(
+        matcher.epilogueMatcher->getTopOfPattern(), "softmax");
+    if (maskPatternBottom.isError())
+      return maskPatternBottom.takeError();
+
+    // **Step 3: Match masking
     matcher.maskingMatcher =
-        MultiHeadAttentionMaskingMatcher::match(epilogueTopOfPatternProducer);
+        MultiHeadAttentionMaskingMatcher::match(*maskPatternBottom);
     if (matcher.maskingMatcher.isError())
       return matcher.maskingMatcher.takeError();
 
-    TensorValue maskingTopOfPatternValue =
-        matcher.maskingMatcher->getPatternInput();
-    if (!maskingTopOfPatternValue.hasOneUse())
-      return Error("Multiple use of top of mask pattern.");
-    Operation *topOfMaskPattern = maskingTopOfPatternValue.getDefiningOp();
-    if (!topOfMaskPattern)
-      return Error("Top of mask pattern has no defining op.");
+    ErrorOr<Operation *> normPatternBottom = checkInputToPattern(
+        matcher.maskingMatcher->getTopOfPattern(), "mask_input");
+    if (normPatternBottom.isError())
+      return normPatternBottom.takeError();
 
     // **Step 2: Match normalization
     matcher.normalizationMatcher =
-        MultiHeadAttentionNormalizationMatcher::match(topOfMaskPattern);
+        MultiHeadAttentionNormalizationMatcher::match(*normPatternBottom);
     if (matcher.normalizationMatcher.isError())
       return matcher.normalizationMatcher.takeError();
 
-    TensorValue normalizationTopOfPattern =
-        matcher.normalizationMatcher->getTopOfPattern();
-    if (!normalizationTopOfPattern.hasOneUse())
-      return Error("Attention Matrix has more than one use!");
-    BatchMatmulOp attentionMatrixProducer =
-        normalizationTopOfPattern.getDefiningOp<BatchMatmulOp>();
-    if (!attentionMatrixProducer)
-      return Error("Attention Matrix is not produced by a BatchMatmulOp!");
+    ErrorOr<Operation *> prologuePatternBottom = checkInputToPattern(
+        matcher.normalizationMatcher->getTopOfPattern(), "attention_matrix");
+    if (prologuePatternBottom.isError())
+      return prologuePatternBottom.takeError();
 
     // **Step 1: Match the prologue
     matcher.prologueMatcher =
-        MultiHeadAttentionPrologueMatcher::match(attentionMatrixProducer);
+        MultiHeadAttentionPrologueMatcher::match(*prologuePatternBottom);
     if (matcher.prologueMatcher.isError())
       return matcher.prologueMatcher.takeError();
 
