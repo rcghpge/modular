@@ -334,3 +334,16 @@ mo.graph @expand_apply_mosh_broadcast<D0, D1 -> O0, O1>(
   // CHECK-NEXT: mo.output<cond(eq([[D0]], 1), [[D1]], [[D0]]), cond(eq([[D0]], 1), [[D1]], [[D0]])> [[V0]] : !mo.tensor<[cond(eq([[D0]], 1), [[D1]], [[D0]]), cond(eq([[D0]], 1), [[D1]], [[D0]])], f32>
   mo.output<R1, R1> %out : !mo.tensor<[R1, R1], f32>
 }
+
+// CHECK-LABEL: mo.graph @update_param_declare_rhs
+// CHECK-SAME:  <[[D1:.*]]>() no_inline {
+mo.graph @update_param_declare_rhs<D1>() {
+  // In cases like this, where we do some folding in the RHS of a
+  // `kgen.param.decalre`, we still want to update the RHS to the simplified
+  // version in the IR (not just in the evaluator during the pass).
+
+  // CHECK-NEXT: kgen.param.declare {{.*}}: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "test" : !kgen.string}, eq([[D1]], 1))>
+  // CHECK-NEXT: mo.output
+  kgen.param.declare CH: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "test" : !kgen.string}, eq(cond(eq(D1, -1), 1, D1), 1))>
+  mo.output
+}

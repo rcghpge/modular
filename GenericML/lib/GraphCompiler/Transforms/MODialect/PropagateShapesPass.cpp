@@ -690,14 +690,15 @@ struct PropagateShapesPass
           continue;
 
         KGEN::ParamDeclAttr declAttr = declOp.getParamDecl();
-        auto reboundDeclAttr =
+        auto foldedRhsAttr =
             cast<TypedAttr>(evaluator.getReboundAttribute(declOp.getValue()));
 
         // Apply shape-inference specific folding
-        reboundDeclAttr = tryFoldExprAttr(reboundDeclAttr);
+        foldedRhsAttr = tryFoldExprAttr(foldedRhsAttr);
+        declOp.setValueAttr(foldedRhsAttr);
 
         auto paramOperatorAttr =
-            dyn_cast<KGEN::ParamOperatorAttr>(reboundDeclAttr);
+            dyn_cast<KGEN::ParamOperatorAttr>(foldedRhsAttr);
         // If the param expression cannot be nested, we either map the decl to
         // itself or to a previous decl that has the same expression. The goal
         // here is maximize textual equality for expression, e.g.,
@@ -713,6 +714,7 @@ struct PropagateShapesPass
           //   static.broadcast_to(...) : <[D0], f32> -> <[D1], f32>
           if (auto existingDeclRef = exprToDeclRef.lookup(paramOperatorAttr)) {
             evaluator.setParameterValue(declAttr, existingDeclRef);
+            declOp.setValueAttr(existingDeclRef);
 
             // Else we remember this decl has this expression.
           } else {
@@ -724,7 +726,7 @@ struct PropagateShapesPass
 
         } else {
           // The param expression can be nested, so we just record it as is.
-          evaluator.setParameterValue(declAttr, reboundDeclAttr);
+          evaluator.setParameterValue(declAttr, foldedRhsAttr);
         }
       }
     }
