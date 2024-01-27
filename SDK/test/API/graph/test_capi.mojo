@@ -4,16 +4,10 @@
 #
 # ===----------------------------------------------------------------------=== #
 # UNSUPPORTED: windows
-# RUN: mojo -D TEMP_DIR=%T %s | FileCheck %s
-# RUN: mt -execute %T/module_to_bytecode.bin | FileCheck %s --check-prefix=CHECK-MTB
-
-from sys.param_env import env_get_string
+# RUN: mojo %s | FileCheck %s
 
 import mlir
 from max.graph import capi
-
-
-alias TEMP_DIR = Path(env_get_string["TEMP_DIR"]())
 
 
 fn test_empty_module() raises:
@@ -159,59 +153,9 @@ fn test_const_op() raises:
         print(m)
 
 
-fn test_bytecode_output() raises:
-    with mlir.Context() as ctx:
-        ctx.load_modular_dialects()
-        ctx.load_all_available_dialects()
-        let unknown = mlir.Location.unknown(ctx)
-        var m = mlir.Module(unknown)
-
-        let void = capi.arity_new()
-
-        var outs = capi.arity_new()
-        let scalarShape = DynamicVector[Int64]()
-        let intScalar = capi.tensor_type_new(
-            m, capi.dtype_new(m, DType.int32), scalarShape, True
-        )
-        capi.arity_append_type(outs, intScalar)
-
-        let g = capi.graph_new(m, unknown, "bytecode_output", void, outs)
-
-        var attrs = capi.attr_map_new()
-        var val: Int32 = 7
-        let a = capi.attr_new_tensor(
-            m,
-            "value",
-            DTypePointer[DType.int32].address_of(val).bitcast[DType.invalid](),
-            intScalar,
-            is_owned=False,
-        )
-        capi.attr_map_add_attr(attrs, a)
-
-        let noIns = capi.tuple_new()
-        let x = capi.graph_new_op(g, unknown, "mo.constant", noIns, outs, attrs)
-
-        var rets = capi.tuple_new()
-        let x0 = capi.tuple_get_symbol(x, 0)
-        capi.tuple_append_symbol(rets, x0)
-
-        let noAttrs = capi.attr_map_new()
-
-        _ = capi.graph_new_op(g, unknown, "mo.output", rets, void, noAttrs)
-
-        # CHECK: True
-        # CHECK-MTB{LITERAL}: 'bytecode_output' returned tensor([[7]], dtype=si32, shape=[])
-        print(
-            capi.module_to_bytecode(
-                m, (TEMP_DIR / "module_to_bytecode.bin").__str__()
-            )
-        )
-
-
 fn main() raises:
     test_empty_module()
     test_empty_graph()
     test_identity_graph()
     test_tuple_copy()
     test_const_op()
-    test_bytecode_output()

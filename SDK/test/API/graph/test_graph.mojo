@@ -4,11 +4,17 @@
 #
 # ===----------------------------------------------------------------------=== #
 # UNSUPPORTED: windows
-# RUN: mojo %s | FileCheck %s
+# RUN: mojo -D TEMP_DIR=%T %s | FileCheck %s
+# RUN: mt -execute %T/module_to_bytecode.bin | FileCheck %s --check-prefix=CHECK-MTB
+# RUN: mt -execute %T/module_save_to_file.bin | FileCheck %s --check-prefix=CHECK-MTB2
 
-from tensor import Tensor
+from sys.param_env import env_get_string
+from tensor import Tensor, TensorShape
 
 from max.graph import *
+
+
+alias TEMP_DIR = Path(env_get_string["TEMP_DIR"]())
 
 
 fn test_identity_graph() raises:
@@ -59,7 +65,38 @@ fn test_add_constant() raises:
     print(m.__str__())
 
 
+# CHECK-LABEL: test_bytecode_output
+fn test_bytecode_output() raises:
+    print("test_bytecode_output")
+    let m = Module()
+    let g = m.graph("bytecode_output", Arity(), Arity(m.i32()))
+    let x = g.constant(Tensor[DType.int32](TensorShape(), 7))
+    g.output(x)
+
+    # CHECK: True
+    # CHECK-MTB{LITERAL}: 'bytecode_output' returned tensor([[7]], dtype=si32, shape=[])
+    with open(TEMP_DIR / "module_to_bytecode.bin", "w") as f:
+        print("True")
+        f.write(m.m.as_op().bytecode())
+
+
+# CHECK-LABEL: test_save_to_file
+fn test_save_to_file() raises:
+    print("test_save_to_file")
+    let m = Module()
+    let g = m.graph("save_to_file", Arity(), Arity(m.i32()))
+    let x = g.constant(Tensor[DType.int32](TensorShape(), 7))
+    g.output(x)
+
+    # CHECK: True
+    # CHECK-MTB2{LITERAL}: 'save_to_file' returned tensor([[7]], dtype=si32, shape=[])
+    print("True")
+    m.save_to_file(TEMP_DIR / "module_save_to_file.bin")
+
+
 fn main() raises:
     test_identity_graph()
     test_basic_add()
     test_add_constant()
+    test_bytecode_output()
+    test_save_to_file()

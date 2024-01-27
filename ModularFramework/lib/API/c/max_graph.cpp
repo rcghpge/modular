@@ -145,19 +145,6 @@ MODULAR_API_EXPORT M_Tuple *MAXG_graphNewOp(M_Graph *g, MlirLocation l,
 }
 
 //===----------------------------------------------------------------------===//
-// Module support
-//===----------------------------------------------------------------------===//
-
-MODULAR_API_EXPORT bool MAXG_moduleToBytecode(const MlirModule m,
-                                              StringRef fileName) {
-  std::error_code ec;
-  raw_fd_stream fs(fileName, ec);
-  if (ec)
-    return false;
-  return writeBytecodeToFile(unwrap(m), fs).succeeded();
-}
-
-//===----------------------------------------------------------------------===//
 // Symbol support
 //===----------------------------------------------------------------------===//
 
