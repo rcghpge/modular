@@ -124,6 +124,7 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
   GET_SYMBOL(newCompileConfig, M_newCompileConfig);
   GET_SYMBOL(freeCompileConfig, M_freeCompileConfig);
   GET_SYMBOL(setNumThreads, M_setNumThreads);
+  GET_SYMBOL(setAllocatorType, M_setAllocatorType);
   GET_SYMBOL(setModelPath, M_setModelPath);
   GET_SYMBOL(setDevice, M_setDevice);
 
