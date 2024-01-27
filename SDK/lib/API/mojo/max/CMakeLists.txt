@@ -55,6 +55,6 @@ add_dependencies(max-mojo mlir-mojo-api)
 # process in more detail.
 install(
   FILES $<TARGET_PROPERTY:max-mojo,PACKAGE_LOCATION>
-  DESTINATION "modular-ai-engine-tuf/pkg"
+  DESTINATION "pkg"
   COMPONENT max-graph
 )
