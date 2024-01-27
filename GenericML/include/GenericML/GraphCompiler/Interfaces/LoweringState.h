@@ -53,6 +53,20 @@ public:
               ->tensorType(this->graph.getContext(),
                            MGP::createCpuTensorSpecType(type));
         });
+    typeConverter.addConversion([this](
+                                    MO::ListType type) -> std::optional<Type> {
+      auto tensorTy = dyn_cast<MO::TensorType>(type.getElementType());
+      // TODO(#29947): Support other element types
+      GENERICML_ASSERT(tensorTy) << "only support lowering list of tensors";
+
+      MLIRContext *ctx = type.getContext();
+      MGP::TensorSpecType tensorSpecTy = MGP::createCpuTensorSpecType(tensorTy);
+      DeviceRefAttr tensorDeviceRef =
+          MO::getDeviceOrDefault(this->getGraph(), tensorTy);
+      MGP::TypeBuilder *typeBuilder = getTypeBuilder(tensorDeviceRef);
+      auto mgpTensorTy = typeBuilder->tensorType(ctx, tensorSpecTy);
+      return cast<Type>(MGP::ListType::get(ctx, mgpTensorTy));
+    });
     // Add converters for foreign types via the ConvertibleToMGPTypeInterface.
     typeConverter.addConversion([](Type type) -> std::optional<Type> {
       if (auto interface = dyn_cast<ConvertibleToMGPTypeInterface>(type))

@@ -13,6 +13,7 @@
 
 include "GenericML/MGPDialect/MGPDialect.td"
 include "GenericML/MGPDialect/MGPTypeInterfaces.td"
+include "GraphRT/MEFDialect/MEFTypeInterfaces.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"
 include "mlir/IR/AttrTypeBase.td"
@@ -238,7 +239,8 @@ def MGP_CpuTensorType : MGP_Type<"CpuTensor", "cpu.tensor", [
 // ListType
 //===----------------------------------------------------------------------===//
 
-def MGP_List : MGP_Type<"List", "list"> {
+def MGP_List : MGP_Type<"List", "list",
+  [DeclareTypeInterfaceMethods<MEF_AnyTypeInterface>]> {
   let summary = "Type of immutable list container.";
   let description = [{
     This type represents an immutable list of elements.

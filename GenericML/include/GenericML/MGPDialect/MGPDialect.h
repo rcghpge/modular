@@ -7,6 +7,7 @@
 #ifndef GENERICML_MGPDIALECT_MGPDIALECT_H
 #define GENERICML_MGPDIALECT_MGPDIALECT_H
 
+#include "GraphRT/MEFDialect/MEFTypes.h"
 #include "Support/MDialect/MDialect.h"
 #include "mlir/IR/Dialect.h"
 

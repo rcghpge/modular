@@ -356,7 +356,7 @@ LogicalResult MOGraphLowering::createModelOp() {
 
 MGP::ListType MOGraphLowering::lowerListType(MO::ListType listTy) {
   auto outputTensorTy = dyn_cast<MO::TensorType>(listTy.getElementType());
-  // TODO support other element type
+  // TODO(#29947): Support other element types
   GENERICML_ASSERT(outputTensorTy) << "only support lowering list of tensors";
 
   MLIRContext *ctx = listTy.getContext();

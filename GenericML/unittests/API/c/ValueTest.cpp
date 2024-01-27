@@ -8,9 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "modular/c/value.h"
 #include "modular/c/common.h"
 #include "modular/c/tensor.h"
-#include "modular/c/value.h"
 #include "modular/cpp/aliases.h"
 #include "gtest/gtest.h"
 
@@ -21,7 +21,7 @@ using namespace M;
 
 namespace {
 
-struct AIEngineTorchValueTest : ::testing::Test {
+struct AIEngineValueTest : ::testing::Test {
   StatusPtr status = {M_newStatus(), &M_freeStatus};
 
   RuntimeConfigPtr config = {M_newRuntimeConfig(), &M_freeRuntimeConfig};
@@ -31,7 +31,7 @@ struct AIEngineTorchValueTest : ::testing::Test {
 };
 } // namespace
 
-TEST_F(AIEngineTorchValueTest, DictTest) {
+TEST_F(AIEngineValueTest, DictTest) {
   ValuePtr dictValue = {M_createDictAsyncValue(context.get()), M_freeValue};
 
   EXPECT_EQ(M_getValueType(dictValue.get()), M_ValueType::M_DICT_VALUE);
@@ -76,7 +76,7 @@ TEST_F(AIEngineTorchValueTest, DictTest) {
   M_freeDict(dict);
 }
 
-TEST_F(AIEngineTorchValueTest, ListTest) {
+TEST_F(AIEngineValueTest, ListTest) {
   ValuePtr listValue = {M_createListAsyncValue(context.get()), M_freeValue};
   ValuePtr tupleValue = {M_createTupleAsyncValue(context.get()), M_freeValue};
   ValuePtr dictValue = {M_createDictAsyncValue(context.get()), M_freeValue};
@@ -99,7 +99,7 @@ TEST_F(AIEngineTorchValueTest, ListTest) {
   M_freeList(list);
 }
 
-TEST_F(AIEngineTorchValueTest, TupleTest) {
+TEST_F(AIEngineValueTest, TupleTest) {
   ValuePtr tupleValue = {M_createTupleAsyncValue(context.get()), M_freeValue};
 
   EXPECT_EQ(M_getValueType(tupleValue.get()), M_ValueType::M_TUPLE_VALUE);
@@ -127,7 +127,7 @@ TEST_F(AIEngineTorchValueTest, TupleTest) {
   M_freeTuple(tuple);
 }
 
-TEST_F(AIEngineTorchValueTest, ValueMapTest) {
+TEST_F(AIEngineValueTest, ValueMapTest) {
   TensorMapPtr tensorMap = {M_newAsyncTensorMap(context.get()),
                             &M_freeAsyncTensorMap};
 
