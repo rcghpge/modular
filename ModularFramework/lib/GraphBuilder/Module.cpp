@@ -82,28 +82,6 @@ mlir::Type Module::newTensorType(mlir::Type elementType, bool ranked,
   }
 }
 
-mlir::Type Module::f32(ArrayRef<int64_t> shape) {
-  return MO::TensorType::get(shape, Float32Type::get(op.getContext()));
-}
-
-mlir::Type Module::ui(uint64_t width, ArrayRef<int64_t> shape) {
-  return MO::TensorType::get(
-      shape, IntegerType::get(op->getContext(), width, IntegerType::Unsigned));
-}
-
-mlir::Type Module::si(uint64_t width, ArrayRef<int64_t> shape) {
-  return MO::TensorType::get(
-      shape, IntegerType::get(op->getContext(), width, IntegerType::Signed));
-}
-
-mlir::Type Module::bool_(ArrayRef<int64_t> shape) {
-  // There's no constructor for (shape, dtype) yet, but
-  // signless with width 1 is hard-coded to end up as a DType::kBool tensor
-  // in getEquivalentDtype().
-  return MO::TensorType::get(
-      shape, IntegerType::get(op->getContext(), 1, IntegerType::Signless));
-}
-
 mlir::NamedAttribute Module::tensorAttr(StringRef name, ArrayRef<uint8_t> data,
                                         mlir::Type t, bool owned) {
   if (shouldUseOutOfLineAttrStorage(data.size()))

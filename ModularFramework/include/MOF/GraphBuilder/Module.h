@@ -35,11 +35,6 @@ public:
   mlir::Type newTensorType(mlir::Type elementType, bool ranked,
                            llvm::ArrayRef<int64_t> dims);
 
-  mlir::Type f32(llvm::ArrayRef<int64_t> shape);
-  mlir::Type ui(uint64_t width, llvm::ArrayRef<int64_t> shape);
-  mlir::Type si(uint64_t width, llvm::ArrayRef<int64_t> shape);
-  mlir::Type bool_(llvm::ArrayRef<int64_t> shape);
-
   mlir::NamedAttribute stringAttr(llvm::StringRef name, llvm::StringRef value);
   // Guaranteed to take ownership of `data` with a dense resource if `owned`.
   // Otherwise, copies `data`; may use dense resource or ArrayElementsAttr.
