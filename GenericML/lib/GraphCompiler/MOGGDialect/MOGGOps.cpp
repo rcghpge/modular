@@ -278,8 +278,8 @@ static void printLambda(OpAsmPrinter &p, mlir::Operation *lambda,
   auto func = cast<FunctionType>(sig.getValue());
 
   // TODO: what conventions should we use here?
-  SmallVector<KGEN::ValueInputConvention> conventions(
-      func.getInputs().size(), KGEN::ValueInputConvention::None);
+  SmallVector<KGEN::ArgConvention> conventions(func.getInputs().size(),
+                                               KGEN::ArgConvention::None);
   auto funcType = FunctionType::get(lambda->getContext(), func.getInputs(),
                                     func.getResults());
   auto sigTy = KGEN::SignatureType::get(funcType, conventions);
@@ -723,8 +723,8 @@ static void printKernel(OpAsmPrinter &p, mlir::Operation *kernel,
 
   auto functionType =
       FunctionType::get(kernel->getContext(), operandTypes, resultTypes);
-  SmallVector<KGEN::ValueInputConvention> conventions(
-      operandTypes.size(), KGEN::ValueInputConvention::None);
+  SmallVector<KGEN::ArgConvention> conventions(operandTypes.size(),
+                                               KGEN::ArgConvention::None);
 
   KGEN::printFunctionSignature(p, &region, /*inputParams=*/{},
                                /*resultParams=*/{}, functionType,
