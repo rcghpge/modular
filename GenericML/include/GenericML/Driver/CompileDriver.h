@@ -9,18 +9,14 @@
 
 #include "GenericML/GraphCompiler/Passes.h"
 #include "LLCL/ForwardDecls.h"
+#include "Support/Buffer.h"
 #include "Support/LLVMCompilerForwardDecls.h"
-
-namespace llvm {
-class MemoryBuffer;
-}
 
 namespace M {
 
-/// Given an MLIR module with a MEF-compatible encoding, emit it to MEF using
-/// the provided output stream.
-LogicalResult convertToMEF(ModuleOp module, raw_ostream &os,
-                           bool enableMEFMetadata);
+/// Given an MLIR module with a MEF-compatible encoding,
+/// returns BufferRef with encoded MEF.
+ErrorOr<BufferRef> convertToMEF(ModuleOp module, bool enableMEFMetadata);
 
 } // namespace M
 

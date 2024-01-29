@@ -281,21 +281,35 @@ int main(int argc, char **argv) {
       }
 
       // Otherwise, compile it.
-      if (auto err = dylib.compileToBinary(frameworkCtx, *inputInfo.file,
-                                           outputFile->os(), inputInfo.format))
-        return options.reportError(err.getError());
+      auto bufferOr = dylib.compileToBinary(frameworkCtx, *inputInfo.file,
+                                            inputInfo.format);
+      if (bufferOr.isError())
+        return options.reportError(bufferOr.getError());
 
+      M::BufferRef buffer = bufferOr.takeValue();
+      outputFile->os().write(buffer->getBufferStart(), buffer->getBufferSize());
       outputFile->keep();
       return EXIT_SUCCESS;
     }
+
+    M::BufferRef buffer;
 
     // If we are not inspecting, we must need a compiled format.  If this is
     // already done then we're golden, otherwise compile now.
     if (inputInfo.format != FileFormat::kMEFFile &&
         !dylib.isBinary(frameworkCtx, *inputInfo.file, inputInfo.format)) {
-      if (auto err = dylib.compileToBinary(frameworkCtx, inputInfo.file,
-                                           inputInfo.format))
-        return options.reportError(err.getError());
+      auto bufferOr = dylib.compileToBinary(frameworkCtx, *inputInfo.file,
+                                            inputInfo.format);
+      if (bufferOr.isError())
+        return options.reportError(bufferOr.getError());
+
+      buffer = bufferOr.takeValue();
+
+      // Rest of the pipeline is in llvm::MemoryBuffer and hasn't migrated yet.
+      // So we will hold data in BufferRef and handle an aliased buffer to
+      // those.
+      inputInfo.file = llvm::MemoryBuffer::getMemBuffer(
+          buffer->getMemBufferRef(), /*RequiresNullTerminator=*/false);
     }
 
     // Otherwise we must be getting op-level information about the model or

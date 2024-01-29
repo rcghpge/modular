@@ -214,9 +214,9 @@ bool M_isBinary(FrameworkContextHandle ctx, const llvm::MemoryBufferRef &file,
   return false;
 }
 
-ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
-                                 const llvm::MemoryBufferRef &file,
-                                 raw_ostream &os, FileFormat format) {
+ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
+                                       const llvm::MemoryBufferRef &file,
+                                       FileFormat format) {
   auto *mofContext = ctxHandle.unwrap<MOFContext>();
   // Create a runtime to use during compilation. It will convey global options
   // to the passes which need them.
@@ -278,15 +278,16 @@ ErrorOrSuccess M_compileToBinary(FrameworkContextHandle ctxHandle,
     return Error("cannot lower to MEF data of format " + identity);
   }
 
-  if (failed(
-          convertToMEF(module.get(), os, mofContext->getEnableMEFMetadata())))
+  auto bufOr = convertToMEF(module.get(), mofContext->getEnableMEFMetadata());
+  if (bufOr.isError())
     return Error("unable to convert file to a MEF binary");
-  return success();
+  M::BufferRef outputBuffer = bufOr.takeValue();
+  return outputBuffer.release();
 }
 
-ErrorOrSuccess M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle,
-                                           void *source, raw_ostream &os,
-                                           FileFormat format) {
+M::ErrorOr<M::Buffer *>
+M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
+                            FileFormat format) {
   auto *mofContext = ctxHandle.unwrap<MOFContext>();
   auto ownedRuntime = LLCL::createRuntimeIfNeeded();
   ModuleOp moduleOp = ModuleOp::getFromOpaquePointer(source);
@@ -305,10 +306,14 @@ ErrorOrSuccess M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle,
   if (failed(lowerMOToMGP(moduleOp, moToMgpOptions, *ownedRuntime)))
     return Error("unable to lower MO to MGP");
 
-  if (failed(convertToMEF(moduleOp, os, mofContext->getEnableMEFMetadata())))
+  if (failed(convertToMEF(moduleOp, mofContext->getEnableMEFMetadata())))
     return Error("unable to convert file to a MEF binary");
 
-  return success();
+  auto bufOr = convertToMEF(moduleOp, mofContext->getEnableMEFMetadata());
+  if (bufOr.isError())
+    return Error("unable to convert file to a MEF binary");
+  M::BufferRef outputBuffer = bufOr.takeValue();
+  return outputBuffer.release();
 }
 
 ErrorOrSuccess M_openBinaryFile(FrameworkContextHandle ctx,

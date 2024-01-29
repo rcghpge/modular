@@ -947,11 +947,12 @@ ConstantFoldPass::lowerSubgraphs(ModuleOp module, LLCL::Runtime &runtime) {
   if (failed(runPipeline(pm, module)))
     return Error("Failed to run MOToMGP pipeline");
 
-  auto buf = M::WriteableBuffer::get(0, /*alignment=*/0x4000);
-  if (failed(convertToMEF(module, *buf, false)))
+  auto bufOr = convertToMEF(module, false);
+  if (bufOr.isError())
     return Error("unable to convert file to a MEF binary");
+  BufferRef buf = bufOr.takeValue();
 
-  auto mefFileOr = MEFFile::open(buf->Buffer::getBuffer());
+  auto mefFileOr = MEFFile::open(buf->getBuffer());
   if (mefFileOr.isError())
     return mefFileOr.takeError();
   auto modelsOr = loadMGPMEFFile(std::move(*mefFileOr));
