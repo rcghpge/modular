@@ -473,7 +473,7 @@ executeModelSynchronously(Runtime &runtime, ExecutableModel &executableModel,
 /// the runtime for each evaluation.
 static ErrorOr<std::unique_ptr<ExecutableModel>>
 executeModel(const Model *model, Runtime &runtime,
-             const ExecutorDriverCLOptions &options,
+             const ExecutorDriverOptions &options,
              ArrayRef<QuantTensorSpec> inputSpecs, unsigned int numRuns,
              unsigned int numWarmup) {
   std::unique_ptr<llvm::raw_fd_ostream> optTimingOs;
@@ -650,7 +650,7 @@ static void saveInputSpecs(ArrayRef<QuantTensorSpec> specs,
 /// Run `model` using the command line options flags configured by the user.
 LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
                           LLCL::Runtime &runtime,
-                          const ExecutorDriverCLOptions &options) {
+                          const ExecutorDriverOptions &options) {
   // Make sure any borrowed strings accumulated during profiling are
   // converted to owned strings before the MEFFile they are borrowed from
   // is destroyed.
@@ -679,8 +679,8 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
   saveInputSpecs(inputSpecs, runtime.getProfiler());
 
   if (options.benchmarkMode) {
-    int numWarmup = options.numWarmup.getValue();
-    if (options.numRuns.getValue() > 2) {
+    int numWarmup = options.numWarmup;
+    if (options.numRuns > 2) {
       // If it's not the default 1, the user most likely set it; warn them
       // about that.
       llvm::errs() << "WARNING: num-runs is ignored in benchmarking mode. "
@@ -710,9 +710,8 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
       return failure(options.reportError(err.getError()));
 
   } else {
-    auto executableModelOr =
-        executeModel(model, runtime, options, inputSpecs,
-                     options.numRuns.getValue(), options.numWarmup.getValue());
+    auto executableModelOr = executeModel(model, runtime, options, inputSpecs,
+                                          options.numRuns, options.numWarmup);
     if (executableModelOr.isError())
       return failure(options.reportError(executableModelOr.getError()));
   }
@@ -725,7 +724,7 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
 ErrorOrSuccess
 M::runModelWithData(MLIRContext *ctx, const Model *model,
                     LLCL::Runtime &runtime,
-                    const ExecutorDriverCLOptions &options,
+                    const ExecutorDriverOptions &options,
                     const llvm::SmallVector<const void *> &inputs,
                     llvm::SmallVector<void *> &outputs) {
   GENERICML_ASSERT(inputs.size() == model->getInputSpecs().size())

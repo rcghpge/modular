@@ -25,36 +25,60 @@ namespace {
 // GenericDriverCLOptions
 //===--------------------------------------------------------------------===//
 
-class GenericDriverCLOptions : public DriverCommandOptions,
-                               public DriverInputFormatOptions,
-                               public CommonCLOptions {
-private:
-  llvm::cl::OptionCategory GenericDriverCLOptionsCategory{
-      "Generic driver options"};
-
+class GenericDriverOptions : public DriverCommandOptions,
+                             public DriverInputFormatOptions,
+                             public CommonOptions {
 public:
-  using CommonCLOptions::CommonCLOptions;
-
   //===--------------------------------------------------------------------===//
   // Force loading a specific dylib
   //===--------------------------------------------------------------------===//
 
-  cl::opt<std::string> loadLib{
-      "load", cl::desc("Load the specified framework directly."), cl::init(""),
-      llvm::cl::cat(GenericDriverCLOptionsCategory)};
+  std::string loadLib{""};
+  //===--------------------------------------------------------------------===//
+  // Sink for all unparsed options.
+  //===--------------------------------------------------------------------===//
+
+  llvm::SmallVector<std::string> forceUnparsed{};
+  llvm::SmallVector<std::string> unparsed{};
+};
+
+class GenericDriverCLOptions : public DriverCommandCLOptions,
+                               public DriverInputFormatCLOptions,
+                               public CommonCLOptions {
+
+public:
+  GenericDriverOptions &options;
+  GenericDriverCLOptions(int argc, char **argv, GenericDriverOptions &opts,
+                         bool skipInitLLVM = false)
+      : DriverCommandCLOptions(opts), DriverInputFormatCLOptions(opts),
+        CommonCLOptions(argc, argv, opts, skipInitLLVM), options(opts) {}
+
+private:
+  llvm::cl::OptionCategory GenericDriverCLOptionsCategory{
+      "Generic driver options"};
+  //===--------------------------------------------------------------------===//
+  // Force loading a specific dylib
+  //===--------------------------------------------------------------------===//
+
+  M::cl::MOpt<std::string, true> loadLib{
+      "load", cl::desc("Load the specified framework directly."),
+      llvm::cl::cat(GenericDriverCLOptionsCategory),
+      llvm::cl::location(options.loadLib)};
 
   //===--------------------------------------------------------------------===//
   // Sink for all unparsed options.
   //===--------------------------------------------------------------------===//
 
-  cl::list<std::string> forceUnparsed{
+  M::cl::MListOpt<std::string, llvm::SmallVector<std::string>> forceUnparsed{
       "X", cl::desc("Arguments to be passed to the framework."),
-      llvm::cl::cat(GenericDriverCLOptionsCategory)};
+      llvm::cl::cat(GenericDriverCLOptionsCategory),
+      llvm::cl::location(options.forceUnparsed)};
 
-  cl::list<std::string> unparsed{
+  M::cl::MListOpt<std::string, llvm::SmallVector<std::string>> unparsed{
       llvm::cl::Sink,
       cl::desc("Arguments to be passed directly to the framework."),
-      llvm::cl::cat(GenericDriverCLOptionsCategory)};
+      llvm::cl::cat(GenericDriverCLOptionsCategory),
+      llvm::cl::location(options.unparsed)};
 };
 } // namespace
 
@@ -112,7 +136,8 @@ getFileContentIdentity(M::BufferRef file, FileFormat format,
 int main(int argc, char **argv) {
   // Register all our command line options.  We expect that the subframeworks
   // will not call InitLLVM, and that is the responsibility of the driver.
-  GenericDriverCLOptions options(argc, argv);
+  GenericDriverOptions options;
+  GenericDriverCLOptions parser(argc, argv, options);
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "Modular Tool (mt)\n");
 
@@ -229,7 +254,7 @@ int main(int argc, char **argv) {
     // Hand over save-temps and temps-dir options to framework.
     if (options.saveTemps) {
       dylibOptions.push_back("--save-temps");
-      dylibOptions.push_back("--temps-dir=" + options.tempsDir.getValue());
+      dylibOptions.push_back("--temps-dir=" + options.tempsDir);
     }
 
     // Tell the framework about our options.

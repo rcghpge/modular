@@ -105,15 +105,31 @@ FileFormat sniffInputFormat(StringRef fileExtension, StringRef fileContents);
 /// Check if the given directory is a TensorFlow SavedModel directory.
 bool isTFSavedModelDirectory(const std::filesystem::path &dirPath);
 
-class DriverInputFormatOptions {
-private:
-  llvm::cl::OptionCategory DriverInputFormatCategory{
-      "Driver input format options"};
-
+struct DriverInputFormatOptions {
 public:
   /// Allow the user to override the input file format.  The default is to
   /// autosense what the input is.
-  cl::opt<FileFormat> inputFormat{
+  FileFormat inputFormat{FileFormat::kUnknown};
+
+  /// Return the input format the user specified, allowing them to specify
+  /// something manually on the command line, but otherwise autosensing an
+  /// answer.
+  FileFormat getInputFormat(StringRef fileExtension,
+                            StringRef fileContents) const;
+};
+
+class DriverInputFormatCLOptions {
+
+public:
+  DriverInputFormatOptions &options;
+  DriverInputFormatCLOptions(DriverInputFormatOptions &opts) : options(opts) {}
+
+private:
+  llvm::cl::OptionCategory DriverInputFormatCategory{
+      "Driver input format options"};
+  /// Allow the user to override the input file format.  The default is to
+  /// autosense what the input is.
+  M::cl::MOpt<FileFormat, true> inputFormat{
       "input-format", cl::desc("input file format override"),
       cl::values(clEnumValN(FileFormat::kTFLFlatBuffer, "tflite-flat-buffer",
                             "Input is a TFLite flatbuffer file"),
@@ -124,13 +140,8 @@ public:
                             "Input is a TF SavedModel directory"),
                  clEnumValN(FileFormat::kONNXProtobuf, "onnx-proto",
                             "Input is an ONNX model protobuf file")),
-      cl::init(FileFormat::kUnknown), llvm::cl::cat(DriverInputFormatCategory)};
-
-  /// Return the input format the user specified, allowing them to specify
-  /// something manually on the command line, but otherwise autosensing an
-  /// answer.
-  FileFormat getInputFormat(StringRef fileExtension,
-                            StringRef fileContents) const;
+      llvm::cl::location(options.inputFormat),
+      llvm::cl::cat(DriverInputFormatCategory)};
 };
 } // namespace M
 

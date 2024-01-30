@@ -27,7 +27,7 @@ using BodyFn = std::function<LogicalResult(Runtime &, MLIRContext *)>;
 
 /// Run the given body function with a leak checked runtime.
 int setupMLIRAndRunWithLeakCheckedRuntime(
-    const ExecutorDriverCLOptions &options, const char *testName,
+    const ExecutorDriverOptions &options, const char *testName,
     std::unique_ptr<llvm::MemoryBuffer> &&file, BodyFn &&bodyFn) {
   if (failed(options.configureMLIRContextAndExecute(
           std::move(file), [&](MLIRContext *ctx) {
@@ -89,7 +89,7 @@ ErrorOr<std::string> getFileContentIdentity(M::BufferRef file,
 /// Saves an intermediate file with a dump of `module` if --saved-temps is set.
 inline void writeIntermediateFileIfRequested(const std::string &identifier,
                                              ModuleOp module,
-                                             const CommonCLOptions *options,
+                                             const CommonOptions *options,
                                              M::BufferRef file) {
   std::string ext = "." + identifier + ".mlir";
   auto filePathOr = file->getFilePath();

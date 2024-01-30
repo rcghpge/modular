@@ -40,6 +40,26 @@ using llvm::MemoryBuffer;
 
 namespace {
 
+class MOFDriverOptions : public DriverOptions,
+                         public MO::GraphCompilerOptions,
+                         public CUDA::CUDARuntimeOptions {
+public:
+  void overrideLoweringOptions(MOFLoweringOptions &mofLoweringOptions,
+                               MO::MoToMgpOptions &moToMgpOptions) const {
+    overrideCUDARuntimeOptions(mofLoweringOptions.cudaRuntimeOptions);
+    mofLoweringOptions.cudaRuntimeOptions.cudaDriverPath = cudaDriverPath;
+    mofLoweringOptions.cudaRuntimeOptions.deviceOptions = deviceOptions;
+    mofLoweringOptions.debugTensorPrintOptions.style = resultOutputStyle;
+    mofLoweringOptions.debugTensorPrintOptions.precision = printPrecision;
+    mofLoweringOptions.debugTensorPrintOptions.binaryDir = binaryOutputDir;
+
+    GraphCompilerOptions::overrideLoweringOptions(moToMgpOptions);
+    moToMgpOptions.compiledFrameworkLabel = "mof";
+    moToMgpOptions.minimumCpuAlignment = minimumCpuAlignment;
+    moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
+  }
+};
+
 class MOFDriverCLOptions : public DriverCLOptions,
                            public MO::GraphCompilerCLOptions,
                            public CUDA::CUDARuntimeCLOptions {
@@ -48,19 +68,10 @@ private:
 
 public:
   using DriverCLOptions::DriverCLOptions;
-
-  void overrideLoweringOptions(MOFLoweringOptions &mofLoweringOptions,
-                               MO::MoToMgpOptions &moToMgpOptions) const {
-    overrideCUDARuntimeOptions(mofLoweringOptions.cudaRuntimeOptions);
-    mofLoweringOptions.debugTensorPrintOptions.style = resultOutputStyle;
-    mofLoweringOptions.debugTensorPrintOptions.precision = printPrecision;
-    mofLoweringOptions.debugTensorPrintOptions.binaryDir = binaryOutputDir;
-
-    GraphCompilerCLOptions::overrideLoweringOptions(moToMgpOptions);
-    moToMgpOptions.compiledFrameworkLabel = "mof";
-    moToMgpOptions.minimumCpuAlignment = minimumCpuAlignment.getValue();
-    moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
-  }
+  MOFDriverCLOptions(int argc, char **argv, MOFDriverOptions &o,
+                     bool skipInitLLVM = false)
+      : DriverCLOptions(argc, argv, o, skipInitLLVM),
+        MO::GraphCompilerCLOptions(o), CUDA::CUDARuntimeCLOptions(o) {}
 };
 
 /// Union of configuration gathered from MOFContext::setConfigs().
@@ -93,8 +104,9 @@ class MOFContext {
 public:
   /// Constructor when invoking from command line.
   MOFContext(int &argc, char **argv)
-      : clOptions(std::make_unique<MOFDriverCLOptions>(argc, argv,
-                                                       /*skipInitLLVM=*/true)) {
+      : clOptions(std::make_unique<MOFDriverOptions>()),
+        parser(std::make_unique<MOFDriverCLOptions>(argc, argv, *clOptions,
+                                                    /*skipInitLLVM=*/true)) {
     setup();
   }
 
@@ -106,8 +118,8 @@ public:
       llvm::cl::ResetCommandLineParser();
   }
 
-  const CommonCLOptions *getCommonCLOptions() const { return clOptions.get(); }
-  const ExecutorDriverCLOptions *getExecutorDriverCLOptions() const {
+  const CommonOptions *getCommonCLOptions() const { return clOptions.get(); }
+  const ExecutorDriverOptions *getExecutorDriverOptions() const {
     return clOptions.get();
   }
   bool getEnableMEFMetadata() const {
@@ -122,8 +134,8 @@ public:
     // Reset all option occurrences every time this is called.
     llvm::cl::ResetAllOptionOccurrences();
 
-    // Parse the options one at a time, so we don't have to combine the list of
-    // strings.
+    // Parse the options one at a time, so we don't have to combine the list
+    // of strings.
     for (StringRef opt : opts) {
       const char *optChars[] = {clOptions->getProgramName().data(), opt.data()};
       if (!llvm::cl::ParseCommandLineOptions(std::size(optChars), optChars))
@@ -171,7 +183,8 @@ private:
     llvm::call_once(onceFlag, []() { M::CUDA::registerCUDA(); });
   }
 
-  std::unique_ptr<MOFDriverCLOptions> clOptions;
+  std::unique_ptr<MOFDriverOptions> clOptions;
+  std::unique_ptr<MOFDriverCLOptions> parser;
   std::unique_ptr<MOFConfig> mofConfig;
 };
 
@@ -367,8 +380,8 @@ int M_runBinaryFile(FrameworkContextHandle ctx, M::BufferRef fileBuffer,
   MOFLoweringOptions mofLoweringOptions;
   MO::MoToMgpOptions moToMgpOptions;
   mofContext->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
-  const ExecutorDriverCLOptions *driverOptions =
-      mofContext->getExecutorDriverCLOptions();
+  const ExecutorDriverOptions *driverOptions =
+      mofContext->getExecutorDriverOptions();
   assert(driverOptions && "cannot run a binary file via the API");
 
   std::unique_ptr<ModelCollection> models;
@@ -405,8 +418,8 @@ int M_runModelWithData(FrameworkContextHandle ctx, M::BufferRef fileBuffer,
   MOFLoweringOptions mofLoweringOptions;
   MO::MoToMgpOptions moToMgpOptions;
   mofContext->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
-  const ExecutorDriverCLOptions *driverOptions =
-      mofContext->getExecutorDriverCLOptions();
+  const ExecutorDriverOptions *driverOptions =
+      mofContext->getExecutorDriverOptions();
   assert(driverOptions && "cannot run a binary file via the API");
 
   auto inputs = inputsHandle.unwrap<llvm::SmallVector<const void *>>();

@@ -28,66 +28,99 @@
 using namespace M;
 
 namespace {
+class APIOptions : public OptionsBase {
+public:
+  SmallVector<std::string> paths;
+  std::string cacheDir;
+  std::string crashDir;
+  size_t numThreads{0};
+  SmallVector<std::string> inputNames;
+  SmallVector<TensorShape> inputShapes;
+  bool threaded{false};
+  size_t numInitialized{1};
+  size_t numConcurrentRequesters{1};
+  size_t numSequentialRequests{1};
+  bool useMoOps{true};
+  // TODO(#20024): Until we have a better solution we need to disable oneDNN
+  // optimizations in stock tf since they appear to be incompatible with the
+  // tf eager C API.
+  bool disableTFOneDNN{false};
+};
 
 class APICLOptions : public CLOptionsBase {
 public:
-  using CLOptionsBase::CLOptionsBase;
+  APIOptions &options;
+  APICLOptions(int argc, char **argv, APIOptions &o, bool skipInitLLVM = false)
+      : CLOptionsBase(argc, argv, o, skipInitLLVM), options(o) {}
 
-  cl::list<std::string> paths{"paths", cl::desc("Paths of models")};
-  cl::opt<std::string> cacheDir{"cache-dir",
-                                cl::desc("Filesystem path of CAS cache"),
-                                llvm::cl::Optional};
-  cl::opt<std::string> crashDir{"crash-dir",
-                                cl::desc("Filesystem path of crash dump dir"),
-                                llvm::cl::Optional};
-  cl::opt<size_t> numThreads{"num-threads", cl::desc("Number of threads"),
-                             cl::init(0)};
+private:
+  M::cl::MListOpt<std::string, SmallVector<std::string>> paths{
+      "paths", cl::desc("Paths of models"), llvm::cl::location(options.paths)};
 
-  cl::list<std::string> inputNames{
-      "input-names", cl::desc("Specify input names. This is always required "
-                              "and it must match the model's input names")};
+  M::cl::MOpt<std::string, true> cacheDir{
+      "cache-dir", cl::desc("Filesystem path of CAS cache"), llvm::cl::Optional,
+      llvm::cl::location(options.cacheDir)};
 
-  cl::list<TensorShape, bool, TensorShapeParser> inputShapes{
-      "input-shapes", cl::desc("Specify input shapes. This is always required "
-                               "and it must match the model's input tensors in "
-                               "the same order as `input-names`")};
+  M::cl::MOpt<std::string, true> crashDir{
+      "crash-dir", cl::desc("Filesystem path of crash dump dir"),
+      llvm::cl::Optional, llvm::cl::location(options.crashDir)};
 
-  cl::opt<bool> threaded{"threaded",
-                         cl::desc("If true, 'concurrent' requests are run on "
-                                  "separate foreign threads."),
-                         cl::init(false)};
+  M::cl::MOpt<size_t, true> numThreads{"num-threads",
+                                       cl::desc("Number of threads"),
+                                       llvm::cl::location(options.numThreads)};
 
-  cl::opt<size_t> numInitialized{
+  M::cl::MListOpt<std::string, SmallVector<std::string>> inputNames{
+      "input-names",
+      cl::desc("Specify input names. This is always required and it must match "
+               "the model's input names"),
+      llvm::cl::location(options.inputNames)};
+
+  M::cl::MListOpt<TensorShape, SmallVector<TensorShape>, TensorShapeParser>
+      inputShapes{
+          "input-shapes",
+          cl::desc(
+              "Specify input shapes. This is always required and it must match "
+              "the model's input tensors in the same order as `input-names`"),
+          llvm::cl::location(options.inputShapes)};
+
+  M::cl::MOpt<bool, true> threaded{
+      "threaded",
+      cl::desc("If true, 'concurrent' requests are "
+               "run on separate foreign threads."),
+      llvm::cl::location(options.threaded)};
+
+  M::cl::MOpt<size_t, true> numInitialized{
       "num-initialized",
       cl::desc(
           "Number of concurrent 'initialized' models for each model in paths."),
-      cl::init(1)};
+      llvm::cl::location(options.numInitialized)};
 
-  cl::opt<size_t> numConcurrentRequesters{
+  M::cl::MOpt<size_t, true> numConcurrentRequesters{
       "num-concurrent-requesters",
-      cl::desc("Number of concurrent 'execute' request "
-               "threads to fire on each 'initialized' model. CAUTION: This "
-               "is currently not safe for tf and tfl models."),
-      cl::init(1)};
+      cl::desc("Number of concurrent 'execute' request threads to fire on each "
+               "'initialized' model. CAUTION: This is currently not safe for "
+               "tf and tfl models."),
+      llvm::cl::location(options.numConcurrentRequesters)};
 
-  cl::opt<size_t> numSequentialRequests{
+  M::cl::MOpt<size_t, true> numSequentialRequests{
       "num-sequential-requests",
-      cl::desc("Number of sequential 'executes' to "
-               "perform in each concurrent request thread."),
-      cl::init(1)};
+      cl::desc("Number of sequential 'executes' to perform in each concurrent "
+               "request thread."),
+      llvm::cl::location(options.numSequentialRequests)};
 
-  cl::opt<bool> useMoOps{
+  M::cl::MOpt<bool, true> useMoOps{
       "use-mo-ops",
       cl::desc("Whether to lower to MO ops. Default true. Only valid for "
                "models using the tf compiler and runtime."),
-      cl::init(true)};
+      llvm::cl::location(options.useMoOps)};
 
   // TODO(#20024): Until we have a better solution we need to disable oneDNN
   // optimizations in stock tf since they appear to be incompatible with the
   // tf eager C API.
-  cl::opt<bool> disableTFOneDNN{
+  M::cl::MOpt<bool, true> disableTFOneDNN{
       "disable-tf-onednn",
-      cl::desc("Disable the stock TF oneDNN optimizations."), cl::init(false)};
+      cl::desc("Disable the stock TF oneDNN optimizations."),
+      llvm::cl::location(options.disableTFOneDNN)};
 };
 
 /// serializes console output
@@ -190,18 +223,18 @@ private:
 /// We have a runtime context, but not yet any compiled model.
 struct RuntimeContextPhase {
   static ErrorOr<RuntimeContextPhase>
-  createRuntimeContext(const APICLOptions &clOptions) {
+  createRuntimeContext(const APIOptions &options) {
     RuntimeContextPhase result;
     result.runtimeConfig = M_newRuntimeConfig();
-    M_setNumThreads(result.runtimeConfig, clOptions.numThreads);
+    M_setNumThreads(result.runtimeConfig, options.numThreads);
     StatusPtr status(M_newStatus(), M_freeStatus);
-    if (!clOptions.cacheDir.empty()) {
-      M_setArtifactPath(result.runtimeConfig, clOptions.cacheDir.c_str(),
+    if (!options.cacheDir.empty()) {
+      M_setArtifactPath(result.runtimeConfig, options.cacheDir.c_str(),
                         status.get());
       RETURN_IF_ERROR(status);
     }
-    if (!clOptions.crashDir.empty()) {
-      M_enableCrashLog(result.runtimeConfig, clOptions.crashDir.c_str());
+    if (!options.crashDir.empty()) {
+      M_enableCrashLog(result.runtimeConfig, options.crashDir.c_str());
       RETURN_IF_ERROR(status);
     }
 
@@ -512,28 +545,29 @@ struct ExecutePhase {
 } // namespace
 
 int main(int argc, char **argv) {
-  APICLOptions clOptions(argc, argv);
+  APIOptions options;
+  APICLOptions parser(argc, argv, options);
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "generic C API test driver\n");
 
-  if (clOptions.disableTFOneDNN) {
+  if (options.disableTFOneDNN) {
     // TODO(#20024): Disable TF's oneDNN replacement kernels. Better solution?
     (void)setProcessEnv("TF_ENABLE_ONEDNN_OPTS", "0");
   }
 
-  const size_t numPaths = clOptions.paths.size();
-  const bool threaded = clOptions.threaded;
-  const std::vector<TensorShape> inputShapes(clOptions.inputShapes.begin(),
-                                             clOptions.inputShapes.end());
+  const size_t numPaths = options.paths.size();
+  const bool threaded = options.threaded;
+  const std::vector<TensorShape> inputShapes(options.inputShapes.begin(),
+                                             options.inputShapes.end());
 
-  const std::vector<std::string> inputNames(clOptions.inputNames.begin(),
-                                            clOptions.inputNames.end());
+  const std::vector<std::string> inputNames(options.inputNames.begin(),
+                                            options.inputNames.end());
   // Collect the 'ExternalModels'.
   // TODO: We probably should take paths to model specification YAMLs so
   // as to extract all the metadata we need.
   std::vector<ExternalModel> externalModels;
   externalModels.reserve(numPaths);
-  for (const auto &path : clOptions.paths) {
+  for (const auto &path : options.paths) {
     ExternalModel &externalModel = externalModels.emplace_back();
     externalModel.path = path;
     externalModel.inputShapes.resize(inputShapes.size());
@@ -550,7 +584,7 @@ int main(int argc, char **argv) {
   std::mutex mu; // protects vectors during concurrent execution.
 
   EXIT_IF_ERROR(runtimeContext,
-                RuntimeContextPhase::createRuntimeContext(clOptions));
+                RuntimeContextPhase::createRuntimeContext(options));
   // Compile all the models, sequentially and on the main thread.
   // TODO: Appears we have issues with loading libtf or libtensorflow_cc
   // outside of the main thread, so always run sequentially.
@@ -563,7 +597,7 @@ int main(int argc, char **argv) {
         THREAD_RETURN_IF_ERROR(
             tg, compiledModel,
             CompiledModelPhase::createCompiledModel(
-                threaded, clOptions.useMoOps, &runtimeContext, &externalModel));
+                threaded, options.useMoOps, &runtimeContext, &externalModel));
         std::lock_guard<std::mutex> l(mu);
         compiledModels.emplace_back(std::move(compiledModel));
       });
@@ -578,11 +612,11 @@ int main(int argc, char **argv) {
 
   // Initialize all the models, concurrently if threaded is true.
   std::vector<InitializedModelPhase> initializedModels;
-  initializedModels.reserve(numPaths * clOptions.numInitialized);
+  initializedModels.reserve(numPaths * options.numInitialized);
   {
-    TaskGroup tg(numPaths * clOptions.numInitialized);
+    TaskGroup tg(numPaths * options.numInitialized);
     for (auto &compiledModel : compiledModels) {
-      for (size_t i = 0; i < clOptions.numInitialized; ++i) {
+      for (size_t i = 0; i < options.numInitialized; ++i) {
         tg.add_task([&]() {
           THREAD_RETURN_IF_ERROR(tg, initializedModel,
                                  InitializedModelPhase::createInitializedModel(
@@ -603,7 +637,7 @@ int main(int argc, char **argv) {
   // Execute all the models, concurrently over initialized models (if threaded
   // is true), concurrently over multiple 'request' threads per initialized
   // model (if threaded is true), and sequentially over each 'request' thread.
-  if (threaded && clOptions.numConcurrentRequesters > 1) {
+  if (threaded && options.numConcurrentRequesters > 1) {
     // Most models DO NOT support concurrent execution over the
     // same initialized model due to explicitly or implicitly mutable
     // state slot entries in their contexts. This option is supported just
@@ -612,12 +646,12 @@ int main(int argc, char **argv) {
     log(threaded, "WARNING: Concurrent request threads is undefined behaviour");
   }
   {
-    TaskGroup tg(numPaths * clOptions.numInitialized *
-                 clOptions.numConcurrentRequesters);
+    TaskGroup tg(numPaths * options.numInitialized *
+                 options.numConcurrentRequesters);
     for (const auto &initializedModel : initializedModels) {
-      for (size_t i = 0; i < clOptions.numConcurrentRequesters; ++i) {
+      for (size_t i = 0; i < options.numConcurrentRequesters; ++i) {
         tg.add_task([&]() {
-          for (size_t j = 0; j < clOptions.numSequentialRequests; ++j) {
+          for (size_t j = 0; j < options.numSequentialRequests; ++j) {
             THREAD_RETURN_IF_ERROR(
                 tg, executingModel,
                 ExecutePhase::createExecute(&initializedModel));

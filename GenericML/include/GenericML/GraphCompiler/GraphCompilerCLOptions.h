@@ -17,112 +17,157 @@ namespace M::MO {
 ///
 /// See also MoToMgpOptions for the corresponding MLIR xxx-opt command line
 /// options.
+class GraphCompilerOptions {
+
+public:
+  std::string cacheDir{""};
+
+  bool enableExtraDevices{false};
+
+  bool enableFakeCudaDevice{false};
+
+  std::string defaultDeviceLabel{""};
+
+  bool enableMemoryPlanning{false};
+
+  bool genVizSpec{false};
+
+  std::string vizOutputDir{""};
+
+  bool debugPrintAllTensors{false};
+
+  size_t softFusionNonHostKernelLimit{3};
+
+  bool cacheBuffersAcrossExecutes{false};
+
+  size_t minPinnedHostBufferSize{0};
+
+  llvm::SmallVector<std::string> kernelLibraryPaths{};
+
+  void overrideLoweringOptions(MoToMgpOptions &moToMgpOptions) const {
+
+    moToMgpOptions.cacheDir.setValue(cacheDir);
+    moToMgpOptions.enableExtraDevices.setValue(enableExtraDevices);
+    moToMgpOptions.enableFakeCudaDevice.setValue(enableFakeCudaDevice);
+    moToMgpOptions.defaultDeviceLabel.setValue(defaultDeviceLabel);
+    moToMgpOptions.enableMemoryPlanning.setValue(enableMemoryPlanning);
+    moToMgpOptions.genVizSpec.setValue(genVizSpec);
+    moToMgpOptions.vizOutputDir.setValue(vizOutputDir);
+    moToMgpOptions.debugPrintAllTensors.setValue(debugPrintAllTensors);
+    moToMgpOptions.softFusionNonHostKernelLimit.setValue(
+        softFusionNonHostKernelLimit);
+    moToMgpOptions.cacheBuffersAcrossExecutes.setValue(
+        cacheBuffersAcrossExecutes);
+    moToMgpOptions.minPinnedHostBufferSize.setValue(minPinnedHostBufferSize);
+    moToMgpOptions.kernelLibraryPaths.setInitialValues(kernelLibraryPaths);
+  }
+};
+
 class GraphCompilerCLOptions {
+public:
+  GraphCompilerOptions &options;
+  GraphCompilerCLOptions(GraphCompilerOptions &opts) : options(opts) {}
+
 private:
   llvm::cl::OptionCategory GraphCompilerCLOptionsCategory{
       "Graph compiler options"};
 
-public:
-  cl::opt<std::string> cacheDir{
+  M::cl::MOpt<std::string, true> cacheDir{
       "cache-dir",
       cl::desc("Path to CAS instance. If non-empty, large constants will be "
                "outlined into a CAS instance at the given path during "
                "compilation, and the compiled model will retrieve the "
                "constants from the same instance at model 'init' time. "
                "Default empty (ie disabled)."),
-      cl::init(""), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+      llvm::cl::location(options.cacheDir),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
-  cl::opt<bool> enableExtraDevices{
+  M::cl::MOpt<bool, true> enableExtraDevices{
       "enable-extra-devices",
       cl::desc("If true, account for all host devices during compilation, "
                "including any host GPUs in addition to the CPU. The resulting "
                "model will only be runnable on a similarly provisioned host. "
                "Default is false, which will include just the host CPU."),
-      cl::init(false), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+      llvm::cl::location(options.enableExtraDevices),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
-  cl::opt<bool> enableFakeCudaDevice{
+  M::cl::MOpt<bool, true> enableFakeCudaDevice{
       "enable-fake-cuda-device",
       cl::desc("If true, compile assuming a single CUDA GPU is available. "
                "For testing only."),
-      cl::init(false), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+      llvm::cl::location(options.enableFakeCudaDevice),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
-  cl::opt<std::string> defaultDeviceLabel{
+  M::cl::MOpt<std::string, true> defaultDeviceLabel{
       "default-device-label",
       cl::desc("If non-empty, assign as many ops as possible to the device "
                "with the given label (and device id zero)."),
-      cl::init(""), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+      llvm::cl::location(options.defaultDeviceLabel),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
-  cl::opt<bool> enableMemoryPlanning{
+  M::cl::MOpt<bool, true> enableMemoryPlanning{
       "enable-memory-planning",
       cl::desc("If true, statically plan as many buffer allocations as "
                "possible."),
-      cl::init(false), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+      llvm::cl::location(options.enableMemoryPlanning),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
-  cl::opt<bool> genVizSpec{
+  M::cl::MOpt<bool, true> genVizSpec{
       "gen-viz-spec",
       cl::desc(
           "If true, generates a visualization spec compatible with Netron."),
-      cl::init(false), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+      llvm::cl::location(options.genVizSpec),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
-  cl::opt<std::string> vizOutputDir{
+  M::cl::MOpt<std::string, true> vizOutputDir{
       "viz-output-dir",
       cl::desc("If genVizSpec, can be used to specify the output directory for "
                "the visualization spec."),
-      cl::init(""), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+      llvm::cl::location(options.vizOutputDir),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
-  cl::opt<bool> debugPrintAllTensors{
+  M::cl::MOpt<bool, true> debugPrintAllTensors{
       "debug-print-all-tensors",
       cl::desc("If enabled, print all intermediate tensors. The usual "
                "'result-output-style', 'print-precision' and "
                "'binary-output-dir' flags may be used to control the "
                "printed format and saved location."),
-      cl::init(false), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+      llvm::cl::location(options.debugPrintAllTensors),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
-  cl::opt<size_t> softFusionNonHostKernelLimit{
+  M::cl::MOpt<size_t, true> softFusionNonHostKernelLimit{
       "soft-fusion-non-host-kernel-limit",
       cl::desc(
           "Maximum number of non-host kernels to place in a single soft fused "
           "kernel."),
-      cl::init(3), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+      llvm::cl::location(options.softFusionNonHostKernelLimit),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
-  cl::opt<bool> cacheBuffersAcrossExecutes{
+  M::cl::MOpt<bool, true> cacheBuffersAcrossExecutes{
       "cache-buffers-across-executes",
       cl::desc("If true, allow all buffer allocations to be cached and reused "
                "across calls to the model's 'execute'. If a buffer's size "
                "changes between calls due to dynamic shapes then the buffer "
                "will be reallocated."),
-      cl::init(false), llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+      llvm::cl::location(options.cacheBuffersAcrossExecutes),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
-  cl::opt<size_t> minPinnedHostBufferSize{
+  M::cl::MOpt<size_t, true> minPinnedHostBufferSize{
       "min-pinned-host-buffer-size",
       llvm::cl::desc(
           "If non-zero, replace host-side allocations with pinned allocations "
           "when the buffer is at least this size in bytes, and is the source "
           "or target of a host/device memory transfer."),
-      llvm::cl::init(0)};
+      llvm::cl::location(options.minPinnedHostBufferSize)};
 
-  cl::list<std::string> kernelLibraryPaths{
-      "kernel-library-paths",
-      cl::desc("Paths to mojo packages containing mojo kernel definitions used "
-               "to replace TF and MO ops."),
-      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
-
-  void overrideLoweringOptions(MoToMgpOptions &moToMgpOptions) const {
-    moToMgpOptions.cacheDir = cacheDir.getValue();
-    moToMgpOptions.enableExtraDevices = enableExtraDevices.getValue();
-    moToMgpOptions.enableFakeCudaDevice = enableFakeCudaDevice.getValue();
-    moToMgpOptions.defaultDeviceLabel = defaultDeviceLabel.getValue();
-    moToMgpOptions.enableMemoryPlanning = enableMemoryPlanning.getValue();
-    moToMgpOptions.genVizSpec = genVizSpec.getValue();
-    moToMgpOptions.vizOutputDir = vizOutputDir.getValue();
-    moToMgpOptions.debugPrintAllTensors = debugPrintAllTensors.getValue();
-    moToMgpOptions.softFusionNonHostKernelLimit =
-        softFusionNonHostKernelLimit.getValue();
-    moToMgpOptions.cacheBuffersAcrossExecutes =
-        cacheBuffersAcrossExecutes.getValue();
-    moToMgpOptions.minPinnedHostBufferSize = minPinnedHostBufferSize.getValue();
-    moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
-  }
+  M::cl::MListOpt<std::string, llvm::SmallVector<std::string>>
+      kernelLibraryPaths{
+          "kernel-library-paths",
+          cl::desc(
+              "Paths to mojo packages containing mojo kernel definitions used "
+              "to replace TF and MO ops."),
+          llvm::cl::location(options.kernelLibraryPaths),
+          llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 };
 
 } // namespace M::MO

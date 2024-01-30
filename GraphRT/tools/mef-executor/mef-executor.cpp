@@ -90,7 +90,7 @@ static void printResults(MEFInvokable *invokable,
 /// Run the specified mef.invokable as a testcase - this means passing in test
 /// input and printing results if we can.
 static ErrorOrSuccess runTestcase(const GRTTestcase &test,
-                                  const RuntimeCLOptions &runtimeConfig,
+                                  const RuntimeOptions &runtimeConfig,
                                   MLIRContext *context) {
   // In this test driver, we want to make sure that every invokable completes
   // all execution before moving on to the next one.  This makes the leak
@@ -125,24 +125,27 @@ static ErrorOrSuccess runTestcase(const GRTTestcase &test,
 }
 
 namespace {
-class MEFExecutorCLOptions : public CommonCLOptions, public RuntimeCLOptions {
+class MEFExecutorCLOptions : public CommonOptions, public RuntimeOptions {
 public:
-  using CommonCLOptions::CommonCLOptions;
+  CommonCLOptions parser;
+  RuntimeCLOptions rtParser;
+  MEFExecutorCLOptions(int argc, char **argv, bool skipInitLLVM = false)
+      : parser(argc, argv, *this, skipInitLLVM), rtParser(*this) {}
 
-  cl::list<std::string> testcases{
+  M::cl::MListOpt<std::string> testcases{
       "tests",
       cl::desc("Specify testcases to run, defaults to all of them. Provide a "
                "comma-separated list like --tests=foo,bar."),
       llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated};
 
-  cl::opt<bool> verbose{"verbose",
-                        cl::desc("Print configuration information at startup"),
-                        cl::init(false)};
+  M::cl::MOpt<bool> verbose{
+      "verbose", cl::desc("Print configuration information at startup"),
+      cl::init(false)};
 };
 } // namespace
 
 int main(int argc, char **argv) {
-  MEFExecutorCLOptions clOptions(argc, argv);
+  MEFExecutorCLOptions options(argc, argv);
   llvm::cl::ParseCommandLineOptions(argc, argv, "mef-executor test driver\n");
 
   // Set up all our primitives.
@@ -157,20 +160,20 @@ int main(int argc, char **argv) {
            "We have async values allocated before we started to do anything");
 
   // Read the input file from disk into a memory buffer.
-  auto fileBuffer = clOptions.openInputFileOrExit(maxAttributeAlignment());
+  auto fileBuffer = options.openInputFileOrExit(maxAttributeAlignment());
 
   // Print some informative messages about allocator and threadpool config.
-  if (clOptions.verbose) {
+  if (options.verbose.getValue()) {
     printf("%s ", argv[0]);
-    clOptions.printRuntimeConfig();
+    options.printRuntimeConfig();
     fflush(stdout);
   }
 
   auto mefFileOrError = MEFFile::open(fileBuffer->getBuffer(), primitives);
   if (failed(mefFileOrError))
-    return clOptions.reportError(Twine("error opening '") +
-                                 clOptions.inputFilename +
-                                 "': " + mefFileOrError.getError());
+    return options.reportError(Twine("error opening '") +
+                               options.inputFilename +
+                               "': " + mefFileOrError.getError());
 
   auto mefFile = mefFileOrError.takeValue();
 
@@ -180,21 +183,21 @@ int main(int argc, char **argv) {
   auto *moduleInv = mefFile->getTopLevelInvokable();
   if (auto err = moduleInv->walkPrimitives<GRTTestcase>([&](GRTTestcase test) {
         // If no testcases are specified, run them all.
-        if (clOptions.testcases.empty() ||
-            llvm::is_contained(clOptions.testcases, test.getName()))
+        if (options.testcases.empty() ||
+            llvm::is_contained(options.testcases, test.getName()))
           testcasesToExecute.push_back(test);
       })) {
-    return clOptions.reportError(err.getError());
+    return options.reportError(err.getError());
   }
 
   // Run each test with a MLIRContext set up for the right kind of diagnostic
   // emission.
-  LogicalResult hadError = clOptions.configureMLIRContextAndExecute(
+  LogicalResult hadError = options.configureMLIRContextAndExecute(
       std::move(fileBuffer), [&](MLIRContext *context) -> LogicalResult {
         for (auto &fn : testcasesToExecute) {
-          if (auto err = runTestcase(fn, clOptions, context)) {
-            clOptions.reportError(err.getError());
-            if (clOptions.stopOnFirstError())
+          if (auto err = runTestcase(fn, options, context)) {
+            options.reportError(err.getError());
+            if (options.stopOnFirstError())
               return failure();
           }
         }

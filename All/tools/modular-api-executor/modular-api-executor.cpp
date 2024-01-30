@@ -122,52 +122,16 @@ static size_t getSizeOf(const ModularAPIInterface &api, M_AsyncTensor *tensor) {
 
 namespace {
 
-/// Contains the core CLI options for modular-api-executor.
-class ModularExecutorDriverCLOptions : public ExecutorDriverCLOptions {
-private:
-  llvm::cl::OptionCategory ExecutorDriverCLOptionsCategory{
-      "Modular executor driver command line options"};
-
+class ModularExecutorDriverOptions : public ExecutorDriverOptions {
 public:
-  using ExecutorDriverCLOptions::ExecutorDriverCLOptions;
-
-  cl::opt<std::string> exportedName{
-      "exported-name",
-      cl::desc("Signature name of TF model in model with multiple signature."),
-      cl::init(""), llvm::cl::cat(ExecutorDriverCLOptionsCategory)};
-
-  cl::opt<std::string> modelSpecificationFile{
-      "model-specification", cl::desc("Path to the model specification file."),
-      llvm::cl::cat(ExecutorDriverCLOptionsCategory)};
-
-  cl::opt<bool> frameworkVersion{
-      "framework-version", cl::desc("Prints the external framework's version."),
-      llvm::cl::cat(ExecutorDriverCLOptionsCategory)};
-
-  cl::list<std::string> inputNames{
-      "input-names",
-      cl::desc("Specify input names. This is always required "
-               "and it must match the model's input names"),
-      llvm::cl::cat(ExecutorDriverCLOptionsCategory)};
-
-  cl::list<std::string> outputNames{
-      "output-names",
-      cl::desc("Specify output names. This is always required "
-               "and it must match the model's output names"),
-      llvm::cl::cat(ExecutorDriverCLOptionsCategory)};
-
-  cl::opt<bool> printMetadata{
-      "print-metadata", cl::desc("Display Model Input and output Specs"),
-      cl::init(false), llvm::cl::cat(ExecutorDriverCLOptionsCategory)};
-
-  cl::list<std::string> kernelLibraryPaths{
-      "kernel-library-paths",
-      cl::desc("Paths to mojo packages containing mojo kernel definitions used "
-               "to replace MO and Framework ops."),
-      llvm::cl::cat(ExecutorDriverCLOptionsCategory)};
-
-  cl::opt<bool> gpu{"gpu", cl::desc("Enable execution using a GPU device."),
-                    cl::init(false)};
+  std::string exportedName;
+  std::string modelSpecificationFile;
+  bool frameworkVersion{false};
+  SmallVector<std::string> inputNames;
+  SmallVector<std::string> outputNames;
+  bool printMetadata{false};
+  SmallVector<std::string> kernelLibraryPaths;
+  bool gpu{false};
 
   /// Reads a model specification from the YAML file set via the
   /// "model-specification" option.
@@ -176,9 +140,8 @@ public:
       return Error("the model specification file path must be specified.");
 
     std::error_code errorCode;
-    if (!std::filesystem::exists(
-            std::filesystem::path{modelSpecificationFile.getValue()},
-            errorCode)) {
+    if (!std::filesystem::exists(std::filesystem::path{modelSpecificationFile},
+                                 errorCode)) {
       return Error(Twine("the model specification file ") +
                    modelSpecificationFile + " does not exist.");
     }
@@ -192,6 +155,67 @@ public:
 
     return loadModelSpecFromYAML(std::move(*fileOrErr));
   }
+};
+
+/// Contains the core CLI options for modular-api-executor.
+class ModularExecutorDriverCLOptions : public ExecutorDriverCLOptions {
+public:
+  ModularExecutorDriverOptions &options;
+  ModularExecutorDriverCLOptions(int argc, char **argv,
+                                 ModularExecutorDriverOptions &o,
+                                 bool skipInitLLVM = false)
+      : ExecutorDriverCLOptions(argc, argv, o, skipInitLLVM), options(o) {}
+
+private:
+  llvm::cl::OptionCategory ModularExecutorDriverCLOptionsCategory{
+      "Modular executor driver command line options"};
+
+  M::cl::MOpt<std::string, true> exportedName{
+      "exported-name",
+      cl::desc("Signature name of TF model in model with multiple signature."),
+      llvm::cl::location(options.exportedName),
+      llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
+
+  M::cl::MOpt<std::string, true> modelSpecificationFile{
+      "model-specification", cl::desc("Path to the model specification file."),
+      llvm::cl::location(options.modelSpecificationFile),
+      llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
+
+  M::cl::MOpt<bool, true> frameworkVersion{
+      "framework-version", cl::desc("Prints the external framework's version."),
+      llvm::cl::location(options.frameworkVersion),
+      llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
+
+  M::cl::MListOpt<std::string, SmallVector<std::string>> inputNames{
+      "input-names",
+      cl::desc("Specify input names. This is always required "
+               "and it must match the model's input names"),
+      llvm::cl::location(options.inputNames),
+      llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
+
+  M::cl::MListOpt<std::string, SmallVector<std::string>> outputNames{
+      "output-names",
+      cl::desc("Specify output names. This is always required "
+               "and it must match the model's output names"),
+      llvm::cl::location(options.outputNames),
+      llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
+
+  M::cl::MOpt<bool, true> printMetadata{
+      "print-metadata", cl::desc("Display Model Input and output Specs"),
+      llvm::cl::location(options.printMetadata),
+      llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
+
+  M::cl::MListOpt<std::string, SmallVector<std::string>> kernelLibraryPaths{
+      "kernel-library-paths",
+      cl::desc("Paths to mojo packages containing mojo kernel definitions used "
+               "to replace MO and Framework ops."),
+      llvm::cl::location(options.kernelLibraryPaths),
+      llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
+
+  M::cl::MOpt<bool, true> gpu{
+      "gpu", cl::desc("Enable execution using a GPU device."),
+      llvm::cl::location(options.gpu),
+      llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
 };
 
 class ModularExecutableModel;
@@ -499,7 +523,8 @@ static void printSpecs(const ModelSpec &modelSpec) {
 }
 
 int main(int argc, char **argv) {
-  ModularExecutorDriverCLOptions clOptions(argc, argv);
+  ModularExecutorDriverOptions clOptions;
+  ModularExecutorDriverCLOptions parser(argc, argv, clOptions);
   llvm::cl::ParseCommandLineOptions(argc, argv,
                                     "modular-api-executor driver\n");
 

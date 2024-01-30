@@ -25,7 +25,7 @@ class Tensor;
 
 namespace M {
 class Model;
-class ExecutorDriverCLOptions;
+class ExecutorDriverOptions;
 
 /// Profiler entry for main execute/benchmark events.
 using DriverProfilerEntry = ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1)>;
@@ -64,7 +64,7 @@ enum class BenchmarkScenario { kOnline, kBatched };
 /// Run `model` using the command line options flags configured by the user.
 LogicalResult runModel(MLIRContext *ctx, const Model *model,
                        LLCL::Runtime &runtime,
-                       const ExecutorDriverCLOptions &options);
+                       const ExecutorDriverOptions &options);
 
 /// Run `model` using the command line options flags configured by the user.
 /// `inputs` is the input tensor data to the model, while `outputs` is
@@ -72,7 +72,7 @@ LogicalResult runModel(MLIRContext *ctx, const Model *model,
 /// TODO(#5867): This API could do with some love.
 ErrorOrSuccess runModelWithData(MLIRContext *ctx, const Model *model,
                                 LLCL::Runtime &runtime,
-                                const ExecutorDriverCLOptions &options,
+                                const ExecutorDriverOptions &options,
                                 const llvm::SmallVector<const void *> &inputs,
                                 llvm::SmallVector<void *> &outputs);
 
