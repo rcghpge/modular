@@ -250,4 +250,6 @@ def MGP_List : MGP_Type<"List", "list",
   let assemblyFormat = "`<` $elementType `>`";
 }
 
+include "GenericML/MGPDialect/MGPDeviceTypes.td"
+
 #endif  // GENERICML_MGPDIALECT_MGPTYPES_TD

@@ -21,12 +21,17 @@ class MGP_BaseType<string name, string typeMnemonic, list<Trait> traits = []>
     : TypeDef<MGPDialect, name, traits> {
   let mnemonic = typeMnemonic;
 }
+
+//===----------------------------------------------------------------------===//
+// TensorSpecType
+//===----------------------------------------------------------------------===//
+
 def MGP_TensorSpecType : MGP_BaseType<"TensorSpec", "tensor_spec", [
-    DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
+    DeclareTypeInterfaceMethods<ShapedTypeInterface>,
+]> {
   let summary = "Type of tensor specs.";
   let description = [{
-    This type represents the shape and dtype of a concrete tensor. The
-    tensor could be an !mgp.cpu.tensor, or some other tensor representation.
+    `!mgp.tensor_spec` represents the shape and dtype of a tensor.
 
     Both static and dynamic (aka unknown) aspects are supported:
      - The rank may be static (implied by the number of dimensions, ie the
@@ -40,10 +45,6 @@ def MGP_TensorSpecType : MGP_BaseType<"TensorSpec", "tensor_spec", [
      - The dtype may be static (using the DType::getFromString syntax) or
        dynamic (denoted by`unk`).
 
-    Tensor specs are represented by M::TensorSpec in the Modular runtime.
-    The runtime tensor spec for a concrete tensor should refine its compile-time
-    tensor spec.
-
     DTypes can represent most variations of MLIR IntegerType and FloatTypes.
     However:
      - Signless and non power-of-two MLIR IntegerTypes have no DType
@@ -52,7 +53,6 @@ def MGP_TensorSpecType : MGP_BaseType<"TensorSpec", "tensor_spec", [
      - The 'invalid' (zero) DType is never permitted.
     If a tensor spec is given a DType we also require it to be representable as
     an MLIR type.
-    TODO(#4718): Are these discrepancies something we should redress?
 
     This type implements ShapedTypeInterface. We'll use 'dims'/'dtype' when
     referring to our internal representation, and 'shape'/'element type' when
@@ -78,10 +78,18 @@ def MGP_TensorSpecType : MGP_BaseType<"TensorSpec", "tensor_spec", [
           dtype.
         - 'raw' form: uint8_t, where 0 (ie invalid) denotes a dynamic dtype.
 
+    `!mgp.tensor_specs` are represented by `LLCL::AsyncValueRef<M::TensorSpec>`
+    in the host C++ runtime. All dimensions in the runtime value should 'refine'
+    the corresponding compile time spec, ie runtime dims must equal statically
+    known compile-time dims.
+
     Examples:
     ```mlir
+    // Fully statically known spec.
     !mgp.tensor_spec<4x16xf32>
+    // Spec with one dynamic dimension and dynamic dtype.
     !mgp.tensor_spec<?x3xunk>
+    // Dynamically ranked spec.
     !mgp.tensor_spec<*xi32>
     ```
   }];

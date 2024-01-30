@@ -201,17 +201,54 @@ def MGP_CreateTensorOpInterface : OpInterface<"MGPCreateTensorOpInterface"> {
 
 def MGP_BufferUnsizeOpInterface : OpInterface<"MGPBufferUnsizeOpInterface"> {
   let description = [{
-    Interface for ops which unsize and alias a buffer
+    Interface for ops which unsize and alias a buffer.
   }];
   let cppNamespace = "::M::MGP";
   let methods = [
     InterfaceMethod<
       "Get the input buffer",
-      "::mlir::Value", "getInBuffer", (ins), "return $_op.getInBuffer();"
+      "::mlir::Value", "getInBufferValue", (ins), "return $_op.getInBuffer();"
     >,
     InterfaceMethod<
       "Get the output buffer",
-      "::mlir::Value", "getOutBuffer", (ins), "return $_op.getOutBuffer();"
+      "::mlir::Value", "getOutBufferValue", (ins), "return $_op.getOutBuffer();"
+    >,
+  ];
+}
+
+def MGP_HasDeviceOpInterface : OpInterface<"MGPHasDeviceOpInterface"> {
+  let description = [{
+    Interface for ops which have an #M.device_ref attribute.
+
+    Some ops actually involve both a 'host' and 'other' device. For these ops
+    this interface provides the 'other' device.
+  }];
+  let cppNamespace = "::M::MGP";
+  let methods = [
+    InterfaceMethod<
+      "Returns the #M.device_ref used by the op.",
+      "M::DeviceRefAttr", "getDevice", (ins)
+    >,
+  ];
+}
+
+def MGP_HasRuntimeSlotOpInterface : OpInterface<"MGPHasRuntimeSlotOpInterface"> {
+  let description = [{
+    Interface for ops which access a device-specific runtime via an !mgp.context
+    slot index.
+
+    Some ops actually involve both a 'host' and 'other' device. For these ops
+    this interface provides the 'other' device runtime.
+  }];
+  let cppNamespace = "::M::MGP";
+  let methods = [
+    InterfaceMethod<
+      "Returns the runtime slot index used by the op.",
+      "uint64_t", "getSlot", (ins)
+    >,
+    InterfaceMethod<
+      "Returns the !mgp.context used by the op.",
+      "::mlir::TypedValue<::M::MGP::ContextType>", "getTheContext", (ins)
     >,
   ];
 }

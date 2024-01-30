@@ -24,8 +24,23 @@ using namespace M;
 using namespace MGP;
 
 //===----------------------------------------------------------------------===//
-// Utils
+// Custom parsers
 //===----------------------------------------------------------------------===//
+
+static LogicalResult parseDeviceRef(AsmParser &p, DeviceRefAttr &device) {
+  mlir::SMLoc loc;
+  if (p.getCurrentLocation(&loc))
+    return failure();
+  device = dyn_cast_if_present<DeviceRefAttr>(
+      DeviceRefAttr::parse(p, /*odsType=*/{}));
+  if (!device)
+    p.emitError(loc, "expecting #M.device_ref attribute");
+  return success();
+}
+
+static void printDeviceRef(AsmPrinter &p, DeviceRefAttr device) {
+  device.print(p);
+}
 
 /// The distinguished keyword for the unknown dtype.
 constexpr const char *kUnknownDType = "unk";
@@ -608,6 +623,23 @@ const int64_t CpuBufferType::unknownSize = ShapedType::kDynamic;
 
 /// Implements ShapedType::getShape
 ArrayRef<int64_t> CpuBufferType::getShape() const {
+  std::optional<uint64_t> &optSize = getImpl()->optSize;
+  if (!optSize)
+    return ArrayRef<int64_t>(&unknownSize, 1);
+  // Convert to raw signed size for assertion side effect.
+  (void)optSizeToRawSignedSize(optSize);
+  // We'll just reinterpret the uint64_t size as an int64_t since it's in range.
+  return ArrayRef<int64_t>(reinterpret_cast<const int64_t *>(&*optSize), 1);
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceBufferType (cont.)
+//===----------------------------------------------------------------------===//
+
+const int64_t DeviceBufferType::unknownSize = ShapedType::kDynamic;
+
+/// Implements ShapedType::getShape
+ArrayRef<int64_t> DeviceBufferType::getShape() const {
   std::optional<uint64_t> &optSize = getImpl()->optSize;
   if (!optSize)
     return ArrayRef<int64_t>(&unknownSize, 1);

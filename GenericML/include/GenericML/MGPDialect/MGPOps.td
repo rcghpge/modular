@@ -2148,4 +2148,6 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,
   let hasVerifier = 1;
 }
 
+include "GenericML/MGPDialect/MGPDeviceOps.td"
+
 #endif  // GENERICML_MGPDIALECT_MGPOPS_TD

@@ -33,4 +33,17 @@ def MGP_BufferTypeInterface : TypeInterface<"MGPBufferTypeInterface"> {
   let cppNamespace = "::M::MGP";
 }
 
+
+def MGP_HasDeviceInterface : TypeInterface<"MGPHasDeviceInterface"> {
+  let description = [{
+    Types which carry an `#M.device_ref` attribute.
+  }];
+  let cppNamespace = "::M::MGP";
+  let methods = [
+    InterfaceMethod<
+      "Returns the type's device.", "::M::DeviceRefAttr", "getDevice", (ins)
+    >
+  ];
+}
+
 #endif  // GENERICML_MGPDIALECT_MGPTENSORTYPEINTERFACE_TD

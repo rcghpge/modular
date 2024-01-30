@@ -24,6 +24,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "llvm/Support/Base64.h"
 
@@ -31,16 +32,11 @@ using namespace M;
 using namespace MGP;
 
 //===----------------------------------------------------------------------===//
-// CpuBufferConstantOp
+// Utils
 //===----------------------------------------------------------------------===//
 
-/// Returns the alignment constraint for the given attribute, or none if it
-/// has no such constraint.
-///
-/// TODO(#4424): Would be better to just look for a HasAlignmentAttrInterface
-/// instead of looking for specific attribute types.
-static ErrorOr<std::optional<uint64_t>>
-getImpliedAlignment(ElementsAttr value) {
+ErrorOr<std::optional<uint64_t>>
+M::MGP::getImpliedAlignment(ElementsAttr value) {
   if (auto resourceAttr = dyn_cast<DenseResourceElementsAttr>(value)) {
     DenseResourceElementsHandle handle = resourceAttr.getRawHandle();
     mlir::AsmResourceBlob *blob = handle.getBlob();
@@ -78,32 +74,427 @@ getImpliedAlignment(ElementsAttr value) {
                "this attribute value.");
 }
 
-/// Parses the elements attribute, but also captures any alignment constraint.
-static ParseResult parseElementsAttrWithAlign(AsmParser &p,
-                                              ElementsAttr &aValue,
-                                              IntegerAttr &bRawAlign) {
-  llvm::SMLoc loc;
-  if (p.getCurrentLocation(&loc) || p.parseAttribute(aValue))
-    return failure();
+//===----------------------------------------------------------------------===//
+// Custom parsers
+//===----------------------------------------------------------------------===//
 
-  ErrorOr<std::optional<uint64_t>> errOrOptAlign = getImpliedAlignment(aValue);
+/// Parses an #M.device_ref into device, then assigns chain the
+/// type !mgp.chain<$device>.
+static ParseResult parseDeviceRefImpl(OpAsmParser &p, DeviceRefAttr &device,
+                                      ArrayRef<Type *> chains) {
+  llvm::SMLoc loc;
+  if (p.getCurrentLocation(&loc))
+    return failure();
+  device = dyn_cast_if_present<DeviceRefAttr>(
+      DeviceRefAttr::parse(p, /*odsType=*/{}));
+  if (!device)
+    p.emitError(loc, "expecting #M.device_ref attribute");
+  for (Type *chain : chains)
+    *chain = DeviceChainType::get(p.getContext(), device);
+  return success();
+}
+
+static ParseResult parseDeviceRef(OpAsmParser &p, DeviceRefAttr &device,
+                                  Type &chain) {
+  return parseDeviceRefImpl(p, device, {&chain});
+}
+
+static void printDeviceRef(OpAsmPrinter &p, Operation *op, DeviceRefAttr device,
+                           DeviceChainType chain) {
+  device.print(p);
+}
+
+static ParseResult parseDeviceRef(OpAsmParser &p, DeviceRefAttr &device,
+                                  Type &chain0, Type &chain1) {
+  return parseDeviceRefImpl(p, device, {&chain0, &chain1});
+}
+
+static void printDeviceRef(OpAsmPrinter &p, Operation *op, DeviceRefAttr device,
+                           DeviceChainType chain0, DeviceChainType chain1) {
+  device.print(p);
+}
+
+/// Parses a !mgp.buffer type, extracts its raw size and device attributes,
+/// and assigns chains the type !mgp.chain<device>.
+static ParseResult parseBufferTypeToRawSizeDeviceImpl(OpAsmParser &p,
+                                                      Type &buffer,
+                                                      IntegerAttr &rawSize,
+                                                      DeviceRefAttr &device,
+                                                      ArrayRef<Type *> chains) {
+  llvm::SMLoc loc;
+  if (p.getCurrentLocation(&loc) || p.parseType(buffer))
+    return failure();
+  auto bufferType = dyn_cast<DeviceBufferType>(buffer);
+  if (bufferType == nullptr)
+    return p.emitError(loc) << "expected an !mgp.buffer type.";
+  rawSize = bufferType.getRawSize();
+  device = bufferType.getDevice();
+  for (Type *chain : chains)
+    *chain = DeviceChainType::get(p.getContext(), device);
+  return success();
+}
+
+static ParseResult parseBufferTypeToRawSizeDevice(OpAsmParser &p, Type &buffer,
+                                                  IntegerAttr &rawSize,
+                                                  DeviceRefAttr &device,
+                                                  Type &chain) {
+  return parseBufferTypeToRawSizeDeviceImpl(p, buffer, rawSize, device,
+                                            {&chain});
+}
+
+static void printBufferTypeToRawSizeDevice(OpAsmPrinter &p, Operation *op,
+                                           Type buffer, IntegerAttr rawSize,
+                                           DeviceRefAttr device,
+                                           DeviceChainType chain) {
+  p << buffer;
+}
+
+static ParseResult parseStaticBufferTypeToSizeDevice(OpAsmParser &p,
+                                                     Type &buffer,
+                                                     IntegerAttr &size,
+                                                     DeviceRefAttr &device) {
+  mlir::SMLoc loc;
+  if (p.getCurrentLocation(&loc) ||
+      parseBufferTypeToRawSizeDeviceImpl(p, buffer, size, device, {}))
+    return failure();
+  if (!rawSizeToOptSize(size.getUInt()))
+    return p.emitError(loc, "expecting statically sized !mgp.buffer type");
+  return success();
+}
+
+static void printStaticBufferTypeToSizeDevice(OpAsmPrinter &p, Operation *op,
+                                              Type buffer, IntegerAttr rawSize,
+                                              DeviceRefAttr device) {
+  p << buffer;
+}
+
+static ParseResult parseStaticBufferTypeToSizeDevice(OpAsmParser &p,
+                                                     Type &buffer,
+                                                     IntegerAttr &size,
+                                                     DeviceRefAttr &device,
+                                                     Type &chain) {
+  mlir::SMLoc loc;
+  if (p.getCurrentLocation(&loc) ||
+      parseBufferTypeToRawSizeDeviceImpl(p, buffer, size, device, {&chain}))
+    return failure();
+  if (!rawSizeToOptSize(size.getUInt()))
+    return p.emitError(loc, "expecting statically sized !mgp.buffer type");
+  return success();
+}
+
+static void printStaticBufferTypeToSizeDevice(OpAsmPrinter &p, Operation *op,
+                                              Type buffer, IntegerAttr rawSize,
+                                              DeviceRefAttr device,
+                                              DeviceChainType chain) {
+  p << buffer;
+}
+
+static ParseResult parseDynamicBufferTypeToDevice(OpAsmParser &p, Type &buffer,
+                                                  DeviceRefAttr &device,
+                                                  Type &chain) {
+  IntegerAttr rawSize;
+  mlir::SMLoc loc;
+  if (p.getCurrentLocation(&loc) ||
+      parseBufferTypeToRawSizeDeviceImpl(p, buffer, rawSize, device, {&chain}))
+    return failure();
+  if (rawSizeToOptSize(rawSize.getUInt()))
+    return p.emitError(loc, "expecting dynamically sized !mgp.buffer type");
+  return success();
+}
+
+static void printDynamicBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
+                                           Type buffer, DeviceRefAttr device,
+                                           DeviceChainType chain) {
+  p << buffer;
+}
+
+static ParseResult parseBufferTypeToDevice(OpAsmParser &p, Type &buffer,
+                                           DeviceRefAttr &device, Type &chain) {
+  IntegerAttr rawSize;
+  return parseBufferTypeToRawSizeDeviceImpl(p, buffer, rawSize, device,
+                                            {&chain});
+}
+
+static void printBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
+                                    DeviceBufferType buffer,
+                                    DeviceRefAttr device,
+                                    DeviceChainType chain) {
+  p << buffer;
+}
+
+static ParseResult parseBufferTypeToDevice(OpAsmParser &p, Type &buffer,
+                                           DeviceRefAttr &device, Type &chain0,
+                                           Type &chain1) {
+  IntegerAttr rawSize;
+  return parseBufferTypeToRawSizeDeviceImpl(p, buffer, rawSize, device,
+                                            {&chain0, &chain1});
+}
+
+static void printBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
+                                    DeviceBufferType buffer,
+                                    DeviceRefAttr device,
+                                    DeviceChainType chain0,
+                                    DeviceChainType chain1) {
+  p << buffer;
+}
+
+/// Parses a !mgp.tensor type and extracts its device, buffer type, and
+/// tensor spec type, and assigns chain the type !mgp.chain<device>.
+/// If shapeOnly is true, the tensor spec will have 'unk' dtype.
+static ParseResult parseTensorTypeToDeviceBufferSpecImpl(
+    bool shapeOnly, OpAsmParser &p, Type &tensor, DeviceRefAttr &device,
+    Type &buffer, Type &tensorSpec, ArrayRef<Type *> chains) {
+  llvm::SMLoc loc;
+  if (p.getCurrentLocation(&loc) || p.parseType(tensor))
+    return failure();
+  auto tensorType = dyn_cast<DeviceTensorType>(tensor);
+  if (tensorType == nullptr)
+    return p.emitError(loc) << "expected an !mgp.tensor type.";
+  device = tensorType.getDevice();
+  if (shapeOnly)
+    tensorSpec = TensorSpecType::get(p.getContext(),
+                                     tensorType.getTensorSpec().getDims(),
+                                     std::optional<DType>());
+  else
+    tensorSpec = tensorType.getTensorSpec();
+  buffer = DeviceBufferType::get(tensorType);
+  for (Type *chain : chains)
+    *chain = DeviceChainType::get(p.getContext(), device);
+  return success();
+}
+
+static ParseResult parseTensorTypeToDeviceShape(OpAsmParser &p, Type &tensor,
+                                                DeviceRefAttr &device,
+                                                Type &shape) {
+  Type buffer;
+  return parseTensorTypeToDeviceBufferSpecImpl(/*shapeOnly=*/true, p, tensor,
+                                               device, buffer, shape, {});
+}
+
+static void printTensorTypeToDeviceShape(OpAsmPrinter &p, Operation *op,
+                                         DeviceTensorType tensor,
+                                         DeviceRefAttr device,
+                                         TensorSpecType shape) {
+  p << tensor;
+}
+
+static ParseResult parseTensorTypeToDeviceBuffer(OpAsmParser &p, Type &tensor,
+                                                 DeviceRefAttr &device,
+                                                 Type &buffer) {
+  Type tensorSpec;
+  return parseTensorTypeToDeviceBufferSpecImpl(/*shapeOnly=*/false, p, tensor,
+                                               device, buffer, tensorSpec, {});
+}
+
+static void printTensorTypeToDeviceBuffer(OpAsmPrinter &p, Operation *op,
+                                          Type tensor, DeviceRefAttr device,
+                                          DeviceBufferType buffer) {
+  p << tensor;
+}
+
+static ParseResult
+parseTensorTypeToDeviceBufferSpec(OpAsmParser &p, DeviceRefAttr &device,
+                                  Type &buffer, Type &tensorSpec, Type &chain0,
+                                  Type &chain1) {
+  Type tensor;
+  return parseTensorTypeToDeviceBufferSpecImpl(/*shapeOnly=*/false, p, tensor,
+                                               device, buffer, tensorSpec,
+                                               {&chain0, &chain1});
+}
+
+static void printTensorTypeToDeviceBufferSpec(OpAsmPrinter &p, Operation *op,
+                                              DeviceRefAttr device,
+                                              DeviceBufferType buffer,
+                                              TensorSpecType tensorSpec,
+                                              DeviceChainType chain0,
+                                              DeviceChainType chain1) {
+  auto tensorType = DeviceTensorType::get(op->getContext(), device, tensorSpec);
+  p << tensorType;
+}
+
+static ParseResult
+parseTensorTypeToDeviceBufferSpec(OpAsmParser &p, Type &tensor,
+                                  DeviceRefAttr &device, Type &buffer,
+                                  Type &tensorSpec, Type &chain) {
+  return parseTensorTypeToDeviceBufferSpecImpl(
+      /*shapeOnly=*/false, p, tensor, device, buffer, tensorSpec, {&chain});
+}
+
+static void printTensorTypeToDeviceBufferSpec(OpAsmPrinter &p, Operation *op,
+                                              DeviceTensorType tensorType,
+                                              DeviceRefAttr device,
+                                              DeviceBufferType buffer,
+                                              TensorSpecType tensorSpec,
+                                              DeviceChainType chain) {
+  p << tensorType;
+}
+
+/// Parses a function type consisting of one input buffer and N output
+/// buffer types, all sharing the same device assigned to device, assigns
+/// outBufferRawSizes the raw sizes from the outBuffer types, and assigns chain
+/// the type !mgp.chain<device>.
+static ParseResult parseBufferTypesToBufferRawSizesDeviceOutBuffers(
+    OpAsmParser &p, Type &inBuffer, IntArrayElementsAttr &outBufferRawSizesAttr,
+    DeviceRefAttr &device, SmallVectorImpl<Type> &outBuffers, Type &chain) {
+  llvm::SMLoc loc;
+  if (p.getCurrentLocation(&loc) || p.parseType(inBuffer))
+    return failure();
+  auto inBufferType = dyn_cast<DeviceBufferType>(inBuffer);
+  if (!inBufferType)
+    return p.emitError(loc, "expected an !mgp.buffer type");
+  device = inBufferType.getDevice();
+  chain = DeviceChainType::get(p.getContext(), device);
+  SmallVector<APInt> rawDims;
+  if (p.getCurrentLocation(&loc) || p.parseArrowTypeList(outBuffers))
+    return failure();
+  rawDims.reserve(outBuffers.size());
+  for (const auto &outBuffer : outBuffers) {
+    auto outBufferType = dyn_cast<DeviceBufferType>(outBuffer);
+    if (!outBufferType)
+      return p.emitError(loc, "expected an !mgp.buffer type");
+    if (outBufferType.getDevice() != device)
+      return p.emitError(loc, "all !mgp.buffer types must agree on device");
+    rawDims.emplace_back(outBufferType.getRawSize().getValue());
+  }
+  Type ui64 = IntegerType::get(p.getContext(), 64, IntegerType::Unsigned);
+  outBufferRawSizesAttr = IntArrayElementsAttr::get(
+      ArrayType::get(static_cast<int64_t>(rawDims.size()), ui64), rawDims);
+  return success();
+}
+
+static void printBufferTypesToBufferRawSizesDeviceOutBuffers(
+    OpAsmPrinter &p, Operation *op, Type inBuffer,
+    IntArrayElementsAttr outBufferRawSizesAttr, DeviceRefAttr device,
+    TypeRange outBuffers, DeviceChainType chain) {
+  p << inBuffer;
+  p.printArrowTypeList(outBuffers);
+}
+
+/// Parses a function type consisting of one input buffer and one output buffer
+/// type, assigns their devices to srcDevice and dstDevice, and assigns inChain
+/// the type !mgp.chain<srcDevice> and outChain the type !mgp.chain<dstDevice>.
+static ParseResult parseSrcDstBufferTypesToDevices(
+    OpAsmParser &p, Type &srcBuffer, Type &dstBuffer, DeviceRefAttr &srcDevice,
+    DeviceRefAttr &dstDevice, Type &inChain, Type &outChain) {
+  mlir::SMLoc loc;
+  if (p.getCurrentLocation(&loc) || p.parseType(srcBuffer))
+    return failure();
+  auto srcBufferType = dyn_cast<DeviceBufferType>(srcBuffer);
+  if (!srcBufferType)
+    return p.emitError(loc, "expected an !mgp.buffer type");
+  if (p.parseArrow())
+    return failure();
+  if (p.getCurrentLocation(&loc) || p.parseType(dstBuffer))
+    return failure();
+  auto dstBufferType = dyn_cast<DeviceBufferType>(dstBuffer);
+  if (!dstBufferType)
+    return p.emitError(loc, "expected an !mgp.buffer type");
+  srcDevice = srcBufferType.getDevice();
+  dstDevice = dstBufferType.getDevice();
+  inChain = DeviceChainType::get(p.getContext(), srcDevice);
+  outChain = DeviceChainType::get(p.getContext(), dstDevice);
+  return success();
+}
+
+static void printSrcDstBufferTypesToDevices(OpAsmPrinter &p, Operation *op,
+                                            DeviceBufferType srcBuffer,
+                                            DeviceBufferType dstBuffer,
+                                            DeviceRefAttr srcDevice,
+                                            DeviceRefAttr dstDevice,
+                                            DeviceChainType inChain,
+                                            DeviceChainType outChain) {
+  p << srcBuffer;
+  p << " -> ";
+  p << dstBuffer;
+}
+
+/// Parses a function type consisting of one input buffer and one output
+/// buffer type, checks their devices agree, assigns that device to device,
+/// and assigns inChain and outChain the type !mgp.chain<device>.
+static ParseResult
+parseSrcDstBufferTypesToSameDevice(OpAsmParser &p, Type &srcBuffer,
+                                   Type &dstBuffer, DeviceRefAttr &device,
+                                   Type &inChain, Type &outChain) {
+  mlir::SMLoc loc;
+  if (p.getCurrentLocation(&loc) || p.parseType(srcBuffer))
+    return failure();
+  auto srcBufferType = dyn_cast<DeviceBufferType>(srcBuffer);
+  if (!srcBufferType)
+    return p.emitError(loc, "expected an !mgp.buffer type");
+  if (p.parseArrow())
+    return failure();
+  if (p.getCurrentLocation(&loc) || p.parseType(dstBuffer))
+    return failure();
+  auto dstBufferType = dyn_cast<DeviceBufferType>(dstBuffer);
+  if (!dstBufferType)
+    return p.emitError(loc, "expected an !mgp.buffer type");
+  device = srcBufferType.getDevice();
+  if (device != dstBufferType.getDevice())
+    return p.emitError(loc, "buffer types must agree on their device");
+  inChain = DeviceChainType::get(p.getContext(), device);
+  outChain = DeviceChainType::get(p.getContext(), device);
+  return success();
+}
+
+static void printSrcDstBufferTypesToSameDevice(OpAsmPrinter &p, Operation *op,
+                                               DeviceBufferType srcBuffer,
+                                               DeviceBufferType dstBuffer,
+                                               DeviceRefAttr device,
+                                               DeviceChainType inChain,
+                                               DeviceChainType outChain) {
+  p << srcBuffer;
+  p << " -> ";
+  p << dstBuffer;
+}
+
+/// Parses optionally type-annotated operands into $gatingOperands, using
+/// the default type !mgp.chain<$device>.
+static ParseResult parseChainCreateParenOperandList(
+    OpAsmParser &p, DeviceRefAttr &device,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &gatingOperands,
+    SmallVectorImpl<Type> &gatingOperandTypes) {
+  Type defaultType = DeviceChainType::get(p.getContext(), device);
+  return parseParenOperandListWithDefaultType(p, gatingOperands,
+                                              gatingOperandTypes, defaultType);
+}
+
+static void printChainCreateParenOperandList(
+    OpAsmPrinter &p, Operation *op, DeviceRefAttr device,
+    const OperandRange &gatingOperands, const TypeRange &gatingOperandTypes) {
+  Type defaultType = DeviceChainType::get(op->getContext(), device);
+  return printParenOperandListWithDefaultType(p, gatingOperands, defaultType);
+}
+
+//===----------------------------------------------------------------------===//
+// CpuBufferConstantOp
+//===----------------------------------------------------------------------===//
+
+/// Parses an elements attribute, and sets rawAlign to its alignment constraint.
+static ParseResult parseElementsAttrWithAlign(AsmParser &p, ElementsAttr &value,
+                                              IntegerAttr &rawAlign) {
+  llvm::SMLoc loc;
+  Attribute anyAttr;
+  if (p.getCurrentLocation(&loc) || p.parseAttribute(anyAttr))
+    return failure();
+  value = dyn_cast<ElementsAttr>(anyAttr);
+  if (!value)
+    return p.emitError(loc, "expected elements attribute");
+
+  ErrorOr<std::optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
   if (const char *err = errOrOptAlign.getError())
-    return p.emitError(loc) << StringRef(err);
+    return p.emitError(loc, err);
 
   Type ui64 = IntegerType::get(p.getContext(), 64, IntegerType::Unsigned);
   APInt apint(ui64.getIntOrFloatBitWidth(), optSizeToRawSize(*errOrOptAlign),
               ui64.isSignedInteger());
-  bRawAlign = IntegerAttr::get(ui64, apint);
-
+  rawAlign = IntegerAttr::get(ui64, apint);
   return success();
 }
 
-/// Prints the elements attribute. The alignment attribute is not printed.
-static void printElementsAttrWithAlign(AsmPrinter &p,
-                                       const CpuBufferConstantOp &op,
-                                       ElementsAttr aValue,
-                                       IntegerAttr bRawAlign) {
-  p << aValue;
+static void printElementsAttrWithAlign(AsmPrinter &p, Operation *op,
+                                       ElementsAttr value,
+                                       IntegerAttr rawAlign) {
+  p << value;
 }
 
 /// Get the raw alignment for elements when building a buffer constant.

@@ -180,7 +180,7 @@ func.func @tensor_extract_mismatched_size(%tensor : !mgp.cpu.tensor<3x5xf32>) {
 // -----
 
 //
-// !mgp.cpu.tensor_spec
+// !mgp.tensor_spec
 //
 
 // expected-error@+1 {{tensor spec must have a rank between 0 and 8.}}
