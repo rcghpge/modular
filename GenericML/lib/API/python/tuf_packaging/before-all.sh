@@ -27,18 +27,6 @@ git-lfs pull
 
 arch=$(uname -m)
 
-# Download specific cached TensorFlow
-s3_blob="s3://modular-ci-prod-artifact-bucket/ci/v2.13.1/${arch}/main/manylinux_2_28-tf_cache.tar.gz"
-download_cached_tf --blob=${s3_blob} --ref=v2.13.1
-
-# Build external PyTorch
-# This is needed for the install.py in third-party/stock-pytorch
-python3 -m pip install boto3
-build-external-pytorch --pytorch-abi cxx11
-
-# Build external torchvision
-build-external-torchvision
-
 # Build LLVM.
 # Note: LLDB Python breaks because manylinux ships with a statically linked Python interpreter.
 DISABLE_LLDB_PYTHON_SCRIPTING=true \
@@ -54,4 +42,3 @@ pip install \
   -r GenericML/lib/API/python/packaging-requirements.txt
 
 pip install pipx
-
