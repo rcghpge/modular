@@ -12,6 +12,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
 #include "GenericML/Support/Assert.h"
 #include "GenericML/Support/Tensor.h"
 #include "mlir/IR/IRMapping.h"
@@ -43,10 +44,6 @@ struct FuseBroadcastsPass
       // disallow fusion on those inputs. We might want to make this more fine
       // grained in the future.
       if (!kernel.getInputFusionInterfaceAttr() && !isView)
-        continue;
-
-      // Disable fusion on experimental new KGEN in MOGG for now.
-      if (kernel.getIsKGEN().value_or(false))
         continue;
 
       // For catching the rare case of a broadcast taking a broadcast as arg AND
@@ -101,8 +98,8 @@ struct FuseBroadcastsPass
       if (!kernel.getOutputParamDecls().empty())
         continue;
 
-      // Don't fuse reshapes into new API kernels until we figure out views
-      // TODO(26678)
+      // Don't fuse reshapes into new API kernels because we will handle it in
+      // another pass.
       if (kernel.getIsKGEN().value_or(false))
         continue;
 
@@ -180,6 +177,15 @@ struct FuseBroadcastsPass
       if (otherKernel.getOutputPlaceholder() == nullptr)
         return false;
 
+      // Make sure both kernels are compatible regarding KGEN.
+      if (kernel.getIsKGENAttr() != otherKernel.getIsKGENAttr())
+        return false;
+
+      // For KGEN view fusion, the src kernel must only have 1 output.
+      if (kernel.getIsKGEN().value_or(false) &&
+          otherKernel.getNumResults() != 1)
+        return false;
+
       // Only fuse view operations.
       if (otherKernel.getIsViewOp().value_or(false))
         return true;
@@ -192,17 +198,10 @@ struct FuseBroadcastsPass
                         DenseMap<Value, Value> &alreadyFused) {
     IRMapping remapper;
     Value operandBeingReplaced = leaf.getOperand(idx);
-    mlir::SymbolTable symTable{leaf};
-    llvm::StringMap<StringRef> oldNameToNew;
     KernelOp producerKernel =
         cast<KernelOp>(operandBeingReplaced.getDefiningOp());
     Block &producerBlock = producerKernel.getBody().front();
     Block &leafBlock = leaf.getBody().front();
-
-    // A view op kernel should contain a view transforming operation followed by
-    // a copy into the output. When we fuse we just hoist the view operation and
-    // not the copy.
-    MOGG::CallOp viewOp;
 
     // Add the operands of the old kernel to the new one.
     for (size_t i = 0, e = producerKernel->getNumOperands(); i < e; ++i) {
@@ -249,40 +248,117 @@ struct FuseBroadcastsPass
     // Insert at the top just after the output placeholders.
     leaf.setInsertionPointToTop(builder);
 
-    // Don't fuse in the elementwise kernel invoke or any lambdas. We just
-    // want the view ops at the top.
-    auto skipElementwiseAndLambdas = [](Operation *op) {
-      if (isa<MOGG::LambdaOp, MOGG::OutputPlaceholdersOp>(op))
-        return true;
-      if (auto call = dyn_cast<MOGG::CallOp>(op)) {
-        if (call.getMojoKernelTarget() == "elementwise")
-          return true;
+    // Fusion helper function for KGEN version.
+    auto fuseInputImplKGEN = [&](KernelOp producerKernel, KernelOp leaf,
+                                 Value operand) {
+      Value target = leafBlock.getArgument(idx);
+      llvm::StringMap<std::string> paramMapping;
+
+      for (Operation &op : producerKernel.getOps()) {
+        if (isa<MOGG::OutputPlaceholdersOp>(op)) {
+          remapper.map(op.getResult(0), target);
+        } else if (isa<MOGG::OutputOp>(op)) {
+          // Do nothing.
+        } else
+          MOGG::cloneKgenOpsIntoMOGG(builder, &op, paramMapping, remapper);
       }
-      return false;
+
+      // We find the mogg.to_kgen that relates to the output of the
+      // `producerKernel`.
+      llvm::SmallPtrSet<Operation *, 2> toDelete;
+      llvm::DenseSet<Value> kgenOut;
+      leaf.walk([&](MOGG::ToKGENOp toKgen) {
+        if (toKgen.getInput() == target) {
+          kgenOut.insert(toKgen.getResults());
+          toDelete.insert(toKgen);
+        }
+      });
+
+      // We find the pop.stack_allocation that relates to the output of the
+      // `producerKernel`.
+      Value stackAlloc;
+      leaf.walk([&](MOGG::TensorCopyOp tensorCopy) {
+        if (kgenOut.contains(tensorCopy.getDst())) {
+          stackAlloc = tensorCopy.getSrc();
+          toDelete.insert(tensorCopy);
+        }
+      });
+
+      target.replaceAllUsesWith(stackAlloc);
+      leaf.removeOperandAtIndex(idx);
+      alreadyFused[operand] = stackAlloc;
+
+      Type bindType;
+      for (auto value : kgenOut) {
+        // If we find a mogg.to_kgen that connects to a mogg.tensor_copy,
+        // then it is the one we just cloned into the leaf which requires
+        // rebinding of its output type.
+        if (llvm::all_of(value.getUsers(), [](Operation *user) {
+              return !isa<MOGG::TensorCopyOp>(user);
+            }))
+          bindType = value.getType();
+      }
+
+      KGEN::RebindOp rebind =
+          builder.create<KGEN::RebindOp>(leaf->getLoc(), bindType, stackAlloc);
+
+      for (auto value : kgenOut)
+        value.replaceAllUsesWith(rebind);
+
+      // Clean-up un-necessary mogg.to_kgen and mogg.tensor_copy in the
+      // leaf that are cloned from the `producerKernel`.
+      for (Operation *op : toDelete)
+        op->erase();
+
+      MOGG::remapTypesAndAttrs(leaf, paramMapping);
     };
 
-    // Copy the body into the new one.
-    producerKernel.fuseBodyIntoNewWithSkip(
-        builder, symTable, remapper, oldNameToNew, skipElementwiseAndLambdas);
+    // Fusion helper function for MOGG version.
+    auto fuseInputImplMOGG = [&](KernelOp producerKernel, KernelOp leaf,
+                                 Value operand) {
+      mlir::SymbolTable symTable{leaf};
+      llvm::StringMap<StringRef> oldNameToNew;
+      // Don't fuse in the elementwise kernel invoke or any lambdas. We just
+      // want the view ops at the top.
+      auto skipElementwiseAndLambdas = [](Operation *op) {
+        if (isa<MOGG::LambdaOp, MOGG::OutputPlaceholdersOp>(op))
+          return true;
+        if (auto call = dyn_cast<MOGG::CallOp>(op)) {
+          if (call.getMojoKernelTarget() == "elementwise")
+            return true;
+        }
+        return false;
+      };
 
-    // Find "The view" being fused in. The view we just fused in will be the
-    // operation which has a return but that has no use (since it was previously
-    // used in a lambda which we haven't fused). With improved composability in
-    // the future we won't need this hack.
-    Operation *newView = nullptr;
-    for (auto op : leaf.getOps<MOGG::CallOp>()) {
-      if (op->getNumResults() == 1 && op->getResult(0).use_empty()) {
-        GENERICML_ASSERT(newView == nullptr)
-            << "More than one view op detected in kernel being fused.";
-        newView = op;
+      // Copy the body into the new one.
+      producerKernel.fuseBodyIntoNewWithSkip(
+          builder, symTable, remapper, oldNameToNew, skipElementwiseAndLambdas);
+
+      // Find "The view" being fused in. The view we just fused in will be the
+      // operation which has a return but that has no use (since it was
+      // previously used in a lambda which we haven't fused). With improved
+      // composability in the future we won't need this hack.
+      Operation *newView = nullptr;
+      for (auto op : leaf.getOps<MOGG::CallOp>()) {
+        if (op->getNumResults() == 1 && op->getResult(0).use_empty()) {
+          GENERICML_ASSERT(newView == nullptr)
+              << "More than one view op detected in kernel being fused.";
+          newView = op;
+        }
       }
-    }
-    GENERICML_ASSERT(newView)
-        << "Kernel was marked as a view but could not find a view op";
+      GENERICML_ASSERT(newView)
+          << "Kernel was marked as a view but could not find a view op";
 
-    leafBlock.getArgument(idx).replaceAllUsesWith(newView->getResult(0));
-    leaf.removeOperandAtIndex(idx);
-    alreadyFused[operandBeingReplaced] = newView->getResult(0);
+      leafBlock.getArgument(idx).replaceAllUsesWith(newView->getResult(0));
+      leaf.removeOperandAtIndex(idx);
+      alreadyFused[operand] = newView->getResult(0);
+    };
+
+    if (leaf.getIsKGEN().value_or(false)) {
+      fuseInputImplKGEN(producerKernel, leaf, operandBeingReplaced);
+    } else {
+      fuseInputImplMOGG(producerKernel, leaf, operandBeingReplaced);
+    }
 
     // Ensure the block is in topologically sorted order. This is needed for
     // somewhat contrived test cases.

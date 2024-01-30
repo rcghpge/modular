@@ -550,16 +550,18 @@ def MOGG_TensorCopyOp : MOGG_Op<"tensor_copy"> {
   let summary = "Represents the copy intrinsic whose counterpart is in kgen library";
   let description = [{
     Represents the copy intrinsic that will be directly lowered to a call of
-    the copy function in mogg's kgen library. Conceptually, the `src` is
+    the copy function in mogg's kgen library. The `src` (a tensor view) is
     materialized to `dst`.
 
     Example:
     ```mlir
-      "mogg.tensor_copy"(%3, %4) : (!mo.tensor<[5, 4], si32>, !kgen.pointer<struct<...>>)
+      %3 = "mogg.to_kgen"(%1) : (!mo.tensor<[2], si32>) -> !kgen.pointer<struct<...>>
+      %4 = pop.stack_allocation 1 x struct<(...) memoryOnly>
+      "mogg.tensor_copy"(%3, %4) : (!kgen.pointer<struct<...>>, !kgen.pointer<struct<...>>)
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$dst, AnyType:$src);
+  let arguments = (ins AnyType:$dst, AnyType:$src);
 }
 
 //===----------------------------------------------------------------------===//
