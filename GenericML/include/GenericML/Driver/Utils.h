@@ -12,6 +12,7 @@
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Runtime/Utils.h"
 #include "Support/ADT/GenericUniquePtrSet.h"
+#include "Support/Buffer.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "llvm/Support/ToolOutputFile.h"
@@ -40,7 +41,7 @@ int setupMLIRAndRunWithLeakCheckedRuntime(
 
 // FIXME: We have to duplicate this here because of #1639. Remove this when
 //        possible to do so.
-ErrorOr<std::string> getFileContentIdentity(const llvm::MemoryBufferRef &file,
+ErrorOr<std::string> getFileContentIdentity(M::BufferRef file,
                                             FileFormat format) {
   switch (format) {
   default:
@@ -74,7 +75,7 @@ ErrorOr<std::string> getFileContentIdentity(const llvm::MemoryBufferRef &file,
   case FileFormat::kTorchPDialect:
     return "input is a PyTorch model in MLIR form consisting of primitive ops";
   case FileFormat::kMEFFile: {
-    ErrorOr<RCRef<MEFFile>> mefFileOr = MEFFile::open(file.getBuffer());
+    ErrorOr<RCRef<MEFFile>> mefFileOr = MEFFile::open(file->getBuffer());
     if (failed(mefFileOr))
       return Error(mefFileOr.getError());
 
@@ -86,14 +87,20 @@ ErrorOr<std::string> getFileContentIdentity(const llvm::MemoryBufferRef &file,
 }
 
 /// Saves an intermediate file with a dump of `module` if --saved-temps is set.
-inline void
-writeIntermediateFileIfRequested(const std::string &identifier, ModuleOp module,
-                                 const CommonCLOptions *options,
-                                 const llvm::MemoryBufferRef &file) {
+inline void writeIntermediateFileIfRequested(const std::string &identifier,
+                                             ModuleOp module,
+                                             const CommonCLOptions *options,
+                                             M::BufferRef file) {
   std::string ext = "." + identifier + ".mlir";
+  auto filePathOr = file->getFilePath();
+  std::string filePath;
+  if (filePathOr)
+    filePath = filePathOr->string();
+  else
+    filePath = "temp";
   if (options && options->saveTemps) {
     std::unique_ptr<llvm::ToolOutputFile> intermediateFile =
-        options->getIntermediateFile(file.getBufferIdentifier(), ext);
+        options->getIntermediateFile(filePath, ext);
     module->print(intermediateFile->os());
     intermediateFile->keep();
   }

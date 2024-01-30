@@ -63,7 +63,7 @@ public:
 /// driver cannot link the MEF libraries, it relies on the symbols provided by
 /// the framework supplied with dylib if the input is a MEF file.
 static M::ErrorOr<std::string>
-getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
+getFileContentIdentity(M::BufferRef file, FileFormat format,
                        FrameworkContextHandle ctxHandle, CXXDriverAPI dylib) {
   switch (format) {
   default:
@@ -101,7 +101,7 @@ getFileContentIdentity(const llvm::MemoryBuffer &file, FileFormat format,
   case FileFormat::kTorchPDialect:
     return "input is a PyTorch model in MLIR form consisting of primitive ops";
   case FileFormat::kMEFFile: {
-    auto fileHandleOr = dylib.openBinaryFile(ctxHandle, file);
+    auto fileHandleOr = dylib.openBinaryFile(ctxHandle, file.copy());
     if (fileHandleOr.isError())
       return fileHandleOr.takeError();
     return dylib.sniffBinaryFileContents(ctxHandle, std::move(*fileHandleOr));
@@ -122,14 +122,7 @@ int main(int argc, char **argv) {
   }
 
   struct InputInfo {
-    // If we don't have a regular input file (and we're attempting to run
-    // something that doesn't take any input), then we have to pass in an empty
-    // memory buffer which will result in an unknown file format. We want to
-    // preserve the stdin behavior for cases where the command does take input
-    // because we might be piping something into the tool.
-    std::unique_ptr<MemoryBuffer> file =
-        MemoryBuffer::getMemBuffer("", "empty");
-
+    M::BufferRef file;
     FileFormat format = FileFormat::kUnknown;
     bool isInputDirectory = false;
     std::filesystem::path inputPath;
@@ -175,8 +168,9 @@ int main(int argc, char **argv) {
         // The input file is not a directory, so we open and sniff the format.
         // In case the input file is MEF, it has to be aligned to the maximum
         // attribute alignment.
-        info.file =
+        std::unique_ptr<llvm::MemoryBuffer> inputFile =
             options.openInputFileOrExit(inputFilename, maxAttributeAlignment());
+        info.file = Buffer::take(std::move(inputFile));
         info.format = options.getInputFormat(
             info.inputPath.extension().string(), info.file->getBuffer());
       }
@@ -190,7 +184,7 @@ int main(int argc, char **argv) {
   int rc = EXIT_SUCCESS;
 
   for (auto &inputInfo : inputsInfo) {
-    auto dylibOr = loadDesiredLibrary(argc, argv, *inputInfo.file,
+    auto dylibOr = loadDesiredLibrary(argc, argv, inputInfo.file.copy(),
                                       inputInfo.format, options.loadLib);
     if (failed(dylibOr))
       return options.reportError(dylibOr.getError());
@@ -248,7 +242,7 @@ int main(int argc, char **argv) {
       std::unique_ptr<llvm::ToolOutputFile> outputFile =
           options.getOutputFile(options.commandHasBinaryOutput());
       auto identityOr = getFileContentIdentity(
-          *inputInfo.file, inputInfo.format, frameworkCtx, dylib);
+          inputInfo.file.copy(), inputInfo.format, frameworkCtx, dylib);
       if (failed(identityOr))
         return options.reportError(identityOr.getError());
 
@@ -260,10 +254,10 @@ int main(int argc, char **argv) {
     // If we are dealing with a directory, we need to open it.
     if (inputInfo.isInputDirectory) {
       // TODO: this should be called for all files
-      auto fileOr = dylib.openPath(frameworkCtx, inputInfo.inputPath);
-      if (failed(fileOr))
-        return options.reportError(fileOr.getError());
-      inputInfo.file = std::move(*fileOr);
+      auto bufferOr = dylib.openPath(frameworkCtx, inputInfo.inputPath);
+      if (bufferOr.isError())
+        return options.reportError(bufferOr.getError());
+      inputInfo.file = bufferOr.takeValue();
     }
 
     // If we're stopping at compilation, emit the binary file directly to the
@@ -273,7 +267,8 @@ int main(int argc, char **argv) {
 
       // If the file is already a binary, just emit it directly.
       if (inputInfo.format == FileFormat::kMEFFile ||
-          dylib.isBinary(frameworkCtx, *inputInfo.file, inputInfo.format)) {
+          dylib.isBinary(frameworkCtx, inputInfo.file.copy(),
+                         inputInfo.format)) {
         outputFile->os().write(inputInfo.file->getBufferStart(),
                                inputInfo.file->getBufferSize());
         outputFile->keep();
@@ -281,7 +276,7 @@ int main(int argc, char **argv) {
       }
 
       // Otherwise, compile it.
-      auto bufferOr = dylib.compileToBinary(frameworkCtx, *inputInfo.file,
+      auto bufferOr = dylib.compileToBinary(frameworkCtx, inputInfo.file.copy(),
                                             inputInfo.format);
       if (bufferOr.isError())
         return options.reportError(bufferOr.getError());
@@ -297,19 +292,14 @@ int main(int argc, char **argv) {
     // If we are not inspecting, we must need a compiled format.  If this is
     // already done then we're golden, otherwise compile now.
     if (inputInfo.format != FileFormat::kMEFFile &&
-        !dylib.isBinary(frameworkCtx, *inputInfo.file, inputInfo.format)) {
-      auto bufferOr = dylib.compileToBinary(frameworkCtx, *inputInfo.file,
+        !dylib.isBinary(frameworkCtx, inputInfo.file.copy(),
+                        inputInfo.format)) {
+      auto bufferOr = dylib.compileToBinary(frameworkCtx, inputInfo.file.copy(),
                                             inputInfo.format);
       if (bufferOr.isError())
         return options.reportError(bufferOr.getError());
 
-      buffer = bufferOr.takeValue();
-
-      // Rest of the pipeline is in llvm::MemoryBuffer and hasn't migrated yet.
-      // So we will hold data in BufferRef and handle an aliased buffer to
-      // those.
-      inputInfo.file = llvm::MemoryBuffer::getMemBuffer(
-          buffer->getMemBufferRef(), /*RequiresNullTerminator=*/false);
+      inputInfo.file = bufferOr.takeValue();
     }
 
     // Otherwise we must be getting op-level information about the model or
@@ -319,7 +309,8 @@ int main(int argc, char **argv) {
                       options.command == DriverCommand::execute))
         << "unknown command ";
 
-    auto binaryFileOr = dylib.openBinaryFile(frameworkCtx, *inputInfo.file);
+    auto binaryFileOr =
+        dylib.openBinaryFile(frameworkCtx, inputInfo.file.copy());
     if (failed(binaryFileOr))
       return options.reportError(binaryFileOr.getError());
     auto binaryFile = std::move(*binaryFileOr);
@@ -331,8 +322,7 @@ int main(int argc, char **argv) {
 
     // Hand off the MEFFileHandle and the file buffer to the framework to
     // actually run the thing with all the various diagnostics.
-    rc = dylib.runBinaryFile(frameworkCtx, std::move(inputInfo.file),
-                             binaryFile);
+    rc = dylib.runBinaryFile(frameworkCtx, inputInfo.file.copy(), binaryFile);
   }
 
   return rc;

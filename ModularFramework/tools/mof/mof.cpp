@@ -209,14 +209,13 @@ ErrorOrSuccess M_setConfigs(FrameworkContextHandle ctx,
   return ctx.unwrap<MOFContext>()->setConfigs(configs, casConfig);
 }
 
-bool M_isBinary(FrameworkContextHandle ctx, const llvm::MemoryBufferRef &file,
+bool M_isBinary(FrameworkContextHandle ctx, M::BufferRef file,
                 FileFormat format) {
   return false;
 }
 
 ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
-                                       const llvm::MemoryBufferRef &file,
-                                       FileFormat format) {
+                                       M::BufferRef file, FileFormat format) {
   auto *mofContext = ctxHandle.unwrap<MOFContext>();
   // Create a runtime to use during compilation. It will convey global options
   // to the passes which need them.
@@ -240,11 +239,11 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
   case FileFormat::kMODialect:
     [[fallthrough]];
   case FileFormat::kMGPDialect:
-    module = parseMODialect(file, &ctx);
+    module = parseMODialect(file.copy(), &ctx);
     break;
 
   default: {
-    auto identityOr = getFileContentIdentity(file, format);
+    auto identityOr = getFileContentIdentity(file.copy(), format);
     if (identityOr.isError())
       return identityOr.takeError();
     return Error("cannot compile input with format " + *identityOr);
@@ -254,15 +253,15 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
   // We have an MLIR model, try to lower it to a MEF-capable encoding.
   switch (format) {
   case FileFormat::kMODialect: {
-    writeIntermediateFileIfRequested("mo", module.get(),
-                                     mofContext->getCommonCLOptions(), file);
+    writeIntermediateFileIfRequested(
+        "mo", module.get(), mofContext->getCommonCLOptions(), file.copy());
 
     mofLoweringOptions.setupRuntimeOptions(*ownedRuntime);
 
     if (failed(lowerMOToMGP(module.get(), moToMgpOptions, *ownedRuntime)))
       return Error("unable to lower MO to MGP");
-    writeIntermediateFileIfRequested("mgp", module.get(),
-                                     mofContext->getCommonCLOptions(), file);
+    writeIntermediateFileIfRequested(
+        "mgp", module.get(), mofContext->getCommonCLOptions(), file.copy());
 
     format = FileFormat::kMGPDialect;
     break;
@@ -271,7 +270,7 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
     break;
   }
   default:
-    auto identityOr = getFileContentIdentity(file, format);
+    auto identityOr = getFileContentIdentity(file.copy(), format);
     if (identityOr.isError())
       return identityOr.takeError();
     auto identity = std::move(*identityOr);
@@ -316,10 +315,9 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   return outputBuffer.release();
 }
 
-ErrorOrSuccess M_openBinaryFile(FrameworkContextHandle ctx,
-                                const llvm::MemoryBuffer &file,
+ErrorOrSuccess M_openBinaryFile(FrameworkContextHandle ctx, M::BufferRef file,
                                 DriverHandle *modelBinaryHandle) {
-  auto mefFileOr = MEFFile::open(file.getBuffer());
+  auto mefFileOr = MEFFile::open(file->getBuffer());
   if (mefFileOr.isError())
     return mefFileOr.takeError();
   *modelBinaryHandle = DriverHandle{std::move(*mefFileOr).release()};
@@ -353,8 +351,7 @@ void M_sniffBinaryFileContents(FrameworkContextHandle ctx,
         mefContents.getAsString();
 }
 
-ErrorOrSuccess M_loadModels(FrameworkContextHandle ctx,
-                            llvm::MemoryBufferRef fileBuffer,
+ErrorOrSuccess M_loadModels(FrameworkContextHandle ctx, M::BufferRef fileBuffer,
                             DriverHandle handle,
                             std::unique_ptr<ModelCollection> &modelsPtr) {
   auto modelsPtrOr = loadMGPMEFFile(copyRCRef(handle.unwrap<MEFFile>()));
@@ -364,8 +361,7 @@ ErrorOrSuccess M_loadModels(FrameworkContextHandle ctx,
   return success();
 }
 
-int M_runBinaryFile(FrameworkContextHandle ctx,
-                    std::unique_ptr<llvm::MemoryBuffer> &&fileBuffer,
+int M_runBinaryFile(FrameworkContextHandle ctx, M::BufferRef fileBuffer,
                     DriverHandle modelBinaryHandle) {
   auto *mofContext = ctx.unwrap<MOFContext>();
   MOFLoweringOptions mofLoweringOptions;
@@ -376,8 +372,8 @@ int M_runBinaryFile(FrameworkContextHandle ctx,
   assert(driverOptions && "cannot run a binary file via the API");
 
   std::unique_ptr<ModelCollection> models;
-  if (auto err = M_loadModels(ctx, fileBuffer->getMemBufferRef(),
-                              modelBinaryHandle, models)) {
+  if (auto err =
+          M_loadModels(ctx, fileBuffer.copy(), modelBinaryHandle, models)) {
     return driverOptions->reportError("unable to load models: " +
                                       Twine(err.getError()));
   }
@@ -394,12 +390,15 @@ int M_runBinaryFile(FrameworkContextHandle ctx,
   };
 
   // Run it.
+  std::unique_ptr<llvm::MemoryBuffer> aliasedBuffer =
+      llvm::MemoryBuffer::getMemBuffer(fileBuffer->getMemBufferRef(),
+                                       /*RequiresNullTerminator=*/
+                                       false);
   return setupMLIRAndRunWithLeakCheckedRuntime(
-      *driverOptions, "Modular model", std::move(fileBuffer), runModels);
+      *driverOptions, "Modular model", std::move(aliasedBuffer), runModels);
 }
 
-int M_runModelWithData(FrameworkContextHandle ctx,
-                       std::unique_ptr<llvm::MemoryBuffer> &&fileBuffer,
+int M_runModelWithData(FrameworkContextHandle ctx, M::BufferRef fileBuffer,
                        const M::Model *model, DriverHandle inputsHandle,
                        DriverHandle outputsHandle) {
   auto *mofContext = ctx.unwrap<MOFContext>();
@@ -425,12 +424,15 @@ int M_runModelWithData(FrameworkContextHandle ctx,
   };
 
   // Run it.
+  std::unique_ptr<llvm::MemoryBuffer> aliasedBuffer =
+      llvm::MemoryBuffer::getMemBuffer(
+          fileBuffer->getMemBufferRef(), /*RequiresNullTerminator=*/
+          false);
   return setupMLIRAndRunWithLeakCheckedRuntime(
-      *driverOptions, "Modular model", std::move(fileBuffer), runModels);
+      *driverOptions, "Modular model", std::move(aliasedBuffer), runModels);
 }
 
-ErrorOrSuccess M_openPath(M::FrameworkContextHandle ctx,
-                          const std::filesystem::path &path,
-                          std::unique_ptr<llvm::MemoryBuffer> &buffer) {
+M::ErrorOr<M::Buffer *> M_openPath(FrameworkContextHandle ctx,
+                                   const std::filesystem::path &path) {
   llvm_unreachable("Not implemented");
 }
