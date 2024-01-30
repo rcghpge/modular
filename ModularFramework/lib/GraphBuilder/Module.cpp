@@ -9,7 +9,6 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
-#include "MOF/GraphBuilder/Symbol.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/Compiler/MLIRDenseAttr.h"
 
@@ -59,10 +58,12 @@ Module::Module(mlir::ModuleOp op) : op(op), builder(op) {
   builder.setInsertionPointToStart(&op.getBodyRegion().front());
 }
 
-Graph Module::newGraph(Loc loc, StringRef name, const Arity &inTypes,
-                       const Arity &outTypes) {
-  return Graph(builder.create<M::MO::GraphOp>(
-      loc.getVal(), name, inTypes.getVal(), outTypes.getVal()));
+mlir::Operation *Module::newGraph(mlir::Location loc, StringRef name,
+                                  const mlir::FunctionType signature) {
+  return builder
+      .create<M::MO::GraphOp>(loc, name, signature.getInputs(),
+                              signature.getResults())
+      .getOperation();
 }
 
 mlir::Type Module::newDType(DType value) {
@@ -101,12 +102,6 @@ mlir::NamedAttribute Module::tensorAttr(StringRef name, ArrayRef<uint8_t> data,
 
   StringAttr nameAttr = StringAttr::get(moTensorType.getContext(), name);
   return NamedAttribute(nameAttr, attr);
-}
-
-mlir::NamedAttribute Module::stringAttr(StringRef name, StringRef value) {
-  StringAttr nameAttr = StringAttr::get(getContext(), name);
-  StringAttr valueAttr = StringAttr::get(getContext(), value);
-  return NamedAttribute(nameAttr, valueAttr);
 }
 
 mlir::MLIRContext *Module::getContext() { return op->getContext(); }

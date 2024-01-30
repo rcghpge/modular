@@ -7,9 +7,7 @@
 #ifndef MOF_GRAPHBUILDER_MODULE_H
 #define MOF_GRAPHBUILDER_MODULE_H
 
-#include "MOF/GraphBuilder/Graph.h"
-#include "MOF/GraphBuilder/Loc.h"
-#include "MOF/GraphBuilder/Type.h"
+#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 
@@ -28,14 +26,12 @@ public:
   mlir::ModuleOp getModuleOp() const { return op; }
   mlir::OpBuilder &getBuilder() { return builder; }
 
-  Graph newGraph(Loc loc, llvm::StringRef name, const Arity &inTypes,
-                 const Arity &outTypes);
-
+  mlir::Operation *newGraph(mlir::Location loc, llvm::StringRef name,
+                            mlir::FunctionType signature);
   mlir::Type newDType(DType value);
   mlir::Type newTensorType(mlir::Type elementType, bool ranked,
                            llvm::ArrayRef<int64_t> dims);
 
-  mlir::NamedAttribute stringAttr(llvm::StringRef name, llvm::StringRef value);
   // Guaranteed to take ownership of `data` with a dense resource if `owned`.
   // Otherwise, copies `data`; may use dense resource or ArrayElementsAttr.
   mlir::NamedAttribute tensorAttr(llvm::StringRef name,
