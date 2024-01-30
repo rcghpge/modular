@@ -243,13 +243,13 @@ mo.graph @reshape_to_unknown_with_param(%arg0 : !mo.tensor<[2], si8>) -> !mo.ten
 }
 
 // CHECK: mo.graph @large_op
-// CHECk: %{{.*}} = mo.constant {value = #M.dense_array<> : !M.array<0xsi64>} : !mo.tensor<[0], si64>
-// CHECk: %{{.*}} = mo.constant {value = #M.dense_array<3, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECk: %{{.*}} = mo.constant {value = #M.dense_array<3> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-// CHECk: %{{.*}} = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-// CHECk: %{{.*}} = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
-// CHECk: %{{.*}} = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-// CHECk: %{{.*}} = mo.constant {value = #M.dense_array<1.000000e+00, 1.000000e+00, 1.000000e+00> : !M.array<3xf32>} : !mo.tensor<[3, 1], f32>
+// CHECK: %{{.*}} = mo.constant {value = #M.dense_array<> : !M.array<0xsi64>} : !mo.tensor<[0], si64>
+// CHECK: %{{.*}} = mo.constant {value = #M.dense_array<3, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK: %{{.*}} = mo.constant {value = #M.dense_array<3> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
+// CHECK: %{{.*}} = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
+// CHECK: %{{.*}} = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
+// CHECK: %{{.*}} = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
+// CHECK: %{{.*}} = mo.constant {value = #M.dense_array<1.000000e+00, 1.000000e+00, 1.000000e+00> : !M.array<3xf32>} : !mo.tensor<[3, 1], f32>
 mo.graph @large_op(%arg0: !mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 2], f32> {
   %0 = mo.constant {value = #M.dense_array<3> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
   %1 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
@@ -307,4 +307,21 @@ mo.graph @subgraph_dependent_outputs(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tens
   %12 = mo.matmul(%11, %2) : (!mo.tensor<[?, 300], f32>, !mo.tensor<[300, 10], f32>) -> !mo.tensor<[?, 10], f32>
   %13 = mo.softmax(%12) : (!mo.tensor<[?, 10], f32>) -> !mo.tensor<[?, 10], f32>
   mo.output %13 : !mo.tensor<[?, 10], f32>
+}
+
+// Check that various operations on lists are constant folded.
+// CHECK: mo.graph @list
+// CHECK-NOT: mo.concat_from_list
+// CHECK-NOT: mo.list.insert
+// CHECK: mo.list.create
+// CHECK: mo.output
+mo.graph @list() -> (!mo.tensor<[2], f32>, !mo.list<!mo.tensor<[1], f32>>) {
+  %0 = mo.constant {value = #M.dense_array<1.000000e+00> : !M.array<1xf32>} : !mo.tensor<[1], f32>
+  %zero = mo.constant {value = #M.dense_array<0.000000e+00> : !M.array<1xf32>} : !mo.tensor<[1], f32>
+  %axis = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+  %idx = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+  %list = mo.list.create(%0, %0) :(!mo.tensor<[1], f32>, !mo.tensor<[1], f32>) -> !mo.list<!mo.tensor<[1], f32>>
+  %1 = mo.concat_from_list[%axis: !mo.tensor<[], si64>](%list) : !mo.list<!mo.tensor<[1], f32>> -> !mo.tensor<[2], f32>
+  %2 = mo.list.insert(%list, %zero, %idx) : (!mo.list<!mo.tensor<[1], f32>>, !mo.tensor<[1], f32>, !mo.tensor<[], si64>) -> !mo.list<!mo.tensor<[1], f32>>
+  mo.output %1, %2 :!mo.tensor<[2], f32>, !mo.list<!mo.tensor<[1], f32>>
 }
