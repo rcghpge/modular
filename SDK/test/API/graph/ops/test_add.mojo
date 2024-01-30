@@ -16,8 +16,10 @@ fn test_add_basic() raises:
     var m = Module()
     var g = m.graph(
         name,
-        Arity(m.f32(1, 2, 3), m.f32(2, 3)),
-        Arity(m.f32(1, 2, 3)),
+        TypeTuple(
+            MOTensor(DType.float32, 1, 2, 3), MOTensor(DType.float32, 2, 3)
+        ),
+        MOTensor(DType.float32, 1, 2, 3),
     )
     g.output(g[0] + g[1])
     m.verify()
@@ -41,9 +43,7 @@ fn test_add_literal() raises:
 
     var m = Module()
     var g = m.graph(
-        name,
-        Arity(m.f32(1, 2, 3)),
-        Arity(m.f32(1, 2, 3)),
+        name, MOTensor(DType.float32, 1, 2, 3), MOTensor(DType.float32, 1, 2, 3)
     )
     g.output(g[0] + 1.0)
     m.verify()

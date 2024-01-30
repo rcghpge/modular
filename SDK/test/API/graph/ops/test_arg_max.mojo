@@ -15,9 +15,7 @@ fn test_arg_max() raises:
 
     var m = Module()
     var g = m.graph(
-        name,
-        Arity(m.f32(2, 3)),
-        Arity(m.i64(2, 1)),
+        name, MOTensor(DType.float32, 2, 3), MOTensor(DType.int64, 2, 1)
     )
     g.output(ops.arg_max(g[0], 1))
     m.verify()
@@ -36,9 +34,7 @@ fn test_arg_max_neg_axis() raises:
 
     var m = Module()
     var g = m.graph(
-        name,
-        Arity(m.f32(2, 3)),
-        Arity(m.i64(2, 1)),
+        name, MOTensor(DType.float32, 2, 3), MOTensor(DType.int64, 2, 1)
     )
     g.output(ops.arg_max(g[0], -1))
     m.verify()

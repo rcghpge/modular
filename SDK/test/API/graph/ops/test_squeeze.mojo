@@ -16,8 +16,8 @@ fn test_squeeze() raises:
     var m = Module()
     var g = m.graph(
         name,
-        Arity(m.f32(dyn(), 1, 3)),
-        Arity(m.f32(dyn(), 3)),
+        MOTensor(DType.float32, dyn(), 1, 3),
+        MOTensor(DType.float32, dyn(), 3),
     )
     g.output(ops.squeeze(g[0], 1))
     m.verify()

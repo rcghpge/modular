@@ -21,8 +21,8 @@ fn test_identity_graph() raises:
     var m = Module()
     var g = m.graph(
         name="identity_graph",
-        in_types=Arity(m.i32()),
-        out_types=Arity(m.i32()),
+        in_types=MOTensor(DType.int32),
+        out_types=MOTensor(DType.int32),
     )
     _ = g.nvop(name="mo.output", inputs=g[0])
 
@@ -37,7 +37,11 @@ fn test_identity_graph() raises:
 
 fn test_basic_add() raises:
     var m = Module()
-    var g = m.graph("basic_add", Arity(m.i32(), m.i32()), Arity(m.i32()))
+    var g = m.graph(
+        "basic_add",
+        TypeTuple(MOTensor(DType.int32), MOTensor(DType.int32)),
+        MOTensor(DType.int32),
+    )
     let y = g.op("mo.add", (g[0], g[1]), MOTensor(DType.int32))
     _ = g.nvop("mo.output", y)
 
@@ -49,7 +53,9 @@ fn test_basic_add() raises:
 
 fn test_add_constant() raises:
     var m = Module()
-    var g = m.graph("add_constant", Arity(m.f32(1)), Arity(m.f32(1)))
+    var g = m.graph(
+        "add_constant", MOTensor(DType.float32, 1), MOTensor(DType.float32, 1)
+    )
     let x = g.op(
         "mo.constant",
         MOTensor(DType.float32, 1),
@@ -69,7 +75,7 @@ fn test_add_constant() raises:
 fn test_bytecode_output() raises:
     print("test_bytecode_output")
     let m = Module()
-    let g = m.graph("bytecode_output", Arity(), Arity(m.i32()))
+    let g = m.graph("bytecode_output", TypeTuple(), MOTensor(DType.int32))
     let x = g.constant(Tensor[DType.int32](TensorShape(), 7))
     g.output(x)
 
@@ -84,7 +90,7 @@ fn test_bytecode_output() raises:
 fn test_save_to_file() raises:
     print("test_save_to_file")
     let m = Module()
-    let g = m.graph("save_to_file", Arity(), Arity(m.i32()))
+    let g = m.graph("save_to_file", TypeTuple(), MOTensor(DType.int32))
     let x = g.constant(Tensor[DType.int32](TensorShape(), 7))
     g.output(x)
 

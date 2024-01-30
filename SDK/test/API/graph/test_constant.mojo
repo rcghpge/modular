@@ -14,7 +14,9 @@ from max.graph import *
 
 fn test_basic_tensor() raises:
     var m = Module()
-    var g = m.graph("test_basic_tensor", Arity(), Arity(m.i32(1, 2)))
+    var g = m.graph(
+        "test_basic_tensor", TypeTuple(), MOTensor(DType.int32, 1, 2)
+    )
     let y = g.constant(Tensor[DType.int32](TensorShape(1, 2), 1, 2))
     g.output(y)
 
@@ -27,7 +29,7 @@ fn test_basic_tensor() raises:
 
 fn test_scalar_basic() raises:
     var m = Module()
-    var g = m.graph("test_scalar_basic", Arity(), Arity(m.bool()))
+    var g = m.graph("test_scalar_basic", TypeTuple(), MOTensor(DType.bool))
     let y = g.scalar[DType.bool](True)
     g.output(y)
 
@@ -41,7 +43,9 @@ fn test_scalar_basic() raises:
 
 fn test_scalar_high_rank() raises:
     var m = Module()
-    var g = m.graph("test_scalar_high_rank", Arity(), Arity(m.bool(1, 1, 1)))
+    var g = m.graph(
+        "test_scalar_high_rank", TypeTuple(), MOTensor(DType.bool, 1, 1, 1)
+    )
     let y = g.scalar[DType.bool](True, 3)
     g.output(y)
 
@@ -55,7 +59,7 @@ fn test_scalar_high_rank() raises:
 
 fn test_basic_i64() raises:
     var m = Module()
-    var g = m.graph("test_basic_i64", Arity(), Arity(m.i64(1)))
+    var g = m.graph("test_basic_i64", TypeTuple(), MOTensor(DType.int64, 1))
     let y = g.scalar(Int64(1), rank=1)
     _ = g.nvop("mo.output", y)
 

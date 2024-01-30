@@ -6,7 +6,7 @@
 # UNSUPPORTED: windows
 # RUN: mojo %s | FileCheck %s
 
-from tensor import Tensor, TensorSpec, TensorShape
+from tensor import Tensor, TensorShape
 from utils.index import Index
 
 from max.graph import *
@@ -35,8 +35,8 @@ def test_mnist_low_level():
 
     var g = m.graph(
         "test_mnist_low_level",
-        Arity(m.f32(1, 28, 28, 1)),
-        Arity(m.f32(1, 10)),
+        MOTensor(DType.float32, 1, 28, 28, 1),
+        MOTensor(DType.float32, 1, 10),
     )
     let cst_data = Tensor[DType.float32](128, 10)
     cst_data._to_buffer().fill(0.5)
@@ -107,8 +107,8 @@ def test_mnist_helpers():
 
     var g = m.graph(
         "test_mnist_helpers",
-        Arity(m.f32(1, 28, 28, 1)),
-        Arity(m.f32(1, 10)),
+        MOTensor(DType.float32, 1, 28, 28, 1),
+        MOTensor(DType.float32, 1, 10),
     )
     let cst_data = Tensor[DType.float32](128, 10)
     cst_data._to_buffer().fill(0.5)
