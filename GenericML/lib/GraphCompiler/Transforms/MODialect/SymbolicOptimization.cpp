@@ -2112,8 +2112,10 @@ struct MergeParallelMatmulPattern
           op, "matched ops have inconsistent devices");
     }
 
-    Location loc = op.getLoc();
-    rewriter.setInsertionPoint(op);
+    // The last of matmul Users is the earliest location.
+    auto firstMatmulIndex = matmulUsers.size() - 1;
+    Location loc = matmulUsers[firstMatmulIndex]->getLoc();
+    rewriter.setInsertionPoint(matmulUsers[firstMatmulIndex]);
 
     SmallVector<Value> weightsToConcatenate;
     SmallVector<Type> matmulTypes;
