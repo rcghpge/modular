@@ -31,6 +31,7 @@ public:
   mlir::Type newDType(DType value);
   mlir::Type newTensorType(mlir::Type elementType, bool ranked,
                            llvm::ArrayRef<int64_t> dims);
+  mlir::Type newListType(mlir::Type elementType);
 
   // Guaranteed to take ownership of `data` with a dense resource if `owned`.
   // Otherwise, copies `data`; may use dense resource or ArrayElementsAttr.

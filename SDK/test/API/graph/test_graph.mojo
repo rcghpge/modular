@@ -35,6 +35,24 @@ fn test_identity_graph() raises:
     print(m.__str__())
 
 
+fn test_nontensor_interface() raises:
+    var m = Module()
+    var g = m.graph(
+        name="nontensor_interface",
+        in_types=MOList(MOTensor(DType.int32)),
+        out_types=MOList(MOTensor(DType.int32)),
+    )
+    _ = g.nvop(name="mo.output", inputs=g[0])
+
+    m.verify()
+    # CHECK: module {
+    # CHECK:   mo.graph @nontensor_interface([[arg:.*]]: !mo.list<!mo.tensor<[], si32>>) -> !mo.list<!mo.tensor<[], si32>>
+    # CHECK:     mo.output [[arg]] : !mo.list<!mo.tensor<[], si32>>
+    # CHECK:   }
+    # CHECK: }
+    print(m.__str__())
+
+
 fn test_basic_add() raises:
     var m = Module()
     var g = m.graph(
@@ -72,6 +90,7 @@ fn test_add_constant() raises:
 
 
 # CHECK-LABEL: test_bytecode_output
+# TODO: Move this to the MLIR binding tests.
 fn test_bytecode_output() raises:
     print("test_bytecode_output")
     let m = Module()
@@ -102,6 +121,7 @@ fn test_save_to_file() raises:
 
 fn main() raises:
     test_identity_graph()
+    test_nontensor_interface()
     test_basic_add()
     test_add_constant()
     test_bytecode_output()

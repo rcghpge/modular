@@ -133,3 +133,7 @@ MODULAR_API_EXPORT bool MAXG_tensorTypeIsRanked(MlirValue v) {
   auto tensorType = unwrap(v).getType().cast<MO::TensorType>();
   return tensorType.getDtype().getValue();
 }
+
+MODULAR_API_EXPORT MlirType MAXG_listTypeNew(MlirModule m, MlirType eltype) {
+  return wrap(Module(unwrap(m)).newListType(unwrap(eltype)));
+}

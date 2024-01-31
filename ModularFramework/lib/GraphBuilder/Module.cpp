@@ -83,6 +83,10 @@ mlir::Type Module::newTensorType(mlir::Type elementType, bool ranked,
   }
 }
 
+mlir::Type Module::newListType(mlir::Type elementType) {
+  return MO::ListType::get(getContext(), elementType);
+}
+
 mlir::NamedAttribute Module::tensorAttr(StringRef name, ArrayRef<uint8_t> data,
                                         mlir::Type t, bool owned) {
   if (shouldUseOutOfLineAttrStorage(data.size()))

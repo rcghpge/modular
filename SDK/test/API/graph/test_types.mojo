@@ -57,14 +57,16 @@ fn test_tensor_scalar() raises:
     testing.assert_equal(s, "!mo.tensor<[], f32>")
 
 
-fn test_dtype_cast() raises:
+fn test_dtype_autocast() raises:
     testing.assert_equal(
         MOTensor(DType.float32, 1, 2, 3).to_string(Module()),
         "!mo.tensor<[1, 2, 3], f32>",
     )
 
 
-fn test_int_cast() raises:
+fn test_int_autocast() raises:
+    # This just verifes that the constructor doesn't go to the wrong overload,
+    # like the DynamicVector one.
     testing.assert_equal(
         MOTensor(DType.float32, 1).to_string(Module()),
         "!mo.tensor<[1], f32>",
@@ -86,6 +88,13 @@ fn test_tensor_spec_cast() raises:
     )
 
 
+fn test_list_type() raises:
+    let l = MOList(MOTensor(DType.uint8, 1, dyn(), 3))
+
+    let s = l.to_string(Module())
+    testing.assert_equal(s, "!mo.list<!mo.tensor<[1, ?, 3], ui8>>")
+
+
 fn main() raises:
     test_dtype_to_string()
     test_dtype()
@@ -93,6 +102,7 @@ fn main() raises:
     test_tensor_unranked()
     test_tensor_dynamic_dims()
     test_tensor_scalar()
-    test_dtype_cast()
-    test_int_cast()
+    test_dtype_autocast()
+    test_int_autocast()
     test_tensor_spec_cast()
+    test_list_type()
