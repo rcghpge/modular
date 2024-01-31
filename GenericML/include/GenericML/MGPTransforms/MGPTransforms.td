@@ -538,4 +538,38 @@ def VerifyModelArgumentsPass : Pass<"verify-model-arguments", "MGP::ModelOp"> {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// PrepareDevicePrimitivesPass
+//===----------------------------------------------------------------------===//
+
+def PrepareDevicePrimitivesPass : Pass<"prepare-device-primitives", "MGP::ModelOp"> {
+  let summary = "Prepares device-generic MGP primitives for execution by the "
+                "GraphRT.";
+  let description = [{
+    This pass will:
+      - rename device-generic MGP primitives to include the label
+        of the primitive's 'main' device in the primitive name. In this way the
+        GraphRT primitive dispatch mechanism can be used to support multiple
+        devices without the need for any additional indirection.
+      - replaces #M.device_ref attributes with just the device id. In this way
+        we avoid reconstructing device labels at runtime which are ignored
+        anyway.
+
+    For example:
+    ```mlir
+      %buf = mgp.buffer.alloc.static %ch, %ctx[1] : !mgp.buffer<<"cuda", 3>, 124>
+    ```
+    becomes:
+    ```mlir
+      %buf = "mgp.buffer.alloc.static.cuda" (%ch, %ctx)
+               { aRuntimeSlot = 1 : ui64,
+                 bSize = 124 : ui64,
+                 cRawAlign = kUnknownSize,
+                 dDeviceId = 3 : ui64 }
+               : (!mgp.chain<<"cuda", 3>>, !mgp.context) ->
+                 !mgp.buffer<<"cuda", 3>, 124>
+    ```
+  }];
+}
+
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD

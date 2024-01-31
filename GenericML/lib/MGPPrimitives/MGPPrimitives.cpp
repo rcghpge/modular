@@ -1313,4 +1313,6 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.list.get", mgp_list_get);
   ADD_PRIMITIVE(registry, "mgp.list.insert", mgp_list_insert);
   ADD_PRIMITIVE(registry, "mgp.model", mgp_model);
+
+  registerMGPDevicePrimitives(registry);
 }

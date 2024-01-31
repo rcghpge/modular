@@ -23,7 +23,9 @@
 #include "GenericML/Support/ForeignBufferInterface.h"
 #include "GenericML/Support/ResourceBufferInterface.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
+#include "GraphRT/MLIRToMEF.h"
 #include "LLCL/Runtime/Runtime.h"
+#include "Support/ADT/ConcatenationTree.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
@@ -329,4 +331,32 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
   pm.addPass(MO::createPropagateShapes());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+}
+
+ErrorOr<BufferRef> M::MO::convertMGPToMEF(ModuleOp module,
+                                          bool enableMEFMetadata) {
+  // Some MGP-level ops may need to be lightly rewritten before encoding
+  // into MEF. For example, the device-generic ops are renamed to capture
+  // their device label so the GraphRT executor can dispatch to a
+  // device-appropriate primitive.
+  mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
+      module.getContext(), mlir::OpPassManager::Nesting::Implicit);
+  pm.addPass(MGP::createPrepareDevicePrimitivesPass());
+  if (failed(pm.run(module)))
+    return Error("failed to prepare MGP model for conversion to MEF.");
+
+  // Translate to MEF.
+  ConcatenationTree result = translateMLIRToMEF(module, enableMEFMetadata);
+  if (result.getSize() == 0)
+    return Error("failed to convert model to MEF.");
+
+  // Serialize the ConcatenationTree to the result buffer.
+  M::WriteableBufferRef outputBuffer = WriteableBuffer::get(
+      0, maxAttributeAlignment().value(), result.getSize());
+  result.traverse([&](ArrayRef<uint8_t> data) {
+    outputBuffer->write(reinterpret_cast<const char *>(data.data()),
+                        data.size());
+  });
+
+  return outputBuffer;
 }

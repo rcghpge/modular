@@ -7,7 +7,6 @@
 #include "CUDASupport/CUDARuntimeOptions.h"
 #include "Config/Version.h"
 #include "GenericML/CUDARegistration/CUDARegistration.h"
-#include "GenericML/Driver/CompileDriver.h"
 #include "GenericML/Driver/DriverAPI.h"
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "GenericML/Driver/DriverInputFormat.h"
@@ -248,12 +247,10 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   if (failed(lowerMOToMGP(moduleOp, moToMgpOptions, *ownedRuntime)))
     return Error("unable to lower MO to MGP");
 
-  if (failed(convertToMEF(moduleOp, mofContext->getEnableMEFMetadata())))
-    return Error("unable to convert file to a MEF binary");
-
-  auto bufOr = convertToMEF(moduleOp, mofContext->getEnableMEFMetadata());
-  if (bufOr.isError())
-    return Error("unable to convert file to a MEF binary");
+  auto bufOr =
+      MO::convertMGPToMEF(moduleOp, mofContext->getEnableMEFMetadata());
+  if (bufOr)
+    return bufOr.takeError();
   M::BufferRef outputBuffer = bufOr.takeValue();
   return outputBuffer.release();
 }
@@ -330,9 +327,10 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
     return Error("cannot lower to MEF data of format " + identity);
   }
 
-  auto bufOr = convertToMEF(module.get(), mofContext->getEnableMEFMetadata());
-  if (bufOr.isError())
-    return Error("unable to convert file to a MEF binary");
+  auto bufOr =
+      MO::convertMGPToMEF(module.get(), mofContext->getEnableMEFMetadata());
+  if (bufOr)
+    return bufOr.takeError();
   M::BufferRef outputBuffer = bufOr.takeValue();
   return outputBuffer.release();
 }

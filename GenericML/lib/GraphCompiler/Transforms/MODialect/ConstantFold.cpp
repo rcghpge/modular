@@ -6,7 +6,6 @@
 
 #include "ConstantFold.h"
 #include "GenericML/Driver/CXXDriverAPI.h"
-#include "GenericML/Driver/CompileDriver.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
@@ -988,9 +987,9 @@ ConstantFoldPass::lowerSubgraphs(ModuleOp module, LLCL::Runtime &runtime) {
   if (failed(runPipeline(pm, module)))
     return Error("Failed to run MOToMGP pipeline");
 
-  auto bufOr = convertToMEF(module, false);
-  if (bufOr.isError())
-    return Error("unable to convert file to a MEF binary");
+  auto bufOr = MO::convertMGPToMEF(module, false);
+  if (bufOr)
+    return bufOr.takeError();
   BufferRef buf = bufOr.takeValue();
 
   auto mefFileOr = MEFFile::open(buf->getBuffer());

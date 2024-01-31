@@ -8,6 +8,7 @@
 #define GENERICML_MO_GRAPHCOMPILER_H
 
 #include "LLCL/ForwardDecls.h"
+#include "Support/Buffer.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/DialectRegistry.h"
 
@@ -21,11 +22,13 @@ void registerPasses();
 
 struct MoToMgpOptions;
 
-/// Given an MLIR module in MO dialect form, compile down to MGP dialect for MEF
-/// emission.
+/// Compile a module at the MO dialect level down to the MGP level.
 LogicalResult lowerMOToMGP(ModuleOp module,
                            const MoToMgpOptions &moToMgpOptions,
                            Runtime &runtime);
+
+/// Convert a module at the MGP level to a buffer in MEF format.
+ErrorOr<BufferRef> convertMGPToMEF(ModuleOp module, bool enableMEFMetadata);
 
 } // namespace M::MO
 
