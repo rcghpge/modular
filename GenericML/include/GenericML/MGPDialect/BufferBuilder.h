@@ -102,18 +102,10 @@ LogicalResult genericTensorCreateVerify(Operation *op, BufferType bufferType,
     //   %z = reshape %x, %y : (tensor<?x?xf32>, tensor<2xui32>) ->
     //   tensor<8x16xf32>
     // Here %z will be created from the same buffer as %x, but will now have
-    // a known size. This is not supported and will error out.
-
-    if (expectedBufferIsStatic && !bufferIsStatic)
-      op->emitOpError(
-          "Cannot have output buffer static but input buffer is dynamic");
-
-    // Conversely, in:
+    // a known size. Conversely, in:
     //   %z = reshape %x, %y : (tensor<8x4xf32>, tensor<2xui32>) ->
     //   tensor<?x?xf32>
     // the buffer for %z will now have an unknown size.
-    // In this case an unsize op which casts from static to dynamic will be
-    // inserted.
   } else if (bufferType != expectedBufferType) {
     return op->emitOpError()
            << "expected buffer type to match type implied by tensor spec ("
