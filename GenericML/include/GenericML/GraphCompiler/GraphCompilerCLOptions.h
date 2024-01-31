@@ -46,20 +46,18 @@ public:
 
   void overrideLoweringOptions(MoToMgpOptions &moToMgpOptions) const {
 
-    moToMgpOptions.cacheDir.setValue(cacheDir);
-    moToMgpOptions.enableExtraDevices.setValue(enableExtraDevices);
-    moToMgpOptions.enableFakeCudaDevice.setValue(enableFakeCudaDevice);
-    moToMgpOptions.defaultDeviceLabel.setValue(defaultDeviceLabel);
-    moToMgpOptions.enableMemoryPlanning.setValue(enableMemoryPlanning);
-    moToMgpOptions.genVizSpec.setValue(genVizSpec);
-    moToMgpOptions.vizOutputDir.setValue(vizOutputDir);
-    moToMgpOptions.debugPrintAllTensors.setValue(debugPrintAllTensors);
-    moToMgpOptions.softFusionNonHostKernelLimit.setValue(
-        softFusionNonHostKernelLimit);
-    moToMgpOptions.cacheBuffersAcrossExecutes.setValue(
-        cacheBuffersAcrossExecutes);
-    moToMgpOptions.minPinnedHostBufferSize.setValue(minPinnedHostBufferSize);
-    moToMgpOptions.kernelLibraryPaths.setInitialValues(kernelLibraryPaths);
+    moToMgpOptions.cacheDir = cacheDir;
+    moToMgpOptions.enableExtraDevices = enableExtraDevices;
+    moToMgpOptions.enableFakeCudaDevice = enableFakeCudaDevice;
+    moToMgpOptions.defaultDeviceLabel = defaultDeviceLabel;
+    moToMgpOptions.enableMemoryPlanning = enableMemoryPlanning;
+    moToMgpOptions.genVizSpec = genVizSpec;
+    moToMgpOptions.vizOutputDir = vizOutputDir;
+    moToMgpOptions.debugPrintAllTensors = debugPrintAllTensors;
+    moToMgpOptions.softFusionNonHostKernelLimit = softFusionNonHostKernelLimit;
+    moToMgpOptions.cacheBuffersAcrossExecutes = cacheBuffersAcrossExecutes;
+    moToMgpOptions.minPinnedHostBufferSize = minPinnedHostBufferSize;
+    moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
   }
 };
 
