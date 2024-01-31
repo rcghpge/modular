@@ -308,6 +308,12 @@ public:
   ErrorOr<SmallVector<Value>> lowerShapeAttrDynDims(MOSH::ShapeAttr shapeAttr,
                                                     Location loc);
 
+  /// Extract the static dimensions from a shape attribute and return their
+  /// product. Returns one if there are no static dimensions.
+  /// For example, a shape of 2x3x?x1 would return 6.
+  int64_t extractShapeAttrStaticDimsProduct(MOSH::ShapeAttr shapeAttr,
+                                            Location loc);
+
   const BufferBuilderContext &getBufferBuilderContext() const {
     return builderContext;
   }
@@ -478,9 +484,9 @@ struct MOOpLoweringState {
 
   /// Returns the bufferized form for a buffer sizes to match the given
   /// tensor spec and storage device of moTensorType.
-  BufferizedTensor createBuffer(Value inChain,
-                                TypedValue<TensorSpecType> tensorSpec,
-                                Type moTensorType);
+  FailureOr<BufferizedTensor>
+  createBuffer(Value inChain, TypedValue<TensorSpecType> tensorSpec,
+               Type moTensorType);
 
   /// Creates a tensor from the given buffer and tensor spec, and associates it
   /// with the given original MO tensor. The tensor will be created on the
@@ -507,6 +513,10 @@ struct MOOpLoweringState {
   /// Returns the buffer builder appropriate for the device on which the
   /// given !mo.tensor should be stored.
   BufferBuilder *getStorageBufferBuilder(Type moTensorType);
+
+  /// Returns the type builder appropriate for the device on which the
+  /// given !mo.tensor should be stored.
+  TypeBuilder *getStorageTypeBuilder(Type moTensorType);
 
   //
   // These all redirect to the similarly named BufferBuilder method using

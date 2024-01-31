@@ -159,6 +159,17 @@ MOGraphLoweringState::lowerShapeAttrDynDims(MOSH::ShapeAttr shapeAttr,
   return runtimeDims;
 }
 
+int64_t MOGraphLoweringState::extractShapeAttrStaticDimsProduct(
+    MOSH::ShapeAttr shapeAttr, Location loc) {
+  int64_t product = 1;
+  for (TypedAttr dim : shapeAttr.getValues()) {
+    if (auto intDim = dyn_cast<IntegerAttr>(dim)) {
+      product *= intDim.getValue().getSExtValue();
+    }
+  }
+  return product;
+}
+
 ErrorOr<StringRef> MOGraphLoweringState::pocToMopIndexOp(KGEN::POC poc) {
   // TODO: support more opcodes
   switch (poc) {
@@ -307,8 +318,10 @@ MOOpLoweringState::createOutputStorage(Value inChain) {
   bufferizedTensors.reserve(tensorSpecsOr->size());
   for (auto [spec, result] :
        llvm::zip(*tensorSpecsOr, opBeingLowered->getResults())) {
-    bufferizedTensors.emplace_back(
-        createBuffer(inChain, spec, result.getType()));
+    auto bufOr = createBuffer(inChain, spec, result.getType());
+    if (failed(bufOr))
+      return failure();
+    bufferizedTensors.emplace_back(*bufOr);
   }
   return bufferizedTensors;
 }
@@ -391,7 +404,7 @@ MOOpLoweringState::createOutputTensorSpecs() {
   return tensorSpecs;
 }
 
-BufferizedTensor MOOpLoweringState::createBuffer(
+FailureOr<BufferizedTensor> MOOpLoweringState::createBuffer(
     Value inChain, TypedValue<TensorSpecType> tensorSpec, Type moTensorType) {
   BufferBuilder *bufferBuilder = getStorageBufferBuilder(moTensorType);
   std::optional<uint64_t> optSize = tensorSpec.getType().getSizeInBytes();
@@ -403,11 +416,31 @@ BufferizedTensor MOOpLoweringState::createBuffer(
                                          *optSize, minimumCpuAlignment),
         tensorSpec);
   } else {
-    // Dynamically sized.
-    return BufferizedTensor(
-        bufferBuilder->bufferAllocSpec(builder, loc, context, inChain,
-                                       tensorSpec, minimumCpuAlignment),
-        tensorSpec);
+    // Dynamically sized. Calculate the byte size using mip.nary.mul.
+    // Extract runtime dims.
+    MOSH::ShapeAttr shapeAttr =
+        cast<MO::TensorType>(moTensorType).getTypedShapeAttr();
+    auto runtimeDimsOr = loweringState.lowerShapeAttrDynDims(shapeAttr, loc);
+    if (runtimeDimsOr) {
+      opBeingLowered->emitOpError(runtimeDimsOr.getError());
+      return failure();
+    }
+
+    // Extract compile time dims.
+    int64_t staticSizeProduct =
+        loweringState.extractShapeAttrStaticDimsProduct(shapeAttr, loc);
+    size_t dtypeNumBytes = tensorSpec.getType().getOptDType()->getSizeInBytes();
+    Value dynSize = builder.create<MIP::NaryMulOp>(
+        loc, IndexType::get(moTensorType.getContext()), *runtimeDimsOr,
+        staticSizeProduct * dtypeNumBytes);
+
+    TypeBuilder *typeBuilder = getStorageTypeBuilder(moTensorType);
+    auto bufType = typeBuilder->bufferType(moTensorType.getContext(), {});
+
+    return BufferizedTensor(bufferBuilder->bufferAllocDynamic(
+                                builder, loc, bufType, context, inChain,
+                                dynSize, minimumCpuAlignment),
+                            tensorSpec);
   }
 }
 
@@ -433,5 +466,12 @@ BufferBuilder *MOOpLoweringState::getStorageBufferBuilder(Type moTensorType) {
   auto type = dyn_cast<MO::TensorType>(moTensorType);
   GENERICML_ASSERT(type) << "expecting !mo.tensor type";
   return loweringState.getBufferBuilder(
+      MO::getDeviceOrDefault(loweringState.getGraph(), type));
+}
+
+TypeBuilder *MOOpLoweringState::getStorageTypeBuilder(Type moTensorType) {
+  auto type = dyn_cast<MO::TensorType>(moTensorType);
+  GENERICML_ASSERT(type) << "expecting !mo.tensor type";
+  return loweringState.getTypeBuilder(
       MO::getDeviceOrDefault(loweringState.getGraph(), type));
 }
