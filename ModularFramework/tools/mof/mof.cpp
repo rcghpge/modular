@@ -227,6 +227,46 @@ bool M_isBinary(FrameworkContextHandle ctx, M::BufferRef file,
   return false;
 }
 
+M::ErrorOr<M::Buffer *>
+M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
+                            FileFormat format) {
+  auto *mofContext = ctxHandle.unwrap<MOFContext>();
+  auto ownedRuntime = LLCL::createRuntimeIfNeeded();
+  ModuleOp moduleOp = ModuleOp::getFromOpaquePointer(source);
+
+#ifdef MODULAR_PRODUCTION
+  moduleOp.getContext()->printOpOnDiagnostic(false);
+#endif // MODULAR_PRODUCTION
+
+  // Gather all the options from all the sources.
+  MOFLoweringOptions mofLoweringOptions;
+  MO::MoToMgpOptions moToMgpOptions;
+  mofContext->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
+
+  mofLoweringOptions.setupRuntimeOptions(*ownedRuntime);
+
+  if (failed(lowerMOToMGP(moduleOp, moToMgpOptions, *ownedRuntime)))
+    return Error("unable to lower MO to MGP");
+
+  if (failed(convertToMEF(moduleOp, mofContext->getEnableMEFMetadata())))
+    return Error("unable to convert file to a MEF binary");
+
+  auto bufOr = convertToMEF(moduleOp, mofContext->getEnableMEFMetadata());
+  if (bufOr.isError())
+    return Error("unable to convert file to a MEF binary");
+  M::BufferRef outputBuffer = bufOr.takeValue();
+  return outputBuffer.release();
+}
+
+ErrorOrSuccess M_openBinaryFile(FrameworkContextHandle ctx, M::BufferRef file,
+                                DriverHandle *modelBinaryHandle) {
+  auto mefFileOr = MEFFile::open(file->getBuffer());
+  if (mefFileOr.isError())
+    return mefFileOr.takeError();
+  *modelBinaryHandle = DriverHandle{std::move(*mefFileOr).release()};
+  return success();
+}
+
 ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
                                        M::BufferRef file, FileFormat format) {
   auto *mofContext = ctxHandle.unwrap<MOFContext>();
@@ -295,46 +335,6 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
     return Error("unable to convert file to a MEF binary");
   M::BufferRef outputBuffer = bufOr.takeValue();
   return outputBuffer.release();
-}
-
-M::ErrorOr<M::Buffer *>
-M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
-                            FileFormat format) {
-  auto *mofContext = ctxHandle.unwrap<MOFContext>();
-  auto ownedRuntime = LLCL::createRuntimeIfNeeded();
-  ModuleOp moduleOp = ModuleOp::getFromOpaquePointer(source);
-
-#ifdef MODULAR_PRODUCTION
-  moduleOp.getContext()->printOpOnDiagnostic(false);
-#endif // MODULAR_PRODUCTION
-
-  // Gather all the options from all the sources.
-  MOFLoweringOptions mofLoweringOptions;
-  MO::MoToMgpOptions moToMgpOptions;
-  mofContext->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
-
-  mofLoweringOptions.setupRuntimeOptions(*ownedRuntime);
-
-  if (failed(lowerMOToMGP(moduleOp, moToMgpOptions, *ownedRuntime)))
-    return Error("unable to lower MO to MGP");
-
-  if (failed(convertToMEF(moduleOp, mofContext->getEnableMEFMetadata())))
-    return Error("unable to convert file to a MEF binary");
-
-  auto bufOr = convertToMEF(moduleOp, mofContext->getEnableMEFMetadata());
-  if (bufOr.isError())
-    return Error("unable to convert file to a MEF binary");
-  M::BufferRef outputBuffer = bufOr.takeValue();
-  return outputBuffer.release();
-}
-
-ErrorOrSuccess M_openBinaryFile(FrameworkContextHandle ctx, M::BufferRef file,
-                                DriverHandle *modelBinaryHandle) {
-  auto mefFileOr = MEFFile::open(file->getBuffer());
-  if (mefFileOr.isError())
-    return mefFileOr.takeError();
-  *modelBinaryHandle = DriverHandle{std::move(*mefFileOr).release()};
-  return success();
 }
 
 void M_closeBinaryFile(DriverHandle modelBinaryHandle) {
