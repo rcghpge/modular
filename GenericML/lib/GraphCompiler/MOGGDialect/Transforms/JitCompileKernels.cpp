@@ -88,7 +88,7 @@ struct JitCompileKernels
           unusedOverrideMap, dumpStub.getValue(),
           createMOGGReproducers.getValue(), useSearch.getValue(),
           saveTempPrefix.getValue(), minimumCpuAlignment.getValue(),
-          splitBinaryCompile.getValue());
+          splitBinaryCompile.getValue(), timeMOGGCompile.getValue());
 
       if (err.isError())
         return err.takeError();

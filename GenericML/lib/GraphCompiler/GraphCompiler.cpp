@@ -248,6 +248,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   jitOpts.saveTempPrefix = opts.saveTempPrefix;
   jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
   jitOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  jitOpts.timeMOGGCompile = opts.timeMOGGCompile;
   pm.addPass(MOGG::createJitCompileKernels(jitOpts));
 
   // Create the options for MoToPrimitives.

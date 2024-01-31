@@ -32,14 +32,16 @@ public:
 
   /// Compile to binary object. Tell the jit all of the given symbols as symbols
   /// within it that can be executed at runtime.
-  ErrorOrSuccess compile(mlir::ArrayAttr combinedSymbolName);
+  ErrorOrSuccess compile(mlir::ArrayAttr combinedSymbolName,
+                         bool enableTiming = false);
 
   /// Run the KGEN elaboration passes on the module.
-  LogicalResult elaborateKGEN();
+  LogicalResult elaborateKGEN(bool enableTiming = false);
 
 private:
   /// Lower to an binary object.
-  ErrorOrSuccess compileToLLVM(mlir::ArrayAttr combinedSymbolName);
+  ErrorOrSuccess compileToLLVM(mlir::ArrayAttr combinedSymbolName,
+                               bool enableTiming);
 
   MLIRContext *ctx;
 

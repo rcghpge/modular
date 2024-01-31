@@ -30,7 +30,7 @@
 
 namespace M::MOGG::Stub {
 
-LogicalResult StubCompiler::elaborateKGEN() {
+LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
   MLIRContext *ctx = kgenModule->getContext();
 
   auto ownedRuntime = LLCL::createRuntimeIfNeeded(
@@ -41,6 +41,9 @@ LogicalResult StubCompiler::elaborateKGEN() {
   llvm::InitializeNativeTargetAsmPrinter();
 
   mlir::PassManager pm(ctx);
+
+  if (enableTiming)
+    pm.enableTiming();
 
   // Set the environment (defines) for the module.
   KGEN::extendWithModularEnvAttr(kgenModule);
@@ -119,13 +122,17 @@ LogicalResult StubCompiler::elaborateKGEN() {
   return res;
 }
 
-ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
+ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
+                                           bool enableTiming) {
   static constexpr llvm::StringLiteral kKernelsBuildType =
       STRINGIFY(KERNELS_BUILD_TYPE);
 
   auto ownedRuntime = LLCL::createRuntimeIfNeeded(
       LLCL::RuntimeOptions().withLeakCheckedAllocator());
   mlir::PassManager mgr(ctx);
+
+  if (enableTiming)
+    mgr.enableTiming();
 
   // Compile to LLVM.
   mlir::SymbolTable symTable{kgenModule};
@@ -157,11 +164,22 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
 
   KGEN::ObjectCompiler compiler = compilerOr.takeValue();
 
+  auto start = std::chrono::high_resolution_clock::now();
+
   auto standaloneOr =
       compiler.produceStandaloneArchiveAttr(symTable, exportedSymbols, target);
   if (standaloneOr.isError())
     return standaloneOr.takeError();
   ElementsAttr archiveAttr = *standaloneOr;
+
+  auto end = std::chrono::high_resolution_clock::now();
+  if (enableTiming) {
+    llvm::errs() << "Compiling to llvm took "
+                 << std::chrono::duration_cast<std::chrono::milliseconds>(end -
+                                                                          start)
+                        .count()
+                 << "ms\n";
+  }
 
   // Add the compiled kernels as a constant.
   auto loadCompiledOp = moggBuilder.create<MOGG::LoadCompiledKernelOp>(
@@ -175,18 +193,19 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName) {
   return success();
 }
 
-ErrorOrSuccess StubCompiler::compile(mlir::ArrayAttr combinedSymbolName) {
+ErrorOrSuccess StubCompiler::compile(mlir::ArrayAttr combinedSymbolName,
+                                     bool enableTiming) {
   llvm::InitializeAllTargets();
   llvm::InitializeAllTargetInfos();
   llvm::InitializeAllTargetMCs();
   llvm::InitializeAllAsmParsers();
   llvm::InitializeAllAsmPrinters();
 
-  LogicalResult ok = elaborateKGEN();
+  LogicalResult ok = elaborateKGEN(enableTiming);
   if (ok.failed())
     return Error("KGEN elaboration failed");
 
-  return compileToLLVM(combinedSymbolName);
+  return compileToLLVM(combinedSymbolName, enableTiming);
 }
 
 } // namespace M::MOGG::Stub

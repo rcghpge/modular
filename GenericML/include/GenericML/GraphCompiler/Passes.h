@@ -154,6 +154,10 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
                      "functions for certains ops, and use the "
                      "SymbolicizeFallbackShapeFunctionsPass"),
       llvm::cl::init(true)};
+  Option<bool> timeMOGGCompile{
+      *this, "time-mogg-compile",
+      llvm::cl::desc("Turns on timing for the KGEN passes invoked by mogg"),
+      llvm::cl::init(false)};
 };
 
 struct ShapeInferenceOptions

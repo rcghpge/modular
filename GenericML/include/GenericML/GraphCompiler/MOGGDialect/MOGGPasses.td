@@ -51,6 +51,9 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
     Option<"splitBinaryCompile", "split-binary-compile", "bool",
       /*default=*/"false",
      "Split compilation of kernels into seperate output kernel binaries">,
+    Option<"timeMOGGCompile", "time-mogg-compile", "bool",
+      /*default=*/"false",
+     "Turns on timing for the KGEN passes invoked by mogg">,
   ];
 }
 
