@@ -8,6 +8,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "KGEN/Compiler/KGENCompiler.h"
+#include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "KGEN/Package/Package.h"
@@ -91,8 +92,7 @@ LogicalResult elaborateModule(ModuleOp moduleOp) {
       [](KGEN::PackageLinkOp packageLink, TargetInfoAttr) {
         // TODO(#22819): For now, do not compile packages on-demand, and instead
         // stitch the pre-elaborated module into the module being built.
-        return KGEN::loadPreElaboratedBytecodeForLinking(
-            packageLink.getPreElaborationModuleAttr());
+        return KGEN::PackageArchiveAttr();
       });
   return pm.run(moduleOp);
 }
