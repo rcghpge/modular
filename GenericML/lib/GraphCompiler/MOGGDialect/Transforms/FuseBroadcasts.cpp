@@ -252,7 +252,7 @@ struct FuseBroadcastsPass
     auto fuseInputImplKGEN = [&](KernelOp producerKernel, KernelOp leaf,
                                  Value operand) {
       Value target = leafBlock.getArgument(idx);
-      llvm::StringMap<std::string> paramMapping;
+      llvm::StringMap<KGEN::ParamDeclAttr> paramMapping;
 
       for (Operation &op : producerKernel.getOps()) {
         if (isa<MOGG::OutputPlaceholdersOp>(op)) {

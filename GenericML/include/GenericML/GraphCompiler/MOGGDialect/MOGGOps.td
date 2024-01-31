@@ -579,10 +579,14 @@ def MOGG_MojoCallContextPlaceholderOp: MOGG_Op<"runtime_mojocallcontext_placehol
 def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure]> {
   let summary = "Converts a MOGG value to a KGEN value";
   let description = [{
-    Converts a mogg/mo value to a kgen value.
+    Converts a mogg/mo value to a kgen value. Includes the shape and optionally,
+    the stride parameter that appears in the kernel.
   }];
 
-  let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape]>:$input);
+  let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape]>:$input,
+    TypedAttrInterface:$shape,
+    TypedAttrInterface:$strides
+  );
   let results = (outs AnyType:$results);
 }
 
