@@ -4,10 +4,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Device-generic operations in the MGP dialect. All of these ops accept
+// Device-generic operations in the MGP dialect. Most of these ops accept
 // (at least one) #M.device_ref attribute indicating the specific type and
 // 'virtual' device id the ops should apply to. Some ops must also reference
-// the 'host' device in addition to some 'other' device.
+// the 'host' device in addition to some 'other' device. These ops implement
+// the `MGP_HasDeviceOpInterface`.
+//
+// Note that the `DevicePrimitivesPass` rewrites all ops implementing
+// `MGP_HasDeviceOpInterface` such that:
+//  - the op is renamed to include its device's label name as a suffix.
+//  - all #M.device_ref attributes are replaced by just the device's id.
+// In this way we have the convenience of first-class device attributes on
+// ops for use during lowering and MGP-level transformations, but have the
+// efficiency of direct dispatch to per-device label primitives without the
+// overhead of dealing with device lables at runtime.
+//
+// Note that MGP has an `!mgp.chain` type which carries its device. For host
+// devices this is has the same runtime representation as for `!mef.chain`.
 //
 //===----------------------------------------------------------------------===//
 
@@ -135,32 +148,34 @@ def RuntimeCreateOp : MGP_DeviceOp<"runtime.create"> {
     There is no universal representation for device runtimes in the host C++
     runtime. Depending on device the op may accept additional attributes.
 
+    Note that this operation accepts and returns `!mef.chain`s since it is
+    part of device setup on the host.
+
     Example:
     ```mlir
       // Establish a CUDA runtime in slot 5, using the device map established
       // by an earlier mgp.check_runtime op in slot 2 to determine which
       // physical GPU to use. The physical GPU will be associated with the
       // virtual device id 3.
-      %ch0 : !mgp.chain<<"cuda", 3>>
+      %ch0 : !mef.chain
       %ctx : !mgp.context
       %ch1 = mgp.runtime.create %ch0, %ctx[5, 2], <"cuda", 3>
-      %ch1 : !mgp.chain<<"cuda", 3>>
+      %ch1 : !mef.chain
     ```
   }];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_DeviceChainType:$inChain,
+  let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        UI64Attr:$aRuntimeSlot,        // 1
                        UI64Attr:$bDeviceSpecMapSlot,  // 2
                        M_DeviceRefAttr:$cDevice);     // 3
-  let results = (outs MGP_DeviceChainType:$outChain);
+  let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aRuntimeSlot `,` $bDeviceSpecMapSlot `]` `,`
-    custom<DeviceRef>($cDevice, type($inChain), type($outChain)) attr-dict
+    $cDevice attr-dict
   }];
-  let hasVerifier = 1;
 
   let extraClassDefinition = [{
     uint64_t RuntimeCreateOp::getSlot() { return getARuntimeSlot(); }
@@ -189,9 +204,12 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
     There is no universal representation for device modules in the host C++
     runtime, each device type may use it's own representation.
 
+    Note that this operation accepts and returns `!mef.chain`s since it is
+    part of device setup on the host.
+
     Example:
     ```mlir
-      %ch0 : !mgp.chain<<"cuda", 3>>
+      %ch0 : !mef.chain
       %ctx : !mgp.context
       // Load a CUDA PTX or cubin module with given exported kernel and
       // constant names. The CUDA module will be associated with the CUDA
@@ -201,24 +219,23 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
                dense_resource<label> : !M.aligned_bytes<1000, align 16>,
                ["kernel1", "kernel2"], ["const1", "const2"],
                <"cuda", 3>
-      %ch1 : !mgp.chain<<"cuda", 3>>
+      %ch1 : !mef.chain
     ```
   }];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_DeviceChainType:$inChain,
+  let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        UI64Attr:$aRuntimeSlot,                                   // 0
                        AnyAttrOf<[M_MultiLineStringAttr, ElementsAttr]>:$bImage, // 1
                        M_MultiLineStringAttr:$cFunctionSymbols,                  // 2
                        M_MultiLineStringAttr:$dConstantSymbols,                  // 3
                        M_DeviceRefAttr:$eDevice);                                // 4
-  let results = (outs MGP_DeviceChainType:$outChain);
+  let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $bImage `,`
-    $cFunctionSymbols `,` $dConstantSymbols `,`
-    custom<DeviceRef>($eDevice, type($inChain), type($outChain)) attr-dict
+    $cFunctionSymbols `,` $dConstantSymbols `,` $eDevice attr-dict
   }];
   let hasVerifier = 1;
 
@@ -230,109 +247,50 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
 }
 
 //===----------------------------------------------------------------------===//
-// ChainCreateHostOp
+// ChainCreateOp
 //===----------------------------------------------------------------------===//
 
-def ChainCreateHostOp : MGP_Op<"chain.create.host", [
-    Pure,
-    DeclareOpInterfaceMethods<GRT_ChainCreateOpInterface>,
-    DeclareOpInterfaceMethods<GRT_GatedOnChainOpInterface>,
-    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
-    DeclareOpInterfaceMethods<MGP_HasDeviceOpInterface>,
-]> {
-  let summary = "Returns an `!mgp.chain` for the host device gated by zero or "
-                "more host operands.";
-  let description = [{
-    Returns an `!mgp.chain` for the host device which is 'gated' by zero or
-    more operands which are similarly on the host device. The result will be
-    ready only when all the gating operands are ready, thus this op can be
-    used to force one operation to wait for the completion of any number of
-    upstream operations. The gating operands may be of any type, however all
-    device generic MGP operands must be on the host device.
-
-    This op is equivalent to `grt.chain.create`, except that it returns
-    a `!mgp.chain` instead of a `!mef.chain`. Ideally we'd allow `!mgp.chain`
-    for the host device to be an alias of `!mef.chain`, but instead we need
-    explicit conversions:
-    ```mlir
-      %mef_ch : !mef.chain
-      %host_ch = mgp.chain.create.host <"cpu", 0> (%mef_ch : !mef.chain)
-
-      %host_ch : !mgp.chain<<"cpu", 0>>
-      %mef_ch = grt.chain.create %host_ch
-      %mef_ch : !mef.chain
-    ```
-
-    Example:
-    ```mlir
-      %ctx : !mgp.context
-      %ch0 : !mgp.chain<<"cpu", 0>>
-      %ch1 : !mef.chain
-      %buf : !mgp.buffer<<"cpu", 0>, 64>
-      %ch2 = mgp.chain.create.host <"cpu", 0> (
-               %ch0,
-               %ch1: !mef.chain,
-               %buf: !mgp.buffer<<"cpu", 0>, 64>
-             )
-      %ch2 : !mgp.chain<<"cpu", 0>>
-    ```
-  }];
-
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
-  let arguments = (ins Variadic<AnyType>:$gatingOperands,
-                       M_DeviceRefAttr:$device);
-  let results = (outs MGP_DeviceChainType:$outChain);
-  let assemblyFormat = [{
-    custom<DeviceRef>($device, type($outChain)) `,`
-    custom<ChainCreateParenOperandList>(
-      ref($device), $gatingOperands, type($gatingOperands))
-    attr-dict
-  }];
-  let hasVerifier = 1;
-}
-
-//===----------------------------------------------------------------------===//
-// ChainCreateOtherOp
-//===----------------------------------------------------------------------===//
-
-def ChainCreateOtherOp : MGP_DeviceOp<"chain.create.other", [
+def ChainCreateOp : MGP_DeviceOp<"chain.create", [
     Pure,
     DeclareOpInterfaceMethods<GRT_ChainCreateOpInterface>,
     DeclareOpInterfaceMethods<GRT_GatedOnChainOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
 ]> {
-  let summary = "Returns a non-host `!mgp.chain` gated by zero or more "
-                "operands.";
+  let summary = "Returns an `!mgp.chain` gated by zero or more operands.";
   let description = [{
-    Returns an `!mgp.chain` for a non-host device which is 'gated' by zero or
-    more operands. The gating operands may be of any type, however all device
-    generic MGP operands must be on either the host or other devices.
+    Returns an `!mgp.chain` for a device which is 'gated' by zero or more
+    operands. The gating operands may be of any type, however all device-generic
+    operands must be on either the 'host' or 'other' device.
 
     Some devices may support the notion of a chain being 'finished' separately
     from it being 'ready'. See `!mgp.chain` for more details. For these
     devices, additional synchronization may be required on gating operands
-    which are on the non-host device so that the result chain is only 'finished'
-    when all operands are 'finished'. Otherwise, this op is equivalent to
-    `grt.chain.create`.
+    which are on the other device so that the result chain is only 'finished'
+    when all 'other' device operands are 'finished'. Otherwise, this op is
+    equivalent to `grt.chain.create`.
+
+    It is valid for the 'other' and 'host' devices to be the same if
+    creating a chain for the host device.
 
     Example:
     ```mlir
       %ctx : !mgp.context
       %ch0 : !mgp.chain<<"cuda", 3>>
       %ch1 : !mgp.chain<<"cpu", 0>>
+      %ch2 : !mef.chain
       %val : !mgp.buffer<<"cuda", 3>, 64>
-      // Returns a chain which is ready when %ch0, %ch1 and %val are ready,
-      // but which is 'finished' only when %ch0 and %val are 'finished'. Uses
-      // the CUDA runtime established in slot 5, which must be for CUDA virtual
-      // device id 3.
-      %ch2 = mgp.chain.create.other %ctx[5], host <"cpu", 0>, other <"cuda", 3>,
+      // Returns a chain which is ready when %ch0, %ch1, %ch2 and %val are
+      // ready, but which is 'finished' only when %ch0 and %val are 'finished'.
+      // Uses the CUDA runtime established in slot 5, which must be for CUDA
+      // virtual device id 3.
+      %ch3 = mgp.chain.create.other %ctx[5], host <"cpu", 0>, other <"cuda", 3>,
              (
                %ch0,
                %ch1: !mgp.chain<<"cpu", 0>>,
+               %ch2: !mef.chain,
                %val: !mgp.buffer<<"cuda", 3>, 64>
              )
-      %ch2 : !mgp.chain<<"cuda", 3>>
+      %ch3 : !mgp.chain<<"cuda", 3>>
     ```
   }];
 
@@ -355,9 +313,9 @@ def ChainCreateOtherOp : MGP_DeviceOp<"chain.create.other", [
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-    uint64_t ChainCreateOtherOp::getSlot() { return getAOtherRuntimeSlot(); }
+    uint64_t ChainCreateOp::getSlot() { return getAOtherRuntimeSlot(); }
 
-    M::DeviceRefAttr ChainCreateOtherOp::getDevice() { return getCOtherDevice(); }
+    M::DeviceRefAttr ChainCreateOp::getDevice() { return getCOtherDevice(); }
   }];
 }
 
@@ -369,14 +327,17 @@ def ChainDeviceToHostOp : MGP_DeviceOp<"chain.device_to_host", [
     Pure,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
 ]> {
-  let summary = "Returns a host device `!mgp.chain` which is ready when the "
-                "given non-host device `!mgp.chain` is 'finished'.";
+  let summary = "Returns a `!mef.chain` which is ready when the given device "
+                "`!mgp.chain` is 'finished'.";
   let description = [{
     Some non-host devices may need to represent the notion of a computation
     being 'finished', see `!mgp.chain` for more details. This op returns a
-    host `!mgp.chain` which is 'ready' only when the device `!mgp.chain`
+    host `!mef.chain` which is 'ready' only when the device `!mgp.chain`
     is 'finished'. Generally this may require additional synchronization between
     the non-host device and the host-device, which impose additional latency.
+
+    It is valid for the device to be the host device, in which case this
+    op is a no-op.
 
     Example:
     ```mlir
@@ -385,30 +346,74 @@ def ChainDeviceToHostOp : MGP_DeviceOp<"chain.device_to_host", [
       // Returns a chain for the host CPU, with appropriate synchronization
       // on chains for the CUDA GPU with virtual device id and runtime
       // established in slot 5. The host runtime has been established in slot 4.
-      %ch1 = mgp.chain.device_to_host %ch0, %ctx[5],
-               host <"cpu", 0>, other <"cuda", 3>
-      %ch1 : !mgp.chain<<"cpu", 0>>
+      %ch1 = mgp.chain.device_to_host %ch0, %ctx[5], <"cuda", 3>
+      %ch1 : !mef.chain
     ```
   }];
 
   let arguments = (ins MGP_DeviceChainType:$inChain,
                        MGP_ContextType:$theContext,
-                       UI64Attr:$aOtherRuntimeSlot,    // 0
-                       M_DeviceRefAttr:$bHostDevice,   // 1
-                       M_DeviceRefAttr:$cOtherDevice); // 2
-  let results = (outs MGP_DeviceChainType:$outChain);
+                       UI64Attr:$aRuntimeSlot,    // 0
+                       M_DeviceRefAttr:$bDevice); // 1
+  let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aOtherRuntimeSlot `]` `,`
-    `host` custom<DeviceRef>($bHostDevice, type($outChain)) `,`
-    `other` custom<DeviceRef>($cOtherDevice, type($inChain))
-    attr-dict
+    $inChain `,` $theContext `[` $aRuntimeSlot `]` `,`
+    custom<DeviceRef>($bDevice, type($inChain)) attr-dict
   }];
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-    uint64_t ChainDeviceToHostOp::getSlot() { return getAOtherRuntimeSlot(); }
+    uint64_t ChainDeviceToHostOp::getSlot() { return getARuntimeSlot(); }
 
-    M::DeviceRefAttr ChainDeviceToHostOp::getDevice() { return getCOtherDevice(); }
+    M::DeviceRefAttr ChainDeviceToHostOp::getDevice() { return getBDevice(); }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// ChainHostToDeviceOp
+//===----------------------------------------------------------------------===//
+
+def ChainHostToDeviceOp : MGP_DeviceOp<"chain.host_to_device", [
+    Pure,
+    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
+]> {
+  let summary = "Returns an `!mgp.chain` which is 'finished' when the given "
+                "`!mef.chain` is ready.";
+  let description = [{
+    Some non-host devices may need to represent the notion of a computation
+    being 'finished', see `!mgp.chain` for more details. This op returns a
+    device `!mgp.chain` which is 'finished' only when the operand `!mef.chain`
+    is ready. Generally this does not require any device synchronization.
+
+    It is valid for the device to be the host device, in which case this
+    op is a no-op.
+
+    Example:
+    ```mlir
+      %ctx : !mgp.context
+      %ch0 : !mef.chain
+      %ch1 = mgp.chain.host_to_device %ch0, %ctx[1], <"cuda", 3>
+      %ch1 : !mgp.chain<<"cuda", 3>>
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       UI64Attr:$aRuntimeSlot,    // 0
+                       M_DeviceRefAttr:$bDevice); // 1
+  let results = (outs MGP_DeviceChainType:$outChain);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `[` $aRuntimeSlot `]` `,`
+    custom<DeviceRef>($bDevice, type($outChain)) attr-dict
+  }];
+  let hasVerifier = 1;
+
+  let extraClassDefinition = [{
+    uint64_t ChainHostToDeviceOp::getSlot() { return getARuntimeSlot(); }
+
+    M::DeviceRefAttr ChainHostToDeviceOp::getDevice() { return getBDevice(); }
   }];
 }
 
@@ -800,28 +805,30 @@ def BufferCacheOp : MGP_DeviceOp<"buffer.cache"> {
     computation associated with the buffer may need to be 'finished' before
     the store is executed.
 
+    Note this op accepts and returns `!mef.chain`s since the buffer cache is
+    held on the host.
+
     Example:
     ```mlir
     %ctx : !mgp.context
     %buf : !mgp.buffer<<"cuda", 3>>
-    %ch0 : !mgp.chain<<"cuda", 3>>
+    %ch0 : !mef.chain
     %ch1 = mgp.buffer.cache %ch0, %ctx[5], %buf : !mgp.buffer<<"cuda", 3>, 256>
-    %ch1 : !mgp.chain<<"cuda", 3>>
+    %ch1 : !mef.chain
     ```
   }];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_DeviceChainType:$inChain,
+  let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$buffer,
                        UI64Attr:$aRuntimeSlot,     // 0
                        M_DeviceRefAttr:$bDevice);  // 1
-  let results = (outs MGP_DeviceChainType:$outChain);
+  let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $buffer attr-dict
-    `:` custom<BufferTypeToDevice>(
-          type($buffer), $bDevice, type($inChain), type($outChain))
+    `:` custom<BufferTypeToDevice>(type($buffer), $bDevice)
   }];
   let hasVerifier = 1;
 
@@ -846,10 +853,13 @@ def BufferGetCachedOp : MGP_DeviceOp<"buffer.get_cached", [
     Returns an error if the cached buffer's size (if any) or device do not
     agree with the `!mgp.buffer` type annotation.
 
+    Note this op is gated by a `!mef.chain` since the cache is held on the
+    host.
+
     Example:
     ```mlir
     %ctx : !mgp.context
-    %ch0 : !mgp.chain<<"cuda", 3>>
+    %ch0 : !mef.chain
     %buf = mgp.buffer.get_cached %ch0, %ctx[5] : !mgp.buffer<<"cuda", 3>, 256>
     %buf : !mgp.buffer<<"cuda", 3>, 256>
     ```
@@ -857,7 +867,7 @@ def BufferGetCachedOp : MGP_DeviceOp<"buffer.get_cached", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_DeviceChainType:$inChain,
+  let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        UI64Attr:$aRuntimeSlot,      // 0
                        UI64Attr:$bRawSize,          // 1
@@ -866,7 +876,7 @@ def BufferGetCachedOp : MGP_DeviceOp<"buffer.get_cached", [
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aRuntimeSlot `]` attr-dict
     `:` custom<BufferTypeToRawSizeDevice>(
-          type($outBuffer), $bRawSize, $cDevice, type($inChain))
+          type($outBuffer), $bRawSize, $cDevice)
   }];
   let hasVerifier = 1;
 
@@ -876,7 +886,6 @@ def BufferGetCachedOp : MGP_DeviceOp<"buffer.get_cached", [
     M::DeviceRefAttr BufferGetCachedOp::getDevice() { return getCDevice(); }
 }];
 }
-
 
 //===----------------------------------------------------------------------===//
 // BufferHostToDeviceOp
@@ -1446,33 +1455,36 @@ def DebugTensorPrintOp : MGP_DeviceOp<"debug.tensor.print"> {
 
     For debugging and testing only.
 
+    Note this op accepts and returns `!mef.chain`s since printing is managed
+    by the host.
+
     Example:
     ```mlir
-    %ch0: !mgp.chain<<"cuda", 3>>
+    %ch0: !mef.chain
     %ctx: !mgp.context
     %buf: !mgp.buffer<<"cuda", 3>, 2048>
     %spec: !mgp.tensor_spec<8x64xf32>
     %ch1 = mgp.debug.tensor.print %ch0, %ctx[5], %buf, %spec, "label"
            : !mgp.tensor<<"cuda", 3>, 8x64xf32>
-    %ch1: !mgp.chain<<"cuda", 3>>
+    %ch1: !mef.chain
     ```
   }];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_DeviceChainType:$inChain,
+  let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$buffer,
                        MGP_TensorSpecType:$spec,
                        UI64Attr:$aRuntimeSlot,                        // 0
                        DefaultValuedAttr<StrAttr, "\"\"">: $bLabel,   // 1
                        M_DeviceRefAttr:$cDevice);                     // 2
-  let results = (outs MGP_DeviceChainType: $outChain);
+  let results = (outs ChainType: $outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $buffer `,` $spec (`,` $bLabel^)?
     attr-dict
-    `:` custom<TensorTypeToDeviceBufferSpec>($cDevice, type($buffer),
-          type($spec), type($inChain), type($outChain))
+    `:` custom<TensorTypeToDeviceBufferSpec>(
+          $cDevice, type($buffer), type($spec))
   }];
   let hasVerifier = 1;
 

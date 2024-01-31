@@ -1,27 +1,14 @@
 // RUN: mgp-opt %s --split-input-file --verify-diagnostics --allow-unregistered-dialect
 
 //
-// mgp.runtime.create
-//
-
-func.func @runtime_create_mismatched_devices(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>) {
-  // expected-error@+1 {{'mgp.runtime.create' op expected all operands, results, and attributes to use the device(s) {#M.device_ref<"cpu", 0>}, but they instead use the devices(s) {#M.device_ref<"cpu", 0>, #M.device_ref<"cuda", 3>}.}}
-  %ch1 = "mgp.runtime.create" (%ch0, %ctx) { aRuntimeSlot = 1 : ui64, bDeviceSpecMapSlot = 2 : ui64, cDevice = #M.device_ref<"cpu", 0> }
-           : (!mgp.chain<<"cuda", 3>>, !mgp.context) -> !mgp.chain<<"cuda", 3>>
-  mef.output %ch1 : !mgp.chain<<"cuda", 3>>
-}
-
-// -----
-
-//
 // mgp.chain.device_to_host
 //
 
 func.func @chain_device_to_host_mismatched_devices(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cpu", 0>>) {
-  // expected-error@+1 {{'mgp.chain.device_to_host' op input chain must be on the 'other' device #M.device_ref<"cuda", 3>.}}
-  %ch1 = "mgp.chain.device_to_host" (%ch0, %ctx ) { aOtherRuntimeSlot = 1 : ui64, bHostDevice = #M.device_ref<"cpu", 0>, cOtherDevice = #M.device_ref<"cuda", 3> }
-           : (!mgp.chain<<"cpu", 0>>, !mgp.context) -> !mgp.chain<<"cuda", 3>>
-  mef.output %ch1 : !mgp.chain<<"cuda", 3>>
+  // expected-error@+1 {{'mgp.chain.device_to_host' op expected all operands, results, and attributes to use the device(s) {#M.device_ref<"cuda", 3>}, but they instead use the devices(s) {#M.device_ref<"cuda", 3>, #M.device_ref<"cpu", 0>}.}}
+  %ch1 = "mgp.chain.device_to_host" (%ch0, %ctx) { aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cuda", 3> }
+           : (!mgp.chain<<"cpu", 0>>, !mgp.context) -> !mef.chain
+  mef.output %ch1 : !mef.chain
 }
 
 // -----

@@ -25,6 +25,12 @@ void MGPDialect::initialize() {
   registerAttributes();
   registerOperations();
   addInterface<CpuTensorBufferDialectInterface>();
+
+  // The PrepareDevicePrimitivesPass rewrites device-generic ops to
+  // include the device label in their name. We don't want to have
+  // to register those since it's just for the convenince of the GraphRT
+  // primitive dispatch mechanism.
+  allowUnknownOperations();
 }
 
 Operation *MGPDialect::materializeConstant(OpBuilder &b, Attribute value,

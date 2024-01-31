@@ -5,10 +5,10 @@
 //
 
 // CHECK-LABEL: @runtime_create
-func.func @runtime_create(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>) {
+func.func @runtime_create(%ctx : !mgp.context, %ch0 : !mef.chain) {
   // CHECK: %{{.*}} = mgp.runtime.create %{{.*}}, %{{.*}}[1, 2], <"cuda", 3>
   %ch1 = mgp.runtime.create %ch0, %ctx[1, 2], <"cuda", 3>
-  mef.output %ch1 : !mgp.chain<<"cuda", 3>>
+  mef.output %ch1 : !mef.chain
 }
 
 //
@@ -16,38 +16,27 @@ func.func @runtime_create(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>) {
 //
 
 // CHECK-LABEL: @module_load_dense_attribute
-func.func @module_load_dense_attribute(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>) {
+func.func @module_load_dense_attribute(%ctx : !mgp.context, %ch0 : !mef.chain) {
   // CHECK: %{{.*}} = mgp.module.load %{{.*}}, %{{.*}}[1], dense_resource<resource> : !M.aligned_bytes<4, align 64>, ["f1", "f2"],  ["g1", "g2"], <"cuda", 3>
   %ch1 = mgp.module.load %ch0, %ctx[1], dense_resource<resource> : !M.aligned_bytes<4, align 64>, ["f1", "f2"], ["g1", "g2"], <"cuda", 3>
-  mef.output %ch1 : !mgp.chain<<"cuda", 3>>
+  mef.output %ch1 : !mef.chain
 }
 
 // CHECK-LABEL: @module_load_multiline
-func.func @module_load_multiline(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>) {
+func.func @module_load_multiline(%ctx : !mgp.context, %ch0 : !mef.chain) {
   // CHECK: %{{.*}} = mgp.module.load %{{.*}}, %{{.*}}[1], #M<multiline["a", "b", "c"]>, ["f"], [], <"cuda", 3>
   %ch1 = mgp.module.load %ch0, %ctx[1], #M<multiline["a", "b", "c"]>, ["f"], [], <"cuda", 3>
-  mef.output %ch1 : !mgp.chain<<"cuda", 3>>
+  mef.output %ch1 : !mef.chain
 }
 
 //
-// mgp.chain.create.host
+// mgp.chain.create
 //
 
-// CHECK-LABEL: @chain_create_host
-func.func @chain_create_host(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cpu", 0>>, %ch1 : !mef.chain, %buf : !mgp.buffer<<"cpu", 0>>) {
-  // CHECK: %{{.*}} = mgp.chain.create.host <"cpu", 0>, (%{{.*}}, %{{.*}}: !mef.chain, %{{.*}}: !mgp.buffer<<"cpu", 0>>)
-  %ch2 = mgp.chain.create.host <"cpu", 0>, (%ch0, %ch1: !mef.chain, %buf: !mgp.buffer<<"cpu", 0>>)
-  mef.output %ch2 : !mgp.chain<<"cpu", 0>>
-}
-
-//
-// mgp.chain.create.other
-//
-
-// CHECK-LABEL: @chain_create_other
-func.func @chain_create_other(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>, %ch1 : !mgp.chain<<"cuda", 3>>, %ch2 : !mgp.chain<<"cpu", 0>>, %ch3 : !mef.chain, %dev_buf : !mgp.buffer<<"cuda", 3>>, %host_buf : !mgp.buffer<<"cpu", 0>>) {
-  // CHECK: %{{.*}} = mgp.chain.create.other %{{.*}}[1], host <"cpu", 0>, other <"cuda", 3>, (%{{.*}}, %{{.*}}, %{{.*}}: !mgp.chain<<"cpu", 0>>, %{{.*}}: !mef.chain, %{{.*}}: !mgp.buffer<<"cuda", 3>>, %{{.*}}: !mgp.buffer<<"cpu", 0>>)
-  %ch4 = mgp.chain.create.other %ctx[1], host <"cpu", 0>, other <"cuda", 3>, (%ch0, %ch1, %ch2: !mgp.chain<<"cpu", 0>>, %ch3: !mef.chain, %dev_buf: !mgp.buffer<<"cuda", 3>>, %host_buf: !mgp.buffer<<"cpu", 0>>)
+// CHECK-LABEL: @chain_create
+func.func @chain_create(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>, %ch1 : !mgp.chain<<"cuda", 3>>, %ch2 : !mgp.chain<<"cpu", 0>>, %ch3 : !mef.chain, %dev_buf : !mgp.buffer<<"cuda", 3>>, %host_buf : !mgp.buffer<<"cpu", 0>>) {
+  // CHECK: %{{.*}} = mgp.chain.create %{{.*}}[1], host <"cpu", 0>, other <"cuda", 3>, (%{{.*}}, %{{.*}}, %{{.*}}: !mgp.chain<<"cpu", 0>>, %{{.*}}: !mef.chain, %{{.*}}: !mgp.buffer<<"cuda", 3>>, %{{.*}}: !mgp.buffer<<"cpu", 0>>)
+  %ch4 = mgp.chain.create %ctx[1], host <"cpu", 0>, other <"cuda", 3>, (%ch0, %ch1, %ch2: !mgp.chain<<"cpu", 0>>, %ch3: !mef.chain, %dev_buf: !mgp.buffer<<"cuda", 3>>, %host_buf: !mgp.buffer<<"cpu", 0>>)
   mef.output %ch4 : !mgp.chain<<"cuda", 3>>
 }
 
@@ -57,9 +46,20 @@ func.func @chain_create_other(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>
 
 // CHECK-LABEL: @chain_device_to_host
 func.func @chain_device_to_host(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>) {
-  // CHECK: %{{.*}} = mgp.chain.device_to_host %{{.*}}, %{{.*}}[1], host <"cpu", 0>, other <"cuda", 3>
-  %ch1 = mgp.chain.device_to_host %ch0, %ctx[1], host <"cpu", 0>, other <"cuda", 3>
-  mef.output %ch1 : !mgp.chain<<"cpu", 0>>
+  // CHECK: %{{.*}} = mgp.chain.device_to_host %{{.*}}, %{{.*}}[1], <"cuda", 3>
+  %ch1 = mgp.chain.device_to_host %ch0, %ctx[1], <"cuda", 3>
+  mef.output %ch1 : !mef.chain
+}
+
+//
+// mgp.chain.host_to_device
+//
+
+// CHECK-LABEL: @chain_host_to_device
+func.func @chain_host_to_device(%ctx : !mgp.context, %ch0 : !mef.chain) {
+  // CHECK: %{{.*}} = mgp.chain.host_to_device %{{.*}}, %{{.*}}[1], <"cuda", 3>
+  %ch1 = mgp.chain.host_to_device %ch0, %ctx[1], <"cuda", 3>
+  mef.output %ch1 : !mgp.chain<<"cuda", 3>>
 }
 
 //
@@ -133,10 +133,10 @@ func.func @buffer_realloc_dynamic_size(%ctx : !mgp.context, %ch : !mgp.chain<<"c
 //
 
 // CHECK-LABEL: @buffer_cache
-func.func @buffer_cache(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>, %buf : !mgp.buffer<<"cuda", 3>, 256>) {
+func.func @buffer_cache(%ctx : !mgp.context, %ch0 : !mef.chain, %buf : !mgp.buffer<<"cuda", 3>, 256>) {
   // CHECK: %{{.*}} = mgp.buffer.cache %{{.*}}, %{{.*}}[1], %{{.*}} : !mgp.buffer<<"cuda", 3>, 256>
   %ch1 = mgp.buffer.cache %ch0, %ctx[1], %buf : !mgp.buffer<<"cuda", 3>, 256>
-  mef.output %ch1 : !mgp.chain<<"cuda", 3>>
+  mef.output %ch1 : !mef.chain
 }
 
 //
@@ -144,7 +144,7 @@ func.func @buffer_cache(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>, %bu
 //
 
 // CHECK-LABEL: @buffer_get_cached
-func.func @buffer_get_cached(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>) {
+func.func @buffer_get_cached(%ctx : !mgp.context, %ch0 : !mef.chain) {
   // CHECK: %{{.*}} = mgp.buffer.get_cached %{{.*}}, %{{.*}}[1] : !mgp.buffer<<"cuda", 3>, 256>
   %buf = mgp.buffer.get_cached %ch0, %ctx[1] : !mgp.buffer<<"cuda", 3>, 256>
   mef.output %buf : !mgp.buffer<<"cuda", 3>, 256>
@@ -293,10 +293,10 @@ func.func @tensor_extract_shape(%ctx : !mgp.context, %tensor : !mgp.tensor<<"cud
 //
 
 // CHECK-LABEL: @debug_tensor_print
-func.func @debug_tensor_print(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>, %buf : !mgp.buffer<<"cuda", 3>, 60>, %spec : !mgp.tensor_spec<3x5xf32>) {
+func.func @debug_tensor_print(%ctx : !mgp.context, %ch0 : !mef.chain, %buf : !mgp.buffer<<"cuda", 3>, 60>, %spec : !mgp.tensor_spec<3x5xf32>) {
   // CHECK: %{{.*}} = mgp.debug.tensor.print %{{.*}}, %{{.*}}[1], %{{.*}}, %{{.*}} : !mgp.tensor<<"cuda", 3>, 3x5xf32>
   %ch1 = mgp.debug.tensor.print %ch0, %ctx[1], %buf, %spec : !mgp.tensor<<"cuda", 3>, 3x5xf32>
-  mef.output %ch1 : !mgp.chain<<"cuda", 3>>
+  mef.output %ch1 : !mef.chain
 }
 
 //

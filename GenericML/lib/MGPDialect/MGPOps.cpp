@@ -104,16 +104,6 @@ static void printDeviceRef(OpAsmPrinter &p, Operation *op, DeviceRefAttr device,
   device.print(p);
 }
 
-static ParseResult parseDeviceRef(OpAsmParser &p, DeviceRefAttr &device,
-                                  Type &chain0, Type &chain1) {
-  return parseDeviceRefImpl(p, device, {&chain0, &chain1});
-}
-
-static void printDeviceRef(OpAsmPrinter &p, Operation *op, DeviceRefAttr device,
-                           DeviceChainType chain0, DeviceChainType chain1) {
-  device.print(p);
-}
-
 /// Parses a !mgp.buffer type, extracts its raw size and device attributes,
 /// and assigns chains the type !mgp.chain<device>.
 static ParseResult parseBufferTypeToRawSizeDeviceImpl(OpAsmParser &p,
@@ -136,16 +126,13 @@ static ParseResult parseBufferTypeToRawSizeDeviceImpl(OpAsmParser &p,
 
 static ParseResult parseBufferTypeToRawSizeDevice(OpAsmParser &p, Type &buffer,
                                                   IntegerAttr &rawSize,
-                                                  DeviceRefAttr &device,
-                                                  Type &chain) {
-  return parseBufferTypeToRawSizeDeviceImpl(p, buffer, rawSize, device,
-                                            {&chain});
+                                                  DeviceRefAttr &device) {
+  return parseBufferTypeToRawSizeDeviceImpl(p, buffer, rawSize, device, {});
 }
 
 static void printBufferTypeToRawSizeDevice(OpAsmPrinter &p, Operation *op,
                                            Type buffer, IntegerAttr rawSize,
-                                           DeviceRefAttr device,
-                                           DeviceChainType chain) {
+                                           DeviceRefAttr device) {
   p << buffer;
 }
 
@@ -209,6 +196,18 @@ static void printDynamicBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
 }
 
 static ParseResult parseBufferTypeToDevice(OpAsmParser &p, Type &buffer,
+                                           DeviceRefAttr &device) {
+  IntegerAttr rawSize;
+  return parseBufferTypeToRawSizeDeviceImpl(p, buffer, rawSize, device, {});
+}
+
+static void printBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
+                                    DeviceBufferType buffer,
+                                    DeviceRefAttr device) {
+  p << buffer;
+}
+
+static ParseResult parseBufferTypeToDevice(OpAsmParser &p, Type &buffer,
                                            DeviceRefAttr &device, Type &chain) {
   IntegerAttr rawSize;
   return parseBufferTypeToRawSizeDeviceImpl(p, buffer, rawSize, device,
@@ -219,22 +218,6 @@ static void printBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
                                     DeviceBufferType buffer,
                                     DeviceRefAttr device,
                                     DeviceChainType chain) {
-  p << buffer;
-}
-
-static ParseResult parseBufferTypeToDevice(OpAsmParser &p, Type &buffer,
-                                           DeviceRefAttr &device, Type &chain0,
-                                           Type &chain1) {
-  IntegerAttr rawSize;
-  return parseBufferTypeToRawSizeDeviceImpl(p, buffer, rawSize, device,
-                                            {&chain0, &chain1});
-}
-
-static void printBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
-                                    DeviceBufferType buffer,
-                                    DeviceRefAttr device,
-                                    DeviceChainType chain0,
-                                    DeviceChainType chain1) {
   p << buffer;
 }
 
@@ -292,22 +275,19 @@ static void printTensorTypeToDeviceBuffer(OpAsmPrinter &p, Operation *op,
   p << tensor;
 }
 
-static ParseResult
-parseTensorTypeToDeviceBufferSpec(OpAsmParser &p, DeviceRefAttr &device,
-                                  Type &buffer, Type &tensorSpec, Type &chain0,
-                                  Type &chain1) {
+static ParseResult parseTensorTypeToDeviceBufferSpec(OpAsmParser &p,
+                                                     DeviceRefAttr &device,
+                                                     Type &buffer,
+                                                     Type &tensorSpec) {
   Type tensor;
   return parseTensorTypeToDeviceBufferSpecImpl(/*shapeOnly=*/false, p, tensor,
-                                               device, buffer, tensorSpec,
-                                               {&chain0, &chain1});
+                                               device, buffer, tensorSpec, {});
 }
 
 static void printTensorTypeToDeviceBufferSpec(OpAsmPrinter &p, Operation *op,
                                               DeviceRefAttr device,
                                               DeviceBufferType buffer,
-                                              TensorSpecType tensorSpec,
-                                              DeviceChainType chain0,
-                                              DeviceChainType chain1) {
+                                              TensorSpecType tensorSpec) {
   auto tensorType = DeviceTensorType::get(op->getContext(), device, tensorSpec);
   p << tensorType;
 }

@@ -25,7 +25,7 @@ class MGP_DeviceType<string name, string mnemonic, list<Trait> traits = []> :
     MGP_Type<
       name,
       mnemonic,
-      [DeclareTypeInterfaceMethods<MGP_HasDeviceInterface>] # traits
+      [DeclareTypeInterfaceMethods<MGP_HasDeviceTypeInterface>] # traits
     >;
 
 //===----------------------------------------------------------------------===//
@@ -86,6 +86,10 @@ def MGP_DeviceChainType : MGP_DeviceType<"DeviceChain", "chain", [
     Devices must provide primitives for converting device-specific chains to
     and from a host-side chain so as to support host-device and device-device
     synchronization.
+
+    An `!mgp.chain` on the host device has the same runtime representation
+    as a `!mef.chain`, ie `LLCL::AsyncValueRef<LLCL::Chain>`. No-op conversions
+    may be required in some places.
 
     Examples:
     ```mlir

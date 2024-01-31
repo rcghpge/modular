@@ -34,7 +34,7 @@ def MGP_BufferTypeInterface : TypeInterface<"MGPBufferTypeInterface"> {
 }
 
 
-def MGP_HasDeviceInterface : TypeInterface<"MGPHasDeviceInterface"> {
+def MGP_HasDeviceTypeInterface : TypeInterface<"MGPHasDeviceTypeInterface"> {
   let description = [{
     Types which carry an `#M.device_ref` attribute.
   }];

@@ -45,12 +45,12 @@ verifyConsistentDevices(Operation *op,
 
   for (OpOperand &opOperand : op->getOpOperands()) {
     if (auto hasDeviceType =
-            dyn_cast<MGPHasDeviceInterface>(opOperand.get().getType()))
+            dyn_cast<MGPHasDeviceTypeInterface>(opOperand.get().getType()))
       allDevices.insert(hasDeviceType.getDevice());
   }
   for (OpResult opResult : op->getResults()) {
     if (auto hasDeviceType =
-            dyn_cast<MGPHasDeviceInterface>(opResult.getType()))
+            dyn_cast<MGPHasDeviceTypeInterface>(opResult.getType()))
       allDevices.insert(hasDeviceType.getDevice());
   }
 
@@ -84,10 +84,6 @@ static uint64_t getRawAlign(ElementsAttr value) {
 // RuntimeCreateOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult RuntimeCreateOp::verify() {
-  return verifyConsistentDevices(getOperation(), {getCDevice()});
-}
-
 //===----------------------------------------------------------------------===//
 // ModuleLoadOp
 //===----------------------------------------------------------------------===//
@@ -97,37 +93,19 @@ LogicalResult ModuleLoadOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// ChainCreateHostOp
+// ChainCreateOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult ChainCreateHostOp::verify() {
-  return verifyConsistentDevices(getOperation(), {getDevice()});
-}
-
-llvm::SmallVector<mlir::Value> ChainCreateHostOp::getInputChains() {
-  return getGatingOperands();
-}
-
-void ChainCreateHostOp::setInputChains(::mlir::ValueRange gatingOperands) {
-  getGatingOperandsMutable().assign(gatingOperands);
-}
-
-//===----------------------------------------------------------------------===//
-// ChainCreateOtherOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult ChainCreateOtherOp::verify() {
-  if (getBHostDevice() == getCOtherDevice())
-    return emitOpError("expected 'host' and 'other' devices to be different.");
+LogicalResult ChainCreateOp::verify() {
   return verifyConsistentDevices(getOperation(),
                                  {getBHostDevice(), getCOtherDevice()});
 }
 
-llvm::SmallVector<mlir::Value> ChainCreateOtherOp::getInputChains() {
+llvm::SmallVector<mlir::Value> ChainCreateOp::getInputChains() {
   return getGatingOperands();
 }
 
-void ChainCreateOtherOp::setInputChains(::mlir::ValueRange gatingOperands) {
+void ChainCreateOp::setInputChains(::mlir::ValueRange gatingOperands) {
   getGatingOperandsMutable().assign(gatingOperands);
 }
 
@@ -136,13 +114,15 @@ void ChainCreateOtherOp::setInputChains(::mlir::ValueRange gatingOperands) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ChainDeviceToHostOp::verify() {
-  if (getInChain().getType().getDevice() != getCOtherDevice())
-    return emitOpError("input chain must be on the 'other' device ")
-           << getCOtherDevice() << ".";
-  if (getOutChain().getType().getDevice() != getBHostDevice())
-    return emitOpError("output chain must be on the 'host' device ")
-           << getBHostDevice() << ".";
-  return success();
+  return verifyConsistentDevices(getOperation(), {getBDevice()});
+}
+
+//===----------------------------------------------------------------------===//
+// ChainHostToDeviceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ChainHostToDeviceOp::verify() {
+  return verifyConsistentDevices(getOperation(), {getBDevice()});
 }
 
 //===----------------------------------------------------------------------===//

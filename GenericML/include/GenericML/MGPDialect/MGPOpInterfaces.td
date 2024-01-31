@@ -222,6 +222,12 @@ def MGP_HasDeviceOpInterface : OpInterface<"MGPHasDeviceOpInterface"> {
 
     Some ops actually involve both a 'host' and 'other' device. For these ops
     this interface provides the 'other' device.
+
+    Ops with this interface are dispatched at runtime to an op registered
+    with the name:
+    ```
+       op->getName() + "." + op->getDevice().getLabel()
+    ```
   }];
   let cppNamespace = "::M::MGP";
   let methods = [
@@ -238,7 +244,9 @@ def MGP_HasRuntimeSlotOpInterface : OpInterface<"MGPHasRuntimeSlotOpInterface"> 
     slot index.
 
     Some ops actually involve both a 'host' and 'other' device. For these ops
-    this interface provides the 'other' device runtime.
+    this interface provides the 'other' device runtime. This is the same
+    convention used by `MGP_HasDeviceOpInterface`, thus the runtime slot and
+    devices will always match.
   }];
   let cppNamespace = "::M::MGP";
   let methods = [
