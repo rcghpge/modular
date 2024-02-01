@@ -825,7 +825,6 @@ private:
   // May be optional
   TensorValue patternInput;
   TensorValue attentionMask;
-  Operation *attentionMaskBCastProducer = nullptr;
 
   // For unsafe broadcasts
   Operation *optBCast1 = nullptr;
@@ -840,14 +839,12 @@ public:
     MultiHeadAttentionMaskingMatcher matcher;
 
     auto pPatternInput = m_Any(&matcher.patternInput);
-    auto pAttentionMaskBCast = m_Op<Static::BroadcastToOp>(
-        &matcher.attentionMaskBCastProducer, m_Any(&matcher.attentionMask));
 
     // Optional Broadcast into the add
     auto maybeBCast1 = pOptionalBroadcast(&matcher.optBCast1, pPatternInput);
-    auto pMaskedNormalizedAttnMatrix =
-        m_BinaryCommutativeOp<AddOp>(&matcher.attentionMatrixNormMaskedProducer,
-                                     maybeBCast1, pAttentionMaskBCast);
+    auto pMaskedNormalizedAttnMatrix = m_BinaryCommutativeOp<AddOp>(
+        &matcher.attentionMatrixNormMaskedProducer, maybeBCast1,
+        m_Any(&matcher.attentionMask));
 
     // handle with and without attention mask via m_Optional + optional bcast
     auto pCenterPattern =
@@ -882,59 +879,27 @@ public:
   TensorValue getRawAttentionMask() { return attentionMask; }
   TensorValue getTopOfPattern() { return patternInput; }
 
-  TensorValue extractCompatibleAttentionMask(OpBuilder &builder,
-                                             TensorValue query,
-                                             TensorValue keyT) {
-    // Our kernels expect a mask of shape [s, S]. So try to extract this
-    TensorValue fixedUpMask = attentionMask;
-
-    // Target shape for the attention mask:
-    SmallVector<TypedAttr> bcastAttnMaskDims = {
-        query.getType().getDim(query.getType().getRank() - 2),
-        keyT.getType().getDim(query.getType().getRank() - 1)};
-    ShapeAttr attnMaskTargetShapeAttr = ShapeAttr::get(
-        bcastAttnMaskDims, MOSH::ShapeType::get(query.getContext()));
-
-    M::MO::TensorType attnMaskTargetShapeType = M::MO::TensorType::get(
-        attnMaskTargetShapeAttr, fixedUpMask.getType().getElementType());
-
-    if (fixedUpMask.getType().getRank() > 2) {
-      // Handles case where mask is of shape like [1, s, S].
-      fixedUpMask = builder.create<Static::ReshapeOp>(
-          fixedUpMask.getLoc(), attnMaskTargetShapeType, fixedUpMask);
-    }
-
-    // Manually broadcast out the attention mask to guarantee layout of s,S
-    // Handles case where mask is just a scalar which is equally applied.
-    fixedUpMask = builder.create<Static::BroadcastToOp>(
-        fixedUpMask.getLoc(), attnMaskTargetShapeType, fixedUpMask);
-
-    return fixedUpMask;
-  }
+  TensorValue getAttentionMask() { return attentionMask; }
 
   ErrorOrSuccess hasExpectedRanks() {
     // Allowed to elide the batch dimension
     if (hasAttentionMask()) {
-      // May have a pre-broadcasted batch-dimension AND head-dimension
-      ErrorOrSuccess attnMaskOk =
-          checkRank(attentionMask,
-                    "[MultiHeadAttentionMaskingMatcher] attnMask", {2, 3, 4});
+      ErrorOrSuccess attnMaskOk = checkRank(
+          attentionMask, "[MultiHeadAttentionMaskingMatcher] attnMask", {3, 4});
       if (attnMaskOk.isError())
         return attnMaskOk.takeError();
 
-      // We expect and extract an [s, S] mask. In the case of multiple batches
-      // we assume this mask gets broadcasted across batch dimensions. Therefore
-      // for safety, we need to make sure the outer dimension are one (aka the
-      // same mask is applied across batch).
-      int64_t rank = attentionMask.getType().getRank();
-      int64_t dimCheckRange = rank - 2; // last two dims are [s, S]
-      for (int64_t batchDimIndex = 0; batchDimIndex < dimCheckRange;
-           batchDimIndex++) {
+      ErrorOrSuccess patternInputOk =
+          checkRank(attentionMask,
+                    "[MultiHeadAttentionMaskingMatcher] patternInput", {3, 4});
+      if (patternInputOk.isError())
+        return patternInputOk.takeError();
 
-        // getIntDim() -> kDynamic (very negative value) if parameterized Dim
-        if (attentionMask.getType().getIntDim(batchDimIndex) != 1)
-          return Error("Cannot extract [s, S] mask safely!");
-      }
+      int64_t rankMask = attentionMask.getType().getRank();
+      int64_t rankInput = patternInput.getType().getRank();
+      if (rankMask != rankInput)
+        return Error("[MultiHeadAttentionMaskingMatcher] Expect mask and input "
+                     "to be same rank.");
     }
 
     return success();
@@ -1303,11 +1268,8 @@ public:
 
   bool hasAttentionMask() { return maskingMatcher->hasAttentionMask(); }
 
-  // layout s, S
-  TensorValue getAttentionMask() {
-    return maskingMatcher->extractCompatibleAttentionMask(*builder, getQuery(),
-                                                          getKeyT());
-  }
+  // layout B,H,s,D
+  TensorValue getAttentionMask() { return maskingMatcher->getAttentionMask(); }
 
   // layout B,H,s,D
   TensorValue getQuery() { return prologueMatcher->getQuery(); }
