@@ -1111,6 +1111,193 @@ static bool isValueFromReshapeThatSqueezesFinalDims(Value val) {
   return inputShapeHasTrailingOne && outputShapeHasNoTrailingOne;
 }
 
+static bool isStaticConcat(ConcatOp op) {
+  auto inputType = op.getType();
+  if (!inputType.hasRank())
+    return false;
+
+  auto axisOr = tryGetConstantInt(op.getAxis());
+  if (!axisOr)
+    return false;
+
+  uint64_t axis = normalizeAxis(*axisOr, inputType.getRank());
+  if (axis >= inputType.getRank())
+    return false;
+
+  if (!isa<IntegerAttr>(inputType.getDim(axis)))
+    return false;
+
+  return true;
+}
+
+template <typename... OpTypes>
+static bool allOperandsOfThisTypeHaveOneUse(Operation::operand_range operands) {
+  return llvm::all_of(operands, [&](Value operand) {
+    auto op = operand.getDefiningOp();
+    if (!op || !isa<OpTypes...>(op))
+      return false;
+
+    return llvm::range_size(operand.getUsers()) == 1;
+  });
+}
+
+/// This pattern will swim a concat operation through a ReshapeOpType (usually a
+/// static reshape or a rebind op).
+/// CONDITIONS:
+/// - Concat axis is statically known.
+/// - Concat dimension is statically known.
+/// - All concat providers are only used by the concat.
+/// - Concat must be uniform (same size).
+/// - All concat providers must be `ReshapeOpType`.
+/// - The reshape must not mix dynamic and static dimensions.
+/// - The concat axis must not be mixed with left dimensions after the reshape.
+/// - [Unchecked] Row major-like memory layout.
+/// BEFORE:
+/// -> reshape -> concat ->
+/// -> reshape ----| |
+/// -> reshape ------|
+/// AFTER:
+/// -> concat -> reshape
+template <typename ReshapeOpType>
+struct SwimConcatThroughReshapeLikeOpsPattern
+    : public DeviceAwareRewritePattern<OpRewritePattern, ConcatOp> {
+  SwimConcatThroughReshapeLikeOpsPattern(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 2) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(ConcatOp concatOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    if (!isStaticConcat(concatOp) ||
+        !allOperandsOfThisTypeHaveOneUse<ReshapeOpType>(concatOp.getInputs())) {
+      return rewriter.notifyMatchFailure(
+          concatOp, "Unsupported concat. Must be static and providing reshapes "
+                    "must have no other user");
+    }
+
+    rewriter.pushOp(concatOp);
+    SmallVector<ReshapeOpType> reshapeOps;
+    SmallVector<Value> reshapeOperands;
+    for (Value operand : concatOp.getInputs()) {
+      auto op = operand.getDefiningOp();
+      auto reshapeLikeOp = dyn_cast<ReshapeOpType>(op);
+      if (!reshapeLikeOp.getType().hasRank()) {
+        return rewriter.notifyMatchFailure(concatOp,
+                                           "Reshape inputs must be ranked");
+      }
+      reshapeOps.push_back(reshapeLikeOp);
+      reshapeOperands.push_back(reshapeLikeOp.getInput());
+      rewriter.pushOp(op);
+    }
+
+    if (!rewriter.addOps()) {
+      return rewriter.notifyMatchFailure(
+          concatOp, "matched ops have inconsistent devices");
+    }
+
+    auto firstBeforeType =
+        cast<TensorType>(reshapeOps.front().getInput().getType());
+    for (auto reshapeLikeOp : ArrayRef(reshapeOps).slice(1)) {
+      auto beforeType = cast<TensorType>(reshapeLikeOp.getInput().getType());
+      if (beforeType != firstBeforeType) {
+        return rewriter.notifyMatchFailure(concatOp,
+                                           "Only supports uniform concat");
+      }
+    }
+
+    auto firstAfterType = cast<TensorType>(reshapeOps.front().getType());
+    const StaticReshapeDimensionsMappingAnalysis
+        staticReshapeDimensionsMappingAnalysis(firstAfterType.getDims(),
+                                               firstBeforeType.getDims());
+    if (!staticReshapeDimensionsMappingAnalysis) {
+      return rewriter.notifyMatchFailure(concatOp,
+                                         "Unsupported reshape operand");
+    }
+
+    auto concatInputType = firstAfterType;
+    const int64_t concatAxis = normalizeAxis(
+        *tryGetConstantInt(concatOp.getAxis()), concatInputType.getRank());
+
+    uint64_t mappedConcatAxis = concatAxis;
+    // Will stop at the first non-1 dimension, dynamic dimension included. This
+    // is because 1s are ignored by the analysis and they serve no real purpose
+    // in the reshape.
+    while (mappedConcatAxis < concatInputType.getRank() &&
+           concatInputType.getIntDim(mappedConcatAxis) == 1) {
+      ++mappedConcatAxis;
+    }
+
+    // If there is no non-1 dimension and or if that dimension is dynamic, then
+    // the reshape is unsupported. This is because there is no way to concat it
+    // with the new dimensions.
+    const bool couldNotFindAnotherAxis =
+        mappedConcatAxis == concatInputType.getRank();
+    if (couldNotFindAnotherAxis ||
+        !isa<IntegerAttr>(concatInputType.getDim(mappedConcatAxis))) {
+      return rewriter.notifyMatchFailure(
+          concatOp,
+          "Trailing ones or trailing dynamic dimensions are unsupported");
+    }
+
+    // If the dimension was expanded and it was not mixed with other dimensions
+    // or if it was contracted but the mixing was done with dimensions that are
+    // on the right, then it can proceed. This assumes a row major memory
+    // layout.
+    // What mixing means is that two dimensions from the original shape
+    // contributed to the same dimension in the reshaped shape. This prevents a
+    // concat unless the concat axis is the leftmost of the mixed dimensions (in
+    // row major).
+    const bool couldMix =
+        staticReshapeDimensionsMappingAnalysis
+            .backwardMapping()[staticReshapeDimensionsMappingAnalysis
+                                   .forwardMapping()[mappedConcatAxis]
+                                   .front()]
+            .size() > 1;
+    const bool mixedAndConcatAxisIsNotFirst =
+        staticReshapeDimensionsMappingAnalysis
+            .backwardMapping()[staticReshapeDimensionsMappingAnalysis
+                                   .forwardMapping()[mappedConcatAxis]
+                                   .front()]
+            .front() != static_cast<int64_t>(mappedConcatAxis);
+    if (couldMix && mixedAndConcatAxisIsNotFirst) {
+      return rewriter.notifyMatchFailure(concatOp,
+                                         "Reshape is mixing static dimensions");
+    }
+
+    // The new concat axis is the left most axis in the shape after the reshape.
+    const int64_t newConcatAxis = staticReshapeDimensionsMappingAnalysis
+                                      .forwardMapping()[mappedConcatAxis]
+                                      .front();
+
+    Location loc = concatOp->getLoc();
+    rewriter.setInsertionPoint(concatOp);
+
+    SmallVector<TypedAttr> newConcatOutputShape(firstBeforeType.getDims());
+    newConcatOutputShape[newConcatAxis] = rewriter.getIndexAttr(
+        newConcatOutputShape[newConcatAxis].cast<IntegerAttr>().getInt() *
+        reshapeOps.size());
+    auto newConcatOutputType =
+        TensorType::get(ShapeAttr::get(newConcatOutputShape,
+                                       rewriter.getType<MOSH::ShapeType>()),
+                        concatInputType.getDtype());
+    SmallVector<Value> newConcatOperands = {
+        rewriter.create<ConstantOp>(loc, newConcatAxis)};
+    newConcatOperands.append(reshapeOperands.begin(), reshapeOperands.end());
+    OperationState concatOpState(loc, concatOp->getName(), newConcatOperands,
+                                 newConcatOutputType, concatOp->getAttrs());
+    auto newConcatOp = rewriter.create(concatOpState);
+
+    auto newReshapeOp = rewriter.create<ReshapeOpType>(
+        loc, concatOp.getType(), newConcatOp->getResult(0));
+
+    rewriter.replaceAllUsesWith(concatOp, newReshapeOp);
+    rewriter.eraseOp(concatOp);
+    for (auto reshapeOp : reshapeOps)
+      rewriter.eraseOp(reshapeOp);
+
+    return success();
+  }
+};
+
 /// A pattern that detects binary operator where one operand is a reshape
 /// and the other a broadcast. We attempt to move the binary operator to
 /// occur before the reshape for better fusion opportunities.
@@ -2181,9 +2368,15 @@ static bool isStaticSplit(SplitOp op) {
   return true;
 }
 
-static bool allResultsAreUsed(Operation *op) {
-  return llvm::all_of(op->getResults(),
-                      [](Value result) { return !result.getUsers().empty(); });
+template <typename... OpTypes>
+static bool allResultsAreUniquelyUsedBy(Operation *op) {
+  return llvm::all_of(op->getResults(), [](Value result) {
+    auto users = result.getUsers();
+    if (llvm::range_size(users) != 1)
+      return false;
+
+    return isa<OpTypes...>(*users.begin());
+  });
 }
 
 /// A pattern that will move a split/ operation after identical elementwise
@@ -2211,7 +2404,8 @@ struct SinkSplitThroughElementwisePattern
   LogicalResult
   deviceAwareMatchAndRewrite(SplitOp op,
                              DeviceAwareRewriter &rewriter) const override {
-    if (!isStaticSplit(op) || !allResultsAreUsed(op)) {
+    if (!isStaticSplit(op) ||
+        !allResultsAreUniquelyUsedBy<ElementWiseUnary, ElementWiseBinary>(op)) {
       return rewriter.notifyMatchFailure(
           op, "Split op must be statically ranked and have one use and one "
               "user per result");
@@ -2232,10 +2426,6 @@ struct SinkSplitThroughElementwisePattern
       }
 
       Operation *user = result.getUses().begin()->getOwner();
-      if (!isa<ElementWiseUnary, ElementWiseBinary>(user)) {
-        return rewriter.notifyMatchFailure(
-            op, "Split result use is not an elementwise operation");
-      }
       rewriter.pushOp(user);
       elementwiseValues.push_back(user->getResult(0));
     }
@@ -2410,7 +2600,7 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
   LogicalResult
   deviceAwareMatchAndRewrite(SplitOp op,
                              DeviceAwareRewriter &rewriter) const override {
-    if (!isStaticSplit(op) || !allResultsAreUsed(op)) {
+    if (!isStaticSplit(op) || !allResultsAreUniquelyUsedBy<ReshapeOpType>(op)) {
       return rewriter.notifyMatchFailure(
           op, "Split op must be statically ranked, operate on last statically "
               "known axis and have one use and one user per result");
@@ -2426,9 +2616,6 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
     auto users = op->getUsers();
     if (!llvm::all_of(users, [&](Operation *user) {
           auto reshapeOp = llvm::dyn_cast<ReshapeOpType>(user);
-          if (!reshapeOp)
-            return false;
-
           auto type = reshapeOp.getType();
 
           return type.getRank() &&
@@ -2880,10 +3067,14 @@ struct SymbolicOptimizationPass
                  SinkSplitThroughStaticReshapeLikeOpsPattern<RebindOp>,
                  SinkSplitThroughElementwisePattern>(context);
 
+    // Concat rewriters.
+    patterns.add<FlattenNestedConcatPattern,
+                 SwimConcatThroughReshapeLikeOpsPattern<Static::ReshapeOp>,
+                 SwimConcatThroughReshapeLikeOpsPattern<RebindOp>>(context);
+
     // Miscellaneous rewrites.
-    patterns.add<FlattenNestedConcatPattern, Pow2Pattern, Pow3Pattern,
-                 GathersToSplitPattern, GeluPattern, GemvPattern,
-                 SplitAndSqueezesPattern, PadConvPattern>(context);
+    patterns.add<Pow2Pattern, Pow3Pattern, GathersToSplitPattern, GeluPattern,
+                 GemvPattern, SplitAndSqueezesPattern, PadConvPattern>(context);
 
     if (failed(
             applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
