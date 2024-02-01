@@ -736,6 +736,15 @@ ErrorOrSuccess checkRank(TensorValue value, const std::string &valueName,
   return Error(errMsg);
 }
 
+template <typename pInT>
+auto inline pOptionalBroadcast(Operation **bindDest, pInT patternIn) {
+  // Allows optional insertion of reshapes and bcasts between this pattern
+  // Specifically patternIn --> (optional) mo.static.reshape
+  //  --> (optional) mo.static.broadcast
+  auto bcast = m_Op<Static::BroadcastToOp>(bindDest, patternIn);
+  return m_Optional(bcast, patternIn);
+}
+
 /// A helper for matching against softmax(input) @ V for fused attention
 class MultiHeadAttentionEpilogueMatcher {
 private:
@@ -752,22 +761,31 @@ private:
 
 public:
   static ErrorOr<MultiHeadAttentionEpilogueMatcher>
-  match(BatchMatmulOp reprojection) {
+  match(BatchMatmulOp reprojection, bool allowUnsafeBCast) {
     MultiHeadAttentionEpilogueMatcher matcher;
     auto pV = m_Any(&matcher.value);
 
-    // softmax
+    // optional broadcast + softmax
+    Operation *optBCast1 = nullptr;
+    auto maybeBCast1 =
+        pOptionalBroadcast(&optBCast1, m_Any(&matcher.softmaxInput));
     auto pSoftmaxAttnMatrix =
-        m_Op<SoftmaxOp>(&matcher.softmaxProducer, m_Any(&matcher.softmaxInput));
+        m_Op<SoftmaxOp>(&matcher.softmaxProducer, maybeBCast1);
 
-    // re-project using V
+    // optional broadcast + re-project using V
+    Operation *optBCast2 = nullptr;
+    auto maybeBCast2 = pOptionalBroadcast(&optBCast2, pSoftmaxAttnMatrix);
     auto pAnswer =
-        m_Op<BatchMatmulOp>(&matcher.reprojectProducer, pSoftmaxAttnMatrix, pV);
+        m_Op<BatchMatmulOp>(&matcher.reprojectProducer, maybeBCast2, pV);
 
     bool matches = pAnswer.match(reprojection, &matcher.patternMatcherLogger);
     if (!matches)
       return Error("[MultiHeadAttentionEpilogueMatcher]: " +
                    getPatternMatchingError(matcher.patternMatcherLogger));
+
+    if (!allowUnsafeBCast && (optBCast1 || optBCast2))
+      return Error("[MultiHeadAttentionEpilogueMatcher]: pattern matches but "
+                   "has unsafe broadcasts.");
 
     return matcher;
   }
@@ -1136,8 +1154,8 @@ private:
   MultiHeadAttentionPatternHelper() = default;
 
 public:
-  static ErrorOr<MultiHeadAttentionPatternHelper> match(BatchMatmulOp finalOp,
-                                                        OpBuilder &builder) {
+  static ErrorOr<MultiHeadAttentionPatternHelper>
+  match(BatchMatmulOp finalOp, OpBuilder &builder, bool allowUnsafeBCast) {
     MultiHeadAttentionPatternHelper matcher;
     matcher.builder = &builder;
 
@@ -1178,7 +1196,8 @@ public:
     };
 
     // **Step 4: Match epilogue
-    matcher.epilogueMatcher = MultiHeadAttentionEpilogueMatcher::match(finalOp);
+    matcher.epilogueMatcher =
+        MultiHeadAttentionEpilogueMatcher::match(finalOp, allowUnsafeBCast);
     if (matcher.epilogueMatcher.isError())
       return matcher.epilogueMatcher.takeError();
 
@@ -1248,7 +1267,9 @@ public:
 
 // For MIN Llama 2 demo
 struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
-  MultiHeadAttentionPatternCPU(MLIRContext *ctx) : OpRewritePattern(ctx, 20) {}
+  bool allowUnsafeBCast;
+  MultiHeadAttentionPatternCPU(MLIRContext *ctx, bool allowUnsafeBCast)
+      : OpRewritePattern(ctx, 20), allowUnsafeBCast(allowUnsafeBCast) {}
 
   LogicalResult matchAndRewrite(BatchMatmulOp op,
                                 PatternRewriter &rewriter) const override {
@@ -1262,7 +1283,7 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
       return rewriter.notifyMatchFailure(op->getLoc(), "Devices are wrong.");
 
     ErrorOr<MultiHeadAttentionPatternHelper> matcher =
-        MultiHeadAttentionPatternHelper::match(op, rewriter);
+        MultiHeadAttentionPatternHelper::match(op, rewriter, allowUnsafeBCast);
     if (matcher.isError())
       return rewriter.notifyMatchFailure(op.getLoc(), matcher.getError());
 
@@ -1326,8 +1347,10 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
 
     patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
                  ConcatZeroAxisPattern, ConvConstFilterPattern,
-                 SplitZeroAxisPattern, LayerNormPattern,
-                 MultiHeadAttentionPatternCPU>(ctx);
+                 SplitZeroAxisPattern, LayerNormPattern>(ctx);
+
+    patterns.add<MultiHeadAttentionPatternCPU>(ctx,
+                                               mhaAllowUnsafeBCast.getValue());
 
     MO::GraphOp graphOp = getOperation();
     if (failed(applyPatternsAndFoldGreedily(graphOp, std::move(patterns))))

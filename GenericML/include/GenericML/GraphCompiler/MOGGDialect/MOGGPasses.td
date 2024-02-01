@@ -89,6 +89,10 @@ def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
     kernel, or more specific operations (e.g., concat with axis 0).
   }];
   let dependentDialects = ["M::MOGG::MOGGDialect"];
+  let options = [
+    Option<"mhaAllowUnsafeBCast", "mha-allow-unsafe-bcast", "bool", /*default=*/"false",
+            "Allow potentially unsafe broadcasts to be pattern matched for MHA patterns.">,
+  ];
 }
 
 // TODO update this to account for general view operation (e.g., transpose in
