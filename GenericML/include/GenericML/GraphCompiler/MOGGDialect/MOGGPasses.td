@@ -230,4 +230,22 @@ def SimplifyKernelOperands: Pass<"simplify-kernel-operands", "MO::GraphOp"> {
   ];
 }
 
+def StackAllocateTemporaries: Pass<"stack-allocate-temporaries", "MO::GraphOp"> {
+  let summary = "Converts small dynamic temporaries to stack allocations";
+  let description = [{
+    Any output placeholder that is small enough and that is not an actual output
+    is converted to a stack allocation.
+  }];
+  let options = [
+    Option<"smallTensorLimit", "small-tensor-limit", "uint64_t", "1024",
+           "Maximum number of elements a tensor may have to be eligible for a"
+           "stack allocation.">,
+  ];
+  let dependentDialects = [
+    "M::MDialect",
+    "M::MOGG::MOGGDialect",
+    "M::KGEN::KGENDialect",
+  ];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGPASSES_TD

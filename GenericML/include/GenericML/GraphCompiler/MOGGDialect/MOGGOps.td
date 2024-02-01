@@ -234,6 +234,17 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
     /// exist.
     OutputPlaceholdersOp getOutputPlaceholder();
 
+    // Returns the StackAllocateTensorsOp for this operation or null if it
+    // does not exist.
+    StackAllocateTensorsOp getStackAllocateTensor();
+
+    // Returns the CreateEmptyTensorsOp for this operation or null if it does
+    // not exist.
+    CreateEmptyTensorsOp getCreateEmptyTensor();
+
+    // Returns the OutputOp for this operation or null if it does not exist.
+    OutputOp getOutputOp();
+
     /// Disables future fusion on this input.
     void disableInputFusionOnInput(size_t index);
 

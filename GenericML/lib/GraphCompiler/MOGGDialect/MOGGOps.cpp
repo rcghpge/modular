@@ -326,6 +326,36 @@ OutputPlaceholdersOp KernelOp::getOutputPlaceholder() {
   return *placeholder.begin();
 }
 
+StackAllocateTensorsOp KernelOp::getStackAllocateTensor() {
+  auto stackAlloc = this->getOps<MOGG::StackAllocateTensorsOp>();
+  if (stackAlloc.empty())
+    return nullptr;
+
+  GENERICML_ASSERT(llvm::range_size(stackAlloc) == 1);
+
+  return *stackAlloc.begin();
+}
+
+CreateEmptyTensorsOp KernelOp::getCreateEmptyTensor() {
+  auto createEmpty = this->getOps<MOGG::CreateEmptyTensorsOp>();
+  if (createEmpty.empty())
+    return nullptr;
+
+  GENERICML_ASSERT(llvm::range_size(createEmpty) == 1);
+
+  return *createEmpty.begin();
+}
+
+OutputOp KernelOp::getOutputOp() {
+  auto createEmpty = this->getOps<MOGG::OutputOp>();
+  if (createEmpty.empty())
+    return nullptr;
+
+  GENERICML_ASSERT(llvm::range_size(createEmpty) == 1);
+
+  return *createEmpty.begin();
+}
+
 void KernelOp::setInsertionPointToTop(OpBuilder &builder) {
   OutputPlaceholdersOp outputPh = getOutputPlaceholder();
 
@@ -458,7 +488,6 @@ void KernelOp::fuseBodyIntoNewWithSkip(
   for (Operation &op : getBody().front()) {
     if (shouldSkip(&op))
       continue;
-
     if (isa<MOGG::OutputOp>(op)) {
       // Skip placeholders & output, already remapped.
     } else if (auto lambda = dyn_cast<LambdaOp>(op)) {
@@ -467,7 +496,6 @@ void KernelOp::fuseBodyIntoNewWithSkip(
       auto newLambda = cast<LambdaOp>(builder.clone(op, remapper));
       symTable.insert(newLambda, builder.getInsertionPoint());
       builder.setInsertionPointAfter(newLambda);
-
       oldLambdaNamesToNew[lambda.getSymName()] = newLambda.getSymName();
     } else if (auto call = dyn_cast<CallOp>(op)) {
       // Lambdas will have been inlined. The only place we can have
