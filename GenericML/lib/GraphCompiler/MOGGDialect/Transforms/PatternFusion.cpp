@@ -960,7 +960,7 @@ private:
 
 public:
   static ErrorOr<MultiHeadAttentionNormalizationMatcher>
-  match(Operation *producingOp) {
+  match(Operation *producingOp, bool allowUnsafeBCast) {
     MultiHeadAttentionNormalizationMatcher matcher;
     auto scalarConstant = m_Any(&matcher.scalarConstant);
 
@@ -971,26 +971,32 @@ public:
                                              scalarConstant);
     auto pAttentionMatrix = m_Any(&matcher.attentionMatrix);
 
-    // normalize by mul
+    // normalize by mul with optional bcast
+    Operation *optBCast1 = nullptr;
+    auto maybeBCast1 = pOptionalBroadcast(&optBCast1, pAttentionMatrix);
     auto pNormalizedByMul =
-        m_Op<MulOp>(&matcher.normalizationProducer, pAttentionMatrix, pNorm);
+        m_Op<MulOp>(&matcher.normalizationProducer, maybeBCast1, pNorm);
     bool matchesMul = pNormalizedByMul.match(producingOp);
-    if (matchesMul) {
+    bool bcastAllowedMul = allowUnsafeBCast || !optBCast1;
+    if (matchesMul && bcastAllowedMul) {
       matcher.isDiv = false;
       return matcher;
     }
 
-    // normalize by div
+    // normalize by div with optional bcast
+    Operation *optBCast2 = nullptr;
+    auto maybeBCast2 = pOptionalBroadcast(&optBCast2, pAttentionMatrix);
     auto pNormalizedByDiv =
-        m_Op<DivOp>(&matcher.normalizationProducer, pAttentionMatrix, pNorm);
+        m_Op<DivOp>(&matcher.normalizationProducer, maybeBCast2, pNorm);
     bool matchesDiv = pNormalizedByDiv.match(producingOp);
-    if (matchesDiv) {
+    bool bcastAllowedDiv = allowUnsafeBCast || !optBCast2;
+    if (matchesDiv && bcastAllowedDiv) {
       matcher.isDiv = true;
       return matcher;
     }
 
     // no normalization, producingOp is also the "top of the pattern"
-    // aka attentionMask.
+    // aka attentionMask. No optional bcast -- covered by next pattern
     if (producingOp->getNumResults() == 1) {
       matcher.isDiv = false;
       matcher.attentionMatrix = cast<TensorValue>(producingOp->getResult(0));
@@ -1249,7 +1255,8 @@ public:
 
     // **Step 2: Match normalization
     matcher.normalizationMatcher =
-        MultiHeadAttentionNormalizationMatcher::match(*normPatternBottom);
+        MultiHeadAttentionNormalizationMatcher::match(*normPatternBottom,
+                                                      allowUnsafeBCast);
     if (matcher.normalizationMatcher.isError())
       return matcher.normalizationMatcher.takeError();
 
