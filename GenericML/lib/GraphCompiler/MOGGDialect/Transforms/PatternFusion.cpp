@@ -756,6 +756,10 @@ private:
   TensorValue softmaxInput;
   Operation *softmaxProducer = nullptr;
 
+  // For unsafe broadcasts
+  Operation *optBCast1 = nullptr;
+  Operation *optBCast2 = nullptr;
+
   graph_compiler::Logger patternMatcherLogger;
   MultiHeadAttentionEpilogueMatcher() = default;
 
@@ -766,15 +770,14 @@ public:
     auto pV = m_Any(&matcher.value);
 
     // optional broadcast + softmax
-    Operation *optBCast1 = nullptr;
     auto maybeBCast1 =
-        pOptionalBroadcast(&optBCast1, m_Any(&matcher.softmaxInput));
+        pOptionalBroadcast(&matcher.optBCast1, m_Any(&matcher.softmaxInput));
     auto pSoftmaxAttnMatrix =
         m_Op<SoftmaxOp>(&matcher.softmaxProducer, maybeBCast1);
 
     // optional broadcast + re-project using V
-    Operation *optBCast2 = nullptr;
-    auto maybeBCast2 = pOptionalBroadcast(&optBCast2, pSoftmaxAttnMatrix);
+    auto maybeBCast2 =
+        pOptionalBroadcast(&matcher.optBCast2, pSoftmaxAttnMatrix);
     auto pAnswer =
         m_Op<BatchMatmulOp>(&matcher.reprojectProducer, maybeBCast2, pV);
 
@@ -783,7 +786,7 @@ public:
       return Error("[MultiHeadAttentionEpilogueMatcher]: " +
                    getPatternMatchingError(matcher.patternMatcherLogger));
 
-    if (!allowUnsafeBCast && (optBCast1 || optBCast2))
+    if (!allowUnsafeBCast && (matcher.optBCast1 || matcher.optBCast2))
       return Error("[MultiHeadAttentionEpilogueMatcher]: pattern matches but "
                    "has unsafe broadcasts.");
 
@@ -800,6 +803,12 @@ public:
       return valueOk.takeError();
 
     return success();
+  }
+  void fillUnsafeBCasts(SmallVector<Static::BroadcastToOp> &unsafeBcasts) {
+    if (optBCast1)
+      unsafeBcasts.push_back(cast<Static::BroadcastToOp>(optBCast1));
+    if (optBCast2)
+      unsafeBcasts.push_back(cast<Static::BroadcastToOp>(optBCast2));
   }
 };
 
@@ -818,6 +827,9 @@ private:
   TensorValue attentionMask;
   Operation *attentionMaskBCastProducer = nullptr;
 
+  // For unsafe broadcasts
+  Operation *optBCast1 = nullptr;
+
   graph_compiler::Logger patternMatcherLogger;
 
   MultiHeadAttentionMaskingMatcher() = default;
@@ -832,8 +844,7 @@ public:
         &matcher.attentionMaskBCastProducer, m_Any(&matcher.attentionMask));
 
     // Optional Broadcast into the add
-    Operation *optBCast1 = nullptr;
-    auto maybeBCast1 = pOptionalBroadcast(&optBCast1, pPatternInput);
+    auto maybeBCast1 = pOptionalBroadcast(&matcher.optBCast1, pPatternInput);
     auto pMaskedNormalizedAttnMatrix =
         m_BinaryCommutativeOp<AddOp>(&matcher.attentionMatrixNormMaskedProducer,
                                      maybeBCast1, pAttentionMaskBCast);
@@ -860,7 +871,7 @@ public:
       return Error("Attention Masking Component Does Not Match: " +
                    getPatternMatchingError(matcher.patternMatcherLogger));
 
-    if (!allowUnsafeBCast && optBCast1)
+    if (!allowUnsafeBCast && matcher.optBCast1)
       return Error("[MultiHeadAttentionMaskingMatcher]: pattern matches but "
                    "has unsafe broadcasts.");
 
@@ -928,6 +939,11 @@ public:
 
     return success();
   }
+
+  void fillUnsafeBCasts(SmallVector<Static::BroadcastToOp> &unsafeBcasts) {
+    if (optBCast1)
+      unsafeBcasts.push_back(cast<Static::BroadcastToOp>(optBCast1));
+  }
 };
 
 /// A helper for matching against normalization of the attentionMatrix
@@ -956,6 +972,9 @@ private:
   // Top of the pattern, the matrix
   TensorValue attentionMatrix;
 
+  // For unsafe bcasts
+  Operation *optBCast1 = nullptr;
+
   MultiHeadAttentionNormalizationMatcher() = default;
 
 public:
@@ -972,24 +991,22 @@ public:
     auto pAttentionMatrix = m_Any(&matcher.attentionMatrix);
 
     // normalize by mul with optional bcast
-    Operation *optBCast1 = nullptr;
-    auto maybeBCast1 = pOptionalBroadcast(&optBCast1, pAttentionMatrix);
+    auto maybeBCast1 = pOptionalBroadcast(&matcher.optBCast1, pAttentionMatrix);
     auto pNormalizedByMul =
         m_Op<MulOp>(&matcher.normalizationProducer, maybeBCast1, pNorm);
     bool matchesMul = pNormalizedByMul.match(producingOp);
-    bool bcastAllowedMul = allowUnsafeBCast || !optBCast1;
+    bool bcastAllowedMul = allowUnsafeBCast || !matcher.optBCast1;
     if (matchesMul && bcastAllowedMul) {
       matcher.isDiv = false;
       return matcher;
     }
 
     // normalize by div with optional bcast
-    Operation *optBCast2 = nullptr;
-    auto maybeBCast2 = pOptionalBroadcast(&optBCast2, pAttentionMatrix);
+    auto maybeBCast2 = pOptionalBroadcast(&matcher.optBCast1, pAttentionMatrix);
     auto pNormalizedByDiv =
         m_Op<DivOp>(&matcher.normalizationProducer, maybeBCast2, pNorm);
     bool matchesDiv = pNormalizedByDiv.match(producingOp);
-    bool bcastAllowedDiv = allowUnsafeBCast || !optBCast2;
+    bool bcastAllowedDiv = allowUnsafeBCast || !matcher.optBCast1;
     if (matchesDiv && bcastAllowedDiv) {
       matcher.isDiv = true;
       return matcher;
@@ -1048,6 +1065,11 @@ public:
     }
 
     return success();
+  }
+
+  void fillUnsafeBCasts(SmallVector<Static::BroadcastToOp> &unsafeBcasts) {
+    if (optBCast1)
+      unsafeBcasts.push_back(cast<Static::BroadcastToOp>(optBCast1));
   }
 };
 
@@ -1300,6 +1322,17 @@ public:
   TensorValue getNormScalar() {
     return normalizationMatcher->getScalarValueForMul(*builder);
   }
+
+  // Returns any unsafe broadcasts that were required to be matched.
+  SmallVector<Static::BroadcastToOp> getUnsafeBroadcasts() {
+    SmallVector<Static::BroadcastToOp> unsafeBCasts;
+
+    epilogueMatcher->fillUnsafeBCasts(unsafeBCasts);
+    normalizationMatcher->fillUnsafeBCasts(unsafeBCasts);
+    maskingMatcher->fillUnsafeBCasts(unsafeBCasts);
+
+    return unsafeBCasts;
+  }
 };
 
 // For MIN Llama 2 demo
@@ -1323,6 +1356,45 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
         MultiHeadAttentionPatternHelper::match(op, rewriter, allowUnsafeBCast);
     if (matcher.isError())
       return rewriter.notifyMatchFailure(op.getLoc(), matcher.getError());
+
+    // If we have unsafe broadcasts, we want to guard against them. Note, at
+    // this point in the program it is assumed shape functions have been inlined
+    // so no internal ops of the pattern produce result parameters.
+    //
+    // E.g. the following is assumed to be impossible
+    // %bmm1 = mo.batch_matmul<() -> N1, N2, N3>(%0, %1) ...
+    //            -> !mo.tensor<[N1, N2, N3]>
+    // mo.static.broadcast(%something): ... -> !mo.tensor<[N1, N2, N3]>
+    //
+    // Where the issue is rewriting the pattern would rewrite %bmm1 and
+    // remove the definition of `N1` `N2` and `N3`.
+    for (Static::BroadcastToOp unsafeBCast : matcher->getUnsafeBroadcasts()) {
+      TypedAttr beforeShape =
+          unsafeBCast.getInput().getType().getTypedShapeAttr();
+      TypedAttr afterShape = unsafeBCast.getResult().getType().getShapeAttr();
+
+      GraphOp graphOp = op->getParentOfType<GraphOp>();
+      Location loc = op->getLoc();
+
+      // Make comparison of shapes operator
+      IntegerType boolTy = rewriter.getI1Type();
+      TypedAttr cmpAttr =
+          KGEN::emitMLIROperationCall(MOSH::EqualOp::getOperationName(), {},
+                                      {beforeShape, afterShape}, boolTy);
+      KGEN::ParamDeclAttr condAttr =
+          graphOp.getNewParamOfType("MHA_BCAST_CHECK", boolTy);
+      rewriter.create<KGEN::ParamDeclareOp>(loc, condAttr, cmpAttr);
+
+      // Add runtime assertion into graph
+      TypedAttr assertAttr = MOSH::AssertOp::emitStaticCall(
+          KGEN::ParamDeclRefAttr::get(condAttr),
+          "MHA Pattern Detected unsafe broadcast. This is of great interest so "
+          "please report!");
+      auto chainTy = rewriter.getType<ChainType>();
+      KGEN::ParamDeclAttr chainAttr =
+          graphOp.getNewParamOfType("MHA_BCAST_CHECK_CHAIN", chainTy);
+      rewriter.create<KGEN::ParamDeclareOp>(loc, chainAttr, assertAttr);
+    }
 
     // NOTE: the creation of `matcher` must imply future success()
     // as it has a handle to the rewriter which can be used to create new ops.

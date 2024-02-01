@@ -90,7 +90,7 @@ def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
   }];
   let dependentDialects = ["M::MOGG::MOGGDialect"];
   let options = [
-    Option<"mhaAllowUnsafeBCast", "mha-allow-unsafe-bcast", "bool", /*default=*/"false",
+    Option<"mhaAllowUnsafeBCast", "mha-allow-unsafe-bcast", "bool", /*default=*/"true",
             "Allow potentially unsafe broadcasts to be pattern matched for MHA patterns.">,
   ];
 }
