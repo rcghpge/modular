@@ -16,7 +16,7 @@ mo.graph @static_ranks(%arg0: !mo.tensor<[?, ?], f32>, %arg1: !mo.tensor<[?, ?],
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @static_ranks<[[D11:.*]], [[D12:.*]], [[D13:.*]], [[D14:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D11]], [[D12]]], f32>, [[VARG1:%.*]]: !mo.tensor<[[[D13]], [[D14]]], f32>) -> !mo.tensor<[[[D11]], [[D12]]], f32> no_inline {
 // CHECK-NEXT:   [[V0:%.*]] = mo.rebind([[VARG1]]) : !mo.tensor<[[[D13]], [[D14]]], f32> -> !mo.tensor<[[[D11]], [[D12]]], f32>
-// CHECK-NEXT:   kgen.param.declare SORS_CH10: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input shapes must match" : !kgen.string}, and(eq([[D11]], [[D13]]), eq([[D12]], [[D14]])))>
+// CHECK-NEXT:   kgen.param.declare SORS_CH10: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "[add] input shapes must match" : !kgen.string}, and(eq([[D11]], [[D13]]), eq([[D12]], [[D14]])))>
 // CHECK-NEXT:   [[V1:%.*]] = mo.add([[VARG0]], [[V0]]) : !mo.tensor<[[[D11]], [[D12]]], f32>
 // CHECK-NEXT:   [[V2:%.*]] = mo.gelu([[V1]]) : !mo.tensor<[[[D11]], [[D12]]], f32>
 // CHECK-NEXT:   [[V3:%.*]] = mo.sub([[V2]], [[V1]]) : !mo.tensor<[[[D11]], [[D12]]], f32>
@@ -127,7 +127,7 @@ mo.graph @unresolved_rebinds(
 // CHECK-SAME: @unresolved_rebinds<[[Sh11:.*]]: !mosh.ape, [[Sh12:.*]]: !mosh.ape -> [[Sh13:.*]]: !mosh.ape>([[VARG0:%.*]]: !mo.tensor<Sh11, f32>, [[VARG1:%.*]]: !mo.tensor<Sh12, f32>) -> !mo.tensor<Sh13, f32> no_inline {
 // CHECK-NEXT:   [[V0:%.*]] = mo.rebind([[VARG1]]) : !mo.tensor<[[Sh12]], f32> -> !mo.tensor<[[Sh11]], f32>
 // CHECK-NEXT:   kgen.param.declare SORS_EQ16: i1 = <apply(:(!mosh.ape, !mosh.ape) -> i1 "mosh.eq", [[Sh11]], [[Sh12]])>
-// CHECK-NEXT:   kgen.param.declare SORS_CH17: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input shapes must match" : !kgen.string}, SORS_EQ16)>
+// CHECK-NEXT:   kgen.param.declare SORS_CH17: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "[add] input shapes must match" : !kgen.string}, SORS_EQ16)>
 // CHECK-NEXT:   [[V1:%.*]] = mo.add([[VARG0]], [[V0]]) : !mo.tensor<[[Sh11]], f32>
 // CHECK-NEXT:   [[V2:%.*]] = mo.gelu([[V1]]) : !mo.tensor<[[Sh11]], f32>
 // CHECK-NEXT:   kgen.param.declare [[P31:.*]] = <apply(:(!mosh.ape) -> index "mosh.get_rank", [[Sh12]])>
@@ -217,7 +217,7 @@ mo.graph @scalar_to_tensor_reshapes_before_staticization(
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @scalar_to_tensor_reshapes_before_staticization<[[D18:.*]], [[D19:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D18]], [[D19]]], si32>) -> !mo.tensor<[[[D18]], [[D18]]], si32> no_inline {
-// CHECK-NEXT:   kgen.param.declare [[P29:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "number of elements must be equal" : !kgen.string}, eq(mul_nuw([[D18]], [[D18]]), mul_nuw([[D18]], [[D19]])))>
+// CHECK-NEXT:   kgen.param.declare [[P29:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "[reshape] input and output number of elements must match" : !kgen.string}, eq(mul_nuw([[D18]], [[D18]]), mul_nuw([[D18]], [[D19]])))>
 // CHECK-NEXT:   [[V0:%.*]] = mo.rebind([[VARG0]]) : !mo.tensor<[[[D18]], [[D19]]], si32> -> !mo.tensor<[[[D18]], [[D18]]], si32>
 // CHECK-NEXT:   mo.output [[V0]] : !mo.tensor<[[[D18]], [[D18]]], si32>
 // CHECK-NEXT: }
@@ -235,7 +235,7 @@ mo.graph @binary_op_asserts(
 // CHECK-SAME: @binary_op_asserts<[[D13:.*]], [[D14:.*]], [[D15:.*]], [[D16:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D13]], [[D14]]], f32>, [[VARG1:%.*]]: !mo.tensor<[[[D15]], [[D16]]], f32>) -> !mo.tensor<[[[D13]], [[D14]]], f32> no_inline {
 // CHECK-NEXT:   [[V0:%.*]] = mo.add([[VARG0]], [[VARG0]]) : !mo.tensor<[[[D13]], [[D14]]], f32>
 // CHECK-NEXT:   [[V1:%.*]] = mo.rebind([[VARG1]]) : !mo.tensor<[[[D15]], [[D16]]], f32> -> !mo.tensor<[[[D13]], [[D14]]], f32>
-// CHECK-NEXT:   kgen.param.declare SORS_CH12: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input shapes must match" : !kgen.string}, and(eq([[D13]], [[D15]]), eq([[D14]], [[D16]])))>
+// CHECK-NEXT:   kgen.param.declare SORS_CH12: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "[add] input shapes must match" : !kgen.string}, and(eq([[D13]], [[D15]]), eq([[D14]], [[D16]])))>
 // CHECK-NEXT:   [[V2:%.*]] = mo.add([[VARG0]], [[V1]]) : !mo.tensor<[[[D13]], [[D14]]], f32>
 // CHECK-NEXT:   [[V3:%.*]] = mo.add([[V0]], [[V2]]) : !mo.tensor<[[[D13]], [[D14]]], f32>
 // CHECK-NEXT:   mo.output [[V3]] : !mo.tensor<[[[D13]], [[D14]]], f32>
@@ -625,9 +625,9 @@ mo.graph @binary_logical_op(
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @binary_logical_op<[[D7:.*]], [[D8:.*]], [[D9:.*]], [[D10:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D7]], [[D8]]], bool>, [[VARG1:%.*]]: !mo.tensor<[[[D9]], [[D10]]], bool>) -> !mo.tensor<[[[D7]], [[D8]]], bool> no_inline {
 // CHECK-NEXT:   [[V0:%.*]] = mo.rebind([[VARG1]]) : !mo.tensor<[[[D9]], [[D10]]], bool> -> !mo.tensor<[[[D7]], [[D8]]], bool>
-// CHECK-NEXT:   kgen.param.declare SORS_CH18: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input shapes must match" : !kgen.string}, and(eq([[D10]], [[D8]]), eq([[D7]], [[D9]])))>
+// CHECK-NEXT:   kgen.param.declare SORS_CH18: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "[and] input shapes must match" : !kgen.string}, and(eq([[D10]], [[D8]]), eq([[D7]], [[D9]])))>
 // CHECK-NEXT:   [[V1:%.*]] = mo.and([[VARG0]], [[V0]]) : !mo.tensor<[[[D7]], [[D8]]], bool>
-// CHECK-NEXT:   kgen.param.declare SORS_CH6: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input shapes must match" : !kgen.string}, and(eq([[D10]], [[D8]]), eq([[D7]], [[D9]])))>
+// CHECK-NEXT:   kgen.param.declare SORS_CH6: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "[xor] input shapes must match" : !kgen.string}, and(eq([[D10]], [[D8]]), eq([[D7]], [[D9]])))>
 // CHECK-NEXT:   [[V2:%.*]] = mo.xor([[V1]], [[V0]]) : !mo.tensor<[[[D7]], [[D8]]], bool>
 // CHECK-NEXT:   mo.output [[V2]] : !mo.tensor<[[[D7]], [[D8]]], bool>
 // CHECK-NEXT: }
