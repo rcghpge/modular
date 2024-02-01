@@ -40,7 +40,9 @@ cmake-modular --sanitizer=none --build-type=release \
   -D CMAKE_INSTALL_PREFIX=install \
   -D MODULAR_VERSION_MAJOR=$MAJOR_VERSION \
   -D MODULAR_VERSION_MINOR=$MINOR_VERSION \
-  -D MODULAR_VERSION_PATCH=$PATCH_VERSION
+  -D MODULAR_VERSION_PATCH=$PATCH_VERSION \
+  -D MODULAR_STATIC_LINKED_PYTHON=ON
+
 
 # The GeneratedTests target explicitly isn't a dependency of the AI Engine Wheel itself
 # but is needed for generating the models we run using the just-built wheel.
