@@ -134,8 +134,8 @@ func.func @buffer_realloc_dynamic_size(%ctx : !mgp.context, %ch : !mgp.chain<<"c
 
 // CHECK-LABEL: @buffer_cache
 func.func @buffer_cache(%ctx : !mgp.context, %ch0 : !mef.chain, %buf : !mgp.buffer<<"cuda", 3>, 256>) {
-  // CHECK: %{{.*}} = mgp.buffer.cache %{{.*}}, %{{.*}}[1], %{{.*}} : !mgp.buffer<<"cuda", 3>, 256>
-  %ch1 = mgp.buffer.cache %ch0, %ctx[1], %buf : !mgp.buffer<<"cuda", 3>, 256>
+  // CHECK: %{{.*}} = mgp.buffer.cache %{{.*}}, %{{.*}}[1, 5], %{{.*}} : !mgp.buffer<<"cuda", 3>, 256>
+  %ch1 = mgp.buffer.cache %ch0, %ctx[1, 5], %buf : !mgp.buffer<<"cuda", 3>, 256>
   mef.output %ch1 : !mef.chain
 }
 
@@ -145,8 +145,8 @@ func.func @buffer_cache(%ctx : !mgp.context, %ch0 : !mef.chain, %buf : !mgp.buff
 
 // CHECK-LABEL: @buffer_get_cached
 func.func @buffer_get_cached(%ctx : !mgp.context, %ch0 : !mef.chain) {
-  // CHECK: %{{.*}} = mgp.buffer.get_cached %{{.*}}, %{{.*}}[1] : !mgp.buffer<<"cuda", 3>, 256>
-  %buf = mgp.buffer.get_cached %ch0, %ctx[1] : !mgp.buffer<<"cuda", 3>, 256>
+  // CHECK: %{{.*}} = mgp.buffer.get_cached %{{.*}}, %{{.*}}[1, 5] : !mgp.buffer<<"cuda", 3>, 256>
+  %buf = mgp.buffer.get_cached %ch0, %ctx[1, 5] : !mgp.buffer<<"cuda", 3>, 256>
   mef.output %buf : !mgp.buffer<<"cuda", 3>, 256>
 }
 

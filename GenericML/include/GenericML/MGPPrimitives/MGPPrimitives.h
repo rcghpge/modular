@@ -10,8 +10,9 @@
 namespace M {
 class PrimitiveRegistry;
 
-/// Registers the device-generic subset of the 'mgp' dialect primitives.
-void registerMGPDevicePrimitives(PrimitiveRegistry &registry);
+/// Registers the device-generic subset of the 'mgp' dialect primitives for
+/// "cpu" devices.
+void registerMGPCPUPrimitives(PrimitiveRegistry &registry);
 
 /// Registers all the 'mgp' dialect primitives.
 void registerMGPPrimitives(PrimitiveRegistry &registry);

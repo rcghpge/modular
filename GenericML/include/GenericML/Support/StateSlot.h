@@ -39,7 +39,7 @@ public:
   }
 
   /// Destroy this state slot, dropping the reference to its payload.
-  ~StateSlot() { bufferCache.clear(); }
+  ~StateSlot() = default;
 
   /// Returns true if have a payload.
   operator bool() const { return payload; }

@@ -36,24 +36,21 @@ namespace M::GML {
 class Context {
 public:
   /// Constructs a new context with numSlots uninitialized state slots.
-  explicit Context(size_t numSlots) : stateSlots(numSlots) {}
+  explicit Context(size_t numSlots)
+      : numSlots(numSlots), stateSlots(new StateSlot[numSlots]) {}
 
   /// Destroys all state slots in the context. Slots are destroyed in reverse
   /// order since later slots may hold implicit references to earlier slots.
-  ~Context() {
-    for (auto itr = stateSlots.rbegin(); itr != stateSlots.rend(); ++itr)
-      itr->~StateSlot();
-    stateSlots.clear();
-  }
+  ~Context() { delete[] stateSlots; }
 
   /// Returns the number of state slots in the context.
-  size_t getNumStateSlots() const { return stateSlots.size(); }
+  size_t getNumStateSlots() const { return numSlots; }
 
   /// Returns true if the state slot at slotIndex has been set or emplaced.
   bool hasStateSlot(size_t slotIndex) {
-    GENERICML_ASSERT(slotIndex < stateSlots.size())
-        << "slotIndex " << slotIndex << " is out of range. "
-        << stateSlots.size() << " slots available.";
+    GENERICML_ASSERT(slotIndex < numSlots)
+        << "slotIndex " << slotIndex << " is out of range. " << numSlots
+        << " slots available.";
     return stateSlots[slotIndex];
   }
 
@@ -91,9 +88,9 @@ public:
   /// Returns the state slot at slotIndex. The state slot must have already
   /// been emplaced.
   StateSlot &getStateSlot(size_t slotIndex) {
-    GENERICML_ASSERT(slotIndex < stateSlots.size())
-        << "slotIndex " << slotIndex << " is out of range. "
-        << stateSlots.size() << " slots available.";
+    GENERICML_ASSERT(slotIndex < numSlots)
+        << "slotIndex " << slotIndex << " is out of range. " << numSlots
+        << " slots available.";
     GENERICML_ASSERT(stateSlots[slotIndex])
         << "StateSlot for the slot " << slotIndex
         << " has not been set or emplaced.";
@@ -108,7 +105,8 @@ public:
   }
 
 private:
-  std::vector<StateSlot> stateSlots;
+  size_t numSlots;
+  StateSlot *stateSlots;
 };
 
 } // namespace M::GML

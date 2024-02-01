@@ -215,7 +215,7 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
       // constant names. The CUDA module will be associated with the CUDA
       // runtime established in slot 5, which should be for the CUDA GPU with
       // virtual device id 3.
-      %ch1 = cuda.module.load %ch0, %ctx[5],
+      %ch1 = mgp.module.load %ch0, %ctx[5],
                dense_resource<label> : !M.aligned_bytes<1000, align 16>,
                ["kernel1", "kernel2"], ["const1", "const2"],
                <"cuda", 3>
@@ -283,7 +283,7 @@ def ChainCreateOp : MGP_DeviceOp<"chain.create", [
       // ready, but which is 'finished' only when %ch0 and %val are 'finished'.
       // Uses the CUDA runtime established in slot 5, which must be for CUDA
       // virtual device id 3.
-      %ch3 = mgp.chain.create.other %ctx[5], host <"cpu", 0>, other <"cuda", 3>,
+      %ch3 = mgp.chain.create %ctx[5], host <"cpu", 0>, other <"cuda", 3>,
              (
                %ch0,
                %ch1: !mgp.chain<<"cpu", 0>>,
@@ -800,10 +800,13 @@ def BufferCacheOp : MGP_DeviceOp<"buffer.cache"> {
   let summary = "Moves an `!mgp.buffer` into a dedicated state slot.";
   let description = [{
     Stores the given `!mgp.buffer` into the state slot at the given index.
-    It may be later retrieved by `mgp.buffer.get_cached`. The buffer operand
-    must have no other references. Depending on the buffer's device, any
-    computation associated with the buffer may need to be 'finished' before
-    the store is executed.
+    It may be later retrieved by `mgp.buffer.get_cached`. Depending on the
+    buffer's device, any computation associated with the buffer may need to be
+    'finished' before the store is executed.
+
+    If the buffer is immutable, or this op holds the only reference to the
+    buffer, then it will be moved into the cache. Otherwise a deep copy of
+    the buffer will be take.
 
     Note this op accepts and returns `!mef.chain`s since the buffer cache is
     held on the host.
@@ -813,7 +816,11 @@ def BufferCacheOp : MGP_DeviceOp<"buffer.cache"> {
     %ctx : !mgp.context
     %buf : !mgp.buffer<<"cuda", 3>>
     %ch0 : !mef.chain
-    %ch1 = mgp.buffer.cache %ch0, %ctx[5], %buf : !mgp.buffer<<"cuda", 3>, 256>
+    // Cache the given buffer in slot index 42, using the CUDA runtime
+    // established in slot 5, which should correspond to the CUDA GPU with
+    // virtual id 3.
+    %ch1 = mgp.buffer.cache %ch0, %ctx[5, 42], %buf
+             : !mgp.buffer<<"cuda", 3>, 256>
     %ch1 : !mef.chain
     ```
   }];
@@ -824,18 +831,20 @@ def BufferCacheOp : MGP_DeviceOp<"buffer.cache"> {
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$buffer,
                        UI64Attr:$aRuntimeSlot,     // 0
-                       M_DeviceRefAttr:$bDevice);  // 1
+                       UI64Attr:$bBufferSlot,      // 1
+                       M_DeviceRefAttr:$cDevice);  // 2
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $buffer attr-dict
-    `:` custom<BufferTypeToDevice>(type($buffer), $bDevice)
+    $inChain `,` $theContext `[` $aRuntimeSlot `,` $bBufferSlot `]` `,`
+    $buffer attr-dict
+    `:` custom<BufferTypeToDevice>(type($buffer), $cDevice)
   }];
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
      uint64_t BufferCacheOp::getSlot() { return getARuntimeSlot(); }
 
-    M::DeviceRefAttr BufferCacheOp::getDevice() { return getBDevice(); }
+    M::DeviceRefAttr BufferCacheOp::getDevice() { return getCDevice(); }
 }];
 }
 
@@ -860,7 +869,10 @@ def BufferGetCachedOp : MGP_DeviceOp<"buffer.get_cached", [
     ```mlir
     %ctx : !mgp.context
     %ch0 : !mef.chain
-    %buf = mgp.buffer.get_cached %ch0, %ctx[5] : !mgp.buffer<<"cuda", 3>, 256>
+    // Returns the buffer chached in slot index 42, using the CUDA runtime
+    // established in slot 5, which should correspond to the CUDA GPU with
+    // virtual id 3.
+    %buf = mgp.buffer.get_cached %ch0, %ctx[5, 42] : !mgp.buffer<<"cuda", 3>, 256>
     %buf : !mgp.buffer<<"cuda", 3>, 256>
     ```
   }];
@@ -870,20 +882,21 @@ def BufferGetCachedOp : MGP_DeviceOp<"buffer.get_cached", [
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        UI64Attr:$aRuntimeSlot,      // 0
-                       UI64Attr:$bRawSize,          // 1
-                       M_DeviceRefAttr:$cDevice);   // 2
+                       UI64Attr:$bBufferSlot,       // 1
+                       UI64Attr:$cRawSize,          // 2
+                       M_DeviceRefAttr:$dDevice);   // 3
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aRuntimeSlot `]` attr-dict
+    $inChain `,` $theContext `[` $aRuntimeSlot `,` $bBufferSlot `]` attr-dict
     `:` custom<BufferTypeToRawSizeDevice>(
-          type($outBuffer), $bRawSize, $cDevice)
+          type($outBuffer), $cRawSize, $dDevice)
   }];
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
     uint64_t BufferGetCachedOp::getSlot() { return getARuntimeSlot(); }
 
-    M::DeviceRefAttr BufferGetCachedOp::getDevice() { return getCDevice(); }
+    M::DeviceRefAttr BufferGetCachedOp::getDevice() { return getDDevice(); }
 }];
 }
 
@@ -1270,7 +1283,7 @@ def BufferSectionBorrowDynamicOp : MGP_DeviceOp<"buffer.section.borrow.dynamic",
     %in_buf : !mgp.buffer<<"cuda", 3>>
     %scale : index
     %out_buf =
-        cuda.buffer.section.borrow.dynamic %ch, %ctx[5], %in_buf, %scale,
+        mgp.buffer.section.borrow.dynamic %ch, %ctx[5], %in_buf, %scale,
           offset 128, size 64 : !mgp.buffer<<"cuda", 3>>
     %out_buf : !mgp.buffer<<"cuda", 3>>
     ```
@@ -1315,9 +1328,10 @@ def TensorCreateOp : MGP_DeviceOp<"tensor.create", [
   let summary = "Creates an `!mgp.tensor` from an `!mgp.tensor_spec` and "
                 "`!mgp.buffer`.";
   let description = [{
-    Creates an `!mgp.tensor` from an `!mgp.buffer` and a `!mgp.tensor_spec`. The
-    construction is delayed until the given chain is ready, since the buffer is
-    typically written into as a side-effect of an operation.
+    Creates an `!mgp.tensor` from an `!mgp.buffer` and a `!mgp.tensor_spec`.
+
+    If this op holds the only reference to the buffer then it is moved into
+    the tensor. Otherwise a deep copy of the buffer is taken.
 
     Example:
     ```mlir
@@ -1325,7 +1339,7 @@ def TensorCreateOp : MGP_DeviceOp<"tensor.create", [
     %ch : !mgp.chain<<"cuda", 3>>
     %buf : !mgp.buffer<<"cuda", 3>, 256>
     %spec : !mgp.tensor_spec<4x16xf32>
-    %tensor = mgp.tensor.create %ch, %ctx[5], %buf, %spec : !cuda.tensor<<"cuda", 3>, 4x16xf32>
+    %tensor = mgp.tensor.create %ch, %ctx[5], %buf, %spec : !mgp.tensor<<"cuda", 3>, 4x16xf32>
     %tensor : !mgp.tensor<<"cuda", 3>, 4x16xf32>
     ```
   }];
@@ -1365,9 +1379,10 @@ def TensorExtractBufferOp : MGP_DeviceOp<"tensor.extract.buffer", [
 ]> {
   let summary = "Extracts the `!mgp.buffer` from an `!mgp.tensor`.";
   let description = [{
-    Returns the `!mgp.buffer` component of tensor. The buffer is moved if
-    the tensor has no other live references, otherwise a copy of the tensor's
-    buffer is returned.
+    Returns the `!mgp.buffer` component of tensor.
+
+    If this op holds the only reference to the tensor then the buffer will be
+    moved out of the tensor. Otherwise a deep copy of the buffer is returned.
 
     Example:
     ```mlir
@@ -1416,7 +1431,7 @@ def TensorExtractShapeOp : MGP_DeviceOp<"tensor.extract.shape", [
     ```mlir
     %ctx : !mgp.context
     %tensor : !mgp.tensor<<"cuda", 3>, 8x64xf32>
-    %shape = mgp.tensor.extract.shape %ctx[5], %tensor : !cuda.tensor<<"cuda", 3>, 8x64xf32>
+    %shape = mgp.tensor.extract.shape %ctx[5], %tensor : !mgp.tensor<<"cuda", 3>, 8x64xf32>
     %shape : !mgp.tensor_spec<8x64xunk>
     ```
   }];

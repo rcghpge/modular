@@ -70,6 +70,14 @@ verifyConsistentDevices(Operation *op,
          << actualStr << "}.";
 }
 
+/// Returns a description of optSize.
+static std::string optSizeToString(std::optional<uint64_t> optSize) {
+  if (optSize)
+    return std::to_string(*optSize);
+  else
+    return "unsized";
+}
+
 /// Returns the raw alignment for an elements attribute.
 static uint64_t getRawAlign(ElementsAttr value) {
   ErrorOr<std::optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
@@ -325,7 +333,7 @@ void BufferReallocDynamicOp::setInChain(Value chain) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult BufferCacheOp::verify() {
-  return verifyConsistentDevices(getOperation(), {getBDevice()});
+  return verifyConsistentDevices(getOperation(), {getCDevice()});
 }
 
 //===----------------------------------------------------------------------===//
@@ -333,13 +341,13 @@ LogicalResult BufferCacheOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult BufferGetCachedOp::verify() {
-  std::optional<uint64_t> optSize = rawSizeToOptSize(getBRawSize());
-  auto expectedBufferType = DeviceBufferType::get(getCDevice(), optSize);
+  std::optional<uint64_t> optSize = rawSizeToOptSize(getCRawSize());
+  auto expectedBufferType = DeviceBufferType::get(getDDevice(), optSize);
   if (expectedBufferType != getOutBuffer().getType()) {
     return emitOpError("output buffer type does not match expected (")
            << getOutBuffer().getType() << " vs " << expectedBufferType << ").";
   }
-  return verifyConsistentDevices(getOperation(), {getCDevice()});
+  return verifyConsistentDevices(getOperation(), {getDDevice()});
 }
 
 //===----------------------------------------------------------------------===//
@@ -356,8 +364,8 @@ LogicalResult BufferHostToDeviceOp::verify() {
   if (getHostBuffer().getType().getRawSize() !=
       getOtherBuffer().getType().getRawSize())
     return emitOpError("host and other buffer sizes do not match (")
-           << getHostBuffer().getType().getRawSize().getUInt() << " vs "
-           << getOtherBuffer().getType().getRawSize().getUInt() << ").";
+           << optSizeToString(getHostBuffer().getType().getOptSize()) << " vs "
+           << optSizeToString(getOtherBuffer().getType().getOptSize()) << ").";
   return success();
 }
 
@@ -383,8 +391,8 @@ LogicalResult BufferDeviceToHostOp::verify() {
   if (getHostBuffer().getType().getRawSize() !=
       getOtherBuffer().getType().getRawSize())
     return emitOpError("host and other buffer sizes do not match (")
-           << getHostBuffer().getType().getRawSize().getUInt() << " vs "
-           << getOtherBuffer().getType().getRawSize().getUInt() << ").";
+           << optSizeToString(getHostBuffer().getType().getOptSize()) << " vs "
+           << optSizeToString(getOtherBuffer().getType().getOptSize()) << ").";
   return success();
 }
 
@@ -403,9 +411,9 @@ BufferDeviceToHostOp::getInOutSemantics(size_t index) {
 LogicalResult BufferDeviceToDeviceOp::verify() {
   if (getSrcBuffer().getType().getRawSize() !=
       getDstBuffer().getType().getRawSize())
-    return emitOpError("src and dst buffer sizes do not match ")
-           << getSrcBuffer().getType().getRawSize().getUInt() << " vs "
-           << getDstBuffer().getType().getRawSize().getUInt() << ").";
+    return emitOpError("src and dst buffer sizes do not match (")
+           << optSizeToString(getSrcBuffer().getType().getOptSize()) << " vs "
+           << optSizeToString(getDstBuffer().getType().getOptSize()) << ").";
   return verifyConsistentDevices(getOperation(), {getBDevice()});
 }
 
