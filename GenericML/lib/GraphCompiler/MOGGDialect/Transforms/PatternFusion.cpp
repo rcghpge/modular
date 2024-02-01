@@ -824,17 +824,21 @@ private:
 
 public:
   static ErrorOr<MultiHeadAttentionMaskingMatcher>
-  match(Operation *producingOp) {
+  match(Operation *producingOp, bool allowUnsafeBCast) {
     MultiHeadAttentionMaskingMatcher matcher;
 
     auto pPatternInput = m_Any(&matcher.patternInput);
     auto pAttentionMaskBCast = m_Op<Static::BroadcastToOp>(
         &matcher.attentionMaskBCastProducer, m_Any(&matcher.attentionMask));
+
+    // Optional Broadcast into the add
+    Operation *optBCast1 = nullptr;
+    auto maybeBCast1 = pOptionalBroadcast(&optBCast1, pPatternInput);
     auto pMaskedNormalizedAttnMatrix =
         m_BinaryCommutativeOp<AddOp>(&matcher.attentionMatrixNormMaskedProducer,
-                                     pPatternInput, pAttentionMaskBCast);
+                                     maybeBCast1, pAttentionMaskBCast);
 
-    // handle with and without attention mask via m_Optional
+    // handle with and without attention mask via m_Optional + optional bcast
     auto pCenterPattern =
         m_Optional(pMaskedNormalizedAttnMatrix, pPatternInput);
 
@@ -855,6 +859,10 @@ public:
     if (!matchesPattern)
       return Error("Attention Masking Component Does Not Match: " +
                    getPatternMatchingError(matcher.patternMatcherLogger));
+
+    if (!allowUnsafeBCast && optBCast1)
+      return Error("[MultiHeadAttentionMaskingMatcher]: pattern matches but "
+                   "has unsafe broadcasts.");
 
     return matcher;
   }
@@ -1174,6 +1182,28 @@ public:
     //
     // The initial finalOp corresponds to `D` in this diagram.
 
+    // *** NOTE ON `allowUnsafeBCast`
+    // This special flag allows the pattern to ignore/match through single
+    // optional instances of `mo.static.reshape`.
+    //
+    // This is done to overcome limitations in shape inference where we are
+    // unable to prove two dimension are compatible for an operation like
+    // monnx.add (which supports implicit broadcasting), so in lowering we
+    // have a broadcast operation remain. In practice, this is extraneous in
+    // 100% of the cases currently examined and could be removed given
+    // improvements to shape inference and constraint solving.
+    //
+    // Where should these be inserted? We should generally put these optional
+    // bcasts next to ops which might have analogues in other frameworks which
+    // are commonly broadcast. For example, "addition" and "multiplication" and
+    // even "matmul" may have elements of this. Generally we place the
+    // optional broadcast patterns before the operation of interest e.g.
+    // `mo.static.broadcast_to --> mo.add`
+    //
+    // Note, an adversarial example could potentially lead to this pattern
+    // replacing things with a non-equivalent kernel, but we determine it to
+    // be very unlikely in the wild.
+
     // This helper functions ensures the input to each pattern has a defining
     // op and has one use and returns the next Operation* to match against.
     auto checkInputToPattern =
@@ -1207,8 +1237,8 @@ public:
       return maskPatternBottom.takeError();
 
     // **Step 3: Match masking
-    matcher.maskingMatcher =
-        MultiHeadAttentionMaskingMatcher::match(*maskPatternBottom);
+    matcher.maskingMatcher = MultiHeadAttentionMaskingMatcher::match(
+        *maskPatternBottom, allowUnsafeBCast);
     if (matcher.maskingMatcher.isError())
       return matcher.maskingMatcher.takeError();
 
