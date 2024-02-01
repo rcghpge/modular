@@ -190,3 +190,15 @@ MODULAR_API_EXPORT MlirIdentifier MAXG_dimSymbolicName(MlirAttribute a) {
 MODULAR_API_EXPORT MlirType MAXG_listTypeNew(MlirModule m, MlirType eltype) {
   return wrap(Module(unwrap(m)).newListType(unwrap(eltype)));
 }
+
+MODULAR_API_EXPORT MlirType MAXG_listTypeElementType(MlirType t) {
+  return wrap(unwrap(t).cast<M::MO::ListType>().getElementType());
+}
+
+MODULAR_API_EXPORT bool MAXG_typeIsList(MlirType t) {
+  return unwrap(t).isa<M::MO::ListType>();
+}
+
+MODULAR_API_EXPORT bool MAXG_typeIsTensor(MlirType t) {
+  return unwrap(t).isa<M::MO::TensorType>();
+}
