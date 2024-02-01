@@ -43,10 +43,32 @@ fn test_tensor_unranked() raises:
 
 fn test_tensor_dynamic_dims() raises:
     let dt = ElementType(DType.float32)
-    let t = MOTensor(dt, 1, dyn(), 4)
+    let t = MOTensor(dt, 1, Dim.dynamic(), 4)
 
     let s = t.to_string(Module())
     testing.assert_equal(s, "!mo.tensor<[1, ?, 4], f32>")
+
+
+fn test_tensor_dynamic_dims_roundtrip() raises:
+    let t = MOTensor(DType.float32, Dim.dynamic(), 4)
+    let t2 = MOTensor.from_mlir(t.to_mlir(Module()))
+    testing.assert_true(t == t2, "roundtrip dynamic dim")
+
+
+fn test_tensor_symbolic_dims() raises:
+    let dt = ElementType(DType.float32)
+    let t = MOTensor(dt, Dim.symbolic("batch"), 4)
+
+    let s = t.to_string(Module())
+    testing.assert_equal(s, "!mo.tensor<[batch, 4], f32>")
+
+
+fn test_tensor_symbolic_dims_roundtrip() raises:
+    let t = MOTensor(DType.float32, Dim.symbolic("batch"), 4)
+    let t2 = MOTensor.from_mlir(t.to_mlir(Module()))
+    print(t.to_mlir(Module()))
+    print(t2.to_mlir(Module()))
+    testing.assert_true(t == t2, "roundtrip symbolic dim")
 
 
 fn test_tensor_scalar() raises:
@@ -89,7 +111,7 @@ fn test_tensor_spec_cast() raises:
 
 
 fn test_list_type() raises:
-    let l = MOList(MOTensor(DType.uint8, 1, dyn(), 3))
+    let l = MOList(MOTensor(DType.uint8, 1, Dim.dynamic(), 3))
 
     let s = l.to_string(Module())
     testing.assert_equal(s, "!mo.list<!mo.tensor<[1, ?, 3], ui8>>")
@@ -101,6 +123,9 @@ fn main() raises:
     test_tensor_type()
     test_tensor_unranked()
     test_tensor_dynamic_dims()
+    test_tensor_dynamic_dims_roundtrip()
+    test_tensor_symbolic_dims()
+    test_tensor_symbolic_dims_roundtrip()
     test_tensor_scalar()
     test_dtype_autocast()
     test_int_autocast()

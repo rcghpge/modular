@@ -14,7 +14,11 @@ fn test_print() raises:
     alias name = "test_print"
 
     var m = Module()
-    var g = m.graph(name, MOTensor(DType.float32, dyn(), dyn(), 2), TypeTuple())
+    var g = m.graph(
+        name,
+        MOTensor(DType.float32, Dim.dynamic(), Dim.dynamic(), 2),
+        TypeTuple(),
+    )
     g[0].print()
     g.output()
     m.verify()

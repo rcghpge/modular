@@ -73,7 +73,7 @@ mlir::Type Module::newDType(DType value) {
 }
 
 mlir::Type Module::newTensorType(mlir::Type elementType, bool ranked,
-                                 ArrayRef<int64_t> dims) {
+                                 ArrayRef<TypedAttr> dims) {
   if (ranked) {
     return MO::TensorType::get(dims, elementType);
   } else {

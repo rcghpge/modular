@@ -7,6 +7,7 @@
 #include "MOF/API/c/detail/max_graph.h"
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
+#include "KGEN/KGENDialect/KGENDType.h"
 #include "MOF/API/c/symbol_export.h"
 #include "Support/Buffer.h"
 #include "Support/ML/TensorSpec.h"
@@ -107,31 +108,83 @@ MODULAR_API_EXPORT int64_t MAXG_dimTypeNewDynamic() {
 }
 
 MODULAR_API_EXPORT MlirType MAXG_tensorTypeNew(MlirModule m, MlirType dtype,
-                                               bool ranked, int64_t *dims,
+                                               bool ranked, MlirAttribute *dims,
                                                int32_t rank) {
+  llvm::SmallVector<TypedAttr> dim_attrs;
+  for (int i = 0; i < rank; ++i) {
+    dim_attrs.push_back(unwrap(dims[i]).cast<TypedAttr>());
+  }
   return wrap(Module(unwrap(m)).newTensorType(
-      unwrap(dtype), ranked, llvm::ArrayRef<int64_t>(dims, rank)));
+      unwrap(dtype), ranked, llvm::ArrayRef<TypedAttr>(dim_attrs)));
 }
 
-MODULAR_API_EXPORT uint8_t MAXG_tensorTypeGetDType(MlirValue v) {
-  auto tensorType = unwrap(v).getType().cast<MO::TensorType>();
+MODULAR_API_EXPORT uint8_t MAXG_tensorTypeGetDType(MlirType t) {
+  auto tensorType = unwrap(t).cast<MO::TensorType>();
   return tensorType.getDtype().getValue();
 }
 
-MODULAR_API_EXPORT int64_t *MAXG_tensorTypeGetShape(MlirValue v,
-                                                    int32_t *rank) {
-  auto tensorType = unwrap(v).getType().cast<MO::TensorType>();
-  SmallVector<int64_t> dims = tensorType.getIntDims();
-  *rank = dims.size();
-  int64_t *retval = new int64_t[*rank];
-  for (size_t i = 0; i < dims.size(); i++)
-    retval[i] = dims[i];
-  return retval;
+MODULAR_API_EXPORT bool MAXG_tensorTypeIsRanked(MlirType t) {
+  return unwrap(t).cast<MO::TensorType>().hasRank();
 }
 
-MODULAR_API_EXPORT bool MAXG_tensorTypeIsRanked(MlirValue v) {
-  auto tensorType = unwrap(v).getType().cast<MO::TensorType>();
-  return tensorType.getDtype().getValue();
+MODULAR_API_EXPORT int64_t MAXG_tensorTypeGetRank(MlirType t) {
+  return unwrap(t).cast<MO::TensorType>().getRank();
+}
+
+MODULAR_API_EXPORT MlirAttribute MAXG_tensorTypeShapeGetDim(MlirType t,
+                                                            int64_t dim) {
+  return wrap(unwrap(t).cast<MO::TensorType>().getDim(dim));
+}
+
+MODULAR_API_EXPORT MlirAttribute MAXG_dimNewDynamic(MlirContext context) {
+  return wrap(KGEN::UnknownAttr::get(IndexType::get(unwrap(context))));
+}
+
+MODULAR_API_EXPORT MlirAttribute MAXG_dimNewStatic(MlirContext context,
+                                                   int64_t dim) {
+  return wrap(IntegerAttr::get(IndexType::get(unwrap(context)), dim));
+}
+
+MODULAR_API_EXPORT MlirAttribute MAXG_dimNewSymbolic(MlirContext context,
+                                                     StringRef name) {
+  return wrap(
+      KGEN::ParamDeclRefAttr::get(name, IndexType::get(unwrap(context))));
+}
+
+MODULAR_API_EXPORT bool MAXG_dimIsDynamic(MlirAttribute a) {
+  auto attr = unwrap(a).cast<TypedAttr>();
+  return attr.isa<KGEN::UnknownAttr>();
+}
+
+MODULAR_API_EXPORT bool MAXG_dimIsSymbolic(MlirAttribute a) {
+  auto attr = unwrap(a).cast<TypedAttr>();
+  return attr.isa<KGEN::ParamDeclRefAttr>();
+}
+
+MODULAR_API_EXPORT bool MAXG_dimIsSymbolicExpression(MlirAttribute a) {
+  auto attr = unwrap(a).cast<TypedAttr>();
+  return attr.isa<KGEN::ParamOperatorAttr>();
+}
+
+MODULAR_API_EXPORT bool MAXG_dimIsStatic(MlirAttribute a) {
+  auto attr = unwrap(a).cast<TypedAttr>();
+  return attr.isa<IntegerAttr>();
+}
+
+MODULAR_API_EXPORT int64_t MAXG_dimStaticValue(MlirAttribute a) {
+  auto attr = unwrap(a).cast<TypedAttr>();
+  if (!attr.isa<IntegerAttr>()) {
+    return ShapedType::kDynamic;
+  }
+  return attr.cast<IntegerAttr>().getInt();
+}
+
+MODULAR_API_EXPORT MlirIdentifier MAXG_dimSymbolicName(MlirAttribute a) {
+  auto attr = unwrap(a).cast<TypedAttr>();
+  if (!attr.isa<KGEN::ParamDeclRefAttr>()) {
+    return wrap(StringAttr::get(attr.getContext()));
+  }
+  return wrap(attr.cast<KGEN::ParamDeclRefAttr>().getName());
 }
 
 MODULAR_API_EXPORT MlirType MAXG_listTypeNew(MlirModule m, MlirType eltype) {

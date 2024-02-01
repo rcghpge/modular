@@ -30,7 +30,7 @@ public:
                             mlir::FunctionType signature);
   mlir::Type newDType(DType value);
   mlir::Type newTensorType(mlir::Type elementType, bool ranked,
-                           llvm::ArrayRef<int64_t> dims);
+                           llvm::ArrayRef<mlir::TypedAttr> dims);
   mlir::Type newListType(mlir::Type elementType);
 
   // Guaranteed to take ownership of `data` with a dense resource if `owned`.
