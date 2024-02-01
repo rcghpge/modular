@@ -145,8 +145,8 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
   if (kKernelsBuildType == "debug")
     compilationOptions.optimizationLevel = 0;
 
-  if (llvm::is_contained({"debug", "relwithdebinfo"}, kKernelsBuildType))
-    compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
+  // TODO(30595): Turn back on when we have a use for it.
+  compilationOptions.debugLevel = KGEN::CompilationOptions::kNoDebug;
 
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmParser();
