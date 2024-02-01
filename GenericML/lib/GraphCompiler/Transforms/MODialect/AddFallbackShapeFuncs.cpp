@@ -341,8 +341,13 @@ void Fallback<MO::BottomKOp>::build(GraphOp &graph, OpBuilder &builder,
 
 void Fallback<MO::BroadcastToOp>::build(GraphOp &graph, OpBuilder &builder,
                                         MO::BroadcastToOp op) {
+  TensorType outputTy = op.getType();
+  GENERICML_ASSERT(outputTy.hasRank()) << "Unranked tensor isn't supported";
+  IntegerAttr outputRankAttr = builder.getIndexAttr(outputTy.getRank());
+
   buildForOpResult(graph, builder, op, "broadcast_to_shape", op.getOperands(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
+                   /*kgenParams=*/{{"output_rank", outputRankAttr}},
+                   /*dataDepInputIdxs=*/{1});
 }
 
 void Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
@@ -525,8 +530,13 @@ BUILD_REDUCTION_OP(MO::ReduceMinOp)
 
 void Fallback<MO::ReshapeOp>::build(GraphOp &graph, OpBuilder &builder,
                                     MO::ReshapeOp op) {
+  TensorType outputTy = op.getType();
+  GENERICML_ASSERT(outputTy.hasRank()) << "Unranked tensor isn't supported";
+  IntegerAttr outputRankAttr = builder.getIndexAttr(outputTy.getRank());
+
   buildForOpResult(graph, builder, op, "reshape_shape", op.getOperands(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
+                   /*kgenParams=*/{{"output_rank", outputRankAttr}},
+                   /*dataDepInputIdxs=*/{1});
 }
 
 void Fallback<MO::ResizeNearestOp>::build(GraphOp &graph, OpBuilder &builder,

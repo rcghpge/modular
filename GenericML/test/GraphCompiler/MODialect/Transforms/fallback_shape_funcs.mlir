@@ -151,7 +151,7 @@ mo.graph @broadcast_to_fallback_shape_func<() -> D0, D1, D2>(
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32> no_inline {
 //
 // CHECK-NEXT: mo.invoke_shape_func["broadcast_to_shape"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[TARGET_SHAPE]])
-// CHECK-SAME:   {dataDeptTensors = [1 : i32]} :
+// CHECK-SAME:   {dataDeptTensors = [1 : i32], kgenParams = {output_rank = 3 : index}} :
 // CHECK-SAME:   (!mo.tensor<[1, 3], f32>, !mo.tensor<[3], si32>)
 //
 // CHECK-NEXT: %[[RES:.*]] = mo.broadcast_to(%[[INPUT]], %[[TARGET_SHAPE]]) :
@@ -438,7 +438,7 @@ mo.graph @reshape_fallback_shape_func<() -> D0, D1, D2>(
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32> no_inline {
 //
 // CHECK-NEXT: mo.invoke_shape_func["reshape_shape"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[TARGET_SHAPE]])
-// CHECK-SAME:   {dataDeptTensors = [1 : i32]} :
+// CHECK-SAME:   {dataDeptTensors = [1 : i32], kgenParams = {output_rank = 3 : index}} :
 // CHECK-SAME:   (!mo.tensor<[1, 3], f32>, !mo.tensor<[3], si32>)
 //
 // CHECK-NEXT: %[[RES:.*]] = mo.reshape(%[[INPUT]], %[[TARGET_SHAPE]]) :
