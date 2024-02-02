@@ -7,6 +7,7 @@
 #include "CUDASupport/CUDARuntimeOptions.h"
 #include "Config/Version.h"
 #include "GenericML/CUDARegistration/CUDARegistration.h"
+#include "GenericML/Driver/CompileToBinary.h"
 #include "GenericML/Driver/DriverAPI.h"
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "GenericML/Driver/DriverInputFormat.h"
@@ -22,6 +23,7 @@
 #include "MOF/Driver/DriverImpl.h"
 #include "MOF/ModularModel/ModularModelFile.h"
 #include "Support/ErrorOr.h"
+#include "Support/ML/CompiledFrameworkLabel.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -53,7 +55,9 @@ public:
     mofLoweringOptions.debugTensorPrintOptions.binaryDir = binaryOutputDir;
 
     GraphCompilerOptions::overrideLoweringOptions(moToMgpOptions);
-    moToMgpOptions.compiledFrameworkLabel = "mof";
+    moToMgpOptions.compiledFrameworkLabel =
+        CompiledFrameworkLabel::asLabelString(
+            CompiledFrameworkLabel::kModularModel);
     moToMgpOptions.minimumCpuAlignment = minimumCpuAlignment;
     moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
   }
@@ -88,7 +92,9 @@ struct MOFConfig {
           .deviceId = *deviceID;
     }
 
-    moToMgpOptions.compiledFrameworkLabel = "mof";
+    moToMgpOptions.compiledFrameworkLabel =
+        CompiledFrameworkLabel::asLabelString(
+            CompiledFrameworkLabel::kModularModel);
     moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
     if (defaultDeviceLabel)
       moToMgpOptions.defaultDeviceLabel = *defaultDeviceLabel;
@@ -267,17 +273,7 @@ ErrorOrSuccess M_openBinaryFile(FrameworkContextHandle ctx, M::BufferRef file,
 ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
                                        M::BufferRef file, FileFormat format) {
   auto *mofContext = ctxHandle.unwrap<MOFContext>();
-  // Create a runtime to use during compilation. It will convey global options
-  // to the passes which need them.
-  // This runtime must outlive `ctx` because `ConstantFoldPass` creates new
-  // attributes owned by `ctx` and hence must be declared before `ctx`.
-  auto ownedRuntime = LLCL::createRuntimeIfNeeded();
-  mlir::MLIRContext ctx;
-  mlir::OwningOpRef<mlir::ModuleOp> module;
-
-#ifdef MODULAR_PRODUCTION
-  ctx.printOpOnDiagnostic(false);
-#endif // MODULAR_PRODUCTION
+  CompileToBinaryCtx compileCtx;
 
   // Gather all the options from all the sources.
   MOFLoweringOptions mofLoweringOptions;
@@ -289,7 +285,7 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
   case FileFormat::kMODialect:
     [[fallthrough]];
   case FileFormat::kMGPDialect:
-    module = parseMODialect(file.copy(), &ctx);
+    compileCtx.module = parseMODialect(file.copy(), &compileCtx.mlirCtx);
     break;
 
   default: {
@@ -303,15 +299,18 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
   // We have an MLIR model, try to lower it to a MEF-capable encoding.
   switch (format) {
   case FileFormat::kMODialect: {
-    writeIntermediateFileIfRequested(
-        "mo", module.get(), mofContext->getCommonCLOptions(), file.copy());
+    writeIntermediateFileIfRequested("mo", compileCtx.module.get(),
+                                     mofContext->getCommonCLOptions(),
+                                     file.copy());
 
-    mofLoweringOptions.setupRuntimeOptions(*ownedRuntime);
+    mofLoweringOptions.setupRuntimeOptions(*compileCtx.runtime);
 
-    if (failed(lowerMOToMGP(module.get(), moToMgpOptions, *ownedRuntime)))
+    if (failed(lowerMOToMGP(compileCtx.module.get(), moToMgpOptions,
+                            *compileCtx.runtime)))
       return Error("unable to lower MO to MGP");
-    writeIntermediateFileIfRequested(
-        "mgp", module.get(), mofContext->getCommonCLOptions(), file.copy());
+    writeIntermediateFileIfRequested("mgp", compileCtx.module.get(),
+                                     mofContext->getCommonCLOptions(),
+                                     file.copy());
 
     format = FileFormat::kMGPDialect;
     break;
@@ -327,8 +326,8 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
     return Error("cannot lower to MEF data of format " + identity);
   }
 
-  auto bufOr =
-      MO::convertMGPToMEF(module.get(), mofContext->getEnableMEFMetadata());
+  auto bufOr = MO::convertMGPToMEF(compileCtx.module.get(),
+                                   mofContext->getEnableMEFMetadata());
   if (bufOr)
     return bufOr.takeError();
   M::BufferRef outputBuffer = bufOr.takeValue();
