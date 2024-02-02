@@ -956,16 +956,9 @@ struct ConstantFoldPass
   ConstantFoldPass()
       : ConstantFoldBase(), policy(new FactorMemIncrease(2, 100)) {}
 
-  ConstantFoldPass(std::string_view label, const MO::MoToMgpOptions &origOpts)
+  ConstantFoldPass(std::string_view label)
       : ConstantFoldBase(), policy(new FactorMemIncrease(2, 100)),
-        compiledFrameworkLabel(label) {
-    // Copy some of the options used for main compilation to compilation of the
-    // subgraph. We don't need to copy all options, we only want the ones that
-    // affect correctness.
-    cacheDir = origOpts.cacheDir;
-    kernelLibraryPaths =
-        origOpts.kernelLibraryPaths.operator ArrayRef<std::string>();
-  }
+        compiledFrameworkLabel(label) {}
 
 private:
   // Lower a ModuleOp all the way to MGP, export it as MEF, then load it
@@ -976,10 +969,7 @@ private:
                                            LLCL::Runtime &runtime);
 
   std::shared_ptr<const ConstantFoldPolicy> policy;
-  // Label used to load and handle buffers created by the framework.
   std::string compiledFrameworkLabel;
-  std::optional<std::string> cacheDir;
-  std::optional<std::vector<std::string>> kernelLibraryPaths;
 };
 
 ErrorOr<ModelsWithBuffer>
@@ -988,10 +978,6 @@ ConstantFoldPass::lowerSubgraphs(ModuleOp module, LLCL::Runtime &runtime) {
   mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
       module.getContext(), mlir::OpPassManager::Nesting::Implicit);
   MO::MoToMgpOptions moOpts;
-  if (cacheDir)
-    moOpts.cacheDir = cacheDir.value();
-  if (kernelLibraryPaths)
-    moOpts.kernelLibraryPaths = kernelLibraryPaths.value();
   // Avoid infinite recursion.
   moOpts.constantFold = false;
   // Use MOF executor so we don't depend on a framework.
@@ -1141,7 +1127,6 @@ void ConstantFoldPass::runOnOperation() {
 } // namespace M::MO
 
 std::unique_ptr<mlir::Pass>
-M::MO::createConstantFoldPass(std::string_view compiledFrameworkLabel,
-                              const MoToMgpOptions &opts) {
-  return std::make_unique<ConstantFoldPass>(compiledFrameworkLabel, opts);
+M::MO::createConstantFoldPass(std::string_view compiledFrameworkLabel) {
+  return std::make_unique<ConstantFoldPass>(compiledFrameworkLabel);
 }
