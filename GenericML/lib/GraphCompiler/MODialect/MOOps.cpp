@@ -1823,6 +1823,11 @@ LogicalResult PadReflectOp::canonicalize(PadReflectOp op,
   return canonicalizePadLikeOp(op, rewriter);
 }
 
+LogicalResult PadRepeatOp::canonicalize(PadRepeatOp op,
+                                        PatternRewriter &rewriter) {
+  return canonicalizePadLikeOp(op, rewriter);
+}
+
 //===----------------------------------------------------------------------===//
 // MO_RangeOp support
 //===----------------------------------------------------------------------===//

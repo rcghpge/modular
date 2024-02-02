@@ -585,6 +585,22 @@ mo.graph @pad_reflect(
 // CHECK-NEXT:   mo.output [[V1]] : !mo.tensor<[32, 73], f32>
 // CHECK-NEXT: }
 
+mo.graph @pad_repeat(
+  %input: !mo.tensor<[2, 3], f32>
+) -> !mo.tensor<[?, ?], f32> {
+  %paddings = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+  %res = mo.pad.repeat(%input, %paddings) : (
+    !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si32>
+  ) -> !mo.tensor<[?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
+}
+// CHECK-LABEL: mo.graph
+// CHECK-SAME: @pad_repeat([[VARG0:%.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[32, 73], f32> no_inline {
+// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+// CHECK-NEXT:   [[V1:%.*]] = mo.pad.repeat([[VARG0]], [[V0]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[32, 73], f32>
+// CHECK-NEXT:   mo.output [[V1]] : !mo.tensor<[32, 73], f32>
+// CHECK-NEXT: }
+
 mo.graph @tile(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[?, ?], f32> {
   %repeats = mo.constant {value = #M.dense_array<10, 20> : tensor<2xsi32>} : !mo.tensor<[2], si32>
   %res = mo.tile(%input, %repeats) : (

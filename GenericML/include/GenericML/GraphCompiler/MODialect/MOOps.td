@@ -2572,6 +2572,43 @@ def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [MO_PadLikeTraits]> {
   let hasCanonicalizeMethod = 1;
 }
 
+def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [MO_PadLikeTraits]> {
+  let summary = "Repeat mode pad operation";
+  let description = [{
+    Pad the `input` tensor by repeating border values according to `paddings`. 
+    Assume input has rank `N`, the `paddings` tensor should have shape `(N, 2)`, where
+    each row has the form `[before, after]`, indicating how many of the border values 
+    to add before and after the contents of `input` in that dimension. The size
+    of each dimension D of the padded output is:
+
+    `paddings[D, 0] + input.dim(D) + paddings[D, 1]`.
+
+    Example:
+
+    ```mlir
+    %input: !mo.tensor<[2, 3], f32>
+    %paddings = mo.constant {
+      value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>
+    } : !mo.tensor<[2, 2], si64>
+    %output   = mo.pad.repeat(%input, %paddings) : (
+      !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>) ->
+      !mo.tensor<[3, 5], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_PaddingLike:$paddings,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+
+  let hasCanonicalizeMethod = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // GatherOp
 //===----------------------------------------------------------------------===//
