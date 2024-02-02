@@ -12,6 +12,7 @@ from sys.param_env import env_get_string
 from tensor import Tensor, TensorShape
 
 from max.graph import *
+from testing import *
 
 
 alias TEMP_DIR = Path(env_get_string["TEMP_DIR"]())
@@ -89,6 +90,49 @@ fn test_add_constant() raises:
     print(m.__str__())
 
 
+fn test_list() raises:
+    var m = Module()
+    var g = m.graph("list", TypeTuple(), MOList(MOTensor(DType.float32, 1)))
+    let l = g.list(MOTensor(DType.float32, 1))
+    g.output(l)
+    m.verify()
+    # CHECK-LABEL: @list
+    # CHECK: mo.list.create() : () -> !mo.list<!mo.tensor<[1], f32>>
+    print(m.m)
+
+
+fn test_list_with_elements() raises:
+    var m = Module()
+    var g = m.graph("list", TypeTuple(), MOList(MOTensor(DType.float32)))
+    let x = g.scalar[DType.float32](1.0)
+    let y = g.scalar[DType.float32](2.0)
+    let l = g.list((x, y))
+    g.output(l)
+    m.verify()
+    # CHECK-LABEL: @list
+    # CHECK: mo.list.create(%0, %1) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.list<!mo.tensor<[], f32>>
+    print(m.m)
+
+
+fn test_list_validations() raises:
+    var m = Module()
+    var g = m.graph("list", TypeTuple(), TypeTuple())
+    try:
+        _ = g.list(())
+    except:
+        pass
+    else:
+        assert_true(False, "didn't raise")
+    let x = g.scalar[DType.float32](1.0)
+    let y = g.scalar[DType.float32](2.0, rank=1)
+    try:
+        _ = g.list((x, y))
+    except:
+        pass
+    else:
+        assert_true(False, "didn't raise")
+
+
 # CHECK-LABEL: test_bytecode_output
 # TODO: Move this to the MLIR binding tests.
 fn test_bytecode_output() raises:
@@ -124,5 +168,8 @@ fn main() raises:
     test_nontensor_interface()
     test_basic_add()
     test_add_constant()
+    test_list()
+    test_list_with_elements()
+    test_list_validations()
     test_bytecode_output()
     test_save_to_file()
