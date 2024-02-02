@@ -12,11 +12,11 @@
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/QuantSpec.h"
 #include "GenericML/Support/Tensor.h"
-#include "Kernels/Misc.h"
 #include "LLCL/ForwardDecls.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/Error.h"
 #include "Support/ErrorOr.h"
+#include "Support/ML/Fill.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/ADT/Twine.h"
@@ -38,18 +38,17 @@ static ErrorOrSuccess fillWithElements(GML::Tensor &tensor,
 
   switch (inputGenKind) {
   case InputGenerationKind::kRandom:
-    return Kernels::fillRandom(tensor.getMutableBuffer(),
-                               tensor.getShape().getNumElements(), eltType);
+    return fillRandom(tensor.getMutableBuffer(),
+                      tensor.getShape().getNumElements(), eltType);
 
   case InputGenerationKind::kOnes: {
-    ErrorOrSuccess result = Kernels::getScalarOne(elementBuffer, eltType);
+    ErrorOrSuccess result = getScalarOne(elementBuffer, eltType);
     if (failed(result))
       return result;
     break;
   }
   case InputGenerationKind::kNegOnes: {
-    ErrorOrSuccess result =
-        Kernels::getScalarNegativeOne(elementBuffer, eltType);
+    ErrorOrSuccess result = getScalarNegativeOne(elementBuffer, eltType);
     if (failed(result))
       return result;
     break;
@@ -74,9 +73,9 @@ static ErrorOrSuccess fillWithElements(GML::Tensor &tensor,
   }
 
   // Fill the tensor with the 0, 1, -1 value.
-  return Kernels::fillHomogeneous(tensor.getMutableBuffer(),
-                                  tensor.getShape().getNumElements(), eltType,
-                                  elementBuffer);
+  return fillHomogeneous(tensor.getMutableBuffer(),
+                         tensor.getShape().getNumElements(), eltType,
+                         elementBuffer);
 }
 
 static ErrorOr<GML::Tensor> allocateInput(const QuantTensorSpec &modelSpec,
