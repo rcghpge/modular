@@ -118,7 +118,7 @@ std::ostream &M::GML::operator<<(std::ostream &os, const Variant &variant) {
 }
 
 ErrorOrSuccess M::GML::printGenericValue(const LLCL::AnyAsyncValueRef &value,
-                                         Kernels::ResultOutputStyle style,
+                                         GML::ResultOutputStyle style,
                                          unsigned precision) {
   auto &os = llvm::outs();
   if (List *list = dyn_cast<List>(value)) {
@@ -161,8 +161,8 @@ ErrorOrSuccess M::GML::printGenericValue(const LLCL::AnyAsyncValueRef &value,
   } else if (None *none = dyn_cast<None>(value)) {
     os << none;
   } else if (GML::Tensor *tensor = dyn_cast<GML::Tensor>(value)) {
-    ErrorOrSuccess errorOr =
-        printTensor(tensor->getBuffer(), tensor->getSpec(), style, precision);
+    ErrorOrSuccess errorOr = printTensor(os, tensor->getBuffer(),
+                                         tensor->getSpec(), style, precision);
     if (errorOr.isError())
       return errorOr;
   } else {

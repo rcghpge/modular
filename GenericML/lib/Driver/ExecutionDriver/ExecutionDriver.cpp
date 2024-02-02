@@ -226,8 +226,10 @@ writeYamlToFile(const std::filesystem::path &yamlFilePath,
 /// with --binary-output-dir=<output_dir>."
 static LogicalResult outputResults(const ExecutableModel *model,
                                    MutableArrayRef<AnyAsyncValueRef> results,
-                                   Kernels::ResultOutputStyle outputStyle,
+                                   GML::ResultOutputStyle outputStyle,
                                    unsigned precision, StringRef outputDir) {
+  auto &os = llvm::outs();
+
   // We expect the first result to be a chain.
   GENERICML_ASSERT(!results.empty()) << "must have at least one result";
   const AnyAsyncValueRef &ch = results.front();
@@ -249,9 +251,9 @@ static LogicalResult outputResults(const ExecutableModel *model,
   GENERICML_ASSERT(allResultsReady) << "model result must be ready";
 
   // If --result-output-style=binary, write output tensors to files and return.
-  if (outputStyle == Kernels::ResultOutputStyle::kBinary) {
+  if (outputStyle == GML::ResultOutputStyle::kBinary) {
 
-    llvm::outs() << "--- Writing Outputs to " << outputDir << "\n";
+    os << "--- Writing Outputs to " << outputDir << "\n";
 
     // Create the output directory. If the output directory is not there, then
     // the directory is created along with all of its parents. If the directory
@@ -310,7 +312,7 @@ static LogicalResult outputResults(const ExecutableModel *model,
   }
 
   StringRef name = model->getModel()->getName();
-  llvm::outs() << "'" << name << "' returned ";
+  os << "'" << name << "' returned ";
 
   bool first = true;
   bool hasError = false;
@@ -328,29 +330,27 @@ static LogicalResult outputResults(const ExecutableModel *model,
   for (size_t idx : sortedIndices) {
     const auto &result = results[idx];
     if (!first)
-      llvm::outs() << ", ";
+      os << ", ";
     first = false;
     if (failed(printDiagIfError(result)))
       hasError = true;
     else {
       if (auto *tensor = dyn_cast<GML::Tensor>(result)) {
-        if (auto err =
-                Kernels::printTensor(tensor->getBuffer(), tensor->getSpec(),
-                                     outputStyle, precision)) {
-          llvm::outs() << "<error: " << err.getError() << '>';
+        if (auto err = tensor->print(outputStyle, precision)) {
+          os << "<error: " << err.getError() << '>';
           hasError = true;
         }
       } else {
         // Not a value that can be printed generically, let the framework
         // specific model implementation handle it.
         if (auto err = model->printValue(result, outputStyle, precision)) {
-          llvm::outs() << "<error: " << err.getError() << '>';
+          os << "<error: " << err.getError() << '>';
           hasError = true;
         }
       }
     }
   }
-  llvm::outs() << '\n';
+  os << '\n';
   return failure(hasError);
 }
 
@@ -561,7 +561,7 @@ executeModel(const Model *model, Runtime &runtime,
     auto resultsOr =
         executeModelSynchronously(runtime, *executableModel, args,
                                   /*checkResults=*/options.resultOutputStyle ==
-                                      Kernels::ResultOutputStyle::kNone);
+                                      GML::ResultOutputStyle::kNone);
     if (resultsOr.isError())
       return resultsOr.takeError();
     auto results = std::move(*resultsOr);
@@ -573,7 +573,7 @@ executeModel(const Model *model, Runtime &runtime,
 
     std::move(entry).record();
 
-    if (options.resultOutputStyle != Kernels::ResultOutputStyle::kNone) {
+    if (options.resultOutputStyle != GML::ResultOutputStyle::kNone) {
       // Convert and print the result tensors. This is the one place where
       // AsyncValue errors are printed to stdout and a generic
       // "repeated model execution failed" is returned to the caller instead

@@ -7,7 +7,7 @@
 #ifndef GENERICML_SUPPORT_VALUE_H
 #define GENERICML_SUPPORT_VALUE_H
 
-#include "Kernels/Misc.h"
+#include "GenericML/Support/Tensor.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
 
 namespace M::GML {
@@ -109,8 +109,7 @@ std::ostream &operator<<(std::ostream &os, const Variant &variant);
 /// This prints the (nested) values to stdout. Leaf node tensors are printed
 /// with `Kernels::printTensor`.
 ErrorOrSuccess printGenericValue(const LLCL::AnyAsyncValueRef &value,
-                                 Kernels::ResultOutputStyle style,
-                                 unsigned precision);
+                                 ResultOutputStyle style, unsigned precision);
 
 /// Returns a string representation of an `AnyAsyncValueRef` referencing
 /// a supported composed type or tensor. Note: The function is deliberately

@@ -9,10 +9,10 @@
 
 #include "GenericML/Driver/DriverInputFormat.h"
 #include "GenericML/Driver/ExecutionDriver.h"
+#include "GenericML/Support/Tensor.h"
 #include "Kernels/Misc.h"
 #include "LLCL/Runtime/RuntimeCLOptions.h"
 #include "Support/CommonCLOptions.h"
-#include "Support/ML/TensorShape.h"
 #include "Support/ML/TensorSpec.h"
 #include "llvm/Support/NativeFormatting.h"
 #include "llvm/Support/Process.h"
@@ -121,8 +121,7 @@ public:
   size_t minimumCpuAlignment{64};
 
   /// This tells the execution driver how to print output tensors;
-  Kernels::ResultOutputStyle resultOutputStyle{
-      Kernels::ResultOutputStyle::kCompact};
+  GML::ResultOutputStyle resultOutputStyle{GML::ResultOutputStyle::kCompact};
 
   unsigned printPrecision{6};
 
@@ -305,22 +304,22 @@ private:
       llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   /// This tells the execution driver how to print output tensors;
-  M::cl::MOpt<Kernels::ResultOutputStyle, true> resultOutputStyle{
+  M::cl::MOpt<GML::ResultOutputStyle, true> resultOutputStyle{
       "result-output-style", cl::desc("Specify how to display outputs"),
       cl::values(
-          clEnumValN(Kernels::ResultOutputStyle::kFull, "full",
+          clEnumValN(GML::ResultOutputStyle::kFull, "full",
                      "Display all the elements of result"),
           clEnumValN(
-              Kernels::ResultOutputStyle::kCompact, "compact",
+              GML::ResultOutputStyle::kCompact, "compact",
               "Display a few elements at the start and end of each dimension"),
           clEnumValN(
-              Kernels::ResultOutputStyle::kBinary, "binary",
+              GML::ResultOutputStyle::kBinary, "binary",
               "Save outputs to binary files. This creates a directory "
               "with one binary file for each output tensor and a YAML file "
               "containing the name and shape of each output tensor. The "
               "output directory containing these files must be "
               "specified with --binary-output-dir=<output_dir>."),
-          clEnumValN(Kernels::ResultOutputStyle::kNone, "none",
+          clEnumValN(GML::ResultOutputStyle::kNone, "none",
                      "Do not display any result details")),
       llvm::cl::location(options.resultOutputStyle),
       llvm::cl::cat(ExecutorDriverOptionsCategory)};
