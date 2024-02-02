@@ -101,11 +101,6 @@ def StaticMemoryPlannerPass : Pass<"static-memory-planner", "ModuleOp"> {
     this pass so as to ensure no active buffers will ever overlap in their
     borrowed memory.
 
-    The mgp.cpu.buffer.alloc.spec ops can be replaced only when their shape has
-    a single dynamic dimension (eg for a dynamic batch size). Planning is done
-    in groups for each SSA value supplying the single runtime dynamic dimension.
-    The mgp.cpu.buffer.alloc.static ops are planning in their own group.
-
     Heuristics are used to decide when planning is worthwhile, and to choose
     offsets within the shared buffers.
   }];
@@ -239,7 +234,7 @@ def DeferAllocsPass : Pass<"defer-allocs", "MGP::ModelOp"> {
 def DeferTensorCreateExecPass : Pass<"defer-tensor-create-exec", "MGP::ModelOp"> {
   let summary = "Defers execution of mgp_cpu_tensor_create until its buffer has no uses.";
   let description = [{
-    Ensures mgp.cpu.tensor.create operations which are operands to mef.output are deferred 
+    Ensures mgp.cpu.tensor.create operations which are operands to mef.output are deferred
     till their buffers have no other uses. Eg:
     ```mlir
       %buf = mgp.cpu.buffer.alloc.static %bufChain, 24
@@ -328,11 +323,11 @@ def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
     ```mlir
     %in1_buf = mgp.cpu.buffer.alloc.static ..., <size1>
     %in1_ch = ... writer to %in1_buf ...
-    %in2_spec = ...
-    %in2_buf = mgp.cpu.buffer.alloc.spec ..., %in2_spec
+    %in2_bytes = ...
+    %in2_buf = mgp.cpu.buffer.alloc.dynamic ..., %in2_bytes
     %in2_ch = ... writer to %in2_buf ...
-    %out_spec = ...
-    %out_buf = mgp.cpu.buffer.alloc.spec ..., %out_spec
+    %out_bytes = ...
+    %out_buf = mgp.cpu.buffer.alloc.dynamic ..., %out_bytes
     %ch1 = grt.chain.create (%in1_ch, %in2_ch)
     %ch2 = mgp.cpu.buffer.concat %ch1, %out_buf, %in1_buf, %in2_buf : ...
     // where these are the only uses of %in1_buf and %in2_buf
@@ -340,8 +335,8 @@ def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
     (where %ch0 must be the argument chain to the 'execute' block)
     is rewritten to:
     ```mlir
-    %out_spec = ...
-    %out_buf = mgp.cpu.buffer.alloc.spec %root_ch, %out_spec
+    %out_bytes = ...
+    %out_buf = mgp.cpu.buffer.alloc.dynamic %root_ch, %out_bytes
     %in2_spec = ...
     %in2_size = mgp.cpu.tensor_spec.size %in2_spec
     %in1_buf, %in2_buf = mgp.cpu.buffer.split %root_ch, %out_buf, %in2_size : ...

@@ -254,7 +254,7 @@ def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
 def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface>,
-    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>]> {
+    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>]> {
   let summary = [{
     Allocates an uninitialized buffer on the CPU with size taken from index
     operand.
@@ -289,10 +289,6 @@ def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
     $inChain `,` $runtimeSize (`,` `align` $rawAlign^)? attr-dict
   }];
   let hasVerifier = 1;
-
-  let extraClassDefinition = [{
-    bool CpuBufferAllocDynamicOp::isTrivial() { return true; }
-  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -875,12 +871,12 @@ def CpuBufferUnsizeOp : MGP_Op<"cpu.buffer.unsize", [
     DeclareOpInterfaceMethods<GRTMayAliasInterface>, // The retrieved element is shallow copied
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
-    Casts the input buffer to the output buffer -- does a shallow copy and returns a 
+    Casts the input buffer to the output buffer -- does a shallow copy and returns a
     ref to the input buffer, but removes any static sizing.
   }];
   let description = [{
-    Returns a reference to a shallow copy of the input buffer whose underlying storage 
-    points into the input buffer, and removes all static sizing. 
+    Returns a reference to a shallow copy of the input buffer whose underlying storage
+    points into the input buffer, and removes all static sizing.
 
     Validation errors will occur if input is not a static size.
 

@@ -191,8 +191,18 @@ private:
     bool inControlFlow = !isExactlyOnce(op);
     bool isUnliftable = isAlreadyUnliftable || hasUnliftableOperands ||
                         hasBadSideEffects || inControlFlow;
-    if (isUnliftable)
+    if (isUnliftable) {
+      LLVM_DEBUG({
+        llvm::dbgs() << "considering ";
+        operationIndex->printV(llvm::dbgs(), op);
+        llvm::dbgs() << " to be unliftable. isAlreadyUnliftable="
+                     << isAlreadyUnliftable
+                     << ", hasUnliftableOperands=" << hasUnliftableOperands
+                     << ", hasBadSideEffects=" << hasBadSideEffects
+                     << ", inControlFlow=" << inControlFlow << "\n";
+      });
       operationIndex->addToSet(unliftableOps, op);
+    }
     // Flow forwards to the op's results.
     for (Value result : op->getResults()) {
       if (isUnliftable)
@@ -308,7 +318,7 @@ private:
       domainMap.leastUpperBound(set,
                                 analysis.getEntriesAndId(domainMap, &operand));
     }
-    bool allUsesUnliftable = set.test(0); // distinguished olways has index 0
+    bool allUsesUnliftable = set.test(0); // distinguished always has index 0
     bool isUnliftable =
         isAlreadyUnliftable || isUnused || (isTrivial && allUsesUnliftable);
     if (isUnliftable)
@@ -690,6 +700,8 @@ class ExecInvariantCodeMotionPass
     // TODO(#24751): We only consider ops in the top-level 'execute' block.
     SmallVector<Operation *> allOps = getDataflowOrder(executeState->execute);
 
+    LLVM_DEBUG(llvm::dbgs() << "first pass...\n");
+
     // First pass: clone ops from the 'execute' block into itself.
     // (We must do this as a separate pass so that the results of lifted ops
     // can be renamed in the right places.)
@@ -719,6 +731,8 @@ class ExecInvariantCodeMotionPass
       // now use the cloned op.
       op->replaceUsesWithIf(clonedOp, isOpOperandUnliftable);
     }
+
+    LLVM_DEBUG(llvm::dbgs() << "second pass...\n");
 
     // Second pass: lift ops from the 'execute' block to the 'init' block.
     for (Operation *op : allOps) {
@@ -765,6 +779,12 @@ class ExecInvariantCodeMotionPass
           // completed in the 'init' block before *all* buffers are cached.
           for (OpOperand &use : op->getUses()) {
             if (isMutated(use)) {
+              // Note: Very few ops are actually trivial. Marking ops as trivial
+              // can trigger this error, specifically in the case where the
+              // parent op can be lifted, but the "trivial" child op cannot be.
+              // We could deal with this properly by cloning the parent or just
+              // moving the trivial child anyways, but since very few ops are
+              // trivial anyways it won't happen often.
               GENERICML_ASSERT(!isOpOperandUnliftable(use))
                   << "attempting to lift buffer (" << *op
                   << ") which will be further mutated "
@@ -819,9 +839,12 @@ class ExecInvariantCodeMotionPass
             << "attempting to lift an op (" << *op
             << ") which is neither a liftable chain or "
                "buffer op, nor a recomputable op";
+
         // Note that the op may have been cloned by the first pass.
       }
 
+      LLVM_DEBUG(llvm::dbgs() << "considering op to be recomputable:\n"
+                              << *op << "\n");
       // Move the original op
       op->moveBefore(initOutputOp);
     }
