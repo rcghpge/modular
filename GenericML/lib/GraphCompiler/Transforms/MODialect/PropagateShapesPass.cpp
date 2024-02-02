@@ -609,6 +609,29 @@ struct PropagateShapesPass
     return KGEN::ParamOperatorAttr::get(opcode, foldedOperands);
   }
 
+  /// If `attr` is a `mosh.assert false`, return the error message associated
+  /// with it, else return null.
+  static StringAttr tryGetAssertFalseErrMsg(TypedAttr attr) {
+    // Check it's an expression attribute.
+    auto paramOperatorAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr);
+    if (!paramOperatorAttr)
+      return {};
+
+    // Check it's a `mosh.assert`.
+    auto mlirOpAttr =
+        dyn_cast<KGEN::MLIROpAttr>(paramOperatorAttr.getOperand(0));
+    if (!mlirOpAttr ||
+        mlirOpAttr.getName() != MOSH::AssertOp::getOperationName())
+      return {};
+
+    // Check assert condition is a static false.
+    if (auto cond = dyn_cast<BoolAttr>(paramOperatorAttr.getOperand(1));
+        cond && cond.getValue() == false)
+      return dyn_cast<StringAttr>(mlirOpAttr.getAttrs().get("message"));
+
+    return {};
+  }
+
   void runOnOperation() override {
     // Clear state variables (in case the pass instance is reused)
     paramAttrToDepth.clear();
@@ -727,6 +750,12 @@ struct PropagateShapesPass
         } else {
           // The param expression can be nested, so we just record it as is.
           evaluator.setParameterValue(declAttr, foldedRhsAttr);
+        }
+
+        // Emit compile time error for any `mosh.assert false`
+        if (StringAttr errMsg = tryGetAssertFalseErrMsg(foldedRhsAttr)) {
+          op->emitError(errMsg.strref());
+          return signalPassFailure();
         }
       }
     }
