@@ -5,6 +5,8 @@
 # ===----------------------------------------------------------------------=== #
 
 import numpy as np
+import math
+
 
 try:
     import tensorflow as tf
@@ -19,9 +21,38 @@ export and numpy to test.
 """
 
 
+class CommonImpls:
+    def add(self, x, y):
+        return x + y
+
+    def sub(self, x, y):
+        return x - y
+
+    def mul(self, x, y):
+        return x * y
+
+    def lt(self, x, y):
+        return x < y
+
+    def lte(self, x, y):
+        return x <= y
+
+    def gt(self, x, y):
+        return x > y
+
+    def gte(self, x, y):
+        return x >= y
+
+    def eq(self, x, y):
+        return x == y
+
+
 # Numpy implementation of each primitive.
-class NumpyImpl:
-    def constant(self, values):
+class NumpyImpl(CommonImpls):
+    def constant(self, values, dtype=None):
+        if dtype:
+            return np.array(values, dtype=dtype)
+
         return np.array(values)
 
     def transpose(self, input, permute):
@@ -73,10 +104,45 @@ class NumpyImpl:
             slice_to_apply.append(slice(start[i], stop[i], step[i]))
         return x[tuple(slice_to_apply)]
 
+    def abs(self, x):
+        return np.abs(x)
+
+    def erf(self, x):
+        apply = lambda t: math.erf(t)
+        out = np.copy(x)
+        np.vectorize(apply)(out)
+        return out
+
+    def exp(self, x):
+        return np.exp(x)
+
+    def log(self, x):
+        return np.log(x)
+
+    def max(self, x, limit):
+        return np.maximum(x, limit)
+
+    def min(self, x, limit):
+        return np.minimum(x, limit)
+
+    def select(self, cond, x, y):
+        return np.where(cond, x, y)
+
+    def sin(self, x):
+        return np.sin(x)
+
+    def cos(self, x):
+        return np.cos(x)
+
+    def tanh(self, x):
+        return np.tanh(x)
+
 
 # The keras implementation of each primitive.
-class TFImpl:
-    def constant(self, values):
+class TFImpl(CommonImpls):
+    def constant(self, values, dtype=None):
+        if dtype:
+            return tf.constant(np.array(values, dtype=dtype))
         return tf.constant(np.array(values))
 
     def transpose(self, input, permute):
@@ -105,3 +171,33 @@ class TFImpl:
 
     def strided_slice(self, x, start, stop, step):
         return tf.strided_slice(x, start, stop, step)
+
+    def abs(self, x):
+        return tf.abs(x)
+
+    def erf(self, x):
+        return tf.math.erf(x)
+
+    def exp(self, x):
+        return tf.exp(x)
+
+    def log(self, x):
+        return tf.math.log(x)
+
+    def max(self, x, limit):
+        return tf.math.maximum(x, limit)
+
+    def min(self, x, limit):
+        return tf.math.minimum(x, limit)
+
+    def select(self, cond, x, y):
+        return tf.raw_ops.Select(condition=cond, x=x, y=y)
+
+    def sin(self, x):
+        return tf.sin(x)
+
+    def cos(self, x):
+        return tf.cos(x)
+
+    def tanh(self, x):
+        return tf.tanh(x)

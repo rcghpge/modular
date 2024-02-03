@@ -438,3 +438,69 @@ class MultiViewFusionNoAdd(MultiViewFusionBase):
         # Slice input
         sliced = impl.strided_slice(inputs[0], inputs[1], inputs[2], inputs[3])
         return impl.transpose(sliced, inputs[-1])
+
+
+class Elementwise(TestBase):
+    @staticmethod
+    def num_runs():
+        return 100
+
+    @staticmethod
+    def input_sizes_to_test():
+        return [([20, 5, 1, 6],)]
+
+    @staticmethod
+    def get_input_specs():
+        return [
+            ((None, None, None, None), np.float32),
+            ((None, None, None, None), np.float32),
+        ]
+
+    @staticmethod
+    def generate_inputs(shapes):
+        return [
+            np.random.uniform(-20.0, 20.0, shapes[0]).astype(np.float32),
+            np.random.uniform(-20.0, 20.0, shapes[0]).astype(np.float32),
+        ]
+
+    @staticmethod
+    def run(inputs, impl):
+        x = inputs[0]
+        tanh = impl.tanh(inputs[1])
+        x = impl.add(x, tanh)
+
+        sub = impl.sub(x, x)
+        mul = impl.mul(sub, x)
+        erf = impl.erf(mul)
+        abs_ = impl.abs(x)
+        exp = impl.exp(abs_)
+
+        max = impl.max(x, impl.constant(0.5, np.float32))
+        o = impl.add(exp, max)
+
+        min = impl.min(x, impl.constant(-0.5, np.float32))
+        o = impl.add(o, min)
+
+        cnd = impl.gt(x, exp)
+        sel1 = impl.select(cnd, x, exp)
+
+        # Doesn't work?
+        # cnd = impl.gte(o, exp)
+        # sel2 = impl.select(cnd, x, exp)
+        # add = impl.add(sel1, sel2)
+
+        add = impl.add(sel1, o)
+
+        # TODO: Lower in TF.
+        # sin = impl.sin(add)
+        # cos = impl.cos(add)
+        # mul = impl.mul(sin, cos)
+
+        return impl.add(erf, add)
+
+
+# Test the case of static shape as this changes the broadcast & fusion logic.
+class ElementwiseStatic(Elementwise):
+    @staticmethod
+    def get_input_specs():
+        return [((20, 5, 1, 6), np.float32), ((20, 5, 1, 6), np.float32)]
