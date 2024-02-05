@@ -150,9 +150,9 @@ def MGP_DeviceBufferType : MGP_DeviceType<"DeviceBuffer", "buffer", [
     Examples:
     ```mlir
     // A 16-byte buffer on the CUDA GPU with virtual device id 3.
-    !mgp.buffer<#M.device_ref<"cuda", 3>, 16>
+    !mgp.buffer<<"cuda", 3>, 16>
     // A buffer on the host CPU whose size is only known at runtime.
-    !mgp.buffer<#M.device_ref<"cpu", 0>>
+    !mgp.buffer<<"cpu", 0>>
     ```
   }];
 

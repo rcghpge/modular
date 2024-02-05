@@ -17,7 +17,9 @@ BufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
                                        LLCL::CompactRuntimePtr runtime,
                                        size_t size,
                                        std::optional<size_t> alignment) {
-  GENERICML_ASSERT(bufferIndex < bufferCache.size());
+  GENERICML_ASSERT(bufferIndex < bufferCache.size())
+      << "invalid buffer index " << bufferIndex << " in StateSlot of size "
+      << bufferCache.size();
   auto &entry = bufferCache[bufferIndex];
   updateCacheIfNeeded(entry, runtime, size, alignment);
   // Return a borrowed reference to the cached buffer. Since it's in the
@@ -27,7 +29,9 @@ BufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
 }
 
 ErrorOr<BufferRef> StateSlot::getBuffer(size_t bufferIndex) {
-  GENERICML_ASSERT(bufferIndex < bufferCache.size());
+  GENERICML_ASSERT(bufferIndex < bufferCache.size())
+      << "invalid buffer index " << bufferIndex << " in StateSlot of size "
+      << bufferCache.size();
   auto &entry = bufferCache[bufferIndex];
   if (entry.getBuffer() == nullptr)
     return Error("no buffer has been cached at the given index");
@@ -38,7 +42,9 @@ ErrorOr<BufferRef> StateSlot::getBuffer(size_t bufferIndex) {
 }
 
 ErrorOrSuccess StateSlot::setBuffer(size_t bufferIndex, BufferRef bufferRef) {
-  GENERICML_ASSERT(bufferIndex < bufferCache.size());
+  GENERICML_ASSERT(bufferIndex < bufferCache.size())
+      << "invalid buffer index " << bufferIndex << " in StateSlot of size "
+      << bufferCache.size();
   GENERICML_ASSERT(bufferRef.getOwnership() == BufferRef::kOwned ||
                    (bufferRef.getOwnership() == BufferRef::kBorrowed &&
                     bufferRef.getLifetime() >= BufferRef::kExecute));

@@ -149,17 +149,17 @@ public:
                       size_t kernelIndex = 0);
 
   /// Returns the compiled kernel at the given index.
-  CompiledKernelFn *getKernel(size_t index) const {
-    GENERICML_ASSERT(index <= kernels.size())
-        << "invalid compiled kernel index";
-    return kernels[index];
+  CompiledKernelFn *getKernel(size_t kernelIndex) const {
+    GENERICML_ASSERT(kernelIndex < kernels.size())
+        << "invalid kernel index " << kernelIndex;
+    return kernels[kernelIndex];
   }
 
   /// Returns the symbol name for the compiled kernel at the given index.
-  StringRef getKernelName(size_t index) const {
-    GENERICML_ASSERT(index <= kernels.size())
-        << "invalid compiled kernel index";
-    return symbolTable[index];
+  StringRef getKernelName(size_t kernelIndex) const {
+    GENERICML_ASSERT(kernelIndex < kernels.size())
+        << "invalid kernel index " << kernelIndex;
+    return symbolTable[kernelIndex];
   }
 
 private:

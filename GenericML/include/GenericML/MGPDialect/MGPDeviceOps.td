@@ -869,7 +869,7 @@ def BufferGetCachedOp : MGP_DeviceOp<"buffer.get_cached", [
     ```mlir
     %ctx : !mgp.context
     %ch0 : !mef.chain
-    // Returns the buffer chached in slot index 42, using the CUDA runtime
+    // Returns the buffer cached in slot index 42, using the CUDA runtime
     // established in slot 5, which should correspond to the CUDA GPU with
     // virtual id 3.
     %buf = mgp.buffer.get_cached %ch0, %ctx[5, 42] : !mgp.buffer<<"cuda", 3>, 256>
@@ -980,7 +980,7 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
       %host_buf : !mgp.buffer<<"cpu", 0>>
       %ch1 = host.buffer.device_to_host %ch0, %ctx[5, 4], %other_buf, %host_buf
                : !mgp.buffer<<"cuda", 3>> -> !mgp.buffer<<"cpu", 0>>
-      %ch1 : !mgp.chain<<"cpu", 0>>
+      %ch1 : !mef.chain<<"cpu", 0>>
     ```
   }];
 

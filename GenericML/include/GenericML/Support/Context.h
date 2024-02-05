@@ -37,11 +37,12 @@ class Context {
 public:
   /// Constructs a new context with numSlots uninitialized state slots.
   explicit Context(size_t numSlots)
-      : numSlots(numSlots), stateSlots(new StateSlot[numSlots]) {}
+      : numSlots(numSlots),
+        stateSlots(std::make_unique<StateSlot[]>(numSlots)) {}
 
   /// Destroys all state slots in the context. Slots are destroyed in reverse
   /// order since later slots may hold implicit references to earlier slots.
-  ~Context() { delete[] stateSlots; }
+  ~Context() = default;
 
   /// Returns the number of state slots in the context.
   size_t getNumStateSlots() const { return numSlots; }
@@ -49,8 +50,8 @@ public:
   /// Returns true if the state slot at slotIndex has been set or emplaced.
   bool hasStateSlot(size_t slotIndex) {
     GENERICML_ASSERT(slotIndex < numSlots)
-        << "slotIndex " << slotIndex << " is out of range. " << numSlots
-        << " slots available.";
+        << "invalid StateSlot index " << slotIndex << " in context of size "
+        << numSlots;
     return stateSlots[slotIndex];
   }
 
@@ -64,6 +65,9 @@ public:
   /// allocations, which will all initially be null.
   template <typename T>
   T &setStateSlot(size_t slotIndex, RCRef<T> payload, size_t numBuffers = 0) {
+    GENERICML_ASSERT(slotIndex < numSlots)
+        << "invalid StateSlot index " << slotIndex << " in context of size "
+        << numSlots;
     GENERICML_ASSERT(!stateSlots[slotIndex])
         << "StateSlot for the slot " << slotIndex
         << " has already been set or emplaced.";
@@ -77,6 +81,9 @@ public:
   /// initially be null.
   template <typename T, typename... Args>
   T &emplaceStateSlot(size_t slotIndex, size_t numBuffers, Args &&...args) {
+    GENERICML_ASSERT(slotIndex < numSlots)
+        << "invalid StateSlot index " << slotIndex << " in context of size "
+        << numSlots;
     GENERICML_ASSERT(!stateSlots[slotIndex])
         << "StateSlot for the slot " << slotIndex
         << " has already been set or emplaced.";
@@ -89,8 +96,8 @@ public:
   /// been emplaced.
   StateSlot &getStateSlot(size_t slotIndex) {
     GENERICML_ASSERT(slotIndex < numSlots)
-        << "slotIndex " << slotIndex << " is out of range. " << numSlots
-        << " slots available.";
+        << "invalid StateSlot index " << slotIndex << " in context of size "
+        << numSlots;
     GENERICML_ASSERT(stateSlots[slotIndex])
         << "StateSlot for the slot " << slotIndex
         << " has not been set or emplaced.";
@@ -106,7 +113,7 @@ public:
 
 private:
   size_t numSlots;
-  StateSlot *stateSlots;
+  std::unique_ptr<StateSlot[]> stateSlots;
 };
 
 } // namespace M::GML

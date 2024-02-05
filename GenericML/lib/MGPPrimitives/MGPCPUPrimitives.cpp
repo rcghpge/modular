@@ -14,7 +14,6 @@
 #include "Support/MArchTarget/MArchTarget.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorSpec.h"
-#include "Support/ReferenceCounted.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 
@@ -23,6 +22,7 @@
 using namespace M;
 using namespace M::LLCL;
 using namespace M::GML;
+using namespace M::MGP;
 
 //===----------------------------------------------------------------------===//
 // Helpers
@@ -42,27 +42,6 @@ static std::optional<size_t> getRuntimeAlign(uint64_t rawAlign) {
 // mgp.runtime.create.cpu
 //===----------------------------------------------------------------------===//
 
-/// Represents the 'runtime' for a CPU device (which is generally also the host
-/// device). This is currently distinct from the LLCL::Runtime.
-///
-/// If we start supporting a device-per-numa-node architecture then this may
-/// grow to also hold an allocator and work queue.
-struct CPURuntime : public ReferenceCounted<CPURuntime> {
-  // The (virtual) device id for this runtime. Ie the id of the #M.device_ref
-  // attribute corresponding to this runtime.
-  size_t virtualDeviceId;
-
-  // Execution engine held by the runtime and shared by all loaded modules.
-  KGEN::ExecutionEngine *engine;
-
-  // The kernel context for each loaded module. Modules are referenced by
-  // index into this vector.
-  SmallVector<std::unique_ptr<CompiledKernelsContext>> modules;
-
-  CPURuntime(size_t virtualDeviceId, KGEN::ExecutionEngine *engine)
-      : virtualDeviceId(virtualDeviceId), engine(engine) {}
-};
-
 void mgp_runtime_create_cpu(Chain inChain, Context &theContext,
                             Result<Chain> outChain,
                             MEFAttr<uint64_t> aRuntimeSlot,
@@ -81,8 +60,8 @@ void mgp_runtime_create_cpu(Chain inChain, Context &theContext,
   // Establish an execution engine, to be shared amongst all loaded models
   // across all models using this runtime.
   //
-  // TODO: Currently there's no garbage collection of dylibs loaded into
-  //       this engine.
+  // TODO(#30647): Currently there's no garbage collection of dylibs loaded into
+  //               this engine.
   ErrorOr<KGEN::ExecutionEngine *> engineOr =
       runtime.createContextIfMissing<KGEN::ExecutionEngine>(
           []() -> ErrorOr<std::unique_ptr<KGEN::ExecutionEngine>> {
@@ -456,8 +435,11 @@ static void mgp_buffer_device_to_device_cpu(Chain inChain, Context &theContext,
 // mgp.buffer.unsize.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_unsize_cpu(AsyncValueRef<GML::BufferRef> inBuffer,
-                                  RemainingResults outputs) {
+// TODO(#30906): Move into MGPPrimitives once mgp.cpu.buffer.unsize removed
+//               since is not device specific.
+
+static void mgp_buffer_unsize(AnyAsyncValueRef inBuffer,
+                              RemainingResults outputs) {
   *outputs.begin() = std::move(inBuffer);
 }
 
@@ -722,11 +704,9 @@ static void mgp_kernel_execute_generic_cpu(
   if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*fHostDeviceId))
     return std::move(outChain).setToError("mismatched device id");
 
-  if (*cHostModuleIndex >= cpuRuntime.modules.size())
-    return std::move(outChain).setToError("invalid host module index");
   CompiledKernelFn *kernelPtr =
-      cpuRuntime.modules[*cHostModuleIndex]->getKernel(
-          static_cast<size_t>(*dHostKernelIndex));
+      cpuRuntime.getKernel(static_cast<size_t>(*cHostModuleIndex),
+                           static_cast<size_t>(*dHostKernelIndex));
 
   // The operands are:
   //  [input_1, ..., input_numInputs,
@@ -915,7 +895,6 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
                 mgp_buffer_no_transfers_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.device_to_device.cpu",
                 mgp_buffer_device_to_device_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.unsize", mgp_buffer_unsize_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.split.borrow.cpu",
                 mgp_buffer_split_borrow_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.section.borrow.static.cpu",
@@ -931,4 +910,7 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
                 mgp_debug_tensor_print_cpu);
   ADD_PRIMITIVE(registry, "mgp.kernel.execute.generic.cpu",
                 mgp_kernel_execute_generic_cpu);
+
+  // TODO(#30906): Move into MGPPrimitives once mgp.cpu.buffer.unsize removed.
+  ADD_PRIMITIVE(registry, "mgp.buffer.unsize", mgp_buffer_unsize);
 }
