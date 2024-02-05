@@ -15,7 +15,7 @@
 
 using namespace M;
 
-static std::optional<std::filesystem::path> getMaxCacheDir() {
+std::optional<std::filesystem::path> M::getMaxCacheDir() {
   auto configOr = Config::open();
 
   // If config is accessible look if it's set or not. If it's set we are done.
@@ -32,6 +32,18 @@ static std::optional<std::filesystem::path> getMaxCacheDir() {
   if (ec)
     return std::nullopt;
   return basePath / ".max_cache";
+}
+
+bool M::isModelIRCacheEnabled() {
+  auto configOr = Config::open();
+
+  // We will ignore the errors and disable caching if config is not accessible.
+  if (configOr.isError())
+    return false;
+
+  auto cacheEnabled =
+      configOr->getValueAsBool("max.enable_model_ir_cache", true);
+  return !cacheEnabled.isError() && *cacheEnabled;
 }
 
 std::optional<std::filesystem::path> M::getWeightsCacheDir() {
