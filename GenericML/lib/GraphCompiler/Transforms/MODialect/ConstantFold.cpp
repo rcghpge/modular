@@ -239,12 +239,14 @@ denseResourceAsTensor(ConstantOp constant,
                                      GML::BufferRef::Lifetime::kConstant);
 }
 
-/// Creates or retrieves an `ElementsAttr` with the same data as `tensor`.
+/// Creates or retrieves an `ElementsAttr` with the same data as `ref`
+/// `ref` is expected to hold a reference to a tensor object.
 static ElementsAttr
-elementsAttrFromTensor(GML::Tensor &tensor, MLIRContext *ctx,
+elementsAttrFromTensor(const AnyAsyncValueRef &ref, MLIRContext *ctx,
                        GML::ForeignBufferInterfaceID resourceInterfaceID) {
   // Output shape has runtime-dependent size so we need to read out what
   // the size is.
+  GML::Tensor &tensor = ref.get<GML::Tensor>();
   TensorShape shape = tensor.getShape();
   size_t numElements = shape.getNumElements();
   ArrayType arrayType = ArrayType::get(
@@ -274,25 +276,25 @@ elementsAttrFromTensor(GML::Tensor &tensor, MLIRContext *ctx,
 
   auto resourceManager = DenseResourceElementsHandle::getManagerInterface(ctx);
   mlir::AsmResourceBlob blob;
-  if (GML::BufferRef::Ownership ownership = bufferRef.getOwnership();
-      ownership == GML::BufferRef::kBorrowed) {
-    // 3. Copy underlying data to a new `dense_resource` if the buffer is
-    //    borrowed.
-    blob = mlir::HeapAsmResourceBlob::allocateAndCopyWithAlign(
-        tensorData, elementByteAlign);
-  } else {
+  GML::BufferRef::Ownership ownership = bufferRef.getOwnership();
+  if ((ownership != GML::BufferRef::kBorrowed) &&
+      (ref.getPointer()->isUnique())) {
     GENERICML_ASSERT(llvm::is_contained(
         {GML::BufferRef::kOwned, GML::BufferRef::kForeign}, ownership))
         << "invalid buffer ref ownership";
-
-    // 4. Otherwise, transfer ownership of the buffer ref to a new
-    // `dense_resource` if the buffer is owned.
+    // 3. Transfer ownership of the buffer ref to a new
+    // `dense_resource` if the buffer is owned and unique
     blob = mlir::UnmanagedAsmResourceBlob::allocateWithAlign(
         tensorData, elementByteAlign,
         [bufferRef = std::move(bufferRef)](void *tensorData, size_t, size_t) {
           // No-op that drops the `bufferRef` when the closure is
           // destroyed.
         });
+  } else {
+    // 4. Copy underlying data to a new `dense_resource` if the buffer is
+    //    borrowed or not-unique
+    blob = mlir::HeapAsmResourceBlob::allocateAndCopyWithAlign(
+        tensorData, elementByteAlign);
   }
 
   return DenseResourceElementsAttr::get(
@@ -304,11 +306,10 @@ extractRuntimeOutput(const AnyAsyncValueRef &ref, MLIRContext *ctx,
                      GML::ForeignBufferInterfaceID &resourceInterfaceID) {
   if (ref.isType<GML::Tensor>()) {
     GML::Tensor &tensor = ref.get<GML::Tensor>();
-
-    // Create an `ElementsAttr`, possibly by taking ownership of `tensor`'s
+    // Create an `ElementsAttr`, possibly by taking ownership of `ref/tensor`'s
     // buffer.
     return RuntimeOutput(
-        RuntimeTensor(elementsAttrFromTensor(tensor, ctx, resourceInterfaceID),
+        RuntimeTensor(elementsAttrFromTensor(ref, ctx, resourceInterfaceID),
                       tensor.getShape()));
   } else if (ref.isType<GML::List>()) {
     GML::List &list = ref.get<GML::List>();
