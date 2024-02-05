@@ -12,7 +12,6 @@
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/ResultInfo.h"
 #include "GenericML/Support/Tensor.h"
-#include "Kernels/Misc.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Support/Profiling.h"
 #include "Support/Error.h"

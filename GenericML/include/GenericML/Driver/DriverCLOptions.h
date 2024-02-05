@@ -10,7 +10,6 @@
 #include "GenericML/Driver/DriverInputFormat.h"
 #include "GenericML/Driver/ExecutionDriver.h"
 #include "GenericML/Support/Tensor.h"
-#include "Kernels/Misc.h"
 #include "LLCL/Runtime/RuntimeCLOptions.h"
 #include "Support/CommonCLOptions.h"
 #include "Support/ML/TensorSpec.h"
