@@ -1420,8 +1420,10 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
                  ConcatZeroAxisPattern, ConvConstFilterPattern,
                  SplitZeroAxisPattern, LayerNormPattern>(ctx);
 
-    patterns.add<MultiHeadAttentionPatternCPU>(ctx,
-                                               mhaAllowUnsafeBCast.getValue());
+    if (enableMHAPattern.getValue()) {
+      patterns.add<MultiHeadAttentionPatternCPU>(
+          ctx, mhaAllowUnsafeBCast.getValue());
+    }
 
     MO::GraphOp graphOp = getOperation();
     if (failed(applyPatternsAndFoldGreedily(graphOp, std::move(patterns))))

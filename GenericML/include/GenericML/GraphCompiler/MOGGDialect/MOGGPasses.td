@@ -90,6 +90,8 @@ def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
   }];
   let dependentDialects = ["M::MOGG::MOGGDialect"];
   let options = [
+    Option<"enableMHAPattern", "mha-enable", "bool", /*default=*/"true",
+            "Enable multi-head attention pattern.">,
     Option<"mhaAllowUnsafeBCast", "mha-allow-unsafe-bcast", "bool", /*default=*/"true",
             "Allow potentially unsafe broadcasts to be pattern matched for MHA patterns.">,
   ];

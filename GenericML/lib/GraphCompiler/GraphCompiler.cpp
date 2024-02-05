@@ -172,7 +172,12 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MO::createInferLayouts());
 
   if (opts.usePatterns) {
-    pm.addPass(MOGG::createPatternFusion());
+    MOGG::PatternFusionOptions patternFusionOpts;
+    patternFusionOpts.mhaAllowUnsafeBCast =
+        opts.patternFusionMHAAllowUnsafeBCasts;
+    patternFusionOpts.enableMHAPattern = opts.patternFusionMHAEnable;
+    pm.addPass(MOGG::createPatternFusion(patternFusionOpts));
+
     // Layout optimizations in `PatternFusion` might add new shape function
     // invocation for the inserted layout transformations, and in most (if not
     // all) cases we can fold them away.

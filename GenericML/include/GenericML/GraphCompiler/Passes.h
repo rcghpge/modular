@@ -158,6 +158,15 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       *this, "time-mogg-compile",
       llvm::cl::desc("Turns on timing for the KGEN passes invoked by mogg"),
       llvm::cl::init(false)};
+  Option<bool> patternFusionMHAEnable{
+      *this, "mha-enable",
+      llvm::cl::desc("Enables multi-head attention (mha) pattern fusion."),
+      llvm::cl::init(true)};
+  Option<bool> patternFusionMHAAllowUnsafeBCasts{
+      *this, "mha-allow-unsafe-bcast",
+      llvm::cl::desc("If the mha pattern is enabled, allows fusing potentially "
+                     "unsafe bcasts with a runtime guard."),
+      llvm::cl::init(true)};
 };
 
 struct ShapeInferenceOptions
