@@ -31,6 +31,7 @@ static constexpr llvm::StringLiteral PARAMETER_CONV_STATIC_DILATIONS =
     "static_dilations";
 static constexpr llvm::StringLiteral PARAMETER_CONV_STATIC_PADDING =
     "static_padding";
+static constexpr llvm::StringLiteral PARAMETER_CONV_INPUT_RANK = "input_rank";
 
 /// Gather ND op
 static constexpr llvm::StringLiteral PARAMETER_GATHER_ND_BATCH_DIMENSIONS =
