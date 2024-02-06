@@ -9,6 +9,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
+#include "LLCL/Runtime/Runtime.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/Compiler/MLIRDenseAttr.h"
 
@@ -100,8 +101,12 @@ mlir::NamedAttribute Module::tensorAttr(StringRef name, ArrayRef<uint8_t> data,
   auto attr = ArrayElementsAttr::get({data.data(), data.size()}, shapedType);
 
   if (owned) {
-    // Free owned `data`, which was copied into the MLIRContext above.
-    alignedFree(const_cast<uint8_t *>(data.data()));
+    // Free owned `data`, which was copied into the MLIRContext above. Note that
+    // this data was allocated in mojo land, which uses the runtime allocator.
+    // So, we need to use the runtime deallocator to free.
+    auto rt = Runtime::getCurrentRuntimeOrNull();
+    assert(rt && "runtime not present");
+    rt->getAllocator()->deallocateBytes(const_cast<uint8_t *>(data.data()));
   }
 
   StringAttr nameAttr = StringAttr::get(moTensorType.getContext(), name);
