@@ -593,7 +593,7 @@ def BufferAllocStaticOp : MGP_DeviceOp<"buffer.alloc.static", [
 
 def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
-    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
+    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
 ]> {
   let summary = "Allocates a buffer with dynamically provided byte size on "
                 "given device.";
@@ -636,8 +636,6 @@ def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-    bool BufferAllocDynamicOp::isTrivial() { return true; }
-
     uint64_t BufferAllocDynamicOp::getSlot() { return getARuntimeSlot(); }
 
     M::DeviceRefAttr BufferAllocDynamicOp::getDevice() { return getCDevice(); }
