@@ -48,13 +48,8 @@ add_mojo_package(max-mojo PRIVATE
   SDK/docs
 )
 
-add_dependencies(max-mojo mlir-mojo-api)
+# Dependencies aren't automatically included in releases!
+# They need to be manually added to utils/build/engine_packaging/c/CMakeLists.txt
+# See the install-max-graph-c target.
 
-# This install rule is consumed by the install-max-graph-c target defined in
-# ModularFramework/lib/API/CMakeLists.txt which describes the installation
-# process in more detail.
-install(
-  FILES $<TARGET_PROPERTY:max-mojo,PACKAGE_LOCATION>
-  DESTINATION "pkg"
-  COMPONENT max-graph
-)
+add_dependencies(max-mojo mlir-mojo-api)
