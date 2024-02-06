@@ -23,6 +23,33 @@ using namespace M;
 // sniffInputFormat
 //===----------------------------------------------------------------------===//
 
+// Check for tags which don't occur in a comment (line that starts with `//` and
+// possibly preceding white spaces).
+static bool containsNonCommentedTagRegex(StringRef contents, StringRef tag) {
+  if (contents.find(tag) == StringRef::npos)
+    return false;
+
+  std::match_results<StringRef::iterator> m;
+  std::stringstream expression;
+  expression << R"((^|\n|\r)(?!\s*\/\/).*)";
+  std::string exprTag(tag);
+  expression << exprTag.replace(exprTag.find("."), 1, "\\.");
+  std::regex regex = std::regex(expression.str());
+
+  size_t pos = 0;
+  size_t startPos = 0;
+
+  while ((pos = contents.find_first_of("\n\r\f\v", startPos)) !=
+         std::string::npos) {
+    StringRef line = contents.substr(startPos, pos - startPos);
+    if (line.find(tag) != std::string::npos &&
+        std::regex_search(line.begin(), line.end(), m, regex))
+      return true;
+    startPos = pos + 1;
+  }
+  return false;
+}
+
 FileFormat M::sniffInputFormat(StringRef fileExtension,
                                StringRef fileContents) {
 
@@ -32,7 +59,8 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
       return FileFormat::kONNXTextProtobuf;
     else
       return FileFormat::kONNXProtobuf;
-  } else if (fileExtension.contains("pt")) {
+  } else if (fileExtension.contains("pt") || fileExtension.contains("ptc") ||
+             fileExtension.contains("torchscript")) {
     return FileFormat::kPTPickle;
   }
 
@@ -67,8 +95,12 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
       return FileFormat::kTFLFlatBufferJSON;
     if (fileContents.contains("ir_version: "))
       return FileFormat::kONNXTextProtobuf;
-    if (fileContents.contains("torch.debug_module_name"))
+    // Ignore commented out lines for file format sniffing.
+    if (containsNonCommentedTagRegex(fileContents, "torch.debug_module_name")) {
+      if (containsNonCommentedTagRegex(fileContents, "mo.graph"))
+        return FileFormat::kTorchATenDialect;
       return FileFormat::kTorchDialect;
+    }
     if (fileContents.contains("mo.graph"))
       return FileFormat::kMODialect;
     if (size_t start = fileContents.find("mgp.model");

@@ -81,6 +81,9 @@ enum class FileFormat : uint8_t {
   /// Those primitives may be from the ATenP or from the Torch dialect after
   /// lowering to MGP.
   kTorchPDialect,
+
+  /// This is a MLIR file with the MO and MATen dialect in it.
+  kTorchATenDialect,
 };
 
 inline FileFormat frameworkToFileFormat(FrameworkFormat frameworkFormat) {
@@ -131,15 +134,51 @@ private:
   /// autosense what the input is.
   M::cl::MOpt<FileFormat, true> inputFormat{
       "input-format", cl::desc("input file format override"),
-      cl::values(clEnumValN(FileFormat::kTFLFlatBuffer, "tflite-flat-buffer",
-                            "Input is a TFLite flatbuffer file"),
-                 clEnumValN(FileFormat::kMODialect, "mo", "Input is a MO file"),
-                 clEnumValN(FileFormat::kMEFFile, "mef",
-                            "Input is an executable MEF file"),
-                 clEnumValN(FileFormat::kTFSavedModel, "tf-saved-model",
-                            "Input is a TF SavedModel directory"),
-                 clEnumValN(FileFormat::kONNXProtobuf, "onnx-proto",
-                            "Input is an ONNX model protobuf file")),
+      cl::values(
+          // Generic
+          clEnumValN(FileFormat::kMODialect, "mo", "Input is a MO file"),
+          clEnumValN(FileFormat::kMEFFile, "mef",
+                     "Input is an executable MEF file"),
+          clEnumValN(FileFormat::kFauxDialect, "faux",
+                     "Input is a faux dialect file"),
+          clEnumValN(FileFormat::kMGPDialect, "mgp",
+                     "Input is an mgp dialect file"),
+
+          // TensorFlow lite
+          clEnumValN(FileFormat::kTFLFlatBuffer, "tflite-flat-buffer",
+                     "Input is a TFLite flatbuffer file"),
+          clEnumValN(FileFormat::kTFLFlatBufferJSON, "tflite-flat-buffer-json",
+                     "Input is a TFLite flatbuffer JSON file"),
+          clEnumValN(FileFormat::kMTFLDialect, "tflite",
+                     "Input is a TFLite dialect file"),
+          clEnumValN(FileFormat::kTFLPDialect, "tflite-p",
+                     "Input is a TFLite primitives dialect file"),
+
+          // TensorFlow
+          clEnumValN(FileFormat::kTFSavedModel, "tf-saved-model",
+                     "Input is a TF SavedModel directory"),
+          clEnumValN(FileFormat::kTFDialect, "tf",
+                     "Input is a TF dialect file"),
+          clEnumValN(FileFormat::kTFPDialect, "tf-p",
+                     "Input is a TF primitives dialect file"),
+
+          // ONNX
+          clEnumValN(FileFormat::kONNXProtobuf, "onnx-proto",
+                     "Input is an ONNX model protobuf file"),
+          clEnumValN(FileFormat::kONNXTextProtobuf, "onnx-text",
+                     "Input is an ONNX model protobuf text file"),
+          clEnumValN(FileFormat::kMONNXDialect, "onnx",
+                     "Input is an ONNX dialect file"),
+
+          // PyTorch
+          clEnumValN(FileFormat::kPTPickle, "torchscript",
+                     "Input is a torchscript module file"),
+          clEnumValN(FileFormat::kTorchDialect, "torch",
+                     "Input is a torch dialect file"),
+          clEnumValN(FileFormat::kTorchATenDialect, "torch-aten",
+                     "Input is a torch ATen dialect file"),
+          clEnumValN(FileFormat::kTorchPDialect, "torch-p",
+                     "Input is a torch primitives dialect file")),
       llvm::cl::location(options.inputFormat),
       llvm::cl::cat(DriverInputFormatCategory)};
 };
