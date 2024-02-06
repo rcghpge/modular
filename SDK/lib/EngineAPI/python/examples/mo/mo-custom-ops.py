@@ -26,8 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-
-from modular import engine
+from max import engine
 
 
 def without_custom_ops():

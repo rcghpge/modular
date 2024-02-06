@@ -54,4 +54,4 @@ build install-ai-engine-py-binding
 echo "sccache stats after building all:"
 sccache --show-stats
 
-tree -a -C .derived/build/install/modular-engine-py-binding
+tree -a -C .derived/build/install/max-engine-py-binding

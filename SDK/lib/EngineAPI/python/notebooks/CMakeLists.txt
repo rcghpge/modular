@@ -27,7 +27,7 @@ add_custom_target(check-PythonDocTests
   COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -R PythonDocTests
 )
 
-add_dependencies(check-PythonDocTests modular-pybind-ext)
+add_dependencies(check-PythonDocTests max-pybind-ext)
 if (TARGET inference_engine_docs)
   add_dependencies(inference_engine_docs check-PythonDocTests)
 endif()

@@ -7,9 +7,10 @@
 # Runs an inference with a BERT model, using dummy data, just as a demo.
 
 import os
-import numpy as np
-from modular import engine
 from pathlib import Path
+
+import numpy as np
+from max import engine
 
 
 def main():

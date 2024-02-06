@@ -16,9 +16,9 @@ modular_find_python3_development()
 
 include(AddPyBind11)
 
-set(modular_python_package_sources
-  ${CMAKE_CURRENT_SOURCE_DIR}/modular/engine/api.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/modular/engine/core.pyi
+set(max_python_package_sources
+  ${CMAKE_CURRENT_SOURCE_DIR}/max/engine/api.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/max/engine/core.pyi
 )
 
 configure_file(
@@ -35,13 +35,13 @@ file(GENERATE
 # Set up wheel directory structure by copying the pyproject.toml and setup.py
 # files needed for setuptools to build the wheel.
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/pyproject.toml ${CMAKE_CURRENT_SOURCE_DIR}/setup.py
-  DESTINATION  modular-engine-py-binding
+  DESTINATION  max-engine-py-binding
   COMPONENT ai-engine-py-binding
 )
 
-# Also copy the `modular.engine` Python files into the wheel.
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../modular
-  DESTINATION modular-engine-py-binding
+# Also copy the `max.engine` Python files into the wheel.
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../max
+  DESTINATION max-engine-py-binding
   COMPONENT ai-engine-py-binding
   FILES_MATCHING
   PATTERN "*.py*"
@@ -51,7 +51,7 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../modular
 # Finally, install the built Python extension module shared library into the
 # wheel.
 install(TARGETS core
-  DESTINATION  modular-engine-py-binding/modular/engine
+  DESTINATION  max-engine-py-binding/max/engine
   COMPONENT ai-engine-py-binding
 )
 
@@ -59,7 +59,7 @@ add_llvm_install_targets(
   install-ai-engine-py-binding
 
   DEPENDS
-  modular-engine
+  max-engine
 
   COMPONENT
   ai-engine-py-binding

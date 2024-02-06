@@ -35,24 +35,22 @@ PY_MODULE_EXTENSION = ".pyd" if sys.platform == "win32" else ".so"
 SHARED_LIBS = [
     os.path.abspath(p)
     for p in (
-        glob(os.path.join("modular", "lib", "*"))
-        + glob(os.path.join("modular", "engine", f"*{PY_MODULE_EXTENSION}"))
+        glob(os.path.join("max", "lib", "*"))
+        + glob(os.path.join("max", "engine", f"*{PY_MODULE_EXTENSION}"))
     )
 ]
-EXECUTABLES = [os.path.abspath(os.path.join("modular", "bin", "*"))]
+EXECUTABLES = [os.path.abspath(os.path.join("max", "bin", "*"))]
 # Copy everything under `.mojo_cache` to the wheel.
-MOJO_CACHE = [
-    os.path.abspath(os.path.join("modular", ".mojo_cache", "**", "*"))
-]
+MOJO_CACHE = [os.path.abspath(os.path.join("max", ".mojo_cache", "**", "*"))]
 # Copy Modular configuration file to the wheel.
-MODULAR_CFG = [os.path.abspath(os.path.join("modular", "modular.cfg"))]
+MODULAR_CFG = [os.path.abspath(os.path.join("max", "modular.cfg"))]
 
 setup(
     cmdclass={"bdist_wheel": bdist_wheel},
-    name="modular-engine",
+    name="max-engine",
     package_data={
-        "modular.engine": EXECUTABLES + SHARED_LIBS + MOJO_CACHE + MODULAR_CFG
+        "max.engine": EXECUTABLES + SHARED_LIBS + MOJO_CACHE + MODULAR_CFG
     },
-    packages=["modular.engine"],
+    packages=["max.engine"],
     include_package_data=True,
 )

@@ -9,7 +9,7 @@
 - Install modular AI Engine
 
 ```shell
-pip install .derived/build-release/SDK/lib/EngineAPI/python/modular_engine-<version-info>.whl
+pip install .derived/build-release/SDK/lib/EngineAPI/python/max_engine-<version-info>.whl
 ```
 
 - Install dependencies

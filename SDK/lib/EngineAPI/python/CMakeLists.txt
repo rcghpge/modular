@@ -22,8 +22,8 @@ if (MODULAR_RELEASE_PACKAGE_BUILD)
   add_compile_definitions(MODULAR_RELEASE_PACKAGE_BUILD=1)
 endif()
 
-# Hardcode version to 0.0.0 for local test target modular-pybind-ext
-set(MODULAR_PYPROJECT_NAME_VERSION "modular_engine-0.0.0")
+# Hardcode version to 0.0.0 for local test target max-pybind-ext
+set(MODULAR_PYPROJECT_NAME_VERSION "max_engine-0.0.0")
 
 # Package the built extension into a wheel.
 set(WHEEL_DIR ${CMAKE_CURRENT_BINARY_DIR})
@@ -45,7 +45,7 @@ string(REGEX MATCH "^[^\n]+" WHEEL_BASENAME "${BDIST_WHEEL_OUTPUT}")
 
 # Add a custom target to build and install the Python bindings and wheel.
 # Individual pybind11 modules are expected to be dependencies of
-# modular-engine.
+# max-engine.
 # As a step in this process we compute a hash of the wheel file to avoid
 # rerunning pip install when there are no changes to the wheel file.
 set(MODULAR_PACKED_WHEEL_NAME ${WHEEL_DIR}/${WHEEL_BASENAME}.whl)
@@ -63,7 +63,7 @@ add_custom_command(
   COMMENT "Installing Modular Python API wheel."
 )
 # MODULAR_EXCLUDE_PYBIND_EXT_FROM_ALL can be set to avoid including
-# modular-pybind-ext in the 'all' target.  Since building the Python extension
+# max-pybind-ext in the 'all' target.  Since building the Python extension
 # currently requires Internet access, this is useful if you are developing
 # without Internet access (e.g. on an airplane).  It also speeds up builds by
 # several seconds, and can be useful even when Internet access is present, as
@@ -73,12 +73,12 @@ if(MODULAR_EXCLUDE_PYBIND_EXT_FROM_ALL)
 else()
   set(ext_all ALL)
 endif()
-add_custom_target(modular-pybind-ext ${ext_all} DEPENDS ${MODULAR_PACKED_WHEEL_HASH_FILE})
+add_custom_target(max-pybind-ext ${ext_all} DEPENDS ${MODULAR_PACKED_WHEEL_HASH_FILE})
 
-add_dependencies(modular-pybind-ext modular-engine)
-add_subdirectory(bindings/modular/engine)
+add_dependencies(max-pybind-ext max-engine)
+add_subdirectory(bindings/max/engine)
 
-# Needs to be added after cmake knows about `core` defined in bindings/modular/engine
+# Needs to be added after cmake knows about `core` defined in bindings/max/engine
 add_subdirectory(tuf_packaging)
 
 set(MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:monnx>)
@@ -97,13 +97,13 @@ if(STOCK_TENSORFLOW_FOUND)
   list(APPEND MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:tf>)
 endif()
 
-set(modular_python_package_sources
-  ${CMAKE_CURRENT_SOURCE_DIR}/modular/engine/__init__.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/modular/engine/api.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/modular/engine/core.pyi
+set(max_python_package_sources
+  ${CMAKE_CURRENT_SOURCE_DIR}/max/engine/__init__.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/max/engine/api.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/max/engine/core.pyi
 )
 
-# Note that ${CMAKE_CURRENT_BINARY_DIR} == ${WHEEL_DIR} so the configured/generated pyproject.toml works for local wheel building for target modular-pybind-ext as well.
+# Note that ${CMAKE_CURRENT_BINARY_DIR} == ${WHEEL_DIR} so the configured/generated pyproject.toml works for local wheel building for target max-pybind-ext as well.
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/pyproject.toml.in
   ${CMAKE_CURRENT_BINARY_DIR}/pyproject.toml.in
@@ -118,9 +118,9 @@ add_custom_command(OUTPUT ${MODULAR_PACKED_WHEEL_NAME}
   COMMAND ${Python3_EXECUTABLE} -m build --wheel --outdir ${WHEEL_DIR} > /dev/null
   COMMAND ${CMAKE_COMMAND} -E rm -rf ${UNPACKED_WHEEL}
   COMMAND ${Python3_EXECUTABLE} -m wheel unpack ${WHEEL_DIR}/${WHEEL_BASENAME}.whl --dest ${WHEEL_DIR} > /dev/null
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/modular/engine
-  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:core> ${UNPACKED_WHEEL}/modular/engine/
-  COMMAND ${CMAKE_COMMAND} -E copy ${MODULAR_BINARY_DIR}/modular.cfg ${UNPACKED_WHEEL}/modular/
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/max/engine
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:core> ${UNPACKED_WHEEL}/max/engine/
+  COMMAND ${CMAKE_COMMAND} -E copy ${MODULAR_BINARY_DIR}/modular.cfg ${UNPACKED_WHEEL}/max/
   COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/bin
   # NOTE: Use a temporary file so that the copy command succeeds when NOT
   # STOCK_TENSORFLOW_FOUND.
@@ -130,9 +130,9 @@ add_custom_command(OUTPUT ${MODULAR_PACKED_WHEEL_NAME}
   COMMAND ${Python3_EXECUTABLE} -m wheel pack ${UNPACKED_WHEEL} --dest ${WHEEL_DIR} > /dev/null
   COMMAND ${CMAKE_COMMAND} -E rename ${WHEEL_DIR}/${WHEEL_BASENAME}.whl ${MODULAR_PACKED_WHEEL_NAME}
   COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/build
-  COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/modular_engine.egg-info
+  COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/max_engine.egg-info
   BYPRODUCTS ${UNPACKED_WHEEL}
-  DEPENDS $<TARGET_FILE:core> ${MODULAR_FRAMEWORK_LIBS} ${EXTERNAL_TF_EXES} ${modular_python_package_sources}
+  DEPENDS $<TARGET_FILE:core> ${MODULAR_FRAMEWORK_LIBS} ${EXTERNAL_TF_EXES} ${max_python_package_sources}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   COMMENT "Packing wheel with bindings and shared library dependencies."
   VERBATIM
@@ -143,7 +143,7 @@ add_custom_command(OUTPUT ${MODULAR_PACKED_WHEEL_NAME}
 # configure time). Account for this by explicitly setting the
 # `ADDITIONAL_CLEAN_FILES` on the directory which makes the generated `clean`
 # target work correctly.
-set_target_properties(modular-engine
+set_target_properties(max-engine
   PROPERTIES
   ADDITIONAL_CLEAN_FILES ${UNPACKED_WHEEL}
 )
@@ -154,13 +154,13 @@ add_subdirectory(notebooks)
 # Set up wheel directory structure by copying the pyproject.toml and setup.py
 # files needed for setuptools to build the wheel.
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/pyproject.toml ${CMAKE_CURRENT_SOURCE_DIR}/setup.py
-  DESTINATION modular-engine-wheel
+  DESTINATION max-engine-wheel
   COMPONENT ai-engine-wheel
 )
 
-# Also copy the `modular.engine` Python files into the wheel.
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/modular
-  DESTINATION modular-engine-wheel
+# Also copy the `max.engine` Python files into the wheel.
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/max
+  DESTINATION max-engine-wheel
   COMPONENT ai-engine-wheel
   FILES_MATCHING
   PATTERN "*.py*"
@@ -170,6 +170,6 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/modular
 # Finally, install the built Python extension module shared library into the
 # wheel.
 install(TARGETS core
-  DESTINATION modular-engine-wheel/modular/engine
+  DESTINATION max-engine-wheel/max/engine
   COMPONENT ai-engine-wheel
 )

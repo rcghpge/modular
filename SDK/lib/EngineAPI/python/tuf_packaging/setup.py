@@ -34,13 +34,13 @@ class bdist_wheel(_bdist_wheel):
 PY_MODULE_EXTENSION = ".pyd" if sys.platform == "win32" else ".so"
 EXTENSIONS = [
     os.path.abspath(p)
-    for p in glob(os.path.join("modular", "engine", f"*{PY_MODULE_EXTENSION}"))
+    for p in glob(os.path.join("max", "engine", f"*{PY_MODULE_EXTENSION}"))
 ]
 
 setup(
     cmdclass={"bdist_wheel": bdist_wheel},
-    name="modular-engine",
-    package_data={"modular.engine": EXTENSIONS},
-    packages=["modular.engine"],
+    name="max-engine",
+    package_data={"max.engine": EXTENSIONS},
+    packages=["max.engine"],
     include_package_data=True,
 )

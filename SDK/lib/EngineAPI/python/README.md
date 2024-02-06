@@ -23,14 +23,14 @@ Here's how to build and install the Python package:
 1. Build the Python wheel:
 
    ```shell
-   build modular-pybind-ext
+   build max-pybind-ext
    ```
 
 1. Install the Python wheel:
 
    ```shell
    # Finish this filename as appropriate:
-   python3 -m pip install .derived/build/SDK/lib/EngineAPI/python/modular_engine-...whl
+   python3 -m pip install .derived/build/SDK/lib/EngineAPI/python/max_engine-...whl
    ```
 
 Now you should be all set.

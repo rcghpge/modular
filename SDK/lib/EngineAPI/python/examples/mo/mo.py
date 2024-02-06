@@ -7,9 +7,10 @@
 # Runs an inference with a MO model, using dummy data
 
 import os
-import numpy as np
-from modular import engine
 from pathlib import Path
+
+import numpy as np
+from max import engine
 
 
 def main():
