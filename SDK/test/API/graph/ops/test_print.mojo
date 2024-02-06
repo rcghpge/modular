@@ -20,7 +20,7 @@ fn test_print() raises:
         TypeTuple(),
     )
     g[0].print()
-    g.output()
+    g.output(())
     m.verify()
 
     let x = Tensor[DType.float32](TensorShape(2, 2, 2), 1, 2, 3, 4, 5, 6, 7, 8)
