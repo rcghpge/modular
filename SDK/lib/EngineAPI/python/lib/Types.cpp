@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/API/modular/c/types.h"
-#include "GenericML/API/python/Types.h"
+#include "SDK/EngineAPI/python/Types.h"
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>

@@ -26,8 +26,8 @@ experimental-string-processing = true
 [tool.cibuildwheel]
 # {project} is the path to the working directory where `cibuildwheel` is run.
 archs = ["native"]
-before-all = "{project}/GenericML/lib/API/python/tuf_packaging/before-all.sh"
-before-build = "{project}/GenericML/lib/API/python/tuf_packaging/before-build.sh @MODULAR_VERSION_MAJOR@ @MODULAR_VERSION_MINOR@ @MODULAR_VERSION_PATCH@"
+before-all = "{project}/SDK/lib/EngineAPI/python/tuf_packaging/before-all.sh"
+before-build = "{project}/SDK/lib/EngineAPI/python/tuf_packaging/before-build.sh @MODULAR_VERSION_MAJOR@ @MODULAR_VERSION_MINOR@ @MODULAR_VERSION_PATCH@"
 build = "cp{38,39,310,311}-manylinux*"
 build-frontend = "build"
 environment-pass = [

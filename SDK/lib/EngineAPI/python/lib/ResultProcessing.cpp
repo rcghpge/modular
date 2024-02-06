@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/API/python/ResultProcessing.h"
+#include "SDK/EngineAPI/python/ResultProcessing.h"
 #include "GenericML/API/modular/c/value.h"
 #include "GenericML/API/modular/cpp/aliases.h"
+#include "SDK/EngineAPI/python/Types.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
-#include "python/Types.h"
 #include <vector>
 
 using namespace M;

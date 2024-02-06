@@ -28,7 +28,7 @@ source ./utils/start-modular.sh
 python3 -m pip install \
   -e Support/python \
   -r KGEN/utils/requirements.txt \
-  -r GenericML/lib/API/python/packaging-requirements.txt
+  -r SDK/lib/EngineAPI/python/packaging-requirements.txt
 
 pip install pipx
 

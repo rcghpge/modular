@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_API_PYTHON_RESULTPROCESSING_H
-#define GENERICML_API_PYTHON_RESULTPROCESSING_H
+#ifndef SDK_ENGINEAPI_PYTHON_RESULTPROCESSING_H
+#define SDK_ENGINEAPI_PYTHON_RESULTPROCESSING_H
 
 #include "GenericML/API/modular/c/value.h"
 #include "GenericML/API/modular/cpp/aliases.h"
@@ -30,4 +30,4 @@ py::object processValueResult(ValuePtr value);
 
 } // namespace core
 
-#endif // GENERICML_API_PYTHON_RESULTPROCESSING_H
+#endif // SDK_ENGINEAPI_PYTHON_RESULTPROCESSING_H

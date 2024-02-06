@@ -3,8 +3,8 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
-#ifndef GENERICML_API_PYTHON_TYPES_H
-#define GENERICML_API_PYTHON_TYPES_H
+#ifndef SDK_ENGINEAPI_PYTHON_TYPES_H
+#define SDK_ENGINEAPI_PYTHON_TYPES_H
 
 #include "GenericML/API/modular/c/types.h"
 #include <pybind11/numpy.h>
@@ -20,4 +20,4 @@ std::string printDType(M_Dtype dtype);
 
 } // namespace core
 
-#endif // GENERICML_API_PYTHON_TYPES_H
+#endif // SDK_ENGINEAPI_PYTHON_TYPES_H

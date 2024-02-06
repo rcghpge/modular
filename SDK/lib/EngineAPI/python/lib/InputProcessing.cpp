@@ -4,10 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/API/python/InputProcessing.h"
+#include "SDK/EngineAPI/python/InputProcessing.h"
 #include "GenericML/API/modular/c/value.h"
 #include "GenericML/API/modular/cpp/aliases.h"
-#include "GenericML/API/python/Types.h"
+#include "SDK/EngineAPI/python/Types.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "llvm/ADT/StringRef.h"

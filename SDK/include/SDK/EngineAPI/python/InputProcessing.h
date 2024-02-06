@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_API_PYTHON_INPUTPROCESSING_H
-#define GENERICML_API_PYTHON_INPUTPROCESSING_H
+#ifndef SDK_ENGINEAPI_PYTHON_INPUTPROCESSING_H
+#define SDK_ENGINEAPI_PYTHON_INPUTPROCESSING_H
 
 #include "GenericML/API/modular/c/value.h"
 #include "GenericML/API/modular/cpp/aliases.h"
-#include "GenericML/API/python/TensorSpec.h"
+#include "SDK/EngineAPI/python/TensorSpec.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 
@@ -44,4 +44,4 @@ M_AsyncValue *processValueInput(const py::object &pyObj,
 
 } // namespace core
 
-#endif // GENERICML_API_PYTHON_INPUTPROCESSING_H
+#endif // SDK_ENGINEAPI_PYTHON_INPUTPROCESSING_H

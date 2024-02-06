@@ -39,6 +39,6 @@ build-llvm
 pip install \
   -e Support/python \
   -r KGEN/utils/requirements.txt \
-  -r GenericML/lib/API/python/packaging-requirements.txt
+  -r SDK/lib/EngineAPI/python/packaging-requirements.txt
 
 pip install pipx

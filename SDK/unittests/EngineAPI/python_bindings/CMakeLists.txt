@@ -9,7 +9,7 @@ include(RTTIExceptions)
 
 add_modular_unittest(
   TOP_LEVEL_CHECK
-  check-genericml
+  check-sdk
 
   SUITE_NAME
   InferenceSessionUnitTest
