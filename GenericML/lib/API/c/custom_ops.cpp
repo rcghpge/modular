@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "modular/c/custom_ops.h"
+#include "max/c/custom_ops.h"
 #include "GenericML/API/c/detail/types.h"
 
 #include "detail/helpers.h"

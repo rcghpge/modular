@@ -6,9 +6,9 @@
 
 #include "GenericML/EngineCLI/Visualize/Main.h"
 #include "Config/Version.h"
-#include "GenericML/API/modular/c/custom_ops.h"
-#include "GenericML/API/modular/c/internal/telemetry.h"
-#include "GenericML/API/modular/cpp/aliases.h"
+#include "GenericML/API/max/c/custom_ops.h"
+#include "GenericML/API/max/c/internal/telemetry.h"
+#include "GenericML/API/max/cpp/aliases.h"
 #include "GenericML/EngineCLI/Common/InputGenerationSchema.h"
 #include "GenericML/EngineCLI/Common/TorchSupport.h"
 #include "LLCL/Runtime/Runtime.h"

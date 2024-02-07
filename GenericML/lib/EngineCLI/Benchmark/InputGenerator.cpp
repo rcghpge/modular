@@ -11,7 +11,7 @@
 #include "GenericML/EngineCLI/Common/InputGenerationSchema.h"
 #include "GenericML/Support/Assert.h"
 #include "Support/MathExtras.h"
-#include "modular/cpp/aliases.h"
+#include "max/cpp/aliases.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include <type_traits>

@@ -7,8 +7,8 @@
 #ifndef MODULAR_C_CUSTOM_OPS_H
 #define MODULAR_C_CUSTOM_OPS_H
 
-#include "modular/c/symbol_export.h"
-#include "modular/c/types.h"
+#include "max/c/symbol_export.h"
+#include "max/c/types.h"
 
 /// Replaces Modular Kernels with user defined kernels.
 ///

@@ -8,7 +8,7 @@
 #define GENERICML_ENGINECLI_COMMON_APIBRIDGE_H
 
 #include "Support/ForwardDecls.h"
-#include "modular/cpp/aliases.h"
+#include "max/cpp/aliases.h"
 
 namespace M {
 class TensorSpec;

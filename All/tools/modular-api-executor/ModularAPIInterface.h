@@ -8,12 +8,12 @@
 #define ALL_TOOLS_MODULAR_API_EXECUTOR_MODULARAPIINTERFACE_H
 
 #include "Support/ErrorOr.h"
-#include "modular/c/common.h"
-#include "modular/c/custom_ops.h"
-#include "modular/c/onnx/config.h"
-#include "modular/c/pytorch/config.h"
-#include "modular/c/tensorflow/config.h"
-#include "modular/cpp/aliases.h"
+#include "max/c/common.h"
+#include "max/c/custom_ops.h"
+#include "max/c/onnx/config.h"
+#include "max/c/pytorch/config.h"
+#include "max/c/tensorflow/config.h"
+#include "max/cpp/aliases.h"
 
 namespace M {
 class ModularAPIInterface {

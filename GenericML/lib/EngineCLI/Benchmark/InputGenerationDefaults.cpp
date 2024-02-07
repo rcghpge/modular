@@ -8,8 +8,8 @@
 #include "GenericML/EngineCLI/Common/APIBridge.h"
 #include "GenericML/EngineCLI/Common/InputGenerationSchema.h"
 #include "GenericML/Support/Assert.h"
+#include "max/cpp/aliases.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
-#include "modular/cpp/aliases.h"
 
 using namespace M;
 using namespace M::EngineCLI;

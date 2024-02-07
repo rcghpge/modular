@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "modular/c/common.h"
+#include "max/c/common.h"
 #include "gtest/gtest.h"
 
 TEST(ModularEngineTest, DtypeSize) {

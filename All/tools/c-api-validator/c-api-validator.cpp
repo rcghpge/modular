@@ -4,11 +4,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/API/modular/c/common.h"
-#include "GenericML/API/modular/c/context.h"
-#include "GenericML/API/modular/c/model.h"
-#include "GenericML/API/modular/c/tensor.h"
-#include "GenericML/API/modular/cpp/aliases.h"
+#include "GenericML/API/max/c/common.h"
+#include "GenericML/API/max/c/context.h"
+#include "GenericML/API/max/c/model.h"
+#include "GenericML/API/max/c/tensor.h"
+#include "GenericML/API/max/cpp/aliases.h"
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "Support/CommonCLOptions.h"
 #include "Support/Configuration.h"
@@ -16,7 +16,7 @@
 #include "Support/ErrorOr.h"
 #include "Support/ML/TensorShape.h"
 #include "Support/Process.h"
-#include "TensorFlow/API/modular/c/tensorflow/config.h"
+#include "TensorFlow/API/max/c/tensorflow/config.h"
 
 #include "llvm/ADT/STLExtras.h"
 

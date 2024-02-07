@@ -8,10 +8,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "modular/c/value.h"
-#include "modular/c/common.h"
-#include "modular/c/tensor.h"
-#include "modular/cpp/aliases.h"
+#include "max/c/value.h"
+#include "max/c/common.h"
+#include "max/c/tensor.h"
+#include "max/cpp/aliases.h"
 #include "gtest/gtest.h"
 
 using namespace M;

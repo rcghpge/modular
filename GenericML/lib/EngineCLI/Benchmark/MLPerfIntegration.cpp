@@ -8,8 +8,8 @@
 #include "GenericML/EngineCLI/Benchmark/InputGenerator.h"
 #include "GenericML/EngineCLI/Benchmark/Main.h"
 #include "GenericML/Support/Assert.h"
+#include "max/cpp/aliases.h"
 #include "mlperf-loadgen/loadgen.h"
-#include "modular/cpp/aliases.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace M;

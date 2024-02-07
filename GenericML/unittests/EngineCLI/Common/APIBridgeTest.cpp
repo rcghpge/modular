@@ -6,8 +6,8 @@
 
 #include "GenericML/EngineCLI/Common/APIBridge.h"
 #include "Support/ML/TensorSpec.h"
+#include "max/cpp/aliases.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
-#include "modular/cpp/aliases.h"
 #include "gtest/gtest.h"
 
 using namespace M;

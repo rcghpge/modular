@@ -8,9 +8,9 @@
 #define GENERICML_ENGINECLI_BENCHMARK_MLPERF_INTEGRATION_H
 
 #include "Support/ForwardDecls.h"
+#include "max/c/types.h"
 #include "mlperf-loadgen/query_sample_library.h"
 #include "mlperf-loadgen/system_under_test.h"
-#include "modular/c/types.h"
 #include <atomic>
 
 namespace M::BenchmarkCLI {

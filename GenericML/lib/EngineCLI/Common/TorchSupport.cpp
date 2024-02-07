@@ -7,9 +7,9 @@
 #include "GenericML/EngineCLI/Common/TorchSupport.h"
 #include "GenericML/EngineCLI/Common/APIBridge.h"
 #include "GenericML/EngineCLI/Common/InputGenerationSchema.h"
-#include "PyTorch/API/modular/c/pytorch/config.h"
+#include "PyTorch/API/max/c/pytorch/config.h"
 #include "Support/ErrorOr.h"
-#include "modular/cpp/aliases.h"
+#include "max/cpp/aliases.h"
 #include "llvm/ADT/Twine.h"
 
 using namespace M;

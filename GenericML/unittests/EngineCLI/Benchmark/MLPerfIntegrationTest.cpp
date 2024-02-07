@@ -6,7 +6,7 @@
 
 #include "GenericML/EngineCLI/Benchmark/MLPerfIntegration.h"
 #include "GenericML/EngineCLI/Benchmark/InputGenerator.h"
-#include "modular/cpp/aliases.h"
+#include "max/cpp/aliases.h"
 #include "gtest/gtest.h"
 
 using namespace M;

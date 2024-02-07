@@ -10,7 +10,7 @@
 #include "Support/ForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/ML/DType.h"
-#include "modular/c/types.h"
+#include "max/c/types.h"
 #include "llvm/ADT/Twine.h"
 #include <memory>
 

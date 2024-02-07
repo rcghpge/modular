@@ -8,7 +8,7 @@
 #define GENERICML_ENGINECLI_COMMON_TORCHSUPPORT_H
 
 #include "Support/ForwardDecls.h"
-#include "modular/c/types.h"
+#include "max/c/types.h"
 
 namespace M::EngineCLI {
 

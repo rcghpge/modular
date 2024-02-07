@@ -7,8 +7,8 @@
 #ifndef SDK_ENGINEAPI_PYTHON_RESULTPROCESSING_H
 #define SDK_ENGINEAPI_PYTHON_RESULTPROCESSING_H
 
-#include "GenericML/API/modular/c/value.h"
-#include "GenericML/API/modular/cpp/aliases.h"
+#include "GenericML/API/max/c/value.h"
+#include "GenericML/API/max/cpp/aliases.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include <vector>

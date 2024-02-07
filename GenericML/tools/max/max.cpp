@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Config/Version.h"
-#include "GenericML/API/modular/c/common.h"
+#include "GenericML/API/max/c/common.h"
 #include "GenericML/EngineCLI/Benchmark/Main.h"
 #include "GenericML/EngineCLI/Visualize/Main.h"
 #include "Support/CrashReporting.h"

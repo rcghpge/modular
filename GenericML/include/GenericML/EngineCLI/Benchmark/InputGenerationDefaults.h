@@ -7,7 +7,7 @@
 #ifndef GENERICML_ENGINECLI_BENCHMARK_INPUT_GENERATION_DEFAULTS_H
 #define GENERICML_ENGINECLI_BENCHMARK_INPUT_GENERATION_DEFAULTS_H
 
-#include "modular/c/types.h"
+#include "max/c/types.h"
 
 namespace M::EngineCLI {
 struct InputGenerationSchema;
