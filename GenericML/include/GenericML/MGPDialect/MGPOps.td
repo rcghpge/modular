@@ -254,6 +254,7 @@ def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
 def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface>,
+    DeclareOpInterfaceMethods<MGP_DynamicAllocOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>]> {
   let summary = [{
     Allocates an uninitialized buffer on the CPU with size taken from index
