@@ -104,7 +104,8 @@ maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
     pm.addPass(
         MO::createConstantFoldPass(opts.compiledFrameworkLabel.hasValue()
                                        ? opts.compiledFrameworkLabel.getValue()
-                                       : ""));
+                                       : "",
+                                   opts));
   ShapeInferenceOptions shapeInferenceOpts;
   shapeInferenceOpts.isExperimentalMode = opts.useExperimentalShapeInference;
   shapeInferenceOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
@@ -162,7 +163,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     compiledFrameworkLabel = opts.compiledFrameworkLabel;
 
   if (opts.constantFold)
-    pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel));
+    pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
 
   MO::AddDevicesPassOptions addDevicesOpts;
   addDevicesOpts.enableExtraDevices = opts.enableExtraDevices;
@@ -196,7 +197,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCSEPass());
 
   if (opts.constantFold)
-    pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel));
+    pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
 
   pm.addPass(MO::createHoistParameterExpressions());
   pm.addPass(MO::createMOToMOGG({opts.kernelLibraryPaths}));
