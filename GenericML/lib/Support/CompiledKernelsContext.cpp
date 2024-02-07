@@ -84,8 +84,13 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
       if (ref.getValue().isType<GML::Tensor>()) {
         auto &runtimeTensor = ref.getValue().get<GML::Tensor>();
         const TensorShape &shape = runtimeTensor.getShape();
-        ssize_t *dims =
-            dimsMemory.emplace_back(shape.begin(), shape.end()).data();
+        ssize_t *dims;
+        // If the Tensor is a scalar, need to upscale to 1D to mojo
+        // can reason about it
+        if (shape.getRank() == 0)
+          dims = dimsMemory.emplace_back(1, 1).data();
+        else
+          dims = dimsMemory.emplace_back(shape.begin(), shape.end()).data();
         void *data = const_cast<void *>(runtimeTensor.getBuffer());
         abiTensors.emplace_back(dims, data);
       } else {
