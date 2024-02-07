@@ -65,9 +65,7 @@ TEST(APIBridge, tensorSpecToCAPIBasic) {
   EXPECT_EQ(int64_t{3}, M_getDimAt(cSpec.get(), 2));
 }
 
-// Disabled because there is currently no documented way to create an
-// M_TensorSpec containing undefined dimensions through the C API (#26301)
-TEST(APIBridge, DISABLED_tensorSpecToCAPIUndefinedDims) {
+TEST(APIBridge, tensorSpecToCAPIUndefinedDims) {
   // According to TensorSpec docs, any negative value represents an undefined
   // dimension.
   TensorSpec spec({-1, 2, -3}, DType::f32);
@@ -76,13 +74,20 @@ TEST(APIBridge, DISABLED_tensorSpecToCAPIUndefinedDims) {
   EXPECT_EQ(M_FLOAT32, M_getDtype(cSpec.get()));
   EXPECT_EQ(int64_t{3}, M_getRank(cSpec.get()));
   // However, the C API has a more restrictive requirement that all undefined
-  // dimensions are specifically -1.
-  EXPECT_EQ(int64_t{-1}, M_getDimAt(cSpec.get(), 0));
+  // dimensions are specifically M_getDynamicDimensionValue().
+  const int64_t dyn = M_getDynamicDimensionValue();
+  EXPECT_EQ(dyn, M_getDimAt(cSpec.get(), 0));
   EXPECT_EQ(int64_t{2}, M_getDimAt(cSpec.get(), 1));
-  EXPECT_EQ(int64_t{-1}, M_getDimAt(cSpec.get(), 2));
+  EXPECT_EQ(dyn, M_getDimAt(cSpec.get(), 2));
 }
 
-// TODO: Test undefined rank once C API supports that (#26162)
+TEST(APIBridge, tensorSpecToCAPIUndefinedRank) {
+  TensorSpec spec(kDynamicallyRanked, DType::f32);
+  TensorSpecPtr cSpec = tensorSpecToCAPI("example", spec);
+  ASSERT_NE(cSpec, nullptr);
+  EXPECT_EQ(M_FLOAT32, M_getDtype(cSpec.get()));
+  EXPECT_EQ(M_getDynamicRankValue(), M_getRank(cSpec.get()));
+}
 
 TEST(APIBridge, capiToTensorSpecBasic) {
   const int64_t cShape[]{1, 2, 3};
@@ -93,11 +98,19 @@ TEST(APIBridge, capiToTensorSpecBasic) {
 }
 
 TEST(APIBridge, capiToTensorSpecUndefinedDims) {
-  const int64_t cShape[]{-1, 2, -1};
+  const int64_t dyn = M_getDynamicDimensionValue();
+  const int64_t cShape[]{dyn, 2, dyn};
   TensorSpecPtr cSpec(M_newTensorSpec(cShape, 3, M_FLOAT32, "example"),
                       M_freeTensorSpec);
   EXPECT_EQ(TensorSpec({kDynamic, int64_t{2}, kDynamic}, DType::f32),
             capiToTensorSpec(cSpec.get()));
 }
 
-// TODO: Test undefined rank once C API supports that (#26162)
+TEST(APIBridge, capiToTensorSpecUndefinedRank) {
+  TensorSpecPtr cSpec(
+      M_newTensorSpec(nullptr, M_getDynamicRankValue(), M_FLOAT32, "example"),
+      M_freeTensorSpec);
+  ASSERT_NE(nullptr, cSpec);
+  EXPECT_EQ(TensorSpec(kDynamicallyRanked, DType::f32),
+            capiToTensorSpec(cSpec.get()));
+}

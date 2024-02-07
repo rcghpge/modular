@@ -47,6 +47,7 @@ struct InputGenerationInput {
   std::optional<std::string> inputName;
   std::optional<int> inputIndex;
   std::optional<TensorSpec> shape;
+  std::optional<TensorSpec> compileShape;
   // TODO(akirchhoff): Batching specification
   std::optional<InputGenerationData> data;
 };

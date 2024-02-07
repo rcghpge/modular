@@ -22,10 +22,12 @@ M::EngineCLI::setTorchInputSpecs(M_CompileConfig *config,
   std::vector<TensorSpecPtr> specOwners;
   std::vector<M_TensorSpec *> specPointers;
   for (const auto &input : *schema.inputs) {
-    if (!input.inputName || !input.shape)
+    if (!input.inputName || (!input.shape && !input.compileShape))
       continue;
+    TensorSpec compileShape =
+        input.compileShape ? *input.compileShape : *input.shape;
     TensorSpecPtr capiSpec =
-        tensorSpecToCAPI(input.inputName->c_str(), *input.shape);
+        tensorSpecToCAPI(input.inputName->c_str(), compileShape);
     if (!capiSpec)
       return Error(Twine("M_newTensorSpec failed for input ") +
                    *input.inputName + " (out of memory?)");

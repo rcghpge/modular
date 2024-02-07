@@ -76,23 +76,28 @@ DType M::EngineCLI::capiToDType(M_Dtype dty) {
 
 TensorSpecPtr M::EngineCLI::tensorSpecToCAPI(const char *name,
                                              const TensorSpec &spec) {
-  // TODO: There is no way to represent dynamically-ranked tensors (#26162) or
-  // static-rank tensors with dynamic dimensions (#26301).  The C API only
-  // documents a way to create specs for fully-static shapes.
-  GENERICML_ASSERT(spec.isStatic())
-      << "C API cannot represent non-static shapes";
-
-  // Copy is required because TensorShape stores ssize_t, but API takes
-  // int64_t, and these are not necessarily the same.
-  SmallVector<int64_t, 8> shapeCopy;
-  std::copy(spec.begin(), spec.end(), std::back_inserter(shapeCopy));
-  return TensorSpecPtr(M_newTensorSpec(shapeCopy.data(), spec.getRank(),
+  int64_t translatedRank;
+  SmallVector<int64_t, kMaxRank> translatedShape;
+  if (spec.hasRank()) {
+    translatedRank = spec.getRank();
+    for (ssize_t dim : spec) {
+      if (dim < 0)
+        translatedShape.push_back(M_getDynamicDimensionValue());
+      else
+        translatedShape.push_back(dim);
+    }
+  } else {
+    translatedRank = M_getDynamicRankValue();
+  }
+  return TensorSpecPtr(M_newTensorSpec(translatedShape.data(), translatedRank,
                                        dtypeToCAPI(spec.getEltType()), name),
                        M_freeTensorSpec);
 }
 
 TensorSpec M::EngineCLI::capiToTensorSpec(const M_TensorSpec *spec) {
-  SmallVector<int64_t, 8> shape;
+  if (M_isDynamicRanked(spec))
+    return TensorSpec(kDynamicallyRanked, capiToDType(M_getDtype(spec)));
+  SmallVector<int64_t, kMaxRank> shape;
   int64_t rank = M_getRank(spec);
   assert(rank >= 0 && "dynamic ranked specs are not supported");
   for (size_t axis = 0, e = (size_t)rank; axis < e; ++axis) {

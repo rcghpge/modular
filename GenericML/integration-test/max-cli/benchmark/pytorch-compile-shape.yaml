@@ -1,0 +1,15 @@
+##===----------------------------------------------------------------------===##
+#
+# This file is Modular Inc proprietary.
+#
+##===----------------------------------------------------------------------===##
+
+# RUN: max benchmark --input-data-schema=%s %S/../Inputs/relu3x100x100.torchscript | FileCheck %s
+# CHECK: Compiling model... OK (took {{.+}})
+# CHECK: Benchmarking
+# CHECK: Result is : VALID
+# CHECK: Benchmark finished
+
+inputs:
+- input_name: x
+  compile_shape: ?x100x100x3xf32

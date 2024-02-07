@@ -40,6 +40,7 @@ void llvm::yaml::MappingTraits<InputGenerationInput>::mapping(
   io.mapOptional("input_name", input.inputName);
   io.mapOptional("input_index", input.inputIndex);
   io.mapOptional("shape", input.shape);
+  io.mapOptional("compile_shape", input.compileShape);
   // TODO(akirchhoff): Batching specification
   io.mapOptional("data", input.data);
 }
