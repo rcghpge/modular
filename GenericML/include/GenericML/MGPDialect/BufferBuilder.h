@@ -229,14 +229,6 @@ public:
                                   Value inChain, uint64_t size,
                                   uint64_t alignment) = 0;
 
-  /// Returns the Value representing the buffer of size matching the given
-  /// tensor spec and alignment. The alignment may be ignored for some devices.
-  virtual Value bufferAllocSpec(OpBuilder &builder, Location loc,
-                                TypedValue<MGP::ContextType> context,
-                                Value inChain,
-                                TypedValue<MGP::TensorSpecType> tensorSpec,
-                                uint64_t alignment) = 0;
-
   /// Returns the Value representing the buffer of size matching a dynamic
   /// value. The alignment may be ignored for some devices.
   virtual Value bufferAllocDynamic(OpBuilder &builder, Location loc,
@@ -405,11 +397,6 @@ public:
   Value bufferAllocStatic(OpBuilder &builder, Location loc,
                           TypedValue<MGP::ContextType> context, Value inChain,
                           uint64_t size, uint64_t alignment) override;
-
-  Value bufferAllocSpec(OpBuilder &builder, Location loc,
-                        TypedValue<MGP::ContextType> context, Value inChain,
-                        TypedValue<MGP::TensorSpecType> tensorSpec,
-                        uint64_t alignment) override;
 
   Value bufferAllocDynamic(OpBuilder &builder, Location loc, Type bufType,
                            TypedValue<MGP::ContextType> context, Value inChain,

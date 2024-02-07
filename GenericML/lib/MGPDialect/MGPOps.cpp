@@ -724,29 +724,6 @@ LogicalResult CpuBufferAllocDynamicOp::inferReturnTypes(
 void CpuBufferAllocDynamicOp::setInChain(Value chain) { setOperand(0, chain); }
 
 //===----------------------------------------------------------------------===//
-// CpuBufferAllocSpecOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult CpuBufferAllocSpecOp::verify() {
-  return verifyAnyAllocOp(
-      getContext(), [this]() { return emitOpError(); },
-      /*optSize=*/{}, /*rawAlign=*/getRawAlign(),
-      /*optRuntimeSizeType=*/{},
-      /*optRuntimeSpecType=*/getRuntimeSpec().getType(), getResult().getType());
-}
-
-LogicalResult CpuBufferAllocSpecOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  inferredReturnTypes.emplace_back(
-      CpuBufferType::get(context, std::optional<uint64_t>()));
-  return success();
-}
-
-void CpuBufferAllocSpecOp::setInChain(Value chain) { setOperand(0, chain); }
-
-//===----------------------------------------------------------------------===//
 // CpuBufferReallocStaticOp
 //===----------------------------------------------------------------------===//
 
@@ -798,29 +775,6 @@ LogicalResult CpuBufferReallocDynamicOp::inferReturnTypes(
 void CpuBufferReallocDynamicOp::setInChain(Value chain) {
   setOperand(0, chain);
 }
-
-//===----------------------------------------------------------------------===//
-// CpuBufferReallocSpecOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult CpuBufferReallocSpecOp::verify() {
-  return verifyAnyAllocOp(
-      getContext(), [this]() { return emitOpError(); },
-      /*optSize=*/{}, /*rawAlign=*/getCRawAlign(),
-      /*optRuntimeSizeType=*/{},
-      /*optRuntimeSpecType=*/getRuntimeSpec().getType(), getResult().getType());
-}
-
-LogicalResult CpuBufferReallocSpecOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  inferredReturnTypes.emplace_back(
-      CpuBufferType::get(context, std::optional<uint64_t>()));
-  return success();
-}
-
-void CpuBufferReallocSpecOp::setInChain(Value chain) { setOperand(0, chain); }
 
 //===----------------------------------------------------------------------===//
 // CpuBufferSetWithIndex

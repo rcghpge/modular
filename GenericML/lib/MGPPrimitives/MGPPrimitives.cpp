@@ -162,16 +162,6 @@ static void mgp_cpu_buffer_alloc_dynamic(Chain inChain, size_t runtimeSize,
       runtime, runtimeSize, getRuntimeAlign(*rawAlign)));
 }
 
-static void mgp_cpu_buffer_alloc_spec(Chain inChain, const TensorSpec &spec,
-                                      Result<GML::BufferRef> result,
-                                      MEFAttr<uint64_t> rawAlign,
-                                      Runtime &runtime) {
-  if (!isValidRawAlign(*rawAlign))
-    return std::move(result).setToError("invalid align attribute");
-  std::move(result).emplace(GML::BufferRef::createOwned(
-      runtime, spec.getSizeInBytes(), getRuntimeAlign(*rawAlign)));
-}
-
 //===----------------------------------------------------------------------===//
 // mgp.cpu.buffer.realloc.*
 //===----------------------------------------------------------------------===//
@@ -1250,8 +1240,6 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
                 mgp_cpu_buffer_alloc_static);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.alloc.dynamic",
                 mgp_cpu_buffer_alloc_dynamic);
-  ADD_PRIMITIVE(registry, "mgp.cpu.buffer.alloc.spec",
-                mgp_cpu_buffer_alloc_spec);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.realloc.static",
                 mgp_cpu_buffer_realloc_static);
   ADD_PRIMITIVE(registry, "mgp.cpu.buffer.realloc.dynamic",

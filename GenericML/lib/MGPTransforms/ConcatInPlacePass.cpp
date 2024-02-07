@@ -102,20 +102,6 @@ class ConcatInPlacePass
                          dyn_cast<MGP::CpuBufferReallocDynamicOp>(
                              inBuffer.getDefiningOp())) {
             runtimeSizes.emplace_back(reallocDynamicOp.getRuntimeSize());
-          } else if (auto allocSpecOp = dyn_cast<MGP::CpuBufferAllocSpecOp>(
-                         inBuffer.getDefiningOp())) {
-            execState.builder.setInsertionPointAfter(allocSpecOp);
-            runtimeSizes.emplace_back(
-                execState.builder.create<MGP::CpuTensorSpecSizeOp>(
-                    concatOp->getLoc(),
-                    /*spec=*/allocSpecOp.getRuntimeSpec()));
-          } else if (auto reallocSpecOp = dyn_cast<MGP::CpuBufferReallocSpecOp>(
-                         inBuffer.getDefiningOp())) {
-            execState.builder.setInsertionPointAfter(reallocSpecOp);
-            runtimeSizes.emplace_back(
-                execState.builder.create<MGP::CpuTensorSpecSizeOp>(
-                    concatOp->getLoc(),
-                    /*spec=*/reallocSpecOp.getRuntimeSpec()));
           } else {
             GENERICML_ASSERT(false) << "unexpected buffer allocation op "
                                     << *inBuffer.getDefiningOp();

@@ -183,14 +183,10 @@ def CpuBufferGetCachedOp : MGP_Op<"cpu.buffer.get_cached", [
 //    mgp.cpu.buffer.alloc.static    %ch,            64
 //  CpuBufferAllocDynamicOp: Alloc with dynamic size
 //    mgp.cpu.buffer.alloc.dynamic   %ch,            %size
-//  CpuBufferAllocSpecOp: Alloc with dynamic tensor spec
-//    mgp.cpu.buffer.alloc.spec      %ch,            %spec
 //  CpuBufferReallocStaticOp: Re-alloc with statically known size
 //    mgp.cpu.buffer.realloc.static  %ch, %ctx[5,1], 64
 //  CpuBufferReallocDynamicOp: Re-alloc with dynamic size
 //    mgp.cpu.buffer.realloc.dynamic %ch, %ctx[5,1], %size
-//  CpuBufferReallocSpecOp: Re-alloc with dynamic tensor spec
-//    mgp.cpu.buffer.realloc.spec    %ch, %ctx[5,1], %spec
 //
 //===----------------------------------------------------------------------===//
 
@@ -288,52 +284,6 @@ def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
   let results = (outs MGP_CpuBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,` $runtimeSize (`,` `align` $rawAlign^)? attr-dict
-  }];
-  let hasVerifier = 1;
-}
-
-//===----------------------------------------------------------------------===//
-// CpuBufferAllocSpecOp
-//===----------------------------------------------------------------------===//
-
-def CpuBufferAllocSpecOp : MGP_Op<"cpu.buffer.alloc.spec", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface>,
-    DeclareOpInterfaceMethods<MGP_SpecAllocOpInterface>,
-    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>]> {
-  let summary = [{
-    Allocates an uninitialized buffer on the CPU with size taken from tensor
-    spec operand.
-  }];
-  let description = [{
-    One of a family of 6 buffer allocation primitives.
-
-    Allocates an uninitialized buffer on the CPU whose byte array is of the
-    byte size of the given tensor spec operand. An optional static alignment
-    constraint may also be given.
-
-    See `cpu.buffer.alloc.static` for additional details.
-
-    Example:
-    ```mlir
-    %ch : !mef.chain
-    %spec : !mgp.tensor_spec<?x64xf32>
-
-    %buf = mgp.cpu.buffer.alloc.spec %ch, %spec, align 8 : !mgp.tensor_spec<?x64xf32>
-    %buf : !mgp.cpu.buffer  // aligned to 8 bytes
-
-    %buf = mgp.cpu.buffer.alloc.spec %ch, %spec : !mgp.tensor_spec<?x64xf32>
-    %buf : !mgp.cpu.buffer  // no specific alignment
-    ```
-  }];
-
-  let arguments = (ins ChainType:$inChain,
-                   MGP_TensorSpecType:$runtimeSpec,
-                   DefaultValuedAttr<UI64Attr, "kUnknownSize">:$rawAlign);
-  let results = (outs MGP_CpuBufferType:$outBuffer);
-  let assemblyFormat = [{
-    $inChain `,` $runtimeSpec (`,` `align` $rawAlign^)? attr-dict
-    `:` qualified(type($runtimeSpec))
   }];
   let hasVerifier = 1;
 }
@@ -483,60 +433,6 @@ def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic", [
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aSlot `,` $bBuffer `]` `,` $runtimeSize
     (`,` `align` $cRawAlign^)? attr-dict
-  }];
-  let hasVerifier = 1;
-}
-
-//===----------------------------------------------------------------------===//
-// CpuBufferReallocSpecOp
-//===----------------------------------------------------------------------===//
-
-def CpuBufferReallocSpecOp : MGP_Op<"cpu.buffer.realloc.spec", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>]> {
-  let summary = [{
-    (Re)allocates a cached CPU buffer on the CPU with size taken from operand.
-  }];
-  let description = [{
-    One of a family of 6 buffer allocation primitives.
-
-    This operation has access to a buffer cache entry in the context given
-    by the slot and buffer indexes.
-
-    If a buffer of matching size already exists in the cache then it is
-    returned directly. Otherwise a new buffer is allocated and the cache is
-    updated, deleting any previously cached buffer. The size is given by
-    an operand. An optional static alignment constraint may also be given.
-
-    See `cpu.buffer.realloc.static` for additional details and restrictions.
-
-    Example:
-    ```mlir
-    %ctx : !mgp.context
-    %spec : !mgp.tensor_spec<?x64xf32>
-    %ch : !mef.chain
-
-    // Reallocate the buffer in slot index 42 and buffer index 2.
-    %buf = mgp.cpu.buffer.realloc.spec %ch, %ctx[42, 2], %spec, align 8 : !mgp.tensor_spec<?x64xf32>
-    %buf : !mgp.cpu.buffer      // 8 bytes aligned
-
-    %buf = mgp.cpu.buffer.realloc.spec %ch, %ctx[42, 2] : %spec !mgp.tensor_spec<?x64xf32>
-    %buf : !mgp.cpu.buffer<64>  // no specific alignment
-    ```
-  }];
-
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
-  let arguments = (ins ChainType:$inChain,
-                   MGP_ContextType:$theContext,
-                   MGP_TensorSpecType:$runtimeSpec,
-                   UI64Attr:$aSlot,                                         // 0
-                   UI64Attr:$bBuffer,                                       // 1
-                   DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign); // 3
-  let results = (outs MGP_CpuBufferType:$outBuffer);
-  let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aSlot `,` $bBuffer `]` `,` $runtimeSpec
-    (`,` `align` $cRawAlign^)? attr-dict `:` qualified(type($runtimeSpec))
   }];
   let hasVerifier = 1;
 }

@@ -80,16 +80,6 @@ Value CpuBufferBuilder::bufferAllocStatic(OpBuilder &builder, Location loc,
                                                 /*bRawAlign=*/alignment);
 }
 
-Value CpuBufferBuilder::bufferAllocSpec(
-    OpBuilder &builder, Location loc, TypedValue<MGP::ContextType> context,
-    Value inChain, TypedValue<MGP::TensorSpecType> tensorSpec,
-    uint64_t alignment) {
-  return builder.create<CpuBufferAllocSpecOp>(loc,
-                                              /*inChain=*/inChain,
-                                              /*runtimeSpec=*/tensorSpec,
-                                              /*rawAlign=*/alignment);
-}
-
 Value CpuBufferBuilder::bufferAllocDynamic(OpBuilder &builder, Location loc,
                                            Type bufType,
                                            TypedValue<MGP::ContextType> context,
