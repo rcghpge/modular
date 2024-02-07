@@ -595,8 +595,8 @@ def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure]> {
   }];
 
   let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape]>:$input,
-    TypedAttrInterface:$shape,
-    TypedAttrInterface:$strides
+    OptionalAttr<TypedAttrInterface>:$shape,
+    OptionalAttr<TypedAttrInterface>:$strides
   );
   let results = (outs AnyType:$results);
 }
