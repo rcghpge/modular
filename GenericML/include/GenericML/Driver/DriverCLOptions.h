@@ -117,7 +117,7 @@ public:
 
   SmallVector<InputDataSpec> inputData{};
 
-  size_t minimumCpuAlignment{kPreferredMemoryAlignment};
+  size_t minimumCpuAlignment{64};
 
   /// This tells the execution driver how to print output tensors;
   GML::ResultOutputStyle resultOutputStyle{GML::ResultOutputStyle::kCompact};
