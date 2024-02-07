@@ -628,20 +628,21 @@ static void mgp_tensor_extract_buffer_cpu(Context &theContext,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.tensor.extract.shape.cpu
+// mgp.tensor.extract.tensor_spec.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_tensor_extract_shape_cpu(Context &theContext,
-                                         AsyncValueRef<Tensor> tensor,
-                                         Result<TensorSpec> outShape,
-                                         MEFAttr<uint64_t> aRuntimeSlot,
-                                         MEFAttr<uint64_t> bDeviceId,
-                                         Runtime &runtime) {
+static void mgp_tensor_extract_tensor_spec_cpu(
+    Context &theContext, AsyncValueRef<Tensor> tensor,
+    Result<TensorSpec> outSpec, MEFAttr<uint64_t> aRuntimeSlot,
+    MEFAttr<uint64_t> bDeviceId, MEFAttr<bool> cIsShapeOnly, Runtime &runtime) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
       static_cast<size_t>(*aRuntimeSlot));
   if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*bDeviceId))
-    return std::move(outShape).setToError("mismatched device id");
-  std::move(outShape).emplace(tensor->getSpec().getDimsCopy(), DType());
+    return std::move(outSpec).setToError("mismatched device id");
+  if (*cIsShapeOnly)
+    std::move(outSpec).emplace(tensor->getSpec().getDimsCopy(), DType());
+  else
+    std::move(outSpec).emplace(tensor->getSpec());
 }
 
 //===----------------------------------------------------------------------===//
@@ -904,8 +905,8 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.tensor.create.cpu", mgp_tensor_create_cpu);
   ADD_PRIMITIVE(registry, "mgp.tensor.extract.buffer.cpu",
                 mgp_tensor_extract_buffer_cpu);
-  ADD_PRIMITIVE(registry, "mgp.tensor.extract.shape.cpu",
-                mgp_tensor_extract_shape_cpu);
+  ADD_PRIMITIVE(registry, "mgp.tensor.extract.tensor_spec.cpu",
+                mgp_tensor_extract_tensor_spec_cpu);
   ADD_PRIMITIVE(registry, "mgp.debug.tensor.print.cpu",
                 mgp_debug_tensor_print_cpu);
   ADD_PRIMITIVE(registry, "mgp.kernel.execute.generic.cpu",

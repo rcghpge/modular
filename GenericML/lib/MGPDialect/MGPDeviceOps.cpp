@@ -104,6 +104,16 @@ LogicalResult ModuleLoadOp::verify() {
 // ChainCreateOp
 //===----------------------------------------------------------------------===//
 
+void ChainCreateOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                          TypedValue<ContextType> theContext,
+                          ValueRange gatingOperands, uint64_t aOtherRuntimeSlot,
+                          DeviceRefAttr bHostDevice,
+                          DeviceRefAttr cOtherDevice) {
+  build(odsBuilder, odsState,
+        DeviceChainType::get(odsBuilder.getContext(), cOtherDevice), theContext,
+        gatingOperands, aOtherRuntimeSlot, bHostDevice, cOtherDevice);
+}
+
 LogicalResult ChainCreateOp::verify() {
   return verifyConsistentDevices(getOperation(),
                                  {getBHostDevice(), getCOtherDevice()});
@@ -125,12 +135,66 @@ LogicalResult ChainDeviceToHostOp::verify() {
   return verifyConsistentDevices(getOperation(), {getBDevice()});
 }
 
+LogicalResult
+ChainDeviceToHostOp::canonicalize(ChainDeviceToHostOp deviceToHostOp,
+                                  PatternRewriter &rewriter) {
+  // Replace device_to_host(host_to_device(x)) with x.
+  Operation *input = deviceToHostOp.getInChain().getDefiningOp();
+  if (!input)
+    return failure();
+  auto hostToDeviceOp = dyn_cast<ChainHostToDeviceOp>(input);
+  if (!hostToDeviceOp)
+    return failure();
+  // devices must match
+  if (hostToDeviceOp.getBDevice() != deviceToHostOp.getBDevice())
+    return failure();
+  // Can only replace from if this is the only user.
+  auto users = hostToDeviceOp->getUsers();
+  if (std::distance(users.begin(), users.end()) != 1)
+    return failure();
+  rewriter.replaceOp(deviceToHostOp, hostToDeviceOp.getInChain());
+  rewriter.eraseOp(hostToDeviceOp);
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ChainHostToDeviceOp
 //===----------------------------------------------------------------------===//
 
+void ChainHostToDeviceOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                                TypedValue<MEF::ChainType> inChain,
+                                TypedValue<ContextType> theContext,
+                                uint64_t aRuntimeSlot,
+                                M::DeviceRefAttr bDevice) {
+  return build(odsBuilder, odsState,
+               DeviceChainType::get(odsBuilder.getContext(), bDevice), inChain,
+               theContext, aRuntimeSlot, bDevice);
+}
+
 LogicalResult ChainHostToDeviceOp::verify() {
   return verifyConsistentDevices(getOperation(), {getBDevice()});
+}
+
+LogicalResult
+ChainHostToDeviceOp::canonicalize(ChainHostToDeviceOp hostToDeviceOp,
+                                  PatternRewriter &rewriter) {
+  // Replace host_to_device(device_to_host(x)) with x.
+  Operation *input = hostToDeviceOp.getInChain().getDefiningOp();
+  if (!input)
+    return failure();
+  auto deviceToHostOp = dyn_cast<ChainDeviceToHostOp>(input);
+  if (!deviceToHostOp)
+    return failure();
+  // devices must match
+  if (deviceToHostOp.getBDevice() != hostToDeviceOp.getBDevice())
+    return failure();
+  // Can only replace from if this is the only user.
+  auto users = deviceToHostOp->getUsers();
+  if (std::distance(users.begin(), users.end()) != 1)
+    return failure();
+  rewriter.replaceOp(hostToDeviceOp, deviceToHostOp.getInChain());
+  rewriter.eraseOp(deviceToHostOp);
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -140,8 +204,11 @@ LogicalResult ChainHostToDeviceOp::verify() {
 void BufferConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                              Value theContext, uint64_t aRuntimeSlot,
                              ElementsAttr bValue, DeviceRefAttr dDevice) {
-  return build(odsBuilder, odsState, theContext, aRuntimeSlot, bValue,
-               getRawAlign(bValue), dDevice);
+  return build(odsBuilder, odsState,
+               DeviceBufferType::get(
+                   dDevice, std::optional<uint64_t>(static_cast<uint64_t>(
+                                bValue.getNumElements()))),
+               theContext, aRuntimeSlot, bValue, getRawAlign(bValue), dDevice);
 }
 
 /// Verifies the attribute and result types are consistent, and the attribute
@@ -222,12 +289,24 @@ std::optional<uint64_t> BufferConstantOp::getOptAlign() {
 // BufferConstantLoadOp
 //===----------------------------------------------------------------------===//
 
+void BufferConstantLoadOp::build(OpBuilder &odsBuilder,
+                                 OperationState &odsState, Value theContext,
+                                 uint64_t aRuntimeSlot, uint64_t bModuleIndex,
+                                 uint64_t cConstantIndex, uint64_t dSize,
+                                 DeviceRefAttr eDevice) {
+  return build(odsBuilder, odsState,
+               DeviceBufferType::get(eDevice, std::optional<uint64_t>(dSize)),
+               theContext, aRuntimeSlot, bModuleIndex, cConstantIndex, dSize,
+               eDevice);
+}
+
 LogicalResult BufferConstantLoadOp::verify() {
   if (!isValidPlainSize(getDSize()))
     return emitOpError("invalid static size ") << getDSize() << ".";
   if (!getOutBuffer().getType().getOptSize())
     return emitOpError("expected output buffer to be statically sized.");
-  auto expectedBufferType = DeviceBufferType::get(getEDevice(), getDSize());
+  auto expectedBufferType =
+      DeviceBufferType::get(getEDevice(), std::optional<uint64_t>(getDSize()));
   if (expectedBufferType != getOutBuffer().getType()) {
     return emitOpError("expected result buffer type does not match actual "
                        "result buffer type (")
@@ -239,6 +318,18 @@ LogicalResult BufferConstantLoadOp::verify() {
 //===----------------------------------------------------------------------===//
 // BufferAllocStaticOp
 //===----------------------------------------------------------------------===//
+
+void BufferAllocStaticOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                                TypedValue<DeviceChainType> inChain,
+                                TypedValue<ContextType> theContext,
+                                uint64_t aRuntimeSlot, uint64_t bSize,
+                                std::optional<uint64_t> cAlign,
+                                M::DeviceRefAttr dDevice) {
+  return build(odsBuilder, odsState,
+               DeviceBufferType::get(dDevice, std::optional<uint64_t>(bSize)),
+               inChain, theContext, aRuntimeSlot, bSize,
+               optSizeToRawSize(cAlign), dDevice);
+}
 
 LogicalResult BufferAllocStaticOp::verify() {
   if (!isValidPlainSize(getBSize()))
@@ -267,6 +358,17 @@ uint64_t BufferAllocStaticOp::getSize() { return getBSize(); }
 // BufferAllocDynamicOp
 //===----------------------------------------------------------------------===//
 
+void BufferAllocDynamicOp::build(
+    OpBuilder &odsBuilder, OperationState &odsState,
+    TypedValue<DeviceChainType> inChain, TypedValue<ContextType> theContext,
+    TypedValue<IndexType> runtimeSize, uint64_t aRuntimeSlot,
+    std::optional<uint64_t> bAlign, M::DeviceRefAttr cDevice) {
+  return build(odsBuilder, odsState,
+               DeviceBufferType::get(cDevice, std::optional<uint64_t>()),
+               inChain, theContext, runtimeSize, aRuntimeSlot,
+               optSizeToRawSize(bAlign), cDevice);
+}
+
 LogicalResult BufferAllocDynamicOp::verify() {
   auto expectedBufferType =
       DeviceBufferType::get(getCDevice(), std::optional<uint64_t>());
@@ -287,6 +389,17 @@ void BufferAllocDynamicOp::setInChain(Value chain) {
 //===----------------------------------------------------------------------===//
 // BufferReallocStaticOp
 //===----------------------------------------------------------------------===//
+
+void BufferReallocStaticOp::build(
+    OpBuilder &odsBuilder, OperationState &odsState,
+    TypedValue<DeviceChainType> inChain, TypedValue<ContextType> theContext,
+    uint64_t aRuntimeSlot, uint64_t bBufferSlot, uint64_t cBufferIndex,
+    uint64_t dSize, std::optional<uint64_t> eAlign, M::DeviceRefAttr fDevice) {
+  return build(odsBuilder, odsState,
+               DeviceBufferType::get(fDevice, std::optional<uint64_t>(dSize)),
+               inChain, theContext, aRuntimeSlot, bBufferSlot, cBufferIndex,
+               dSize, optSizeToRawSize(eAlign), fDevice);
+}
 
 LogicalResult BufferReallocStaticOp::verify() {
   if (!isValidPlainSize(getDSize()))
@@ -310,6 +423,18 @@ void BufferReallocStaticOp::setInChain(Value chain) {
 //===----------------------------------------------------------------------===//
 // BufferReallocDynamicOp
 //===----------------------------------------------------------------------===//
+
+void BufferReallocDynamicOp::build(
+    OpBuilder &odsBuilder, OperationState &odsState,
+    TypedValue<DeviceChainType> inChain, TypedValue<ContextType> theContext,
+    TypedValue<IndexType> runtimeSize, uint64_t aRuntimeSlot,
+    uint64_t bBufferSlot, uint64_t cBufferIndex, std::optional<uint64_t> dAlign,
+    M::DeviceRefAttr eDevice) {
+  return build(odsBuilder, odsState,
+               DeviceBufferType::get(eDevice, std::optional<uint64_t>()),
+               inChain, theContext, runtimeSize, aRuntimeSlot, bBufferSlot,
+               cBufferIndex, optSizeToRawSize(dAlign), eDevice);
+}
 
 LogicalResult BufferReallocDynamicOp::verify() {
   auto expectedBufferType =
@@ -340,6 +465,19 @@ LogicalResult BufferCacheOp::verify() {
 // BufferGetCachedOp
 //===----------------------------------------------------------------------===//
 
+void BufferGetCachedOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                              TypedValue<MEF::ChainType> inChain,
+                              TypedValue<ContextType> theContext,
+                              uint64_t aRuntimeSlot, uint64_t bBufferSlot,
+                              std::optional<uint64_t> cOptSize,
+                              M::DeviceRefAttr dDevice) {
+  return build(
+      odsBuilder, odsState,
+      DeviceBufferType::get(odsBuilder.getContext(), dDevice, cOptSize),
+      inChain, theContext, aRuntimeSlot, bBufferSlot,
+      optSizeToRawSize(cOptSize), dDevice);
+}
+
 LogicalResult BufferGetCachedOp::verify() {
   std::optional<uint64_t> optSize = rawSizeToOptSize(getCRawSize());
   auto expectedBufferType = DeviceBufferType::get(getDDevice(), optSize);
@@ -353,6 +491,19 @@ LogicalResult BufferGetCachedOp::verify() {
 //===----------------------------------------------------------------------===//
 // BufferHostToDeviceOp
 //===----------------------------------------------------------------------===//
+
+void BufferHostToDeviceOp::build(
+    OpBuilder &odsBuilder, OperationState &odsState,
+    TypedValue<DeviceChainType> inChain, TypedValue<ContextType> theContext,
+    TypedValue<DeviceBufferType> hostBuffer,
+    TypedValue<DeviceBufferType> otherBuffer, uint64_t aHostRuntimeSlot,
+    uint64_t bOtherRuntimeSlot, M::DeviceRefAttr cHostDevice,
+    M::DeviceRefAttr dOtherDevice) {
+  return build(odsBuilder, odsState,
+               DeviceChainType::get(odsBuilder.getContext(), dOtherDevice),
+               inChain, theContext, hostBuffer, otherBuffer, aHostRuntimeSlot,
+               bOtherRuntimeSlot, cHostDevice, dOtherDevice);
+}
 
 LogicalResult BufferHostToDeviceOp::verify() {
   if (getHostBuffer().getType().getDevice() != getCHostDevice())
@@ -381,6 +532,19 @@ BufferHostToDeviceOp::getInOutSemantics(size_t index) {
 // BufferDeviceToHostOp
 //===----------------------------------------------------------------------===//
 
+void BufferDeviceToHostOp::build(
+    OpBuilder &odsBuilder, OperationState &odsState,
+    TypedValue<DeviceChainType> inChain, TypedValue<ContextType> theContext,
+    TypedValue<DeviceBufferType> otherBuffer,
+    TypedValue<DeviceBufferType> hostBuffer, uint64_t aOtherRuntimeSlot,
+    uint64_t bHostRuntimeSlot, M::DeviceRefAttr cOtherDevice,
+    M::DeviceRefAttr dHostDevice) {
+  return build(odsBuilder, odsState,
+               DeviceChainType::get(odsBuilder.getContext(), dHostDevice),
+               inChain, theContext, otherBuffer, hostBuffer, aOtherRuntimeSlot,
+               bHostRuntimeSlot, cOtherDevice, dHostDevice);
+}
+
 LogicalResult BufferDeviceToHostOp::verify() {
   if (getHostBuffer().getType().getDevice() != getDHostDevice())
     return emitOpError("expected host buffer to be on 'host' device ")
@@ -407,6 +571,19 @@ BufferDeviceToHostOp::getInOutSemantics(size_t index) {
 //===----------------------------------------------------------------------===//
 // BufferDeviceToDeviceOp
 //===----------------------------------------------------------------------===//
+
+void BufferDeviceToDeviceOp::build(OpBuilder &odsBuilder,
+                                   OperationState &odsState,
+                                   TypedValue<DeviceChainType> inChain,
+                                   TypedValue<ContextType> theContext,
+                                   TypedValue<DeviceBufferType> srcBuffer,
+                                   TypedValue<DeviceBufferType> dstBuffer,
+                                   uint64_t aRuntimeSlot,
+                                   M::DeviceRefAttr bDevice) {
+  return build(odsBuilder, odsState,
+               DeviceChainType::get(odsBuilder.getContext(), bDevice), inChain,
+               theContext, srcBuffer, dstBuffer, aRuntimeSlot, bDevice);
+}
 
 LogicalResult BufferDeviceToDeviceOp::verify() {
   if (getSrcBuffer().getType().getRawSize() !=
@@ -460,6 +637,26 @@ LogicalResult BufferUnsizeOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 // BufferSplitBorrowOp
 //===----------------------------------------------------------------------===//
+
+void BufferSplitBorrowOp::build(
+    OpBuilder &odsBuilder, OperationState &odsState,
+    TypedValue<DeviceChainType> inChain, TypedValue<ContextType> theContext,
+    TypedValue<DeviceBufferType> inBuffer,
+    ArrayRef<TypedValue<IndexType>> runtimeSizes, uint64_t aRuntimeSlot,
+    llvm::ArrayRef<std::optional<uint64_t>> bOutBufferOptSizes,
+    M::DeviceRefAttr cDevice) {
+  SmallVector<Type> resultBufferTypes;
+  SmallVector<uint64_t> outBufferRawSizes;
+  for (auto optSize : bOutBufferOptSizes) {
+    resultBufferTypes.emplace_back(DeviceBufferType::get(cDevice, optSize));
+    outBufferRawSizes.emplace_back(optSizeToRawSize(optSize));
+  }
+  SmallVector<Value> runtimeSizesAnyValue;
+  llvm::append_range(runtimeSizesAnyValue, runtimeSizes);
+  return build(odsBuilder, odsState, resultBufferTypes, inChain, theContext,
+               inBuffer, runtimeSizesAnyValue, aRuntimeSlot, outBufferRawSizes,
+               cDevice);
+}
 
 LogicalResult BufferSplitBorrowOp::verify() {
   size_t numDynamic = llvm::count_if(getOutBuffers(), [](const Value &v) {
@@ -577,9 +774,10 @@ LogicalResult BufferSectionBorrowDynamicOp::inferReturnTypes(
   mlir::OperationName name(getOperationName(), context);
   auto device = dyn_cast_if_present<DeviceRefAttr>(
       attributes.get(getDDeviceAttrName(name)));
-  if (!device)
+  if (!device) {
     return mlir::emitError(location.value_or(operands[0].getLoc()),
                            "expected a device attribute");
+  }
   inferredReturnTypes.emplace_back(
       DeviceBufferType::get(context, device, std::optional<uint64_t>()));
   return success();
@@ -589,11 +787,26 @@ LogicalResult BufferSectionBorrowDynamicOp::inferReturnTypes(
 // TensorCreateOp
 //===----------------------------------------------------------------------===//
 
+void TensorCreateOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                           TypedValue<DeviceChainType> inChain,
+                           TypedValue<ContextType> theContext,
+                           TypedValue<DeviceBufferType> buffer,
+                           TypedValue<TensorSpecType> tensorSpec,
+                           uint64_t aRuntimeSlot, DeviceRefAttr bDevice) {
+  build(odsBuilder, odsState,
+        DeviceTensorType::get(bDevice, tensorSpec.getType()), inChain,
+        theContext, buffer, tensorSpec, aRuntimeSlot, bDevice);
+}
+
 LogicalResult TensorCreateOp::verify() {
-  if (getTensorSpec().getType() != getOutTensor().getType().getTensorSpec())
-    return emitOpError("expected spec to match result tensor spec")
-           << " (" << getTensorSpec().getType() << " vs "
-           << getOutTensor().getType().getTensorSpec() << ").";
+  auto expectedOutTensorType =
+      DeviceTensorType::get(getBDevice(), getTensorSpec().getType());
+  if (expectedOutTensorType != getOutTensor().getType()) {
+    return emitOpError("expected output tensor type does not match "
+                       "actual output tensor type (")
+           << expectedOutTensorType << " vs " << getOutTensor().getType()
+           << ").";
+  }
   DeviceBufferType expectedBufferType =
       DeviceBufferType::get(getOutTensor().getType());
   if (getBuffer().getType() != expectedBufferType) {
@@ -608,6 +821,16 @@ LogicalResult TensorCreateOp::verify() {
 // TensorExtractBufferOp
 //===----------------------------------------------------------------------===//
 
+void TensorExtractBufferOp::build(OpBuilder &odsBuilder,
+                                  OperationState &odsState,
+                                  TypedValue<ContextType> theContext,
+                                  TypedValue<DeviceTensorType> tensor,
+                                  uint64_t aRuntimeSlot,
+                                  DeviceRefAttr bDevice) {
+  build(odsBuilder, odsState, DeviceBufferType::get(tensor.getType()),
+        theContext, tensor, aRuntimeSlot, bDevice);
+}
+
 LogicalResult TensorExtractBufferOp::verify() {
   DeviceBufferType expectedBufferType =
       DeviceBufferType::get(getTensor().getType());
@@ -620,17 +843,34 @@ LogicalResult TensorExtractBufferOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// TensorExtractShapeOp
+// TensorExtractTensorSpecOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult TensorExtractShapeOp::verify() {
+void TensorExtractTensorSpecOp::build(
+    OpBuilder &odsBuilder, OperationState &odsState,
+    TypedValue<ContextType> theContext, TypedValue<DeviceTensorType> tensor,
+    uint64_t aRuntimeSlot, DeviceRefAttr bDevice, bool cIsShapeOnly) {
+  build(odsBuilder, odsState,
+        TensorSpecType::get(
+            odsBuilder.getContext(),
+            /*optDims=*/tensor.getType().getTensorSpec().getDims(),
+            /*optDType=*/
+            cIsShapeOnly ? std::optional<DType>()
+                         : tensor.getType().getTensorSpec().getOptDType()),
+        theContext, tensor, aRuntimeSlot, bDevice);
+}
+
+LogicalResult TensorExtractTensorSpecOp::verify() {
   TensorSpecType expectedSpecType = TensorSpecType::get(
-      getContext(), getTensor().getType().getTensorSpec().getOptDims(),
-      std::optional<DType>());
-  if (expectedSpecType != getOutShape().getType()) {
+      getContext(),
+      /*optDims=*/getTensor().getType().getTensorSpec().getOptDims(),
+      /*optDType=*/
+      getCIsShapeOnly() ? std::optional<DType>()
+                        : getTensor().getType().getTensorSpec().getOptDType());
+  if (expectedSpecType != getOutSpec().getType()) {
     return emitOpError("expected the result tensor spec to match the type "
                        "implied by the tensor type (")
-           << getOutShape().getType() << " vs " << expectedSpecType << ").";
+           << getOutSpec().getType() << " vs " << expectedSpecType << ").";
   }
   return verifyConsistentDevices(getOperation(), {getBDevice()});
 }

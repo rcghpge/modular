@@ -1,4 +1,4 @@
-// RUN: mgp-opt %s | mgp-opt | FileCheck %s
+// RUN: mgp-opt --allow-unregistered-dialect --canonicalize %s | mgp-opt --allow-unregistered-dialect | FileCheck %s
 
 //
 // mgp.runtime.create
@@ -60,6 +60,25 @@ func.func @chain_host_to_device(%ctx : !mgp.context, %ch0 : !mef.chain) {
   // CHECK: %{{.*}} = mgp.chain.host_to_device %{{.*}}, %{{.*}}[1], <"cuda", 3>
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1], <"cuda", 3>
   mef.output %ch1 : !mgp.chain<<"cuda", 3>>
+}
+
+// CHECK-LABEL:@chain_canonicalization_1
+func.func @chain_canonicalization_1(%ctx : !mgp.context, %ch0 : !mef.chain) {
+  %ch1 = mgp.chain.host_to_device %ch0, %ctx[1], <"cuda", 3>
+  %ch2 = mgp.chain.device_to_host %ch1, %ctx[1], <"cuda", 3>
+  // CHECK-NEXT: mef.output
+  mef.output %ch2 : !mef.chain
+}
+
+// CHECK-LABEL:@chain_canonicalization_2
+func.func @chain_canonicalization_2(%ctx : !mgp.context, %ch0 : !mef.chain) {
+  // CHECK-NEXT: %[[CH1:.*]] = mgp.chain.host_to_device %{{.*}}, %{{.*}}[1], <"cuda", 3>
+  %ch1 = mgp.chain.host_to_device %ch0, %ctx[1], <"cuda", 3>
+  %ch2 = mgp.chain.device_to_host %ch1, %ctx[1], <"cuda", 3>
+  %ch3 = mgp.chain.host_to_device %ch2, %ctx[1], <"cuda", 3>
+  // CHECK-NEXT: "some.op"(%[[CH1]], %[[CH1]])
+  "some.op"(%ch1, %ch3) : (!mgp.chain<<"cuda", 3>>, !mgp.chain<<"cuda", 3>>) -> ()
+  mef.output %ch0 : !mef.chain
 }
 
 //
@@ -278,13 +297,20 @@ func.func @tensor_extract_buffer(%ctx : !mgp.context, %tensor : !mgp.tensor<<"cu
 }
 
 //
-// cuda.tensor.extract.shape
+// cuda.tensor.extract.tensor_spec
 //
+
+// CHECK-LABEL: @tensor_extract_tensor_spec
+func.func @tensor_extract_tensor_spec(%ctx : !mgp.context, %tensor : !mgp.tensor<<"cuda", 3>, 3x?xf32>) {
+  // CHECK: %{{.*}} = mgp.tensor.extract.tensor_spec %{{.*}}[1], %{{.*}} : !mgp.tensor<<"cuda", 3>, 3x?xf32>
+  %shape = mgp.tensor.extract.tensor_spec %ctx[1], %tensor : !mgp.tensor<<"cuda", 3>, 3x?xf32>
+  mef.output %shape : !mgp.tensor_spec<3x?xf32>
+}
 
 // CHECK-LABEL: @tensor_extract_shape
 func.func @tensor_extract_shape(%ctx : !mgp.context, %tensor : !mgp.tensor<<"cuda", 3>, 3x?xf32>) {
-  // CHECK: %{{.*}} = mgp.tensor.extract.shape %{{.*}}[1], %{{.*}} : !mgp.tensor<<"cuda", 3>, 3x?xf32>
-  %shape = mgp.tensor.extract.shape %ctx[1], %tensor : !mgp.tensor<<"cuda", 3>, 3x?xf32>
+  // CHECK: %{{.*}} = mgp.tensor.extract.tensor_spec %{{.*}}[1], %{{.*}}, true : !mgp.tensor<<"cuda", 3>, 3x?xf32>
+  %shape = mgp.tensor.extract.tensor_spec %ctx[1], %tensor, true : !mgp.tensor<<"cuda", 3>, 3x?xf32>
   mef.output %shape : !mgp.tensor_spec<3x?xunk>
 }
 

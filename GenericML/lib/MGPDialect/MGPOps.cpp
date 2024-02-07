@@ -223,9 +223,9 @@ static void printBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
 
 /// Parses a !mgp.tensor type and extracts its device, buffer type, and
 /// tensor spec type, and assigns chain the type !mgp.chain<device>.
-/// If shapeOnly is true, the tensor spec will have 'unk' dtype.
+/// If isShapeOnly is true, the tensor spec will have 'unk' dtype.
 static ParseResult parseTensorTypeToDeviceBufferSpecImpl(
-    bool shapeOnly, OpAsmParser &p, Type &tensor, DeviceRefAttr &device,
+    bool isShapeOnly, OpAsmParser &p, Type &tensor, DeviceRefAttr &device,
     Type &buffer, Type &tensorSpec, ArrayRef<Type *> chains) {
   llvm::SMLoc loc;
   if (p.getCurrentLocation(&loc) || p.parseType(tensor))
@@ -234,30 +234,35 @@ static ParseResult parseTensorTypeToDeviceBufferSpecImpl(
   if (tensorType == nullptr)
     return p.emitError(loc) << "expected an !mgp.tensor type.";
   device = tensorType.getDevice();
-  if (shapeOnly)
+  if (isShapeOnly) {
     tensorSpec = TensorSpecType::get(p.getContext(),
                                      tensorType.getTensorSpec().getDims(),
                                      std::optional<DType>());
-  else
+  } else {
     tensorSpec = tensorType.getTensorSpec();
+  }
   buffer = DeviceBufferType::get(tensorType);
   for (Type *chain : chains)
     *chain = DeviceChainType::get(p.getContext(), device);
   return success();
 }
 
-static ParseResult parseTensorTypeToDeviceShape(OpAsmParser &p, Type &tensor,
-                                                DeviceRefAttr &device,
-                                                Type &shape) {
+static ParseResult parseTensorTypeToDeviceSpecOrShape(OpAsmParser &p,
+                                                      BoolAttr isShapeOnly,
+                                                      Type &tensor,
+                                                      DeviceRefAttr &device,
+                                                      Type &shape) {
   Type buffer;
-  return parseTensorTypeToDeviceBufferSpecImpl(/*shapeOnly=*/true, p, tensor,
-                                               device, buffer, shape, {});
+  return parseTensorTypeToDeviceBufferSpecImpl(
+      isShapeOnly && isShapeOnly.getValue(), p, tensor, device, buffer, shape,
+      {});
 }
 
-static void printTensorTypeToDeviceShape(OpAsmPrinter &p, Operation *op,
-                                         DeviceTensorType tensor,
-                                         DeviceRefAttr device,
-                                         TensorSpecType shape) {
+static void printTensorTypeToDeviceSpecOrShape(OpAsmPrinter &p, Operation *op,
+                                               BoolAttr isShapeOnly,
+                                               DeviceTensorType tensor,
+                                               DeviceRefAttr device,
+                                               TensorSpecType shape) {
   p << tensor;
 }
 
@@ -265,7 +270,7 @@ static ParseResult parseTensorTypeToDeviceBuffer(OpAsmParser &p, Type &tensor,
                                                  DeviceRefAttr &device,
                                                  Type &buffer) {
   Type tensorSpec;
-  return parseTensorTypeToDeviceBufferSpecImpl(/*shapeOnly=*/false, p, tensor,
+  return parseTensorTypeToDeviceBufferSpecImpl(/*isShapeOnly=*/false, p, tensor,
                                                device, buffer, tensorSpec, {});
 }
 
@@ -280,7 +285,7 @@ static ParseResult parseTensorTypeToDeviceBufferSpec(OpAsmParser &p,
                                                      Type &buffer,
                                                      Type &tensorSpec) {
   Type tensor;
-  return parseTensorTypeToDeviceBufferSpecImpl(/*shapeOnly=*/false, p, tensor,
+  return parseTensorTypeToDeviceBufferSpecImpl(/*isShapeOnly=*/false, p, tensor,
                                                device, buffer, tensorSpec, {});
 }
 
@@ -297,7 +302,7 @@ parseTensorTypeToDeviceBufferSpec(OpAsmParser &p, Type &tensor,
                                   DeviceRefAttr &device, Type &buffer,
                                   Type &tensorSpec, Type &chain) {
   return parseTensorTypeToDeviceBufferSpecImpl(
-      /*shapeOnly=*/false, p, tensor, device, buffer, tensorSpec, {&chain});
+      /*isShapeOnly=*/false, p, tensor, device, buffer, tensorSpec, {&chain});
 }
 
 static void printTensorTypeToDeviceBufferSpec(OpAsmPrinter &p, Operation *op,

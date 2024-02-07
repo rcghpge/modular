@@ -100,6 +100,10 @@ def MGP_DeviceChainType : MGP_DeviceType<"DeviceChain", "chain", [
 
   let parameters = (ins M_DeviceRefAttr:$device);
   let assemblyFormat = "`<` custom<DeviceRef>($device) `>`";
+
+  let builders = [
+    TypeBuilderWithInferredContext<(ins "M::DeviceRefAttr":$device)>,
+  ];
 }
 
 //===----------------------------------------------------------------------===//

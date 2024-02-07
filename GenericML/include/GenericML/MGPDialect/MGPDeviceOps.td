@@ -76,8 +76,9 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 //   // Parses an !mgp.tensor type and extracts its device and buffer type.
 //   custom<TensorTypeToDeviceBuffer>(type($tensor), $device, type($buffer))
 //
-//   // Parses an !mgp.tensor type and extracts its device and tensor shape.
-//   custom<TensorTypeToDeviceShape>(type($tensor), $device, type($outSpec))
+//   // Parses an !mgp.tensor type and extracts its device and tensor spec or
+//   // shape.
+//   custom<TensorTypeToDeviceSpecOrShape>($isShapeOnly, type($tensor), $device, type($outSpec))
 //
 //   // Parses an !mgp.tensor type and extracts its device, buffer type, and
 //   // tensor spec type, and assigns $chain... the type !mgp.chain<$device>.
@@ -312,6 +313,14 @@ def ChainCreateOp : MGP_DeviceOp<"chain.create", [
   }];
   let hasVerifier = 1;
 
+  let builders = [
+    OpBuilder<(ins "mlir::TypedValue<M::MGP::ContextType>":$theContext,
+                   "mlir::ValueRange":$gatingOperands,
+                   "uint64_t":$aOtherRuntimeSlot,
+                   "M::DeviceRefAttr":$bHostDevice,
+                   "M::DeviceRefAttr":$cOtherDevice)>,
+  ];
+
   let extraClassDefinition = [{
     uint64_t ChainCreateOp::getSlot() { return getAOtherRuntimeSlot(); }
 
@@ -361,6 +370,7 @@ def ChainDeviceToHostOp : MGP_DeviceOp<"chain.device_to_host", [
     custom<DeviceRef>($bDevice, type($inChain)) attr-dict
   }];
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 
   let extraClassDefinition = [{
     uint64_t ChainDeviceToHostOp::getSlot() { return getARuntimeSlot(); }
@@ -409,6 +419,14 @@ def ChainHostToDeviceOp : MGP_DeviceOp<"chain.host_to_device", [
     custom<DeviceRef>($bDevice, type($outChain)) attr-dict
   }];
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
+
+  let builders = [
+    OpBuilder<(ins "mlir::TypedValue<M::MEF::ChainType>":$inChain,
+                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
+                   "uint64_t":$aRuntimeSlot,
+                   "M::DeviceRefAttr":$bDevice)>,
+  ];
 
   let extraClassDefinition = [{
     uint64_t ChainHostToDeviceOp::getSlot() { return getARuntimeSlot(); }
@@ -520,6 +538,15 @@ def BufferConstantLoadOp : MGP_DeviceOp<"buffer.constant.load", [
   }];
   let hasVerifier = 1;
 
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$theContext,
+                   "uint64_t":$aRuntimeSlot,
+                   "uint64_t":$bModuleIndex,
+                   "uint64_t":$cConstantIndex,
+                   "uint64_t":$dSize,
+                   "M::DeviceRefAttr":$eDevice)>
+  ];
+
   let extraClassDefinition = [{
     bool BufferConstantLoadOp::isTrivial() { return true; }
 
@@ -578,6 +605,15 @@ def BufferAllocStaticOp : MGP_DeviceOp<"buffer.alloc.static", [
   }];
   let hasVerifier = 1;
 
+  let builders = [
+    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
+                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
+                   "uint64_t":$aRuntimeSlot,
+                   "uint64_t":$bSize,
+                   "std::optional<uint64_t>":$cAlign,
+                   "M::DeviceRefAttr":$dDevice)>,
+  ];
+
   let extraClassDefinition = [{
     bool BufferAllocStaticOp::isTrivial() { return true; }
 
@@ -593,6 +629,8 @@ def BufferAllocStaticOp : MGP_DeviceOp<"buffer.alloc.static", [
 
 def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
+// TODO: Enable after #31038
+//  DeclareOpInterfaceMethods<MGP_DynamicAllocOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
 ]> {
   let summary = "Allocates a buffer with dynamically provided byte size on "
@@ -634,6 +672,15 @@ def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
           type($outBuffer), $cDevice, type($inChain))
   }];
   let hasVerifier = 1;
+
+  let builders = [
+    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
+                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
+                   "mlir::TypedValue<mlir::IndexType>":$runtimeSize,
+                   "uint64_t":$aRuntimeSlot,
+                   "std::optional<uint64_t>":$bAlign,
+                   "M::DeviceRefAttr":$cDevice)>,
+  ];
 
   let extraClassDefinition = [{
     uint64_t BufferAllocDynamicOp::getSlot() { return getARuntimeSlot(); }
@@ -720,6 +767,17 @@ def BufferReallocStaticOp : MGP_DeviceOp<"buffer.realloc.static", [
   }];
   let hasVerifier = 1;
 
+  let builders = [
+    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
+                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
+                   "uint64_t":$aRuntimeSlot,
+                   "uint64_t":$bBufferSlot,
+                   "uint64_t":$cBufferIndex,
+                   "uint64_t":$dSize,
+                   "std::optional<uint64_t>":$eAlign,
+                   "M::DeviceRefAttr":$fDevice)>,
+  ];
+
   let extraClassDefinition = [{
     uint64_t BufferReallocStaticOp::getSlot() { return getARuntimeSlot(); }
 
@@ -782,6 +840,17 @@ def BufferReallocDynamicOp : MGP_DeviceOp<"buffer.realloc.dynamic", [
           type($outBuffer), $eDevice, type($inChain))
   }];
   let hasVerifier = 1;
+
+  let builders = [
+    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
+                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
+                   "mlir::TypedValue<mlir::IndexType>":$runtimeSize,
+                   "uint64_t":$aRuntimeSlot,
+                   "uint64_t":$bBufferSlot,
+                   "uint64_t":$cBufferIndex,
+                   "std::optional<uint64_t>":$dAlign,
+                   "M::DeviceRefAttr":$eDevice)>,
+  ];
 
   let extraClassDefinition = [{
      uint64_t BufferReallocDynamicOp::getSlot() { return getARuntimeSlot(); }
@@ -891,6 +960,15 @@ def BufferGetCachedOp : MGP_DeviceOp<"buffer.get_cached", [
   }];
   let hasVerifier = 1;
 
+  let builders = [
+    OpBuilder<(ins "mlir::TypedValue<M::MEF::ChainType>":$inChain,
+                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
+                   "uint64_t":$aRuntimeSlot,
+                   "uint64_t":$bBufferSlot,
+                   "std::optional<uint64_t>":$cOptSize,
+                   "M::DeviceRefAttr":$dDevice)>,
+  ];
+
   let extraClassDefinition = [{
     uint64_t BufferGetCachedOp::getSlot() { return getARuntimeSlot(); }
 
@@ -945,6 +1023,17 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
           $cHostDevice, $dOtherDevice, type($inChain), type($outChain))
   }];
   let hasVerifier = 1;
+
+  let builders = [
+    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
+                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
+                   "mlir::TypedValue<M::MGP::DeviceBufferType>":$hostBuffer,
+                   "mlir::TypedValue<M::MGP::DeviceBufferType>":$otherBuffer,
+                   "uint64_t":$aHostRuntimeSlot,
+                   "uint64_t":$bOtherRuntimeSlot,
+                   "M::DeviceRefAttr":$cHostDevice,
+                   "M::DeviceRefAttr":$dOtherDevice)>,
+  ];
 
   let extraClassDefinition = [{
      uint64_t BufferHostToDeviceOp::getSlot() { return getBOtherRuntimeSlot(); }
@@ -1001,6 +1090,17 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
   }];
   let hasVerifier = 1;
 
+  let builders = [
+    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
+                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
+                   "mlir::TypedValue<M::MGP::DeviceBufferType>":$otherBuffer,
+                   "mlir::TypedValue<M::MGP::DeviceBufferType>":$hostBuffer,
+                   "uint64_t":$aOtherRuntimeSlot,
+                   "uint64_t":$bHostRuntimeSlot,
+                   "M::DeviceRefAttr":$cOtherDevice,
+                   "M::DeviceRefAttr":$dHostDevice)>,
+  ];
+
   let extraClassDefinition = [{
      uint64_t BufferDeviceToHostOp::getSlot() { return getBHostRuntimeSlot(); }
 
@@ -1050,6 +1150,15 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
           type($inChain), type($outChain))
   }];
   let hasVerifier = 1;
+
+  let builders = [
+    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
+                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
+                   "mlir::TypedValue<M::MGP::DeviceBufferType>":$srcBuffer,
+                   "mlir::TypedValue<M::MGP::DeviceBufferType>":$dstBuffer,
+                   "uint64_t":$aRuntimeSlot,
+                   "M::DeviceRefAttr":$bDevice)>,
+  ];
 
   let extraClassDefinition = [{
      uint64_t BufferDeviceToDeviceOp::getSlot() { return getARuntimeSlot(); }
@@ -1164,6 +1273,16 @@ def BufferSplitBorrowOp : MGP_DeviceOp<"buffer.split.borrow", [
             type($outBuffers), type($inChain))
   }];
   let hasVerifier = 1;
+
+  let builders = [
+    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
+                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
+                   "mlir::TypedValue<M::MGP::DeviceBufferType>":$inBuffer,
+                   "llvm::ArrayRef<mlir::TypedValue<mlir::IndexType>>":$runtimeSizes,
+                   "uint64_t":$aRuntimeSlot,
+                   "llvm::ArrayRef<std::optional<uint64_t>>":$bOutBufferOptSizes,
+                   "M::DeviceRefAttr":$cDevice)>,
+  ];
 
   let extraClassDefinition = [{
     bool BufferSplitBorrowOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
@@ -1356,6 +1475,15 @@ def TensorCreateOp : MGP_DeviceOp<"tensor.create", [
   }];
   let hasVerifier = 1;
 
+  let builders = [
+    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
+                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
+                   "mlir::TypedValue<M::MGP::DeviceBufferType>":$buffer,
+                   "mlir::TypedValue<M::MGP::TensorSpecType>":$tensorSpec,
+                   "uint64_t":$aRuntimeSlot,
+                   "M::DeviceRefAttr":$bDevice)>,
+  ];
+
   let extraClassDefinition = [{
     bool TensorCreateOp::mayAlias(size_t operandIndex, size_t resultIndex) {
       return operandIndex == getBufferMutable().getOperandNumber();
@@ -1402,6 +1530,13 @@ def TensorExtractBufferOp : MGP_DeviceOp<"tensor.extract.buffer", [
   }];
   let hasVerifier = 1;
 
+  let builders = [
+    OpBuilder<(ins "mlir::TypedValue<M::MGP::ContextType>":$theContext,
+                   "mlir::TypedValue<M::MGP::DeviceTensorType>":$tensor,
+                   "uint64_t":$aRuntimeSlot,
+                   "M::DeviceRefAttr":$bDevice)>,
+  ];
+
   let extraClassDefinition = [{
     bool TensorExtractBufferOp::mayAlias(size_t operandIndex, size_t resultIndex) {
       return operandIndex == getTensorMutable().getOperandNumber();
@@ -1414,41 +1549,53 @@ def TensorExtractBufferOp : MGP_DeviceOp<"tensor.extract.buffer", [
 }
 
 //===----------------------------------------------------------------------===//
-// TensorExtractShapeOp
+// TensorExtractTensorSpecOp
 //===----------------------------------------------------------------------===//
 
-def TensorExtractShapeOp : MGP_DeviceOp<"tensor.extract.shape", [
+def TensorExtractTensorSpecOp : MGP_DeviceOp<"tensor.extract.tensor_spec", [
     Pure,
 ]> {
   let summary = "Extracts the `!mgp.tensor_spec` from a `!mgp.tensor`.";
   let description = [{
-    Returns the `!mgp.tensor_spec` of a tensor, with the dtype represented as
-    `unknown`.
+    Returns the `!mgp.tensor_spec` of a tensor. If requested, the dtype
+    can be replaced with `unk` to represent the tensor's 'shape'.
 
     Example:
     ```mlir
     %ctx : !mgp.context
     %tensor : !mgp.tensor<<"cuda", 3>, 8x64xf32>
-    %shape = mgp.tensor.extract.shape %ctx[5], %tensor : !mgp.tensor<<"cuda", 3>, 8x64xf32>
-    %shape : !mgp.tensor_spec<8x64xunk>
+    %shape0 = mgp.tensor.extract.tensor_spec %ctx[5], %tensor : !mgp.tensor<<"cuda", 3>, 8x64xf32>
+    %shape0 : !mgp.tensor_spec<8x64xk32>
+    %shape1 = mgp.tensor.extract.tensor_spec %ctx[5], %tensor, true : !mgp.tensor<<"cuda", 3>, 8x64xf32>
+    %shape1 : !mgp.tensor_spec<8x64xunk>
     ```
   }];
 
   let arguments = (ins MGP_ContextType: $theContext,
                        MGP_DeviceTensorType: $tensor,
-                       UI64Attr: $aRuntimeSlot,    // 0
-                       M_DeviceRefAttr:$bDevice);  // 1
-  let results = (outs MGP_TensorSpecType:$outShape);
+                       UI64Attr: $aRuntimeSlot,                             // 0
+                       M_DeviceRefAttr:$bDevice,                            // 1
+                       DefaultValuedAttr<BoolAttr, "false">:$cIsShapeOnly); // 2
+  let results = (outs MGP_TensorSpecType:$outSpec);
   let assemblyFormat = [{
-    $theContext `[` $aRuntimeSlot `]` `,` $tensor attr-dict
-    `:` custom<TensorTypeToDeviceShape>(type($tensor), $bDevice, type($outShape))
+    $theContext `[` $aRuntimeSlot `]` `,` $tensor ( `,` $cIsShapeOnly^ )? attr-dict
+    `:` custom<TensorTypeToDeviceSpecOrShape>(
+          ref($cIsShapeOnly), type($tensor), $bDevice, type($outSpec))
   }];
   let hasVerifier = 1;
 
-  let extraClassDefinition = [{
-    uint64_t TensorExtractShapeOp::getSlot() { return getARuntimeSlot(); }
+  let builders = [
+    OpBuilder<(ins "mlir::TypedValue<M::MGP::ContextType>":$theContext,
+                   "mlir::TypedValue<M::MGP::DeviceTensorType>":$tensor,
+                   "uint64_t":$aRuntimeSlot,
+                   "M::DeviceRefAttr":$bDevice,
+                   "bool":$cIsShapeOnly)>,
+  ];
 
-    M::DeviceRefAttr TensorExtractShapeOp::getDevice() { return getBDevice(); }
+  let extraClassDefinition = [{
+    uint64_t TensorExtractTensorSpecOp::getSlot() { return getARuntimeSlot(); }
+
+    M::DeviceRefAttr TensorExtractTensorSpecOp::getDevice() { return getBDevice(); }
   }];
 }
 
@@ -1570,7 +1717,7 @@ def KernelExecuteGenericOp : MGP_DeviceOp<"kernel.execute.generic", [
     UI64Attr:$aHostRuntimeSlot,                          // 0
     UI64Attr:$bOtherRuntimeSlot,                         // 1
     UI64Attr:$cHostModuleIndex,                          // 2
-    UI64Attr:$dHostKernelIndex,                          // 3
+    UI64Attr:$dHostFunctionIndex,                        // 3
     M_InOutSignatureAttr:$eInOutSignature,               // 4
     M_DeviceRefAttr:$fHostDevice,                        // 5
     M_DeviceRefAttr:$gOtherDevice,                       // 6
@@ -1582,7 +1729,7 @@ def KernelExecuteGenericOp : MGP_DeviceOp<"kernel.execute.generic", [
   let assemblyFormat = [{
     $inChain `,`
     $theContext `[` $aHostRuntimeSlot `,` $bOtherRuntimeSlot `]` `,`
-    `(` $cHostModuleIndex `,` $dHostKernelIndex `)` `,`
+    `(` $cHostModuleIndex `,` $dHostFunctionIndex `)` `,`
     custom<InOutArgsSignature>($args, type($args), $eInOutSignature) `,`
     ( `(` $inDimensions^ `)` `,` )?
     `host` $fHostDevice

@@ -154,7 +154,7 @@ func.func @kernel_execute_generic_mismatched_arity(
   // expected-error@+1 {{'mgp.kernel.execute.generic' op kernel has 3 arguments, but the in/out signature attribute has arity 4.}}
   %ch1 = "mgp.kernel.execute.generic" (%ch0, %ctx, %buf0, %buf1, %buf2, %dim0, %dim1)
          { aHostRuntimeSlot = 0 : ui64, bOtherRuntimeSlot = 1 : ui64,
-           cHostModuleIndex = 7 : ui64, dHostKernelIndex = 9 : ui64,
+           cHostModuleIndex = 7 : ui64, dHostFunctionIndex = 9 : ui64,
            eInOutSignature = #M.inout_sig<"iioo">,
            fHostDevice = #M.device_ref<"cpu", 0>,
            gOtherDevice = #M.device_ref<"cuda", 3>,
