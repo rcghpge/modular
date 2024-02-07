@@ -35,9 +35,10 @@ namespace graph_compiler {
 
 template <typename UnnamedType>
 std::string stringifyMLIRObject(UnnamedType &&obj) {
+  mlir::OpPrintingFlags flg;
   std::string strRepr;
   llvm::raw_string_ostream stream(strRepr);
-  obj.print(stream);
+  obj.print(stream, flg.useLocalScope());
 
   return strRepr;
 }

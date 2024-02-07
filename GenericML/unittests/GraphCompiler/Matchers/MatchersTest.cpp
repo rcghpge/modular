@@ -178,8 +178,12 @@ TEST_F(MatchersTest, Logging) {
   graph_compiler::Logger log;
 
   pattern.match(D.getDefiningOp(), &log);
+
+  std::string logMsg;
+  llvm::raw_string_ostream ss(logMsg);
+  log.print(ss);
   ASSERT_EQ(
-      graph_compiler::stringifyMLIRObject(log),
+      logMsg,
       "Hit a Dead End at OpPattern mo.sub didn't match MLIR OpType! Rewinding "
       "Stack.\n %4 = \"mo.broadcast_to\"(%3, %1) {outputParamDecls = "
       "#kgen<param.decls[]>} : (!mo.tensor<[1, 2], f32>, !mo.tensor<[3], "
