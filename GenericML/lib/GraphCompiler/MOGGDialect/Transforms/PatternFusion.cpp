@@ -765,7 +765,8 @@ private:
 
 public:
   static ErrorOr<MultiHeadAttentionEpilogueMatcher>
-  match(BatchMatmulOp reprojection, bool allowUnsafeBCast) {
+  match(BatchMatmulOp reprojection, bool allowUnsafeBCast,
+        bool debugMHAPattern) {
     MultiHeadAttentionEpilogueMatcher matcher;
     auto pV = m_Any(&matcher.value);
 
@@ -781,7 +782,9 @@ public:
     auto pAnswer =
         m_Op<BatchMatmulOp>(&matcher.reprojectProducer, maybeBCast2, pV);
 
-    bool matches = pAnswer.match(reprojection, &matcher.patternMatcherLogger);
+    bool matches = pAnswer.match(reprojection,
+                                 debugMHAPattern ? &matcher.patternMatcherLogger
+                                                 : nullptr);
     if (!matches)
       return Error("[MultiHeadAttentionEpilogueMatcher]: " +
                    getPatternMatchingError(matcher.patternMatcherLogger));
@@ -876,7 +879,7 @@ private:
   }
 
   static ErrorOr<MultiHeadAttentionSelectMaskingMatcher>
-  match(Operation *producingOp, bool allowUnsafeBCast) {
+  match(Operation *producingOp, bool allowUnsafeBCast, bool debugMHAPattern) {
     MultiHeadAttentionSelectMaskingMatcher matcher;
 
     // Input to the pattern -- the "attentionMask"
@@ -895,8 +898,8 @@ private:
     // consider the case where attentionMask is in the "false branch"
     auto pAttentionMaskAsFalse =
         m_Op<SelectOp>(pConditional, pBCastScalar, pPatternMaybeBCast);
-    bool matchesNegBranch =
-        pAttentionMaskAsFalse.match(producingOp, &matcher.patternMatcherLogger);
+    bool matchesNegBranch = pAttentionMaskAsFalse.match(
+        producingOp, debugMHAPattern ? &matcher.patternMatcherLogger : nullptr);
     if (matchesNegBranch && !matcher.verifyScalarNegInf().isError() &&
         (allowUnsafeBCast || !matcher.optBCast1)) {
       matcher.attentionMatrixTrueBranch = false;
@@ -906,8 +909,8 @@ private:
     // case where attentionMask is in the "true branch"
     auto pAttentionMaskAsTrue =
         m_Op<SelectOp>(pConditional, pPatternMaybeBCast, pBCastScalar);
-    bool matchesPosBranch =
-        pAttentionMaskAsTrue.match(producingOp, &matcher.patternMatcherLogger);
+    bool matchesPosBranch = pAttentionMaskAsTrue.match(
+        producingOp, debugMHAPattern ? &matcher.patternMatcherLogger : nullptr);
     if (matchesPosBranch && !matcher.verifyScalarNegInf().isError() &&
         (allowUnsafeBCast || !matcher.optBCast1)) {
       matcher.attentionMatrixTrueBranch = true;
@@ -1002,7 +1005,7 @@ private:
   MultiHeadAttentionExplicitMaskingMatcher() = default;
 
   static ErrorOr<MultiHeadAttentionExplicitMaskingMatcher>
-  match(Operation *producingOp, bool allowUnsafeBCast) {
+  match(Operation *producingOp, bool allowUnsafeBCast, bool debugMHAPattern) {
     MultiHeadAttentionExplicitMaskingMatcher matcher;
 
     auto pPatternInput = m_Any(&matcher.patternInput);
@@ -1027,7 +1030,8 @@ private:
 
     // attempt to match the pattern
     bool matchesPattern = pMaskedNormalizedAttnMatrix.match(
-        producingOpResult, &matcher.patternMatcherLogger);
+        producingOpResult,
+        debugMHAPattern ? &matcher.patternMatcherLogger : nullptr);
     if (!matchesPattern)
       return Error("Attention Masking Component Does Not Match: " +
                    getPatternMatchingError(matcher.patternMatcherLogger));
@@ -1105,15 +1109,15 @@ private:
 
 public:
   static ErrorOr<MultiHeadAttentionMaskingMuxMatcher>
-  match(Operation *producingOp, bool allowUnsafeBCast) {
+  match(Operation *producingOp, bool allowUnsafeBCast, bool debugMHAPattern) {
     MultiHeadAttentionMaskingMuxMatcher matcher;
 
     // See if any masking patterns match
     Operation *curProducingOp = producingOp;
     matcher.causalMask = MultiHeadAttentionSelectMaskingMatcher::match(
-        curProducingOp, allowUnsafeBCast);
+        curProducingOp, allowUnsafeBCast, debugMHAPattern);
     matcher.explicitMask = MultiHeadAttentionExplicitMaskingMatcher::match(
-        curProducingOp, allowUnsafeBCast);
+        curProducingOp, allowUnsafeBCast, debugMHAPattern);
 
     GENERICML_ASSERT(matcher.causalMask.isError() ||
                      matcher.explicitMask.isError())
@@ -1134,13 +1138,15 @@ public:
     if (!matcher.causalMask.isError()) {
       matcher.patternInput = matcher.causalMask->getTopOfPattern();
       matcher.explicitMask = MultiHeadAttentionExplicitMaskingMatcher::match(
-          matcher.patternInput.getDefiningOp(), allowUnsafeBCast);
+          matcher.patternInput.getDefiningOp(), allowUnsafeBCast,
+          debugMHAPattern);
       if (!matcher.explicitMask.isError())
         matcher.patternInput = matcher.explicitMask->getTopOfPattern();
     } else { // explicit mask is filled
       matcher.patternInput = matcher.explicitMask->getTopOfPattern();
       matcher.causalMask = MultiHeadAttentionSelectMaskingMatcher::match(
-          matcher.patternInput.getDefiningOp(), allowUnsafeBCast);
+          matcher.patternInput.getDefiningOp(), allowUnsafeBCast,
+          debugMHAPattern);
       if (!matcher.causalMask.isError())
         matcher.patternInput = matcher.causalMask->getTopOfPattern();
     }
@@ -1350,7 +1356,7 @@ private:
 
 public:
   static ErrorOr<MultiHeadAttentionPrologueMatcher>
-  match(Operation *producingOp) {
+  match(Operation *producingOp, bool debugMHAPattern) {
     MultiHeadAttentionPrologueMatcher matcher;
     auto pQ = m_Any(&matcher.query);
     auto pKT = m_Any(&matcher.keyT);
@@ -1360,8 +1366,8 @@ public:
     auto pAttentionMatrix =
         m_Op<BatchMatmulOp>(&attentionMatrixProducer, pQ, pKT);
 
-    bool matches =
-        pAttentionMatrix.match(producingOp, &matcher.patternMatcherLogger);
+    bool matches = pAttentionMatrix.match(
+        producingOp, debugMHAPattern ? &matcher.patternMatcherLogger : nullptr);
     if (!matches) {
       return Error("[MultiHeadAttentionPrologueMatcher]: " +
                    getPatternMatchingError(matcher.patternMatcherLogger));
@@ -1456,8 +1462,10 @@ private:
   MultiHeadAttentionPatternHelper() = default;
 
 public:
-  static ErrorOr<MultiHeadAttentionPatternHelper>
-  match(BatchMatmulOp finalOp, OpBuilder &builder, bool allowUnsafeBCast) {
+  static ErrorOr<MultiHeadAttentionPatternHelper> match(BatchMatmulOp finalOp,
+                                                        OpBuilder &builder,
+                                                        bool allowUnsafeBCast,
+                                                        bool debugMHAPattern) {
     MultiHeadAttentionPatternHelper matcher;
     matcher.builder = &builder;
 
@@ -1520,8 +1528,8 @@ public:
     };
 
     // **Step 4: Match epilogue
-    matcher.epilogueMatcher =
-        MultiHeadAttentionEpilogueMatcher::match(finalOp, allowUnsafeBCast);
+    matcher.epilogueMatcher = MultiHeadAttentionEpilogueMatcher::match(
+        finalOp, allowUnsafeBCast, debugMHAPattern);
     if (matcher.epilogueMatcher.isError())
       return matcher.epilogueMatcher.takeError();
 
@@ -1532,7 +1540,7 @@ public:
 
     // **Step 3: Match masking
     matcher.maskingMatcher = MultiHeadAttentionMaskingMuxMatcher::match(
-        *maskPatternBottom, allowUnsafeBCast);
+        *maskPatternBottom, allowUnsafeBCast, debugMHAPattern);
     if (matcher.maskingMatcher.isError())
       return matcher.maskingMatcher.takeError();
 
@@ -1554,8 +1562,8 @@ public:
       return prologuePatternBottom.takeError();
 
     // **Step 1: Match the prologue
-    matcher.prologueMatcher =
-        MultiHeadAttentionPrologueMatcher::match(*prologuePatternBottom);
+    matcher.prologueMatcher = MultiHeadAttentionPrologueMatcher::match(
+        *prologuePatternBottom, debugMHAPattern);
     if (matcher.prologueMatcher.isError())
       return matcher.prologueMatcher.takeError();
 
@@ -1602,9 +1610,11 @@ public:
 
 // For MIN Llama 2 demo
 struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
-  bool allowUnsafeBCast;
-  MultiHeadAttentionPatternCPU(MLIRContext *ctx, bool allowUnsafeBCast)
-      : OpRewritePattern(ctx, 20), allowUnsafeBCast(allowUnsafeBCast) {}
+  bool allowUnsafeBCast, debugMHAPattern;
+  MultiHeadAttentionPatternCPU(MLIRContext *ctx, bool allowUnsafeBCast,
+                               bool debugMHAPattern)
+      : OpRewritePattern(ctx, 20), allowUnsafeBCast(allowUnsafeBCast),
+        debugMHAPattern(debugMHAPattern) {}
 
   LogicalResult matchAndRewrite(BatchMatmulOp op,
                                 PatternRewriter &rewriter) const override {
@@ -1618,7 +1628,8 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
       return rewriter.notifyMatchFailure(op->getLoc(), "Devices are wrong.");
 
     ErrorOr<MultiHeadAttentionPatternHelper> matcher =
-        MultiHeadAttentionPatternHelper::match(op, rewriter, allowUnsafeBCast);
+        MultiHeadAttentionPatternHelper::match(op, rewriter, allowUnsafeBCast,
+                                               debugMHAPattern);
     if (matcher.isError())
       return rewriter.notifyMatchFailure(op.getLoc(), matcher.getError());
 
@@ -1725,7 +1736,7 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
 
     if (enableMHAPattern.getValue()) {
       patterns.add<MultiHeadAttentionPatternCPU>(
-          ctx, mhaAllowUnsafeBCast.getValue());
+          ctx, mhaAllowUnsafeBCast.getValue(), debugMHAPattern.getValue());
     }
 
     MO::GraphOp graphOp = getOperation();
