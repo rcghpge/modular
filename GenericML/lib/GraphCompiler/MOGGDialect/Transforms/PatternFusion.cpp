@@ -813,12 +813,180 @@ public:
 };
 
 /// A helper for matching against attention masking for fused attention
-/// Supports causal and explicit masking as well as the case where masking is
-/// optional.
+/// Supports masking through select statements. This is usually done for
+/// implementing causal masking of the attentionMatrix.
+///
+/// %cond : ...
+/// %true : ...
+/// %false : ... all same shape
+/// %result = mo.select(%cond, %true, %false)
+///
+/// Where "cond" is usually a triangular matrix whose lower part and main
+/// diagonal are "false" and the upper part is "true". The %true branch
+/// is usually a scalar -inf broadcasted and %false is the attentionMatrix.
+///
+/// Essentially this sets the upper triangle of attentionMatrix to "-inf".
+/// Note, %cond and true/false can be switched because why not?
 ///
 /// Notes on masking:
 /// https://www.notion.so/modularai/Multi-Head-Attention-bbc2d300937a495da40c18b6a2028d22
-class MultiHeadAttentionMaskingMatcher {
+class MultiHeadAttentionSelectMaskingMatcher {
+  friend class MultiHeadAttentionMaskingMuxMatcher;
+
+  // Thresholds for what is considered "-inf" for different datatypes
+  // ~ -3.40282347E+38 seems popular, -1E+38 is chosen since its close to
+  // the smallest normal floating point number (as opposed to subnormal).
+  const double FLOAT32_NEGINF_THRESHOLD = -1E+38;
+
+private:
+  // May be optional
+  TensorValue patternInput;
+  TensorValue scalarMask;
+  TensorValue conditionalStatement;
+
+  // We assume scalarMasked is immediately broadcasted
+  Operation *scalarMaskBCast = nullptr;
+
+  // Whether the attention matrix masked is in the "true" or "false" branch
+  // of the config.
+  bool attentionMatrixTrueBranch;
+
+  // For unsafe broadcasts of the attentionMatrix branch
+  Operation *optBCast1 = nullptr;
+
+  graph_compiler::Logger patternMatcherLogger;
+
+  MultiHeadAttentionSelectMaskingMatcher() = default;
+
+  ErrorOrSuccess verifyScalarNegInf() {
+    // Returns whether the detected scalar is -inf or something close
+    // NOTE: in the future consider different thresholds for different DTypes
+    if (!scalarMask)
+      return Error("scalar mask is nullptr!");
+
+    auto maybeFloat = tryGetConstantOfRank<double>(scalarMask, 0);
+    if (!maybeFloat)
+      return Error("could not extract scalar float!");
+
+    double value = (*maybeFloat)[0];
+    if (value > FLOAT32_NEGINF_THRESHOLD)
+      return Error("scalar detected but not small enough");
+
+    return success();
+  }
+
+  static ErrorOr<MultiHeadAttentionSelectMaskingMatcher>
+  match(Operation *producingOp, bool allowUnsafeBCast) {
+    MultiHeadAttentionSelectMaskingMatcher matcher;
+
+    // Input to the pattern -- the "attentionMask"
+    auto pPatternInputBase = m_Any(&matcher.patternInput);
+    auto pPatternInputRank3 = m_Ranked(3, pPatternInputBase);
+    auto pPatternInputRank4 = m_Ranked(4, pPatternInputBase);
+    auto pPatternInput = m_Optional(pPatternInputRank3, pPatternInputRank4);
+    auto pPatternMaybeBCast =
+        pOptionalBroadcast(&matcher.optBCast1, pPatternInput);
+
+    // Scalar and conditional for select
+    auto pBCastScalar = m_Op<Static::BroadcastToOp>(
+        &matcher.scalarMaskBCast, m_Ranked(0, m_Any(&matcher.scalarMask)));
+    auto pConditional = m_Any(&matcher.conditionalStatement);
+
+    // consider the case where attentionMask is in the "false branch"
+    auto pAttentionMaskAsFalse =
+        m_Op<SelectOp>(pConditional, pBCastScalar, pPatternMaybeBCast);
+    bool matchesNegBranch =
+        pAttentionMaskAsFalse.match(producingOp, &matcher.patternMatcherLogger);
+    if (matchesNegBranch && !matcher.verifyScalarNegInf().isError() &&
+        (allowUnsafeBCast || !matcher.optBCast1)) {
+      matcher.attentionMatrixTrueBranch = false;
+      return matcher;
+    }
+
+    // case where attentionMask is in the "true branch"
+    auto pAttentionMaskAsTrue =
+        m_Op<SelectOp>(pConditional, pPatternMaybeBCast, pBCastScalar);
+    bool matchesPosBranch =
+        pAttentionMaskAsTrue.match(producingOp, &matcher.patternMatcherLogger);
+    if (matchesPosBranch && !matcher.verifyScalarNegInf().isError() &&
+        (allowUnsafeBCast || !matcher.optBCast1)) {
+      matcher.attentionMatrixTrueBranch = true;
+      return matcher;
+    }
+
+    return Error(
+        "[MultiHeadAttentionSelectMaskingMatcher] No matches detected!");
+  }
+
+public:
+  TensorValue getTopOfPattern() { return patternInput; }
+
+  TypedAttr getAttentionMaskShape() {
+    return conditionalStatement.getType().getShapeAttr();
+  }
+
+  TensorValue getAttentionMask(mlir::OpBuilder &builder) {
+    // NOTE: in general `select(%cond, %true, %false)` is:
+    //   - %cond * %true + not(%cond) * %false
+    //
+    // But we've checked the scalar is -inf so will assume dominate any value in
+    // the addition mask. Note it is expected this masked result will be
+    // soft-maxed. For example, assume `attentionMatrixTrueBranch` so the mask
+    // will occur in %false. Then the following is equivalent:
+    //
+    // select(%cond, %true, %false) ~= [not(%cond) * %false] + %true
+    //
+    // This is nice because it is essentially explicit masking with the mask
+    // in brackets.
+    TensorValue bcastedMask = cast<TensorValue>(scalarMaskBCast->getResult(0));
+    Location loc = bcastedMask.getLoc();
+
+    if (attentionMatrixTrueBranch) {
+      TensorValue notCond = builder.create<NotOp>(loc, conditionalStatement);
+      TensorValue notCondCasted = builder.create<CastOp>(
+          loc, notCond, bcastedMask.getType().getDtype());
+      return builder.create<MulOp>(loc, bcastedMask, notCondCasted);
+    } else {
+      TensorValue condCasted = builder.create<CastOp>(
+          loc, conditionalStatement, bcastedMask.getType().getDtype());
+      return builder.create<MulOp>(loc, bcastedMask, condCasted);
+    }
+  }
+
+  ErrorOrSuccess hasExpectedRanks() {
+    // NOTE: select requires all inputs to be the same shape
+    // Allowed to elide the batch dimension
+    ErrorOrSuccess rankOk = checkRank(
+        conditionalStatement,
+        "[MultiHeadAttentionSelectMaskingMatcher] select inputs", {3, 4});
+    if (rankOk.isError())
+      return rankOk.takeError();
+    return success();
+  }
+
+  void fillUnsafeBCasts(SmallVector<Static::BroadcastToOp> &unsafeBcasts) {
+    if (optBCast1)
+      unsafeBcasts.push_back(cast<Static::BroadcastToOp>(optBCast1));
+  }
+};
+
+/// A helper for matching against attention masking for fused attention
+/// Supports explicit masking:
+///
+/// Explicit masking occurs when we add a tensor directly to our attention
+/// matrix
+///
+/// %attentionMatrix
+/// %attentionMask
+/// %result = mo.add(%attentionMatrix, %attentionMask)
+///
+/// Where usually some elements of %attentionMask will be -inf
+///
+/// Notes on masking:
+/// https://www.notion.so/modularai/Multi-Head-Attention-bbc2d300937a495da40c18b6a2028d22
+class MultiHeadAttentionExplicitMaskingMatcher {
+  friend class MultiHeadAttentionMaskingMuxMatcher;
+
 private:
   Operation *attentionMatrixNormMaskedProducer = nullptr;
 
@@ -831,12 +999,11 @@ private:
 
   graph_compiler::Logger patternMatcherLogger;
 
-  MultiHeadAttentionMaskingMatcher() = default;
+  MultiHeadAttentionExplicitMaskingMatcher() = default;
 
-public:
-  static ErrorOr<MultiHeadAttentionMaskingMatcher>
+  static ErrorOr<MultiHeadAttentionExplicitMaskingMatcher>
   match(Operation *producingOp, bool allowUnsafeBCast) {
-    MultiHeadAttentionMaskingMatcher matcher;
+    MultiHeadAttentionExplicitMaskingMatcher matcher;
 
     auto pPatternInput = m_Any(&matcher.patternInput);
 
@@ -846,61 +1013,60 @@ public:
         &matcher.attentionMatrixNormMaskedProducer, maybeBCast1,
         m_Any(&matcher.attentionMask));
 
-    // handle with and without attention mask via m_Optional + optional bcast
-    auto pCenterPattern =
-        m_Optional(pMaskedNormalizedAttnMatrix, pPatternInput);
-
     if (!producingOp)
-      return Error(
-          "[MultiHeadAttentionMaskingMatcher] producing operation is nullptr.");
+      return Error("[MultiHeadAttentionExplicitMaskingMatcher] producing "
+                   "operation is nullptr.");
 
     if (producingOp->getNumResults() != 1)
-      return Error("[MultiHeadAttentionMaskingMatcher] producing operation "
-                   "does not have one result.");
+      return Error(
+          "[MultiHeadAttentionExplicitMaskingMatcher] producing operation "
+          "does not have one result.");
 
     TensorValue producingOpResult =
         cast<TensorValue>(producingOp->getResult(0));
 
     // attempt to match the pattern
-    bool matchesPattern =
-        pCenterPattern.match(producingOpResult, &matcher.patternMatcherLogger);
+    bool matchesPattern = pMaskedNormalizedAttnMatrix.match(
+        producingOpResult, &matcher.patternMatcherLogger);
     if (!matchesPattern)
       return Error("Attention Masking Component Does Not Match: " +
                    getPatternMatchingError(matcher.patternMatcherLogger));
 
     if (!allowUnsafeBCast && matcher.optBCast1)
-      return Error("[MultiHeadAttentionMaskingMatcher]: pattern matches but "
-                   "has unsafe broadcasts.");
+      return Error(
+          "[MultiHeadAttentionExplicitMaskingMatcher]: pattern matches but "
+          "has unsafe broadcasts.");
 
     return matcher;
   }
 
-  bool hasAttentionMask() { return attentionMask != nullptr; }
-  TensorValue getRawAttentionMask() { return attentionMask; }
+public:
+  TypedAttr getAttentionMaskShape() {
+    return attentionMask.getType().getShapeAttr();
+  }
   TensorValue getTopOfPattern() { return patternInput; }
-
   TensorValue getAttentionMask() { return attentionMask; }
 
   ErrorOrSuccess hasExpectedRanks() {
     // Allowed to elide the batch dimension
-    if (hasAttentionMask()) {
-      ErrorOrSuccess attnMaskOk = checkRank(
-          attentionMask, "[MultiHeadAttentionMaskingMatcher] attnMask", {3, 4});
-      if (attnMaskOk.isError())
-        return attnMaskOk.takeError();
+    ErrorOrSuccess attnMaskOk = checkRank(
+        attentionMask, "[MultiHeadAttentionExplicitMaskingMatcher] attnMask",
+        {3, 4});
+    if (attnMaskOk.isError())
+      return attnMaskOk.takeError();
 
-      ErrorOrSuccess patternInputOk =
-          checkRank(attentionMask,
-                    "[MultiHeadAttentionMaskingMatcher] patternInput", {3, 4});
-      if (patternInputOk.isError())
-        return patternInputOk.takeError();
+    ErrorOrSuccess patternInputOk = checkRank(
+        attentionMask,
+        "[MultiHeadAttentionExplicitMaskingMatcher] patternInput", {3, 4});
+    if (patternInputOk.isError())
+      return patternInputOk.takeError();
 
-      int64_t rankMask = attentionMask.getType().getRank();
-      int64_t rankInput = patternInput.getType().getRank();
-      if (rankMask != rankInput)
-        return Error("[MultiHeadAttentionMaskingMatcher] Expect mask and input "
-                     "to be same rank.");
-    }
+    int64_t rankMask = attentionMask.getType().getRank();
+    int64_t rankInput = patternInput.getType().getRank();
+    if (rankMask != rankInput)
+      return Error(
+          "[MultiHeadAttentionExplicitMaskingMatcher] Expect mask and input "
+          "to be same rank.");
 
     return success();
   }
@@ -908,6 +1074,140 @@ public:
   void fillUnsafeBCasts(SmallVector<Static::BroadcastToOp> &unsafeBcasts) {
     if (optBCast1)
       unsafeBcasts.push_back(cast<Static::BroadcastToOp>(optBCast1));
+  }
+};
+
+/// MHA Masking multiplexer. In practice models are allowed to have both
+/// explicit and causal masking and some models have no masking at all!
+///
+/// What more, models can vary the order of explicit and causal masking freely.
+///
+/// So in total, there are 5 variations of masking in transformer models which
+/// seem common:
+///
+/// - No masking at all
+/// - Only causal masking
+/// - Only explicit masking
+/// - Causal and explicit masking
+///    - Order we apply them maybe different
+/// This is designed to handle all of these cases and return a single compatible
+/// "attention mask" which combines the details of every masking pattern.
+class MultiHeadAttentionMaskingMuxMatcher {
+private:
+  TensorValue patternInput;
+
+  // Each determine whether the particular pattern was detected
+  ErrorOr<MultiHeadAttentionSelectMaskingMatcher> causalMask =
+      Error("Not initialized!");
+  ErrorOr<MultiHeadAttentionExplicitMaskingMatcher> explicitMask =
+      Error("Not initialized!");
+  MultiHeadAttentionMaskingMuxMatcher() = default;
+
+public:
+  static ErrorOr<MultiHeadAttentionMaskingMuxMatcher>
+  match(Operation *producingOp, bool allowUnsafeBCast) {
+    MultiHeadAttentionMaskingMuxMatcher matcher;
+
+    // See if any masking patterns match
+    Operation *curProducingOp = producingOp;
+    matcher.causalMask = MultiHeadAttentionSelectMaskingMatcher::match(
+        curProducingOp, allowUnsafeBCast);
+    matcher.explicitMask = MultiHeadAttentionExplicitMaskingMatcher::match(
+        curProducingOp, allowUnsafeBCast);
+
+    GENERICML_ASSERT(matcher.causalMask.isError() ||
+                     matcher.explicitMask.isError())
+        << "[MultiHeadAttentionMaskingMuxMatcher] expect only a single mask "
+           "pattern to initial match.";
+
+    // no masking at all!
+    if (matcher.causalMask.isError() && matcher.explicitMask.isError()) {
+      if (producingOp->getNumResults() != 1)
+        return Error("[MultiHeadAttentionMaskingMuxMatcher] tried to match "
+                     "against something with more than one result.");
+
+      matcher.patternInput = cast<TensorValue>(producingOp->getResult(0));
+      return matcher;
+    }
+
+    // There still could be the other type of masking left!
+    if (!matcher.causalMask.isError()) {
+      matcher.patternInput = matcher.causalMask->getTopOfPattern();
+      matcher.explicitMask = MultiHeadAttentionExplicitMaskingMatcher::match(
+          matcher.patternInput.getDefiningOp(), allowUnsafeBCast);
+      if (!matcher.explicitMask.isError())
+        matcher.patternInput = matcher.explicitMask->getTopOfPattern();
+    } else { // explicit mask is filled
+      matcher.patternInput = matcher.explicitMask->getTopOfPattern();
+      matcher.causalMask = MultiHeadAttentionSelectMaskingMatcher::match(
+          matcher.patternInput.getDefiningOp(), allowUnsafeBCast);
+      if (!matcher.causalMask.isError())
+        matcher.patternInput = matcher.causalMask->getTopOfPattern();
+    }
+
+    // the two masks however may be different shapes (they most def. are not)
+    // but ignoring this is only allowed if `allowUnsafeBCast`
+    if (!matcher.causalMask.isError() && !matcher.explicitMask.isError()) {
+      bool shapesMatch = matcher.causalMask->getAttentionMaskShape() ==
+                         matcher.explicitMask->getAttentionMaskShape();
+      if (!shapesMatch && !allowUnsafeBCast)
+        return Error("[MultiHeadAttentionMaskingMuxMatcher] Both explicit and "
+                     "causal masking found but their shapes are not the same!");
+    }
+
+    return matcher;
+  }
+  bool hasAttentionMask() {
+    return !causalMask.isError() || !explicitMask.isError();
+  }
+
+  TensorValue getTopOfPattern() { return patternInput; }
+  TensorValue getAttentionMask(OpBuilder &builder) {
+    SmallVector<TensorValue> masks;
+    if (!explicitMask.isError())
+      masks.push_back(explicitMask->getAttentionMask());
+    if (!causalMask.isError())
+      masks.push_back(causalMask->getAttentionMask(builder));
+
+    if (masks.empty())
+      return {};
+
+    if (masks.size() == 1)
+      return masks[0];
+
+    TensorValue mask = masks[0];
+    for (size_t i = 1; i < masks.size(); i++) {
+      // statically cast incoming mask to the current shape
+      // note this is always assumed to be safe because of `allowUnsafeBCast`
+      TensorValue otherMask = masks[i];
+      otherMask = builder.create<BroadcastToOp>(mask.getLoc(), otherMask, mask);
+
+      mask = builder.create<AddOp>(mask.getLoc(), mask, otherMask);
+    }
+    return mask;
+  }
+
+  ErrorOrSuccess hasExpectedRanks() {
+    if (!causalMask.isError()) {
+      ErrorOrSuccess causalMaskOk = causalMask->hasExpectedRanks();
+      if (causalMaskOk.isError())
+        return causalMaskOk.takeError();
+    }
+
+    if (!explicitMask.isError()) {
+      ErrorOrSuccess explicitMaskOk = explicitMask->hasExpectedRanks();
+      if (explicitMaskOk.isError())
+        return explicitMaskOk.takeError();
+    }
+
+    return success();
+  }
+
+  void fillUnsafeBCasts(SmallVector<Static::BroadcastToOp> &unsafeBcasts) {
+    if (!causalMask.isError())
+      causalMask->fillUnsafeBCasts(unsafeBcasts);
+    if (!explicitMask.isError())
+      explicitMask->fillUnsafeBCasts(unsafeBcasts);
   }
 };
 
@@ -1129,7 +1429,8 @@ private:
   ErrorOr<MultiHeadAttentionEpilogueMatcher> epilogueMatcher = Error("Not set");
   ErrorOr<MultiHeadAttentionNormalizationMatcher> normalizationMatcher =
       Error("Not set");
-  ErrorOr<MultiHeadAttentionMaskingMatcher> maskingMatcher = Error("Not set.");
+  ErrorOr<MultiHeadAttentionMaskingMuxMatcher> maskingMatcher =
+      Error("Not set.");
   OpBuilder *builder = nullptr;
 
   ErrorOrSuccess hasExpectedRanks() {
@@ -1230,7 +1531,7 @@ public:
       return maskPatternBottom.takeError();
 
     // **Step 3: Match masking
-    matcher.maskingMatcher = MultiHeadAttentionMaskingMatcher::match(
+    matcher.maskingMatcher = MultiHeadAttentionMaskingMuxMatcher::match(
         *maskPatternBottom, allowUnsafeBCast);
     if (matcher.maskingMatcher.isError())
       return matcher.maskingMatcher.takeError();
@@ -1269,7 +1570,9 @@ public:
   bool hasAttentionMask() { return maskingMatcher->hasAttentionMask(); }
 
   // layout B,H,s,D
-  TensorValue getAttentionMask() { return maskingMatcher->getAttentionMask(); }
+  TensorValue getAttentionMask() {
+    return maskingMatcher->getAttentionMask(*builder);
+  }
 
   // layout B,H,s,D
   TensorValue getQuery() { return prologueMatcher->getQuery(); }
