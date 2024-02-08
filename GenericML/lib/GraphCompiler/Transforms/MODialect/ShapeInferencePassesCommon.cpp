@@ -89,6 +89,10 @@ LogicalResult elaborateModule(ModuleOp moduleOp) {
   mlir::PassManager pm(ctx);
   KGEN::populateElaborateModulePasses(
       pm, *ownedRuntime, *target, {/*enableSearch=*/false},
+      [&](KGEN::PackageLinkOp packageLink) {
+        return KGEN::specializePackageLinkForPreElaborationLinking(
+            packageLink, *ownedRuntime, {});
+      },
       [](KGEN::PackageLinkOp packageLink, TargetInfoAttr) {
         // TODO(#22819): For now, do not compile packages on-demand, and instead
         // stitch the pre-elaborated module into the module being built.

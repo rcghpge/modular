@@ -16,7 +16,9 @@
 #include "KGEN/LITDialect/LITAttrs.h"
 #include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
-#include "KGEN/Transforms/PackageUtils.h"
+#include "KGEN/Package/Package.h"
+#include "KGEN/ToolCommon/CompilationOptions.h"
+#include "LLCL/Runtime/Runtime.h"
 #include "Support/Compiler/BytecodeReaderWriter.h"
 #include "Support/Compiler/OperationUtils.h"
 
@@ -84,8 +86,9 @@ static ErrorOr<OwningOpRef<ModuleOp>> parseMojoPackage(MLIRContext *ctx,
                                   /*verifyAfterParse=*/false));
   if (!packageOp)
     return Error::getStaticString("invalid package");
-  return KGEN::loadPreElaboratedModuleForLinking(
-      packageOp->getPreElaborationModuleAttr());
+  return KGEN::specializeModuleForPreElaborationLinking(
+      packageOp->getPostParseModuleAttr(), *LLCL::createRuntimeIfNeeded(),
+      KGEN::CompilationOptions());
 }
 
 static ErrorOr<OwningOpRef<ModuleOp>> parseExtraLib(MLIRContext *ctx,
