@@ -8,6 +8,7 @@
 #define GENERICML_DRIVER_COMPILEDRIVER_H
 
 #include "Cache/CachedTransform.h"
+#include "Cache/Support/Keys.h"
 #include "GenericML/GraphCompiler/Passes.h"
 #include "LLCL/ForwardDecls.h"
 #include "Support/Buffer.h"
@@ -32,6 +33,24 @@ cacheMEFTransform(StringRef frameworkName,
                   llvm::function_ref<ErrorOr<BufferRef>()> loweringFunction,
                   WriteableBufferRef key, LLCL::Runtime &runtime);
 
+/// A convenience function to create cache key given a file buffer and a set of
+/// options. It is assumed that all options contain a method `print`  that takes
+/// a raw_ostream by reference to get a representation of it.
+template <typename... Options>
+WriteableBufferRef makeCacheKey(BufferRef buffer, Options &...options) {
+  // Make key for MEF
+  WriteableBufferRef keyBuffer = WriteableBuffer::get();
+
+  /// Add options to key.
+  auto insertOptionToKey = [&](auto &option) { option.print(*keyBuffer); };
+  (insertOptionToKey(options), ...);
+
+  /// Add source buffer.
+  std::string bufferKey =
+      Cache::Keys::TypeKey<BufferRef>::hashKey(std::move(buffer));
+  keyBuffer->write(bufferKey.data(), bufferKey.size());
+  return keyBuffer;
+}
 } // namespace M
 
 #endif // GENERICML_DRIVER_COMPILEDRIVER_H
