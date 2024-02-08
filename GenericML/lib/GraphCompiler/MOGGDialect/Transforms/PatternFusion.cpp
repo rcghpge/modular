@@ -1617,6 +1617,50 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
       : OpRewritePattern(ctx, 20), allowUnsafeBCast(allowUnsafeBCast),
         debugMHAPattern(debugMHAPattern) {}
 
+  void guardUnsafeBCast(Static::BroadcastToOp unsafeBCast,
+                        PatternRewriter &rewriter) const {
+    // We expect all bcasts matched in the pattern with `allowUnsafeBCast`
+    // to be no-ops (e.g. they don't change shape). This guards against this
+    // condition by inserting runtime checks against a potentially unsafe bcast.
+    //
+    // Note, at this point in the program it is assumed shape functions have
+    // been inlined so no internal ops of the pattern produce result parameters.
+    //
+    // E.g. the following is assumed to be impossible
+    // %bmm1 = mo.batch_matmul<() -> N1, N2, N3>(%0, %1) ...
+    //            -> !mo.tensor<[N1, N2, N3]>
+    // mo.static.broadcast(%something): ... -> !mo.tensor<[N1, N2, N3]>
+    //
+    // Where the issue is rewriting the pattern would rewrite %bmm1 and
+    // remove the definition of `N1` `N2` and `N3`.
+
+    TypedAttr beforeShape =
+        unsafeBCast.getInput().getType().getTypedShapeAttr();
+    TypedAttr afterShape = unsafeBCast.getResult().getType().getShapeAttr();
+
+    GraphOp graphOp = unsafeBCast->getParentOfType<GraphOp>();
+    Location loc = unsafeBCast->getLoc();
+
+    // Make comparison of shapes operator
+    IntegerType boolTy = rewriter.getI1Type();
+    TypedAttr cmpAttr =
+        KGEN::emitMLIROperationCall(MOSH::EqualOp::getOperationName(), {},
+                                    {beforeShape, afterShape}, boolTy);
+    KGEN::ParamDeclAttr condAttr =
+        graphOp.getNewParamOfType("MHA_BCAST_CHECK", boolTy);
+    rewriter.create<KGEN::ParamDeclareOp>(loc, condAttr, cmpAttr);
+
+    // Add runtime assertion into graph
+    TypedAttr assertAttr = MOSH::AssertOp::emitStaticCall(
+        KGEN::ParamDeclRefAttr::get(condAttr),
+        "MHA Pattern Detected unsafe broadcast. This is of great interest so "
+        "please report!");
+    auto chainTy = rewriter.getType<ChainType>();
+    KGEN::ParamDeclAttr chainAttr =
+        graphOp.getNewParamOfType("MHA_BCAST_CHECK_CHAIN", chainTy);
+    rewriter.create<KGEN::ParamDeclareOp>(loc, chainAttr, assertAttr);
+  }
+
   LogicalResult matchAndRewrite(BatchMatmulOp op,
                                 PatternRewriter &rewriter) const override {
     DeviceRefAttr device = op->getParentOfType<MO::GraphOp>().getDeviceRef();
@@ -1634,43 +1678,9 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
     if (matcher.isError())
       return rewriter.notifyMatchFailure(op.getLoc(), matcher.getError());
 
-    // If we have unsafe broadcasts, we want to guard against them. Note, at
-    // this point in the program it is assumed shape functions have been inlined
-    // so no internal ops of the pattern produce result parameters.
-    //
-    // E.g. the following is assumed to be impossible
-    // %bmm1 = mo.batch_matmul<() -> N1, N2, N3>(%0, %1) ...
-    //            -> !mo.tensor<[N1, N2, N3]>
-    // mo.static.broadcast(%something): ... -> !mo.tensor<[N1, N2, N3]>
-    //
-    // Where the issue is rewriting the pattern would rewrite %bmm1 and
-    // remove the definition of `N1` `N2` and `N3`.
+    // If we have unsafe broadcasts, we want to add runtime guards against them.
     for (Static::BroadcastToOp unsafeBCast : matcher->getUnsafeBroadcasts()) {
-      TypedAttr beforeShape =
-          unsafeBCast.getInput().getType().getTypedShapeAttr();
-      TypedAttr afterShape = unsafeBCast.getResult().getType().getShapeAttr();
-
-      GraphOp graphOp = op->getParentOfType<GraphOp>();
-      Location loc = op->getLoc();
-
-      // Make comparison of shapes operator
-      IntegerType boolTy = rewriter.getI1Type();
-      TypedAttr cmpAttr =
-          KGEN::emitMLIROperationCall(MOSH::EqualOp::getOperationName(), {},
-                                      {beforeShape, afterShape}, boolTy);
-      KGEN::ParamDeclAttr condAttr =
-          graphOp.getNewParamOfType("MHA_BCAST_CHECK", boolTy);
-      rewriter.create<KGEN::ParamDeclareOp>(loc, condAttr, cmpAttr);
-
-      // Add runtime assertion into graph
-      TypedAttr assertAttr = MOSH::AssertOp::emitStaticCall(
-          KGEN::ParamDeclRefAttr::get(condAttr),
-          "MHA Pattern Detected unsafe broadcast. This is of great interest so "
-          "please report!");
-      auto chainTy = rewriter.getType<ChainType>();
-      KGEN::ParamDeclAttr chainAttr =
-          graphOp.getNewParamOfType("MHA_BCAST_CHECK_CHAIN", chainTy);
-      rewriter.create<KGEN::ParamDeclareOp>(loc, chainAttr, assertAttr);
+      guardUnsafeBCast(unsafeBCast, rewriter);
     }
 
     // NOTE: the creation of `matcher` must imply future success()
