@@ -33,8 +33,12 @@ static mlir::NamedAttribute denseResourceAttr(StringRef name,
     blob = mlir::UnmanagedAsmResourceBlob::allocateWithAlign(
         data, elementByteAlign,
         // Take ownership of `data`, which must have been allocated with
-        // `alignedAlloc()`.
-        [](void *data, size_t, size_t) { M::alignedFree(data); });
+        // `Singleton CurrentRuntime`.
+        [](void *data, size_t, size_t) {
+          auto rt = M::Runtime::getCurrentRuntimeOrNull();
+          assert(rt && "runtime not present");
+          rt->getAllocator()->deallocateBytes(data);
+        });
   } else {
     blob = mlir::HeapAsmResourceBlob::allocateAndCopyWithAlign(
         data, elementByteAlign);
