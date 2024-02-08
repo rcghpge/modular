@@ -57,8 +57,10 @@ struct InferLayoutPass : public impl::InferLayoutsBase<InferLayoutPass> {
   /// constrained to have both `NHWC` and `NCHW` layouts.
   LogicalResult addSeedingConstraints() {
     // Declare some canonical target-independent layouts required by MO ops.
-    LayoutAttr convInputLayout = LayoutAttr::get(ctx, "NHWC");
-    LayoutAttr convFilterLayout = LayoutAttr::get(ctx, "RSCF");
+    LayoutAttr conv2DInputLayout = LayoutAttr::get(ctx, "NHWC");
+    LayoutAttr conv2DFilterLayout = LayoutAttr::get(ctx, "RSCF");
+    LayoutAttr conv3DInputLayout = LayoutAttr::get(ctx, "NDHWC");
+    LayoutAttr conv3DFilterLayout = LayoutAttr::get(ctx, "QRSCF");
     LayoutAttr matmulWeightsLayout = LayoutAttr::get(ctx, "KN");
 
     // Infer layouts by walking over constraining operations and updating the
@@ -67,9 +69,21 @@ struct InferLayoutPass : public impl::InferLayoutsBase<InferLayoutPass> {
       if (auto convOp = dyn_cast<ConvOp>(op)) {
         TensorValue input = convOp.getInput();
         TensorValue filter = convOp.getFilter();
-        if (failed(addLayoutConstraint(op, input, convInputLayout)) ||
-            failed(addLayoutConstraint(op, filter, convFilterLayout)))
+        auto inputRank = input.getType().getRank();
+        auto filterRank = filter.getType().getRank();
+
+        if (inputRank == 4 && filterRank == 4) { // 2D Conv.
+          if (failed(addLayoutConstraint(op, input, conv2DInputLayout)) ||
+              failed(addLayoutConstraint(op, filter, conv2DFilterLayout)))
+            return WalkResult::interrupt();
+        } else if (inputRank == 5 && filterRank == 5) { // 3D Conv.
+          if (failed(addLayoutConstraint(op, input, conv3DInputLayout)) ||
+              failed(addLayoutConstraint(op, filter, conv3DFilterLayout)))
+            return WalkResult::interrupt();
+        } else {
+          op->emitError() << "Only support 2D and 3D layout for ConvOp.\n";
           return WalkResult::interrupt();
+        }
 
       } else if (auto matmulOp = dyn_cast<MatmulOp>(op)) {
         TensorValue weights = matmulOp.getTensorB();

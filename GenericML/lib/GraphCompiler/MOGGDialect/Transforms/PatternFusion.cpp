@@ -483,8 +483,9 @@ struct ConvConstFilterPattern
     MO::TensorValue filter = op.getFilter();
     MO::TensorType filterType = filter.getType();
     MO::LayoutAttr filterLayout = filterType.getLayoutAttr();
-    if (filterLayout.getFormat() == "FRSCf")
-      return rewriter.notifyMatchFailure(op, "filter is already packed");
+    if (filterLayout.getFormat() != "RSCF")
+      return rewriter.notifyMatchFailure(
+          op, "Only support packing filter with RSCF layout");
 
     if (!dependsOnConstantsOnly<MO::ConstantOp>(filter.getDefiningOp()))
       return rewriter.notifyMatchFailure(op, "filter isn't constant");

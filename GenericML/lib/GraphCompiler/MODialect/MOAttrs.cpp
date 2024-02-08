@@ -71,9 +71,11 @@ LayoutAttr::verify(llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
       // conv inputs
       "NHWC",
       "NCHW",
+      "NDHWC",
       // conv filter
       "RSCF",
       "FCRS",
+      "QRSCF",
       // packed conv filter
       "FRSCf",
       // matmul weights
