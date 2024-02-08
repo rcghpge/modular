@@ -55,6 +55,7 @@ struct Fallback {
 HAS_FALLBACK(MO::ArgMaxOp)
 HAS_FALLBACK(MO::ArgMinOp)
 HAS_FALLBACK(MO::AvgPoolOp)
+HAS_FALLBACK(MO::AvgPoolCeilOp)
 HAS_FALLBACK(MO::BatchMatmulOp)
 HAS_FALLBACK(MO::BottomKOp)
 HAS_FALLBACK(MO::BroadcastToOp)
@@ -66,6 +67,7 @@ HAS_FALLBACK(MO::GatherOp)
 HAS_FALLBACK(MO::GatherNdOp)
 HAS_FALLBACK(MO::LinAlg::SolveOp)
 HAS_FALLBACK(MO::MaxPoolOp)
+HAS_FALLBACK(MO::MaxPoolCeilOp)
 HAS_FALLBACK(MO::MeanOp)
 HAS_FALLBACK(MO::NonMaximumSuppressionOp)
 HAS_FALLBACK(MO::PadConstantOp)
@@ -160,6 +162,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ArgMaxOp)
       CALL_FALLBACK(MO::ArgMinOp)
       CALL_FALLBACK(MO::AvgPoolOp)
+      CALL_FALLBACK(MO::AvgPoolCeilOp)
       CALL_FALLBACK(MO::BatchMatmulOp)
       CALL_FALLBACK(MO::BottomKOp)
       CALL_FALLBACK(MO::BroadcastToOp)
@@ -171,6 +174,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::GatherNdOp)
       CALL_FALLBACK(MO::LinAlg::SolveOp)
       CALL_FALLBACK(MO::MaxPoolOp)
+      CALL_FALLBACK(MO::MaxPoolCeilOp)
       CALL_FALLBACK(MO::MeanOp)
       CALL_FALLBACK(MO::NonMaximumSuppressionOp)
       CALL_FALLBACK(MO::PadConstantOp)
@@ -319,8 +323,17 @@ void buildForOpResult(GraphOp &graph, OpBuilder &builder, TensorValue res,
 
 void Fallback<MO::AvgPoolOp>::build(GraphOp &graph, OpBuilder &builder,
                                     MO::AvgPoolOp op) {
+  BoolAttr ceilModeAttr = builder.getBoolAttr(false);
   buildForOpResult(graph, builder, op, "pool_shape", op.getOperands(),
-                   /*kgenParams=*/{},
+                   /*kgenParams=*/{{"ceil_mode", ceilModeAttr}},
+                   /*dataDepInputIdxs=*/{1, 2, 3, 4});
+}
+
+void Fallback<MO::AvgPoolCeilOp>::build(GraphOp &graph, OpBuilder &builder,
+                                        MO::AvgPoolCeilOp op) {
+  BoolAttr ceilModeAttr = builder.getBoolAttr(true);
+  buildForOpResult(graph, builder, op, "pool_shape_ceil", op.getOperands(),
+                   /*kgenParams=*/{{"ceil_mode", ceilModeAttr}},
                    /*dataDepInputIdxs=*/{1, 2, 3, 4});
 }
 
@@ -473,8 +486,21 @@ void Fallback<MO::LinAlg::SolveOp>::build(GraphOp &graph, OpBuilder &builder,
 
 void Fallback<MO::MaxPoolOp>::build(GraphOp &graph, OpBuilder &builder,
                                     MO::MaxPoolOp op) {
+
+  BoolAttr ceilModeAttr = builder.getBoolAttr(false);
+
   buildForOpResult(graph, builder, op, "pool_shape", op.getOperands(),
-                   /*kgenParams=*/{},
+                   /*kgenParams=*/{{"ceil_mode", ceilModeAttr}},
+                   /*dataDepInputIdxs=*/{1, 2, 3, 4});
+}
+
+void Fallback<MO::MaxPoolCeilOp>::build(GraphOp &graph, OpBuilder &builder,
+                                        MO::MaxPoolCeilOp op) {
+
+  BoolAttr ceilModeAttr = builder.getBoolAttr(true);
+
+  buildForOpResult(graph, builder, op, "pool_shape_ceil", op.getOperands(),
+                   /*kgenParams=*/{{"ceil_mode", ceilModeAttr}},
                    /*dataDepInputIdxs=*/{1, 2, 3, 4});
 }
 

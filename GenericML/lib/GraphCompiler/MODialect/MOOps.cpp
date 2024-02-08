@@ -1704,7 +1704,25 @@ LogicalResult AvgPoolOp::verify() {
       {getFilterShape(), getDilations(), getStrides()});
 }
 
+LogicalResult AvgPoolCeilOp::verify() {
+  auto op = cast<SlidingWindow>(this->getOperation());
+  if (failed(op.verifyWindowParamShape(getFilterShape(), "filter_shape")))
+    return failure();
+
+  return op.verifyWindowParamSizes(
+      {getFilterShape(), getDilations(), getStrides()});
+}
+
 LogicalResult MaxPoolOp::verify() {
+  auto op = cast<SlidingWindow>(this->getOperation());
+  if (failed(op.verifyWindowParamShape(getFilterShape(), "filter_shape")))
+    return failure();
+
+  return op.verifyWindowParamSizes(
+      {getFilterShape(), getDilations(), getStrides()});
+}
+
+LogicalResult MaxPoolCeilOp::verify() {
   auto op = cast<SlidingWindow>(this->getOperation());
   if (failed(op.verifyWindowParamShape(getFilterShape(), "filter_shape")))
     return failure();

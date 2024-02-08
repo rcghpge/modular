@@ -444,14 +444,14 @@ mo.graph @conv2d_dyn_input_dims(
 // CHECK-NEXT: }
 
 mo.graph @max_pool2d_static_input_dims(
-  %input: !mo.tensor<[10, 5, 5, 16], f32>
+  %input: !mo.tensor<[10, 4, 4, 16], f32>
 ) -> !mo.tensor<[?, ?, ?, ?], f32> {
   %fs = mo.constant {value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %st = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
   %0 = mo.max_pool(%input) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] : (
-    !mo.tensor<[10, 5, 5, 16], f32>,
+    !mo.tensor<[10, 4, 4, 16], f32>,
     !mo.tensor<[2], si64>,
     !mo.tensor<[2], si64>,
     !mo.tensor<[2], si64>,
@@ -460,12 +460,38 @@ mo.graph @max_pool2d_static_input_dims(
   mo.output %0 : !mo.tensor<[?, ?, ?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @max_pool2d_static_input_dims([[VARG0:%.*]]: !mo.tensor<[10, 5, 5, 16], f32>) -> !mo.tensor<[10, 2, 2, 16], f32> no_inline {
+// CHECK-SAME: @max_pool2d_static_input_dims([[VARG0:%.*]]: !mo.tensor<[10, 4, 4, 16], f32>) -> !mo.tensor<[10, 1, 1, 16], f32> no_inline {
 // CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-NEXT:   [[V1:%.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-NEXT:   [[V2:%.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-NEXT:   [[V3:%.*]] = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-// CHECK-NEXT:   [[V4:%.*]] = mo.max_pool([[VARG0]]) [filter_shape = [[V0]], strides = [[V1]], dilations = [[V2]], paddings = [[V3]]] : (!mo.tensor<[10, 5, 5, 16], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[10, 2, 2, 16], f32>
+// CHECK-NEXT:   [[V4:%.*]] = mo.max_pool([[VARG0]]) [filter_shape = [[V0]], strides = [[V1]], dilations = [[V2]], paddings = [[V3]]] : (!mo.tensor<[10, 4, 4, 16], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[10, 1, 1, 16], f32>
+// CHECK-NEXT:   mo.output [[V4]] : !mo.tensor<[10, 1, 1, 16], f32>
+// CHECK-NEXT: }
+
+mo.graph @max_pool2d_ceil_mode_true_static_input_dims(
+  %input: !mo.tensor<[10, 4, 4, 16], f32>
+) -> !mo.tensor<[?, ?, ?, ?], f32> {
+  %fs = mo.constant {value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %st = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %0 = mo.max_pool_ceil_mode_true(%input) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] : (
+    !mo.tensor<[10, 4, 4, 16], f32>,
+    !mo.tensor<[2], si64>,
+    !mo.tensor<[2], si64>,
+    !mo.tensor<[2], si64>,
+    !mo.tensor<[4], si64>
+  ) -> !mo.tensor<[?, ?, ?, ?], f32>
+  mo.output %0 : !mo.tensor<[?, ?, ?, ?], f32>
+}
+// CHECK-LABEL: mo.graph
+// CHECK-SAME: @max_pool2d_ceil_mode_true_static_input_dims([[VARG0:%.*]]: !mo.tensor<[10, 4, 4, 16], f32>) -> !mo.tensor<[10, 2, 2, 16], f32> no_inline {
+// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-NEXT:   [[V1:%.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-NEXT:   [[V2:%.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-NEXT:   [[V3:%.*]] = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+// CHECK-NEXT:   [[V4:%.*]] = mo.max_pool_ceil_mode_true([[VARG0]]) [filter_shape = [[V0]], strides = [[V1]], dilations = [[V2]], paddings = [[V3]]] : (!mo.tensor<[10, 4, 4, 16], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[10, 2, 2, 16], f32>
 // CHECK-NEXT:   mo.output [[V4]] : !mo.tensor<[10, 2, 2, 16], f32>
 // CHECK-NEXT: }
 
@@ -493,6 +519,32 @@ mo.graph @avg_pool2d_dyn_input_dims(
 // CHECK-NEXT:   [[V3:%.*]] = mo.constant {value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-NEXT:   [[V4:%.*]] = mo.avg_pool([[VARG0]]) [filter_shape = [[V3]], strides = [[V2]], dilations = [[V1]], paddings = [[V0]]] {count_boundary = false} : (!mo.tensor<[[[D7]], 20, 30, [[D8]]], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[[[D7]], 9, 14, [[D8]]], f32>
 // CHECK-NEXT:   mo.output [[V4]] : !mo.tensor<[[[D7]], 9, 14, [[D8]]], f32>
+// CHECK-NEXT: }
+
+mo.graph @avg_pool2d_ceil_mode_true_dyn_input_dims(
+  %input: !mo.tensor<[?, 20, 30, ?], f32>
+) -> !mo.tensor<[?, ?, ?, ?], f32> {
+  %fs = mo.constant {value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %st = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %0 = mo.avg_pool_ceil_mode_true(%input) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] {count_boundary = false} : (
+    !mo.tensor<[?, 20, 30, ?], f32>,
+    !mo.tensor<[2], si64>,
+    !mo.tensor<[2], si64>,
+    !mo.tensor<[2], si64>,
+    !mo.tensor<[4], si64>
+  ) -> !mo.tensor<[?, ?, ?, ?], f32>
+  mo.output %0 : !mo.tensor<[?, ?, ?, ?], f32>
+}
+// CHECK-LABEL: mo.graph
+// CHECK-SAME: @avg_pool2d_ceil_mode_true_dyn_input_dims<[[D7:.*]], [[D8:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D7]], 20, 30, [[D8]]], f32>) -> !mo.tensor<[[[D7]], 10, 15, [[D8]]], f32> no_inline {
+// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+// CHECK-NEXT:   [[V1:%.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-NEXT:   [[V2:%.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-NEXT:   [[V3:%.*]] = mo.constant {value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-NEXT:   [[V4:%.*]] = mo.avg_pool_ceil_mode_true([[VARG0]]) [filter_shape = [[V3]], strides = [[V2]], dilations = [[V1]], paddings = [[V0]]] {count_boundary = false} : (!mo.tensor<[[[D7]], 20, 30, [[D8]]], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[[[D7]], 10, 15, [[D8]]], f32>
+// CHECK-NEXT:   mo.output [[V4]] : !mo.tensor<[[[D7]], 10, 15, [[D8]]], f32>
 // CHECK-NEXT: }
 
 mo.graph @arg_max(%input: !mo.tensor<[?, ?], si64>) -> !mo.tensor<[?, ?], si64> {

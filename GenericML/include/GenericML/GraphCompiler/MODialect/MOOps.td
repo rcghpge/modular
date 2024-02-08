@@ -1614,6 +1614,71 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
   let hasVerifier = 1;
 }
 
+def MO_AvgPoolCeilOp : MO_TensorOp<"avg_pool_ceil_mode_true", [
+  MO_SlidingWindow,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
+]>{
+  let summary = "Average pooling operation with ceiling mode = True";
+  let description = [{
+    Apply average pooling with the given filter shape, strides, and dilations.
+    Ceiling mode in this case is True.
+
+    For now the op only supports 2d avg pooling (so input and filter must be
+    4D), with the following layout assumption:
+    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+
+    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
+    unranked. If the input has static rank, all hyperparameters with static
+    shape must have sizes of `input_rank - 2`, except padding, which must have size
+    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
+    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
+    with padding representing a before/after pair for each axis. The padding values
+    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
+    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
+
+    This op currently only supports strides and dilations on the filter.
+
+    Example:
+
+    ```mlir
+    %fs = mo.constant {
+      value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %st = mo.constant {
+      value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %di = mo.constant {
+      value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %pa = mo.constant {
+      value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %res = mo.avg_pool_ceil_mode_true(%arg) [
+        filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
+    ] : (
+      !mo.tensor<[1, 4, 4, 1], f32>, !mo.tensor<[2], si64>,
+      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+    ) -> !mo.tensor<[1, 2, 2, 1], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ShapeLikeIfRanked:$filter_shape,
+    MO_ShapeLikeIfRanked:$strides,
+    MO_ShapeLikeIfRanked:$dilations,
+    MO_ShapeLikeIfRanked:$paddings,
+    BoolAttr:$count_boundary,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `)`
+    `[` `filter_shape` `=` $filter_shape `,` `strides` `=` $strides `,`
+        `dilations` `=` $dilations `,` `paddings` `=` $paddings `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
 def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
@@ -1655,6 +1720,70 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
       !mo.tensor<[20, 10, 10, 32], f32>, !mo.tensor<[2], si64>,
       !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
     ) -> !mo.tensor<[20, 9, 5, 32], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ShapeLikeIfRanked:$filter_shape,
+    MO_ShapeLikeIfRanked:$strides,
+    MO_ShapeLikeIfRanked:$dilations,
+    MO_ShapeLikeIfRanked:$paddings,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `)`
+    `[` `filter_shape` `=` $filter_shape `,` `strides` `=` $strides `,`
+        `dilations` `=` $dilations `,` `paddings` `=` $paddings `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
+def MO_MaxPoolCeilOp : MO_TensorOp<"max_pool_ceil_mode_true", [
+  MO_SlidingWindow,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
+]>{
+  let summary = "Max pooling operation with ceiling mode = True";
+  let description = [{
+    Apply max pooling with the given filter shape, strides, and dilations.
+    Ceiling mode in this case is True.
+
+    For now the op only supports 2d max pooling (so input and filter must be
+    4D), with the following layout assumption:
+    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+
+    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
+    unranked. If the input has static rank, all hyperparameters with static
+    shape must have sizes of `input_rank - 2`, except padding, which must have size
+    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
+    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
+    with padding representing a before/after pair for each axis. The padding values
+    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
+    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
+
+    This op currently only supports strides and dilations on the filter.
+
+    Example:
+
+    ```mlir
+    %fs = mo.constant {
+      value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %st = mo.constant {
+      value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %di = mo.constant {
+      value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+    %pa = mo.constant {
+      value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %res = mo.max_pool_ceil_mode_true(%arg) [
+        filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
+    ] : (
+      !mo.tensor<[1, 4, 4, 1], f32>, !mo.tensor<[2], si64>,
+      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+    ) -> !mo.tensor<[1, 2, 2, 1], f32>
     ```
   }];
 
@@ -2575,9 +2704,9 @@ def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [MO_PadLikeTraits]> {
 def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [MO_PadLikeTraits]> {
   let summary = "Repeat mode pad operation";
   let description = [{
-    Pad the `input` tensor by repeating border values according to `paddings`. 
+    Pad the `input` tensor by repeating border values according to `paddings`.
     Assume input has rank `N`, the `paddings` tensor should have shape `(N, 2)`, where
-    each row has the form `[before, after]`, indicating how many of the border values 
+    each row has the form `[before, after]`, indicating how many of the border values
     to add before and after the contents of `input` in that dimension. The size
     of each dimension D of the padded output is:
 
