@@ -107,8 +107,10 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
 /// All inputs must have a static rank.
 static std::tuple<TensorValue, TensorValue, TensorValue>
 broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
-                        TensorValue z, ShapeAttr bcastCommonShape) {
+                        TensorValue z, ShapeAttr xyCommonShape,
+                        ShapeAttr bcastCommonShape) {
   auto intType = builder.getIntegerType(64, /*isSigned=*/true);
+  auto xyShape = TensorType::get({(int64_t)xyCommonShape.getRank()}, intType);
   auto shape = TensorType::get({(int64_t)bcastCommonShape.getRank()}, intType);
 
   // Get the shapes of the inputs at runtime
@@ -128,7 +130,7 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
       z.getLoc(), TensorType::get({(int64_t)zType.getRank()}, intType), z);
 
   auto bcastXYShape = builder.create<MO::BroadcastShapeOp>(
-      x.getLoc(), shape, xShape.getShape(), yShape.getShape());
+      x.getLoc(), xyShape, xShape.getShape(), yShape.getShape());
   auto bcastShape = builder.create<MO::BroadcastShapeOp>(
       x.getLoc(), shape, bcastXYShape.getShape(), zShape.getShape());
 
@@ -195,6 +197,7 @@ reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
   GENERICML_ASSERT(!errorOrXYBcastCommonShape.isError())
       << "the shapes are incompatible: "
       << errorOrXYBcastCommonShape.takeError();
+  ShapeAttr xyCommonShape = *errorOrXYBcastCommonShape;
 
   ErrorOr<ShapeAttr> errorOrBcastCommonShape = ShapeAttr::broadcastShapes(
       *errorOrXYBcastCommonShape, zShape.getTypedShapeAttr());
@@ -205,7 +208,8 @@ reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
   ShapeAttr bcastCommonShape = *errorOrBcastCommonShape;
 
   if (!bcastCommonShape.isStatic())
-    return broadcastToDynamicShape(builder, x, y, z, bcastCommonShape);
+    return broadcastToDynamicShape(builder, x, y, z, xyCommonShape,
+                                   bcastCommonShape);
 
   // Static broadcast, can potentially elide some broadcasts.
   if (xShape.getTypedShapeAttr() != bcastCommonShape)
