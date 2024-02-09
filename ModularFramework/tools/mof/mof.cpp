@@ -5,8 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "CUDASupport/CUDARuntimeOptions.h"
+#include "Cache/Support/Keys.h"
 #include "Config/Version.h"
 #include "GenericML/CUDARegistration/CUDARegistration.h"
+#include "GenericML/Driver/CompileDriver.h"
 #include "GenericML/Driver/CompileToBinary.h"
 #include "GenericML/Driver/DriverAPI.h"
 #include "GenericML/Driver/DriverCLOptions.h"
@@ -280,55 +282,74 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
   MO::MoToMgpOptions moToMgpOptions;
   mofContext->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
 
-  // Convert the input file to an MLIR module.
-  switch (format) {
-  case FileFormat::kMODialect:
-    [[fallthrough]];
-  case FileFormat::kMGPDialect:
-    compileCtx.module = parseMODialect(file.copy(), &compileCtx.mlirCtx);
-    break;
+  auto loweringTransform =
+      [&, file = file.copy()]() mutable -> ErrorOr<BufferRef> {
+    // Convert the input file to an MLIR module.
+    switch (format) {
+    case FileFormat::kMODialect:
+      [[fallthrough]];
+    case FileFormat::kMGPDialect:
+      compileCtx.module = parseMODialect(file.copy(), &compileCtx.mlirCtx);
+      break;
 
-  default: {
-    auto identityOr = getFileContentIdentity(file.copy(), format);
-    if (identityOr.isError())
-      return identityOr.takeError();
-    return Error("cannot compile input with format " + *identityOr);
+    default: {
+      auto identityOr = getFileContentIdentity(file.copy(), format);
+      if (identityOr.isError())
+        return identityOr.takeError();
+      return Error("cannot compile input with format " + *identityOr);
+    }
+    }
+
+    // We have an MLIR model, try to lower it to a MEF-capable encoding.
+    switch (format) {
+    case FileFormat::kMODialect: {
+      writeIntermediateFileIfRequested("mo", compileCtx.module.get(),
+                                       mofContext->getCommonCLOptions(),
+                                       file.copy());
+
+      mofLoweringOptions.setupRuntimeOptions(*compileCtx.runtime);
+
+      if (failed(lowerMOToMGP(compileCtx.module.get(), moToMgpOptions,
+                              *compileCtx.runtime)))
+        return Error("unable to lower MO to MGP");
+      writeIntermediateFileIfRequested("mgp", compileCtx.module.get(),
+                                       mofContext->getCommonCLOptions(),
+                                       file.copy());
+
+      format = FileFormat::kMGPDialect;
+      break;
+    }
+    case FileFormat::kMGPDialect: {
+      break;
+    }
+    default:
+      auto identityOr = getFileContentIdentity(file.copy(), format);
+      if (identityOr.isError())
+        return identityOr.takeError();
+      auto identity = std::move(*identityOr);
+      return Error("cannot lower to MEF data of format " + identity);
+    }
+
+    return MO::convertMGPToMEF(compileCtx.module.get(),
+                               mofContext->getEnableMEFMetadata());
+  };
+
+  // If kernel paths are not empty then we'd need to inspect them to get the
+  // key, so default to not caching at this time.
+  if (!moToMgpOptions.kernelLibraryPaths.empty()) {
+    auto bufOr = loweringTransform();
+    if (bufOr)
+      return bufOr.takeError();
+    M::BufferRef outputBuffer = bufOr.takeValue();
+    return outputBuffer.release();
   }
-  }
 
-  // We have an MLIR model, try to lower it to a MEF-capable encoding.
-  switch (format) {
-  case FileFormat::kMODialect: {
-    writeIntermediateFileIfRequested("mo", compileCtx.module.get(),
-                                     mofContext->getCommonCLOptions(),
-                                     file.copy());
+  WriteableBufferRef keyBuffer =
+      makeCacheKey(file.copy(), mofLoweringOptions, moToMgpOptions);
 
-    mofLoweringOptions.setupRuntimeOptions(*compileCtx.runtime);
-
-    if (failed(lowerMOToMGP(compileCtx.module.get(), moToMgpOptions,
-                            *compileCtx.runtime)))
-      return Error("unable to lower MO to MGP");
-    writeIntermediateFileIfRequested("mgp", compileCtx.module.get(),
-                                     mofContext->getCommonCLOptions(),
-                                     file.copy());
-
-    format = FileFormat::kMGPDialect;
-    break;
-  }
-  case FileFormat::kMGPDialect: {
-    break;
-  }
-  default:
-    auto identityOr = getFileContentIdentity(file.copy(), format);
-    if (identityOr.isError())
-      return identityOr.takeError();
-    auto identity = std::move(*identityOr);
-    return Error("cannot lower to MEF data of format " + identity);
-  }
-
-  auto bufOr = MO::convertMGPToMEF(compileCtx.module.get(),
-                                   mofContext->getEnableMEFMetadata());
-  if (bufOr)
+  auto bufOr = M::cacheMEFTransform("mof", loweringTransform,
+                                    std::move(keyBuffer), *compileCtx.runtime);
+  if (bufOr.isError())
     return bufOr.takeError();
   M::BufferRef outputBuffer = bufOr.takeValue();
   return outputBuffer.release();
