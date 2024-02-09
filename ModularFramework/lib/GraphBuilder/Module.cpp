@@ -31,13 +31,11 @@ static mlir::NamedAttribute denseResourceAttr(StringRef name,
   mlir::AsmResourceBlob blob;
   if (owned) {
     blob = mlir::UnmanagedAsmResourceBlob::allocateWithAlign(
-        data, elementByteAlign,
-        // Take ownership of `data`, which must have been allocated with
-        // `Singleton CurrentRuntime`.
-        [](void *data, size_t, size_t) {
-          auto rt = M::Runtime::getCurrentRuntimeOrNull();
-          assert(rt && "runtime not present");
-          rt->getAllocator()->deallocateBytes(data);
+        data, elementByteAlign, [](void *data, size_t, size_t) {
+          // Take ownership of `data`, which must have been allocated with
+          // `Singleton CurrentRuntime` and deallocate it with the current
+          // allocator.
+          M::Runtime::getCurrentAllocator()->deallocateBytes(data);
         });
   } else {
     blob = mlir::HeapAsmResourceBlob::allocateAndCopyWithAlign(
@@ -106,11 +104,11 @@ mlir::NamedAttribute Module::tensorAttr(StringRef name, ArrayRef<uint8_t> data,
 
   if (owned) {
     // Free owned `data`, which was copied into the MLIRContext above. Note that
-    // this data was allocated in mojo land, which uses the runtime allocator.
-    // So, we need to use the runtime deallocator to free.
-    auto rt = Runtime::getCurrentRuntimeOrNull();
-    assert(rt && "runtime not present");
-    rt->getAllocator()->deallocateBytes(const_cast<uint8_t *>(data.data()));
+    // this data was allocated in mojo land, which uses the global runtime
+    // allocator. So, we need to use the same global runtime deallocator to
+    // free.
+    Runtime::getCurrentAllocator()->deallocateBytes(
+        const_cast<uint8_t *>(data.data()));
   }
 
   StringAttr nameAttr = StringAttr::get(moTensorType.getContext(), name);
