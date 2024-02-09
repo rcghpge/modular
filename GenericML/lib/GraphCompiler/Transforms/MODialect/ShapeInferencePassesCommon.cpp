@@ -91,7 +91,7 @@ LogicalResult elaborateModule(ModuleOp moduleOp) {
       pm, *ownedRuntime, *target, {/*enableSearch=*/false},
       [&](KGEN::PackageLinkOp packageLink) {
         return KGEN::specializePackageLinkForPreElaborationLinking(
-            packageLink, *ownedRuntime, {});
+            packageLink, *ownedRuntime, KGEN::CompilationOptions());
       },
       [](KGEN::PackageLinkOp packageLink, TargetInfoAttr) {
         // TODO(#22819): For now, do not compile packages on-demand, and instead
