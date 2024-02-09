@@ -48,6 +48,33 @@ struct InferLayoutPass : public impl::InferLayoutsBase<InferLayoutPass> {
     return success();
   };
 
+  llvm::StringRef getFilterLayout(size_t rank) {
+    switch (rank) {
+    case 4:
+      return "RSCF";
+    case 5:
+      return "QRSCF";
+    default:
+      llvm_unreachable("Only able to handle convs up to conv1-3d");
+    }
+  }
+
+  llvm::StringRef getInputLayout(size_t rank) {
+    switch (rank) {
+    case 4:
+      return "NHWC";
+    case 5:
+      return "NDHWC";
+    default:
+      llvm_unreachable("Only able to handle convs up to conv1-3d");
+    }
+  }
+
+  bool isSupportedConv(size_t inputRank, size_t filterRank) {
+    return (inputRank == 4 && filterRank == 4) ||
+           (inputRank == 5 && filterRank == 5);
+  }
+
   /// Walk through operations in `graphOp`, identify ops that impose direct
   /// layout constraints on their inputs/outputs (e.g., `mo.conv` requires
   /// `NHWC` layout for its input), and collect those in
@@ -57,10 +84,6 @@ struct InferLayoutPass : public impl::InferLayoutsBase<InferLayoutPass> {
   /// constrained to have both `NHWC` and `NCHW` layouts.
   LogicalResult addSeedingConstraints() {
     // Declare some canonical target-independent layouts required by MO ops.
-    LayoutAttr conv2DInputLayout = LayoutAttr::get(ctx, "NHWC");
-    LayoutAttr conv2DFilterLayout = LayoutAttr::get(ctx, "RSCF");
-    LayoutAttr conv3DInputLayout = LayoutAttr::get(ctx, "NDHWC");
-    LayoutAttr conv3DFilterLayout = LayoutAttr::get(ctx, "QRSCF");
     LayoutAttr matmulWeightsLayout = LayoutAttr::get(ctx, "KN");
 
     // Infer layouts by walking over constraining operations and updating the
@@ -72,19 +95,19 @@ struct InferLayoutPass : public impl::InferLayoutsBase<InferLayoutPass> {
         auto inputRank = input.getType().getRank();
         auto filterRank = filter.getType().getRank();
 
-        if (inputRank == 4 && filterRank == 4) { // 2D Conv.
-          if (failed(addLayoutConstraint(op, input, conv2DInputLayout)) ||
-              failed(addLayoutConstraint(op, filter, conv2DFilterLayout)))
-            return WalkResult::interrupt();
-        } else if (inputRank == 5 && filterRank == 5) { // 3D Conv.
-          if (failed(addLayoutConstraint(op, input, conv3DInputLayout)) ||
-              failed(addLayoutConstraint(op, filter, conv3DFilterLayout)))
+        if (isSupportedConv(inputRank, filterRank)) {
+          auto convInputLayout =
+              LayoutAttr::get(ctx, getInputLayout(input.getType().getRank()));
+          auto convFilterLayout =
+              LayoutAttr::get(ctx, getFilterLayout(filter.getType().getRank()));
+
+          if (failed(addLayoutConstraint(op, input, convInputLayout)) ||
+              failed(addLayoutConstraint(op, filter, convFilterLayout)))
             return WalkResult::interrupt();
         } else {
           op->emitError() << "Only support 2D and 3D layout for ConvOp.\n";
           return WalkResult::interrupt();
         }
-
       } else if (auto matmulOp = dyn_cast<MatmulOp>(op)) {
         TensorValue weights = matmulOp.getTensorB();
         if (failed(addLayoutConstraint(op, weights, matmulWeightsLayout)))

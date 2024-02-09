@@ -69,19 +69,31 @@ LayoutAttr::verify(llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
   // TODO(#18622) make this more extensible
   static StringSet<> kSupportedLayoutStrs = {
       // conv inputs
+      // 2d
       "NHWC",
       "NCHW",
+      // 3d
       "NDHWC",
+
       // conv filter
+      // 2d
       "RSCF",
       "FCRS",
+      // 3d
       "QRSCF",
+
       // packed conv filter
+      // 2d
       "FRSCf",
+      // 3d
+      "FQRSCf",
+
       // matmul weights
       "KN",
+
       // transposed matmul weights
       "NK",
+
       // packed matmul weights
       "KNkni",
   };
