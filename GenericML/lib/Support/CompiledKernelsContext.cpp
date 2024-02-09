@@ -38,7 +38,8 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
 
     } else if (input.isType<List>()) {
       auto &list = input.get<List>();
-      for (AnyAsyncValueRef &ref : list.elements) {
+      for (Variant &v : list.getElements()) {
+        const AnyAsyncValueRef &ref = v.getValue();
         // Record that we'll be reading the buffer of this tensor while the
         // kernel is in-flight.
         if (ref.isType<GML::Tensor>()) {
