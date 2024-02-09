@@ -7,7 +7,7 @@
 
 from tensor import Tensor, TensorShape
 
-from max.graph import *
+from max.graph import ops, testing, Dim, Module, MOTensor
 
 
 fn test_squeeze() raises:

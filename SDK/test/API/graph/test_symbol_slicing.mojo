@@ -8,7 +8,7 @@
 
 from tensor import Tensor, TensorShape
 
-from max.graph import *
+from max.graph import testing, Dim, Module, MOTensor, TypeTuple
 
 
 fn test_vector_index_int() raises:

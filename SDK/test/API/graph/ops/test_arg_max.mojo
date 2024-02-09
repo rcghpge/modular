@@ -7,7 +7,7 @@
 
 from tensor import Tensor, TensorShape
 
-from max.graph import *
+from max.graph import ops, testing, Module, MOTensor
 
 
 fn test_arg_max() raises:

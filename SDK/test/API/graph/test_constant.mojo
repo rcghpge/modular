@@ -9,7 +9,7 @@
 from tensor import TensorShape
 import testing
 
-from max.graph import *
+from max.graph import Module, MOTensor, TypeTuple
 
 
 fn test_basic_tensor() raises:

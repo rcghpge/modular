@@ -8,7 +8,7 @@
 
 from tensor import TensorSpec
 
-from max.graph import *
+from max.graph import testing, Dim, ElementType, Module, MOList, MOTensor
 
 
 fn test_dtype_to_string() raises:

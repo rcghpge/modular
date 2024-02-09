@@ -10,9 +10,9 @@
 
 from sys.param_env import env_get_string
 from tensor import Tensor, TensorShape
+from testing import assert_true
 
-from max.graph import *
-from testing import *
+from max.graph import AttrMap, Module, MOList, MOTensor, TypeTuple
 
 
 alias TEMP_DIR = Path(env_get_string["TEMP_DIR"]())

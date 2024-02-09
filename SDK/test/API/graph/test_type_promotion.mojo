@@ -6,7 +6,7 @@
 # RUN: mojo --debug-level full %s
 
 import benchmark
-from testing import *
+from testing import assert_equal, assert_raises
 
 from max.graph.type_promotion import promote
 
