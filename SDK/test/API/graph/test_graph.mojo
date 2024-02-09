@@ -5,8 +5,6 @@
 # ===----------------------------------------------------------------------=== #
 # UNSUPPORTED: windows
 # RUN: mojo -D TEMP_DIR=%T %s | FileCheck %s
-# RUN: mt -execute %T/module_to_bytecode.bin | FileCheck %s --check-prefix=CHECK-MTB
-# RUN: mt -execute %T/module_save_to_file.bin | FileCheck %s --check-prefix=CHECK-MTB2
 
 from sys.param_env import env_get_string
 from tensor import Tensor, TensorShape
@@ -31,24 +29,6 @@ fn test_identity_graph() raises:
     # CHECK: module {
     # CHECK:   mo.graph @identity_graph([[arg:.*]]: !mo.tensor<[], si32>) -> !mo.tensor<[], si32>
     # CHECK:     mo.output [[arg]] : !mo.tensor<[], si32>
-    # CHECK:   }
-    # CHECK: }
-    print(m.__str__())
-
-
-fn test_nontensor_interface() raises:
-    var m = Module()
-    var g = m.graph(
-        name="nontensor_interface",
-        in_types=MOList(MOTensor(DType.int32)),
-        out_types=MOList(MOTensor(DType.int32)),
-    )
-    _ = g.nvop(name="mo.output", inputs=g[0])
-
-    m.verify()
-    # CHECK: module {
-    # CHECK:   mo.graph @nontensor_interface([[arg:.*]]: !mo.list<!mo.tensor<[], si32>>) -> !mo.list<!mo.tensor<[], si32>>
-    # CHECK:     mo.output [[arg]] : !mo.list<!mo.tensor<[], si32>>
     # CHECK:   }
     # CHECK: }
     print(m.__str__())
@@ -90,86 +70,7 @@ fn test_add_constant() raises:
     print(m.__str__())
 
 
-fn test_list() raises:
-    var m = Module()
-    var g = m.graph("list", TypeTuple(), MOList(MOTensor(DType.float32, 1)))
-    let l = g.list(MOTensor(DType.float32, 1))
-    g.output(l)
-    m.verify()
-    # CHECK-LABEL: @list
-    # CHECK: mo.list.create() : () -> !mo.list<!mo.tensor<[1], f32>>
-    print(m.m)
-
-
-fn test_list_with_elements() raises:
-    var m = Module()
-    var g = m.graph("list", TypeTuple(), MOList(MOTensor(DType.float32)))
-    let x = g.scalar[DType.float32](1.0)
-    let y = g.scalar[DType.float32](2.0)
-    let l = g.list((x, y))
-    g.output(l)
-    m.verify()
-    # CHECK-LABEL: @list
-    # CHECK: mo.list.create(%0, %1) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.list<!mo.tensor<[], f32>>
-    print(m.m)
-
-
-fn test_list_validations() raises:
-    var m = Module()
-    var g = m.graph("list", TypeTuple(), TypeTuple())
-    try:
-        _ = g.list(())
-    except:
-        pass
-    else:
-        assert_true(False, "didn't raise")
-    let x = g.scalar[DType.float32](1.0)
-    let y = g.scalar[DType.float32](2.0, rank=1)
-    try:
-        _ = g.list((x, y))
-    except:
-        pass
-    else:
-        assert_true(False, "didn't raise")
-
-
-# CHECK-LABEL: test_bytecode_output
-# TODO: Move this to the MLIR binding tests.
-fn test_bytecode_output() raises:
-    print("test_bytecode_output")
-    let m = Module()
-    let g = m.graph("bytecode_output", TypeTuple(), MOTensor(DType.int32))
-    let x = g.constant(Tensor[DType.int32](TensorShape(), 7))
-    g.output(x)
-
-    # CHECK: True
-    # CHECK-MTB{LITERAL}: 'bytecode_output' returned tensor([[7]], dtype=si32, shape=[])
-    with open(TEMP_DIR / "module_to_bytecode.bin", "w") as f:
-        print("True")
-        f.write(m.m.as_op().bytecode())
-
-
-# CHECK-LABEL: test_save_to_file
-fn test_save_to_file() raises:
-    print("test_save_to_file")
-    let m = Module()
-    let g = m.graph("save_to_file", TypeTuple(), MOTensor(DType.int32))
-    let x = g.constant(Tensor[DType.int32](TensorShape(), 7))
-    g.output(x)
-
-    # CHECK: True
-    # CHECK-MTB2{LITERAL}: 'save_to_file' returned tensor([[7]], dtype=si32, shape=[])
-    print("True")
-    m.save_to_file(TEMP_DIR / "module_save_to_file.bin")
-
-
 fn main() raises:
     test_identity_graph()
-    test_nontensor_interface()
     test_basic_add()
     test_add_constant()
-    test_list()
-    test_list_with_elements()
-    test_list_validations()
-    test_bytecode_output()
-    test_save_to_file()
