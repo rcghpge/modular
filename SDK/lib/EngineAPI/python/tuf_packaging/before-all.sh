@@ -36,6 +36,8 @@ cmake-llvm --sanitizer=none --build-type=release \
 
 build-llvm
 
+build-tcmalloc
+
 pip install \
   -e Support/python \
   -r KGEN/utils/requirements.txt \
