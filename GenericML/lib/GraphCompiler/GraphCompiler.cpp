@@ -176,6 +176,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     MOGG::PatternFusionOptions patternFusionOpts;
     patternFusionOpts.mhaAllowUnsafeBCast =
         opts.patternFusionMHAAllowUnsafeBCasts;
+    patternFusionOpts.mhaAllowInternalReshape =
+        opts.patternFusionMHAAllowInternalReshape;
     patternFusionOpts.enableMHAPattern = opts.patternFusionMHAEnable;
     pm.addPass(MOGG::createPatternFusion(patternFusionOpts));
 

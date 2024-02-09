@@ -167,6 +167,11 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc("If the mha pattern is enabled, allows fusing potentially "
                      "unsafe bcasts with a runtime guard."),
       llvm::cl::init(true)};
+  Option<bool> patternFusionMHAAllowInternalReshape{
+      *this, "mha-allow-internal-reshape",
+      llvm::cl::desc("If the mha pattern is enabled, allows fusing potentially "
+                     "unsafe bcasts with a runtime guard."),
+      llvm::cl::init(true)};
 };
 
 struct ShapeInferenceOptions

@@ -746,6 +746,14 @@ auto inline pOptionalBroadcast(Operation **bindDest, pInT patternIn) {
   return m_Optional(bcast, patternIn);
 }
 
+template <typename pInT>
+auto inline pOptionalReshape(Operation **bindDest, pInT patternIn) {
+  // Allows optional insertion of reshapes and bcasts between this pattern
+  // Specifically patternIn --> (optional) mo.static.reshape
+  //  --> (optional) mo.static.broadcast
+  auto reshape = m_Op<Static::ReshapeOp>(bindDest, patternIn);
+  return m_Optional(reshape, patternIn);
+}
 /// A helper for matching against softmax(input) @ V for fused attention
 class MultiHeadAttentionEpilogueMatcher {
 private:
@@ -761,25 +769,31 @@ private:
   Operation *optBCast1 = nullptr;
   Operation *optBCast2 = nullptr;
 
+  // For internal reshapes
+  Operation *optReshape1 = nullptr;
+  Operation *optReshape2 = nullptr;
+
   graph_compiler::Logger patternMatcherLogger;
   MultiHeadAttentionEpilogueMatcher() = default;
 
 public:
   static ErrorOr<MultiHeadAttentionEpilogueMatcher>
   match(BatchMatmulOp reprojection, bool allowUnsafeBCast,
-        bool debugMHAPattern) {
+        bool allowInternalReshape, bool debugMHAPattern) {
     MultiHeadAttentionEpilogueMatcher matcher;
     auto pV = m_Any(&matcher.value);
 
     // optional broadcast + softmax
-    auto maybeBCast1 =
-        pOptionalBroadcast(&matcher.optBCast1, m_Any(&matcher.softmaxInput));
+    auto maybeReshape1 =
+        pOptionalReshape(&matcher.optReshape1, m_Any(&matcher.softmaxInput));
+    auto maybeBCast1 = pOptionalBroadcast(&matcher.optBCast1, maybeReshape1);
     auto pSoftmaxAttnMatrix =
         m_Op<SoftmaxOp>(&matcher.softmaxProducer, maybeBCast1);
 
     // optional broadcast + re-project using V
-    auto maybeBCast2 =
-        pOptionalBroadcast(&matcher.optBCast2, pSoftmaxAttnMatrix);
+    auto maybeReshape2 =
+        pOptionalReshape(&matcher.optReshape2, pSoftmaxAttnMatrix);
+    auto maybeBCast2 = pOptionalBroadcast(&matcher.optBCast2, maybeReshape2);
     auto pAnswer =
         m_Op<BatchMatmulOp>(&matcher.reprojectProducer, maybeBCast2, pV);
 
@@ -793,6 +807,10 @@ public:
     if (!allowUnsafeBCast && (matcher.optBCast1 || matcher.optBCast2))
       return Error("[MultiHeadAttentionEpilogueMatcher]: pattern matches but "
                    "has unsafe broadcasts.");
+
+    if (!allowInternalReshape && (matcher.optReshape1 || matcher.optReshape2))
+      return Error("[MultiHeadAttentionEpilogueMatcher]: pattern matches but "
+                   "has internal reshapes.");
 
     return matcher;
   }
@@ -843,7 +861,6 @@ class MultiHeadAttentionSelectMaskingMatcher {
   const double FLOAT32_NEGINF_THRESHOLD = -1E+38;
 
 private:
-  // May be optional
   TensorValue patternInput;
   TensorValue scalarMask;
   TensorValue conditionalStatement;
@@ -857,6 +874,10 @@ private:
 
   // For unsafe broadcasts of the attentionMatrix branch
   Operation *optBCast1 = nullptr;
+  Operation *optBCast2 = nullptr;
+
+  // For internal reshapes
+  Operation *optReshape1 = nullptr;
 
   graph_compiler::Logger patternMatcherLogger;
 
@@ -880,7 +901,8 @@ private:
   }
 
   static ErrorOr<MultiHeadAttentionSelectMaskingMatcher>
-  match(Operation *producingOp, bool allowUnsafeBCast, bool debugMHAPattern) {
+  match(Operation *producingOp, bool allowUnsafeBCast,
+        bool allowInternalReshape, bool debugMHAPattern) {
     MultiHeadAttentionSelectMaskingMatcher matcher;
 
     // Input to the pattern -- the "attentionMask"
@@ -888,8 +910,14 @@ private:
     auto pPatternInputRank3 = m_Ranked(3, pPatternInputBase);
     auto pPatternInputRank4 = m_Ranked(4, pPatternInputBase);
     auto pPatternInput = m_Optional(pPatternInputRank3, pPatternInputRank4);
-    auto pPatternMaybeBCast =
+
+    // One more bcast for starcoder 2
+    auto pInitialMaybeBCast =
         pOptionalBroadcast(&matcher.optBCast1, pPatternInput);
+    auto pPatternMaybeReshape =
+        pOptionalReshape(&matcher.optReshape1, pInitialMaybeBCast);
+    auto pPatternMaybeBCast =
+        pOptionalBroadcast(&matcher.optBCast2, pPatternMaybeReshape);
 
     // Scalar and conditional for select
     auto pBCastScalar = m_Op<Static::BroadcastToOp>(
@@ -902,7 +930,8 @@ private:
     bool matchesNegBranch = pAttentionMaskAsFalse.match(
         producingOp, debugMHAPattern ? &matcher.patternMatcherLogger : nullptr);
     if (matchesNegBranch && !matcher.verifyScalarNegInf().isError() &&
-        (allowUnsafeBCast || !matcher.optBCast1)) {
+        (allowUnsafeBCast || (!matcher.optBCast1 && !matcher.optBCast2)) &&
+        (allowInternalReshape || !matcher.optReshape1)) {
       matcher.attentionMatrixTrueBranch = false;
       return matcher;
     }
@@ -913,7 +942,8 @@ private:
     bool matchesPosBranch = pAttentionMaskAsTrue.match(
         producingOp, debugMHAPattern ? &matcher.patternMatcherLogger : nullptr);
     if (matchesPosBranch && !matcher.verifyScalarNegInf().isError() &&
-        (allowUnsafeBCast || !matcher.optBCast1)) {
+        (allowUnsafeBCast || (!matcher.optBCast1 && !matcher.optBCast2)) &&
+        (allowInternalReshape || !matcher.optReshape1)) {
       matcher.attentionMatrixTrueBranch = true;
       return matcher;
     }
@@ -971,6 +1001,8 @@ public:
   void fillUnsafeBCasts(SmallVector<Static::BroadcastToOp> &unsafeBcasts) {
     if (optBCast1)
       unsafeBcasts.push_back(cast<Static::BroadcastToOp>(optBCast1));
+    if (optBCast2)
+      unsafeBcasts.push_back(cast<Static::BroadcastToOp>(optBCast2));
   }
 };
 
@@ -994,25 +1026,29 @@ class MultiHeadAttentionExplicitMaskingMatcher {
 private:
   Operation *attentionMatrixNormMaskedProducer = nullptr;
 
-  // May be optional
   TensorValue patternInput;
   TensorValue attentionMask;
 
   // For unsafe broadcasts
   Operation *optBCast1 = nullptr;
 
+  // For internal reshapes
+  Operation *optReshape1 = nullptr;
+
   graph_compiler::Logger patternMatcherLogger;
 
   MultiHeadAttentionExplicitMaskingMatcher() = default;
 
   static ErrorOr<MultiHeadAttentionExplicitMaskingMatcher>
-  match(Operation *producingOp, bool allowUnsafeBCast, bool debugMHAPattern) {
+  match(Operation *producingOp, bool allowUnsafeBCast,
+        bool allowInternalReshape, bool debugMHAPattern) {
     MultiHeadAttentionExplicitMaskingMatcher matcher;
 
     auto pPatternInput = m_Any(&matcher.patternInput);
 
     // Optional Broadcast into the add
-    auto maybeBCast1 = pOptionalBroadcast(&matcher.optBCast1, pPatternInput);
+    auto maybeReshape1 = pOptionalReshape(&matcher.optReshape1, pPatternInput);
+    auto maybeBCast1 = pOptionalBroadcast(&matcher.optBCast1, maybeReshape1);
     auto pMaskedNormalizedAttnMatrix = m_BinaryCommutativeOp<AddOp>(
         &matcher.attentionMatrixNormMaskedProducer, maybeBCast1,
         m_Any(&matcher.attentionMask));
@@ -1041,6 +1077,10 @@ private:
       return Error(
           "[MultiHeadAttentionExplicitMaskingMatcher]: pattern matches but "
           "has unsafe broadcasts.");
+    if (!allowInternalReshape && matcher.optReshape1)
+      return Error(
+          "[MultiHeadAttentionExplicitMaskingMatcher]: pattern matches but "
+          "has internal reshapes.");
 
     return matcher;
   }
@@ -1065,13 +1105,6 @@ public:
         "[MultiHeadAttentionExplicitMaskingMatcher] patternInput", {3, 4});
     if (patternInputOk.isError())
       return patternInputOk.takeError();
-
-    int64_t rankMask = attentionMask.getType().getRank();
-    int64_t rankInput = patternInput.getType().getRank();
-    if (rankMask != rankInput)
-      return Error(
-          "[MultiHeadAttentionExplicitMaskingMatcher] Expect mask and input "
-          "to be same rank.");
 
     return success();
   }
@@ -1110,15 +1143,18 @@ private:
 
 public:
   static ErrorOr<MultiHeadAttentionMaskingMuxMatcher>
-  match(Operation *producingOp, bool allowUnsafeBCast, bool debugMHAPattern) {
+  match(Operation *producingOp, bool allowUnsafeBCast,
+        bool allowInternalReshape, bool debugMHAPattern) {
     MultiHeadAttentionMaskingMuxMatcher matcher;
 
     // See if any masking patterns match
     Operation *curProducingOp = producingOp;
     matcher.causalMask = MultiHeadAttentionSelectMaskingMatcher::match(
-        curProducingOp, allowUnsafeBCast, debugMHAPattern);
+        curProducingOp, allowUnsafeBCast, allowInternalReshape,
+        debugMHAPattern);
     matcher.explicitMask = MultiHeadAttentionExplicitMaskingMatcher::match(
-        curProducingOp, allowUnsafeBCast, debugMHAPattern);
+        curProducingOp, allowUnsafeBCast, allowInternalReshape,
+        debugMHAPattern);
 
     GENERICML_ASSERT(matcher.causalMask.isError() ||
                      matcher.explicitMask.isError())
@@ -1140,14 +1176,14 @@ public:
       matcher.patternInput = matcher.causalMask->getTopOfPattern();
       matcher.explicitMask = MultiHeadAttentionExplicitMaskingMatcher::match(
           matcher.patternInput.getDefiningOp(), allowUnsafeBCast,
-          debugMHAPattern);
+          allowInternalReshape, debugMHAPattern);
       if (!matcher.explicitMask.isError())
         matcher.patternInput = matcher.explicitMask->getTopOfPattern();
     } else { // explicit mask is filled
       matcher.patternInput = matcher.explicitMask->getTopOfPattern();
       matcher.causalMask = MultiHeadAttentionSelectMaskingMatcher::match(
           matcher.patternInput.getDefiningOp(), allowUnsafeBCast,
-          debugMHAPattern);
+          allowInternalReshape, debugMHAPattern);
       if (!matcher.causalMask.isError())
         matcher.patternInput = matcher.causalMask->getTopOfPattern();
     }
@@ -1207,7 +1243,24 @@ public:
         return explicitMaskOk.takeError();
     }
 
+    if (!causalMask.isError() && !explicitMask.isError()) {
+      MOSH::ShapeAttr causalMaskShape =
+          cast<MOSH::ShapeAttr>(causalMask->getAttentionMaskShape());
+      MOSH::ShapeAttr explicitMaskShape =
+          cast<MOSH::ShapeAttr>(explicitMask->getAttentionMaskShape());
+
+      if (causalMaskShape.getRank() != explicitMaskShape.getRank())
+        return Error("Attention masks are not the same rank!");
+    }
     return success();
+  }
+
+  TypedAttr getAttentionMaskShape() {
+    if (!causalMask.isError())
+      return causalMask->getAttentionMaskShape();
+    if (!explicitMask.isError())
+      return explicitMask->getAttentionMaskShape();
+    return {};
   }
 
   void fillUnsafeBCasts(SmallVector<Static::BroadcastToOp> &unsafeBcasts) {
@@ -1247,11 +1300,17 @@ private:
   // For unsafe bcasts
   Operation *optBCast1 = nullptr;
 
+  // For internal reshapes
+  Operation *optReshape1 = nullptr;
+
   MultiHeadAttentionNormalizationMatcher() = default;
 
 public:
   static ErrorOr<MultiHeadAttentionNormalizationMatcher>
-  match(Operation *producingOp, bool allowUnsafeBCast) {
+  match(Operation *producingOp, bool allowUnsafeBCast,
+        bool allowInternalReshape) {
+    graph_compiler::Logger patternMatcherLogger;
+
     MultiHeadAttentionNormalizationMatcher matcher;
     auto scalarConstant = m_Any(&matcher.scalarConstant);
 
@@ -1263,23 +1322,29 @@ public:
     auto pAttentionMatrix = m_Any(&matcher.attentionMatrix);
 
     // normalize by mul with optional bcast
-    auto maybeBCast1 = pOptionalBroadcast(&matcher.optBCast1, pAttentionMatrix);
+    auto maybeReshape1 =
+        pOptionalReshape(&matcher.optReshape1, pAttentionMatrix);
+    auto maybeBCast1 = pOptionalBroadcast(&matcher.optBCast1, maybeReshape1);
     auto pNormalizedByMul =
         m_Op<MulOp>(&matcher.normalizationProducer, maybeBCast1, pNorm);
-    bool matchesMul = pNormalizedByMul.match(producingOp);
+    bool matchesMul =
+        pNormalizedByMul.match(producingOp, &patternMatcherLogger);
     bool bcastAllowedMul = allowUnsafeBCast || !matcher.optBCast1;
-    if (matchesMul && bcastAllowedMul) {
+    bool internalReshapeAllowedMul =
+        allowInternalReshape || !matcher.optReshape1;
+    if (matchesMul && bcastAllowedMul && internalReshapeAllowedMul) {
       matcher.isDiv = false;
       return matcher;
     }
 
     // normalize by div with optional bcast
-    auto maybeBCast2 = pOptionalBroadcast(&matcher.optBCast1, pAttentionMatrix);
     auto pNormalizedByDiv =
-        m_Op<DivOp>(&matcher.normalizationProducer, maybeBCast2, pNorm);
+        m_Op<DivOp>(&matcher.normalizationProducer, maybeBCast1, pNorm);
     bool matchesDiv = pNormalizedByDiv.match(producingOp);
     bool bcastAllowedDiv = allowUnsafeBCast || !matcher.optBCast1;
-    if (matchesDiv && bcastAllowedDiv) {
+    bool internalReshapeAllowedDiv =
+        allowInternalReshape && !matcher.optReshape1;
+    if (matchesDiv && bcastAllowedDiv && internalReshapeAllowedDiv) {
       matcher.isDiv = true;
       return matcher;
     }
@@ -1457,16 +1522,39 @@ private:
     if (maskingOk.isError())
       return maskingOk.takeError();
 
+    // Ensure Q, KT, V and the same rank
+    size_t expectedQKVRank = prologueMatcher->getQuery().getType().getRank();
+    if (prologueMatcher->getKeyT().getType().getRank() != expectedQKVRank ||
+        epilogueMatcher->getValue().getType().getRank() != expectedQKVRank) {
+      return Error("[MultiHeadAttentionPrologueMatcher] QKV tensors are not "
+                   "all the same rank!");
+    }
+
+    // We either allow the rank and attention mask to be the same rank
+    // OR the attention mask to be rank 4 and QKV to be rank 3.
+    //
+    // In the special case they are not the same we expect the BMM to be
+    // done at rank 3, and the tensor is reshaped for masking.
+    if (maskingMatcher->hasAttentionMask()) {
+      MOSH::ShapeAttr attentionMaskShape =
+          cast<MOSH::ShapeAttr>(maskingMatcher->getAttentionMaskShape());
+      bool maskEqualRank = expectedQKVRank == attentionMaskShape.getRank();
+      bool maskDifferentRank =
+          (expectedQKVRank == 3) && (attentionMaskShape.getRank() == 4);
+      if (!maskEqualRank && !maskDifferentRank) {
+        return Error("[MultiHeadAttentionPrologueMatcher] unsupported rank "
+                     "difference between QKV and attention mask");
+      }
+    }
     return success();
   }
 
   MultiHeadAttentionPatternHelper() = default;
 
 public:
-  static ErrorOr<MultiHeadAttentionPatternHelper> match(BatchMatmulOp finalOp,
-                                                        OpBuilder &builder,
-                                                        bool allowUnsafeBCast,
-                                                        bool debugMHAPattern) {
+  static ErrorOr<MultiHeadAttentionPatternHelper>
+  match(BatchMatmulOp finalOp, OpBuilder &builder, bool allowUnsafeBCast,
+        bool allowInternalReshape, bool debugMHAPattern) {
     MultiHeadAttentionPatternHelper matcher;
     matcher.builder = &builder;
 
@@ -1530,7 +1618,7 @@ public:
 
     // **Step 4: Match epilogue
     matcher.epilogueMatcher = MultiHeadAttentionEpilogueMatcher::match(
-        finalOp, allowUnsafeBCast, debugMHAPattern);
+        finalOp, allowUnsafeBCast, allowInternalReshape, debugMHAPattern);
     if (matcher.epilogueMatcher.isError())
       return matcher.epilogueMatcher.takeError();
 
@@ -1541,7 +1629,8 @@ public:
 
     // **Step 3: Match masking
     matcher.maskingMatcher = MultiHeadAttentionMaskingMuxMatcher::match(
-        *maskPatternBottom, allowUnsafeBCast, debugMHAPattern);
+        *maskPatternBottom, allowUnsafeBCast, allowInternalReshape,
+        debugMHAPattern);
     if (matcher.maskingMatcher.isError())
       return matcher.maskingMatcher.takeError();
 
@@ -1552,8 +1641,8 @@ public:
 
     // **Step 2: Match normalization
     matcher.normalizationMatcher =
-        MultiHeadAttentionNormalizationMatcher::match(*normPatternBottom,
-                                                      allowUnsafeBCast);
+        MultiHeadAttentionNormalizationMatcher::match(
+            *normPatternBottom, allowUnsafeBCast, allowInternalReshape);
     if (matcher.normalizationMatcher.isError())
       return matcher.normalizationMatcher.takeError();
 
@@ -1611,11 +1700,33 @@ public:
 
 // For MIN Llama 2 demo
 struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
-  bool allowUnsafeBCast, debugMHAPattern;
+  bool allowUnsafeBCast, allowInternalReshape, debugMHAPattern;
   MultiHeadAttentionPatternCPU(MLIRContext *ctx, bool allowUnsafeBCast,
-                               bool debugMHAPattern)
+                               bool allowInternalReshape, bool debugMHAPattern)
       : OpRewritePattern(ctx, 20), allowUnsafeBCast(allowUnsafeBCast),
+        allowInternalReshape(allowInternalReshape),
         debugMHAPattern(debugMHAPattern) {}
+
+  void insertShapeGuard(PatternRewriter &rewriter, GraphOp graphOp,
+                        TypedAttr beforeShape, TypedAttr afterShape,
+                        Location loc, const std::string &checkName,
+                        const std::string &errorMsg) const {
+    // Inserts a runtime guard checking (beforeShape == afterShape)
+    IntegerType boolTy = rewriter.getI1Type();
+    TypedAttr cmpAttr =
+        KGEN::emitMLIROperationCall(MOSH::EqualOp::getOperationName(), {},
+                                    {beforeShape, afterShape}, boolTy);
+    KGEN::ParamDeclAttr condAttr = graphOp.getNewParamOfType(checkName, boolTy);
+    rewriter.create<KGEN::ParamDeclareOp>(loc, condAttr, cmpAttr);
+
+    // Add runtime assertion into graph
+    TypedAttr assertAttr = MOSH::AssertOp::emitStaticCall(
+        KGEN::ParamDeclRefAttr::get(condAttr), errorMsg);
+    auto chainTy = rewriter.getType<ChainType>();
+    KGEN::ParamDeclAttr chainAttr =
+        graphOp.getNewParamOfType(checkName, chainTy);
+    rewriter.create<KGEN::ParamDeclareOp>(loc, chainAttr, assertAttr);
+  }
 
   void guardUnsafeBCast(Static::BroadcastToOp unsafeBCast,
                         PatternRewriter &rewriter) const {
@@ -1642,23 +1753,75 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
     Location loc = unsafeBCast->getLoc();
 
     // Make comparison of shapes operator
-    IntegerType boolTy = rewriter.getI1Type();
-    TypedAttr cmpAttr =
-        KGEN::emitMLIROperationCall(MOSH::EqualOp::getOperationName(), {},
-                                    {beforeShape, afterShape}, boolTy);
-    KGEN::ParamDeclAttr condAttr =
-        graphOp.getNewParamOfType("MHA_BCAST_CHECK", boolTy);
-    rewriter.create<KGEN::ParamDeclareOp>(loc, condAttr, cmpAttr);
+    insertShapeGuard(rewriter, graphOp, beforeShape, afterShape, loc,
+                     "MHA_BCAST_CHECK",
+                     "MHA Pattern Detected unsafe broadcast. This is of great "
+                     "interest so please report!");
+  }
 
-    // Add runtime assertion into graph
-    TypedAttr assertAttr = MOSH::AssertOp::emitStaticCall(
-        KGEN::ParamDeclRefAttr::get(condAttr),
-        "MHA Pattern Detected unsafe broadcast. This is of great interest so "
-        "please report!");
-    auto chainTy = rewriter.getType<ChainType>();
-    KGEN::ParamDeclAttr chainAttr =
-        graphOp.getNewParamOfType("MHA_BCAST_CHECK_CHAIN", chainTy);
-    rewriter.create<KGEN::ParamDeclareOp>(loc, chainAttr, assertAttr);
+  void guardBHDimensionFused(GraphOp graphOp, ArrayRef<TypedAttr> rank3Dims,
+                             ArrayRef<TypedAttr> rank4Dims,
+                             PatternRewriter &rewriter, Location loc) const {
+    // insert guards that the rank 3 dimensions [A, B, C], and rank4 target
+    // dimensions [E, F, G, H], that A = E * F, B == G, C == H.
+    //
+    // This usually corresponds to the fusion of the B and H dimensions in LLMs
+
+    // mosh.eq expects shapes so wrap results with shapes
+    SmallVector<TypedAttr> mulOperands = {rank4Dims[0], rank4Dims[1]};
+    SmallVector<TypedAttr> lhsShape = {
+        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, mulOperands),
+        rank4Dims[2], rank4Dims[3]};
+    MOSH::ShapeAttr comparisonLHS = MOSH::ShapeAttr::get(
+        lhsShape, MOSH::ShapeType::get(rewriter.getContext()));
+    MOSH::ShapeAttr comparisonRHS = MOSH::ShapeAttr::get(
+        rank3Dims, MOSH::ShapeType::get(rewriter.getContext()));
+
+    // Add run time checks for changed dimensions
+    insertShapeGuard(rewriter, graphOp, comparisonLHS, comparisonRHS, loc,
+                     "MHA_INTERNAL_RESHAPE_CHECK",
+                     "MHA Pattern Detected unsafe internal reshape. This is of "
+                     "great interest so please report!");
+  }
+
+  TensorValue upcastRankWithGuard(GraphOp graphOp, TensorValue rank3Input,
+                                  ArrayRef<TypedAttr> rank4Target,
+                                  PatternRewriter &rewriter) const {
+    // It could be the case that the QKV tensors and the mask are not the
+    // same rank. Sometimes, the BMM are done in rank 3, and later reshaped
+    // to a rank 4 version to do masking. The rank 3 version is the same
+    // as the rank 4 except the batch and head dimensions are combined.
+    //
+    // We allow this pattern here by reshaping Q to attentionMask. We
+    // assume this occurs because the rank 4 tensor is shaped: [B, H, S, S]
+    //
+    // while the rank 3 tensors are shaped [B * H, S, D] or [B * H, S, D].
+    //
+    // This method handles this by, given a rank3Input with assumed dimensions
+    // [B * H, S, D] or [B * H, D, S] and the dimensions of the rank4 input
+    // returns the newly reshaped rank4 input. [B, H, S, D] or [B, H, D, S].
+    ArrayRef<TypedAttr> oldDims = rank3Input.getType().getDims();
+    SmallVector<TypedAttr> newDims(4);
+
+    Location loc = rank3Input.getLoc();
+
+    newDims[0] = rank4Target[0];
+    newDims[1] = rank4Target[1];
+    newDims[2] = oldDims[1];
+    newDims[3] = oldDims[2];
+
+    // Create new tensor with given shape
+    MOSH::ShapeType ty = rank3Input.getType().getTypedShapeAttr().getType();
+    MOSH::ShapeAttr newShape = MOSH::ShapeAttr::get(newDims, ty);
+    TensorType newType = rank3Input.getType().cloneWith(newShape);
+    TensorValue newValue =
+        rewriter.create<Static::ReshapeOp>(loc, newType, rank3Input);
+
+    // Need MOSH::ShapeAttr to match
+    guardBHDimensionFused(graphOp,
+                          rank3Input.getType().getTypedShapeAttr().getValues(),
+                          newDims, rewriter, loc);
+    return newValue;
   }
 
   LogicalResult matchAndRewrite(BatchMatmulOp op,
@@ -1674,6 +1837,7 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
 
     ErrorOr<MultiHeadAttentionPatternHelper> matcher =
         MultiHeadAttentionPatternHelper::match(op, rewriter, allowUnsafeBCast,
+                                               allowInternalReshape,
                                                debugMHAPattern);
     if (matcher.isError())
       return rewriter.notifyMatchFailure(op.getLoc(), matcher.getError());
@@ -1689,24 +1853,58 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
     // not converging (as the new ops will tend to be DCEd.).
     // Attention masking case
     if (matcher->hasAttentionMask()) {
-      ErrorOr<TensorValue> maybeAttentionMask = matcher->getAttentionMask();
 
-      if (maybeAttentionMask.isError())
-        return rewriter.notifyMatchFailure(op->getLoc(),
-                                           maybeAttentionMask.getError());
+      // QKV are guaranteed to have the same ranks.
+      TensorValue query = matcher->getQuery();
+      TensorValue keyT = matcher->getKeyT();
+      TensorValue value = matcher->getValue();
 
-      SmallVector<Value> inputValues = {
-          matcher->getQuery(), matcher->getKeyT(), matcher->getValue(),
-          maybeAttentionMask.takeValue(), matcher->getNormScalar()};
-      SmallVector<Type> outputTypes = {op.getType()};
+      // Attention mask may or may not have the same rank
+      TensorValue attentionMask = matcher->getAttentionMask();
+
+      // Sometimes the BMM are done in rank 3 where the batch and head dims
+      // are combined. Masking is still done in rank4 however.
+      TensorType fusedKernelOutType = op.getResult().getType();
+      GraphOp graphOp = op->getParentOfType<GraphOp>();
+
+      if (query.getType().getRank() == 3 &&
+          attentionMask.getType().getRank() == 4) {
+        ArrayRef<TypedAttr> rank4Target = attentionMask.getType().getDims();
+        query = upcastRankWithGuard(graphOp, query, rank4Target, rewriter);
+        keyT = upcastRankWithGuard(graphOp, keyT, rank4Target, rewriter);
+        value = upcastRankWithGuard(graphOp, value, rank4Target, rewriter);
+        fusedKernelOutType =
+            upcastRankWithGuard(graphOp, op.getResult(), rank4Target, rewriter)
+                .getType();
+      }
+
+      SmallVector<Value> inputValues = {query, keyT, value, attentionMask,
+                                        matcher->getNormScalar()};
+
+      SmallVector<Type> outputTypes = {fusedKernelOutType};
       ValueRange inputs(inputValues);
       TypeRange outputTy(outputTypes);
       rewriter.setInsertionPointAfterValue(op);
       auto result = rewriter.create<CustomOp>(op->getLoc(), outputTy, inputs,
                                               "with_mask_fused_attention_cpu");
-      auto fused_kernel_result = cast<TensorValue>(result->getResult(0));
-      fused_kernel_result.setType(op.getType());
-      rewriter.replaceAllUsesWith(op, fused_kernel_result);
+      auto fusedKernelResult = cast<TensorValue>(result->getResult(0));
+      fusedKernelResult.setType(fusedKernelOutType);
+
+      // NOTE: if this is true, then checks in matcher should guarantee we are
+      // moving from rank4 back to rank3.
+      if (fusedKernelResult.getType() != op.getType()) {
+        MOSH::ShapeAttr fusedKernelShape =
+            cast<MOSH::ShapeAttr>(fusedKernelResult.getType().getShapeAttr());
+        MOSH::ShapeAttr targetShape =
+            cast<MOSH::ShapeAttr>(op.getType().getShapeAttr());
+        guardBHDimensionFused(graphOp, targetShape.getValues(),
+                              fusedKernelShape.getValues(), rewriter,
+                              op->getLoc());
+        fusedKernelResult = rewriter.create<Static::ReshapeOp>(
+            op->getLoc(), op.getType(), fusedKernelResult);
+      }
+
+      rewriter.replaceAllUsesWith(op, fusedKernelResult);
     } else {
       // No attention masking case
       SmallVector<Value> inputValues = {matcher->getQuery(), matcher->getKeyT(),
@@ -1747,7 +1945,8 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
 
     if (enableMHAPattern.getValue()) {
       patterns.add<MultiHeadAttentionPatternCPU>(
-          ctx, mhaAllowUnsafeBCast.getValue(), debugMHAPattern.getValue());
+          ctx, mhaAllowUnsafeBCast.getValue(),
+          mhaAllowInternalReshape.getValue(), debugMHAPattern.getValue());
     }
 
     MO::GraphOp graphOp = getOperation();
