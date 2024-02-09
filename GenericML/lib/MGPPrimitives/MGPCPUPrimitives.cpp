@@ -198,7 +198,8 @@ static void mgp_buffer_constant_cpu(Context &theContext,
                                     MEFAttr<uint64_t> aRuntimeSlot,
                                     MEFAttr<ArrayRef<uint8_t>> bValue,
                                     MEFAttr<uint64_t> cRawAlign,
-                                    MEFAttr<uint64_t> dDeviceId) {
+                                    MEFAttr<uint64_t> dDeviceId,
+                                    MEFAttr<bool> eIsTrivial) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
       static_cast<size_t>(*aRuntimeSlot));
   if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*dDeviceId))
@@ -542,7 +543,7 @@ static void mgp_buffer_section_borrow_dynamic_cpu(
     size_t scale, Result<GML::BufferRef> outBuffer,
     MEFAttr<uint64_t> aRuntimeSlot, MEFAttr<uint64_t> bUnscaledOffset,
     MEFAttr<uint64_t> cUnscaledSize, MEFAttr<uint64_t> dDeviceId,
-    Runtime &runtime, EncodedLocation loc) {
+    EncodedLocation loc) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
       static_cast<size_t>(*aRuntimeSlot));
   if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*dDeviceId))
@@ -561,6 +562,26 @@ static void mgp_buffer_section_borrow_dynamic_cpu(
   }
   std::move(outBuffer).emplace(GML::BufferRef::createSafeBorrowedSlice(
       inBuffer.copy(), loc, outOffset, outSize));
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.buffer.to_bool.cpu
+//===----------------------------------------------------------------------===//
+
+static void mgp_buffer_to_bool_cpu(Chain inChain, Context &theContext,
+                                   const GML::BufferRef &buffer,
+                                   Result<bool> result,
+                                   MEFAttr<uint64_t> aRuntimeSlot,
+                                   MEFAttr<uint64_t> bDeviceId) {
+  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
+      static_cast<size_t>(*aRuntimeSlot));
+  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*bDeviceId))
+    return std::move(result).setToError("mismatched device id");
+  if (buffer.getSize() != 1)
+    return std::move(result).setToError(
+        Twine("expecting buffer to have size 1 (actually is ") +
+        Twine(buffer.getSize()) + ")");
+  std::move(result).emplace(buffer.getBuffer<uint8_t>() != 0);
 }
 
 //===----------------------------------------------------------------------===//
@@ -678,13 +699,13 @@ static void mgp_debug_tensor_print_cpu(
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.kernel.execute.generic.cpu
+// mgp.kernel.execute.cpu
 //===----------------------------------------------------------------------===//
 
 /// Profiler entry for launched CPU kernels.
 using MGPProfilerEntry = ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1)>;
 
-static void mgp_kernel_execute_generic_cpu(
+static void mgp_kernel_execute_cpu(
     Chain inChain, Context &theContext, RemainingArguments operands,
     Result<Chain> outChain, RemainingResults outDimensions,
     MEFAttr<uint64_t> aHostRuntimeSlot, MEFAttr<uint64_t> bOtherRuntimeSlot,
@@ -696,8 +717,8 @@ static void mgp_kernel_execute_generic_cpu(
   if (*aHostRuntimeSlot != *bOtherRuntimeSlot ||
       *fHostDeviceId != *gOtherDeviceId) {
     return std::move(outChain).setToError(
-        "mgp.kernel.execute.generic.cpu requires 'host' and 'other' devices to "
-        "be the same");
+        "mgp.kernel.execute.cpu requires 'host' and 'other' devices to be the "
+        "same");
   }
 
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
@@ -902,6 +923,7 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
                 mgp_buffer_section_borrow_static_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.section.borrow.dynamic.cpu",
                 mgp_buffer_section_borrow_dynamic_cpu);
+  ADD_PRIMITIVE(registry, "mgp.buffer.to_bool.cpu", mgp_buffer_to_bool_cpu);
   ADD_PRIMITIVE(registry, "mgp.tensor.create.cpu", mgp_tensor_create_cpu);
   ADD_PRIMITIVE(registry, "mgp.tensor.extract.buffer.cpu",
                 mgp_tensor_extract_buffer_cpu);
@@ -909,8 +931,7 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
                 mgp_tensor_extract_tensor_spec_cpu);
   ADD_PRIMITIVE(registry, "mgp.debug.tensor.print.cpu",
                 mgp_debug_tensor_print_cpu);
-  ADD_PRIMITIVE(registry, "mgp.kernel.execute.generic.cpu",
-                mgp_kernel_execute_generic_cpu);
+  ADD_PRIMITIVE(registry, "mgp.kernel.execute.cpu", mgp_kernel_execute_cpu);
 
   // TODO(#30906): Move into MGPPrimitives once mgp.cpu.buffer.unsize removed.
   ADD_PRIMITIVE(registry, "mgp.buffer.unsize", mgp_buffer_unsize);

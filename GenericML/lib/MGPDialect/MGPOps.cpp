@@ -78,30 +78,46 @@ M::MGP::getImpliedAlignment(ElementsAttr value) {
 // Custom parsers
 //===----------------------------------------------------------------------===//
 
-/// Parses an #M.device_ref into device, then assigns chain the
-/// type !mgp.chain<$device>.
-static ParseResult parseDeviceRefImpl(OpAsmParser &p, DeviceRefAttr &device,
-                                      ArrayRef<Type *> chains) {
-  llvm::SMLoc loc;
-  if (p.getCurrentLocation(&loc))
-    return failure();
-  device = dyn_cast_if_present<DeviceRefAttr>(
-      DeviceRefAttr::parse(p, /*odsType=*/{}));
-  if (!device)
-    p.emitError(loc, "expecting #M.device_ref attribute");
+/// Returns device, or <"cpu", 0> if it is null.
+static DeviceRefAttr deviceOrDefault(MLIRContext *ctx, DeviceRefAttr device) {
+  if (device)
+    return device;
+  return DeviceRefAttr::get(ctx, kCPULabel, 0);
+}
+
+/// Parses an optional keyword and #M.device_ref into device, then assigns
+/// chains the type !mgp.chain<device>.
+static ParseResult parseOptDeviceRefImpl(OpAsmParser &p, StringRef keyword,
+                                         DeviceRefAttr &device,
+                                         ArrayRef<Type *> chains) {
+  if (succeeded(p.parseOptionalKeyword(keyword))) {
+    llvm::SMLoc loc;
+    if (p.getCurrentLocation(&loc))
+      return failure();
+    device = dyn_cast_if_present<DeviceRefAttr>(
+        DeviceRefAttr::parse(p, /*odsType=*/{}));
+    if (!device)
+      return p.emitError(loc, "expecting #M.device_ref attribute");
+  } else {
+    device = DeviceRefAttr::get(p.getContext(), kCPULabel, 0);
+  }
   for (Type *chain : chains)
-    *chain = DeviceChainType::get(p.getContext(), device);
+    *chain = DeviceChainType::get(device);
   return success();
 }
 
-static ParseResult parseDeviceRef(OpAsmParser &p, DeviceRefAttr &device,
-                                  Type &chain) {
-  return parseDeviceRefImpl(p, device, {&chain});
+static ParseResult parseOptDeviceRef(OpAsmParser &p, StringRef keyword,
+                                     DeviceRefAttr &device, Type &chain) {
+  return parseOptDeviceRefImpl(p, keyword, device, {&chain});
 }
 
-static void printDeviceRef(OpAsmPrinter &p, Operation *op, DeviceRefAttr device,
-                           DeviceChainType chain) {
-  device.print(p);
+static void printOptDeviceRef(OpAsmPrinter &p, Operation *op, StringRef keyword,
+                              DeviceRefAttr device, DeviceChainType chain) {
+  if (device != DeviceRefAttr::get(op->getContext(), kCPULabel, 0)) {
+    p.printKeywordOrString(keyword);
+    p.getStream() << " ";
+    device.print(p);
+  }
 }
 
 /// Parses a !mgp.buffer type, extracts its raw size and device attributes,
@@ -120,7 +136,7 @@ static ParseResult parseBufferTypeToRawSizeDeviceImpl(OpAsmParser &p,
   rawSize = bufferType.getRawSize();
   device = bufferType.getDevice();
   for (Type *chain : chains)
-    *chain = DeviceChainType::get(p.getContext(), device);
+    *chain = DeviceChainType::get(device);
   return success();
 }
 
@@ -243,7 +259,7 @@ static ParseResult parseTensorTypeToDeviceBufferSpecImpl(
   }
   buffer = DeviceBufferType::get(tensorType);
   for (Type *chain : chains)
-    *chain = DeviceChainType::get(p.getContext(), device);
+    *chain = DeviceChainType::get(device);
   return success();
 }
 
@@ -293,7 +309,7 @@ static void printTensorTypeToDeviceBufferSpec(OpAsmPrinter &p, Operation *op,
                                               DeviceRefAttr device,
                                               DeviceBufferType buffer,
                                               TensorSpecType tensorSpec) {
-  auto tensorType = DeviceTensorType::get(op->getContext(), device, tensorSpec);
+  auto tensorType = DeviceTensorType::get(device, tensorSpec);
   p << tensorType;
 }
 
@@ -328,7 +344,7 @@ static ParseResult parseBufferTypesToBufferRawSizesDeviceOutBuffers(
   if (!inBufferType)
     return p.emitError(loc, "expected an !mgp.buffer type");
   device = inBufferType.getDevice();
-  chain = DeviceChainType::get(p.getContext(), device);
+  chain = DeviceChainType::get(device);
   SmallVector<APInt> rawDims;
   if (p.getCurrentLocation(&loc) || p.parseArrowTypeList(outBuffers))
     return failure();
@@ -376,8 +392,8 @@ static ParseResult parseSrcDstBufferTypesToDevices(
     return p.emitError(loc, "expected an !mgp.buffer type");
   srcDevice = srcBufferType.getDevice();
   dstDevice = dstBufferType.getDevice();
-  inChain = DeviceChainType::get(p.getContext(), srcDevice);
-  outChain = DeviceChainType::get(p.getContext(), dstDevice);
+  inChain = DeviceChainType::get(srcDevice);
+  outChain = DeviceChainType::get(dstDevice);
   return success();
 }
 
@@ -416,8 +432,8 @@ parseSrcDstBufferTypesToSameDevice(OpAsmParser &p, Type &srcBuffer,
   device = srcBufferType.getDevice();
   if (device != dstBufferType.getDevice())
     return p.emitError(loc, "buffer types must agree on their device");
-  inChain = DeviceChainType::get(p.getContext(), device);
-  outChain = DeviceChainType::get(p.getContext(), device);
+  inChain = DeviceChainType::get(device);
+  outChain = DeviceChainType::get(device);
   return success();
 }
 
@@ -435,10 +451,11 @@ static void printSrcDstBufferTypesToSameDevice(OpAsmPrinter &p, Operation *op,
 /// Parses optionally type-annotated operands into $gatingOperands, using
 /// the default type !mgp.chain<$device>.
 static ParseResult parseChainCreateParenOperandList(
-    OpAsmParser &p, DeviceRefAttr &device,
+    OpAsmParser &p, DeviceRefAttr device,
     SmallVectorImpl<OpAsmParser::UnresolvedOperand> &gatingOperands,
     SmallVectorImpl<Type> &gatingOperandTypes) {
-  Type defaultType = DeviceChainType::get(p.getContext(), device);
+  Type defaultType =
+      DeviceChainType::get(deviceOrDefault(p.getContext(), device));
   return parseParenOperandListWithDefaultType(p, gatingOperands,
                                               gatingOperandTypes, defaultType);
 }
@@ -446,7 +463,7 @@ static ParseResult parseChainCreateParenOperandList(
 static void printChainCreateParenOperandList(
     OpAsmPrinter &p, Operation *op, DeviceRefAttr device,
     const OperandRange &gatingOperands, const TypeRange &gatingOperandTypes) {
-  Type defaultType = DeviceChainType::get(op->getContext(), device);
+  Type defaultType = DeviceChainType::get(device);
   return printParenOperandListWithDefaultType(p, gatingOperands, defaultType);
 }
 

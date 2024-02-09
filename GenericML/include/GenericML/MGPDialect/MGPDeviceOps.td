@@ -47,9 +47,9 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 //
 // Custom parsers:
 //
-//   // Parses an #M.device_ref into $device, and assigns $chain... the
-//   // type !mgp.chain<$device>.
-//   custom<DeviceRef>($device, type($chain)...)
+//   // Parses an optional keyword and #M.device_ref into $device, and
+//   // assigns $chain... the type !mgp.chain<$device>.
+//   custom<OptDeviceRef>(keyword, $device, type($chain)...)
 //
 //   // Parses optionally type-annotated operands into $gatingOperands, using
 //   // the default type !mgp.chain<$device>.
@@ -128,6 +128,9 @@ class MGP_DeviceOp<string mnemonic, list<Trait> traits = []> :
       ] # traits
     >;
 
+def MGP_OptDeviceRefAttr :
+  DefaultValuedAttr<M_DeviceRefAttr, "kCPULabel, 0">;
+
 //===----------------------------------------------------------------------===//
 // RuntimeCreateOp
 //===----------------------------------------------------------------------===//
@@ -160,7 +163,7 @@ def RuntimeCreateOp : MGP_DeviceOp<"runtime.create"> {
       // virtual device id 3.
       %ch0 : !mef.chain
       %ctx : !mgp.context
-      %ch1 = mgp.runtime.create %ch0, %ctx[5, 2], <"cuda", 3>
+      %ch1 = mgp.runtime.create %ch0, %ctx[5, 2] device <"cuda", 3>
       %ch1 : !mef.chain
     ```
   }];
@@ -169,13 +172,13 @@ def RuntimeCreateOp : MGP_DeviceOp<"runtime.create"> {
   // names.
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
-                       UI64Attr:$aRuntimeSlot,        // 1
-                       UI64Attr:$bDeviceSpecMapSlot,  // 2
-                       M_DeviceRefAttr:$cDevice);     // 3
+                       UI64Attr:$aRuntimeSlot,         // 1
+                       UI64Attr:$bDeviceSpecMapSlot,   // 2
+                       MGP_OptDeviceRefAttr:$cDevice); // 3
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aRuntimeSlot `,` $bDeviceSpecMapSlot `]` `,`
-    $cDevice attr-dict
+    $inChain `,` $theContext `[` $aRuntimeSlot `,` $bDeviceSpecMapSlot `]`
+    ( `device`  $cDevice^ )? attr-dict
   }];
 
   let extraClassDefinition = [{
@@ -218,8 +221,8 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
       // virtual device id 3.
       %ch1 = mgp.module.load %ch0, %ctx[5],
                dense_resource<label> : !M.aligned_bytes<1000, align 16>,
-               ["kernel1", "kernel2"], ["const1", "const2"],
-               <"cuda", 3>
+               ["kernel1", "kernel2"], ["const1", "const2"]
+               device <"cuda", 3>
       %ch1 : !mef.chain
     ```
   }];
@@ -232,11 +235,12 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
                        AnyAttrOf<[M_MultiLineStringAttr, ElementsAttr]>:$bImage, // 1
                        M_MultiLineStringAttr:$cFunctionSymbols,                  // 2
                        M_MultiLineStringAttr:$dConstantSymbols,                  // 3
-                       M_DeviceRefAttr:$eDevice);                                // 4
+                       MGP_OptDeviceRefAttr:$eDevice);                           // 4
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $bImage `,`
-    $cFunctionSymbols `,` $dConstantSymbols `,` $eDevice attr-dict
+    $cFunctionSymbols `,` $dConstantSymbols
+    ( `device` $eDevice^ )? attr-dict
   }];
   let hasVerifier = 1;
 
@@ -253,6 +257,7 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
 
 def ChainCreateOp : MGP_DeviceOp<"chain.create", [
     Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<GRT_ChainCreateOpInterface>,
     DeclareOpInterfaceMethods<GRT_GatedOnChainOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
@@ -277,19 +282,19 @@ def ChainCreateOp : MGP_DeviceOp<"chain.create", [
     ```mlir
       %ctx : !mgp.context
       %ch0 : !mgp.chain<<"cuda", 3>>
-      %ch1 : !mgp.chain<<"cpu", 0>>
+      %ch1 : !mgp.chain
       %ch2 : !mef.chain
-      %val : !mgp.buffer<<"cuda", 3>, 64>
+      %val : !mgp.buffer<64, <"cuda", 3>>
       // Returns a chain which is ready when %ch0, %ch1, %ch2 and %val are
       // ready, but which is 'finished' only when %ch0 and %val are 'finished'.
       // Uses the CUDA runtime established in slot 5, which must be for CUDA
       // virtual device id 3.
-      %ch3 = mgp.chain.create %ctx[5], host <"cpu", 0>, other <"cuda", 3>,
+      %ch3 = mgp.chain.create %ctx[5], other <"cuda", 3>,
              (
                %ch0,
-               %ch1: !mgp.chain<<"cpu", 0>>,
+               %ch1: !mgp.chain,
                %ch2: !mef.chain,
-               %val: !mgp.buffer<<"cuda", 3>, 64>
+               %val: !mgp.buffer<64, <"cuda", 3>>
              )
       %ch3 : !mgp.chain<<"cuda", 3>>
     ```
@@ -299,27 +304,20 @@ def ChainCreateOp : MGP_DeviceOp<"chain.create", [
   // names.
   let arguments = (ins MGP_ContextType:$theContext,
                        Variadic<AnyType>:$gatingOperands,
-                       UI64Attr:$aOtherRuntimeSlot,    // 0
-                       M_DeviceRefAttr:$bHostDevice,   // 1
-                       M_DeviceRefAttr:$cOtherDevice); // 2
+                       UI64Attr:$aOtherRuntimeSlot,         // 0
+                       MGP_OptDeviceRefAttr:$bHostDevice,   // 1
+                       MGP_OptDeviceRefAttr:$cOtherDevice); // 2
   let results = (outs MGP_DeviceChainType:$outChain);
   let assemblyFormat = [{
     $theContext `[` $aOtherRuntimeSlot `]` `,`
-    `host` $bHostDevice `,`
-    `other` custom<DeviceRef>($cOtherDevice, type($outChain)) `,`
+    ( `host` $bHostDevice^ `,` )?
+    ( `other` $cOtherDevice^ `,` )?
     custom<ChainCreateParenOperandList>(
       ref($cOtherDevice), $gatingOperands, type($gatingOperands))
     attr-dict
   }];
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins "mlir::TypedValue<M::MGP::ContextType>":$theContext,
-                   "mlir::ValueRange":$gatingOperands,
-                   "uint64_t":$aOtherRuntimeSlot,
-                   "M::DeviceRefAttr":$bHostDevice,
-                   "M::DeviceRefAttr":$cOtherDevice)>,
-  ];
+  let hasCanonicalizeMethod = 1;
 
   let extraClassDefinition = [{
     uint64_t ChainCreateOp::getSlot() { return getAOtherRuntimeSlot(); }
@@ -355,19 +353,19 @@ def ChainDeviceToHostOp : MGP_DeviceOp<"chain.device_to_host", [
       // Returns a chain for the host CPU, with appropriate synchronization
       // on chains for the CUDA GPU with virtual device id and runtime
       // established in slot 5. The host runtime has been established in slot 4.
-      %ch1 = mgp.chain.device_to_host %ch0, %ctx[5], <"cuda", 3>
+      %ch1 = mgp.chain.device_to_host %ch0, %ctx[5] device <"cuda", 3>
       %ch1 : !mef.chain
     ```
   }];
 
   let arguments = (ins MGP_DeviceChainType:$inChain,
                        MGP_ContextType:$theContext,
-                       UI64Attr:$aRuntimeSlot,    // 0
-                       M_DeviceRefAttr:$bDevice); // 1
+                       UI64Attr:$aRuntimeSlot,         // 0
+                       MGP_OptDeviceRefAttr:$bDevice); // 1
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aRuntimeSlot `]` `,`
-    custom<DeviceRef>($bDevice, type($inChain)) attr-dict
+    $inChain `,` $theContext `[` $aRuntimeSlot `]`
+    custom<OptDeviceRef>("\"device\"", $bDevice, type($inChain)) attr-dict
   }];
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
@@ -385,6 +383,7 @@ def ChainDeviceToHostOp : MGP_DeviceOp<"chain.device_to_host", [
 
 def ChainHostToDeviceOp : MGP_DeviceOp<"chain.host_to_device", [
     Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
 ]> {
   let summary = "Returns an `!mgp.chain` which is 'finished' when the given "
@@ -402,7 +401,7 @@ def ChainHostToDeviceOp : MGP_DeviceOp<"chain.host_to_device", [
     ```mlir
       %ctx : !mgp.context
       %ch0 : !mef.chain
-      %ch1 = mgp.chain.host_to_device %ch0, %ctx[1], <"cuda", 3>
+      %ch1 = mgp.chain.host_to_device %ch0, %ctx[1] device <"cuda", 3>
       %ch1 : !mgp.chain<<"cuda", 3>>
     ```
   }];
@@ -411,22 +410,15 @@ def ChainHostToDeviceOp : MGP_DeviceOp<"chain.host_to_device", [
   // names.
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
-                       UI64Attr:$aRuntimeSlot,    // 0
-                       M_DeviceRefAttr:$bDevice); // 1
+                       UI64Attr:$aRuntimeSlot,         // 0
+                       MGP_OptDeviceRefAttr:$bDevice); // 1
   let results = (outs MGP_DeviceChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aRuntimeSlot `]` `,`
-    custom<DeviceRef>($bDevice, type($outChain)) attr-dict
+    $inChain `,` $theContext `[` $aRuntimeSlot `]`
+    ( `device` $bDevice^ )? attr-dict
   }];
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
-
-  let builders = [
-    OpBuilder<(ins "mlir::TypedValue<M::MEF::ChainType>":$inChain,
-                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
-                   "uint64_t":$aRuntimeSlot,
-                   "M::DeviceRefAttr":$bDevice)>,
-  ];
 
   let extraClassDefinition = [{
     uint64_t ChainHostToDeviceOp::getSlot() { return getARuntimeSlot(); }
@@ -442,6 +434,7 @@ def ChainHostToDeviceOp : MGP_DeviceOp<"chain.host_to_device", [
 def BufferConstantOp : MGP_DeviceOp<"buffer.constant", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
+    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
 ]> {
   let summary = "Allocates and initialized a buffer from a host attribute.";
   let description = [{
@@ -460,30 +453,32 @@ def BufferConstantOp : MGP_DeviceOp<"buffer.constant", [
       // runtime should have been established in slot 5, which has been
       // initialized with the bytes in the dense resource with 'label'.
       %buf = mgp.buffer.constant %ctx[5],
-               dense_resource<label>:!M.aligned_bytes<256, align 16>,
-               <"cuda", 3>
-      %buf : !mgp.buffer<<"cuda", 3>, 256>
+               dense_resource<label>:!M.aligned_bytes<256, align 16>
+               : !mgp.buffer<256, <"cuda", 3>>
+      %buf : !mgp.buffer<256, <"cuda", 3>>
     ```
   }];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins MGP_ContextType:$theContext,
-                       UI64Attr:$aRuntimeSlot,      // 0
-                       ElementsAttr:$bValue,        // 1
-                       UI64Attr:$cRawAlign,         // 2
-                       M_DeviceRefAttr:$dDevice);   // 3
+                       UI64Attr:$aRuntimeSlot,                           // 0
+                       ElementsAttr:$bValue,                             // 1
+                       UI64Attr:$cRawAlign,                              // 2
+                       MGP_OptDeviceRefAttr:$dDevice,                    // 3
+                       DefaultValuedAttr<BoolAttr, "true">:$eIsTrivial); // 4
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $theContext `[` $aRuntimeSlot  `]` `,`
-    custom<ElementsAttrWithAlign>($bValue, $cRawAlign) `,`
-    $dDevice attr-dict
+    custom<ElementsAttrWithAlign>($bValue, $cRawAlign)
+    ( `device` $dDevice^ )? ( `trivial` $eIsTrivial^ )? attr-dict
   }];
   let hasVerifier = 1;
 
   let builders = [
     OpBuilder<(ins "mlir::Value":$theContext, "uint64_t":$aRuntimeSlot,
-                   "mlir::ElementsAttr":$bValue, "M::DeviceRefAttr":$dDevice)>
+                   "mlir::ElementsAttr":$bValue, "M::DeviceRefAttr":$dDevice,
+                   "bool":$eIsTrivial)>
   ];
 
   let extraClassDeclaration = [{
@@ -495,6 +490,8 @@ def BufferConstantOp : MGP_DeviceOp<"buffer.constant", [
     uint64_t BufferConstantOp::getSlot() { return getARuntimeSlot(); }
 
     M::DeviceRefAttr BufferConstantOp::getDevice() { return getDDevice(); }
+
+    bool BufferConstantOp::isTrivial() { return getEIsTrivial(); }
   }];
 }
 
@@ -503,6 +500,7 @@ def BufferConstantOp : MGP_DeviceOp<"buffer.constant", [
 //===----------------------------------------------------------------------===//
 
 def BufferConstantLoadOp : MGP_DeviceOp<"buffer.constant.load", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
 ]> {
   let summary = "Retrieves a constant from an already loaded module for device.";
@@ -517,19 +515,19 @@ def BufferConstantLoadOp : MGP_DeviceOp<"buffer.constant.load", [
       // Returns buffer on CUDA GPU with virtual device id 3, which is
       // associated with the CUDA runtime at slot 5. The constant is in
       // the module loaded with index 0, and is at constant index 2.
-      %buf = mgp.buffer.constant.load %ctx[5], (0, 2) : !mgp.buffer<<"cuda", 3>, 256>
-      %buf : !mgp.buffer<<"cuda", 3>, 256>
+      %buf = mgp.buffer.constant.load %ctx[5], (0, 2) : !mgp.buffer<256, <"cuda", 3>>
+      %buf : !mgp.buffer<256, <"cuda", 3>>
     ```
   }];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins MGP_ContextType:$theContext,
-                       UI64Attr:$aRuntimeSlot,      // 0
-                       UI64Attr:$bModuleIndex,      // 2
-                       UI64Attr:$cConstantIndex,    // 3
-                       UI64Attr:$dSize,             // 4
-                       M_DeviceRefAttr:$eDevice);   // 5
+                       UI64Attr:$aRuntimeSlot,         // 0
+                       UI64Attr:$bModuleIndex,         // 2
+                       UI64Attr:$cConstantIndex,       // 3
+                       UI64Attr:$dSize,                // 4
+                       MGP_OptDeviceRefAttr:$eDevice); // 5
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $theContext `[` $aRuntimeSlot `]` `,`
@@ -537,15 +535,6 @@ def BufferConstantLoadOp : MGP_DeviceOp<"buffer.constant.load", [
     `:` custom<StaticBufferTypeToSizeDevice>(type($outBuffer), $dSize,  $eDevice)
   }];
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$theContext,
-                   "uint64_t":$aRuntimeSlot,
-                   "uint64_t":$bModuleIndex,
-                   "uint64_t":$cConstantIndex,
-                   "uint64_t":$dSize,
-                   "M::DeviceRefAttr":$eDevice)>
-  ];
 
   let extraClassDefinition = [{
     bool BufferConstantLoadOp::isTrivial() { return true; }
@@ -561,6 +550,7 @@ def BufferConstantLoadOp : MGP_DeviceOp<"buffer.constant.load", [
 //===----------------------------------------------------------------------===//
 
 def BufferAllocStaticOp : MGP_DeviceOp<"buffer.alloc.static", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
     DeclareOpInterfaceMethods<MGP_StaticAllocOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
@@ -583,8 +573,8 @@ def BufferAllocStaticOp : MGP_DeviceOp<"buffer.alloc.static", [
       %ctx : !mgp.context
       // Allocates 256 bytes using the CUDA runtime established in slot 5,
       // which should correspond to the the CUDA GPU with virtual device id 3.
-      %buf = mgp.buffer.alloc.static %ch, %ctx[5] : !mgp.buffer<<"cuda", 3>, 256>
-      %buf : !mgp.buffer<<"cuda", 3>, 256>
+      %buf = mgp.buffer.alloc.static %ch, %ctx[5] : !mgp.buffer<256, <"cuda", 3>>
+      %buf : !mgp.buffer<256, <"cuda", 3>>
     ```
   }];
 
@@ -595,7 +585,7 @@ def BufferAllocStaticOp : MGP_DeviceOp<"buffer.alloc.static", [
                        UI64Attr:$aRuntimeSlot,                                 // 0
                        UI64Attr:$bSize,                                        // 1
                        DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign, // 2
-                       M_DeviceRefAttr:$dDevice);                              // 3
+                       MGP_OptDeviceRefAttr:$dDevice);                         // 3
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aRuntimeSlot `]`
@@ -604,15 +594,6 @@ def BufferAllocStaticOp : MGP_DeviceOp<"buffer.alloc.static", [
           type($outBuffer), $bSize, $dDevice, type($inChain))
   }];
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
-                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
-                   "uint64_t":$aRuntimeSlot,
-                   "uint64_t":$bSize,
-                   "std::optional<uint64_t>":$cAlign,
-                   "M::DeviceRefAttr":$dDevice)>,
-  ];
 
   let extraClassDefinition = [{
     bool BufferAllocStaticOp::isTrivial() { return true; }
@@ -628,9 +609,9 @@ def BufferAllocStaticOp : MGP_DeviceOp<"buffer.alloc.static", [
 //===----------------------------------------------------------------------===//
 
 def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
-// TODO: Enable after #31038
-//  DeclareOpInterfaceMethods<MGP_DynamicAllocOpInterface>,
+    DeclareOpInterfaceMethods<MGP_DynamicAllocOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
 ]> {
   let summary = "Allocates a buffer with dynamically provided byte size on "
@@ -651,8 +632,8 @@ def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
       %size : index
       // Allocates %size bytes using the CUDA runtime from slot 5, which
       // should correspond to the CUDA GPU with virtual device id 3.
-      %buf = mgp.buffer.alloc.dynamic %ch, %ctx[5], %size : !mgp.buffer<<"cuda", 3>>
-      %buf : !mgp.buffer<<"cuda", 3>>
+      %buf = mgp.buffer.alloc.dynamic %ch, %ctx[5], %size : !mgp.buffer<, <"cuda", 3>>
+      %buf : !mgp.buffer<, <"cuda", 3>>
     ```
   }];
 
@@ -663,7 +644,7 @@ def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
                        Index:$runtimeSize,
                        UI64Attr:$aRuntimeSlot,                                 // 0
                        DefaultValuedAttr<UI64Attr, "kUnknownSize">:$bRawAlign, // 1
-                       M_DeviceRefAttr:$cDevice);                              // 2
+                       MGP_OptDeviceRefAttr:$cDevice);                         // 2
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aRuntimeSlot `]` `,` $runtimeSize
@@ -673,19 +654,12 @@ def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
   }];
   let hasVerifier = 1;
 
-  let builders = [
-    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
-                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
-                   "mlir::TypedValue<mlir::IndexType>":$runtimeSize,
-                   "uint64_t":$aRuntimeSlot,
-                   "std::optional<uint64_t>":$bAlign,
-                   "M::DeviceRefAttr":$cDevice)>,
-  ];
-
   let extraClassDefinition = [{
     uint64_t BufferAllocDynamicOp::getSlot() { return getARuntimeSlot(); }
 
     M::DeviceRefAttr BufferAllocDynamicOp::getDevice() { return getCDevice(); }
+
+
   }];
 }
 
@@ -694,6 +668,7 @@ def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
 //===----------------------------------------------------------------------===//
 
 def BufferReallocStaticOp : MGP_DeviceOp<"buffer.realloc.static", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
 ]> {
   let summary = "(Re)allocates or reuses a cached device buffer with statically "
@@ -742,8 +717,8 @@ def BufferReallocStaticOp : MGP_DeviceOp<"buffer.realloc.static", [
     // Reallocate the buffer in slot index 42 and buffer index 2, using the
     // CUDA runtime in slot 5, which should correspond to the CUDA GPU with
     // virtual id 3.
-    %buf = mgp.buffer.realloc.static %ch, %ctx[5, 42, 2] : !mgp.buffer<<"cuda", 3>, 64>
-    %buf : !mgp.buffer<<"cuda", 3>, 64>
+    %buf = mgp.buffer.realloc.static %ch, %ctx[5, 42, 2] : !mgp.buffer<64, <"cuda", 3>>
+    %buf : !mgp.buffer<64, <"cuda", 3>>
     ```
   }];
 
@@ -756,7 +731,7 @@ def BufferReallocStaticOp : MGP_DeviceOp<"buffer.realloc.static", [
                    UI64Attr:$cBufferIndex,                                   // 2
                    UI64Attr:$dSize,                                          // 3
                    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$eRawAlign,   // 4
-                   M_DeviceRefAttr:$fDevice);                                // 5
+                   MGP_OptDeviceRefAttr:$fDevice);                           // 5
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,`
@@ -766,17 +741,6 @@ def BufferReallocStaticOp : MGP_DeviceOp<"buffer.realloc.static", [
             type($outBuffer), $dSize, $fDevice, type($inChain))
   }];
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
-                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
-                   "uint64_t":$aRuntimeSlot,
-                   "uint64_t":$bBufferSlot,
-                   "uint64_t":$cBufferIndex,
-                   "uint64_t":$dSize,
-                   "std::optional<uint64_t>":$eAlign,
-                   "M::DeviceRefAttr":$fDevice)>,
-  ];
 
   let extraClassDefinition = [{
     uint64_t BufferReallocStaticOp::getSlot() { return getARuntimeSlot(); }
@@ -790,6 +754,7 @@ def BufferReallocStaticOp : MGP_DeviceOp<"buffer.realloc.static", [
 //===----------------------------------------------------------------------===//
 
 def BufferReallocDynamicOp : MGP_DeviceOp<"buffer.realloc.dynamic", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
 ]> {
   let summary = "(Re)allocates or reuses a cached device buffer with dynamically "
@@ -816,8 +781,8 @@ def BufferReallocDynamicOp : MGP_DeviceOp<"buffer.realloc.dynamic", [
     // Reallocate the buffer in slot index 42 and buffer index 2, using the
     // CUDA runtime in slot 5, which should correspond to the CUDA GPU with
     // virtual id 3.
-    %buf = mgp.buffer.realloc.dynamic %ch, %ctx[5, 42, 2], %size : !mgp.buffer<<"cuda", 3>>
-    %buf : !mgp.buffer<<"cuda", 3>>
+    %buf = mgp.buffer.realloc.dynamic %ch, %ctx[5, 42, 2], %size : !mgp.buffer<, <"cuda", 3>>
+    %buf : !mgp.buffer<, <"cuda", 3>>
     ```
   }];
 
@@ -830,7 +795,7 @@ def BufferReallocDynamicOp : MGP_DeviceOp<"buffer.realloc.dynamic", [
                    UI64Attr:$bBufferSlot,                                  // 1
                    UI64Attr:$cBufferIndex,                                 // 2
                    DefaultValuedAttr<UI64Attr, "kUnknownSize">:$dRawAlign, // 3
-                   M_DeviceRefAttr:$eDevice);                              // 4
+                   MGP_OptDeviceRefAttr:$eDevice);                         // 4
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,`
@@ -840,17 +805,6 @@ def BufferReallocDynamicOp : MGP_DeviceOp<"buffer.realloc.dynamic", [
           type($outBuffer), $eDevice, type($inChain))
   }];
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
-                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
-                   "mlir::TypedValue<mlir::IndexType>":$runtimeSize,
-                   "uint64_t":$aRuntimeSlot,
-                   "uint64_t":$bBufferSlot,
-                   "uint64_t":$cBufferIndex,
-                   "std::optional<uint64_t>":$dAlign,
-                   "M::DeviceRefAttr":$eDevice)>,
-  ];
 
   let extraClassDefinition = [{
      uint64_t BufferReallocDynamicOp::getSlot() { return getARuntimeSlot(); }
@@ -881,13 +835,13 @@ def BufferCacheOp : MGP_DeviceOp<"buffer.cache"> {
     Example:
     ```mlir
     %ctx : !mgp.context
-    %buf : !mgp.buffer<<"cuda", 3>>
+    %buf : !mgp.buffer<, <"cuda", 3>>
     %ch0 : !mef.chain
     // Cache the given buffer in slot index 42, using the CUDA runtime
     // established in slot 5, which should correspond to the CUDA GPU with
     // virtual id 3.
     %ch1 = mgp.buffer.cache %ch0, %ctx[5, 42], %buf
-             : !mgp.buffer<<"cuda", 3>, 256>
+             : !mgp.buffer<256, <"cuda", 3>>
     %ch1 : !mef.chain
     ```
   }];
@@ -897,9 +851,9 @@ def BufferCacheOp : MGP_DeviceOp<"buffer.cache"> {
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$buffer,
-                       UI64Attr:$aRuntimeSlot,     // 0
-                       UI64Attr:$bBufferSlot,      // 1
-                       M_DeviceRefAttr:$cDevice);  // 2
+                       UI64Attr:$aRuntimeSlot,         // 0
+                       UI64Attr:$bBufferSlot,          // 1
+                       MGP_OptDeviceRefAttr:$cDevice); // 2
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aRuntimeSlot `,` $bBufferSlot `]` `,`
@@ -921,6 +875,7 @@ def BufferCacheOp : MGP_DeviceOp<"buffer.cache"> {
 
 def BufferGetCachedOp : MGP_DeviceOp<"buffer.get_cached", [
     Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
 ]> {
   let summary = "Retrieves an `!mgp.buffer` from a dedicated state slot.";
   let description = [{
@@ -939,8 +894,8 @@ def BufferGetCachedOp : MGP_DeviceOp<"buffer.get_cached", [
     // Returns the buffer cached in slot index 42, using the CUDA runtime
     // established in slot 5, which should correspond to the CUDA GPU with
     // virtual id 3.
-    %buf = mgp.buffer.get_cached %ch0, %ctx[5, 42] : !mgp.buffer<<"cuda", 3>, 256>
-    %buf : !mgp.buffer<<"cuda", 3>, 256>
+    %buf = mgp.buffer.get_cached %ch0, %ctx[5, 42] : !mgp.buffer<256, <"cuda", 3>>
+    %buf : !mgp.buffer<256, <"cuda", 3>>
     ```
   }];
 
@@ -948,10 +903,10 @@ def BufferGetCachedOp : MGP_DeviceOp<"buffer.get_cached", [
   // names.
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
-                       UI64Attr:$aRuntimeSlot,      // 0
-                       UI64Attr:$bBufferSlot,       // 1
-                       UI64Attr:$cRawSize,          // 2
-                       M_DeviceRefAttr:$dDevice);   // 3
+                       UI64Attr:$aRuntimeSlot,         // 0
+                       UI64Attr:$bBufferSlot,          // 1
+                       UI64Attr:$cRawSize,             // 2
+                       MGP_OptDeviceRefAttr:$dDevice); // 3
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aRuntimeSlot `,` $bBufferSlot `]` attr-dict
@@ -959,15 +914,6 @@ def BufferGetCachedOp : MGP_DeviceOp<"buffer.get_cached", [
           type($outBuffer), $cRawSize, $dDevice)
   }];
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins "mlir::TypedValue<M::MEF::ChainType>":$inChain,
-                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
-                   "uint64_t":$aRuntimeSlot,
-                   "uint64_t":$bBufferSlot,
-                   "std::optional<uint64_t>":$cOptSize,
-                   "M::DeviceRefAttr":$dDevice)>,
-  ];
 
   let extraClassDefinition = [{
     uint64_t BufferGetCachedOp::getSlot() { return getARuntimeSlot(); }
@@ -981,6 +927,7 @@ def BufferGetCachedOp : MGP_DeviceOp<"buffer.get_cached", [
 //===----------------------------------------------------------------------===//
 
 def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
 ]> {
@@ -995,12 +942,12 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
 
     Example:
     ```mlir
-      %ch0 : !mgp.chain<<"cpu", 0>>
+      %ch0 : !mgp.chain
       %ctx : !mgp.context
-      %host_buf : !mgp.buffer<<"cpu", 0>>
-      %other_buf : !mgp.buffer<<"cuda", 3>>
+      %host_buf : !mgp.buffer<>
+      %other_buf : !mgp.buffer<, <"cuda", 3>>
       %ch1 = mgp.buffer.host_to_device %ch0, %ctx[4, 5], %host_buf, %other_buf
-               : !mgp.buffer<<"cpu", 0>> -> !mgp.buffer<<"cuda", 3>>
+               : !mgp.buffer<> -> !mgp.buffer<, <"cuda", 3>>
       %ch1 : !mgp.chain<<"cuda", 3>>
     ```
   }];
@@ -1011,10 +958,10 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$hostBuffer,
                        MGP_DeviceBufferType:$otherBuffer,
-                       UI64Attr:$aHostRuntimeSlot,     // 0
-                       UI64Attr:$bOtherRuntimeSlot,    // 1
-                       M_DeviceRefAttr:$cHostDevice,   // 2
-                       M_DeviceRefAttr:$dOtherDevice); // 3
+                       UI64Attr:$aHostRuntimeSlot,          // 0
+                       UI64Attr:$bOtherRuntimeSlot,         // 1
+                       MGP_OptDeviceRefAttr:$cHostDevice,   // 2
+                       MGP_OptDeviceRefAttr:$dOtherDevice); // 3
   let results = (outs MGP_DeviceChainType:$outChain);
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aHostRuntimeSlot `,` $bOtherRuntimeSlot `]`
@@ -1023,17 +970,6 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
           $cHostDevice, $dOtherDevice, type($inChain), type($outChain))
   }];
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
-                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
-                   "mlir::TypedValue<M::MGP::DeviceBufferType>":$hostBuffer,
-                   "mlir::TypedValue<M::MGP::DeviceBufferType>":$otherBuffer,
-                   "uint64_t":$aHostRuntimeSlot,
-                   "uint64_t":$bOtherRuntimeSlot,
-                   "M::DeviceRefAttr":$cHostDevice,
-                   "M::DeviceRefAttr":$dOtherDevice)>,
-  ];
 
   let extraClassDefinition = [{
      uint64_t BufferHostToDeviceOp::getSlot() { return getBOtherRuntimeSlot(); }
@@ -1047,6 +983,7 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
 //===----------------------------------------------------------------------===//
 
 def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
 ]> {
@@ -1063,11 +1000,11 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
     ```mlir
       %ch0 : !mgp.chain<<"cuda", 3>>
       %ctx : !mgp.context
-      %other_buf : !mgp.buffer<<"cuda", 3>>
-      %host_buf : !mgp.buffer<<"cpu", 0>>
+      %other_buf : !mgp.buffer<, <"cuda", 3>>
+      %host_buf : !mgp.buffer<>
       %ch1 = host.buffer.device_to_host %ch0, %ctx[5, 4], %other_buf, %host_buf
-               : !mgp.buffer<<"cuda", 3>> -> !mgp.buffer<<"cpu", 0>>
-      %ch1 : !mef.chain<<"cpu", 0>>
+               : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<>
+      %ch1 : !mef.chain
     ```
   }];
 
@@ -1077,10 +1014,10 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$otherBuffer,
                        MGP_DeviceBufferType:$hostBuffer,
-                       UI64Attr:$aOtherRuntimeSlot,   // 0
-                       UI64Attr:$bHostRuntimeSlot,    // 1
-                       M_DeviceRefAttr:$cOtherDevice, // 2
-                       M_DeviceRefAttr:$dHostDevice); // 3
+                       UI64Attr:$aOtherRuntimeSlot,        // 0
+                       UI64Attr:$bHostRuntimeSlot,         // 1
+                       MGP_OptDeviceRefAttr:$cOtherDevice, // 2
+                       MGP_OptDeviceRefAttr:$dHostDevice); // 3
   let results = (outs MGP_DeviceChainType:$outChain);
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aOtherRuntimeSlot `,` $bHostRuntimeSlot `]`
@@ -1089,17 +1026,6 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
           $cOtherDevice, $dHostDevice, type($inChain), type($outChain))
   }];
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
-                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
-                   "mlir::TypedValue<M::MGP::DeviceBufferType>":$otherBuffer,
-                   "mlir::TypedValue<M::MGP::DeviceBufferType>":$hostBuffer,
-                   "uint64_t":$aOtherRuntimeSlot,
-                   "uint64_t":$bHostRuntimeSlot,
-                   "M::DeviceRefAttr":$cOtherDevice,
-                   "M::DeviceRefAttr":$dHostDevice)>,
-  ];
 
   let extraClassDefinition = [{
      uint64_t BufferDeviceToHostOp::getSlot() { return getBHostRuntimeSlot(); }
@@ -1113,6 +1039,7 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
 //===----------------------------------------------------------------------===//
 
 def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
 ]> {
@@ -1125,10 +1052,10 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
     ```mlir
       %ch0 : !mgp.chain<<"cuda", 3>>
       %ctx : !mgp.context
-      %src_buf : !mgp.buffer<<"cuda", 3>>
-      %dst_buf : !mgp.buffer<<"cuda", 3>>
+      %src_buf : !mgp.buffer<, <"cuda", 3>>
+      %dst_buf : !mgp.buffer<, <"cuda", 3>>
       %ch1 = mgp.buffer.device_to_device %ch0, %ctx[5], %src_buf, %dst_buf
-               : !mgp.buffer<<"cuda", 3>> -> !mgp.buffer<<"cuda", 3>>
+               : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<, <"cuda", 3>>
       %ch1 : !mgp.chain<<"cuda", 3>>
     ```
   }];
@@ -1139,8 +1066,8 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$srcBuffer,
                        MGP_DeviceBufferType:$dstBuffer,
-                       UI64Attr:$aRuntimeSlot,    // 0
-                       M_DeviceRefAttr:$bDevice); // 1
+                       UI64Attr:$aRuntimeSlot,         // 0
+                       MGP_OptDeviceRefAttr:$bDevice); // 1
   let results = (outs MGP_DeviceChainType:$outChain);
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aRuntimeSlot `]` `,`
@@ -1150,15 +1077,6 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
           type($inChain), type($outChain))
   }];
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
-                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
-                   "mlir::TypedValue<M::MGP::DeviceBufferType>":$srcBuffer,
-                   "mlir::TypedValue<M::MGP::DeviceBufferType>":$dstBuffer,
-                   "uint64_t":$aRuntimeSlot,
-                   "M::DeviceRefAttr":$bDevice)>,
-  ];
 
   let extraClassDefinition = [{
      uint64_t BufferDeviceToDeviceOp::getSlot() { return getARuntimeSlot(); }
@@ -1174,9 +1092,9 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
 // NOTE: This op does not need a device attribute or runtime slot, it's just
 //       for keeping the MLIR type system happy.
 def BufferUnsizeOp : MGP_Op<"buffer.unsize", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferUnsizeOpInterface>,
     DeclareOpInterfaceMethods<GRTMayAliasInterface>, // The retrieved element is shallow copied
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
 ]> {
   let summary = "Returns a shallow copy of the input buffer, but with "
                 "unknown size.";
@@ -1189,9 +1107,9 @@ def BufferUnsizeOp : MGP_Op<"buffer.unsize", [
 
     Example:
     ```mlir
-    %in_buf : !mgp.buffer<<"cuda", 3>, 256>
-    %out_buf = mgp.buffer.unsize %in_buf : !mgp.buffer<<"cuda", 3>, 256>
-    %out_buf : !mgp.buffer<<"cuda", 3>>
+    %in_buf : !mgp.buffer<256, <"cuda", 3>>
+    %out_buf = mgp.buffer.unsize %in_buf : !mgp.buffer<256, <"cuda", 3>>
+    %out_buf : !mgp.buffer<, <"cuda", 3>>
     ```
   }];
 
@@ -1212,6 +1130,7 @@ def BufferUnsizeOp : MGP_Op<"buffer.unsize", [
 //===----------------------------------------------------------------------===//
 
 def BufferSplitBorrowOp : MGP_DeviceOp<"buffer.split.borrow", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
 ]> {
   let summary = "Splits an `!mgp.buffer` into multiple result buffers which "
@@ -1240,18 +1159,18 @@ def BufferSplitBorrowOp : MGP_DeviceOp<"buffer.split.borrow", [
     ```mlir
     %ch:  !mgp.chain<<"cuda", 3>>
     %ctx: !mgp.context
-    %in_buf : !mgp.buffer<<"cuda", 3>, 256>
+    %in_buf : !mgp.buffer<256, <"cuda", 3>>
     %size1 : index
     %size2 : index
     %out0_buf, %out1_buf, %out2_buf =
         mgp.buffer.split.borrow %ch, %ctx[5], %in_buf, %size1, %size2
-        : !mgp.buffer<<"cuda", 3>, 256>
-           -> (!mgp.buffer<<"cuda", 3>, 128>,
-               !mgp.buffer<<"cuda", 3>>,
-               !mgp.buffer<<"cuda", 3>>)
-    %out0_buf : !mgp.buffer<<<"cuda", 3>, 128>
-    %out1_buf : !mgp.buffer<<"cuda", 3>>
-    %out2_buf : !mgp.buffer<<"cuda", 3>>
+        : !mgp.buffer<256, <"cuda", 3>>
+           -> (!mgp.buffer<128, <"cuda", 3>>,
+               !mgp.buffer<, <"cuda", 3>>,
+               !mgp.buffer<, <"cuda", 3>>)
+    %out0_buf : !mgp.buffer<128, <"cuda", 3>>
+    %out1_buf : !mgp.buffer<, <"cuda", 3>>
+    %out2_buf : !mgp.buffer<, <"cuda", 3>>
     ```
   }];
 
@@ -1261,13 +1180,13 @@ def BufferSplitBorrowOp : MGP_DeviceOp<"buffer.split.borrow", [
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$inBuffer,
                        Variadic<Index>:$runtimeSizes,
-                       UI64Attr:$aRuntimeSlot,
-                       UI64ArrayElementsAttr:$bOutBufferRawSizes,
-                       M_DeviceRefAttr:$cDevice);
+                       UI64Attr:$aRuntimeSlot,                    // 0
+                       UI64ArrayElementsAttr:$bOutBufferRawSizes, // 1
+                       MGP_OptDeviceRefAttr:$cDevice);            // 2
   let results = (outs Variadic<MGP_DeviceBufferType>:$outBuffers);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $inBuffer
-      (`,` $runtimeSizes^)? attr-dict
+      ( `,` $runtimeSizes^ )? attr-dict
       `:` custom<BufferTypesToBufferRawSizesDeviceOutBuffers>(
             type($inBuffer), $bOutBufferRawSizes, $cDevice,
             type($outBuffers), type($inChain))
@@ -1327,11 +1246,11 @@ def BufferSectionBorrowStaticOp : MGP_DeviceOp<"buffer.section.borrow.static", [
     ```mlir
     %ch:  !mgp.chain<<"cuda", 3>>
     %ctx : !mgp.context
-    %in_buf : !mgp.buffer<<"cuda", 3>, 256>
+    %in_buf : !mgp.buffer<256, <"cuda", 3>>
     %out_buf =
         mgp.buffer.section.borrow.static %ch, %ctx[5], %in_buf, offset 128, size 64
-          : !mgp.buffer<<"cuda", 3>, 256>
-    %out_buf : !mgp.buffer<<"cuda", 3>, 64>
+          : !mgp.buffer<256, <"cuda", 3>>
+    %out_buf : !mgp.buffer<64, <"cuda", 3>>
     ```
   }];
 
@@ -1340,10 +1259,10 @@ def BufferSectionBorrowStaticOp : MGP_DeviceOp<"buffer.section.borrow.static", [
   let arguments = (ins MGP_DeviceChainType:$inChain,
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$inBuffer,
-                       UI64Attr:$aRuntimeSlot,    // 0
-                       UI64Attr:$bOffset,         // 1
-                       UI64Attr:$cSize,           // 2
-                       M_DeviceRefAttr:$dDevice); // 3
+                       UI64Attr:$aRuntimeSlot,         // 0
+                       UI64Attr:$bOffset,              // 1
+                       UI64Attr:$cSize,                // 2
+                       MGP_OptDeviceRefAttr:$dDevice); // 3
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $inBuffer `,`
@@ -1397,12 +1316,12 @@ def BufferSectionBorrowDynamicOp : MGP_DeviceOp<"buffer.section.borrow.dynamic",
     ```mlir
     %ch:  !mgp.chain<<"cuda", 3>>
     %ctx : !mgp.context
-    %in_buf : !mgp.buffer<<"cuda", 3>>
+    %in_buf : !mgp.buffer<, <"cuda", 3>>
     %scale : index
     %out_buf =
         mgp.buffer.section.borrow.dynamic %ch, %ctx[5], %in_buf, %scale,
-          offset 128, size 64 : !mgp.buffer<<"cuda", 3>>
-    %out_buf : !mgp.buffer<<"cuda", 3>>
+          offset 128, size 64 : !mgp.buffer<, <"cuda", 3>>
+    %out_buf : !mgp.buffer<, <"cuda", 3>>
     ```
   }];
 
@@ -1412,10 +1331,10 @@ def BufferSectionBorrowDynamicOp : MGP_DeviceOp<"buffer.section.borrow.dynamic",
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$inBuffer,
                        Index:$scale,
-                       UI64Attr:$aRuntimeSlot,       // 0
-                       UI64Attr:$bUnscaledOffset,    // 1
-                       UI64Attr:$cUnscaledSize,      // 2
-                       M_DeviceRefAttr:$dDevice);    // 3
+                       UI64Attr:$aRuntimeSlot,         // 0
+                       UI64Attr:$bUnscaledOffset,      // 1
+                       UI64Attr:$cUnscaledSize,        // 2
+                       MGP_OptDeviceRefAttr:$dDevice); // 3
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $inBuffer `,` $scale `,`
@@ -1436,10 +1355,48 @@ def BufferSectionBorrowDynamicOp : MGP_DeviceOp<"buffer.section.borrow.dynamic",
 }
 
 //===----------------------------------------------------------------------===//
+// BufferToBoolOp
+//===----------------------------------------------------------------------===//
+
+def BufferToBoolOp : MGP_DeviceOp<"buffer.to_bool"> {
+  let summary = "Returns contents of a 1-byte buffer as an i1.";
+  let description = [{
+    Returns contents of a one byte buffer as an i1.
+
+    Example:
+    ```mlir
+    %0 = mgp.to_bool %ch0, %ctx[5], %buf : !mgp.buffer<1, <"cuda", 3>>
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins MGP_DeviceChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       MGP_DeviceBufferType:$buffer,
+                       UI64Attr:$aRuntimeSlot,          // 0
+                       MGP_OptDeviceRefAttr:$bDevice);  // 1
+  let results = (outs I1:$result);
+  let hasVerifier = 1;
+
+  let assemblyFormat = [{
+    $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $buffer attr-dict
+      `:` custom<BufferTypeToDevice>(type($buffer), $bDevice, type($inChain))
+  }];
+
+  let extraClassDefinition = [{
+    uint64_t BufferToBoolOp::getSlot() { return getARuntimeSlot(); }
+
+    M::DeviceRefAttr BufferToBoolOp::getDevice() { return getBDevice(); }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // TensorCreateOp
 //===----------------------------------------------------------------------===//
 
 def TensorCreateOp : MGP_DeviceOp<"tensor.create", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<GRTMayAliasInterface>,
 ]> {
   let summary = "Creates an `!mgp.tensor` from an `!mgp.tensor_spec` and "
@@ -1454,10 +1411,10 @@ def TensorCreateOp : MGP_DeviceOp<"tensor.create", [
     ```mlir
     %ctx : !mef.context
     %ch : !mgp.chain<<"cuda", 3>>
-    %buf : !mgp.buffer<<"cuda", 3>, 256>
+    %buf : !mgp.buffer<256, <"cuda", 3>>
     %spec : !mgp.tensor_spec<4x16xf32>
-    %tensor = mgp.tensor.create %ch, %ctx[5], %buf, %spec : !mgp.tensor<<"cuda", 3>, 4x16xf32>
-    %tensor : !mgp.tensor<<"cuda", 3>, 4x16xf32>
+    %tensor = mgp.tensor.create %ch, %ctx[5], %buf, %spec : !mgp.tensor<4x16xf32, <"cuda", 3>>
+    %tensor : !mgp.tensor<4x16xf32, <"cuda", 3>>
     ```
   }];
 
@@ -1465,8 +1422,8 @@ def TensorCreateOp : MGP_DeviceOp<"tensor.create", [
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$buffer,
                        MGP_TensorSpecType:$tensorSpec,
-                       UI64Attr:$aRuntimeSlot,       // 0
-                       M_DeviceRefAttr:$bDevice);    // 1
+                       UI64Attr:$aRuntimeSlot,         // 0
+                       MGP_OptDeviceRefAttr:$bDevice); // 1
   let results = (outs MGP_DeviceTensorType: $outTensor);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $buffer `,` $tensorSpec attr-dict
@@ -1474,15 +1431,6 @@ def TensorCreateOp : MGP_DeviceOp<"tensor.create", [
           type($buffer), type($tensorSpec), type($inChain))
   }];
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
-                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
-                   "mlir::TypedValue<M::MGP::DeviceBufferType>":$buffer,
-                   "mlir::TypedValue<M::MGP::TensorSpecType>":$tensorSpec,
-                   "uint64_t":$aRuntimeSlot,
-                   "M::DeviceRefAttr":$bDevice)>,
-  ];
 
   let extraClassDefinition = [{
     bool TensorCreateOp::mayAlias(size_t operandIndex, size_t resultIndex) {
@@ -1501,6 +1449,7 @@ def TensorCreateOp : MGP_DeviceOp<"tensor.create", [
 
 def TensorExtractBufferOp : MGP_DeviceOp<"tensor.extract.buffer", [
     Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<GRTMayAliasInterface>,
 ]> {
   let summary = "Extracts the `!mgp.buffer` from an `!mgp.tensor`.";
@@ -1513,29 +1462,22 @@ def TensorExtractBufferOp : MGP_DeviceOp<"tensor.extract.buffer", [
     Example:
     ```mlir
     %ctx : !mgp.context
-    %tensor : !mgp.tensor<<"cuda", 3>, 8x64xf32>
-    %buf = mgp.tensor.extract.buffer %ctx[5], %tensor : !mgp.tensor<<"cuda", 3>, 8x64xf32>
-    %buf : !mgp.buffer<<"cuda", 3>, 2048>
+    %tensor : !mgp.tensor<8x64xf32, <"cuda", 3>>
+    %buf = mgp.tensor.extract.buffer %ctx[5], %tensor : !mgp.tensor<8x64xf32, <"cuda", 3>>
+    %buf : !mgp.buffer<2048, <"cuda", 3>>
     ```
   }];
 
   let arguments = (ins MGP_ContextType:$theContext,
                        MGP_DeviceTensorType:$tensor,
-                       UI64Attr:$aRuntimeSlot,     // 0
-                       M_DeviceRefAttr:$bDevice);  // 1
+                       UI64Attr:$aRuntimeSlot,         // 0
+                       MGP_OptDeviceRefAttr:$bDevice); // 1
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $theContext `[` $aRuntimeSlot `]` `,` $tensor attr-dict
     `:` custom<TensorTypeToDeviceBuffer>(type($tensor), $bDevice, type($outBuffer))
   }];
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins "mlir::TypedValue<M::MGP::ContextType>":$theContext,
-                   "mlir::TypedValue<M::MGP::DeviceTensorType>":$tensor,
-                   "uint64_t":$aRuntimeSlot,
-                   "M::DeviceRefAttr":$bDevice)>,
-  ];
 
   let extraClassDefinition = [{
     bool TensorExtractBufferOp::mayAlias(size_t operandIndex, size_t resultIndex) {
@@ -1554,6 +1496,7 @@ def TensorExtractBufferOp : MGP_DeviceOp<"tensor.extract.buffer", [
 
 def TensorExtractTensorSpecOp : MGP_DeviceOp<"tensor.extract.tensor_spec", [
     Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
 ]> {
   let summary = "Extracts the `!mgp.tensor_spec` from a `!mgp.tensor`.";
   let description = [{
@@ -1563,10 +1506,10 @@ def TensorExtractTensorSpecOp : MGP_DeviceOp<"tensor.extract.tensor_spec", [
     Example:
     ```mlir
     %ctx : !mgp.context
-    %tensor : !mgp.tensor<<"cuda", 3>, 8x64xf32>
-    %shape0 = mgp.tensor.extract.tensor_spec %ctx[5], %tensor : !mgp.tensor<<"cuda", 3>, 8x64xf32>
+    %tensor : !mgp.tensor<8x64xf32, <"cuda", 3>>
+    %shape0 = mgp.tensor.extract.tensor_spec %ctx[5], %tensor : !mgp.tensor<8x64xf32, <"cuda", 3>>
     %shape0 : !mgp.tensor_spec<8x64xk32>
-    %shape1 = mgp.tensor.extract.tensor_spec %ctx[5], %tensor, true : !mgp.tensor<<"cuda", 3>, 8x64xf32>
+    %shape1 = mgp.tensor.extract.tensor_spec %ctx[5], %tensor, true : !mgp.tensor<8x64xf32, <"cuda", 3>>
     %shape1 : !mgp.tensor_spec<8x64xunk>
     ```
   }];
@@ -1574,7 +1517,7 @@ def TensorExtractTensorSpecOp : MGP_DeviceOp<"tensor.extract.tensor_spec", [
   let arguments = (ins MGP_ContextType: $theContext,
                        MGP_DeviceTensorType: $tensor,
                        UI64Attr: $aRuntimeSlot,                             // 0
-                       M_DeviceRefAttr:$bDevice,                            // 1
+                       MGP_OptDeviceRefAttr:$bDevice,                       // 1
                        DefaultValuedAttr<BoolAttr, "false">:$cIsShapeOnly); // 2
   let results = (outs MGP_TensorSpecType:$outSpec);
   let assemblyFormat = [{
@@ -1583,14 +1526,6 @@ def TensorExtractTensorSpecOp : MGP_DeviceOp<"tensor.extract.tensor_spec", [
           ref($cIsShapeOnly), type($tensor), $bDevice, type($outSpec))
   }];
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins "mlir::TypedValue<M::MGP::ContextType>":$theContext,
-                   "mlir::TypedValue<M::MGP::DeviceTensorType>":$tensor,
-                   "uint64_t":$aRuntimeSlot,
-                   "M::DeviceRefAttr":$bDevice,
-                   "bool":$cIsShapeOnly)>,
-  ];
 
   let extraClassDefinition = [{
     uint64_t TensorExtractTensorSpecOp::getSlot() { return getARuntimeSlot(); }
@@ -1622,10 +1557,10 @@ def DebugTensorPrintOp : MGP_DeviceOp<"debug.tensor.print"> {
     ```mlir
     %ch0: !mef.chain
     %ctx: !mgp.context
-    %buf: !mgp.buffer<<"cuda", 3>, 2048>
+    %buf: !mgp.buffer<2048, <"cuda", 3>>
     %spec: !mgp.tensor_spec<8x64xf32>
     %ch1 = mgp.debug.tensor.print %ch0, %ctx[5], %buf, %spec, "label"
-           : !mgp.tensor<<"cuda", 3>, 8x64xf32>
+           : !mgp.tensor<8x64xf32, <"cuda", 3>>
     %ch1: !mef.chain
     ```
   }];
@@ -1636,13 +1571,13 @@ def DebugTensorPrintOp : MGP_DeviceOp<"debug.tensor.print"> {
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$buffer,
                        MGP_TensorSpecType:$spec,
-                       UI64Attr:$aRuntimeSlot,                        // 0
-                       DefaultValuedAttr<StrAttr, "\"\"">: $bLabel,   // 1
-                       M_DeviceRefAttr:$cDevice);                     // 2
+                       UI64Attr:$aRuntimeSlot,                       // 0
+                       DefaultValuedAttr<StrAttr, "\"\"">: $bLabel,  // 1
+                       MGP_OptDeviceRefAttr:$cDevice);               // 2
   let results = (outs ChainType: $outChain);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $buffer `,` $spec (`,` $bLabel^)?
-    attr-dict
+    $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $buffer `,` $spec
+    ( `,` $bLabel^ )? attr-dict
     `:` custom<TensorTypeToDeviceBufferSpec>(
           $cDevice, type($buffer), type($spec))
   }];
@@ -1656,10 +1591,10 @@ def DebugTensorPrintOp : MGP_DeviceOp<"debug.tensor.print"> {
 }
 
 //===----------------------------------------------------------------------===//
-// KernelExecuteGenericOp
+// KernelExecuteOp
 //===----------------------------------------------------------------------===//
 
-def KernelExecuteGenericOp : MGP_DeviceOp<"kernel.execute.generic", [
+def KernelExecuteOp : MGP_DeviceOp<"kernel.execute", [
     AttrSizedOperandSegments,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_KernelExecuteOpInterface>,
@@ -1683,9 +1618,9 @@ def KernelExecuteGenericOp : MGP_DeviceOp<"kernel.execute.generic", [
     ```mlir
     %ch0 : !mgp.chain<<"cuda", 3>>
     %ctx : !mgp.context
-    %buf0 : !mgp.buffer<<"cpu", 0>>
-    %buf1 : !mgp.buffer<<"cuda", 3>>
-    %buf2 : !mgp.buffer<<"cuda", 3>, 48>
+    %buf0 : !mgp.buffer<>
+    %buf1 : !mgp.buffer<, <"cuda", 3>>
+    %buf2 : !mgp.buffer<48, <"cuda", 3>>
     %dim0 : index
     %dim1 : index
     // Launches a CUDA kernel via a host Mojo shim:
@@ -1696,13 +1631,13 @@ def KernelExecuteGenericOp : MGP_DeviceOp<"kernel.execute.generic", [
     //  - The kernel takes two input buffers and one output buffer. The
     //    first buffer resides on the host, the other two are on the GPU.
     //  - The kernel takes two runtime dimensions.
-    %ch1 = mgp.kernel.execute.generic %ch0,
+    %ch1 = mgp.kernel.execute %ch0,
              %ctx[4, 5], (7, 9),
-             (in %buf0 : !mgp.buffer<<"cpu", 0>>
-              in %buf1 : !mgp.buffer<<"cuda", 3>>
-              out %buf2 : !mgp.buffer<<"cuda", 3>, 48>)
+             (in %buf0 : !mgp.buffer<>,
+              in %buf1 : !mgp.buffer<, <"cuda", 3>>,
+              out %buf2 : !mgp.buffer<48, <"cuda", 3>>),
              (%dim0, %dim1),
-             host <"cpu", 0> other <"cuda", 3> summary "kernel1" is_async false
+             other <"cuda", 3> summary "kernel1" is_async false
     %ch1 : !mgp.chain<<"cuda", 3>>
     ```
   }];
@@ -1719,8 +1654,8 @@ def KernelExecuteGenericOp : MGP_DeviceOp<"kernel.execute.generic", [
     UI64Attr:$cHostModuleIndex,                          // 2
     UI64Attr:$dHostFunctionIndex,                        // 3
     M_InOutSignatureAttr:$eInOutSignature,               // 4
-    M_DeviceRefAttr:$fHostDevice,                        // 5
-    M_DeviceRefAttr:$gOtherDevice,                       // 6
+    MGP_OptDeviceRefAttr:$fHostDevice,                   // 5
+    MGP_OptDeviceRefAttr:$gOtherDevice,                  // 6
     StrAttr:$hSummary,                                   // 7
     DefaultValuedAttr<UI64Attr, "0">:$iNumOutDimensions, // 8
     DefaultValuedAttr<BoolAttr, "false">:$jIsAsync);     // 9
@@ -1732,8 +1667,8 @@ def KernelExecuteGenericOp : MGP_DeviceOp<"kernel.execute.generic", [
     `(` $cHostModuleIndex `,` $dHostFunctionIndex `)` `,`
     custom<InOutArgsSignature>($args, type($args), $eInOutSignature) `,`
     ( `(` $inDimensions^ `)` `,` )?
-    `host` $fHostDevice
-    `other` custom<DeviceRef>($gOtherDevice, type($inChain))
+    ( `host` $fHostDevice^ )?
+    custom<OptDeviceRef>("\"other\"", $gOtherDevice, type($inChain))
     `summary` $hSummary
     ( `out_dims` $iNumOutDimensions^ )?
     ( `is_async` $jIsAsync^ )?
@@ -1742,9 +1677,9 @@ def KernelExecuteGenericOp : MGP_DeviceOp<"kernel.execute.generic", [
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-    uint64_t KernelExecuteGenericOp::getSlot() { return getBOtherRuntimeSlot(); }
+    uint64_t KernelExecuteOp::getSlot() { return getBOtherRuntimeSlot(); }
 
-    M::DeviceRefAttr KernelExecuteGenericOp::getDevice() { return getGOtherDevice(); }
+    M::DeviceRefAttr KernelExecuteOp::getDevice() { return getGOtherDevice(); }
   }];
 }
 

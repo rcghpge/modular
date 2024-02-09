@@ -49,6 +49,26 @@ void ChainCreateOp::print(OpAsmPrinter &p) {
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
 }
 
+LogicalResult ChainCreateOp::canonicalize(ChainCreateOp createOp,
+                                          PatternRewriter &rewriter) {
+  llvm::SetVector<Value> operands;
+  for (auto operand : createOp.getOperands())
+    operands.insert(operand);
+  // Replace chain.create(x) with x provided the types agree.
+  if (operands.size() == 1 &&
+      operands.front().getType() == createOp.getResult().getType()) {
+    rewriter.replaceOp(createOp, operands.front());
+    return success();
+  }
+  // Remove duplicate operands.
+  if (operands.size() < createOp.getOperands().size()) {
+    createOp.getOperandsMutable().clear();
+    createOp.getOperandsMutable().append(operands.takeVector());
+    return success();
+  }
+  return failure();
+}
+
 //===----------------------------------------------------------------------===//
 // ChainFanoutOp
 //===----------------------------------------------------------------------===//

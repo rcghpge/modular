@@ -28,6 +28,10 @@ class MGP_DeviceType<string name, string mnemonic, list<Trait> traits = []> :
       [DeclareTypeInterfaceMethods<MGP_HasDeviceTypeInterface>] # traits
     >;
 
+def MGP_OptDeviceRefParam :
+  DefaultValuedParameter<"M::DeviceRefAttr",
+                         "M::DeviceRefAttr::get($_ctxt, kCPULabel, 0)">;
+
 //===----------------------------------------------------------------------===//
 // DeviceChainType
 //===----------------------------------------------------------------------===//
@@ -94,12 +98,18 @@ def MGP_DeviceChainType : MGP_DeviceType<"DeviceChain", "chain", [
     Examples:
     ```mlir
     // A chain for computations on the CUDA GPU with virtual device id 3.
-    !mgp.chain<#M.device_ref<"cuda", 3>>
+    !mgp.chain<<"cuda", 3>>
+    // A chain for computations on the CPU with virtual device 0, which by
+    // convention is the host device. Thus this type is equivalent to
+    // `!mef.chain`.
+    !mgp.chain<<"cpu", 0>>
+    // Abbreviation for above.
+    !mgp.chain
     ```
   }];
 
-  let parameters = (ins M_DeviceRefAttr:$device);
-  let assemblyFormat = "`<` custom<DeviceRef>($device) `>`";
+  let parameters = (ins MGP_OptDeviceRefParam:$device);
+  let assemblyFormat = "( `<` $device^ `>` )?";
 
   let builders = [
     TypeBuilderWithInferredContext<(ins "M::DeviceRefAttr":$device)>,
@@ -154,15 +164,23 @@ def MGP_DeviceBufferType : MGP_DeviceType<"DeviceBuffer", "buffer", [
     Examples:
     ```mlir
     // A 16-byte buffer on the CUDA GPU with virtual device id 3.
-    !mgp.buffer<<"cuda", 3>, 16>
-    // A buffer on the host CPU whose size is only known at runtime.
-    !mgp.buffer<<"cpu", 0>>
+    !mgp.buffer<16, <"cuda", 3>>
+    // A 16-byte buffer on the CPU with virtual device id 0.
+    !mgp.buffer<16, <"cpu", 0>>
+    // Abbreviation for the above.
+    !mgp.buffer<16>
+    // A dynamically-sized buffer on the CUDA GPU with virtual device id 3.
+    !mgp.buffer<, <"cuda", 3>>
+    // A dynamically-sized buffer on the CPU with virtual device id 0.
+    !mgp.buffer<, <"cpu", 0>>
+    // Abbreviation for the above.
+    !mgp.buffer<>
     ```
   }];
 
-  let parameters = (ins M_DeviceRefAttr:$device,
+  let parameters = (ins MGP_OptDeviceRefParam:$device,
                         OptionalParameter<"std::optional<uint64_t>">:$optSize);
-  let assemblyFormat = "`<` custom<DeviceRef>($device) ( `,` $optSize^ )? `>`";
+  let assemblyFormat = "`<` ( $optSize^ )? ( `,` $device^ )? `>`";
   let genVerifyDecl = 1;
 
   let extraClassDeclaration = [{
@@ -236,13 +254,17 @@ def MGP_DeviceTensorType : MGP_DeviceType<"DeviceTensor", "tensor", [
     Examples:
     ```mlir
     // Statically-shaped tensor on the CUDA GPU with virtual device id 3.
-    !mgp.cpu.tensor<#M.device_ref<"cuda", 3>, 4x16xf32>
+    !mgp.tensor<4x16xf32, <"cuda", 3>>
+    // Dynamically-shaped tensor on the CPU with virtual device id 0.
+    !mgp.tensor<?x?xf32, <"cpu", 0>>
+    // Abbreviation for the above.
+    !mgp.tensor<?x?xf32>
     ```
   }];
 
-  let parameters = (ins M_DeviceRefAttr:$device,
+  let parameters = (ins MGP_OptDeviceRefParam:$device,
                         "M::MGP::TensorSpecType":$tensorSpec);
-  let assemblyFormat = "`<` custom<DeviceRef>($device) `,` custom<TensorSpec>($tensorSpec) `>`";
+  let assemblyFormat = "`<` custom<TensorSpec>($tensorSpec) ( `,` $device^ )? `>`";
 
   let builders = [
     /// Constructs a tensor type from the given device and tensor spec.

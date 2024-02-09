@@ -18,6 +18,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Base64.h"
 
 using namespace M;
@@ -26,6 +27,109 @@ using namespace MGP;
 //===----------------------------------------------------------------------===//
 // Utils
 //===----------------------------------------------------------------------===//
+
+/// Assigns to device from attribute with name in attrs. Assigns <"cpu", 0>
+/// if no such attribute.
+static LogicalResult getDeviceAttrOrDefault(Location location,
+                                            DictionaryAttr attributes,
+                                            StringAttr name,
+                                            DeviceRefAttr &device) {
+  if (!attributes.contains(name)) {
+    device = DeviceRefAttr::get(attributes.getContext(), kCPULabel, 0);
+  } else {
+    device = dyn_cast<DeviceRefAttr>(attributes.get(name));
+    if (!device) {
+      return mlir::emitError(location,
+                             "expected an #M.device_ref for attribute '")
+             << name << "'";
+    }
+  }
+  return success();
+}
+
+/// Assigns to optSize from attribute with name in attrs.
+static LogicalResult getSizeAttr(Location location, DictionaryAttr attributes,
+                                 StringAttr name,
+                                 std::optional<uint64_t> &optSize) {
+  auto sizeAttr = dyn_cast_if_present<IntegerAttr>(attributes.get(name));
+  if (!sizeAttr) {
+    return mlir::emitError(location, "expected a uint64_t for attribute '")
+           << name << "'";
+  }
+  optSize = std::optional<uint64_t>(sizeAttr.getUInt());
+  return success();
+}
+
+/// Assigns to optSize from attribute with name in attrs.
+static LogicalResult getRawSizeAttr(Location location,
+                                    DictionaryAttr attributes, StringAttr name,
+                                    std::optional<uint64_t> &optSize) {
+  auto rawSizeAttr = dyn_cast_if_present<IntegerAttr>(attributes.get(name));
+  if (!rawSizeAttr) {
+    return mlir::emitError(location, "expected a uint64_t for attribute '")
+           << name << "'";
+  }
+  optSize = rawSizeToOptSize(rawSizeAttr.getUInt());
+  return success();
+}
+
+/// Appends to optSizes from array attribute with name in attrs.
+static LogicalResult
+getRawSizeArrayAttr(Location location, DictionaryAttr attributes,
+                    StringAttr name,
+                    SmallVectorImpl<std::optional<uint64_t>> &optSizes) {
+  auto arrayAttr =
+      dyn_cast_if_present<IntArrayElementsAttr>(attributes.get(name));
+  if (!arrayAttr) {
+    return mlir::emitError(location, "expected an array for attribute '")
+           << name << "'";
+  }
+  for (auto elem : arrayAttr.getValues())
+    optSizes.emplace_back(rawSizeToOptSize(elem.getZExtValue()));
+  return success();
+}
+
+/// Assigns to num from attribute with name in attrs. Assigns 0 if no such
+/// attribute.
+static LogicalResult getNumAttrOrDefault(Location location,
+                                         DictionaryAttr attributes,
+                                         StringAttr name, uint64_t &num) {
+  if (!attributes.contains(name)) {
+    num = 0;
+  } else {
+    auto numAttr = dyn_cast<IntegerAttr>(attributes.get(name));
+    if (!numAttr) {
+      return mlir::emitError(location, "expected a uint64_t for attribute '")
+             << name << "'";
+    }
+    num = numAttr.getUInt();
+  }
+  return success();
+}
+
+/// Assigns to elements from attribute with name in attrs.
+static LogicalResult getElementsAttr(Location location,
+                                     DictionaryAttr attributes, StringAttr name,
+                                     ElementsAttr &elements) {
+  elements = dyn_cast_if_present<ElementsAttr>(attributes.get(name));
+  if (!elements) {
+    return mlir::emitError(location, "expecting ElementsAttr for attribute '")
+           << name << "'";
+  }
+  return success();
+}
+
+/// Assigns to flag from attribute with name in attrs.
+static LogicalResult getBoolAttr(Location location, DictionaryAttr attributes,
+                                 StringAttr name, bool &flag) {
+  auto boolAttr = dyn_cast_if_present<BoolAttr>(attributes.get(name));
+  if (!boolAttr) {
+    return mlir::emitError(location, "expected a bool for attribute '")
+           << name << "'";
+  }
+  flag = boolAttr.getValue();
+  return success();
+}
 
 /// Verifies the types of all operands of op uses devices drawn from the
 /// given devices.
@@ -104,19 +208,43 @@ LogicalResult ModuleLoadOp::verify() {
 // ChainCreateOp
 //===----------------------------------------------------------------------===//
 
-void ChainCreateOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                          TypedValue<ContextType> theContext,
-                          ValueRange gatingOperands, uint64_t aOtherRuntimeSlot,
-                          DeviceRefAttr bHostDevice,
-                          DeviceRefAttr cOtherDevice) {
-  build(odsBuilder, odsState,
-        DeviceChainType::get(odsBuilder.getContext(), cOtherDevice), theContext,
-        gatingOperands, aOtherRuntimeSlot, bHostDevice, cOtherDevice);
+LogicalResult ChainCreateOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  DeviceRefAttr otherDevice;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getCOtherDeviceAttrName(name),
+                                    otherDevice)))
+    return failure();
+  inferredReturnTypes.emplace_back(DeviceChainType::get(otherDevice));
+  return success();
 }
 
 LogicalResult ChainCreateOp::verify() {
   return verifyConsistentDevices(getOperation(),
                                  {getBHostDevice(), getCOtherDevice()});
+}
+
+LogicalResult ChainCreateOp::canonicalize(ChainCreateOp createOp,
+                                          PatternRewriter &rewriter) {
+  llvm::SetVector<Value> operands;
+  for (auto operand : createOp.getGatingOperands())
+    operands.insert(operand);
+  // Replace chain.create(x) with x provided the types agree.
+  if (operands.size() == 1 &&
+      operands.front().getType() == createOp.getResult().getType()) {
+    rewriter.replaceOp(createOp, operands.front());
+    return success();
+  }
+  // Remove duplicate operands.
+  if (operands.size() < createOp.getGatingOperands().size()) {
+    createOp.getGatingOperandsMutable().clear();
+    createOp.getGatingOperandsMutable().append(operands.takeVector());
+    return success();
+  }
+  return failure();
 }
 
 llvm::SmallVector<mlir::Value> ChainCreateOp::getInputChains() {
@@ -161,14 +289,18 @@ ChainDeviceToHostOp::canonicalize(ChainDeviceToHostOp deviceToHostOp,
 // ChainHostToDeviceOp
 //===----------------------------------------------------------------------===//
 
-void ChainHostToDeviceOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                                TypedValue<MEF::ChainType> inChain,
-                                TypedValue<ContextType> theContext,
-                                uint64_t aRuntimeSlot,
-                                M::DeviceRefAttr bDevice) {
-  return build(odsBuilder, odsState,
-               DeviceChainType::get(odsBuilder.getContext(), bDevice), inChain,
-               theContext, aRuntimeSlot, bDevice);
+LogicalResult ChainHostToDeviceOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getBDeviceAttrName(name),
+                                    device)))
+    return failure();
+  inferredReturnTypes.emplace_back(DeviceChainType::get(device));
+  return success();
 }
 
 LogicalResult ChainHostToDeviceOp::verify() {
@@ -203,12 +335,10 @@ ChainHostToDeviceOp::canonicalize(ChainHostToDeviceOp hostToDeviceOp,
 
 void BufferConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                              Value theContext, uint64_t aRuntimeSlot,
-                             ElementsAttr bValue, DeviceRefAttr dDevice) {
-  return build(odsBuilder, odsState,
-               DeviceBufferType::get(
-                   dDevice, std::optional<uint64_t>(static_cast<uint64_t>(
-                                bValue.getNumElements()))),
-               theContext, aRuntimeSlot, bValue, getRawAlign(bValue), dDevice);
+                             ElementsAttr bValue, DeviceRefAttr dDevice,
+                             bool eIsTrivial) {
+  return build(odsBuilder, odsState, theContext, aRuntimeSlot, bValue,
+               getRawAlign(bValue), dDevice, eIsTrivial);
 }
 
 /// Verifies the attribute and result types are consistent, and the attribute
@@ -264,18 +394,17 @@ LogicalResult BufferConstantOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  auto elementsAttr = dyn_cast_if_present<ElementsAttr>(
-      attributes.get(getBValueAttrName(name)));
-  if (!elementsAttr)
-    return mlir::emitError(location.value_or(operands[0].getLoc()),
-                           "expecting elements attribute.");
+  ElementsAttr elementsAttr;
+  if (failed(getElementsAttr(location.value_or(operands[0].getLoc()),
+                             attributes, getBValueAttrName(name),
+                             elementsAttr)))
+    return failure();
   std::optional<uint64_t> optSize = elementsAttr.size();
-  auto device = dyn_cast_if_present<DeviceRefAttr>(
-      attributes.get(getDDeviceAttrName(name)));
-  if (!device) {
-    return mlir::emitError(location.value_or(operands[0].getLoc()),
-                           "expected a device attribute.");
-  }
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getDDeviceAttrName(name),
+                                    device)))
+    return failure();
   inferredReturnTypes.emplace_back(
       DeviceBufferType::get(context, device, optSize));
   return success();
@@ -288,17 +417,6 @@ std::optional<uint64_t> BufferConstantOp::getOptAlign() {
 //===----------------------------------------------------------------------===//
 // BufferConstantLoadOp
 //===----------------------------------------------------------------------===//
-
-void BufferConstantLoadOp::build(OpBuilder &odsBuilder,
-                                 OperationState &odsState, Value theContext,
-                                 uint64_t aRuntimeSlot, uint64_t bModuleIndex,
-                                 uint64_t cConstantIndex, uint64_t dSize,
-                                 DeviceRefAttr eDevice) {
-  return build(odsBuilder, odsState,
-               DeviceBufferType::get(eDevice, std::optional<uint64_t>(dSize)),
-               theContext, aRuntimeSlot, bModuleIndex, cConstantIndex, dSize,
-               eDevice);
-}
 
 LogicalResult BufferConstantLoadOp::verify() {
   if (!isValidPlainSize(getDSize()))
@@ -315,21 +433,27 @@ LogicalResult BufferConstantLoadOp::verify() {
   return verifyConsistentDevices(getOperation(), {getEDevice()});
 }
 
+LogicalResult BufferConstantLoadOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  std::optional<uint64_t> optSize;
+  if (failed(getSizeAttr(location.value_or(operands[0].getLoc()), attributes,
+                         getDSizeAttrName(name), optSize)))
+    return failure();
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getEDeviceAttrName(name),
+                                    device)))
+    return failure();
+  inferredReturnTypes.emplace_back(DeviceBufferType::get(device, optSize));
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // BufferAllocStaticOp
 //===----------------------------------------------------------------------===//
-
-void BufferAllocStaticOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                                TypedValue<DeviceChainType> inChain,
-                                TypedValue<ContextType> theContext,
-                                uint64_t aRuntimeSlot, uint64_t bSize,
-                                std::optional<uint64_t> cAlign,
-                                M::DeviceRefAttr dDevice) {
-  return build(odsBuilder, odsState,
-               DeviceBufferType::get(dDevice, std::optional<uint64_t>(bSize)),
-               inChain, theContext, aRuntimeSlot, bSize,
-               optSizeToRawSize(cAlign), dDevice);
-}
 
 LogicalResult BufferAllocStaticOp::verify() {
   if (!isValidPlainSize(getBSize()))
@@ -346,6 +470,24 @@ LogicalResult BufferAllocStaticOp::verify() {
   return verifyConsistentDevices(getOperation(), {getDDevice()});
 }
 
+LogicalResult BufferAllocStaticOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  std::optional<uint64_t> optSize;
+  if (failed(getSizeAttr(location.value_or(operands[0].getLoc()), attributes,
+                         getBSizeAttrName(name), optSize)))
+    return failure();
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getDDeviceAttrName(name),
+                                    device)))
+    return failure();
+  inferredReturnTypes.emplace_back(DeviceBufferType::get(device, optSize));
+  return success();
+}
+
 void BufferAllocStaticOp::setInChain(Value chain) {
   getInChainMutable().assign(chain);
 }
@@ -357,17 +499,6 @@ uint64_t BufferAllocStaticOp::getSize() { return getBSize(); }
 //===----------------------------------------------------------------------===//
 // BufferAllocDynamicOp
 //===----------------------------------------------------------------------===//
-
-void BufferAllocDynamicOp::build(
-    OpBuilder &odsBuilder, OperationState &odsState,
-    TypedValue<DeviceChainType> inChain, TypedValue<ContextType> theContext,
-    TypedValue<IndexType> runtimeSize, uint64_t aRuntimeSlot,
-    std::optional<uint64_t> bAlign, M::DeviceRefAttr cDevice) {
-  return build(odsBuilder, odsState,
-               DeviceBufferType::get(cDevice, std::optional<uint64_t>()),
-               inChain, theContext, runtimeSize, aRuntimeSlot,
-               optSizeToRawSize(bAlign), cDevice);
-}
 
 LogicalResult BufferAllocDynamicOp::verify() {
   auto expectedBufferType =
@@ -382,24 +513,30 @@ LogicalResult BufferAllocDynamicOp::verify() {
   return verifyConsistentDevices(getOperation(), {getCDevice()});
 }
 
+LogicalResult BufferAllocDynamicOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getCDeviceAttrName(name),
+                                    device)))
+    return failure();
+  inferredReturnTypes.emplace_back(
+      DeviceBufferType::get(device, std::optional<uint64_t>()));
+  return success();
+}
+
 void BufferAllocDynamicOp::setInChain(Value chain) {
   getInChainMutable().assign(chain);
 }
 
+uint64_t BufferAllocDynamicOp::getRawAlign() { return getBRawAlign(); }
+
 //===----------------------------------------------------------------------===//
 // BufferReallocStaticOp
 //===----------------------------------------------------------------------===//
-
-void BufferReallocStaticOp::build(
-    OpBuilder &odsBuilder, OperationState &odsState,
-    TypedValue<DeviceChainType> inChain, TypedValue<ContextType> theContext,
-    uint64_t aRuntimeSlot, uint64_t bBufferSlot, uint64_t cBufferIndex,
-    uint64_t dSize, std::optional<uint64_t> eAlign, M::DeviceRefAttr fDevice) {
-  return build(odsBuilder, odsState,
-               DeviceBufferType::get(fDevice, std::optional<uint64_t>(dSize)),
-               inChain, theContext, aRuntimeSlot, bBufferSlot, cBufferIndex,
-               dSize, optSizeToRawSize(eAlign), fDevice);
-}
 
 LogicalResult BufferReallocStaticOp::verify() {
   if (!isValidPlainSize(getDSize()))
@@ -416,6 +553,24 @@ LogicalResult BufferReallocStaticOp::verify() {
   return verifyConsistentDevices(getOperation(), {getFDevice()});
 }
 
+LogicalResult BufferReallocStaticOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  std::optional<uint64_t> optSize;
+  if (failed(getSizeAttr(location.value_or(operands[0].getLoc()), attributes,
+                         getDSizeAttrName(name), optSize)))
+    return failure();
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getFDeviceAttrName(name),
+                                    device)))
+    return failure();
+  inferredReturnTypes.emplace_back(DeviceBufferType::get(device, optSize));
+  return success();
+}
+
 void BufferReallocStaticOp::setInChain(Value chain) {
   getInChainMutable().assign(chain);
 }
@@ -423,18 +578,6 @@ void BufferReallocStaticOp::setInChain(Value chain) {
 //===----------------------------------------------------------------------===//
 // BufferReallocDynamicOp
 //===----------------------------------------------------------------------===//
-
-void BufferReallocDynamicOp::build(
-    OpBuilder &odsBuilder, OperationState &odsState,
-    TypedValue<DeviceChainType> inChain, TypedValue<ContextType> theContext,
-    TypedValue<IndexType> runtimeSize, uint64_t aRuntimeSlot,
-    uint64_t bBufferSlot, uint64_t cBufferIndex, std::optional<uint64_t> dAlign,
-    M::DeviceRefAttr eDevice) {
-  return build(odsBuilder, odsState,
-               DeviceBufferType::get(eDevice, std::optional<uint64_t>()),
-               inChain, theContext, runtimeSize, aRuntimeSlot, bBufferSlot,
-               cBufferIndex, optSizeToRawSize(dAlign), eDevice);
-}
 
 LogicalResult BufferReallocDynamicOp::verify() {
   auto expectedBufferType =
@@ -447,6 +590,21 @@ LogicalResult BufferReallocDynamicOp::verify() {
   if (!isValidRawAlign(getDRawAlign()))
     return emitOpError("invalid alignment ") << getDRawAlign() << ".";
   return verifyConsistentDevices(getOperation(), {getEDevice()});
+}
+
+LogicalResult BufferReallocDynamicOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getEDeviceAttrName(name),
+                                    device)))
+    return failure();
+  inferredReturnTypes.emplace_back(
+      DeviceBufferType::get(device, std::optional<uint64_t>()));
+  return success();
 }
 
 void BufferReallocDynamicOp::setInChain(Value chain) {
@@ -465,19 +623,6 @@ LogicalResult BufferCacheOp::verify() {
 // BufferGetCachedOp
 //===----------------------------------------------------------------------===//
 
-void BufferGetCachedOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                              TypedValue<MEF::ChainType> inChain,
-                              TypedValue<ContextType> theContext,
-                              uint64_t aRuntimeSlot, uint64_t bBufferSlot,
-                              std::optional<uint64_t> cOptSize,
-                              M::DeviceRefAttr dDevice) {
-  return build(
-      odsBuilder, odsState,
-      DeviceBufferType::get(odsBuilder.getContext(), dDevice, cOptSize),
-      inChain, theContext, aRuntimeSlot, bBufferSlot,
-      optSizeToRawSize(cOptSize), dDevice);
-}
-
 LogicalResult BufferGetCachedOp::verify() {
   std::optional<uint64_t> optSize = rawSizeToOptSize(getCRawSize());
   auto expectedBufferType = DeviceBufferType::get(getDDevice(), optSize);
@@ -488,22 +633,27 @@ LogicalResult BufferGetCachedOp::verify() {
   return verifyConsistentDevices(getOperation(), {getDDevice()});
 }
 
+LogicalResult BufferGetCachedOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  std::optional<uint64_t> optSize;
+  if (failed(getRawSizeAttr(location.value_or(operands[0].getLoc()), attributes,
+                            getCRawSizeAttrName(name), optSize)))
+    return failure();
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getDDeviceAttrName(name),
+                                    device)))
+    return failure();
+  inferredReturnTypes.emplace_back(DeviceBufferType::get(device, optSize));
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // BufferHostToDeviceOp
 //===----------------------------------------------------------------------===//
-
-void BufferHostToDeviceOp::build(
-    OpBuilder &odsBuilder, OperationState &odsState,
-    TypedValue<DeviceChainType> inChain, TypedValue<ContextType> theContext,
-    TypedValue<DeviceBufferType> hostBuffer,
-    TypedValue<DeviceBufferType> otherBuffer, uint64_t aHostRuntimeSlot,
-    uint64_t bOtherRuntimeSlot, M::DeviceRefAttr cHostDevice,
-    M::DeviceRefAttr dOtherDevice) {
-  return build(odsBuilder, odsState,
-               DeviceChainType::get(odsBuilder.getContext(), dOtherDevice),
-               inChain, theContext, hostBuffer, otherBuffer, aHostRuntimeSlot,
-               bOtherRuntimeSlot, cHostDevice, dOtherDevice);
-}
 
 LogicalResult BufferHostToDeviceOp::verify() {
   if (getHostBuffer().getType().getDevice() != getCHostDevice())
@@ -520,6 +670,20 @@ LogicalResult BufferHostToDeviceOp::verify() {
   return success();
 }
 
+LogicalResult BufferHostToDeviceOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getDOtherDeviceAttrName(name),
+                                    device)))
+    return failure();
+  inferredReturnTypes.emplace_back(DeviceChainType::get(device));
+  return success();
+}
+
 InOutSignatureAttr::InOutSemantics
 BufferHostToDeviceOp::getInOutSemantics(size_t index) {
   GENERICML_ASSERT(index < getNumOperands());
@@ -531,19 +695,6 @@ BufferHostToDeviceOp::getInOutSemantics(size_t index) {
 //===----------------------------------------------------------------------===//
 // BufferDeviceToHostOp
 //===----------------------------------------------------------------------===//
-
-void BufferDeviceToHostOp::build(
-    OpBuilder &odsBuilder, OperationState &odsState,
-    TypedValue<DeviceChainType> inChain, TypedValue<ContextType> theContext,
-    TypedValue<DeviceBufferType> otherBuffer,
-    TypedValue<DeviceBufferType> hostBuffer, uint64_t aOtherRuntimeSlot,
-    uint64_t bHostRuntimeSlot, M::DeviceRefAttr cOtherDevice,
-    M::DeviceRefAttr dHostDevice) {
-  return build(odsBuilder, odsState,
-               DeviceChainType::get(odsBuilder.getContext(), dHostDevice),
-               inChain, theContext, otherBuffer, hostBuffer, aOtherRuntimeSlot,
-               bHostRuntimeSlot, cOtherDevice, dHostDevice);
-}
 
 LogicalResult BufferDeviceToHostOp::verify() {
   if (getHostBuffer().getType().getDevice() != getDHostDevice())
@@ -560,6 +711,20 @@ LogicalResult BufferDeviceToHostOp::verify() {
   return success();
 }
 
+LogicalResult BufferDeviceToHostOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getDHostDeviceAttrName(name),
+                                    device)))
+    return failure();
+  inferredReturnTypes.emplace_back(DeviceChainType::get(device));
+  return success();
+}
+
 InOutSignatureAttr::InOutSemantics
 BufferDeviceToHostOp::getInOutSemantics(size_t index) {
   GENERICML_ASSERT(index < getNumOperands());
@@ -572,19 +737,6 @@ BufferDeviceToHostOp::getInOutSemantics(size_t index) {
 // BufferDeviceToDeviceOp
 //===----------------------------------------------------------------------===//
 
-void BufferDeviceToDeviceOp::build(OpBuilder &odsBuilder,
-                                   OperationState &odsState,
-                                   TypedValue<DeviceChainType> inChain,
-                                   TypedValue<ContextType> theContext,
-                                   TypedValue<DeviceBufferType> srcBuffer,
-                                   TypedValue<DeviceBufferType> dstBuffer,
-                                   uint64_t aRuntimeSlot,
-                                   M::DeviceRefAttr bDevice) {
-  return build(odsBuilder, odsState,
-               DeviceChainType::get(odsBuilder.getContext(), bDevice), inChain,
-               theContext, srcBuffer, dstBuffer, aRuntimeSlot, bDevice);
-}
-
 LogicalResult BufferDeviceToDeviceOp::verify() {
   if (getSrcBuffer().getType().getRawSize() !=
       getDstBuffer().getType().getRawSize())
@@ -592,6 +744,20 @@ LogicalResult BufferDeviceToDeviceOp::verify() {
            << optSizeToString(getSrcBuffer().getType().getOptSize()) << " vs "
            << optSizeToString(getDstBuffer().getType().getOptSize()) << ").";
   return verifyConsistentDevices(getOperation(), {getBDevice()});
+}
+
+LogicalResult BufferDeviceToDeviceOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getBDeviceAttrName(name),
+                                    device)))
+    return failure();
+  inferredReturnTypes.emplace_back(DeviceChainType::get(device));
+  return success();
 }
 
 InOutSignatureAttr::InOutSemantics
@@ -681,17 +847,38 @@ LogicalResult BufferSplitBorrowOp::verify() {
     auto outBufferType = dyn_cast<DeviceBufferType>(outBuffer.getType());
     std::optional<uint64_t> optSize = outBufferType.getOptSize();
     if (!optSize)
-      // Nothing more to check if at least one dynamically sized output buffer.
+      // Nothing more to check if at least one dynamically sized output
+      // buffer.
       return success();
     outTotalSize += *optSize;
   }
   auto expectedInBufferType = DeviceBufferType::get(
-      getContext(), getCDevice(), std::optional<uint64_t>(outTotalSize));
+      getCDevice(), std::optional<uint64_t>(outTotalSize));
   if (getInBuffer().getType() != expectedInBufferType) {
     return emitOpError("expected input buffer type does not match "
                        "actual input buffer type (")
            << expectedInBufferType << " vs " << getInBuffer().getType() << ").";
   }
+  return success();
+}
+
+LogicalResult BufferSplitBorrowOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  SmallVector<std::optional<uint64_t>> optSizes;
+  if (failed(getRawSizeArrayAttr(
+          location.value_or(operands[0].getLoc()), attributes,
+          getBOutBufferRawSizesAttrName(name), optSizes)))
+    return failure();
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getCDeviceAttrName(name),
+                                    device)))
+    return failure();
+  for (auto optSize : optSizes)
+    inferredReturnTypes.emplace_back(DeviceBufferType::get(device, optSize));
   return success();
 }
 
@@ -735,19 +922,16 @@ LogicalResult BufferSectionBorrowStaticOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  auto sizeAttr =
-      dyn_cast_if_present<IntegerAttr>(attributes.get(getCSizeAttrName(name)));
-  if (!sizeAttr)
-    return mlir::emitError(location.value_or(operands[0].getLoc()),
-                           "expected size attribute.");
-  std::optional<uint64_t> optSize = sizeAttr.getUInt();
-  auto device = dyn_cast_if_present<DeviceRefAttr>(
-      attributes.get(getDDeviceAttrName(name)));
-  if (!device)
-    return mlir::emitError(location.value_or(operands[0].getLoc()),
-                           "expected a device attribute.");
-  inferredReturnTypes.emplace_back(
-      DeviceBufferType::get(context, device, optSize));
+  std::optional<uint64_t> optSize;
+  if (failed(getSizeAttr(location.value_or(operands[0].getLoc()), attributes,
+                         getCSizeAttrName(name), optSize)))
+    return failure();
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getDDeviceAttrName(name),
+                                    device)))
+    return failure();
+  inferredReturnTypes.emplace_back(DeviceBufferType::get(device, optSize));
   return success();
 }
 
@@ -772,31 +956,34 @@ LogicalResult BufferSectionBorrowDynamicOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  auto device = dyn_cast_if_present<DeviceRefAttr>(
-      attributes.get(getDDeviceAttrName(name)));
-  if (!device) {
-    return mlir::emitError(location.value_or(operands[0].getLoc()),
-                           "expected a device attribute");
-  }
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getDDeviceAttrName(name),
+                                    device)))
+    return failure();
   inferredReturnTypes.emplace_back(
-      DeviceBufferType::get(context, device, std::optional<uint64_t>()));
+      DeviceBufferType::get(device, std::optional<uint64_t>()));
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BufferToBoolOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BufferToBoolOp::verify() {
+  auto expectedBufferType =
+      DeviceBufferType::get(getBDevice(), std::optional<uint64_t>(1));
+  if (expectedBufferType != getBuffer().getType()) {
+    return emitOpError("expected operand buffer type does not match actual "
+                       "operand buffer type (")
+           << expectedBufferType << " vs " << getBuffer().getType() << ").";
+  }
+  return verifyConsistentDevices(getOperation(), {getBDevice()});
 }
 
 //===----------------------------------------------------------------------===//
 // TensorCreateOp
 //===----------------------------------------------------------------------===//
-
-void TensorCreateOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                           TypedValue<DeviceChainType> inChain,
-                           TypedValue<ContextType> theContext,
-                           TypedValue<DeviceBufferType> buffer,
-                           TypedValue<TensorSpecType> tensorSpec,
-                           uint64_t aRuntimeSlot, DeviceRefAttr bDevice) {
-  build(odsBuilder, odsState,
-        DeviceTensorType::get(bDevice, tensorSpec.getType()), inChain,
-        theContext, buffer, tensorSpec, aRuntimeSlot, bDevice);
-}
 
 LogicalResult TensorCreateOp::verify() {
   auto expectedOutTensorType =
@@ -817,19 +1004,33 @@ LogicalResult TensorCreateOp::verify() {
   return verifyConsistentDevices(getOperation(), {getBDevice()});
 }
 
+LogicalResult TensorCreateOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  if (operands.size() != 4) {
+    return mlir::emitError(location.value_or(operands[0].getLoc()),
+                           "expected four operands.");
+  }
+  auto tensorSpecType = dyn_cast<TensorSpecType>(operands[3].getType());
+  if (!tensorSpecType) {
+    return mlir::emitError(location.value_or(operands[0].getLoc()),
+                           "expected tensor spec operand.");
+  }
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getBDeviceAttrName(name),
+                                    device)))
+    return failure();
+  inferredReturnTypes.emplace_back(
+      DeviceTensorType::get(device, tensorSpecType));
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // TensorExtractBufferOp
 //===----------------------------------------------------------------------===//
-
-void TensorExtractBufferOp::build(OpBuilder &odsBuilder,
-                                  OperationState &odsState,
-                                  TypedValue<ContextType> theContext,
-                                  TypedValue<DeviceTensorType> tensor,
-                                  uint64_t aRuntimeSlot,
-                                  DeviceRefAttr bDevice) {
-  build(odsBuilder, odsState, DeviceBufferType::get(tensor.getType()),
-        theContext, tensor, aRuntimeSlot, bDevice);
-}
 
 LogicalResult TensorExtractBufferOp::verify() {
   DeviceBufferType expectedBufferType =
@@ -842,23 +1043,32 @@ LogicalResult TensorExtractBufferOp::verify() {
   return verifyConsistentDevices(getOperation(), {getBDevice()});
 }
 
+LogicalResult TensorExtractBufferOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  if (operands.size() != 2) {
+    return mlir::emitError(location.value_or(operands[0].getLoc()),
+                           "expected two operands.");
+  }
+  auto tensorType = dyn_cast<DeviceTensorType>(operands[1].getType());
+  if (!tensorType) {
+    return mlir::emitError(location.value_or(operands[0].getLoc()),
+                           "expected tensor operand.");
+  }
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getBDeviceAttrName(name),
+                                    device)))
+    return failure();
+  inferredReturnTypes.emplace_back(DeviceBufferType::get(tensorType));
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // TensorExtractTensorSpecOp
 //===----------------------------------------------------------------------===//
-
-void TensorExtractTensorSpecOp::build(
-    OpBuilder &odsBuilder, OperationState &odsState,
-    TypedValue<ContextType> theContext, TypedValue<DeviceTensorType> tensor,
-    uint64_t aRuntimeSlot, DeviceRefAttr bDevice, bool cIsShapeOnly) {
-  build(odsBuilder, odsState,
-        TensorSpecType::get(
-            odsBuilder.getContext(),
-            /*optDims=*/tensor.getType().getTensorSpec().getDims(),
-            /*optDType=*/
-            cIsShapeOnly ? std::optional<DType>()
-                         : tensor.getType().getTensorSpec().getOptDType()),
-        theContext, tensor, aRuntimeSlot, bDevice);
-}
 
 LogicalResult TensorExtractTensorSpecOp::verify() {
   TensorSpecType expectedSpecType = TensorSpecType::get(
@@ -873,6 +1083,35 @@ LogicalResult TensorExtractTensorSpecOp::verify() {
            << getOutSpec().getType() << " vs " << expectedSpecType << ").";
   }
   return verifyConsistentDevices(getOperation(), {getBDevice()});
+}
+
+LogicalResult TensorExtractTensorSpecOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  if (operands.size() != 2) {
+    return mlir::emitError(location.value_or(operands[0].getLoc()),
+                           "expected two operands.");
+  }
+  auto tensorType = dyn_cast<DeviceTensorType>(operands[1].getType());
+  if (!tensorType) {
+    return mlir::emitError(location.value_or(operands[0].getLoc()),
+                           "expected tensor operand.");
+  }
+  bool isShapeOnly;
+  if (failed(getBoolAttr(location.value_or(operands[0].getLoc()), attributes,
+                         getCIsShapeOnlyAttrName(name), isShapeOnly)))
+    return failure();
+  if (isShapeOnly) {
+    inferredReturnTypes.emplace_back(
+        TensorSpecType::get(context,
+                            /*optDims=*/tensorType.getTensorSpec().getDims(),
+                            /*optDType=*/std::optional<DType>()));
+  } else {
+    inferredReturnTypes.emplace_back(tensorType.getTensorSpec());
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -891,10 +1130,10 @@ LogicalResult DebugTensorPrintOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// KernelExecuteGenericOp
+// KernelExecuteOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult KernelExecuteGenericOp::verify() {
+LogicalResult KernelExecuteOp::verify() {
   if (getInChain().getType().getDevice() != getGOtherDevice())
     return emitOpError("expected input chain to be on 'other' device ")
            << getGOtherDevice() << ".";
@@ -911,9 +1150,9 @@ LogicalResult KernelExecuteGenericOp::verify() {
   for (auto [idx, arg] : llvm::enumerate(getArgs())) {
     if (!isa<DeviceBufferType>(arg.getType()) &&
         getEInOutSignature()[idx] != InOutSignatureAttr::kIn) {
-      return emitOpError("argument ")
-             << idx
-             << " is not an !mgp.buffer type, so must be marked as read-only.";
+      return emitOpError("argument ") << idx
+                                      << " is not an !mgp.buffer type, so "
+                                         "must be marked as read-only.";
     }
   }
 
@@ -928,37 +1167,31 @@ LogicalResult KernelExecuteGenericOp::verify() {
                                  {getFHostDevice(), getGOtherDevice()});
 }
 
-LogicalResult KernelExecuteGenericOp::inferReturnTypes(
+LogicalResult KernelExecuteOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
+  DeviceRefAttr otherDevice;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getGOtherDeviceAttrName(name),
+                                    otherDevice)))
+    return failure();
 
-  auto otherDevice = dyn_cast_if_present<DeviceRefAttr>(
-      attributes.get(getGOtherDeviceAttrName(name)));
-  if (!otherDevice) {
-    return mlir::emitError(location.value_or(operands[0].getLoc()),
-                           "expected a device attribute for other device.");
-  }
+  uint64_t numOutDimensions;
+  if (failed(getNumAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                 attributes, getINumOutDimensionsAttrName(name),
+                                 numOutDimensions)))
+    return failure();
 
-  uint64_t numOutDimensions = 0;
-  if (auto attr = attributes.get(getINumOutDimensionsAttrName(name))) {
-    auto numOutDimensionsAttr = dyn_cast<IntegerAttr>(attr);
-    if (!numOutDimensionsAttr)
-      return mlir::emitError(
-          location.value_or(operands[0].getLoc()),
-          "expecting integer attribute for number of output dimensions.");
-    numOutDimensions = numOutDimensionsAttr.getUInt();
-  }
-
-  inferredReturnTypes.emplace_back(DeviceChainType::get(context, otherDevice));
+  inferredReturnTypes.emplace_back(DeviceChainType::get(otherDevice));
   while (numOutDimensions-- > 0)
     inferredReturnTypes.emplace_back(IndexType::get(context));
   return success();
 }
 
 InOutSignatureAttr::InOutSemantics
-KernelExecuteGenericOp::getInOutSemantics(size_t index) {
+KernelExecuteOp::getInOutSemantics(size_t index) {
   GENERICML_ASSERT(index < getNumOperands());
   size_t firstArgsIndex = getTheContextMutable().getOperandNumber() + 1;
   size_t endArgsIndex = firstArgsIndex + getArgs().size();

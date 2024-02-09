@@ -27,21 +27,6 @@ using namespace MGP;
 // Custom parsers
 //===----------------------------------------------------------------------===//
 
-static LogicalResult parseDeviceRef(AsmParser &p, DeviceRefAttr &device) {
-  mlir::SMLoc loc;
-  if (p.getCurrentLocation(&loc))
-    return failure();
-  device = dyn_cast_if_present<DeviceRefAttr>(
-      DeviceRefAttr::parse(p, /*odsType=*/{}));
-  if (!device)
-    p.emitError(loc, "expecting #M.device_ref attribute");
-  return success();
-}
-
-static void printDeviceRef(AsmPrinter &p, DeviceRefAttr device) {
-  device.print(p);
-}
-
 /// The distinguished keyword for the unknown dtype.
 constexpr const char *kUnknownDType = "unk";
 

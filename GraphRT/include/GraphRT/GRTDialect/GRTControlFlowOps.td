@@ -46,6 +46,8 @@ def ChainCreateOp : GRTOp<"chain.create", [Pure, Commutative,
   let arguments = (ins Variadic<AnyType>:$operands);
   let results = (outs ChainType:$result);
   let hasCustomAssemblyFormat = 1;
+  let hasCanonicalizeMethod = 1;
+
   let builders = [
     OpBuilder<(ins)>
   ];
