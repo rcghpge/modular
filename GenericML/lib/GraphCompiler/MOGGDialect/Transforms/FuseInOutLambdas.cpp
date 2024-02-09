@@ -41,15 +41,14 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
   bool canDoInputFusion(MOGG::KernelOp kernel, ArrayAttr fusionInterfaces,
                         uint64_t inputIdx) {
+    // Disable fusion on experimental new KGEN in MOGG for now.
+    if (kernel.getIsKGEN().value_or(false))
+      return false;
 
     // Should be unreachable sanity check. Ensure this is not an elementwise
     // kernel (as if it where after fusion we would trigger more fusions).
     auto isElemwise = kernel.getFusionBodyLambda();
     if (isElemwise)
-      return false;
-
-    // Disable fusion on experimental new KGEN in MOGG for now.
-    if (kernel.getIsKGEN().value_or(false))
       return false;
 
     // Input fusion interface must be non null.
@@ -70,6 +69,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     auto parentKernel =
         dyn_cast_or_null<MOGG::KernelOp>(parentValue.getDefiningOp());
     if (!parentKernel)
+      return false;
+
+    if (parentKernel.getIsKGEN() != kernel.getIsKGEN())
       return false;
 
     // Check that the kernel has a single output.
@@ -225,13 +227,13 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
   /// This ensures the fusion is legal. Many of the checks can be moved into the
   /// canonicalizer / verifier.
   bool canDoOutputFusion(MOGG::KernelOp kernel, ArrayAttr fusionInterface) {
+    // Disable fusion on experimental new KGEN in MOGG for now.
+    if (kernel.getIsKGEN().value_or(false))
+      return false;
+
     // Unreachable: Ambigious what we should actually fuse. Previous passes
     // should have maintained 1:1 relationship of output to output interfaces.
     if (fusionInterface.size() != kernel.getNumResults())
-      return false;
-
-    // Disable fusion on experimental new KGEN in MOGG for now.
-    if (kernel.getIsKGEN().value_or(false))
       return false;
 
     // Restrictive guard for now.
@@ -253,6 +255,10 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // Check it's a kernel.
     MOGG::KernelOp user = dyn_cast<MOGG::KernelOp>(*result.user_begin());
     if (!user)
+      return false;
+
+    // Disable fusion on experimental new KGEN in MOGG for now.
+    if (user.getIsKGEN() != kernel.getIsKGEN())
       return false;
 
     // Check that it has a single output.
