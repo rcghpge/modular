@@ -483,9 +483,9 @@ struct ConvConstFilterPattern
     MO::TensorValue filter = op.getFilter();
     MO::TensorType filterType = filter.getType();
     MO::LayoutAttr filterLayout = filterType.getLayoutAttr();
-    if (filterLayout.getFormat() != "RSCF")
-      return rewriter.notifyMatchFailure(
-          op, "Only support packing filter with RSCF layout");
+
+    if (llvm::is_contained({"FQRSCf", "FRSCf"}, filterLayout.getFormat()))
+      return rewriter.notifyMatchFailure(op, "filter is already packed");
 
     if (!dependsOnConstantsOnly<MO::ConstantOp>(filter.getDefiningOp()))
       return rewriter.notifyMatchFailure(op, "filter isn't constant");
@@ -505,8 +505,32 @@ struct ConvConstFilterPattern
     // Create shape parameters for the new type.
     SmallVector<KGEN::ParamDeclAttr> paramDecls;
     auto graphOp = op->getParentOfType<MO::GraphOp>();
-    for (StringRef name : {"F", "R", "S", "C", "f"})
-      paramDecls.push_back(graphOp.getNewDimParam(name));
+
+    size_t filterRank = filterType.getRank();
+
+    if (filterRank != 4 && filterRank != 5)
+      return rewriter.notifyMatchFailure(
+          op, "Conv filter packing is currently only supported "
+              "for 2D and 3D filters");
+
+    StringRef packedLayoutStr = [filterRank]() {
+      switch (filterRank) {
+      case 4:
+        return "FRSCf";
+      case 5:
+        return "FQRSCf";
+      default:
+        llvm_unreachable(
+            "Only 2D and 3D convolutions are supported for packing");
+      }
+    }();
+
+    const char *layoutStrBegin = packedLayoutStr.begin();
+    for (size_t i = 0, e = packedLayoutStr.size(); i < e; i++) {
+      paramDecls.push_back(
+          graphOp.getNewDimParam(StringRef(layoutStrBegin + i, 1)));
+    }
+
     auto paramDeclsAttr = KGEN::ParamDeclArrayAttr::get(ctx, paramDecls);
 
     // Pass `num_groups` as a parameter to the `pack_conv_filter_shape` and
@@ -573,7 +597,7 @@ struct ConvConstFilterPattern
       outputParams.push_back(KGEN::ParamDeclRefAttr::get(outputParamDecl));
     auto moshShapeTy = MOSH::ShapeType::get(ctx);
     auto shapeAttr = MOSH::ShapeAttr::get(outputParams, moshShapeTy);
-    auto packedFilterLayout = rewriter.getAttr<MO::LayoutAttr>("FRSCf");
+    auto packedFilterLayout = rewriter.getAttr<MO::LayoutAttr>(packedLayoutStr);
     auto packedFilterType =
         filterType.cloneWith(shapeAttr).cloneWith(packedFilterLayout);
 
