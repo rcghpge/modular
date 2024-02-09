@@ -318,6 +318,8 @@ MojoLibraryAnalysis::get(MLIRContext *ctx,
                         "Matmul::pack_transposed_b_ndbuffer"),
       INTRINSIC_TO_MOJO("layout_transform_RSCF_to_FRSCf",
                         "MOGG::pack_conv_filter"),
+      INTRINSIC_TO_MOJO("layout_transform_QRSCF_to_FQRSCf",
+                        "MOGG::pack_conv_filter"),
 
       INTRINSIC_TO_MOJO("simd_target", "MOGG::get_target_simd"),
       INTRINSIC_TO_MOJO("simd_target_to_int", "MOGG::simd_width_to_int"),
