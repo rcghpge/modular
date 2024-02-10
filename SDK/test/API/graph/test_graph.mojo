@@ -4,16 +4,13 @@
 #
 # ===----------------------------------------------------------------------=== #
 # UNSUPPORTED: windows
-# RUN: mojo -D TEMP_DIR=%T %s | FileCheck %s
+# RUN: mojo %s | FileCheck %s
 
 from sys.param_env import env_get_string
 from tensor import Tensor, TensorShape
 from testing import assert_true
 
 from max.graph import AttrMap, Module, MOList, MOTensor, TypeTuple
-
-
-alias TEMP_DIR = Path(env_get_string["TEMP_DIR"]())
 
 
 fn test_identity_graph() raises:

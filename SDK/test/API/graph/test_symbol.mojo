@@ -4,7 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 # UNSUPPORTED: windows
-# RUN: mojo -D TEMP_DIR=%T %s
+# RUN: mojo %s
 
 from tensor import Tensor, TensorShape
 
