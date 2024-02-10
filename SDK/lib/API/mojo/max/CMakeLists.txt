@@ -40,7 +40,8 @@ set(ENGINE_SRCS
   engine/_tensor_spec_impl
   engine/_utils)
 
-add_mojo_package(max-mojo PRIVATE
+# TODO: Enable priming the compilation cache.
+add_mojo_package(max-mojo PRIVATE DISABLE_PRIME_CACHE
   ${GRAPH_SRCS}
   ${ENGINE_SRCS}
 
