@@ -44,15 +44,13 @@ class MO_ControlOp<string mnemonic, list<Trait> traits = []>
 //===----------------------------------------------------------------------===//
 
 def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [Pure]> {
-  let summary = "Cast from `index` to scalar-like `!mo.tensor`.";
+  let summary = "`index` to scalar `!mo.tensor` casting operaton";
   let description = [{
-    Return a scalar tensor that contains the input index value.
-
     Example:
 
     ```mlir
-    %c: index
-    %scalarT = mo.index.to_tensor(%c) -> !mo.tensor<[], si64>
+      %c: index
+      %scalarT = mo.index.to_tensor(%c) -> !mo.tensor<[], si64>
     ```
   }];
 
@@ -71,24 +69,24 @@ def MO_TransferOp : MO_Op<"transfer", [
     Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
 ]> {
-  let summary = "Make an operand tensor available on a specified (virtual) "
-                "device.";
+  let summary = "Device transfer operation";
   let description = [{
-    Represents a possible copy or aliasing operation to make the contents of the
-    operand tensor available on the (virtual) device given by the operand
-    `#M.device_ref` attribute. The result tensor type is identical to the
-    operand tensor type except for the device annotation.
+    This op represents a possible copy or aliasing operation to make the
+    contents of the operand tensor available on the (virtual) device given by
+    the operand `#M.device_ref` attribute. The result tensor type is identical
+    to the operand tensor type except for the device annotation.
 
     The operand tensor type must have a device annotation. It is valid for the
     source and destination devices to be identical. It is implementation defined
     as to whether the result tensor is a copy or alias of the operand tensor.
 
     Example:
+
     ```mlir
-    %arg : !mo.tensor<[N, 8], f32, { device = #M.device_ref<"cuda", 3> }>
-    %res = mo.transfer %arg : !mo.tensor<[N, 8], f32,
-             { device = #M.device_ref<"cuda", 3> }> to <"cuda", 1>
-    %res : !mo.tensor<[N, 8], f32, { device = #M.device_ref<"cuda", 1> }>
+      %arg : !mo.tensor<[N, 8], f32, { device = #M.device_ref<"cuda", 3> }>
+      %res = mo.transfer %arg : !mo.tensor<[N, 8], f32,
+              { device = #M.device_ref<"cuda", 3> }> to <"cuda", 1>
+      %res : !mo.tensor<[N, 8], f32, { device = #M.device_ref<"cuda", 1> }>
     ```
   }];
 
@@ -115,25 +113,22 @@ def MO_GraphOp : MO_TensorOp<"graph", [
   // needed to leverage KGEN parameter infra
   DeclInterface, FuncInterface
 ]> {
-  let summary = "Function that contains a MO graph with other ops mixed in";
+  let summary = "Computation graph operation";
   let description = [{
-    This op represents a computation graph that consists of
-    - input/output shape parameters
-    - input tensors
-    - computations on input tensors and intermediate results
-    - a terminating output op that returns the result tensors
-
-    The `counter` property will be used to generate new parameter names that are
-    unique among all parameter names inside this graph.
+    This op represents a computation graph that consists of:
+    - input data and their types
+    - output types
+    - other ops representing computations on input and intermediate data
+    - a terminating output op that returns the outputs
 
     Example:
 
     ```mlir
-    mo.graph @example<D1 -> D2>(%arg: !mo.tensor<[D1], f32>) -> (!mo.tensor<[D2], f32>) {
-      // ... intermediate computations ...
-      %res : !mo.tensor<[D3], f32>
-      mo.output<D3> %arg : !mo.tensor<[D3], f32>
-    }
+      mo.graph @example<D1 -> D2>(%arg: !mo.tensor<[D1], f32>) -> (!mo.tensor<[D2], f32>) {
+        // ... intermediate computations ...
+        %res : !mo.tensor<[D3], f32>
+        mo.output<D3> %arg : !mo.tensor<[D3], f32>
+      }
     ```
   }];
 
@@ -217,30 +212,29 @@ def MO_OutputOp : MO_ControlOp<"output", [
   Terminator, ReturnLike, HasParent<"MO::GraphOp">,
   DeclareOpInterfaceMethods<ParamOpInterface>
 ]>, NoParamDecls {
-  let summary = "MO output operation";
+  let summary = "Graph output operation";
   let description = [{
-    The "mo.output" operation specifies the output parameters and values for a
-    MO function. The operation takes variable number of operands and produces
-    no results. The operand number and types must match the signature of
-    the mo.graph that contains the operation (after substituting the bindings to
-    signature output type). For example:
+    This op specifies the output parameters and values for a `mo.graph`. The
+    op takes variable number of operands and produces no results. The operand
+    number and types must match the signature of the `mo.graph` that contains
+    the op (after substituting the bindings to signature output type).
 
-    Example:
+    Examples:
 
     ```mlir
-    mo.graph @no_params(%arg0: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
-      mo.output %arg0 : !mo.tensor<?, f32>
-    }
+      mo.graph @no_params(%arg0: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
+        mo.output %arg0 : !mo.tensor<?, f32>
+      }
 
-    mo.graph @with_params<D1 -> D2>(
-        %arg0: !mo.tensor<[D1], f32>) -> (!mo.tensor<[D2], f32>) {
-      mo.output<D1> %arg0 : !mo.tensor<[D1], f32>
-    }
+      mo.graph @with_params<D1 -> D2>(
+          %arg0: !mo.tensor<[D1], f32>) -> (!mo.tensor<[D2], f32>) {
+        mo.output<D1> %arg0 : !mo.tensor<[D1], f32>
+      }
     ```
 
     Note that in the parameterized example, the output operands type annotation
-    don't match the graph's output type textually, but they match after
-    substituting the bindings into graph's output type.
+    and the graph's output type don't necessarily need to match textually, but
+    the compiler will eventually verify that they do.
   }];
 
   let arguments = (ins
@@ -263,27 +257,27 @@ def MO_OutputOp : MO_ControlOp<"output", [
 
 def IfOp : MO_ControlOp<"if",
           [SingleBlockImplicitTerminator<"MO::YieldOp">, HasOnlyGraphRegion]> {
-  let summary = "if operation";
+  let summary = "`if` control flow operation";
   let description = [{
-    The `mo.if` operation takes an i1 condition, a 'then' block and an 'else'
-    block. If the condition is true, the 'then' block is run and the "mo.if"
-    operation returns the results of that block, otherwise the "else" block is
+    The `mo.if` op takes an `i1` condition, a 'then' block and an 'else'
+    block. If the condition is true, the 'then' block is run and the op
+    returns the results of that block, otherwise the "else" block is
     run and its values are returned.
 
-    The blocks have access to all outer SSA values. The blocks must return
-    values using the "mo.yield' op, and the returned values must match the
-    types given in the "mo.if" result signature.
+    The blocks have access to all outer values. The blocks must return
+    values using the `mo.yield' op, and the returned values must match the
+    types given in the `mo.if` result signature.
 
     Example:
 
     ```mlir
       %res = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<?, f32> {
         %v1 = mo.add(%x, %y) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>
-                               ) -> !mo.tensor<?, f32>
+                                ) -> !mo.tensor<?, f32>
         mo.yield %v1 : !mo.tensor<?, f32>
       } else {
         %v2 = mo.sub(%x, %y) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>
-                                 ) -> !mo.tensor<?, f32>
+                                  ) -> !mo.tensor<?, f32>
         mo.yield %v2 : !mo.tensor<?, f32>
       }
     ```
@@ -309,21 +303,21 @@ def IfOp : MO_ControlOp<"if",
 def WhileOp : MO_ControlOp<"while",
           [SingleBlockImplicitTerminator<"MO::YieldOp">,
           HasOnlyGraphRegion]> {
-  let summary = "while control flow operation";
+  let summary = "`while` control flow operation";
   let description = [{
-    The `mo.while` operation takes 'cond' and 'body' blocks. While the 'cond'
-    block evaluates to the true condition, the 'body' block is executed.
+    The `mo.while` operation takes "cond" and "body" blocks. While the "cond"
+    block evaluates to the true condition, the "body" block is executed.
 
-    The 'cond' and 'body' blocks have access to both the values listed in the
-    `mo.while` signature and any other outer bound values. The 'cond' block
-    must return a single `!mo.tensor<[], bool>` 'scalar' condition result,
-    using a `mo.yield` operation. The 'body' block must return results with the
+    The "cond" and "body" blocks have access to both the values listed in the
+    `mo.while` signature and any other outer values. The "cond" block
+    must return a single `!mo.tensor<[], bool>` result,
+    using a `mo.yield` operation. The "body" block must return results with the
     same types as the `mo.while` signature, again using a `mo.yield`. The
-    signature must include an 'as' clause for every input so as to rename it
-    to a fresh SSA value.
+    signature must include an "as" clause for every input so as to rename it
+    to a fresh symbol.
 
     The results of the `mo.while` op are the results of the last executed
-    'body' block, or the `mo.while` signature arguments if 'cond' never
+    "body" block, or the `mo.while` signature arguments if "cond" never
     evaluated to true.
 
     Example:
@@ -344,13 +338,6 @@ def WhileOp : MO_ControlOp<"while",
       }
       %res: !mo.tensor<[2], f32>
     ```
-
-    It is legal for the same output SSA value to appear in both the input
-    signature and be used free. The former will refer to the 'current' value,
-    as updated by the `mo.while` 'body'. The latter will refer to the original
-    value. Though confusing this situation can be introduced by common passes
-    such as canonicalization, for example when it replaces a locally bound
-    constant with the SSA value for the same constant bound in an outer scope.
   }];
 
   let arguments = (ins Variadic<AnyType>:$inputs);
@@ -375,20 +362,19 @@ def MO_YieldOp
     : MO_ControlOp<"yield", [
         Terminator, ReturnLike, Pure, ParentOneOf<["IfOp", "WhileOp"]>
       ]> {
-  let summary = "MO yield operation";
+  let summary = "`yield` operation";
   let description = [{
-    The "mo.yield" operation specifies the output values for MO control flow
-    blocks. The operation takes variable number of operands and produces no
-    results.
+    This op specifies the output values for control flow blocks. The op
+    takes variable number of operands and produces no results.
 
     Example:
 
     ```mlir
-    mo.if $cond : !mo.tensor<[], bool> (!mo.tensor<?, f32>) {
-      mo.yield %arg0 : !mo.tensor<?, f32>
-    } else {
-      mo.yield %arg1 : !mo.tensor<?, f32>
-    }
+      mo.if $cond : !mo.tensor<[], bool> (!mo.tensor<?, f32>) {
+        mo.yield %arg0 : !mo.tensor<?, f32>
+      } else {
+        mo.yield %arg1 : !mo.tensor<?, f32>
+      }
     ```
   }];
 
@@ -407,20 +393,23 @@ def MO_YieldOp
 
 def MO_RebindOp : MO_ControlOp<"rebind", [
     DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
-  let summary = "tensor parameter rebind op";
+  let summary = "Parameter rebind operation";
   let description = [{
-    Op to represent "rebinding" a value of `!mo.tensor<...>` type to another
-    `!mo.tensor<...>`. Currently, this op can be used to convert all attributes
-    of `!mo.tensor` types, inlcuding shape, element type, and metadata.
+    This op represents the "rebinding" of a type to another type. This can be
+    used to convert all attributes of types such as `!mo.tensor`, inlcuding
+    shape, element type, and metadata.
+
+    Rebinding is similar to casting, except no data conversion takes place.
+    Rather, the it represents an assertion that the two types ultimately
+    prove to be the same.
 
     Examples:
-
     ```mlir
-    %0 = mo.rebind(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, 1], f32>
-    %1 = mo.rebind(%0) : !mo.tensor<[N, 1], f32> -> !mo.tensor<Sh, f32>
-    %2 = mo.rebind(%1) : !mo.tensor<Sh, f32> -> !mo.tensor<[], f32>
-    %3 = mo.rebind<() -> K, M>(%0) :
-      !mo.tensor<[N, 1], f32> -> !mo.tensor<[K, M], f32>
+      %0 = mo.rebind(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, 1], f32>
+      %1 = mo.rebind(%0) : !mo.tensor<[N, 1], f32> -> !mo.tensor<Sh, f32>
+      %2 = mo.rebind(%1) : !mo.tensor<Sh, f32> -> !mo.tensor<[], f32>
+      %3 = mo.rebind<() -> K, M>(%0) :
+        !mo.tensor<[N, 1], f32> -> !mo.tensor<[K, M], f32>
     ```
   }];
 
@@ -445,16 +434,16 @@ def MO_ConstantOp : MO_TensorOp<"constant", [
     Pure,
     DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["preferResultsDevice"]>,
 ]> {
-  let summary = "constant MO operation";
+  let summary = "Constant operation";
   let description = [{
-    Op to store constant tensors in model.
+    This op allows storing literal values inside the graph.
 
     Example:
 
     ```mlir
-    %0 = mo.constant {
-      value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>
-    } : !mo.tensor<[2, 2], si32>
+      %0 = mo.constant {
+        value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>
+      } : !mo.tensor<[2, 2], si32>
     ```
   }];
 
@@ -499,16 +488,16 @@ def MO_ConstantOp : MO_TensorOp<"constant", [
 
 
 def MO_ConstantScalarOp : MO_TensorOp<"constant.scalar", [ConstantLike, Pure]> {
-  let summary = "constant scalar MO operation";
+  let summary = "Scalar constant operation";
   let description = [{
-    Op to store constant scalars in model.
+    Same as `mo.constant`, but specialized to scalar types.
 
     Example:
 
     ```mlir
-    %0 = mo.constant {
-      value = 3 : si64
-    } : !mo.scalar<si64>
+      %0 = mo.constant {
+        value = 3 : si64
+      } : !mo.scalar<si64>
     ```
   }];
 
@@ -619,14 +608,14 @@ class MO_LogicalBinaryOp<string name, list<Trait> traits = []>
 def MO_AddOp : MO_ElementWiseBinaryMonoTypeOp<"add", [Commutative]> {
   let summary = "Add operation";
   let description = [{
-    Returns x + y, where x and y are input tensors.
+    Returns `x + y`, where `x` and `y` are input tensors.
 
     Example:
 
     ```mlir
-    %lhs: !mo.tensor<[2, 3], f32>
-    %rhs: !mo.tensor<[2, 3], f32>
-    %res = mo.add(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
+      %lhs: !mo.tensor<[2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f32>
+      %res = mo.add(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
     ```
   }];
 
@@ -636,13 +625,13 @@ def MO_AddOp : MO_ElementWiseBinaryMonoTypeOp<"add", [Commutative]> {
 def MO_AbsOp : MO_ElementWiseUnaryMonoTypeOp<"abs", [Idempotent]> {
   let summary = "Absolute value operation";
   let description = [{
-    Returns abs(x), where x is the input tensors.
+    Returns `abs(x)`, where `x` is the input tensors.
 
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.abs(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.abs(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -650,14 +639,14 @@ def MO_AbsOp : MO_ElementWiseUnaryMonoTypeOp<"abs", [Idempotent]> {
 def MO_DivOp : MO_ElementWiseBinaryMonoTypeOp<"div"> {
   let summary = "Divide operation";
   let description = [{
-    Returns x / y, where x and y are input tensors.
+    Returns `x / y`, where `x` and `y` are input tensors.
 
     Example:
 
     ```mlir
-    %lhs: !mo.tensor<[2, 3], f32>
-    %rhs: !mo.tensor<[2, 3], f32>
-    %res = mo.div(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
+      %lhs: !mo.tensor<[2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f32>
+      %res = mo.div(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
     ```
   }];
 
@@ -665,88 +654,87 @@ def MO_DivOp : MO_ElementWiseBinaryMonoTypeOp<"div"> {
 }
 
 def MO_ExpOp : MO_ElementWiseUnaryMonoTypeOp<"exp"> {
-  let summary = "Exponential function";
+  let summary = "Exponential function operation";
   let description = [{
-    Returns exp(x), where x is the input tensor.
+    Returns `exp(x)`, where `x` is the input tensor.
 
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.exp(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.exp(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
 def MO_ErfOp : MO_ElementWiseUnaryMonoTypeOp<"erf"> {
-  let summary = "Absolute value operation";
+  let summary = "(Gaussian) error function operation";
   let description = [{
     Computes the Gauss error function of the input tensor elements.
 
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.erf(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.erf(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
 def MO_GeluOp : MO_ElementWiseUnaryMonoTypeOp<"gelu"> {
-  let summary = "Gaussian Error Linear Unit operation";
+  let summary = "Gaussian error linear unit operation";
   let description = [{
-    Returns GELU(x) = (x / 2) * (1 + erf(x/sqrt(2))), where erf denotes the
+    Returns `(x / 2) * (1 + erf(x/sqrt(2)))`, where `erf` denotes the
     (Gaussian) error function.
 
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.gelu(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.gelu(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
 def MO_LogOp : MO_ElementWiseUnaryMonoTypeOp<"log"> {
-  let summary = "Natural Logarithm";
+  let summary = "Natural logarithm operation";
   let description = [{
-    Computes the natural logorithm `log(x)`.
+    Returns the natural logorithm, `log(x)`.
 
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.log(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.log(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
 def MO_Log1pOp : MO_ElementWiseUnaryMonoTypeOp<"log1p"> {
-  let summary = "Natural Logarithm of 1 + x";
+  let summary = "Natural logarithm of `1 + x` operation ";
   let description = [{
-    Calculate log(1 + x) maintaining accuracy for small
-    x where 1 + x = 1 in floating point rounding.
+    Returns `log(1 + x)`, maintaining accuracy for small `x` that could
+    otherwise lead to floating-point roundings of the kind `1 + x = 1`.
 
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.log1p(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.log1p(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
 def MO_SigmoidOp : MO_ElementWiseUnaryMonoTypeOp<"sigmoid"> {
-  let summary = "Logistic Sigmoid operation";
+  let summary = "Logistic sigmoid operation";
   let description = [{
-    Returns $sigmoid(x) = \frac{1}{1+e^{-x}} = \fract{e^x}{e^x + 1} to compute
-    the logistic sigmoid operations.
+    Returns `\frac{1}{1+e^{-x}} = \fract{e^x}{e^x + 1}`, the logistic sigmoid.
 
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.sigmoid(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.sigmoid(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -754,14 +742,14 @@ def MO_SigmoidOp : MO_ElementWiseUnaryMonoTypeOp<"sigmoid"> {
 def MO_MaxOp : MO_ElementWiseBinaryMonoTypeOp<"max", [Commutative]> {
   let summary = "Maximum operation";
   let description = [{
-    Returns max(x, y), where x and y are input tensors.
+    Returns `max(x, y)`, where `x` and `y` are input tensors.
 
     Example:
 
     ```mlir
-    %lhs: !mo.tensor<[2, 3], f32>
-    %rhs: !mo.tensor<[2, 3], f32>
-    %res = mo.max(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
+      %lhs: !mo.tensor<[2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f32>
+      %res = mo.max(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -769,59 +757,58 @@ def MO_MaxOp : MO_ElementWiseBinaryMonoTypeOp<"max", [Commutative]> {
 def MO_MinOp : MO_ElementWiseBinaryMonoTypeOp<"min", [Commutative]> {
   let summary = "Minimum operation";
   let description = [{
-    Returns min(x, y), where x and y are input tensors.
+    Returns `min(x, y)`, where `x` and `y` are input tensors.
 
     Example:
 
     ```mlir
-    %lhs: !mo.tensor<[2, 3], f32>
-    %rhs: !mo.tensor<[2, 3], f32>
-    %res = mo.min(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
+      %lhs: !mo.tensor<[2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f32>
+      %res = mo.min(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
 def MO_ModOp : MO_ElementWiseBinaryMonoTypeOp<"mod"> {
-  let summary = "Mod operation";
+  let summary = "Modulus operation";
   let description = [{
-    Returns x mod y, where x and y are input tensors. Supports floating point
-    and integral types.
+    Returns `x mod y`, where `x` and `y` are input tensors.
 
     Example:
 
     ```mlir
-    %lhs: !mo.tensor<[2, 3], si32>
-    %rhs: !mo.tensor<[2, 3], si32>
-    %res = mo.add(%lhs, %rhs) : !mo.tensor<[2, 3], si32>
+      %lhs: !mo.tensor<[2, 3], si32>
+      %rhs: !mo.tensor<[2, 3], si32>
+      %res = mo.add(%lhs, %rhs) : !mo.tensor<[2, 3], si32>
     ```
   }];
 }
 
 def MO_MulOp : MO_ElementWiseBinaryMonoTypeOp<"mul", [Commutative]> {
-  let summary = "Multiply operation";
+  let summary = "Multiplication operation";
   let description = [{
-    Returns x * y, where x and y are input tensors.
+    Returns `x * y`, where `x` and `y` are input tensors.
 
     Example:
 
     ```mlir
-    %lhs: !mo.tensor<[2, 3], f32>
-    %rhs: !mo.tensor<[2, 3], f32>
-    %res = mo.mul(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
+      %lhs: !mo.tensor<[2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f32>
+      %res = mo.mul(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
 def MO_NegativeOp : MO_ElementWiseUnaryMonoTypeOp<"negative"> {
-  let summary = "Returns the negative of the input.";
+  let summary = "Negation operation";
   let description = [{
-    Negates the argument: -x
+    Returns `-x`, where `x` is input tensor.
 
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.negative(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.negative(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 
@@ -831,26 +818,25 @@ def MO_NegativeOp : MO_ElementWiseUnaryMonoTypeOp<"negative"> {
 def MO_PowOp : MO_ElementWiseBinaryOp<"pow", [Pure]> {
   let summary = "Power operation";
   let description = [{
-    Computes elementwise x ** y, where x is the base tensor and y is the
-    exponent tensor.
+    Computes `x ** y`, where `x` and `y` are input tensors.
 
-    Example:
+    Examples:
 
     ```mlir
-    %x: !mo.tensor<[2, 3], f32>
-    %y: !mo.tensor<[2, 3], f32>
-    %res = mo.pow(
-        %x: !mo.tensor<[2, 3], f32>,
-        %y: !mo.tensor<[2, 3], f32>
-    ) : !mo.tensor<[2, 3], f32>
+      %x: !mo.tensor<[2, 3], f32>
+      %y: !mo.tensor<[2, 3], f32>
+      %res = mo.pow(
+          %x: !mo.tensor<[2, 3], f32>,
+          %y: !mo.tensor<[2, 3], f32>
+      ) : !mo.tensor<[2, 3], f32>
 
-    %x: !mo.tensor<[2, 3], f32>
-    %y_int: !mo.tensor<[2, 3], si32>
-    %res = mo.pow(
-        %x: !mo.tensor<[2, 3], f32>,
-        %y: !mo.tensor<[2, 3], si32>
-    ) : !mo.tensor<[2, 3], f32>
-    %res = mo.pow(%x, %y_int) : !mo.tensor<[2, 3], f32>
+      %x: !mo.tensor<[2, 3], f32>
+      %y_int: !mo.tensor<[2, 3], si32>
+      %res = mo.pow(
+          %x: !mo.tensor<[2, 3], f32>,
+          %y: !mo.tensor<[2, 3], si32>
+      ) : !mo.tensor<[2, 3], f32>
+      %res = mo.pow(%x, %y_int) : !mo.tensor<[2, 3], f32>
     ```
   }];
 
@@ -865,28 +851,28 @@ def MO_PowOp : MO_ElementWiseBinaryOp<"pow", [Pure]> {
 
 // TODO(#22958): Consider relaxing constraints on trig. functions
 def MO_SinOp : MO_ElementWiseUnaryFloatMonoTypeOp<"sin"> {
-  let summary = "Returns the sine of the input.";
+  let summary = "Sine operation";
   let description = [{
-    Computes the sine of the input: sin(x).
+    Returns `sin(x)`, where `x` is input tensor.
 
     Example:
     ```mlir
-    %arg : !mo.tensor<[2, 3], f32>
-    %res = mo.sin(%arg) : !mo.tensor<[2, 3], f32>
+      %arg : !mo.tensor<[2, 3], f32>
+      %res = mo.sin(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
   let arguments = (ins MO_FloatTensor:$input);
 }
 
 def MO_CosOp : MO_ElementWiseUnaryFloatMonoTypeOp<"cos"> {
-  let summary = "Returns the cosine of the input.";
+  let summary = "Cosine operation";
   let description = [{
-    Computes the cosine of the input: cos(x).
+    Returns `cos(x)`, where `x` is input tensor.
 
     Example:
     ```mlir
-    %arg : !mo.tensor<[2, 3], f32>
-    %res = mo.cos(%arg) : !mo.tensor<[2, 3], f32>
+      %arg : !mo.tensor<[2, 3], f32>
+      %res = mo.cos(%arg) : !mo.tensor<[2, 3], f32>
   }];
   let arguments = (ins MO_FloatTensor:$input);
 }
@@ -894,11 +880,11 @@ def MO_CosOp : MO_ElementWiseUnaryFloatMonoTypeOp<"cos"> {
 def MO_CumSumOp : MO_TensorOp<"cumsum", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
-  let summary = "Cumulative summation op.";
+  let summary = "Cumulative summation operation";
   let description = [{
-    Performs cumulative summation of input tensors along an axis. By default,
-    it copies the first element as is. If the exclusive attribute is set to 1,
-    then the first element is excluded. The reverse attribute causes the
+    Returns the cumulative summation of input tensors along an axis. By default,
+    it copies the first element as is. If the `exclusive` attribute is set to 1,
+    then the first element is excluded. The `reverse` attribute causes the
     summation to be done in the opposite direction of the axis.
 
     The value of `axis` follows numpy sematics, e.g., -1 represents the last
@@ -906,17 +892,17 @@ def MO_CumSumOp : MO_TensorOp<"cumsum", [
 
     Example of outputs:
     ```
-    input_x = [1, 2, 3]
-    axis=0
-    output = [1, 3, 6]
-    exclusive=1
-    output = [0, 1, 3]
-    exclusive=0
-    reverse=1
-    output = [6, 5, 3]
-    exclusive=1
-    reverse=1
-    output = [5, 3, 0]
+      input_x = [1, 2, 3]
+      axis=0
+      output = [1, 3, 6]
+      exclusive=1
+      output = [0, 1, 3]
+      exclusive=0
+      reverse=1
+      output = [6, 5, 3]
+      exclusive=1
+      reverse=1
+      output = [5, 3, 0]
     ```
 
     Example:
@@ -945,17 +931,14 @@ def MO_CumSumOp : MO_TensorOp<"cumsum", [
 def MO_CeilOp : MO_ElementWiseUnaryFloatMonoTypeOp<"ceil", [Idempotent]> {
   let summary = "Ceiling operation";
   let description = [{
-    Returns the smallest largest integer greater than x.
-
-    E.g.
-       -3.5 --> -3
-        3.5 -->  4
+    Returns the smallest largest integer greater than `x`, where `x` is input
+    tensor.
 
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.ceil(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.ceil(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -963,15 +946,12 @@ def MO_CeilOp : MO_ElementWiseUnaryFloatMonoTypeOp<"ceil", [Idempotent]> {
 def MO_FloorOp : MO_ElementWiseUnaryFloatMonoTypeOp<"floor", [Idempotent]> {
   let summary = "Floor operation";
   let description = [{
-    Returns the elementwise largest integer not greater than x.
-
-    E.g.
-       -3.5 --> -4
-        3.5 -->  3
+    Returns the elementwise largest integer not greater than `x`, where `x` is
+    input tensor.
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.floor(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.floor(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -982,31 +962,21 @@ def MO_TruncOp : MO_ElementWiseUnaryFloatMonoTypeOp<"trunc", [Idempotent]> {
     Returns the elementwise integer from truncating the decimal. Also known
     as round-toward-zero.
 
-    E.g.
-       -3.5 --> -3
-        3.5 -->  3
-
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.trunc(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.trunc(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
 def MO_RoundOp : MO_ElementWiseUnaryFloatMonoTypeOp<"round", [Idempotent]> {
-  let summary = "Round operation";
+  let summary = "Rounding operation";
   let description = [{
     Returns the elementwise nearest integer, with ties going away from zero.
 
-    E.g.
-       -3.5 --> -4
-       -2.5 --> -3
-        2.5 -->  3
-        3.5 -->  4
-
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.round(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.round(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -1017,15 +987,9 @@ def MO_RoundEvenOp : MO_ElementWiseUnaryFloatMonoTypeOp<"roundeven", [Idempotent
     Returns the elementwise neareset integer, with ties going toward the
     nearest even number.
 
-    E.g.
-       -3.5 --> -4
-       -2.5 --> -2
-        2.5 -->  2
-        3.5 -->  4
-
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.roundeven(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.roundeven(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -1033,55 +997,55 @@ def MO_RoundEvenOp : MO_ElementWiseUnaryFloatMonoTypeOp<"roundeven", [Idempotent
 def MO_ReluOp : MO_ElementWiseUnaryMonoTypeOp<"relu", [Idempotent]> {
   let summary = "Rectified linear unit operation";
   let description = [{
-    Returns max(0, x), where x is the input tensor.
+    Returns `max(0, x)`, where `x` is the input tensor.
 
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.relu(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.relu(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
 def MO_RsqrtOp : MO_ElementWiseUnaryFloatMonoTypeOp<"rsqrt"> {
-  let summary = "Inverse Square Root operation";
+  let summary = "Inverse square root operation";
   let description = [{
-    Returns 1/sqrt(x), where x is the input tensor.
+    Returns `1/sqrt(x)`, where `x` is the input tensor.
 
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.rsqrt(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.rsqrt(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
 def MO_SqrtOp : MO_ElementWiseUnaryFloatMonoTypeOp<"sqrt"> {
-  let summary = "Square Root operation";
+  let summary = "Square root operation";
   let description = [{
-    Return sqrt(x), where x is the input tensor.
+    Returns `sqrt(x)`, where `x` is the input tensor.
 
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.sqrt(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.sqrt(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
 def MO_CastOp : MO_ElementWiseUnaryOp<"cast", [Pure]> {
-  let summary = "Cast operation";
+  let summary = "Casting operation";
   let description = [{
-    Return cast[dtype](x), where x is the input tensor.
+    Returns the input tensor, cast to the specified element type.
 
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], i32>
-    %res = mo.cast(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], i32>
+      %res = mo.cast(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
   let arguments = (ins MO_Tensor:$input);
@@ -1098,82 +1062,84 @@ def MO_CastOp : MO_ElementWiseUnaryOp<"cast", [Pure]> {
 }
 
 def MO_IsNaNOp : MO_ComparisonUnaryOp<"is_nan"> {
-  let summary = "IsNaN operation";
+  let summary = "NaN test operation";
   let description = [{
-    Returns true if x is not a number.
+    Returns true if `x` represents a floating point NaN, where `x` is input
+    tensor.
 
     Example:
 
     ```mlir
-    %x: !mo.tensor<[2, 3], f32>
-    %res = mo.is_nan(%x) : (!mo.tensor<[2, 3], f32>
-                           ) -> !mo.tensor<[2, 3], bool>
+      %x: !mo.tensor<[2, 3], f32>
+      %res = mo.is_nan(%x) : (!mo.tensor<[2, 3], f32>
+                            ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
 }
 
 def MO_IsInfOp : MO_ComparisonUnaryOp<"is_inf"> {
-  let summary = "IsInf operation";
+  let summary = "Infinity test operation";
   let description = [{
-    Returns true if x is infinite.
+    Returns true if `x` represents a floating point Inf, where `x` is input
+    tensor.
 
     Example:
 
     ```mlir
-    %x: !mo.tensor<[2, 3], f32>
-    %res = mo.is_inf(%x) : (!mo.tensor<[2, 3], f32>
-                           ) -> !mo.tensor<[2, 3], bool>
+      %x: !mo.tensor<[2, 3], f32>
+      %res = mo.is_inf(%x) : (!mo.tensor<[2, 3], f32>
+                            ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
 }
 
 def MO_EqualOp : MO_ComparisonBinaryOp<"equal", [Commutative]> {
-  let summary = "Equal operation";
+  let summary = "Equality test operation";
   let description = [{
-    Returns elementwise x == y, where x and y are input tensors.
+    Returns `x == y`, where `x` and `y` are input tensors.
 
     Example:
 
     ```mlir
-    %lhs: !mo.tensor<[2, 3], f32>
-    %rhs: !mo.tensor<[2, 3], f32>
-    %res = mo.equal(%lhs, %rhs) : (!mo.tensor<[2, 3], f32>,
-                                   !mo.tensor<[2, 3], f32>
-                                  ) -> !mo.tensor<[2, 3], bool>
-    ```
-  }];
-}
-
-def MO_GreaterOp : MO_ComparisonBinaryOp<"greater"> {
-  let summary = "Greater operation";
-  let description = [{
-    Returns elementwise x > y, where x and y are input tensors.
-
-    Example:
-
-    ```mlir
-    %lhs: !mo.tensor<[2, 3], f32>
-    %rhs: !mo.tensor<[2, 3], f32>
-    %res = mo.greater(%lhs, %rhs) : (!mo.tensor<[2, 3], f32>,
-                                     !mo.tensor<[2, 3], f32>
+      %lhs: !mo.tensor<[2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f32>
+      %res = mo.equal(%lhs, %rhs) : (!mo.tensor<[2, 3], f32>,
+                                    !mo.tensor<[2, 3], f32>
                                     ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
 }
 
-def MO_GreaterEqualOp : MO_ComparisonBinaryOp<"greater_equal"> {
-  let summary = "Greater Equal operation";
+def MO_GreaterOp : MO_ComparisonBinaryOp<"greater"> {
+  let summary = "Comparison operation";
   let description = [{
-    Returns elementwise x >= y, where x and y are input tensors.
+    Returns `x > y`, where `x` and `y` are input tensors.
 
     Example:
 
     ```mlir
-    %lhs: !mo.tensor<[2, 3], f32>
-    %rhs: !mo.tensor<[2, 3], f32>
-    %res = mo.greater_equal(%lhs, %rhs) : (!mo.tensor<[2, 3], f32>,
-                                           !mo.tensor<[2, 3], f32>
-                                          ) -> !mo.tensor<[2, 3], bool>
+      %lhs: !mo.tensor<[2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f32>
+      %res = mo.greater(%lhs, %rhs) : (!mo.tensor<[2, 3], f32>,
+                                      !mo.tensor<[2, 3], f32>
+                                      ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+}
+
+def MO_GreaterEqualOp : MO_ComparisonBinaryOp<"greater_equal"> {
+  let summary = "Comparison operation";
+  let description = [{
+    Returns `x >= y`, where `x` and `y` are input tensors.
+
+    Example:
+
+    ```mlir
+      %lhs: !mo.tensor<[2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f32>
+      %res = mo.greater_equal(%lhs, %rhs) : (!mo.tensor<[2, 3], f32>,
+                                            !mo.tensor<[2, 3], f32>
+                                            ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
   // TODO(#23221): remove folder once underlying bug is fixed for faster-rcnn-inception-resnet-v2
@@ -1181,36 +1147,35 @@ def MO_GreaterEqualOp : MO_ComparisonBinaryOp<"greater_equal"> {
 }
 
 def MO_NotEqualOp : MO_ComparisonBinaryOp<"not_equal", [Commutative]> {
-  let summary = "Not Equal operation";
+  let summary = "Comparison operation";
   let description = [{
-    Returns elementwise x != y, where x and y are input tensors.
+    Returns elementwise `x != y`, where `x` and `y` are input tensors.
 
     Example:
 
     ```mlir
-    %lhs: !mo.tensor<[2, 3], f32>
-    %rhs: !mo.tensor<[2, 3], f32>
-    %res = mo.not_equal(%lhs, %rhs) : (!mo.tensor<[2, 3], f32>,
-                                       !mo.tensor<[2, 3], f32>
-                                      ) -> !mo.tensor<[2, 3], bool>
+      %lhs: !mo.tensor<[2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f32>
+      %res = mo.not_equal(%lhs, %rhs) : (!mo.tensor<[2, 3], f32>,
+                                        !mo.tensor<[2, 3], f32>
+                                        ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
 }
 
 def MO_AndOp : MO_LogicalBinaryOp<"and"> {
-  let summary = "Logical And operation";
+  let summary = "Conjunction operation";
   let description = [{
-    Returns elementwise x `and` y, where x and y are input boolean tensors, and
-    the resulting element is true if both the lhs and rhs elements are true.
+    Returns `x and y`, where `x` and `y` are input boolean tensors.
 
     Example:
 
     ```mlir
-    %lhs: !mo.tensor<[2, 3], bool>
-    %rhs: !mo.tensor<[2, 3], bool>
-    %res = mo.and(%lhs, %rhs) : (!mo.tensor<[2, 3], bool>,
-                                 !mo.tensor<[2, 3], bool>
-                                ) -> !mo.tensor<[2, 3], bool>
+      %lhs: !mo.tensor<[2, 3], bool>
+      %rhs: !mo.tensor<[2, 3], bool>
+      %res = mo.and(%lhs, %rhs) : (!mo.tensor<[2, 3], bool>,
+                                  !mo.tensor<[2, 3], bool>
+                                  ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
 }
@@ -1218,16 +1183,15 @@ def MO_AndOp : MO_LogicalBinaryOp<"and"> {
 def MO_NotOp : MO_TensorOp<"not", [
   Pure, MO_SameOperandsAndResultType, MO_ElementWiseUnary
 ]> {
-  let summary = "Logical Not operation";
+  let summary = "Logical negation operation";
   let description = [{
-    Returns elementwise `not` on given input, where input is a boolean tensor,
-    and the resulting element is true if the input element is false.
+    Returns `not x` on given input, where input is a boolean tensor.
 
     Example:
 
     ```mlir
-    %in: !mo.tensor<[2, 3], bool>
-    %res = mo.not(%in) : (!mo.tensor<[2, 3], bool>) -> !mo.tensor<[2, 3], bool>
+      %in: !mo.tensor<[2, 3], bool>
+      %res = mo.not(%in) : (!mo.tensor<[2, 3], bool>) -> !mo.tensor<[2, 3], bool>
     ```
   }];
   let arguments = (ins MO_BooleanMask:$input);
@@ -1238,20 +1202,18 @@ def MO_NotOp : MO_TensorOp<"not", [
 }
 
 def MO_XorOp : MO_LogicalBinaryOp<"xor"> {
-  let summary = "Logical Xor operation";
+  let summary = "Exclusive disjunction operation";
   let description = [{
-    Returns elementwise x `xor` y, where x and y are input boolean tensors, and
-    the resulting element is true if only one of the lhs and rhs elements is
-    true.
+    Returns `x xor y`, where `x` and `y` are input boolean tensors.
 
     Example:
 
     ```mlir
-    %lhs: !mo.tensor<[2, 3], bool>
-    %rhs: !mo.tensor<[2, 3], bool>
-    %res = mo.xor(%lhs, %rhs) : (!mo.tensor<[2, 3], bool>,
-                                 !mo.tensor<[2, 3], bool>
-                                ) -> !mo.tensor<[2, 3], bool>
+      %lhs: !mo.tensor<[2, 3], bool>
+      %rhs: !mo.tensor<[2, 3], bool>
+      %res = mo.xor(%lhs, %rhs) : (!mo.tensor<[2, 3], bool>,
+                                  !mo.tensor<[2, 3], bool>
+                                  ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
 }
@@ -1260,15 +1222,16 @@ def MO_XorOp : MO_LogicalBinaryOp<"xor"> {
 def MO_SelectOp : MO_TensorOp<"select", [Pure, MO_SameOperandsAndResultShape]>{
   let summary = "Select operation";
   let description = [{
-    Return cond ? x : y (element-wise), where cond, x and y are input tensors.
+    Returns `cond ? x : y` (element-wise), where `cond`, `x` and `y` are input
+    tensors.
 
     Example:
 
     ```mlir
-    %cond: !mo.tensor<[2, 3], bool>
-    %x: !mo.tensor<[2, 3], f32>
-    %y: !mo.tensor<[2, 3], f32>
-    %res = mo.select(%cond, %x, %y) : !mo.tensor<[2, 3], f32>
+      %cond: !mo.tensor<[2, 3], bool>
+      %x: !mo.tensor<[2, 3], f32>
+      %y: !mo.tensor<[2, 3], f32>
+      %res = mo.select(%cond, %x, %y) : !mo.tensor<[2, 3], f32>
     ```
   }];
   let arguments = (ins MO_BooleanMask:$cond, MO_Tensor:$x, MO_Tensor:$y);
@@ -1287,7 +1250,7 @@ def MO_SliceOp : MO_TensorOp<"slice", [
 ]> {
   let summary = "Slice operation";
   let description = [{
-    Return a new tensor with a subset of the elements from an N-dimensional
+    Returns a new tensor with a subset of the elements from an N-dimensional
     `input` tensor. The subset is chosen using the `start`, `stop`, and `step`
     1D index tensors; each index tensor has N elements, one for each dimension
     of the `input` tensor.
@@ -1302,6 +1265,7 @@ def MO_SliceOp : MO_TensorOp<"slice", [
     4. `step` must contain nonzero elements.
 
     Example:
+    ```mlir
       %input: !mo.tensor<[?, ?], f32>
       %start: !mo.tensor<[2], si64> // [1, -6]
       %stop: !mo.tensor<[2], si32>  // [-3, 6]
@@ -1313,6 +1277,7 @@ def MO_SliceOp : MO_TensorOp<"slice", [
         !mo.tensor<[2], si32>,
         !mo.tensor<[2], si64>
       ) -> !mo.tensor<[?, ?], f32>
+    ```
   }];
   let arguments = (ins MO_Tensor:$input,
                        MO_IndicesVectorIfRanked:$start,
@@ -1329,30 +1294,30 @@ def MO_SliceOp : MO_TensorOp<"slice", [
 }
 
 def MO_SubOp : MO_ElementWiseBinaryMonoTypeOp<"sub"> {
-  let summary = "Subtract operation";
+  let summary = "Subtraction operation";
   let description = [{
-    Returns x - y, where x and y are input tensors.
+    Returns `x - y`, where `x` and `y` are input tensors.
 
     Example:
 
     ```mlir
-    %lhs: !mo.tensor<[2, 3], f32>
-    %rhs: !mo.tensor<[2, 3], f32>
-    %res = mo.sub(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
+      %lhs: !mo.tensor<[2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f32>
+      %res = mo.sub(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
 def MO_TanhOp : MO_ElementWiseUnaryFloatMonoTypeOp<"tanh"> {
-  let summary = "Tanh function";
+  let summary = "Hyperbolic tangent operation";
   let description = [{
-    Computes the hyperbolic tangent of the input tensor elements.
+    Computes `tanh(x)`, where `x` is input tensor.
 
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.tanh(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.tanh(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -1371,35 +1336,33 @@ class MO_SoftmaxLikeOp<string name, list<Trait> traits = []>
 }
 
 def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax"> {
-  let summary = "Perfoms logsoftmax on tensor `input`";
+  let summary = "Logarighmic softmax operation";
   let description = [{
-    Returns logsoftmax probability scores following:
-     `log(softmax(input))`
+    Returns `log(softmax(x))`, where `x` is input tensor.
 
-    The scores are computed along the last axis.
+    The softmax is applied along the last axis.
 
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.logsoftmax(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.logsoftmax(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
 def MO_SoftmaxOp : MO_SoftmaxLikeOp<"softmax"> {
-  let summary = "Perfoms softmax on tensor `input`";
+  let summary = "Softmax operation";
   let description = [{
-    Returns softmax probability scores following:
-     `exp(input) / sum(exp(input))`
+    Returns `exp(input) / sum(exp(input))`, where `x` is input tensor.
 
-    The scores are computed along the last axis.
+    The `sum` reduction is applieed along the last axis.
 
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.softmax(%arg) : !mo.tensor<[2, 3], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = mo.softmax(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -1435,8 +1398,8 @@ def MO_MeanOp : MO_ReductionOp<"mean", [
 ]> {
   let summary = "Mean reduction operation";
   let description = [{
-    Reduce `input` elements across `axis` to their mean value, and change that
-    axis's dimension to 1 in the output shape.
+    Reduces `input` elements across `axis` to their mean value, changng that
+    axis's dimension to 1.
 
     The value of `axis` follows numpy semantics, e.g., -1 represents the last
     axis.
@@ -1444,11 +1407,11 @@ def MO_MeanOp : MO_ReductionOp<"mean", [
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %axis = mo.constant {
-      value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %res = mo.mean(%arg, %axis) : (
-      !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %res = mo.mean(%arg, %axis) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
@@ -1458,7 +1421,7 @@ def MO_ReduceMulOp : MO_ReductionOp<"reduce.mul", [
 ]> {
   let summary = "Product reduction operation";
   let description = [{
-    Reduce `input` elements across `axis` to their product, and change that
+    Reduces `input` elements across `axis` to their product, changing that
     axis's dimension to 1 in the output shape.
 
     The value of `axis` follows numpy semantics, e.g., -1 represents the last
@@ -1467,11 +1430,11 @@ def MO_ReduceMulOp : MO_ReductionOp<"reduce.mul", [
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %axis = mo.constant {
-      value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %res = mo.reduce.mul(%arg, %axis) : (
-      !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %res = mo.reduce.mul(%arg, %axis) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
@@ -1481,7 +1444,7 @@ def MO_ReduceAddOp : MO_ReductionOp<"reduce.add", [
 ]> {
   let summary = "Sum reduction operation";
   let description = [{
-    Reduce `input` elements across `axis` to their sum, and change that axis's
+    Reduces `input` elements across `axis` to their sum, changing that axis's
     dimension to 1 in the output shape.
 
     The value of `axis` follows numpy semantics, e.g., -1 represents the last
@@ -1490,11 +1453,11 @@ def MO_ReduceAddOp : MO_ReductionOp<"reduce.add", [
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %axis = mo.constant {
-      value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %res = mo.reduce.add(%arg, %axis) : (
-      !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %res = mo.reduce.add(%arg, %axis) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
   let hasFolder = 1;
@@ -1505,7 +1468,7 @@ def MO_ReduceMinOp : MO_ReductionOp<"reduce.min", [
 ]> {
   let summary = "Minimum reduction operation";
   let description = [{
-    Reduce `input` elements across `axis` to their minimum, and change that
+    Reduces `input` elements across `axis` to their minimum, changing that
     axis's dimension to 1 in the output shape.
 
     The value of `axis` follows numpy semantics, e.g., -1 represents the last
@@ -1514,11 +1477,11 @@ def MO_ReduceMinOp : MO_ReductionOp<"reduce.min", [
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %axis = mo.constant {
-      value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %res = mo.reduce.min(%arg, %axis) : (
-      !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %res = mo.reduce.min(%arg, %axis) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
@@ -1528,7 +1491,7 @@ def MO_ReduceMaxOp : MO_ReductionOp<"reduce.max", [
 ]> {
   let summary = "Maximum reduction operation";
   let description = [{
-    Reduce `input` elements across `axis` to their maximum, and change that
+    Reduces `input` elements across `axis` to their maximum, changing that
     axis's dimension to 1 in the output shape.
 
     The value of `axis` follows numpy semantics, e.g., -1 represents the last
@@ -1537,11 +1500,11 @@ def MO_ReduceMaxOp : MO_ReductionOp<"reduce.max", [
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[2, 3], f32>
-    %axis = mo.constant {
-      value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %res = mo.reduce.max(%arg, %axis) : (
-      !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+      %arg: !mo.tensor<[2, 3], f32>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %res = mo.reduce.max(%arg, %axis) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
@@ -1557,13 +1520,13 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
 ]>{
   let summary = "Average pooling operation";
   let description = [{
-    Apply average pooling with the given filter shape, strides, and dilations.
+    Computes average pooling with the given filter shape, strides, and dilations.
 
-    For now the op only supports 2d avg pooling (so input and filter must be
+    The op supports 2D avg pooling (so input and filter must be
     4D), with the following layout assumption:
     - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
 
-    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
+    All hyperparameters (i.e. `strides`, `dilations`, `padding`) must be of rank 1, or
     unranked. If the input has static rank, all hyperparameters with static
     shape must have sizes of `input_rank - 2`, except padding, which must have size
     `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
@@ -1577,20 +1540,20 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
     Example:
 
     ```mlir
-    %fs = mo.constant {
-      value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %st = mo.constant {
-      value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %di = mo.constant {
-      value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %pa = mo.constant {
-      value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %res = mo.avg_pool(%arg) [
-        filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
-    ] : (
-      !mo.tensor<[20, 10, 10, 32], f32>, !mo.tensor<[2], si64>,
-      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
-    ) -> !mo.tensor<[20, 9, 5, 32], f32>
+      %fs = mo.constant {
+        value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %st = mo.constant {
+        value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %di = mo.constant {
+        value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %pa = mo.constant {
+        value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+      %res = mo.avg_pool(%arg) [
+          filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
+      ] : (
+        !mo.tensor<[20, 10, 10, 32], f32>, !mo.tensor<[2], si64>,
+        !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+      ) -> !mo.tensor<[20, 9, 5, 32], f32>
     ```
   }];
 
@@ -1619,12 +1582,11 @@ def MO_AvgPoolCeilOp : MO_TensorOp<"avg_pool_ceil_mode_true", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]>{
-  let summary = "Average pooling operation with ceiling mode = True";
+  let summary = "Ceiling-mode average pooling operation";
   let description = [{
-    Apply average pooling with the given filter shape, strides, and dilations.
-    Ceiling mode in this case is True.
+    Computes average pooling with the given filter shape, strides, and dilations.
 
-    For now the op only supports 2d avg pooling (so input and filter must be
+    The op supports 2d avg pooling (so input and filter must be
     4D), with the following layout assumption:
     - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
 
@@ -1642,20 +1604,20 @@ def MO_AvgPoolCeilOp : MO_TensorOp<"avg_pool_ceil_mode_true", [
     Example:
 
     ```mlir
-    %fs = mo.constant {
-      value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %st = mo.constant {
-      value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %di = mo.constant {
-      value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %pa = mo.constant {
-      value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %res = mo.avg_pool_ceil_mode_true(%arg) [
-        filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
-    ] : (
-      !mo.tensor<[1, 4, 4, 1], f32>, !mo.tensor<[2], si64>,
-      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
-    ) -> !mo.tensor<[1, 2, 2, 1], f32>
+      %fs = mo.constant {
+        value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %st = mo.constant {
+        value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %di = mo.constant {
+        value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %pa = mo.constant {
+        value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+      %res = mo.avg_pool_ceil_mode_true(%arg) [
+          filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
+      ] : (
+        !mo.tensor<[1, 4, 4, 1], f32>, !mo.tensor<[2], si64>,
+        !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+      ) -> !mo.tensor<[1, 2, 2, 1], f32>
     ```
   }];
 
@@ -1684,9 +1646,9 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]>{
-  let summary = "Max pooling operation";
+  let summary = "Maximum pooling operation";
   let description = [{
-    Apply max pooling with the given filter shape, strides, and dilations.
+    Computes max pooling with the given filter shape, strides, and dilations.
 
     For now the op only supports 2d max pooling (so input and filter must be
     4D), with the following layout assumption:
@@ -1706,20 +1668,20 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
     Example:
 
     ```mlir
-    %fs = mo.constant {
-      value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %st = mo.constant {
-      value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %di = mo.constant {
-      value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %pa = mo.constant {
-      value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %res = mo.max_pool(%arg) [
-        filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
-    ] : (
-      !mo.tensor<[20, 10, 10, 32], f32>, !mo.tensor<[2], si64>,
-      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
-    ) -> !mo.tensor<[20, 9, 5, 32], f32>
+      %fs = mo.constant {
+        value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %st = mo.constant {
+        value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %di = mo.constant {
+        value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %pa = mo.constant {
+        value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+      %res = mo.max_pool(%arg) [
+          filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
+      ] : (
+        !mo.tensor<[20, 10, 10, 32], f32>, !mo.tensor<[2], si64>,
+        !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+      ) -> !mo.tensor<[20, 9, 5, 32], f32>
     ```
   }];
 
@@ -1747,12 +1709,11 @@ def MO_MaxPoolCeilOp : MO_TensorOp<"max_pool_ceil_mode_true", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]>{
-  let summary = "Max pooling operation with ceiling mode = True";
+  let summary = "Ceiling-mode maximum pooling operation";
   let description = [{
-    Apply max pooling with the given filter shape, strides, and dilations.
-    Ceiling mode in this case is True.
+    Computes max pooling with the given filter shape, strides, and dilations.
 
-    For now the op only supports 2d max pooling (so input and filter must be
+    The op supports 2d max pooling (so input and filter must be
     4D), with the following layout assumption:
     - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
 
@@ -1770,20 +1731,20 @@ def MO_MaxPoolCeilOp : MO_TensorOp<"max_pool_ceil_mode_true", [
     Example:
 
     ```mlir
-    %fs = mo.constant {
-      value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %st = mo.constant {
-      value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %di = mo.constant {
-      value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %pa = mo.constant {
-      value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %res = mo.max_pool_ceil_mode_true(%arg) [
-        filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
-    ] : (
-      !mo.tensor<[1, 4, 4, 1], f32>, !mo.tensor<[2], si64>,
-      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
-    ) -> !mo.tensor<[1, 2, 2, 1], f32>
+      %fs = mo.constant {
+        value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %st = mo.constant {
+        value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %di = mo.constant {
+        value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %pa = mo.constant {
+        value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+      %res = mo.max_pool_ceil_mode_true(%arg) [
+          filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
+      ] : (
+        !mo.tensor<[1, 4, 4, 1], f32>, !mo.tensor<[2], si64>,
+        !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+      ) -> !mo.tensor<[1, 2, 2, 1], f32>
     ```
   }];
 
@@ -1813,10 +1774,10 @@ def MO_ConvOp : MO_TensorOp<"conv", [
 ]>{
   let summary = "Convolution operation";
   let description = [{
-    Compute the convolution of the input with the given filter, strides,
-    dilations, paddings, and groups.
+    Computes the convolution product of the input with the given filter,
+    strides, dilations, paddings, and groups.
 
-    For now the op only supports 2d convolution (so input and filter must be
+    The op supports 2D convolution (so input and filter must be
     4D), with the following layout assumptions:
     - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
     - filter has layout RSCF, i.e.,
@@ -1861,18 +1822,18 @@ def MO_ConvOp : MO_TensorOp<"conv", [
     Example:
 
     ```mlir
-    %st = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
-      : !mo.tensor<[2], si64>
-    %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
-      : !mo.tensor<[2], si64>
-    %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>}
-      : !mo.tensor<[4], si64>
-    %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>}
-      : %!mo.tensor<[], si64>
-    %res = mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
-      !mo.tensor<[10, 5, 5, 32], f32>, !mo.tensor<[2, 2, 32, 64], f32>,
-      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
-    ) -> !mo.tensor<[10, 4, 4, 64], f32>
+      %st = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
+        : !mo.tensor<[2], si64>
+      %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
+        : !mo.tensor<[2], si64>
+      %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>}
+        : !mo.tensor<[4], si64>
+      %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>}
+        : %!mo.tensor<[], si64>
+      %res = mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+        !mo.tensor<[10, 5, 5, 32], f32>, !mo.tensor<[2, 2, 32, 64], f32>,
+        !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
+      ) -> !mo.tensor<[10, 4, 4, 64], f32>
     ```
   }];
 
@@ -1901,14 +1862,14 @@ def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
 ]>{
-  let summary = "Convolution transpose operation";
+  let summary = "Transposed convolution operation";
   let description = [{
-    This operation effectively computes the gradient of a convolution with
+    This op effectively computes the gradient of a convolution with
     respect to its input (as if the original convolution operation had the same
     filter and hyperparameters as this op). A visualization of the computation
     can be found in https://d2l.ai/chapter_computer-vision/transposed-conv.html.
 
-    For now the op only supports 2D spatial dimensions (so input and filter must
+    The op supports 2D spatial dimensions (so input and filter must
     be 4D), with the following layout assumptions (note the `out_channel` is
     w.r.t. the original convolution):
     - input has layout NHWC, i.e., (batch_size, height, width, out_channels)
@@ -1953,20 +1914,20 @@ def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
     Example:
 
     ```mlir
-    %st = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
-      : !mo.tensor<[2], si64>
-    %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
-      : !mo.tensor<[2], si64>
-    %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>}
-      : !mo.tensor<[4], si64>
-    %op = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>}
-      : !mo.tensor<[2], si64>
-    %res = mo.conv(%input, %filter)
-      [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
-      !mo.tensor<[10, 4, 4, 64], f32>, !mo.tensor<[2, 2, 32, 64], f32>,
-      !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>,
-      !mo.tensor<[2], si64>
-    ) -> !mo.tensor<[10, 5, 5, 32], f32>
+      %st = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
+        : !mo.tensor<[2], si64>
+      %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
+        : !mo.tensor<[2], si64>
+      %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>}
+        : !mo.tensor<[4], si64>
+      %op = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>}
+        : !mo.tensor<[2], si64>
+      %res = mo.conv(%input, %filter)
+        [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+        !mo.tensor<[10, 4, 4, 64], f32>, !mo.tensor<[2, 2, 32, 64], f32>,
+        !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>,
+        !mo.tensor<[2], si64>
+      ) -> !mo.tensor<[10, 5, 5, 32], f32>
     ```
   }];
 
@@ -2011,21 +1972,20 @@ class MO_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
 }
 
 def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to"> {
-  let summary = "BroadcastTo Operation";
+  let summary = "Broadcast operation";
   let description = [{
-    Broadcast the input tensor to the shape newShape.
+    Broadcasts the input tensor to the specified shape.
 
-    The broadcasting follows numpy semantics to determine validity of the
-    two shapes.
+    The broadcasting follows numpy semantics.
 
     Example:
 
     ```mlir
-    %from: !mo.tensor<[3], f32>
-    %to = mo.constant {
-      value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %res = mo.broadcast_to(%from, %to) : (
-      !mo.tensor<[3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
+      %from: !mo.tensor<[3], f32>
+      %to = mo.constant {
+        value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %res = mo.broadcast_to(%from, %to) : (
+        !mo.tensor<[3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
     ```
   }];
   let hasCanonicalizeMethod = 1;
@@ -2048,7 +2008,7 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
 ]> {
   let summary = "Reshape operation";
   let description = [{
-    Return a tensor with the same underlying data, but different shape.
+    Returns a tensor with the same underlying data, but different shape.
 
     The first argument is the tensor to reshape.  The second tensor is the
     shape to reshape the first tensor to.  The second tensor may contain a
@@ -2058,19 +2018,19 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
     Example:
 
     ```mlir
-    %arg1: !mo.tensor<[1, 2, 3], f32>
-    %shape = mo.constant {
-      value = #M.dense_array<3, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %arg2 = mo.reshape(%arg1, %shape) : !mo.tensor<[3, 2], si64>
+      %arg1: !mo.tensor<[1, 2, 3], f32>
+      %shape = mo.constant {
+        value = #M.dense_array<3, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %arg2 = mo.reshape(%arg1, %shape) : !mo.tensor<[3, 2], si64>
     ```
 
     Auto-sizing example:
 
     ```mlir
-    %arg1: !mo.tensor<[1, 2, 3], f32>
-    %shape = mo.constant {
-      value = #M.dense_array<3, -1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %arg2 = mo.reshape(%arg1, %shape) : !mo.tensor<[3, 2], si64>
+      %arg1: !mo.tensor<[1, 2, 3], f32>
+      %shape = mo.constant {
+        value = #M.dense_array<3, -1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %arg2 = mo.reshape(%arg1, %shape) : !mo.tensor<[3, 2], si64>
     ```
   }];
 
@@ -2080,7 +2040,7 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
 }
 
 def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
-  let summary = "Calculates the resulting shape for squeeze-type ops.";
+  let summary = "Squeeze-shape operation";
   let description = [{
     Calculates the shape from squeeze like operators. Given an input shape
     vector representing a tensor of rank `N`, and a list of indices of length
@@ -2097,10 +2057,6 @@ def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [DeclareOpInterfaceM
     we added `N` to it.
 
     Example:
-
-    $input_shape: [1, 10, 1, 11, 1, 12, 1]
-    $padding_indices: [-1, 2, 0] # -1 is equivalent to index 6
-    $result: [10, 11, 1, 12]
 
     ```mlir
       %input_shape : !mo.tensor<[8], si32>
@@ -2126,7 +2082,7 @@ def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [DeclareOpInterfaceM
 }
 
 def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", [DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
-  let summary = "Calculates the shape for unsqueeze-type ops.";
+  let summary = "Unsqueeze-shape operation";
   let description = [{
     Calculates the shape from unsqueeze like operators. Given an input shape
     vector representing a tensor of rank `N`, and a list of indices of length
@@ -2136,11 +2092,9 @@ def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", [DeclareOpInterf
     the indicated dimensions are replaced with `1`. The remaining dimension in
     the original input shape vector are copied over in the non-1 dimensions.
 
-    This operator supports negative indexing. Example:
+    This operator supports negative indexing.
 
-    $input_shape: [10, 11, 12]
-    $padding_indices: [-6, 3, 5] # -6 is equivalent to 0
-    $result: [1, 10, 11, 1, 12, 1]
+    Example:
 
     ```mlir
       %input_shape : !mo.tensor<[3], si32>
@@ -2168,20 +2122,20 @@ def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", [DeclareOpInterf
 def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>
 ]> {
-  let summary = "ShapeOf Operation";
+  let summary = "Shape operation";
   let description = [{
-    Get the shape of a tensor.
+    Returns the shape of a tensor.
 
-    Example:
+    Examples:
 
     ```mlir
-    // statically ranked
-    %arg1: !mo.tensor<[1, 2, 3], f32>
-    %shape1 = mo.shape_of(%arg1) : !mo.tensor<[3], si64>
+      // statically ranked
+      %arg1: !mo.tensor<[1, 2, 3], f32>
+      %shape1 = mo.shape_of(%arg1) : !mo.tensor<[3], si64>
 
-    // dynamically ranked
-    %arg2: !mo.tensor<?, f32>
-    %shape2 = mo.shape_of(%arg2) : !mo.tensor<[?], si64>
+      // dynamically ranked
+      %arg2: !mo.tensor<?, f32>
+      %shape2 = mo.shape_of(%arg2) : !mo.tensor<[?], si64>
     ```
   }];
 
@@ -2204,17 +2158,16 @@ def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
 def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
   Commutative, DeclareOpInterfaceMethods<MO_DefaultParameterization>
 ]> {
-  let summary = "Broadcast Shape Operation";
+  let summary = "Broadcast-shape operation";
   let description = [{
-    Given two tensor shapes, return the shape that both broadcast to under
-    the numpy rules:
+    Returns the shape that two shapes would broadcast to under the numpy rules:
 
     1. Make the shapes the same rank by adding 1 to the front
        of the shorter shape
     2. Ensure each dimension is equal, either by matching them or promoting a 1
        to a larger number from the other shape
 
-    Example 1:
+    Examples:
 
     ```mlir
     %arg1: !mo.tensor<[1, 2, 3], f32>
@@ -2225,9 +2178,7 @@ def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
       !mo.tensor<[4, 2, 1], f32>) -> !mo.tensor<[3], si64>
     %shape1 = mo.broadcast_shape(%inshape1, %inshape2) : !mo.tensor<[3], si64>
     ```
-    In this example, shape1 will return [4, 2, 3]
-
-    Example 2:
+    In this example, `shape1` will compute to [4, 2, 3]
 
     ```mlir
     %arg1: !mo.tensor<[10, 2, 1], f32>
@@ -2238,7 +2189,7 @@ def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
       !mo.tensor<[5], f32>) -> !mo.tensor<[1], si64>
     %shape1 = mo.broadcast_shape(%inshape1, %inshape2) : !mo.tensor<[3], si64>
     ```
-    In this example, shape1 will return [10, 2, 5]
+    In this example, `shape1` will compute to [10, 2, 5]
   }];
 
   let arguments = (ins MO_ShapeLike:$input_x,
@@ -2264,7 +2215,7 @@ def MOShape_ReshapeOp : MOShape_Op<"reshape", [
 ]> {
   let summary = "Reshape operation";
   let description = [{
-    Return a tensor with the same underlying data, but different shape. The
+    Returns a tensor with the same underlying data, but different shape. The
     semantics of this op are nearly identical to those of `mo.reshape` (see the
     documentation of that op for details), with the only difference that
     `mo.shape.reshape` accepts a `!mosh.ape` value as the new shape instead of a
@@ -2278,9 +2229,9 @@ def MOShape_ReshapeOp : MOShape_Op<"reshape", [
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[1, 2, 3], f32>
-    %to: !mosh.ape
-    %res = mo.shape.reshape(%arg, %to) : !mo.tensor<[3, 2], si64>
+      %arg: !mo.tensor<[1, 2, 3], f32>
+      %to: !mosh.ape
+      %res = mo.shape.reshape(%arg, %to) : !mo.tensor<[3, 2], si64>
     ```
   }];
 
@@ -2299,9 +2250,9 @@ def MOShape_ReshapeOp : MOShape_Op<"reshape", [
 def MOShape_BroadcastToOp : MOShape_Op<"broadcast_to", [
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
 ]> {
-  let summary = "BroadcastTo operation";
+  let summary = "Broadcasting operation";
   let description = [{
-    Broadcast the input tensor to the shape newShape. The semantics of this op
+    Broadcasts the input tensor to a new shape. The semantics of this op
     are nearly identical to those of `mo.broadcast_to` (see the documentation of
     that op for details), with the only difference that `mo.shape.broadcast_to`
     accepts a `!mosh.ape` value as the new shape instead of a shape-like tensor.
@@ -2314,10 +2265,10 @@ def MOShape_BroadcastToOp : MOShape_Op<"broadcast_to", [
     Example:
 
     ```mlir
-    %from: !mo.tensor<[3], f32>
-    %to: !mosh.ape
-    %res = mo.shape.broadcast_to(%from, %to) : (
-      !mo.tensor<[3], f32>, !mosh.ape) -> !mo.tensor<[2, 3], f32>
+      %from: !mo.tensor<[3], f32>
+      %to: !mosh.ape
+      %res = mo.shape.broadcast_to(%from, %to) : (
+        !mo.tensor<[3], f32>, !mosh.ape) -> !mo.tensor<[2, 3], f32>
     ```
   }];
 
@@ -2334,15 +2285,15 @@ def MOShape_BroadcastToOp : MOShape_Op<"broadcast_to", [
 }
 
 def MOShape_FromTensorOp : MOShape_Op<"from_tensor", [Pure]> {
-  let summary = "Cast from a shape-like `!mo.tensor` to `!mosh.ape`.";
+  let summary = "Casting operation";
   let description = [{
-    Cast the input shape-like tensor to a shape value.
+    Casts the input shape-like tensor to a shape value.
 
     Example:
 
     ```mlir
-    %sht: !mo.tensor<[2], si64>
-    %sh = mo.shape.from_tensor(%sht) : !mo.tensor<[2], si64>
+      %sht: !mo.tensor<[2], si64>
+      %sh = mo.shape.from_tensor(%sht) : !mo.tensor<[2], si64>
     ```
   }];
 
@@ -2354,15 +2305,15 @@ def MOShape_FromTensorOp : MOShape_Op<"from_tensor", [Pure]> {
 }
 
 def MOShape_ToTensorOp : MOShape_Op<"to_tensor", [Pure]> {
-  let summary = "Cast from a `!mosh.ape` to a shape-like `!mo.tensor`.";
+  let summary = "Casting operation";
   let description = [{
-    Cast the input shape value to a shape-like tensor.
+    Casts the input shape value to a shape-like tensor.
 
     Example:
 
     ```mlir
-    %sh: !mosh.ape
-    %sht = mo.shape.to_tensor(%sh) -> !mo.tensor<[2], si64>
+      %sh: !mosh.ape
+      %sht = mo.shape.to_tensor(%sh) -> !mo.tensor<[2], si64>
     ```
   }];
 
@@ -2387,9 +2338,9 @@ class MOStatic_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
 }
 
 def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to"> {
-  let summary = "Broadcast operation for parametric shapes";
+  let summary = "Broadcasting operation";
   let description = [{
-    Broadcast the input tensor to the result tensor. The shape of the input and
+    Broadcasts the input tensor to the result tensor. The shape of the input and
     result tensors must not be unknown or contain unknown dimensions, but can be
     parametric.
 
@@ -2403,12 +2354,12 @@ def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to"> {
     Example:
 
     ```mlir
-    %from: !mo.tensor<[3], f32>
-    %res1 = mo.static.broadcast_to(%from)
-      : !mo.tensor<[3], f32> -> !mo.tensor<[2, 3], f32>
-    kgen.param.declare N = <...>
-    %res2 = mo.static.broadcast_to(%from)
-      : !mo.tensor<[3], f32> -> !mo.tensor<[N, 3], f32>
+      %from: !mo.tensor<[3], f32>
+      %res1 = mo.static.broadcast_to(%from)
+        : !mo.tensor<[3], f32> -> !mo.tensor<[2, 3], f32>
+      kgen.param.declare N = <...>
+      %res2 = mo.static.broadcast_to(%from)
+        : !mo.tensor<[3], f32> -> !mo.tensor<[N, 3], f32>
     ```
   }];
 
@@ -2419,9 +2370,9 @@ def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to"> {
 def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape", [
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["preferResultsDevice"]>,
 ]> {
-  let summary = "Reshape operation for parametric shapes";
+  let summary = "Reshape operation";
   let description = [{
-    Return a tensor with the same underlying data, but different shape. The
+    Returns a tensor with the same underlying data, but different shape. The
     shape of the input and result tensors must not be unknown or contain unknown
     dimensions, but can be parametric. We do not allow inferred dimensions
     (e.g. -1 in MO_ReshapeOp).
@@ -2434,9 +2385,9 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape", [
     Example:
 
     ```mlir
-    %from: !mo.tensor<[2, 3], f32>
-    %res = mo.static.reshape(%from)
-      : !mo.tensor<[2, 3], f32> -> !mo.tensor<[2, 3], f32>
+      %from: !mo.tensor<[2, 3], f32>
+      %res = mo.static.reshape(%from)
+        : !mo.tensor<[2, 3], f32> -> !mo.tensor<[2, 3], f32>
     ```
   }];
 
@@ -2451,9 +2402,9 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
-  let summary = "Concat Operation";
+  let summary = "Concatenation operation";
   let description = [{
-    Concatenate the input tensors along a given dimension.
+    Concatenates the input tensors along a given dimension.
 
     `mo.concat` concatenates the `inputs` tensors into an output tensor. There
     must be at least 1 input tensor. The input tensors and output tensors all
@@ -2467,13 +2418,13 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
     Example:
 
     ```mlir
-    %arg0: !mo.tensor<[2, 3], f32>
-    %arg1: !mo.tensor<[2, 5], f32>
-    %axis = mo.constant {
-      value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %res = mo.concat[%axis: !mo.tensor<[], si64>](%arg0, %arg1) : (
-      !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>
-    ) -> !mo.tensor<[2, 8], f32>
+      %arg0: !mo.tensor<[2, 3], f32>
+      %arg1: !mo.tensor<[2, 5], f32>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %res = mo.concat[%axis: !mo.tensor<[], si64>](%arg0, %arg1) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>
+      ) -> !mo.tensor<[2, 8], f32>
     ```
   }];
 
@@ -2498,9 +2449,9 @@ def MO_SplitOp : MO_TensorOp<"split", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]> {
-  let summary = "Split Operation";
+  let summary = "Splitting operation";
   let description = [{
-    Split the input tensor into multiple tensors along a given dimension.
+    Splits the input tensor into multiple tensors along a given dimension.
 
     `mo.split` splits the tensor `input` into multiple output tensors.
     The number of output tensors is equal to the number of elements in
@@ -2515,16 +2466,16 @@ def MO_SplitOp : MO_TensorOp<"split", [
     Example:
 
     ```mlir
-    %input: !mo.tensor<[2, 8], f32>
-    %splitSizes = mo.constant {
-      value = #M.dense_array<3, 5> : tensor<2xsi64>
-    } : !mo.tensor<[2], si64>
-    %axis = mo.constant {
-      value = #M.dense_array<1> : tensor<1xsi64>
-    } : !mo.tensor<[], si64>
-    %res = mo.split[%axis: !mo.tensor<[], si64>](%input, %splitSizes) : (
-      !mo.tensor<[2, 8], f32>, !mo.tensor<[2], si64>
-    ) -> (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>)
+      %input: !mo.tensor<[2, 8], f32>
+      %splitSizes = mo.constant {
+        value = #M.dense_array<3, 5> : tensor<2xsi64>
+      } : !mo.tensor<[2], si64>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64>
+      } : !mo.tensor<[], si64>
+      %res = mo.split[%axis: !mo.tensor<[], si64>](%input, %splitSizes) : (
+        !mo.tensor<[2, 8], f32>, !mo.tensor<[2], si64>
+      ) -> (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>)
     ```
   }];
 
@@ -2552,9 +2503,9 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
-  let summary = "Transpose Operation";
+  let summary = "Transposition operation";
   let description = [{
-    Return a new Tensor as the result of permuting the dimensions of the input
+    Returns a new Tensor as the result of permuting the dimensions of the input
     tensor according to the value of perm.
 
     Note that `perm` must contain unique values from `[0, input_rank)`.
@@ -2562,16 +2513,16 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
     Example:
 
     ```mlir
-    %input : !mo.tensor<[2, 3], f32>
-    %perm : !mo.tensor<[2], si64>
-    %res = mo.transpose(%input, %perm) : (
-      !mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 2], f32>
+      %input : !mo.tensor<[2, 3], f32>
+      %perm : !mo.tensor<[2], si64>
+      %res = mo.transpose(%input, %perm) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 2], f32>
 
-    %input : !mo.tensor<[?, 5, ?], f32>
-    %perm : !mo.tensor<[3], si32>
-    %res = mo.transpose(%input, %perm) : (
-      !mo.tensor<[?, 5, ?], f32>, !mo.tensor<[3], si32>
-    ) -> !mo.tensor<[?, ?, 5], f32>
+      %input : !mo.tensor<[?, 5, ?], f32>
+      %perm : !mo.tensor<[3], si32>
+      %res = mo.transpose(%input, %perm) : (
+        !mo.tensor<[?, 5, ?], f32>, !mo.tensor<[3], si32>
+      ) -> !mo.tensor<[?, ?, 5], f32>
     ```
   }];
 
@@ -2593,9 +2544,9 @@ def MO_TileOp : MO_TensorOp<"tile", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
 ]> {
-  let summary = "Tile Operation";
+  let summary = "Tiling operation";
   let description = [{
-    Return a new Tensor as the result of copying the input tensor N_i times
+    Returns a new Tensor as the result of copying the input tensor N_i times
     on each dimension, where N_i = tiles[i].
 
     The i-th dimension of output shape will be the ith dimension of input shape
@@ -2604,10 +2555,10 @@ def MO_TileOp : MO_TensorOp<"tile", [
     Example:
 
     ```mlir
-    %input : !mo.tensor<[2, 3], f32>
-    %repeats : !mo.tensor<[2], si64>
-    %res = mo.tile(%input, %repeats) : (
-      !mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
+      %input : !mo.tensor<[2, 3], f32>
+      %repeats : !mo.tensor<[2], si64>
+      %res = mo.tile(%input, %repeats) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
     ```
   }];
 
@@ -2626,10 +2577,10 @@ def MO_TileOp : MO_TensorOp<"tile", [
 }
 
 def MO_PadConstantOp : MO_TensorOp<"pad.constant", [MO_PadLikeTraits]> {
-  let summary = "Constant mode pad Operation";
+  let summary = "Constant-mode padding operation";
   let description = [{
-    Pad the `input` tensor with a scalar tensor `constant` according to the
-    `paddings`. Assume input has rank `N`, the `paddings` tensor should have
+    Pads the `input` tensor with a scalar tensor `constant` according to the
+    `paddings`. Assumes input has rank `N`, the `paddings` tensor should have
     shape `(N, 2)`, where each row has the form `[before, after]`, indicating
     how many of `constant` to add before and after the contents of `input` in
     that dimension. The size of each dimension D of the padded output is:
@@ -2638,15 +2589,15 @@ def MO_PadConstantOp : MO_TensorOp<"pad.constant", [MO_PadLikeTraits]> {
     Example:
 
     ```mlir
-    %input: !mo.tensor<[2, 3], f32>
-    %constant = mo.constant {
-      value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
-    %paddings = mo.constant {
-      value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>
-    } : !mo.tensor<[2, 2], si64>
-    %output =   mo.pad.constant(%input, %paddings, %constant) : (
-      !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>, !mo.tensor<[], f32>
-    ) -> !mo.tensor<[3, 5], f32>
+      %input: !mo.tensor<[2, 3], f32>
+      %constant = mo.constant {
+        value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
+      %paddings = mo.constant {
+        value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>
+      } : !mo.tensor<[2, 2], si64>
+      %output =   mo.pad.constant(%input, %paddings, %constant) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>, !mo.tensor<[], f32>
+      ) -> !mo.tensor<[3, 5], f32>
     ```
   }];
 
@@ -2665,9 +2616,9 @@ def MO_PadConstantOp : MO_TensorOp<"pad.constant", [MO_PadLikeTraits]> {
 }
 
 def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [MO_PadLikeTraits]> {
-  let summary = "Reflect mode pad Operation";
+  let summary = "Reflection-mode padding operation";
   let description = [{
-    Pad the `input` tensor by reflecting it according to the `paddings`. Assume
+    Pads the `input` tensor by reflecting it according to the `paddings`. Assumes
     input has rank `N`, the `paddings` tensor should have shape `(N, 2)`, where
     each row has the form `[before, after]`, indicating how many of `constant`
     to add before and after the contents of `input` in that dimension. The size
@@ -2678,13 +2629,13 @@ def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [MO_PadLikeTraits]> {
     Example:
 
     ```mlir
-    %input: !mo.tensor<[2, 3], f32>
-    %paddings = mo.constant {
-      value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>
-    } : !mo.tensor<[2, 2], si64>
-    %output   = mo.pad.reflect(%input, %paddings) : (
-      !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>) ->
-      !mo.tensor<[3, 5], f32>
+      %input: !mo.tensor<[2, 3], f32>
+      %paddings = mo.constant {
+        value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>
+      } : !mo.tensor<[2, 2], si64>
+      %output   = mo.pad.reflect(%input, %paddings) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>) ->
+        !mo.tensor<[3, 5], f32>
     ```
   }];
 
@@ -2702,10 +2653,10 @@ def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [MO_PadLikeTraits]> {
 }
 
 def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [MO_PadLikeTraits]> {
-  let summary = "Repeat mode pad operation";
+  let summary = "Repeat-mode padding operation";
   let description = [{
-    Pad the `input` tensor by repeating border values according to `paddings`.
-    Assume input has rank `N`, the `paddings` tensor should have shape `(N, 2)`, where
+    Pads the `input` tensor by repeating border values according to `paddings`.
+    Assumes input has rank `N`, the `paddings` tensor should have shape `(N, 2)`, where
     each row has the form `[before, after]`, indicating how many of the border values
     to add before and after the contents of `input` in that dimension. The size
     of each dimension D of the padded output is:
@@ -2715,13 +2666,13 @@ def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [MO_PadLikeTraits]> {
     Example:
 
     ```mlir
-    %input: !mo.tensor<[2, 3], f32>
-    %paddings = mo.constant {
-      value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>
-    } : !mo.tensor<[2, 2], si64>
-    %output   = mo.pad.repeat(%input, %paddings) : (
-      !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>) ->
-      !mo.tensor<[3, 5], f32>
+      %input: !mo.tensor<[2, 3], f32>
+      %paddings = mo.constant {
+        value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>
+      } : !mo.tensor<[2, 2], si64>
+      %output   = mo.pad.repeat(%input, %paddings) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>) ->
+        !mo.tensor<[3, 5], f32>
     ```
   }];
 
@@ -2747,9 +2698,9 @@ def MO_GatherOp : MO_TensorOp<"gather", [
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
-  let summary = "Gather Operation";
+  let summary = "`gather` operation";
   let description = [{
-    Gather slices from input's axis according to indices.
+    Gathers slices from input's axis according to indices.
 
     If input and indices are statically ranked, the output rank must be
     `inputRank - 1 + indicesRank`. In general, the output satisfies the
@@ -2766,13 +2717,13 @@ def MO_GatherOp : MO_TensorOp<"gather", [
     Example:
 
     ```mlir
-    %input : !mo.tensor<[2, 2], f32>
-    %indices: !mo.tensor<[2], si64>
-    %axis = mo.constant {
-      value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %res = mo.gather(%input, %indices, %axis) : (
-      !mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>
-    ) -> !mo.tensor<[2, 2], f32>
+      %input : !mo.tensor<[2, 2], f32>
+      %indices: !mo.tensor<[2], si64>
+      %axis = mo.constant {
+        value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %res = mo.gather(%input, %indices, %axis) : (
+        !mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>
+      ) -> !mo.tensor<[2, 2], f32>
     ```
   }];
 
@@ -2792,10 +2743,10 @@ def MO_GatherOp : MO_TensorOp<"gather", [
 
 // TODO(#20442): Remove with generic gather fusion.
 def MO_GatherSumOp : MO_TensorOp<"gather_sum"> {
-  let summary = "Gather sum op";
+  let summary = "`gather-sum` operation";
   let description = [{
-    A temporary op for the gather sum pattern to target.
-    Implicitly gather axis 0 and reduce axis 1.
+    A temporary composite op that composes a gather with sum reduction.
+    The gather axis is 0 and reduction axis is 1.
   }];
 
   let arguments = (ins MO_NonScalarIfRanked:$input,
@@ -2807,14 +2758,17 @@ def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
 ]> {
-  let summary = "Gather ND op which gathers values at the specified indices.";
+  let summary = "Multi-dimensional `gather` operation";
   let description = [{
-    Indices are multidimensional. The last dimension stores the index whereas
+    Variant of `mo.gather` that accepts multi-dimensional indices.
+
+    The last dimension stores the index whereas
     the outer dimensions act like batch dimensions. The size of the last
     dimension is at most the rank of the input. When the dimension size is less
     than the rank of the input, slices of the input are gathered, starting from
     the leftmost dimension.
 
+    ```
     output_shape = (
         batch_dims_shape + list(indices.shape)[batch_dims:-1]
         if (indices.shape[-1] == data_rank - batch_dims)
@@ -2822,17 +2776,18 @@ def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
         + list(indices.shape)[batch_dims:-1]
         + list(data.shape)[batch_dims + indices.shape[-1] :]
     )
+    ```
 
     ```mlir
-    %input = mo.constant {value =
-      #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15> :
-      tensor<2x2x4xsi64>} : !mo.tensor<[2, 2, 4], si64>
-    %indices = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} :
-      !mo.tensor<[3], si64>
+      %input = mo.constant {value =
+        #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15> :
+        tensor<2x2x4xsi64>} : !mo.tensor<[2, 2, 4], si64>
+      %indices = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} :
+        !mo.tensor<[3], si64>
 
-    %result = mo.gather_nd(%input, %indices) {batchDims = 0} :
-      (!mo.tensor<[2, 2, 4], si64>, !mo.tensor<[3], si64>) ->
-      !mo.tensor<[], si64>
+      %result = mo.gather_nd(%input, %indices) {batchDims = 0} :
+        (!mo.tensor<[2, 2, 4], si64>, !mo.tensor<[3], si64>) ->
+        !mo.tensor<[], si64>
     ```
   }];
 
@@ -2855,7 +2810,7 @@ def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
 //===----------------------------------------------------------------------===//
 
 def MO_ScatterOp : MO_TensorOp<"scatter", [MO_ScatterLikeTraits]> {
-  let summary = "Scatter Operation";
+  let summary = "`scatter` operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
     according to indices.
@@ -2879,12 +2834,12 @@ def MO_ScatterOp : MO_TensorOp<"scatter", [MO_ScatterLikeTraits]> {
     Example:
 
     ```mlir
-    %input:   !mo.tensor<[4, 4], f32>
-    %updates: !mo.tensor<[2, 3], f32>
-    %indices: !mo.tensor<[2, 3], si64>
-    %res = mo.scatter(%inputs, %updates, %indices) : (
-      !mo.tensor<[4, 4], f32>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>
-    ) -> !mo.tensor<[4, 4], f32>
+      %input:   !mo.tensor<[4, 4], f32>
+      %updates: !mo.tensor<[2, 3], f32>
+      %indices: !mo.tensor<[2, 3], si64>
+      %res = mo.scatter(%inputs, %updates, %indices) : (
+        !mo.tensor<[4, 4], f32>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>
+      ) -> !mo.tensor<[4, 4], f32>
     ```
   }];
 
@@ -2916,7 +2871,7 @@ class MO_ScatterReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
 }
 
 def MO_ScatterAddOp : MO_ScatterReductionOp<"add"> {
-  let summary = "Scatter operation with addition as reduction function";
+  let summary = "`scatter-add` operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
     according to indices, and it stores the sum of elements with duplicate
@@ -2941,18 +2896,18 @@ def MO_ScatterAddOp : MO_ScatterReductionOp<"add"> {
     Example:
 
     ```mlir
-    %input:   !mo.tensor<[4, 4], f32>
-    %updates: !mo.tensor<[2, 3], f32>
-    %indices: !mo.tensor<[2, 3], si64>
-    %res = mo.scatter_nd.add(%inputs, %updates, %indices) : (
-      !mo.tensor<[4, 4], f32>, !mo.tensor<[1, 3], f32>, !mo.tensor<[1, 3], si64>
-    ) -> !mo.tensor<[4, 4], f32>
+      %input:   !mo.tensor<[4, 4], f32>
+      %updates: !mo.tensor<[2, 3], f32>
+      %indices: !mo.tensor<[2, 3], si64>
+      %res = mo.scatter_nd.add(%inputs, %updates, %indices) : (
+        !mo.tensor<[4, 4], f32>, !mo.tensor<[1, 3], f32>, !mo.tensor<[1, 3], si64>
+      ) -> !mo.tensor<[4, 4], f32>
     ```
   }];
 }
 
 def MO_ScatterMaxOp : MO_ScatterReductionOp<"max"> {
-  let summary = "Scatter operation with maximum as reduction function";
+  let summary = "scatter-max operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
     according to indices, and it stores the maximum of elements with duplicate
@@ -2977,18 +2932,18 @@ def MO_ScatterMaxOp : MO_ScatterReductionOp<"max"> {
     Example:
 
     ```mlir
-    %input:   !mo.tensor<[4, 4], f32>
-    %updates: !mo.tensor<[2, 3], f32>
-    %indices: !mo.tensor<[2, 3], si64>
-    %res = mo.scatter_nd.max(%inputs, %updates, %indices) : (
-      !mo.tensor<[4, 4], f32>, !mo.tensor<[1, 3], f32>, !mo.tensor<[1, 3], si64>
-    ) -> !mo.tensor<[4, 4], f32>
+      %input:   !mo.tensor<[4, 4], f32>
+      %updates: !mo.tensor<[2, 3], f32>
+      %indices: !mo.tensor<[2, 3], si64>
+      %res = mo.scatter_nd.max(%inputs, %updates, %indices) : (
+        !mo.tensor<[4, 4], f32>, !mo.tensor<[1, 3], f32>, !mo.tensor<[1, 3], si64>
+      ) -> !mo.tensor<[4, 4], f32>
     ```
   }];
 }
 
 def MO_ScatterMinOp : MO_ScatterReductionOp<"min"> {
-  let summary = "Scatter operation with minimum as reduction function";
+  let summary = "`scatter-min` operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
     according to indices, and it stores the minimum of elements with duplicate
@@ -3013,18 +2968,18 @@ def MO_ScatterMinOp : MO_ScatterReductionOp<"min"> {
     Example:
 
     ```mlir
-    %input:   !mo.tensor<[4, 4], f32>
-    %updates: !mo.tensor<[2, 3], f32>
-    %indices: !mo.tensor<[2, 3], si64>
-    %res = mo.scatter_nd.min(%inputs, %updates, %indices) : (
-      !mo.tensor<[4, 4], f32>, !mo.tensor<[1, 3], f32>, !mo.tensor<[1, 3], si64>
-    ) -> !mo.tensor<[4, 4], f32>
+      %input:   !mo.tensor<[4, 4], f32>
+      %updates: !mo.tensor<[2, 3], f32>
+      %indices: !mo.tensor<[2, 3], si64>
+      %res = mo.scatter_nd.min(%inputs, %updates, %indices) : (
+        !mo.tensor<[4, 4], f32>, !mo.tensor<[1, 3], f32>, !mo.tensor<[1, 3], si64>
+      ) -> !mo.tensor<[4, 4], f32>
     ```
   }];
 }
 
 def MO_ScatterMulOp : MO_ScatterReductionOp<"mul"> {
-  let summary = "Scatter operation with multiplication as reduction function";
+  let summary = "scatter-mul operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
     according to indices, and it stores the product of elements with duplicate
@@ -3049,12 +3004,12 @@ def MO_ScatterMulOp : MO_ScatterReductionOp<"mul"> {
     Example:
 
     ```mlir
-    %input:   !mo.tensor<[4, 4], f32>
-    %updates: !mo.tensor<[2, 3], f32>
-    %indices: !mo.tensor<[2, 3], si64>
-    %res = mo.scatter_nd.mul(%inputs, %updates, %indices) : (
-      !mo.tensor<[4, 4], f32>, !mo.tensor<[1, 3], f32>, !mo.tensor<[1, 3], si64>
-    ) -> !mo.tensor<[4, 4], f32>
+      %input:   !mo.tensor<[4, 4], f32>
+      %updates: !mo.tensor<[2, 3], f32>
+      %indices: !mo.tensor<[2, 3], si64>
+      %res = mo.scatter_nd.mul(%inputs, %updates, %indices) : (
+        !mo.tensor<[4, 4], f32>, !mo.tensor<[1, 3], f32>, !mo.tensor<[1, 3], si64>
+      ) -> !mo.tensor<[4, 4], f32>
     ```
   }];
 }
@@ -3064,7 +3019,7 @@ def MO_ScatterMulOp : MO_ScatterReductionOp<"mul"> {
 //===----------------------------------------------------------------------===//
 
 def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [MO_ScatterNdLikeTraits]> {
-  let summary = "ScatterND Operation";
+  let summary = "Multi-dimensional `scatter` operation";
   let description = [{
     Produces an output tensor by scattering slices from updates to input
     according to indices.
@@ -3081,12 +3036,12 @@ def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [MO_ScatterNdLikeTraits]> {
     Example:
 
     ```mlir
-    %input:   !mo.tensor<[4, 2], f32>
-    %updates: !mo.tensor<[1, 3, 2], f32>
-    %indices: !mo.tensor<[1, 3, 1], si64>
-    %res = mo.scatter_nd(%inputs, %updates, %indices) : (
-      !mo.tensor<[4, 2], f32>, !mo.tensor<[1, 3, 2], f32>, !mo.tensor<[1, 3, 1], si64>
-    ) -> !mo.tensor<[4, 2], f32>
+      %input:   !mo.tensor<[4, 2], f32>
+      %updates: !mo.tensor<[1, 3, 2], f32>
+      %indices: !mo.tensor<[1, 3, 1], si64>
+      %res = mo.scatter_nd(%inputs, %updates, %indices) : (
+        !mo.tensor<[4, 2], f32>, !mo.tensor<[1, 3, 2], f32>, !mo.tensor<[1, 3, 1], si64>
+      ) -> !mo.tensor<[4, 2], f32>
     ```
   }];
 
@@ -3116,7 +3071,7 @@ class MO_ScatterNdReductionOp<string name, list<Trait> traits = []> : MO_TensorO
 }
 
 def MO_ScatterNdAddOp : MO_ScatterNdReductionOp<"add"> {
-  let summary = "ScatterND operation with addition as reduction function";
+  let summary = "Multi-dimensional `scatter-add` operation";
   let description = [{
     Produces an output tensor by scattering slices from updates to input
     according to indices, and it stores the sum of any duplicate indices.
@@ -3133,18 +3088,18 @@ def MO_ScatterNdAddOp : MO_ScatterNdReductionOp<"add"> {
     Example:
 
     ```mlir
-    %input:   !mo.tensor<[4, 2], f32>
-    %updates: !mo.tensor<[1, 3, 2], f32>
-    %indices: !mo.tensor<[1, 3, 1], si64>
-    %res = mo.scatter_nd.add(%inputs, %updates, %indices) : (
-      !mo.tensor<[4, 2], f32>, !mo.tensor<[1, 3, 2], f32>, !mo.tensor<[1, 3, 1], si64>
-    ) -> !mo.tensor<[4, 2], f32>
+      %input:   !mo.tensor<[4, 2], f32>
+      %updates: !mo.tensor<[1, 3, 2], f32>
+      %indices: !mo.tensor<[1, 3, 1], si64>
+      %res = mo.scatter_nd.add(%inputs, %updates, %indices) : (
+        !mo.tensor<[4, 2], f32>, !mo.tensor<[1, 3, 2], f32>, !mo.tensor<[1, 3, 1], si64>
+      ) -> !mo.tensor<[4, 2], f32>
     ```
   }];
 }
 
 def MO_ScatterNdMaxOp : MO_ScatterNdReductionOp<"max"> {
-  let summary = "ScatterND operation with maximum as reduction function";
+  let summary = "Multi-dimensional `scatter-max` operation";
   let description = [{
     Produces an output tensor by scattering slices from updates to input
     according to indices, and it stores the maximum of any duplicate indices.
@@ -3161,18 +3116,18 @@ def MO_ScatterNdMaxOp : MO_ScatterNdReductionOp<"max"> {
     Example:
 
     ```mlir
-    %input:   !mo.tensor<[4, 2], f32>
-    %updates: !mo.tensor<[1, 3, 2], f32>
-    %indices: !mo.tensor<[1, 3, 1], si64>
-    %res = mo.scatter_nd.max(%inputs, %updates, %indices) : (
-      !mo.tensor<[4, 2], f32>, !mo.tensor<[1, 3, 2], f32>, !mo.tensor<[1, 3, 1], si64>
-    ) -> !mo.tensor<[4, 2], f32>
+      %input:   !mo.tensor<[4, 2], f32>
+      %updates: !mo.tensor<[1, 3, 2], f32>
+      %indices: !mo.tensor<[1, 3, 1], si64>
+      %res = mo.scatter_nd.max(%inputs, %updates, %indices) : (
+        !mo.tensor<[4, 2], f32>, !mo.tensor<[1, 3, 2], f32>, !mo.tensor<[1, 3, 1], si64>
+      ) -> !mo.tensor<[4, 2], f32>
     ```
   }];
 }
 
 def MO_ScatterNdMinOp : MO_ScatterNdReductionOp<"min"> {
-  let summary = "ScatterND operation with minimum as reduction function";
+  let summary = "Multi-dimensional `scatter-min` operation";
   let description = [{
     Produces an output tensor by scattering slices from updates to input
     according to indices, and it stores the minimum of any duplicate indices.
@@ -3189,18 +3144,18 @@ def MO_ScatterNdMinOp : MO_ScatterNdReductionOp<"min"> {
     Example:
 
     ```mlir
-    %input:   !mo.tensor<[4, 2], f32>
-    %updates: !mo.tensor<[1, 3, 2], f32>
-    %indices: !mo.tensor<[1, 3, 1], si64>
-    %res = mo.scatter_nd.min(%inputs, %updates, %indices) : (
-      !mo.tensor<[4, 2], f32>, !mo.tensor<[1, 3, 2], f32>, !mo.tensor<[1, 3, 1], si64>
-    ) -> !mo.tensor<[4, 2], f32>
+      %input:   !mo.tensor<[4, 2], f32>
+      %updates: !mo.tensor<[1, 3, 2], f32>
+      %indices: !mo.tensor<[1, 3, 1], si64>
+      %res = mo.scatter_nd.min(%inputs, %updates, %indices) : (
+        !mo.tensor<[4, 2], f32>, !mo.tensor<[1, 3, 2], f32>, !mo.tensor<[1, 3, 1], si64>
+      ) -> !mo.tensor<[4, 2], f32>
     ```
   }];
 }
 
 def MO_ScatterNdMulOp : MO_ScatterNdReductionOp<"mul"> {
-  let summary = "ScatterND operation with multiplication as reduction function";
+  let summary = "Multi-dimensional `scatter-mul` operation";
   let description = [{
     Produces an output tensor by scattering slices from updates to input
     according to indices, and it stores the product of any duplicate indices.
@@ -3217,12 +3172,12 @@ def MO_ScatterNdMulOp : MO_ScatterNdReductionOp<"mul"> {
     Example:
 
     ```mlir
-    %input:   !mo.tensor<[4, 2], f32>
-    %updates: !mo.tensor<[1, 3, 2], f32>
-    %indices: !mo.tensor<[1, 3, 1], si64>
-    %res = mo.scatter_nd.mul(%inputs, %updates, %indices) : (
-      !mo.tensor<[4, 2], f32>, !mo.tensor<[1, 3, 2], f32>, !mo.tensor<[1, 3, 1], si64>
-    ) -> !mo.tensor<[4, 2], f32>
+      %input:   !mo.tensor<[4, 2], f32>
+      %updates: !mo.tensor<[1, 3, 2], f32>
+      %indices: !mo.tensor<[1, 3, 1], si64>
+      %res = mo.scatter_nd.mul(%inputs, %updates, %indices) : (
+        !mo.tensor<[4, 2], f32>, !mo.tensor<[1, 3, 2], f32>, !mo.tensor<[1, 3, 1], si64>
+      ) -> !mo.tensor<[4, 2], f32>
     ```
   }];
 }
@@ -3233,9 +3188,9 @@ def MO_ScatterNdMulOp : MO_ScatterNdReductionOp<"mul"> {
 
 def MO_NonMaximumSuppressionOp : MO_TensorOp<"non_maximum_suppression",
     [DeclareOpInterfaceMethods<MO_DefaultParameterization>]> {
-  let summary = "Perform non maximum supression on a tensor.";
+  let summary = "Non-max suppression operation";
   let description = [{
-    Filter out boxes that have high intersection-over-union (IOU).
+   Filters out boxes that have high intersection-over-union (IOU).
 
    `boxes` is supplied as [y1, x1, y2, x2] where (y1, x1) and (y2, x2) are the
    coordinates of any diagonal pair of box corners and the coordinates can be
@@ -3244,12 +3199,12 @@ def MO_NonMaximumSuppressionOp : MO_TensorOp<"non_maximum_suppression",
     Example:
 
     ```mlir
-    %boxes : !mo.tensor<[1, 6, 4], f32>
-    %scores : !mo.tensor<[1, 1, 6], f32>
-    %maxOutputBoxesPerClass : !mo.tensor<[], si64>
-    %iouThreshold : !mo.tensor<[], si64>
-    %scoreThreshold : !mo.tensor<[], si64>
-    %res = mo.non_maximum_suppression(%boxes, %scores, %maxOutputBoxesPerClass, %iouThreshold, %scoreThreshold) : (!mo.tensor<[1, 6, 4], f32>, !mo.tensor<[1, 1, 6], f32>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], si64>
+      %boxes : !mo.tensor<[1, 6, 4], f32>
+      %scores : !mo.tensor<[1, 1, 6], f32>
+      %maxOutputBoxesPerClass : !mo.tensor<[], si64>
+      %iouThreshold : !mo.tensor<[], si64>
+      %scoreThreshold : !mo.tensor<[], si64>
+      %res = mo.non_maximum_suppression(%boxes, %scores, %maxOutputBoxesPerClass, %iouThreshold, %scoreThreshold) : (!mo.tensor<[1, 6, 4], f32>, !mo.tensor<[1, 1, 6], f32>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], si64>
     ```
   }];
   // TODO(#21506): Allow any ranked tensors as inputs.
@@ -3272,9 +3227,9 @@ def MO_NonMaximumSuppressionOp : MO_TensorOp<"non_maximum_suppression",
 def MO_ArgNonzeroOp : MO_TensorOp<"arg_nonzero", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>
 ]> {
-  let summary = "Returns locations of nonzero values in a tensor";
+  let summary = "Nonzero-value indices operation";
   let description = [{
-    Return a tensor of coordinates of the nonzero values in the given tensor.
+    Returns a tensor of coordinates of the nonzero values in the given tensor.
     The return value is a 2D tensor of shape [nnz x rank_in], where nnz is the
     number of nonzero elements in the input tensor, and rank_in is the rank of
     the input tensor. Coordinates are generated in row-major order.
@@ -3282,10 +3237,10 @@ def MO_ArgNonzeroOp : MO_TensorOp<"arg_nonzero", [
     Example:
 
     ```mlir
-    %0 = mo.constant {
-      value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8> : tensor<3x3xsi32>
-    } : !mo.tensor<[3, 3], si32>
-    %1 = mo.arg_nonzero(%0) : (!mo.tensor<[3, 3], si32>) -> !mo.tensor<[?, 2], si32>
+      %0 = mo.constant {
+        value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8> : tensor<3x3xsi32>
+      } : !mo.tensor<[3, 3], si32>
+      %1 = mo.arg_nonzero(%0) : (!mo.tensor<[3, 3], si32>) -> !mo.tensor<[?, 2], si32>
     ```
     }];
 
@@ -3318,7 +3273,7 @@ class MO_ArgMinMaxOp<string mnemonic> : MO_ReductionOp<mnemonic> {
 }
 
 def MO_ArgMaxOp : MO_ArgMinMaxOp<"arg_max"> {
-  let summary = "Returns the indices of the maximum value in a tensor";
+  let summary = "Maximum-value indices operation";
   let description = [{
     This op is equivalent to reduce_max, but returns indices instead of values.
 
@@ -3333,19 +3288,19 @@ def MO_ArgMaxOp : MO_ArgMinMaxOp<"arg_max"> {
     Example:
 
     ```mlir
-    %0 = mo.constant {
-      value = #M.dense_array<0, 1, 3, 2> : tensor<2x2xsi32>
-    } : !mo.tensor<[2, 2], si32>
-    %axis = mo.constant {
-      value = #M.dense_array<1> : tensor<si32>
-    } : !mo.tensor<[], si32>
-    %1 = mo.arg_max(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
+      %0 = mo.constant {
+        value = #M.dense_array<0, 1, 3, 2> : tensor<2x2xsi32>
+      } : !mo.tensor<[2, 2], si32>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<si32>
+      } : !mo.tensor<[], si32>
+      %1 = mo.arg_max(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
     ```
     }];
 }
 
 def MO_ArgMinOp : MO_ArgMinMaxOp<"arg_min"> {
-  let summary = "Returns the indices of the minimum value in a tensor";
+  let summary = "Minimum-value indices operation";
   let description = [{
     This op is equivalent to reduce_min, but returns indices instead of values.
 
@@ -3360,13 +3315,13 @@ def MO_ArgMinOp : MO_ArgMinMaxOp<"arg_min"> {
     Example:
 
     ```mlir
-    %0 = mo.constant {
-      value = #M.dense_array<0, 1, 3, 2> : tensor<2x2xsi32>
-    } : !mo.tensor<[2, 2], si32>
-    %axis = mo.constant {
-      value = #M.dense_array<1> : tensor<si32>
-    } : !mo.tensor<[], si32>
-    %1 = mo.arg_min(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
+      %0 = mo.constant {
+        value = #M.dense_array<0, 1, 3, 2> : tensor<2x2xsi32>
+      } : !mo.tensor<[2, 2], si32>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<si32>
+      } : !mo.tensor<[], si32>
+      %1 = mo.arg_min(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
     ```
     }];
 }
@@ -3377,25 +3332,25 @@ def MO_ArgMinOp : MO_ArgMinMaxOp<"arg_min"> {
 
 def MO_RandomNormalOp : MO_TensorOp<"random.normal",
     [DeclareOpInterfaceMethods<MO_DefaultParameterization>]> {
-  let summary = "Creates a tensor with random values from a normal distribution.";
+  let summary = "Normal distribution operation";
   let description = [{
-    Creates a tensor with shape `shape` populated with random
+    Returns a tensor with shape `shape` populated with random
     values from a normal distribution, with the mean of the distribution equal
     to `mean` and the standard deviation equal to `variance`.
 
   Example:
     ```mlir
-    %size = mo.constant {
-      value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %mean = mo.constant {
-      value = #M.dense_array<2.0> : tensor<1xf32> } : !mo.tensor<[], f32>
-    %variance = mo.constant {
-      value = #M.dense_array<0.5> : tensor<1xf32> } : !mo.tensor<[], f32>
-    %seed = mo.constant {
-      value = #M.dense_array<1> : tensor<1xsi64> } : !mo.tensor<[], si64>
-    %res = mo.random.normal(%size, %mean, %variance, %seed) :
-          (!mo.tensor<[4], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>,
-          !mo.tensor<[], si64>) -> !mo.tensor<[1, 1, 7, 8], f32>
+      %size = mo.constant {
+        value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+      %mean = mo.constant {
+        value = #M.dense_array<2.0> : tensor<1xf32> } : !mo.tensor<[], f32>
+      %variance = mo.constant {
+        value = #M.dense_array<0.5> : tensor<1xf32> } : !mo.tensor<[], f32>
+      %seed = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64> } : !mo.tensor<[], si64>
+      %res = mo.random.normal(%size, %mean, %variance, %seed) :
+            (!mo.tensor<[4], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>,
+            !mo.tensor<[], si64>) -> !mo.tensor<[1, 1, 7, 8], f32>
     ```
   }];
   // TODO(#27409): Add staticization
@@ -3422,11 +3377,11 @@ def MO_RangeOp : MO_TensorOp<"range", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]> {
-  let summary = "Create a sequence of numbers";
+  let summary = "Range operation";
   let description = [{
-    The sequence goes from `start` with increments of size `step` up to (but not
-    including) `limit`. All arguments are mandatory and must have the same
-    element type.
+    Creates a sequence of numbers. The sequence goes from `start` with
+    increments of size `step` up to (but not including) `limit`. All arguments
+    are mandatory and must have the same element type.
 
     Note the following restrictions on input values:
     1. `step` must be non-zero
@@ -3435,24 +3390,24 @@ def MO_RangeOp : MO_TensorOp<"range", [
     Example:
 
     ```mlir
-    %limit : !mo.tensor<[], f32>
-    %start = mo.constant {
-      value = #M.dense_array<0.0> : tensor<f32>} : !mo.tensor<[], f32>
-    %step = mo.constant {
-      value = #M.dense_array<1.5> : tensor<f32>} : !mo.tensor<[], f32>
-    %res = mo.range(%start, %limit, %step) : (
-      !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>
-    ) -> !mo.tensor<[?], f32>
+      %limit : !mo.tensor<[], f32>
+      %start = mo.constant {
+        value = #M.dense_array<0.0> : tensor<f32>} : !mo.tensor<[], f32>
+      %step = mo.constant {
+        value = #M.dense_array<1.5> : tensor<f32>} : !mo.tensor<[], f32>
+      %res = mo.range(%start, %limit, %step) : (
+        !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>
+      ) -> !mo.tensor<[?], f32>
 
-    %startInt = mo.constant {
-      value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
-    %stepInt = mo.constant {
-      value = #M.dense_array<2> : tensor<si32>} : !mo.tensor<[], si32>
-    %limitInt = mo.constant {
-      value = #M.dense_array<11> : tensor<si32>} : !mo.tensor<[], si32>
-    %oddNumbersBelowTen = mo.range(%startInt, %limitInt, %stepInt) : (
-      !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>
-    ) -> !mo.tensor<[5], si32>
+      %startInt = mo.constant {
+        value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+      %stepInt = mo.constant {
+        value = #M.dense_array<2> : tensor<si32>} : !mo.tensor<[], si32>
+      %limitInt = mo.constant {
+        value = #M.dense_array<11> : tensor<si32>} : !mo.tensor<[], si32>
+      %oddNumbersBelowTen = mo.range(%startInt, %limitInt, %stepInt) : (
+        !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>
+      ) -> !mo.tensor<[5], si32>
     ```
   }];
 
@@ -3479,16 +3434,14 @@ def MO_RangeOp : MO_TensorOp<"range", [
 
 def MO_ResizeLinearOp : MO_TensorOp<"resize.linear",
   [DeclareOpInterfaceMethods<MO_DefaultParameterization>]> {
-  let summary = "Resize a tensor using the linear algorithm.";
+  let summary = "Linear resize operation";
   let description = [{
-    Resize a tensor to a new shape using the linear algorithm.
+    Resizes a tensor to a new shape using the linear algorithm.
 
     The coordinate transform mode can be half-pixel, align-corners or asymmetric.
 
     When set to true, the antialias attribute causes an antialiasing filter to be applied
     when downscaling.
-
-
   }];
   let arguments = (ins
     MO_Tensor:$input,
@@ -3507,9 +3460,9 @@ def MO_ResizeLinearOp : MO_TensorOp<"resize.linear",
 
 def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
   [DeclareOpInterfaceMethods<MO_DefaultParameterization>]> {
-  let summary = "Resize a tensor using the nearest-neighbor algorithm.";
+  let summary = "Nearest-neighbor resize operation";
   let description = [{
-    Resize a tensor to a new shape using the nearest-neighbor algorithm.
+    Resizes a tensor to a new shape using the nearest-neighbor algorithm.
 
     The coordinate transform mode can be half-pixel, align-corners or asymmetric.
 
@@ -3523,14 +3476,14 @@ def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
 
     Example:
     ```mlir
-    %input : !mo.tensor<[1, 1, 2, 2], f32>
-    %size = mo.constant {
-      value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %res = mo.resize.nearest(%input, %size) {
-      coordinate_transform_mode = 0,
-      round_mode = 2}:
-      (!mo.tensor<[1, 1, 2, 2], f32>, !mo.tensor<[4], si64>) ->
-        !mo.tensor<[1, 1, 7, 8], f32>
+      %input : !mo.tensor<[1, 1, 2, 2], f32>
+      %size = mo.constant {
+        value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+      %res = mo.resize.nearest(%input, %size) {
+        coordinate_transform_mode = 0,
+        round_mode = 2}:
+        (!mo.tensor<[1, 1, 2, 2], f32>, !mo.tensor<[4], si64>) ->
+          !mo.tensor<[1, 1, 7, 8], f32>
     ```
   }];
   let arguments = (ins
@@ -3554,26 +3507,26 @@ def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
 def MO_RoiAlignOp : MO_TensorOp<"roi_align", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
-    let summary = "Perform ROI (Region of Interest) Align on a tensor.";
+    let summary = "ROI alignment operation";
     let description = [{
       ROI align consumes an input tensor and regions of interest in which to apply pooling.
 
       Example:
       ```mlir
-      %inp: !mo.tensor<[1, 10, 10, 1], f32>
-      %rois: !mo.tensor<[1, 5], f32>
-      %output_height = mo.constant {value = #M.dense_array<5> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %spatial_scale = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
-      %sampling_ratio = mo.constant {value = #M.dense_array<2.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+        %inp: !mo.tensor<[1, 10, 10, 1], f32>
+        %rois: !mo.tensor<[1, 5], f32>
+        %output_height = mo.constant {value = #M.dense_array<5> : tensor<1xsi64>} : !mo.tensor<[], si64>
+        %spatial_scale = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+        %sampling_ratio = mo.constant {value = #M.dense_array<2.0> : tensor<1xf32>} : !mo.tensor<[], f32>
 
-      %res = mo.roi_align(%inp, %rois, %output_height, %output_height, %spatial_scale, %sampling_ratio)
-        {aligned = false,  mode = "AVG"}
-        : (!mo.tensor<[1, 10, 10, 1], f32>,
-           !mo.tensor<[1, 5], f32>,
-           !mo.tensor<[], si64>,
-           !mo.tensor<[], si64>,
-           !mo.tensor<[], f32>,
-           !mo.tensor<[], f32>) -> !mo.tensor<[1, 5, 5, 1], f32>
+        %res = mo.roi_align(%inp, %rois, %output_height, %output_height, %spatial_scale, %sampling_ratio)
+          {aligned = false,  mode = "AVG"}
+          : (!mo.tensor<[1, 10, 10, 1], f32>,
+            !mo.tensor<[1, 5], f32>,
+            !mo.tensor<[], si64>,
+            !mo.tensor<[], si64>,
+            !mo.tensor<[], f32>,
+            !mo.tensor<[], f32>) -> !mo.tensor<[1, 5, 5, 1], f32>
 
     }];
     let arguments = (ins
@@ -3612,18 +3565,18 @@ class MO_DotBase<string name, list<Trait> traits = []> :
 }
 
 def MO_MatmulOp : MO_DotBase<"matmul"> {
-  let summary = "Matrix-matrix multiplication";
+  let summary = "Matrix-matrix multiplication operation";
   let description = [{
-    Perform matrix multiplication on two 2D tensors.
+    Performs matrix multiplication on two 2D tensors.
 
     Example:
 
     ```mlir
-    %lhs: ... !mo.tensor<[10, 20], f32>
-    %rhs: ... !mo.tensor<[20, 5], f32>
-    %res = mo.matmul(%lhs, %rhs) : (
-      !mo.tensor<[10, 20], f32>, !mo.tensor<[20, 5], f32>
-    ) -> !mo.tensor<[10, 5], f32>
+      %lhs: ... !mo.tensor<[10, 20], f32>
+      %rhs: ... !mo.tensor<[20, 5], f32>
+      %res = mo.matmul(%lhs, %rhs) : (
+        !mo.tensor<[10, 20], f32>, !mo.tensor<[20, 5], f32>
+      ) -> !mo.tensor<[10, 5], f32>
     ```
   }];
 
@@ -3640,9 +3593,9 @@ def MO_BatchMatmulOp : MO_TensorOp<"batch_matmul", [
   MO_MatmulLike,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
 ]> {
-  let summary = "Batched matrix-matrix multiplication";
+  let summary = "Batched matrix-matrix multiplication operation";
   let description = [{
-    Perform matrix multiplication on two batches of matrices, represented by
+    Performs matrix multiplication on two batches of matrices, represented by
     two N-dimensional tensors.
 
     The last two dimensions of each input are the matrix dimensions.
@@ -3650,11 +3603,11 @@ def MO_BatchMatmulOp : MO_TensorOp<"batch_matmul", [
     Example:
 
     ```mlir
-    %lhs: ... !mo.tensor<[3, 4, 5], f32>
-    %rhs: ... !mo.tensor<[3, 5, 6], f32>
-    %res = mo.batch_matmul(%lhs, %rhs) :
-      mo.tensor<[3, 4, 5], f32>, !mo.tensor<[3, 5, 6], f32>
-    ) -> !mo.tensor<[3, 4, 6], f32>
+      %lhs: ... !mo.tensor<[3, 4, 5], f32>
+      %rhs: ... !mo.tensor<[3, 5, 6], f32>
+      %res = mo.batch_matmul(%lhs, %rhs) :
+        mo.tensor<[3, 4, 5], f32>, !mo.tensor<[3, 5, 6], f32>
+      ) -> !mo.tensor<[3, 4, 6], f32>
     ```
   }];
 
@@ -3692,13 +3645,13 @@ class MO_LinalgOp<string mnemonic, list<Trait> traits = []>
 def MO_BandPartOp : MO_LinalgOp<"band_part", [
     DeclareOpInterfaceMethods<MO_Parameterization>,
     DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
-  let summary = "Matrix Band Part operation";
+  let summary = "Matrix band part operation";
   let description = [{
-    Copy a tensor setting everything outside central (diagonal) band of the
+    Copies a tensor setting everything outside central (diagonal) band of the
     matrices to zero, where all but the last two axes are effectively batches,
     and the last two axes define sub matricies.
 
-    Assume the input has dimensions [I, J, ..., M, N], then the output tensor
+    Assumes the input has dimensions [I, J, ..., M, N], then the output tensor
     has the same shape as the input, and the values values are given by
 
     out[i, j, ..., m, n] = in_band(m, n) * input[i, j,  ..., m, n].
@@ -3718,17 +3671,17 @@ def MO_BandPartOp : MO_LinalgOp<"band_part", [
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[3, 2, 3], f32>
-    %num_lower = mo.constant {
-      value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %num_upper = mo.constant {
-      value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %exclude = mo.constant {
-      value = #M.dense_array<0> : tensor<1xui8>} : !mo.tensor<[], bool>
-    %res = mo.linalg.band_part(%arg, %num_lower, %num_upper, %exclude) : (
-      !mo.tensor<[3, 2, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>,
-      !mo.tensor<[], bool>
-      ) -> !mo.tensor<[3, 2, 3], f32>
+      %arg: !mo.tensor<[3, 2, 3], f32>
+      %num_lower = mo.constant {
+        value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %num_upper = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %exclude = mo.constant {
+        value = #M.dense_array<0> : tensor<1xui8>} : !mo.tensor<[], bool>
+      %res = mo.linalg.band_part(%arg, %num_lower, %num_upper, %exclude) : (
+        !mo.tensor<[3, 2, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>,
+        !mo.tensor<[], bool>
+        ) -> !mo.tensor<[3, 2, 3], f32>
     ```
   }];
 
@@ -3753,11 +3706,11 @@ def MO_SolveOp : MO_LinalgOp<"solve", [
     MO_SameOperandsAndResultElementType,
     DeclareOpInterfaceMethods<MO_DefaultParameterization>,
     DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
-  let summary = "Solves systems of Linear Equations";
+  let summary = "Linear solve operation";
   let description = [{
-    Solve the system of linear equations described by
+    Solves the system of linear equations described by
 
-      AX = B
+      `AX = B`
 
     Where input A is a batch of square matrices and has shape [I, J, ..., M, M]
     which are assumed to be full rank/invertible and rhs B is a batch of
@@ -3767,11 +3720,11 @@ def MO_SolveOp : MO_LinalgOp<"solve", [
     Example:
 
     ```mlir
-    %arg: !mo.tensor<[3, 3, 3], f32>
-    %rhs: !mo.tensor<[3, 3, 2], f32>
-    %res = mo.linalg.band_part(%arg, %rhs) : (
-      !mo.tensor<[3, 3, 3], f32>, !mo.tensor<[3, 3, 2], f32>, !mo.tensor<[]
-      ) -> !mo.tensor<[3, 3, 2], f32>
+      %arg: !mo.tensor<[3, 3, 3], f32>
+      %rhs: !mo.tensor<[3, 3, 2], f32>
+      %res = mo.linalg.band_part(%arg, %rhs) : (
+        !mo.tensor<[3, 3, 3], f32>, !mo.tensor<[3, 3, 2], f32>, !mo.tensor<[]
+        ) -> !mo.tensor<[3, 3, 2], f32>
     ```
   }];
 
@@ -3796,7 +3749,7 @@ def MO_SolveOp : MO_LinalgOp<"solve", [
 
 def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
     DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
-  let summary = "Invokes a shape function to declare the shape parameters";
+  let summary = "Shape function call operation";
   let description = [{
     Invokes a shape function with given name and bind its return values to the
     output parameters. Each argument must be a shape-like or integer scalar
@@ -3805,13 +3758,13 @@ def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
     Example:
 
     ```mlir
-    %input : !mo.tensor<[D1, D2], f32>
-    %axis  : !mo.tensor<[], si64>
-    %input_shape = mo.shape_of(%input)
-    : (!mo.tensor<[D1, D2], f32>) -> !mo.tensor<[2], si64>
+      %input : !mo.tensor<[D1, D2], f32>
+      %axis  : !mo.tensor<[], si64>
+      %input_shape = mo.shape_of(%input)
+      : (!mo.tensor<[D1, D2], f32>) -> !mo.tensor<[2], si64>
 
-    mo.invoke_shape_func["shape_func_name"]<() -> D1, D2>(%input_shape, %axis)
-    : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>)
+      mo.invoke_shape_func["shape_func_name"]<() -> D1, D2>(%input_shape, %axis)
+      : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>)
     ```
 
     `dataDeptTensors` Is an instruction to the lowering that the inputs at
@@ -3840,9 +3793,9 @@ def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
 //===----------------------------------------------------------------------===//
 
 def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [Pure]> {
-  let summary = "Transform the layout of input tensor";
+  let summary = "Layout transformation operation";
   let description = [{
-    This op will transform the layout of input tensor to the layout specified in
+    This op transforms the layout of input tensor to the layout specified in
     the output type. The `kgenParams` will be passed along as named parameters
     to the underlying mojo kernel.
 
@@ -3867,9 +3820,9 @@ def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [Pure]> {
 //===----------------------------------------------------------------------===//
 
 def MO_LayerNormOp : MO_TensorOp<"layer_norm"> {
-  let summary = "Layer norm";
+  let summary = "Layer normalization operation";
   let description = [{
-    Layer norm target for the pattern matcher
+    Layer normalization operation
   }];
 
   let arguments = (ins MO_Tensor:$input, MO_Tensor:$gamma, MO_Tensor:$beta, MO_Tensor:$epsilon);
@@ -3885,7 +3838,7 @@ def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["preferResultsDevice"]>,
 ]> {
-  let summary = "Prints a debug representation of argument input";
+  let summary = "Printing operation";
   let description = [{
     Prints a debug representation of argument input. If a label attribute
     is supplied the tensor contents is printed with that label. Otherwise
@@ -3893,8 +3846,8 @@ def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
 
     Example:
     ```mlir
-    %arg: !mo.tensor<[5], f32>
-    mo.debug.tensor.print(%arg) {label = "label"} : !mo.tensor<[5], f32>
+      %arg: !mo.tensor<[5], f32>
+      mo.debug.tensor.print(%arg) {label = "label"} : !mo.tensor<[5], f32>
     ```
   }];
 
@@ -3909,7 +3862,7 @@ def MO_TopKOp : MO_TensorOp<"top_k", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
 ]> {
-  let summary = "Top K values and indices along an axis";
+  let summary = "Top-K operation";
   let description = [{
     Computes the largest values and their corresponding indices in a tensor
     along a specified axis. Returned values along the axis are always sorted
@@ -3917,16 +3870,16 @@ def MO_TopKOp : MO_TensorOp<"top_k", [
 
     Example:
     ```mlir
-    %in = "mo.constant"() {value =
-      #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11> : tensor<2x6xsi64>} :
-      () -> !mo.tensor<[2, 6], si64>
-    %K = "mo.constant"() {value = #M.dense_array<3> : tensor<si64>} : () ->
-      !mo.tensor<[], si64>
-    %axis = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () ->
-      !mo.tensor<[], si64>
-    %values, %indices = mo.top_k(%in, %K, %axis) : (
-      !mo.tensor<[2, 6], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) ->
-        (!mo.tensor<[2, 3], si64>, !mo.tensor<[2, 3], si64>)
+      %in = "mo.constant"() {value =
+        #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11> : tensor<2x6xsi64>} :
+        () -> !mo.tensor<[2, 6], si64>
+      %K = "mo.constant"() {value = #M.dense_array<3> : tensor<si64>} : () ->
+        !mo.tensor<[], si64>
+      %axis = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () ->
+        !mo.tensor<[], si64>
+      %values, %indices = mo.top_k(%in, %K, %axis) : (
+        !mo.tensor<[2, 6], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) ->
+          (!mo.tensor<[2, 3], si64>, !mo.tensor<[2, 3], si64>)
     ```
   }];
 
@@ -3947,7 +3900,7 @@ def MO_BottomKOp : MO_TensorOp<"bottom_k", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
 ]> {
-  let summary = "Bottom K values and indices along an axis";
+  let summary = "Bottom-K operation";
   let description = [{
     Computes the bottom (lowest) values and their corresponding indices in a
     tensor along a specified axis. Returned values along the axis are always
@@ -3955,16 +3908,16 @@ def MO_BottomKOp : MO_TensorOp<"bottom_k", [
 
     Example:
     ```mlir
-    %in = "mo.constant"() {value =
-      #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11> : tensor<2x6xsi64>} :
-      () -> !mo.tensor<[2, 6], si64>
-    %K = "mo.constant"() {value = #M.dense_array<3> : tensor<si64>} : () ->
-      !mo.tensor<[], si64>
-    %axis = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () ->
-      !mo.tensor<[], si64>
-    %values, %indices = mo.bottom_k(%in, %K, %axis) : (
-      !mo.tensor<[2, 6], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) ->
-        (!mo.tensor<[2, 3], si64>, !mo.tensor<[2, 3], si64>)
+      %in = "mo.constant"() {value =
+        #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11> : tensor<2x6xsi64>} :
+        () -> !mo.tensor<[2, 6], si64>
+      %K = "mo.constant"() {value = #M.dense_array<3> : tensor<si64>} : () ->
+        !mo.tensor<[], si64>
+      %axis = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () ->
+        !mo.tensor<[], si64>
+      %values, %indices = mo.bottom_k(%in, %K, %axis) : (
+        !mo.tensor<[2, 6], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) ->
+          (!mo.tensor<[2, 3], si64>, !mo.tensor<[2, 3], si64>)
     ```
   }];
 
@@ -3986,7 +3939,7 @@ def MO_BottomKOp : MO_TensorOp<"bottom_k", [
 //===----------------------------------------------------------------------===//
 
 def MO_ListAppendOp : MO_TensorOp<"list.append", [Pure]> {
-  let summary = "List append Operation";
+  let summary = "List appending operation";
   let description = [{
     Creates a new list that's the result of appending an element to the end of a
     copy of the input list (i.e., the op is value semantics and doesn't affect
@@ -3995,12 +3948,12 @@ def MO_ListAppendOp : MO_TensorOp<"list.append", [Pure]> {
     Example:
 
     ```mlir
-    %list:   !mo.list<!mo.tensor<[2, 2], f32>>
-    %tensor: !mo.tensor<[2, 3], f32>
+      %list:   !mo.list<!mo.tensor<[2, 2], f32>>
+      %tensor: !mo.tensor<[2, 3], f32>
 
-    %tensor = mo.list.append(%list, %tensor) : (
-      !mo.list<!mo.tensor<[2, 2], f32>>, !mo.tensor<[2, 3], f32>
-    ) -> !mo.list<!mo.tensor<[2, ?], f32>>
+      %tensor = mo.list.append(%list, %tensor) : (
+        !mo.list<!mo.tensor<[2, 2], f32>>, !mo.tensor<[2, 3], f32>
+      ) -> !mo.list<!mo.tensor<[2, ?], f32>>
     ```
   }];
 
@@ -4016,20 +3969,20 @@ def MO_ListAppendOp : MO_TensorOp<"list.append", [Pure]> {
 }
 
 def MO_ListCreateOp : MO_TensorOp<"list.create", [Pure]> {
-  let summary = "List create Operation";
+  let summary = "List creation operation";
   let description = [{
-    Create a new list which contains the given inputs (currently limited to
+    Creates a new list which contains the given inputs (currently limited to
     tensors).
 
     Example:
 
     ```mlir
-    %arg0: !mo.tensor<[2, 3], f32>
-    %arg1: !mo.tensor<[2, 5], f32>
+      %arg0: !mo.tensor<[2, 3], f32>
+      %arg1: !mo.tensor<[2, 5], f32>
 
-    %list = mo.list.create(%arg0, %arg1) : (
-      !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>
-    ) -> !mo.list<!mo.tensor<[2, ?], f32>>
+      %list = mo.list.create(%arg0, %arg1) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>
+      ) -> !mo.list<!mo.tensor<[2, ?], f32>>
     ```
   }];
 
@@ -4044,21 +3997,21 @@ def MO_ListCreateOp : MO_TensorOp<"list.create", [Pure]> {
 }
 
 def MO_ListGetOp : MO_TensorOp<"list.get", [Pure]> {
-  let summary = "List get Operation";
+  let summary = "List access operation";
   let description = [{
-    Retrive the element at given (base zero) index of the list. The index can be
+    Retrives the element at given (base zero) index of the list. The index can be
     negative, with numpy indexing semantics, i.e., `-1` means the last element,
     `-2` means the second to last element, etc.
 
     Example:
 
     ```mlir
-    %list: !mo.list<!mo.tensor<[2, 2], f32>>
-    %idx:  !mo.tensor<[], si32>
+      %list: !mo.list<!mo.tensor<[2, 2], f32>>
+      %idx:  !mo.tensor<[], si32>
 
-    %tensor = mo.list.get(%list, %idx) : (
-      !mo.list<!mo.tensor<[2, 2], f32>>, !mo.tensor<[], si32>
-    ) -> !mo.tensor<[2, 2], f32>
+      %tensor = mo.list.get(%list, %idx) : (
+        !mo.list<!mo.tensor<[2, 2], f32>>, !mo.tensor<[], si32>
+      ) -> !mo.tensor<[2, 2], f32>
     ```
   }];
 
@@ -4073,7 +4026,7 @@ def MO_ListGetOp : MO_TensorOp<"list.get", [Pure]> {
 }
 
 def MO_ListInsertOp : MO_TensorOp<"list.insert", [Pure]> {
-  let summary = "List insert Operation";
+  let summary = "List insertion operation";
   let description = [{
     Creates a new list that's the result of inserting an element at given (base
     zero) index of a copy of the list (i.e., the op is value semantics and
@@ -4089,13 +4042,13 @@ def MO_ListInsertOp : MO_TensorOp<"list.insert", [Pure]> {
     Example:
 
     ```mlir
-    %list:   !mo.list<!mo.tensor<[2, 2], f32>>
-    %tensor: !mo.tensor<[2, 3], f32>
-    %index:  !mo.tensor<[], si32>
+      %list:   !mo.list<!mo.tensor<[2, 2], f32>>
+      %tensor: !mo.tensor<[2, 3], f32>
+      %index:  !mo.tensor<[], si32>
 
-    %tensor = mo.list.insert(%list, %tensor, %index) : (
-      !mo.list<!mo.tensor<[2, 2], f32>>, !mo.tensor<[2, 3], f32>, !mo.tensor<[], si32>
-    ) -> !mo.list<!mo.tensor<[2, ?], f32>>
+      %tensor = mo.list.insert(%list, %tensor, %index) : (
+        !mo.list<!mo.tensor<[2, 2], f32>>, !mo.tensor<[2, 3], f32>, !mo.tensor<[], si32>
+      ) -> !mo.list<!mo.tensor<[2, ?], f32>>
     ```
   }];
 
@@ -4114,28 +4067,25 @@ def MO_ListInsertOp : MO_TensorOp<"list.insert", [Pure]> {
 def MO_CustomOp : MO_TensorOp<"custom", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>
 ]> {
-  let summary = "Encapsulates a user defined operation";
+  let summary = "User-defined operation";
   let description = [{
-    This is the entry point to having custom implementations of an operation
-    that may or may not be represented by the rest of MO.
-
-    This operation's semantics are opaque. The only information the compiler has
-    access to for optimization is its signature. The symbol attribute specifies
-    which underlying Mojo kernel implements this operation. This kernel must be
-    decorated with the appropriate decorator with the exact same symbol string.
+    The `symbol` attribute specifies which underlying Mojo kernel implements
+    this operation. This kernel must be decorated with the appropriate decorator
+    with the exact same symbol string.
 
     Example:
 
     ```mlir
-    %0 = mo.custom {symbol = "test_custom_op"}(%arg0)
-      (!mo.tensor<[?], f32>) -> !mo.tensor<[?], f32>
+      %0 = mo.custom {symbol = "test_custom_op"}(%arg0)
+        (!mo.tensor<[?], f32>) -> !mo.tensor<[?], f32>
     ```
 
-    In Mojo:
+    Corresponding kernel definition:
+
     ```mojo
-    @mogg_register("test_custom_op")
-    fn foo(...):
-      pass
+      @mogg_register("test_custom_op")
+      fn foo(...):
+        pass
     ```
   }];
 
@@ -4153,9 +4103,9 @@ def MO_CustomOp : MO_TensorOp<"custom", [
 def MO_ConcatFromListOp : MO_TensorOp<"concat_from_list", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>, Pure
 ]> {
-  let summary = "Concat Operation that takes in a list of tensors";
+  let summary = "List concatenation operation";
   let description = [{
-    Concatenate tensors in the input list along a given dimension.
+    Concatenates tensors in the input list along a given dimension.
 
     This op concatenates tensors in the `input` list into an output tensor. The
     input tensors and output tensors all have the same shape except along the
@@ -4169,11 +4119,11 @@ def MO_ConcatFromListOp : MO_TensorOp<"concat_from_list", [
     Example:
 
     ```mlir
-    %list: !mo.list<!mo.tensor<[2, 3], f32>>
-    %axis = mo.constant {
-      value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %res = mo.concat_from_list[%axis: !mo.tensor<[], si64>](%list) :
-      !mo.list<!mo.tensor<[2, 3], f32>> -> !mo.tensor<[2, ?], f32>
+      %list: !mo.list<!mo.tensor<[2, 3], f32>>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %res = mo.concat_from_list[%axis: !mo.tensor<[], si64>](%list) :
+        !mo.list<!mo.tensor<[2, 3], f32>> -> !mo.tensor<[2, ?], f32>
     ```
   }];
 
@@ -4211,9 +4161,10 @@ def MO_ConcatFromListOp : MO_TensorOp<"concat_from_list", [
 def MO_MultiHeadFlashAttentionOp : MO_TensorOp<"multi_head_flash_attention", [
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
-  let summary = "Multi headed attention op for GPU";
+  let summary = "GPU multi-head attention operation";
+  // TODO: Write description
   let description = [{
-    TODO: Write description
+    Temporary op.
   }];
 
   let arguments = (ins MO_Tensor:$q,

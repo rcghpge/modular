@@ -24,7 +24,7 @@ class MO_EnumCase<string sym, int val, string str = sym> :
   I32EnumAttrCase<sym, val, str>;
 
 def MO_CoordinateTransformMode : MO_Enum<
-  "CoordinateTransformMode", "mo.resize coordinate transform mode enum", [
+  "CoordinateTransformMode", "Valid coordinate transformations for `mo.resize`", [
     I32EnumAttrCase<"HalfPixel", 0, "half_pixel">,
     I32EnumAttrCase<"AlignCorners", 1, "align_corners">,
     I32EnumAttrCase<"Asymmetric", 2, "asymmetric">
@@ -33,6 +33,11 @@ def MO_CoordinateTransformMode : MO_Enum<
 
 def MO_CoordinateTransformModeAttr : EnumAttr<MODialect, MO_CoordinateTransformMode, "coord_trans_mode">
 {
+  let summary = "oordinate transformations";
+  let description = [{
+    This attribute is used by `mo.resize`.
+  }];
+
   let cppNamespace = "::M::MO";
 }
 

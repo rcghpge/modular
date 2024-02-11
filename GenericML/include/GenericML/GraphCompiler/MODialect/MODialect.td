@@ -17,19 +17,10 @@ include "KGEN/KGENDialect/KGENDialect.td"
 def MODialect : Dialect {
   let name = "mo";
 
-  let summary = "Modular high level graph operations.";
+  let summary = "MAX Graph operations.";
   let description = [{
-    The MO Dialect is intended to provide a centralized dialect for accessing
-    Modular optimizations. It will provide an HLO-like IR that framework graphs
-    can lower to, common graph level optimziation passes, tools for kernel
-    selection, and lowering to multi-backend execution through MGP. For
-    unsupported operators from external frameworks, the default framework
-    implementation will be used. This will ensure long-tail coverage of user
-    models.
-
-    MO will initially focus purely on value semantics (all ops look like
-    return_value = op(input_values...)), and use explicit broadcasting for
-    backend lowering simplicity.
+    The MO Dialect represents a MAX graph and its operations. It is a frontend
+    dialect that serves as input to the graph compiler.
   }];
 
   let cppNamespace = "::M::MO";

@@ -30,10 +30,7 @@ class MOAttr<string attrName, string attrMnemonic, list<Trait> traits = []>
 def MO_LayoutAttr : MOAttr<"Layout", "layout"> {
   let summary = "An attribute that represents tensor memory layout.";
   let description = [{
-    This attribute holds the memory layout information for some tensor value. It
-    can be used by graph compiler to
-    1. reason about tensor layouts globally in a `mo.graph`
-    2. choose the appropriate layout-specific kernels during lowering
+    This attribute holds the memory layout information for some tensor value.
   }];
 
   let parameters = (ins "mlir::StringAttr":$format);
@@ -47,9 +44,9 @@ def MO_LayoutAttr : MOAttr<"Layout", "layout"> {
 }
 
 def MO_DTypeAttr : MOAttr<"DType", "dtype"> {
-  let summary = "An attribute that represents a M::DType";
+  let summary = "An attribute that represents tensor data type.";
   let description = [{
-    This attribute holds a M::DType known at compile time.
+    This attribute holds the data type of a tensor.
   }];
 
   let parameters = (ins "DType":$dtype);
