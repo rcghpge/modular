@@ -25,6 +25,13 @@ void M::MGP::accumFreeValues(mlir::SetVector<Value> &freeValues, Block *block,
       if (inValue.getParentRegion()->isProperAncestor(
               bindingBlock->getParent()))
         freeValues.insert(inValue);
+      else
+        GENERICML_ASSERT(
+            inValue.getParentRegion()->isAncestor(block->getParent()))
+            << "result from operation"
+            << Twine(inValue.getDefiningOp()->getName().getStringRef())
+            << " used in operation " << Twine(inOp.getName().getStringRef())
+            << " must be in the ancestor scope";
     }
     for (Region &subRegion : inOp.getRegions())
       accumFreeValues(freeValues, &subRegion.front(), bindingBlock);
