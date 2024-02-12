@@ -540,9 +540,19 @@ int main(int argc, char **argv) {
   // We don't really have a file to load here now.
   std::unique_ptr<llvm::MemoryBuffer> inputFile;
 
+  // The runtime should run as single threaded. There is some mixing of dynamic
+  // runtime creation with static here. This would not normally be a problem in
+  // a program that is using only the C API, where the runtime would be created
+  // exclusively by the underlying bindings. However, in this case we need to
+  // have a runtime set of some steps, but this will generate collisions when
+  // attempting to create a new unique runtime underneath. We resolve this by
+  // binding the runtime here (which can also use the main thread).
   StatusPtr status{api.newStatus(), api.freeStatus};
   RuntimeConfigPtr runtimeConfig{api.newRuntimeConfig(), api.freeRuntimeConfig};
-  api.setNumThreads(runtimeConfig.get(), clOptions.getNumThreads());
+  clOptions.useSingleThreadedWorkqueue();
+  std::unique_ptr<Runtime> runtime = clOptions.createRuntime();
+  api.setUseExistingRuntime(runtimeConfig.get());
+
   if (clOptions.gpu)
     api.setDevice(runtimeConfig.get(), "cuda", /*deviceID=*/0);
   RuntimeContextPtr context = {
@@ -633,14 +643,14 @@ int main(int argc, char **argv) {
       api, clOptions.benchmarkName, clOptions.inputNames, clOptions.outputNames,
       modelSpec, state, std::move(loc));
 
-  // The runtime should run as single threaded. We have already set the
-  // thread count in framework runtime.
-  clOptions.useSingleThreadedWorkqueue();
-
-  // Run the model with leak detection.
-  return setupMLIRAndRunWithLeakCheckedRuntime(
-      clOptions, "modular-api-executor", std::move(inputFile),
-      [&](Runtime &runtime, MLIRContext *ctx) {
-        return runModel(ctx, model.get(), runtime, clOptions);
-      });
+  // Run with leak checking.
+  if (failed(clOptions.configureMLIRContextAndExecute(
+          std::move(inputFile), [&](MLIRContext *ctx) {
+            return LLCL::runWithLeakCheckedRuntime(
+                "modular-api-executor", [&]() {
+                  return runModel(ctx, model.get(), *runtime, clOptions);
+                });
+          })))
+    return EXIT_FAILURE;
+  return EXIT_SUCCESS;
 }

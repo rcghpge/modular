@@ -31,9 +31,9 @@ int setupMLIRAndRunWithLeakCheckedRuntime(
     std::unique_ptr<llvm::MemoryBuffer> &&file, BodyFn &&bodyFn) {
   if (failed(options.configureMLIRContextAndExecute(
           std::move(file), [&](MLIRContext *ctx) {
+            auto runtime = options.createRuntime();
             return LLCL::runWithLeakCheckedRuntime(
-                options, testName,
-                [&](Runtime &runtime) { return bodyFn(runtime, ctx); });
+                testName, [&]() { return bodyFn(*runtime, ctx); });
           })))
     return EXIT_FAILURE;
   return EXIT_SUCCESS;

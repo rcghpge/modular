@@ -10,6 +10,7 @@
 #include "Support/ErrorOr.h"
 #include "max/c/common.h"
 #include "max/c/custom_ops.h"
+#include "max/c/internal/context.h"
 #include "max/c/onnx/config.h"
 #include "max/c/pytorch/config.h"
 #include "max/c/tensorflow/config.h"
@@ -41,6 +42,7 @@ public:
   decltype(&M_useKernelsFrom) useKernelsFrom = nullptr;
   decltype(&M_setExportedName) setExportedName = nullptr;
   decltype(&M_setNumThreads) setNumThreads = nullptr;
+  decltype(&M_setUseExistingRuntime) setUseExistingRuntime = nullptr;
   decltype(&M_setAllocatorType) setAllocatorType = nullptr;
   decltype(&M_compileModel) compileModel = nullptr;
   decltype(&M_waitForCompilation) waitForCompilation = nullptr;
