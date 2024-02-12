@@ -1,5 +1,5 @@
-Modular AI Engine API
-============================
+MAX Engine API
+==============
 
 .. toctree::
    :maxdepth: 1
