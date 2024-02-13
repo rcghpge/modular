@@ -27,7 +27,8 @@ def MO_CoordinateTransformMode : MO_Enum<
   "CoordinateTransformMode", "Valid coordinate transformations for `mo.resize`", [
     I32EnumAttrCase<"HalfPixel", 0, "half_pixel">,
     I32EnumAttrCase<"AlignCorners", 1, "align_corners">,
-    I32EnumAttrCase<"Asymmetric", 2, "asymmetric">
+    I32EnumAttrCase<"Asymmetric", 2, "asymmetric">,
+    I32EnumAttrCase<"HalfPixel1D", 3, "half_pixel_1D">
   ]
 >;
 
