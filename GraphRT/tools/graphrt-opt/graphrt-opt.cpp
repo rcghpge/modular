@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/InitAllDialects.h"
+#include "LLCL/Runtime/Runtime.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
@@ -27,6 +28,9 @@ int main(int argc, char **argv) {
   mlir::registerSCCPPass();
   mlir::registerInlinerPass();
   mlir::registerCanonicalizerPass();
+
+  std::unique_ptr<LLCL::Runtime> runtime =
+      createUniqueRuntime(LLCL::RuntimeOptions().forDebug());
 
   return failed(
       mlir::MlirOptMain(argc, argv, "graphrt optimizer driver", registry));
