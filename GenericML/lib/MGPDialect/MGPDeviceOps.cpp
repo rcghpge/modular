@@ -743,7 +743,21 @@ LogicalResult BufferDeviceToDeviceOp::verify() {
     return emitOpError("src and dst buffer sizes do not match (")
            << optSizeToString(getSrcBuffer().getType().getOptSize()) << " vs "
            << optSizeToString(getDstBuffer().getType().getOptSize()) << ").";
-  return verifyConsistentDevices(getOperation(), {getBDevice()});
+  if (getCSrcDevice().getLabel() != getDDstDevice().getLabel()) {
+    return emitOpError("expecting source and destination devices to have the "
+                       "same device label.");
+  }
+  if (getSrcBuffer().getType().getDevice() != getCSrcDevice() ||
+      getInChain().getType().getDevice() != getCSrcDevice() ||
+      getDstBuffer().getType().getDevice() != getDDstDevice() ||
+      getOutChain().getType().getDevice() != getDDstDevice()) {
+    return emitOpError(
+               "expecting input chain and source buffer to be on device '")
+           << getCSrcDevice()
+           << "', and output chain and destination buffer to be on device '"
+           << getDDstDevice() << "'.";
+  }
+  return success();
 }
 
 LogicalResult BufferDeviceToDeviceOp::inferReturnTypes(
@@ -751,12 +765,12 @@ LogicalResult BufferDeviceToDeviceOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  DeviceRefAttr device;
+  DeviceRefAttr dstDevice;
   if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                    attributes, getBDeviceAttrName(name),
-                                    device)))
+                                    attributes, getDDstDeviceAttrName(name),
+                                    dstDevice)))
     return failure();
-  inferredReturnTypes.emplace_back(DeviceChainType::get(device));
+  inferredReturnTypes.emplace_back(DeviceChainType::get(dstDevice));
   return success();
 }
 
@@ -797,6 +811,45 @@ LogicalResult BufferUnsizeOp::inferReturnTypes(
   }
   inferredReturnTypes.emplace_back(
       DeviceBufferType::get(bufferType.getDevice(), std::optional<uint64_t>()));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BufferResizeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BufferResizeOp::verify() {
+  if (getInBuffer().getType().getOptSize())
+    return emitOpError("expected input buffer to be dynamically sized.");
+  if (!getOutBuffer().getType().getOptSize())
+    return emitOpError("expected output buffer to be statically sized.");
+  auto expectedBufferType =
+      DeviceBufferType::get(getBDevice(), std::optional<uint64_t>(getASize()));
+  if (expectedBufferType != getOutBuffer().getType()) {
+    return emitOpError("expected output buffer type does not match actual "
+                       "output buffer type (")
+           << expectedBufferType << " vs " << getOutBuffer().getType() << ").";
+  }
+
+  return verifyConsistentDevices(getOperation(),
+                                 {getInBuffer().getType().getDevice()});
+}
+
+LogicalResult BufferResizeOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  std::optional<uint64_t> optSize;
+  if (failed(getSizeAttr(location.value_or(operands[0].getLoc()), attributes,
+                         getASizeAttrName(name), optSize)))
+    return failure();
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getBDeviceAttrName(name),
+                                    device)))
+    return failure();
+  inferredReturnTypes.emplace_back(DeviceBufferType::get(device, optSize));
   return success();
 }
 

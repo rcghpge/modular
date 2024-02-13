@@ -121,7 +121,7 @@ static void printOptDeviceRef(OpAsmPrinter &p, Operation *op, StringRef keyword,
 }
 
 /// Parses a !mgp.buffer type, extracts its raw size and device attributes,
-/// and assigns chains the type !mgp.chain<device>.
+/// assigns chains the type !mgp.chain<device>.
 static ParseResult parseBufferTypeToRawSizeDeviceImpl(OpAsmParser &p,
                                                       Type &buffer,
                                                       IntegerAttr &rawSize,
@@ -147,7 +147,8 @@ static ParseResult parseBufferTypeToRawSizeDevice(OpAsmParser &p, Type &buffer,
 }
 
 static void printBufferTypeToRawSizeDevice(OpAsmPrinter &p, Operation *op,
-                                           Type buffer, IntegerAttr rawSize,
+                                           DeviceBufferType buffer,
+                                           IntegerAttr rawSize,
                                            DeviceRefAttr device) {
   p << buffer;
 }
@@ -166,7 +167,8 @@ static ParseResult parseStaticBufferTypeToSizeDevice(OpAsmParser &p,
 }
 
 static void printStaticBufferTypeToSizeDevice(OpAsmPrinter &p, Operation *op,
-                                              Type buffer, IntegerAttr rawSize,
+                                              DeviceBufferType buffer,
+                                              IntegerAttr rawSize,
                                               DeviceRefAttr device) {
   p << buffer;
 }
@@ -186,10 +188,30 @@ static ParseResult parseStaticBufferTypeToSizeDevice(OpAsmParser &p,
 }
 
 static void printStaticBufferTypeToSizeDevice(OpAsmPrinter &p, Operation *op,
-                                              Type buffer, IntegerAttr rawSize,
+                                              DeviceBufferType buffer,
+                                              IntegerAttr rawSize,
                                               DeviceRefAttr device,
                                               DeviceChainType chain) {
   p << buffer;
+}
+
+static ParseResult parseStaticBufferTypeToSizeDeviceBuffer(
+    OpAsmParser &p, Type &staticBuffer, IntegerAttr &size,
+    DeviceRefAttr &device, Type &dynamicBuffer) {
+  mlir::SMLoc loc;
+  if (p.getCurrentLocation(&loc) ||
+      parseBufferTypeToRawSizeDeviceImpl(p, staticBuffer, size, device, {}))
+    return failure();
+  if (!rawSizeToOptSize(size.getUInt()))
+    return p.emitError(loc, "expecting statically sized !mgp.buffer type");
+  dynamicBuffer = DeviceBufferType::get(device, std::optional<uint64_t>());
+  return success();
+}
+
+static void printStaticBufferTypeToSizeDeviceBuffer(
+    OpAsmPrinter &p, Operation *op, DeviceBufferType staticBuffer,
+    IntegerAttr rawSize, DeviceRefAttr device, DeviceBufferType dynamicBuffer) {
+  p << staticBuffer;
 }
 
 static ParseResult parseDynamicBufferTypeToDevice(OpAsmParser &p, Type &buffer,
@@ -206,7 +228,8 @@ static ParseResult parseDynamicBufferTypeToDevice(OpAsmParser &p, Type &buffer,
 }
 
 static void printDynamicBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
-                                           Type buffer, DeviceRefAttr device,
+                                           DeviceBufferType buffer,
+                                           DeviceRefAttr device,
                                            DeviceChainType chain) {
   p << buffer;
 }
@@ -291,7 +314,8 @@ static ParseResult parseTensorTypeToDeviceBuffer(OpAsmParser &p, Type &tensor,
 }
 
 static void printTensorTypeToDeviceBuffer(OpAsmPrinter &p, Operation *op,
-                                          Type tensor, DeviceRefAttr device,
+                                          DeviceTensorType tensor,
+                                          DeviceRefAttr device,
                                           DeviceBufferType buffer) {
   p << tensor;
 }
@@ -364,7 +388,7 @@ static ParseResult parseBufferTypesToBufferRawSizesDeviceOutBuffers(
 }
 
 static void printBufferTypesToBufferRawSizesDeviceOutBuffers(
-    OpAsmPrinter &p, Operation *op, Type inBuffer,
+    OpAsmPrinter &p, Operation *op, DeviceBufferType inBuffer,
     IntArrayElementsAttr outBufferRawSizesAttr, DeviceRefAttr device,
     TypeRange outBuffers, DeviceChainType chain) {
   p << inBuffer;
@@ -404,45 +428,6 @@ static void printSrcDstBufferTypesToDevices(OpAsmPrinter &p, Operation *op,
                                             DeviceRefAttr dstDevice,
                                             DeviceChainType inChain,
                                             DeviceChainType outChain) {
-  p << srcBuffer;
-  p << " -> ";
-  p << dstBuffer;
-}
-
-/// Parses a function type consisting of one input buffer and one output
-/// buffer type, checks their devices agree, assigns that device to device,
-/// and assigns inChain and outChain the type !mgp.chain<device>.
-static ParseResult
-parseSrcDstBufferTypesToSameDevice(OpAsmParser &p, Type &srcBuffer,
-                                   Type &dstBuffer, DeviceRefAttr &device,
-                                   Type &inChain, Type &outChain) {
-  mlir::SMLoc loc;
-  if (p.getCurrentLocation(&loc) || p.parseType(srcBuffer))
-    return failure();
-  auto srcBufferType = dyn_cast<DeviceBufferType>(srcBuffer);
-  if (!srcBufferType)
-    return p.emitError(loc, "expected an !mgp.buffer type");
-  if (p.parseArrow())
-    return failure();
-  if (p.getCurrentLocation(&loc) || p.parseType(dstBuffer))
-    return failure();
-  auto dstBufferType = dyn_cast<DeviceBufferType>(dstBuffer);
-  if (!dstBufferType)
-    return p.emitError(loc, "expected an !mgp.buffer type");
-  device = srcBufferType.getDevice();
-  if (device != dstBufferType.getDevice())
-    return p.emitError(loc, "buffer types must agree on their device");
-  inChain = DeviceChainType::get(device);
-  outChain = DeviceChainType::get(device);
-  return success();
-}
-
-static void printSrcDstBufferTypesToSameDevice(OpAsmPrinter &p, Operation *op,
-                                               DeviceBufferType srcBuffer,
-                                               DeviceBufferType dstBuffer,
-                                               DeviceRefAttr device,
-                                               DeviceChainType inChain,
-                                               DeviceChainType outChain) {
   p << srcBuffer;
   p << " -> ";
   p << dstBuffer;

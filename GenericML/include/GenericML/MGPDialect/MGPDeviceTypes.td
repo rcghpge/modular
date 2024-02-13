@@ -227,6 +227,7 @@ def MGP_DeviceBufferType : MGP_DeviceType<"DeviceBuffer", "buffer", [
 
 def MGP_DeviceTensorType : MGP_DeviceType<"DeviceTensor", "tensor", [
     DeclareTypeInterfaceMethods<ShapedTypeInterface>,
+    DeclareTypeInterfaceMethods<MGP_TensorTypeInterface>,
 ]> {
   let summary = "Type of tensors respecting a tensor spec.";
   let description = [{

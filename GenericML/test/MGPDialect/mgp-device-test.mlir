@@ -227,17 +227,17 @@ func.func @buffer_device_to_host_dynamic(%ctx : !mgp.context, %ch0 : !mgp.chain<
 //
 
 // CHECK-LABEL: @buffer_device_to_device_static
-func.func @buffer_device_to_device_static(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>, %buf0 : !mgp.buffer<48, <"cuda", 3>>, %buf1 : !mgp.buffer<48, <"cuda", 3>>) {
-  // CHECK: %{{.*}} = mgp.buffer.device_to_device %{{.*}}, %{{.*}}[1], %{{.*}}, %{{.*}} : !mgp.buffer<48, <"cuda", 3>> -> !mgp.buffer<48, <"cuda", 3>>
-  %ch1 = mgp.buffer.device_to_device %ch0, %ctx[1], %buf0, %buf1 : !mgp.buffer<48, <"cuda", 3>> -> !mgp.buffer<48, <"cuda", 3>>
-  mef.output %ch1 : !mgp.chain<<"cuda", 3>>
+func.func @buffer_device_to_device_static(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>, %buf0 : !mgp.buffer<48, <"cuda", 3>>, %buf1 : !mgp.buffer<48, <"cuda", 1>>) {
+  // CHECK: %{{.*}} = mgp.buffer.device_to_device %{{.*}}, %{{.*}}[1, 2], %{{.*}}, %{{.*}} : !mgp.buffer<48, <"cuda", 3>> -> !mgp.buffer<48, <"cuda", 1>>
+  %ch1 = mgp.buffer.device_to_device %ch0, %ctx[1, 2], %buf0, %buf1 : !mgp.buffer<48, <"cuda", 3>> -> !mgp.buffer<48, <"cuda", 1>>
+  mef.output %ch1 : !mgp.chain<<"cuda", 1>>
 }
 
 // CHECK-LABEL: @buffer_device_to_device_dynamic
-func.func @buffer_device_to_device_dynamic(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>, %buf0 : !mgp.buffer<, <"cuda", 3>>, %buf1 : !mgp.buffer<, <"cuda", 3>>) {
-  // CHECK: %{{.*}} = mgp.buffer.device_to_device %{{.*}}, %{{.*}}[1], %{{.*}}, %{{.*}} : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<, <"cuda", 3>>
-  %ch1 = mgp.buffer.device_to_device %ch0, %ctx[1], %buf0, %buf1 : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<, <"cuda", 3>>
-  mef.output %ch1 : !mgp.chain<<"cuda", 3>>
+func.func @buffer_device_to_device_dynamic(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>, %buf0 : !mgp.buffer<, <"cuda", 3>>, %buf1 : !mgp.buffer<, <"cuda", 1>>) {
+  // CHECK: %{{.*}} = mgp.buffer.device_to_device %{{.*}}, %{{.*}}[1, 2], %{{.*}}, %{{.*}} : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<, <"cuda", 1>>
+  %ch1 = mgp.buffer.device_to_device %ch0, %ctx[1, 2], %buf0, %buf1 : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<, <"cuda", 1>>
+  mef.output %ch1 : !mgp.chain<<"cuda", 1>>
 }
 
 //
@@ -249,6 +249,17 @@ func.func @buffer_unsize(%in_buf : !mgp.buffer<64, <"cuda", 3>>) {
   // CHECK:  %{{.*}} = mgp.buffer.unsize %{{.*}} : !mgp.buffer<64, <"cuda", 3>>
   %out_buf = mgp.buffer.unsize %in_buf : !mgp.buffer<64, <"cuda", 3>>
   mef.output %out_buf : !mgp.buffer<, <"cuda", 3>>
+}
+
+//
+// mgp.buffer.resize
+//
+
+// CHECK-LABEL: @buffer_resize
+func.func @buffer_resize(%in_buf : !mgp.buffer<, <"cuda", 3>>) {
+  // CHECK:  %{{.*}} = mgp.buffer.resize %{{.*}} : !mgp.buffer<64, <"cuda", 3>>
+  %out_buf = mgp.buffer.resize %in_buf : !mgp.buffer<64, <"cuda", 3>>
+  mef.output %out_buf : !mgp.buffer<64, <"cuda", 3>>
 }
 
 //
@@ -337,8 +348,8 @@ func.func @tensor_extract_tensor_spec(%ctx : !mgp.context, %tensor : !mgp.tensor
 
 // CHECK-LABEL: @tensor_extract_shape
 func.func @tensor_extract_shape(%ctx : !mgp.context, %tensor : !mgp.tensor<3x?xf32, <"cuda", 3>>) {
-  // CHECK: %{{.*}} = mgp.tensor.extract.tensor_spec %{{.*}}[1], %{{.*}}, true : !mgp.tensor<3x?xf32, <"cuda", 3>>
-  %shape = mgp.tensor.extract.tensor_spec %ctx[1], %tensor, true : !mgp.tensor<3x?xf32, <"cuda", 3>>
+  // CHECK: %{{.*}} = mgp.tensor.extract.tensor_spec %{{.*}}[1], %{{.*}} shape_only true : !mgp.tensor<3x?xf32, <"cuda", 3>>
+  %shape = mgp.tensor.extract.tensor_spec %ctx[1], %tensor shape_only true : !mgp.tensor<3x?xf32, <"cuda", 3>>
   mef.output %shape : !mgp.tensor_spec<3x?xunk>
 }
 

@@ -31,7 +31,7 @@ struct CPURuntime : public ReferenceCounted<CPURuntime> {
 
   // The kernel context for each loaded module. Modules are referenced by
   // index into this vector.
-  SmallVector<std::unique_ptr<GML::CompiledKernelsContext>> modules;
+  SmallVector<RCRef<GML::CompiledKernelsContext>> modules;
 
   CPURuntime(size_t virtualDeviceId, KGEN::ExecutionEngine *engine)
       : virtualDeviceId(virtualDeviceId), engine(engine) {}

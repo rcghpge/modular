@@ -103,14 +103,15 @@ static void mgp_module_load_cpu(Chain inChain, Context &theContext,
       static_cast<size_t>(*aRuntimeSlot));
   if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*eDeviceId))
     return std::move(outChain).setToError("mismatched device id");
-  if (!dConstantSymbols->empty()) {
+  if (!dConstantSymbols->empty() && !(dConstantSymbols->size() == 0) &&
+      !(dConstantSymbols->size() == 1 && *dConstantSymbols->begin() == '\0')) {
     return std::move(outChain).setToError(
         "mgp.module.load.cpu does not support constants");
   }
 
   // Create a kernels context.
   CompiledKernelsContext &module = *cpuRuntime.modules.emplace_back(
-      std::make_unique<CompiledKernelsContext>(cpuRuntime.engine));
+      RCRef<CompiledKernelsContext>::create(cpuRuntime.engine));
 
   // Decode the image.
   ArrayRef<uint8_t> image;
@@ -412,15 +413,19 @@ static void mgp_buffer_no_transfers_cpu(
 // mgp.buffer.device_to_device.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_device_to_device_cpu(Chain inChain, Context &theContext,
-                                            GML::BufferRef &srcBuffer,
-                                            GML::BufferRef &dstBuffer,
-                                            Result<Chain> outChain,
-                                            MEFAttr<uint64_t> aRuntimeSlot,
-                                            MEFAttr<uint64_t> bDeviceId) {
+static void mgp_buffer_device_to_device_cpu(
+    Chain inChain, Context &theContext, GML::BufferRef &srcBuffer,
+    GML::BufferRef &dstBuffer, Result<Chain> outChain,
+    MEFAttr<uint64_t> aSrcRuntimeSlot, MEFAttr<uint64_t> bDstRuntimeSlot,
+    MEFAttr<uint64_t> cSrcDeviceId, MEFAttr<uint64_t> dDstDeviceId) {
+  if (*cSrcDeviceId != *dDstDeviceId) {
+    return std::move(outChain).setToError(
+        "mgp.buffer.device_to_device.cpu does not support cross device "
+        "transfers");
+  }
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*bDeviceId))
+      static_cast<size_t>(*aSrcRuntimeSlot));
+  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*cSrcDeviceId))
     return std::move(outChain).setToError("mismatched device id");
   if (srcBuffer.getSize() != dstBuffer.getSize())
     return std::move(outChain).setToError(
@@ -433,15 +438,21 @@ static void mgp_buffer_device_to_device_cpu(Chain inChain, Context &theContext,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.buffer.unsize.cpu
+// mgp.buffer.resize.cpu
 //===----------------------------------------------------------------------===//
 
-// TODO(#30906): Move into MGPPrimitives once mgp.cpu.buffer.unsize removed
-//               since is not device specific.
-
-static void mgp_buffer_unsize(AnyAsyncValueRef inBuffer,
-                              RemainingResults outputs) {
-  *outputs.begin() = std::move(inBuffer);
+static void mgp_buffer_resize_cpu(AsyncValueRef<GML::BufferRef> inBuffer,
+                                  RemainingResults outBuffer,
+                                  MEFAttr<uint64_t> aSize,
+                                  MEFAttr<uint64_t> bDeviceId,
+                                  EncodedLocation loc) {
+  if (inBuffer->getSize() != static_cast<size_t>(*aSize)) {
+    return std::move(outBuffer).setAllToError(
+        Twine("attempting to resize from buffer of size ") +
+            Twine(inBuffer->getSize()) + " to buffer of size " + Twine(*aSize),
+        loc);
+  }
+  *outBuffer.begin() = std::move(inBuffer);
 }
 
 //===----------------------------------------------------------------------===//
@@ -888,6 +899,16 @@ static void mgp_kernel_execute_cpu(
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.buffer.unsize.cpu
+//===----------------------------------------------------------------------===//
+
+// TODO(#30906): Move into MGPPrimitives once mgp.cpu.buffer.unsize removed.
+static void mgp_buffer_unsize(AnyAsyncValueRef inBuffer,
+                              RemainingResults outputs) {
+  *outputs.begin() = std::move(inBuffer);
+}
+
+//===----------------------------------------------------------------------===//
 // Registration
 //===----------------------------------------------------------------------===//
 
@@ -917,6 +938,7 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
                 mgp_buffer_no_transfers_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.device_to_device.cpu",
                 mgp_buffer_device_to_device_cpu);
+  ADD_PRIMITIVE(registry, "mgp.buffer.resize.cpu", mgp_buffer_resize_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.split.borrow.cpu",
                 mgp_buffer_split_borrow_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.section.borrow.static.cpu",

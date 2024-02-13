@@ -59,11 +59,19 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 //
 //   // Parses an !mgp.buffer type and extracts its raw size and device
 //   // attributes, and assigns $chain... the type !mgp.chain<$device>.
-//   custom<BufferTypeToRawSizeDevice>(type($buffer)?, $rawSize, $device, type($chain)...)
+//   custom<BufferTypeToRawSizeDevice>(type($buffer)?, $rawSize,
+//                                     $device, type($chain)...)
 //
 //   // Parses a statically sized !mgp.buffer type and extracts its size and
 //   // device attributes, and assigns $chain... the type !mgp.chain<$device>.
-//   custom<StaticBufferTypeToSizeDevice>(type($buffer), $size, $device, type($chain)...)
+//   custom<StaticBufferTypeToSizeDevice>(type($buffer), $size,
+//                                        $device, type($chain)...)
+//
+//   // Parses a statically sized !mgp.buffer type and extracts its size
+//   // and device attributes, and assigns $inBuffer the type
+//   // !mgp.buffer<, $device>
+//   custom<StaticBufferTypeToSizeDeviceBuffer>(type($outBuffer), $aSize,
+//                                              $bDevice, type($inBuffer))
 //
 //   // Parses a dynamically sized !mgp.buffer type, extracts its device
 //   // attribute, and assigns $chain... the type !mgp.chain<$device>.
@@ -78,7 +86,8 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 //
 //   // Parses an !mgp.tensor type and extracts its device and tensor spec or
 //   // shape.
-//   custom<TensorTypeToDeviceSpecOrShape>($isShapeOnly, type($tensor), $device, type($outSpec))
+//   custom<TensorTypeToDeviceSpecOrShape>($isShapeOnly, type($tensor),
+//                                         $device, type($outSpec))
 //
 //   // Parses an !mgp.tensor type and extracts its device, buffer type, and
 //   // tensor spec type, and assigns $chain... the type !mgp.chain<$device>.
@@ -103,14 +112,6 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 //   custom<SrcDstBufferTypesToDevices>(
 //     type($srcBuffer), type($dstBuffer),
 //     $srcDevice, $dstDevice, type($inChain), type($outChain)
-//   )
-//
-//   // Parses a function type consisting of one input buffer and one output
-//   // buffer type, checks their devices agree, assigns that device to $device,
-//   // and assigns $inChain and $outChain the type !mgp.chain<$device>.
-//   custom<SrcDstBufferTypesToSameDevice>(
-//     type($srcBuffer), type($dstBuffer), $device,
-//     type($inChain), type($outChain)
 //   )
 //
 //   // Parses a attribute supporting the ElementsAttr interface, and assigns
@@ -454,7 +455,7 @@ def BufferConstantOp : MGP_DeviceOp<"buffer.constant", [
       // initialized with the bytes in the dense resource with 'label'.
       %buf = mgp.buffer.constant %ctx[5],
                dense_resource<label>:!M.aligned_bytes<256, align 16>
-               : !mgp.buffer<256, <"cuda", 3>>
+               device <"cuda", 3>
       %buf : !mgp.buffer<256, <"cuda", 3>>
     ```
   }];
@@ -658,8 +659,6 @@ def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
     uint64_t BufferAllocDynamicOp::getSlot() { return getARuntimeSlot(); }
 
     M::DeviceRefAttr BufferAllocDynamicOp::getDevice() { return getCDevice(); }
-
-
   }];
 }
 
@@ -1043,20 +1042,21 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
 ]> {
-  let summary = "Copies a buffer into a buffer.";
+  let summary = "Copies a non-host buffer into another non-host buffer.";
   let description = [{
     Copies (typically asynchronously) the contents of one `!mgp.buffer` into
-    another `!mgp.buffer` on the same device.
+    another `!mgp.buffer`. The two buffers must have the same device label,
+    but may be on distinct virtual devices.
 
     Example:
     ```mlir
       %ch0 : !mgp.chain<<"cuda", 3>>
       %ctx : !mgp.context
       %src_buf : !mgp.buffer<, <"cuda", 3>>
-      %dst_buf : !mgp.buffer<, <"cuda", 3>>
-      %ch1 = mgp.buffer.device_to_device %ch0, %ctx[5], %src_buf, %dst_buf
-               : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<, <"cuda", 3>>
-      %ch1 : !mgp.chain<<"cuda", 3>>
+      %dst_buf : !mgp.buffer<, <"cuda", 1>>
+      %ch1 = mgp.buffer.device_to_device %ch0, %ctx[5, 3], %src_buf, %dst_buf
+               : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<, <"cuda", 1>>
+      %ch1 : !mgp.chain<<"cuda", 1>>
     ```
   }];
 
@@ -1066,22 +1066,24 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$srcBuffer,
                        MGP_DeviceBufferType:$dstBuffer,
-                       UI64Attr:$aRuntimeSlot,         // 0
-                       MGP_OptDeviceRefAttr:$bDevice); // 1
+                       UI64Attr:$aSrcRuntimeSlot,     // 0
+                       UI64Attr:$bDstRuntimeSlot,     // 1
+                       M_DeviceRefAttr:$cSrcDevice,   // 2
+                       M_DeviceRefAttr:$dDstDevice);  // 3
   let results = (outs MGP_DeviceChainType:$outChain);
   let assemblyFormat = [{
-    $inChain  `,` $theContext `[` $aRuntimeSlot `]` `,`
+    $inChain  `,` $theContext `[` $aSrcRuntimeSlot `,` $bDstRuntimeSlot `]` `,`
     $srcBuffer `,` $dstBuffer attr-dict
-    `:` custom<SrcDstBufferTypesToSameDevice>(
-          type($srcBuffer), type($dstBuffer), $bDevice,
+    `:` custom<SrcDstBufferTypesToDevices>(
+          type($srcBuffer), type($dstBuffer), $cSrcDevice, $dDstDevice,
           type($inChain), type($outChain))
   }];
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-     uint64_t BufferDeviceToDeviceOp::getSlot() { return getARuntimeSlot(); }
+     uint64_t BufferDeviceToDeviceOp::getSlot() { return getASrcRuntimeSlot(); }
 
-    M::DeviceRefAttr BufferDeviceToDeviceOp::getDevice() { return getBDevice(); }
+    M::DeviceRefAttr BufferDeviceToDeviceOp::getDevice() { return getCSrcDevice(); }
 }];
 }
 
@@ -1089,18 +1091,17 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
 // BufferUnsizeOp
 //===----------------------------------------------------------------------===//
 
-// NOTE: This op does not need a device attribute or runtime slot, it's just
-//       for keeping the MLIR type system happy.
+// NOTE: This op does not need a device attribute or runtime slot, and is a
+//       no-op at runtime.
 def BufferUnsizeOp : MGP_Op<"buffer.unsize", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGP_BufferUnsizeOpInterface>,
-    DeclareOpInterfaceMethods<GRTMayAliasInterface>, // The retrieved element is shallow copied
+    // The result is a shallow copy of the input.
+    DeclareOpInterfaceMethods<GRTMayAliasInterface>,
 ]> {
-  let summary = "Returns a shallow copy of the input buffer, but with "
-                "unknown size.";
+  let summary = "Forget the size of a statically sized buffer.";
   let description = [{
-    Returns a shallow copy of the input buffer, but with unknown size.
-    Validation errors will occur if input is not a static size.
+    Returns a dynamically sized shallow copy of the statically-sized input
+    buffer.
 
     Note that no copying is done, and the result `AsyncValueRef<GML::DeviceRef>`
     is simply a move of the input.
@@ -1120,6 +1121,57 @@ def BufferUnsizeOp : MGP_Op<"buffer.unsize", [
 
   let extraClassDefinition = [{
     bool BufferUnsizeOp::mayAlias(size_t operandIndex, size_t resultIndex) {
+      return true;
+    }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// BufferResizeOp
+//===----------------------------------------------------------------------===//
+
+// NOTE: This op does not need a runtime slot. However it does need a device
+//       attribute so as to dispatch to the device-appropriate assertion op.
+def BufferResizeOp : MGP_Op<"buffer.resize", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    // The result is a shallow copy of the input.
+    DeclareOpInterfaceMethods<GRTMayAliasInterface>,
+    DeclareOpInterfaceMethods<MGP_HasDeviceOpInterface>,
+]> {
+  let summary = "Assert the size of a dynamically sized buffer.";
+  let description = [{
+    Returns a statically sized shallow copy of the dynamically-sized input
+    buffer. An error will be returned if the input buffer is not of the
+    expected size at runtime.
+
+    Note that no copying is done, and the result `AsyncValueRef<GML::DeviceRef>`
+    is simply a move of the input.
+
+    Example:
+    ```mlir
+    %in_buf : !mgp.buffer<, <"cuda", 3>>
+    %out_buf = mgp.buffer.resize %in_buf : !mgp.buffer<256, <"cuda", 3>>
+    %out_buf : !mgp.buffer<256, <"cuda", 3>>
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins MGP_DeviceBufferType:$inBuffer,
+                       UI64Attr:$aSize,                // 0
+                       MGP_OptDeviceRefAttr:$bDevice); // 1
+  let results = (outs  MGP_DeviceBufferType:$outBuffer);
+  let assemblyFormat = [{
+    $inBuffer attr-dict
+    `:` custom<StaticBufferTypeToSizeDeviceBuffer>(
+          type($outBuffer), $aSize, $bDevice, type($inBuffer))
+   }];
+  let hasVerifier = 1;
+
+  let extraClassDefinition = [{
+    M::DeviceRefAttr BufferResizeOp::getDevice() { return getBDevice(); }
+
+    bool BufferResizeOp::mayAlias(size_t operandIndex, size_t resultIndex) {
       return true;
     }
   }];
@@ -1509,7 +1561,7 @@ def TensorExtractTensorSpecOp : MGP_DeviceOp<"tensor.extract.tensor_spec", [
     %tensor : !mgp.tensor<8x64xf32, <"cuda", 3>>
     %shape0 = mgp.tensor.extract.tensor_spec %ctx[5], %tensor : !mgp.tensor<8x64xf32, <"cuda", 3>>
     %shape0 : !mgp.tensor_spec<8x64xk32>
-    %shape1 = mgp.tensor.extract.tensor_spec %ctx[5], %tensor, true : !mgp.tensor<8x64xf32, <"cuda", 3>>
+    %shape1 = mgp.tensor.extract.tensor_spec %ctx[5], %tensor shape_only true : !mgp.tensor<8x64xf32, <"cuda", 3>>
     %shape1 : !mgp.tensor_spec<8x64xunk>
     ```
   }];
@@ -1521,7 +1573,7 @@ def TensorExtractTensorSpecOp : MGP_DeviceOp<"tensor.extract.tensor_spec", [
                        DefaultValuedAttr<BoolAttr, "false">:$cIsShapeOnly); // 2
   let results = (outs MGP_TensorSpecType:$outSpec);
   let assemblyFormat = [{
-    $theContext `[` $aRuntimeSlot `]` `,` $tensor ( `,` $cIsShapeOnly^ )? attr-dict
+    $theContext `[` $aRuntimeSlot `]` `,` $tensor ( `shape_only` $cIsShapeOnly^ )? attr-dict
     `:` custom<TensorTypeToDeviceSpecOrShape>(
           ref($cIsShapeOnly), type($tensor), $bDevice, type($outSpec))
   }];
