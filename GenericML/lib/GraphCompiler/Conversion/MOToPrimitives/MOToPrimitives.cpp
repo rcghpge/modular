@@ -104,10 +104,12 @@ public:
   ErrorOr<ElementsAttr> lowerElementsAttr(ElementsAttr elementsAttr);
 
   /// Lower a parameter declaration op.
-  LogicalResult lowerParamDeclare(KGEN::ParamDeclareOp declOp);
+  LogicalResult lowerParamDeclare(Region *parentRegion,
+                                  KGEN::ParamDeclareOp declOp);
 
   /// Lower a parameter constant op.
-  LogicalResult lowerParamConstant(KGEN::ParamConstantOp paramConstOp);
+  LogicalResult lowerParamConstant(Region *parentRegion,
+                                   KGEN::ParamConstantOp paramConstOp);
 
   /// Lower an index -> scalar-like tensor cast op.
   LogicalResult lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp);
@@ -467,25 +469,28 @@ MOGraphLowering::lowerElementsAttr(ElementsAttr elementsAttr) {
       "missing case for implementation of HasAlignedBytesInterface");
 }
 
-LogicalResult MOGraphLowering::lowerParamDeclare(KGEN::ParamDeclareOp declOp) {
+LogicalResult MOGraphLowering::lowerParamDeclare(Region *parentRegion,
+                                                 KGEN::ParamDeclareOp declOp) {
   // We first lower the expression.
-  auto valueOr =
-      loweringState.lowerExpression(declOp->getLoc(), declOp.getValue());
+  auto valueOr = loweringState.lowerExpression(parentRegion, declOp->getLoc(),
+                                               declOp.getValue());
   if (valueOr.isError())
     return declOp->emitOpError(valueOr.getError());
 
   Value value = *valueOr;
   // Then map the parameter declaration to it.
-  if (auto err = loweringState.lowerParamDecl(declOp.getParamDecl(), value))
+  if (auto err = loweringState.lowerParamDecl(parentRegion,
+                                              declOp.getParamDecl(), value))
     return declOp->emitOpError(err.getError());
 
   return success();
 }
 
 LogicalResult
-MOGraphLowering::lowerParamConstant(KGEN::ParamConstantOp paramConstOp) {
-  auto valueOr = loweringState.lowerExpression(paramConstOp.getLoc(),
-                                               paramConstOp.getValue());
+MOGraphLowering::lowerParamConstant(Region *parentRegion,
+                                    KGEN::ParamConstantOp paramConstOp) {
+  auto valueOr = loweringState.lowerExpression(
+      parentRegion, paramConstOp.getLoc(), paramConstOp.getValue());
   if (valueOr.isError())
     return paramConstOp->emitOpError(valueOr.getError());
 
@@ -649,7 +654,8 @@ LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
 
       MGP::TensorSpecType specTy = dynDims.getSpec().getType();
       Value rtVal = dynDims->getResult(specTy.getDynamicDimIndex(idx));
-      if (auto err = loweringState.lowerParamDecl(decl, rtVal))
+      if (auto err = loweringState.lowerParamDecl(rebindOp->getParentRegion(),
+                                                  decl, rtVal))
         return rebindOp->emitOpError(err.getError());
     }
   }
@@ -1066,13 +1072,13 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
   for (Operation &op : *block) {
     if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
-      if (failed(lowerParamDeclare(declOp)))
+      if (failed(lowerParamDeclare(block->getParent(), declOp)))
         return failure();
       continue;
     }
 
     if (auto paramConstOp = dyn_cast<KGEN::ParamConstantOp>(op)) {
-      if (failed(lowerParamConstant(paramConstOp)))
+      if (failed(lowerParamConstant(block->getParent(), paramConstOp)))
         return failure();
       continue;
     }
@@ -1204,7 +1210,8 @@ LogicalResult MOGraphLowering::run() {
                                            .getExecuteBlock()
                                            ->getArguments()
                                            .drop_front(2))) {
-    auto hasParamsOr = loweringState.lowerArg(graphArg, exeArg);
+    auto hasParamsOr =
+        loweringState.lowerArg(&graph.getRegion(), graphArg, exeArg);
     if (hasParamsOr.isError())
       return graph->emitOpError(hasParamsOr.getError());
 

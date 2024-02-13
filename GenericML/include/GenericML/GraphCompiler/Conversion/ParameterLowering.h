@@ -23,13 +23,27 @@ public:
 
   /// Register what SSA value the parameter attribute is lowered to. Prefer to
   /// use the higher level lowering methods where placeholders are concerned.
-  void emplaceLowered(Attribute attr, Value value) {
-    loweredParams.try_emplace(attr, value);
+  void emplaceLowered(Region *parentRegion, Attribute attr, Value value) {
+    loweredParams[parentRegion].try_emplace(attr, value);
   }
 
   /// Returns the SSA value that the parameter attribute is lowered to, or a
   /// null value if it hasn't been lowered yet.
-  Value lookupLowered(Attribute attr) { return loweredParams.lookup(attr); }
+  Value lookupLowered(Region *parentRegion, Attribute attr) {
+    if (loweredParams[parentRegion].contains(attr))
+      return loweredParams[parentRegion].lookup(attr);
+    if (auto parent = parentRegion->getParentRegion(); parent)
+      return lookupLowered(parent, attr);
+    return {};
+  }
+
+  void eraseLowered(Region *parentRegion, Attribute attr) {
+    if (loweredParams[parentRegion].contains(attr))
+      return (void)loweredParams[parentRegion].erase(attr);
+    if (auto parent = parentRegion->getParentRegion(); parent)
+      return eraseLowered(parent, attr);
+    assert(false);
+  }
 
   /// Returns a lowered value for the parameter expression attribute. Parameter
   /// references not seen before are lowered to a placeholder, parameter
@@ -37,9 +51,10 @@ public:
   /// to the provided hook (using the given builder and location). The hook
   /// should not update the value mapping.
   template <typename LowerExprFunc>
-  ErrorOr<Value> lowerExpression(OpBuilder &b, Location loc, TypedAttr attr,
+  ErrorOr<Value> lowerExpression(OpBuilder &b, Location loc,
+                                 Region *parentRegion, TypedAttr attr,
                                  LowerExprFunc func) {
-    if (Value lowered = lookupLowered(attr))
+    if (Value lowered = lookupLowered(parentRegion, attr))
       return lowered;
 
     Value newValue;
@@ -54,23 +69,24 @@ public:
         newOpAttr = operands.front();
         operands = operands.drop_front();
       }
-      auto newOperandsOr = lowerOperands(b, loc, operands, func);
+      auto newOperandsOr = lowerOperands(b, loc, parentRegion, operands, func);
       if (newOperandsOr.isError())
         return newOperandsOr.takeError();
       auto newOperands = std::move(*newOperandsOr);
-      auto newValueOr = func(*this, b, loc, newOpAttr, newOperands);
+      auto newValueOr =
+          func(*this, b, loc, parentRegion, newOpAttr, newOperands);
       if (newValueOr.isError())
         return newValueOr.takeError();
       newValue = std::move(*newValueOr);
     } else {
-      auto newValueOr = func(*this, b, loc, attr, {});
+      auto newValueOr = func(*this, b, loc, parentRegion, attr, {});
       if (newValueOr.isError())
         return newValueOr.takeError();
       newValue = std::move(*newValueOr);
     }
 
     // We update the map and return the lowered value.
-    emplaceLowered(attr, newValue);
+    emplaceLowered(parentRegion, attr, newValue);
     return newValue;
   }
 
@@ -78,34 +94,35 @@ public:
   /// a placeholder is resolved, its SSA value is returned so that callers can
   /// replace their uses if necessary. Otherwise, a null Value signifies a
   /// successful lowering without placeholder resolution.
-  Value lowerParamDecl(KGEN::ParamDeclAttr declAttr, Value value) {
+  Value lowerParamDecl(Region *parentRegion, KGEN::ParamDeclAttr declAttr,
+                       Value value) {
     auto declRef = KGEN::ParamDeclRefAttr::get(declAttr);
-    if (Value lowered = lookupLowered(declRef)) {
+    if (Value lowered = lookupLowered(parentRegion, declRef)) {
       auto placeholder = lowered.getDefiningOp<PlaceholderOp>();
       // The parameter verification should ensure we don't have duplicate
       // declarations, so we just assert
       GENERICML_ASSERT(placeholder) << "duplicate declaration of parameter";
 
       // Otherwise, we update the mapping and return the placeholder.
-      loweredParams.erase(declRef);
-      emplaceLowered(declRef, value);
+      eraseLowered(parentRegion, declRef);
+      emplaceLowered(parentRegion, declRef, value);
       return placeholder;
     }
 
-    emplaceLowered(declRef, value);
+    emplaceLowered(parentRegion, declRef, value);
     return {};
   }
 
 private:
   /// Helper to lower an array of expression operands.
   template <typename LowerExprFunc>
-  ErrorOr<SmallVector<Value>> lowerOperands(OpBuilder &b, Location loc,
-                                            ArrayRef<TypedAttr> operands,
-                                            LowerExprFunc func) {
+  ErrorOr<SmallVector<Value>>
+  lowerOperands(OpBuilder &b, Location loc, Region *parentRegion,
+                ArrayRef<TypedAttr> operands, LowerExprFunc func) {
     SmallVector<Value> newOperands;
     for (TypedAttr operand : operands) {
       // Expressions can be nested, so we lower the operands recursively.
-      auto newOperandOr = lowerExpression(b, loc, operand, func);
+      auto newOperandOr = lowerExpression(b, loc, parentRegion, operand, func);
       if (newOperandOr.isError())
         return newOperandOr.takeError();
       newOperands.emplace_back(std::move(*newOperandOr));
@@ -117,7 +134,7 @@ private:
   ///  - Dimension parameter attributes are lowered to values of type `index`.
   ///  - Shape parameter attributes are lowered to values of type
   ///    `mgp.tensor_spec<...xunk>`.
-  DenseMap<Attribute, Value> loweredParams;
+  DenseMap<Region *, DenseMap<Attribute, Value>> loweredParams;
 };
 
 } // namespace M

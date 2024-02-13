@@ -289,23 +289,27 @@ public:
   /// (rank or dimensions), update the parameter map to capture the MGP values
   /// they are represented by, either indexes or !mgp.cpu.tensor_specs. Returns
   /// true if any parameters were mapped.
-  ErrorOr<bool> lowerArg(BlockArgument &inArg, BlockArgument &outArg);
+  ErrorOr<bool> lowerArg(Region *parentRegion, BlockArgument &inArg,
+                         BlockArgument &outArg);
 
   /// Returns a lowered value for the parameter expression attribute.
   /// Parameter references not seen before are lowered to a placeholder,
   /// parameter operators are lowered recursively, and all other attributes
   /// are delegated to the provided hook (using the execute state's builder
   /// and the provided location).
-  ErrorOr<Value> lowerExpression(Location loc, TypedAttr attr);
+  ErrorOr<Value> lowerExpression(Region *parentRegion, Location loc,
+                                 TypedAttr attr);
 
   /// Lower a parameter declaration, resolving the placeholder if necessary. A
   /// declaration can only be lowered once, and an error is returned
   /// otherwise.
-  ErrorOrSuccess lowerParamDecl(KGEN::ParamDeclAttr declAttr, Value value);
+  ErrorOrSuccess lowerParamDecl(Region *parentRegion,
+                                KGEN::ParamDeclAttr declAttr, Value value);
 
   /// Return the SSA values corresponding to the parametric dimensions in the
   /// given shape (in the order they appear in the shape).
-  ErrorOr<SmallVector<Value>> lowerShapeAttrDynDims(MOSH::ShapeAttr shapeAttr,
+  ErrorOr<SmallVector<Value>> lowerShapeAttrDynDims(Region *parentRegion,
+                                                    MOSH::ShapeAttr shapeAttr,
                                                     Location loc);
 
   /// Extract the static dimensions from a shape attribute and return their
@@ -370,6 +374,7 @@ private:
   /// Lower a parameter expression.
   static ErrorOr<Value> lowerExpressionImpl(ParameterLoweringState &state,
                                             OpBuilder &builder, Location loc,
+                                            Region *parentRegion,
                                             TypedAttr attr,
                                             ValueRange operands);
 

@@ -190,8 +190,9 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   SmallVector<Value> inDimensions;
   ArrayAttr usedParams = getUsedParamsAttr();
   for (auto param : usedParams.getAsRange<KGEN::ParamDeclRefAttr>()) {
-    auto symbolicDimOr =
-        loweringState.lowerExpression(opLoweringState.loc, param);
+    auto symbolicDimOr = loweringState.lowerExpression(
+        opLoweringState.opBeingLowered->getParentRegion(), opLoweringState.loc,
+        param);
     if (symbolicDimOr.isError())
       return failure();
     inDimensions.push_back(symbolicDimOr.takeValue());
@@ -213,7 +214,8 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // Each of the parameter outputs now maps onto a concrete dimension value.
   for (const auto &[param, value] :
        llvm::zip(getOutputParamDecls(), outDimensions)) {
-    if (failed(loweringState.lowerParamDecl(param, value)))
+    if (failed(loweringState.lowerParamDecl(
+            opLoweringState.opBeingLowered->getParentRegion(), param, value)))
       return failure();
   }
 

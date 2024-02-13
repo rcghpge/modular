@@ -48,7 +48,8 @@ MOGraphLoweringState::getDynamicDims(Location loc, Value loweredTensor,
       loc, /*spec=*/tensorSpec, /*rawDims=*/tensorSpec.getType().getRawDims());
 }
 
-ErrorOr<bool> MOGraphLoweringState::lowerArg(BlockArgument &inArg,
+ErrorOr<bool> MOGraphLoweringState::lowerArg(Region *parentRegion,
+                                             BlockArgument &inArg,
                                              BlockArgument &outArg) {
   bool hasParams = false;
   Location loc = inArg.getLoc();
@@ -69,8 +70,9 @@ ErrorOr<bool> MOGraphLoweringState::lowerArg(BlockArgument &inArg,
       // dtype. However, we only need to capture the mapping for the first
       // occurrence of the parameter.
       hasParams = true;
-      if (!params.lookupLowered(inShapeParam))
-        params.emplaceLowered(inShapeParam, getShape(loc, outArg, argDevice));
+      if (!params.lookupLowered(parentRegion, inShapeParam))
+        params.emplaceLowered(parentRegion, inShapeParam,
+                              getShape(loc, outArg, argDevice));
     } else {
       // Argument has at least one dynamic dimension. The parameters need to
       // be represented by the corresponding runtime dimensions. Since
@@ -98,17 +100,18 @@ ErrorOr<bool> MOGraphLoweringState::lowerArg(BlockArgument &inArg,
            llvm::zip(inDimParams, dynDimsOp->getResults()))
         // Only update the parameter mapping for the first parameter
         // occurrence.
-        if (!params.lookupLowered(inDimParam))
-          params.emplaceLowered(inDimParam, outDim);
+        if (!params.lookupLowered(parentRegion, inDimParam))
+          params.emplaceLowered(parentRegion, inDimParam, outDim);
     }
   }
   return hasParams;
 }
 
-ErrorOr<Value> MOGraphLoweringState::lowerExpression(Location loc,
+ErrorOr<Value> MOGraphLoweringState::lowerExpression(Region *parentRegion,
+                                                     Location loc,
                                                      TypedAttr attr) {
-  auto newValOr = params.lowerExpression(getExecuteOpBuilder(), loc, attr,
-                                         lowerExpressionImpl);
+  auto newValOr = params.lowerExpression(
+      getExecuteOpBuilder(), loc, parentRegion, attr, lowerExpressionImpl);
   if (newValOr.isError())
     return newValOr.takeError();
   auto newVal = std::move(*newValOr);
@@ -121,10 +124,9 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpression(Location loc,
   return newVal;
 }
 
-ErrorOrSuccess
-MOGraphLoweringState::lowerParamDecl(KGEN::ParamDeclAttr declAttr,
-                                     Value value) {
-  Value maybePlaceholder = params.lowerParamDecl(declAttr, value);
+ErrorOrSuccess MOGraphLoweringState::lowerParamDecl(
+    Region *parentRegion, KGEN::ParamDeclAttr declAttr, Value value) {
+  Value maybePlaceholder = params.lowerParamDecl(parentRegion, declAttr, value);
 
   if (maybePlaceholder) {
     // If we just resolved a placeholder, we need to make sure no one will
@@ -144,13 +146,12 @@ MOGraphLoweringState::lowerParamDecl(KGEN::ParamDeclAttr declAttr,
   return success();
 }
 
-ErrorOr<SmallVector<Value>>
-MOGraphLoweringState::lowerShapeAttrDynDims(MOSH::ShapeAttr shapeAttr,
-                                            Location loc) {
+ErrorOr<SmallVector<Value>> MOGraphLoweringState::lowerShapeAttrDynDims(
+    Region *parentRegion, MOSH::ShapeAttr shapeAttr, Location loc) {
   SmallVector<Value> runtimeDims;
   for (TypedAttr dim : shapeAttr.getValues()) {
     if (!isa<IntegerAttr>(dim)) {
-      auto vOr = lowerExpression(loc, dim);
+      auto vOr = lowerExpression(parentRegion, loc, dim);
       if (vOr.isError())
         return vOr.takeError();
       runtimeDims.emplace_back(std::move(*vOr));
@@ -244,10 +245,9 @@ Operation *MOGraphLoweringState::lowerIntAttr(OpBuilder &builder, Location loc,
                                               newIntAttr);
 }
 
-ErrorOr<Value>
-MOGraphLoweringState::lowerExpressionImpl(ParameterLoweringState &state,
-                                          OpBuilder &builder, Location loc,
-                                          TypedAttr attr, ValueRange operands) {
+ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
+    ParameterLoweringState &state, OpBuilder &builder, Location loc,
+    Region *parentRegion, TypedAttr attr, ValueRange operands) {
   Operation *newOp;
   if (auto intAttr = dyn_cast<IntegerAttr>(attr)) {
     newOp = lowerIntAttr(builder, loc, intAttr);
@@ -267,8 +267,8 @@ MOGraphLoweringState::lowerExpressionImpl(ParameterLoweringState &state,
     // Lower dimensions recursively.
     SmallVector<Value> dimVals;
     for (TypedAttr dim : shapeAttr.getValues()) {
-      auto dimValOr =
-          state.lowerExpression(builder, loc, dim, lowerExpressionImpl);
+      auto dimValOr = state.lowerExpression(builder, loc, parentRegion, dim,
+                                            lowerExpressionImpl);
       if (dimValOr.isError())
         return dimValOr.takeError();
       dimVals.emplace_back(std::move(*dimValOr));
@@ -376,7 +376,7 @@ MOOpLoweringState::createTensorSpec(MO::TensorType moTensorType) {
 
   // Dynamically shaped.
   auto runtimeDimsOr = loweringState.lowerShapeAttrDynDims(
-      moTensorType.getTypedShapeAttr(), loc);
+      opBeingLowered->getParentRegion(), moTensorType.getTypedShapeAttr(), loc);
   if (runtimeDimsOr) {
     opBeingLowered->emitOpError(runtimeDimsOr.getError());
     return failure();
@@ -420,7 +420,8 @@ FailureOr<BufferizedTensor> MOOpLoweringState::createBuffer(
     // Extract runtime dims.
     MOSH::ShapeAttr shapeAttr =
         cast<MO::TensorType>(moTensorType).getTypedShapeAttr();
-    auto runtimeDimsOr = loweringState.lowerShapeAttrDynDims(shapeAttr, loc);
+    auto runtimeDimsOr = loweringState.lowerShapeAttrDynDims(
+        opBeingLowered->getParentRegion(), shapeAttr, loc);
     if (runtimeDimsOr) {
       opBeingLowered->emitOpError(runtimeDimsOr.getError());
       return failure();
