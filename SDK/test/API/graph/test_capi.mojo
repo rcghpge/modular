@@ -7,7 +7,7 @@
 # RUN: mojo %s | FileCheck %s
 
 import mlir
-from max.graph import capi
+from max.graph import _capi as capi
 
 
 fn test_empty_graph() raises:

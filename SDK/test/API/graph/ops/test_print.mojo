@@ -7,7 +7,7 @@
 
 from tensor import Tensor, TensorShape
 
-from max.graph import testing, Dim, Module, MOTensor, TypeTuple
+from max.graph import _testing as testing, Dim, Module, MOTensor, TypeTuple
 
 
 fn test_print() raises:

@@ -7,10 +7,8 @@
 set(GRAPH_SRCS
   graph/attr
   graph/graph
-  graph/capi
   graph/module
   graph/symbol
-  graph/testing
   graph/type
 
   graph/ops/casting
@@ -18,7 +16,10 @@ set(GRAPH_SRCS
   graph/ops/elementwise
   graph/ops/linalg
   graph/ops/reduction
-  graph/ops/slicing)
+  graph/ops/slicing
+
+  graph/_capi
+  graph/_testing)
 
 set(ENGINE_SRCS
   engine/engine

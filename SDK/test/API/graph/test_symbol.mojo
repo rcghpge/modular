@@ -8,7 +8,7 @@
 
 from tensor import Tensor, TensorShape
 
-from max.graph import testing, Module, MOTensor, Symbol, TypeTuple
+from max.graph import _testing as testing, Module, MOTensor, Symbol, TypeTuple
 
 
 fn test_replace_all_uses_with() raises:
