@@ -30,7 +30,8 @@ static bool containsMatmulOrConvolution(MOGG::KernelOp kernel) {
     auto target = call.getMojoKernelTarget();
     if (target == MO::MatmulOp::getOperationName() ||
         target == MO::BatchMatmulOp::getOperationName() ||
-        target == MO::ConvOp::getOperationName())
+        target == MO::ConvOp::getOperationName() ||
+        target == MO::ConvTransposeOp::getOperationName())
       return true;
   }
   return false;
