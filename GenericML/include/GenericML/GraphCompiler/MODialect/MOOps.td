@@ -3366,6 +3366,8 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal",
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
