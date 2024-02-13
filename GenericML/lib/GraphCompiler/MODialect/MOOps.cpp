@@ -2573,6 +2573,22 @@ LogicalResult SqueezeShapeOp::canonicalize(SqueezeShapeOp op,
 }
 
 //===----------------------------------------------------------------------===//
+// Static::RandomNormalOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult Static::RandomNormalOp::verify() {
+  auto meanTy = getMean().getType();
+  auto varTy = getVariance().getType();
+  if (meanTy.getElementType() != varTy.getElementType())
+    return emitOpError("Expect mean and variance DTypes to be the same");
+
+  if (getResult().getType().hasUnknownShape())
+    return emitOpError("Output shape cannot be unknown");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // Static::ReshapeOp
 //===----------------------------------------------------------------------===//
 
