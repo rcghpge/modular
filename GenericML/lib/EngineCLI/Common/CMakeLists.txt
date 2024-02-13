@@ -9,9 +9,13 @@ add_genericml_library(EngineCLICommon
   InputGenerationSchema.cpp
   TorchSupport.cpp
 
-  LINK_LIBS PUBLIC
+  LINK_LIBS
+  PUBLIC
   MSupport
   modular-framework-common
+
+  PRIVATE
+  MSupportML
 )
 
 # Can't go into LINK_LIBS above because of a layering violation.

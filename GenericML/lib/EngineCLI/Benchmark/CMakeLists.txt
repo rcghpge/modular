@@ -22,12 +22,16 @@ add_genericml_library(EngineCLIBenchmark
   DEPENDS
   EngineCLIDriverOptions
 
-  LINK_LIBS PUBLIC
+  LINK_LIBS
+  PUBLIC
   EngineCLICommon
   MSupport
   MSupportDriver
   mlperf-loadgen
   modular-framework-common
+
+  PRIVATE
+  MSupportML
 )
 
 target_include_directories(EngineCLIBenchmark PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
