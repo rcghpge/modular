@@ -29,15 +29,20 @@ namespace {
 struct RewriteParamExprTypes : public RewritePattern {
   RewriteParamExprTypes(
       MLIRContext *context,
-      llvm::DenseMap<KGEN::ParamOperatorAttr, std::string> &&exprToParam)
+      llvm::DenseMap<Region *,
+                     llvm::DenseMap<KGEN::ParamOperatorAttr, std::string>>
+          &&regionToExprToParam)
       : RewritePattern(mlir::Pattern::MatchInterfaceOpTypeTag(),
                        MO::MOTensorOpInterface::getInterfaceID(), 1, context),
-        exprToParam(exprToParam) {}
-  mutable llvm::DenseMap<KGEN::ParamOperatorAttr, std::string> exprToParam;
+        regionToExprToParam(regionToExprToParam) {}
+  mutable llvm::DenseMap<Region *,
+                         llvm::DenseMap<KGEN::ParamOperatorAttr, std::string>>
+      regionToExprToParam;
 
   /// Check if `ty` contains parameter expression inside its tensor shape, and
-  /// if it contains expression not tracked by `exprToParam`, declare a new
-  /// parameter for that expression, and add the mapping to `exprToParam`.
+  /// if it contains expression not tracked by `regionToExprToParam`, declare a
+  /// new parameter for that expression, and add the mapping to
+  /// `regionToExprToParam`.
   ///
   /// Return true if `ty` contains _any_ parameter expression.
   bool collectComplexParams(DeviceAwareRewriter &rewriter, Operation *op,
@@ -57,11 +62,15 @@ struct RewriteParamExprTypes : public RewritePattern {
         continue;
       found = true;
       // Check if the parameter has already been rewritten.
-      if (!exprToParam.contains(paramOp)) {
+      Region *parentRegion = op->getParentRegion();
+      if (!regionToExprToParam.contains(parentRegion)) {
+        regionToExprToParam[parentRegion] =
+            llvm::DenseMap<KGEN::ParamOperatorAttr, std::string>();
+      }
+      if (!regionToExprToParam[parentRegion].contains(paramOp)) {
         // If not, add substitution with a new unique name.
         std::string expr_name = graphOp.getNewParamName("param_expr_");
-        exprToParam[paramOp] = expr_name;
-
+        regionToExprToParam[parentRegion][paramOp] = expr_name;
         // Declare the new parameters with values of complex expression.
         rewriter.create<KGEN::ParamDeclareOp>(
             op->getLoc(),
@@ -99,10 +108,15 @@ struct RewriteParamExprTypes : public RewritePattern {
       return rewriter.notifyMatchFailure(op, "no complex expressions");
 
     mlir::AttrTypeReplacer replacer;
-    replacer.addReplacement([&](KGEN::ParamOperatorAttr op) -> Attribute {
-      if (auto it = exprToParam.find(op); it != exprToParam.end())
-        return KGEN::ParamDeclRefAttr::get(it->second, rewriter.getIndexType());
-      return op;
+    replacer.addReplacement([&](KGEN::ParamOperatorAttr paramOp) -> Attribute {
+      Region *parentRegion = op->getParentRegion();
+      if (regionToExprToParam.contains(parentRegion)) {
+        if (auto it = regionToExprToParam[parentRegion].find(paramOp);
+            it != regionToExprToParam[parentRegion].end())
+          return KGEN::ParamDeclRefAttr::get(it->second,
+                                             rewriter.getIndexType());
+      }
+      return paramOp;
     });
 
     // Store result types so we can rebind back to them at the end.
@@ -152,16 +166,25 @@ struct HoistParameterExpressionsPass
   ///     kgen.param.declare name = <expr>
   /// where `expr` is a parameter expression, and return mapping from all such
   /// `name` to `expr`.
-  static llvm::DenseMap<KGEN::ParamOperatorAttr, std::string>
+  static llvm::DenseMap<Region *,
+                        llvm::DenseMap<KGEN::ParamOperatorAttr, std::string>>
   collectExistingExprToParamMap(GraphOp graphOp) {
-    llvm::DenseMap<KGEN::ParamOperatorAttr, std::string> exprToParam;
+    llvm::DenseMap<Region *,
+                   llvm::DenseMap<KGEN::ParamOperatorAttr, std::string>>
+        regionToExprToParam;
     graphOp.walk([&](KGEN::ParamDeclareOp paramDeclOp) {
+      Region *parentRegion = paramDeclOp->getParentRegion();
+      if (!regionToExprToParam.contains(parentRegion)) {
+        regionToExprToParam[parentRegion] =
+            llvm::DenseMap<KGEN::ParamOperatorAttr, std::string>();
+      }
       if (auto paramExpr =
               dyn_cast<KGEN::ParamOperatorAttr>(paramDeclOp.getValue())) {
-        exprToParam.insert({paramExpr, paramDeclOp.getName().str()});
+        regionToExprToParam[parentRegion].insert(
+            {paramExpr, paramDeclOp.getName().str()});
       }
     });
-    return exprToParam;
+    return regionToExprToParam;
   }
 
   void runOnOperation() override {
