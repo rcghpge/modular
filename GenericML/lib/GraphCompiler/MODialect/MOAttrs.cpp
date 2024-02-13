@@ -68,7 +68,7 @@ LayoutAttr::verify(llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
                    mlir::StringAttr format) {
   // TODO(#18622) make this more extensible
   static StringSet<> kSupportedLayoutStrs = {
-      // conv inputs
+      // conv and convTranspose inputs
       // 2d
       "NHWC",
       "NCHW",
@@ -82,7 +82,12 @@ LayoutAttr::verify(llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
       // 3d
       "QRSCF",
 
-      // packed conv filter
+      // convTranspose filter
+      // 2d
+      "RSFC",
+      "QRSFC",
+
+      // packed conv and convTranspose filter
       // 2d
       "FRSCf",
       // 3d

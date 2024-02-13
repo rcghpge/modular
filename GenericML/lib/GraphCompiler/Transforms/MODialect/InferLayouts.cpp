@@ -48,7 +48,7 @@ struct InferLayoutPass : public impl::InferLayoutsBase<InferLayoutPass> {
     return success();
   };
 
-  llvm::StringRef getFilterLayout(size_t rank) {
+  llvm::StringRef getConvFilterLayout(size_t rank) {
     switch (rank) {
     case 4:
       return "RSCF";
@@ -59,7 +59,7 @@ struct InferLayoutPass : public impl::InferLayoutsBase<InferLayoutPass> {
     }
   }
 
-  llvm::StringRef getInputLayout(size_t rank) {
+  llvm::StringRef getConvInputLayout(size_t rank) {
     switch (rank) {
     case 4:
       return "NHWC";
@@ -67,6 +67,17 @@ struct InferLayoutPass : public impl::InferLayoutsBase<InferLayoutPass> {
       return "NDHWC";
     default:
       llvm_unreachable("Only able to handle convs up to conv1-3d");
+    }
+  }
+
+  llvm::StringRef getConvTransposeFilterLayout(size_t rank) {
+    switch (rank) {
+    case 4:
+      return "RSFC";
+    case 5:
+      return "QRSFC";
+    default:
+      llvm_unreachable("Only able to handle convTranspose 2-3d");
     }
   }
 
@@ -88,34 +99,59 @@ struct InferLayoutPass : public impl::InferLayoutsBase<InferLayoutPass> {
 
     // Infer layouts by walking over constraining operations and updating the
     // `valueToInferredLayout` map.
-    WalkResult walkResult = graphOp.walk([&](Operation *op) {
-      if (auto convOp = dyn_cast<ConvOp>(op)) {
-        TensorValue input = convOp.getInput();
-        TensorValue filter = convOp.getFilter();
-        auto inputRank = input.getType().getRank();
-        auto filterRank = filter.getType().getRank();
+    WalkResult walkResult =
+        graphOp.walk([&](Operation *op) {
+          if (auto convOp = dyn_cast<ConvOp>(op)) {
+            TensorValue input = convOp.getInput();
+            TensorValue filter = convOp.getFilter();
+            auto inputRank = input.getType().getRank();
+            auto filterRank = filter.getType().getRank();
 
-        if (isSupportedConv(inputRank, filterRank)) {
-          auto convInputLayout =
-              LayoutAttr::get(ctx, getInputLayout(input.getType().getRank()));
-          auto convFilterLayout =
-              LayoutAttr::get(ctx, getFilterLayout(filter.getType().getRank()));
+            if (isSupportedConv(inputRank, filterRank)) {
+              auto convInputLayout = LayoutAttr::get(
+                  ctx, getConvInputLayout(input.getType().getRank()));
+              auto convFilterLayout = LayoutAttr::get(
+                  ctx, getConvFilterLayout(filter.getType().getRank()));
 
-          if (failed(addLayoutConstraint(op, input, convInputLayout)) ||
-              failed(addLayoutConstraint(op, filter, convFilterLayout)))
-            return WalkResult::interrupt();
-        } else {
-          op->emitError() << "Only support 2D and 3D layout for ConvOp.\n";
-          return WalkResult::interrupt();
-        }
-      } else if (auto matmulOp = dyn_cast<MatmulOp>(op)) {
-        TensorValue weights = matmulOp.getTensorB();
-        if (failed(addLayoutConstraint(op, weights, matmulWeightsLayout)))
-          return WalkResult::interrupt();
-      }
+              if (failed(addLayoutConstraint(op, input, convInputLayout)) ||
+                  failed(addLayoutConstraint(op, filter, convFilterLayout)))
+                return WalkResult::interrupt();
+            } else {
+              op->emitError() << "Only support 2D and 3D layout for ConvOp.\n";
+              return WalkResult::interrupt();
+            }
+          } else if (auto convTransposeOp = dyn_cast<ConvTransposeOp>(op)) {
+            TensorValue input = convTransposeOp.getInput();
+            TensorValue filter = convTransposeOp.getFilter();
+            auto inputRank = input.getType().getRank();
+            auto filterRank = filter.getType().getRank();
 
-      return WalkResult::advance();
-    });
+            if (isSupportedConv(inputRank, filterRank)) {
+              // ConvTranspose input uses the same layouts as conv.
+              auto convTransposeInputLayout = LayoutAttr::get(
+                  ctx, getConvInputLayout(input.getType().getRank()));
+              auto convTransposeFilterLayout = LayoutAttr::get(
+                  ctx,
+                  getConvTransposeFilterLayout(filter.getType().getRank()));
+
+              if (failed(addLayoutConstraint(op, input,
+                                             convTransposeInputLayout)) ||
+                  failed(addLayoutConstraint(op, filter,
+                                             convTransposeFilterLayout)))
+                return WalkResult::interrupt();
+            } else {
+              op->emitError()
+                  << "Only support 2D and 3D layout for ConvTransposeOp.\n";
+              return WalkResult::interrupt();
+            }
+          } else if (auto matmulOp = dyn_cast<MatmulOp>(op)) {
+            TensorValue weights = matmulOp.getTensorB();
+            if (failed(addLayoutConstraint(op, weights, matmulWeightsLayout)))
+              return WalkResult::interrupt();
+          }
+
+          return WalkResult::advance();
+        });
     return failure(walkResult.wasInterrupted());
   }
 
