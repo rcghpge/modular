@@ -1,4 +1,4 @@
-// RUN: mgp-opt --allow-unregistered-dialect --canonicalize %s | mgp-opt --allow-unregistered-dialect | FileCheck %s
+// RUN: mgp-opt --allow-unregistered-dialect --canonicalize --cse %s | mgp-opt --allow-unregistered-dialect | FileCheck %s
 
 //
 // mgp.runtime.create
@@ -263,6 +263,24 @@ func.func @buffer_resize(%in_buf : !mgp.buffer<, <"cuda", 3>>) {
 }
 
 //
+// mgp.buffer.concat
+//
+
+// CHECK-LABEL: @buffer_concat_static
+func.func @buffer_concat_static(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>, %out_buf : !mgp.buffer<192, <"cuda", 3>>, %buf0 : !mgp.buffer<64, <"cuda", 3>>, %buf1 : !mgp.buffer<128, <"cuda", 3>>) {
+  // CHECK: %{{.*}} = mgp.buffer.concat %{{.*}}, %{{.*}}[1], %{{.*}}, %{{.*}}, %{{.*}} : (!mgp.buffer<64, <"cuda", 3>>, !mgp.buffer<128, <"cuda", 3>>) -> !mgp.buffer<192, <"cuda", 3>>
+  %ch1 = mgp.buffer.concat %ch0, %ctx[1], %out_buf, %buf0, %buf1 : (!mgp.buffer<64, <"cuda", 3>>, !mgp.buffer<128, <"cuda", 3>>) -> !mgp.buffer<192, <"cuda", 3>>
+  mef.output %ch1 : !mgp.chain<<"cuda", 3>>
+}
+
+// CHECK-LABEL: @buffer_concat_dynamic
+func.func @buffer_concat_dynamic(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>, %out_buf : !mgp.buffer<, <"cuda", 3>>, %buf0 : !mgp.buffer<64, <"cuda", 3>>, %buf1 : !mgp.buffer<, <"cuda", 3>>) {
+  // CHECK: %{{.*}} = mgp.buffer.concat %{{.*}}, %{{.*}}[1], %{{.*}}, %{{.*}}, %{{.*}} : (!mgp.buffer<64, <"cuda", 3>>, !mgp.buffer<, <"cuda", 3>>) -> !mgp.buffer<, <"cuda", 3>>
+  %ch1 = mgp.buffer.concat %ch0, %ctx[1], %out_buf, %buf0, %buf1 : (!mgp.buffer<64, <"cuda", 3>>, !mgp.buffer<, <"cuda", 3>>) -> !mgp.buffer<, <"cuda", 3>>
+  mef.output %ch1 : !mgp.chain<<"cuda", 3>>
+}
+
+//
 // mgp.buffer.split.borrow
 //
 
@@ -311,6 +329,24 @@ func.func @buffer_to_bool(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>, %
   // CHECK: %{{.*}} = mgp.buffer.to_bool %{{.*}}, %{{.*}}[1], %{{.*}} : !mgp.buffer<1, <"cuda", 3>>
   %b = mgp.buffer.to_bool %ch0, %ctx[1], %buf : !mgp.buffer<1, <"cuda", 3>>
   mef.output %b : i1
+}
+
+//
+// mgp.buffer.set_with_index
+//
+
+// CHECK-LABEL: @buffer_set_with_index
+func.func @buffer_set_with_index(%ctx : !mgp.context, %buf: !mgp.buffer<4, <"cuda", 3>>, %idx: index) {
+  // CHECK: %{{.*}} = mgp.buffer.set_with_index %{{.*}}[1], %{{.*}}, %{{.*}} : !mgp.buffer<4, <"cuda", 3>>
+  %ch = mgp.buffer.set_with_index %ctx[1], %buf, %idx : !mgp.buffer<4, <"cuda", 3>>
+  mef.output %ch : !mgp.chain<<"cuda", 3>>
+}
+
+// CHECK-LABEL: @buffer_set_with_index_variadic
+func.func @buffer_set_with_index_variadic(%ctx :  !mgp.context, %buf: !mgp.buffer<16, <"cuda", 3>>, %idx0: index, %idx1: index) {
+  // CHECK: %{{.*}} = mgp.buffer.set_with_index %{{.*}}[1], %{{.*}}, %{{.*}}, %{{.*}} : !mgp.buffer<16, <"cuda", 3>>
+  %ch = mgp.buffer.set_with_index %ctx[1], %buf, %idx0, %idx1 : !mgp.buffer<16, <"cuda", 3>>
+  mef.output %ch : !mgp.chain<<"cuda", 3>>
 }
 
 //

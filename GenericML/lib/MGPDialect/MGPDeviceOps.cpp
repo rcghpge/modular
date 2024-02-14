@@ -276,12 +276,10 @@ ChainDeviceToHostOp::canonicalize(ChainDeviceToHostOp deviceToHostOp,
   // devices must match
   if (hostToDeviceOp.getBDevice() != deviceToHostOp.getBDevice())
     return failure();
-  // Can only replace from if this is the only user.
-  auto users = hostToDeviceOp->getUsers();
-  if (std::distance(users.begin(), users.end()) != 1)
-    return failure();
+  bool hostToDeviceUnique = hostToDeviceOp->hasOneUse();
   rewriter.replaceOp(deviceToHostOp, hostToDeviceOp.getInChain());
-  rewriter.eraseOp(hostToDeviceOp);
+  if (hostToDeviceUnique)
+    rewriter.eraseOp(hostToDeviceOp);
   return success();
 }
 
@@ -320,12 +318,10 @@ ChainHostToDeviceOp::canonicalize(ChainHostToDeviceOp hostToDeviceOp,
   // devices must match
   if (deviceToHostOp.getBDevice() != hostToDeviceOp.getBDevice())
     return failure();
-  // Can only replace from if this is the only user.
-  auto users = deviceToHostOp->getUsers();
-  if (std::distance(users.begin(), users.end()) != 1)
-    return failure();
+  bool deviceToHostUnique = deviceToHostOp->hasOneUse();
   rewriter.replaceOp(hostToDeviceOp, deviceToHostOp.getInChain());
-  rewriter.eraseOp(deviceToHostOp);
+  if (deviceToHostUnique)
+    rewriter.eraseOp(deviceToHostOp);
   return success();
 }
 
@@ -814,6 +810,10 @@ LogicalResult BufferUnsizeOp::inferReturnTypes(
   return success();
 }
 
+bool BufferUnsizeOp::mayAlias(size_t operandIndex, size_t resultIndex) {
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 // BufferResizeOp
 //===----------------------------------------------------------------------===//
@@ -851,6 +851,65 @@ LogicalResult BufferResizeOp::inferReturnTypes(
     return failure();
   inferredReturnTypes.emplace_back(DeviceBufferType::get(device, optSize));
   return success();
+}
+
+bool BufferResizeOp::mayAlias(size_t operandIndex, size_t resultIndex) {
+  return true;
+}
+
+//===----------------------------------------------------------------------===//
+// BufferConcatOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BufferConcatOp::verify() {
+  if (failed(verifyConsistentDevices(getOperation(), {getBDevice()})))
+    return failure();
+
+  // If possible, verify sum of input buffer sizes equals the output
+  // buffer size.
+  if (!getOutBuffer().getType().getOptSize())
+    // Output does not have a statically known size.
+    return success();
+
+  uint64_t inTotalSize = 0;
+  for (const auto &inBuffer : getInBuffers()) {
+    auto inBufferType = dyn_cast<DeviceBufferType>(inBuffer.getType());
+    std::optional<uint64_t> optSize = inBufferType.getOptSize();
+    if (!optSize)
+      // Not all input buffers have a statically known size.
+      return success();
+    inTotalSize += *optSize;
+  }
+  DeviceBufferType expectedBufferType =
+      DeviceBufferType::get(getBDevice(), std::optional<uint64_t>(inTotalSize));
+  if (getOutBuffer().getType() != expectedBufferType) {
+    return emitOpError("expected output buffer type does not match actual "
+                       "output buffer type (")
+           << expectedBufferType << " vs " << getOutBuffer().getType() << ").";
+  }
+  return success();
+}
+
+LogicalResult BufferConcatOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getBDeviceAttrName(name),
+                                    device)))
+    return failure();
+  inferredReturnTypes.emplace_back(DeviceChainType::get(device));
+  return success();
+}
+
+InOutSignatureAttr::InOutSemantics
+BufferConcatOp::getInOutSemantics(size_t index) {
+  GENERICML_ASSERT(index < getNumOperands());
+  return index == getOutBufferMutable().getOperandNumber()
+             ? InOutSignatureAttr::kOut
+             : InOutSignatureAttr::kIn;
 }
 
 //===----------------------------------------------------------------------===//
@@ -935,6 +994,11 @@ LogicalResult BufferSplitBorrowOp::inferReturnTypes(
   return success();
 }
 
+bool BufferSplitBorrowOp::extendsLifetime(size_t operandIndex,
+                                          size_t resultIndex) {
+  return operandIndex == getInBufferMutable().getOperandNumber();
+}
+
 //===----------------------------------------------------------------------===//
 // BufferSectionBorrowStaticOp
 //===----------------------------------------------------------------------===//
@@ -988,6 +1052,11 @@ LogicalResult BufferSectionBorrowStaticOp::inferReturnTypes(
   return success();
 }
 
+bool BufferSectionBorrowStaticOp::extendsLifetime(size_t operandIndex,
+                                                  size_t resultIndex) {
+  return operandIndex == getInBufferMutable().getOperandNumber();
+}
+
 //===----------------------------------------------------------------------===//
 // BufferSectionBorrowDynamicOp
 //===----------------------------------------------------------------------===//
@@ -1019,6 +1088,11 @@ LogicalResult BufferSectionBorrowDynamicOp::inferReturnTypes(
   return success();
 }
 
+bool BufferSectionBorrowDynamicOp::extendsLifetime(size_t operandIndex,
+                                                   size_t resultIndex) {
+  return operandIndex == getInBufferMutable().getOperandNumber();
+}
+
 //===----------------------------------------------------------------------===//
 // BufferToBoolOp
 //===----------------------------------------------------------------------===//
@@ -1032,6 +1106,36 @@ LogicalResult BufferToBoolOp::verify() {
            << expectedBufferType << " vs " << getBuffer().getType() << ").";
   }
   return verifyConsistentDevices(getOperation(), {getBDevice()});
+}
+
+//===----------------------------------------------------------------------===//
+// BufferSetWithIndexOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BufferSetWithIndexOp::verify() {
+  return verifyConsistentDevices(getOperation(), {getBDevice()});
+}
+
+LogicalResult BufferSetWithIndexOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getBDeviceAttrName(name),
+                                    device)))
+    return failure();
+  inferredReturnTypes.emplace_back(DeviceChainType::get(device));
+  return success();
+}
+
+InOutSignatureAttr::InOutSemantics
+BufferSetWithIndexOp::getInOutSemantics(size_t index) {
+  GENERICML_ASSERT(index < getNumOperands());
+  return index == getBufferMutable().getOperandNumber()
+             ? InOutSignatureAttr::kOut
+             : InOutSignatureAttr::kIn;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1081,6 +1185,10 @@ LogicalResult TensorCreateOp::inferReturnTypes(
   return success();
 }
 
+bool TensorCreateOp::mayAlias(size_t operandIndex, size_t resultIndex) {
+  return operandIndex == getBufferMutable().getOperandNumber();
+}
+
 //===----------------------------------------------------------------------===//
 // TensorExtractBufferOp
 //===----------------------------------------------------------------------===//
@@ -1117,6 +1225,10 @@ LogicalResult TensorExtractBufferOp::inferReturnTypes(
     return failure();
   inferredReturnTypes.emplace_back(DeviceBufferType::get(tensorType));
   return success();
+}
+
+bool TensorExtractBufferOp::mayAlias(size_t operandIndex, size_t resultIndex) {
+  return operandIndex == getTensorMutable().getOperandNumber();
 }
 
 //===----------------------------------------------------------------------===//

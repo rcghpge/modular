@@ -456,6 +456,42 @@ static void mgp_buffer_resize_cpu(AsyncValueRef<GML::BufferRef> inBuffer,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.buffer.concat.cpu
+//===----------------------------------------------------------------------===//
+
+static void mgp_buffer_concat_cpu(Chain inChain, GML::Context &theContext,
+                                  AsyncValueRef<GML::BufferRef> outBuffer,
+                                  RemainingArguments inBuffers,
+                                  Result<Chain> outChain,
+                                  MEFAttr<uint64_t> aRuntimeSlot,
+                                  MEFAttr<uint64_t> bDeviceId) {
+  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
+      static_cast<size_t>(*aRuntimeSlot));
+  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*bDeviceId))
+    return std::move(outChain).setToError("mismatched device id");
+
+  uint8_t *const out = outBuffer->getMutableBuffer<uint8_t>();
+  const size_t outSize = outBuffer->getSize();
+  size_t totalSize = 0; // total size of all input buffers processed so far
+  for (const auto &inBuffer : inBuffers) {
+    const GML::BufferRef &ref = inBuffer.get<GML::BufferRef>();
+    const size_t thisSize = ref.getSize();
+    if (totalSize + thisSize <= outSize) {
+      // Just don't copy if it turns out the input sizes overflow the output.
+      // We'll report failure below.
+      memcpy(out + totalSize, ref.getBuffer(), thisSize);
+    }
+    totalSize += thisSize;
+  }
+  if (totalSize != outBuffer->getSize()) {
+    return std::move(outChain).setToError(
+        Twine("output buffer size must be sum of input buffer sizes (") +
+        Twine(outBuffer->getSize()) + " vs " + Twine(totalSize));
+  }
+  std::move(outChain).emplace();
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.buffer.split.borrow.cpu
 //===----------------------------------------------------------------------===//
 
@@ -592,7 +628,53 @@ static void mgp_buffer_to_bool_cpu(Chain inChain, Context &theContext,
     return std::move(result).setToError(
         Twine("expecting buffer to have size 1 (actually is ") +
         Twine(buffer.getSize()) + ")");
-  std::move(result).emplace(buffer.getBuffer<uint8_t>() != 0);
+  std::move(result).emplace(*buffer.getBuffer<uint8_t>() != 0);
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.buffer.set_with_index.cpu
+//===----------------------------------------------------------------------===//
+
+/// Helper to fill the buffer with the given index values.
+template <typename T>
+static void fillBuffer(GML::BufferRef &buffer, RemainingArguments idxValues) {
+  T *target = buffer.getMutableBuffer<T>();
+  for (const auto &asyncIdx : idxValues)
+    *(target++) = static_cast<T>(asyncIdx.get<size_t>());
+}
+
+static void mgp_buffer_set_with_index_cpu(Context &theContext,
+                                          GML::BufferRef &buffer,
+                                          RemainingArguments values,
+                                          Result<Chain> outChain,
+                                          MEFAttr<uint64_t> aRuntimeSlot,
+                                          MEFAttr<uint64_t> bDeviceId) {
+  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
+      static_cast<size_t>(*aRuntimeSlot));
+  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*bDeviceId))
+    return std::move(outChain).setToError("mismatched device id");
+
+  size_t bufSize = buffer.getSize();
+  size_t numArgs = values.size();
+  if (bufSize % numArgs != 0) {
+    return std::move(outChain).setToError(
+        Twine("buffer size (") + Twine(bufSize) +
+        ") not divisible by number of index arguments (" + Twine(numArgs) +
+        ")");
+  }
+  size_t elSize = bufSize / numArgs;
+  switch (elSize) {
+  case 4:
+    fillBuffer<int32_t>(buffer, values);
+    break;
+  case 8:
+    fillBuffer<int64_t>(buffer, values);
+    break;
+  default:
+    return std::move(outChain).setToError(
+        Twine("unsupported element size for index buffer: ") + Twine(elSize));
+  }
+  std::move(outChain).emplace();
 }
 
 //===----------------------------------------------------------------------===//
@@ -939,6 +1021,7 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.buffer.device_to_device.cpu",
                 mgp_buffer_device_to_device_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.resize.cpu", mgp_buffer_resize_cpu);
+  ADD_PRIMITIVE(registry, "mgp.buffer.concat.cpu", mgp_buffer_concat_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.split.borrow.cpu",
                 mgp_buffer_split_borrow_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.section.borrow.static.cpu",
@@ -946,6 +1029,8 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.buffer.section.borrow.dynamic.cpu",
                 mgp_buffer_section_borrow_dynamic_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.to_bool.cpu", mgp_buffer_to_bool_cpu);
+  ADD_PRIMITIVE(registry, "mgp.buffer.set_with_index.cpu",
+                mgp_buffer_set_with_index_cpu);
   ADD_PRIMITIVE(registry, "mgp.tensor.create.cpu", mgp_tensor_create_cpu);
   ADD_PRIMITIVE(registry, "mgp.tensor.extract.buffer.cpu",
                 mgp_tensor_extract_buffer_cpu);

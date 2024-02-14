@@ -107,12 +107,17 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 //
 //   // Parses a function type consisting of one input buffer and one output
 //   // buffer type, assigns their devices to $srcDevice and $dstDevice,
-//   // and assigns $inChain the type !mgp.chain<$srcDevice> and $outChain
-//   // the type !mgp.chain<$dstDevice>.
+//   // and assigns $inChain the type !mgp.chain<$srcDevice>.
 //   custom<SrcDstBufferTypesToDevices>(
 //     type($srcBuffer), type($dstBuffer),
-//     $srcDevice, $dstDevice, type($inChain), type($outChain)
+//     $srcDevice, $dstDevice, type($inChain)
 //   )
+//
+//   // Parses a function type consisting of N input buffers and one output
+//   // buffer type, assigns their (consistent!) device to $device, and
+//   // assigns $chain the type !mgp.chain<$device>.
+//   custom<BufferTypesToDevice>(type($inBuffers), type($outBuffer),
+//                               $device, type($inChain))
 //
 //   // Parses a attribute supporting the ElementsAttr interface, and assigns
 //   // its alignment to rawAlign.
@@ -402,7 +407,7 @@ def ChainHostToDeviceOp : MGP_DeviceOp<"chain.host_to_device", [
     ```mlir
       %ctx : !mgp.context
       %ch0 : !mef.chain
-      %ch1 = mgp.chain.host_to_device %ch0, %ctx[1] device <"cuda", 3>
+      %ch1 = mgp.chain.host_to_device %ch0, %ctx[5] device <"cuda", 3>
       %ch1 : !mgp.chain<<"cuda", 3>>
     ```
   }];
@@ -965,8 +970,9 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aHostRuntimeSlot `,` $bOtherRuntimeSlot `]`
     `,` $hostBuffer `,` $otherBuffer attr-dict
-    `:` custom<SrcDstBufferTypesToDevices>(type($hostBuffer), type($otherBuffer),
-          $cHostDevice, $dOtherDevice, type($inChain), type($outChain))
+    `:` custom<SrcDstBufferTypesToDevices>(
+          type($hostBuffer), type($otherBuffer),
+          $cHostDevice, $dOtherDevice, type($inChain))
   }];
   let hasVerifier = 1;
 
@@ -1021,8 +1027,9 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aOtherRuntimeSlot `,` $bHostRuntimeSlot `]`
     `,` $otherBuffer `,` $hostBuffer attr-dict
-    `:` custom<SrcDstBufferTypesToDevices>(type($otherBuffer), type($hostBuffer),
-          $cOtherDevice, $dHostDevice, type($inChain), type($outChain))
+    `:` custom<SrcDstBufferTypesToDevices>(
+          type($otherBuffer), type($hostBuffer),
+          $cOtherDevice, $dHostDevice, type($inChain))
   }];
   let hasVerifier = 1;
 
@@ -1075,8 +1082,8 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
     $inChain  `,` $theContext `[` $aSrcRuntimeSlot `,` $bDstRuntimeSlot `]` `,`
     $srcBuffer `,` $dstBuffer attr-dict
     `:` custom<SrcDstBufferTypesToDevices>(
-          type($srcBuffer), type($dstBuffer), $cSrcDevice, $dDstDevice,
-          type($inChain), type($outChain))
+          type($srcBuffer), type($dstBuffer),
+          $cSrcDevice, $dDstDevice, type($inChain))
   }];
   let hasVerifier = 1;
 
@@ -1084,7 +1091,7 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
      uint64_t BufferDeviceToDeviceOp::getSlot() { return getASrcRuntimeSlot(); }
 
     M::DeviceRefAttr BufferDeviceToDeviceOp::getDevice() { return getCSrcDevice(); }
-}];
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -1118,12 +1125,6 @@ def BufferUnsizeOp : MGP_Op<"buffer.unsize", [
   let results = (outs  MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{ $inBuffer attr-dict `:` qualified(type($inBuffer)) }];
   let hasVerifier = 1;
-
-  let extraClassDefinition = [{
-    bool BufferUnsizeOp::mayAlias(size_t operandIndex, size_t resultIndex) {
-      return true;
-    }
-  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -1170,10 +1171,64 @@ def BufferResizeOp : MGP_Op<"buffer.resize", [
 
   let extraClassDefinition = [{
     M::DeviceRefAttr BufferResizeOp::getDevice() { return getBDevice(); }
+  }];
+}
 
-    bool BufferResizeOp::mayAlias(size_t operandIndex, size_t resultIndex) {
-      return true;
-    }
+//===----------------------------------------------------------------------===//
+// BufferConcatOp
+//===----------------------------------------------------------------------===//
+
+def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
+    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
+]> {
+  let summary = "Concatenates a sequence of input buffers into an output "
+                "buffer.";
+  let description = [{
+    Concatenates a sequence of input buffers into an output buffer. If only a
+    single operand is given then mimics an ordinary buffer copy. The the output
+    buffer and all input buffers have statically known sizes then they are
+    checked for consistency at compile time. A runtime error will be returned
+    if the actual runtime sizes of input and output buffers are not consistent.
+
+    Example:
+    ```mlir
+    %ctx : !mgp.context
+    %in_ch : !mgp.chain<<"cuda", 3>>
+    %out_buf : !mgp.buffer<256, <"cuda", 3>>
+    %in0_buf : !mgp.buffer<128, <"cuda", 3>>
+    %in1_buf : !mgp.buffer<, <"cuda", 3>>
+    %in2_buf : !mgp.buffer<, <"cuda", 3>>
+    %out_ch = mgp.buffer.concat %in_ch, %ctx[5], %out_buf, %in0_buf, %in1_buf, %in2_buf
+              : (!mgp.buffer<128, <"cuda", 3>>,
+                 !mgp.buffer<, <"cuda", 3>>,
+                 !mgp.buffer<, <"cuda", 3>>) -> !mgp.buffer<256, <"cuda", 3>>
+    %out_ch : !mgp.chain<<"cuda", 3>>
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins MGP_DeviceChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       MGP_DeviceBufferType:$outBuffer,
+                       Variadic<MGP_DeviceBufferType>:$inBuffers,
+                       UI64Attr:$aRuntimeSlot,         // 0
+                       MGP_OptDeviceRefAttr:$bDevice); // 1
+  let results = (outs MGP_DeviceChainType:$outChain);
+  let assemblyFormat = [{
+    $inChain `,`  $theContext `[` $aRuntimeSlot `]` `,` $outBuffer `,`
+    $inBuffers attr-dict
+    `:` custom<BufferTypesToDevice>(type($inBuffers), type($outBuffer),
+                                    $bDevice, type($inChain))
+  }];
+  let hasVerifier = 1;
+
+  let extraClassDefinition = [{
+    uint64_t BufferConcatOp::getSlot() { return getARuntimeSlot(); }
+
+    M::DeviceRefAttr BufferConcatOp::getDevice() { return getBDevice(); }
   }];
 }
 
@@ -1256,10 +1311,6 @@ def BufferSplitBorrowOp : MGP_DeviceOp<"buffer.split.borrow", [
   ];
 
   let extraClassDefinition = [{
-    bool BufferSplitBorrowOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
-      return operandIndex == 1;
-    }
-
     uint64_t BufferSplitBorrowOp::getSlot() { return getARuntimeSlot(); }
 
     M::DeviceRefAttr BufferSplitBorrowOp::getDevice() { return getCDevice(); }
@@ -1324,10 +1375,6 @@ def BufferSectionBorrowStaticOp : MGP_DeviceOp<"buffer.section.borrow.static", [
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-    bool BufferSectionBorrowStaticOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
-      return operandIndex == 2;
-    }
-
     uint64_t BufferSectionBorrowStaticOp::getSlot() { return getARuntimeSlot(); }
 
     M::DeviceRefAttr BufferSectionBorrowStaticOp::getDevice() { return getDDevice(); }
@@ -1396,10 +1443,6 @@ def BufferSectionBorrowDynamicOp : MGP_DeviceOp<"buffer.section.borrow.dynamic",
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-    bool BufferSectionBorrowDynamicOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
-      return operandIndex == 1;
-    }
-
     uint64_t BufferSectionBorrowDynamicOp::getSlot() { return getARuntimeSlot(); }
 
     M::DeviceRefAttr BufferSectionBorrowDynamicOp::getDevice() { return getDDevice(); }
@@ -1440,6 +1483,58 @@ def BufferToBoolOp : MGP_DeviceOp<"buffer.to_bool"> {
     uint64_t BufferToBoolOp::getSlot() { return getARuntimeSlot(); }
 
     M::DeviceRefAttr BufferToBoolOp::getDevice() { return getBDevice(); }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// BufferSetWithIndexOp
+//===----------------------------------------------------------------------===//
+
+def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
+    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
+]> {
+  let summary = "Set a buffer with the values from index inputs.";
+  let description = [{
+    The runtime index values will be sign extended or truncated based on the
+    given buffer's size. Therefore only buffer sizes of 4 and 8 times the number
+    of index inputs are supported by the primitive.
+
+    Example:
+    ```mlir
+    %ctx : !mgp.context
+    %buf0 : !mgp.buffer<4, <"cuda", 3>>
+    %idx0 : index
+    %ch0 = mgp.buffer.set_with_index %ctx[5], %buf0, %idx0 : !mgp.buffer<4, <"cuda", 3>>
+    %ch0 : !mgp.chain<<"cuda", 3>>
+
+    %idx1 : index
+    %idx2 : index
+    %buf1 : !mgp.buffer<24, <"cuda", 3>>
+    %ch1 = mgp.cpu.buffer.set_with_index %ctx[5], %buf1, %idx0, %idx1, %idx2 : !mgp.buffer<24, <"cuda", 3>>
+    %ch1 : !mgp.chain<<"cuda", 3>>
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins MGP_ContextType:$theContext,
+                       MGP_DeviceBufferType:$buffer,
+                       Variadic<Index>:$values,
+                       UI64Attr:$aRuntimeSlot,         // 0
+                       MGP_OptDeviceRefAttr:$bDevice); // 1
+  let results = (outs MGP_DeviceChainType:$outChain);
+  let assemblyFormat = [{
+    $theContext `[` $aRuntimeSlot `]` `,`  $buffer ( `,` $values^ )? attr-dict
+    `:` custom<BufferTypeToDevice>(type($buffer), $bDevice)
+  }];
+  let hasVerifier = 1;
+
+  let extraClassDefinition = [{
+     uint64_t BufferSetWithIndexOp::getSlot() { return getARuntimeSlot(); }
+
+    M::DeviceRefAttr BufferSetWithIndexOp::getDevice() { return getBDevice(); }
   }];
 }
 
@@ -1485,10 +1580,6 @@ def TensorCreateOp : MGP_DeviceOp<"tensor.create", [
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-    bool TensorCreateOp::mayAlias(size_t operandIndex, size_t resultIndex) {
-      return operandIndex == getBufferMutable().getOperandNumber();
-    }
-
     uint64_t TensorCreateOp::getSlot() { return getARuntimeSlot(); }
 
     M::DeviceRefAttr TensorCreateOp::getDevice() { return getBDevice(); }
@@ -1532,10 +1623,6 @@ def TensorExtractBufferOp : MGP_DeviceOp<"tensor.extract.buffer", [
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-    bool TensorExtractBufferOp::mayAlias(size_t operandIndex, size_t resultIndex) {
-      return operandIndex == getTensorMutable().getOperandNumber();
-    }
-
     uint64_t TensorExtractBufferOp::getSlot() { return getARuntimeSlot(); }
 
     M::DeviceRefAttr TensorExtractBufferOp::getDevice() { return getBDevice(); }
