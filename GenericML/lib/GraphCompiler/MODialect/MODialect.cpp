@@ -26,8 +26,7 @@ struct MOGraphVisualizationInterface : public GraphVisualizationInterface {
 
   using GraphVisualizationInterface::GraphVisualizationInterface;
 
-  FailureOr<VisualizationInfo>
-  populateVisualizationInfo(Operation *op) override {
+  VisualizationInfo populateVisualizationInfo(Operation *op) override {
     return VisualizationInfo{op->getName().getStringRef(),
                              /* isModularOp = */ true};
   }
