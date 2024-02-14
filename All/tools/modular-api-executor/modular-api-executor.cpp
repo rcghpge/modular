@@ -546,7 +546,8 @@ int main(int argc, char **argv) {
   // TODO(#31768): avoid this using the `M_execute*` C APIs instead of runModel.
   StatusPtr status{api.newStatus(), api.freeStatus};
   RuntimeConfigPtr runtimeConfig{api.newRuntimeConfig(), api.freeRuntimeConfig};
-  std::unique_ptr<Runtime> runtime = clOptions.createRuntime();
+  std::unique_ptr<Runtime> runtime =
+      clOptions.withMainWillNotDonate().createRuntime();
   api.setUseExistingRuntime(runtimeConfig.get());
 
   if (clOptions.gpu)
