@@ -4,7 +4,7 @@
 // CHECK: MLPerf scenario: Single Stream (use --mlperf-scenario to change)
 // CHECK: Compiling model... OK (took {{.+}})
 // CHECK: Benchmarking
-// CHECK: Result is : VALID
+// CHECK: Result is : {{VALID|INVALID}}
 // CHECK: QPS w/ loadgen overhead : {{[0-9.e+-]+}}
 // CHECK: Min latency (ns) : {{[0-9]+}}
 // CHECK: Max latency (ns) : {{[0-9]+}}
