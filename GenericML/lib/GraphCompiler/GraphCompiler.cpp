@@ -6,6 +6,7 @@
 
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "Cache/CachePasses/CachePasses.h"
+#include "GenericML/CUDADialect/CUDADialect.h"
 #include "GenericML/CUDATransforms/CUDATransforms.h"
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
@@ -22,6 +23,7 @@
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "GenericML/Support/ForeignBufferInterface.h"
 #include "GenericML/Support/ResourceBufferInterface.h"
+#include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
 #include "GraphRT/MLIRToMEF.h"
 #include "LLCL/Runtime/Runtime.h"
@@ -46,7 +48,8 @@ using namespace MO;
 
 void M::MO::loadDialects(mlir::DialectRegistry &registry) {
   registry.insert<MO::MODialect, MOQ::MOQDialect, MOSH::MOSHDialect,
-                  MIP::MIPDialect, MOGG::MOGGDialect>();
+                  MIP::MIPDialect, MOGG::MOGGDialect, MGP::MGPDialect,
+                  GRT::GRTDialect, CUDA::CUDADialect>();
   M::registerAllKGENDialects(registry);
   M::registerKGENToLLVMTranslation(registry);
 }
