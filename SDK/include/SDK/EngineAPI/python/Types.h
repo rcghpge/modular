@@ -11,13 +11,13 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-namespace core {
+namespace M::core {
 M_Dtype mapPybind11Type(pybind11::dtype dtype);
 
 pybind11::dtype mapDType(M_Dtype dtype);
 
 std::string printDType(M_Dtype dtype);
 
-} // namespace core
+} // namespace M::core
 
 #endif // SDK_ENGINEAPI_PYTHON_TYPES_H

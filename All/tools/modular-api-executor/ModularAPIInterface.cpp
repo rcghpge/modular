@@ -148,6 +148,18 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
     return enableMemoryPlanningOr.takeError();
   enableMemoryPlanning = enableMemoryPlanningOr.takeValue();
 
+  auto newTorchInputSpecOr =
+      fallibleGetSymbol(torchLib, "M_newTorchInputSpec", newTorchInputSpec);
+  if (newTorchInputSpecOr.isError())
+    return newTorchInputSpecOr.takeError();
+  newTorchInputSpec = newTorchInputSpecOr.takeValue();
+
+  auto freeTorchInputSpecOr =
+      fallibleGetSymbol(torchLib, "M_freeTorchInputSpec", freeTorchInputSpec);
+  if (freeTorchInputSpecOr.isError())
+    return freeTorchInputSpecOr.takeError();
+  freeTorchInputSpec = freeTorchInputSpecOr.takeValue();
+
   auto setTorchInputSpecsOr =
       fallibleGetSymbol(torchLib, "M_setTorchInputSpecs", setTorchInputSpecs);
   if (setTorchInputSpecsOr.isError())

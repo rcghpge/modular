@@ -65,6 +65,26 @@ TEST(APIBridge, tensorSpecToCAPIBasic) {
   EXPECT_EQ(int64_t{3}, M_getDimAt(cSpec.get(), 2));
 }
 
+TEST(APIBridge, tensorSpecToCAPITorchInputSpecBasic) {
+  TensorSpec spec({1, 2, 3}, DType::f32);
+  TorchInputSpecPtr cSpec = tensorSpecToCAPITorchSpec(spec);
+  ASSERT_NE(cSpec, nullptr);
+}
+
+TEST(APIBridge, tensorSpecToCAPITorchInputSpecDynamicDim) {
+  // According to TensorSpec docs, any negative value represents an undefined
+  // dimension.
+  TensorSpec spec({-1, 2, -3}, DType::f32);
+  TorchInputSpecPtr cSpec = tensorSpecToCAPITorchSpec(spec);
+  ASSERT_NE(cSpec, nullptr);
+}
+
+TEST(APIBridge, tensorSpecToCAPITorchInputSpecDynamicRank) {
+  TensorSpec spec(kDynamicallyRanked, DType::f32);
+  TorchInputSpecPtr cSpec = tensorSpecToCAPITorchSpec(spec);
+  ASSERT_NE(cSpec, nullptr);
+}
+
 TEST(APIBridge, tensorSpecToCAPIUndefinedDims) {
   // According to TensorSpec docs, any negative value represents an undefined
   // dimension.

@@ -94,6 +94,27 @@ TensorSpecPtr M::EngineCLI::tensorSpecToCAPI(const char *name,
                        M_freeTensorSpec);
 }
 
+TorchInputSpecPtr
+M::EngineCLI::tensorSpecToCAPITorchSpec(const TensorSpec &spec) {
+  int64_t translatedRank;
+  SmallVector<int64_t, kMaxRank> translatedShape;
+  if (spec.hasRank()) {
+    translatedRank = spec.getRank();
+    for (ssize_t dim : spec) {
+      if (dim < 0)
+        translatedShape.push_back(M_getDynamicDimensionValue());
+      else
+        translatedShape.push_back(dim);
+    }
+  } else {
+    translatedRank = M_getDynamicRankValue();
+  }
+  return TorchInputSpecPtr(M_newTorchInputSpec(translatedShape.data(),
+                                               translatedRank,
+                                               dtypeToCAPI(spec.getEltType())),
+                           M_freeTorchInputSpec);
+}
+
 TensorSpec M::EngineCLI::capiToTensorSpec(const M_TensorSpec *spec) {
   if (M_isDynamicRanked(spec))
     return TensorSpec(kDynamicallyRanked, capiToDType(M_getDtype(spec)));

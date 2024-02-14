@@ -8,6 +8,7 @@
 #include "GenericML/EngineCLI/Common/APIBridge.h"
 #include "GenericML/EngineCLI/Common/InputGenerationSchema.h"
 #include "PyTorch/API/max/c/pytorch/config.h"
+#include "PyTorch/API/max/cpp/pytorch/aliases.h"
 #include "Support/ErrorOr.h"
 #include "max/cpp/aliases.h"
 #include "llvm/ADT/Twine.h"
@@ -19,15 +20,14 @@ M::EngineCLI::setTorchInputSpecs(M_CompileConfig *config,
                                  const InputGenerationSchema &schema) {
   if (!schema.inputs)
     return success();
-  std::vector<TensorSpecPtr> specOwners;
-  std::vector<M_TensorSpec *> specPointers;
+  std::vector<TorchInputSpecPtr> specOwners;
+  std::vector<M_TorchInputSpec *> specPointers;
   for (const auto &input : *schema.inputs) {
     if (!input.inputName || (!input.shape && !input.compileShape))
       continue;
     TensorSpec compileShape =
         input.compileShape ? *input.compileShape : *input.shape;
-    TensorSpecPtr capiSpec =
-        tensorSpecToCAPI(input.inputName->c_str(), compileShape);
+    TorchInputSpecPtr capiSpec = tensorSpecToCAPITorchSpec(compileShape);
     if (!capiSpec)
       return Error(Twine("M_newTensorSpec failed for input ") +
                    *input.inputName + " (out of memory?)");

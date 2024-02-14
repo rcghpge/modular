@@ -15,6 +15,7 @@
 #include "max/c/pytorch/config.h"
 #include "max/c/tensorflow/config.h"
 #include "max/cpp/aliases.h"
+#include "max/cpp/pytorch/aliases.h"
 
 namespace M {
 class ModularAPIInterface {
@@ -79,7 +80,9 @@ public:
   decltype(&M_executeModelSync) executeModelSync = nullptr;
   decltype(&M_setDevice) setDevice = nullptr;
   decltype(&M_enableMemoryPlanning) enableMemoryPlanning = nullptr;
+  decltype(&M_newTorchInputSpec) newTorchInputSpec = nullptr;
   decltype(&M_setTorchInputSpecs) setTorchInputSpecs = nullptr;
+  decltype(&M_freeTorchInputSpec) freeTorchInputSpec = nullptr;
 };
 } // namespace M
 

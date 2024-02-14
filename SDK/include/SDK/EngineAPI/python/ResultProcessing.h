@@ -13,11 +13,9 @@
 #include "pybind11/pybind11.h"
 #include <vector>
 
-using namespace M;
-
 namespace py = pybind11;
 
-namespace core {
+namespace M::core {
 
 /// Creates a new `py::array` by copying the tensor data from a `GML::Tensor`.
 py::object processTensorResult(TensorPtr outTensor);
@@ -28,6 +26,6 @@ py::object processTensorResult(TensorPtr outTensor);
 /// `tuple`, `none`, `double`, `long` and `bool`. Tensor data arrays are copied.
 py::object processValueResult(ValuePtr value);
 
-} // namespace core
+} // namespace M::core
 
 #endif // SDK_ENGINEAPI_PYTHON_RESULTPROCESSING_H

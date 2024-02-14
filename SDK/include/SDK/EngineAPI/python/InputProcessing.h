@@ -13,11 +13,9 @@
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 
-using namespace M;
-
 namespace py = pybind11;
 
-namespace core {
+namespace M::core {
 
 /// Verifies that the array in the pybind object `obj` has the same shape and
 /// data type as the tensor spec.
@@ -42,6 +40,6 @@ M_AsyncValue *processTensorInput(const py::object &obj,
 M_AsyncValue *processValueInput(const py::object &pyObj,
                                 M_RuntimeContext *context, M_Status *status);
 
-} // namespace core
+} // namespace M::core
 
 #endif // SDK_ENGINEAPI_PYTHON_INPUTPROCESSING_H

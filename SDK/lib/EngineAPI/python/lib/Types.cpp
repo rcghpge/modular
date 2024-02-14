@@ -10,9 +10,9 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-using namespace core;
+using namespace M::core;
 
-M_Dtype core::mapPybind11Type(pybind11::dtype dtype) {
+M_Dtype M::core::mapPybind11Type(pybind11::dtype dtype) {
   if (dtype.is(pybind11::dtype::of<int8_t>()))
     return M_INT8;
   else if (dtype.is(pybind11::dtype::of<int16_t>()))
@@ -39,7 +39,7 @@ M_Dtype core::mapPybind11Type(pybind11::dtype dtype) {
     throw std::runtime_error("Unrecognized DType");
 }
 
-pybind11::dtype core::mapDType(M_Dtype dtype) {
+pybind11::dtype M::core::mapDType(M_Dtype dtype) {
   switch (dtype) {
   case M_INT8:
     return pybind11::dtype::of<int8_t>();
@@ -71,7 +71,7 @@ pybind11::dtype core::mapDType(M_Dtype dtype) {
   }
 }
 
-std::string core::printDType(M_Dtype dtype) {
+std::string M::core::printDType(M_Dtype dtype) {
   switch (dtype) {
   case M_INT8:
     return "DType.int8";

@@ -9,9 +9,11 @@ include(RTTIExceptions)
 add_modular_library(ModularFrameworkPython
   Types.cpp
   TensorSpec.cpp
+  TorchInputSpec.cpp
   InferenceSession.cpp
   InputProcessing.cpp
   ResultProcessing.cpp
+  Utils.cpp
 )
 
 # The library must be compiled with RTTI and exceptions enabled.

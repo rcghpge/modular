@@ -581,18 +581,17 @@ int main(int argc, char **argv) {
   // a torch model. For this, we prefer to use `input-specs` over `input-shapes`
   // as the CLI argument input. This allows for us to directly get the dtype
   // of the input tensors.
-  if (clOptions.inputSpecs.size() == clOptions.inputNames.size()) {
-    std::vector<TensorSpecPtr> specOwners;
-    std::vector<M_TensorSpec *> specPointers;
+  if (!clOptions.inputSpecs.empty()) {
+    std::vector<TorchInputSpecPtr> specOwners;
+    std::vector<M_TorchInputSpec *> specPointers;
     for (auto &&[inputIndex, input] : llvm::enumerate(clOptions.inputSpecs)) {
       SmallVector<int64_t> inputShape;
       for (auto dim : input.getDimsCopy())
         inputShape.emplace_back((int64_t)dim);
-      TensorSpecPtr spec{
-          api.newTensorSpec(inputShape.data(), inputShape.size(),
-                            convertToCDataType(input.getEltType()),
-                            clOptions.inputNames[inputIndex].c_str()),
-          api.freeTensorSpec,
+      TorchInputSpecPtr spec{
+          api.newTorchInputSpec(inputShape.data(), inputShape.size(),
+                                convertToCDataType(input.getEltType())),
+          api.freeTorchInputSpec,
       };
       specPointers.push_back(spec.get());
       specOwners.push_back(std::move(spec));
