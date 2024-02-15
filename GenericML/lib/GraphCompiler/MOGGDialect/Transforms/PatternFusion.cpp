@@ -609,6 +609,89 @@ struct ConvConstFilterPattern
   }
 };
 
+struct ConvTransposeConstFilterPattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern,
+                                           MO::ConvTransposeOp> {
+  ConvTransposeConstFilterPattern(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 3) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::ConvTransposeOp op,
+                             MO::DeviceAwareRewriter &rewriter) const override {
+    // Define some meta variables.
+    MLIRContext *ctx = op.getContext();
+    Location loc = op.getLoc();
+    MO::TensorValue filter = op.getFilter();
+    MO::TensorType filterType = filter.getType();
+    MO::LayoutAttr filterLayout = filterType.getLayoutAttr();
+
+    if (llvm::is_contained({"FQRSCf", "FRSCf"}, filterLayout.getFormat()))
+      return rewriter.notifyMatchFailure(op, "filter is already packed");
+
+    if (!dependsOnConstantsOnly<MO::ConstantOp>(filter.getDefiningOp()))
+      return rewriter.notifyMatchFailure(op, "filter isn't constant");
+
+    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDeviceAny(op))) {
+      // TODO(#25114): Support outside of host.
+      return rewriter.notifyMatchFailure(
+          op, "packing is only supported on the host device");
+    }
+
+    // Create shape parameters for the new type.
+    SmallVector<KGEN::ParamDeclAttr> paramDecls;
+    auto graphOp = op->getParentOfType<MO::GraphOp>();
+
+    size_t filterRank = filterType.getRank();
+
+    if (filterRank != 4 && filterRank != 5)
+      return rewriter.notifyMatchFailure(
+          op, "ConvTranspose filter packing is currently only supported "
+              "for 2D and 3D filters");
+
+    StringRef packedLayoutStr = [filterRank]() {
+      switch (filterRank) {
+      case 4:
+        return "FRSCf";
+      case 5:
+        return "FQRSCf";
+      default:
+        llvm_unreachable(
+            "Only 2D and 3D conv transposes are supported for packing");
+      }
+    }();
+
+    const char *layoutStrBegin = packedLayoutStr.begin();
+    for (size_t i = 0, e = packedLayoutStr.size(); i < e; i++) {
+      paramDecls.push_back(
+          graphOp.getNewDimParam(StringRef(layoutStrBegin + i, 1)));
+    }
+
+    auto paramDeclsAttr = KGEN::ParamDeclArrayAttr::get(ctx, paramDecls);
+
+    // Invoke the pack filter fallback shape function.
+    // TODO(#18770) Find a better registration mechanism.
+    rewriter.create<MO::InvokeShapeFuncOp>(
+        loc, SmallVector<Value>{filter}, "pack_conv_transpose_filter_shape",
+        paramDeclsAttr, mlir::DictionaryAttr{}, mlir::ArrayAttr{});
+
+    // Construct type (new shape and layout) for the packed filter.
+    SmallVector<TypedAttr> outputParams;
+    for (KGEN::ParamDeclAttr outputParamDecl : paramDecls)
+      outputParams.push_back(KGEN::ParamDeclRefAttr::get(outputParamDecl));
+    auto moshShapeTy = MOSH::ShapeType::get(ctx);
+    auto shapeAttr = MOSH::ShapeAttr::get(outputParams, moshShapeTy);
+    auto packedFilterLayout = rewriter.getAttr<MO::LayoutAttr>(packedLayoutStr);
+    auto packedFilterType =
+        filterType.cloneWith(shapeAttr).cloneWith(packedFilterLayout);
+
+    // Pack the filter.
+    auto packedFilter = rewriter.create<MO::LayoutTransformOp>(
+        loc, /*outputTypes=*/packedFilterType, filter);
+    op.setOperand(1, packedFilter);
+    return mlir::success();
+  }
+};
+
 struct SplitZeroAxisPattern
     : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::SplitOp> {
   SplitZeroAxisPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
@@ -1965,7 +2048,8 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
 
     patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
                  ConcatZeroAxisPattern, ConvConstFilterPattern,
-                 SplitZeroAxisPattern, LayerNormPattern>(ctx);
+                 ConvTransposeConstFilterPattern, SplitZeroAxisPattern,
+                 LayerNormPattern>(ctx);
 
     if (enableMHAPattern.getValue()) {
       patterns.add<MultiHeadAttentionPatternCPU>(
