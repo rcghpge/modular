@@ -15,6 +15,9 @@ add_modular_library(ModularFrameworkPython
   ResultProcessing.cpp
   Utils.cpp
 )
+target_compile_definitions(ModularFrameworkPython
+  PRIVATE -DMOJO_CONFIG_SECTION=${MOJO_CONFIG_SECTION}
+)
 
 # The library must be compiled with RTTI and exceptions enabled.
 set_rtti_exceptions(ModularFrameworkPython)
