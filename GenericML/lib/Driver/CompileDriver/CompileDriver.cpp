@@ -45,8 +45,8 @@ bool M::isModelIRCacheEnabled() {
   if (configOr.isError())
     return false;
 
-  auto cacheEnabled =
-      configOr->getValueAsBool("max.enable_model_ir_cache", true);
+  auto cacheEnabled = configOr->getValueAsBool("max.enable_model_ir_cache",
+                                               /*defaultValue=*/false);
   return !cacheEnabled.isError() && *cacheEnabled;
 }
 
