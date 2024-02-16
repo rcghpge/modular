@@ -145,7 +145,6 @@ def test_vs_numpy(testCase, file_to_run):
             mo_shape = tensor.split("x")
             for mo_dim, np_dim in zip(mo_shape, val_to_compare.shape):
                 if int(mo_dim) != np_dim:
-
                     print(val_to_compare)
                     print(line_as_str)
                     print("Inputs: ")
@@ -162,6 +161,10 @@ def test_vs_numpy(testCase, file_to_run):
         raw_out = line_as_str[
             line_as_str.find("[") + 1 : line_as_str.find("]")
         ].split(", ")
+
+        if val_to_compare.dtype == bool:
+            for i, val in enumerate(raw_out):
+                raw_out[i] = val == "True"
 
         mo_out = np.array(list(raw_out), dtype=val_to_compare.dtype).reshape(
             val_to_compare.shape

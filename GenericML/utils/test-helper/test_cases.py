@@ -491,6 +491,9 @@ class Elementwise(TestBase):
 
         add = impl.add(sel1, o)
 
+        log = impl.log(add)
+        add = impl.add(add, log)
+
         # TODO: Lower in TF.
         # sin = impl.sin(add)
         # cos = impl.cos(add)
@@ -504,3 +507,44 @@ class ElementwiseStatic(Elementwise):
     @staticmethod
     def get_input_specs():
         return [((20, 5, 1, 6), np.float32), ((20, 5, 1, 6), np.float32)]
+
+
+class ElementwiseBoolOps(TestBase):
+    @staticmethod
+    def num_runs():
+        return 100
+
+    @staticmethod
+    def input_sizes_to_test():
+        return [([20, 5, 1, 6],)]
+
+    @staticmethod
+    def get_input_specs():
+        return [
+            ((None, None, None, None), bool),
+            ((None, None, None, None), np.float32),
+        ]
+
+    @staticmethod
+    def generate_inputs(shapes):
+        float_vals = [0.0, 1.0, np.inf, np.nan, np.NINF]
+        return [
+            np.random.rand(*shapes[0]) > 0.5,
+            np.random.choice(float_vals, size=shapes[0]).astype(np.float32),
+        ]
+
+    @staticmethod
+    def run(inputs, impl):
+        bool_input = inputs[0]
+        float_input = inputs[1]
+        isnan = impl.is_nan(float_input)
+        o = impl.logical_and(isnan, bool_input)
+        isinf = impl.is_inf(float_input)
+        o = impl.eq(o, isinf)
+        return impl.neq(o, bool_input)
+
+
+class ElementwiseBoolOpsStatic(ElementwiseBoolOps):
+    @staticmethod
+    def get_input_specs():
+        return [((20, 5, 1, 6), bool), ((20, 5, 1, 6), np.float32)]

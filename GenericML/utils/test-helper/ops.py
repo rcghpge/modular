@@ -46,6 +46,9 @@ class CommonImpls:
     def eq(self, x, y):
         return x == y
 
+    def neq(self, x, y):
+        return x != y
+
 
 # Numpy implementation of each primitive.
 class NumpyImpl(CommonImpls):
@@ -137,6 +140,21 @@ class NumpyImpl(CommonImpls):
     def tanh(self, x):
         return np.tanh(x)
 
+    def is_nan(self, x):
+        return np.isnan(x)
+
+    def is_inf(self, x):
+        return np.isinf(x)
+
+    def logical_and(self, x, y):
+        return np.logical_and(x, y)
+
+    def logical_or(self, x, y):
+        return np.logical_or(x, y)
+
+    def logical_xor(self, x, y):
+        return np.logical_xor(x, y)
+
 
 # The keras implementation of each primitive.
 class TFImpl(CommonImpls):
@@ -201,3 +219,18 @@ class TFImpl(CommonImpls):
 
     def tanh(self, x):
         return tf.tanh(x)
+
+    def is_nan(self, x):
+        return tf.math.is_nan(x)
+
+    def is_inf(self, x):
+        return tf.math.is_inf(x)
+
+    def logical_and(self, x, y):
+        return tf.math.logical_and(x, y)
+
+    def logical_or(self, x, y):
+        return tf.math.logical_or(x, y)
+
+    def logical_xor(self, x, y):
+        return tf.math.logical_xor(x, y)
