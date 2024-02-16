@@ -41,7 +41,8 @@ cmake-modular --sanitizer=none --build-type=release \
   -D MODULAR_VERSION_MAJOR=$MAJOR_VERSION \
   -D MODULAR_VERSION_MINOR=$MINOR_VERSION \
   -D MODULAR_VERSION_PATCH=$PATCH_VERSION \
-  -D MODULAR_STATIC_LINKED_PYTHON=ON
+  -D MODULAR_STATIC_LINKED_PYTHON=ON \
+  -D MODULAR_MOJO_INSTALL_CHANNEL=max
 
 
 # The GeneratedTests target explicitly isn't a dependency of the AI Engine Wheel itself

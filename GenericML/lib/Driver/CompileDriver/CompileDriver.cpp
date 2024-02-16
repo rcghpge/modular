@@ -30,12 +30,12 @@ std::optional<std::filesystem::path> M::getMaxCacheDir() {
       return std::filesystem::path(maxCacheDir.str());
   }
 
-  // Try using a temporary directory.
-  std::error_code ec;
-  std::filesystem::path basePath = std::filesystem::temp_directory_path(ec);
-  if (ec)
+  // Try using modular data directory.
+  auto dataDirOr = Config::getModularDataFolderPath(/*create=*/true);
+  if (dataDirOr.isError())
     return std::nullopt;
-  return basePath / ".max_cache";
+
+  return dataDirOr.takeValue() / ".max_cache";
 }
 
 bool M::isModelIRCacheEnabled() {
@@ -79,10 +79,18 @@ M::cacheMEFTransform(StringRef frameworkName,
   if (!isModelIRCacheEnabled())
     return loweringFunction();
 
+  auto baseCacheDirOr = M::getMaxCacheDir();
+
+  // If we can't find any suitable location to cache then also we will disable
+  // caching.
+  if (!baseCacheDirOr)
+    return loweringFunction();
+
+  const std::filesystem::path &baseCacheDir = *baseCacheDirOr;
+
   auto mefBackendOr = Cache::getLocalDefaultBackendChain(
       runtime.getCurrentRuntime(),
-      (std::filesystem::path(".max_cache") / frameworkName.str() / "mef")
-          .string(),
+      (baseCacheDir / frameworkName.str() / "mef").string(),
       std::string(M::getModularVersionString()));
 
   if (mefBackendOr.isError())
