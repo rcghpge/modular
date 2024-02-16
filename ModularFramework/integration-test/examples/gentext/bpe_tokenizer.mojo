@@ -11,9 +11,6 @@ from collections.vector import DynamicVector
 
 fn create_dummy_model() raises -> BPETokenizer:
     var model = BPETokenizer()
-    model.add_unknown("<unk>")
-    model.add_control("<s>")
-    model.add_control("</s>")
 
     model.add_token("ab", 0.0)
     model.add_token("cd", -0.1)
@@ -29,10 +26,9 @@ fn create_dummy_model() raises -> BPETokenizer:
 fn test_tokenization() raises:
     let model = create_dummy_model()
 
-    let encoded = model.encode("xabcabaabcddxabcabaabcdd")
-    let tokens = encoded.get_tokens()
+    let tokens = model.encode("xabcabaabcddxabcabaabcdd")
 
-    var expected = DynamicVector[StringRef]()
+    var expected = DynamicVector[String]()
     expected.push_back("x")
     expected.push_back("abc")
     expected.push_back("ab")
@@ -53,21 +49,19 @@ fn test_tokenization() raises:
 
     for i in range(len(tokens)):
         # CHECK-NOT: False
-        print(tokens[i] == expected[i])
-
-    _ = model ^
+        print(tokens[i].token == expected[i])
 
 
 fn test_decode() raises:
     let model = create_dummy_model()
 
-    let encoded = model.encode("qrcbaabccdabqrcbaabccdab")
-    let token_ids = encoded.get_token_ids()
+    var encoded = model.encode("qrcbaabccdabqrcbaabccdab")
+    var decoded = String()
+    for token in encoded:
+        decoded += token[].token
 
     # CHECK: qrcbaabccdabqrcbaabccdab
-    print(model.decode(token_ids))
-
-    _ = model ^
+    print(decoded)
 
 
 fn main() raises:
