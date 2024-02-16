@@ -31,7 +31,7 @@ fn test_identity_graph() raises:
     # CHECK:     mo.output [[arg]] : !mo.tensor<[], si32>
     # CHECK:   }
     # CHECK: }
-    print(m.__str__())
+    print(m)
 
 
 fn test_basic_add() raises:
@@ -47,7 +47,7 @@ fn test_basic_add() raises:
     m.verify()
     # CHECK-LABEL: @basic_add
     # CHECK: mo.add
-    print(m.__str__())
+    print(m)
 
 
 fn test_add_constant() raises:
@@ -67,7 +67,7 @@ fn test_add_constant() raises:
     # CHECK-LABEL: @add_constant
     # CHECK: mo.constant {value = #M.dense_array<1.000000e+00> : tensor<1xf32>}
     # CHECK: mo.add
-    print(m.__str__())
+    print(m)
 
 
 fn test_list() raises:
@@ -78,7 +78,7 @@ fn test_list() raises:
     m.verify()
     # CHECK-LABEL: @list
     # CHECK: mo.list.create() : () -> !mo.list<!mo.tensor<[1], f32>>
-    print(m.m)
+    print(m)
 
 
 fn test_list_with_elements() raises:
@@ -91,7 +91,7 @@ fn test_list_with_elements() raises:
     m.verify()
     # CHECK-LABEL: @list
     # CHECK: mo.list.create(%0, %1) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.list<!mo.tensor<[], f32>>
-    print(m.m)
+    print(m)
 
 
 fn test_list_validations() raises:

@@ -15,7 +15,7 @@ fn test_replace_all_uses_with() raises:
     alias name = "test_replace_all_uses_with"
 
     var m = Module()
-    m.m.context().print_on_diagnostic()
+    m._module.context().print_on_diagnostic()
     var g = m.graph(
         name,
         TypeTuple(MOTensor(DType.int64), MOTensor(DType.int64)),
@@ -37,7 +37,7 @@ fn test_replace_all_uses_with_transform() raises:
     alias name = "test_replace_all_uses_with_transform"
 
     var m = Module()
-    m.m.context().print_on_diagnostic()
+    m._module.context().print_on_diagnostic()
     var g = m.graph(
         name,
         TypeTuple(MOTensor(DType.int64), MOTensor(DType.int64)),
