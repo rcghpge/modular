@@ -59,7 +59,7 @@ DeviceRefAttr MO::getHostDevice(GraphOp graphOp) {
     return deviceSpecs.getHost();
 
   // Fall back to 'cpu'.
-  return DeviceRefAttr::get(graphOp.getContext(), kCPULabel, 0);
+  return DeviceRefAttr::getDefault(graphOp.getContext());
 }
 
 DeviceRefAttr MO::getHostDeviceAny(Operation *op) {

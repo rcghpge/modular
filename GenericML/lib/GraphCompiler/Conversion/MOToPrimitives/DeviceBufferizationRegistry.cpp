@@ -10,6 +10,16 @@
 using namespace M;
 using namespace M::MO;
 
+//===----------------------------------------------------------------------===//
+// DeviceSpecificDialect
+//===----------------------------------------------------------------------===//
+
+void DeviceSpecificDialect::vtableAnchor() {}
+
+//===----------------------------------------------------------------------===//
+// DeviceSpecificDialectRegistry
+//===----------------------------------------------------------------------===//
+
 void DeviceBufferizationRegistry::add(
     StringRef label,
     std::unique_ptr<DeviceSpecificDialect> deviceSpecificDialect) {

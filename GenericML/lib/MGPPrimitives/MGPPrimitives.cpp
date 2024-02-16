@@ -1160,6 +1160,7 @@ static void mgp_list_create(RemainingArguments operands,
 static void mgp_list_get(List &inputList, Tensor &idxTensor,
                          RemainingResults outputs, EncodedLocation loc) {
   // We must unbox the index value from the tensor.
+  // TODO: Should be ssize_t.
   idxTensor.getEltType()
       .dispatch<void>(idxTensor.getBuffer())
       .template when<DType::si32, DType::si64>([&](auto *idxDataPtr) {
@@ -1194,6 +1195,7 @@ static void mgp_list_get(List &inputList, Tensor &idxTensor,
 static void mgp_list_insert(List &inputList, AnyAsyncValueRef element,
                             Tensor &idxTensor, Result<List> output) {
   // We must unbox the index value from the tensor.
+  // TODO: Should be ssize_t.
   idxTensor.getEltType()
       .dispatch<void>(idxTensor.getBuffer())
       .template when<DType::si32, DType::si64>([&](auto *idxDataPtr) {

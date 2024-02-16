@@ -9,6 +9,7 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTypes.h"
 #include "GenericML/Support/Assert.h"
+#include "GraphRT/GRTDialect/GRTOps.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/Support/ErrorHandling.h"
 
@@ -37,6 +38,26 @@ TypedValue<MGP::ContextType> MGP::getContextForBlock(Block *block) {
     block = block->getParentOp()->getBlock();
   }
   GENERICML_ASSERT(false) << "unable to locate an !mgp.context";
+}
+
+TypedValue<MEF::ChainType> MGP::getRootChainForBlock(Block *block) {
+  while (true) {
+    // First look for a block argument.
+    for (Value arg : block->getArguments()) {
+      if (isa<MEF::ChainType>(arg.getType()))
+        return cast<TypedValue<MEF::ChainType>>(arg);
+    }
+    // Next look for a nullary grt.chain.create op.
+    for (auto createOp : block->getOps<GRT::ChainCreateOp>()) {
+      if (createOp->getNumOperands() == 0)
+        return createOp.getResult();
+    }
+    // Next, try one level up.
+    GENERICML_ASSERT(!isa<ModelOp>(block->getParentOp()))
+        << "unable to locate a !mef.chain";
+    block = block->getParentOp()->getBlock();
+  }
+  GENERICML_ASSERT(false) << "unable to locate a !mef.chain";
 }
 
 void MGP::setInOutSignature(Operation *op, InOutSignatureAttr inOutSig) {

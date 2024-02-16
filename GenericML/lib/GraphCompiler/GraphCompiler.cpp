@@ -350,18 +350,21 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
 
 ErrorOr<BufferRef> M::MO::convertMGPToMEF(ModuleOp module,
                                           bool enableMEFMetadata) {
+  ModuleOp moduleToRewrite = module.clone();
+
   // Some MGP-level ops may need to be lightly rewritten before encoding
   // into MEF. For example, the device-generic ops are renamed to capture
   // their device label so the GraphRT executor can dispatch to a
   // device-appropriate primitive.
   mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
-      module.getContext(), mlir::OpPassManager::Nesting::Implicit);
+      moduleToRewrite.getContext(), mlir::OpPassManager::Nesting::Implicit);
   pm.addPass(MGP::createPrepareDevicePrimitivesPass());
-  if (failed(pm.run(module)))
+  if (failed(pm.run(moduleToRewrite)))
     return Error("failed to prepare MGP model for conversion to MEF.");
 
   // Translate to MEF.
-  ConcatenationTree result = translateMLIRToMEF(module, enableMEFMetadata);
+  ConcatenationTree result =
+      translateMLIRToMEF(moduleToRewrite, enableMEFMetadata);
   if (result.getSize() == 0)
     return Error("failed to convert model to MEF.");
 

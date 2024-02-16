@@ -35,7 +35,7 @@ static LogicalResult getDeviceAttrOrDefault(Location location,
                                             StringAttr name,
                                             DeviceRefAttr &device) {
   if (!attributes.contains(name)) {
-    device = DeviceRefAttr::get(attributes.getContext(), kCPULabel, 0);
+    device = DeviceRefAttr::getDefault(attributes.getContext());
   } else {
     device = dyn_cast<DeviceRefAttr>(attributes.get(name));
     if (!device) {
@@ -129,49 +129,6 @@ static LogicalResult getBoolAttr(Location location, DictionaryAttr attributes,
   }
   flag = boolAttr.getValue();
   return success();
-}
-
-/// Verifies the types of all operands of op uses devices drawn from the
-/// given devices.
-static LogicalResult
-verifyConsistentDevices(Operation *op,
-                        std::initializer_list<DeviceRefAttr> expectedDevices) {
-  llvm::SmallSetVector<DeviceRefAttr, 2> allDevices;
-  for (auto device : expectedDevices)
-    allDevices.insert(device);
-  size_t expectedNumDevices = allDevices.size();
-  std::string expectedStr;
-  {
-    llvm::raw_string_ostream os(expectedStr);
-    llvm::interleaveComma(allDevices, os,
-                          [&os](DeviceRefAttr device) { os << device; });
-  }
-
-  for (OpOperand &opOperand : op->getOpOperands()) {
-    if (auto hasDeviceType =
-            dyn_cast<MGPHasDeviceTypeInterface>(opOperand.get().getType()))
-      allDevices.insert(hasDeviceType.getDevice());
-  }
-  for (OpResult opResult : op->getResults()) {
-    if (auto hasDeviceType =
-            dyn_cast<MGPHasDeviceTypeInterface>(opResult.getType()))
-      allDevices.insert(hasDeviceType.getDevice());
-  }
-
-  if (allDevices.size() == expectedNumDevices)
-    return success();
-
-  std::string actualStr;
-  {
-    llvm::raw_string_ostream os(actualStr);
-    llvm::interleaveComma(allDevices, os,
-                          [&os](DeviceRefAttr device) { os << device; });
-  }
-
-  return op->emitOpError("expected all operands, results, and attributes to "
-                         "use the device(s) {")
-         << expectedStr << "}, but they instead use the devices(s) {"
-         << actualStr << "}.";
 }
 
 /// Returns a description of optSize.
@@ -1236,12 +1193,8 @@ bool TensorExtractBufferOp::mayAlias(size_t operandIndex, size_t resultIndex) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult TensorExtractTensorSpecOp::verify() {
-  TensorSpecType expectedSpecType = TensorSpecType::get(
-      getContext(),
-      /*optDims=*/getTensor().getType().getTensorSpec().getOptDims(),
-      /*optDType=*/
-      getCIsShapeOnly() ? std::optional<DType>()
-                        : getTensor().getType().getTensorSpec().getOptDType());
+  TensorSpecType expectedSpecType =
+      getTensor().getType().getTensorSpec(getCIsShapeOnly());
   if (expectedSpecType != getOutSpec().getType()) {
     return emitOpError("expected the result tensor spec to match the type "
                        "implied by the tensor type (")
@@ -1268,14 +1221,7 @@ LogicalResult TensorExtractTensorSpecOp::inferReturnTypes(
   if (failed(getBoolAttr(location.value_or(operands[0].getLoc()), attributes,
                          getCIsShapeOnlyAttrName(name), isShapeOnly)))
     return failure();
-  if (isShapeOnly) {
-    inferredReturnTypes.emplace_back(
-        TensorSpecType::get(context,
-                            /*optDims=*/tensorType.getTensorSpec().getDims(),
-                            /*optDType=*/std::optional<DType>()));
-  } else {
-    inferredReturnTypes.emplace_back(tensorType.getTensorSpec());
-  }
+  inferredReturnTypes.emplace_back(tensorType.getTensorSpec(isShapeOnly));
   return success();
 }
 

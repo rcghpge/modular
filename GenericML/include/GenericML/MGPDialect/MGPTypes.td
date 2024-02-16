@@ -28,6 +28,7 @@ class MGP_Type<string name, string typeMnemonic, list<Trait> traits = []>
 // CpuBufferType
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def MGP_CpuBufferType : MGP_Type<"CpuBuffer", "cpu.buffer",
                          [DeclareTypeInterfaceMethods<ShapedTypeInterface>,
                           DeclareTypeInterfaceMethods<MGP_BufferTypeInterface>
@@ -198,6 +199,7 @@ def MGP_DTypeType : MGP_Type<"DType", "dtype"> {
 // CpuTensorType
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def MGP_CpuTensorType : MGP_Type<"CpuTensor", "cpu.tensor", [
     DeclareTypeInterfaceMethods<ShapedTypeInterface>,
     DeclareTypeInterfaceMethods<MGP_TensorTypeInterface>]> {

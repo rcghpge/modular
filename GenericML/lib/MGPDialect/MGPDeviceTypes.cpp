@@ -156,3 +156,10 @@ DeviceTensorType DeviceTensorType::get(DeviceRefAttr device,
                                        TensorSpecType tensorSpecType) {
   return DeviceTensorType::get(device.getContext(), device, tensorSpecType);
 }
+
+TensorSpecType DeviceTensorType::getTensorSpec(bool isShapeOnly) {
+  if (isShapeOnly)
+    return TensorSpecType::get(getContext(), getTensorSpec().getOptDims(),
+                               std::optional<DType>());
+  return getTensorSpec();
+}

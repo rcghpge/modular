@@ -34,6 +34,7 @@ class MGP_Op<string mnemonic, list<Trait> traits = []> :
 // CpuBufferConstantOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
     Pure,
     ConstantLike,
@@ -108,6 +109,7 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
 // CpuBufferCacheOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuBufferCacheOp : MGP_Op<"cpu.buffer.cache"> {
   let summary = "Stores an !mgp.cpu.buffer in a dedicated state slot.";
   let description = [{
@@ -143,6 +145,7 @@ def CpuBufferCacheOp : MGP_Op<"cpu.buffer.cache"> {
 // CpuBufferGetCachedOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuBufferGetCachedOp : MGP_Op<"cpu.buffer.get_cached", [
     Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Retrieves an !mcp.cpu.buffer from a dedicated state slot.";
@@ -194,6 +197,7 @@ def CpuBufferGetCachedOp : MGP_Op<"cpu.buffer.get_cached", [
 // CpuBufferAllocStaticOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface>,
@@ -247,6 +251,7 @@ def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
 // CpuBufferAllocDynamicOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface>,
@@ -292,6 +297,7 @@ def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
 // CpuBufferReallocStaticOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>]> {
@@ -386,6 +392,7 @@ def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
 // CpuBufferReallocDynamicOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>]> {
@@ -441,6 +448,7 @@ def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic", [
 // CpuBufferSetWithIndex
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuBufferSetWithIndexOp : MGP_Op<"cpu.buffer.set_with_index", [
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>]> {
@@ -474,6 +482,7 @@ def CpuBufferSetWithIndexOp : MGP_Op<"cpu.buffer.set_with_index", [
 // CpuBufferCopyOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuBufferCopyOp : MGP_Op<"cpu.buffer.copy", [
     AllTypesMatch<["buffer", "result"]>]> {
   let summary = "Returns a deep copy of a CPU buffer.";
@@ -505,6 +514,7 @@ def CpuBufferCopyOp : MGP_Op<"cpu.buffer.copy", [
 // CpuBufferConcatOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuBufferConcatOp : MGP_Op<"cpu.buffer.concat", [
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>]> {
@@ -546,6 +556,7 @@ def CpuBufferConcatOp : MGP_Op<"cpu.buffer.concat", [
 // CpuBufferSectionBorrowStaticOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuBufferSectionBorrowStaticOp : MGP_Op<"cpu.buffer.section.borrow.static", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>]> {
@@ -605,6 +616,7 @@ def CpuBufferSectionBorrowStaticOp : MGP_Op<"cpu.buffer.section.borrow.static", 
 // CpuBufferSectionBorrowDynamicOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuBufferSectionBorrowDynamicOp : MGP_Op<"cpu.buffer.section.borrow.dynamic", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>]> {
@@ -668,6 +680,7 @@ def CpuBufferSectionBorrowDynamicOp : MGP_Op<"cpu.buffer.section.borrow.dynamic"
 // CpuBufferSplitBorrowOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuBufferSplitBorrowOp : MGP_Op<"cpu.buffer.split.borrow", [
     DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>]> {
   let summary = "Splits an input buffer into multiple result buffers which "
@@ -731,6 +744,7 @@ def CpuBufferSplitBorrowOp : MGP_Op<"cpu.buffer.split.borrow", [
 // CpuBufferSetOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuBufferSetOp : MGP_Op<"cpu.buffer.set", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>]> {
@@ -763,6 +777,7 @@ def CpuBufferSetOp : MGP_Op<"cpu.buffer.set", [
 // CpuBufferUnsizeOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuBufferUnsizeOp : MGP_Op<"cpu.buffer.unsize", [
     DeclareOpInterfaceMethods<MGP_BufferUnsizeOpInterface>,
     DeclareOpInterfaceMethods<GRTMayAliasInterface>, // The retrieved element is shallow copied
@@ -1176,8 +1191,7 @@ def CpuTensorSpecDTypeOp : MGP_Op<"cpu.tensor_spec.dtype"> {
 // CpuTensorCreateOp
 //===----------------------------------------------------------------------===//
 
-// TODO: Look into representing dynamic buffers more explicitly.
-// E.g. !mgp.cpu.buffer<?> instead of just !mgp.cpu.buffer.
+// TODO(#32165): DEPRECATED
 def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
     DeclareOpInterfaceMethods<MGP_CreateTensorOpInterface>,
     DeclareOpInterfaceMethods<GRTMayAliasInterface>, // since operand buffer may be moved into result
@@ -1272,6 +1286,7 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
 // CpuTensorExtractOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
     Pure,
     DeclareOpInterfaceMethods<MGP_TensorExtractOpInterface>,
@@ -1347,6 +1362,7 @@ def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
 // CpuTensorExtractShapeOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuTensorExtractShapeOp : MGP_Op<"cpu.tensor.extract.shape", [
     Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
@@ -1373,6 +1389,7 @@ def CpuTensorExtractShapeOp : MGP_Op<"cpu.tensor.extract.shape", [
 // DebugCpuTensorPrintOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def DebugCpuTensorPrintOp : MGP_Op<"debug.cpu.tensor.print", [
     TypesMatchWith<"Spec and buffer must agree on sizes",
                    "spec", "buffer",
@@ -1410,6 +1427,7 @@ def DebugCpuTensorPrintOp : MGP_Op<"debug.cpu.tensor.print", [
 // DebugCpuBufferPrintOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def DebugCpuBufferPrintOp : MGP_Op<"debug.cpu.buffer.print"> {
   let summary = "Prints a debug representation of argument buffer. For "
                 "debugging and testing only.";
@@ -1616,6 +1634,7 @@ def MGP_ScalarBuffer : ConfinedType<MGP_CpuBufferType, [HasBufferSizePred<[1]>],
   let cppClassName = "::M::MGP::CpuBufferType";
 }
 
+// TODO(#32165): DEPRECATED
 def ToGRTBoolOp : MGP_Op<"to_grt_bool"> {
   let summary = "Convert a single byte Buffer into a builtin i1.";
   let description = [{
@@ -1663,6 +1682,7 @@ def AssertOp : MGP_Op<"assert", [
 // CpuKernelCreateContextOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuKernelCreateContextOp : MGP_Op<"cpu.kernel.create_context"> {
   let summary = "Creates a context for managing compiled kernels.";
   let description = [{
@@ -1689,6 +1709,7 @@ def CpuKernelCreateContextOp : MGP_Op<"cpu.kernel.create_context"> {
 // CpuKernelLoadArchiveOp
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuKernelLoadArchiveOp : MGP_Op<"cpu.kernel.load_archive"> {
   let summary = "Loads a binary archive into the compiled kernel context.";
   let description = [{
@@ -1726,6 +1747,7 @@ def CpuKernelLoadArchiveOp : MGP_Op<"cpu.kernel.load_archive"> {
 // CpuKernelExecute
 //===----------------------------------------------------------------------===//
 
+// TODO(#32165): DEPRECATED
 def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
     AttrSizedOperandSegments,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,

@@ -53,6 +53,12 @@ namespace M::MGP {
 /// has no such constraint.
 ErrorOr<std::optional<uint64_t>> getImpliedAlignment(ElementsAttr value);
 
+/// Verifies all the types and attributes of op uses devices drawn from
+/// expectedDevices.
+LogicalResult
+verifyConsistentDevices(Operation *op,
+                        std::initializer_list<DeviceRefAttr> expectedDevices);
+
 } // namespace M::MGP
 
 #endif // GENERICML_MGPDIALECT_MGPOPS_H

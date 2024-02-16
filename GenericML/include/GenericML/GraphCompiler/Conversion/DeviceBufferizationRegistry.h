@@ -29,6 +29,12 @@
 
 namespace M::MO {
 
+//===----------------------------------------------------------------------===//
+// DeviceSpecificDialect
+//===----------------------------------------------------------------------===//
+
+/// Describes how create type and buffer builders for a particular device used
+/// during lowering.
 struct DeviceSpecificDialect {
   virtual ~DeviceSpecificDialect() = default;
 
@@ -52,6 +58,8 @@ struct DeviceSpecificDialect {
   virtual LogicalResult
   makeBufferBuilder(DeviceRefAttr hostDevice, DeviceSpecAttr deviceSpec,
                     MGP::MOGraphLoweringState &loweringState) = 0;
+
+  virtual void vtableAnchor();
 };
 
 /// Holds all the registered DeviceSpecificDialects.
@@ -85,7 +93,7 @@ private:
 };
 
 /// Registers the device-specific dialect helpers to be called by the
-/// MOToPrimitives lowering/ pass for devices with the given label.
+/// MOToPrimitives lowering pass for devices with the given label.
 void registerDeviceSpecificDialect(
     StringRef label,
     std::unique_ptr<DeviceSpecificDialect> deviceSpecificDialect);

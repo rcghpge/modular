@@ -28,6 +28,18 @@ namespace M::MGP {
 ///    to repair the model.
 TypedValue<MGP::ContextType> getContextForBlock(Block *block);
 
+/// Returns the !mef.chain representing the 'root' chain for block, which can
+/// be found from:
+///  - a block argument, such as the first argument to the 'excecute' block,
+///    or a control flow sub-block.
+///  - the result of a nullary grt.chain.create in the block, such as would be
+///    found in the 'init' block.
+///  - the parent block, if in a control flow sub-block which has not
+///    carried a !mef.chain downwards. Though using the returned value
+///    is illegal in the sub-block, the fixupIsolatedFromAbove can be used
+///    to repair the model.
+TypedValue<MEF::ChainType> getRootChainForBlock(Block *block);
+
 /// Record the given op has the given in/out semantics.
 ///
 /// Only to be used for ops without an ODS definition. All others should

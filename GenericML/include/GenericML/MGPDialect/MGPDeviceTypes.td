@@ -30,7 +30,7 @@ class MGP_DeviceType<string name, string mnemonic, list<Trait> traits = []> :
 
 def MGP_OptDeviceRefParam :
   DefaultValuedParameter<"M::DeviceRefAttr",
-                         "M::DeviceRefAttr::get($_ctxt, kCPULabel, 0)">;
+                         "M::DeviceRefAttr::getDefault($_ctxt)">;
 
 //===----------------------------------------------------------------------===//
 // DeviceChainType
@@ -272,6 +272,12 @@ def MGP_DeviceTensorType : MGP_DeviceType<"DeviceTensor", "tensor", [
     TypeBuilderWithInferredContext<(ins "M::DeviceRefAttr":$device,
                                         "M::MGP::TensorSpecType":$tensorSpecType)>,
   ];
+
+  let extraClassDeclaration = [{
+     /// Return the tensor spec for tensor. If isShapeOnly is true, the tensor
+     /// spec will have an unkown dtype.
+     M::MGP::TensorSpecType getTensorSpec(bool isShapeOnly);
+  }];
 }
 
 #endif  // GENERICML_MGPDIALECT_MGPDEVICETYPES_TD

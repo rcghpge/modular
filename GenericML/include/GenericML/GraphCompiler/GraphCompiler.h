@@ -28,6 +28,8 @@ LogicalResult lowerMOToMGP(ModuleOp module,
                            Runtime &runtime);
 
 /// Convert a module at the MGP level to a buffer in MEF format.
+/// The module is left unchanged (even though we may need to apply some
+/// rewrite to prepare for MEF.)
 ErrorOr<BufferRef> convertMGPToMEF(ModuleOp module, bool enableMEFMetadata);
 
 } // namespace M::MO

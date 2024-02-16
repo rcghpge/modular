@@ -74,6 +74,48 @@ M::MGP::getImpliedAlignment(ElementsAttr value) {
                "this attribute value.");
 }
 
+/// Verifies the types of all operands of op uses devices drawn from the
+/// given devices.
+LogicalResult M::MGP::verifyConsistentDevices(
+    Operation *op, std::initializer_list<DeviceRefAttr> expectedDevices) {
+  llvm::SmallSetVector<DeviceRefAttr, 2> allDevices;
+  for (auto device : expectedDevices)
+    allDevices.insert(device);
+  size_t expectedNumDevices = allDevices.size();
+  std::string expectedStr;
+  {
+    llvm::raw_string_ostream os(expectedStr);
+    llvm::interleaveComma(allDevices, os,
+                          [&os](DeviceRefAttr device) { os << device; });
+  }
+
+  for (OpOperand &opOperand : op->getOpOperands()) {
+    if (auto hasDeviceType =
+            dyn_cast<MGPHasDeviceTypeInterface>(opOperand.get().getType()))
+      allDevices.insert(hasDeviceType.getDevice());
+  }
+  for (OpResult opResult : op->getResults()) {
+    if (auto hasDeviceType =
+            dyn_cast<MGPHasDeviceTypeInterface>(opResult.getType()))
+      allDevices.insert(hasDeviceType.getDevice());
+  }
+
+  if (allDevices.size() == expectedNumDevices)
+    return success();
+
+  std::string actualStr;
+  {
+    llvm::raw_string_ostream os(actualStr);
+    llvm::interleaveComma(allDevices, os,
+                          [&os](DeviceRefAttr device) { os << device; });
+  }
+
+  return op->emitOpError("expected all operands, results, and attributes to "
+                         "use the device(s) {")
+         << expectedStr << "}, but they instead use the devices(s) {"
+         << actualStr << "}.";
+}
+
 //===----------------------------------------------------------------------===//
 // Custom parsers
 //===----------------------------------------------------------------------===//
@@ -82,7 +124,7 @@ M::MGP::getImpliedAlignment(ElementsAttr value) {
 static DeviceRefAttr deviceOrDefault(MLIRContext *ctx, DeviceRefAttr device) {
   if (device)
     return device;
-  return DeviceRefAttr::get(ctx, kCPULabel, 0);
+  return DeviceRefAttr::getDefault(ctx);
 }
 
 /// Parses an optional keyword and #M.device_ref into device, then assigns
@@ -99,7 +141,7 @@ static ParseResult parseOptDeviceRefImpl(OpAsmParser &p, StringRef keyword,
     if (!device)
       return p.emitError(loc, "expecting #M.device_ref attribute");
   } else {
-    device = DeviceRefAttr::get(p.getContext(), kCPULabel, 0);
+    device = DeviceRefAttr::getDefault(p.getContext());
   }
   for (Type *chain : chains)
     *chain = DeviceChainType::get(device);
@@ -113,7 +155,7 @@ static ParseResult parseOptDeviceRef(OpAsmParser &p, StringRef keyword,
 
 static void printOptDeviceRef(OpAsmPrinter &p, Operation *op, StringRef keyword,
                               DeviceRefAttr device, DeviceChainType chain) {
-  if (device != DeviceRefAttr::get(op->getContext(), kCPULabel, 0)) {
+  if (device != DeviceRefAttr::getDefault(op->getContext())) {
     p.printKeywordOrString(keyword);
     p.getStream() << " ";
     device.print(p);
