@@ -10,6 +10,7 @@
 from sys.param_env import env_get_string
 from tensor import Tensor, TensorShape
 from testing import assert_true, assert_raises
+from pathlib.path import Path
 
 from max.graph import AttrMap, Module, MOList, MOTensor, TypeTuple
 
