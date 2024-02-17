@@ -5,9 +5,10 @@
 # ===----------------------------------------------------------------------=== #
 # RUN: %mojo -debug-level full %s | FileCheck %s
 
+from collections.vector import DynamicVector
+
 from tensor import TensorShape, TensorSpec
 
-from collections.vector import DynamicVector
 from utils._serialize import _serialize_as_tensor
 
 
