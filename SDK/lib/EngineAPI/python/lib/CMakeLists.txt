@@ -15,6 +15,8 @@ add_modular_library(ModularFrameworkPython
   ResultProcessing.cpp
   Utils.cpp
 )
+# Set `MOJO_CONFIG_SECTION` so that `InferenceSession` can override
+# KGENCompilerRTShared.so's location.
 target_compile_definitions(ModularFrameworkPython
   PRIVATE -DMOJO_CONFIG_SECTION=${MOJO_CONFIG_SECTION}
 )
