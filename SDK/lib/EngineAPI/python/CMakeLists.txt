@@ -77,7 +77,12 @@ add_subdirectory(bindings/max/engine)
 # Needs to be added after cmake knows about `core` defined in bindings/max/engine
 add_subdirectory(tuf_packaging)
 
+# Collect all `dlopen()`ed shared libs to correctly declare wheel dependencies.
 set(MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:monnx>)
+
+if (STOCK_PYTORCH_FOUND)
+  list(APPEND MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:mtorch>)
+endif()
 
 # The wheel is built in the build directory.
 # However, setuptools is unaware of the pybind module since CMake built that.
