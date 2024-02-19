@@ -11,3 +11,8 @@ def version : Flag<["--"], "version">,
               Group<CommonOptionGroup>,
               Index<1>,
               HelpText<"Displays version information.">;
+
+def v : Flag<["-"], "v">,
+        Group<CommonOptionGroup>,
+        Alias<version>,
+        Index<0>;
