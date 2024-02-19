@@ -18,7 +18,7 @@ set(GRAPH_SRCS
   graph/ops/reduction
   graph/ops/slicing
 
-  graph/_capi
+  graph/_c
   graph/_testing)
 
 set(ENGINE_SRCS

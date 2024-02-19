@@ -6,21 +6,21 @@
 # UNSUPPORTED: windows
 # RUN: mojo %s | FileCheck %s
 
-import mlir
+import _mlir
 
-from max.graph import _capi
+from max.graph import _c
 
 
 fn test_empty_graph() raises:
-    with mlir.Context() as ctx:
+    with _mlir.Context() as ctx:
         ctx.load_modular_dialects()
         ctx.load_all_available_dialects()
-        let unknown = mlir.Location.unknown(ctx)
-        var m = mlir.Module(unknown)
+        let unknown = _mlir.Location.unknown(ctx)
+        var m = _mlir.Module(unknown)
 
-        let signature = mlir.builtin_types.FunctionType(ctx)
+        let signature = _mlir.builtin_types.FunctionType(ctx)
 
-        _ = _capi.graph_new(m, unknown, "empty_graph", signature)
+        _ = _c.graph_new(m, unknown, "empty_graph", signature)
 
         # CHECK: builtin.module
         # CHECK: mo.graph
@@ -29,28 +29,28 @@ fn test_empty_graph() raises:
 
 
 fn test_identity_graph() raises:
-    with mlir.Context() as ctx:
+    with _mlir.Context() as ctx:
         ctx.load_modular_dialects()
         ctx.load_all_available_dialects()
-        let unknown = mlir.Location.unknown(ctx)
-        var m = mlir.Module(unknown)
+        let unknown = _mlir.Location.unknown(ctx)
+        var m = _mlir.Module(unknown)
 
-        let intScalar = mlir.Type.parse(ctx, "!mo.scalar<si32>")
+        let intScalar = _mlir.Type.parse(ctx, "!mo.scalar<si32>")
 
-        var ins = DynamicVector[mlir.Type]()
+        var ins = DynamicVector[_mlir.Type]()
         ins.append(intScalar)
-        var outs = DynamicVector[mlir.Type]()
+        var outs = DynamicVector[_mlir.Type]()
         outs.append(intScalar)
 
-        let signature = mlir.builtin_types.FunctionType(ins, outs)
-        let g = _capi.graph_new(m, unknown, "identity_graph", signature)
+        let signature = _mlir.builtin_types.FunctionType(ins, outs)
+        let g = _c.graph_new(m, unknown, "identity_graph", signature)
 
         let block = g.region(0).first_block()
         let arg0 = block.argument(0)
-        var operands = DynamicVector[mlir.Value]()
+        var operands = DynamicVector[_mlir.Value]()
         operands.append(arg0)
 
-        block.append(mlir.Operation("mo.output", unknown, operands=operands))
+        block.append(_mlir.Operation("mo.output", unknown, operands=operands))
 
         # CHECK: mo.graph @identity_graph
         # CHECK: mo.output
