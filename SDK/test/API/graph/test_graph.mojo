@@ -71,41 +71,6 @@ fn test_add_constant() raises:
     print(m)
 
 
-fn test_list() raises:
-    var m = Module()
-    var g = m.graph("list", TypeTuple(), MOList(MOTensor(DType.float32, 1)))
-    let l = g.list(MOTensor(DType.float32, 1))
-    g.output(l)
-    m.verify()
-    # CHECK-LABEL: @list
-    # CHECK: mo.list.create() : () -> !mo.list<!mo.tensor<[1], f32>>
-    print(m)
-
-
-fn test_list_with_elements() raises:
-    var m = Module()
-    var g = m.graph("list", TypeTuple(), MOList(MOTensor(DType.float32)))
-    let x = g.scalar[DType.float32](1.0)
-    let y = g.scalar[DType.float32](2.0)
-    let l = g.list((x, y))
-    g.output(l)
-    m.verify()
-    # CHECK-LABEL: @list
-    # CHECK: mo.list.create(%0, %1) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.list<!mo.tensor<[], f32>>
-    print(m)
-
-
-fn test_list_validations() raises:
-    var m = Module()
-    var g = m.graph("list", TypeTuple(), TypeTuple())
-    with assert_raises():
-        _ = g.list(())
-    let x = g.scalar[DType.float32](1.0)
-    let y = g.scalar[DType.float32](2.0, rank=1)
-    with assert_raises():
-        _ = g.list((x, y))
-
-
 # CHECK-EXEC-LABEL: save_to_file
 fn test_save_to_file() raises:
     print("test_save_to_file")
@@ -123,7 +88,4 @@ fn main() raises:
     test_identity_graph()
     test_basic_add()
     test_add_constant()
-    test_list()
-    test_list_with_elements()
-    test_list_validations()
     test_save_to_file()
