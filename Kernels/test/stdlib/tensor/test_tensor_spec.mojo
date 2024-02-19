@@ -91,8 +91,8 @@ fn test_tensor_spec():
 
     # Check that dynamic dims work.
     # CHECK: True
-    let shape = TensorShape(-9223372036854775808)
-    let spec = TensorSpec(DType.float32, shape)
+    var shape = TensorShape(-9223372036854775808)
+    var spec = TensorSpec(DType.float32, shape)
     print(shape == spec.shape)
 
 
@@ -101,7 +101,7 @@ fn test_serialize():
     print("== test_serialize")
 
     var spec = TensorSpec(DType.float32, 1)
-    let bytes = _serialize_as_tensor(spec)
+    var bytes = _serialize_as_tensor(spec)
     # CHECK: True
     print(bytes.num_elements() == sizeof[TensorSpec]())
 

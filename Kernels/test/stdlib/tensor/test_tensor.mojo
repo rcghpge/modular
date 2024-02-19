@@ -17,7 +17,7 @@ from utils.index import Index, StaticIntTuple
 fn test_tensor():
     print("== test_tensor")
 
-    let tensor = Tensor[DType.float32](TensorShape(5, 2, 3))
+    var tensor = Tensor[DType.float32](TensorShape(5, 2, 3))
 
     # CHECK: 5x2x3
     print(str(tensor.shape()))
@@ -42,12 +42,12 @@ fn test_tensor():
 fn test_tensor_init():
     print("== test_tensor_init")
 
-    let tensor = Tensor[DType.float32](TensorShape(1, 2, 3))
+    var tensor = Tensor[DType.float32](TensorShape(1, 2, 3))
 
     # CHECK: 0.0
     print(tensor[0, 0, 0])
 
-    let t2 = Tensor[DType.float32](
+    var t2 = Tensor[DType.float32](
         TensorShape(1, 2, 3), 0.1, 0.2, 0.3, 0.4, 0.5, 0.6
     )
 
@@ -101,7 +101,7 @@ fn test_tensor_equality():
 fn test_tensor_indexing():
     print("== test_tensor_indexing")
 
-    let tensor = Tensor[DType.float32](TensorShape(5, 2, 3))
+    var tensor = Tensor[DType.float32](TensorShape(5, 2, 3))
 
     # CHECK: 0
     print(tensor._compute_linear_offset(StaticIntTuple[3](0, 0, 0)))
@@ -155,7 +155,7 @@ fn test_tensor_indexing():
 # CHECK: test_tensor_indexing2
 fn test_tensor_indexing2():
     print("== test_tensor_indexing2")
-    let tensor = Tensor[DType.float32](TensorShape(30, 20, 10))
+    var tensor = Tensor[DType.float32](TensorShape(30, 20, 10))
 
     # CHECK: 223
     print(tensor._compute_linear_offset(1, 2, 3))
@@ -184,7 +184,7 @@ fn test_tensor_fill():
 fn test_tensor_rand():
     print("== test_tensor_rand")
 
-    let tensor = rand[DType.float32](3, 3, 3)
+    var tensor = rand[DType.float32](3, 3, 3)
 
     for i in range(3):
         for j in range(3):
@@ -196,7 +196,7 @@ fn test_tensor_rand():
 fn test_tensor_randn():
     print("== test_tensor_randn")
 
-    let tensor = randn[DType.float32](TensorShape(3, 3, 3))
+    var tensor = randn[DType.float32](TensorShape(3, 3, 3))
 
     for i in range(3):
         for j in range(3):
@@ -222,7 +222,7 @@ fn test_tensor_astype():
 fn test_euclidean_distance():
     print("== test_euclidean_distance")
 
-    let num_elements = 100
+    var num_elements = 100
 
     var a = Tensor[DType.float64](num_elements)
     var b = Tensor[DType.float64](num_elements)
@@ -233,7 +233,7 @@ fn test_euclidean_distance():
 
     var accum = Float64(0)
     for i in range(num_elements):
-        let dist = a[i] - b[i]
+        var dist = a[i] - b[i]
         accum += dist * dist
 
     # CHECK: 577.408
@@ -245,13 +245,13 @@ fn test_euclidean_distance():
 fn test_image_to_grayscale():
     print("== test_image_to_grayscale")
 
-    let height = 256
-    let width = 256
-    let channels = 3
+    var height = 256
+    var width = 256
+    var channels = 3
 
     # Create the tensor of dimensions height, width, channels and fill.
     var image = Tensor[DType.float32](height, width, channels)
-    let num_elements = image.num_elements()
+    var num_elements = image.num_elements()
     for x in range(height):
         for y in range(width):
             for c in range(channels):
@@ -265,9 +265,9 @@ fn test_image_to_grayscale():
     # Perform the RGB to grayscale transform.
     for y in range(height):
         for x in range(width):
-            let r = image[y, x, 0]
-            let g = image[y, x, 1]
-            let b = image[y, x, 2]
+            var r = image[y, x, 0]
+            var g = image[y, x, 1]
+            var b = image[y, x, 2]
             gray_scale_image[Index(y, x)] = 0.299 * r + 0.587 * g + 0.114 * b
 
     # CHECK: 4.1453{{.*}}e-06
@@ -471,9 +471,9 @@ fn test_rdiv_scalar():
 # CHECK-LABEL: test_pow
 fn test_pow():
     print("== test_pow")
-    let tensor = Tensor[DType.float32](2, 2)
+    var tensor = Tensor[DType.float32](2, 2)
     iota(tensor.data(), tensor.num_elements())
-    let tensor_pow_2 = tensor**2
+    var tensor_pow_2 = tensor**2
     # CHECK{LITERAL}: Tensor([[0.0, 1.0],
     # CHECK{LITERAL}: [2.0, 3.0]]
     print(tensor)
@@ -481,7 +481,7 @@ fn test_pow():
     # CHECK{LITERAL}: [4.0, 9.0]]
     print(tensor_pow_2)
 
-    let tensor_pow_0 = tensor**0
+    var tensor_pow_0 = tensor**0
     # CHECK{LITERAL}: Tensor([[1.0, 1.0],
     # CHECK{LITERAL}: [1.0, 1.0]]
     print(tensor_pow_0)
@@ -502,7 +502,7 @@ fn test_pow():
     # CHECK: [0.5, 0.333{{.*}}]]
     print(tensor_pow_neg1)
 
-    let tensor_large = Tensor[DType.float32](65)
+    var tensor_large = Tensor[DType.float32](65)
     iota(tensor_large.data(), tensor_large.num_elements())
     # CHECK{LITERAL}: Tensor([[0.0, 1.0, 4.0, ..., 3844.0, 3969.0, 4096.0]]
     print(tensor_large**2)
@@ -515,7 +515,7 @@ fn test_print():
     # CHECK{LITERAL}: [0, 0, 0]],
     # CHECK{LITERAL}: [[0, 0, 0],
     # CHECK{LITERAL}: [0, 0, 0]]], dtype=index, shape=2x2x3)
-    let tensor = Tensor[DType.index](2, 2, 3)
+    var tensor = Tensor[DType.index](2, 2, 3)
     print(tensor)
 
 
@@ -526,7 +526,7 @@ fn test_print_small():
     # CHECK{LITERAL}: [3, 4, 5]],
     # CHECK{LITERAL}: [[6, 7, 8],
     # CHECK{LITERAL}: [9, 10, 11]]], dtype=index, shape=2x2x3)
-    let tensor = Tensor[DType.index](2, 2, 3)
+    var tensor = Tensor[DType.index](2, 2, 3)
     iota(tensor.data(), tensor.num_elements())
     print(str(tensor))
 
@@ -540,7 +540,7 @@ fn test_print_large():
     # CHECK-NEXT: ...,
     # CHECK: 5994, 5995, 5996, ..., 6324, 6325, 6326],
     # CHECK{LITERAL}: [1482183, 1482184, 1482185, ..., 1482513, 1482514, 1482515]]], dtype=index, shape=212x21x333)
-    let tensor = Tensor[DType.index](212, 21, 333)
+    var tensor = Tensor[DType.index](212, 21, 333)
     iota(tensor.data(), tensor.num_elements())
     print(str(tensor))
 
