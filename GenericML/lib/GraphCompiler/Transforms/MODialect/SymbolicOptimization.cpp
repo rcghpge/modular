@@ -7,6 +7,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #include "GenericML/GraphCompiler/Analysis/MODialect/StaticReshapeDimensionsMappingAnalysis.h"
+#include "GenericML/GraphCompiler/Conversion/MOSupport/Broadcast.h"
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
@@ -17,6 +18,7 @@
 #include "GenericML/Support/Dims.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/ML/Permutation.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 #include "./Utils.h"
 
@@ -2757,9 +2759,8 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
 ///           ▼                        │
 ///                                    ▼
 ///
-/// This can only be done in certain scenarios generally, most notably as
-/// long as the axis of reduction is done on a dimension which is not modified
-/// in the broadcast.
+/// This general transformation can only be applied as long as the axis of
+/// reduction is done on a dimension which is not modified in the broadcast.
 ///
 /// Why is this possible? One easy way to get an intuition is seeing broadcast
 /// as a "view"/"reindexing" operation of an original buffer.
@@ -2778,6 +2779,15 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
 ///
 /// Which is a reduction across dimension 'A' in the original tensor, with
 /// a broadcast with the same initial output shape!
+///
+/// When the axis of reduction is modified by the broadcast, it means the
+/// reduction is applied on an axis with identical values, and the whole
+/// Reduction op can be replaced by a simpler op (before applying a
+/// BroadcastTo):
+/// - For reduce.add (reduce.mul), the input must be multiplied (use pow) by the
+/// size of the axis.
+/// - For min / max / mean, the input isn't modfied (identity).
+/// - For argmin / argmax, the input is transformed into a tensor of 0s.
 struct SinkBroadcastsThroughReduction
     : public DeviceAwareRewritePattern<OpInterfaceRewritePattern, Reduction> {
   SinkBroadcastsThroughReduction(MLIRContext *ctx)
@@ -2788,6 +2798,7 @@ struct SinkBroadcastsThroughReduction
                              DeviceAwareRewriter &rewriter) const override {
     TensorValue input = op.getInput();
     Location loc = op->getLoc();
+    MLIRContext *ctx = op->getContext();
 
     auto bcastOp = input.getDefiningOp<Static::BroadcastToOp>();
     if (!bcastOp)
@@ -2820,28 +2831,71 @@ struct SinkBroadcastsThroughReduction
     // And we are reducing along the dim with 'A', then we just need to count
     // the number of additional broadcasted dimensions before the given axis.
     // In this case it is 2, since we added axis `1` and `D`.
+    auto bcastShapeAttr = bcastOp.getType().getTypedShapeAttr();
     ErrorOr<SmallVector<int64_t>> maybeBcastedAxis =
         ShapeAttr::getBroadcastedAxes(
-            bcastOp.getInput().getType().getTypedShapeAttr(),
-            bcastOp.getType().getTypedShapeAttr());
+            bcastOp.getInput().getType().getTypedShapeAttr(), bcastShapeAttr);
     if (maybeBcastedAxis.isError())
       return rewriter.notifyMatchFailure(loc, maybeBcastedAxis.getError());
 
     SmallVector<int64_t> &bcastedAxis = maybeBcastedAxis.get();
     size_t numBeforeAxis = 0;
     for (int64_t bcastedDimIndex : bcastedAxis) {
-      // TODO(24589): there are fancier things we can simplify based on the type
-      // of reduction here when we reduce along the broadcasted axis.
-      //
-      // For example, if we are doing reduce.add in this case, we just have to
-      // multiply the old tensor by the size of the broadcast axis and reshape.
-      //
-      // For max/min, the result is invariant to these transforms.
-      // For prod, it becomes pow.
-      if (bcastedDimIndex == axis)
-        return rewriter.notifyMatchFailure(
-            loc,
-            "Cannot optimize if reducing along axes modified by broadcast");
+      if (bcastedDimIndex == axis) {
+        // When we reduce along the broadcasted axis the reduction op can be
+        // simplified.
+        auto maybeNewInput =
+            TypeSwitch<Operation *, FailureOr<TensorValue>>(op)
+                .Case<ReduceMinOp, ReduceMaxOp, MeanOp>([&](auto op) {
+                  // For min / max / mean, the reduction is removed.
+                  return bcastOpInput;
+                })
+                .Case<ReduceAddOp, ReduceMulOp>([&](auto op) {
+                  // For reduce.add, the input is multiplied by the size of the
+                  // broadcast axis. (For reduce.mul, we use mo.pow instead).
+                  TypedAttr dimAttr = bcastShapeAttr.getValues()[axis];
+                  auto dimIndex =
+                      rewriter.create<KGEN::ParamConstantOp>(loc, dimAttr);
+                  auto dimT = rewriter.create<IndexToTensorOp>(
+                      loc,
+                      TensorType::get(
+                          ArrayRef<int64_t>({}),
+                          IntegerType::get(ctx, 64, IntegerType::Unsigned)),
+                      dimIndex);
+                  auto dimCast = rewriter.create<CastOp>(
+                      loc, dimT, bcastOpInput.getType().getDtype());
+                  auto dimBroadcast = broadcastTo(rewriter.rewriter, loc,
+                                                  dimCast, bcastOpInput);
+                  TensorValue scaledInput =
+                      isa<ReduceAddOp>(op)
+                          ? rewriter
+                                .create<MulOp>(loc, bcastOpInput, dimBroadcast)
+                                .getResult()
+                          : rewriter
+                                .create<PowOp>(loc, bcastOpInput.getType(),
+                                               bcastOpInput, dimBroadcast)
+                                .getResult();
+                  return scaledInput;
+                })
+                .Case<ArgMinOp, ArgMaxOp>([&](auto op) {
+                  // For arg_min / arg_max, the output becomes a tensor of 0s.
+                  auto v0 = rewriter.create<MO::ConstantOp>(loc, 0);
+                  TensorValue v0Cast = rewriter.create<CastOp>(
+                      loc, v0, op.getResult().getType().getDtype());
+                  return v0Cast;
+                })
+                .Default([&](auto op) {
+                  return rewriter.notifyMatchFailure(
+                      loc, "Cannot optimize if reducing along axes modified by "
+                           "broadcast: Unsupported reduce operation");
+                });
+        if (failed(maybeNewInput))
+          return failure();
+
+        rewriter.replaceOpWithNewOp<Static::BroadcastToOp>(
+            op, op.getResult().getType(), *maybeNewInput);
+        return success();
+      }
       if (bcastedDimIndex > axis)
         break;
       numBeforeAxis++;
