@@ -7,15 +7,9 @@
 # RUN: mojo %s
 
 from tensor import TensorSpec
+import testing
 
-from max.graph import (
-    _testing as testing,
-    Dim,
-    ElementType,
-    Module,
-    MOList,
-    MOTensor,
-)
+from max.graph import Dim, ElementType, Module, MOList, MOTensor
 
 
 fn test_dtype_to_string() raises:

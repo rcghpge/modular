@@ -8,16 +8,13 @@
 
 from tensor import Tensor, TensorShape
 
-from max.graph import _testing as testing, Module, MOTensor, Symbol, TypeTuple
+from max.graph import _testing, Module, MOTensor, Symbol, TypeTuple
 
 
 fn test_replace_all_uses_with() raises:
-    alias name = "test_replace_all_uses_with"
-
     var m = Module()
     m._module.context().print_on_diagnostic()
     var g = m.graph(
-        name,
         TypeTuple(MOTensor(DType.int64), MOTensor(DType.int64)),
         MOTensor(DType.int64),
     )
@@ -29,17 +26,14 @@ fn test_replace_all_uses_with() raises:
     g[0].replace_all_uses_with(g[1] + 3)
     let expected = Tensor[DType.int64](TensorShape(), 7)
 
-    let actual = testing.execute_binary[DType.int64, DType.int64](m, name, x, y)
-    testing.assert_tensors_equal[DType.int64](expected, actual)
+    let actual = _testing.execute_binary[DType.int64, DType.int64](m, x, y)
+    _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
 fn test_replace_all_uses_with_transform() raises:
-    alias name = "test_replace_all_uses_with_transform"
-
     var m = Module()
     m._module.context().print_on_diagnostic()
     var g = m.graph(
-        name,
         TypeTuple(MOTensor(DType.int64), MOTensor(DType.int64)),
         MOTensor(DType.int64),
     )
@@ -55,8 +49,8 @@ fn test_replace_all_uses_with_transform() raises:
     g[0].replace_all_uses_with(transform)
     let expected = Tensor[DType.int64](TensorShape(), 6)
 
-    let actual = testing.execute_binary[DType.int64, DType.int64](m, name, x, y)
-    testing.assert_tensors_equal[DType.int64](expected, actual)
+    let actual = _testing.execute_binary[DType.int64, DType.int64](m, x, y)
+    _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
 def main():

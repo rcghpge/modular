@@ -7,16 +7,12 @@
 
 from tensor import Tensor, TensorShape
 
-from max.graph import _testing as testing, Module, MOTensor, TypeTuple
+from max.graph import _testing, Module, MOTensor, TypeTuple
 
 
 fn test_matmul() raises:
-    # TODO: Test broadcasting with non-equal dimensions.
-    alias name = "test_matmul"
-
     var m = Module()
     var g = m.graph(
-        name,
         TypeTuple(
             MOTensor(DType.float32, 1, 2, 3), MOTensor(DType.float32, 3, 2)
         ),
@@ -33,16 +29,13 @@ fn test_matmul() raises:
     )
     let expected = Tensor[DType.float32](TensorShape(1, 2, 2), -2, -3, 1, 6)
 
-    let actual = testing.execute_binary(m, name, x, y)
-    testing.assert_tensors_almost_equal(expected, actual, 1e-4)
+    let actual = _testing.execute_binary(m, x, y)
+    _testing.assert_tensors_almost_equal(expected, actual, 1e-4)
 
 
 fn test_batch_matmul() raises:
-    alias name = "test_batch_matmul"
-
     var m = Module()
     var g = m.graph(
-        name,
         TypeTuple(
             MOTensor(DType.float32, 1, 2, 3), MOTensor(DType.float32, 3, 2)
         ),
@@ -59,8 +52,8 @@ fn test_batch_matmul() raises:
     )
     let expected = Tensor[DType.float32](TensorShape(1, 2, 2), -2, -3, 1, 6)
 
-    let actual = testing.execute_binary(m, name, x, y)
-    testing.assert_tensors_almost_equal(expected, actual, 1e-4)
+    let actual = _testing.execute_binary(m, x, y)
+    _testing.assert_tensors_almost_equal(expected, actual, 1e-4)
 
 
 def main():

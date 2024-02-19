@@ -7,16 +7,12 @@
 
 from tensor import Tensor, TensorShape
 
-from max.graph import ops, _testing as testing, Module, MOTensor
+from max.graph import ops, _testing, Module, MOTensor
 
 
 fn test_arg_max() raises:
-    alias name = "test_arg_max"
-
     var m = Module()
-    var g = m.graph(
-        name, MOTensor(DType.float32, 2, 3), MOTensor(DType.int64, 2, 1)
-    )
+    var g = m.graph(MOTensor(DType.float32, 2, 3), MOTensor(DType.int64, 2, 1))
     g.output(ops.arg_max(g[0], 1))
     m.verify()
 
@@ -25,17 +21,13 @@ fn test_arg_max() raises:
     )
     let expected = Tensor[DType.int64](TensorShape(2, 1), 2, 0)
 
-    let actual = testing.execute_unary[outtype = DType.int64](m, name, x)
-    testing.assert_tensors_equal(expected, actual)
+    let actual = _testing.execute_unary[outtype = DType.int64](m, x)
+    _testing.assert_tensors_equal(expected, actual)
 
 
 fn test_arg_max_neg_axis() raises:
-    alias name = "test_arg_max_neg_axis"
-
     var m = Module()
-    var g = m.graph(
-        name, MOTensor(DType.float32, 2, 3), MOTensor(DType.int64, 2, 1)
-    )
+    var g = m.graph(MOTensor(DType.float32, 2, 3), MOTensor(DType.int64, 2, 1))
     g.output(ops.arg_max(g[0], -1))
     m.verify()
 
@@ -44,8 +36,8 @@ fn test_arg_max_neg_axis() raises:
     )
     let expected = Tensor[DType.int64](TensorShape(2, 1), 2, 0)
 
-    let actual = testing.execute_unary[outtype = DType.int64](m, name, x)
-    testing.assert_tensors_equal(expected, actual)
+    let actual = _testing.execute_unary[outtype = DType.int64](m, x)
+    _testing.assert_tensors_equal(expected, actual)
 
 
 def main():

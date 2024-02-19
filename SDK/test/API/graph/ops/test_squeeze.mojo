@@ -7,15 +7,12 @@
 
 from tensor import Tensor, TensorShape
 
-from max.graph import ops, _testing as testing, Dim, Module, MOTensor
+from max.graph import ops, _testing, Dim, Module, MOTensor
 
 
 fn test_squeeze() raises:
-    alias name = "test_squeeze"
-
     var m = Module()
     var g = m.graph(
-        name,
         MOTensor(DType.float32, Dim.dynamic(), 1, 3),
         MOTensor(DType.float32, Dim.dynamic(), 3),
     )
@@ -25,8 +22,8 @@ fn test_squeeze() raises:
     let x = Tensor[DType.float32](TensorShape(1, 1, 3), 1, 2, 3)
     let expected = Tensor[DType.float32](TensorShape(1, 3), 1, 2, 3)
 
-    let actual = testing.execute_unary(m, name, x)
-    testing.assert_tensors_almost_equal(expected, actual)
+    let actual = _testing.execute_unary(m, x)
+    _testing.assert_tensors_almost_equal(expected, actual)
 
 
 def main():

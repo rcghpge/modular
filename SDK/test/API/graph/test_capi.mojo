@@ -7,7 +7,8 @@
 # RUN: mojo %s | FileCheck %s
 
 import mlir
-from max.graph import _capi as capi
+
+from max.graph import _capi
 
 
 fn test_empty_graph() raises:
@@ -19,7 +20,7 @@ fn test_empty_graph() raises:
 
         let signature = mlir.builtin_types.FunctionType(ctx)
 
-        _ = capi.graph_new(m, unknown, "empty_graph", signature)
+        _ = _capi.graph_new(m, unknown, "empty_graph", signature)
 
         # CHECK: builtin.module
         # CHECK: mo.graph
@@ -41,11 +42,8 @@ fn test_identity_graph() raises:
         var outs = DynamicVector[mlir.Type]()
         outs.append(intScalar)
 
-        # var outs = capi.arity_new()
-        # capi.arity_append_type(outs, intScalar)
-
         let signature = mlir.builtin_types.FunctionType(ins, outs)
-        let g = capi.graph_new(m, unknown, "identity_graph", signature)
+        let g = _capi.graph_new(m, unknown, "identity_graph", signature)
 
         let block = g.region(0).first_block()
         let arg0 = block.argument(0)

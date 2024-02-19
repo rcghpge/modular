@@ -7,17 +7,13 @@
 
 from tensor import Tensor, TensorShape
 
-from max.graph import _testing as testing, Dim, Module, MOTensor, TypeTuple
+from max.graph import _testing, Dim, Module, MOTensor, TypeTuple
 
 
 fn test_print() raises:
-    alias name = "test_print"
-
     var m = Module()
     var g = m.graph(
-        name,
-        MOTensor(DType.float32, Dim.dynamic(), Dim.dynamic(), 2),
-        TypeTuple(),
+        MOTensor(DType.float32, Dim.dynamic(), Dim.dynamic(), 2), TypeTuple()
     )
     g[0].print()
     g.output(())
@@ -29,7 +25,7 @@ fn test_print() raises:
     # CHECK{LITERAL}: [3.0000, 4.0000]],
     # CHECK{LITERAL}: [[5.0000, 6.0000],
     # CHECK{LITERAL}: [7.0000, 8.0000]]], dtype=f32, shape=[2,2,2])
-    _ = testing.execute_base(m, name, x)
+    _ = _testing.execute_base(m, x)
 
 
 def main():
