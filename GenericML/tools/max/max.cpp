@@ -50,8 +50,9 @@ int main(int argc, char **argv) {
   llvm::InitLLVM initLLVM(argc, argv);
   initCrashpadForProgram(argv[0], kMAXProductName);
   llvm::setBugReportMsg(
-      "Please submit a bug report to eap@modular.com and include the crash "
-      "backtrace along with your command line invocation.\n");
+      "Please submit a bug report to https://github.com/modularml/max/issues "
+      "and include the crash backtrace along with your command line "
+      "invocation.\n");
 
   State state(kMAXProductName, {argv + 1, static_cast<size_t>(argc) - 1});
   if (state.arguments.empty())
