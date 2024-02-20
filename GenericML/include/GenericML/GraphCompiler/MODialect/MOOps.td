@@ -1777,9 +1777,9 @@ def MO_ConvOp : MO_TensorOp<"conv", [
     Computes the convolution product of the input with the given filter,
     strides, dilations, paddings, and groups.
 
-    The op supports 2D convolution (so input and filter must be
-    4D), with the following layout assumptions:
-    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+    The op supports 1D-3D convolution, with the following layout assumptions:
+    - input has channel last layout. For 2D, that's NHWC, i.e.,
+      (batch_size, height, width, in_channels)
     - filter has layout RSCF, i.e.,
       (height, width, in_channels / num_groups, out_channels)
 
@@ -1817,7 +1817,7 @@ def MO_ConvOp : MO_TensorOp<"conv", [
     `num_groups` must be a ranked scalar. The number of input and output
     channels must both be divisible by the number of groups `num_groups`.
 
-    This op currently only supports strides and dilations on the input.
+    This op currently only supports strides and padding on the input.
 
     Example:
 
@@ -1869,11 +1869,11 @@ def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
     filter and hyperparameters as this op). A visualization of the computation
     can be found in https://d2l.ai/chapter_computer-vision/transposed-conv.html.
 
-    The op supports 2D spatial dimensions (so input and filter must
-    be 4D), with the following layout assumptions (note the `out_channel` is
-    w.r.t. the original convolution):
-    - input has layout NHWC, i.e., (batch_size, height, width, out_channels)
-    - filter has layout RSCF, i.e., (height, width, in_channels, out_channels)
+    The op supports 1D-3D spatial dimensions, with the following layout
+    assumptions (note the `out_channel` is w.r.t. the original convolution):
+    - input has channel last layout.For 2D, that's NHWC, i.e.,
+      (batch_size, height, width, out_channels)
+    - filter has layout RSFC, i.e., (height, width, out_channels, in_channels)
 
     All hyperparameters (i.e. strides, dilations, padding, output_paddings) must
     be of rank 1, or unranked. If the input has static rank, all hyperparameters
@@ -1886,28 +1886,27 @@ def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
     The padding values are expected to take the form (pad_dim1_before,
     pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
     0's before and after the indicated *spatial* dimensions in `input`. In 2D
-    Convolution, dim1 here repesents H and dim2 represents W. In python like
-    syntax, padding a 2x3 spatial `input` with [0, 1, 2, 1] would yield:
+    ConvTranspose, dim1 here repesents H_out and dim2 represents W_out. In
+    python like syntax, padding a 2x4 spatial `output` with [0, 1, 2, 1] would
+    yield:
 
     ```python
-    input = [
-      [1, 2, 3],
-      [4, 5, 6]
+    output = [
+      [1, 2, 3, 4],
+      [5, 6, 7, 8]
     ]
-    # Shape is 2x3
+    # Shape is 2x4
 
     padded_input = [
-      [0, 0, 1, 2, 3, 0],
-      [0, 0, 4, 5, 6, 0]
-      [0, 0, 0, 0, 0, 0]
+      [3],
     ]
-    # Shape is 3x6
+    # Shape is 1x1
     ```
 
     The `output_paddings` argument is meant to resolve the ambiguity of multiple
     potential output shapes when any stride is greater than 1. Basically,
     we'll add `output_paddings[i]` number of zeros at the end of output's ith
-    axis.
+    axis. We only support output_paddings = 0.
 
     The input, output and filter tensors' ranks must match if statically known.
 
@@ -1922,7 +1921,7 @@ def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
         : !mo.tensor<[4], si64>
       %op = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>}
         : !mo.tensor<[2], si64>
-      %res = mo.conv(%input, %filter)
+      %res = mo.conv_transpose(%input, %filter)
         [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
         !mo.tensor<[10, 4, 4, 64], f32>, !mo.tensor<[2, 2, 32, 64], f32>,
         !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>,
