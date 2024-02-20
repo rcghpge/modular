@@ -63,16 +63,13 @@ public:
   // !mgp.context slot to hold the calculated device spec map.
   LogicalResult setupCheckRuntime(Location loc);
 
-  // Establish type builders for all the (virtual) devices needed by the
-  // model. These will be available via the lowering state's type converter.
+  // Establish type builders for all the (virtual) devices needed by the model.
   LogicalResult setupTypeBuildersForAllDevices();
 
-  // Establisnh a buffer builder for the 'host' (ie CPU) device.
-  LogicalResult makeCPUBufferBuilder(DeviceSpecAttr deviceSpec);
-
   // Establish buffer builders for all the (virtual) devices needed by the
-  // model. This may require emitting device-specific setup code.
-  LogicalResult setupBufferBuildersForAllDevices(Location loc);
+  // model. Each device will have its 'runtime' created in the 'init' block
+  // and held in the !mgp.context.
+  LogicalResult setupBufferBuildersForAllDevices();
 
   LogicalResult createModelOp();
 
@@ -193,65 +190,33 @@ LogicalResult MOGraphLowering::setupTypeBuildersForAllDevices() {
     return failure();
 
   for (DeviceSpecAttr deviceSpec : deviceSpecsOr->getDevices()) {
-    if (deviceSpec.getRef().getLabel() == kCPULabel) {
-      // We know how to work with MGP tensors for the CPU.
-      loweringState.registerTypeBuilder(
-          deviceSpec.getRef(), std::make_unique<MGP::CpuTypeBuilder>());
-    } else {
-      // Rely on the registered 'makeTypeBuilder' function for this device.
-      if (failed(MO::makeTypeBuilder(deviceSpec, loweringState)))
-        return failure();
-    }
+    if (failed(MO::makeTypeBuilder(deviceSpec, loweringState)))
+      return failure();
   }
   return success();
 }
 
-LogicalResult MOGraphLowering::makeCPUBufferBuilder(DeviceSpecAttr deviceSpec) {
-  // Setup the compiled kernel context for all CPU kernels.
-  uint64_t slot = loweringState.getInitMgpContext().getNumSlots();
-  auto createContextOp =
-      loweringState.getInitOpBuilder().create<MGP::CpuKernelCreateContextOp>(
-          loweringState.getGraph().getLoc(),
-          /*inChain=*/loweringState.getInitChain(),
-          /*theContext=*/loweringState.getInitMgpContext(),
-          /*slot=*/slot);
-  loweringState.getInitMgpContext().setNumSlots(slot + 1);
-  loweringState.setInitChain(createContextOp.getOutChain());
-
-  // Register the builder for CPU.
-  loweringState.registerBufferBuilder(
-      deviceSpec.getRef(), std::make_unique<MGP::CpuBufferBuilder>(slot));
-
-  return success();
-}
-
-LogicalResult MOGraphLowering::setupBufferBuildersForAllDevices(Location loc) {
+LogicalResult MOGraphLowering::setupBufferBuildersForAllDevices() {
   FailureOr<DeviceSpecCollectionAttr> deviceSpecsOr =
       loweringState.getDeviceSpecs();
   if (failed(deviceSpecsOr))
     return failure();
 
-  // We must always establish the buffer builder for the 'host' first,
-  // since it may be needed by other device-specific builders.
-  DeviceSpecAttr hostDeviceSpec = deviceSpecsOr->getHostDeviceSpec();
-  GENERICML_ASSERT(hostDeviceSpec.getRef() ==
-                   getHostDevice(loweringState.getGraph()))
-      << "The 'host' device must be a CPU";
-  // We always know how to work with the host CPU device.
-  if (failed(makeCPUBufferBuilder(hostDeviceSpec)))
-    return failure();
-
-  // Now we can establish buffer builders for all the other devices, if any.
+  // Make sure the 'host' device buffer builder is established first since
+  // other builders need to refer to it.
   for (DeviceSpecAttr deviceSpec : deviceSpecsOr->getDevices()) {
-    if (deviceSpec.getRef() == hostDeviceSpec.getRef())
+    if (deviceSpec.getRef() != deviceSpecsOr->getHost())
       continue;
+    if (failed(MO::makeBufferBuilder(deviceSpecsOr->getHost(), deviceSpec,
+                                     loweringState)))
+      return failure();
+  }
 
-    // Rely on the registered 'makeBufferBuilder' function for this device.
-    // It may inject setup code into the 'init' block as required, and
-    // then register a BufferBuilder for the device spec's device reference.
-    // It may also grab the 'host' buffer builder to handle ops which execute
-    // via the host.
-    if (failed(MO::makeBufferBuilder(hostDeviceSpec.getRef(), deviceSpec,
+  // Now establish buffer builders for all other devices.
+  for (DeviceSpecAttr deviceSpec : deviceSpecsOr->getDevices()) {
+    if (deviceSpec.getRef() == deviceSpecsOr->getHost())
+      continue;
+    if (failed(MO::makeBufferBuilder(deviceSpecsOr->getHost(), deviceSpec,
                                      loweringState)))
       return failure();
   }
@@ -350,7 +315,7 @@ LogicalResult MOGraphLowering::createModelOp() {
   // extra device-specific setup in the 'init' block.
   // CAUTION: Must be done after the 'init' and 'execute' mgp.contexts have
   // been established, but before we lower any device-specific ops.
-  if (failed(setupBufferBuildersForAllDevices(graph.getLoc())))
+  if (failed(setupBufferBuildersForAllDevices()))
     return failure();
 
   return success();
@@ -510,18 +475,21 @@ MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
   if (failed(loweredOutputStorageOr))
     return failure();
   auto &outputStorage = (*loweredOutputStorageOr)[0];
-  GENERICML_ASSERT(isa<MGP::CpuBufferType>(outputStorage.buffer.getType()))
-      << "expecting !mgp.cpu.buffer output";
+  auto bufType =
+      dyn_cast<MGP::DeviceBufferType>(outputStorage.buffer.getType());
+  GENERICML_ASSERT(bufType && bufType.getDevice().getLabel() == "cpu")
+      << "expecting !mgp.buffer on host but it is on " << bufType.getDevice();
 
   // Fill the buffer with the index value.
   Value loweredIndexVal =
       loweringState.lookupExecuteLoweredValue(toTensorOp.getInput());
-  auto bufferSetOp = opLoweringState.create<MGP::CpuBufferSetWithIndexOp>(
-      /*buffer=*/outputStorage.buffer, /*value=*/loweredIndexVal);
+  SmallVector<Value> values;
+  values.emplace_back(loweredIndexVal);
+  auto outChain = opLoweringState.bufferSetWithIndex(
+      outputStorage.buffer, values, toTensorOp.getResult().getType());
 
   // Setup output tensor.
-  opLoweringState.createOutputs(bufferSetOp.getOutChain(),
-                                *loweredOutputStorageOr);
+  opLoweringState.createOutputs(outChain, *loweredOutputStorageOr);
   return success();
 }
 
@@ -537,8 +505,6 @@ MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
   if (failed(loweredOutputsStorageOr))
     return failure();
   auto &outputStorage = (*loweredOutputsStorageOr)[0];
-  GENERICML_ASSERT(isa<MGP::CpuBufferType>(outputStorage.buffer.getType()))
-      << "must be on CPU";
 
   // Fill the buffer with the runtime dimensions.
   auto loweredShape =
@@ -550,13 +516,12 @@ MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
   auto dynDimsOp = opLoweringState.create<MGP::CpuTensorSpecDimsDynamicOp>(
       /*spec=*/loweredTensorSpec,
       /*rawDims=*/loweredTensorSpec.getType().getRawDims());
-  auto bufferSetOp = opLoweringState.create<MGP::CpuBufferSetWithIndexOp>(
-      /*buffer=*/outputStorage.buffer,
-      /*values=*/dynDimsOp.getResults());
+  SmallVector<Value> values = dynDimsOp.getResults();
+  auto outChain = opLoweringState.bufferSetWithIndex(
+      outputStorage.buffer, values, toTensorOp.getResult().getType());
 
   // Setup output tensor.
-  opLoweringState.createOutputs(bufferSetOp.getOutChain(),
-                                *loweredOutputsStorageOr);
+  opLoweringState.createOutputs(outChain, *loweredOutputsStorageOr);
   return success();
 }
 
@@ -746,10 +711,6 @@ LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
                                                transferOp.getInput().getType());
   DeviceRefAttr dstDevice = transferOp.getDestDeviceAttr();
   DeviceRefAttr hostDevice = loweringState.getHostDevice();
-  if (srcDevice == dstDevice) {
-    return transferOp->emitOpError("mo.transfer between the same device ")
-           << srcDevice << " is not supported.";
-  }
 
   MGP::BufferizedTensor bufferizedInput =
       opLoweringState.getBufferizedInput(transferOp.getInput());
@@ -763,17 +724,23 @@ LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
   if (srcDevice == hostDevice) {
     outChain = opLoweringState.bufferTransferFromHost(
         loweringState.getExecuteChain(),
-        cast<TypedValue<MGP::CpuBufferType>>(bufferizedInput.buffer),
+        cast<TypedValue<MGP::DeviceBufferType>>(bufferizedInput.buffer),
         loweredOutputsStorage[0].buffer, transferOp.getResult().getType());
   } else if (dstDevice == hostDevice) {
     outChain = opLoweringState.bufferTransferToHost(
         loweringState.getExecuteChain(), bufferizedInput.buffer,
-        cast<TypedValue<MGP::CpuBufferType>>(loweredOutputsStorage[0].buffer),
+        cast<TypedValue<MGP::DeviceBufferType>>(
+            loweredOutputsStorage[0].buffer),
         transferOp.getInput().getType());
-  } else {
+  } else if (srcDevice.getLabel() == dstDevice.getLabel()) {
     outChain = opLoweringState.bufferTransferDevice(
         loweringState.getExecuteChain(), bufferizedInput.buffer,
-        loweredOutputsStorage[0].buffer, transferOp.getInput().getType());
+        loweredOutputsStorage[0].buffer, transferOp.getInput().getType(),
+        transferOp.getResult().getType());
+  } else {
+    return transferOp->emitOpError("mo.transfer from device '")
+           << srcDevice << "' to device '" << dstDevice
+           << "' is not supported.";
   }
 
   opLoweringState.createOutputs(outChain, loweredOutputsStorage);
@@ -877,8 +844,9 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   // Lower the condition.
   MGP::BufferizedTensor bufferizedCond =
       opLoweringState.getBufferizedInput(ifOp.getCond());
-  Value condBool = opLoweringState.create<MGP::ToGRTBoolOp>(
-      loweringState.getExecuteChain(), bufferizedCond.buffer);
+  Value condBool = opLoweringState.bufferToBool(loweringState.getExecuteChain(),
+                                                bufferizedCond.buffer,
+                                                ifOp.getCond().getType());
 
   SmallVector<Value> operands;
   operands.push_back(condBool);
@@ -1041,8 +1009,8 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
         opLoweringState.tensorExtract(loweredCondTensor, condMoTensorType)
             .first;
     Value loweredInputChain = loweredWhileOp.getCondRegion().getArgument(0);
-    Value condBool =
-        opLoweringState.create<MGP::ToGRTBoolOp>(loweredInputChain, condBuffer);
+    Value condBool = opLoweringState.bufferToBool(loweredInputChain, condBuffer,
+                                                  condMoTensorType);
     condOutputOpOperands.emplace_back(condBool);
 
     loweredCondOutputOp.getOperandsMutable().clear();

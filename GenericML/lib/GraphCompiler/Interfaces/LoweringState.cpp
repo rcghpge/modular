@@ -29,8 +29,9 @@ TypedValue<MGP::TensorSpecType>
 MOGraphLoweringState::getShape(Location loc, Value loweredTensor,
                                DeviceRefAttr device) {
   OpBuilder &builder = getExecuteOpBuilder();
-  return getBufferBuilder(device)->tensorExtractShape(
-      builder, loc, getExecuteMgpContext(), loweredTensor);
+  return getBufferBuilder(device)->tensorExtractTensorSpec(
+      builder, loc, getExecuteMgpContext(), loweredTensor,
+      /*isShapeOnly=*/true);
 }
 
 MGP::CpuTensorSpecDimsDynamicOp
@@ -41,9 +42,8 @@ MOGraphLoweringState::getDynamicDims(Location loc, Value loweredTensor,
   // loweredTensor's buffer in which case we'll be emitting a full
   // tensor.extract op anyway.
   TypedValue<MGP::TensorSpecType> tensorSpec =
-      getBufferBuilder(device)
-          ->tensorExtract(builder, loc, getExecuteMgpContext(), loweredTensor)
-          .second;
+      getBufferBuilder(device)->tensorExtractTensorSpec(
+          builder, loc, getExecuteMgpContext(), loweredTensor);
   return builder.create<MGP::CpuTensorSpecDimsDynamicOp>(
       loc, /*spec=*/tensorSpec, /*rawDims=*/tensorSpec.getType().getRawDims());
 }
@@ -351,9 +351,11 @@ BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {
   Value loweredTensor = loweringState.lookupExecuteLoweredValue(moTensor);
   GENERICML_ASSERT(loweredTensor)
       << "referenced SSA value has not been lowered";
-  auto [buffer, tensorSpec] =
-      getStorageBufferBuilder(moTensor.getType())
-          ->tensorExtract(builder, loc, context, loweredTensor);
+  BufferBuilder *bufferBuilder = getStorageBufferBuilder(moTensor.getType());
+  auto buffer =
+      bufferBuilder->tensorExtractBuffer(builder, loc, context, loweredTensor);
+  auto tensorSpec = bufferBuilder->tensorExtractTensorSpec(
+      builder, loc, context, loweredTensor);
   return BufferizedTensor(buffer, tensorSpec);
 }
 
@@ -434,14 +436,10 @@ FailureOr<BufferizedTensor> MOOpLoweringState::createBuffer(
     Value dynSize = builder.create<MIP::NaryMulOp>(
         loc, IndexType::get(moTensorType.getContext()), *runtimeDimsOr,
         staticSizeProduct * dtypeNumBytes);
-
-    TypeBuilder *typeBuilder = getStorageTypeBuilder(moTensorType);
-    auto bufType = typeBuilder->bufferType(moTensorType.getContext(), {});
-
-    return BufferizedTensor(bufferBuilder->bufferAllocDynamic(
-                                builder, loc, bufType, context, inChain,
-                                dynSize, minimumCpuAlignment),
-                            tensorSpec);
+    return BufferizedTensor(
+        bufferBuilder->bufferAllocDynamic(builder, loc, context, inChain,
+                                          dynSize, minimumCpuAlignment),
+        tensorSpec);
   }
 }
 

@@ -43,9 +43,10 @@ public:
   MOGraphLoweringState(M::MO::GraphOp graph,
                        llvm::StringRef compiledFrameworkLabel,
                        size_t minimumCpuAlignment)
-      : graph(graph), builderContext(MO::getHostDevice(graph)),
-        common(compiledFrameworkLabel, minimumCpuAlignment),
+      : graph(graph), common(compiledFrameworkLabel, minimumCpuAlignment),
         init(graph.getContext()), execute(graph.getContext()) {
+    builderContext.hostDevice = MO::getHostDevice(graph);
+
     // Add converters for MO native types.
     typeConverter.addConversion(
         [this](MO::TensorType type) -> std::optional<Type> {
@@ -347,7 +348,7 @@ public:
   }
 
   /// Return the 'host' device for this graph.
-  DeviceRefAttr getHostDevice() { return builderContext.getHostDevice(); }
+  DeviceRefAttr getHostDevice() { return builderContext.hostDevice; }
 
   /// Returns the buffer builder to use for the 'host' device.
   BufferBuilder *getHostBufferBuilder() {
@@ -530,8 +531,11 @@ struct MOOpLoweringState {
 
   std::pair<Value, TypedValue<TensorSpecType>>
   tensorExtract(Value loweredTensor, Type moTensorType) {
-    return getStorageBufferBuilder(moTensorType)
-        ->tensorExtract(builder, loc, context, loweredTensor);
+    BufferBuilder *bufferBuilder = getStorageBufferBuilder(moTensorType);
+    return std::make_pair(bufferBuilder->tensorExtractBuffer(
+                              builder, loc, context, loweredTensor),
+                          bufferBuilder->tensorExtractTensorSpec(
+                              builder, loc, context, loweredTensor));
   }
 
   Value tensorCreate(Value inChain, Value buffer,
@@ -554,24 +558,52 @@ struct MOOpLoweringState {
   }
 
   Value bufferTransferFromHost(Value inChain,
-                               TypedValue<MGP::CpuBufferType> srcBuffer,
+                               TypedValue<MGP::DeviceBufferType> srcBuffer,
                                Value dstBuffer, Type dstMoTensorType) {
     return getStorageBufferBuilder(dstMoTensorType)
-        ->bufferTransferFromHost(builder, loc, context, inChain, srcBuffer,
-                                 dstBuffer);
+        ->bufferTransferFromHost(builder, loc, context, inChain,
+                                 loweringState.getHostBufferBuilder(),
+                                 srcBuffer, dstBuffer);
   }
   Value bufferTransferToHost(Value inChain, Value srcBuffer,
-                             TypedValue<MGP::CpuBufferType> dstBuffer,
+                             TypedValue<MGP::DeviceBufferType> dstBuffer,
                              Type srcMoTensorType) {
     return getStorageBufferBuilder(srcMoTensorType)
         ->bufferTransferToHost(builder, loc, context, inChain, srcBuffer,
-                               dstBuffer);
+                               loweringState.getHostBufferBuilder(), dstBuffer);
   }
   Value bufferTransferDevice(Value inChain, Value srcBuffer, Value dstBuffer,
-                             Type srcMoTensorType) {
+                             Type srcMoTensorType, Type dstMoTensorType) {
     return getStorageBufferBuilder(srcMoTensorType)
         ->bufferTransferDevice(builder, loc, context, inChain, srcBuffer,
+                               getStorageBufferBuilder(dstMoTensorType),
                                dstBuffer);
+  }
+
+  Value bufferConcat(Value inChain, Value outBuffer, ArrayRef<Value> inBuffers,
+                     Type outMoTensorType) {
+    return getStorageBufferBuilder(outMoTensorType)
+        ->bufferConcat(builder, loc, context, inChain, outBuffer, inBuffers);
+  }
+
+  SmallVector<Value>
+  splitBorrow(Value inChain, Value inBuffer, ArrayRef<Value> runtimeSizes,
+              ArrayRef<std::optional<uint64_t>> outBufferSizes,
+              Type moTensorType) {
+    return getStorageBufferBuilder(moTensorType)
+        ->splitBorrow(builder, loc, context, inChain, inBuffer, runtimeSizes,
+                      outBufferSizes);
+  }
+
+  Value bufferToBool(Value inChain, Value buffer, Type moTensorType) {
+    return getStorageBufferBuilder(moTensorType)
+        ->bufferToBool(builder, loc, context, inChain, buffer);
+  }
+
+  Value bufferSetWithIndex(Value buffer, ArrayRef<Value> values,
+                           Type moTensorType) {
+    return getStorageBufferBuilder(moTensorType)
+        ->bufferSetWithIndex(builder, loc, context, buffer, values);
   }
 };
 

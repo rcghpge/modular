@@ -17,8 +17,52 @@ using namespace M::MO;
 void DeviceSpecificDialect::vtableAnchor() {}
 
 //===----------------------------------------------------------------------===//
+// MGPDeviceSpecificDialect
+//===----------------------------------------------------------------------===//
+
+void MGPDeviceSpecificDialect::registerDialect(DialectRegistry &registry) {}
+
+LogicalResult MGPDeviceSpecificDialect::makeTypeBuilder(
+    DeviceSpecAttr deviceSpec, MGP::MOGraphLoweringState &loweringState) {
+  loweringState.registerTypeBuilder(
+      deviceSpec.getRef(),
+      std::make_unique<MGP::MGPTypeBuilder>(deviceSpec.getRef()));
+  return success();
+}
+
+LogicalResult MGPDeviceSpecificDialect::makeBufferBuilder(
+    DeviceRefAttr hostDevice, DeviceSpecAttr deviceSpec,
+    MGP::MOGraphLoweringState &loweringState) {
+  MGP::MGPBufferBuilder *hostBufferBuilder;
+  auto bufferBuilder =
+      std::make_unique<MGP::MGPBufferBuilder>(deviceSpec.getRef());
+  if (hostDevice == deviceSpec.getRef()) {
+    hostBufferBuilder = bufferBuilder.get();
+  } else {
+    hostBufferBuilder = static_cast<MGP::MGPBufferBuilder *>(
+        loweringState.getBufferBuilder(hostDevice));
+    GENERICML_ASSERT(hostBufferBuilder)
+        << "no buffer builder has been created for the host device '"
+        << hostDevice << "'";
+  }
+  TypedValue<MEF::ChainType> outChain = bufferBuilder->setupForModel(
+      loweringState.getModelOp(), hostBufferBuilder,
+      loweringState.getInitOpBuilder(), loweringState.getGraph()->getLoc(),
+      cast<TypedValue<MEF::ChainType>>(loweringState.getInitChain()));
+  loweringState.registerBufferBuilder(deviceSpec.getRef(),
+                                      std::move(bufferBuilder));
+  loweringState.setInitChain(outChain);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // DeviceSpecificDialectRegistry
 //===----------------------------------------------------------------------===//
+
+DeviceBufferizationRegistry::DeviceBufferizationRegistry() {
+  add(kCPULabel, std::make_unique<MGPDeviceSpecificDialect>());
+  add(kCUDALabel, std::make_unique<MGPDeviceSpecificDialect>());
+}
 
 void DeviceBufferizationRegistry::add(
     StringRef label,

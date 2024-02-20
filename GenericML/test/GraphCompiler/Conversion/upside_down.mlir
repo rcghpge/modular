@@ -10,6 +10,6 @@ mo.graph @updside_down(
 }
 
 // CHECK-LABEL: mgp.model @updside_down : mof init {
-// CHECK: mgp.cpu.kernel.execute {{.*}}, summary "mo.mul{{.*}}"
-// CHECK: mgp.cpu.kernel.execute {{.*}}, summary "mo.add{{.*}}"
-// CHECK: mgp.cpu.kernel.execute {{.*}}, summary "mo.relu{{.*}}"
+// CHECK: mgp.kernel.execute {{.*}}, summary "mo.mul{{.*}}"
+// CHECK: mgp.kernel.execute {{.*}}, summary "mo.add{{.*}}"
+// CHECK: mgp.kernel.execute {{.*}}, summary "mo.relu{{.*}}"

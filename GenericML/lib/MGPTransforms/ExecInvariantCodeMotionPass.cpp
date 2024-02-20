@@ -101,9 +101,8 @@ bool isRecomputableOp(Operation *op) {
     return true;
 
   // We also allow compiled kernels to be recomputed if they return indices,
-  // which signals they are just shape functions. Note that only CPU
-  // kernels can do this, hence the hard-coded op type.
-  if (auto executeOp = dyn_cast<CpuKernelExecuteOp>(op)) {
+  // which signals they are just shape functions and side-effect free.
+  if (auto executeOp = dyn_cast<KernelExecuteOp>(op)) {
     if (!executeOp.getOutDimensions().empty())
       return true;
   }
@@ -185,20 +184,20 @@ private:
     }
     bool hasUnliftableOperands =
         set.test(0); // distinguished always has index 0
-    // Does the op's side effects prevent lifting?
-    bool hasBadSideEffects = !canBeLifted(op);
+    // Can the op even be lifted?
+    bool isNotLiftable = !canBeLifted(op);
     // Is the op inside control flow?
     bool inControlFlow = !isExactlyOnce(op);
     bool isUnliftable = isAlreadyUnliftable || hasUnliftableOperands ||
-                        hasBadSideEffects || inControlFlow;
+                        isNotLiftable || inControlFlow;
     if (isUnliftable) {
       LLVM_DEBUG({
-        llvm::dbgs() << "considering ";
+        llvm::dbgs() << "DependsOnAnalysis: considering ";
         operationIndex->printV(llvm::dbgs(), op);
         llvm::dbgs() << " to be unliftable. isAlreadyUnliftable="
                      << isAlreadyUnliftable
                      << ", hasUnliftableOperands=" << hasUnliftableOperands
-                     << ", hasBadSideEffects=" << hasBadSideEffects
+                     << ", isNotLiftable=" << isNotLiftable
                      << ", inControlFlow=" << inControlFlow << "\n";
       });
       operationIndex->addToSet(unliftableOps, op);
@@ -321,8 +320,17 @@ private:
     bool allUsesUnliftable = set.test(0); // distinguished always has index 0
     bool isUnliftable =
         isAlreadyUnliftable || isUnused || (isTrivial && allUsesUnliftable);
-    if (isUnliftable)
+    if (isUnliftable) {
+      LLVM_DEBUG({
+        llvm::dbgs() << "SuppressTrivialAnalysis: considering ";
+        operationIndex->printV(llvm::dbgs(), op);
+        llvm::dbgs() << " to be unliftable. isAlreadyUnliftable="
+                     << isAlreadyUnliftable << ", isUnused=" << isUnused
+                     << ", isTrivial=" << isTrivial
+                     << ", allUsesUnliftable=" << allUsesUnliftable << "\n";
+      });
       operationIndex->addToSet(unliftableOps, op);
+    }
     // Flow backwards to the op's operands.
     for (const OpOperand &opOperand : op->getOpOperands()) {
       if (isUnliftable)
@@ -430,8 +438,16 @@ private:
     bool anyUsesMutatedByUnliftable =
         set.test(0); // distinguished olways has index 0
     bool isUnliftable = isAlreadyUnliftable || anyUsesMutatedByUnliftable;
-    if (isUnliftable)
+    if (isUnliftable) {
+      LLVM_DEBUG({
+        llvm::dbgs() << "SuppressMutatedAnalysis: considering ";
+        operationIndex->printV(llvm::dbgs(), op);
+        llvm::dbgs() << " to be unliftable. isAlreadyUnliftable="
+                     << isAlreadyUnliftable << ", anyUsesMutatedByUnliftable="
+                     << anyUsesMutatedByUnliftable << "\n";
+      });
       operationIndex->addToSet(unliftableOps, op);
+    }
     // Flow backwards to the op's operands. We only want to suppress lifting
     // upstream ops whose results are *mutated* by a downstream unliftable op.
     for (OpOperand &opOperand : op->getOpOperands()) {
@@ -542,8 +558,15 @@ private:
       }
       bool neededByClonedOrUnliftable =
           set.test(0); // distinguished olways has index 0
-      if (neededByClonedOrUnliftable)
+      if (neededByClonedOrUnliftable) {
+        LLVM_DEBUG({
+          llvm::dbgs() << "NeedToCloneAnalysis: considering ";
+          operationIndex->printV(llvm::dbgs(), op);
+          llvm::dbgs() << " to require cloning. neededByClonedOrUnliftable="
+                       << neededByClonedOrUnliftable << "\n";
+        });
         operationIndex->addToSet(clonedOps, op);
+      }
       // Flow backwards to the op's operands.
       for (OpOperand &opOperand : op->getOpOperands()) {
         if (neededByClonedOrUnliftable)
@@ -679,7 +702,7 @@ class ExecInvariantCodeMotionPass
     // This placeholder chain is used to gate storing all the lifted buffers
     // into the cache until all the side effects on those buffers have
     // completed. We'll replace this placeholder with the actual chain once
-    // we've finished lifting all the ops.
+    // we've finished lifting all the ops. It is always a 'host' chain.
     auto placeholderBufferCacheInputChain =
         initState->builder.create<GRT::ChainCreateOp>(outputLoc);
 
@@ -757,9 +780,14 @@ class ExecInvariantCodeMotionPass
         BufferBuilder *bufferBuilder =
             TensorBufferDialectInterface::getBuilderForTypeStorage(
                 *builderContext, oldChain.getType());
-        auto newChain = bufferBuilder->fromMEFChain(
-            executeState->builder, op->getLoc(), executeState->getContext(),
-            executeState->getRootChain());
+        Value newChain;
+        if (oldChain.getType().isa<MEF::ChainType>()) {
+          newChain = executeState->getRootChain();
+        } else {
+          newChain = bufferBuilder->fromHostChain(
+              executeState->builder, op->getLoc(), executeState->getContext(),
+              executeState->getRootChain());
+        }
         oldChain.replaceUsesWithIf(newChain, isOpOperandUnliftable);
         LLVM_DEBUG(llvm::dbgs() << "will lift chain op and replace old chain:\n"
                                 << oldChain << "\nwith:\n"
@@ -795,9 +823,9 @@ class ExecInvariantCodeMotionPass
                       TensorBufferDialectInterface::getBuilderForTypeStorage(
                           *builderContext, res.getType());
                   potentialBufferActionChains.push_back(
-                      bufferBuilder->toMEFChain(initState->builder,
-                                                op->getLoc(),
-                                                initState->getContext(), res));
+                      bufferBuilder->toHostChain(initState->builder,
+                                                 op->getLoc(),
+                                                 initState->getContext(), res));
                 }
               }
             }

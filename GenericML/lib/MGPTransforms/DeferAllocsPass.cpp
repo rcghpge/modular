@@ -47,7 +47,7 @@ class DeferAllocsPass : public impl::DeferAllocsPassBase<DeferAllocsPass> {
     // This helps prevent infinite loop in case an op write to multiple buffers
     DenseSet<Operation *> movedAllocOps;
 
-    // For each mgp.cpu.buffer.alloc.*...
+    // For each mgp.buffer.alloc.*...
     model.getExecute().walk([&](Operation *op) {
       if (movedAllocOps.contains(op))
         return;

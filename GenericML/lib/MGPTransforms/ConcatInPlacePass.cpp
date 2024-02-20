@@ -8,7 +8,9 @@
 
 #include "Cache/CacheDialect/CacheAttrs.h"
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
+#include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
 #include "GenericML/Support/Assert.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
@@ -41,10 +43,12 @@ class ConcatInPlacePass
   using ConcatInPlacePassBase::ConcatInPlacePassBase;
 
   void runOnOperation() override {
-    ModelOp model = getOperation();
-    ExecuteState execState(model->getContext(), model.getExecuteBlock());
+    ModelOp modelOp = getOperation();
+    BufferBuilderContext builderContext =
+        TensorBufferDialectInterface::getAllBufferBuilders(modelOp);
+    ExecuteState execState(modelOp->getContext(), modelOp.getExecuteBlock());
 
-    model.getExecute().walk([&](MGP::CpuBufferConcatOp concatOp) {
+    modelOp.getExecute().walk([&](BufferConcatOp concatOp) {
       if (concatOp.getInBuffers().empty())
         // Ignore trivial concats.
         return;
@@ -73,10 +77,10 @@ class ConcatInPlacePass
       // indicate when the inBuffers are safe to read, and there's no additional
       // dependency captured by the alloc chains.
 
-      // Collects the raw size attributes for the split, one for every concat
+      // Collects the size attributes for the split, one for every concat
       // input buffer.
-      SmallVector<uint64_t> rawSizes;
-      rawSizes.reserve(concatOp.getInBuffers().size());
+      SmallVector<std::optional<uint64_t>> optSizes;
+      optSizes.reserve(concatOp.getInBuffers().size());
       // Collects the types of the split output buffers, one for every concat
       // input buffer.
       SmallVector<Type> bufferTypes;
@@ -88,18 +92,18 @@ class ConcatInPlacePass
 
       // For each concat input buffer...
       for (Value inBuffer : concatOp.getInBuffers()) {
-        auto bufferType = dyn_cast<MGP::CpuBufferType>(inBuffer.getType());
+        auto bufferType = dyn_cast<DeviceBufferType>(inBuffer.getType());
         GENERICML_ASSERT(bufferType);
-        rawSizes.emplace_back(optSizeToRawSize(bufferType.getOptSize()));
+        optSizes.emplace_back(bufferType.getOptSize());
         bufferTypes.emplace_back(bufferType);
         if (!bufferType.getOptSize()) {
           // Buffer does not have a statically known size.
           // We'll need to pass a size argument as an operand to the split.
-          if (auto allocDynamicOp = dyn_cast<MGP::CpuBufferAllocDynamicOp>(
+          if (auto allocDynamicOp = dyn_cast<MGP::BufferAllocDynamicOp>(
                   inBuffer.getDefiningOp())) {
             runtimeSizes.emplace_back(allocDynamicOp.getRuntimeSize());
           } else if (auto reallocDynamicOp =
-                         dyn_cast<MGP::CpuBufferReallocDynamicOp>(
+                         dyn_cast<MGP::BufferReallocDynamicOp>(
                              inBuffer.getDefiningOp())) {
             runtimeSizes.emplace_back(reallocDynamicOp.getRuntimeSize());
           } else {
@@ -109,6 +113,9 @@ class ConcatInPlacePass
         }
       }
 
+      BufferBuilder *bufferBuilder =
+          builderContext.getBufferBuilder(concatOp.getDevice());
+
       // We need to ensure the output buffer will be available before any
       // writers to the split result buffers. The easiest way is to just reset
       // its input chain to be the root chain.
@@ -117,27 +124,26 @@ class ConcatInPlacePass
       // constructing a pre-dominator chain to all the chains which gate
       // writing to the split result buffers. That could be done by
       // DeferAllocsPass
-      Value blockRootChain =
-          concatOp.getResult().getParentBlock()->getArgument(0);
-      GENERICML_ASSERT(isa<MEF::ChainType>(blockRootChain.getType()))
-          << "Block root should be a MEF::ChainType but it is a "
-          << blockRootChain.getType();
-      allocOutputOp.setInChain(blockRootChain);
+      TypedValue<MEF::ChainType> rootChain =
+          getRootChainForBlock(concatOp->getBlock());
+      TypedValue<ContextType> context =
+          bufferBuilder->getContextForOp(concatOp);
+      execState.builder.setInsertionPoint(concatOp);
+      Value nativeRootChain = bufferBuilder->toNativeChain(
+          execState.builder, concatOp->getLoc(), context, rootChain);
+      allocOutputOp.setInChain(nativeRootChain);
 
       // We are now ready to create the split op.
       // For the moment, place it before the concat it will replace.
       execState.builder.setInsertionPoint(concatOp);
-      auto splitOp = execState.builder.create<MGP::CpuBufferSplitBorrowOp>(
-          concatOp->getLoc(),
-          /*outBuffers=*/bufferTypes,
-          /*inChain=*/blockRootChain,
-          /*inBuffer=*/concatOp.getOutBuffer(),
-          /*runtimeSizes=*/runtimeSizes,
-          /*outBufferRawSizes=*/rawSizes);
+      Value concatenatedBuffer = concatOp.getOutBuffer();
+      auto outBuffers = bufferBuilder->splitBorrow(
+          execState.builder, concatOp->getLoc(), context, nativeRootChain,
+          concatenatedBuffer, runtimeSizes, optSizes);
 
       // The input buffers are now provided by the split.
       for (auto [origInBuffer, newOutBuffer] :
-           llvm::zip(concatOp.getInBuffers(), splitOp.getOutBuffers())) {
+           llvm::zip(concatOp.getInBuffers(), outBuffers)) {
         origInBuffer.replaceAllUsesWith(newOutBuffer);
         origInBuffer.getDefiningOp()->erase();
       }
@@ -150,11 +156,13 @@ class ConcatInPlacePass
 
       // For readability, place the split input buffer allocation before the
       // split itself.
-      moveAllBefore(splitOp.getInBuffer().getDefiningOp(), splitOp);
+      moveAllBefore(concatenatedBuffer.getDefiningOp(),
+                    outBuffers.front().getDefiningOp());
 
-      // For readability, place the split before all of the users of its output
-      // buffer.s
-      moveAllBefore(splitOp, earliestUsingOp(splitOp.getOutBuffers()));
+      // For readability, place the split before all the users of its output
+      // buffers.
+      moveAllBefore(outBuffers.front().getDefiningOp(),
+                    earliestUsingOp(outBuffers));
     });
   }
 };

@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
@@ -50,13 +51,15 @@ class VerifyModelArgumentsPass
     auto &ctx = getContext();
     OpBuilder builder(&ctx);
     ModelOp model = getOperation();
+    BufferBuilderContext builderContext =
+        TensorBufferDialectInterface::getAllBufferBuilders(model);
     Block *executeBlock = model.getExecuteBlock();
     ExecuteState executeState(&ctx, executeBlock);
     Location loc = model->getLoc();
 
     builder.setInsertionPointToStart(executeBlock);
     for (BlockArgument arg : executeState.getExtraArgs()) {
-      auto tensorArg = dyn_cast<CpuTensorType>(arg.getType());
+      auto tensorArg = dyn_cast<DeviceTensorType>(arg.getType());
       if (!tensorArg)
         continue;
 
@@ -66,9 +69,11 @@ class VerifyModelArgumentsPass
       if (tensorArg.getNumDynamicDims() == tensorArg.getRank())
         continue;
 
+      BufferBuilder *bufferBuilder =
+          builderContext.getBufferBuilder(tensorArg.getDevice());
       auto expectedTensorSpec = tensorArg.getTensorSpec();
-      auto runtimeTensorSpec =
-          builder.create<CpuTensorExtractShapeOp>(loc, arg).getResult();
+      auto runtimeTensorSpec = bufferBuilder->tensorExtractTensorSpec(
+          builder, loc, executeState.getContext(), arg, /*isShapeOnly=*/true);
       auto areEqual =
           builder
               .create<CpuTensorSpecEqualStaticOp>(

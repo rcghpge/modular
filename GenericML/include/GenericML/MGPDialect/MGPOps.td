@@ -1828,11 +1828,11 @@ def MGP_ListAppendOp : MGP_Op<"list.append", [
     Example:
 
     ```mlir
-    %lst : !mgp.list<!mgp.cpu.tensor<3x3xf32>>,
-    %tns : !mgp.cpu.tensor<3x4xf32>,
+    %lst : !mgp.list<!mgp.tensor<3x3xf32>>,
+    %tns : !mgp.tensor<3x4xf32>,
     %t = mgp.list.append(%lst, %tns) : (
-      !mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<3x4xf32>
-    ) -> !mgp.list<!mgp.cpu.tensor<3x?xf32>>
+      !mgp.list<!mgp.tensor<3x3xf32>>, !mgp.tensor<3x4xf32>
+    ) -> !mgp.list<!mgp.tensor<3x?xf32>>
     ```
   }];
 
@@ -1852,7 +1852,8 @@ def MGP_ListAppendOp : MGP_Op<"list.append", [
 //===----------------------------------------------------------------------===//
 
 def ListCreateOp : MGP_Op<"list.create", [
-  DeclareOpInterfaceMethods<GRTMayAliasInterface>, // The inputs are shallow copied into the output list
+  // The inputs are shallow copied into the output list
+  DeclareOpInterfaceMethods<GRTMayAliasInterface>,
 ]> {
   let summary = "Create a new list with given elements.";
   let description = [{
@@ -1860,11 +1861,11 @@ def ListCreateOp : MGP_Op<"list.create", [
 
     Example:
     ```mlir
-    %t1 : !mgp.cpu.tensor<3x5xf32>,
-    %t2 : !mgp.cpu.tensor<3x10xf32>
+    %t1 : !mgp.tensor<3x5xf32>,
+    %t2 : !mgp.tensor<3x10xf32>
     %l = mgp.list.create(%t1, %t2) : (
-      !mgp.cpu.tensor<3x5xf32>, !mgp.cpu.tensor<3x10xf32>
-    ) -> !mgp.list<!mgp.cpu.tensor<3x?xf32>>
+      !mgp.tensor<3x5xf32>, !mgp.tensor<3x10xf32>
+    ) -> !mgp.list<!mgp.tensor<3x?xf32>>
     ```
   }];
 
@@ -1881,7 +1882,8 @@ def ListCreateOp : MGP_Op<"list.create", [
 //===----------------------------------------------------------------------===//
 
 def MGP_ListGetOp : MGP_Op<"list.get", [
-  DeclareOpInterfaceMethods<GRTMayAliasInterface>, // The retrieved element is shallow copied
+  // The retrieved element is shallow copied
+  DeclareOpInterfaceMethods<GRTMayAliasInterface>,
   DeclareOpInterfaceMethods<InferTypeOpInterface>,
 ]> {
   let summary = "List get Operation.";
@@ -1893,14 +1895,16 @@ def MGP_ListGetOp : MGP_Op<"list.get", [
     Example:
 
     ```mlir
-    %lst : !mgp.list<!mgp.cpu.tensor<3x?xf32>>,
-    %idx : !mgp.cpu.tensor<si32>
+    %lst : !mgp.list<!mgp.tensor<3x?xf32>>,
+    %idx : !mgp.tensor<si32>
     %t = mgp.list.get(%lst, %idx) :
-      !mgp.list<!mgp.cpu.tensor<3x?xf32>>, !mgp.cpu.tensor<si32>
+      !mgp.list<!mgp.tensor<3x?xf32>>, !mgp.tensor<si32>
     ```
   }];
 
-  let arguments = (ins MGP_List:$input, MGP_CpuTensorType:$index);
+  let arguments = (ins MGP_List:$input,
+                       // TODO: Should be IndexType
+                       MGP_DeviceTensorType:$index);
   let results = (outs AnyType:$result);
 
   let assemblyFormat = [{
@@ -1935,18 +1939,19 @@ def MGP_ListInsertOp : MGP_Op<"list.insert", [
     Example:
 
     ```mlir
-    %lst : !mgp.list<!mgp.cpu.tensor<3x3xf32>>,
-    %tns : !mgp.cpu.tensor<3x4xf32>,
-    %idx : !mgp.cpu.tensor<si32>
+    %lst : !mgp.list<!mgp.tensor<3x3xf32>>,
+    %tns : !mgp.tensor<3x4xf32>,
+    %idx : !mgp.tensor<si32>
     %t = mgp.list.insert(%lst, %tns, %idx) : (
-      !mgp.list<!mgp.cpu.tensor<3x3xf32>>, !mgp.cpu.tensor<3x4xf32>, !mgp.cpu.tensor<si32>
-    ) -> !mgp.list<!mgp.cpu.tensor<3x?xf32>>
+      !mgp.list<!mgp.tensor<3x3xf32>>, !mgp.tensor<3x4xf32>, !mgp.tensor<si32>
+    ) -> !mgp.list<!mgp.tensor<3x?xf32>>
     ```
   }];
 
   let arguments = (ins MGP_List:$input,
                        AnyType:$element,
-                       MGP_CpuTensorType:$index);
+                       // TODO: Should be IndexType
+                       MGP_DeviceTensorType:$index);
   let results = (outs MGP_List:$result);
 
   let assemblyFormat = [{

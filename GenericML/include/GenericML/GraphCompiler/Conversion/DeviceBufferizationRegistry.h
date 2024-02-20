@@ -62,10 +62,35 @@ struct DeviceSpecificDialect {
   virtual void vtableAnchor();
 };
 
+//===----------------------------------------------------------------------===//
+// MGPDeviceSpecificDialect
+//===----------------------------------------------------------------------===//
+
+/// Generic implementation of DeviceSpecificDialect which lowers to the
+/// device-generic MGP types and ops.
+struct MGPDeviceSpecificDialect : public DeviceSpecificDialect {
+  ~MGPDeviceSpecificDialect() override = default;
+
+  void registerDialect(DialectRegistry &registry) override;
+
+  LogicalResult
+  makeTypeBuilder(DeviceSpecAttr deviceSpec,
+                  MGP::MOGraphLoweringState &loweringState) override;
+
+  LogicalResult
+  makeBufferBuilder(DeviceRefAttr hostDevice, DeviceSpecAttr deviceSpec,
+                    MGP::MOGraphLoweringState &loweringState) override;
+};
+
+//===----------------------------------------------------------------------===//
+// DeviceSpecificDialectRegistry
+//===----------------------------------------------------------------------===//
+
 /// Holds all the registered DeviceSpecificDialects.
 class DeviceBufferizationRegistry {
 public:
-  DeviceBufferizationRegistry() = default;
+  DeviceBufferizationRegistry();
+
   ~DeviceBufferizationRegistry() = default;
 
   /// Adds DeviceSpecificDialect to registry for given label. Each label can

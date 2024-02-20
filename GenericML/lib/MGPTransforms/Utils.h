@@ -93,7 +93,7 @@ SmallVector<OpOperand *, 1> getInputChainOpOperands(Operation *op);
 
 /// Returns the 'earliest' operation (in block operations order) which uses
 /// one of results as an operand.
-Operation *earliestUsingOp(mlir::ResultRange results);
+Operation *earliestUsingOp(ArrayRef<Value> results);
 
 using ValueSetVector = llvm::SetVector<Value, SmallVector<Value>>;
 
@@ -111,10 +111,10 @@ void moveAllBefore(Operation *origTargetOp, Operation *origAnchorOp);
 
 /// Returns a chain value which will be ready only when all of chains (which
 /// cannot be empty) are ready. All chains must use the 'native' chain type
-/// of the given buffer builder.
+/// of the given buffer builder, or !mef.chain if the buffer builder is null.
 Value waitForChains(OpBuilder &builder, mlir::Location loc,
                     TypedValue<ContextType> context,
-                    BufferBuilder *bufferBuilder, ArrayRef<Value> chains);
+                    BufferBuilder *optBufferBuilder, ArrayRef<Value> chains);
 
 /// Mutates op in-place to ensure its input chain is ready only when all of
 /// additionalChains are also ready. Returns failure if op doesn't have any

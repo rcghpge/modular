@@ -949,8 +949,8 @@ void ConstantFoldPass::runOnOperation() {
     }
 
     // TODO: #18077 this should be an argument to the pass.
-    auto ownedRuntime = LLCL::createRuntimeIfNeeded(
-        LLCL::RuntimeOptions().withLeakCheckedAllocator());
+    auto ownedRuntime = LLCL::createRuntimeIfNeeded(LLCL::RuntimeOptions());
+    // TODO: Add withLeakCheckedAllocator to RuntimeOptions
 
     ErrorOr<ModelsWithBuffer> modelsOr = lowerSubgraphs(module, *ownedRuntime);
     if (failed(modelsOr)) {

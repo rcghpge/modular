@@ -58,16 +58,10 @@ struct TensorBufferDialectInterface
 
   TensorBufferDialectInterface(Dialect *dialect) : Base(dialect) {}
 
-  /// Adds to BuilderContext the type and buffer builder for the 'host' device
-  /// for this MGP::ModelOp if it is associated with this dialect.
-  virtual void addHostBuilder(ModelOp modelOp,
-                              BufferBuilderContext &builderContext) = 0;
-
-  /// Adds to BuilderContext all the type and buffer builder instances
-  /// for the devices (other than the host device) relevant to this dialect
-  /// which are in use in the given MGP::ModelOp.
-  virtual void addNonHostBuilders(ModelOp modelOp,
-                                  BufferBuilderContext &builderContext) = 0;
+  /// Adds to BuilderContext the type and buffer builder for all the devices
+  /// used by modelOp. Returns the distinguished 'host' device.
+  virtual DeviceRefAttr addBuilders(ModelOp modelOp,
+                                    BufferBuilderContext &builderContext) = 0;
 
   /// Returns the device on which the op will be executed, given the builder
   /// context for the entire MGP::ModelOp we are working on.
@@ -84,17 +78,15 @@ struct TensorBufferDialectInterface
 };
 
 //===----------------------------------------------------------------------===//
-// CpuTensorBufferDialectInterface
+// MGPTensorBufferDialectInterface
 //===----------------------------------------------------------------------===//
 
-/// Concrete TensorBufferDialectInterface for the MGP dialect.
-struct CpuTensorBufferDialectInterface : public TensorBufferDialectInterface {
+/// Concrete TensorBufferDialectInterface for the device-generic MGP dialect.
+struct MGPTensorBufferDialectInterface : public TensorBufferDialectInterface {
   using TensorBufferDialectInterface::TensorBufferDialectInterface;
 
-  void addHostBuilder(ModelOp modelOp,
-                      BufferBuilderContext &builderContext) override;
-  void addNonHostBuilders(ModelOp modelOp,
-                          BufferBuilderContext &builderContext) override;
+  DeviceRefAttr addBuilders(ModelOp modelOp,
+                            BufferBuilderContext &builderContext) override;
   DeviceRefAttr getExecutionDevice(const BufferBuilderContext &builderContext,
                                    Operation *op) override;
   DeviceRefAttr getStorageDevice(const BufferBuilderContext &builderContext,

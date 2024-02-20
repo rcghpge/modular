@@ -1533,8 +1533,8 @@ LogicalResult CpuKernelExecuteOp::verify() {
 
 /// Return whether `ty1` is a subtype of `ty2`, i.e., the set of possible
 /// tensors represented by `ty1` is a subset for that of `ty2`.
-static bool isSubtype(CpuTensorType ty1, CpuTensorType ty2) {
-  // !mgp.cpu.tensor<...xf32>  v.s. !mgp.cpu.tensor<...xsi32>
+static bool isSubtype(TensorSpecType ty1, TensorSpecType ty2) {
+  // !mgp.tensor_spec<...xf32>  v.s. !mgp.tensor_spec<...xsi32>
   if (ty1.getElementType() != ty2.getElementType())
     return false;
 
@@ -1552,8 +1552,8 @@ static bool isSubtype(CpuTensorType ty1, CpuTensorType ty2) {
 
   // 2. Make sure ty1's individual dims are subtypes to the corresponding
   // dimensions in ty2.
-  ArrayRef<std::optional<uint64_t>> dims1 = ty1.getTensorSpec().getDims();
-  ArrayRef<std::optional<uint64_t>> dims2 = ty2.getTensorSpec().getDims();
+  ArrayRef<std::optional<uint64_t>> dims1 = ty1.getDims();
+  ArrayRef<std::optional<uint64_t>> dims2 = ty2.getDims();
   for (auto [dim1, dim2] : llvm::zip(dims1, dims2)) {
     // If `dim2` is unknown `?`, `dim1` can be anything in order for `ty1` to be
     // a subtype of `ty2`; otherwise the dimensions must match.
@@ -1568,11 +1568,10 @@ static bool isSubtype(CpuTensorType ty1, CpuTensorType ty2) {
 /// tensors represented by `ty1` is a subset for that of `ty2`. Currently only
 /// support nontrivial subtyping for `CpuTensorType`.
 static bool isSubtype(Type ty1, Type ty2) {
-  auto cpuTensorTy1 = dyn_cast<CpuTensorType>(ty1);
-  auto cpuTensorTy2 = dyn_cast<CpuTensorType>(ty2);
-  if (cpuTensorTy1 && cpuTensorTy2)
-    return isSubtype(cpuTensorTy1, cpuTensorTy2);
-
+  auto tensorTy1 = dyn_cast<MGPTensorTypeInterface>(ty1);
+  auto tensorTy2 = dyn_cast<MGPTensorTypeInterface>(ty2);
+  if (tensorTy1 && tensorTy2)
+    return isSubtype(tensorTy1.getTensorSpec(), tensorTy2.getTensorSpec());
   return ty1 == ty2;
 }
 
@@ -1653,7 +1652,13 @@ LogicalResult ListGetOp::inferReturnTypes(
 
 LogicalResult ListGetOp::verify() {
   // Check index tensor type.
-  CpuTensorType indexTensorTy = getIndex().getType();
+  // TODO: Should be IndexType.
+  DeviceTensorType indexTensorTy = getIndex().getType();
+  if (indexTensorTy.getDevice().getLabel() != "cpu") {
+    return emitOpError()
+           << "list index to insert must be a cpu tensor but it is "
+           << indexTensorTy.getDevice();
+  }
   Type indexDtype = indexTensorTy.getElementType();
   if (!indexDtype.isInteger(32) && !indexDtype.isInteger(64)) {
     return emitOpError()
@@ -1697,14 +1702,19 @@ LogicalResult ListInsertOp::verify() {
   }
 
   // Check index tensor type.
-  CpuTensorType indexTensorTy = getIndex().getType();
+  // TODO: Should be IndexType.
+  DeviceTensorType indexTensorTy = getIndex().getType();
+  if (indexTensorTy.getDevice().getLabel() != "cpu") {
+    return emitOpError()
+           << "list index to insert must be a cpu tensor but it is "
+           << indexTensorTy.getDevice();
+  }
   Type indexDtype = indexTensorTy.getElementType();
   if (!indexDtype.isInteger(32) && !indexDtype.isInteger(64)) {
     return emitOpError()
            << "expect index tensor to have dtype si32 or si64, but got: "
            << indexDtype;
   }
-
   if (indexTensorTy.getTensorSpec().getNumElements() != 1) {
     return emitOpError() << "expect index tensor to have 1 element, but got: "
                          << indexTensorTy;

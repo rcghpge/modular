@@ -24,21 +24,13 @@ void MGPDialect::initialize() {
   registerTypes();
   registerAttributes();
   registerOperations();
-  addInterface<CpuTensorBufferDialectInterface>();
+  addInterface<MGPTensorBufferDialectInterface>();
 
   // The PrepareDevicePrimitivesPass rewrites device-generic ops to
   // include the device label in their name. We don't want to have
-  // to register those since it's just for the convenince of the GraphRT
+  // to register those since it's just for the convenience of the GraphRT
   // primitive dispatch mechanism.
   allowUnknownOperations();
-}
-
-Operation *MGPDialect::materializeConstant(OpBuilder &b, Attribute value,
-                                           Type type, Location loc) {
-  if (auto elements = dyn_cast_or_null<ElementsAttr>(value))
-    return b.create<MGP::CpuBufferConstantOp>(loc, type, elements);
-
-  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//

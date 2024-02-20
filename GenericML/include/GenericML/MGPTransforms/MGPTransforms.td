@@ -232,29 +232,33 @@ def DeferAllocsPass : Pass<"defer-allocs", "MGP::ModelOp"> {
 //===----------------------------------------------------------------------===//
 
 def DeferTensorCreateExecPass : Pass<"defer-tensor-create-exec", "MGP::ModelOp"> {
-  let summary = "Defers execution of mgp_cpu_tensor_create until its buffer has no uses.";
+  let summary = "Defers execution of `mgp.tensor.create` until its buffer has "
+                "no uses.";
   let description = [{
-    Ensures mgp.cpu.tensor.create operations which are operands to mef.output are deferred
-    till their buffers have no other uses. Eg:
+    Ensures `mgp.tensor.create` operations which are operands to the
+    `mef.output` are deferred until their buffers have no other uses. In this
+    way we avoid an additional and unnecessary buffer copy.
+
+    For example:
     ```mlir
-      %buf = mgp.cpu.buffer.alloc.static %bufChain, 24
-      %spec    : !mgp.tensor_spec<?xf32>
-      %out_op = op1(%opChain, out: %buf, ...)
-      %in_op = op2(%out_op, in:% buf, ...)
-      %tensor = mgp.cpu.tensor.create %out_op, %buf, %spec
-      mef.output %ch0, %tensor
-      // where %buf is in an 'output' position
+      %buf = mgp.buffer.alloc.static ...
+      %ch1 = op1 (... out: %buf, ...)
+      %tensor = mgp.tensor.create %ch1, %buf ...
+      %ch2 = op2 (... in: %buf, ...)
+      mef.output ... %tensor ...
     ```
     becomes:
     ```
-      %buf = mgp.cpu.buffer.alloc.static %bufChain, 24
-      %spec    : !mgp.tensor_spec<?xf32>
-      %out_op = op1(%opChain, out: %buf, ...)
-      %in_op = op2(%out_op, in:% buf, ...)
-      %ch = grt.chain.create (%out_op, %in_op)
-      %tensor = mgp.cpu.tensor.create %ch, %buf, %spec
-      mef.output %ch0, %tensor
+      %buf = mgp.buffer.alloc.static ...
+      %ch1 = op1 (... out: %buf, ...)
+      %ch2 = op2 (... in: %buf, ...)
+      %ch3 = mgp.chain.create (%ch1, %ch2)
+      %tensor = mgp.tensor.create %ch3, %buf ...
+      mef.output ... %tensor ...
     ```
+
+    CAUTION: Does not look inside control flow ops, and does not track all
+             possible buffer uses.
   }];
 }
 //===----------------------------------------------------------------------===//
@@ -311,38 +315,35 @@ def StripBufferAttributesPass : Pass<"strip-buffer-attributes", "MGP::ModelOp"> 
 //===----------------------------------------------------------------------===//
 
 def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
-  let summary = "Replaces mgp.cpu.buffer.concat with "
-                "mcp.cpu.buffer.split.borrow.";
+  let summary = "Replaces `mgp.buffer.concat` with `mgp.buffer.split.borrow`.";
   let description = [{
-    This pass replaces mgc.cpu.buffer.concat with
-    mcp.cpu.buffer.split.borrow, provided all writers to the buffer
-    operands to the concat can be rewritten to instead write to the buffer
-    results of split.
+    This pass replaces `mgp.buffer.concat` with `mgp.buffer.split.borrow`,
+    provided all writers to the operand buffers of the concat can be rewritten
+    to instead write to the result buffers of the split.
 
     For example:
     ```mlir
-    %in1_buf = mgp.cpu.buffer.alloc.static ..., <size1>
+    %in1_buf = mgp.buffer.alloc.static ... : !mgp.buffer<size1>
     %in1_ch = ... writer to %in1_buf ...
     %in2_bytes = ...
-    %in2_buf = mgp.cpu.buffer.alloc.dynamic ..., %in2_bytes
+    %in2_buf = mgp.buffer.alloc.dynamic ..., %in2_bytes
     %in2_ch = ... writer to %in2_buf ...
     %out_bytes = ...
-    %out_buf = mgp.cpu.buffer.alloc.dynamic ..., %out_bytes
-    %ch1 = grt.chain.create (%in1_ch, %in2_ch)
-    %ch2 = mgp.cpu.buffer.concat %ch1, %out_buf, %in1_buf, %in2_buf : ...
+    %out_buf = mgp.buffer.alloc.dynamic ..., %out_bytes
+    %ch1 = mgp.chain.create (%in1_ch, %in2_ch)
+    %ch2 = mgp.buffer.concat %ch1, %out_buf, %in1_buf, %in2_buf : ...
     // where these are the only uses of %in1_buf and %in2_buf
     ```
-    (where %ch0 must be the argument chain to the 'execute' block)
     is rewritten to:
     ```mlir
     %out_bytes = ...
-    %out_buf = mgp.cpu.buffer.alloc.dynamic %root_ch, %out_bytes
+    %out_buf = mgp.buffer.alloc.dynamic %root_ch, %out_bytes
     %in2_spec = ...
     %in2_size = mgp.cpu.tensor_spec.size %in2_spec
-    %in1_buf, %in2_buf = mgp.cpu.buffer.split %root_ch, %out_buf, %in2_size : ...
+    %in1_buf, %in2_buf = mgp.buffer.split %root_ch, %out_buf, %in2_size : ...
     %in1_ch = ... writer to %in1_buf ...
     %in2_ch = ... writer to %in2_buf ...
-    %ch2 = grt.chain.create (%in1_ch, %in2_ch)
+    %ch2 = mgp.chain.create (%in1_ch, %in2_ch)
     ```
 
     Note that this pass simply assumes that the argument chain to the

@@ -331,7 +331,7 @@ SmallVector<OpOperand *, 1> M::MGP::getInputChainOpOperands(Operation *op) {
   return result;
 }
 
-Operation *M::MGP::earliestUsingOp(mlir::ResultRange results) {
+Operation *M::MGP::earliestUsingOp(ArrayRef<Value> results) {
   Operation *earliest = nullptr;
   for (auto result : results) {
     for (auto user : result.getUsers()) {
@@ -378,7 +378,7 @@ void M::MGP::accumulatePrimitiveChains(ValueSetVector &primitiveChains,
 /// creating a new op if it is non-null.
 static Value waitForChainsReusing(
     OpBuilder &builder, mlir::Location loc, TypedValue<ContextType> context,
-    BufferBuilder *bufferBuilder,
+    BufferBuilder *optBufferBuilder,
     GRT::GRTGatedOnChainOpInterface existingUniqueChainCreateOp,
     ArrayRef<Value> chains) {
   GENERICML_ASSERT(!chains.empty());
@@ -394,14 +394,17 @@ static Value waitForChainsReusing(
         .getChainResult();
   }
 
-  return bufferBuilder->chainCreate(builder, loc, context, chains);
+  if (optBufferBuilder)
+    return optBufferBuilder->chainCreate(builder, loc, context, chains);
+  else
+    return builder.create<GRT::ChainCreateOp>(loc, chains);
 }
 
 Value M::MGP::waitForChains(OpBuilder &builder, mlir::Location loc,
                             TypedValue<ContextType> context,
-                            BufferBuilder *bufferBuilder,
+                            BufferBuilder *optBufferBuilder,
                             ArrayRef<Value> chains) {
-  return waitForChainsReusing(builder, loc, context, bufferBuilder,
+  return waitForChainsReusing(builder, loc, context, optBufferBuilder,
                               /*existingUniqueChainCreateOp=*/{}, chains);
 }
 
@@ -409,11 +412,14 @@ LogicalResult
 M::MGP::alsoWaitForChains(OpBuilder &builder,
                           const BufferBuilderContext &builderContext,
                           Operation *op, ArrayRef<Value> additionalChains) {
-  if (additionalChains.empty())
+  if (additionalChains.empty()) {
+    // Nothing new to wait on.
     return success();
+  }
 
   auto existingInChainOpOperands = getInputChainOpOperands(op);
   if (existingInChainOpOperands.empty()) {
+    // Nothing on which to anchor the new chains.
     return failure();
   }
 
@@ -422,40 +428,62 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
           ->getContextForOp(op);
 
   for (OpOperand *inChainOpOperand : existingInChainOpOperands) {
+    // An existing gating input chain.
     Value inChain = inChainOpOperand->get();
-    BufferBuilder *chainBufferBuilder =
-        TensorBufferDialectInterface::getBuilderForTypeStorage(
-            builderContext, inChain.getType());
+
+    // The builder for inChain, or null if it's a !mef.chain.
+    BufferBuilder *optChainBufferBuilder;
 
     // Since different devices may use different chain types, we need to be
     // careful here. We have three devices at play:
-    //  - the device for the op we wish to change
-    //  - the device for inChain, which may be different that the above.
-    //  - the device for an additionalChain, which may be different again.
+    //  - the device for the op we wish to change. Some ops, such as mef.output
+    //    for the 'execute' block, are implicitly on the host device.
+    //  - the device for inChain, which may be on a different device than the
+    //    op, or may be a !mef.chain.
+    //  - the device for an additionalChain, which may be on a different device
+    //    again, or be a !mef.chain.
     //
     // For example, an op such as:
-    //    cuda.host_to_device %ch, %host_buf, %dev_buf
-    // will have an 'execution' device of cuda, has an inChain of !mef.chain,
-    // but may be required to also wait for both !mef.chains associated with
-    // %host_buf and !cuda.chains associated with %dev_buf.
-    //
-    // Similarly, an op such as:
-    //    cuda.kernel.execute.via_cpu %cch, ...
-    // will have an 'execution' device of cuda, an inChain of !cuda.chain,
-    // but may be required to also wait for both !mef.chains and !cuda.chains.
+    //    mgp.buffer.host_to_device %ch, %ctx[1], %host_buf, %dev_buf
+    //      : !mgp.buffer<> -> !mgp.buffer<, <"cuda", 0>>
+    // will have an 'execution' device of <"cuda", 0>, have an inChain of
+    // !mgp.chain, but may be required to also wait for both a !mef.chain
+    // associated with %host_buf and a !mgp.chain<<"cuda", 0>> associated
+    // with %dev_buf.
     //
     // So in the following we need to make sure that each additionalChain
-    // is joined with inChain in a dialect appropriate way.
+    // is joined with inChain in a device appropriate way.
     SmallVector<Value> deviceCorrectAdditionalChains;
-    for (Value additionalChain : additionalChains) {
-      BufferBuilder *additionalBufferBuilder =
+    if (isa<MEF::ChainType>(inChain.getType())) {
+      // This is a good 'ol !mef.chain, which means we'll be using
+      // grt.chain.create to combine in the new chains. So convert
+      // the new chains to be !mef.chains.
+      optChainBufferBuilder = nullptr;
+      for (Value additionalChain : additionalChains) {
+        BufferBuilder *additionalBufferBuilder =
+            TensorBufferDialectInterface::getBuilderForTypeStorage(
+                builderContext, additionalChain.getType());
+        deviceCorrectAdditionalChains.emplace_back(
+            additionalBufferBuilder->toHostChain(builder, op->getLoc(), context,
+                                                 additionalChain));
+      }
+    } else {
+      // This is device-specific chain, which means we'll be using
+      // mgp.chain.create to combine in the new chains. So convert
+      // to the 'native or host' form in preparation for that.
+      optChainBufferBuilder =
           TensorBufferDialectInterface::getBuilderForTypeStorage(
-              builderContext, additionalChain.getType());
-      // If matchChains is true, make sure the devices of the
-      deviceCorrectAdditionalChains.emplace_back(
-          chainBufferBuilder->toChainCreateOperand(
-              builder, op->getLoc(), context, additionalBufferBuilder,
-              additionalChain));
+              builderContext, inChain.getType());
+
+      for (Value additionalChain : additionalChains) {
+        BufferBuilder *additionalBufferBuilder =
+            TensorBufferDialectInterface::getBuilderForTypeStorage(
+                builderContext, additionalChain.getType());
+        deviceCorrectAdditionalChains.emplace_back(
+            optChainBufferBuilder->anyToNativeOrHostChain(
+                builder, op->getLoc(), context, additionalBufferBuilder,
+                additionalChain));
+      }
     }
 
     // Though the SimplifyChainsPass and CSE can clean things up, a few
@@ -467,16 +495,23 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
       accumulatePrimitiveChains(newPrimitiveChains, additionalChain);
 
     if (llvm::set_is_subset(newPrimitiveChains, existingPrimitiveChains)) {
-      // Nothing to change.
-      continue;
+      // The op is already gated by the new chains.
+      return success();
     }
 
     if (llvm::set_is_subset(existingPrimitiveChains, newPrimitiveChains) &&
-        deviceCorrectAdditionalChains.size() == 1) {
-      // Just switch to using the additional chain.
-      op->setOperand(inChainOpOperand->getOperandNumber(),
-                     deviceCorrectAdditionalChains.front());
-      continue;
+        newPrimitiveChains.size() == 1) {
+      // The new chain subsumes all the existing chains. But watch out, it
+      // may be in host form even though inChain is in device-specific form.
+      // That was fine when we were assuming the chains would be arguments
+      // to an mgp.chain.create, but here we are bypassing that.
+      Value newInChain = newPrimitiveChains.front();
+      if (optChainBufferBuilder) {
+        newInChain = optChainBufferBuilder->toNativeChain(builder, op->getLoc(),
+                                                          context, newInChain);
+      }
+      op->setOperand(inChainOpOperand->getOperandNumber(), newInChain);
+      return success();
     }
 
     // No luck -- we'll need to explicitly merge the existing and new chains.
@@ -499,17 +534,15 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
     }
 
     // Create or reuse a chain.create op to combine the existing and new
-    // chains.
-    //
-    // Here we need to switch to using a buffer builder appropriate for
-    // inChain, which could be a plain old !mef.chain even though the
-    // op may be for some other exotic device with a different native chain
-    // representation.
+    // chains. If we need to insert a new chain.create op then we'll use
+    // the one appropriate for inChain.
     Value newInChain = waitForChainsReusing(
-        builder, op->getLoc(), context, chainBufferBuilder,
+        builder, op->getLoc(), context, optChainBufferBuilder,
         existingUniqueChainCreateOp, existingPrimitiveChains.takeVector());
+
     op->setOperand(inChainOpOperand->getOperandNumber(), newInChain);
   }
+
   return success();
 }
 

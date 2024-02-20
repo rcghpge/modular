@@ -9,7 +9,6 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTypes.h"
 #include "GenericML/Support/Assert.h"
-#include "GraphRT/GRTDialect/GRTOps.h"
 #include "mlir/IR/Builders.h"
 
 namespace M::MGP {
@@ -33,18 +32,9 @@ BufferBuilderContext
 TensorBufferDialectInterface::getAllBufferBuilders(ModelOp modelOp) {
   DenseSet<TensorBufferDialectInterface *> interfaces =
       getAllInterfaces(modelOp);
-  BufferBuilderContext builderContext(
-      DeviceRefAttr::get(modelOp.getContext(), kCPULabel, 0));
-
-  // First create the host device's builder, since other builder may need
-  // to refer to it.
+  BufferBuilderContext builderContext;
   for (TensorBufferDialectInterface *interface : interfaces)
-    interface->addHostBuilder(modelOp, builderContext);
-
-  // Then create the rest of the builders.
-  for (TensorBufferDialectInterface *interface : interfaces)
-    interface->addNonHostBuilders(modelOp, builderContext);
-
+    builderContext.hostDevice = interface->addBuilders(modelOp, builderContext);
   return builderContext;
 }
 
@@ -84,51 +74,62 @@ BufferBuilder *TensorBufferDialectInterface::getBuilderForTypeStorage(
 void TensorBufferDialectInterface::vtableAnchor() {}
 
 //===----------------------------------------------------------------------===//
-// CpuTensorBufferDialectInterface
+// MGPTensorBufferDialectInterface
 //===----------------------------------------------------------------------===//
 
-void CpuTensorBufferDialectInterface::addHostBuilder(
+DeviceRefAttr MGPTensorBufferDialectInterface::addBuilders(
     ModelOp modelOp, BufferBuilderContext &builderContext) {
-  // The type builder is easy.
-  builderContext.registerTypeBuilder(builderContext.getHostDevice(),
-                                     std::make_unique<CpuTypeBuilder>());
-
-  // For the buffer builder, we need to know which slot holds the compiled
-  // kernels context. We'll leave it as max value if the model has no complied
-  // kernels.
-  size_t slot = ~0;
-  modelOp.walk([&slot](CpuKernelCreateContextOp createContextOp) {
-    GENERICML_ASSERT(slot == (size_t)~0)
-        << "MGP ModelOp contains multiple mgp.cpu.kernel.create_context ops";
-    slot = createContextOp.getSlot();
+  SmallVector<DeviceRefAttr> allDevices;
+  DeviceRefAttr hostDevice;
+  // Recover all the devices used by the model, and the distinguished 'host'
+  // device, from the unique mgp.check_runtime op.
+  modelOp.walk([&](CheckRuntimeOp checkRuntimeOp) {
+    hostDevice = checkRuntimeOp.getBDevices().getHost();
+    for (auto spec : checkRuntimeOp.getBDevices().getDevices())
+      allDevices.emplace_back(spec.getRef());
+    return WalkResult::interrupt();
   });
+  if (!hostDevice) {
+    // If the model has no such op, fill in a default. (Helps for unit tests).
+    hostDevice = DeviceRefAttr::getDefault(modelOp->getContext());
+    allDevices.emplace_back(hostDevice);
+  }
 
-  auto cpuBufferBuilder = std::make_unique<CpuBufferBuilder>(slot);
+  // Recover the 'host' buffer builder.
+  auto hostBufferBuilder = std::make_unique<MGPBufferBuilder>(hostDevice);
+  MGPBufferBuilder *hostBufferBuilderPtr = hostBufferBuilder.get();
+  hostBufferBuilder->recoverFromModel(modelOp, hostBufferBuilderPtr);
+  builderContext.registerTypeBuilder(
+      hostDevice, std::make_unique<MGPTypeBuilder>(hostDevice));
+  builderContext.registerBufferBuilder(hostDevice,
+                                       std::move(hostBufferBuilder));
 
-  // For good hygiene, also recover the compiled kernel name to index map.
-  modelOp.walk([cpuBufferBuilder = cpuBufferBuilder.get()](
-                   CpuKernelLoadArchiveOp loadArchiveOp) {
-    for (auto [index, name] :
-         llvm::enumerate(loadArchiveOp.getCKernelNames())) {
-      cpuBufferBuilder->trackCompiledKernel(name, index);
-    }
-  });
+  // Recover all the other buffer builders.
+  for (auto device : allDevices) {
+    if (device == hostDevice)
+      continue;
+    auto bufferBuilder = std::make_unique<MGPBufferBuilder>(device);
+    bufferBuilder->recoverFromModel(modelOp, hostBufferBuilderPtr);
+    builderContext.registerTypeBuilder(
+        device, std::make_unique<MGPTypeBuilder>(device));
+    builderContext.registerBufferBuilder(device, std::move(bufferBuilder));
+  }
 
-  builderContext.registerBufferBuilder(builderContext.getHostDevice(),
-                                       std::move(cpuBufferBuilder));
+  return hostDevice;
 }
 
-void CpuTensorBufferDialectInterface::addNonHostBuilders(
-    ModelOp modelOp, BufferBuilderContext &builderContext) {}
-
-DeviceRefAttr CpuTensorBufferDialectInterface::getExecutionDevice(
+DeviceRefAttr MGPTensorBufferDialectInterface::getExecutionDevice(
     const BufferBuilderContext &builderContext, Operation *op) {
-  return builderContext.getHostDevice();
+  if (auto hasDeviceOp = dyn_cast<MGPHasDeviceOpInterface>(op))
+    return hasDeviceOp.getDevice();
+  return builderContext.hostDevice;
 }
 
-DeviceRefAttr CpuTensorBufferDialectInterface::getStorageDevice(
+DeviceRefAttr MGPTensorBufferDialectInterface::getStorageDevice(
     const BufferBuilderContext &builderContext, Type type) {
-  return builderContext.getHostDevice();
+  if (auto hasDeviceType = dyn_cast<MGPHasDeviceTypeInterface>(type))
+    return hasDeviceType.getDevice();
+  return builderContext.hostDevice;
 }
 
 } // namespace M::MGP
