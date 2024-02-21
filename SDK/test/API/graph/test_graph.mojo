@@ -12,7 +12,7 @@ from tensor import Tensor, TensorShape
 from testing import assert_true, assert_raises
 from pathlib.path import Path
 
-from max.graph import AttrMap, Module, MOList, MOTensor, TypeTuple
+from max.graph import AttrMap, Graph, Module, MOList, MOTensor, TypeTuple
 
 alias TEMP_DIR = Path(env_get_string["TEMP_DIR"]())
 
@@ -33,6 +33,21 @@ fn test_identity_graph() raises:
     # CHECK:   }
     # CHECK: }
     print(m)
+
+
+fn test_identity_graph_no_module() raises:
+    var g = Graph(
+        name="identity_graph_no_module",
+        in_types=MOTensor(DType.int32),
+        out_types=MOTensor(DType.int32),
+    )
+    _ = g.nvop(name="mo.output", inputs=g[0])
+
+    g.module().verify()
+    # CHECK: mo.graph @identity_graph_no_module([[arg:.*]]: !mo.tensor<[], si32>) -> !mo.tensor<[], si32>
+    # CHECK:   mo.output [[arg]] : !mo.tensor<[], si32>
+    # CHECK: }
+    print(g)
 
 
 fn test_basic_add() raises:
@@ -86,6 +101,7 @@ fn test_save_to_file() raises:
 
 fn main() raises:
     test_identity_graph()
+    test_identity_graph_no_module()
     test_basic_add()
     test_add_constant()
     test_save_to_file()
