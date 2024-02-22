@@ -532,10 +532,13 @@ struct MOOpLoweringState {
   std::pair<Value, TypedValue<TensorSpecType>>
   tensorExtract(Value loweredTensor, Type moTensorType) {
     BufferBuilder *bufferBuilder = getStorageBufferBuilder(moTensorType);
-    return std::make_pair(bufferBuilder->tensorExtractBuffer(
-                              builder, loc, context, loweredTensor),
-                          bufferBuilder->tensorExtractTensorSpec(
-                              builder, loc, context, loweredTensor));
+    // Be careful the evaluation order of the function args is unspecified
+    // in the c++ standard. Define them separately to enforce the op order.
+    auto buffer = bufferBuilder->tensorExtractBuffer(builder, loc, context,
+                                                     loweredTensor);
+    auto spec = bufferBuilder->tensorExtractTensorSpec(builder, loc, context,
+                                                       loweredTensor);
+    return std::make_pair(buffer, spec);
   }
 
   Value tensorCreate(Value inChain, Value buffer,
