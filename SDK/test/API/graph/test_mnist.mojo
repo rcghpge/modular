@@ -138,7 +138,7 @@ def test_mnist_helpers():
     cst_2_data._to_buffer().fill(0.5)
     let cst_2 = g.constant(cst_2_data)
 
-    let p1 = ops.reshape(g[0], 1, 784)
+    let p1 = g[0].reshape(1, 784)
     let p2 = p1 @ cst_1
     let p3 = p2 + cst_2
     let p4 = g.op("mo.relu", p3, MOTensor(DType.float32, 1, 128))
