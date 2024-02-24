@@ -24,9 +24,9 @@ fn create_dummy_model() raises -> BPETokenizer:
 
 
 fn test_tokenization() raises:
-    let model = create_dummy_model()
+    var model = create_dummy_model()
 
-    let tokens = model.encode("xabcabaabcddxabcabaabcdd")
+    var tokens = model.encode("xabcabaabcddxabcabaabcdd")
 
     var expected = DynamicVector[String]()
     expected.push_back("x")
@@ -53,7 +53,7 @@ fn test_tokenization() raises:
 
 
 fn test_decode() raises:
-    let model = create_dummy_model()
+    var model = create_dummy_model()
 
     var encoded = model.encode("qrcbaabccdabqrcbaabccdab")
     var decoded = String()
