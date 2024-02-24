@@ -21,12 +21,12 @@ fn test_replace_all_uses_with() raises:
     g.output(g[0] + g[1])
     m.verify()
 
-    let x = Tensor[DType.int64](TensorShape(), 1)
-    let y = Tensor[DType.int64](TensorShape(), 2)
+    var x = Tensor[DType.int64](TensorShape(), 1)
+    var y = Tensor[DType.int64](TensorShape(), 2)
     g[0].replace_all_uses_with(g[1] + 3)
-    let expected = Tensor[DType.int64](TensorShape(), 7)
+    var expected = Tensor[DType.int64](TensorShape(), 7)
 
-    let actual = _testing.execute_binary[DType.int64, DType.int64](m, x, y)
+    var actual = _testing.execute_binary[DType.int64, DType.int64](m, x, y)
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
@@ -40,16 +40,16 @@ fn test_replace_all_uses_with_transform() raises:
     g.output(g[0] + g[1])
     m.verify()
 
-    let x = Tensor[DType.int64](TensorShape(), 1)
-    let y = Tensor[DType.int64](TensorShape(), 2)
+    var x = Tensor[DType.int64](TensorShape(), 1)
+    var y = Tensor[DType.int64](TensorShape(), 2)
 
     fn transform(arg0: Symbol) raises -> Symbol:
         return arg0 + 3
 
     g[0].replace_all_uses_with(transform)
-    let expected = Tensor[DType.int64](TensorShape(), 6)
+    var expected = Tensor[DType.int64](TensorShape(), 6)
 
-    let actual = _testing.execute_binary[DType.int64, DType.int64](m, x, y)
+    var actual = _testing.execute_binary[DType.int64, DType.int64](m, x, y)
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 

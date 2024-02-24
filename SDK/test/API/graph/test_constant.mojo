@@ -15,7 +15,7 @@ from max.graph import Module, MOTensor, TypeTuple
 fn test_basic_tensor() raises:
     var m = Module()
     var g = m.graph(TypeTuple(), MOTensor(DType.int32, 1, 2))
-    let y = g.constant(Tensor[DType.int32](TensorShape(1, 2), 1, 2))
+    var y = g.constant(Tensor[DType.int32](TensorShape(1, 2), 1, 2))
     g.output(y)
 
     testing.assert_true(
@@ -27,7 +27,7 @@ fn test_basic_tensor() raises:
 fn test_scalar_basic() raises:
     var m = Module()
     var g = m.graph(TypeTuple(), MOTensor(DType.bool))
-    let y = g.scalar[DType.bool](True)
+    var y = g.scalar[DType.bool](True)
     g.output(y)
 
     testing.assert_true("value = #M.dense_array<true> : tensor<i1>" in str(y))
@@ -37,7 +37,7 @@ fn test_scalar_basic() raises:
 fn test_scalar_high_rank() raises:
     var m = Module()
     var g = m.graph(TypeTuple(), MOTensor(DType.bool, 1, 1, 1))
-    let y = g.scalar[DType.bool](True, 3)
+    var y = g.scalar[DType.bool](True, 3)
     g.output(y)
 
     testing.assert_true(
@@ -49,7 +49,7 @@ fn test_scalar_high_rank() raises:
 fn test_basic_i64() raises:
     var m = Module()
     var g = m.graph(TypeTuple(), MOTensor(DType.int64, 1))
-    let y = g.scalar(Int64(1), rank=1)
+    var y = g.scalar(Int64(1), rank=1)
     _ = g.nvop("mo.output", y)
 
     testing.assert_true("value = #M.dense_array<1> : tensor<1xsi64>" in str(y))

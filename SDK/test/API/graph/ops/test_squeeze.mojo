@@ -19,10 +19,10 @@ fn test_squeeze() raises:
     g.output(ops.squeeze(g[0], 1))
     m.verify()
 
-    let x = Tensor[DType.float32](TensorShape(1, 1, 3), 1, 2, 3)
-    let expected = Tensor[DType.float32](TensorShape(1, 3), 1, 2, 3)
+    var x = Tensor[DType.float32](TensorShape(1, 1, 3), 1, 2, 3)
+    var expected = Tensor[DType.float32](TensorShape(1, 3), 1, 2, 3)
 
-    let actual = _testing.execute_unary(m, x)
+    var actual = _testing.execute_unary(m, x)
     _testing.assert_tensors_almost_equal(expected, actual)
 
 

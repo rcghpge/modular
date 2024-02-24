@@ -16,12 +16,12 @@ fn test_arg_max() raises:
     g.output(ops.arg_max(g[0], 1))
     m.verify()
 
-    let x = Tensor[DType.float32](
+    var x = Tensor[DType.float32](
         TensorShape(2, 3), -2.0, -1.0, 0.0, 3.0, 2.0, 1.0
     )
-    let expected = Tensor[DType.int64](TensorShape(2, 1), 2, 0)
+    var expected = Tensor[DType.int64](TensorShape(2, 1), 2, 0)
 
-    let actual = _testing.execute_unary[outtype = DType.int64](m, x)
+    var actual = _testing.execute_unary[outtype = DType.int64](m, x)
     _testing.assert_tensors_equal(expected, actual)
 
 
@@ -31,12 +31,12 @@ fn test_arg_max_neg_axis() raises:
     g.output(ops.arg_max(g[0], -1))
     m.verify()
 
-    let x = Tensor[DType.float32](
+    var x = Tensor[DType.float32](
         TensorShape(2, 3), -2.0, -1.0, 0.0, 3.0, 2.0, 1.0
     )
-    let expected = Tensor[DType.int64](TensorShape(2, 1), 2, 0)
+    var expected = Tensor[DType.int64](TensorShape(2, 1), 2, 0)
 
-    let actual = _testing.execute_unary[outtype = DType.int64](m, x)
+    var actual = _testing.execute_unary[outtype = DType.int64](m, x)
     _testing.assert_tensors_equal(expected, actual)
 
 

@@ -19,7 +19,7 @@ fn test_print() raises:
     g.output(())
     m.verify()
 
-    let x = Tensor[DType.float32](TensorShape(2, 2, 2), 1, 2, 3, 4, 5, 6, 7, 8)
+    var x = Tensor[DType.float32](TensorShape(2, 2, 2), 1, 2, 3, 4, 5, 6, 7, 8)
 
     # CHECK{LITERAL}: debug_tensor_cpu = tensor([[[1.0000, 2.0000],
     # CHECK{LITERAL}: [3.0000, 4.0000]],

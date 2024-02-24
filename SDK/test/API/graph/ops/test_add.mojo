@@ -21,17 +21,17 @@ fn test_add_basic() raises:
     g.output(g[0] + g[1])
     m.verify()
 
-    let x = Tensor[DType.float32](
+    var x = Tensor[DType.float32](
         TensorShape(1, 2, 3), -2.0, -1.0, 0.0, 1.0, 2.0, 3.0
     )
-    let y = Tensor[DType.float32](
+    var y = Tensor[DType.float32](
         TensorShape(2, 3), 1.0, 1.0, 0.0, 1.0, 0.0, 1.0
     )
-    let expected = Tensor[DType.float32](
+    var expected = Tensor[DType.float32](
         TensorShape(1, 2, 3), -1.0, 0.0, 0.0, 2.0, 2.0, 4.0
     )
 
-    let actual = _testing.execute_binary(m, x, y)
+    var actual = _testing.execute_binary(m, x, y)
     _testing.assert_tensors_almost_equal(expected, actual, 1e-4)
 
 
@@ -43,14 +43,14 @@ fn test_add_literal() raises:
     g.output(g[0] + 1.0)
     m.verify()
 
-    let x = Tensor[DType.float32](
+    var x = Tensor[DType.float32](
         TensorShape(1, 2, 3), -2.0, -1.0, 0.0, 1.0, 2.0, 3.0
     )
-    let expected = Tensor[DType.float32](
+    var expected = Tensor[DType.float32](
         TensorShape(1, 2, 3), -1.0, 0.0, 1.0, 2.0, 3.0, 4.0
     )
 
-    let actual = _testing.execute_unary(m, x)
+    var actual = _testing.execute_unary(m, x)
     _testing.assert_tensors_almost_equal(expected, actual, 1e-4)
 
 

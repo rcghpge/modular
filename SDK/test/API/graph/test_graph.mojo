@@ -57,7 +57,7 @@ fn test_basic_add() raises:
         TypeTuple(MOTensor(DType.int32), MOTensor(DType.int32)),
         MOTensor(DType.int32),
     )
-    let y = g.op("mo.add", (g[0], g[1]), MOTensor(DType.int32))
+    var y = g.op("mo.add", (g[0], g[1]), MOTensor(DType.int32))
     _ = g.nvop("mo.output", y)
 
     m.verify()
@@ -71,12 +71,12 @@ fn test_add_constant() raises:
     var g = m.graph(
         "add_constant", MOTensor(DType.float32, 1), MOTensor(DType.float32, 1)
     )
-    let x = g.op(
+    var x = g.op(
         "mo.constant",
         MOTensor(DType.float32, 1),
         AttrMap(m.scalar_attr("value", Float32(1.0), rank=1)),
     )
-    let y = g.op("mo.add", (g[0], x), MOTensor(DType.float32, 1))
+    var y = g.op("mo.add", (g[0], x), MOTensor(DType.float32, 1))
     _ = g.nvop("mo.output", y)
 
     m.verify()
@@ -89,9 +89,9 @@ fn test_add_constant() raises:
 # CHECK-EXEC-LABEL: save_to_file
 fn test_save_to_file() raises:
     print("test_save_to_file")
-    let m = Module()
-    let g = m.graph("save_to_file", TypeTuple(), MOTensor(DType.int32))
-    let x = g.constant(Tensor[DType.int32](TensorShape(), 7))
+    var m = Module()
+    var g = m.graph("save_to_file", TypeTuple(), MOTensor(DType.int32))
+    var x = g.constant(Tensor[DType.int32](TensorShape(), 7))
     g.output(x)
 
     # CHECK-EXEC{LITERAL}: 'save_to_file' returned tensor([[7]], dtype=si32, shape=[])
