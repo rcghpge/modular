@@ -495,9 +495,7 @@ def MO_ConstantScalarOp : MO_TensorOp<"constant.scalar", [ConstantLike, Pure]> {
     Example:
 
     ```mlir
-      %0 = mo.constant {
-        value = 3 : si64
-      } : !mo.scalar<si64>
+      %0 = mo.constant.scalar { value = 3 : si64 } : !mo.scalar<si64>
     ```
   }];
 
@@ -3920,16 +3918,17 @@ def MO_TopKOp : MO_TensorOp<"top_k", [
 
     Example:
     ```mlir
-      %in = "mo.constant"() {value =
-        #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11> : tensor<2x6xsi64>} :
-        () -> !mo.tensor<[2, 6], si64>
-      %K = "mo.constant"() {value = #M.dense_array<3> : tensor<si64>} : () ->
-        !mo.tensor<[], si64>
-      %axis = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () ->
-        !mo.tensor<[], si64>
-      %values, %indices = mo.top_k(%in, %K, %axis) : (
-        !mo.tensor<[2, 6], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) ->
-          (!mo.tensor<[2, 3], si64>, !mo.tensor<[2, 3], si64>)
+      %in = mo.constant {
+        value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11> : tensor<2x6xsi64>
+      } : !mo.tensor<[2, 6], si64>
+      %k = mo.constant() { value = #M.dense_array<3> : tensor<si64> } : !mo.tensor<[], si64>
+      %axis = mo.constant { value = #M.dense_array<1> : tensor<si64> } : !mo.tensor<[], si64>
+      %sorted = mo.constant { value = #M.dense_array<1> : tensor<1xi1> } : !mo.tensor<[], bool>
+      %values, %indices = mo.top_k(%in, %k, %axis, %sorted) : (
+        !mo.tensor<[2, 6], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>
+      ) -> (
+        !mo.tensor<[2, 3], si64>, !mo.tensor<[2, 3], si64>
+      )
     ```
   }];
 
@@ -3958,16 +3957,17 @@ def MO_BottomKOp : MO_TensorOp<"bottom_k", [
 
     Example:
     ```mlir
-      %in = "mo.constant"() {value =
-        #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11> : tensor<2x6xsi64>} :
-        () -> !mo.tensor<[2, 6], si64>
-      %K = "mo.constant"() {value = #M.dense_array<3> : tensor<si64>} : () ->
-        !mo.tensor<[], si64>
-      %axis = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () ->
-        !mo.tensor<[], si64>
-      %values, %indices = mo.bottom_k(%in, %K, %axis) : (
-        !mo.tensor<[2, 6], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) ->
-          (!mo.tensor<[2, 3], si64>, !mo.tensor<[2, 3], si64>)
+      %in = mo.constant {
+        value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11> : tensor<2x6xsi64>
+      } : !mo.tensor<[2, 6], si64>
+      %k = mo.constant { value = #M.dense_array<3> : tensor<si64> } : !mo.tensor<[], si64>
+      %axis = mo.constant { value = #M.dense_array<1> : tensor<si64> } : !mo.tensor<[], si64>
+      %sorted = mo.constant { value = #M.dense_array<1> : tensor<1xi1> } : !mo.tensor<[], bool>
+      %values, %indices = mo.bottom_k(%in, %k, %axis, %sorted) : (
+        !mo.tensor<[2, 6], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>
+      ) -> (
+        !mo.tensor<[2, 3], si64>, !mo.tensor<[2, 3], si64>
+      )
     ```
   }];
 
