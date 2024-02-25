@@ -3,13 +3,14 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
-//===----------------------------------------------------------------------===//
+//
 // MO supported types and conversion to KGEN types
 //
 // All utilities around dtype conversion for KGEN and MO are here so that there
 // is only one place to add a new dtype.
 //
 // If you want to add a new supported type, add it to `allDTypeTraits` below
+//
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
