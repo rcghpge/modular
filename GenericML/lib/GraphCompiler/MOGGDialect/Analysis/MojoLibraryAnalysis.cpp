@@ -150,6 +150,7 @@ loadUserProvidedKernels(ModuleOp baseModule,
         StringRef decoratorName = sym.getSymbol().getLeafReference().strref();
         isMOGGKernel |=
             decoratorName.starts_with(DECORATOR_REGISTER_OVERRIDE) ||
+            decoratorName.starts_with(DECORATOR_REGISTER_PUBLIC_OVERRIDE) ||
             decoratorName.starts_with(DECORATOR_REGISTER_SHAPE_FUNC) ||
             decoratorName.starts_with(DECORATOR_REGISTER_KERNEL);
       }
@@ -379,7 +380,8 @@ MojoLibraryAnalysis::get(MLIRContext *ctx,
         continue;
 
       StringRef decoratorName = sym.getSymbol().getLeafReference().strref();
-      if (decoratorName.starts_with(DECORATOR_REGISTER_OVERRIDE)) {
+      if (decoratorName.starts_with(DECORATOR_REGISTER_OVERRIDE) ||
+          decoratorName.starts_with(DECORATOR_REGISTER_PUBLIC_OVERRIDE)) {
         auto asString = cast<StringAttr>(apply.getOperand(1)).strref();
         auto intPriority = cast<IntegerAttr>(apply.getOperand(2));
         candidate.priority = intPriority.getInt();
