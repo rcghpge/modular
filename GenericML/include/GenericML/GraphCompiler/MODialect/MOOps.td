@@ -873,6 +873,7 @@ def MO_CosOp : MO_ElementWiseUnaryFloatMonoTypeOp<"cos"> {
     ```mlir
       %arg : !mo.tensor<[2, 3], f32>
       %res = mo.cos(%arg) : !mo.tensor<[2, 3], f32>
+    ```
   }];
   let arguments = (ins MO_FloatTensor:$input);
 }
@@ -891,6 +892,7 @@ def MO_CumSumOp : MO_TensorOp<"cumsum", [
     axis.
 
     Example of outputs:
+
     ```
       input_x = [1, 2, 3]
       axis=0
@@ -3574,6 +3576,7 @@ def MO_RoiAlignOp : MO_TensorOp<"roi_align", [
             !mo.tensor<[], si64>,
             !mo.tensor<[], f32>,
             !mo.tensor<[], f32>) -> !mo.tensor<[1, 5, 5, 1], f32>
+      ```
 
     }];
     let arguments = (ins
