@@ -24,6 +24,28 @@ mo.graph @reduce_sinking_success<A, B, P1, P2, P3>(
 // CHECK-NEXT: [[V5:%.*]] = mo.static.broadcast_to([[V4]]) : !mo.tensor<[[[A]], 1], f32> -> !mo.tensor<[[[P1]], [[P2]], [[P3]], [[A]], 1], f32>
 // CHECK-NEXT: mo.output [[V3]], [[V5]] : !mo.tensor<[[[P1]], [[P2]], [[P3]], 1, [[B]]], f32>, !mo.tensor<[[[P1]], [[P2]], [[P3]], [[A]], 1], f32>
 
+// No sinking occurs because we cannot determine which axis are the result of broadcasting
+mo.graph @reduce_sinking_failure_cannot_prove_bcasting<A, B, P1, P2, P3>(
+  %arg0: !mo.tensor<[A, B], f32>
+) -> !mo.tensor<[P1, P2, P3, 1, P3], f32> {
+  %axis3 = mo.constant {value = #M.dense_array<3> : tensor<si64>} : !mo.tensor<[], si64>
+  %axis4 = mo.constant {value = #M.dense_array<4> : tensor<si64>} : !mo.tensor<[], si64>
+
+  // COM: B --> P3 might be a broadcasted axis depending on the runtime values
+  %broadcasted_arg0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A, B], f32> -> !mo.tensor<[P1, P2, P3, A, P3], f32>
+  %reduce_axis1 = mo.reduce.add(%broadcasted_arg0, %axis3) : (!mo.tensor<[P1, P2, P3, A, P3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[P1, P2, P3, 1, P3], f32>
+
+  mo.output %reduce_axis1: !mo.tensor<[P1, P2, P3, 1, P3], f32>
+}
+// CHECK-LABEL: mo.graph
+// CHECK-SAME: @reduce_sinking_failure_cannot_prove_bcasting<[[A:[A-Z0-9]*]], [[B:[A-Z0-9]*]], [[P1:[A-Z0-9]*]], [[P2:[A-Z0-9]*]], [[P3:[A-Z0-9]*]]>(
+// CHECK-SAME: [[VARG0:%.*]]: !mo.tensor<[[[A]], [[B]]], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[P1]], [[P2]], [[P3]], 1, [[P3]]], f32>
+// CHECK-NEXT: [[VAXIS3:%.*]] = mo.constant {value = #M.dense_array<3> : tensor<si64>} : !mo.tensor<[], si64>
+// CHECK-NEXT: [[VBROADCASTED_ARG0:%.*]] = mo.static.broadcast_to([[VARG0]]) : !mo.tensor<[[[A]], [[B]]], f32> -> !mo.tensor<[[[P1]], [[P2]], [[P3]], [[A]], [[P3]]], f32>
+// CHECK-NEXT: [[VREDUCE_AXIS1:%.*]] = mo.reduce.add([[VBROADCASTED_ARG0]], [[VAXIS3]]) : (!mo.tensor<[[[P1]], [[P2]], [[P3]], [[A]], [[P3]]], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[P1]], [[P2]], [[P3]], 1, [[P3]]], f32>
+// CHECK-NEXT: mo.output [[VREDUCE_AXIS1]] : !mo.tensor<[[[P1]], [[P2]], [[P3]], 1, [[P3]]], f32>
+
 // Need to know fixed rank
 mo.graph @reduce_sinking_fail_on_unknown_rank<Sh1: !mosh.ape, Sh2: !mosh.ape, Sh3: !mosh.ape>(
   %arg0: !mo.tensor<Sh1, f32>
@@ -63,17 +85,17 @@ mo.graph @reduce_sinking_success_max_mean_on_new_bcasted_dim<A, B, P1, P2, P3>(
 // CHECK-NEXT: mo.output [[V0]], [[V1]] : !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], f32>, !mo.tensor<[[[P1]], 1, [[P3]], [[A]], [[B]]], f32>
 
 // Doing 1-broadcasted + reduce_min on the same axis is an identity.
-mo.graph @reduce_sinking_success_min_on_1_bcasted_dim<A, B, P1>(
+mo.graph @reduce_sinking_success_min_on_1_bcasted_dim<A, B>(
   %arg0: !mo.tensor<[A, 1, B], f32>
 ) -> !mo.tensor<[A, 1, B], f32> {
   %axis1 = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  %broadcasted_arg0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A, 1, B], f32> -> !mo.tensor<[A, P1, B], f32>
-  %reduce_axis1 = mo.reduce.min(%broadcasted_arg0, %axis1) : (!mo.tensor<[A, P1, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[A, 1, B], f32>
+  %broadcasted_arg0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A, 1, B], f32> -> !mo.tensor<[A, 5, B], f32>
+  %reduce_axis1 = mo.reduce.min(%broadcasted_arg0, %axis1) : (!mo.tensor<[A, 5, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[A, 1, B], f32>
 
   mo.output %reduce_axis1: !mo.tensor<[A, 1, B], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @reduce_sinking_success_min_on_1_bcasted_dim<[[A:[A-Z0-9]*]], [[B:[A-Z0-9]*]], [[P1:[A-Z0-9]*]]>
+// CHECK-SAME: @reduce_sinking_success_min_on_1_bcasted_dim<[[A:[A-Z0-9]*]], [[B:[A-Z0-9]*]]>
 // CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[[A]], 1, [[B]]], f32>) -> !mo.tensor<[[[A]], 1, [[B]]], f32> no_inline {
 // CHECK-NEXT: mo.output [[INPUT]] : !mo.tensor<[[[A]], 1, [[B]]], f32>
 

@@ -2813,15 +2813,15 @@ struct SinkBroadcastsThroughReduction
     if (!maybeAxis.has_value())
       return rewriter.notifyMatchFailure(
           loc, "Need to know axis to perform optimization.");
-    int64_t axis = maybeAxis.value();
+    int64_t reductionAxis = maybeAxis.value();
 
     // respect negative axis rules
     int64_t initialRank = input.getType().getRank();
-    if (axis < -initialRank || axis >= initialRank)
+    if (reductionAxis < -initialRank || reductionAxis >= initialRank)
       return rewriter.notifyMatchFailure(
           loc, "Axis is not within [-rank, rank - 1]");
 
-    axis = normalizeAxis(axis, input.getType().getRank());
+    reductionAxis = normalizeAxis(reductionAxis, input.getType().getRank());
 
     // Here we want to map the axes we are reducing on in the broadcasted tensor
     // to on the non-broadcasted input.
@@ -2841,7 +2841,7 @@ struct SinkBroadcastsThroughReduction
     SmallVector<int64_t> &bcastedAxis = maybeBcastedAxis.get();
     size_t numBeforeAxis = 0;
     for (int64_t bcastedDimIndex : bcastedAxis) {
-      if (bcastedDimIndex == axis) {
+      if (bcastedDimIndex == reductionAxis) {
         // When we reduce along the broadcasted axis the reduction op can be
         // simplified.
         auto maybeNewInput =
@@ -2853,7 +2853,7 @@ struct SinkBroadcastsThroughReduction
                 .Case<ReduceAddOp, ReduceMulOp>([&](auto op) {
                   // For reduce.add, the input is multiplied by the size of the
                   // broadcast axis. (For reduce.mul, we use mo.pow instead).
-                  TypedAttr dimAttr = bcastShapeAttr.getValues()[axis];
+                  TypedAttr dimAttr = bcastShapeAttr.getValues()[reductionAxis];
                   auto dimIndex =
                       rewriter.create<KGEN::ParamConstantOp>(loc, dimAttr);
                   auto dimT = rewriter.create<IndexToTensorOp>(
@@ -2896,14 +2896,14 @@ struct SinkBroadcastsThroughReduction
             op, op.getResult().getType(), *maybeNewInput);
         return success();
       }
-      if (bcastedDimIndex > axis)
+      if (bcastedDimIndex > reductionAxis)
         break;
       numBeforeAxis++;
     }
 
     // Now we know we are reducing along a non-broadcasted axis, we can elide
     // the broadcast for later.
-    int64_t newAxis = axis - numBeforeAxis;
+    int64_t newAxis = reductionAxis - numBeforeAxis;
     TensorValue newAxisTensor =
         rewriter.create<ConstantOp>(op->getLoc(), newAxis);
     auto clonedReduction = cast<MO::Reduction>(*rewriter.clone(*op));

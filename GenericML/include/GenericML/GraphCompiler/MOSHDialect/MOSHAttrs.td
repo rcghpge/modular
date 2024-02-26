@@ -97,6 +97,10 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
     ///
     /// A dimension is the result of broadcasting if it is a newly introduced
     /// dim or is the result of a 1 dim becoming a non-one-dim.
+    ///
+    /// Note, in the case we have two parameters A, B which broadcast to each
+    /// other, we must return an error, as whether the dimension is broadcasted
+    /// depends on runtime values.
     static ErrorOr<SmallVector<int64_t>> getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape);
 
     /// Construct a `ShapeAttr` from given integers and shape type, without

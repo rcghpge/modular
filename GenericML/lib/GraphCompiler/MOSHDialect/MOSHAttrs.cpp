@@ -330,8 +330,21 @@ ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
     const TypedAttr &beforeDim = beforeDims[before_i];
     const TypedAttr &bcastedDim = bcastedDims[bcasted_i];
 
-    if (beforeDim != bcastedDim)
+    // We cannot necessarily prove things are broadcast in all scenarios.
+    // For example A --> B. A and B are runtime parameters so in some cases
+    // the axis will be a result of broadcasting and other times they will be
+    // not.
+    //
+    // Therefore, we can only return a correct answer if the only differing
+    // dimensions are integral dimensions going from 1 --> not 1.
+    const auto &beforeDimInt = llvm::dyn_cast<IntegerAttr>(beforeDim);
+    const auto &bcastedDimInt = llvm::dyn_cast<IntegerAttr>(bcastedDim);
+    if (beforeDimInt && bcastedDimInt && beforeDimInt.getInt() == 1 &&
+        bcastedDimInt.getInt() != 1) {
       answer.push_back(bcasted_i);
+    } else if (beforeDim != bcastedDim) {
+      return Error("Cannot statically prove which dimension broadcast.");
+    }
   }
 
   // add all the newly introduced dims too
