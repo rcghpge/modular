@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MODULAR_C_CUSTOM_OPS_H
-#define MODULAR_C_CUSTOM_OPS_H
+#ifndef MAX_C_CUSTOM_OPS_H
+#define MAX_C_CUSTOM_OPS_H
 
 #include "max/c/symbol_export.h"
 #include "max/c/types.h"
@@ -21,4 +21,4 @@
 MODULAR_API_EXPORT void M_useKernelsFrom(M_CompileConfig *compileConfig,
                                          const char *path, M_Status *status);
 
-#endif // MODULAR_C_EXPERIMENTAL_CUSTOM_OPS_H
+#endif // MAX_C_CUSTOM_OPS_H
