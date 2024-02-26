@@ -11,6 +11,7 @@
 #include "max/c/common.h"
 #include "max/c/custom_ops.h"
 #include "max/c/internal/context.h"
+#include "max/c/internal/device.h"
 #include "max/c/onnx/config.h"
 #include "max/c/pytorch/config.h"
 #include "max/c/tensorflow/config.h"
