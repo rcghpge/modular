@@ -70,46 +70,44 @@ static bool isBMMSmall(MO::BatchMatmulOp matmul) {
   return approxFlops < kTinyBMMatmulFlops;
 }
 
+// TODO(#29430) make this more general and apply to all shape function calls.
 struct PackParamCache {
-  PackParamCache(MLIRContext *ctx) : ctx(ctx) {}
+  /// Associate `outputTy` with `(inputTy, kgenParams)` as a new cache entry.
+  void put(MO::TensorType inputTy, DictionaryAttr kgenParams,
+           MO::TensorType outputTy) {
+    cache[inputTy][kgenParams] = outputTy;
+  }
 
-  MLIRContext *ctx;
+  /// Return the output type associated with `(inputTy, kgenParams)`, or null if
+  /// the entry doesn't exist.
+  MO::TensorType get(MO::TensorType inputTy, DictionaryAttr kgenParams) {
+    if (!cache.contains(inputTy))
+      return {};
 
-  // Each packed function will return the same weight type for each MO tensor
-  // (shape + element type). By preserving this information we get better
-  // performance as we are able to recognise and DCE / CSE matching shape / pack
-  // funcs.
-  DenseMap<MO::TensorType, MO::TensorType> knownTypes, knownTypesTransp;
+    auto &kgenParamsToOutTy = cache[inputTy];
+    if (!kgenParamsToOutTy.contains(kgenParams))
+      return {};
 
-  // Each packed shape function should return a unique shape, we use this atomic
-  // to ensure each gets a unique parameter name.
-  std::atomic<int64_t> paramId = 0;
+    return kgenParamsToOutTy[kgenParams];
+  }
+
+private:
+  // Output tensor type of a packing operation is determined solely by the input
+  // tensor type and the extra kgen parameters. Therefore we can cache the
+  // output tensor type based on the (input_ty, kgen_params) tuple.
+  DenseMap<MO::TensorType, DenseMap<DictionaryAttr, MO::TensorType>> cache;
 };
 
 Value lowerMatmulPackingFunc(Location loc, MO::DeviceAwareRewriter &rewriter,
-                             PackParamCache &cache, Value weight,
-                             MO::TensorType inputType,
+                             MO::GraphOp graphOp, PackParamCache &cache,
+                             Value weight, MO::TensorType inputType,
                              MO::TensorType resultType, bool transpose) {
 
   MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
-  MO::TensorType packedWeightsType;
 
   Type inputEleType = inputType.getElementType();
   Type weightsEleType = weightsType.getElementType();
   Type resultEleType = resultType.getElementType();
-
-  // First we check the cache. If we've already lowered this same tensor &
-  // transpose combination then we will want to lower to the exact same
-  // parameter type.
-  if (transpose) {
-    auto itr = cache.knownTypesTransp.find(weightsType);
-    if (itr != cache.knownTypesTransp.end())
-      packedWeightsType = itr->second;
-  } else {
-    auto itr = cache.knownTypes.find(weightsType);
-    if (itr != cache.knownTypes.end())
-      packedWeightsType = itr->second;
-  }
 
   // Propagate shape information for the "pack_b" mojo function (#27398).
   SmallVector<mlir::NamedAttribute> attrs;
@@ -125,45 +123,39 @@ Value lowerMatmulPackingFunc(Location loc, MO::DeviceAwareRewriter &rewriter,
   attrs.push_back(rewriter.getNamedAttr(
       "c_shape", rewriter.getI64VectorAttr(resultType.getIntDims())));
 
+  // Create a pair of parameters for the new type.
+  auto newParams = KGEN::ParamDeclArrayAttr::get(
+      graphOp.getContext(),
+      {graphOp.getNewDimParam("MMPackSh"), graphOp.getNewDimParam("MMPackSh")});
+
+  // Create the packed B shape function.
+  // TODO(#18770) Find a better registration mechanism.
+  SmallVector<mlir::NamedAttribute> shapeFuncAttrs = attrs;
+  shapeFuncAttrs.push_back(
+      rewriter.getNamedAttr("transpose_in_0", rewriter.getBoolAttr(transpose)));
+  mlir::DictionaryAttr shapeFuncKgenParams =
+      rewriter.getDictionaryAttr(shapeFuncAttrs);
+
+  MO::TensorType packedWeightsType = cache.get(inputType, shapeFuncKgenParams);
   // If we haven't lowered the shape function, lower it now so we have
   // parameterized shapes.
   if (!packedWeightsType) {
-    Type paramType = rewriter.getIndexType();
-
-    // Create a pair of parameters for the new type.
-    auto newParams = KGEN::ParamDeclArrayAttr::get(
-        cache.ctx,
-        {KGEN::ParamDeclAttr::get(("MMPackSh" + Twine(cache.paramId++)).str(),
-                                  paramType),
-         KGEN::ParamDeclAttr::get(("MMPackSh" + Twine(cache.paramId++)).str(),
-                                  paramType)});
-
-    // Create the packed B shape function.
-    // TODO(#18770) Find a better registration mechanism.
-    SmallVector<mlir::NamedAttribute> shapeFuncAttrs = attrs;
-    shapeFuncAttrs.push_back(rewriter.getNamedAttr(
-        "transpose_in_0", rewriter.getBoolAttr(transpose)));
-    mlir::DictionaryAttr kgenParams =
-        rewriter.getDictionaryAttr(shapeFuncAttrs);
-    rewriter.create<MO::InvokeShapeFuncOp>(loc, SmallVector<Value>{weight},
-                                           "pack_matmul_b_shape_func",
-                                           newParams, kgenParams, ArrayAttr{});
+    rewriter.create<MO::InvokeShapeFuncOp>(
+        loc, SmallVector<Value>{weight}, "pack_matmul_b_shape_func", newParams,
+        shapeFuncKgenParams, ArrayAttr{});
 
     SmallVector<TypedAttr> outputShapeDims;
     for (KGEN::ParamDeclAttr outputParamDecl : newParams)
       outputShapeDims.push_back(KGEN::ParamDeclRefAttr::get(outputParamDecl));
 
-    auto moshShapeTy = MOSH::ShapeType::get(cache.ctx);
+    auto moshShapeTy = MOSH::ShapeType::get(graphOp.getContext());
     auto shapeAttr = MOSH::ShapeAttr::get(outputShapeDims, moshShapeTy);
     auto packedWeightsLayout = rewriter.getAttr<MO::LayoutAttr>("KNkni");
     packedWeightsType =
         weightsType.cloneWith(shapeAttr).cloneWith(packedWeightsLayout);
 
     // Cache the result so the next type has a hit too.
-    if (transpose)
-      cache.knownTypesTransp[weightsType] = packedWeightsType;
-    else
-      cache.knownTypes[weightsType] = packedWeightsType;
+    cache.put(inputType, shapeFuncKgenParams, packedWeightsType);
   }
 
   mlir::DictionaryAttr kgenParams = rewriter.getDictionaryAttr(attrs);
@@ -290,9 +282,10 @@ struct MatmulConstBPattern
 
     MO::TensorType inputType = op.getInputA().getType();
     MO::TensorType resultType = op.getType();
+    auto graphOp = op->getParentOfType<MO::GraphOp>();
     Value packedWeights =
-        lowerMatmulPackingFunc(op->getLoc(), rewriter, cache, weight, inputType,
-                               resultType, transpose);
+        lowerMatmulPackingFunc(op->getLoc(), rewriter, graphOp, cache, weight,
+                               inputType, resultType, transpose);
 
     op.setOperand(1, packedWeights);
     return mlir::success();
@@ -2043,7 +2036,7 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
 
     RewritePatternSet patterns{ctx};
 
-    PackParamCache cache{ctx};
+    PackParamCache cache;
     patterns.add<MatmulConstBPattern>(ctx, cache);
 
     patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
