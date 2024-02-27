@@ -58,6 +58,12 @@ class NumpyImpl(CommonImpls):
 
         return np.array(values)
 
+    def ceil(self, x):
+        return np.ceil(x)
+
+    def floor(self, x):
+        return np.floor(x)
+
     def transpose(self, input, permute):
         return np.transpose(input, permute)
 
@@ -112,15 +118,16 @@ class NumpyImpl(CommonImpls):
 
     def erf(self, x):
         apply = lambda t: math.erf(t)
-        out = np.copy(x)
-        np.vectorize(apply)(out)
-        return out
+        return np.vectorize(apply)(x)
 
     def exp(self, x):
         return np.exp(x)
 
     def log(self, x):
         return np.log(x)
+
+    def log1p(self, x):
+        return np.log1p(x)
 
     def max(self, x, limit):
         return np.maximum(x, limit)
@@ -155,6 +162,9 @@ class NumpyImpl(CommonImpls):
     def logical_xor(self, x, y):
         return np.logical_xor(x, y)
 
+    def rsqrt(self, x):
+        return 1.0 / np.sqrt(x)
+
 
 # The keras implementation of each primitive.
 class TFImpl(CommonImpls):
@@ -162,6 +172,12 @@ class TFImpl(CommonImpls):
         if dtype:
             return tf.constant(np.array(values, dtype=dtype))
         return tf.constant(np.array(values))
+
+    def ceil(self, x):
+        return tf.math.ceil(x)
+
+    def floor(self, x):
+        return tf.math.floor(x)
 
     def transpose(self, input, permute):
         return tf.transpose(input, permute)
@@ -202,6 +218,9 @@ class TFImpl(CommonImpls):
     def log(self, x):
         return tf.math.log(x)
 
+    def log1p(self, x):
+        return tf.math.log1p(x)
+
     def max(self, x, limit):
         return tf.math.maximum(x, limit)
 
@@ -234,3 +253,6 @@ class TFImpl(CommonImpls):
 
     def logical_xor(self, x, y):
         return tf.math.logical_xor(x, y)
+
+    def rsqrt(self, x):
+        return tf.math.rsqrt(x)

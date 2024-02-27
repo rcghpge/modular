@@ -446,6 +446,10 @@ class Elementwise(TestBase):
         return 100
 
     @staticmethod
+    def compare_results(ours, theirs):
+        return np.allclose(ours, theirs, rtol=1e-04, atol=1e-07, equal_nan=True)
+
+    @staticmethod
     def input_sizes_to_test():
         return [([20, 5, 1, 6],)]
 
@@ -467,9 +471,7 @@ class Elementwise(TestBase):
     def run(inputs, impl):
         x = inputs[0]
         tanh = impl.tanh(inputs[1])
-        x = impl.add(x, tanh)
-
-        sub = impl.sub(x, x)
+        sub = impl.sub(x, tanh)
         mul = impl.mul(sub, x)
         erf = impl.erf(mul)
         abs_ = impl.abs(x)
@@ -492,7 +494,15 @@ class Elementwise(TestBase):
         add = impl.add(sel1, o)
 
         log = impl.log(add)
+        ceil = impl.ceil(add)
+        floor = impl.floor(add)
+        log1p = impl.log1p(add)
+        rsqrt = impl.rsqrt(add)
         add = impl.add(add, log)
+        add = impl.add(add, rsqrt)
+        add = impl.add(add, log1p)
+        add = impl.add(add, ceil)
+        add = impl.add(add, floor)
 
         # TODO: Lower in TF.
         # sin = impl.sin(add)
