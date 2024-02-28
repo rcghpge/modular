@@ -165,13 +165,14 @@ struct FuseBroadcastsPass
         return false;
 
       // Skip empty input lambdas.
-      if (cast<StringAttr>(inputFusions[index]).strref() == "")
+      if (cast<StringAttr>(inputFusions[index]).strref().empty())
         return false;
     }
 
     // Only fuse within the same region and not across, i.e, control flow.
     if (edge->getParentRegion() != kernel->getParentRegion())
       return false;
+
     if (auto otherKernel = dyn_cast<KernelOp>(edge)) {
       // Should be unreachable.
       if (otherKernel.getOutputPlaceholder() == nullptr)
@@ -254,14 +255,24 @@ struct FuseBroadcastsPass
       Value target = leafBlock.getArgument(idx);
       llvm::StringMap<KGEN::ParamDeclAttr> paramMapping;
 
+      MOGG::ToKGENOp producerKernelToKGEN = nullptr;
       for (Operation &op : producerKernel.getOps()) {
         if (isa<MOGG::OutputPlaceholdersOp>(op)) {
           remapper.map(op.getResult(0), target);
+          // Find the ToKGEN of the producer kernel.
+          for (auto user : op.getUsers()) {
+            GENERICML_ASSERT(!producerKernelToKGEN)
+                << "Expecting a single ToKGENOp";
+            if (auto toKGENOp = dyn_cast<MOGG::ToKGENOp>(user))
+              producerKernelToKGEN = toKGENOp;
+          }
         } else if (isa<MOGG::OutputOp>(op)) {
           // Do nothing.
         } else
           MOGG::cloneKgenOpsIntoMOGG(builder, &op, paramMapping, remapper);
       }
+      GENERICML_ASSERT(producerKernelToKGEN)
+          << "Could not find ToKGENOp for producer kernel";
 
       // We find the mogg.to_kgen that relates to the output of the
       // `producerKernel`.
@@ -295,12 +306,42 @@ struct FuseBroadcastsPass
         // rebinding of its output type.
         if (llvm::all_of(value.getUsers(), [](Operation *user) {
               return !isa<MOGG::TensorCopyOp>(user);
-            }))
-          bindType = value.getType();
+            })) {
+          bindType = producerKernelToKGEN.getType();
+        }
       }
 
       KGEN::RebindOp rebind =
           builder.create<KGEN::RebindOp>(leaf->getLoc(), bindType, stackAlloc);
+
+      // When fusing views, we want to ensure the consumer operation is not
+      // assuming contiguous memory layout. To do so, we change the stride
+      // information to be statically unknown. It is achieved by replacing old
+      // static strides which can be known to the new, unknown own. This assumes
+      // LoweringHelper.cpp lowered unknown strides for view op outputs.
+      auto newStrides = dyn_cast<KGEN::ParamDeclRefAttr>(
+          producerKernelToKGEN.getStridesAttr());
+      GENERICML_ASSERT(newStrides)
+          << "Expected strides to be a parameter declaration reference. Maybe "
+             "the view kernel was not explicitly parametrized on strides?";
+      DenseSet<KGEN::ParamDeclRefAttr> oldStrideParams;
+      for (auto value : kgenOut) {
+        auto oldStrides = dyn_cast<KGEN::ParamDeclRefAttr>(
+            value.getDefiningOp<ToKGENOp>().getStridesAttr());
+        GENERICML_ASSERT(oldStrides)
+            << "All kernels should have explicitly parametrized strides";
+        oldStrideParams.insert(oldStrides);
+      }
+      mlir::AttrTypeReplacer walker;
+      walker.addReplacement([&](KGEN::ParamDeclRefAttr attr)
+                                -> std::optional<KGEN::ParamDeclRefAttr> {
+        if (oldStrideParams.contains(attr))
+          return newStrides;
+        return std::nullopt;
+      });
+      walker.recursivelyReplaceElementsIn(leaf, /*replaceAttrs=*/true,
+                                          /*replaceLocs=*/false,
+                                          /*replaceTypes=*/true);
 
       for (auto value : kgenOut)
         value.replaceAllUsesWith(rebind);
