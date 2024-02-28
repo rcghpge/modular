@@ -84,7 +84,8 @@ public:
 
   // Returns true if the kernel is an elementwise kernel.
   inline bool kernelIsElementwise(KGEN::GeneratorOp kernel) {
-    return kernelHasDecorator(kernel, DECORATOR_ELEMENTWISE);
+    return kernelHasDecorator(kernel, DECORATOR_ELEMENTWISE) ||
+           kernelHasDecorator(kernel, DECORATOR_ELEMENTWISE_PUBLIC);
   }
 
   // Returns true if the kernel is to be implemented by a Mojo async function.
