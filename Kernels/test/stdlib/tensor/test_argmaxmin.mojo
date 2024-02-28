@@ -21,6 +21,9 @@ def test_argmaxmin():
     assert_equal(argmax[0], 1)
     assert_equal(argmax[1], 0)
 
+    assert_equal(argmin.rank(), 1)
+    assert_equal(argmax.rank(), 1)
+
 
 def main():
     test_argmaxmin()
