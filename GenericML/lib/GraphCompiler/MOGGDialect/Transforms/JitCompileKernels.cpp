@@ -42,12 +42,9 @@ struct JitCompileKernels
     mlir::ModuleOp m = getOperation();
     MLIRContext *ctx = m.getContext();
 
-    auto mojoLibraryAnalysisOrErr =
-        MOGG::MojoLibraryAnalysis::get(ctx, kernelLibraryPaths);
-    GENERICML_ASSERT(!mojoLibraryAnalysisOrErr.isError())
-        << mojoLibraryAnalysisOrErr.takeError();
-    MOGG::MojoLibraryAnalysis mojoLibraryAnalysis =
-        mojoLibraryAnalysisOrErr.takeValue();
+    MOGG::MojoLibraryAnalysis mojoLibraryAnalysis(ctx, true);
+    auto loadError = mojoLibraryAnalysis.init(kernelLibraryPaths);
+    GENERICML_ASSERT(!loadError.isError()) << loadError.takeError();
 
     // Don't expose any extra stuff in the library.
     mojoLibraryAnalysis.markAllFunctionsAsNotExported();

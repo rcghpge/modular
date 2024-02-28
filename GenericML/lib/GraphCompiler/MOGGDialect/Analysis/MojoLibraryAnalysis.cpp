@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/FileUtilities.h"
@@ -24,11 +25,88 @@
 
 namespace {
 #include MOGG_MOJO_BINDING_H
-};
+}; // namespace
 
 using namespace M;
 
 namespace M::MOGG {
+
+namespace {
+
+std::string getMOGGUniqueSymbolName(const std::string &baseName,
+                                    llvm::StringMap<KGEN::GeneratorOp> &rawMap,
+                                    unsigned &counter) {
+  std::string uniqueName = baseName;
+  while (rawMap.contains(uniqueName))
+    uniqueName = (baseName + "_" + Twine(counter++)).str();
+  return uniqueName;
+}
+
+std::string
+getMOGGUniqueSymbolName(const std::string &baseName,
+                        llvm::StringMap<KGEN::GeneratorOp> &rawMap) {
+  unsigned counter = 0;
+  return getMOGGUniqueSymbolName(baseName, rawMap, counter);
+}
+
+ErrorOr<OwningOpRef<ModuleOp>> parseMojoPackage(MLIRContext *ctx,
+                                                StringRef path) {
+  std::string errorMsg;
+  auto result = mlir::openInputFile(path, &errorMsg);
+  if (!result)
+    return Error(errorMsg);
+  auto packageOp = readOpFromBytecodeFile<KGEN::LIT::PackageOp>(
+      *result, mlir::ParserConfig(ctx,
+                                  /*verifyAfterParse=*/false));
+  if (!packageOp)
+    return Error::getStaticString("invalid package");
+  return KGEN::specializeModuleForPreElaborationLinking(
+      packageOp->getPostParseModuleAttr(), *LLCL::createRuntimeIfNeeded(),
+      KGEN::CompilationOptions());
+}
+
+mlir::LogicalResult materialize(Operation *target,
+                                mlir::BytecodeReader *reader) {
+  auto walk = target->walk<mlir::WalkOrder::PreOrder>([&](Operation *op) {
+    if (reader->isMaterializable(op))
+      if (failed(reader->materialize(op)))
+        return WalkResult::interrupt();
+    return WalkResult::advance();
+  });
+
+  if (walk.wasInterrupted())
+    return failure();
+
+  return success();
+}
+
+void populateMetadata(Operation *module, bool eager,
+                      llvm::SmallPtrSetImpl<Operation *> &finalizedMojoKernel,
+                      llvm::StringMap<KGEN::GeneratorOp> &rawMojoKernel) {
+  for (KGEN::GeneratorOp op :
+       cast<mlir::ModuleOp>(module).getOps<KGEN::GeneratorOp>())
+    rawMojoKernel[op.getSymName()] = op;
+
+  if (eager)
+    return;
+
+  for (KGEN::GeneratorOp op :
+       cast<mlir::ModuleOp>(module).getOps<KGEN::GeneratorOp>())
+    finalizedMojoKernel.insert(op);
+}
+
+void populateRawMetadata(
+    Operation *module, mlir::BytecodeReader *reader,
+    llvm::DenseMap<Operation *, mlir::BytecodeReader *> &dedicatedReader,
+    llvm::StringMap<KGEN::GeneratorOp> &rawMojoKernel) {
+
+  for (auto gen : cast<mlir::ModuleOp>(module).getOps<KGEN::GeneratorOp>()) {
+    rawMojoKernel[gen.getSymName()] = gen;
+    dedicatedReader[gen] = reader;
+  }
+}
+
+} // namespace
 
 KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoFunctionFor(
     StringRef name, llvm::StringMap<std::string> &mapping) {
@@ -36,8 +114,18 @@ KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoFunctionFor(
   if (registeredFunction == mapping.end())
     return nullptr;
 
-  return cast_or_null<KGEN::GeneratorOp>(
-      mlir::SymbolTable(*mojoBindings).lookup(registeredFunction->getValue()));
+  auto symbolName = registeredFunction->getValue();
+  return getMojoFunctionNamed(symbolName);
+}
+
+KGEN::GeneratorOp MojoLibraryAnalysis::getMojoFunctionNamed(StringRef name) {
+  if (rawMojoKernel.contains(name)) {
+    KGEN::GeneratorOp gen = rawMojoKernel[name];
+    if (failed(ready(gen)))
+      return nullptr;
+    return gen;
+  }
+  return nullptr;
 }
 
 bool MojoLibraryAnalysis::kernelHasInputParameter(KGEN::GeneratorOp kernel,
@@ -75,62 +163,88 @@ bool MojoLibraryAnalysis::kernelHasDecorator(KGEN::GeneratorOp kernel,
   return false;
 }
 
-static ErrorOr<OwningOpRef<ModuleOp>> parseMojoPackage(MLIRContext *ctx,
-                                                       StringRef path) {
-  std::string errorMsg;
-  auto result = mlir::openInputFile(path, &errorMsg);
-  if (!result)
-    return Error(errorMsg);
-  auto packageOp = readOpFromBytecodeFile<KGEN::LIT::PackageOp>(
-      *result, mlir::ParserConfig(ctx,
-                                  /*verifyAfterParse=*/false));
-  if (!packageOp)
-    return Error::getStaticString("invalid package");
-  return KGEN::specializeModuleForPreElaborationLinking(
-      packageOp->getPostParseModuleAttr(), *LLCL::createRuntimeIfNeeded(),
-      KGEN::CompilationOptions());
-}
+// Load a list of kernels from the provided user libraries.
+ErrorOrSuccess MojoLibraryAnalysis::loadUserProvidedKernels(
+    ArrayRef<std::string> kernelLibraryPaths) {
 
-static ErrorOr<OwningOpRef<ModuleOp>> parseExtraLib(MLIRContext *ctx,
-                                                    StringRef path) {
-  if (path.ends_with(".mojopkg") || path.ends_with(".📦"))
-    return parseMojoPackage(ctx, path);
-
-  return mlir::parseSourceFile<mlir::ModuleOp>(path, ctx);
-}
-
-// Load a `;` delimited string list of kernels.
-static ErrorOrSuccess
-loadUserProvidedKernels(ModuleOp baseModule,
-                        ArrayRef<std::string> kernelLibraryPaths) {
-  if (kernelLibraryPaths.empty())
-    return success();
-
-  // The symbol table of the main IR file we should add user provided files to.
-  mlir::SymbolTable mainSymTable{baseModule};
-
-  // Load each of the extra user libraries and appending them to the main
-  // module.
+  // Load each of the extra user libraries and update the book-keepings.
   for (StringRef path : kernelLibraryPaths) {
-    auto userModuleOr = parseExtraLib(baseModule.getContext(), path);
-    if (userModuleOr.isError())
-      return userModuleOr.takeError();
+    llvm::StringMap<KGEN::GeneratorOp> userRawMojoKernel;
+    Operation *userModule;
 
-    OwningOpRef<ModuleOp> userModule = userModuleOr.takeValue();
-    if (!userModule)
-      return Error("[MojoLibraryAnalysis] Could not load MOGG Mojo "
-                   "auxillary binding library");
-    mlir::SymbolTable userSymTable{*userModule};
+    if (path.ends_with(".mojopkg") || path.ends_with(".📦")) {
+      // Load user library that is a mojo package file.
+      auto userModuleOr = parseMojoPackage(context, path);
+      if (userModuleOr.isError())
+        return userModuleOr.takeError();
+
+      userModule = userModuleOr.takeValue().release().getOperation();
+
+      if (!userModule)
+        return Error("[MojoLibraryAnalysis] Could not load MOGG Mojo "
+                     "auxillary binding library");
+
+      populateMetadata(userModule, eager, finalizedMojoKernel,
+                       userRawMojoKernel);
+      // We read the library from `mojopkg` which means we don't need a lazy
+      // reader for that. We insert this module op into the block because the
+      // block is our centralized container for all module ops (some modules are
+      // fully loaded from `mojopkg` files and some are partially loaded from
+      // `mlirbc` files).
+      block.push_back(userModule);
+    } else {
+      // Load user library that is a mojo mlibrc file.
+      if (!eager) {
+        // Lazy load of user library.
+        auto bufOr = toModularErrorOr(llvm::MemoryBuffer::getFile(path));
+        if (bufOr.isError())
+          return bufOr.takeError();
+
+        StringRef source = buffers.emplace_back(bufOr.takeValue())->getBuffer();
+        llvm::MemoryBufferRef buffer(source, path);
+        mlir::BytecodeReader *reader =
+            readers.emplace_back(new mlir::BytecodeReader(buffer, config, true))
+                .get();
+
+        if (failed(reader->readTopLevel(&block, [&](Operation *op) {
+              if (isa<mlir::ModuleOp>(op)) {
+                return true;
+              }
+              return false;
+            })))
+          return Error(
+              Twine("[MojoLibraryAnalysis] Could not load the mojo kernel "
+                    "operators in: ") +
+              path);
+
+        if (!isa<mlir::ModuleOp>(block.back()))
+          return Error("[MojoLibraryAnalysis] Top level op is not ModuleOp.");
+
+        userModule = &block.back();
+        populateRawMetadata(userModule, reader, dedicatedReader,
+                            userRawMojoKernel);
+      } else {
+        // Eager load of user library.
+        userModule =
+            mlir::parseSourceFile<mlir::ModuleOp>(path, context).release();
+
+        block.push_back(userModule);
+
+        populateMetadata(userModule, eager, finalizedMojoKernel,
+                         userRawMojoKernel);
+      }
+    }
 
     // Remap only exposed kernel functions if their name collides with an
     // existing function.
-    for (KGEN::GeneratorOp op : userModule->getOps<KGEN::GeneratorOp>()) {
+    symbolNameRemapping.insert({userModule, {}});
+    for (KGEN::GeneratorOp op : toRawMojoKernelRange(userRawMojoKernel)) {
       // We will insert a slightly mangled version of the current name if it
       // already exists in the mlir file we intend to compile.
       std::string newSymName = op.getSymName().str();
 
       // If there's no collision we can copy directly obviously.
-      if (mainSymTable.lookup(newSymName) == nullptr)
+      if (!rawMojoKernel.contains(newSymName))
         continue;
 
       bool isMOGGKernel = false;
@@ -148,6 +262,7 @@ loadUserProvidedKernels(ModuleOp baseModule,
           continue;
 
         StringRef decoratorName = sym.getSymbol().getLeafReference().strref();
+
         isMOGGKernel |=
             decoratorName.starts_with(DECORATOR_REGISTER_OVERRIDE) ||
             decoratorName.starts_with(DECORATOR_REGISTER_PUBLIC_OVERRIDE) ||
@@ -155,50 +270,64 @@ loadUserProvidedKernels(ModuleOp baseModule,
             decoratorName.starts_with(DECORATOR_REGISTER_KERNEL);
       }
 
-      // Only duplicate kernels.
+      // We ignore duplicated kernels without any decorators.
       if (!isMOGGKernel)
         continue;
 
       // Create a new symbol which is unique in both files.
-      while (mainSymTable.lookup(newSymName) != nullptr ||
-             userSymTable.lookup(newSymName) != nullptr) {
-        newSymName = getUniqueSymbolName(newSymName, mainSymTable);
-        newSymName = getUniqueSymbolName(newSymName, userSymTable);
+      while (rawMojoKernel.contains(newSymName) ||
+             userRawMojoKernel.contains(newSymName)) {
+        newSymName = getMOGGUniqueSymbolName(newSymName, rawMojoKernel);
+        newSymName = getMOGGUniqueSymbolName(newSymName, userRawMojoKernel);
       }
 
-      auto oldAttr =
-          FlatSymbolRefAttr::get(userModule->getContext(), op.getSymNameAttr());
+      auto oldAttr = FlatSymbolRefAttr::get(context, op.getSymNameAttr());
+
+      symbolNameRemapping[userModule].push_back({newSymName, oldAttr});
 
       // Update any references to the old symbol with the new symbol.
       mlir::AttrTypeReplacer symbolUpdater;
       symbolUpdater.addReplacement(
           [&](FlatSymbolRefAttr attr) -> std::optional<FlatSymbolRefAttr> {
             if (attr == oldAttr)
-              return FlatSymbolRefAttr::get(userModule->getContext(),
-                                            newSymName);
+              return FlatSymbolRefAttr::get(context, newSymName);
             return std::nullopt;
           });
       symbolUpdater.recursivelyReplaceElementsIn(
-          *userModule, /*replaceAttrs=*/true, /*replaceLocs=*/false,
+          userModule, /*replaceAttrs=*/true, /*replaceLocs=*/false,
           /*replaceTypes=*/true);
+
       op.setSymName(newSymName);
     }
 
-    // Copy all the symbols over into the new module. We will not check if
-    // duplicates are identical and will assume there's no version issues.
-    for (auto op : userModule->getOps<mlir::SymbolOpInterface>()) {
-      // Don't duplicate.
-      if (mainSymTable.lookup(op.getName()) != nullptr)
-        continue;
-      baseModule.getBody()->push_back(op.clone());
+    if (eager) {
+      // Update the metadata and clone the operators.
+      for (auto op :
+           cast<mlir::ModuleOp>(userModule).getOps<mlir::SymbolOpInterface>()) {
+        // Don't duplicate.
+        if (rawMojoKernel.contains(op.getName()))
+          continue;
+        Operation *duplicate = op.clone();
+        module.getBody()->push_back(duplicate);
+        if (auto gen = dyn_cast<KGEN::GeneratorOp>(duplicate))
+          rawMojoKernel[gen.getSymName()] = gen;
+      }
+    } else {
+      // Update the metadata only.
+      for (KGEN::GeneratorOp gen : toRawMojoKernelRange(userRawMojoKernel)) {
+        // Don't add already existing kernels.
+        if (rawMojoKernel.contains(gen.getSymName()))
+          continue;
+        rawMojoKernel[gen.getSymName()] = gen;
+      }
     }
   }
 
   return success();
 }
 
-// We scan the IR to collect all the candidates and then we evaluate them based
-// on the metadata collected from the generator.
+// We scan the IR to collect all the candidates and then we evaluate them
+// based on the metadata collected from the generator.
 struct Candidate {
   Candidate(KGEN::GeneratorOp gen) : generator(gen) {}
   KGEN::GeneratorOp generator;
@@ -216,20 +345,11 @@ struct Candidate {
 #define TYPE_TO_MOJO(Type, MojoName)                                           \
   INTRINSIC_TO_MOJO(Type::getMnemonic(), MojoName)
 
-MojoLibraryAnalysis::MojoLibraryAnalysis(
-    llvm::StringMap<std::string> &registeredMojoKernelSymbol,
-    llvm::StringMap<std::string> &registeredShapeFunctionSymbol,
-    OwningOpRef<mlir::ModuleOp> &mojoBindings)
-    : mojoBindings(std::move(mojoBindings)),
-      registeredMojoKernelSymbol(std::move(registeredMojoKernelSymbol)),
-      registeredShapeFunctionSymbol(std::move(registeredShapeFunctionSymbol)) {}
-
-ErrorOr<MojoLibraryAnalysis>
-MojoLibraryAnalysis::get(MLIRContext *ctx,
-                         ArrayRef<std::string> kernelLibraryPaths) {
+ErrorOrSuccess
+MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   /// Define the mapping of MO operations and intrinsics to the mojo code.
   /// TODO(#23802): Get rid of this mapping (except for types).
-  llvm::StringMap<StringLiteral> moToMojoKernels{
+  static const llvm::StringMap<StringLiteral> moToMojoKernels{
       MO_TO_MOJO(MO::AddOp, "stdlib::math::math::add"),
       MO_TO_MOJO(MO::AndOp, "stdlib::math::math::logical_and"),
       MO_TO_MOJO(MO::CeilOp, "stdlib::math::math::ceil"),
@@ -350,21 +470,49 @@ MojoLibraryAnalysis::get(MLIRContext *ctx,
       TYPE_TO_MOJO(MOGG::SimdType, "MOGG::SimdTypeDef"),
   };
 
-  llvm::StringMap<std::string> registeredMojoKernelSymbol;
-  llvm::StringMap<std::string> registeredShapeFunctionSymbol;
-  OwningOpRef<mlir::ModuleOp> mojoBindings;
-
   llvm::StringRef source{reinterpret_cast<const char *>(MojoMoggBindings::data),
                          MojoMoggBindings::size};
-  mojoBindings = mlir::parseSourceString<mlir::ModuleOp>(source, ctx);
-  GENERICML_ASSERT(mojoBindings);
-  auto loadError = loadUserProvidedKernels(*mojoBindings, kernelLibraryPaths);
+
+  if (eager) {
+    // Eager loading the main mojo bindings.
+    module = mlir::parseSourceString<mlir::ModuleOp>(source, context).release();
+    GENERICML_ASSERT(module.getOperation());
+    block.push_back(module);
+    populateMetadata(module, eager, finalizedMojoKernel, rawMojoKernel);
+  } else {
+    // Lazy loading the main mojo bindings.
+    llvm::MemoryBufferRef buffer(source, "mojo-mogg-bindings");
+    mlir::BytecodeReader *reader =
+        readers.emplace_back(new mlir::BytecodeReader(buffer, config, true))
+            .get();
+
+    if (failed(reader->readTopLevel(&block, [&](Operation *op) {
+          if (isa<mlir::ModuleOp>(op)) {
+            return true;
+          }
+          return false;
+        })))
+      return Error("[MojoLibraryAnalysis] Could not load the mojo kernel "
+                   "operators from the standard library.");
+
+    module = dyn_cast<mlir::ModuleOp>(block.front());
+    if (module == nullptr)
+      return Error("[MojoLibraryAnalysis] Top "
+                   "level op is not ModuleOp.");
+
+    symbolNameRemapping.insert({module, {}});
+    populateRawMetadata(module, reader, dedicatedReader, rawMojoKernel);
+  }
+
+  auto loadError = loadUserProvidedKernels(kernelLibraryPaths);
   GENERICML_ASSERT(!loadError.isError()) << loadError.takeError();
+
+  finalized = eager;
 
   // Iterate over the available generators and check if each matches a mo
   // operation.
   DenseMap<StringRef, SmallVector<Candidate>> candidates;
-  for (auto generator : mojoBindings->getOps<KGEN::GeneratorOp>()) {
+  for (auto generator : getRawMojoKernels()) {
     Candidate candidate = {generator};
 
     // Check if it has a decorator.
@@ -445,8 +593,126 @@ MojoLibraryAnalysis::get(MLIRContext *ctx,
     registeredMojoKernelSymbol[moOpName.str()] = selection.str();
   }
 
-  return MojoLibraryAnalysis(registeredMojoKernelSymbol,
-                             registeredShapeFunctionSymbol, mojoBindings);
+  return success();
+}
+
+MojoLibraryAnalysis::MojoLibraryAnalysis(MLIRContext *ctx, bool eager)
+    : eager(eager), context(ctx), config(ctx, false) {}
+
+MojoLibraryAnalysis::~MojoLibraryAnalysis() {
+  for (auto &rd : readers) {
+    if (failed(rd->finalize([](Operation *op) { return false; })))
+      llvm::report_fatal_error("failed to finalize bytecode reader.");
+  }
+}
+
+mlir::LogicalResult MojoLibraryAnalysis::ready(KGEN::GeneratorOp gen) {
+  if (finalized)
+    return success();
+
+  if (finalizedMojoKernel.contains(gen))
+    return success();
+
+  if (!dedicatedReader.contains(gen))
+    return failure();
+
+  mlir::BytecodeReader *reader = dedicatedReader[gen];
+  if (succeeded(materialize(gen, reader))) {
+    finalizedMojoKernel.insert(gen);
+    return replaceSymbols(gen);
+  }
+
+  return failure();
+}
+
+mlir::LogicalResult MojoLibraryAnalysis::replaceSymbols(KGEN::GeneratorOp gen) {
+  // Get the module that holds this op.
+  Operation *scope = gen->getParentOp();
+
+  // Each module must appear in the remapping.
+  if (!symbolNameRemapping.contains(scope))
+    return failure();
+
+  ArrayRef<RenameEntry> newNames = symbolNameRemapping[scope];
+
+  if (newNames.empty())
+    return success();
+
+  // Update any references to the old symbol with the new symbol.
+  mlir::AttrTypeReplacer symbolUpdater;
+  for (const RenameEntry &entry : newNames) {
+    symbolUpdater.addReplacement(
+        [&](FlatSymbolRefAttr attr) -> std::optional<FlatSymbolRefAttr> {
+          if (attr == entry.second)
+            return FlatSymbolRefAttr::get(context, entry.first);
+          return std::nullopt;
+        });
+  }
+  symbolUpdater.recursivelyReplaceElementsIn(scope,
+                                             /*replaceAttrs=*/true,
+                                             /*replaceLocs=*/false,
+                                             /*replaceTypes=*/true);
+
+  return success();
+}
+
+ErrorOr<mlir::ModuleOp> MojoLibraryAnalysis::getMojoBindings() {
+  if (!finalized) {
+    for (auto &rd : readers) {
+      if (failed(rd->finalize()))
+        return Error(
+            "[MojoLibraryAnalysis] Could not finalize the bytecode readers.");
+    }
+
+    // Re-rename symbol names if there conflicts.
+    for (auto userModule : block.getOps<mlir::ModuleOp>()) {
+      for (auto gen : userModule.getOps<KGEN::GeneratorOp>())
+        if (failed(replaceSymbols(gen)))
+          return Error(Twine("[MojoLibraryAnalysis] Could not replace symbol "
+                             "names in ") +
+                       gen.getSymName());
+    }
+
+    // Clone all user-provided mojo kernels into the major container module.
+    for (auto userModule : block.getOps<mlir::ModuleOp>()) {
+      // Skip the first module, which is the one we clone into.
+      if (module.getOperation() == userModule.getOperation())
+        continue;
+
+      mlir::SymbolTable symtab(module);
+      // We clone all symbol ops including GeneratorOp and more (e.g.,
+      // PackageLinkOp).
+      for (auto userKernel : userModule.getOps<mlir::SymbolOpInterface>()) {
+        // We don't clone the existing kernels.
+        if (symtab.lookup(userKernel.getName()))
+          continue;
+
+        module.getBody()->push_back(userKernel.clone());
+      }
+    }
+
+    // Update all related metadata.
+    finalizedMojoKernel.clear();
+    rawMojoKernel.clear();
+    populateMetadata(module, eager, finalizedMojoKernel, rawMojoKernel);
+    finalized = true;
+  }
+
+  return module;
+}
+
+Operation *MojoLibraryAnalysis::lookup(StringRef name) {
+  if (rawMojoKernel.contains(name))
+    return rawMojoKernel[name];
+  return nullptr;
+}
+
+void MojoLibraryAnalysis::markAllFunctionsAsNotExported() {
+  for (auto func : module.getOps<KGEN::FuncOp>())
+    func.setNotExported();
+
+  for (auto func : getRawMojoKernels())
+    func.setNotExported();
 }
 
 } // namespace M::MOGG

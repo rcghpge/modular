@@ -137,9 +137,8 @@ struct AddFallbackShapeFunctions
     MO::GraphOp graph = getOperation();
     OpBuilder builder{graph.getContext()};
 
-    auto mojoLibraryAnalysis =
-        MOGG::MojoLibraryAnalysis::get(graph.getContext(), kernelLibraryPaths);
-    if (mojoLibraryAnalysis.isError())
+    MOGG::MojoLibraryAnalysis mojoLibraryAnalysis(graph.getContext());
+    if (mojoLibraryAnalysis.init(kernelLibraryPaths).isError())
       return signalPassFailure();
 
     graph.walk([&](ParamDeclarationInterface op) {
@@ -211,7 +210,7 @@ struct AddFallbackShapeFunctions
 
       if (auto asOp = dyn_cast<MO::CustomOp>(op.getOperation())) {
         Fallback<MO::CustomOp>{}.build(graph, builder, asOp,
-                                       *mojoLibraryAnalysis);
+                                       mojoLibraryAnalysis);
         op.setOutputParamDecls({});
       }
 
