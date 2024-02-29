@@ -26,9 +26,9 @@ static size_t pickSampleCount(const QueryGenerator &qgen) {
 }
 
 QuerySampleLibrary::QuerySampleLibrary(
-    M_RuntimeContext *runtimeContext,
+    M_RuntimeContext *runtimeContext, M_AsyncCompiledModel *compiledModel,
     std::unique_ptr<QueryGenerator> queryGenerator)
-    : runtimeContext(runtimeContext),
+    : runtimeContext(runtimeContext), compiledModel(compiledModel),
       sampleCount(pickSampleCount(*queryGenerator)),
       queryGenerator(std::move(queryGenerator)),
       loadedSamples(
@@ -49,8 +49,15 @@ size_t QuerySampleLibrary::PerformanceSampleCount() {
 
 void QuerySampleLibrary::LoadSamplesToRam(
     const std::vector<mlperf::QuerySampleIndex> &samples) {
+  StatusPtr status(M_newStatus(), M_freeStatus);
+  if (!status) {
+    llvm::errs() << "Error loading samples: Unable to create M_Status (out of "
+                    "memory?)\n";
+    mlperf::AbortTest();
+    return;
+  }
   for (mlperf::QuerySampleIndex i : samples)
-    loadSample(i);
+    loadSample(i, status.get());
 }
 void QuerySampleLibrary::UnloadSamplesFromRam(
     const std::vector<mlperf::QuerySampleIndex> &samples) {
@@ -58,7 +65,8 @@ void QuerySampleLibrary::UnloadSamplesFromRam(
     unloadSample(i);
 }
 
-void QuerySampleLibrary::loadSample(mlperf::QuerySampleIndex index) {
+void QuerySampleLibrary::loadSample(mlperf::QuerySampleIndex index,
+                                    M_Status *status) {
   GENERICML_ASSERT(index < sampleCount);
   auto queryOr = queryGenerator->generateQuery(runtimeContext, index);
   if (queryOr.isError()) {
@@ -66,6 +74,17 @@ void QuerySampleLibrary::loadSample(mlperf::QuerySampleIndex index) {
                  << queryOr.getError() << "\n";
     mlperf::AbortTest();
     return;
+  }
+  if (compiledModel) {
+    M_validateInputTensorSpec(compiledModel, (*queryOr)->getAsyncTensorMap(),
+                              status);
+    if (M_isError(status)) {
+      llvm::errs() << "Sample " << index
+                   << " is incompatible with model: " << queryOr.getError()
+                   << "\n";
+      mlperf::AbortTest();
+      return;
+    }
   }
   delete loadedSamples[index].exchange(queryOr->release());
 }
@@ -113,7 +132,7 @@ ErrorOrSuccess SystemUnderTest::issueQueryFallible(
                            generatedQuery->getAsyncTensorMap(), status.get()),
         M_freeAsyncTensorMap);
     if (!outputATM)
-      return Error(llvm::Twine("When executing inference: ") +
+      return Error(Twine("When executing inference: ") +
                    M_getError(status.get()));
     outputATMs.emplace_back(std::move(outputATM));
 

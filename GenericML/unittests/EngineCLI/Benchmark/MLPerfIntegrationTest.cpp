@@ -84,7 +84,7 @@ TEST(QuerySampleLibrary, basic) {
   EXPECT_FALSE(M_isError(status.get())) << M_getError(status.get());
   ASSERT_NE(nullptr, runtimeContext);
   QuerySampleLibrary qsl(
-      runtimeContext.get(),
+      runtimeContext.get(), nullptr,
       std::make_unique<TestQueryGenerator>([&](size_t queryIndex) {
         ++generateCalls;
         lastQueryIndex = queryIndex;

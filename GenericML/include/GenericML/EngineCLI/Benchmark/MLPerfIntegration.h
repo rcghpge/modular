@@ -21,6 +21,7 @@ class QueryGenerator;
 class QuerySampleLibrary final : public mlperf::QuerySampleLibrary {
 public:
   QuerySampleLibrary(M_RuntimeContext *runtimeContext,
+                     M_AsyncCompiledModel *compiledModel,
                      std::unique_ptr<QueryGenerator> queryGenerator);
   ~QuerySampleLibrary();
 
@@ -38,10 +39,11 @@ public:
   }
 
 private:
-  void loadSample(mlperf::QuerySampleIndex index);
+  void loadSample(mlperf::QuerySampleIndex index, M_Status *status);
   void unloadSample(mlperf::QuerySampleIndex index);
 
   M_RuntimeContext *runtimeContext;
+  M_AsyncCompiledModel *compiledModel;
   size_t sampleCount;
   std::unique_ptr<QueryGenerator> queryGenerator;
   std::unique_ptr<std::atomic<GeneratedQuery *>[]> loadedSamples;

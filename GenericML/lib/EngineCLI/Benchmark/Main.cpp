@@ -198,17 +198,22 @@ private:
 } // namespace
 
 static ErrorOr<double> estimateLatency(M_RuntimeContext *runtimeContext,
+                                       M_AsyncCompiledModel *compiledModel,
                                        M_AsyncModel *model,
                                        QueryGenerator &queryGenerator) {
   ErrorOr<std::unique_ptr<GeneratedQuery>> queryOr =
       queryGenerator.generateQuery(runtimeContext, 0);
   if (queryOr.isError())
-    return Error(llvm::Twine("Unable to generate sample query: ") +
+    return Error(Twine("Unable to generate sample query: ") +
                  queryOr.getError());
   M_AsyncTensorMap *inputs = (*queryOr)->getAsyncTensorMap();
   StatusPtr status(M_newStatus(), M_freeStatus);
   if (!status)
     return Error("Failed to create M_Status (out of memory?)");
+  M_validateInputTensorSpec(compiledModel, inputs, status.get());
+  if (M_isError(status.get()))
+    return Error(Twine("Sample query incompatible with model: ") +
+                 M_getError(status.get()));
   auto start = std::chrono::steady_clock::now();
   auto end = start;
   int iterations = 0;
@@ -223,8 +228,7 @@ static ErrorOr<double> estimateLatency(M_RuntimeContext *runtimeContext,
     if (outputs)
       M_freeAsyncTensorMap(outputs);
     if (M_isError(status.get()))
-      return Error(llvm::Twine("While executing model: ") +
-                   M_getError(status.get()));
+      return Error(Twine("While executing model: ") + M_getError(status.get()));
   }
   constexpr double kNsPerSec = 1e9;
   return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
@@ -368,7 +372,8 @@ int M::maxBenchmarkMain(int argc, char **argv) {
   {
     llvm::outs() << "Estimating latency for query generation... ";
     ErrorOr<double> estimatedLatencyOr =
-        estimateLatency(runtimeContext.get(), model.get(), *queryGenerator);
+        estimateLatency(runtimeContext.get(), compiledModel.get(), model.get(),
+                        *queryGenerator);
     if (estimatedLatencyOr.isError()) {
       llvm::outs() << "Error\n";
       llvm::outs().flush();
@@ -389,7 +394,8 @@ int M::maxBenchmarkMain(int argc, char **argv) {
     mlperfTestSettings.multi_stream_samples_per_query = 1;
   }
 
-  QuerySampleLibrary qsl(runtimeContext.get(), std::move(queryGenerator));
+  QuerySampleLibrary qsl(runtimeContext.get(), compiledModel.get(),
+                         std::move(queryGenerator));
   SystemUnderTest sut(&qsl, runtimeContext.get(), model.get());
 
   llvm::outs() << "Benchmarking\n";
