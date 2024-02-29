@@ -254,7 +254,7 @@ struct FuseBroadcastsPass
                                  Value operand) {
       stageKernelsForFusion({producerKernel, leaf});
       Value target = leafBlock.getArgument(idx);
-      llvm::StringMap<KGEN::ParamDeclAttr> paramMapping;
+      llvm::StringMap<TypedAttr> paramMapping;
 
       MOGG::ToKGENOp producerKernelToKGEN = nullptr;
       for (Operation &op : producerKernel.getOps()) {
