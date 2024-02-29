@@ -26,8 +26,8 @@ mo.graph @reshape_static_input_static_output(%arg: !mo.tensor<[4], f32>) -> !mo.
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[INPUT:.*]]: !mgp.tensor<?xf32>, %[[SHAPE:.*]]: !mgp.tensor<2xsi64>)
 
 // Extract the input tensor buffer and dynamic dimension
-// CHECK: %[[IN_BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[INPUT]] : !mgp.tensor<?xf32>
 // CHECK: %[[IN_SPEC:.*]] = mgp.tensor.extract.tensor_spec %[[CTX]][1], %[[INPUT]] : !mgp.tensor<?xf32>
+// CHECK: %[[IN_BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[INPUT]] : !mgp.tensor<?xf32>
 // CHECK: %[[IN_DIM:.*]] = mgp.cpu.tensor_spec.dims.dynamic %[[IN_SPEC]] : !mgp.tensor_spec<?xf32>
 
 // Extract the target shape tensor buffer
