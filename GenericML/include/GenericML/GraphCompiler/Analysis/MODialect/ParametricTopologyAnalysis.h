@@ -1,0 +1,61 @@
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef GENERICML_GRAPHCOMPILER_MODIALECT_PARAMETRICTOPOLOGYANALYSIS_H
+#define GENERICML_GRAPHCOMPILER_MODIALECT_PARAMETRICTOPOLOGYANALYSIS_H
+
+#include "mlir/IR/Operation.h"
+#include "llvm/ADT/SetVector.h"
+
+namespace M::MO {
+
+// Parameters cannot be discovered using MLIR's builtin dataflow API such as
+// op->getUsers() because they are attributes. Operations (value) can create
+// parameters (attributes) that other operations (value) consume. This
+// dependency is not directly observable via the dataflow API. This analysis
+// aims at extending it.
+class ParametricTopologyAnalysis {
+public:
+  // Construct the state necessary rooted at the given operation.
+  ParametricTopologyAnalysis(mlir::Operation *root);
+  ~ParametricTopologyAnalysis() = default;
+
+  // Returns {op->getUsers()} U {parametricUsers(op)}.
+  /// NOTE: Passes that leverage this analysis have to emit deterministic IR
+  /// meaning two invocations of the same pass over the same input should output
+  /// the same IR. Therefore, the output of this function is a SmallSetVector
+  /// which preserves insertion order.
+  llvm::SmallSetVector<mlir::Operation *, 4> users(mlir::Operation *op) const;
+
+  // Returns {dataflowProviders(op)} U {parametricProviders(op)}.
+  /// NOTE: Passes that leverage this analysis have to emit deterministic IR
+  /// meaning two invocations of the same pass over the same input should output
+  /// the same IR. Therefore, the output of this function is a SmallSetVector
+  /// which preserves insertion order.
+  llvm::SmallSetVector<mlir::Operation *, 4>
+  providers(mlir::Operation *op) const;
+
+  // Will compute the topological sort of a set of operations but accounting
+  // for parametric dependencies.
+  void computeTopologicalSorting(mlir::MutableArrayRef<mlir::Operation *> ops);
+
+private:
+  bool
+  computeTopologicalSortingImpl(mlir::MutableArrayRef<mlir::Operation *> ops);
+  bool isOpReady(mlir::Operation *op,
+                 mlir::DenseSet<mlir::Operation *> &unscheduledOps);
+
+  struct OperationRankAndDependency {
+    llvm::SmallSetVector<mlir::Operation *, 4> parametricProviders;
+    llvm::SmallSetVector<mlir::Operation *, 4> parametricUsers;
+  };
+
+  mlir::DenseMap<mlir::Operation *, OperationRankAndDependency> metadata;
+};
+
+} // namespace M::MO
+
+#endif

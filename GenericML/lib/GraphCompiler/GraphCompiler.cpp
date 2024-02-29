@@ -239,6 +239,14 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
       MOGG::SoftFuseOptions softFuseOpts;
       softFuseOpts.nonHostKernelLimit = opts.softFusionNonHostKernelLimit;
       pm.addPass(MOGG::createSoftFuse(softFuseOpts));
+
+      MOGG::KernelSequenceFuseOptions sequenceFusionOpts;
+      sequenceFusionOpts.nonHostKernelLimit = opts.softFusionNonHostKernelLimit;
+      sequenceFusionOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+      pm.addPass(MOGG::createKernelSequenceFuse(sequenceFusionOpts));
+
+      pm.addPass(mlir::createCanonicalizerPass());
+      pm.addPass(mlir::createCSEPass());
     }
   }
 
@@ -248,6 +256,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(MOGG::createFuseConstants());
 
   // Add cleanup passes to catch e.g used/duplicated constants.
+  pm.addPass(MOGG::createStackAllocateTemporaries());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MOGG::createSimplifyKernelOperands());

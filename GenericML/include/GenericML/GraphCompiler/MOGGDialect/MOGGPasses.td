@@ -216,7 +216,7 @@ def StackAllocateTemporaries: Pass<"stack-allocate-temporaries", "MO::GraphOp"> 
     is converted to a stack allocation.
   }];
   let options = [
-    Option<"smallTensorLimit", "small-tensor-limit", "uint64_t", "1024",
+    Option<"smallTensorLimit", "small-tensor-limit", "uint64_t", "5000",
            "Maximum number of elements a tensor may have to be eligible for a"
            "stack allocation.">,
   ];
@@ -224,6 +224,46 @@ def StackAllocateTemporaries: Pass<"stack-allocate-temporaries", "MO::GraphOp"> 
     "M::MDialect",
     "M::MOGG::MOGGDialect",
     "M::KGEN::KGENDialect",
+  ];
+}
+
+// This pass has to match a ModuleOp because it lowers operations which is not
+// thread safe.
+def KernelSequenceFuse: Pass<"sequence-fuse-kernels", "ModuleOp"> {
+  let summary = "Fuse a sequence of kernels into a single kernel.";
+  let description = [{
+    This pass will combine a sequence of MOGG::KernelOp invocations into a
+    single invocation. The original kernels will be called in some topological
+    order. Intermediate tensors may be stack-allocated within the fused kernel.
+
+    Generally only 'small' kernels and 'small' intermediate tensors may be
+    fused.
+  }];
+  let dependentDialects = ["M::MOGG::MOGGDialect"];
+
+  let options = [
+    Option<"nonHostKernelLimit", "non-host-kernel-limit", "size_t", "3",
+           "Maximum number of non-host kernels to place in a single fused "
+           "kernel.">,
+    Option<"heuristic", "heuristic", "std::string", "\"conservative\"",
+           "Which of the heuristics to use for evaluating which kernels to"
+           "fuse. Choices are (greedy|conservative|floodfill).">,
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
+  ];
+
+  let dependentDialects = [
+    "M::MDialect",
+    "M::MOGG::MOGGDialect",
+    "M::KGEN::KGENDialect",
+    "M::KGEN::LIT::LITDialect",
+    "M::KGEN::POP::POPDialect",
+    "M::HLCF::HLCFDialect",
+    "M::Cache::CacheDialect",
+    "M::DebugInfo::DebugInfoDialect",
+    "mlir::LLVM::LLVMDialect",
+    "mlir::NVVM::NVVMDialect",
+    "mlir::index::IndexDialect",
   ];
 }
 
