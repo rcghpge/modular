@@ -57,6 +57,11 @@ MOGG::CallOp createMOGGSlice(mlir::OpBuilder &builder, mlir::Location loc,
 ///   }
 void fuseConstant(MOGG::KernelOp kernel);
 
+/// Given a set of kernels to fuse together, rename just the right number of
+/// parameters to avoid collisions. Any attempt at fusing the bodies of two
+/// kernels should be prefaced with a call to this function.
+void stageKernelsForFusion(ArrayRef<Operation *> kernelOps);
+
 } // namespace M::MOGG
 
 #endif // GENERICML_GRAPH_COMPILER_MOGGSUPPORT_FUSIONUTILS_H

@@ -424,6 +424,8 @@ struct FuseElementwisePass
   // lambda with calls to the elementwise lambda in the source kernel. This is
   // possible because they have the same signature.
   void fuseSrcKernelIntoDstKernelKGEN(KernelOp srcKernel, KernelOp dstKernel) {
+    stageKernelsForFusion({srcKernel, dstKernel});
+
     auto fusionIndices = getFusionIndices(srcKernel, dstKernel);
     GENERICML_ASSERT(!fusionIndices.empty());
 

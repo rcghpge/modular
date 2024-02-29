@@ -9,12 +9,15 @@
 #include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MojoParameters.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
 #include "GenericML/Support/Assert.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
+#include "KGEN/LITDialect/LITUtils.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
 #include "llvm/ADT/SmallVectorExtras.h"
+#include "llvm/ADT/StringSet.h"
 
 namespace M::MOGG {
 
@@ -267,6 +270,54 @@ void fuseConstant(MOGG::KernelOp kernel) {
   for (int32_t index = preFuseNumOperands - 1; index >= 0; --index) {
     if (canFuseOperand(kernel, index))
       fuseInputAtIndex(kernel, index);
+  }
+}
+
+void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
+  static const std::string prefix = "_";
+  llvm::StringSet<> parameters;
+  for (Operation *kernelOp : kernelOps) {
+    llvm::StringMap<KGEN::ParamDeclAttr> nameToDecl;
+    mlir::AttrTypeReplacer walker;
+    walker.addReplacement([&](KGEN::ParamDeclAttr oldDecl) {
+      std::string oldName =
+          KGEN::LIT::demangleIfNeeded(oldDecl).getName().str();
+      std::string newName = oldName;
+      while (parameters.contains(newName))
+        newName = prefix + newName;
+
+      auto newDecl = KGEN::ParamDeclAttr::get(newName, oldDecl.getType());
+      nameToDecl.insert({oldName, newDecl});
+      parameters.insert(newName);
+
+      return newDecl;
+    });
+
+    kernelOp->walk([&](Operation *op) {
+      walker.replaceElementsIn(op, /*replaceAttrs=*/true,
+                               /*replaceLocs=*/false,
+                               /*replaceTypes=*/true);
+
+      // DeclInterface means we are about to recurse into a new parametric
+      // scope. Skip the scope because nothing will leak anyway.
+      if (isa<KGEN::DeclInterface>(op))
+        return WalkResult::skip();
+
+      return WalkResult::advance();
+    });
+
+    MOGG::remapTypesAndAttrs(kernelOp, nameToDecl);
+
+    auto asKernelOp = dyn_cast<KernelOp>(kernelOp);
+    GENERICML_ASSERT(asKernelOp);
+    // Rename lambdas if they exist and they were renamed.
+    for (uint64_t i = 0; i < asKernelOp->getNumOperands(); ++i) {
+      if (auto lambdaNameAttr = asKernelOp.getInputFusionInterfaceAt(i)) {
+        auto it = nameToDecl.find(lambdaNameAttr);
+        if (it != nameToDecl.end())
+          asKernelOp.setInputFusionInterface(i, it->second.getName());
+      }
+    }
   }
 }
 

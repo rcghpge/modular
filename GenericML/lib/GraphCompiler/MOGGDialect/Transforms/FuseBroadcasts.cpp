@@ -252,6 +252,7 @@ struct FuseBroadcastsPass
     // Fusion helper function for KGEN version.
     auto fuseInputImplKGEN = [&](KernelOp producerKernel, KernelOp leaf,
                                  Value operand) {
+      stageKernelsForFusion({producerKernel, leaf});
       Value target = leafBlock.getArgument(idx);
       llvm::StringMap<KGEN::ParamDeclAttr> paramMapping;
 

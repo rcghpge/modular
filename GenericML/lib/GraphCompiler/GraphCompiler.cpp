@@ -207,7 +207,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MO::createHoistParameterExpressions());
   pm.addPass(MO::createMOToMOGG({opts.kernelLibraryPaths}));
   pm.addPass(MOGG::createSimplifyKernelOperands());
-  pm.addPass(MOGG::createSimplifyKGENParameters());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
@@ -252,7 +251,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MOGG::createSimplifyKernelOperands());
-  pm.addPass(MOGG::createInlineKGENParameters());
 
   // If we are jitting then we need to compile the jit kernels as well.
   MOGG::JitCompileKernelsOptions jitOpts;
