@@ -45,6 +45,29 @@ using namespace MO;
 // Utilities
 //===----------------------------------------------------------------------===//
 
+namespace M::MO {
+ParseResult parseParamDecls(OpAsmParser &p,
+                            KGEN::ParamDeclArrayAttr &paramDecls) {
+  if (succeeded(p.parseOptionalLess()) && failed(p.parseOptionalGreater())) {
+    if (p.parseLParen() || p.parseRParen() || p.parseArrow() ||
+        KGEN::parseParamDecls(p, paramDecls) || p.parseGreater())
+      return failure();
+  } else {
+    paramDecls = KGEN::ParamDeclArrayAttr::get(p.getContext(), {});
+  }
+  return success();
+}
+
+void printParamDecls(OpAsmPrinter &p, Operation *,
+                     KGEN::ParamDeclArrayAttr paramDecls) {
+  if (!paramDecls.empty()) {
+    p << "<() -> ";
+    printParamDecls(p, paramDecls);
+    p << '>';
+  }
+}
+}; // namespace M::MO
+
 SmallVector<ConstantOp> M::MO::tryGetConstantOpsOfRank(TensorValue val,
                                                        size_t rank) {
   SmallVector<ConstantOp> constantOps;
@@ -1904,27 +1927,6 @@ LogicalResult RangeOp::verify() {
 //===----------------------------------------------------------------------===//
 // MO_RebindOp support
 //===----------------------------------------------------------------------===//
-
-static ParseResult parseParamDecls(OpAsmParser &p,
-                                   KGEN::ParamDeclArrayAttr &paramDecls) {
-  if (succeeded(p.parseOptionalLess()) && failed(p.parseOptionalGreater())) {
-    if (p.parseLParen() || p.parseRParen() || p.parseArrow() ||
-        KGEN::parseParamDecls(p, paramDecls) || p.parseGreater())
-      return failure();
-  } else {
-    paramDecls = KGEN::ParamDeclArrayAttr::get(p.getContext(), {});
-  }
-  return success();
-}
-
-static void printParamDecls(OpAsmPrinter &p, Operation *,
-                            KGEN::ParamDeclArrayAttr paramDecls) {
-  if (!paramDecls.empty()) {
-    p << "<() -> ";
-    printParamDecls(p, paramDecls);
-    p << '>';
-  }
-}
 
 static LogicalResult materializeShapeInference(RebindOp op,
                                                PatternRewriter &rewriter) {

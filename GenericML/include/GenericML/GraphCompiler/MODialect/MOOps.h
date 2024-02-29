@@ -57,6 +57,14 @@ class CoordinateTransformModeAttr;
 
 namespace M::MO {
 
+/// Parse param decls in MO dialect
+ParseResult parseParamDecls(OpAsmParser &p,
+                            KGEN::ParamDeclArrayAttr &paramDecls);
+
+/// Print param decls in MO dialect
+void printParamDecls(OpAsmPrinter &p, Operation *,
+                     KGEN::ParamDeclArrayAttr paramDecls);
+
 /// If `val` comes from constant tensors (defined by a ConstantOp or
 /// concatenation or identity chain of ConstantOps), return the defining ops.
 SmallVector<MO::ConstantOp> tryGetConstantOpsOfRank(TensorValue val,
