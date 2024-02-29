@@ -84,6 +84,11 @@ enum class FileFormat : uint8_t {
 
   /// This is a MLIR file with the MO and MATen dialect in it.
   kTorchATenDialect,
+
+  /// This looks like a SafeTensors file containing model weights.  This isn't
+  /// enough information for us to load anything but we can at least identify
+  /// it as an error condition.
+  kSafeTensors,
 };
 
 inline FileFormat frameworkToFileFormat(FrameworkFormat frameworkFormat) {
@@ -93,12 +98,6 @@ inline FileFormat frameworkToFileFormat(FrameworkFormat frameworkFormat) {
   }
 
   llvm_unreachable("unknown framework format");
-}
-
-/// Helper to check if a format is within the valid range.
-inline bool isValidFileFormat(FileFormat format) {
-  return (format >= FileFormat::kUnknown) &&
-         (format <= FileFormat::kTorchPDialect);
 }
 
 /// Use heuristics to determine what kind of file the input file contents

@@ -74,6 +74,8 @@ ErrorOr<std::string> getFileContentIdentity(M::BufferRef file,
     return "input is a PyTorch model in PT pickled form";
   case FileFormat::kTorchPDialect:
     return "input is a PyTorch model in MLIR form consisting of primitive ops";
+  case FileFormat::kSafeTensors:
+    return "input is a SafeTensors weights archive";
   case FileFormat::kMEFFile: {
     ErrorOr<RCRef<MEFFile>> mefFileOr = MEFFile::open(file->getBuffer());
     if (failed(mefFileOr))
