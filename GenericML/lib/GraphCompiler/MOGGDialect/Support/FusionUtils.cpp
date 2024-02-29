@@ -286,11 +286,11 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
       while (parameters.contains(newName))
         newName = prefix + newName;
 
-      auto newDecl = KGEN::ParamDeclAttr::get(newName, oldDecl.getType());
-      nameToDecl.insert({oldName, cast<TypedAttr>(newDecl)});
+      auto newDeclRef = KGEN::ParamDeclRefAttr::get(newName, oldDecl.getType());
+      nameToDecl.insert({oldName, cast<TypedAttr>(newDeclRef)});
       parameters.insert(newName);
 
-      return newDecl;
+      return KGEN::ParamDeclAttr::get(newDeclRef);
     });
 
     kernelOp->walk([&](Operation *op) {
@@ -315,7 +315,7 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
       if (auto lambdaNameAttr = asKernelOp.getInputFusionInterfaceAt(i)) {
         auto it = nameToDecl.find(lambdaNameAttr);
         if (it != nameToDecl.end()) {
-          if (auto decl = dyn_cast<KGEN::ParamDeclAttr>(it->second))
+          if (auto decl = dyn_cast<KGEN::ParamDeclRefAttr>(it->second))
             asKernelOp.setInputFusionInterface(i, decl.getName());
         }
       }
