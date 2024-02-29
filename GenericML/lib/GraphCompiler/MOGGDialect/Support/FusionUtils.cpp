@@ -277,7 +277,7 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
   static const std::string prefix = "_";
   llvm::StringSet<> parameters;
   for (Operation *kernelOp : kernelOps) {
-    llvm::StringMap<KGEN::ParamDeclAttr> nameToDecl;
+    llvm::StringMap<TypedAttr> nameToDecl;
     mlir::AttrTypeReplacer walker;
     walker.addReplacement([&](KGEN::ParamDeclAttr oldDecl) {
       std::string oldName =
@@ -287,7 +287,7 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
         newName = prefix + newName;
 
       auto newDecl = KGEN::ParamDeclAttr::get(newName, oldDecl.getType());
-      nameToDecl.insert({oldName, newDecl});
+      nameToDecl.insert({oldName, cast<TypedAttr>(newDecl)});
       parameters.insert(newName);
 
       return newDecl;
@@ -314,8 +314,10 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
     for (uint64_t i = 0; i < asKernelOp->getNumOperands(); ++i) {
       if (auto lambdaNameAttr = asKernelOp.getInputFusionInterfaceAt(i)) {
         auto it = nameToDecl.find(lambdaNameAttr);
-        if (it != nameToDecl.end())
-          asKernelOp.setInputFusionInterface(i, it->second.getName());
+        if (it != nameToDecl.end()) {
+          if (auto decl = dyn_cast<KGEN::ParamDeclAttr>(it->second))
+            asKernelOp.setInputFusionInterface(i, decl.getName());
+        }
       }
     }
   }
