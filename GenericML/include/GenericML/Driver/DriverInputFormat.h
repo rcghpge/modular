@@ -107,6 +107,12 @@ FileFormat sniffInputFormat(StringRef fileExtension, StringRef fileContents);
 /// Check if the given directory is a TensorFlow SavedModel directory.
 bool isTFSavedModelDirectory(const std::filesystem::path &dirPath);
 
+/// Canonicalize a saved model path as provided by a user to a directory.  Also
+/// does some smoke tests on the path to see if it is a valid saved model, and
+/// provides diagnostics appropriate for surfacing to a user if not.
+ErrorOr<std::filesystem::path>
+canonicalizeTFSavedModelPath(std::filesystem::path path);
+
 struct DriverInputFormatOptions {
 public:
   /// Allow the user to override the input file format.  The default is to

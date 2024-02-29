@@ -166,27 +166,59 @@ DriverInputFormatOptions::getInputFormat(StringRef fileExtension,
   return sniffInputFormat(fileExtension, fileContents);
 }
 
+static constexpr const char *kSavedModelFilenames[] = {
+    // From:
+    // https://github.com/tensorflow/tensorflow/blob/847bf3aee436d72f530d855a0112c6ee614d5f58/tensorflow/cc/saved_model/loader.cc#L500-L510
+    "saved_model.pb",    // Normal case
+    "saved_model.cpb",   // Chunked
+    "saved_model.pbtxt", // Text format
+};
+
 bool M::isTFSavedModelDirectory(const std::filesystem::path &dirPath) {
   std::error_code ec;
   if (!std::filesystem::is_directory(dirPath, ec) || ec)
     return false;
 
-  // From:
-  // https://github.com/tensorflow/tensorflow/blob/847bf3aee436d72f530d855a0112c6ee614d5f58/tensorflow/cc/saved_model/loader.cc#L500-L510
+  for (auto filename : kSavedModelFilenames) {
+    if (std::filesystem::exists(dirPath / filename, ec) && !ec)
+      return true;
+  }
+  return false;
+}
 
-  // SavedModel proto filename.
-  constexpr const char *kSavedModelFilenamePb = "saved_model.pb";
+static bool isTFSavedModelPbFilename(StringRef filename) {
+  for (auto known : kSavedModelFilenames) {
+    if (filename == known)
+      return true;
+  }
+  return false;
+}
 
-  // SavedModel chunked proto filename.
-  constexpr const char *kSavedModelFilenameCpb = "saved_model.cpb";
-
-  // SavedModel text format proto filename.
-  constexpr const char *kSavedModelFilenamePbTxt = "saved_model.pbtxt";
-
-  auto fileExists = [&](const std::string &filename) {
-    return std::filesystem::exists(dirPath / filename, ec) && !ec;
-  };
-  return fileExists(kSavedModelFilenamePb) ||
-         fileExists(kSavedModelFilenameCpb) ||
-         fileExists(kSavedModelFilenamePbTxt);
+ErrorOr<std::filesystem::path>
+M::canonicalizeTFSavedModelPath(std::filesystem::path path) {
+  std::error_code ec;
+  auto status = std::filesystem::status(path, ec);
+  if (status.type() == std::filesystem::file_type::none)
+    return Error(Twine("unable to access path ") + path.string() + ": " +
+                 ec.message());
+  if (status.type() == std::filesystem::file_type::not_found)
+    return Error(Twine(path.string()) + " does not exist");
+  if (status.type() == std::filesystem::file_type::regular &&
+      isTFSavedModelPbFilename(path.filename().string()))
+    path = path.parent_path();
+  else if (status.type() != std::filesystem::file_type::directory)
+    return Error(Twine(path.string()) +
+                 " is not a directory and cannot be loaded as a SavedModel");
+  bool hasFile = false;
+  for (auto filename : kSavedModelFilenames) {
+    status = std::filesystem::status(path / filename, ec);
+    if (status.type() == std::filesystem::file_type::regular) {
+      hasFile = true;
+      break;
+    }
+  }
+  if (!hasFile)
+    return Error(Twine(path.string()) +
+                 " does not contain the required file 'saved_model.pb'");
+  return path;
 }
