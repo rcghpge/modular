@@ -45,10 +45,14 @@ struct Subgraph {
   /// Remove operation from subgraph. Also removes any dependents in the
   /// subgraph.
   void remove(Operation *op) {
-    for (auto dep : op->getUsers())
-      if (ops.contains(dep))
-        ops.remove(dep);
-    ops.remove(op);
+    llvm::SmallVector<Operation *> opsToRemove = {op};
+    while (!opsToRemove.empty()) {
+      Operation *op = opsToRemove.pop_back_val();
+      for (auto dep : op->getUsers())
+        if (ops.contains(dep))
+          opsToRemove.push_back(dep);
+      ops.remove(op);
+    }
     outputs.clear();
     findOutputs();
   }
