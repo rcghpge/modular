@@ -1,4 +1,4 @@
-// RUN: mgp-opt %s --allow-unregistered-dialect --cse | FileCheck %s
+// RUN: mo-opt %s --allow-unregistered-dialect --cse | FileCheck %s
 
 // Original graph
 // mo.graph @oneOp() -> (!mo.tensor<[8], f32>) {

@@ -1,4 +1,4 @@
-// RUN: mgp-opt --allow-unregistered-dialect --canonicalize --cse %s | mgp-opt --allow-unregistered-dialect | FileCheck %s
+// RUN: mo-opt --allow-unregistered-dialect --canonicalize --cse %s | mo-opt --allow-unregistered-dialect | FileCheck %s
 
 //
 // mgp.runtime.create

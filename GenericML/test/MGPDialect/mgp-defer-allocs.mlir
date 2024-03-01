@@ -1,4 +1,4 @@
-// RUN: mgp-opt %s --allow-unregistered-dialect --remove-redundant-tensor-extracts --defer-allocs --simplify-chains -cse | FileCheck %s
+// RUN: mo-opt %s --allow-unregistered-dialect --remove-redundant-tensor-extracts --defer-allocs --simplify-chains -cse | FileCheck %s
 
 // Check mgp.buffer.alloc.* ops are deferred until the writing op is ready.
 

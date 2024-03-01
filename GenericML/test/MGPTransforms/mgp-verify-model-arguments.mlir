@@ -1,4 +1,4 @@
-// RUN: mgp-opt --verify-model-arguments %s | FileCheck %s
+// RUN: mo-opt --verify-model-arguments %s | FileCheck %s
 
 // CHECK-LABEL:  mgp.model @static
 // CHECK:        } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.tensor<2x4xf32>, %[[ARG3:.*]]: !mgp.tensor<2x4xf32>) -> (!mef.chain, !mgp.tensor<2x4xf32>, !mgp.tensor<2x4xf32>) {

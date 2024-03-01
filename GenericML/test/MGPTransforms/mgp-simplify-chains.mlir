@@ -1,4 +1,4 @@
-// RUN: mgp-opt %s --allow-unregistered-dialect --async-dataflow-dependencies-test --simplify-chains --cse --mlir-disable-threading | FileCheck %s
+// RUN: mo-opt %s --allow-unregistered-dialect --async-dataflow-dependencies-test --simplify-chains --cse --mlir-disable-threading | FileCheck %s
 
 // CHECK-LABEL: mgp.model @chains : mof init {
 mgp.model @chains : mof init {

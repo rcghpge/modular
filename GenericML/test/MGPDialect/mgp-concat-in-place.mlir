@@ -1,4 +1,4 @@
-// RUN: mgp-opt %s --allow-unregistered-dialect --concat-in-place --canonicalize --cse | FileCheck %s
+// RUN: mo-opt %s --allow-unregistered-dialect --concat-in-place --canonicalize --cse | FileCheck %s
 
 //
 // @static_concat

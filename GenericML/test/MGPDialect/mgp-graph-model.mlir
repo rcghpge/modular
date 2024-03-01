@@ -1,5 +1,5 @@
 // Just check we still parse it.
-// RUN: mgp-opt %s --allow-unregistered-dialect
+// RUN: mo-opt %s --allow-unregistered-dialect
 
 module {
   mgp.model @upsideDown : mof init {

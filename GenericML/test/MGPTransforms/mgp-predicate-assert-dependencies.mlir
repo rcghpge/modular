@@ -1,4 +1,4 @@
-// RUN: mgp-opt %s --allow-unregistered-dialect --predicate-asserts-deps --simplify-chains --cse | FileCheck %s
+// RUN: mo-opt %s --allow-unregistered-dialect --predicate-asserts-deps --simplify-chains --cse | FileCheck %s
 //
 
 // CHECK-LABEL: mgp.model @simple_case : mof init

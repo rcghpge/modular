@@ -1,4 +1,4 @@
-// RUN: mgp-opt %s --allow-unregistered-dialect --exec-invariant-code-motion --canonicalize | FileCheck %s
+// RUN: mo-opt %s --allow-unregistered-dialect --exec-invariant-code-motion --canonicalize | FileCheck %s
 
 //
 // @kgen_execute_kernel

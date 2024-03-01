@@ -1,4 +1,4 @@
-// RUN: mgp-opt %s --split-input-file --verify-diagnostics --allow-unregistered-dialect
+// RUN: mo-opt %s --split-input-file --verify-diagnostics --allow-unregistered-dialect
 
 //
 // mgp.cpu.buffer.constant
