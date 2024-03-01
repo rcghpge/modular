@@ -475,8 +475,13 @@ void OutputOp::walkDefinitions(
   auto graph = cast<GraphOp>(getOperation()->getParentOp());
   ArrayRef<KGEN::ParamDeclAttr> decls = graph.getResultParams();
   ArrayRef<TypedAttr> defs = this->getParameters();
-  GENERICML_ASSERT(decls.size() == defs.size())
-      << "output bindings and result parameters must have the same size";
+
+  // Doesn't make sense to walk, graph is in a bad state.
+  if (decls.size() != defs.size()) {
+    emitError("[OutputOp::walkDefinitions] output bindings and result "
+              "parameters must have the same size");
+    return;
+  }
 
   for (auto [decl, def] : llvm::zip(decls, defs))
     walkDef(decl, def);
