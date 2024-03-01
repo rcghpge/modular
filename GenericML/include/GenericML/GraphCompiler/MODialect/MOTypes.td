@@ -75,6 +75,18 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     TypeBuilderWithInferredContext<(ins
       "ArrayRef<TypedAttr>" : $shape,
       "Type" : $elementType,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>,
+    TypeBuilder<(ins
+      "TypedAttr" : $shapeAttr,
+      "DType" : $dtype,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>,
+    TypeBuilder<(ins
+      "ArrayRef<int64_t>" : $shape,
+      "DType" : $dtype,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>,
+    TypeBuilder<(ins
+      "ArrayRef<TypedAttr>" : $shape,
+      "DType" : $dtype,
       CArg<"DictionaryAttr", "{}"> : $metadata)>];
 
   let extraClassDeclaration = [{
@@ -82,6 +94,10 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     TensorType cloneWith(
       std::optional<ArrayRef<int64_t>> shape, Type dtype,
       DictionaryAttr metadata = {}) const;
+
+    /// Returns a clone with a new dimensions for shape.
+    TensorType cloneWith(
+      ArrayRef<TypedAttr> shapeDims) const;
 
     /// Returns clone with a new shape attribute.
     TensorType cloneWith(TypedAttr shapeAttr) const;
@@ -106,6 +122,7 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     TensorType cloneWith(DeviceRefAttr device) const;
 
     /// Checks if the tensor is statically ranked.
+    bool isDynamicallyRanked() const;
     bool hasRank() const;
 
     /// Get the rank of the tensor. Fails if not statically ranked.
@@ -130,6 +147,24 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
 
     /// Return the nth symbolic dimensions. Fails if the shape is unknown.
     TypedAttr getDim(size_t n) const;
+
+    /// Return whether the nth dimension is `?`. Parameters are known.
+    /// Fails if dynamically ranked.
+    bool isUnknownDim(size_t n) const;
+
+    /// Return whether the nth dimension is a parameter. Does not include `?`.
+    /// Fails if dynamically ranked. Accepts expressions with parameters e.g.
+    /// (A + 2).
+    bool isParameterizedDim(size_t n) const;
+
+    /// Return whether the nth dimension is a known integer.
+    /// Fails if dynamically ranked.
+    bool isIntegerDim(size_t n) const;
+
+    /// Returns what type of value is represented by the given dimension attr.
+    static bool isUnknownDimParam(TypedAttr attr);
+    static bool isParameterizedDimParam(TypedAttr attr);
+    static bool isIntegerDimParam(TypedAttr attr);
 
     /// Return the dimensions as integers, using mlir::ShapedType::kDynamic for
     /// unknown dimensions. Fails if the shape is unknown.

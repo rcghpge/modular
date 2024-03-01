@@ -229,6 +229,18 @@ TensorType TensorType::get(ArrayRef<TypedAttr> shape, Type elementType,
   return get(newShape, elementType, metadata);
 }
 
+TensorType TensorType::get(MLIRContext *context, ArrayRef<int64_t> shape,
+                           DType dtype, DictionaryAttr metadata) {
+  auto newShape = ShapeAttr::get(shape, ShapeType::get(context));
+  return get(newShape, dtype, metadata);
+}
+
+TensorType TensorType::get(MLIRContext *context, ArrayRef<TypedAttr> shape,
+                           DType dtype, DictionaryAttr metadata) {
+  auto newShape = ShapeAttr::get(shape, ShapeType::get(context));
+  return get(newShape, dtype, metadata);
+}
+
 TensorType TensorType::getScalarF32Type(MLIRContext *ctx,
                                         DictionaryAttr metadata) {
   return get(SmallVector<TypedAttr>{}, Float32Type::get(ctx), metadata);
@@ -283,6 +295,13 @@ TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
   return TensorType::get(shapeRef, *errOrDType, metadata);
 }
 
+TensorType TensorType::cloneWith(ArrayRef<TypedAttr> shapeDims) const {
+  auto shapeTy = ShapeType::get(getContext());
+  auto shapeAttr = ShapeAttr::get(shapeDims, shapeTy);
+  return TensorType::get(shapeAttr.getContext(), shapeAttr, getDtype(),
+                         getMetadata());
+}
+
 TensorType TensorType::cloneWith(TypedAttr shapeAttr) const {
   return TensorType::get(shapeAttr.getContext(), shapeAttr, getDtype(),
                          getMetadata());
@@ -324,6 +343,8 @@ TensorType TensorType::cloneWith(DeviceRefAttr device) const {
   DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
   return TensorType::get(getContext(), getShapeAttr(), getDtype(), newMetadata);
 }
+
+bool TensorType::isDynamicallyRanked() const { return !hasRank(); }
 
 bool TensorType::hasRank() const {
   // Rank is only known if we have a concrete attribute
@@ -371,6 +392,32 @@ ArrayRef<TypedAttr> TensorType::getDims() const {
 }
 
 TypedAttr TensorType::getDim(size_t n) const { return getDims()[n]; }
+
+bool TensorType::isUnknownDim(size_t n) const {
+  return isUnknownDimParam(getDim(n));
+}
+
+bool TensorType::isParameterizedDim(size_t n) const {
+  return isParameterizedDimParam(getDim(n));
+}
+
+bool TensorType::isIntegerDim(size_t n) const {
+  return isIntegerDimParam(getDim(n));
+}
+
+bool TensorType::isUnknownDimParam(TypedAttr attr) {
+  return attr.isa<KGEN::UnknownAttr>() && attr.getType().isIndex();
+}
+
+bool TensorType::isParameterizedDimParam(TypedAttr attr) {
+  bool isParamOrParamExpr =
+      attr.isa<KGEN::ParamDeclRefAttr>() || attr.isa<KGEN::ParamOperatorAttr>();
+  return isParamOrParamExpr && attr.getType().isIndex();
+}
+
+bool TensorType::isIntegerDimParam(TypedAttr attr) {
+  return attr.isa<IntegerAttr>() && attr.getType().isIndex();
+}
 
 SmallVector<int64_t> TensorType::getIntDims() const {
   return getTypedShapeAttr().getIntDims();
