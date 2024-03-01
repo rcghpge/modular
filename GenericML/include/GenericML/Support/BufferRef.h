@@ -176,7 +176,7 @@ public:
                           size_t size = std::numeric_limits<size_t>::max());
 
   /// As above, but the borrow may be of any type.
-  BufferRef
+  static BufferRef
   createSafeBorrowedSlice(AnyAsyncValueRef borrow, BufferRef &borroweBufferRef,
                           const LLCL::EncodedLocation &loc, size_t offset = 0,
                           size_t size = std::numeric_limits<size_t>::max());

@@ -205,6 +205,14 @@ BufferRef BufferRef::createSafeBorrowedSlice(AsyncValueRef<BufferRef> borrow,
   GENERICML_ASSERT(borrow.isValueAvailable())
       << "given AsyncValue reference must be ready and not an error";
   BufferRef &borroweBufferRef = borrow.get();
+  return createSafeBorrowedSlice(std::move(borrow), borroweBufferRef, loc,
+                                 offset, size);
+}
+
+BufferRef BufferRef::createSafeBorrowedSlice(AnyAsyncValueRef borrow,
+                                             BufferRef &borroweBufferRef,
+                                             const LLCL::EncodedLocation &loc,
+                                             size_t offset, size_t size) {
   GENERICML_ASSERT(borroweBufferRef)
       << "cannot borrow from null buffer reference";
   GENERICML_ASSERT(offset <= borroweBufferRef.size)

@@ -640,14 +640,11 @@ static void mgp_cpu_tensor_create(Chain inChain,
                                "taking ownership of buffer\n");
     std::move(outTensor).emplace(std::move(*bufferRef), std::move(tensorSpec));
   } else {
-    // Otherwise we must take a copy of the buffer to protect the result
-    // tensor from side-effects.
-    LLVM_DEBUG(llvm::dbgs()
-               << "mgp.cpu.tensor.create: Creating GML::Tensor from copy of "
-                  "buffer since still has "
-               << bufferRef.getPointer()->getRefCountForDebugging()
-               << " users\n");
-    std::move(outTensor).emplace(bufferRef->deepCopy(runtime),
+    // The graph compiler guarantees that all mutations on bufferRef have
+    // completed (using chain). Therefore it is safe to borrow the buffer.
+    GML::BufferRef borrowedBuffer =
+        bufferRef->createSafeBorrowedSlice(bufferRef.copy(), loc.copy());
+    std::move(outTensor).emplace(std::move(borrowedBuffer),
                                  std::move(tensorSpec));
   }
 }
@@ -661,16 +658,17 @@ static void mgp_cpu_tensor_create(Chain inChain,
 static void mgp_cpu_tensor_extract(AsyncValueRef<Tensor> tensor,
                                    Result<GML::BufferRef> outBuffer,
                                    Result<TensorSpec> outTensorSpec,
-                                   Runtime &runtime) {
+                                   Runtime &runtime, EncodedLocation loc) {
   std::move(outTensorSpec).emplace(tensor->getSpec());
   if (tensor.getPointer()->isUnique())
     // If this is the only reference to the input tensor then it cannot
     // be further observed, so we can move its buffer into the result.
     std::move(outBuffer).emplace(tensor->releaseBufferRef());
   else
-    // Otherwise we must take a copy of the buffer to protect the input tensor
-    // from side-effects.
-    std::move(outBuffer).emplace(tensor->deepCopyBuffer(runtime));
+    // The graph compiler guarantees that all mutations on bufferRef have
+    // completed (using chain). Therefore it is safe to borrow the buffer.
+    std::move(outBuffer).emplace(tensor->getBufferRef().createSafeBorrowedSlice(
+        tensor.copy(), tensor->getBufferRef(), loc.copy()));
 }
 
 //===----------------------------------------------------------------------===//
