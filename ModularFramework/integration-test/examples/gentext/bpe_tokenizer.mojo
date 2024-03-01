@@ -6,7 +6,7 @@
 # RUN: mojo -I %gentext_dir %s | FileCheck "%s"
 
 from tokenizer.bpe import BPETokenizer
-from collections.vector import List
+from collections import List
 
 
 fn create_dummy_model() raises -> BPETokenizer:

@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 # RUN: %mojo -debug-level full %s | FileCheck %s
 
-from collections.vector import List
+from collections import List
 
 from tensor import TensorShape, TensorSpec
 
