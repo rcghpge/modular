@@ -1,4 +1,5 @@
-build
+# Build temporarily locked to 1.0.3 as workaround for #33351.
+build==1.0.3
 pytest
 tomli
 wheel
