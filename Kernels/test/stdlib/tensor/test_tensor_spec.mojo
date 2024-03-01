@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 # RUN: %mojo -debug-level full %s | FileCheck %s
 
-from collections.vector import DynamicVector
+from collections.vector import List
 
 from tensor import TensorShape, TensorSpec
 
@@ -46,7 +46,7 @@ fn test_tensor_shape():
     # CHECK: False
     print(TensorShape(1, 2, 3, 4) == TensorShape(1, 4, 5, 1))
 
-    var shape_vec = DynamicVector[Int]()
+    var shape_vec = List[Int]()
     for i in range(1, 5):
         shape_vec.push_back(i)
 
@@ -82,7 +82,7 @@ fn test_tensor_spec():
         == TensorSpec(DType.float32, 1, 4, 5, 1)
     )
 
-    var shape_vec = DynamicVector[Int]()
+    var shape_vec = List[Int]()
     for i in range(1, 5):
         shape_vec.push_back(i)
 

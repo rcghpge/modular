@@ -37,9 +37,9 @@ fn test_identity_graph() raises:
 
         var intScalar = _mlir.Type.parse(ctx, "!mo.scalar<si32>")
 
-        var ins = DynamicVector[_mlir.Type]()
+        var ins = List[_mlir.Type]()
         ins.append(intScalar)
-        var outs = DynamicVector[_mlir.Type]()
+        var outs = List[_mlir.Type]()
         outs.append(intScalar)
 
         var signature = _mlir.builtin_types.FunctionType(ins, outs)
@@ -47,7 +47,7 @@ fn test_identity_graph() raises:
 
         var block = g.region(0).first_block()
         var arg0 = block.argument(0)
-        var operands = DynamicVector[_mlir.Value]()
+        var operands = List[_mlir.Value]()
         operands.append(arg0)
 
         block.append(_mlir.Operation("mo.output", unknown, operands=operands))

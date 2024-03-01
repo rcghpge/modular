@@ -6,7 +6,7 @@
 # RUN: mojo -I %gentext_dir %s | FileCheck "%s"
 
 from tokenizer.bpe import BPETokenizer
-from collections.vector import DynamicVector
+from collections.vector import List
 
 
 fn create_dummy_model() raises -> BPETokenizer:
@@ -28,7 +28,7 @@ fn test_tokenization() raises:
 
     var tokens = model.encode("xabcabaabcddxabcabaabcdd")
 
-    var expected = DynamicVector[String]()
+    var expected = List[String]()
     expected.push_back("x")
     expected.push_back("abc")
     expected.push_back("ab")

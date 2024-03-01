@@ -89,7 +89,7 @@ fn test_dtype_autocast() raises:
 
 fn test_int_autocast() raises:
     # This just verifes that the constructor doesn't go to the wrong overload,
-    # like the DynamicVector one.
+    # like the List one.
     testing.assert_equal(
         MOTensor(DType.float32, 1).to_string(Module()),
         "!mo.tensor<[1], f32>",
