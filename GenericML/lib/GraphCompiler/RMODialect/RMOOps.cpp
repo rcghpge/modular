@@ -135,6 +135,24 @@ TensorType refineShape(TensorType ty1, TensorType ty2) {
   return ty1.cloneWith(newDims);
 }
 
+OpFoldResult RebindTensorShapeOp::fold(FoldAdaptor adaptor) {
+  // Note `?` != `?` in terms of shapes
+  if (getInput().getType().hasUnknownShape())
+    return {};
+
+  if (getInput().getType() == getResult().getType())
+    return getInput();
+
+  return {};
+}
+
+void RebindTensorShapeOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                                TensorValue input, ShapeAttr newShape,
+                                ArrayRef<ParamDeclAttr> outputParamDecls) {
+  return build(odsBuilder, odsState, input.getType().cloneWith(newShape), input,
+               outputParamDecls);
+}
+
 void AddOp::inferMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,

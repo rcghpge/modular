@@ -74,6 +74,33 @@ class RMO_MOAnaloguePureTensorOp<string mnemonic, list<Trait> traits = []>
 }
 
 //===----------------------------------------------------------------------===//
+// RMO Asserting Rebinds
+//===----------------------------------------------------------------------===//
+def RMO_RebindTensorShapeOp : RMO_Op<"rebind_tensor_shape", [RMO_TensorSameDTypeOperandsAndResults]> {
+  let summary = "Rebind the input tensor's shape with runtime check.";
+  let description = [{
+    Unlike `mo.rebind` this also has the semantics of doing a runtime check
+    that the given shapes are compatible.
+
+    Right now this is modeled as a side-effect of the operation due to
+    limitations of modeling assertions in our stack. In the future this will
+    change and this operation may return either an error or a tensor.
+  }];
+
+  let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$output);
+
+  let builders = [
+    /// Inferred return type builder
+    OpBuilder<(ins "TensorValue":$input, "ShapeAttr":$newShape, CArg<"ArrayRef<ParamDeclAttr>", "{}">:$outputParamDecls)>
+  ];
+
+  // If we can prove the rebind is rebinding to the same shape, become no-op
+  let hasFolder = 1;
+}
+
+
+//===----------------------------------------------------------------------===//
 // 1-1 MO Op Analogues
 //===----------------------------------------------------------------------===//
 

@@ -30,6 +30,10 @@ def LegalizeRMOOps :
     "M::MO::MODialect",
     "M::RMO::RMODialect"
   ];
+  let options = [
+    Option<"skipRMORebind", "skip-rmo-rebinds", "bool", "false",
+           "Whether to skip legalize rmo rebind operations. Useful for debugging.">,
+  ];
 }
 
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOTRANSFORMS_TD

@@ -12,11 +12,14 @@
 #define GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_H
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOInterfaces.h"
 #include "KGEN/KGENDialect/KGENTypes.h"
 #include "mlir/IR/OpImplementation.h"
 
 using M::KGEN::ParamDeclAttr;
+using M::MOSH::ShapeAttr;
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
 //===----------------------------------------------------------------------===//

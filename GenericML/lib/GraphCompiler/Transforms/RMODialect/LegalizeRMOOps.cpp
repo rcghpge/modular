@@ -23,51 +23,12 @@ namespace M::RMO {
 
 namespace {
 
-/// Rebind the given `input` to the same shape as `shapeLike`, inserting
-/// assertions along the way as needed.
-///
-/// Often used to match old graph types, in which case we must remember to
-/// pass in KGEN output ParamDecls.
-TensorValue rebindToShape(MO::GraphOp graphOp, TensorValue input,
-                          TypedAttr shape, mlir::RewriterBase &rewriter,
-                          ArrayRef<ParamDeclAttr> newOutputParamDecl = {}) {
-  IntegerType boolTy = rewriter.getI1Type();
-
-  if (input.getType().getShapeAttr() == shape)
-    return input;
-
-  // Create KGEN parameter containing result of shape equality statement
-  TypedAttr cmpAttr = KGEN::emitMLIROperationCall(
-      MOSH::EqualOp::getOperationName(), {},
-      {input.getType().getShapeAttr(), shape}, boolTy);
-  KGEN::ParamDeclAttr condAttr = graphOp.getNewParamOfType("RMO_SH_EQ", boolTy);
-  rewriter.create<KGEN::ParamDeclareOp>(input.getLoc(), condAttr, cmpAttr);
-
-  // Add assertion, then return a rebind
-  TypedAttr assertAttr = MOSH::AssertOp::emitStaticCall(
-      KGEN::ParamDeclRefAttr::get(condAttr),
-      "[LegalizeRMOOps] introduced rebind fails.");
-
-  auto chainTy = rewriter.getType<ChainType>();
-  KGEN::ParamDeclAttr chainAttr =
-      graphOp.getNewParamOfType("RMO_SH_CH", chainTy);
-  rewriter.create<KGEN::ParamDeclareOp>(input.getLoc(), chainAttr, assertAttr);
-
-  // Return rebound result
-  return rewriter.create<MO::RebindOp>(input.getLoc(),
-                                       input.getType().cloneWith(shape), input,
-                                       newOutputParamDecl);
-}
-
+/// NOTE: RMO's rebinds are asserting in nature!
 TensorValue rebindToShape(MO::GraphOp graphOp, TensorValue input,
                           TensorType newTy, mlir::RewriterBase &rewriter,
                           ArrayRef<ParamDeclAttr> newOutputParamDecl = {}) {
-  TensorValue reboundValue = rebindToShape(graphOp, input, newTy.getShapeAttr(),
-                                           rewriter, newOutputParamDecl);
-  GENERICML_ASSERT(reboundValue.getType() == newTy)
-      << "rebinding more than shape! " << reboundValue << " to " << newTy
-      << "\n";
-  return reboundValue;
+  return rewriter.create<RMO::RebindTensorShapeOp>(input.getLoc(), newTy, input,
+                                                   newOutputParamDecl);
 }
 
 /// Lower the given RMO::MOAnalogue op to it's MO analogue given by `generator`.
@@ -156,6 +117,48 @@ struct LegalizeRMOMOAnalogue : public OpRewritePattern<RMOOpT> {
   }
 };
 
+struct LowerRebindTensorShapeOp
+    : public OpRewritePattern<RMO::RebindTensorShapeOp> {
+  LowerRebindTensorShapeOp(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
+  LogicalResult matchAndRewrite(RMO::RebindTensorShapeOp op,
+                                PatternRewriter &rewriter) const override {
+
+    TensorValue operand = op.getInput();
+    TensorValue result = op.getResult();
+    TypedAttr operandShape = operand.getType().getShapeAttr();
+    TypedAttr resultShape = result.getType().getShapeAttr();
+
+    MO::GraphOp graphOp = op->getParentOfType<MO::GraphOp>();
+    Location loc = op->getLoc();
+
+    // Create KGEN parameter containing result of shape equality statement
+    IntegerType boolTy = rewriter.getI1Type();
+    TypedAttr cmpAttr =
+        KGEN::emitMLIROperationCall(MOSH::EqualOp::getOperationName(), {},
+                                    {operandShape, resultShape}, boolTy);
+    KGEN::ParamDeclAttr condAttr =
+        graphOp.getNewParamOfType("RMO_SH_EQ", boolTy);
+    rewriter.create<KGEN::ParamDeclareOp>(loc, condAttr, cmpAttr);
+
+    // Add assertion, then return a rebind
+    TypedAttr assertAttr =
+        MOSH::AssertOp::emitStaticCall(KGEN::ParamDeclRefAttr::get(condAttr),
+                                       "RMO rebind shape check failed.");
+
+    auto chainTy = rewriter.getType<ChainType>();
+    KGEN::ParamDeclAttr chainAttr =
+        graphOp.getNewParamOfType("RMO_SH_CH", chainTy);
+    rewriter.create<KGEN::ParamDeclareOp>(loc, chainAttr, assertAttr);
+
+    // Return rebound result
+    auto moRebind = rewriter.create<MO::RebindOp>(
+        loc, result.getType(), operand, op.getOutputParamDecls());
+    rewriter.replaceOp(op, moRebind);
+
+    return success();
+  }
+};
+
 // This is an example of how a "composite RMO op" would work.
 struct LowerBroadcastedAddOp : public OpRewritePattern<RMO::BroadcastAddOp> {
   LowerBroadcastedAddOp(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
@@ -205,6 +208,10 @@ struct LegalizeRMOOps
              LegalizeRMOMOAnalogue<RMO::ReshapeOp, MO::ReshapeOp>,
              LegalizeRMOMOAnalogue<RMO::BroadcastToOp, MO::BroadcastToOp>,
              LegalizeRMOMOAnalogue<RMO::CastOp, MO::CastOp>>(context);
+
+    // Lowering rebind
+    if (!skipRMORebind)
+      blockPatterns.add<LowerRebindTensorShapeOp>(context);
 
     // Lowering composite operations
     blockPatterns.add<LowerBroadcastedAddOp>(context);
