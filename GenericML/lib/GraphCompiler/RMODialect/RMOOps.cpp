@@ -302,6 +302,31 @@ void BroadcastToOp::inferMOTypesImpl(
   }
 }
 
+void CastOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  // If no dtype is given, recast to the current type.
+  // This is useless but so is the default inferred type builder! Define a
+  // useful inferred type builder below.
+  TensorValue input = cast<TensorValue>(operands.getInput());
+  DType outputDType = getDType(rmoResults, 0, input.getType().getDtype());
+
+  // Operand remains the same
+  moOperandTypes.push_back(input.getType());
+  moInputParamDecls.push_back({});
+
+  moResultTypes.push_back(input.getType().cloneWith(outputDType));
+  moOutputParamDecls.push_back({});
+}
+
+void CastOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                   TensorValue input, DType dtype) {
+  build(odsBuilder, odsState, input.getType().cloneWith(dtype), input);
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST

@@ -203,8 +203,8 @@ struct LegalizeRMOOps
              LegalizeRMOMOAnalogue<RMO::ShapeOfOp, MO::ShapeOfOp>,
              LegalizeRMOMOAnalogue<RMO::BroadcastShapeOp, MO::BroadcastShapeOp>,
              LegalizeRMOMOAnalogue<RMO::ReshapeOp, MO::ReshapeOp>,
-             LegalizeRMOMOAnalogue<RMO::BroadcastToOp, MO::BroadcastToOp>>(
-            context);
+             LegalizeRMOMOAnalogue<RMO::BroadcastToOp, MO::BroadcastToOp>,
+             LegalizeRMOMOAnalogue<RMO::CastOp, MO::CastOp>>(context);
 
     // Lowering composite operations
     blockPatterns.add<LowerBroadcastedAddOp>(context);

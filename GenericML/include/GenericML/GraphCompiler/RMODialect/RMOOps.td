@@ -140,6 +140,20 @@ def RMO_BroadcastToOp : RMO_MOAnaloguePureTensorOp<"broadcast_to"> {
   let results = (outs MO_Tensor:$result);
 }
 
+def RMO_CastOp : RMO_MOAnaloguePureTensorOp<"cast"> {
+  let summary = "Cast a tensor to another dtype";
+  let description = [{
+    Casts the given data, changing from one dtype to another.
+  }];
+  let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let builders = [
+    /// Inferred return type builder
+    OpBuilder<(ins "TensorValue":$input, "DType":$dtype)>,
+  ];
+}
+
 /// TODO: of showing this in it's own namespace.
 /// This is an example experimental thing to prove this is easy to write
 def RMO_BroadcastAddOp : RMO_Op<"broadcast.add", [Pure]> {
