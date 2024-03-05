@@ -18,15 +18,20 @@ def version : Flag<["--"], "version">,
               Index<1>,
               HelpText<"Displays version information.">;
 
-defm output_directory
-    : CommandOption<["--"], "output-directory", OutputOptionGroup, Index<1>,
+defm output_dir
+    : CommandOption<["--"], "output-dir", OutputOptionGroup, Index<1>,
                     MetaVarName<"DIR">,
-                    HelpText<"Directory to produce outputs in.">>;
+                    HelpText<"Directory to save visualization spec.">>;
 def : Separate<["-"], "o">,
       Group<OutputOptionGroup>,
       Index<2>,
       MetaVarName<"DIR">,
-      Alias<output_directory>;
+      Alias<output_dir>;
+def : Flag<["--"], "output-directory">,
+      Group<OutputOptionGroup>,
+      Index<3>,
+      MetaVarName<"DIR">,
+      Alias<output_dir>;
 
 defm input_generation_schema
     : CommandOption<
