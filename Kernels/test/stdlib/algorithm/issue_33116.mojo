@@ -25,4 +25,4 @@ def main():
     var res = argmax_tensor(tensor)
 
     assert_equal(res[0], 1)
-    assert_equal(res[2], 0)
+    assert_equal(res[1], 0)
