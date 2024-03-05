@@ -16,10 +16,12 @@
 #include "GenericML/GraphCompiler/MOQDialect/MOQDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/Passes.h"
+#include "GenericML/GraphCompiler/RMODialect/RMODialect.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/Addons/MONameInputDimsPass.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/ConstantFoldPass.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "GenericML/GraphCompiler/Transforms/MOQDialect/MOQTransforms.h"
+#include "GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "GenericML/Support/ForeignBufferInterface.h"
 #include "GenericML/Support/ResourceBufferInterface.h"
@@ -49,7 +51,7 @@ using namespace MO;
 void M::MO::loadDialects(mlir::DialectRegistry &registry) {
   registry.insert<MO::MODialect, MOQ::MOQDialect, MOSH::MOSHDialect,
                   MIP::MIPDialect, MOGG::MOGGDialect, MGP::MGPDialect,
-                  GRT::GRTDialect, CUDA::CUDADialect>();
+                  GRT::GRTDialect, CUDA::CUDADialect, RMO::RMODialect>();
   M::registerAllKGENDialects(registry);
   M::registerKGENToLLVMTranslation(registry);
 }
@@ -88,6 +90,8 @@ void M::MO::registerPasses() {
   MOQ::registerLowerQDQOperatorsToMOPass();
   MOQ::registerSimplifyQDQPatternsPass();
   MOQ::registerDynamicQuantizeQ4MatmulForModconPass();
+
+  RMO::registerLegalizeRMOOpsPass();
 
   mlir::registerCSEPass();
   mlir::registerSCCPPass();
@@ -141,6 +145,13 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   pm.addPass(MO::createNameInputDimsPass({opts.dimNames}));
 
+  // RMO pipeline:
+  ResolveUnknownParametersOptions resolveUnknownParametersOpts;
+  resolveUnknownParametersOpts.resolveRMOOnly = true;
+  pm.addPass(MO::createResolveUnknownParameters(resolveUnknownParametersOpts));
+  pm.addPass(RMO::createLegalizeRMOOps());
+
+  // MO pipeline:
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
