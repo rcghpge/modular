@@ -4,6 +4,25 @@
 #
 ##===----------------------------------------------------------------------===##
 
+# Build file for the local development `max.engine` Python package, and for
+# installation of files needed for release wheel packaging.
+
+# This creates an editable installation of the `max.engine` without building
+# any wheels.
+# The general approach is to create symlinks from all of the needed Python
+# source files under `CMAKE_CURRENT_SOURCE_DIR`, to the build directory under
+# `CMAKE_CURRENT_BINARY_DIR`.
+# This approach achieves a few goals:
+# - Updates to the local Python source files are immediately reflected in the
+#   installed `max.engine` package.
+# - There is no need to build a wheel for local development.
+# - We can re-create the expected installed layout of engine libs and Python
+#   source, which would be installed under site-packages for the release
+#   package.
+#   This is key to enable the Python bindings to find
+#   libKGENCompilerRTShared.so using the same method in development and
+#   release.
+
 include(AddPython)
 
 # Currently not supporting Python wheel packaging on Windows.
@@ -18,46 +37,6 @@ include(AddPyBind11)
 
 add_subdirectory(lib)
 
-# Hardcode version to 0.0.0 for local test target max-pybind-ext
-set(MODULAR_PYPROJECT_NAME_VERSION "max_engine-0.0.0")
-
-# Package the built extension into a wheel.
-set(WHEEL_DIR ${CMAKE_CURRENT_BINARY_DIR})
-set(UNPACKED_WHEEL ${CMAKE_CURRENT_BINARY_DIR}/${MODULAR_PYPROJECT_NAME_VERSION})
-
-# Get the expected name of the built Python wheel file before building it.
-# This command is expected to error, which is intentionally ignored.
-execute_process(
-  COMMAND ${Python3_EXECUTABLE} setup.py --dry-run --quiet bdist_wheel
-  OUTPUT_VARIABLE BDIST_WHEEL_OUTPUT
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  ERROR_QUIET
-)
-# For earlier versions of wheel/setuptools, setup.py emits other informational
-# messages to stdout even with the --quiet flag.
-# So ignore any additional output from setup.py after the wheel name.
-string(REGEX MATCH "^[^\n]+" WHEEL_BASENAME "${BDIST_WHEEL_OUTPUT}")
-
-# Add a custom target to build and install the Python bindings and wheel.
-# Individual pybind11 modules are expected to be dependencies of
-# max-engine.
-# As a step in this process we compute a hash of the wheel file to avoid
-# rerunning pip install when there are no changes to the wheel file.
-set(MODULAR_PACKED_WHEEL_NAME ${WHEEL_DIR}/${WHEEL_BASENAME}.whl)
-set(MODULAR_PACKED_WHEEL_HASH_FILE "${CMAKE_CURRENT_BINARY_DIR}/${WHEEL_BASENAME}.whl.hash")
-
-add_custom_command(
-  OUTPUT ${MODULAR_PACKED_WHEEL_HASH_FILE}
-  # Compute and store the current hash of the .whl file
-  COMMAND ${CMAKE_COMMAND} -E sha256sum ${MODULAR_PACKED_WHEEL_NAME} | cut -d ' ' -f 1 > ${MODULAR_PACKED_WHEEL_HASH_FILE}.current
-
-  COMMAND ${Python3_EXECUTABLE} -m pip install --quiet --force-reinstall --no-index --no-deps ${WHEEL_DIR}/${WHEEL_BASENAME}.whl
-  COMMAND mv ${MODULAR_PACKED_WHEEL_HASH_FILE}.current ${MODULAR_PACKED_WHEEL_HASH_FILE}
-
-  DEPENDS ${MODULAR_PACKED_WHEEL_NAME}
-  COMMENT "Installing Modular Python API wheel."
-)
 # MODULAR_EXCLUDE_PYBIND_EXT_FROM_ALL can be set to avoid including
 # max-pybind-ext in the 'all' target.  Since building the Python extension
 # currently requires Internet access, this is useful if you are developing
@@ -69,12 +48,13 @@ if(MODULAR_EXCLUDE_PYBIND_EXT_FROM_ALL)
 else()
   set(ext_all ALL)
 endif()
-add_custom_target(max-pybind-ext ${ext_all} DEPENDS ${MODULAR_PACKED_WHEEL_HASH_FILE})
+add_custom_target(max-pybind-ext ${ext_all} DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/max/engine)
 
 add_dependencies(max-pybind-ext max-engine)
 add_subdirectory(bindings/max/engine)
 
-# Needs to be added after cmake knows about `core` defined in bindings/max/engine
+# Needs to be added after cmake knows about `core` defined in
+# bindings/max/engine.
 add_subdirectory(tuf_packaging)
 
 # Collect all `dlopen()`ed shared libs to correctly declare wheel dependencies.
@@ -84,13 +64,6 @@ if (STOCK_PYTORCH_FOUND)
   list(APPEND MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:mtorch>)
 endif()
 
-# The wheel is built in the build directory.
-# However, setuptools is unaware of the pybind module since CMake built that.
-# Therefore we have to put the pybind module shared library and all other
-# needed shared libraries into the wheel.
-# This way everything is self-contained in the wheel and will still work after
-# the wheel is pip installed.
-# TODO(#7439): /dev/null is not portable to Windows.
 if(STOCK_TENSORFLOW_FOUND)
   set(EXTERNAL_TF_EXES
     "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-translate;"
@@ -104,7 +77,9 @@ set(max_python_package_sources
   ${CMAKE_CURRENT_SOURCE_DIR}/max/engine/core.pyi
 )
 
-# Note that ${CMAKE_CURRENT_BINARY_DIR} == ${WHEEL_DIR} so the configured/generated pyproject.toml works for local wheel building for target max-pybind-ext as well.
+# Note that ${CMAKE_CURRENT_BINARY_DIR} == ${WHEEL_DIR} so the
+# configured/generated pyproject.toml works for local wheel building for target
+# max-pybind-ext as well.
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/pyproject.toml.in
   ${CMAKE_CURRENT_BINARY_DIR}/pyproject.toml.in
@@ -115,38 +90,27 @@ file(GENERATE
   INPUT ${CMAKE_CURRENT_BINARY_DIR}/pyproject.toml.in
 )
 
-add_custom_command(OUTPUT ${MODULAR_PACKED_WHEEL_NAME}
-  COMMAND ${Python3_EXECUTABLE} -m build --wheel --outdir ${WHEEL_DIR} > /dev/null
-  COMMAND ${CMAKE_COMMAND} -E rm -rf ${UNPACKED_WHEEL}
-  COMMAND ${Python3_EXECUTABLE} -m wheel unpack ${WHEEL_DIR}/${WHEEL_BASENAME}.whl --dest ${WHEEL_DIR} > /dev/null
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/max/engine
-  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:core> ${UNPACKED_WHEEL}/max/engine/
-  COMMAND ${CMAKE_COMMAND} -E copy ${MODULAR_BINARY_DIR}/modular.cfg ${UNPACKED_WHEEL}/max/
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${UNPACKED_WHEEL}/bin
-  # NOTE: Use a temporary file so that the copy command succeeds when NOT
-  # STOCK_TENSORFLOW_FOUND.
-  COMMAND ${CMAKE_COMMAND} -E touch ${UNPACKED_WHEEL}/bin/temp
-  COMMAND ${CMAKE_COMMAND} -E copy ${UNPACKED_WHEEL}/bin/temp ${EXTERNAL_TF_EXES} ${UNPACKED_WHEEL}/bin
-  COMMAND ${CMAKE_COMMAND} -E remove ${UNPACKED_WHEEL}/bin/temp
-  COMMAND ${Python3_EXECUTABLE} -m wheel pack ${UNPACKED_WHEEL} --dest ${WHEEL_DIR} > /dev/null
-  COMMAND ${CMAKE_COMMAND} -E rename ${WHEEL_DIR}/${WHEEL_BASENAME}.whl ${MODULAR_PACKED_WHEEL_NAME}
-  COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/build
-  COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/max_engine.egg-info
-  BYPRODUCTS ${UNPACKED_WHEEL}
+add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/max/engine
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/max/engine
+  # Symlink all Python source files.
+  # Track these manually because we need to copy/symlink core-cpython.so to
+  # `CMAKE_CURRENT_BINARY_DIR/max/engine/`, but we don't want to put it in the
+  # source tree.
+  COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/max/engine/__init__.py ${CMAKE_CURRENT_BINARY_DIR}/max/engine/__init__.py
+  COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/max/engine/api.py ${CMAKE_CURRENT_BINARY_DIR}/max/engine/api.py
+  COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/max/engine/core.pyi ${CMAKE_CURRENT_BINARY_DIR}/max/engine/core.pyi
+  # Copy setup.py, which is needed for editable installations.
+  COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/setup.py ${CMAKE_CURRENT_BINARY_DIR}/setup.py
+  # Symlink the lib directory to the same expected relative location from
+  # core-cpython.so as in the release package.
+  COMMAND ${CMAKE_COMMAND} -E create_symlink ${MODULAR_BINARY_DIR}/lib ${CMAKE_CURRENT_BINARY_DIR}/max/lib
+  # Copy the `core-cpython.so` CPython extension where the editable installation can find it.
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:core> ${CMAKE_CURRENT_BINARY_DIR}/max/engine/
+  COMMAND ${Python3_EXECUTABLE} -m pip install --quiet --editable ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS $<TARGET_FILE:core> ${MODULAR_FRAMEWORK_LIBS} ${EXTERNAL_TF_EXES} ${max_python_package_sources}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  COMMENT "Packing wheel with bindings and shared library dependencies."
+  COMMENT "Symlinking `max.engine` Python source directory to $MODULAR_DERIVED_PATH and installing to $MODULAR_PYTHON."
   VERBATIM
-)
-
-# Note: the `BYPRODUCTS` specification above is correct, but the generated
-# `clean` target won't be correct (i.e. CMake will issue a hard error at
-# configure time). Account for this by explicitly setting the
-# `ADDITIONAL_CLEAN_FILES` on the directory which makes the generated `clean`
-# target work correctly.
-set_target_properties(max-engine
-  PROPERTIES
-  ADDITIONAL_CLEAN_FILES ${UNPACKED_WHEEL}
 )
 
 add_subdirectory(docs)
