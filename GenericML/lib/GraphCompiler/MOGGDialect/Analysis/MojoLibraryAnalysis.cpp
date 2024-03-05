@@ -458,7 +458,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
       INTRINSIC_TO_MOJO("buf_len", "MOGG::bufferLength"),
       INTRINSIC_TO_MOJO("elementwise", "MOGG::elementwise_wrapper"),
       INTRINSIC_TO_MOJO("get_int_from_shape", "MOGG::get_int_from_shape"),
-      INTRINSIC_TO_MOJO("shape_to_tensor", "MOGG::shape_to_tensor"),
+      INTRINSIC_TO_MOJO("shape_to_ndbuffer", "MOGG::shape_to_ndbuffer"),
       INTRINSIC_TO_MOJO("tensor_to_shape", "MOGG::tensor_to_shape"),
 
       // Add the types we will need to the registry as well. The types are
