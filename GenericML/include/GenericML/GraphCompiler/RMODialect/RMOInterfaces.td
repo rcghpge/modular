@@ -101,4 +101,13 @@ def RMO_MOAnalogue : OpInterface<"MOAnalogue"> {
   ];
 }
 
+def RMO_TensorSameDTypeOperandsAndResults : OpInterface<"TensorSameDTypeOperandsAndResults"> {
+  let description = [{
+    Interface for RMO ops where all tensor types in the operands and results
+    have the same dtype. Also checks at least one tensor type operand/result.
+  }];
+  let cppNamespace = "::M::RMO";
+  let verify = [{ return verifySameDTypeOperandsAndResults(cast<RMOOp>($_op)); }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOINTERFACES_TD

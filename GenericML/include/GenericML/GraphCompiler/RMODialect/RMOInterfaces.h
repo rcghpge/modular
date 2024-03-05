@@ -20,6 +20,7 @@ namespace M::RMO {
 // Forward declare things used in RMOInterfaces.h.inc
 class RMOOp;
 LogicalResult verifyRMOOp(RMOOp op);
+LogicalResult verifySameDTypeOperandsAndResults(RMOOp op);
 } // namespace M::RMO
 
 #include "GenericML/GraphCompiler/RMODialect/RMOInterfaces.h.inc"

@@ -22,6 +22,40 @@ LogicalResult verifyRMOOp(RMOOp op) {
 
   return success();
 }
+
+LogicalResult verifySameDTypeOperandsAndResults(RMOOp op) {
+  DType targetDType = DType::invalid;
+
+  auto run = [&targetDType](ValueRange values) -> ErrorOrSuccess {
+    for (const Value &v : values) {
+      auto asTensor = dyn_cast<TensorValue>(v);
+      if (!asTensor)
+        continue;
+
+      DType curDType = asTensor.getType().getDtype();
+      if (targetDType == DType::invalid)
+        targetDType = curDType;
+
+      if (targetDType != curDType)
+        return Error("Not all TensorValues has the same dtype.");
+    }
+
+    return success();
+  };
+
+  ErrorOrSuccess operandOutcome = run(op->getOperands());
+  if (operandOutcome.isError())
+    return mlir::emitError(op.getLoc(), operandOutcome.getError());
+
+  ErrorOrSuccess resultOutcome = run(op->getResults());
+  if (resultOutcome.isError())
+    return mlir::emitError(op.getLoc(), resultOutcome.getError());
+
+  if (targetDType == DType::invalid)
+    return mlir::emitError(op.getLoc(), "No TensorValues found!");
+
+  return success();
+}
 } // namespace M::RMO
 
 //===----------------------------------------------------------------------===//

@@ -78,7 +78,7 @@ class RMO_MOAnaloguePureTensorOp<string mnemonic, list<Trait> traits = []>
 //===----------------------------------------------------------------------===//
 
 class RMO_MOAnaloguePureElementWiseOp<string name, list<Trait> traits = []>
-    : RMO_MOAnaloguePureTensorOp<name, traits> {
+    : RMO_MOAnaloguePureTensorOp<name, [RMO_TensorSameDTypeOperandsAndResults] # traits> {
   let results = (outs MO_Tensor:$result);
 }
 
@@ -156,7 +156,7 @@ def RMO_CastOp : RMO_MOAnaloguePureTensorOp<"cast"> {
 
 /// TODO: of showing this in it's own namespace.
 /// This is an example experimental thing to prove this is easy to write
-def RMO_BroadcastAddOp : RMO_Op<"broadcast.add", [Pure]> {
+def RMO_BroadcastAddOp : RMO_Op<"broadcast.add", [Pure, RMO_TensorSameDTypeOperandsAndResults]> {
   let summary = "Add with implicit broadcast Operation";
   let description = [{
     Like `rmo.add` but supports implicit broadcasting!
