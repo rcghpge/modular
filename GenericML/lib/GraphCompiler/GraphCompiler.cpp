@@ -292,16 +292,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.cacheBuffersAcrossExecutes)
     pm.addPass(MGP::createReallocBuffersPass());
 
-  if (opts.cacheDir.hasValue() && !opts.cacheDir.empty()) {
-    Cache::DeflateConstantsOptions deflateOpts;
-    deflateOpts.cacheDir = opts.cacheDir;
-    pm.addPass(Cache::createDeflateConstantsPass(deflateOpts, runtime));
-
-    MGP::LookupCachedConstantsPassOptions lookupOpts;
-    lookupOpts.cacheDir = opts.cacheDir;
-    pm.addPass(MGP::createLookupCachedConstantsPass(lookupOpts));
-  }
-
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MGP::createRemoveRedundantTensorExtractsPass());
   pm.addPass(MGP::createSimplifyChainsPass());

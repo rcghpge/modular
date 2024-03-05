@@ -1432,64 +1432,6 @@ LogicalResult CpuTensorExtractShapeOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
-// CASLookupOp
-//===----------------------------------------------------------------------===//
-
-/// Parse string from base64 encoding.
-static ParseResult parseBase64(AsmParser &parser, StringAttr &stringAttr) {
-  std::vector<char> outBytes;
-  outBytes.reserve(32);
-  if (parser.parseBase64Bytes(&outBytes))
-    return failure();
-  std::string str(outBytes.data(), outBytes.size());
-  stringAttr = StringAttr::get(parser.getContext(), str);
-  return success();
-}
-
-/// Print string in base64 encoding.
-static void printBase64(AsmPrinter &printer, const CASLookupOp &op,
-                        StringAttr stringAttr) {
-  printer.printKeywordOrString(llvm::encodeBase64(stringAttr.getValue()));
-}
-
-/// Prints a !mgp.cpu.buffer type, but represented in 'raw form'.
-static void printRawSizeAsBufferType(AsmPrinter &p, const CASLookupOp &op,
-                                     IntegerAttr rawSize) {
-  printRawSizeAsBufferType(op->getContext(), p, rawSize);
-}
-
-/// Infers the buffer type result from the size argument.
-LogicalResult CASLookupOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  auto rawSizeAttr = dyn_cast_if_present<IntegerAttr>(
-      attributes.get(getCRawSizeAttrName(name)));
-  GENERICML_ASSERT(rawSizeAttr) << "mismatched operand types";
-  inferredReturnTypes.emplace_back(CpuBufferType::get(context, rawSizeAttr));
-  return success();
-}
-
-/// Verifies optional alignment is valid.
-LogicalResult CASLookupOp::verify() {
-  if (!isValidRawAlign(getDRawAlign()))
-    emitOpError() << "the alignment must be a power of two (have "
-                  << getDRawAlign() << ").";
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// CASStoreOp
-//===----------------------------------------------------------------------===//
-
-/// Print string in base64 encoding.
-static void printBase64(AsmPrinter &printer, const CASStoreOp &op,
-                        StringAttr stringAttr) {
-  printer.printKeywordOrString(llvm::encodeBase64(stringAttr.getValue()));
-}
-
-//===----------------------------------------------------------------------===//
 // CpuKernelExecuteOp
 //===----------------------------------------------------------------------===//
 

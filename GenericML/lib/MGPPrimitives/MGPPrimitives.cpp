@@ -780,78 +780,6 @@ static void mgp_debug_cpu_spin_wait(Chain inChain, Result<Chain> outChain,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.cas.create_instance
-//===----------------------------------------------------------------------===//
-
-static void mgp_cas_create_instance(Chain inChain, Context &ctx,
-                                    Result<Chain> outChain,
-                                    MEFAttr<uint64_t> aSlot,
-                                    MEFAttr<StringRef> bCacheDir,
-                                    Runtime &runtime) {
-  auto &stateSlot = ctx.emplaceStateSlot<CASStateSlot>(
-      *aSlot, /*numBuffers=*/0, std::string(*bCacheDir), runtime);
-  // The CASStateSlot must be setup.
-  if (auto err = stateSlot.setup())
-    return std::move(outChain).setToError(err.takeError());
-  std::move(outChain).emplace();
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.cas.lookup
-//===----------------------------------------------------------------------===//
-
-static void mgp_cas_lookup(Chain inChain, Context &ctx,
-                           Result<GML::BufferRef> result,
-                           MEFAttr<uint64_t> aSlot, MEFAttr<StringRef> bKey,
-                           MEFAttr<uint64_t> cRawSize,
-                           MEFAttr<uint64_t> dRawAlign, EncodedLocation loc) {
-  auto &stateSlot = ctx.getStateSlotPayload<CASStateSlot>(*aSlot);
-  if (!stateSlot.isValid())
-    return std::move(result).setToError(
-        {"CAS instance has not been established", std::move(loc)});
-  std::optional<size_t> expectedSize = getRuntimeSize(*cRawSize);
-  std::optional<size_t> alignment = getRuntimeAlign(*dRawAlign);
-  AsyncValueRef<GML::BufferRef> lookupResult =
-      stateSlot.lookup(*bKey, expectedSize, alignment, loc.copy());
-  std::move(lookupResult)
-      .andThenSync([expectedSize, slot = *aSlot, result = result.copy(),
-                    key = *bKey, loc = std::move(loc)](
-                       AsyncValueRef<GML::BufferRef> &&lookupResult) mutable {
-        if (lookupResult.isError()) {
-          // We'll construct our own error so that we can report the key
-          // in base64 form.
-          return std::move(result).setToError(
-              {"unable to lookup buffer with key '" + key +
-                   "': " + lookupResult.takeDiagnostic().getMessage().get(),
-               std::move(loc)});
-        }
-        if (expectedSize && lookupResult.get().getSize() != *expectedSize)
-          return std::move(result).setToError(
-              {Twine("buffer returned from CAS at slot ") + Twine(slot) +
-                   " has different size than expected (" +
-                   Twine(lookupResult.get().getSize()) + " vs " +
-                   Twine(*expectedSize) + ")",
-               std::move(loc)});
-        std::move(result).emplace(std::move(lookupResult.get()));
-      });
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.cas.store
-//===----------------------------------------------------------------------===//
-
-static AsyncValueRef<Chain>
-mgp_cas_store(Chain inChain, Context &ctx, const GML::BufferRef &bufferRef,
-              MEFAttr<uint64_t> aSlot, MEFAttr<StringRef> bKey,
-              EncodedLocation loc, Runtime &runtime) {
-  auto &stateSlot = ctx.getStateSlotPayload<CASStateSlot>(*aSlot);
-  if (!stateSlot.isValid())
-    return AsyncValueRef<Chain>::createError(
-        runtime, {"CAS instance has not been established", std::move(loc)});
-  return stateSlot.store(*bKey, bufferRef, std::move(loc));
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.to_grt_bool
 //===----------------------------------------------------------------------===//
 
@@ -1286,9 +1214,6 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
                 mgp_debug_cpu_buffer_print);
   ADD_PRIMITIVE(registry, "mgp.debug.bool.print", mgp_debug_bool_print);
   ADD_PRIMITIVE(registry, "mgp.debug.cpu.spin_wait", mgp_debug_cpu_spin_wait);
-  ADD_PRIMITIVE(registry, "mgp.cas.create_instance", mgp_cas_create_instance);
-  ADD_PRIMITIVE(registry, "mgp.cas.lookup", mgp_cas_lookup);
-  ADD_PRIMITIVE(registry, "mgp.cas.store", mgp_cas_store);
   ADD_PRIMITIVE(registry, "mgp.to_grt_bool", mgp_to_grt_bool);
   ADD_PRIMITIVE(registry, "mgp.assert", mgp_assert);
   ADD_PRIMITIVE(registry, "mgp.cpu.kernel.create_context",
