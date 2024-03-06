@@ -48,7 +48,7 @@ if(MODULAR_EXCLUDE_PYBIND_EXT_FROM_ALL)
 else()
   set(ext_all ALL)
 endif()
-add_custom_target(max-pybind-ext ${ext_all} DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/max/engine)
+add_custom_target(max-pybind-ext ${ext_all} DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/max_engine_installed)
 
 add_dependencies(max-pybind-ext max-engine)
 add_subdirectory(bindings/max/engine)
@@ -90,7 +90,7 @@ file(GENERATE
   INPUT ${CMAKE_CURRENT_BINARY_DIR}/pyproject.toml.in
 )
 
-add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/max/engine
+add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/max_engine_installed
   COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/max/engine
   # Symlink all Python source files.
   # Track these manually because we need to copy/symlink core-cpython.so to
@@ -107,6 +107,7 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/max/engine
   # Copy the `core-cpython.so` CPython extension where the editable installation can find it.
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:core> ${CMAKE_CURRENT_BINARY_DIR}/max/engine/
   COMMAND ${Python3_EXECUTABLE} -m pip install --quiet --editable ${CMAKE_CURRENT_BINARY_DIR}
+  COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_BINARY_DIR}/max_engine_installed
   DEPENDS $<TARGET_FILE:core> ${MODULAR_FRAMEWORK_LIBS} ${EXTERNAL_TF_EXES} ${max_python_package_sources}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   COMMENT "Symlinking `max.engine` Python source directory to $MODULAR_DERIVED_PATH and installing to $MODULAR_PYTHON."
