@@ -1512,7 +1512,7 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
     %idx1 : index
     %idx2 : index
     %buf1 : !mgp.buffer<24, <"cuda", 3>>
-    %ch1 = mgp.cpu.buffer.set_with_index %ctx[5], %buf1, %idx0, %idx1, %idx2 : !mgp.buffer<24, <"cuda", 3>>
+    %ch1 = mgp.buffer.set_with_index %ctx[5], %buf1, %idx0, %idx1, %idx2 : !mgp.buffer<24, <"cuda", 3>>
     %ch1 : !mgp.chain<<"cuda", 3>>
     ```
   }];
