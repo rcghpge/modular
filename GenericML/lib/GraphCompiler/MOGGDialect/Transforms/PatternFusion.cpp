@@ -13,10 +13,10 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GenericML/GraphCompiler/Matchers.h"
 #include "GenericML/Support/DataflowUtils.h"
-#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/Support/MathExtras.h"
 
+#include <mlir/IR/BuiltinAttributes.h>
 #include <numeric>
 
 using namespace M;
