@@ -322,6 +322,7 @@ struct ConvertBatchMatmulBatchSizeOneToMatmulPattern
 
     TensorType aType = op.getTensorA().getType();
     TensorType bType = op.getTensorB().getType();
+    TensorType cType = op.getResult().getType();
 
     if (!aType.hasRank())
       return rewriter.notifyMatchFailure(
@@ -347,14 +348,16 @@ struct ConvertBatchMatmulBatchSizeOneToMatmulPattern
     }
 
     auto shapeTy = rewriter.getType<ShapeType>();
-    auto eltTy = aType.getElementType(); // elt types are all the same
+    auto eltATy = aType.getElementType();
+    auto eltBTy = bType.getElementType();
+    auto eltCTy = cType.getElementType();
 
     auto newAType =
-        TensorType::get(MOSH::ShapeAttr::get(aShapeDims, shapeTy), eltTy);
+        TensorType::get(MOSH::ShapeAttr::get(aShapeDims, shapeTy), eltATy);
     auto newBType =
-        TensorType::get(MOSH::ShapeAttr::get(bShapeDims, shapeTy), eltTy);
+        TensorType::get(MOSH::ShapeAttr::get(bShapeDims, shapeTy), eltBTy);
     auto newResType =
-        TensorType::get(MOSH::ShapeAttr::get(resShapeDims, shapeTy), eltTy);
+        TensorType::get(MOSH::ShapeAttr::get(resShapeDims, shapeTy), eltCTy);
 
     auto newATensor = rewriter.create<Static::ReshapeOp>(op.getLoc(), newAType,
                                                          op.getTensorA());
