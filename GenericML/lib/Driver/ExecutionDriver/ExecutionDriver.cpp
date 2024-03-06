@@ -228,6 +228,8 @@ static LogicalResult outputResults(const ExecutableModel *model,
                                    GML::ResultOutputStyle outputStyle,
                                    unsigned precision, StringRef outputDir) {
   auto &os = llvm::outs();
+  StringRef name = model->getModel()->getName();
+  os << "'" << name << "' returned ";
 
   // We expect the first result to be a chain.
   GENERICML_ASSERT(!results.empty()) << "must have at least one result";
@@ -309,9 +311,6 @@ static LogicalResult outputResults(const ExecutableModel *model,
     }
     return failure(hasError);
   }
-
-  StringRef name = model->getModel()->getName();
-  os << "'" << name << "' returned ";
 
   bool first = true;
   bool hasError = false;

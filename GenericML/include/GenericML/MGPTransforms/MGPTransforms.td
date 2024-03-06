@@ -426,6 +426,20 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
   }];
 }
 
+
+//===----------------------------------------------------------------------===//
+// FixupOverhangsPass
+//===----------------------------------------------------------------------===//
+
+def FixupOverhangsPass : Pass<"fixup-overhangs", "MGP::ModelOp"> {
+  let summary = "If necessary, inserts additional chain dependences to ensure no overhanging chains in the graph.";
+  let description = [{
+    This pass checks for overhanging chains (i.e., chains that have no uses in
+    the graph) and inserts dependencies on the graph output to ensure that the
+    output waits on all previously hanging chains.
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // ReallocBufferPass
 //===----------------------------------------------------------------------===//

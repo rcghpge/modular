@@ -325,7 +325,8 @@ OpOperand *M::MGP::getUniqueMutator(Value vaule) {
 SmallVector<OpOperand *, 1> M::MGP::getInputChainOpOperands(Operation *op) {
   SmallVector<OpOperand *, 1> result;
   for (auto &operand : op->getOpOperands()) {
-    if (isa<MEF::MEFChainTypeInterface>(operand.get().getType()))
+    if (isa<MEF::MEFChainTypeInterface>(operand.get().getType()) ||
+        isa<MGP::DeviceChainType>(operand.get().getType()))
       result.emplace_back(&operand);
   }
   return result;
