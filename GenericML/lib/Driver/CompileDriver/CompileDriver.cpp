@@ -142,9 +142,13 @@ M::cacheMEFTransform(StringRef frameworkName,
 
   auto inputChain =
       LLCL::AnyAsyncValueRef::createReady<Chain>(runtime.getCompactPtr());
+
+  // Run the function and try to cache the resulting buffer. We are choosing not
+  // to fail in the event of a cache insert failure.
   auto outputChain = cachedTransform(
       LLCL::UnknownLocationDecoder::getEncodedLocation(), mefCache.copy(),
-      inputChain.copy(), key.copy(), std::move(loweringTransForm), cacheHitFn);
+      inputChain.copy(), key.copy(), std::move(loweringTransForm), cacheHitFn,
+      /*errorOnCacheInsertFailure=*/false);
   LLCL::await(outputChain);
   if (outputChain.isError())
     return outputChain.getDiagnostic().getMessage().copy();
