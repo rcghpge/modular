@@ -11,7 +11,7 @@
 #include "GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include <llvm/ADT/SetOperations.h>
+#include "llvm/ADT/SetOperations.h"
 
 using namespace M;
 using namespace graph_compiler::matchers;

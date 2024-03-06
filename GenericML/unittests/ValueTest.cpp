@@ -15,9 +15,9 @@
 #include "GenericML/Support/Tensor.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
+#include "llvm/Support/YAMLTraits.h"
 
 #include "gtest/gtest.h"
-#include <llvm/Support/YAMLTraits.h>
 
 using namespace M;
 using namespace GML;

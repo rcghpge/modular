@@ -13,7 +13,7 @@
 
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "Support/LLVMCompilerForwardDecls.h"
-#include <mlir/IR/Builders.h>
+#include "mlir/IR/Builders.h"
 
 namespace M::MO {
 
