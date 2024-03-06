@@ -650,15 +650,6 @@ static void saveInputSpecs(ArrayRef<QuantTensorSpec> specs,
 LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
                           LLCL::Runtime &runtime,
                           const ExecutorDriverOptions &options) {
-  // Make sure any borrowed strings accumulated during profiling are
-  // converted to owned strings before the MEFFile they are borrowed from
-  // is destroyed.
-  auto scopeExit = llvm::make_scope_exit([&runtime]() {
-    if (auto &optProfiler = runtime.getProfiler()) {
-      optProfiler->intern();
-    }
-  });
-
   SmallVector<TensorSpec> userInputSpecs;
   if (!options.inputSpecs.empty()) {
     userInputSpecs = SmallVector<TensorSpec>(options.inputSpecs.begin(),
@@ -730,15 +721,6 @@ M::runModelWithData(MLIRContext *ctx, const Model *model,
       << "Wrong number of inputs to the model. Model expects "
       << model->getInputSpecs().size() << " but " << inputs.size()
       << " provided.";
-
-  // Make sure any borrowed strings accumulated during profiling are
-  // converted to owned strings before the MEFFile they are borrowed from
-  // is destroyed.
-  auto scopeExit = llvm::make_scope_exit([&runtime]() {
-    if (auto &optProfiler = runtime.getProfiler()) {
-      optProfiler->intern();
-    }
-  });
 
   // Setup the model.
   auto executableModelOr = model->setup(runtime);

@@ -232,6 +232,14 @@ public:
         numPrimitives(decoder.numPrimitives) {}
   ~MEFExecutor() override {
     // NOTE: we don't bother destructing the ResultInfo/PrimitiveInfo records.
+
+    if constexpr (PrimitiveProfilerEntry::isEnabled()) {
+      // Make sure any borrowed strings accumulated during profiling are
+      // converted to owned strings before the MEFFile they are borrowed from is
+      // destroyed.
+      if (std::optional<TimeTraceProfiler> &profiler = runtime.getProfiler())
+        profiler->intern();
+    }
   }
 
   /// Decode the register info and primitive info tables.  This returns true on
