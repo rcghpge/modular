@@ -7,7 +7,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOJO_PARAMETERS_H
 #define GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOJO_PARAMETERS_H
 
-#include <llvm/ADT/StringRef.h>
+#include "llvm/ADT/StringRef.h"
 
 namespace M::MOGG {
 
