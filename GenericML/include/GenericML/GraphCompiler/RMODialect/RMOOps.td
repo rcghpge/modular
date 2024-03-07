@@ -11,6 +11,7 @@
 #define GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
 
 include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
+include "GenericML/GraphCompiler/RMODialect/RMODialect.td"
 include "GenericML/GraphCompiler/RMODialect/RMOInterfaces.td"
 include "GenericML/GraphCompiler/MODialect/MOTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOAttrs.td"
