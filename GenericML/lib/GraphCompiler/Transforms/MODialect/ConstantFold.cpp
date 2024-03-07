@@ -172,11 +172,9 @@ static bool isConstantFoldable(Operation *op) {
                                  isa<MOSH::ShapeType>(ty) ||
                                  isa<MO::ListType>(ty);
                         })) ||
-          dyn_cast<KGEN::ParamOpInterface>(op) ||
-          dyn_cast<KGEN::ParamConstantOp>(op) ||
-          dyn_cast<KGEN::ParamDeclareOp>(op)) &&
-         !dyn_cast<MOControlOpInterface>(op) &&
-         !dyn_cast<MO::LayoutTransformOp>(op);
+          isa<KGEN::ParamOpInterface>(op) || isa<KGEN::ParamConstantOp>(op) ||
+          isa<KGEN::ParamDeclareOp>(op)) &&
+         !isa<MOControlOpInterface>(op) && !isa<MO::LayoutTransformOp>(op);
 }
 
 /// Creates a a tensor from a `dense_resource`.
@@ -589,14 +587,14 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
     // recreated after executing the subgraph.
     llvm::SmallVector<Operation *> toRemove;
     for (auto output : subgraph.outputs)
-      if (dyn_cast<ListCreateOp>(output))
+      if (isa<ListCreateOp>(output))
         toRemove.push_back(output);
     for (auto op : toRemove)
       subgraph.remove(op);
 
     // Ignore subgraphs that only contain constant ops.
     if (llvm::all_of(subgraph.ops, [](Operation *op) {
-          return dyn_cast<ConstantOp>(op) || dyn_cast<KGEN::ParamDeclareOp>(op);
+          return isa<ConstantOp>(op) || isa<KGEN::ParamDeclareOp>(op);
         }))
       continue;
 
@@ -731,11 +729,11 @@ static Value runtimeTensorToConstant(OpBuilder &builder, Location loc,
   // Resolve instances where the output shape is not statically
   // known (mo.tensor<[?], f32> for example) by using the size of
   // the output.
-  if (dyn_cast<TensorType>(type).hasUnknownShape()) {
+  if (cast<TensorType>(type).hasUnknownShape()) {
     auto resolvedType = TensorType::get(
         MOSH::ShapeAttr::get(SmallVector<int64_t>(shape.begin(), shape.end()),
                              MOSH::ShapeType::get(builder.getContext())),
-        dyn_cast<TensorType>(type).getDtype());
+        cast<TensorType>(type).getDtype());
     auto constantOp = builder.create<ConstantOp>(loc, resolvedType, constant);
     // Rebind the shape so it matches what is expected. For example,
     // transform [1, 2] to [1, A] so that types shapes with
@@ -794,7 +792,7 @@ static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
             std::get<RuntimeList>(constantTensor), [&](RuntimeTensor tensor) {
               return runtimeTensorToConstant(
                   builder, op->getLoc(), tensor,
-                  dyn_cast<ListType>(type).getElementType());
+                  cast<ListType>(type).getElementType());
             });
         newResults.push_back(
             builder.create<ListCreateOp>(op->getLoc(), type, tensors));
