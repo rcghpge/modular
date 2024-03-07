@@ -3067,6 +3067,260 @@ struct SinkBroadcastsThroughLinalgBandPartOp
   }
 };
 
+/// Fuse multiple reduction ops with contiguous axes into a simple operation.
+/// All the contiguous axes are contracted to one axis which is reduced.
+/// Then the output is reshaped (expanded) to the original output shape.
+///
+/// Example:
+///   %0 = mo.mean(%arg0, %axis2) :
+///     (!mo.tensor<[1, 32, 128, 128, 128], f32>, !mo.tensor<[], si64>)
+///     -> !mo.tensor<[1, 32, 1, 128, 128], f32>
+///   %1 = mo.mean(%0, %axis3) :
+///     (!mo.tensor<[1, 32, 1, 128, 128], f32>, !mo.tensor<[], si64>)
+///     -> !mo.tensor<[1, 32, 1, 1, 128], f32>
+///   %out = mo.mean(%1, %axis4)
+///     : (!mo.tensor<[1, 32, 1, 1, 128], f32>, !mo.tensor<[], si64>)
+///     -> !mo.tensor<[1, 32, 1, 1, 1], f32>
+/// Is replaced with:
+///  %0 = mo.static.reshape(%arg0) :
+///    !mo.tensor<[1, 32, 128, 128, 128], f32>
+///    -> !mo.tensor<[1, 32, 2097152], f32>
+///  %1 = mo.mean(%2, %axis2) :
+///    (!mo.tensor<[1, 32, 2097152], f32>, !mo.tensor<[], si64>)
+///    -> !mo.tensor<[1, 32, 1], f32>
+///  %out = mo.static.reshape(%1) :
+///    !mo.tensor<[1, 32, 1], f32>
+///    -> !mo.tensor<[1, 32, 1, 1, 1], f32>
+struct FuseReductionsContiguousAxes
+    : public DeviceAwareRewritePattern<OpInterfaceRewritePattern, Reduction> {
+  FuseReductionsContiguousAxes(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 2) {}
+
+  static constexpr std::size_t MAX_RANK = 8;
+
+  ErrorOr<int64_t> getReductionAxis(Reduction op) const {
+    auto inputTy = op.getInput().getType();
+    if (!inputTy.hasRank() || inputTy.getRank() > MAX_RANK)
+      return Error("Reduction input unranked or with rank > 8 isn't supported");
+
+    std::optional<int64_t> maybeAxis = tryGetConstantInt(op.getAxis());
+    if (!maybeAxis.has_value())
+      return Error("Reduction axis must be a constant");
+    return normalizeAxis(*maybeAxis, inputTy.getRank());
+  }
+
+  FailureOr<std::pair<int64_t, int64_t>>
+  getReductionAxes(Static::ReshapeOp contractOp, Reduction reduceOp,
+                   Static::ReshapeOp extendOp) const {
+    TensorType inputTy = contractOp.getInput().getType();
+    TensorType reducedTy = reduceOp.getResult().getType();
+    TensorType outputTy = extendOp.getResult().getType();
+
+    if (!inputTy.hasRank() || !reducedTy.hasRank() || !outputTy.hasRank())
+      return failure();
+    if (inputTy.getRank() != outputTy.getRank() ||
+        inputTy.getRank() <= reducedTy.getRank())
+      return failure();
+    ErrorOr<int64_t> axisOr = getReductionAxis(reduceOp);
+    if (failed(axisOr))
+      return failure();
+
+    int64_t fullRank = inputTy.getRank();
+    int64_t reducedRank = reducedTy.getRank();
+    int64_t dimsBefore = *axisOr;
+    int64_t dimsAfter = reducedRank - 1 - dimsBefore;
+    ArrayRef<TypedAttr> inputShape = inputTy.getTypedShapeAttr().getValues();
+    ArrayRef<TypedAttr> reducedhape = reducedTy.getTypedShapeAttr().getValues();
+    ArrayRef<TypedAttr> outputShape = outputTy.getTypedShapeAttr().getValues();
+
+    // This function match a multi-axes reduction:
+    // [A B C D E F G] -> [A B 1 E F G] -> [A B 1 1 E F G]
+    //   (axis = 2,  dimsBefore = 2, dimsAfter = 3)
+    // - check that in.rank() == out.rank() and in.rank() > reduced.rank().
+    // - check all dims from [0..dimsBefore] are same for in / reduced / out.
+    // - check all dims from [-1...-dimAfter] are same for in / reduced / out.
+    // - no need to check if they are 1s (reshape keep same elems count).
+
+    for (int64_t i = 0; i < dimsBefore; ++i)
+      if (inputShape[i] != reducedhape[i] || inputShape[i] != outputShape[i])
+        return failure();
+    for (int64_t i = 0; i < dimsAfter; ++i)
+      if (inputShape[fullRank - 1 - i] != reducedhape[reducedRank - 1 - i] ||
+          inputShape[fullRank - 1 - i] != outputShape[fullRank - 1 - i])
+        return failure();
+
+    return std::make_pair(dimsBefore, dimsBefore + (fullRank - reducedRank));
+  }
+
+  /// Helper struct to efficiently keep track of all axes seen so far.
+  struct ContiguousAxesChecker {
+
+    ContiguousAxesChecker(int64_t initialAxis) {
+      _axes.resize(MAX_RANK, false);
+      assert(initialAxis >= 0 && initialAxis < int64_t(MAX_RANK));
+      _axes[initialAxis] = true;
+      _axesSize = 1;
+      _minAxis = _maxAxis = _minContiguousAxis = _maxContiguousAxis =
+          initialAxis;
+    }
+
+    void insert(int64_t firstAxis, int64_t lastAxis) {
+      assert(firstAxis >= 0 && firstAxis < int64_t(MAX_RANK));
+      assert(lastAxis >= 0 && lastAxis < int64_t(MAX_RANK));
+      assert(firstAxis <= lastAxis);
+
+      for (int64_t axis = firstAxis; axis <= lastAxis; ++axis)
+        if (!_axes[axis]) {
+          _axes[axis] = true;
+          ++_axesSize;
+        }
+
+      _minAxis = std::min(_minAxis, firstAxis);
+      _maxAxis = std::max(_maxAxis, lastAxis);
+      if (allAxesAreContiguous()) {
+        _minContiguousAxis = _minAxis;
+        _maxContiguousAxis = _maxAxis;
+      }
+    }
+
+    void insert(int64_t axis) { insert(axis, axis); }
+
+    bool allAxesAreContiguous() const {
+      return _axesSize == (_maxAxis - _minAxis + 1);
+    }
+
+    int64_t minContiguousAxis() const { return _minContiguousAxis; }
+    int64_t maxContiguousAxis() const { return _maxContiguousAxis; }
+
+    llvm::SmallVector<bool, MAX_RANK> _axes;
+    int64_t _axesSize;
+    int64_t _minAxis;
+    int64_t _maxAxis;
+    int64_t _minContiguousAxis;
+    int64_t _maxContiguousAxis;
+  };
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(Reduction op,
+                             DeviceAwareRewriter &rewriter) const override {
+    Location loc = op->getLoc();
+    auto reduceName = op->getName();
+
+    if (isa<ArgMinOp, ArgMaxOp>(op))
+      return rewriter.notifyMatchFailure(
+          loc, "fuse reduce_min / reduce_max ops with contiguous axes isn't "
+               "supported");
+
+    ErrorOr<int64_t> startAxisOr = getReductionAxis(op);
+    if (failed(startAxisOr))
+      return rewriter.notifyMatchFailure(loc, startAxisOr.getError());
+
+    // The loop iterates over the chain of compatible reduction ops.
+    // We need to keep track of all axes seen so far, and also of the contiguous
+    // sequence starting from `op`.
+    ContiguousAxesChecker axes(*startAxisOr);
+    TensorValue currentInput = op.getInput();
+    TensorValue inputOfFused = currentInput;
+
+    while (true) {
+      if (Reduction reduceInput =
+              dyn_cast_or_null<Reduction>(currentInput.getDefiningOp())) {
+        // Try to fuse with the input reduction op.
+        if (!reduceInput->hasOneUse() || reduceInput->getName() != reduceName)
+          break;
+        ErrorOr<int64_t> axisOr = getReductionAxis(reduceInput);
+        if (failed(axisOr))
+          break;
+
+        currentInput = reduceInput.getInput();
+        axes.insert(*axisOr);
+      } else if (Static::ReshapeOp reshapeAfter =
+                     dyn_cast_or_null<Static::ReshapeOp>(
+                         currentInput.getDefiningOp())) {
+        // Try to fuse with input reshape + reduction + reshape ops (multi-axes
+        // reduction).
+        Reduction reduceOp = dyn_cast_or_null<Reduction>(
+            reshapeAfter.getInput().getDefiningOp());
+        if (!reduceOp)
+          break;
+        Static::ReshapeOp reshapeBefore = dyn_cast_or_null<Static::ReshapeOp>(
+            reduceOp.getInput().getDefiningOp());
+        if (!reshapeBefore || !reshapeAfter->hasOneUse() ||
+            !reduceOp->hasOneUse() || !reshapeBefore->hasOneUse() ||
+            // Check that all reduce operations are of the same type (we can't
+            // fuse a mean with a min).
+            reduceOp->getName() != reduceName)
+          break;
+
+        FailureOr<std::pair<int64_t, int64_t>> axesOr =
+            getReductionAxes(reshapeBefore, reduceOp, reshapeAfter);
+        if (failed(axesOr))
+          break;
+        currentInput = reshapeBefore.getInput();
+        axes.insert(axesOr->first, axesOr->second);
+      } else {
+        break;
+      }
+
+      if (axes.allAxesAreContiguous()) {
+        // All axes seen so far are contiguous.
+        // Mark the current input as the input of the fused reduces.
+        inputOfFused = currentInput;
+      }
+    }
+
+    int64_t firstAxis = axes.minContiguousAxis();
+    int64_t lastAxis = axes.maxContiguousAxis();
+    int64_t axesCount = lastAxis - firstAxis + 1;
+    if (axesCount < 2)
+      return rewriter.notifyMatchFailure(
+          loc, "No reduce ops with contiguous axes found");
+
+    // Reshape input: contract all reduced axes into a single dimension.
+    TensorValue input = inputOfFused;
+    ArrayRef<TypedAttr> inputShape =
+        input.getType().getTypedShapeAttr().getValues();
+    SmallVector<TypedAttr> contractedShape;
+    SmallVector<TypedAttr> afterReduceShape;
+    for (int64_t i = 0; i < firstAxis; ++i) {
+      contractedShape.push_back(inputShape[i]);
+      afterReduceShape.push_back(inputShape[i]);
+    }
+
+    ArrayRef<TypedAttr> contractedDims = inputShape.slice(firstAxis, axesCount);
+    contractedShape.push_back(
+        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, contractedDims));
+    afterReduceShape.push_back(rewriter.getIndexAttr(1));
+
+    for (int64_t i = lastAxis + 1; i < int64_t(inputShape.size()); ++i) {
+      contractedShape.push_back(inputShape[i]);
+      afterReduceShape.push_back(inputShape[i]);
+    }
+
+    auto contractedType =
+        TensorType::get(contractedShape, input.getType().getElementType());
+    TensorValue contractedInput =
+        rewriter.create<Static::ReshapeOp>(loc, contractedType, input);
+
+    // Do a reduction on the contracted axis.
+    TensorValue newAxisTensor =
+        rewriter.create<ConstantOp>(op->getLoc(), firstAxis);
+    auto clonedReduction = cast<Reduction>(*rewriter.clone(*op));
+    clonedReduction.getInputMutable().assign(contractedInput);
+    clonedReduction.getAxisMutable().assign(newAxisTensor);
+    TensorValue contractedOuput = clonedReduction.getResult();
+
+    auto afterReduceType =
+        TensorType::get(afterReduceShape, input.getType().getElementType());
+    contractedOuput.setType(afterReduceType);
+
+    // Reshape output to the original output size.
+    rewriter.replaceOpWithNewOp<Static::ReshapeOp>(op, op.getResult().getType(),
+                                                   contractedOuput);
+    return success();
+  }
+};
+
 struct SymbolicOptimizationPass
     : public MO::impl::SymbolicOptimizationBase<SymbolicOptimizationPass> {
   using SymbolicOptimizationBase::SymbolicOptimizationBase;
@@ -3108,6 +3362,9 @@ struct SymbolicOptimizationPass
                  SinkBroadcastsThroughElemwise<ElementWiseBinary>,
                  SinkBroadcastsThroughElemwise<ElementWiseUnary>,
                  SinkBroadcastsThroughLinalgBandPartOp>(context);
+
+    // Fuse reduction ops
+    patterns.add<FuseReductionsContiguousAxes>(context);
 
     // TODO(24646): Ensure these use device aware rewriter.
     TransposeOp::getCanonicalizationPatterns(patterns, context);
