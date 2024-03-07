@@ -62,8 +62,7 @@ void core::verifyTensorInputSpecs(const py::object &obj,
 /// `GML::Tensor` wrapped in an `AsyncValue` and sets it's name to `name`.
 M_AsyncValue *core::processTensorInput(const py::object &obj,
                                        const std::string &name,
-                                       M_RuntimeContext *context,
-                                       M_Status *status) {
+                                       M_RuntimeContext *context) {
   const auto tensor = obj.cast<py::array>();
 
   std::vector<int64_t> inputShape;
@@ -82,17 +81,14 @@ M_AsyncValue *core::processTensorInput(const py::object &obj,
   // TODO(#7919): Figure out lifetime management for input tensors in the
   // asynchronous case.
   return M_createBorrowedTensor(tensor.data(), tensorSpec.get(), context);
-  if (M_isError(status))
-    throw std::runtime_error(M_getError(status));
 }
 
 /// Borrows the data from the array in the pybind object `obj` into a new
 /// `GML::Tensor` wrapped in an `AsyncValue`.
 M_AsyncValue *core::processTensorInput(const py::object &obj,
-                                       M_RuntimeContext *context,
-                                       M_Status *status) {
+                                       M_RuntimeContext *context) {
   std::string name("");
-  return processTensorInput(obj, name, context, status);
+  return processTensorInput(obj, name, context);
 }
 
 /// Recursively converts the pybind object `pyObj` containing a value composed
@@ -104,7 +100,7 @@ M_AsyncValue *core::processValueInput(const py::object &pyObj,
                                       M_RuntimeContext *context,
                                       M_Status *status) {
   if (py::isinstance<py::array>(pyObj))
-    return processTensorInput(pyObj, context, status);
+    return processTensorInput(pyObj, context);
 
   if (py::isinstance<py::dict>(pyObj)) {
     const auto pyDict = pyObj.cast<py::dict>();

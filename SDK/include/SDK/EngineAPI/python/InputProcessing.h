@@ -25,12 +25,12 @@ void verifyTensorInputSpecs(const py::object &obj,
 /// Borrows the data from the array in the pybind object `obj` into a new
 /// `GML::Tensor` wrapped in an `AsyncValue` and sets it's name to `name`.
 M_AsyncValue *processTensorInput(const py::object &obj, const std::string &name,
-                                 M_RuntimeContext *context, M_Status *status);
+                                 M_RuntimeContext *context);
 
 /// Borrows the data from the array in the pybind object `obj` into a new
 /// `GML::Tensor` wrapped in an `AsyncValue`.
 M_AsyncValue *processTensorInput(const py::object &obj,
-                                 M_RuntimeContext *context, M_Status *status);
+                                 M_RuntimeContext *context);
 
 /// Recursively converts the pybind object `pyObj` containing a value composed
 /// of `array`, `dict`, `list`, `tuple`, `none`, `double`, `long`, `bool`
