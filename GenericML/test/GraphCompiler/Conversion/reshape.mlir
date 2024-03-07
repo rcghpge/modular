@@ -34,15 +34,14 @@ mo.graph @reshape_static_input_static_output(%arg: !mo.tensor<[4], f32>) -> !mo.
 // CHECK: %[[SHAPE_BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[SHAPE]] : !mgp.tensor<2xsi64>
 
 // Invoke fallback shape function
-// CHECK: %[[FALLBACK_CHAIN:.*]], %[[OUT_DIMS:.*]]:2 = mgp.kernel.execute %{{.*}}, {{.*}}, summary "reshape_shape{{.*}}" out_dims 2
+// CHECK: %{{.*}}, %[[OUT_DIMS:.*]]:2 = mgp.kernel.execute %{{.*}}, {{.*}}, summary "reshape_shape{{.*}}" out_dims 2
 
 // Create output tensor with same buffer and new spec
 // CHECK: %[[OUT_SPEC:.*]] = mgp.cpu.tensor_spec.create %[[OUT_DIMS]]#0, %[[OUT_DIMS]]#1 : !mgp.tensor_spec<?x?xf32>
 // CHECK: %[[OUT_TENSOR:.*]] =  mgp.tensor.create %{{.*}}, %[[CTX]][1], %[[IN_BUF]], %[[OUT_SPEC]] : !mgp.tensor<?x?xf32>
 
 // Return output
-// CHECK: %[[OUT_CHAIN:.*]] = mgp.chain.device_to_host %[[FALLBACK_CHAIN]], %arg1[1
-// CHECK: mef.output %[[OUT_CHAIN]], %[[OUT_TENSOR]] : !mef.chain, !mgp.tensor<?x?xf32>
+// CHECK: mef.output %[[CH0]], %[[OUT_TENSOR]] : !mef.chain, !mgp.tensor<?x?xf32>
 mo.graph @reshape_dyn_input_dyn_output(%arg: !mo.tensor<[?], f32>, %shape : !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32> {
   %res = mo.reshape(%arg, %shape) : (!mo.tensor<[?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
@@ -51,9 +50,6 @@ mo.graph @reshape_dyn_input_dyn_output(%arg: !mo.tensor<[?], f32>, %shape : !mo.
 // Entry point
 // CHECK: mgp.model @reshape_dyn_input_static_output
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[INPUT:.*]]: !mgp.tensor<?xf32>, %[[SHAPE:.*]]: !mgp.tensor<2xsi64>)
-
-// Assert shape constraint
-// CHECK: %[[ASSERT_CHAIN:.*]] = mgp.assert %{{.*}}, "Tensor type mismatch for argument 1: Expected shape: [2]"
 
 // Extract the input tensor buffer
 // CHECK: %[[IN_BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[INPUT]] : !mgp.tensor<?xf32>
@@ -66,11 +62,8 @@ mo.graph @reshape_dyn_input_dyn_output(%arg: !mo.tensor<[?], f32>, %shape : !mo.
 // CHECK: %[[CH1:.*]] = mgp.chain.host_to_device %[[CH0]], %[[CTX]][1]
 // CHECK: %[[OUT_TENSOR:.*]] =  mgp.tensor.create %[[CH1]], %[[CTX]][1], %[[SIZED_BUF]], %[[OUT_SPEC]] : !mgp.tensor<4x2xf32>
 
-// Merge chains
-// CHECK: %[[OUT_CHAIN:.*]] = grt.chain.create (%[[CH0]], %[[ASSERT_CHAIN]])
-
 // Return output
-// CHECK: mef.output %[[OUT_CHAIN]], %[[OUT_TENSOR]] : !mef.chain, !mgp.tensor<4x2xf32>
+// CHECK: mef.output %[[CH0]], %[[OUT_TENSOR]] : !mef.chain, !mgp.tensor<4x2xf32>
 mo.graph @reshape_dyn_input_static_output(%arg: !mo.tensor<[?], f32>, %shape : !mo.tensor<[2], si64>) -> !mo.tensor<[4, 2], f32> {
   %res = mo.reshape(%arg, %shape) : (!mo.tensor<[?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[4, 2], f32>
   mo.output %res : !mo.tensor<[4, 2], f32>
@@ -84,7 +77,7 @@ mo.graph @reshape_dyn_input_static_output(%arg: !mo.tensor<[?], f32>, %shape : !
 // CHECK: %[[SHAPE_BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[SHAPE]] : !mgp.tensor<2xsi64>
 
 // Invoke fallback shape function
-// CHECK: %[[FALLBACK_CHAIN:.*]], %[[OUT_DIMS:.*]]:2 = mgp.kernel.execute %{{.*}}, {{.*}}, summary "reshape_shape{{.*}}"
+// CHECK: %{{.*}}, %[[OUT_DIMS:.*]]:2 = mgp.kernel.execute %{{.*}}, {{.*}}, summary "reshape_shape{{.*}}"
 
 // Extract the input tensor buffer
 // CHECK: %[[IN_BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[INPUT]] : !mgp.tensor<8xf32>
@@ -97,8 +90,7 @@ mo.graph @reshape_dyn_input_static_output(%arg: !mo.tensor<[?], f32>, %shape : !
 // CHECK: %[[OUT_TENSOR:.*]] =  mgp.tensor.create %{{.*}}, %[[CTX]][1], %[[UNSIZED_BUF]], %[[OUT_SPEC]] : !mgp.tensor<?x?xf32>
 
 // Return output
-// CHECK: %[[OUT_CHAIN:.*]] = mgp.chain.device_to_host %[[FALLBACK_CHAIN]], %arg1[1]
-// CHECK: mef.output %[[OUT_CHAIN]], %[[OUT_TENSOR]] : !mef.chain, !mgp.tensor<?x?xf32>
+// CHECK: mef.output %[[CH0]], %[[OUT_TENSOR]] : !mef.chain, !mgp.tensor<?x?xf32>
 mo.graph @reshape_static_input_dyn_output(%arg: !mo.tensor<[8], f32>, %shape : !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32> {
   %res = mo.reshape(%arg, %shape) : (!mo.tensor<[8], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
