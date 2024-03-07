@@ -129,6 +129,7 @@ public:
   bool frameworkVersion{false};
   SmallVector<std::string> inputNames;
   SmallVector<std::string> outputNames;
+  SmallVector<TensorSpec> compileSpecs;
   bool printMetadata{false};
   SmallVector<std::string> kernelLibraryPaths;
   bool gpu{false};
@@ -199,6 +200,17 @@ private:
                "and it must match the model's output names"),
       llvm::cl::location(options.outputNames),
       llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
+
+  M::cl::MListOpt<TensorSpec, SmallVector<TensorSpec>, TensorSpecParser>
+      compileSpecs{
+          "compile-specs",
+          cl::desc(
+              "Specify the input shapes to compile model with. "
+              "This is only required for PyTorch models. If both are "
+              "given compile-specs will be preferred over input-specs at model "
+              "compile time and input-specs will used at runtime."),
+          llvm::cl::location(options.compileSpecs),
+          llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
 
   M::cl::MOpt<bool, true> printMetadata{
       "print-metadata", cl::desc("Display Model Input and output Specs"),
@@ -579,21 +591,35 @@ int main(int argc, char **argv) {
   M_CompileConfig *configPtr = compileConfig.release();
 
   // We need to set torch input specs on models in case we're actually running
-  // a torch model. For this, we prefer to use `input-specs` over `input-shapes`
-  // as the CLI argument input. This allows for us to directly get the dtype
-  // of the input tensors.
-  if (!clOptions.inputSpecs.empty()) {
+  // a torch model. For this, we prefer to use `input-specs/compile-specs` over
+  // `input-shapes` as the CLI argument input. This allows for us to directly
+  // get the dtype of the input tensors.
+  if (!clOptions.inputSpecs.empty() || !clOptions.compileSpecs.empty()) {
     std::vector<TorchInputSpecPtr> specOwners;
     std::vector<M_TorchInputSpec *> specPointers;
-    for (auto &&[inputIndex, input] : llvm::enumerate(clOptions.inputSpecs)) {
-      SmallVector<int64_t> inputShape;
-      for (auto dim : input.getDimsCopy())
-        inputShape.emplace_back((int64_t)dim);
-      TorchInputSpecPtr spec{
-          api.newTorchInputSpec(inputShape.data(), inputShape.size(),
-                                convertToCDataType(input.getEltType())),
-          api.freeTorchInputSpec,
-      };
+    SmallVector<TensorSpec> specSource = clOptions.compileSpecs.empty()
+                                             ? clOptions.inputSpecs
+                                             : clOptions.compileSpecs;
+    for (auto &&[inputIndex, inputSpec] : llvm::enumerate(specSource)) {
+      TorchInputSpecPtr spec{nullptr, api.freeTorchInputSpec};
+      if (inputSpec.isStatic() || inputSpec.hasRank()) {
+        SmallVector<int64_t> inputShape;
+        for (auto dim : inputSpec) {
+          if (mlir::ShapedType::isDynamic(dim))
+            inputShape.push_back(api.getDynamicDimensionValue());
+          else
+            inputShape.emplace_back((int64_t)dim);
+        }
+        spec.reset(
+            api.newTorchInputSpec(inputShape.data(), inputShape.size(),
+                                  convertToCDataType(inputSpec.getEltType())));
+      } else {
+        spec.reset(
+            api.newTorchInputSpec(nullptr, api.getDynamicRankValue(),
+                                  convertToCDataType(inputSpec.getEltType())));
+      }
+
+      assert(spec && "expected spec to have value by now");
       specPointers.push_back(spec.get());
       specOwners.push_back(std::move(spec));
     }

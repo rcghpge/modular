@@ -25,6 +25,7 @@ public:
 
   decltype(&M_version) version = nullptr;
   decltype(&M_getDynamicDimensionValue) getDynamicDimensionValue = nullptr;
+  decltype(&M_getDynamicRankValue) getDynamicRankValue = nullptr;
 
   decltype(&M_isError) isError = nullptr;
   decltype(&M_getError) getError = nullptr;
