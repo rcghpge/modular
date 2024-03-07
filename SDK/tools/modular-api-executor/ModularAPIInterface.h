@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ALL_TOOLS_MODULAR_API_EXECUTOR_MODULARAPIINTERFACE_H
-#define ALL_TOOLS_MODULAR_API_EXECUTOR_MODULARAPIINTERFACE_H
+#ifndef SDK_TOOLS_MODULAR_API_EXECUTOR_MODULARAPIINTERFACE_H
+#define SDK_TOOLS_MODULAR_API_EXECUTOR_MODULARAPIINTERFACE_H
 
 #include "Support/ErrorOr.h"
 #include "max/c/common.h"
@@ -87,4 +87,4 @@ public:
 };
 } // namespace M
 
-#endif // ALL_TOOLS_MODULAR_API_EXECUTOR_MODULARAPIINTERFACE_H
+#endif // SDK_TOOLS_MODULAR_API_EXECUTOR_MODULARAPIINTERFACE_H
