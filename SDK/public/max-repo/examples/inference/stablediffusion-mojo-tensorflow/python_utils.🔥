@@ -23,17 +23,6 @@ from tensor import Tensor, TensorShape
 from collections.vector import DynamicVector
 
 
-fn expandvars(path: String) raises -> String:
-    var os = python.Python.import_module("os")
-    return str(os.path.expandvars(path))
-
-
-fn add_to_path(path: String) raises:
-    var path_obj = expandvars(path)
-    python.Python.add_to_path(path_obj)
-    print("Added", path_obj, "to Python path")
-
-
 @always_inline
 fn numpy_data_pointer[
     type: DType
