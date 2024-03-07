@@ -142,7 +142,8 @@ SmallVector<Value> inlineInvoke(MOGG::LambdaInvokeOp invokeOp,
 }
 
 MOGG::CallOp createMOGGReshape(mlir::OpBuilder &builder, mlir::Location loc,
-                               Value tensorIn, MO::TensorType newShape) {
+                               Value tensorIn, MO::TensorType newShape,
+                               const char *overrideName) {
   MLIRContext *ctx = builder.getContext();
   // Create the new output shape.
   auto shape = MOGG::ShapeType::get(ctx, newShape.getTypedShapeAttr());
@@ -162,7 +163,9 @@ MOGG::CallOp createMOGGReshape(mlir::OpBuilder &builder, mlir::Location loc,
   return builder.create<MOGG::CallOp>(
       loc,
       /*outputTypes=*/TypeRange{newShape},
-      /*kernelTarget=*/MO::Static::ReshapeOp::getOperationName(),
+      /*kernelTarget=*/
+      overrideName ? llvm::StringRef(overrideName)
+                   : MO::Static::ReshapeOp::getOperationName(),
       /*inputOperands=*/ValueRange{tensorIn, runtimeShape},
       /*lambdaParams=*/mlir::ArrayAttr{},
       /*otherParams=*/kgenParams);

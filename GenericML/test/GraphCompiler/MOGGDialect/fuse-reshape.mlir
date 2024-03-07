@@ -11,9 +11,9 @@ mo.graph @basicReshapeFuse(%arg0 : !mo.tensor<[50], ui32>, %arg1 : !mo.tensor<[5
 // CHECK: mogg.kernel (%[[ARG1]], %[[ARG0]]) : (%[[IN0:.*]]: !mo.tensor<[5, 10], ui32>, %[[IN1:.*]]: !mo.tensor<[50], ui32>)
 
 // CHECK: %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[5, 5, 2]>
-// CHECK-NEXT: %[[NEW_0:.*]] = mogg.call "mo.static.reshape"(%[[IN1]], %[[SHAPE]])
+// CHECK-NEXT: %[[NEW_0:.*]] = mogg.call "ndbuffer_reshape"(%[[IN1]], %[[SHAPE]])
 
-// CHECK-NEXT: %[[NEW_1:.*]] = mogg.call "mo.static.reshape"(%[[IN0]], %[[SHAPE]])
+// CHECK-NEXT: %[[NEW_1:.*]] = mogg.call "ndbuffer_reshape"(%[[IN0]], %[[SHAPE]])
 
 
 // CHECK: mogg.call "simd_load"(%[[NEW_0]]
@@ -31,9 +31,9 @@ mo.graph @basicReshapeDyn<N, L>(%arg0 : !mo.tensor<[50], ui32>, %arg1 : !mo.tens
 // CHECK: mogg.kernel (%[[ARG1]], %[[ARG0]]) : (%[[IN0:.*]]: !mo.tensor<[5, 10], ui32>, %[[IN1:.*]]: !mo.tensor<[50], ui32>)
 
 // CHECK: %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[N, 5, L]>
-// CHECK-NEXT: %[[NEW_0:.*]] = mogg.call "mo.static.reshape"(%[[IN1]], %[[SHAPE]])
+// CHECK-NEXT: %[[NEW_0:.*]] = mogg.call "ndbuffer_reshape"(%[[IN1]], %[[SHAPE]])
 
-// CHECK-NEXT: %[[NEW_1:.*]] = mogg.call "mo.static.reshape"(%[[IN0]], %[[SHAPE]])
+// CHECK-NEXT: %[[NEW_1:.*]] = mogg.call "ndbuffer_reshape"(%[[IN0]], %[[SHAPE]])
 
 // CHECK: mogg.call "simd_load"(%[[NEW_0]]
 // CHECK: mogg.call "simd_load"(%[[NEW_1]]
@@ -62,7 +62,7 @@ mo.graph @multiReshape<N, L>(%arg0: !mo.tensor<[50], ui32>, %arg1: !mo.tensor<[5
 // CHECK: mogg.kernel (%[[ARG0]]) : (%[[IN0:.*]]: !mo.tensor<[50], ui32>)
 
 // CHECK: %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[N, 5, L]>
-// CHECK: %[[RESHAPED:.*]] = mogg.call "mo.static.reshape"(%[[IN0]], %[[SHAPE]])
+// CHECK: %[[RESHAPED:.*]] = mogg.call "ndbuffer_reshape"(%[[IN0]], %[[SHAPE]])
 
 // CHECK: mogg.call "simd_load"(%[[RESHAPED]]
 // CHECK: mogg.call "simd_load"(%[[RESHAPED]]

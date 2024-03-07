@@ -131,6 +131,12 @@ public:
     return kernelHasDecorator(kernel, DECORATOR_TAKES_INDICES);
   }
 
+  /// Returns true if the kernel implementation is in the Tensor API.
+  inline bool kernelUsesTensorAPI(KGEN::GeneratorOp kernel) {
+    return llvm::dyn_cast_if_present<mlir::UnitAttr>(
+               kernel->getAttr("_sliced")) != nullptr;
+  }
+
 private:
   /// Get the materialized mojo kernel. If the kernel is not materialized, the
   /// materialization happens in place.

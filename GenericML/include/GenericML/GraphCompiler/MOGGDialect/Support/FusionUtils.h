@@ -29,9 +29,13 @@ SmallVector<Value> inlineInvoke(MOGG::LambdaInvokeOp invokeOp,
 /// modification
 bool inlineLambdasInKernel(KernelOp kernel);
 
-/// Create a call to the reshape kernel directly in MOGG.
+/// Create a call to the reshape kernel directly in MOGG. The overrideName is
+/// used in case call site needs to call a particular implementation of reshape.
+/// This occurs when we have multiple implementations and we would like to
+/// bypass the mojo library analysis.
 MOGG::CallOp createMOGGReshape(mlir::OpBuilder &builder, mlir::Location loc,
-                               Value tensorIn, MO::TensorType newShape);
+                               Value tensorIn, MO::TensorType newShape,
+                               const char *overrideName = nullptr);
 
 // Create a call to the slice kernel directly in MOGG.
 MOGG::CallOp createMOGGSlice(mlir::OpBuilder &builder, mlir::Location loc,

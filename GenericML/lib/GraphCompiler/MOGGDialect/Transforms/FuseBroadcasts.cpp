@@ -137,8 +137,9 @@ struct FuseBroadcastsPass
           Value reshapeInput = kernel.addOperand(reshape.getInput());
 
           // Add the new reshape.
-          MOGG::CallOp newReshape = createMOGGReshape(builder, reshape.getLoc(),
-                                                      reshapeInput, outType);
+          MOGG::CallOp newReshape =
+              createMOGGReshape(builder, reshape.getLoc(), reshapeInput,
+                                outType, "ndbuffer_reshape");
 
           // Replace all uses of the old operand and then remove it from this
           // kernel.
