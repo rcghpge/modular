@@ -22,13 +22,12 @@ namespace M::MOGG::Stub {
 class StubCompiler {
 public:
   StubCompiler(mlir::ModuleOp kgenStubs, MO::GraphOp graphOp, bool shouldSearch,
-               std::string saveTempsPrefix, DeviceSpecAttr deviceSpec,
-               DeviceSpecAttr hostDeviceSpec)
+               std::string saveTempsPrefix)
       : ctx(graphOp.getContext()), graphOp(graphOp), kgenModule(kgenStubs),
         loc(graphOp.getLoc()), moggBuilder(&graphOp.getBody().front(),
                                            graphOp.getBody().front().begin()),
-        saveTempsPrefix(std::move(saveTempsPrefix)), shouldSearch(shouldSearch),
-        deviceSpec(deviceSpec), hostDeviceSpec(hostDeviceSpec) {}
+        saveTempsPrefix(std::move(saveTempsPrefix)),
+        shouldSearch(shouldSearch) {}
 
   /// Compile to binary object. Tell the jit all of the given symbols as symbols
   /// within it that can be executed at runtime.
@@ -65,12 +64,6 @@ private:
 
   /// Should tell KGEN to search.
   bool shouldSearch;
-
-  /// Device specification for where the kernels will execute.
-  DeviceSpecAttr deviceSpec;
-
-  /// Device specification for the 'host' device.
-  DeviceSpecAttr hostDeviceSpec;
 };
 
 } // namespace M::MOGG::Stub

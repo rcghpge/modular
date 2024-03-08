@@ -115,7 +115,7 @@ LogicalResult
 LoadCompiledKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   OpBuilder &builder = loweringState.getInitOpBuilder();
   MGP::BufferBuilder *bufferBuilder =
-      loweringState.getBufferBuilder(MO::getDeviceOrDefault(*this));
+      loweringState.getBufferBuilder(MO::getDeviceOrDefaultAny(*this));
   Value outChain = bufferBuilder->moduleLoad(
       builder, getLoc(), loweringState.getInitMgpContext(),
       /*inChain=*/

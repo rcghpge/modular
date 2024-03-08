@@ -42,6 +42,13 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
 
   mlir::PassManager pm(ctx);
 
+  ErrorOr<TargetInfoAttr> targetOr = M::getTargetInfoFor(
+      kgenModule->getContext(), llvm::sys::getDefaultTargetTriple(),
+      llvm::sys::getHostCPUName(), getHostCPUFeatures());
+  if (targetOr.isError())
+    return mlir::emitError(kgenModule.getLoc(), targetOr.getError());
+  TargetInfoAttr target = *targetOr;
+
   if (enableTiming)
     pm.enableTiming();
 
@@ -50,10 +57,9 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
 
   // Retrieve the target info from the device spec, however 'complete' it with
   // additional fields derived from the 'core' fields.
-  ErrorOr<TargetInfoAttr> targetInfoOr = getTargetInfoFor(
-      ctx, deviceSpec.getTarget().getTripleStr(),
-      deviceSpec.getTarget().getArch(), deviceSpec.getTarget().getFeatures(),
-      deviceSpec.getTarget().getTuneCpu());
+  ErrorOr<TargetInfoAttr> targetInfoOr =
+      getTargetInfoFor(ctx, target.getTripleStr(), target.getArch(),
+                       target.getFeatures(), target.getTuneCpu());
   if (targetInfoOr)
     return kgenModule->emitError(targetInfoOr.getError());
 
@@ -182,14 +188,8 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
   }
 
   // Add the compiled kernels as a constant.
-  auto loadCompiledOp = moggBuilder.create<MOGG::LoadCompiledKernelOp>(
+  moggBuilder.create<MOGG::LoadCompiledKernelOp>(
       loc, /*symbols=*/combinedSymbolName, /*value=*/archiveAttr);
-
-  // If working with multiple devices, remember the device these kernels are
-  // to be executed on.
-  if (graphOp.getDeviceSpecs())
-    loadCompiledOp.setDeviceRef(deviceSpec.getRef());
-
   return success();
 }
 

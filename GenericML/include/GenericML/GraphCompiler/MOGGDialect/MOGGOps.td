@@ -601,8 +601,7 @@ def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure]> {
   let results = (outs AnyType:$results);
 }
 
-def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel", [
-    MO_HasDeviceInterface]> {
+def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
   let summary = "Loads pairs of (symbol, compiled object) into the runtime "
                 "for a given device.";
   let description = [{

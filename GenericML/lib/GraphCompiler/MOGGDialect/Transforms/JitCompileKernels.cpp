@@ -15,6 +15,8 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/NameMangling.h"
+#include "GenericML/MGPDialect/MGPOps.h"
+
 #include "GenericML/Support/Tensor.h"
 
 #include "KGEN/Compiler/KGENCompiler.h"
@@ -69,27 +71,17 @@ struct JitCompileKernels
 
   CompileDiagnosticOrSuccess
   runPass(MO::GraphOp graph, MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
-    ErrorOr<DeviceSpecCollectionAttr> deviceSpecsOr =
-        MO::getDeviceSpecsOrDefault(graph);
-    if (deviceSpecsOr)
-      return graph->emitError(deviceSpecsOr.takeError().get());
-    DeviceSpecAttr hostDeviceSpec = deviceSpecsOr->getHostDeviceSpec();
-
     // We can optionally override
     DenseMap<Operation *, std::string> unusedOverrideMap;
 
-    // For each (virtual) device used by the graph...
-    for (DeviceSpecAttr deviceSpec : deviceSpecsOr->getDevices()) {
-      auto err = compileToBinary(
-          graph, mojoLibraryAnalysis, deviceSpec, hostDeviceSpec,
-          unusedOverrideMap, dumpStub.getValue(),
-          createMOGGReproducers.getValue(), useSearch.getValue(),
-          saveTempPrefix.getValue(), minimumCpuAlignment.getValue(),
-          splitBinaryCompile.getValue(), timeMOGGCompile.getValue());
+    auto err = compileToBinary(
+        graph, mojoLibraryAnalysis, unusedOverrideMap, dumpStub.getValue(),
+        createMOGGReproducers.getValue(), useSearch.getValue(),
+        saveTempPrefix.getValue(), minimumCpuAlignment.getValue(),
+        splitBinaryCompile.getValue(), timeMOGGCompile.getValue());
 
-      if (err.isError())
-        return err.takeError();
-    }
+    if (err.isError())
+      return err.takeError();
     return success();
   }
 };
