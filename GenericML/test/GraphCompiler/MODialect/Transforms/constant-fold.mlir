@@ -347,3 +347,14 @@ mo.graph @transitive_remove(%arg0: !mo.tensor<[11, 4, 4, 6, 5], f32>) -> !mo.ten
   %14 = mo.conv(%arg0, %7) [strides = %2, dilations = %1, paddings = %0, num_groups = %13] : (!mo.tensor<[11, 4, 4, 6, 5], f32>, !mo.tensor<[2, 2, 3, 1, 10], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[11, 2, 2, 2, 10], f32>
   mo.output %14 : !mo.tensor<[11, 2, 2, 2, 10], f32>
 }
+
+// Check that mogg ops are folded
+// CHECK: mo.graph @fold_mogg_ops
+// CHECK-NOT: mogg.concat
+// CHECK: mo.output
+mo.graph @fold_mogg_ops() -> !mo.tensor<[2], si64> {
+  %1 = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %2 = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %3 = mogg.concat(%1, %2) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
+  mo.output %3 : !mo.tensor<[2], si64>
+}

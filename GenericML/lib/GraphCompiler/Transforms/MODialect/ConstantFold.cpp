@@ -163,7 +163,7 @@ sortParams(llvm::ArrayRef<Operation *> ops) {
 /// Marker for ops that are constant foldable. Currently MO ops and KGEN param
 /// ops.
 static bool isConstantFoldable(Operation *op) {
-  return ((isa<MO::MODialect>(op->getDialect()) &&
+  return ((isa<MO::MODialect, MOGG::MOGGDialect>(op->getDialect()) &&
            // TODO (#29484): Graphs with mo.list outputs can't be lowered to
            // MGP.
            llvm::all_of(op->getResultTypes(),
