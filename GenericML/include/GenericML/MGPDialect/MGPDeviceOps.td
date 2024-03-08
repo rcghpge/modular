@@ -563,7 +563,7 @@ def BufferAllocStaticOp : MGP_DeviceOp<"buffer.alloc.static", [
 ]> {
   let summary = "Allocates a buffer with statically known byte size on given device.";
   let description = [{
-    One of a family of 4 buffer allocation primitives.
+    One of a family of 6 buffer allocation primitives.
 
     Allocates (possibly asynchronously) an uninitialized buffer from a device's
     default memory pool with a statically known byte size and optional
@@ -623,6 +623,8 @@ def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
   let summary = "Allocates a buffer with dynamically provided byte size on "
                 "given device.";
   let description = [{
+    One of a family of 6 buffer allocation primitives.
+
     Allocates (possibly asynchronously) an uninitialized buffer from a device's
     default memory pool with given byte size, and optional statically known
     alignment. The allocation uses the device-appropriate runtime established
@@ -678,7 +680,7 @@ def BufferReallocStaticOp : MGP_DeviceOp<"buffer.realloc.static", [
   let summary = "(Re)allocates or reuses a cached device buffer with statically "
                 "known size.";
   let description = [{
-    One of a family of 4 buffer allocation primitives.
+    One of a family of 6 buffer allocation primitives.
 
     This operation has access to a buffer cache entry in the context given
     by the slot and buffer indexes.
@@ -764,7 +766,7 @@ def BufferReallocDynamicOp : MGP_DeviceOp<"buffer.realloc.dynamic", [
   let summary = "(Re)allocates or reuses a cached device buffer with dynamically "
                 "known size.";
   let description = [{
-    One of a family of 4 buffer allocation primitives.
+    One of a family of 6 buffer allocation primitives.
 
     This operation has access to a buffer cache entry in the context given
     by the slot and buffer indexes.
@@ -817,6 +819,124 @@ def BufferReallocDynamicOp : MGP_DeviceOp<"buffer.realloc.dynamic", [
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// BufferAllocPinnedStaticOp
+//===----------------------------------------------------------------------===//
+
+def BufferAllocPinnedStaticOp : MGP_DeviceOp<"buffer.alloc_pinned.static", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
+    DeclareOpInterfaceMethods<MGP_StaticAllocOpInterface>,
+    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
+]> {
+  let summary = "Allocates a pinned host buffer with statically known byte size.";
+  let description = [{
+    One of a family of 6 buffer allocation primitives.
+
+    This is the analog of `mgp.buffer.alloc.static` on host, but the buffer is
+    allocated on host using the device established in the given `!mgp.context` slot. 
+    The corresponding device corresponds to the chain and runtime context must be 
+    specified statically.
+
+    Not all devices support this operation. 
+
+    Example:
+    ```mlir
+      %ch : !mgp.chain<<"cuda", 3>>
+      %ctx : !mgp.context
+      // Allocates 256 bytes on host using the CUDA runtime from slot 5
+      %buf = buffer.alloc_pinned.static %ch, %ctx[5], 256 : device <"cuda, 0"> -> !mgp.buffer<256>
+      %buf : !mgp.buffer<256>
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins MGP_DeviceChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       UI64Attr:$aRuntimeSlot,                                 // 0
+                       UI64Attr:$bSize,                                        // 1
+                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign, // 2
+                       MGP_OptDeviceRefAttr:$dHostDevice,                      // 3
+                       MGP_OptDeviceRefAttr:$eDevice);                         // 4 
+  let results = (outs MGP_DeviceBufferType:$outBuffer);
+  let assemblyFormat = [{
+    $inChain  `,` $theContext `[` $aRuntimeSlot `]`
+    ( `,` `align` $cRawAlign^ )? attr-dict
+    `:` custom<OptDeviceRef>("\"device\"", $eDevice, type($inChain)) 
+    `->` custom<StaticBufferTypeToSizeDevice>(
+          type($outBuffer), $bSize, $dHostDevice)
+  }];
+  let hasVerifier = 1;
+
+  let extraClassDefinition = [{
+    bool BufferAllocPinnedStaticOp::isTrivial() { return true; }
+
+    uint64_t BufferAllocPinnedStaticOp::getSlot() { return getARuntimeSlot(); }
+
+    M::DeviceRefAttr BufferAllocPinnedStaticOp::getDevice() { return getEDevice(); }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// BufferAllocPinnedDynamicOp
+//===----------------------------------------------------------------------===//
+
+def BufferAllocPinnedDynamicOp : MGP_DeviceOp<"buffer.alloc_pinned.dynamic", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
+    DeclareOpInterfaceMethods<MGP_DynamicAllocOpInterface>,
+    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
+    ]> {
+  let summary = "Allocates a pinned cpu buffer with byte size taken from "
+                "`index` operand.";
+  let description = [{
+    One of a family of 6 buffer allocation primitives.
+
+    This is the analog of `mgp.buffer.alloc.dynamic` on host, but the buffer is
+    allocated on host using the device established in the given `!mgp.context` slot. 
+    The corresponding device corresponds to the chain and runtime context must be 
+    specified statically.
+    
+    Not all devices support this operation. 
+
+    Example:
+    ```mlir
+      %ch : !mgp.chain
+      %ctx : !mgp.context
+      %size : index
+      // Allocates %size bytes using the CUDA runtime from slot 5.
+      %buf = mgp.buffer.alloc_pinned.dynamic %ch, %ctx[5], %size, 1024 : device <"cuda, 0"> -> !mgp.buffer<>
+      %buf : !mgp.buffer <>
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins MGP_DeviceChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       Index:$runtimeSize,
+                       UI64Attr:$aRuntimeSlot,                                 // 0
+                       UI64Attr:$bMinPinnedSize,                               // 1
+                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign, // 2
+                       MGP_OptDeviceRefAttr:$dHostDevice,                      // 3
+                       MGP_OptDeviceRefAttr:$eDevice);                         // 4 
+  let results = (outs MGP_DeviceBufferType:$outBuffer);
+  let assemblyFormat = [{
+    $inChain  `,` $theContext `[` $aRuntimeSlot `]` `,` $runtimeSize `,` $bMinPinnedSize
+    ( `,` `align` $cRawAlign^ )? attr-dict
+    `:` custom<OptDeviceRef>("\"device\"", $eDevice, type($inChain)) 
+    `->` custom<DynamicBufferTypeToDevice>(
+          type($outBuffer), $dHostDevice)
+  }];
+  let hasVerifier = 1;
+
+  let extraClassDefinition = [{
+    uint64_t BufferAllocPinnedDynamicOp::getSlot() { return getARuntimeSlot(); }
+
+    M::DeviceRefAttr BufferAllocPinnedDynamicOp::getDevice() { return getEDevice(); }
+  }];
+}
 //===----------------------------------------------------------------------===//
 // BufferCacheOp
 //===----------------------------------------------------------------------===//

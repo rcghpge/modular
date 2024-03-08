@@ -320,6 +320,28 @@ static void mgp_buffer_realloc_dynamic_cpu(
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.buffer.alloc_pinned.{static,dynamic}
+//===----------------------------------------------------------------------===//
+
+static void mgp_buffer_alloc_pinned_static_cpu(
+    Chain inChain, GML::Context &theContext, Result<GML::BufferRef> outBuffer,
+    MEFAttr<uint64_t> aRuntimeSlot, MEFAttr<uint64_t> bSize,
+    MEFAttr<uint64_t> cRawAlign, MEFAttr<uint64_t> dHostDeviceId,
+    MEFAttr<uint64_t> eDeviceId) {
+  return std::move(outBuffer).setToError(
+      "mgp.buffer.alloc_pinned.static.cpu is not implemented");
+}
+
+static void mgp_buffer_alloc_pinned_dynamic_cpu(
+    Chain inChain, GML::Context &theContext, size_t runtimeSize,
+    Result<GML::BufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
+    MEFAttr<uint64_t> bMinPinnedSize, MEFAttr<uint64_t> cRawAlign,
+    MEFAttr<uint64_t> dHostDeviceId, MEFAttr<uint64_t> eDeviceId) {
+  return std::move(outBuffer).setToError(
+      "mgp.buffer.alloc_pinned.dynamic.cpu is not implemented");
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.buffer.cache.cpu
 //===----------------------------------------------------------------------===//
 
@@ -1011,6 +1033,10 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
                 mgp_buffer_realloc_static_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.realloc.dynamic.cpu",
                 mgp_buffer_realloc_dynamic_cpu);
+  ADD_PRIMITIVE(registry, "mgp.buffer.alloc_pinned.static.cpu",
+                mgp_buffer_alloc_pinned_static_cpu);
+  ADD_PRIMITIVE(registry, "mgp.buffer.alloc_pinned.dynamic.cpu",
+                mgp_buffer_alloc_pinned_dynamic_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.cache.cpu", mgp_buffer_cache_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.get_cached.cpu",
                 mgp_buffer_get_cached_cpu);
