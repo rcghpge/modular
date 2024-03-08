@@ -6,9 +6,9 @@
 # RUN: %mojo -debug-level full %s | FileCheck %s
 
 from math import iota, sqrt
-from random import rand, randn, seed
+from random import seed
 
-from tensor import Tensor, TensorShape
+from tensor import Tensor, TensorShape, rand, randn
 
 from utils.index import Index, StaticIntTuple
 
