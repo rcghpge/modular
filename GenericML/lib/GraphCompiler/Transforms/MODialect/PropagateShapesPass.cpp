@@ -134,6 +134,9 @@ void scheduleOpByUsedParams(Operation *op,
 /// never materialize kgen.param.decl (the result params are declared in the
 /// graph signature).
 /// 2. We need to be careful about mapping graph result parameters.
+///
+/// NOTE this assumes we've run shape propagation for all the ops within a
+/// `mo.graph`.
 void handleOutputBindings(GraphOp graphOp,
                           KGEN::ParameterEvaluator &evaluator) {
   // First we collect the declared parameter names so we can check for them.
@@ -171,16 +174,13 @@ void handleOutputBindings(GraphOp graphOp,
   auto outputOp = graphOp.getOutputOp();
   for (auto [bindingParam, resultParam] :
        llvm::zip(outputOp.getParameters(), graphOp.getResultParams())) {
-    // First we resolve the binding parameter.
-    Attribute resolvedBindingParam =
-        evaluator.getReboundAttribute(bindingParam);
-
+    // NOTE the binding parameter has already been rebound.
     // Output parameter could be either a shape or dimension, we check to make
     // sure the resolved parameter is valid.
     if ((isa<ShapeType>(bindingParam.getType()) &&
-         isValidOutputShape(resolvedBindingParam)) ||
-        isValidOutputDim(resolvedBindingParam)) {
-      evaluator.setParameterValue(resultParam.getName(), resolvedBindingParam);
+         isValidOutputShape(bindingParam)) ||
+        isValidOutputDim(bindingParam)) {
+      evaluator.setParameterValue(resultParam.getName(), bindingParam);
     } else {
       // Otherwise we still map the result parameter to itself so replacer
       // won't complain.
@@ -235,11 +235,9 @@ void updateGraphSignature(GraphOp graphOp) {
 // Return true if expansion happened; the resulting ops from the expansion
 // will be pushed onto `worklist` in correct order, to be processed later.
 bool tryExpandDeclOpExpr(KGEN::ParamDeclareOp declOp,
-                         KGEN::ParameterEvaluator &evaluator,
                          std::deque<Operation *> &worklist, GraphOp graphOp) {
   // Only try to expand expression that applies an mlir op.
-  auto operatorAttr = dyn_cast<KGEN::ParamOperatorAttr>(
-      evaluator.getReboundAttribute(declOp.getValue()));
+  auto operatorAttr = dyn_cast<KGEN::ParamOperatorAttr>(declOp.getValue());
   if (!operatorAttr || operatorAttr.getOpcode() != KGEN::POC::Apply)
     return false;
 
@@ -295,10 +293,8 @@ bool tryExpandDeclOpExpr(KGEN::ParamDeclareOp declOp,
     Type boolType = IntegerType::get(ctx, 1);
     auto intOneAttr = IntegerAttr::get(IndexType::get(ctx), 1);
 
-    auto shapeAttr1 =
-        dyn_cast<MOSH::ShapeAttr>(evaluator.getReboundAttribute(operands[1]));
-    auto shapeAttr2 =
-        dyn_cast<MOSH::ShapeAttr>(evaluator.getReboundAttribute(operands[2]));
+    auto shapeAttr1 = dyn_cast<MOSH::ShapeAttr>(operands[1]);
+    auto shapeAttr2 = dyn_cast<MOSH::ShapeAttr>(operands[2]);
     if (shapeAttr1 && shapeAttr2) {
       // Ensure rank(shapeAttr1) >= rank(shapeAttr2)
       if (shapeAttr1.getRank() < shapeAttr2.getRank())
@@ -709,12 +705,11 @@ struct PropagateShapesPass
       if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
         // If expansion happened, no need to process `op` anymore, instead
         // continue to process the resulting ops from the expansion.
-        if (tryExpandDeclOpExpr(declOp, evaluator, worklist, graphOp))
+        if (tryExpandDeclOpExpr(declOp, worklist, graphOp))
           continue;
 
         KGEN::ParamDeclAttr declAttr = declOp.getParamDecl();
-        auto foldedRhsAttr =
-            cast<TypedAttr>(evaluator.getReboundAttribute(declOp.getValue()));
+        auto foldedRhsAttr = cast<TypedAttr>(declOp.getValue());
 
         // Apply shape-inference specific folding
         foldedRhsAttr = tryFoldExprAttr(foldedRhsAttr);
