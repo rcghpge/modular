@@ -1630,21 +1630,23 @@ private:
                    "all the same rank!");
     }
 
-    // We either allow the rank and attention mask to be the same rank
-    // OR the attention mask to be rank 4 and QKV to be rank 3.
-    //
-    // In the special case they are not the same we expect the BMM to be
-    // done at rank 3, and the tensor is reshaped for masking.
+    // We need the attention mask to match the attention matrix shape
     if (maskingMatcher->hasAttentionMask()) {
       MOSH::ShapeAttr attentionMaskShape =
           cast<MOSH::ShapeAttr>(maskingMatcher->getAttentionMaskShape());
-      bool maskEqualRank = expectedQKVRank == attentionMaskShape.getRank();
-      bool maskDifferentRank =
-          (expectedQKVRank == 3) && (attentionMaskShape.getRank() == 4);
-      if (!maskEqualRank && !maskDifferentRank) {
-        return Error("[MultiHeadAttentionPrologueMatcher] unsupported rank "
-                     "difference between QKV and attention mask");
-      }
+      MOSH::ShapeAttr attentionMatrixShape =
+          normalizationMatcher->getAttentionMatrix()
+              .getType()
+              .getTypedShapeAttr();
+
+      bool sameRank =
+          attentionMaskShape.getRank() == attentionMatrixShape.getRank();
+      bool differentRank = attentionMaskShape.getRank() == 4 &&
+                           attentionMatrixShape.getRank() == 3;
+      if (!sameRank && !differentRank)
+        return Error("[MultiHeadAttentionPatternHelper] Attention mask only "
+                     "supports being the same rank as attention matrix or "
+                     "attention mask being rank 4 and the matrix rank 3.");
     }
     return success();
   }
@@ -1772,6 +1774,10 @@ public:
     return maskingMatcher->getAttentionMask(*builder);
   }
 
+  TensorValue getAttentionMatrix() {
+    return normalizationMatcher->getAttentionMatrix();
+  }
+
   // layout B,H,s,D
   TensorValue getQuery() { return prologueMatcher->getQuery(); }
 
@@ -1859,71 +1865,6 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
                      "interest so please report!");
   }
 
-  void guardBHDimensionFused(GraphOp graphOp, ArrayRef<TypedAttr> rank3Dims,
-                             ArrayRef<TypedAttr> rank4Dims,
-                             PatternRewriter &rewriter, Location loc) const {
-    // insert guards that the rank 3 dimensions [A, B, C], and rank4 target
-    // dimensions [E, F, G, H], that A = E * F, B == G, C == H.
-    //
-    // This usually corresponds to the fusion of the B and H dimensions in LLMs
-
-    // mosh.eq expects shapes so wrap results with shapes
-    SmallVector<TypedAttr> mulOperands = {rank4Dims[0], rank4Dims[1]};
-    SmallVector<TypedAttr> lhsShape = {
-        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, mulOperands),
-        rank4Dims[2], rank4Dims[3]};
-    MOSH::ShapeAttr comparisonLHS = MOSH::ShapeAttr::get(
-        lhsShape, MOSH::ShapeType::get(rewriter.getContext()));
-    MOSH::ShapeAttr comparisonRHS = MOSH::ShapeAttr::get(
-        rank3Dims, MOSH::ShapeType::get(rewriter.getContext()));
-
-    // Add run time checks for changed dimensions
-    insertShapeGuard(rewriter, graphOp, comparisonLHS, comparisonRHS, loc,
-                     "MHA_INTERNAL_RESHAPE_CHECK",
-                     "MHA Pattern Detected unsafe internal reshape. This is of "
-                     "great interest so please report!");
-  }
-
-  TensorValue upcastRankWithGuard(GraphOp graphOp, TensorValue rank3Input,
-                                  ArrayRef<TypedAttr> rank4Target,
-                                  PatternRewriter &rewriter) const {
-    // It could be the case that the QKV tensors and the mask are not the
-    // same rank. Sometimes, the BMM are done in rank 3, and later reshaped
-    // to a rank 4 version to do masking. The rank 3 version is the same
-    // as the rank 4 except the batch and head dimensions are combined.
-    //
-    // We allow this pattern here by reshaping Q to attentionMask. We
-    // assume this occurs because the rank 4 tensor is shaped: [B, H, S, S]
-    //
-    // while the rank 3 tensors are shaped [B * H, S, D] or [B * H, S, D].
-    //
-    // This method handles this by, given a rank3Input with assumed dimensions
-    // [B * H, S, D] or [B * H, D, S] and the dimensions of the rank4 input
-    // returns the newly reshaped rank4 input. [B, H, S, D] or [B, H, D, S].
-    ArrayRef<TypedAttr> oldDims = rank3Input.getType().getDims();
-    SmallVector<TypedAttr> newDims(4);
-
-    Location loc = rank3Input.getLoc();
-
-    newDims[0] = rank4Target[0];
-    newDims[1] = rank4Target[1];
-    newDims[2] = oldDims[1];
-    newDims[3] = oldDims[2];
-
-    // Create new tensor with given shape
-    MOSH::ShapeType ty = rank3Input.getType().getTypedShapeAttr().getType();
-    MOSH::ShapeAttr newShape = MOSH::ShapeAttr::get(newDims, ty);
-    TensorType newType = rank3Input.getType().cloneWith(newShape);
-    TensorValue newValue =
-        rewriter.create<Static::ReshapeOp>(loc, newType, rank3Input);
-
-    // Need MOSH::ShapeAttr to match
-    guardBHDimensionFused(graphOp,
-                          rank3Input.getType().getTypedShapeAttr().getValues(),
-                          newDims, rewriter, loc);
-    return newValue;
-  }
-
   LogicalResult matchAndRewrite(BatchMatmulOp op,
                                 PatternRewriter &rewriter) const override {
     DeviceRefAttr device = op->getParentOfType<MO::GraphOp>().getDeviceRef();
@@ -1961,21 +1902,40 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
 
       // Attention mask may or may not have the same rank
       TensorValue attentionMask = matcher->getAttentionMask();
+      TensorValue attentionMatrix = matcher->getAttentionMatrix();
 
-      // Sometimes the BMM are done in rank 3 where the batch and head dims
-      // are combined. Masking is still done in rank4 however.
       TensorType fusedKernelOutType = op.getResult().getType();
       GraphOp graphOp = op->getParentOfType<GraphOp>();
 
-      if (query.getType().getRank() == 3 &&
-          attentionMask.getType().getRank() == 4) {
-        ArrayRef<TypedAttr> rank4Target = attentionMask.getType().getDims();
-        query = upcastRankWithGuard(graphOp, query, rank4Target, rewriter);
-        keyT = upcastRankWithGuard(graphOp, keyT, rank4Target, rewriter);
-        value = upcastRankWithGuard(graphOp, value, rank4Target, rewriter);
-        fusedKernelOutType =
-            upcastRankWithGuard(graphOp, op.getResult(), rank4Target, rewriter)
-                .getType();
+      // Sometimes the BMM are done in rank 3 where the batch and head dims
+      // are combined. Masking is still done in rank4 however.
+      //
+      // To get around this we just reshape the attention mask to the
+      // attentionMatrix
+      if (attentionMask.getType().getRank() !=
+          attentionMatrix.getType().getRank()) {
+        // Here just compare the symbolic number of elements.
+        TypedAttr numElementsMask =
+            attentionMask.getType().getSymbolicNumElements();
+        TypedAttr numElementsMatrix =
+            attentionMatrix.getType().getSymbolicNumElements();
+        auto shapeTy = MOSH::ShapeType::get(rewriter.getContext());
+
+        auto maskEleCntShape = MOSH::ShapeAttr::get(
+            SmallVector<TypedAttr>{numElementsMask}, shapeTy);
+        auto matrixEleCntShape = MOSH::ShapeAttr::get(
+            SmallVector<TypedAttr>{numElementsMatrix}, shapeTy);
+
+        insertShapeGuard(rewriter, graphOp, maskEleCntShape, matrixEleCntShape,
+                         attentionMask.getLoc(), "MHA_RESHAPE_CHECK",
+                         "MHA Pattern Detected unsafe internal reshape. This "
+                         "is of great interest so please report!");
+
+        attentionMask = rewriter.create<Static::ReshapeOp>(
+            op.getLoc(),
+            attentionMask.getType().cloneWith(
+                attentionMatrix.getType().getShapeAttr()),
+            attentionMask);
       }
 
       SmallVector<Value> inputValues = {query, keyT, value, attentionMask,
@@ -1989,20 +1949,6 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
                                               "with_mask_fused_attention_cpu");
       auto fusedKernelResult = cast<TensorValue>(result->getResult(0));
       fusedKernelResult.setType(fusedKernelOutType);
-
-      // NOTE: if this is true, then checks in matcher should guarantee we are
-      // moving from rank4 back to rank3.
-      if (fusedKernelResult.getType() != op.getType()) {
-        MOSH::ShapeAttr fusedKernelShape =
-            cast<MOSH::ShapeAttr>(fusedKernelResult.getType().getShapeAttr());
-        MOSH::ShapeAttr targetShape =
-            cast<MOSH::ShapeAttr>(op.getType().getShapeAttr());
-        guardBHDimensionFused(graphOp, targetShape.getValues(),
-                              fusedKernelShape.getValues(), rewriter,
-                              op->getLoc());
-        fusedKernelResult = rewriter.create<Static::ReshapeOp>(
-            op->getLoc(), op.getType(), fusedKernelResult);
-      }
 
       rewriter.replaceAllUsesWith(op, fusedKernelResult);
     } else {
