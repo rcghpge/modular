@@ -87,7 +87,8 @@ static ClOptions parseOptions(const State &state) {
     opts.inputGenerationSchemaPath =
         args.getLastArgValue(options::OPT_input_generation_schema);
   if (args.hasMultipleArgs(options::OPT_output_dir))
-    std::exit(state.reportError("must provide at most one custom ops path"));
+    std::exit(state.reportError(
+        "must provide at most one visualization output directory"));
   if (args.hasArg(options::OPT_output_dir))
     opts.visualizationDir = args.getLastArgValue(options::OPT_output_dir);
   if (args.hasMultipleArgs(options::OPT_custom_ops_path))
