@@ -6,7 +6,7 @@
 # UNSUPPORTED: windows
 # RUN: mojo %s
 
-from tensor import TensorShape
+from tensor import Tensor, TensorShape
 import testing
 
 from max.graph import Module, MOTensor, TypeTuple

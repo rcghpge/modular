@@ -14,6 +14,7 @@
 
 from collections import Dict, DynamicVector, Optional
 from pathlib import Path
+from tensor import Tensor
 
 from .ball import Ball
 from .max_heap import MaxHeap, OrderableElement
@@ -117,7 +118,7 @@ struct BPETokenizer:
 
         See `BPETokenizer.from_bytes()` for the expected file format.
         """
-        var file = path.read_bytes()
+        var file = Tensor[DType.int8](path.read_bytes())
         var t = Self.from_bytes(file.data(), file.data() + file.num_elements())
         _ = file ^
         return t ^
