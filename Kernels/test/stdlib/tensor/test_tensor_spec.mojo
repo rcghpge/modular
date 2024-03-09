@@ -9,7 +9,7 @@ from collections import List
 
 from tensor import TensorShape, TensorSpec
 
-from utils._serialize import _serialize_as_tensor
+from tensor.tensor import _serialize_as_tensor
 
 
 # CHECK: test_tensor_shape
