@@ -818,7 +818,8 @@ class ExecInvariantCodeMotionPass
                   << ") which will be further mutated "
                      "in the 'execute' block";
               for (Value res : use.getOwner()->getResults()) {
-                if (isa<MEF::MEFChainTypeInterface>(res.getType())) {
+                if (isa<MEF::MEFChainTypeInterface>(res.getType()) ||
+                    isa<MGP::DeviceChainType>(res.getType())) {
                   BufferBuilder *bufferBuilder =
                       TensorBufferDialectInterface::getBuilderForTypeStorage(
                           *builderContext, res.getType());
