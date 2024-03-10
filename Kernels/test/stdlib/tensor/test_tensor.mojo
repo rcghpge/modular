@@ -3,7 +3,7 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-# RUN: %mojo -debug-level full %s | FileCheck %s
+# RUN: %mojo -D TEMP_FILE_DIR=%T -debug-level full %s | FileCheck %s
 
 from math import iota, sqrt
 from random import seed
@@ -11,6 +11,11 @@ from random import seed
 from tensor import Tensor, TensorShape, rand, randn
 
 from utils.index import Index, StaticIntTuple
+from pathlib import Path
+from test_utils import linear_fill
+from sys.param_env import env_get_string
+
+alias TEMP_FILE_DIR = env_get_string["TEMP_FILE_DIR"]()
 
 
 # CHECK: test_tensor
@@ -545,7 +550,36 @@ fn test_print_large():
     print(str(tensor))
 
 
-fn main():
+# CHECK-LABEL: test_tensor
+def test_tensor_from_file():
+    print("== test_tensor")
+    var tensor = Tensor[DType.int8](4)
+    linear_fill(tensor, 1, 2, 3, 4)
+    var TEMP_FILE = Path(TEMP_FILE_DIR) / "test_tensor_from_file"
+    tensor.tofile(TEMP_FILE)
+    var tensor_from_file = Tensor[DType.int8].fromfile(TEMP_FILE)
+
+    # CHECK-NOT: False
+    for i in range(tensor.num_elements()):
+        print(tensor[i] == tensor_from_file[i])
+
+
+# CHECK-LABEL: test_tensor_load_save
+fn test_tensor_load_save() raises:
+    print("== test_tensor_load_save")
+    var tensor = Tensor[DType.int8](2, 2, 3)
+    tensor._to_buffer().fill(2)
+
+    var TEMP_FILE = Path(TEMP_FILE_DIR) / "test_tensor_load_save"
+    tensor.save(TEMP_FILE)
+
+    var tensor_loaded = Tensor[DType.int8].load(TEMP_FILE)
+
+    # CHECK: True
+    print(tensor == tensor_loaded)
+
+
+def main():
     test_tensor()
     test_tensor_init()
     test_tensor_equality()
@@ -573,3 +607,7 @@ fn main():
     test_print()
     test_print_small()
     test_print_large()
+
+    # File-related tests
+    test_tensor_from_file()
+    test_tensor_load_save()
