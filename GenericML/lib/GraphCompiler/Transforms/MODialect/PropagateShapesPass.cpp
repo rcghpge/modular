@@ -224,52 +224,33 @@ void updateGraphSignature(GraphOp graphOp) {
   graphOp->setAttrs(attrs.getDictionary(graphOp->getContext()));
 }
 
-// Some expression attribute can be simplified as long as there are extra
-// assertions emitted to legalize the simplification. However, not all such
-// assertions can be folded away statically. In order to still benefit from
-// the simplified expression and avoid having to provide a runtime primitive
-// for the original expression, we try to expand/decompose these expressions
-// into smaller primitives we already support, and try to simplify those
-// smaller primitives as much as possible.
-//
-// Return true if expansion happened; the resulting ops from the expansion
-// will be pushed onto `worklist` in correct order, to be processed later.
-bool tryExpandDeclOpExpr(KGEN::ParamDeclareOp declOp,
-                         std::deque<Operation *> &worklist, GraphOp graphOp) {
-  // Only try to expand expression that applies an mlir op.
-  auto operatorAttr = dyn_cast<KGEN::ParamOperatorAttr>(declOp.getValue());
-  if (!operatorAttr || operatorAttr.getOpcode() != KGEN::POC::Apply)
-    return false;
+/// A class that helps `PropagateShapesPass` handle ops that could be
+/// decomposed when the shape parameters they use have been simplified
+/// already. For instance, in order to simplify `mosh.broadcast`, we often need
+/// its two input shapes to be simplified first (e.g., `[D0, 1]` instead of
+/// `Sh0`). However, the simplification happens _during_ `PropagateShapesPass`,
+/// so we use this `OpDecomposer` to decompose ops on the fly, and letting
+/// `PropagateShapesPass` to further simplify the decomposed ops.
+class OpDecomposer {
 
-  ArrayRef<TypedAttr> operands = operatorAttr.getOperands();
-  auto mlirOpAttr = dyn_cast<KGEN::MLIROpAttr>(operands.front());
-  if (!mlirOpAttr)
-    return false;
-
-  // If expandable, insert and collect the expanded ops.
-  OpBuilder builder(declOp);
-  Location loc = declOp.getLoc();
-  SmallVector<Operation *> expandedOps;
-
-  // Create an op of this form:
+  // Create an op of the following form and track it in `decomposedOps`.
   //   kgen.param.declare declPrefix... : resTy = <poc(operands...)>
-  auto createDeclToKgenExpr = [&](StringRef declPrefix, Type resTy,
-                                  KGEN::POC poc, ArrayRef<TypedAttr> operands)
-      -> std::pair<KGEN::ParamDeclareOp, KGEN::ParamDeclRefAttr> {
+  std::pair<KGEN::ParamDeclareOp, KGEN::ParamDeclRefAttr>
+  createDeclToKgenExpr(StringRef declPrefix, Type resTy, KGEN::POC poc,
+                       ArrayRef<TypedAttr> operands) {
     auto exprAttr = KGEN::ParamOperatorAttr::get(poc, operands);
     KGEN::ParamDeclAttr declAttr = graphOp.getNewParamOfType(declPrefix, resTy);
     auto declOp = builder.create<KGEN::ParamDeclareOp>(loc, declAttr, exprAttr);
     auto declRefAttr = KGEN::ParamDeclRefAttr::get(declOp.getParamDecl());
-    expandedOps.push_back(declOp);
+    decomposedOps.push_back(declOp);
     return {declOp, declRefAttr};
   };
 
-  // Create an op of this form:
+  // Create an op of the following form and track it in `decomposedOps`.
   //   kgen.param.declare declPrefix... : resTy =
   //    <apply(..."mosh.assert", errorMsg, condAttr)>
-  auto createAssert = [&](StringRef declPrefix, StringRef errorMsg,
-                          TypedAttr condAttr)
-      -> std::pair<KGEN::ParamDeclareOp, KGEN::ParamDeclRefAttr> {
+  std::pair<KGEN::ParamDeclareOp, KGEN::ParamDeclRefAttr>
+  createAssert(StringRef declPrefix, StringRef errorMsg, TypedAttr condAttr) {
     MLIRContext *ctx = condAttr.getContext();
     Type chainType = MOSH::ChainType::get(ctx);
 
@@ -287,70 +268,108 @@ bool tryExpandDeclOpExpr(KGEN::ParamDeclareOp declOp,
                                 applyOperands);
   };
 
-  // Check to see if the mlir op expression can be expanded.
-  if (mlirOpAttr.getName() == MOSH::BroadcastOp::getOperationName()) {
-    MLIRContext *ctx = declOp.getContext();
-    Type boolType = IntegerType::get(ctx, 1);
-    auto intOneAttr = IntegerAttr::get(IndexType::get(ctx), 1);
+  // State that stays invariant across calls.
+  OpBuilder builder;
 
-    auto shapeAttr1 = dyn_cast<MOSH::ShapeAttr>(operands[1]);
-    auto shapeAttr2 = dyn_cast<MOSH::ShapeAttr>(operands[2]);
-    if (shapeAttr1 && shapeAttr2) {
-      // Ensure rank(shapeAttr1) >= rank(shapeAttr2)
-      if (shapeAttr1.getRank() < shapeAttr2.getRank())
-        std::swap(shapeAttr1, shapeAttr2);
+  // State that might change across calls.
+  GraphOp graphOp;
+  Location loc;
+  SmallVector<Operation *> decomposedOps;
 
-      SmallVector<TypedAttr> resDims;
-      size_t rankDiff = shapeAttr1.getRank() - shapeAttr2.getRank();
-      for (size_t axis = 0; axis < shapeAttr1.getRank(); axis++) {
-        if (axis < rankDiff) {
-          resDims.push_back(shapeAttr1.getValues()[axis]);
-        } else {
-          auto dimAttr1 = shapeAttr1.getValues()[axis];
-          auto dimAttr2 = shapeAttr2.getValues()[axis - rankDiff];
-          // Insert assertions
-          auto [dimAttr1IsOneDeclOp, dimAttr1IsOneDeclRef] =
-              createDeclToKgenExpr("dim_1_is_one", boolType, KGEN::POC::EQ,
-                                   {dimAttr1, intOneAttr});
-          auto [dimAttr2IsOneDeclOp, dimAttr2IsOneDeclRef] =
-              createDeclToKgenExpr("dim_2_is_one", boolType, KGEN::POC::EQ,
-                                   {dimAttr2, intOneAttr});
-          auto [dimsEqualDeclOp, dimsEqualDeclRef] = createDeclToKgenExpr(
-              "dims_equal", boolType, KGEN::POC::EQ, {dimAttr1, dimAttr2});
-          auto [dimsCompatibleDeclOp, dimsCompatibleDeclRef] =
-              createDeclToKgenExpr("dims_compatible", boolType, KGEN::POC::Or,
-                                   {dimAttr1IsOneDeclRef, dimAttr2IsOneDeclRef,
-                                    dimsEqualDeclRef});
-          createAssert("dims_assert", "dimensions are not broadcastable",
-                       dimsCompatibleDeclRef);
+public:
+  /// Create an OpDecomposer with given MLIRContext.
+  OpDecomposer(MLIRContext *ctx) : builder(ctx), loc(builder.getUnknownLoc()) {}
 
-          // def bcast(D1, D2):
-          //     assert `D1 == D2 or D1 == 1 or D2 == 1`
-          //     if D1 == 1:
-          //         return D2
-          //     else:
-          //         return D1
-          TypedAttr newResDim = KGEN::ParamOperatorAttr::get(
-              KGEN::POC::Cond,
-              {dimAttr1IsOneDeclOp.getValue(), dimAttr2, dimAttr1});
-          resDims.push_back(newResDim);
+  /// Try decomposing the given Operation if possible. Return a list of
+  /// decomposed ops (ordered by SSA and parametric dependencies) if successful,
+  /// else return an empty vector. The input operation won't be modified.
+  SmallVector<Operation *> tryDecomposeOp(Operation *op) {
+    // Reset transient state.
+    graphOp = op->getParentOfType<GraphOp>();
+    loc = op->getLoc();
+    decomposedOps.clear();
+
+    if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op))
+      tryDecomposeParamDeclOp(declOp);
+
+    return decomposedOps;
+  }
+
+  // Some parameter declaration can be simplified as long as there are extra
+  // assertions emitted to legalize the simplification. However, not all such
+  // assertions can proven to be trivial statically. In order to still benefit
+  // from the expression simplification and avoid having to provide a runtime
+  // primitive for the original expression, we try to decompose these
+  // expressions into smaller primitives we already support, and try to simplify
+  // those smaller primitives as much as possible.
+  void tryDecomposeParamDeclOp(KGEN::ParamDeclareOp declOp) {
+    // Only try to decompose expression that applies an mlir op.
+    auto operatorAttr = dyn_cast<KGEN::ParamOperatorAttr>(declOp.getValue());
+    if (!operatorAttr || operatorAttr.getOpcode() != KGEN::POC::Apply)
+      return;
+
+    ArrayRef<TypedAttr> operands = operatorAttr.getOperands();
+    auto mlirOpAttr = dyn_cast<KGEN::MLIROpAttr>(operands.front());
+    if (!mlirOpAttr)
+      return;
+
+    // Check to see if the mlir op expression can be decomposed.
+    if (mlirOpAttr.getName() == MOSH::BroadcastOp::getOperationName()) {
+      MLIRContext *ctx = declOp.getContext();
+      Type boolType = IntegerType::get(ctx, 1);
+      auto intOneAttr = IntegerAttr::get(IndexType::get(ctx), 1);
+
+      auto shapeAttr1 = dyn_cast<MOSH::ShapeAttr>(operands[1]);
+      auto shapeAttr2 = dyn_cast<MOSH::ShapeAttr>(operands[2]);
+      if (shapeAttr1 && shapeAttr2) {
+        // Ensure rank(shapeAttr1) >= rank(shapeAttr2)
+        if (shapeAttr1.getRank() < shapeAttr2.getRank())
+          std::swap(shapeAttr1, shapeAttr2);
+
+        SmallVector<TypedAttr> resDims;
+        size_t rankDiff = shapeAttr1.getRank() - shapeAttr2.getRank();
+        for (size_t axis = 0; axis < shapeAttr1.getRank(); axis++) {
+          if (axis < rankDiff) {
+            resDims.push_back(shapeAttr1.getValues()[axis]);
+          } else {
+            auto dimAttr1 = shapeAttr1.getValues()[axis];
+            auto dimAttr2 = shapeAttr2.getValues()[axis - rankDiff];
+            // Insert assertions
+            auto [dimAttr1IsOneDeclOp, dimAttr1IsOneDeclRef] =
+                createDeclToKgenExpr("dim_1_is_one", boolType, KGEN::POC::EQ,
+                                     {dimAttr1, intOneAttr});
+            auto [dimAttr2IsOneDeclOp, dimAttr2IsOneDeclRef] =
+                createDeclToKgenExpr("dim_2_is_one", boolType, KGEN::POC::EQ,
+                                     {dimAttr2, intOneAttr});
+            auto [dimsEqualDeclOp, dimsEqualDeclRef] = createDeclToKgenExpr(
+                "dims_equal", boolType, KGEN::POC::EQ, {dimAttr1, dimAttr2});
+            auto [dimsCompatibleDeclOp, dimsCompatibleDeclRef] =
+                createDeclToKgenExpr("dims_compatible", boolType, KGEN::POC::Or,
+                                     {dimAttr1IsOneDeclRef,
+                                      dimAttr2IsOneDeclRef, dimsEqualDeclRef});
+            createAssert("dims_assert", "dimensions are not broadcastable",
+                         dimsCompatibleDeclRef);
+
+            // def bcast(D1, D2):
+            //     assert `D1 == D2 or D1 == 1 or D2 == 1`
+            //     if D1 == 1:
+            //         return D2
+            //     else:
+            //         return D1
+            TypedAttr newResDim = KGEN::ParamOperatorAttr::get(
+                KGEN::POC::Cond,
+                {dimAttr1IsOneDeclOp.getValue(), dimAttr2, dimAttr1});
+            resDims.push_back(newResDim);
+          }
         }
+        auto newDeclOp = cast<KGEN::ParamDeclareOp>(declOp->clone());
+        newDeclOp.setValueAttr(
+            MOSH::ShapeAttr::get(resDims, shapeAttr1.getType()));
+        decomposedOps.push_back(newDeclOp);
       }
-      declOp.setValueAttr(MOSH::ShapeAttr::get(resDims, shapeAttr1.getType()));
-      expandedOps.push_back(declOp);
     }
   }
-
-  if (!expandedOps.empty()) {
-    // The first expanded op must be processed next in the worklist, so we
-    // push the expanded ops onto the worklist in reversed order.
-    for (Operation *op : llvm::reverse(expandedOps))
-      worklist.push_back(op);
-    return true;
-  }
-
-  return false;
-}
+};
 
 } // namespace
 
@@ -628,6 +647,34 @@ struct PropagateShapesPass
     return {};
   }
 
+  /// Try decomposing `op` with `opDecomposer`. If successful, replace `op` with
+  /// the decomposed ops in the graph, and push the decomposed ops onto
+  /// `worklist` so they will be processed next immediately.
+  ///
+  /// Return whether the decomposition was successful.
+  static LogicalResult
+  tryDecomposeAndReplaceOp(OpDecomposer &opDecomposer, Operation *op,
+                           std::deque<Operation *> &worklist) {
+
+    // Try decompose the op, and check if it was successful.
+    SmallVector<Operation *> decomposedOps = opDecomposer.tryDecomposeOp(op);
+    if (decomposedOps.empty())
+      return failure();
+
+    OpBuilder builder(op);
+    // Replace the original op with decomposed ops in correct order.
+    for (Operation *decomposedOp : decomposedOps)
+      builder.insert(decomposedOp);
+    op->erase();
+
+    // The first decomposed op must be processed next in the worklist, so we
+    // push the decomposed ops onto the worklist in reversed order.
+    for (Operation *decomposedOp : llvm::reverse(decomposedOps))
+      worklist.push_back(decomposedOp);
+
+    return success();
+  }
+
   void runOnOperation() override {
     // Clear state variables (in case the pass instance is reused)
     paramAttrToDepth.clear();
@@ -691,6 +738,9 @@ struct PropagateShapesPass
         worklist.push_front(op);
     });
 
+    // NOTE think of this as a stack machine that also decomposes "pseudo
+    // instructions".
+    OpDecomposer opDecomposer(graphOp.getContext());
     while (!worklist.empty()) {
       Operation *op = worklist.back();
       worklist.pop_back();
@@ -700,14 +750,14 @@ struct PropagateShapesPass
       replacer.replaceElementsIn(op, /*replaceAttrs=*/true,
                                  /*replaceLocs=*/true, /*replaceTypes=*/true);
 
+      // If decomposition happened, no need to process `op` anymore, instead
+      // continue to process the decomposed ops which were pushed onto worklist.
+      if (succeeded(tryDecomposeAndReplaceOp(opDecomposer, op, worklist)))
+        continue;
+
       // Every single `kgen.param.declare x = <expr>` should add a mapping from
       // `x` to some attribute in `evaluator`.
       if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
-        // If expansion happened, no need to process `op` anymore, instead
-        // continue to process the resulting ops from the expansion.
-        if (tryExpandDeclOpExpr(declOp, worklist, graphOp))
-          continue;
-
         KGEN::ParamDeclAttr declAttr = declOp.getParamDecl();
         auto foldedRhsAttr = cast<TypedAttr>(declOp.getValue());
 
@@ -734,7 +784,8 @@ struct PropagateShapesPass
             evaluator.setParameterValue(declAttr, existingDeclRef);
             declOp.setValueAttr(existingDeclRef);
 
-            // Else we remember this decl has this expression.
+            // Else we remember this decl has this expression, and map the
+            // parameter to itself since we don't want to inline it.
           } else {
             auto declRefAttr = KGEN::ParamDeclRefAttr::get(declAttr);
             if (isParamOperatorPure(paramOperatorAttr))
