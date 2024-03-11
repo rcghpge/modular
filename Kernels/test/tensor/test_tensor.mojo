@@ -9,6 +9,7 @@ from math import iota, sqrt
 from random import seed
 
 from tensor import Tensor, TensorShape, rand, randn
+from testing import *
 
 from utils.index import Index, StaticIntTuple
 from pathlib import Path
@@ -58,6 +59,17 @@ fn test_tensor_init():
 
     # CHECK: 0.6
     print(t2[0, 1, 2])
+
+
+def test_tensor_copy():
+    var tensor = Tensor[DType.float32](
+        TensorShape(1, 2, 3), 0.1, 0.2, 0.3, 0.4, 0.5, 0.6
+    )
+    var copy = Tensor(tensor)
+
+    assert_almost_equal(0.6, tensor[0, 1, 2])
+    assert_almost_equal(0.6, copy[0, 1, 2])
+    assert_false(tensor._ptr == copy._ptr)
 
 
 # CHECK-LABEL: test_tensor_equality
@@ -582,6 +594,7 @@ fn test_tensor_load_save() raises:
 def main():
     test_tensor()
     test_tensor_init()
+    test_tensor_copy()
     test_tensor_equality()
     test_tensor_indexing()
     test_tensor_indexing2()
