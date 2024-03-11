@@ -191,9 +191,6 @@ def GenVizSpec : Pass<"gen-viz", "GraphOp"> {
   let description = [{
     This pass generates a visualization spec which can be used as input to
     Netron (https://github.com/modularml/netron) to visualize the MO graph.
-    Right now, Netron support is only available via the internal fork, but
-    Modular support is expected to upstreamed to the public tool toward the end
-    of November 2023.
   }];
   let options = [
     Option<"vizOutputDir", "viz-output-dir", "std::string", "",
