@@ -20,6 +20,7 @@ add_modular_testsuite(check-max-graph-mojo
   DEPENDS
   mof
   max-mojo
+  tensor
 
   TOP_LEVEL_CHECK
   check-sdk
