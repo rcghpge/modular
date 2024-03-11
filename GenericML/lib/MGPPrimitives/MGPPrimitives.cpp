@@ -374,6 +374,33 @@ static void mgp_cpu_kernel_load_archive(Chain inChain, Context &ctx,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.cpu.kernel.execute
+//===----------------------------------------------------------------------===//
+
+static void mgp_generic_execute(Context &ctx, RemainingArguments operands,
+                                RemainingResults results,
+                                MEFAttr<uint64_t> aSlot,
+                                MEFAttr<uint64_t> bKernelIndex,
+                                Runtime &runtime, EncodedLocation loc) {
+  CompiledKernelsContext &kernelsCtx =
+      ctx.getStateSlotPayload<CompiledKernelsContext>(
+          static_cast<size_t>(*aSlot));
+  size_t kernelIndex = static_cast<size_t>(*bKernelIndex);
+  CompiledKernelAsyncABIFn *kernelPtr =
+      kernelsCtx.getKernelAsyncABI(kernelIndex);
+
+  SmallVector<void *> kernelInputs;
+  kernelInputs.reserve(results.size() + operands.size());
+
+  for (AnyAsyncValueRef &input : operands)
+    kernelInputs.push_back(&input);
+  for (AnyAsyncValueRef &result : results)
+    kernelInputs.push_back(&result);
+  kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
+            reinterpret_cast<void *>(&runtime));
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.list.append
 //===----------------------------------------------------------------------===//
 
@@ -501,6 +528,7 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
                 mgp_cpu_kernel_create_context);
   ADD_PRIMITIVE(registry, "mgp.cpu.kernel.load_archive",
                 mgp_cpu_kernel_load_archive);
+  ADD_PRIMITIVE(registry, "mgp.generic.execute", mgp_generic_execute);
   ADD_PRIMITIVE(registry, "mgp.list.append", mgp_list_append);
   ADD_PRIMITIVE(registry, "mgp.list.create", mgp_list_create);
   ADD_PRIMITIVE(registry, "mgp.list.get", mgp_list_get);

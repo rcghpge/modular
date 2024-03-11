@@ -11,6 +11,7 @@
 #include "mlir/IR/BuiltinOps.h"
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "Support/ForwardDecls.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
@@ -21,41 +22,32 @@ namespace M::MOGG::Stub {
 /// binary stuff from the KGEN stub creation process.
 class StubCompiler {
 public:
-  StubCompiler(mlir::ModuleOp kgenStubs, MO::GraphOp graphOp, bool shouldSearch,
+  StubCompiler(mlir::ModuleOp kgenStubs, Operation *graph, bool shouldSearch,
                std::string saveTempsPrefix)
-      : ctx(graphOp.getContext()), graphOp(graphOp), kgenModule(kgenStubs),
-        loc(graphOp.getLoc()), moggBuilder(&graphOp.getBody().front(),
-                                           graphOp.getBody().front().begin()),
+      : ctx(graph->getContext()), kgenModule(kgenStubs), loc(graph->getLoc()),
         saveTempsPrefix(std::move(saveTempsPrefix)),
         shouldSearch(shouldSearch) {}
 
   /// Compile to binary object. Tell the jit all of the given symbols as symbols
   /// within it that can be executed at runtime.
-  ErrorOrSuccess compile(mlir::ArrayAttr combinedSymbolName,
-                         bool enableTiming = false);
+  ErrorOr<MOGG::LoadCompiledKernelOp>
+  compile(mlir::ArrayAttr combinedSymbolName, bool enableTiming = false);
 
   /// Run the KGEN elaboration passes on the module.
   LogicalResult elaborateKGEN(bool enableTiming = false);
 
 private:
   /// Lower to an binary object.
-  ErrorOrSuccess compileToLLVM(mlir::ArrayAttr combinedSymbolName,
-                               bool enableTiming);
+  ErrorOr<MOGG::LoadCompiledKernelOp>
+  compileToLLVM(mlir::ArrayAttr combinedSymbolName, bool enableTiming);
 
   MLIRContext *ctx;
-
-  /// The MO graph containing the ops we are compiling.
-  MO::GraphOp graphOp;
 
   /// The KGEN module with all the stubs in it.
   mlir::ModuleOp kgenModule;
 
   /// Location to use.
   mlir::Location loc;
-
-  /// The "mogg" side builder. I.E for adding ops to the main MOGG graph rather
-  /// than the kgen stub.
-  mlir::OpBuilder moggBuilder;
 
   /// If set to non empty string emit temporary IR and assembly outputs to the
   /// given prefix. Currently emits KGEN before and after elaboration, llvm

@@ -12,6 +12,7 @@
 #include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GenericML/MGPDialect/MGPOps.h"
@@ -21,6 +22,7 @@
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVectorExtras.h"
@@ -742,6 +744,17 @@ static void printKernel(OpAsmPrinter &p, mlir::Operation *kernel,
                                /*resultParams=*/{}, functionType,
                                SignatureType::get(functionType, conventions));
   p.printRegion(region, /*printEntryBlockArgs=*/false);
+}
+
+//===----------------------------------------------------------------------===//
+// GenericCompiledRegionOp
+//===----------------------------------------------------------------------===//
+
+InOutSignatureAttr::InOutSemantics
+GenericCompiledRegionOp::getInOutSemantics(size_t index) {
+  GENERICML_ASSERT(index < getNumOperands())
+      << "GenericCompiledRegionOp::getInOutSemantics index out of range.";
+  return getInOutSignature()[index];
 }
 
 //===----------------------------------------------------------------------===//

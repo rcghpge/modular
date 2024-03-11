@@ -28,4 +28,65 @@ def MOToPrimitives : Pass<"mo-to-primitives", "ModuleOp"> {
                            "GRT::GRTDialect"];
 }
 
+
+def LowerMOGGCompiles: Pass<"lower-mogg-compile", "ModuleOp"> {
+  let summary = "Convert MOGG compile ops into MGP versions";
+  let description = [{
+    After lowering we will have raw MOGG compiled kernels in the graph, this
+    converts them into the same MGP format used for the other compiled code.
+  }];
+
+  let dependentDialects = ["MEF::MEFDialect",
+                          "MGP::MGPDialect",
+                          "GRT::GRTDialect",
+                          "MOGG::MOGGDialect"];
+}
+
+def LowerPrimitives: Pass<"lower-primitives", "ModuleOp"> {
+  let summary = "Lower MGP operations to primitives";
+  let description = [{
+    Using the loaded kernel library this looks for implementations for all
+    primitives and if one exists will lower the primitive to that mojo 
+    implementation. 
+
+    At this stage these implementations will use "unpacked" synchronous values,
+    not the runtime async values.
+  }];
+
+  let dependentDialects = ["MEF::MEFDialect",
+                          "MGP::MGPDialect",
+                          "GRT::GRTDialect",
+                          "MOGG::MOGGDialect",
+                          "M::KGEN::KGENDialect",
+                          "M::KGEN::LIT::LITDialect",
+                          "M::KGEN::POP::POPDialect",
+                          "M::HLCF::HLCFDialect",
+                          "M::DebugInfo::DebugInfoDialect",
+                          "mlir::NVVM::NVVMDialect",
+                          "mlir::index::IndexDialect",
+  ];
+}
+
+def LowerMOGGABI: Pass<"lower-abi", "ModuleOp"> {
+  let summary = "Lower MGP kernels into the correct ABI";
+  let description = [{
+    For each generic compilable function this pass will convert them from their
+    synchronous representation into a runtime executable representation which
+    contains the code to unpack from and to async values.
+  }];
+
+  let dependentDialects = ["MEF::MEFDialect",
+                          "MGP::MGPDialect",
+                          "GRT::GRTDialect",
+                          "MOGG::MOGGDialect",
+                          "M::KGEN::KGENDialect",
+                          "M::KGEN::LIT::LITDialect",
+                          "M::KGEN::POP::POPDialect",
+                          "M::HLCF::HLCFDialect",
+                          "M::DebugInfo::DebugInfoDialect",
+                          "mlir::NVVM::NVVMDialect",
+                          "mlir::index::IndexDialect",
+  ];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_TD

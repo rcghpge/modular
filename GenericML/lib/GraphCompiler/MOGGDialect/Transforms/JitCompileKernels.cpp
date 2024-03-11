@@ -59,9 +59,14 @@ struct JitCompileKernels
 
     for (auto graph : m.getOps<MO::GraphOp>()) {
       auto errOr = this->runPass(graph, mojoLibraryAnalysis);
-      if (errOr.isError()) {
+      if (errOr.isError())
         return signalPassFailure();
-      }
+    }
+
+    for (auto graph : m.getOps<MGP::ModelOp>()) {
+      auto errOr = this->runPass(graph, mojoLibraryAnalysis);
+      if (errOr.isError())
+        return signalPassFailure();
     }
 
     // Strip all KGEN forward decls. There is now nothing they can be lowered
@@ -69,11 +74,13 @@ struct JitCompileKernels
     m.walk([](KGEN::ExternGeneratorOp op) { op.erase(); });
   }
 
+  template <typename OpContainer>
   CompileDiagnosticOrSuccess
-  runPass(MO::GraphOp graph, MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
+  runPass(OpContainer graph, MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
     // We can optionally override
     DenseMap<Operation *, std::string> unusedOverrideMap;
 
+    // For each (virtual) device used by the graph...
     auto err = compileToBinary(
         graph, mojoLibraryAnalysis, unusedOverrideMap, dumpStub.getValue(),
         createMOGGReproducers.getValue(), useSearch.getValue(),

@@ -16,6 +16,9 @@ include "GenericML/MGPDialect/MGPTensorSpec.td"
 include "GenericML/MGPDialect/MGPDialect.td"
 include "GenericML/MGPDialect/MGPTypes.td"
 include "GenericML/MGPDialect/MGPAttrs.td"
+include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.td"
+include "GenericML/GraphCompiler/MODialect/MOAttrs.td"
+include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
 include "GraphRT/GRTDialect/GRTExtendsLifetimeInterface.td"
 include "GraphRT/GRTDialect/GRTMayAliasInterface.td"
 include "GraphRT/MEFDialect/MEFTypes.td"
@@ -1698,6 +1701,24 @@ def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
   }];
 
   let hasVerifier = 1;
+}
+
+
+def ExecuteGenericOp : MGP_Op<"generic.execute"> {
+  let summary = "Executes a function loaded into the compiled function context.";
+  let description = [{
+    Executes a function already loaded into the compiled kernel context at the
+    given slot within the `!mgp.context`. This will execute the function using
+    the generic API. The primitive will pass in raw async values for the func
+    to unpack internally.
+  }];
+
+  let arguments = (ins MGP_ContextType:$theContext,
+                       Variadic<AnyType>:$args,
+                       UI64Attr:$aSlot,
+                       UI64Attr:$bKernelIndex
+                       );
+  let results = (outs Variadic<AnyType>:$results);
 }
 
 //===----------------------------------------------------------------------===//

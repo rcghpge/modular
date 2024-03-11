@@ -40,8 +40,7 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
   llvm::InitializeNativeTargetAsmParser();
   llvm::InitializeNativeTargetAsmPrinter();
 
-  mlir::PassManager pm(ctx);
-
+  mlir::PassManager pm(kgenModule->getContext());
   ErrorOr<TargetInfoAttr> targetOr = M::getTargetInfoFor(
       kgenModule->getContext(), llvm::sys::getDefaultTargetTriple(),
       llvm::sys::getHostCPUName(), getHostCPUFeatures());
@@ -81,7 +80,7 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
 
   LogicalResult res = success();
   {
-    auto fileLine = graphOp->getLoc()->findInstanceOf<mlir::FileLineColLoc>();
+    auto fileLine = loc->findInstanceOf<mlir::FileLineColLoc>();
     llvm::StringMap<Telemetry::MetricAttributeValue> attrs;
 
     if (fileLine)
@@ -128,8 +127,9 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
   return res;
 }
 
-ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
-                                           bool enableTiming) {
+ErrorOr<MOGG::LoadCompiledKernelOp>
+StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
+                            bool enableTiming) {
   static constexpr llvm::StringLiteral kKernelsBuildType =
       STRINGIFY(KERNELS_BUILD_TYPE);
 
@@ -188,13 +188,13 @@ ErrorOrSuccess StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
   }
 
   // Add the compiled kernels as a constant.
-  moggBuilder.create<MOGG::LoadCompiledKernelOp>(
+  OpBuilder builder{ctx};
+  return builder.create<MOGG::LoadCompiledKernelOp>(
       loc, /*symbols=*/combinedSymbolName, /*value=*/archiveAttr);
-  return success();
 }
 
-ErrorOrSuccess StubCompiler::compile(mlir::ArrayAttr combinedSymbolName,
-                                     bool enableTiming) {
+ErrorOr<MOGG::LoadCompiledKernelOp>
+StubCompiler::compile(mlir::ArrayAttr combinedSymbolName, bool enableTiming) {
   llvm::InitializeAllTargets();
   llvm::InitializeAllTargetInfos();
   llvm::InitializeAllTargetMCs();

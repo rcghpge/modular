@@ -32,6 +32,11 @@ def MOGG_CompilableKernel : OpInterface<"CompilableKernel"> {
       "return $_op.getOutputParamDecls();"
     >,
     InterfaceMethod<
+      "Get output parameter decls attr",
+      "::M::KGEN::ParamDeclArrayAttr", "getOutputParamDeclsAttr", (ins), 
+      "return $_op.getOutputParamDeclsAttr();"
+    >,
+    InterfaceMethod<
       "Get the device attr for this kernel",
       "::M::DeviceRefAttr", "getDeviceRef", (ins), 
       "return $_op.getDeviceRef();"

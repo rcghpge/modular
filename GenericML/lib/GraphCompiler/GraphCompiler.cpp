@@ -45,6 +45,10 @@
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 
+#include "GenericML/MGPDialect/MGPDialect.h"
+#include "GraphRT/GRTDialect/GRTDialect.h"
+#include "GraphRT/MEFDialect/MEFDialect.h"
+
 using namespace M;
 using namespace MO;
 
@@ -80,6 +84,9 @@ void M::MO::registerPasses() {
   MO::registerMOTransformsPasses();
   MO::registerNameInputDimsPass();
   MGP::registerMOToPrimitives();
+  MGP::registerLowerMOGGCompiles();
+  MGP::registerLowerPrimitives();
+  MGP::registerLowerMOGGABI();
   Cache::registerDeflateConstants();
   MGP::registerMGPTransformsPasses();
   CUDA::registerCUDATransformsPasses();

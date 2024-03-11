@@ -17,6 +17,7 @@ include "GenericML/GraphCompiler/MODialect/MOTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOAttrs.td"
 include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
 include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.td"
+include "GenericML/MGPDialect/MGPOpInterfaces.td"
 include "KGEN/KGENDialect/KGENInterfaces.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/IR/BuiltinAttributes.td"
@@ -291,7 +292,43 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
     /// Returns an output lambda or an empty string if it does not exist.
     StringAttr getOutputFusionInterfaceAt(size_t index);
   }];
+}
 
+def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
+    IsolatedFromAbove,
+    SingleBlock,
+    SymbolTable,
+    DeclareOpInterfaceMethods<MOGG_CompilableKernel>,
+    MO_HasDeviceInterface,
+    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>
+]> {
+  let summary = "An abstract function representing a compiled body of code";
+  let description = [{
+    This function takes and returns any number of AsyncValues and operates on
+    them by compiling the code contained within its body.
+
+    Currently this is always blocking and the code will run to completion
+    within the body.
+
+    This is a more generic version of the MOGG.kernel which specifically
+    operates on Tensors and other MO level structures. It is intended that
+    eventually we lower mogg.kernel into this form directly.
+  }];
+
+  let arguments = (ins 
+    Variadic<AnyType>:$operands,
+    MO_ParamDecls:$outputParamDecls,
+    M_InOutSignatureAttr:$inOutSignature,
+    OptionalAttr<BoolAttr>:$isKGEN,
+    OptionalAttr<StrAttr>:$summary,
+    OptionalAttr<BoolAttr>:$isAsync
+  );
+  let results = (outs Variadic<AnyType>:$results);             
+  let regions = (region SizedRegion<1>:$body);
+
+  let assemblyFormat = [{
+    custom<Kernel>($operands, type($operands), type($results), $body, $outputParamDecls) attr-dict
+  }];
 }
 
 def MOGG_ParamShapeToValueOp : MOGG_Op<"param_shape_to_value", [Pure]> {
@@ -400,12 +437,12 @@ def MOGG_CallOp : MOGG_Op<"call"> {
 
   let arguments = (ins
      StrAttr:$mojoKernelTarget,
-     Variadic<AnyTypeOf<[MOGG_Simd, MO_Tensor, MO_List, MOGG_Indices, MOGG_Shape]>>:$operands,
+     Variadic<AnyType>:$operands,
      OptionalAttr<ArrayAttr>:$params,
      OptionalAttr<DictionaryAttr>:$kgenParams
   );
 
-   let results = (outs Variadic<AnyTypeOf<[MOGG_Simd, MOGG_Indices, MO_Tensor, MOGG_Shape]>>:$results);
+   let results = (outs Variadic<AnyType>:$results);
 
    let assemblyFormat = [{
      $mojoKernelTarget ($params^)? `(`($operands^)?`)` ($kgenParams^)? attr-dict
@@ -460,7 +497,7 @@ def MOGG_LambdaInvokeOp : MOGG_Op<"invoke",
  }
 
 def MOGG_LambdaOp : MOGG_Op<"lambda",
-    [HasParent<"MOGG::KernelOp">, SingleBlockImplicitTerminator<"OutputOp">,
+  [SingleBlockImplicitTerminator<"OutputOp">,
     Symbol]> {
   let summary = "Represents non-isolated from above lambda";
   let description = [{
@@ -533,6 +570,48 @@ def MOGG_CreateEmptyTensorsOp : MOGG_Op<"empty_tensors"> {
   }];
 }
 
+
+def MOGG_GetAsyncValueOp : MOGG_Op<"get_async_val", [Pure]> {
+  let arguments = (ins AnyType:$ssa);
+  let results = (outs AnyType:$result);
+  let summary = "Returns the pointer for a given async value";
+  let description = [{
+    Each input and output are represented by an async value. This returns the
+    ssa value for the given input or output.
+  }];
+
+  let assemblyFormat = [{
+    `(` $ssa `)` attr-dict `:` `(`
+      qualified(type($ssa)) `)` `->` type($result)
+  }];
+}
+
+
+def MOGG_GetOutputAsyncValueOp : MOGG_Op<"get_output_async_val", [Pure]> {
+  let arguments = (ins Builtin_IntegerAttr:$index);
+  let results = (outs AnyType:$result);
+  let summary = "Returns the pointer for a given output async value";
+  let description = [{
+    Each output is represented by an async value. This returns the output at
+    the given index in the outputs.
+  }];
+
+  let assemblyFormat = [{
+    `[` $index `]` attr-dict `->` type($result)
+  }];
+}
+
+def MOGG_RuntimePlaceholderOp : MOGG_Op<"rt_placeholder", [Pure]> {
+  let results = (outs AnyType:$result);
+  let summary = "Returns a placeholder for the runtime pointer";
+  let description = [{
+    This is resolved to an ABI argument during lowering.
+  }];
+
+  let assemblyFormat = [{
+   attr-dict `:` type($result)
+  }];
+}
 
 def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders"> {
   let results = (outs Variadic<MO_Tensor>:$results);
@@ -647,13 +726,13 @@ def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel", [
     scheme. Otherwise the kernel is synchronous.
   }];
 
-  let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List]>>:$operands,
+  let arguments = (ins Variadic<AnyType>:$operands,
                        StrAttr:$kernelName,
                        ArrayAttr:$usedParams,
                        MO_ParamDecls:$outputParamDecls,
                        StrAttr:$summary,
                        BoolAttr:$isAsync);
-  let results = (outs Variadic<MO_Tensor>:$results);
+  let results = (outs Variadic<AnyType>:$results);
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_TD

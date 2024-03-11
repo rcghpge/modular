@@ -130,6 +130,10 @@ struct CompiledKernelCall {
 // suspension point.
 using CompiledKernelFn = void(void **, ssize_t *, KGEN::MojoCallContext *);
 
+// A function pointer representing an alternate ABI which takes in a list of
+// async value pointers as the first value and a runtime as the second. The
+// async values will be unpacked and manipulated directly within the kernel.
+using CompiledKernelAsyncABIFn = void(void **, void *);
 //===----------------------------------------------------------------------===//
 // CompiledKernelsContext
 //===----------------------------------------------------------------------===//
@@ -152,7 +156,13 @@ public:
   CompiledKernelFn *getKernel(size_t kernelIndex) const {
     GENERICML_ASSERT(kernelIndex < kernels.size())
         << "invalid kernel index " << kernelIndex;
-    return kernels[kernelIndex];
+    return reinterpret_cast<CompiledKernelFn *>(kernels[kernelIndex]);
+  }
+
+  CompiledKernelAsyncABIFn *getKernelAsyncABI(size_t kernelIndex) const {
+    GENERICML_ASSERT(kernelIndex < kernels.size())
+        << "invalid kernel index " << kernelIndex;
+    return reinterpret_cast<CompiledKernelAsyncABIFn *>(kernels[kernelIndex]);
   }
 
   /// Returns the symbol name for the compiled kernel at the given index.
@@ -174,7 +184,7 @@ private:
   KGEN::ExecutionEngine *engine = nullptr;
 
   /// The loaded kernels.
-  SmallVector<CompiledKernelFn *, 16> kernels;
+  SmallVector<void *, 16> kernels;
 
   // Kernel name for each loaded kernel. For debugging and profiling only.
   SmallVector<StringRef, 16> symbolTable;
