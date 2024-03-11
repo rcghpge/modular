@@ -12,7 +12,7 @@ from tensor import Tensor, TensorShape, rand, randn
 
 from utils.index import Index, StaticIntTuple
 from pathlib import Path
-from test_utils import linear_fill
+from closed_source_test_utils import linear_fill
 from sys.param_env import env_get_string
 
 alias TEMP_FILE_DIR = env_get_string["TEMP_FILE_DIR"]()
