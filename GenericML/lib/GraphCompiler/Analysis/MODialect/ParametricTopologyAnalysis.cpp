@@ -6,6 +6,7 @@
 
 #include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/Support/Assert.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 
 #include "mlir/Pass/AnalysisManager.h"
@@ -163,9 +164,8 @@ void ParametricTopologyAnalysis::computeTopologicalSortingImpl(
       ++nextScheduledOp;
     }
 
-    // If no operations were scheduled, just schedule the first op and continue.
-    if (!scheduledAtLeastOnce)
-      unscheduledOps.erase(ops[nextScheduledOp++]);
+    GENERICML_ASSERT(scheduledAtLeastOnce)
+        << "No op was scheduled, potential cycle in the graph";
   }
 }
 
@@ -202,6 +202,12 @@ void ParametricTopologyAnalysis::topologicallySortFirstLevelOpsWithin(
       if (!isOpReady(&op, unscheduledOps))
         continue;
 
+      unscheduledOps.erase(&op);
+      scheduledAtLeastOnce = true;
+      // Move the iterator forward if we schedule the operation at the front.
+      if (&op == &*nextScheduledOp)
+        ++nextScheduledOp;
+
       // NOTE these ops are _required_ to be at the end of their parent block,
       // so we must not reorder them. We can afford to be a little MO specific
       // here since the analysis is under MODialect.
@@ -209,19 +215,11 @@ void ParametricTopologyAnalysis::topologicallySortFirstLevelOpsWithin(
         continue;
 
       // Schedule the operation by moving it to the start.
-      unscheduledOps.erase(&op);
       op.moveBefore(block, nextScheduledOp);
-      scheduledAtLeastOnce = true;
-      // Move the iterator forward if we schedule the operation at the front.
-      if (&op == &*nextScheduledOp)
-        ++nextScheduledOp;
     }
 
-    // If no operations were scheduled, give up and advance the iterator.
-    if (!scheduledAtLeastOnce) {
-      unscheduledOps.erase(&*nextScheduledOp);
-      ++nextScheduledOp;
-    }
+    GENERICML_ASSERT(scheduledAtLeastOnce)
+        << "No op was scheduled, potential cycle in the graph";
   }
 }
 
