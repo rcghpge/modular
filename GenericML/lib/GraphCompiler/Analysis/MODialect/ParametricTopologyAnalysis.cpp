@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
+#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 
 #include "mlir/Pass/AnalysisManager.h"
@@ -32,29 +33,26 @@ ParametricTopologyAnalysis::ParametricTopologyAnalysis(mlir::Operation *root) {
     llvm::SmallVector<KGEN::ParameterUseDefGraph *> workList = {&useDefGraph};
     while (!workList.empty()) {
       auto &nextUseDefGraph = *workList.pop_back_val();
-      for (auto &[_, scope] : nextUseDefGraph.nestedScopes) {
-        for (auto &[op, references] : scope.opUses) {
-          for (auto reference : references) {
-            auto whereItIsDeclared = scope.decls.at(reference.getName());
-            mlir::Operation *parentOp = op;
-            do {
-              // Decl <- Use
-              metadata[parentOp].parametricProviders.insert(
-                  whereItIsDeclared.declOp);
-              // Decl -> Use
-              metadata[whereItIsDeclared.declOp].parametricUsers.insert(
-                  parentOp);
-              /// ASSUMPTION: The block where the parameter is defined
-              /// encompasses the block where it is used. This is the same rule
-              /// we have for SSA values.
-              if (parentOp->getBlock() ==
-                      whereItIsDeclared.declOp->getBlock() ||
-                  isARootBlock(parentOp->getBlock()))
-                break;
+      for (auto &[op, references] : nextUseDefGraph.opUses) {
+        for (auto reference : references) {
+          auto whereItIsDeclared =
+              nextUseDefGraph.decls.at(reference.getName());
+          mlir::Operation *parentOp = op;
+          do {
+            // Decl <- Use
+            metadata[parentOp].parametricProviders.insert(
+                whereItIsDeclared.declOp);
+            // Decl -> Use
+            metadata[whereItIsDeclared.declOp].parametricUsers.insert(parentOp);
+            /// ASSUMPTION: The block where the parameter is defined
+            /// encompasses the block where it is used. This is the same rule
+            /// we have for SSA values.
+            if (parentOp->getBlock() == whereItIsDeclared.declOp->getBlock() ||
+                isARootBlock(parentOp->getBlock()))
+              break;
 
-              parentOp = parentOp->getParentOp();
-            } while (true);
-          }
+            parentOp = parentOp->getParentOp();
+          } while (parentOp); // parent op of `mo.graph` is nullptr
         }
       }
 
@@ -134,10 +132,10 @@ bool ParametricTopologyAnalysis::isOpReady(
   return !readyToSchedule.wasInterrupted();
 }
 
-bool ParametricTopologyAnalysis::computeTopologicalSortingImpl(
+void ParametricTopologyAnalysis::computeTopologicalSortingImpl(
     mlir::MutableArrayRef<mlir::Operation *> ops) {
   if (ops.empty())
-    return true;
+    return;
 
   // The set of operations that have not yet been scheduled.
   DenseSet<Operation *> unscheduledOps;
@@ -148,7 +146,6 @@ bool ParametricTopologyAnalysis::computeTopologicalSortingImpl(
 
   unsigned nextScheduledOp = 0;
 
-  bool allOpsScheduled = true;
   while (!unscheduledOps.empty()) {
     bool scheduledAtLeastOnce = false;
 
@@ -167,18 +164,75 @@ bool ParametricTopologyAnalysis::computeTopologicalSortingImpl(
     }
 
     // If no operations were scheduled, just schedule the first op and continue.
-    if (!scheduledAtLeastOnce) {
-      allOpsScheduled = false;
+    if (!scheduledAtLeastOnce)
       unscheduledOps.erase(ops[nextScheduledOp++]);
-    }
   }
-
-  return allOpsScheduled;
 }
 
 void ParametricTopologyAnalysis::computeTopologicalSorting(
     mlir::MutableArrayRef<mlir::Operation *> ops) {
   computeTopologicalSortingImpl(ops);
+}
+
+// NOTE this isn't refactored with the other impl because the differences are
+// trivial to lift out, and a refactor might end up becoming over-abstraction.
+void ParametricTopologyAnalysis::topologicallySortFirstLevelOpsWithin(
+    mlir::Block *block) {
+  if (block->empty())
+    return;
+
+  // The set of operations that have not yet been scheduled.
+  DenseSet<Operation *> unscheduledOps;
+
+  // Mark all operations as unscheduled.
+  for (Operation &op : *block)
+    unscheduledOps.insert(&op);
+
+  Block::iterator nextScheduledOp = block->begin();
+  Block::iterator end = block->end();
+
+  while (!unscheduledOps.empty()) {
+    bool scheduledAtLeastOnce = false;
+
+    // Loop over the ops that are not sorted yet, try to find the ones "ready",
+    // i.e. the ones for which there aren't any operand produced by an op in the
+    // set, and "schedule" it (swap it with the op at `nextScheduledOp`).
+    for (Operation &op :
+         llvm::make_early_inc_range(llvm::make_range(nextScheduledOp, end))) {
+      if (!isOpReady(&op, unscheduledOps))
+        continue;
+
+      // NOTE these ops are _required_ to be at the end of their parent block,
+      // so we must not reorder them. We can afford to be a little MO specific
+      // here since the analysis is under MODialect.
+      if (isa<MO::OutputOp, MO::YieldOp>(op))
+        continue;
+
+      // Schedule the operation by moving it to the start.
+      unscheduledOps.erase(&op);
+      op.moveBefore(block, nextScheduledOp);
+      scheduledAtLeastOnce = true;
+      // Move the iterator forward if we schedule the operation at the front.
+      if (&op == &*nextScheduledOp)
+        ++nextScheduledOp;
+    }
+
+    // If no operations were scheduled, give up and advance the iterator.
+    if (!scheduledAtLeastOnce) {
+      unscheduledOps.erase(&*nextScheduledOp);
+      ++nextScheduledOp;
+    }
+  }
+}
+
+void ParametricTopologyAnalysis::topologicallySortAllOpsWithin(Region *region) {
+  for (Block &block : *region) {
+    topologicallySortFirstLevelOpsWithin(&block);
+    for (Operation &op : block) {
+      for (Region &nestedRegion : op.getRegions())
+        topologicallySortAllOpsWithin(&nestedRegion);
+    }
+  }
 }
 
 } // namespace M::MO

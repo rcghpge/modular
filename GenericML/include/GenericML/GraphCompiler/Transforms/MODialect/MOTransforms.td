@@ -409,4 +409,14 @@ def SplatLargeConstants :
   ];
 }
 
+def TopologicalSort :
+    Pass<"mo-topological-sort", "GraphOp"> {
+  let summary = "Topologically sort ops in a graph based on SSA and parameter dependencies.";
+  let description = [{
+    This pass topologically sort ops within a `mo.graph` based on both SSA and
+    parameter dependencies. It also handles nested regions properly (e.g.,
+    `mo.if`).
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_TD
