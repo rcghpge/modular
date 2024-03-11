@@ -22,6 +22,11 @@ using M::MOSH::ShapeAttr;
 
 namespace M::RMO {
 
+/// Given two tensor types which are meant to represent the same shape
+/// return a new type which returns a more "refined type" using information
+/// from both existing types
+MO::TensorType refineShape(MO::TensorType ty1, MO::TensorType ty2);
+
 /// Rebinds all values
 SmallVector<Value> rebindUnknownShapeInValues(ValueRange inputValues,
                                               MO::GraphOp graphOp,

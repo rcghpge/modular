@@ -94,16 +94,15 @@ namespace M::RMO {
 TensorType refineShape(TensorType ty1, TensorType ty2) {
   GENERICML_ASSERT(ty1.getDtype() == ty2.getDtype())
       << " tried to refine types with different dtypes";
+  GENERICML_ASSERT(!ty1.hasUnknownShape() && !ty2.hasUnknownShape())
+      << " no question marks should be here";
+
   bool ty1Ranked = ty1.hasRank();
   bool ty2Ranked = ty2.hasRank();
 
   // Prefer ranked to unranked tensors
-  if (!ty1Ranked && !ty2Ranked) {
-    // If both are ranked, prefer a parameterized type over non-parametertized
-    if (ty1.hasUnknownShape())
-      return ty2;
+  if (!ty1Ranked && !ty2Ranked)
     return ty1;
-  }
   if (!ty1Ranked)
     return ty2;
   if (!ty2Ranked)
@@ -114,11 +113,10 @@ TensorType refineShape(TensorType ty1, TensorType ty2) {
       << " tried to refine types with different ranks";
   SmallVector<TypedAttr> newDims;
   auto refineDim = [&ty1, &ty2](size_t index) {
-    // Prefer anything other than `?`
-    if (ty1.isUnknownDim(index))
-      return ty2.getDim(index);
-    if (ty2.isUnknownDim(index))
-      return ty1.getDim(index);
+    if (ty1.isIntegerDim(index) && ty2.isIntegerDim(index))
+      GENERICML_ASSERT(ty1.getIntDim(index) == ty2.getIntDim(index))
+          << " trying to refine two tensors whose integer dimensions don't "
+             "match.";
 
     // Prefer integers over anything else
     if (ty1.isIntegerDim(index))
