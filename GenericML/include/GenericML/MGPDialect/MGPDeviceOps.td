@@ -863,9 +863,9 @@ def BufferAllocPinnedStaticOp : MGP_DeviceOp<"buffer.alloc_pinned.static", [
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aRuntimeSlot `]`
     ( `,` `align` $cRawAlign^ )? attr-dict
-    `:` custom<OptDeviceRef>("\"device\"", $eDevice, type($inChain)) 
+    `:` custom<OptDeviceRef>("\"device\"", $eDevice) 
     `->` custom<StaticBufferTypeToSizeDevice>(
-          type($outBuffer), $bSize, $dHostDevice)
+          type($outBuffer), $bSize, $dHostDevice, type($inChain))
   }];
   let hasVerifier = 1;
 
@@ -925,9 +925,9 @@ def BufferAllocPinnedDynamicOp : MGP_DeviceOp<"buffer.alloc_pinned.dynamic", [
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aRuntimeSlot `]` `,` $runtimeSize `,` $bMinPinnedSize
     ( `,` `align` $cRawAlign^ )? attr-dict
-    `:` custom<OptDeviceRef>("\"device\"", $eDevice, type($inChain)) 
+    `:` custom<OptDeviceRef>("\"device\"", $eDevice) 
     `->` custom<DynamicBufferTypeToDevice>(
-          type($outBuffer), $dHostDevice)
+          type($outBuffer), $dHostDevice, type($inChain))
   }];
   let hasVerifier = 1;
 
@@ -1127,7 +1127,7 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
       %ctx : !mgp.context
       %other_buf : !mgp.buffer<, <"cuda", 3>>
       %host_buf : !mgp.buffer<>
-      %ch1 = host.buffer.device_to_host %ch0, %ctx[5, 4], %other_buf, %host_buf
+      %ch1 = mgp.buffer.device_to_host %ch0, %ctx[5, 4], %other_buf, %host_buf
                : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<>
       %ch1 : !mef.chain
     ```
