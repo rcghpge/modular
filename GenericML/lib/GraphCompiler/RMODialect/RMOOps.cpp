@@ -135,6 +135,49 @@ TensorType refineShape(TensorType ty1, TensorType ty2) {
   return ty1.cloneWith(newDims);
 }
 
+SmallVector<Value> rebindUnknownShapeInValues(ValueRange inputValues,
+                                              MO::GraphOp graphOp,
+                                              OpBuilder &builder) {
+  SmallVector<Value> valuesNoUnknowns = inputValues;
+
+  // Replace values with those rebound expressions
+  for (int64_t i = 0, bound_i = inputValues.size(); i < bound_i; i++) {
+    auto curTensor = dyn_cast<TensorValue>(inputValues[i]);
+
+    // not a tensor, no need to modify as no `?`
+    if (!curTensor)
+      continue;
+
+    if (!curTensor.getType().hasUnknownShape())
+      continue;
+
+    Location loc = curTensor.getLoc();
+    SmallVector<KGEN::ParamDeclAttr> newParamDecls;
+
+    if (!curTensor.getType().hasRank()) {
+      TypedAttr newShape = createDynamicRankedShapeType(graphOp, newParamDecls);
+      TensorType outTy = curTensor.getType().cloneWith(newShape);
+      curTensor = builder.create<RMO::RebindTensorShapeOp>(
+          loc, outTy, curTensor, newParamDecls);
+    } else {
+      SmallVector<TypedAttr> dims(curTensor.getType().getDims());
+      for (int64_t j = 0, bound_j = dims.size(); j < bound_j; j++) {
+        TypedAttr curDim = dims[j];
+        if (TensorType::isUnknownDimParam(curDim)) {
+          curDim = createDynamicDimensionType(graphOp, newParamDecls);
+          dims[j] = curDim;
+        }
+      }
+      TensorType outTy = curTensor.getType().cloneWith(dims);
+      curTensor = builder.create<RMO::RebindTensorShapeOp>(
+          loc, outTy, curTensor, newParamDecls);
+    }
+
+    valuesNoUnknowns[i] = curTensor;
+  }
+  return valuesNoUnknowns;
+}
+
 OpFoldResult RebindTensorShapeOp::fold(FoldAdaptor adaptor) {
   // Note `?` != `?` in terms of shapes
   if (getInput().getType().hasUnknownShape())

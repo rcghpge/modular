@@ -39,7 +39,10 @@ class RMO_MOAnaloguePureTensorOp<string mnemonic, list<Trait> traits = []>
         SmallVector<SmallVector<KGEN::ParamDeclAttr>> moOutputParamDecls;
         SmallVector<SmallVector<KGEN::ParamDeclAttr>> moInputParamDecls;
 
-        inferMOTypesImpl(odsState.getContext(), graphOp, inputValues, std::nullopt, _moOperandTypes,
+        // Rebind values to remove any possible `?`
+        SmallVector<Value> reboundInputs = rebindUnknownShapeInValues(inputValues, graphOp, $_builder);
+
+        inferMOTypesImpl(odsState.getContext(), graphOp, ValueRange{reboundInputs}, std::nullopt, _moOperandTypes,
                                 moResultTypes, moInputParamDecls, moOutputParamDecls);
 
         // Flatten all decls to be used by the main operation
@@ -50,7 +53,7 @@ class RMO_MOAnaloguePureTensorOp<string mnemonic, list<Trait> traits = []>
 
         // Call normal output type, input value builder
         build($_builder, $_state, mlir::TypeRange{moResultTypes},
-                            inputValues);
+                            reboundInputs);
 
         // Manually set outputParamDecls field
         $_state.addAttribute(getOutputParamDeclsAttrName($_state.name), $_builder.getAttr<ParamDeclArrayAttr>(moOutputParamDeclsFlattened));

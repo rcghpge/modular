@@ -20,6 +20,13 @@
 using M::KGEN::ParamDeclAttr;
 using M::MOSH::ShapeAttr;
 
+namespace M::RMO {
+
+/// Rebinds all values
+SmallVector<Value> rebindUnknownShapeInValues(ValueRange inputValues,
+                                              MO::GraphOp graphOp,
+                                              OpBuilder &builder);
+} // namespace M::RMO
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
 //===----------------------------------------------------------------------===//
