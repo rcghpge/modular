@@ -203,6 +203,7 @@ struct LegalizeRMOOps
     // Lowering MOAnalogue Operations
     blockPatterns
         .add<LegalizeRMOMOAnalogue<RMO::AddOp, MO::AddOp>,
+             LegalizeRMOMOAnalogue<RMO::MulOp, MO::MulOp>,
              LegalizeRMOMOAnalogue<RMO::ShapeOfOp, MO::ShapeOfOp>,
              LegalizeRMOMOAnalogue<RMO::BroadcastShapeOp, MO::BroadcastShapeOp>,
              LegalizeRMOMOAnalogue<RMO::ReshapeOp, MO::ReshapeOp>,

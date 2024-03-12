@@ -185,6 +185,13 @@ def RMO_CastOp : RMO_MOAnaloguePureTensorOp<"cast"> {
   ];
 }
 
+def RMO_MulOp : RMO_MOAnaloguePureBinaryElementWiseOp<"mul", [Commutative]> {
+  let summary = "Binary multiplication";
+  let description = [{
+    Does a non-broadcasted elementwise multiplication.
+  }];
+}
+
 /// TODO: of showing this in it's own namespace.
 /// This is an example experimental thing to prove this is easy to write
 def RMO_BroadcastAddOp : RMO_Op<"broadcast.add", [Pure, RMO_TensorSameDTypeOperandsAndResults]> {

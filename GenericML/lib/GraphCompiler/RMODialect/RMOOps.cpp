@@ -194,7 +194,8 @@ void RebindTensorShapeOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                outputParamDecls);
 }
 
-void AddOp::inferMOTypesImpl(
+template <typename Adaptor>
+void inferPureBinaryElementWiseOpTypes(
     MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
     SmallVectorImpl<Type> &moResultTypes,
@@ -213,6 +214,30 @@ void AddOp::inferMOTypesImpl(
 
   moResultTypes.push_back(refinedShape);
   moOutputParamDecls.push_back({});
+}
+
+void AddOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+  inferPureBinaryElementWiseOpTypes(context, graphOp, operands, rmoResults,
+                                    moOperandTypes, moResultTypes,
+                                    moInputParamDecls, moOutputParamDecls);
+}
+
+void MulOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+  inferPureBinaryElementWiseOpTypes(context, graphOp, operands, rmoResults,
+                                    moOperandTypes, moResultTypes,
+                                    moInputParamDecls, moOutputParamDecls);
 }
 
 void ShapeOfOp::inferMOTypesImpl(
