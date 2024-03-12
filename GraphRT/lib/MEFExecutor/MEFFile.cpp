@@ -11,12 +11,11 @@
 #include "GraphRT/MEFExecutor/MEFFile.h"
 
 #include "GraphRT/MEF/MEFReader.h"
-#include "LLCL/Runtime/Allocator.h"
+#include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
+#include "LLCL/Runtime/Runtime.h"
 #include "MEFFileImpl.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/RCRef.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 
@@ -189,7 +188,20 @@ bool MEFFileReader::readNextSection() {
 // MEFFileImpl
 //===----------------------------------------------------------------------===//
 
-MEFFileImpl::~MEFFileImpl() { free(static_cast<void *>(invokables)); }
+MEFFileImpl::~MEFFileImpl() {
+  if constexpr (PrimitiveProfilerEntry::isEnabled()) {
+    // Profilers only exist in their owning `Runtime`.
+    if (auto runtime = LLCL::Runtime::getCurrentRuntimeOrNull()) {
+      // Make sure any borrowed strings accumulated during profiling are
+      // converted to owned strings before the MEFFile they are borrowed from is
+      // destroyed.
+      if (std::optional<TimeTraceProfiler> &profiler = runtime->getProfiler())
+        profiler->intern();
+    }
+  }
+
+  free(static_cast<void *>(invokables));
+}
 
 /// This method enumerates the primitive name table, calling the specified
 /// callable on each entry.  The callable function should return a bool, and
