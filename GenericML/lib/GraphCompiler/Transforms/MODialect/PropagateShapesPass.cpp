@@ -4,7 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
@@ -378,6 +377,19 @@ struct PropagateShapesPass
     : public MO::impl::PropagateShapesBase<PropagateShapesPass> {
   using PropagateShapesBase::PropagateShapesBase;
 
+  /// For each op inside `graphOp` (including nested blocks within), make sure
+  /// any depended ops (SSA or parameter dependencies) appear before the op.
+  void topoSortWithParameters(GraphOp graphOp) {
+    // Construct parameter use-def graph
+    auto &paramCache = getAnalysis<KGEN::ParameterCollector::Analysis>();
+    KGEN::ParameterUseDefGraph useDefGraph(graphOp.getRegion());
+    useDefGraph.calculate(paramCache);
+
+    // Sort the kgen.param.declare ops based on parameter use-def chains.
+    DenseSet<Operation *> scheduledOps;
+    scheduleBlock(graphOp.getBodyBlock(), useDefGraph, scheduledOps);
+  }
+
   /// Return the depth of a KGEN param operator, where
   /// - <add(D0, 1)> has depth 1
   /// - <add(mul(D0, 2), 1)> has depth 2
@@ -668,8 +680,7 @@ struct PropagateShapesPass
     paramAttrToDepth.clear();
 
     GraphOp graphOp = getOperation();
-    ParametricTopologyAnalysis analysis(graphOp);
-    analysis.topologicallySortAllOpsWithin(&graphOp.getRegion());
+    topoSortWithParameters(graphOp);
 
     // There are 3 special cases for adding param mappings:
     // 1. Input parameters of the graph, e.g., `mo.graph<D0, Sh1 -> ...>`
