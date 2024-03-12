@@ -69,6 +69,7 @@ public:
   decltype(&M_borrowTensorInto) borrowTensorInto = nullptr;
   decltype(&M_getTensorByNameFrom) getTensorByNameFrom = nullptr;
   decltype(&M_getRank) getRank = nullptr;
+  decltype(&M_isDynamicRanked) isDynamicRanked = nullptr;
   decltype(&M_getDimAt) getDimAt = nullptr;
   decltype(&M_getTensorType) getTensorType = nullptr;
   decltype(&M_getTensorNumElements) getTensorNumElements = nullptr;

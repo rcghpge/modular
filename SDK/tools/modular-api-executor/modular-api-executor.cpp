@@ -6,16 +6,16 @@
 
 #include "GenericML/Driver/ExecutionDriver.h"
 #include "GenericML/Driver/Utils.h"
+#include "GenericML/Support/FormatYAML.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/ModelSpec.h"
 #include "GenericML/Support/Tensor.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Support/FileLocationDecoder.h"
 #include "LLCL/Support/Profiling.h"
+#include "Support/DynamicLibrary.h"
 #include "Support/ML/DType.h"
 #include "llvm/ADT/StringExtras.h"
-
-#include "GenericML/Support/FormatYAML.h"
 
 #include "ModularAPIInterface.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -91,6 +91,9 @@ static M::TensorSpec getTensorSpec(const ModularAPIInterface &api,
                                    M_TensorSpec *spec) {
   M_Dtype dtype = api.getDtype(spec);
   SmallVector<ssize_t> inputShape;
+  if (api.isDynamicRanked(spec))
+    return M::TensorSpec(kDynamicallyRanked, convertToDType(dtype));
+
   int64_t numDims = api.getRank(spec);
   assert(numDims >= 0 && "for this usage this should always be positive");
   inputShape.reserve(numDims);
@@ -130,6 +133,7 @@ public:
   SmallVector<std::string> inputNames;
   SmallVector<std::string> outputNames;
   SmallVector<TensorSpec> compileSpecs;
+  SmallVector<std::string> extraTorchLibs;
   bool printMetadata{false};
   SmallVector<std::string> kernelLibraryPaths;
   bool gpu{false};
@@ -201,6 +205,12 @@ private:
       llvm::cl::location(options.outputNames),
       llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
 
+  M::cl::MListOpt<std::string, llvm::SmallVector<std::string>> extraTorchLibs{
+      "torch-library",
+      cl::desc("Path to a custom library built for PyTorch "
+               "(for example a custom operator library)."),
+      llvm::cl::location(options.extraTorchLibs),
+      llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
   M::cl::MListOpt<TensorSpec, SmallVector<TensorSpec>, TensorSpecParser>
       compileSpecs{
           "compile-specs",
@@ -571,6 +581,17 @@ int main(int argc, char **argv) {
   if (api.isError(status.get())) {
     llvm::errs() << "Error: " << api.getError(status.get()) << "\n";
     exit(EXIT_FAILURE);
+  }
+
+  // Pre-load torch extension libraries
+  SmallVector<llvm::sys::DynamicLibrary> extensionLibs;
+  if (!clOptions.extraTorchLibs.empty()) {
+    for (const auto &path : clOptions.extraTorchLibs) {
+      auto libOr = M::permanentPluginLibrary(path);
+      if (libOr.isError())
+        return clOptions.reportError(libOr.getError());
+      extensionLibs.push_back(libOr.takeValue());
+    }
   }
 
   CompileConfigPtr compileConfig = {api.newCompileConfig(),

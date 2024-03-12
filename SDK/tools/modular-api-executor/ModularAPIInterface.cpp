@@ -190,6 +190,7 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
   GET_SYMBOL(borrowTensorInto, M_borrowTensorInto);
   GET_SYMBOL(getTensorByNameFrom, M_getTensorByNameFrom);
   GET_SYMBOL(getRank, M_getRank);
+  GET_SYMBOL(isDynamicRanked, M_isDynamicRanked);
   GET_SYMBOL(getDimAt, M_getDimAt);
   GET_SYMBOL(getTensorType, M_getTensorType);
   GET_SYMBOL(getTensorNumElements, M_getTensorNumElements);
