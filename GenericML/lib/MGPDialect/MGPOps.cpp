@@ -832,18 +832,6 @@ void CpuBufferReallocDynamicOp::setInChain(Value chain) {
 }
 
 //===----------------------------------------------------------------------===//
-// CpuBufferSetWithIndex
-//===----------------------------------------------------------------------===//
-
-InOutSignatureAttr::InOutSemantics
-CpuBufferSetWithIndexOp::getInOutSemantics(size_t index) {
-  GENERICML_ASSERT(index < getNumOperands());
-  return index == getBufferMutable().getOperandNumber()
-             ? InOutSignatureAttr::kOut
-             : InOutSignatureAttr::kIn;
-}
-
-//===----------------------------------------------------------------------===//
 // CpuBufferConcatOp
 //===----------------------------------------------------------------------===//
 
