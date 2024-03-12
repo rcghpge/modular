@@ -60,7 +60,7 @@ class VisualizationConfig : public DriverConfig {
 
 public:
   VisualizationConfig(std::filesystem::path path)
-      : DriverConfig(OptionKind::kVisualization, "viz-spec-dir"),
+      : DriverConfig(OptionKind::kVisualization, "viz-spec-path"),
         visualizationPath(std::move(path)) {}
 
   static bool classof(const DriverConfig *config) {

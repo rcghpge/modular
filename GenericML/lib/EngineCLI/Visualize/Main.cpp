@@ -15,6 +15,7 @@
 #include "Support/Driver/DriverSupport.h"
 #include "Support/ErrorOr.h"
 #include "Support/Process.h"
+#include "Support/VisualizationUtils.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/Option.h"
@@ -45,7 +46,7 @@ struct VisualizeOptTable : public llvm::opt::PrecomputedOptTable {
 struct ClOptions {
   std::string modelPath;
   std::string inputGenerationSchemaPath;
-  std::string visualizationDir;
+  std::string visualizationPath;
   std::string customOpsPath;
 };
 
@@ -86,11 +87,11 @@ static ClOptions parseOptions(const State &state) {
   if (args.hasArg(options::OPT_input_generation_schema))
     opts.inputGenerationSchemaPath =
         args.getLastArgValue(options::OPT_input_generation_schema);
-  if (args.hasMultipleArgs(options::OPT_output_dir))
+  if (args.hasMultipleArgs(options::OPT_output))
     std::exit(state.reportError(
-        "must provide at most one visualization output directory"));
-  if (args.hasArg(options::OPT_output_dir))
-    opts.visualizationDir = args.getLastArgValue(options::OPT_output_dir);
+        "must provide at most one visualization output path"));
+  if (args.hasArg(options::OPT_output))
+    opts.visualizationPath = args.getLastArgValue(options::OPT_output);
   if (args.hasMultipleArgs(options::OPT_custom_ops_path))
     std::exit(state.reportError("must provide at most one custom ops path"));
   if (args.hasArg(options::OPT_custom_ops_path))
@@ -121,7 +122,7 @@ compileModel(const ClOptions &opts,
     return Error(Twine("Failed to set input specs for PyTorch: ") +
                  result.getError());
 
-  M_enableVisualization(compileConfig.get(), opts.visualizationDir.c_str());
+  M_enableVisualization(compileConfig.get(), opts.visualizationPath.c_str());
 
   if (!opts.customOpsPath.empty()) {
     M_useKernelsFrom(compileConfig.get(), opts.customOpsPath.c_str(), status);
@@ -183,19 +184,17 @@ int M::maxVisualizeMain(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  std::string output;
-  if (!opts.visualizationDir.empty()) {
-    output = (std::filesystem::current_path() /
-              std::filesystem::path(opts.visualizationDir.c_str()))
-                 .string();
-  } else {
-    output = std::filesystem::current_path().string();
+  // TODO: Fix this filename.
+  ErrorOr<std::string> outputOr = createFilepath(opts.visualizationPath);
+  if (outputOr.isError()) {
+    llvm::errs()
+        << "Unable to determine generated output visualization file path\n";
   }
 
-  llvm::outs() << "\nModular maxviz file saved to " << output << "\n";
+  llvm::outs() << "\nModular maxviz file saved to: " << outputOr.get() << "\n";
 
   llvm::outs()
-      << "To visualize model, drop maxviz file into https://netron.app/\n";
+      << "To visualize model, drop this maxviz file into https://netron.app/\n";
   logger->emitL1Event(kTelemetrySuccessEventName);
   return EXIT_SUCCESS;
 }

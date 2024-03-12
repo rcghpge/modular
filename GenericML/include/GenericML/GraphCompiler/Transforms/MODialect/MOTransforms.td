@@ -193,8 +193,8 @@ def GenVizSpec : Pass<"gen-viz", "GraphOp"> {
     Netron (https://github.com/modularml/netron) to visualize the MO graph.
   }];
   let options = [
-    Option<"vizOutputDir", "viz-output-dir", "std::string", "",
-           "Specifies the output directory for the "
+    Option<"vizOutputPath", "viz-output-path", "std::string", "",
+           "Specifies the output path for the "
            "visualization spec.">,
   ];
 }

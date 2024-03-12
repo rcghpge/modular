@@ -32,7 +32,7 @@ public:
 
   bool genVizSpec{false};
 
-  std::string vizOutputDir{""};
+  std::string vizOutputPath{""};
 
   bool debugPrintAllTensors{false};
 
@@ -52,7 +52,7 @@ public:
     moToMgpOptions.defaultDeviceLabel = defaultDeviceLabel;
     moToMgpOptions.enableMemoryPlanning = enableMemoryPlanning;
     moToMgpOptions.genVizSpec = genVizSpec;
-    moToMgpOptions.vizOutputDir = vizOutputDir;
+    moToMgpOptions.vizOutputPath = vizOutputPath;
     moToMgpOptions.debugPrintAllTensors = debugPrintAllTensors;
     moToMgpOptions.softFusionNonHostKernelLimit = softFusionNonHostKernelLimit;
     moToMgpOptions.cacheBuffersAcrossExecutes = cacheBuffersAcrossExecutes;
@@ -117,11 +117,11 @@ private:
       llvm::cl::location(options.genVizSpec),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
-  M::cl::MOpt<std::string, true> vizOutputDir{
-      "viz-output-dir",
-      cl::desc("If genVizSpec, can be used to specify the output directory for "
+  M::cl::MOpt<std::string, true> vizOutputPath{
+      "viz-output-path",
+      cl::desc("If genVizSpec, can be used to specify the output path for "
                "the visualization spec."),
-      llvm::cl::location(options.vizOutputDir),
+      llvm::cl::location(options.vizOutputPath),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
   M::cl::MOpt<bool, true> debugPrintAllTensors{

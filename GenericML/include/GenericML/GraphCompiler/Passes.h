@@ -119,10 +119,10 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc(
           "If true, generates a visualization spec compatible with Netron."),
       llvm::cl::init(false)};
-  Option<std::string> vizOutputDir{
-      *this, "viz-output-dir",
+  Option<std::string> vizOutputPath{
+      *this, "viz-output-path",
       llvm::cl::desc(
-          "If genVizSpec, can be used to specify the output directory for "
+          "If genVizSpec, can be used to specify the output path for "
           "the visualization spec."),
       llvm::cl::init("")};
   Option<bool> debugPrintAllTensors{
