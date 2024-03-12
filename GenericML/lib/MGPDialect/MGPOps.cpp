@@ -289,24 +289,6 @@ static void printDynamicBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
   p << buffer;
 }
 
-static ParseResult parseDynamicBufferTypeToDevice(OpAsmParser &p, Type &buffer,
-                                                  DeviceRefAttr &device) {
-  IntegerAttr rawSize;
-  mlir::SMLoc loc;
-  if (p.getCurrentLocation(&loc) ||
-      parseBufferTypeToRawSizeDeviceImpl(p, buffer, rawSize, device, {}))
-    return failure();
-  if (rawSizeToOptSize(rawSize.getUInt()))
-    return p.emitError(loc, "expecting dynamically sized !mgp.buffer type");
-  return success();
-}
-
-static void printDynamicBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
-                                           DeviceBufferType buffer,
-                                           DeviceRefAttr device) {
-  p << buffer;
-}
-
 static ParseResult parseBufferTypeToDevice(OpAsmParser &p, Type &buffer,
                                            DeviceRefAttr &device) {
   IntegerAttr rawSize;
