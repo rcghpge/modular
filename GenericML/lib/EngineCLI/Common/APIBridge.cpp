@@ -100,12 +100,8 @@ M::EngineCLI::tensorSpecToCAPITorchSpec(const TensorSpec &spec) {
   SmallVector<int64_t, kMaxRank> translatedShape;
   if (spec.hasRank()) {
     translatedRank = spec.getRank();
-    for (ssize_t dim : spec) {
-      if (dim < 0)
-        translatedShape.push_back(M_getDynamicDimensionValue());
-      else
-        translatedShape.push_back(dim);
-    }
+    for (ssize_t dim : spec)
+      translatedShape.push_back(dim);
   } else {
     translatedRank = M_getDynamicRankValue();
   }
@@ -120,7 +116,7 @@ TensorSpec M::EngineCLI::capiToTensorSpec(const M_TensorSpec *spec) {
     return TensorSpec(kDynamicallyRanked, capiToDType(M_getDtype(spec)));
   SmallVector<int64_t, kMaxRank> shape;
   int64_t rank = M_getRank(spec);
-  assert(rank >= 0 && "dynamic ranked specs are not supported");
+  assert(rank >= 0 && "unexpected dynamic rank");
   for (size_t axis = 0, e = (size_t)rank; axis < e; ++axis) {
     int64_t cDim = M_getDimAt(spec, axis);
     shape.push_back(cDim == M_getDynamicDimensionValue()
