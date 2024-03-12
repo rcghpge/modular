@@ -538,6 +538,14 @@ executeModel(const Model *model, Runtime &runtime,
     llvm::outs().flush();
   }
 
+#ifdef MODULAR_PROFILING_NSIGHT
+  // don't start the profiler if executeModel is only being used for warm-up
+  if (numRuns > 0) {
+    if (auto err = M::CUDA::profileStart())
+      return err.takeError();
+  }
+#endif
+
   for (unsigned i = 0; i < numRuns; ++i) {
     auto args = buildArgs(runtime, inputTensorGenerators);
 
@@ -549,10 +557,6 @@ executeModel(const Model *model, Runtime &runtime,
     auto entry = DriverProfilerEntry::create("executeModel.run");
 
     startTime = std::chrono::high_resolution_clock::now();
-#ifdef MODULAR_PROFILING_NSIGHT
-    if (auto err = M::CUDA::profileStart())
-      return err.takeError();
-#endif
     // If not printing any results we need to still check they are error free.
     // Otherwise, we need only wait for the results and errors will be
     // reported when printing the results below.
@@ -563,10 +567,6 @@ executeModel(const Model *model, Runtime &runtime,
     if (resultsOr.isError())
       return resultsOr.takeError();
     auto results = std::move(*resultsOr);
-#ifdef MODULAR_PROFILING_NSIGHT
-    if (auto err = M::CUDA::profileStop())
-      return err.takeError();
-#endif
     endTime = std::chrono::high_resolution_clock::now();
 
     std::move(entry).record();
@@ -596,6 +596,13 @@ executeModel(const Model *model, Runtime &runtime,
 
     llvm::outs().flush();
   }
+
+#ifdef MODULAR_PROFILING_NSIGHT
+  if (numRuns > 0) {
+    if (auto err = M::CUDA::profileStop())
+      return err.takeError();
+  }
+#endif
 
   return executableModel;
 }
