@@ -166,15 +166,14 @@ static bool isConstantFoldable(Operation *op) {
   return ((isa<MO::MODialect, MOGG::MOGGDialect>(op->getDialect()) &&
            // TODO (#29484): Graphs with mo.list outputs can't be lowered to
            // MGP.
-           llvm::all_of(op->getResultTypes(),
-                        [](Type ty) {
-                          return isa<MO::TensorType>(ty) ||
-                                 isa<MOSH::ShapeType>(ty) ||
-                                 isa<MO::ListType>(ty);
-                        })) ||
-          isa<KGEN::ParamOpInterface>(op) || isa<KGEN::ParamConstantOp>(op) ||
-          isa<KGEN::ParamDeclareOp>(op)) &&
-         !isa<MOControlOpInterface>(op) && !isa<MO::LayoutTransformOp>(op);
+           llvm::all_of(
+               op->getResultTypes(),
+               [](Type ty) {
+                 return isa<MO::TensorType, MOSH::ShapeType, MO::ListType>(ty);
+               })) ||
+          isa<KGEN::ParamOpInterface, KGEN::ParamConstantOp,
+              KGEN::ParamDeclareOp>(op)) &&
+         !isa<MOControlOpInterface>(op);
 }
 
 /// Creates a a tensor from a `dense_resource`.
@@ -275,22 +274,45 @@ elementsAttrFromTensor(const AnyAsyncValueRef &ref, MLIRContext *ctx,
       arrayType, resourceManager.insert("folded_const", std::move(blob)));
 }
 
-static RuntimeOutput
-extractRuntimeOutput(const AnyAsyncValueRef &ref, MLIRContext *ctx,
-                     GML::ForeignBufferInterfaceID &resourceInterfaceID) {
+static RuntimeOutput extractRuntimeOutput(
+    const AnyAsyncValueRef &ref, MLIRContext *ctx,
+    GML::ForeignBufferInterfaceID &resourceInterfaceID,
+    llvm::DenseMap<M::LLCL::AsyncValue *, ElementsAttr> &cachedConstants) {
   if (ref.isType<GML::Tensor>()) {
     GML::Tensor &tensor = ref.get<GML::Tensor>();
-    // Create an `ElementsAttr`, possibly by taking ownership of `ref/tensor`'s
-    // buffer.
-    return RuntimeOutput(
-        RuntimeTensor(elementsAttrFromTensor(ref, ctx, resourceInterfaceID),
-                      tensor.getShape()));
+    ElementsAttr constantsArr;
+    if (auto it = cachedConstants.find(ref.getPointer());
+        it != cachedConstants.end()) {
+      // The same output value was returned multiple times by the graph.
+      // There is no need to create the same attribute another time, just reuse
+      // the existing one.
+      // This avoids creating twice the same dense_resources.
+      // For example, if we constant-fold the following IR:
+      //  mo.if(...) {
+      //     %1 = some_op(%cst0)
+      //  } else {
+      //     %1 = some_op(%cst0)
+      // }
+      // Without this cache, it would generate:
+      // mo.if(...) {
+      //   %1 = constant { value=<folded_constant_1> }
+      // } else {
+      //   %1 = constant { value=<folded_constant_2> }
+      // }
+      constantsArr = it->second;
+    } else {
+      // Create an `ElementsAttr`, possibly by taking ownership of
+      // `ref/tensor`'s buffer.
+      constantsArr = elementsAttrFromTensor(ref, ctx, resourceInterfaceID);
+      cachedConstants.try_emplace(ref.getPointer(), constantsArr);
+    }
+    return RuntimeOutput(RuntimeTensor(constantsArr, tensor.getShape()));
   } else if (ref.isType<GML::List>()) {
     GML::List &list = ref.get<GML::List>();
     RuntimeList out;
     for (auto &v : list.getElements()) {
-      out.push_back(std::get<RuntimeTensor>(
-          extractRuntimeOutput(v.getValue(), ctx, resourceInterfaceID)));
+      out.push_back(std::get<RuntimeTensor>(extractRuntimeOutput(
+          v.getValue(), ctx, resourceInterfaceID, cachedConstants)));
     }
     return out;
   } else {
@@ -347,6 +369,7 @@ executeModel(MLIRContext *ctx, const Model *model,
   resultCopy = resultCopy.drop_front();
 
   // Get the constant values.
+  llvm::DenseMap<M::LLCL::AsyncValue *, ElementsAttr> cachedConstants;
   llvm::DenseMap<Operation *, SmallVector<RuntimeOutput>> opToTensors;
   auto resourceManager = DenseResourceElementsHandle::getManagerInterface(ctx);
   size_t outIdx = 0;
@@ -361,9 +384,8 @@ executeModel(MLIRContext *ctx, const Model *model,
         // Move output tensor into storage.
         GENERICML_ASSERT(tensorRef.isReady())
             << "We already awaited, tensor should be ready";
-
-        opTensors.push_back(
-            extractRuntimeOutput(tensorRef, ctx, resourceInterfaceID));
+        opTensors.push_back(extractRuntimeOutput(
+            tensorRef, ctx, resourceInterfaceID, cachedConstants));
         outIdx++;
       }
       opToTensors[op] = opTensors;
