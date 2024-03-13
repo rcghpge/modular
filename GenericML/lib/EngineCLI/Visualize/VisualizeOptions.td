@@ -20,12 +20,14 @@ def version : Flag<["--"], "version">,
 
 defm output
     : CommandOption<["--"], "output", OutputOptionGroup, Index<1>,
-                    MetaVarName<"DIR">,
-                    HelpText<"Path / directory to save visualization spec.">>;
+                    MetaVarName<"PATH">,
+                    HelpText<"Path / directory to save visualization spec. "
+                             "If a similar filename already exists on the specified path, "
+                             "we will overwrite it with an updated visualization spec.">>;
 def : Separate<["-"], "o">,
       Group<OutputOptionGroup>,
       Index<2>,
-      MetaVarName<"DIR">,
+      MetaVarName<"PATH">,
       Alias<output>;
 
 defm input_generation_schema
