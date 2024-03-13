@@ -26,8 +26,6 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 
-#include "./CASStateSlot.h"
-
 #define DEBUG_TYPE "mgp"
 
 using namespace M;
