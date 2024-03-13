@@ -306,6 +306,7 @@ void llvm::yaml::MappingTraits<M::ModelSpec>::mapping(IO &io,
   io.mapRequired("inputs", modelSpec.inputs);
   io.mapRequired("outputs", modelSpec.outputs);
   io.mapOptional("metrics", modelSpec.metrics);
+  io.mapOptional("compile_specs", modelSpec.compile_specs);
 }
 
 namespace {

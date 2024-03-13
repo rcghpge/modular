@@ -122,6 +122,7 @@ public:
   std::string data_description;
   SmallVector<ModelBinary, 3> model;
   SmallVector<ModelIOSpec, 5> inputs, outputs;
+  SmallVector<ModelIOSpec, 5> compile_specs;
   SmallVector<Metric, 5> metrics;
 };
 } // namespace M
