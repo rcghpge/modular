@@ -204,6 +204,12 @@ struct LegalizeRMOOps
     blockPatterns
         .add<LegalizeRMOMOAnalogue<RMO::AddOp, MO::AddOp>,
              LegalizeRMOMOAnalogue<RMO::MulOp, MO::MulOp>,
+             LegalizeRMOMOAnalogue<RMO::ModOp, MO::ModOp>,
+             LegalizeRMOMOAnalogue<RMO::MinOp, MO::MinOp>,
+             LegalizeRMOMOAnalogue<RMO::MaxOp, MO::MaxOp>,
+             LegalizeRMOMOAnalogue<RMO::DivOp, MO::DivOp>,
+             LegalizeRMOMOAnalogue<RMO::PowOp, MO::PowOp>,
+             LegalizeRMOMOAnalogue<RMO::SubOp, MO::SubOp>,
              LegalizeRMOMOAnalogue<RMO::ShapeOfOp, MO::ShapeOfOp>,
              LegalizeRMOMOAnalogue<RMO::BroadcastShapeOp, MO::BroadcastShapeOp>,
              LegalizeRMOMOAnalogue<RMO::ReshapeOp, MO::ReshapeOp>,

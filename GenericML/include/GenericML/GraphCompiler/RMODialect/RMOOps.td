@@ -116,6 +116,28 @@ class RMO_MOAnaloguePureElementWiseOp<string name, list<Trait> traits = []>
 class RMO_MOAnaloguePureBinaryElementWiseOp<string name, list<Trait> traits = []>
     : RMO_MOAnaloguePureElementWiseOp<name, traits> {
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y, MO_ParamDecls:$outputParamDecls);
+
+  let extraClassDeclaration = [{
+    static void inferMOTypesImpl(
+        MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+        std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+        SmallVectorImpl<Type> &moResultTypes,
+        SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+        SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+        MO::TensorType lhsType = cast<MO::TensorType>(operands.getInputX().getType());
+        MO::TensorType rhsType = cast<MO::TensorType>(operands.getInputY().getType());
+
+        MO::TensorType refinedShape = refineShape(lhsType, rhsType);
+        moOperandTypes.push_back(refinedShape);
+        moOperandTypes.push_back(refinedShape);
+        moInputParamDecls.push_back({});
+        moInputParamDecls.push_back({});
+
+        moResultTypes.push_back(refinedShape);
+        moOutputParamDecls.push_back({});
+    }
+  }];
 }
 
 def RMO_AddOp : RMO_MOAnaloguePureBinaryElementWiseOp<"add", [Commutative]> {
@@ -189,6 +211,48 @@ def RMO_MulOp : RMO_MOAnaloguePureBinaryElementWiseOp<"mul", [Commutative]> {
   let summary = "Binary multiplication";
   let description = [{
     Does a non-broadcasted elementwise multiplication.
+  }];
+}
+
+def RMO_ModOp : RMO_MOAnaloguePureBinaryElementWiseOp<"mod"> {
+  let summary = "Binary modulus op";
+  let description = [{
+    Does a non-broadcasted elementwise modulus.
+  }];
+}
+
+def RMO_MinOp : RMO_MOAnaloguePureBinaryElementWiseOp<"min", [Commutative]> {
+  let summary = "Binary minimum op";
+  let description = [{
+    Does a non-broadcasted elementwise minimum.
+  }];
+}
+
+def RMO_MaxOp : RMO_MOAnaloguePureBinaryElementWiseOp<"max", [Commutative]> {
+  let summary = "Binary maximum op";
+  let description = [{
+    Does a non-broadcasted elementwise maximum.
+  }];
+}
+
+def RMO_DivOp : RMO_MOAnaloguePureBinaryElementWiseOp<"div"> {
+  let summary = "Binary division op";
+  let description = [{
+    Does a non-broadcasted elementwise division.
+  }];
+}
+
+def RMO_PowOp : RMO_MOAnaloguePureBinaryElementWiseOp<"pow"> {
+  let summary = "Binary power op";
+  let description = [{
+    Does a non-broadcasted elementwise power.
+  }];
+}
+
+def RMO_SubOp : RMO_MOAnaloguePureBinaryElementWiseOp<"sub"> {
+  let summary = "Binary subtraction op";
+  let description = [{
+    Does a non-broadcasted elementwise subtraction.
   }];
 }
 
