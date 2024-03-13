@@ -415,7 +415,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
       INTRINSIC_TO_MOJO("pool_shape_ceil", "nn::pool::pool_shape_ceil"),
       INTRINSIC_TO_MOJO("range_shape", "nn::arange::arange_shape"),
       INTRINSIC_TO_MOJO("reduce_shape",
-                        "stdlib::algorithm::reduction::reduce_shape"),
+                        "closed_source_algorithm::reduction::reduce_shape"),
       INTRINSIC_TO_MOJO("reshape_shape", "nn::reshape::reshape_shape"),
       INTRINSIC_TO_MOJO("resize_shape", "MOGG::resize_shape"),
       INTRINSIC_TO_MOJO("roi_align_shape", "MOGG::roi_align_shape"),
