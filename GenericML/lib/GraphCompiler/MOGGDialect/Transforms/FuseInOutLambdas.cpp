@@ -94,6 +94,10 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     if (outputInterface.empty())
       return false;
 
+    // Must have the same device
+    if (kernel.getDeviceRef() != parentKernel.getDeviceRef())
+      return false;
+
     return true;
   }
 
@@ -282,6 +286,10 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       if (operand == result && attr.strref().empty())
         return false;
     }
+
+    // Must have the same device
+    if (kernel.getDeviceRef() != user.getDeviceRef())
+      return false;
 
     return true;
   }
@@ -533,6 +541,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
           /*isKGEN=*/kernelToFuseInto.getIsKGENAttr(),
           /*summary=*/getSummaryString({kernelToFuseInto, userToFuseIn}),
           /*isAsync=*/kernelToFuseInto.getIsAsyncAttr());
+      if (kernelToFuseInto.getDeviceRef())
+        newDstKernel.setDeviceRef(kernelToFuseInto.getDeviceRef());
       newDstKernel.getBody().takeBody(kernelToFuseInto.getBody());
       userToFuseIn.getResult(0).replaceAllUsesWith(newDstKernel.getResult(0));
 
@@ -557,6 +567,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     SmallVector<MOGG::KernelOp> kernelOpsToErase;
     for (MOGG::KernelOp kernelToFuseInto : moGraph.getOps<MOGG::KernelOp>()) {
+      DeviceRefAttr beforeDevice = MO::getDeviceOrDefault(kernelToFuseInto);
       std::optional<ArrayAttr> outputLambdas =
           kernelToFuseInto.getOutputFusionInterface();
       // Try fuse into the output lambda if we have a fusion interface for that
@@ -571,6 +582,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
               kernelToFuseInto, outputLambdaName, kernelOpsToErase);
         }
       }
+      GENERICML_ASSERT(beforeDevice == MO::getDeviceOrDefault(kernelToFuseInto))
+          << "Must be same device after output lambda fusion";
 
       auto inputLambdas = kernelToFuseInto.getInputFusionInterface();
       if (!inputLambdas) {
@@ -587,6 +600,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
                               inputIdx);
         }
       }
+      GENERICML_ASSERT(beforeDevice == MO::getDeviceOrDefault(kernelToFuseInto))
+          << "Must be same device after input lambda fusion";
     }
 
     for (KernelOp kernelOp : kernelOpsToErase)
