@@ -34,18 +34,6 @@ enum class FileFormat : uint8_t {
   /// This looks like a textual MLIR file with the faux dialect in it.
   kFauxDialect,
 
-  /// This looks like a textual MLIR file with the tfl dialect in it.
-  kMTFLDialect,
-
-  /// This is a TFLite binary flatbuffer file.
-  kTFLFlatBuffer,
-
-  /// This is a TFLite flatbuffer file in JSON form.
-  kTFLFlatBufferJSON,
-
-  /// This looks like a textual MLIR file with the tflp dialect in it.
-  kTFLPDialect,
-
   /// This looks like a textual MLIR file with the tfp dialect in it.
   kTFPDialect,
 
@@ -148,16 +136,6 @@ private:
                      "Input is a faux dialect file"),
           clEnumValN(FileFormat::kMGPDialect, "mgp",
                      "Input is an mgp dialect file"),
-
-          // TensorFlow lite
-          clEnumValN(FileFormat::kTFLFlatBuffer, "tflite-flat-buffer",
-                     "Input is a TFLite flatbuffer file"),
-          clEnumValN(FileFormat::kTFLFlatBufferJSON, "tflite-flat-buffer-json",
-                     "Input is a TFLite flatbuffer JSON file"),
-          clEnumValN(FileFormat::kMTFLDialect, "tflite",
-                     "Input is a TFLite dialect file"),
-          clEnumValN(FileFormat::kTFLPDialect, "tflite-p",
-                     "Input is a TFLite primitives dialect file"),
 
           // TensorFlow
           clEnumValN(FileFormat::kTFSavedModel, "tf-saved-model",

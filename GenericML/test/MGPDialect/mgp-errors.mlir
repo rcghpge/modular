@@ -203,7 +203,7 @@ func.func @dtype_unrepresentable(%x : !mgp.tensor_spec<5x10xf8>) {}
 }, {
   ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %x: tensor<3xf32>):
     mef.output %ch, %x : !mef.chain, tensor<3xf32>
-}) {frameworkName = "tfl", inputOutputTypes = (tensor<3xf32>) -> (tensor<3xf32>), sym_name = "badSetupArgs"} : () -> ()
+}) {frameworkName = "tf", inputOutputTypes = (tensor<3xf32>) -> (tensor<3xf32>), sym_name = "badSetupArgs"} : () -> ()
 
 // -----
 
@@ -215,7 +215,7 @@ func.func @dtype_unrepresentable(%x : !mgp.tensor_spec<5x10xf8>) {}
 }, {
   ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %x: tensor<3xf32>):
     mef.output %ch, %x : !mef.chain, tensor<3xf32>
-}) {frameworkName = "tfl", inputOutputTypes = (tensor<3xf32>) -> (tensor<3xf32>), sym_name = "badSetupResults"} : () -> ()
+}) {frameworkName = "tf", inputOutputTypes = (tensor<3xf32>) -> (tensor<3xf32>), sym_name = "badSetupResults"} : () -> ()
 
 // -----
 
@@ -227,7 +227,7 @@ func.func @dtype_unrepresentable(%x : !mgp.tensor_spec<5x10xf8>) {}
 }, {
   ^bb0(%ch: !mef.chain, %x: tensor<3xf32>, %ctx: !mgp.context):
     mef.output %ch, %x : !mef.chain, tensor<3xf32>
-}) {frameworkName = "tfl", inputOutputTypes = (tensor<3xf32>) -> (tensor<3xf32>), sym_name = "badExecuteArgs"} : () -> ()
+}) {frameworkName = "tf", inputOutputTypes = (tensor<3xf32>) -> (tensor<3xf32>), sym_name = "badExecuteArgs"} : () -> ()
 
 // -----
 
@@ -239,7 +239,7 @@ func.func @dtype_unrepresentable(%x : !mgp.tensor_spec<5x10xf8>) {}
 }, {
   ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %x: tensor<3xf32>):
     mef.output %ch, %x : !mef.chain, tensor<3xf32>
-}) {frameworkName = "tfl", inputOutputTypes = (tensor<4xf32>) -> (tensor<3xf32>), sym_name = "badExecuteArgs2"} : () -> ()
+}) {frameworkName = "tf", inputOutputTypes = (tensor<4xf32>) -> (tensor<3xf32>), sym_name = "badExecuteArgs2"} : () -> ()
 
 // -----
 
@@ -251,11 +251,11 @@ func.func @dtype_unrepresentable(%x : !mgp.tensor_spec<5x10xf8>) {}
   ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %x: tensor<3xf32>):
     // expected-error@+1 {{'mef.output' op expected 1 operands, but given 2}}
     mef.output %ch, %x : !mef.chain, tensor<3xf32>
-}) {frameworkName = "tfl", inputOutputTypes = (tensor<3xf32>) -> (), sym_name = "badExecuteResults"} : () -> ()
+}) {frameworkName = "tf", inputOutputTypes = (tensor<3xf32>) -> (), sym_name = "badExecuteResults"} : () -> ()
 
 // -----
 
-mgp.model @mismatchedContextType : tfl init {
+mgp.model @mismatchedContextType : tf init {
   %ch = grt.chain.create ()
   %unk = mef.opaque "bogus" [] () : ()->!mef.unknown
   // expected-error@+1 {{'mef.output' op operand #1 has type '!mef.unknown' but expected '!mgp.context'}}

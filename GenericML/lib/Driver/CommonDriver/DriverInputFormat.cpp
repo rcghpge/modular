@@ -75,26 +75,15 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
   if (MEF::hasMEFMagicNumber(fileContents))
     return FileFormat::kMEFFile;
 
-  // TFLite flatbuffer binary formats start with a 32-bit binary offset, then
-  // have a four-byte "kFileIdentifier" field containing "TFL3".   This appears
-  // to be true regardless of the version of the TFLite file, the version number
-  // is stored elsewhere.
-  if (fileContents.drop_front(4).take_front(4) == "TFL3")
-    return FileFormat::kTFLFlatBuffer;
-
   // Otherwise, we're getting desperate: check to see if this looks like a
   // textual file of a familiar dialect.
   if (llvm::isASCII(fileContents)) {
     // TODO(#4866): We need something more sophisticated here, this will pick up
     // comments (e.g. CHECK lines), for example.
-    if (fileContents.contains("mtfl.graph"))
-      return FileFormat::kMTFLDialect;
     if (fileContents.contains("monnx.graph"))
       return FileFormat::kMONNXDialect;
     if (fileContents.contains("func.func") && fileContents.contains("tf."))
       return FileFormat::kTFDialect;
-    if (fileContents.contains("operator_codes:"))
-      return FileFormat::kTFLFlatBufferJSON;
     if (fileContents.contains("ir_version: "))
       return FileFormat::kONNXTextProtobuf;
     // Ignore commented out lines for file format sniffing.
@@ -122,8 +111,6 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
           return FileFormat::kUnknown;
         case CompiledFrameworkLabel::kTensorFlowModel:
           return FileFormat::kTFPDialect;
-        case CompiledFrameworkLabel::kTFLiteModel:
-          return FileFormat::kTFLPDialect;
         case CompiledFrameworkLabel::kFauxModel:
           return FileFormat::kFauxDialect;
         case CompiledFrameworkLabel::kModularModel:
@@ -142,12 +129,6 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
     // TODO(#26701): Replace this with a reliable / fast dialect ID encoding.
     constexpr int maxSniffedBytes = 1024 * 1024;
     std::match_results<StringRef::iterator> m;
-    if (std::regex_search(fileContents.begin(),
-                          std::min(fileContents.end(),
-                                   fileContents.begin() + maxSniffedBytes),
-                          m, std::regex(R"(\bmtfl\.)"))) {
-      return FileFormat::kMTFLDialect;
-    }
     if (std::regex_search(fileContents.begin(),
                           std::min(fileContents.end(),
                                    fileContents.begin() + maxSniffedBytes),

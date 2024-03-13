@@ -86,7 +86,7 @@ public:
     /// The top-level mgp.model operation.
     MGP::ModelOp modelOp;
 
-    /// The name of the target framework, e.g. "mgp", "tfl", etc.
+    /// The name of the target framework, e.g. "mgp", "tf", etc.
     llvm::StringRef compiledFrameworkLabel;
 
     /// The minimum alignment for all CPU hosted buffers (constants and

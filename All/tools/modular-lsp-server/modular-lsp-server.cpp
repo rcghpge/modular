@@ -19,8 +19,6 @@
 #include "KGEN/ToolCommon/InitAllDialects.h"
 #include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
 #include "Support/MDialect/MDialect.h"
-#include "TFLite/MTFLDialect/MTFLDialect.h"
-#include "TFLite/TFLPDialect/TFLPDialect.h"
 #include "TensorFlow/InitAllDialects.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
@@ -44,8 +42,7 @@ int main(int argc, char **argv) {
       // Add the Modular Dialects.
       MEF::MEFDialect, Cache::CacheDialect, DebugInfo::DebugInfoDialect,
       Faux::FauxDialect, GRT::GRTDialect, MDialect, MGP::MGPDialect,
-      RMO::RMODialect, MO::MODialect, MOGG::MOGGDialect, TFL::MTFLDialect,
-      TFLP::TFLPDialect>();
+      RMO::RMODialect, MO::MODialect, MOGG::MOGGDialect>();
   // Add the KGEN Dialects.
   registerAllKGENDialects(registry);
   TF::registerAllDialects(registry);

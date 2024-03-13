@@ -230,8 +230,7 @@ struct CustomMappingTraits<M::ModelSpec::NameSubstitutions> {
 
 static bool isValidModelFormat(StringRef format) {
   return llvm::is_contained({"faux", "mef", "onnx", "torchscript",
-                             "tensorflow-graphdef", "tensorflow-savedmodel",
-                             "tflite", "mtfl"},
+                             "tensorflow-graphdef", "tensorflow-savedmodel"},
                             format);
 }
 

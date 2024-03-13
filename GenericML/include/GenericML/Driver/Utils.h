@@ -46,14 +46,6 @@ ErrorOr<std::string> getFileContentIdentity(M::BufferRef file,
   switch (format) {
   default:
     return "input has unknown contents";
-  case FileFormat::kTFLFlatBuffer:
-    return "input is a binary TFLite flatbuffer file";
-  case FileFormat::kTFLFlatBufferJSON:
-    return "input is a TFLite flatbuffer file in JSON format";
-  case FileFormat::kMTFLDialect:
-    return "input is TFLite model in MLIR form";
-  case FileFormat::kTFLPDialect:
-    return "input is a compiled TFLite MEF model in MLIR form";
   case FileFormat::kTFDialect:
     return "input is a TensorFlow model in MLIR form";
   case FileFormat::kTFSavedModel:

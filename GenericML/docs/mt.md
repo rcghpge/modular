@@ -60,7 +60,6 @@ framework, along with their CMake target to simplify building the target.
 | CMake target          | Binary                      | Framework          |
 | --------------------- | --------------------------- | ------------------ |
 | `tf`                  | `libtf.so`                  | Modular TensorFlow |
-| `tfl`                 | `libtfl.so`                 | Modular TFLite     |
 | `stock-tflite-plugin` | `libstock-tflite-plugin.so` | Stock TFLite       |
 
 Another consequence is that `mt --help` cannot work the way many users expect
