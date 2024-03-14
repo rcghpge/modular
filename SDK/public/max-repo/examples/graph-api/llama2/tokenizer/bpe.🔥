@@ -214,4 +214,4 @@ struct BPETokenizer:
         return output
 
     fn _encode_token(self, token: String) raises -> Int:
-        return self.token_ids.find(token).or_else(0).value()
+        return self.token_ids.find(token).or_else(0)
