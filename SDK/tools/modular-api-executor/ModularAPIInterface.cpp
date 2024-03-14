@@ -201,6 +201,11 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
   GET_SYMBOL(freeTensorSpec, M_freeTensorSpec);
   GET_SYMBOL(freeTensor, M_freeTensor);
 
+  GET_SYMBOL(getValueByNameFrom, M_getValueByNameFrom);
+  GET_SYMBOL(getValueType, M_getValueType);
+  GET_SYMBOL(getTensorFromValue, M_getTensorFromValue);
+  GET_SYMBOL(freeValue, M_freeValue);
+
   GET_SYMBOL(executeModelSync, M_executeModelSync);
 
 #undef STRINGIFY_SYMBOL

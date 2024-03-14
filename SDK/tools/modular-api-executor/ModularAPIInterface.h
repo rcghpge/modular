@@ -80,6 +80,11 @@ public:
   decltype(&M_getTensorSpec) getTensorSpec = nullptr;
   decltype(&M_freeTensorSpec) freeTensorSpec = nullptr;
 
+  decltype(&M_getValueByNameFrom) getValueByNameFrom = nullptr;
+  decltype(&M_getValueType) getValueType = nullptr;
+  decltype(&M_getTensorFromValue) getTensorFromValue = nullptr;
+  decltype(&M_freeValue) freeValue = nullptr;
+
   decltype(&M_executeModelSync) executeModelSync = nullptr;
   decltype(&M_setDevice) setDevice = nullptr;
   decltype(&M_enableMemoryPlanning) enableMemoryPlanning = nullptr;

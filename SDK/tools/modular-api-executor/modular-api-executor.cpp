@@ -395,18 +395,29 @@ public:
           // the async outputs as ready.
           const auto &outputSpecs = model->getOutputSpecs();
           for (size_t i = 0, e = outputSpecs.size(); i < e; ++i) {
-            // Get the output tensor. This tensor will be converted
-            // to a GenericML tensor.
-            TensorPtr outputTensor = {
-                api.getTensorByNameFrom(outputTensors.get(),
-                                        model->getOutputNames()[i].c_str(),
-                                        status.get()),
-                api.freeTensor};
+            ValuePtr outputValue = {
+                api.getValueByNameFrom(outputTensors.get(),
+                                       model->getOutputNames()[i].c_str(),
+                                       status.get()),
+                api.freeValue};
 
             if (api.isError(status.get())) {
               llvm::errs() << "Error: " << api.getError(status.get()) << "\n";
               exit(EXIT_FAILURE);
             }
+
+            M_ValueType valueType = api.getValueType(outputValue.get());
+            if (valueType != M_TENSOR_VALUE) {
+              llvm::errs() << "Error: "
+                           << "modular-api-executor can only handle tensor "
+                              "values in output now."
+                           << "\n";
+              exit(EXIT_FAILURE);
+            }
+
+            TensorPtr outputTensor = {api.getTensorFromValue(outputValue.get()),
+                                      api.freeTensor};
+
             // Create an uninitialized GenericML Tensor to hold the output.
             auto tensor =
                 GML::Tensor::createOwned(getTensorSpec(api, outputTensor.get()),
