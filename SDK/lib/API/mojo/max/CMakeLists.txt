@@ -54,7 +54,9 @@ add_mojo_package(max-mojo PRIVATE DISABLE_PRIME_CACHE
   DOCS_DIR
   SDK/docs
 
-  DEPENDS tensor
+  DEPENDS 
+  closed_source_memory
+  tensor
 )
 
 # Dependencies aren't automatically included in releases!
