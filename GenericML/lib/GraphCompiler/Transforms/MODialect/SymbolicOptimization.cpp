@@ -1146,6 +1146,60 @@ static bool allOperandsOfThisTypeHaveOneUse(Operation::operand_range operands) {
   });
 }
 
+// Given the input and output tensor types of a reshape operation try to
+// determine whether the reshape corresponds to a squeeze
+// (cases where the input and output dims match exactly other than
+// one extra dim in the input that has value 1)
+//
+// Will return an optional wrapping the axis of the squeeze in such cases and a
+// std::nullopt otherwise
+//
+// e.g.
+// inputType = tensor<[D1, 2, 1, D3]>
+// outputType = tensor<[D1, 2, D3]>
+// res = optional{2}
+//
+// inputType = tensor<[D1, 2, 1, D4]>
+// outputType = tensor<[D1, 2, D3]>
+// res = nullopt
+static std::optional<int64_t> findSqueezeAxis(MO::TensorType inputType,
+                                              MO::TensorType outputType) {
+
+  auto inputDims = inputType.getDims();
+  auto outputDims = outputType.getDims();
+
+  // check that we have static rank first
+  if (inputDims.size() != outputDims.size() + 1)
+    return std::nullopt;
+
+  auto zipIter = llvm::zip_longest(inputDims, outputDims);
+
+  auto it = llvm::find_if(zipIter, [](const auto &ioDims) {
+    return std::get<0>(ioDims) != std::get<1>(ioDims);
+  });
+
+  auto [inputDim, outputDim] = *it;
+  auto inputDimInt = dyn_cast<mlir::IntegerAttr>(*inputDim);
+
+  if (!inputDimInt)
+    return std::nullopt;
+
+  if (inputDimInt.getInt() != 1)
+    return std::nullopt;
+
+  auto offset = std::distance(zipIter.begin(), it);
+
+  if (!std::equal(inputDims.begin(), inputDims.begin() + offset,
+                  outputDims.begin()))
+    return std::nullopt;
+
+  if (!std::equal(inputDims.begin() + offset + 1, inputDims.end(),
+                  outputDims.begin() + offset))
+    return std::nullopt;
+
+  return offset;
+}
+
 /// This pattern will swim a concat operation through a ReshapeOpType (usually a
 /// static reshape or a rebind op).
 /// CONDITIONS:
@@ -1663,6 +1717,15 @@ struct SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp
   }
 };
 
+/// Construct a new TensorType based on `ty` with the shape dimensions
+/// permuted by `perm`.
+TensorType permuteDims(TensorType ty, ArrayRef<int64_t> perm) {
+  SmallVector<TypedAttr> permutedDims =
+      permute(ty.getTypedShapeAttr().getValues(), perm);
+  auto shapeTy = ShapeType::get(ty.getContext());
+  return ty.cloneWith(ShapeAttr::get(permutedDims, shapeTy));
+}
+
 /// A pattern that detects a split with nonzero axis followed by a squeeze
 /// (expressed as reshape) on each result, and rewrites them into a transpose
 /// followed by a axis-0 split and the reshapes.
@@ -1736,15 +1799,6 @@ struct SplitAndSqueezesPattern
     }
 
     return true;
-  }
-
-  /// Construct a new TensorType based on `ty` with the shape dimensions
-  /// permuted by `perm`.
-  static TensorType permuteDims(TensorType ty, ArrayRef<int64_t> perm) {
-    SmallVector<TypedAttr> permutedDims =
-        permute(ty.getTypedShapeAttr().getValues(), perm);
-    auto shapeTy = ShapeType::get(ty.getContext());
-    return ty.cloneWith(ShapeAttr::get(permutedDims, shapeTy));
   }
 
   LogicalResult
@@ -1846,6 +1900,103 @@ struct SplitAndSqueezesPattern
         rebindOp.getResult().setType(newResTy);
       }
     }
+
+    return success();
+  }
+};
+
+/// A pattern that detects reshapes that correspond to a squeeze operation on
+/// just a single axis followed by a transpose and re-orders the reshape after
+/// the transpose:
+///
+/// (See findSqueezeAxis documentation on how exactly these reshapes are
+/// identified)
+///
+/// Example:
+///
+///   input : tensor<[D1, 1, D2]>
+///   reshaped : tensor<[D1, D2]>
+///   transposed : tensor<[D2, D1]>
+///
+///   reshaped = reshape(input)
+///   transposed = transpose(reshaped)
+///
+/// ========>
+///
+///   input : tensor<[D1, 1, D2]>
+///   transposed : tensor<[D2, 1, D1]>
+///   reshaped : tensor<[D2, D1]>
+///
+///   transposed = transpose(input)
+///   reshaped = reshape(transposed)
+///
+/// See https://github.com/modularml/modular/issues/27800 for the motivating
+/// context
+struct SinkSqueezeLikeReshapeThroughTranspose
+    : public DeviceAwareRewritePattern<OpRewritePattern, TransposeOp> {
+
+  SinkSqueezeLikeReshapeThroughTranspose(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 2) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(TransposeOp op,
+                             DeviceAwareRewriter &rewriter) const override {
+
+    MO::TensorValue transposeInputType = op.getInput();
+
+    auto transposeDefiningOp = transposeInputType.getDefiningOp();
+
+    if (!transposeDefiningOp)
+      return rewriter.notifyMatchFailure(
+          op, "Input to transpose was a block argument");
+
+    auto reshapeOp = dyn_cast<Static::ReshapeOp>(transposeDefiningOp);
+
+    if (!reshapeOp)
+      return rewriter.notifyMatchFailure(
+          op, "Did not find corresponding reshape op");
+
+    if (!op.getResult().hasOneUse())
+      return rewriter.notifyMatchFailure(op,
+                                         "Transpose op has more than one use");
+
+    MO::TensorType inputType = reshapeOp.getInput().getType();
+    MO::TensorType outputType = reshapeOp.getResult().getType();
+
+    if (!outputType.hasRank() || !inputType.hasRank())
+      return rewriter.notifyMatchFailure(op,
+                                         "Input/output ranks not fully known");
+
+    auto maybeSqueezeIdx = findSqueezeAxis(inputType, outputType);
+
+    if (!maybeSqueezeIdx)
+      return rewriter.notifyMatchFailure(
+          op, "Reshape does not correspond to a squeeze-like operation");
+
+    int64_t squeezeIdx = *maybeSqueezeIdx;
+
+    auto maybePermVec = tryGetConstantIntVector(op.getPerm());
+    if (!maybePermVec.has_value())
+      return rewriter.notifyMatchFailure(
+          op, "Transpose permutation is not produced by a constant op");
+
+    SmallVector<int64_t> permVec(maybePermVec.value());
+    for (int64_t i = 0, size = permVec.size(); i < size; i++) {
+      if (permVec[i] >= squeezeIdx)
+        permVec[i] = permVec[i] + 1;
+    }
+    permVec.insert(permVec.begin() + squeezeIdx, squeezeIdx);
+
+    Location loc = op->getLoc();
+
+    auto constantOp = rewriter.create<MO::ConstantOp>(loc, permVec);
+    auto permuted = permuteDims(inputType, permVec);
+
+    auto newTransposeOp = rewriter.create<MO::TransposeOp>(
+        loc, permuted, reshapeOp.getInput(), constantOp);
+
+    rewriter.replaceOpWithNewOp<MO::Static::ReshapeOp>(
+        op, op.getResult().getType(), newTransposeOp);
 
     return success();
   }
@@ -3585,8 +3736,8 @@ struct SymbolicOptimizationPass
         SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp<RebindOp>,
         SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp<
             Static::ReshapeOp>,
-        SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp<RebindOp>>(
-        context);
+        SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp<RebindOp>,
+        SinkSqueezeLikeReshapeThroughTranspose>(context);
 
     // Broadcast swimming.
     patterns.add<SinkBroadcastsThroughReduction,
