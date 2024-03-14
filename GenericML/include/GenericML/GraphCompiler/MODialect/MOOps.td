@@ -617,8 +617,6 @@ def MO_AddOp : MO_ElementWiseBinaryMonoTypeOp<"add", [Commutative]> {
       %res = mo.add(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
     ```
   }];
-
-  let hasFolder = 1;
 }
 
 def MO_AbsOp : MO_ElementWiseUnaryMonoTypeOp<"abs", [Idempotent]> {
@@ -648,8 +646,6 @@ def MO_DivOp : MO_ElementWiseBinaryMonoTypeOp<"div"> {
       %res = mo.div(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
     ```
   }];
-
-  let hasFolder = 1;
 }
 
 def MO_ExpOp : MO_ElementWiseUnaryMonoTypeOp<"exp"> {
@@ -1143,8 +1139,6 @@ def MO_GreaterEqualOp : MO_ComparisonBinaryOp<"greater_equal"> {
                                             ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
-  // TODO(#23221): remove folder once underlying bug is fixed for faster-rcnn-inception-resnet-v2
-  let hasFolder = 1;
 }
 
 def MO_NotEqualOp : MO_ComparisonBinaryOp<"not_equal", [Commutative]> {
@@ -1175,6 +1169,23 @@ def MO_AndOp : MO_LogicalBinaryOp<"and"> {
       %lhs: !mo.tensor<[2, 3], bool>
       %rhs: !mo.tensor<[2, 3], bool>
       %res = mo.and(%lhs, %rhs) : (!mo.tensor<[2, 3], bool>,
+                                  !mo.tensor<[2, 3], bool>
+                                  ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+}
+
+def MO_OrOp : MO_LogicalBinaryOp<"or"> {
+  let summary = "Disjunction operation";
+  let description = [{
+    Returns `x or y`, where `x` and `y` are input boolean tensors.
+
+    Example:
+
+    ```mlir
+      %lhs: !mo.tensor<[2, 3], bool>
+      %rhs: !mo.tensor<[2, 3], bool>
+      %res = mo.or(%lhs, %rhs) : (!mo.tensor<[2, 3], bool>,
                                   !mo.tensor<[2, 3], bool>
                                   ) -> !mo.tensor<[2, 3], bool>
     ```

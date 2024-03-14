@@ -345,6 +345,84 @@ private:
 template <typename T>
 MOScalarConstantMatcher(T) -> MOScalarConstantMatcher<T>;
 
+// Find a scalar constant that matches a particular variable.
+// Almost certainly need to do dtype dispatch on this in the future.
+template <typename T, bool typed>
+struct MOSplatConstantMatcher {
+  MOSplatConstantMatcher(T targetValue) : targetValue(targetValue) {}
+
+  static_assert(std::is_floating_point_v<T> || std::is_integral_v<T>,
+                "Unsupported type");
+
+  bool match(mlir::Value val, Logger *log = nullptr) {
+    if (log)
+      log->push(val);
+
+    auto tensorVal = llvm::dyn_cast<M::MO::TensorValue>(val);
+    if (!tensorVal)
+      return false;
+
+    auto tensorType = llvm::dyn_cast<M::MO::TensorType>(val.getType());
+    if (!tensorType)
+      return false;
+
+    std::optional<bool> res;
+    res = matchForType<float>(targetValue, tensorVal, tensorType, val, log);
+    if (res.has_value())
+      return *res;
+    res = matchForType<double>(targetValue, tensorVal, tensorType, val, log);
+    if (res.has_value())
+      return *res;
+    res = matchForType<int32_t>(targetValue, tensorVal, tensorType, val, log);
+    if (res.has_value())
+      return *res;
+    res = matchForType<int64_t>(targetValue, tensorVal, tensorType, val, log);
+    if (res.has_value())
+      return *res;
+    else if (log) {
+      log->markDeadEnd("MOSplatConstantMatcher did not find a constant in the "
+                       "supported types");
+    }
+
+    return false;
+  }
+
+private:
+  template <typename U>
+  std::optional<bool> matchForType(U targetValue, M::MO::TensorValue tensorVal,
+                                   M::MO::TensorType tensorType,
+                                   mlir::Value val, Logger *log = nullptr) {
+    if constexpr (typed && !std::is_same_v<T, U>)
+      return {};
+
+    int rank = 0;
+    if (tensorType.hasRank()) {
+      rank = tensorType.getRank();
+    }
+
+    auto maybeValues = M::MO::tryGetConstantOfRank<U>(tensorVal, rank);
+    if (!maybeValues.has_value())
+      return std::nullopt;
+
+    for (auto value : maybeValues.value()) {
+      if (value != targetValue) {
+        if (log) {
+          log->markDeadEnd("MOSplatConstantMatcher expected" +
+                           std::to_string(targetValue));
+        }
+        return false;
+      }
+    }
+
+    if (log)
+      log->pop(val);
+
+    return true;
+  }
+
+  T targetValue;
+};
+
 // Check a value for a particular rank
 template <typename Matcher>
 struct MORankedValueMatcher {
@@ -531,13 +609,51 @@ auto m_Ranked(int64_t targetRank, Matcher matcher) {
 }
 
 template <typename T>
-auto m_ScalarConstant(T target_value) {
-  return detail::MOScalarConstantMatcher<T>(target_value);
+auto m_ScalarConstant(T targetValue) {
+  return detail::MOScalarConstantMatcher<T>(targetValue);
 }
 
 template <typename T>
-auto m_ScalarConstant(mlir::Value *val, T target_value) {
-  return detail::Capture(val, m_ScalarConstant(target_value));
+auto m_ScalarConstant(mlir::Value *val, T targetValue) {
+  return detail::Capture(val, m_ScalarConstant(targetValue));
+}
+
+template <typename T>
+auto m_SplatConstant(T targetValue) {
+  return detail::MOSplatConstantMatcher<T, true>(targetValue);
+}
+
+template <typename T>
+auto m_SplatConstant(mlir::Value *val, T targetValue) {
+  return detail::Capture(val,
+                         detail::MOSplatConstantMatcher<T, true>(targetValue));
+}
+
+template <typename T>
+auto m_SplatConstantOfAnyType(T targetValue) {
+  return detail::MOSplatConstantMatcher<T, false>(targetValue);
+}
+
+template <typename T>
+auto m_SplatConstantOfAnyType(mlir::Value *val, T targetValue) {
+  return detail::Capture(val,
+                         detail::MOSplatConstantMatcher<T, false>(targetValue));
+}
+
+template <typename Matcher1, typename Matcher2>
+auto m_Optional(Matcher1 matcher1, Matcher2 matcher2) {
+  return detail::OptionalMatcher<Matcher1, Matcher2>(matcher1, matcher2);
+}
+
+template <typename Matcher, typename... Matchers>
+auto m_Optional(Matcher matcher, Matchers... matchers) {
+  return m_Optional(matcher, m_Optional(matchers...));
+}
+
+template <typename BCastType, typename T>
+auto m_SplatOrBroadcastedConstantOfAnyType(T targetValue) {
+  return m_Optional(m_SplatConstantOfAnyType(targetValue),
+                    m_Op<BCastType>(m_SplatConstantOfAnyType(targetValue)));
 }
 
 template <typename T, typename Matcher>
@@ -558,16 +674,6 @@ auto m_MOVector(Matcher matcher) {
 template <typename Matcher>
 auto m_MOMatrix(Matcher matcher) {
   return m_Ranked(2, m_Typed<M::MO::TensorType, Matcher>(matcher));
-}
-
-template <typename Matcher1, typename Matcher2>
-auto m_Optional(Matcher1 matcher1, Matcher2 matcher2) {
-  return detail::OptionalMatcher<Matcher1, Matcher2>(matcher1, matcher2);
-}
-
-template <typename Matcher, typename... Matchers>
-auto m_Optional(Matcher matcher, Matchers... matchers) {
-  return m_Optional(matcher, m_Optional(matchers...));
 }
 
 template <typename OpType, typename Matcher1, typename Matcher2>

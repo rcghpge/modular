@@ -23,11 +23,13 @@ mo.graph @pad_conv(
 }
 
 // CHECK: mo.graph @pad_conv(%[[ARG0:.*]]: !mo.tensor<[32, 10, 10, 3], f32>, %[[ARG1:.*]]: !mo.tensor<[1, 1, 3, 9], f32>) -> !mo.tensor<[?, ?, ?, ?], f32> no_inline {
-  // CHECK-DAG: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<3, 2, 1, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
   // CHECK-DAG: %[[VAL1:.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // CHECK-DAG: %[[VAL2:.*]] = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  // CHECK-DAG: %[[VAL3:.*]] = mo.conv(%[[ARG0]], %[[ARG1]]) [strides = %[[VAL1]], dilations = %[[VAL1]], paddings = %[[VAL0]], num_groups = %[[VAL2]]] : (!mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 3, 9], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, ?, ?], f32>
-  // CHECK: mo.output %[[VAL3]] : !mo.tensor<[?, ?, ?, ?], f32>
+  // CHECK-DAG: %[[VAL3:.*]] = mo.constant {value = #M.dense_array<2, 2, 0, 0> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
+  // CHECK-DAG: %[[VAL4:.*]] = mo.constant {value = #M.dense_array<1, 0, 1, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  // CHECK-NEXT: %[[VAL5:.*]] = mo.add(%[[VAL4]], %[[VAL3]]) : !mo.tensor<[4], si64>
+  // CHECK-NEXT: %[[VAL6:.*]] = mo.conv(%[[ARG0]], %[[ARG1]]) [strides = %[[VAL1]], dilations = %[[VAL1]], paddings = %[[VAL5]], num_groups = %[[VAL2]]] : (!mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 3, 9], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, ?, ?], f32>
+  // CHECK: mo.output %[[VAL6]] : !mo.tensor<[?, ?, ?, ?], f32>
 // CHECK: }
 
 mo.graph @pad_channels_conv(

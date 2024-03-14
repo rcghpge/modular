@@ -120,16 +120,23 @@ maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
                                        ? opts.compiledFrameworkLabel.getValue()
                                        : "",
                                    opts));
+
   ShapeInferenceOptions shapeInferenceOpts;
   shapeInferenceOpts.isExperimentalMode = opts.useExperimentalShapeInference;
   shapeInferenceOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+
+  SymbolicOptimizationOptions symbolicOptimizationOpts;
+  symbolicOptimizationOpts.symbolicFfastMath = opts.symbolicFfastMath;
+  symbolicOptimizationOpts.symbolicNoUndefinedMath =
+      opts.symbolicNoUndefinedMath;
+
   buildShapeInferencePipeline(pm, shapeInferenceOpts);
-  pm.addPass(MO::createSymbolicOptimization());
+  pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
   pm.addPass(MO::createPropagateShapes());
   pm.addPass(MO::createAddFallbackShapeFunctions({opts.kernelLibraryPaths}));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addPass(MO::createSymbolicOptimization());
+  pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 }

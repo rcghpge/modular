@@ -3067,6 +3067,492 @@ struct SinkBroadcastsThroughLinalgBandPartOp
   }
 };
 
+template <typename T>
+static inline ErrorOr<MO::ConstantOp>
+createScalarConstantOpOfType(M::DType dtype, T value,
+                             DeviceAwareRewriter &rewriter, Location loc) {
+  return dtype.dispatch<ErrorOr<MO::ConstantOp>>()
+      .template when<M::DType::si32>([&]() {
+        return rewriter.create<MO::ConstantOp>(loc, int32_t(value));
+      })
+      .template when<M::DType::si64>([&]() {
+        return rewriter.create<MO::ConstantOp>(loc, int64_t(value));
+      })
+      .template when<M::DType::f32>(
+          [&]() { return rewriter.create<MO::ConstantOp>(loc, float(value)); })
+      .template when<M::DType::f64>(
+          [&]() { return rewriter.create<MO::ConstantOp>(loc, double(value)); })
+      .template when<M::DType::kBool>(
+          [&]() { return rewriter.create<MO::ConstantOp>(loc, bool(value)); })
+      .otherwise([&]() { return Error("Unsupported dtype"); });
+}
+
+template <typename T>
+static inline ErrorOr<Value>
+createBroadcastedScalarConstantOpOfType(TensorType bcastType, M::DType dtype,
+                                        T value, DeviceAwareRewriter &rewriter,
+                                        Location loc) {
+  auto cstErrOr = createScalarConstantOpOfType(dtype, value, rewriter, loc);
+  if (cstErrOr.isError())
+    return Error(cstErrOr.getError());
+
+  return rewriter.create<MO::Static::BroadcastToOp>(loc, bcastType, *cstErrOr);
+}
+
+template <typename OpType, typename T, typename Func>
+static LogicalResult
+replaceOpResultWithBcastOfScalarIf(OpType op, T value,
+                                   DeviceAwareRewriter &rewriter, Func &&func) {
+  if (!func())
+    return failure();
+
+  auto bcastErrOr = createBroadcastedScalarConstantOpOfType(
+      op.getType(), op.getType().getDtype(), value, rewriter, op.getLoc());
+  if (bcastErrOr.isError())
+    return rewriter.notifyMatchFailure(op, bcastErrOr.getError());
+
+  rewriter.replaceAllUsesWith(op, *bcastErrOr);
+
+  return success();
+}
+
+// add(x, 0) -> x
+struct ArithmeticFoldingAddWithZero
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::AddOp> {
+  ArithmeticFoldingAddWithZero(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::AddOp addOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    Value x;
+    if (!m_BinaryCommutativeOp<MO::AddOp>(
+             m_Any(&x),
+             m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
+                 0))
+             .match(addOp)) {
+      return failure();
+    }
+    rewriter.replaceAllUsesWith(addOp, x);
+
+    return success();
+  }
+};
+
+// sub(x, 0) -> x
+struct ArithmeticFoldingSubWithZero
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::SubOp> {
+  ArithmeticFoldingSubWithZero(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::SubOp subOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    Value x;
+    if (!m_Op<MO::SubOp>(
+             m_Any(&x),
+             m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
+                 0))
+             .match(subOp)) {
+      return failure();
+    }
+    rewriter.replaceAllUsesWith(subOp, x);
+
+    return success();
+  }
+};
+
+// sub(x, x) -> bcast(0)
+struct ArithmeticFoldingSubWithSame
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::SubOp> {
+  ArithmeticFoldingSubWithSame(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::SubOp subOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    return replaceOpResultWithBcastOfScalarIf(subOp, 0, rewriter, [&]() {
+      return subOp.getInputX() == subOp.getInputY();
+    });
+
+    return success();
+  }
+};
+
+// mul(x, 1) -> x
+struct ArithmeticFoldingMulWithOne
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::MulOp> {
+  ArithmeticFoldingMulWithOne(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::MulOp mulOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    Value x;
+    if (!m_BinaryCommutativeOp<MO::MulOp>(
+             m_Any(&x),
+             m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
+                 1))
+             .match(mulOp)) {
+      return failure();
+    }
+    rewriter.replaceAllUsesWith(mulOp, x);
+
+    return success();
+  }
+};
+
+// mul(x, 0) -> bcast(0)
+struct ArithmeticFoldingMulWithZero
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::MulOp> {
+  ArithmeticFoldingMulWithZero(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::MulOp mulOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    return replaceOpResultWithBcastOfScalarIf(mulOp, 0, rewriter, [&]() {
+      return m_BinaryCommutativeOp<MO::MulOp>(
+                 m_Any(), m_SplatOrBroadcastedConstantOfAnyType<
+                              MO::Static::BroadcastToOp>(0))
+          .match(mulOp);
+    });
+
+    return success();
+  }
+};
+
+// div(0, x) -> bcast(0)
+struct ArithmeticFoldingZeroDiv
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::DivOp> {
+  ArithmeticFoldingZeroDiv(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::DivOp divOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    return replaceOpResultWithBcastOfScalarIf(divOp, 0, rewriter, [&]() {
+      return m_Op<MO::DivOp>(m_SplatOrBroadcastedConstantOfAnyType<
+                                 MO::Static::BroadcastToOp>(0),
+                             m_Any())
+          .match(divOp);
+    });
+  }
+};
+
+// div(x, 1) -> x
+struct ArithmeticFoldingDivByOne
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::DivOp> {
+  ArithmeticFoldingDivByOne(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::DivOp divOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    Value x;
+    if (!m_Op<MO::DivOp>(
+             m_Any(&x),
+             m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
+                 1))
+             .match(divOp)) {
+      return failure();
+    }
+    rewriter.replaceAllUsesWith(divOp, x);
+
+    return success();
+  }
+};
+
+// pow(x, 1) -> x
+struct ArithmeticFoldingPowerByOne
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::PowOp> {
+  ArithmeticFoldingPowerByOne(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::PowOp powOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    Value x;
+    if (!m_Op<MO::PowOp>(m_Any(&x), m_SplatConstantOfAnyType(1)).match(powOp))
+      return failure();
+
+    rewriter.replaceAllUsesWith(powOp, x);
+
+    return success();
+  }
+};
+
+// pow(x, 0) -> bcast(1)
+struct ArithmeticFoldingPowByZero
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::PowOp> {
+  ArithmeticFoldingPowByZero(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::PowOp powOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    return replaceOpResultWithBcastOfScalarIf(powOp, 1, rewriter, [&]() {
+      return m_Op<MO::PowOp>(m_Any(), m_SplatOrBroadcastedConstantOfAnyType<
+                                          MO::Static::BroadcastToOp>(0))
+          .match(powOp);
+    });
+  }
+};
+
+// pow(0, y) -> bcast(0)
+struct ArithmeticFoldingPowerOfZero
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::PowOp> {
+  ArithmeticFoldingPowerOfZero(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::PowOp powOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    return replaceOpResultWithBcastOfScalarIf(powOp, 0, rewriter, [&]() {
+      return m_Op<MO::PowOp>(m_SplatOrBroadcastedConstantOfAnyType<
+                                 MO::Static::BroadcastToOp>(0),
+                             m_Any())
+          .match(powOp);
+    });
+  }
+};
+
+// pow(1, y) -> bcast(1)
+struct ArithmeticFoldingPowerOfOne
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::PowOp> {
+  ArithmeticFoldingPowerOfOne(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::PowOp powOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    return replaceOpResultWithBcastOfScalarIf(powOp, 1, rewriter, [&]() {
+      return m_Op<MO::PowOp>(m_SplatOrBroadcastedConstantOfAnyType<
+                                 MO::Static::BroadcastToOp>(1),
+                             m_Any())
+          .match(powOp);
+    });
+
+    return success();
+  }
+};
+
+// max(x, x) -> x
+struct ArithmeticFoldingMaxSameOperand
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::MaxOp> {
+  ArithmeticFoldingMaxSameOperand(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::MaxOp maxOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    if (maxOp.getInputX() != maxOp.getInputY())
+      return failure();
+
+    rewriter.replaceAllUsesWith(maxOp, maxOp.getInputX());
+
+    return success();
+  }
+};
+
+// min(x, x) -> x
+struct ArithmeticFoldingMinSameOperand
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::MinOp> {
+  ArithmeticFoldingMinSameOperand(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::MinOp minOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    if (minOp.getInputX() != minOp.getInputY())
+      return failure();
+
+    rewriter.replaceAllUsesWith(minOp, minOp.getInputX());
+
+    return success();
+  }
+};
+
+// min(x, max(x, y)) -> x
+struct ArithmeticFoldingMinOfMax
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::MinOp> {
+  ArithmeticFoldingMinOfMax(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 2) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::MinOp minOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    Value x, y, z;
+    if (!m_BinaryCommutativeOp<MO::MinOp>(
+             m_Any(&x), m_BinaryCommutativeOp<MO::MaxOp>(m_Any(&y), m_Any(&z)))
+             .match(minOp)) {
+      return failure();
+    }
+
+    if (x != z && x != y)
+      return failure();
+
+    rewriter.replaceAllUsesWith(minOp, x);
+
+    return success();
+  }
+};
+// max(x, min(x, y)) -> x
+struct ArithmeticFoldingMaxOfMin
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::MaxOp> {
+  ArithmeticFoldingMaxOfMin(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 2) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::MaxOp maxOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    Value x, y, z;
+    if (!m_BinaryCommutativeOp<MO::MaxOp>(
+             m_Any(&x), m_BinaryCommutativeOp<MO::MinOp>(m_Any(&y), m_Any(&z)))
+             .match(maxOp)) {
+      return failure();
+    }
+
+    if (x != z && x != y)
+      return failure();
+
+    rewriter.replaceAllUsesWith(maxOp, x);
+
+    return success();
+  }
+};
+
+// mod(x, x) -> bcast(0)
+struct ArithmeticFoldingModSameOperand
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::ModOp> {
+  ArithmeticFoldingModSameOperand(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::ModOp modOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    return replaceOpResultWithBcastOfScalarIf(modOp, 0, rewriter, [&]() {
+      return modOp.getInputX() == modOp.getInputY() &&
+             !m_Optional(
+                  m_SplatConstantOfAnyType(0),
+                  m_Op<MO::Static::BroadcastToOp>(m_SplatConstantOfAnyType(0)))
+                  .match(modOp.getInputX());
+    });
+  }
+};
+
+// mod(x, 1) -> bcast(0)
+struct ArithmeticFoldingModByOne
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::ModOp> {
+  ArithmeticFoldingModByOne(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::ModOp modOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    return replaceOpResultWithBcastOfScalarIf(modOp, 0, rewriter, [&]() {
+      return m_Op<MO::ModOp>(
+                 m_Any(), m_Optional(m_Optional(m_SplatConstant(int64_t(1)),
+                                                m_SplatConstant(int32_t(1))),
+                                     m_Op<MO::Static::BroadcastToOp>(m_Optional(
+                                         m_SplatConstant(int64_t(1)),
+                                         m_SplatConstant(int32_t(1))))))
+          .match(modOp);
+    });
+  }
+};
+
+// >=(x, x) -> bcast(true)
+struct ArithmeticFoldingGreatherOrEqualThanSameOperand
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::GreaterEqualOp> {
+  ArithmeticFoldingGreatherOrEqualThanSameOperand(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::GreaterEqualOp geOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    return replaceOpResultWithBcastOfScalarIf(geOp, true, rewriter, [&]() {
+      return geOp.getInputX() == geOp.getInputY();
+    });
+
+    return success();
+  }
+};
+
+// >(x, x) -> bcast(false)
+struct ArithmeticFoldingGreatherThanSameOperand
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::GreaterOp> {
+  ArithmeticFoldingGreatherThanSameOperand(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::GreaterOp gtOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    return replaceOpResultWithBcastOfScalarIf(gtOp, false, rewriter, [&]() {
+      return gtOp.getInputX() == gtOp.getInputY();
+    });
+  }
+};
+
+// !=(x, x) -> bcast(false)
+struct ArithmeticFoldingNotEqualSameOperand
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::NotEqualOp> {
+  ArithmeticFoldingNotEqualSameOperand(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::NotEqualOp neOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    return replaceOpResultWithBcastOfScalarIf(neOp, false, rewriter, [&]() {
+      return neOp.getInputX() == neOp.getInputY();
+    });
+
+    return success();
+  }
+};
+
+// ==(x, x) -> bcast(true)
+struct ArithmeticFoldingEqualSameOperand
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::EqualOp> {
+  ArithmeticFoldingEqualSameOperand(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::EqualOp eqOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    return replaceOpResultWithBcastOfScalarIf(eqOp, true, rewriter, [&]() {
+      return eqOp.getInputX() == eqOp.getInputY();
+    });
+  }
+};
+
+// and(x, x) -> x
+struct ArithmeticFoldingAndSameOperand
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::AndOp> {
+  ArithmeticFoldingAndSameOperand(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::AndOp andOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    if (andOp.getInputX() != andOp.getInputY())
+      return failure();
+
+    rewriter.replaceAllUsesWith(andOp, andOp.getInputX());
+
+    return success();
+  }
+};
+
+// or(x, x) -> x
+struct ArithmeticFoldingOrSameOperand
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::OrOp> {
+  ArithmeticFoldingOrSameOperand(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::OrOp orOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    if (orOp.getInputX() != orOp.getInputY())
+      return failure();
+
+    rewriter.replaceAllUsesWith(orOp, orOp.getInputX());
+
+    return success();
+  }
+};
+
+// xor(x, x) -> bcast(false)
+struct ArithmeticFoldingXorSameOperand
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::XorOp> {
+  ArithmeticFoldingXorSameOperand(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::XorOp xorOp,
+                             DeviceAwareRewriter &rewriter) const override {
+    return replaceOpResultWithBcastOfScalarIf(xorOp, false, rewriter, [&]() {
+      return xorOp.getInputX() == xorOp.getInputY();
+    });
+  }
+};
+
 struct SymbolicOptimizationPass
     : public MO::impl::SymbolicOptimizationBase<SymbolicOptimizationPass> {
   using SymbolicOptimizationBase::SymbolicOptimizationBase;
@@ -3132,6 +3618,29 @@ struct SymbolicOptimizationPass
     // Miscellaneous rewrites.
     patterns.add<Pow2Pattern, Pow3Pattern, GathersToSplitPattern, GeluPattern,
                  GemvPattern, SplitAndSqueezesPattern, PadConvPattern>(context);
+
+    // Elementwise optimizations.
+    patterns
+        .add<ArithmeticFoldingAddWithZero, ArithmeticFoldingSubWithZero,
+             ArithmeticFoldingMulWithOne, ArithmeticFoldingDivByOne,
+             ArithmeticFoldingPowerByOne, ArithmeticFoldingPowerOfOne,
+             ArithmeticFoldingMaxSameOperand, ArithmeticFoldingMinSameOperand,
+             ArithmeticFoldingGreatherOrEqualThanSameOperand,
+             ArithmeticFoldingGreatherThanSameOperand,
+             ArithmeticFoldingNotEqualSameOperand,
+             ArithmeticFoldingEqualSameOperand, ArithmeticFoldingAndSameOperand,
+             ArithmeticFoldingOrSameOperand, ArithmeticFoldingXorSameOperand>(
+            context);
+    if (symbolicFfastMath) {
+      patterns.add<ArithmeticFoldingSubWithSame, ArithmeticFoldingMulWithZero,
+                   ArithmeticFoldingPowByZero, ArithmeticFoldingMinOfMax,
+                   ArithmeticFoldingMaxOfMin>(context);
+    }
+    if (symbolicNoUndefinedMath) {
+      patterns.add<ArithmeticFoldingZeroDiv, ArithmeticFoldingPowerOfZero,
+                   ArithmeticFoldingModByOne, ArithmeticFoldingModSameOperand>(
+          context);
+    }
 
     if (failed(
             applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))

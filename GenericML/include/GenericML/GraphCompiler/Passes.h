@@ -31,6 +31,19 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       *this, "use-kgen-search",
       llvm::cl::desc("When jitting kernels should we enable the KGEN search."),
       llvm::cl::init(false)};
+  Option<bool> symbolicFfastMath{
+      *this, "symbolic-ffast-math",
+      llvm::cl::desc(
+          "If the symbolic optimizer is allowed (1) to operate under the "
+          "finite math assumption, (2) re-order floating point operations and "
+          "(3) apply reciprocal optimizations"),
+      llvm::cl::init(true)};
+  Option<bool> symbolicNoUndefinedMath{
+      *this, "symbolic-no-undefined-math",
+      llvm::cl::desc(
+          "If the symbolic optimizer is allowed to assume that there will be no"
+          "undefined math operations such as divisions by 0"),
+      llvm::cl::init(true)};
   Option<bool> fuseJitKernels{
       *this, "fuse-jit-kernels",
       llvm::cl::desc(

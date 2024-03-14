@@ -47,8 +47,8 @@ mo.graph @multiple_subgraphs(%r1 : !mo.tensor<[2], si32>) -> (!mo.tensor<[2], si
 
   // CHECK-DAG: %[[R4:.*]] = mo.constant {value = #M.dense_array<1, 1>
   %r4 = mo.mul(%r2, %r2) : !mo.tensor<[2], si32>
-  // CHECK-DAG: %[[R5:.*]] = mo.constant {value = #M.dense_array<0, 0>
-  %r5 = mo.sub(%r3, %r3) : !mo.tensor<[2], si32>
+  // CHECK-DAG: %[[R5:.*]] = mo.constant {value = #M.dense_array<5, 4>
+  %r5 = mo.sub(%r3, %r2) : !mo.tensor<[2], si32>
   // CHECK-DAG = mo.sub(%[[R1]], %[[R5]])
   %r6 = mo.sub(%r1, %r5) : !mo.tensor<[2], si32>
   // CHECK-DAG = mo.sub(%[[R1]], %[[R4]])

@@ -174,6 +174,16 @@ def SymbolicOptimization : Pass<"symbolic-optimize", "GraphOp"> {
     - canonicalizing certain operations into simpler form to enable
       downstream optimizations
   }];
+
+  let options = [
+    Option<"symbolicFfastMath", "symbolic-ffast-math", "bool", "true",
+      "If the symbolic optimizer is allowed to (1) operate under the finite"
+      "math assumption, (2) re-order floating point operations (3) and apply"
+      "reciprocal optimizations">,
+      Option<"symbolicNoUndefinedMath", "symbolic-no-undefined-math", "bool", "true",
+      "If the symbolic optimizer is allowed to assume that there will be no"
+      "undefined math operations such as divisions by 0">
+  ];
 }
 
 def InferLayouts : Pass<"infer-layouts", "GraphOp"> {

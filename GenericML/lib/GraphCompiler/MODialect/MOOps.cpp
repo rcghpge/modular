@@ -172,42 +172,6 @@ M::MO::tryGetConstantBoolVector(TensorValue val) {
   return std::nullopt;
 }
 
-template <typename Adaptor>
-OpFoldResult foldElemwiseOp(MLIRContext *ctx, MO::TensorType resTy,
-                            Adaptor adaptor,
-                            std::function<int64_t(int64_t, int64_t)> lambda,
-                            size_t bitwidth = 64, bool isSigned = true) {
-  auto xAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputX());
-  auto yAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputY());
-  if (!xAttr || !yAttr)
-    return {};
-
-  DType resDType = resTy.getDtype();
-  auto maybeX =
-      tryGetConstantBlob<int64_t>(cast<ElementsAttr>(xAttr), resDType);
-  auto maybeY =
-      tryGetConstantBlob<int64_t>(cast<ElementsAttr>(yAttr), resDType);
-  if (!maybeX.has_value() || !maybeY.has_value())
-    return {};
-
-  ArrayRef<int64_t> xArr = *maybeX;
-  ArrayRef<int64_t> yArr = *maybeY;
-  SmallVector<APInt> res(xArr.size());
-  for (size_t idx = 0, e = xArr.size(); idx < e; idx++)
-    res[idx] = APInt(bitwidth, lambda(xArr[idx], yArr[idx]), isSigned);
-
-  RankedTensorType rankedResTy;
-  // The tensor is a bool, so we should return an i8 attr.
-  if (resTy.getElementType().isInteger(1) && bitwidth == 8)
-    rankedResTy = RankedTensorType::get(
-        resTy.getIntDims(), IntegerType::get(ctx, 8, IntegerType::Signless));
-  else
-    rankedResTy =
-        RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
-
-  return IntArrayElementsAttr::get(rankedResTy, res);
-}
-
 /// If `op`'s axis is constant and input rank is known, modify `op`'s `axis` to
 /// be the canonical version, i.e., it's guaranteed to be in [0, rank).
 /// NOTE this should be used as the first canonicalization, so other logic in
@@ -697,77 +661,6 @@ LogicalResult BroadcastShapeOp::verify() {
   return success();
 }
 
-//===----------------------------------------------------------------------===//
-// Elementwise folder support
-//===----------------------------------------------------------------------===//
-
-// TODO(#23221): update folder once underlying bug is fixed for
-// faster-rcnn-inception-resnet-v2
-OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
-  auto xAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputX());
-  auto yAttr = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInputY());
-
-  if (xAttr && yAttr) {
-    return foldElemwiseOp(getContext(), getType(), adaptor,
-                          [](int64_t x, int64_t y) { return x + y; });
-  } else {
-    // We normally would reject non-constant inputs, but if one of the inputs is
-    // a broadcast of 0 which we can still reason about them.
-    TensorValue lhs = getLhsInput(), rhs = getRhsInput();
-
-    // Check if a given value is the product of a constant of 0 being
-    // broadcasted.
-    auto isValueBroadcasted0Const = [](Value operand) {
-      if (auto bcast = dyn_cast_or_null<Static::BroadcastToOp>(
-              operand.getDefiningOp())) {
-        if (auto constOp = dyn_cast_or_null<MO::ConstantOp>(
-                bcast.getOperand().getDefiningOp())) {
-          TensorType type = cast<TensorType>(constOp.getType());
-          // Interpret as double. Should be ok as integers will be casted to
-          // double.
-          auto data =
-              tryGetConstantBlob<double>(constOp.getValue(), type.getDtype());
-          if (!data.has_value())
-            return false;
-
-          // Check the constant is zero.
-          for (double i : *data) {
-            if (i != 0.0)
-              return false;
-          }
-
-          // We have a match.
-          return true;
-        }
-      }
-      return false;
-    };
-
-    // Check combination of 0 + x
-    if (isValueBroadcasted0Const(lhs))
-      return rhs;
-
-    // Otherwise check x + 0
-    if (isValueBroadcasted0Const(rhs))
-      return lhs;
-  }
-
-  return {};
-}
-
-// TODO(#23221): remove folder once underlying bug is fixed for
-// faster-rcnn-inception-resnet-v2
-OpFoldResult GreaterEqualOp::fold(FoldAdaptor adaptor) {
-  return foldElemwiseOp(
-      getContext(), getType(), adaptor,
-      [](int64_t x, int64_t y) { return x >= y; },
-      /*bitwidth=*/8, /*isSigned=*/false);
-}
-
-OpFoldResult DivOp::fold(FoldAdaptor adaptor) {
-  return foldElemwiseOp(getContext(), getType(), adaptor,
-                        [](int64_t x, int64_t y) { return x / y; });
-}
 //===----------------------------------------------------------------------===//
 // MO_BroadcastToOp
 //===----------------------------------------------------------------------===//
