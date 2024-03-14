@@ -214,7 +214,14 @@ struct LegalizeRMOOps
              LegalizeRMOMOAnalogue<RMO::BroadcastShapeOp, MO::BroadcastShapeOp>,
              LegalizeRMOMOAnalogue<RMO::ReshapeOp, MO::ReshapeOp>,
              LegalizeRMOMOAnalogue<RMO::BroadcastToOp, MO::BroadcastToOp>,
-             LegalizeRMOMOAnalogue<RMO::CastOp, MO::CastOp>>(context);
+             LegalizeRMOMOAnalogue<RMO::CastOp, MO::CastOp>,
+             LegalizeRMOMOAnalogue<RMO::MeanOp, MO::MeanOp>,
+             LegalizeRMOMOAnalogue<RMO::ReduceMulOp, MO::ReduceMulOp>,
+             LegalizeRMOMOAnalogue<RMO::ReduceAddOp, MO::ReduceAddOp>,
+             LegalizeRMOMOAnalogue<RMO::ReduceMinOp, MO::ReduceMinOp>,
+             LegalizeRMOMOAnalogue<RMO::ReduceMaxOp, MO::ReduceMaxOp>,
+             LegalizeRMOMOAnalogue<RMO::ArgMinOp, MO::ArgMinOp>,
+             LegalizeRMOMOAnalogue<RMO::ArgMaxOp, MO::ArgMaxOp>>(context);
 
     // Lowering rebind
     if (!skipRMORebind)

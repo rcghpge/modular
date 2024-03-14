@@ -271,4 +271,179 @@ def RMO_BroadcastAddOp : RMO_Op<"broadcast.add", [Pure, RMO_TensorSameDTypeOpera
 }
 
 
+class RMO_MOAnaloguePureReductionOp<string name, bit input_result_same_dtype=1,
+  list<Trait> traits = []>
+    : RMO_MOAnaloguePureTensorOp<name,
+    traits # !if(input_result_same_dtype, [AllDTypesMatch<["input", "result"]>], [])> {
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndicesTensor:$axis,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+}
+
+def RMO_MeanOp : RMO_MOAnaloguePureReductionOp<"mean"> {
+  let summary = "Mean reduction operation";
+  let description = [{
+    Reduces `input` elements across `axis` to their mean value, changng that
+    axis's dimension to 1.
+
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
+    axis.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %res = rmo.mean(%arg, %axis) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+    ```
+  }];
+}
+
+def RMO_ReduceMulOp : RMO_MOAnaloguePureReductionOp<"reduce.mul"> {
+  let summary = "Product reduction operation";
+  let description = [{
+    Reduces `input` elements across `axis` to their product, changing that
+    axis's dimension to 1 in the output shape.
+
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
+    axis.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %res = rmo.reduce.mul(%arg, %axis) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+    ```
+  }];
+}
+
+def RMO_ReduceAddOp : RMO_MOAnaloguePureReductionOp<"reduce.add"> {
+  let summary = "Sum reduction operation";
+  let description = [{
+    Reduces `input` elements across `axis` to their sum, changing that axis's
+    dimension to 1 in the output shape.
+
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
+    axis.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %res = rmo.reduce.add(%arg, %axis) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+    ```
+  }];
+}
+
+def MO_ReduceMinOp : RMO_MOAnaloguePureReductionOp<"reduce.min"> {
+  let summary = "Minimum reduction operation";
+  let description = [{
+    Reduces `input` elements across `axis` to their minimum, changing that
+    axis's dimension to 1 in the output shape.
+
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
+    axis.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %res = rmo.reduce.min(%arg, %axis) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+    ```
+  }];
+}
+
+def MO_ReduceMaxOp : RMO_MOAnaloguePureReductionOp<"reduce.max"> {
+  let summary = "Maximum reduction operation";
+  let description = [{
+    Reduces `input` elements across `axis` to their maximum, changing that
+    axis's dimension to 1 in the output shape.
+
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
+    axis.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %res = rmo.reduce.max(%arg, %axis) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
+    ```
+  }];
+}
+
+class RMO_ArgMinMaxOp<string mnemonic> : RMO_MOAnaloguePureReductionOp<mnemonic,
+  /*input_result_same_dtype=*/0> {
+  let results = (outs MO_IndicesTensor:$result);
+}
+
+def MO_ArgMaxOp : RMO_ArgMinMaxOp<"arg_max"> {
+  let summary = "Maximum-value indices operation";
+  let description = [{
+    This op is equivalent to reduce_max, but returns indices instead of values.
+
+    The axis attribute specifies the reduction axis.
+
+    Like reductions, the output shape is the same as the input shape, except for
+    the reduced axis which is set to 1. Moreover, the value of `axis` follows
+    numpy semantics, e.g., -1 represents the last axis.
+
+    For identical maximum values, the lowest index is returned.
+
+    Example:
+
+    ```mlir
+      %0 = mo.constant {
+        value = #M.dense_array<0, 1, 3, 2> : tensor<2x2xsi32>
+      } : !mo.tensor<[2, 2], si32>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<si32>
+      } : !mo.tensor<[], si32>
+      %1 = rmo.arg_max(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
+    ```
+    }];
+}
+
+def MO_ArgMinOp : RMO_ArgMinMaxOp<"arg_min"> {
+  let summary = "Minimum-value indices operation";
+  let description = [{
+    This op is equivalent to reduce_min, but returns indices instead of values.
+
+    The axis attribute specifies the reduction axis.
+
+    Like reductions, the output shape is the same as the input shape, except for
+    the reduced axis which is set to 1. Moreover, the value of `axis` follows
+    numpy semantics, e.g., -1 represents the last axis.
+
+    For identical minimum values, the lowest index is returned.
+
+    Example:
+
+    ```mlir
+      %0 = mo.constant {
+        value = #M.dense_array<0, 1, 3, 2> : tensor<2x2xsi32>
+      } : !mo.tensor<[2, 2], si32>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<si32>
+      } : !mo.tensor<[], si32>
+      %1 = rmo.arg_min(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
+    ```
+    }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD

@@ -54,6 +54,13 @@ using ListValue = M::TypedValue<M::MO::ListType>;
 
 ErrorOr<DType> fromMLIRType(Type mlirType);
 ErrorOr<Type> toMLIRType(MLIRContext *context, DType dType);
+
+/// Return the dtype of `ty`.
+/// `ty` might be a composite type (eg TensorType).
+/// Returns DType::invalid if no valid dtype is found.
+/// Helper used to extract dtype in tablegen.
+DType getDTypeOrInvalid(Type ty);
+
 } // namespace M::MO
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_H

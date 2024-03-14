@@ -198,6 +198,13 @@ ErrorOr<Type> M::MO::toMLIRType(MLIRContext *context, DType dType) {
                "' as an MLIR type.");
 }
 
+DType M::MO::getDTypeOrInvalid(Type ty) {
+  if (auto tensorTy = dyn_cast<TensorType>(ty))
+    return tensorTy.getDtype();
+  ErrorOr<DType> errOr = fromMLIRType(ty);
+  return errOr.isError() ? DType::invalid : *errOr;
+}
+
 TensorType TensorType::get(TypedAttr shapeAttr, DType dtype,
                            DictionaryAttr metadata) {
   MLIRContext *ctx = shapeAttr.getContext();

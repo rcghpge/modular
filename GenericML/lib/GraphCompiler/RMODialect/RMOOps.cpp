@@ -9,9 +9,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/RMODialect/RMOOps.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GenericML/GraphCompiler/RMODialect/RMODialect.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOInterfaces.h"
 #include "GenericML/Support/Assert.h"
+#include "GenericML/Support/Dims.h"
 
 using namespace M;
 using namespace RMO;
@@ -364,6 +366,84 @@ void CastOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                    TensorValue input, DType dtype) {
   build(odsBuilder, odsState, input.getType().cloneWith(dtype), input);
 }
+
+namespace {
+TensorType inferReduceOpReturnType(
+    TensorValue input, TensorValue axisValue, DType outputDtype,
+    MO::GraphOp graphOp,
+    SmallVectorImpl<KGEN::ParamDeclAttr> &outputParamDecls) {
+  MLIRContext *ctx = input.getContext();
+  TensorType inputTy = input.getType();
+
+  // Unranked input => unranked output.
+  if (!inputTy.hasRank())
+    return getUnrankedTensorType(outputDtype, graphOp, outputParamDecls);
+
+  std::optional<int64_t> maybeAxis = tryGetConstantInt(axisValue);
+  // Unknown axis => ranked dynamic output.
+  if (!maybeAxis.has_value())
+    return getRankedParamTensorType(inputTy.getRank(), outputDtype, graphOp,
+                                    outputParamDecls);
+
+  int64_t axis = normalizeAxis(*maybeAxis, inputTy.getRank());
+  SmallVector<TypedAttr> outputShape(inputTy.getTypedShapeAttr().getValues());
+  if (axis >= 0 && axis < int64_t(inputTy.getRank()))
+    outputShape[axis] = IntegerAttr::get(IndexType::get(ctx), 1);
+  return TensorType::get(
+      MOSH::ShapeAttr::get(outputShape, MOSH::ShapeType::get(ctx)),
+      outputDtype);
+}
+
+void inferMOTypesReduceImpl(
+    MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
+    TensorValue axis, std::optional<ValueRange> rmoResults,
+    SmallVectorImpl<Type> &moOperandTypes, SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls,
+    bool returnIndices) {
+
+  DType outDType = getDType(
+      rmoResults, 0, returnIndices ? DType::ui64 : input.getType().getDtype());
+
+  // input type remains the same
+  moOperandTypes.push_back(input.getType());
+  moInputParamDecls.push_back({});
+
+  // Axis must be a scalar
+  moOperandTypes.push_back(axis.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+
+  // Infer output type
+  SmallVector<KGEN::ParamDeclAttr> outputParamDecls;
+  TensorType outputTy =
+      inferReduceOpReturnType(input, axis, outDType, graphOp, outputParamDecls);
+  moResultTypes.push_back(outputTy);
+  moOutputParamDecls.push_back(std::move(outputParamDecls));
+}
+} // namespace
+
+#define DEFINE_REDUCE_INFER_MO_TYPES(ClassName, ReturnIndices)                 \
+  void ClassName::inferMOTypesImpl(                                            \
+      MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,             \
+      std::optional<ValueRange> rmoResults,                                    \
+      SmallVectorImpl<Type> &moOperandTypes,                                   \
+      SmallVectorImpl<Type> &moResultTypes,                                    \
+      SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,    \
+      SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) { \
+    inferMOTypesReduceImpl(                                                    \
+        context, graphOp, operands.getInput().cast<TensorValue>(),             \
+        operands.getAxis().cast<TensorValue>(), rmoResults, moOperandTypes,    \
+        moResultTypes, moInputParamDecls, moOutputParamDecls, ReturnIndices);  \
+  }
+
+DEFINE_REDUCE_INFER_MO_TYPES(MeanOp, false)
+DEFINE_REDUCE_INFER_MO_TYPES(ReduceMulOp, false)
+DEFINE_REDUCE_INFER_MO_TYPES(ReduceAddOp, false)
+DEFINE_REDUCE_INFER_MO_TYPES(ReduceMinOp, false)
+DEFINE_REDUCE_INFER_MO_TYPES(ReduceMaxOp, false)
+DEFINE_REDUCE_INFER_MO_TYPES(ArgMinOp, true)
+DEFINE_REDUCE_INFER_MO_TYPES(ArgMaxOp, true)
+#undef DEFINE_REDUCE_INFER_MO_TYPES
 
 void RMODialect::registerOperations() {
   addOperations<

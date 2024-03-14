@@ -423,4 +423,14 @@ def MO_I64Tensor : ConfinedType<MO_Tensor,
   let cppClassName = "::M::MO::TensorType";
 }
 
+class DTypeStrFunc<string name> : StrFunc<"::M::MO::getDTypeOrInvalid($" # name # ".getType())">;
+
+/// Check all operands `names...` have the same dtype.
+/// eg: `AllDTypesMatch<["input", "result"]>`.
+/// There is an existing `AllElementTypesMatch` def,
+/// but it doesn't work with MO::TensorType.
+class AllDTypesMatch<list<string> names> :
+    AllMatchSameOperatorTrait<names, DTypeStrFunc<"_self">.result,
+                              "dtype">;
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_TD
