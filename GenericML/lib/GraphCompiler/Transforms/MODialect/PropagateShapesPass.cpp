@@ -691,7 +691,8 @@ struct PropagateShapesPass
     // TODO this limits folding as well, we need a better approach.
     //
     // In these cases, we map the declared parameters to themselves, so that
-    // evaluator won't panic when looking them up.
+    // evaluator won't panic when looking them up. Note that (2) and (3) are
+    // handled in the worklist loop below; only (1) is handled upfront.
     KGEN::ParameterEvaluator evaluator;
     auto mapDeclaredParamToItself = [&](KGEN::ParamDeclAttr paramDecl) {
       evaluator.setParameterValue(paramDecl,
@@ -705,14 +706,6 @@ struct PropagateShapesPass
     // The integer input parameters to graph are dynamic dimensions, so they
     // must be non-negative.
     llvm::for_each(graphOp.getInputParams(), markIntParamDeclAsNonNegative);
-    graphOp.walk([&](ParamDeclarationInterface paramDeclItf) {
-      ArrayRef<KGEN::ParamDeclAttr> outputDecls =
-          paramDeclItf.getOutputParamDecls();
-      llvm::for_each(outputDecls, mapDeclaredParamToItself);
-      // The integer output parameters of an op are dynamic dimensions used in
-      // its output shape, so they must be non-negative.
-      llvm::for_each(outputDecls, markIntParamDeclAsNonNegative);
-    });
 
     // TODO(#9008) inline inputs to `mosh.assert`
     // A replacer to help replacing parameters in an op with its evaluated form.
@@ -802,6 +795,19 @@ struct PropagateShapesPass
         if (StringAttr errMsg = tryGetAssertFalseErrMsg(foldedRhsAttr)) {
           op->emitError(errMsg.strref());
           return signalPassFailure();
+        }
+
+        // For any other op that declares a parameter, we treat the parameter
+        // definition as opaque, and map it to itself so replacer won't break
+        // upon seeing them in to-be-replaced ops.
+        if (auto paramDeclItf = dyn_cast<ParamDeclarationInterface>(op)) {
+          ArrayRef<KGEN::ParamDeclAttr> outputDecls =
+              paramDeclItf.getOutputParamDecls();
+          llvm::for_each(outputDecls, mapDeclaredParamToItself);
+
+          // The integer output parameters of an op are dynamic dimensions used
+          // in its output shape, so they must be non-negative.
+          llvm::for_each(outputDecls, markIntParamDeclAsNonNegative);
         }
       }
     }
