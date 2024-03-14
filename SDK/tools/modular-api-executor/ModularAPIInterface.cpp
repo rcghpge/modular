@@ -203,7 +203,24 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
 
   GET_SYMBOL(getValueByNameFrom, M_getValueByNameFrom);
   GET_SYMBOL(getValueType, M_getValueType);
+  GET_SYMBOL(getStringFromValue, M_getStringFromValue);
+  GET_SYMBOL(getLongFromValue, M_getLongFromValue);
+  GET_SYMBOL(getDoubleFromValue, M_getDoubleFromValue);
+  GET_SYMBOL(getBoolFromValue, M_getBoolFromValue);
   GET_SYMBOL(getTensorFromValue, M_getTensorFromValue);
+  GET_SYMBOL(getDictFromValue, M_getDictFromValue);
+  GET_SYMBOL(getDictSize, M_getDictSize);
+  GET_SYMBOL(getDictKey, M_getDictKey);
+  GET_SYMBOL(getDictValue, M_getDictValue);
+  GET_SYMBOL(freeDict, M_freeDict);
+  GET_SYMBOL(getListFromValue, M_getListFromValue);
+  GET_SYMBOL(getListSize, M_getListSize);
+  GET_SYMBOL(getListValue, M_getListValue);
+  GET_SYMBOL(freeList, M_freeList);
+  GET_SYMBOL(getTupleFromValue, M_getTupleFromValue);
+  GET_SYMBOL(getTupleSize, M_getTupleSize);
+  GET_SYMBOL(getTupleValue, M_getTupleValue);
+  GET_SYMBOL(freeTuple, M_freeTuple);
   GET_SYMBOL(freeValue, M_freeValue);
 
   GET_SYMBOL(executeModelSync, M_executeModelSync);

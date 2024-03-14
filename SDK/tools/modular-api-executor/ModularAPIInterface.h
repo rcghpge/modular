@@ -82,7 +82,24 @@ public:
 
   decltype(&M_getValueByNameFrom) getValueByNameFrom = nullptr;
   decltype(&M_getValueType) getValueType = nullptr;
+  decltype(&M_getStringFromValue) getStringFromValue = nullptr;
+  decltype(&M_getDoubleFromValue) getDoubleFromValue = nullptr;
+  decltype(&M_getLongFromValue) getLongFromValue = nullptr;
+  decltype(&M_getBoolFromValue) getBoolFromValue = nullptr;
   decltype(&M_getTensorFromValue) getTensorFromValue = nullptr;
+  decltype(&M_getDictFromValue) getDictFromValue = nullptr;
+  decltype(&M_getDictSize) getDictSize = nullptr;
+  decltype(&M_getDictKey) getDictKey = nullptr;
+  decltype(&M_getDictValue) getDictValue = nullptr;
+  decltype(&M_freeDict) freeDict = nullptr;
+  decltype(&M_getListFromValue) getListFromValue = nullptr;
+  decltype(&M_getListSize) getListSize = nullptr;
+  decltype(&M_getListValue) getListValue = nullptr;
+  decltype(&M_freeList) freeList = nullptr;
+  decltype(&M_getTupleFromValue) getTupleFromValue = nullptr;
+  decltype(&M_getTupleSize) getTupleSize = nullptr;
+  decltype(&M_getTupleValue) getTupleValue = nullptr;
+  decltype(&M_freeTuple) freeTuple = nullptr;
   decltype(&M_freeValue) freeValue = nullptr;
 
   decltype(&M_executeModelSync) executeModelSync = nullptr;

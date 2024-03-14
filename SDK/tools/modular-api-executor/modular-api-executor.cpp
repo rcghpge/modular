@@ -13,6 +13,7 @@
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Support/FileLocationDecoder.h"
 #include "LLCL/Support/Profiling.h"
+#include "LLCL/Support/UnknownLocationDecoder.h"
 #include "Support/DynamicLibrary.h"
 #include "Support/ML/DType.h"
 #include "llvm/ADT/StringExtras.h"
@@ -293,6 +294,130 @@ private:
   EncodedLocation location;
 };
 
+static GML::Tensor getTensorFromValue(const M::ModularAPIInterface &api,
+                                      M_AsyncValue *outputValue,
+                                      LLCL::Runtime &runtime) {
+  TensorPtr outputTensor = {api.getTensorFromValue(outputValue),
+                            api.freeTensor};
+
+  // Create an uninitialized GenericML Tensor to hold the output.
+  auto tensor = GML::Tensor::createOwned(getTensorSpec(api, outputTensor.get()),
+                                         runtime, kPreferredMemoryAlignment);
+
+  // Copy the output data to the output GenericML Tensor
+  LLCL::profiledMemcpy(tensor.getMutableBuffer(),
+                       api.getTensorData(outputTensor.get()),
+                       getSizeOf(api, outputTensor.get()));
+  return tensor;
+}
+
+static std::string getStringFromValue(const M::ModularAPIInterface &api,
+                                      M_AsyncValue *outputValue) {
+  return api.getStringFromValue(outputValue);
+}
+
+static double getDoubleFromValue(const M::ModularAPIInterface &api,
+                                 M_AsyncValue *outputValue) {
+  return api.getDoubleFromValue(outputValue);
+}
+
+static int64_t getLongFromValue(const M::ModularAPIInterface &api,
+                                M_AsyncValue *outputValue) {
+  return api.getLongFromValue(outputValue);
+}
+
+static bool getBoolFromValue(const M::ModularAPIInterface &api,
+                             M_AsyncValue *outputValue) {
+  return api.getBoolFromValue(outputValue);
+}
+
+static AnyAsyncValueRef getAsyncValue(ValuePtr value,
+                                      const M::ModularAPIInterface &api,
+                                      LLCL::Runtime &runtime);
+
+static GML::Dict getDictFromValue(const M::ModularAPIInterface &api,
+                                  M_AsyncValue *outputValue,
+                                  LLCL::Runtime &runtime) {
+  DictPtr outputDict = {api.getDictFromValue(outputValue), api.freeDict};
+  size_t dictSize = api.getDictSize(outputDict.get());
+  GML::Dict dict;
+  for (size_t i = 0; i < dictSize; ++i) {
+    ValuePtr key = {api.getDictKey(outputDict.get(), i), api.freeValue};
+    ValuePtr value = {api.getDictValue(outputDict.get(), i), api.freeValue};
+    dict.getElements().insert(
+        {GML::Variant(getAsyncValue(std::move(key), api, runtime)),
+         GML::Variant(getAsyncValue(std::move(value), api, runtime))});
+  }
+  return dict;
+}
+
+static GML::List getListFromValue(const M::ModularAPIInterface &api,
+                                  M_AsyncValue *outputValue,
+                                  LLCL::Runtime &runtime) {
+  ListPtr outputList = {api.getListFromValue(outputValue), api.freeList};
+  size_t listSize = api.getListSize(outputList.get());
+  SmallVector<AnyAsyncValueRef> list;
+  list.reserve(listSize);
+  for (size_t i = 0; i < listSize; ++i) {
+    ValuePtr value = {api.getListValue(outputList.get(), i), api.freeValue};
+    list.push_back(getAsyncValue(std::move(value), api, runtime));
+  }
+  return GML::List(list);
+}
+
+static GML::Tuple getTupleFromValue(const M::ModularAPIInterface &api,
+                                    M_AsyncValue *outputValue,
+                                    LLCL::Runtime &runtime) {
+  TuplePtr outputTuple = {api.getTupleFromValue(outputValue), api.freeTuple};
+  size_t tupleSize = api.getTupleSize(outputTuple.get());
+  GML::Tuple tuple;
+  for (size_t i = 0; i < tupleSize; ++i) {
+    ValuePtr value = {api.getTupleValue(outputTuple.get(), i), api.freeValue};
+    tuple.getElements().push_back(
+        GML::Variant(getAsyncValue(std::move(value), api, runtime)));
+  }
+  return tuple;
+}
+
+AnyAsyncValueRef getAsyncValue(ValuePtr value,
+                               const M::ModularAPIInterface &api,
+                               LLCL::Runtime &runtime) {
+  M_ValueType valueType = api.getValueType(value.get());
+  switch (valueType) {
+  case M_STRING_VALUE:
+    return AnyAsyncValueRef::createReady<std::string>(
+        runtime, getStringFromValue(api, value.get()));
+  case M_DOUBLE_VALUE:
+    return AnyAsyncValueRef::createReady<double>(
+        runtime, getDoubleFromValue(api, value.get()));
+  case M_LONG_VALUE:
+    return AnyAsyncValueRef::createReady<int64_t>(
+        runtime, getLongFromValue(api, value.get()));
+  case M_BOOL_VALUE:
+    return AnyAsyncValueRef::createReady<bool>(
+        runtime, getBoolFromValue(api, value.get()));
+  case M_TENSOR_VALUE:
+    return AnyAsyncValueRef::createReady<GML::Tensor>(
+        runtime, getTensorFromValue(api, value.get(), runtime));
+  case M_NONE_VALUE:
+    return AnyAsyncValueRef::createReady<GML::None>(runtime);
+  case M_DICT_VALUE:
+    return AnyAsyncValueRef::createReady<GML::Dict>(
+        runtime, getDictFromValue(api, value.get(), runtime));
+  case M_LIST_VALUE:
+    return AnyAsyncValueRef::createReady<GML::List>(
+        runtime, getListFromValue(api, value.get(), runtime));
+  case M_TUPLE_VALUE:
+    return AnyAsyncValueRef::createReady<GML::Tuple>(
+        runtime, getTupleFromValue(api, value.get(), runtime));
+  case M_UNKNOWN_VALUE:
+    break;
+  }
+  LLCL::EncodedDiagnostic diagnostic =
+      LLCL::UnknownLocationDecoder::getDiagnostic(Error("unsupported value"));
+  return AnyAsyncValueRef::createError(runtime, std::move(diagnostic));
+}
+
 /// Defines the Modular Executor. This class implements
 /// GenericML::ExecutableModel.
 class ModularExecutableModel final : public ExecutableModel {
@@ -308,6 +433,13 @@ public:
     return static_cast<const ModularModel *>(ExecutableModel::getModel());
   }
 
+  AnyAsyncValueRef
+  convertToGenericValue(AnyAsyncValueRef unknownValue) const final {
+    if (unknownValue.isType<GML::Tensor>())
+      return convertToGenericTensor(std::move(unknownValue));
+
+    return unknownValue;
+  }
   // Executes a single instance of the inference process.
   [[nodiscard]] SmallVector<AnyAsyncValueRef>
   execute(MutableArrayRef<AnyAsyncValueRef> args) const override {
@@ -337,7 +469,7 @@ public:
     // Create the async placeholders for the outputs. The async values will be
     // materialized when the inference is complete.
     for (size_t i = 0, e = modelSpec.outputs.size(); i < e; ++i)
-      outputs.emplace_back(AsyncValueRef<GML::Tensor>::allocate(runtime));
+      outputs.emplace_back(AnyAsyncValueRef::createIndirect(runtime));
 
     // Hold on to the output async values so that they do not get reclaimed
     // before the inference is complete.
@@ -406,31 +538,9 @@ public:
               exit(EXIT_FAILURE);
             }
 
-            M_ValueType valueType = api.getValueType(outputValue.get());
-            if (valueType != M_TENSOR_VALUE) {
-              llvm::errs() << "Error: "
-                           << "modular-api-executor can only handle tensor "
-                              "values in output now."
-                           << "\n";
-              exit(EXIT_FAILURE);
-            }
-
-            TensorPtr outputTensor = {api.getTensorFromValue(outputValue.get()),
-                                      api.freeTensor};
-
-            // Create an uninitialized GenericML Tensor to hold the output.
-            auto tensor =
-                GML::Tensor::createOwned(getTensorSpec(api, outputTensor.get()),
-                                         runtime, kPreferredMemoryAlignment);
-
-            // Copy the output data to the output GenericML Tensor
-            LLCL::profiledMemcpy(tensor.getMutableBuffer(),
-                                 api.getTensorData(outputTensor.get()),
-                                 getSizeOf(api, outputTensor.get()));
-
-            // Move the output Tensor to the output async value and mark the
-            // value as ready.
-            std::move(outputs[i + 1]).emplace<GML::Tensor>(std::move(tensor));
+            std::move(outputs[i + 1])
+                .resolveIndirect(
+                    getAsyncValue(std::move(outputValue), api, runtime));
           }
         });
     // Return the output async values. Note that the output async values might
