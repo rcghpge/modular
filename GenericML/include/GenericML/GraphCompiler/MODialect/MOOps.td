@@ -2297,26 +2297,6 @@ def MOShape_BroadcastToOp : MOShape_Op<"broadcast_to", [
   }];
 }
 
-def MOShape_FromTensorOp : MOShape_Op<"from_tensor", [Pure]> {
-  let summary = "Casting operation";
-  let description = [{
-    Casts the input shape-like tensor to a shape value.
-
-    Example:
-
-    ```mlir
-      %sht: !mo.tensor<[2], si64>
-      %sh = mo.shape.from_tensor(%sht) : !mo.tensor<[2], si64>
-    ```
-  }];
-
-  let arguments = (ins MO_ShapeLike:$input);
-  let results = (outs MOSH_ShapeType:$result);
-
-  let assemblyFormat = "`(` $input `)` attr-dict `:` qualified(type($input))";
-  let hasFolder = 1;
-}
-
 def MOShape_ToTensorOp : MOShape_Op<"to_tensor", [Pure]> {
   let summary = "Casting operation";
   let description = [{

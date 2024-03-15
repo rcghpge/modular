@@ -2918,12 +2918,6 @@ LogicalResult LinAlg::SolveOp::verify() {
                                         getRhs());
 }
 
-OpFoldResult Shape::FromTensorOp::fold(FoldAdaptor adaptor) {
-  if (auto input = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getInput()))
-    return ShapeAttr::get(input, ShapeType::get(getContext()));
-  return {};
-}
-
 OpFoldResult Shape::ToTensorOp::fold(FoldAdaptor adaptor) {
   if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
     TensorType resTy = getType();

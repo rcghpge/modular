@@ -3,19 +3,6 @@
 // NOTE: Keep the tests grouped by op, and the order of ops alphabetical.
 
 //===----------------------------------------------------------------------===//
-// FromTensorOp
-//===----------------------------------------------------------------------===//
-
-// CHECK: mo.graph @from_tensor_fold() -> !mosh.ape no_inline {
-mo.graph @from_tensor_fold() -> !mosh.ape {
-  // CHECK: %[[RES:.*]] = kgen.param.constant: !mosh.ape = <[2, 3]>
-  %sh1 = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %0 = mo.shape.from_tensor(%sh1) : !mo.tensor<[2], si64>
-  // CHECK: mo.output %[[RES]] : !mosh.ape
-  mo.output %0 : !mosh.ape
-}
-
-//===----------------------------------------------------------------------===//
 // ToTensorOp
 //===----------------------------------------------------------------------===//
 
