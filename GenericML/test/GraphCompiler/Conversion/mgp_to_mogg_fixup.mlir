@@ -1,14 +1,15 @@
 // RUN: mo-opt --lower-mogg-compile %s | FileCheck %s
 
-// Jit compile kernels will output the function execution in a particular way, 
+// Jit compile kernels will output the function execution in a particular way,
 // we need to run a fixup pass over it to convert to the form MGP expects.
 
 module {
   mgp.model @basic : mof init {
     "mogg.load_compiled_kernel"() {symbols = ["__gen_0"], value = dense_resource<fake_binary> : tensor<1xui8>} : () -> ()
     %0 = grt.chain.create ()
-    %1 = mgp.context.create 1
-    %2 = mgp.cpu.kernel.create_context %0, %1[0]
+    %1 = mgp.context.create 2
+    %ch1 = mgp.check_runtime %0, %1[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
+    %2 = mgp.runtime.create %ch1, %1[0, 1] device<"cpu", 0>
     mef.output %2, %1 : !mef.chain, !mgp.context
   } execute (%arg0: !mef.chain, %arg1: !mgp.context) -> !mef.chain {
     %0 = grt.chain.create ()
@@ -22,9 +23,9 @@ module {
 
 
 // CHECK-LABEL: mgp.model @basic
-// CHECK: %[[CTX:.*]] = mgp.context.create 1
-// CHECK: %[[KERNEL_CTX:.*]] = mgp.cpu.kernel.create_context
-// CHECK-NEXT: mgp.cpu.kernel.load_archive %[[KERNEL_CTX]], %[[CTX]][0], dense_resource<fake_binary> : tensor<1xui8>, ["__gen_0"]
+// CHECK: %[[CTX:.*]] = mgp.context.create 2
+// CHECK: %[[KERNEL_CTX:.*]] = mgp.runtime.create
+// CHECK-NEXT: mgp.module.load %[[KERNEL_CTX]], %[[CTX]][0], dense_resource<fake_binary> : tensor<1xui8>, ["__gen_0"]
 
 // CHECK: } execute
-// CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}) {aSlot = 0 : ui64, bKernelIndex = 0 : ui64} : (!mgp.context, index, index) -> index
+// CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}) {aRuntimeSlot = 0 : ui64, bModuleIndex = 0 : ui64, cFunctionIndex = 0 : ui64} : (!mgp.context, index, index) -> index

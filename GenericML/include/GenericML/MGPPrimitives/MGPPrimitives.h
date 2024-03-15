@@ -43,6 +43,13 @@ struct CPURuntime : public ReferenceCounted<CPURuntime> {
         << "invalid module index " << moduleIndex;
     return modules[moduleIndex]->getKernel(kernelIndex);
   }
+  /// Returns the compiled kernelAsyncABI at the given index.
+  GML::CompiledKernelAsyncABIFn *getKernelAsyncABI(size_t moduleIndex,
+                                                   size_t kernelIndex) const {
+    GENERICML_ASSERT(moduleIndex < modules.size())
+        << "invalid module index " << moduleIndex;
+    return modules[moduleIndex]->getKernelAsyncABI(kernelIndex);
+  }
 };
 
 } // namespace MGP

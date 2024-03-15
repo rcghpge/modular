@@ -378,14 +378,13 @@ static void mgp_cpu_kernel_load_archive(Chain inChain, Context &ctx,
 static void mgp_generic_execute(Context &ctx, RemainingArguments operands,
                                 RemainingResults results,
                                 MEFAttr<uint64_t> aSlot,
-                                MEFAttr<uint64_t> bKernelIndex,
+                                MEFAttr<uint64_t> bModuleIndex,
+                                MEFAttr<uint64_t> cFunctionIndex,
                                 Runtime &runtime, EncodedLocation loc) {
-  CompiledKernelsContext &kernelsCtx =
-      ctx.getStateSlotPayload<CompiledKernelsContext>(
-          static_cast<size_t>(*aSlot));
-  size_t kernelIndex = static_cast<size_t>(*bKernelIndex);
-  CompiledKernelAsyncABIFn *kernelPtr =
-      kernelsCtx.getKernelAsyncABI(kernelIndex);
+  M::MGP::CPURuntime &cpuRuntime =
+      ctx.getStateSlotPayload<M::MGP::CPURuntime>(static_cast<size_t>(*aSlot));
+  CompiledKernelAsyncABIFn *kernelPtr = cpuRuntime.getKernelAsyncABI(
+      static_cast<size_t>(*bModuleIndex), static_cast<size_t>(*cFunctionIndex));
 
   SmallVector<void *> kernelInputs;
   kernelInputs.reserve(results.size() + operands.size());

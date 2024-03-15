@@ -1165,71 +1165,6 @@ def AssertOp : MGP_Op<"assert", [
 }
 
 //===----------------------------------------------------------------------===//
-// CpuKernelCreateContextOp
-//===----------------------------------------------------------------------===//
-
-// TODO(#32165): DEPRECATED
-def CpuKernelCreateContextOp : MGP_Op<"cpu.kernel.create_context"> {
-  let summary = "Creates a context for managing compiled kernels.";
-  let description = [{
-    Creates a context within the given slot of the `!mgp.context` to hold loaded
-    compiled kernels.
-
-    Example:
-    ```mlir
-    %ch0 : !mef.chain
-    %ctx : !mgp.context
-    %ch1 = mgp.cpu.kernel.create_context %ch0, %ctx[3]
-    %ch1 : !mef.chain
-    ```
-  }];
-
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       UI64Attr:$slot);
-  let results = (outs ChainType:$outChain);
-  let assemblyFormat = "$inChain `,` $theContext `[` $slot `]` attr-dict";
-}
-
-//===----------------------------------------------------------------------===//
-// CpuKernelLoadArchiveOp
-//===----------------------------------------------------------------------===//
-
-// TODO(#32165): DEPRECATED
-def CpuKernelLoadArchiveOp : MGP_Op<"cpu.kernel.load_archive"> {
-  let summary = "Loads a binary archive into the compiled kernel context.";
-  let description = [{
-    Loads a binary archive into the compiled kernel context created at the
-    given slot of the `!mgp.context`. The archive's kernel symbols are given
-    as an `#M.multiline` string, and kernels may be executed using the base-0
-    index into that implied array.
-
-    Example:
-    ```mlir
-    %ch0 : !mef.chain
-    %ctx : !mgp.context
-    %ch1 = mgp.cpu.kernel.load_archive %ch0, %ctx[3],
-             dense_resource<archive_name>:!M.aligned_bytes<4, align 8>,
-             ["kernel1", "kernel2", "kernel3"]
-    %ch1 : !mef.chain
-    ```
-  }];
-
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       UI64Attr:$aSlot,                      // 0
-                       ElementsAttr:$bArchive,               // 1
-                       M_MultiLineStringAttr:$cKernelNames); // 2
-  let results = (outs ChainType:$outChain);
-  let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aSlot `]` `,` $bArchive `,` $cKernelNames
-    attr-dict
-  }];
-}
-
-//===----------------------------------------------------------------------===//
 // CpuKernelExecute
 //===----------------------------------------------------------------------===//
 
@@ -1298,18 +1233,19 @@ def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
 
 
 def ExecuteGenericOp : MGP_Op<"generic.execute"> {
-  let summary = "Executes a function loaded into the compiled function context.";
+  let summary = "Executes a function loaded into the CPU Runtime";
   let description = [{
     Executes a function already loaded into the compiled kernel context at the
-    given slot within the `!mgp.context`. This will execute the function using
+    given slot/module index within the `!mgp.context`. This will execute the function using
     the generic API. The primitive will pass in raw async values for the func
     to unpack internally.
   }];
 
   let arguments = (ins MGP_ContextType:$theContext,
                        Variadic<AnyType>:$args,
-                       UI64Attr:$aSlot,
-                       UI64Attr:$bKernelIndex
+                       UI64Attr:$aRuntimeSlot,       // 0
+                       UI64Attr:$bModuleIndex,       // 1
+                       UI64Attr:$cFunctionIndex      // 2
                        );
   let results = (outs Variadic<AnyType>:$results);
 }
