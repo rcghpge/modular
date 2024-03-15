@@ -762,6 +762,28 @@ mo.graph @unsqueeze_shape_dynamic_shape_with_reshape(%input_tensor: !mo.tensor<[
 // CHECK-NEXT:   mo.output<:!mosh.ape [[Sh5:.*]]> [[V3]] : !mo.tensor<[[Sh5:.*]], si32>
 // CHECK-NEXT: }
 
+mo.graph @broadcast_shape_dynamic(%shape1: !mo.tensor<[?], si32>, %shape2: !mo.tensor<[?], si32>) -> !mo.tensor<[?], si32> {
+  %res = mo.broadcast_shape(%shape1, %shape2) : (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<[?], si32>
+  mo.output %res : !mo.tensor<[?], si32>
+}
+// CHECK-LABEL: mo.graph
+// CHECK-SAME: @broadcast_shape_dynamic<[[D1:.*]], [[D2:.*]] -> [[D3:.*]]>(%[[ARG0:.*]]: !mo.tensor<[[[D1]]], si32>, %[[ARG1:.*]]: !mo.tensor<[[[D2]]], si32>) -> !mo.tensor<[[[D3]]], si32>
+// CHECK-NEXT: kgen.param.declare [[PARAM_EXPR:.*]] = <max([[D1]], [[D2]])>
+// CHECK-NEXT: %[[V0:.*]] = mo.broadcast_shape(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[[[D1]]], si32>, !mo.tensor<[[[D2]]], si32>) -> !mo.tensor<[[[PARAM_EXPR]]], si32>
+// CHECK-NEXT: %[[V1:.*]] = mo.rebind(%[[V0]]) : !mo.tensor<[[[PARAM_EXPR]]], si32> -> !mo.tensor<[max([[D1]], [[D2]])], si32>
+// CHECK-NEXT: mo.output<max([[D1]], [[D2]])> %[[V1]] : !mo.tensor<[max([[D1]], [[D2]])], si32>
+
+mo.graph @broadcast_shape_static(%shape1: !mo.tensor<[3], si32>, %shape2: !mo.tensor<[5], si32>) -> !mo.tensor<[?], si32> {
+  %shape1_rebound = mo.rebind(%shape1) : !mo.tensor<[3], si32> -> !mo.tensor<[?], si32>
+  %shape2_rebound = mo.rebind(%shape2) : !mo.tensor<[5], si32> -> !mo.tensor<[?], si32>
+  %res = mo.broadcast_shape(%shape1_rebound, %shape2_rebound) : (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<[?], si32>
+  mo.output %res : !mo.tensor<[?], si32>
+}
+// CHECK-LABEL: mo.graph
+// CHECK-SAME: @broadcast_shape_static(%[[ARG0:.*]]: !mo.tensor<[3], si32>, %[[ARG1:.*]]: !mo.tensor<[5], si32>) -> !mo.tensor<[5], si32>
+// CHECK-NEXT: %[[V0:.*]] = mo.broadcast_shape(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[3], si32>, !mo.tensor<[5], si32>) -> !mo.tensor<[5], si32>
+// CHECK-NEXT: mo.output %[[V0]] : !mo.tensor<[5], si32>
+
 mo.graph @gather_nd(%input: !mo.tensor<[?, ?, ?], si64>, %indices: !mo.tensor<[?, ?], si64>) -> !mo.tensor<?, si64> {
   %result = mo.gather_nd(%input, %indices) {batchDims = 1} :
     (!mo.tensor<[?, ?, ?], si64>, !mo.tensor<[?, ?], si64>) -> !mo.tensor<?, si64>

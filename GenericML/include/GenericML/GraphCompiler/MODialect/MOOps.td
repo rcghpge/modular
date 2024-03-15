@@ -2167,7 +2167,9 @@ def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
 }
 
 def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
-  Commutative, DeclareOpInterfaceMethods<MO_DefaultParameterization>
+  Commutative,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]> {
   let summary = "Broadcast-shape operation";
   let description = [{
