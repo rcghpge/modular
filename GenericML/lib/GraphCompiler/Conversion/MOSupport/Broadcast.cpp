@@ -8,6 +8,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
+#include "GenericML/GraphCompiler/RMODialect/RMOOps.h"
 #include "GenericML/Support/Assert.h"
 
 namespace M::MO {
@@ -84,12 +85,12 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
   TensorType xType = x.getType();
   GENERICML_ASSERT(xType.hasRank());
 
-  auto xShape = builder.create<MO::ShapeOfOp>(
+  auto xShape = builder.create<RMO::ShapeOfOp>(
       x.getLoc(), TensorType::get({(int64_t)xType.getRank()}, intType), x);
 
   TensorType yType = y.getType();
   GENERICML_ASSERT(yType.hasRank());
-  auto yShape = builder.create<MO::ShapeOfOp>(
+  auto yShape = builder.create<RMO::ShapeOfOp>(
       y.getLoc(), TensorType::get({(int64_t)yType.getRank()}, intType), y);
 
   auto bcastShape = builder.create<MO::BroadcastShapeOp>(
@@ -116,17 +117,17 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
   // Get the shapes of the inputs at runtime
   TensorType xType = x.getType();
   GENERICML_ASSERT(xType.hasRank());
-  auto xShape = builder.create<MO::ShapeOfOp>(
+  auto xShape = builder.create<RMO::ShapeOfOp>(
       x.getLoc(), TensorType::get({(int64_t)xType.getRank()}, intType), x);
 
   TensorType yType = y.getType();
   GENERICML_ASSERT(yType.hasRank());
-  auto yShape = builder.create<MO::ShapeOfOp>(
+  auto yShape = builder.create<RMO::ShapeOfOp>(
       y.getLoc(), TensorType::get({(int64_t)yType.getRank()}, intType), y);
 
   TensorType zType = z.getType();
   GENERICML_ASSERT(zType.hasRank());
-  auto zShape = builder.create<MO::ShapeOfOp>(
+  auto zShape = builder.create<RMO::ShapeOfOp>(
       z.getLoc(), TensorType::get({(int64_t)zType.getRank()}, intType), z);
 
   auto bcastXYShape = builder.create<MO::BroadcastShapeOp>(
@@ -234,7 +235,9 @@ TensorValue broadcastTo(OpBuilder &builder, Location loc, TensorValue x,
 TensorValue broadcastFloatTo(OpBuilder &builder, Location loc,
                              const APFloat &scalar, TensorValue toVal) {
   auto toTy = cast<TensorType>(toVal.getType());
-  auto toShape = builder.create<ShapeOfOp>(loc, toVal);
+
+  auto graphOp = cast<MO::GraphOp>(toVal.getParentBlock()->getParentOp());
+  auto toShape = builder.create<RMO::ShapeOfOp>(loc, toVal, graphOp);
 
   auto scalarConst =
       builder.create<ConstantOp>(loc, scalar, toTy.getElementType());

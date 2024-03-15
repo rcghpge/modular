@@ -7,7 +7,6 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #include "GenericML/GraphCompiler/Analysis/MODialect/StaticReshapeDimensionsMappingAnalysis.h"
-#include "GenericML/GraphCompiler/Conversion/MOSupport/Broadcast.h"
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
@@ -3018,8 +3017,11 @@ struct SinkBroadcastsThroughReduction
                       dimIndex);
                   auto dimCast = rewriter.create<CastOp>(
                       loc, dimT, bcastOpInput.getType().getDtype());
-                  auto dimBroadcast = broadcastTo(rewriter.rewriter, loc,
-                                                  dimCast, bcastOpInput);
+                  auto dimBroadcast = rewriter.create<Static::BroadcastToOp>(
+                      loc,
+                      dimCast.getType().cloneWith(
+                          bcastOpInput.getType().getShapeAttr()),
+                      dimCast);
                   TensorValue scaledInput =
                       isa<ReduceAddOp>(op)
                           ? rewriter
