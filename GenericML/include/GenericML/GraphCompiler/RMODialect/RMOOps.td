@@ -446,4 +446,210 @@ def MO_ArgMinOp : RMO_ArgMinMaxOp<"arg_min"> {
     }];
 }
 
+class RMO_MOAnaloguePureScatterOp<string name> : RMO_MOAnaloguePureTensorOp<
+  name, [AllDTypesMatch<["input", "updates", "result"]>]
+> {
+let arguments = (ins MO_Tensor:$input,
+                       MO_NonScalarIfRanked:$updates,
+                       MO_IndicesTensor:$indices,
+                       MO_IndicesTensor:$axis,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let extraClassDeclaration = [{
+    static void inferMOTypesImpl(
+      MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+      std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+      SmallVectorImpl<Type> &moResultTypes,
+      SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+      SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+        inferMOTypesScatterImpl(
+          context, graphOp, operands.getInput().cast<TensorValue>(),
+          operands.getUpdates().cast<TensorValue>(),
+          operands.getIndices().cast<TensorValue>(),
+          operands.getAxis().cast<TensorValue>(), rmoResults, moOperandTypes,
+          moResultTypes, moInputParamDecls, moOutputParamDecls);
+      }
+  }];
+}
+
+def RMO_ScatterOp : RMO_MOAnaloguePureScatterOp<"scatter">{
+  let summary = "`scatter` operation";
+  let description = [{
+    Produces an output tensor by scattering elements from updates to input
+    according to indices.
+
+    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
+    scalar axis. The output is a copy of the input, with certain elements
+    updated based on `updates` and `indices`.
+
+    For each entry in `indices`, the target index for `input` is obtained by
+    making a copy of the entry's own index, and then updating the `axis`
+    dimension with the value of the `indices` entry. Then the element at this
+    target index is updated to the corresponding entry in `updates`.
+
+    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
+    is performed as below:
+    ```
+      output[indices[i][j]][j] = updates[i][j] if axis = 0,
+      output[i][indices[i][j]] = updates[i][j] if axis = 1,
+    ```
+
+    Example:
+
+    ```mlir
+      %input:   !mo.tensor<[4, 4], f32>
+      %updates: !mo.tensor<[2, 3], f32>
+      %indices: !mo.tensor<[2, 3], si64>
+      %res = rmo.scatter(%inputs, %updates, %indices) : (
+        !mo.tensor<[4, 4], f32>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>
+      ) -> !mo.tensor<[4, 4], f32>
+    ```
+  }];
+}
+
+def RMO_ScatterAddOp : RMO_MOAnaloguePureScatterOp<"scatter.add"> {
+  let summary = "`scatter-add` operation";
+  let description = [{
+    Produces an output tensor by scattering elements from updates to input
+    according to indices, and it stores the sum of elements with duplicate
+    indices.
+
+    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
+    scalar axis. The output is a copy of the input, with certain elements
+    updated based on `updates` and `indices`.
+
+    For each entry in `indices`, the target index for `input` is obtained by
+    making a copy of the entry's own index, and then updating the `axis`
+    dimension with the value of the `indices` entry. Then the element at this
+    target index is combined with existing element via addition.
+
+    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
+    is performed as below:
+    ```
+      output[indices[i][j]][j] += updates[i][j] if axis = 0,
+      output[i][indices[i][j]] += updates[i][j] if axis = 1,
+    ```
+
+    Example:
+
+    ```mlir
+      %input:   !mo.tensor<[4, 4], f32>
+      %updates: !mo.tensor<[2, 3], f32>
+      %indices: !mo.tensor<[2, 3], si64>
+      %res = rmo.scatter.add(%inputs, %updates, %indices) : (
+        !mo.tensor<[4, 4], f32>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>
+      ) -> !mo.tensor<[4, 4], f32>
+    ```
+  }];
+}
+
+def RMO_ScatterMaxOp : RMO_MOAnaloguePureScatterOp<"scatter.max"> {
+  let summary = "scatter-max operation";
+  let description = [{
+    Produces an output tensor by scattering elements from updates to input
+    according to indices, and it stores the maximum of elements with duplicate
+    indices.
+
+    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
+    scalar axis. The output is a copy of the input, with certain elements
+    updated based on `updates` and `indices`.
+
+    For each entry in `indices`, the target index for `input` is obtained by
+    making a copy of the entry's own index, and then updating the `axis`
+    dimension with the value of the `indices` entry. Then the element at this
+    target index is combined with existing element via maximum.
+
+    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
+    is performed as below:
+    ```
+      output[indices[i][j]][j] = max(output[indices[i][j]][j], updates[i][j]) if axis = 0,
+      output[i][indices[i][j]] = max(output[i][indices[i][j]], updates[i][j]) if axis = 1,
+    ```
+
+    Example:
+
+    ```mlir
+      %input:   !mo.tensor<[4, 4], f32>
+      %updates: !mo.tensor<[2, 3], f32>
+      %indices: !mo.tensor<[2, 3], si64>
+      %res = rmo.scatter.max(%inputs, %updates, %indices) : (
+        !mo.tensor<[4, 4], f32>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>
+      ) -> !mo.tensor<[4, 4], f32>
+    ```
+  }];
+}
+
+def RMO_ScatterMinOp : RMO_MOAnaloguePureScatterOp<"scatter.min"> {
+  let summary = "`scatter-min` operation";
+  let description = [{
+    Produces an output tensor by scattering elements from updates to input
+    according to indices, and it stores the minimum of elements with duplicate
+    indices.
+
+    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
+    scalar axis. The output is a copy of the input, with certain elements
+    updated based on `updates` and `indices`.
+
+    For each entry in `indices`, the target index for `input` is obtained by
+    making a copy of the entry's own index, and then updating the `axis`
+    dimension with the value of the `indices` entry. Then the element at this
+    target index is combined with existing element via minimum.
+
+    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
+    is performed as below:
+    ```
+      output[indices[i][j]][j] = min(output[indices[i][j]][j], updates[i][j]) if axis = 0,
+      output[i][indices[i][j]] = min(output[i][indices[i][j]], updates[i][j]) if axis = 1,
+    ```
+
+    Example:
+
+    ```mlir
+      %input:   !mo.tensor<[4, 4], f32>
+      %updates: !mo.tensor<[2, 3], f32>
+      %indices: !mo.tensor<[2, 3], si64>
+      %res = rmo.scatter.min(%inputs, %updates, %indices) : (
+        !mo.tensor<[4, 4], f32>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>
+      ) -> !mo.tensor<[4, 4], f32>
+    ```
+  }];
+}
+
+def RMO_ScatterMulOp : RMO_MOAnaloguePureScatterOp<"scatter.mul"> {
+  let summary = "scatter-mul operation";
+  let description = [{
+    Produces an output tensor by scattering elements from updates to input
+    according to indices, and it stores the product of elements with duplicate
+    indices.
+
+    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
+    scalar axis. The output is a copy of the input, with certain elements
+    updated based on `updates` and `indices`.
+
+    For each entry in `indices`, the target index for `input` is obtained by
+    making a copy of the entry's own index, and then updating the `axis`
+    dimension with the value of the `indices` entry. Then the element at this
+    target index is combined with existing element via multiplication.
+
+    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
+    is performed as below:
+    ```
+      output[indices[i][j]][j] *= updates[i][j] if axis = 0,
+      output[i][indices[i][j]] *= updates[i][j] if axis = 1,
+    ```
+
+    Example:
+
+    ```mlir
+      %input:   !mo.tensor<[4, 4], f32>
+      %updates: !mo.tensor<[2, 3], f32>
+      %indices: !mo.tensor<[2, 3], si64>
+      %res = rmo.scatter.mul(%inputs, %updates, %indices) : (
+        !mo.tensor<[4, 4], f32>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>
+      ) -> !mo.tensor<[4, 4], f32>
+    ```
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD

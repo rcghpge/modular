@@ -93,22 +93,19 @@ namespace M::RMO {
 /// Given two tensor types which are meant to represent the same shape
 /// return a new type which returns a more "refined type" using information
 /// from both existing types
-TensorType refineShape(TensorType ty1, TensorType ty2) {
-  GENERICML_ASSERT(ty1.getDtype() == ty2.getDtype())
-      << " tried to refine types with different dtypes";
+TensorType refineShapeWithDType(TensorType ty1, TensorType ty2, DType dtype) {
   GENERICML_ASSERT(!ty1.hasUnknownShape() && !ty2.hasUnknownShape())
       << " no question marks should be here";
-
   bool ty1Ranked = ty1.hasRank();
   bool ty2Ranked = ty2.hasRank();
 
   // Prefer ranked to unranked tensors
   if (!ty1Ranked && !ty2Ranked)
-    return ty1;
+    return ty1.cloneWith(dtype);
   if (!ty1Ranked)
-    return ty2;
+    return ty2.cloneWith(dtype);
   if (!ty2Ranked)
-    return ty1;
+    return ty1.cloneWith(dtype);
 
   // Refine each dimension individually
   GENERICML_ASSERT(ty1.getRank() == ty2.getRank())
@@ -132,7 +129,13 @@ TensorType refineShape(TensorType ty1, TensorType ty2) {
   for (size_t i = 0, e = ty1.getRank(); i < e; i++)
     newDims.push_back(refineDim(i));
 
-  return ty1.cloneWith(newDims);
+  return TensorType::get(ty1.getContext(), newDims, dtype, ty1.getMetadata());
+}
+
+TensorType refineShape(TensorType ty1, TensorType ty2) {
+  GENERICML_ASSERT(ty1.getDtype() == ty2.getDtype())
+      << " tried to refine types with different dtypes";
+  return refineShapeWithDType(ty1, ty2, ty1.getDtype());
 }
 
 SmallVector<Value> rebindUnknownShapeInValues(ValueRange inputValues,
@@ -444,6 +447,41 @@ DEFINE_REDUCE_INFER_MO_TYPES(ReduceMaxOp, false)
 DEFINE_REDUCE_INFER_MO_TYPES(ArgMinOp, true)
 DEFINE_REDUCE_INFER_MO_TYPES(ArgMaxOp, true)
 #undef DEFINE_REDUCE_INFER_MO_TYPES
+
+void inferMOTypesScatterImpl(
+    MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
+    TensorValue updates, TensorValue indices, TensorValue axis,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+  // Input type is unchanged
+  moOperandTypes.push_back(input.getType());
+  moInputParamDecls.push_back({});
+
+  // Updates and indices must have the same shape, but updates have the
+  // same datatype as the input
+  auto updatesTy = cast<MO::TensorType>(updates.getType());
+  auto indicesTy = cast<MO::TensorType>(indices.getType());
+  auto newUpdatesTy =
+      refineShapeWithDType(updatesTy, indicesTy, updatesTy.getDtype());
+  auto newIndicesTy =
+      refineShapeWithDType(updatesTy, indicesTy, indicesTy.getDtype());
+
+  moOperandTypes.push_back(newUpdatesTy);
+  moOperandTypes.push_back(newIndicesTy);
+  moInputParamDecls.push_back({});
+  moInputParamDecls.push_back({});
+
+  // Axis must be a scalar
+  moOperandTypes.push_back(axis.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+
+  // The output of scatter has the same type as the input
+  moResultTypes.push_back(input.getType());
+  moOutputParamDecls.push_back({});
+}
 
 void RMODialect::registerOperations() {
   addOperations<

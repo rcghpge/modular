@@ -26,11 +26,22 @@ namespace M::RMO {
 /// return a new type which returns a more "refined type" using information
 /// from both existing types
 MO::TensorType refineShape(MO::TensorType ty1, MO::TensorType ty2);
+MO::TensorType refineShapeWithDType(MO::TensorType ty1, MO::TensorType ty2,
+                                    DType dtype);
 
 /// Rebinds all values
 SmallVector<Value> rebindUnknownShapeInValues(ValueRange inputValues,
                                               MO::GraphOp graphOp,
                                               OpBuilder &builder);
+/// inferMoTypesImpl for all scatter-like ops
+void inferMOTypesScatterImpl(
+    MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
+    TensorValue updates, TensorValue indices, TensorValue axis,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls);
+
 } // namespace M::RMO
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
