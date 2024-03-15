@@ -181,12 +181,9 @@ void handleOutputBindings(GraphOp graphOp,
          isValidOutputShape(bindingParam)) ||
         isValidOutputDim(bindingParam)) {
       evaluator.setParameterValue(resultParam.getName(), bindingParam);
-    } else {
-      // Otherwise we still map the result parameter to itself so replacer
-      // won't complain.
-      evaluator.setParameterValue(resultParam,
-                                  KGEN::ParamDeclRefAttr::get(resultParam));
     }
+    // Otherwise `KGEN::ParameterEvaluator` will map the result parameter to
+    // itself by default, meaning it won't change in the signature.
   }
 }
 
@@ -691,18 +688,14 @@ struct PropagateShapesPass
     // TODO this limits folding as well, we need a better approach.
     //
     // In these cases, we map the declared parameters to themselves, so that
-    // evaluator won't panic when looking them up. Note that (2) and (3) are
-    // handled in the worklist loop below; only (1) is handled upfront.
+    // evaluator won't panic when looking them up. Note that (1) and (2) are
+    // handled by default in `KGEN::ParameterEvaluator`, and (3) is handled in
+    // the worklist loop below.
     KGEN::ParameterEvaluator evaluator;
-    auto mapDeclaredParamToItself = [&](KGEN::ParamDeclAttr paramDecl) {
-      evaluator.setParameterValue(paramDecl,
-                                  KGEN::ParamDeclRefAttr::get(paramDecl));
-    };
     auto markIntParamDeclAsNonNegative = [&](KGEN::ParamDeclAttr paramDecl) {
       if (paramDecl.getType().isIntOrIndex())
         markDefinitelyNonNegative(KGEN::ParamDeclRefAttr::get(paramDecl));
     };
-    llvm::for_each(graphOp.getInputParams(), mapDeclaredParamToItself);
     // The integer input parameters to graph are dynamic dimensions, so they
     // must be non-negative.
     llvm::for_each(graphOp.getInputParams(), markIntParamDeclAsNonNegative);
@@ -718,7 +711,6 @@ struct PropagateShapesPass
       Attribute resolvedAttr = evaluator.getReboundAttribute(declRef);
       return resolvedAttr;
     });
-
     DenseMap<KGEN::ParamOperatorAttr, KGEN::ParamDeclRefAttr> exprToDeclRef;
 
     // A stack of ops to be "evaluated", i.e., the op in the back is the one to
@@ -783,7 +775,7 @@ struct PropagateShapesPass
             auto declRefAttr = KGEN::ParamDeclRefAttr::get(declAttr);
             if (isParamOperatorPure(paramOperatorAttr))
               exprToDeclRef.try_emplace(paramOperatorAttr, declRefAttr);
-            mapDeclaredParamToItself(declAttr);
+            evaluator.setParameterValue(declAttr.getName(), declRefAttr);
           }
 
         } else {
@@ -795,19 +787,6 @@ struct PropagateShapesPass
         if (StringAttr errMsg = tryGetAssertFalseErrMsg(foldedRhsAttr)) {
           op->emitError(errMsg.strref());
           return signalPassFailure();
-        }
-
-        // For any other op that declares a parameter, we treat the parameter
-        // definition as opaque, and map it to itself so replacer won't break
-        // upon seeing them in to-be-replaced ops.
-        if (auto paramDeclItf = dyn_cast<ParamDeclarationInterface>(op)) {
-          ArrayRef<KGEN::ParamDeclAttr> outputDecls =
-              paramDeclItf.getOutputParamDecls();
-          llvm::for_each(outputDecls, mapDeclaredParamToItself);
-
-          // The integer output parameters of an op are dynamic dimensions used
-          // in its output shape, so they must be non-negative.
-          llvm::for_each(outputDecls, markIntParamDeclAsNonNegative);
         }
       }
     }
