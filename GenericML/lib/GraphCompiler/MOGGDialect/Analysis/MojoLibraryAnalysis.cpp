@@ -449,6 +449,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
                         "MOGG::pack_conv_transpose_filter"),
 
       INTRINSIC_TO_MOJO("simd_target", "MOGG::get_target_simd"),
+      INTRINSIC_TO_MOJO("simd_target_cuda", "MOGG::get_target_simd_cuda"),
       INTRINSIC_TO_MOJO("simd_target_to_int", "MOGG::simd_width_to_int"),
       INTRINSIC_TO_MOJO("top_k_shape", "nn::topk::top_k_shape"),
       INTRINSIC_TO_MOJO("to_buffer", "MOGG::to_buffer"),
