@@ -13,7 +13,6 @@ from testing import *
 
 from utils.index import Index, StaticIntTuple
 from pathlib import Path
-from closed_source_test_utils import linear_fill
 from sys.param_env import env_get_string
 
 alias TEMP_FILE_DIR = env_get_string["TEMP_FILE_DIR"]()
@@ -565,8 +564,7 @@ fn test_print_large():
 # CHECK-LABEL: test_tensor
 def test_tensor_from_file():
     print("== test_tensor")
-    var tensor = Tensor[DType.int8](4)
-    linear_fill(tensor, 1, 2, 3, 4)
+    var tensor = Tensor[DType.int8](TensorShape(4), 1, 2, 3, 4)
     var TEMP_FILE = Path(TEMP_FILE_DIR) / "test_tensor_from_file"
     tensor.tofile(TEMP_FILE)
     var tensor_from_file = Tensor[DType.int8].fromfile(TEMP_FILE)
