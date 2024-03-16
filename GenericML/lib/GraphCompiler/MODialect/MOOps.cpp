@@ -1109,6 +1109,18 @@ DeviceRefAttr ConcatOp::getOperandDevice(size_t index) {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_BandPartOp support
+//===----------------------------------------------------------------------===//
+
+DeviceRefAttr LinAlg::BandPartOp::getOperandDevice(size_t index) {
+  return (index == getNumLowerMutable().getOperandNumber() ||
+          index == getNumUpperMutable().getOperandNumber() ||
+          index == getExcludeMutable().getOperandNumber())
+             ? MO::getHostDeviceAny(getOperation())
+             : nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // MO_SplitOp support
 //===----------------------------------------------------------------------===//
 

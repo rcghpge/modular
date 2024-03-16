@@ -3686,7 +3686,9 @@ class MO_LinalgOp<string mnemonic, list<Trait> traits = []>
 // TODO: Use an AllElementTypesMatch<["input", "result"]> trait for MO_Tensor.
 def MO_BandPartOp : MO_LinalgOp<"band_part", [
     DeclareOpInterfaceMethods<MO_Parameterization>,
-    DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
+    DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+    DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
+    ]> {
   let summary = "Matrix band part operation";
   let description = [{
     Copies a tensor setting everything outside central (diagonal) band of the
