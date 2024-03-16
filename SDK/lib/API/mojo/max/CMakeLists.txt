@@ -54,8 +54,8 @@ add_mojo_package(max-mojo PRIVATE DISABLE_PRIME_CACHE
   DOCS_DIR
   SDK/docs
 
-  DEPENDS 
-  closed_source_memory
+  DEPENDS
+  mojo-buffer
   tensor
 )
 
