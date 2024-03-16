@@ -56,7 +56,7 @@ add_mojo_package(max-mojo PRIVATE DISABLE_PRIME_CACHE
 
   DEPENDS
   mojo-buffer
-  tensor
+  mojo-tensor
 )
 
 # Dependencies aren't automatically included in releases!

@@ -19,7 +19,7 @@ add_modular_testsuite(check-mojo-engine-api
   DEPENDS
   modular-framework-common
   max-mojo
-  tensor
+  mojo-sdk
 
   TOP_LEVEL_CHECK
   check-sdk
