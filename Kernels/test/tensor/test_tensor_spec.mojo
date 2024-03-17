@@ -8,7 +8,6 @@
 from collections import List
 
 from tensor import TensorShape, TensorSpec
-
 from tensor.tensor import _serialize_as_tensor
 
 

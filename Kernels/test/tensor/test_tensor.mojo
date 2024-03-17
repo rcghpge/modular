@@ -6,14 +6,14 @@
 # RUN: %mojo -D TEMP_FILE_DIR=%T -debug-level full %s | FileCheck %s
 
 from math import iota, sqrt
+from pathlib import Path
 from random import seed
+from sys.param_env import env_get_string
 
 from tensor import Tensor, TensorShape, rand, randn
 from testing import *
 
 from utils.index import Index, StaticIntTuple
-from pathlib import Path
-from sys.param_env import env_get_string
 
 alias TEMP_FILE_DIR = env_get_string["TEMP_FILE_DIR"]()
 
