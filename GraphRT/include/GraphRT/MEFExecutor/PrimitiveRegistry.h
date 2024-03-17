@@ -26,7 +26,8 @@ namespace M {
 
 /// Profiling entry for *all* GraphRT primitives, irrespective of dialect.
 using PrimitiveProfilerEntry =
-    ProfilerEntry<Trace::EnableTrace(Trace::kPrimitives, 1)>;
+    ProfilerEntry<Trace::EnableTrace(Trace::kPrimitives, 1),
+                  Trace::kPrimitives>;
 
 //===----------------------------------------------------------------------===//
 // PrimitiveRegistry

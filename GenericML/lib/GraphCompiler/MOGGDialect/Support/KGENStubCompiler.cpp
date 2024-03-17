@@ -6,11 +6,6 @@
 
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
 
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Support/FileUtilities.h"
-
-#include "LLCL/Runtime/Runtime.h"
-
 #include "Cache/CacheDialect/CachedTransform.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
@@ -21,9 +16,13 @@
 #include "KGEN/Package/Package.h"
 #include "KGEN/ToolCommon/CLOptions.h"
 #include "LLCL/Runtime/Algorithms.h"
+#include "LLCL/Runtime/Runtime.h"
 #include "Support/MArchTarget/Host.h"
 #include "Support/MDialect/MAttrs.h"
+#include "Support/Preprocessor.h"
 #include "Support/Telemetry/Telemetry.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Support/FileUtilities.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/TargetParser/Host.h"

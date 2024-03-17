@@ -36,7 +36,8 @@ using namespace M::GML;
 //===----------------------------------------------------------------------===//
 
 /// Profiler entry for launched CPU kernels.
-using MGPProfilerEntry = ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1)>;
+using MGPProfilerEntry =
+    ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
 
 //===----------------------------------------------------------------------===//
 // mgp.context.create

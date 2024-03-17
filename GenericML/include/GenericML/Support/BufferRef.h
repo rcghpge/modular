@@ -24,7 +24,7 @@ namespace M::GML {
 
 /// Profiler entry for tracking the lifetimes of owned buffers.
 using BufferRefLifetimeProfilerEntry =
-    ProfilerEntry<Trace::EnableTrace(Trace::kMem, 3)>;
+    ProfilerEntry<Trace::EnableTrace(Trace::kMem, 3), Trace::kMem>;
 
 /// A reference (aka smart pointer) to an underlying buffer of known size but
 /// uninterpreted and possibly uninitialized bytes, along with metadata needed

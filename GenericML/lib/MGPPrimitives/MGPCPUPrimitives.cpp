@@ -822,7 +822,8 @@ static void mgp_debug_tensor_print_cpu(
 //===----------------------------------------------------------------------===//
 
 /// Profiler entry for launched CPU kernels.
-using MGPProfilerEntry = ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1)>;
+using MGPProfilerEntry =
+    ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
 
 static void mgp_kernel_execute_cpu(
     Chain inChain, Context &theContext, RemainingArguments operands,

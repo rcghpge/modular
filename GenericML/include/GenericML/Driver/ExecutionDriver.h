@@ -28,7 +28,8 @@ class Model;
 class ExecutorDriverOptions;
 
 /// Profiler entry for main execute/benchmark events.
-using DriverProfilerEntry = ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1)>;
+using DriverProfilerEntry =
+    ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
 
 enum class InputGenerationKind {
   kRandom, // generate inputs with random elements, distribution depends on type
