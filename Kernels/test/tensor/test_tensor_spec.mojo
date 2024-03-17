@@ -47,7 +47,7 @@ fn test_tensor_shape():
 
     var shape_vec = List[Int]()
     for i in range(1, 5):
-        shape_vec.push_back(i)
+        shape_vec.append(i)
 
     # CHECK: True
     print(TensorShape(shapes=shape_vec) == TensorShape(1, 2, 3, 4))
@@ -83,7 +83,7 @@ fn test_tensor_spec():
 
     var shape_vec = List[Int]()
     for i in range(1, 5):
-        shape_vec.push_back(i)
+        shape_vec.append(i)
 
     # CHECK: 1x2x3x4xfloat32
     print(str(TensorSpec(DType.float32, shape_vec)))

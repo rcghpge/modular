@@ -74,7 +74,7 @@ fn vstack[dtype: DType](a: Tensor[dtype], b: Tensor[dtype]) -> Tensor[dtype]:
     """Concatenate tensors a & b along the outermost dimension."""
     # Generate return shape
     var out_shape = DynamicVector[Int]()
-    out_shape.push_back(a.shape()[0] + b.shape()[0])
+    out_shape.append(a.shape()[0] + b.shape()[0])
     for i in range(1, a.shape().rank()):
         out_shape.append(a.shape()[i])
     # Allocate return tensor
@@ -89,9 +89,9 @@ fn split[dtype: DType](x: Tensor[dtype], i: Int) -> Tensor[dtype]:
     """Return the ith slice of the outermost dim; i.e., x[idx, :, :, ..., :]."""
     # Generate return shape
     var shape = DynamicVector[Int]()
-    shape.push_back(1)
+    shape.append(1)
     for i in range(1, x.shape().rank()):
-        shape.push_back(x.shape()[i])
+        shape.append(x.shape()[i])
     # Allocate return tensor
     var ret = Tensor[dtype](TensorShape(shape))
     # Fill data
