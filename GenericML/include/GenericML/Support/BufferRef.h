@@ -12,9 +12,9 @@
 #include "LLCL/Runtime/Allocator.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
 #include "LLCL/Runtime/CompactRuntimePtr.h"
-#include "LLCL/Support/Profiling.h"
 #include "LLCL/Support/Resource.h"
 #include "Support/ErrorOr.h"
+#include "Support/Profiling/TimeProfiler.h"
 
 #include "llvm/Support/Alignment.h"
 

@@ -13,9 +13,9 @@
 #define GENERICML_DRIVER_EXECUTIONDRIVER_H
 
 #include "LLCL/ForwardDecls.h"
-#include "LLCL/Support/Profiling.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "Support/Profiling/TimeProfiler.h"
 #include "llvm/ADT/SmallVector.h"
 #include <cstddef>
 
