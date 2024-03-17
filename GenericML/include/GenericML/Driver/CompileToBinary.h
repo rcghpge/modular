@@ -19,7 +19,9 @@ struct CompileToBinaryCtx {
   /// If one doesn't already exist, creates an owned runtime to use during
   /// compilation.
   /// It will convey global options to the passes that need them.
-  CompileToBinaryCtx() : runtime(LLCL::createRuntimeIfNeeded()) {
+  CompileToBinaryCtx(
+      const LLCL::RuntimeOptions &options = LLCL::RuntimeOptions())
+      : runtime(LLCL::createRuntimeIfNeeded(options)) {
 #ifdef MODULAR_PRODUCTION
     mlirCtx.printOpOnDiagnostic(false);
 #endif // MODULAR_PRODUCTION
