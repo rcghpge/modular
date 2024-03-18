@@ -45,9 +45,7 @@ fn cache_init(model: Llama2, size: Int) -> Tensor[DType.float32]:
     )
 
 
-fn cache_view(
-    model: Llama2, size: Int, buff: Tensor[DType.float32]
-) -> Tensor[DType.float32]:
+fn cache_view(size: Int, buff: Tensor[DType.float32]) -> Tensor[DType.float32]:
     var shape = buff.shape()
     return Tensor(
         buff.data(), TensorShape(size, shape[1], shape[2], shape[3], shape[4])
@@ -116,8 +114,8 @@ fn run[ModelT: LoadableModel]() raises:
     # iterations generate one token.
     # Avoid overrunning the cache by setting the trip count accordingly.
     for _ in range(prompt.size, max_tokens + 1):
-        var k_cache_view = cache_view(model, cache_size, k_cache_buff)
-        var v_cache_view = cache_view(model, cache_size, v_cache_buff)
+        var k_cache_view = cache_view(cache_size, k_cache_buff)
+        var v_cache_view = cache_view(cache_size, v_cache_buff)
         var n_inputs = tokens.shape()[1]
         cache_size += n_inputs
 
