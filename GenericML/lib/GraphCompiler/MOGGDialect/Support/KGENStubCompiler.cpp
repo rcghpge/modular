@@ -64,6 +64,11 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
   KGEN::CompilationOptions compilationOptions;
   compilationOptions.enableSearch = shouldSearch;
 
+  static constexpr llvm::StringLiteral kKernelsBuildType =
+      STRINGIFY(KERNELS_BUILD_TYPE);
+  if (kKernelsBuildType == "relwithdebinfo" || kKernelsBuildType == "debug")
+    compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
+
   KGEN::populateElaborateModulePasses(pm, *ownedRuntime, *targetInfoOr,
                                       compilationOptions);
 
@@ -150,8 +155,8 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
   if (kKernelsBuildType == "debug")
     compilationOptions.optimizationLevel = 0;
 
-  // TODO(30595): Turn back on when we have a use for it.
-  compilationOptions.debugLevel = KGEN::CompilationOptions::kNoDebug;
+  if (kKernelsBuildType == "relwithdebinfo" || kKernelsBuildType == "debug")
+    compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
 
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmParser();
