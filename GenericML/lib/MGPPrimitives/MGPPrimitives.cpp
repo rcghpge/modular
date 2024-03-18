@@ -271,7 +271,7 @@ static void mgp_debug_cpu_spin_wait(Chain inChain, Result<Chain> outChain,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.to_grt_bool
+// mgp.to_grt_bool.deprecated
 //===----------------------------------------------------------------------===//
 
 static void mgp_to_grt_bool(Chain inChain,
@@ -373,7 +373,7 @@ static void mgp_cpu_kernel_load_archive(Chain inChain, Context &ctx,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.cpu.kernel.execute
+// mgp.cpu.kernel.execute.deprecated
 //===----------------------------------------------------------------------===//
 
 static void mgp_generic_execute(Context &ctx, RemainingArguments operands,
@@ -520,7 +520,7 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
                 mgp_cpu_tensor_spec_dtype);
   ADD_PRIMITIVE(registry, "mgp.debug.bool.print", mgp_debug_bool_print);
   ADD_PRIMITIVE(registry, "mgp.debug.cpu.spin_wait", mgp_debug_cpu_spin_wait);
-  ADD_PRIMITIVE(registry, "mgp.to_grt_bool", mgp_to_grt_bool);
+  ADD_PRIMITIVE(registry, "mgp.to_grt_bool.deprecated", mgp_to_grt_bool);
   ADD_PRIMITIVE(registry, "mgp.assert", mgp_assert);
   ADD_PRIMITIVE(registry, "mgp.cpu.kernel.create_context",
                 mgp_cpu_kernel_create_context);

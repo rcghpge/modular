@@ -38,7 +38,7 @@ class MGP_Op<string mnemonic, list<Trait> traits = []> :
 //===----------------------------------------------------------------------===//
 
 // TODO(#32165): DEPRECATED
-def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
+def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant.deprecated", [
     Pure,
     ConstantLike,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
@@ -71,14 +71,14 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
 
     Example:
     ```mlir
-    %buf = mgp.cpu.buffer.constant #M.aligned_bytes<"0x00010203", align 8>
+    %buf = mgp.cpu.buffer.constant.deprecated #M.aligned_bytes<"0x00010203", align 8>
     %buf : !mgp.cpu.buffer<4>  // at least 8 byte aligned in storage
 
-    %buf = mgp.cpu.buffer.constant dense_resource<label>:!M.aligned_bytes<4, align 16>
+    %buf = mgp.cpu.buffer.constant.deprecated dense_resource<label>:!M.aligned_bytes<4, align 16>
     %buf : !mgp.cpu.buffer<4>  // at least 16 byte aligned in storage
                                // the actual resource must have the same alignment
 
-    %buf = mgp.cpu.buffer.constant #M.dense_array<ui8: 0, 1, 2, 3>
+    %buf = mgp.cpu.buffer.constant.deprecated #M.dense_array<ui8: 0, 1, 2, 3>
     %buf : !mgp.cpu.buffer<4>  // no specific alignment in storage
     ```
   }];
@@ -114,13 +114,13 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
 //  {static size vs dynamic size vs dynamic tensor spec} x {alloc vs re-alloc}
 //
 //  CpuBufferAllocStaticOp: Alloc with statically known size
-//    mgp.cpu.buffer.alloc.static    %ch,            64
+//    mgp.cpu.buffer.alloc.static.deprecated    %ch,            64
 //  CpuBufferAllocDynamicOp: Alloc with dynamic size
 //    mgp.cpu.buffer.alloc.dynamic   %ch,            %size
 //  CpuBufferReallocStaticOp: Re-alloc with statically known size
-//    mgp.cpu.buffer.realloc.static  %ch, %ctx[5,1], 64
+//    mgp.cpu.buffer.realloc.static.deprecated  %ch, %ctx[5,1], 64
 //  CpuBufferReallocDynamicOp: Re-alloc with dynamic size
-//    mgp.cpu.buffer.realloc.dynamic %ch, %ctx[5,1], %size
+//    mgp.cpu.buffer.realloc.dynamic.deprecated %ch, %ctx[5,1], %size
 //
 //===----------------------------------------------------------------------===//
 
@@ -129,7 +129,7 @@ def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant", [
 //===----------------------------------------------------------------------===//
 
 // TODO(#32165): DEPRECATED
-def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
+def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static.deprecated", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface>,
     DeclareOpInterfaceMethods<MGP_StaticAllocOpInterface>,
@@ -154,10 +154,10 @@ def CpuBufferAllocStaticOp : MGP_Op<"cpu.buffer.alloc.static", [
     ```mlir
     %ch : !mef.chain
 
-    %buf = mgp.cpu.buffer.alloc.static %ch, 64, align 8
+    %buf = mgp.cpu.buffer.alloc.static.deprecated %ch, 64, align 8
     %buf : !mgp.cpu.buffer<64>  // 64 bytes aligned to 8 bytes
 
-    %buf = mgp.cpu.buffer.alloc.static %ch, 64
+    %buf = mgp.cpu.buffer.alloc.static.deprecated %ch, 64
     %buf : !mgp.cpu.buffer<64>  // 64 bytes with no specific alignment
     ```
   }];
@@ -199,7 +199,7 @@ def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
     given operand size. An optional static alignment constraint may also be
     given.
 
-    See `cpu.buffer.alloc.static` for additional details.
+    See `cpu.buffer.alloc.static.deprecated` for additional details.
 
     Example:
     ```mlir
@@ -229,7 +229,7 @@ def CpuBufferAllocDynamicOp : MGP_Op<"cpu.buffer.alloc.dynamic", [
 //===----------------------------------------------------------------------===//
 
 // TODO(#32165): DEPRECATED
-def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
+def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static.deprecated", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>]> {
   let summary = [{
@@ -280,11 +280,11 @@ def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
     ```mlir
        init {
          ...
-         %buf1 = mgp.cpu.buffer.realloc.static %ch, %ctx[2, 0], 48, align 8
+         %buf1 = mgp.cpu.buffer.realloc.static.deprecated %ch, %ctx[2, 0], 48, align 8
        }
        execute (...) -> ... {
          ...
-         %buf2 = mgp.cpu.buffer.realloc.static %ch, %ctx[2, 0], 48, align 16
+         %buf2 = mgp.cpu.buffer.realloc.static.deprecated %ch, %ctx[2, 0], 48, align 16
        }
     ```
     the second realloc will always reuse the buffer from the first realloc.
@@ -295,10 +295,10 @@ def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
     %ch : !mef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
-    %buf = mgp.cpu.buffer.realloc.static %ch, %ctx[42, 2], 64, align 8
+    %buf = mgp.cpu.buffer.realloc.static.deprecated %ch, %ctx[42, 2], 64, align 8
     %buf : !mgp.cpu.buffer<64>   // 64 bytes aligned to 8 bytes
 
-    %buf = mgp.cpu.buffer.realloc.static %ch, %ctx[42, 2], 64
+    %buf = mgp.cpu.buffer.realloc.static.deprecated %ch, %ctx[42, 2], 64
     %buf : !mgp.cpu.buffer<64>  // 64 bytes with no specific alignment
     ```
   }];
@@ -324,7 +324,7 @@ def CpuBufferReallocStaticOp : MGP_Op<"cpu.buffer.realloc.static", [
 //===----------------------------------------------------------------------===//
 
 // TODO(#32165): DEPRECATED
-def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic", [
+def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic.deprecated", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>]> {
   let summary = [{
@@ -342,7 +342,7 @@ def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic", [
     updated, deleting any previously cached buffer. The size is given by
     an operand. An optional static alignment constraint may also be given.
 
-    See `cpu.buffer.realloc.static` for additional details and restrictions.
+    See `cpu.buffer.realloc.static.deprecated` for additional details and restrictions.
 
     Example:
     ```mlir
@@ -351,10 +351,10 @@ def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic", [
     %ch : !mef.chain
 
     // Reallocate the buffer in slot index 42 and buffer index 2.
-    %buf = mgp.cpu.buffer.realloc.dynamic %ch, %ctx[42, 2], %size, align 8
+    %buf = mgp.cpu.buffer.realloc.dynamic.deprecated %ch, %ctx[42, 2], %size, align 8
     %buf : !mgp.cpu.buffer      // 8 bytes aligned
 
-    %buf = mgp.cpu.buffer.realloc.dynamic %ch, %ctx[42, 2], %size
+    %buf = mgp.cpu.buffer.realloc.dynamic.deprecated %ch, %ctx[42, 2], %size
     %buf : !mgp.cpu.buffer<64>  // no specific alignment
     ```
   }];
@@ -380,7 +380,7 @@ def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic", [
 //===----------------------------------------------------------------------===//
 
 // TODO(#32165): DEPRECATED
-def CpuBufferSetOp : MGP_Op<"cpu.buffer.set", [
+def CpuBufferSetOp : MGP_Op<"cpu.buffer.set.deprecated", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>]> {
   let summary = [{
@@ -394,9 +394,9 @@ def CpuBufferSetOp : MGP_Op<"cpu.buffer.set", [
     %buf : !mgp.cpu.buffer
 
     // Set each byte of the buffer to 0.
-    %ch = mgp.cpu.buffer.set %buf : !mgp.cpu.buffer
+    %ch = mgp.cpu.buffer.set.deprecated %buf : !mgp.cpu.buffer
     // Set each byte of the buffer to 1.
-    %ch = mgp.cpu.buffer.set %buf, 1 : !mgp.cpu.buffer
+    %ch = mgp.cpu.buffer.set.deprecated %buf, 1 : !mgp.cpu.buffer
     ```
   }];
 
@@ -788,7 +788,7 @@ def CpuTensorSpecDTypeOp : MGP_Op<"cpu.tensor_spec.dtype"> {
 //===----------------------------------------------------------------------===//
 
 // TODO(#32165): DEPRECATED
-def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
+def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create.deprecated", [
     DeclareOpInterfaceMethods<MGP_CreateTensorOpInterface>,
     DeclareOpInterfaceMethods<GRTMayAliasInterface>, // since operand buffer may be moved into result
     TypesMatchWith<"tensorSpec operand must match result tensor type spec",
@@ -813,22 +813,22 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
 
     %spec : !mgp.tensor_spec<4x16xf32>
     %buf : !mgp.cpu.buffer<256>
-    %tensor = mgp.cpu.tensor.create %ch, %buf, %spec : !mgp.cpu.tensor<4x16xf32>
+    %tensor = mgp.cpu.tensor.create.deprecated %ch, %buf, %spec : !mgp.cpu.tensor<4x16xf32>
     %tensor : !mgp.cpu.tensor<4x16xf32>
 
     %spec : !mgp.tensor_spec<?x16xf32>
     %buf : !mgp.cpu.buffer
-    %tensor = mgp.cpu.tensor.create %ch, %buf, %spec : !mgp.cpu.tensor<?x16xf32>
+    %tensor = mgp.cpu.tensor.create.deprecated %ch, %buf, %spec : !mgp.cpu.tensor<?x16xf32>
     %tensor : !mgp.cpu.tensor<?x16xf32>
 
     %spec : !mgp.tensor_spec<4x16xf32>
     %buf : !mgp.cpu.buffer
-    %tensor = mgp.cpu.tensor.create %ch, %buf, %spec !mgp.cpu.buffer : !mgp.cpu.tensor<4x16xf32>
+    %tensor = mgp.cpu.tensor.create.deprecated %ch, %buf, %spec !mgp.cpu.buffer : !mgp.cpu.tensor<4x16xf32>
     %tensor : !mgp.cpu.tensor<4x16xf32>
 
     %spec : !mgp.tensor_spec<4x?xf32>
     %buf : !mgp.cpu.buffer<16>
-    %tensor = mgp.cpu.tensor.create %ch, %buf, %spec !mgp.cpu.buffer<16> : !mgp.cpu.tensor<4x?xf32>
+    %tensor = mgp.cpu.tensor.create.deprecated %ch, %buf, %spec !mgp.cpu.buffer<16> : !mgp.cpu.tensor<4x?xf32>
     %tensor : !mgp.cpu.tensor<4x?xf32>
     ```
 
@@ -838,11 +838,11 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
     buffer's SSA value:
     ```mlir
     %buf1 = mgp.cpu.buffer.alloc ...
-    %ten1 = mgp.cpu.tensor.create %ch, %buf1, ... // copy
+    %ten1 = mgp.cpu.tensor.create.deprecated %ch, %buf1, ... // copy
     ... other users of %buf1 ...
 
     %buf2 = mgp.cpu.buffer.alloc ...
-    %ten2 = mgp.cpu.tensor.create %ch, %buf2, ... // move
+    %ten2 = mgp.cpu.tensor.create.deprecated %ch, %buf2, ... // move
     ... no other users of %buf2 ...
     ```
 
@@ -851,11 +851,11 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
     apply:
     ```mlir
     %buf3 = mgp.cpu.buffer.realloc ...
-    %ten3 = mgp.cpu.tensor.create %ch, ... %buf3 // copy (as 'owning')
+    %ten3 = mgp.cpu.tensor.create.deprecated %ch, ... %buf3 // copy (as 'owning')
     ... other users of %buf3 ...
 
     %buf4 = mgp.cpu.buffer.realloc ...
-    %ten4 = mgp.cpu.tensor.create %ch, ... %buf4 // move (as 'borrowing')
+    %ten4 = mgp.cpu.tensor.create.deprecated %ch, ... %buf4 // move (as 'borrowing')
     ... no other users of %buf4 ...
     ```
   }];
@@ -883,7 +883,7 @@ def CpuTensorCreateOp : MGP_Op<"cpu.tensor.create", [
 //===----------------------------------------------------------------------===//
 
 // TODO(#32165): DEPRECATED
-def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
+def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract.deprecated", [
     Pure,
     DeclareOpInterfaceMethods<MGP_TensorExtractOpInterface>,
     DeclareOpInterfaceMethods<GRTMayAliasInterface>, // since operand's buffer may be moved into result
@@ -897,12 +897,12 @@ def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
     Example:
     ```mlir
     %tensor : !mgp.cpu.tensor<8x64xf32>
-    %buf, %spec = mgp.cpu.tensor.extract %tensor : !mgp.cpu.tensor<8x64xf32>
+    %buf, %spec = mgp.cpu.tensor.extract.deprecated %tensor : !mgp.cpu.tensor<8x64xf32>
     %buf : !mgp.cpu.buffer<2048>
     %spec : !mgp.tensor_spec<8x64xf32>
 
     %tensor : !mgp.cpu.tensor<?x64xf32>
-    %buf, %spec = mgp.cpu.tensor.extract %tensor : !mgp.cpu.tensor<?x64xf32>
+    %buf, %spec = mgp.cpu.tensor.extract.deprecated %tensor : !mgp.cpu.tensor<?x64xf32>
     %buf : !mgp.cpu.buffer<>
     %spec : !mgp.tensor_spec<?x64xf32>
     ```
@@ -912,12 +912,12 @@ def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
     operand could still be observed, ie if if there are multiple outstanding
     consumers of the tensor's SSA value:
     ```mlir
-    %ten1 = mgp.cpu.tensor.create ...
-    %buf1, %spec1 = mgp.cpu.tensor.extract %ten1 // copy
+    %ten1 = mgp.cpu.tensor.create.deprecated ...
+    %buf1, %spec1 = mgp.cpu.tensor.extract.deprecated %ten1 // copy
     ... other users of %ten1 ...
 
-    %ten2 = mgp.cpu.tensor.create ...
-    %buf2, %spec2 = mgp.cpu.tensor.extract %ten2 // move
+    %ten2 = mgp.cpu.tensor.create.deprecated ...
+    %buf2, %spec2 = mgp.cpu.tensor.extract.deprecated %ten2 // move
     ... no other users of %ten2 ...
     ```
 
@@ -926,13 +926,13 @@ def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
     same rules apply:
     ```mlir
     %buf3 = mgp.cpu.buffer.realloc ...
-    %ten3 = mgp.cpu.tensor.create %buf3
-    %buf4, %spec4 = mgp.cpu.tensor.extract %ten3  // copy (as 'owning')
+    %ten3 = mgp.cpu.tensor.create.deprecated %buf3
+    %buf4, %spec4 = mgp.cpu.tensor.extract.deprecated %ten3  // copy (as 'owning')
     ... other users of %ten3 ...
 
     %buf5 = mgp.cpu.buffer.realloc ...  // (*)
-    %ten5 = mgp.cpu.tensor.create %buf5
-    %buf6, %spec6 = mgp.cpu.tensor.extract %ten5  // move (as 'borrowing')
+    %ten5 = mgp.cpu.tensor.create.deprecated %buf5
+    %buf6, %spec6 = mgp.cpu.tensor.extract.deprecated %ten5  // move (as 'borrowing')
     ... no other users of %ten5 ...
     ```
     Note that any mutation of %buf6 will be applied to the cached
@@ -959,7 +959,7 @@ def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract", [
 //===----------------------------------------------------------------------===//
 
 // TODO(#32165): DEPRECATED
-def CpuTensorExtractShapeOp : MGP_Op<"cpu.tensor.extract.shape", [
+def CpuTensorExtractShapeOp : MGP_Op<"cpu.tensor.extract.deprecated.shape", [
     Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Extracts the tensor shape of a CPU tensor.";
@@ -971,7 +971,7 @@ def CpuTensorExtractShapeOp : MGP_Op<"cpu.tensor.extract.shape", [
     Example:
     ```mlir
     %tensor : !mgp.cpu.tensor<8x64xf32>
-    %shape = mgp.cpu.tensor.extract.shape %tensor : !mgp.cpu.tensor<8x64xf32>
+    %shape = mgp.cpu.tensor.extract.deprecated.shape %tensor : !mgp.cpu.tensor<8x64xf32>
     %shape : !mgp.tensor_spec<8x64xunk>
     ```
   }];
@@ -979,44 +979,6 @@ def CpuTensorExtractShapeOp : MGP_Op<"cpu.tensor.extract.shape", [
   let arguments = (ins MGP_CpuTensorType: $tensor);
   let results = (outs MGP_TensorSpecType: $result);
   let assemblyFormat = "$tensor attr-dict `:` qualified(type($tensor))";
-}
-
-//===----------------------------------------------------------------------===//
-// DebugCpuTensorPrintOp
-//===----------------------------------------------------------------------===//
-
-// TODO(#32165): DEPRECATED
-def DebugCpuTensorPrintOp : MGP_Op<"debug.cpu.tensor.print", [
-    TypesMatchWith<"Spec and buffer must agree on sizes",
-                   "spec", "buffer",
-                   "CpuBufferType::get($_self.cast<TensorSpecType>())">]> {
-  let summary = "Prints a debug representation of argument tensor. For "
-                "debugging and testing only.";
-  let description = [{
-    Prints a debug representation of argument tensor, given as a pair of
-    buffer and tensor spec. If a label attribute is supplied the tensor
-    contents is printed with that label. Otherwise just the tensor metadata
-    is printed. For debugging and testing only.
-
-    Example:
-    ```mlir
-    %buf: !mgp.cpu.buffer<2048>
-    %spec: !mgp.tensor_spec<8x64xf32>
-    %ch0: !mef.chain
-    %ch1 = mgp.debug.cpu.tensor.print %ch0, %buf, %spec, "label" : !mgp.tensor_spec<8x64xf32>
-    %ch1: !mef.chain
-    ```
-  }];
-
-  let arguments = (ins ChainType:$inChain,
-                       MGP_CpuBufferType: $buffer,
-                       MGP_TensorSpecType: $spec,
-                       DefaultValuedAttr<StrAttr, "\"\"">: $label);
-  let results = (outs ChainType: $outChain);
-  let assemblyFormat = [{
-    $inChain `,` $buffer `,` $spec (`,` $label^)? attr-dict
-    `:` qualified(type($spec))
-  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -1121,14 +1083,14 @@ def MGP_ScalarBuffer : ConfinedType<MGP_CpuBufferType, [HasBufferSizePred<[1]>],
 }
 
 // TODO(#32165): DEPRECATED
-def ToGRTBoolOp : MGP_Op<"to_grt_bool"> {
+def ToGRTBoolOp : MGP_Op<"to_grt_bool.deprecated"> {
   let summary = "Convert a single byte Buffer into a builtin i1.";
   let description = [{
     Convert a single byte Buffer into a builtin i1.
 
     Example:
     ```mlir
-    %0 = mgp.to_grt_bool(%ch0, %buf) : (!mef.chain, !mgp.cpu.buffer<1>) -> i1
+    %0 = mgp.to_grt_bool.deprecated(%ch0, %buf) : (!mef.chain, !mgp.cpu.buffer<1>) -> i1
     ```
   }];
 
@@ -1169,7 +1131,7 @@ def AssertOp : MGP_Op<"assert", [
 //===----------------------------------------------------------------------===//
 
 // TODO(#32165): DEPRECATED
-def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
+def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute.deprecated", [
     AttrSizedOperandSegments,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_KernelExecuteOpInterface>,
@@ -1194,7 +1156,7 @@ def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute", [
     %dim1 : index
     // Compiled kernels have been loaded into slot 3.
     // The compiled kernel to execute is at index 7.
-    %ch1, %dim2 = mgp.cpu.kernel.execute %ch0, %ctx[3, 7],
+    %ch1, %dim2 = mgp.cpu.kernel.execute.deprecated %ch0, %ctx[3, 7],
                     (in %buf0 : !mgp.cpu.buffer,
                      in %buf1 : !mgp.cpu.buffer<8>,
                      out %buf2 : !mgp.cpu.buffer<48>),

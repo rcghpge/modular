@@ -1,11 +1,11 @@
 // RUN: mo-opt %s --split-input-file --verify-diagnostics --allow-unregistered-dialect
 
 //
-// mgp.cpu.buffer.constant
+// mgp.cpu.buffer.constant.deprecated
 //
 
 func.func @buffer_constant_mismatched_size() {
-  %0 = mgp.cpu.buffer.constant #M.aligned_bytes<"0x000102", align 32> // expected-note {{prior use here}}
+  %0 = mgp.cpu.buffer.constant.deprecated #M.aligned_bytes<"0x000102", align 32> // expected-note {{prior use here}}
   // expected-error@+1 {{use of value '%0' expects different type than prior uses: '!mgp.cpu.buffer<4>' vs '!mgp.cpu.buffer<3>'}}
   mef.output %0 : !mgp.cpu.buffer<4>
 }
@@ -13,8 +13,8 @@ func.func @buffer_constant_mismatched_size() {
 // -----
 
 func.func @buffer_constant_invalid_elem_type() {
-  // expected-error@+1 {{'mgp.cpu.buffer.constant' op only supports attributes of uint8_t elements (have 'i16')}}
-  %0 = mgp.cpu.buffer.constant #M.dense_array<1, 2, 3, 4> : !M.array<4xi16>
+  // expected-error@+1 {{'mgp.cpu.buffer.constant.deprecated' op only supports attributes of uint8_t elements (have 'i16')}}
+  %0 = mgp.cpu.buffer.constant.deprecated #M.dense_array<1, 2, 3, 4> : !M.array<4xi16>
 }
 
 // -----
@@ -128,12 +128,12 @@ func.func @spec_dims_dynamic_rank(%spec : !mgp.tensor_spec<*xf32>) {
 // -----
 
 //
-// mgp.cpu.tensor.create
+// mgp.cpu.tensor.create.deprecated
 //
 
 func.func @tensor_create_mismatched_size(%ch : !mef.chain, %buf : !mgp.cpu.buffer<61>, %spec : !mgp.tensor_spec<3x5xf32>) { // expected-note {{prior use here}}
   // expected-error@+1 {{use of value '%buf' expects different type than prior uses: '!mgp.cpu.buffer<60>' vs '!mgp.cpu.buffer<61>'}}
-  %tensor = mgp.cpu.tensor.create %ch, %buf, %spec : !mgp.cpu.tensor<3x5xf32>
+  %tensor = mgp.cpu.tensor.create.deprecated %ch, %buf, %spec : !mgp.cpu.tensor<3x5xf32>
   mef.output %tensor : !mgp.cpu.tensor<3x5xf32>
 }
 
@@ -141,26 +141,26 @@ func.func @tensor_create_mismatched_size(%ch : !mef.chain, %buf : !mgp.cpu.buffe
 
 func.func @tensor_create_mismatched_size_with_buf_annot(%ch : !mef.chain, %buf : !mgp.cpu.buffer<61>, %spec : !mgp.tensor_spec<3x5xf32>) { // expected-note {{prior use here}}
   // expected-error@+1 {{use of value '%buf' expects different type than prior uses: '!mgp.cpu.buffer<60>' vs '!mgp.cpu.buffer<61>'}}
-  %tensor = mgp.cpu.tensor.create %ch, %buf, %spec !mgp.cpu.buffer<60> : !mgp.cpu.tensor<3x5xf32>
+  %tensor = mgp.cpu.tensor.create.deprecated %ch, %buf, %spec !mgp.cpu.buffer<60> : !mgp.cpu.tensor<3x5xf32>
   mef.output %tensor : !mgp.cpu.tensor<3x5xf32>
 }
 
 // -----
 
 func.func @tensor_create_mismatched_buf_and_spec_with_buf_annot(%ch : !mef.chain, %buf : !mgp.cpu.buffer<61>, %spec : !mgp.tensor_spec<3x5xf32>) {
-  // expected-error@+1 {{'mgp.cpu.tensor.create' op expected buffer type to match type implied by tensor spec ('!mgp.cpu.buffer<61>' vs '!mgp.cpu.buffer<60>')}}
-  %tensor = mgp.cpu.tensor.create %ch, %buf, %spec !mgp.cpu.buffer<61> : !mgp.cpu.tensor<3x5xf32>
+  // expected-error@+1 {{'mgp.cpu.tensor.create.deprecated' op expected buffer type to match type implied by tensor spec ('!mgp.cpu.buffer<61>' vs '!mgp.cpu.buffer<60>')}}
+  %tensor = mgp.cpu.tensor.create.deprecated %ch, %buf, %spec !mgp.cpu.buffer<61> : !mgp.cpu.tensor<3x5xf32>
   mef.output %tensor : !mgp.cpu.tensor<3x5xf32>
 }
 
 // -----
 
 //
-// mgp.cpu.tensor.extract
+// mgp.cpu.tensor.extract.deprecated
 //
 
 func.func @tensor_extract_mismatched_size(%tensor : !mgp.cpu.tensor<3x5xf32>) {
-  %buf, %spec = mgp.cpu.tensor.extract %tensor : !mgp.cpu.tensor<3x5xf32>  // expected-note {{prior use here}}
+  %buf, %spec = mgp.cpu.tensor.extract.deprecated %tensor : !mgp.cpu.tensor<3x5xf32>  // expected-note {{prior use here}}
   // expected-error@+1 {{use of value '%buf' expects different type than prior uses: '!mgp.cpu.buffer<61>' vs '!mgp.cpu.buffer<60>'}}
   mef.output %buf, %spec : !mgp.cpu.buffer<61>, !mgp.tensor_spec<3x5xf32>
 }
@@ -277,27 +277,27 @@ mgp.model @invalidExecuteArgType : bogus init {
 }
 
 //
-// mgp.to_grt_bool
+// mgp.to_grt_bool.deprecated
 //
 
 // -----
 
-func.func @to_grt_bool(%ch0 : !mef.chain, %buf : !mgp.cpu.buffer<2>) {
-  // expected-error@+1 {{'mgp.to_grt_bool' op operand #1 must be scalar buffer, but got '!mgp.cpu.buffer<2>'}}
-  %0 = mgp.to_grt_bool(%ch0, %buf) : (!mef.chain, !mgp.cpu.buffer<2>) -> i1
+func.func @to_grt_bool.deprecated(%ch0 : !mef.chain, %buf : !mgp.cpu.buffer<2>) {
+  // expected-error@+1 {{'mgp.to_grt_bool.deprecated' op operand #1 must be scalar buffer, but got '!mgp.cpu.buffer<2>'}}
+  %0 = mgp.to_grt_bool.deprecated(%ch0, %buf) : (!mef.chain, !mgp.cpu.buffer<2>) -> i1
   mef.output %0 : i1
 }
 
 // -----
 
 //
-// mgp.cpu.kernel.execute
+// mgp.cpu.kernel.execute.deprecated
 //
 
 // CHECK-LABEL: @kernel_execute_invalid
 func.func @kernel_execute_invalid(%ch0 : !mef.chain, %ctx : !mgp.context, %buf0 : !mgp.cpu.buffer, %buf1 : !mgp.cpu.buffer<8>, %dim0 : index, %dim1 : index) {
-  // expected-error@+1 {{'mgp.cpu.kernel.execute' op expected in/out signature attribute to have arity 2 but given 3.}}
-  %ch1, %dim2 = "mgp.cpu.kernel.execute"(%ch0, %ctx, %buf0, %buf1, %dim0, %dim1)
+  // expected-error@+1 {{'mgp.cpu.kernel.execute.deprecated' op expected in/out signature attribute to have arity 2 but given 3.}}
+  %ch1, %dim2 = "mgp.cpu.kernel.execute.deprecated"(%ch0, %ctx, %buf0, %buf1, %dim0, %dim1)
       { aSlot = 0 : ui64,
         bKernelIndex = 3 : ui64,
         cInOutSignature = #M.inout_sig<"ioo">,
