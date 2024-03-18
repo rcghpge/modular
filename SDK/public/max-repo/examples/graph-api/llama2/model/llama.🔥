@@ -55,10 +55,9 @@ struct Attention:
 
     def attention_mask(self, start_pos: Symbol, seq_len: Symbol) -> Symbol:
         var g = start_pos.graph()
-        var neginf = math.limit.min_or_neginf[DType.float32]()
         var mask_val = g.op(
             "mo.broadcast_to",
-            (g.scalar(neginf), ops.concat((seq_len, seq_len))),
+            (g.scalar(Float32.MIN), ops.concat((seq_len, seq_len))),
             MOTensor(DType.float32, Dim.dynamic(), Dim.dynamic()),
         )
         return g.op(
