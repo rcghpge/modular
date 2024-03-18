@@ -483,6 +483,122 @@ void inferMOTypesScatterImpl(
   moOutputParamDecls.push_back({});
 }
 
+namespace {
+
+void inferConvMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
+    TensorValue filter, TensorValue strides, TensorValue dilations,
+    TensorValue paddings, TensorValue outputPaddings, TensorValue numGroups,
+    bool isTranspose, std::optional<ValueRange> rmoResults,
+    SmallVectorImpl<Type> &moOperandTypes, SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+  DType outputDtype = getDType(rmoResults, 0, input.getType().getDtype());
+
+  // input / filter types remain the same.
+  moOperandTypes.push_back(input.getType());
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(filter.getType());
+  moInputParamDecls.push_back({});
+
+  // strides / dilations / outputPaddings must be 1-D with identical shape.
+  // First get or build the common dim value.
+  TypedAttr windowParamsDim = nullptr;
+  SmallVector<KGEN::ParamDeclAttr> windowParamDecls;
+  SmallVector<TensorType, 3> windowParamsTypes = {strides.getType(),
+                                                  dilations.getType()};
+  if (isTranspose)
+    windowParamsTypes.push_back(outputPaddings.getType());
+  for (TensorType inputTy : windowParamsTypes)
+    if (!windowParamsDim && inputTy.hasRank() && inputTy.getRank() == 1)
+      windowParamsDim = inputTy.getTypedShapeAttr().getValues()[0];
+  if (!windowParamsDim)
+    windowParamsDim = createDynamicDimensionType(graphOp, windowParamDecls);
+
+  // Rebind strides to 1-D.
+  moOperandTypes.push_back(
+      strides.getType().cloneWith(SmallVector<TypedAttr>{windowParamsDim}));
+  moInputParamDecls.push_back(std::move(windowParamDecls));
+
+  // Rebind dilations to 1-D.
+  moOperandTypes.push_back(
+      dilations.getType().cloneWith(SmallVector<TypedAttr>{windowParamsDim}));
+  moInputParamDecls.push_back({});
+
+  // Paddings must be 1-D.
+  TensorType paddingsTy = paddings.getType();
+  if (!paddingsTy.hasRank() || paddingsTy.getRank() != 1) {
+    SmallVector<KGEN::ParamDeclAttr> paramDecls;
+    moOperandTypes.push_back(getRankedParamTensorType(1, paddingsTy.getDtype(),
+                                                      graphOp, paramDecls));
+    moInputParamDecls.push_back(std::move(paramDecls));
+  } else {
+    moOperandTypes.push_back(paddingsTy);
+    moInputParamDecls.push_back({});
+  }
+
+  if (isTranspose) {
+    // Rebind output_paddings to 1D.
+    moOperandTypes.push_back(outputPaddings.getType().cloneWith(
+        SmallVector<TypedAttr>{windowParamsDim}));
+    moInputParamDecls.push_back({});
+  } else {
+    // num_groups must be a scalar.
+    moOperandTypes.push_back(
+        numGroups.getType().cloneWith(SmallVector<TypedAttr>{}));
+    moInputParamDecls.push_back({});
+  }
+
+  // Infer output type: output rank = input rank.
+  SmallVector<KGEN::ParamDeclAttr> outputParamDecls;
+  TensorType inputTy = input.getType();
+  if (!inputTy.hasRank()) {
+    moResultTypes.push_back(
+        getUnrankedTensorType(outputDtype, graphOp, outputParamDecls));
+  } else {
+    moResultTypes.push_back(getRankedParamTensorType(
+        inputTy.getRank(), outputDtype, graphOp, outputParamDecls));
+  }
+  moOutputParamDecls.push_back(std::move(outputParamDecls));
+}
+
+} // namespace
+
+void ConvOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+  inferConvMOTypesImpl(context, graphOp, cast<TensorValue>(operands.getInput()),
+                       cast<TensorValue>(operands.getFilter()),
+                       cast<TensorValue>(operands.getStrides()),
+                       cast<TensorValue>(operands.getDilations()),
+                       cast<TensorValue>(operands.getPaddings()), nullptr,
+                       cast<TensorValue>(operands.getNumGroups()), false,
+                       rmoResults, moOperandTypes, moResultTypes,
+                       moInputParamDecls, moOutputParamDecls);
+}
+
+void ConvTransposeOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+  inferConvMOTypesImpl(context, graphOp, cast<TensorValue>(operands.getInput()),
+                       cast<TensorValue>(operands.getFilter()),
+                       cast<TensorValue>(operands.getStrides()),
+                       cast<TensorValue>(operands.getDilations()),
+                       cast<TensorValue>(operands.getPaddings()),
+                       cast<TensorValue>(operands.getOutputPaddings()), nullptr,
+                       true, rmoResults, moOperandTypes, moResultTypes,
+                       moInputParamDecls, moOutputParamDecls);
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST

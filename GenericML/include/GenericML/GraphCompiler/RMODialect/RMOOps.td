@@ -652,4 +652,176 @@ def RMO_ScatterMulOp : RMO_MOAnaloguePureScatterOp<"scatter.mul"> {
   }];
 }
 
+def RMO_ConvOp : RMO_MOAnaloguePureTensorOp<"conv">{
+  let summary = "Convolution operation";
+  let description = [{
+    Computes the convolution product of the input with the given filter,
+    strides, dilations, paddings, and groups.
+
+    The op supports 1D-3D convolution, with the following layout assumptions:
+    - input has channel last layout. For 2D, that's NHWC, i.e.,
+      (batch_size, height, width, in_channels)
+    - filter has layout RSCF, i.e.,
+      (height, width, in_channels / num_groups, out_channels)
+
+    `strides`, `dilations`, and `padding` must be of rank 1, or unranked.
+    If the input has static rank, all hyperparameters with static shape must
+    have sizes of `input_rank - 2`, except padding, which must have
+    size `2 * (input_rank - 2)`. Individual elements in the hyperparameters
+    apply to corresponding dimensions of the input (after ignoring the batch
+    and channel dimensions), with padding representing a before/after pair for
+    each axis.
+
+    The padding values are expected to take the form (pad_dim1_before,
+    pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
+    0's before and after the indicated *spatial* dimensions in `input`. In 2D
+    Convolution, dim1 here repesents H and dim2 represents W. In python like
+    syntax, padding a 2x3 spatial `input` with [0, 1, 2, 1] would yield:
+
+    ```python
+    input = [
+      [1, 2, 3],
+      [4, 5, 6]
+    ]
+    # Shape is 2x3
+
+    padded_input = [
+      [0, 0, 1, 2, 3, 0],
+      [0, 0, 4, 5, 6, 0]
+      [0, 0, 0, 0, 0, 0]
+    ]
+    # Shape is 3x6
+    ```
+
+    The input, output and filter tensors' ranks must match if statically known.
+
+    `num_groups` must be a ranked scalar. The number of input and output
+    channels must both be divisible by the number of groups `num_groups`.
+
+    This op currently only supports strides and padding on the input.
+
+    Example:
+
+    ```mlir
+      %st = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
+        : !mo.tensor<[2], si64>
+      %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
+        : !mo.tensor<[2], si64>
+      %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>}
+        : !mo.tensor<[4], si64>
+      %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>}
+        : %!mo.tensor<[], si64>
+      %res = rmo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+        !mo.tensor<[10, 5, 5, 32], f32>, !mo.tensor<[2, 2, 32, 64], f32>,
+        !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
+      ) -> !mo.tensor<[10, 4, 4, 64], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_Tensor:$filter,
+    MO_IndicesTensor:$strides,
+    MO_IndicesTensor:$dilations,
+    MO_IndicesTensor:$paddings,
+    MO_IndicesTensor:$num_groups,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `,` $filter `)`
+    `[` `strides` `=` $strides `,` `dilations` `=` $dilations `,`
+                    `paddings` `=` $paddings `,`
+                    `num_groups` `=` $num_groups `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+def RMO_ConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose">{
+  let summary = "Transposed convolution operation";
+  let description = [{
+    This op effectively computes the gradient of a convolution with
+    respect to its input (as if the original convolution operation had the same
+    filter and hyperparameters as this op). A visualization of the computation
+    can be found in https://d2l.ai/chapter_computer-vision/transposed-conv.html.
+
+    The op supports 1D-3D spatial dimensions, with the following layout
+    assumptions (note the `out_channel` is w.r.t. the original convolution):
+    - input has channel last layout.For 2D, that's NHWC, i.e.,
+      (batch_size, height, width, out_channels)
+    - filter has layout RSFC, i.e., (height, width, out_channels, in_channels)
+
+    All hyperparameters (i.e. strides, dilations, padding, output_paddings) must
+    be of rank 1, or unranked. If the input has static rank, all hyperparameters
+    with static shape must have sizes of `input_rank - 2`, except padding, which
+    must have size `2 * (input_rank - 2)`. Individual elements in the
+    hyperparameters applies to corresponding dimensions of the input (after
+    ignoring the batch and channel dimensions), with padding representing a
+    before/after pair for each axis.
+
+    The padding values are expected to take the form (pad_dim1_before,
+    pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
+    0's before and after the indicated *spatial* dimensions in `input`. In 2D
+    ConvTranspose, dim1 here repesents H_out and dim2 represents W_out. In
+    python like syntax, padding a 2x4 spatial `output` with [0, 1, 2, 1] would
+    yield:
+
+    ```python
+    output = [
+      [1, 2, 3, 4],
+      [5, 6, 7, 8]
+    ]
+    # Shape is 2x4
+
+    padded_input = [
+      [3],
+    ]
+    # Shape is 1x1
+    ```
+
+    The `output_paddings` argument is meant to resolve the ambiguity of multiple
+    potential output shapes when any stride is greater than 1. Basically,
+    we'll add `output_paddings[i]` number of zeros at the end of output's ith
+    axis. We only support output_paddings = 0.
+
+    The input, output and filter tensors' ranks must match if statically known.
+
+    Example:
+
+    ```mlir
+      %st = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
+        : !mo.tensor<[2], si64>
+      %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
+        : !mo.tensor<[2], si64>
+      %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>}
+        : !mo.tensor<[4], si64>
+      %op = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>}
+        : !mo.tensor<[2], si64>
+      %res = rmo.conv_transpose(%input, %filter)
+        [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+        !mo.tensor<[10, 4, 4, 64], f32>, !mo.tensor<[2, 2, 32, 64], f32>,
+        !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>,
+        !mo.tensor<[2], si64>
+      ) -> !mo.tensor<[10, 5, 5, 32], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_Tensor:$filter,
+    MO_IndicesTensor:$strides,
+    MO_IndicesTensor:$dilations,
+    MO_IndicesTensor:$paddings,
+    MO_IndicesTensor:$output_paddings,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `,` $filter `)`
+    `[` `strides` `=` $strides `,` `dilations` `=` $dilations `,`
+        `paddings` `=` $paddings `,` `output_paddings` `=` $output_paddings`]` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
