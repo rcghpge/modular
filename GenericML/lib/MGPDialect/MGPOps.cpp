@@ -1117,31 +1117,6 @@ LogicalResult CpuTensorSpecDimsDynamicOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
-// CpuTensorCreateOp
-//===----------------------------------------------------------------------===//
-
-static ParseResult parseMayBeDynamicBuffer(AsmParser &parser,
-                                           Type &bufferRawType,
-                                           Type &resultRawType) {
-  return genericParseMayBeDynamicBuffer<CpuBufferType, CpuTensorType>(
-      parser, bufferRawType, resultRawType);
-}
-
-static void printMayBeDynamicBuffer(AsmPrinter &printer,
-                                    const CpuTensorCreateOp &op,
-                                    CpuBufferType bufferType,
-                                    CpuTensorType resultType) {
-  genericPrintMayBeDynamicBuffer<CpuBufferType, CpuTensorType>(
-      printer, op, bufferType, resultType);
-}
-
-LogicalResult CpuTensorCreateOp::verify() {
-  return genericTensorCreateVerify<CpuBufferType, CpuTensorType>(
-      *this, getBuffer().getType(), getTensorSpec().getType(),
-      getResult().getType());
-}
-
-//===----------------------------------------------------------------------===//
 // CpuTensorExtractOp
 //===----------------------------------------------------------------------===//
 

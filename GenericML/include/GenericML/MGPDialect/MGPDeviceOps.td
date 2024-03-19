@@ -834,11 +834,11 @@ def BufferAllocPinnedStaticOp : MGP_DeviceOp<"buffer.alloc_pinned.static", [
     One of a family of 6 buffer allocation primitives.
 
     This is the analog of `mgp.buffer.alloc.static` on host, but the buffer is
-    allocated on host using the device established in the given `!mgp.context` slot. 
-    The corresponding device corresponds to the chain and runtime context must be 
+    allocated on host using the device established in the given `!mgp.context` slot.
+    The corresponding device corresponds to the chain and runtime context must be
     specified statically.
 
-    Not all devices support this operation. 
+    Not all devices support this operation.
 
     Example:
     ```mlir
@@ -858,12 +858,12 @@ def BufferAllocPinnedStaticOp : MGP_DeviceOp<"buffer.alloc_pinned.static", [
                        UI64Attr:$bSize,                                        // 1
                        DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign, // 2
                        MGP_OptDeviceRefAttr:$dHostDevice,                      // 3
-                       MGP_OptDeviceRefAttr:$eDevice);                         // 4 
+                       MGP_OptDeviceRefAttr:$eDevice);                         // 4
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aRuntimeSlot `]`
     ( `,` `align` $cRawAlign^ )? attr-dict
-    `:` custom<OptDeviceRef>("\"device\"", $eDevice) 
+    `:` custom<OptDeviceRef>("\"device\"", $eDevice)
     `->` custom<StaticBufferTypeToSizeDevice>(
           type($outBuffer), $bSize, $dHostDevice, type($inChain))
   }];
@@ -894,11 +894,11 @@ def BufferAllocPinnedDynamicOp : MGP_DeviceOp<"buffer.alloc_pinned.dynamic", [
     One of a family of 6 buffer allocation primitives.
 
     This is the analog of `mgp.buffer.alloc.dynamic` on host, but the buffer is
-    allocated on host using the device established in the given `!mgp.context` slot. 
-    The corresponding device corresponds to the chain and runtime context must be 
+    allocated on host using the device established in the given `!mgp.context` slot.
+    The corresponding device corresponds to the chain and runtime context must be
     specified statically.
-    
-    Not all devices support this operation. 
+
+    Not all devices support this operation.
 
     Example:
     ```mlir
@@ -920,12 +920,12 @@ def BufferAllocPinnedDynamicOp : MGP_DeviceOp<"buffer.alloc_pinned.dynamic", [
                        UI64Attr:$bMinPinnedSize,                               // 1
                        DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign, // 2
                        MGP_OptDeviceRefAttr:$dHostDevice,                      // 3
-                       MGP_OptDeviceRefAttr:$eDevice);                         // 4 
+                       MGP_OptDeviceRefAttr:$eDevice);                         // 4
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aRuntimeSlot `]` `,` $runtimeSize `,` $bMinPinnedSize
     ( `,` `align` $cRawAlign^ )? attr-dict
-    `:` custom<OptDeviceRef>("\"device\"", $eDevice) 
+    `:` custom<OptDeviceRef>("\"device\"", $eDevice)
     `->` custom<DynamicBufferTypeToDevice>(
           type($outBuffer), $dHostDevice, type($inChain))
   }];
