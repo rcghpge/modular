@@ -11,11 +11,8 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from max import engine
-import os
-import subprocess
-import random
 import argparse
+import os
 
 import common
 import printouts
