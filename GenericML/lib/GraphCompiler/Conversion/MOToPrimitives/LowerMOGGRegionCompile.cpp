@@ -21,7 +21,7 @@ using namespace M;
 
 namespace M::MGP {
 
-#define GEN_PASS_DEF_LOWERMOGGCOMPILES
+#define GEN_PASS_DEF_LOWERMOGGREGIONCOMPILES
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc"
 
 } // namespace M::MGP
@@ -34,14 +34,15 @@ namespace M::MGP {
 
 namespace {
 
-struct LowerMOGGCompilesPass
-    : public MGP::impl::LowerMOGGCompilesBase<LowerMOGGCompilesPass> {
-  using LowerMOGGCompilesBase::LowerMOGGCompilesBase;
+struct LowerMOGGRegionCompilesPass
+    : public MGP::impl::LowerMOGGRegionCompilesBase<
+          LowerMOGGRegionCompilesPass> {
+  using LowerMOGGRegionCompilesBase::LowerMOGGRegionCompilesBase;
 
   void runOnOperation() override;
 };
 
-void LowerMOGGCompilesPass::runOnOperation() {
+void LowerMOGGRegionCompilesPass::runOnOperation() {
 
   MLIRContext *ctx = getOperation().getContext();
 
@@ -54,11 +55,14 @@ void LowerMOGGCompilesPass::runOnOperation() {
     MGP::RuntimeCreateOp kernelCtx;
     for (auto contextOp : init.getOps<MGP::RuntimeCreateOp>())
       kernelCtx = contextOp;
+    uint64_t runtimeSlot = kernelCtx.getSlot();
 
-    uint64_t slot = kernelCtx.getSlot();
+    // Get the existing module load if it already exists
+    // TODO: (#34789) Need to remove extra layer of moduleIndex once we have 1
+    // mogg compile for all kernels
+    uint64_t moduleIndex = llvm::range_size(init.getOps<MGP::ModuleLoadOp>());
 
     OpBuilder builder{ctx};
-
     llvm::StringMap<size_t> kernelIndices;
     for (auto loadKernels : llvm::make_early_inc_range(
              init.getOps<MOGG::LoadCompiledKernelOp>())) {
@@ -76,20 +80,15 @@ void LowerMOGGCompilesPass::runOnOperation() {
           kernelCtx.getLoc(),
           /*inChain=*/kernelCtx.getResult(),
           /*theContext=*/kernelCtx.getTheContext(),
-          /*aSlot=*/slot,
+          /*aSlot=*/runtimeSlot,
           /*bArchive=*/loadKernels.getValue(),
           /*cKernelNames=*/MultiLineStringAttr::get(ctx, kernelNameAttrs),
           /*dConstantSymbols*/
           MultiLineStringAttr::get(ctx, SmallVector<StringAttr>()),
           /*device*/ kernelCtx.getDevice());
-      // Because there's no graph op, we can't use the getHostDeviceAny method.
-      // Therefore I explicitly construct a new device ref with ID 0.
-      // This could cause problems, but I don't know how to access devices from
-      // a plain model op
 
       kernelCtx.getResult().replaceAllUsesExcept(loadArchive.getResult(),
                                                  loadArchive);
-
       loadKernels.erase();
     }
 
@@ -103,7 +102,8 @@ void LowerMOGGCompilesPass::runOnOperation() {
       builder.setInsertionPoint(kernel);
       auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
           kernel.getLoc(), kernel.getResultTypes(), executeContext,
-          kernel.getOperands(), slot, 0, kernelIndices[kernel.getKernelName()]);
+          kernel.getOperands(), runtimeSlot, moduleIndex,
+          kernelIndices[kernel.getKernelName()]);
 
       kernel.replaceAllUsesWith(newExecuteOp);
       kernel.erase();

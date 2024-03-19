@@ -84,7 +84,7 @@ void M::MO::registerPasses() {
   MO::registerMOTransformsPasses();
   MO::registerNameInputDimsPass();
   MGP::registerMOToPrimitives();
-  MGP::registerLowerMOGGCompiles();
+  MGP::registerLowerMOGGRegionCompiles();
   MGP::registerLowerPrimitives();
   MGP::registerLowerMOGGABI();
   Cache::registerDeflateConstants();

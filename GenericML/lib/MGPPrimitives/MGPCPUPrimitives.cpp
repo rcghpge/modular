@@ -113,10 +113,6 @@ static void mgp_module_load_cpu(Chain inChain, Context &theContext,
         "mgp.module.load.cpu does not support constants");
   }
 
-  // TODO: (#34789) Need to remove extra layer of moduleIndex
-  GENERICML_ASSERT(cpuRuntime.modules.empty())
-      << "mgp.module.load can only be called once per model/runtime";
-
   // Create a kernels context.
   CompiledKernelsContext &module = *cpuRuntime.modules.emplace_back(
       RCRef<CompiledKernelsContext>::create(cpuRuntime.engine));

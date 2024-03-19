@@ -29,7 +29,7 @@ def MOToPrimitives : Pass<"mo-to-primitives", "ModuleOp"> {
 }
 
 
-def LowerMOGGCompiles: Pass<"lower-mogg-compile", "ModuleOp"> {
+def LowerMOGGRegionCompiles: Pass<"lower-mogg-region-compile", "ModuleOp"> {
   let summary = "Convert MOGG compile ops into MGP versions";
   let description = [{
     After lowering we will have raw MOGG compiled kernels in the graph, this
