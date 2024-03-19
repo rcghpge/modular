@@ -35,6 +35,8 @@ def main():
     print("Downloading model ...")
     args = parser.parse_args()
 
+    tf.config.set_visible_devices([], "GPU")
+
     model_path = Path(args.output_dir)
     if os.path.exists(model_path):
         print(f"Model has already been saved to {args.output_dir}/.\n")

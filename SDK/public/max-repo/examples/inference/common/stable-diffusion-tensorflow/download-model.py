@@ -74,6 +74,8 @@ def main():
     )
     args = parser.parse_args()
 
+    tf.config.set_visible_devices([], "GPU")
+
     # Download Keras model.
     print("Downloading model ...\n")
     model = keras_cv.models.StableDiffusion(

@@ -15,15 +15,16 @@
 
 import common
 import os
-import tensorflow as tf
 from pathlib import Path
-import transformers
-from transformers import TFRobertaForSequenceClassification, TFCLIPModel
 import pickle
 import sys
 
-transformers.utils.logging.set_verbosity_error()
+import tensorflow as tf
+import transformers
+from transformers import TFRobertaForSequenceClassification, TFCLIPModel
 
+transformers.utils.logging.set_verbosity_error()
+tf.config.set_visible_devices([], "GPU")
 
 model_name = sys.argv[1]
 model_dir = f"./.cache/{model_name}_savedmodel"

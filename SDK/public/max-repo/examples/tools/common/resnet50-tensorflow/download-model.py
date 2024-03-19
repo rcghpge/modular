@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # ===----------------------------------------------------------------------=== #
 # Copyright (c) 2024, Modular Inc. All rights reserved.
 #
@@ -11,7 +12,6 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-#!/usr/bin/env python3
 """Download ResNet-50 TensorFlow model from HuggingFace."""
 
 import argparse
@@ -26,7 +26,7 @@ INSTALL_PROSE = """Is it installed?
 If not, try:
 
     python3 -m venv venv; source venv/bin/activate  # if you aren't already in a virtual environment
-    python3 -m pip install tensorflow transformers
+    python3 -m pip install tensorflow-cpu transformers
 
 """
 
@@ -76,6 +76,8 @@ def main():
             file=sys.stderr,
         )
         sys.exit(1)
+
+    tf.config.set_visible_devices([], "GPU")
 
     print("Importing HuggingFace transformers...", flush=True)
     try:

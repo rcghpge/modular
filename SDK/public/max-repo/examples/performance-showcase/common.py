@@ -11,19 +11,17 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from pathlib import Path
 
 import sys
 import warnings
 
 warnings.simplefilter("ignore")
 
-import signal
+import os
 import random
-from itertools import cycle
+import signal
 import subprocess
 import time
-import os
 
 # suppress extraneous logging
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "9"
