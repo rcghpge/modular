@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # ===----------------------------------------------------------------------=== #
 # Copyright (c) 2024, Modular Inc. All rights reserved.
 #
@@ -11,7 +12,6 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-#!/usr/bin/env python3
 """Download ResNet-50 PyTorch model from HuggingFace."""
 
 import argparse
@@ -19,7 +19,6 @@ import os
 import sys
 import tempfile
 import traceback
-import urllib.request
 
 
 SOURCE_URL = (
@@ -113,6 +112,8 @@ def main():
             file=sys.stderr,
         )
         sys.exit(1)
+
+    torch.set_default_device("cpu")
 
     print("Getting pre-trained model...", flush=True)
     model = AutoModelForImageClassification.from_pretrained(

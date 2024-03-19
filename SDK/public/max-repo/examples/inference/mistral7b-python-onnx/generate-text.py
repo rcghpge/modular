@@ -115,6 +115,8 @@ def main():
     )
     args = parser.parse_args()
 
+    torch.set_default_device("cpu")
+
     # Preprocess input statement
     print("Processing input...")
     tokenizer = AutoTokenizer.from_pretrained(HF_MODEL_NAME)
