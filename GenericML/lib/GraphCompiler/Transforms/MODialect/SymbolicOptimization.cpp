@@ -146,11 +146,11 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     // We can now calculate the range limit (FS*BS) symbolically.
     SmallVector<TypedAttr> limFactors{bsAttr, fsAttr};
     auto limAttr = KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, limFactors);
-    auto lim = rewriter.create<KGEN::ParamConstantOp>(loc, limAttr);
+    auto lim = rewriter.create<MOSH::ParamToValueOp>(loc, limAttr);
     auto limT = rewriter.create<IndexToTensorOp>(loc, start.getType(), lim);
 
     // Finally, we use the flat size as the step size.
-    auto step = rewriter.create<KGEN::ParamConstantOp>(loc, fsAttr);
+    auto step = rewriter.create<MOSH::ParamToValueOp>(loc, fsAttr);
     auto stepT = rewriter.create<IndexToTensorOp>(loc, start.getType(), step);
 
     // We can now construct the range.
@@ -3008,7 +3008,7 @@ struct SinkBroadcastsThroughReduction
                   // broadcast axis. (For reduce.mul, we use mo.pow instead).
                   TypedAttr dimAttr = bcastShapeAttr.getValues()[reductionAxis];
                   auto dimIndex =
-                      rewriter.create<KGEN::ParamConstantOp>(loc, dimAttr);
+                      rewriter.create<MOSH::ParamToValueOp>(loc, dimAttr);
                   auto dimT = rewriter.create<IndexToTensorOp>(
                       loc,
                       TensorType::get(

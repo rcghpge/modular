@@ -12,6 +12,7 @@
 
 #include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 
 #include <functional>
@@ -49,7 +50,7 @@ floodFillSequenceFusionAnalysis(
 #define EXCLUSION_LIST                                                         \
   MO::ConstantOp, MO::Shape::ToTensorOp, MO::IndexToTensorOp, MO::RebindOp,    \
       MO::ReshapeOp, MO::Static::ReshapeOp, KGEN::ParamDeclareOp,              \
-      KGEN::ParamConstantOp
+      MOSH::ParamToValueOp
 
 /// If preserveParallelism is set to true, no additional dependency between non
 /// eligible op is created. Otherwise, it fuses anything anything as long as no

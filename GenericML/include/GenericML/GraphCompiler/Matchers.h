@@ -727,10 +727,10 @@ inline bool matchPattern(mlir::Operation *op, const Pattern &pattern) {
 namespace M {
 namespace MO {
 
-/// Returns a parameter constant attribute through a variant of ToTensor ops if
-/// possible. Otherwise returns a null attribute.
+/// Returns a parameter attribute through a variant of ToTensor ops if possible.
+/// Otherwise returns a null attribute.
 template <typename ToTensorOpTy>
-static TypedAttr getParamConstThrough(TensorValue inputVal) {
+static TypedAttr getParamAttrThrough(TensorValue inputVal) {
   if (auto toTensorOp = inputVal.template getDefiningOp<ToTensorOpTy>()) {
     TypedAttr value;
     if (graph_compiler::matchers::matchPattern(

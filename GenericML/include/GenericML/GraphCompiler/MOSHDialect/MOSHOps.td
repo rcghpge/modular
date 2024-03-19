@@ -13,11 +13,46 @@
 
 include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.td"
 include "KGEN/KGENDialect/KGENTypes.td"
+include "KGEN/KGENDialect/KGENInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/OpAsmInterface.td"
 
 class MOSH_Op<string mnemonic, list<Trait> traits = []>
     : Op<MOSHDialect, mnemonic, traits>;
+
+def MOHS_ParamToValueOp : MOSH_Op<"param.to_value", [Pure, ConstantLike,
+    DeclareOpInterfaceMethods<ParamOpInterface, ["isImplicitlyParametric"]>,
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]>,
+    NoParamDecls {
+  let summary = "create an SSA value from a parameter value";
+  let description = [{
+    The `mo.param.to_value` operation materializes the value of a parameter
+    expression as an SSA value that may be used by other operations.
+    Conceptually, it bridges the parameter value domain to the SSA value domain.
+
+    Example:
+
+    ```mlir
+    %idx   = mo.param.to_value = <D0>
+    %shape = mo.param.to_value: !mosh.ape = <[10, D1, 20]>
+    ```
+  }];
+
+  let arguments = (ins TypedAttrInterface:$value);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = [{
+    `` custom<ParamToValueOpValue>($value, type($result)) attr-dict
+  }];
+
+  let builders = [
+    OpBuilder<(ins "TypedAttr":$value),
+              [{ build($_builder, $_state, value.getType(), value); }]>
+  ];
+
+  let hasFolder = 1;
+  let hasVerifier = 1;
+}
 
 def MOShape_BroadcastOp : MOSH_Op<"broadcast", [Commutative, Pure]> {
   let summary = "Shape broadcasting operation";

@@ -104,9 +104,9 @@ public:
   LogicalResult lowerParamDeclare(Region *parentRegion,
                                   KGEN::ParamDeclareOp declOp);
 
-  /// Lower a parameter constant op.
-  LogicalResult lowerParamConstant(Region *parentRegion,
-                                   KGEN::ParamConstantOp paramConstOp);
+  /// Lower a MOSH::ParamToValueOp op.
+  LogicalResult lowerParamToValue(Region *parentRegion,
+                                  MOSH::ParamToValueOp paramToValueOp);
 
   /// Lower an index -> scalar-like tensor cast op.
   LogicalResult lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp);
@@ -452,14 +452,15 @@ LogicalResult MOGraphLowering::lowerParamDeclare(Region *parentRegion,
 }
 
 LogicalResult
-MOGraphLowering::lowerParamConstant(Region *parentRegion,
-                                    KGEN::ParamConstantOp paramConstOp) {
+MOGraphLowering::lowerParamToValue(Region *parentRegion,
+                                   MOSH::ParamToValueOp paramToValueOp) {
   auto valueOr = loweringState.lowerExpression(
-      parentRegion, paramConstOp.getLoc(), paramConstOp.getValue());
+      parentRegion, paramToValueOp.getLoc(), paramToValueOp.getValue());
   if (valueOr.isError())
-    return paramConstOp->emitOpError(valueOr.getError());
+    return paramToValueOp->emitOpError(valueOr.getError());
 
-  loweringState.emplaceExecuteLoweredValue(paramConstOp.getResult(), *valueOr);
+  loweringState.emplaceExecuteLoweredValue(paramToValueOp.getResult(),
+                                           *valueOr);
   return success();
 }
 
@@ -1045,8 +1046,8 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
       continue;
     }
 
-    if (auto paramConstOp = dyn_cast<KGEN::ParamConstantOp>(op)) {
-      if (failed(lowerParamConstant(block->getParent(), paramConstOp)))
+    if (auto paramToValueOp = dyn_cast<MOSH::ParamToValueOp>(op)) {
+      if (failed(lowerParamToValue(block->getParent(), paramToValueOp)))
         return failure();
       continue;
     }

@@ -12,6 +12,8 @@
 #define GENERICML_GRAPHCOMPILER_MOSHDIALECT_MOSHOPS_H
 
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
+#include "KGEN/KGENDialect/KGENAttrs.h"
+#include "KGEN/KGENDialect/KGENInterfaces.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
@@ -26,6 +28,13 @@ class ShapeAttr;
 namespace M::KGEN {
 class FuncOp;
 } // namespace M::KGEN
+
+// Needed because the ODS definition of some KGEN ops don't have the namespace.
+using M::KGEN::ParamDeclArrayAttr;
+using M::KGEN::ParamDeclAttr;
+using M::KGEN::ParamDefValue;
+using M::KGEN::ParameterExprArrayAttr;
+using M::KGEN::SignatureType;
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations

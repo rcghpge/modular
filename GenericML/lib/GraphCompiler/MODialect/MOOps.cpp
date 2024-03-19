@@ -2532,21 +2532,21 @@ LogicalResult Static::ReshapeOp::canonicalize(Static::ReshapeOp op,
   size_t resRank = resTy.getRank();
   if (inputRank == 0 && resRank == 1) {
     // We can fold static reshapes from scalars to singletons.
-    if (TypedAttr param = getParamConstThrough<IndexToTensorOp>(inputVal)) {
+    if (TypedAttr param = getParamAttrThrough<IndexToTensorOp>(inputVal)) {
       auto shape = ShapeAttr::get(SmallVector<TypedAttr>{param},
                                   rewriter.getType<ShapeType>());
       auto newConstOp =
-          rewriter.create<KGEN::ParamConstantOp>(op->getLoc(), shape);
+          rewriter.create<MOSH::ParamToValueOp>(op->getLoc(), shape);
       rewriter.replaceOpWithNewOp<Shape::ToTensorOp>(op, resTy, newConstOp);
       return success();
     }
   }
   if (inputRank == 1 && resRank == 0) {
     // We can fold static reshapes from singletons to scalars.
-    if (TypedAttr param = getParamConstThrough<Shape::ToTensorOp>(inputVal)) {
+    if (TypedAttr param = getParamAttrThrough<Shape::ToTensorOp>(inputVal)) {
       if (auto shape = dyn_cast<ShapeAttr>(param);
           shape && shape.getRank() == 1) {
-        auto newConstOp = rewriter.create<KGEN::ParamConstantOp>(
+        auto newConstOp = rewriter.create<MOSH::ParamToValueOp>(
             op->getLoc(), shape.getValues()[0]);
         rewriter.replaceOpWithNewOp<IndexToTensorOp>(op, resTy, newConstOp);
         return success();

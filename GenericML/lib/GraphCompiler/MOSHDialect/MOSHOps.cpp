@@ -33,6 +33,86 @@ namespace Index = mlir::index;
 namespace Arith = mlir::arith;
 
 //===----------------------------------------------------------------------===//
+// ParamToValueOp support
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseParamToValueOpValue(OpAsmParser &p, TypedAttr &value,
+                                            Type &resultType) {
+  if (KGEN::parseColonTypeOrIndex(p, resultType) || p.parseEqual() ||
+      p.parseLess() || KGEN::parseParamValue(p, value, resultType) ||
+      p.parseGreater())
+    return failure();
+  return success();
+}
+
+static void printParamToValueOpValue(OpAsmPrinter &p, Operation *,
+                                     TypedAttr value, Type resultType) {
+  KGEN::printColonTypeOrIndex(p, value.getType());
+  p << " = <";
+  KGEN::printParamValue(p, value);
+  p << ">";
+}
+
+/// Parameter materialization operations are not allowed to materialize
+/// capturing signature-typed values, since they can be inlined.
+template <typename OpT>
+static LogicalResult verifyParamValueOp(OpT op) {
+  // Forbid the materialization of parameter capturing closures.
+  if (auto sig = dyn_cast<SignatureType>(op.getType())) {
+    if (sig.isCapturing())
+      return op.emitOpError("cannot be used to materialize capturing closures; "
+                            "use `kgen.create_closure` instead");
+  }
+
+  if (op.getValue().getType() == op.getType())
+    return success();
+  return op.emitOpError() << "parameter type " << op.getValue().getType()
+                          << " does not match result type " << op.getType();
+}
+
+/// Return true if the parameter value contains symbol constants, making the
+/// operation implicit parametric.
+static bool containsSymbolConstants(TypedAttr value) {
+  mlir::AttrTypeWalker walker;
+  walker.addWalk(
+      [](KGEN::SymbolConstantAttr) { return WalkResult::interrupt(); });
+  return walker.walk(value).wasInterrupted();
+}
+
+LogicalResult ParamToValueOp::verify() { return verifyParamValueOp(*this); }
+
+void ParamToValueOp::getAsmResultNames(
+    function_ref<void(Value, StringRef)> setNameFn) {
+  // If the type of the value has a registered pretty name, use that for the SSA
+  // value name.
+  if (std::optional<StringRef> name =
+          getContext()->getLoadedDialect<KGEN::KGENDialect>()->getTypeName(
+              getType().getTypeID())) {
+    setNameFn(getResult(), *name);
+    return;
+  }
+
+  // Otherwise, handle some common cases here.
+  if (isa<IndexType>(getType())) {
+    if (auto intVal = dyn_cast<IntegerAttr>(getValue()))
+      setNameFn(getResult(), ("index" + Twine(intVal.getInt())).str());
+    else
+      setNameFn(getResult(), "index");
+  }
+}
+
+OpFoldResult ParamToValueOp::fold(FoldAdaptor adaptor) {
+  return getValueAttr();
+}
+
+bool ParamToValueOp::isImplicitlyParametric() {
+  return containsSymbolConstants(getValue());
+}
+
+void ParamToValueOp::walkDefinitions(
+    function_ref<void(ParamDeclAttr, const ParamDefValue &)> walkDef) {}
+
+//===----------------------------------------------------------------------===//
 // Shape ops
 //===----------------------------------------------------------------------===//
 

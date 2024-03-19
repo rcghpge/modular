@@ -111,7 +111,7 @@ mo.graph @reduce_sinking_success_add_on_new_bcasted_dim<A, B, P1, P2, P3>(
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @reduce_sinking_success_add_on_new_bcasted_dim<[[A:[A-Z0-9]*]], [[B:[A-Z0-9]*]], [[P1:[A-Z0-9]*]], [[P2:[A-Z0-9]*]], [[P3:[A-Z0-9]*]]>
 // CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], f32> no_inline {
-// CHECK-NEXT: [[INDEX:%.*]] = kgen.param.constant = <[[P1]]>
+// CHECK-NEXT: [[INDEX:%.*]] = mosh.param.to_value = <[[P1]]>
 // CHECK-NEXT: [[V0:%.*]] = mo.index.to_tensor([[INDEX]]) -> !mo.tensor<[], ui64>
 // CHECK-NEXT: [[V1:%.*]] = mo.cast([[V0]]) : (!mo.tensor<[], ui64>) -> !mo.tensor<[], f32>
 // CHECK-NEXT: [[V2:%.*]] = mo.static.broadcast_to([[V1]]) : !mo.tensor<[], f32> -> !mo.tensor<[[[A]], [[B]]], f32>
@@ -131,7 +131,7 @@ mo.graph @reduce_sinking_success_mul_on_new_bcasted_dim<A, B, P1, P2, P3>(
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @reduce_sinking_success_mul_on_new_bcasted_dim<[[A:[A-Z0-9]*]], [[B:[A-Z0-9]*]], [[P1:[A-Z0-9]*]], [[P2:[A-Z0-9]*]], [[P3:[A-Z0-9]*]]>
 // CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], f32> no_inline {
-// CHECK-NEXT: [[INDEX:%.*]] = kgen.param.constant = <[[P1]]>
+// CHECK-NEXT: [[INDEX:%.*]] = mosh.param.to_value = <[[P1]]>
 // CHECK-NEXT: [[V0:%.*]] = mo.index.to_tensor([[INDEX]]) -> !mo.tensor<[], ui64>
 // CHECK-NEXT: [[V1:%.*]] = mo.cast([[V0]]) : (!mo.tensor<[], ui64>) -> !mo.tensor<[], f32>
 // CHECK-NEXT: [[V2:%.*]] = mo.static.broadcast_to([[V1]]) : !mo.tensor<[], f32> -> !mo.tensor<[[[A]], [[B]]], f32>

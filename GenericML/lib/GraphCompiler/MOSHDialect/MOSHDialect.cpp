@@ -6,6 +6,7 @@
 
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "KGEN/KGENDialect/KGENDialect.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/POPDialect/POPDialect.h"
@@ -36,7 +37,7 @@ Operation *MOSHDialect::materializeConstant(OpBuilder &b, Attribute value,
 
   // Materialize symbolic shapes.
   if (isa<KGEN::ParamDeclRefAttr, ShapeAttr, KGEN::ParamOperatorAttr>(value))
-    return b.create<KGEN::ParamConstantOp>(loc, type, cast<TypedAttr>(value));
+    return b.create<ParamToValueOp>(loc, type, cast<TypedAttr>(value));
 
   return nullptr;
 }

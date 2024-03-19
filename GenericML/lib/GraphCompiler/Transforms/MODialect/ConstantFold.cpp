@@ -171,7 +171,7 @@ static bool isConstantFoldable(Operation *op) {
                [](Type ty) {
                  return isa<MO::TensorType, MOSH::ShapeType, MO::ListType>(ty);
                })) ||
-          isa<KGEN::ParamOpInterface, KGEN::ParamConstantOp,
+          isa<KGEN::ParamOpInterface, MOSH::ParamToValueOp,
               KGEN::ParamDeclareOp>(op)) &&
          !isa<MOControlOpInterface>(op);
 }
@@ -464,8 +464,8 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
     for (auto user : op.getResult().getUsers())
       workQueue.push_back(user);
   });
-  graph.walk([&](KGEN::ParamConstantOp op) {
-    // ParamConstantOp can have parameters that are not constant...
+  graph.walk([&](MOSH::ParamToValueOp op) {
+    // ParamToValueOp can have parameters that are not constant...
     workQueue.push_back(op);
   });
 
@@ -725,7 +725,7 @@ static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
   Type indexType = IndexType::get(ctx);
   for (const Subgraph &subgraph : subgraphs) {
     for (auto param : subgraph.paramDeclarations()) {
-      Value index = builder.create<KGEN::ParamConstantOp>(
+      Value index = builder.create<MOSH::ParamToValueOp>(
           loc, indexType, KGEN::ParamDeclRefAttr::get(ctx, param, indexType));
       newOutputs.push_back(builder.create<IndexToTensorOp>(
           loc,
@@ -806,7 +806,7 @@ static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
       } else if (type.isa<ShapeType>()) {
         auto intElems = dyn_cast<IntArrayElementsAttr>(
             std::get<RuntimeTensor>(constantTensor).first);
-        newResults.push_back(builder.create<KGEN::ParamConstantOp>(
+        newResults.push_back(builder.create<MOSH::ParamToValueOp>(
             op->getLoc(), ShapeAttr::get(intElems.asArrayRef<int64_t>(),
                                          MOSH::ShapeType::get(ctx))));
       } else if (type.isa<ListType>()) {

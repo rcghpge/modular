@@ -50,7 +50,7 @@ Value tryGetShapeValue(Value val, Location loc) {
     // some other concat inputs aren't constant/shape)
     OpBuilder builder(ctx);
     builder.setInsertionPointAfterValue(val);
-    return builder.create<KGEN::ParamConstantOp>(loc, shapeAttr);
+    return builder.create<MOSH::ParamToValueOp>(loc, shapeAttr);
   }
 
   return {};
@@ -61,11 +61,11 @@ ShapeAttr tryGetShapeAttr(Value val, Location loc) {
   if (!shapeVal)
     return {};
 
-  auto paramConstOp = shapeVal.getDefiningOp<KGEN::ParamConstantOp>();
-  if (!paramConstOp)
+  auto paramToValueOp = shapeVal.getDefiningOp<MOSH::ParamToValueOp>();
+  if (!paramToValueOp)
     return {};
 
-  return dyn_cast<ShapeAttr>(paramConstOp.getValue());
+  return dyn_cast<ShapeAttr>(paramToValueOp.getValue());
 }
 
 LogicalResult elaborateModule(ModuleOp moduleOp) {

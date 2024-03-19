@@ -102,12 +102,12 @@ mo.graph @parameter_outputs<M>() -> (!mo.tensor<[M], si8>) {
 }
 
 // CHECK-LABEL: param_as_root
-// CHECK: %[[IDX:.*]] = kgen.param.constant = <1>
+// CHECK: %[[IDX:.*]] = mosh.param.to_value = <1>
 // CHECK: %[[A0:.*]] = mo.index.to_tensor(%[[IDX]]) -> !mo.tensor<[], si32>
 // CHECK: subgraph %[[A0]] %[[IDX]]
 // CHECK: outputs %[[A0]]
 mo.graph @param_as_root() -> (!mo.tensor<[], si32>) {
-    %index = kgen.param.constant = <1>
+    %index = mosh.param.to_value = <1>
     %0 = mo.index.to_tensor(%index) -> !mo.tensor<[], si32>
     mo.output %0 : !mo.tensor<[], si32>
 }

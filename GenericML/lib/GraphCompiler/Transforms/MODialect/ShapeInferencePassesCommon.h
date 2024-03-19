@@ -22,13 +22,13 @@ namespace M::MO::ShapeInferencePassCommon {
 /// Extract the value (of MOSH::ShapeType) represented by `val` if possible,
 /// else return `null`.
 /// NOTE possible side-effect: if `val` is a tensor constant, a
-/// `KGEN::ParamConstantOp` will be created to hold the shape value.
+/// `ParamToValueOp` will be created to hold the shape value.
 Value tryGetShapeValue(Value val, Location loc);
 
 /// Extract the `MOSH::ShapeAttr` represented by `val` if possible, else return
 /// `null`.
 /// NOTE possible side-effect: if `val` is a tensor constant, a
-/// `KGEN::ParamConstantOp` will be created with `loc` to hold the shape value.
+/// `ParamToValueOp` will be created with `loc` to hold the shape value.
 ShapeAttr tryGetShapeAttr(Value val, Location loc);
 
 /// Run all the elaboration passes on given module, and return whether it

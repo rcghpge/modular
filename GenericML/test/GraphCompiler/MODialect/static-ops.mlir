@@ -145,9 +145,9 @@ mo.graph @static_reshape_not_fold_to_rebind<A, B>(%arg0: !mo.tensor<[A, B], f32>
 
 // CHECK: mo.graph @static_reshape_index_const<[[A:.*]]>() -> !mo.tensor<[1], si32> no_inline {
 mo.graph @static_reshape_index_const<A>() -> !mo.tensor<[1], si32> {
-  // CHECK-NEXT: %[[C:.*]] = kgen.param.constant: !mosh.ape = <[[[A]]]>
+  // CHECK-NEXT: %[[C:.*]] = mosh.param.to_value: !mosh.ape = <[[[A]]]>
   // CHECK-NEXT: %[[RES:.*]] = mo.shape.to_tensor(%[[C]]) -> !mo.tensor<[1], si32>
-  %0 = kgen.param.constant: index = <A>
+  %0 = mosh.param.to_value: index = <A>
   %1 = mo.index.to_tensor(%0) -> !mo.tensor<[], si32>
   %2 = mo.static.reshape(%1) : !mo.tensor<[], si32> -> !mo.tensor<[1], si32>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[1], si32>
@@ -156,9 +156,9 @@ mo.graph @static_reshape_index_const<A>() -> !mo.tensor<[1], si32> {
 
 // CHECK: mo.graph @static_reshape_singleton_const<[[A:.*]]>() -> !mo.tensor<[], si64> no_inline {
 mo.graph @static_reshape_singleton_const<A>() -> !mo.tensor<[], si64> {
-  // CHECK-NEXT: %[[C:.*]] = kgen.param.constant = <[[A]]>
+  // CHECK-NEXT: %[[C:.*]] = mosh.param.to_value = <[[A]]>
   // CHECK-NEXT: %[[RES:.*]] = mo.index.to_tensor(%[[C]]) -> !mo.tensor<[], si64>
-  %0 = kgen.param.constant: !mosh.ape = <[A]>
+  %0 = mosh.param.to_value: !mosh.ape = <[A]>
   %1 = mo.shape.to_tensor(%0) -> !mo.tensor<[1], si64>
   %2 = mo.static.reshape(%1) : !mo.tensor<[1], si64> -> !mo.tensor<[], si64>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[], si64>

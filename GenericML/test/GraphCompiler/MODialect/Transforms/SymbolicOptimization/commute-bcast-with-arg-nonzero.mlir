@@ -41,8 +41,8 @@ mo.graph @static_shape_with_device<() -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !
 // CHECK-LABEL: mo.graph @dynamic_shape
 // CHECK-SAME: <[[A:.*]], [[B:.*]] -> [[M:.*]]>(%[[ARG:.*]]: !mo.tensor<[2, [[A]]], f32>) -> !mo.tensor<[[[M]], 1], si64> no_inline {
 mo.graph @dynamic_shape<A, B -> M>(%arg0: !mo.tensor<[2, A], f32>) -> !mo.tensor<[M, 1], si64> {
-  // CHECK-DAG: %[[C0:.*]] = kgen.param.constant = <mul_nuw([[A]], [[A]], [[B]], 2)>
-  // CHECK-DAG: %[[C1:.*]] = kgen.param.constant = <mul_nuw([[A]], 2)>
+  // CHECK-DAG: %[[C0:.*]] = mosh.param.to_value = <mul_nuw([[A]], [[A]], [[B]], 2)>
+  // CHECK-DAG: %[[C1:.*]] = mosh.param.to_value = <mul_nuw([[A]], 2)>
   // CHECK-DAG: %[[START:.*]] = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
   // CHECK-DAG: %[[LIMIT:.*]] = mo.index.to_tensor(%[[C0]]) -> !mo.tensor<[], si64>
   // CHECK-DAG: %[[STEP:.*]] = mo.index.to_tensor(%[[C1]]) -> !mo.tensor<[], si64>

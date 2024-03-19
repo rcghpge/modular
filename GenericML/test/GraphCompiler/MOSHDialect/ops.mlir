@@ -80,3 +80,15 @@ kgen.func @slice(%sh0: !mosh.ape, %start: index, %end: index) -> !mosh.ape {
   %sh1 = mosh.slice(%sh0)[%start, %end]
   kgen.return %sh1 : !mosh.ape
 }
+
+// CHECK: kgen.generator @param_to_value<[[D:.*]]>() -> (index, !mosh.ape) {
+kgen.generator @param_to_value<D>() -> (index, !mosh.ape) {
+
+  // CHECK-NEXT: %[[IDX:.*]]   = mosh.param.to_value = <[[D]]>
+  // CHECK-NEXT: %[[SHAPE:.*]] = mosh.param.to_value: !mosh.ape = <[[[D]], 42]>
+  %idx   = mosh.param.to_value = <D>
+  %shape = mosh.param.to_value: !mosh.ape = <[D, 42]>
+
+  // CHECK: kgen.return %[[IDX]], %[[SHAPE]] : index, !mosh.ape
+  kgen.return %idx, %shape : index, !mosh.ape
+}
