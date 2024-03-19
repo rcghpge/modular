@@ -64,7 +64,7 @@ void mgp_runtime_create_cpu(Chain inChain, Context &theContext,
   //               this engine.
   ErrorOr<KGEN::ExecutionEngine *> engineOr =
       runtime.createContextIfMissing<KGEN::ExecutionEngine>(
-          []() -> ErrorOr<std::unique_ptr<KGEN::ExecutionEngine>> {
+          [&runtime]() -> ErrorOr<std::unique_ptr<KGEN::ExecutionEngine>> {
             // Initialize the host target.
             llvm::InitializeNativeTarget();
             llvm::InitializeNativeTargetAsmParser();
@@ -74,8 +74,12 @@ void mgp_runtime_create_cpu(Chain inChain, Context &theContext,
               return targetMachineOr.takeError();
 
             // Create the execution engine.
+            KGEN::ExecutionEngineOptions options;
+            options.registerPerfPlugins =
+                runtime.getProfilerDebuginfo() ==
+                RuntimeOptions::ProfilerDebuginfo::kPerfProfiler;
             return KGEN::ExecutionEngine::createWithStandardLayers(
-                /*options=*/{}, **targetMachineOr);
+                std::move(options), **targetMachineOr);
           });
 
   if (engineOr.isError())
