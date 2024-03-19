@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # ===----------------------------------------------------------------------=== #
 # Copyright (c) 2024, Modular Inc. All rights reserved.
 #
@@ -11,7 +12,6 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-#!/usr/bin/env python3
 
 from max import engine
 
@@ -21,8 +21,8 @@ import os
 os.environ["TRANSFORMERS_VERBOSITY"] = "critical"
 
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
 from argparse import ArgumentParser
+from transformers import AutoTokenizer
 from transformers.generation.logits_process import LogitsProcessorList
 
 DEFAULT_MODEL_PATH = "../../models/minstral7b-onnx/model.onnx"

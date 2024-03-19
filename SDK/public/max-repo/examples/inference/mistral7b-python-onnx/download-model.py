@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # ===----------------------------------------------------------------------=== #
 # Copyright (c) 2024, Modular Inc. All rights reserved.
 #
@@ -11,7 +12,6 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-#!/usr/bin/env python3
 
 from argparse import ArgumentParser
 import os
@@ -20,10 +20,8 @@ import os
 os.environ["TRANSFORMERS_VERBOSITY"] = "critical"
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 
-import torch
 from optimum.onnxruntime import ORTModelForCausalLM
 from pathlib import Path
-from transformers import AutoModelForCausalLM
 
 
 DEFAULT_MODEL_DIR = "../../models/minstral7b-onnx"
