@@ -581,101 +581,6 @@ static void printElementsAttrWithAlign(AsmPrinter &p, Operation *op,
   p << value;
 }
 
-/// Get the raw alignment for elements when building a buffer constant.
-static uint64_t getRawAlign(ElementsAttr value) {
-  ErrorOr<std::optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
-  if (errOrOptAlign.isError())
-    return 0;
-
-  // If error we'll report it when the result is validated.
-  return optSizeToRawSize(*errOrOptAlign);
-}
-
-void CpuBufferConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                                ElementsAttr value) {
-  build(odsBuilder, odsState, value, getRawAlign(value));
-}
-
-void CpuBufferConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                                Type type, ElementsAttr value) {
-  build(odsBuilder, odsState, type, value, getRawAlign(value));
-}
-
-OpFoldResult CpuBufferConstantOp::fold(FoldAdaptor adaptor) {
-  auto operands = adaptor.getOperands();
-  GENERICML_ASSERT(operands.empty()) << "constant has no operands";
-  return getAValue();
-}
-
-/// Verifies the attribute and result types are consistent, and the attribute
-/// is supported.
-LogicalResult CpuBufferConstantOp::verify() {
-  // We can only construct from attributes which are dense arrays (ie rank-1)
-  // of uint8_ts.
-  ElementsAttr value = getAValue();
-  ShapedType shapedType = cast<ShapedType>(value.getType());
-  if (value.size() != shapedType.getNumElements())
-    return emitOpError() << "does not support splat attributes.";
-  if (!shapedType.hasRank() || shapedType.getShape().size() != 1)
-    return emitOpError() << "only supports rank-1 attributes";
-  Type elemType = value.getElementType();
-  if (!elemType.isUnsignedInteger(8))
-    return emitOpError() << "only supports attributes of uint8_t elements"
-                         << " (have " << elemType << ").";
-
-  // The resulting constant's type must be sized, and the size must match
-  // the attribute's size.
-  CpuBufferType bufferType = getResult().getType();
-  if (!bufferType.getOptSize())
-    return emitOpError() << "expected the buffer type have a fixed size";
-  if (*bufferType.getOptSize() != static_cast<uint64_t>(value.getNumElements()))
-    return emitOpError() << "expected the buffer type have a size matching the "
-                            "attribute size"
-                         << " (" << *bufferType.getOptSize() << " vs "
-                         << value.getNumElements() << ").";
-
-  // Only BufferAttr and DenseResourceElementsAttr can convey an align
-  // constraint. Check they are valid.
-  ErrorOr<std::optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
-  if (auto *error = errOrOptAlign.getError())
-    return emitOpError() << StringRef(error);
-
-  if (!isValidOptAlign(*errOrOptAlign))
-    return emitOpError()
-           << "the attribute alignment must be a power of two (have "
-           << **errOrOptAlign << ").";
-
-  // The implied alignment must match the actual attribute alignment.
-  if (getOptAlign().has_value() != errOrOptAlign->has_value())
-    return emitOpError() << "expected alignment operand if and only if value "
-                            "operand has alignment";
-  if (getOptAlign().has_value() && *getOptAlign() != **errOrOptAlign)
-    return emitOpError()
-           << "expected operand alignment to match attribute's alignment"
-           << " (" << *getOptAlign() << " vs " << **errOrOptAlign << ").";
-
-  return success();
-}
-
-/// Infers the buffer type result from the attribute argument.
-LogicalResult CpuBufferConstantOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  GENERICML_ASSERT(operands.empty()) << "mismatched operand arity";
-  auto elementsAttr = dyn_cast_if_present<ElementsAttr>(
-      attributes.get(getAValueAttrName(name)));
-  GENERICML_ASSERT(elementsAttr) << "mismatched operand types";
-  int64_t size = elementsAttr.size();
-  inferredReturnTypes.emplace_back(CpuBufferType::get(context, size));
-  return success();
-}
-
-std::optional<uint64_t> CpuBufferConstantOp::getOptAlign() {
-  return rawSizeToOptSize(getBRawAlign());
-}
-
 //===----------------------------------------------------------------------===//
 // CpuBufferAlloc* Utils
 //===----------------------------------------------------------------------===//
@@ -829,16 +734,6 @@ LogicalResult CpuBufferReallocDynamicOp::inferReturnTypes(
 
 void CpuBufferReallocDynamicOp::setInChain(Value chain) {
   setOperand(0, chain);
-}
-
-//===----------------------------------------------------------------------===//
-// CpuBufferSetOp
-//===----------------------------------------------------------------------===//
-
-InOutSignatureAttr::InOutSemantics
-CpuBufferSetOp::getInOutSemantics(size_t index) {
-  GENERICML_ASSERT(index == 0);
-  return InOutSignatureAttr::kOut;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1155,48 +1050,6 @@ LogicalResult CpuTensorExtractShapeOp::inferReturnTypes(
   return success();
 }
 
-//===----------------------------------------------------------------------===//
-// CpuKernelExecuteOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult CpuKernelExecuteOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  uint64_t numOutDimensions = 0;
-  if (auto attr = attributes.get(getENumOutDimensionsAttrName(name))) {
-    auto dNumOutDimensionsAttr = dyn_cast<IntegerAttr>(attr);
-    GENERICML_ASSERT(dNumOutDimensionsAttr) << "mismatched operand types";
-    numOutDimensions = dNumOutDimensionsAttr.getUInt();
-  }
-  inferredReturnTypes.emplace_back(MEF::ChainType::get(context));
-  while (numOutDimensions-- > 0)
-    inferredReturnTypes.emplace_back(IndexType::get(context));
-  return success();
-}
-
-LogicalResult CpuKernelExecuteOp::verify() {
-  InOutSignatureAttr sigAttr = getCInOutSignature();
-  if (sigAttr.size() != getArgs().size())
-    return emitOpError() << "expected in/out signature attribute to have arity "
-                         << getArgs().size() << " but given "
-                         << getCInOutSignature().size() << ".";
-  for (auto [idx, arg] : llvm::enumerate(getArgs())) {
-    if (!isa<CpuBufferType>(arg.getType()) &&
-        sigAttr[idx] != InOutSignatureAttr::kIn) {
-      return emitOpError() << "non-buffer arg must be read only: "
-                           << arg.getType();
-    }
-  }
-  if (getENumOutDimensions() != getOutDimensions().size())
-    return emitOpError()
-           << "expected number of output dimensions attribute to be "
-           << getOutDimensions().size() << " but given "
-           << getENumOutDimensions() << ".";
-  return success();
-}
-
 /// Return whether `ty1` is a subtype of `ty2`, i.e., the set of possible
 /// tensors represented by `ty1` is a subset for that of `ty2`.
 static bool isSubtype(TensorSpecType ty1, TensorSpecType ty2) {
@@ -1239,16 +1092,6 @@ static bool isSubtype(Type ty1, Type ty2) {
   if (tensorTy1 && tensorTy2)
     return isSubtype(tensorTy1.getTensorSpec(), tensorTy2.getTensorSpec());
   return ty1 == ty2;
-}
-
-InOutSignatureAttr::InOutSemantics
-CpuKernelExecuteOp::getInOutSemantics(size_t index) {
-  GENERICML_ASSERT(index < getNumOperands());
-  const size_t firstArgsIndex = getTheContextMutable().getOperandNumber() + 1;
-  const size_t endArgsIndex = firstArgsIndex + getArgs().size();
-  if (index < firstArgsIndex || index >= endArgsIndex)
-    return InOutSignatureAttr::kIn;
-  return getCInOutSignature()[index - firstArgsIndex];
 }
 
 //===----------------------------------------------------------------------===//

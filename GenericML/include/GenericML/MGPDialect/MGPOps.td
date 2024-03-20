@@ -34,81 +34,6 @@ class MGP_Op<string mnemonic, list<Trait> traits = []> :
     Op<MGPDialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
-// CpuBufferConstantOp
-//===----------------------------------------------------------------------===//
-
-// TODO(#32165): DEPRECATED
-def CpuBufferConstantOp : MGP_Op<"cpu.buffer.constant.deprecated", [
-    Pure,
-    ConstantLike,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>]> {
-  let summary = [{
-    Creates a buffer hosted on the CPU whose data is aliased with
-    the bytes in the given attribute.
-  }];
-  let description = [{
-    Creates a CPU-hosted buffer whose byte array is aliased with the byte array
-    in the given attribute. The attribute must support contiguous iteration
-    over `uint8_t` elements. The result buffer type will have a size matching
-    the attribute size.
-
-    Example valid attributes include `#M.aligned_bytes`, and the builtin
-    `dense_resource' and `array`. `#M.aligned_bytes` can be used for small,
-    inline byte arrays with a given alignment. `dense_resource` can be used
-    for large, out-of-line byte arrays with a (optional) alignment encoded in
-    the resource blob or type annotation. Any such alignment will be respected
-    by the constant buffer when recovered from the MEF file. Furthermore, the
-    alignment will also be respected by any deep copies of the constant buffer.
-
-    When using a `dense_resource` with an alignment, it is necessary to
-    type the attribute with `!M.aligned_bytes` so that the alignment can
-    captured before the resource corresponding to the label has been
-    established. Otherwise, the `dense_resource` attribute can be given any
-    shaped type over `uint8_t`.
-
-    The result buffer will 'borrow' the underlying data.
-
-    Example:
-    ```mlir
-    %buf = mgp.cpu.buffer.constant.deprecated #M.aligned_bytes<"0x00010203", align 8>
-    %buf : !mgp.cpu.buffer<4>  // at least 8 byte aligned in storage
-
-    %buf = mgp.cpu.buffer.constant.deprecated dense_resource<label>:!M.aligned_bytes<4, align 16>
-    %buf : !mgp.cpu.buffer<4>  // at least 16 byte aligned in storage
-                               // the actual resource must have the same alignment
-
-    %buf = mgp.cpu.buffer.constant.deprecated #M.dense_array<ui8: 0, 1, 2, 3>
-    %buf : !mgp.cpu.buffer<4>  // no specific alignment in storage
-    ```
-  }];
-
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
-  let arguments = (ins ElementsAttr:$aValue, UI64Attr:$bRawAlign);
-  let results = (outs MGP_CpuBufferType:$result);
-  let assemblyFormat = [{
-    custom<ElementsAttrWithAlign>($aValue, $bRawAlign) attr-dict
-  }];
-  let hasVerifier = 1;
-  let hasFolder = 1;
-
-  let extraClassDeclaration = [{
-    /// Returns the buffer's alignment.
-    std::optional<uint64_t> getOptAlign();
-  }];
-
-  let extraClassDefinition = [{
-    bool CpuBufferConstantOp::isTrivial() { return true; }
-  }];
-
-  let builders = [
-    OpBuilder<(ins "ElementsAttr":$value)>,
-    OpBuilder<(ins "Type":$type, "ElementsAttr":$value)>,
-  ];
-}
-
-//===----------------------------------------------------------------------===//
 //
 // We have a family of 6 buffer allocation primitives, depending on choice of
 //  {static size vs dynamic size vs dynamic tensor spec} x {alloc vs re-alloc}
@@ -375,38 +300,6 @@ def CpuBufferReallocDynamicOp : MGP_Op<"cpu.buffer.realloc.dynamic.deprecated", 
   let hasVerifier = 1;
 }
 
-//===----------------------------------------------------------------------===//
-// CpuBufferSetOp
-//===----------------------------------------------------------------------===//
-
-// TODO(#32165): DEPRECATED
-def CpuBufferSetOp : MGP_Op<"cpu.buffer.set.deprecated", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>]> {
-  let summary = [{
-    Set each byte of the given buffer to the given value (default = 0).
-  }];
-  let description = [{
-    Sets each byte of the allocated buffer to the given value (default = 0).
-
-    Example:
-    ```mlir
-    %buf : !mgp.cpu.buffer
-
-    // Set each byte of the buffer to 0.
-    %ch = mgp.cpu.buffer.set.deprecated %buf : !mgp.cpu.buffer
-    // Set each byte of the buffer to 1.
-    %ch = mgp.cpu.buffer.set.deprecated %buf, 1 : !mgp.cpu.buffer
-    ```
-  }];
-
-  let arguments = (ins MGP_CpuBufferType:$buffer,
-                   DefaultValuedAttr<UI8Attr, "0">:$value);
-  let results = (outs ChainType:$outChain);
-  let assemblyFormat = [{
-    $buffer (`,` $value^)? attr-dict `:` qualified(type($buffer))
-  }];
-}
 
 //===----------------------------------------------------------------------===//
 // ContextCreateOp
@@ -996,72 +889,8 @@ def AssertOp : MGP_Op<"assert", [
 }
 
 //===----------------------------------------------------------------------===//
-// CpuKernelExecute
+// ExecuteGenericOp
 //===----------------------------------------------------------------------===//
-
-// TODO(#32165): DEPRECATED
-def CpuKernelExecuteOp : MGP_Op<"cpu.kernel.execute.deprecated", [
-    AttrSizedOperandSegments,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGP_KernelExecuteOpInterface>,
-    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
-    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>]> {
-  let summary = "Executes a kernel loaded into the compiled kernel context.";
-  let description = [{
-    Executes a kernel already loaded into the compiled kernel context at the
-    given slot within the `!mgp.context`.
-
-    Note that the summary attribute is only used for debugging and profiling.
-    The actual kernel to execute is determined only by the kernel index.
-
-    Example:
-    ```mlir
-    %ch0 : !mef.chain
-    %ctx : !mgp.context
-    %buf0 : !mgp.cpu.buffer
-    %buf1 : !mgp.cpu.buffer<8>
-    %buf2 : !mgp.cpu.buffer<48>
-    %dim0 : index
-    %dim1 : index
-    // Compiled kernels have been loaded into slot 3.
-    // The compiled kernel to execute is at index 7.
-    %ch1, %dim2 = mgp.cpu.kernel.execute.deprecated %ch0, %ctx[3, 7],
-                    (in %buf0 : !mgp.cpu.buffer,
-                     in %buf1 : !mgp.cpu.buffer<8>,
-                     out %buf2 : !mgp.cpu.buffer<48>),
-                    (%dim0, %dim1), summary "kernel1" out_dims 1
-    %ch1 : !mef.chain
-    %dim2 : index
-    ```
-  }];
-
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       Variadic<AnyTypeOf<[MGP_CpuBufferType, MGP_List]>>:$args,
-                       Variadic<Index>:$inDimensions,
-                       UI64Attr:$aSlot,                                     // 0
-                       UI64Attr:$bKernelIndex,                              // 1
-                       M_InOutSignatureAttr:$cInOutSignature,               // 2
-                       StrAttr:$dSummary,                                   // 3
-                       DefaultValuedAttr<UI64Attr, "0">:$eNumOutDimensions, // 4
-                       DefaultValuedAttr<BoolAttr, "false">:$fIsAsync);     // 5
-  let results = (outs ChainType:$outChain,
-                      Variadic<Index>:$outDimensions);
-  let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aSlot `,` $bKernelIndex `]` `,`
-    custom<InOutArgsSignature>($args, type($args), $cInOutSignature) `,`
-    ( `(` $inDimensions^ `)` `,` )?
-    `summary` $dSummary
-    ( `out_dims` $eNumOutDimensions^ )?
-    ( `is_async` $fIsAsync^ )?
-    attr-dict
-  }];
-
-  let hasVerifier = 1;
-}
-
 
 def ExecuteGenericOp : MGP_Op<"generic.execute"> {
   let summary = "Executes a function loaded into the CPU Runtime";

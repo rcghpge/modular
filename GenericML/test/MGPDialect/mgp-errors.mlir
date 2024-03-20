@@ -1,21 +1,5 @@
 // RUN: mo-opt %s --split-input-file --verify-diagnostics --allow-unregistered-dialect
 
-//
-// mgp.cpu.buffer.constant.deprecated
-//
-
-func.func @buffer_constant_mismatched_size() {
-  %0 = mgp.cpu.buffer.constant.deprecated #M.aligned_bytes<"0x000102", align 32> // expected-note {{prior use here}}
-  // expected-error@+1 {{use of value '%0' expects different type than prior uses: '!mgp.cpu.buffer<4>' vs '!mgp.cpu.buffer<3>'}}
-  mef.output %0 : !mgp.cpu.buffer<4>
-}
-
-// -----
-
-func.func @buffer_constant_invalid_elem_type() {
-  // expected-error@+1 {{'mgp.cpu.buffer.constant.deprecated' op only supports attributes of uint8_t elements (have 'i16')}}
-  %0 = mgp.cpu.buffer.constant.deprecated #M.dense_array<1, 2, 3, 4> : !M.array<4xi16>
-}
 
 // -----
 
@@ -246,26 +230,6 @@ func.func @to_grt_bool.deprecated(%ch0 : !mef.chain, %buf : !mgp.cpu.buffer<2>) 
   // expected-error@+1 {{'mgp.to_grt_bool.deprecated' op operand #1 must be scalar buffer, but got '!mgp.cpu.buffer<2>'}}
   %0 = mgp.to_grt_bool.deprecated(%ch0, %buf) : (!mef.chain, !mgp.cpu.buffer<2>) -> i1
   mef.output %0 : i1
-}
-
-// -----
-
-//
-// mgp.cpu.kernel.execute.deprecated
-//
-
-// CHECK-LABEL: @kernel_execute_invalid
-func.func @kernel_execute_invalid(%ch0 : !mef.chain, %ctx : !mgp.context, %buf0 : !mgp.cpu.buffer, %buf1 : !mgp.cpu.buffer<8>, %dim0 : index, %dim1 : index) {
-  // expected-error@+1 {{'mgp.cpu.kernel.execute.deprecated' op expected in/out signature attribute to have arity 2 but given 3.}}
-  %ch1, %dim2 = "mgp.cpu.kernel.execute.deprecated"(%ch0, %ctx, %buf0, %buf1, %dim0, %dim1)
-      { aSlot = 0 : ui64,
-        bKernelIndex = 3 : ui64,
-        cInOutSignature = #M.inout_sig<"ioo">,
-        dSummary = "kernel",
-        eNumOutDimensions = 1 : ui64,
-        operandSegmentSizes = array<i32: 1, 1, 2, 2> }
-      : (!mef.chain, !mgp.context, !mgp.cpu.buffer, !mgp.cpu.buffer<8>, index, index) -> (!mef.chain, index)
-  mef.output %ch1, %dim2 : !mef.chain, index
 }
 
 // -----
