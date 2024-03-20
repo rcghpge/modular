@@ -104,7 +104,7 @@ mo.graph @parameter_outputs<M>() -> (!mo.tensor<[M], si8>) {
 // CHECK-LABEL: param_as_root
 // CHECK: %[[IDX:.*]] = mosh.param.to_value = <1>
 // CHECK: %[[A0:.*]] = mo.index.to_tensor(%[[IDX]]) -> !mo.tensor<[], si32>
-// CHECK: subgraph %[[A0]] %[[IDX]]
+// CHECK: subgraph %[[IDX]] %[[A0]]
 // CHECK: outputs %[[A0]]
 mo.graph @param_as_root() -> (!mo.tensor<[], si32>) {
     %index = mosh.param.to_value = <1>

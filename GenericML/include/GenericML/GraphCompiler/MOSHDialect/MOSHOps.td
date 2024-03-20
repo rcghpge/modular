@@ -21,9 +21,8 @@ include "mlir/IR/OpAsmInterface.td"
 class MOSH_Op<string mnemonic, list<Trait> traits = []>
     : Op<MOSHDialect, mnemonic, traits>;
 
-def MOHS_ParamToValueOp : MOSH_Op<"param.to_value", [Pure, ConstantLike,
-    DeclareOpInterfaceMethods<ParamOpInterface, ["isImplicitlyParametric"]>,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]>,
+def MOSH_ParamToValueOp : MOSH_Op<"param.to_value", [Pure, ConstantLike,
+    DeclareOpInterfaceMethods<ParamOpInterface>]>,
     NoParamDecls {
   let summary = "create an SSA value from a parameter value";
   let description = [{
@@ -37,6 +36,9 @@ def MOHS_ParamToValueOp : MOSH_Op<"param.to_value", [Pure, ConstantLike,
     %idx   = mo.param.to_value = <D0>
     %shape = mo.param.to_value: !mosh.ape = <[10, D1, 20]>
     ```
+
+    Note that in the assembly format, we allow omitting output type annotation
+    if it's `index`, for historical reasons.
   }];
 
   let arguments = (ins TypedAttrInterface:$value);

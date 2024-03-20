@@ -53,60 +53,18 @@ static void printParamToValueOpValue(OpAsmPrinter &p, Operation *,
   p << ">";
 }
 
-/// Parameter materialization operations are not allowed to materialize
-/// capturing signature-typed values, since they can be inlined.
-template <typename OpT>
-static LogicalResult verifyParamValueOp(OpT op) {
-  // Forbid the materialization of parameter capturing closures.
-  if (auto sig = dyn_cast<SignatureType>(op.getType())) {
-    if (sig.isCapturing())
-      return op.emitOpError("cannot be used to materialize capturing closures; "
-                            "use `kgen.create_closure` instead");
-  }
-
-  if (op.getValue().getType() == op.getType())
+LogicalResult ParamToValueOp::verify() {
+  Type paramType = getValue().getType();
+  Type resultType = getType();
+  if (paramType == resultType)
     return success();
-  return op.emitOpError() << "parameter type " << op.getValue().getType()
-                          << " does not match result type " << op.getType();
-}
 
-/// Return true if the parameter value contains symbol constants, making the
-/// operation implicit parametric.
-static bool containsSymbolConstants(TypedAttr value) {
-  mlir::AttrTypeWalker walker;
-  walker.addWalk(
-      [](KGEN::SymbolConstantAttr) { return WalkResult::interrupt(); });
-  return walker.walk(value).wasInterrupted();
-}
-
-LogicalResult ParamToValueOp::verify() { return verifyParamValueOp(*this); }
-
-void ParamToValueOp::getAsmResultNames(
-    function_ref<void(Value, StringRef)> setNameFn) {
-  // If the type of the value has a registered pretty name, use that for the SSA
-  // value name.
-  if (std::optional<StringRef> name =
-          getContext()->getLoadedDialect<KGEN::KGENDialect>()->getTypeName(
-              getType().getTypeID())) {
-    setNameFn(getResult(), *name);
-    return;
-  }
-
-  // Otherwise, handle some common cases here.
-  if (isa<IndexType>(getType())) {
-    if (auto intVal = dyn_cast<IntegerAttr>(getValue()))
-      setNameFn(getResult(), ("index" + Twine(intVal.getInt())).str());
-    else
-      setNameFn(getResult(), "index");
-  }
+  return emitOpError() << "parameter type " << paramType
+                       << " does not match result type " << resultType;
 }
 
 OpFoldResult ParamToValueOp::fold(FoldAdaptor adaptor) {
   return getValueAttr();
-}
-
-bool ParamToValueOp::isImplicitlyParametric() {
-  return containsSymbolConstants(getValue());
 }
 
 void ParamToValueOp::walkDefinitions(
