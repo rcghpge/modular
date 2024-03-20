@@ -29,14 +29,9 @@ void MOSHDialect::initialize() {
 
 Operation *MOSHDialect::materializeConstant(OpBuilder &b, Attribute value,
                                             Type type, Location loc) {
-  // Materialize index constants.
-  auto indexDialect =
-      getContext()->getOrLoadDialect<mlir::index::IndexDialect>();
-  if (Operation *res = indexDialect->materializeConstant(b, value, type, loc))
-    return res;
-
   // Materialize symbolic shapes.
-  if (isa<KGEN::ParamDeclRefAttr, ShapeAttr, KGEN::ParamOperatorAttr>(value))
+  if (isa<IntegerAttr, ShapeAttr, KGEN::ParamDeclRefAttr,
+          KGEN::ParamOperatorAttr>(value))
     return b.create<ParamToValueOp>(loc, type, cast<TypedAttr>(value));
 
   return nullptr;

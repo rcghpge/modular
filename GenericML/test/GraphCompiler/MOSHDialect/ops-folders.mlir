@@ -125,10 +125,10 @@ kgen.generator @broadcast_not_fold<N, K, Sh: !mosh.ape>()
 kgen.generator @equal_fold<Sh1: !mosh.ape, D1, D2>() -> (i1, i1, i1, i1, i1) {
   // CHECK-DAG: %[[V1:.*]] = mosh.param.to_value: !mosh.ape = <[[SH1]]>
   // CHECK-DAG: %[[V2:.*]] = mosh.param.to_value: !mosh.ape = <[[[D1]], 42]>
-  // CHECK-DAG: %[[TRUE:.*]] = index.bool.constant true
+  // CHECK-DAG: %[[TRUE:.*]] = mosh.param.to_value: i1 = <1>
   // CHECK-DAG: %[[B12:.*]] = mosh.eq(%[[V1]], %[[V2]])
   // CHECK-DAG: %[[B23:.*]] = mosh.param.to_value: i1 = <and(eq([[D1]], 3), eq([[D2]], 42))>
-  // CHECK-DAG: %[[FALSE:.*]] = index.bool.constant false
+  // CHECK-DAG: %[[FALSE:.*]] = mosh.param.to_value: i1 = <0>
   // CHECK: kgen.return %[[TRUE]], %[[B12]], %[[B23]], %[[FALSE]], %[[FALSE]]
   %v1 = mosh.param.to_value: !mosh.ape = <Sh1>
   %v2 = mosh.param.to_value: !mosh.ape = <[D1, 42]>
@@ -145,16 +145,16 @@ kgen.generator @equal_fold<Sh1: !mosh.ape, D1, D2>() -> (i1, i1, i1, i1, i1) {
 
 // CHECK: kgen.generator @get_dim_fold<[[SH1:.*]]: !mosh.ape, [[D1:.*]]>()
 kgen.generator @get_dim_fold<Sh1: !mosh.ape, D1>() -> (index, index, index, index) {
-  // CHECK-DAG: %[[C0:.*]] = index.constant 0
+  // CHECK-DAG: %[[C0:.*]] = mosh.param.to_value = <0>
   // CHECK-DAG: %[[V1:.*]] = mosh.param.to_value: !mosh.ape = <[[SH1]]>
   // CHECK-DAG: %[[D10:.*]] = mosh.get_dim(%[[V1]])[%[[C0]]]
   // CHECK-DAG: %[[D20:.*]] = mosh.param.to_value = <[[D1]]>
-  // CHECK-DAG: %[[D21:.*]] = index.constant 42
-  // CHECK-DAG: %[[D22:.*]] = index.constant 23
+  // CHECK-DAG: %[[D21:.*]] = mosh.param.to_value = <42>
+  // CHECK-DAG: %[[D22:.*]] = mosh.param.to_value = <23>
   // CHECK: kgen.return %[[D10]], %[[D20]], %[[D21]], %[[D22]]
-  %idx0 = index.constant 0
-  %idx1 = index.constant 1
-  %idx-1 = index.constant -1
+  %idx0 = mosh.param.to_value = <0>
+  %idx1 = mosh.param.to_value = <1>
+  %idx-1 = mosh.param.to_value = <-1>
   %v1 = mosh.param.to_value: !mosh.ape = <Sh1>
   %v2 = mosh.param.to_value: !mosh.ape = <[D1, 42, 23]>
   %d10 = mosh.get_dim(%v1)[%idx0]
@@ -168,8 +168,8 @@ kgen.generator @get_dim_fold<Sh1: !mosh.ape, D1>() -> (index, index, index, inde
 kgen.generator @get_rank_fold<Sh1: !mosh.ape, D1>() -> (index, index, index) {
   // CHECK-DAG: %[[V1:.*]] = mosh.param.to_value: !mosh.ape = <[[SH1]]>
   // CHECK-DAG: %[[R1:.*]] = mosh.get_rank(%[[V1]])
-  // CHECK-DAG: %[[R2:.*]] = index.constant 2
-  // CHECK-DAG: %[[R3:.*]] = index.constant 0
+  // CHECK-DAG: %[[R2:.*]] = mosh.param.to_value = <2>
+  // CHECK-DAG: %[[R3:.*]] = mosh.param.to_value = <0>
   // CHECK: kgen.return %[[R1]], %[[R2]]
   %v1 = mosh.param.to_value: !mosh.ape = <Sh1>
   %v2 = mosh.param.to_value: !mosh.ape = <[D1, 42]>
@@ -185,7 +185,7 @@ kgen.generator @new_fold<D1, D2>() -> !mosh.ape {
   // CHECK: %[[S1:.*]] = mosh.param.to_value: !mosh.ape = <[[[D1]], 42, [[D2]]]>
   // CHECK: kgen.return %[[S1]]
   %d1 = mosh.param.to_value: index = <D1>
-  %d2 = index.constant 42
+  %d2 = mosh.param.to_value = <42>
   %d3 = mosh.param.to_value: index = <D2>
   %s1 = mosh.new(%d1, %d2, %d3)
   kgen.return %s1 : !mosh.ape
@@ -214,16 +214,16 @@ kgen.generator @num_elements_static_rank_fold<D0>() -> index {
 kgen.generator @slice_fold<Sh1: !mosh.ape, D1, D2>(
 // CHECK: ) -> (!mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape) {
 ) -> (!mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape) {
-  // CHECK-DAG: %[[C0:.*]] = index.constant 0
-  // CHECK-DAG: %[[CN1:.*]] = index.constant -1
-  %idx0 = index.constant 0
-  %idx1 = index.constant 1
-  %idx2 = index.constant 2
-  %idx3 = index.constant 3
-  %idx99 = index.constant 99
-  %idx-1 = index.constant -1
-  %idx-2 = index.constant -2
-  %idx-99 = index.constant -99
+  // CHECK-DAG: %[[C0:.*]] = mosh.param.to_value = <0>
+  // CHECK-DAG: %[[CN1:.*]] = mosh.param.to_value = <-1>
+  %idx0 = mosh.param.to_value = <0>
+  %idx1 = mosh.param.to_value = <1>
+  %idx2 = mosh.param.to_value = <2>
+  %idx3 = mosh.param.to_value = <3>
+  %idx99 = mosh.param.to_value = <99>
+  %idx-1 = mosh.param.to_value = <-1>
+  %idx-2 = mosh.param.to_value = <-2>
+  %idx-99 = mosh.param.to_value = <-99>
   // CHECK-DAG: %[[V1:.*]] = mosh.param.to_value: !mosh.ape = <[[SH1]]>
   // CHECK-DAG: %[[V2:.*]] = mosh.param.to_value: !mosh.ape = <[[[D1]]]>
   // CHECK-DAG: %[[V3:.*]] = mosh.param.to_value: !mosh.ape = <[[[D2]], [[D1]]]>

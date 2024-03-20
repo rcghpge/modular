@@ -14,7 +14,7 @@ mo.graph @index_to_tensor(%arg0: index) -> !mo.tensor<[], si64> {
 
 // CHECK: mo.graph @index_to_tensor_fold() -> !mo.tensor<[], si64> no_inline {
 mo.graph @index_to_tensor_fold() -> !mo.tensor<[], si64> {
-  %0 = index.constant 42
+  %0 = mosh.param.to_value = <42>
   // CHECK-NEXT: %[[RES:.*]] = mo.constant {value = #M.dense_array<42> : tensor<si64>} : !mo.tensor<[], si64>
   %1 = mo.index.to_tensor(%0) -> !mo.tensor<[], si64>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[], si64>

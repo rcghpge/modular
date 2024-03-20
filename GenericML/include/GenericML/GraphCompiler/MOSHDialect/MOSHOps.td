@@ -245,10 +245,10 @@ def MOShape_SliceOp : MOSH_Op<"slice", [Pure]> {
 
     ```mlir
     %sh0 : !mosh.ape
-    %zero = index.constant 0
-    %two = index.constant -2
-    %negOne = index.constant -2
-    %negTwo = index.constant -2
+    %zero = mosh.param.to_value = <0>
+    %two = mosh.param.to_value = <-2>
+    %negOne = mosh.param.to_value = <-2>
+    %negTwo = mosh.param.to_value = <-2>
 
     %sh1 = mosh.slice(%sh0)[%zero, %two]      // first two dims
     %sh2 = mosh.slice(%sh0)[%negTwo]          // last two dims
