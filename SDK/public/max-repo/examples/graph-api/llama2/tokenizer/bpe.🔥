@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 """A byte pair encoding tokenizer implementation for use with LLMs."""
 
-from collections import Dict, DynamicVector, Optional
+from collections import Dict, List, Optional
 from pathlib import Path
 from tensor import Tensor
 
@@ -78,7 +78,7 @@ struct BPETokenizer:
     algorithmic performance, but not fully optimized.
     """
 
-    var vocab: DynamicVector[Token]
+    var vocab: List[Token]
     var token_ids: Dict[String, Int]
 
     @staticmethod
@@ -125,7 +125,7 @@ struct BPETokenizer:
 
     fn __init__(inout self):
         """Create an empty tokenizer."""
-        self.vocab = DynamicVector[Token]()
+        self.vocab = List[Token]()
         self.token_ids = Dict[String, Int]()
 
     fn __moveinit__(inout self, owned existing: Self):
@@ -143,7 +143,7 @@ struct BPETokenizer:
         str: String,
         bos: Optional[String] = None,
         eos: Optional[String] = None,
-    ) raises -> DynamicVector[TokenWithID]:
+    ) raises -> List[TokenWithID]:
         """Encode a string according to the BPE algorithm.
 
         The BPE vocabulary is a set of scored strings. BPE starts by
@@ -159,7 +159,7 @@ struct BPETokenizer:
         they're expecting. Linked list elements only stop existing or grow
         in length, so we can always safely recognize an outdated merge.
         """
-        var output = DynamicVector[TokenWithID]()
+        var output = List[TokenWithID]()
         if bos and bos.value() in self.token_ids:
             output.append(TokenWithID(bos.value(), self.token_ids[bos.value()]))
 

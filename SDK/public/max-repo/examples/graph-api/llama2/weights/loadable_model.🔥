@@ -14,7 +14,7 @@
 
 from pathlib import Path
 from tensor import Tensor
-from collections.optional import Optional
+from collections import Optional
 
 
 @value

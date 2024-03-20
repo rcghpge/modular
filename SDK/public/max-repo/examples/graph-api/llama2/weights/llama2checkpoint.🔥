@@ -13,7 +13,7 @@
 
 from memory import memcpy
 from tensor import TensorShape
-from collections.optional import Optional
+from collections import Optional
 from pathlib import Path
 
 from .loadable_model import LlamaHParams, LoadableModel
