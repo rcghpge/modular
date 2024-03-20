@@ -93,7 +93,7 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
   auto yShape = builder.create<RMO::ShapeOfOp>(
       y.getLoc(), TensorType::get({(int64_t)yType.getRank()}, intType), y);
 
-  auto bcastShape = builder.create<MO::BroadcastShapeOp>(
+  auto bcastShape = builder.create<RMO::BroadcastShapeOp>(
       x.getLoc(), shape, xShape.getShape(), yShape.getShape());
 
   auto bcastXOp = builder.create<MO::BroadcastToOp>(
@@ -130,9 +130,9 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
   auto zShape = builder.create<RMO::ShapeOfOp>(
       z.getLoc(), TensorType::get({(int64_t)zType.getRank()}, intType), z);
 
-  auto bcastXYShape = builder.create<MO::BroadcastShapeOp>(
+  auto bcastXYShape = builder.create<RMO::BroadcastShapeOp>(
       x.getLoc(), xyShape, xShape.getShape(), yShape.getShape());
-  auto bcastShape = builder.create<MO::BroadcastShapeOp>(
+  auto bcastShape = builder.create<RMO::BroadcastShapeOp>(
       x.getLoc(), shape, bcastXYShape.getShape(), zShape.getShape());
 
   auto bcastXOp = builder.create<MO::BroadcastToOp>(
