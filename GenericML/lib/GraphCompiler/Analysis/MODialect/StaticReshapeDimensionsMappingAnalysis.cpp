@@ -76,6 +76,13 @@ StaticReshapeDimensionsMappingAnalysis::StaticReshapeDimensionsMappingAnalysis(
       int64_t beforeDim = beforeIntegerAttr.getInt();
       int64_t afterDim = afterIntegerAttr.getInt();
 
+      // 0 dims allow ambiguous mappings so it doesn't make sense to continue
+      // E.g. consider [0, 1, 2] --> [5000, 0, 500, 42, 0]
+      if (beforeDim == 0 || afterDim == 0) {
+        isSupported = false;
+        return;
+      }
+
       if (beforeEnabled)
         beforeVolume *= beforeDim;
       if (afterEnabled)
