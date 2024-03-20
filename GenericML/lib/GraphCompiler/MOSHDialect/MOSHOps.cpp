@@ -18,9 +18,6 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/STLExtras.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Index/IR/IndexAttrs.h"
-#include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -28,9 +25,6 @@
 
 using namespace M;
 using namespace MOSH;
-
-namespace Index = mlir::index;
-namespace Arith = mlir::arith;
 
 //===----------------------------------------------------------------------===//
 // ParamToValueOp support
@@ -101,9 +95,6 @@ static ErrorOr<TypedAttr> tryFoldOp(Operation *op) {
   for (auto input : op->getOperands()) {
     if (auto paramToValueOp = input.getDefiningOp<ParamToValueOp>()) {
       attrs.push_back(paramToValueOp.getValue());
-
-    } else if (auto indexConstOp = input.getDefiningOp<Index::ConstantOp>()) {
-      attrs.push_back(indexConstOp.getValueAttr());
 
     } else {
       return Error("An input isn't from ParamToValueOp");
