@@ -258,7 +258,7 @@ fn main() raises -> None:
 
     ## Loop through diffusion model
     for i in range(num_timesteps):
-        print_no_newline("\rGenerating image: ", i + 1, "/", num_timesteps)
+        print("\rGenerating image: ", i + 1, "/", num_timesteps, end="")
         var latent_prev = latent
 
         # Generate embeddings for ith timestep & reshape to 1xC

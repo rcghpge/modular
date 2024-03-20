@@ -99,7 +99,7 @@ fn run[ModelT: LoadableModel]() raises:
 
     print("Executing...")
     var max_tokens = 256
-    print_no_newline(initial_prompt)
+    print(initial_prompt, end="")
 
     var k_cache_buff = cache_init(model, max_tokens)
     var v_cache_buff = cache_init(model, max_tokens)
@@ -131,7 +131,7 @@ fn run[ModelT: LoadableModel]() raises:
         cache_update(results, "output2", v_cache_buff, v_cache_view ^, n_inputs)
 
         tokens = results.get[DType.int64]("output0")
-        print_no_newline(tokenizer.vocab[tokens[0, 0].to_int()].token)
+        print(tokenizer.vocab[tokens[0, 0].to_int()].token, end="")
 
     print()
 
