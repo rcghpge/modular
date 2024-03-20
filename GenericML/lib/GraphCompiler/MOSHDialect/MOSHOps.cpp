@@ -63,16 +63,123 @@ LogicalResult ParamToValueOp::verify() {
                        << " does not match result type " << resultType;
 }
 
-OpFoldResult ParamToValueOp::fold(FoldAdaptor adaptor) {
-  return getValueAttr();
-}
-
 void ParamToValueOp::walkDefinitions(
     function_ref<void(ParamDeclAttr, const ParamDefValue &)> walkDef) {}
 
 //===----------------------------------------------------------------------===//
 // Shape ops
 //===----------------------------------------------------------------------===//
+
+// NOTE Why do we need these folders?
+// Shape inference does symbolic simplifications like `add(X, 0) --> X`, and
+// these simplification logic are rooted in the constructors of
+// `KGEN::ParamOperatorAttr` (the attribute we use to represent symbolic
+// expressions). However KGEN has a pre-defined set of "ops" they support in
+// `KGEN::ParamOperatorAttr`, how do we define the shape ops (like concat) that
+// need simplification? The answer is `KGEN::MLIROpAttr`, which requires us to
+// define the simplification logic of the shape ops as MLIR folders.
+
+// NOTE Why do we need these canonicalizers? See comments in
+// `StaticizeShapesPass`.
+
+// Below are some abstractions to help us get the same outcome from running
+// `--canonicalize` on some MOSH ops, as if `MOSH::ParamToValueOp` is a
+// ConstantLike, without having to duplicate the folding across `fold` and
+// `canonicalize`. (Recall that folders are necessary, but we can't materialize
+// their output attribute into `MOSH::ParamToValueOp` anymore so
+// `--canonicalize` won't work without these canonicalizers).
+
+// Try to apply `op`'s folder to its input attributes (if any), and return the
+// result attribute if successful, else return an error.
+static ErrorOr<TypedAttr> tryFoldOp(Operation *op) {
+  GENERICML_ASSERT(isa<MOSHDialect>(op->getDialect())) << "expected MOSH op";
+
+  // Turn inputs into attributes, this works because we know as far as mosh ops
+  // are concerned, the inputs are either parametric shape/dimension or index
+  // constant, and we know what ops they'd come from.
+  SmallVector<Attribute> attrs;
+  for (auto input : op->getOperands()) {
+    if (auto paramToValueOp = input.getDefiningOp<ParamToValueOp>()) {
+      attrs.push_back(paramToValueOp.getValue());
+
+    } else if (auto indexConstOp = input.getDefiningOp<Index::ConstantOp>()) {
+      attrs.push_back(indexConstOp.getValueAttr());
+
+    } else {
+      return Error("An input isn't from ParamToValueOp");
+    }
+  }
+
+  // Run this op's folder.
+  SmallVector<OpFoldResult> foldResults;
+  if (failed(op->fold(attrs, foldResults)))
+    return Error("Failed to fold the op");
+
+  // Collect the singular `TypedAttr` result from folder, or fail.
+  if (foldResults.size() != 1)
+    return Error("Multiple results from fold");
+
+  if (auto foldResultAttr = dyn_cast<Attribute>(foldResults.front()))
+    if (auto foldResultTypedAttr = dyn_cast<TypedAttr>(foldResultAttr))
+      return foldResultTypedAttr;
+
+  return Error("Fold result isn't a typed attribute");
+}
+
+// Canonicalize `op` based on its folder; that is, apply `tryFoldOp` to `op` and
+// convert the result to a `ParamToValueOp` if possible.
+static LogicalResult genericCanonicalize(Operation *op,
+                                         PatternRewriter &rewriter) {
+  GENERICML_ASSERT(isa<MOSHDialect>(op->getDialect())) << "expected MOSH op";
+  Location loc = op->getLoc();
+
+  // Apply op's folder
+  ErrorOr<TypedAttr> resultAttrOr = tryFoldOp(op);
+  if (resultAttrOr.isError())
+    return rewriter.notifyMatchFailure(loc, resultAttrOr.getError());
+
+  TypedAttr resultAttr = resultAttrOr.get();
+  // For the folder's result, we support converting these types of attributes
+  // into a `ParamToValueOp`.
+  if (isa<KGEN::ParamDeclRefAttr, KGEN::ParamOperatorAttr, IntegerAttr,
+          ShapeAttr>(resultAttr)) {
+    rewriter.replaceOpWithNewOp<ParamToValueOp>(op, resultAttr);
+    return success();
+  }
+
+  return rewriter.notifyMatchFailure(
+      loc, "fold result attribute type isn't supported");
+}
+
+LogicalResult BroadcastOp::canonicalize(BroadcastOp op,
+                                        PatternRewriter &rewriter) {
+  return genericCanonicalize(op, rewriter);
+}
+
+LogicalResult EqualOp::canonicalize(EqualOp op, PatternRewriter &rewriter) {
+  return genericCanonicalize(op, rewriter);
+}
+
+LogicalResult GetDimOp::canonicalize(GetDimOp op, PatternRewriter &rewriter) {
+  return genericCanonicalize(op, rewriter);
+}
+
+LogicalResult GetRankOp::canonicalize(GetRankOp op, PatternRewriter &rewriter) {
+  return genericCanonicalize(op, rewriter);
+}
+
+LogicalResult NewOp::canonicalize(NewOp op, PatternRewriter &rewriter) {
+  return genericCanonicalize(op, rewriter);
+}
+
+LogicalResult NumElementsOp::canonicalize(NumElementsOp op,
+                                          PatternRewriter &rewriter) {
+  return genericCanonicalize(op, rewriter);
+}
+
+LogicalResult SliceOp::canonicalize(SliceOp op, PatternRewriter &rewriter) {
+  return genericCanonicalize(op, rewriter);
+}
 
 OpFoldResult BroadcastOp::fold(FoldAdaptor adaptor) {
   auto xShape = dyn_cast_or_null<ShapeAttr>(adaptor.getInputX());
@@ -109,6 +216,9 @@ OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
 }
 
 LogicalResult ConcatOp::canonicalize(ConcatOp op, PatternRewriter &rewriter) {
+  if (genericCanonicalize(op, rewriter).succeeded())
+    return success();
+
   auto inputs = op.getInputs();
   if (inputs.size() == 1) {
     rewriter.replaceAllUsesWith(op, inputs[0]);

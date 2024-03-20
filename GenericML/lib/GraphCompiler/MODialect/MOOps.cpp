@@ -279,7 +279,6 @@ LogicalResult TransferOp::canonicalize(TransferOp outerOp,
 //===----------------------------------------------------------------------===//
 // MO_IndexToTensorOp support
 //===----------------------------------------------------------------------===//
-
 OpFoldResult IndexToTensorOp::fold(FoldAdaptor adaptor) {
   auto inputAttr = dyn_cast_or_null<IntegerAttr>(adaptor.getInput());
   if (!inputAttr)
@@ -288,6 +287,24 @@ OpFoldResult IndexToTensorOp::fold(FoldAdaptor adaptor) {
   SmallVector<APInt> res{inputAttr.getValue()};
   auto rankedResTy = RankedTensorType::get({}, getType().getElementType());
   return IntArrayElementsAttr::get(rankedResTy, res);
+}
+
+LogicalResult IndexToTensorOp::canonicalize(IndexToTensorOp op,
+                                            PatternRewriter &rewriter) {
+  auto paramToValueOp = op.getInput().getDefiningOp<MOSH::ParamToValueOp>();
+  if (!paramToValueOp)
+    return failure();
+
+  auto inputIntAttr = dyn_cast<IntegerAttr>(paramToValueOp.getValue());
+  if (!inputIntAttr)
+    return failure();
+
+  SmallVector<APInt> res{inputIntAttr.getValue()};
+  auto rankedResTy = RankedTensorType::get({}, op.getType().getElementType());
+  auto elementsAttr =
+      cast<ElementsAttr>(IntArrayElementsAttr::get(rankedResTy, res));
+  rewriter.replaceOpWithNewOp<ConstantOp>(op, op.getType(), elementsAttr);
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2930,32 +2947,40 @@ LogicalResult LinAlg::SolveOp::verify() {
                                         getRhs());
 }
 
-OpFoldResult Shape::ToTensorOp::fold(FoldAdaptor adaptor) {
-  if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
-    TensorType resTy = getType();
-    if (!resTy.hasStaticShape()) {
-      OpBuilder builder(getOperation());
-      builder.setInsertionPointAfter(getOperation());
-      TensorType newTy = resTy.cloneWith(ShapeAttr::get(
-          {(int64_t)input.getRank()}, builder.getType<ShapeType>()));
-      Location loc = getLoc();
-      auto newOp = builder.create<Shape::ToTensorOp>(loc, newTy, getInput());
-      auto rebindOp = builder.create<RebindOp>(loc, resTy, newOp);
-      getResult().replaceAllUsesExcept(rebindOp, rebindOp.getOperation());
-      return rebindOp.getResult();
-    }
+LogicalResult Shape::ToTensorOp::canonicalize(Shape::ToTensorOp op,
+                                              PatternRewriter &rewriter) {
+  auto paramToValueOp = op.getInput().getDefiningOp<MOSH::ParamToValueOp>();
+  if (!paramToValueOp)
+    return failure();
 
-    if (input.isConstant()) {
-      auto outTy =
-          RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
-      SmallVector<APInt> res =
-          llvm::map_to_vector(input.getIntDims(), [](int64_t dim) {
-            return APInt(64, dim, /*isSigned=*/true);
-          });
-      return IntArrayElementsAttr::get(outTy, res);
-    }
+  auto inputShapeAttr = dyn_cast<MOSH::ShapeAttr>(paramToValueOp.getValue());
+  if (!inputShapeAttr)
+    return failure();
+
+  TensorType resTy = op.getType();
+  if (!resTy.hasStaticShape()) {
+    TensorType newTy = resTy.cloneWith(ShapeAttr::get(
+        {(int64_t)inputShapeAttr.getRank()}, rewriter.getType<ShapeType>()));
+    Location loc = op.getLoc();
+    auto newOp = rewriter.create<Shape::ToTensorOp>(loc, newTy, paramToValueOp);
+    rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, newOp);
+    return success();
   }
-  return {};
+
+  if (inputShapeAttr.isConstant()) {
+    auto outTy =
+        RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
+    SmallVector<APInt> res =
+        llvm::map_to_vector(inputShapeAttr.getIntDims(), [](int64_t dim) {
+          return APInt(64, dim, /*isSigned=*/true);
+        });
+    auto elementsAttr =
+        cast<ElementsAttr>(IntArrayElementsAttr::get(outTy, res));
+    rewriter.replaceOpWithNewOp<ConstantOp>(op, op.getType(), elementsAttr);
+    return success();
+  }
+
+  return failure();
 }
 
 //===----------------------------------------------------------------------===//

@@ -59,6 +59,7 @@ def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [Pure]> {
   let results = (outs MO_RankedScalarIndexTensor:$result);
 
   let assemblyFormat = "`(` $input `)` attr-dict `->` qualified(type($result))";
+  let hasCanonicalizeMethod = 1;
   let hasFolder = 1;
 }
 
@@ -2314,7 +2315,7 @@ def MOShape_ToTensorOp : MOShape_Op<"to_tensor", [Pure]> {
   let results = (outs MO_ShapeLike:$result);
 
   let assemblyFormat = "`(` $input `)` attr-dict `->` qualified(type($result))";
-  let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 class MOStatic_TensorOp<string mnemonic, list<Trait> traits = []>

@@ -891,9 +891,9 @@ mo.graph @slice_out_a_third_of_constant_axis(
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @slice_out_a_third_of_constant_axis<[[D7:.*]]>([[VARG0:%.*]]: !mo.tensor<[50, [[D7]], 2304], f32>) -> !mo.tensor<[50, [[D7]], 768], f32> no_inline {
-// CHECK-NEXT:   [[V0:%.*]] = mosh.param.to_value: !mosh.ape = <[50, [[D7]], 1536]>
-// CHECK-NEXT:   [[V1:%.*]] = mo.constant {value = #M.dense_array<0, 0, 768> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-// CHECK-NEXT:   [[V2:%.*]] = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+// CHECK-DAG:    [[V0:%.*]] = mosh.param.to_value: !mosh.ape = <[50, [[D7]], 1536]>
+// CHECK-DAG:    [[V1:%.*]] = mo.constant {value = #M.dense_array<0, 0, 768> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+// CHECK-DAG:    [[V2:%.*]] = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
 // CHECK-NEXT:   [[V3:%.*]] = mo.shape.to_tensor([[V0]]) -> !mo.tensor<[3], si64>
 // CHECK-NEXT:   [[V4:%.*]] = mo.slice([[VARG0]], [[V1]], [[V3]], [[V2]]) : (!mo.tensor<[50, [[D7]], 2304], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[50, [[D7]], 768], f32>
 // CHECK-NEXT:   mo.output [[V4]] : !mo.tensor<[50, [[D7]], 768], f32>

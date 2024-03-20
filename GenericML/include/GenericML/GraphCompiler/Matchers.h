@@ -21,6 +21,7 @@
 #define GENERICML_GRAPHCOMPILER_MATCHERS_H
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/Support/Assert.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -731,12 +732,12 @@ namespace MO {
 /// Otherwise returns a null attribute.
 template <typename ToTensorOpTy>
 static TypedAttr getParamAttrThrough(TensorValue inputVal) {
-  if (auto toTensorOp = inputVal.template getDefiningOp<ToTensorOpTy>()) {
-    TypedAttr value;
-    if (graph_compiler::matchers::matchPattern(
-            toTensorOp.getInput(),
-            graph_compiler::matchers::m_Constant(&value)))
-      return value;
+  if (auto toTensorOp = inputVal.getDefiningOp<ToTensorOpTy>()) {
+    if (auto paramToValueOp =
+            toTensorOp.getInput()
+                .template getDefiningOp<MOSH::ParamToValueOp>()) {
+      return paramToValueOp.getValue();
+    }
   }
   return {};
 }

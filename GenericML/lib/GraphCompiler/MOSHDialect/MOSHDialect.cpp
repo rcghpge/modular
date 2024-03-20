@@ -27,16 +27,6 @@ void MOSHDialect::initialize() {
   registerOperations();
 }
 
-Operation *MOSHDialect::materializeConstant(OpBuilder &b, Attribute value,
-                                            Type type, Location loc) {
-  // Materialize symbolic shapes.
-  if (isa<IntegerAttr, ShapeAttr, KGEN::ParamDeclRefAttr,
-          KGEN::ParamOperatorAttr>(value))
-    return b.create<ParamToValueOp>(loc, type, cast<TypedAttr>(value));
-
-  return nullptr;
-}
-
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//

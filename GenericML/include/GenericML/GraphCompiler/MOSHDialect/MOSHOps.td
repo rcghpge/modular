@@ -21,7 +21,7 @@ include "mlir/IR/OpAsmInterface.td"
 class MOSH_Op<string mnemonic, list<Trait> traits = []>
     : Op<MOSHDialect, mnemonic, traits>;
 
-def MOSH_ParamToValueOp : MOSH_Op<"param.to_value", [Pure, ConstantLike,
+def MOSH_ParamToValueOp : MOSH_Op<"param.to_value", [Pure,
     DeclareOpInterfaceMethods<ParamOpInterface>]>,
     NoParamDecls {
   let summary = "create an SSA value from a parameter value";
@@ -52,7 +52,6 @@ def MOSH_ParamToValueOp : MOSH_Op<"param.to_value", [Pure, ConstantLike,
               [{ build($_builder, $_state, value.getType(), value); }]>
   ];
 
-  let hasFolder = 1;
   let hasVerifier = 1;
 }
 
@@ -79,6 +78,7 @@ def MOShape_BroadcastOp : MOSH_Op<"broadcast", [Commutative, Pure]> {
 
   let assemblyFormat = "`(` operands `)` attr-dict";
   let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def MOShape_ConcatOp : MOSH_Op<"concat", [Pure]> {
@@ -132,6 +132,7 @@ def MOSH_EqualOp : MOSH_Op<"eq", [Pure, Commutative]> {
 
   let assemblyFormat = "`(` $input1 `,` $input2 `)` attr-dict";
   let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
 
   let extraClassDeclaration = [{
     /// Return as parameter expression (the two shapes must have equal ranks).
@@ -163,6 +164,7 @@ def MOShape_GetDimOp : MOSH_Op<"get_dim", [Pure]> {
 
   let assemblyFormat = "`(` $input `)` `` `[` $dim `]` attr-dict";
   let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
 
   let extraClassDeclaration = [{
     /// Create a static call to apply(mosh.get_dim, inputShape, axis)
@@ -188,6 +190,7 @@ def MOSH_GetRankOp : MOSH_Op<"get_rank", [Pure]> {
 
   let assemblyFormat = "`(` $input `)` attr-dict";
   let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def MOSH_NewOp : MOSH_Op<"new", [Pure]> {
@@ -212,6 +215,7 @@ def MOSH_NewOp : MOSH_Op<"new", [Pure]> {
 
   let assemblyFormat = "`(` $dims `)` attr-dict";
   let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def MOSH_NumElementsOp : MOSH_Op<"num_elements", [Pure]> {
@@ -232,6 +236,7 @@ def MOSH_NumElementsOp : MOSH_Op<"num_elements", [Pure]> {
 
   let assemblyFormat = "`(` $input `)` attr-dict";
   let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def MOShape_SliceOp : MOSH_Op<"slice", [Pure]> {
@@ -267,6 +272,7 @@ def MOShape_SliceOp : MOSH_Op<"slice", [Pure]> {
   let assemblyFormat = "`(` $input `)` `` `[` $start `,` $end `]` attr-dict";
 
   let hasFolder = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 //===----------------------------------------------------------------------===//

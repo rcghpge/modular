@@ -33,7 +33,6 @@ def MOSHDialect : Dialect {
     "mlir::arith::ArithDialect",
   ];
   let useDefaultAttributePrinterParser = 1;
-  let hasConstantMaterializer = 1;
 
   let extraClassDeclaration = [{
   private:
