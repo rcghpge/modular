@@ -220,18 +220,6 @@ mgp.model @invalidExecuteArgType : bogus init {
   mef.output %ch, %x : !mef.chain, index
 }
 
-//
-// mgp.to_grt_bool.deprecated
-//
-
-// -----
-
-func.func @to_grt_bool.deprecated(%ch0 : !mef.chain, %buf : !mgp.cpu.buffer<2>) {
-  // expected-error@+1 {{'mgp.to_grt_bool.deprecated' op operand #1 must be scalar buffer, but got '!mgp.cpu.buffer<2>'}}
-  %0 = mgp.to_grt_bool.deprecated(%ch0, %buf) : (!mef.chain, !mgp.cpu.buffer<2>) -> i1
-  mef.output %0 : i1
-}
-
 // -----
 
 //

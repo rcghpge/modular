@@ -677,109 +677,6 @@ def CpuTensorSpecDTypeOp : MGP_Op<"cpu.tensor_spec.dtype"> {
 }
 
 //===----------------------------------------------------------------------===//
-// CpuTensorExtractOp
-//===----------------------------------------------------------------------===//
-
-// TODO(#32165): DEPRECATED
-def CpuTensorExtractOp : MGP_Op<"cpu.tensor.extract.deprecated", [
-    Pure,
-    DeclareOpInterfaceMethods<MGP_TensorExtractOpInterface>,
-    DeclareOpInterfaceMethods<GRTMayAliasInterface>, // since operand's buffer may be moved into result
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Extracts the tensor spec and buffer of a CPU tensor.";
-  let description = [{
-    Returns the tensor spec and buffer components of a CPU tensor. The
-    resulting buffer will have a statically known size if and only if the
-    tensor spec is fully static.
-
-    Example:
-    ```mlir
-    %tensor : !mgp.cpu.tensor<8x64xf32>
-    %buf, %spec = mgp.cpu.tensor.extract.deprecated %tensor : !mgp.cpu.tensor<8x64xf32>
-    %buf : !mgp.cpu.buffer<2048>
-    %spec : !mgp.tensor_spec<8x64xf32>
-
-    %tensor : !mgp.cpu.tensor<?x64xf32>
-    %buf, %spec = mgp.cpu.tensor.extract.deprecated %tensor : !mgp.cpu.tensor<?x64xf32>
-    %buf : !mgp.cpu.buffer<>
-    %spec : !mgp.tensor_spec<?x64xf32>
-    ```
-
-    Tensors are immutable, but buffers are mutable. This means the
-    returned buffer will be a copy of the tensor buffer if the tensor
-    operand could still be observed, ie if if there are multiple outstanding
-    consumers of the tensor's SSA value:
-    ```mlir
-    %ten1 = mgp.cpu.tensor.create.deprecated ...
-    %buf1, %spec1 = mgp.cpu.tensor.extract.deprecated %ten1 // copy
-    ... other users of %ten1 ...
-
-    %ten2 = mgp.cpu.tensor.create.deprecated ...
-    %buf2, %spec2 = mgp.cpu.tensor.extract.deprecated %ten2 // move
-    ... no other users of %ten2 ...
-    ```
-
-    If the tensor's buffer was the result of a `mgp.cpu.buffer.realloc`
-    then it will be 'borrowing' rather than 'owning'. However the
-    same rules apply:
-    ```mlir
-    %buf3 = mgp.cpu.buffer.realloc ...
-    %ten3 = mgp.cpu.tensor.create.deprecated %buf3
-    %buf4, %spec4 = mgp.cpu.tensor.extract.deprecated %ten3  // copy (as 'owning')
-    ... other users of %ten3 ...
-
-    %buf5 = mgp.cpu.buffer.realloc ...  // (*)
-    %ten5 = mgp.cpu.tensor.create.deprecated %buf5
-    %buf6, %spec6 = mgp.cpu.tensor.extract.deprecated %ten5  // move (as 'borrowing')
-    ... no other users of %ten5 ...
-    ```
-    Note that any mutation of %buf6 will be applied to the cached
-    buffer in the context, as established by (*). However, this is
-    acceptable due to the rules of `mgp.cpu.buffer.realloc`.
-  }];
-
-  let arguments = (ins MGP_CpuTensorType: $tensor);
-  let results = (outs MGP_CpuBufferType: $bufferResult,
-                      MGP_TensorSpecType: $tensorSpecResult);
-  let assemblyFormat = "$tensor attr-dict `:` qualified(type($tensor))";
-
-  let extraClassDefinition = [{
-    bool CpuTensorExtractOp::mayAlias(size_t operandIndex, size_t resultIndex) {
-      return resultIndex == 0;
-    }
-  }];
-
-  let hasVerifier = 1;
-}
-
-//===----------------------------------------------------------------------===//
-// CpuTensorExtractShapeOp
-//===----------------------------------------------------------------------===//
-
-// TODO(#32165): DEPRECATED
-def CpuTensorExtractShapeOp : MGP_Op<"cpu.tensor.extract.deprecated.shape", [
-    Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Extracts the tensor shape of a CPU tensor.";
-  let description = [{
-    Returns the tensor shape of a CPU tensor. The shape is represented as
-    an `!mgp.cpu.tensor_spec` with unknown dtype, such as
-    `!mgp.tensor_spec<3x?xunk>` or `!mgp.tensor_spec<*xunk>`.
-
-    Example:
-    ```mlir
-    %tensor : !mgp.cpu.tensor<8x64xf32>
-    %shape = mgp.cpu.tensor.extract.deprecated.shape %tensor : !mgp.cpu.tensor<8x64xf32>
-    %shape : !mgp.tensor_spec<8x64xunk>
-    ```
-  }];
-
-  let arguments = (ins MGP_CpuTensorType: $tensor);
-  let results = (outs MGP_TensorSpecType: $result);
-  let assemblyFormat = "$tensor attr-dict `:` qualified(type($tensor))";
-}
-
-//===----------------------------------------------------------------------===//
 // DebugBoolPrintOp
 //===----------------------------------------------------------------------===//
 
@@ -842,27 +739,6 @@ class HasBufferSizePred<list<int> sizes> :
 def MGP_ScalarBuffer : ConfinedType<MGP_CpuBufferType, [HasBufferSizePred<[1]>],
     "scalar buffer"> {
   let cppClassName = "::M::MGP::CpuBufferType";
-}
-
-// TODO(#32165): DEPRECATED
-def ToGRTBoolOp : MGP_Op<"to_grt_bool.deprecated"> {
-  let summary = "Convert a single byte Buffer into a builtin i1.";
-  let description = [{
-    Convert a single byte Buffer into a builtin i1.
-
-    Example:
-    ```mlir
-    %0 = mgp.to_grt_bool.deprecated(%ch0, %buf) : (!mef.chain, !mgp.cpu.buffer<1>) -> i1
-    ```
-  }];
-
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ScalarBuffer:$arg);
-  let results = (outs I1:$result);
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
-  }];
 }
 
 //===----------------------------------------------------------------------===//

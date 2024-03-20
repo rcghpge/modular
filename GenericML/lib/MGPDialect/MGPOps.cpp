@@ -1011,45 +1011,6 @@ LogicalResult CpuTensorSpecDimsDynamicOp::inferReturnTypes(
   return success();
 }
 
-//===----------------------------------------------------------------------===//
-// CpuTensorExtractOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult CpuTensorExtractOp::verify() {
-  return MGP::genericTensorExtractVerify<CpuBufferType, CpuTensorType>(
-      *this, getTensor().getType(), getBufferResult().getType(),
-      getTensorSpecResult().getType());
-}
-
-LogicalResult CpuTensorExtractOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  GENERICML_ASSERT(operands.size() == 1) << "mismatched operand arity";
-  auto tensorType = dyn_cast<CpuTensorType>(operands[0].getType());
-  GENERICML_ASSERT(tensorType) << "mismatched operand type";
-  inferredReturnTypes.emplace_back(CpuBufferType::get(tensorType));
-  inferredReturnTypes.emplace_back(tensorType.getTensorSpec());
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// CpuTensorExtractShapeOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult CpuTensorExtractShapeOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  GENERICML_ASSERT(operands.size() == 1) << "mismatched operand arity";
-  auto tensorType = dyn_cast<CpuTensorType>(operands[0].getType());
-  GENERICML_ASSERT(tensorType) << "mismatched operand type";
-  // Result type is tensor operand's tensor spec type but with unknown dtype.
-  inferredReturnTypes.emplace_back(TensorSpecType::get(
-      context, tensorType.getTensorSpec().getOptDims(), std::nullopt));
-  return success();
-}
-
 /// Return whether `ty1` is a subtype of `ty2`, i.e., the set of possible
 /// tensors represented by `ty1` is a subset for that of `ty2`.
 static bool isSubtype(TensorSpecType ty1, TensorSpecType ty2) {
