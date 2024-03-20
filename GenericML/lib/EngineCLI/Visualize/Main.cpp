@@ -113,6 +113,7 @@ static ErrorOr<RuntimeContextPtr> makeRuntimeContext(M_Status *status) {
 static ErrorOr<CompiledModelPtr>
 compileModel(const ClOptions &opts,
              const InputGenerationSchema &inputGenerationSchema,
+             const std::string &outputFilepath,
              M_RuntimeContext *runtimeContext, M_Status *status) {
   CompileConfigPtr compileConfig(M_newCompileConfig(), M_freeCompileConfig);
   if (!compileConfig)
@@ -122,7 +123,7 @@ compileModel(const ClOptions &opts,
     return Error(Twine("Failed to set input specs for PyTorch: ") +
                  result.getError());
 
-  M_enableVisualization(compileConfig.get(), opts.visualizationPath.c_str());
+  M_enableVisualization(compileConfig.get(), outputFilepath.c_str());
 
   if (!opts.customOpsPath.empty()) {
     M_useKernelsFrom(compileConfig.get(), opts.customOpsPath.c_str(), status);
@@ -175,20 +176,20 @@ int M::maxVisualizeMain(int argc, char **argv) {
   auto telemetryCtx = M_unwrapTelemetryContext(runtimeContext.get());
   auto logger = telemetryCtx->getLogger(kTelemetryLoggerName);
 
-  auto modelOr = compileModel(opts, inputGenerationSchema, runtimeContext.get(),
-                              status.get());
+  ErrorOr<std::string> outputOr =
+      createFilepath(opts.visualizationPath, opts.modelPath);
+  if (outputOr.isError()) {
+    llvm::errs() << "Unable to determine output visualization file path\n";
+    return EXIT_FAILURE;
+  }
+
+  auto modelOr = compileModel(opts, inputGenerationSchema, outputOr.get(),
+                              runtimeContext.get(), status.get());
   if (modelOr.isError()) {
     llvm::errs() << "Error compiling model: " << modelOr.getError() << "\n";
     logger->emitL1Event(kTelemetryErrorEventName,
                         {{"error", M_getError(status.get())}});
     return EXIT_FAILURE;
-  }
-
-  // TODO: Fix this filename.
-  ErrorOr<std::string> outputOr = createFilepath(opts.visualizationPath);
-  if (outputOr.isError()) {
-    llvm::errs()
-        << "Unable to determine generated output visualization file path\n";
   }
 
   llvm::outs() << "\nModular maxviz file saved to: " << outputOr.get() << "\n";
