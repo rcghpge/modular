@@ -34,7 +34,7 @@ bool isModelIRCacheEnabled();
 ErrorOr<BufferRef>
 cacheMEFTransform(StringRef frameworkName,
                   llvm::function_ref<ErrorOr<BufferRef>()> loweringFunction,
-                  WriteableBufferRef key, LLCL::Runtime &runtime);
+                  WriteableBufferRef key);
 
 /// A convenience function to create cache key given a file buffer and a set of
 /// options. It is assumed that all options contain a method `print`  that takes

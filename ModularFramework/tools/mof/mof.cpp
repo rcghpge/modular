@@ -347,8 +347,8 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
   WriteableBufferRef keyBuffer =
       makeCacheKey(file.copy(), mofLoweringOptions, moToMgpOptions);
 
-  auto bufOr = M::cacheMEFTransform("mof", loweringTransform,
-                                    std::move(keyBuffer), *compileCtx.runtime);
+  auto bufOr =
+      M::cacheMEFTransform("mof", loweringTransform, std::move(keyBuffer));
   if (bufOr.isError())
     return bufOr.takeError();
   M::BufferRef outputBuffer = bufOr.takeValue();

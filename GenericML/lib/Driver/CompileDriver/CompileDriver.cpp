@@ -85,8 +85,7 @@ std::optional<std::filesystem::path> M::getWeightsCacheDir() {
 ErrorOr<BufferRef>
 M::cacheMEFTransform(StringRef frameworkName,
                      llvm::function_ref<ErrorOr<BufferRef>()> loweringFunction,
-                     WriteableBufferRef key, LLCL::Runtime &runtime) {
-
+                     WriteableBufferRef key) {
   // We will ignore the errors and disable caching if config is not accessible.
   if (!isModelIRCacheEnabled())
     return loweringFunction();
@@ -104,57 +103,27 @@ M::cacheMEFTransform(StringRef frameworkName,
       (baseCacheDir / frameworkName.str() / "mef").string(),
       std::string(M::getModularVersionString()));
 
+  // We couldn't create a cache. Don't cache.
   if (mefBackendOr.isError())
-    return mefBackendOr.takeError();
+    return loweringFunction();
 
-  auto mefCache = RCRef<Cache::BlobCache<Cache::TransformCacheKey>>::create(
-      mefBackendOr.takeValue());
+  using MEFCache = RCRef<Cache::BlobCache<Cache::TransformCacheKey>>;
+  auto mefCache = MEFCache::create(mefBackendOr.takeValue());
 
-  // Function to run when there is a cache miss. This should be same as our
-  // function where we skip caching with async wrappers.
-  auto loweringTransForm = [&](LLCL::AnyAsyncValueRef inputChain) {
-    auto outputBuffer =
-        LLCL::AsyncValueRef<BufferRef>::allocate(inputChain.getRuntime());
+  // Check if cache contains compiled model.
+  auto foundOr = mefCache->findSync(key.copy());
+  if (!foundOr.isError() && foundOr->has_value())
+    return std::move(**foundOr);
 
-    auto waiter = [&, output = outputBuffer.copy()]() mutable {
-      auto setError = [errorChain = output.copy()](Error err) mutable {
-        return std::move(errorChain)
-            .setToError({std::move(err),
-                         LLCL::UnknownLocationDecoder::getEncodedLocation()});
-      };
+  // Compile model and insert into cache.
+  auto mefOr = loweringFunction();
+  if (mefOr.isError())
+    return mefOr.takeError();
 
-      auto bufferOr = loweringFunction();
+  BufferRef mefBuffer = mefOr.takeValue();
 
-      if (bufferOr.isError())
-        return setError(bufferOr.takeError());
+  // Try inserting to cache. If fail to cache, ignore.
+  (void)mefCache->insertSync(std::move(key), mefBuffer.copy());
 
-      // This will be returned to us.
-      return std::move(output).emplace(bufferOr.takeValue());
-    };
-    inputChain.andThenSync(std::move(waiter));
-    return outputBuffer;
-  };
-
-  // Function to run when the model is in cache. We only need to take it out of
-  // cache.
-  auto cacheHitFn = [](BufferRef out) { return out.copy(); };
-
-  auto inputChain =
-      LLCL::AnyAsyncValueRef::createReady<Chain>(runtime.getCompactPtr());
-
-  // Run the function and try to cache the resulting buffer. We are choosing not
-  // to fail in the event of a cache insert failure.
-  auto outputChain = cachedTransform(
-      LLCL::UnknownLocationDecoder::getEncodedLocation(), mefCache.copy(),
-      inputChain.copy(), key.copy(), std::move(loweringTransForm), cacheHitFn,
-      /*errorOnCacheInsertFailure=*/false);
-  LLCL::await(outputChain);
-  if (outputChain.isError())
-    return outputChain.getDiagnostic().getMessage().copy();
-
-  // Now that we know it ran successfully we can safely assume the output is a
-  // BufferRef.
-  BufferRef &outputBuffer = outputChain.get<BufferRef>();
-
-  return std::move(outputBuffer);
+  return mefBuffer;
 }
