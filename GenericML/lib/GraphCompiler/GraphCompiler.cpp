@@ -333,13 +333,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MGP::createFixupOverhangsPass());
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addPass(mlir::createCSEPass());
-  if (opts.lowerToCompiledRegions) {
-    pm.addPass(MGP::createLowerPrimitives());
-    pm.addPass(MGP::createLowerMOGGABI());
-    pm.addPass(MOGG::createJitCompileKernels(jitOpts));
-    pm.addPass(MGP::createLowerMOGGRegionCompiles());
-    pm.addPass(mlir::createCSEPass());
-  }
 }
 
 void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,

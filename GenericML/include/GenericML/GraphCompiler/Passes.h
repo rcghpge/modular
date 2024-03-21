@@ -127,10 +127,6 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc("If true, statically plan as many buffer allocations as "
                      "possible."),
       llvm::cl::init(false)};
-  Option<bool> lowerToCompiledRegions{
-      *this, "lower-to-compiled-regions",
-      llvm::cl::desc("If true, will lower MGP Ops down to compiled region."),
-      llvm::cl::init(true)};
   Option<bool> genVizSpec{
       *this, "gen-viz-spec",
       llvm::cl::desc(
