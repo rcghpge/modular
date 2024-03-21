@@ -180,4 +180,74 @@ mgp.model @mip_mul : mof init {
   mef.output %ch1 : !mef.chain
 }
 
+// CHECK-LABEL: mgp.model @mip_and
+// CHECK: mogg.call "mip.bool.and"
+mgp.model @mip_and : mof init {
+    %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 2
+  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
+  %ch2 = mgp.runtime.create %ch1, %ctx[1, 0]
+  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+} execute (%arg0: !mef.chain, %arg1: !mgp.context) -> (!mef.chain, i1) {
+  %ch0 = grt.chain.create ()
+  %zero = mip.constant.index 0
+  %one = mip.constant.index 1
+  %lhs = mip.constant.bool true
+  %rhs = mip.constant.bool true
+  %res1 = mip.bool.and %lhs, %rhs
+  mef.output %ch0, %res1: !mef.chain, i1
+}
 
+// CHECK-LABEL: mgp.model @mip_or
+// CHECK: mogg.call "mip.bool.or"
+mgp.model @mip_or : mof init {
+    %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 2
+  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
+  %ch2 = mgp.runtime.create %ch1, %ctx[1, 0]
+  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+} execute (%arg0: !mef.chain, %arg1: !mgp.context) -> (!mef.chain, i1) {
+  %ch0 = grt.chain.create ()
+  %zero = mip.constant.index 0
+  %one = mip.constant.index 1
+  %lhs = mip.constant.bool true
+  %rhs = mip.constant.bool false
+  %res1 = mip.bool.or %lhs, %rhs
+  mef.output %ch0, %res1: !mef.chain, i1
+}
+
+// CHECK-LABEL: mgp.model @mip_xor
+// CHECK: mogg.call "mip.bool.xor"
+mgp.model @mip_xor : mof init {
+    %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 2
+  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
+  %ch2 = mgp.runtime.create %ch1, %ctx[1, 0]
+  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+} execute (%arg0: !mef.chain, %arg1: !mgp.context) -> (!mef.chain, i1) {
+  %ch0 = grt.chain.create ()
+  %zero = mip.constant.index 0
+  %one = mip.constant.index 1
+  %lhs = mip.constant.bool true
+  %rhs = mip.constant.bool false
+  %res1 = mip.bool.xor %lhs, %rhs
+  mef.output %ch0, %res1: !mef.chain, i1
+}
+
+// CHECK-LABEL: mgp.model @mip_select
+// CHECK: mogg.call "mip.select"
+mgp.model @mip_select : mof init {
+    %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 2
+  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
+  %ch2 = mgp.runtime.create %ch1, %ctx[1, 0]
+  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+} execute (%arg0: !mef.chain, %arg1: !mgp.context) -> (!mef.chain) {
+  %ch0 = grt.chain.create ()
+  %zero = mip.constant.index 0
+  %one = mip.constant.index 1
+  %cond = mip.constant.bool true
+  %res1 = mip.select %cond, %one, %zero : (i1, index, index) -> index
+  %ch1 = mip.print.index %res1, %ch0
+  mef.output %ch1: !mef.chain
+}
