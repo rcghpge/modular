@@ -48,10 +48,31 @@ cc_library(
 )
 
 td_library(
+    name = "MODialectTdFiles",
+    srcs = glob(["include/GenericML/GraphCompiler/MODialect/*.td"]),
+    includes = ["include"],
+    deps = [
+        "//KGEN:KGENDialectTdFiles",
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+td_library(
+    name = "MOGGDialectTdFiles",
+    srcs = glob(["include/GenericML/GraphCompiler/MOGGDialect/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+td_library(
     name = "MGPDialectTdFiles",
     srcs = glob(["include/GenericML/MGPDialect/*.td"]),
     includes = ["include"],
     deps = [
+        ":MODialectTdFiles",
+        ":MOGGDialectTdFiles",
         "@llvm-project//mlir:BuiltinDialectTdFiles",
     ],
 )
@@ -114,6 +135,7 @@ cc_library(
     deps = [
         "//GraphRT:Primitives",
         "//KGEN:Compiler",
+        "//KGEN:CompilerRTHeaders",
         "//Support:Base",
         "//Support:ML",
         "@llvm-project//llvm:Support",
