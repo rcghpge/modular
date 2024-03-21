@@ -113,6 +113,25 @@ class RMO_MOAnaloguePureElementWiseOp<string name, list<Trait> traits = []>
   let results = (outs MO_Tensor:$result);
 }
 
+class RMO_MOAnaloguePureUnaryElementWiseOp<string name, list<Trait> traits = []>
+    : RMO_MOAnaloguePureElementWiseOp<name, traits> {
+  let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
+
+  let extraClassDeclaration = [{
+    static void inferMOTypesImpl(
+        MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+        std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+        SmallVectorImpl<Type> &moResultTypes,
+        SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+        SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+        inferMOTypesElemwiseUnaryImpl(
+          context, graphOp, operands.getInput().cast<TensorValue>(),
+          rmoResults, moOperandTypes, moResultTypes, moInputParamDecls,
+          moOutputParamDecls);
+    }
+  }];
+}
+
 class RMO_MOAnaloguePureBinaryElementWiseOp<string name, list<Trait> traits = []>
     : RMO_MOAnaloguePureElementWiseOp<name, traits> {
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y, MO_ParamDecls:$outputParamDecls);
@@ -137,6 +156,314 @@ class RMO_MOAnaloguePureBinaryElementWiseOp<string name, list<Trait> traits = []
         moResultTypes.push_back(refinedShape);
         moOutputParamDecls.push_back({});
     }
+  }];
+}
+
+def RMO_AbsOp : RMO_MOAnaloguePureUnaryElementWiseOp<"abs"> {
+  let summary = "Absolute value operation";
+  let description = [{
+    Returns `abs(x)`, where `x` is the input tensors.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.abs(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_CeilOp : RMO_MOAnaloguePureUnaryElementWiseOp<"ceil"> {
+  let summary = "Ceiling operation";
+  let description = [{
+    Returns the smallest largest integer greater than `x`, where `x` is input
+    tensor.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.ceil(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_CosOp : RMO_MOAnaloguePureUnaryElementWiseOp<"cos"> {
+  let summary = "Cosine operation";
+  let description = [{
+    Returns `cos(x)`, where `x` is input tensor.
+
+    Example:
+    ```mlir
+      %arg : !mo.tensor<[2, 3], f32>
+      %res = rmo.cos(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_ErfOp : RMO_MOAnaloguePureUnaryElementWiseOp<"erf"> {
+  let summary = "(Gaussian) error function operation";
+  let description = [{
+    Computes the Gauss error function of the input tensor elements.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.erf(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_ExpOp : RMO_MOAnaloguePureUnaryElementWiseOp<"exp"> {
+  let summary = "Exponential function operation";
+  let description = [{
+    Returns `exp(x)`, where `x` is the input tensor.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.exp(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_FloorOp : RMO_MOAnaloguePureUnaryElementWiseOp<"floor"> {
+  let summary = "Floor operation";
+  let description = [{
+    Returns the elementwise largest integer not greater than `x`, where `x` is
+    input tensor.
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.floor(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_GeluOp : RMO_MOAnaloguePureUnaryElementWiseOp<"gelu"> {
+  let summary = "Gaussian error linear unit operation";
+  let description = [{
+    Returns `(x / 2) * (1 + erf(x/sqrt(2)))`, where `erf` denotes the
+    (Gaussian) error function.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.gelu(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_LogOp : RMO_MOAnaloguePureUnaryElementWiseOp<"log"> {
+  let summary = "Natural logarithm operation";
+  let description = [{
+    Returns the natural logorithm, `log(x)`.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.log(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_Log1pOp : RMO_MOAnaloguePureUnaryElementWiseOp<"log1p"> {
+  let summary = "Natural logarithm of `1 + x` operation ";
+  let description = [{
+    Returns `log(1 + x)`, maintaining accuracy for small `x` that could
+    otherwise lead to floating-point roundings of the kind `1 + x = 1`.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.log1p(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_LogSoftmaxOp : RMO_MOAnaloguePureUnaryElementWiseOp<"logsoftmax"> {
+  let summary = "Logarighmic softmax operation";
+  let description = [{
+    Returns `log(softmax(x))`, where `x` is input tensor.
+
+    The softmax is applied along the last axis.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.logsoftmax(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_NegativeOp : RMO_MOAnaloguePureUnaryElementWiseOp<"negative"> {
+  let summary = "Negation operation";
+  let description = [{
+    Returns `-x`, where `x` is input tensor.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.negative(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_NotOp : RMO_MOAnaloguePureTensorOp<"not"> {
+  let summary = "Logical negation operation";
+  let description = [{
+    Returns `not x` on given input, where input is a boolean tensor.
+
+    Example:
+
+    ```mlir
+      %in: !mo.tensor<[2, 3], bool>
+      %res = rmo.not(%in) : (!mo.tensor<[2, 3], bool>) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+  let arguments = (ins MO_BooleanMask:$input, MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_BooleanMask:$result);
+
+  let extraClassDeclaration = [{
+    static void inferMOTypesImpl(
+        MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+        std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+        SmallVectorImpl<Type> &moResultTypes,
+        SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+        SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+        inferMOTypesElemwiseUnaryImpl(
+          context, graphOp, operands.getInput().cast<TensorValue>(),
+          rmoResults, moOperandTypes, moResultTypes, moInputParamDecls,
+          moOutputParamDecls);
+    }
+  }];
+}
+
+def RMO_ReluOp : RMO_MOAnaloguePureUnaryElementWiseOp<"relu"> {
+  let summary = "Rectified linear unit operation";
+  let description = [{
+    Returns `max(0, x)`, where `x` is the input tensor.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.relu(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_RoundOp : RMO_MOAnaloguePureUnaryElementWiseOp<"round"> {
+  let summary = "Rounding operation";
+  let description = [{
+    Returns the elementwise nearest integer, with ties going away from zero.
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.round(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_RoundEvenOp : RMO_MOAnaloguePureUnaryElementWiseOp<"roundeven"> {
+  let summary = "Round even operation";
+  let description = [{
+    Returns the elementwise neareset integer, with ties going toward the
+    nearest even number.
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.roundeven(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_RsqrtOp : RMO_MOAnaloguePureUnaryElementWiseOp<"rsqrt"> {
+  let summary = "Inverse square root operation";
+  let description = [{
+    Returns `1/sqrt(x)`, where `x` is the input tensor.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.rsqrt(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_SigmoidOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sigmoid"> {
+  let summary = "Logistic sigmoid operation";
+  let description = [{
+    Returns `\frac{1}{1+e^{-x}} = \fract{e^x}{e^x + 1}`, the logistic sigmoid.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.sigmoid(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_SinOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sin"> {
+  let summary = "Sine operation";
+  let description = [{
+    Returns `sin(x)`, where `x` is input tensor.
+
+    Example:
+    ```mlir
+      %arg : !mo.tensor<[2, 3], f32>
+      %res = rmo.sin(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_SqrtOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sqrt"> {
+  let summary = "Square root operation";
+  let description = [{
+    Returns `sqrt(x)`, where `x` is the input tensor.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.sqrt(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_TanhOp : RMO_MOAnaloguePureUnaryElementWiseOp<"tanh"> {
+  let summary = "Hyperbolic tangent operation";
+  let description = [{
+    Computes `tanh(x)`, where `x` is input tensor.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.tanh(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
+def RMO_TruncOp : RMO_MOAnaloguePureUnaryElementWiseOp<"trunc"> {
+  let summary = "Truncation operation";
+  let description = [{
+    Returns the elementwise integer from truncating the decimal. Also known
+    as round-toward-zero.
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.trunc(%arg) : !mo.tensor<[2, 3], f32>
+    ```
   }];
 }
 

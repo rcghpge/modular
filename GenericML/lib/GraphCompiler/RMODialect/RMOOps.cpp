@@ -483,6 +483,24 @@ void inferMOTypesScatterImpl(
   moOutputParamDecls.push_back({});
 }
 
+void inferMOTypesElemwiseUnaryImpl(
+    MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+  auto inputTy = cast<MO::TensorType>(input.getType());
+
+  // Expected input type
+  moOperandTypes.push_back(inputTy);
+  moInputParamDecls.push_back({});
+
+  // Expected output type
+  moResultTypes.push_back(inputTy);
+  moOutputParamDecls.push_back({});
+}
+
 namespace {
 
 void inferConvMOTypesImpl(
