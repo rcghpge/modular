@@ -180,6 +180,24 @@ mgp.model @mip_mul : mof init {
   mef.output %ch1 : !mef.chain
 }
 
+// CHECK-LABEL: mgp.model @mip_nary_mul
+// CHECK: mogg.call "mip.nary.mul"
+mgp.model @mip_nary_mul : mof init {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 2
+  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
+  %ch2 = mgp.runtime.create %ch1, %ctx[1, 0]
+  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+} execute (%arg0: !mef.chain, %arg1: !mgp.context) -> !mef.chain {
+  %ch0 = grt.chain.create ()
+  %a = mip.constant.index 3
+  %b = mip.constant.index -5
+  %c = mip.constant.index 7
+  %res1 = mip.nary.mul (%a, %b, %c)
+  %ch1 = mip.print.index %res1, %ch0
+  mef.output %ch1 : !mef.chain
+}
+
 // CHECK-LABEL: mgp.model @mip_and
 // CHECK: mogg.call "mip.bool.and"
 mgp.model @mip_and : mof init {
