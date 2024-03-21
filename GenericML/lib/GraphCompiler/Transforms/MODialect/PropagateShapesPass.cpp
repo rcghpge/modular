@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
@@ -88,45 +89,6 @@ void removeDeadParamDeclares(GraphOp graphOp,
     if (!processed.contains(paramDeclOp))
       paramDeclOp.erase();
   });
-}
-
-void scheduleOpByUsedParams(Operation *, KGEN::ParameterUseDefGraph &,
-                            DenseSet<Operation *> &);
-/// For each op inside `block` (including nested blocks within), make sure any
-/// depended ops (SSA or parameter dependencies) appear before the op.
-/// `scheduledOps` is used to track ops which already satisfy this property.
-void scheduleBlock(Block *block, KGEN::ParameterUseDefGraph &useDefGraph,
-                   DenseSet<Operation *> &scheduledOps) {
-  mlir::sortTopologically(block);
-  for (Operation &op : block->getOperations())
-    scheduleOpByUsedParams(&op, useDefGraph, scheduledOps);
-}
-
-/// For all parameters used by `op` (i.e., used in the output shape), make
-/// sure their defining `kgen.param.declare` appear before `op`, by moving
-/// them if not already in `scheduledOps`. Also puts `op` into `scheduledOps`.
-void scheduleOpByUsedParams(Operation *op,
-                            KGEN::ParameterUseDefGraph &useDefGraph,
-                            DenseSet<Operation *> &scheduledOps) {
-  // Skip if already scheduled.
-  if (!scheduledOps.insert(op).second)
-    return;
-
-  for (KGEN::ParamDeclRefAttr declRefAttr : useDefGraph.opUses.lookup(op)) {
-    Operation *paramDefOp =
-        useDefGraph.defs.lookup(declRefAttr.getName()).defOp;
-    // Avoid bringing graph op into scheduling because it may declare input
-    // parameters used inside the graph.
-    if (!isa_and_nonnull<GraphOp>(paramDefOp) &&
-        !scheduledOps.contains(paramDefOp)) {
-      paramDefOp->moveBefore(op);
-      scheduleOpByUsedParams(paramDefOp, useDefGraph, scheduledOps);
-    }
-  }
-
-  for (Region &region : op->getRegions())
-    for (Block &block : region.getBlocks())
-      scheduleBlock(&block, useDefGraph, scheduledOps);
 }
 
 /// Handle output op and graph result parameters. This is special in that
@@ -377,14 +339,8 @@ struct PropagateShapesPass
   /// For each op inside `graphOp` (including nested blocks within), make sure
   /// any depended ops (SSA or parameter dependencies) appear before the op.
   void topoSortWithParameters(GraphOp graphOp) {
-    // Construct parameter use-def graph
-    auto &paramCache = getAnalysis<KGEN::ParameterCollector::Analysis>();
-    KGEN::ParameterUseDefGraph useDefGraph(graphOp.getRegion());
-    useDefGraph.calculate(paramCache);
-
-    // Sort the kgen.param.declare ops based on parameter use-def chains.
-    DenseSet<Operation *> scheduledOps;
-    scheduleBlock(graphOp.getBodyBlock(), useDefGraph, scheduledOps);
+    ParametricTopologyAnalysis analysis(graphOp);
+    analysis.topologicallySortAllOpsWithin(&graphOp.getRegion());
   }
 
   /// Return the depth of a KGEN param operator, where

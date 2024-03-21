@@ -347,3 +347,51 @@ mo.graph @update_param_declare_rhs<D1>() {
   kgen.param.declare CH: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "test" : !kgen.string}, eq(cond(eq(D1, -1), 1, D1), 1))>
   mo.output
 }
+
+// NOTE this ensures the pass can handle out-of-order ops. The test is somewhat
+// contrived, but once we have general SSA->Parameter conversion (e.g., scalar
+// input in llama2 that gets used in shape computation), the pass would have to
+// deal with such out-of-order cases in practice.
+// CHECK-LABEL: mo.graph @out_of_order_ops
+// CHECK-SAME:   <() -> [[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[], f32>,
+// CHECK-SAME:   %[[SHAPE1:.*]]: !mo.tensor<[2], si32>,
+// CHECK-SAME:   %[[SHAPE2:.*]]: !mo.tensor<[2], si32>
+// CHECK-SAME: ) -> (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>) no_inline {
+mo.graph @out_of_order_ops<() -> D0, D1, D2, D3>(
+  %input: !mo.tensor<[], f32>,
+  %shape1: !mo.tensor<[2], si32>,
+  %shape2: !mo.tensor<[2], si32>
+) -> (!mo.tensor<[D0, D1], f32>, !mo.tensor<[D2, D3], f32>) {
+
+  // NOTE that SSA dependencies are all preserved, but not parameter
+  // dependencies. Moreover, there's a transitive dependency to `%b1` as well
+  // (due to the shape function call below). The pass must handle such
+  // transitive dependencies across SSA/Param boundaries.
+  %b2 = mo.static.broadcast_to(%input): !mo.tensor<[], f32> -> !mo.tensor<[D6, D7], f32>
+
+  mo.invoke_shape_func["broadcast_to_shape"]<() -> D4, D5>(%input, %shape1)
+    {dataDeptTensors = [1], kgenParams = {output_rank = 2}} :
+    (!mo.tensor<[], f32>, !mo.tensor<[2], si32>)
+  %b1 = mo.static.broadcast_to(%input): !mo.tensor<[], f32> -> !mo.tensor<[D4, D5], f32>
+
+  mo.invoke_shape_func["broadcast_to_shape"]<() -> D6, D7>(%b1, %shape2)
+    {dataDeptTensors = [1], kgenParams = {output_rank = 2}} :
+    (!mo.tensor<[D4, D5], f32>, !mo.tensor<[2], si32>)
+
+  // NOTE that these got sorted based on SSA _and_ parameter dependencies.
+  // CHECK-NEXT: mo.invoke_shape_func["broadcast_to_shape"]<() -> [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[SHAPE1]])
+  // CHECK-SAME:   {dataDeptTensors = [1], kgenParams = {output_rank = 2 : i64}} :
+  // CHECK-SAME:   (!mo.tensor<[], f32>, !mo.tensor<[2], si32>)
+  //
+  // CHECK-NEXT: %[[B1:.*]] = mo.static.broadcast_to(%[[INPUT]]) : !mo.tensor<[], f32> -> !mo.tensor<[[[D4]], [[D5]]], f32>
+
+  // CHECK-NEXT: mo.invoke_shape_func["broadcast_to_shape"]<() -> [[D6:.*]], [[D7:.*]]>(%[[B1]], %[[SHAPE2]])
+  // CHECK-SAME:   {dataDeptTensors = [1], kgenParams = {output_rank = 2 : i64}} :
+  // CHECK-SAME:   (!mo.tensor<[[[D4]], [[D5]]], f32>, !mo.tensor<[2], si32>)
+  //
+  // CHECK-NEXT: %[[B2:.*]] = mo.static.broadcast_to(%[[INPUT]]) : !mo.tensor<[], f32> -> !mo.tensor<[[[D6]], [[D7]]], f32>
+
+  // CHECK-NEXT: mo.output<[[D4]], [[D5]], [[D6]], [[D7]]> %[[B1]], %[[B2]] : !mo.tensor<[[[D4]], [[D5]]], f32>, !mo.tensor<[[[D6]], [[D7]]], f32>
+  mo.output<D4, D5, D6, D7> %b1, %b2 : !mo.tensor<[D4, D5], f32>, !mo.tensor<[D6, D7], f32>
+}
