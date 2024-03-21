@@ -32,7 +32,7 @@ static std::unique_ptr<LLCL::Runtime> getRuntime() {
 
 #ifndef NDEBUG
 TEST(ContextTest, StateSlotDowncastFailTest) {
-  Context ctx(/*numSlots=*/1);
+  GML::Context ctx(/*numSlots=*/1);
   ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
   ASSERT_DEATH_IF_SUPPORTED(ctx.getStateSlotPayload<PayloadB>(/*slotIndex=*/0),
                             "mismatch between actual and expected type ids");
@@ -40,7 +40,7 @@ TEST(ContextTest, StateSlotDowncastFailTest) {
 #endif
 
 TEST(ContextTest, StateSlotTest) {
-  Context ctx(/*numSlots=*/2);
+  GML::Context ctx(/*numSlots=*/2);
   ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
   ctx.setStateSlot(/*slotIndex=*/1, RCRef<PayloadB>::create('a'),
                    /*numBuffers=*/1);
@@ -54,7 +54,7 @@ TEST(ContextTest, getOrCreateBufferTest) {
   auto runtime = getRuntime();
   {
     // Add scope to make sure that the allocator outlives the context.
-    Context ctx(/*numSlots=*/1);
+    GML::Context ctx(/*numSlots=*/1);
     ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
 
     auto &stateSlot = ctx.getStateSlot(/*slotIndex=*/0);

@@ -45,7 +45,7 @@ using MGPProfilerEntry =
 
 /// Fulfills the result with a Context initialized with `numPrimContexts`
 /// primitive contexts.
-static void mgp_context_create(Result<Context> result,
+static void mgp_context_create(Result<GML::Context> result,
                                MEFAttr<uint64_t> numSlots) {
   std::move(result).emplace(*numSlots);
 }
@@ -56,7 +56,7 @@ static void mgp_context_create(Result<Context> result,
 
 /// Constructs the default state slot with the given number of cached buffers
 /// under the given slot in the mgp context.
-static Chain mgp_state_slot_create(Chain inChain, Context &ctx,
+static Chain mgp_state_slot_create(Chain inChain, GML::Context &ctx,
                                    MEFAttr<uint64_t> numBuffers,
                                    MEFAttr<uint64_t> slot) {
   ctx.emplaceStateSlot<DefaultStateSlot>(*slot, *numBuffers);
@@ -67,7 +67,7 @@ static Chain mgp_state_slot_create(Chain inChain, Context &ctx,
 // mgp.create_runtime
 //===----------------------------------------------------------------------===//
 
-static void mgp_check_runtime(Chain inChain, Context &ctx,
+static void mgp_check_runtime(Chain inChain, GML::Context &ctx,
                               Result<Chain> outChain, MEFAttr<uint64_t> aSlot,
                               MEFAttr<StringRef> bDevicesJSON,
                               Runtime &runtime) {
@@ -295,7 +295,7 @@ static ErrorOr<Chain> mgp_assert(bool cond, MEFAttr<StringRef> message) {
 // mgp.cpu.kernel.create_context
 //===----------------------------------------------------------------------===//
 
-static void mgp_cpu_kernel_create_context(Chain inChain, Context &ctx,
+static void mgp_cpu_kernel_create_context(Chain inChain, GML::Context &ctx,
                                           Result<Chain> outChain,
                                           MEFAttr<uint64_t> slot,
                                           Runtime &runtime) {
@@ -332,7 +332,7 @@ static void mgp_cpu_kernel_create_context(Chain inChain, Context &ctx,
 // mgp.cpu.kernel.load_archive
 //===----------------------------------------------------------------------===//
 
-static void mgp_cpu_kernel_load_archive(Chain inChain, Context &ctx,
+static void mgp_cpu_kernel_load_archive(Chain inChain, GML::Context &ctx,
                                         Result<Chain> outChain,
                                         MEFAttr<uint64_t> aSlot,
                                         MEFAttr<ArrayRef<uint8_t>> bArchive,
@@ -376,7 +376,7 @@ static void mgp_cpu_kernel_load_archive(Chain inChain, Context &ctx,
 // mgp.cpu.kernel.execute.deprecated
 //===----------------------------------------------------------------------===//
 
-static void mgp_generic_execute(Context &ctx, RemainingArguments operands,
+static void mgp_generic_execute(GML::Context &ctx, RemainingArguments operands,
                                 RemainingResults results,
                                 MEFAttr<uint64_t> aSlot,
                                 MEFAttr<uint64_t> bModuleIndex,

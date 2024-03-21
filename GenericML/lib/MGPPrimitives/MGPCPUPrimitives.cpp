@@ -42,7 +42,7 @@ static std::optional<size_t> getRuntimeAlign(uint64_t rawAlign) {
 // mgp.runtime.create.cpu
 //===----------------------------------------------------------------------===//
 
-void mgp_runtime_create_cpu(Chain inChain, Context &theContext,
+void mgp_runtime_create_cpu(Chain inChain, GML::Context &theContext,
                             Result<Chain> outChain,
                             MEFAttr<uint64_t> aRuntimeSlot,
                             MEFAttr<uint64_t> bDeviceSpecMapSlot,
@@ -96,7 +96,7 @@ void mgp_runtime_create_cpu(Chain inChain, Context &theContext,
 // mgp.module.load.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_module_load_cpu(Chain inChain, Context &theContext,
+static void mgp_module_load_cpu(Chain inChain, GML::Context &theContext,
                                 Result<Chain> outChain,
                                 MEFAttr<uint64_t> aRuntimeSlot,
                                 MEFDynamicAttr bImage,
@@ -164,7 +164,7 @@ static void mgp_module_load_cpu(Chain inChain, Context &theContext,
 // mgp.chain.create.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_chain_create_cpu(Context &theContext,
+static void mgp_chain_create_cpu(GML::Context &theContext,
                                  RemainingArguments gatingOperands,
                                  Result<Chain> outChain,
                                  MEFAttr<uint64_t> aOtherRuntimeSlot,
@@ -183,7 +183,7 @@ static void mgp_chain_create_cpu(Context &theContext,
 // mgp.chain.{device_to_host, host_to_device}.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_chain_noop_cpu(Chain inChain, Context &theContext,
+static void mgp_chain_noop_cpu(Chain inChain, GML::Context &theContext,
                                Result<Chain> outChain,
                                MEFAttr<uint64_t> aRuntimeSlot,
                                MEFAttr<uint64_t> bDeviceId) {
@@ -198,7 +198,7 @@ static void mgp_chain_noop_cpu(Chain inChain, Context &theContext,
 // mgp.buffer.constant.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_constant_cpu(Context &theContext,
+static void mgp_buffer_constant_cpu(GML::Context &theContext,
                                     Result<GML::BufferRef> outBuffer,
                                     MEFAttr<uint64_t> aRuntimeSlot,
                                     MEFAttr<ArrayRef<uint8_t>> bValue,
@@ -220,7 +220,7 @@ static void mgp_buffer_constant_cpu(Context &theContext,
 // mgp.buffer.constant.load.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_constant_load_cpu(Context &theContext,
+static void mgp_buffer_constant_load_cpu(GML::Context &theContext,
                                          Result<GML::BufferRef> outBuffer,
                                          MEFAttr<uint64_t> aRuntimeSlot,
                                          MEFAttr<uint64_t> bModuleIndex,
@@ -235,7 +235,7 @@ static void mgp_buffer_constant_load_cpu(Context &theContext,
 // mgp.buffer.alloc.static.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_alloc_static_cpu(Chain inChain, Context &theContext,
+static void mgp_buffer_alloc_static_cpu(Chain inChain, GML::Context &theContext,
                                         Result<GML::BufferRef> outBuffer,
                                         MEFAttr<uint64_t> aRuntimeSlot,
                                         MEFAttr<uint64_t> bSize,
@@ -259,13 +259,11 @@ static void mgp_buffer_alloc_static_cpu(Chain inChain, Context &theContext,
 // mgp.buffer.alloc.dynamic.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_alloc_dynamic_cpu(Chain inChain, Context &theContext,
-                                         size_t runtimeSize,
-                                         Result<GML::BufferRef> outBuffer,
-                                         MEFAttr<uint64_t> aRuntimeSlot,
-                                         MEFAttr<uint64_t> bRawAlign,
-                                         MEFAttr<uint64_t> cDeviceId,
-                                         Runtime &runtime) {
+static void mgp_buffer_alloc_dynamic_cpu(
+    Chain inChain, GML::Context &theContext, size_t runtimeSize,
+    Result<GML::BufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
+    MEFAttr<uint64_t> bRawAlign, MEFAttr<uint64_t> cDeviceId,
+    Runtime &runtime) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
       static_cast<size_t>(*aRuntimeSlot));
   if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*cDeviceId))
@@ -281,7 +279,7 @@ static void mgp_buffer_alloc_dynamic_cpu(Chain inChain, Context &theContext,
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_realloc_static_cpu(
-    Chain inChain, Context &theContext, Result<GML::BufferRef> outBuffer,
+    Chain inChain, GML::Context &theContext, Result<GML::BufferRef> outBuffer,
     MEFAttr<uint64_t> aRuntimeSlot, MEFAttr<uint64_t> bBufferSlot,
     MEFAttr<uint64_t> cBufferIndex, MEFAttr<uint64_t> dSize,
     MEFAttr<uint64_t> eRawAlign, MEFAttr<uint64_t> fDeviceId,
@@ -306,7 +304,7 @@ static void mgp_buffer_realloc_static_cpu(
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_realloc_dynamic_cpu(
-    Chain inChain, Context &theContext, size_t runtimeSize,
+    Chain inChain, GML::Context &theContext, size_t runtimeSize,
     Result<GML::BufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
     MEFAttr<uint64_t> bBufferSlot, MEFAttr<uint64_t> cBufferIndex,
     MEFAttr<uint64_t> dRawAlign, MEFAttr<uint64_t> eDeviceId,
@@ -349,7 +347,7 @@ static void mgp_buffer_alloc_pinned_dynamic_cpu(
 // mgp.buffer.cache.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_cache_cpu(Chain inChain, Context &theContext,
+static void mgp_buffer_cache_cpu(Chain inChain, GML::Context &theContext,
                                  AsyncValueRef<GML::BufferRef> buffer,
                                  Result<Chain> outChain,
                                  MEFAttr<uint64_t> aRuntimeSlot,
@@ -399,7 +397,7 @@ static void mgp_buffer_cache_cpu(Chain inChain, Context &theContext,
 // mgp.buffer.get_cached.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_get_cached_cpu(Chain inChain, Context &theContext,
+static void mgp_buffer_get_cached_cpu(Chain inChain, GML::Context &theContext,
                                       Result<GML::BufferRef> outBuffer,
                                       MEFAttr<uint64_t> aRuntimeSlot,
                                       MEFAttr<uint64_t> bBufferSlot,
@@ -427,7 +425,7 @@ static void mgp_buffer_get_cached_cpu(Chain inChain, Context &theContext,
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_no_transfers_cpu(
-    Chain inChain, Context &theContext, GML::BufferRef &hostBuffer,
+    Chain inChain, GML::Context &theContext, GML::BufferRef &hostBuffer,
     GML::BufferRef &otherBuffer, Result<Chain> outChain,
     MEFAttr<uint64_t> aHostRuntimeSlot, MEFAttr<uint64_t> bOtherRuntimeSlot,
     MEFAttr<uint64_t> cHostDeviceId, MEFAttr<uint64_t> dOtherDeviceId) {
@@ -440,7 +438,7 @@ static void mgp_buffer_no_transfers_cpu(
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_device_to_device_cpu(
-    Chain inChain, Context &theContext, GML::BufferRef &srcBuffer,
+    Chain inChain, GML::Context &theContext, GML::BufferRef &srcBuffer,
     GML::BufferRef &dstBuffer, Result<Chain> outChain,
     MEFAttr<uint64_t> aSrcRuntimeSlot, MEFAttr<uint64_t> bDstRuntimeSlot,
     MEFAttr<uint64_t> cSrcDeviceId, MEFAttr<uint64_t> dDstDeviceId) {
@@ -522,9 +520,9 @@ static void mgp_buffer_concat_cpu(Chain inChain, GML::Context &theContext,
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_split_borrow_cpu(
-    Chain inChain, Context &theContext, AsyncValueRef<GML::BufferRef> inBuffer,
-    RemainingArguments runtimeSizes, RemainingResults outBuffers,
-    MEFAttr<uint64_t> aRuntimeSlot,
+    Chain inChain, GML::Context &theContext,
+    AsyncValueRef<GML::BufferRef> inBuffer, RemainingArguments runtimeSizes,
+    RemainingResults outBuffers, MEFAttr<uint64_t> aRuntimeSlot,
     MEFAttr<ArrayRef<uint64_t>> bOutBufferRawSizes, MEFAttr<uint64_t> cDeviceId,
     Runtime &runtime, EncodedLocation loc) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
@@ -584,10 +582,11 @@ static void mgp_buffer_split_borrow_cpu(
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_section_borrow_static_cpu(
-    Chain inChain, Context &theContext, AsyncValueRef<GML::BufferRef> inBuffer,
-    Result<GML::BufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
-    MEFAttr<uint64_t> bOffset, MEFAttr<uint64_t> cSize,
-    MEFAttr<uint64_t> dDeviceId, Runtime &runtime, EncodedLocation loc) {
+    Chain inChain, GML::Context &theContext,
+    AsyncValueRef<GML::BufferRef> inBuffer, Result<GML::BufferRef> outBuffer,
+    MEFAttr<uint64_t> aRuntimeSlot, MEFAttr<uint64_t> bOffset,
+    MEFAttr<uint64_t> cSize, MEFAttr<uint64_t> dDeviceId, Runtime &runtime,
+    EncodedLocation loc) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
       static_cast<size_t>(*aRuntimeSlot));
   if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*dDeviceId))
@@ -612,11 +611,11 @@ static void mgp_buffer_section_borrow_static_cpu(
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_section_borrow_dynamic_cpu(
-    Chain inChain, Context &theContext, AsyncValueRef<GML::BufferRef> inBuffer,
-    size_t scale, Result<GML::BufferRef> outBuffer,
-    MEFAttr<uint64_t> aRuntimeSlot, MEFAttr<uint64_t> bUnscaledOffset,
-    MEFAttr<uint64_t> cUnscaledSize, MEFAttr<uint64_t> dDeviceId,
-    EncodedLocation loc) {
+    Chain inChain, GML::Context &theContext,
+    AsyncValueRef<GML::BufferRef> inBuffer, size_t scale,
+    Result<GML::BufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
+    MEFAttr<uint64_t> bUnscaledOffset, MEFAttr<uint64_t> cUnscaledSize,
+    MEFAttr<uint64_t> dDeviceId, EncodedLocation loc) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
       static_cast<size_t>(*aRuntimeSlot));
   if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*dDeviceId))
@@ -641,7 +640,7 @@ static void mgp_buffer_section_borrow_dynamic_cpu(
 // mgp.buffer.to_bool.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_to_bool_cpu(Chain inChain, Context &theContext,
+static void mgp_buffer_to_bool_cpu(Chain inChain, GML::Context &theContext,
                                    const GML::BufferRef &buffer,
                                    Result<bool> result,
                                    MEFAttr<uint64_t> aRuntimeSlot,
@@ -669,7 +668,7 @@ static void fillBuffer(GML::BufferRef &buffer, RemainingArguments idxValues) {
     *(target++) = static_cast<T>(asyncIdx.get<size_t>());
 }
 
-static void mgp_buffer_set_with_index_cpu(Context &theContext,
+static void mgp_buffer_set_with_index_cpu(GML::Context &theContext,
                                           GML::BufferRef &buffer,
                                           RemainingArguments values,
                                           Result<Chain> outChain,
@@ -707,7 +706,7 @@ static void mgp_buffer_set_with_index_cpu(Context &theContext,
 // mgp.tensor.create.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_tensor_create_cpu(Chain inChain, Context &theContext,
+static void mgp_tensor_create_cpu(Chain inChain, GML::Context &theContext,
                                   AsyncValueRef<GML::BufferRef> buffer,
                                   TensorSpec tensorSpec,
                                   Result<Tensor> outTensor,
@@ -746,7 +745,7 @@ static void mgp_tensor_create_cpu(Chain inChain, Context &theContext,
 // mgp.tensor.extract.buffer.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_tensor_extract_buffer_cpu(Context &theContext,
+static void mgp_tensor_extract_buffer_cpu(GML::Context &theContext,
                                           AsyncValueRef<Tensor> tensor,
                                           Result<GML::BufferRef> outBuffer,
                                           MEFAttr<uint64_t> aRuntimeSlot,
@@ -772,7 +771,7 @@ static void mgp_tensor_extract_buffer_cpu(Context &theContext,
 //===----------------------------------------------------------------------===//
 
 static void mgp_tensor_extract_tensor_spec_cpu(
-    Context &theContext, AsyncValueRef<Tensor> tensor,
+    GML::Context &theContext, AsyncValueRef<Tensor> tensor,
     Result<TensorSpec> outSpec, MEFAttr<uint64_t> aRuntimeSlot,
     MEFAttr<uint64_t> bDeviceId, MEFAttr<bool> cIsShapeOnly, Runtime &runtime) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
@@ -790,7 +789,7 @@ static void mgp_tensor_extract_tensor_spec_cpu(
 //===----------------------------------------------------------------------===//
 
 static void mgp_debug_tensor_print_cpu(
-    Chain inChain, Context &theContext, const GML::BufferRef &buffer,
+    Chain inChain, GML::Context &theContext, const GML::BufferRef &buffer,
     const TensorSpec &spec, Result<Chain> outChain,
     MEFAttr<uint64_t> aRuntimeSlot, MEFAttr<StringRef> bLabel,
     MEFAttr<uint64_t> cDeviceId, Runtime &runtime) {
@@ -826,7 +825,7 @@ using MGPProfilerEntry =
     ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
 
 static void mgp_kernel_execute_cpu(
-    Chain inChain, Context &theContext, RemainingArguments operands,
+    Chain inChain, GML::Context &theContext, RemainingArguments operands,
     Result<Chain> outChain, RemainingResults outDimensions,
     MEFAttr<uint64_t> aHostRuntimeSlot, MEFAttr<uint64_t> bOtherRuntimeSlot,
     MEFAttr<uint64_t> cHostModuleIndex, MEFAttr<uint64_t> dHostKernelIndex,
