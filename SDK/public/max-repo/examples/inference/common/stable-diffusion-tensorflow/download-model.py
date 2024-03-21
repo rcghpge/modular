@@ -12,8 +12,6 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from max import engine
-
 import logging
 import os
 import signal
@@ -51,17 +49,6 @@ def print_metadata(metadata):
         )
 
 
-def load(session, output_dir: str, model_name: str):
-    model = session.load(f"{output_dir}/{model_name}")
-    print(f"{model_name}:")
-    print("=" * 80)
-    print("Inputs:")
-    print_metadata(model.input_metadata)
-    print("Outputs:")
-    print_metadata(model.output_metadata)
-    print("")
-
-
 def main():
     # Parse args
     parser = ArgumentParser(description=DESCRIPTION)
@@ -90,16 +77,6 @@ def main():
     export(model.image_encoder, f"{args.output_dir}/img-encoder")
     export(model.decoder, f"{args.output_dir}/img-decoder")
     export(model.diffusion_model, f"{args.output_dir}/img-diffuser")
-
-    # Load models and print input/output metadata. This step enables one to see
-    # the input shapes and tensor names used when writing the application code.
-    # NOTE: This compiles each model in full; it may take a few minutes.
-    print("\nLoading...")
-    session = engine.InferenceSession()
-    load(session, args.output_dir, "txt-encoder")
-    load(session, args.output_dir, "img-encoder")
-    load(session, args.output_dir, "img-decoder")
-    load(session, args.output_dir, "img-diffuser")
 
 
 if __name__ == "__main__":
