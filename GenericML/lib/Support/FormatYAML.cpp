@@ -241,11 +241,6 @@ struct MappingTraits<M::ModelSpec::ModelBinary> {
     io.mapRequired("format", binary.format);
     io.mapRequired("url", binary.url);
 
-    // Do not print the "archived_file" field if we are outputting and the
-    // weights.archivedFile is empty.
-    if (!io.outputting() || !binary.archivedFile.empty())
-      io.mapOptional("archived_file", binary.archivedFile);
-
     if (!io.outputting() || !binary.size.empty())
       io.mapOptional("size", binary.size);
 

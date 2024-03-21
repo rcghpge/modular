@@ -85,7 +85,6 @@ public:
   struct ModelBinary {
     std::string format;
     std::string url;
-    std::string archivedFile;
     std::string size;
     std::string sha1sum;
     std::string metadata;
