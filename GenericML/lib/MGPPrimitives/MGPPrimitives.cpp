@@ -72,7 +72,7 @@ static void mgp_check_runtime(Chain inChain, Context &ctx,
                               MEFAttr<StringRef> bDevicesJSON,
                               Runtime &runtime) {
   auto providedDeviceSpecsOr =
-      runtime.createContextIfMissing<DeviceSpecCollection>(
+      runtime.context->createIfMissing<DeviceSpecCollection>(
           [&runtime]() { return GML::getHostDeviceSpecs(runtime); });
   if (providedDeviceSpecsOr)
     return std::move(outChain).setToError(providedDeviceSpecsOr.takeError());
@@ -301,7 +301,7 @@ static void mgp_cpu_kernel_create_context(Chain inChain, Context &ctx,
                                           Runtime &runtime) {
   // Establish an execution engine, to be shared amongst all loaded models.
   ErrorOr<KGEN::ExecutionEngine *> engineOr =
-      runtime.createContextIfMissing<KGEN::ExecutionEngine>(
+      runtime.context->createIfMissing<KGEN::ExecutionEngine>(
           []() -> ErrorOr<std::unique_ptr<KGEN::ExecutionEngine>> {
             // Initialize the host target.
             llvm::InitializeNativeTarget();

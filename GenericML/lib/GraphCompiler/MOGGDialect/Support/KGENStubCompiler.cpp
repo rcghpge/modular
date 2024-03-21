@@ -91,7 +91,8 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
       attrs["filename"] = fileLine.getFilename().str();
 
     [[maybe_unused]] auto timeScope =
-        ownedRuntime->emplaceContextIfMissing<M::Telemetry::TelemetryContext>()
+        ownedRuntime->context
+            ->emplaceIfMissing<M::Telemetry::TelemetryContext>()
             .createUInt64Timer<std::chrono::milliseconds>(
                 "mogg.kgen.elaboration.time", M::Telemetry::Level::L2, attrs);
 

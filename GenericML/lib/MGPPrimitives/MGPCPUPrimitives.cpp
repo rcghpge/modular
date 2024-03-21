@@ -63,8 +63,8 @@ void mgp_runtime_create_cpu(Chain inChain, Context &theContext,
   // TODO(#30647): Currently there's no garbage collection of dylibs loaded into
   //               this engine.
   ErrorOr<KGEN::ExecutionEngine *> engineOr =
-      runtime.createContextIfMissing<KGEN::ExecutionEngine>(
-          [&runtime]() -> ErrorOr<std::unique_ptr<KGEN::ExecutionEngine>> {
+      runtime.context->createIfMissing<KGEN::ExecutionEngine>(
+          [&]() -> ErrorOr<std::unique_ptr<KGEN::ExecutionEngine>> {
             // Initialize the host target.
             llvm::InitializeNativeTarget();
             llvm::InitializeNativeTargetAsmParser();
@@ -806,7 +806,7 @@ static void mgp_debug_tensor_print_cpu(
     // Buffer contents, using tensor spec for shape.
     DebugTensorPrintOptions defaultOptions;
     DebugTensorPrintOptions *options =
-        runtime.getContext<DebugTensorPrintOptions>();
+        runtime.context->get<DebugTensorPrintOptions>();
     if (!options)
       options = &defaultOptions;
     std::string labelWithDevice = (Twine(*bLabel) + "_" + kCPULabel).str();
