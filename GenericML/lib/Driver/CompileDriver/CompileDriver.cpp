@@ -101,7 +101,6 @@ M::cacheMEFTransform(StringRef frameworkName,
   const std::filesystem::path &baseCacheDir = *baseCacheDirOr;
 
   auto mefBackendOr = Cache::getLocalDefaultBackendChain(
-      runtime.getCurrentRuntime(),
       (baseCacheDir / frameworkName.str() / "mef").string(),
       std::string(M::getModularVersionString()));
 
