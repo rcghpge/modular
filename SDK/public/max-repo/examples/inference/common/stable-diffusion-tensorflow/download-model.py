@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # ===----------------------------------------------------------------------=== #
 # Copyright (c) 2024, Modular Inc. All rights reserved.
 #
@@ -11,12 +12,11 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-#!/usr/bin/env python3
-
 from max import engine
 
 import logging
 import os
+import signal
 from argparse import ArgumentParser
 
 # suppress extraneous logging
@@ -73,6 +73,8 @@ def main():
         help="Output directory for the downloaded model.",
     )
     args = parser.parse_args()
+
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     tf.config.set_visible_devices([], "GPU")
 

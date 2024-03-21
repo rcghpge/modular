@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # ===----------------------------------------------------------------------=== #
 # Copyright (c) 2024, Modular Inc. All rights reserved.
 #
@@ -11,9 +12,8 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-#!/usr/bin/env python3
-
 import os
+import signal
 
 # suppress extraneous logging
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -127,6 +127,8 @@ def main():
         help="Output filename.",
     )
     args = parser.parse_args()
+
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     # Set seed if requested
     if args.seed:

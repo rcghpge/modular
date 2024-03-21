@@ -20,6 +20,7 @@ import os
 # suppress extraneous logging
 os.environ["TRANSFORMERS_VERBOSITY"] = "critical"
 
+import signal
 import torch
 from argparse import ArgumentParser
 from transformers import AutoTokenizer
@@ -114,6 +115,8 @@ def main():
         help="Directory for the downloaded model.",
     )
     args = parser.parse_args()
+
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     torch.set_default_device("cpu")
 

@@ -16,6 +16,7 @@
 from max import engine
 
 import os
+import signal
 
 # suppress extraneous logging
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -64,6 +65,8 @@ def main():
         help="Directory for the downloaded model.",
     )
     args = parser.parse_args()
+
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     # Preprocess input image
     print("Processing input...")
