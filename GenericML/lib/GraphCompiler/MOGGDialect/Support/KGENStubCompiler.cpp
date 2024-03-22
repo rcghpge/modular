@@ -63,7 +63,6 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
 
   KGEN::CompilationOptions compilationOptions;
   compilationOptions.enableSearch = shouldSearch;
-  compilationOptions.enableLLVMPerFunctionSplitting = false;
 
   static constexpr llvm::StringLiteral kKernelsBuildType =
       STRINGIFY(KERNELS_BUILD_TYPE);
@@ -153,7 +152,6 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
   compilationOptions.targetTriple = target.getTripleStr();
   compilationOptions.targetCpu = target.getArch();
   compilationOptions.targetFeatures = target.getFeatures();
-  compilationOptions.enableLLVMPerFunctionSplitting = false;
 
   if (kKernelsBuildType == "debug")
     compilationOptions.optimizationLevel = 0;
