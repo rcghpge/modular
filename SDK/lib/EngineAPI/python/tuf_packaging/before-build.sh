@@ -14,8 +14,6 @@ set -exo pipefail
 # Expand aliases from start-modular.sh in this script.
 shopt -s expand_aliases
 
-cd /project
-
 # Opt out of the autovenv to force using cibuildwheel's provided Python
 # installation without a venv.
 export MODULAR_AUTOVENV_OPTOUT=1
@@ -24,7 +22,25 @@ MAJOR_VERSION=$1
 MINOR_VERSION=$2
 PATCH_VERSION=$3
 
-source ./utils/start-modular.sh
+CLANG_PATH="/usr/bin/clang"
+CLANG_PLUS_PATH="/usr/bin/clang++"
+# Sourcing start-modular.sh has some strange properties that breaks the build on
+# MacOS. Since we're running directly on the host, this causes the build to
+# link all wheels against the homebrew 3.11 Python. As a result, we have to
+# run this script without invoking `start-modular.sh` on MacOS, which is why
+# we need these manual expansions of our `cmake-modular` and `build` commands.
+CMAKE_COMMAND="$MODULAR_PYTHON utils/build.py configure modular"
+BUILD_COMMAND="$MODULAR_PYTHON utils/build.py build modular"
+
+if [[ "$OSTYPE" != "darwin"* ]]; then
+  cd /project
+  source ./utils/start-modular.sh
+  CLANG_PATH="/usr/bin/clang-15"
+  CLANG_PLUS_PATH="/usr/bin/clang++-15"
+  CMAKE_COMMAND="cmake-modular"
+  BUILD_COMMAND="build"
+fi
+
 python3 -m pip install \
   -e Support/python \
   -r KGEN/utils/requirements.txt \
@@ -33,9 +49,9 @@ python3 -m pip install \
 pip install pipx
 
 # Configure and build Modular.
-cmake-modular --sanitizer=none --build-type=release \
-  -D CMAKE_C_COMPILER=/usr/bin/clang-15 \
-  -D CMAKE_CXX_COMPILER=/usr/bin/clang++-15 \
+$CMAKE_COMMAND --sanitizer=none --build-type=release \
+  -D CMAKE_C_COMPILER=$CLANG_PATH \
+  -D CMAKE_CXX_COMPILER=$CLANG_PLUS_PATH \
   -D MODULAR_RELEASE_PACKAGE_BUILD=ON \
   -D CMAKE_INSTALL_PREFIX=install \
   -D MODULAR_VERSION_MAJOR=$MAJOR_VERSION \
@@ -50,7 +66,7 @@ cmake-modular --sanitizer=none --build-type=release \
 
 # Build and install the necessary libs and executables
 # for the AI Engine Wheel.
-build install-ai-engine-py-binding
+$BUILD_COMMAND install-ai-engine-py-binding
 
 echo "sccache stats after building all:"
 sccache --show-stats
