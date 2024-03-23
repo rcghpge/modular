@@ -617,6 +617,97 @@ void ConvTransposeOp::inferMOTypesImpl(
                        moInputParamDecls, moOutputParamDecls);
 }
 
+namespace {
+void inferMOTypesPoolImpl(
+    MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
+    TensorValue filterShape, TensorValue strides, TensorValue dilations,
+    TensorValue paddings, std::optional<ValueRange> rmoResults,
+    SmallVectorImpl<Type> &moOperandTypes, SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  // input type remains the same.
+  moOperandTypes.push_back(input.getType());
+  moInputParamDecls.push_back({});
+
+  // filter_shape / strides / dilations must be 1-D with identical shape.
+  // First get or build the common dim value.
+  TypedAttr windowParamsDim = nullptr;
+  SmallVector<KGEN::ParamDeclAttr> windowParamDecls;
+  for (TensorType inputTy :
+       {filterShape.getType(), strides.getType(), dilations.getType()})
+    if (!windowParamsDim && inputTy.hasRank() && inputTy.getRank() == 1)
+      windowParamsDim = inputTy.getTypedShapeAttr().getValues()[0];
+  if (!windowParamsDim)
+    windowParamsDim = createDynamicDimensionType(graphOp, windowParamDecls);
+
+  // Rebind filter_shape to 1D.
+  moOperandTypes.push_back(
+      filterShape.getType().cloneWith(SmallVector<TypedAttr>{windowParamsDim}));
+  // Assign windowParamDecls to the first window operand.
+  moInputParamDecls.push_back(std::move(windowParamDecls));
+
+  // Rebind strides to 1D.
+  moOperandTypes.push_back(
+      strides.getType().cloneWith(SmallVector<TypedAttr>{windowParamsDim}));
+  moInputParamDecls.push_back({});
+
+  // Rebind dilations to 1D.
+  moOperandTypes.push_back(
+      dilations.getType().cloneWith(SmallVector<TypedAttr>{windowParamsDim}));
+  moInputParamDecls.push_back({});
+
+  // Paddings must be 1-D.
+  TensorType paddingsTy = paddings.getType();
+  if (!paddingsTy.hasRank() || paddingsTy.getRank() != 1) {
+    SmallVector<KGEN::ParamDeclAttr> paramDecls;
+    moOperandTypes.push_back(getRankedParamTensorType(1, paddingsTy.getDtype(),
+                                                      graphOp, paramDecls));
+    moInputParamDecls.push_back(std::move(paramDecls));
+  } else {
+    moOperandTypes.push_back(paddingsTy);
+    moInputParamDecls.push_back({});
+  }
+
+  // Infer output type: output rank = input rank.
+  // Output is always 4D (for now), but MO verifier requires input-rank ==
+  // output-rank.
+  DType outputDtype = getDType(rmoResults, 0, input.getType().getDtype());
+  SmallVector<KGEN::ParamDeclAttr> outputParamDecls;
+  TensorType inputTy = input.getType();
+  if (!inputTy.hasRank())
+    moResultTypes.push_back(
+        getUnrankedTensorType(outputDtype, graphOp, outputParamDecls));
+  else
+    moResultTypes.push_back(getRankedParamTensorType(
+        inputTy.getRank(), outputDtype, graphOp, outputParamDecls));
+  moOutputParamDecls.push_back(std::move(outputParamDecls));
+}
+} // namespace
+
+#define DEFINE_POOL_INFER_MO_TYPES(ClassName)                                  \
+  void ClassName::inferMOTypesImpl(                                            \
+      MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,             \
+      std::optional<ValueRange> rmoResults,                                    \
+      SmallVectorImpl<Type> &moOperandTypes,                                   \
+      SmallVectorImpl<Type> &moResultTypes,                                    \
+      SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,    \
+      SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) { \
+    inferMOTypesPoolImpl(                                                      \
+        context, graphOp, cast<TensorValue>(operands.getInput()),              \
+        cast<TensorValue>(operands.getFilterShape()),                          \
+        cast<TensorValue>(operands.getStrides()),                              \
+        cast<TensorValue>(operands.getDilations()),                            \
+        cast<TensorValue>(operands.getPaddings()), rmoResults, moOperandTypes, \
+        moResultTypes, moInputParamDecls, moOutputParamDecls);                 \
+  }
+
+DEFINE_POOL_INFER_MO_TYPES(AvgPoolOp)
+DEFINE_POOL_INFER_MO_TYPES(AvgPoolCeilOp)
+DEFINE_POOL_INFER_MO_TYPES(MaxPoolOp)
+DEFINE_POOL_INFER_MO_TYPES(MaxPoolCeilOp)
+
+#undef DEFINE_POOL_INFER_MO_TYPES
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST

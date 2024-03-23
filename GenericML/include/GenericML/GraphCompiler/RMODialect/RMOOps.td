@@ -1151,4 +1151,206 @@ def RMO_ConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose">{
   }];
 }
 
+class RMO_MOAnaloguePurePoolOp<string name, list<Trait> traits = []>
+    : RMO_MOAnaloguePureTensorOp<name,
+    traits # [AllDTypesMatch<["input", "result"]>]> {
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndicesTensor:$filter_shape,
+    MO_IndicesTensor:$strides,
+    MO_IndicesTensor:$dilations,
+    MO_IndicesTensor:$paddings,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `)`
+    `[` `filter_shape` `=` $filter_shape `,` `strides` `=` $strides `,`
+        `dilations` `=` $dilations `,` `paddings` `=` $paddings `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+def RMO_AvgPoolOp : RMO_MOAnaloguePurePoolOp<"avg_pool">{
+  let summary = "Average pooling operation";
+  let description = [{
+    Computes average pooling with the given filter shape, strides, and dilations.
+
+    The op supports 2D avg pooling (so input and filter must be
+    4D), with the following layout assumption:
+    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+
+    All hyperparameters (i.e. `strides`, `dilations`, `padding`) must be of rank 1, or
+    unranked. If the input has static rank, all hyperparameters with static
+    shape must have sizes of `input_rank - 2`, except padding, which must have size
+    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
+    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
+    with padding representing a before/after pair for each axis. The padding values
+    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
+    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
+
+    This op currently only supports strides and dilations on the filter.
+
+    Example:
+
+    ```mlir
+      %fs = mo.constant {
+        value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %st = mo.constant {
+        value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %di = mo.constant {
+        value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %pa = mo.constant {
+        value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+      %res = rmo.avg_pool(%arg) [
+          filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
+      ] : (
+        !mo.tensor<[20, 10, 10, 32], f32>, !mo.tensor<[2], si64>,
+        !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+      ) -> !mo.tensor<[20, 9, 5, 32], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndicesTensor:$filter_shape,
+    MO_IndicesTensor:$strides,
+    MO_IndicesTensor:$dilations,
+    MO_IndicesTensor:$paddings,
+    BoolAttr:$count_boundary,
+    MO_ParamDecls:$outputParamDecls);
+}
+
+def RMO_AvgPoolCeilOp : RMO_MOAnaloguePurePoolOp<"avg_pool_ceil_mode_true">{
+  let summary = "Ceiling-mode average pooling operation";
+  let description = [{
+    Computes average pooling with the given filter shape, strides, and dilations.
+
+    The op supports 2d avg pooling (so input and filter must be
+    4D), with the following layout assumption:
+    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+
+    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
+    unranked. If the input has static rank, all hyperparameters with static
+    shape must have sizes of `input_rank - 2`, except padding, which must have size
+    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
+    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
+    with padding representing a before/after pair for each axis. The padding values
+    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
+    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
+
+    This op currently only supports strides and dilations on the filter.
+
+    Example:
+
+    ```mlir
+      %fs = mo.constant {
+        value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %st = mo.constant {
+        value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %di = mo.constant {
+        value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %pa = mo.constant {
+        value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+      %res = rmo.avg_pool_ceil_mode_true(%arg) [
+          filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
+      ] : (
+        !mo.tensor<[1, 4, 4, 1], f32>, !mo.tensor<[2], si64>,
+        !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+      ) -> !mo.tensor<[1, 2, 2, 1], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndicesTensor:$filter_shape,
+    MO_IndicesTensor:$strides,
+    MO_IndicesTensor:$dilations,
+    MO_IndicesTensor:$paddings,
+    BoolAttr:$count_boundary,
+    MO_ParamDecls:$outputParamDecls);
+}
+
+def RMO_MaxPoolOp : RMO_MOAnaloguePurePoolOp<"max_pool">{
+  let summary = "Maximum pooling operation";
+  let description = [{
+    Computes max pooling with the given filter shape, strides, and dilations.
+
+    For now the op only supports 2d max pooling (so input and filter must be
+    4D), with the following layout assumption:
+    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+
+    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
+    unranked. If the input has static rank, all hyperparameters with static
+    shape must have sizes of `input_rank - 2`, except padding, which must have size
+    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
+    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
+    with padding representing a before/after pair for each axis. The padding values
+    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
+    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
+
+    This op currently only supports strides and dilations on the filter.
+
+    Example:
+
+    ```mlir
+      %fs = mo.constant {
+        value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %st = mo.constant {
+        value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %di = mo.constant {
+        value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %pa = mo.constant {
+        value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+      %res = rmo.max_pool(%arg) [
+          filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
+      ] : (
+        !mo.tensor<[20, 10, 10, 32], f32>, !mo.tensor<[2], si64>,
+        !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+      ) -> !mo.tensor<[20, 9, 5, 32], f32>
+    ```
+  }];
+}
+
+def RMO_MaxPoolCeilOp : RMO_MOAnaloguePurePoolOp<"max_pool_ceil_mode_true">{
+  let summary = "Ceiling-mode maximum pooling operation";
+  let description = [{
+    Computes max pooling with the given filter shape, strides, and dilations.
+
+    The op supports 2d max pooling (so input and filter must be
+    4D), with the following layout assumption:
+    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+
+    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
+    unranked. If the input has static rank, all hyperparameters with static
+    shape must have sizes of `input_rank - 2`, except padding, which must have size
+    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
+    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
+    with padding representing a before/after pair for each axis. The padding values
+    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
+    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
+
+    This op currently only supports strides and dilations on the filter.
+
+    Example:
+
+    ```mlir
+      %fs = mo.constant {
+        value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %st = mo.constant {
+        value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %di = mo.constant {
+        value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+      %pa = mo.constant {
+        value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+      %res = rmo.max_pool_ceil_mode_true(%arg) [
+          filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
+      ] : (
+        !mo.tensor<[1, 4, 4, 1], f32>, !mo.tensor<[2], si64>,
+        !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
+      ) -> !mo.tensor<[1, 2, 2, 1], f32>
+    ```
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD

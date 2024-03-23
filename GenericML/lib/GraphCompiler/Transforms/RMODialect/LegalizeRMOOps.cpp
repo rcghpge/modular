@@ -253,8 +253,11 @@ struct LegalizeRMOOps
         LegalizeRMOMOAnalogue<RMO::ScatterMinOp, MO::ScatterMinOp>,
         LegalizeRMOMOAnalogue<RMO::ScatterMaxOp, MO::ScatterMaxOp>,
         LegalizeRMOMOAnalogue<RMO::ConvOp, MO::ConvOp>,
-        LegalizeRMOMOAnalogue<RMO::ConvTransposeOp, MO::ConvTransposeOp>>(
-        context);
+        LegalizeRMOMOAnalogue<RMO::ConvTransposeOp, MO::ConvTransposeOp>,
+        LegalizeRMOMOAnalogue<RMO::AvgPoolOp, MO::AvgPoolOp>,
+        LegalizeRMOMOAnalogue<RMO::AvgPoolCeilOp, MO::AvgPoolCeilOp>,
+        LegalizeRMOMOAnalogue<RMO::MaxPoolOp, MO::MaxPoolOp>,
+        LegalizeRMOMOAnalogue<RMO::MaxPoolCeilOp, MO::MaxPoolCeilOp>>(context);
 
     // Lowering rebind
     if (!skipRMORebind)
