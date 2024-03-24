@@ -27,6 +27,19 @@ using EligibilityFunction = const std::function<bool(mlir::Operation *)> &;
 using CompatibilityFunction =
     const std::function<bool(mlir::Operation *, mlir::Operation *)> &;
 
+enum class Direction { Up, Down };
+
+/// The returned set contains all operations that are eligible, compatible with
+/// one another and all paths to them from the root are void of non eligible
+/// ops. A SetVector is returned for determinism. Will not traverse across
+/// blocks.
+template <Direction direction>
+mlir::SetVector<mlir::Operation *>
+floodFillFrom(const mlir::SmallVector<mlir::Operation *> &roots,
+              EligibilityFunction isEligible,
+              CompatibilityFunction areCompatible,
+              MO::ParametricTopologyAnalysis &completeDataflowGraph);
+
 /// NOTE: Passes that leverage this analysis have to emit deterministic IR
 /// meaning two invocations of the same pass over the same input should output
 /// the same IR. Therefore, all functions in this analysis guarantee that the

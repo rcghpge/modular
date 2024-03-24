@@ -9,13 +9,9 @@
 #include "llvm-project/llvm/include/llvm/ADT/SetOperations.h"
 
 namespace M::MOGG {
-enum class Direction { Up, Down };
 
-/// The returned set contains all operations that are eligible, compatible with
-/// one another and all paths to them from the root are void of non eligible
-/// ops. A SetVector is returned for determinism.
 template <Direction direction>
-static mlir::SetVector<mlir::Operation *>
+mlir::SetVector<mlir::Operation *>
 floodFillFrom(const mlir::SmallVector<mlir::Operation *> &roots,
               EligibilityFunction isEligible,
               CompatibilityFunction areCompatible,

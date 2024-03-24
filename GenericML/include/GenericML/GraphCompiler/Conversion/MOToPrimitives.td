@@ -46,8 +46,8 @@ def LowerPrimitives: Pass<"lower-primitives", "ModuleOp"> {
   let summary = "Lower MGP operations to primitives";
   let description = [{
     Using the loaded kernel library this looks for implementations for all
-    primitives and if one exists will lower the primitive to that mojo 
-    implementation. 
+    primitives and if one exists will lower the primitive to that mojo
+    implementation.
 
     At this stage these implementations will use "unpacked" synchronous values,
     not the runtime async values.
@@ -87,6 +87,16 @@ def LowerMOGGABI: Pass<"lower-abi", "ModuleOp"> {
                           "mlir::NVVM::NVVMDialect",
                           "mlir::index::IndexDialect",
   ];
+}
+
+def FuseGenericCompiledRegions: Pass<"fuse-generic-compiled-regions", "ModuleOp"> {
+  let summary = "Fuse sequences of GenericCompiledRegionOp";
+  let description = [{}];
+
+  let dependentDialects = ["MEF::MEFDialect",
+                          "MGP::MGPDialect",
+                          "GRT::GRTDialect",
+                          "MOGG::MOGGDialect"];
 }
 
 #endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_TD
