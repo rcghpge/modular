@@ -337,6 +337,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.lowerToCompiledRegions) {
     jitOpts.saveTempPrefix = opts.saveTempPrefix + ".region";
     pm.addPass(MGP::createLowerPrimitives());
+    pm.addPass(MGP::createFuseGenericCompiledRegions());
     pm.addPass(MGP::createLowerMOGGABI());
     pm.addPass(MOGG::createJitCompileKernels(jitOpts));
     pm.addPass(MGP::createLowerMOGGRegionCompiles());
