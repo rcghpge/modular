@@ -13,15 +13,12 @@ include(FindSphinx)
 if(Sphinx_FOUND)
   configure_file(conf.py.in conf.py @ONLY)
 
-  set(sphinx_builder html)
-  # TODO(scott): Remove use of MODULAR_DOCSITE_V2 after docsite migration
   if (MODULAR_BUILD_INFERENCE_ENGINE_DOCS_PREVIEW)
     set(sphinx_output_dir ${CMAKE_CURRENT_BINARY_DIR}/preview)
+    set(sphinx_builder html)
   else()
     set(sphinx_output_dir ${CMAKE_CURRENT_BINARY_DIR}/web)
-    if (MODULAR_DOCSITE_V2)
-      set(sphinx_builder markdown)
-    endif()
+    set(sphinx_builder markdown)
   endif()
 
   add_custom_target(inference_engine_python_docs_sphinx
@@ -51,7 +48,6 @@ if(Sphinx_FOUND)
       COMMAND ${CMAKE_COMMAND} -E rm -f objects.inv searchindex.js
       COMMAND ${CMAKE_COMMAND} -E rm -f genindex.html search.html py-modindex.html index.html
       COMMAND ${CMAKE_COMMAND} -E rm -f genindex.md search.md py-modindex.md index.md
-      COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/postprocess.py -d ${CMAKE_CURRENT_BINARY_DIR} -s ${MODULAR_DOCSITE_V2}
 
       WORKING_DIRECTORY ${sphinx_output_dir}
       COMMENT "Remove unwanted directories and files from the sphinx-build."
