@@ -34,7 +34,7 @@ struct LlamaHParams:
     var vocab_size: Int
     """Number of tokens in vocabulary."""
 
-    var norm_eps: FloatLiteral
+    var norm_eps: Float64
     """Epsilon used in normalization layers."""
 
     var n_kv_heads: Int

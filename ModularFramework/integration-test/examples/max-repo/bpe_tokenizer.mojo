@@ -3,7 +3,7 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-# RUN: mojo -I %gentext_dir %s | FileCheck "%s"
+# RUN: mojo -I "%sdk_examples_dir/llama2" %s | FileCheck "%s"
 
 from tokenizer.bpe import BPETokenizer
 from collections import List

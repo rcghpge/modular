@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from memory import memcpy
-from tensor import TensorShape
+from tensor import Tensor, TensorShape
 from collections import Optional
 from pathlib import Path
 
