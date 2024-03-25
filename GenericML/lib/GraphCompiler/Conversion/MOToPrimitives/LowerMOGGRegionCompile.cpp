@@ -154,12 +154,21 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     });
 
     Value executeContext = nullptr;
-    for (Value arg : execute.getArguments()) {
-      if (isa<MGP::ContextType>(arg.getType()))
-        executeContext = arg;
-    }
+    Region *parentRegion = nullptr;
     execute.walk([&](MOGG::ExecuteCompiledOp kernel) {
       builder.setInsertionPoint(kernel);
+      if (parentRegion != kernel->getParentRegion()) {
+        parentRegion = kernel->getParentRegion();
+        executeContext = nullptr;
+        for (Value arg : parentRegion->getArguments()) {
+          if (isa<MGP::ContextType>(arg.getType()))
+            executeContext = arg;
+        }
+        GENERICML_ASSERT(executeContext)
+            << "Cannot find execute context in bounding region of "
+               "generic.execute";
+      }
+      // Need to get execution context from bounding region?
       auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
           kernel.getLoc(), kernel.getResultTypes(), executeContext,
           kernel.getOperands(), lastDeviceRuntimeOp[device].getSlot(),
