@@ -9,7 +9,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/InitAllDialects.h"
-#include "LLCL/Runtime/Runtime.h"
+#include "Support/Context.h"
+#include "Support/Init/Init.h"
+#include "Support/MDialect/MDialect.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
@@ -29,8 +31,15 @@ int main(int argc, char **argv) {
   mlir::registerInlinerPass();
   mlir::registerCanonicalizerPass();
 
-  std::unique_ptr<LLCL::Runtime> runtime =
-      createUniqueRuntime(LLCL::RuntimeOptions().forDebug());
+  // Create our context.
+  ErrorOr<ContextRef> ctxOr = Init::createContext(
+      "graphrt-opt", Init::Options().withRuntimeOptions(
+                         LLCL::RuntimeOptions().withLeakCheckedAllocator()));
+  if (ctxOr.isError()) {
+    llvm::errs() << "failed to create context: " << ctxOr.getError() << "\n";
+    return 1;
+  }
+  registerContext(registry, *ctxOr);
 
   return failed(
       mlir::MlirOptMain(argc, argv, "graphrt optimizer driver", registry));

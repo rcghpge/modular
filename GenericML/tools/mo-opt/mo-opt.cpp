@@ -8,8 +8,9 @@
 #include "GenericML/MGPDialect/MGPDialect.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MEFDialect/MEFDialect.h"
-#include "LLCL/Runtime/Runtime.h"
+#include "Support/Init/Init.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "Support/MDialect/MDialect.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
@@ -23,10 +24,15 @@ int main(int argc, char **argv) {
 
   MO::registerPasses();
 
-  // We'll need a runtime during compilation, both to support multi-threaded
-  // compilation and to convey global options.
-  std::unique_ptr<LLCL::Runtime> runtime = LLCL::createUniqueRuntime(
-      LLCL::RuntimeOptions().withLeakCheckedAllocator());
+  // Create our context.
+  ErrorOr<ContextRef> ctxOr = Init::createContext(
+      "mo-opt", Init::Options().withRuntimeOptions(
+                    LLCL::RuntimeOptions().withLeakCheckedAllocator()));
+  if (ctxOr.isError()) {
+    llvm::errs() << "failed to create context: " << ctxOr.getError() << "\n";
+    return 1;
+  }
+  registerContext(registry, *ctxOr);
 
   return failed(
       mlir::MlirOptMain(argc, argv, "MO dialect test driver", registry));
