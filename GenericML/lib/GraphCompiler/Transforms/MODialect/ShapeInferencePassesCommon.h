@@ -9,7 +9,6 @@
 
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/Transforms/TopologicalSortUtils.h"
 
 using namespace M;
 using namespace MO;
@@ -18,18 +17,6 @@ namespace M::MO::ShapeInferencePassCommon {
 //===----------------------------------------------------------------------===//
 // Common helpers
 //===----------------------------------------------------------------------===//
-
-/// Extract the value (of MOSH::ShapeType) represented by `val` if possible,
-/// else return `null`.
-/// NOTE possible side-effect: if `val` is a tensor constant, a
-/// `ParamToValueOp` will be created to hold the shape value.
-Value tryGetShapeValue(Value val, Location loc);
-
-/// Extract the `MOSH::ShapeAttr` represented by `val` if possible, else return
-/// `null`.
-/// NOTE possible side-effect: if `val` is a tensor constant, a
-/// `ParamToValueOp` will be created with `loc` to hold the shape value.
-ShapeAttr tryGetShapeAttr(Value val, Location loc);
 
 /// Run all the elaboration passes on given module, and return whether it
 /// succeeded.

@@ -172,6 +172,64 @@ M::MO::tryGetConstantBoolVector(TensorValue val) {
   return std::nullopt;
 }
 
+/// Assume `val` is of `MO::TensorType`, try to the value of `MOSH::ShapeType`
+/// that feeds into the creation of `val`.  Otherwise return null.
+static Value tryGetShapeValue(Value val) {
+  // Skip at most a single intermediate rebind
+  if (auto rebindOp = val.getDefiningOp<RebindOp>())
+    val = rebindOp.getInput();
+
+  if (auto toTensorOp = val.getDefiningOp<Shape::ToTensorOp>())
+    return toTensorOp.getInput();
+
+  return {};
+}
+
+/// Assume `val` is of `MO::TensorType`, try to find the constant integers that
+/// created `val`, and return a `ShapeAttr` whose values are those constant
+/// integers. Otherwise return null.
+static ShapeAttr tryGetConstantShapeAttr(Value val) {
+  // Skip at most a single intermediate rebind
+  if (auto rebindOp = val.getDefiningOp<RebindOp>())
+    val = rebindOp.getInput();
+
+  if (auto tensorVal = dyn_cast<TensorValue>(val)) {
+    if (auto maybeIntVec = tryGetConstantIntVector(tensorVal)) {
+      MLIRContext *ctx = val.getContext();
+      auto shapeType = ShapeType::get(ctx);
+      return ShapeAttr::get(maybeIntVec.value(), shapeType);
+    }
+  }
+  return {};
+}
+
+Value M::MO::tryConvertToShapeVal(Value val, Location loc) {
+  if (Value shapeVal = tryGetShapeValue(val))
+    return shapeVal;
+
+  if (ShapeAttr shapeAttr = tryGetConstantShapeAttr(val)) {
+    // We don't insert via pattern rewriter because it might prevent rewriter
+    // from reaching convergence (e.g., if this is called by LowerConcat, and
+    // some other concat inputs aren't constant/shape)
+    OpBuilder builder(val.getContext());
+    builder.setInsertionPointAfterValue(val);
+    return builder.create<MOSH::ParamToValueOp>(loc, shapeAttr);
+  }
+
+  return {};
+}
+
+ShapeAttr M::MO::tryGetShapeAttr(Value val) {
+  if (Value shapeVal = tryGetShapeValue(val)) {
+    if (auto paramToValueOp = shapeVal.getDefiningOp<MOSH::ParamToValueOp>())
+      return dyn_cast<ShapeAttr>(paramToValueOp.getValue());
+
+    return {};
+  }
+
+  return tryGetConstantShapeAttr(val);
+}
+
 /// If `op`'s axis is constant and input rank is known, modify `op`'s `axis` to
 /// be the canonical version, i.e., it's guaranteed to be in [0, rank).
 /// NOTE this should be used as the first canonicalization, so other logic in

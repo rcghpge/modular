@@ -121,6 +121,16 @@ std::optional<SmallVector<int64_t>> tryGetConstantIntVector(ListValue val);
 /// return None.
 std::optional<SmallVector<bool>> tryGetConstantBoolVector(TensorValue val);
 
+/// Convert `val` to a value (of MOSH::ShapeType) if possible, else return
+/// `null`.
+/// NOTE possible side-effect: if `val` is a tensor constant, a
+/// `ParamToValueOp` will be created to hold the shape value.
+Value tryConvertToShapeVal(Value val, Location loc);
+
+/// Extract the `MOSH::ShapeAttr` represented by `val` if possible, else return
+/// `null`.
+ShapeAttr tryGetShapeAttr(Value val);
+
 /// If any of the input/output tensor type's metadata changed, update the given
 /// GraphOp's function type and signature to reflect those changes as well.
 void synchronizeMetadataUpdates(GraphOp op);

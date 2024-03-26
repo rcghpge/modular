@@ -25,49 +25,6 @@ namespace M::MO::ShapeInferencePassCommon {
 // Common helpers
 //===----------------------------------------------------------------------===//
 
-Value tryGetShapeValue(Value val, Location loc) {
-  // Skip at most a single intermediate rebind
-  if (auto rebindOp = val.getDefiningOp<RebindOp>())
-    val = rebindOp.getInput();
-
-  if (auto toTensorOp = val.getDefiningOp<Shape::ToTensorOp>())
-    return toTensorOp.getInput();
-
-  auto tensorVal = dyn_cast<TensorValue>(val);
-  if (!tensorVal)
-    return {};
-
-  // Never treat a `!mo.tensor<[1], f32>` as a shape.
-  if (!tensorVal.getType().getElementType().isIntOrIndex())
-    return {};
-
-  if (auto maybeIntVec = tryGetConstantIntVector(tensorVal)) {
-    MLIRContext *ctx = val.getContext();
-    auto shapeType = ShapeType::get(ctx);
-    auto shapeAttr = ShapeAttr::get(maybeIntVec.value(), shapeType);
-    // We don't insert via pattern rewriter because it might prevent rewriter
-    // from reaching convergence (e.g., if this is called by LowerConcat, and
-    // some other concat inputs aren't constant/shape)
-    OpBuilder builder(ctx);
-    builder.setInsertionPointAfterValue(val);
-    return builder.create<MOSH::ParamToValueOp>(loc, shapeAttr);
-  }
-
-  return {};
-}
-
-ShapeAttr tryGetShapeAttr(Value val, Location loc) {
-  auto shapeVal = tryGetShapeValue(val, loc);
-  if (!shapeVal)
-    return {};
-
-  auto paramToValueOp = shapeVal.getDefiningOp<MOSH::ParamToValueOp>();
-  if (!paramToValueOp)
-    return {};
-
-  return dyn_cast<ShapeAttr>(paramToValueOp.getValue());
-}
-
 LogicalResult elaborateModule(ModuleOp moduleOp) {
   // TODO refactor this with KGENStubBuilder
   MLIRContext *ctx = moduleOp.getContext();
