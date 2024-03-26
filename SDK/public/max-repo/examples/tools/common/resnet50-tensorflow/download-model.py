@@ -20,13 +20,17 @@ import sys
 import tempfile
 import traceback
 
+# We cannot use tensorflow-cpu on Python 3.8. If we're below 3.9, we should display
+# tensorflow rather than tensorflow-cpu.
+MIN_TF_VERSION = (3, 9)
+CUR_VERSION = sys.version_info
 
-INSTALL_PROSE = """Is it installed?
+INSTALL_PROSE = f"""Is it installed?
 
 If not, try:
 
     python3 -m venv venv; source venv/bin/activate  # if you aren't already in a virtual environment
-    python3 -m pip install tensorflow-cpu transformers
+    pip install {'tensorflow-cpu' if CUR_VERSION >= MIN_TF_VERSION else 'tensorflow'} transformers
 
 """
 
