@@ -1,29 +1,30 @@
-// RUN: mo-opt %s --constant-fold --mlir-print-ir-after=mo-to-mogg 2>&1 | FileCheck %s
+// RUN: mo-opt --split-input-file --constant-fold %s | FileCheck %s
 
-// These are checks to make sure that the constant subgraphs are lowered
-// instead of being connonicalized. We inspect the mlir code after mo-to-mogg
-// to make sure that the kernels exist.
-// CHECK: IR Dump After MOToMOGG
-// CHECK: module
-// CHECK: all_const
-// CHECK-DAG: mo.mul
-// CHECK-DAG: mo.sub
-// CHECK-DAG: mo.add
-
-// CHECK: multiple_subgraphs
-// CHECK-DAG: mo.mul
-// CHECK-DAG: mo.sub
-
-// CHECK: if_not_handled
-// CHECK: mo.mul
-
-// CHECK: nested_region
-// CHECK: mo.mul
+// COM: Examine dumped MO constant subgraph before execution
+// RUN: mo-opt --split-input-file --constant-fold --mlir-print-ir-after=mo-to-mogg 2>&1 %s | FileCheck %s -check-prefix=CHECK-CONST-MO-SUBGRAPH
 
 // No kernel for large_broadcast because it is not constant folded.
-// CHECK-NOT: large_broadcast
+// CHECK-CONST-MO-SUBGRAPH-NOT: large_broadcast
+mo.graph @large_broadcast() -> (!mo.tensor<[1024], si8>) {
+  %shape = mo.constant {value = #M.dense_array<1024> : tensor<1xsi32>} :
+			!mo.tensor<[1], si32>
+  %data = mo.constant {value = #M.dense_array<1> : tensor<1xsi8>} :
+			!mo.tensor<[1], si8>
+  %broadcast = mo.broadcast_to(%data, %shape) :
+     (!mo.tensor<[1], si8>, !mo.tensor<[1], si32>) -> !mo.tensor<[1024], si8>
+  mo.output %broadcast : !mo.tensor<[1024], si8>
+}
 
-// CHECK: all_const
+// -----
+
+// CHECK-CONST-MO-SUBGRAPH-LABEL: IR Dump After MOToMOGG
+// CHECK-CONST-MO-SUBGRAPH: module
+// CHECK-CONST-MO-SUBGRAPH: all_const
+// CHECK-CONST-MO-SUBGRAPH-DAG: mo.mul
+// CHECK-CONST-MO-SUBGRAPH-DAG: mo.sub
+// CHECK-CONST-MO-SUBGRAPH-DAG: mo.add
+
+// CHECK-LABEL: @all_const
 // CHECK-NEXT: %[[S1:.*]] = mo.constant {value = #M.dense_array<0, 5>
 // CHECK-NEXT: mo.output %[[S1]]
 mo.graph @all_const() -> (!mo.tensor<[2], si32>) {
@@ -37,6 +38,13 @@ mo.graph @all_const() -> (!mo.tensor<[2], si32>) {
   %s5 = mo.add(%s4, %s3) : !mo.tensor<[2], si32>
   mo.output %s5 : !mo.tensor<[2], si32>
 }
+
+// -----
+
+// CHECK-CONST-MO-SUBGRAPH-LABEL: IR Dump After MOToMOGG
+// CHECK-CONST-MO-SUBGRAPH: multiple_subgraphs
+// CHECK-CONST-MO-SUBGRAPH-DAG: mo.mul
+// CHECK-CONST-MO-SUBGRAPH-DAG: mo.sub
 
 // CHECK: multiple_subgraphs(%[[R1:.*]]:
 mo.graph @multiple_subgraphs(%r1 : !mo.tensor<[2], si32>) -> (!mo.tensor<[2], si32>) {
@@ -57,7 +65,14 @@ mo.graph @multiple_subgraphs(%r1 : !mo.tensor<[2], si32>) -> (!mo.tensor<[2], si
   mo.output %r8 : !mo.tensor<[2], si32>
 }
 
+// -----
+
 // TODO: if should be handled by applying connonicalization
+
+// CHECK-CONST-MO-SUBGRAPH-LABEL: IR Dump After MOToMOGG
+// CHECK-CONST-MO-SUBGRAPH: if_not_handled
+// CHECK-CONST-MO-SUBGRAPH: mo.mul
+
 // CHECK: if_not_handled
 mo.graph @if_not_handled(%e1 : !mo.tensor<[2], si32>) -> (!mo.tensor<[2], si32>) {
   // CHECK-DAG: %[[E2:.*]] = mo.constant {value = #M.dense_array<0, 9>
@@ -80,6 +95,11 @@ mo.graph @if_not_handled(%e1 : !mo.tensor<[2], si32>) -> (!mo.tensor<[2], si32>)
   mo.output %e4 : !mo.tensor<[2], si32>
 }
 
+// -----
+
+// CHECK-CONST-MO-SUBGRAPH: nested_region
+// CHECK-CONST-MO-SUBGRAPH: mo.mul
+
 // CHECK: nested_region
 mo.graph @nested_region(%g1 : !mo.tensor<[], bool>) -> (!mo.tensor<[2], si32>) {
   // CHECK-DAG: %[[G0:.*]] = mo.constant {value = #M.dense_array<0, 1>
@@ -101,19 +121,7 @@ mo.graph @nested_region(%g1 : !mo.tensor<[], bool>) -> (!mo.tensor<[2], si32>) {
   mo.output %g2 : !mo.tensor<[2], si32>
 }
 
-// CHECK: large_broadcast
-mo.graph @large_broadcast() -> (!mo.tensor<[1024], si8>) {
-  // CHECK-NEXT: %{{.*}} = mo.constant {value = #M.dense_array<1>
-  // CHECK-NEXT: mo.static.broadcast_to
-  // CHECK-NEXT: mo.output
-  %shape = mo.constant {value = #M.dense_array<1024> : tensor<1xsi32>} :
-			!mo.tensor<[1], si32>
-  %data = mo.constant {value = #M.dense_array<1> : tensor<1xsi8>} :
-			!mo.tensor<[1], si8>
-  %broadcast = mo.broadcast_to(%data, %shape) :
-     (!mo.tensor<[1], si8>, !mo.tensor<[1], si32>) -> !mo.tensor<[1024], si8>
-  mo.output %broadcast : !mo.tensor<[1024], si8>
-}
+// -----
 
 // CHECK: repeated_application
 mo.graph @repeated_application(%e0 : !mo.tensor<[], si32>) -> !mo.tensor<[], si32> {
@@ -133,13 +141,13 @@ mo.graph @repeated_application(%e0 : !mo.tensor<[], si32>) -> !mo.tensor<[], si3
   mo.output %e6 : !mo.tensor<[], si32>
 }
 
-// CHECK: shape_func
-// CHECK:   %[[VAL0:.*]] = mo.constant {value = dense_resource<folded_const> : !M.array<{{[0-9]*}}xf32>} : !mo.tensor<[MMPackSh0, MMPackSh1], f32, {layout = #mo.layout<KNkni>}>
-// CHECK-DAG:   kgen.param.declare MMPackSh1 = <{{[0-9]*}}>
-// CHECK-DAG:   kgen.param.declare MMPackSh0 = <{{[0-9]*}}>
-// CHECK:   %[[VAL1:.*]] = mo.rebind(%[[VAL0]]) : !mo.tensor<[MMPackSh0, MMPackSh1], f32, {layout = #mo.layout<KNkni>}> -> !mo.tensor<[?, ?], f32>
-// CHECK:   mo.output %[[VAL1]] : !mo.tensor<[?, ?], f32>
-mo.graph @shape_func() -> (!mo.tensor<[?, ?], f32>) {
+// -----
+
+// COM: Should not constant fold due to presence of parameters.
+// COM: Must run shape inference first to get @shape_func graph which will fold
+// CHECK-LABEL: @incomplete_shape_func
+// CHECK: mo.invoke_shape_func["pack_matmul_b_shape_func"]
+mo.graph @incomplete_shape_func() -> (!mo.tensor<[?, ?], f32>) {
   %1 = mo.constant {value = #M.dense_array<1.> : tensor<1xf32>} : !mo.tensor<[1], f32>
   %2 = mo.static.broadcast_to(%1):!mo.tensor<[1], f32> -> !mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}>
   mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> MMPackSh0, MMPackSh1>(%2) {kgenParams = {a_shape = dense<[-9223372036854775808, 768]> : vector<2xi64>, a_type = f32, b_shape = dense<[768, 768]> : vector<2xi64>, b_type = f32, c_shape = dense<[-9223372036854775808, 768]> : vector<2xi64>, c_type = f32, transpose_in_0 = false}} : (!mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}>)
@@ -148,132 +156,10 @@ mo.graph @shape_func() -> (!mo.tensor<[?, ?], f32>) {
   mo.output %4: !mo.tensor<[?, ?], f32>
 }
 
-// CHECK: constant_params
-// CHECK: %[[A0:.*]] = mo.constant {value = #M.dense_array<1, 1>
-// CHECK: %[[A1:.*]] = mo.rebind(%[[A0]])
-// CHECK: mo.output %[[A1]]
-mo.graph @constant_params() -> (!mo.tensor<[?], si32>) {
-  kgen.param.declare K = <1>
-  kgen.param.declare KAdd = <add(K, K)>
-  %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  %1 = mo.static.broadcast_to(%0) : !mo.tensor<[1], si32> -> !mo.tensor<[KAdd], si32>
-  %2 = mo.rebind(%1): !mo.tensor<[KAdd], si32> -> !mo.tensor<[?], si32>
-  mo.output %2 : !mo.tensor<[?], si32>
-}
+// -----
 
-// CHECK: index_to_tensor
-// CHECK: %[[A0:.*]] = mo.constant {value = #M.dense_array<1>
-// CHECK: mo.output %[[A0]]
-mo.graph @index_to_tensor() -> !mo.tensor<[], si32> {
-  %0 = mosh.param.to_value = <1>
-  %1 = mo.index.to_tensor(%0) -> !mo.tensor<[], si32>
-  mo.output %1 : !mo.tensor<[], si32>
-}
-
-// CHECK: constant_param_used_externally
-// CHECK-DAG: kgen.param.declare K = <1>
-// CHECK-DAG: kgen.param.declare KAdd = <2>
-// CHECK-DAG: %[[A0:.*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi32>} : !mo.tensor<[KAdd], si32>
-// CHECK: %[[A1:.*]] = mo.rebind(%{{.*}}) : !mo.tensor<[2], si32> -> !mo.tensor<[KAdd], si32>
-// CHECK: %[[A2:.*]] = mo.add(%[[A1]], %[[A0]]) : !mo.tensor<[KAdd], si32>
-// CHECK: %[[A3:.*]] = mo.rebind(%[[A2]]) : !mo.tensor<[KAdd], si32> -> !mo.tensor<[?], si32>
-// CHECK: mo.output %3 : !mo.tensor<[?], si32>
-mo.graph @constant_param_used_externally(%arg0 : !mo.tensor<[2], si32>) -> (!mo.tensor<[?], si32>) {
-  kgen.param.declare K = <1>
-  kgen.param.declare KAdd = <add(K, K)>
-  %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  %1 = mo.static.broadcast_to(%0) : !mo.tensor<[1], si32> -> !mo.tensor<[KAdd], si32>
-  %2 = mo.rebind(%arg0): !mo.tensor<[2], si32> -> !mo.tensor<[KAdd], si32>
-  %3 = mo.add(%2, %1) : !mo.tensor<[KAdd], si32>
-  %4 = mo.rebind(%3): !mo.tensor<[KAdd], si32> -> !mo.tensor<[?], si32>
-  mo.output %4 : !mo.tensor<[?], si32>
-}
-
-// CHECK: mo.graph @to_tensor_fold<[[D0:.*]], [[SH0:.*]]: !mosh.ape -> [[D1:.*]]>() -> (
-mo.graph @to_tensor_fold<D0, Sh0: !mosh.ape -> D1>() -> (
-  // CHECK-SAME: !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<[[[D1]]], si32>
-  !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<[D1], si32>
-) {
-  // CHECK-DAG: %[[VAL1:.*]] = mosh.param.to_value: !mosh.ape = <[[SH0]]>
-  // CHECK-DAG: %[[VAL3:.*]] = mo.shape.to_tensor(%[[VAL1]]) -> !mo.tensor<[?], si64>
-  // CHECK-DAG: %[[VAL2:.*]] = mosh.param.to_value: !mosh.ape = <[[[D0]], 42]>
-  // CHECK-DAG: %[[VAL4:.*]] = mo.shape.to_tensor(%[[VAL2]]) -> !mo.tensor<[2], si64>
-  // CHECK-DAG: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<17, 42> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK-DAG: %[[VAL5:.*]] = mo.constant {value = #M.dense_array<23> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  // CHECK-DAG: %[[VAL7:.*]] = mo.constant {value = #M.dense_array<23> : !M.array<1xsi32>} : !mo.tensor<[1], si32>
-  // CHECK-DAG: %[[VAL6:.*]] = mo.rebind(%[[VAL5]]) : !mo.tensor<[1], si32> -> !mo.tensor<[[[D0]]], si32>
-  %sh0 = mosh.param.to_value: !mosh.ape = <Sh0>
-  %sh1 = mosh.param.to_value: !mosh.ape = <[D0, 42]>
-  %sh2 = mosh.param.to_value: !mosh.ape = <[17, 42]>
-  %sh3 = mosh.param.to_value: !mosh.ape = <[23]>
-  %0 = mo.shape.to_tensor(%sh0) -> !mo.tensor<[?], si64>
-  %1 = mo.shape.to_tensor(%sh1) -> !mo.tensor<[2], si64>
-  %2 = mo.shape.to_tensor(%sh2) -> !mo.tensor<[2], si64>
-  %3 = mo.shape.to_tensor(%sh3) -> !mo.tensor<[1], si32>
-  %4 = mo.shape.to_tensor(%sh3) -> !mo.tensor<[D0], si32>
-  // CHECK-NEXT: mo.output<[[D0]]> %[[VAL3]], %[[VAL4]], %[[VAL0]], %[[VAL7]], %[[VAL6]] : !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<[D0], si32>
-  mo.output<D0> %0, %1, %2, %3, %4 : !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<[D0], si32>
-}
-
-// CHECK: mo.graph @reshape_to_unknown
-mo.graph @reshape_to_unknown() -> !mo.tensor<[1, ?], si8> {
-  // CHECK: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi8>} : !mo.tensor<[1, 2], si8>
-  // CHECK: %[[VAL1:.*]] = mo.rebind(%[[VAL0]])
-  // CHECK: mo.output %[[VAL1]]
-  %0 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-  %1 = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi8>} : !mo.tensor<[2], si8>
-  %2 = mo.reshape(%1, %0) : (!mo.tensor<[2], si8>, !mo.tensor<[2], si32>) -> !mo.tensor<[1, ?], si8>
-  mo.output %2 : !mo.tensor<[1, ?], si8>
-}
-
-// CHECK: mo.graph @reshape_to_unknown_with_param
-mo.graph @reshape_to_unknown_with_param(%arg0 : !mo.tensor<[2], si8>) -> !mo.tensor<[1, ?], si8> {
-  // CHECK: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi8>} : !mo.tensor<[1, 2], si8>
-  // CHECK: %[[VAL1:.*]] = mo.rebind(%[[VAL0]])
-  // CHECK: mo.add(%[[VAL1]]
-  kgen.param.declare A = <2>
-  %0 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-  %1 = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi8>} : !mo.tensor<[2], si8>
-  %2 = mo.reshape(%1, %0) : (!mo.tensor<[2], si8>, !mo.tensor<[2], si32>) -> !mo.tensor<[?, A], si8>
-  %r = mo.reshape(%arg0, %0): (!mo.tensor<[2], si8>, !mo.tensor<[2], si32>) -> !mo.tensor<[?, A], si8>
-  %3 = mo.add(%2, %r) : !mo.tensor<[?, A], si8>
-  %4 = mo.rebind(%3) : !mo.tensor<[?, A], si8> -> !mo.tensor<[1, ?], si8>
-  mo.output %4 : !mo.tensor<[1, ?], si8>
-}
-
-// CHECK: mo.graph @large_op
-// CHECK: %{{.*}} = mo.constant {value = #M.dense_array<> : !M.array<0xsi64>} : !mo.tensor<[0], si64>
-// CHECK: %{{.*}} = mo.constant {value = #M.dense_array<3, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK: %{{.*}} = mo.constant {value = #M.dense_array<3> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-// CHECK: %{{.*}} = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-// CHECK: %{{.*}} = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
-// CHECK: %{{.*}} = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-// CHECK: %{{.*}} = mo.constant {value = #M.dense_array<1.000000e+00, 1.000000e+00, 1.000000e+00> : !M.array<3xf32>} : !mo.tensor<[3, 1], f32>
-mo.graph @large_op(%arg0: !mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 2], f32> {
-  %0 = mo.constant {value = #M.dense_array<3> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-  %1 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-  %2 = mo.constant {value = #M.dense_array<1.000000e+00, 1.000000e+00, 1.000000e+00> : tensor<3xf32>} : !mo.tensor<[3], f32>
-  %3 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
-  %4 = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-  %5 = mo.shape_of(%2) : (!mo.tensor<[3], f32>) -> !mo.tensor<[1], si64>
-  %6 = mo.concat[%3 : !mo.tensor<[], si32>] (%5, %4) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
-  %7 = mo.reshape(%2, %6) : (!mo.tensor<[3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, 1], f32>
-  %8 = mo.shape_of(%arg0) : (!mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[3], si64>
-  %9 = mo.shape_of(%7) : (!mo.tensor<[?, 1], f32>) -> !mo.tensor<[2], si64>
-  %10 = mo.slice(%8, %1, %4, %4) : (!mo.tensor<[3], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[1], si64>
-  %11 = mo.slice(%8, %4, %0, %4) : (!mo.tensor<[3], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
-  %12 = mo.slice(%9, %1, %1, %4) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[0], si64>
-  %13 = mo.broadcast_shape(%10, %12) : (!mo.tensor<[1], si64>, !mo.tensor<[0], si64>) -> !mo.tensor<[1], si64>
-  %14 = mo.concat[%3 : !mo.tensor<[], si32>] (%13, %11) : (!mo.tensor<[1], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
-  %15 = mo.concat[%3 : !mo.tensor<[], si32>] (%13, %9) : (!mo.tensor<[1], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
-  %16 = mo.broadcast_to(%arg0, %14) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
-  %17 = mo.broadcast_to(%7, %15) : (!mo.tensor<[?, 1], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
-  %18 = mo.batch_matmul(%16, %17) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[2, 2, 1], f32>
-  %19 = mo.static.reshape(%18) : !mo.tensor<[2, 2, 1], f32> -> !mo.tensor<[2, 2], f32>
-  mo.output %19 : !mo.tensor<[2, 2], f32>
-}
-
-// CHECK: mo.graph @multiple_internal_ops(%[[ARG0:.*]]:
+// CHECK-LABEL: mo.graph @multiple_internal_ops
+// CHECK-SAME: (%[[ARG0:.*]]:
 // CHECK-NEXT: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<{{.*}}> : !M.array<6xf32>} : !mo.tensor<[3, 2], f32>
 // CHECK-NEXT: %[[VAL1:.*]] = mo.matmul(%[[ARG0]], %[[VAL0]])
 // CHECK-NEXT: mo.output %[[VAL1]]
@@ -287,29 +173,10 @@ mo.graph @multiple_internal_ops(%arg0: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[1
   mo.output %17 : !mo.tensor<[1, 2], f32>
 }
 
-// Checks the case that removing an output from a subgraph also removes its dependencies.
-// CHECK: mo.graph @subgraph_dependent_outputs
-// CHECK: mo.output %13
-mo.graph @subgraph_dependent_outputs(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 10], f32> {
-  %0 = mo.constant {value = #M.dense_array<1.000000e+00> : !M.array<1xf32>} : !mo.tensor<[], f32>
-  %1 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32> -> !mo.tensor<[300], f32>
-  %2 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32> -> !mo.tensor<[300, 10], f32>
-  %3 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32> -> !mo.tensor<[100, 300], f32>
-  %4 = mo.matmul(%arg0, %3) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[100, 300], f32>) -> !mo.tensor<[?, 300], f32>
-  %5 = mo.shape_of(%4) : (!mo.tensor<[?, 300], f32>) -> !mo.tensor<[2], si64>
-  %6 = mo.shape_of(%1) : (!mo.tensor<[300], f32>) -> !mo.tensor<[1], si64>
-  %7 = mo.broadcast_shape(%5, %6) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
-  %8 = mo.broadcast_to(%4, %7) : (!mo.tensor<[?, 300], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, 300], f32>
-  %9 = mo.broadcast_to(%1, %7) : (!mo.tensor<[300], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, 300], f32>
-  %10 = mo.add(%8, %9) : !mo.tensor<[?, 300], f32>
-  %11 = mo.relu(%10) : !mo.tensor<[?, 300], f32>
-  %12 = mo.matmul(%11, %2) : (!mo.tensor<[?, 300], f32>, !mo.tensor<[300, 10], f32>) -> !mo.tensor<[?, 10], f32>
-  %13 = mo.softmax(%12) : (!mo.tensor<[?, 10], f32>) -> !mo.tensor<[?, 10], f32>
-  mo.output %13 : !mo.tensor<[?, 10], f32>
-}
+// -----
 
 // Check that various operations on lists are constant folded.
-// CHECK: mo.graph @list
+// CHECK-LABEL: mo.graph @list
 // CHECK-NOT: mo.concat_from_list
 // CHECK-NOT: mo.list.insert
 // CHECK: mo.list.create
@@ -325,8 +192,10 @@ mo.graph @list() -> (!mo.tensor<[2], f32>, !mo.list<!mo.tensor<[1], f32>>) {
   mo.output %1, %2 :!mo.tensor<[2], f32>, !mo.list<!mo.tensor<[1], f32>>
 }
 
+// -----
+
 // Check that transitive dependencies are removed in the policy.
-// CHECK: mo.graph @transitive_remove
+// CHECK-LABEL: @transitive_remove
 // CHECK: mo.output
 mo.graph @transitive_remove(%arg0: !mo.tensor<[11, 4, 4, 6, 5], f32>) -> !mo.tensor<[11, 2, 2, 2, 10], f32> no_inline {
   %0 = mo.constant {value = #M.dense_array<0, 0, 0, 0, 0, 0> : tensor<6xsi64>} : !mo.tensor<[6], si64>
@@ -347,8 +216,10 @@ mo.graph @transitive_remove(%arg0: !mo.tensor<[11, 4, 4, 6, 5], f32>) -> !mo.ten
   mo.output %14 : !mo.tensor<[11, 2, 2, 2, 10], f32>
 }
 
+// -----
+
 // Check that mogg ops are folded
-// CHECK: mo.graph @fold_mogg_ops
+// CHECK-LABEL: @fold_mogg_ops
 // CHECK-NOT: mogg.concat
 // CHECK: mo.output
 mo.graph @fold_mogg_ops() -> !mo.tensor<[2], si64> {
@@ -358,11 +229,74 @@ mo.graph @fold_mogg_ops() -> !mo.tensor<[2], si64> {
   mo.output %3 : !mo.tensor<[2], si64>
 }
 
+// -----
 
+// CHECK-LABEL: mo.graph @large_op
+// CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<3, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<3> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
+// CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
+// CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
+// CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
+// CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<1.000000e+00, 1.000000e+00, 1.000000e+00> : tensor<3xf32>} : !mo.tensor<[3], f32>
+mo.graph @large_op(%arg0: !mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 2], f32> no_inline {
+  %0 = mo.constant {value = #M.dense_array<3> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
+  %1 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
+  %2 = mo.constant {value = #M.dense_array<1.000000e+00, 1.000000e+00, 1.000000e+00> : tensor<3xf32>} : !mo.tensor<[3], f32>
+  %3 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
+  %4 = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
+  %5 = mo.shape_of(%2) : (!mo.tensor<[3], f32>) -> !mo.tensor<[1], si64>
+  %6 = mo.concat[%3 : !mo.tensor<[], si32>] (%5, %4) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
+  %7 = mo.reshape<() -> D15>(%2, %6) : (!mo.tensor<[3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D15, 1], f32>
+  %8 = mo.shape_of(%arg0) : (!mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[3], si64>
+  %9 = mo.rebind<() -> D14>(%7) : !mo.tensor<[D15, 1], f32> -> !mo.tensor<[D14, 1], f32>
+  %10 = mo.shape_of(%9) : (!mo.tensor<[D14, 1], f32>) -> !mo.tensor<[2], si64>
+  %11 = mo.slice(%8, %1, %4, %4) : (!mo.tensor<[3], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[1], si64>
+  %12 = mo.slice(%8, %4, %0, %4) : (!mo.tensor<[3], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
+  %13 = mo.slice(%10, %1, %1, %4) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[0], si64>
+  %14 = mo.broadcast_shape(%11, %13) : (!mo.tensor<[1], si64>, !mo.tensor<[0], si64>) -> !mo.tensor<[1], si64>
+  %15 = mo.concat[%3 : !mo.tensor<[], si32>] (%14, %12) : (!mo.tensor<[1], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
+  %16 = mo.concat[%3 : !mo.tensor<[], si32>] (%14, %10) : (!mo.tensor<[1], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3], si64>
+  %17 = mo.broadcast_to<() -> D11, D12, D13>(%arg0, %15) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[D11, D12, D13], f32>
+  %18 = mo.rebind<() -> D7>(%7) : !mo.tensor<[D15, 1], f32> -> !mo.tensor<[D7, 1], f32>
+  %19 = mo.broadcast_to<() -> D8, D9, D10>(%18, %16) : (!mo.tensor<[D7, 1], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[D8, D9, D10], f32>
+  %20 = mo.rebind<() -> D1, D2, D3>(%17) : !mo.tensor<[D11, D12, D13], f32> -> !mo.tensor<[D1, D2, D3], f32>
+  %21 = mo.rebind<() -> D4, D5, D6>(%19) : !mo.tensor<[D8, D9, D10], f32> -> !mo.tensor<[D4, D5, D6], f32>
+  %22 = mo.batch_matmul(%20, %21) : (!mo.tensor<[D1, D2, D3], f32>, !mo.tensor<[D4, D5, D6], f32>) -> !mo.tensor<[2, 2, 1], f32>
+  %23 = mo.static.reshape(%22) : !mo.tensor<[2, 2, 1], f32> -> !mo.tensor<[2, 2], f32>
+  mo.output %23 : !mo.tensor<[2, 2], f32>
+}
 
-// CHECK: mo.graph @if_cache_resources([[ARG0:%.*]]: !mo.tensor<[], bool>, [[ARG1:%.*]]: !mo.tensor<[600], f32>) -> !mo.tensor<[600], f32> no_inline {
+// -----
+
+// COM: Do not constant fold parametric outputs in graphs. Depend on shape
+// COM: inference to clean up first. We can go up to the add in this case.
+// CHECK-LABEL: mo.graph
+// CHECK-SAME: @partial_fold_parameterized_outputs<() -> O>() -> !mo.tensor<[O], f32> no_inline {
+// CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = dense_resource<folded_const> : !M.array<600xf32>} : !mo.tensor<[600], f32>
+// CHECK-NEXT: kgen.param.declare A = <600>
+// CHECK-NEXT: [[V1:[^ ]*]] = mo.rebind([[V0]]) : !mo.tensor<[600], f32> -> !mo.tensor<[A], f32>
+// CHECK-NEXT: mo.output<A> [[V1]] : !mo.tensor<[A], f32>
+mo.graph @partial_fold_parameterized_outputs<() -> O>() -> (!mo.tensor<[O], f32>) {
+  %0 = mo.constant {value = dense_resource<large_const> : !M.array<600xf32>} : !mo.tensor<[600], f32>
+  %1 = mo.add(%0, %0): !mo.tensor<[600], f32>
+  %2 = mo.rebind<() -> A>(%1): !mo.tensor<[600], f32> -> !mo.tensor<[A], f32>
+  mo.output<A> %2 : !mo.tensor<[A], f32>
+}
+
+{-#
+  dialect_resources: {
+    builtin: {
+      large_const: "0x040000000000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C0400000000000000040000080400000C040"
+    }
+  }
+#-}
+
+// -----
+
+// CHECK-LABEL: @if_cache_resources
+// CHECK-SAME: ([[ARG0:%.*]]: !mo.tensor<[], bool>, [[ARG1:%.*]]: !mo.tensor<[600], f32>) -> !mo.tensor<[600], f32> no_inline {
 mo.graph @if_cache_resources(%arg0: !mo.tensor<[], bool>, %arg1: !mo.tensor<[600], f32>) -> (!mo.tensor<[600], f32>) {
-//  CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = dense_resource<folded_const_1> : !M.array<600xf32>} : !mo.tensor<[600], f32>
+//  CHECK:   [[V0:%.*]] = mo.constant {value = dense_resource<folded_const> : !M.array<600xf32>} : !mo.tensor<[600], f32>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.if([[ARG0]] : !mo.tensor<[], bool>) -> !mo.tensor<[600], f32> {
 //  CHECK-NEXT:     [[V2:%.*]] = mo.add([[ARG1]], [[V0]]) : !mo.tensor<[600], f32>
 //  CHECK-NEXT:     mo.yield [[V2]] : !mo.tensor<[600], f32>

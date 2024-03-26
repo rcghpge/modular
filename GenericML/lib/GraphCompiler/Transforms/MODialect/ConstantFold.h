@@ -16,23 +16,6 @@
 #include <numeric>
 namespace M::MO {
 
-namespace {
-
-// Convert a TensorType to a ShapedType so it can be used with functions in
-// Support. TensorType does not implement the ShapedType protocol so this is
-// necessary.
-ShapedType typeToShaped(TensorType type) {
-  auto shapeAttr = dyn_cast<MOSH::ShapeAttr>(type.getShapeAttr());
-  GENERICML_ASSERT(shapeAttr)
-      << "Shapes in constants subgraph should all be infered";
-  auto intDims = shapeAttr.getIntDims();
-  int64_t size = std::accumulate(intDims.begin(), intDims.end(), 1,
-                                 std::multiplies<int64_t>());
-  return ArrayType::get(type.getContext(), size, type.getElementType());
-}
-
-} // namespace
-
 struct Subgraph {
   llvm::SetVector<Operation *> ops;
   // Outputs are Value in the constant subgraph that have uses outside of the
@@ -120,23 +103,54 @@ struct FactorMemIncrease : public ConstantFoldPolicy {
   shouldFold(SmallVector<Subgraph> subgraphs) const override {
     SmallVector<Subgraph> foldThese;
     for (auto &subgraph : subgraphs) {
-      int64_t initialMem = constantMemUsage(subgraph);
+      std::optional<int64_t> maybeInitialMem = constantMemUsage(subgraph);
+
       // Greedily remove outputs with the largest size. Might be a smarter
       // way to do this.
-      int64_t outputMem = outputMemUsage(subgraph);
-      while (!subgraph.outputs.empty() && outputMem > initialMem * factor &&
-             outputMem > threshold) {
+      std::optional<int64_t> maybeOutputMem = outputMemUsage(subgraph);
+
+      // Cannot determine memory growth if parameterized inputs.
+      // In this case be safe and don't fold the subgraphs for now.
+      if (!maybeInitialMem.has_value())
+        continue;
+
+      int64_t initialMem = *maybeInitialMem;
+
+      int64_t factorLimit = floor(initialMem * factor);
+      int64_t totalThreshold = std::max(factorLimit, threshold);
+
+      auto memoryOk = [&]() {
+        return maybeOutputMem.has_value() && *maybeOutputMem <= totalThreshold;
+      };
+      while (!subgraph.outputs.empty() && !memoryOk()) {
+        // Implies parameterized shape in output, just quit for now
+        if (!maybeOutputMem.has_value())
+          break;
+
         // TODO: this is N^2, we should improve it #18475
         Operation *maxValue = *std::max_element(
             subgraph.outputs.begin(), subgraph.outputs.end(),
-            [&subgraph](Operation *a, Operation *b) {
-              return valueSize(subgraph, a) < valueSize(subgraph, b);
+            [&subgraph, totalThreshold](Operation *a, Operation *b) {
+              std::optional<int64_t> maybeSizeA = valueSize(subgraph, a);
+              std::optional<int64_t> maybeSizeB = valueSize(subgraph, b);
+
+              // If unknown, set to a big enough number
+              int64_t sizeA = maybeSizeA.has_value() ? maybeSizeA.value()
+                                                     : totalThreshold + 1;
+              int64_t sizeB = maybeSizeB.has_value() ? maybeSizeB.value()
+                                                     : totalThreshold + 1;
+
+              return sizeA < sizeB;
             });
+
         // TODO: this is N^2, we should improve it #18475
         subgraph.remove(maxValue);
-        outputMem = outputMemUsage(subgraph);
+        maybeOutputMem = outputMemUsage(subgraph);
       }
-      if (!llvm::all_of(subgraph.outputs, [](Operation *op) {
+
+      // NOTE: do not fold subgraphs with parameters in them.
+      // We assume shape inference will clean up such shape inference graphs.
+      if (memoryOk() && !llvm::all_of(subgraph.outputs, [](Operation *op) {
             return dyn_cast<ConstantOp>(op) ||
                    dyn_cast<KGEN::ParamDeclareOp>(op);
           }))
@@ -147,46 +161,70 @@ struct FactorMemIncrease : public ConstantFoldPolicy {
   ~FactorMemIncrease() override = default;
 
   // Size of Value in bytes.
-  static int64_t valueSize(Value v) {
+  // Returns std::nullopt if it is unknown (e.g. parameterized shape).
+  static std::optional<int64_t> valueSize(Value v) {
     auto tensor = dyn_cast<TensorType>(v.getType());
-    if (tensor)
-      return typeToShaped(tensor).getNumElements() *
-             tensor.getDtype().getSizeInBytes();
+    if (tensor) {
+      std::optional<int64_t> numElements = tensor.getNumElements();
+      if (!numElements.has_value())
+        return {};
+      return numElements.value() * tensor.getDtype().getSizeInBytes();
+    }
 
     // index or shape have nominal sizes
     return 0;
   }
 
-  static int64_t valueSize(const Subgraph &subgraph, Operation *op) {
+  static std::optional<int64_t> valueSize(const Subgraph &subgraph,
+                                          Operation *op) {
     int64_t sum = 0;
     for (auto result : op->getResults()) {
-      if (!subgraph.fullyContains(result))
-        sum += valueSize(result);
+      if (!subgraph.fullyContains(result)) {
+        std::optional<int64_t> localSize = valueSize(result);
+        if (!localSize.has_value())
+          return {};
+        sum += localSize.value();
+      }
     }
     return sum;
   }
 
   // Size of ConstantOp data in bytes.
-  static int64_t valueSize(ConstantOp op) { return valueSize(op.getResult()); }
+  // Returns std::nullopt if it is unknown (e.g. parameterized shape).
+  static std::optional<int64_t> valueSize(ConstantOp op) {
+    return valueSize(op.getResult());
+  }
 
   // Calculate the size in bytes of memory used by the outputs of a
   // subgraph.
-  static int64_t outputMemUsage(const Subgraph &subgraph) {
+  // Returns std::nullopt if it is unknown (e.g. parameterized shape).
+  static std::optional<int64_t> outputMemUsage(const Subgraph &subgraph) {
     int64_t outputSize = 0;
-    for (auto output : subgraph.outputs)
-      outputSize += valueSize(subgraph, output);
+    for (auto output : subgraph.outputs) {
+      std::optional<int64_t> localSize = valueSize(subgraph, output);
+
+      if (!localSize.has_value())
+        return {};
+
+      outputSize += localSize.value();
+    }
     return outputSize;
   }
 
   // Calculate the size in bytes of memory used by all constant ops in the
   // subgraph.
-  static int64_t constantMemUsage(const Subgraph &subgraph) {
+  // Returns std::nullopt if it is unknown (e.g. parameterized shape).
+  static std::optional<int64_t> constantMemUsage(const Subgraph &subgraph) {
     int64_t internalSize = 0;
     for (auto op : subgraph.ops) {
       if (!subgraph.outputs.contains(op)) {
         auto constant = dyn_cast<ConstantOp>(op);
-        if (constant)
-          internalSize += valueSize(constant);
+        if (constant) {
+          auto localSize = valueSize(constant);
+          if (!localSize.has_value())
+            return {};
+          internalSize += localSize.value();
+        }
       }
     }
     return internalSize;

@@ -161,8 +161,52 @@ sortParams(llvm::ArrayRef<Operation *> ops) {
 }
 
 /// Marker for ops that are constant foldable. Currently MO ops and KGEN param
-/// ops.
-static bool isConstantFoldable(Operation *op) {
+/// ops. If true, might be constant foldable, if false, definitely not.
+static bool isMaybeConstantFoldable(Operation *op) {
+  // Don't constant fold any op with regions.
+  if (op->getNumRegions() != 0)
+    return false;
+
+  // Skip ops with parameterized shape
+  auto findParamDeclRefAttr = [](KGEN::ParamDeclRefAttr paramRef) {
+    return WalkResult::interrupt();
+  };
+  auto findUnknownAttr = [](KGEN::UnknownAttr param) {
+    return WalkResult::interrupt();
+  };
+  for (auto operandTy : op->getOperandTypes()) {
+    if (operandTy.walk(findParamDeclRefAttr, findUnknownAttr)
+            .wasInterrupted()) {
+      return false;
+    }
+  }
+  for (auto resultTy : op->getResultTypes()) {
+    if (resultTy.walk(findParamDeclRefAttr, findUnknownAttr).wasInterrupted()) {
+      return false;
+    }
+  }
+  for (auto attr : op->getAttrs()) {
+    if (attr.getValue()
+            .walk(findParamDeclRefAttr, findUnknownAttr)
+            .wasInterrupted()) {
+      return false;
+    }
+  }
+
+  // Skip ops which declare/define parameters (NOTE: they may not use them)
+  auto paramOpInterface = dyn_cast<KGEN::ParamOpInterface>(op);
+  if (paramOpInterface) {
+    bool definesOrDeclaresParams = false;
+    paramOpInterface.walkDefinitions(
+        [&](KGEN::ParamDeclAttr param, const ParamDefValue &val) {
+          definesOrDeclaresParams = true;
+        });
+    paramOpInterface.walkDeclarations(
+        [&](KGEN::ParamDeclAttr param) { definesOrDeclaresParams = true; });
+    if (definesOrDeclaresParams)
+      return false;
+  }
+
   return ((isa<MO::MODialect, MOGG::MOGGDialect>(op->getDialect()) &&
            // TODO (#29484): Graphs with mo.list outputs can't be lowered to
            // MGP.
@@ -411,23 +455,6 @@ executeModel(MLIRContext *ctx, const Model *model,
   return ModelResult{opToTensors, params};
 }
 
-/// The use-def graph has both declarations (no associated value) and
-/// definitions (x = y). We just need any parameter that is created so we search
-/// through both for the defining operation.
-static Operation *lookupParamDef(const KGEN::ParameterUseDefGraph &paramUseDef,
-                                 StringAttr name) {
-  Operation *def;
-  auto defIt = paramUseDef.defs.find(name);
-  auto declIt = paramUseDef.decls.find(name);
-  if (defIt != paramUseDef.defs.end())
-    def = defIt->second.defOp;
-  else if (declIt != paramUseDef.decls.end())
-    def = declIt->second.declOp;
-  else
-    GENERICML_ASSERT(false) << "Could not find def with name " << name;
-  return def;
-}
-
 SmallVector<Subgraph>
 M::MO::constantSubgraphs(MO::GraphOp graph,
                          KGEN::ParameterCollector::Analysis &paramCache) {
@@ -464,15 +491,6 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
     for (auto user : op.getResult().getUsers())
       workQueue.push_back(user);
   });
-  graph.walk([&](MOSH::ParamToValueOp op) {
-    // ParamToValueOp can have parameters that are not constant...
-    workQueue.push_back(op);
-  });
-
-  // Parameters are not SSA values so we need to construct our own use-def graph
-  // for them.
-  KGEN::ParameterUseDefGraph paramUseDef(graph.getRegion());
-  paramUseDef.calculate(paramCache);
 
   // Run for a fixed amount of iterations. This avoids unexpected infinite
   // recursion within a graphop.
@@ -485,94 +503,44 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
     Operation *op = workQueue.back();
     workQueue.pop_back();
 
-    // Value is already non-const, skip to next on work queue.
-    if (nonConst.contains(op))
-      continue;
-
     // already visited
     if (constSubgraphs.findValue(op) != constSubgraphs.end())
       continue;
 
-    // Don't constant fold any op with regions.
-    if (op->getNumRegions() != 0) {
+    // Value is already non-const, skip to next on work queue.
+    if (nonConst.contains(op))
+      continue;
+
+    if (!isMaybeConstantFoldable(op)) {
       nonConst.insert(op);
       continue;
     }
 
-    // Skip non-foldable ops
-    if (!isConstantFoldable(op)) {
-      nonConst.insert(op);
-      continue;
-    }
-
-    llvm::DenseSet<Operation *> unvisited;
+    // Check all operands are const
+    llvm::DenseSet<Operation *> unvisitedOperands;
     bool foundNonConst = false;
     for (auto operand : op->getOperands()) {
       // If any operand is non-const then this op/value is also non-const
       Operation *definition = operand.getDefiningOp();
       if (!definition || nonConst.contains(definition)) {
-        nonConst.insert(op);
         foundNonConst = true;
         break;
       }
       if (constSubgraphs.findValue(definition) == constSubgraphs.end()) {
         // Operand has not been visited yet.
-        unvisited.insert(definition);
+        unvisitedOperands.insert(definition);
       }
     }
-    if (foundNonConst)
+    if (foundNonConst) {
+      nonConst.insert(op);
       continue;
-
-    // Check that all new definitions are const
-    llvm::SetVector<Operation *> paramOperands;
-    auto walkDeclRef = [&](KGEN::ParamDeclRefAttr paramRef) {
-      Operation *def = lookupParamDef(paramUseDef, paramRef.getName());
-      if (nonConst.contains(def)) {
-        nonConst.insert(op);
-        foundNonConst = true;
-        return WalkResult::interrupt();
-      }
-      paramOperands.insert(def);
-      // Skip params that are defined by this op.
-      if (def != op && constSubgraphs.findValue(def) == constSubgraphs.end())
-        unvisited.insert(def);
-      return WalkResult::advance();
-    };
-    auto paramOpInterface = dyn_cast<KGEN::ParamOpInterface>(op);
-    if (paramOpInterface) {
-      paramOpInterface.walkDefinitions(
-          [&](KGEN::ParamDeclAttr param, const ParamDefValue &val) {
-            for (auto expr : val.exprs) {
-              expr.walk(walkDeclRef);
-              if (foundNonConst)
-                break;
-            }
-          });
-      if (foundNonConst)
-        continue;
     }
 
-    // Go through all parameters and make sure they are const. We only do
-    // this for outputs as inputs were already checked by their defining op.
-    for (auto resultType : op->getResultTypes()) {
-      resultType.walk(walkDeclRef);
-      if (foundNonConst)
-        break;
-    }
-    if (foundNonConst)
-      continue;
-
-    // Check that all parameters in attrs are const.
-    for (auto attr : op->getAttrs())
-      attr.getValue().walk(walkDeclRef);
-    if (foundNonConst)
-      continue;
-
-    if (!unvisited.empty()) {
-      // All operands have not been visited, push the current value, then
-      // the unvisited operands (so they get handled first).
+    // All operands have not been visited, push the current value, then
+    // the unvisited operands (so they get handled first).
+    if (!unvisitedOperands.empty()) {
       workQueue.push_back(op);
-      for (auto definition : unvisited)
+      for (auto definition : unvisitedOperands)
         workQueue.push_back(definition);
       continue;
     }
@@ -581,8 +549,6 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
     constSubgraphs.insert(op);
     for (auto operand : op->getOperands())
       constSubgraphs.unionSets(op, operand.getDefiningOp());
-    for (auto param : paramOperands)
-      constSubgraphs.unionSets(op, param);
 
     // Check if users of this now constant value are themselves constant.
     for (auto result : op->getResults())

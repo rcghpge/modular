@@ -73,8 +73,8 @@ mo.graph @if_not_handled(%e1 : !mo.tensor<[2], si32>) -> (!mo.tensor<[2], si32>)
 }
 
 // CHECK-LABEL: nested_region
-// CHECK: %[[G3:.*]] = mo.constant {value = #M.dense_array<0, 1>
-// CHECK-NEXT: %[[G4:.*]] = mo.mul
+// CHECK-DAG: %[[G3:.*]] = mo.constant {value = #M.dense_array<0, 1>
+// CHECK-DAG: %[[G4:.*]] = mo.mul(%[[G3]], %[[G3]])
 // CHECK: subgraph %[[G3]] %[[G4]]
 // CHECK: outputs %[[G4]]
 mo.graph @nested_region(%g1 : !mo.tensor<[], bool>) -> (!mo.tensor<[2], si32>) {
@@ -99,17 +99,6 @@ mo.graph @parameter_outputs<M>() -> (!mo.tensor<[M], si8>) {
 			!mo.tensor<[1], si8>
   %broadcast = mo.static.broadcast_to(%data) :!mo.tensor<[1], si8> -> !mo.tensor<[M], si8>
   mo.output %broadcast : !mo.tensor<[M], si8>
-}
-
-// CHECK-LABEL: param_as_root
-// CHECK: %[[IDX:.*]] = mosh.param.to_value = <1>
-// CHECK: %[[A0:.*]] = mo.index.to_tensor(%[[IDX]]) -> !mo.tensor<[], si32>
-// CHECK: subgraph %[[IDX]] %[[A0]]
-// CHECK: outputs %[[A0]]
-mo.graph @param_as_root() -> (!mo.tensor<[], si32>) {
-    %index = mosh.param.to_value = <1>
-    %0 = mo.index.to_tensor(%index) -> !mo.tensor<[], si32>
-    mo.output %0 : !mo.tensor<[], si32>
 }
 
 // CHECK-LABEL: repeated_application
@@ -139,9 +128,8 @@ mo.graph @repeated_application(%e0 : !mo.tensor<[], si32>) -> !mo.tensor<[], si3
 // CHECK-LABEL: shape_func
 // CHECK: %[[G1:.*]] = mo.constant {value = #M.dense_array<1.
 // CHECK: %[[G2:.*]] = mo.static.broadcast_to(%[[G1]])
-// CHECK: %[[G3:.*]] = mo.layout.transform(%[[G2]]
-// CHECK: subgraph %[[G1]] %[[G2]] %[[G3]]
-// CHECK: outputs %[[G3]]
+// CHECK: subgraph %[[G1]] %[[G2]]
+// CHECK: outputs %[[G2]]
 mo.graph @shape_func() -> (!mo.tensor<[?, ?], f32>) {
   %g1 = mo.constant {value = #M.dense_array<1.> : tensor<1xf32>} : !mo.tensor<[1], f32>
   %g2 = mo.static.broadcast_to(%g1):!mo.tensor<[1], f32> -> !mo.tensor<[768,768], f32, {layout = #mo.layout<KN>}>
