@@ -88,7 +88,6 @@ void M::MO::registerPasses() {
   MGP::registerLowerPrimitives();
   MGP::registerLowerMOGGABI();
   MGP::registerFuseGenericCompiledRegions();
-  Cache::registerDeflateConstants();
   MGP::registerMGPTransformsPasses();
   CUDA::registerCUDATransformsPasses();
   MOGG::registerPasses();
