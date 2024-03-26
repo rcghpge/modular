@@ -5,7 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/GraphCompiler.h"
-#include "Cache/CachePasses/CachePasses.h"
 #include "GenericML/CUDADialect/CUDADialect.h"
 #include "GenericML/CUDATransforms/CUDATransforms.h"
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"

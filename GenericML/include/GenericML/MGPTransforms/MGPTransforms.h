@@ -8,7 +8,6 @@
 #define GENERICML_MGPDIALECT_MGPTRANSFORMS_H
 
 #include "Cache/CacheDialect/CacheDialect.h"
-#include "Cache/CachePasses/CachePasses.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/Pass.h"
 
