@@ -22,10 +22,8 @@ BufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
       << bufferCache.size();
   auto &entry = bufferCache[bufferIndex];
   updateCacheIfNeeded(entry, runtime, size, alignment);
-  // Return a borrowed reference to the cached buffer. Since it's in the
-  // cache, and the compiler follows the 'one shot' rules for reallocing
-  // buffers, we can give the borrow 'execute' lifetime.
-  return entry.borrow(GML::BufferRef::kExecute);
+  // Return a borrowed reference to the cached buffer.
+  return entry.borrow();
 }
 
 ErrorOr<BufferRef> StateSlot::getBuffer(size_t bufferIndex) {
@@ -38,16 +36,13 @@ ErrorOr<BufferRef> StateSlot::getBuffer(size_t bufferIndex) {
   // Return a borrowed reference to the cached buffer. Since it's in the
   // cache, and the compiler follows the 'one shot' rules for reallocating
   // buffers, we can give the borrow 'execute' lifetime.
-  return entry.borrow(GML::BufferRef::kExecute);
+  return entry.borrow();
 }
 
 ErrorOrSuccess StateSlot::setBuffer(size_t bufferIndex, BufferRef bufferRef) {
   GENERICML_ASSERT(bufferIndex < bufferCache.size())
       << "invalid buffer index " << bufferIndex << " in StateSlot of size "
       << bufferCache.size();
-  GENERICML_ASSERT(bufferRef.getOwnership() == BufferRef::kOwned ||
-                   (bufferRef.getOwnership() == BufferRef::kBorrowed &&
-                    bufferRef.getLifetime() >= BufferRef::kExecute));
   auto &entry = bufferCache[bufferIndex];
   if (entry.getBuffer() != nullptr)
     return Error("buffer has already been cached at the given index");

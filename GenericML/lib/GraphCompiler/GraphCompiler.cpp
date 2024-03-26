@@ -23,8 +23,6 @@
 #include "GenericML/GraphCompiler/Transforms/MOQDialect/MOQTransforms.h"
 #include "GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
-#include "GenericML/Support/ForeignBufferInterface.h"
-#include "GenericML/Support/ResourceBufferInterface.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
 #include "GraphRT/MLIRToMEF.h"

@@ -16,7 +16,6 @@
 #include "GenericML/MGPDialect/MGPDialect.h"
 #include "GenericML/Support/List.h"
 #include "GenericML/Support/Model.h"
-#include "GenericML/Support/ResourceBufferInterface.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MEFExecutor/MEFFile.h"
 #include "KGEN/KGENDialect/KGENOps.h"
@@ -46,6 +45,22 @@ namespace M::MO {
 } // namespace M::MO
 
 namespace {
+
+/// Helper to allow for resource blob ownership to be transfered and freed
+/// earlier by buffers.
+struct BlobLifetimeManager {
+  BlobLifetimeManager(
+      llvm::unique_function<void(void *data, size_t size, size_t align)>
+          deleter,
+      ArrayRef<char> data, size_t alignment)
+      : deleter(std::move(deleter)), data(data), alignment(alignment) {}
+  ~BlobLifetimeManager() {
+    deleter(const_cast<char *>(data.data()), data.size(), alignment);
+  }
+  llvm::unique_function<void(void *data, size_t size, size_t align)> deleter;
+  ArrayRef<char> data;
+  size_t alignment;
+};
 
 // Holds all the information necessary to execute and replace all constant
 // subgraphs in a single graph op.
@@ -225,10 +240,9 @@ static bool isMaybeConstantFoldable(Operation *op) {
 /// tensor that owns the underlying resource blob.
 /// Otherwise the returned tensor's data is borrowed.
 static GML::Tensor
-denseResourceAsTensor(ConstantOp constant,
+denseResourceAsTensor(LLCL::Runtime &runtime, ConstantOp constant,
                       DenseResourceElementsAttr denseResource,
-                      const Subgraph &subgraph,
-                      GML::ForeignBufferInterfaceID resourceInterfaceID) {
+                      const Subgraph &subgraph) {
   mlir::AsmResourceBlob *blob = denseResource.getRawHandle().getBlob();
   TensorType ttype = dyn_cast<TensorType>(constant.getType());
   TensorSpec spec(dyn_cast<MOSH::ShapeAttr>(ttype.getShapeAttr()).getIntDims(),
@@ -241,16 +255,27 @@ denseResourceAsTensor(ConstantOp constant,
 
   llvm::SetVector<Operation *> usersOutsideSubgraph(constantUsers);
   usersOutsideSubgraph.set_subtract(subgraph.ops);
-  if (usersOutsideSubgraph.empty()) {
+
+  // This optimization is used to aggressively free DenseResource allocations
+  // during execution. The buffers borrow dense resources which have no other
+  // uses and we free the dense resources when the buffers are dead rather than
+  // waiting for the MLIRContext to die.
+  if (usersOutsideSubgraph.empty() && blob->getDeleter()) {
+    // Take ownership of the deleting function.
+    auto async = AsyncValue::createReady<BlobLifetimeManager>(
+        runtime.getCompactPtr(), std::move(blob->getDeleter()), blob->getData(),
+        blob->getDataAlignment());
+    blob->getDeleter() = nullptr;
+    auto ref = AnyAsyncValueRef::take(async);
+
     // It is safe to take ownership of blob data if all users are in this
     // subgraph.
-    GML::BufferRef blobBuffer = GML::BufferRef::createForeign(
-        resourceInterfaceID, denseResource.getAsOpaquePointer(),
-        blob->getData().size(), blob->getDataAlignment());
+    GML::BufferRef blobBuffer = GML::BufferRef::create(
+        reinterpret_cast<void *>(const_cast<char *>(blob->getData().data())),
+        blob->getData().size(), std::move(ref), blob->getDataAlignment());
     return GML::Tensor(std::move(blobBuffer), std::move(spec));
   }
 
-  // Otherwise borrow the blob data since it has other users.
   return GML::Tensor::createBorrowed(blob->getData().data(), spec,
                                      blob->getDataAlignment(),
                                      GML::BufferRef::Lifetime::kConstant);
@@ -258,9 +283,8 @@ denseResourceAsTensor(ConstantOp constant,
 
 /// Creates or retrieves an `ElementsAttr` with the same data as `ref`
 /// `ref` is expected to hold a reference to a tensor object.
-static ElementsAttr
-elementsAttrFromTensor(const AnyAsyncValueRef &ref, MLIRContext *ctx,
-                       GML::ForeignBufferInterfaceID resourceInterfaceID) {
+static ElementsAttr elementsAttrFromTensor(const AnyAsyncValueRef &ref,
+                                           MLIRContext *ctx) {
   // Output shape has runtime-dependent size so we need to read out what
   // the size is.
   GML::Tensor &tensor = ref.get<GML::Tensor>();
@@ -275,44 +299,18 @@ elementsAttrFromTensor(const AnyAsyncValueRef &ref, MLIRContext *ctx,
   if (!shouldUseOutOfLineAttrStorage(arrayType.getNumElements()))
     return getInlineAttrForTensorDataCopy(arrayType, tensorData);
 
+  auto resourceManager = DenseResourceElementsHandle::getManagerInterface(ctx);
   GML::BufferRef &bufferRef = tensor.getBufferRef();
 
-  // 2. Return the original `dense_resource` if it already exists.
-  if (void *opaqueResource =
-          bufferRef.maybeReleaseForeignObject(resourceInterfaceID)) {
-    // If `bufferRef` holds a foreign resource buffer we end up creating two
-    // `dense_resource`s that hold onto the same blob:
-    // - The original `dense_resource`.
-    // - The new `dense_resource` that holds onto a foreign buffer interface.
-    // Hence when the MLIRContext is destroyed, it wants to call the same blob
-    // destructor twice, causing a heap-buffer-overflow.
-    // To avoid this, return the original `dense_resource` instead of creating a
-    // new one.
-    return GML::Support::denseResourceFromOpaque(opaqueResource);
-  }
-
-  auto resourceManager = DenseResourceElementsHandle::getManagerInterface(ctx);
-  mlir::AsmResourceBlob blob;
-  GML::BufferRef::Ownership ownership = bufferRef.getOwnership();
-  if ((ownership != GML::BufferRef::kBorrowed) &&
-      (ref.getPointer()->isUnique())) {
-    GENERICML_ASSERT(llvm::is_contained(
-        {GML::BufferRef::kOwned, GML::BufferRef::kForeign}, ownership))
-        << "invalid buffer ref ownership";
-    // 3. Transfer ownership of the buffer ref to a new
-    // `dense_resource` if the buffer is owned and unique
-    blob = mlir::UnmanagedAsmResourceBlob::allocateWithAlign(
-        tensorData, elementByteAlign,
-        [bufferRef = std::move(bufferRef)](void *tensorData, size_t, size_t) {
-          // No-op that drops the `bufferRef` when the closure is
-          // destroyed.
-        });
-  } else {
-    // 4. Copy underlying data to a new `dense_resource` if the buffer is
-    //    borrowed or not-unique
-    blob = mlir::HeapAsmResourceBlob::allocateAndCopyWithAlign(
-        tensorData, elementByteAlign);
-  }
+  // Reuses the data within the BufferRef and extends the lifetime of it.
+  mlir::AsmResourceBlob blob =
+      mlir::UnmanagedAsmResourceBlob::allocateWithAlign(
+          tensorData, elementByteAlign,
+          [storage = bufferRef.getMemStorageHandle().copy()](void *, size_t,
+                                                             size_t) {
+            // No-op that drops the `bufferRef` when the closure is
+            // destroyed.
+          });
 
   return DenseResourceElementsAttr::get(
       arrayType, resourceManager.insert("folded_const", std::move(blob)));
@@ -320,7 +318,6 @@ elementsAttrFromTensor(const AnyAsyncValueRef &ref, MLIRContext *ctx,
 
 static RuntimeOutput extractRuntimeOutput(
     const AnyAsyncValueRef &ref, MLIRContext *ctx,
-    GML::ForeignBufferInterfaceID &resourceInterfaceID,
     llvm::DenseMap<M::LLCL::AsyncValue *, ElementsAttr> &cachedConstants) {
   if (ref.isType<GML::Tensor>()) {
     GML::Tensor &tensor = ref.get<GML::Tensor>();
@@ -347,7 +344,7 @@ static RuntimeOutput extractRuntimeOutput(
     } else {
       // Create an `ElementsAttr`, possibly by taking ownership of
       // `ref/tensor`'s buffer.
-      constantsArr = elementsAttrFromTensor(ref, ctx, resourceInterfaceID);
+      constantsArr = elementsAttrFromTensor(ref, ctx);
       cachedConstants.try_emplace(ref.getPointer(), constantsArr);
     }
     return RuntimeOutput(RuntimeTensor(constantsArr, tensor.getShape()));
@@ -355,8 +352,8 @@ static RuntimeOutput extractRuntimeOutput(
     GML::List &list = ref.get<GML::List>();
     RuntimeList out;
     for (auto &v : list.getElements()) {
-      out.push_back(std::get<RuntimeTensor>(extractRuntimeOutput(
-          v.getValue(), ctx, resourceInterfaceID, cachedConstants)));
+      out.push_back(std::get<RuntimeTensor>(
+          extractRuntimeOutput(v.getValue(), ctx, cachedConstants)));
     }
     return out;
   } else {
@@ -369,8 +366,7 @@ static RuntimeOutput extractRuntimeOutput(
 /// folding.
 static LLCL::ErrorDiagnosticOr<ModelResult>
 executeModel(MLIRContext *ctx, const Model *model,
-             const SubgraphsInfo &subgraphsInfo, LLCL::Runtime &runtime,
-             GML::ForeignBufferInterfaceID resourceInterfaceID) {
+             const SubgraphsInfo &subgraphsInfo, LLCL::Runtime &runtime) {
   auto executableModelOr = model->setup(runtime);
   if (executableModelOr.isError())
     return executableModelOr.takeError();
@@ -389,8 +385,8 @@ executeModel(MLIRContext *ctx, const Model *model,
               dyn_cast<DenseResourceElementsAttr>(constant.getValueAttr())) {
         inputTensorsInMEFIndexOrder.push_back(
             AsyncValueRef<GML::Tensor>::createReady(
-                runtime, denseResourceAsTensor(constant, denseResource,
-                                               subgraph, resourceInterfaceID)));
+                runtime, denseResourceAsTensor(runtime, constant, denseResource,
+                                               subgraph)));
       }
     }
   }
@@ -428,8 +424,8 @@ executeModel(MLIRContext *ctx, const Model *model,
         // Move output tensor into storage.
         GENERICML_ASSERT(tensorRef.isReady())
             << "We already awaited, tensor should be ready";
-        opTensors.push_back(extractRuntimeOutput(
-            tensorRef, ctx, resourceInterfaceID, cachedConstants));
+        opTensors.push_back(
+            extractRuntimeOutput(tensorRef, ctx, cachedConstants));
         outIdx++;
       }
       opToTensors[op] = opTensors;
@@ -887,12 +883,6 @@ void ConstantFoldPass::runOnOperation() {
 
   MLIRContext *ctx = &getContext();
 
-  // Create separate resource buffer interfaces for different framework drivers.
-  // Otherwise crossing framework boundaries when calling
-  // `ResourceBufferInterface` member functions causes TypeID issues.
-  GML::ForeignBufferInterfaceID resourceInterfaceID =
-      GML::Support::registerResourceBufferInterface(compiledFrameworkLabel);
-
   for (int i = 0; i < iterations.getValue(); i++) {
     OpBuilder builder(ctx);
     builder.setInsertionPointToStart(getOperation().getBody());
@@ -956,8 +946,8 @@ void ConstantFoldPass::runOnOperation() {
           subgraphsInfo.constantSubgraphName);
       GENERICML_ASSERT(model != nullptr)
           << "Model should exist, make sure names above match.";
-      LLCL::ErrorDiagnosticOr<ModelResult> valuesToTensorsOr = executeModel(
-          ctx, model, subgraphsInfo, *ownedRuntime, resourceInterfaceID);
+      LLCL::ErrorDiagnosticOr<ModelResult> valuesToTensorsOr =
+          executeModel(ctx, model, subgraphsInfo, *ownedRuntime);
       if (valuesToTensorsOr.isError()) {
         LLCL::EncodedDiagnostic err = valuesToTensorsOr.takeError();
         auto decoded = err.decodeLocation();

@@ -38,6 +38,22 @@ static std::optional<size_t> getRuntimeAlign(uint64_t rawAlign) {
   return getRuntimeSize(rawAlign);
 }
 
+GML::BufferRef createBorrowedSlice(GML::BufferRef &borroweBufferRef,
+                                   size_t offset, size_t size) {
+  const void *newBuffer = borroweBufferRef.getBuffer<uint8_t>() + offset;
+
+  // We can preserve the borrow's alignment if the offset is compatible with
+  // it. Otherwise fall back to unknown alignment.
+  std::optional<size_t> alignment = borroweBufferRef.getAlignment();
+  if (size && alignment &&
+      !llvm::isAddrAligned(llvm::Align(*alignment), newBuffer))
+    alignment = std::nullopt;
+
+  return GML::BufferRef::create(const_cast<void *>(newBuffer), size,
+                                borroweBufferRef.getMemStorageHandle(),
+                                alignment);
+}
+
 //===----------------------------------------------------------------------===//
 // mgp.runtime.create.cpu
 //===----------------------------------------------------------------------===//
@@ -212,8 +228,11 @@ static void mgp_buffer_constant_cpu(GML::Context &theContext,
   std::optional<size_t> optAlign;
   if (hasRawSize(*cRawAlign))
     optAlign = rawSizeToRuntimeSize(*cRawAlign);
-  std::move(outBuffer).emplace(GML::BufferRef::createBorrowed(
-      bValue->data(), bValue->size(), optAlign, GML::BufferRef::kConstant));
+
+  void *buffer =
+      reinterpret_cast<void *>(const_cast<uint8_t *>(bValue->data()));
+  std::move(outBuffer).emplace(GML::BufferRef::createWithNonTrackedMemory(
+      buffer, bValue->size(), optAlign));
 }
 
 //===----------------------------------------------------------------------===//
@@ -362,31 +381,9 @@ static void mgp_buffer_cache_cpu(Chain inChain, GML::Context &theContext,
       static_cast<size_t>(*bBufferSlot), /*numBuffers=*/1);
   auto &defaultStateSlot = theContext.getStateSlot(*bBufferSlot);
 
-#if defined(__GNUC__) && !defined(__clang__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
-#endif
-  ErrorOrSuccess errOr;
-#if defined(__GNUC__) && !defined(__clang__)
-#pragma GCC diagnostic pop
-#endif
-
-  if (buffer.getPointer()->isUnique()) {
-    // Since this is the only remaining reference to the buffer, so we can just
-    // move it into the cache slot.
-    errOr = defaultStateSlot.setBuffer(
-        /*bufferIndex=*/0, std::move(buffer.get()));
-  } else if (buffer.get().getMutability() == GML::BufferRef::kImmutable) {
-    // Since the buffer is immutable we can just borrow it. It must have at
-    // least 'execute' lifetime.
-    errOr = defaultStateSlot.setBuffer(
-        /*bufferIndex=*/0, buffer.get().borrow(GML::BufferRef::kExecute));
-  } else {
-    // Since the buffer is mutable we must protect against mutations from
-    // other references by taking a deep copy.
-    errOr = defaultStateSlot.setBuffer(
-        /*bufferIndex=*/0, buffer.get().deepCopy(runtime));
-  }
+  // Always borrow the buffer.
+  ErrorOrSuccess errOr = defaultStateSlot.setBuffer(
+      /*bufferIndex=*/0, buffer.get().borrow());
 
   if (errOr.isError())
     return std::move(outChain).setToError(errOr.takeError());
@@ -456,7 +453,7 @@ static void mgp_buffer_device_to_device_cpu(
         Twine("attempting to copy from buffer of size ") +
         Twine(srcBuffer.getSize()) + " to buffer of size " +
         Twine(dstBuffer.getSize()));
-  profiledMemcpy(dstBuffer.getMutableBuffer(), srcBuffer.getBuffer(),
+  profiledMemcpy(dstBuffer.getBuffer(), srcBuffer.getBuffer(),
                  srcBuffer.getSize());
   std::move(outChain).emplace();
 }
@@ -494,7 +491,7 @@ static void mgp_buffer_concat_cpu(Chain inChain, GML::Context &theContext,
   if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*bDeviceId))
     return std::move(outChain).setToError("mismatched device id");
 
-  uint8_t *const out = outBuffer->getMutableBuffer<uint8_t>();
+  uint8_t *const out = outBuffer->getBuffer<uint8_t>();
   const size_t outSize = outBuffer->getSize();
   size_t totalSize = 0; // total size of all input buffers processed so far
   for (const auto &inBuffer : inBuffers) {
@@ -558,8 +555,8 @@ static void mgp_buffer_split_borrow_cpu(
     // inBuffer, with the same mutability. Each borrow will take a reference to
     // inBuffer, thus guaranteeing its lifetime will exceed each borrow.
     if (totalSize + thisSize <= inSize)
-      newBuffers.emplace_back(GML::BufferRef::createSafeBorrowedSlice(
-          inBuffer.copy(), loc, totalSize, thisSize));
+      newBuffers.emplace_back(
+          createBorrowedSlice(inBuffer.get(), totalSize, thisSize));
     totalSize += thisSize;
   }
 
@@ -602,8 +599,8 @@ static void mgp_buffer_section_borrow_static_cpu(
         ", which is outside the range of the input buffer of " +
         Twine(inBuffer->getSize()) + " bytes");
   }
-  std::move(outBuffer).emplace(GML::BufferRef::createSafeBorrowedSlice(
-      inBuffer.copy(), loc, outOffset, outSize));
+  std::move(outBuffer).emplace(
+      createBorrowedSlice(inBuffer.get(), outOffset, outSize));
 }
 
 //===----------------------------------------------------------------------===//
@@ -632,8 +629,8 @@ static void mgp_buffer_section_borrow_dynamic_cpu(
         ", which is outside the range of the input buffer of " +
         Twine(inBuffer->getSize()) + " bytes");
   }
-  std::move(outBuffer).emplace(GML::BufferRef::createSafeBorrowedSlice(
-      inBuffer.copy(), loc, outOffset, outSize));
+  std::move(outBuffer).emplace(
+      createBorrowedSlice(inBuffer.get(), outOffset, outSize));
 }
 
 //===----------------------------------------------------------------------===//
@@ -663,7 +660,7 @@ static void mgp_buffer_to_bool_cpu(Chain inChain, GML::Context &theContext,
 /// Helper to fill the buffer with the given index values.
 template <typename T>
 static void fillBuffer(GML::BufferRef &buffer, RemainingArguments idxValues) {
-  T *target = buffer.getMutableBuffer<T>();
+  T *target = buffer.getBuffer<T>();
   for (const auto &asyncIdx : idxValues)
     *(target++) = static_cast<T>(asyncIdx.get<size_t>());
 }
@@ -723,22 +720,7 @@ static void mgp_tensor_create_cpu(Chain inChain, GML::Context &theContext,
     return std::move(outTensor).setToError(
         Twine("buffer size should match spec size (") + Twine(actualSize) +
         " vs " + Twine(expectedSize) + ")");
-  if (buffer.getPointer()->isUnique()) {
-    // If this is the only reference to the input buffer then it cannot be
-    // further mutated, so we can move it into the result tensor.
-    LLVM_DEBUG(llvm::dbgs() << "mgp.tensor.create.cpu: Creating GML::Tensor, "
-                               "taking ownership of buffer\n");
-    std::move(outTensor).emplace(std::move(*buffer), std::move(tensorSpec));
-  } else {
-    // Otherwise we must take a copy of the buffer to protect the result
-    // tensor from side-effects.
-    LLVM_DEBUG(llvm::dbgs()
-               << "mgp.tensor.create.cpu: Creating GML::Tensor from copy of "
-                  "buffer since still has "
-               << buffer.getPointer()->getRefCountForDebugging() << " users\n");
-    std::move(outTensor).emplace(buffer->deepCopy(runtime),
-                                 std::move(tensorSpec));
-  }
+  std::move(outTensor).emplace(buffer->borrow(), std::move(tensorSpec));
 }
 
 //===----------------------------------------------------------------------===//
@@ -755,15 +737,7 @@ static void mgp_tensor_extract_buffer_cpu(GML::Context &theContext,
       static_cast<size_t>(*aRuntimeSlot));
   if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*bDeviceId))
     return std::move(outBuffer).setToError("mismatched device id");
-  if (tensor.getPointer()->isUnique()) {
-    // If this is the only reference to the input tensor then it cannot
-    // be further observed, so we can move its buffer into the result.
-    std::move(outBuffer).emplace(tensor->releaseBufferRef());
-  } else {
-    // Otherwise we must take a copy of the buffer to protect the input tensor
-    // from side-effects.
-    std::move(outBuffer).emplace(tensor->deepCopyBuffer(runtime));
-  }
+  std::move(outBuffer).emplace(tensor.get().getBufferRef().borrow());
 }
 
 //===----------------------------------------------------------------------===//

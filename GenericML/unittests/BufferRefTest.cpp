@@ -16,10 +16,6 @@
 using namespace M;
 using namespace M::GML;
 
-static LLCL::EncodedLocation unknownLoc() {
-  return LLCL::UnknownLocationDecoder::getEncodedLocation();
-}
-
 static std::unique_ptr<LLCL::Runtime> getRuntime() {
   return LLCL::createUniqueRuntime(LLCL::RuntimeOptions().forDebug());
 }
@@ -27,13 +23,9 @@ static std::unique_ptr<LLCL::Runtime> getRuntime() {
 TEST(BufferRef, Default) {
   BufferRef ref;
 
-  ASSERT_FALSE(ref);
   ASSERT_EQ(ref.getBuffer(), nullptr);
   ASSERT_EQ(ref.getSize(), 0U);
-  ASSERT_EQ(ref.getAlignment(), std::nullopt);
-  ASSERT_FALSE(ref.getRuntime());
-  ASSERT_EQ(ref.getOwnership(), BufferRef::kNull);
-  ASSERT_EQ(ref.getLifetime(), BufferRef::kLocal);
+  ASSERT_FALSE((bool)ref.getMemStorageHandle());
 }
 
 TEST(BufferRef, CreateOwned) {
@@ -41,68 +33,35 @@ TEST(BufferRef, CreateOwned) {
   uint8_t data[4] = {1, 2, 3, 4};
   BufferRef ref = BufferRef::createOwned(*runtime, /*size=*/4,
                                          /*alignment=*/128, /*copyFrom=*/data);
-  ASSERT_TRUE(ref);
   ASSERT_TRUE(llvm::isAddrAligned(llvm::Align(128), ref.getBuffer()));
   ASSERT_EQ(memcmp(data, ref.getBuffer(), 4), 0);
+  ASSERT_TRUE((bool)ref.getMemStorageHandle());
 }
 
 TEST(BufferRef, CreateEmptyOwned) {
   auto runtime = getRuntime();
   BufferRef ref = BufferRef::createOwned(*runtime, /*size=*/0,
                                          /*alignment=*/128);
-  ASSERT_TRUE(ref);
   ASSERT_EQ(ref.getSize(), 0u);
   ASSERT_NE(ref.getBuffer(), nullptr);
-  ASSERT_NE(ref.getMutableBuffer(), nullptr);
-};
+  ASSERT_FALSE((bool)ref.getMemStorageHandle());
+}
 
 TEST(BufferRef, CreateBorrowed) {
   uint8_t data[4] = {1, 2, 3, 4};
-  BufferRef ref =
-      BufferRef::createBorrowed(data, /*size=*/4,
-                                /*alignment=*/{}, BufferRef::kConstant);
+  BufferRef ref = BufferRef::createWithNonTrackedMemory(data, /*size=*/4,
+                                                        /*alignment=*/{});
   ASSERT_EQ(ref.getSize(), 4u);
   ASSERT_EQ(ref.getBuffer(), data);
 }
 
 TEST(BufferRef, CreateEmptyBorrowed) {
-  BufferRef ref =
-      BufferRef::createBorrowed(/*buffer=*/(void *)nullptr, /*size=*/0,
-                                /*alignment=*/128, BufferRef::kConstant);
-  ASSERT_TRUE(ref);
+  BufferRef ref = BufferRef::createWithNonTrackedMemory(
+      /*buffer=*/(void *)nullptr, /*size=*/0,
+      /*alignment=*/128);
   ASSERT_EQ(ref.getSize(), 0u);
-  ASSERT_NE(ref.getBuffer(), nullptr);
-  ASSERT_NE(ref.getMutableBuffer(), nullptr);
-}
-
-TEST(BufferRef, CreateSafeBorrowed) {
-  auto runtime = getRuntime();
-  BufferRef owned =
-      BufferRef::createOwned(*runtime, /*size=*/8, /*alignment=*/64);
-  auto borrow =
-      AsyncValueRef<BufferRef>::createReady(*runtime, std::move(owned));
-  {
-    BufferRef borrowed =
-        BufferRef::createSafeBorrowedSlice(borrow.copy(), unknownLoc());
-    ASSERT_EQ(borrowed.getSize(), 8u);
-    ASSERT_EQ(borrowed.getAlignment(), 64u);
-    ASSERT_EQ(borrowed.getBuffer(), borrow.get().getBuffer());
-    ASSERT_EQ(borrow.getPointer()->getRefCountForDebugging(), 2u);
-  }
-  ASSERT_EQ(borrow.getPointer()->getRefCountForDebugging(), 1u);
-}
-
-TEST(BufferRef, CreateSafeBorrowedSlice) {
-  auto runtime = getRuntime();
-  BufferRef owned =
-      BufferRef::createOwned(*runtime, /*size=*/8, /*alignment=*/64);
-  auto borrow =
-      AsyncValueRef<BufferRef>::createReady(*runtime, std::move(owned));
-  BufferRef borrowed = BufferRef::createSafeBorrowedSlice(
-      borrow.copy(), unknownLoc(), /*offset=*/2, /*size=*/4);
-  ASSERT_EQ(borrowed.getSize(), 4u);
-  ASSERT_EQ(borrowed.getAlignment(), std::nullopt);
-  ASSERT_EQ(borrowed.getBuffer(), borrow.get().getBuffer<uint8_t>() + 2);
+  ASSERT_EQ(ref.getBuffer(), nullptr);
+  ASSERT_FALSE((bool)ref.getMemStorageHandle());
 }
 
 TEST(BufferRef, Move) {
@@ -116,45 +75,27 @@ TEST(BufferRef, Move) {
   ASSERT_EQ(ref2.getBuffer(), data);
 }
 
-TEST(BufferRef, BorrowError) {
-  auto runtime = getRuntime();
-
-  BufferRef ref =
-      BufferRef::createOwned(*runtime, sizeof(int), /*alignment=*/16);
-  BufferRef bor = ref.borrow(BufferRef::kExecute);
-  ErrorOr<BufferRef> bor2OrErr = bor.borrowOrError(BufferRef::kConstant);
-  ASSERT_TRUE(bor2OrErr.isError());
-  ErrorOr<BufferRef> bor2OrErr2 = bor.borrowOrError(BufferRef::kLocal);
-  ASSERT_FALSE(bor2OrErr2.isError());
-}
-
 TEST(BufferRef, Borrow) {
   auto runtime = getRuntime();
   BufferRef ref =
       BufferRef::createOwned(*runtime, sizeof(int), /*alignment=*/16);
-  BufferRef bor = ref.borrow(BufferRef::kExecute);
+  BufferRef bor = ref.borrow();
   ASSERT_EQ(bor.getBuffer(), ref.getBuffer());
   ASSERT_EQ(bor.getSize(), ref.getSize());
   ASSERT_EQ(bor.getAlignment(), ref.getAlignment());
-  ASSERT_EQ(ref.getOwnership(), BufferRef::kOwned);
-  ASSERT_FALSE(bor.getRuntime());
-  ASSERT_EQ(bor.getOwnership(), BufferRef::kBorrowed);
-  ASSERT_EQ(bor.getLifetime(), BufferRef::kExecute);
 }
 
 TEST(BufferRef, DeepCopy) {
   auto runtime = getRuntime();
   BufferRef ref =
       BufferRef::createOwned(*runtime, sizeof(int), /*alignment=*/16);
-  memset(ref.getMutableBuffer(), 42, sizeof(int));
-  BufferRef bor = ref.borrow(BufferRef::kExecute);
+  memset(ref.getBuffer(), 42, sizeof(int));
+  BufferRef bor = ref.borrow();
   BufferRef copy = bor.deepCopy(*runtime);
   ASSERT_NE(copy.getBuffer(), bor.getBuffer());
   ASSERT_EQ(memcmp(bor.getBuffer(), copy.getBuffer(), sizeof(int)), 0);
   ASSERT_EQ(copy.getSize(), bor.getSize());
   ASSERT_EQ(copy.getAlignment(), bor.getAlignment());
-  ASSERT_EQ(copy.getOwnership(), BufferRef::kOwned);
-  ASSERT_EQ(copy.getLifetime(), BufferRef::kLocal);
 }
 
 TEST(BufferRef, Destructor) {
@@ -162,8 +103,8 @@ TEST(BufferRef, Destructor) {
   auto runtime = getRuntime();
   void *data = runtime->getAllocator()->allocateBytes(sizeof(int), 16);
   {
-    BufferRef ref = BufferRef::createBorrowed(
-        data, sizeof(int), /*alignment=*/16, BufferRef::kLocal);
+    BufferRef ref = BufferRef::createWithNonTrackedMemory(data, sizeof(int),
+                                                          /*alignment=*/16);
     BufferRef ref2 = std::move(ref);
     // No deallocation.
   }
@@ -177,97 +118,23 @@ TEST(BufferRef, Destructor) {
   }
 }
 
-TEST(BufferRef, ReleaseBufferIfOwned) {
+TEST(BufferRef, GetMemStorageHandle) {
   auto runtime = getRuntime();
   uint8_t data[] = {1, 2, 3, 4};
-  BufferRef ref = BufferRef::createOwned(*runtime, 4,
-                                         /*alignment=*/{}, data);
-  const void *released = ref.releaseBufferIfOwned();
-  ASSERT_TRUE(released != nullptr);
-  ASSERT_FALSE(ref);
-  ASSERT_EQ(memcmp(data, released, 4), 0);
-  runtime->getAllocator()->deallocateBytes(const_cast<void *>(released), 4);
+  BufferRef *ref =
+      new BufferRef(BufferRef::createOwned(*runtime, 4,
+                                           /*alignment=*/{}, data));
+  AnyAsyncValueRef memory = ref->getMemStorageHandle();
+  ASSERT_TRUE(memory);
+
+  OwnedMemoryBlock &m = memory.get<OwnedMemoryBlock>();
+
+  ASSERT_EQ(ref->getBuffer(), m.data);
+
+  const void *ptr = ref->getBuffer();
+  // This should not delete the underlying memory.
+  delete ref;
+
+  ASSERT_EQ(ptr, m.data);
+  ASSERT_EQ(memcmp(data, m.data, 4), 0);
 }
-
-struct TestForeignObject {
-  int32_t buffer[4] = {1, 2, 3, 4};
-  bool deleted = false;
-};
-
-class TestForeignBufferInterface : public ForeignBufferInterface {
-public:
-  TestForeignBufferInterface()
-      : ForeignBufferInterface("TestForeignBufferInterface") {}
-  ~TestForeignBufferInterface() override = default;
-
-  const void *getBuffer(const void *object) const override {
-    return cast(object)->buffer;
-  }
-  void *getMutableBuffer(void *object) const override {
-    return cast(object)->buffer;
-  }
-  void deleteObject(void *object, size_t size) const override {
-    assert(!cast(object)->deleted && "already deleted");
-    cast(object)->deleted = true;
-  }
-
-private:
-  static TestForeignObject *cast(void *object) {
-    return static_cast<TestForeignObject *>(object);
-  }
-  static const TestForeignObject *cast(const void *object) {
-    return static_cast<const TestForeignObject *>(object);
-  }
-};
-
-TEST(BufferRef, CreateForeign) {
-  ForeignBufferInterfaceID id =
-      ForeignBufferInterfaceRegistry::registerInterface(
-          std::make_unique<TestForeignBufferInterface>());
-  ASSERT_EQ(ForeignBufferInterfaceRegistry::registerInterface(
-                std::make_unique<TestForeignBufferInterface>()),
-            id);
-  TestForeignObject object;
-  {
-    BufferRef ref = BufferRef::createForeign(id, &object, 4, /*alignment=*/{});
-    ASSERT_EQ(ref.getBuffer(), object.buffer);
-    ASSERT_EQ(ref.getSize(), 4U);
-    ASSERT_EQ(ref.getOwnership(), BufferRef::kForeign);
-  }
-  ASSERT_TRUE(object.deleted);
-}
-
-TEST(BufferRef, MaybeReleaseForeignObject) {
-  ForeignBufferInterfaceID id =
-      ForeignBufferInterfaceRegistry::registerInterface(
-          std::make_unique<TestForeignBufferInterface>());
-  TestForeignObject object;
-  BufferRef ref = BufferRef::createForeign(id, &object, 4, /*alignment=*/{});
-  void *released = ref.maybeReleaseForeignObject(id);
-  ASSERT_FALSE(ref);
-  ASSERT_EQ(released, &object);
-}
-
-#if MODULAR_PARANOID
-TEST(BufferRef, TransitiveDataRace_ExpectDeath) {
-  auto runtime = getRuntime();
-  auto parent = AsyncValueRef<BufferRef>::createReady(
-      runtime, BufferRef::createOwned(runtime, /*size=*/42, /*alignment=*/{}));
-  auto childA = AsyncValueRef<BufferRef>::createReady(
-      runtime, BufferRef::createSafeBorrowedSlice(parent.copy(), unknownLoc(),
-                                                  /*offset=*/8,
-                                                  /*size=*/8));
-  auto childB = AsyncValueRef<BufferRef>::createReady(
-      runtime, BufferRef::createSafeBorrowedSlice(parent.copy(), unknownLoc(),
-                                                  /*offset=*/8,
-                                                  /*size=*/8));
-  SmallVector<LLCL::ResourceUse> childAUses;
-  childA->collectAccessUses(childAUses, "childA", LLCL::kReadingResourceUse);
-  EXPECT_DEATH_IF_SUPPORTED(
-      childB->collectAccessUses(childAUses, "childB",
-                                LLCL::kWritingResourceUse),
-      "requested section for writing overlaps with existing section \\[8, "
-      "16\\) "
-      "for reading with active uses \\{'childA'\\}");
-}
-#endif // MODULAR_PARANOID

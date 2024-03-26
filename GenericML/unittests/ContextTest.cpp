@@ -61,7 +61,6 @@ TEST(ContextTest, getOrCreateBufferTest) {
     {
       auto buffer = stateSlot.getOrCreateBuffer(
           /*bufferIndex=*/0, *runtime, /*size=*/1, /*alignment=*/{});
-      EXPECT_EQ(buffer.getOwnership(), GML::BufferRef::kBorrowed);
 
       // getOrCreateBuffer call with the same slot and the same size returns a
       // cached buffer.
