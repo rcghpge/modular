@@ -14,7 +14,7 @@
 
 ## Global Mojo imports
 import sys
-import random
+from random import seed
 
 from os import setenv
 
@@ -22,7 +22,7 @@ from collections import List
 from math import exp, log, sin, cos, sqrt
 from memory import memcpy
 from python import Python
-from tensor import Tensor, TensorShape, TensorSpec
+from tensor import randn, Tensor, TensorShape, TensorSpec
 
 from max.engine import InferenceSession, Model, SessionOptions
 
@@ -205,7 +205,7 @@ fn main() raises -> None:
         print(USAGE)
         raise Error("--prompt option is required")
 
-    random.seed(seed)
+    seed(seed)
 
     ## Import python modules
     Python.add_to_path(".")
@@ -245,7 +245,7 @@ fn main() raises -> None:
     print("Initializing latent...")
     # From model inspection, we know that h=w=64 and c=4
     # Note: For tensorflow, shapes are given in NHWC format.
-    var latent = random.randn[float](TensorShape(1, 64, 64, 4))
+    var latent = randn[float](TensorShape(1, 64, 64, 4))
     var timesteps = reverse(arange[int32](1, 1000, 1000 // num_steps))
     var num_timesteps = timesteps.num_elements()
 
