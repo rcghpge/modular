@@ -1,7 +1,7 @@
 // RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s
 
 mo.graph @broadcast_shape_dyn_dyn(%shape0: !mo.tensor<?, si64>, %shape1: !mo.tensor<?, si64>) -> !mo.tensor<[?], si64> {
-    %1 = rmo.broadcast_shape(%shape0, %shape1) : (!mo.tensor<?, si64>, !mo.tensor<?, si64>) -> !mo.tensor<[?], si64>
+    %1 = rmo.mo.broadcast_shape(%shape0, %shape1) : (!mo.tensor<?, si64>, !mo.tensor<?, si64>) -> !mo.tensor<[?], si64>
     mo.output %1: !mo.tensor<[?], si64>
 }
 // CHECK-LABEL: mo.graph
@@ -17,7 +17,7 @@ mo.graph @broadcast_shape_dyn_dyn(%shape0: !mo.tensor<?, si64>, %shape1: !mo.ten
 // -----
 
 mo.graph @broadcast_shape_dyn_params(%shape0: !mo.tensor<?, si64>, %shape1: !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64> {
-    %1 = rmo.broadcast_shape(%shape0, %shape1) : (!mo.tensor<?, si64>, !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64>
+    %1 = rmo.mo.broadcast_shape(%shape0, %shape1) : (!mo.tensor<?, si64>, !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64>
     mo.output %1: !mo.tensor<[?], si64>
 }
 // CHECK-LABEL: mo.graph
@@ -33,7 +33,7 @@ mo.graph @broadcast_shape_dyn_params(%shape0: !mo.tensor<?, si64>, %shape1: !mo.
 // -----
 
 mo.graph @broadcast_shape_params_params(%shape0: !mo.tensor<[?], si64>, %shape1: !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64> {
-    %1 = rmo.broadcast_shape(%shape0, %shape1) : (!mo.tensor<[?], si64>, !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64>
+    %1 = rmo.mo.broadcast_shape(%shape0, %shape1) : (!mo.tensor<[?], si64>, !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64>
     mo.output %1: !mo.tensor<[?], si64>
 }
 // CHECK-LABEL: mo.graph
@@ -49,7 +49,7 @@ mo.graph @broadcast_shape_params_params(%shape0: !mo.tensor<[?], si64>, %shape1:
 // -----
 
 mo.graph @broadcast_shape_static_static(%shape0: !mo.tensor<[3], si64>, %shape1: !mo.tensor<[2], si64>) -> !mo.tensor<[?], si64> {
-    %1 = rmo.broadcast_shape(%shape0, %shape1) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[?], si64>
+    %1 = rmo.mo.broadcast_shape(%shape0, %shape1) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[?], si64>
     mo.output %1: !mo.tensor<[?], si64>
 }
 // CHECK-LABEL: mo.graph

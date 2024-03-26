@@ -1,7 +1,7 @@
 // RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 mo.graph @conv_dyn(%input : !mo.tensor<?, f32>, %filter : !mo.tensor<?, f32>, %st: !mo.tensor<?, si64>, %di: !mo.tensor<?, si64>, %pa: !mo.tensor<?, si64>, %ng: !mo.tensor<?, si64>) -> (!mo.tensor<?, f32>) {
-  %0 = rmo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %0 = rmo.mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
     !mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<?, si64>, !mo.tensor<?, si64>, !mo.tensor<?, si64>
   ) -> !mo.tensor<?, f32>
   mo.output %0 : !mo.tensor<?, f32>
@@ -25,7 +25,7 @@ mo.graph @conv_dyn(%input : !mo.tensor<?, f32>, %filter : !mo.tensor<?, f32>, %s
 // -----
 
 mo.graph @conv_dyn_params(%input : !mo.tensor<[?, ?, ?, ?, ?], f32>, %filter : !mo.tensor<[?, ?, ?, ?, ?], f32>, %st: !mo.tensor<[?], si64>, %di: !mo.tensor<[?], si64>, %pa: !mo.tensor<[?], si64>, %ng: !mo.tensor<[], si64>) -> (!mo.tensor<[?, ?, ?, ?, ?], f32>) {
-  %0 = rmo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %0 = rmo.mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
     !mo.tensor<[?, ?, ?, ?, ?], f32>, !mo.tensor<[?, ?, ?, ?, ?], f32>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[?, ?, ?, ?, ?], f32>
   mo.output %0 : !mo.tensor<[?, ?, ?, ?, ?], f32>
@@ -45,7 +45,7 @@ mo.graph @conv_dyn_params(%input : !mo.tensor<[?, ?, ?, ?, ?], f32>, %filter : !
 // -----
 
 mo.graph @conv_static(%input : !mo.tensor<[3, 23, 51, 46, 8], f32>, %filter : !mo.tensor<[3, 4, 5, 4, 16], f32>, %st: !mo.tensor<[3], si64>, %di: !mo.tensor<[3], si64>, %pa: !mo.tensor<[6], si64>, %ng: !mo.tensor<[], si64>) -> (!mo.tensor<?, f32>) {
-  %0 = rmo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %0 = rmo.mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
     !mo.tensor<[3, 23, 51, 46, 8], f32>, !mo.tensor<[3, 4, 5, 4, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<?, f32>
   mo.output %0 : !mo.tensor<?, f32>
@@ -63,7 +63,7 @@ mo.graph @conv_static_const_params(%input : !mo.tensor<[3, 23, 51, 46, 8], f32>,
   %di = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %pa = mo.constant {value = #M.dense_array<1, 1, 3, 3, 2, 2> : tensor<6xsi64>} : !mo.tensor<[6], si64>
   %ng = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %0 = rmo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %0 = rmo.mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
     !mo.tensor<[3, 23, 51, 46, 8], f32>, !mo.tensor<[3, 4, 5, 4, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<?, f32>
   mo.output %0 : !mo.tensor<?, f32>
@@ -81,7 +81,7 @@ mo.graph @conv_static_const_params(%input : !mo.tensor<[3, 23, 51, 46, 8], f32>,
 // -----
 
 mo.graph @conv_dyn_st_di_diff(%input : !mo.tensor<?, f32>, %filter : !mo.tensor<?, f32>, %st: !mo.tensor<[2], si64>, %di: !mo.tensor<[?], si64>, %pa: !mo.tensor<?, si64>, %ng: !mo.tensor<?, si64>) -> (!mo.tensor<?, f32>) {
-  %0 = rmo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %0 = rmo.mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
     !mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<[2], si64>, !mo.tensor<[?], si64>, !mo.tensor<?, si64>, !mo.tensor<?, si64>
   ) -> !mo.tensor<?, f32>
   mo.output %0 : !mo.tensor<?, f32>

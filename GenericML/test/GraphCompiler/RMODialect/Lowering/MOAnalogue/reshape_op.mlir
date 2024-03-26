@@ -1,7 +1,7 @@
 // RUN: mo-opt %s --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" | FileCheck %s
 
 mo.graph @reshape_dyn_dyn(%shape0: !mo.tensor<?, si64>, %shape1: !mo.tensor<?, si64>) -> !mo.tensor<[?], si64> {
-    %1 = rmo.reshape(%shape0, %shape1) : (!mo.tensor<?, si64>, !mo.tensor<?, si64>) -> !mo.tensor<[?], si64>
+    %1 = rmo.mo.reshape(%shape0, %shape1) : (!mo.tensor<?, si64>, !mo.tensor<?, si64>) -> !mo.tensor<[?], si64>
     mo.output %1: !mo.tensor<[?], si64>
 }
 // CHECK-LABEL: mo.graph
@@ -16,7 +16,7 @@ mo.graph @reshape_dyn_dyn(%shape0: !mo.tensor<?, si64>, %shape1: !mo.tensor<?, s
 // -----
 
 mo.graph @reshape_dyn_params(%shape0: !mo.tensor<?, si64>, %shape1: !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64> {
-    %1 = rmo.reshape(%shape0, %shape1) : (!mo.tensor<?, si64>, !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64>
+    %1 = rmo.mo.reshape(%shape0, %shape1) : (!mo.tensor<?, si64>, !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64>
     mo.output %1: !mo.tensor<[?], si64>
 }
 // CHECK-LABEL: mo.graph
@@ -31,7 +31,7 @@ mo.graph @reshape_dyn_params(%shape0: !mo.tensor<?, si64>, %shape1: !mo.tensor<[
 // -----
 
 mo.graph @reshape_dyn_static(%shape0: !mo.tensor<?, si64>, %shape1: !mo.tensor<[5], si64>) -> !mo.tensor<?, si64> {
-    %1 = rmo.reshape(%shape0, %shape1) : (!mo.tensor<?, si64>, !mo.tensor<[5], si64>) -> !mo.tensor<?, si64>
+    %1 = rmo.mo.reshape(%shape0, %shape1) : (!mo.tensor<?, si64>, !mo.tensor<[5], si64>) -> !mo.tensor<?, si64>
     mo.output %1: !mo.tensor<?, si64>
 }
 // CHECK-LABEL: mo.graph

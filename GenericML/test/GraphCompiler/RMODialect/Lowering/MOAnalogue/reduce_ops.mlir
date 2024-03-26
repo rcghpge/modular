@@ -1,7 +1,7 @@
 // RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 mo.graph @mean_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, si32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mean(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, si32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.mean(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, si32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -16,7 +16,7 @@ mo.graph @mean_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, si32>) -> !mo
 // -----
 
 mo.graph @mean_dyn_dims(%arg0: !mo.tensor<[?, ?, ?, ?], f32>, %arg1: !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32> {
-  %1 = rmo.mean(%arg0, %arg1) : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32>
+  %1 = rmo.mo.mean(%arg0, %arg1) : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32>
   mo.output %1 : !mo.tensor<[?, ?, ?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
@@ -29,7 +29,7 @@ mo.graph @mean_dyn_dims(%arg0: !mo.tensor<[?, ?, ?, ?], f32>, %arg1: !mo.tensor<
 // -----
 
 mo.graph @mean_params_mix(%arg0: !mo.tensor<[?, 4, ?, ?], f32>, %arg1: !mo.tensor<[], si32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mean(%arg0, %arg1) : (!mo.tensor<[?, 4, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.mean(%arg0, %arg1) : (!mo.tensor<[?, 4, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -43,7 +43,7 @@ mo.graph @mean_params_mix(%arg0: !mo.tensor<[?, 4, ?, ?], f32>, %arg1: !mo.tenso
 
 mo.graph @mean_dyn_const_axis(%arg0: !mo.tensor<[?, ?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?, ?], f32> {
   %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
-  %1 = rmo.mean(%arg0, %0) : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32>
+  %1 = rmo.mo.mean(%arg0, %0) : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32>
   mo.output %1 : !mo.tensor<[?, ?, ?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
@@ -57,7 +57,7 @@ mo.graph @mean_dyn_const_axis(%arg0: !mo.tensor<[?, ?, ?, ?], f32>) -> !mo.tenso
 // -----
 
 mo.graph @mean_static(%arg0: !mo.tensor<[5, 4, 8, 6], f32>, %arg1: !mo.tensor<[], si32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mean(%arg0, %arg1) : (!mo.tensor<[5, 4, 8, 6], f32>, !mo.tensor<[], si32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.mean(%arg0, %arg1) : (!mo.tensor<[5, 4, 8, 6], f32>, !mo.tensor<[], si32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -70,7 +70,7 @@ mo.graph @mean_static(%arg0: !mo.tensor<[5, 4, 8, 6], f32>, %arg1: !mo.tensor<[]
 
 mo.graph @mean_params_mix_const_axis(%arg0: !mo.tensor<[?, 4, ?, ?], f32>) -> !mo.tensor<?, f32> {
   %0 = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[], si32>
-  %1 = rmo.mean(%arg0, %0) : (!mo.tensor<[?, 4, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.mean(%arg0, %0) : (!mo.tensor<[?, 4, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -85,7 +85,7 @@ mo.graph @mean_params_mix_const_axis(%arg0: !mo.tensor<[?, 4, ?, ?], f32>) -> !m
 
 mo.graph @mean_static_const_axis(%arg0: !mo.tensor<[5, 4, 8, 6], f32>) -> !mo.tensor<?, f32> {
   %0 = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[], si32>
-  %1 = rmo.mean(%arg0, %0) : (!mo.tensor<[5, 4, 8, 6], f32>, !mo.tensor<[], si32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.mean(%arg0, %0) : (!mo.tensor<[5, 4, 8, 6], f32>, !mo.tensor<[], si32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -101,7 +101,7 @@ mo.graph @mean_static_const_axis(%arg0: !mo.tensor<[5, 4, 8, 6], f32>) -> !mo.te
 // Testing all reduce ops
 
 mo.graph @reduce_mul_dyn_dims(%arg0: !mo.tensor<[?, ?, ?, ?], f32>, %arg1: !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32> {
-  %1 = rmo.reduce.mul(%arg0, %arg1) : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32>
+  %1 = rmo.mo.reduce.mul(%arg0, %arg1) : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32>
   mo.output %1 : !mo.tensor<[?, ?, ?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
@@ -114,7 +114,7 @@ mo.graph @reduce_mul_dyn_dims(%arg0: !mo.tensor<[?, ?, ?, ?], f32>, %arg1: !mo.t
 // -----
 
 mo.graph @reduce_add_dyn_dims(%arg0: !mo.tensor<[?, ?, ?, ?], f32>, %arg1: !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32> {
-  %1 = rmo.reduce.add(%arg0, %arg1) : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32>
+  %1 = rmo.mo.reduce.add(%arg0, %arg1) : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32>
   mo.output %1 : !mo.tensor<[?, ?, ?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
@@ -127,7 +127,7 @@ mo.graph @reduce_add_dyn_dims(%arg0: !mo.tensor<[?, ?, ?, ?], f32>, %arg1: !mo.t
 // -----
 
 mo.graph @reduce_min_dyn_dims(%arg0: !mo.tensor<[?, ?, ?, ?], f32>, %arg1: !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32> {
-  %1 = rmo.reduce.min(%arg0, %arg1) : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32>
+  %1 = rmo.mo.reduce.min(%arg0, %arg1) : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32>
   mo.output %1 : !mo.tensor<[?, ?, ?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
@@ -140,7 +140,7 @@ mo.graph @reduce_min_dyn_dims(%arg0: !mo.tensor<[?, ?, ?, ?], f32>, %arg1: !mo.t
 // -----
 
 mo.graph @reduce_max_dyn_dims(%arg0: !mo.tensor<[?, ?, ?, ?], f32>, %arg1: !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32> {
-  %1 = rmo.reduce.max(%arg0, %arg1) : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32>
+  %1 = rmo.mo.reduce.max(%arg0, %arg1) : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32>
   mo.output %1 : !mo.tensor<[?, ?, ?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
@@ -153,7 +153,7 @@ mo.graph @reduce_max_dyn_dims(%arg0: !mo.tensor<[?, ?, ?, ?], f32>, %arg1: !mo.t
 // -----
 
 mo.graph @argmin_dyn_dims(%arg0: !mo.tensor<[?, ?, ?, ?], f32>, %arg1: !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], si32> {
-  %1 = rmo.arg_min(%arg0, %arg1) : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], si32>
+  %1 = rmo.mo.arg_min(%arg0, %arg1) : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], si32>
   mo.output %1 : !mo.tensor<[?, ?, ?, ?], si32>
 }
 // CHECK-LABEL: mo.graph
@@ -166,7 +166,7 @@ mo.graph @argmin_dyn_dims(%arg0: !mo.tensor<[?, ?, ?, ?], f32>, %arg1: !mo.tenso
 // -----
 
 mo.graph @argmax_dyn_dims(%arg0: !mo.tensor<[?, ?, ?, ?], f32>, %arg1: !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], si32> {
-  %1 = rmo.arg_max(%arg0, %arg1) : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], si32>
+  %1 = rmo.mo.arg_max(%arg0, %arg1) : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], si32>
   mo.output %1 : !mo.tensor<[?, ?, ?, ?], si32>
 }
 // CHECK-LABEL: mo.graph

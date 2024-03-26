@@ -14,7 +14,7 @@
 // CHECK-NEXT: }
 mo.graph @scatter_dyn_dyn(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<?, f32>, %indices: !mo.tensor<?, si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -34,7 +34,7 @@ mo.graph @scatter_dyn_dyn(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<?, f3
 // CHECK-NEXT: }
 mo.graph @scatter_dyn_params(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?, ?], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -54,7 +54,7 @@ mo.graph @scatter_dyn_params(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<[?
 // CHECK-NEXT: }
 mo.graph @scatter_params_dyn(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !mo.tensor<?, f32>, %indices: !mo.tensor<?, si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -74,7 +74,7 @@ mo.graph @scatter_params_dyn(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !mo.t
 // CHECK-NEXT: }
 mo.graph @scatter_params_params(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?, ?], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -94,7 +94,7 @@ mo.graph @scatter_params_params(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !m
 // CHECK-NEXT: }
 mo.graph @scatter_params_mix(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !mo.tensor<[?, 3], f32>, %indices: !mo.tensor<[?, 3], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -114,7 +114,7 @@ mo.graph @scatter_params_mix(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !mo.t
 // CHECK-NEXT: }
 mo.graph @scatter_mix_mix(%input: !mo.tensor<[?, 8, ?], f32>, %updates: !mo.tensor<[?, 3], f32>, %indices: !mo.tensor<[?, 3], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter(%input, %updates, %indices, %axis) : (!mo.tensor<[?, 8, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter(%input, %updates, %indices, %axis) : (!mo.tensor<[?, 8, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -130,7 +130,7 @@ mo.graph @scatter_mix_mix(%input: !mo.tensor<[?, 8, ?], f32>, %updates: !mo.tens
 // CHECK-NEXT: }
 mo.graph @scatter_static_static(%input: !mo.tensor<[3, 8, 4], f32>, %updates: !mo.tensor<[5, 3], f32>, %indices: !mo.tensor<[5, 3], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter(%input, %updates, %indices, %axis) : (!mo.tensor<[3, 8, 4], f32>, !mo.tensor<[5, 3], f32>, !mo.tensor<[5, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter(%input, %updates, %indices, %axis) : (!mo.tensor<[3, 8, 4], f32>, !mo.tensor<[5, 3], f32>, !mo.tensor<[5, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -150,7 +150,7 @@ mo.graph @scatter_static_static(%input: !mo.tensor<[3, 8, 4], f32>, %updates: !m
 // CHECK-NEXT: }
 mo.graph @scatter_add_dyn_dyn(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<?, f32>, %indices: !mo.tensor<?, si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.add(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.add(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -170,7 +170,7 @@ mo.graph @scatter_add_dyn_dyn(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<?
 // CHECK-NEXT: }
 mo.graph @scatter_add_dyn_params(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?, ?], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.add(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.add(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -190,7 +190,7 @@ mo.graph @scatter_add_dyn_params(%input: !mo.tensor<?, f32>, %updates: !mo.tenso
 // CHECK-NEXT: }
 mo.graph @scatter_add_params_dyn(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !mo.tensor<?, f32>, %indices: !mo.tensor<?, si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.add(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.add(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -210,7 +210,7 @@ mo.graph @scatter_add_params_dyn(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !
 // CHECK-NEXT: }
 mo.graph @scatter_add_params_params(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?, ?], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.add(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.add(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -230,7 +230,7 @@ mo.graph @scatter_add_params_params(%input: !mo.tensor<[?, ?, ?], f32>, %updates
 // CHECK-NEXT: }
 mo.graph @scatter_add_params_mix(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !mo.tensor<[?, 3], f32>, %indices: !mo.tensor<[?, 3], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.add(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.add(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -250,7 +250,7 @@ mo.graph @scatter_add_params_mix(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !
 // CHECK-NEXT: }
 mo.graph @scatter_add_mix_mix(%input: !mo.tensor<[?, 8, ?], f32>, %updates: !mo.tensor<[?, 3], f32>, %indices: !mo.tensor<[?, 3], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.add(%input, %updates, %indices, %axis) : (!mo.tensor<[?, 8, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.add(%input, %updates, %indices, %axis) : (!mo.tensor<[?, 8, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -266,7 +266,7 @@ mo.graph @scatter_add_mix_mix(%input: !mo.tensor<[?, 8, ?], f32>, %updates: !mo.
 // CHECK-NEXT: }
 mo.graph @scatter_add_static_static(%input: !mo.tensor<[3, 8, 4], f32>, %updates: !mo.tensor<[5, 3], f32>, %indices: !mo.tensor<[5, 3], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.add(%input, %updates, %indices, %axis) : (!mo.tensor<[3, 8, 4], f32>, !mo.tensor<[5, 3], f32>, !mo.tensor<[5, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.add(%input, %updates, %indices, %axis) : (!mo.tensor<[3, 8, 4], f32>, !mo.tensor<[5, 3], f32>, !mo.tensor<[5, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -286,7 +286,7 @@ mo.graph @scatter_add_static_static(%input: !mo.tensor<[3, 8, 4], f32>, %updates
 // CHECK-NEXT: }
 mo.graph @scatter_max_dyn_dyn(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<?, f32>, %indices: !mo.tensor<?, si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.max(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.max(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -306,7 +306,7 @@ mo.graph @scatter_max_dyn_dyn(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<?
 // CHECK-NEXT: }
 mo.graph @scatter_max_dyn_params(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?, ?], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.max(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.max(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -326,7 +326,7 @@ mo.graph @scatter_max_dyn_params(%input: !mo.tensor<?, f32>, %updates: !mo.tenso
 // CHECK-NEXT: }
 mo.graph @scatter_max_params_dyn(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !mo.tensor<?, f32>, %indices: !mo.tensor<?, si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.max(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.max(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -346,7 +346,7 @@ mo.graph @scatter_max_params_dyn(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !
 // CHECK-NEXT: }
 mo.graph @scatter_max_params_params(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?, ?], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.max(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.max(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -366,7 +366,7 @@ mo.graph @scatter_max_params_params(%input: !mo.tensor<[?, ?, ?], f32>, %updates
 // CHECK-NEXT: }
 mo.graph @scatter_max_params_mix(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !mo.tensor<[?, 3], f32>, %indices: !mo.tensor<[?, 3], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.max(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.max(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -386,7 +386,7 @@ mo.graph @scatter_max_params_mix(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !
 // CHECK-NEXT: }
 mo.graph @scatter_max_mix_mix(%input: !mo.tensor<[?, 8, ?], f32>, %updates: !mo.tensor<[?, 3], f32>, %indices: !mo.tensor<[?, 3], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.max(%input, %updates, %indices, %axis) : (!mo.tensor<[?, 8, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.max(%input, %updates, %indices, %axis) : (!mo.tensor<[?, 8, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -402,7 +402,7 @@ mo.graph @scatter_max_mix_mix(%input: !mo.tensor<[?, 8, ?], f32>, %updates: !mo.
 // CHECK-NEXT: }
 mo.graph @scatter_max_static_static(%input: !mo.tensor<[3, 8, 4], f32>, %updates: !mo.tensor<[5, 3], f32>, %indices: !mo.tensor<[5, 3], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.max(%input, %updates, %indices, %axis) : (!mo.tensor<[3, 8, 4], f32>, !mo.tensor<[5, 3], f32>, !mo.tensor<[5, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.max(%input, %updates, %indices, %axis) : (!mo.tensor<[3, 8, 4], f32>, !mo.tensor<[5, 3], f32>, !mo.tensor<[5, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -422,7 +422,7 @@ mo.graph @scatter_max_static_static(%input: !mo.tensor<[3, 8, 4], f32>, %updates
 // CHECK-NEXT: }
 mo.graph @scatter_min_dyn_dyn(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<?, f32>, %indices: !mo.tensor<?, si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.min(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.min(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -442,7 +442,7 @@ mo.graph @scatter_min_dyn_dyn(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<?
 // CHECK-NEXT: }
 mo.graph @scatter_min_dyn_params(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?, ?], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.min(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.min(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -462,7 +462,7 @@ mo.graph @scatter_min_dyn_params(%input: !mo.tensor<?, f32>, %updates: !mo.tenso
 // CHECK-NEXT: }
 mo.graph @scatter_min_params_dyn(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !mo.tensor<?, f32>, %indices: !mo.tensor<?, si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.min(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.min(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -482,7 +482,7 @@ mo.graph @scatter_min_params_dyn(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !
 // CHECK-NEXT: }
 mo.graph @scatter_min_params_params(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?, ?], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.min(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.min(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -502,7 +502,7 @@ mo.graph @scatter_min_params_params(%input: !mo.tensor<[?, ?, ?], f32>, %updates
 // CHECK-NEXT: }
 mo.graph @scatter_min_params_mix(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !mo.tensor<[?, 3], f32>, %indices: !mo.tensor<[?, 3], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.min(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.min(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -522,7 +522,7 @@ mo.graph @scatter_min_params_mix(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !
 // CHECK-NEXT: }
 mo.graph @scatter_min_mix_mix(%input: !mo.tensor<[?, 8, ?], f32>, %updates: !mo.tensor<[?, 3], f32>, %indices: !mo.tensor<[?, 3], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.min(%input, %updates, %indices, %axis) : (!mo.tensor<[?, 8, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.min(%input, %updates, %indices, %axis) : (!mo.tensor<[?, 8, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -538,7 +538,7 @@ mo.graph @scatter_min_mix_mix(%input: !mo.tensor<[?, 8, ?], f32>, %updates: !mo.
 // CHECK-NEXT: }
 mo.graph @scatter_min_static_static(%input: !mo.tensor<[3, 8, 4], f32>, %updates: !mo.tensor<[5, 3], f32>, %indices: !mo.tensor<[5, 3], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.min(%input, %updates, %indices, %axis) : (!mo.tensor<[3, 8, 4], f32>, !mo.tensor<[5, 3], f32>, !mo.tensor<[5, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.min(%input, %updates, %indices, %axis) : (!mo.tensor<[3, 8, 4], f32>, !mo.tensor<[5, 3], f32>, !mo.tensor<[5, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -558,7 +558,7 @@ mo.graph @scatter_min_static_static(%input: !mo.tensor<[3, 8, 4], f32>, %updates
 // CHECK-NEXT: }
 mo.graph @scatter_mul_dyn_dyn(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<?, f32>, %indices: !mo.tensor<?, si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.mul(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.mul(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -578,7 +578,7 @@ mo.graph @scatter_mul_dyn_dyn(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<?
 // CHECK-NEXT: }
 mo.graph @scatter_mul_dyn_params(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?, ?], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.mul(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.mul(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -598,7 +598,7 @@ mo.graph @scatter_mul_dyn_params(%input: !mo.tensor<?, f32>, %updates: !mo.tenso
 // CHECK-NEXT: }
 mo.graph @scatter_mul_params_dyn(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !mo.tensor<?, f32>, %indices: !mo.tensor<?, si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.mul(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.mul(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -618,7 +618,7 @@ mo.graph @scatter_mul_params_dyn(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !
 // CHECK-NEXT: }
 mo.graph @scatter_mul_params_params(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?, ?], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.mul(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.mul(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -638,7 +638,7 @@ mo.graph @scatter_mul_params_params(%input: !mo.tensor<[?, ?, ?], f32>, %updates
 // CHECK-NEXT: }
 mo.graph @scatter_mul_params_mix(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !mo.tensor<[?, 3], f32>, %indices: !mo.tensor<[?, 3], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.mul(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.mul(%input, %updates, %indices, %axis) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -658,7 +658,7 @@ mo.graph @scatter_mul_params_mix(%input: !mo.tensor<[?, ?, ?], f32>, %updates: !
 // CHECK-NEXT: }
 mo.graph @scatter_mul_mix_mix(%input: !mo.tensor<[?, 8, ?], f32>, %updates: !mo.tensor<[?, 3], f32>, %indices: !mo.tensor<[?, 3], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.mul(%input, %updates, %indices, %axis) : (!mo.tensor<[?, 8, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.mul(%input, %updates, %indices, %axis) : (!mo.tensor<[?, 8, ?], f32>, !mo.tensor<[?, 3], f32>, !mo.tensor<[?, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 
@@ -674,6 +674,6 @@ mo.graph @scatter_mul_mix_mix(%input: !mo.tensor<[?, 8, ?], f32>, %updates: !mo.
 // CHECK-NEXT: }
 mo.graph @scatter_mul_static_static(%input: !mo.tensor<[3, 8, 4], f32>, %updates: !mo.tensor<[5, 3], f32>, %indices: !mo.tensor<[5, 3], si64>) -> !mo.tensor<?, f32> {
      %axis = mo.constant { value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %1 = rmo.scatter.mul(%input, %updates, %indices, %axis) : (!mo.tensor<[3, 8, 4], f32>, !mo.tensor<[5, 3], f32>, !mo.tensor<[5, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.scatter.mul(%input, %updates, %indices, %axis) : (!mo.tensor<[3, 8, 4], f32>, !mo.tensor<[5, 3], f32>, !mo.tensor<[5, 3], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }

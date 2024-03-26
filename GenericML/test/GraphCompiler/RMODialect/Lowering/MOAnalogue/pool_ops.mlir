@@ -1,7 +1,7 @@
 // RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 mo.graph @max_pool_dyn(%arg0: !mo.tensor<?, f32>, %fs: !mo.tensor<?, si64>, %st: !mo.tensor<?, si64>, %di: !mo.tensor<?, si64>, %pa: !mo.tensor<?, si64>) -> !mo.tensor<?, f32> {
-  %0 = rmo.max_pool(%arg0) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] : (!mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<?, si64>, !mo.tensor<?, si64>, !mo.tensor<?, si64>) -> !mo.tensor<?, f32>
+  %0 = rmo.mo.max_pool(%arg0) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] : (!mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<?, si64>, !mo.tensor<?, si64>, !mo.tensor<?, si64>) -> !mo.tensor<?, f32>
   mo.output %0 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -22,7 +22,7 @@ mo.graph @max_pool_dyn(%arg0: !mo.tensor<?, f32>, %fs: !mo.tensor<?, si64>, %st:
 // -----
 
 mo.graph @max_pool_dyn_dims(%arg0: !mo.tensor<[?, ?, ?, ?], f32>, %fs: !mo.tensor<[?], si64>, %st: !mo.tensor<[?], si64>, %di: !mo.tensor<[?], si64>, %pa: !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?, ?, ?], f32> {
-  %0 = rmo.max_pool(%arg0) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?, ?, ?], f32>
+  %0 = rmo.mo.max_pool(%arg0) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?, ?, ?], f32>
   mo.output %0 : !mo.tensor<[?, ?, ?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
@@ -41,7 +41,7 @@ mo.graph @max_pool_dyn_dims(%arg0: !mo.tensor<[?, ?, ?, ?], f32>, %fs: !mo.tenso
 // -----
 
 mo.graph @max_pool_static(%arg0: !mo.tensor<[3, 8, 43, 49], f32>, %fs: !mo.tensor<[2], si64>, %st: !mo.tensor<[2], si64>, %di: !mo.tensor<[2], si64>, %pa: !mo.tensor<[4], si64>) -> !mo.tensor<[?, ?, ?, ?], f32> {
-  %0 = rmo.max_pool(%arg0) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] : (!mo.tensor<[3, 8, 43, 49], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[?, ?, ?, ?], f32>
+  %0 = rmo.mo.max_pool(%arg0) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] : (!mo.tensor<[3, 8, 43, 49], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[?, ?, ?, ?], f32>
   mo.output %0 : !mo.tensor<[?, ?, ?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
@@ -53,7 +53,7 @@ mo.graph @max_pool_static(%arg0: !mo.tensor<[3, 8, 43, 49], f32>, %fs: !mo.tenso
 // -----
 
 mo.graph @max_pool_static_dyn(%arg0: !mo.tensor<[3, ?, 43, ?], f32>, %fs: !mo.tensor<[?], si64>, %st: !mo.tensor<[?], si64>, %di: !mo.tensor<[?], si64>, %pa: !mo.tensor<[4], si64>) -> !mo.tensor<[?, ?, ?, ?], f32> {
-  %0 = rmo.max_pool(%arg0) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] : (!mo.tensor<[3, ?, 43, ?], f32>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[?, ?, ?, ?], f32>
+  %0 = rmo.mo.max_pool(%arg0) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] : (!mo.tensor<[3, ?, 43, ?], f32>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[?, ?, ?, ?], f32>
   mo.output %0 : !mo.tensor<[?, ?, ?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
@@ -71,7 +71,7 @@ mo.graph @max_pool_static_dyn(%arg0: !mo.tensor<[3, ?, 43, ?], f32>, %fs: !mo.te
 // -----
 
 mo.graph @max_pool_static_dyn_view(%arg0: !mo.tensor<[3, ?, 43, ?], f32>, %fs: !mo.tensor<?, si64>, %st: !mo.tensor<[?], si64>, %di: !mo.tensor<[2], si64>, %pa: !mo.tensor<[4], si64>) -> !mo.tensor<[?, ?, ?, ?], f32> {
-  %0 = rmo.max_pool(%arg0) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] : (!mo.tensor<[3, ?, 43, ?], f32>, !mo.tensor<?, si64>, !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[?, ?, ?, ?], f32>
+  %0 = rmo.mo.max_pool(%arg0) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] : (!mo.tensor<[3, ?, 43, ?], f32>, !mo.tensor<?, si64>, !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[?, ?, ?, ?], f32>
   mo.output %0 : !mo.tensor<[?, ?, ?, ?], f32>
 }
 // CHECK-LABEL: mo.graph

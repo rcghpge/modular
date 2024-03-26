@@ -28,7 +28,7 @@ class RMO_Op<string mnemonic, list<Trait> traits = []>
 
 // Base class for ops that map directly to a MO tensor op
 class RMO_MOAnaloguePureTensorOp<string mnemonic, list<Trait> traits = []>
-  : RMO_Op<mnemonic, traits # [DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>, Pure]> {
+  : RMO_Op<"mo." # mnemonic, traits # [DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>, Pure]> {
   let builders = [
     /// This builder is an implicit return type based on "inferMOTypes" from
     /// the RMO_MOAnalogue interface.
@@ -159,7 +159,7 @@ class RMO_MOAnaloguePureBinaryElementWiseOp<string name, list<Trait> traits = []
   }];
 }
 
-def RMO_AbsOp : RMO_MOAnaloguePureUnaryElementWiseOp<"abs"> {
+def RMO_MOAbsOp : RMO_MOAnaloguePureUnaryElementWiseOp<"abs"> {
   let summary = "Absolute value operation";
   let description = [{
     Returns `abs(x)`, where `x` is the input tensors.
@@ -168,12 +168,12 @@ def RMO_AbsOp : RMO_MOAnaloguePureUnaryElementWiseOp<"abs"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.abs(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.abs(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_CeilOp : RMO_MOAnaloguePureUnaryElementWiseOp<"ceil"> {
+def RMO_MOCeilOp : RMO_MOAnaloguePureUnaryElementWiseOp<"ceil"> {
   let summary = "Ceiling operation";
   let description = [{
     Returns the smallest largest integer greater than `x`, where `x` is input
@@ -183,12 +183,12 @@ def RMO_CeilOp : RMO_MOAnaloguePureUnaryElementWiseOp<"ceil"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.ceil(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.ceil(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_CosOp : RMO_MOAnaloguePureUnaryElementWiseOp<"cos"> {
+def RMO_MOCosOp : RMO_MOAnaloguePureUnaryElementWiseOp<"cos"> {
   let summary = "Cosine operation";
   let description = [{
     Returns `cos(x)`, where `x` is input tensor.
@@ -196,12 +196,12 @@ def RMO_CosOp : RMO_MOAnaloguePureUnaryElementWiseOp<"cos"> {
     Example:
     ```mlir
       %arg : !mo.tensor<[2, 3], f32>
-      %res = rmo.cos(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.cos(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_ErfOp : RMO_MOAnaloguePureUnaryElementWiseOp<"erf"> {
+def RMO_MOErfOp : RMO_MOAnaloguePureUnaryElementWiseOp<"erf"> {
   let summary = "(Gaussian) error function operation";
   let description = [{
     Computes the Gauss error function of the input tensor elements.
@@ -210,12 +210,12 @@ def RMO_ErfOp : RMO_MOAnaloguePureUnaryElementWiseOp<"erf"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.erf(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.erf(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_ExpOp : RMO_MOAnaloguePureUnaryElementWiseOp<"exp"> {
+def RMO_MOExpOp : RMO_MOAnaloguePureUnaryElementWiseOp<"exp"> {
   let summary = "Exponential function operation";
   let description = [{
     Returns `exp(x)`, where `x` is the input tensor.
@@ -224,12 +224,12 @@ def RMO_ExpOp : RMO_MOAnaloguePureUnaryElementWiseOp<"exp"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.exp(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.exp(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_FloorOp : RMO_MOAnaloguePureUnaryElementWiseOp<"floor"> {
+def RMO_MOFloorOp : RMO_MOAnaloguePureUnaryElementWiseOp<"floor"> {
   let summary = "Floor operation";
   let description = [{
     Returns the elementwise largest integer not greater than `x`, where `x` is
@@ -237,12 +237,12 @@ def RMO_FloorOp : RMO_MOAnaloguePureUnaryElementWiseOp<"floor"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.floor(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.floor(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_GeluOp : RMO_MOAnaloguePureUnaryElementWiseOp<"gelu"> {
+def RMO_MOGeluOp : RMO_MOAnaloguePureUnaryElementWiseOp<"gelu"> {
   let summary = "Gaussian error linear unit operation";
   let description = [{
     Returns `(x / 2) * (1 + erf(x/sqrt(2)))`, where `erf` denotes the
@@ -252,12 +252,12 @@ def RMO_GeluOp : RMO_MOAnaloguePureUnaryElementWiseOp<"gelu"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.gelu(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.gelu(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_LogOp : RMO_MOAnaloguePureUnaryElementWiseOp<"log"> {
+def RMO_MOLogOp : RMO_MOAnaloguePureUnaryElementWiseOp<"log"> {
   let summary = "Natural logarithm operation";
   let description = [{
     Returns the natural logorithm, `log(x)`.
@@ -266,12 +266,12 @@ def RMO_LogOp : RMO_MOAnaloguePureUnaryElementWiseOp<"log"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.log(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.log(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_Log1pOp : RMO_MOAnaloguePureUnaryElementWiseOp<"log1p"> {
+def RMO_MOLog1pOp : RMO_MOAnaloguePureUnaryElementWiseOp<"log1p"> {
   let summary = "Natural logarithm of `1 + x` operation ";
   let description = [{
     Returns `log(1 + x)`, maintaining accuracy for small `x` that could
@@ -281,12 +281,12 @@ def RMO_Log1pOp : RMO_MOAnaloguePureUnaryElementWiseOp<"log1p"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.log1p(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.log1p(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_LogSoftmaxOp : RMO_MOAnaloguePureUnaryElementWiseOp<"logsoftmax"> {
+def RMO_MOLogSoftmaxOp : RMO_MOAnaloguePureUnaryElementWiseOp<"logsoftmax"> {
   let summary = "Logarighmic softmax operation";
   let description = [{
     Returns `log(softmax(x))`, where `x` is input tensor.
@@ -297,12 +297,12 @@ def RMO_LogSoftmaxOp : RMO_MOAnaloguePureUnaryElementWiseOp<"logsoftmax"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.logsoftmax(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.logsoftmax(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_NegativeOp : RMO_MOAnaloguePureUnaryElementWiseOp<"negative"> {
+def RMO_MONegativeOp : RMO_MOAnaloguePureUnaryElementWiseOp<"negative"> {
   let summary = "Negation operation";
   let description = [{
     Returns `-x`, where `x` is input tensor.
@@ -311,12 +311,12 @@ def RMO_NegativeOp : RMO_MOAnaloguePureUnaryElementWiseOp<"negative"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.negative(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.negative(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_NotOp : RMO_MOAnaloguePureTensorOp<"not"> {
+def RMO_MONotOp : RMO_MOAnaloguePureTensorOp<"not"> {
   let summary = "Logical negation operation";
   let description = [{
     Returns `not x` on given input, where input is a boolean tensor.
@@ -325,7 +325,7 @@ def RMO_NotOp : RMO_MOAnaloguePureTensorOp<"not"> {
 
     ```mlir
       %in: !mo.tensor<[2, 3], bool>
-      %res = rmo.not(%in) : (!mo.tensor<[2, 3], bool>) -> !mo.tensor<[2, 3], bool>
+      %res = rmo.mo.not(%in) : (!mo.tensor<[2, 3], bool>) -> !mo.tensor<[2, 3], bool>
     ```
   }];
   let arguments = (ins MO_BooleanMask:$input, MO_ParamDecls:$outputParamDecls);
@@ -346,7 +346,7 @@ def RMO_NotOp : RMO_MOAnaloguePureTensorOp<"not"> {
   }];
 }
 
-def RMO_ReluOp : RMO_MOAnaloguePureUnaryElementWiseOp<"relu"> {
+def RMO_MOReluOp : RMO_MOAnaloguePureUnaryElementWiseOp<"relu"> {
   let summary = "Rectified linear unit operation";
   let description = [{
     Returns `max(0, x)`, where `x` is the input tensor.
@@ -355,24 +355,24 @@ def RMO_ReluOp : RMO_MOAnaloguePureUnaryElementWiseOp<"relu"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.relu(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.relu(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_RoundOp : RMO_MOAnaloguePureUnaryElementWiseOp<"round"> {
+def RMO_MORoundOp : RMO_MOAnaloguePureUnaryElementWiseOp<"round"> {
   let summary = "Rounding operation";
   let description = [{
     Returns the elementwise nearest integer, with ties going away from zero.
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.round(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.round(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_RoundEvenOp : RMO_MOAnaloguePureUnaryElementWiseOp<"roundeven"> {
+def RMO_MORoundEvenOp : RMO_MOAnaloguePureUnaryElementWiseOp<"roundeven"> {
   let summary = "Round even operation";
   let description = [{
     Returns the elementwise neareset integer, with ties going toward the
@@ -380,12 +380,12 @@ def RMO_RoundEvenOp : RMO_MOAnaloguePureUnaryElementWiseOp<"roundeven"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.roundeven(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.roundeven(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_RsqrtOp : RMO_MOAnaloguePureUnaryElementWiseOp<"rsqrt"> {
+def RMO_MORsqrtOp : RMO_MOAnaloguePureUnaryElementWiseOp<"rsqrt"> {
   let summary = "Inverse square root operation";
   let description = [{
     Returns `1/sqrt(x)`, where `x` is the input tensor.
@@ -394,12 +394,12 @@ def RMO_RsqrtOp : RMO_MOAnaloguePureUnaryElementWiseOp<"rsqrt"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.rsqrt(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.rsqrt(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_SigmoidOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sigmoid"> {
+def RMO_MOSigmoidOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sigmoid"> {
   let summary = "Logistic sigmoid operation";
   let description = [{
     Returns `\frac{1}{1+e^{-x}} = \fract{e^x}{e^x + 1}`, the logistic sigmoid.
@@ -408,12 +408,12 @@ def RMO_SigmoidOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sigmoid"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.sigmoid(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.sigmoid(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_SinOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sin"> {
+def RMO_MOSinOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sin"> {
   let summary = "Sine operation";
   let description = [{
     Returns `sin(x)`, where `x` is input tensor.
@@ -421,12 +421,12 @@ def RMO_SinOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sin"> {
     Example:
     ```mlir
       %arg : !mo.tensor<[2, 3], f32>
-      %res = rmo.sin(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.sin(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_SqrtOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sqrt"> {
+def RMO_MOSqrtOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sqrt"> {
   let summary = "Square root operation";
   let description = [{
     Returns `sqrt(x)`, where `x` is the input tensor.
@@ -435,12 +435,12 @@ def RMO_SqrtOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sqrt"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.sqrt(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.sqrt(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_TanhOp : RMO_MOAnaloguePureUnaryElementWiseOp<"tanh"> {
+def RMO_MOTanhOp : RMO_MOAnaloguePureUnaryElementWiseOp<"tanh"> {
   let summary = "Hyperbolic tangent operation";
   let description = [{
     Computes `tanh(x)`, where `x` is input tensor.
@@ -449,12 +449,12 @@ def RMO_TanhOp : RMO_MOAnaloguePureUnaryElementWiseOp<"tanh"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.tanh(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.tanh(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_TruncOp : RMO_MOAnaloguePureUnaryElementWiseOp<"trunc"> {
+def RMO_MOTruncOp : RMO_MOAnaloguePureUnaryElementWiseOp<"trunc"> {
   let summary = "Truncation operation";
   let description = [{
     Returns the elementwise integer from truncating the decimal. Also known
@@ -462,19 +462,19 @@ def RMO_TruncOp : RMO_MOAnaloguePureUnaryElementWiseOp<"trunc"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.trunc(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.trunc(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def RMO_AddOp : RMO_MOAnaloguePureBinaryElementWiseOp<"add", [Commutative]> {
+def RMO_MOAddOp : RMO_MOAnaloguePureBinaryElementWiseOp<"add", [Commutative]> {
   let summary = "Binary addition";
   let description = [{
     Does a non-broadcasted elementwise addition.
   }];
 }
 
-def RMO_ShapeOfOp : RMO_MOAnaloguePureTensorOp<"shape_of"> {
+def RMO_MOShapeOfOp : RMO_MOAnaloguePureTensorOp<"shape_of"> {
   let summary = "Get shape of tensor";
   let description = [{
     Calculates the runtime shape of the given tensor as a tensor.
@@ -483,7 +483,7 @@ def RMO_ShapeOfOp : RMO_MOAnaloguePureTensorOp<"shape_of"> {
   let results = (outs MO_IndicesTensor:$shape);
 }
 
-def RMO_BroadcastShapeOp : RMO_MOAnaloguePureTensorOp<"broadcast_shape"> {
+def RMO_MOBroadcastShapeOp : RMO_MOAnaloguePureTensorOp<"broadcast_shape"> {
   let summary = "Apply broadcasting rules";
   let description = [{
     Given two tensors representing shapes, calculate the result of broadcasting
@@ -495,7 +495,7 @@ def RMO_BroadcastShapeOp : RMO_MOAnaloguePureTensorOp<"broadcast_shape"> {
   let results = (outs MO_ShapeLikeIfRanked:$shape);
 }
 
-def RMO_ReshapeOp : RMO_MOAnaloguePureTensorOp<"reshape"> {
+def RMO_MOReshapeOp : RMO_MOAnaloguePureTensorOp<"reshape"> {
   let summary = "Reshape a tensor";
   let description = [{
     Reshape the `input` tensor to the shape represented in `newShape`.
@@ -508,7 +508,7 @@ def RMO_ReshapeOp : RMO_MOAnaloguePureTensorOp<"reshape"> {
   let results = (outs MO_Tensor:$result);
 }
 
-def RMO_BroadcastToOp : RMO_MOAnaloguePureTensorOp<"broadcast_to"> {
+def RMO_MOBroadcastToOp : RMO_MOAnaloguePureTensorOp<"broadcast_to"> {
   let summary = "Broadcast a tensor";
   let description = [{
     Broadcast the given `input` to the shape represented in `newShape`.
@@ -520,7 +520,7 @@ def RMO_BroadcastToOp : RMO_MOAnaloguePureTensorOp<"broadcast_to"> {
   let results = (outs MO_Tensor:$result);
 }
 
-def RMO_CastOp : RMO_MOAnaloguePureTensorOp<"cast"> {
+def RMO_MOCastOp : RMO_MOAnaloguePureTensorOp<"cast"> {
   let summary = "Cast a tensor to another dtype";
   let description = [{
     Casts the given data, changing from one dtype to another.
@@ -534,49 +534,49 @@ def RMO_CastOp : RMO_MOAnaloguePureTensorOp<"cast"> {
   ];
 }
 
-def RMO_MulOp : RMO_MOAnaloguePureBinaryElementWiseOp<"mul", [Commutative]> {
+def RMO_MOMulOp : RMO_MOAnaloguePureBinaryElementWiseOp<"mul", [Commutative]> {
   let summary = "Binary multiplication";
   let description = [{
     Does a non-broadcasted elementwise multiplication.
   }];
 }
 
-def RMO_ModOp : RMO_MOAnaloguePureBinaryElementWiseOp<"mod"> {
+def RMO_MOModOp : RMO_MOAnaloguePureBinaryElementWiseOp<"mod"> {
   let summary = "Binary modulus op";
   let description = [{
     Does a non-broadcasted elementwise modulus.
   }];
 }
 
-def RMO_MinOp : RMO_MOAnaloguePureBinaryElementWiseOp<"min", [Commutative]> {
+def RMO_MOMinOp : RMO_MOAnaloguePureBinaryElementWiseOp<"min", [Commutative]> {
   let summary = "Binary minimum op";
   let description = [{
     Does a non-broadcasted elementwise minimum.
   }];
 }
 
-def RMO_MaxOp : RMO_MOAnaloguePureBinaryElementWiseOp<"max", [Commutative]> {
+def RMO_MOMaxOp : RMO_MOAnaloguePureBinaryElementWiseOp<"max", [Commutative]> {
   let summary = "Binary maximum op";
   let description = [{
     Does a non-broadcasted elementwise maximum.
   }];
 }
 
-def RMO_DivOp : RMO_MOAnaloguePureBinaryElementWiseOp<"div"> {
+def RMO_MODivOp : RMO_MOAnaloguePureBinaryElementWiseOp<"div"> {
   let summary = "Binary division op";
   let description = [{
     Does a non-broadcasted elementwise division.
   }];
 }
 
-def RMO_PowOp : RMO_MOAnaloguePureBinaryElementWiseOp<"pow"> {
+def RMO_MOPowOp : RMO_MOAnaloguePureBinaryElementWiseOp<"pow"> {
   let summary = "Binary power op";
   let description = [{
     Does a non-broadcasted elementwise power.
   }];
 }
 
-def RMO_SubOp : RMO_MOAnaloguePureBinaryElementWiseOp<"sub"> {
+def RMO_MOSubOp : RMO_MOAnaloguePureBinaryElementWiseOp<"sub"> {
   let summary = "Binary subtraction op";
   let description = [{
     Does a non-broadcasted elementwise subtraction.
@@ -588,7 +588,7 @@ def RMO_SubOp : RMO_MOAnaloguePureBinaryElementWiseOp<"sub"> {
 def RMO_BroadcastAddOp : RMO_Op<"broadcast.add", [Pure, RMO_TensorSameDTypeOperandsAndResults]> {
   let summary = "Add with implicit broadcast Operation";
   let description = [{
-    Like `rmo.add` but supports implicit broadcasting!
+    Like `rmo.mo.add` but supports implicit broadcasting!
   }];
   let arguments = (ins
     MO_Tensor:$input_x,
@@ -609,7 +609,7 @@ class RMO_MOAnaloguePureReductionOp<string name, bit input_result_same_dtype=1,
   let results = (outs MO_Tensor:$result);
 }
 
-def RMO_MeanOp : RMO_MOAnaloguePureReductionOp<"mean"> {
+def RMO_MOMeanOp : RMO_MOAnaloguePureReductionOp<"mean"> {
   let summary = "Mean reduction operation";
   let description = [{
     Reduces `input` elements across `axis` to their mean value, changng that
@@ -624,13 +624,13 @@ def RMO_MeanOp : RMO_MOAnaloguePureReductionOp<"mean"> {
       %arg: !mo.tensor<[2, 3], f32>
       %axis = mo.constant {
         value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = rmo.mean(%arg, %axis) : (
+      %res = rmo.mo.mean(%arg, %axis) : (
         !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
 
-def RMO_ReduceMulOp : RMO_MOAnaloguePureReductionOp<"reduce.mul"> {
+def RMO_MOReduceMulOp : RMO_MOAnaloguePureReductionOp<"reduce.mul"> {
   let summary = "Product reduction operation";
   let description = [{
     Reduces `input` elements across `axis` to their product, changing that
@@ -645,13 +645,13 @@ def RMO_ReduceMulOp : RMO_MOAnaloguePureReductionOp<"reduce.mul"> {
       %arg: !mo.tensor<[2, 3], f32>
       %axis = mo.constant {
         value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = rmo.reduce.mul(%arg, %axis) : (
+      %res = rmo.mo.reduce.mul(%arg, %axis) : (
         !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
 
-def RMO_ReduceAddOp : RMO_MOAnaloguePureReductionOp<"reduce.add"> {
+def RMO_MOReduceAddOp : RMO_MOAnaloguePureReductionOp<"reduce.add"> {
   let summary = "Sum reduction operation";
   let description = [{
     Reduces `input` elements across `axis` to their sum, changing that axis's
@@ -666,13 +666,13 @@ def RMO_ReduceAddOp : RMO_MOAnaloguePureReductionOp<"reduce.add"> {
       %arg: !mo.tensor<[2, 3], f32>
       %axis = mo.constant {
         value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = rmo.reduce.add(%arg, %axis) : (
+      %res = rmo.mo.reduce.add(%arg, %axis) : (
         !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
 
-def MO_ReduceMinOp : RMO_MOAnaloguePureReductionOp<"reduce.min"> {
+def MO_MOReduceMinOp : RMO_MOAnaloguePureReductionOp<"reduce.min"> {
   let summary = "Minimum reduction operation";
   let description = [{
     Reduces `input` elements across `axis` to their minimum, changing that
@@ -687,13 +687,13 @@ def MO_ReduceMinOp : RMO_MOAnaloguePureReductionOp<"reduce.min"> {
       %arg: !mo.tensor<[2, 3], f32>
       %axis = mo.constant {
         value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = rmo.reduce.min(%arg, %axis) : (
+      %res = rmo.mo.reduce.min(%arg, %axis) : (
         !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
 
-def MO_ReduceMaxOp : RMO_MOAnaloguePureReductionOp<"reduce.max"> {
+def MO_MOReduceMaxOp : RMO_MOAnaloguePureReductionOp<"reduce.max"> {
   let summary = "Maximum reduction operation";
   let description = [{
     Reduces `input` elements across `axis` to their maximum, changing that
@@ -708,18 +708,18 @@ def MO_ReduceMaxOp : RMO_MOAnaloguePureReductionOp<"reduce.max"> {
       %arg: !mo.tensor<[2, 3], f32>
       %axis = mo.constant {
         value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = rmo.reduce.max(%arg, %axis) : (
+      %res = rmo.mo.reduce.max(%arg, %axis) : (
         !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
 
-class RMO_ArgMinMaxOp<string mnemonic> : RMO_MOAnaloguePureReductionOp<mnemonic,
+class RMO_MOAnalogeArgMinMaxOp<string mnemonic> : RMO_MOAnaloguePureReductionOp<mnemonic,
   /*input_result_same_dtype=*/0> {
   let results = (outs MO_IndicesTensor:$result);
 }
 
-def MO_ArgMaxOp : RMO_ArgMinMaxOp<"arg_max"> {
+def MO_MOArgMaxOp : RMO_MOAnalogeArgMinMaxOp<"arg_max"> {
   let summary = "Maximum-value indices operation";
   let description = [{
     This op is equivalent to reduce_max, but returns indices instead of values.
@@ -741,12 +741,12 @@ def MO_ArgMaxOp : RMO_ArgMinMaxOp<"arg_max"> {
       %axis = mo.constant {
         value = #M.dense_array<1> : tensor<si32>
       } : !mo.tensor<[], si32>
-      %1 = rmo.arg_max(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
+      %1 = rmo.mo.arg_max(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
     ```
     }];
 }
 
-def MO_ArgMinOp : RMO_ArgMinMaxOp<"arg_min"> {
+def MO_MOArgMinOp : RMO_MOAnalogeArgMinMaxOp<"arg_min"> {
   let summary = "Minimum-value indices operation";
   let description = [{
     This op is equivalent to reduce_min, but returns indices instead of values.
@@ -768,7 +768,7 @@ def MO_ArgMinOp : RMO_ArgMinMaxOp<"arg_min"> {
       %axis = mo.constant {
         value = #M.dense_array<1> : tensor<si32>
       } : !mo.tensor<[], si32>
-      %1 = rmo.arg_min(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
+      %1 = rmo.mo.arg_min(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
     ```
     }];
 }
@@ -800,7 +800,7 @@ let arguments = (ins MO_Tensor:$input,
   }];
 }
 
-def RMO_ScatterOp : RMO_MOAnaloguePureScatterOp<"scatter">{
+def RMO_MOScatterOp : RMO_MOAnaloguePureScatterOp<"scatter">{
   let summary = "`scatter` operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -828,14 +828,14 @@ def RMO_ScatterOp : RMO_MOAnaloguePureScatterOp<"scatter">{
       %input:   !mo.tensor<[4, 4], f32>
       %updates: !mo.tensor<[2, 3], f32>
       %indices: !mo.tensor<[2, 3], si64>
-      %res = rmo.scatter(%inputs, %updates, %indices) : (
+      %res = rmo.mo.scatter(%inputs, %updates, %indices) : (
         !mo.tensor<[4, 4], f32>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>
       ) -> !mo.tensor<[4, 4], f32>
     ```
   }];
 }
 
-def RMO_ScatterAddOp : RMO_MOAnaloguePureScatterOp<"scatter.add"> {
+def RMO_MOScatterAddOp : RMO_MOAnaloguePureScatterOp<"scatter.add"> {
   let summary = "`scatter-add` operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -864,14 +864,14 @@ def RMO_ScatterAddOp : RMO_MOAnaloguePureScatterOp<"scatter.add"> {
       %input:   !mo.tensor<[4, 4], f32>
       %updates: !mo.tensor<[2, 3], f32>
       %indices: !mo.tensor<[2, 3], si64>
-      %res = rmo.scatter.add(%inputs, %updates, %indices) : (
+      %res = rmo.mo.scatter.add(%inputs, %updates, %indices) : (
         !mo.tensor<[4, 4], f32>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>
       ) -> !mo.tensor<[4, 4], f32>
     ```
   }];
 }
 
-def RMO_ScatterMaxOp : RMO_MOAnaloguePureScatterOp<"scatter.max"> {
+def RMO_MOScatterMaxOp : RMO_MOAnaloguePureScatterOp<"scatter.max"> {
   let summary = "scatter-max operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -900,14 +900,14 @@ def RMO_ScatterMaxOp : RMO_MOAnaloguePureScatterOp<"scatter.max"> {
       %input:   !mo.tensor<[4, 4], f32>
       %updates: !mo.tensor<[2, 3], f32>
       %indices: !mo.tensor<[2, 3], si64>
-      %res = rmo.scatter.max(%inputs, %updates, %indices) : (
+      %res = rmo.mo.scatter.max(%inputs, %updates, %indices) : (
         !mo.tensor<[4, 4], f32>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>
       ) -> !mo.tensor<[4, 4], f32>
     ```
   }];
 }
 
-def RMO_ScatterMinOp : RMO_MOAnaloguePureScatterOp<"scatter.min"> {
+def RMO_MOScatterMinOp : RMO_MOAnaloguePureScatterOp<"scatter.min"> {
   let summary = "`scatter-min` operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -936,14 +936,14 @@ def RMO_ScatterMinOp : RMO_MOAnaloguePureScatterOp<"scatter.min"> {
       %input:   !mo.tensor<[4, 4], f32>
       %updates: !mo.tensor<[2, 3], f32>
       %indices: !mo.tensor<[2, 3], si64>
-      %res = rmo.scatter.min(%inputs, %updates, %indices) : (
+      %res = rmo.mo.scatter.min(%inputs, %updates, %indices) : (
         !mo.tensor<[4, 4], f32>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>
       ) -> !mo.tensor<[4, 4], f32>
     ```
   }];
 }
 
-def RMO_ScatterMulOp : RMO_MOAnaloguePureScatterOp<"scatter.mul"> {
+def RMO_MOScatterMulOp : RMO_MOAnaloguePureScatterOp<"scatter.mul"> {
   let summary = "scatter-mul operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -972,14 +972,14 @@ def RMO_ScatterMulOp : RMO_MOAnaloguePureScatterOp<"scatter.mul"> {
       %input:   !mo.tensor<[4, 4], f32>
       %updates: !mo.tensor<[2, 3], f32>
       %indices: !mo.tensor<[2, 3], si64>
-      %res = rmo.scatter.mul(%inputs, %updates, %indices) : (
+      %res = rmo.mo.scatter.mul(%inputs, %updates, %indices) : (
         !mo.tensor<[4, 4], f32>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>
       ) -> !mo.tensor<[4, 4], f32>
     ```
   }];
 }
 
-def RMO_ConvOp : RMO_MOAnaloguePureTensorOp<"conv">{
+def RMO_MOConvOp : RMO_MOAnaloguePureTensorOp<"conv">{
   let summary = "Convolution operation";
   let description = [{
     Computes the convolution product of the input with the given filter,
@@ -1038,7 +1038,7 @@ def RMO_ConvOp : RMO_MOAnaloguePureTensorOp<"conv">{
         : !mo.tensor<[4], si64>
       %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>}
         : %!mo.tensor<[], si64>
-      %res = rmo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+      %res = rmo.mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
         !mo.tensor<[10, 5, 5, 32], f32>, !mo.tensor<[2, 2, 32, 64], f32>,
         !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
       ) -> !mo.tensor<[10, 4, 4, 64], f32>
@@ -1064,7 +1064,7 @@ def RMO_ConvOp : RMO_MOAnaloguePureTensorOp<"conv">{
   }];
 }
 
-def RMO_ConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose">{
+def RMO_MOConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose">{
   let summary = "Transposed convolution operation";
   let description = [{
     This op effectively computes the gradient of a convolution with
@@ -1124,7 +1124,7 @@ def RMO_ConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose">{
         : !mo.tensor<[4], si64>
       %op = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>}
         : !mo.tensor<[2], si64>
-      %res = rmo.conv_transpose(%input, %filter)
+      %res = rmo.mo.conv_transpose(%input, %filter)
         [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
         !mo.tensor<[10, 4, 4, 64], f32>, !mo.tensor<[2, 2, 32, 64], f32>,
         !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>,
@@ -1171,7 +1171,7 @@ class RMO_MOAnaloguePurePoolOp<string name, list<Trait> traits = []>
   }];
 }
 
-def RMO_AvgPoolOp : RMO_MOAnaloguePurePoolOp<"avg_pool">{
+def RMO_MOAvgPoolOp : RMO_MOAnaloguePurePoolOp<"avg_pool">{
   let summary = "Average pooling operation";
   let description = [{
     Computes average pooling with the given filter shape, strides, and dilations.
@@ -1202,7 +1202,7 @@ def RMO_AvgPoolOp : RMO_MOAnaloguePurePoolOp<"avg_pool">{
         value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
       %pa = mo.constant {
         value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-      %res = rmo.avg_pool(%arg) [
+      %res = rmo.mo.avg_pool(%arg) [
           filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
       ] : (
         !mo.tensor<[20, 10, 10, 32], f32>, !mo.tensor<[2], si64>,
@@ -1221,7 +1221,7 @@ def RMO_AvgPoolOp : RMO_MOAnaloguePurePoolOp<"avg_pool">{
     MO_ParamDecls:$outputParamDecls);
 }
 
-def RMO_AvgPoolCeilOp : RMO_MOAnaloguePurePoolOp<"avg_pool_ceil_mode_true">{
+def RMO_MOAvgPoolCeilOp : RMO_MOAnaloguePurePoolOp<"avg_pool_ceil_mode_true">{
   let summary = "Ceiling-mode average pooling operation";
   let description = [{
     Computes average pooling with the given filter shape, strides, and dilations.
@@ -1252,7 +1252,7 @@ def RMO_AvgPoolCeilOp : RMO_MOAnaloguePurePoolOp<"avg_pool_ceil_mode_true">{
         value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
       %pa = mo.constant {
         value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-      %res = rmo.avg_pool_ceil_mode_true(%arg) [
+      %res = rmo.mo.avg_pool_ceil_mode_true(%arg) [
           filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
       ] : (
         !mo.tensor<[1, 4, 4, 1], f32>, !mo.tensor<[2], si64>,
@@ -1271,7 +1271,7 @@ def RMO_AvgPoolCeilOp : RMO_MOAnaloguePurePoolOp<"avg_pool_ceil_mode_true">{
     MO_ParamDecls:$outputParamDecls);
 }
 
-def RMO_MaxPoolOp : RMO_MOAnaloguePurePoolOp<"max_pool">{
+def RMO_MOMaxPoolOp : RMO_MOAnaloguePurePoolOp<"max_pool">{
   let summary = "Maximum pooling operation";
   let description = [{
     Computes max pooling with the given filter shape, strides, and dilations.
@@ -1302,7 +1302,7 @@ def RMO_MaxPoolOp : RMO_MOAnaloguePurePoolOp<"max_pool">{
         value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
       %pa = mo.constant {
         value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-      %res = rmo.max_pool(%arg) [
+      %res = rmo.mo.max_pool(%arg) [
           filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
       ] : (
         !mo.tensor<[20, 10, 10, 32], f32>, !mo.tensor<[2], si64>,
@@ -1312,7 +1312,7 @@ def RMO_MaxPoolOp : RMO_MOAnaloguePurePoolOp<"max_pool">{
   }];
 }
 
-def RMO_MaxPoolCeilOp : RMO_MOAnaloguePurePoolOp<"max_pool_ceil_mode_true">{
+def RMO_MOMaxPoolCeilOp : RMO_MOAnaloguePurePoolOp<"max_pool_ceil_mode_true">{
   let summary = "Ceiling-mode maximum pooling operation";
   let description = [{
     Computes max pooling with the given filter shape, strides, and dilations.
@@ -1343,7 +1343,7 @@ def RMO_MaxPoolCeilOp : RMO_MOAnaloguePurePoolOp<"max_pool_ceil_mode_true">{
         value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
       %pa = mo.constant {
         value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-      %res = rmo.max_pool_ceil_mode_true(%arg) [
+      %res = rmo.mo.max_pool_ceil_mode_true(%arg) [
           filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa
       ] : (
         !mo.tensor<[1, 4, 4, 1], f32>, !mo.tensor<[2], si64>,

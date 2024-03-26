@@ -199,7 +199,7 @@ void RebindTensorShapeOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                outputParamDecls);
 }
 
-void ShapeOfOp::inferMOTypesImpl(
+void MOShapeOfOp::inferMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
     SmallVectorImpl<Type> &moResultTypes,
@@ -236,7 +236,7 @@ void ShapeOfOp::inferMOTypesImpl(
   moOutputParamDecls.push_back(std::move(newDecls));
 }
 
-void BroadcastShapeOp::inferMOTypesImpl(
+void MOBroadcastShapeOp::inferMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
     SmallVectorImpl<Type> &moResultTypes,
@@ -264,7 +264,7 @@ void BroadcastShapeOp::inferMOTypesImpl(
   moOutputParamDecls.push_back(std::move(outputParamDecls));
 }
 
-void ReshapeOp::inferMOTypesImpl(
+void MOReshapeOp::inferMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
     SmallVectorImpl<Type> &moResultTypes,
@@ -303,7 +303,7 @@ void ReshapeOp::inferMOTypesImpl(
   }
 }
 
-void BroadcastToOp::inferMOTypesImpl(
+void MOBroadcastToOp::inferMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
     SmallVectorImpl<Type> &moResultTypes,
@@ -345,7 +345,7 @@ void BroadcastToOp::inferMOTypesImpl(
   }
 }
 
-void CastOp::inferMOTypesImpl(
+void MOCastOp::inferMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
     SmallVectorImpl<Type> &moResultTypes,
@@ -365,8 +365,8 @@ void CastOp::inferMOTypesImpl(
   moOutputParamDecls.push_back({});
 }
 
-void CastOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                   TensorValue input, DType dtype) {
+void MOCastOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                     TensorValue input, DType dtype) {
   build(odsBuilder, odsState, input.getType().cloneWith(dtype), input);
 }
 
@@ -439,13 +439,13 @@ void inferMOTypesReduceImpl(
         moResultTypes, moInputParamDecls, moOutputParamDecls, ReturnIndices);  \
   }
 
-DEFINE_REDUCE_INFER_MO_TYPES(MeanOp, false)
-DEFINE_REDUCE_INFER_MO_TYPES(ReduceMulOp, false)
-DEFINE_REDUCE_INFER_MO_TYPES(ReduceAddOp, false)
-DEFINE_REDUCE_INFER_MO_TYPES(ReduceMinOp, false)
-DEFINE_REDUCE_INFER_MO_TYPES(ReduceMaxOp, false)
-DEFINE_REDUCE_INFER_MO_TYPES(ArgMinOp, true)
-DEFINE_REDUCE_INFER_MO_TYPES(ArgMaxOp, true)
+DEFINE_REDUCE_INFER_MO_TYPES(MOMeanOp, false)
+DEFINE_REDUCE_INFER_MO_TYPES(MOReduceMulOp, false)
+DEFINE_REDUCE_INFER_MO_TYPES(MOReduceAddOp, false)
+DEFINE_REDUCE_INFER_MO_TYPES(MOReduceMinOp, false)
+DEFINE_REDUCE_INFER_MO_TYPES(MOReduceMaxOp, false)
+DEFINE_REDUCE_INFER_MO_TYPES(MOArgMinOp, true)
+DEFINE_REDUCE_INFER_MO_TYPES(MOArgMaxOp, true)
 #undef DEFINE_REDUCE_INFER_MO_TYPES
 
 void inferMOTypesScatterImpl(
@@ -583,7 +583,7 @@ void inferConvMOTypesImpl(
 
 } // namespace
 
-void ConvOp::inferMOTypesImpl(
+void MOConvOp::inferMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
     SmallVectorImpl<Type> &moResultTypes,
@@ -600,7 +600,7 @@ void ConvOp::inferMOTypesImpl(
                        moInputParamDecls, moOutputParamDecls);
 }
 
-void ConvTransposeOp::inferMOTypesImpl(
+void MOConvTransposeOp::inferMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
     SmallVectorImpl<Type> &moResultTypes,
@@ -701,10 +701,10 @@ void inferMOTypesPoolImpl(
         moResultTypes, moInputParamDecls, moOutputParamDecls);                 \
   }
 
-DEFINE_POOL_INFER_MO_TYPES(AvgPoolOp)
-DEFINE_POOL_INFER_MO_TYPES(AvgPoolCeilOp)
-DEFINE_POOL_INFER_MO_TYPES(MaxPoolOp)
-DEFINE_POOL_INFER_MO_TYPES(MaxPoolCeilOp)
+DEFINE_POOL_INFER_MO_TYPES(MOAvgPoolOp)
+DEFINE_POOL_INFER_MO_TYPES(MOAvgPoolCeilOp)
+DEFINE_POOL_INFER_MO_TYPES(MOMaxPoolOp)
+DEFINE_POOL_INFER_MO_TYPES(MOMaxPoolCeilOp)
 
 #undef DEFINE_POOL_INFER_MO_TYPES
 

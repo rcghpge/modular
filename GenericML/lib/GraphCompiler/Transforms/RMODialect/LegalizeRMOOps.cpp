@@ -172,19 +172,19 @@ struct LowerBroadcastedAddOp : public OpRewritePattern<RMO::BroadcastAddOp> {
 
     Location loc = op->getLoc();
     TensorValue shapeX =
-        rewriter.create<RMO::ShapeOfOp>(loc, ValueRange{x}, graphOp);
+        rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{x}, graphOp);
     TensorValue shapeY =
-        rewriter.create<RMO::ShapeOfOp>(loc, ValueRange{y}, graphOp);
-    TensorValue commonShape = rewriter.create<RMO::BroadcastShapeOp>(
+        rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{y}, graphOp);
+    TensorValue commonShape = rewriter.create<RMO::MOBroadcastShapeOp>(
         loc, ValueRange{shapeX, shapeY}, graphOp);
 
-    TensorValue bcastX = rewriter.create<RMO::BroadcastToOp>(
+    TensorValue bcastX = rewriter.create<RMO::MOBroadcastToOp>(
         loc, ValueRange{x, commonShape}, graphOp);
-    TensorValue bcastY = rewriter.create<RMO::BroadcastToOp>(
+    TensorValue bcastY = rewriter.create<RMO::MOBroadcastToOp>(
         loc, ValueRange{y, commonShape}, graphOp);
 
     TensorValue answer =
-        rewriter.create<RMO::AddOp>(loc, ValueRange{bcastX, bcastY}, graphOp);
+        rewriter.create<RMO::MOAddOp>(loc, ValueRange{bcastX, bcastY}, graphOp);
     TensorValue reboundAnswer = rebindToShape(
         graphOp, answer, op.getType(), rewriter, op.getOutputParamDecls());
 
@@ -204,60 +204,61 @@ struct LegalizeRMOOps
     // Lowering MOAnalogue Operations
     blockPatterns.add<
         // Elementwise unary ops
-        LegalizeRMOMOAnalogue<RMO::AbsOp, MO::AbsOp>,
-        LegalizeRMOMOAnalogue<RMO::CeilOp, MO::CeilOp>,
-        LegalizeRMOMOAnalogue<RMO::CosOp, MO::CosOp>,
-        LegalizeRMOMOAnalogue<RMO::ErfOp, MO::ErfOp>,
-        LegalizeRMOMOAnalogue<RMO::ExpOp, MO::ExpOp>,
-        LegalizeRMOMOAnalogue<RMO::FloorOp, MO::FloorOp>,
-        LegalizeRMOMOAnalogue<RMO::GeluOp, MO::GeluOp>,
-        LegalizeRMOMOAnalogue<RMO::LogOp, MO::LogOp>,
-        LegalizeRMOMOAnalogue<RMO::Log1pOp, MO::Log1pOp>,
-        LegalizeRMOMOAnalogue<RMO::LogSoftmaxOp, MO::LogSoftmaxOp>,
-        LegalizeRMOMOAnalogue<RMO::NegativeOp, MO::NegativeOp>,
-        LegalizeRMOMOAnalogue<RMO::NotOp, MO::NotOp>,
-        LegalizeRMOMOAnalogue<RMO::ReluOp, MO::ReluOp>,
-        LegalizeRMOMOAnalogue<RMO::RoundOp, MO::RoundOp>,
-        LegalizeRMOMOAnalogue<RMO::RoundEvenOp, MO::RoundEvenOp>,
-        LegalizeRMOMOAnalogue<RMO::RsqrtOp, MO::RsqrtOp>,
-        LegalizeRMOMOAnalogue<RMO::SigmoidOp, MO::SigmoidOp>,
-        LegalizeRMOMOAnalogue<RMO::SinOp, MO::SinOp>,
-        LegalizeRMOMOAnalogue<RMO::SqrtOp, MO::SqrtOp>,
-        LegalizeRMOMOAnalogue<RMO::TanhOp, MO::TanhOp>,
-        LegalizeRMOMOAnalogue<RMO::TruncOp, MO::TruncOp>,
+        LegalizeRMOMOAnalogue<RMO::MOAbsOp, MO::AbsOp>,
+        LegalizeRMOMOAnalogue<RMO::MOCeilOp, MO::CeilOp>,
+        LegalizeRMOMOAnalogue<RMO::MOCosOp, MO::CosOp>,
+        LegalizeRMOMOAnalogue<RMO::MOErfOp, MO::ErfOp>,
+        LegalizeRMOMOAnalogue<RMO::MOExpOp, MO::ExpOp>,
+        LegalizeRMOMOAnalogue<RMO::MOFloorOp, MO::FloorOp>,
+        LegalizeRMOMOAnalogue<RMO::MOGeluOp, MO::GeluOp>,
+        LegalizeRMOMOAnalogue<RMO::MOLogOp, MO::LogOp>,
+        LegalizeRMOMOAnalogue<RMO::MOLog1pOp, MO::Log1pOp>,
+        LegalizeRMOMOAnalogue<RMO::MOLogSoftmaxOp, MO::LogSoftmaxOp>,
+        LegalizeRMOMOAnalogue<RMO::MONegativeOp, MO::NegativeOp>,
+        LegalizeRMOMOAnalogue<RMO::MONotOp, MO::NotOp>,
+        LegalizeRMOMOAnalogue<RMO::MOReluOp, MO::ReluOp>,
+        LegalizeRMOMOAnalogue<RMO::MORoundOp, MO::RoundOp>,
+        LegalizeRMOMOAnalogue<RMO::MORoundEvenOp, MO::RoundEvenOp>,
+        LegalizeRMOMOAnalogue<RMO::MORsqrtOp, MO::RsqrtOp>,
+        LegalizeRMOMOAnalogue<RMO::MOSigmoidOp, MO::SigmoidOp>,
+        LegalizeRMOMOAnalogue<RMO::MOSinOp, MO::SinOp>,
+        LegalizeRMOMOAnalogue<RMO::MOSqrtOp, MO::SqrtOp>,
+        LegalizeRMOMOAnalogue<RMO::MOTanhOp, MO::TanhOp>,
+        LegalizeRMOMOAnalogue<RMO::MOTruncOp, MO::TruncOp>,
         // Elementwise binary ops
-        LegalizeRMOMOAnalogue<RMO::AddOp, MO::AddOp>,
-        LegalizeRMOMOAnalogue<RMO::MulOp, MO::MulOp>,
-        LegalizeRMOMOAnalogue<RMO::ModOp, MO::ModOp>,
-        LegalizeRMOMOAnalogue<RMO::MinOp, MO::MinOp>,
-        LegalizeRMOMOAnalogue<RMO::MaxOp, MO::MaxOp>,
-        LegalizeRMOMOAnalogue<RMO::DivOp, MO::DivOp>,
-        LegalizeRMOMOAnalogue<RMO::PowOp, MO::PowOp>,
-        LegalizeRMOMOAnalogue<RMO::SubOp, MO::SubOp>,
+        LegalizeRMOMOAnalogue<RMO::MOAddOp, MO::AddOp>,
+        LegalizeRMOMOAnalogue<RMO::MOMulOp, MO::MulOp>,
+        LegalizeRMOMOAnalogue<RMO::MOModOp, MO::ModOp>,
+        LegalizeRMOMOAnalogue<RMO::MOMinOp, MO::MinOp>,
+        LegalizeRMOMOAnalogue<RMO::MOMaxOp, MO::MaxOp>,
+        LegalizeRMOMOAnalogue<RMO::MODivOp, MO::DivOp>,
+        LegalizeRMOMOAnalogue<RMO::MOPowOp, MO::PowOp>,
+        LegalizeRMOMOAnalogue<RMO::MOSubOp, MO::SubOp>,
         // Other ops
-        LegalizeRMOMOAnalogue<RMO::ShapeOfOp, MO::ShapeOfOp>,
-        LegalizeRMOMOAnalogue<RMO::BroadcastShapeOp, MO::BroadcastShapeOp>,
-        LegalizeRMOMOAnalogue<RMO::ReshapeOp, MO::ReshapeOp>,
-        LegalizeRMOMOAnalogue<RMO::BroadcastToOp, MO::BroadcastToOp>,
-        LegalizeRMOMOAnalogue<RMO::CastOp, MO::CastOp>,
-        LegalizeRMOMOAnalogue<RMO::MeanOp, MO::MeanOp>,
-        LegalizeRMOMOAnalogue<RMO::ReduceMulOp, MO::ReduceMulOp>,
-        LegalizeRMOMOAnalogue<RMO::ReduceAddOp, MO::ReduceAddOp>,
-        LegalizeRMOMOAnalogue<RMO::ReduceMinOp, MO::ReduceMinOp>,
-        LegalizeRMOMOAnalogue<RMO::ReduceMaxOp, MO::ReduceMaxOp>,
-        LegalizeRMOMOAnalogue<RMO::ArgMinOp, MO::ArgMinOp>,
-        LegalizeRMOMOAnalogue<RMO::ArgMaxOp, MO::ArgMaxOp>,
-        LegalizeRMOMOAnalogue<RMO::ScatterOp, MO::ScatterOp>,
-        LegalizeRMOMOAnalogue<RMO::ScatterAddOp, MO::ScatterAddOp>,
-        LegalizeRMOMOAnalogue<RMO::ScatterMulOp, MO::ScatterMulOp>,
-        LegalizeRMOMOAnalogue<RMO::ScatterMinOp, MO::ScatterMinOp>,
-        LegalizeRMOMOAnalogue<RMO::ScatterMaxOp, MO::ScatterMaxOp>,
-        LegalizeRMOMOAnalogue<RMO::ConvOp, MO::ConvOp>,
-        LegalizeRMOMOAnalogue<RMO::ConvTransposeOp, MO::ConvTransposeOp>,
-        LegalizeRMOMOAnalogue<RMO::AvgPoolOp, MO::AvgPoolOp>,
-        LegalizeRMOMOAnalogue<RMO::AvgPoolCeilOp, MO::AvgPoolCeilOp>,
-        LegalizeRMOMOAnalogue<RMO::MaxPoolOp, MO::MaxPoolOp>,
-        LegalizeRMOMOAnalogue<RMO::MaxPoolCeilOp, MO::MaxPoolCeilOp>>(context);
+        LegalizeRMOMOAnalogue<RMO::MOShapeOfOp, MO::ShapeOfOp>,
+        LegalizeRMOMOAnalogue<RMO::MOBroadcastShapeOp, MO::BroadcastShapeOp>,
+        LegalizeRMOMOAnalogue<RMO::MOReshapeOp, MO::ReshapeOp>,
+        LegalizeRMOMOAnalogue<RMO::MOBroadcastToOp, MO::BroadcastToOp>,
+        LegalizeRMOMOAnalogue<RMO::MOCastOp, MO::CastOp>,
+        LegalizeRMOMOAnalogue<RMO::MOMeanOp, MO::MeanOp>,
+        LegalizeRMOMOAnalogue<RMO::MOReduceMulOp, MO::ReduceMulOp>,
+        LegalizeRMOMOAnalogue<RMO::MOReduceAddOp, MO::ReduceAddOp>,
+        LegalizeRMOMOAnalogue<RMO::MOReduceMinOp, MO::ReduceMinOp>,
+        LegalizeRMOMOAnalogue<RMO::MOReduceMaxOp, MO::ReduceMaxOp>,
+        LegalizeRMOMOAnalogue<RMO::MOArgMinOp, MO::ArgMinOp>,
+        LegalizeRMOMOAnalogue<RMO::MOArgMaxOp, MO::ArgMaxOp>,
+        LegalizeRMOMOAnalogue<RMO::MOScatterOp, MO::ScatterOp>,
+        LegalizeRMOMOAnalogue<RMO::MOScatterAddOp, MO::ScatterAddOp>,
+        LegalizeRMOMOAnalogue<RMO::MOScatterMulOp, MO::ScatterMulOp>,
+        LegalizeRMOMOAnalogue<RMO::MOScatterMinOp, MO::ScatterMinOp>,
+        LegalizeRMOMOAnalogue<RMO::MOScatterMaxOp, MO::ScatterMaxOp>,
+        LegalizeRMOMOAnalogue<RMO::MOConvOp, MO::ConvOp>,
+        LegalizeRMOMOAnalogue<RMO::MOConvTransposeOp, MO::ConvTransposeOp>,
+        LegalizeRMOMOAnalogue<RMO::MOAvgPoolOp, MO::AvgPoolOp>,
+        LegalizeRMOMOAnalogue<RMO::MOAvgPoolCeilOp, MO::AvgPoolCeilOp>,
+        LegalizeRMOMOAnalogue<RMO::MOMaxPoolOp, MO::MaxPoolOp>,
+        LegalizeRMOMOAnalogue<RMO::MOMaxPoolCeilOp, MO::MaxPoolCeilOp>>(
+        context);
 
     // Lowering rebind
     if (!skipRMORebind)

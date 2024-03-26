@@ -1,7 +1,7 @@
 // RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 mo.graph @add_dyn_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.add(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.add(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -16,7 +16,7 @@ mo.graph @add_dyn_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !
 // -----
 
 mo.graph @add_dyn_params(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.add(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.add(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -30,7 +30,7 @@ mo.graph @add_dyn_params(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<[?, ?, ?],
 // -----
 
 mo.graph @add_params_params(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.add(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.add(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -45,7 +45,7 @@ mo.graph @add_params_params(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @add_params_mix(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.add(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.add(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -62,7 +62,7 @@ mo.graph @add_params_mix(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?
 // -----
 
 mo.graph @add_static_static(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.add(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.add(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -75,7 +75,7 @@ mo.graph @add_static_static(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @div_dyn_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.div(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.div(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -90,7 +90,7 @@ mo.graph @div_dyn_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !
 // -----
 
 mo.graph @div_dyn_params(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.div(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.div(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -104,7 +104,7 @@ mo.graph @div_dyn_params(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<[?, ?, ?],
 // -----
 
 mo.graph @div_params_params(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.div(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.div(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -119,7 +119,7 @@ mo.graph @div_params_params(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @div_params_mix(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.div(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.div(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -136,7 +136,7 @@ mo.graph @div_params_mix(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?
 // -----
 
 mo.graph @div_static_static(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.div(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.div(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -149,7 +149,7 @@ mo.graph @div_static_static(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @max_dyn_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.max(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.max(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -164,7 +164,7 @@ mo.graph @max_dyn_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !
 // -----
 
 mo.graph @max_dyn_params(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.max(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.max(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -178,7 +178,7 @@ mo.graph @max_dyn_params(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<[?, ?, ?],
 // -----
 
 mo.graph @max_params_params(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.max(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.max(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -193,7 +193,7 @@ mo.graph @max_params_params(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @max_params_mix(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.max(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.max(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -210,7 +210,7 @@ mo.graph @max_params_mix(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?
 // -----
 
 mo.graph @max_static_static(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.max(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.max(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -223,7 +223,7 @@ mo.graph @max_static_static(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @min_dyn_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.min(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.min(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -238,7 +238,7 @@ mo.graph @min_dyn_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !
 // -----
 
 mo.graph @min_dyn_params(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.min(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.min(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -252,7 +252,7 @@ mo.graph @min_dyn_params(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<[?, ?, ?],
 // -----
 
 mo.graph @min_params_params(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.min(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.min(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -267,7 +267,7 @@ mo.graph @min_params_params(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @min_params_mix(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.min(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.min(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -284,7 +284,7 @@ mo.graph @min_params_mix(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?
 // -----
 
 mo.graph @min_static_static(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.min(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.min(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -297,7 +297,7 @@ mo.graph @min_static_static(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @mod_dyn_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mod(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.mod(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -312,7 +312,7 @@ mo.graph @mod_dyn_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !
 // -----
 
 mo.graph @mod_dyn_params(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mod(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.mod(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -326,7 +326,7 @@ mo.graph @mod_dyn_params(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<[?, ?, ?],
 // -----
 
 mo.graph @mod_params_params(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mod(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.mod(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -341,7 +341,7 @@ mo.graph @mod_params_params(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @mod_params_mix(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mod(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.mod(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -358,7 +358,7 @@ mo.graph @mod_params_mix(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?
 // -----
 
 mo.graph @mod_static_static(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mod(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.mod(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -371,7 +371,7 @@ mo.graph @mod_static_static(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @mul_dyn_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mul(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.mul(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -386,7 +386,7 @@ mo.graph @mul_dyn_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !
 // -----
 
 mo.graph @mul_dyn_params(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mul(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.mul(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -400,7 +400,7 @@ mo.graph @mul_dyn_params(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<[?, ?, ?],
 // -----
 
 mo.graph @mul_params_params(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mul(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.mul(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -415,7 +415,7 @@ mo.graph @mul_params_params(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @mul_params_mix(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mul(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.mul(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -432,7 +432,7 @@ mo.graph @mul_params_mix(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?
 // -----
 
 mo.graph @mul_static_static(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mul(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.mul(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -445,7 +445,7 @@ mo.graph @mul_static_static(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @pow_dyn_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.pow(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.pow(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -460,7 +460,7 @@ mo.graph @pow_dyn_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !
 // -----
 
 mo.graph @pow_dyn_params(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.pow(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.pow(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -474,7 +474,7 @@ mo.graph @pow_dyn_params(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<[?, ?, ?],
 // -----
 
 mo.graph @pow_params_params(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.pow(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.pow(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -489,7 +489,7 @@ mo.graph @pow_params_params(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @pow_params_mix(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.pow(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.pow(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -506,7 +506,7 @@ mo.graph @pow_params_mix(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?
 // -----
 
 mo.graph @pow_static_static(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.pow(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.pow(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -519,7 +519,7 @@ mo.graph @pow_static_static(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @sub_dyn_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.sub(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.sub(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -534,7 +534,7 @@ mo.graph @sub_dyn_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !
 // -----
 
 mo.graph @sub_dyn_params(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.sub(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.sub(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -548,7 +548,7 @@ mo.graph @sub_dyn_params(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<[?, ?, ?],
 // -----
 
 mo.graph @sub_params_params(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.sub(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.sub(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -563,7 +563,7 @@ mo.graph @sub_params_params(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @sub_params_mix(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.sub(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.sub(%arg0, %arg1) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, 2], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
@@ -580,7 +580,7 @@ mo.graph @sub_params_mix(%arg0: !mo.tensor<[?, ?, ?], f32>, %arg1: !mo.tensor<[?
 // -----
 
 mo.graph @sub_static_static(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.sub(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32>
+  %1 = rmo.mo.sub(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph

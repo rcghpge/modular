@@ -1,7 +1,7 @@
 // RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 mo.graph @cast_dyn(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?, ?], si32> {
-  %1 = rmo.cast(%arg0) : (!mo.tensor<?, f32>) -> !mo.tensor<[?, ?, ?], si32>
+  %1 = rmo.mo.cast(%arg0) : (!mo.tensor<?, f32>) -> !mo.tensor<[?, ?, ?], si32>
   mo.output %1 : !mo.tensor<[?, ?, ?], si32>
 }
 // CHECK-LABEL: mo.graph
@@ -14,7 +14,7 @@ mo.graph @cast_dyn(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?, ?], si32> {
 // -----
 
 mo.graph @cast_params(%arg0: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?], si32> {
-  %1 = rmo.cast(%arg0) : (!mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?], si32>
+  %1 = rmo.mo.cast(%arg0) : (!mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?], si32>
   mo.output %1 : !mo.tensor<[?, ?, ?], si32>
 }
 // CHECK-LABEL: mo.graph
@@ -26,7 +26,7 @@ mo.graph @cast_params(%arg0: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?]
 // -----
 
 mo.graph @cast_static(%arg0: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[?, ?, ?], si32> {
-  %1 = rmo.cast(%arg0) : (!mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[?, ?, ?], si32>
+  %1 = rmo.mo.cast(%arg0) : (!mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[?, ?, ?], si32>
   mo.output %1 : !mo.tensor<[?, ?, ?], si32>
 }
 

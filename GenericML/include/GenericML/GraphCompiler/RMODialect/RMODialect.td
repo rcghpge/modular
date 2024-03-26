@@ -57,8 +57,8 @@ def RMODialect : Dialect {
 
     A core part of the design is having an RMO operator analogous to every MO
     operator with the same semantics just with a relaxed verifier around IR.
-    For example we have `mo.add` and `rmo.add`, both of which don't broadcast
-    but `rmo.add` will accept nearly any shape.
+    For example we have `mo.add` and `rmo.mo.add`, both of which don't broadcast
+    but `rmo.mo.add` will accept nearly any shape.
 
     Users can then build operators as compositions of existing RMO operators to
     support whatever dynamic behavior they need, i.e. construct an rmo.bcast_add

@@ -1,7 +1,7 @@
 // RUN: mo-opt %s --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" | FileCheck %s
 
 mo.graph @shape_of_dyn(%input: !mo.tensor<?, f32>) -> !mo.tensor<[?], si64> {
-    %1 = rmo.shape_of(%input): (!mo.tensor<?, f32>) -> !mo.tensor<[?], si64>
+    %1 = rmo.mo.shape_of(%input): (!mo.tensor<?, f32>) -> !mo.tensor<[?], si64>
     mo.output %1: !mo.tensor<[?], si64>
 }
 // CHECK-LABEL: mo.graph
@@ -14,7 +14,7 @@ mo.graph @shape_of_dyn(%input: !mo.tensor<?, f32>) -> !mo.tensor<[?], si64> {
 // -----
 
 mo.graph @shape_of_params(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?], si64> {
-    %1 = rmo.shape_of(%input): (!mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?], si64>
+    %1 = rmo.mo.shape_of(%input): (!mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?], si64>
     mo.output %1: !mo.tensor<[?], si64>
 }
 

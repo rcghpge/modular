@@ -1,7 +1,7 @@
 // RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 mo.graph @conv_transpose_dyn(%input : !mo.tensor<?, f32>, %filter : !mo.tensor<?, f32>, %st: !mo.tensor<?, si64>, %di: !mo.tensor<?, si64>, %pa: !mo.tensor<?, si64>, %op: !mo.tensor<?, si64>) -> (!mo.tensor<?, f32>) {
-  %0 = rmo.conv_transpose(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+  %0 = rmo.mo.conv_transpose(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
     !mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<?, si64>, !mo.tensor<?, si64>, !mo.tensor<?, si64>
   ) -> !mo.tensor<?, f32>
   mo.output %0 : !mo.tensor<?, f32>
@@ -25,7 +25,7 @@ mo.graph @conv_transpose_dyn(%input : !mo.tensor<?, f32>, %filter : !mo.tensor<?
 // -----
 
 mo.graph @conv_transpose_dyn_params(%input : !mo.tensor<[?, ?, ?], f32>, %filter : !mo.tensor<[?, ?, ?], f32>, %st: !mo.tensor<[?], si64>, %di: !mo.tensor<[?], si64>, %pa: !mo.tensor<[?], si64>, %op: !mo.tensor<[?], si64>) -> (!mo.tensor<?, f32>) {
-  %0 = rmo.conv_transpose(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+  %0 = rmo.mo.conv_transpose(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
     !mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>
   ) -> !mo.tensor<?, f32>
   mo.output %0 : !mo.tensor<?, f32>
@@ -47,7 +47,7 @@ mo.graph @conv_transpose_dyn_params(%input : !mo.tensor<[?, ?, ?], f32>, %filter
 // -----
 
 mo.graph @conv_transpose_static(%input : !mo.tensor<[3, 12, 17, 19, 16], f32>, %filter : !mo.tensor<[3, 4, 5, 8, 16], f32>, %st: !mo.tensor<[3], si64>, %di: !mo.tensor<[3], si64>, %pa: !mo.tensor<[6], si64>, %op: !mo.tensor<[3], si64>) -> (!mo.tensor<?, f32>) {
-  %0 = rmo.conv_transpose(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+  %0 = rmo.mo.conv_transpose(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
     !mo.tensor<[3, 12, 17, 19, 16], f32>, !mo.tensor<[3, 4, 5, 8, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[3], si64>
   ) -> !mo.tensor<?, f32>
   mo.output %0 : !mo.tensor<?, f32>
@@ -65,7 +65,7 @@ mo.graph @conv_transpose_static_const_params(%input : !mo.tensor<[3, 12, 17, 19,
   %di = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %pa = mo.constant {value = #M.dense_array<1, 1, 3, 3, 2, 2> : tensor<6xsi64>} : !mo.tensor<[6], si64>
   %op = mo.constant {value = #M.dense_array<0, 2, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %0 = rmo.conv_transpose(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+  %0 = rmo.mo.conv_transpose(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
     !mo.tensor<[3, 12, 17, 19, 16], f32>, !mo.tensor<[3, 4, 5, 8, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[3], si64>
   ) -> !mo.tensor<?, f32>
   mo.output %0 : !mo.tensor<?, f32>
@@ -84,7 +84,7 @@ mo.graph @conv_transpose_static_const_params(%input : !mo.tensor<[3, 12, 17, 19,
 
 // COM: strides / dilations / outputPadding must have the same size (rebound to `[2]`)
 mo.graph @conv_transpose_dyn_window_diff(%input : !mo.tensor<?, f32>, %filter : !mo.tensor<?, f32>, %st: !mo.tensor<?, si64>, %di: !mo.tensor<[2], si64>, %pa: !mo.tensor<?, si64>, %op: !mo.tensor<[?], si64>) -> (!mo.tensor<?, f32>) {
-  %0 = rmo.conv_transpose(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+  %0 = rmo.mo.conv_transpose(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
     !mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[2], si64>, !mo.tensor<?, si64>, !mo.tensor<[?], si64>
   ) -> !mo.tensor<?, f32>
   mo.output %0 : !mo.tensor<?, f32>
