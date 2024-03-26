@@ -83,10 +83,10 @@ ErrorOr<Tensor> M::BenchmarkCLI::readNPYFile(
   if (majorVersion != 1)
     return Error("NPY format version " + Twine(majorVersion) +
                  " not supported");
-  uint16_t headerLen;
+  uint16_t headerLen = 0;
   if ((error = reader.readInteger(headerLen)))
     return toModularError(std::move(error));
-  StringRef headerText;
+  StringRef headerText = "";
   if ((error = reader.readFixedString(headerText, headerLen)))
     return toModularError(std::move(error));
   auto headerJSONOr = parseNPYMetadata(headerText);

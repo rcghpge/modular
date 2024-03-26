@@ -1320,7 +1320,7 @@ LogicalResult TensorExtractTensorSpecOp::inferReturnTypes(
     return mlir::emitError(location.value_or(operands[0].getLoc()),
                            "expected tensor operand.");
   }
-  bool isShapeOnly;
+  bool isShapeOnly = false;
   if (failed(getBoolAttr(location.value_or(operands[0].getLoc()), attributes,
                          getCIsShapeOnlyAttrName(name), isShapeOnly)))
     return failure();
@@ -1392,7 +1392,7 @@ LogicalResult KernelExecuteOp::inferReturnTypes(
                                     otherDevice)))
     return failure();
 
-  uint64_t numOutDimensions;
+  uint64_t numOutDimensions = 0;
   if (failed(getNumAttrOrDefault(location.value_or(operands[0].getLoc()),
                                  attributes, getINumOutDimensionsAttrName(name),
                                  numOutDimensions)))
