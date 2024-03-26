@@ -141,7 +141,7 @@ fn execute[
     input_map.borrow("input1", k_cache_buff)
     input_map.borrow("input2", v_cache_buff)
     var result_map = model.execute(input_map)
-    return result_map ^
+    return result_map^
 
 
 fn run[
@@ -191,8 +191,8 @@ fn run[
             v_cache_buff=v_cache_view,
         )
 
-        cache_update(results, "output1", k_cache_buff, k_cache_view ^, n_inputs)
-        cache_update(results, "output2", v_cache_buff, v_cache_view ^, n_inputs)
+        cache_update(results, "output1", k_cache_buff, k_cache_view^, n_inputs)
+        cache_update(results, "output2", v_cache_buff, v_cache_view^, n_inputs)
 
         tokens = results.get[DType.int64]("output0")
         print(tokenizer.vocab[int(tokens[0, 0])].token, end="")

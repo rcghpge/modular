@@ -868,7 +868,7 @@ struct GGUFReader:
 
     fn __init__(inout self, owned f: FileHandle):
         self.offset = 0
-        self.f = f ^
+        self.f = f^
 
     @always_inline
     fn align_to(inout self, alignment: Int) raises -> None:
@@ -894,7 +894,7 @@ struct GGUFReader:
             sizeof[Scalar[type]]()
         )
         var result = bytes_tensor.data().bitcast[type]().load()
-        _ = bytes_tensor ^
+        _ = bytes_tensor^
 
         return result
 
@@ -912,7 +912,7 @@ struct GGUFReader:
                 sizeof[Scalar[type]]()
             )
             var result = bytes_tensor.data().bitcast[type]().load()
-            _ = bytes_tensor ^
+            _ = bytes_tensor^
 
             return GGUFValue.from_dtype[type](result)
 
@@ -1074,7 +1074,7 @@ struct GGUFFile(LoadableModel):
         self.offset = other.offset
         self.size = other.size
 
-        self.fp = other.fp ^
+        self.fp = other.fp^
 
     fn __del__(owned self):
         for i in range(self.header.n_kv.to_int()):

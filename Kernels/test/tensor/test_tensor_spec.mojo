@@ -107,7 +107,7 @@ fn test_serialize():
     # CHECK: True
     print(TensorSpec.from_bytes(bytes.data()) == spec)
 
-    _ = bytes ^
+    _ = bytes^
 
 
 fn main():

@@ -20,7 +20,7 @@ fn create_dummy_model() raises -> BPETokenizer:
     model.add_token("c", -0.5)
     model.add_token("qr", -0.5)
 
-    return model ^
+    return model^
 
 
 fn test_tokenization() raises:

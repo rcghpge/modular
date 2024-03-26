@@ -55,7 +55,7 @@ fn read[T: CollectionElement](inout ptr: AnyPointer[Int8]) -> T:
     """Read a binary type out of a byte buffer and increment the pointer."""
     var value = ptr.bitcast[T]()[]
     ptr = ptr + sizeof[T]()
-    return value ^
+    return value^
 
 
 fn read_string(inout ptr: AnyPointer[Int8], length: Int) -> StringRef:
@@ -110,7 +110,7 @@ struct BPETokenizer:
             var token = read_string(read_ptr, token_len.to_int())
             model.add_token(token, score)
 
-        return model ^
+        return model^
 
     @staticmethod
     def from_file(path: Path) -> Self:
@@ -120,8 +120,8 @@ struct BPETokenizer:
         """
         var file = Tensor[DType.int8](path.read_bytes())
         var t = Self.from_bytes(file.data(), file.data() + file.num_elements())
-        _ = file ^
-        return t ^
+        _ = file^
+        return t^
 
     fn __init__(inout self):
         """Create an empty tokenizer."""
@@ -129,8 +129,8 @@ struct BPETokenizer:
         self.token_ids = Dict[String, Int]()
 
     fn __moveinit__(inout self, owned existing: Self):
-        self.vocab = existing.vocab ^
-        self.token_ids = existing.token_ids ^
+        self.vocab = existing.vocab^
+        self.token_ids = existing.token_ids^
 
     fn add_token(inout self, token: String, score: Float32) raises:
         """Add a token to the vocabulary."""
