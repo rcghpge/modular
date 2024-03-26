@@ -211,8 +211,10 @@ M_initFrameworkContextWithConfig(M::FrameworkContextHandle *ctx) {
   return success();
 }
 
-void M_freeFrameworkContext(M::FrameworkContextHandle ctx) {
-  delete ctx.unwrap<MOFContext>();
+void M_freeFrameworkContext(M::FrameworkContextHandle *ctx) {
+  assert(ctx && "null framework context");
+  delete ctx->unwrap<MOFContext>();
+  ctx->ctx = nullptr;
 }
 
 ErrorOrSuccess M_setOptions(FrameworkContextHandle ctx,
