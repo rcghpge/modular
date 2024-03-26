@@ -1406,7 +1406,11 @@ class MO_ReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
   ];
 }
 
-def MO_MeanOp : MO_ReductionOp<"mean", [
+// Reduction operations where the input and result type match
+class MO_MonotypeReductionOp<string name, list<Trait> traits = []> :
+  MO_ReductionOp<name, traits # [AllDTypesMatch<["input", "result"]>]>;
+
+def MO_MeanOp : MO_MonotypeReductionOp<"mean", [
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Mean reduction operation";
@@ -1429,7 +1433,7 @@ def MO_MeanOp : MO_ReductionOp<"mean", [
   }];
 }
 
-def MO_ReduceMulOp : MO_ReductionOp<"reduce.mul", [
+def MO_ReduceMulOp : MO_MonotypeReductionOp<"reduce.mul", [
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Product reduction operation";
@@ -1452,7 +1456,7 @@ def MO_ReduceMulOp : MO_ReductionOp<"reduce.mul", [
   }];
 }
 
-def MO_ReduceAddOp : MO_ReductionOp<"reduce.add", [
+def MO_ReduceAddOp : MO_MonotypeReductionOp<"reduce.add", [
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Sum reduction operation";
@@ -1476,7 +1480,7 @@ def MO_ReduceAddOp : MO_ReductionOp<"reduce.add", [
   let hasFolder = 1;
 }
 
-def MO_ReduceMinOp : MO_ReductionOp<"reduce.min", [
+def MO_ReduceMinOp : MO_MonotypeReductionOp<"reduce.min", [
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Minimum reduction operation";
@@ -1499,7 +1503,7 @@ def MO_ReduceMinOp : MO_ReductionOp<"reduce.min", [
   }];
 }
 
-def MO_ReduceMaxOp : MO_ReductionOp<"reduce.max", [
+def MO_ReduceMaxOp : MO_MonotypeReductionOp<"reduce.max", [
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Maximum reduction operation";

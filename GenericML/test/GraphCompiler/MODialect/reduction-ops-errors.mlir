@@ -62,3 +62,21 @@ mo.graph @axis_too_small(%input: !mo.tensor<[?, ?, 5], f32>) -> !mo.tensor<[?, ?
   %output = mo.reduce.add(%input, %axis) : (!mo.tensor<[?, ?, 5], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, ?], f32>
   mo.output %output : !mo.tensor<[?, ?, ?], f32>
 }
+
+// -----
+
+mo.graph @mixed_dtypes_float_to_int(%input: !mo.tensor<[?, ?, 5], f32>) -> !mo.tensor<[?, ?, ?], si32> {
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  // expected-error @below {{'mo.reduce.add' op failed to verify that all of {input, result} have same dtype}}
+  %output = mo.reduce.add(%input, %axis) : (!mo.tensor<[?, ?, 5], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, ?], si32>
+  mo.output %output : !mo.tensor<[?, ?, ?], si32>
+}
+
+// -----
+
+mo.graph @mixed_dtypes_float_to_float(%input: !mo.tensor<[?, ?, 5], f32>) -> !mo.tensor<[?, ?, ?], f16> {
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  // expected-error @below {{'mo.mean' op failed to verify that all of {input, result} have same dtype}}
+  %output = mo.mean(%input, %axis) : (!mo.tensor<[?, ?, 5], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, ?], f16>
+  mo.output %output : !mo.tensor<[?, ?, ?], f16>
+}
