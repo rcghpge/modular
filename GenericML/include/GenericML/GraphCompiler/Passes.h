@@ -130,7 +130,7 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
   Option<bool> lowerToCompiledRegions{
       *this, "lower-to-compiled-regions",
       llvm::cl::desc("If true, will lower MGP Ops down to compiled region."),
-      llvm::cl::init(false)};
+      llvm::cl::init(true)};
   Option<bool> genVizSpec{
       *this, "gen-viz-spec",
       llvm::cl::desc(
