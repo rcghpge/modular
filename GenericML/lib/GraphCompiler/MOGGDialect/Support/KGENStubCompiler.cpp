@@ -108,7 +108,7 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
           RCRef<Cache::RegionCache>::create(std::move(cacheBackends->first)),
           RCRef<Cache::TransformCache>::create(
               std::move(cacheBackends->second)),
-          ownedRuntime->getReadyChain().copy(), pm, /*deflateTarget=*/false);
+          ownedRuntime->getReadyChain().copy(), pm);
       LLCL::await(ready);
       if (ready.isError()) {
         LLCL::EncodedDiagnostic diag = ready.takeDiagnostic();
