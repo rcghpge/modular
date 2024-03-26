@@ -115,13 +115,6 @@ maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
   // relevant flags are on.
   if (!opts.useShapeInference)
     return;
-  if (opts.constantFold)
-    pm.addPass(
-        MO::createConstantFoldPass(opts.compiledFrameworkLabel.hasValue()
-                                       ? opts.compiledFrameworkLabel.getValue()
-                                       : "",
-                                   opts));
-
   ShapeInferenceOptions shapeInferenceOpts;
   shapeInferenceOpts.isExperimentalMode = opts.useExperimentalShapeInference;
   shapeInferenceOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
@@ -132,8 +125,28 @@ maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
       opts.symbolicNoUndefinedMath;
 
   buildShapeInferencePipeline(pm, shapeInferenceOpts);
-  pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
-  pm.addPass(MO::createPropagateShapes());
+
+  // Do some shape refinement.
+  //
+  // In general the below passes all help each other. In the future we should be
+  // running things to a fixed point however for now just run the below 3 times.
+  for (size_t i = 0; i < 3; i++) {
+    if (opts.constantFold)
+      pm.addPass(MO::createConstantFoldPass(
+          opts.compiledFrameworkLabel.hasValue()
+              ? opts.compiledFrameworkLabel.getValue()
+              : "",
+          opts));
+    pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
+    pm.addPass(MO::createPropagateShapes());
+    pm.addPass(MO::createStaticizeShapes());
+    pm.addPass(MO::createInlineShapeFunctions());
+    pm.addPass(mlir::createSymbolDCEPass());
+    pm.addPass(mlir::createCSEPass());
+    pm.addPass(mlir::createCanonicalizerPass());
+  }
+
+  // Add fallback shape functions.
   pm.addPass(MO::createAddFallbackShapeFunctions({opts.kernelLibraryPaths}));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
