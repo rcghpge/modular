@@ -141,6 +141,14 @@ static inline bool areCompatibleForFusion(Operation *lhs, Operation *rhs) {
 // generic compiled region operations are computationally trivial. If this
 // changes, the pass must change or else it could be duplicating non trivial
 // compute, in which case, a better, hollistic approach should be used.
+// Example where being greedy could inefficient but it is fine for now:
+// A--|
+// |  |
+// x  |
+// |  |
+// B <-
+// Here, A and B wll be fused despite A not being erased after the pass. This is
+// fine because we assume that A is computationally trivial.
 struct FuseGenericCompiledRegions
     : public MGP::impl::FuseGenericCompiledRegionsBase<
           FuseGenericCompiledRegions> {
@@ -164,16 +172,16 @@ struct FuseGenericCompiledRegions
       for (auto compiledRegion : llvm::reverse(compiledRegions)) {
         // Operations which have been fused and have no other users can safely
         // be erased.
-        if (llvm::all_of(compiledRegion->getUsers(), [](auto user) {
-              return llvm::isa<MOGG::GenericCompiledRegionOp>(user);
-            })) {
+        if (llvm::all_of(compiledRegion->getUsers(),
+                         [](auto user) { return isEligibleForFusion(user); })) {
           compiledRegion->erase();
           continue;
         }
 
         // Do a floodfill going up to gather all other regions that feed this op
-        // (transitively). Takes care of blocks.
-        auto opsToFuse = MOGG::floodFillFrom<MOGG::Direction::Up>(
+        // (transitively). Takes care of blocks. Allowing duplication because of
+        // the aforementioned assumptions on trivial compute.
+        auto opsToFuse = MOGG::floodFillFrom<MOGG::Direction::Up, true>(
             {compiledRegion}, isEligibleForFusion, areCompatibleForFusion,
             parametricTopologyAnalysis);
         if (opsToFuse.size() == 1)

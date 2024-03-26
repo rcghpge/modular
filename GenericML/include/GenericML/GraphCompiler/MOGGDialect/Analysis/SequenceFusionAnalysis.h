@@ -33,12 +33,54 @@ enum class Direction { Up, Down };
 /// one another and all paths to them from the root are void of non eligible
 /// ops. A SetVector is returned for determinism. Will not traverse across
 /// blocks.
-template <Direction direction>
+template <Direction direction, bool allowDuplication = false>
 mlir::SetVector<mlir::Operation *>
 floodFillFrom(const mlir::SmallVector<mlir::Operation *> &roots,
               EligibilityFunction isEligible,
               CompatibilityFunction areCompatible,
-              MO::ParametricTopologyAnalysis &completeDataflowGraph);
+              MO::ParametricTopologyAnalysis &completeDataflowGraph) {
+  mlir::SetVector<mlir::Operation *> visitedAsEligible;
+  mlir::SetVector<mlir::Operation *> visitedAsNonEligible;
+
+  mlir::Block *block = roots.front()->getBlock();
+  llvm::SmallVector<std::tuple<mlir::Operation *, bool>> workList;
+  for (mlir::Operation *op : roots)
+    workList.push_back({op, true});
+
+  while (!workList.empty()) {
+    auto [op, asEligible] = workList.pop_back_val();
+    if (op->getBlock() != block)
+      continue;
+
+    asEligible &= isEligible(op) && areCompatible(op, roots.front());
+
+    if (asEligible) {
+      // If the current op is eligible, then ensure it was not invalidated or
+      // already visited.
+      if (visitedAsNonEligible.contains(op))
+        continue;
+
+      if (!visitedAsEligible.insert(op))
+        continue;
+    } else if (allowDuplication || !visitedAsNonEligible.insert(op)) {
+      // If the current op is not eligible, ensure it was not already visited
+      // and remove it from eligible ops if it was thought to be eligible.
+      continue;
+    }
+
+    if constexpr (direction == Direction::Down) {
+      for (auto user : completeDataflowGraph.users(op))
+        workList.push_back({user, asEligible});
+    } else {
+      for (auto provider : completeDataflowGraph.providers(op))
+        workList.push_back({provider, asEligible});
+    }
+  }
+
+  visitedAsEligible.set_subtract(visitedAsNonEligible);
+
+  return visitedAsEligible;
+}
 
 /// NOTE: Passes that leverage this analysis have to emit deterministic IR
 /// meaning two invocations of the same pass over the same input should output
