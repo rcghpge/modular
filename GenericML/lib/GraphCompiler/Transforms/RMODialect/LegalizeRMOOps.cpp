@@ -234,6 +234,11 @@ struct LegalizeRMOOps
         LegalizeRMOMOAnalogue<RMO::MODivOp, MO::DivOp>,
         LegalizeRMOMOAnalogue<RMO::MOPowOp, MO::PowOp>,
         LegalizeRMOMOAnalogue<RMO::MOSubOp, MO::SubOp>,
+        // Comparison binary ops
+        LegalizeRMOMOAnalogue<RMO::MOEqualOp, MO::EqualOp>,
+        LegalizeRMOMOAnalogue<RMO::MOGreaterOp, MO::GreaterOp>,
+        LegalizeRMOMOAnalogue<RMO::MOGreaterEqualOp, MO::GreaterEqualOp>,
+        LegalizeRMOMOAnalogue<RMO::MONotEqualOp, MO::NotEqualOp>,
         // Other ops
         LegalizeRMOMOAnalogue<RMO::MOShapeOfOp, MO::ShapeOfOp>,
         LegalizeRMOMOAnalogue<RMO::MOBroadcastShapeOp, MO::BroadcastShapeOp>,

@@ -1353,4 +1353,104 @@ def RMO_MOMaxPoolCeilOp : RMO_MOAnaloguePurePoolOp<"max_pool_ceil_mode_true">{
   }];
 }
 
+class RMO_MOAnaloguePureComparisonOp<string name, list<Trait> traits = []>
+    : RMO_MOAnaloguePureTensorOp<name, traits> {
+  let results = (outs MO_BooleanMask:$result);
+}
+
+class RMO_MOAnaloguePureBinaryComparisonOp<string name, list<Trait> traits = []>
+    : RMO_MOAnaloguePureComparisonOp<name, traits #  [AllDTypesMatch<["input_x", "input_y"]>]> {
+  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y, MO_ParamDecls:$outputParamDecls);
+
+  let extraClassDeclaration = [{
+    static void inferMOTypesImpl(
+        MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+        std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+        SmallVectorImpl<Type> &moResultTypes,
+        SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+        SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+        MO::TensorType lhsType = cast<MO::TensorType>(operands.getInputX().getType());
+        MO::TensorType rhsType = cast<MO::TensorType>(operands.getInputY().getType());
+
+        MO::TensorType refinedShape = refineShape(lhsType, rhsType);
+        moOperandTypes.push_back(refinedShape);
+        moOperandTypes.push_back(refinedShape);
+        moInputParamDecls.push_back({});
+        moInputParamDecls.push_back({});
+
+        moResultTypes.push_back(refinedShape.cloneWith(DType::kBool));
+        moOutputParamDecls.push_back({});
+    }
+  }];
+}
+
+def RMO_MOEqualOp : RMO_MOAnaloguePureBinaryComparisonOp<"equal", [Commutative]> {
+  let summary = "Equality test operation";
+  let description = [{
+    Returns `x == y`, where `x` and `y` are input tensors.
+
+    Example:
+
+    ```mlir
+      %lhs: !mo.tensor<[2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.equal(%lhs, %rhs) : (!mo.tensor<[2, 3], f32>,
+                                        !mo.tensor<[2, 3], f32>
+                                        ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+}
+
+def RMO_MOGreaterOp : RMO_MOAnaloguePureBinaryComparisonOp<"greater"> {
+  let summary = "Comparison operation";
+  let description = [{
+    Returns `x > y`, where `x` and `y` are input tensors.
+
+    Example:
+
+    ```mlir
+      %lhs: !mo.tensor<[2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.greater(%lhs, %rhs) : (!mo.tensor<[2, 3], f32>,
+                                          !mo.tensor<[2, 3], f32>
+                                          ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+}
+
+def RMO_MOGreaterEqualOp : RMO_MOAnaloguePureBinaryComparisonOp<"greater_equal"> {
+  let summary = "Comparison operation";
+  let description = [{
+    Returns `x >= y`, where `x` and `y` are input tensors.
+
+    Example:
+
+    ```mlir
+      %lhs: !mo.tensor<[2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.greater_equal(%lhs, %rhs) : (!mo.tensor<[2, 3], f32>,
+                                                !mo.tensor<[2, 3], f32>
+                                                ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+}
+
+def RMO_MONotEqualOp : RMO_MOAnaloguePureBinaryComparisonOp<"not_equal", [Commutative]> {
+  let summary = "Comparison operation";
+  let description = [{
+    Returns elementwise `x != y`, where `x` and `y` are input tensors.
+
+    Example:
+
+    ```mlir
+      %lhs: !mo.tensor<[2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.not_equal(%lhs, %rhs) : (!mo.tensor<[2, 3], f32>,
+                                            !mo.tensor<[2, 3], f32>
+                                            ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
