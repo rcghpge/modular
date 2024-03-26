@@ -21,9 +21,14 @@ def version : Flag<["--"], "version">,
 defm output
     : CommandOption<["--"], "output", OutputOptionGroup, Index<1>,
                     MetaVarName<"PATH">,
-                    HelpText<"Path / directory to save visualization spec. "
-                             "If a similar filename already exists on the specified path, "
-                             "we will overwrite it with an updated visualization spec.">>;
+                    HelpText<"Directory or path for the output maxviz file. "
+                             "By default, the maxviz file is saved to the "
+                             "current directory with the same name as the "
+                             "input file (but with the `maxviz` extension). "
+                             "You can override this with just a directory name "
+                             "or a full path with a different filename. "
+                             "If a matching filename exists already, this "
+                             "will override it.">>;
 def : Separate<["-"], "o">,
       Group<OutputOptionGroup>,
       Index<2>,
