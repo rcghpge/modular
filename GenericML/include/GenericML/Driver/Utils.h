@@ -14,28 +14,24 @@
 #include "Support/ADT/GenericUniquePtrSet.h"
 #include "Support/Buffer.h"
 #include "Support/LLVMCompilerForwardDecls.h"
-#include "Support/MDialect/MDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "llvm/Support/ToolOutputFile.h"
 
 namespace M {
 
 /// This is the type we expect to have when
-/// `setupMLIRAndRun` is called. The runtime reference
+/// `setupMLIRAndRunWithLeakCheckedRuntime` is called. The runtime reference
 /// and MLIRContext pointer are the only two things that the body function
 /// could not capture outside this call.
 using BodyFn = std::function<LogicalResult(Runtime &, MLIRContext *)>;
 
-/// Run the given body function with runtime from given context.
-int setupMLIRAndRun(M::ContextRef context, const ExecutorDriverOptions &options,
-                    const char *testName,
-                    std::unique_ptr<llvm::MemoryBuffer> &&file,
-                    BodyFn &&bodyFn) {
+/// Run the given body function with a leak checked runtime.
+int setupMLIRAndRunWithLeakCheckedRuntime(
+    const ExecutorDriverOptions &options, const char *testName,
+    std::unique_ptr<llvm::MemoryBuffer> &&file, BodyFn &&bodyFn) {
   if (failed(options.configureMLIRContextAndExecute(
           std::move(file), [&](MLIRContext *ctx) {
-            LLCL::Runtime *runtime = context->get<Runtime>();
-            assert(runtime && "caller should have setup runtime for this");
-            registerContext(*ctx, context);
+            auto runtime = options.createRuntime();
             return LLCL::runWithLeakCheckedRuntime(
                 testName, [&]() { return bodyFn(*runtime, ctx); });
           })))
