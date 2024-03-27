@@ -72,6 +72,7 @@ def RMO_MOAnalogue : OpInterface<"MOAnalogue"> {
       /*args=*/(ins "::mlir::MLIRContext *":$context,
                     "MO::GraphOp":$graphOp,
                     "::mlir::ValueRange":$rmoOperands,
+                    "::mlir::DictionaryAttr":$rmoAttrs,
                     "std::optional<::mlir::ValueRange>":$rmoResults,
                     "::llvm::SmallVectorImpl<::mlir::Type>&":$moOperandTypes,
                     "::llvm::SmallVectorImpl<::mlir::Type>&":$moResultTypes,
@@ -81,7 +82,7 @@ def RMO_MOAnalogue : OpInterface<"MOAnalogue"> {
         ConcreteOp::inferMOTypesImpl(
           context,
           graphOp,
-          typename ConcreteOp::Adaptor(rmoOperands),
+          typename ConcreteOp::Adaptor(rmoOperands, rmoAttrs),
           rmoResults,
           moOperandTypes,
           moResultTypes,

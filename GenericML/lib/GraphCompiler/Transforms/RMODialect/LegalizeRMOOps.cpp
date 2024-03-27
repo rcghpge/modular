@@ -48,8 +48,8 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
   SmallVector<SmallVector<KGEN::ParamDeclAttr>> moInputParamDecls;
   SmallVector<SmallVector<KGEN::ParamDeclAttr>> moOutputParamDecls;
   op.inferMOTypes(op->getContext(), graphOp, op->getOperands(),
-                  op->getResults(), moOperandTypes, moResultTypes,
-                  moInputParamDecls, moOutputParamDecls);
+                  op->getAttrDictionary(), op->getResults(), moOperandTypes,
+                  moResultTypes, moInputParamDecls, moOutputParamDecls);
 
   // Rebind inputs to what the MO op would expect
   SmallVector<Value> newOperands;
