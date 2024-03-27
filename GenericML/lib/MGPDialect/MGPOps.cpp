@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPDialect/MGPOps.h"
-#include "Cache/CacheDialect/CacheAttrs.h"
 #include "GenericML/MGPDialect/BufferBuilder.h"
 #include "GenericML/Support/Assert.h"
 #include "Support/Compiler/ParserUtils.h"
@@ -63,11 +62,6 @@ M::MGP::getImpliedAlignment(ElementsAttr value) {
   if (auto hasAlignedBytesAttr = dyn_cast<HasAlignedBytesInterface>(value)) {
     // The attribute has an alignment or default alignment we can use.
     return hasAlignedBytesAttr.getAlignedBytesType().getAlign();
-  }
-
-  if (auto cacheConstant = dyn_cast<Cache::ConstantHashAttr>(value)) {
-    // The attribute encodes its own (optional) alignment.
-    return cacheConstant.getOptAlign();
   }
 
   return Error("cannot supply an alignment from type annotation for "
