@@ -1114,8 +1114,8 @@ struct GGUFFile(LoadableModel):
             )
 
             return Tensor(
-                bytes_tensor._steal_ptr().bitcast[type](),
                 info.storage_tensor_shape(),
+                bytes_tensor._steal_ptr().bitcast[type](),
             )
 
         raise "key not found"

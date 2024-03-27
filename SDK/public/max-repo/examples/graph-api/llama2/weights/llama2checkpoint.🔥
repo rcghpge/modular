@@ -234,7 +234,7 @@ struct LlamaCFile(LoadableModel):
         var layer_offset = layer_idx.value() * tensor_ref.nelems() if layer_idx else 0
         memcpy(ptr, tensor_ref.offset + layer_offset, tensor_ref.nelems())
 
-        return Tensor(ptr, tensor_ref.shape)
+        return Tensor(tensor_ref.shape, ptr)
 
     fn hyperparams(self) -> LlamaHParams:
         return LlamaHParams(

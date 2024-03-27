@@ -100,7 +100,7 @@ fn cache_view[
 ](size: Int, buff: Tensor[float_dtype]) -> Tensor[float_dtype]:
     var shape = buff.shape()
     return Tensor[float_dtype](
-        buff.data(), TensorShape(size, shape[1], shape[2], shape[3], shape[4])
+        TensorShape(size, shape[1], shape[2], shape[3], shape[4]), buff.data()
     )
 
 
