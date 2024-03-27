@@ -1453,4 +1453,54 @@ def RMO_MONotEqualOp : RMO_MOAnaloguePureBinaryComparisonOp<"not_equal", [Commut
   }];
 }
 
+def RMO_MORangeOp : RMO_MOAnaloguePureTensorOp<"range", 
+  [AllDTypesMatch<["start", "limit", "step", "result"]>]> 
+{
+  let summary = "Range operation";
+  let description = [{
+    Creates a sequence of numbers. The sequence goes from `start` with
+    increments of size `step` up to (but not including) `limit`. All arguments
+    are mandatory and must have the same element type.
+
+    Note the following restrictions on input values:
+    1. `step` must be non-zero
+    2. `limit - start` must be zero or have the same sign as `step`
+
+    Example:
+
+    ```mlir
+      %limit : !mo.tensor<[], f32>
+      %start = mo.constant {
+        value = #M.dense_array<0.0> : tensor<f32>} : !mo.tensor<[], f32>
+      %step = mo.constant {
+        value = #M.dense_array<1.5> : tensor<f32>} : !mo.tensor<[], f32>
+      %res = rmo.mo.range(%start, %limit, %step) : (
+        !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>
+      ) -> !mo.tensor<[?], f32>
+
+      %startInt = mo.constant {
+        value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+      %stepInt = mo.constant {
+        value = #M.dense_array<2> : tensor<si32>} : !mo.tensor<[], si32>
+      %limitInt = mo.constant {
+        value = #M.dense_array<11> : tensor<si32>} : !mo.tensor<[], si32>
+      %oddNumbersBelowTen = rmo.mo.range(%startInt, %limitInt, %stepInt) : (
+        !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>
+      ) -> !mo.tensor<[5], si32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$start,
+    MO_Tensor:$limit,
+    MO_Tensor:$step,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_VectorIfRanked:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD

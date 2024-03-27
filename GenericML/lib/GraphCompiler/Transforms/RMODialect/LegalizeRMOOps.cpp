@@ -262,8 +262,8 @@ struct LegalizeRMOOps
         LegalizeRMOMOAnalogue<RMO::MOAvgPoolOp, MO::AvgPoolOp>,
         LegalizeRMOMOAnalogue<RMO::MOAvgPoolCeilOp, MO::AvgPoolCeilOp>,
         LegalizeRMOMOAnalogue<RMO::MOMaxPoolOp, MO::MaxPoolOp>,
-        LegalizeRMOMOAnalogue<RMO::MOMaxPoolCeilOp, MO::MaxPoolCeilOp>>(
-        context);
+        LegalizeRMOMOAnalogue<RMO::MOMaxPoolCeilOp, MO::MaxPoolCeilOp>,
+        LegalizeRMOMOAnalogue<RMO::MORangeOp, MO::RangeOp>>(context);
 
     // Lowering rebind
     if (!skipRMORebind)

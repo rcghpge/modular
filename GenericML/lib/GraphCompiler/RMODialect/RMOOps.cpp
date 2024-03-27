@@ -9,11 +9,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/RMODialect/RMOOps.h"
+#include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GenericML/GraphCompiler/RMODialect/RMODialect.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOInterfaces.h"
 #include "GenericML/Support/Assert.h"
 #include "GenericML/Support/Dims.h"
+#include "Support/ML/RangeUtils.h"
+#include <optional>
 
 using namespace M;
 using namespace RMO;
@@ -707,6 +710,60 @@ DEFINE_POOL_INFER_MO_TYPES(MOMaxPoolOp)
 DEFINE_POOL_INFER_MO_TYPES(MOMaxPoolCeilOp)
 
 #undef DEFINE_POOL_INFER_MO_TYPES
+
+void MORangeOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+  TensorValue start = cast<TensorValue>(operands.getStart());
+  TensorValue step = cast<TensorValue>(operands.getStep());
+  TensorValue limit = cast<TensorValue>(operands.getLimit());
+
+  auto scalarTensorType = TensorType::get(SmallVector<TypedAttr>{},
+                                          start.getType().getElementType());
+
+  moOperandTypes.push_back(scalarTensorType);
+  moOperandTypes.push_back(scalarTensorType);
+  moOperandTypes.push_back(scalarTensorType);
+
+  moInputParamDecls.push_back({});
+  moInputParamDecls.push_back({});
+  moInputParamDecls.push_back({});
+
+  auto result = [&]() -> std::optional<TensorType> {
+    auto startInt = tryGetConstantInt(start);
+    auto stepInt = tryGetConstantInt(step);
+    auto limitInt = tryGetConstantInt(limit);
+
+    if (!startInt || !stepInt || !limitInt)
+      return std::nullopt;
+
+    auto maybeNumElements = getRangeNumElements(*startInt, *limitInt, *stepInt);
+
+    if (maybeNumElements.isError())
+      return std::nullopt;
+
+    SmallVector<int64_t> arr({maybeNumElements.get()});
+
+    return TensorType::get(arr, start.getType().getElementType());
+  }();
+
+  if (result) {
+    moResultTypes.push_back(*result);
+    moOutputParamDecls.push_back({});
+  } else {
+    SmallVector<KGEN::ParamDeclAttr> newDecls;
+
+    TensorType outType = getRankedParamTensorType(1, start.getType().getDtype(),
+                                                  graphOp, newDecls);
+
+    moOutputParamDecls.push_back(std::move(newDecls));
+    moResultTypes.push_back(outType);
+  }
+}
 
 void RMODialect::registerOperations() {
   addOperations<
