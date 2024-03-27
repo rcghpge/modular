@@ -248,12 +248,17 @@ public:
     loc = op->getLoc();
     decomposedOps.clear();
 
-    if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op))
+    if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
       tryDecomposeParamDeclOp(declOp);
+
+    } else if (auto invokeShapeFuncOp = dyn_cast<InvokeShapeFuncOp>(op)) {
+      tryDecomposeInvokeShapeFuncOp(invokeShapeFuncOp);
+    }
 
     return decomposedOps;
   }
 
+private:
   // Some parameter declaration can be simplified as long as there are extra
   // assertions emitted to legalize the simplification. However, not all such
   // assertions can proven to be trivial statically. In order to still benefit
@@ -325,6 +330,74 @@ public:
         newDeclOp.setValueAttr(
             MOSH::ShapeAttr::get(resDims, shapeAttr1.getType()));
         decomposedOps.push_back(newDeclOp);
+      }
+    }
+  }
+
+  // Assume `invokeShapeFuncOp` applies the shape function of `MO::BroadcastTo`,
+  // try decomposing the shape function call into `kgen.param.declare`
+  // primitives if possible, return null otherwise.
+  ShapeAttr tryDecomposeBroadcastToShape(InvokeShapeFuncOp invokeShapeFuncOp) {
+    auto inputTensorVal = cast<TensorValue>(invokeShapeFuncOp.getOperand(0));
+    auto inputShape =
+        dyn_cast<MOSH::ShapeAttr>(inputTensorVal.getType().getShapeAttr());
+    auto targetShape = tryGetShapeAttr(invokeShapeFuncOp.getOperand(1));
+    if (!inputShape || !targetShape)
+      return {};
+
+    int inputRank = inputShape.getRank();
+    int outputRank = targetShape.getRank();
+    // Illegal broadcast, let runtime handle this error.
+    if (inputRank > outputRank)
+      return {};
+
+    MLIRContext *ctx = invokeShapeFuncOp->getContext();
+    Type boolType = IntegerType::get(ctx, 1);
+    auto intOneAttr = IntegerAttr::get(IndexType::get(ctx), 1);
+    for (int i = 0; i < inputRank; i++) {
+      int inputAxis = inputRank - i - 1;
+      int outputAxis = outputRank - i - 1;
+      TypedAttr inputDim = inputShape.getValues()[inputAxis];
+      TypedAttr outputDim = targetShape.getValues()[outputAxis];
+
+      // Insert assertions
+      auto [inputDimIsOneDeclOp, inputDimIsOneDeclRef] = createDeclToKgenExpr(
+          "input_dim_is_one", boolType, KGEN::POC::EQ, {inputDim, intOneAttr});
+      auto [dimsEqualDeclOp, dimsEqualDeclRef] = createDeclToKgenExpr(
+          "dims_equal", boolType, KGEN::POC::EQ, {inputDim, outputDim});
+      auto [dimsCompatibleDeclOp, dimsCompatibleDeclRef] =
+          createDeclToKgenExpr("dims_compatible", boolType, KGEN::POC::Or,
+                               {inputDimIsOneDeclRef, dimsEqualDeclRef});
+      createAssert("dims_assert",
+                   "[broadcast_to] input dim must be either 1 or equal to "
+                   "corresponding output dim starting from the rightmost dim",
+                   dimsCompatibleDeclRef);
+    }
+    return targetShape;
+  }
+
+  // Treat certain fallback shape function call as special intrinsics and
+  // effectively symbolicizing them _during_ shape propagation.
+  //
+  // TODO this should eventually become general symbolicization applied to a
+  // single `InvokeShapeFuncOp`, however we can't do it yet since we need to
+  // symbolicize in batch in order to minimize the overhead.
+  void tryDecomposeInvokeShapeFuncOp(InvokeShapeFuncOp invokeShapeFuncOp) {
+    // Dispatch on certain shape function names.
+    StringRef shapeFuncName = invokeShapeFuncOp.getShapeFuncName();
+    ShapeAttr outputShape;
+    if (shapeFuncName == "broadcast_to_shape") {
+      outputShape = tryDecomposeBroadcastToShape(invokeShapeFuncOp);
+    }
+    // Create new declaration of the shape function call's output parameter if
+    // decomposition succeeded.
+    if (outputShape) {
+      for (auto [outputDecl, outputDim] :
+           llvm::zip(invokeShapeFuncOp.getOutputParamDecls(),
+                     outputShape.getValues())) {
+        auto declOp =
+            builder.create<KGEN::ParamDeclareOp>(loc, outputDecl, outputDim);
+        decomposedOps.push_back(declOp);
       }
     }
   }

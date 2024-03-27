@@ -395,3 +395,32 @@ mo.graph @out_of_order_ops<() -> D0, D1, D2, D3>(
   // CHECK-NEXT: mo.output<[[D4]], [[D5]], [[D6]], [[D7]]> %[[B1]], %[[B2]] : !mo.tensor<[[[D4]], [[D5]]], f32>, !mo.tensor<[[[D6]], [[D7]]], f32>
   mo.output<D4, D5, D6, D7> %b1, %b2 : !mo.tensor<[D4, D5], f32>, !mo.tensor<[D6, D7], f32>
 }
+
+// CHECK-LABEL: mo.graph @broadcast_to_parametric_shape
+// CHECK-SAME:   <[[D0:.*]], [[D1:.*]]>(
+// CHECK-SAME:    %[[INPUT:.*]]: !mo.tensor<[[[D0]]], f32>,
+// CHECK-SAME:    %[[DUMMY:.*]]: !mo.tensor<[[[D1]]], f32>
+// CHECK-SAME:  ) -> !mo.tensor<[[[D0]], [[D1]]], f32> no_inline {
+mo.graph @broadcast_to_parametric_shape<D0, D1 -> D2, D3>(
+  %input: !mo.tensor<[D0], f32>,
+  %dummy: !mo.tensor<[D1], f32>
+) -> !mo.tensor<[D2, D3], f32> {
+
+  %param_shape = mosh.param.to_value: !mosh.ape = <[D0, D1]>
+  %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[2], si32>
+
+  // CHECK-NEXT: kgen.param.declare {{.*}}: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"
+  // CHECK-SAME:  {message = "[broadcast_to] input dim must be either 1 or equal to corresponding output dim starting from the rightmost dim" : !kgen.string},
+  // CHECK-SAME:  or(eq(D0, D1), eq(D0, 1)))>
+  mo.invoke_shape_func["broadcast_to_shape"]<() -> D4, D5>(%input, %target_shape)
+    {dataDeptTensors = [1], kgenParams = {output_rank = 1}} : (!mo.tensor<[D0], f32>, !mo.tensor<[2], si32>)
+
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.broadcast_to(%[[INPUT]])
+  // CHECK-SAME:   : !mo.tensor<[[[D0]]], f32> -> !mo.tensor<[[[D0]], [[D1]]], f32>
+  %res = mo.broadcast_to(%input, %target_shape) : (
+    !mo.tensor<[D0], f32>, !mo.tensor<[2], si32>
+  ) -> !mo.tensor<[D4, D5], f32>
+
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], [[D1]]], f32>
+  mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>
+}
