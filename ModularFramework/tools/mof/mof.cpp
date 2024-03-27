@@ -242,6 +242,7 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   auto *mofContext = ctxHandle.unwrap<MOFContext>();
   auto ownedRuntime = LLCL::createRuntimeIfNeeded();
   ModuleOp moduleOp = ModuleOp::getFromOpaquePointer(source);
+  registerContext(*moduleOp->getContext(), ctxHandle.maxContext);
 
 #ifdef MODULAR_PRODUCTION
   moduleOp.getContext()->printOpOnDiagnostic(false);
@@ -277,7 +278,7 @@ ErrorOrSuccess M_openBinaryFile(FrameworkContextHandle ctx, M::BufferRef file,
 ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
                                        M::BufferRef file, FileFormat format) {
   auto *mofContext = ctxHandle.unwrap<MOFContext>();
-  CompileToBinaryCtx compileCtx;
+  CompileToBinaryCtx compileCtx(ctxHandle.maxContext.copy());
 
   // Gather all the options from all the sources.
   MOFLoweringOptions mofLoweringOptions;
@@ -427,8 +428,9 @@ int M_runBinaryFile(FrameworkContextHandle ctx, M::BufferRef fileBuffer,
       llvm::MemoryBuffer::getMemBuffer(fileBuffer->getMemBufferRef(),
                                        /*RequiresNullTerminator=*/
                                        false);
-  return setupMLIRAndRunWithLeakCheckedRuntime(
-      *driverOptions, "Modular model", std::move(aliasedBuffer), runModels);
+
+  return setupMLIRAndRun(ctx.maxContext.copy(), *driverOptions, "Modular model",
+                         std::move(aliasedBuffer), runModels);
 }
 
 int M_runModelWithData(FrameworkContextHandle ctx, M::BufferRef fileBuffer,
@@ -461,8 +463,9 @@ int M_runModelWithData(FrameworkContextHandle ctx, M::BufferRef fileBuffer,
       llvm::MemoryBuffer::getMemBuffer(
           fileBuffer->getMemBufferRef(), /*RequiresNullTerminator=*/
           false);
-  return setupMLIRAndRunWithLeakCheckedRuntime(
-      *driverOptions, "Modular model", std::move(aliasedBuffer), runModels);
+
+  return setupMLIRAndRun(ctx.maxContext.copy(), *driverOptions, "Modular model",
+                         std::move(aliasedBuffer), runModels);
 }
 
 M::ErrorOr<M::Buffer *> M_openPath(FrameworkContextHandle ctx,

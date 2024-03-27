@@ -9,6 +9,7 @@
 #include "GenericML/Driver/DriverAPI.h"
 #include "GenericML/Driver/DriverInputFormat.h"
 #include "GenericML/Support/Assert.h"
+#include "Support/Init/Init.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/Process.h"
 #include "llvm/ADT/StringExtras.h"
@@ -27,7 +28,8 @@ namespace {
 
 class GenericDriverOptions : public DriverCommandOptions,
                              public DriverInputFormatOptions,
-                             public CommonOptions {
+                             public CommonOptions,
+                             public LLCL::RuntimeOptions {
 public:
   //===--------------------------------------------------------------------===//
   // Force loading a specific dylib
@@ -44,14 +46,17 @@ public:
 
 class GenericDriverCLOptions : public DriverCommandCLOptions,
                                public DriverInputFormatCLOptions,
-                               public CommonCLOptions {
+                               public CommonCLOptions,
+                               public LLCL::RuntimeCLOptions {
 
 public:
   GenericDriverOptions &options;
   GenericDriverCLOptions(int argc, char **argv, GenericDriverOptions &opts,
                          bool skipInitLLVM = false)
       : DriverCommandCLOptions(opts), DriverInputFormatCLOptions(opts),
-        CommonCLOptions(argc, argv, opts, skipInitLLVM), options(opts) {}
+        CommonCLOptions(argc, argv, opts, skipInitLLVM), LLCL::RuntimeCLOptions(
+                                                             opts),
+        options(opts) {}
 
 private:
   llvm::cl::OptionCategory GenericDriverCLOptionsCategory{
@@ -221,9 +226,15 @@ int main(int argc, char **argv) {
       return EXIT_SUCCESS;
     }
 
-    // Setup the framework context. Despite passing argc/argv no significant
-    // command line argument processing is done here.
-    auto frameworkCtxOr = dylib.initFrameworkContext(argc, argv);
+    // Setup the framework context.
+    Init::Options contextOptions;
+    contextOptions.withRuntimeOptions(options);
+    auto contextOr =
+        Init::createContext(options.getProgramName(), contextOptions);
+    if (contextOr.isError())
+      return options.reportError(contextOr.getError());
+    auto frameworkCtxOr =
+        dylib.initFrameworkContext(contextOr.takeValue(), argc, argv);
     if (failed(frameworkCtxOr))
       return options.reportError(frameworkCtxOr.getError());
     auto frameworkCtx = std::move(*frameworkCtxOr);
