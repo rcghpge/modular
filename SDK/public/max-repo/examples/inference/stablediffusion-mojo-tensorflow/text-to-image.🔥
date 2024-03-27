@@ -14,7 +14,7 @@
 
 ## Global Mojo imports
 import sys
-from random import seed
+import random
 
 from os import setenv
 
@@ -205,7 +205,7 @@ fn main() raises -> None:
         print(USAGE)
         raise Error("--prompt option is required")
 
-    seed(seed)
+    random.seed(seed)
 
     ## Import python modules
     Python.add_to_path(".")
