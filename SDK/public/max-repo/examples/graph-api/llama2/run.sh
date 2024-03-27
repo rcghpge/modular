@@ -22,7 +22,7 @@ SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 source "$SCRIPT_DIR/setup.sh"
 
 mojo \
-    -D LLAMA_MODEL_PATH="${1:-$MODELS/stories15M.bin}" \
-    -D TOKENIZER_PATH="$MODELS/tokenizer.bin" \
     -I "$SCRIPT_DIR/tokenizer" \
-    "$SCRIPT_DIR/run.🔥"
+    "$SCRIPT_DIR/run.🔥" \
+    --model-path "${1:-$MODELS/stories15M.bin}" \
+    --tokenizer-path "$MODELS/tokenizer.bin"
