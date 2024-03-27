@@ -108,10 +108,14 @@ struct LegalizeRMOMOAnalogue : public OpRewritePattern<RMOOpT> {
   LogicalResult matchAndRewrite(RMOOpT op,
                                 PatternRewriter &rewriter) const override {
     auto generator =
-        [](PatternRewriter &rewriter, const Location &loc,
-           ArrayRef<Type> resultTypes,
-           ArrayRef<Value> operands) -> MO::ParamDeclarationInterface {
+        [&op](PatternRewriter &rewriter, const Location &loc,
+              ArrayRef<Type> resultTypes,
+              ArrayRef<Value> operands) -> MO::ParamDeclarationInterface {
       auto result = rewriter.create<MOOpT>(loc, resultTypes, operands);
+      // Copy all attributes (except the outputParamDecls).
+      for (auto attr : op->getAttrs())
+        if (attr.getName() != op.getOutputParamDeclsAttrName())
+          result->setAttr(attr.getName(), attr.getValue());
       return cast<MO::ParamDeclarationInterface>(result.getOperation());
     };
     return lowerMOAnalogue(op, rewriter, generator);
