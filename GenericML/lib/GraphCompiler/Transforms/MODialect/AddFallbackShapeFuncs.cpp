@@ -146,12 +146,18 @@ struct AddFallbackShapeFunctions
       if (op.getOutputParamDecls().empty())
         return mlir::WalkResult::advance();
 
-      // NOTE this is a temporary guard that ensures we don't symbolicize the
-      // following ops' fallback shape functions in the experimental shape
-      // inference path.
-      // TODO(#28538) remove `ReshapeOp` here
-      // TODO(#28539) remove `ArgNonzeroOp` here
-      if (restricted && isa<MO::ReshapeOp, MO::ArgNonzeroOp>(op.getOperation()))
+      // NOTE for most ops, we can materialize their shape function calls once
+      // and for all, since if there is any shape-changing rewrite, we can
+      // generally compose the new shape out of existing shape parameters.
+      //
+      // However, there are certain ops like `mo.arg_nonzero` where
+      // 1. it's never possible to resolve its output shape at compile time
+      // 2. we have rewrite (e.g., sink broadcast through `mo.arg_nonzero`) that
+      // changes its output shape.
+      //
+      // For these ops, we avoid materializing their shape function call until
+      // the very end.
+      if (restricted && isa<MO::ArgNonzeroOp>(op.getOperation()))
         return mlir::WalkResult::advance();
 
       // Call the fallbacks.

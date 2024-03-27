@@ -376,6 +376,100 @@ private:
     return targetShape;
   }
 
+  /// If target shape contains a `-1`, infer it based on the invariant that
+  /// `inputShapeAttr` and `targetShapeAttr` represent equal number of elements.
+  ///
+  /// Example:
+  ///   inputShapeAttr = [3, D4]
+  ///   targetShapeAttr = [D0, -1, 42]
+  ///   returns [D0, RS0, 42]
+  /// with the following inserted by `rewriter`
+  ///   kgen.param.declare RS0 = <div(mul(3, D4), mul(D0, 42)>
+  ShapeAttr resolveReshapeTargetShape(ShapeAttr inputShapeAttr,
+                                      ShapeAttr targetShapeAttr) {
+    auto indexType = builder.getType<IndexType>();
+    // Find index of `-1` dimension (if any), and collect all other dimensions.
+    SmallVector<TypedAttr> targetNonNegOneDims;
+    std::optional<size_t> maybeTargetNegOneDimIdx = std::nullopt;
+    for (auto [idx, targetDim] : llvm::enumerate(targetShapeAttr.getValues())) {
+      auto intDim = dyn_cast<IntegerAttr>(targetDim);
+      if (intDim && intDim.getInt() == -1) {
+        // Detected multiple negative one, gives up simplifying this reshape
+        // function call and let runtime handle the error for now.
+        if (maybeTargetNegOneDimIdx.has_value())
+          return {};
+        maybeTargetNegOneDimIdx = idx;
+      } else {
+        // TODO: we are using the assumption that all non-integer attribute
+        // (e.g., `D0` or `mul(D0, D1)`) will be non-negative. To make this
+        // completely safe, we'll need to extend and leverage the range
+        // analysis here.
+        targetNonNegOneDims.push_back(targetDim);
+      }
+    }
+
+    // no literal `-1` dimension, nothing to resolve
+    if (!maybeTargetNegOneDimIdx.has_value())
+      return targetShapeAttr;
+
+    // Infer the actual value of `-1` dimension based on other dimensions
+    auto numeratorAttr = KGEN::ParamOperatorAttr::get(
+        KGEN::POC::MulNuw, inputShapeAttr.getValues());
+
+    // Add a 1 to the shapes to multiply to ensure the denominator is valid
+    auto mulDims = targetNonNegOneDims;
+    mulDims.emplace_back(IntegerAttr::get(indexType, 1));
+
+    auto denominatorAttr =
+        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, mulDims);
+
+    auto resolvedDimAttr = KGEN::ParamOperatorAttr::get(
+        KGEN::POC::Div, numeratorAttr, denominatorAttr);
+
+    SmallVector<TypedAttr> resolvedDims = targetNonNegOneDims;
+    resolvedDims.insert(resolvedDims.begin() + maybeTargetNegOneDimIdx.value(),
+                        resolvedDimAttr);
+
+    return ShapeAttr::get(resolvedDims, targetShapeAttr.getType());
+  }
+
+  // Assume `invokeShapeFuncOp` applies the shape function of `MO::ReshapeOp`,
+  // try decomposing the shape function call into `kgen.param.declare`
+  // primitives if possible, return null otherwise.
+  ShapeAttr tryDecomposeReshapeShape(InvokeShapeFuncOp invokeShapeFuncOp) {
+    // Make sure both input and target shapes are ranked symbolic shapes.
+    auto inputShape = dyn_cast<ShapeAttr>(
+        cast<TensorType>(invokeShapeFuncOp.getOperand(0).getType())
+            .getShapeAttr());
+    ShapeAttr targetShape = tryGetShapeAttr(invokeShapeFuncOp.getOperand(1));
+    if (!inputShape || !targetShape)
+      return {};
+
+    // Make sure we are able to resolve any `-1` (inferred dimension) in the
+    // target shape.
+    ShapeAttr outputShape = resolveReshapeTargetShape(inputShape, targetShape);
+    if (!outputShape)
+      return {};
+
+    MLIRContext *ctx = invokeShapeFuncOp->getContext();
+    auto boolType = IntegerType::get(ctx, 1);
+    auto indexTy = IndexType::get(ctx);
+    // Insert assertions
+    auto [inputNumeElemsDeclOp, inputNumeElemsDeclRef] = createDeclToKgenExpr(
+        "input_num_elems", indexTy, KGEN::POC::MulNuw, inputShape.getValues());
+    auto [outputNumeElemsDeclOp, outputNumeElemsDeclRef] =
+        createDeclToKgenExpr("output_num_elems", indexTy, KGEN::POC::MulNuw,
+                             outputShape.getValues());
+    auto [numElemsEqualDeclOp, numElemsEqualDeclRef] =
+        createDeclToKgenExpr("num_elems_equal", boolType, KGEN::POC::EQ,
+                             {inputNumeElemsDeclRef, outputNumeElemsDeclRef});
+    createAssert("reshape_assert",
+                 "[reshape] input and output number of elements must match",
+                 numElemsEqualDeclRef);
+
+    return outputShape;
+  }
+
   // Treat certain fallback shape function call as special intrinsics and
   // effectively symbolicizing them _during_ shape propagation.
   //
@@ -388,7 +482,11 @@ private:
     ShapeAttr outputShape;
     if (shapeFuncName == "broadcast_to_shape") {
       outputShape = tryDecomposeBroadcastToShape(invokeShapeFuncOp);
+
+    } else if (shapeFuncName == "reshape_shape") {
+      outputShape = tryDecomposeReshapeShape(invokeShapeFuncOp);
     }
+
     // Create new declaration of the shape function call's output parameter if
     // decomposition succeeded.
     if (outputShape) {

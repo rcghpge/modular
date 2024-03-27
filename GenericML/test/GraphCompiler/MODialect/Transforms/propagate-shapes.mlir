@@ -424,3 +424,30 @@ mo.graph @broadcast_to_parametric_shape<D0, D1 -> D2, D3>(
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], [[D1]]], f32>
   mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>
 }
+
+// CHECK-LABEL: mo.graph @reshape_parametric_shape
+// CHECK-SAME:   <[[D0:.*]], [[D1:.*]]>(
+// CHECK-SAME:    %[[INPUT:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>
+// CHECK-SAME:  ) -> !mo.tensor<[[[D0]], 4, 5], f32> no_inline {
+mo.graph @reshape_parametric_shape<D0, D1 -> D2, D3, D4>(
+  %input: !mo.tensor<[D0, D1], f32>
+) -> !mo.tensor<[D2, D3, D4], f32> {
+
+  %param_shape = mosh.param.to_value: !mosh.ape = <[D0, 4, 5]>
+  %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[3], si32>
+
+  // CHECK-NEXT: kgen.param.declare {{.*}}: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"
+  // CHECK-SAME:  {message = "[reshape] input and output number of elements must match" : !kgen.string},
+  // CHECK-SAME:   eq(mul_nuw([[D0]], [[D1]]), mul_nuw([[D0]], 20)))>
+  mo.invoke_shape_func["reshape_shape"]<() -> D5, D6, D7>(%input, %target_shape)
+    {dataDeptTensors = [1], kgenParams = {output_rank = 1}} : (!mo.tensor<[D0, D1], f32>, !mo.tensor<[3], si32>)
+
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]])
+  // CHECK-SAME:   : !mo.tensor<[[[D0]], [[D1]]], f32> -> !mo.tensor<[[[D0]], 4, 5], f32>
+  %res = mo.reshape(%input, %target_shape) : (
+    !mo.tensor<[D0, D1], f32>, !mo.tensor<[3], si32>
+  ) -> !mo.tensor<[D5, D6, D7], f32>
+
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[[[D0]], 4, 5], f32>
+  mo.output<D5, D6, D7> %res : !mo.tensor<[D5, D6, D7], f32>
+}
