@@ -34,7 +34,6 @@
 #include "mlir/Transforms/Passes.h"
 
 // All the KGEN dependent passes
-#include "Cache/CacheDialect/CacheDialect.h"
 #include "KGEN/HLCFDialect/HLCFDialect.h"
 #include "KGEN/POPDialect/POPDialect.h"
 #include "KGEN/ToolCommon/InitAllDialects.h"

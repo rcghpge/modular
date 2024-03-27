@@ -7,7 +7,6 @@
 #ifndef GENERICML_MGPDIALECT_MGPTRANSFORMS_H
 #define GENERICML_MGPDIALECT_MGPTRANSFORMS_H
 
-#include "Cache/CacheDialect/CacheDialect.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/Pass.h"
 

@@ -6,7 +6,7 @@
 
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
 
-#include "Cache/CacheDialect/CachedTransform.h"
+#include "Cache/CachedTransform.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "KGEN/Compiler/KGENCompiler.h"

@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Cache/CacheDialect/CacheDialect.h"
+#include "Cache/CachedTransform.h"
 #include "Faux/Dialect/FauxDialect.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
@@ -40,9 +40,9 @@ int main(int argc, char **argv) {
       arith::ArithDialect, cf::ControlFlowDialect, func::FuncDialect,
       index::IndexDialect, LLVM::LLVMDialect, quant::QuantizationDialect,
       // Add the Modular Dialects.
-      MEF::MEFDialect, Cache::CacheDialect, DebugInfo::DebugInfoDialect,
-      Faux::FauxDialect, GRT::GRTDialect, MDialect, MGP::MGPDialect,
-      RMO::RMODialect, MO::MODialect, MOGG::MOGGDialect>();
+      MEF::MEFDialect, DebugInfo::DebugInfoDialect, Faux::FauxDialect,
+      GRT::GRTDialect, MDialect, MGP::MGPDialect, RMO::RMODialect,
+      MO::MODialect, MOGG::MOGGDialect>();
   // Add the KGEN Dialects.
   registerAllKGENDialects(registry);
   TF::registerAllDialects(registry);
