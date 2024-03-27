@@ -49,11 +49,6 @@ LogicalResult elaborateModule(ModuleOp moduleOp) {
       [&](KGEN::PackageLinkOp packageLink) {
         return KGEN::specializePackageLinkForPreElaborationLinking(
             packageLink, *ownedRuntime, KGEN::CompilationOptions());
-      },
-      [](KGEN::PackageLinkOp packageLink, TargetInfoAttr) {
-        // TODO(#22819): For now, do not compile packages on-demand, and instead
-        // stitch the pre-elaborated module into the module being built.
-        return KGEN::PackageArchiveAttr();
       });
   return pm.run(moduleOp);
 }
