@@ -765,6 +765,67 @@ void MORangeOp::inferMOTypesImpl(
   }
 }
 
+namespace {
+void inferMOTypesResizeImpl(
+    MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
+    TensorValue size, std::optional<ValueRange> rmoResults,
+    SmallVectorImpl<Type> &moOperandTypes, SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  // `input` type stays the same.
+  moOperandTypes.push_back(input.getType());
+  moInputParamDecls.push_back({});
+
+  // `size` must be 1-D.
+  TensorType sizeTy = size.getType();
+  if (!sizeTy.hasRank() || sizeTy.getRank() != 1) {
+    SmallVector<KGEN::ParamDeclAttr> paramDecls;
+    moOperandTypes.push_back(
+        getRankedParamTensorType(1, sizeTy.getDtype(), graphOp, paramDecls));
+    moInputParamDecls.push_back(std::move(paramDecls));
+  } else {
+    moOperandTypes.push_back(sizeTy);
+    moInputParamDecls.push_back({});
+  }
+
+  // Infer output type: output rank = input rank.
+  DType outputDtype = getDType(rmoResults, 0, input.getType().getDtype());
+  SmallVector<KGEN::ParamDeclAttr> outputParamDecls;
+  TensorType inputTy = input.getType();
+  if (!inputTy.hasRank())
+    moResultTypes.push_back(
+        getUnrankedTensorType(outputDtype, graphOp, outputParamDecls));
+  else
+    moResultTypes.push_back(getRankedParamTensorType(
+        inputTy.getRank(), outputDtype, graphOp, outputParamDecls));
+  moOutputParamDecls.push_back(std::move(outputParamDecls));
+}
+} // namespace
+
+void MOResizeLinearOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  inferMOTypesResizeImpl(
+      context, graphOp, cast<TensorValue>(operands.getInput()),
+      cast<TensorValue>(operands.getSize()), rmoResults, moOperandTypes,
+      moResultTypes, moInputParamDecls, moOutputParamDecls);
+}
+
+void MOResizeNearestOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  inferMOTypesResizeImpl(
+      context, graphOp, cast<TensorValue>(operands.getInput()),
+      cast<TensorValue>(operands.getSize()), rmoResults, moOperandTypes,
+      moResultTypes, moInputParamDecls, moOutputParamDecls);
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST

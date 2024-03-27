@@ -11,6 +11,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_H
 #define GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_H
 
+#include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOInterfaces.h"

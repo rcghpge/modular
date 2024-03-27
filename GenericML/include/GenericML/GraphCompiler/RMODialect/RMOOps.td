@@ -15,6 +15,7 @@ include "GenericML/GraphCompiler/RMODialect/RMODialect.td"
 include "GenericML/GraphCompiler/RMODialect/RMOInterfaces.td"
 include "GenericML/GraphCompiler/MODialect/MOTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOAttrs.td"
+include "GenericML/GraphCompiler/MODialect/MOEnums.td"
 
 // Base class for ops in this dialect.
 class RMO_Op<string mnemonic, list<Trait> traits = []>
@@ -1453,8 +1454,8 @@ def RMO_MONotEqualOp : RMO_MOAnaloguePureBinaryComparisonOp<"not_equal", [Commut
   }];
 }
 
-def RMO_MORangeOp : RMO_MOAnaloguePureTensorOp<"range", 
-  [AllDTypesMatch<["start", "limit", "step", "result"]>]> 
+def RMO_MORangeOp : RMO_MOAnaloguePureTensorOp<"range",
+  [AllDTypesMatch<["start", "limit", "step", "result"]>]>
 {
   let summary = "Range operation";
   let description = [{
@@ -1501,6 +1502,64 @@ def RMO_MORangeOp : RMO_MOAnaloguePureTensorOp<"range",
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
+}
+
+def RMO_MOResizeLinearOp : RMO_MOAnaloguePureTensorOp<"resize.linear"> {
+  let summary = "Linear resize operation";
+  let description = [{
+    Resizes a tensor to a new shape using the linear algorithm.
+
+    The coordinate transform mode can be half-pixel, align-corners or asymmetric.
+
+    When set to true, the antialias attribute causes an antialiasing filter to be applied
+    when downscaling.
+  }];
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndicesVectorIfRanked:$size,
+    MO_CoordinateTransformModeAttr:$coordinate_transform_mode,
+    BoolAttr:$antialias,
+    MO_ParamDecls:$outputParamDecls);
+
+  let results = (outs MO_Tensor:$result);
+}
+
+
+def RMO_MOResizeNearestOp : RMO_MOAnaloguePureTensorOp<"resize.nearest"> {
+  let summary = "Nearest-neighbor resize operation";
+  let description = [{
+    Resizes a tensor to a new shape using the nearest-neighbor algorithm.
+
+    The coordinate transform mode can be half-pixel, align-corners or asymmetric.
+
+    The values for round mode are:
+      - 0: HalfDown
+      - 1: HalfUp
+      - 2: Floor
+      - 3: Ceil
+
+    Round mode is HalfDown (0) by default.
+
+    Example:
+    ```mlir
+      %input : !mo.tensor<[1, 1, 2, 2], f32>
+      %size = mo.constant {
+        value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+      %res = rmo.resize.nearest(%input, %size) {
+        coordinate_transform_mode = 0,
+        round_mode = 2}:
+        (!mo.tensor<[1, 1, 2, 2], f32>, !mo.tensor<[4], si64>) ->
+          !mo.tensor<[1, 1, 7, 8], f32>
+    ```
+  }];
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndicesVectorIfRanked:$size,
+    MO_CoordinateTransformModeAttr:$coordinate_transform_mode,
+    DefaultValuedAttr<I64Attr, "0">:$round_mode,
+    MO_ParamDecls:$outputParamDecls);
+
+  let results = (outs MO_Tensor:$result);
 }
 
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
