@@ -26,8 +26,8 @@ built with the [MAX Graph API](https://docs.modular.com/engine/graph).
    ```shell
    source setup.sh && \
    mojo \
-       -D LLAMA_MODEL_PATH="$MODELS/stories110M.bin" \
-       -D TOKENIZER_PATH="$MODELS/tokenizer.bin" \
-       -I "$SCRIPT_DIR/tokenizer" \
-       "$SCRIPT_DIR/run.🔥"
+    -I "$SCRIPT_DIR/tokenizer" \
+    "$SCRIPT_DIR/run.🔥" \
+    --model-path "${1:-$MODELS/stories15M.bin}" \
+    --tokenizer-path "$MODELS/tokenizer.bin"
    ```
