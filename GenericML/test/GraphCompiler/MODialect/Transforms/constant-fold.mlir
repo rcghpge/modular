@@ -97,7 +97,7 @@ mo.graph @if_not_handled(%e1 : !mo.tensor<[2], si32>) -> (!mo.tensor<[2], si32>)
 
 // -----
 
-// CHECK-CONST-MO-SUBGRAPH: nested_region
+// CHECK-CONST-MO-SUBGRAPH-LABEL: @nested_region_constant_subgraphs
 // CHECK-CONST-MO-SUBGRAPH: mo.mul
 
 // CHECK: nested_region
@@ -123,7 +123,7 @@ mo.graph @nested_region(%g1 : !mo.tensor<[], bool>) -> (!mo.tensor<[2], si32>) {
 
 // -----
 
-// CHECK: repeated_application
+// CHECK: @repeated_application
 mo.graph @repeated_application(%e0 : !mo.tensor<[], si32>) -> !mo.tensor<[], si32> {
   // CHECK-NEXT: %{{.*}} = mo.constant {value = #M.dense_array<4>
   // CHECK-NEXT: mo.output
@@ -323,3 +323,31 @@ mo.graph @if_cache_resources(%arg0: !mo.tensor<[], bool>, %arg1: !mo.tensor<[600
     }
   }
 #-}
+
+// -----
+
+// CHECK-CONST-MO-SUBGRAPH-LABEL: @partial_fold_bcast_constant_subgraphs
+// CHECK-CONST-MO-SUBGRAPH: mo.static.broadcast_to
+
+// COM: For the reshape impl:
+// CHECK-CONST-MO-SUBGRAPH: @copy_view
+
+// COM: Do not constant fold broadcasts in the output, but allow them internally
+// CHECK-LABEL: mo.graph
+// CHECK-SAME: @partial_fold_bcast() -> !mo.tensor<[4, 2, 4], f32> no_inline {
+// CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00> : !M.array<8xf32>} : !mo.tensor<[1, 2, 4], f32>
+// CHECK-NEXT: [[V1:[^ ]*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[1, 2, 4], f32> -> !mo.tensor<[4, 2, 4], f32>
+// CHECK-NEXT: mo.output [[V1]] : !mo.tensor<[4, 2, 4], f32>
+mo.graph @partial_fold_bcast() -> !mo.tensor<[4, 2, 4], f32> {
+  %0 = mo.constant {value = #M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00> : !M.array<4xf32>} : !mo.tensor<[4], f32>
+
+  // COM: Here we should constant fold up to the reshape.
+  // COM: Note all of these increase memory but should be under the default
+  // COM: threshold of 100 bytes.
+  %1 = mo.static.broadcast_to(%0) : !mo.tensor<[4], f32> -> !mo.tensor<[2, 4], f32>
+  %2 = mo.static.reshape(%1): !mo.tensor<[2, 4], f32> -> !mo.tensor<[1, 2, 4], f32>
+
+  // COM: Do not fold up to the below because it is a broadcast op.
+  %3 = mo.static.broadcast_to(%2) : !mo.tensor<[1, 2, 4], f32> -> !mo.tensor<[4, 2, 4], f32>
+  mo.output %3 : !mo.tensor<[4, 2, 4], f32>
+}

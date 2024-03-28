@@ -105,8 +105,8 @@ struct FactorMemIncrease : public ConstantFoldPolicy {
     for (auto &subgraph : subgraphs) {
       std::optional<int64_t> maybeInitialMem = constantMemUsage(subgraph);
 
-      // Greedily remove outputs with the largest size. Might be a smarter
-      // way to do this.
+      // Greedily remove outputs with the largest size and ensure no
+      // outputs are the result of a direct broadcast.
       std::optional<int64_t> maybeOutputMem = outputMemUsage(subgraph);
 
       // Cannot determine memory growth if parameterized inputs.
@@ -122,29 +122,58 @@ struct FactorMemIncrease : public ConstantFoldPolicy {
       auto memoryOk = [&]() {
         return maybeOutputMem.has_value() && *maybeOutputMem <= totalThreshold;
       };
-      while (!subgraph.outputs.empty() && !memoryOk()) {
-        // Implies parameterized shape in output, just quit for now
+      bool maybeBcastsOutputs = true;
+
+      // TODO: this is N^2, we should improve it #18475
+      while (!memoryOk() || maybeBcastsOutputs) {
+        // Implies parameterized shape in output, cannot determine true size
+        // so defensively don't fold this subgraph.
         if (!maybeOutputMem.has_value())
           break;
 
-        // TODO: this is N^2, we should improve it #18475
-        Operation *maxValue = *std::max_element(
-            subgraph.outputs.begin(), subgraph.outputs.end(),
-            [&subgraph, totalThreshold](Operation *a, Operation *b) {
-              std::optional<int64_t> maybeSizeA = valueSize(subgraph, a);
-              std::optional<int64_t> maybeSizeB = valueSize(subgraph, b);
+        if (subgraph.outputs.empty())
+          break;
 
-              // If unknown, set to a big enough number
-              int64_t sizeA = maybeSizeA.has_value() ? maybeSizeA.value()
-                                                     : totalThreshold + 1;
-              int64_t sizeB = maybeSizeB.has_value() ? maybeSizeB.value()
-                                                     : totalThreshold + 1;
+        // Remove largest value outputs to get under memory thresholds
+        if (!memoryOk()) {
+          // Find and remove the largest value
+          Operation *maxValue = *std::max_element(
+              subgraph.outputs.begin(), subgraph.outputs.end(),
+              [&subgraph, totalThreshold](Operation *a, Operation *b) {
+                std::optional<int64_t> maybeSizeA = valueSize(subgraph, a);
+                std::optional<int64_t> maybeSizeB = valueSize(subgraph, b);
 
-              return sizeA < sizeB;
-            });
+                // If unknown, set to a big enough number
+                int64_t sizeA = maybeSizeA.has_value() ? maybeSizeA.value()
+                                                       : totalThreshold + 1;
+                int64_t sizeB = maybeSizeB.has_value() ? maybeSizeB.value()
+                                                       : totalThreshold + 1;
 
-        // TODO: this is N^2, we should improve it #18475
-        subgraph.remove(maxValue);
+                return sizeA < sizeB;
+              });
+
+          // TODO: this is N^2, we should improve it #18475
+          subgraph.remove(maxValue);
+
+          // New outputs means we might have broadcasts again.
+          maybeBcastsOutputs = true;
+        }
+
+        // Broadcasts are not helpful to fold as they can be represented as view
+        // ops and only increase or maintain memory usage. They are also used in
+        // many symbolic optimizations under "broadcast sinking."
+        if (maybeBcastsOutputs) {
+          maybeBcastsOutputs = false;
+          SmallVector<Operation *> initOutputs(subgraph.outputs.begin(),
+                                               subgraph.outputs.end());
+          for (Operation *op : initOutputs) {
+            if (isa<BroadcastToOp, Static::BroadcastToOp>(op)) {
+              maybeBcastsOutputs = true;
+              subgraph.remove(op);
+            }
+          }
+        }
+
         maybeOutputMem = outputMemUsage(subgraph);
       }
 
