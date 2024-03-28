@@ -132,7 +132,11 @@ maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
               ? opts.compiledFrameworkLabel.getValue()
               : "",
           opts));
-    pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
+
+    if (opts.useExperimentalShapeInference)
+      pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(
+          {opts.kernelLibraryPaths}));
+
     pm.addPass(MO::createPropagateShapes());
     pm.addPass(MO::createStaticizeShapes());
     pm.addPass(MO::createInlineShapeFunctions());
@@ -141,7 +145,11 @@ maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
     pm.addPass(mlir::createCanonicalizerPass());
   }
 
-  // Add fallback shape functions.
+  // Run symbolic optimizations after shape inference to avoid complicating
+  // tracing shape pipeline.
+  pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
+
+  // Add fallback shape functions for any remaining unhandled ops
   pm.addPass(MO::createAddFallbackShapeFunctions({opts.kernelLibraryPaths}));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
