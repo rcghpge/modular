@@ -59,6 +59,10 @@ fn test_tensor_init():
     # CHECK: 0.6
     print(t2[0, 1, 2])
 
+    # CHECK: [3.0, 3.0, 3.0, 3.0, 3.0],
+    # CHECK-NEXT: [3.0, 3.0, 3.0, 3.0, 3.0]], dtype=float32, shape=2x5
+    print(Tensor[DType.float32](TensorShape(2, 5), 3))
+
 
 def test_tensor_copy():
     var tensor = Tensor[DType.float32](
