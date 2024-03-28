@@ -8,6 +8,7 @@
 #define GENERICML_DRIVER_COMPILETOBINARY_H
 
 #include "LLCL/Runtime/Runtime.h"
+#include "Support/Config.h"
 #include "Support/MDialect/MDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -21,10 +22,7 @@ struct CompileToBinaryCtx {
       : context(ctx.copy()), runtime(ctx->get<Runtime>()) {
     assert(runtime && "expected to have a runtime");
     registerContext(mlirCtx, context);
-
-#ifdef MODULAR_PRODUCTION
-    mlirCtx.printOpOnDiagnostic(false);
-#endif // MODULAR_PRODUCTION
+    configureMLIRContext(mlirCtx);
   }
 
   /// Here the default reverse-order-of-declaration destruction is important.

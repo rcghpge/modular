@@ -244,10 +244,6 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   ModuleOp moduleOp = ModuleOp::getFromOpaquePointer(source);
   registerContext(*moduleOp->getContext(), ctxHandle.maxContext);
 
-#ifdef MODULAR_PRODUCTION
-  moduleOp.getContext()->printOpOnDiagnostic(false);
-#endif // MODULAR_PRODUCTION
-
   // Gather all the options from all the sources.
   MOFLoweringOptions mofLoweringOptions;
   MO::MoToMgpOptions moToMgpOptions;
