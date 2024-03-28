@@ -20,6 +20,7 @@
 #include "GraphRT/MEFExecutor/MEFFile.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
+#include "LLCL/CompilerSupport/MLIRLocationDecoder.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "MEFModel.h"
@@ -258,8 +259,8 @@ denseResourceAsTensor(LLCL::Runtime &runtime, ConstantOp constant,
 
   // This optimization is used to aggressively free DenseResource allocations
   // during execution. The buffers borrow dense resources which have no other
-  // uses and we free the dense resources when the buffers are dead rather than
-  // waiting for the MLIRContext to die.
+  // uses and we free the dense resources when the buffers are dead rather
+  // than waiting for the MLIRContext to die.
   if (usersOutsideSubgraph.empty() && blob->getDeleter()) {
     // Take ownership of the deleting function.
     auto async = AsyncValue::createReady<BlobLifetimeManager>(
@@ -883,111 +884,132 @@ void ConstantFoldPass::runOnOperation() {
 
   MLIRContext *ctx = &getContext();
 
-  for (int i = 0; i < iterations.getValue(); i++) {
-    OpBuilder builder(ctx);
-    builder.setInsertionPointToStart(getOperation().getBody());
-    // We have to create the copy of each subgraph somewhere under the
-    // original model because passes can't create ops outside of what they
-    // are operating on. We create a nested module in the current module
-    // where we do everything. At the end we remove it.
-    auto module = builder.create<ModuleOp>(getOperation().getLoc(),
-                                           "constant_fold_subgraphs");
+  ContextRef maxContext = loadContext(ctx);
+  GENERICML_ASSERT(maxContext.getPointer() != nullptr)
+      << "expected max context to be setup here";
+  LLCL::Runtime *runtimeFromCtx = maxContext->get<Runtime>();
 
-    // For each constant subgraph, we clone it into our submodule as a new
-    // GraphOp. The outputs of the GraphOp are the outputs of the subgraph.
-    //
-    // An alternative approach could be to combine each subgraph into one
-    // large constant graph so we only have one thing to execute.
-    SmallVector<SubgraphsInfo> subgraphReplacements;
-    int64_t name_counter = 0;
-    getOperation().walk([&](GraphOp graph) {
-      // Can't constant fold cuda yet
-      if (graph.getDeviceRef() && graph.getDeviceRef().getLabel() != kCPULabel)
-        return mlir::WalkResult::skip();
-      auto subgraphs = M::MO::constantSubgraphs(
-          graph, getAnalysis<KGEN::ParameterCollector::Analysis>());
-      if (subgraphs.empty())
-        return mlir::WalkResult::advance();
-      subgraphs = policy->shouldFold(subgraphs);
-      if (subgraphs.empty())
-        return mlir::WalkResult::advance();
-      builder.setInsertionPointToEnd(module.getBody());
+  auto readyChain = AsyncValueRef<Chain>::allocate(runtimeFromCtx);
 
-      subgraphReplacements.push_back(
-          cloneSubgraphs(builder, graph, module, subgraphs, name_counter));
-      return WalkResult::advance();
-    });
+  LLCL::addTask(*runtimeFromCtx, [&, readyChain = readyChain.copy()]() mutable {
+    auto setError = [&](mlir::Location loc, Twine errorMessage) {
+      auto encodedLocation = LLCL::MLIRLocationDecoder::getEncodedLocation(loc);
+      return std::move(readyChain)
+          .setToError({Error(errorMessage), std::move(encodedLocation)});
+    };
+    for (int i = 0; i < iterations.getValue(); i++) {
+      OpBuilder builder(ctx);
+      builder.setInsertionPointToStart(getOperation().getBody());
+      // We have to create the copy of each subgraph somewhere under the
+      // original model because passes can't create ops outside of what they
+      // are operating on. We create a nested module in the current module
+      // where we do everything. At the end we remove it.
+      auto module = builder.create<ModuleOp>(getOperation().getLoc(),
+                                             "constant_fold_subgraphs");
 
-    if (module.getBody()->getOperations().empty()) {
+      // For each constant subgraph, we clone it into our submodule as a new
+      // GraphOp. The outputs of the GraphOp are the outputs of the subgraph.
+      //
+      // An alternative approach could be to combine each subgraph into one
+      // large constant graph so we only have one thing to execute.
+      SmallVector<SubgraphsInfo> subgraphReplacements;
+      int64_t name_counter = 0;
+      getOperation().walk([&](GraphOp graph) {
+        // Can't constant fold cuda yet
+        if (graph.getDeviceRef() &&
+            graph.getDeviceRef().getLabel() != kCPULabel)
+          return mlir::WalkResult::skip();
+        auto subgraphs = M::MO::constantSubgraphs(
+            graph, getAnalysis<KGEN::ParameterCollector::Analysis>());
+        if (subgraphs.empty())
+          return mlir::WalkResult::advance();
+        subgraphs = policy->shouldFold(subgraphs);
+        if (subgraphs.empty())
+          return mlir::WalkResult::advance();
+        builder.setInsertionPointToEnd(module.getBody());
+
+        subgraphReplacements.push_back(
+            cloneSubgraphs(builder, graph, module, subgraphs, name_counter));
+        return WalkResult::advance();
+      });
+
+      if (module.getBody()->getOperations().empty()) {
+        // Remove module to not clutter the output.
+        module.erase();
+        return std::move(readyChain).emplace();
+      }
+
+      ErrorOr<ModelsWithBuffer> modelsOr =
+          lowerSubgraphs(module, *runtimeFromCtx);
+      if (failed(modelsOr)) {
+        return setError(module.getLoc(),
+                        "[ConstantFold] Unable to load models: " +
+                            Twine(modelsOr.getError()));
+      }
+
+      // We have to consolidate rewrites to the same graphop as the rewrites of
+      // one subgraph may invalidate ops in another subgraph (due to fold
+      // hooks).
+      llvm::DenseMap<GraphOp,
+                     llvm::SmallVector<std::pair<ModelResult, SubgraphsInfo>>>
+          executionResults;
+      for (const SubgraphsInfo &subgraphsInfo : subgraphReplacements) {
+        const Model *model = modelsOr.get().models->getModelNamed(
+            subgraphsInfo.constantSubgraphName);
+        GENERICML_ASSERT(model != nullptr)
+            << "Model should exist, make sure names above match.";
+        LLCL::ErrorDiagnosticOr<ModelResult> valuesToTensorsOr =
+            executeModel(ctx, model, subgraphsInfo, *runtimeFromCtx);
+        if (valuesToTensorsOr.isError()) {
+          LLCL::EncodedDiagnostic err = valuesToTensorsOr.takeError();
+          auto decoded = err.decodeLocation();
+          auto loc =
+              mlir::FileLineColLoc::get(module.getContext(), decoded.filename,
+                                        decoded.line, decoded.column);
+          return setError(loc,
+                          "[ConstantFold] " + Twine(err.getMessage().get()));
+        }
+        auto valuesToTensors = valuesToTensorsOr.takeValue();
+        auto it = executionResults.find(subgraphsInfo.orig);
+        if (it != executionResults.end()) {
+          it->second.push_back({valuesToTensors, subgraphsInfo});
+        } else {
+          executionResults[subgraphsInfo.orig] = {
+              {valuesToTensors, subgraphsInfo}};
+        }
+      }
+
+      // Replace output expressions with constants. Also handles DCE.
+      for (auto [graph, results] : executionResults) {
+        for (const auto &r : results) {
+          const ModelResult &modelResult = r.first;
+          const SubgraphsInfo &subgraphsInfo = r.second;
+          replaceConstantOps(graph, builder, modelResult, subgraphsInfo);
+        }
+      }
+
       // Remove module to not clutter the output.
       module.erase();
-      return;
-    }
 
-    // TODO: #18077 this should be an argument to the pass.
-    auto ownedRuntime = LLCL::createRuntimeIfNeeded(LLCL::RuntimeOptions());
-    // TODO: Add withLeakCheckedAllocator to RuntimeOptions
-
-    ErrorOr<ModelsWithBuffer> modelsOr = lowerSubgraphs(module, *ownedRuntime);
-    if (failed(modelsOr)) {
-      mlir::emitError(module.getLoc(),
-                      "[ConstantFold] Unable to load models: " +
-                          Twine(modelsOr.getError()));
-      return signalPassFailure();
-    }
-
-    // We have to consolidate rewrites to the same graphop as the rewrites of
-    // one subgraph may invalidate ops in another subgraph (due to fold hooks).
-    llvm::DenseMap<GraphOp,
-                   llvm::SmallVector<std::pair<ModelResult, SubgraphsInfo>>>
-        executionResults;
-    for (const SubgraphsInfo &subgraphsInfo : subgraphReplacements) {
-      const Model *model = modelsOr.get().models->getModelNamed(
-          subgraphsInfo.constantSubgraphName);
-      GENERICML_ASSERT(model != nullptr)
-          << "Model should exist, make sure names above match.";
-      LLCL::ErrorDiagnosticOr<ModelResult> valuesToTensorsOr =
-          executeModel(ctx, model, subgraphsInfo, *ownedRuntime);
-      if (valuesToTensorsOr.isError()) {
-        LLCL::EncodedDiagnostic err = valuesToTensorsOr.takeError();
-        auto decoded = err.decodeLocation();
-        auto loc =
-            mlir::FileLineColLoc::get(module.getContext(), decoded.filename,
-                                      decoded.line, decoded.column);
-        mlir::emitError(loc, "[ConstantFold] " + Twine(err.getMessage().get()));
-        return signalPassFailure();
-      }
-      auto valuesToTensors = valuesToTensorsOr.takeValue();
-      auto it = executionResults.find(subgraphsInfo.orig);
-      if (it != executionResults.end()) {
-        it->second.push_back({valuesToTensors, subgraphsInfo});
-      } else {
-        executionResults[subgraphsInfo.orig] = {
-            {valuesToTensors, subgraphsInfo}};
+      // Run canonicalization to uncover more constant folding.
+      mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
+          ctx, mlir::OpPassManager::Nesting::Implicit);
+      pm.addPass(mlir::createCanonicalizerPass());
+      if (failed(runPipeline(pm, getOperation()))) {
+        return setError(getOperation().getLoc(),
+                        "[ConstantFold] Failed to run canonicalization pass");
       }
     }
-
-    // Replace output expressions with constants. Also handles DCE.
-    for (auto [graph, results] : executionResults) {
-      for (const auto &r : results) {
-        const ModelResult &modelResult = r.first;
-        const SubgraphsInfo &subgraphsInfo = r.second;
-        replaceConstantOps(graph, builder, modelResult, subgraphsInfo);
-      }
-    }
-
-    // Remove module to not clutter the output.
-    module.erase();
-
-    // Run canonicalization to uncover more constant folding.
-    mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
-        ctx, mlir::OpPassManager::Nesting::Implicit);
-    pm.addPass(mlir::createCanonicalizerPass());
-    if (failed(runPipeline(pm, getOperation()))) {
-      mlir::emitError(getOperation().getLoc(),
-                      "[ConstantFold] Failed to run canonicalization pass");
-      return;
-    }
+    return std::move(readyChain).emplace();
+  });
+  LLCL::await(readyChain);
+  if (readyChain.isError()) {
+    std::string errorMessage = readyChain.getDiagnostic().getMessage().get();
+    LLCL::DecodedLocation decoded = readyChain.getDiagnostic().decodeLocation();
+    auto loc = mlir::FileLineColLoc::get(ctx, decoded.filename, decoded.line,
+                                         decoded.column);
+    mlir::emitError(loc, errorMessage);
+    return signalPassFailure();
   }
 }
 

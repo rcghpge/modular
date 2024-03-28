@@ -30,12 +30,13 @@ static mlir::NamedAttribute denseResourceAttr(StringRef name,
 
   mlir::AsmResourceBlob blob;
   if (owned) {
+    // Take ownership of `data`, which must have been allocated with
+    // `Singleton CurrentRuntime` and deallocate it with the current
+    // allocator.
+    M::Allocator *currentAllocator = M::Runtime::getCurrentAllocator();
     blob = mlir::UnmanagedAsmResourceBlob::allocateWithAlign(
-        data, elementByteAlign, [](void *data, size_t, size_t) {
-          // Take ownership of `data`, which must have been allocated with
-          // `Singleton CurrentRuntime` and deallocate it with the current
-          // allocator.
-          M::Runtime::getCurrentAllocator()->deallocateBytes(data);
+        data, elementByteAlign, [currentAllocator](void *data, size_t, size_t) {
+          currentAllocator->deallocateBytes(data);
         });
   } else {
     blob = mlir::HeapAsmResourceBlob::allocateAndCopyWithAlign(
