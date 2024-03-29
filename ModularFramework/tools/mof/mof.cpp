@@ -240,7 +240,7 @@ M::ErrorOr<M::Buffer *>
 M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
                             FileFormat format) {
   auto *mofContext = ctxHandle.unwrap<MOFContext>();
-  auto ownedRuntime = LLCL::createRuntimeIfNeeded();
+  LLCL::Runtime *runtime = ctxHandle.maxContext->get<Runtime>();
   ModuleOp moduleOp = ModuleOp::getFromOpaquePointer(source);
   registerContext(*moduleOp->getContext(), ctxHandle.maxContext);
 
@@ -249,9 +249,9 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   MO::MoToMgpOptions moToMgpOptions;
   mofContext->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
 
-  mofLoweringOptions.setupRuntimeOptions(*ownedRuntime);
+  mofLoweringOptions.setupContext(ctxHandle.maxContext.copy());
 
-  if (failed(lowerMOToMGP(moduleOp, moToMgpOptions, *ownedRuntime)))
+  if (failed(lowerMOToMGP(moduleOp, moToMgpOptions, *runtime)))
     return Error("unable to lower MO to MGP");
 
   auto bufOr =
@@ -306,7 +306,7 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
                                        mofContext->getCommonCLOptions(),
                                        file.copy());
 
-      mofLoweringOptions.setupRuntimeOptions(*compileCtx.runtime);
+      mofLoweringOptions.setupContext(compileCtx.context.copy());
 
       if (failed(lowerMOToMGP(compileCtx.module.get(), moToMgpOptions,
                               *compileCtx.runtime)))
@@ -408,8 +408,9 @@ int M_runBinaryFile(FrameworkContextHandle ctx, M::BufferRef fileBuffer,
                                       Twine(err.getError()));
   }
 
-  auto runModels = [&](Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
-    mofLoweringOptions.setupRuntimeOptions(runtime);
+  auto runModels = [&, context = ctx.maxContext.copy()](
+                       Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
+    mofLoweringOptions.setupContext(context);
     for (const auto &model : (*models)) {
       if (failed(runModel(ctx, model.get(), runtime, *driverOptions))) {
         if (driverOptions->stopOnFirstError())
@@ -443,8 +444,9 @@ int M_runModelWithData(FrameworkContextHandle ctx, M::BufferRef fileBuffer,
   auto inputs = inputsHandle.unwrap<llvm::SmallVector<const void *>>();
   auto outputs = outputsHandle.unwrap<llvm::SmallVector<void *>>();
 
-  auto runModels = [&](Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
-    mofLoweringOptions.setupRuntimeOptions(runtime);
+  auto runModels = [&, context = ctx.maxContext.copy()](
+                       Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
+    mofLoweringOptions.setupContext(context);
     if (runModelWithData(ctx, model, runtime, *driverOptions, *inputs, *outputs)
             .isError()) {
       if (driverOptions->stopOnFirstError())
