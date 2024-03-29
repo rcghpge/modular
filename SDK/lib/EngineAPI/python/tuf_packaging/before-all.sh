@@ -33,6 +33,7 @@ DISABLE_LLDB_PYTHON_SCRIPTING=true \
 cmake-llvm --sanitizer=none --build-type=release \
   -D CMAKE_C_COMPILER=/usr/bin/clang-15 \
   -D CMAKE_CXX_COMPILER=/usr/bin/clang++-15 \
+  -DLLVM_ENABLE_ASSERTIONS=OFF \
 
 build-llvm
 
