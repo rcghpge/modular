@@ -13,6 +13,7 @@
 #include "LLCL/Runtime/Utils.h"
 #include "Support/ADT/GenericUniquePtrSet.h"
 #include "Support/Buffer.h"
+#include "Support/Configuration.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/MDialect/MDialect.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -96,12 +97,33 @@ inline void writeIntermediateFileIfRequested(const std::string &identifier,
     filePath = filePathOr->string();
   else
     filePath = "temp";
-  if (options && options->saveTemps) {
+
+  auto writeFile = [&](const CommonOptions *opt) {
     std::unique_ptr<llvm::ToolOutputFile> intermediateFile =
-        options->getIntermediateFile(filePath, ext);
+        opt->getIntermediateFile(filePath, ext);
     module->print(intermediateFile->os());
     intermediateFile->keep();
+  };
+
+  // If there are CL options use those.
+  if (options && options->saveTemps) {
+    writeFile(options);
+    return;
   }
+
+#ifndef MODULAR_PRODUCTION
+  // Else check in config and use the value there.
+  auto configOr = M::Config::open();
+  if (!configOr.isError()) {
+    StringRef tempsDir = configOr->getValue("max.temps_dir");
+    if (!tempsDir.empty()) {
+      CommonOptions tempOptions;
+      tempOptions.saveTemps = true;
+      tempOptions.tempsDir = tempsDir.str();
+      writeFile(&tempOptions);
+    }
+  }
+#endif
 }
 
 } // namespace M
