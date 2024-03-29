@@ -30,7 +30,7 @@ struct CompileToBinaryCtx {
 
   M::ContextRef context;
   LLCL::Runtime *runtime;
-  mlir::MLIRContext mlirCtx;
+  mlir::MLIRContext mlirCtx{mlir::MLIRContext::Threading::DISABLED};
   mlir::OwningOpRef<mlir::ModuleOp> module;
 };
 

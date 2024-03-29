@@ -35,7 +35,7 @@ std::string toString(const T &attr) {
 }
 
 TEST(testRMOOpHelpers, testRefineShape) {
-  mlir::MLIRContext ctx;
+  mlir::MLIRContext ctx{mlir::MLIRContext::Threading::DISABLED};
   ctx.loadDialect<RMO::RMODialect, MO::MODialect>();
 
   // Declare dimensions / shape attr
@@ -110,7 +110,7 @@ TEST(testRMOOpHelpers, testRefineShape) {
 }
 
 TEST(testRMOOpHelpers, testRefineDifferentIntegralDims) {
-  mlir::MLIRContext ctx;
+  mlir::MLIRContext ctx{mlir::MLIRContext::Threading::DISABLED};
   ctx.loadDialect<RMO::RMODialect, MO::MODialect>();
 
   // Declare dimensions / shape attr

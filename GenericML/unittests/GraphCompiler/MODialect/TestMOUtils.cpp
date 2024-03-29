@@ -61,7 +61,7 @@ TEST(testGetConstantBlobFloatArrayAttr, allDtypes) {
                              {&APFloat::IEEEsingle, DType::f32},
                              {&APFloat::IEEEdouble, DType::f64}};
 
-  mlir::MLIRContext ctx;
+  mlir::MLIRContext ctx{mlir::MLIRContext::Threading::DISABLED};
   ctx.loadDialect<MDialect>();
   for (auto &[semanticGen, dtype] : semanticGenAndDtype) {
     mlir::FloatType fltType = getEquivalentFloatType(&ctx, dtype);
@@ -79,7 +79,7 @@ TEST(testGetConstantBlobIntArrayAttr, allDtypes) {
   SmallVector<int64_t> test_cases = {-50, -8, 1, 0, 5, 80};
   SmallVector<DType> dtypes = {DType::si8, DType::si16, DType::si32};
 
-  mlir::MLIRContext ctx;
+  mlir::MLIRContext ctx{mlir::MLIRContext::Threading::DISABLED};
   ctx.loadDialect<MDialect>();
   for (const DType &dtype : dtypes) {
     mlir::IntegerType intType = getEquivalentIntegerType(&ctx, dtype);
@@ -92,7 +92,7 @@ TEST(testGetConstantBlobIntArrayAttr, allDtypes) {
 }
 
 TEST(testGetConstantBlobDenseResourceAttr, testSI64) {
-  mlir::MLIRContext ctx;
+  mlir::MLIRContext ctx{mlir::MLIRContext::Threading::DISABLED};
   ctx.loadDialect<MDialect>();
 
   SmallVector<int64_t> data = {33, 4, -100};
@@ -105,7 +105,7 @@ TEST(testGetConstantBlobDenseResourceAttr, testSI64) {
 }
 
 TEST(testGetConstantBlobDenseResourceAttr, testSI32) {
-  mlir::MLIRContext ctx;
+  mlir::MLIRContext ctx{mlir::MLIRContext::Threading::DISABLED};
   ctx.loadDialect<MDialect>();
 
   SmallVector<int32_t> data = {33, 4, -100};
@@ -118,7 +118,7 @@ TEST(testGetConstantBlobDenseResourceAttr, testSI32) {
 }
 
 TEST(testGetConstantBlobDenseResourceAttr, testF64) {
-  mlir::MLIRContext ctx;
+  mlir::MLIRContext ctx{mlir::MLIRContext::Threading::DISABLED};
   ctx.loadDialect<MDialect>();
 
   SmallVector<double> data = {3.0, 4.0, -100};
@@ -131,7 +131,7 @@ TEST(testGetConstantBlobDenseResourceAttr, testF64) {
 }
 
 TEST(testGetConstantBlobDenseResourceAttr, testF32) {
-  mlir::MLIRContext ctx;
+  mlir::MLIRContext ctx{mlir::MLIRContext::Threading::DISABLED};
   ctx.loadDialect<MDialect>();
 
   SmallVector<float> data = {3.0, 4.0, -100};
@@ -144,7 +144,7 @@ TEST(testGetConstantBlobDenseResourceAttr, testF32) {
 }
 
 TEST(testGetConstantBlobDenseResourceAttr, testF16) {
-  mlir::MLIRContext ctx;
+  mlir::MLIRContext ctx{mlir::MLIRContext::Threading::DISABLED};
   ctx.loadDialect<MDialect>();
 
   // calculated by hand
@@ -159,7 +159,7 @@ TEST(testGetConstantBlobDenseResourceAttr, testF16) {
 }
 
 TEST(testGetConstantBlobDenseResourceAttr, testBF16) {
-  mlir::MLIRContext ctx;
+  mlir::MLIRContext ctx{mlir::MLIRContext::Threading::DISABLED};
   ctx.loadDialect<MDialect>();
 
   // calculated by hand

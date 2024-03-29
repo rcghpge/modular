@@ -79,7 +79,7 @@ protected:
     return out;
   }
 
-  MLIRContext ctx;
+  MLIRContext ctx{MLIRContext::Threading::DISABLED};
   ModuleOp module;
   GraphOp graph;
   OpBuilder builder;

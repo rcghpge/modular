@@ -73,7 +73,7 @@ protected:
     return IntegerAttr::get(idxTy, v);
   }
 
-  MLIRContext ctx;
+  MLIRContext ctx{MLIRContext::Threading::DISABLED};
   ModuleOp module;
   OpBuilder builder;
   Location loc;

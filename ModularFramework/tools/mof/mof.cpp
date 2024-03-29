@@ -242,7 +242,8 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   auto *mofContext = ctxHandle.unwrap<MOFContext>();
   LLCL::Runtime *runtime = ctxHandle.maxContext->get<Runtime>();
   ModuleOp moduleOp = ModuleOp::getFromOpaquePointer(source);
-  registerContext(*moduleOp->getContext(), ctxHandle.maxContext);
+  if (!moduleOp->getContext()->isMultithreadingEnabled())
+    registerContext(*moduleOp->getContext(), ctxHandle.maxContext);
 
   // Gather all the options from all the sources.
   MOFLoweringOptions mofLoweringOptions;
