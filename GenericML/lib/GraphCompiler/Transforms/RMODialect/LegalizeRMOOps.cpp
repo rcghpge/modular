@@ -32,6 +32,29 @@ TensorValue rebindToShape(MO::GraphOp graphOp, TensorValue input,
                                                    newOutputParamDecl);
 }
 
+/// `outputParamDecls` contains the param declarations for all outputs.
+/// This function fills `outParamDecls` with only the param declaration needed
+/// for `targetTy`. Needed for multi-outputs op.
+void getParamDeclsFor(TensorType targetTy,
+                      ArrayRef<KGEN::ParamDeclAttr> allParamDecls,
+                      llvm::SmallVectorImpl<ParamDeclAttr> &outParamDecls) {
+  auto addAttrIfDecl = [&](TypedAttr attr) {
+    KGEN::ParamDeclRefAttr paramRefAttr =
+        dyn_cast<KGEN::ParamDeclRefAttr>(attr);
+    if (!paramRefAttr)
+      return;
+    for (KGEN::ParamDeclAttr decl : allParamDecls)
+      if (decl.getName() == paramRefAttr.getName()) {
+        outParamDecls.push_back(decl);
+      }
+  };
+
+  addAttrIfDecl(targetTy.getShapeAttr());
+  if (targetTy.hasRank())
+    for (TypedAttr dimAttr : targetTy.getTypedShapeAttr().getValues())
+      addAttrIfDecl(dimAttr);
+}
+
 /// Lower the given RMO::MOAnalogue op to it's MO analogue given by `generator`.
 LogicalResult
 lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
@@ -84,7 +107,7 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
   for (size_t i = 0; i < numResults; i++) {
     Value newValue = newOp->getResult(i);
     Value oldValue = op->getResult(i);
-    Type targetType = op->getResultTypes()[i];
+    TensorType targetType = cast<TensorType>(op->getResultTypes()[i]);
 
     TensorValue newTensorValue = dyn_cast<TensorValue>(newValue);
     if (!newTensorValue) {
@@ -92,10 +115,22 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
       continue;
     }
 
-    // NOTE: this may not work for multiple return types.
-    TensorValue reboundValue =
-        rebindToShape(graphOp, newTensorValue, cast<TensorType>(targetType),
-                      rewriter, op.getMOAnalogueOutputParamDecls());
+    TensorValue reboundValue;
+    if (numResults == 1) {
+      reboundValue =
+          rebindToShape(graphOp, newTensorValue, targetType, rewriter,
+                        op.getMOAnalogueOutputParamDecls());
+    } else {
+      // For multiple-output ops, op.getMOAnalogueOutputParamDecls() returns all
+      // param declarations with all outputs. We need to filter and keep only
+      // the param decls for every different output (to avoid param
+      // redefinitions).
+      llvm::SmallVector<KGEN::ParamDeclAttr> outputParamDecls;
+      getParamDeclsFor(targetType, op.getMOAnalogueOutputParamDecls(),
+                       outputParamDecls);
+      reboundValue = rebindToShape(graphOp, newTensorValue, targetType,
+                                   rewriter, outputParamDecls);
+    }
     rewriter.replaceAllUsesWith(oldValue, reboundValue);
   }
 
