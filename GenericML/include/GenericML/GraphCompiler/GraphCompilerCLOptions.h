@@ -30,7 +30,7 @@ public:
 
   bool enableMemoryPlanning{false};
 
-  bool lowerToCompiledRegions{false};
+  bool lowerToCompiledRegions{true};
 
   bool genVizSpec{false};
 
