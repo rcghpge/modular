@@ -352,44 +352,6 @@ static LogicalResult outputResults(const ExecutableModel *model,
   return failure(hasError);
 }
 
-/// Copy raw data from results to the pre-allocated memory found in outputs.
-static ErrorOrSuccess populateTensorResults(
-    const ExecutableModel *model, MutableArrayRef<AnyAsyncValueRef> results,
-    MLIRContext *context, llvm::SmallVector<void *> &outputs) {
-  // We expect the first result to be a chain
-  const AnyAsyncValueRef &ch = results.front();
-  GENERICML_ASSERT(ch.isReady() && !ch.isError() && isa<Chain>(ch))
-      << "first result must be a ready non-error chain";
-  results = results.drop_front();
-
-  GENERICML_ASSERT(outputs.size() == results.size())
-      << "Wrong number of outputs in the model.";
-
-  if (results.empty())
-    return success();
-
-  convertResultsToGenericValues(model, results);
-
-  size_t outIdx = 0;
-
-  for (const AnyAsyncValueRef &result : results) {
-    GENERICML_ASSERT(result.isReady() && !result.isError())
-        << "model result must be ready and non-error";
-    auto *tensor = dyn_cast<GML::Tensor>(result);
-    if (!tensor)
-      return Error("model result is not a GML::Tensor");
-    DEBUG_WITH_TYPE("modular_memcpy",
-                    llvm::dbgs()
-                        << "memcpy " << tensor->getSizeInBytes()
-                        << " bytes from GML::Tensor to output buffer\n");
-    /// TODO(#5867): Support an API which can avoid copy-on-output.
-    LLCL::profiledMemcpy(outputs[outIdx], tensor->getBuffer(),
-                         tensor->getSizeInBytes());
-    outIdx++;
-  }
-  return success();
-}
-
 // Returns a ready AsyncValueRef<GML::Tensor> for every given generator, ready
 // to be passed to the model's execute function. Each tensor will borrow,
 // at 'execute' scope, from the underlying generotar's 'next' tensor.
@@ -711,70 +673,5 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
     if (executableModelOr.isError())
       return failure(options.reportError(executableModelOr.getError()));
   }
-  return success();
-}
-
-/// Run `model` using the command line options flags configured by the user.
-/// `inputs` is the input tensor data to the model, while `outputs` is
-/// pre-allocated memory to be filled with the model's results.
-ErrorOrSuccess
-M::runModelWithData(MLIRContext *ctx, const Model *model,
-                    LLCL::Runtime &runtime,
-                    const ExecutorDriverOptions &options,
-                    const llvm::SmallVector<const void *> &inputs,
-                    llvm::SmallVector<void *> &outputs) {
-  GENERICML_ASSERT(inputs.size() == model->getInputSpecs().size())
-      << "Wrong number of inputs to the model. Model expects "
-      << model->getInputSpecs().size() << " but " << inputs.size()
-      << " provided.";
-
-  // Setup the model.
-  auto executableModelOr = model->setup(runtime);
-  if (executableModelOr.isError())
-    return executableModelOr.takeError().getMessage().copy();
-  auto executableModel = executableModelOr.takeValue();
-  auto unitOr = executableModel->waitForModelSetup();
-  if (unitOr.isError())
-    return unitOr.takeError();
-
-  // The runModel() entrypoint supports runtime override for input shapes,
-  // but that's not available here. Verify that the user isn't trying to do so.
-  if (options.inputShapes.size()) {
-    return Error("Runtime input shapes are not supported.");
-  }
-
-  // Construct input tensors which borrow from the given input buffers. We
-  // assume they are held alive for the entire execution.
-  SmallVector<AnyAsyncValueRef, 3> args;
-  for (const auto &[input, spec] : llvm::zip(inputs, model->getInputSpecs())) {
-    if (llvm::any_of(spec, mlir::ShapedType::isDynamic))
-      return Error("Dynamic input shapes are not supported.");
-    // Nothing is known about the alignment of the inputs.
-    // However they will be held alive for the duration of the execute call.
-    // TODO(#5867): Support API which allows ownership of inputs to be
-    // transferred to execute call.
-    args.emplace_back(AsyncValueRef<GML::Tensor>::createReady(
-        runtime, GML::Tensor::createBorrowed(input, spec, /*alignment=*/{},
-                                             GML::BufferRef::kExecute)));
-  }
-
-  llvm::outs() << "--- Running and collecting outputs for '"
-               << model->getName().str() << "':\n";
-  llvm::outs().flush();
-
-  // Execute the model synchronously.
-  auto resultsOr = executeModelSynchronously(runtime, *executableModel, args,
-                                             /*checkResults=*/true);
-  if (resultsOr.isError())
-    return resultsOr.takeError();
-  auto results = std::move(*resultsOr);
-
-  // Copy results into pre-allocated outputs, which we trust are of the
-  // correct size. Propagate any error back to caller.
-  auto unit2Or =
-      populateTensorResults(executableModel.get(), results, ctx, outputs);
-  if (unit2Or.isError())
-    return unit2Or.takeError();
-
   return success();
 }

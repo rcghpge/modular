@@ -67,16 +67,6 @@ LogicalResult runModel(MLIRContext *ctx, const Model *model,
                        LLCL::Runtime &runtime,
                        const ExecutorDriverOptions &options);
 
-/// Run `model` using the command line options flags configured by the user.
-/// `inputs` is the input tensor data to the model, while `outputs` is
-/// pre-allocated memory to be filled with the model's results.
-/// TODO(#5867): This API could do with some love.
-ErrorOrSuccess runModelWithData(MLIRContext *ctx, const Model *model,
-                                LLCL::Runtime &runtime,
-                                const ExecutorDriverOptions &options,
-                                const llvm::SmallVector<const void *> &inputs,
-                                llvm::SmallVector<void *> &outputs);
-
 } // namespace M
 
 #endif // GENERICML_DRIVER_EXECUTIONDRIVER_H

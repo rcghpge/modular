@@ -430,42 +430,6 @@ int M_runBinaryFile(FrameworkContextHandle ctx, M::BufferRef fileBuffer,
                          std::move(aliasedBuffer), runModels);
 }
 
-int M_runModelWithData(FrameworkContextHandle ctx, M::BufferRef fileBuffer,
-                       const M::Model *model, DriverHandle inputsHandle,
-                       DriverHandle outputsHandle) {
-  auto *mofContext = ctx.unwrap<MOFContext>();
-  MOFLoweringOptions mofLoweringOptions;
-  MO::MoToMgpOptions moToMgpOptions;
-  mofContext->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
-  const ExecutorDriverOptions *driverOptions =
-      mofContext->getExecutorDriverOptions();
-  assert(driverOptions && "cannot run a binary file via the API");
-
-  auto inputs = inputsHandle.unwrap<llvm::SmallVector<const void *>>();
-  auto outputs = outputsHandle.unwrap<llvm::SmallVector<void *>>();
-
-  auto runModels = [&, context = ctx.maxContext.copy()](
-                       Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
-    mofLoweringOptions.setupContext(context);
-    if (runModelWithData(ctx, model, runtime, *driverOptions, *inputs, *outputs)
-            .isError()) {
-      if (driverOptions->stopOnFirstError())
-        return failure();
-    }
-
-    return success();
-  };
-
-  // Run it.
-  std::unique_ptr<llvm::MemoryBuffer> aliasedBuffer =
-      llvm::MemoryBuffer::getMemBuffer(
-          fileBuffer->getMemBufferRef(), /*RequiresNullTerminator=*/
-          false);
-
-  return setupMLIRAndRun(ctx.maxContext.copy(), *driverOptions, "Modular model",
-                         std::move(aliasedBuffer), runModels);
-}
-
 M::ErrorOr<M::Buffer *> M_openPath(FrameworkContextHandle ctx,
                                    const std::filesystem::path &path) {
   llvm_unreachable("Not implemented");
