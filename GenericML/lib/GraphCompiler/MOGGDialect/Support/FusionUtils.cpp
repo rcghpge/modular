@@ -30,20 +30,23 @@ StringAttr getSummaryString(Operation *op) {
   std::string name;
   if (auto shapeFuncOp = dyn_cast<MO::InvokeShapeFuncOp>(op)) {
     name = shapeFuncOp.getShapeFuncName();
-  } else if (auto layoutTranformOp = dyn_cast<MO::LayoutTransformOp>(op)) {
-    name = layoutTranformOp->getName().getIdentifier().getValue();
+  } else if (auto layoutTransformOp = dyn_cast<MO::LayoutTransformOp>(op)) {
+    name = layoutTransformOp->getName().getIdentifier().getValue();
     name += "_";
-    name += layoutTranformOp.getInput()
+    name += layoutTransformOp.getInput()
                 .getType()
                 .getLayoutAttr()
                 .getFormat()
                 .getValue();
     name += "_to_";
-    name += layoutTranformOp.getResult()
+    name += layoutTransformOp.getResult()
                 .getType()
                 .getLayoutAttr()
                 .getFormat()
                 .getValue();
+  } else if (auto customOp = dyn_cast<MO::CustomOp>(op)) {
+    name = "custom__";
+    name += customOp.getSymbol();
   } else {
     name = op->getName().getIdentifier().getValue();
   }
