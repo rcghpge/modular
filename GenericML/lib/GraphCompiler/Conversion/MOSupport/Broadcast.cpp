@@ -29,8 +29,8 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
   auto reshapeShapeValue =
       builder.create<MO::ConstantOp>(loc, type, cast<ElementsAttr>(valueAttr));
 
-  auto reshapedValue =
-      builder.create<MO::ReshapeOp>(loc, reshapeType, from, reshapeShapeValue);
+  auto reshapedValue = builder.create<RMO::MOReshapeOp>(loc, reshapeType, from,
+                                                        reshapeShapeValue);
 
   return broadcastTo(builder, loc, reshapedValue, to);
 }
@@ -48,7 +48,7 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
                                   TensorValue from, TensorType reshapeType,
                                   TensorValue reshapeShape, TensorValue to) {
   auto reshapedValue =
-      builder.create<MO::ReshapeOp>(loc, reshapeType, from, reshapeShape);
+      builder.create<RMO::MOReshapeOp>(loc, reshapeType, from, reshapeShape);
   return broadcastTo(builder, loc, reshapedValue, to);
 }
 
@@ -56,7 +56,7 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
                                   TensorValue from,
                                   ArrayRef<int64_t> reshapeDims,
                                   TensorValue reshapeShape, TensorValue to) {
-  auto reshapedValue = builder.create<MO::ReshapeOp>(
+  auto reshapedValue = builder.create<RMO::MOReshapeOp>(
       loc, MO::TensorType::get(reshapeDims, from.getType().getElementType()),
       from, reshapeShape);
   return broadcastTo(builder, loc, reshapedValue, to);
