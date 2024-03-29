@@ -314,6 +314,10 @@ def SupportConversionsTest : Pass<"support-conversions-test", "ModuleOp"> {
     ```
     See SupportConversionsTest.cpp for more registered rewrite patterns.
   }];
+
+  let dependentDialects = [
+    "M::RMO::RMODialect"
+  ];
 }
 
 def AddDevicesPass : Pass<"add-devices", "GraphOp"> {

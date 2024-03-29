@@ -7,6 +7,7 @@
 #include "GenericML/GraphCompiler/Conversion/MOSupport/Activations.h"
 #include "GenericML/GraphCompiler/Conversion/MOTarget/Conversion.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/RMODialect/RMODialect.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "mlir/Analysis/DataFlow/SparseAnalysis.h"
 #include "mlir/Pass/Pass.h"
@@ -77,6 +78,7 @@ class SupportConversionTestPass
     patterns.add<ConvertPreluPattern, ConvertReluPattern, ConvertRelu6Pattern>(
         converter, ctx);
     MO::MOConversionTarget target(*ctx);
+    target.addLegalDialect<M::RMO::RMODialect>();
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       return signalPassFailure();

@@ -96,9 +96,9 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
   auto bcastShape = builder.create<RMO::MOBroadcastShapeOp>(
       x.getLoc(), shape, xShape.getShape(), yShape.getShape());
 
-  auto bcastXOp = builder.create<MO::BroadcastToOp>(
+  auto bcastXOp = builder.create<RMO::MOBroadcastToOp>(
       x.getLoc(), x.getType().cloneWith(bcastCommonShape), x, bcastShape);
-  auto bcastYOp = builder.create<MO::BroadcastToOp>(
+  auto bcastYOp = builder.create<RMO::MOBroadcastToOp>(
       y.getLoc(), y.getType().cloneWith(bcastCommonShape), y, bcastShape);
   return {bcastXOp, bcastYOp};
 }
@@ -135,11 +135,11 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
   auto bcastShape = builder.create<RMO::MOBroadcastShapeOp>(
       x.getLoc(), shape, bcastXYShape.getShape(), zShape.getShape());
 
-  auto bcastXOp = builder.create<MO::BroadcastToOp>(
+  auto bcastXOp = builder.create<RMO::MOBroadcastToOp>(
       x.getLoc(), x.getType().cloneWith(bcastCommonShape), x, bcastShape);
-  auto bcastYOp = builder.create<MO::BroadcastToOp>(
+  auto bcastYOp = builder.create<RMO::MOBroadcastToOp>(
       y.getLoc(), y.getType().cloneWith(bcastCommonShape), y, bcastShape);
-  auto bcastZOp = builder.create<MO::BroadcastToOp>(
+  auto bcastZOp = builder.create<RMO::MOBroadcastToOp>(
       z.getLoc(), z.getType().cloneWith(bcastCommonShape), z, bcastShape);
   return {bcastXOp, bcastYOp, bcastZOp};
 }
@@ -147,8 +147,8 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
 TensorValue broadcastToStaticShape(OpBuilder &builder, Location loc,
                                    TensorValue x, ShapeAttr s) {
   auto constOp = builder.create<MO::ConstantOp>(loc, s.getIntDims());
-  return builder.create<MO::BroadcastToOp>(loc, x.getType().cloneWith(s), x,
-                                           constOp);
+  return builder.create<RMO::MOBroadcastToOp>(loc, x.getType().cloneWith(s), x,
+                                              constOp);
 }
 
 std::pair<TensorValue, TensorValue>
@@ -241,7 +241,7 @@ TensorValue broadcastFloatTo(OpBuilder &builder, Location loc,
 
   auto scalarConst =
       builder.create<ConstantOp>(loc, scalar, toTy.getElementType());
-  return builder.create<BroadcastToOp>(loc, toTy, scalarConst, toShape);
+  return builder.create<RMO::MOBroadcastToOp>(loc, toTy, scalarConst, toShape);
 }
 
 } // namespace M::MO

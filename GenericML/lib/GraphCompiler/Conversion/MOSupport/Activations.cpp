@@ -7,6 +7,7 @@
 #include "GenericML/GraphCompiler/Conversion/MOSupport/Activations.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
+#include "GenericML/GraphCompiler/RMODialect/RMOOps.h"
 
 namespace M::MO {
 
@@ -23,8 +24,9 @@ TensorValue convertPRelu(OpBuilder &builder, Location loc, TensorValue x,
     xValue = x;
   }
 
-  auto broadcastZero = builder.create<BroadcastToOp>(loc, zero, xValue);
-  auto broadcastAlpha = builder.create<BroadcastToOp>(loc, alpha, xValue);
+  auto broadcastZero = builder.create<RMO::BroadcastLikeOp>(loc, zero, xValue);
+  auto broadcastAlpha =
+      builder.create<RMO::BroadcastLikeOp>(loc, alpha, xValue);
   auto min = builder.create<MinOp>(loc, xValue, broadcastZero);
   auto minXAlpha = builder.create<MulOp>(loc, broadcastAlpha, min);
   auto max = builder.create<MaxOp>(loc, xValue, broadcastZero);
@@ -51,7 +53,7 @@ TensorValue convertRelu(OpBuilder &builder, Location loc, TensorValue x) {
     xValue = x;
   }
 
-  auto broadcastZero = builder.create<BroadcastToOp>(loc, zero, xValue);
+  auto broadcastZero = builder.create<RMO::BroadcastLikeOp>(loc, zero, xValue);
   auto max = builder.create<MaxOp>(loc, xValue, broadcastZero);
   if (cast) {
     return builder.create<CastOp>(loc, max, xType);
@@ -71,8 +73,8 @@ TensorValue convertRelu6(OpBuilder &builder, Location loc, TensorValue x) {
     sixValue = six;
     zeroValue = zero;
   }
-  auto broadcastSix = builder.create<BroadcastToOp>(loc, sixValue, x);
-  auto broadcastZero = builder.create<BroadcastToOp>(loc, zeroValue, x);
+  auto broadcastSix = builder.create<RMO::BroadcastLikeOp>(loc, sixValue, x);
+  auto broadcastZero = builder.create<RMO::BroadcastLikeOp>(loc, zeroValue, x);
   auto min = builder.create<MinOp>(loc, x, broadcastSix);
   return builder.create<MaxOp>(loc, broadcastZero, min);
 }
