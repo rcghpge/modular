@@ -274,23 +274,43 @@ void MOReshapeOp::inferMOTypesImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
 
+  // If there already is an output value use the rank information below
+  TensorValue outputValue;
+  if (rmoResults.has_value())
+    outputValue = cast<TensorValue>(rmoResults.value()[0]);
+
   // First input is not important, always the same
   DType outDType = cast<TensorType>(operands.getInput().getType()).getDtype();
   moOperandTypes.push_back(operands.getInput().getType());
   moInputParamDecls.push_back({});
 
-  // Second operand must always be rank 1
+  // Second operand must always be rank 1, size equal to the output rank
   SmallVector<KGEN::ParamDeclAttr> newShapeParamDecls;
   DType newShapeDType =
       cast<TensorType>(operands.getNewShape().getType()).getDtype();
-  TensorType newShapeTy =
-      getRankedParamTensorType(1, newShapeDType, graphOp, newShapeParamDecls);
-  moOperandTypes.push_back(newShapeTy);
-  moInputParamDecls.push_back(std::move(newShapeParamDecls));
+
+  if (outputValue && outputValue.getType().hasRank()) {
+    int64_t outputRank = outputValue.getType().getRank();
+    TensorType newShapeTy = TensorType::get(
+        context, SmallVector<int64_t>{outputRank}, newShapeDType);
+    moOperandTypes.push_back(newShapeTy);
+    moInputParamDecls.push_back({});
+  } else {
+    TensorType newShapeTy =
+        getRankedParamTensorType(1, newShapeDType, graphOp, newShapeParamDecls);
+    moOperandTypes.push_back(newShapeTy);
+    moInputParamDecls.push_back(std::move(newShapeParamDecls));
+  }
 
   // Try to get output rank
   TensorType shapeType = cast<TensorType>(operands.getNewShape().getType());
   auto newRank = shapeType.getNumElements();
+
+  // If the output type has rank information, consider using that too
+  if (!newRank.has_value() && outputValue && outputValue.getType().hasRank())
+    newRank = outputValue.getType().getRank();
+
+  // Set output types
   if (newRank.has_value()) {
     SmallVector<KGEN::ParamDeclAttr> outputParamDecls;
     TensorType outputTy = getRankedParamTensorType(newRank.value(), outDType,
