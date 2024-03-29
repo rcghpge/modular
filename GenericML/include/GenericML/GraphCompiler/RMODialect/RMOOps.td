@@ -583,6 +583,9 @@ def RMO_MOSubOp : RMO_MOAnaloguePureBinaryElementWiseOp<"sub"> {
     Does a non-broadcasted elementwise subtraction.
   }];
 }
+//===----------------------------------------------------------------------===//
+// RMO Composite Operators
+//===----------------------------------------------------------------------===//
 
 /// TODO: of showing this in it's own namespace.
 /// This is an example experimental thing to prove this is easy to write
@@ -597,6 +600,31 @@ def RMO_BroadcastAddOp : RMO_Op<"broadcast.add", [Pure, RMO_TensorSameDTypeOpera
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 }
+
+def RMO_BroadcastLikeOp : RMO_Op<"broadcast_like", [Pure]> {
+  let summary = "Broadcast the `input` tensor to be the same shape as `like`.";
+  let description = [{
+    Equivalent to the following:
+
+      ```
+      %shape_of = rmo.shape_of(%like)
+      %result = rmo.broadcast_to(%broadcast, %shape_of)
+      ```
+  }];
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_Tensor:$shapeLike,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let builders = [
+    /// Inferred return type builder
+    OpBuilder<(ins "TensorValue":$input, "TensorValue":$shapeLike)>,
+  ];
+
+  let hasVerifier = 1;
+}
+
 
 
 class RMO_MOAnaloguePureReductionOp<string name, bit input_result_same_dtype=1,

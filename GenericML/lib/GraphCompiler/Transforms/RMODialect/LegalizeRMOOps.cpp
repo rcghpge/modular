@@ -197,6 +197,25 @@ struct LowerBroadcastedAddOp : public OpRewritePattern<RMO::BroadcastAddOp> {
   }
 };
 
+struct LowerBroadcastLike : public OpRewritePattern<RMO::BroadcastLikeOp> {
+  LowerBroadcastLike(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
+  LogicalResult matchAndRewrite(RMO::BroadcastLikeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto graphOp = op->getParentOfType<MO::GraphOp>();
+    Location loc = op->getLoc();
+
+    TensorValue shapeLike = rewriter.create<RMO::MOShapeOfOp>(
+        loc, ValueRange{op.getShapeLike()}, graphOp);
+    TensorValue answer = rewriter.create<RMO::MOBroadcastToOp>(
+        loc, ValueRange{op.getInput(), shapeLike}, graphOp);
+    TensorValue reboundAnswer = rebindToShape(
+        graphOp, answer, op.getType(), rewriter, op.getOutputParamDecls());
+
+    rewriter.replaceAllUsesWith(op, reboundAnswer);
+    return success();
+  }
+};
+
 struct LegalizeRMOOps
     : public M::RMO::impl::LegalizeRMOOpsBase<LegalizeRMOOps> {
   using LegalizeRMOOpsBase::LegalizeRMOOpsBase;
@@ -277,7 +296,7 @@ struct LegalizeRMOOps
       blockPatterns.add<LowerRebindTensorShapeOp>(context);
 
     // Lowering composite operations
-    blockPatterns.add<LowerBroadcastedAddOp>(context);
+    blockPatterns.add<LowerBroadcastedAddOp, LowerBroadcastLike>(context);
 
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(blockPatterns))))

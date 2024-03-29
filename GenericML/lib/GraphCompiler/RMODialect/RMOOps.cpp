@@ -450,6 +450,18 @@ DEFINE_REDUCE_INFER_MO_TYPES(MOReduceMaxOp, false)
 DEFINE_REDUCE_INFER_MO_TYPES(MOArgMinOp, true)
 DEFINE_REDUCE_INFER_MO_TYPES(MOArgMaxOp, true)
 #undef DEFINE_REDUCE_INFER_MO_TYPES
+void BroadcastLikeOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                            TensorValue input, TensorValue shapeLike) {
+  build(odsBuilder, odsState,
+        input.getType().cloneWith(shapeLike.getType().getShapeAttr()), input,
+        shapeLike);
+}
+
+LogicalResult BroadcastLikeOp::verify() {
+  if (getInput().getType().getDtype() != getResult().getType().getDtype())
+    return emitError("Input and output tensors do not share dtype!");
+  return success();
+}
 
 void inferMOTypesScatterImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
