@@ -49,10 +49,9 @@ python3 -m pip install \
 pip install pipx
 
 # Configure and build Modular.
-$CMAKE_COMMAND --sanitizer=none --build-type=release \
+$CMAKE_COMMAND --sanitizer=none --build-profile=production --build-type=release \
   -D CMAKE_C_COMPILER=$CLANG_PATH \
   -D CMAKE_CXX_COMPILER=$CLANG_PLUS_PATH \
-  -D MODULAR_RELEASE_PACKAGE_BUILD=ON \
   -D CMAKE_INSTALL_PREFIX=install \
   -D MODULAR_VERSION_MAJOR=$MAJOR_VERSION \
   -D MODULAR_VERSION_MINOR=$MINOR_VERSION \

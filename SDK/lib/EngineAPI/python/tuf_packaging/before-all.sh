@@ -30,10 +30,9 @@ arch=$(uname -m)
 # Build LLVM.
 # Note: LLDB Python breaks because manylinux ships with a statically linked Python interpreter.
 DISABLE_LLDB_PYTHON_SCRIPTING=true \
-cmake-llvm --sanitizer=none --build-type=release \
+cmake-llvm --sanitizer=none --build-type=release --build-profile=production \
   -D CMAKE_C_COMPILER=/usr/bin/clang-15 \
   -D CMAKE_CXX_COMPILER=/usr/bin/clang++-15 \
-  -DLLVM_ENABLE_ASSERTIONS=OFF \
 
 build-llvm
 
