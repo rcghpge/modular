@@ -1856,6 +1856,20 @@ def RMO_MOBatchMatmulOp : RMO_MOAnaloguePureTensorOp<"batch_matmul"> {
   let results = (outs MO_Tensor:$result);
 }
 
+def RMO_MOSoftmaxOp : RMO_MOAnaloguePureUnaryElementWiseOp<"softmax"> {
+  let summary = "Softmax operation";
+  let description = [{
+    Returns `exp(input) / sum(exp(input))`, where `x` is input tensor.
 
+    The `sum` reduction is applieed along the last axis.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.softmax(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
 
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD

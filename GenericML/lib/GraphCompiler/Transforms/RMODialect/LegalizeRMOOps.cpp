@@ -283,6 +283,7 @@ struct LegalizeRMOOps
         LegalizeRMOMOAnalogue<RMO::MOSqrtOp, MO::SqrtOp>,
         LegalizeRMOMOAnalogue<RMO::MOTanhOp, MO::TanhOp>,
         LegalizeRMOMOAnalogue<RMO::MOTruncOp, MO::TruncOp>,
+        LegalizeRMOMOAnalogue<RMO::MOSoftmaxOp, MO::SoftmaxOp>,
         // Elementwise binary ops
         LegalizeRMOMOAnalogue<RMO::MOAddOp, MO::AddOp>,
         LegalizeRMOMOAnalogue<RMO::MOMulOp, MO::MulOp>,
