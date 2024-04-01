@@ -884,6 +884,84 @@ void MOSelectOp::inferMOTypesImpl(
   moOutputParamDecls.push_back({});
 }
 
+void MOGatherOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  TensorValue input = cast<TensorValue>(operands.getInput());
+  TensorValue indices = cast<TensorValue>(operands.getIndices());
+  TensorValue axis = cast<TensorValue>(operands.getAxis());
+
+  // `input` type stays the same.
+  TensorType inputTy = input.getType();
+  moOperandTypes.push_back(inputTy);
+  moInputParamDecls.push_back({});
+
+  // `indices` type stays the same.
+  TensorType indicesTy = indices.getType();
+  moOperandTypes.push_back(indicesTy);
+  moInputParamDecls.push_back({});
+
+  // `axis` must be a scalar.
+  moOperandTypes.push_back(axis.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+
+  // Infer output type: output rank = inputRank - 1 + indicesRank.
+  DType outputDtype = getDType(rmoResults, 0, inputTy.getDtype());
+  SmallVector<KGEN::ParamDeclAttr> outputParamDecls;
+  if (!inputTy.hasRank() || !indicesTy.hasRank())
+    moResultTypes.push_back(
+        getUnrankedTensorType(outputDtype, graphOp, outputParamDecls));
+  else
+    moResultTypes.push_back(
+        getRankedParamTensorType(inputTy.getRank() - 1 + indicesTy.getRank(),
+                                 outputDtype, graphOp, outputParamDecls));
+  moOutputParamDecls.push_back(std::move(outputParamDecls));
+}
+
+void MOGatherNdOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  TensorValue input = cast<TensorValue>(operands.getInput());
+  TensorValue indices = cast<TensorValue>(operands.getIndices());
+
+  // `input` type stays the same.
+  TensorType inputTy = input.getType();
+  moOperandTypes.push_back(inputTy);
+  moInputParamDecls.push_back({});
+
+  // `indices` type stays the same.
+  TensorType indicesTy = indices.getType();
+  moOperandTypes.push_back(indicesTy);
+  moInputParamDecls.push_back({});
+
+  // Infer output type.
+  DType outputDtype = getDType(rmoResults, 0, inputTy.getDtype());
+  IntegerAttr kAttr;
+  if (indicesTy.hasRank() && indicesTy.getRank() > 0)
+    kAttr = dyn_cast<IntegerAttr>(indicesTy.getDims().back());
+  SmallVector<KGEN::ParamDeclAttr> outputParamDecls;
+  if (!inputTy.hasRank() || !kAttr) {
+    moResultTypes.push_back(
+        getUnrankedTensorType(outputDtype, graphOp, outputParamDecls));
+  } else {
+    // output rank = batch_dims + (indices.rank - batch_dims - 1)
+    //                          + (input.rank - batch_dims - K).
+    size_t k = kAttr.getInt();
+    size_t batchDims = operands.getBatchDims().getInt();
+    size_t outputRank =
+        (indicesTy.getRank() - 1) + (inputTy.getRank() - batchDims - k);
+    moResultTypes.push_back(getRankedParamTensorType(
+        outputRank, outputDtype, graphOp, outputParamDecls));
+  }
+  moOutputParamDecls.push_back(std::move(outputParamDecls));
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST

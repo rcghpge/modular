@@ -16,6 +16,7 @@ include "GenericML/GraphCompiler/RMODialect/RMOInterfaces.td"
 include "GenericML/GraphCompiler/MODialect/MOTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOAttrs.td"
 include "GenericML/GraphCompiler/MODialect/MOEnums.td"
+include "mlir/IR/BuiltinAttributes.td"
 
 // Base class for ops in this dialect.
 class RMO_Op<string mnemonic, list<Trait> traits = []>
@@ -1722,6 +1723,87 @@ def RMO_MOIsInfOp : RMO_MOAnaloguePureUnaryComparisonOp<"is_inf"> {
                             ) -> !mo.tensor<[2, 3], bool>
     ```
   }];
+}
+
+def RMO_MOGatherOp : RMO_MOAnaloguePureTensorOp<"gather",
+  [AllDTypesMatch<["input", "result"]>]> {
+  let summary = "`gather` operation";
+  let description = [{
+    Gathers slices from input's axis according to indices.
+
+    If input and indices are statically ranked, the output rank must be
+    `inputRank - 1 + indicesRank`. In general, the output satisfies the
+    following:
+    ```
+    output[a_0, ..., a_n, i, ..., j, b_0, ... b_n] =
+      input[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]
+    ```
+    where `indices` appears at given axis of input.
+
+    The values of `axis` and `indices` follows numpy semantics, e.g., -1
+    represents the last axis.
+
+    Example:
+
+    ```mlir
+      %input : !mo.tensor<[2, 2], f32>
+      %indices: !mo.tensor<[2], si64>
+      %axis = mo.constant {
+        value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %res = rmo.mo.gather(%input, %indices, %axis) : (
+        !mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>
+      ) -> !mo.tensor<[2, 2], f32>
+    ```
+  }];
+  let arguments = (ins MO_Tensor:$input,
+                       MO_IndicesTensor:$indices,
+                       MO_IndicesTensor:$axis,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+}
+
+def RMO_MOGatherNdOp : RMO_MOAnaloguePureTensorOp<"gather_nd",
+  [AllDTypesMatch<["input", "result"]>]> {
+  let summary = "Multi-dimensional `gather` operation";
+  let description = [{
+    Variant of `mo.gather` that accepts multi-dimensional indices.
+
+    The last dimension stores the index whereas
+    the outer dimensions act like batch dimensions. The size of the last
+    dimension is at most the rank of the input. When the dimension size is less
+    than the rank of the input, slices of the input are gathered, starting from
+    the leftmost dimension.
+
+    ```
+    output_shape = (
+        batch_dims_shape + list(indices.shape)[batch_dims:-1]
+        if (indices.shape[-1] == data_rank - batch_dims)
+        else batch_dims_shape
+        + list(indices.shape)[batch_dims:-1]
+        + list(data.shape)[batch_dims + indices.shape[-1] :]
+    )
+    ```
+
+    ```mlir
+      %input = mo.constant {value =
+        #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15> :
+        tensor<2x2x4xsi64>} : !mo.tensor<[2, 2, 4], si64>
+      %indices = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} :
+        !mo.tensor<[3], si64>
+
+      %result = rmo.mo.gather_nd(%input, %indices) {batchDims = 0} :
+        (!mo.tensor<[2, 2, 4], si64>, !mo.tensor<[3], si64>) ->
+        !mo.tensor<[], si64>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input,
+                       MO_IndicesTensor:$indices,
+                       // TODO(#21324): Support dynamic batchDims
+                       Builtin_IntegerAttr:$batchDims,
+                       MO_ParamDecls:$outputParamDecls);
+
+  let results = (outs MO_Tensor:$result);
 }
 
 

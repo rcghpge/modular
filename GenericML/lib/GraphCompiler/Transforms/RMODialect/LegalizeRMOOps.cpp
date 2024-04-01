@@ -330,7 +330,9 @@ struct LegalizeRMOOps
         LegalizeRMOMOAnalogue<RMO::MORangeOp, MO::RangeOp>,
         LegalizeRMOMOAnalogue<RMO::MOResizeLinearOp, MO::ResizeLinearOp>,
         LegalizeRMOMOAnalogue<RMO::MOResizeNearestOp, MO::ResizeNearestOp>,
-        LegalizeRMOMOAnalogue<RMO::MOSelectOp, MO::SelectOp>>(context);
+        LegalizeRMOMOAnalogue<RMO::MOSelectOp, MO::SelectOp>,
+        LegalizeRMOMOAnalogue<RMO::MOGatherOp, MO::GatherOp>,
+        LegalizeRMOMOAnalogue<RMO::MOGatherNdOp, MO::GatherNdOp>>(context);
 
     // Lowering rebind
     if (!skipRMORebind)
