@@ -292,11 +292,17 @@ struct LegalizeRMOOps
         LegalizeRMOMOAnalogue<RMO::MODivOp, MO::DivOp>,
         LegalizeRMOMOAnalogue<RMO::MOPowOp, MO::PowOp>,
         LegalizeRMOMOAnalogue<RMO::MOSubOp, MO::SubOp>,
+        LegalizeRMOMOAnalogue<RMO::MOAndOp, MO::AndOp>,
+        LegalizeRMOMOAnalogue<RMO::MOOrOp, MO::OrOp>,
+        LegalizeRMOMOAnalogue<RMO::MOXorOp, MO::XorOp>,
         // Comparison binary ops
         LegalizeRMOMOAnalogue<RMO::MOEqualOp, MO::EqualOp>,
         LegalizeRMOMOAnalogue<RMO::MOGreaterOp, MO::GreaterOp>,
         LegalizeRMOMOAnalogue<RMO::MOGreaterEqualOp, MO::GreaterEqualOp>,
         LegalizeRMOMOAnalogue<RMO::MONotEqualOp, MO::NotEqualOp>,
+        // Comparison unary ops
+        LegalizeRMOMOAnalogue<RMO::MOIsNaNOp, MO::IsNaNOp>,
+        LegalizeRMOMOAnalogue<RMO::MOIsInfOp, MO::IsInfOp>,
         // Other ops
         LegalizeRMOMOAnalogue<RMO::MOShapeOfOp, MO::ShapeOfOp>,
         LegalizeRMOMOAnalogue<RMO::MOBroadcastShapeOp, MO::BroadcastShapeOp>,
@@ -323,8 +329,8 @@ struct LegalizeRMOOps
         LegalizeRMOMOAnalogue<RMO::MOMaxPoolCeilOp, MO::MaxPoolCeilOp>,
         LegalizeRMOMOAnalogue<RMO::MORangeOp, MO::RangeOp>,
         LegalizeRMOMOAnalogue<RMO::MOResizeLinearOp, MO::ResizeLinearOp>,
-        LegalizeRMOMOAnalogue<RMO::MOResizeNearestOp, MO::ResizeNearestOp>>(
-        context);
+        LegalizeRMOMOAnalogue<RMO::MOResizeNearestOp, MO::ResizeNearestOp>,
+        LegalizeRMOMOAnalogue<RMO::MOSelectOp, MO::SelectOp>>(context);
 
     // Lowering rebind
     if (!skipRMORebind)

@@ -858,6 +858,32 @@ void MOResizeNearestOp::inferMOTypesImpl(
       moResultTypes, moInputParamDecls, moOutputParamDecls);
 }
 
+void MOSelectOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+  MO::TensorType condType = cast<MO::TensorType>(operands.getCond().getType());
+  MO::TensorType xType = cast<MO::TensorType>(operands.getX().getType());
+  MO::TensorType yType = cast<MO::TensorType>(operands.getY().getType());
+
+  // Refine shape with all 3 operands.
+  MO::TensorType refinedShape = refineShapeWithDType(
+      refineShape(xType, yType), condType, xType.getDtype());
+  // Condition is boolean.
+  moOperandTypes.push_back(refinedShape.cloneWith(DType::kBool));
+  moOperandTypes.push_back(refinedShape);
+  moOperandTypes.push_back(refinedShape);
+  moInputParamDecls.push_back({});
+  moInputParamDecls.push_back({});
+  moInputParamDecls.push_back({});
+
+  moResultTypes.push_back(refinedShape);
+  moOutputParamDecls.push_back({});
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST

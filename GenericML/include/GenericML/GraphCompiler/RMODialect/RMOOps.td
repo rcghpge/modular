@@ -1590,4 +1590,140 @@ def RMO_MOResizeNearestOp : RMO_MOAnaloguePureTensorOp<"resize.nearest"> {
   let results = (outs MO_Tensor:$result);
 }
 
+class RMO_MOAnaloguePureLogicalBinaryOp<string name, list<Trait> traits = []>
+    : RMO_MOAnaloguePureBinaryElementWiseOp<name, traits # [Commutative]> {
+  let arguments = (ins MO_BooleanMask:$input_x, MO_BooleanMask:$input_y, MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_BooleanMask:$result);
+}
+
+def RMO_MOAndOp : RMO_MOAnaloguePureLogicalBinaryOp<"and"> {
+  let summary = "Conjunction operation";
+  let description = [{
+    Returns `x and y`, where `x` and `y` are input boolean tensors.
+
+    Example:
+
+    ```mlir
+      %lhs: !mo.tensor<[2, 3], bool>
+      %rhs: !mo.tensor<[2, 3], bool>
+      %res = rmo.mo.and(%lhs, %rhs) : (!mo.tensor<[2, 3], bool>,
+                                      !mo.tensor<[2, 3], bool>
+                                      ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+}
+
+def RMO_MOOrOp : RMO_MOAnaloguePureLogicalBinaryOp<"or"> {
+  let summary = "Disjunction operation";
+  let description = [{
+    Returns `x or y`, where `x` and `y` are input boolean tensors.
+
+    Example:
+
+    ```mlir
+      %lhs: !mo.tensor<[2, 3], bool>
+      %rhs: !mo.tensor<[2, 3], bool>
+      %res = rmo.mo.or(%lhs, %rhs) : (!mo.tensor<[2, 3], bool>,
+                                     !mo.tensor<[2, 3], bool>
+                                     ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+}
+
+def RMO_MOXorOp : RMO_MOAnaloguePureLogicalBinaryOp<"xor"> {
+  let summary = "Exclusive disjunction operation";
+  let description = [{
+    Returns `x xor y`, where `x` and `y` are input boolean tensors.
+
+    Example:
+
+    ```mlir
+      %lhs: !mo.tensor<[2, 3], bool>
+      %rhs: !mo.tensor<[2, 3], bool>
+      %res = rmo.mo.xor(%lhs, %rhs) : (!mo.tensor<[2, 3], bool>,
+                                      !mo.tensor<[2, 3], bool>
+                                      ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+}
+
+def RMO_MOSelectOp : RMO_MOAnaloguePureTensorOp<"select",
+  [AllDTypesMatch<["x", "y", "result"]>]> {
+  let summary = "Select operation";
+  let description = [{
+    Returns `cond ? x : y` (element-wise), where `cond`, `x` and `y` are input
+    tensors.
+
+    Example:
+
+    ```mlir
+      %cond: !mo.tensor<[2, 3], bool>
+      %x: !mo.tensor<[2, 3], f32>
+      %y: !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.select(%cond, %x, %y) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+  let arguments = (ins MO_BooleanMask:$cond, MO_Tensor:$x, MO_Tensor:$y, MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+}
+
+class RMO_MOAnaloguePureUnaryComparisonOp<string name, list<Trait> traits = []>
+    : RMO_MOAnaloguePureComparisonOp<name, traits> {
+  let arguments = (ins MO_Tensor:$input_x, MO_ParamDecls:$outputParamDecls);
+
+  let extraClassDeclaration = [{
+    static void inferMOTypesImpl(
+        MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+        std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+        SmallVectorImpl<Type> &moResultTypes,
+        SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+        SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+        auto inputTy = cast<MO::TensorType>(operands.getInputX().getType());
+
+        // Expected input type
+        moOperandTypes.push_back(inputTy);
+        moInputParamDecls.push_back({});
+
+        // Expected output type
+        moResultTypes.push_back(inputTy.cloneWith(DType::kBool));
+        moOutputParamDecls.push_back({});
+    }
+  }];
+}
+
+def RMO_MOIsNaNOp : RMO_MOAnaloguePureUnaryComparisonOp<"is_nan"> {
+  let summary = "NaN test operation";
+  let description = [{
+    Returns true if `x` represents a floating point NaN, where `x` is input
+    tensor.
+
+    Example:
+
+    ```mlir
+      %x: !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.is_nan(%x) : (!mo.tensor<[2, 3], f32>
+                            ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+}
+
+def RMO_MOIsInfOp : RMO_MOAnaloguePureUnaryComparisonOp<"is_inf"> {
+  let summary = "Infinity test operation";
+  let description = [{
+    Returns true if `x` represents a floating point Inf, where `x` is input
+    tensor.
+
+    Example:
+
+    ```mlir
+      %x: !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.is_inf(%x) : (!mo.tensor<[2, 3], f32>
+                            ) -> !mo.tensor<[2, 3], bool>
+    ```
+  }];
+}
+
+
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
