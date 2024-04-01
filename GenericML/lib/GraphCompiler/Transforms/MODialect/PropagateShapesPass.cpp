@@ -191,15 +191,20 @@ void updateGraphSignature(GraphOp graphOp) {
 /// so we use this `OpDecomposer` to decompose ops on the fly, and letting
 /// `PropagateShapesPass` to further simplify the decomposed ops.
 class OpDecomposer {
-
   // Create an op of the following form and track it in `decomposedOps`.
   //   kgen.param.declare declPrefix... : resTy = <poc(operands...)>
   std::pair<KGEN::ParamDeclareOp, KGEN::ParamDeclRefAttr>
   createDeclToKgenExpr(StringRef declPrefix, Type resTy, KGEN::POC poc,
                        ArrayRef<TypedAttr> operands) {
     auto exprAttr = KGEN::ParamOperatorAttr::get(poc, operands);
+    return createDeclToKgenAttr(declPrefix, resTy, exprAttr);
+  };
+
+  // Create a new kgen declaration from the given attribute
+  std::pair<KGEN::ParamDeclareOp, KGEN::ParamDeclRefAttr>
+  createDeclToKgenAttr(StringRef declPrefix, Type resTy, TypedAttr attr) {
     KGEN::ParamDeclAttr declAttr = graphOp.getNewParamOfType(declPrefix, resTy);
-    auto declOp = builder.create<KGEN::ParamDeclareOp>(loc, declAttr, exprAttr);
+    auto declOp = builder.create<KGEN::ParamDeclareOp>(loc, declAttr, attr);
     auto declRefAttr = KGEN::ParamDeclRefAttr::get(declOp.getParamDecl());
     decomposedOps.push_back(declOp);
     return {declOp, declRefAttr};
@@ -413,22 +418,33 @@ private:
       return targetShapeAttr;
 
     // Infer the actual value of `-1` dimension based on other dimensions
-    auto numeratorAttr = KGEN::ParamOperatorAttr::get(
-        KGEN::POC::MulNuw, inputShapeAttr.getValues());
+    auto [numeratorDeclOp, numeratorDeclRefOp] =
+        createDeclToKgenAttr("reshape_dyndim_numerator", indexType,
+                             inputShapeAttr.getSymbolicNumElements());
 
     // Add a 1 to the shapes to multiply to ensure the denominator is valid
     auto mulDims = targetNonNegOneDims;
-    mulDims.emplace_back(IntegerAttr::get(indexType, 1));
+    auto one = IntegerAttr::get(indexType, 1);
+    mulDims.emplace_back(one);
 
-    auto denominatorAttr =
-        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, mulDims);
+    auto [denominatorDeclOp, denominatorDeclRefOp] = createDeclToKgenExpr(
+        "reshape_dyndim_denominator", indexType, KGEN::POC::MulNuw, mulDims);
 
-    auto resolvedDimAttr = KGEN::ParamOperatorAttr::get(
-        KGEN::POC::Div, numeratorAttr, denominatorAttr);
+    // Avoid division by 0, occurs for empty tensors in which case the -1 dim
+    // being 0 would always work. There is ambiguity here in allowed values but
+    // in practice probably not important.
+    // TODO: think about removing the max(...) as it is very hard to remove
+    // TODO: without range-based analysis (and even then it is hard).
+    auto [denominatorNormalizedDeclOp, denominatorNormalizedDeclRefOp] =
+        createDeclToKgenExpr("reshape_dyndim_denominator_normalized", indexType,
+                             KGEN::POC::Max, {one, denominatorDeclRefOp});
+    auto [resolvedDimDeclAttr, resolvedDimDeclRefOp] = createDeclToKgenExpr(
+        "reshape_dyndim_resolved", indexType, KGEN::POC::Div,
+        {numeratorDeclRefOp, denominatorNormalizedDeclRefOp});
 
     SmallVector<TypedAttr> resolvedDims = targetNonNegOneDims;
     resolvedDims.insert(resolvedDims.begin() + maybeTargetNegOneDimIdx.value(),
-                        resolvedDimAttr);
+                        resolvedDimDeclRefOp);
 
     return ShapeAttr::get(resolvedDims, targetShapeAttr.getType());
   }
@@ -454,12 +470,13 @@ private:
     MLIRContext *ctx = invokeShapeFuncOp->getContext();
     auto boolType = IntegerType::get(ctx, 1);
     auto indexTy = IndexType::get(ctx);
+
     // Insert assertions
-    auto [inputNumeElemsDeclOp, inputNumeElemsDeclRef] = createDeclToKgenExpr(
-        "input_num_elems", indexTy, KGEN::POC::MulNuw, inputShape.getValues());
-    auto [outputNumeElemsDeclOp, outputNumeElemsDeclRef] =
-        createDeclToKgenExpr("output_num_elems", indexTy, KGEN::POC::MulNuw,
-                             outputShape.getValues());
+    auto [inputNumeElemsDeclOp, inputNumeElemsDeclRef] = createDeclToKgenAttr(
+        "input_num_elems", indexTy, inputShape.getSymbolicNumElements());
+    auto [outputNumeElemsDeclOp, outputNumeElemsDeclRef] = createDeclToKgenAttr(
+        "output_num_elems", indexTy, outputShape.getSymbolicNumElements());
+
     auto [numElemsEqualDeclOp, numElemsEqualDeclRef] =
         createDeclToKgenExpr("num_elems_equal", boolType, KGEN::POC::EQ,
                              {inputNumeElemsDeclRef, outputNumeElemsDeclRef});
