@@ -234,7 +234,7 @@ int main(int argc, char **argv) {
     if (contextOr.isError())
       return options.reportError(contextOr.getError());
     auto frameworkCtxOr =
-        dylib.initFrameworkContext(contextOr.takeValue(), argc, argv);
+        dylib.initFrameworkContext(contextOr->copy(), argc, argv);
     if (failed(frameworkCtxOr))
       return options.reportError(frameworkCtxOr.getError());
     auto frameworkCtx = std::move(*frameworkCtxOr);
@@ -351,6 +351,16 @@ int main(int argc, char **argv) {
     // Hand off the MEFFileHandle and the file buffer to the framework to
     // actually run the thing with all the various diagnostics.
     rc = dylib.runBinaryFile(frameworkCtx, inputInfo.file.copy(), binaryFile);
+
+    // FIXME(#36219): Write all traces, since the runtime won't be flushed.
+    // This should be removed when the runtime is properly flushed when the
+    // context goes out of scope.
+    auto profiler = (*contextOr)->get<LLCL::Runtime>()->getProfiler();
+    if (profiler) {
+      auto writeErr = profiler->write(options.profileFilename, "-");
+      if (writeErr.isError())
+        return options.reportError(writeErr.getError());
+    }
   }
 
   return rc;
