@@ -962,6 +962,66 @@ void MOGatherNdOp::inferMOTypesImpl(
   moOutputParamDecls.push_back(std::move(outputParamDecls));
 }
 
+void MOMatmulOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  TensorValue inputA = cast<TensorValue>(operands.getInputA());
+  TensorValue inputB = cast<TensorValue>(operands.getInputB());
+
+  // mo::MatmulOp cannot have any outputParamDecls (asserts).
+  // Define the operand params only and construct the output shape.
+  // (M, N) * (N, P) => (M, P).
+  SmallVector<KGEN::ParamDeclAttr> inputADecls, inputBDecls;
+  TypedAttr dimM = createDynamicDimensionType(graphOp, inputADecls);
+  TypedAttr dimN = createDynamicDimensionType(graphOp, inputADecls);
+  TypedAttr dimP = createDynamicDimensionType(graphOp, inputBDecls);
+
+  moOperandTypes.push_back(
+      inputA.getType().cloneWith(SmallVector<TypedAttr>{dimM, dimN}));
+  moInputParamDecls.push_back(std::move(inputADecls));
+
+  moOperandTypes.push_back(
+      inputB.getType().cloneWith(SmallVector<TypedAttr>{dimN, dimP}));
+  moInputParamDecls.push_back(std::move(inputBDecls));
+
+  DType outputDType = getDType(rmoResults, 0, inputA.getType().getDtype());
+  moResultTypes.push_back(TensorType::get(
+      context, SmallVector<TypedAttr>{dimM, dimP}, outputDType));
+  moOutputParamDecls.push_back({});
+}
+
+void MOBatchMatmulOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  TensorValue inputA = cast<TensorValue>(operands.getInputA());
+  TensorValue inputB = cast<TensorValue>(operands.getInputB());
+
+  // Input types are unchanged.
+  moOperandTypes.push_back(inputA.getType());
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(inputB.getType());
+  moInputParamDecls.push_back({});
+
+  // Output type has same rank than input
+  DType outputDType = getDType(rmoResults, 0, inputA.getType().getDtype());
+  SmallVector<KGEN::ParamDeclAttr> outputDecls;
+  if (inputA.getType().hasRank()) {
+    int64_t rank = inputA.getType().getRank();
+    moResultTypes.push_back(
+        getRankedParamTensorType(rank, outputDType, graphOp, outputDecls));
+  } else {
+    moResultTypes.push_back(
+        getUnrankedTensorType(outputDType, graphOp, outputDecls));
+  }
+  moOutputParamDecls.push_back(std::move(outputDecls));
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST

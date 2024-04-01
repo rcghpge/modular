@@ -1806,6 +1806,56 @@ def RMO_MOGatherNdOp : RMO_MOAnaloguePureTensorOp<"gather_nd",
   let results = (outs MO_Tensor:$result);
 }
 
+def RMO_MOMatmulOp : RMO_MOAnaloguePureTensorOp<"matmul"> {
+  let summary = "Matrix-matrix multiplication operation";
+  let description = [{
+    Performs matrix multiplication on two 2D tensors.
+
+    Example:
+
+    ```mlir
+      %lhs: ... !mo.tensor<[10, 20], f32>
+      %rhs: ... !mo.tensor<[20, 5], f32>
+      %res = mo.matmul(%lhs, %rhs) : (
+        !mo.tensor<[10, 20], f32>, !mo.tensor<[20, 5], f32>
+      ) -> !mo.tensor<[10, 5], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input_a,
+    MO_Tensor:$input_b,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+}
+
+def RMO_MOBatchMatmulOp : RMO_MOAnaloguePureTensorOp<"batch_matmul"> {
+  let summary = "Batched matrix-matrix multiplication operation";
+  let description = [{
+    Performs matrix multiplication on two batches of matrices, represented by
+    two N-dimensional tensors.
+
+    The last two dimensions of each input are the matrix dimensions.
+
+    Example:
+
+    ```mlir
+      %lhs: ... !mo.tensor<[3, 4, 5], f32>
+      %rhs: ... !mo.tensor<[3, 5, 6], f32>
+      %res = mo.batch_matmul(%lhs, %rhs) :
+        mo.tensor<[3, 4, 5], f32>, !mo.tensor<[3, 5, 6], f32>
+      ) -> !mo.tensor<[3, 4, 6], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input_a,
+    MO_Tensor:$input_b,
+    OptionalAttr<BoolAttr>:$transpose_b,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+}
+
 
 
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
