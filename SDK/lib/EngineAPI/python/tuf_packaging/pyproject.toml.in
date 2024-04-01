@@ -61,6 +61,6 @@ profile = "black"
 [tool.cibuildwheel.macos]
 # We're going to avoid building a 3.8 wheel, since installing the 3.8 toolchain on Macs requires
 # for us to install Rosetta, which breaks our Mojo build.
-build="cp{39,310,311}-macos*"
+build="cp{39,310,311}-macosx*"
 before-all=""
 repair-wheel-command=""
