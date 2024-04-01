@@ -6,8 +6,9 @@
 # RUN: mojo "%s"
 
 from tensor import Tensor, TensorShape
+from testing import *
 
-from max.graph import _testing, Module, MOTensor, TypeTuple
+from max.graph import ops, _testing, Module, MOTensor, TypeTuple
 
 
 fn test_matmul() raises:
@@ -56,6 +57,40 @@ fn test_batch_matmul() raises:
     _testing.assert_tensors_almost_equal(expected, actual, 1e-4)
 
 
+def test_matmul_dimension_mismatch():
+    var m = Module()
+    var module = Module()
+    var graph = module.graph(
+        in_types=MOTensor(DType.float32, 2, 6),
+        out_types=MOTensor(DType.float32, 2, 6),
+    )
+
+    var matmul_constant_value = Tensor[DType.float32](2, 6)
+    matmul_constant_value._to_buffer().fill(0.15)
+    var matmul_constant = graph.constant(matmul_constant_value)
+
+    with assert_raises(contains="matrix multiply K dimensions don't match"):
+        var matmul = ops.matmul(graph[0], matmul_constant)
+
+
+def test_matmul_rhs_too_small():
+    var m = Module()
+    var module = Module()
+    var graph = module.graph(
+        in_types=MOTensor(DType.float32, 2, 6),
+        out_types=MOTensor(DType.float32, 2, 6),
+    )
+
+    var matmul_constant_value = Tensor[DType.float32](6)
+    matmul_constant_value._to_buffer().fill(0.15)
+    var matmul_constant = graph.constant(matmul_constant_value)
+
+    with assert_raises(contains="must have rank at least 2"):
+        var matmul = ops.matmul(graph[0], matmul_constant)
+
+
 def main():
     test_matmul()
     test_batch_matmul()
+    test_matmul_dimension_mismatch()
+    test_matmul_rhs_too_small()
