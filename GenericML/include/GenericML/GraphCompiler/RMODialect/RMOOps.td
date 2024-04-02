@@ -2158,4 +2158,91 @@ def RMO_MOSolveOp : RMO_MOAnaloguePureLinalgOp<"solve"> {
   let results = (outs MO_Tensor:$result);
 }
 
+def RMO_MOConcatOp : RMO_MOAnaloguePureTensorOp<"concat"> {
+  let summary = "Concatenation operation";
+  let description = [{
+    Concatenates the input tensors along a given dimension.
+
+    `mo.concat` concatenates the `inputs` tensors into an output tensor. There
+    must be at least 1 input tensor. The input tensors and output tensors all
+    has the same shape except along the concatenation dimension `axis`. The size
+    of the concatenation dimension in output tensor would have be the sum of
+    sizes of the concatenation dimension in input tensors.
+
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
+    axis.
+
+    Example:
+
+    ```mlir
+      %arg0: !mo.tensor<[2, 3], f32>
+      %arg1: !mo.tensor<[2, 5], f32>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %res = rmo.mo.concat[%axis: !mo.tensor<[], si64>](%arg0, %arg1) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>
+      ) -> !mo.tensor<[2, 8], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_IndicesTensor:$axis,
+    Variadic<MO_Tensor>:$inputs,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls)
+    `[` $axis `:` qualified(type($axis)) `]`
+    `(` $inputs `)` attr-dict `:` functional-type($inputs, results)
+  }];
+}
+
+def RMO_MOSplitOp : RMO_MOAnaloguePureTensorOp<"split"> {
+  let summary = "Splitting operation";
+  let description = [{
+    Splits the input tensor into multiple tensors along a given dimension.
+
+    `mo.split` splits the tensor `input` into multiple output tensors.
+    The number of output tensors is equal to the number of elements in
+    `splitSizes`, which is a rank-1 tensor of integers.
+    Each of the output tensors has the same shape as `input` except along the
+    split dimension `axis`, where the size is given by the corresponding
+    element in `splitSizes`.
+
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
+    axis.
+
+    Example:
+
+    ```mlir
+      %input: !mo.tensor<[2, 8], f32>
+      %splitSizes = mo.constant {
+        value = #M.dense_array<3, 5> : tensor<2xsi64>
+      } : !mo.tensor<[2], si64>
+      %axis = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64>
+      } : !mo.tensor<[], si64>
+      %res = rmo.mo.split[%axis: !mo.tensor<[], si64>](%input, %splitSizes) : (
+        !mo.tensor<[2, 8], f32>, !mo.tensor<[2], si64>
+      ) -> (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>)
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndicesTensor:$splitSizes,
+    MO_IndicesTensor:$axis,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs Variadic<MO_Tensor>:$results);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls)
+    `[` $axis `:` qualified(type($axis)) `]`
+    `(` $input `,` $splitSizes `)` attr-dict `:` `(`
+      qualified(type($input)) `,` qualified(type($splitSizes))
+    `)` `->` `(` type($results) `)`
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
