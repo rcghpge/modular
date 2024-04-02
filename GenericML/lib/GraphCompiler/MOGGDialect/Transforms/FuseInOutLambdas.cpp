@@ -4,14 +4,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/IR/BuiltinOps.h"
-
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
 #include "GenericML/Support/Assert.h"
-
+#include "KGEN/POPDialect/POPOps.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
 
 using namespace M;
@@ -26,13 +26,22 @@ namespace {
 // TODO(#22349): Remove checks when matmul/conv kernels respect the fusion
 // contract.
 static bool containsMatmulOrConvolution(MOGG::KernelOp kernel) {
-  for (auto call : kernel.getOps<MOGG::CallOp>()) {
-    auto target = call.getMojoKernelTarget();
-    if (target == MO::MatmulOp::getOperationName() ||
-        target == MO::BatchMatmulOp::getOperationName() ||
-        target == MO::ConvOp::getOperationName() ||
-        target == MO::ConvTransposeOp::getOperationName())
+  if (kernel.getIsKGEN().value_or(false)) {
+    StringRef summary = kernel.getSummaryAttr().strref();
+    if (summary.contains(MO::MatmulOp::getOperationName()) ||
+        summary.contains(MO::BatchMatmulOp::getOperationName()) ||
+        summary.contains(MO::ConvOp::getOperationName()) ||
+        summary.contains(MO::ConvTransposeOp::getOperationName()))
       return true;
+  } else {
+    for (auto call : kernel.getOps<MOGG::CallOp>()) {
+      auto target = call.getMojoKernelTarget();
+      if (target == MO::MatmulOp::getOperationName() ||
+          target == MO::BatchMatmulOp::getOperationName() ||
+          target == MO::ConvOp::getOperationName() ||
+          target == MO::ConvTransposeOp::getOperationName())
+        return true;
+    }
   }
   return false;
 }
@@ -138,7 +147,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // Don't fuse in the elementwise kernel invoke directly.
     auto skip = [](Operation *op) {
       if (auto call = dyn_cast<MOGG::CallOp>(op)) {
-        if (call.getMojoKernelTarget() == "elementwise")
+        if (call.getMojoKernelTarget() == Utils::MOGGElementwiseTarget)
           return true;
       }
 
@@ -184,7 +193,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // Find all the stores that write through the argument that is being fused.
     SmallVector<MOGG::CallOp> stores;
     for (auto op : dstInputLambda.getOps<MOGG::CallOp>()) {
-      if (op.getMojoKernelTarget() == "simd_store" &&
+      if (op.getMojoKernelTarget() == Utils::MOGGSimdStoreTarget &&
           op.getOperand(0) == fusionArgument) {
         stores.push_back(op);
       }
@@ -200,7 +209,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     for (auto load :
          llvm::make_early_inc_range(dstInputLambda.getOps<MOGG::CallOp>())) {
       // Skip non simd loads.
-      if (load.getMojoKernelTarget() != "simd_load")
+      if (load.getMojoKernelTarget() != Utils::MOGGSimdLoadTarget)
         continue;
 
       if (load.getOperand(0) == fusionArgument) {
@@ -213,7 +222,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // then we should set it to true now.
     for (auto call : dstKernel.getOps<MOGG::CallOp>()) {
       BoolAttr trueAttr = BoolAttr::get(ctx, true);
-      call.setKGENParamToValueIfPresent("lambdas_have_fusion", trueAttr);
+      call.setKGENParamToValueIfPresent(Utils::LambdasHaveFusion, trueAttr);
     }
 
     // Delete the <operand, argument> pair from which we fused.
@@ -232,10 +241,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
   /// This ensures the fusion is legal. Many of the checks can be moved into the
   /// canonicalizer / verifier.
   bool canDoOutputFusion(MOGG::KernelOp kernel, ArrayAttr fusionInterface) {
-    // Disable fusion on experimental new KGEN in MOGG for now.
-    if (kernel.getIsKGEN().value_or(false))
-      return false;
-
     // Unreachable: Ambigious what we should actually fuse. Previous passes
     // should have maintained 1:1 relationship of output to output interfaces.
     if (fusionInterface.size() != kernel.getNumResults())
@@ -287,6 +292,10 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         return false;
     }
 
+    // Check the output lambda fusion hook.
+    if (cast<StringAttr>(fusionInterface[0]).strref().empty())
+      return false;
+
     // Must have the same device
     if (kernel.getDeviceRef() != user.getDeviceRef())
       return false;
@@ -294,10 +303,370 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     return true;
   }
 
-  // Fuse the use of this kernel into the output lambda.
-  KernelOp fuseIntoOutputLambda(KernelOp kernelToFuseInto,
-                                StringAttr outputLambdaName,
-                                SmallVector<KernelOp> &opsToErase) {
+  // Fuse the user of `kernelToFuseInto` into the src kernel with KGEN.
+  KernelOp fuseIntoOutputLambdaKGEN(KernelOp kernelToFuseInto,
+                                    StringAttr outputLambdaName,
+                                    SmallVector<KernelOp> &opsToErase) {
+
+    // In brief, we have several steps to implement this fusion:
+
+    // Step 1: Update the operands and block arguments of src kernel to absorb
+    // the user kernel.
+
+    // Step 2: Clone operators in the user kernel into the src kernel.
+
+    // Step 3: Clone all input lamba functions into the body and output lambda
+    // of the src kernel.
+
+    // Step 4: Clone all the elementwise lambdas into the output lambda of the
+    // src kernel.
+
+    // Step 5: Remap all the parameters of the operators we cloned if needed.
+
+    // Step 6: Clean up and handle the mixed precision case.
+
+    MLIRContext *ctx = kernelToFuseInto.getContext();
+
+    OpBuilder builder{ctx};
+
+    // Maps kernel's old operand to new operand.
+    IRMapping oldToNew;
+
+    // Guarded to only fuse 1 output kernels.
+    Value originalResult = kernelToFuseInto.getResult(0);
+
+    // We've already guarded that we only have one user.
+    MOGG::KernelOp userToFuseIn =
+        cast<MOGG::KernelOp>(*originalResult.user_begin());
+
+    OutputPlaceholdersOp originalOuts = kernelToFuseInto.getOutputPlaceholder();
+    OutputPlaceholdersOp userOuts = userToFuseIn.getOutputPlaceholder();
+
+    const bool isMatmulOrConvolution =
+        containsMatmulOrConvolution(kernelToFuseInto);
+
+    const bool isMixedPrecision =
+        originalOuts.getResult(0).getType() != userOuts.getResult(0).getType();
+
+    // Step 1: We unique the user kernel operands and fuse them into the src
+    // kernel. The way we fuse these by operands is simply append them in the
+    // src kernel's block argument list.
+
+    DenseSet<Value> seenOperands;
+    Block &userBlock = userToFuseIn.getBody().front();
+
+    for (auto operand : userToFuseIn.getOperands())
+      seenOperands.insert(operand);
+
+    unsigned fusionOperandIdx;
+    for (auto [operand, blockArg] :
+         llvm::zip(userToFuseIn.getOperands(), userBlock.getArguments())) {
+      if (operand == originalResult) {
+        fusionOperandIdx = blockArg.getArgNumber();
+        continue;
+      }
+
+      if (seenOperands.contains(operand)) {
+        Value newBlockArg = kernelToFuseInto.addOperand(operand);
+        oldToNew.map(blockArg, newBlockArg);
+      }
+    }
+
+    // Step 2: We clone all non-trivial operators in the user kernel into the
+    // src kernel. Here, we ignore all the ParamDeclareRegionOp, which we will
+    // take care of later in a more specific way.
+
+    // Major mapper we use to clone all kinds of the operators in the user
+    // kernel.
+    IRMapping kgenOldToNew;
+    MOGG::ToKGENOp newOutsToKgenOp;
+    OutputPlaceholdersOp newOuts;
+
+    kernelToFuseInto.setInsertionPointToTop(builder);
+    for (auto &op : userToFuseIn.getOps()) {
+      if (auto toKgen = dyn_cast<MOGG::ToKGENOp>(op)) {
+        // We clone ToKGENOp except for the one related to the fusion hook.
+        if (auto blockArg = dyn_cast<mlir::BlockArgument>(toKgen.getInput()))
+          if (blockArg.getArgNumber() == fusionOperandIdx)
+            continue;
+
+        auto newToKgen = cast<MOGG::ToKGENOp>(builder.clone(op, oldToNew));
+        // When we visit ToKGENOp, newOuts placeholder has been assigned.
+        if (newToKgen.getInput() == newOuts.getResult(0))
+          newOutsToKgenOp = newToKgen;
+
+        kgenOldToNew.map(toKgen.getResults(), newToKgen.getResults());
+        oldToNew.map(toKgen.getResults(), newToKgen.getResults());
+      } else if (isa<KGEN::POP::StackAllocationOp>(op)) {
+        // We clone StackAllocationOp and track its mapping. Both
+        // StackAllocationOp and ToKGENOp can produce outputs directly, feeding
+        // the KGEN calls.
+        Operation *newAlloc = builder.clone(op, oldToNew);
+        oldToNew.map(op.getResults(), newAlloc->getResults());
+        kgenOldToNew.map(op.getResults(), newAlloc->getResults());
+      } else if (isa<MOGG::OutputPlaceholdersOp>(op)) {
+        // OutputPlaceholdersOp is the first operator in the user kernel to
+        // clone.
+        newOuts = cast<OutputPlaceholdersOp>(builder.clone(op));
+        oldToNew.map(op.getResult(0), newOuts.getResult(0));
+      } else if (isa<KGEN::ParamDeclareOp>(op)) {
+        builder.clone(op);
+      } else if (isa<MOGG::OutputOp>(op) ||
+                 isa<KGEN::ParamDeclareRegionOp>(op)) {
+        // Do nothing.
+      } else if (auto callop = dyn_cast<KGEN::CallOp>(op)) {
+        StringRef funcName =
+            cast<mlir::FlatSymbolRefAttr>(callop.getCalleeSymbol()).getValue();
+        // After Tensor APIs becomes the de-factor standard APIs (builtin
+        // library), we will use MojoLibararyAnalysis to check this. Clone every
+        // function call except the one has the `elementwise` decorator.
+        if (!funcName.starts_with(Utils::MOGGTensorForEach)) {
+          oldToNew.map(op.getResults(),
+                       builder.clone(op, oldToNew)->getResults());
+        }
+      } else {
+        oldToNew.map(op.getResults(),
+                     builder.clone(op, oldToNew)->getResults());
+      }
+    }
+    GENERICML_ASSERT(newOutsToKgenOp);
+    GENERICML_ASSERT(newOuts);
+
+    // Step 3: Clone all input lamba functions in the user kernel into the src
+    // kernel. For the fusion input lambda, we treat it specially by nesting it
+    // inside the output lambda of the src kernel.
+
+    mlir::SymbolTable srcSymTable{kernelToFuseInto};
+    mlir::SymbolTable userSymTable{userToFuseIn};
+
+    // It is guarded that the input and output fusion lambda name exist.
+    auto srcOutputLambdaOp =
+        cast<KGEN::ParamDeclareRegionOp>(srcSymTable.lookup(outputLambdaName));
+    StringAttr inputLambdaName =
+        userToFuseIn.getInputFusionInterfaceAt(fusionOperandIdx);
+    auto userInputLambdaOp =
+        cast<KGEN::ParamDeclareRegionOp>(userSymTable.lookup(inputLambdaName));
+
+    // Clone all input lambdas except for the special one (the fusion one).
+    builder.setInsertionPoint(srcOutputLambdaOp);
+    llvm::DenseSet<StringRef> lambdaSkipSet;
+
+    StringAttr userOutputLambdaName =
+        userToFuseIn.getOutputFusionInterfaceAt(0);
+    lambdaSkipSet.insert(userOutputLambdaName);
+
+    for (auto attr : userToFuseIn.getInputFusionInterfaceAttr()) {
+      StringAttr userInputLambdaNameAttr = cast<StringAttr>(attr);
+      lambdaSkipSet.insert(userInputLambdaNameAttr);
+
+      if (userInputLambdaNameAttr != inputLambdaName) {
+        if (auto lambdaOp = userSymTable.lookup(userInputLambdaNameAttr))
+          // For non-fusion input lambda, we don't remove its symbol attribute
+          // so other passes can still use SymbolTable to visit them.
+          builder.clone(*lambdaOp, kgenOldToNew);
+      }
+    }
+
+    // Clone and modify the fusion input lambda (the input lambda in the user
+    // kernel). We put it inside the output lambda of the src kernel. We remove
+    // the simd_load_internal inside it and pass the fused SIMD value directly.
+    builder.setInsertionPointToStart(
+        &srcOutputLambdaOp.getBodyRegion().front());
+
+    auto newInputLambdaOp = cast<KGEN::ParamDeclareRegionOp>(
+        builder.clone(*userInputLambdaOp.getOperation()));
+    newInputLambdaOp->removeAttr(mlir::SymbolTable::getSymbolAttrName());
+
+    Value originOutValue = srcOutputLambdaOp.getBodyRegion().getArgument(1);
+    Type bindType = newInputLambdaOp.getFunctionType().getResult(0);
+
+    KGEN::ReturnOp returnOp =
+        *newInputLambdaOp.getOps<KGEN::ReturnOp>().begin();
+    GENERICML_ASSERT(returnOp);
+    builder.setInsertionPoint(returnOp);
+
+    KGEN::RebindOp rebind = builder.create<KGEN::RebindOp>(
+        newInputLambdaOp->getLoc(), bindType, originOutValue);
+    KGEN::CallOp simdLoadOp = *newInputLambdaOp.getOps<KGEN::CallOp>().begin();
+    GENERICML_ASSERT(simdLoadOp);
+    simdLoadOp->replaceAllUsesWith(rebind);
+    simdLoadOp->erase();
+
+    // Step 4: We handle all the compute lambdas here. This includes the final
+    // elementwise call and all the compute lambdas get fused into. For the
+    // final elementwise lambda, we insert the COMPUTE_OUTLINED call op
+    // directly. For the rest of the compute lambdas, we clone them into the
+    // output lambda of the src kernel.
+    StringAttr elementwiseLambdaName = userToFuseIn.getFusionBodyLambdaAttr();
+    lambdaSkipSet.insert(elementwiseLambdaName);
+
+    // It is guaranteed that the user kernel is an elementwise op.
+    auto elementwiseOp = userToFuseIn.findLambda(elementwiseLambdaName);
+    KGEN::CallOp outlinedCallOp = *elementwiseOp.getOps<KGEN::CallOp>().begin();
+    GENERICML_ASSERT(outlinedCallOp);
+
+    auto userOutputLambdaOp = cast<KGEN::ParamDeclareRegionOp>(
+        userSymTable.lookup(userOutputLambdaName));
+    KGEN::CallOp userSimdStoreOp =
+        *userOutputLambdaOp.getOps<KGEN::CallOp>().begin();
+    KGEN::CallOp srcSimdStoreOp =
+        *srcOutputLambdaOp.getOps<KGEN::CallOp>().begin();
+
+    // Remap to_kgen to the new one, which is corresponding to the output
+    // placeholder in the src kernel.
+    for (auto toKgenOp : userToFuseIn.getOps<MOGG::ToKGENOp>()) {
+      if (toKgenOp.getInput() == userBlock.getArgument(fusionOperandIdx))
+        kgenOldToNew.map(toKgenOp->getResult(0), newOutsToKgenOp->getResult(0));
+    }
+
+    // Remap the SIMD indices of the simd_store_internal in the output lambda.
+    kgenOldToNew.map(userSimdStoreOp.getOperand(1),
+                     srcSimdStoreOp.getOperand(1));
+
+    // Remap SIMD indices for the COMPUTE_OUTLINED call.
+    for (Value operand : outlinedCallOp->getOperands()) {
+      if (isa<mlir::BlockArgument>(operand))
+        kgenOldToNew.map(operand, srcSimdStoreOp.getOperand(1));
+    }
+
+    // Clone all the elementwise lambdas except the final one.
+    builder.setInsertionPointAfter(newInputLambdaOp);
+    for (auto declRegion : userToFuseIn.getOps<KGEN::ParamDeclareRegionOp>()) {
+      StringAttr regionName = declRegion.getParamDeclAttr().getName();
+      if (!lambdaSkipSet.contains(regionName)) {
+        auto newRegion = cast<KGEN::ParamDeclareRegionOp>(
+            builder.clone(*declRegion.getOperation(), kgenOldToNew));
+        newRegion->removeAttr(mlir::SymbolTable::getSymbolAttrName());
+      }
+    }
+
+    // Insert the COMPUTE_OUTLINED call for the final elementwise lambda. We
+    // clone the user kernel's SIMD store into the src kernel to account for the
+    // mixed precision case.
+    KGEN::CallOp newOutlinedCallOp = cast<KGEN::CallOp>(
+        builder.clone(*outlinedCallOp.getOperation(), kgenOldToNew));
+
+    kgenOldToNew.map(userSimdStoreOp.getOperand(2),
+                     newOutlinedCallOp.getResult(0));
+    auto newSimdStoreOp = cast<KGEN::CallOp>(
+        builder.clone(*userSimdStoreOp.getOperation(), kgenOldToNew));
+
+    // Step 5: Remap all the template parameters of the two new calls inserted
+    // (COMPUTE_OUTLINED and SIMD store).
+    DenseMap<KGEN::ParamDeclRefAttr, TypedAttr> paramRemaps;
+    auto oldElementwiseParams = elementwiseOp.getInputParams();
+    auto oldStoreParams = userOutputLambdaOp.getInputParams();
+    auto srcOutputLambdaParams = srcOutputLambdaOp.getInputParams();
+
+    auto constructParamRemapFunc = [&](ArrayRef<KGEN::ParamDeclAttr> params) {
+      for (auto [oldParam, newParam] :
+           llvm::zip(params, srcOutputLambdaParams)) {
+        auto oldDeclRef =
+            KGEN::ParamDeclRefAttr::get(oldParam.getName(), oldParam.getType());
+        auto newDeclRef =
+            KGEN::ParamDeclRefAttr::get(newParam.getName(), newParam.getType());
+        paramRemaps[oldDeclRef] = newDeclRef;
+      }
+    };
+
+    constructParamRemapFunc(oldElementwiseParams);
+    constructParamRemapFunc(oldStoreParams);
+
+    mlir::AttrTypeReplacer walker;
+    walker.addReplacement(
+        [&](KGEN::ParamDeclRefAttr attr) -> std::optional<TypedAttr> {
+          auto itr = paramRemaps.find(attr);
+          if (itr != paramRemaps.end())
+            return itr->second;
+          return std::nullopt;
+        });
+
+    walker.recursivelyReplaceElementsIn(newOutlinedCallOp,
+                                        /*replaceAttrs=*/true,
+                                        /*replaceLocs=*/false,
+                                        /*replaceTypes=*/true);
+    walker.recursivelyReplaceElementsIn(newSimdStoreOp,
+                                        /*replaceAttrs=*/true,
+                                        /*replaceLocs=*/false,
+                                        /*replaceTypes=*/true);
+
+    // Step 6: Finally, we clean up the kernel metadata, eliminate the user
+    // kernel, and handle the mixed precision case.
+
+    // Disable future output fusion.
+    kernelToFuseInto.removeOutputFusionInterfaceAttr();
+
+    // Matmul with mixed precision (bad case): Matmul kernels actually take in
+    // an output buffer despite having a lambda. Therefore, in mixed
+    // precision, we need another buffer to do the accumulation. This results
+    // in the kernel op having two return values to trigger allocations in
+    // later passes.
+    if (isMatmulOrConvolution && isMixedPrecision) {
+      auto loc = kernelToFuseInto.getLoc();
+
+      builder.setInsertionPoint(originalOuts);
+      auto combinedPlaceholders = builder.create<MOGG::OutputPlaceholdersOp>(
+          loc, ArrayRef<Type>{userOuts->getResult(0).getType(),
+                              originalOuts->getResult(0).getType()});
+
+      MOGG::OutputOp originOutputOp = kernelToFuseInto.getOutputOp();
+      builder.setInsertionPoint(originOutputOp);
+      builder.create<MOGG::OutputOp>(loc, combinedPlaceholders->getResults());
+
+      newOuts.getResult(0).replaceAllUsesWith(
+          combinedPlaceholders.getResult(0));
+      originalOuts.getResult(0).replaceAllUsesWith(
+          combinedPlaceholders.getResult(1));
+
+      originOutputOp.erase();
+      newOuts->erase();
+      originalOuts.erase();
+
+      builder.setInsertionPoint(kernelToFuseInto);
+      auto newDstKernel = builder.create<MOGG::KernelOp>(
+          loc,
+          /*results=*/combinedPlaceholders.getResultTypes(),
+          /*operands=*/kernelToFuseInto.getOperands(),
+          /*outputParamDecls=*/kernelToFuseInto.getOutputParamDeclsAttr(),
+          /*inputFusionInterface=*/
+          kernelToFuseInto.getInputFusionInterfaceAttr(),
+          /*outputFusionInterface=*/
+          kernelToFuseInto.getOutputFusionInterfaceAttr(),
+          /*fusionBodyLambda=*/kernelToFuseInto.getFusionBodyLambdaAttr(),
+          /*isViewOp=*/kernelToFuseInto.getIsViewOpAttr(),
+          /*isKGEN=*/kernelToFuseInto.getIsKGENAttr(),
+          /*summary=*/getSummaryString({kernelToFuseInto, userToFuseIn}),
+          /*isAsync=*/kernelToFuseInto.getIsAsyncAttr());
+
+      if (kernelToFuseInto.getDeviceRef())
+        newDstKernel.setDeviceRef(kernelToFuseInto.getDeviceRef());
+
+      newDstKernel.getBody().takeBody(kernelToFuseInto.getBody());
+
+      userToFuseIn.getResult(0).replaceAllUsesWith(newDstKernel.getResult(0));
+      userToFuseIn.erase();
+      kernelToFuseInto.erase();
+
+      return newDstKernel;
+    }
+
+    kernelToFuseInto.setSummaryAttr(
+        getSummaryString({kernelToFuseInto, userToFuseIn}));
+
+    originalOuts->replaceAllUsesWith(newOuts);
+    srcSimdStoreOp.erase();
+    originalOuts.erase();
+
+    userToFuseIn.replaceAllUsesWith(kernelToFuseInto);
+    userToFuseIn->erase();
+
+    return kernelToFuseInto;
+  }
+
+  // Fuse the use of this MOGG kernel into the output lambda.
+  KernelOp fuseIntoOutputLambdaMOGG(KernelOp kernelToFuseInto,
+                                    StringAttr outputLambdaName,
+                                    SmallVector<KernelOp> &opsToErase) {
     MLIRContext *ctx = kernelToFuseInto.getContext();
 
     // Guarded to only fuse 1 output kernels.
@@ -384,7 +753,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         cast<LambdaOp>(symTable.lookup(outputLambdaName));
     for (auto store : llvm::make_early_inc_range(
              outputLambdaToFuseInto.getOps<MOGG::CallOp>())) {
-      if (store.getMojoKernelTarget() == "simd_store" &&
+      if (store.getMojoKernelTarget() == Utils::MOGGSimdStoreTarget &&
           store.getOperand(0) == originalOuts->getResult(0)) {
         store.erase();
       }
@@ -393,7 +762,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // Don't fuse in the elementwise kernel invoke directly.
     auto skipElementwise = [&](Operation *op) {
       if (auto call = dyn_cast<MOGG::CallOp>(op)) {
-        if (call.getMojoKernelTarget() == "elementwise")
+        if (call.getMojoKernelTarget() == Utils::MOGGElementwiseTarget)
           return true;
       }
 
@@ -443,7 +812,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     for (auto load : llvm::make_early_inc_range(
              outputLambdaToFuseInto.getOps<MOGG::CallOp>())) {
       // Skip non simd loads.
-      if (load.getMojoKernelTarget() != "simd_load")
+      if (load.getMojoKernelTarget() != Utils::MOGGSimdLoadTarget)
         continue;
 
       // Anything which loads the output is a reference to lambda simd
@@ -458,7 +827,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // then we should set it to true now.
     for (auto call : kernelToFuseInto.getOps<MOGG::CallOp>()) {
       BoolAttr trueAttr = BoolAttr::get(ctx, true);
-      call.setKGENParamToValueIfPresent("lambdas_have_fusion", trueAttr);
+      call.setKGENParamToValueIfPresent(Utils::LambdasHaveFusion, trueAttr);
     }
 
     // Disable future output fusion.
@@ -578,8 +947,13 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         // Fuse into the output lambdas if possible.
         if (canDoOutputFusion(kernelToFuseInto, lambdas)) {
           StringAttr outputLambdaName = cast<StringAttr>(lambdas[0]);
-          kernelToFuseInto = fuseIntoOutputLambda(
-              kernelToFuseInto, outputLambdaName, kernelOpsToErase);
+          if (kernelToFuseInto.getIsKGEN().value_or(false))
+            kernelToFuseInto = fuseIntoOutputLambdaKGEN(
+                kernelToFuseInto, outputLambdaName, kernelOpsToErase);
+          else
+            kernelToFuseInto = fuseIntoOutputLambdaMOGG(
+                kernelToFuseInto, outputLambdaName, kernelOpsToErase);
+          ;
         }
       }
       GENERICML_ASSERT(beforeDevice == MO::getDeviceOrDefault(kernelToFuseInto))
