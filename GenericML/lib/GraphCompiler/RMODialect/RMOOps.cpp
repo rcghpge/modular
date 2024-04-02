@@ -1124,6 +1124,59 @@ void MOUnsqueezeShapeOp::inferMOTypesImpl(
       moOperandTypes, moResultTypes, moInputParamDecls, moOutputParamDecls);
 }
 
+void MOTransposeOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  TensorValue input = cast<TensorValue>(operands.getInput());
+  TensorValue perm = cast<TensorValue>(operands.getPerm());
+
+  // Try to infer the rank.
+  std::optional<int64_t> rank;
+  if (input.getType().hasRank())
+    rank = input.getType().getRank();
+  else if (perm.getType().hasStaticShape())
+    rank = perm.getType().getIntDim(0);
+  else if (rmoResults.has_value() &&
+           cast<TensorType>((*rmoResults)[0].getType()).hasRank())
+    rank = cast<TensorType>((*rmoResults)[0].getType()).getRank();
+
+  // `input` has static or dynamic rank.
+  SmallVector<KGEN::ParamDeclAttr> inputParamDecls;
+  moOperandTypes.push_back(
+      rank.has_value()
+          ? getRankedParamTensorType(*rank, input.getType().getDtype(), graphOp,
+                                     inputParamDecls)
+          : getUnrankedTensorType(input.getType().getDtype(), graphOp,
+                                  inputParamDecls));
+  moInputParamDecls.push_back(std::move(inputParamDecls));
+
+  // `perm` is 1D.
+  SmallVector<KGEN::ParamDeclAttr> permParamDecls;
+  if (rank.has_value()) {
+    // perm has static shape [rank].
+    TypedAttr dimAttr = IntegerAttr::get(IndexType::get(context), *rank);
+    moOperandTypes.push_back(
+        perm.getType().cloneWith(SmallVector<TypedAttr>{dimAttr}));
+  } else {
+    moOperandTypes.push_back(getRankedParamTensorType(
+        1, perm.getType().getDtype(), graphOp, permParamDecls));
+  }
+  moInputParamDecls.push_back(std::move(permParamDecls));
+
+  // `result` has static or dynamic rank.
+  DType outputDType = getDType(rmoResults, 0, input.getType().getDtype());
+  SmallVector<KGEN::ParamDeclAttr> resultParamDecls;
+  moResultTypes.push_back(
+      rank.has_value()
+          ? getRankedParamTensorType(*rank, outputDType, graphOp,
+                                     resultParamDecls)
+          : getUnrankedTensorType(outputDType, graphOp, resultParamDecls));
+  moOutputParamDecls.push_back(std::move(resultParamDecls));
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST

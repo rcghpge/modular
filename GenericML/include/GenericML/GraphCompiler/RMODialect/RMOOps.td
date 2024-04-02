@@ -1962,4 +1962,36 @@ def RMO_MOUnsqueezeShapeOp : RMO_MOAnaloguePureTensorOp<"unsqueeze_shape",
   let results = (outs MO_ShapeLikeIfRanked:$result);
 }
 
+def RMO_MOTransposeOp : RMO_MOAnaloguePureTensorOp<"transpose",
+  [AllDTypesMatch<["input", "result"]>]> {
+  let summary = "Transposition operation";
+  let description = [{
+    Returns a new Tensor as the result of permuting the dimensions of the input
+    tensor according to the value of perm.
+
+    Note that `perm` must contain unique values from `[0, input_rank)`.
+
+    Example:
+
+    ```mlir
+      %input : !mo.tensor<[2, 3], f32>
+      %perm : !mo.tensor<[2], si64>
+      %res = rmo.mo.transpose(%input, %perm) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 2], f32>
+
+      %input : !mo.tensor<[?, 5, ?], f32>
+      %perm : !mo.tensor<[3], si32>
+      %res = rmo.mo.transpose(%input, %perm) : (
+        !mo.tensor<[?, 5, ?], f32>, !mo.tensor<[3], si32>
+      ) -> !mo.tensor<[?, ?, 5], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ShapeLikeIfRanked:$perm,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
