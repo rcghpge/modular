@@ -1076,6 +1076,54 @@ void MOTileOp::inferMOTypesImpl(
   moOutputParamDecls.push_back(std::move(resultParamDecls));
 }
 
+namespace {
+void inferMOTypesSqueezeShapeImpl(
+    MLIRContext *context, MO::GraphOp graphOp, TensorValue inputShape,
+    TensorValue indices, std::optional<ValueRange> rmoResults,
+    SmallVectorImpl<Type> &moOperandTypes, SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  // Everything is rank1, use rebinds+checks, shape inference do the right thing
+  SmallVector<KGEN::ParamDeclAttr> dimXParamDecls, dimYParamDecls;
+  moOperandTypes.push_back(getRankedParamTensorType(
+      1, inputShape.getType().getDtype(), graphOp, dimXParamDecls));
+  moOperandTypes.push_back(getRankedParamTensorType(
+      1, indices.getType().getDtype(), graphOp, dimYParamDecls));
+  moInputParamDecls.push_back(std::move(dimXParamDecls));
+  moInputParamDecls.push_back(std::move(dimYParamDecls));
+
+  DType outDType = getDType(rmoResults, 0, inputShape.getType().getDtype());
+  SmallVector<KGEN::ParamDeclAttr> outputParamDecls;
+  moResultTypes.push_back(
+      getRankedParamTensorType(1, outDType, graphOp, outputParamDecls));
+  moOutputParamDecls.push_back(std::move(outputParamDecls));
+}
+} // namespace
+
+void MOSqueezeShapeOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  inferMOTypesSqueezeShapeImpl(
+      context, graphOp, cast<TensorValue>(operands.getInputShape()),
+      cast<TensorValue>(operands.getRemoveIndices()), rmoResults,
+      moOperandTypes, moResultTypes, moInputParamDecls, moOutputParamDecls);
+}
+
+void MOUnsqueezeShapeOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  inferMOTypesSqueezeShapeImpl(
+      context, graphOp, cast<TensorValue>(operands.getInputShape()),
+      cast<TensorValue>(operands.getPaddingIndices()), rmoResults,
+      moOperandTypes, moResultTypes, moInputParamDecls, moOutputParamDecls);
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST

@@ -1898,4 +1898,68 @@ def RMO_MOTileOp : RMO_MOAnaloguePureTensorOp<"tile",
   let results = (outs MO_Tensor:$result);
 }
 
+def RMO_MOSqueezeShapeOp : RMO_MOAnaloguePureTensorOp<"squeeze_shape",
+  [AllDTypesMatch<["input_shape", "result"]>]> {
+  let summary = "Squeeze-shape operation";
+  let description = [{
+    Calculates the shape from squeeze like operators. Given an input shape
+    vector representing a tensor of rank `N`, and a list of indices of length
+    `M`, returns a new shape vector representing a tensor of rank `N - M`. The
+    indices represent the 0-based index of dimensions in the original rank `N`
+    tensor.
+
+    The indicated indices must represent dimensions of size 1. If
+    an index does not point to a dimension to size 1, an error is thrown
+    instead.
+
+    This operator supports negative indexing with python-like semantics.
+    That is all indices must be in [-N, N), if an index is < 0, it is as if
+    we added `N` to it.
+
+    Example:
+
+    ```mlir
+      %input_shape : !mo.tensor<[8], si32>
+      %indices : !mo.tensor<[4], si32>
+      %res = rmo.mo.squeeze_shape(%input_shape, %indices) : (!mo.tensor<[8], si32>, !mo.tensor<[4], si32>) -> !mo.tensor<[4], si32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_ShapeLikeIfRanked:$input_shape,
+    MO_ShapeLikeIfRanked:$remove_indices,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_ShapeLikeIfRanked:$result);
+}
+
+def RMO_MOUnsqueezeShapeOp : RMO_MOAnaloguePureTensorOp<"unsqueeze_shape",
+  [AllDTypesMatch<["input_shape", "result"]>]> {
+  let summary = "Unsqueeze-shape operation";
+  let description = [{
+    Calculates the shape from unsqueeze like operators. Given an input shape
+    vector representing a tensor of rank `N`, and a list of indices of length
+    `M`, returns a new shape vector representing a tensor of rank `N + M`.
+
+    The indices in the given list map to the new vector of length `N + M` where
+    the indicated dimensions are replaced with `1`. The remaining dimension in
+    the original input shape vector are copied over in the non-1 dimensions.
+
+    This operator supports negative indexing.
+
+    Example:
+
+    ```mlir
+      %input_shape : !mo.tensor<[3], si32>
+      %indices : !mo.tensor<[4], si32>
+      %res = rmo.mo.unsqueeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si32>) -> !mo.tensor<[7], si32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_ShapeLikeIfRanked:$input_shape,
+    MO_ShapeLikeIfRanked:$padding_indices,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_ShapeLikeIfRanked:$result);
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
