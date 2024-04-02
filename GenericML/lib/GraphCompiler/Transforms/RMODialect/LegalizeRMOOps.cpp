@@ -335,8 +335,8 @@ struct LegalizeRMOOps
         LegalizeRMOMOAnalogue<RMO::MOGatherOp, MO::GatherOp>,
         LegalizeRMOMOAnalogue<RMO::MOGatherNdOp, MO::GatherNdOp>,
         LegalizeRMOMOAnalogue<RMO::MOMatmulOp, MO::MatmulOp>,
-        LegalizeRMOMOAnalogue<RMO::MOBatchMatmulOp, MO::BatchMatmulOp>>(
-        context);
+        LegalizeRMOMOAnalogue<RMO::MOBatchMatmulOp, MO::BatchMatmulOp>,
+        LegalizeRMOMOAnalogue<RMO::MOTileOp, MO::TileOp>>(context);
 
     // Lowering rebind
     if (!skipRMORebind)

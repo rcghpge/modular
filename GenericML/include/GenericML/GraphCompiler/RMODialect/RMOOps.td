@@ -1810,7 +1810,6 @@ def RMO_MOMatmulOp : RMO_MOAnaloguePureTensorOp<"matmul"> {
   let summary = "Matrix-matrix multiplication operation";
   let description = [{
     Performs matrix multiplication on two 2D tensors.
-
     Example:
 
     ```mlir
@@ -1870,6 +1869,33 @@ def RMO_MOSoftmaxOp : RMO_MOAnaloguePureUnaryElementWiseOp<"softmax"> {
       %res = rmo.mo.softmax(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
+}
+
+def RMO_MOTileOp : RMO_MOAnaloguePureTensorOp<"tile",
+  [AllDTypesMatch<["input", "result"]>]> {
+  let summary = "Tiling operation";
+  let description = [{
+    Returns a new Tensor as the result of copying the input tensor N_i times
+    on each dimension, where N_i = tiles[i].
+
+    The i-th dimension of output shape will be the ith dimension of input shape
+    multiplied by N_i.
+
+    Example:
+
+    ```mlir
+      %input : !mo.tensor<[2, 3], f32>
+      %repeats : !mo.tensor<[2], si64>
+      %res = rmo.mo.tile(%input, %repeats) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ShapeLikeIfRanked:$repeats,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
 }
 
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
