@@ -395,6 +395,12 @@ def MO_IndicesVectorIfRanked : MO_ConfinedTensor<
   [IntOrIndexElementTypePred, HasRankIfRankedPred<1>],
   "rank 1 or unranked with integer or index elements">;
 
+/// Confines the MO_TensorType so that it has int/index elements, and rank 0 if
+/// rank is static.
+def MO_IndexScalarIfRanked : MO_ConfinedTensor<
+  [IntOrIndexElementTypePred, HasRankIfRankedPred<0>],
+  "rank 0 or unranked with integer or index elements">;
+
 /// Confines the MO_TensorType so that it has rank 2 if rank is static.
 def MO_MatrixIfRanked : MO_ConfinedTensor<
   [HasRankIfRankedPred<2>], "rank 2 or unranked">;
@@ -413,6 +419,14 @@ def MO_BooleanMask : MO_ConfinedTensor<
 def MO_CondLike : ConfinedType<MO_Tensor,
     [MO_HasAnyRankOfPred<[0]>, HasBoolElementTypePred],
     "rank 0 and boolean element type"> {
+  let cppClassName = "::M::MO::TensorType";
+}
+
+/// Confines the MO_TensorType so that it has Boolean elements and rank 0 if
+/// rank is static.
+def MO_CondLikeIfRanked : ConfinedType<MO_Tensor,
+    [HasRankIfRankedPred<0>, HasBoolElementTypePred],
+    "rank 0 or unranked with boolean element type"> {
   let cppClassName = "::M::MO::TensorType";
 }
 

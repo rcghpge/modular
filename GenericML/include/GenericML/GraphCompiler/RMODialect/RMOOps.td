@@ -1994,4 +1994,80 @@ def RMO_MOTransposeOp : RMO_MOAnaloguePureTensorOp<"transpose",
   let results = (outs MO_Tensor:$result);
 }
 
+class RMO_MOAnaloguePureTopKOp<string name> : RMO_MOAnaloguePureTensorOp<
+  name, [AllDTypesMatch<["input", "values"]>]
+> {
+  let arguments = (ins MO_Tensor:$input,
+                       MO_IndexScalarIfRanked:$K,
+                       MO_IndexScalarIfRanked:$axis,
+                       MO_CondLikeIfRanked:$sorted,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$values,
+                      MO_I64Tensor:$indices);
+
+  let extraClassDeclaration = [{
+    static void inferMOTypesImpl(
+      MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+      std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+      SmallVectorImpl<Type> &moResultTypes,
+      SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+      SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+        inferMOTypesTopKImpl(
+          context, graphOp, cast<TensorValue>(operands.getInput()),
+          cast<TensorValue>(operands.getK()),
+          cast<TensorValue>(operands.getAxis()),
+          cast<TensorValue>(operands.getSorted()), rmoResults, moOperandTypes,
+          moResultTypes, moInputParamDecls, moOutputParamDecls);
+      }
+  }];
+}
+
+def RMO_MOTopKOp : RMO_MOAnaloguePureTopKOp<"top_k"> {
+  let summary = "Top-K operation";
+  let description = [{
+    Computes the largest values and their corresponding indices in a tensor
+    along a specified axis. Returned values along the axis are always sorted
+    (stable).
+
+    Example:
+    ```mlir
+      %in = mo.constant {
+        value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11> : tensor<2x6xsi64>
+      } : !mo.tensor<[2, 6], si64>
+      %k = mo.constant() { value = #M.dense_array<3> : tensor<si64> } : !mo.tensor<[], si64>
+      %axis = mo.constant { value = #M.dense_array<1> : tensor<si64> } : !mo.tensor<[], si64>
+      %sorted = mo.constant { value = #M.dense_array<1> : tensor<1xi1> } : !mo.tensor<[], bool>
+      %values, %indices = rmo.mo.top_k(%in, %k, %axis, %sorted) : (
+        !mo.tensor<[2, 6], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>
+      ) -> (
+        !mo.tensor<[2, 3], si64>, !mo.tensor<[2, 3], si64>
+      )
+    ```
+  }];
+}
+
+def RMO_MOBottomKOp : RMO_MOAnaloguePureTopKOp<"bottom_k"> {
+  let summary = "Bottom-K operation";
+  let description = [{
+    Computes the bottom (lowest) values and their corresponding indices in a
+    tensor along a specified axis. Returned values along the axis are always
+    sorted (stable).
+
+    Example:
+    ```mlir
+      %in = mo.constant {
+        value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11> : tensor<2x6xsi64>
+      } : !mo.tensor<[2, 6], si64>
+      %k = mo.constant { value = #M.dense_array<3> : tensor<si64> } : !mo.tensor<[], si64>
+      %axis = mo.constant { value = #M.dense_array<1> : tensor<si64> } : !mo.tensor<[], si64>
+      %sorted = mo.constant { value = #M.dense_array<1> : tensor<1xi1> } : !mo.tensor<[], bool>
+      %values, %indices = rmo.mo.bottom_k(%in, %k, %axis, %sorted) : (
+        !mo.tensor<[2, 6], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>
+      ) -> (
+        !mo.tensor<[2, 3], si64>, !mo.tensor<[2, 3], si64>
+      )
+    ```
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD

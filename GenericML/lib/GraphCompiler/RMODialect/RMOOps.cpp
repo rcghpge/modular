@@ -1177,6 +1177,56 @@ void MOTransposeOp::inferMOTypesImpl(
   moOutputParamDecls.push_back(std::move(resultParamDecls));
 }
 
+void inferMOTypesTopKImpl(
+    MLIRContext *context, MO::GraphOp graphOp, TensorValue input, TensorValue k,
+    TensorValue axis, TensorValue sorted, std::optional<ValueRange> rmoResults,
+    SmallVectorImpl<Type> &moOperandTypes, SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+  // Infer the input / output rank.
+  std::optional<int64_t> rank;
+  if (input.getType().hasRank())
+    rank = input.getType().getRank();
+  else if (rmoResults.has_value() &&
+           cast<TensorType>((*rmoResults)[0].getType()).hasRank())
+    rank = cast<TensorType>((*rmoResults)[0].getType()).getRank();
+  else if (rmoResults.has_value() &&
+           cast<TensorType>((*rmoResults)[1].getType()).hasRank())
+    rank = cast<TensorType>((*rmoResults)[1].getType()).getRank();
+
+  // `input` has static or dynamic rank.
+  SmallVector<KGEN::ParamDeclAttr> inputParamDecls;
+  moOperandTypes.push_back(
+      rank.has_value()
+          ? getRankedParamTensorType(*rank, input.getType().getDtype(), graphOp,
+                                     inputParamDecls)
+          : getUnrankedTensorType(input.getType().getDtype(), graphOp,
+                                  inputParamDecls));
+  moInputParamDecls.push_back(std::move(inputParamDecls));
+
+  // k / axis / sorted are scalars.
+  moOperandTypes.push_back(k.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(axis.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(sorted.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+
+  // Both outputs have identical shape, with same rank than input.
+  SmallVector<KGEN::ParamDeclAttr> outputParamDecls;
+  DType outputDtype = getDType(rmoResults, 0, input.getType().getDtype());
+  TensorType outputTy =
+      rank.has_value()
+          ? getRankedParamTensorType(*rank, outputDtype, graphOp,
+                                     outputParamDecls)
+          : getUnrankedTensorType(outputDtype, graphOp, outputParamDecls);
+  moResultTypes.push_back(outputTy);
+  moOutputParamDecls.push_back(std::move(outputParamDecls));
+  moResultTypes.push_back(outputTy.cloneWith(DType::si64));
+  moOutputParamDecls.push_back({});
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST

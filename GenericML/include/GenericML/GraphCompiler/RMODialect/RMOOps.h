@@ -51,6 +51,14 @@ void inferMOTypesElemwiseUnaryImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls);
 
+/// inferMoTypesImpl for TopK-like ops
+void inferMOTypesTopKImpl(
+    MLIRContext *context, MO::GraphOp graphOp, TensorValue input, TensorValue k,
+    TensorValue axis, TensorValue sorted, std::optional<ValueRange> rmoResults,
+    SmallVectorImpl<Type> &moOperandTypes, SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls);
+
 } // namespace M::RMO
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
