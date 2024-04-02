@@ -205,6 +205,14 @@ int main(int argc, char **argv) {
   // return code.
   int rc = EXIT_SUCCESS;
 
+  // Create a context used by this command (compile/execute/benchmark) run.
+  Init::Options contextOptions;
+  contextOptions.withRuntimeOptions(options);
+  auto contextOr =
+      Init::createContext(options.getProgramName(), contextOptions);
+  if (contextOr.isError())
+    return options.reportError(contextOr.getError());
+
   for (auto &inputInfo : inputsInfo) {
     auto dylibOr = loadDesiredLibrary(argc, argv, inputInfo.file.copy(),
                                       inputInfo.format, options.loadLib);
@@ -227,12 +235,6 @@ int main(int argc, char **argv) {
     }
 
     // Setup the framework context.
-    Init::Options contextOptions;
-    contextOptions.withRuntimeOptions(options);
-    auto contextOr =
-        Init::createContext(options.getProgramName(), contextOptions);
-    if (contextOr.isError())
-      return options.reportError(contextOr.getError());
     auto frameworkCtxOr =
         dylib.initFrameworkContext(contextOr->copy(), argc, argv);
     if (failed(frameworkCtxOr))
@@ -355,9 +357,10 @@ int main(int argc, char **argv) {
     // FIXME(#36219): Write all traces, since the runtime won't be flushed.
     // This should be removed when the runtime is properly flushed when the
     // context goes out of scope.
-    auto profiler = (*contextOr)->get<LLCL::Runtime>()->getProfiler();
-    if (profiler) {
-      auto writeErr = profiler->write(options.profileFilename, "-");
+    std::optional<TimeTraceProfiler> &profilerOr =
+        (*contextOr)->get<LLCL::Runtime>()->getProfiler();
+    if (profilerOr) {
+      auto writeErr = profilerOr->write(options.profileFilename, "-");
       if (writeErr.isError())
         return options.reportError(writeErr.getError());
     }
