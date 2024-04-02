@@ -1227,6 +1227,79 @@ void inferMOTypesTopKImpl(
   moOutputParamDecls.push_back({});
 }
 
+void LinAlg::MOBandPartOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  TensorValue input = cast<TensorValue>(operands.getInput());
+  TensorValue numLower = cast<TensorValue>(operands.getNumLower());
+  TensorValue numUpper = cast<TensorValue>(operands.getNumUpper());
+  TensorValue exclude = cast<TensorValue>(operands.getExclude());
+
+  // Input type is unchanged.
+  TensorType inputTy = input.getType();
+  moOperandTypes.push_back(inputTy);
+  moInputParamDecls.push_back({});
+
+  // num_lower / num_upper / exclude are scalars.
+  moOperandTypes.push_back(numLower.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(numUpper.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(exclude.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+
+  // Output type is identical to input type
+  moResultTypes.push_back(inputTy);
+  moOutputParamDecls.push_back({});
+}
+
+void LinAlg::MOSolveOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  TensorValue input = cast<TensorValue>(operands.getInput());
+  TensorValue rhs = cast<TensorValue>(operands.getRhs());
+
+  // All inputs / output have the same rank.
+  // Try to infer the rank.
+  std::optional<int64_t> rank;
+  if (input.getType().hasRank())
+    rank = input.getType().getRank();
+  else if (rhs.getType().hasRank())
+    rank = rhs.getType().getRank();
+
+  // Set all types to unranked or same rank.
+  SmallVector<KGEN::ParamDeclAttr> inputDecls;
+  moOperandTypes.push_back(
+      rank.has_value()
+          ? getRankedParamTensorType(*rank, input.getType().getDtype(), graphOp,
+                                     inputDecls)
+          : getUnrankedTensorType(input.getType().getDtype(), graphOp,
+                                  inputDecls));
+  moInputParamDecls.push_back(inputDecls);
+
+  SmallVector<KGEN::ParamDeclAttr> rhsDecls;
+  moOperandTypes.push_back(
+      rank.has_value()
+          ? getRankedParamTensorType(*rank, rhs.getType().getDtype(), graphOp,
+                                     rhsDecls)
+          : getUnrankedTensorType(rhs.getType().getDtype(), graphOp, rhsDecls));
+  moInputParamDecls.push_back(rhsDecls);
+
+  SmallVector<KGEN::ParamDeclAttr> outputDecls;
+  DType outputDType = getDType(rmoResults, 0, input.getType().getDtype());
+  moResultTypes.push_back(
+      rank.has_value()
+          ? getRankedParamTensorType(*rank, outputDType, graphOp, outputDecls)
+          : getUnrankedTensorType(outputDType, graphOp, outputDecls));
+  moOutputParamDecls.push_back(outputDecls);
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST

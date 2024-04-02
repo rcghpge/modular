@@ -2070,4 +2070,92 @@ def RMO_MOBottomKOp : RMO_MOAnaloguePureTopKOp<"bottom_k"> {
   }];
 }
 
+class RMO_MOAnaloguePureLinalgOp<string mnemonic, list<Trait> traits = []>
+    : RMO_MOAnaloguePureTensorOp<"linalg." # mnemonic, traits> {
+  string cppNamespace = RMODialect.cppNamespace # "::LinAlg";
+}
+
+def RMO_MOBandPartOp : RMO_MOAnaloguePureLinalgOp<"band_part",
+  [AllDTypesMatch<["input", "result"]>]> {
+  let summary = "Matrix band part operation";
+  let description = [{
+    Copies a tensor setting everything outside central (diagonal) band of the
+    matrices to zero, where all but the last two axes are effectively batches,
+    and the last two axes define sub matricies.
+
+    Assumes the input has dimensions [I, J, ..., M, N], then the output tensor
+    has the same shape as the input, and the values values are given by
+
+    out[i, j, ..., m, n] = in_band(m, n) * input[i, j,  ..., m, n].
+
+    With the indicator function
+
+    in_band(m, n) = ((num_lower < 0 || (m - n) <= num_lower)) &&
+                     (num_upper < 0 || (n - m) <= num_upper))
+
+    If `exclude` is set, the selection is reverted: The elements in band are set
+    to zero while the elements outside the band are copied to the output tensor.
+
+    Please explicitly note that with negative values, this kernel returns the
+    entire lower or uppper triangle of the matrix, and otherwise returns
+    a diagonal band around the main diagonal of the matrix.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[3, 2, 3], f32>
+      %num_lower = mo.constant {
+        value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %num_upper = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %exclude = mo.constant {
+        value = #M.dense_array<0> : tensor<1xui8>} : !mo.tensor<[], bool>
+      %res = rmo.mo.linalg.band_part(%arg, %num_lower, %num_upper, %exclude) : (
+        !mo.tensor<[3, 2, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>,
+        !mo.tensor<[], bool>
+        ) -> !mo.tensor<[3, 2, 3], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndexScalarIfRanked:$num_lower,
+    MO_IndexScalarIfRanked:$num_upper,
+    MO_CondLikeIfRanked:$exclude,
+    MO_ParamDecls:$outputParamDecls);
+
+  let results = (outs MO_Tensor:$result);
+}
+
+def RMO_MOSolveOp : RMO_MOAnaloguePureLinalgOp<"solve"> {
+  let summary = "Linear solve operation";
+  let description = [{
+    Solves the system of linear equations described by
+
+      `AX = B`
+
+    Where input A is a batch of square matrices and has shape [I, J, ..., M, M]
+    which are assumed to be full rank/invertible and rhs B is a batch of
+    results of shape [I, J, ..., M, K]. The result, X, will be a tensor of
+    shape [I, J, ..., M, K]
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[3, 3, 3], f32>
+      %rhs: !mo.tensor<[3, 3, 2], f32>
+      %res = rmo.mo.linalg.solve(%arg, %rhs) : (
+        !mo.tensor<[3, 3, 3], f32>, !mo.tensor<[3, 3, 2], f32>, !mo.tensor<[]
+        ) -> !mo.tensor<[3, 3, 2], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_Tensor:$rhs,
+    MO_ParamDecls:$outputParamDecls);
+
+  let results = (outs MO_Tensor:$result);
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD

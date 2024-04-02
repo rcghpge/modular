@@ -341,7 +341,11 @@ struct LegalizeRMOOps
         LegalizeRMOMOAnalogue<RMO::MOUnsqueezeShapeOp, MO::UnsqueezeShapeOp>,
         LegalizeRMOMOAnalogue<RMO::MOTransposeOp, MO::TransposeOp>,
         LegalizeRMOMOAnalogue<RMO::MOTopKOp, MO::TopKOp>,
-        LegalizeRMOMOAnalogue<RMO::MOBottomKOp, MO::BottomKOp>>(context);
+        LegalizeRMOMOAnalogue<RMO::MOBottomKOp, MO::BottomKOp>,
+        LegalizeRMOMOAnalogue<RMO::LinAlg::MOBandPartOp,
+                              MO::LinAlg::BandPartOp>,
+        LegalizeRMOMOAnalogue<RMO::LinAlg::MOSolveOp, MO::LinAlg::SolveOp>>(
+        context);
 
     // Lowering rebind
     if (!skipRMORebind)
