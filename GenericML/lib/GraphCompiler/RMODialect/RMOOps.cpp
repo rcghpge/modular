@@ -1398,6 +1398,100 @@ void MOSplitOp::inferMOTypesImpl(
   }
 }
 
+namespace {
+void inferMOTypesPadImpl(
+    MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
+    TensorValue paddings, TensorValue constant,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  // Try to infer the input / output rank.
+  TensorType inputTy = input.getType();
+  TensorType paddingsTy = paddings.getType();
+  std::optional<int64_t> rank;
+  if (inputTy.hasRank())
+    rank = inputTy.getRank();
+  else if (paddingsTy.hasStaticShape())
+    rank = paddingsTy.getIntDim(0);
+  else if (rmoResults.has_value() &&
+           cast<TensorType>((*rmoResults)[0].getType()).hasRank())
+    rank = cast<TensorType>((*rmoResults)[0].getType()).getRank();
+
+  // Set input rank if possible.
+  SmallVector<KGEN::ParamDeclAttr> inputDecls;
+  moOperandTypes.push_back(
+      rank.has_value()
+          ? getRankedParamTensorType(*rank, inputTy.getDtype(), graphOp,
+                                     inputDecls)
+          : getUnrankedTensorType(inputTy.getDtype(), graphOp, inputDecls));
+  moInputParamDecls.push_back(std::move(inputDecls));
+
+  // paddings shape must be [rank, 2].
+  SmallVector<KGEN::ParamDeclAttr> paddingsDecls;
+  TypedAttr rankAttr = rank.has_value()
+                           ? createStaticDimensionType(graphOp, *rank)
+                           : createDynamicDimensionType(graphOp, paddingsDecls);
+  TypedAttr d2Attr = createStaticDimensionType(graphOp, 2);
+  moOperandTypes.push_back(
+      paddingsTy.cloneWith(SmallVector<TypedAttr>{rankAttr, d2Attr}));
+  moInputParamDecls.push_back(std::move(paddingsDecls));
+
+  // constant must be scalar.
+  if (constant) {
+    moOperandTypes.push_back(
+        constant.getType().cloneWith(ArrayRef<TypedAttr>{}));
+    moInputParamDecls.push_back({});
+  }
+
+  // set output rank if possible.
+  SmallVector<KGEN::ParamDeclAttr> outputDecls;
+  moResultTypes.push_back(
+      rank.has_value()
+          ? getRankedParamTensorType(*rank, inputTy.getDtype(), graphOp,
+                                     outputDecls)
+          : getUnrankedTensorType(inputTy.getDtype(), graphOp, outputDecls));
+  moOutputParamDecls.push_back(std::move(outputDecls));
+}
+} // namespace
+
+void MOPadConstantOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  inferMOTypesPadImpl(context, graphOp, cast<TensorValue>(operands.getInput()),
+                      cast<TensorValue>(operands.getPaddings()),
+                      cast<TensorValue>(operands.getConstant()), rmoResults,
+                      moOperandTypes, moResultTypes, moInputParamDecls,
+                      moOutputParamDecls);
+}
+
+void MOPadReflectOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  inferMOTypesPadImpl(context, graphOp, cast<TensorValue>(operands.getInput()),
+                      cast<TensorValue>(operands.getPaddings()), nullptr,
+                      rmoResults, moOperandTypes, moResultTypes,
+                      moInputParamDecls, moOutputParamDecls);
+}
+
+void MOPadRepeatOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  inferMOTypesPadImpl(context, graphOp, cast<TensorValue>(operands.getInput()),
+                      cast<TensorValue>(operands.getPaddings()), nullptr,
+                      rmoResults, moOperandTypes, moResultTypes,
+                      moInputParamDecls, moOutputParamDecls);
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST

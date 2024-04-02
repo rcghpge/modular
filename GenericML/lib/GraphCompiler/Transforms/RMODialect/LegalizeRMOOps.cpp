@@ -346,7 +346,10 @@ struct LegalizeRMOOps
                               MO::LinAlg::BandPartOp>,
         LegalizeRMOMOAnalogue<RMO::LinAlg::MOSolveOp, MO::LinAlg::SolveOp>,
         LegalizeRMOMOAnalogue<RMO::MOConcatOp, MO::ConcatOp>,
-        LegalizeRMOMOAnalogue<RMO::MOSplitOp, MO::SplitOp>>(context);
+        LegalizeRMOMOAnalogue<RMO::MOSplitOp, MO::SplitOp>,
+        LegalizeRMOMOAnalogue<RMO::MOPadConstantOp, MO::PadConstantOp>,
+        LegalizeRMOMOAnalogue<RMO::MOPadReflectOp, MO::PadReflectOp>,
+        LegalizeRMOMOAnalogue<RMO::MOPadRepeatOp, MO::PadRepeatOp>>(context);
 
     // Lowering rebind
     if (!skipRMORebind)

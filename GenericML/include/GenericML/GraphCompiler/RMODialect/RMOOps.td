@@ -2245,4 +2245,102 @@ def RMO_MOSplitOp : RMO_MOAnaloguePureTensorOp<"split"> {
   }];
 }
 
+def RMO_MOPadConstantOp : RMO_MOAnaloguePureTensorOp<"pad.constant",
+  [AllDTypesMatch<["input", "result"]>]> {
+  let summary = "Constant-mode padding operation";
+  let description = [{
+    Pads the `input` tensor with a scalar tensor `constant` according to the
+    `paddings`. Assumes input has rank `N`, the `paddings` tensor should have
+    shape `(N, 2)`, where each row has the form `[before, after]`, indicating
+    how many of `constant` to add before and after the contents of `input` in
+    that dimension. The size of each dimension D of the padded output is:
+    `paddings[D, 0] + input.dim(D) + paddings[D, 1]`.
+
+    Example:
+
+    ```mlir
+      %input: !mo.tensor<[2, 3], f32>
+      %constant = mo.constant {
+        value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
+      %paddings = mo.constant {
+        value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>
+      } : !mo.tensor<[2, 2], si64>
+      %output =   mo.pad.constant(%input, %paddings, %constant) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>, !mo.tensor<[], f32>
+      ) -> !mo.tensor<[3, 5], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_PaddingLikeIfRanked:$paddings,
+    MO_ScalarTensorIfRanked:$constant,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+}
+
+def RMO_MOPadReflectOp : RMO_MOAnaloguePureTensorOp<"pad.reflect",
+  [AllDTypesMatch<["input", "result"]>]> {
+  let summary = "Reflection-mode padding operation";
+  let description = [{
+    Pads the `input` tensor by reflecting it according to the `paddings`. Assumes
+    input has rank `N`, the `paddings` tensor should have shape `(N, 2)`, where
+    each row has the form `[before, after]`, indicating how many of `constant`
+    to add before and after the contents of `input` in that dimension. The size
+    of each dimension D of the padded output is:
+
+    `paddings[D, 0] + input.dim(D) + paddings[D, 1]`.
+
+    Example:
+
+    ```mlir
+      %input: !mo.tensor<[2, 3], f32>
+      %paddings = mo.constant {
+        value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>
+      } : !mo.tensor<[2, 2], si64>
+      %output   = mo.pad.reflect(%input, %paddings) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>) ->
+        !mo.tensor<[3, 5], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_PaddingLikeIfRanked:$paddings,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+}
+
+def RMO_MOPadRepeatOp : RMO_MOAnaloguePureTensorOp<"pad.repeat",
+  [AllDTypesMatch<["input", "result"]>]> {
+  let summary = "Repeat-mode padding operation";
+  let description = [{
+    Pads the `input` tensor by repeating border values according to `paddings`.
+    Assumes input has rank `N`, the `paddings` tensor should have shape `(N, 2)`, where
+    each row has the form `[before, after]`, indicating how many of the border values
+    to add before and after the contents of `input` in that dimension. The size
+    of each dimension D of the padded output is:
+
+    `paddings[D, 0] + input.dim(D) + paddings[D, 1]`.
+
+    Example:
+
+    ```mlir
+      %input: !mo.tensor<[2, 3], f32>
+      %paddings = mo.constant {
+        value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>
+      } : !mo.tensor<[2, 2], si64>
+      %output   = mo.pad.repeat(%input, %paddings) : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>) ->
+        !mo.tensor<[3, 5], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_PaddingLikeIfRanked:$paddings,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD

@@ -309,6 +309,11 @@ def HasPaddingShapePred : And<[
   MO_HasAnyRankOfPred<[2]>,
   CPred<"$_self.cast<::M::MO::TensorType>().getIntDim(1) == 2">]>;
 
+/// Checks if a MO_TensorType has shape [N, 2] if ranked.
+def HasRank2LastDim2IfRankedPred : And<[
+  HasRankIfRankedPred<2>,
+  CPred<"!$_self.cast<::M::MO::TensorType>().hasStaticShape() || $_self.cast<::M::MO::TensorType>().getIntDim(1) == 2">]>;
+
 /// Base class for defining constraints on MO_TensorType.
 class MO_ConfinedTensor<list<Pred> predicates, string summary = ""> :
   ConfinedType<MO_Tensor, predicates, summary, "::M::MO::TensorType">;
@@ -316,6 +321,10 @@ class MO_ConfinedTensor<list<Pred> predicates, string summary = ""> :
 /// Confines the MO_TensorType so that it's ranked and a scalar.
 def MO_RankedScalarTensor : MO_ConfinedTensor<
   [MO_HasAnyRankOfPred<[0]>], "ranked scalar tensor">;
+
+/// Confines the MO_TensorType so that it's a scalar or unranked.
+def MO_ScalarTensorIfRanked : MO_ConfinedTensor<
+  [HasRankIfRankedPred<0>], "scalar or unranked tensor">;
 
 /// Confines the MO_TensorType so that it's ranked and a scalar int or index.
 def MO_RankedScalarIndexTensor : MO_ConfinedTensor<
@@ -377,6 +386,12 @@ def MO_ShapeLike : MO_ConfinedTensor<
 def MO_PaddingLike : MO_ConfinedTensor<
   [HasPaddingShapePred, Or<[HasSI64ElementTypePred, HasSI32ElementTypePred]>],
   "shape [N, 2] and signed 64 or signed 32 integer elements">;
+
+/// Confines the MO_TensorType so that it has SI32 or SI64 elements and shape
+/// [N, 2] or unranked.
+def MO_PaddingLikeIfRanked : MO_ConfinedTensor<
+  [HasRank2LastDim2IfRankedPred, Or<[HasSI64ElementTypePred, HasSI32ElementTypePred]>],
+  "unranked or shape [N, 2] and signed 64 or signed 32 integer elements">;
 
 /// Confines the MO_TensorType so that it has SI64 elements, and rank 1 if the
 /// rank is static.
