@@ -45,11 +45,23 @@ set(REGISTER_SRCS
   register/register
 )
 
+if (MODULAR_BUILD_MUTT)
+  set(SERVE_SRCS
+    serve/_c
+    serve/_mutt
+    serve/kserve
+    serve/service
+  )
+else ()
+  set(SERVE_SRCS "")
+endif ()
+
 # TODO: Enable priming the compilation cache.
 add_mojo_package(max-mojo PRIVATE DISABLE_PRIME_CACHE
   ${GRAPH_SRCS}
   ${ENGINE_SRCS}
   ${REGISTER_SRCS}
+  ${SERVE_SRCS}
 
   DOCS_DIR
   SDK/docs
@@ -64,3 +76,7 @@ add_mojo_package(max-mojo PRIVATE DISABLE_PRIME_CACHE
 # See the install-max-graph-c target.
 
 add_dependencies(max-mojo mlir-mojo-api)
+
+if (MODULAR_BUILD_MUTT)
+  add_dependencies(max-mojo MuttCAPI)
+endif ()
