@@ -52,7 +52,6 @@ manylinux-aarch64-image = "ghcr.io/modularml/modular/ai-engine-packaging-aarch64
 skip = ["cp36-* cp37-*, *-manylinux_i686", "*-musllinux*"]
 
 [tool.cibuildwheel.linux]
-# TODO(#11188): Enable `auditwheel`.
 repair-wheel-command = ""
 
 [tool.isort]
@@ -63,4 +62,5 @@ profile = "black"
 # for us to install Rosetta, which breaks our Mojo build.
 build="cp{39,310,311}-macosx*"
 before-all=""
+# TODO: Enable delocate (#36535)
 repair-wheel-command=""
