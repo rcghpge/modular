@@ -22,7 +22,7 @@ set(GRAPH_SRCS
   graph/_testing)
 
 set(ENGINE_SRCS
-  engine/engine
+  engine/info
   engine/model
   engine/session
   engine/shape_element
