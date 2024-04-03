@@ -349,7 +349,7 @@ OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 void AssertOp::build(OpBuilder &builder, OperationState &state, Value cond,
-                     Twine message) {
+                     const Twine &message) {
   auto attr = StringAttr::get(message.str(),
                               KGEN::StringType::get(builder.getContext()));
   build(builder, state, cond, cast<TypedAttr>(attr));

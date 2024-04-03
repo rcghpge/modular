@@ -183,7 +183,7 @@ public:
     scopes.push_back(scopeName.str());
   }
   void exitScope(StringRef scopeName) override { scopes.pop_back(); }
-  void reportError(Twine errorDetail) override {
+  void reportError(const Twine &errorDetail) override {
     llvm::errs() << "In ";
     if (scopes.empty())
       llvm::errs() << "root of input generation schema";

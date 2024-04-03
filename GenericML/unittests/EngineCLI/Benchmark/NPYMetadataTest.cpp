@@ -17,7 +17,7 @@ static ErrorOr<T> ok(T value) {
   return std::move(value);
 }
 
-static ErrorOr<llvm::json::Value> jsonErr(Twine errorMessage) {
+static ErrorOr<llvm::json::Value> jsonErr(const Twine &errorMessage) {
   return Error(errorMessage);
 }
 

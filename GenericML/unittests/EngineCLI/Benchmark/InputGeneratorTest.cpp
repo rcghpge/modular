@@ -59,7 +59,7 @@ public:
 
   void enterScope(StringRef scopeName) override;
   void exitScope(StringRef scopeName) override;
-  void reportError(Twine errorDetail) override;
+  void reportError(const Twine &errorDetail) override;
 
   testing::AssertionResult reportedNoErrors() const;
 
@@ -79,7 +79,7 @@ void TestInputSchemaErrorReporter::exitScope(StringRef scopeName) {
   EXPECT_EQ(currentScope.back(), scopeName);
   currentScope.pop_back();
 }
-void TestInputSchemaErrorReporter::reportError(Twine errorDetail) {
+void TestInputSchemaErrorReporter::reportError(const Twine &errorDetail) {
   errors.emplace_back(currentScope, errorDetail.str());
 }
 

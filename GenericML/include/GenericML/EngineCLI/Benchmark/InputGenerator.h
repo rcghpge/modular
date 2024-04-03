@@ -41,7 +41,7 @@ public:
 
   virtual void enterScope(StringRef scopeName) = 0;
   virtual void exitScope(StringRef scopeName) = 0;
-  virtual void reportError(Twine errorDetail) = 0;
+  virtual void reportError(const Twine &errorDetail) = 0;
 };
 
 class InputRandomDistribution {

@@ -304,7 +304,7 @@ def MOSH_AssertOp : MOSH_Op<"assert"> {
   let results = (outs MOSH_ChainType:$chain);
 
   let builders = [
-    OpBuilder<(ins "Value":$cond, "Twine":$message)>,
+    OpBuilder<(ins "Value":$cond, "const Twine &":$message)>,
   ];
 
   let assemblyFormat = "$cond `,` custom<StringParam>($message) attr-dict";

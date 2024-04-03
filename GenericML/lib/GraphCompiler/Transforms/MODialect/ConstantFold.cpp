@@ -892,7 +892,7 @@ void ConstantFoldPass::runOnOperation() {
   auto readyChain = AsyncValueRef<Chain>::allocate(runtimeFromCtx);
 
   LLCL::addTask(*runtimeFromCtx, [&, readyChain = readyChain.copy()]() mutable {
-    auto setError = [&](mlir::Location loc, Twine errorMessage) {
+    auto setError = [&](mlir::Location loc, const Twine &errorMessage) {
       auto encodedLocation = LLCL::MLIRLocationDecoder::getEncodedLocation(loc);
       return std::move(readyChain)
           .setToError({Error(errorMessage), std::move(encodedLocation)});
