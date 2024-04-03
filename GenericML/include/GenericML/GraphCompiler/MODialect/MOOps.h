@@ -131,6 +131,10 @@ Value tryConvertToShapeVal(Value val, Location loc);
 /// `null`.
 ShapeAttr tryGetShapeAttr(Value val);
 
+/// Extract the single dimension (symbolic, constant, or expression) represented
+/// by `val` if possible, else return `null`.
+TypedAttr tryGetDimAttr(Value val);
+
 /// If any of the input/output tensor type's metadata changed, update the given
 /// GraphOp's function type and signature to reflect those changes as well.
 void synchronizeMetadataUpdates(GraphOp op);

@@ -479,6 +479,77 @@ private:
     return outputShape;
   }
 
+  // Assume `invokeShapeFuncOp` applies the shape function of `MO::RangeOp`,
+  // try decomposing the shape function call into `kgen.param.declare`
+  // primitives if possible, return null otherwise.
+  ShapeAttr tryDecomposeRangeShape(InvokeShapeFuncOp invokeShapeFuncOp) {
+    // Make sure both input and target shapes are ranked symbolic shapes.
+    TypedAttr start = tryGetDimAttr(invokeShapeFuncOp.getOperand(0));
+    TypedAttr stop = tryGetDimAttr(invokeShapeFuncOp.getOperand(1));
+    TypedAttr step = tryGetDimAttr(invokeShapeFuncOp.getOperand(2));
+    if (!start || !stop || !step)
+      return {};
+
+    // Some metadata
+    auto indexType = builder.getType<IndexType>();
+    auto zero = IntegerAttr::get(indexType, 0);
+    auto one = IntegerAttr::get(indexType, 1);
+
+    // Check step == 0
+    KGEN::ParamDeclRefAttr stepIsZero = createDeclToKgenAttr(
+        "step_is_zero", KGEN::ParamOperatorAttr::getNE(step, zero));
+    createAssert("range_assert", "[range] step must be non-zero", stepIsZero);
+
+    // Check start/stop are in bounds (1)
+    KGEN::ParamDeclRefAttr stepIsNegative = createDeclToKgenAttr(
+        "step_is_negative",
+        KGEN::ParamOperatorAttr::get(KGEN::POC::LT, step, zero));
+    KGEN::ParamDeclRefAttr startLeStop = createDeclToKgenAttr(
+        "start_le_stop",
+        KGEN::ParamOperatorAttr::get(KGEN::POC::LE, start, stop));
+    KGEN::ParamDeclRefAttr cond1 = createDeclToKgenAttr(
+        "cond1", KGEN::ParamOperatorAttr::get(KGEN::POC::Or, stepIsNegative,
+                                              startLeStop));
+    createAssert("range_assert",
+                 "[range] requires (start <= stop) for positive step", cond1);
+
+    // Check start/stop are in bounds (2)
+    KGEN::ParamDeclRefAttr stepIsPositive = createDeclToKgenAttr(
+        "step_is_positive",
+        KGEN::ParamOperatorAttr::get(KGEN::POC::LT, zero, step));
+    KGEN::ParamDeclRefAttr stopLeStart = createDeclToKgenAttr(
+        "stop_le_start",
+        KGEN::ParamOperatorAttr::get(KGEN::POC::LE, stop, start));
+    KGEN::ParamDeclRefAttr cond2 = createDeclToKgenAttr(
+        "cond2", KGEN::ParamOperatorAttr::get(KGEN::POC::Or, stepIsPositive,
+                                              stopLeStart));
+    createAssert("range_assert",
+                 "[range] requires (stop <= start) for negative step", cond2);
+
+    // Compute output shape; need to apply an offset to `diff`, think the length
+    // of range(0, 3, 2).
+    KGEN::ParamDeclRefAttr diff = createDeclToKgenAttr(
+        "diff", KGEN::ParamOperatorAttr::getSub(stop, start));
+    KGEN::ParamDeclRefAttr stepAddOne = createDeclToKgenAttr(
+        "step_add_one",
+        KGEN::ParamOperatorAttr::get(KGEN::POC::Add, step, one));
+    KGEN::ParamDeclRefAttr stepSubOne = createDeclToKgenAttr(
+        "step_sub_one", KGEN::ParamOperatorAttr::getSub(step, one));
+    KGEN::ParamDeclRefAttr offset = createDeclToKgenAttr(
+        "offset",
+        KGEN::ParamOperatorAttr::get(KGEN::POC::Cond,
+                                     {stepIsPositive, stepSubOne, stepAddOne}));
+    KGEN::ParamDeclRefAttr diffAddOffset = createDeclToKgenAttr(
+        "diff_add_offset",
+        KGEN::ParamOperatorAttr::get(KGEN::POC::Add, diff, offset));
+    KGEN::ParamDeclRefAttr outDim = createDeclToKgenAttr(
+        "outdim",
+        KGEN::ParamOperatorAttr::get(KGEN::POC::Div, diffAddOffset, step));
+    auto outputShape = ShapeAttr::get({outDim}, builder.getType<ShapeType>());
+
+    return outputShape;
+  }
+
   // Treat certain fallback shape function call as special intrinsics and
   // effectively symbolicizing them _during_ shape propagation.
   //
@@ -494,6 +565,9 @@ private:
 
     } else if (shapeFuncName == "reshape_shape") {
       outputShape = tryDecomposeReshapeShape(invokeShapeFuncOp);
+
+    } else if (shapeFuncName == "range_shape") {
+      outputShape = tryDecomposeRangeShape(invokeShapeFuncOp);
     }
 
     // Create new declaration of the shape function call's output parameter if

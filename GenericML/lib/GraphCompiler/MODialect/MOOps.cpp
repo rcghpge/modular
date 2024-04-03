@@ -230,6 +230,22 @@ ShapeAttr M::MO::tryGetShapeAttr(Value val) {
   return tryGetConstantShapeAttr(val);
 }
 
+TypedAttr M::MO::tryGetDimAttr(Value val) {
+  auto tensorVal = dyn_cast<TensorValue>(val);
+  if (!tensorVal)
+    return {};
+
+  if (TypedAttr param = getParamAttrThrough<IndexToTensorOp>(tensorVal))
+    return param;
+
+  std::optional<int64_t> maybeConst = tryGetConstantInt(tensorVal);
+  if (!maybeConst.has_value())
+    return {};
+
+  OpBuilder builder(val.getContext());
+  return builder.getIndexAttr(*maybeConst);
+}
+
 /// If `op`'s axis is constant and input rank is known, modify `op`'s `axis` to
 /// be the canonical version, i.e., it's guaranteed to be in [0, rank).
 /// NOTE this should be used as the first canonicalization, so other logic in
