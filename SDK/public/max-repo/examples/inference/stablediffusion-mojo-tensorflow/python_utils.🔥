@@ -34,7 +34,7 @@ fn numpy_data_pointer[
 
 @always_inline
 fn memcpy_to_numpy(array: PythonObject, tensor: Tensor) raises:
-    var dst = numpy_data_pointer[tensor.dtype](array)
+    var dst = numpy_data_pointer[tensor.type](array)
     var src = tensor._ptr
     var length = tensor.num_elements()
     memcpy(dst, src, length)
@@ -42,7 +42,7 @@ fn memcpy_to_numpy(array: PythonObject, tensor: Tensor) raises:
 
 @always_inline
 fn memcpy_from_numpy(array: PythonObject, tensor: Tensor) raises:
-    var src = numpy_data_pointer[tensor.dtype](array)
+    var src = numpy_data_pointer[tensor.type](array)
     var dst = tensor._ptr
     var length = tensor.num_elements()
     memcpy(dst, src, length)
