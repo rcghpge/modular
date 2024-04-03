@@ -44,10 +44,10 @@ QuantSpec::Kind QuantSpec::kindFromString(StringRef kind) {
 /// Returns a string representation of the kind and the quantized dimension if
 /// the latter is relevant to the kind.
 static std::string getKindAndDimAsString(const QuantSpec *qSpec) {
-  Twine kind(QuantSpec::kindAsString(qSpec->getKind()));
+  StringRef kind = QuantSpec::kindAsString(qSpec->getKind());
   // Add the quantDim to the string if it the kind is uniformPerAxis.
   if (qSpec->getKind() == QuantSpec::Kind::uniformPerAxis)
-    return (kind + ":" + Twine(qSpec->getQuantDim())).str();
+    return (Twine(kind) + ":" + Twine(qSpec->getQuantDim())).str();
   return kind.str();
 }
 
