@@ -25,6 +25,7 @@ set(ENGINE_SRCS
   engine/engine
   engine/model
   engine/session
+  engine/shape_element
   engine/tensor
   engine/tensor_map
   engine/tensor_spec
