@@ -192,29 +192,35 @@ void updateGraphSignature(GraphOp graphOp) {
 /// `PropagateShapesPass` to further simplify the decomposed ops.
 class OpDecomposer {
   // Create an op of the following form and track it in `decomposedOps`.
-  //   kgen.param.declare declPrefix... : resTy = <poc(operands...)>
-  std::pair<KGEN::ParamDeclareOp, KGEN::ParamDeclRefAttr>
-  createDeclToKgenExpr(StringRef declPrefix, Type resTy, KGEN::POC poc,
-                       ArrayRef<TypedAttr> operands) {
+  //   kgen.param.declare declPrefix... = <poc(operands...)>
+  //
+  // Return a parameter decl ref to the newly created parameter `declPrefix...`.
+  KGEN::ParamDeclRefAttr createDeclToKgenExpr(StringRef declPrefix,
+                                              KGEN::POC poc,
+                                              ArrayRef<TypedAttr> operands) {
     auto exprAttr = KGEN::ParamOperatorAttr::get(poc, operands);
-    return createDeclToKgenAttr(declPrefix, resTy, exprAttr);
+    return createDeclToKgenAttr(declPrefix, exprAttr);
   };
 
-  // Create a new kgen declaration from the given attribute
-  std::pair<KGEN::ParamDeclareOp, KGEN::ParamDeclRefAttr>
-  createDeclToKgenAttr(StringRef declPrefix, Type resTy, TypedAttr attr) {
+  // Create a new kgen declaration from the given attribute and return a
+  // parameter decl ref to the newly created parameter.
+  KGEN::ParamDeclRefAttr createDeclToKgenAttr(StringRef declPrefix,
+                                              TypedAttr attr) {
+    Type resTy = attr.getType();
     KGEN::ParamDeclAttr declAttr = graphOp.getNewParamOfType(declPrefix, resTy);
     auto declOp = builder.create<KGEN::ParamDeclareOp>(loc, declAttr, attr);
     auto declRefAttr = KGEN::ParamDeclRefAttr::get(declOp.getParamDecl());
     decomposedOps.push_back(declOp);
-    return {declOp, declRefAttr};
+    return declRefAttr;
   };
 
   // Create an op of the following form and track it in `decomposedOps`.
-  //   kgen.param.declare declPrefix... : resTy =
+  //   kgen.param.declare declPrefix... =
   //    <apply(..."mosh.assert", errorMsg, condAttr)>
-  std::pair<KGEN::ParamDeclareOp, KGEN::ParamDeclRefAttr>
-  createAssert(StringRef declPrefix, StringRef errorMsg, TypedAttr condAttr) {
+  //
+  // Return a parameter decl ref to the newly created parameter `declPrefix...`.
+  KGEN::ParamDeclRefAttr createAssert(StringRef declPrefix, StringRef errorMsg,
+                                      TypedAttr condAttr) {
     MLIRContext *ctx = condAttr.getContext();
     Type chainType = MOSH::ChainType::get(ctx);
 
@@ -228,8 +234,7 @@ class OpDecomposer {
     SmallVector<TypedAttr> applyOperands{
         KGEN::MLIROpAttr::get(opNameAttr, dictAttr, signature), condAttr};
 
-    return createDeclToKgenExpr(declPrefix, chainType, KGEN::POC::Apply,
-                                applyOperands);
+    return createDeclToKgenExpr(declPrefix, KGEN::POC::Apply, applyOperands);
   };
 
   // State that stays invariant across calls.
@@ -285,7 +290,6 @@ private:
     // Check to see if the mlir op expression can be decomposed.
     if (mlirOpAttr.getName() == MOSH::BroadcastOp::getOperationName()) {
       MLIRContext *ctx = declOp.getContext();
-      Type boolType = IntegerType::get(ctx, 1);
       auto intOneAttr = IntegerAttr::get(IndexType::get(ctx), 1);
 
       auto shapeAttr1 = dyn_cast<MOSH::ShapeAttr>(operands[1]);
@@ -304,20 +308,17 @@ private:
             auto dimAttr1 = shapeAttr1.getValues()[axis];
             auto dimAttr2 = shapeAttr2.getValues()[axis - rankDiff];
             // Insert assertions
-            auto [dimAttr1IsOneDeclOp, dimAttr1IsOneDeclRef] =
-                createDeclToKgenExpr("dim_1_is_one", boolType, KGEN::POC::EQ,
-                                     {dimAttr1, intOneAttr});
-            auto [dimAttr2IsOneDeclOp, dimAttr2IsOneDeclRef] =
-                createDeclToKgenExpr("dim_2_is_one", boolType, KGEN::POC::EQ,
-                                     {dimAttr2, intOneAttr});
-            auto [dimsEqualDeclOp, dimsEqualDeclRef] = createDeclToKgenExpr(
-                "dims_equal", boolType, KGEN::POC::EQ, {dimAttr1, dimAttr2});
-            auto [dimsCompatibleDeclOp, dimsCompatibleDeclRef] =
-                createDeclToKgenExpr("dims_compatible", boolType, KGEN::POC::Or,
-                                     {dimAttr1IsOneDeclRef,
-                                      dimAttr2IsOneDeclRef, dimsEqualDeclRef});
+            KGEN::ParamDeclRefAttr dimAttr1IsOne = createDeclToKgenExpr(
+                "dim_1_is_one", KGEN::POC::EQ, {dimAttr1, intOneAttr});
+            KGEN::ParamDeclRefAttr dimAttr2IsOne = createDeclToKgenExpr(
+                "dim_2_is_one", KGEN::POC::EQ, {dimAttr2, intOneAttr});
+            KGEN::ParamDeclRefAttr dimsEqual = createDeclToKgenExpr(
+                "dims_equal", KGEN::POC::EQ, {dimAttr1, dimAttr2});
+            KGEN::ParamDeclRefAttr dimsCompatible =
+                createDeclToKgenExpr("dims_compatible", KGEN::POC::Or,
+                                     {dimAttr1IsOne, dimAttr2IsOne, dimsEqual});
             createAssert("dims_assert", "dimensions are not broadcastable",
-                         dimsCompatibleDeclRef);
+                         dimsCompatible);
 
             // def bcast(D1, D2):
             //     assert `D1 == D2 or D1 == 1 or D2 == 1`
@@ -326,8 +327,7 @@ private:
             //     else:
             //         return D1
             TypedAttr newResDim = KGEN::ParamOperatorAttr::get(
-                KGEN::POC::Cond,
-                {dimAttr1IsOneDeclOp.getValue(), dimAttr2, dimAttr1});
+                KGEN::POC::Cond, {dimAttr1IsOne, dimAttr2, dimAttr1});
             resDims.push_back(newResDim);
           }
         }
@@ -357,7 +357,6 @@ private:
       return {};
 
     MLIRContext *ctx = invokeShapeFuncOp->getContext();
-    Type boolType = IntegerType::get(ctx, 1);
     auto intOneAttr = IntegerAttr::get(IndexType::get(ctx), 1);
     for (int i = 0; i < inputRank; i++) {
       int inputAxis = inputRank - i - 1;
@@ -366,17 +365,16 @@ private:
       TypedAttr outputDim = targetShape.getValues()[outputAxis];
 
       // Insert assertions
-      auto [inputDimIsOneDeclOp, inputDimIsOneDeclRef] = createDeclToKgenExpr(
-          "input_dim_is_one", boolType, KGEN::POC::EQ, {inputDim, intOneAttr});
-      auto [dimsEqualDeclOp, dimsEqualDeclRef] = createDeclToKgenExpr(
-          "dims_equal", boolType, KGEN::POC::EQ, {inputDim, outputDim});
-      auto [dimsCompatibleDeclOp, dimsCompatibleDeclRef] =
-          createDeclToKgenExpr("dims_compatible", boolType, KGEN::POC::Or,
-                               {inputDimIsOneDeclRef, dimsEqualDeclRef});
+      KGEN::ParamDeclRefAttr inputDimIsOne = createDeclToKgenExpr(
+          "input_dim_is_one", KGEN::POC::EQ, {inputDim, intOneAttr});
+      KGEN::ParamDeclRefAttr dimsEqual = createDeclToKgenExpr(
+          "dims_equal", KGEN::POC::EQ, {inputDim, outputDim});
+      KGEN::ParamDeclRefAttr dimsCompatible = createDeclToKgenExpr(
+          "dims_compatible", KGEN::POC::Or, {inputDimIsOne, dimsEqual});
       createAssert("dims_assert",
                    "[broadcast_to] input dim must be either 1 or equal to "
                    "corresponding output dim starting from the rightmost dim",
-                   dimsCompatibleDeclRef);
+                   dimsCompatible);
     }
     return targetShape;
   }
@@ -418,33 +416,32 @@ private:
       return targetShapeAttr;
 
     // Infer the actual value of `-1` dimension based on other dimensions
-    auto [numeratorDeclOp, numeratorDeclRefOp] =
-        createDeclToKgenAttr("reshape_dyndim_numerator", indexType,
-                             inputShapeAttr.getSymbolicNumElements());
+    KGEN::ParamDeclRefAttr numerator = createDeclToKgenAttr(
+        "reshape_dyndim_numerator", inputShapeAttr.getSymbolicNumElements());
 
     // Add a 1 to the shapes to multiply to ensure the denominator is valid
     auto mulDims = targetNonNegOneDims;
     auto one = IntegerAttr::get(indexType, 1);
     mulDims.emplace_back(one);
 
-    auto [denominatorDeclOp, denominatorDeclRefOp] = createDeclToKgenExpr(
-        "reshape_dyndim_denominator", indexType, KGEN::POC::MulNuw, mulDims);
+    KGEN::ParamDeclRefAttr denominator = createDeclToKgenExpr(
+        "reshape_dyndim_denominator", KGEN::POC::MulNuw, mulDims);
 
     // Avoid division by 0, occurs for empty tensors in which case the -1 dim
     // being 0 would always work. There is ambiguity here in allowed values but
     // in practice probably not important.
     // TODO: think about removing the max(...) as it is very hard to remove
     // TODO: without range-based analysis (and even then it is hard).
-    auto [denominatorNormalizedDeclOp, denominatorNormalizedDeclRefOp] =
-        createDeclToKgenExpr("reshape_dyndim_denominator_normalized", indexType,
-                             KGEN::POC::Max, {one, denominatorDeclRefOp});
-    auto [resolvedDimDeclAttr, resolvedDimDeclRefOp] = createDeclToKgenExpr(
-        "reshape_dyndim_resolved", indexType, KGEN::POC::Div,
-        {numeratorDeclRefOp, denominatorNormalizedDeclRefOp});
+    KGEN::ParamDeclRefAttr denominatorNormalized =
+        createDeclToKgenExpr("reshape_dyndim_denominator_normalized",
+                             KGEN::POC::Max, {one, denominator});
+    KGEN::ParamDeclRefAttr resolvedDim =
+        createDeclToKgenExpr("reshape_dyndim_resolved", KGEN::POC::Div,
+                             {numerator, denominatorNormalized});
 
     SmallVector<TypedAttr> resolvedDims = targetNonNegOneDims;
     resolvedDims.insert(resolvedDims.begin() + maybeTargetNegOneDimIdx.value(),
-                        resolvedDimDeclRefOp);
+                        resolvedDim);
 
     return ShapeAttr::get(resolvedDims, targetShapeAttr.getType());
   }
@@ -467,22 +464,17 @@ private:
     if (!outputShape)
       return {};
 
-    MLIRContext *ctx = invokeShapeFuncOp->getContext();
-    auto boolType = IntegerType::get(ctx, 1);
-    auto indexTy = IndexType::get(ctx);
-
     // Insert assertions
-    auto [inputNumeElemsDeclOp, inputNumeElemsDeclRef] = createDeclToKgenAttr(
-        "input_num_elems", indexTy, inputShape.getSymbolicNumElements());
-    auto [outputNumeElemsDeclOp, outputNumeElemsDeclRef] = createDeclToKgenAttr(
-        "output_num_elems", indexTy, outputShape.getSymbolicNumElements());
+    KGEN::ParamDeclRefAttr inputNumeElems = createDeclToKgenAttr(
+        "input_num_elems", inputShape.getSymbolicNumElements());
+    KGEN::ParamDeclRefAttr outputNumeElems = createDeclToKgenAttr(
+        "output_num_elems", outputShape.getSymbolicNumElements());
 
-    auto [numElemsEqualDeclOp, numElemsEqualDeclRef] =
-        createDeclToKgenExpr("num_elems_equal", boolType, KGEN::POC::EQ,
-                             {inputNumeElemsDeclRef, outputNumeElemsDeclRef});
+    KGEN::ParamDeclRefAttr numElemsEqual = createDeclToKgenExpr(
+        "num_elems_equal", KGEN::POC::EQ, {inputNumeElems, outputNumeElems});
     createAssert("reshape_assert",
                  "[reshape] input and output number of elements must match",
-                 numElemsEqualDeclRef);
+                 numElemsEqual);
 
     return outputShape;
   }
