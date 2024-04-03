@@ -221,6 +221,34 @@ mo.graph @broadcast_to_fallback_shape_func<() -> D0, D1, D2>(
 //
 // CHECK-NEXT: mo.output<[[D3]], [[D4]], [[D5]]> %[[RES]] : !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
 
+
+mo.graph @broadcast_shape_fallback_shape_func<() -> D0>(
+  %lhs: !mo.tensor<[1], si32>,
+  %rhs: !mo.tensor<[2], si32>
+) -> !mo.tensor<[D0], si32> {
+
+  %res = mo.broadcast_shape<() -> D1>(%lhs, %rhs) :
+    (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[D1], si32>
+
+  mo.output<D1> %res : !mo.tensor<[D1], si32>
+}
+// CHECK-LABEL: mo.graph @broadcast_shape_fallback_shape_func
+// CHECK-SAME: <() -> [[D0:.*]]>(
+// CHECK-SAME:   %[[LHS:.*]]: !mo.tensor<[1], si32>,
+// CHECK-SAME:   %[[RHS:.*]]: !mo.tensor<[2], si32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]]], si32> no_inline {
+//
+// CHECK-NEXT: mo.invoke_shape_func["broadcast_shape_shape"]<() -> [[D1:.*]]>(%[[LHS]], %[[RHS]])
+// CHECK-SAME:   {dataDeptTensors = []} :
+// CHECK-SAME:   (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>)
+//
+// CHECK-NEXT: %[[RES:.*]] = mo.broadcast_shape(%[[LHS]], %[[RHS]]) :
+// CHECK-SAME:   (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>)
+// CHECK-SAME:   -> !mo.tensor<[[[D1]]], si32>
+//
+// CHECK-NEXT: mo.output<[[D1]]> %[[RES]] : !mo.tensor<[[[D1]]], si32>
+
+
 mo.graph @concat_variadic_input<D0, D1, D2, D3 -> D4, D5>(
   %input1: !mo.tensor<[D0, D1], f32>,
   %input2: !mo.tensor<[D2, D3], f32>,
