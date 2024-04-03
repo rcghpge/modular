@@ -360,7 +360,7 @@ int main(int argc, char **argv) {
     std::optional<TimeTraceProfiler> &profilerOr =
         (*contextOr)->get<LLCL::Runtime>()->getProfiler();
     if (profilerOr) {
-      auto writeErr = profilerOr->write(options.profileFilename, "-");
+      auto writeErr = profilerOr->write("-");
       if (writeErr.isError())
         return options.reportError(writeErr.getError());
     }
