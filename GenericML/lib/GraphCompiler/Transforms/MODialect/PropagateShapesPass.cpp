@@ -550,6 +550,58 @@ private:
     return outputShape;
   }
 
+  // Assume `invokeShapeFuncOp` applies the shape function of
+  // `MO::BatchMatmulOp`, try decomposing the shape function call into
+  // `kgen.param.declare` primitives if possible, return null otherwise.
+  ShapeAttr tryDecomposeBatchMatmulShape(InvokeShapeFuncOp invokeShapeFuncOp) {
+    // Make sure both input and target shapes are ranked symbolic shapes.
+    auto lhsShape = dyn_cast<ShapeAttr>(
+        cast<TensorType>(invokeShapeFuncOp.getOperand(0).getType())
+            .getShapeAttr());
+    auto rhsShape = dyn_cast<ShapeAttr>(
+        cast<TensorType>(invokeShapeFuncOp.getOperand(1).getType())
+            .getShapeAttr());
+    if (!lhsShape || !rhsShape)
+      return {};
+
+    size_t inputRank = lhsShape.getRank();
+    if (rhsShape.getRank() != inputRank || inputRank <= 2)
+      return {};
+
+    ArrayRef<TypedAttr> lhsDims = lhsShape.getValues();
+    ArrayRef<TypedAttr> rhsDims = rhsShape.getValues();
+    SmallVector<TypedAttr> resDims;
+
+    // Check batch dimensions are equal and collect them into `resDims`.
+    for (size_t batchDim = 0; batchDim < inputRank - 2; batchDim++) {
+      TypedAttr lhsDim = lhsDims[batchDim];
+      TypedAttr rhsDim = rhsDims[batchDim];
+      KGEN::ParamDeclRefAttr batchDimEqual = createDeclToKgenAttr(
+          "batch_dim_equal",
+          KGEN::ParamOperatorAttr::get(KGEN::POC::EQ, lhsDim, rhsDim));
+      createAssert("bmm_assert",
+                   "[batch_matmul] inputs batch dimensions must match",
+                   batchDimEqual);
+      resDims.push_back(lhsShape.getValues()[batchDim]);
+    }
+
+    // Check inner dimensions are equal
+    TypedAttr lhsInnerDim = lhsDims[inputRank - 1];
+    TypedAttr rhsInnerDim = rhsDims[inputRank - 2];
+    KGEN::ParamDeclRefAttr batchDimEqual = createDeclToKgenAttr(
+        "batch_dim_equal",
+        KGEN::ParamOperatorAttr::get(KGEN::POC::EQ, lhsInnerDim, rhsInnerDim));
+    createAssert("bmm_assert",
+                 "[batch_matmul] inputs inner dimensions must match",
+                 batchDimEqual);
+
+    // Collect outer dims.
+    resDims.push_back(lhsDims[inputRank - 2]);
+    resDims.push_back(rhsDims[inputRank - 1]);
+
+    return MOSH::ShapeAttr::get(resDims, lhsShape.getType());
+  }
+
   // Treat certain fallback shape function call as special intrinsics and
   // effectively symbolicizing them _during_ shape propagation.
   //
@@ -568,6 +620,9 @@ private:
 
     } else if (shapeFuncName == "range_shape") {
       outputShape = tryDecomposeRangeShape(invokeShapeFuncOp);
+
+    } else if (shapeFuncName == "batch_matmul_shape") {
+      outputShape = tryDecomposeBatchMatmulShape(invokeShapeFuncOp);
     }
 
     // Create new declaration of the shape function call's output parameter if
