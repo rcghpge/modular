@@ -1022,6 +1022,26 @@ void MOBatchMatmulOp::inferMOTypesImpl(
   moOutputParamDecls.push_back(std::move(outputDecls));
 }
 
+void MOBatchMatmulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                            Type resultTy, Value input_a, Value input_b) {
+  odsState.addOperands(input_a);
+  odsState.addOperands(input_b);
+  odsState.addTypes({resultTy});
+}
+
+void MOBatchMatmulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                            Type resultTy, Value input_a, Value input_b,
+                            ArrayRef<KGEN::ParamDeclAttr> decls) {
+  odsState.addOperands(input_a);
+  odsState.addOperands(input_b);
+  odsState.addTypes({resultTy});
+  if (!decls.empty()) {
+    odsState.addAttribute(
+        getOutputParamDeclsAttrName(odsState.name),
+        KGEN::ParamDeclArrayAttr::get(odsBuilder.getContext(), decls));
+  }
+}
+
 void MOTileOp::inferMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,

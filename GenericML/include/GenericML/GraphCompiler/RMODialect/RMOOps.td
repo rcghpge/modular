@@ -1853,6 +1853,13 @@ def RMO_MOBatchMatmulOp : RMO_MOAnaloguePureTensorOp<"batch_matmul"> {
     OptionalAttr<BoolAttr>:$transpose_b,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
+
+
+  let builders = [
+    /// Create matmul with default attribute flags off.
+    OpBuilder<(ins "Type":$type, "Value":$input_a, "Value":$input_b)>,
+    OpBuilder<(ins "Type":$type, "Value":$input_a, "Value":$input_b, "ArrayRef<KGEN::ParamDeclAttr>":$decls)>,
+  ];
 }
 
 def RMO_MOSoftmaxOp : RMO_MOAnaloguePureUnaryElementWiseOp<"softmax"> {
