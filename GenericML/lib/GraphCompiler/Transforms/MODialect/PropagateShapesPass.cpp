@@ -940,6 +940,8 @@ struct PropagateShapesPass
   void runOnOperation() override {
     // Clear state variables (in case the pass instance is reused)
     paramAttrToDepth.clear();
+    definitelyNonNegativeAttrs.clear();
+    exprToRegionToDeclRef.clear();
 
     GraphOp graphOp = getOperation();
     topoSortWithParameters(graphOp);
@@ -976,7 +978,6 @@ struct PropagateShapesPass
       Attribute resolvedAttr = evaluator.getReboundAttribute(declRef);
       return resolvedAttr;
     });
-    DenseMap<KGEN::ParamOperatorAttr, KGEN::ParamDeclRefAttr> exprToDeclRef;
 
     // A stack of ops to be "evaluated", i.e., the op in the back is the one to
     // be processed next.
@@ -1015,31 +1016,44 @@ struct PropagateShapesPass
         foldedRhsAttr = tryFoldExprAttr(foldedRhsAttr);
         declOp.setValueAttr(foldedRhsAttr);
 
-        auto paramOperatorAttr =
-            dyn_cast<KGEN::ParamOperatorAttr>(foldedRhsAttr);
+        auto paramOpAttr = dyn_cast<KGEN::ParamOperatorAttr>(foldedRhsAttr);
         // If the param expression cannot be nested, we either map the decl to
         // itself or to a previous decl that has the same expression. The goal
         // here is maximize textual equality for expression, e.g.,
         // - `D0` and `D0` for decls that map to themselves or other decls.
         // - `add(D0, 2)` and `add(D0, 2)` for decls that map to expressions.
         // This enables more simplifications.
-        if (paramOperatorAttr && !canParamOperatorBeNested(paramOperatorAttr)) {
+        if (paramOpAttr && !canParamOperatorBeNested(paramOpAttr)) {
           // CSE on the fly for expression that cannot be nested, which helps
           // the following scenario, where we'd otherwise lose textual equality
           // for `D0` and `D1`:
           //   kgen.param.declare D0 = <...nested_expr_e1...>
           //   kgen.param.declare D1 = <...nested_expr_e1...>
           //   static.broadcast_to(...) : <[D0], f32> -> <[D1], f32>
-          if (auto existingDeclRef = exprToDeclRef.lookup(paramOperatorAttr)) {
+          //
+          // NOTE this CSE formulation is limited when the expression appears
+          // within a _nested_ region of where it was defined, for instance,
+          // currently we _do not_ CSE in this scenario:
+          //   if {
+          //     D0 = expr
+          //     if {
+          //       D1 = expr // we'd like this to become `D1 = D0`
+          //     }
+          //   }
+          Region *opParentRegion = op->getParentRegion();
+          if (exprToRegionToDeclRef.contains(paramOpAttr) &&
+              exprToRegionToDeclRef[paramOpAttr].contains(opParentRegion)) {
+            KGEN::ParamDeclRefAttr existingDeclRef =
+                exprToRegionToDeclRef[paramOpAttr][opParentRegion];
             evaluator.setParameterValue(declAttr, existingDeclRef);
             declOp.setValueAttr(existingDeclRef);
 
-            // Else we remember this decl has this expression, and map the
-            // parameter to itself since we don't want to inline it.
+            // Else we remember this decl has this expression (if pure), and map
+            // the parameter to itself since we don't want to inline it.
           } else {
             auto declRefAttr = KGEN::ParamDeclRefAttr::get(declAttr);
-            if (isParamOperatorPure(paramOperatorAttr))
-              exprToDeclRef.try_emplace(paramOperatorAttr, declRefAttr);
+            if (isParamOperatorPure(paramOpAttr))
+              exprToRegionToDeclRef[paramOpAttr][opParentRegion] = declRefAttr;
             evaluator.setParameterValue(declAttr.getName(), declRefAttr);
           }
 
@@ -1071,4 +1085,15 @@ struct PropagateShapesPass
   // State variables used by the pass
   DenseMap<KGEN::ParamOperatorAttr, size_t> paramAttrToDepth;
   DenseSet<TypedAttr> definitelyNonNegativeAttrs;
+  // This maps from
+  // - expressions that we have processed, but decided not to inline (i.e.,
+  //   we'll keep it as a `kgen.param.declare X = <expr>` and refer to `X`
+  //   elsewheres).
+  // to another map from
+  // - the immediately enclosing region where the expression was defined.
+  // to
+  // - Reference to the definition parameter of the expression, for instance,
+  //   given `kgen.param.declare X = <expr>`, this would be `X`.
+  DenseMap<KGEN::ParamOperatorAttr, DenseMap<Region *, KGEN::ParamDeclRefAttr>>
+      exprToRegionToDeclRef;
 };

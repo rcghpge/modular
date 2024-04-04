@@ -494,3 +494,42 @@ mo.graph @reshape_parametric_shape_inferred_neg_one_empty<D0 -> D2, D3, D4>(
 
   mo.output<D5, D6, D7> %res : !mo.tensor<[D5, D6, D7], f32>
 }
+
+// CHECK-LABEL: mo.graph @common_expr_dont_reference_across_regions
+mo.graph @common_expr_dont_reference_across_regions<D0, D1 -> D2>(
+  %cond: !mo.tensor<[], bool>,
+  %scalar: !mo.tensor<[], f32>,
+  %dummy: !mo.tensor<[D0, D1], f32> // this is used solely to define `D0` and `D1`
+) -> !mo.tensor<[D2], f32> {
+
+  // CHECK: mo.if
+  %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[?], f32> {
+    // CHECK-NEXT: kgen.param.declare [[D3:.*]] = {{.*}}
+    kgen.param.declare D3 = <mul(D0, add(D1, div(D1, add(mul(D0, 42), 13))))>
+    kgen.param.declare D4 = <mul(D0, add(D1, div(D1, add(mul(D0, 42), 13))))>
+
+    // CHECK-NEXT: %[[V2:.*]] = mo.static.broadcast_to(%[[SCALAR:.*]]) : !mo.tensor<[], f32> -> !mo.tensor<[[[D3]]], f32>
+    %2 = mo.static.broadcast_to(%scalar) : !mo.tensor<[], f32> -> !mo.tensor<[D3], f32>
+    %3 = mo.static.broadcast_to(%2) : !mo.tensor<[D3], f32> -> !mo.tensor<[D4], f32>
+
+    // CHECK-NEXT: %[[V3:.*]] = mo.rebind(%[[V2]]) : !mo.tensor<[[[D3]]], f32> -> !mo.tensor<[?], f32>
+    %r3 = mo.rebind(%3) : !mo.tensor<[D4], f32> -> !mo.tensor<[?], f32>
+    mo.yield %r3 : !mo.tensor<[?], f32>
+
+  // CHECK: else
+  } else {
+    // CHECK-NEXT: kgen.param.declare [[D5:.*]] = {{.*}}
+    kgen.param.declare D5 = <mul(D0, add(D1, div(D1, add(mul(D0, 42), 13))))>
+    kgen.param.declare D6 = <mul(D0, add(D1, div(D1, add(mul(D0, 42), 13))))>
+
+    // CHECK-NEXT: %[[V4:.*]] = mo.static.broadcast_to(%[[SCALAR:.*]]) : !mo.tensor<[], f32> -> !mo.tensor<[[[D5]]], f32>
+    %4 = mo.static.broadcast_to(%scalar) : !mo.tensor<[], f32> -> !mo.tensor<[D5], f32>
+    %5 = mo.static.broadcast_to(%4) : !mo.tensor<[D5], f32> -> !mo.tensor<[D6], f32>
+
+    // CHECK-NEXT: %[[V5:.*]] = mo.rebind(%[[V4]]) : !mo.tensor<[[[D5]]], f32> -> !mo.tensor<[?], f32>
+    %r5 = mo.rebind(%5) : !mo.tensor<[D6], f32> -> !mo.tensor<[?], f32>
+    mo.yield %r5 : !mo.tensor<[?], f32>
+  }
+
+  mo.output<?> %0 : !mo.tensor<[?], f32>
+}
