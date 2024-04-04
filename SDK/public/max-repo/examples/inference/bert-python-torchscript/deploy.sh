@@ -23,7 +23,7 @@ INPUT_EXAMPLE="Paris is the [MASK] of France."
 cd "$(dirname "$0")"
 
 # Download model from HuggingFace
-python3 ../common/bert-torchscript/download-model.py -o "$MODEL_PATH"
+python3 ../common/bert-torchscript/download-model.py -o "$MODEL_PATH" --mlm
 
 echo "Preparing model repository"
 # Triton expects models to reside in the specific layout, i.e.
