@@ -14,9 +14,9 @@
 
 # If anything goes wrong, stop running the script.
 set -e
-
-INPUT_EXAMPLE="There are many exciting developments in the field of AI Infrastructure!"
 MODEL_DIR="roberta"
+INPUT_EXAMPLE="There are many exciting developments in the field of AI Infrastructure!"
+
 
 # Make sure we're running from inside the directory containing this file.
 cd "$(dirname "$0")"
@@ -40,7 +40,7 @@ cp config.pbtxt model-repository/${MODEL_DIR}/
 
 echo "Starting container"
 CONTAINER_ID=$(\
-  docker run --rm -d --net=host --ipc=host \
+  docker run --rm -d --net=host \
     -v $(pwd)/model-repository:/model-repository \
     public.ecr.aws/modular/max-serving-de \
     tritonserver --model-repository=/model-repository \

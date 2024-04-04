@@ -34,17 +34,17 @@ echo "Preparing model repository"
 # see https://github.com/triton-inference-server/server/blob/main/docs/user_guide/model_repository.md
 # https://github.com/triton-inference-server/server/blob/main/docs/user_guide/model_repository.md#tensorflow-models
 
-mkdir -p model-repository/resnet-50/1/model.savedmodel/
-cp -r resnet-50/* model-repository/resnet-50/1/model.savedmodel/
-cp config.pbtxt model-repository/resnet-50/
+mkdir -p model-repository/${MODEL_DIR}/1/model.savedmodel/
+cp -r ${MODEL_DIR}/* model-repository/${MODEL_DIR}/1/model.savedmodel/
+cp config.pbtxt model-repository/${MODEL_DIR}/
 
 echo "Starting container"
 CONTAINER_ID=$(\
-  docker run --rm -d --net=host --ipc=host \
+  docker run --rm -d --net=host \
     -v $(pwd)/model-repository:/model-repository \
     public.ecr.aws/modular/max-serving-de \
     tritonserver --model-repository=/model-repository \
-    --load-model=resnet-50 \
+    --load-model=${MODEL_DIR} \
 )
 
 printf "Compiling ${MODEL_DIR} model"
@@ -52,7 +52,7 @@ until curl --output /dev/null --silent --fail localhost:8000/v2/health/ready; do
     printf '.'
     sleep 5
 done
-printf "\nMAX Serving container started\n"
+printf "\nMAX Serving container started\n\n"
 
 # Execute the model with example input
 python3 triton-inference.py --input "$INPUT_EXAMPLE"
