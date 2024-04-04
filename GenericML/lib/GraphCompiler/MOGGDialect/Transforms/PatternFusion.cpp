@@ -496,7 +496,6 @@ struct ConvConstFilterPattern
     }
 
     // Create shape parameters for the new type.
-    SmallVector<KGEN::ParamDeclAttr> paramDecls;
     auto graphOp = op->getParentOfType<MO::GraphOp>();
 
     size_t filterRank = filterType.getRank();
@@ -518,11 +517,9 @@ struct ConvConstFilterPattern
       }
     }();
 
-    const char *layoutStrBegin = packedLayoutStr.begin();
-    for (size_t i = 0, e = packedLayoutStr.size(); i < e; i++) {
-      paramDecls.push_back(
-          graphOp.getNewDimParam(StringRef(layoutStrBegin + i, 1)));
-    }
+    SmallVector<KGEN::ParamDeclAttr> paramDecls;
+    for (char c : packedLayoutStr)
+      paramDecls.push_back(graphOp.getNewDimParam(Twine(c)));
 
     auto paramDeclsAttr = KGEN::ParamDeclArrayAttr::get(ctx, paramDecls);
 
@@ -631,7 +628,6 @@ struct ConvTransposeConstFilterPattern
     }
 
     // Create shape parameters for the new type.
-    SmallVector<KGEN::ParamDeclAttr> paramDecls;
     auto graphOp = op->getParentOfType<MO::GraphOp>();
 
     size_t filterRank = filterType.getRank();
@@ -653,11 +649,9 @@ struct ConvTransposeConstFilterPattern
       }
     }();
 
-    const char *layoutStrBegin = packedLayoutStr.begin();
-    for (size_t i = 0, e = packedLayoutStr.size(); i < e; i++) {
-      paramDecls.push_back(
-          graphOp.getNewDimParam(StringRef(layoutStrBegin + i, 1)));
-    }
+    SmallVector<KGEN::ParamDeclAttr> paramDecls;
+    for (char c : packedLayoutStr)
+      paramDecls.push_back(graphOp.getNewDimParam(Twine(c)));
 
     auto paramDeclsAttr = KGEN::ParamDeclArrayAttr::get(ctx, paramDecls);
 
@@ -1817,8 +1811,8 @@ struct MultiHeadAttentionPatternCPU : public OpRewritePattern<BatchMatmulOp> {
 
   void insertShapeGuard(PatternRewriter &rewriter, GraphOp graphOp,
                         TypedAttr beforeShape, TypedAttr afterShape,
-                        Location loc, const std::string &checkName,
-                        const std::string &errorMsg) const {
+                        Location loc, const Twine &checkName,
+                        const Twine &errorMsg) const {
     // Inserts a runtime guard checking (beforeShape == afterShape)
     IntegerType boolTy = rewriter.getI1Type();
     TypedAttr cmpAttr =

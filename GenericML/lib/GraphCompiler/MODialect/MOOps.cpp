@@ -451,23 +451,23 @@ LogicalResult GraphOp::verify() {
   return useDefGraph.verify(symtabs, cache);
 }
 
-KGEN::ParamDeclAttr GraphOp::getNewDimParam(StringRef prefix) {
+KGEN::ParamDeclAttr GraphOp::getNewDimParam(const Twine &prefix) {
   return getNewParamOfType(prefix, IndexType::get(getContext()));
 }
 
-KGEN::ParamDeclAttr GraphOp::getNewShapeParam(StringRef prefix) {
+KGEN::ParamDeclAttr GraphOp::getNewShapeParam(const Twine &prefix) {
   return getNewParamOfType(prefix, ShapeType::get(getContext()));
 }
 
-KGEN::ParamDeclAttr GraphOp::getNewParamOfType(StringRef prefix, Type type) {
+KGEN::ParamDeclAttr GraphOp::getNewParamOfType(const Twine &prefix, Type type) {
   return KGEN::ParamDeclAttr::get(getNewParamName(prefix), type);
 }
 
-std::string GraphOp::getNewParamName(StringRef prefix) {
+std::string GraphOp::getNewParamName(const Twine &prefix) {
   // TODO(#8829) avoid duplication with existing parameters in the input graph
   int64_t newCounter = getProperties().getCounter() + 1;
   getProperties().setCounter(newCounter);
-  return prefix.str() + std::to_string(newCounter);
+  return (prefix + Twine(newCounter)).str();
 }
 
 DeviceSpecCollectionAttr GraphOp::getDeviceSpecs() {

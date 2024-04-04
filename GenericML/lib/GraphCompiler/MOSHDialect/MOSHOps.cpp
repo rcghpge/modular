@@ -355,7 +355,7 @@ void AssertOp::build(OpBuilder &builder, OperationState &state, Value cond,
   build(builder, state, cond, cast<TypedAttr>(attr));
 }
 
-TypedAttr AssertOp::emitStaticCall(TypedAttr cond, StringRef message) {
+TypedAttr AssertOp::emitStaticCall(TypedAttr cond, const Twine &message) {
   MLIRContext *ctx = cond.getContext();
   SmallVector<std::pair<StringAttr (*)(mlir::OperationName), Attribute>>
       msgAttrNameFuncAndArg = {

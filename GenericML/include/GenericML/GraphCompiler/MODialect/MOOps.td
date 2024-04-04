@@ -168,21 +168,21 @@ def MO_GraphOp : MO_TensorOp<"graph", [
     /// Return a new dimension parameter of `IndexType`, with a name that starts
     /// with `prefix` and differs from existing parameter names inside this
     /// graph op.
-    KGEN::ParamDeclAttr getNewDimParam(StringRef prefix);
+    KGEN::ParamDeclAttr getNewDimParam(const Twine &prefix);
 
     /// Return a new dimension parameter of `MOSH::ShapeType`, with a name that
     /// starts with `prefix` and differs from existing parameter names inside
     /// this graph op.
-    KGEN::ParamDeclAttr getNewShapeParam(StringRef prefix);
+    KGEN::ParamDeclAttr getNewShapeParam(const Twine &prefix);
 
     /// Return a new dimension parameter of given type, with a name that starts
     /// with `prefix` and differs from existing parameter names inside this
     /// graph op.
-    KGEN::ParamDeclAttr getNewParamOfType(StringRef prefix, Type type);
+    KGEN::ParamDeclAttr getNewParamOfType(const Twine &prefix, Type type);
 
     /// Return a new name that's unique from existing parameters inside this
     /// graph op.
-    std::string getNewParamName(StringRef prefix);
+    std::string getNewParamName(const Twine &prefix);
 
     /// Returns the #M.device_spec_collection annotation for this graph op, or
     /// null if no such annotation.

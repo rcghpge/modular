@@ -312,7 +312,7 @@ def MOSH_AssertOp : MOSH_Op<"assert"> {
 
   let extraClassDeclaration = [{
     /// Create a static call to apply(mosh.assert, cond, message)
-    static TypedAttr emitStaticCall(TypedAttr cond, StringRef message);
+    static TypedAttr emitStaticCall(TypedAttr cond, const Twine &message);
   }];
 }
 
