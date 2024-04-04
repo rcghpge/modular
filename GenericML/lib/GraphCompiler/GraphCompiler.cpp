@@ -126,21 +126,28 @@ maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
   // In general the below passes all help each other. In the future we should be
   // running things to a fixed point however for now just run the below 3 times.
   for (size_t i = 0; i < 3; i++) {
-    if (opts.constantFold)
+    if (opts.constantFold) {
       pm.addPass(MO::createConstantFoldPass(
           opts.compiledFrameworkLabel.hasValue()
               ? opts.compiledFrameworkLabel.getValue()
               : "",
           opts));
+    }
 
-    if (opts.useExperimentalShapeInference)
+    if (opts.useExperimentalShapeInference) {
       pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(
           {opts.kernelLibraryPaths}));
+    }
 
     pm.addPass(MO::createPropagateShapes());
-    pm.addPass(MO::createStaticizeShapes());
-    pm.addPass(MO::createInlineShapeFunctions());
-    pm.addPass(mlir::createSymbolDCEPass());
+    pm.addPass(
+        MO::createStaticizeShapes({!opts.useExperimentalShapeInference}));
+    if (!opts.useExperimentalShapeInference) {
+      // The old path explicitly inlines the materialized shape function and
+      // remove them the functions themselves.
+      pm.addPass(MO::createInlineShapeFunctions());
+      pm.addPass(mlir::createSymbolDCEPass());
+    }
     pm.addPass(mlir::createCSEPass());
     pm.addPass(mlir::createCanonicalizerPass());
   }
@@ -366,34 +373,36 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
                                         const ShapeInferenceOptions &opts) {
   pm.addPass(MO::createResolveUnknownParameters());
   if (opts.isExperimentalMode) {
-    // these will handle ops with simple shape functions like
-    // mo.matmul, mo.concat, mo.gather, mo.range, etc.
     AddFallbackShapeFunctionsOptions passOpts;
     passOpts.restricted = true;
     passOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
     pm.addPass(MO::createAddFallbackShapeFunctions(passOpts));
     pm.addPass(
         MO::createSymbolicizeFallbackShapeFunctions({opts.kernelLibraryPaths}));
+  } else {
+    pm.addPass(MO::createShapeInferenceMaterialization());
   }
-  // this handles this rest
-  pm.addPass(MO::createShapeInferenceMaterialization());
 
   // Convert most scalar <--> tensor reshapes into rebind, which will be merged
   // during staticization. Otherwise staticization must look through those
   // reshapes for shape inputs.
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(MO::createStaticizeShapes());
+  pm.addPass(MO::createStaticizeShapes({!opts.isExperimentalMode}));
 
   // Staticization might open up new opportunities for symbolicizing fallback
   // shape functions. This is simialr to why we run symbolic shape function
   // materialization during staticization.
-  if (opts.isExperimentalMode)
+  if (opts.isExperimentalMode) {
     pm.addPass(
         MO::createSymbolicizeFallbackShapeFunctions({opts.kernelLibraryPaths}));
-  pm.addPass(MO::createInlineShapeFunctions());
+  } else {
+    // The old path explicitly inlines the materialized shape function and
+    // remove them the functions themselves.
+    pm.addPass(MO::createInlineShapeFunctions());
+    pm.addPass(mlir::createSymbolDCEPass());
+  }
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(MO::createPropagateShapes());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
