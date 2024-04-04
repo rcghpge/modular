@@ -45,7 +45,7 @@ public:
   decltype(&M_useKernelsFrom) useKernelsFrom = nullptr;
   decltype(&M_setExportedName) setExportedName = nullptr;
   decltype(&M_setNumThreads) setNumThreads = nullptr;
-  decltype(&M_setUseExistingRuntime) setUseExistingRuntime = nullptr;
+  decltype(&M_setMaxContext) setMaxContext = nullptr;
   decltype(&M_setAllocatorType) setAllocatorType = nullptr;
   decltype(&M_compileModel) compileModel = nullptr;
   decltype(&M_waitForCompilation) waitForCompilation = nullptr;

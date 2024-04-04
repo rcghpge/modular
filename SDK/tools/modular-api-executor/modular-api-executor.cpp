@@ -682,15 +682,10 @@ int main(int argc, char **argv) {
   // We don't really have a file to load here now.
   std::unique_ptr<llvm::MemoryBuffer> inputFile;
 
-  // Bind the runtime here, which will be re-used by the `EngineContext` due to
-  // the `setUseExistingRuntime()` call below.
-  // This is in order to pass `runtime` to `runModel()` below.
-  // TODO(#31768): avoid this using the `M_execute*` C APIs instead of runModel.
   StatusPtr status{api.newStatus(), api.freeStatus};
   RuntimeConfigPtr runtimeConfig{api.newRuntimeConfig(), api.freeRuntimeConfig};
   std::unique_ptr<Runtime> runtime =
       clOptions.withMainWillNotDonate().createRuntime();
-  api.setUseExistingRuntime(runtimeConfig.get());
 
   if (clOptions.gpu)
     api.setDevice(runtimeConfig.get(), "cuda", /*deviceID=*/0);
