@@ -13,13 +13,15 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace M::core {
 
 class TorchInputSpec {
 public:
-  using InputShapeTy = std::optional<std::vector<std::optional<int64_t>>>;
+  using InputShapeTy = std::optional<
+      std::vector<std::optional<std::variant<int64_t, std::string>>>>;
   TorchInputSpec(const InputShapeTy &shape, M_Dtype dtype);
   TorchInputSpec(TorchInputSpec &&other) noexcept = default;
 

@@ -20,12 +20,27 @@ core::TorchInputSpec::TorchInputSpec(
     const core::TorchInputSpec::InputShapeTy &shapeOr, M_Dtype dtype)
     : specPtr({nullptr, &M_freeTorchInputSpec}), specShape(shapeOr),
       specDtype(dtype) {
+  StatusPtr status{M_newStatus(), M_freeStatus};
+  if (!status)
+    throw std::runtime_error("Unable to create status");
   if (specShape) {
-    const std::vector<std::optional<int64_t>> &shape = *specShape;
-    std::vector<int64_t> convertedShape = convertToShape(shape);
-    specPtr.reset(M_newTorchInputSpec(convertedShape.data(),
-                                      convertedShape.size(), dtype));
+    std::vector<int64_t> convertedShape = convertToShape(*specShape);
+    std::vector<std::optional<std::string>> dimNames =
+        convertToDimNames(*specShape);
+    std::vector<const char *> dimNamePtrs;
+    dimNamePtrs.reserve(dimNames.size());
+    for (const auto &optionalDimName : dimNames)
+      dimNamePtrs.push_back(optionalDimName.has_value()
+                                ? optionalDimName.value().c_str()
+                                : nullptr);
+    specPtr.reset(M_newTorchInputSpec(convertedShape.data(), dimNamePtrs.data(),
+                                      convertedShape.size(), dtype,
+                                      status.get()));
   } else {
-    specPtr.reset(M_newTorchInputSpec(nullptr, M_getDynamicRankValue(), dtype));
+    specPtr.reset(M_newTorchInputSpec(/*shape=*/nullptr, /*dimNames=*/nullptr,
+                                      M_getDynamicRankValue(), dtype,
+                                      status.get()));
   }
+  if (M_isError(status.get()))
+    throw std::runtime_error(M_getError(status.get()));
 }

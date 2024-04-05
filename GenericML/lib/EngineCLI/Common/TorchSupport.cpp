@@ -27,12 +27,13 @@ M::EngineCLI::setTorchInputSpecs(M_CompileConfig *config,
       continue;
     TensorSpec compileShape =
         input.compileShape ? *input.compileShape : *input.shape;
-    TorchInputSpecPtr capiSpec = tensorSpecToCAPITorchSpec(compileShape);
-    if (!capiSpec)
-      return Error(Twine("M_newTensorSpec failed for input ") +
-                   *input.inputName + " (out of memory?)");
-    specPointers.push_back(capiSpec.get());
-    specOwners.push_back(std::move(capiSpec));
+    ErrorOr<TorchInputSpecPtr> capiSpecOr =
+        tensorSpecToCAPITorchSpec(compileShape);
+    if (capiSpecOr.isError())
+      return Error(Twine("Failed to create Torch input spec for input ") +
+                   *input.inputName + ": " + capiSpecOr.getError());
+    specPointers.push_back(capiSpecOr->get());
+    specOwners.push_back(std::move(*capiSpecOr));
   }
   M_setTorchInputSpecs(config, specPointers.data(), specPointers.size());
   return success();

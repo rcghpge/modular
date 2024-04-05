@@ -67,22 +67,25 @@ TEST(APIBridge, tensorSpecToCAPIBasic) {
 
 TEST(APIBridge, tensorSpecToCAPITorchInputSpecBasic) {
   TensorSpec spec({1, 2, 3}, DType::f32);
-  TorchInputSpecPtr cSpec = tensorSpecToCAPITorchSpec(spec);
-  ASSERT_NE(cSpec, nullptr);
+  ErrorOr<TorchInputSpecPtr> cSpecOr = tensorSpecToCAPITorchSpec(spec);
+  ASSERT_FALSE(cSpecOr.isError()) << cSpecOr.getError();
+  ASSERT_NE(*cSpecOr, nullptr);
 }
 
 TEST(APIBridge, tensorSpecToCAPITorchInputSpecDynamicDim) {
   // According to TensorSpec docs, any negative value represents an undefined
   // dimension.
   TensorSpec spec({-1, 2, -3}, DType::f32);
-  TorchInputSpecPtr cSpec = tensorSpecToCAPITorchSpec(spec);
-  ASSERT_NE(cSpec, nullptr);
+  ErrorOr<TorchInputSpecPtr> cSpecOr = tensorSpecToCAPITorchSpec(spec);
+  ASSERT_FALSE(cSpecOr.isError()) << cSpecOr.getError();
+  ASSERT_NE(*cSpecOr, nullptr);
 }
 
 TEST(APIBridge, tensorSpecToCAPITorchInputSpecDynamicRank) {
   TensorSpec spec(kDynamicallyRanked, DType::f32);
-  TorchInputSpecPtr cSpec = tensorSpecToCAPITorchSpec(spec);
-  ASSERT_NE(cSpec, nullptr);
+  ErrorOr<TorchInputSpecPtr> cSpecOr = tensorSpecToCAPITorchSpec(spec);
+  ASSERT_FALSE(cSpecOr.isError()) << cSpecOr.getError();
+  ASSERT_NE(*cSpecOr, nullptr);
 }
 
 TEST(APIBridge, tensorSpecToCAPIUndefinedDims) {

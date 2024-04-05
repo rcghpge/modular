@@ -631,10 +631,12 @@ BCD::GeneratedInputImpl::GeneratedInputImpl(std::string name,
 
 ErrorOr<BCD::GeneratedInputImpl>
 BCD::GeneratedInputImpl::create(std::string name, Tensor tensor) {
-  TensorSpecPtr spec = tensorSpecToCAPI(name.c_str(), tensor.getSpec());
-  if (!spec)
-    return Error(Twine("Unable to create M_TensorSpec for ") + name);
-  return GeneratedInputImpl(name, std::move(spec), std::move(tensor));
+  ErrorOr<TensorSpecPtr> specOr =
+      tensorSpecToCAPI(name.c_str(), tensor.getSpec());
+  if (specOr.isError())
+    return Error(Twine("Unable to create M_TensorSpec for ") + name + ": " +
+                 specOr.getError());
+  return GeneratedInputImpl(name, std::move(*specOr), std::move(tensor));
 }
 
 void BCD::GeneratedInputImpl::borrowInto(M_AsyncTensorMap *atm,

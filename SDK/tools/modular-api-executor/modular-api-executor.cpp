@@ -133,6 +133,7 @@ public:
   SmallVector<std::string> inputNames;
   SmallVector<std::string> outputNames;
   SmallVector<TensorSpec> compileSpecs;
+  SmallVector<std::string> inputDimNames;
   SmallVector<std::string> extraTorchLibs;
   bool printMetadata{false};
   SmallVector<std::string> kernelLibraryPaths;
@@ -221,6 +222,15 @@ private:
               "compile time and input-specs will used at runtime."),
           llvm::cl::location(options.compileSpecs),
           llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
+  M::cl::MListOpt<std::string, SmallVector<std::string>> inputDimNames{
+      "input-dim-names",
+      cl::desc("Specify names of input dimensions to compile model with. "
+               "This is only used with PyTorch models. "
+               "Inputs should be separated by commas. "
+               "Dimensions in each input should be separated by semcolons. "
+               "Unnamed dimensions should be marked with a hyphen."),
+      llvm::cl::location(options.inputDimNames),
+      llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
 
   M::cl::MOpt<bool, true> printMetadata{
       "print-metadata", cl::desc("Display Model Input and output Specs"),
@@ -738,7 +748,7 @@ int main(int argc, char **argv) {
                                              : clOptions.compileSpecs;
     for (auto &&[inputIndex, inputSpec] : llvm::enumerate(specSource)) {
       TorchInputSpecPtr spec{nullptr, api.freeTorchInputSpec};
-      if (inputSpec.isStatic() || inputSpec.hasRank()) {
+      if (inputSpec.hasRank()) {
         SmallVector<int64_t> inputShape;
         for (auto dim : inputSpec) {
           if (mlir::ShapedType::isDynamic(dim))
@@ -746,13 +756,45 @@ int main(int argc, char **argv) {
           else
             inputShape.emplace_back((int64_t)dim);
         }
-        spec.reset(
-            api.newTorchInputSpec(inputShape.data(), inputShape.size(),
-                                  convertToCDataType(inputSpec.getEltType())));
+        std::vector<std::string> dimNamesStorage;
+        std::vector<const char *> dimNamesVec;
+        const char *const *dimNames = nullptr;
+        if (inputIndex < clOptions.inputDimNames.size()) {
+          StringRef dimNamesStrRef = clOptions.inputDimNames[inputIndex];
+          SmallVector<StringRef> elemRefs;
+          dimNamesStrRef.split(elemRefs, ';');
+          if (elemRefs.size() != inputShape.size()) {
+            llvm::errs() << "Error: Input " << inputIndex << " names setting '"
+                         << dimNamesStrRef
+                         << "' has different number of elements ("
+                         << elemRefs.size() << ") than rank ("
+                         << inputShape.size() << ") of shape (" << inputSpec
+                         << ")\n";
+            exit(EXIT_FAILURE);
+          }
+          dimNamesStorage.reserve(inputShape.size());
+          dimNamesVec.reserve(inputShape.size());
+          for (StringRef elemRef : elemRefs) {
+            if (elemRef == "-") {
+              dimNamesVec.push_back(nullptr);
+            } else {
+              dimNamesStorage.push_back(elemRef.str());
+              dimNamesVec.push_back(dimNamesStorage.back().c_str());
+            }
+          }
+          dimNames = dimNamesVec.data();
+        }
+        spec.reset(api.newTorchInputSpec(
+            inputShape.data(), dimNames, inputShape.size(),
+            convertToCDataType(inputSpec.getEltType()), status.get()));
       } else {
-        spec.reset(
-            api.newTorchInputSpec(nullptr, api.getDynamicRankValue(),
-                                  convertToCDataType(inputSpec.getEltType())));
+        spec.reset(api.newTorchInputSpec(
+            nullptr, nullptr, api.getDynamicRankValue(),
+            convertToCDataType(inputSpec.getEltType()), status.get()));
+      }
+      if (api.isError(status.get())) {
+        llvm::errs() << "Error: " << api.getError(status.get()) << "\n";
+        exit(EXIT_FAILURE);
       }
 
       assert(spec && "expected spec to have value by now");

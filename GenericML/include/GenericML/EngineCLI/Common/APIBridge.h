@@ -21,7 +21,7 @@ M_Dtype dtypeToCAPI(DType dty);
 DType capiToDType(M_Dtype dty);
 
 TensorSpecPtr tensorSpecToCAPI(const char *name, const TensorSpec &spec);
-TorchInputSpecPtr tensorSpecToCAPITorchSpec(const TensorSpec &spec);
+ErrorOr<TorchInputSpecPtr> tensorSpecToCAPITorchSpec(const TensorSpec &spec);
 TensorSpec capiToTensorSpec(const M_TensorSpec *spec);
 
 } // namespace M::EngineCLI
