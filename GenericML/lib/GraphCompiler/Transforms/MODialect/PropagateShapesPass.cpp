@@ -249,10 +249,13 @@ public:
   /// Create an OpDecomposer with given MLIRContext.
   OpDecomposer(MLIRContext *ctx) : builder(ctx), loc(builder.getUnknownLoc()) {}
 
-  /// Try decomposing the given Operation if possible. Return a list of
-  /// decomposed ops (ordered by SSA and parametric dependencies) if successful,
-  /// else return an empty vector. The input operation won't be modified.
-  SmallVector<Operation *> tryDecomposeOp(Operation *op) {
+  /// Try decomposing the given Operation if possible. Return either
+  /// - a failure as fatal failure (e.g., some shape assertion failed)
+  /// - a list of decomposed ops (ordered by SSA and parametric dependencies) if
+  ///   decomposition was possible
+  /// - else return an empty vector.
+  /// The input operation won't be modified.
+  FailureOr<SmallVector<Operation *>> tryDecomposeOp(Operation *op) {
     // Reset transient state.
     graphOp = op->getParentOfType<GraphOp>();
     loc = op->getLoc();
@@ -262,7 +265,8 @@ public:
       tryDecomposeParamDeclOp(declOp);
 
     } else if (auto invokeShapeFuncOp = dyn_cast<InvokeShapeFuncOp>(op)) {
-      tryDecomposeInvokeShapeFuncOp(invokeShapeFuncOp);
+      if (failed(tryDecomposeInvokeShapeFuncOp(invokeShapeFuncOp)))
+        return failure();
     }
 
     return decomposedOps;
@@ -608,7 +612,8 @@ private:
   // TODO this should eventually become general symbolicization applied to a
   // single `InvokeShapeFuncOp`, however we can't do it yet since we need to
   // symbolicize in batch in order to minimize the overhead.
-  void tryDecomposeInvokeShapeFuncOp(InvokeShapeFuncOp invokeShapeFuncOp) {
+  LogicalResult
+  tryDecomposeInvokeShapeFuncOp(InvokeShapeFuncOp invokeShapeFuncOp) {
     // Dispatch on certain shape function names.
     StringRef shapeFuncName = invokeShapeFuncOp.getShapeFuncName();
     ShapeAttr outputShape;
@@ -658,19 +663,28 @@ private:
         decomposedOps.push_back(shapeDeclOp);
 
       } else {
+        size_t returnedRank = outputShape.getRank();
+        size_t annnotatedRank = outputDecls.size();
+        if (returnedRank != annnotatedRank) {
+          invokeShapeFuncOp.emitError()
+              << "shape function returned shape of rank " << returnedRank
+              << " but the type annotation has shape of rank "
+              << annnotatedRank;
+          return failure();
+        }
         // Create definition from each output parameter to its dimension, i.e.,
         //   kgen.param.decare D0 = <N0>
         //   kgen.param.decare D1 = <N1>
         //   ...
         for (auto [outputDimDecl, outputDim] :
-             llvm::zip(invokeShapeFuncOp.getOutputParamDecls(),
-                       outputShape.getValues())) {
+             llvm::zip(outputDecls, outputShape.getValues())) {
           auto dimDeclOp = builder.create<KGEN::ParamDeclareOp>(
               loc, outputDimDecl, outputDim);
           decomposedOps.push_back(dimDeclOp);
         }
       }
     }
+    return success();
   }
 };
 
@@ -944,19 +958,29 @@ struct PropagateShapesPass
     return {};
   }
 
+  /// An enum to signal the result of op `tryDecomposeAndReplaceOp`.
+  enum class ReplacementResult {
+    Replaced,
+    NotReplaced,
+    FatalError,
+  };
+
   /// Try decomposing `op` with `opDecomposer`. If successful, replace `op` with
   /// the decomposed ops in the graph, and push the decomposed ops onto
   /// `worklist` so they will be processed next immediately.
-  ///
-  /// Return whether the decomposition was successful.
-  static LogicalResult
+  static ReplacementResult
   tryDecomposeAndReplaceOp(OpDecomposer &opDecomposer, Operation *op,
                            std::deque<Operation *> &worklist) {
 
     // Try decompose the op, and check if it was successful.
-    SmallVector<Operation *> decomposedOps = opDecomposer.tryDecomposeOp(op);
+    FailureOr<SmallVector<Operation *>> decomposedOpsOr =
+        opDecomposer.tryDecomposeOp(op);
+    if (failed(decomposedOpsOr))
+      return ReplacementResult::FatalError;
+
+    SmallVector<Operation *> &decomposedOps = decomposedOpsOr.value();
     if (decomposedOps.empty())
-      return failure();
+      return ReplacementResult::NotReplaced;
 
     OpBuilder builder(op);
     // Replace the original op with decomposed ops in correct order.
@@ -969,7 +993,7 @@ struct PropagateShapesPass
     for (Operation *decomposedOp : llvm::reverse(decomposedOps))
       worklist.push_back(decomposedOp);
 
-    return success();
+    return ReplacementResult::Replaced;
   }
 
   void runOnOperation() override {
@@ -1036,10 +1060,22 @@ struct PropagateShapesPass
       replacer.replaceElementsIn(op, /*replaceAttrs=*/true,
                                  /*replaceLocs=*/true, /*replaceTypes=*/true);
 
-      // If decomposition happened, no need to process `op` anymore, instead
-      // continue to process the decomposed ops which were pushed onto worklist.
-      if (succeeded(tryDecomposeAndReplaceOp(opDecomposer, op, worklist)))
+      ReplacementResult result =
+          tryDecomposeAndReplaceOp(opDecomposer, op, worklist);
+      switch (result) {
+      // If there was a fatal error, terminate pass immediately.
+      case ReplacementResult::FatalError:
+        return signalPassFailure();
+
+      // If op was replaced, don't process it anymore, instead continue to
+      // process the decomposed ops which were pushed onto worklist.
+      case ReplacementResult::Replaced:
         continue;
+
+      // If op wasn't replaced, continue processing it.
+      case ReplacementResult::NotReplaced:
+        break;
+      }
 
       // Every single `kgen.param.declare x = <expr>` should add a mapping from
       // `x` to some attribute in `evaluator`.
