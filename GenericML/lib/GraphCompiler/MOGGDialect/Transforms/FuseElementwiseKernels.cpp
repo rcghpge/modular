@@ -6,8 +6,10 @@
 
 #include "mlir/IR/BuiltinOps.h"
 
+#include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Analysis/SequenceFusionAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
@@ -16,7 +18,6 @@
 #include "KGEN/POPDialect/POPTypes.h"
 
 #include "mlir/IR/IRMapping.h"
-#include "mlir/Transforms/TopologicalSortUtils.h"
 #include "llvm/ADT/SetOperations.h"
 
 using namespace M;
@@ -54,19 +55,7 @@ static inline bool isAnElementwiseKernel(Operation *op) {
   if (!kernelOp.getFusionBodyLambda())
     return false;
 
-  return true;
-}
-
-static bool isASrcElementwiseKernel(Operation *op) {
-  /// ASSUMPTION: Single output kernel.
-  if (op->getNumResults() != 1)
-    return false;
-
-  if (!isAnElementwiseKernel(op))
-    return false;
-
-  auto kernelOp = cast<KernelOp>(op);
-  if (!kernelOp.getOutputFusionInterface())
+  if (!kernelOp.getOutputParamDecls().empty())
     return false;
 
   return true;
@@ -84,6 +73,10 @@ static bool isADstElementwiseKernel(Operation *op) {
 }
 
 static bool compatibleFusionInterfaces(KernelOp src, KernelOp dst) {
+  /// ASSUMPTION: Single output kernel. Will break the fusion logic if removed.
+  if (src->getNumResults() != 1)
+    return false;
+
   auto srcInterface = src.getOutputFusionInterfaceAt(0);
   for (auto [i, operand] : llvm::enumerate(dst.getOperands())) {
     if (operand.getDefiningOp() != src)
@@ -97,94 +90,109 @@ static bool compatibleFusionInterfaces(KernelOp src, KernelOp dst) {
   return true;
 }
 
-static inline bool kernelsAreCompatible(KernelOp src, KernelOp dst) {
-  if (src->getBlock() != dst->getBlock() ||
-      src.getIsKGEN() != dst.getIsKGEN()) {
+template <bool recurse = true>
+static inline bool kernelsAreCompatible(Operation *src, Operation *dst) {
+  auto srcKernel = cast<KernelOp>(src);
+  auto dstKernel = cast<KernelOp>(dst);
+
+  if (srcKernel->getBlock() != dstKernel->getBlock() ||
+      srcKernel.getIsKGEN() != dstKernel.getIsKGEN()) {
     return false;
   }
 
-  if (!compatibleFusionInterfaces(src, dst))
+  if (!compatibleFusionInterfaces(srcKernel, dstKernel))
+    return false;
+
+  if (recurse && !llvm::all_of(srcKernel->getUsers(), [&](auto user) {
+        return isADstElementwiseKernel(user) &&
+               kernelsAreCompatible<false>(src, user);
+      }))
     return false;
 
   return true;
 }
 
+// Elementwise fusion works by first identifying subgraphs of elementwise
+// operations that can be fused together and then actually applying the fusion.
+// An elementwise operation (src) will be fused into another (dst) if:
+// - They have compatible fusion interfaces
+// - src can fuse with all its users (DCE-ed after fusion)
+// - all paths from src to dst lead to fusion (no unfisble op in between)
 struct FuseElementwisePass
     : public impl::FuseElementwiseBase<FuseElementwisePass> {
   using FuseElementwiseBase::FuseElementwiseBase;
 
   void runOnOperation() override {
-    // Elementwise fusion consists of fusing a src kernel into a dst kernel. The
-    // src kernel is used by the dst kernel. Certain patterns like diamond
-    // patterns can cause inefficient fusion (duplicate values in the body of
-    // the elementwise). To fix this, src kernels are processed in reverse
-    // topological order. Note that this is not strictly necessary. When kernels
-    // are ultimately lowered to KGEN, CSE takes care of this.
-
-    // First find all blocks that contain src elementwise kernels.
     MO::GraphOp graphOp = getOperation();
-    llvm::SmallPtrSet<Block *, 2> blocksThatContainSrcElementwiseKernels;
+    llvm::SmallPtrSet<Block *, 2> blocksThatcontainDstElementwiseKernels;
     graphOp.walk([&](KernelOp kernelOp) {
-      if (isASrcElementwiseKernel(kernelOp))
-        blocksThatContainSrcElementwiseKernels.insert(kernelOp->getBlock());
+      if (isADstElementwiseKernel(kernelOp))
+        blocksThatcontainDstElementwiseKernels.insert(kernelOp->getBlock());
     });
 
-    // Then, for each block, sort its contents in topological order and gather
-    // all src elementwise kernels.
-    SmallVector<KernelOp> srcElementwiseKernels;
-    for (Block *block : blocksThatContainSrcElementwiseKernels) {
+    SmallVector<KernelOp> kernelsToTopologicallySort;
+    // Operations which were part of fusions can be erased with DCE in this
+    // pass. We track them because if we don't, we could end up erasing an
+    // operation with side effects.
+    DenseSet<Operation *> operationsThatWerePartOfFusions;
+    for (Block *block : blocksThatcontainDstElementwiseKernels) {
       auto kernelOpsInBlock = block->getOps<KernelOp>();
       SmallVector<Operation *> kernelOpsInBlockAsArray(kernelOpsInBlock.begin(),
                                                        kernelOpsInBlock.end());
-      // Not actually sorting because we must not temper with parametric shape
-      // logic.
-      mlir::computeTopologicalSorting(kernelOpsInBlockAsArray);
-      for (Operation *op : kernelOpsInBlockAsArray) {
-        if (isASrcElementwiseKernel(op))
-          srcElementwiseKernels.push_back(cast<KernelOp>(op));
+      // ParametricTopologyAnalysis is invalidated when the graph is mutated.
+      MO::ParametricTopologyAnalysis(graphOp).computeTopologicalSorting(
+          kernelOpsInBlockAsArray);
+      for (Operation *op : llvm::reverse(kernelOpsInBlockAsArray)) {
+        // Any remaining operations without uses should be erased.
+        MO::ParametricTopologyAnalysis topoAnalysis(graphOp);
+        if (topoAnalysis.users(op).empty() &&
+            operationsThatWerePartOfFusions.contains(op)) {
+          op->erase();
+          continue;
+        }
+
+        if (!isADstElementwiseKernel(op))
+          continue;
+
+        // ParametricTopologyAnalysis is invalidated when the graph is mutated.
+        auto opsToFuseInSet = floodFillFrom<Direction::Up, false>(
+            {op}, isAnElementwiseKernel, kernelsAreCompatible<true>,
+            topoAnalysis);
+        if (opsToFuseInSet.size() == 1)
+          continue;
+
+        SmallVector<Operation *> opsToFuseIn(opsToFuseInSet.begin(),
+                                             opsToFuseInSet.end());
+        topoAnalysis.computeTopologicalSorting(opsToFuseIn);
+
+        auto dstKernelOp = cast<KernelOp>(op);
+        bool isKGEN = dstKernelOp.getIsKGEN().value_or(false);
+        for (Operation *srcOp : llvm::reverse(opsToFuseIn)) {
+          if (srcOp == op)
+            continue;
+
+          operationsThatWerePartOfFusions.insert(srcOp);
+
+          auto srcKernelOp = cast<KernelOp>(srcOp);
+          if (isKGEN)
+            fuseSrcKernelIntoDstKernelKGEN(srcKernelOp, dstKernelOp);
+          else
+            fuseSrcKernelIntoDstKernelMOGG(srcKernelOp, dstKernelOp);
+
+          dstKernelOp.setSummaryAttr(
+              getSummaryString({srcKernelOp, dstKernelOp}));
+        }
+        kernelsToTopologicallySort.push_back(dstKernelOp);
+      }
+
+      // ParametricTopologyAnalysis is invalidated when the graph is mutated.
+      MO::ParametricTopologyAnalysis topoAnalysis(graphOp);
+      for (auto kernelOp : kernelsToTopologicallySort) {
+        // The fusion may have re-ordered the contents of the dst kernels. Sort
+        // their contents them topologically if they are KGEN.
+        topoAnalysis.topologicallySortAllOpsWithin(&kernelOp.getBody());
       }
     }
-
-    // Finally, iterate through the src elementwise kernels in the reverse
-    // topological sort and fuse with dst elementwise kernels.
-    DenseSet<KernelOp> dstElementwiseKernels;
-    for (KernelOp srcKernel : llvm::reverse(srcElementwiseKernels)) {
-      auto users = srcKernel->getUsers();
-      DenseSet<Operation *> uniqueUsers(users.begin(), users.end());
-
-      const auto canFuseWith = [&](Operation *dstOp) {
-        if (!isADstElementwiseKernel(dstOp))
-          return false;
-
-        auto dstKernel = cast<KernelOp>(dstOp);
-        if (!kernelsAreCompatible(srcKernel, dstKernel))
-          return false;
-
-        return true;
-      };
-
-      // Do not attempt to fuse if the operation will not be DCE-ed later.
-      if (!llvm::all_of(uniqueUsers, canFuseWith))
-        continue;
-
-      bool isKGEN = srcKernel.getIsKGEN().value_or(false);
-      for (Operation *dstOp : uniqueUsers) {
-        auto dstKernel = cast<KernelOp>(dstOp);
-        if (isKGEN)
-          fuseSrcKernelIntoDstKernelKGEN(srcKernel, dstKernel);
-        else
-          fuseSrcKernelIntoDstKernelMOGG(srcKernel, dstKernel);
-
-        // Update the dst's summary to capture the producer's summary.
-        dstKernel.setSummaryAttr(getSummaryString({srcKernel, dstKernel}));
-        dstElementwiseKernels.insert(dstKernel);
-      }
-    }
-
-    // The fusion may have re-ordered the contents of the dst kernels. Sort them
-    // topologically.
-    for (KernelOp dstKernel : dstElementwiseKernels)
-      dstKernel.walk([](Block *block) { mlir::sortTopologically(block); });
   }
 
   // The fusion itself is applied by the following steps.
