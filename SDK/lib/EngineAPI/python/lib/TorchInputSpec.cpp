@@ -10,6 +10,7 @@
 #include "GenericML/API/max/cpp/aliases.h"
 #include "SDK/EngineAPI/python/Utils.h"
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
