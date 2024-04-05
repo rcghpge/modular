@@ -1571,6 +1571,54 @@ void MOSliceOp::inferMOTypesImpl(
   moOutputParamDecls.push_back(std::move(outputDecls));
 }
 
+void MORoiAlignOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  TensorValue input = cast<TensorValue>(operands.getInput());
+  TensorValue rois = cast<TensorValue>(operands.getRois());
+  TensorValue outputHeight = cast<TensorValue>(operands.getOutputHeight());
+  TensorValue outputWidth = cast<TensorValue>(operands.getOutputWidth());
+  TensorValue spatialScale = cast<TensorValue>(operands.getSpatialScale());
+  TensorValue samplingRatio = cast<TensorValue>(operands.getSamplingRatio());
+
+  // `input` must be 4D.
+  SmallVector<KGEN::ParamDeclAttr> inputParamDecls;
+  moOperandTypes.push_back(getRankedParamTensorType(
+      4, input.getType().getDtype(), graphOp, inputParamDecls));
+  moInputParamDecls.push_back(std::move(inputParamDecls));
+
+  // `rois` must be 2D.
+  SmallVector<KGEN::ParamDeclAttr> roisParamDecls;
+  moOperandTypes.push_back(getRankedParamTensorType(
+      2, rois.getType().getDtype(), graphOp, roisParamDecls));
+  moInputParamDecls.push_back(std::move(roisParamDecls));
+
+  // `ouput_height` / `output_width` / `spatial_case` / `sampling_ratio` must be
+  // scalars.
+  moOperandTypes.push_back(
+      outputHeight.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(
+      outputWidth.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(
+      spatialScale.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(
+      samplingRatio.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+
+  // `result` must be 4D.
+  DType outputDType = getDType(rmoResults, 0, input.getType().getDtype());
+  SmallVector<KGEN::ParamDeclAttr> resultParamDecls;
+  moResultTypes.push_back(
+      getRankedParamTensorType(4, outputDType, graphOp, resultParamDecls));
+  moOutputParamDecls.push_back(std::move(resultParamDecls));
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST

@@ -350,7 +350,8 @@ struct LegalizeRMOOps
         LegalizeRMOMOAnalogue<RMO::MOPadConstantOp, MO::PadConstantOp>,
         LegalizeRMOMOAnalogue<RMO::MOPadReflectOp, MO::PadReflectOp>,
         LegalizeRMOMOAnalogue<RMO::MOPadRepeatOp, MO::PadRepeatOp>,
-        LegalizeRMOMOAnalogue<RMO::MOSliceOp, MO::SliceOp>>(context);
+        LegalizeRMOMOAnalogue<RMO::MOSliceOp, MO::SliceOp>,
+        LegalizeRMOMOAnalogue<RMO::MORoiAlignOp, MO::RoiAlignOp>>(context);
 
     // Lowering rebind
     if (!skipRMORebind)

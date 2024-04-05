@@ -2391,4 +2391,42 @@ def RMO_MOSliceOp : RMO_MOAnaloguePureTensorOp<"slice",
   let results = (outs MO_Tensor:$result);
 }
 
+def RMO_MORoiAlignOp : RMO_MOAnaloguePureTensorOp<"roi_align"> {
+  let summary = "ROI alignment operation";
+  let description = [{
+    ROI align consumes an input tensor and regions of interest in which to apply pooling.
+
+    Example:
+    ```mlir
+      %inp: !mo.tensor<[1, 10, 10, 1], f32>
+      %rois: !mo.tensor<[1, 5], f32>
+      %output_height = mo.constant {value = #M.dense_array<5> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %spatial_scale = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+      %sampling_ratio = mo.constant {value = #M.dense_array<2.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+
+      %res = rmo.mo.roi_align(%inp, %rois, %output_height, %output_height, %spatial_scale, %sampling_ratio)
+        {aligned = false,  mode = "AVG"}
+        : (!mo.tensor<[1, 10, 10, 1], f32>,
+          !mo.tensor<[1, 5], f32>,
+          !mo.tensor<[], si64>,
+          !mo.tensor<[], si64>,
+          !mo.tensor<[], f32>,
+          !mo.tensor<[], f32>) -> !mo.tensor<[1, 5, 5, 1], f32>
+    ```
+
+  }];
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_Tensor:$rois,
+    MO_IndexScalarIfRanked:$output_height,
+    MO_IndexScalarIfRanked:$output_width,
+    MO_FloatScalarIfRanked:$spatial_scale,
+    MO_FloatScalarIfRanked:$sampling_ratio,
+    BoolAttr:$aligned,
+    Builtin_StringAttr:$mode,
+    MO_ParamDecls:$outputParamDecls);
+
+  let results = (outs MO_Tensor:$result);
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD

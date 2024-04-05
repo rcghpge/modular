@@ -336,6 +336,12 @@ def MO_RankedScalarFloatTensor : MO_ConfinedTensor<
   [MO_HasAnyRankOfPred<[0]>, FloatElementTypePred],
   "ranked scalar floating point tensor">;
 
+/// Confines the MO_TensorType so that it has float elements, and rank 0 if
+/// rank is static.
+def MO_FloatScalarIfRanked : MO_ConfinedTensor<
+  [FloatElementTypePred, HasRankIfRankedPred<0>],
+  "rank 0 or unranked with float elements">;
+
 /// Confines the MO_TensorType so that it has floats.
 def MO_FloatTensor : MO_ConfinedTensor<[FloatElementTypePred], "floating point tensor">;
 
