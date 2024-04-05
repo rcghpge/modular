@@ -2350,4 +2350,45 @@ def RMO_MOPadRepeatOp : RMO_MOAnaloguePureTensorOp<"pad.repeat",
   let results = (outs MO_Tensor:$result);
 }
 
+def RMO_MOSliceOp : RMO_MOAnaloguePureTensorOp<"slice",
+  [AllDTypesMatch<["input", "result"]>]> {
+  let summary = "Slice operation";
+  let description = [{
+    Returns a new tensor with a subset of the elements from an N-dimensional
+    `input` tensor. The subset is chosen using the `start`, `stop`, and `step`
+    1D index tensors; each index tensor has N elements, one for each dimension
+    of the `input` tensor.
+
+    The semantics follows the numpy index semantics, such that
+    1. For each dimension `i`, `start[i]:stop[i]:step[i]` represents the
+       "indexing" along that dimension.
+    2. Negative indices are supported for `start` and `stop`, e.g., -1
+       represents the largest axis.
+    3. Out of bound indices in `start` and `stop` will be clamped to
+       [-dim, dim], where `dim` is the dimension in the corresponding axis.
+    4. `step` must contain nonzero elements.
+
+    Example:
+    ```mlir
+      %input: !mo.tensor<[?, ?], f32>
+      %start: !mo.tensor<[2], si64> // [1, -6]
+      %stop: !mo.tensor<[2], si32>  // [-3, 6]
+      %step: !mo.tensor<[2], si64>  // [5, 1]
+      // equivalent to this in numpy: `input[1:-3:5, -6:6:1]`
+      %res = rmo.mo.slice(%input, %start, %stop, %step) : (
+        !mo.tensor<[10, 10], f32>,
+        !mo.tensor<[2], si64>,
+        !mo.tensor<[2], si32>,
+        !mo.tensor<[2], si64>
+      ) -> !mo.tensor<[?, ?], f32>
+    ```
+  }];
+  let arguments = (ins MO_Tensor:$input,
+                       MO_IndicesVectorIfRanked:$start,
+                       MO_IndicesVectorIfRanked:$stop,
+                       MO_IndicesVectorIfRanked:$step,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
