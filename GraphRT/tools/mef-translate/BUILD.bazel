@@ -11,6 +11,7 @@ cc_binary(
         "//GraphRT:MEFToMLIR",
         "//GraphRT:MIPDialect",
         "//GraphRT:MLIRToMEF",
+        "//LLCL:CompilerSupport",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
