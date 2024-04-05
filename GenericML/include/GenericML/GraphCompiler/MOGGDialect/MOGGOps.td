@@ -321,7 +321,8 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     M_InOutSignatureAttr:$inOutSignature,
     OptionalAttr<BoolAttr>:$isKGEN,
     OptionalAttr<StrAttr>:$summary,
-    OptionalAttr<BoolAttr>:$isAsync
+    OptionalAttr<BoolAttr>:$isAsync, 
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$isFuseable
   );
   let results = (outs Variadic<AnyType>:$results);             
   let regions = (region SizedRegion<1>:$body);

@@ -63,8 +63,11 @@ void LowerPrimitivesPass::runOnOperation() {
       auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
           opLoc, op->getResultTypes(), op->getOperands(),
           KGEN::ParamDeclArrayAttr::get(ctx, {}),
-          InOutSignatureAttr::get(ctx, operandSemantics), BoolAttr{},
-          StringAttr{}, BoolAttr{});
+          InOutSignatureAttr::get(ctx, operandSemantics), BoolAttr{}, // isKGEN
+          StringAttr{},                                               // summary
+          BoolAttr{},                                                 // isAsync
+          BoolAttr{} // isFuseable
+      );
 
       mlir::Block &kernelBody = newKernel.getBody().emplaceBlock();
       builder.setInsertionPoint(&kernelBody, kernelBody.begin());

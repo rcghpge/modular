@@ -128,12 +128,14 @@ static void fuseCompiledRegionsAndReplaceUses(
 }
 
 static inline bool isEligibleForFusion(Operation *op) {
-  return llvm::isa<MOGG::GenericCompiledRegionOp>(op);
+  if (auto casted_op = dyn_cast<MOGG::GenericCompiledRegionOp>(op)) {
+    return casted_op.getIsFuseable();
+  }
+  return false;
 }
 
 static inline bool areCompatibleForFusion(Operation *lhs, Operation *rhs) {
-  GENERICML_ASSERT(isEligibleForFusion(lhs) && isEligibleForFusion(rhs));
-  return true;
+  return isEligibleForFusion(lhs) && isEligibleForFusion(rhs);
 }
 
 // This pass will fuse *any* connected generic compiled region operation in the
@@ -157,9 +159,11 @@ struct FuseGenericCompiledRegions
   void runOnOperation() override {
     for (auto model : getOperation().getOps<MGP::ModelOp>()) {
       SmallVector<Operation *> compiledRegions;
-      // Gather all compiled regions in the model.
+      // Gather all fuse-able compiled regions in the model.
       model.walk([&](MOGG::GenericCompiledRegionOp compiledRegion) {
-        compiledRegions.push_back(compiledRegion);
+        if (isEligibleForFusion(compiledRegion)) {
+          compiledRegions.push_back(compiledRegion);
+        }
       });
       if (compiledRegions.empty())
         return;
