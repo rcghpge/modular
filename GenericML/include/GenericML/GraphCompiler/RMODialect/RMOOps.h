@@ -59,6 +59,15 @@ void inferMOTypesTopKImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls);
 
+/// inferMoTypesImpl for all scatternd-like ops
+void inferMOTypesScatterNdImpl(
+    MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
+    TensorValue updates, TensorValue indices,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls);
+
 } // namespace M::RMO
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations

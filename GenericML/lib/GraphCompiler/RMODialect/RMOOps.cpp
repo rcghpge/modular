@@ -1666,6 +1666,52 @@ void MORandomNormalOp::inferMOTypesImpl(
   moOutputParamDecls.push_back(std::move(outputDecls));
 }
 
+void inferMOTypesScatterNdImpl(
+    MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
+    TensorValue updates, TensorValue indices,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  // `input` / `output` types are identical.
+  TensorType inOutTy = input.getType();
+  SmallVector<KGEN::ParamDeclAttr> inputParamDecls;
+  if (!inOutTy.hasRank() && rmoResults.has_value()) {
+    // TODO: Is it possible to do refineShape(inputTy, outputTy) here ?
+    // It doesn't work when outputTy has param declatations.
+    TensorType outputTy = cast<TensorType>((*rmoResults)[0].getType());
+    if (outputTy.hasRank())
+      inOutTy = getRankedParamTensorType(outputTy.getRank(), inOutTy.getDtype(),
+                                         graphOp, inputParamDecls);
+  }
+  moOperandTypes.push_back(inOutTy);
+  moInputParamDecls.push_back(std::move(inputParamDecls));
+  moResultTypes.push_back(inOutTy);
+  moOutputParamDecls.push_back({});
+
+  // `updates` rank could be inferred.
+  // updates.shape = indices.shape[:-1] + tensor.shape[indices.shape[-1]:].
+  TensorType indicesTy = indices.getType();
+  SmallVector<KGEN::ParamDeclAttr> updatesParamDecls;
+  if (inOutTy.hasRank() && indicesTy.hasRank() && indicesTy.getRank() > 0 &&
+      isa<IntegerAttr>(indicesTy.getDims().back())) {
+    int64_t indicesRank = indicesTy.getRank();
+    int64_t indicesDepth = indicesTy.getIntDim(indicesRank - 1);
+    int64_t updatesRank =
+        (indicesRank - 1) + (inOutTy.getRank() - indicesDepth);
+    moOperandTypes.push_back(getRankedParamTensorType(
+        updatesRank, updates.getType().getDtype(), graphOp, updatesParamDecls));
+  } else {
+    moOperandTypes.push_back(getUnrankedTensorType(updates.getType().getDtype(),
+                                                   graphOp, updatesParamDecls));
+  }
+  moInputParamDecls.push_back(std::move(updatesParamDecls));
+
+  // `indices` type is unchanged.
+  moOperandTypes.push_back(indicesTy);
+  moInputParamDecls.push_back({});
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST

@@ -352,7 +352,12 @@ struct LegalizeRMOOps
         LegalizeRMOMOAnalogue<RMO::MOPadRepeatOp, MO::PadRepeatOp>,
         LegalizeRMOMOAnalogue<RMO::MOSliceOp, MO::SliceOp>,
         LegalizeRMOMOAnalogue<RMO::MORoiAlignOp, MO::RoiAlignOp>,
-        LegalizeRMOMOAnalogue<RMO::MORandomNormalOp, MO::RandomNormalOp>>(
+        LegalizeRMOMOAnalogue<RMO::MORandomNormalOp, MO::RandomNormalOp>,
+        LegalizeRMOMOAnalogue<RMO::MOScatterNdOp, MO::ScatterNdOp>,
+        LegalizeRMOMOAnalogue<RMO::MOScatterNdAddOp, MO::ScatterNdAddOp>,
+        LegalizeRMOMOAnalogue<RMO::MOScatterNdMaxOp, MO::ScatterNdMaxOp>,
+        LegalizeRMOMOAnalogue<RMO::MOScatterNdMinOp, MO::ScatterNdMinOp>,
+        LegalizeRMOMOAnalogue<RMO::MOScatterNdMulOp, MO::ScatterNdMulOp>>(
         context);
 
     // Lowering rebind
