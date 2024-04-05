@@ -919,3 +919,46 @@ mo.graph @onnx_select_neg_ones_bcast(
 // CHECK-SAME: @onnx_select_neg_ones_bcast<[[D9:.*]]>([[VARG0:.*]]: !mo.tensor<[1, 32, [[D9]], 10], si64>) -> !mo.tensor<[1, 32, [[D9]], 10], si64> no_inline {
 // CHECK-NEXT:   mo.output [[VARG0]] : !mo.tensor<[1, 32, [[D9]], 10], si64>
 // CHECK-NEXT: }
+
+
+// CHECK-LABEL: mo.graph @random_normal_const
+// CHECK-SAME:  (
+// CHECK-SAME:    %[[FLOAT:.*]]: !mo.tensor<[], f32>,
+// CHECK-SAME:    %[[SEED:.*]]: !mo.tensor<[], si64>
+// CHECK-SAME:  ) -> !mo.tensor<[128], f32> no_inline {
+mo.graph @random_normal_const(
+  %float: !mo.tensor<[], f32>,
+  %seed: !mo.tensor<[], si64>
+) -> !mo.tensor<[?], f32>{
+
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.random.normal(%[[FLOAT]], %[[FLOAT]], %[[SEED]]) : ({{.*}}) -> !mo.tensor<[128], f32>
+  %size = mo.constant {value = #M.dense_array<128> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %res = mo.random.normal(%size, %float, %float, %seed) :
+        (!mo.tensor<[1], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>,
+        !mo.tensor<[], si64>) -> !mo.tensor<[?], f32>
+
+  // CHECK-NEXT: mo.output %[[RES]]
+  mo.output %res: !mo.tensor<[?], f32>
+}
+
+// CHECK-LABEL: mo.graph @random_normal_dyn
+// CHECK-SAME:  <[[N:.*]]>(
+// CHECK-SAME:    %[[DUMMY:.*]]: !mo.tensor<[[[N]]], f32>,
+// CHECK-SAME:    %[[FLOAT:.*]]: !mo.tensor<[], f32>,
+// CHECK-SAME:    %[[SEED:.*]]: !mo.tensor<[], si64>
+// CHECK-SAME:  ) -> !mo.tensor<[[[N]]], f32> no_inline {
+mo.graph @random_normal_dyn<N>(
+  %dummy: !mo.tensor<[N], f32>,
+  %float: !mo.tensor<[], f32>,
+  %seed: !mo.tensor<[], si64>
+) -> !mo.tensor<[?], f32>{
+
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.random.normal(%[[FLOAT]], %[[FLOAT]], %[[SEED]]) : ({{.*}}) -> !mo.tensor<[[[N]]], f32>
+  %size = mo.shape_of(%dummy) : (!mo.tensor<[N], f32>) -> !mo.tensor<[1], si64>
+  %res = mo.random.normal(%size, %float, %float, %seed) :
+        (!mo.tensor<[1], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>,
+        !mo.tensor<[], si64>) -> !mo.tensor<[?], f32>
+
+  // CHECK-NEXT: mo.output %[[RES]]
+  mo.output %res: !mo.tensor<[?], f32>
+}

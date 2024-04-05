@@ -3412,6 +3412,7 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal",
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 //===----------------------------------------------------------------------===//

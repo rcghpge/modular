@@ -2150,6 +2150,17 @@ LogicalResult RandomNormalOp::verify() {
   return success();
 }
 
+LogicalResult RandomNormalOp::canonicalize(RandomNormalOp op,
+                                           PatternRewriter &rewriter) {
+  TensorType resTy = op.getType();
+  if (!resTy.hasUnknownShape() && op.getOutputParamDecls().empty()) {
+    rewriter.replaceOpWithNewOp<Static::RandomNormalOp>(
+        op, op.getType(), op.getMean(), op.getVariance(), op.getSeed());
+  }
+
+  return failure();
+}
+
 //===----------------------------------------------------------------------===//
 // ReduceMulOp
 //===----------------------------------------------------------------------===//
