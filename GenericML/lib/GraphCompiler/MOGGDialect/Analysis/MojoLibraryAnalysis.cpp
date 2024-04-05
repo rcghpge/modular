@@ -60,9 +60,9 @@ ErrorOr<OwningOpRef<ModuleOp>> parseMojoPackage(MLIRContext *ctx,
                                   /*verifyAfterParse=*/false));
   if (!packageOp)
     return Error::getStaticString("invalid package");
+  LLCL::Runtime &runtime = *loadContext(ctx)->get<LLCL::Runtime>();
   return KGEN::specializeModuleForPreElaborationLinking(
-      packageOp->getPostParseModuleAttr(), *LLCL::createRuntimeIfNeeded(),
-      KGEN::CompilationOptions());
+      packageOp->getPostParseModuleAttr(), runtime, KGEN::CompilationOptions());
 }
 
 mlir::LogicalResult materialize(Operation *target,

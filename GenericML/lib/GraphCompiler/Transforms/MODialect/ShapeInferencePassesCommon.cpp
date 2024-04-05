@@ -41,14 +41,13 @@ LogicalResult elaborateModule(ModuleOp moduleOp) {
   // Extend the environment (defines) for the module.
   KGEN::extendWithModularEnvAttr(moduleOp);
 
-  auto ownedRuntime = LLCL::createRuntimeIfNeeded(
-      LLCL::RuntimeOptions().withLeakCheckedAllocator());
+  LLCL::Runtime &runtime = *loadContext(ctx)->get<LLCL::Runtime>();
   mlir::PassManager pm(ctx);
   KGEN::populateElaborateModulePasses(
-      pm, *ownedRuntime, *target, {/*enableSearch=*/false},
+      pm, runtime, *target, {/*enableSearch=*/false},
       [&](KGEN::PackageLinkOp packageLink) {
         return KGEN::specializePackageLinkForPreElaborationLinking(
-            packageLink, *ownedRuntime, KGEN::CompilationOptions());
+            packageLink, runtime, KGEN::CompilationOptions());
       });
   return pm.run(moduleOp);
 }
