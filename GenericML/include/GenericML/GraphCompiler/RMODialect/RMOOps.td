@@ -2429,4 +2429,38 @@ def RMO_MORoiAlignOp : RMO_MOAnaloguePureTensorOp<"roi_align"> {
   let results = (outs MO_Tensor:$result);
 }
 
+def RMO_MORandomNormalOp : RMO_MOAnaloguePureTensorOp<"random.normal",
+  [AllDTypesMatch<["mean", "variance"]>]> {
+  let summary = "Normal distribution operation";
+  let description = [{
+    Returns a tensor with shape `shape` populated with random
+    values from a normal distribution, with the mean of the distribution equal
+    to `mean` and the standard deviation equal to `variance`.
+
+  Example:
+    ```mlir
+      %size = mo.constant {
+        value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+      %mean = mo.constant {
+        value = #M.dense_array<2.0> : tensor<1xf32> } : !mo.tensor<[], f32>
+      %variance = mo.constant {
+        value = #M.dense_array<0.5> : tensor<1xf32> } : !mo.tensor<[], f32>
+      %seed = mo.constant {
+        value = #M.dense_array<1> : tensor<1xsi64> } : !mo.tensor<[], si64>
+      %res = rmo.mo.random.normal(%size, %mean, %variance, %seed) :
+            (!mo.tensor<[4], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>,
+            !mo.tensor<[], si64>) -> !mo.tensor<[1, 1, 7, 8], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_IndicesVectorIfRanked:$shape,
+    MO_FloatScalarIfRanked:$mean,
+    MO_FloatScalarIfRanked:$variance,
+    MO_IndexScalarIfRanked:$seed,
+    MO_ParamDecls:$outputParamDecls);
+
+  let results = (outs MO_Tensor:$result);
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
