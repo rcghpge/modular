@@ -1473,6 +1473,20 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
           op, "matched ops have inconsistent devices");
     }
 
+    // TODO (#36567):
+    // This following early exit is a bit of a hack used to
+    // avoid an infinite loop that can occur somtimes occure between
+    // this pattern and the SwimViewOpThroughBinaryOpWithConstantSubtree
+    // patterns
+    if (op.getResult().hasOneUse()) {
+      auto user = op.getResult().getUses().begin().getUser();
+      if (auto userReshapeOp = dyn_cast<ReshapeOpType>(user)) {
+        return rewriter.notifyMatchFailure(
+            op,
+            "Consumer operation is a reshape which would undo this pattern");
+      }
+    }
+
     // Now we are sure moving the broadcast up will not change results.
     // Intuition:
     //  - we know slices across the trailing dimension will have the same
@@ -1998,6 +2012,256 @@ struct SinkSqueezeLikeReshapeThroughTranspose
         op, op.getResult().getType(), newTransposeOp);
 
     return success();
+  }
+};
+
+/// A pattern that detects binary operator where one operand is the result
+/// of either a transpose or static reshape and the other is ultimately
+/// the result of operations on solely constant values.
+///
+/// Example:
+///
+/// ┌─────┐         ┌────────┐               ┌─────┐  ┌────────┐
+/// │input│         │constant│               │input│  │constant│
+/// └──┬──┘         └───┬────┘               └──┬──┘  └───┬────┘
+///    │                │                       │         │
+///    │                │                       │       .....
+///    │                │                       │         │
+///  ViewOp           .....                     │     ViewOp*
+///    │                │                       │         │
+///    │                │         ───────►      └─binOp*──┘
+///    └──── binOp ─────┘                           │
+///            │                                    │
+///            │                                  ViewOp*
+///         ┌──┴───┐                                │
+///         │output│                             ┌──┴───┐
+///         └──────┘                             │output│
+///                                              └──────┘
+///
+template <typename ViewOp>
+struct SwimViewOpThroughBinaryOpWithConstantSubtree
+    : public DeviceAwareRewritePattern<OpInterfaceRewritePattern,
+                                       ElementWiseBinary> {
+  SwimViewOpThroughBinaryOpWithConstantSubtree(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 2) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::ElementWiseBinary op,
+                             DeviceAwareRewriter &rewriter) const override {
+
+    TensorValue lhs = op.getLhsInput();
+    TensorValue rhs = op.getRhsInput();
+    TensorValue result = op.getResult();
+
+    auto lhsProducer = lhs.getDefiningOp();
+    auto rhsProducer = rhs.getDefiningOp();
+
+    if (!lhsProducer || !rhsProducer) {
+      return rewriter.notifyMatchFailure(
+          op, "One of the inputs is a block argument");
+    }
+
+    if (!result.hasOneUse()) {
+      return rewriter.notifyMatchFailure(
+          op, "Only applies to binop outputs with one use");
+    }
+
+    // TODO (#36567):
+    // This following early exit is a bit of a hack used to
+    // avoid an infinite loop that can occur between the interaction
+    // of SwimReshapeThroughBinaryOpWithConstantSubtree,
+    // BroadcastReshapePattern, and ElementwiseBinaryVectorPattern
+    if (result.getType().hasRank() && result.getType().getRank() == 1) {
+      return rewriter.notifyMatchFailure(
+          op, "Ignoring to not conflict with binary vector pattern");
+    }
+
+    Operation *maybeViewOp{nullptr};
+    Operation *maybeConstantSubtreeRootOp{nullptr};
+
+    Input constantSubtreeSide;
+
+    if (isa<ViewOp>(lhsProducer) && !isa<ViewOp>(rhsProducer)) {
+      maybeViewOp = lhsProducer;
+      maybeConstantSubtreeRootOp = rhsProducer;
+      constantSubtreeSide = Input::RHS;
+    } else if (isa<ViewOp>(rhsProducer) && !isa<ViewOp>(lhsProducer)) {
+      maybeViewOp = rhsProducer;
+      maybeConstantSubtreeRootOp = lhsProducer;
+      constantSubtreeSide = Input::LHS;
+    } else if (isa<ViewOp>(lhsProducer) && isa<ViewOp>(rhsProducer)) {
+      constantSubtreeSide = Input::UNK;
+    } else {
+      return rewriter.notifyMatchFailure(
+          op, "Failed to match, no appropriate view op was found");
+    }
+
+    if (constantSubtreeSide != Input::UNK &&
+        !dependsOnConstantsOnly<MO::ConstantOp>(maybeConstantSubtreeRootOp)) {
+      return rewriter.notifyMatchFailure(
+          op, "Failed to match, the view op input is not a constant subtree");
+    }
+
+    if (constantSubtreeSide == Input::UNK) {
+      if (dependsOnConstantsOnly<MO::ConstantOp>(lhsProducer)) {
+        constantSubtreeSide = Input::LHS;
+        maybeViewOp = rhsProducer;
+        maybeConstantSubtreeRootOp = lhsProducer;
+      } else if (dependsOnConstantsOnly<MO::ConstantOp>(rhsProducer)) {
+        constantSubtreeSide = Input::RHS;
+        maybeViewOp = lhsProducer;
+        maybeConstantSubtreeRootOp = rhsProducer;
+      } else {
+        return rewriter.notifyMatchFailure(
+            op,
+            "Failed to match, no constant subtree to the op could be found");
+      }
+    }
+
+    ViewOp viewOp = dyn_cast<ViewOp>(maybeViewOp);
+
+    // TODO (#36567):
+    // This following early exit is a bit of a hack used to
+    // avoid an infinite loop that can occur between the interaction
+    // of SwimReshapeThroughBinaryOpWithConstantSubtree,
+    // BroadcastReshapePattern, and ElementwiseBinaryVectorPattern
+    if (ViewOp consumerOp =
+            dyn_cast<ViewOp>(result.getUses().begin()->getOwner())) {
+
+      if (consumerOp.getResult().getType() == viewOp.getInput().getType()) {
+        return rewriter.notifyMatchFailure(
+            op, "Immediate consumer reshapes back to original shape, skipping "
+                "application");
+      }
+    }
+
+    TensorValue cso =
+        constantSubtreeSide == Input::LHS ? op.getLhsInput() : op.getRhsInput();
+
+    auto constantSubtreeViewOp =
+        materializeConstantSubtreeViewOp(rewriter, op, viewOp, cso);
+
+    if (constantSubtreeViewOp.isError()) {
+      return rewriter.notifyMatchFailure(op, constantSubtreeViewOp.getError());
+    }
+
+    switch (constantSubtreeSide) {
+    case Input::LHS:
+      op.setLhsInput(*constantSubtreeViewOp);
+      op.setRhsInput(viewOp.getInput());
+      break;
+    case Input::RHS:
+      op.setLhsInput(viewOp.getInput());
+      op.setRhsInput(*constantSubtreeViewOp);
+      break;
+    default:
+      llvm_unreachable("Should not reach here");
+    }
+    op.getResult().setType(viewOp.getInput().getType());
+
+    rewriter.setInsertionPointAfter(op);
+    auto binOpViewOp = materializeBinOpViewOp(rewriter, op, viewOp);
+    rewriter.replaceAllUsesExcept(result, binOpViewOp.getResult(), binOpViewOp);
+
+    return mlir::success();
+  }
+
+  /// The pattern works by moving the given ViewOp from the non-constant subtree
+  /// to the top of the binary op and the top of the constant subtree
+  ///
+  /// The following two functions are responsible for creating these appropriate
+  /// (modified) view ops at these locations
+  virtual ErrorOr<ViewOp>
+  materializeConstantSubtreeViewOp(DeviceAwareRewriter &rewriter,
+                                   ElementWiseBinary binOp, ViewOp viewOp,
+                                   TensorValue constantSubtreeOutput) const = 0;
+
+  virtual ViewOp materializeBinOpViewOp(DeviceAwareRewriter &rewriter,
+                                        ElementWiseBinary binOp,
+                                        ViewOp viewOp) const = 0;
+
+private:
+  enum class Input {
+    LHS,
+    RHS,
+    UNK,
+  };
+};
+
+/// Swims transposes through binary operators when the other operand is
+/// derived from constants
+///
+/// See SwimViewOpThroughBinaryOpWithConstantSubtree documentation for further
+/// details
+struct SwimTransposeThroughBinaryOpWithConstantSubtree
+    : public SwimViewOpThroughBinaryOpWithConstantSubtree<TransposeOp> {
+  SwimTransposeThroughBinaryOpWithConstantSubtree(MLIRContext *ctx)
+      : SwimViewOpThroughBinaryOpWithConstantSubtree<TransposeOp>(ctx) {}
+
+  ErrorOr<TransposeOp> materializeConstantSubtreeViewOp(
+      DeviceAwareRewriter &rewriter, ElementWiseBinary binOp,
+      TransposeOp viewOp,
+      TensorValue constantSubtreeOutput) const override final {
+
+    auto maybePermVec = tryGetConstantIntVector(viewOp.getPerm());
+
+    if (!maybePermVec) {
+      return {"Transpose permutation tensor was not a constant input"};
+    }
+
+    // Find the inverse permutation of the target transpose to fit on top of
+    // the constant subtree
+    const auto &permVec = maybePermVec.value();
+    SmallVector<int64_t> invertedPerm(permVec.size());
+    for (auto [idx, val] : llvm::enumerate(permVec)) {
+      invertedPerm[val] = static_cast<int64_t>(idx);
+    }
+
+    auto invertedPermProducer =
+        rewriter.create<ConstantOp>(binOp->getLoc(), invertedPerm);
+
+    auto constantSubtreeTranspose = rewriter.create<TransposeOp>(
+        binOp->getLoc(), viewOp.getInput().getType(), constantSubtreeOutput,
+        invertedPermProducer);
+
+    return constantSubtreeTranspose;
+  }
+
+  TransposeOp materializeBinOpViewOp(DeviceAwareRewriter &rewriter,
+                                     ElementWiseBinary binOp,
+                                     TransposeOp viewOp) const override final {
+    auto out = rewriter.create<TransposeOp>(
+        binOp->getLoc(), viewOp.getResult().getType(), binOp.getResult(),
+        viewOp.getPerm());
+    return out;
+  }
+};
+
+/// Swims static reshapes through binary operators when the other operand is
+/// derived from constants
+///
+/// See SwimViewOpThroughBinaryOpWithConstantSubtree documentation for further
+/// details
+struct SwimReshapeThroughBinaryOpWithConstantSubtree
+    : public SwimViewOpThroughBinaryOpWithConstantSubtree<Static::ReshapeOp> {
+  SwimReshapeThroughBinaryOpWithConstantSubtree(MLIRContext *ctx)
+      : SwimViewOpThroughBinaryOpWithConstantSubtree<Static::ReshapeOp>(ctx) {}
+
+  ErrorOr<Static::ReshapeOp> materializeConstantSubtreeViewOp(
+      DeviceAwareRewriter &rewriter, ElementWiseBinary binOp,
+      Static::ReshapeOp viewOp,
+      TensorValue constantSubtreeOutput) const override final {
+
+    return rewriter.create<Static::ReshapeOp>(
+        binOp->getLoc(), viewOp.getInput().getType(), constantSubtreeOutput);
+  }
+
+  Static::ReshapeOp
+  materializeBinOpViewOp(DeviceAwareRewriter &rewriter, ElementWiseBinary binOp,
+                         Static::ReshapeOp viewOp) const override final {
+
+    return rewriter.create<Static::ReshapeOp>(
+        binOp->getLoc(), viewOp.getResult().getType(), binOp.getResult());
   }
 };
 
@@ -3715,8 +3979,8 @@ struct SymbolicOptimizationPass
   template <typename... PatternTypes>
   void optimizeWithPattern() {
     MLIRContext *context = &getContext();
-
     RewritePatternSet patterns(context);
+
     if constexpr (sizeof...(PatternTypes))
       // Pattern that should execute now.
       patterns.add<PatternTypes...>(context);
@@ -3799,6 +4063,20 @@ struct SymbolicOptimizationPass
             applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
       return signalPassFailure();
   }
+
+  void viewOpSwimmingPatterns() {
+    MLIRContext *context = &getContext();
+    RewritePatternSet patterns(context);
+
+    // View op swimming through elementwise binary ops
+    patterns.add<SwimReshapeThroughBinaryOpWithConstantSubtree,
+                 SwimTransposeThroughBinaryOpWithConstantSubtree>(context);
+
+    if (failed(
+            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
+      return signalPassFailure();
+  }
+
   void runOnOperation() override {
     // First run all the optimizations with slices turned into split when
     // possible.
@@ -3807,6 +4085,11 @@ struct SymbolicOptimizationPass
     // all of the other patterns too. Without it, split patterns would never
     // apply because they would be turned into slices too early.
     optimizeWithPattern<SplitToSlicePattern>();
+
+    // TODO (#36567):
+    // Had to lift the application of the view ops to a separate
+    // function to prevent further infinite loops
+    viewOpSwimmingPatterns();
   }
 };
 
