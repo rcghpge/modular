@@ -40,7 +40,7 @@ fn run(
 
     var session = engine.InferenceSession()
     print("Loading and compiling model...")
-    var model = session.load_model(model_dir)
+    var model = session.load(model_dir)
     print("Model compiled.\n")
 
     var transformers = Python.import_module("transformers")

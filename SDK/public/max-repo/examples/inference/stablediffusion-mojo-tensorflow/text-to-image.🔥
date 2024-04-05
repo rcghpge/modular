@@ -217,9 +217,9 @@ fn main() raises -> None:
     ## Compile & load models
     print("Loading models into MAX AI Engine...")
     var session = InferenceSession()
-    var txt_encoder = session.load_model(model_dir + "/txt-encoder")
-    var img_decoder = session.load_model(model_dir + "/img-decoder")
-    var img_diffuser = session.load_model(model_dir + "/img-diffuser")
+    var txt_encoder = session.load(model_dir + "/txt-encoder")
+    var img_decoder = session.load(model_dir + "/img-decoder")
+    var img_diffuser = session.load(model_dir + "/img-diffuser")
 
     ## Tokenize & encode prompts
     print("Encoding inputs...")

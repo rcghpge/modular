@@ -159,7 +159,7 @@ fn run[
     var session = InferenceSession()
 
     print("Compiling...")
-    var compiled_model = session.load_model(module)
+    var compiled_model = session.load(module)
 
     print("Executing...")
     var max_tokens = 256
