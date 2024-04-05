@@ -962,3 +962,67 @@ mo.graph @random_normal_dyn<N>(
   // CHECK-NEXT: mo.output %[[RES]]
   mo.output %res: !mo.tensor<[?], f32>
 }
+
+// CHECK-LABEL: mo.graph @reshape_neg_one_dim_in_const_shape
+// CHECK-SAME:   <[[D0:.*]] -> [[D5:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[D0]], 4], si32>
+// CHECK-SAME:  ) -> !mo.tensor<[3, [[D5]], 2], si32> no_inline {
+mo.graph @reshape_neg_one_dim_in_const_shape<D0 -> D4, D5, D6>(
+  %input: !mo.tensor<[D0, 4], si32>
+) -> !mo.tensor<[D4, D5, D6], si32> {
+
+  // CHECK-NEXT: kgen.param.declare {{.*}}: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "[reshape] input and output number of elements must match" : !kgen.string}, eq(mul_nuw(div(mul_nuw([[D0]], 2), 3), 6), mul_nuw([[D0]], 4)))>
+  // CHECK-NEXT: kgen.param.declare [[EXPR:.*]] = <div(mul_nuw([[D0]], 2), 3)>
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[[[D0:.*]], 4], si32> -> !mo.tensor<[3, [[EXPR]], 2], si32>
+  %shape = mo.constant {value = #M.dense_array<3, -1, 2> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %res = mo.reshape<() -> D1, D2, D3>(%input, %shape) : (!mo.tensor<[D0, 4], si32>, !mo.tensor<[3], si64>) -> !mo.tensor<[D1, D2, D3], si32>
+
+  // CHECK-NEXT: %[[REB:.*]] = mo.rebind(%[[RES]])
+  // CHECK-NEXT: mo.output<{{.*}}> %[[REB]]
+  mo.output<D1, D2, D3> %res : !mo.tensor<[D1, D2, D3], si32>
+}
+
+// CHECK-LABEL: mo.graph @reshape_flatten_const_shape
+// CHECK-SAME:   <[[D0:.*]] -> [[D2:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[D0]], 4], si32>
+// CHECK-SAME:  ) -> !mo.tensor<[[[D2]]], si32> no_inline {
+mo.graph @reshape_flatten_const_shape<D0 -> D2>(
+  %input: !mo.tensor<[D0, 4], si32>
+) -> !mo.tensor<[D2], si32> {
+
+  // CHECK-NEXT: kgen.param.declare [[EXPR:.*]] = <mul_nuw([[D0]], 4)>
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[[[D0:.*]], 4], si32> -> !mo.tensor<[[[EXPR]]], si32>
+  %shape = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %res = mo.reshape<() -> D1>(%input, %shape) : (!mo.tensor<[D0, 4], si32>, !mo.tensor<[1], si64>) -> !mo.tensor<[D1], si32>
+
+  // CHECK-NEXT: %[[REB:.*]] = mo.rebind(%[[RES]])
+  // CHECK-NEXT: mo.output<{{.*}}> %[[REB]]
+  mo.output<D1> %res : !mo.tensor<[D1], si32>
+}
+
+// CHECK-LABEL: mo.graph @e2e_fold
+// CHECK-SAME:  <[[M:.*]], [[N:.*]]>(
+// CHECK-SAME:   %[[ARG0:.*]]: !mo.tensor<[[[M]], 1], f32>,
+// CHECK-SAME:   %[[ARG1:.*]]: !mo.tensor<[1, [[N]]], f32>
+// CHECK-SAME:   %[[ARG2:.*]]: !mo.tensor<[[[N]], [[M]]], f32>
+// CHECK-SAME:  ) -> !mo.tensor<[[[N]], [[M]]], f32> no_inline {
+mo.graph @e2e_fold<M, N -> E, F>(
+  %arg0: !mo.tensor<[M, 1], f32>,
+  %arg1: !mo.tensor<[1, N], f32>,
+  %arg2: !mo.tensor<[N, M], f32>
+) -> !mo.tensor<[E, F], f32> {
+  %sht0 = mo.shape_of(%arg0) : (!mo.tensor<[M, 1], f32>) -> !mo.tensor<[2], si64>
+  %sht1 = mo.shape_of(%arg1) : (!mo.tensor<[1, N], f32>) -> !mo.tensor<[2], si64>
+  %s3 = mo.broadcast_shape(%sht0, %sht1) : (!mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], si64>
+
+  // CHECK-NEXT: %[[BCAST:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[[[M]], 1], f32> -> !mo.tensor<[[[M]], [[N]]], f32>
+  %3 = mo.broadcast_to<() -> A, B>(%arg0, %s3) : (
+    !mo.tensor<[M, 1], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[A, B], f32>
+
+  // CHECK-NEXT: %[[RESHAPE:.*]] = mo.static.reshape(%[[BCAST]]) : !mo.tensor<[[[M]], [[N]]], f32> -> !mo.tensor<[[[N]], [[M]]], f32>
+  %sht2 = mo.shape_of(%arg2) : (!mo.tensor<[N, M], f32>) -> !mo.tensor<[2], si64>
+  %res = mo.reshape<() -> C, D>(%3, %sht2) : (!mo.tensor<[A, B], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[C, D], f32>
+
+  // CHECK-NEXT: mo.output %[[RESHAPE]]
+  mo.output<C, D> %res : !mo.tensor<[C, D], f32>
+}
