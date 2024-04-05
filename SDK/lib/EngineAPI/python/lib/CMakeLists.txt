@@ -14,6 +14,11 @@ add_modular_library(ModularFrameworkPython
   InputProcessing.cpp
   ResultProcessing.cpp
   Utils.cpp
+
+  LINK_LIBS PRIVATE
+  modular-framework-common
+  modular-framework-tf-ext
+  modular-framework-torch-ext
 )
 # Set `MOJO_CONFIG_SECTION` so that `InferenceSession` can override
 # KGENCompilerRTShared.so's location.

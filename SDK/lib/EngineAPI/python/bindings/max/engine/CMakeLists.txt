@@ -12,12 +12,8 @@ pybind11_add_module(core
   ${CMAKE_CURRENT_SOURCE_DIR}/core.cpp
 )
 target_link_libraries(core
-  PUBLIC
-  modular-framework-common
-  modular-framework-tf-ext
-  modular-framework-torch-ext
+  PRIVATE
   ModularFrameworkPython
-  MSupport
 )
 add_dependencies(max-engine core)
 
