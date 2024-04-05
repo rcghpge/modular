@@ -212,7 +212,7 @@ mo.graph @broadcast_to_fallback_shape_func<() -> D0, D1, D2>(
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32> no_inline {
 //
 // CHECK-NEXT: mo.invoke_shape_func["broadcast_to_shape"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[TARGET_SHAPE]])
-// CHECK-SAME:   {dataDeptTensors = [1 : i32], kgenParams = {output_rank = 3 : index}} :
+// CHECK-SAME:   {dataDeptTensors = [1 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[1, 3], f32>, !mo.tensor<[3], si32>)
 //
 // CHECK-NEXT: %[[RES:.*]] = mo.broadcast_to(%[[INPUT]], %[[TARGET_SHAPE]]) :
@@ -383,7 +383,7 @@ mo.graph @gather_fallback_shape_func<D0, D1 -> D2, D3, D4>(
 // CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]], [[D4]]], f32> no_inline {
 //
 // CHECK-NEXT: mo.invoke_shape_func["gather_shape"]<() -> [[D5:.*]], [[D6:.*]], [[D7:.*]]>(%[[INPUT]], %[[INDICES]], %[[AXIS]])
-// CHECK-SAME:   {dataDeptTensors = [2 : i32], kgenParams = {output_rank = 3 : index}} :
+// CHECK-SAME:   {dataDeptTensors = [2 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[10, [[D0]]], f32>, !mo.tensor<[[[D1]], 20], si32>, !mo.tensor<[], si32>)
 //
 // CHECK-NEXT: %[[RES:.*]] = mo.gather(%[[INPUT]], %[[INDICES]], %[[AXIS]]) :
@@ -411,7 +411,7 @@ mo.graph @gather_nd_fallback_shape_func<D0, D1 -> D2, D3>(
 // CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]]], f32> no_inline {
 //
 // CHECK-NEXT: mo.invoke_shape_func["gather_nd_shape"]<() -> [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[INDICES]])
-// CHECK-SAME:   {dataDeptTensors = [], kgenParams = {batch_dims = 1 : i64, output_rank = 2 : index}} :
+// CHECK-SAME:   {dataDeptTensors = [], kgenParams = {batch_dims = 1 : i64}} :
 // CHECK-SAME:   (!mo.tensor<[[[D0]], [[D1]], 20], f32>, !mo.tensor<[[[D0]], 1], si32>)
 //
 // CHECK-NEXT: %[[RES:.*]] = mo.gather_nd(%[[INPUT]], %[[INDICES]])
@@ -553,7 +553,7 @@ mo.graph @reshape_fallback_shape_func<() -> D0, D1, D2>(
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32> no_inline {
 //
 // CHECK-NEXT: mo.invoke_shape_func["reshape_shape"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[TARGET_SHAPE]])
-// CHECK-SAME:   {dataDeptTensors = [1 : i32], kgenParams = {output_rank = 3 : index}} :
+// CHECK-SAME:   {dataDeptTensors = [1 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[1, 3], f32>, !mo.tensor<[3], si32>)
 //
 // CHECK-NEXT: %[[RES:.*]] = mo.reshape(%[[INPUT]], %[[TARGET_SHAPE]]) :
@@ -873,24 +873,29 @@ mo.graph @unsqueeze_shape_fallback_shape_func<D0, D1 -> D2>(
 //
 // CHECK-NEXT: mo.output<[[D3]]> %[[RES]] : !mo.tensor<[[[D3]]], si64>
 
-mo.graph @broadcast_shape_no_shape_func_yet<D0, D1 -> O1, O2, O3>(
-  %input:   !mo.tensor<[D0], si64>,
-  %indices: !mo.tensor<[D1], si64>
-) -> !mo.tensor<[O1, O2, O3], si64> {
-  %res = mo.broadcast_to<() -> Sh1: !mosh.ape>(%input, %indices) :
-    (!mo.tensor<[D0], si64>, !mo.tensor<[D1], si64>) -> !mo.tensor<Sh1, si64>
-  %res_rebind = mo.rebind<() -> D2, D3, D4>(%res): !mo.tensor<Sh1, si64> -> !mo.tensor<[D2, D3, D4], si64>
-  mo.output<D2, D3, D4> %res_rebind : !mo.tensor<[D2, D3, D4], si64>
+
+mo.graph @broadcast_to_fallback_shape_func_unraned<D0 -> Sh1: !mosh.ape>(
+  %input: !mo.tensor<[1, 3], f32>,
+  %target_shape: !mo.tensor<[D0], si32>
+) -> !mo.tensor<Sh1, f32> {
+
+  %res = mo.broadcast_to<() -> Sh2: !mosh.ape>(%input, %target_shape) :
+    (!mo.tensor<[1, 3], f32>, !mo.tensor<[D0], si32>) -> !mo.tensor<Sh2, f32>
+
+    mo.output<:!mosh.ape Sh2> %res : !mo.tensor<Sh2, f32>
 }
-// COM: We cannot handle shape functions with unranked outputs for broadcast yet
-// COM: however, we should not crash if run into these situations as further
-// COM: analysis may simplify and allow us to figure out the rank.
-// COM:
-// COM: This test makes sure nothing happens essentially. Building with debug
-// COM: will cause a helpful error message to be emitted.
+// CHECK-LABEL: mo.graph @broadcast_to_fallback_shape_func
+// CHECK-SAME: <[[D0:.*]] -> [[SH1:.*]]: !mosh.ape>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[1, 3], f32>,
+// CHECK-SAME:   %[[TARGET_SHAPE:.*]]: !mo.tensor<[[[D0]]], si32>
+// CHECK-SAME: ) -> !mo.tensor<[[SH1]], f32> no_inline {
 //
-// CHECK-LABEL: mo.graph
-// CHECK-SAME: @broadcast_shape_no_shape_func_yet<[[D0:[^ ]*]], [[D1:[^ ]*]] -> O1, O2, O3>([[VARG0:[^ ]*]]: !mo.tensor<[[[D0]]], si64>, [[VARG1:[^ ]*]]: !mo.tensor<[[[D1]]], si64>) -> !mo.tensor<[O1, O2, O3], si64> no_inline {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.broadcast_to<() -> [[SH1:[^ ]*]]: !mosh.ape>([[VARG0]], [[VARG1]]) : (!mo.tensor<[[[D0]]], si64>, !mo.tensor<[[[D1]]], si64>) -> !mo.tensor<[[SH1]], si64>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.rebind<() -> [[D2:[^ ]*]], [[D3:[^ ]*]], [[D4:[^ ]*]]>([[V0]]) : !mo.tensor<[[SH1]], si64> -> !mo.tensor<[[[D2]], [[D3]], [[D4]]], si64>
-// CHECK-NEXT: mo.output<[[D2]], [[D3]], [[D4]]> [[V1]] : !mo.tensor<[[[D2]], [[D3]], [[D4]]], si64>
+// CHECK-NEXT: mo.invoke_shape_func["broadcast_to_shape"]<() -> [[SH2:.*]]: !mosh.ape>(%[[INPUT]], %[[TARGET_SHAPE]])
+// CHECK-SAME:   {dataDeptTensors = [1 : i32]} :
+// CHECK-SAME:   (!mo.tensor<[1, 3], f32>, !mo.tensor<[[[D0]]], si32>)
+//
+// CHECK-NEXT: %[[RES:.*]] = mo.broadcast_to(%[[INPUT]], %[[TARGET_SHAPE]]) :
+// CHECK-SAME:   (!mo.tensor<[1, 3], f32>, !mo.tensor<[[[D0]]], si32>)
+// CHECK-SAME:   -> !mo.tensor<[[SH2]], f32>
+//
+// CHECK-NEXT: mo.output<{{.*}} %[[RES]] : {{.*}}

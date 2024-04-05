@@ -612,6 +612,15 @@ private:
     // Dispatch on certain shape function names.
     StringRef shapeFuncName = invokeShapeFuncOp.getShapeFuncName();
     ShapeAttr outputShape;
+    // Why we have these here (instead of just relying on symbolicization):
+    //
+    // - because they can't always be symbolicized (due to KGEN IR complexity or
+    // phasing), and they are often critical to e2e shape inference and other
+    // optimizations like MHA pattern patching.
+    //
+    // - `broadcast_shape` also because it might rely on simplification of
+    // `mosh.broadcast`, it's _possible_ that we could move these 2 logic into
+    // staticization and symbolicization respectively.
     if (shapeFuncName == "broadcast_to_shape") {
       outputShape = tryDecomposeBroadcastToShape(invokeShapeFuncOp);
 
@@ -626,14 +635,40 @@ private:
     }
 
     // Create new declaration of the shape function call's output parameter if
-    // decomposition succeeded.
+    // decomposition succeeded; `outputShape` has the form `[N0, N1, ...]`
     if (outputShape) {
-      for (auto [outputDecl, outputDim] :
-           llvm::zip(invokeShapeFuncOp.getOutputParamDecls(),
-                     outputShape.getValues())) {
-        auto declOp =
-            builder.create<KGEN::ParamDeclareOp>(loc, outputDecl, outputDim);
-        decomposedOps.push_back(declOp);
+      // outputDecls is always one of
+      // - Sh2: !mosh.ape
+      // - [D0, D1, ...]
+      ArrayRef<KGEN::ParamDeclAttr> outputDecls =
+          invokeShapeFuncOp.getOutputParamDecls();
+
+      // NOTE symbolicization currently can't handle dynamic output shape, since
+      // it relies on MOGG compiling the shape function down to KGEN IR, which
+      // relies on the mojo shape function (and the bottom part of our stack) to
+      // support dynamic rank.
+      //
+      // However, we don't need to support dynamic
+      if (outputDecls.size() == 1 &&
+          isa<ShapeType>(outputDecls.front().getType())) {
+        // Create definition the output shape parameter to output shape, i.e.,
+        //   kgen.param.decare D0 = <[N0, N1, ...]>
+        auto shapeDeclOp = builder.create<KGEN::ParamDeclareOp>(
+            loc, outputDecls.front(), outputShape);
+        decomposedOps.push_back(shapeDeclOp);
+
+      } else {
+        // Create definition from each output parameter to its dimension, i.e.,
+        //   kgen.param.decare D0 = <N0>
+        //   kgen.param.decare D1 = <N1>
+        //   ...
+        for (auto [outputDimDecl, outputDim] :
+             llvm::zip(invokeShapeFuncOp.getOutputParamDecls(),
+                       outputShape.getValues())) {
+          auto dimDeclOp = builder.create<KGEN::ParamDeclareOp>(
+              loc, outputDimDecl, outputDim);
+          decomposedOps.push_back(dimDeclOp);
+        }
       }
     }
   }

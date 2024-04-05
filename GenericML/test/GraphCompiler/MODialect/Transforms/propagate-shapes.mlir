@@ -371,23 +371,23 @@ mo.graph @out_of_order_ops<() -> D0, D1, D2, D3>(
   %b2 = mo.static.broadcast_to(%input): !mo.tensor<[], f32> -> !mo.tensor<[D6, D7], f32>
 
   mo.invoke_shape_func["broadcast_to_shape"]<() -> D4, D5>(%input, %shape1)
-    {dataDeptTensors = [1], kgenParams = {output_rank = 2}} :
+    {dataDeptTensors = [1]} :
     (!mo.tensor<[], f32>, !mo.tensor<[2], si32>)
   %b1 = mo.static.broadcast_to(%input): !mo.tensor<[], f32> -> !mo.tensor<[D4, D5], f32>
 
   mo.invoke_shape_func["broadcast_to_shape"]<() -> D6, D7>(%b1, %shape2)
-    {dataDeptTensors = [1], kgenParams = {output_rank = 2}} :
+    {dataDeptTensors = [1]} :
     (!mo.tensor<[D4, D5], f32>, !mo.tensor<[2], si32>)
 
   // NOTE that these got sorted based on SSA _and_ parameter dependencies.
   // CHECK-NEXT: mo.invoke_shape_func["broadcast_to_shape"]<() -> [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[SHAPE1]])
-  // CHECK-SAME:   {dataDeptTensors = [1], kgenParams = {output_rank = 2 : i64}} :
+  // CHECK-SAME:   {dataDeptTensors = [1]} :
   // CHECK-SAME:   (!mo.tensor<[], f32>, !mo.tensor<[2], si32>)
   //
   // CHECK-NEXT: %[[B1:.*]] = mo.static.broadcast_to(%[[INPUT]]) : !mo.tensor<[], f32> -> !mo.tensor<[[[D4]], [[D5]]], f32>
 
   // CHECK-NEXT: mo.invoke_shape_func["broadcast_to_shape"]<() -> [[D6:.*]], [[D7:.*]]>(%[[B1]], %[[SHAPE2]])
-  // CHECK-SAME:   {dataDeptTensors = [1], kgenParams = {output_rank = 2 : i64}} :
+  // CHECK-SAME:   {dataDeptTensors = [1]} :
   // CHECK-SAME:   (!mo.tensor<[[[D4]], [[D5]]], f32>, !mo.tensor<[2], si32>)
   //
   // CHECK-NEXT: %[[B2:.*]] = mo.static.broadcast_to(%[[INPUT]]) : !mo.tensor<[], f32> -> !mo.tensor<[[[D6]], [[D7]]], f32>
@@ -413,7 +413,7 @@ mo.graph @broadcast_to_parametric_shape<D0, D1 -> D2, D3>(
   // CHECK-SAME:  {message = "[broadcast_to] input dim must be either 1 or equal to corresponding output dim starting from the rightmost dim" : !kgen.string},
   // CHECK-SAME:  or(eq(D0, D1), eq(D0, 1)))>
   mo.invoke_shape_func["broadcast_to_shape"]<() -> D4, D5>(%input, %target_shape)
-    {dataDeptTensors = [1], kgenParams = {output_rank = 1}} : (!mo.tensor<[D0], f32>, !mo.tensor<[2], si32>)
+    {dataDeptTensors = [1]} : (!mo.tensor<[D0], f32>, !mo.tensor<[2], si32>)
 
   // CHECK-NEXT: %[[RES:.*]] = mo.static.broadcast_to(%[[INPUT]])
   // CHECK-SAME:   : !mo.tensor<[[[D0]]], f32> -> !mo.tensor<[[[D0]], [[D1]]], f32>
@@ -440,7 +440,7 @@ mo.graph @reshape_parametric_shape<D0, D1 -> D2, D3, D4>(
   // CHECK-SAME:  {message = "[reshape] input and output number of elements must match" : !kgen.string},
   // CHECK-SAME:   eq(mul_nuw([[D0]], [[D1]]), mul_nuw([[D0]], 20)))>
   mo.invoke_shape_func["reshape_shape"]<() -> D5, D6, D7>(%input, %target_shape)
-    {dataDeptTensors = [1], kgenParams = {output_rank = 1}} : (!mo.tensor<[D0, D1], f32>, !mo.tensor<[3], si32>)
+    {dataDeptTensors = [1]} : (!mo.tensor<[D0, D1], f32>, !mo.tensor<[3], si32>)
 
   // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]])
   // CHECK-SAME:   : !mo.tensor<[[[D0]], [[D1]]], f32> -> !mo.tensor<[[[D0]], 4, 5], f32>
@@ -465,7 +465,7 @@ mo.graph @reshape_scalar_tensor<() -> D2, D3, D4>(
   %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[3], si32>
 
   mo.invoke_shape_func["reshape_shape"]<() -> D5, D6, D7>(%input, %target_shape)
-    {dataDeptTensors = [1], kgenParams = {output_rank = 1}} : (!mo.tensor<[], f32>, !mo.tensor<[3], si32>)
+    {dataDeptTensors = [1]} : (!mo.tensor<[], f32>, !mo.tensor<[3], si32>)
   %res = mo.reshape(%input, %target_shape) : (
     !mo.tensor<[], f32>, !mo.tensor<[3], si32>
   ) -> !mo.tensor<[D5, D6, D7], f32>
@@ -487,7 +487,7 @@ mo.graph @reshape_parametric_shape_inferred_neg_one_empty<D0 -> D2, D3, D4>(
   %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[3], si32>
 
   mo.invoke_shape_func["reshape_shape"]<() -> D5, D6, D7>(%input, %target_shape)
-    {dataDeptTensors = [1], kgenParams = {output_rank = 1}} : (!mo.tensor<[D0, 0], f32>, !mo.tensor<[3], si32>)
+    {dataDeptTensors = [1]} : (!mo.tensor<[D0, 0], f32>, !mo.tensor<[3], si32>)
   %res = mo.reshape(%input, %target_shape) : (
     !mo.tensor<[D0, 0], f32>, !mo.tensor<[3], si32>
   ) -> !mo.tensor<[D5, D6, D7], f32>
