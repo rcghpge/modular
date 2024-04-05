@@ -872,3 +872,25 @@ mo.graph @unsqueeze_shape_fallback_shape_func<D0, D1 -> D2>(
 // CHECK-SAME:   (!mo.tensor<[[[D0]]], si64>, !mo.tensor<[[[D1]]], si64>) -> !mo.tensor<[[[D3]]], si64>
 //
 // CHECK-NEXT: mo.output<[[D3]]> %[[RES]] : !mo.tensor<[[[D3]]], si64>
+
+mo.graph @broadcast_shape_no_shape_func_yet<D0, D1 -> O1, O2, O3>(
+  %input:   !mo.tensor<[D0], si64>,
+  %indices: !mo.tensor<[D1], si64>
+) -> !mo.tensor<[O1, O2, O3], si64> {
+  %res = mo.broadcast_to<() -> Sh1: !mosh.ape>(%input, %indices) :
+    (!mo.tensor<[D0], si64>, !mo.tensor<[D1], si64>) -> !mo.tensor<Sh1, si64>
+  %res_rebind = mo.rebind<() -> D2, D3, D4>(%res): !mo.tensor<Sh1, si64> -> !mo.tensor<[D2, D3, D4], si64>
+  mo.output<D2, D3, D4> %res_rebind : !mo.tensor<[D2, D3, D4], si64>
+}
+// COM: We cannot handle shape functions with unranked outputs for broadcast yet
+// COM: however, we should not crash if run into these situations as further
+// COM: analysis may simplify and allow us to figure out the rank.
+// COM:
+// COM: This test makes sure nothing happens essentially. Building with debug
+// COM: will cause a helpful error message to be emitted.
+//
+// CHECK-LABEL: mo.graph
+// CHECK-SAME: @broadcast_shape_no_shape_func_yet<[[D0:[^ ]*]], [[D1:[^ ]*]] -> O1, O2, O3>([[VARG0:[^ ]*]]: !mo.tensor<[[[D0]]], si64>, [[VARG1:[^ ]*]]: !mo.tensor<[[[D1]]], si64>) -> !mo.tensor<[O1, O2, O3], si64> no_inline {
+// CHECK-NEXT: [[V0:[^ ]*]] = mo.broadcast_to<() -> [[SH1:[^ ]*]]: !mosh.ape>([[VARG0]], [[VARG1]]) : (!mo.tensor<[[[D0]]], si64>, !mo.tensor<[[[D1]]], si64>) -> !mo.tensor<[[SH1]], si64>
+// CHECK-NEXT: [[V1:[^ ]*]] = mo.rebind<() -> [[D2:[^ ]*]], [[D3:[^ ]*]], [[D4:[^ ]*]]>([[V0]]) : !mo.tensor<[[SH1]], si64> -> !mo.tensor<[[[D2]], [[D3]], [[D4]]], si64>
+// CHECK-NEXT: mo.output<[[D2]], [[D3]], [[D4]]> [[V1]] : !mo.tensor<[[[D2]], [[D3]], [[D4]]], si64>
