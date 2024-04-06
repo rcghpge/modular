@@ -131,9 +131,10 @@ struct CompiledKernelCall {
 using CompiledKernelFn = void(void **, ssize_t *, KGEN::MojoCallContext *);
 
 // A function pointer representing an alternate ABI which takes in a list of
-// async value pointers as the first value and a runtime as the second. The
-// async values will be unpacked and manipulated directly within the kernel.
-using CompiledKernelAsyncABIFn = void(void **, void *);
+// async value pointers as the first value and a runtime, and callContext as
+// third. The async values will be unpacked and manipulated directly within the
+// kernel.
+using CompiledKernelAsyncABIFn = void(void **, void *, void *);
 //===----------------------------------------------------------------------===//
 // CompiledKernelsContext
 //===----------------------------------------------------------------------===//

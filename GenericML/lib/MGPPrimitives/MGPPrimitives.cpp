@@ -395,9 +395,18 @@ static void mgp_generic_execute(GML::Context &ctx, RemainingArguments operands,
     kernelInputs.push_back(&input);
   for (AnyAsyncValueRef &result : outResults)
     kernelInputs.push_back(&result);
+  KGEN::MojoCallContext callContext(outChain.copy(), outChain.copyLocation());
   kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
-            reinterpret_cast<void *>(&runtime));
+            reinterpret_cast<void *>(&runtime),
+            reinterpret_cast<void *>(&callContext));
 
+  if (outChain.copy().isError()) {
+    // The kernel failed while trying to launch.
+    std::move(outResults)
+        .setAllToError(outChain.copy().getDiagnostic().getMessage().copy(),
+                       loc);
+    return;
+  }
   std::move(outChain).emplace();
 }
 
