@@ -1,7 +1,9 @@
 // Note: due to the size of the file, we want to filecheck with --enable-var-scope
 // which prevents variables from being reused across CHECK-LABEL boundaries.
 //
-// RUN: mo-opt %s --canonicalize --shape-inference --canonicalize --hoist-param-exprs | FileCheck %s --enable-var-scope
+// COM: `--symbolic-optimize` is optional -- just need to regenerate tests. Was too lazy to do so initially
+// COM: `constant-fold=false` since otherwise it
+// RUN: mo-opt %s --split-input-file --canonicalize --shape-inference=constant-fold=false --symbolic-optimize --canonicalize --hoist-param-exprs | FileCheck %s --enable-var-scope
 // CHECK-NOT: kgen.func
 
 mo.graph @static_ranks(%arg0: !mo.tensor<[?, ?], f32>, %arg1: !mo.tensor<[?, ?], f32>) -> !mo.tensor<?, f32> {
@@ -346,12 +348,10 @@ mo.graph @scatter_nd(
   mo.output %res : !mo.tensor<[?, ?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @scatter_nd<() -> [[D0:.*]], [[D1:.*]], [[D2:.*]]>([[VARG0:%.*]]: !mo.tensor<[10, 1, 1], f32>, [[VARG1:%.*]]: !mo.tensor<[5, 1, 1], f32>, [[VARG2:%.*]]: !mo.tensor<[5], si32>) -> !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32> no_inline {
-// CHECK-NEXT:   [[V0:%.*]] = mo.static.reshape([[VARG2]]) : !mo.tensor<[5], si32> -> !mo.tensor<[5, 1], si32>
-// CHECK-NEXT:   mo.invoke_shape_func["scatter_nd_shape"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%arg0, %arg1, %0) {dataDeptTensors = []} : (!mo.tensor<[10, 1, 1], f32>, !mo.tensor<[5, 1, 1], f32>, !mo.tensor<[5, 1], si32>)
-// CHECK-NEXT:   [[V1:%.*]] = mo.scatter_nd([[VARG0]], [[VARG1]], [[V0]]) : (!mo.tensor<[10, 1, 1], f32>, !mo.tensor<[5, 1, 1], f32>, !mo.tensor<[5, 1], si32>) -> !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
-// CHECK-NEXT:   mo.output<{{.*}}> [[V1]]
-// CHECK-NEXT: }
+// CHECK-SAME: @scatter_nd([[VARG0:[^ ]*]]: !mo.tensor<[10, 1, 1], f32>, [[VARG1:[^ ]*]]: !mo.tensor<[5, 1, 1], f32>, [[VARG2:[^ ]*]]: !mo.tensor<[5], si32>) -> !mo.tensor<[10, 1, 1], f32> no_inline {
+// CHECK-NEXT: [[V0:[^ ]*]] = mo.static.reshape([[VARG2]]) : !mo.tensor<[5], si32> -> !mo.tensor<[5, 1], si32>
+// CHECK-NEXT: [[V1:[^ ]*]] = mo.scatter_nd([[VARG0]], [[VARG1]], [[V0]]) : (!mo.tensor<[10, 1, 1], f32>, !mo.tensor<[5, 1, 1], f32>, !mo.tensor<[5, 1], si32>) -> !mo.tensor<[10, 1, 1], f32>
+// CHECK-NEXT: mo.output [[V1]] : !mo.tensor<[10, 1, 1], f32>
 
 mo.graph @scatter_nd_add(
   %input: !mo.tensor<[10, 1, 1], f32>,
@@ -365,12 +365,10 @@ mo.graph @scatter_nd_add(
   mo.output %res : !mo.tensor<[?, ?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @scatter_nd_add<() -> [[D0:.*]], [[D1:.*]], [[D2:.*]]>([[VARG0:%.*]]: !mo.tensor<[10, 1, 1], f32>, [[VARG1:%.*]]: !mo.tensor<[5, 1, 1], f32>, [[VARG2:%.*]]: !mo.tensor<[5], si32>) -> !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32> no_inline {
-// CHECK-NEXT:   [[V0:%.*]] = mo.static.reshape([[VARG2]]) : !mo.tensor<[5], si32> -> !mo.tensor<[5, 1], si32>
-// CHECK-NEXT:   mo.invoke_shape_func["scatter_nd_shape"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%arg0, %arg1, %0) {dataDeptTensors = []} : (!mo.tensor<[10, 1, 1], f32>, !mo.tensor<[5, 1, 1], f32>, !mo.tensor<[5, 1], si32>)
-// CHECK-NEXT:   [[V1:%.*]] = mo.scatter_nd.add([[VARG0]], [[VARG1]], [[V0]]) : (!mo.tensor<[10, 1, 1], f32>, !mo.tensor<[5, 1, 1], f32>, !mo.tensor<[5, 1], si32>) -> !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
-// CHECK-NEXT:   mo.output<{{.*}}> [[V1]]
-// CHECK-NEXT: }
+// CHECK-SAME: @scatter_nd_add([[VARG0:[^ ]*]]: !mo.tensor<[10, 1, 1], f32>, [[VARG1:[^ ]*]]: !mo.tensor<[5, 1, 1], f32>, [[VARG2:[^ ]*]]: !mo.tensor<[5], si32>) -> !mo.tensor<[10, 1, 1], f32> no_inline {
+// CHECK-NEXT: [[V0:[^ ]*]] = mo.static.reshape([[VARG2]]) : !mo.tensor<[5], si32> -> !mo.tensor<[5, 1], si32>
+// CHECK-NEXT: [[V1:[^ ]*]] = mo.scatter_nd.add([[VARG0]], [[VARG1]], [[V0]]) : (!mo.tensor<[10, 1, 1], f32>, !mo.tensor<[5, 1, 1], f32>, !mo.tensor<[5, 1], si32>) -> !mo.tensor<[10, 1, 1], f32>
+// CHECK-NEXT: mo.output [[V1]] : !mo.tensor<[10, 1, 1], f32>
 
 mo.graph @conv2d_static_input_dims(
   %input: !mo.tensor<[10, 5, 5, 16], f32>,

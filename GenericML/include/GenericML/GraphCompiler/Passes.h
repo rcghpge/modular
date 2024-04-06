@@ -203,6 +203,17 @@ struct ShapeInferenceOptions
       *this, "kernel-library-paths",
       llvm::cl::desc(
           "Paths to mojo packages containing mojo shape function definitions")};
+
+  Option<bool> constantFold{
+      *this, "constant-fold",
+      llvm::cl::desc("For use with the extended pipeline. Whether to use "
+                     "constant-folding."),
+      llvm::cl::init(true)};
+  Option<std::string> compiledFrameworkLabel{
+      *this, "compiled-framework-label",
+      llvm::cl::desc(
+          "For use with the extended pipeline / constant-folding. Framework "
+          "label to compile to (used in mgp.model framework tag).")};
 };
 
 /// Registers the MO-to-MGP pipeline for use by testing tools.

@@ -103,68 +103,6 @@ void M::MO::registerPasses() {
   mlir::registerViewOpGraphPass();
 }
 
-static inline void
-maybeApplyShapeInferencePipeline(mlir::OpPassManager &pm,
-                                 const MoToMgpOptions &opts) {
-  // Adds passes to perform shape inference and resulting optimizations if
-  // relevant flags are on.
-  if (!opts.useShapeInference)
-    return;
-  ShapeInferenceOptions shapeInferenceOpts;
-  shapeInferenceOpts.isExperimentalMode = opts.useExperimentalShapeInference;
-  shapeInferenceOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
-
-  SymbolicOptimizationOptions symbolicOptimizationOpts;
-  symbolicOptimizationOpts.symbolicFfastMath = opts.symbolicFfastMath;
-  symbolicOptimizationOpts.symbolicNoUndefinedMath =
-      opts.symbolicNoUndefinedMath;
-
-  buildShapeInferencePipeline(pm, shapeInferenceOpts);
-
-  // Do some shape refinement.
-  //
-  // In general the below passes all help each other. In the future we should be
-  // running things to a fixed point however for now just run the below 3 times.
-  for (size_t i = 0; i < 3; i++) {
-    if (opts.constantFold) {
-      pm.addPass(MO::createConstantFoldPass(
-          opts.compiledFrameworkLabel.hasValue()
-              ? opts.compiledFrameworkLabel.getValue()
-              : "",
-          opts));
-    }
-
-    if (opts.useExperimentalShapeInference) {
-      pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(
-          {opts.kernelLibraryPaths}));
-    }
-
-    pm.addPass(MO::createPropagateShapes());
-    pm.addPass(
-        MO::createStaticizeShapes({!opts.useExperimentalShapeInference}));
-    if (!opts.useExperimentalShapeInference) {
-      // The old path explicitly inlines the materialized shape function and
-      // remove them the functions themselves.
-      pm.addPass(MO::createInlineShapeFunctions());
-      pm.addPass(mlir::createSymbolDCEPass());
-    }
-    pm.addPass(mlir::createCSEPass());
-    pm.addPass(mlir::createCanonicalizerPass());
-  }
-
-  // Run symbolic optimizations after shape inference to avoid complicating
-  // tracing shape pipeline.
-  pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
-
-  // Add fallback shape functions for any remaining unhandled ops
-  pm.addPass(MO::createAddFallbackShapeFunctions({opts.kernelLibraryPaths}));
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
-}
-
 LogicalResult MO::lowerMOToMGP(ModuleOp module,
                                const MoToMgpOptions &moToMgpOptions,
                                Runtime &runtime) {
@@ -209,7 +147,32 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
-  maybeApplyShapeInferencePipeline(pm, opts);
+  if (opts.useShapeInference) {
+    ShapeInferenceOptions shapeInferenceOpts;
+    shapeInferenceOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
+    shapeInferenceOpts.constantFold = opts.constantFold;
+    shapeInferenceOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+    shapeInferenceOpts.isExperimentalMode = opts.useExperimentalShapeInference;
+    buildShapeInferencePipeline(pm, shapeInferenceOpts);
+
+    // Run symbolic optimizations after shape inference to avoid complicating
+    // tracing shape pipeline.
+    SymbolicOptimizationOptions symbolicOptimizationOpts;
+    symbolicOptimizationOpts.symbolicFfastMath = opts.symbolicFfastMath;
+    symbolicOptimizationOpts.symbolicNoUndefinedMath =
+        opts.symbolicNoUndefinedMath;
+    pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
+
+    // Add fallback shape functions for any remaining unhandled ops.
+    // NOTE: https://github.com/modularml/modular/issues/36956 means we need
+    // this to handle mo.arg_nonzero.
+    pm.addPass(MO::createAddFallbackShapeFunctions({opts.kernelLibraryPaths}));
+    pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::createCSEPass());
+    pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
+    pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::createCSEPass());
+  }
 
   std::string_view compiledFrameworkLabel;
   if (opts.compiledFrameworkLabel.hasValue())
@@ -406,6 +369,36 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
   pm.addPass(MO::createPropagateShapes());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+
+  // Use default settings for MOToMGPOptions
+  MoToMgpOptions moToMGPOptions;
+  moToMGPOptions.useExperimentalShapeInference = opts.isExperimentalMode;
+  moToMGPOptions.kernelLibraryPaths = opts.kernelLibraryPaths;
+  moToMGPOptions.compiledFrameworkLabel = opts.compiledFrameworkLabel;
+
+  // Do some shape refinement.
+  //
+  // In general the below passes all help each other. In the future we should be
+  // running things to a fixed point however for now just run the below 3 times.
+  for (size_t i = 0; i < 3; i++) {
+    if (opts.constantFold)
+      pm.addPass(MO::createConstantFoldPass(
+          opts.compiledFrameworkLabel.hasValue()
+              ? opts.compiledFrameworkLabel.getValue()
+              : "",
+          moToMGPOptions));
+
+    if (opts.isExperimentalMode)
+      pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(
+          {opts.kernelLibraryPaths}));
+
+    pm.addPass(MO::createPropagateShapes());
+    pm.addPass(MO::createStaticizeShapes());
+    pm.addPass(MO::createInlineShapeFunctions());
+    pm.addPass(mlir::createSymbolDCEPass());
+    pm.addPass(mlir::createCSEPass());
+    pm.addPass(mlir::createCanonicalizerPass());
+  }
 }
 
 ErrorOr<BufferRef> M::MO::convertMGPToMEF(ModuleOp module,
