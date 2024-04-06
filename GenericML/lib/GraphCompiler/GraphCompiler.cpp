@@ -317,9 +317,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MGP::createStripBufferAttributesPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addPass(MGP::createFixupOverhangsPass());
-  pm.addPass(MGP::createSimplifyChainsPass());
-  pm.addPass(mlir::createCSEPass());
   if (opts.lowerToCompiledRegions) {
     if (!opts.saveTempPrefix.empty())
       jitOpts.saveTempPrefix = opts.saveTempPrefix + ".region";
@@ -330,6 +327,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(MGP::createLowerMOGGRegionCompiles());
     pm.addPass(mlir::createCSEPass());
   }
+  pm.addPass(MGP::createFixupOverhangsPass());
+  pm.addPass(MGP::createSimplifyChainsPass());
+  pm.addPass(mlir::createCSEPass());
 }
 
 void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,

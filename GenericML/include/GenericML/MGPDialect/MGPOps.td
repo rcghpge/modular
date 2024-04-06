@@ -775,6 +775,9 @@ def ExecuteGenericOp : MGP_Op<"generic.execute"> {
     given slot/module index within the `!mgp.context`. This will execute the function using
     the generic API. The primitive will pass in raw async values for the func
     to unpack internally.
+
+    This execution will always return an output chain, in addition to the results
+    of the kernel.  The chain can be used for error handling or side-effect dependencies.
   }];
 
   let arguments = (ins MGP_ContextType:$theContext,
@@ -783,7 +786,7 @@ def ExecuteGenericOp : MGP_Op<"generic.execute"> {
                        UI64Attr:$bModuleIndex,       // 1
                        UI64Attr:$cFunctionIndex      // 2
                        );
-  let results = (outs Variadic<AnyType>:$results);
+  let results = (outs ChainType: $outChain, Variadic<AnyType>:$outResults);
 }
 
 //===----------------------------------------------------------------------===//

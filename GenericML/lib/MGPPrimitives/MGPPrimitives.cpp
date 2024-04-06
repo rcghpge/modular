@@ -373,11 +373,12 @@ static void mgp_cpu_kernel_load_archive(Chain inChain, GML::Context &ctx,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.cpu.kernel.execute.deprecated
+// mgp.generic.execute
 //===----------------------------------------------------------------------===//
 
 static void mgp_generic_execute(GML::Context &ctx, RemainingArguments operands,
-                                RemainingResults results,
+                                Result<Chain> outChain,
+                                RemainingResults outResults,
                                 MEFAttr<uint64_t> aSlot,
                                 MEFAttr<uint64_t> bModuleIndex,
                                 MEFAttr<uint64_t> cFunctionIndex,
@@ -388,14 +389,16 @@ static void mgp_generic_execute(GML::Context &ctx, RemainingArguments operands,
       static_cast<size_t>(*bModuleIndex), static_cast<size_t>(*cFunctionIndex));
 
   SmallVector<void *> kernelInputs;
-  kernelInputs.reserve(results.size() + operands.size());
+  kernelInputs.reserve(outResults.size() + operands.size());
 
   for (AnyAsyncValueRef &input : operands)
     kernelInputs.push_back(&input);
-  for (AnyAsyncValueRef &result : results)
+  for (AnyAsyncValueRef &result : outResults)
     kernelInputs.push_back(&result);
   kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
             reinterpret_cast<void *>(&runtime));
+
+  std::move(outChain).emplace();
 }
 
 //===----------------------------------------------------------------------===//

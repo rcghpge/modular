@@ -145,11 +145,11 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       auto loc = kernel.getLoc();
       builder.setInsertionPoint(mefOutputOp);
       auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
-          loc, kernel.getResultTypes(),
+          loc, MEF::ChainType::get(ctx), kernel.getResultTypes(),
           lastDeviceRuntimeOp[device].getTheContext(), kernel.getOperands(),
           lastDeviceRuntimeOp[device].getSlot(), deviceModuleIndex[device],
           deviceKernelIndices[device][kernel.getKernelName()]);
-      kernel.replaceAllUsesWith(newExecuteOp);
+      kernel.replaceAllUsesWith(newExecuteOp.getOutResults());
       kernel.erase();
     });
 
@@ -168,14 +168,14 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
             << "Cannot find execute context in bounding region of "
                "generic.execute";
       }
+
       // Need to get execution context from bounding region?
       auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
-          kernel.getLoc(), kernel.getResultTypes(), executeContext,
-          kernel.getOperands(), lastDeviceRuntimeOp[device].getSlot(),
-          deviceModuleIndex[device],
+          kernel.getLoc(), MEF::ChainType::get(ctx), kernel.getResultTypes(),
+          executeContext, kernel.getOperands(),
+          lastDeviceRuntimeOp[device].getSlot(), deviceModuleIndex[device],
           deviceKernelIndices[device][kernel.getKernelName()]);
-
-      kernel.replaceAllUsesWith(newExecuteOp);
+      kernel.replaceAllUsesWith(newExecuteOp.getOutResults());
       kernel.erase();
     });
   }
