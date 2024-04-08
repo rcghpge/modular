@@ -29,18 +29,18 @@ public:
   mlir::Operation *newGraph(mlir::Location loc, llvm::StringRef name,
                             mlir::FunctionType signature);
 
-  // Guaranteed to take ownership of `data` with a dense resource if `owned`.
-  // Otherwise, copies `data`; may use dense resource or ArrayElementsAttr.
-  mlir::NamedAttribute tensorAttr(llvm::StringRef name,
-                                  llvm::ArrayRef<uint8_t> data, mlir::Type t,
-                                  bool owned);
-
   MLIRContext *getContext();
 
 private:
   mlir::ModuleOp op;
   mlir::OpBuilder builder;
 };
+
+// Guaranteed to take ownership of `data` with a dense resource if `owned`.
+// Otherwise, copies `data`; may use dense resource or ArrayElementsAttr.
+mlir::NamedAttribute tensorAttr(llvm::StringRef name,
+                                llvm::ArrayRef<uint8_t> data, mlir::Type t,
+                                bool owned);
 
 } // namespace M::MOF::GraphBuilder
 

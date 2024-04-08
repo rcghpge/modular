@@ -57,20 +57,19 @@ MODULAR_API_EXPORT MlirOperation MAXG_graphNew(MlirModule m, MlirLocation loc,
 // Attribute factories
 //===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewTensor(MlirModule m,
-                                                         StringRef name,
+MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewTensor(StringRef name,
                                                          void *data, MlirType t,
                                                          bool owned) {
   auto moType = cast<M::MO::TensorType>(unwrap(t));
   size_t size =
       moType.getDtype().getSizeInBytes() * moType.getNumElements().value();
-  return wrap(Module(unwrap(m)).tensorAttr(
+  return wrap(tensorAttr(
       name, ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(data), size),
       unwrap(t), owned));
 }
 
-MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewTensorFromFile(
-    MlirModule m, StringRef name, StringRef fileName, MlirType t) {
+MODULAR_API_EXPORT MlirNamedAttribute
+MAXG_attrNewTensorFromFile(StringRef name, StringRef fileName, MlirType t) {
   auto moType = cast<M::MO::TensorType>(unwrap(t));
   assert(moType.getNumElements().has_value() &&
          "tensor attrs should always be statically sized");
@@ -89,11 +88,11 @@ MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewTensorFromFile(
   assert(buff_size == size);
 
   auto data = buffer->getBufferStart();
-  return wrap(Module(unwrap(m)).tensorAttr(
-      name,
-      ArrayRef<uint8_t>(reinterpret_cast<const uint8_t *>(data),
-                        static_cast<size_t>(size)),
-      unwrap(t), /*owned=*/false));
+  return wrap(
+      tensorAttr(name,
+                 ArrayRef<uint8_t>(reinterpret_cast<const uint8_t *>(data),
+                                   static_cast<size_t>(size)),
+                 unwrap(t), /*owned=*/false));
 }
 
 //===----------------------------------------------------------------------===//

@@ -14,7 +14,8 @@
 #include "mlir/IR/Builders.h"
 
 using namespace llvm;
-
+using namespace M;
+using namespace M::MOF;
 using namespace M::MOF::GraphBuilder;
 
 static mlir::NamedAttribute denseResourceAttr(StringRef name,
@@ -52,24 +53,9 @@ static mlir::NamedAttribute denseResourceAttr(StringRef name,
   return mlir::NamedAttribute(nameAttr, denseResource);
 }
 
-Module::Module(Location loc) : op(ModuleOp::create(loc)), builder(op) {
-  builder.setInsertionPointToStart(&op.getBodyRegion().front());
-}
-
-Module::Module(mlir::ModuleOp op) : op(op), builder(op) {
-  builder.setInsertionPointToStart(&op.getBodyRegion().front());
-}
-
-mlir::Operation *Module::newGraph(mlir::Location loc, StringRef name,
-                                  const mlir::FunctionType signature) {
-  return builder
-      .create<M::MO::GraphOp>(loc, name, signature.getInputs(),
-                              signature.getResults())
-      .getOperation();
-}
-
-mlir::NamedAttribute Module::tensorAttr(StringRef name, ArrayRef<uint8_t> data,
-                                        mlir::Type t, bool owned) {
+mlir::NamedAttribute GraphBuilder::tensorAttr(StringRef name,
+                                              ArrayRef<uint8_t> data,
+                                              mlir::Type t, bool owned) {
   if (shouldUseOutOfLineAttrStorage(data.size()))
     return denseResourceAttr(
         name, ArrayRef<char>((const char *)data.data(), data.size()), t, owned);
@@ -91,6 +77,22 @@ mlir::NamedAttribute Module::tensorAttr(StringRef name, ArrayRef<uint8_t> data,
 
   StringAttr nameAttr = StringAttr::get(moTensorType.getContext(), name);
   return NamedAttribute(nameAttr, attr);
+}
+
+Module::Module(Location loc) : op(ModuleOp::create(loc)), builder(op) {
+  builder.setInsertionPointToStart(&op.getBodyRegion().front());
+}
+
+Module::Module(mlir::ModuleOp op) : op(op), builder(op) {
+  builder.setInsertionPointToStart(&op.getBodyRegion().front());
+}
+
+mlir::Operation *Module::newGraph(mlir::Location loc, StringRef name,
+                                  const mlir::FunctionType signature) {
+  return builder
+      .create<M::MO::GraphOp>(loc, name, signature.getInputs(),
+                              signature.getResults())
+      .getOperation();
 }
 
 mlir::MLIRContext *Module::getContext() { return op->getContext(); }
