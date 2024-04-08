@@ -38,8 +38,8 @@ class FixupOverhangsPass
 
       for (Operation &op : block->getOperations()) {
         for (auto result : op.getResults()) {
-          const bool isChain = result.getType().isa<MGP::DeviceChainType>() ||
-                               result.getType().isa<MEF::ChainType>();
+          const bool isChain =
+              isa<MEF::MEFChainTypeInterface>(result.getType());
           if (isChain && result.use_empty())
             hangingChains.push_back(result);
         }
