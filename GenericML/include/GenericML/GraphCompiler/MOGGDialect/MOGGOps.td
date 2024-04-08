@@ -144,7 +144,7 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
     in the same graph while keeping the hard dependencies contained to lowering.
 
     The kernel abstraction also exposes a number of hooks. These hooks are
-    details of the fusion algorithms. They allow this kenrel to express the
+    details of the fusion algorithms. They allow this kernel to express the
     semantics by which its outputs or inputs may be folded by being fused into.
 
     Example:
@@ -160,9 +160,9 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
     !mo.tensor<[2, 3], f32>, %arg3: !mo.tensor<[2, 3], f32>)` which essentially
     are the KGEN view of those values.
 
-    `outputParamDecls` allows this compiled operation to define a parameter
+    `outputParamDecls` allows this compiled operation to define parameter
      values. These values are explicit parameter returns of the kernel. They
-     cannot be refered to within the kernel other than to set them. When the
+     cannot be referred to within the kernel other than to set them. When the
      kernel is executed they will be updated in the MGP parameter map. This is
      completely seperate from the normal kernel tensor returns. Their values
      are set within the kernel using `SetParameterOp`.
@@ -175,7 +175,7 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
     }
     ```
     `fusionBodyLambda` Represents the fusable elementwise / view operation body
-    contained with in. This signfies that this kernel is fully implemented by
+    contained within. This signifies that this kernel is fully implemented by
     applying this lambda to an otherwise identity operation, therefore we can
     safely fuse it into a user.  Most ops will not have this, only elementwise
     and view ops. After being fused into an op that doesn't have `fuseHook` it
