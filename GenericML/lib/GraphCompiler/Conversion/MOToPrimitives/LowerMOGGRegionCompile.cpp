@@ -39,8 +39,38 @@ struct LowerMOGGRegionCompilesPass
           LowerMOGGRegionCompilesPass> {
   using LowerMOGGRegionCompilesBase::LowerMOGGRegionCompilesBase;
 
+  void rewriteExecuteCompiledOp(OpBuilder &builder, const Value &context,
+                                size_t runtimeSlot, size_t module_index,
+                                size_t kernel_index,
+                                MOGG::ExecuteCompiledOp &old_kernel);
   void runOnOperation() override;
 };
+
+// Rewrite the MOGG::ExecuteCompiledOp into a MGP::ExecuteGenericOp
+void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
+    OpBuilder &builder, const Value &context, size_t runtimeSlot,
+    size_t module_index, size_t kernel_index,
+    MOGG::ExecuteCompiledOp &old_kernel) {
+  auto ctx = old_kernel.getOperation()->getContext();
+  SmallVector<Type> result_types;
+  SmallVector<Value> chain_outputs;
+  // When we lower to the generic.execute (which has only 1 chain output)
+  // we collapse all chain outputs of the kernel into the 1 output chain.
+  for (auto [resTy, res] :
+       llvm::zip(old_kernel.getResultTypes(), old_kernel.getResults()))
+    if (!isa<MEF::ChainType>(resTy))
+      result_types.push_back(resTy);
+    else
+      chain_outputs.push_back(res);
+  auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
+      old_kernel.getLoc(), MEF::ChainType::get(ctx), result_types, context,
+      old_kernel.getOperands(), runtimeSlot, module_index, kernel_index);
+  if (result_types.size() > 0)
+    old_kernel.replaceAllUsesWith(newExecuteOp.getOutResults());
+  for (auto chain : chain_outputs)
+    chain.replaceAllUsesWith(newExecuteOp.getOutChain());
+  old_kernel.erase();
+}
 
 // Take all the compiled JIT Kernels and lower them
 // -- Lower MOGG::LoadCompiledKernelOp to MGP::ModuleLoadOp
@@ -56,7 +86,6 @@ struct LowerMOGGRegionCompilesPass
 void LowerMOGGRegionCompilesPass::runOnOperation() {
 
   MLIRContext *ctx = getOperation().getContext();
-
   for (auto model : getOperation().getOps<MGP::ModelOp>()) {
 
     Block &init = *model.getInitBlock();
@@ -84,7 +113,6 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
           << " without a corresponding RuntimeCreateOp";
       deviceModuleIndex[op.getDevice()]++;
     }
-
     llvm::SmallDenseMap<DeviceRefAttr, llvm::StringMap<size_t>>
         deviceKernelIndices;
     llvm::SmallDenseMap<DeviceRefAttr, SmallVector<StringAttr>>
@@ -101,74 +129,58 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
         deviceKernelIndices[device][attr] = deviceKernelIndices[device].size();
         deviceKernelNameAttrs[device].push_back(attr);
       }
+    }
 
-      // Replace the loadKernels Op
+    // Rewrite the MOGG::LoadCompiledKernelOp in init blocks.
+    for (auto loadKernels : llvm::make_early_inc_range(
+             init.getOps<MOGG::LoadCompiledKernelOp>())) {
+      Operation *insertionOp = lastDeviceRuntimeOp[device].getOperation();
+      size_t runtimeSlot = lastDeviceRuntimeOp[device].getSlot();
+      Value opContext = lastDeviceRuntimeOp[device].getTheContext();
+      Value inChain = lastDeviceRuntimeOp[device].getResult();
       if (lastDeviceModuleLoadOp.contains(device)) {
-        builder.setInsertionPointAfter(lastDeviceModuleLoadOp[device]);
-        loadArchive = builder.create<MGP::ModuleLoadOp>(
-            lastDeviceModuleLoadOp[device].getLoc(),
-            /*inChain=*/lastDeviceModuleLoadOp[device].getResult(),
-            /*theContext=*/lastDeviceModuleLoadOp[device].getTheContext(),
-            /*aSlot=*/lastDeviceModuleLoadOp[device].getSlot(),
-            /*bArchive=*/loadKernels.getValue(),
-            /*cKernelNames=*/
-            MultiLineStringAttr::get(ctx, deviceKernelNameAttrs[device]),
-            /*dConstantSymbols*/
-            MultiLineStringAttr::get(ctx, SmallVector<StringAttr>()),
-            /*device*/ device);
-        lastDeviceModuleLoadOp[device].getResult().replaceAllUsesExcept(
-            loadArchive.getResult(), loadArchive);
-      } else {
-        builder.setInsertionPointAfter(lastDeviceRuntimeOp[device]);
-        loadArchive = builder.create<MGP::ModuleLoadOp>(
-            lastDeviceRuntimeOp[device].getLoc(),
-            /*inChain=*/lastDeviceRuntimeOp[device].getResult(),
-            /*theContext=*/lastDeviceRuntimeOp[device].getTheContext(),
-            /*aSlot=*/lastDeviceRuntimeOp[device].getSlot(),
-            /*bArchive=*/loadKernels.getValue(),
-            /*cKernelNames=*/
-            MultiLineStringAttr::get(ctx, deviceKernelNameAttrs[device]),
-            /*dConstantSymbols*/
-            MultiLineStringAttr::get(ctx, SmallVector<StringAttr>()),
-            /*device*/ device);
-        lastDeviceRuntimeOp[device].getResult().replaceAllUsesExcept(
-            loadArchive.getResult(), loadArchive);
+        insertionOp = lastDeviceModuleLoadOp[device].getOperation();
+        runtimeSlot = lastDeviceModuleLoadOp[device].getSlot();
+        opContext = lastDeviceModuleLoadOp[device].getTheContext();
+        inChain = lastDeviceModuleLoadOp[device].getResult();
       }
+
+      // Rewrite the MOGG::LoadCompiledKernelOp into a MGP::ModuleLoadOp
+      builder.setInsertionPointAfter(insertionOp);
+      loadArchive = builder.create<MGP::ModuleLoadOp>(
+          insertionOp->getLoc(),
+          /*inChain=*/inChain,
+          /*theContext=*/opContext,
+          /*aSlot=*/runtimeSlot,
+          /*bArchive=*/loadKernels.getValue(),
+          /*cKernelNames=*/
+          MultiLineStringAttr::get(ctx, deviceKernelNameAttrs[device]),
+          /*dConstantSymbols*/
+          MultiLineStringAttr::get(ctx, SmallVector<StringAttr>()),
+          /*device*/ device);
+      inChain.replaceAllUsesExcept(loadArchive.getResult(), loadArchive);
       loadKernels.erase();
     }
 
-    // Shunt all the executes for Init stage at the very end of init
+    // Rewrite the MOGG::ExecuteCompiledOp in both init and execute blocks.
     MEF::OutputOp mefOutputOp;
     for (auto op : init.getOps<MEF::OutputOp>())
       mefOutputOp = op;
     init.walk([&](MOGG::ExecuteCompiledOp kernel) {
+      // Shunt all the executes for Init stage at the very end of init
       builder.setInsertionPoint(mefOutputOp);
-      SmallVector<Type> result_types;
-      SmallVector<Value> chain_outputs;
-      // When we lower to the generic.execute (which has only 1 chain output)
-      // we collapse all chain outputs of the kernel into the 1 output chain.
-      for (auto [resTy, res] :
-           llvm::zip(kernel.getResultTypes(), kernel.getResults()))
-        if (!isa<MEF::ChainType>(resTy))
-          result_types.push_back(resTy);
-        else
-          chain_outputs.push_back(res);
-      auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
-          kernel.getLoc(), MEF::ChainType::get(ctx), result_types,
-          lastDeviceRuntimeOp[device].getTheContext(), kernel.getOperands(),
+      rewriteExecuteCompiledOp(
+          builder, lastDeviceRuntimeOp[device].getTheContext(),
           lastDeviceRuntimeOp[device].getSlot(), deviceModuleIndex[device],
-          deviceKernelIndices[device][kernel.getKernelName()]);
-      if (result_types.size() > 0)
-        kernel.replaceAllUsesWith(newExecuteOp.getOutResults());
-      for (auto chain : chain_outputs)
-        chain.replaceAllUsesWith(newExecuteOp.getOutChain());
-      kernel.erase();
+          deviceKernelIndices[device][kernel.getKernelName()], kernel);
     });
 
     Value executeContext = nullptr;
     Region *parentRegion = nullptr;
     execute.walk([&](MOGG::ExecuteCompiledOp kernel) {
       builder.setInsertionPoint(kernel);
+      // For execute block, need to account for the bounding region in the case
+      // of control flow or other bounding operations.
       if (parentRegion != kernel->getParentRegion()) {
         parentRegion = kernel->getParentRegion();
         executeContext = nullptr;
@@ -180,26 +192,10 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
             << "Cannot find execute context in bounding region of "
                "generic.execute";
       }
-      SmallVector<Type> result_types;
-      SmallVector<Value> chain_outputs;
-      // When we lower to the generic.execute (which has only 1 chain output)
-      // we collapse all chain outputs of the kernel into the 1 output chain.
-      for (auto [resTy, res] :
-           llvm::zip(kernel.getResultTypes(), kernel.getResults()))
-        if (!isa<MEF::ChainType>(resTy))
-          result_types.push_back(resTy);
-        else
-          chain_outputs.push_back(res);
-      auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
-          kernel.getLoc(), MEF::ChainType::get(ctx), result_types,
-          executeContext, kernel.getOperands(),
-          lastDeviceRuntimeOp[device].getSlot(), deviceModuleIndex[device],
-          deviceKernelIndices[device][kernel.getKernelName()]);
-      if (result_types.size() > 0)
-        kernel.replaceAllUsesWith(newExecuteOp.getOutResults());
-      for (auto chain : chain_outputs)
-        chain.replaceAllUsesWith(newExecuteOp.getOutChain());
-      kernel.erase();
+      rewriteExecuteCompiledOp(
+          builder, executeContext, lastDeviceRuntimeOp[device].getSlot(),
+          deviceModuleIndex[device],
+          deviceKernelIndices[device][kernel.getKernelName()], kernel);
     });
   }
 }
