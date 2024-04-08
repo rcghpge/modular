@@ -46,7 +46,7 @@ int setupMLIRAndRun(M::ContextRef context, const ExecutorDriverOptions &options,
 
 // FIXME: We have to duplicate this here because of #1639. Remove this when
 //        possible to do so.
-ErrorOr<std::string> getFileContentIdentity(M::BufferRef file,
+ErrorOr<std::string> getFileContentIdentity(const M::BufferRef &file,
                                             FileFormat format) {
   switch (format) {
   default:
@@ -89,10 +89,12 @@ ErrorOr<std::string> getFileContentIdentity(M::BufferRef file,
 inline void writeIntermediateFileIfRequested(const std::string &identifier,
                                              ModuleOp module,
                                              const CommonOptions *options,
-                                             M::BufferRef file) {
+                                             const M::BufferRef &file) {
   std::string ext = "." + identifier + ".mlir";
-  auto filePathOr = file->getFilePath();
   std::string filePath;
+
+  // Call the file "temp" if `file` is null or not backed by a file.
+  auto filePathOr = file ? file->getFilePath() : std::nullopt;
   if (filePathOr)
     filePath = filePathOr->string();
   else
@@ -123,7 +125,7 @@ inline void writeIntermediateFileIfRequested(const std::string &identifier,
       writeFile(&tempOptions);
     }
   }
-#endif
+#endif // MODULAR_PRODUCTION
 }
 
 } // namespace M

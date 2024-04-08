@@ -252,8 +252,17 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
 
   mofLoweringOptions.setupContext(ctxHandle.maxContext.copy());
 
+  // Enable saving intermediate IR by setting `max.temps_dir` in modular.cfg.
+  // Save MO IR pre mo-to-mgp.
+  writeIntermediateFileIfRequested("mo", moduleOp, /*options=*/nullptr,
+                                   BufferRef());
+
   if (failed(lowerMOToMGP(moduleOp, moToMgpOptions, *runtime)))
     return Error("unable to lower MO to MGP");
+
+  // Save MGP IR pre export to MEF.
+  writeIntermediateFileIfRequested("mgp", moduleOp, /*options=*/nullptr,
+                                   BufferRef());
 
   auto bufOr =
       MO::convertMGPToMEF(moduleOp, mofContext->getEnableMEFMetadata());
