@@ -142,14 +142,26 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     for (auto op : init.getOps<MEF::OutputOp>())
       mefOutputOp = op;
     init.walk([&](MOGG::ExecuteCompiledOp kernel) {
-      auto loc = kernel.getLoc();
       builder.setInsertionPoint(mefOutputOp);
+      SmallVector<Type> result_types;
+      SmallVector<Value> chain_outputs;
+      // When we lower to the generic.execute (which has only 1 chain output)
+      // we collapse all chain outputs of the kernel into the 1 output chain.
+      for (auto [resTy, res] :
+           llvm::zip(kernel.getResultTypes(), kernel.getResults()))
+        if (!isa<MEF::ChainType>(resTy))
+          result_types.push_back(resTy);
+        else
+          chain_outputs.push_back(res);
       auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
-          loc, MEF::ChainType::get(ctx), kernel.getResultTypes(),
+          kernel.getLoc(), MEF::ChainType::get(ctx), result_types,
           lastDeviceRuntimeOp[device].getTheContext(), kernel.getOperands(),
           lastDeviceRuntimeOp[device].getSlot(), deviceModuleIndex[device],
           deviceKernelIndices[device][kernel.getKernelName()]);
-      kernel.replaceAllUsesWith(newExecuteOp.getOutResults());
+      if (result_types.size() > 0)
+        kernel.replaceAllUsesWith(newExecuteOp.getOutResults());
+      for (auto chain : chain_outputs)
+        chain.replaceAllUsesWith(newExecuteOp.getOutChain());
       kernel.erase();
     });
 
@@ -168,14 +180,25 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
             << "Cannot find execute context in bounding region of "
                "generic.execute";
       }
-
-      // Need to get execution context from bounding region?
+      SmallVector<Type> result_types;
+      SmallVector<Value> chain_outputs;
+      // When we lower to the generic.execute (which has only 1 chain output)
+      // we collapse all chain outputs of the kernel into the 1 output chain.
+      for (auto [resTy, res] :
+           llvm::zip(kernel.getResultTypes(), kernel.getResults()))
+        if (!isa<MEF::ChainType>(resTy))
+          result_types.push_back(resTy);
+        else
+          chain_outputs.push_back(res);
       auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
-          kernel.getLoc(), MEF::ChainType::get(ctx), kernel.getResultTypes(),
+          kernel.getLoc(), MEF::ChainType::get(ctx), result_types,
           executeContext, kernel.getOperands(),
           lastDeviceRuntimeOp[device].getSlot(), deviceModuleIndex[device],
           deviceKernelIndices[device][kernel.getKernelName()]);
-      kernel.replaceAllUsesWith(newExecuteOp.getOutResults());
+      if (result_types.size() > 0)
+        kernel.replaceAllUsesWith(newExecuteOp.getOutResults());
+      for (auto chain : chain_outputs)
+        chain.replaceAllUsesWith(newExecuteOp.getOutChain());
       kernel.erase();
     });
   }

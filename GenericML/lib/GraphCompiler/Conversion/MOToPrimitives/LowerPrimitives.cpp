@@ -60,13 +60,16 @@ void LowerPrimitivesPass::runOnOperation() {
             op->getName().getStringRef())) {
       // Create the MOGG generic region which contains the compiled MGP.
       SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
+      // We currently do not enable the fusion of ASSERT Ops as we investigate
+      // the fusion errors
+      bool isFuseable = !isa<MGP::AssertOp>(op);
       auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
           opLoc, op->getResultTypes(), op->getOperands(),
           KGEN::ParamDeclArrayAttr::get(ctx, {}),
           InOutSignatureAttr::get(ctx, operandSemantics), BoolAttr{}, // isKGEN
           StringAttr{},                                               // summary
           BoolAttr{},                                                 // isAsync
-          BoolAttr{} // isFuseable
+          BoolAttr::get(ctx, isFuseable) // isFuseable
       );
 
       mlir::Block &kernelBody = newKernel.getBody().emplaceBlock();
@@ -80,9 +83,16 @@ void LowerPrimitivesPass::runOnOperation() {
 
       // Add the call to the actual implementing function in mojo.
       DictionaryAttr dict = builder.getDictionaryAttr(op->getAttrs());
+      // MOGG Calls should not need need to return a chain type
+      // We keep the output type in the generic-compiled region tho so we can
+      // keep track of when to return
+      SmallVector<Type> result_types;
+      for (auto resTy : op->getResultTypes())
+        if (!isa<MEF::ChainType>(resTy))
+          result_types.push_back(resTy);
       MOGG::CallOp call = builder.create<MOGG::CallOp>(
-          opLoc, op->getResultTypes(), op->getName().getStringRef(),
-          newOperands, ArrayAttr{}, dict);
+          opLoc, result_types, op->getName().getStringRef(), newOperands,
+          ArrayAttr{}, dict);
 
       builder.create<MOGG::OutputOp>(opLoc, call->getResults());
 
