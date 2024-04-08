@@ -6,8 +6,6 @@
 
 #include "MOF/GraphBuilder/Module.h"
 
-#include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
-#include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "Support/AlignedAlloc.h"
@@ -68,27 +66,6 @@ mlir::Operation *Module::newGraph(mlir::Location loc, StringRef name,
       .create<M::MO::GraphOp>(loc, name, signature.getInputs(),
                               signature.getResults())
       .getOperation();
-}
-
-mlir::Type Module::newDType(DType value) {
-  auto mlirType = M::MO::toMLIRType(getContext(), M::DType(value));
-  assert(!mlirType.isError());
-  return *mlirType;
-}
-
-mlir::Type Module::newTensorType(mlir::Type elementType, bool ranked,
-                                 ArrayRef<TypedAttr> dims) {
-  if (ranked) {
-    return MO::TensorType::get(dims, elementType);
-  } else {
-    return MO::TensorType::get(
-        KGEN::UnknownAttr::get(MOSH::ShapeType::get(getContext())),
-        elementType);
-  }
-}
-
-mlir::Type Module::newListType(mlir::Type elementType) {
-  return MO::ListType::get(getContext(), elementType);
 }
 
 mlir::NamedAttribute Module::tensorAttr(StringRef name, ArrayRef<uint8_t> data,

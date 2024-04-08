@@ -7,6 +7,7 @@
 #include "MOF/API/c/detail/max_graph.h"
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "KGEN/KGENDialect/KGENDType.h"
 #include "MOF/API/c/symbol_export.h"
 #include "Support/Buffer.h"
@@ -99,23 +100,30 @@ MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewTensorFromFile(
 // Type helpers
 //===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT MlirType MAXG_dTypeNew(MlirModule m, uint8_t value) {
-  return wrap(Module(unwrap(m)).newDType(M::DType(value)));
+MODULAR_API_EXPORT MlirType MAXG_dTypeNew(MlirContext ctx, uint8_t value) {
+  auto mlirType = M::MO::toMLIRType(unwrap(ctx), M::DType(value));
+  assert(!mlirType.isError());
+  return wrap(*mlirType);
 }
 
 MODULAR_API_EXPORT int64_t MAXG_dimTypeNewDynamic() {
   return ShapedType::kDynamic;
 }
 
-MODULAR_API_EXPORT MlirType MAXG_tensorTypeNew(MlirModule m, MlirType dtype,
+MODULAR_API_EXPORT MlirType MAXG_tensorTypeNew(MlirContext ctx, MlirType dtype,
                                                bool ranked, MlirAttribute *dims,
                                                int32_t rank) {
   llvm::SmallVector<TypedAttr> dim_attrs;
   for (int i = 0; i < rank; ++i) {
     dim_attrs.push_back(unwrap(dims[i]).cast<TypedAttr>());
   }
-  return wrap(Module(unwrap(m)).newTensorType(
-      unwrap(dtype), ranked, llvm::ArrayRef<TypedAttr>(dim_attrs)));
+  if (ranked) {
+    return wrap(MO::TensorType::get(dim_attrs, unwrap(dtype)));
+  } else {
+    return wrap(MO::TensorType::get(
+        KGEN::UnknownAttr::get(MOSH::ShapeType::get(unwrap(ctx))),
+        unwrap(dtype)));
+  }
 }
 
 MODULAR_API_EXPORT uint8_t MAXG_tensorTypeGetDType(MlirType t) {
@@ -187,8 +195,8 @@ MODULAR_API_EXPORT MlirIdentifier MAXG_dimSymbolicName(MlirAttribute a) {
   return wrap(attr.cast<KGEN::ParamDeclRefAttr>().getName());
 }
 
-MODULAR_API_EXPORT MlirType MAXG_listTypeNew(MlirModule m, MlirType eltype) {
-  return wrap(Module(unwrap(m)).newListType(unwrap(eltype)));
+MODULAR_API_EXPORT MlirType MAXG_listTypeNew(MlirContext ctx, MlirType eltype) {
+  return wrap(MO::ListType::get(unwrap(ctx), unwrap(eltype)));
 }
 
 MODULAR_API_EXPORT MlirType MAXG_listTypeElementType(MlirType t) {
