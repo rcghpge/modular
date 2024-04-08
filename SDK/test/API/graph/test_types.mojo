@@ -23,23 +23,29 @@ fn context() -> _mlir.Context:
 
 fn test_dtype_to_string() raises:
     var ui = ElementType(DType.uint8)
-    var s = ui.to_string(context())
+    var s = str(ui.to_mlir(context()))
 
     testing.assert_equal(len(s), 3)
     testing.assert_equal(s, "ui8")
 
 
 fn test_dtype() raises:
-    testing.assert_equal(ElementType(DType.uint8).to_string(context()), "ui8")
-    testing.assert_equal(ElementType(DType.float32).to_string(context()), "f32")
-    testing.assert_equal(ElementType(DType.int64).to_string(context()), "si64")
+    testing.assert_equal(
+        str(ElementType(DType.uint8).to_mlir(context())), "ui8"
+    )
+    testing.assert_equal(
+        str(ElementType(DType.float32).to_mlir(context())), "f32"
+    )
+    testing.assert_equal(
+        str(ElementType(DType.int64).to_mlir(context())), "si64"
+    )
 
 
 fn test_tensor_type() raises:
     var dt = ElementType(DType.uint8)
     var t = MOTensor(dt, 1, 2, 3)
 
-    var s = t.to_string(context())
+    var s = str(t.to_mlir(context()))
     testing.assert_equal(s, "!mo.tensor<[1, 2, 3], ui8>")
 
 
@@ -47,7 +53,7 @@ fn test_tensor_unranked() raises:
     var dt = ElementType(DType.float32)
     var t = MOTensor(dt, False)
 
-    var s = t.to_string(context())
+    var s = str(t.to_mlir(context()))
     testing.assert_equal(s, "!mo.tensor<?, f32>")
 
 
@@ -55,7 +61,7 @@ fn test_tensor_dynamic_dims() raises:
     var dt = ElementType(DType.float32)
     var t = MOTensor(dt, 1, Dim.dynamic(), 4)
 
-    var s = t.to_string(context())
+    var s = str(t.to_mlir(context()))
     testing.assert_equal(s, "!mo.tensor<[1, ?, 4], f32>")
 
 
@@ -69,7 +75,7 @@ fn test_tensor_symbolic_dims() raises:
     var dt = ElementType(DType.float32)
     var t = MOTensor(dt, Dim.symbolic("batch"), 4)
 
-    var s = t.to_string(context())
+    var s = str(t.to_mlir(context()))
     testing.assert_equal(s, "!mo.tensor<[batch, 4], f32>")
 
 
@@ -85,13 +91,13 @@ fn test_tensor_scalar() raises:
     var dt = ElementType(DType.float32)
     var t = MOTensor(dt)
 
-    var s = t.to_string(context())
+    var s = str(t.to_mlir(context()))
     testing.assert_equal(s, "!mo.tensor<[], f32>")
 
 
 fn test_dtype_autocast() raises:
     testing.assert_equal(
-        MOTensor(DType.float32, 1, 2, 3).to_string(context()),
+        str(MOTensor(DType.float32, 1, 2, 3).to_mlir(context())),
         "!mo.tensor<[1, 2, 3], f32>",
     )
 
@@ -100,22 +106,22 @@ fn test_int_autocast() raises:
     # This just verifes that the constructor doesn't go to the wrong overload,
     # like the List one.
     testing.assert_equal(
-        MOTensor(DType.float32, 1).to_string(context()),
+        str(MOTensor(DType.float32, 1).to_mlir(context())),
         "!mo.tensor<[1], f32>",
     )
 
 
 fn test_tensor_spec_cast() raises:
     testing.assert_equal(
-        MOTensor(TensorSpec(DType.float32)).to_string(context()),
+        str(MOTensor(TensorSpec(DType.float32)).to_mlir(context())),
         "!mo.tensor<[], f32>",
     )
     testing.assert_equal(
-        MOTensor(TensorSpec(DType.float64, 1)).to_string(context()),
+        str(MOTensor(TensorSpec(DType.float64, 1)).to_mlir(context())),
         "!mo.tensor<[1], f64>",
     )
     testing.assert_equal(
-        MOTensor(TensorSpec(DType.int32, 1, 2)).to_string(context()),
+        str(MOTensor(TensorSpec(DType.int32, 1, 2)).to_mlir(context())),
         "!mo.tensor<[1, 2], si32>",
     )
 
@@ -123,7 +129,7 @@ fn test_tensor_spec_cast() raises:
 fn test_list_type() raises:
     var l = MOList(MOTensor(DType.uint8, 1, Dim.dynamic(), 3))
 
-    var s = l.to_string(context())
+    var s = str(l.to_mlir(context()))
     testing.assert_equal(s, "!mo.list<!mo.tensor<[1, ?, 3], ui8>>")
 
 
