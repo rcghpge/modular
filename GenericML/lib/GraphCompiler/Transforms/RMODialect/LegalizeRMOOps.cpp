@@ -199,31 +199,130 @@ struct LowerRebindTensorShapeOp
   }
 };
 
-// This is an example of how a "composite RMO op" would work.
-struct LowerBroadcastedAddOp : public OpRewritePattern<RMO::BroadcastAddOp> {
-  LowerBroadcastedAddOp(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
-  LogicalResult matchAndRewrite(RMO::BroadcastAddOp op,
+struct CastDtypeAddOp : public OpRewritePattern<RMO::AddOp> {
+  CastDtypeAddOp(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
+  LogicalResult matchAndRewrite(RMO::AddOp op,
                                 PatternRewriter &rewriter) const override {
-    auto graphOp = op->getParentOfType<MO::GraphOp>();
+    Location loc = op->getLoc();
 
     TensorValue x = op.getInputX();
     TensorValue y = op.getInputY();
+    auto xDtype = x.getType().getDtype();
+    auto yDtype = y.getType().getDtype();
+    auto resultDtype = op.getResult().getType().getDtype();
 
+    // Pattern does not match, no dtypes to cast.
+    if (xDtype == resultDtype && yDtype == resultDtype) {
+      return failure();
+    }
+
+    if (xDtype != resultDtype) {
+      x = rewriter.create<RMO::MOCastOp>(loc,
+                                         x.getType().cloneWith(resultDtype), x);
+    }
+    if (yDtype != resultDtype) {
+      y = rewriter.create<RMO::MOCastOp>(loc,
+                                         y.getType().cloneWith(resultDtype), y);
+    }
+    rewriter.replaceOpWithNewOp<RMO::AddOp>(op, op.getResult().getType(), x, y);
+
+    return mlir::success();
+  }
+};
+
+/// Returns the input values with asserting rebinds to ensure parameterized
+/// dimensions are equal.
+///
+/// Broadcasting in RMO does not allow parameterized dimensions to broadcast.
+/// As such, parameterized dimensions need an asserting rebind to the expected
+/// output. Afterwards, a normal broadcast can be applied.
+std::pair<TensorValue, TensorValue>
+rebindShapesForBroadcasting(Location loc, PatternRewriter &rewriter,
+                            TensorValue x, TensorValue y) {
+  TensorType xType = x.getType();
+  TensorType yType = y.getType();
+  ShapeAttr xShapeAttr = xType.getTypedShapeAttr();
+  ShapeAttr yShapeAttr = yType.getTypedShapeAttr();
+
+  if (xShapeAttr == yShapeAttr) {
+    return {x, y};
+  }
+
+  ArrayRef<TypedAttr> xShape = xShapeAttr.getValues();
+  ArrayRef<TypedAttr> yShape = yShapeAttr.getValues();
+  SmallVector<TypedAttr> xRebindShape{xShape};
+  SmallVector<TypedAttr> yRebindShape{yShape};
+
+  size_t xSize = xShape.size();
+  size_t ySize = yShape.size();
+  size_t minSize = std::min(xSize, ySize);
+
+  auto idxTy = IndexType::get(xType.getContext());
+  auto intDim1 = IntegerAttr::get(idxTy, 1ll);
+
+  // Note: dimensions match from the innermost to outermost.
+  // Thus, accesses are with `size - i - 1`.
+  for (size_t i = 0; i < minSize; ++i) {
+    // Parameters in x get rebound if the value in y is a static integer besides
+    // a static one dim.
+    if (TensorType::isParameterizedDimParam(xRebindShape[xSize - i - 1]) &&
+        TensorType::isIntegerDimParam(yShape[ySize - i - 1]) &&
+        yShape[ySize - i - 1] != intDim1)
+      xRebindShape[xSize - i - 1] = yShape[ySize - i - 1];
+
+    // Parameters in y get rebound to the value in x as long as it isn't a
+    // static one dim.
+    if (TensorType::isParameterizedDimParam(yRebindShape[ySize - i - 1]) &&
+        xShape[xSize - i - 1] != intDim1)
+      yRebindShape[ySize - i - 1] = xShape[xSize - i - 1];
+  }
+
+  TensorType xRebindType =
+      xType.cloneWith(ShapeAttr::get(xRebindShape, xShapeAttr.getType()));
+  TensorType yRebindType =
+      yType.cloneWith(ShapeAttr::get(yRebindShape, yShapeAttr.getType()));
+
+  if (xRebindType != xType)
+    x = rewriter.create<RMO::RebindTensorShapeOp>(loc, xRebindType, x);
+
+  if (yRebindType != yType)
+    y = rewriter.create<RMO::RebindTensorShapeOp>(loc, yRebindType, y);
+
+  return {x, y};
+}
+
+struct LowerAddOp : public OpRewritePattern<RMO::AddOp> {
+  LowerAddOp(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
+  LogicalResult matchAndRewrite(RMO::AddOp op,
+                                PatternRewriter &rewriter) const override {
+    auto graphOp = op->getParentOfType<MO::GraphOp>();
     Location loc = op->getLoc();
-    TensorValue shapeX =
-        rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{x}, graphOp);
-    TensorValue shapeY =
-        rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{y}, graphOp);
-    TensorValue commonShape = rewriter.create<RMO::MOBroadcastShapeOp>(
-        loc, ValueRange{shapeX, shapeY}, graphOp);
 
-    TensorValue bcastX = rewriter.create<RMO::MOBroadcastToOp>(
-        loc, ValueRange{x, commonShape}, graphOp);
-    TensorValue bcastY = rewriter.create<RMO::MOBroadcastToOp>(
-        loc, ValueRange{y, commonShape}, graphOp);
+    auto [xRebound, yRebound] = rebindShapesForBroadcasting(
+        loc, rewriter, op.getInputX(), op.getInputY());
+
+    TensorValue xFinal = xRebound;
+    TensorValue yFinal = yRebound;
+    if (xRebound.getType().getTypedShapeAttr() !=
+        yRebound.getType().getTypedShapeAttr()) {
+      TensorValue xShape =
+          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{xRebound}, graphOp);
+      TensorValue yShape =
+          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{yRebound}, graphOp);
+
+      TensorValue commonShape = rewriter.create<RMO::MOBroadcastShapeOp>(
+          loc, ValueRange{xShape, yShape}, graphOp);
+
+      TensorValue xBcast = rewriter.create<RMO::MOBroadcastToOp>(
+          loc, ValueRange{xRebound, commonShape}, graphOp);
+      TensorValue yBcast = rewriter.create<RMO::MOBroadcastToOp>(
+          loc, ValueRange{yRebound, commonShape}, graphOp);
+      xFinal = xBcast;
+      yFinal = yBcast;
+    }
 
     TensorValue answer =
-        rewriter.create<RMO::MOAddOp>(loc, ValueRange{bcastX, bcastY}, graphOp);
+        rewriter.create<RMO::MOAddOp>(loc, ValueRange{xFinal, yFinal}, graphOp);
     TensorValue reboundAnswer = rebindToShape(
         graphOp, answer, op.getType(), rewriter, op.getOutputParamDecls());
 
@@ -365,7 +464,7 @@ struct LegalizeRMOOps
       blockPatterns.add<LowerRebindTensorShapeOp>(context);
 
     // Lowering composite operations
-    blockPatterns.add<LowerBroadcastedAddOp, LowerBroadcastLike>(context);
+    blockPatterns.add<CastDtypeAddOp, LowerAddOp, LowerBroadcastLike>(context);
 
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(blockPatterns))))

@@ -1712,6 +1712,310 @@ void inferMOTypesScatterNdImpl(
   moInputParamDecls.push_back({});
 }
 
+//===----------------------------------------------------------------------===//
+// RMODialect Composite Ops
+//===----------------------------------------------------------------------===//
+
+/// DTypeCategory is the broad classes of dtypes used in calculating promotions.
+enum DTypeCategory {
+  kBool,
+  kUInt,
+  kSInt,
+  kFloat,
+};
+
+/// Returns the DTypeCategory for a DType.
+DTypeCategory getDtypeCategory(DType x) {
+  if (x.isBool())
+    return kBool;
+  if (x.isUInt())
+    return kUInt;
+  if (x.isSInt())
+    return kSInt;
+  if (x.isFloat())
+    return kFloat;
+
+  GENERICML_ASSERT(false) << "Unknown dtype: " << x.getAsString();
+}
+
+/// Returns the dtype represented by a category, bit width, and format.
+DType calcDtype(DTypeCategory category, ssize_t bitWidth, bool inputBF16) {
+  switch (category) {
+
+  case kBool:
+    return DType::kBool;
+    break;
+  case kUInt:
+    switch (bitWidth) {
+    case 1:
+      return DType::ui1;
+    case 2:
+      return DType::ui2;
+    case 4:
+      return DType::ui4;
+    case 8:
+      return DType::ui8;
+    case 16:
+      return DType::ui16;
+    case 32:
+      return DType::ui32;
+    case 64:
+      return DType::ui64;
+    case 128:
+      return DType::ui128;
+    }
+    break;
+  case kSInt:
+    switch (bitWidth) {
+    case 1:
+      return DType::si1;
+    case 2:
+      return DType::si2;
+    case 4:
+      return DType::si4;
+    case 8:
+      return DType::si8;
+    case 16:
+      return DType::si16;
+    case 32:
+      return DType::si32;
+    case 64:
+      return DType::si64;
+    case 128:
+      return DType::si128;
+    }
+    break;
+  case kFloat:
+    switch (bitWidth) {
+    case 8:
+      return DType::f8;
+    case 16:
+      if (inputBF16)
+        return DType::bf16;
+      return DType::f16;
+    case 19:
+      return DType::tf32;
+    case 24:
+      return DType::f24;
+    case 32:
+      return DType::f32;
+    case 64:
+      return DType::f64;
+    case 80:
+      return DType::f80;
+    case 128:
+      return DType::f128;
+    }
+    break;
+  }
+
+  GENERICML_ASSERT(false) << "Dtype promotion suggestion is an invalid dtype. "
+                             "This should not be possible: "
+                          << category << ", " << bitWidth;
+}
+
+/// Given two dtypes, returns the promotion dtype or an error.
+/// The rules are:
+/// 1. Category is an ordered hierarchy: `bool < unsigned int < signed int <
+/// float`
+/// 2. Promotion of values `x` and `y` picks:
+///    (max(category(x), category(y)), max(bitwidth(x), bitwidth(y))
+/// 3. Promotion raises an error if either input dtype might contain a value
+///    unrepresentable by the chosen promotion type.
+/// 4. Promotion raises an error if two dtypes have the same category and
+/// bitwidth
+///    but different representations.
+ErrorOr<DType> promoteDtype(DType x, DType y) {
+  // Bool is lowest class and always promotes to the other type.
+  if (x.isBool())
+    return y;
+  if (y.isBool())
+    return x;
+
+  bool inputBF16 = x == DType::bf16 || y == DType::bf16;
+  DTypeCategory category = std::max(getDtypeCategory(x), getDtypeCategory(y));
+  ssize_t bitWidth = std::max(x.getWidthInBits(), y.getWidthInBits());
+  DType result = calcDtype(category, bitWidth, inputBF16);
+
+  auto isSafeToCast = [&](DType dtype) -> ErrorOrSuccess {
+    auto build_error = [&]() {
+      return Error(Twine("unsafe cast from ")
+                       .concat(dtype.getAsString())
+                       .concat(" to ")
+                       .concat(result.getAsString())
+                       .concat(". Insert an explicit cast op if this "
+                               "conversion is wanted."));
+    };
+
+    // Unsigned int to signed int is only safe if the bitwidth increases
+    // such that all values are exactly representable.
+    if (dtype.isUInt() && result.isSInt() &&
+        dtype.getWidthInBits() == result.getWidthInBits())
+      return build_error();
+
+    // Any int to float is only safe if the significand precision can hold the
+    // full integer ignoring the sign bit. This means the conversion is exactly
+    // representable.
+    if (result.isFloat()) {
+      std::optional<ssize_t> resultPrecision =
+          result.getSignificandPrecisionInBits();
+      if (!resultPrecision)
+        return Error(Twine("calculated result type ")
+                         .concat(result.getAsString())
+                         .concat(" is not supported by the modular stack."));
+
+      if (dtype.isSInt() && dtype.getWidthInBits() - 1 > *resultPrecision)
+        return build_error();
+
+      if (dtype.isUInt() && dtype.getWidthInBits() > *resultPrecision)
+        return build_error();
+    }
+
+    // Float is unsafe if formats differ for same virtual bitwidth (tf32 with
+    // f32 or bf16 with f16). I say "virtual bitwidth" cause tf32 is techincally
+    // only 19bits.
+    if ((dtype == DType::f16 && result == DType::bf16) ||
+        (dtype == DType::bf16 && result == DType::f16) ||
+        (dtype == DType::tf32 && result == DType::f32))
+      return build_error();
+
+    return success();
+  };
+
+  ErrorOrSuccess xCastSafe = isSafeToCast(x);
+  if (xCastSafe.isError())
+    return xCastSafe.takeError();
+
+  ErrorOrSuccess yCastSafe = isSafeToCast(y);
+  if (yCastSafe.isError())
+    return yCastSafe.takeError();
+
+  return result;
+}
+
+/// Given two tensor types which are meant to broadcast to the same shape
+/// return a new type which returns a more "refined type" using information
+/// from both existing types
+///
+/// This function only calculates the expected shape. It does not deal with any
+/// actual checks/asserts. All asserts are dealt with by adding asserting
+/// rebinds during lowering.
+TensorType refineBroadcastedShape(TensorType ty1, TensorType ty2) {
+  GENERICML_ASSERT(!ty1.isDynamicallyRanked() && !ty2.isDynamicallyRanked())
+      << " only static rank is supported";
+
+  auto idxTy = IndexType::get(ty1.getContext());
+  auto intDim1 = IntegerAttr::get(idxTy, 1ll);
+  auto refineDim = [&intDim1](std::optional<TypedAttr> dim1,
+                              std::optional<TypedAttr> dim2) {
+    if (!dim1.has_value())
+      return dim2.value();
+    if (!dim2.has_value())
+      return dim1.value();
+
+    TypedAttr dim1Val = dim1.value();
+    TypedAttr dim2Val = dim2.value();
+
+    if (dim1Val == dim2Val)
+      return dim1Val;
+
+    // Const 1 broadcasts to anything else.
+    if (dim1Val == intDim1)
+      return dim2Val;
+    if (dim2Val == intDim1)
+      return dim1Val;
+
+    // Prefer anything other than `?`
+    if (TensorType::isUnknownDimParam(dim1Val))
+      return dim2Val;
+    if (TensorType::isUnknownDimParam(dim2Val))
+      return dim1Val;
+
+    // Prefer static integers over anything else
+    if (TensorType::isIntegerDimParam(dim1Val))
+      return dim1Val;
+    if (TensorType::isIntegerDimParam(dim2Val))
+      return dim2Val;
+
+    // Otherwise both are parameters, just favor the first
+    GENERICML_ASSERT(TensorType::isParameterizedDimParam(dim1Val) &&
+                     TensorType::isParameterizedDimParam(dim2Val))
+        << " a new dimension type was added, but this logic has not been "
+           "updated to handle it";
+    return dim1Val;
+  };
+
+  SmallVector<TypedAttr> newDims;
+  newDims.reserve(std::max(ty1.getRank(), ty2.getRank()));
+  for (auto [dim1, dim2] : llvm::zip_longest(llvm::reverse(ty1.getDims()),
+                                             llvm::reverse(ty2.getDims())))
+    newDims.push_back(refineDim(dim1, dim2));
+
+  return ty1.cloneWith(SmallVector<TypedAttr>(llvm::reverse(newDims)));
+}
+
+LogicalResult
+AddOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
+                        ValueRange operands, DictionaryAttr attributes,
+                        mlir::OpaqueProperties properties, RegionRange regions,
+                        SmallVectorImpl<Type> &inferredReturnTypes) {
+  bool dynamicRankInputs = llvm::any_of(operands, [](Value v) {
+    return v.getType().cast<TensorType>().isDynamicallyRanked();
+  });
+  if (dynamicRankInputs) {
+    if (location)
+      mlir::emitError(*location) << AddOp::getOperationName()
+                                 << " ops do not support dynamic "
+                                    "rank. Use the MO analogue ops instead.";
+    return failure();
+  }
+
+  auto xType = operands[0].getType().cast<TensorType>();
+  auto yType = operands[1].getType().cast<TensorType>();
+  ErrorOr<DType> promotedDtype =
+      promoteDtype(xType.getDtype(), yType.getDtype());
+  if (promotedDtype.isError()) {
+    if (location)
+      mlir::emitError(*location) << "Failed to resolve valid dtype: "
+                                 << StringRef{promotedDtype.getError()};
+    return failure();
+  }
+  TensorType resultType = refineBroadcastedShape(xType, yType);
+
+  inferredReturnTypes.push_back(
+      resultType.cloneWith(promotedDtype.takeValue()));
+  return success();
+}
+
+// Due to resolution of `?`, we may hit cases where we have 2 differently named
+// dynamic dimensions. Those results are compatible. A later rebind will resolve
+// the issue.
+bool AddOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
+  auto lhsType = lhs[0].cast<TensorType>();
+  auto rhsType = rhs[0].cast<TensorType>();
+
+  if (lhsType.getDtype() != rhsType.getDtype())
+    return false;
+  if (lhsType.getRank() != rhsType.getRank())
+    return false;
+
+  for (size_t i = 0, e = lhsType.getRank(); i < e; i++) {
+    TypedAttr lhsDim = lhsType.getDim(i);
+    TypedAttr rhsDim = rhsType.getDim(i);
+
+    // If both are paramterized or unknown dims, skip the comparison.
+    if ((TensorType::isParameterizedDimParam(lhsDim) ||
+         TensorType::isUnknownDimParam(lhsDim)) &&
+        (TensorType::isParameterizedDimParam(rhsDim) ||
+         TensorType::isUnknownDimParam(rhsDim)))
+      continue;
+
+    if (lhsDim != rhsDim)
+      return false;
+  }
+  return true;
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST

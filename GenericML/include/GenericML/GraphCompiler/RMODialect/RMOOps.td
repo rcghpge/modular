@@ -588,18 +588,25 @@ def RMO_MOSubOp : RMO_MOAnaloguePureBinaryElementWiseOp<"sub"> {
 // RMO Composite Operators
 //===----------------------------------------------------------------------===//
 
-/// TODO: of showing this in it's own namespace.
-/// This is an example experimental thing to prove this is easy to write
-def RMO_BroadcastAddOp : RMO_Op<"broadcast.add", [Pure, RMO_TensorSameDTypeOperandsAndResults]> {
-  let summary = "Add with implicit broadcast Operation";
+def RMO_AddOp : RMO_Op<"add", [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Flexible add operation";
   let description = [{
-    Like `rmo.mo.add` but supports implicit broadcasting!
+    A flexible add operation with implicit broadcasting and implicit dtype promotion.
   }];
   let arguments = (ins
     MO_Tensor:$input_x,
     MO_Tensor:$input_y,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` type(operands)
+  }];
+
+  let extraClassDeclaration = [{
+    // InferTypeOpInterface:
+    static bool isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs);
+  }];
 }
 
 def RMO_BroadcastLikeOp : RMO_Op<"broadcast_like", [Pure]> {
