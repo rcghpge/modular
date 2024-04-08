@@ -199,37 +199,6 @@ struct LowerRebindTensorShapeOp
   }
 };
 
-struct CastDtypeAddOp : public OpRewritePattern<RMO::AddOp> {
-  CastDtypeAddOp(MLIRContext *ctx) : OpRewritePattern(ctx, 2) {}
-  LogicalResult matchAndRewrite(RMO::AddOp op,
-                                PatternRewriter &rewriter) const override {
-    Location loc = op->getLoc();
-
-    TensorValue x = op.getInputX();
-    TensorValue y = op.getInputY();
-    auto xDtype = x.getType().getDtype();
-    auto yDtype = y.getType().getDtype();
-    auto resultDtype = op.getResult().getType().getDtype();
-
-    // Pattern does not match, no dtypes to cast.
-    if (xDtype == resultDtype && yDtype == resultDtype) {
-      return failure();
-    }
-
-    if (xDtype != resultDtype) {
-      x = rewriter.create<RMO::MOCastOp>(loc,
-                                         x.getType().cloneWith(resultDtype), x);
-    }
-    if (yDtype != resultDtype) {
-      y = rewriter.create<RMO::MOCastOp>(loc,
-                                         y.getType().cloneWith(resultDtype), y);
-    }
-    rewriter.replaceOpWithNewOp<RMO::AddOp>(op, op.getResult().getType(), x, y);
-
-    return mlir::success();
-  }
-};
-
 /// Returns the input values with asserting rebinds to ensure parameterized
 /// dimensions are equal.
 ///
@@ -291,15 +260,33 @@ rebindShapesForBroadcasting(Location loc, PatternRewriter &rewriter,
   return {x, y};
 }
 
-struct LowerAddOp : public OpRewritePattern<RMO::AddOp> {
-  LowerAddOp(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
-  LogicalResult matchAndRewrite(RMO::AddOp op,
+template <typename RMOOpT, typename MOAnalogueOpT>
+struct LowerCompositeElemwiseBinaryOp : public OpRewritePattern<RMOOpT> {
+  LowerCompositeElemwiseBinaryOp(MLIRContext *ctx)
+      : OpRewritePattern<RMOOpT>(ctx, 1) {}
+  LogicalResult matchAndRewrite(RMOOpT op,
                                 PatternRewriter &rewriter) const override {
-    auto graphOp = op->getParentOfType<MO::GraphOp>();
+    auto graphOp = op->template getParentOfType<MO::GraphOp>();
     Location loc = op->getLoc();
 
-    auto [xRebound, yRebound] = rebindShapesForBroadcasting(
-        loc, rewriter, op.getInputX(), op.getInputY());
+    TensorValue x = op.getInputX();
+    TensorValue y = op.getInputY();
+    auto xDtype = x.getType().getDtype();
+    auto yDtype = y.getType().getDtype();
+    auto resultDtype = op.getResult().getType().getDtype();
+
+    // Deal with dtype casting if it is needed.
+    if (xDtype != resultDtype) {
+      x = rewriter.create<RMO::MOCastOp>(loc,
+                                         x.getType().cloneWith(resultDtype), x);
+    }
+    if (yDtype != resultDtype) {
+      y = rewriter.create<RMO::MOCastOp>(loc,
+                                         y.getType().cloneWith(resultDtype), y);
+    }
+
+    auto [xRebound, yRebound] =
+        rebindShapesForBroadcasting(loc, rewriter, x, y);
 
     TensorValue xFinal = xRebound;
     TensorValue yFinal = yRebound;
@@ -321,8 +308,8 @@ struct LowerAddOp : public OpRewritePattern<RMO::AddOp> {
       yFinal = yBcast;
     }
 
-    TensorValue answer =
-        rewriter.create<RMO::MOAddOp>(loc, ValueRange{xFinal, yFinal}, graphOp);
+    TensorValue answer = rewriter.create<MOAnalogueOpT>(
+        loc, ValueRange{xFinal, yFinal}, graphOp);
     TensorValue reboundAnswer = rebindToShape(
         graphOp, answer, op.getType(), rewriter, op.getOutputParamDecls());
 
@@ -464,7 +451,15 @@ struct LegalizeRMOOps
       blockPatterns.add<LowerRebindTensorShapeOp>(context);
 
     // Lowering composite operations
-    blockPatterns.add<CastDtypeAddOp, LowerAddOp, LowerBroadcastLike>(context);
+    blockPatterns.add<LowerCompositeElemwiseBinaryOp<RMO::AddOp, RMO::MOAddOp>,
+                      LowerCompositeElemwiseBinaryOp<RMO::SubOp, RMO::MOSubOp>,
+                      LowerCompositeElemwiseBinaryOp<RMO::MulOp, RMO::MOMulOp>,
+                      LowerCompositeElemwiseBinaryOp<RMO::DivOp, RMO::MODivOp>,
+                      LowerCompositeElemwiseBinaryOp<RMO::ModOp, RMO::MOModOp>,
+                      LowerCompositeElemwiseBinaryOp<RMO::PowOp, RMO::MOPowOp>,
+                      LowerCompositeElemwiseBinaryOp<RMO::MinOp, RMO::MOMinOp>,
+                      LowerCompositeElemwiseBinaryOp<RMO::MaxOp, RMO::MOMaxOp>,
+                      LowerBroadcastLike>(context);
 
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(blockPatterns))))

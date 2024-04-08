@@ -588,11 +588,8 @@ def RMO_MOSubOp : RMO_MOAnaloguePureBinaryElementWiseOp<"sub"> {
 // RMO Composite Operators
 //===----------------------------------------------------------------------===//
 
-def RMO_AddOp : RMO_Op<"add", [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Flexible add operation";
-  let description = [{
-    A flexible add operation with implicit broadcasting and implicit dtype promotion.
-  }];
+class RMO_PureBinaryElementWiseOp<string name, list<Trait> traits = []>
+    : RMO_Op<name, traits # [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins
     MO_Tensor:$input_x,
     MO_Tensor:$input_y,
@@ -606,6 +603,81 @@ def RMO_AddOp : RMO_Op<"add", [Pure, DeclareOpInterfaceMethods<InferTypeOpInterf
   let extraClassDeclaration = [{
     // InferTypeOpInterface:
     static bool isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs);
+  }];
+  let extraClassDefinition = [{
+    LogicalResult
+    $cppClass::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
+                            ValueRange operands, DictionaryAttr attributes,
+                            mlir::OpaqueProperties properties, RegionRange regions,
+                            SmallVectorImpl<Type> &inferredReturnTypes) {
+      return inferReturnTypesElemwiseBinaryImpl<$cppClass>(
+          context, location, operands, attributes, properties, regions,
+          inferredReturnTypes);
+    }
+
+    // InferTypeOpInterface:
+    bool $cppClass::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
+      return isCompatibleReturnTypesElemwiseBinaryImpl(lhs, rhs);
+    }
+  }];
+}
+
+def RMO_AddOp : RMO_PureBinaryElementWiseOp<"add", [Commutative]> {
+  let summary = "Flexible binary add op";
+  let description = [{
+    A flexible binary elementwise add operation with implicit broadcasting and implicit dtype promotion.
+  }];
+}
+
+def RMO_SubOp : RMO_PureBinaryElementWiseOp<"sub", []> {
+  let summary = "Flexible binary sub op";
+  let description = [{
+    A flexible binary elementwise sub operation with implicit broadcasting and implicit dtype promotion.
+  }];
+}
+
+def RMO_MulOp : RMO_PureBinaryElementWiseOp<"mul", [Commutative]> {
+  let summary = "Flexible binary mul op";
+  let description = [{
+    A flexible binary elementwise mul operation with implicit broadcasting and implicit dtype promotion.
+  }];
+}
+
+def RMO_DivOp : RMO_PureBinaryElementWiseOp<"div", []> {
+  let summary = "Flexible binary div op";
+  let description = [{
+    A flexible binary elementwise div operation with implicit broadcasting and implicit dtype promotion.
+  }];
+}
+
+def RMO_ModOp : RMO_PureBinaryElementWiseOp<"mod", []> {
+  let summary = "Flexible binary mod op";
+  let description = [{
+    A flexible binary elementwise mod operation with implicit broadcasting and implicit dtype promotion.
+  }];
+}
+
+// TODO: investigate pow. It looks like the MO op allows for different input types without casting.
+// For example, raising a float to the power of an integer.
+// We may need to expand the analogue op and this op to support that as well.
+def RMO_PowOp : RMO_PureBinaryElementWiseOp<"pow", []> {
+  let summary = "Flexible binary pow op";
+  let description = [{
+    A flexible binary elementwise pow operation with implicit broadcasting and implicit dtype promotion.
+  }];
+}
+
+def RMO_MinOp : RMO_PureBinaryElementWiseOp<"min", [Commutative]> {
+  let summary = "Flexible binary min op";
+  let description = [{
+    A flexible binary elementwise min operation with implicit broadcasting and implicit dtype promotion.
+  }];
+}
+
+def RMO_MaxOp : RMO_PureBinaryElementWiseOp<"max", [Commutative]> {
+  let summary = "Flexible binary max op";
+  let description = [{
+    A flexible binary elementwise max operation with implicit broadcasting and implicit dtype promotion.
   }];
 }
 

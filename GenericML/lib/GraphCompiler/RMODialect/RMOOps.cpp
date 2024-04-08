@@ -1954,17 +1954,17 @@ TensorType refineBroadcastedShape(TensorType ty1, TensorType ty2) {
   return ty1.cloneWith(SmallVector<TypedAttr>(llvm::reverse(newDims)));
 }
 
-LogicalResult
-AddOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
-                        ValueRange operands, DictionaryAttr attributes,
-                        mlir::OpaqueProperties properties, RegionRange regions,
-                        SmallVectorImpl<Type> &inferredReturnTypes) {
+template <typename OpT>
+LogicalResult inferReturnTypesElemwiseBinaryImpl(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   bool dynamicRankInputs = llvm::any_of(operands, [](Value v) {
     return v.getType().cast<TensorType>().isDynamicallyRanked();
   });
   if (dynamicRankInputs) {
     if (location)
-      mlir::emitError(*location) << AddOp::getOperationName()
+      mlir::emitError(*location) << OpT::getOperationName()
                                  << " ops do not support dynamic "
                                     "rank. Use the MO analogue ops instead.";
     return failure();
@@ -1990,7 +1990,7 @@ AddOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
 // Due to resolution of `?`, we may hit cases where we have 2 differently named
 // dynamic dimensions. Those results are compatible. A later rebind will resolve
 // the issue.
-bool AddOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
+bool isCompatibleReturnTypesElemwiseBinaryImpl(TypeRange lhs, TypeRange rhs) {
   auto lhsType = lhs[0].cast<TensorType>();
   auto rhsType = rhs[0].cast<TensorType>();
 
