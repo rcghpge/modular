@@ -4,5 +4,6 @@
 #
 ##===----------------------------------------------------------------------===##
 
+add_subdirectory(max)
 add_subdirectory(c-api-validator)
 add_subdirectory(modular-api-executor)
