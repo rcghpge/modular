@@ -118,7 +118,7 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
     }
   }
 
-  if (!saveTempsPrefix.empty()) {
+  if (succeeded(res) && !saveTempsPrefix.empty()) {
     std::string outPath = saveTempsPrefix + ".kgen.elaborated.mlir";
     auto outFile = mlir::openOutputFile(outPath);
     if (!outFile)

@@ -247,7 +247,7 @@ class OpDecomposer {
 
 public:
   /// Create an OpDecomposer with given MLIRContext.
-  OpDecomposer(MLIRContext *ctx) : builder(ctx), loc(builder.getUnknownLoc()) {}
+  OpDecomposer(MLIRContext *ctx, Location loc) : builder(ctx), loc(loc) {}
 
   /// Try decomposing the given Operation if possible. Return either
   /// - a failure as fatal failure (e.g., some shape assertion failed)
@@ -1050,7 +1050,7 @@ struct PropagateShapesPass
 
     // NOTE think of this as a stack machine that also decomposes "pseudo
     // instructions".
-    OpDecomposer opDecomposer(graphOp.getContext());
+    OpDecomposer opDecomposer(graphOp.getContext(), graphOp.getLoc());
     while (!worklist.empty()) {
       Operation *op = worklist.back();
       worklist.pop_back();
