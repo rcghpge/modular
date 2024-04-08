@@ -8,19 +8,18 @@
 from tensor import Tensor, TensorShape
 from testing import *
 
-from max.graph import ops, _testing, Module, MOTensor, TypeTuple
+from max.graph import ops, _testing, Graph, MOTensor, TypeTuple
 
 
 fn test_matmul() raises:
-    var m = Module()
-    var g = m.graph(
+    var g = Graph(
         TypeTuple(
             MOTensor(DType.float32, 1, 2, 3), MOTensor(DType.float32, 3, 2)
         ),
         MOTensor(DType.float32, 1, 2, 2),
     )
     g.output(g[0] @ g[1])
-    m.verify()
+    g.verify()
 
     var x = Tensor[DType.float32](
         TensorShape(1, 2, 3), -2.0, -1.0, 0.0, 1.0, 2.0, 3.0
@@ -30,20 +29,19 @@ fn test_matmul() raises:
     )
     var expected = Tensor[DType.float32](TensorShape(1, 2, 2), -2, -3, 1, 6)
 
-    var actual = _testing.execute_binary(m, x, y)
+    var actual = _testing.execute_binary(g, x, y)
     _testing.assert_tensors_almost_equal(expected, actual, 1e-4)
 
 
 fn test_batch_matmul() raises:
-    var m = Module()
-    var g = m.graph(
+    var g = Graph(
         TypeTuple(
             MOTensor(DType.float32, 1, 2, 3), MOTensor(DType.float32, 3, 2)
         ),
         MOTensor(DType.float32, 1, 2, 2),
     )
     g.output(g[0] @ g[1])
-    m.verify()
+    g.verify()
 
     var x = Tensor[DType.float32](
         TensorShape(1, 2, 3), -2.0, -1.0, 0.0, 1.0, 2.0, 3.0
@@ -53,14 +51,12 @@ fn test_batch_matmul() raises:
     )
     var expected = Tensor[DType.float32](TensorShape(1, 2, 2), -2, -3, 1, 6)
 
-    var actual = _testing.execute_binary(m, x, y)
+    var actual = _testing.execute_binary(g, x, y)
     _testing.assert_tensors_almost_equal(expected, actual, 1e-4)
 
 
 def test_matmul_dimension_mismatch():
-    var m = Module()
-    var module = Module()
-    var graph = module.graph(
+    var graph = Graph(
         in_types=MOTensor(DType.float32, 2, 6),
         out_types=MOTensor(DType.float32, 2, 6),
     )
@@ -74,9 +70,7 @@ def test_matmul_dimension_mismatch():
 
 
 def test_matmul_rhs_too_small():
-    var m = Module()
-    var module = Module()
-    var graph = module.graph(
+    var graph = Graph(
         in_types=MOTensor(DType.float32, 2, 6),
         out_types=MOTensor(DType.float32, 2, 6),
     )

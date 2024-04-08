@@ -19,7 +19,6 @@ from tensor import Tensor, TensorShape, TensorSpec
 from utils.index import Index
 
 from max.engine import InferenceSession, Model, TensorMap
-from max.graph import Module
 
 from tokenizer.bpe import BPETokenizer
 from model.llama import Llama2

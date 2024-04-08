@@ -241,7 +241,11 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
                             FileFormat format) {
   auto *mofContext = ctxHandle.unwrap<MOFContext>();
   LLCL::Runtime *runtime = ctxHandle.maxContext->get<Runtime>();
-  ModuleOp moduleOp = ModuleOp::getFromOpaquePointer(source);
+  // Clone the ModuleOp so compilation doesn't have side effects on the input
+  // op. Cloning should be reasonably cheap since all model weights are stored
+  // as dense_resource attributes owned by the MLIRContext.
+  OwningOpRef<ModuleOp> moduleOp =
+      ModuleOp::getFromOpaquePointer(source).clone();
   if (!moduleOp->getContext()->isMultithreadingEnabled())
     registerContext(*moduleOp->getContext(), ctxHandle.maxContext);
 
@@ -254,18 +258,18 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
 
   // Enable saving intermediate IR by setting `max.temps_dir` in modular.cfg.
   // Save MO IR pre mo-to-mgp.
-  writeIntermediateFileIfRequested("mo", moduleOp, /*options=*/nullptr,
+  writeIntermediateFileIfRequested("mo", *moduleOp, /*options=*/nullptr,
                                    BufferRef());
 
-  if (failed(lowerMOToMGP(moduleOp, moToMgpOptions, *runtime)))
+  if (failed(lowerMOToMGP(*moduleOp, moToMgpOptions, *runtime)))
     return Error("unable to lower MO to MGP");
 
   // Save MGP IR pre export to MEF.
-  writeIntermediateFileIfRequested("mgp", moduleOp, /*options=*/nullptr,
+  writeIntermediateFileIfRequested("mgp", *moduleOp, /*options=*/nullptr,
                                    BufferRef());
 
   auto bufOr =
-      MO::convertMGPToMEF(moduleOp, mofContext->getEnableMEFMetadata());
+      MO::convertMGPToMEF(*moduleOp, mofContext->getEnableMEFMetadata());
   if (bufOr)
     return bufOr.takeError();
   M::BufferRef outputBuffer = bufOr.takeValue();

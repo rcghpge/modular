@@ -9,7 +9,7 @@
 from tensor import Tensor, TensorShape
 from utils.index import Index
 
-from max.graph import ops, AttrMap, Module, MOTensor
+from max.graph import ops, AttrMap, Graph, MOTensor
 
 # Based on the MNIST example at https://www.tensorflow.org/datasets/keras_example:
 #
@@ -31,9 +31,7 @@ from max.graph import ops, AttrMap, Module, MOTensor
 
 
 def test_mnist_low_level():
-    var m = Module()
-
-    var g = m.graph(
+    var g = Graph(
         "test_mnist_low_level",
         MOTensor(DType.float32, 1, 28, 28, 1),
         MOTensor(DType.float32, 1, 10),
@@ -43,13 +41,13 @@ def test_mnist_low_level():
     var cst = g.op(
         "mo.constant",
         MOTensor(DType.float32, 128, 10),
-        AttrMap(m.tensor_attr("value", cst_data)),
+        AttrMap(g._module().tensor_attr("value", cst_data)),
     )
     var cst_0 = g.op(
         "mo.constant",
         MOTensor(DType.float32, 1, 10),
         AttrMap(
-            m.tensor_attr(
+            g._module().tensor_attr(
                 "value",
                 Tensor[DType.float32](
                     TensorShape(1, 10),
@@ -73,20 +71,22 @@ def test_mnist_low_level():
     var cst_1 = g.op(
         "mo.constant",
         MOTensor(DType.float32, 784, 128),
-        AttrMap(m.tensor_attr("value", cst_1_data)),
+        AttrMap(g._module().tensor_attr("value", cst_1_data)),
     )
     var cst_2_data = Tensor[DType.float32](1, 128)
     cst_2_data._to_buffer().fill(0.5)
     var cst_2 = g.op(
         "mo.constant",
         MOTensor(DType.float32, 1, 128),
-        AttrMap(m.tensor_attr("value", cst_2_data)),
+        AttrMap(g._module().tensor_attr("value", cst_2_data)),
     )
     var cst_3 = g.op(
         "mo.constant",
         MOTensor(DType.int32, 2),
         AttrMap(
-            m.tensor_attr("value", Tensor[DType.int32](TensorShape(2), -1, 784))
+            g._module().tensor_attr(
+                "value", Tensor[DType.int32](TensorShape(2), -1, 784)
+            )
         ),
     )
     var p1 = g.op("mo.reshape", (g[0], cst_3), MOTensor(DType.float32, 1, 784))
@@ -98,14 +98,12 @@ def test_mnist_low_level():
     _ = g.nvop("mo.output", p6)
 
     # CHECK: test_mnist_low_level
-    m.verify()
-    print(m.__str__())
+    g.verify()
+    print(g)
 
 
 def test_mnist_helpers():
-    var m = Module()
-
-    var g = m.graph(
+    var g = Graph(
         "test_mnist_helpers",
         MOTensor(DType.float32, 1, 28, 28, 1),
         MOTensor(DType.float32, 1, 10),
@@ -147,8 +145,8 @@ def test_mnist_helpers():
     _ = g.output(p6)
 
     # CHECK: test_mnist_helpers
-    m.verify()
-    print(m.__str__())
+    g.verify()
+    print(g)
 
 
 def main():

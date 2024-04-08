@@ -8,25 +8,23 @@
 
 from tensor import Tensor, TensorShape
 
-from max.graph import _testing, Dim, Module, MOTensor, TypeTuple
+from max.graph import _testing, Dim, Graph, MOTensor, TypeTuple
 
 
 fn test_vector_index_int() raises:
-    var m = Module()
-    var g = m.graph(MOTensor(DType.int64, 3), MOTensor(DType.int64))
+    var g = Graph(MOTensor(DType.int64, 3), MOTensor(DType.int64))
     var arg = g[0]
     g.output(arg[1])
 
     var x = Tensor[DType.int64](TensorShape(3), 1, 2, 3)
     var expected = Tensor[DType.int64](TensorShape(), 2)
 
-    var actual = _testing.execute_unary[DType.int64, DType.int64](m, x)
+    var actual = _testing.execute_unary[DType.int64, DType.int64](g, x)
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
 fn test_vector_index_sym() raises:
-    var m = Module()
-    var g = m.graph(
+    var g = Graph(
         TypeTuple(MOTensor(DType.int64, 3), MOTensor(DType.int64)),
         MOTensor(DType.int64),
     )
@@ -38,26 +36,24 @@ fn test_vector_index_sym() raises:
     var i = Tensor[DType.int64](TensorShape(), 1)
     var expected = Tensor[DType.int64](TensorShape(), 2)
 
-    var actual = _testing.execute_binary[DType.int64, DType.int64](m, x, i)
+    var actual = _testing.execute_binary[DType.int64, DType.int64](g, x, i)
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
 fn test_vector_slice_int() raises:
-    var m = Module()
-    var g = m.graph(MOTensor(DType.int64, 3), MOTensor(DType.int64, 2))
+    var g = Graph(MOTensor(DType.int64, 3), MOTensor(DType.int64, 2))
     var arg = g[0]
     g.output(arg[1:3])
 
     var x = Tensor[DType.int64](TensorShape(3), 1, 2, 3)
     var expected = Tensor[DType.int64](TensorShape(2), 2, 3)
 
-    var actual = _testing.execute_unary[DType.int64, DType.int64](m, x)
+    var actual = _testing.execute_unary[DType.int64, DType.int64](g, x)
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
 fn test_vector_slice_sym() raises:
-    var m = Module()
-    var g = m.graph(
+    var g = Graph(
         TypeTuple(MOTensor(DType.int64, 3), MOTensor(DType.int64)),
         MOTensor(DType.int64, Dim.dynamic()),
     )
@@ -69,26 +65,24 @@ fn test_vector_slice_sym() raises:
     var i = Tensor[DType.int64](TensorShape(), 1)
     var expected = Tensor[DType.int64](TensorShape(2), 2, 3)
 
-    var actual = _testing.execute_binary[DType.int64, DType.int64](m, x, i)
+    var actual = _testing.execute_binary[DType.int64, DType.int64](g, x, i)
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
 fn test_matrix_index_int() raises:
-    var m = Module()
-    var g = m.graph(MOTensor(DType.int64, 2, 3), MOTensor(DType.int64, 3))
+    var g = Graph(MOTensor(DType.int64, 2, 3), MOTensor(DType.int64, 3))
     var arg = g[0]
     g.output(arg[1])
 
     var x = Tensor[DType.int64](TensorShape(2, 3), 1, 2, 3, 4, 5, 6)
     var expected = Tensor[DType.int64](TensorShape(3), 4, 5, 6)
 
-    var actual = _testing.execute_unary[DType.int64, DType.int64](m, x)
+    var actual = _testing.execute_unary[DType.int64, DType.int64](g, x)
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
 fn test_matrix_index_sym() raises:
-    var m = Module()
-    var g = m.graph(
+    var g = Graph(
         TypeTuple(MOTensor(DType.int64, 2, 3), MOTensor(DType.int64)),
         MOTensor(DType.int64, 3),
     )
@@ -100,26 +94,24 @@ fn test_matrix_index_sym() raises:
     var i = Tensor[DType.int64](TensorShape(), 1)
     var expected = Tensor[DType.int64](TensorShape(3), 4, 5, 6)
 
-    var actual = _testing.execute_binary[DType.int64, DType.int64](m, x, i)
+    var actual = _testing.execute_binary[DType.int64, DType.int64](g, x, i)
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
 fn test_matrix_slice_int() raises:
-    var m = Module()
-    var g = m.graph(MOTensor(DType.int64, 3, 3), MOTensor(DType.int64, 2, 3))
+    var g = Graph(MOTensor(DType.int64, 3, 3), MOTensor(DType.int64, 2, 3))
     var arg = g[0]
     g.output(arg[1:3])
 
     var x = Tensor[DType.int64](TensorShape(3, 3), 1, 2, 3, 4, 5, 6, 7, 8, 9)
     var expected = Tensor[DType.int64](TensorShape(2, 3), 4, 5, 6, 7, 8, 9)
 
-    var actual = _testing.execute_unary[DType.int64, DType.int64](m, x)
+    var actual = _testing.execute_unary[DType.int64, DType.int64](g, x)
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
 fn test_matrix_slice_sym() raises:
-    var m = Module()
-    var g = m.graph(
+    var g = Graph(
         TypeTuple(MOTensor(DType.int64, 3, 3), MOTensor(DType.int64)),
         MOTensor(DType.int64, Dim.dynamic(), 3),
     )
@@ -131,13 +123,12 @@ fn test_matrix_slice_sym() raises:
     var i = Tensor[DType.int64](TensorShape(), 1)
     var expected = Tensor[DType.int64](TensorShape(2, 3), 4, 5, 6, 7, 8, 9)
 
-    var actual = _testing.execute_binary[DType.int64, DType.int64](m, x, i)
+    var actual = _testing.execute_binary[DType.int64, DType.int64](g, x, i)
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
 fn test_matrix_slice_double() raises:
-    var m = Module()
-    var g = m.graph(
+    var g = Graph(
         TypeTuple(MOTensor(DType.int64, 3, 3), MOTensor(DType.int64)),
         MOTensor(DType.int64, Dim.dynamic(), Dim.dynamic()),
     )
@@ -149,7 +140,7 @@ fn test_matrix_slice_double() raises:
     var i = Tensor[DType.int64](TensorShape(), 1)
     var expected = Tensor[DType.int64](TensorShape(2, 2), 4, 5, 7, 8)
 
-    var actual = _testing.execute_binary[DType.int64, DType.int64](m, x, i)
+    var actual = _testing.execute_binary[DType.int64, DType.int64](g, x, i)
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 

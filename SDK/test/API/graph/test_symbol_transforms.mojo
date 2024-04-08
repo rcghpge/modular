@@ -8,12 +8,11 @@
 
 from tensor import Tensor, TensorShape
 
-from max.graph import _testing, Module, MOTensor, Symbol, TypeTuple
+from max.graph import _testing, Graph, MOTensor, Symbol, TypeTuple
 
 
 fn test_insert_transform() raises:
-    var m = Module()
-    var g = m.graph(
+    var g = Graph(
         TypeTuple(MOTensor(DType.int64), MOTensor(DType.int64)),
         MOTensor(DType.int64),
     )
@@ -28,7 +27,7 @@ fn test_insert_transform() raises:
     var y = Tensor[DType.int64](TensorShape(), 2)
     var expected = Tensor[DType.int64](TensorShape(), 6)
 
-    var actual = _testing.execute_binary[DType.int64, DType.int64](m, x, y)
+    var actual = _testing.execute_binary[DType.int64, DType.int64](g, x, y)
 
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 

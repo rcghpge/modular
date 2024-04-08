@@ -14,7 +14,7 @@
 from collections import List, Optional
 from pathlib import Path
 
-from max.graph import ops, Dim, Module, MOTensor, Symbol, SymbolTuple, TypeTuple
+from max.graph import ops, Dim, Graph, MOTensor, Symbol, SymbolTuple, TypeTuple
 
 from weights.loadable_model import LoadableModel, LlamaHParams
 
@@ -228,7 +228,7 @@ struct Llama2[ModelT: LoadableModel, float_dtype: DType = DType.float32]:
         self.params = ModelT(model_path)
         self.hyperparams = self.params.hyperparams()
 
-    fn build_graph(inout self, name: String) raises -> Module:
+    fn build_graph(inout self, name: String) raises -> Graph:
         var cache_type = MOTensor(
             float_dtype,
             Dim.dynamic(),
@@ -246,8 +246,7 @@ struct Llama2[ModelT: LoadableModel, float_dtype: DType = DType.float32]:
             self.hyperparams.head_dim,
         )
         var tokens_type = MOTensor(DType.int64, self.batch_size, Dim.dynamic())
-        var m = Module()
-        var g = m.graph(
+        var g = Graph(
             name,
             in_types=TypeTuple(tokens_type, cache_type, cache_type),
             out_types=TypeTuple(tokens_type, cache_out_type, cache_out_type),
@@ -314,4 +313,4 @@ struct Llama2[ModelT: LoadableModel, float_dtype: DType = DType.float32]:
             logits.reshape(-1, self.hyperparams.vocab_size), axis=-1
         )
         g.output((next_token.reshape(self.batch_size, -1), k_cache, v_cache))
-        return m
+        return g
