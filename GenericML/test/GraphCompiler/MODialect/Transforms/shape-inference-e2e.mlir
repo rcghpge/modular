@@ -727,9 +727,10 @@ mo.graph @broadcast_shape_dynamic(%shape1: !mo.tensor<[?], si32>, %shape2: !mo.t
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @broadcast_shape_dynamic<[[D1:.*]], [[D2:.*]] -> [[D3:.*]]>(%[[ARG0:.*]]: !mo.tensor<[[[D1]]], si32>, %[[ARG1:.*]]: !mo.tensor<[[[D2]]], si32>) -> !mo.tensor<[[[D3]]], si32>
-// CHECK-NEXT: mo.invoke_shape_func["broadcast_shape_shape"]<() -> [[D6:.*]]>(%[[ARG0]], %[[ARG1]]) {dataDeptTensors = []} : (!mo.tensor<[[[D1]]], si32>, !mo.tensor<[[[D2]]], si32>)
-// CHECK-NEXT: %[[V0:.*]] = mo.broadcast_shape(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[[[D1]]], si32>, !mo.tensor<[[[D2]]], si32>) -> !mo.tensor<[[[D6]]], si32>
-// CHECK-NEXT: mo.output<{{.*}}> %[[V0]]
+// CHECK-NEXT: kgen.param.declare [[EXPR:.*]] = <max([[D1]], [[D2]])> 
+// CHECK-NEXT: %[[V0:.*]] = mo.broadcast_shape(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[[[D1]]], si32>, !mo.tensor<[[[D2]]], si32>) -> !mo.tensor<[[[EXPR]]], si32>
+// CHECK-NEXT: %[[V1:.*]] = mo.rebind(%[[V0]]) : !mo.tensor<[[[EXPR]]], si32> -> !mo.tensor<[max([[D1]], [[D2]])], si32> 
+// CHECK-NEXT: mo.output<{{.*}}> %[[V1]]
 
 mo.graph @broadcast_shape_static(%shape1: !mo.tensor<[3], si32>, %shape2: !mo.tensor<[5], si32>) -> !mo.tensor<[?], si32> {
   %res = mo.broadcast_shape(%shape1, %shape2) : (!mo.tensor<[3], si32>, !mo.tensor<[5], si32>) -> !mo.tensor<[?], si32>
