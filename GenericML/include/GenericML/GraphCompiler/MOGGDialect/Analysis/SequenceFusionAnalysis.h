@@ -33,8 +33,6 @@ enum class Direction { Up, Down };
 /// one another and all paths to them from the root are void of non eligible
 /// ops. A SetVector is returned for determinism. Will not traverse across
 /// blocks.
-/// Note: The compatibility function is used on the edges during the traversal.
-/// The operands must be interpreted as <from, to>.
 template <Direction direction, bool allowDuplication = false>
 mlir::SetVector<mlir::Operation *>
 floodFillFrom(const mlir::SmallVector<mlir::Operation *> &roots,
@@ -45,22 +43,16 @@ floodFillFrom(const mlir::SmallVector<mlir::Operation *> &roots,
   mlir::SetVector<mlir::Operation *> visitedAsNonEligible;
 
   mlir::Block *block = roots.front()->getBlock();
-  llvm::SmallVector<std::tuple<mlir::Operation *, Operation *, bool>> workList;
+  llvm::SmallVector<std::tuple<mlir::Operation *, bool>> workList;
   for (mlir::Operation *op : roots)
-    workList.push_back({op, nullptr, true});
+    workList.push_back({op, true});
 
   while (!workList.empty()) {
-    auto [op, from, asEligible] = workList.pop_back_val();
+    auto [op, asEligible] = workList.pop_back_val();
     if (op->getBlock() != block)
       continue;
 
-    asEligible &= isEligible(op);
-    if (asEligible && from) {
-      if constexpr (direction == Direction::Down)
-        asEligible &= areCompatible(from, op);
-      else
-        asEligible &= areCompatible(op, from);
-    }
+    asEligible &= isEligible(op) && areCompatible(op, roots.front());
 
     if (asEligible) {
       // If the current op is eligible, then ensure it was not invalidated or
@@ -78,10 +70,10 @@ floodFillFrom(const mlir::SmallVector<mlir::Operation *> &roots,
 
     if constexpr (direction == Direction::Down) {
       for (auto user : completeDataflowGraph.users(op))
-        workList.push_back({user, op, asEligible});
+        workList.push_back({user, asEligible});
     } else {
       for (auto provider : completeDataflowGraph.providers(op))
-        workList.push_back({provider, op, asEligible});
+        workList.push_back({provider, asEligible});
     }
   }
 
