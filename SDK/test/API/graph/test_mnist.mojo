@@ -10,6 +10,7 @@ from tensor import Tensor, TensorShape
 from utils.index import Index
 
 from max.graph import ops, AttrMap, Graph, MOTensor
+from max.graph.module import _tensor_attr
 
 # Based on the MNIST example at https://www.tensorflow.org/datasets/keras_example:
 #
@@ -41,13 +42,14 @@ def test_mnist_low_level():
     var cst = g.op(
         "mo.constant",
         MOTensor(DType.float32, 128, 10),
-        AttrMap(g._module().tensor_attr("value", cst_data)),
+        AttrMap(_tensor_attr(g._context(), "value", cst_data)),
     )
     var cst_0 = g.op(
         "mo.constant",
         MOTensor(DType.float32, 1, 10),
         AttrMap(
-            g._module().tensor_attr(
+            _tensor_attr(
+                g._context(),
                 "value",
                 Tensor[DType.float32](
                     TensorShape(1, 10),
@@ -71,21 +73,23 @@ def test_mnist_low_level():
     var cst_1 = g.op(
         "mo.constant",
         MOTensor(DType.float32, 784, 128),
-        AttrMap(g._module().tensor_attr("value", cst_1_data)),
+        AttrMap(_tensor_attr(g._context(), "value", cst_1_data)),
     )
     var cst_2_data = Tensor[DType.float32](1, 128)
     cst_2_data._to_buffer().fill(0.5)
     var cst_2 = g.op(
         "mo.constant",
         MOTensor(DType.float32, 1, 128),
-        AttrMap(g._module().tensor_attr("value", cst_2_data)),
+        AttrMap(_tensor_attr(g._context(), "value", cst_2_data)),
     )
     var cst_3 = g.op(
         "mo.constant",
         MOTensor(DType.int32, 2),
         AttrMap(
-            g._module().tensor_attr(
-                "value", Tensor[DType.int32](TensorShape(2), -1, 784)
+            _tensor_attr(
+                g._context(),
+                "value",
+                Tensor[DType.int32](TensorShape(2), -1, 784),
             )
         ),
     )
