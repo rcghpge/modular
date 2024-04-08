@@ -15,6 +15,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "GraphRT/MIPDialect/MIPDialect.h"
 
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 
@@ -42,6 +43,30 @@ struct LowerPrimitivesPass
   void runOnOperation() override;
 };
 
+// For staging, we currently only enable fusion of MIP ops in generic regions
+// all other primitives will not be fused.
+static inline bool isFuseable(Operation *op) {
+  return isa<::M::MIP::MIPDialect>(op->getDialect());
+}
+
+// We only allow lowering to generic compiled regions for ops which are
+// registered in mojo and are are CPU only.
+// FIXME: (37088) This is meant to be stop-gap as we expect generic execution
+//        to follow mogg.execute dispatch between cpu/gpu in mojo, but currently
+//        the generic regions are only on cpu.
+static inline bool
+isLowerableToGenericRegion(MLIRContext *ctx,
+                           MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
+                           Operation *op) {
+  bool isRegistered = mojoLibraryAnalysis.hasRegisteredMojoKernelFor(
+      op->getName().getStringRef());
+  if (auto hasDeviceOp = dyn_cast<MGPHasDeviceOpInterface>(op)) {
+    return isRegistered &&
+           (hasDeviceOp.getDevice() == DeviceRefAttr::get(ctx, kCPULabel, 0));
+  }
+  return isRegistered;
+}
+
 void LowerPrimitivesPass::runOnOperation() {
   ModuleOp mod = getOperation();
   MLIRContext *ctx = mod->getContext();
@@ -54,22 +79,16 @@ void LowerPrimitivesPass::runOnOperation() {
     Location opLoc = op->getLoc();
     OpBuilder builder{op};
 
-    // If the MGP primitive has a mojo function backing it we can lower it
-    // to that function.
-    if (mojoLibraryAnalysis.hasRegisteredMojoKernelFor(
-            op->getName().getStringRef())) {
+    if (isLowerableToGenericRegion(ctx, mojoLibraryAnalysis, op)) {
       // Create the MOGG generic region which contains the compiled MGP.
       SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
-      // We currently do not enable the fusion of ASSERT Ops as we investigate
-      // the fusion errors
-      bool isFuseable = !isa<MGP::AssertOp>(op);
       auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
           opLoc, op->getResultTypes(), op->getOperands(),
           KGEN::ParamDeclArrayAttr::get(ctx, {}),
           InOutSignatureAttr::get(ctx, operandSemantics), BoolAttr{}, // isKGEN
           StringAttr{},                                               // summary
           BoolAttr{},                                                 // isAsync
-          BoolAttr::get(ctx, isFuseable) // isFuseable
+          BoolAttr::get(ctx, isFuseable(op)) // isFuseable
       );
 
       mlir::Block &kernelBody = newKernel.getBody().emplaceBlock();
