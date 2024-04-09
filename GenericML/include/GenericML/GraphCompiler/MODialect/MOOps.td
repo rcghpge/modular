@@ -3794,14 +3794,24 @@ def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [Pure]> {
 // Temp layer norm ops
 //===----------------------------------------------------------------------===//
 
-def MO_LayerNormOp : MO_TensorOp<"layer_norm"> {
+def MO_LayerNormOp : MO_TensorOp<"layer_norm", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+]> {
   let summary = "Layer normalization operation";
   let description = [{
     Layer normalization operation
   }];
 
-  let arguments = (ins MO_Tensor:$input, MO_Tensor:$gamma, MO_Tensor:$beta, MO_Tensor:$epsilon);
+  let arguments = (ins MO_Tensor:$input,
+                       MO_Tensor:$gamma,
+                       MO_Tensor:$beta,
+                       MO_Tensor:$epsilon,
+                       MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
 }
 
 //===----------------------------------------------------------------------===//

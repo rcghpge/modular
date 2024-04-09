@@ -402,6 +402,8 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
       INTRINSIC_TO_MOJO("gather_shape", "nn::gather_scatter::gather_shape"),
       INTRINSIC_TO_MOJO("gather_nd_shape",
                         "nn::gather_scatter::gather_nd_shape"),
+      INTRINSIC_TO_MOJO("layer_norm_shape",
+                        "nn::normalization::layer_norm_shape"),
       INTRINSIC_TO_MOJO("matrix_solve_shape",
                         "LinAlg::MatrixSolve::matrix_solve_shape"),
       INTRINSIC_TO_MOJO("non_maximum_suppression_shape",

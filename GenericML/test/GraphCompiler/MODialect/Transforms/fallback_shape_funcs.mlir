@@ -169,6 +169,37 @@ mo.graph @max_pool_ceil_mode_true_fallback_shape_func<() -> D0, D1, D2, D3>(
 // CHECK-NEXT: mo.output<[[D4]], [[D5]], [[D6]], [[D7]]> %[[RES]] : !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32>
 
 
+mo.graph @layer_norm<D0, D1 -> D2, D3>(
+  %input: !mo.tensor<[D0, D1], f32>,
+  %gamma: !mo.tensor<[], f32>,
+  %beta: !mo.tensor<[], f32>,
+  %epsilon: !mo.tensor<[], f32>
+) -> !mo.tensor<[D2, D3], f32> {
+
+  %res = mo.layer_norm<() -> D4, D5>(%input, %gamma, %beta, %epsilon) :
+    (!mo.tensor<[D0, D1], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[D4, D5], f32>
+
+  mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>
+}
+// CHECK-LABEL: mo.graph @layer_norm
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]] -> [[D2:.*]], [[D3:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>,
+// CHECK-SAME:   %[[GAMMA:arg1]]: !mo.tensor<[], f32>,
+// CHECK-SAME:   %[[BETA:arg2]]: !mo.tensor<[], f32>,
+// CHECK-SAME:   %[[EPSILON:.*]]: !mo.tensor<[], f32>
+// CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]]], f32> no_inline {
+//
+// CHECK-NEXT:   mo.invoke_shape_func["layer_norm_shape"]<() -> [[D4:.*]], [[D5:.*]]>(
+// CHECK-SAME:     %[[INPUT]], %[[GAMMA]], %[[BETA]], %[[EPSILON]]) {dataDeptTensors = []} :
+// CHECK-SAME:     (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>)
+//
+// CHECK-NEXT:   %[[RES:.*]] = mo.layer_norm(%[[INPUT]], %[[GAMMA]], %[[BETA]], %[[EPSILON]]) :
+// CHECK-SAME:     (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>)
+// CHECK-SAME:     -> !mo.tensor<[[[D4]], [[D5]]], f32>
+//
+// CHECK-NEXT:   mo.output<[[D4]], [[D5]]> %[[RES]] : !mo.tensor<[[[D4]], [[D5]]], f32>
+
+
 mo.graph @matrix_solve<D0, D1, D2, D3, D4, D5 -> D6, D7, D8>(
   %lhs: !mo.tensor<[D0, D1, D2], f32>,
   %rhs: !mo.tensor<[D3, D4, D5], f32>

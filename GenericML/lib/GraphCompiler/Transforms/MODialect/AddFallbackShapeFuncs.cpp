@@ -67,6 +67,7 @@ HAS_FALLBACK(MO::ConvOp)
 HAS_FALLBACK(MO::ConvTransposeOp)
 HAS_FALLBACK(MO::GatherOp)
 HAS_FALLBACK(MO::GatherNdOp)
+HAS_FALLBACK(MO::LayerNormOp)
 HAS_FALLBACK(MO::LinAlg::SolveOp)
 HAS_FALLBACK(MO::MaxPoolOp)
 HAS_FALLBACK(MO::MaxPoolCeilOp)
@@ -184,6 +185,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ConvTransposeOp)
       CALL_FALLBACK(MO::GatherOp)
       CALL_FALLBACK(MO::GatherNdOp)
+      CALL_FALLBACK(MO::LayerNormOp)
       CALL_FALLBACK(MO::LinAlg::SolveOp)
       CALL_FALLBACK(MO::MaxPoolOp)
       CALL_FALLBACK(MO::MaxPoolCeilOp)
@@ -522,6 +524,15 @@ ErrorOrSuccess Fallback<MO::GatherNdOp>::build(GraphOp &graph,
                    {
                        {"batch_dims", op.getBatchDims()},
                    },
+                   /*dataDepInputIdxs=*/{});
+  return success();
+}
+
+ErrorOrSuccess Fallback<MO::LayerNormOp>::build(GraphOp &graph,
+                                                OpBuilder &builder,
+                                                MO::LayerNormOp op) {
+  buildForOpResult(graph, builder, op, "layer_norm_shape", op.getOperands(),
+                   /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{});
   return success();
 }

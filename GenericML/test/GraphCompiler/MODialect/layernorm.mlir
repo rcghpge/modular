@@ -5,7 +5,7 @@ mo.graph @tf_layer_norm(%arg0 : !mo.tensor<[4, 3, 2], f32>) -> (!mo.tensor<[4, 3
   // CHECK-IR: %[[EPS:.*]] = mo.constant {{{.*}}} : !mo.tensor<[], f32>
   // CHECK-IR: %[[GAM:.*]] = mo.constant {value = #M.dense_array<1.100{{.*}}} : !mo.tensor<[2], f32>
   // CHECK-IR: %[[BET:.*]] = mo.constant {value = #M.dense_array<-1.000{{.*}}} : !mo.tensor<[2], f32>
-  // CHECK-IR: %[[VAL1:.*]] = "mo.layer_norm"(%[[ARG0]], %[[GAM]], %[[BET]], %[[EPS]])
+  // CHECK-IR: %[[VAL1:.*]] = mo.layer_norm(%[[ARG0]], %[[GAM]], %[[BET]], %[[EPS]])
   // CHECK-IR: mo.output %[[VAL1]]
   %ax = "mo.constant"() {value = #M.dense_array<2> : tensor<si64>} : () -> !mo.tensor<[], si64>
   %sh = "mo.constant"() {value = #M.dense_array<4, 3, 2> : tensor<3xsi64>} : () -> !mo.tensor<[3], si64>
@@ -38,7 +38,7 @@ mo.graph @tf_layer_norm_skip(%arg0 : !mo.tensor<[4, 3, 2], f32>, %arg1 : !mo.ten
   // CHECK-IR: %[[GAM:.*]] = mo.constant {value = #M.dense_array<1.100{{.*}}} : !mo.tensor<[2], f32>
   // CHECK-IR: %[[BET:.*]] = mo.constant {value = #M.dense_array<-1.000{{.*}}} : !mo.tensor<[2], f32>
   // CHECK-IR: %[[VAL:.*]] = mo.add(%[[ARG0]], %[[ARG1]]) : !mo.tensor<[4, 3, 2], f32>
-  // CHECK-IR: %[[VAL1:.*]] = "mo.layer_norm"(%[[VAL]], %[[GAM]], %[[BET]], %[[EPS]])
+  // CHECK-IR: %[[VAL1:.*]] = mo.layer_norm(%[[VAL]], %[[GAM]], %[[BET]], %[[EPS]])
   // CHECK-IR: mo.output %[[VAL1]]
   %ax = "mo.constant"() {value = #M.dense_array<2> : tensor<si64>} : () -> !mo.tensor<[], si64>
   %sh = "mo.constant"() {value = #M.dense_array<4, 3, 2> : tensor<3xsi64>} : () -> !mo.tensor<[3], si64>
@@ -71,7 +71,7 @@ mo.graph @pt_layer_norm(%arg0 : !mo.tensor<[4, 3, 2], f32>) -> (!mo.tensor<[4, 3
   // CHECK-IR: %[[EPS:.*]] = mo.constant {{{.*}}} : !mo.tensor<[], f32>
   // CHECK-IR: %[[GAM:.*]] = mo.constant {value = #M.dense_array<1.100{{.*}}} : !mo.tensor<[2], f32>
   // CHECK-IR: %[[BET:.*]] = mo.constant {value = #M.dense_array<-1.000{{.*}}} : !mo.tensor<[2], f32>
-  // CHECK-IR: %[[VAL1:.*]] = "mo.layer_norm"(%[[ARG0]], %[[GAM]], %[[BET]], %[[EPS]])
+  // CHECK-IR: %[[VAL1:.*]] = mo.layer_norm(%[[ARG0]], %[[GAM]], %[[BET]], %[[EPS]])
   // CHECK-IR: mo.output %[[VAL1]]
   %ax = "mo.constant"() {value = #M.dense_array<2> : tensor<si64>} : () -> !mo.tensor<[], si64>
   %sh = "mo.constant"() {value = #M.dense_array<4, 3, 2> : tensor<3xsi64>} : () -> !mo.tensor<[3], si64>
