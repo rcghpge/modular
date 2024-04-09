@@ -426,12 +426,18 @@ struct ConcatZeroAxisPattern
       return rewriter.notifyMatchFailure(concat, "axis not constant 0");
 
     Block *concatBlock = concat.getResult().getParentBlock();
+    DenseSet<Value> uniqueInputs;
     for (Value input : concat.getInputs()) {
-      if (!input.hasOneUse())
-        return rewriter.notifyMatchFailure(input.getLoc(), "has extra users");
+      Location inputLoc = input.getLoc();
+      // This ensures we don't generate a slow `MGP::BufferConcatOp` that won't
+      // be optimized away by `MGP::ConcatInPlacePass`.
+      auto [_, inserted] = uniqueInputs.insert(input);
+      if (!inserted)
+        return rewriter.notifyMatchFailure(inputLoc, "duplicated input value");
+
       if (input.getParentBlock() != concatBlock) {
         return rewriter.notifyMatchFailure(
-            input.getLoc(), "concat in a different block than inputs");
+            inputLoc, "concat in a different block than inputs");
       }
       // ensure inputs aren't constant or used anywhere else
       if (mlir::Operation *iop = input.getDefiningOp()) {
