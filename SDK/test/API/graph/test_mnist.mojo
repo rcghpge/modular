@@ -9,8 +9,8 @@
 from tensor import Tensor, TensorShape
 from utils.index import Index
 
-from max.graph import ops, AttrMap, Graph, MOTensor
-from max.graph.module import _tensor_attr
+from max.graph import ops, Graph, MOTensor
+from max.graph._attributes import AttrMap, _tensor_attr
 
 # Based on the MNIST example at https://www.tensorflow.org/datasets/keras_example:
 #

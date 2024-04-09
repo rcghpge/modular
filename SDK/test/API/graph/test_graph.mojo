@@ -11,7 +11,7 @@ from tensor import Tensor, TensorShape
 from testing import assert_true, assert_raises
 from pathlib.path import Path
 
-from max.graph import AttrMap, Graph, MOList, MOTensor, TypeTuple
+from max.graph import Graph, MOList, MOTensor, TypeTuple
 
 alias TEMP_DIR = Path(env_get_string["TEMP_DIR"]())
 

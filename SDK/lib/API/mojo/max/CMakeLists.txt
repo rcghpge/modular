@@ -5,9 +5,7 @@
 ##===----------------------------------------------------------------------===##
 
 set(GRAPH_SRCS
-  graph/attr
   graph/graph
-  graph/module
   graph/symbol
   graph/type
 
@@ -18,6 +16,7 @@ set(GRAPH_SRCS
   graph/ops/reduction
   graph/ops/slicing
 
+  graph/_attributes
   graph/_c
   graph/_testing)
 
