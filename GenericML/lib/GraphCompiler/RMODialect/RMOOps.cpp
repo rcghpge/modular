@@ -31,15 +31,13 @@ using M::MO::printParamDecls;
 // RMODialect op support
 //===----------------------------------------------------------------------===//
 
-namespace {
-
 /// Create a new attribute representing a static integer dimension.
-TypedAttr createStaticDimensionType(MO::GraphOp op, int64_t dimSize) {
+static TypedAttr createStaticDimensionType(MO::GraphOp op, int64_t dimSize) {
   return IntegerAttr::get(IndexType::get(op.getContext()), dimSize);
 }
 
 /// Create a new parameter representing a parameterized dimension.
-TypedAttr
+static TypedAttr
 createDynamicDimensionType(MO::GraphOp graphOp,
                            SmallVectorImpl<KGEN::ParamDeclAttr> &newParamDecls,
                            const std::string &dimPrefix = "RMO_D") {
@@ -49,14 +47,14 @@ createDynamicDimensionType(MO::GraphOp graphOp,
 }
 
 /// Create a new parameter representing a dynamically ranked shape.
-KGEN::ParamDeclRefAttr createDynamicRankedShapeType(
+static KGEN::ParamDeclRefAttr createDynamicRankedShapeType(
     MO::GraphOp graphOp, SmallVectorImpl<KGEN::ParamDeclAttr> &newParamDecls) {
   KGEN::ParamDeclAttr paramDecl = graphOp.getNewShapeParam("RMO_Sh");
   newParamDecls.emplace_back(paramDecl);
   return KGEN::ParamDeclRefAttr::get(paramDecl);
 }
 
-TensorType
+static TensorType
 getUnrankedTensorType(DType dtype, MO::GraphOp graphOp,
                       SmallVectorImpl<KGEN::ParamDeclAttr> &newParamDecls) {
   TypedAttr dim = createDynamicRankedShapeType(graphOp, newParamDecls);
@@ -64,7 +62,7 @@ getUnrankedTensorType(DType dtype, MO::GraphOp graphOp,
   return outputTy;
 }
 
-TensorType
+static TensorType
 getRankedParamTensorType(int64_t rank, DType dtype, MO::GraphOp graphOp,
                          SmallVectorImpl<KGEN::ParamDeclAttr> &newParamDecls) {
   SmallVector<TypedAttr> newShape;
@@ -81,22 +79,19 @@ getRankedParamTensorType(int64_t rank, DType dtype, MO::GraphOp graphOp,
 /// Assumes we are dealing with TensorType.
 ///
 /// If `values` is not present, return the fallbackDType.
-DType getDType(std::optional<ValueRange> values, size_t index,
-               DType fallbackDType) {
+static DType getDType(std::optional<ValueRange> values, size_t index,
+                      DType fallbackDType) {
   if (!values.has_value())
     return fallbackDType;
 
   return cast<TensorType>(values.value()[index].getType()).getDtype();
 }
 
-} // namespace
-
-namespace M::RMO {
-
 /// Given two tensor types which are meant to represent the same shape
 /// return a new type which returns a more "refined type" using information
 /// from both existing types
-TensorType refineShapeWithDType(TensorType ty1, TensorType ty2, DType dtype) {
+TensorType RMO::refineShapeWithDType(TensorType ty1, TensorType ty2,
+                                     DType dtype) {
   GENERICML_ASSERT(!ty1.hasUnknownShape() && !ty2.hasUnknownShape())
       << " no question marks should be here";
   bool ty1Ranked = ty1.hasRank();
@@ -135,15 +130,15 @@ TensorType refineShapeWithDType(TensorType ty1, TensorType ty2, DType dtype) {
   return TensorType::get(ty1.getContext(), newDims, dtype, ty1.getMetadata());
 }
 
-TensorType refineShape(TensorType ty1, TensorType ty2) {
+TensorType RMO::refineShape(TensorType ty1, TensorType ty2) {
   GENERICML_ASSERT(ty1.getDtype() == ty2.getDtype())
       << " tried to refine types with different dtypes";
   return refineShapeWithDType(ty1, ty2, ty1.getDtype());
 }
 
-SmallVector<Value> rebindUnknownShapeInValues(ValueRange inputValues,
-                                              MO::GraphOp graphOp,
-                                              OpBuilder &builder) {
+SmallVector<Value> RMO::rebindUnknownShapeInValues(ValueRange inputValues,
+                                                   MO::GraphOp graphOp,
+                                                   OpBuilder &builder) {
   SmallVector<Value> valuesNoUnknowns = inputValues;
 
   // Replace values with those rebound expressions
@@ -393,8 +388,7 @@ void MOCastOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   build(odsBuilder, odsState, input.getType().cloneWith(dtype), input);
 }
 
-namespace {
-TensorType inferReduceOpReturnType(
+static TensorType inferReduceOpReturnType(
     TensorValue input, TensorValue axisValue, DType outputDtype,
     MO::GraphOp graphOp,
     SmallVectorImpl<KGEN::ParamDeclAttr> &outputParamDecls) {
@@ -420,7 +414,7 @@ TensorType inferReduceOpReturnType(
       outputDtype);
 }
 
-void inferMOTypesReduceImpl(
+static void inferMOTypesReduceImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
     TensorValue axis, std::optional<ValueRange> rmoResults,
     SmallVectorImpl<Type> &moOperandTypes, SmallVectorImpl<Type> &moResultTypes,
@@ -446,7 +440,6 @@ void inferMOTypesReduceImpl(
   moResultTypes.push_back(outputTy);
   moOutputParamDecls.push_back(std::move(outputParamDecls));
 }
-} // namespace
 
 #define DEFINE_REDUCE_INFER_MO_TYPES(ClassName, ReturnIndices)                 \
   void ClassName::inferMOTypesImpl(                                            \
@@ -483,7 +476,7 @@ LogicalResult BroadcastLikeOp::verify() {
   return success();
 }
 
-void inferMOTypesScatterImpl(
+void RMO::inferMOTypesScatterImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
     TensorValue updates, TensorValue indices, TensorValue axis,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
@@ -518,7 +511,7 @@ void inferMOTypesScatterImpl(
   moOutputParamDecls.push_back({});
 }
 
-void inferMOTypesElemwiseUnaryImpl(
+void RMO::inferMOTypesElemwiseUnaryImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
     SmallVectorImpl<Type> &moResultTypes,
@@ -536,9 +529,7 @@ void inferMOTypesElemwiseUnaryImpl(
   moOutputParamDecls.push_back({});
 }
 
-namespace {
-
-void inferConvMOTypesImpl(
+static void inferConvMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
     TensorValue filter, TensorValue strides, TensorValue dilations,
     TensorValue paddings, TensorValue outputPaddings, TensorValue numGroups,
@@ -616,8 +607,6 @@ void inferConvMOTypesImpl(
   moOutputParamDecls.push_back(std::move(outputParamDecls));
 }
 
-} // namespace
-
 void MOConvOp::inferMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
@@ -652,8 +641,7 @@ void MOConvTransposeOp::inferMOTypesImpl(
                        moInputParamDecls, moOutputParamDecls);
 }
 
-namespace {
-void inferMOTypesPoolImpl(
+static void inferMOTypesPoolImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
     TensorValue filterShape, TensorValue strides, TensorValue dilations,
     TensorValue paddings, std::optional<ValueRange> rmoResults,
@@ -717,7 +705,6 @@ void inferMOTypesPoolImpl(
         inputTy.getRank(), outputDtype, graphOp, outputParamDecls));
   moOutputParamDecls.push_back(std::move(outputParamDecls));
 }
-} // namespace
 
 #define DEFINE_POOL_INFER_MO_TYPES(ClassName)                                  \
   void ClassName::inferMOTypesImpl(                                            \
@@ -797,8 +784,7 @@ void MORangeOp::inferMOTypesImpl(
   }
 }
 
-namespace {
-void inferMOTypesResizeImpl(
+static void inferMOTypesResizeImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
     TensorValue size, std::optional<ValueRange> rmoResults,
     SmallVectorImpl<Type> &moOperandTypes, SmallVectorImpl<Type> &moResultTypes,
@@ -832,7 +818,6 @@ void inferMOTypesResizeImpl(
         inputTy.getRank(), outputDtype, graphOp, outputParamDecls));
   moOutputParamDecls.push_back(std::move(outputParamDecls));
 }
-} // namespace
 
 void MOResizeLinearOp::inferMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
@@ -1023,18 +1008,18 @@ void MOBatchMatmulOp::inferMOTypesImpl(
 }
 
 void MOBatchMatmulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                            Type resultTy, Value input_a, Value input_b) {
+                            Type type, Value input_a, Value input_b) {
   odsState.addOperands(input_a);
   odsState.addOperands(input_b);
-  odsState.addTypes({resultTy});
+  odsState.addTypes({type});
 }
 
 void MOBatchMatmulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                            Type resultTy, Value input_a, Value input_b,
+                            Type type, Value input_a, Value input_b,
                             ArrayRef<KGEN::ParamDeclAttr> decls) {
   odsState.addOperands(input_a);
   odsState.addOperands(input_b);
-  odsState.addTypes({resultTy});
+  odsState.addTypes({type});
   if (!decls.empty()) {
     odsState.addAttribute(
         getOutputParamDeclsAttrName(odsState.name),
@@ -1096,8 +1081,7 @@ void MOTileOp::inferMOTypesImpl(
   moOutputParamDecls.push_back(std::move(resultParamDecls));
 }
 
-namespace {
-void inferMOTypesSqueezeShapeImpl(
+static void inferMOTypesSqueezeShapeImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue inputShape,
     TensorValue indices, std::optional<ValueRange> rmoResults,
     SmallVectorImpl<Type> &moOperandTypes, SmallVectorImpl<Type> &moResultTypes,
@@ -1118,7 +1102,6 @@ void inferMOTypesSqueezeShapeImpl(
       getRankedParamTensorType(1, outDType, graphOp, outputParamDecls));
   moOutputParamDecls.push_back(std::move(outputParamDecls));
 }
-} // namespace
 
 void MOSqueezeShapeOp::inferMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
@@ -1197,7 +1180,7 @@ void MOTransposeOp::inferMOTypesImpl(
   moOutputParamDecls.push_back(std::move(resultParamDecls));
 }
 
-void inferMOTypesTopKImpl(
+void RMO::inferMOTypesTopKImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input, TensorValue k,
     TensorValue axis, TensorValue sorted, std::optional<ValueRange> rmoResults,
     SmallVectorImpl<Type> &moOperandTypes, SmallVectorImpl<Type> &moResultTypes,
@@ -1418,8 +1401,7 @@ void MOSplitOp::inferMOTypesImpl(
   }
 }
 
-namespace {
-void inferMOTypesPadImpl(
+static void inferMOTypesPadImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
     TensorValue paddings, TensorValue constant,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
@@ -1473,7 +1455,6 @@ void inferMOTypesPadImpl(
           : getUnrankedTensorType(inputTy.getDtype(), graphOp, outputDecls));
   moOutputParamDecls.push_back(std::move(outputDecls));
 }
-} // namespace
 
 void MOPadConstantOp::inferMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
@@ -1666,7 +1647,7 @@ void MORandomNormalOp::inferMOTypesImpl(
   moOutputParamDecls.push_back(std::move(outputDecls));
 }
 
-void inferMOTypesScatterNdImpl(
+void RMO::inferMOTypesScatterNdImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
     TensorValue updates, TensorValue indices,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
@@ -1769,7 +1750,7 @@ enum DTypeCategory {
 };
 
 /// Returns the DTypeCategory for a DType.
-DTypeCategory getDtypeCategory(DType x) {
+static DTypeCategory getDtypeCategory(DType x) {
   if (x.isBool())
     return kBool;
   if (x.isUInt())
@@ -1783,7 +1764,8 @@ DTypeCategory getDtypeCategory(DType x) {
 }
 
 /// Returns the dtype represented by a category, bit width, and format.
-DType calcDtype(DTypeCategory category, ssize_t bitWidth, bool inputBF16) {
+static DType calcDtype(DTypeCategory category, ssize_t bitWidth,
+                       bool inputBF16) {
   switch (category) {
 
   case kBool:
@@ -1869,7 +1851,7 @@ DType calcDtype(DTypeCategory category, ssize_t bitWidth, bool inputBF16) {
 /// 4. Promotion raises an error if two dtypes have the same category and
 /// bitwidth
 ///    but different representations.
-ErrorOr<DType> promoteDtype(DType x, DType y) {
+ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
   // Bool is lowest class and always promotes to the other type.
   if (x.isBool())
     return y;
@@ -1944,7 +1926,7 @@ ErrorOr<DType> promoteDtype(DType x, DType y) {
 /// This function only calculates the expected shape. It does not deal with any
 /// actual checks/asserts. All asserts are dealt with by adding asserting
 /// rebinds during lowering.
-TensorType refineBroadcastedShape(TensorType ty1, TensorType ty2) {
+static TensorType refineBroadcastedShape(TensorType ty1, TensorType ty2) {
   GENERICML_ASSERT(!ty1.isDynamicallyRanked() && !ty2.isDynamicallyRanked())
       << " only static rank is supported";
 
@@ -1999,7 +1981,7 @@ TensorType refineBroadcastedShape(TensorType ty1, TensorType ty2) {
 }
 
 template <typename OpT>
-LogicalResult inferReturnTypesBinaryElemwiseImpl(
+static LogicalResult inferReturnTypesBinaryElemwiseImpl(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
@@ -2031,7 +2013,8 @@ LogicalResult inferReturnTypesBinaryElemwiseImpl(
 // Due to resolution of `?`, we may hit cases where we have 2 differently named
 // dynamic dimensions. Those results are compatible. A later rebind will resolve
 // the issue.
-bool isCompatibleReturnTypesBinaryElemwiseImpl(TypeRange lhs, TypeRange rhs) {
+static bool isCompatibleReturnTypesBinaryElemwiseImpl(TypeRange lhs,
+                                                      TypeRange rhs) {
   auto lhsType = lhs[0].cast<TensorType>();
   auto rhsType = rhs[0].cast<TensorType>();
 
@@ -2058,7 +2041,7 @@ bool isCompatibleReturnTypesBinaryElemwiseImpl(TypeRange lhs, TypeRange rhs) {
 }
 
 template <typename OpT>
-LogicalResult inferReturnTypesBinaryComparisonImpl(
+static LogicalResult inferReturnTypesBinaryComparisonImpl(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
@@ -2089,7 +2072,8 @@ LogicalResult inferReturnTypesBinaryComparisonImpl(
   return success();
 }
 
-bool isCompatibleReturnTypesBinaryComparisonImpl(TypeRange lhs, TypeRange rhs) {
+static bool isCompatibleReturnTypesBinaryComparisonImpl(TypeRange lhs,
+                                                        TypeRange rhs) {
   // Comparisions have all of the same return type compatibility rules as other
   // binary elementwise ops.
   return isCompatibleReturnTypesBinaryElemwiseImpl(lhs, rhs);
@@ -2169,8 +2153,6 @@ void RMODialect::registerOperations() {
 #include "GenericML/GraphCompiler/RMODialect/RMO.cpp.inc"
       >();
 }
-
-} // namespace M::RMO
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
