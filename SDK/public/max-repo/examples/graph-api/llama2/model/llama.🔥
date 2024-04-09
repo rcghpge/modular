@@ -19,6 +19,34 @@ from max.graph import ops, Dim, Graph, MOTensor, Symbol, SymbolTuple, TypeTuple
 from weights.loadable_model import LoadableModel, LlamaHParams
 
 
+def rope(x: Symbol, freqs_cis: Symbol) -> Symbol:
+    """Applies rotary positional embeddings (RoPE) to `x`.
+
+    Args:
+        x: Activation tensor with shape (batch, seq_len, n_kv_heads, head_dim).
+        freqs_cis: Positional frequencies tensor with shape
+            (seq_len, head_dim // 2, 2).
+
+    Returns:
+        Input activation tensor with rotary positional embeddings applied and
+        the same shape as `x`.
+    """
+    var x_complex = ops.as_interleaved_complex(x)
+    var freqs_cis_bcast = ops.unsqueeze(ops.unsqueeze(freqs_cis, 1), 0)
+
+    var x_re = x_complex[0, axis= -1]
+    var x_im = x_complex[1, axis= -1]
+
+    var freqs_re = freqs_cis_bcast[0, axis= -1]
+    var freqs_im = freqs_cis_bcast[1, axis= -1]
+
+    var rope_re = (x_re * freqs_re) - (x_im * freqs_im)
+    var rope_im = (x_re * freqs_im) + (x_im * freqs_re)
+    var rope_complex = ops.as_complex(rope_re, rope_im)
+
+    return ops.reshape_like(rope_complex, x)
+
+
 @value
 struct Attention[float_dtype: DType = DType.float32]:
     var n_heads: Int
@@ -36,22 +64,6 @@ struct Attention[float_dtype: DType = DType.float32]:
         if self.n_kv_heads < self.n_heads:
             raise "Not yet supported"
         return v
-
-    def rope(self, x: Symbol, freqs_cis: Symbol) -> Symbol:
-        var x_complex = ops.as_interleaved_complex(x)
-        var freqs_cis_bcast = ops.unsqueeze(ops.unsqueeze(freqs_cis, 1), 0)
-
-        var x_re = x_complex[0, axis= -1]
-        var x_im = x_complex[1, axis= -1]
-
-        var freqs_re = freqs_cis_bcast[0, axis= -1]
-        var freqs_im = freqs_cis_bcast[1, axis= -1]
-
-        var rope_re = (x_re * freqs_re) - (x_im * freqs_im)
-        var rope_im = (x_re * freqs_im) + (x_im * freqs_re)
-        var rope = ops.concat((rope_re, rope_im), axis=-1)
-
-        return ops.reshape_like(rope, x)
 
     def attention_mask(
         self, start_pos: Symbol, owned seq_len: Symbol
@@ -86,8 +98,8 @@ struct Attention[float_dtype: DType = DType.float32]:
         xk = xk.reshape(batch_size, seq_len, self.n_kv_heads, self.head_dim)
         xv = xv.reshape(batch_size, seq_len, self.n_kv_heads, self.head_dim)
 
-        xq = self.rope(xq, freqs_cis)
-        xk = self.rope(xk, freqs_cis)
+        xq = rope(xq, freqs_cis)
+        xk = rope(xk, freqs_cis)
 
         var keys = ops.concat((k_cache, xk.swapaxes(0, 1))).swapaxes(0, 1)
         var values = ops.concat((v_cache, xv.swapaxes(0, 1))).swapaxes(0, 1)
