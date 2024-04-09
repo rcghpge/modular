@@ -345,8 +345,8 @@ void MOBroadcastToOp::inferMOTypesImpl(
     moOperandTypes.push_back(bcastShape.getType());
     moInputParamDecls.push_back({});
   } else {
-    TensorType newShapeTy =
-        getRankedParamTensorType(1, outDType, graphOp, newShapeParamDecls);
+    TensorType newShapeTy = getRankedParamTensorType(
+        1, bcastShape.getType().getDtype(), graphOp, newShapeParamDecls);
     moOperandTypes.push_back(newShapeTy);
     moInputParamDecls.push_back(std::move(newShapeParamDecls));
   }
