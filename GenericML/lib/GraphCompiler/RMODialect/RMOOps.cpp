@@ -2007,11 +2007,9 @@ LogicalResult inferReturnTypesBinaryElemwiseImpl(
     return v.getType().cast<TensorType>().isDynamicallyRanked();
   });
   if (dynamicRankInputs) {
-    if (location)
-      mlir::emitError(*location) << OpT::getOperationName()
-                                 << " ops do not support dynamic "
-                                    "rank. Use the MO analogue ops instead.";
-    return failure();
+    return mlir::emitOptionalError(
+        location, OpT::getOperationName(),
+        " ops do not support dynamic rank. Use the MO analogue ops instead.");
   }
 
   auto xType = operands[0].getType().cast<TensorType>();
@@ -2019,11 +2017,10 @@ LogicalResult inferReturnTypesBinaryElemwiseImpl(
   ErrorOr<DType> promotedDtype =
       promoteDtype(xType.getDtype(), yType.getDtype());
   if (promotedDtype.isError()) {
-    if (location)
-      mlir::emitError(*location) << "Failed to resolve valid dtype: "
-                                 << StringRef{promotedDtype.getError()};
-    return failure();
+    return mlir::emitOptionalError(location, "Failed to resolve valid dtype: ",
+                                   StringRef{promotedDtype.getError()});
   }
+
   TensorType resultType = refineBroadcastedShape(xType, yType);
 
   inferredReturnTypes.push_back(
@@ -2069,11 +2066,9 @@ LogicalResult inferReturnTypesBinaryComparisonImpl(
     return v.getType().cast<TensorType>().isDynamicallyRanked();
   });
   if (dynamicRankInputs) {
-    if (location)
-      mlir::emitError(*location) << OpT::getOperationName()
-                                 << " ops do not support dynamic "
-                                    "rank. Use the MO analogue ops instead.";
-    return failure();
+    return mlir::emitOptionalError(
+        location, OpT::getOperationName(),
+        " ops do not support dynamic rank. Use the MO analogue ops instead.");
   }
 
   auto xType = operands[0].getType().cast<TensorType>();
@@ -2084,10 +2079,8 @@ LogicalResult inferReturnTypesBinaryComparisonImpl(
   ErrorOr<DType> promotedDtype =
       promoteDtype(xType.getDtype(), yType.getDtype());
   if (promotedDtype.isError()) {
-    if (location)
-      mlir::emitError(*location) << "Failed to resolve valid dtype: "
-                                 << StringRef{promotedDtype.getError()};
-    return failure();
+    return mlir::emitOptionalError(location, "Failed to resolve valid dtype: ",
+                                   StringRef{promotedDtype.getError()});
   }
 
   TensorType resultType = refineBroadcastedShape(xType, yType);
