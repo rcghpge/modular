@@ -22,6 +22,7 @@
 #include "LLCL/Runtime/Runtime.h"
 #include "Support/Compiler/BytecodeReaderWriter.h"
 #include "Support/Compiler/OperationUtils.h"
+#include "Support/Filesystem/Paths.h"
 
 namespace {
 #include MOGG_MOJO_BINDING_H
@@ -172,7 +173,7 @@ ErrorOrSuccess MojoLibraryAnalysis::loadUserProvidedKernels(
     llvm::StringMap<KGEN::GeneratorOp> userRawMojoKernel;
     Operation *userModule;
 
-    if (path.ends_with(".mojopkg") || path.ends_with(".📦")) {
+    if (Filesystem::isMojoBinaryPackagePath(path.str())) {
       // Load user library that is a mojo package file.
       auto userModuleOr = parseMojoPackage(context, path);
       if (userModuleOr.isError())
