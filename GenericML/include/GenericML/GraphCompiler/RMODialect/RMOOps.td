@@ -2738,4 +2738,26 @@ def RMO_MONonMaximumSuppressionOp : RMO_MOAnaloguePureTensorOp<"non_maximum_supp
   let results = (outs MO_IndicesTensor:$output);
 }
 
+def RMO_MOArgNonzeroOp : RMO_MOAnaloguePureTensorOp<"arg_nonzero"> {
+  let summary = "Nonzero-value indices operation";
+  let description = [{
+    Returns a tensor of coordinates of the nonzero values in the given tensor.
+    The return value is a 2D tensor of shape [nnz x rank_in], where nnz is the
+    number of nonzero elements in the input tensor, and rank_in is the rank of
+    the input tensor. Coordinates are generated in row-major order.
+
+    Example:
+
+    ```mlir
+      %0 = mo.constant {
+        value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8> : tensor<3x3xsi32>
+      } : !mo.tensor<[3, 3], si32>
+      %1 = rmo.mo.arg_nonzero(%0) : (!mo.tensor<[3, 3], si32>) -> !mo.tensor<[?, 2], si64>
+    ```
+    }];
+
+  let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_I64Tensor:$result);
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD

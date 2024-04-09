@@ -2060,6 +2060,45 @@ void MONonMaximumSuppressionOp::inferMOTypesImpl(
   moOutputParamDecls.push_back(std::move(outputParamDecls));
 }
 
+void MOArgNonzeroOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  TensorValue input = cast<TensorValue>(operands.getInput());
+
+  // Try to infer the input rank.
+  // input[rank] => output [non-zero-count, rank].
+  std::optional<int64_t> rank;
+  if (input.getType().hasRank())
+    rank = input.getType().getRank();
+  else if (rmoResults.has_value()) {
+    TensorType outputTy = cast<TensorType>((*rmoResults)[0].getType());
+    if (outputTy.hasRank() && outputTy.getRank() >= 2 &&
+        outputTy.isIntegerDim(1))
+      rank = outputTy.getIntDim(1);
+  }
+  SmallVector<KGEN::ParamDeclAttr> inputParamDecls;
+  moOperandTypes.push_back(
+      rank.has_value()
+          ? getRankedParamTensorType(*rank, input.getType().getDtype(), graphOp,
+                                     inputParamDecls)
+          : input.getType());
+  moInputParamDecls.push_back(std::move(inputParamDecls));
+
+  // output shape is `[non-zero-count, rank]`.
+  SmallVector<KGEN::ParamDeclAttr> outputParamDecls;
+  TypedAttr countAttr = createDynamicDimensionType(graphOp, outputParamDecls);
+  TypedAttr rankAttr =
+      rank.has_value() ? createStaticDimensionType(graphOp, *rank)
+                       : createDynamicDimensionType(graphOp, outputParamDecls);
+  moResultTypes.push_back(TensorType::get(
+      graphOp->getContext(), SmallVector<TypedAttr>{countAttr, rankAttr},
+      DType::si64));
+  moOutputParamDecls.push_back(std::move(outputParamDecls));
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST
