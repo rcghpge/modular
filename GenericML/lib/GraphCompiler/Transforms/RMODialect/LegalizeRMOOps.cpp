@@ -443,8 +443,9 @@ struct LegalizeRMOOps
         LegalizeRMOMOAnalogue<RMO::MOScatterNdAddOp, MO::ScatterNdAddOp>,
         LegalizeRMOMOAnalogue<RMO::MOScatterNdMaxOp, MO::ScatterNdMaxOp>,
         LegalizeRMOMOAnalogue<RMO::MOScatterNdMinOp, MO::ScatterNdMinOp>,
-        LegalizeRMOMOAnalogue<RMO::MOScatterNdMulOp, MO::ScatterNdMulOp>>(
-        context);
+        LegalizeRMOMOAnalogue<RMO::MOScatterNdMulOp, MO::ScatterNdMulOp>,
+        LegalizeRMOMOAnalogue<RMO::MONonMaximumSuppressionOp,
+                              MO::NonMaximumSuppressionOp>>(context);
 
     // Lowering rebind
     if (!skipRMORebind)

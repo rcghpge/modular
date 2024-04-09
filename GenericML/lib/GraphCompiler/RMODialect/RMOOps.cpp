@@ -2016,6 +2016,50 @@ bool isCompatibleReturnTypesElemwiseBinaryImpl(TypeRange lhs, TypeRange rhs) {
   return true;
 }
 
+void MONonMaximumSuppressionOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  TensorValue boxes = cast<TensorValue>(operands.getBoxes());
+  TensorValue scores = cast<TensorValue>(operands.getScores());
+  TensorValue maxOutputBoxesPerClass =
+      cast<TensorValue>(operands.getMaxOutputBoxesPerClass());
+  TensorValue iouThreshold = cast<TensorValue>(operands.getIouThreshold());
+  TensorValue scoreThreshold = cast<TensorValue>(operands.getScoreThreshold());
+
+  // `boxes` and `scores` must be rank 3.
+  SmallVector<KGEN::ParamDeclAttr> boxesParamDecls;
+  moOperandTypes.push_back(getRankedParamTensorType(
+      3, boxes.getType().getDtype(), graphOp, boxesParamDecls));
+  moInputParamDecls.push_back(std::move(boxesParamDecls));
+
+  SmallVector<KGEN::ParamDeclAttr> scoresParamDecls;
+  moOperandTypes.push_back(getRankedParamTensorType(
+      3, scores.getType().getDtype(), graphOp, scoresParamDecls));
+  moInputParamDecls.push_back(std::move(scoresParamDecls));
+
+  // `maxOutputBoxesPerClass` / `iouThreshold` / `scoreThreshold` must be rank
+  // 0.
+  moOperandTypes.push_back(
+      maxOutputBoxesPerClass.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(
+      iouThreshold.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(
+      scoreThreshold.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+
+  // `output` must be rank 2.
+  DType outputDType = getDType(rmoResults, 0, DType::si64);
+  SmallVector<KGEN::ParamDeclAttr> outputParamDecls;
+  moResultTypes.push_back(
+      getRankedParamTensorType(2, outputDType, graphOp, outputParamDecls));
+  moOutputParamDecls.push_back(std::move(outputParamDecls));
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST

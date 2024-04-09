@@ -2707,4 +2707,35 @@ def RMO_MOScatterNdMulOp : RMO_MOAnaloguePureScatterNdOp<"scatter_nd.mul"> {
   }];
 }
 
+def RMO_MONonMaximumSuppressionOp : RMO_MOAnaloguePureTensorOp<"non_maximum_suppression"> {
+  let summary = "Non-max suppression operation";
+  let description = [{
+   Filters out boxes that have high intersection-over-union (IOU).
+
+   `boxes` is supplied as [y1, x1, y2, x2] where (y1, x1) and (y2, x2) are the
+   coordinates of any diagonal pair of box corners and the coordinates can be
+   provided as normalized (i.e., lying in the interval [0, 1]) or absolute.
+
+    Example:
+
+    ```mlir
+      %boxes : !mo.tensor<[1, 6, 4], f32>
+      %scores : !mo.tensor<[1, 1, 6], f32>
+      %maxOutputBoxesPerClass : !mo.tensor<[], si64>
+      %iouThreshold : !mo.tensor<[], f32>
+      %scoreThreshold : !mo.tensor<[], f32>
+      %res = rmo.mo.non_maximum_suppression(%boxes, %scores, %maxOutputBoxesPerClass, %iouThreshold, %scoreThreshold)
+        : (!mo.tensor<[1, 6, 4], f32>, !mo.tensor<[1, 1, 6], f32>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>)
+        -> !mo.tensor<[?, ?], si64>
+    ```
+  }];
+  let arguments = (ins MO_Tensor:$boxes,
+                       MO_Tensor:$scores,
+                       MO_IndexScalarIfRanked:$maxOutputBoxesPerClass,
+                       MO_FloatScalarIfRanked:$iouThreshold,
+                       MO_FloatScalarIfRanked:$scoreThreshold,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_IndicesTensor:$output);
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
