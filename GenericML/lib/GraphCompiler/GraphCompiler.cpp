@@ -152,7 +152,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     shapeInferenceOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
     shapeInferenceOpts.constantFold = opts.constantFold;
     shapeInferenceOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
-    shapeInferenceOpts.isExperimentalMode = opts.useExperimentalShapeInference;
     buildShapeInferencePipeline(pm, shapeInferenceOpts);
 
     // Run symbolic optimizations after shape inference to avoid complicating
@@ -200,11 +199,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     // Layout optimizations in `PatternFusion` might add new shape function
     // invocation for the inserted layout transformations, and in most (if not
     // all) cases we can fold them away.
-    if (opts.useExperimentalShapeInference) {
-      pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(
-          {opts.kernelLibraryPaths}));
-      pm.addPass(MO::createPropagateShapes());
-    }
+    pm.addPass(
+        MO::createSymbolicizeFallbackShapeFunctions({opts.kernelLibraryPaths}));
+    pm.addPass(MO::createPropagateShapes());
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
   }
@@ -335,35 +332,24 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
                                         const ShapeInferenceOptions &opts) {
   pm.addPass(MO::createResolveUnknownParameters());
-  if (opts.isExperimentalMode) {
-    AddFallbackShapeFunctionsOptions passOpts;
-    passOpts.restricted = true;
-    passOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
-    pm.addPass(MO::createAddFallbackShapeFunctions(passOpts));
-    pm.addPass(
-        MO::createSymbolicizeFallbackShapeFunctions({opts.kernelLibraryPaths}));
-  } else {
-    pm.addPass(MO::createShapeInferenceMaterialization());
-  }
+  AddFallbackShapeFunctionsOptions passOpts;
+  passOpts.restricted = true;
+  passOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  pm.addPass(MO::createAddFallbackShapeFunctions(passOpts));
+  pm.addPass(
+      MO::createSymbolicizeFallbackShapeFunctions({opts.kernelLibraryPaths}));
 
   // Convert most scalar <--> tensor reshapes into rebind, which will be merged
   // during staticization. Otherwise staticization must look through those
   // reshapes for shape inputs.
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(MO::createStaticizeShapes({!opts.isExperimentalMode}));
+  pm.addPass(MO::createStaticizeShapes());
 
   // Staticization might open up new opportunities for symbolicizing fallback
   // shape functions. This is simialr to why we run symbolic shape function
   // materialization during staticization.
-  if (opts.isExperimentalMode) {
-    pm.addPass(
-        MO::createSymbolicizeFallbackShapeFunctions({opts.kernelLibraryPaths}));
-  } else {
-    // The old path explicitly inlines the materialized shape function and
-    // remove them the functions themselves.
-    pm.addPass(MO::createInlineShapeFunctions());
-    pm.addPass(mlir::createSymbolDCEPass());
-  }
+  pm.addPass(
+      MO::createSymbolicizeFallbackShapeFunctions({opts.kernelLibraryPaths}));
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(MO::createPropagateShapes());
@@ -372,7 +358,6 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
 
   // Use default settings for MOToMGPOptions
   MoToMgpOptions moToMGPOptions;
-  moToMGPOptions.useExperimentalShapeInference = opts.isExperimentalMode;
   moToMGPOptions.kernelLibraryPaths = opts.kernelLibraryPaths;
   moToMGPOptions.compiledFrameworkLabel = opts.compiledFrameworkLabel;
 
@@ -387,11 +372,8 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
               ? opts.compiledFrameworkLabel.getValue()
               : "",
           moToMGPOptions));
-
-    if (opts.isExperimentalMode)
-      pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(
-          {opts.kernelLibraryPaths}));
-
+    pm.addPass(
+        MO::createSymbolicizeFallbackShapeFunctions({opts.kernelLibraryPaths}));
     pm.addPass(MO::createPropagateShapes());
     pm.addPass(MO::createStaticizeShapes());
     pm.addPass(MO::createInlineShapeFunctions());

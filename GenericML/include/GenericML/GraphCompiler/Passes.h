@@ -165,12 +165,6 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
           "when the buffer is at least this size in bytes, and is the source "
           "or target of a host/device memory transfer."),
       llvm::cl::init(0)};
-  Option<bool> useExperimentalShapeInference{
-      *this, "use-experimental-shape-inference",
-      llvm::cl::desc("If enabled, pre-emptively materialize fallback shape"
-                     "functions for certains ops, and use the "
-                     "SymbolicizeFallbackShapeFunctionsPass"),
-      llvm::cl::init(true)};
   Option<bool> timeMOGGCompile{
       *this, "time-mogg-compile",
       llvm::cl::desc("Turns on timing for the KGEN passes invoked by mogg"),
@@ -193,12 +187,6 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
 
 struct ShapeInferenceOptions
     : public mlir::PassPipelineOptions<ShapeInferenceOptions> {
-  Option<bool> isExperimentalMode{
-      *this, "experimental",
-      llvm::cl::desc("If enabled, pre-emptively materialize fallback shape"
-                     "functions for certains ops, and use the "
-                     "SymbolicizeFallbackShapeFunctionsPass"),
-      llvm::cl::init(true)};
   ListOption<std::string> kernelLibraryPaths{
       *this, "kernel-library-paths",
       llvm::cl::desc(

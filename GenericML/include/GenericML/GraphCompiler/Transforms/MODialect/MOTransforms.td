@@ -145,24 +145,6 @@ def StaticizeShapes : Pass<"staticize-shapes", "ModuleOp"> {
     ops or constant shape-like tensors. In particular shape-like (or dim-like)
     arguments provided to the graph are not supported for now.
   }];
-
-  let options = [
-    Option<"enableShapeFuncMaterialization", "enable-shape-func-materialization", "bool", "true",
-      "If set to true, also materialize shape function during staticization">,
-  ];
-
-  // TODO(#16974) remove once shape materialization is removed from this pass
-  let dependentDialects = [
-    "mlir::LLVM::LLVMDialect",
-    "mlir::NVVM::NVVMDialect",
-    "mlir::index::IndexDialect",
-    "M::DebugInfo::DebugInfoDialect",
-    "M::HLCF::HLCFDialect",
-    "M::KGEN::KGENDialect",
-    "M::KGEN::LIT::LITDialect",
-    "M::KGEN::POP::POPDialect",
-    "M::MDialect",
-  ];
 }
 
 def SymbolicOptimization : Pass<"symbolic-optimize", "GraphOp"> {
