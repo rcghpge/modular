@@ -1712,6 +1712,50 @@ void inferMOTypesScatterNdImpl(
   moInputParamDecls.push_back({});
 }
 
+void MONonMaximumSuppressionOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  TensorValue boxes = cast<TensorValue>(operands.getBoxes());
+  TensorValue scores = cast<TensorValue>(operands.getScores());
+  TensorValue maxOutputBoxesPerClass =
+      cast<TensorValue>(operands.getMaxOutputBoxesPerClass());
+  TensorValue iouThreshold = cast<TensorValue>(operands.getIouThreshold());
+  TensorValue scoreThreshold = cast<TensorValue>(operands.getScoreThreshold());
+
+  // `boxes` and `scores` must be rank 3.
+  SmallVector<KGEN::ParamDeclAttr> boxesParamDecls;
+  moOperandTypes.push_back(getRankedParamTensorType(
+      3, boxes.getType().getDtype(), graphOp, boxesParamDecls));
+  moInputParamDecls.push_back(std::move(boxesParamDecls));
+
+  SmallVector<KGEN::ParamDeclAttr> scoresParamDecls;
+  moOperandTypes.push_back(getRankedParamTensorType(
+      3, scores.getType().getDtype(), graphOp, scoresParamDecls));
+  moInputParamDecls.push_back(std::move(scoresParamDecls));
+
+  // `maxOutputBoxesPerClass` / `iouThreshold` / `scoreThreshold` must be rank
+  // 0.
+  moOperandTypes.push_back(
+      maxOutputBoxesPerClass.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(
+      iouThreshold.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(
+      scoreThreshold.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+
+  // `output` must be rank 2.
+  DType outputDType = getDType(rmoResults, 0, DType::si64);
+  SmallVector<KGEN::ParamDeclAttr> outputParamDecls;
+  moResultTypes.push_back(
+      getRankedParamTensorType(2, outputDType, graphOp, outputParamDecls));
+  moOutputParamDecls.push_back(std::move(outputParamDecls));
+}
+
 //===----------------------------------------------------------------------===//
 // RMODialect Composite Ops
 //===----------------------------------------------------------------------===//
@@ -1955,7 +1999,7 @@ TensorType refineBroadcastedShape(TensorType ty1, TensorType ty2) {
 }
 
 template <typename OpT>
-LogicalResult inferReturnTypesElemwiseBinaryImpl(
+LogicalResult inferReturnTypesBinaryElemwiseImpl(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
@@ -1990,7 +2034,7 @@ LogicalResult inferReturnTypesElemwiseBinaryImpl(
 // Due to resolution of `?`, we may hit cases where we have 2 differently named
 // dynamic dimensions. Those results are compatible. A later rebind will resolve
 // the issue.
-bool isCompatibleReturnTypesElemwiseBinaryImpl(TypeRange lhs, TypeRange rhs) {
+bool isCompatibleReturnTypesBinaryElemwiseImpl(TypeRange lhs, TypeRange rhs) {
   auto lhsType = lhs[0].cast<TensorType>();
   auto rhsType = rhs[0].cast<TensorType>();
 
@@ -2016,48 +2060,46 @@ bool isCompatibleReturnTypesElemwiseBinaryImpl(TypeRange lhs, TypeRange rhs) {
   return true;
 }
 
-void MONonMaximumSuppressionOp::inferMOTypesImpl(
-    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
-    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
-    SmallVectorImpl<Type> &moResultTypes,
-    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
-    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
-  TensorValue boxes = cast<TensorValue>(operands.getBoxes());
-  TensorValue scores = cast<TensorValue>(operands.getScores());
-  TensorValue maxOutputBoxesPerClass =
-      cast<TensorValue>(operands.getMaxOutputBoxesPerClass());
-  TensorValue iouThreshold = cast<TensorValue>(operands.getIouThreshold());
-  TensorValue scoreThreshold = cast<TensorValue>(operands.getScoreThreshold());
+template <typename OpT>
+LogicalResult inferReturnTypesBinaryComparisonImpl(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  bool dynamicRankInputs = llvm::any_of(operands, [](Value v) {
+    return v.getType().cast<TensorType>().isDynamicallyRanked();
+  });
+  if (dynamicRankInputs) {
+    if (location)
+      mlir::emitError(*location) << OpT::getOperationName()
+                                 << " ops do not support dynamic "
+                                    "rank. Use the MO analogue ops instead.";
+    return failure();
+  }
 
-  // `boxes` and `scores` must be rank 3.
-  SmallVector<KGEN::ParamDeclAttr> boxesParamDecls;
-  moOperandTypes.push_back(getRankedParamTensorType(
-      3, boxes.getType().getDtype(), graphOp, boxesParamDecls));
-  moInputParamDecls.push_back(std::move(boxesParamDecls));
+  auto xType = operands[0].getType().cast<TensorType>();
+  auto yType = operands[1].getType().cast<TensorType>();
 
-  SmallVector<KGEN::ParamDeclAttr> scoresParamDecls;
-  moOperandTypes.push_back(getRankedParamTensorType(
-      3, scores.getType().getDtype(), graphOp, scoresParamDecls));
-  moInputParamDecls.push_back(std::move(scoresParamDecls));
+  // Even though it is not used in the result type, still calculate the the
+  // promotion is valid here.
+  ErrorOr<DType> promotedDtype =
+      promoteDtype(xType.getDtype(), yType.getDtype());
+  if (promotedDtype.isError()) {
+    if (location)
+      mlir::emitError(*location) << "Failed to resolve valid dtype: "
+                                 << StringRef{promotedDtype.getError()};
+    return failure();
+  }
 
-  // `maxOutputBoxesPerClass` / `iouThreshold` / `scoreThreshold` must be rank
-  // 0.
-  moOperandTypes.push_back(
-      maxOutputBoxesPerClass.getType().cloneWith(ArrayRef<TypedAttr>{}));
-  moInputParamDecls.push_back({});
-  moOperandTypes.push_back(
-      iouThreshold.getType().cloneWith(ArrayRef<TypedAttr>{}));
-  moInputParamDecls.push_back({});
-  moOperandTypes.push_back(
-      scoreThreshold.getType().cloneWith(ArrayRef<TypedAttr>{}));
-  moInputParamDecls.push_back({});
+  TensorType resultType = refineBroadcastedShape(xType, yType);
 
-  // `output` must be rank 2.
-  DType outputDType = getDType(rmoResults, 0, DType::si64);
-  SmallVector<KGEN::ParamDeclAttr> outputParamDecls;
-  moResultTypes.push_back(
-      getRankedParamTensorType(2, outputDType, graphOp, outputParamDecls));
-  moOutputParamDecls.push_back(std::move(outputParamDecls));
+  inferredReturnTypes.push_back(resultType.cloneWith(DType::kBool));
+  return success();
+}
+
+bool isCompatibleReturnTypesBinaryComparisonImpl(TypeRange lhs, TypeRange rhs) {
+  // Comparisions have all of the same return type compatibility rules as other
+  // binary elementwise ops.
+  return isCompatibleReturnTypesBinaryElemwiseImpl(lhs, rhs);
 }
 
 void MOArgNonzeroOp::inferMOTypesImpl(

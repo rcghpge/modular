@@ -610,14 +610,14 @@ class RMO_PureBinaryElementWiseOp<string name, list<Trait> traits = []>
                             ValueRange operands, DictionaryAttr attributes,
                             mlir::OpaqueProperties properties, RegionRange regions,
                             SmallVectorImpl<Type> &inferredReturnTypes) {
-      return inferReturnTypesElemwiseBinaryImpl<$cppClass>(
+      return inferReturnTypesBinaryElemwiseImpl<$cppClass>(
           context, location, operands, attributes, properties, regions,
           inferredReturnTypes);
     }
 
     // InferTypeOpInterface:
     bool $cppClass::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
-      return isCompatibleReturnTypesElemwiseBinaryImpl(lhs, rhs);
+      return isCompatibleReturnTypesBinaryElemwiseImpl(lhs, rhs);
     }
   }];
 }
@@ -678,6 +678,116 @@ def RMO_MaxOp : RMO_PureBinaryElementWiseOp<"max", [Commutative]> {
   let summary = "Flexible binary max op";
   let description = [{
     A flexible binary elementwise max operation with implicit broadcasting and implicit dtype promotion.
+  }];
+}
+
+class RMO_PureBinaryComparisonOp<string name, list<Trait> traits = []>
+    : RMO_Op<name, traits # [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let arguments = (ins
+    MO_Tensor:$input_x,
+    MO_Tensor:$input_y,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_BooleanMask:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` type(operands)
+  }];
+
+  let extraClassDeclaration = [{
+    // InferTypeOpInterface:
+    static bool isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs);
+  }];
+  let extraClassDefinition = [{
+    LogicalResult
+    $cppClass::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
+                            ValueRange operands, DictionaryAttr attributes,
+                            mlir::OpaqueProperties properties, RegionRange regions,
+                            SmallVectorImpl<Type> &inferredReturnTypes) {
+      return inferReturnTypesBinaryComparisonImpl<$cppClass>(
+          context, location, operands, attributes, properties, regions,
+          inferredReturnTypes);
+    }
+
+    // InferTypeOpInterface:
+    bool $cppClass::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
+      return isCompatibleReturnTypesBinaryComparisonImpl(lhs, rhs);
+    }
+  }];
+}
+
+def RMO_EqualOp : RMO_PureBinaryComparisonOp<"equal", [Commutative]> {
+  let summary = "Flexible equality comaparison op";
+  let description = [{
+    A flexible binary elementwise equality comparison operation with implicit broadcasting and implicit dtype promotion.
+
+    Returns `x == y`, where `x` and `y` are input tensors.
+
+    Example:
+
+    ```mlir
+      %lhs: !mo.tensor<[2, 2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f64>
+      %res = rmo.equal(%lhs, %rhs) : (!mo.tensor<[2, 2, 3], f32>,
+                                        !mo.tensor<[2, 3], f64>
+                                        ) -> !mo.tensor<[2, 2, 3], bool>
+    ```
+  }];
+}
+
+def RMO_GreaterOp : RMO_PureBinaryComparisonOp<"greater"> {
+  let summary = "Flexible greate than comparison op";
+  let description = [{
+    A flexible binary elementwise greater than comparison operation with implicit broadcasting and implicit dtype promotion.
+
+    Returns `x > y`, where `x` and `y` are input tensors.
+
+    Example:
+
+    ```mlir
+      %lhs: !mo.tensor<[2, 2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f64>
+      %res = rmo.greater(%lhs, %rhs) : (!mo.tensor<[2, 2, 3], f32>,
+                                        !mo.tensor<[2, 3], f64>
+                                        ) -> !mo.tensor<[2, 2, 3], bool>
+    ```
+  }];
+}
+
+def RMO_GreaterEqualOp : RMO_PureBinaryComparisonOp<"greater_equal"> {
+  let summary = "Flexible greater than or equal to comparison op";
+  let description = [{
+    A flexible binary elementwise greater than or equal to comparison operation with implicit broadcasting and implicit dtype promotion.
+
+    Returns `x >= y`, where `x` and `y` are input tensors.
+
+    Example:
+
+    ```mlir
+      %lhs: !mo.tensor<[2, 2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f64>
+      %res = rmo.greater_equal(%lhs, %rhs) : (!mo.tensor<[2, 2, 3], f32>,
+                                        !mo.tensor<[2, 3], f64>
+                                        ) -> !mo.tensor<[2, 2, 3], bool>
+    ```
+  }];
+}
+
+def RMO_NotEqualOp : RMO_PureBinaryComparisonOp<"not_equal", [Commutative]> {
+  let summary = "Flexible not equal to op";
+  let description = [{
+    A flexible binary elementwise not equal comparison operation with implicit broadcasting and implicit dtype promotion.
+
+    Returns elementwise `x != y`, where `x` and `y` are input tensors.
+
+    Example:
+
+    ```mlir
+      %lhs: !mo.tensor<[2, 2, 3], f32>
+      %rhs: !mo.tensor<[2, 3], f64>
+      %res = rmo.not_equal(%lhs, %rhs) : (!mo.tensor<[2, 2, 3], f32>,
+                                        !mo.tensor<[2, 3], f64>
+                                        ) -> !mo.tensor<[2, 2, 3], bool>
+    ```
   }];
 }
 

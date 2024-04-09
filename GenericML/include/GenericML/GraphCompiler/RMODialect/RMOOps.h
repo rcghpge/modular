@@ -68,6 +68,19 @@ void inferMOTypesScatterNdImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls);
 
+/// Given two dtypes, returns the promotion dtype or an error.
+/// The rules are:
+/// 1. Category is an ordered hierarchy: `bool < unsigned int < signed int <
+/// float`
+/// 2. Promotion of values `x` and `y` picks:
+///    (max(category(x), category(y)), max(bitwidth(x), bitwidth(y))
+/// 3. Promotion raises an error if either input dtype might contain a value
+///    unrepresentable by the chosen promotion type.
+/// 4. Promotion raises an error if two dtypes have the same category and
+/// bitwidth
+///    but different representations.
+ErrorOr<DType> promoteDtype(DType x, DType y);
+
 } // namespace M::RMO
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
