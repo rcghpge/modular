@@ -13,7 +13,6 @@
 #include "KGEN/Compiler/ObjectCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
-#include "KGEN/Package/Package.h"
 #include "KGEN/ToolCommon/CLOptions.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/Runtime.h"

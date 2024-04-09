@@ -11,7 +11,6 @@
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
-#include "KGEN/Package/Package.h"
 #include "Support/MArchTarget/Host.h"
 #include "mlir/Pass/PassManager.h"
 #include "llvm/Support/TargetSelect.h"
@@ -43,12 +42,8 @@ LogicalResult elaborateModule(ModuleOp moduleOp) {
 
   LLCL::Runtime &runtime = *loadContext(ctx)->get<LLCL::Runtime>();
   mlir::PassManager pm(ctx);
-  KGEN::populateElaborateModulePasses(
-      pm, runtime, *target, {/*enableSearch=*/false},
-      [&](KGEN::PackageLinkOp packageLink) {
-        return KGEN::specializePackageLinkForPreElaborationLinking(
-            packageLink, runtime, KGEN::CompilationOptions());
-      });
+  KGEN::populateElaborateModulePasses(pm, runtime, *target,
+                                      {/*enableSearch=*/false});
   return pm.run(moduleOp);
 }
 
