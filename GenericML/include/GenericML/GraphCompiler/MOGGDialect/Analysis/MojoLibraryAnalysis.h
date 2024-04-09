@@ -83,6 +83,11 @@ public:
     return registeredMojoKernelSymbol.contains(name);
   }
 
+  /// Return the mapping.
+  const llvm::StringMap<std::string> &getRegisteredMojoKernelSymbol() {
+    return registeredMojoKernelSymbol;
+  }
+
   /// Looks up a registered Mojo shape function using the name that was used
   /// for registration.
   inline KGEN::GeneratorOp getRegisteredMojoShapeFunctionFor(StringRef name) {
