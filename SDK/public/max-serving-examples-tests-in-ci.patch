@@ -25,7 +25,7 @@ index 6c02c174a5..6572f45049 100755
 +    --network ${CONTAINER_BRIDGE_NETWORK} \
 +    -p 8000:8000/tcp \
 +    -v ${HOST_MODEL_REPOSITORY}:/model-repository \
-     public.ecr.aws/modular/max-serving-de \
+     public.ecr.aws/modular/max-serving \
      tritonserver --model-repository=/model-repository \
      --load-model=${MODEL_DIR} \
  )
