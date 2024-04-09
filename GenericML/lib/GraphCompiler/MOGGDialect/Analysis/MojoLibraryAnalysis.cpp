@@ -182,7 +182,7 @@ ErrorOrSuccess MojoLibraryAnalysis::loadUserProvidedKernels(
 
       if (!userModule)
         return Error("[MojoLibraryAnalysis] Could not load MOGG Mojo "
-                     "auxillary binding library");
+                     "auxiliary binding library");
 
       populateMetadata(userModule, eager, finalizedMojoKernel,
                        userRawMojoKernel);
@@ -498,8 +498,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
 
     module = dyn_cast<mlir::ModuleOp>(block.front());
     if (module == nullptr)
-      return Error("[MojoLibraryAnalysis] Top "
-                   "level op is not ModuleOp.");
+      return Error("[MojoLibraryAnalysis] Top level op is not ModuleOp.");
 
     symbolNameRemapping.insert({module, {}});
     populateRawMetadata(module, reader, dedicatedReader, rawMojoKernel);
