@@ -503,12 +503,6 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
     symbolNameRemapping.insert({module, {}});
     populateRawMetadata(module, reader, dedicatedReader, rawMojoKernel);
   }
-#ifdef MOGG_PRIMITIVES_MOJO_BINDINGS_PATH
-  std::string primitive_path = MOGG_PRIMITIVES_MOJO_BINDINGS_PATH;
-  auto loadPrimitivesError = loadUserProvidedKernels({primitive_path});
-  GENERICML_ASSERT(!loadPrimitivesError.isError())
-      << loadPrimitivesError.takeError();
-#endif
 
   auto loadError = loadUserProvidedKernels(kernelLibraryPaths);
   GENERICML_ASSERT(!loadError.isError()) << loadError.takeError();
