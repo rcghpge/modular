@@ -2760,4 +2760,50 @@ def RMO_MOArgNonzeroOp : RMO_MOAnaloguePureTensorOp<"arg_nonzero"> {
   let results = (outs MO_I64Tensor:$result);
 }
 
+def RMO_MOCumSumOp: RMO_MOAnaloguePureTensorOp<"cumsum",
+  [AllDTypesMatch<["input", "result"]>]> {
+  let summary = "Cumulative summation operation";
+  let description = [{
+    Returns the cumulative summation of input tensors along an axis. By default,
+    it copies the first element as is. If the `exclusive` attribute is set to 1,
+    then the first element is excluded. The `reverse` attribute causes the
+    summation to be done in the opposite direction of the axis.
+
+    The value of `axis` follows numpy sematics, e.g., -1 represents the last
+    axis.
+
+    Example of outputs:
+
+    ```
+      input_x = [1, 2, 3]
+      axis=0
+      output = [1, 3, 6]
+      exclusive=1
+      output = [0, 1, 3]
+      exclusive=0
+      reverse=1
+      output = [6, 5, 3]
+      exclusive=1
+      reverse=1
+      output = [5, 3, 0]
+    ```
+
+    Example:
+
+    ```mlir
+    %arg: !mo.tensor<[2, 3], f32>
+    %axis: !mo.tensor<[], i64>
+    %res = rmo.mo.cumsum(%arg, %axis) {exclusive = 1 : i64, reverse = 0 : bool} : (
+      !mo.tensor<[2, 3], f32>., !mo.tensor<[], i64>) -> !mo.tensor<[2, 3], f32>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input,
+                       MO_IndexScalarIfRanked:$axis,
+                       Builtin_IntegerAttr:$exclusive,
+                       Builtin_IntegerAttr:$reverse,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD

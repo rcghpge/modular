@@ -2099,6 +2099,35 @@ void MOArgNonzeroOp::inferMOTypesImpl(
   moOutputParamDecls.push_back(std::move(outputParamDecls));
 }
 
+void MOCumSumOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  TensorValue input = cast<TensorValue>(operands.getInput());
+  TensorValue axis = cast<TensorValue>(operands.getAxis());
+
+  // `input` / `output` types are identical.
+  TensorType inOutTy = input.getType();
+  SmallVector<KGEN::ParamDeclAttr> inputParamDecls;
+  if (!inOutTy.hasRank() && rmoResults.has_value()) {
+    // Refines the input type if output rank if known.
+    TensorType outputTy = cast<TensorType>((*rmoResults)[0].getType());
+    if (outputTy.hasRank())
+      inOutTy = getRankedParamTensorType(outputTy.getRank(), inOutTy.getDtype(),
+                                         graphOp, inputParamDecls);
+  }
+  moOperandTypes.push_back(inOutTy);
+  moInputParamDecls.push_back(std::move(inputParamDecls));
+  moResultTypes.push_back(inOutTy);
+  moOutputParamDecls.push_back({});
+
+  // `axis` type is 0D.
+  moOperandTypes.push_back(axis.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST
