@@ -13,5 +13,6 @@
 
 include "GenericML/GraphCompiler/RMODialect/RMODialect.td"
 include "GenericML/GraphCompiler/RMODialect/RMOOps.td"
+include "GenericML/GraphCompiler/RMODialect/RMOMOAnalogueOps.td"
 
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMO_TD
