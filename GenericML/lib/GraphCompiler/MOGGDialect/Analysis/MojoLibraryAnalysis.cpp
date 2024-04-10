@@ -9,6 +9,7 @@
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/SourceMgr.h"
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
@@ -18,6 +19,7 @@
 #include "KGEN/LITDialect/LITAttrs.h"
 #include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
+#include "KGEN/MojoParser/EntryPoint.h"
 #include "KGEN/ToolCommon/CompilationOptions.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "Support/Compiler/BytecodeReaderWriter.h"
@@ -52,18 +54,17 @@ getMOGGUniqueSymbolName(const std::string &baseName,
 
 ErrorOr<OwningOpRef<ModuleOp>> parseMojoPackage(MLIRContext *ctx,
                                                 StringRef path) {
-  std::string errorMsg;
-  auto result = mlir::openInputFile(path, &errorMsg);
-  if (!result)
-    return Error(errorMsg);
-  auto packageOp = readOpFromBytecodeFile<KGEN::LIT::PackageOp>(
-      *result, mlir::ParserConfig(ctx,
-                                  /*verifyAfterParse=*/false));
-  if (!packageOp)
-    return Error::getStaticString("invalid package");
   LLCL::Runtime &runtime = *loadContext(ctx)->get<LLCL::Runtime>();
-  return KGEN::specializeModuleForPreElaborationLinking(
-      packageOp->getPostParseModuleAttr(), runtime, KGEN::CompilationOptions());
+  OwningOpRef<ModuleOp> ownedModule =
+      KGEN::LIT::importStandaloneMojoBinaryPackage(
+          runtime, std::make_shared<llvm::SourceMgr>(), ctx, path);
+  if (!ownedModule)
+    return Error("failed to load Mojo package: " + path);
+
+  if (auto err = KGEN::runLibraryGenerationPipeline(*ownedModule, runtime,
+                                                    KGEN::CompilationOptions()))
+    return err.takeError();
+  return ownedModule;
 }
 
 mlir::LogicalResult materialize(Operation *target,
