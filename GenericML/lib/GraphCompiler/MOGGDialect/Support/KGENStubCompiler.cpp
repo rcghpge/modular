@@ -93,17 +93,15 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
             .createUInt64Timer<std::chrono::milliseconds>(
                 "mogg.kgen.elaboration.time", M::Telemetry::Level::L2, attrs);
 
-    auto cacheBackends = KGEN::getMojoCacheBackends(runtime);
-    if (cacheBackends.isError()) {
+    auto cacheBackend = KGEN::getMojoCacheBackend(runtime);
+    if (cacheBackend.isError()) {
       // Just run the passes.
       res = pm.run(kgenModule);
     } else {
       setTargetInfo(kgenModule, *targetInfoOr);
       LLCL::AnyAsyncValueRef ready = Cache::cachedTransform(
           kgenModule,
-          RCRef<Cache::RegionCache>::create(std::move(cacheBackends->first)),
-          RCRef<Cache::TransformCache>::create(
-              std::move(cacheBackends->second)),
+          RCRef<Cache::TransformCache>::create(std::move(*cacheBackend)),
           runtime.getReadyChain().copy(), pm);
       LLCL::await(ready);
       if (ready.isError()) {
