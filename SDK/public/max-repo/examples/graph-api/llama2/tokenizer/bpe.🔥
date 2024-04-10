@@ -51,14 +51,14 @@ struct MergeOption(OrderableElement):
         )
 
 
-fn read[T: CollectionElement](inout ptr: AnyPointer[Int8]) -> T:
+fn read[T: CollectionElement](inout ptr: UnsafePointer[Int8]) -> T:
     """Read a binary type out of a byte buffer and increment the pointer."""
     var value = ptr.bitcast_element[T]()[]
     ptr = ptr + sizeof[T]()
     return value^
 
 
-fn read_string(inout ptr: AnyPointer[Int8], length: Int) -> StringRef:
+fn read_string(inout ptr: UnsafePointer[Int8], length: Int) -> StringRef:
     """Read a string reference of known length and increment the pointer."""
     var value = StringRef(
         Reference(ptr.__refitem__()).get_unsafe_pointer(), length
@@ -101,7 +101,7 @@ struct BPETokenizer:
         """
 
         var model = BPETokenizer()
-        var read_ptr = AnyPointer[Int8](address=int(ptr))
+        var read_ptr = UnsafePointer[Int8](address=int(ptr))
 
         var max_token_len = read[Int32](read_ptr)
         while int(read_ptr) != int(end):
