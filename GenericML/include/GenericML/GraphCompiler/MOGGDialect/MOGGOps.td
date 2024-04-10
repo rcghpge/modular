@@ -407,7 +407,7 @@ def MOGG_ShapeToTensorOp : MOGG_Op<"shape_to_tensor"> {
   let assemblyFormat = [{
      `(` $shape`)` attr-dict `:` type($shape) `->` type($result)
   }];
-  // TODO simple verifier on input rank and output number of elements.
+  let hasVerifier = 1;
 }
 
 

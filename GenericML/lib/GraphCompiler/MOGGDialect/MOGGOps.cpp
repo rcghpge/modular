@@ -758,6 +758,31 @@ GenericCompiledRegionOp::getInOutSemantics(size_t index) {
 }
 
 //===----------------------------------------------------------------------===//
+// ShapeToTensorOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ShapeToTensorOp::verify() {
+  MO::TensorType resTy = getType();
+  if (!resTy.hasRank() || resTy.getRank() != 1)
+    return emitError() << "result type must have rank 1";
+
+  // NOTE this implies we don't support dynamically ranked shape at runtime,
+  // since this op converts a shape to a tensor.
+  if (!resTy.hasStaticShape())
+    return emitError() << "result type must have static shape";
+
+  TypedAttr inputShapeAttr = getShape().getType().getShapeAttr();
+  if (auto rankedShapeAttr = dyn_cast<MOSH::ShapeAttr>(inputShapeAttr)) {
+    if (rankedShapeAttr.getRank() != resTy.getNumElements()) {
+      return emitError() << "rank of input shape must match number of elements "
+                            "in result tensor";
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 
