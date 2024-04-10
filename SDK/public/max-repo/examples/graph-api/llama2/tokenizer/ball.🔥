@@ -110,9 +110,9 @@ struct Ball[T: CollectionElement]:
             __mlir_op.`lit.ref.from_pointer`[
                 _type = Reference[Node[T], mutability, lifetime].mlir_ref_type
             ](
-                AnyPointer[Node[T]]
-                .__from_index(int(node_ref.get_unsafe_pointer()))
-                .value
+                AnyPointer[Node[T]](
+                    address=int(node_ref.get_unsafe_pointer())
+                ).value
             )
         )
 
@@ -127,9 +127,5 @@ struct Ball[T: CollectionElement]:
         return Reference(
             __mlir_op.`lit.ref.from_pointer`[
                 _type = Reference[T, mutability, lifetime].mlir_ref_type
-            ](
-                AnyPointer[T]
-                .__from_index(int(node_ref.get_unsafe_pointer()))
-                .value
-            )
+            ](AnyPointer[T](address=int(node_ref.get_unsafe_pointer())).value)
         )
