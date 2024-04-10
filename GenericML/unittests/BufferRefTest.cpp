@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/Support/BufferRef.h"
+#include "ArraySupport/BufferRef.h"
 
 #include "LLCL/Runtime/Allocator.h"
 #include "LLCL/Runtime/Runtime.h"

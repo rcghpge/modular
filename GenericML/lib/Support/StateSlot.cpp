@@ -6,8 +6,8 @@
 
 #include "GenericML/Support/StateSlot.h"
 
+#include "ArraySupport/BufferRef.h"
 #include "GenericML/Support/Assert.h"
-#include "GenericML/Support/BufferRef.h"
 #include "Support/AlignedAlloc.h"
 
 using namespace M;

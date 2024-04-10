@@ -7,8 +7,8 @@
 #ifndef GENERICML_SUPPORT_STATESLOT_H
 #define GENERICML_SUPPORT_STATESLOT_H
 
+#include "ArraySupport/BufferRef.h"
 #include "GenericML/Support/Assert.h"
-#include "GenericML/Support/BufferRef.h"
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
 #include "Support/ADT/GenericRCRef.h"

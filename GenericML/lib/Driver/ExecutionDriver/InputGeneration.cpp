@@ -4,11 +4,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "ArraySupport/BufferRef.h"
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "GenericML/Driver/DriverInternals.h"
 #include "GenericML/Driver/ExecutionDriver.h"
 #include "GenericML/Support/Assert.h"
-#include "GenericML/Support/BufferRef.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/QuantSpec.h"
 #include "GenericML/Support/Tensor.h"

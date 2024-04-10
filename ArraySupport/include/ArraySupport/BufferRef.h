@@ -4,10 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_SUPPORT_BUFFERREF_H
-#define GENERICML_SUPPORT_BUFFERREF_H
+#ifndef ARRAY_SUPPORT_BUFFERREF_H
+#define ARRAY_SUPPORT_BUFFERREF_H
 
-#include "GenericML/Support/Assert.h"
 #include "LLCL/Runtime/Allocator.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
 #include "LLCL/Runtime/CompactRuntimePtr.h"
@@ -266,4 +265,4 @@ inline void swap(M::GML::BufferRef &lhs, M::GML::BufferRef &rhs) {
 
 } // namespace std
 
-#endif // GENERICML_SUPPORT_BUFFERREF_H
+#endif // ARRAY_SUPPORT_BUFFERREF_H

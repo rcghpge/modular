@@ -4,9 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/Support/BufferRef.h"
+#include "ArraySupport/BufferRef.h"
 
-#include "GenericML/Support/Assert.h"
 #include "LLCL/Runtime/AsyncValue.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "Support/ML/SizeUtils.h"

@@ -5,8 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Support/CompiledKernelsContext.h"
+#include "ArraySupport/BufferRef.h"
 #include "GenericML/Support/Assert.h"
-#include "GenericML/Support/BufferRef.h"
 #include "GenericML/Support/List.h"
 #include "GenericML/Support/Tensor.h"
 
