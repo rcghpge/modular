@@ -358,7 +358,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     for (auto operand : userToFuseIn.getOperands())
       seenOperands.insert(operand);
 
-    unsigned fusionOperandIdx;
+    unsigned fusionOperandIdx = 0;
     for (auto [operand, blockArg] :
          llvm::zip(userToFuseIn.getOperands(), userBlock.getArguments())) {
       if (operand == originalResult) {
