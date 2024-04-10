@@ -414,7 +414,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
       INTRINSIC_TO_MOJO("pack_conv_transpose_filter_shape",
                         "MOGG::pack_conv_transpose_filter_shape"),
       INTRINSIC_TO_MOJO("pack_matmul_b_shape_func",
-                        "LinAlg::Matmul::pack_matmul_b_shape_func"),
+                        "LinAlg::MatmulPack::pack_matmul_b_shape_func"),
       INTRINSIC_TO_MOJO("pad_shape", "nn::pad::pad_shape"),
       INTRINSIC_TO_MOJO("pool_shape", "nn::pool::pool_shape"),
       INTRINSIC_TO_MOJO("pool_shape_ceil", "nn::pool::pool_shape_ceil"),
@@ -440,9 +440,9 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
 
       // Layout transformations
       INTRINSIC_TO_MOJO("layout_transform_KN_to_KNkni",
-                        "LinAlg::Matmul::pack_b_ndbuffer"),
+                        "LinAlg::MatmulPack::pack_b_ndbuffer"),
       INTRINSIC_TO_MOJO("layout_transform_NK_to_KNkni",
-                        "LinAlg::Matmul::pack_transposed_b_ndbuffer"),
+                        "LinAlg::MatmulPack::pack_transposed_b_ndbuffer"),
       INTRINSIC_TO_MOJO("layout_transform_RSCF_to_FRSCf",
                         "MOGG::pack_conv_filter"),
       INTRINSIC_TO_MOJO("layout_transform_QRSCF_to_FQRSCf",
