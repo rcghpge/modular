@@ -11,6 +11,7 @@ cc_binary(
         "//GraphRT:MEFExecutor",
         "//GraphRT:Primitives",
         "//LLCL:Runtime",
+        "//LLCL:RuntimeGlobals",
         "//Support:CommonCLOptions",
     ],
 )

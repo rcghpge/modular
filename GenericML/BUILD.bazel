@@ -126,13 +126,13 @@ cc_library(
     ],
 )
 
-# TODO(kreeger): This one is waiting kernel cleanup fixes before finishing:
 cc_library(
     name = "Support",
     srcs = glob(["lib/Support/*.cpp"]),
     hdrs = glob(["include/GenericML/Support/**/*.h"]),
     strip_include_prefix = "include",
     deps = [
+        "//ArraySupport",
         "//GraphRT:Primitives",
         "//KGEN:Compiler",
         "//KGEN:CompilerRTHeaders",
@@ -140,6 +140,15 @@ cc_library(
         "//Support:ML",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "Assert",
+    hdrs = ["include/GenericML/Support/Assert.h"],
+    strip_include_prefix = "include",
+    deps = [
+        "@llvm-project//llvm:Support",
     ],
 )
 

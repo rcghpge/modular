@@ -8,7 +8,7 @@ cc_binary(
     srcs = glob(["*.cpp"]),
     deps = [
         "//GraphRT:AllDialects",
-        "//LLCL:Runtime",
+        "//LLCL:RuntimeGlobals",
         "//Support:Init",
         "@llvm-project//mlir:MlirOptLib",
     ],
