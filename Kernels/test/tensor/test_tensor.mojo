@@ -25,10 +25,10 @@ fn test_tensor():
     var tensor = Tensor[DType.float32](TensorShape(5, 2, 3))
 
     # CHECK: 5x2x3
-    print(str(tensor.shape()))
+    print(tensor.shape())
 
     # CHECK: 5x2x3xfloat32
-    print(str(tensor.spec()))
+    print(tensor.spec())
 
     # CHECK: 5
     print(tensor.spec()[0])
@@ -41,6 +41,9 @@ fn test_tensor():
 
     # CHECK: 3
     print(tensor.dim(2))
+
+    # CHECK: 5x2x3
+    print(Tensor[DType.float32]((5, 2, 3)).shape())
 
 
 # CHECK: test_tensor_init
@@ -62,6 +65,10 @@ fn test_tensor_init():
     # CHECK: [3.0, 3.0, 3.0, 3.0, 3.0],
     # CHECK-NEXT: [3.0, 3.0, 3.0, 3.0, 3.0]], dtype=float32, shape=2x5
     print(Tensor[DType.float32](TensorShape(2, 5), 3))
+
+    # CHECK: [3.0, 3.0, 3.0, 3.0, 3.0],
+    # CHECK-NEXT: [3.0, 3.0, 3.0, 3.0, 3.0]], dtype=float32, shape=2x5
+    print(Tensor[DType.float32]((2, 5), 3))
 
 
 def test_tensor_copy():
