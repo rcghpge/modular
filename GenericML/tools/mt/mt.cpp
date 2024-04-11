@@ -353,17 +353,6 @@ int main(int argc, char **argv) {
     // Hand off the MEFFileHandle and the file buffer to the framework to
     // actually run the thing with all the various diagnostics.
     rc = dylib.runBinaryFile(frameworkCtx, inputInfo.file.copy(), binaryFile);
-
-    // FIXME(#36219): Write all traces, since the runtime won't be flushed.
-    // This should be removed when the runtime is properly flushed when the
-    // context goes out of scope.
-    std::optional<TimeTraceProfiler> &profilerOr =
-        (*contextOr)->get<LLCL::Runtime>()->getProfiler();
-    if (profilerOr) {
-      auto writeErr = profilerOr->write("-");
-      if (writeErr.isError())
-        return options.reportError(writeErr.getError());
-    }
   }
 
   return rc;
