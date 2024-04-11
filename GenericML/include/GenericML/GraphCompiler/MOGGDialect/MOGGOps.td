@@ -13,6 +13,7 @@
 
 include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.td"
 include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.td"
+include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOAttrs.td"
 include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"

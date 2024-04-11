@@ -14,7 +14,9 @@
 include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.td"
 include "KGEN/KGENDialect/KGENTypes.td"
 include "KGEN/KGENDialect/KGENInterfaces.td"
+include "KGEN/KGENDialect/KGENAttrs.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/IR/BuiltinAttributeInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
 
