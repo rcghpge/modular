@@ -77,6 +77,17 @@ BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
   return BufferRef::create(buffer, size, std::move(owningRef), alignment);
 }
 
+// Create an owned reference from a taken void* pointer -- This taken
+// pointer will not be freed by anyone else except by the buffer-ref now.
+BufferRef BufferRef::take(LLCL::CompactRuntimePtr runtime, size_t size,
+                          size_t alignment, void *takeFrom) {
+  AnyAsyncValueRef owningRef;
+  owningRef = owningRef.createReady<OwnedMemoryBlock>(runtime, size, alignment,
+                                                      runtime, takeFrom);
+  void *buffer = owningRef.get<OwnedMemoryBlock>().data;
+  return BufferRef::create(buffer, size, std::move(owningRef), alignment);
+}
+
 BufferRef::~BufferRef() {
 #if MODULAR_PARANOID
   // This buffer should have no active uses.
@@ -167,9 +178,12 @@ void BufferRef::collectAccessUses(SmallVectorImpl<LLCL::ResourceUse> &uses,
 #endif
 
 OwnedMemoryBlock::OwnedMemoryBlock(size_t size, std::optional<size_t> alignment,
-                                   LLCL::CompactRuntimePtr rt)
+                                   LLCL::CompactRuntimePtr rt, void *takePtr)
     : data(nullptr), size(size), runtime(rt) {
-  data = runtime->getAllocator()->allocateBytes(size, alignment.value_or(1));
+  if (takePtr)
+    data = takePtr;
+  else
+    data = runtime->getAllocator()->allocateBytes(size, alignment.value_or(1));
 }
 
 OwnedMemoryBlock::~OwnedMemoryBlock() {

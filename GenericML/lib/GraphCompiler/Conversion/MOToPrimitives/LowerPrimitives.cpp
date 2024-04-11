@@ -40,6 +40,8 @@ struct LowerPrimitivesPass
     : public MGP::impl::LowerPrimitivesBase<LowerPrimitivesPass> {
   using LowerPrimitivesBase::LowerPrimitivesBase;
 
+  SmallVector<Type> getMoggCallResultTypes(Operation *op);
+  DictionaryAttr getMoggCallAttrs(OpBuilder &builder, Operation *op);
   void runOnOperation() override;
 };
 
@@ -65,6 +67,43 @@ isLowerableToGenericRegion(MLIRContext *ctx,
            (hasDeviceOp.getDevice() == DeviceRefAttr::get(ctx, kCPULabel, 0));
   }
   return isRegistered;
+}
+
+// For staging, we currently only enable fusion of MIP ops in generic regions
+// all other primitives will not be fused.
+static inline bool isLowerableType(Type type) {
+  bool result = true;
+  if (isa<MEF::MEFChainTypeInterface, MGP::ContextType>(type))
+    result = false;
+  return result;
+}
+
+// Get a vector of the result types for the lowered mogg call
+SmallVector<Type> LowerPrimitivesPass::getMoggCallResultTypes(Operation *op) {
+  // Chain types are a no-op within a compiled region, so they are dropped
+  // from the return type in a `mogg.call`.  The chain type is preserved
+  // in the output of the generic-region
+  SmallVector<Type> result_types;
+  for (auto resTy : op->getResultTypes())
+    if (isLowerableType(resTy))
+      result_types.push_back(resTy);
+  return result_types;
+}
+
+// Get a dictionary of the attributes for the lowered mogg call
+DictionaryAttr LowerPrimitivesPass::getMoggCallAttrs(OpBuilder &builder,
+                                                     Operation *op) {
+  SmallVector<NamedAttribute> attrs;
+  for (auto &attr : op->getAttrs()) {
+    if (auto devRefAttr = dyn_cast<DeviceRefAttr>(attr.getValue())) {
+      // Prune device attributes to string ref of label
+      attrs.push_back(builder.getNamedAttr(
+          attr.getName(), builder.getStringAttr(devRefAttr.getLabel())));
+    } else {
+      attrs.push_back(attr);
+    }
+  }
+  return builder.getDictionaryAttr(attrs);
 }
 
 void LowerPrimitivesPass::runOnOperation() {
@@ -97,21 +136,15 @@ void LowerPrimitivesPass::runOnOperation() {
       SmallVector<Value> newOperands;
       for (Value operand : newKernel->getOperands()) {
         Value val = kernelBody.addArgument(operand.getType(), operand.getLoc());
-        newOperands.push_back(val);
+        if (isLowerableType(operand.getType())) {
+          newOperands.push_back(val);
+        }
       }
 
       // Add the call to the actual implementing function in mojo.
-      DictionaryAttr dict = builder.getDictionaryAttr(op->getAttrs());
-      // MOGG Calls should not need need to return a chain type
-      // We keep the output type in the generic-compiled region tho so we can
-      // keep track of when to return
-      SmallVector<Type> result_types;
-      for (auto resTy : op->getResultTypes())
-        if (!isa<MEF::ChainType>(resTy))
-          result_types.push_back(resTy);
       MOGG::CallOp call = builder.create<MOGG::CallOp>(
-          opLoc, result_types, op->getName().getStringRef(), newOperands,
-          ArrayAttr{}, dict);
+          opLoc, getMoggCallResultTypes(op), op->getName().getStringRef(),
+          newOperands, ArrayAttr{}, getMoggCallAttrs(builder, op));
 
       builder.create<MOGG::OutputOp>(opLoc, call->getResults());
 
