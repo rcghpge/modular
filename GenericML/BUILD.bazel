@@ -135,7 +135,7 @@ cc_library(
         "//ArraySupport",
         "//GraphRT:Primitives",
         "//KGEN:Compiler",
-        "//KGEN:CompilerRTHeaders",
+        "//KGEN:CompilerRT.headers",
         "//Support:Base",
         "//Support:ML",
         "@llvm-project//llvm:Support",

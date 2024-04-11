@@ -9,6 +9,7 @@ cc_binary(
     deps = [
         "//GraphRT:AllDialects",
         "//LLCL:RuntimeGlobals",
+        "//Support:Globals",
         "//Support:Init",
         "@llvm-project//mlir:MlirOptLib",
     ],
