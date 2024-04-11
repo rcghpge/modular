@@ -64,13 +64,6 @@ if (STOCK_PYTORCH_FOUND)
   list(APPEND MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:mtorch>)
 endif()
 
-if(STOCK_TENSORFLOW_FOUND)
-  set(EXTERNAL_TF_EXES
-    "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-translate;"
-    "${MODULAR_DERIVED_DIR}/third-party/bin/external-tf-opt")
-  list(APPEND MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:tf>)
-endif()
-
 set(max_python_package_sources
   ${CMAKE_CURRENT_SOURCE_DIR}/max/engine/__init__.py
   ${CMAKE_CURRENT_SOURCE_DIR}/max/engine/api.py
@@ -108,7 +101,7 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/max_engine_installed
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:core> ${CMAKE_CURRENT_BINARY_DIR}/max/engine/
   COMMAND ${Python3_EXECUTABLE} -m pip install --quiet --editable ${CMAKE_CURRENT_BINARY_DIR}
   COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_BINARY_DIR}/max_engine_installed
-  DEPENDS $<TARGET_FILE:core> ${MODULAR_FRAMEWORK_LIBS} ${EXTERNAL_TF_EXES} ${max_python_package_sources}
+  DEPENDS $<TARGET_FILE:core> ${MODULAR_FRAMEWORK_LIBS} ${max_python_package_sources}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   COMMENT "Symlinking `max.engine` Python source directory to $MODULAR_DERIVED_PATH and installing to $MODULAR_PYTHON."
   VERBATIM
