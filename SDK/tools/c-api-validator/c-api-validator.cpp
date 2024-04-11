@@ -16,7 +16,6 @@
 #include "Support/ErrorOr.h"
 #include "Support/ML/TensorShape.h"
 #include "Support/Process.h"
-#include "TensorFlow/API/max/c/tensorflow/config.h"
 
 #include "llvm/ADT/STLExtras.h"
 
@@ -295,9 +294,6 @@ struct CompiledModelPhase {
 
     result.compileConfig = M_newCompileConfig();
     M_setModelPath(result.compileConfig, externalModel->path.c_str());
-    if (!useMoOps) {
-      M_enableCompatibilityMode(result.compileConfig);
-    }
 
     // TODO: We need to make framework loading thread safe before we can overlap
     // compilation of models.

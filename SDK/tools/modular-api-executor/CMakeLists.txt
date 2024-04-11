@@ -25,10 +25,6 @@ add_modular_tool(modular-api-executor
   LLCLSupport
   )
 
-
-target_include_directories(modular-api-executor PUBLIC
-  ${MODULAR_SOURCE_DIR}/TensorFlow/include/TensorFlow/API)
-
 target_include_directories(modular-api-executor PUBLIC
   ${MODULAR_SOURCE_DIR}/ONNX/include/ONNX/API)
 

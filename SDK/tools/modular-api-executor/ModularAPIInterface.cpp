@@ -18,8 +18,6 @@ namespace {
 #if defined(_WIN32)
 constexpr std::string_view modularFrameworkLibraryName =
     "modular-framework-common.dll";
-constexpr std::string_view modularTFExtensionLibraryName =
-    "modular-framework-tf-ext.dll";
 constexpr std::string_view modularONNXExtensionLibraryName =
     "modular-framework-onnx-ext.dll";
 constexpr std::string_view modularTorchExtensionLibraryName =
@@ -27,8 +25,6 @@ constexpr std::string_view modularTorchExtensionLibraryName =
 #elif defined(__APPLE__)
 constexpr std::string_view modularFrameworkLibraryName =
     "libmodular-framework-common.dylib";
-constexpr std::string_view modularTFExtensionLibraryName =
-    "libmodular-framework-tf-ext.dylib";
 constexpr std::string_view modularONNXExtensionLibraryName =
     "libmodular-framework-onnx-ext.dylib";
 constexpr std::string_view modularTorchExtensionLibraryName =
@@ -36,8 +32,6 @@ constexpr std::string_view modularTorchExtensionLibraryName =
 #else
 constexpr std::string_view modularFrameworkLibraryName =
     "libmodular-framework-common.so";
-constexpr std::string_view modularTFExtensionLibraryName =
-    "libmodular-framework-tf-ext.so";
 constexpr std::string_view modularONNXExtensionLibraryName =
     "libmodular-framework-onnx-ext.so";
 constexpr std::string_view modularTorchExtensionLibraryName =
@@ -82,10 +76,6 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
   if (dylibOr.isError())
     return dylibOr.takeError();
 
-  auto tfLibOr = fallibleLibraryLoad(modularTFExtensionLibraryName);
-  if (tfLibOr.isError())
-    return tfLibOr.takeError();
-
   auto onnxLibOr = fallibleLibraryLoad(modularONNXExtensionLibraryName);
   if (onnxLibOr.isError())
     return onnxLibOr.takeError();
@@ -95,7 +85,6 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
     return torchLibOr.takeError();
 
   llvm::sys::DynamicLibrary dylib = dylibOr.takeValue();
-  llvm::sys::DynamicLibrary tfLib = tfLibOr.takeValue();
   llvm::sys::DynamicLibrary onnxLib = onnxLibOr.takeValue();
   llvm::sys::DynamicLibrary torchLib = torchLibOr.takeValue();
 
@@ -136,12 +125,6 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
   // This is an experimental feature and is okay to not be present.
   if (!useKernelsOr.isError())
     useKernelsFrom = useKernelsOr.takeValue();
-
-  auto exportedNameOr =
-      fallibleGetSymbol(tfLib, "M_setExportedName", setExportedName);
-  if (exportedNameOr.isError())
-    return exportedNameOr.takeError();
-  setExportedName = exportedNameOr.takeValue();
 
   auto enableMemoryPlanningOr = fallibleGetSymbol(
       onnxLib, "M_enableMemoryPlanning", enableMemoryPlanning);

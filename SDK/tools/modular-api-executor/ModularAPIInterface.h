@@ -14,7 +14,6 @@
 #include "max/c/internal/device.h"
 #include "max/c/onnx/config.h"
 #include "max/c/pytorch/config.h"
-#include "max/c/tensorflow/config.h"
 #include "max/cpp/aliases.h"
 #include "max/cpp/pytorch/aliases.h"
 
@@ -43,7 +42,6 @@ public:
   decltype(&M_freeCompileConfig) freeCompileConfig = nullptr;
   decltype(&M_setModelPath) setModelPath = nullptr;
   decltype(&M_useKernelsFrom) useKernelsFrom = nullptr;
-  decltype(&M_setExportedName) setExportedName = nullptr;
   decltype(&M_setNumThreads) setNumThreads = nullptr;
   decltype(&M_setMaxContext) setMaxContext = nullptr;
   decltype(&M_setAllocatorType) setAllocatorType = nullptr;

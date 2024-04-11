@@ -722,8 +722,6 @@ int main(int argc, char **argv) {
   CompileConfigPtr compileConfig = {api.newCompileConfig(),
                                     api.freeCompileConfig};
   api.setModelPath(compileConfig.get(), clOptions.inputFilename.c_str());
-  if (!clOptions.exportedName.empty())
-    api.setExportedName(compileConfig.get(), clOptions.exportedName.c_str());
 
   if (api.useKernelsFrom && !clOptions.kernelLibraryPaths.empty()) {
     for (auto &path : clOptions.kernelLibraryPaths)
