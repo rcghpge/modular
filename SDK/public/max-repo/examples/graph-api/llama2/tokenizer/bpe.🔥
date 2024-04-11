@@ -107,7 +107,7 @@ struct BPETokenizer:
         while int(read_ptr) != int(end):
             var score = read[Float32](read_ptr)
             var token_len = read[Int32](read_ptr)
-            var token = read_string(read_ptr, token_len.to_int())
+            var token = read_string(read_ptr, int(token_len))
             model.add_token(token, score)
 
         return model^
