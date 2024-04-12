@@ -1848,7 +1848,8 @@ LogicalResult canonicalizePadLikeOp(PadLike op, PatternRewriter &rewriter) {
   // frontends, e.g.,
   //     mo.pad(input, zeros, val) : ... -> tensor<[?, ?, ?], f32>
   if (llvm::all_of(paddings, [](int64_t n) { return n == 0; })) {
-    rewriter.replaceOpWithNewOp<RebindOp>(op, op.getType(), op.getInput());
+    rewriter.replaceOpWithNewOp<RebindOp>(op, op.getType(), op.getInput(),
+                                          op.getOutputParamDecls());
     return success();
   }
 

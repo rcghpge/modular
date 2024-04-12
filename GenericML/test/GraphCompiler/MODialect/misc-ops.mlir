@@ -228,6 +228,20 @@ mo.graph @pad_zero_paddings(%input: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[?, ?
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
 
+// CHECK: mo.graph @pad_zero_paddings_with_output_param<() -> [[D1:.*]], [[D2:.*]]>(%[[INPUT:.*]]: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[[[D1]], [[D2]]], f32>
+mo.graph @pad_zero_paddings_with_output_param<() -> D1, D2>(%input: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[D1, D2], f32> {
+
+  // CHECK-DAG: kgen.param.declare [[D3:.*]] = <2>
+  // CHECK-DAG: kgen.param.declare [[D4:.*]] = <2>
+  // CHECK-NEXT:   %[[RES:.*]] = mo.rebind(%[[INPUT]]) : !mo.tensor<[2, 2], f32> -> !mo.tensor<[[[D3]], [[D4]]], f32>
+  %constant = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
+  %paddings = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+  %res = mo.pad.constant<() -> D3, D4>(%input, %paddings, %constant) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[], f32>) -> !mo.tensor<[D3, D4], f32>
+
+  // CHECK-NEXT:   mo.output<{{.*}}> %[[RES]]
+  mo.output<D3, D4> %res : !mo.tensor<[D3, D4], f32>
+}
+
 //===----------------------------------------------------------------------===//
 // RangeOp
 //===----------------------------------------------------------------------===//
