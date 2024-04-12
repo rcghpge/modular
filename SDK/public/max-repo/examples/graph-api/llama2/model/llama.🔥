@@ -65,14 +65,24 @@ struct Attention[float_dtype: DType = DType.float32]:
             raise "Not yet supported"
         return v
 
-    def attention_mask(
-        self, start_pos: Symbol, owned seq_len: Symbol
-    ) -> Symbol:
+    def attention_mask(self, start_pos: Symbol, seq_len: Symbol) -> Symbol:
         var g = start_pos.graph()
+
         seq_len = seq_len.reshape()
+        start_pos = start_pos.reshape()
+
         var mask_val = g.full(Scalar[float_dtype].MIN, (seq_len, seq_len))
-        return ops.band_part(
+        var mask = ops.band_part(
             mask_val, g.scalar[DType.int64](-1), start_pos, exclude=True
+        )
+
+        # Compute attention scores only for the new sequence.
+        # Hence for a matrix of scores of size (seqlen, cache_len + seqlen),
+        # the only masked entries are (i, j) for j > cache_len + i, since row i
+        # corresponds to token cache_len + i.
+        return ops.concat(
+            (g.full[DType.float32](0, (seq_len, start_pos)), mask),
+            axis=1,
         )
 
     def __call__(
