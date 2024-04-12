@@ -20,4 +20,12 @@ public:
 
 } // namespace M::MO
 
+namespace M::RMO {
+/// ConversionTarget for converting to the MO dialect.
+class RMOConversionTarget : public ConversionTarget {
+public:
+  explicit RMOConversionTarget(MLIRContext &ctx);
+};
+} // namespace M::RMO
+
 #endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOTARGET_CONVERSION_H
