@@ -61,8 +61,11 @@ ErrorOr<OwningOpRef<ModuleOp>> parseMojoPackage(MLIRContext *ctx,
   if (!ownedModule)
     return Error("failed to load Mojo package: " + path);
 
-  if (auto err = KGEN::runLibraryGenerationPipeline(*ownedModule, runtime,
-                                                    KGEN::CompilationOptions()))
+  // Generate a library from the package, ensuring that dependencies are
+  // materialized to make it self contained.
+  if (auto err = KGEN::runLibraryGenerationPipeline(
+          *ownedModule, runtime, KGEN::CompilationOptions(),
+          /*materializeDependencies=*/true))
     return err.takeError();
   return ownedModule;
 }
