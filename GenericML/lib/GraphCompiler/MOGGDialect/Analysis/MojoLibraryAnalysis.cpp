@@ -27,6 +27,7 @@
 
 namespace {
 #include MOGG_MOJO_BINDING_H
+#include MOGG_PRIMITIVES_MOJO_BINDING_H
 }; // namespace
 
 using namespace M;
@@ -238,96 +239,103 @@ ErrorOrSuccess MojoLibraryAnalysis::loadUserProvidedKernels(
                          userRawMojoKernel);
       }
     }
-
-    // Remap only exposed kernel functions if their name collides with an
-    // existing function.
-    symbolNameRemapping.insert({userModule, {}});
-    for (KGEN::GeneratorOp op : toRawMojoKernelRange(userRawMojoKernel)) {
-      // We will insert a slightly mangled version of the current name if it
-      // already exists in the mlir file we intend to compile.
-      std::string newSymName = op.getSymName().str();
-
-      // If there's no collision we can copy directly obviously.
-      if (!rawMojoKernel.contains(newSymName))
-        continue;
-
-      bool isMOGGKernel = false;
-
-      // Check if it has a decorator.
-      for (TypedAttr decorator : op.getDecorators()) {
-        // Decorators are expected to the the apply of a symbol.
-        auto apply = dyn_cast<KGEN::ParamOperatorAttr>(decorator);
-        if (!apply)
-          continue;
-
-        // The first operand is expected to be the symbol we are applying.
-        auto sym = dyn_cast<KGEN::SymbolConstantAttr>(apply.getOperand(0));
-        if (!sym)
-          continue;
-
-        StringRef decoratorName = sym.getSymbol().getLeafReference().strref();
-
-        isMOGGKernel |=
-            decoratorName.starts_with(DECORATOR_REGISTER_OVERRIDE) ||
-            decoratorName.starts_with(DECORATOR_REGISTER_PUBLIC_OVERRIDE) ||
-            decoratorName.starts_with(DECORATOR_REGISTER_SHAPE_FUNC) ||
-            decoratorName.starts_with(DECORATOR_REGISTER_KERNEL);
-      }
-
-      // We ignore duplicated kernels without any decorators.
-      if (!isMOGGKernel)
-        continue;
-
-      // Create a new symbol which is unique in both files.
-      while (rawMojoKernel.contains(newSymName) ||
-             userRawMojoKernel.contains(newSymName)) {
-        newSymName = getMOGGUniqueSymbolName(newSymName, rawMojoKernel);
-        newSymName = getMOGGUniqueSymbolName(newSymName, userRawMojoKernel);
-      }
-
-      auto oldAttr = FlatSymbolRefAttr::get(context, op.getSymNameAttr());
-
-      symbolNameRemapping[userModule].push_back({newSymName, oldAttr});
-
-      // Update any references to the old symbol with the new symbol.
-      mlir::AttrTypeReplacer symbolUpdater;
-      symbolUpdater.addReplacement(
-          [&](FlatSymbolRefAttr attr) -> std::optional<FlatSymbolRefAttr> {
-            if (attr == oldAttr)
-              return FlatSymbolRefAttr::get(context, newSymName);
-            return std::nullopt;
-          });
-      symbolUpdater.recursivelyReplaceElementsIn(
-          userModule, /*replaceAttrs=*/true, /*replaceLocs=*/false,
-          /*replaceTypes=*/true);
-
-      op.setSymName(newSymName);
-    }
-
-    if (eager) {
-      // Update the metadata and clone the operators.
-      for (auto op :
-           cast<mlir::ModuleOp>(userModule).getOps<mlir::SymbolOpInterface>()) {
-        // Don't duplicate.
-        if (rawMojoKernel.contains(op.getName()))
-          continue;
-        Operation *duplicate = op.clone();
-        module.getBody()->push_back(duplicate);
-        if (auto gen = dyn_cast<KGEN::GeneratorOp>(duplicate))
-          rawMojoKernel[gen.getSymName()] = gen;
-      }
-    } else {
-      // Update the metadata only.
-      for (KGEN::GeneratorOp gen : toRawMojoKernelRange(userRawMojoKernel)) {
-        // Don't add already existing kernels.
-        if (rawMojoKernel.contains(gen.getSymName()))
-          continue;
-        rawMojoKernel[gen.getSymName()] = gen;
-      }
-    }
+    updatedLoadedKernelsForCollisions(userModule, userRawMojoKernel);
   }
 
   return success();
+}
+
+// Update the state in MJA for collisions etc.
+void MojoLibraryAnalysis::updatedLoadedKernelsForCollisions(
+    Operation *userModule,
+    llvm::StringMap<KGEN::GeneratorOp> &userRawMojoKernel) {
+
+  // Remap only exposed kernel functions if their name collides with an
+  // existing function.
+  symbolNameRemapping.insert({userModule, {}});
+  for (KGEN::GeneratorOp op : toRawMojoKernelRange(userRawMojoKernel)) {
+    // We will insert a slightly mangled version of the current name if it
+    // already exists in the mlir file we intend to compile.
+    std::string newSymName = op.getSymName().str();
+
+    // If there's no collision we can copy directly obviously.
+    if (!rawMojoKernel.contains(newSymName))
+      continue;
+
+    bool isMOGGKernel = false;
+
+    // Check if it has a decorator.
+    for (TypedAttr decorator : op.getDecorators()) {
+      // Decorators are expected to the the apply of a symbol.
+      auto apply = dyn_cast<KGEN::ParamOperatorAttr>(decorator);
+      if (!apply)
+        continue;
+
+      // The first operand is expected to be the symbol we are applying.
+      auto sym = dyn_cast<KGEN::SymbolConstantAttr>(apply.getOperand(0));
+      if (!sym)
+        continue;
+
+      StringRef decoratorName = sym.getSymbol().getLeafReference().strref();
+
+      isMOGGKernel |=
+          decoratorName.starts_with(DECORATOR_REGISTER_OVERRIDE) ||
+          decoratorName.starts_with(DECORATOR_REGISTER_PUBLIC_OVERRIDE) ||
+          decoratorName.starts_with(DECORATOR_REGISTER_SHAPE_FUNC) ||
+          decoratorName.starts_with(DECORATOR_REGISTER_KERNEL);
+    }
+
+    // We ignore duplicated kernels without any decorators.
+    if (!isMOGGKernel)
+      continue;
+
+    // Create a new symbol which is unique in both files.
+    while (rawMojoKernel.contains(newSymName) ||
+           userRawMojoKernel.contains(newSymName)) {
+      newSymName = getMOGGUniqueSymbolName(newSymName, rawMojoKernel);
+      newSymName = getMOGGUniqueSymbolName(newSymName, userRawMojoKernel);
+    }
+
+    auto oldAttr = FlatSymbolRefAttr::get(context, op.getSymNameAttr());
+
+    symbolNameRemapping[userModule].push_back({newSymName, oldAttr});
+
+    // Update any references to the old symbol with the new symbol.
+    mlir::AttrTypeReplacer symbolUpdater;
+    symbolUpdater.addReplacement(
+        [&](FlatSymbolRefAttr attr) -> std::optional<FlatSymbolRefAttr> {
+          if (attr == oldAttr)
+            return FlatSymbolRefAttr::get(context, newSymName);
+          return std::nullopt;
+        });
+    symbolUpdater.recursivelyReplaceElementsIn(
+        userModule, /*replaceAttrs=*/true, /*replaceLocs=*/false,
+        /*replaceTypes=*/true);
+
+    op.setSymName(newSymName);
+  }
+
+  if (eager) {
+    // Update the metadata and clone the operators.
+    for (auto op :
+         cast<mlir::ModuleOp>(userModule).getOps<mlir::SymbolOpInterface>()) {
+      // Don't duplicate.
+      if (rawMojoKernel.contains(op.getName()))
+        continue;
+      Operation *duplicate = op.clone();
+      module.getBody()->push_back(duplicate);
+      if (auto gen = dyn_cast<KGEN::GeneratorOp>(duplicate))
+        rawMojoKernel[gen.getSymName()] = gen;
+    }
+  } else {
+    // Update the metadata only.
+    for (KGEN::GeneratorOp gen : toRawMojoKernelRange(userRawMojoKernel)) {
+      // Don't add already existing kernels.
+      if (rawMojoKernel.contains(gen.getSymName()))
+        continue;
+      rawMojoKernel[gen.getSymName()] = gen;
+    }
+  }
 }
 
 // We scan the IR to collect all the candidates and then we evaluate them
@@ -477,9 +485,17 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
       TYPE_TO_MOJO(MOGG::SimdType, "MOGG::SimdTypeDef"),
   };
 
+  llvm::ArrayRef<llvm::StringRef> sources_tag = {
+      "mojo-mogg-bindings", "mojo-primitives-mogg-bindings"};
+  llvm::ArrayRef<llvm::StringRef> sources = {
+      llvm::StringRef{reinterpret_cast<const char *>(MojoMoggBindings::data),
+                      MojoMoggBindings::size},
+      llvm::StringRef{
+          reinterpret_cast<const char *>(MojoPrimitivesMoggBindings::data),
+          MojoPrimitivesMoggBindings::size}};
+
   llvm::StringRef source{reinterpret_cast<const char *>(MojoMoggBindings::data),
                          MojoMoggBindings::size};
-
   if (eager) {
     // Eager loading the main mojo bindings.
     module = mlir::parseSourceString<mlir::ModuleOp>(source, context).release();
@@ -508,6 +524,47 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
 
     symbolNameRemapping.insert({module, {}});
     populateRawMetadata(module, reader, dedicatedReader, rawMojoKernel);
+  }
+
+  llvm::StringRef primitive_source{
+      reinterpret_cast<const char *>(MojoPrimitivesMoggBindings::data),
+      MojoPrimitivesMoggBindings::size};
+  if (eager) {
+    // Eager loading the main mojo bindings.
+    llvm::StringMap<KGEN::GeneratorOp> primitiveRawMojoKernel;
+    auto primitiveModule =
+        mlir::parseSourceString<mlir::ModuleOp>(primitive_source, context)
+            .release();
+    GENERICML_ASSERT(primitiveModule.getOperation());
+    block.push_back(primitiveModule);
+    populateMetadata(primitiveModule, eager, finalizedMojoKernel,
+                     primitiveRawMojoKernel);
+    updatedLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel);
+  } else {
+    // Lazy loading the main mojo bindings.
+    llvm::MemoryBufferRef buffer(primitive_source,
+                                 "mojo-primitives-mogg-bindings");
+    mlir::BytecodeReader *reader =
+        readers.emplace_back(new mlir::BytecodeReader(buffer, config, true))
+            .get();
+
+    if (failed(reader->readTopLevel(&block, [&](Operation *op) {
+          if (isa<mlir::ModuleOp>(op)) {
+            return true;
+          }
+          return false;
+        })))
+      return Error("[MojoLibraryAnalysis] Could not load the mojo kernel "
+                   "operators from the standard library.");
+
+    if (!isa<mlir::ModuleOp>(block.back()))
+      return Error("[MojoLibraryAnalysis] Top level op is not ModuleOp.");
+
+    auto primitiveModule = &block.back();
+    llvm::StringMap<KGEN::GeneratorOp> primitiveRawMojoKernel;
+    populateRawMetadata(primitiveModule, reader, dedicatedReader,
+                        primitiveRawMojoKernel);
+    updatedLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel);
   }
 
   auto loadError = loadUserProvidedKernels(kernelLibraryPaths);

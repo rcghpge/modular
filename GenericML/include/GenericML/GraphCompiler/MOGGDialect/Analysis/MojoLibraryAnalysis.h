@@ -153,6 +153,12 @@ private:
   ErrorOrSuccess
   loadUserProvidedKernels(ArrayRef<std::string> kernelLibraryPaths);
 
+  /// Helper function to update the module and state data but account for
+  /// collisions
+  void updatedLoadedKernelsForCollisions(
+      Operation *userModule,
+      llvm::StringMap<KGEN::GeneratorOp> &userRawMojoKernel);
+
   /// Materialize the specified mojo kernel. It does nothing if the kernel has
   /// been materialized.
   mlir::LogicalResult ready(KGEN::GeneratorOp gen);
