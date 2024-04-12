@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/MOSupport/Broadcast.h"
+#include "GenericML/GraphCompiler/Conversion/RMOSupport/Broadcast.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
@@ -83,14 +83,14 @@ TEST_F(BroadcastTest, Failure) {
   MO::TensorValue x = getTestValue({1, 3});
   MO::TensorValue y = getTestValue({1, 1});
   EXPECT_DEATH(
-      broadcastTo(builder, loc, x, y),
+      RMO::broadcastTo(builder, loc, x, y),
       "don't use this helper unless you can guarantee x broadcasts to y");
 }
 
 TEST_F(BroadcastTest, Basic) {
   MO::TensorValue x = getTestValue({1, 1});
   MO::TensorValue y = getTestValue({1, 3});
-  MO::TensorValue bcastX = broadcastTo(builder, loc, x, y);
+  MO::TensorValue bcastX = RMO::broadcastTo(builder, loc, x, y);
   SmallVector<int64_t> refDims{1ll, 3ll};
   ASSERT_EQ(bcastX.getType().getIntDims(), refDims);
 }
@@ -98,7 +98,7 @@ TEST_F(BroadcastTest, Basic) {
 TEST_F(BroadcastTest, Multi) {
   MO::TensorValue x = getTestValue({5, 1, 2});
   MO::TensorValue y = getTestValue({1, 1, 3, 1});
-  auto [bcastX, bcastY] = reifyImplicitBroadcasting(builder, loc, x, y);
+  auto [bcastX, bcastY] = RMO::reifyImplicitBroadcasting(builder, loc, x, y);
   SmallVector<int64_t> refDims{1ll, 5ll, 3ll, 2ll};
   ASSERT_EQ(bcastX.getType().getIntDims(), refDims);
   ASSERT_EQ(bcastY.getType().getIntDims(), refDims);
@@ -108,7 +108,7 @@ TEST_F(BroadcastTest, Dynamic1) {
   MO::TensorValue x = getTestValue({5, 1});
   MO::TensorValue y = getTestValue(SmallVector<TypedAttr>{
       getIntegerDim(1ll), getUnknownDim(), getIntegerDim(1ll)});
-  auto [bcastX, bcastY] = reifyImplicitBroadcasting(builder, loc, x, y);
+  auto [bcastX, bcastY] = RMO::reifyImplicitBroadcasting(builder, loc, x, y);
   SmallVector<int64_t> refDims{1, 5ll, 1ll};
   ASSERT_EQ(bcastX.getType().getIntDims(), refDims);
   ASSERT_EQ(bcastY.getType().getIntDims(), refDims);
@@ -119,7 +119,7 @@ TEST_F(BroadcastTest, Dynamic2) {
       getIntegerDim(5ll), getUnknownDim(), getUnknownDim()});
   MO::TensorValue y = getTestValue(SmallVector<TypedAttr>{
       getIntegerDim(1ll), getUnknownDim(), getIntegerDim(1ll)});
-  auto [bcastX, bcastY] = reifyImplicitBroadcasting(builder, loc, x, y);
+  auto [bcastX, bcastY] = RMO::reifyImplicitBroadcasting(builder, loc, x, y);
   auto refDims = SmallVector<TypedAttr>{getIntegerDim(5ll), getUnknownDim(),
                                         getUnknownDim()};
   ASSERT_EQ(bcastX.getType().getDims(), ArrayRef<TypedAttr>(refDims));
@@ -141,7 +141,7 @@ TEST_F(BroadcastTest, Parametric) {
   MO::TensorValue x = getTestValue(shapeX);
   MO::TensorValue y = getTestValue(shapeY);
 
-  auto [bcastX, bcastY] = reifyImplicitBroadcasting(builder, loc, x, y);
+  auto [bcastX, bcastY] = RMO::reifyImplicitBroadcasting(builder, loc, x, y);
   ASSERT_EQ(bcastX.getType().getTypedShapeAttr(), shapeRefAttr);
   ASSERT_EQ(bcastY.getType().getTypedShapeAttr(), shapeRefAttr);
 }
@@ -150,7 +150,7 @@ TEST_F(BroadcastTest, ReshapeAndBroadcast) {
   MO::TensorValue x = getTestValue({5});
   MO::TensorValue y = getTestValue({3, 5, 1});
 
-  auto [bcastX1, bcastY1] = reifyImplicitBroadcasting(builder, loc, x, y);
+  auto [bcastX1, bcastY1] = RMO::reifyImplicitBroadcasting(builder, loc, x, y);
 
   SmallVector<int64_t> refDims1{3, 5, 5};
   SmallVector<int64_t> refDims2{3, 5, 1};
@@ -158,8 +158,8 @@ TEST_F(BroadcastTest, ReshapeAndBroadcast) {
   ASSERT_EQ(bcastX1.getType().getIntDims(), refDims1);
   ASSERT_EQ(bcastY1.getType().getIntDims(), refDims1);
 
-  auto bcastX2 =
-      reshapeAndBroadcastTo(builder, loc, x, SmallVector<int64_t>{1, 5, 1}, y);
+  auto bcastX2 = RMO::reshapeAndBroadcastTo(builder, loc, x,
+                                            SmallVector<int64_t>{1, 5, 1}, y);
 
   ASSERT_EQ(bcastX2.getType().getIntDims(), refDims2);
 }

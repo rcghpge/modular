@@ -4,14 +4,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/MOSupport/Broadcast.h"
+#include "GenericML/GraphCompiler/Conversion/RMOSupport/Broadcast.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOOps.h"
 #include "GenericML/Support/Assert.h"
 
-namespace M::MO {
+using M::MO::ShapeAttr;
+using M::MO::ShapeType;
+using M::MO::TensorType;
+using M::MO::TensorValue;
+
+namespace M::RMO {
 
 TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
                                   TensorValue from, TensorType reshapeType,
@@ -240,8 +245,8 @@ TensorValue broadcastFloatTo(OpBuilder &builder, Location loc,
   auto toShape = builder.create<RMO::MOShapeOfOp>(loc, toVal, graphOp);
 
   auto scalarConst =
-      builder.create<ConstantOp>(loc, scalar, toTy.getElementType());
+      builder.create<MO::ConstantOp>(loc, scalar, toTy.getElementType());
   return builder.create<RMO::MOBroadcastToOp>(loc, toTy, scalarConst, toShape);
 }
 
-} // namespace M::MO
+} // namespace M::RMO

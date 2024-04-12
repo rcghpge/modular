@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/MOSupport/Activations.h"
 #include "GenericML/GraphCompiler/Conversion/MOTarget/Conversion.h"
+#include "GenericML/GraphCompiler/Conversion/RMOSupport/Activations.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/RMODialect/RMODialect.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
@@ -25,7 +25,7 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     auto x = cast<MO::TensorValue>(operands[0]);
     auto alpha = cast<MO::TensorValue>(operands[1]);
-    auto result = convertPRelu(rewriter, op->getLoc(), x, alpha);
+    auto result = M::RMO::convertPRelu(rewriter, op->getLoc(), x, alpha);
     rewriter.replaceOp(op, result);
     return success();
   }
@@ -40,7 +40,7 @@ public:
   matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto x = cast<MO::TensorValue>(operands[0]);
-    auto result = convertRelu(rewriter, op->getLoc(), x);
+    auto result = M::RMO::convertRelu(rewriter, op->getLoc(), x);
     rewriter.replaceOp(op, result);
     return success();
   }
@@ -55,7 +55,7 @@ public:
   matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto x = cast<MO::TensorValue>(operands[0]);
-    auto result = convertRelu6(rewriter, op->getLoc(), x);
+    auto result = M::RMO::convertRelu6(rewriter, op->getLoc(), x);
     rewriter.replaceOp(op, result);
     return success();
   }

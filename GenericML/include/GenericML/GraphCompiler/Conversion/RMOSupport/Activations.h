@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Activation helpers for frontends converting to MO.
+// Activation helpers for frontends converting to RMO.
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,21 +15,22 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Builders.h"
 
-namespace M::MO {
-
+namespace M::RMO {
 /// Builds the operations needed to perform the PRelu operation in MO.
 /// PRelu(x) = max(x, broadcast(0)) + alpha * min(x, broadcast(0))
-TensorValue convertPRelu(OpBuilder &builder, Location loc, TensorValue x,
-                         TensorValue alpha);
+MO::TensorValue convertPRelu(OpBuilder &builder, Location loc,
+                             MO::TensorValue x, MO::TensorValue alpha);
 
 /// Builds the operations needed to perform the relu operation in MO.
 /// Relu(x) = max(x, broadcast(0))
-TensorValue convertRelu(OpBuilder &builder, Location loc, TensorValue x);
+MO::TensorValue convertRelu(OpBuilder &builder, Location loc,
+                            MO::TensorValue x);
 
 /// Builds the operations needed to perform the relu6 operation in MO.
 /// ReLU6(x) = max(broadcast(0), min(x, broadcast(6)))
-TensorValue convertRelu6(OpBuilder &builder, Location loc, TensorValue x);
+MO::TensorValue convertRelu6(OpBuilder &builder, Location loc,
+                             MO::TensorValue x);
 
-} // namespace M::MO
+} // namespace M::RMO
 
 #endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOSUPPORT_ACTIVATIONS_H

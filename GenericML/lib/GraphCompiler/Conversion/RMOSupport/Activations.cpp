@@ -4,22 +4,24 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/MOSupport/Activations.h"
+#include "GenericML/GraphCompiler/Conversion/RMOSupport/Activations.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOOps.h"
 
-namespace M::MO {
+using M::MO::TensorValue;
+
+namespace M::RMO {
 
 TensorValue convertPRelu(OpBuilder &builder, Location loc, TensorValue x,
                          TensorValue alpha) {
-  auto zero = builder.create<ConstantOp>(loc, 0.f);
+  auto zero = builder.create<MO::ConstantOp>(loc, 0.f);
 
   TensorValue xValue;
   bool cast = false;
   if (x.getType().getDtype() != zero.getType().getDtype()) {
     cast = true;
-    xValue = builder.create<CastOp>(loc, x, zero.getType().getDtype());
+    xValue = builder.create<RMO::MOCastOp>(loc, x, zero.getType().getDtype());
   } else {
     xValue = x;
   }
@@ -27,48 +29,54 @@ TensorValue convertPRelu(OpBuilder &builder, Location loc, TensorValue x,
   auto broadcastZero = builder.create<RMO::BroadcastLikeOp>(loc, zero, xValue);
   auto broadcastAlpha =
       builder.create<RMO::BroadcastLikeOp>(loc, alpha, xValue);
-  auto min = builder.create<MinOp>(loc, xValue, broadcastZero);
-  auto minXAlpha = builder.create<MulOp>(loc, broadcastAlpha, min);
-  auto max = builder.create<MaxOp>(loc, xValue, broadcastZero);
+  auto min = builder.create<RMO::MOMinOp>(loc, xValue.getType(), xValue,
+                                          broadcastZero);
+  auto minXAlpha = builder.create<RMO::MOMulOp>(loc, broadcastAlpha.getType(),
+                                                broadcastAlpha, min);
+  auto max = builder.create<RMO::MOMaxOp>(loc, xValue.getType(), xValue,
+                                          broadcastZero);
 
-  auto result = builder.create<AddOp>(loc, max, minXAlpha);
+  auto result =
+      builder.create<RMO::MOAddOp>(loc, max.getType(), max, minXAlpha);
   if (cast) {
-    return builder.create<CastOp>(loc, result, x.getType().getDtype());
+    return builder.create<RMO::MOCastOp>(loc, result, x.getType().getDtype());
   } else {
     return result;
   }
 }
 
 TensorValue convertRelu(OpBuilder &builder, Location loc, TensorValue x) {
-  auto zero = builder.create<ConstantOp>(loc, 0.f);
+  auto zero = builder.create<MO::ConstantOp>(loc, 0.f);
   auto xType = x.getType().getDtype();
   bool cast = false;
 
   TensorValue xValue;
   if (x.getType().getDtype() != zero.getType().getDtype()) {
     // Cast X to fp32, then cast back
-    xValue = builder.create<CastOp>(loc, x, zero.getType().getDtype());
+    xValue = builder.create<RMO::MOCastOp>(loc, x, zero.getType().getDtype());
     cast = true;
   } else {
     xValue = x;
   }
 
   auto broadcastZero = builder.create<RMO::BroadcastLikeOp>(loc, zero, xValue);
-  auto max = builder.create<MaxOp>(loc, xValue, broadcastZero);
+  auto max = builder.create<RMO::MOMaxOp>(loc, xValue.getType(), xValue,
+                                          broadcastZero);
   if (cast) {
-    return builder.create<CastOp>(loc, max, xType);
+    return builder.create<RMO::MOCastOp>(loc, max, xType);
   } else {
     return max;
   }
 }
 
 TensorValue convertRelu6(OpBuilder &builder, Location loc, TensorValue x) {
-  auto six = builder.create<ConstantOp>(loc, 6.f);
-  auto zero = builder.create<ConstantOp>(loc, 0.f);
+  auto six = builder.create<MO::ConstantOp>(loc, 6.f);
+  auto zero = builder.create<MO::ConstantOp>(loc, 0.f);
   TensorValue sixValue, zeroValue;
   if (x.getType().getDtype() != six.getType().getDtype()) {
-    sixValue = builder.create<CastOp>(loc, six, x.getType().getDtype());
-    zeroValue = builder.create<CastOp>(loc, zero, x.getType().getDtype());
+    sixValue = builder.create<RMO::MOCastOp>(loc, six, x.getType().getDtype());
+    zeroValue =
+        builder.create<RMO::MOCastOp>(loc, zero, x.getType().getDtype());
   } else {
     sixValue = six;
     zeroValue = zero;
@@ -79,4 +87,4 @@ TensorValue convertRelu6(OpBuilder &builder, Location loc, TensorValue x) {
   return builder.create<MaxOp>(loc, broadcastZero, min);
 }
 
-} // namespace M::MO
+} // namespace M::RMO
