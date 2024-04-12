@@ -71,7 +71,6 @@ void printParamDecls(OpAsmPrinter &p, Operation *,
 SmallVector<ConstantOp> M::MO::tryGetConstantOpsOfRank(TensorValue val,
                                                        size_t rank) {
   SmallVector<ConstantOp> constantOps;
-
   Operation *inputOp = val.getDefiningOp();
 
   // Handle identity chains.
@@ -88,20 +87,19 @@ SmallVector<ConstantOp> M::MO::tryGetConstantOpsOfRank(TensorValue val,
     return false;
   };
 
+  // TODO(#37571)
   while (isIdentityLike(inputOp))
     inputOp = inputOp->getOperand(0).getDefiningOp();
 
   // Handle concatenations of constant tensors.
-  auto concatOp = dyn_cast_or_null<ConcatOp>(inputOp);
-  if (concatOp) {
-    for (unsigned i = 1, e = concatOp->getNumOperands(); i < e; ++i) {
-      TensorValue operand = cast<TensorValue>(concatOp->getOperand(i));
+  if (auto concatOp = dyn_cast_or_null<ConcatOp>(inputOp)) {
+    for (Value operand : concatOp.getInputs()) {
+      TensorValue tensorOperand = cast<TensorValue>(operand);
       SmallVector<ConstantOp> operandConstantOps =
-          tryGetConstantOpsOfRank(operand, rank);
+          tryGetConstantOpsOfRank(tensorOperand, rank);
       if (operandConstantOps.empty())
         return {};
-      constantOps.insert(constantOps.end(), operandConstantOps.begin(),
-                         operandConstantOps.end());
+      llvm::append_range(constantOps, operandConstantOps);
     }
     return constantOps;
   }
