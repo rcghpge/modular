@@ -27,7 +27,7 @@ fn test_insert_transform() raises:
     var y = Tensor[DType.int64](TensorShape(), 2)
     var expected = Tensor[DType.int64](TensorShape(), 6)
 
-    var actual = _testing.execute_binary[DType.int64, DType.int64](g, x, y)
+    var actual = _testing.execute_binary[DType.int64](g, x, y)
 
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 

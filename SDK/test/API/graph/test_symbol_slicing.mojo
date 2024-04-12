@@ -36,7 +36,7 @@ fn test_vector_index_sym() raises:
     var i = Tensor[DType.int64](TensorShape(), 1)
     var expected = Tensor[DType.int64](TensorShape(), 2)
 
-    var actual = _testing.execute_binary[DType.int64, DType.int64](g, x, i)
+    var actual = _testing.execute_binary[DType.int64](g, x, i)
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
@@ -65,7 +65,7 @@ fn test_vector_slice_sym() raises:
     var i = Tensor[DType.int64](TensorShape(), 1)
     var expected = Tensor[DType.int64](TensorShape(2), 2, 3)
 
-    var actual = _testing.execute_binary[DType.int64, DType.int64](g, x, i)
+    var actual = _testing.execute_binary[DType.int64](g, x, i)
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
@@ -94,7 +94,7 @@ fn test_matrix_index_sym() raises:
     var i = Tensor[DType.int64](TensorShape(), 1)
     var expected = Tensor[DType.int64](TensorShape(3), 4, 5, 6)
 
-    var actual = _testing.execute_binary[DType.int64, DType.int64](g, x, i)
+    var actual = _testing.execute_binary[DType.int64](g, x, i)
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
@@ -123,7 +123,7 @@ fn test_matrix_slice_sym() raises:
     var i = Tensor[DType.int64](TensorShape(), 1)
     var expected = Tensor[DType.int64](TensorShape(2, 3), 4, 5, 6, 7, 8, 9)
 
-    var actual = _testing.execute_binary[DType.int64, DType.int64](g, x, i)
+    var actual = _testing.execute_binary[DType.int64](g, x, i)
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
@@ -140,7 +140,7 @@ fn test_matrix_slice_double() raises:
     var i = Tensor[DType.int64](TensorShape(), 1)
     var expected = Tensor[DType.int64](TensorShape(2, 2), 4, 5, 7, 8)
 
-    var actual = _testing.execute_binary[DType.int64, DType.int64](g, x, i)
+    var actual = _testing.execute_binary[DType.int64](g, x, i)
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
