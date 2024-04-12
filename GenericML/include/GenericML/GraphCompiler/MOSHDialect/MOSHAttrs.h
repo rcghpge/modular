@@ -47,6 +47,9 @@ void printShapeValue(AsmPrinter &p, ArrayRef<TypedAttr> values,
 /// Print the parametric dimensions of a MOSH::ShapeAttr.
 void printShapeValue(AsmPrinter &p, ArrayRef<TypedAttr> values);
 
+/// Print a single parametric dimensions from a MOSH::ShapeAttr.
+void printDimensionValue(AsmPrinter &p, TypedAttr value);
+
 } // namespace M::MOSH
 
 //===----------------------------------------------------------------------===//

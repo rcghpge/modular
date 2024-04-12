@@ -116,13 +116,16 @@ ParseResult M::MOSH::parseShapeValue(AsmParser &p,
   return parseShapeValue(p, values);
 }
 
+void M::MOSH::printDimensionValue(AsmPrinter &p, TypedAttr value) {
+  if (isa<KGEN::UnknownAttr>(value))
+    p << '?';
+  else
+    KGEN::printParamValue(p, value);
+}
+
 void M::MOSH::printShapeValue(AsmPrinter &p, ArrayRef<TypedAttr> values) {
-  llvm::interleaveComma(values, p, [&](TypedAttr value) {
-    if (isa<KGEN::UnknownAttr>(value))
-      p << '?';
-    else
-      KGEN::printParamValue(p, value);
-  });
+  llvm::interleaveComma(
+      values, p, [&](TypedAttr value) { printDimensionValue(p, value); });
 }
 
 void M::MOSH::printShapeValue(AsmPrinter &p, ArrayRef<TypedAttr> values,

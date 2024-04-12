@@ -15,6 +15,7 @@
 #include "GenericML/GraphCompiler/RMODialect/RMOInterfaces.h"
 #include "GenericML/Support/Assert.h"
 #include "GenericML/Support/Dims.h"
+#include "Support/Compiler/ParserUtils.h"
 #include "Support/ML/RangeUtils.h"
 #include <optional>
 
@@ -182,7 +183,7 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
 
   auto isSafeToCast = [&](DType dtype) -> ErrorOrSuccess {
     auto build_error = [&]() {
-      return Error(Twine("unsafe cast from ")
+      return Error(Twine("Unsafe cast from ")
                        .concat(dtype.getAsString())
                        .concat(" to ")
                        .concat(result.getAsString())
@@ -203,7 +204,7 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
       std::optional<ssize_t> resultPrecision =
           result.getSignificandPrecisionInBits();
       if (!resultPrecision)
-        return Error(Twine("calculated result type ")
+        return Error(Twine("Calculated result type ")
                          .concat(result.getAsString())
                          .concat(" is not supported by the modular stack."));
 
@@ -240,17 +241,18 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
 /// return a new type which returns a more "refined type" using information
 /// from both existing types
 ///
-/// This function only calculates the expected shape. It does not deal with any
-/// actual checks/asserts. All asserts are dealt with by adding asserting
-/// rebinds during lowering.
-static TensorType refineBroadcastedShape(TensorType ty1, TensorType ty2) {
+/// Only static one dimensions are valid for broadcasting.
+/// Any other dimension mismatches will return an error.
+static ErrorOr<TensorType> refineBroadcastedShape(TensorType ty1,
+                                                  TensorType ty2) {
   GENERICML_ASSERT(!ty1.isDynamicallyRanked() && !ty2.isDynamicallyRanked())
       << " only static rank is supported";
 
   auto idxTy = IndexType::get(ty1.getContext());
   auto intDim1 = IntegerAttr::get(idxTy, 1ll);
-  auto refineDim = [&intDim1](std::optional<TypedAttr> dim1,
-                              std::optional<TypedAttr> dim2) {
+  auto refineDim = [&ty1, ty2, intDim1](
+                       std::optional<TypedAttr> dim1,
+                       std::optional<TypedAttr> dim2) -> ErrorOr<TypedAttr> {
     if (!dim1.has_value())
       return dim2.value();
     if (!dim2.has_value())
@@ -259,6 +261,7 @@ static TensorType refineBroadcastedShape(TensorType ty1, TensorType ty2) {
     TypedAttr dim1Val = dim1.value();
     TypedAttr dim2Val = dim2.value();
 
+    // Equivalent is always good.
     if (dim1Val == dim2Val)
       return dim1Val;
 
@@ -268,31 +271,40 @@ static TensorType refineBroadcastedShape(TensorType ty1, TensorType ty2) {
     if (dim2Val == intDim1)
       return dim1Val;
 
-    // Prefer anything other than `?`
-    if (TensorType::isUnknownDimParam(dim1Val))
-      return dim2Val;
-    if (TensorType::isUnknownDimParam(dim2Val))
+    // TODO: restrict this further.
+    // For now, 2 different parametric dimensions are considered equivalent.
+    // The current graph api use `[?] + [?]` which will become `[D1] + [D2]`, so
+    // we need to allow it for now.
+    if (TensorType::isParameterizedDimParam(dim1Val) &&
+        TensorType::isParameterizedDimParam(dim2Val))
       return dim1Val;
 
-    // Prefer static integers over anything else
-    if (TensorType::isIntegerDimParam(dim1Val))
-      return dim1Val;
-    if (TensorType::isIntegerDimParam(dim2Val))
-      return dim2Val;
-
-    // Otherwise both are parameters, just favor the first
-    GENERICML_ASSERT(TensorType::isParameterizedDimParam(dim1Val) &&
-                     TensorType::isParameterizedDimParam(dim2Val))
-        << " a new dimension type was added, but this logic has not been "
-           "updated to handle it";
-    return dim1Val;
+    std::string errorMsg;
+    llvm::raw_string_ostream os(errorMsg);
+    StreamAsmPrinter printer(os);
+    printer << "Inputs shapes ";
+    MOSH::printShapeTypedAttr(printer, ty1.getTypedShapeAttr());
+    printer << " and ";
+    MOSH::printShapeTypedAttr(printer, ty2.getTypedShapeAttr());
+    printer << " are not compatible. Dims \"";
+    MOSH::printDimensionValue(printer, dim1Val);
+    printer << "\" and \"";
+    MOSH::printDimensionValue(printer, dim2Val);
+    printer << "\" are neither equivalent nor broadcastable. Insert an "
+               "explicit rebind if these dims will be equivalent at runtime.";
+    return Error(Twine(errorMsg));
   };
 
   SmallVector<TypedAttr> newDims;
   newDims.reserve(std::max(ty1.getRank(), ty2.getRank()));
   for (auto [dim1, dim2] : llvm::zip_longest(llvm::reverse(ty1.getDims()),
-                                             llvm::reverse(ty2.getDims())))
-    newDims.push_back(refineDim(dim1, dim2));
+                                             llvm::reverse(ty2.getDims()))) {
+    ErrorOr<TypedAttr> refined = refineDim(dim1, dim2);
+    if (refined.isError()) {
+      return refined.takeError();
+    }
+    newDims.push_back(refined.takeValue());
+  }
 
   return ty1.cloneWith(SmallVector<TypedAttr>(llvm::reverse(newDims)));
 }
@@ -320,10 +332,14 @@ static LogicalResult inferReturnTypesBinaryElemwiseImpl(
                                    StringRef{promotedDtype.getError()});
   }
 
-  TensorType resultType = refineBroadcastedShape(xType, yType);
+  ErrorOr<TensorType> resultType = refineBroadcastedShape(xType, yType);
+  if (resultType.isError()) {
+    return mlir::emitOptionalError(location, "Failed to resolve valid shape: ",
+                                   StringRef{resultType.getError()});
+  }
 
   inferredReturnTypes.push_back(
-      resultType.cloneWith(promotedDtype.takeValue()));
+      resultType.takeValue().cloneWith(promotedDtype.takeValue()));
   return success();
 }
 
@@ -383,9 +399,13 @@ static LogicalResult inferReturnTypesBinaryComparisonImpl(
                                    StringRef{promotedDtype.getError()});
   }
 
-  TensorType resultType = refineBroadcastedShape(xType, yType);
+  ErrorOr<TensorType> resultType = refineBroadcastedShape(xType, yType);
+  if (resultType.isError()) {
+    return mlir::emitOptionalError(location, "Failed to resolve valid shape: ",
+                                   StringRef{resultType.getError()});
+  }
 
-  inferredReturnTypes.push_back(resultType.cloneWith(DType::kBool));
+  inferredReturnTypes.push_back(resultType.takeValue().cloneWith(DType::kBool));
   return success();
 }
 

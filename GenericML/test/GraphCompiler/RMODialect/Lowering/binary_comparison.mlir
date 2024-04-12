@@ -24,19 +24,6 @@ mo.graph @binary_comparison_static_broadcast(%arg0: !mo.tensor<[10, 4, 1], si64>
 
 // -----
 
-mo.graph @binary_comparison_dyn_static(%arg0: !mo.tensor<[?], si64>, %arg1: !mo.tensor<[5], si64>) -> !mo.tensor<[5], bool> {
-    %1 = rmo.greater(%arg0, %arg1) : !mo.tensor<[?], si64>, !mo.tensor<[5], si64>
-    mo.output %1: !mo.tensor<[5], bool>
-}
-// CHECK-LABEL: mo.graph
-// CHECK-SAME: @binary_comparison_dyn_static<[[D1:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[[[D1]]], si64>, [[VARG1:[^ ]*]]: !mo.tensor<[5], si64>) -> !mo.tensor<[5], bool> no_inline {
-// CHECK-NEXT: kgen.param.declare [[RMO_SH_CH4:[^ ]*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "RMO rebind shape check failed." : !kgen.string}, eq([[D1]], 5))>
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind([[VARG0]]) : !mo.tensor<[[[D1]]], si64> -> !mo.tensor<[5], si64>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.greater([[V0]], [[VARG1]]) : (!mo.tensor<[5], si64>, !mo.tensor<[5], si64>) -> !mo.tensor<[5], bool>
-// CHECK-NEXT: mo.output [[V1]] : !mo.tensor<[5], bool>
-
-// -----
-
 mo.graph @binary_comparison_dyn_static_broadcast(%arg0: !mo.tensor<[?], si64>, %arg1: !mo.tensor<[5, 1], si64>) -> !mo.tensor<[5, ?], bool> {
     %1 = rmo.greater_equal(%arg0, %arg1) : !mo.tensor<[?], si64>, !mo.tensor<[5, 1], si64>
     mo.output %1: !mo.tensor<[5, ?], bool>

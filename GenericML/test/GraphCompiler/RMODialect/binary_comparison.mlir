@@ -43,7 +43,15 @@ mo.graph @binary_comparison_not_ok_unranked(%arg0: !mo.tensor<?, si64>, %arg1: !
 // -----
 
 mo.graph @binary_comparison_not_ok_bad_cast_ui8_si8(%arg0: !mo.tensor<[7], si8>, %arg1: !mo.tensor<[7], ui8>) -> !mo.tensor<[7], bool> {
-    // expected-error@below {{Failed to resolve valid dtype: unsafe cast from ui8 to si8. Insert an explicit cast op if this conversion is wanted.}}
+    // expected-error@below {{Failed to resolve valid dtype: Unsafe cast from ui8 to si8. Insert an explicit cast op if this conversion is wanted.}}
     %1 = rmo.equal(%arg0, %arg1) : !mo.tensor<[7], si8>, !mo.tensor<[7], ui8>
     mo.output %1: !mo.tensor<[7], bool>
+}
+
+// -----
+
+mo.graph @binary_elemwise_dyn_static_bad_shape(%arg0: !mo.tensor<[1, ?], si64>, %arg1: !mo.tensor<[?, 5], si64>) -> !mo.tensor<[?, 5], bool> {
+    // expected-error@below {{Inputs shapes [1, ?] and [?, 5] are not compatible. Dims "?" and "5" are neither equivalent nor broadcastable. Insert an explicit rebind if these dims will be equivalent at runtime.}}
+    %1 = rmo.greater(%arg0, %arg1) : !mo.tensor<[1, ?], si64>, !mo.tensor<[?, 5], si64>
+    mo.output %1: !mo.tensor<[?, 5], bool>
 }

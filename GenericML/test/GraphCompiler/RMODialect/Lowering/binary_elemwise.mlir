@@ -24,19 +24,6 @@ mo.graph @binary_elemwise_static_broadcast(%arg0: !mo.tensor<[10, 4, 1], si64>, 
 
 // -----
 
-mo.graph @binary_elemwise_dyn_static(%arg0: !mo.tensor<[?], si64>, %arg1: !mo.tensor<[5], si64>) -> !mo.tensor<[5], si64> {
-    %1 = rmo.mul(%arg0, %arg1) : !mo.tensor<[?], si64>, !mo.tensor<[5], si64>
-    mo.output %1: !mo.tensor<[5], si64>
-}
-// CHECK-LABEL: mo.graph
-// CHECK-SAME: @binary_elemwise_dyn_static<[[D1:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[[[D1]]], si64>, [[VARG1:[^ ]*]]: !mo.tensor<[5], si64>) -> !mo.tensor<[5], si64> no_inline {
-// CHECK-NEXT: kgen.param.declare [[RMO_SH_CH4:[^ ]*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "RMO rebind shape check failed." : !kgen.string}, eq([[D1]], 5))>
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind([[VARG0]]) : !mo.tensor<[[[D1]]], si64> -> !mo.tensor<[5], si64>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.mul([[V0]], [[VARG1]]) : !mo.tensor<[5], si64>
-// CHECK-NEXT: mo.output [[V1]] : !mo.tensor<[5], si64>
-
-// -----
-
 mo.graph @binary_elemwise_dyn_static_broadcast(%arg0: !mo.tensor<[?], si64>, %arg1: !mo.tensor<[5, 1], si64>) -> !mo.tensor<[5, ?], si64> {
     %1 = rmo.div(%arg0, %arg1) : !mo.tensor<[?], si64>, !mo.tensor<[5, 1], si64>
     mo.output %1: !mo.tensor<[5, ?], si64>
