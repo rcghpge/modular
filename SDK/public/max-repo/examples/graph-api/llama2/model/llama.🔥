@@ -98,7 +98,7 @@ struct Attention[float_dtype: DType = DType.float32]:
 
         var batch_size = input_shape[0]
         var seq_len = input_shape[1]
-        var head_dim = g.scalar[DType.int64](self.head_dim)
+        var head_dim = g.scalar[float_dtype](self.head_dim)
 
         var xq = input @ self.wq
         var xk = input @ self.wk

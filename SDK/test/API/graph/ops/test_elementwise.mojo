@@ -8,7 +8,7 @@
 from tensor import Tensor, TensorShape
 
 from max.graph import _testing, Graph, MOTensor, TypeTuple, Dim
-from max.graph.ops.elementwise import equal
+from max.graph.ops.elementwise import equal, abs, round
 from testing import assert_raises
 
 
@@ -146,12 +146,66 @@ fn test_matching_dynamic() raises:
     _testing.assert_tensors_almost_equal(expected, actual, 1e-4)
 
 
+fn test_unary() raises:
+    var g = Graph(
+        TypeTuple(MOTensor(DType.int32, 1, 2, 3), MOTensor(DType.int32, 1)),
+        MOTensor(DType.int32, 1, 2, 3),
+    )
+    g.output(abs(g[0]))
+    g.verify()
+
+    var x = Tensor[DType.int32](TensorShape(1, 2, 3), -2, -1, 0, 1, 2, 3)
+    var ignored = Tensor[DType.int32](TensorShape(1), 1)
+    var expected = Tensor[DType.int32](TensorShape(1, 2, 3), 2, 1, 0, 1, 2, 3)
+
+    var actual = _testing.execute_binary(g, x, ignored)
+    _testing.assert_tensors_equal(expected, actual)
+
+
+fn test_unary_float() raises:
+    var g = Graph(
+        TypeTuple(MOTensor(DType.float32, 1, 2, 3), MOTensor(DType.float32, 1)),
+        MOTensor(DType.float32, 1, 2, 3),
+    )
+    g.output(round(g[0]))
+    g.verify()
+
+    var x = Tensor[DType.float32](
+        TensorShape(1, 2, 3), -2.2, -1.7, 0.2, 1.2, 2.9, 3.6
+    )
+    var ignored = Tensor[DType.float32](TensorShape(1), -1.0)
+    var expected = Tensor[DType.float32](
+        TensorShape(1, 2, 3), -2.0, -2.0, 0.0, 1.0, 3.0, 4.0
+    )
+
+    var actual = _testing.execute_binary(g, x, ignored)
+    _testing.assert_tensors_almost_equal(expected, actual, 1e-4)
+
+
+fn test_unary_bad_dtype() raises:
+    var g = Graph(
+        TypeTuple(MOTensor(DType.int32, 1, 2, 3), MOTensor(DType.int32, 1)),
+        MOTensor(DType.int32, 1, 2, 3),
+    )
+    g.output(round(g[0]))
+    g.verify()
+
+    var x = Tensor[DType.int32](TensorShape(1, 2, 3), -2, -1, 0, 1, 2, 3)
+    var ignored = Tensor[DType.int32](TensorShape(1), -1)
+    var expected = Tensor[DType.int32](TensorShape(1, 2, 3), -2, -1, 0, 1, 2, 3)
+
+    var actual = _testing.execute_binary(g, x, ignored)
+    _testing.assert_tensors_equal(expected, actual)
+
+
 def main():
     test_basic()
     test_literal()
     test_implicit_promotion()
     test_matching_dynamic()
     test_comparison_results_in_bool()
+    test_unary()
+    test_unary_float()
 
     # TODO: get the raised exception to capture the message.
     # with assert_raises(contains="unsafe cast from si16 to f16. Insert an explicit cast op if this conversion is wanted."):
@@ -161,3 +215,11 @@ def main():
     # TODO: Update rmo.rebind_tensor_shape to enable a nice message here.
     with assert_raises(contains="RMO rebind shape check failed"):
         test_bad_broadcast_dynamic_one()
+
+    with assert_raises(
+        contains=(
+            "mo.round only supports floating point inputs. Please explicitly"
+            " cast to your desired float type first."
+        )
+    ):
+        test_unary_bad_dtype()
