@@ -39,42 +39,8 @@ using BufferRefLifetimeProfilerEntry =
 
 /// A reference (aka smart pointer) to an underlying buffer of known size but
 /// uninterpreted and possibly uninitialized bytes, along with metadata needed
-/// to interop with the Modular runtime and free the buffer when required.
-///
-/// The underlying buffer may be 'owned', 'borrowed' or 'foreign'.
-/// An owning reference frees its buffer when destroyed. A 'borrowed' reference
-/// does not attempt to free its buffer. A 'foreign' reference holds a
-/// 'foreign object' instead of the buffer itself, and a matching
-/// ForeignBufferInterface registered with the ForeignBufferInterfaceRegistry
-/// supplied methods to extract and (if required) free the underlying buffer.
-///
-/// References may be moved (the underlying buffer is transferred), explicitly
-/// copied (the underlying buffer will be copied), and borrowed (the new
-/// reference will contain a buffer alias).
-///
-/// Zero size buffers are representable and are distinct from the 'null' buffer
-/// (built by the default constructor). A zero size buffer still has a non-null
-/// buffer pointer, though obviously there's nothing that can be done with that
-/// pointer. (We are not sensitive to the system's malloc handling of zero
-/// sizes, which could return null or a pointer.)
-///
-/// Buffers may be marked immutable, however this will only trigger an assert
-/// on a call to getMutableBuffer and no deeper protection is enforced.
-///
-/// All references remember their (optional) alignment constraint, which may be
-/// used when the buffer is copied.
-///
-/// All borrowing references capture a coarse-grained notion of lifetime.
-/// This is used to ensure borrows are done safely, particularly when crossing
-/// the boundary between Modular and third-party code. If it is difficult to
-/// statically guarantee a borrowed buffer will outlive the borrow then an
-/// AnyAsyncValueRef may be captured in the buffer reference to keep the
-/// object owning the borrowed buffer alive.
-///
-/// CAUTION: Though movable, this type is 32 bytes on 64-bit systems (without
-/// profiling) so best not to consider it a simple handle.
-/// WARNING: If the BufferRef holds a 'owningRef' then a move will invoke
-/// atomic reference counting.
+/// to interop with the Modular runtime. Each buffer has an async value to its
+/// storage which will be freed on deconstruction.
 class BufferRef {
 public:
   /// DEPRECATED.
@@ -116,15 +82,9 @@ public:
                                               std::optional<size_t> alignment);
 
   /// Creates an 'owning' reference by allocating a new underlying buffer of
-  /// size and alignment. The allocated buffer will be freed when the reference
-  /// is destroyed. Since ownership rests with the caller, the lifetime will
-  /// be set to 'local' by default. If copyFrom is non-null its contents will be
-  /// copied into the new underlying buffer. Otherwise the new underlying buffer
-  /// is left uninitialized. It is valid for size to be zero, and the resulting
-  /// reference will not be 'null'.
+  /// size and alignment.
   static BufferRef createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
-                               std::optional<size_t> alignment,
-                               const void *copyFrom = nullptr);
+                               std::optional<size_t> alignment);
   /// Creates an 'owning' reference of size and alignment using takeFrom void*
   /// ptr that is allocated by caller. There is an assumption that the takeFrom
   /// pointer is allocated by caller via untime->getAllocator(). The allocated
@@ -137,19 +97,9 @@ public:
   // Core APIs for working with a BufferRef.
   //===--------------------------------------------------------------------===//
 
-  /// Returns a borrowing reference to the buffer of this reference.
-  /// This reference may be owning or borrowing, and the underlying buffer must
-  /// outlive the returned reference. The result will have the given
-  /// borrowLifetime.
-  ///
-  /// Assert fails if asking to borrow from a borrow whose lifetime is
-  /// not greater or equal to borrowLifetime.
+  /// Returns a new BufferRef pointing to the same data as this buffer. The new
+  /// BufferRef extends the storage lifetime of the memory.
   BufferRef borrow() const;
-
-  /// Returns an owning reference to a deep copy of this reference.
-  /// The given runtime will be used for the copy. Any alignment
-  /// constraint in this reference will be respected by the copy.
-  BufferRef deepCopy(LLCL::CompactRuntimePtr newRuntime) const;
 
   /// Returns a pointer to the underlying buffer. Returns nullptr if the
   /// reference is 'null' or has been moved out of. A zero sized buffer
@@ -180,9 +130,9 @@ public:
 
   /// If the buffer is owning return the memory block which owns the memory.
   AnyAsyncValueRef getMemStorageHandle() {
-    if (!owningRef)
+    if (!storageRef)
       return {};
-    return owningRef.copy();
+    return storageRef.copy();
   }
 
   void printDebug(raw_ostream &os) const;
@@ -203,7 +153,7 @@ public:
 
 private:
   /// Constructs a kOwned or kBorrowed reference.
-  BufferRef(void *buffer, size_t size, AnyAsyncValueRef owningRef,
+  BufferRef(void *buffer, size_t size, AnyAsyncValueRef storageRef,
             llvm::MaybeAlign alignment,
             BufferRefLifetimeProfilerEntry profilerEntry
 #if MODULAR_PARANOID
@@ -211,7 +161,7 @@ private:
             LLCL::ResourceRef resource, LLCL::ResourceUse use
 #endif
             )
-      : data(buffer), size(size), owningRef(std::move(owningRef)),
+      : data(buffer), size(size), storageRef(std::move(storageRef)),
         alignment(alignment), profilerEntry(std::move(profilerEntry))
 #if MODULAR_PARANOID
         ,
@@ -228,17 +178,14 @@ private:
   // buffer/object, and size fields are reset.
   void reset();
 
-  /// If kOwned or kBorrowed, the underlying buffer.
-  /// If kForeign, a pointer to the 'foreign' object backing the buffer.
-  /// If kNull, null.
+  /// The data contained in the buffer
   void *data = nullptr;
 
   /// The size of the underlying buffer.
   size_t size = 0;
-  /// If kOwned or kNull, null.
-  /// If kBorrowed or kForeign, an optional reference to an AsyncValue which
-  /// owns or otherwise keeps the borrowed buffer or foreign object alive.
-  AnyAsyncValueRef owningRef;
+
+  /// Tracks the storage object which preserves the lifetime of data.
+  AnyAsyncValueRef storageRef;
 
   /// Alignment of underlying buffer, or None if no specific alignment given.
   llvm::MaybeAlign alignment = std::nullopt; // 2 bytes

@@ -43,26 +43,6 @@ static bool haveSameContents(GML::Tensor &lhs, GML::Tensor &rhs) {
          0;
 }
 
-TEST(Tensor, ReleaseBufferRef) {
-  auto runtime = getRuntime();
-  GML::Tensor tensor = makeTensor(*runtime);
-  GML::Tensor tensor2 = tensor.deepCopy(*runtime);
-  GML::BufferRef ref = tensor.releaseBufferRef();
-  ASSERT_TRUE(tensor.getBuffer() == nullptr);
-  ASSERT_EQ(ref.getSize(), tensor2.getSizeInBytes());
-  ASSERT_EQ(std::memcmp(ref.getBuffer(), tensor2.getBuffer(), ref.getSize()),
-            0);
-}
-
-TEST(Tensor, DeepCopy) {
-  auto runtime = getRuntime();
-  GML::Tensor tensor = makeTensor(*runtime);
-  GML::Tensor deepCopy = tensor.deepCopy(*runtime);
-  ASSERT_TRUE(haveSameContents(tensor, deepCopy));
-  incrementContents(tensor);
-  ASSERT_FALSE(haveSameContents(tensor, deepCopy));
-}
-
 TEST(Tensor, Borrow) {
   auto runtime = getRuntime();
   GML::Tensor tensor = makeTensor(*runtime);

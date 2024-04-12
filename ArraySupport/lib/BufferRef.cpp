@@ -14,14 +14,6 @@
 using namespace M;
 using namespace M::GML;
 
-// We'll need an address for zero sized buffers. Use this as the target.
-static constexpr uint64_t kDummyTargetOfEmptyBuffer = 0xdeadbeef;
-
-static void *getDummyTargetOfEmptyBuffer() {
-  return const_cast<void *>(
-      reinterpret_cast<const void *>(&kDummyTargetOfEmptyBuffer));
-}
-
 static constexpr llvm::MaybeAlign
 makeMaybeAlign(std::optional<size_t> alignment) {
   return alignment.has_value() ? llvm::MaybeAlign(*alignment) : std::nullopt;
@@ -53,39 +45,33 @@ BufferRef::createWithNonTrackedMemory(void *buffer, size_t size,
 }
 
 BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
-                                 std::optional<size_t> alignment,
-                                 const void *copyFrom) {
+                                 std::optional<size_t> alignment) {
   // Special case for empty buffer
   if (size == 0) {
-    return BufferRef::createWithNonTrackedMemory(getDummyTargetOfEmptyBuffer(),
-                                                 size, alignment);
+    return BufferRef::createWithNonTrackedMemory(nullptr, size, alignment);
   }
 
-  AnyAsyncValueRef owningRef;
-  owningRef = owningRef.createReady<OwnedMemoryBlock>(runtime, size, alignment,
-                                                      runtime);
-  void *buffer = owningRef.get<OwnedMemoryBlock>().data;
-  if (copyFrom) {
-    LLCL::profiledMemcpy(buffer, copyFrom, size);
-  } else {
+  AnyAsyncValueRef storageRef;
+  storageRef = storageRef.createReady<OwnedMemoryBlock>(runtime, size,
+                                                        alignment, runtime);
+  void *buffer = storageRef.get<OwnedMemoryBlock>().data;
 #if MODULAR_PARANOID
-    // Set the buffer contents to a value which will more obviously
-    // upset tests if used before initialized.
-    memset(buffer, 0xad, size);
+  // Set the buffer contents to a value which will more obviously
+  // upset tests if used before initialized.
+  memset(buffer, 0xad, size);
 #endif
-  }
-  return BufferRef::create(buffer, size, std::move(owningRef), alignment);
+  return BufferRef::create(buffer, size, std::move(storageRef), alignment);
 }
 
 // Create an owned reference from a taken void* pointer -- This taken
 // pointer will not be freed by anyone else except by the buffer-ref now.
 BufferRef BufferRef::take(LLCL::CompactRuntimePtr runtime, size_t size,
                           size_t alignment, void *takeFrom) {
-  AnyAsyncValueRef owningRef;
-  owningRef = owningRef.createReady<OwnedMemoryBlock>(runtime, size, alignment,
-                                                      runtime, takeFrom);
-  void *buffer = owningRef.get<OwnedMemoryBlock>().data;
-  return BufferRef::create(buffer, size, std::move(owningRef), alignment);
+  AnyAsyncValueRef storageRef;
+  storageRef = storageRef.createReady<OwnedMemoryBlock>(
+      runtime, size, alignment, runtime, takeFrom);
+  void *buffer = storageRef.get<OwnedMemoryBlock>().data;
+  return BufferRef::create(buffer, size, std::move(storageRef), alignment);
 }
 
 BufferRef::~BufferRef() {
@@ -104,12 +90,9 @@ BufferRef &BufferRef::operator=(BufferRef &&rhs) {
 }
 
 BufferRef BufferRef::borrow() const {
-  return BufferRef::create(
-      data, size, owningRef ? owningRef.copy() : AnyAsyncValueRef{}, alignment);
-}
-
-BufferRef BufferRef::deepCopy(LLCL::CompactRuntimePtr newRuntime) const {
-  return createOwned(newRuntime, getSize(), getAlignment(), getBuffer());
+  return BufferRef::create(data, size,
+                           storageRef ? storageRef.copy() : AnyAsyncValueRef{},
+                           alignment);
 }
 
 void BufferRef::reset() {
@@ -135,9 +118,9 @@ void BufferRef::printDebug(raw_ostream &os) const {
                          2 + 2 * sizeof(intptr_t));
   os << ", ";
   os << getSize();
-  if (owningRef) {
+  if (storageRef) {
     os << ", ";
-    os << *owningRef.getPointer();
+    os << *storageRef.getPointer();
   }
   os << ")";
 }
@@ -145,7 +128,7 @@ void BufferRef::printDebug(raw_ostream &os) const {
 void BufferRef::swap(BufferRef &rhs) {
   std::swap(data, rhs.data);
   std::swap(size, rhs.size);
-  std::swap(owningRef, rhs.owningRef);
+  std::swap(storageRef, rhs.storageRef);
   std::swap(alignment, rhs.alignment);
   std::swap(profilerEntry, rhs.profilerEntry);
 #if MODULAR_PARANOID
@@ -162,11 +145,11 @@ void BufferRef::collectAccessUses(SmallVectorImpl<LLCL::ResourceUse> &uses,
     return;
   // We are using this reference.
   uses.emplace_back(resource->beginUse(name.str(), useType, section));
-  if (owningRef && owningRef.isType<BufferRef>()) {
-    // By transitivity, we are using (a section of) the owningRef's buffer.
+  if (storageRef && storageRef.isType<BufferRef>()) {
+    // By transitivity, we are using (a section of) the storageRef's buffer.
     // Account for any (offset, size), which will have been captured by our
     // use.
-    const BufferRef &owningBufferRef = owningRef.get<BufferRef>();
+    const BufferRef &owningBufferRef = storageRef.get<BufferRef>();
     LLCL::ResourceSection parentSection =
         LLCL::isAllResourceSection(section)
             ? use.getSection()

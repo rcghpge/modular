@@ -30,11 +30,9 @@ TEST(BufferRef, Default) {
 
 TEST(BufferRef, CreateOwned) {
   auto runtime = getRuntime();
-  uint8_t data[4] = {1, 2, 3, 4};
   BufferRef ref = BufferRef::createOwned(*runtime, /*size=*/4,
-                                         /*alignment=*/128, /*copyFrom=*/data);
+                                         /*alignment=*/128);
   ASSERT_TRUE(llvm::isAddrAligned(llvm::Align(128), ref.getBuffer()));
-  ASSERT_EQ(memcmp(data, ref.getBuffer(), 4), 0);
   ASSERT_TRUE((bool)ref.getMemStorageHandle());
 }
 
@@ -43,7 +41,7 @@ TEST(BufferRef, CreateEmptyOwned) {
   BufferRef ref = BufferRef::createOwned(*runtime, /*size=*/0,
                                          /*alignment=*/128);
   ASSERT_EQ(ref.getSize(), 0u);
-  ASSERT_NE(ref.getBuffer(), nullptr);
+  ASSERT_EQ(ref.getBuffer(), nullptr);
   ASSERT_FALSE((bool)ref.getMemStorageHandle());
 }
 
@@ -85,19 +83,6 @@ TEST(BufferRef, Borrow) {
   ASSERT_EQ(bor.getAlignment(), ref.getAlignment());
 }
 
-TEST(BufferRef, DeepCopy) {
-  auto runtime = getRuntime();
-  BufferRef ref =
-      BufferRef::createOwned(*runtime, sizeof(int), /*alignment=*/16);
-  memset(ref.getBuffer(), 42, sizeof(int));
-  BufferRef bor = ref.borrow();
-  BufferRef copy = bor.deepCopy(*runtime);
-  ASSERT_NE(copy.getBuffer(), bor.getBuffer());
-  ASSERT_EQ(memcmp(bor.getBuffer(), copy.getBuffer(), sizeof(int)), 0);
-  ASSERT_EQ(copy.getSize(), bor.getSize());
-  ASSERT_EQ(copy.getAlignment(), bor.getAlignment());
-}
-
 TEST(BufferRef, Destructor) {
   // We are relying on the use of the profiling Allocator in getRuntime.
   auto runtime = getRuntime();
@@ -120,10 +105,8 @@ TEST(BufferRef, Destructor) {
 
 TEST(BufferRef, GetMemStorageHandle) {
   auto runtime = getRuntime();
-  uint8_t data[] = {1, 2, 3, 4};
-  BufferRef *ref =
-      new BufferRef(BufferRef::createOwned(*runtime, 4,
-                                           /*alignment=*/{}, data));
+  BufferRef *ref = new BufferRef(BufferRef::createOwned(*runtime, 4,
+                                                        /*alignment=*/{}));
   AnyAsyncValueRef memory = ref->getMemStorageHandle();
   ASSERT_TRUE(memory);
 
@@ -134,7 +117,4 @@ TEST(BufferRef, GetMemStorageHandle) {
   const void *ptr = ref->getBuffer();
   // This should not delete the underlying memory.
   delete ref;
-
-  ASSERT_EQ(ptr, m.data);
-  ASSERT_EQ(memcmp(data, m.data, 4), 0);
 }
