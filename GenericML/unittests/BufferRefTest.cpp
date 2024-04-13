@@ -114,7 +114,6 @@ TEST(BufferRef, GetMemStorageHandle) {
 
   ASSERT_EQ(ref->getBuffer(), m.data);
 
-  const void *ptr = ref->getBuffer();
   // This should not delete the underlying memory.
   delete ref;
 }
