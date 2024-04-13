@@ -61,7 +61,7 @@ fn read[T: CollectionElement](inout ptr: UnsafePointer[Int8]) -> T:
 fn read_string(inout ptr: UnsafePointer[Int8], length: Int) -> StringRef:
     """Read a string reference of known length and increment the pointer."""
     var value = StringRef(
-        Reference(ptr.__refitem__()).get_unsafe_pointer(), length
+        Reference(ptr.__refitem__()).get_legacy_pointer(), length
     )
     ptr = ptr + length
     return value
