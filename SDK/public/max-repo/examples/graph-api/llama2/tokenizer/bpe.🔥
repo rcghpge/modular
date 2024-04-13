@@ -53,7 +53,7 @@ struct MergeOption(OrderableElement):
 
 fn read[T: CollectionElement](inout ptr: UnsafePointer[Int8]) -> T:
     """Read a binary type out of a byte buffer and increment the pointer."""
-    var value = ptr.bitcast_element[T]()[]
+    var value = ptr.bitcast[T]()[]
     ptr = ptr + sizeof[T]()
     return value^
 
