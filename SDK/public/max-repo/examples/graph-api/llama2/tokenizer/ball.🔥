@@ -103,12 +103,12 @@ struct Ball[T: CollectionElement]:
         mutability: __mlir_type.i1,
         lifetime: AnyLifetime[mutability].type,
     ](
-        self: Reference[Self, mutability, lifetime].mlir_ref_type, id: Self.ID
+        self: Reference[Self, mutability, lifetime]._mlir_type, id: Self.ID
     ) -> Reference[Node[T], mutability, lifetime]:
         var node_ref = Reference(self)[]._arena.__get_ref(id)
         return Reference(
             __mlir_op.`lit.ref.from_pointer`[
-                _type = Reference[Node[T], mutability, lifetime].mlir_ref_type
+                _type = Reference[Node[T], mutability, lifetime]._mlir_type
             ](UnsafePointer(node_ref).bitcast[Node[T]]().value)
         )
 
@@ -116,12 +116,12 @@ struct Ball[T: CollectionElement]:
         mutability: __mlir_type.i1,
         lifetime: AnyLifetime[mutability].type,
     ](
-        self: Reference[Self, mutability, lifetime].mlir_ref_type, id: Self.ID
+        self: Reference[Self, mutability, lifetime]._mlir_type, id: Self.ID
     ) -> Reference[T, mutability, lifetime]:
         """Gets a reference to a value in the list."""
         var node_ref = Reference(self)[]._arena.__get_ref(id)
         return Reference(
             __mlir_op.`lit.ref.from_pointer`[
-                _type = Reference[T, mutability, lifetime].mlir_ref_type
+                _type = Reference[T, mutability, lifetime]._mlir_type
             ](UnsafePointer(node_ref).bitcast[T]().value)
         )
