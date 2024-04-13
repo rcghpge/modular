@@ -65,7 +65,7 @@ struct Ball[T: CollectionElement]:
     fn append(inout self, owned value: T) -> Self.ID:
         """Adds a new element to the back of the list."""
         var id = len(self._arena)
-        var node = Node(value^, self._tail, None)
+        var node = Node[T](value^, self._tail, None)
         if self._tail:
             var tail = self._ref(self._tail.value())[]
             tail.next = id
