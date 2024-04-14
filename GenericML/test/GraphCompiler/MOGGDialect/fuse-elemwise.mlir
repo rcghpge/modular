@@ -1,5 +1,23 @@
 // RUN: mo-opt --mo-to-mogg --fuse-elementwise --canonicalize --cse %s | FileCheck %s
 
+mo.graph @blocked_by_unfusible(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
+  %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
+  %1 = mo.custom {symbol = "pytorch_operator_custom_test"}(%0) (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
+  %2 = mo.add(%0, %1) : !mo.tensor<[4, 3], f32>
+  %3 = mo.sqrt(%2) : !mo.tensor<[4, 3], f32>
+  %4 = mo.custom {symbol = "pytorch_operator_custom_test"}(%3) (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
+  %5 = mo.add(%2, %4) : !mo.tensor<[4, 3], f32>
+  mo.output %5 : !mo.tensor<[4, 3], f32>
+}
+// CHECK-LABEL: mo.graph @blocked_by_unfusible
+// CHECK:   mogg.kernel
+// CHECK:   mogg.kernel
+// CHECK:   mogg.kernel
+// CHECK:   mogg.kernel
+// CHECK:   mogg.kernel
+// CHECK:   mogg.kernel
+// CHECK-NOT: mogg.kernel
+
 
 mo.graph @simpleDoubleUse(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
   %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
@@ -430,21 +448,6 @@ mo.graph @with_bcasts(%arg0 : !mo.tensor<[], si32>) -> !mo.tensor<[500, 5, 4], s
 // CHECK: mogg.kernel
 // CHECK: mogg.call "mo.static.broadcast_to"
 
-mo.graph @duplication(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>, !mo.tensor<[4, 3], f32>) {
-  %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
-  %1 = mo.add(%0, %0) : !mo.tensor<[4, 3], f32>
-  %2 = mo.sub(%0, %0) : !mo.tensor<[4, 3], f32>
-  mo.output %1, %2 : !mo.tensor<[4, 3], f32>, !mo.tensor<[4, 3], f32>
-}
-
-// CHECK-LABEL: @duplication
-// CHECK: mogg.kernel
-// CHECK: mo.sqrt
-// CHECK: mo.add
-// CHECK: mogg.kernel
-// CHECK: mo.sqrt
-// CHECK: mo.sub
-
 mo.graph @controlFlow(%arg0: !mo.tensor<[4, 3], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[4, 3], f32>) {
   %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[4, 3], f32> {
     %1 = mo.mul(%arg0, %arg0) : !mo.tensor<[4, 3], f32>
@@ -461,3 +464,16 @@ mo.graph @controlFlow(%arg0: !mo.tensor<[4, 3], f32>, %cond : !mo.tensor<[], boo
 // CHECK-NEXT:  mogg.kernel
 // CHECK:       mo.mul
 // CHECK-NEXT:  mo.mul
+
+mo.graph @duplication(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>, !mo.tensor<[4, 3], f32>) {
+  %0 = mo.relu(%arg0) : !mo.tensor<[4, 3], f32>
+  %1 = mo.add(%0, %0) : !mo.tensor<[4, 3], f32>
+  %2 = mo.add(%0, %0) : !mo.tensor<[4, 3], f32>
+  mo.output %1, %2 : !mo.tensor<[4, 3], f32>, !mo.tensor<[4, 3], f32>
+}
+
+// CHECK-LABEL: @duplication
+// CHECK:         mogg.kernel
+// CHECK:         mogg.kernel
+// CHECK:         mogg.kernel
+// CHECK-NOT:     mogg.kernel
