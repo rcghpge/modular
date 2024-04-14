@@ -11,9 +11,11 @@
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_H
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_H
 
+#include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MODialect/MOUtils.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "KGEN/KGENDialect/KGENTypes.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
