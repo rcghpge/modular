@@ -190,3 +190,98 @@ cc_library(
         "@llvm-project//mlir:Pass",
     ],
 )
+
+##
+# MOSH dialect.
+##
+
+td_library(
+    name = "MOSHDialectTdFiles",
+    srcs = glob(["include/GenericML/GraphCompiler/MOSHDialect/*.td"]),
+    includes = ["include"],
+    deps = [
+        "//KGEN:KGENDialectTdFiles",
+        "@llvm-project//mlir:AttrTdFiles",
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MOSHDialectIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-attrdef-decls",
+                "-attrdefs-dialect=mosh",
+            ],
+            "include/GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h.inc",
+        ),
+        (
+            [
+                "-gen-attrdef-defs",
+                "-attrdefs-dialect=mosh",
+            ],
+            "include/GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.cpp.inc",
+        ),
+        (
+            ["-gen-op-decls"],
+            "include/GenericML/GraphCompiler/MOSHDialect/MOSH.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "include/GenericML/GraphCompiler/MOSHDialect/MOSH.cpp.inc",
+        ),
+        (
+            [
+                "-gen-typedef-decls",
+                "-typedefs-dialect=mosh",
+            ],
+            "include/GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h.inc",
+        ),
+        (
+            [
+                "-gen-typedef-defs",
+                "-typedefs-dialect=mosh",
+            ],
+            "include/GenericML/GraphCompiler/MOSHDialect/MOSHTypes.cpp.inc",
+        ),
+        (
+            [
+                "-gen-dialect-decls",
+                "-dialect=mosh",
+            ],
+            "include/GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=mosh",
+            ],
+            "include/GenericML/GraphCompiler/MOSHDialect/MOSHDialect.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/GraphCompiler/MOSHDialect/MOSH.td",
+    deps = [
+        ":MOSHDialectTdFiles",
+    ],
+)
+
+cc_library(
+    name = "MOSHDialect",
+    srcs = glob(["lib/GraphCompiler/MOSHDialect/*.cpp"]),
+    hdrs = glob(["include/GenericML/GraphCompiler/MOSHDialect/*.h"]),
+    strip_include_prefix = "include",
+    deps = [
+        ":MOSHDialectIncGen",
+        ":Support",
+        "//KGEN:KGENDialect",
+        "//KGEN:POPDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
