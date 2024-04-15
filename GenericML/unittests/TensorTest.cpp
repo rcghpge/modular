@@ -6,7 +6,7 @@
 // Some token unit tests for generic Tensor.
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/Support/Tensor.h"
+#include "ArraySupport/Tensor.h"
 #include "LLCL/Runtime/Allocator.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Runtime/WorkQueue.h"

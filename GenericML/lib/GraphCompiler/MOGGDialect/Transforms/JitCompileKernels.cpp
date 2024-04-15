@@ -17,7 +17,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/NameMangling.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 
-#include "GenericML/Support/Tensor.h"
+#include "ArraySupport/Tensor.h"
 
 #include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"

@@ -7,7 +7,7 @@
 #ifndef GENERICML_SUPPORT_VALUE_H
 #define GENERICML_SUPPORT_VALUE_H
 
-#include "GenericML/Support/Tensor.h"
+#include "ArraySupport/Tensor.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
 
 namespace M::GML {

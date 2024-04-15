@@ -6,6 +6,7 @@
 
 #include "mlir/IR/BuiltinOps.h"
 
+#include "ArraySupport/Tensor.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
@@ -14,7 +15,6 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
 #include "GenericML/Support/Assert.h"
-#include "GenericML/Support/Tensor.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Transforms/TopologicalSortUtils.h"
 

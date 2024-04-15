@@ -7,9 +7,9 @@
 #ifndef GENERICML_DRIVER_DRIVERCLOPTIONS_H
 #define GENERICML_DRIVER_DRIVERCLOPTIONS_H
 
+#include "ArraySupport/Tensor.h"
 #include "GenericML/Driver/DriverInputFormat.h"
 #include "GenericML/Driver/ExecutionDriver.h"
-#include "GenericML/Support/Tensor.h"
 #include "LLCL/Runtime/RuntimeCLOptions.h"
 #include "Support/CommonCLOptions.h"
 #include "Support/ML/TensorSpec.h"

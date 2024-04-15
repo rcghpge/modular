@@ -12,7 +12,7 @@
 #ifndef GENERICML_SUPPORT_RESULTINFO_H
 #define GENERICML_SUPPORT_RESULTINFO_H
 
-#include "GenericML/Support/Tensor.h"
+#include "ArraySupport/Tensor.h"
 #include "GenericML/Support/Value.h"
 #include "Support/ML/TensorSpec.h"
 #include <map>

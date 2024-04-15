@@ -4,11 +4,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "ArraySupport/Tensor.h"
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
 #include "GenericML/Support/CompiledKernelsContext.h"
 #include "GenericML/Support/Context.h"
 #include "GenericML/Support/DebugPrint.h"
-#include "GenericML/Support/Tensor.h"
 #include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "LLCL/Support/Chain.h"
 #include "Support/MArchTarget/MArchTarget.h"

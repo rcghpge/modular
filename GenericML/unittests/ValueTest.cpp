@@ -9,10 +9,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Support/Value.h"
+#include "ArraySupport/Tensor.h"
 #include "GenericML/Support/Dict.h"
 #include "GenericML/Support/FormatYAML.h"
 #include "GenericML/Support/List.h"
-#include "GenericML/Support/Tensor.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "llvm/Support/YAMLTraits.h"

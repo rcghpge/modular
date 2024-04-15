@@ -5,13 +5,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Driver/ExecutionDriver.h"
+#include "ArraySupport/Tensor.h"
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "GenericML/Driver/DriverInternals.h"
 #include "GenericML/Support/Assert.h"
 #include "GenericML/Support/FormatYAML.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/ResultInfo.h"
-#include "GenericML/Support/Tensor.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "Support/Error.h"
 #include "Support/ML/SizeUtils.h"

@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
+#include "ArraySupport/Tensor.h"
 #include "CUDASupport/CUDATensor.h"
 #include "GenericML/Support/Assert.h"
 #include "GenericML/Support/CompiledKernelsContext.h"
@@ -13,7 +14,6 @@
 #include "GenericML/Support/HostDeviceSpecs.h"
 #include "GenericML/Support/List.h"
 #include "GenericML/Support/StateSlot.h"
-#include "GenericML/Support/Tensor.h"
 #include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AsyncValue.h"

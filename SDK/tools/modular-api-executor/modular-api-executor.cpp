@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "ArraySupport/Tensor.h"
 #include "GenericML/Driver/ExecutionDriver.h"
 #include "GenericML/Driver/Utils.h"
 #include "GenericML/Support/FormatYAML.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/ModelSpec.h"
-#include "GenericML/Support/Tensor.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Support/FileLocationDecoder.h"
 #include "LLCL/Support/UnknownLocationDecoder.h"
