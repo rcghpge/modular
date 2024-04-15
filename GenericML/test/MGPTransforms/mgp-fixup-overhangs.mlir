@@ -7,7 +7,7 @@ mgp.model @if : mof init {
   %2 = grt.chain.create (%0, %1 : !mgp.context)
   mef.output %2, %1 : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context) -> (!mef.chain, !mgp.tensor<32xui8>) {
-  %0 = mgp.buffer.constant %arg1[1], #M.aligned_bytes<"0x01", align 8> : !M.array<1xui8>
+  %0 = mgp.buffer.constant %arg0, %arg1[1], #M.aligned_bytes<"0x01", align 8> : !M.array<1xui8>
   %ch0 = mgp.chain.host_to_device %arg0, %arg1[1]
   %2 = mgp.buffer.alloc.static %ch0, %arg1[1] : !mgp.buffer<32>
   %const0 = mip.constant.index 0

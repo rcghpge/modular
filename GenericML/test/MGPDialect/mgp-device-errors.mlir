@@ -17,19 +17,19 @@ func.func @chain_device_to_host_mismatched_devices(%ctx : !mgp.context, %ch0 : !
 // mgp.buffer.constant
 //
 
-func.func @buffer_constant_mismatched_size(%ctx : !mgp.context) {
+func.func @buffer_constant_mismatched_size(%ch: !mef.chain, %ctx : !mgp.context) {
   // expected-error@+1 {{'mgp.buffer.constant' op expected result buffer type does not match actual result buffer type ('!mgp.buffer<3, <"cuda", 3>>' vs '!mgp.buffer<4, <"cuda", 3>>').}}
-  %0 = "mgp.buffer.constant" (%ctx) { aRuntimeSlot = 1 : ui64, bValue = #M.aligned_bytes<"0x000102", align 32>, cRawAlign = 32 : ui64, dDevice = #M.device_ref<"cuda", 3> }
-         : (!mgp.context) -> !mgp.buffer<4, <"cuda", 3>>
+  %0 = "mgp.buffer.constant" (%ch, %ctx) { aRuntimeSlot = 1 : ui64, bValue = #M.aligned_bytes<"0x000102", align 32>, cRawAlign = 32 : ui64, dDevice = #M.device_ref<"cuda", 3> }
+         : (!mef.chain, !mgp.context) -> !mgp.buffer<4, <"cuda", 3>>
   mef.output %0 : !mgp.buffer<4, <"cuda", 3>>
 }
 
 // -----
 
-func.func @buffer_constant_invalid_elem_type(%ctx : !mgp.context) {
+func.func @buffer_constant_invalid_elem_type(%ch: !mef.chain, %ctx : !mgp.context) {
   // expected-error@+1 {{'mgp.buffer.constant' op only supports attributes of uint8_t elements (have 'i16').}}
-  %0 = "mgp.buffer.constant" (%ctx) { aRuntimeSlot = 1 : ui64, bValue = #M.dense_array<1, 2, 3, 4> : !M.array<4xi16>, cRawAlign = 32 : ui64, dDevice = #M.device_ref<"cuda", 3> }
-         : (!mgp.context) -> !mgp.buffer<4, <"cuda", 3>>
+  %0 = "mgp.buffer.constant" (%ch, %ctx) { aRuntimeSlot = 1 : ui64, bValue = #M.dense_array<1, 2, 3, 4> : !M.array<4xi16>, cRawAlign = 32 : ui64, dDevice = #M.device_ref<"cuda", 3> }
+         : (!mef.chain, !mgp.context) -> !mgp.buffer<4, <"cuda", 3>>
   mef.output %0 : !mgp.buffer<4, <"cuda", 3>>
 }
 

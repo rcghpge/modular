@@ -103,9 +103,9 @@ func.func @chain_host_device_canonicalization_2(%ctx : !mgp.context, %ch0 : !mef
 //
 
 // CHECK-LABEL: @buffer_constant
-func.func @buffer_constant(%ctx : !mgp.context) {
-  // CHECK: %{{.*}} = mgp.buffer.constant %{{.*}}[1], dense_resource<resource> : !M.aligned_bytes<4, align 64> device <"cuda", 3>
-  %buf = mgp.buffer.constant %ctx[1], dense_resource<resource> : !M.aligned_bytes<4, align 64> device <"cuda", 3>
+func.func @buffer_constant(%ch: !mef.chain, %ctx : !mgp.context) {
+  // CHECK: %{{.*}} = mgp.buffer.constant %{{.*}}, %{{.*}}[1], dense_resource<resource> : !M.aligned_bytes<4, align 64> device <"cuda", 3>
+  %buf = mgp.buffer.constant %ch, %ctx[1], dense_resource<resource> : !M.aligned_bytes<4, align 64> device <"cuda", 3>
   mef.output %buf : !mgp.buffer<4, <"cuda", 3>>
 }
 

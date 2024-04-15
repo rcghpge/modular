@@ -15,11 +15,11 @@ module {
     %1 = mgp.context.create 0
     mef.output %0, %1 : !mef.chain, !mgp.context
   } execute (%arg0: !mef.chain, %arg1: !mgp.context) -> (!mef.chain, !mgp.tensor<8xf32>) {
-    %0 = mgp.buffer.constant %arg1[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
+    %0 = mgp.buffer.constant %arg0, %arg1[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
     %1 = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<8xf32>
     %ch = mgp.chain.host_to_device %arg0, %arg1[1]
     %2 = mgp.tensor.create %ch, %arg1[1], %0 , %1 : !mgp.tensor<8xf32>
-    %3 = mgp.buffer.constant %arg1[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
+    %3 = mgp.buffer.constant %arg0, %arg1[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
     %4 = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<8xf32>
     %5 = mgp.tensor.create %ch, %arg1[1], %3 , %4 : !mgp.tensor<8xf32>
     %bufferResult = mgp.tensor.extract.buffer %arg1[1], %2 : !mgp.tensor<8xf32>

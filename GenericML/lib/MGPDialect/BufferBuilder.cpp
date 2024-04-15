@@ -123,10 +123,12 @@ TypedValue<ContextType> MGPBufferBuilder::getContextForOp(Operation *op) {
 DeviceRefAttr MGPBufferBuilder::getDevice(OpBuilder &builder) { return device; }
 
 Value MGPBufferBuilder::bufferConstant(OpBuilder &builder, Location loc,
+                                       TypedValue<MEF::ChainType> inChain,
                                        TypedValue<ContextType> context,
                                        ElementsAttr value) {
   bool isOnHost = this == hostBufferBuilder;
   return builder.create<BufferConstantOp>(loc,
+                                          /*inChain*/ inChain,
                                           /*theContext=*/context,
                                           /*aRuntimeSlot=*/runtimeSlot,
                                           /*bValue=*/value,

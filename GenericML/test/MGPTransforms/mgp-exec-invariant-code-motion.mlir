@@ -9,8 +9,8 @@
 // Context has been extended to hold the cached buffer
 // CHECK:       %[[CTX:.*]] = mgp.context.create 3
 // Lifted ops
-// CHECK-DAG:   %[[PERM_BUF:.*]] = mgp.buffer.constant %[[CTX]][1], #M.aligned_bytes<"0x0200000000000000030000000000000001000000000000000000000000000000", align 16> : !M.array<32xui8>
-// CHECK-DAG:   %[[WEIGHT_BUF:.*]] = mgp.buffer.constant %[[CTX]][1], dense_resource<onnx__Conv_497> : !M.aligned_bytes<37632, align 16>
+// CHECK-DAG:   %[[PERM_BUF:.*]] = mgp.buffer.constant %{{.*}}, %[[CTX]][1], #M.aligned_bytes<"0x0200000000000000030000000000000001000000000000000000000000000000", align 16> : !M.array<32xui8>
+// CHECK-DAG:   %[[WEIGHT_BUF:.*]] = mgp.buffer.constant %{{.*}}, %[[CTX]][1], dense_resource<onnx__Conv_497> : !M.aligned_bytes<37632, align 16>
 // CHECK-DAG:   %[[CH1:.*]] = mgp.chain.host_to_device %[[CH0:.*]], %[[CTX]][1]
 // CHECK-DAG:   %[[OUT_BUF:.*]] = mgp.buffer.alloc.static %[[CH1]], %[[CTX]][1], align 16 : !mgp.buffer<37632>
 // CHECK-DAG:   %[[KERNEL_CH:.*]] = mgp.kernel.execute %[[CH1]], %[[CTX]][1, 1], (0, 0), (in %[[WEIGHT_BUF]] : {{.*}}, in %[[PERM_BUF]] : {{.*}}, out %[[OUT_BUF]] : {{.*}}), summary "kernel"
@@ -37,8 +37,8 @@ mgp.model @kgen_execute_kernel : mof init {
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.buffer<37632>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
-  %perm_buf = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x0200000000000000030000000000000001000000000000000000000000000000", align 16>
-  %weight_buf = mgp.buffer.constant %ctx[1], dense_resource<onnx__Conv_497> : !M.aligned_bytes<37632, align 16>
+  %perm_buf = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0200000000000000030000000000000001000000000000000000000000000000", align 16>
+  %weight_buf = mgp.buffer.constant %ch0, %ctx[1], dense_resource<onnx__Conv_497> : !M.aligned_bytes<37632, align 16>
   %perm_spec = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<4xsi64>
   %weight_spec = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<64x3x7x7xf32>
   %out_buf = mgp.buffer.alloc.static %ch1, %ctx[1], align 16 : !mgp.buffer<37632>
@@ -56,7 +56,7 @@ mgp.model @kgen_execute_kernel : mof init {
 // CHECK-NEXT:  %{{.*}} = grt.chain.create ()
 // CHECK:       %[[CTX:.*]] = mgp.context.create 3
 // Lifted ops
-// CHECK-DAG:   %[[CONST_BUF:.*]] = mgp.buffer.constant %[[CTX]][1], #M.aligned_bytes<"0x0000803F0000803F0000803F0000803F", align 16> : !M.array<16xui8>
+// CHECK-DAG:   %[[CONST_BUF:.*]] = mgp.buffer.constant %{{.*}}, %[[CTX]][1], #M.aligned_bytes<"0x0000803F0000803F0000803F0000803F", align 16> : !M.array<16xui8>
 // CHECK-DAG:   %[[CH1:.*]] = mgp.chain.host_to_device %[[CH0:.*]], %[[CTX]][1]
 // CHECK-DAG:   %[[IGNORED_CHAIN:.*]], %[[RES:.*]]:2 = mgp.kernel.execute %[[CH1]], %[[CTX]][1, 1], (0, 0), (), summary "matmul_pack_shape_func" out_dims 2
 // CHECK-DAG:   %[[BYTES:.*]] = mip.nary.mul(%[[RES]]#0, %[[RES]]#1) {constInt = 8 : si64}
@@ -85,7 +85,7 @@ mgp.model @matmul_packb : mof init {
   %ch2 = mgp.runtime.create %ch1, %ctx[1, 0]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %arg2: !mgp.tensor<?x2xf32>) -> (!mef.chain, !mgp.tensor<?x2xf32>) {
-  %const_buf = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x0000803F0000803F0000803F0000803F", align 16>
+  %const_buf = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000803F0000803F0000803F", align 16>
   %const_spec = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<2x2xf32>
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
   %res:3 = mgp.kernel.execute %ch1, %ctx[1, 1], (0, 0), (), summary "matmul_pack_shape_func" out_dims 2
@@ -120,7 +120,7 @@ mgp.model @non_pure_op : mof init {
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
-  %const_buf = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x0000803F0000803F0000803F0000803F", align 16>
+  %const_buf = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000803F0000803F0000803F", align 16>
   %const_spec = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<2x2xf32>
   %out_spec = "foo.side_effect_op"(%const_spec) : (!mgp.tensor_spec<2x2xf32>) -> !mgp.tensor_spec<?x?xf32>
   %out_dim0, %out_dim1 = mgp.cpu.tensor_spec.dims.dynamic %out_spec : !mgp.tensor_spec<?x?xf32>
@@ -166,9 +166,9 @@ mgp.model @dont_lift_if_no_computation_saved : mof init {
 // CHECK:       %[[CTX:.*]] = mgp.context.create 3
 // Lifted ops
 //   constant permutation
-// CHECK-DAG:   %[[PERM_BUF:.*]] = mgp.buffer.constant %[[CTX]][1], #M.aligned_bytes<"0x10000000000000000000000000000000", align 16> : !M.array<16xui8>
+// CHECK-DAG:   %[[PERM_BUF:.*]] = mgp.buffer.constant %{{.*}}, %[[CTX]][1], #M.aligned_bytes<"0x10000000000000000000000000000000", align 16> : !M.array<16xui8>
 //   constant weights
-// CHECK-DAG:   %[[WEIGHT_BUF:.*]] = mgp.buffer.constant %[[CTX]][1], dense_resource<onnx__Conv_497> : !M.aligned_bytes<1600, align 16>
+// CHECK-DAG:   %[[WEIGHT_BUF:.*]] = mgp.buffer.constant %{{.*}}, %[[CTX]][1], dense_resource<onnx__Conv_497> : !M.aligned_bytes<1600, align 16>
 //   transpose
 // CHECK-DAG:   %[[CH1:.*]] = mgp.chain.host_to_device %[[CH0:.*]], %[[CTX]][1]
 // CHECK-DAG:   %[[TRANSPOSE_BUF:.*]] = mgp.buffer.alloc.static %[[CH1]], %[[CTX]][1], align 16 : !mgp.buffer<1600>
@@ -203,11 +203,11 @@ mgp.model @intermediate_buffer : mof init {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
 
   // constant permutation
-  %perm_buf = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x10000000000000000000000000000000", align 16>
+  %perm_buf = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x10000000000000000000000000000000", align 16>
   %perm_spec = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<2xsi64>
 
   // constant weights
-  %weight_buf = mgp.buffer.constant %ctx[1], dense_resource<onnx__Conv_497> : !M.aligned_bytes<1600, align 16>
+  %weight_buf = mgp.buffer.constant %ch0, %ctx[1], dense_resource<onnx__Conv_497> : !M.aligned_bytes<1600, align 16>
   %weight_spec = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<10x20xf32>
 
   // transpose
@@ -236,9 +236,9 @@ mgp.model @intermediate_buffer : mof init {
 // CHECK:       %[[CTX:.*]] = mgp.context.create 4
 // Lifted ops
 //   constant permutation (note that this buffer is used in both init and exec)
-// CHECK-DAG:   %[[PERM_BUF:.*]] = mgp.buffer.constant %[[CTX]][1], #M.aligned_bytes<"0x10000000000000000000000000000000", align 16> : !M.array<16xui8>
+// CHECK-DAG:   %[[PERM_BUF:.*]] = mgp.buffer.constant %{{.*}}, %[[CTX]][1], #M.aligned_bytes<"0x10000000000000000000000000000000", align 16> : !M.array<16xui8>
 //   constant weights
-// CHECK-DAG:   %[[WEIGHT_BUF:.*]] = mgp.buffer.constant %[[CTX]][1], dense_resource<onnx__Conv_497> : !M.aligned_bytes<1600, align 16>
+// CHECK-DAG:   %[[WEIGHT_BUF:.*]] = mgp.buffer.constant %{{.*}}, %[[CTX]][1], dense_resource<onnx__Conv_497> : !M.aligned_bytes<1600, align 16>
 //   transpose
 // CHECK-DAG:   %[[CH1:.*]] = mgp.chain.host_to_device %[[CH0:.*]], %[[CTX]][1]
 // CHECK-DAG:   %[[WEIGHT_T_BUF:.*]] = mgp.buffer.alloc.static %[[CH1]], %[[CTX]][1], align 16 : !mgp.buffer<1600>
@@ -271,11 +271,11 @@ mgp.model @constant_buffer_used_in_both_init_and_exec : mof init {
   %arg_buf = mgp.tensor.extract.buffer %ctx[1], %arg : !mgp.tensor<1x2xf32>
 
   // constant permutation
-  %perm_buf = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x10000000000000000000000000000000", align 16>
+  %perm_buf = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x10000000000000000000000000000000", align 16>
   %perm_spec = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<2xsi64>
 
   // constant weights
-  %weight_buf = mgp.buffer.constant %ctx[1], dense_resource<onnx__Conv_497> : !M.aligned_bytes<1600, align 16>
+  %weight_buf = mgp.buffer.constant %ch0, %ctx[1], dense_resource<onnx__Conv_497> : !M.aligned_bytes<1600, align 16>
   %weight_spec = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<10x20xf32>
 
   // constant weight transpose
@@ -476,13 +476,14 @@ mgp.model @while : mof init {
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<4xui8>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
-  %0 = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x00000004", align 8> : !M.array<4xui8>
+  %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x00000004", align 8> : !M.array<4xui8>
   %1 = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<ui32>
-  %2 = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x00000000", align 8> : !M.array<4xui8>
+  %2 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x00000000", align 8> : !M.array<4xui8>
   %4 = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<4xui8>
-  %5 = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x01010101", align 8> : !M.array<4xui8>
+  %5 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x01010101", align 8> : !M.array<4xui8>
   %7:11 = grt.while (%ch1 as %arg2: !mgp.chain, %ch1 as %arg3: !mgp.chain, %0 as %arg4: !mgp.buffer<4>, %1 as %arg5: !mgp.tensor_spec<ui32>, %ch1 as %arg6: !mgp.chain, %2 as %arg7: !mgp.buffer<4>, %4 as %arg8: !mgp.tensor_spec<4xui8>, %ch1 as %arg9: !mgp.chain, %5 as %arg10: !mgp.buffer<4>, %4 as %arg11: !mgp.tensor_spec<4xui8>, %ctx as %arg12: !mgp.context) {
-    %9 = mgp.buffer.constant %arg12[1], #M.aligned_bytes<"0x00000000", align 8> : !M.array<4xui8>
+    %ch1h = mgp.chain.device_to_host %arg2, %arg12[1]
+    %9 = mgp.buffer.constant %ch1h, %arg12[1], #M.aligned_bytes<"0x00000000", align 8> : !M.array<4xui8>
     %10 = mgp.buffer.alloc.static %arg2, %arg12[1], align 32 : !mgp.buffer<1>
     %11 = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<bool>
     %12 = mgp.kernel.execute %arg3, %arg12[1, 1], (0, 0), (in %arg4: !mgp.buffer<4>, in %9: !mgp.buffer<4>, out %10: !mgp.buffer<1>), summary "mo.greater"
@@ -496,7 +497,8 @@ mgp.model @while : mof init {
     %13 = "some.op"(%12, %9, %10) : (!mgp.chain, !mgp.buffer<4>, !mgp.tensor_spec<4xui8>) -> !mgp.tensor<4xui8>
     %bufferResult = mgp.tensor.extract.buffer %arg12[1], %13 : !mgp.tensor<4xui8>
     %tensorSpecResult = mgp.tensor.extract.tensor_spec %arg12[1], %13 : !mgp.tensor<4xui8>
-    %14 = mgp.buffer.constant %arg12[1], #M.aligned_bytes<"0x00000001", align 8> : !M.array<4xui8>
+    %ch1h = mgp.chain.device_to_host %arg2, %arg12[1]
+    %14 = mgp.buffer.constant %ch1h, %arg12[1], #M.aligned_bytes<"0x00000001", align 8> : !M.array<4xui8>
     %15 = mgp.buffer.alloc.static %arg2, %arg12[1], align 32 : !mgp.buffer<4>
     %16 = mgp.kernel.execute %arg3, %arg12[1, 1], (0, 0), (in %arg4: !mgp.buffer<4>, in %14: !mgp.buffer<4>, out %15: !mgp.buffer<4>), summary "sub"
     mef.output %arg2, %16, %15, %arg5, %arg2, %bufferResult, %tensorSpecResult, %arg9, %arg10, %arg11, %arg12 : !mgp.chain, !mgp.chain, !mgp.buffer<4>, !mgp.tensor_spec<ui32>, !mgp.chain, !mgp.buffer<4>, !mgp.tensor_spec<4xui8>, !mgp.chain, !mgp.buffer<4>, !mgp.tensor_spec<4xui8>, !mgp.context

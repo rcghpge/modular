@@ -636,7 +636,8 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   if (elementsOr)
     return constOp->emitOpError(elementsOr.getError());
 
-  Value buffer = opLoweringState.bufferConstant(*elementsOr,
+  Value buffer = opLoweringState.bufferConstant(loweringState.getExecuteChain(),
+                                                *elementsOr,
                                                 constOp.getResult().getType());
   FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
       opLoweringState.createTensorSpec(constOp.getType());

@@ -547,9 +547,10 @@ struct MOOpLoweringState {
         ->tensorCreate(builder, loc, context, inChain, buffer, tensorSpec);
   }
 
-  Value bufferConstant(ElementsAttr value, Type moTensorType) {
+  Value bufferConstant(TypedValue<MEF::ChainType> inChain, ElementsAttr value,
+                       Type moTensorType) {
     return getStorageBufferBuilder(moTensorType)
-        ->bufferConstant(builder, loc, context, value);
+        ->bufferConstant(builder, loc, inChain, context, value);
   }
 
   Value debugTensorPrint(Value inChain, Value buffer,

@@ -458,7 +458,7 @@ def BufferConstantOp : MGP_DeviceOp<"buffer.constant", [
       // Returns a buffer on the CUDA GPU with virtual device id 3, whose
       // runtime should have been established in slot 5, which has been
       // initialized with the bytes in the dense resource with 'label'.
-      %buf = mgp.buffer.constant %ctx[5],
+      %buf = mgp.buffer.constant %ch, %ctx[5],
                dense_resource<label>:!M.aligned_bytes<256, align 16>
                device <"cuda", 3>
       %buf : !mgp.buffer<256, <"cuda", 3>>
@@ -467,7 +467,8 @@ def BufferConstantOp : MGP_DeviceOp<"buffer.constant", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_ContextType:$theContext,
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
                        UI64Attr:$aRuntimeSlot,                           // 0
                        ElementsAttr:$bValue,                             // 1
                        UI64Attr:$cRawAlign,                              // 2
@@ -475,16 +476,16 @@ def BufferConstantOp : MGP_DeviceOp<"buffer.constant", [
                        DefaultValuedAttr<BoolAttr, "true">:$eIsTrivial); // 4
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
-    $theContext `[` $aRuntimeSlot  `]` `,`
+    $inChain `,` $theContext `[` $aRuntimeSlot  `]` `,`
     custom<ElementsAttrWithAlign>($bValue, $cRawAlign)
     ( `device` $dDevice^ )? ( `trivial` $eIsTrivial^ )? attr-dict
   }];
   let hasVerifier = 1;
 
   let builders = [
-    OpBuilder<(ins "mlir::Value":$theContext, "uint64_t":$aRuntimeSlot,
-                   "mlir::ElementsAttr":$bValue, "M::DeviceRefAttr":$dDevice,
-                   "bool":$eIsTrivial)>
+    OpBuilder<(ins "mlir::Value":$inChain, "mlir::Value":$theContext,
+                   "uint64_t":$aRuntimeSlot, "mlir::ElementsAttr":$bValue,
+                   "M::DeviceRefAttr":$dDevice, "bool":$eIsTrivial)>
   ];
 
   let extraClassDeclaration = [{

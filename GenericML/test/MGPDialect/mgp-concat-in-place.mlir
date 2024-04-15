@@ -23,8 +23,8 @@ mgp.model @static_concat : mof init {
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<16xf32>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
-  %0 = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
-  %2 = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
+  %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
+  %2 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
   %4 = mgp.buffer.alloc.static %ch1, %ctx[1] : !mgp.buffer<32>
   %6 = "add"(%ch1, %0, %2, %4) {tempInOutSig = #M.inout_sig<"iiio">} : (!mgp.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.chain
   %10 = mgp.buffer.alloc.static %ch1, %ctx[1] : !mgp.buffer<32>
@@ -63,8 +63,8 @@ mgp.model @dynamic_concat : mof init {
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<16xf32>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
-  %0 = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
-  %2 = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
+  %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
+  %2 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
   %const_32 = mip.constant.index 32
   %4 = mgp.buffer.alloc.dynamic %ch1, %ctx[1], %const_32 : !mgp.buffer<>
   %const_8 = mip.constant.index 8
@@ -97,8 +97,8 @@ mgp.model @concat_with_shared_input_buffer : mof init {
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<16xf32>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
-  %0 = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
-  %2 = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
+  %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
+  %2 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
   %4 = mgp.buffer.alloc.static %ch1, %ctx[1] : !mgp.buffer<32>
   %6 = "add"(%ch1, %0, %2, %4) {tempInOutSig = #M.inout_sig<"iiio">} : (!mgp.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.chain
   %10 = mgp.buffer.alloc.static %ch1, %ctx[1] : !mgp.buffer<32>
@@ -126,8 +126,8 @@ mgp.model @non_trivial_chains : mof init {
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<16xf32>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
-  %0 = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
-  %2 = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
+  %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
+  %2 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
   %4 = mgp.buffer.alloc.static %ch1, %ctx[1] : !mgp.buffer<32>
   %6 = "add"(%ch1, %0, %2, %4) {tempInOutSig = #M.inout_sig<"iiio">} : (!mgp.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.chain
   %10 = mgp.buffer.alloc.static %6, %ctx[1] : !mgp.buffer<32>
@@ -154,8 +154,8 @@ mgp.model @dont_trigger_since_duplicate_buffers : mof init {
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<16xf32>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
-  %0 = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
-  %2 = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
+  %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
+  %2 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
   %4 = mgp.buffer.alloc.static %ch1, %ctx[1] : !mgp.buffer<32>
   %6 = "add"(%ch1, %0, %2, %4) {tempInOutSig = #M.inout_sig<"iiio">} : (!mgp.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.chain
   %14 = mgp.buffer.alloc.static %ch1, %ctx[1] : !mgp.buffer<64>

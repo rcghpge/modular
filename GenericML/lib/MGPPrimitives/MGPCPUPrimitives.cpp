@@ -214,7 +214,7 @@ static void mgp_chain_noop_cpu(Chain inChain, GML::Context &theContext,
 // mgp.buffer.constant.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_constant_cpu(GML::Context &theContext,
+static void mgp_buffer_constant_cpu(Chain inChain, GML::Context &theContext,
                                     Result<GML::BufferRef> outBuffer,
                                     MEFAttr<uint64_t> aRuntimeSlot,
                                     MEFAttr<ArrayRef<uint8_t>> bValue,

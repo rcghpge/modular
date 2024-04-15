@@ -231,7 +231,7 @@ mgp.model @redundant : mof init {
 // ### Block 1 ###
 // CHECK: ^bb0(%arg0: !mef.chain, %arg1: !mgp.context):
 // CHECK:   %0 = "mgp.chain.host_to_device"(%arg0, %arg1) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mef.chain, !mgp.context) -> !mgp.chain
-// CHECK:   %1 = "mgp.buffer.constant"(%arg1) {aRuntimeSlot = 1 : ui64, bValue = #M.aligned_bytes<"0x01", align 8> : !M.array<1xui8>, cRawAlign = 8 : ui64, dDevice = #M.device_ref<"cpu", 0>, eIsTrivial = true} : (!mgp.context) -> !mgp.buffer<1>
+// CHECK:   %1 = "mgp.buffer.constant"
 // CHECK:   %2 = "mgp.cpu.tensor_spec.create"() {aRawDims = #M.dense_array<> : !M.array<0xui64>, bRawDType = 1 : ui8} : () -> !mgp.tensor_spec<bool>
 // CHECK:   %3 = "mgp.tensor.create"(%0, %arg1, %1, %2) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mgp.chain, !mgp.context, !mgp.buffer<1>, !mgp.tensor_spec<bool>) -> !mgp.tensor<bool>
 // CHECK:   %4 = "mgp.buffer.alloc.static"(%0, %arg1) {aRuntimeSlot = 1 : ui64, bSize = 32 : ui64, cRawAlign = 18446744073709551615 : ui64, dDevice = #M.device_ref<"cpu", 0>} : (!mgp.chain, !mgp.context) -> !mgp.buffer<32>
@@ -301,7 +301,7 @@ mgp.model @if : mof init {
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<32xui8>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
-  %0 = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x01", align 8> : !M.array<1xui8>
+  %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x01", align 8> : !M.array<1xui8>
   %1 = mgp.cpu.tensor_spec.create : !mgp.tensor_spec<bool>
   %2 = mgp.tensor.create %ch1, %ctx[1],  %0, %1  : !mgp.tensor<bool>
   %3 = mgp.buffer.alloc.static %ch1, %ctx[1] : !mgp.buffer<32>
@@ -351,10 +351,10 @@ mgp.model @if : mof init {
 // ### Block 1 ###
 // CHECK: ^bb0(%arg0: !mef.chain, %arg1: !mgp.context):
 // CHECK:   %0 = "mgp.chain.host_to_device"(%arg0, %arg1) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mef.chain, !mgp.context) -> !mgp.chain
-// CHECK:   %1 = "mgp.buffer.constant"(%arg1) {aRuntimeSlot = 1 : ui64, bValue = #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32> : !M.array<32xui8>, cRawAlign = 32 : ui64, dDevice = #M.device_ref<"cpu", 0>, eIsTrivial = true} : (!mgp.context) -> !mgp.buffer<32>
+// CHECK:   %1 = "mgp.buffer.constant"
 // CHECK:   %2 = "mgp.cpu.tensor_spec.create"() {aRawDims = #M.dense_array<8> : !M.array<1xui64>, bRawDType = 66 : ui8} : () -> !mgp.tensor_spec<8xf32>
-// CHECK:   %3 = "mgp.buffer.constant"(%arg1) {aRuntimeSlot = 1 : ui64, bValue = #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32> : !M.array<32xui8>, cRawAlign = 32 : ui64, dDevice = #M.device_ref<"cpu", 0>, eIsTrivial = true} : (!mgp.context) -> !mgp.buffer<32>
-// CHECK:   %4 = "mgp.buffer.constant"(%arg1) {aRuntimeSlot = 1 : ui64, bValue = #M.aligned_bytes<"0x00", align 32> : !M.array<1xui8>, cRawAlign = 32 : ui64, dDevice = #M.device_ref<"cpu", 0>, eIsTrivial = true} : (!mgp.context) -> !mgp.buffer<1>
+// CHECK:   %3 = "mgp.buffer.constant"
+// CHECK:   %4 = "mgp.buffer.constant"
 // CHECK:   %5 = "mgp.buffer.to_bool"(%0, %arg1, %4) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mgp.chain, !mgp.context, !mgp.buffer<1>) -> i1
 // CHECK:   %6:2 = "grt.if"(%5, %0, %1, %2, %3, %arg1) ({
 // ### Block 2 ###
@@ -390,10 +390,10 @@ mgp.model @conditional_c : mof init {
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<8xf32>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
-  %a = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32> : !M.array<32xui8>
+  %a = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32> : !M.array<32xui8>
   %spec = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<8xf32>
-  %b = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32> : !M.array<32xui8>
-  %zero = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x00", align 32> : !M.array<1xui8>
+  %b = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32> : !M.array<32xui8>
+  %zero = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x00", align 32> : !M.array<1xui8>
   %cond = mgp.buffer.to_bool %ch1, %ctx[1], %zero : !mgp.buffer<1>
   %ch3, %c = grt.if %cond (%ch1 : !mgp.chain, %a : !mgp.buffer<32>, %spec : !mgp.tensor_spec<8xf32>, %b : !mgp.buffer<32>, %ctx : !mgp.context) -> (!mgp.chain, !mgp.buffer<32>) {
     %c = mgp.buffer.alloc.static %ch1, %ctx[1] : !mgp.buffer<32>

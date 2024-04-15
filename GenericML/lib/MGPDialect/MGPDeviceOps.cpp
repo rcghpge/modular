@@ -287,10 +287,10 @@ ChainHostToDeviceOp::canonicalize(ChainHostToDeviceOp hostToDeviceOp,
 //===----------------------------------------------------------------------===//
 
 void BufferConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                             Value theContext, uint64_t aRuntimeSlot,
-                             ElementsAttr bValue, DeviceRefAttr dDevice,
-                             bool eIsTrivial) {
-  return build(odsBuilder, odsState, theContext, aRuntimeSlot, bValue,
+                             Value inChain, Value theContext,
+                             uint64_t aRuntimeSlot, ElementsAttr bValue,
+                             DeviceRefAttr dDevice, bool eIsTrivial) {
+  return build(odsBuilder, odsState, inChain, theContext, aRuntimeSlot, bValue,
                getRawAlign(bValue), dDevice, eIsTrivial);
 }
 

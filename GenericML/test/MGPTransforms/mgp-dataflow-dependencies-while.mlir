@@ -371,7 +371,7 @@ mgp.model @shift : mof init {
 // ### Block 1 ###
 // CHECK: ^bb0(%arg0: !mef.chain, %arg1: !mgp.context):
 // CHECK:   %0 = "mgp.chain.host_to_device"(%arg0, %arg1) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mef.chain, !mgp.context) -> !mgp.chain
-// CHECK:   %1 = "mgp.buffer.constant"(%arg1) {aRuntimeSlot = 1 : ui64, bValue = #M.aligned_bytes<"0x00000004", align 8> : !M.array<4xui8>, cRawAlign = 8 : ui64, dDevice = #M.device_ref<"cpu", 0>, eIsTrivial = true} : (!mgp.context) -> !mgp.buffer<4>
+// CHECK:   %1 = "mgp.buffer.constant"
 // CHECK:   %2 = "mgp.cpu.tensor_spec.create"() {aRawDims = #M.dense_array<> : !M.array<0xui64>, bRawDType = 138 : ui8} : () -> !mgp.tensor_spec<ui32>
 // CHECK:   %3 = "mgp.tensor.create"(%0, %arg1, %1, %2) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mgp.chain, !mgp.context, !mgp.buffer<4>, !mgp.tensor_spec<ui32>) -> !mgp.tensor<ui32>
 // CHECK:   %4 = "mgp.buffer.alloc.static"(%0, %arg1) {aRuntimeSlot = 1 : ui64, bSize = 32 : ui64, cRawAlign = 18446744073709551615 : ui64, dDevice = #M.device_ref<"cpu", 0>} : (!mgp.chain, !mgp.context) -> !mgp.buffer<32>
@@ -384,7 +384,7 @@ mgp.model @shift : mof init {
 // CHECK:   %11:5 = "grt.while"(%0, %3, %7, %10, %arg1) ({
 // ### Block 2 ###
 // CHECK:   ^bb0(%arg2: !mgp.chain, %arg3: !mgp.tensor<ui32>, %arg4: !mgp.tensor<32xui8>, %arg5: !mgp.tensor<32xui8>, %arg6: !mgp.context):
-// CHECK:     %16 = "mgp.buffer.constant"(%arg6) {aRuntimeSlot = 1 : ui64, bValue = #M.aligned_bytes<"0x00000000", align 8> : !M.array<4xui8>, cRawAlign = 8 : ui64, dDevice = #M.device_ref<"cpu", 0>, eIsTrivial = true} : (!mgp.context) -> !mgp.buffer<4>
+// CHECK:     %16 = "mgp.buffer.constant"
 // CHECK:     %17 = "mgp.tensor.extract.buffer"(%arg6, %arg3) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mgp.context, !mgp.tensor<ui32>) -> !mgp.buffer<4>
 // CHECK:     %18 = "mgp.buffer.alloc.static"(%arg2, %arg6) {aRuntimeSlot = 1 : ui64, bSize = 1 : ui64, cRawAlign = 32 : ui64, dDevice = #M.device_ref<"cpu", 0>} : (!mgp.chain, !mgp.context) -> !mgp.buffer<1>
 // CHECK:     %19 = "mgp.cpu.tensor_spec.create"() {aRawDims = #M.dense_array<> : !M.array<0xui64>, bRawDType = 1 : ui8} : () -> !mgp.tensor_spec<bool>
@@ -402,7 +402,7 @@ mgp.model @shift : mof init {
 // CHECK:     %19 = "mgp.cpu.tensor_spec.create"() {aRawDims = #M.dense_array<32> : !M.array<1xui64>, bRawDType = 134 : ui8} : () -> !mgp.tensor_spec<32xui8>
 // CHECK:     %20 = "add"(%arg2, %16, %17, %18) {tempInOutSig = #M.inout_sig<"iiio">} : (!mgp.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.chain
 // CHECK:     %21 = "mgp.tensor.create"(%20, %arg6, %18, %19) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mgp.chain, !mgp.context, !mgp.buffer<32>, !mgp.tensor_spec<32xui8>) -> !mgp.tensor<32xui8>
-// CHECK:     %22 = "mgp.buffer.constant"(%arg6) {aRuntimeSlot = 1 : ui64, bValue = #M.aligned_bytes<"0x00000001", align 8> : !M.array<4xui8>, cRawAlign = 8 : ui64, dDevice = #M.device_ref<"cpu", 0>, eIsTrivial = true} : (!mgp.context) -> !mgp.buffer<4>
+// CHECK:     %22 = "mgp.buffer.constant"
 // CHECK:     %23 = "mgp.tensor.extract.buffer"(%arg6, %arg3) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mgp.context, !mgp.tensor<ui32>) -> !mgp.buffer<4>
 // CHECK:     %24 = "mgp.buffer.alloc.static"(%arg2, %arg6) {aRuntimeSlot = 1 : ui64, bSize = 4 : ui64, cRawAlign = 32 : ui64, dDevice = #M.device_ref<"cpu", 0>} : (!mgp.chain, !mgp.context) -> !mgp.buffer<4>
 // CHECK:     %25 = "sub"(%arg2, %23, %22, %24) {tempInOutSig = #M.inout_sig<"iiio">} : (!mgp.chain, !mgp.buffer<4>, !mgp.buffer<4>, !mgp.buffer<4>) -> !mgp.chain
@@ -429,8 +429,8 @@ mgp.model @shift : mof init {
 // CHECK:   %10 |-> {%0[0], %1[0], %2[0], %3[0], %arg0, %arg1, %0, %6, %8, %9}
 // CHECK:   %arg3[2] |-> {%0[0], %1[0], %2[0], %3[0], %arg0, %arg1, %0, %1, %2, %3}
 // CHECK:   %arg4[2] |-> {%0[0], %1[0], %2[0], %3[0], %arg0, %arg1, %0, %4, %5, %6, %7}
-// CHECK:   %11#0 |-> {%0[0], %1[0], %2[0], %3[0], %arg0, %arg1, %0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10, %arg2[2], %arg3[2], %arg4[2], %arg5[2], %arg6[2], %arg2[3], %arg3[3], %arg4[3], %arg5[3], %arg6[3], %16[3], %17[3], %18[3], %19[3], %20[3], %21[3], %22[3], %23[3], %24[3], %25[3], %26[3], %27[3]}
-// CHECK:   %14 |-> {%0[0], %1[0], %2[0], %3[0], %arg0, %arg1, %0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10, %arg2[2], %arg3[2], %arg4[2], %arg5[2], %arg6[2], %arg2[3], %arg3[3], %arg4[3], %arg5[3], %arg6[3], %16[3], %17[3], %18[3], %19[3], %20[3], %21[3], %22[3], %23[3], %24[3], %25[3], %26[3], %27[3], %11#2, %12, %13}
+// CHECK:   %11#0 |-> {%0[0], %1[0], %2[0], %3[0], %arg0, %arg1, %0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10, %arg2[2], %arg3[2], %arg4[2], %arg5[2], %arg6[2], %arg2[3], %arg3[3], %arg4[3], %arg5[3], %arg6[3], %16[3], %17[3], %18[3], %19[3], %20[3], %21[3], %22[3], %23[3], %24[3], %25[3], %26[3], %27[3], %28[3]}
+// CHECK:   %14 |-> {%0[0], %1[0], %2[0], %3[0], %arg0, %arg1, %0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10, %arg2[2], %arg3[2], %arg4[2], %arg5[2], %arg6[2], %arg2[3], %arg3[3], %arg4[3], %arg5[3], %arg6[3], %16[3], %17[3], %18[3], %19[3], %20[3], %21[3], %22[3], %23[3], %24[3], %25[3], %26[3], %27[3], %28[3], %11#2, %12, %13}
 // CHECK: impliesReady end
 
 // The tensor.{create,extract} aliasing excludes entries.
@@ -446,7 +446,7 @@ mgp.model @while : mof init {
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<32xui8>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
-  %0 = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x00000004", align 8> : !M.array<4xui8>
+  %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x00000004", align 8> : !M.array<4xui8>
   %1 = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<ui32>
   %2 = mgp.tensor.create %ch1, %ctx[1], %0, %1  : !mgp.tensor<ui32>
   %3 = mgp.buffer.alloc.static %ch1, %ctx[1] : !mgp.buffer<32>
@@ -457,7 +457,7 @@ mgp.model @while : mof init {
   %8 = "initialize"(%7) {tempInOutSig=#M.inout_sig<"o">} : (!mgp.buffer<32>) -> !mgp.chain
   %9 = mgp.tensor.create %8, %ctx[1],  %7, %5  : !mgp.tensor<32xui8>
   %10:5 = grt.while (%ch1: !mgp.chain, %2: !mgp.tensor<ui32>, %6: !mgp.tensor<32xui8>, %9: !mgp.tensor<32xui8>, %ctx: !mgp.context) {
-    %12 = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x00000000", align 8> : !M.array<4xui8>
+    %12 = mgp.buffer.constant %ch1h, %ctx[1], #M.aligned_bytes<"0x00000000", align 8> : !M.array<4xui8>
     %bufferResult_0 = mgp.tensor.extract.buffer %ctx[1], %2 : !mgp.tensor<ui32>
     %13 = mgp.buffer.alloc.static %ch1, %ctx[1], align 32 : !mgp.buffer<1>
     %14 = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<bool>
@@ -465,6 +465,7 @@ mgp.model @while : mof init {
     %16 = mgp.tensor.create %15, %ctx[1],  %13, %14  : !mgp.tensor<bool>
     %bufferResult_2 = mgp.tensor.extract.buffer %ctx[1], %16 : !mgp.tensor<bool>
     %17 = mgp.buffer.to_bool %ch1, %ctx[1], %bufferResult_2 : !mgp.buffer<1>
+    %ch1h = mgp.chain.device_to_host %ch1, %ctx[1]
     mef.output %ch1, %2, %6, %9, %ctx, %17 : !mgp.chain, !mgp.tensor<ui32>, !mgp.tensor<32xui8>, !mgp.tensor<32xui8>, !mgp.context, i1
   } do {
     %bufferResult_0 = mgp.tensor.extract.buffer %ctx[1], %6 : !mgp.tensor<32xui8>
@@ -473,12 +474,13 @@ mgp.model @while : mof init {
     %13 = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<32xui8>
     %14 = "add"(%ch1, %bufferResult_0, %bufferResult_2, %12) {tempInOutSig=#M.inout_sig<"iiio">} : (!mgp.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.chain
     %15 = mgp.tensor.create %14, %ctx[1],  %12, %13  : !mgp.tensor<32xui8>
-    %16 = mgp.buffer.constant %ctx[1], #M.aligned_bytes<"0x00000001", align 8> : !M.array<4xui8>
+    %16 = mgp.buffer.constant %ch1h, %ctx[1], #M.aligned_bytes<"0x00000001", align 8> : !M.array<4xui8>
     %bufferResult_4 = mgp.tensor.extract.buffer %ctx[1], %2 : !mgp.tensor<ui32>
     %17 = mgp.buffer.alloc.static %ch1, %ctx[1], align 32 : !mgp.buffer<4>
     %18 = "sub"(%ch1, %bufferResult_4, %16, %17) {tempInOutSig=#M.inout_sig<"iiio">} : (!mgp.chain, !mgp.buffer<4>, !mgp.buffer<4>, !mgp.buffer<4>) -> !mgp.chain
     %tensorSpecResult_5 = mgp.cpu.tensor_spec.create : !mgp.tensor_spec<ui32>
     %19 = mgp.tensor.create %18, %ctx[1],  %17, %tensorSpecResult_5  : !mgp.tensor<ui32>
+    %ch1h = mgp.chain.device_to_host %ch1, %ctx[1]
     mef.output %ch1, %19, %15, %9, %ctx : !mgp.chain, !mgp.tensor<ui32>, !mgp.tensor<32xui8>, !mgp.tensor<32xui8>, !mgp.context
   }
   %bufferResult = mgp.tensor.extract.buffer %ctx[1], %10#2 : !mgp.tensor<32xui8>

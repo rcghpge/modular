@@ -227,6 +227,7 @@ public:
 
   /// Returns the constant buffer with given attribute as its contents.
   virtual Value bufferConstant(OpBuilder &builder, Location loc,
+                               TypedValue<MEF::ChainType> inChain,
                                TypedValue<ContextType> context,
                                ElementsAttr value) = 0;
 
@@ -432,6 +433,7 @@ public:
   DeviceRefAttr getDevice(OpBuilder &builder) override;
 
   Value bufferConstant(OpBuilder &builder, Location loc,
+                       TypedValue<MEF::ChainType> inChain,
                        TypedValue<ContextType> context,
                        ElementsAttr data) override;
 
