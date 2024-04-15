@@ -328,6 +328,13 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addPass(mlir::createCSEPass());
 }
+void M::MO::buildShapeInferencePipelineDefaultOpts(
+    mlir::OpPassManager &pm, const ShapeInferenceOptions &opts) {
+  MoToMgpOptions moToMgpOptions;
+  moToMgpOptions.kernelLibraryPaths = opts.kernelLibraryPaths;
+  moToMgpOptions.compiledFrameworkLabel = opts.compiledFrameworkLabel;
+  buildShapeInferencePipeline(pm, opts, moToMgpOptions);
+}
 
 void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
                                         const ShapeInferenceOptions &opts,

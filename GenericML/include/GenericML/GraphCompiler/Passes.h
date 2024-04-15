@@ -223,12 +223,7 @@ void buildShapeInferencePipeline(mlir::OpPassManager &pm,
                                  const ShapeInferenceOptions &opts,
                                  const MoToMgpOptions &moToMgpOptions);
 void buildShapeInferencePipelineDefaultOpts(mlir::OpPassManager &pm,
-                                            const ShapeInferenceOptions &opts) {
-  MoToMgpOptions moToMgpOptions;
-  moToMgpOptions.kernelLibraryPaths = opts.kernelLibraryPaths;
-  moToMgpOptions.compiledFrameworkLabel = opts.compiledFrameworkLabel;
-  buildShapeInferencePipeline(pm, opts, moToMgpOptions);
-}
+                                            const ShapeInferenceOptions &opts);
 
 } // namespace M::MO
 
