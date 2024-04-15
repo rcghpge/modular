@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
+#include "CUDASupport/CUDATensor.h"
 #include "GenericML/Support/Assert.h"
 #include "GenericML/Support/CompiledKernelsContext.h"
 #include "GenericML/Support/Context.h"
@@ -416,6 +417,15 @@ static void mgp_generic_execute(GML::Context &ctx, RemainingArguments operands,
 
 static void mgp_list_append(List &inputList, AnyAsyncValueRef element,
                             Result<List> output) {
+  if (element.isType<GML::Tensor>() || element.isType<M::CUDA::CUDATensor>()) {
+    if (!inputList.getElements().empty() &&
+        inputList.getElements().front().getValue().getPointer()->getTypeID() !=
+            element.getPointer()->getTypeID()) {
+      std::move(output).setToError("Tensor must be from the same device");
+      return;
+    }
+  }
+
   // Copy input list then append element into it.
   List newList = inputList.copy();
   newList.getElements().push_back(element.copy());

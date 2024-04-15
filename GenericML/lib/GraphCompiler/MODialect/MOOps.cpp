@@ -3110,7 +3110,25 @@ bool DebugTensorPrintOp::preferResultsDevice() { return true; }
 static bool isSubtype(TensorType ty1, TensorType ty2) {
   // !mo.tensor<..., {layout = #mo.layout<KN>}>  v.s. !mo.tensor<..., {layout =
   // #mo.layout<NK>}>
-  if (ty1.getMetadata() != ty2.getMetadata())
+
+  // Check for matching metadata outside of devices
+  // TODO fix with #37598
+  size_t numMatches = 0;
+  const auto &ty2Metadata = ty2.getMetadata();
+  for (const auto &entry : ty1.getMetadata()) {
+    const auto &ty1Name = entry.getName();
+    const auto &ty1Value = entry.getValue();
+    if (ty2Metadata.contains(ty1Name))
+      numMatches++;
+
+    if (ty1Name == "device")
+      continue;
+    if (ty2Metadata.get(ty1Name) != ty1Value)
+      return false;
+  }
+
+  // Handle case where ty2 metadata has more entries than ty1
+  if (ty2Metadata.size() != numMatches)
     return false;
 
   // !mo.tensor<..., f32>  v.s. !mo.tensor<..., si32>
