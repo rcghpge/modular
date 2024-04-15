@@ -825,6 +825,7 @@ struct ConstantFoldPass
     cacheDir = origOpts.cacheDir;
     kernelLibraryPaths =
         origOpts.kernelLibraryPaths.operator ArrayRef<std::string>();
+    isCuda = origOpts.defaultDeviceLabel == kCUDALabel;
   }
 
 private:
@@ -840,6 +841,7 @@ private:
   std::string compiledFrameworkLabel;
   std::optional<std::string> cacheDir;
   std::optional<std::vector<std::string>> kernelLibraryPaths;
+  bool isCuda{false};
 };
 
 ErrorOr<ModelsWithBuffer>
@@ -856,6 +858,8 @@ ConstantFoldPass::lowerSubgraphs(ModuleOp module, LLCL::Runtime &runtime) {
   moOpts.constantFold = false;
   // Use MOF executor so we don't depend on a framework.
   moOpts.compiledFrameworkLabel = "mof";
+  // Set default device label to cpu
+  moOpts.defaultDeviceLabel = kCPULabel;
   MO::buildMoToMgpPipeline(pm, moOpts, runtime);
   // Run pipeline needs to run on a module.
   if (failed(runPipeline(pm, module)))
@@ -881,6 +885,10 @@ void ConstantFoldPass::runOnOperation() {
   // 2. Clones each subgraph into its own GraphOp.
   // 3. Lowers and executes each GraphOp from the previous step.
   // 4. Replaces subgraph outputs with outputs from the previous step.
+
+  // Don't run on cuda
+  if (isCuda)
+    return;
 
   MLIRContext *ctx = &getContext();
 

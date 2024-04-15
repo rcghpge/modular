@@ -59,7 +59,7 @@ void M::MO::loadDialects(mlir::DialectRegistry &registry) {
 void M::MO::registerShapeInferencePipeline() {
   mlir::PassPipelineRegistration<ShapeInferenceOptions>(
       "shape-inference", "Run the end-to-end shape inference pipeline.",
-      buildShapeInferencePipeline);
+      buildShapeInferencePipelineDefaultOpts);
 }
 
 static void buildMoToMgpPipelineDefaultRuntime(mlir::OpPassManager &pm,
@@ -152,7 +152,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     shapeInferenceOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
     shapeInferenceOpts.constantFold = opts.constantFold;
     shapeInferenceOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
-    buildShapeInferencePipeline(pm, shapeInferenceOpts);
+    buildShapeInferencePipeline(pm, shapeInferenceOpts, opts);
 
     // Run symbolic optimizations after shape inference to avoid complicating
     // tracing shape pipeline.
@@ -330,7 +330,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 }
 
 void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
-                                        const ShapeInferenceOptions &opts) {
+                                        const ShapeInferenceOptions &opts,
+                                        const MoToMgpOptions &moToMgpOptions) {
   pm.addPass(MO::createResolveUnknownParameters());
   AddFallbackShapeFunctionsOptions passOpts;
   passOpts.restricted = true;
@@ -352,11 +353,6 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
-  // Use default settings for MOToMGPOptions
-  MoToMgpOptions moToMGPOptions;
-  moToMGPOptions.kernelLibraryPaths = opts.kernelLibraryPaths;
-  moToMGPOptions.compiledFrameworkLabel = opts.compiledFrameworkLabel;
-
   // Re-run the simplification part of shape inference (i.e., excluding
   // `ResolveUnknownParameters` and `AddFallbackShapeFunctions`)
 
@@ -370,7 +366,7 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
         MO::createConstantFoldPass(opts.compiledFrameworkLabel.hasValue()
                                        ? opts.compiledFrameworkLabel.getValue()
                                        : "",
-                                   moToMGPOptions));
+                                   moToMgpOptions));
   }
   // The rest follows the ordering from above, also see comments there for why.
   pm.addPass(MO::createStaticizeShapes());

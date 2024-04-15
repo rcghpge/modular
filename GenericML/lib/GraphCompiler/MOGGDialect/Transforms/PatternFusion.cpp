@@ -302,6 +302,11 @@ struct MatmulTranspBPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::MatmulOp op,
                              MO::DeviceAwareRewriter &rewriter) const override {
+    // CUDA does not support transposed weights
+    DeviceRefAttr device = op->getParentOfType<MO::GraphOp>().getDeviceRef();
+    if (device && device.getLabel() == M::kCUDALabel)
+      return failure();
+
     Value input, weight, perm;
 
     auto weightTransP = m_Op<MO::TransposeOp>(rewriter.pushOp(), m_Any(&weight),

@@ -220,7 +220,15 @@ void registerShapeInferencePipeline();
 
 // Create the end-to-end shape inference pipeline.
 void buildShapeInferencePipeline(mlir::OpPassManager &pm,
-                                 const ShapeInferenceOptions &opts);
+                                 const ShapeInferenceOptions &opts,
+                                 const MoToMgpOptions &moToMgpOptions);
+void buildShapeInferencePipelineDefaultOpts(mlir::OpPassManager &pm,
+                                            const ShapeInferenceOptions &opts) {
+  MoToMgpOptions moToMgpOptions;
+  moToMgpOptions.kernelLibraryPaths = opts.kernelLibraryPaths;
+  moToMgpOptions.compiledFrameworkLabel = opts.compiledFrameworkLabel;
+  buildShapeInferencePipeline(pm, opts, moToMgpOptions);
+}
 
 } // namespace M::MO
 
