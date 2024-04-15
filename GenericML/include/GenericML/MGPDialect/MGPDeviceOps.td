@@ -508,7 +508,8 @@ def BufferConstantOp : MGP_DeviceOp<"buffer.constant", [
 
 def BufferConstantLoadOp : MGP_DeviceOp<"buffer.constant.load", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
+    // TODO: #37615
+    /* DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>, */
 ]> {
   let summary = "Retrieves a constant from an already loaded module for device.";
   let description = [{
@@ -544,8 +545,6 @@ def BufferConstantLoadOp : MGP_DeviceOp<"buffer.constant.load", [
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-    bool BufferConstantLoadOp::isTrivial() { return true; }
-
     uint64_t BufferConstantLoadOp::getSlot() { return getARuntimeSlot(); }
 
     M::DeviceRefAttr BufferConstantLoadOp::getDevice() { return getEDevice(); }
@@ -1613,7 +1612,8 @@ def BufferToBoolOp : MGP_DeviceOp<"buffer.to_bool"> {
 
 def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
+    // TODO: #37615
+    /* DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>, */
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
 ]> {
   let summary = "Set a buffer with the values from index inputs.";
