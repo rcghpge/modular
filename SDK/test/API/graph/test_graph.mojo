@@ -78,8 +78,24 @@ fn test_add_constant() raises:
     print(g)
 
 
+fn test_symbolic_dim() raises:
+    var g = Graph(
+        "symbolic_dim",
+        MOTensor(DType.float32, "batch", "x"),
+        MOTensor(DType.float32, "batch", "x"),
+    )
+    var x = g.scalar[DType.float32](1.0, rank=1)
+    var y = g[0] + x
+    _ = g.nvop("mo.output", y)
+
+    g.verify()
+    # CHECK-LABEL: mo.graph @symbolic_dim<batch, x>(%arg0: !mo.tensor<[batch, x], f32>) -> !mo.tensor<[batch, x], f32>
+    print(g)
+
+
 fn main() raises:
     test_identity_graph()
     test_identity_graph_no_module()
     test_basic_add()
     test_add_constant()
+    test_symbolic_dim()

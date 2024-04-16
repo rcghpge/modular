@@ -12,8 +12,8 @@ from max.graph import ops, _testing, Dim, Graph, MOTensor
 
 fn test_squeeze() raises:
     var g = Graph(
-        MOTensor(DType.float32, Dim.dynamic(), 1, 3),
-        MOTensor(DType.float32, Dim.dynamic(), 3),
+        MOTensor(DType.float32, "batch", 1, 3),
+        MOTensor(DType.float32, "batch", 3),
     )
     g.output(ops.squeeze(g[0], 1))
     g.verify()
