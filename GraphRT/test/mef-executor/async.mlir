@@ -10,22 +10,6 @@ grt.testcase @test_async_print_result {
 }
 // CHECK: 'test_async_print_result' returned 43
 
-// CHECK-LABEL: --- Running 'test_cancel'
-grt.testcase @test_cancel {
-  %c1 = grt.constant.si32 1
-  %c42 = grt.constant.si32 42
-  %a = "test.async.add.i32"(%c1, %c42) : (si32, si32) -> si32
-
-  %ch0 = grt.chain.create ()
-  // expected-error @+1 {{Cancelled!}}
-  %ch1 = "test.cancel"(%ch0) : (!mef.chain) -> (!mef.chain)
-
-  %b = "test.async.add.i32"(%c1, %a) : (si32, si32) -> si32
-
-  mef.output %b : si32
-}
-// CHECK-NEXT: returned <error: Cancelled!>
-
 // CHECK-LABEL: --- Running 'test_add_any'
 grt.testcase @test_add_any {
   %c1 = grt.constant.si32 1

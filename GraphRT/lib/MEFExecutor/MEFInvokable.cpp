@@ -580,9 +580,8 @@ void MEFExecutor::decrementOperandsNotReadyCounts(
     assert(invokableImpl != nullptr);
 
     // Keep track of whether we saw any error arguments. If so, we propagate the
-    // error to the results automatically.  We initialize with the runtime's
-    // cancelation setting so cancellation quashes primitive execution.
-    AsyncValue *anyErrorArgument = runtime.getCancelValue();
+    // error to the results automatically.
+    AsyncValue *anyErrorArgument = nullptr;
 
     // Reserve space in the frame to avoid vector reallocation.
     frame.reserveArgsAndResults(decoder.numOperands, decoder.numResults);

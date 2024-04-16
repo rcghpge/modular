@@ -379,18 +379,6 @@ static std::pair<ErrorOr<int32_t>, ErrorOr<int32_t>> partial_fail() {
 }
 
 //===----------------------------------------------------------------------===//
-// Cancellation
-//===----------------------------------------------------------------------===//
-
-// Primitive for testing cancellation logic.
-static Chain cancel(Chain inChain, EncodedLocation location, Runtime &runtime) {
-  // Do NOT do this in a normal primitive. Runtime::cancelExecution() should
-  // only be called by clients external to the MEFExecutor.
-  runtime.cancelExecution(EncodedDiagnostic{"Cancelled!", std::move(location)});
-  return inChain;
-}
-
-//===----------------------------------------------------------------------===//
 // Async Operations
 //===----------------------------------------------------------------------===//
 
@@ -968,9 +956,6 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   // Error handling.
   ADD_PRIMITIVE(registry, "test.fail", fail);
   ADD_PRIMITIVE(registry, "test.partial_fail", partial_fail);
-
-  // Cancellation.
-  ADD_PRIMITIVE(registry, "test.cancel", cancel);
 
   ADD_PRIMITIVE(registry, "test.async.add.i32", async_add_i32);
   ADD_PRIMITIVE(registry, "test.async.add2.i32", async_add2_i32);

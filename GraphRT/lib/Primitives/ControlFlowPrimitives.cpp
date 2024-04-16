@@ -196,10 +196,6 @@ static void grt_while(RemainingArguments args, RemainingResults results,
           condResults,
           [state = std::move(*this)](
               MutableArrayRef<AnyAsyncValueRef> condResults) mutable {
-            // If the execution is canceled, give up.
-            if (AsyncValue *cancelValue = state.runtime.getCancelValue())
-              return std::move(state).fail(copyRCRef(cancelValue));
-
             // The 'cond' block results (except the last condition result) are
             // the new current operands.
             for (auto [currentOperand, condResult] :
@@ -237,10 +233,6 @@ static void grt_while(RemainingArguments args, RemainingResults results,
           bodyResults,
           [state = std::move(*this)](
               MutableArrayRef<AnyAsyncValueRef> bodyResults) mutable {
-            // If the execution is canceled, give up.
-            if (AsyncValue *cancelValue = state.runtime.getCancelValue())
-              return std::move(state).fail(copyRCRef(cancelValue));
-
             // The 'body' block results are the new current operands.
             for (auto [currentOperand, bodyResult] :
                  llvm::zip(state.currentOperands, bodyResults))
@@ -332,10 +324,6 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
         // We complete by passing the final result values to the output of the
         // repeat loop overall.
         return std::move(*this).finish();
-
-      // If the execution is canceled, give up.
-      if (AsyncValue *cancelValue = runtime.getCancelValue())
-        return std::move(*this).fail(copyRCRef(cancelValue));
 
       // Otherwise, we have an iteration to perform.
       --iterationsLeft;
