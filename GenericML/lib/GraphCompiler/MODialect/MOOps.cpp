@@ -173,8 +173,8 @@ M::MO::tryGetConstantBoolVector(TensorValue val) {
 /// Assume `val` is of `MO::TensorType`, try to the value of `MOSH::ShapeType`
 /// that feeds into the creation of `val`.  Otherwise return null.
 static Value tryGetShapeValue(Value val) {
-  // Skip at most a single intermediate rebind
-  if (auto rebindOp = val.getDefiningOp<RebindOp>())
+  // Skip proceeding rebinds (there could be more than one).
+  while (auto rebindOp = val.getDefiningOp<RebindOp>())
     val = rebindOp.getInput();
 
   if (auto toTensorOp = val.getDefiningOp<Shape::ToTensorOp>())

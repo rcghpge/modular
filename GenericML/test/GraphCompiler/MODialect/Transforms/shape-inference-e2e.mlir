@@ -1025,3 +1025,42 @@ mo.graph @e2e_fold<M, N -> E, F>(
   // CHECK-NEXT: mo.output %[[RESHAPE]]
   mo.output<C, D> %res : !mo.tensor<[C, D], f32>
 }
+
+// CHECK-LABEL: mo.graph @consecutive_rebind_during_staticization
+// CHECK-SAME:   %[[ARG1:.*]]: !mo.tensor
+mo.graph @consecutive_rebind_during_staticization(%arg1: !mo.tensor<[?, ?], si32>) -> !mo.tensor<[?, ?], si32> no_inline {
+  // This IR is taken from TF GPT2, before shape inference.
+  %0 = mo.constant {value = #M.dense_array<> : tensor<0xsi32>} : !mo.tensor<[0], si32>
+  %1 = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %2 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %3 = mo.constant {value = #M.dense_array<-1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %4 = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %5 = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  %6 = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %7 = mo.shape_of(%arg1) : (!mo.tensor<[?, ?], si32>) -> !mo.tensor<[2], si32>
+  %8 = mo.rebind(%0) : !mo.tensor<[0], si32> -> !mo.tensor<[?], si32>
+  %9 = mo.slice(%7, %2, %6, %2) : (!mo.tensor<[2], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>) -> !mo.tensor<[?], si32>
+  %10 = mo.shape_of(%9) : (!mo.tensor<[?], si32>) -> !mo.tensor<[1], si64>
+  %11 = mo.shape_of(%10) : (!mo.tensor<[1], si64>) -> !mo.tensor<[1], si32>
+  %12 = mo.static.reshape(%11) : !mo.tensor<[1], si32> -> !mo.tensor<[], si32>
+  %13 = mo.range(%4, %12, %4) : (!mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[?], si32>
+  %14 = mo.gather(%10, %8, %1) : (!mo.tensor<[1], si64>, !mo.tensor<[?], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[?], si64>
+  %15 = mo.gather(%10, %13, %1) : (!mo.tensor<[1], si64>, !mo.tensor<[?], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[?], si64>
+  %16 = mo.concat[%1 : !mo.tensor<[], si32>] (%14, %15) : (!mo.tensor<[?], si64>, !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64>
+  
+  // This reshape will be canonicalized into a static.reshape, then merged with
+  // the subsequent static.reshape, and then become a rebind during shape
+  // inference, and we end up having 2 consecutive rebinds starting from %20.
+  %17 = mo.reshape(%9, %16) : (!mo.tensor<[?], si32>, !mo.tensor<[?], si64>) -> !mo.tensor<[], si32>
+  %18 = mo.rebind(%3) : !mo.tensor<[1], si32> -> !mo.tensor<[?], si32>
+  %19 = mo.static.reshape(%17) : !mo.tensor<[], si32> -> !mo.tensor<[1], si32>
+  %20 = mo.rebind(%19) : !mo.tensor<[1], si32> -> !mo.tensor<[?], si32>
+  %21 = mo.concat[%5 : !mo.tensor<[], si64>] (%18, %20) : (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<[2], si32>
+  %22 = mo.reshape(%arg1, %21) : (!mo.tensor<[?, ?], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[?, ?], si32>
+
+  // The check and rebind should fold away (#36363)
+  // CHECK-NEXT: kgen.param.declare {{.*}}: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "[reshape] input and output number of elements must match"
+  // CHECK-NEXT: %[[RES:.*]] = mo.rebind(%[[ARG1]])
+  // CHECK-NEXT: mo.output{{.*}} %[[RES]]
+  mo.output %22 : !mo.tensor<[?, ?], si32>
+}

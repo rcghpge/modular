@@ -343,11 +343,17 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
   AddFallbackShapeFunctionsOptions passOpts;
   passOpts.restricted = true;
   passOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  // Adding fallback shape function calls move the parameter declaration from
+  // most MO ops (execpt for rebind and #36956) into the shape function call
+  // ops, so that downstream passes won't need to worry about them when rewrting
+  // the MO ops.
   pm.addPass(MO::createAddFallbackShapeFunctions(passOpts));
 
-  // Convert most scalar <--> tensor reshapes into rebind, which will be merged
-  // during staticization. Otherwise staticization must look through those
-  // reshapes for shape inputs.
+  // This canonicalizer pass serves the following purposes:
+  // 1. Convert static reshapes like `[D0] -> [1]` into rebind, otherwise
+  //    staticization must alsp look through those reshapes for shape inputs.
+  // 2. Materialize parameter definition for `mo.rebind` that still declare
+  //    output parameters.
   pm.addPass(mlir::createCanonicalizerPass());
   // Staticization should always run first because it might open up new
   // opportunities for shape function symbolicization.

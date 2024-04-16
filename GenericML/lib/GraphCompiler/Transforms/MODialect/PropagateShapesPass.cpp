@@ -434,8 +434,9 @@ private:
     // Avoid division by 0, occurs for empty tensors in which case the -1 dim
     // being 0 would always work. There is ambiguity here in allowed values but
     // in practice probably not important.
-    // TODO: think about removing the max(...) as it is very hard to remove
-    // TODO: without range-based analysis (and even then it is hard).
+    //
+    // TODO(#36363): think about removing the max(...) as it is very hard to
+    // remove without range-based analysis (and even then it is hard).
     KGEN::ParamDeclRefAttr denominatorNormalized =
         createDeclToKgenExpr("reshape_dyndim_denominator_normalized",
                              KGEN::POC::Max, {one, denominator});
