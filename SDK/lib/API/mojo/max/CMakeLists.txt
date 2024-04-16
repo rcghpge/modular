@@ -77,6 +77,6 @@ add_mojo_package(max-mojo PRIVATE DISABLE_PRIME_CACHE
 
 add_dependencies(max-mojo mlir-mojo-api)
 
-if (MODULAR_BUILD_MUTT)
-  add_dependencies(max-mojo MuttCAPI)
+if (MODULAR_BUILD_SERVE_RT)
+  add_dependencies(max-mojo ServeRTCAPI)
 endif ()
