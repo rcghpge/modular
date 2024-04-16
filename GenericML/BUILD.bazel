@@ -263,6 +263,68 @@ cc_library(
     ],
 )
 
+##
+# MGP Transforms
+##
+td_library(
+    name = "MGPTransformsTdFiles",
+    srcs = glob(["include/GenericML/MGPTransforms/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+# TODO: translate the add_modular_doc from the "add_modular_passes" func
+gentbl_cc_library(
+    name = "MGPTransformsIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+            ],
+            "include/GenericML/MGPTransforms/MGPTransforms.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/MGPTransforms/MGPTransforms.td",
+    deps = [
+        ":MGPTransformsTdFiles",
+        ":MGPDialectTdFiles",
+        "//GraphRT:MEFTdFiles",
+        "//GraphRT:GRTTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles"
+    ],
+)
+
+cc_library(
+    name = "MGPTransforms",
+    srcs = glob(
+        [
+            "lib/MGPTransforms/*.cpp",
+            "lib/MGPTransforms/*.h"
+        ]
+    ),
+    hdrs = glob(["include/GenericML/MGPTransforms/*.h"]),
+    strip_include_prefix = "include",
+    deps = [
+        ":MGPTransformsIncGen",
+        ":MGPDialect",
+        "//GraphRT:MEFDialect",
+        "//GraphRT:MIPDialect",
+        ":Support",
+        "@llvm-project//llvm:Support",
+    ],
+    # Some of these files import llvm headers using "llvm-project/llvm..."
+    # This is a workaround for those. In the future we will fix the import
+    # paths directly.
+    copts = ["-iquoteexternal/"]
+)
+
+
 cc_library(
     name = "Support",
     srcs = glob(["lib/Support/*.cpp"]),
@@ -565,5 +627,53 @@ cc_library(
         "//GraphRT:MIPDialect",
         ":Support",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+
+##
+# CUDA Transforms
+##
+td_library(
+    name = "CUDATransformsTdFiles",
+    srcs = glob(["include/GenericML/CUDATransforms/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+gentbl_cc_library(
+    name = "CUDATransformsIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+            ],
+            "include/GenericML/CUDATransforms/CUDATransforms.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/CUDATransforms/CUDATransforms.td",
+    deps = [
+        ":CUDADialectTdFiles",
+        ":CUDATransformsTdFiles",
+        ":MGPDialectTdFiles",
+        "//GraphRT:MEFTdFiles",
+        "//GraphRT:GRTTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles"
+    ],
+)
+
+cc_library(
+    name = "CUDATransforms",
+    srcs = glob(["lib/CUDATransforms/*.cpp"]),
+    hdrs = glob(["include/GenericML/CUDATransforms/*.h"]),
+    strip_include_prefix = "include",
+    deps = [
+        ":CUDATransformsIncGen",
+        ":CUDADialect",
     ],
 )
