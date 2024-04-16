@@ -102,7 +102,48 @@ gentbl_cc_library(
                 "-gen-dialect-defs",
                 "-dialect=mgp",
             ],
-            "include/GenericML/Dialect/MGPDialect.cpp.inc",
+            "include/GenericML/MGPDialect/MGPDialect.cpp.inc",
+        ),
+        # Carry over from CMake. Original comment:
+        # Type declarations need to be generated for MGPTypes.td directly so that
+        # MGPTensorSpec is declared in its own include file (which is needed by
+        # TensorTypeInterface). Type definitions for all types and TensorSpec need
+        # to be generated in the same file so that there is only one copy of the type
+        # parser.
+        (
+            [
+                "-gen-typedef-defs",
+                "-typedefs-dialect=mgp",
+            ],
+            "include/GenericML/MGPDialect/MGPTypes.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/MGPDialect/MGP.td",
+    deps = [
+        ":MGPDialectTdFiles",
+        "//GraphRT:GRTTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MGPDialectAttrsIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-attrdef-decls",
+                "-attrdefs-dialect=mgp",
+            ],
+            "include/GenericML/MGPDialect/MGPAttrs.h.inc",
+        ),
+        (
+            [
+                "-gen-attrdef-defs",
+                "-attrdefs-dialect=mgp",
+            ],
+            "include/GenericML/MGPDialect/MGPAttrs.cpp.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
@@ -111,7 +152,97 @@ gentbl_cc_library(
         ":MGPDialectTdFiles",
         "//GraphRT:GRTTdFiles",
         "//GraphRT:MEFTdFiles",
-        "//Support:MTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MGPDialectTypesIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-typedef-decls",
+                "-typedefs-dialect=mgp",
+            ],
+            "include/GenericML/MGPDialect/MGPTypes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/MGPDialect/MGPTypes.td",
+    deps = [
+        ":MGPDialectTdFiles",
+        "//GraphRT:MEFTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MGPDialectTensorSpecIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-typedef-decls",
+                "-typedefs-dialect=mgp",
+            ],
+            "include/GenericML/MGPDialect/MGPTensorSpec.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/MGPDialect/MGPTensorSpec.td",
+    deps = [
+        ":MGPDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MGPDialectTypeInterfacesIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-type-interface-decls",
+            ],
+            "include/GenericML/MGPDialect/MGPTypeInterfaces.h.inc",
+        ),
+        (
+            [
+                "-gen-type-interface-defs",
+            ],
+            "include/GenericML/MGPDialect/MGPTypeInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/MGPDialect/MGPTypeInterfaces.td",
+    deps = [
+        ":MGPDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MGPDialectOpInterfacesIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-op-interface-decls",
+            ],
+            "include/GenericML/MGPDialect/MGPOpInterfaces.h.inc",
+        ),
+        (
+            [
+                "-gen-op-interface-defs",
+            ],
+            "include/GenericML/MGPDialect/MGPOpInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/MGPDialect/MGPOpInterfaces.td",
+    deps = [
+        ":MGPDialectTdFiles",
     ],
 )
 
@@ -122,6 +253,12 @@ cc_library(
     strip_include_prefix = "include",
     deps = [
         ":MGPDialectIncGen",
+        ":MGPDialectTypesIncGen",
+        ":MGPDialectTensorSpecIncGen",
+        ":MGPDialectAttrsIncGen",
+        ":MGPDialectTypeInterfacesIncGen",
+        ":MGPDialectOpInterfacesIncGen",
+        "//GraphRT:GRTDialect",
         ":Support",
     ],
 )
@@ -282,6 +419,151 @@ cc_library(
         ":Support",
         "//KGEN:KGENDialect",
         "//KGEN:POPDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+##
+# CUDA dialect. TODO: Move these deeper into the subdirectories.
+##
+
+td_library(
+    name = "CUDADialectTdFiles",
+    srcs = glob(["include/GenericML/CUDADialect/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "CUDADialectIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-attrdef-decls",
+                "-attrdefs-dialect=cuda",
+            ],
+            "include/GenericML/CUDADialect/CUDAAttrs.h.inc",
+        ),
+        (
+            [
+                "-gen-attrdef-defs",
+                "-attrdefs-dialect=cuda",
+            ],
+            "include/GenericML/CUDADialect/CUDAAttrs.cpp.inc",
+        ),
+        (
+            [
+                "-gen-typedef-decls",
+                "-typedefs-dialect=cuda",
+            ],
+            "include/GenericML/CUDADialect/CUDATypes.h.inc",
+        ),
+        (
+            [
+                "-gen-typedef-defs",
+                "-typedefs-dialect=cuda",
+            ],
+            "include/GenericML/CUDADialect/CUDATypes.cpp.inc",
+        ),
+        (
+            ["-gen-op-decls"],
+            "include/GenericML/CUDADialect/CUDA.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "include/GenericML/CUDADialect/CUDA.cpp.inc",
+        ),
+        (
+            [
+                "-gen-dialect-decls",
+                "-dialect=cuda",
+            ],
+            "include/GenericML/CUDADialect/CUDADialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=cuda",
+            ],
+            "include/GenericML/CUDADialect/CUDADialect.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/CUDADialect/CUDA.td",
+    deps = [
+        ":CUDADialectTdFiles",
+        ":MGPDialectTdFiles",
+        "//GraphRT:GRTTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "CUDADialectTypeInterfacesIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-type-interface-decls",
+            ],
+            "include/GenericML/CUDADialect/CUDATypeInterfaces.h.inc",
+        ),
+        (
+            [
+                "-gen-type-interface-defs",
+            ],
+            "include/GenericML/CUDADialect/CUDATypeInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/CUDADialect/CUDATypeInterfaces.td",
+    deps = [
+        ":CUDADialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "CUDADialectOpInterfacesIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-op-interface-decls",
+            ],
+            "include/GenericML/CUDADialect/CUDAOpInterfaces.h.inc",
+        ),
+        (
+            [
+                "-gen-op-interface-defs",
+            ],
+            "include/GenericML/CUDADialect/CUDAOpInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/CUDADialect/CUDAOpInterfaces.td",
+    deps = [
+        ":CUDADialectTdFiles",
+    ],
+)
+
+cc_library(
+    name = "CUDADialect",
+    srcs = glob(["lib/CUDADialect/*.cpp"]),
+    hdrs = glob(["include/GenericML/CUDADialect/*.h"]),
+    strip_include_prefix = "include",
+    deps = [
+        ":CUDADialectIncGen",
+        ":CUDADialectTypeInterfacesIncGen",
+        ":CUDADialectOpInterfacesIncGen",
+        ":MGPDialect",
+        "//GraphRT:MEFDialect",
+        "//GraphRT:MIPDialect",
+        ":Support",
         "@llvm-project//mlir:IR",
     ],
 )
