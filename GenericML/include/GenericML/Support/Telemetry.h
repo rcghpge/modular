@@ -7,6 +7,7 @@
 #ifndef GENERICML_SUPPORT_TELEMETRY_H
 #define GENERICML_SUPPORT_TELEMETRY_H
 
+#include "Support/Context.h"
 #include "Support/Error.h"
 #include "Support/Telemetry/Telemetry.h"
 
