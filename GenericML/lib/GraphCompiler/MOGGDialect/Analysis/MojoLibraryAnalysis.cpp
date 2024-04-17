@@ -20,10 +20,11 @@
 #include "KGEN/LITDialect/LITUtils.h"
 #include "KGEN/MojoParser/EntryPoint.h"
 #include "KGEN/ToolCommon/CompilationOptions.h"
-#include "LLCL/Runtime/Runtime.h"
 #include "Support/Compiler/BytecodeReaderWriter.h"
 #include "Support/Compiler/OperationUtils.h"
+#include "Support/Context.h"
 #include "Support/Filesystem/Paths.h"
+#include "Support/MDialect/MDialect.h"
 
 namespace {
 #include MOGG_MOJO_BINDING_H
@@ -64,7 +65,7 @@ ErrorOr<OwningOpRef<ModuleOp>> parseMojoPackage(MLIRContext *ctx,
   // Generate a library from the package, ensuring that dependencies are
   // materialized to make it self contained.
   if (auto err = KGEN::runLibraryGenerationPipeline(
-          *ownedModule, runtime, KGEN::CompilationOptions(),
+          *ownedModule, KGEN::CompilationOptions(),
           /*materializeDependencies=*/true))
     return err.takeError();
   return ownedModule;

@@ -209,11 +209,8 @@ struct ShapeInferenceOptions
 /// tool.
 void registerMoToMgpPipeline();
 
-/// Creates the canonical MO-to-MGP pipeline for the given options. Passes may
-/// use the given runtime to extract host information, execute sub-graphs, and
-/// parallelize compilation.
-void buildMoToMgpPipeline(mlir::OpPassManager &pm, const MoToMgpOptions &opts,
-                          Runtime &runtime);
+/// Creates the canonical MO-to-MGP pipeline for the given options.
+void buildMoToMgpPipeline(mlir::OpPassManager &pm, const MoToMgpOptions &opts);
 
 /// Registers the end-to-end shape inference pipeline for use by testing tools.
 void registerShapeInferencePipeline();

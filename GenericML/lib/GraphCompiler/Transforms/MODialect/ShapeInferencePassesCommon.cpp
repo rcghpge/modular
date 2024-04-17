@@ -40,10 +40,8 @@ LogicalResult elaborateModule(ModuleOp moduleOp) {
   // Extend the environment (defines) for the module.
   KGEN::extendWithModularEnvAttr(moduleOp);
 
-  LLCL::Runtime &runtime = *loadContext(ctx)->get<LLCL::Runtime>();
   mlir::PassManager pm(ctx);
-  KGEN::populateElaborateModulePasses(pm, runtime, *target,
-                                      {/*enableSearch=*/false});
+  KGEN::populateElaborateModulePasses(pm, *target, {/*enableSearch=*/false});
   return pm.run(moduleOp);
 }
 

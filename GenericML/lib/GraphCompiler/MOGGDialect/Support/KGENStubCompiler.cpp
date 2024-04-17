@@ -16,8 +16,10 @@
 #include "KGEN/ToolCommon/CLOptions.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/Runtime.h"
+#include "Support/Context.h"
 #include "Support/MArchTarget/Host.h"
 #include "Support/MDialect/MAttrs.h"
+#include "Support/MDialect/MDialect.h"
 #include "Support/Preprocessor.h"
 #include "Support/Telemetry/Telemetry.h"
 #include "mlir/Pass/PassManager.h"
@@ -66,9 +68,7 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
   if (kKernelsBuildType == "relwithdebinfo" || kKernelsBuildType == "debug")
     compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
 
-  LLCL::Runtime &runtime = *loadContext(ctx)->get<LLCL::Runtime>();
-  KGEN::populateElaborateModulePasses(pm, runtime, *targetInfoOr,
-                                      compilationOptions);
+  KGEN::populateElaborateModulePasses(pm, *targetInfoOr, compilationOptions);
 
   if (!saveTempsPrefix.empty()) {
     std::string outPath = saveTempsPrefix + ".kgen.prelaboration.mlir";
@@ -89,11 +89,12 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
       attrs["filename"] = fileLine.getFilename().str();
 
     [[maybe_unused]] auto timeScope =
-        runtime.context->emplaceIfMissing<M::Telemetry::TelemetryContext>()
-            .createUInt64Timer<std::chrono::milliseconds>(
+        loadContext(ctx)
+            ->get<M::Telemetry::TelemetryContext>()
+            ->createUInt64Timer<std::chrono::milliseconds>(
                 "mogg.kgen.elaboration.time", M::Telemetry::Level::L2, attrs);
 
-    auto cacheBackend = KGEN::getMojoCacheBackend(runtime);
+    auto cacheBackend = KGEN::getMojoCacheBackend();
     if (cacheBackend.isError()) {
       // Just run the passes.
       res = pm.run(kgenModule);
@@ -102,7 +103,7 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
       LLCL::AnyAsyncValueRef ready = Cache::cachedTransform(
           kgenModule,
           RCRef<Cache::TransformCache>::create(std::move(*cacheBackend)),
-          runtime.getReadyChain().copy(), pm);
+          loadContext(ctx)->get<LLCL::Runtime>()->getReadyChain().copy(), pm);
       LLCL::await(ready);
       if (ready.isError()) {
         LLCL::EncodedDiagnostic diag = ready.takeDiagnostic();
@@ -133,7 +134,6 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
   static constexpr llvm::StringLiteral kKernelsBuildType =
       STRINGIFY(KERNELS_BUILD_TYPE);
 
-  LLCL::Runtime &runtime = *loadContext(ctx)->get<LLCL::Runtime>();
   mlir::PassManager mgr(ctx);
 
   if (enableTiming)
@@ -162,7 +162,7 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
     compilationOptions.setSaveTemps(saveTempsPrefix);
 
   auto compilerOr = KGEN::ObjectCompiler::create(
-      runtime, mgr, ".mojo_cache", compilationOptions, /*isJit=*/true);
+      mgr, ".mojo_cache", compilationOptions, /*isJit=*/true);
   if (compilerOr.isError())
     return compilerOr.takeError();
   llvm::MapVector<StringAttr, KGEN::ExportedSymbol> exportedSymbols =

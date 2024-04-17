@@ -24,8 +24,7 @@ struct MoToMgpOptions;
 
 /// Compile a module at the MO dialect level down to the MGP level.
 LogicalResult lowerMOToMGP(ModuleOp module,
-                           const MoToMgpOptions &moToMgpOptions,
-                           Runtime &runtime);
+                           const MoToMgpOptions &moToMgpOptions);
 
 /// Convert a module at the MGP level to a buffer in MEF format.
 /// The module is left unchanged (even though we may need to apply some

@@ -261,7 +261,7 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   writeIntermediateFileIfRequested("mo", *moduleOp, /*options=*/nullptr,
                                    BufferRef());
 
-  if (failed(lowerMOToMGP(*moduleOp, moToMgpOptions, *runtime)))
+  if (failed(lowerMOToMGP(*moduleOp, moToMgpOptions)))
     return Error("unable to lower MO to MGP");
 
   // Save MGP IR pre export to MEF.
@@ -322,8 +322,7 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
 
       mofLoweringOptions.setupContext(compileCtx.context.copy());
 
-      if (failed(lowerMOToMGP(compileCtx.module.get(), moToMgpOptions,
-                              *compileCtx.runtime)))
+      if (failed(lowerMOToMGP(compileCtx.module.get(), moToMgpOptions)))
         return Error("unable to lower MO to MGP");
       writeIntermediateFileIfRequested("mgp", compileCtx.module.get(),
                                        mofContext->getCommonCLOptions(),

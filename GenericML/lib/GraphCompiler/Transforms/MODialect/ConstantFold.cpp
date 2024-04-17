@@ -26,6 +26,8 @@
 #include "MEFModel.h"
 #include "Support/Buffer.h"
 #include "Support/Compiler/MLIRDenseAttr.h"
+#include "Support/Context.h"
+#include "Support/MDialect/MDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Value.h"
@@ -367,7 +369,8 @@ static RuntimeOutput extractRuntimeOutput(
 /// folding.
 static LLCL::ErrorDiagnosticOr<ModelResult>
 executeModel(MLIRContext *ctx, const Model *model,
-             const SubgraphsInfo &subgraphsInfo, LLCL::Runtime &runtime) {
+             const SubgraphsInfo &subgraphsInfo) {
+  LLCL::Runtime &runtime = *loadContext(ctx)->get<LLCL::Runtime>();
   auto executableModelOr = model->setup(runtime);
   if (executableModelOr.isError())
     return executableModelOr.takeError();
@@ -833,8 +836,7 @@ private:
   // for execution. Returns the models along with a buffer that needs to
   // live as long as they do. This needs to be a member of the pass so it
   // can access runPipeline.
-  ErrorOr<ModelsWithBuffer> lowerSubgraphs(ModuleOp module,
-                                           LLCL::Runtime &runtime);
+  ErrorOr<ModelsWithBuffer> lowerSubgraphs(ModuleOp module);
 
   std::shared_ptr<const ConstantFoldPolicy> policy;
   // Label used to load and handle buffers created by the framework.
@@ -844,8 +846,7 @@ private:
   bool isCuda{false};
 };
 
-ErrorOr<ModelsWithBuffer>
-ConstantFoldPass::lowerSubgraphs(ModuleOp module, LLCL::Runtime &runtime) {
+ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
   // Lower module to MGP.
   mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
       module.getContext(), mlir::OpPassManager::Nesting::Implicit);
@@ -860,7 +861,7 @@ ConstantFoldPass::lowerSubgraphs(ModuleOp module, LLCL::Runtime &runtime) {
   moOpts.compiledFrameworkLabel = "mof";
   // Set default device label to cpu
   moOpts.defaultDeviceLabel = kCPULabel;
-  MO::buildMoToMgpPipeline(pm, moOpts, runtime);
+  MO::buildMoToMgpPipeline(pm, moOpts);
   // Run pipeline needs to run on a module.
   if (failed(runPipeline(pm, module)))
     return Error("Failed to run MOToMGP pipeline");
@@ -947,8 +948,7 @@ void ConstantFoldPass::runOnOperation() {
         return std::move(readyChain).emplace();
       }
 
-      ErrorOr<ModelsWithBuffer> modelsOr =
-          lowerSubgraphs(module, *runtimeFromCtx);
+      ErrorOr<ModelsWithBuffer> modelsOr = lowerSubgraphs(module);
       if (failed(modelsOr)) {
         return setError(module.getLoc(),
                         "[ConstantFold] Unable to load models: " +
@@ -967,7 +967,7 @@ void ConstantFoldPass::runOnOperation() {
         GENERICML_ASSERT(model != nullptr)
             << "Model should exist, make sure names above match.";
         LLCL::ErrorDiagnosticOr<ModelResult> valuesToTensorsOr =
-            executeModel(ctx, model, subgraphsInfo, *runtimeFromCtx);
+            executeModel(ctx, model, subgraphsInfo);
         if (valuesToTensorsOr.isError()) {
           LLCL::EncodedDiagnostic err = valuesToTensorsOr.takeError();
           auto decoded = err.decodeLocation();

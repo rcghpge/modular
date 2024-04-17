@@ -62,15 +62,9 @@ void M::MO::registerShapeInferencePipeline() {
       buildShapeInferencePipelineDefaultOpts);
 }
 
-static void buildMoToMgpPipelineDefaultRuntime(mlir::OpPassManager &pm,
-                                               const MoToMgpOptions &opts) {
-  // Requires a runtime to have already been established.
-  buildMoToMgpPipeline(pm, opts, LLCL::Runtime::getCurrentRuntime());
-}
-
 void M::MO::registerMoToMgpPipeline() {
   mlir::PassPipelineRegistration<MoToMgpOptions>(
-      "mo-to-mgp", "Lower MO to MGP.", buildMoToMgpPipelineDefaultRuntime);
+      "mo-to-mgp", "Lower MO to MGP.", buildMoToMgpPipeline);
 }
 
 void M::MO::registerPasses() {
@@ -104,18 +98,17 @@ void M::MO::registerPasses() {
 }
 
 LogicalResult MO::lowerMOToMGP(ModuleOp module,
-                               const MoToMgpOptions &moToMgpOptions,
-                               Runtime &runtime) {
+                               const MoToMgpOptions &moToMgpOptions) {
   mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
       module.getContext(), mlir::OpPassManager::Nesting::Implicit);
 
-  MO::buildMoToMgpPipeline(pm, moToMgpOptions, runtime);
+  MO::buildMoToMgpPipeline(pm, moToMgpOptions);
 
   return pm.run(module);
 }
 
 void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
-                                 const MoToMgpOptions &opts, Runtime &runtime) {
+                                 const MoToMgpOptions &opts) {
   if (opts.debugPrintAllTensors)
     pm.addPass(MO::createDebugPrintAllTensorsPass());
 
@@ -184,7 +177,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   addDevicesOpts.enableExtraDevices = opts.enableExtraDevices;
   addDevicesOpts.enableFakeCudaDevice = opts.enableFakeCudaDevice;
   addDevicesOpts.defaultDeviceLabel = opts.defaultDeviceLabel;
-  pm.addPass(MO::createAddDevicesPass(addDevicesOpts, runtime));
+  pm.addPass(MO::createAddDevicesPass(addDevicesOpts));
   pm.addPass(MO::createInferLayouts());
 
   if (opts.usePatterns) {

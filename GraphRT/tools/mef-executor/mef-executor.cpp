@@ -18,7 +18,9 @@
 #include "LLCL/Runtime/Utils.h"
 #include "Support/CommandLine.h"
 #include "Support/CommonCLOptions.h"
+#include "Support/Init/Init.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "Support/MDialect/MDialect.h"
 #include "Support/ML/SizeUtils.h"
 #include "llvm/Support/SourceMgr.h"
 
@@ -89,15 +91,13 @@ static void printResults(MEFInvokable *invokable,
 
 /// Run the specified mef.invokable as a testcase - this means passing in test
 /// input and printing results if we can.
-static ErrorOrSuccess runTestcase(const GRTTestcase &test,
-                                  const RuntimeOptions &runtimeConfig,
+static ErrorOrSuccess runTestcase(ContextRef ctx, const GRTTestcase &test,
                                   MLIRContext *context) {
   // In this test driver, we want to make sure that every invokable completes
   // all execution before moving on to the next one.  This makes the leak
   // checker work better in the face of side effecting kernels that aren't
   // properly chained together (which is useful for testing).  As such, we run
   // each testcase with its own runtime instance and own leak checker.
-  auto runtime = runtimeConfig.createRuntime();
   runWithLeakCheckedRuntime(test.getName().str().c_str(), [&]() {
     // Actually run the invokable.  We use printf here because it has atomic
     // output behavior w.r.t. the printfs in various TestPrimitives.
@@ -105,7 +105,8 @@ static ErrorOrSuccess runTestcase(const GRTTestcase &test,
            test.getName().data());
     fflush(stdout);
 
-    auto results = test.getBody()->invoke(/*arguments=*/{}, *runtime);
+    LLCL::Runtime &runtime = *ctx->get<LLCL::Runtime>();
+    auto results = test.getBody()->invoke(/*arguments=*/{}, runtime);
 
     // Block until the invokable results are fully resolved.
     await(results);
@@ -120,6 +121,7 @@ static ErrorOrSuccess runTestcase(const GRTTestcase &test,
 
     printResults(test.getBody(), results, context, os);
   });
+
   // FIXME: this function currently does not handle errors.
   return success();
 }
@@ -143,6 +145,34 @@ public:
       cl::init(false)};
 };
 } // namespace
+
+static LogicalResult
+runTestcases(SmallVectorImpl<GRTTestcase> &testcasesToExecute,
+             const MEFExecutorCLOptions &options, MLIRContext *context) {
+  // Create our execution context. Note that we limit the scope of this
+  // context in order to ensure that the full runtime is torn-down before
+  // the mefFile is reset, since there may still be operatings outstanding.
+  ErrorOr<ContextRef> ctxOr =
+      Init::createContext("mef-executor", Init::Options());
+  if (ctxOr.isError())
+    return ctxOr.takeError();
+  auto err = (*ctxOr)->createIfMissing<LLCL::Runtime>(
+      [&]() -> ErrorOr<std::unique_ptr<LLCL::Runtime>> {
+        return options.createRuntime();
+      });
+  if (err.isError())
+    return err.takeError();
+  registerContext(*context, *ctxOr);
+
+  for (auto &fn : testcasesToExecute) {
+    if (auto err = runTestcase(ctxOr->copy(), fn, context)) {
+      options.reportError(err.getError());
+      if (options.stopOnFirstError())
+        return failure();
+    }
+  }
+  return success();
+}
 
 int main(int argc, char **argv) {
   MEFExecutorCLOptions options(argc, argv);
@@ -194,17 +224,10 @@ int main(int argc, char **argv) {
   // emission.
   LogicalResult hadError = options.configureMLIRContextAndExecute(
       std::move(fileBuffer), [&](MLIRContext *context) -> LogicalResult {
-        for (auto &fn : testcasesToExecute) {
-          if (auto err = runTestcase(fn, options, context)) {
-            options.reportError(err.getError());
-            if (options.stopOnFirstError())
-              return failure();
-          }
-        }
-        return success();
+        return runTestcases(testcasesToExecute, options, context);
       });
 
-  // We're done with the MEF, we can safely deallocate.
+  // We're done with the MEF, we can safely deallocate (see above).
   mefFile.reset();
 
   if constexpr (AsyncValue::isAllocationTrackingEnabled())
