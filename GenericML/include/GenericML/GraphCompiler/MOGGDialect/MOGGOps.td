@@ -573,6 +573,21 @@ def MOGG_CreateEmptyTensorsOp : MOGG_Op<"empty_tensors"> {
 }
 
 
+def MOGG_ToTensorFromMGPOp : MOGG_Op<"to_tensor_from_mgp", [Pure]> {
+  let arguments = (ins AnyType:$dataPointer, Variadic<Index>:$dims);
+  let results = (outs MO_Tensor:$result);
+  let summary = "Represents the construction of an NDBuffer or Tensor";
+  let description = [{
+    Takes a data pointer and a list of dimensions. Will lower this into a call
+    to NDBuffer or Tensor constructor under the hood.
+  }];
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:`
+        functional-type(operands, results)
+  }];
+}
+
 def MOGG_GetAsyncValueOp : MOGG_Op<"get_async_val", [Pure]> {
   let arguments = (ins AnyType:$ssa);
   let results = (outs AnyType:$result);
