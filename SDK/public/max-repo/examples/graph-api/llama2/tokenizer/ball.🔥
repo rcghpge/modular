@@ -109,7 +109,7 @@ struct Ball[T: CollectionElement]:
         return Reference(
             __mlir_op.`lit.ref.from_pointer`[
                 _type = Reference[Node[T], mutability, lifetime]._mlir_type
-            ](UnsafePointer(node_ref).bitcast[Node[T]]().value)
+            ](UnsafePointer(node_ref).bitcast[Node[T]]().address)
         )
 
     fn __refitem__[
@@ -123,5 +123,5 @@ struct Ball[T: CollectionElement]:
         return Reference(
             __mlir_op.`lit.ref.from_pointer`[
                 _type = Reference[T, mutability, lifetime]._mlir_type
-            ](UnsafePointer(node_ref).bitcast[T]().value)
+            ](UnsafePointer(node_ref).bitcast[T]().address)
         )
