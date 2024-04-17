@@ -6,6 +6,7 @@
 
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
 
+#include "Cache/CacheTelemetryContext.h"
 #include "Cache/CachedTransform.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
@@ -103,7 +104,13 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
       LLCL::AnyAsyncValueRef ready = Cache::cachedTransform(
           kgenModule,
           RCRef<Cache::TransformCache>::create(std::move(*cacheBackend)),
-          loadContext(ctx)->get<LLCL::Runtime>()->getReadyChain().copy(), pm);
+          loadContext(ctx)->get<LLCL::Runtime>()->getReadyChain().copy(), pm,
+          Cache::CacheTelemetryContext::getTelemetryOnMissLambda(
+              "StubCompiler::elaborateKGEN",
+              "mogg.elaborate.kgen.cache.miss.time",
+              {{"pipeline", "StubCompiler::elaborateKGEN"}}),
+          Cache::CacheTelemetryContext::getTelemetryOnHitLambda(
+              "StubCompiler::elaborateKGEN"));
       LLCL::await(ready);
       if (ready.isError()) {
         LLCL::EncodedDiagnostic diag = ready.takeDiagnostic();
