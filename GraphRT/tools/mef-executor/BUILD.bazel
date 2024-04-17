@@ -14,5 +14,6 @@ cc_binary(
         "//LLCL:RuntimeGlobals",
         "//Support:CommonCLOptions",
         "//Support:Globals",
+        "//Support:Init",
     ],
 )
