@@ -572,7 +572,6 @@ def MOGG_CreateEmptyTensorsOp : MOGG_Op<"empty_tensors"> {
   }];
 }
 
-
 def MOGG_ToTensorFromMGPOp : MOGG_Op<"to_tensor_from_mgp", [Pure]> {
   let arguments = (ins AnyType:$dataPointer, Variadic<Index>:$dims);
   let results = (outs MO_Tensor:$result);
@@ -588,33 +587,18 @@ def MOGG_ToTensorFromMGPOp : MOGG_Op<"to_tensor_from_mgp", [Pure]> {
   }];
 }
 
-def MOGG_GetAsyncValueOp : MOGG_Op<"get_async_val", [Pure]> {
-  let arguments = (ins AnyType:$ssa);
-  let results = (outs AnyType:$result);
-  let summary = "Returns the pointer for a given async value";
+def MOGG_GetAsyncValuesOp : MOGG_Op<"get_async_vals", [Pure]> {
+  let results = (outs Variadic<AnyType>:$result);
+  let summary = "Returns pointers for each of the async value inputs ";
   let description = [{
-    Each input and output are represented by an async value. This returns the
-    ssa value for the given input or output.
+    Each input and output are represented by an async value. This returns a
+    pointer to each of the inputs and outputs. Inputs appear first followed
+    by the outputs.
   }];
 
   let assemblyFormat = [{
-    `(` $ssa `)` attr-dict `:` `(`
-      qualified(type($ssa)) `)` `->` type($result)
-  }];
-}
-
-
-def MOGG_GetOutputAsyncValueOp : MOGG_Op<"get_output_async_val", [Pure]> {
-  let arguments = (ins Builtin_IntegerAttr:$index);
-  let results = (outs AnyType:$result);
-  let summary = "Returns the pointer for a given output async value";
-  let description = [{
-    Each output is represented by an async value. This returns the output at
-    the given index in the outputs.
-  }];
-
-  let assemblyFormat = [{
-    `[` $index `]` attr-dict `->` type($result)
+    `(` operands `)` attr-dict `:`
+      functional-type(operands, results)
   }];
 }
 
