@@ -798,6 +798,15 @@ cc_library(
     copts = ["-iquoteexternal/"]
 )
 
+cc_library(
+    name = "MGPPrimitives",
+    srcs = glob(["lib/MGPPrimitives/*.cpp"]),
+    hdrs = glob(["include/GenericML/MGPPrimitives/*.h"]),
+    strip_include_prefix = "include",
+    deps = [
+        ":MGPDialect",
+    ],
+)
 
 cc_library(
     name = "Support",
@@ -1156,6 +1165,17 @@ cc_library(
         ":CUDADialect",
         ":GraphCompilerDeviceBuggerizationRegistry",
         "//CUDASupport"
+    ],
+)
+
+cc_library(
+    name = "CUDAPrimitives",
+    srcs = glob(["lib/CUDAPrimitives/*.cpp"]),
+    hdrs = glob(["include/GenericML/CUDAPrimitives/*.h"]),
+    strip_include_prefix = "include",
+    deps = [
+        ":CUDADialect",
+        ":MGPPrimitives",
     ],
 )
 
