@@ -1,0 +1,21 @@
+load("//utils/bazel/build/rules:lit.bzl", "lit_tests")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],
+)
+
+lit_tests(
+    srcs = glob([
+        "CUDADialect/*.mlir",
+        "CUDATransforms/*.mlir",
+    ],
+        # This one requires mo-cuda-opt which requires what
+        # will end up being "//GenericML:GraphCompiler" which
+        # requires basically everything in GenericML
+        exclude=["CUDADialect/cuda-device-device.mlir"]
+    ),
+    tools = [
+        "//GenericML/tools/cuda-opt"
+    ],
+)
