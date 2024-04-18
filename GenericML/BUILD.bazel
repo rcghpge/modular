@@ -1284,3 +1284,67 @@ cc_library(
         "//KGEN:ToolCommon",
     ],
 )
+##
+# MOQDialect
+## 
+
+td_library(
+    name = "MOQDialectTdFiles",
+    srcs = glob(["include/GenericML/GraphCompiler/MOQDialect/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MOQDialectIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-dialect-decls",
+                "-dialect=moq",
+            ],
+            "include/GenericML/GraphCompiler/MOQDialect/MOQDialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=moq",
+            ],
+            "include/GenericML/GraphCompiler/MOQDialect/MOQDialect.cpp.inc",
+        ),
+        (
+            [
+                "-gen-op-decls",
+            ],
+            "include/GenericML/GraphCompiler/MOQDialect/MOQOps.h.inc",
+        ),
+        (
+            [
+                "-gen-op-defs",
+            ],
+            "include/GenericML/GraphCompiler/MOQDialect/MOQOps.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/GraphCompiler/MOQDialect/MOQ.td",
+    deps = [
+        ":MOQDialectTdFiles",
+        ":MODialectTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+    ],
+)
+
+cc_library(
+    name = "MOQDialect",
+    srcs = glob(["lib/GenGraphCompiler/MOQDialect/*.cpp"]),
+    hdrs = glob(["include/GenericML/GraphCompiler/MOQDialect/*.h"]),
+    strip_include_prefix = "include",
+    deps = [
+        ":MOQDialectIncGen",
+    ],
+)
+
