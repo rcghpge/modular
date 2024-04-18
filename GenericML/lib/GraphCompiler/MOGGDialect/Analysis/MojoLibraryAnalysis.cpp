@@ -319,11 +319,17 @@ void MojoLibraryAnalysis::updatedLoadedKernelsForCollisions(
   }
 
   if (eager) {
+    // TODO(#37797): `rawMojoKernel` should already serve as the guard to avoid
+    // the duplicated kernel. Somehow it isn't updated correctly while loading
+    // multiple libraries. This SymbolTable is used as a short-term fix, but it
+    // should be removed and guarded properly with `rawMojoKernel` instead.
+    mlir::SymbolTable symtab(module);
+
     // Update the metadata and clone the operators.
     for (auto op :
          cast<mlir::ModuleOp>(userModule).getOps<mlir::SymbolOpInterface>()) {
       // Don't duplicate.
-      if (rawMojoKernel.contains(op.getName()))
+      if (rawMojoKernel.contains(op.getName()) || symtab.lookup(op.getName()))
         continue;
       Operation *duplicate = op.clone();
       module.getBody()->push_back(duplicate);
