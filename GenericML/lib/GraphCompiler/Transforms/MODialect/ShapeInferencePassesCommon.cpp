@@ -11,6 +11,7 @@
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
+#include "LLCL/CompilerSupport/Context.h"
 #include "Support/MArchTarget/Host.h"
 #include "mlir/Pass/PassManager.h"
 #include "llvm/Support/TargetSelect.h"

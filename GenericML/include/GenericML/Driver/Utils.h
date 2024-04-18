@@ -9,13 +9,13 @@
 
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "GraphRT/MEFExecutor/MEFFile.h"
+#include "LLCL/CompilerSupport/Context.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Runtime/Utils.h"
 #include "Support/ADT/GenericUniquePtrSet.h"
 #include "Support/Buffer.h"
 #include "Support/Configuration.h"
 #include "Support/LLVMCompilerForwardDecls.h"
-#include "Support/MDialect/MDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "llvm/Support/ToolOutputFile.h"
 

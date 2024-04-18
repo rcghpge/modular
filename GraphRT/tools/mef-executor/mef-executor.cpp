@@ -13,6 +13,7 @@
 #include "GraphRT/MEFExecutor/MEFInvokable.h"
 #include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "GraphRT/Primitives.h"
+#include "LLCL/CompilerSupport/Context.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/RuntimeCLOptions.h"
 #include "LLCL/Runtime/Utils.h"
@@ -20,7 +21,6 @@
 #include "Support/CommonCLOptions.h"
 #include "Support/Init/Init.h"
 #include "Support/LLVMCompilerForwardDecls.h"
-#include "Support/MDialect/MDialect.h"
 #include "Support/ML/SizeUtils.h"
 #include "llvm/Support/SourceMgr.h"
 

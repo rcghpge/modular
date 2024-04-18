@@ -21,6 +21,7 @@
 #include "GenericML/Support/HostDeviceSpecs.h"
 #include "GenericML/Support/ModelCollection.h"
 #include "GraphRT/MEFExecutor/MEFFile.h"
+#include "LLCL/CompilerSupport/Context.h"
 #include "MOF/Driver/DriverConfig.h"
 #include "MOF/Driver/DriverImpl.h"
 #include "MOF/ModularModel/ModularModelFile.h"

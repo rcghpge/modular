@@ -8,9 +8,9 @@
 #include "GenericML/MGPDialect/MGPDialect.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MEFDialect/MEFDialect.h"
+#include "LLCL/CompilerSupport/Context.h"
 #include "Support/Init/Init.h"
 #include "Support/LLVMCompilerForwardDecls.h"
-#include "Support/MDialect/MDialect.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
