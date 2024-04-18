@@ -12,12 +12,12 @@
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
-
-#include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
+#include "Support/MDialect/MAttrs.h"
 
 using namespace M;
 
@@ -69,8 +69,8 @@ isLowerableToGenericRegion(MLIRContext *ctx,
   return isRegistered;
 }
 
-// For staging, we currently only enable fusion of MIP ops in generic regions
-// all other primitives will not be fused.
+// For staging, didn't want to lower types like Context which are not supported
+// or needed in the generic region
 static inline bool isLowerableType(Type type) {
   bool result = true;
   if (isa<MEF::MEFChainTypeInterface, MGP::ContextType>(type))
@@ -99,6 +99,16 @@ DictionaryAttr LowerPrimitivesPass::getMoggCallAttrs(OpBuilder &builder,
       // Prune device attributes to string ref of label
       attrs.push_back(builder.getNamedAttr(
           attr.getName(), builder.getStringAttr(devRefAttr.getLabel())));
+    } else if (auto shapeAttr =
+                   dyn_cast<IntArrayElementsAttr>(attr.getValue())) {
+      // For Static TensorSpec attributes, we want to generate the rank param
+      // and pass the static shape.
+      auto shape = shapeAttr.asArrayRef<int64_t>();
+      auto name = attr.getName().str();
+      attrs.push_back(builder.getNamedAttr(name + "Rank",
+                                           builder.getIndexAttr(shape.size())));
+      attrs.push_back(
+          builder.getNamedAttr(name, builder.getI64TensorAttr(shape)));
     } else {
       attrs.push_back(attr);
     }
