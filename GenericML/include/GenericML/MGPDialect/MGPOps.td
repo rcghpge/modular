@@ -786,7 +786,7 @@ def ExecuteGenericOp : MGP_Op<"generic.execute"> {
                        UI64Attr:$bModuleIndex,       // 1
                        UI64Attr:$cFunctionIndex      // 2
                        );
-  let results = (outs ChainType: $outChain, Variadic<AnyType>:$outResults);
+  let results = (outs MGP_DeviceChainType: $outChain, Variadic<AnyType>:$outResults);
 }
 
 //===----------------------------------------------------------------------===//

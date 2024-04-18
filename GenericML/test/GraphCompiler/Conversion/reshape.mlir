@@ -8,7 +8,7 @@
 // CHECK: %[[IN_BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[INPUT]] : !mgp.tensor<4xf32>
 
 // Create output shape spec
-// CHECK: {{.*}}, %[[OUT_SPEC:.*]] = "mgp.generic.execute"{{.*}} -> (!mef.chain, !mgp.tensor_spec<2x2xf32>)
+// CHECK: {{.*}}, %[[OUT_SPEC:.*]] = "mgp.generic.execute"{{.*}} -> (!mgp.chain, !mgp.tensor_spec<2x2xf32>)
 
 // Create output tensor with same buffer and new spec
 // CHECK: %[[OUT_TENSOR:.*]] =  mgp.tensor.create %{{.*}}, %[[CTX]][1], %[[IN_BUF]], %[[OUT_SPEC]] : !mgp.tensor<2x2xf32>
@@ -37,7 +37,7 @@ mo.graph @reshape_static_input_static_output(%arg: !mo.tensor<[4], f32>) -> !mo.
 // CHECK: %[[FALLBACK_CHAIN:.*]], %[[OUT_DIMS:.*]]:2 = mgp.kernel.execute %{{.*}}, {{.*}}, summary "reshape_shape{{.*}}" out_dims 2
 
 // Create output tensor with same buffer and new spec
-// CHECK: {{.*}}, %[[OUT_SPEC:.*]] = "mgp.generic.execute"{{.*}} %[[OUT_DIMS]]#0, %[[OUT_DIMS]]#1{{.*}} -> (!mef.chain, !mgp.tensor_spec<?x?xf32>)
+// CHECK: {{.*}}, %[[OUT_SPEC:.*]] = "mgp.generic.execute"{{.*}} %[[OUT_DIMS]]#0, %[[OUT_DIMS]]#1{{.*}} -> (!mgp.chain, !mgp.tensor_spec<?x?xf32>)
 // CHECK: %[[OUT_TENSOR:.*]] =  mgp.tensor.create %{{.*}}, %[[CTX]][1], %[[IN_BUF]], %[[OUT_SPEC]] : !mgp.tensor<?x?xf32>
 
 // Return output
@@ -53,21 +53,21 @@ mo.graph @reshape_dyn_input_dyn_output(%arg: !mo.tensor<[?], f32>, %shape : !mo.
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[INPUT:.*]]: !mgp.tensor<?xf32>, %[[SHAPE:.*]]: !mgp.tensor<2xsi64>)
 
 // Assert shape constraint
-// CHECK: %[[ASSERT_CHAIN:.*]] = "mgp.generic.execute"({{.*}}) {aRuntimeSlot = 1 : ui64, bModuleIndex = 0 : ui64, cFunctionIndex = 0 : ui64} : (!mgp.context, i1) -> !mef.chain 
+// CHECK: %[[ASSERT_CHAIN:.*]] = "mgp.generic.execute"({{.*}}) {aRuntimeSlot = 1 : ui64, bModuleIndex = 0 : ui64, cFunctionIndex = 0 : ui64} : (!mgp.context, i1) -> !mgp.chain
 
 // Extract the input tensor buffer
 // CHECK: %[[IN_BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[INPUT]] : !mgp.tensor<?xf32>
 
 // Create output shape spec
-// CHECK: {{.*}}, %[[OUT_SPEC:.*]] = "mgp.generic.execute"{{.*}} -> (!mef.chain, !mgp.tensor_spec<4x2xf32>)
+// CHECK: {{.*}}, %[[OUT_SPEC:.*]] = "mgp.generic.execute"{{.*}} -> (!mgp.chain, !mgp.tensor_spec<4x2xf32>)
 
 // Create output tensor with same buffer and new spec
 // CHECK: %[[SIZED_BUF:.*]] = mgp.buffer.resize %[[IN_BUF]] : !mgp.buffer<32>
-// CHECK: %[[CH1:.*]] = mgp.chain.host_to_device %[[CH0]], %[[CTX]][1]
+// CHECK: %[[CH1:.*]] = "mgp.generic.execute"({{.*}}) {aRuntimeSlot = 1 : ui64, bModuleIndex = 0 : ui64, cFunctionIndex = 2 : ui64} : (!mgp.context, !mef.chain, !mgp.context) -> !mgp.chain
 // CHECK: %[[OUT_TENSOR:.*]] =  mgp.tensor.create %[[CH1]], %[[CTX]][1], %[[SIZED_BUF]], %[[OUT_SPEC]] : !mgp.tensor<4x2xf32>
 
 // Merge chains
-// CHECK: {{.*}} = grt.chain.create {{.*}}%[[ASSERT_CHAIN]]
+// CHECK: %[[OUT_CHAIN:.*]] = grt.chain.create ({{.*}})
 
 // Return output
 // CHECK: mef.output {{.*}}, %[[OUT_TENSOR]] : !mef.chain, !mgp.tensor<4x2xf32>
@@ -90,7 +90,7 @@ mo.graph @reshape_dyn_input_static_output(%arg: !mo.tensor<[?], f32>, %shape : !
 // CHECK: %[[IN_BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[INPUT]] : !mgp.tensor<8xf32>
 
 // Create output spec
-// CHECK: {{.*}}, %[[OUT_SPEC:.*]] = "mgp.generic.execute"{{.*}} %[[OUT_DIMS]]#0, %[[OUT_DIMS]]#1{{.*}} -> (!mef.chain, !mgp.tensor_spec<?x?xf32>)
+// CHECK: {{.*}}, %[[OUT_SPEC:.*]] = "mgp.generic.execute"{{.*}} %[[OUT_DIMS]]#0, %[[OUT_DIMS]]#1{{.*}} -> (!mgp.chain, !mgp.tensor_spec<?x?xf32>)
 
 // Create output tensor with same buffer and new spec
 // CHECK: %[[UNSIZED_BUF:.*]] = mgp.buffer.unsize %[[IN_BUF]] : !mgp.buffer<32>

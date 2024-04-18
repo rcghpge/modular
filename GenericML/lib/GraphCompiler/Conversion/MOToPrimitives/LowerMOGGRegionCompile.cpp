@@ -58,17 +58,48 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
   // we collapse all chain outputs of the kernel into the 1 output chain.
   for (auto [resTy, res] :
        llvm::zip(old_kernel.getResultTypes(), old_kernel.getResults()))
-    if (!isa<MEF::ChainType>(resTy))
-      result_types.push_back(resTy);
-    else
+    if (isa<MEF::ChainType>(resTy))
       chain_outputs.push_back(res);
+    else if (auto mgpChain = dyn_cast<MGP::DeviceChainType>(resTy)) {
+      if (mgpChain.getDevice().getLabel() == kCPULabel)
+        chain_outputs.push_back(res);
+    } else
+      result_types.push_back(resTy);
+
+  auto device = old_kernel.getDeviceRef();
+  if (!device)
+    device = DeviceRefAttr::getDefault(ctx);
+
+  GENERICML_ASSERT(device.getLabel() == kCPULabel)
+      << "Only CPU ExecuteCompiledOps can be lowered further";
+
   auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
-      old_kernel.getLoc(), MEF::ChainType::get(ctx), result_types, context,
-      old_kernel.getOperands(), runtimeSlot, module_index, kernel_index);
+      old_kernel.getLoc(), MGP::DeviceChainType::get(device), result_types,
+      context, old_kernel.getOperands(), runtimeSlot, module_index,
+      kernel_index);
   if (result_types.size() > 0)
     old_kernel.replaceAllUsesWith(newExecuteOp.getOutResults());
+
+  auto replaceAllChainUses = [&](Value originalChain,
+                                 TypedValue<MGP::DeviceChainType> newChain) {
+    Value toChain = newChain;
+    if (isa<MEF::ChainType>(originalChain.getType())) {
+      // If the original chain was a MEF chain, we need to convert the CPU MGP
+      // chain to a MEF chain for valid IR (sigh...)
+
+      // Note that since at the point of this pass we've already run
+      // LowerPrimitives, this op will not be lowered to the MOGG primitive and
+      // instead the C++ primitive will be executed by the runtime
+      toChain = builder.create<MGP::ChainDeviceToHostOp>(
+          newExecuteOp->getLoc(), newChain, context, runtimeSlot,
+          DeviceRefAttr::getDefault(ctx));
+    }
+    originalChain.replaceAllUsesWith(toChain);
+  };
+
   for (auto chain : chain_outputs)
-    chain.replaceAllUsesWith(newExecuteOp.getOutChain());
+    replaceAllChainUses(chain, cast<TypedValue<MGP::DeviceChainType>>(
+                                   newExecuteOp.getOutChain()));
   old_kernel.erase();
 }
 
