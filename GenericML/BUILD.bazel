@@ -380,6 +380,109 @@ cc_library(
 )
 
 ##
+# RMO Dialect
+##
+td_library(
+    name = "RMODialectTdFiles",
+    srcs = glob(["include/GenericML/GraphCompiler/RMODialect/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "RMODialectIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["-gen-op-decls"],
+            "include/GenericML/GraphCompiler/RMODialect/RMO.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "include/GenericML/GraphCompiler/RMODialect/RMO.cpp.inc",
+        ),
+        (
+            [
+                "-gen-typedef-decls",
+                "-typedefs-dialect=rmo",
+            ],
+            "include/GenericML/GraphCompiler/RMODialect/RMOTypes.h.inc",
+        ),
+        (
+            [
+                "-gen-typedef-defs",
+                "-typedefs-dialect=rmo",
+            ],
+            "include/GenericML/GraphCompiler/RMODialect/RMOTypes.cpp.inc",
+        ),
+        (
+            [
+                "-gen-dialect-decls",
+                "-dialect=rmo",
+            ],
+            "include/GenericML/GraphCompiler/RMODialect/RMODialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=rmo",
+            ],
+            "include/GenericML/GraphCompiler/RMODialect/RMODialect.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/GraphCompiler/RMODialect/RMO.td",
+    deps = [
+        ":RMODialectTdFiles",
+        ":MODialectTdFiles",
+        ":GraphCompilerInterfacesTdFiles",
+        ":MGPDialectTdFiles",
+        "//GraphRT:GRTTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "RMODialectInterfacesIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["-gen-op-interface-decls"],
+            "include/GenericML/GraphCompiler/RMODialect/RMOInterfaces.h.inc",
+        ),
+        (
+            ["-gen-op-interface-defs"],
+            "include/GenericML/GraphCompiler/RMODialect/RMOInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/GraphCompiler/RMODialect/RMOInterfaces.td",
+    deps = [
+        ":RMODialectTdFiles",
+        ":MODialectTdFiles",
+        "//GraphRT:GRTTdFiles",
+    ],
+)
+
+cc_library(
+    name = "RMODialect",
+    srcs = glob(["lib/GraphCompiler/RMODialect/*.cpp"]),
+    hdrs = glob(["include/GenericML/GraphCompiler/RMODialect/*.h"]),
+    strip_include_prefix = "include",
+    deps = [
+        ":MODialect",
+        ":RMODialectIncGen",
+        ":RMODialectInterfacesIncGen",
+        "//GraphRT:GRTDialect",
+        "//GraphRT:MIPDialect",
+    ],
+)
+
+
+##
 # MOGG Dialect
 ##
 td_library(
@@ -491,13 +594,22 @@ gentbl_cc_library(
 
 cc_library(
     name = "MOGGDialect",
-    srcs = glob(["lib/MOGGDialect/*.cpp"]),
-    hdrs = glob(["include/GenericML/GraphCompiler/MOGGDialect/*.h"]),
+    srcs = glob(
+        ["lib/GraphCompiler/MOGGDialect/*.cpp"]
+    ),
+    hdrs = glob([
+        "include/GenericML/GraphCompiler/MOGGDialect/*.h",
+        # Weird circular dependency between MOGGOps.cpp and MOGGSupport and MOGGAnalysis.
+        "include/GenericML/GraphCompiler/MOGGDialect/Support/*.h",
+        "include/GenericML/GraphCompiler/MOGGDialect/Analysis/*.h",
+    ]),
     strip_include_prefix = "include",
     deps = [
+        ":MODialect",
         ":MOGGDialectIncGen",
         ":MOGGDialectInterfacesIncGen",
         ":MOGGDialectPassesIncGen",
+        ":GraphCompilerInterfaces",
         "//GraphRT:GRTDialect",
         "//GraphRT:MIPDialect",
         ":Support",
@@ -505,32 +617,49 @@ cc_library(
 )
 
 cc_library(
-    name = "MOGGAnalysis",
-    srcs = glob(["lib/MOGGDialect/Analysis/*.cpp"]),
-    hdrs = glob(["include/GenericML/GraphCompiler/MOGGDialect/Analysis/*.h"]),
-    strip_include_prefix = "include",
-    deps = [
-        ":MOGGDialect",
-    ],
-)
-
-cc_library(
     name = "MOGGSupport",
-    srcs = glob(["lib/MOGGDialect/Support/*.cpp"]),
+    srcs = glob(["lib/GraphCompiler/MOGGDialect/Support/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/MOGGDialect/Support/*.h"]),
     strip_include_prefix = "include",
     deps = [
         ":MOGGDialect",
+        ":Support",
+    ],
+)
+
+cc_library(
+    name = "MOGGAnalysis",
+    srcs = glob(["lib/GraphCompiler/MOGGDialect/Analysis/*.cpp"]) + [
+        "//Kernels/mojo/Mogg:MOGG.mojo.h",
+        "//Kernels/mojo/Mogg:MOGGPrimitives.mojo.h",
+    ],
+    hdrs = glob([
+        "include/GenericML/GraphCompiler/MOGGDialect/Analysis/*.h",
+    ]),
+    strip_include_prefix = "include",
+    local_defines=[
+        "MOGG_MOJO_BINDING_H='\"$(location //Kernels/mojo/Mogg:MOGG.mojo.h)\"'",
+        "MOGG_PRIMITIVES_MOJO_BINDING_H='\"$(location //Kernels/mojo/Mogg:MOGGPrimitives.mojo.h)\"'",
+    ],
+    copts = ["-iquoteexternal/"],
+    deps = [
+        ":MOGGDialect",
+        ":MOAnalysis",
+        ":GraphCompilerInterfaces",
+        ":Support",
+        "//KGEN:MojoParser",
     ],
 )
 
 cc_library(
     name = "MOGGTransforms",
-    srcs = glob(["lib/MOGGDialect/Transforms/*.cpp"]),
+    srcs = glob(["lib/GraphCompiler/MOGGDialect/Transforms/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/MOGGDialect/Transforms/*.h"]),
     strip_include_prefix = "include",
+    copts = ["-iquoteexternal/"],
     deps = [
         ":MOGGDialect",
+        ":MOGGAnalysis",
     ],
 )
 
