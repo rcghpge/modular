@@ -48,6 +48,85 @@ cc_library(
     ],
 )
 
+# MOTransforms relies on these, but the GraphCompiler relies
+# on MOTransforms.
+cc_library(
+    name = "GraphCompilerHeaders",
+    hdrs = glob(["include/GenericML/GraphCompiler/*.h"]),
+    strip_include_prefix = "include",
+    deps = [],
+)
+
+cc_library(
+    name = "GraphCompiler",
+    srcs = glob(["lib/GraphCompiler/*.cpp"]),
+    hdrs = glob(["include/GenericML/GraphCompiler/*.h"]),
+    strip_include_prefix = "include",
+    deps = [
+        ":CUDADialect",
+        ":CUDATransforms",
+        ":MODialect",
+        ":MOGGDialect",
+        ":MOGGSupport",
+        ":MOGGTransforms",
+        ":MONameInputDimsPass",
+        ":MOQDialect",
+        ":MOQTransforms",
+        ":MOToMOGG",
+        ":MOToPrimitives",
+        ":MOTransforms",
+        ":RMODialect",
+        ":RMOTransforms",
+        ":Support",
+        "//GraphRT:MLIRToMEF",
+        "//Support:Base",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:mlir-opt",
+    ],
+)
+
+cc_library(
+    name = "CommonDriver",
+    srcs = glob(["lib/Driver/CommonDriver/*.cpp"]),
+    hdrs = glob(["include/GenericML/Driver/*.h"]),
+    copts = ["-Ithird-party/"],  # Fixes mlperf-loadgen include path.
+    strip_include_prefix = "include",
+    deps = [
+        ":GraphCompilerHeaders",
+        ":Support",
+        "//Support:Base",
+        "//third-party/mlperf-loadgen",
+    ],
+)
+
+cc_library(
+    name = "CompileDriver",
+    srcs = glob(["lib/Driver/CompileDriver/*.cpp"]),
+    hdrs = glob(["include/GenericML/Driver/*.h"]),
+    copts = ["-Ithird-party/"],  # Fixes mlperf-loadgen include path.
+    strip_include_prefix = "include",
+    deps = [
+        "GraphCompilerHeaders",
+        ":Support",
+        "//GraphRT:MLIRToMEF",
+        "//Support:Base",
+        "//third-party/mlperf-loadgen",
+    ],
+)
+
+cc_library(
+    name = "ExecutionDriver",
+    srcs = glob(["lib/Driver/ExecutionDriver/*.cpp"]),
+    hdrs = glob(["include/GenericML/Driver/*.h"]),
+    copts = ["-Ithird-party/"],  # Fixes mlperf-loadgen include path.
+    strip_include_prefix = "include",
+    deps = [
+        ":Support",
+        "//Support:Base",
+        "//third-party/mlperf-loadgen",
+    ],
+)
+
 # TODO: Can we move this deeper?
 cc_library(
     name = "GraphCompilerMatchers",
@@ -341,6 +420,103 @@ cc_library(
     ],
 )
 
+td_library(
+    name = "MOTransformsTdFiles",
+    srcs = glob(["include/GenericML/GraphCompiler/Transforms/MODialect/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MOTransformsIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name",
+                "MOTransforms",
+            ],
+            "include/GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.td",
+    deps = [
+        ":MOTransformsTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "MOTransforms",
+    srcs = glob([
+        "lib/GraphCompiler/Transforms/MODialect/*.cpp",
+        "lib/GraphCompiler/Transforms/MODialect/*.h",
+    ]),
+    hdrs = glob(["include/GenericML/GraphCompiler/Transforms/MODialect/*.h"]),
+    strip_include_prefix = "include",
+    deps = [
+        ":CommonDriver",
+        ":GraphCompilerHeaders",
+        ":MGPPrimitives",
+        ":MOAnalysis",
+        ":MODialect",
+        ":MOGGDialect",
+        ":MOTarget",
+        ":MOTransformsIncGen",
+        ":RMODialect",
+        ":RMOSupport",
+    ],
+)
+
+td_library(
+    name = "MONameInputDimsPassTdFiles",
+    srcs = glob(["include/GenericML/GraphCompiler/Transforms/MODialect/Addons/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MONameInputDimsPassIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name",
+                "MONameInputDimsPass",
+            ],
+            "include/GenericML/GraphCompiler/Transforms/MODialect/Addons/MONameInputDimsPass.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/GraphCompiler/Transforms/MODialect/Addons/MONameInputDimsPass.td",
+    deps = [
+        ":MONameInputDimsPassTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "MONameInputDimsPass",
+    srcs = ["lib/GraphCompiler/Transforms/MODialect/Addons/NameInputDimsPass.cpp"],
+    hdrs = [
+        "include/GenericML/GraphCompiler/Transforms/MODialect/Addons/MONameInputDimsPass.h",
+    ],
+    strip_include_prefix = "include",
+    deps = [
+        ":MONameInputDimsPassIncGen",
+        ":MOTransforms",
+    ],
+)
+
 ##
 # RMO Dialect
 ##
@@ -403,6 +579,59 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "RMOSupport",
+    srcs = glob(["lib/GraphCompiler/Conversion/RMOSupport/*.cpp"]),
+    hdrs = glob(["include/GenericML/GraphCompiler/Conversion/RMOSupport/*.h"]),
+    strip_include_prefix = "include",
+    deps = [
+        ":RMODialect",
+    ],
+)
+
+td_library(
+    name = "RMOTransformsTdFiles",
+    srcs = glob(["include/GenericML/GraphCompiler/Transforms/RMODialect/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "RMOTransformsIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+            ],
+            "include/GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.td",
+    deps = [
+        ":RMOTransformsTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "RMOTransforms",
+    srcs = glob([
+        "lib/GraphCompiler/Transforms/RMODialect/*.cpp",
+        "lib/GraphCompiler/Transforms/RMODialect/*.h",
+    ]),
+    hdrs = glob(["include/GenericML/GraphCompiler/Transforms/RMODialect/*.h"]),
+    strip_include_prefix = "include",
+    deps = [
+        ":RMODialect",
+        ":RMOTransformsIncGen",
+    ],
+)
+
 ##
 # MOGG Dialect
 ##
@@ -458,8 +687,6 @@ gentbl_cc_library(
         (
             [
                 "-gen-pass-decls",
-                "-name",
-                "MOGGPasses",
             ],
             "include/GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h.inc",
         ),
@@ -505,6 +732,7 @@ cc_library(
     deps = [
         ":MOGGDialect",
         ":Support",
+        "//KGEN:ObjectCompiler",
     ],
 )
 
@@ -815,6 +1043,7 @@ cc_library(
     strip_include_prefix = "include",
     deps = [
         ":MGPDialect",
+        "//CUDASupport",
     ],
 )
 
@@ -828,6 +1057,7 @@ cc_library(
         "//GraphRT:Primitives",
         "//KGEN:Compiler",
         "//KGEN:CompilerRT.headers",
+        "//KGEN:ExecutionEngine",
         "//Support:Base",
         "//Support:ML",
         "@llvm-project//llvm:Support",
@@ -1244,10 +1474,81 @@ gentbl_mlir_dialect(
 
 cc_library(
     name = "MOQDialect",
-    srcs = glob(["lib/GenGraphCompiler/MOQDialect/*.cpp"]),
+    srcs = glob(["lib/GraphCompiler/MOQDialect/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/MOQDialect/*.h"]),
     strip_include_prefix = "include",
     deps = [
+        ":MODialect",
         ":MOQDialectIncGen",
+    ],
+)
+
+td_library(
+    name = "MOQTransformsTdFiles",
+    srcs = glob(["include/GenericML/GraphCompiler/Transforms/MOQDialect/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MOQTransformsIncGen",
+    includes = ["include"],
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name",
+                "MOQTransforms",
+            ],
+            "include/GenericML/GraphCompiler/Transforms/MOQDialect/MOQTransforms.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/GraphCompiler/Transforms/MOQDialect/MOQTransforms.td",
+    deps = [
+        ":MOQTransformsTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "MOQTransforms",
+    srcs = glob([
+        "lib/GraphCompiler/Transforms/MOQDialect/*.cpp",
+        "lib/GraphCompiler/Transforms/MOQDialect/*.h",
+    ]),
+    hdrs = glob(["include/GenericML/GraphCompiler/Transforms/MOQDialect/*.h"]),
+    strip_include_prefix = "include",
+    deps = [
+        ":MOQDialect",
+        ":MOQTransformsIncGen",
+    ],
+)
+
+##
+# Conversion Targets
+##
+cc_library(
+    name = "MOTarget",
+    srcs = glob(["lib/GraphCompiler/Conversion/MOTarget/*.cpp"]),
+    hdrs = glob(["include/GenericML/GraphCompiler/Conversion/MOTarget/*.h"]),
+    strip_include_prefix = "include",
+    deps = [
+        ":MODialect",
+        ":RMODialect",
+    ],
+)
+
+cc_library(
+    name = "MOQTarget",
+    srcs = glob(["lib/GraphCompiler/Conversion/MOQTarget/*.cpp"]),
+    hdrs = glob(["include/GenericML/GraphCompiler/Conversion/MOQTarget/*.h"]),
+    strip_include_prefix = "include",
+    deps = [
+        ":MOQDialect",
+        ":MOTarget",
     ],
 )

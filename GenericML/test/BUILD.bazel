@@ -7,16 +7,56 @@ package(
 
 lit_tests(
     srcs = glob(
-        [
-            "CUDADialect/*.mlir",
-            "CUDATransforms/*.mlir",
+        ["**/*.mlir"],
+        exclude = [
+            "model-specification-validator/**/*",
+
+            # These fail
+            "GraphCompiler/MOGGDialect/load-mojo-libs.mlir",
+            "GraphCompiler/MOGGDialect/generated_code.mlir",
+
+            # These always time out
+            "GraphCompiler/Conversion/broadcast.mlir",
+            "GraphCompiler/Conversion/cast.mlir",
+            "GraphCompiler/Conversion/element-wise.mlir",
+            "GraphCompiler/Conversion/pad.mlir",
+            "GraphCompiler/Conversion/reshape.mlir",
+            "GraphCompiler/Conversion/slice.mlir",
+            "GraphCompiler/Conversion/split-compile.mlir",
+            "GraphCompiler/Conversion/static-ops.mlir",
+            "GraphCompiler/dlrm_snifftest.mlir",
+            "GraphCompiler/MODialect/constant-fold-ops.mlir",
+            "GraphCompiler/MODialect/dynamic_op_lowering.mlir",
+            "GraphCompiler/MODialect/Transforms/constant-fold-large-const.mlir",
+            "GraphCompiler/MODialect/Transforms/constant-fold.mlir",
+            "GraphCompiler/MODialect/Transforms/shape-inference-e2e.mlir",
+            "GraphCompiler/MODialect/Transforms/support-conversions-activations.mlir",
+            "GraphCompiler/MODialect/Transforms/SymbolicizeFallbackShapeFuncs/pack-conv-transpose-filter.mlir",
+            "GraphCompiler/MOGGDialect/many-unfused-broadcasts.mlir",
+            "GraphCompiler/MOQDialect/transforms/legalize-moq-operators-to-mo-misc.mlir",
+            "GraphCompiler/RMODialect/Lowering/binary_comparison.mlir",
         ],
-        # This one requires mo-cuda-opt which requires what
-        # will end up being "//GenericML:GraphCompiler" which
-        # requires basically everything in GenericML
-        exclude = ["CUDADialect/cuda-device-device.mlir"],
     ),
+    custom_substitutions = {
+        "%extra_test_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTests.lib.mlirbc) ",
+        "%duplicate_override_mojo_bindings": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTestOverrideFail.lib.mlirbc) ",
+        "%override_succ_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTestOverrideSucc.lib.mlirbc) ",
+        "%override_extra_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTestOverrideExtra.lib.mlirbc) ",
+        "%experimental_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGExperimental.lib.mlirbc) ",
+        "%dummy_kernels": "$(rlocationpath //Kernels/mojo/Mogg:MOGGExperimentalDummyKernels.lib.mlirbc) ",
+    },
+    data = [
+        "//Kernels/mojo/Mogg:MOGGExperimental.lib.mlirbc",
+        "//Kernels/mojo/Mogg:MOGGExperimentalDummyKernels.lib.mlirbc",
+        "//Kernels/mojo/Mogg:MOGGTestOverrideExtra.lib.mlirbc",
+        "//Kernels/mojo/Mogg:MOGGTestOverrideFail.lib.mlirbc",
+        "//Kernels/mojo/Mogg:MOGGTestOverrideSucc.lib.mlirbc",
+        "//Kernels/mojo/Mogg:MOGGTests.lib.mlirbc",
+    ],
     tools = [
         "//GenericML/tools/cuda-opt",
+        "//GenericML/tools/mo-cuda-opt",
+        "//GenericML/tools/mo-opt",
+        "//GenericML/tools/mosh-opt",
     ],
 )
