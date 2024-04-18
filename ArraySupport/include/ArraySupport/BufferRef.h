@@ -87,12 +87,12 @@ public:
                                std::optional<size_t> alignment);
   /// Creates an 'owning' reference of size and alignment using takeFrom void*
   /// ptr that is allocated by caller. There is an assumption that the takeFrom
-  /// pointer is allocated by caller via untime->getAllocator(). The allocated
+  /// pointer is allocated by caller via runtime->getAllocator(). The allocated
   /// buffer will be freed by BufferRef when the reference is destroyed. Since
   /// the ownership lies with BufferRef, caller should not free anything that
   /// has been taken by BufferRef.
   static BufferRef take(LLCL::CompactRuntimePtr runtime, size_t size,
-                        size_t alignment, void *takeFrom);
+                        std::optional<size_t> alignment, void *takeFrom);
   //===--------------------------------------------------------------------===//
   // Core APIs for working with a BufferRef.
   //===--------------------------------------------------------------------===//

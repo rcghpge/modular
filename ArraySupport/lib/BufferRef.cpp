@@ -66,7 +66,7 @@ BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
 // Create an owned reference from a taken void* pointer -- This taken
 // pointer will not be freed by anyone else except by the buffer-ref now.
 BufferRef BufferRef::take(LLCL::CompactRuntimePtr runtime, size_t size,
-                          size_t alignment, void *takeFrom) {
+                          std::optional<size_t> alignment, void *takeFrom) {
   AnyAsyncValueRef storageRef;
   storageRef = storageRef.createReady<OwnedMemoryBlock>(
       runtime, size, alignment, runtime, takeFrom);

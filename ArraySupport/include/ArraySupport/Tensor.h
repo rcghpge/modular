@@ -53,6 +53,14 @@ public:
   static Tensor createOwned(TensorSpec spec, LLCL::CompactRuntimePtr runtime,
                             std::optional<size_t> alignment);
 
+  /// Creates an owned tensor whose buffer is from a taken void* pointer -- This
+  /// taken pointer is allocated by caller and taken to construct the underlying
+  /// bufferRef which has control over the lifetime. There is an assumption that
+  /// the takeFrom pointer is allocated by caller via runtime->getAllocator().
+  /// Lifetime of the allocated memory follows any Owned Tensor (via bufferRef)
+  static Tensor takeOwned(TensorSpec spec, LLCL::CompactRuntimePtr runtime,
+                          void *takeFrom, std::optional<size_t> alignment);
+
   /// Creates a tensor whose buffer is at the given pointer. It is assumed the
   /// pointer has size appropriate for spec and lifetime exceeding that of
   /// the result tensor. The alignment will be used should the tensor need
