@@ -1,4 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("//utils/bazel/build/rules:tablegen.bzl", "gentbl_mlir_dialect")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -174,11 +175,10 @@ td_library(
     ],
 )
 
-gentbl_cc_library(
+gentbl_mlir_dialect(
     name = "MODialectIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
+    dialect = "mo",
+    extra_tbl_outs = [
         (
             [
                 "-gen-attrdef-decls",
@@ -193,44 +193,7 @@ gentbl_cc_library(
             ],
             "include/GenericML/GraphCompiler/MODialect/MOAttrs.cpp.inc",
         ),
-        (
-            [
-                "-gen-typedef-decls",
-                "-typedefs-dialect=mo",
-            ],
-            "include/GenericML/GraphCompiler/MODialect/MOTypes.h.inc",
-        ),
-        (
-            [
-                "-gen-typedef-defs",
-                "-typedefs-dialect=mo",
-            ],
-            "include/GenericML/GraphCompiler/MODialect/MOTypes.cpp.inc",
-        ),
-        (
-            ["-gen-op-decls"],
-            "include/GenericML/GraphCompiler/MODialect/MO.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "include/GenericML/GraphCompiler/MODialect/MO.cpp.inc",
-        ),
-        (
-            [
-                "-gen-dialect-decls",
-                "-dialect=mo",
-            ],
-            "include/GenericML/GraphCompiler/MODialect/MODialect.h.inc",
-        ),
-        (
-            [
-                "-gen-dialect-defs",
-                "-dialect=mo",
-            ],
-            "include/GenericML/GraphCompiler/MODialect/MODialect.cpp.inc",
-        ),
     ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/GenericML/GraphCompiler/MODialect/MO.td",
     deps = [
         ":MODialectTdFiles",
@@ -390,49 +353,9 @@ td_library(
     ],
 )
 
-gentbl_cc_library(
+gentbl_mlir_dialect(
     name = "RMODialectIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "include/GenericML/GraphCompiler/RMODialect/RMO.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "include/GenericML/GraphCompiler/RMODialect/RMO.cpp.inc",
-        ),
-        (
-            [
-                "-gen-typedef-decls",
-                "-typedefs-dialect=rmo",
-            ],
-            "include/GenericML/GraphCompiler/RMODialect/RMOTypes.h.inc",
-        ),
-        (
-            [
-                "-gen-typedef-defs",
-                "-typedefs-dialect=rmo",
-            ],
-            "include/GenericML/GraphCompiler/RMODialect/RMOTypes.cpp.inc",
-        ),
-        (
-            [
-                "-gen-dialect-decls",
-                "-dialect=rmo",
-            ],
-            "include/GenericML/GraphCompiler/RMODialect/RMODialect.h.inc",
-        ),
-        (
-            [
-                "-gen-dialect-defs",
-                "-dialect=rmo",
-            ],
-            "include/GenericML/GraphCompiler/RMODialect/RMODialect.cpp.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    dialect = "rmo",
     td_file = "include/GenericML/GraphCompiler/RMODialect/RMO.td",
     deps = [
         ":GraphCompilerInterfacesTdFiles",
@@ -492,49 +415,9 @@ td_library(
     ],
 )
 
-gentbl_cc_library(
+gentbl_mlir_dialect(
     name = "MOGGDialectIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "include/GenericML/GraphCompiler/MOGGDialect/MOGG.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "include/GenericML/GraphCompiler/MOGGDialect/MOGG.cpp.inc",
-        ),
-        (
-            [
-                "-gen-typedef-decls",
-                "-typedefs-dialect=mogg",
-            ],
-            "include/GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h.inc",
-        ),
-        (
-            [
-                "-gen-typedef-defs",
-                "-typedefs-dialect=mogg",
-            ],
-            "include/GenericML/GraphCompiler/MOGGDialect/MOGGTypes.cpp.inc",
-        ),
-        (
-            [
-                "-gen-dialect-decls",
-                "-dialect=mogg",
-            ],
-            "include/GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h.inc",
-        ),
-        (
-            [
-                "-gen-dialect-defs",
-                "-dialect=mogg",
-            ],
-            "include/GenericML/GraphCompiler/MOGGDialect/MOGGDialect.cpp.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    dialect = "mogg",
     td_file = "include/GenericML/GraphCompiler/MOGGDialect/MOGG.td",
     deps = [
         ":GraphCompilerInterfacesTdFiles",
@@ -1009,11 +892,10 @@ td_library(
     ],
 )
 
-gentbl_cc_library(
+gentbl_mlir_dialect(
     name = "MOSHDialectIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
+    dialect = "mosh",
+    extra_tbl_outs = [
         (
             [
                 "-gen-attrdef-decls",
@@ -1028,44 +910,7 @@ gentbl_cc_library(
             ],
             "include/GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.cpp.inc",
         ),
-        (
-            ["-gen-op-decls"],
-            "include/GenericML/GraphCompiler/MOSHDialect/MOSH.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "include/GenericML/GraphCompiler/MOSHDialect/MOSH.cpp.inc",
-        ),
-        (
-            [
-                "-gen-typedef-decls",
-                "-typedefs-dialect=mosh",
-            ],
-            "include/GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h.inc",
-        ),
-        (
-            [
-                "-gen-typedef-defs",
-                "-typedefs-dialect=mosh",
-            ],
-            "include/GenericML/GraphCompiler/MOSHDialect/MOSHTypes.cpp.inc",
-        ),
-        (
-            [
-                "-gen-dialect-decls",
-                "-dialect=mosh",
-            ],
-            "include/GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h.inc",
-        ),
-        (
-            [
-                "-gen-dialect-defs",
-                "-dialect=mosh",
-            ],
-            "include/GenericML/GraphCompiler/MOSHDialect/MOSHDialect.cpp.inc",
-        ),
     ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/GenericML/GraphCompiler/MOSHDialect/MOSH.td",
     deps = [
         ":MOSHDialectTdFiles",
@@ -1099,11 +944,10 @@ td_library(
     ],
 )
 
-gentbl_cc_library(
+gentbl_mlir_dialect(
     name = "CUDADialectIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
+    dialect = "cuda",
+    extra_tbl_outs = [
         (
             [
                 "-gen-attrdef-decls",
@@ -1118,44 +962,7 @@ gentbl_cc_library(
             ],
             "include/GenericML/CUDADialect/CUDAAttrs.cpp.inc",
         ),
-        (
-            [
-                "-gen-typedef-decls",
-                "-typedefs-dialect=cuda",
-            ],
-            "include/GenericML/CUDADialect/CUDATypes.h.inc",
-        ),
-        (
-            [
-                "-gen-typedef-defs",
-                "-typedefs-dialect=cuda",
-            ],
-            "include/GenericML/CUDADialect/CUDATypes.cpp.inc",
-        ),
-        (
-            ["-gen-op-decls"],
-            "include/GenericML/CUDADialect/CUDA.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "include/GenericML/CUDADialect/CUDA.cpp.inc",
-        ),
-        (
-            [
-                "-gen-dialect-decls",
-                "-dialect=cuda",
-            ],
-            "include/GenericML/CUDADialect/CUDADialect.h.inc",
-        ),
-        (
-            [
-                "-gen-dialect-defs",
-                "-dialect=cuda",
-            ],
-            "include/GenericML/CUDADialect/CUDADialect.cpp.inc",
-        ),
     ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/GenericML/CUDADialect/CUDA.td",
     deps = [
         ":CUDADialectTdFiles",
@@ -1424,39 +1231,9 @@ td_library(
     ],
 )
 
-gentbl_cc_library(
+gentbl_mlir_dialect(
     name = "MOQDialectIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            [
-                "-gen-dialect-decls",
-                "-dialect=moq",
-            ],
-            "include/GenericML/GraphCompiler/MOQDialect/MOQDialect.h.inc",
-        ),
-        (
-            [
-                "-gen-dialect-defs",
-                "-dialect=moq",
-            ],
-            "include/GenericML/GraphCompiler/MOQDialect/MOQDialect.cpp.inc",
-        ),
-        (
-            [
-                "-gen-op-decls",
-            ],
-            "include/GenericML/GraphCompiler/MOQDialect/MOQOps.h.inc",
-        ),
-        (
-            [
-                "-gen-op-defs",
-            ],
-            "include/GenericML/GraphCompiler/MOQDialect/MOQOps.cpp.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    dialect = "moq",
     td_file = "include/GenericML/GraphCompiler/MOQDialect/MOQ.td",
     deps = [
         ":MODialectTdFiles",
