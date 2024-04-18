@@ -45,9 +45,7 @@ def with_custom_ops(custom_ops_path: str):
     script_dir = os.path.dirname(os.path.abspath(__file__))
     model_path = Path(script_dir, "mo-custom-op-model.mlir")
     session = engine.InferenceSession()
-    options = engine.CommonLoadOptions()
-    options.custom_ops_path = custom_ops_path
-    model = session.load(model_path, options)
+    model = session.load(model_path, custom_ops_path=custom_ops_path)
     output = model.execute(input=np.ones((5)))
     assert "output" in output.keys()
     print(f"Output: {output['output']}")

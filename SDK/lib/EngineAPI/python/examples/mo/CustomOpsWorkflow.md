@@ -115,9 +115,7 @@ M_useKernelsFrom(compileConfig, "user_ops.mojopkg", status);
 ```
 
 ```python
-options = engine.CommonLoadOptions()
-options.custom_ops_path = custom_ops_path
-model = session.load(model_path, options)
+model = session.load(model_path, custom_ops_path=custom_ops_path)
 ```
 
 ## Usage with `mt`
