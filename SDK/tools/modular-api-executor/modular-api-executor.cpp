@@ -49,12 +49,15 @@ static DType convertToDType(M_Dtype ty) {
     return DType::f32;
   case M_FLOAT64:
     return DType::f64;
+  case M_BFLOAT16:
+    return DType::bf16;
   case M_BOOL:
     return DType::kBool;
   }
   llvm_unreachable("invalid data type");
 }
 /// Translates a GeneralML DType to C data type.
+/// TODO
 static M_Dtype convertToCDataType(DType ty) {
   switch (ty.getValue()) {
   case DType::f32:
@@ -79,6 +82,8 @@ static M_Dtype convertToCDataType(DType ty) {
     return M_BOOL;
   case DType::f64:
     return M_FLOAT64;
+  case DType::bf16:
+    return M_BFLOAT16;
   case DType::invalid:
     [[fallthrough]];
   default:

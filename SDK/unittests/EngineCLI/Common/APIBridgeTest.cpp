@@ -36,7 +36,7 @@ static const DTypeMapping kDTypeMapping[] = {
     {DType::ui16, M_UINT16},     {DType::ui32, M_UINT32},
     {DType::ui64, M_UINT64},     {DType::f16, M_FLOAT16},
     {DType::f32, M_FLOAT32},     {DType::f64, M_FLOAT64},
-    {DType::kBool, M_BOOL},
+    {DType::kBool, M_BOOL},      {DType::bf16, M_BFLOAT16},
 };
 
 TEST(APIBridge, dtypeToCAPI) {

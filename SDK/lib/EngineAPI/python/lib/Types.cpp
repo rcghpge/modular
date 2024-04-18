@@ -58,7 +58,9 @@ pybind11::dtype M::core::mapDType(M_Dtype dtype) {
   case M_UINT64:
     return pybind11::dtype::of<uint64_t>();
   case M_FLOAT16:
-    // TODO(10844): Figure out float16 support using pybind casting utilities
+  case M_BFLOAT16:
+    // TODO(10844): Figure out float16 and bfloat16 support using pybind casting
+    // utilities
     return pybind11::dtype::of<float>();
   case M_FLOAT32:
     return pybind11::dtype::of<float>();
@@ -95,6 +97,8 @@ std::string M::core::printDType(M_Dtype dtype) {
     return "DType.float32";
   case M_FLOAT64:
     return "DType.float64";
+  case M_BFLOAT16:
+    return "DType.bfloat16";
   case M_BOOL:
     return "DType.bool";
   default:
