@@ -6,16 +6,17 @@ package(
 )
 
 lit_tests(
-    srcs = glob([
-        "CUDADialect/*.mlir",
-        "CUDATransforms/*.mlir",
-    ],
+    srcs = glob(
+        [
+            "CUDADialect/*.mlir",
+            "CUDATransforms/*.mlir",
+        ],
         # This one requires mo-cuda-opt which requires what
         # will end up being "//GenericML:GraphCompiler" which
         # requires basically everything in GenericML
-        exclude=["CUDADialect/cuda-device-device.mlir"]
+        exclude = ["CUDADialect/cuda-device-device.mlir"],
     ),
     tools = [
-        "//GenericML/tools/cuda-opt"
+        "//GenericML/tools/cuda-opt",
     ],
 )
