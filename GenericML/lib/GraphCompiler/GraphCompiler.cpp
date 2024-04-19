@@ -21,7 +21,9 @@
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "GenericML/GraphCompiler/Transforms/MOQDialect/MOQTransforms.h"
 #include "GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.h"
+#include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
+#include "GenericML/Support/BlobLifetimeManager.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
 #include "GraphRT/MLIRToMEF.h"
@@ -44,6 +46,7 @@
 #include "GenericML/MGPDialect/MGPDialect.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MEFDialect/MEFDialect.h"
+#include "mlir/IR/AsmState.h"
 
 using namespace M;
 using namespace MO;
@@ -321,6 +324,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addPass(mlir::createCSEPass());
 }
+
 void M::MO::buildShapeInferencePipelineDefaultOpts(
     mlir::OpPassManager &pm, const ShapeInferenceOptions &opts) {
   MoToMgpOptions moToMgpOptions;
@@ -383,32 +387,62 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCanonicalizerPass());
 }
 
+using BlobMap = DenseMap<const uint8_t *, mlir::AsmResourceBlob *>;
+
+static BlobMap getDenseResources(ModuleOp module) {
+  BlobMap result;
+  for (Operation &op : module.getOps()) {
+    if (auto modelOp = dyn_cast<MGP::ModelOp>(op)) {
+      modelOp.walk([&](MGP::BufferConstantOp constOp) {
+        auto elementsAttr = constOp.getBValue();
+        if (auto resourceAttr =
+                dyn_cast<DenseResourceElementsAttr>(elementsAttr)) {
+          // Map the underlying data to the ASM Blob for later memory management
+          mlir::AsmResourceBlob *blob = resourceAttr.getRawHandle().getBlob();
+          if (blob->getDeleter())
+            result[blob->getDataAs<uint8_t>().data()] = blob;
+        }
+      });
+    }
+  }
+
+  return result;
+}
+
 ErrorOr<BufferRef> M::MO::convertMGPToMEF(ModuleOp module,
                                           bool enableMEFMetadata) {
   OwningOpRef<ModuleOp> moduleToRewrite = module.clone();
-
   // Some MGP-level ops may need to be lightly rewritten before encoding
   // into MEF. For example, the device-generic ops are renamed to capture
   // their device label so the GraphRT executor can dispatch to a
   // device-appropriate primitive.
+  BlobMap resources = getDenseResources(*moduleToRewrite);
   mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
-      moduleToRewrite->getContext(), mlir::OpPassManager::Nesting::Implicit);
+      module->getContext(), mlir::OpPassManager::Nesting::Implicit);
   pm.addPass(MGP::createPrepareDevicePrimitivesPass());
   if (failed(pm.run(*moduleToRewrite)))
     return Error("failed to prepare MGP model for conversion to MEF.");
-
   // Translate to MEF.
   ConcatenationTree result =
       translateMLIRToMEF(*moduleToRewrite, enableMEFMetadata);
   if (result.getSize() == 0)
     return Error("failed to convert model to MEF.");
-
   // Serialize the ConcatenationTree to the result buffer.
   M::WriteableBufferRef outputBuffer = WriteableBuffer::get(
       0, maxAttributeAlignment().value(), result.getSize());
   result.traverse([&](ArrayRef<uint8_t> data) {
     outputBuffer->write(reinterpret_cast<const char *>(data.data()),
                         data.size());
+    if (resources.count(data.data())) {
+      if (auto blob = resources[data.data()]; blob->getDeleter()) {
+        // Take ownership of the blob and immediately delete blobs that own
+        // their data.
+        auto ref = M::GML::BlobLifetimeManager(std::move(blob->getDeleter()),
+                                               blob->getData(),
+                                               blob->getDataAlignment());
+        blob->getDeleter() = nullptr;
+      }
+    }
   });
 
   return outputBuffer;

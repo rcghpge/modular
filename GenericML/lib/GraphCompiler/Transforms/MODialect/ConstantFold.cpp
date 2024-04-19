@@ -14,6 +14,7 @@
 #include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "GenericML/MGPDialect/MGPDialect.h"
+#include "GenericML/Support/BlobLifetimeManager.h"
 #include "GenericML/Support/List.h"
 #include "GenericML/Support/Model.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
@@ -49,22 +50,6 @@ namespace M::MO {
 } // namespace M::MO
 
 namespace {
-
-/// Helper to allow for resource blob ownership to be transfered and freed
-/// earlier by buffers.
-struct BlobLifetimeManager {
-  BlobLifetimeManager(
-      llvm::unique_function<void(void *data, size_t size, size_t align)>
-          deleter,
-      ArrayRef<char> data, size_t alignment)
-      : deleter(std::move(deleter)), data(data), alignment(alignment) {}
-  ~BlobLifetimeManager() {
-    deleter(const_cast<char *>(data.data()), data.size(), alignment);
-  }
-  llvm::unique_function<void(void *data, size_t size, size_t align)> deleter;
-  ArrayRef<char> data;
-  size_t alignment;
-};
 
 // Holds all the information necessary to execute and replace all constant
 // subgraphs in a single graph op.
@@ -266,7 +251,7 @@ denseResourceAsTensor(LLCL::Runtime &runtime, ConstantOp constant,
   // than waiting for the MLIRContext to die.
   if (usersOutsideSubgraph.empty() && blob->getDeleter()) {
     // Take ownership of the deleting function.
-    auto async = AsyncValue::createReady<BlobLifetimeManager>(
+    auto async = AsyncValue::createReady<GML::BlobLifetimeManager>(
         runtime.getCompactPtr(), std::move(blob->getDeleter()), blob->getData(),
         blob->getDataAlignment());
     blob->getDeleter() = nullptr;
@@ -714,7 +699,7 @@ static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
 
 static Value runtimeTensorToConstant(OpBuilder &builder, Location loc,
                                      RuntimeTensor tensor, Type type) {
-  auto [constant, shape] = tensor;
+  auto [constant, shape] = std::move(tensor);
   // Resolve instances where the output shape is not statically
   // known (mo.tensor<[?], f32> for example) by using the size of
   // the output.
@@ -777,12 +762,13 @@ static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
             op->getLoc(), ShapeAttr::get(intElems.asArrayRef<int64_t>(),
                                          MOSH::ShapeType::get(ctx))));
       } else if (type.isa<ListType>()) {
-        auto tensors = llvm::map_to_vector(
-            std::get<RuntimeList>(constantTensor), [&](RuntimeTensor tensor) {
-              return runtimeTensorToConstant(
-                  builder, op->getLoc(), tensor,
-                  cast<ListType>(type).getElementType());
-            });
+        auto tensors =
+            llvm::map_to_vector(std::get<RuntimeList>(constantTensor),
+                                [&](const RuntimeTensor &tensor) {
+                                  return runtimeTensorToConstant(
+                                      builder, op->getLoc(), tensor,
+                                      cast<ListType>(type).getElementType());
+                                });
         newResults.push_back(
             builder.create<ListCreateOp>(op->getLoc(), type, tensors));
       } else {
@@ -867,6 +853,9 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
   if (failed(runPipeline(pm, module)))
     return Error("Failed to run MOToMGP pipeline");
 
+  // NOTE: `convertMGPToMEF` destroys `dense_resource`s, so it is only safe to
+  // call here without further precaution because all `dense_resource`s in
+  // constant folding are operands, not attributes in the subgraph.
   auto bufOr = MO::convertMGPToMEF(module, false);
   if (bufOr)
     return bufOr.takeError();

@@ -27,8 +27,8 @@ LogicalResult lowerMOToMGP(ModuleOp module,
                            const MoToMgpOptions &moToMgpOptions);
 
 /// Convert a module at the MGP level to a buffer in MEF format.
-/// The module is left unchanged (even though we may need to apply some
-/// rewrite to prepare for MEF.)
+/// Note, that this will destroy the dense resources in the MGP constants
+/// in the module op, so it is a destructive conversion.
 ErrorOr<BufferRef> convertMGPToMEF(ModuleOp module, bool enableMEFMetadata);
 
 } // namespace M::MO
