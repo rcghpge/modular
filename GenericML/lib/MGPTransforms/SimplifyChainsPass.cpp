@@ -92,6 +92,12 @@ class SimplifyChainsPass
     }
   }
 
+  bool isChainGenericOp(Operation *op) {
+    // Some ops, like mgp.generic.execute, can accept both MEF chains and MGP
+    // CPU chains.
+    return isa<MGP::ExecuteGenericOp, MGP::ChainCreateOp>(op);
+  }
+
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
     // Construct the dependencies from the model. The transforms we
@@ -143,6 +149,22 @@ class SimplifyChainsPass
         if (auto chainSetOp = dyn_cast<GRT::GRTGatedOnChainOpInterface>(
                 chainCreateOp.getOperation()))
           chainSetOp.setInputChains(values);
+      }
+    });
+
+    // Remove any CPU chain.device_to_host ops that are only consumed by ops
+    // that can take in MGP chains directly
+    modelOp.walk([&](MGP::ChainDeviceToHostOp chainDeviceToHostOp) {
+      auto inChain = chainDeviceToHostOp.getInChain();
+      if (inChain.getType().getDevice().getLabel() != "cpu") {
+        return;
+      }
+
+      if (llvm::all_of(chainDeviceToHostOp->getUsers(), [this](Operation *op) {
+            return isChainGenericOp(op);
+          })) {
+        chainDeviceToHostOp.replaceAllUsesWith(inChain);
+        chainDeviceToHostOp->erase();
       }
     });
 
