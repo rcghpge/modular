@@ -22,6 +22,9 @@ add_modular_tool(max
   MCrashReporting
   MSupport
   MSupportDriver
+  MSupportInit
+  MSupportGlobals
+  LLCLRuntimeGlobals
 )
 
 target_include_directories(max PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")

@@ -10,6 +10,7 @@
 #include "SDK/EngineCLI/Visualize/Main.h"
 #include "Support/CrashReporting.h"
 #include "Support/Driver/DriverSupport.h"
+#include "Support/Init/Init.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/Option.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -48,11 +49,20 @@ static int handleUnknownSubcommand(int argc, char **argv) {
 
 int main(int argc, char **argv) {
   llvm::InitLLVM initLLVM(argc, argv);
-  initCrashpadForProgram(argv[0], kMAXProductName);
   llvm::setBugReportMsg(
       "Please submit a bug report to https://github.com/modularml/max/issues "
       "and include the crash backtrace along with your command line "
       "invocation.\n");
+
+  // Create our context. In the future, this could be used to automatically
+  // gate entitlements, force re-authentication, etc. This also enables crash
+  // reporting by default with the given settings.
+  auto ctxOr = Init::createContext(
+      "max", Init::Options().withEntitlementPolicy(Settings::kAlwaysSucceed));
+  if (ctxOr.isError()) {
+    llvm::errs() << "could not create context: " << ctxOr.getError() << "\n";
+    return EXIT_FAILURE;
+  }
 
   State state(kMAXProductName, {argv + 1, static_cast<size_t>(argc) - 1});
   if (state.arguments.empty())
