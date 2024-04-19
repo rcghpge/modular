@@ -905,27 +905,39 @@ static void mgp_kernel_execute_cpu(
     GENERICML_ASSERT(numOutDimensions == 0)
         << "async kernels cannot return output dimensions";
 #endif
-    auto *callContextPtr =
-        new KGEN::MojoCallContext(outChain.copy(), outChain.copyLocation());
-    callContextPtr->setCompletionFunction(
+
+    auto launchKernel =
         [operands = operands.copyAsVector(),
-         profilerEntry = std::move(profilerEntry)
+         profilerEntry = std::move(profilerEntry), call = std::move(call),
+         dimensions = std::move(dimensions), kernelPtr,
+         outChain = outChain.copy(), loc = outChain.copyLocation()
 #if MODULAR_PARANOID
-             ,
+                                         ,
          uses = std::move(uses)
 #endif
     ]() mutable {
+          KGEN::MojoCallContext callContext(outChain.copy(), std::move(loc));
+
+          kernelPtr(call.inputPointers.data(), dimensions.data(), &callContext);
+
+          // Stop profiling.
+          std::move(profilerEntry).record();
+
 #if MODULAR_PARANOID
           // Release uses of the operands before the operands themselves go out
           // of scope.
           uses.clear();
 #endif
-          // Stop profiling.
-          std::move(profilerEntry).record();
+
           // callContext and operands can now be released.
           operands.clear();
-        });
-    kernelPtr(call.inputPointers.data(), dimensions.data(), callContextPtr);
+          // Mark the chain as ready.
+          if (!outChain.isError())
+            std::move(outChain).emplace();
+        };
+
+    runtime.getWorkQueue()->addTask(std::move(launchKernel));
+
 #if MODULAR_PARANOID
     // If the kernel is asynchronous but accidentally depends on the stack
     // at the time sub-tasks were launched, deliberately clobber that.
