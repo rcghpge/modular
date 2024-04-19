@@ -38,6 +38,7 @@ lit_tests(
         ],
     ),
     custom_substitutions = {
+        "mo-cuda-opt": "$(rlocationpath //GenericML/tools/mo-cuda-opt:mo-cuda-opt.opt)",
         "%extra_test_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTests.lib.mlirbc) ",
         "%duplicate_override_mojo_bindings": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTestOverrideFail.lib.mlirbc) ",
         "%override_succ_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTestOverrideSucc.lib.mlirbc) ",
@@ -55,7 +56,7 @@ lit_tests(
     ],
     tools = [
         "//GenericML/tools/cuda-opt",
-        "//GenericML/tools/mo-cuda-opt",
+        "//GenericML/tools/mo-cuda-opt:mo-cuda-opt.opt",
         "//GenericML/tools/mo-opt",
         "//GenericML/tools/mosh-opt",
     ],
