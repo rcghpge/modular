@@ -56,8 +56,7 @@ else ()
   set(SERVE_SRCS "")
 endif ()
 
-# TODO: Enable priming the compilation cache.
-add_mojo_package(max-mojo PRIVATE DISABLE_PRIME_CACHE
+add_mojo_package(max-mojo PRIVATE
   ${GRAPH_SRCS}
   ${ENGINE_SRCS}
   ${REGISTER_SRCS}
