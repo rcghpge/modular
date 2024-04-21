@@ -241,7 +241,7 @@ M::ErrorOr<M::Buffer *>
 M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
                             FileFormat format) {
   auto *mofContext = ctxHandle.unwrap<MOFContext>();
-  LLCL::Runtime *runtime = ctxHandle.maxContext->get<Runtime>();
+
   // Clone the ModuleOp so compilation doesn't have side effects on the input
   // op. Cloning should be reasonably cheap since all model weights are stored
   // as dense_resource attributes owned by the MLIRContext.
