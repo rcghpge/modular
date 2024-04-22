@@ -1,0 +1,9 @@
+cc_test(
+    name = "CLOptionsTests",
+    srcs = glob(["*.cpp"]),
+    deps = [
+        "//GenericML:GraphCompiler",
+        "//GenericML:Support",
+        "@com_github_google_googletest//:gtest_main",
+    ],
+)

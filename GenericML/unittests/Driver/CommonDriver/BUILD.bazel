@@ -1,0 +1,9 @@
+cc_test(
+    name = "CommonDriverTests",
+    srcs = glob(["*.cpp"]),
+    deps = [
+        "//GenericML:CommonDriver",
+        "//GenericML:Support",
+        "@com_github_google_googletest//:gtest_main",
+    ],
+)

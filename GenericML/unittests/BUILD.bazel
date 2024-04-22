@@ -1,0 +1,8 @@
+cc_test(
+    name = "BaseTests",
+    srcs = glob(["*.cpp"]),
+    deps = [
+        "//GenericML:Support",
+        "@com_github_google_googletest//:gtest_main",
+    ],
+)

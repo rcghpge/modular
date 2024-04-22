@@ -1,0 +1,9 @@
+cc_test(
+    name = "RMODialectTests",
+    srcs = glob(["*.cpp"]),
+    deps = [
+        "//GenericML:RMODialect",
+        "//GenericML:Support",
+        "@com_github_google_googletest//:gtest_main",
+    ],
+)

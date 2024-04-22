@@ -1,0 +1,9 @@
+cc_test(
+    name = "MODialectTests",
+    srcs = glob(["*.cpp"]),
+    deps = [
+        "//GenericML:MODialect",
+        "//GenericML:Support",
+        "@com_github_google_googletest//:gtest_main",
+    ],
+)

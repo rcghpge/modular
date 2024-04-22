@@ -1562,6 +1562,7 @@ cc_library(
     strip_include_prefix = "include",
     deps = [
         ":CommonDriver",
+        ":CompileDriver",
         ":MaxAPI",
         "//Support:Base",
         "//Support:CrashReporting",

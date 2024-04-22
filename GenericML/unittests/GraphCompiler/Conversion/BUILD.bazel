@@ -1,0 +1,11 @@
+cc_test(
+    name = "ConversionTests",
+    srcs = glob(["*.cpp"]),
+    deps = [
+        "//GenericML:MODialect",
+        "//GenericML:RMODialect",
+        "//GenericML:RMOSupport",
+        "//GenericML:Support",
+        "@com_github_google_googletest//:gtest_main",
+    ],
+)
