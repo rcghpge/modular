@@ -4051,6 +4051,46 @@ def MO_ListInsertOp : MO_TensorOp<"list.insert", [Pure]> {
   let hasVerifier = 1;
 }
 
+def MO_ListSliceOp : MO_TensorOp<"list.slice", [Pure]> {
+  let summary = "List slice operation";
+  let description = [{
+    Creates a new list that's the result of applying the equivalent of Python's
+    slice operation: list[start:end:step]
+
+    The start/end can be negative, with numpy indexing semantics, i.e., `-1` means
+    the last element, `-2` means the second to last element, etc.
+
+    Steps can be negative as well in which case start to end
+    are walked in reverse order.
+
+    Example:
+
+    ```mlir
+      %list:   !mo.list<!mo.tensor<[2, 2], f32>>
+      %index:  !mo.tensor<[], si32>
+      %start:  !mo.tensor<[], si32>
+      %step:  !mo.tensor<[], si32>
+
+      %tensor = mo.list.slice(%list, %tensor, %index) : (
+        !mo.list<!mo.tensor<[2, 2], f32>>,
+        !mo.tensor<[], si32>,  !mo.tensor<[], si32>, !mo.tensor<[], si32>
+      ) -> !mo.list<!mo.tensor<[2, ?], f32>>
+    ```
+  }];
+
+  let arguments = (ins MO_List:$input,
+                       MO_RankedScalarIndexTensor:$start,
+                       MO_RankedScalarIndexTensor:$end,
+                       MO_RankedScalarIndexTensor:$step);
+  let results = (outs MO_List:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
 def MO_CustomOp : MO_TensorOp<"custom", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>
 ]> {

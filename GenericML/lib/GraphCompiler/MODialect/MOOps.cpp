@@ -3250,6 +3250,20 @@ LogicalResult ListInsertOp::verify() {
   return success();
 }
 
+LogicalResult ListSliceOp::verify() {
+  ListType inputTy = getInput().getType();
+  ListType resultTy = getResult().getType();
+
+  if (!isSubtype(inputTy.getElementType(), resultTy.getElementType())) {
+    return emitError() << "Input list element type must be a subtype of output "
+                          "list element type: "
+                       << inputTy.getElementType() << " v.s. "
+                       << resultTy.getElementType();
+  }
+
+  return success();
+}
+
 LogicalResult ConcatFromListOp::verify() {
   auto inputListElementTy =
       dyn_cast<TensorType>(getInput().getType().getElementType());
