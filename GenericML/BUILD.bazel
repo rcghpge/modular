@@ -159,6 +159,7 @@ cc_library(
     ),
     strip_include_prefix = "include",
     deps = [
+        ":MOToPrimitivesIncGen",
         "//Support:Base",
         "//Support:Compiler",
         "@llvm-project//llvm:Support",
@@ -1542,5 +1543,29 @@ cc_library(
     deps = [
         ":MOQDialect",
         ":MOTarget",
+    ],
+)
+
+cc_library(
+    name = "MaxAPI",
+    hdrs = glob(["include/GenericML/API/max/**/*.h"]),
+    strip_include_prefix = "include/GenericML/API",
+)
+
+cc_library(
+    name = "API",
+    srcs = glob([
+        "lib/API/c/**/*.cpp",
+        "lib/API/c/**/*.h",
+    ]),
+    hdrs = glob(["include/GenericML/API/**/*.h"]),
+    strip_include_prefix = "include",
+    deps = [
+        ":CommonDriver",
+        ":MaxAPI",
+        "//Support:Base",
+        "//Support:CrashReporting",
+        "//Support:Init",
+        "//Support:Metering",
     ],
 )
