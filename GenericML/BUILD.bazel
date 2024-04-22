@@ -620,10 +620,7 @@ gentbl_cc_library(
 
 cc_library(
     name = "RMOTransforms",
-    srcs = glob([
-        "lib/GraphCompiler/Transforms/RMODialect/*.cpp",
-        "lib/GraphCompiler/Transforms/RMODialect/*.h",
-    ]),
+    srcs = glob(["lib/GraphCompiler/Transforms/RMODialect/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/Transforms/RMODialect/*.h"]),
     strip_include_prefix = "include",
     deps = [
@@ -763,7 +760,6 @@ cc_library(
 cc_library(
     name = "MOGGTransforms",
     srcs = glob(["lib/GraphCompiler/MOGGDialect/Transforms/*.cpp"]),
-    hdrs = glob(["include/GenericML/GraphCompiler/MOGGDialect/Transforms/*.h"]),
     copts = ["-iquoteexternal/"],
     strip_include_prefix = "include",
     deps = [
@@ -1383,7 +1379,6 @@ gentbl_cc_library(
 cc_library(
     name = "MOToPrimitives",
     srcs = glob(["lib/GraphCompiler/Conversion/MOToPrimitives/*.cpp"]),
-    hdrs = glob(["include/GenericML/GraphCompiler/Conversion/MOToPrimitives/*.h"]),
     strip_include_prefix = "include",
     deps = [
         ":GraphCompilerDeviceBuggerizationRegistry",
@@ -1516,10 +1511,7 @@ gentbl_cc_library(
 
 cc_library(
     name = "MOQTransforms",
-    srcs = glob([
-        "lib/GraphCompiler/Transforms/MOQDialect/*.cpp",
-        "lib/GraphCompiler/Transforms/MOQDialect/*.h",
-    ]),
+    srcs = glob(["lib/GraphCompiler/Transforms/MOQDialect/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/Transforms/MOQDialect/*.h"]),
     strip_include_prefix = "include",
     deps = [
