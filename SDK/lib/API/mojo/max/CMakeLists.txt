@@ -45,9 +45,8 @@ set(REGISTER_SRCS
   register/register
 )
 
-if (MODULAR_BUILD_MUTT)
+if (MODULAR_BUILD_SERVE_RT)
   set(SERVE_SRCS
-    serve/_c
     serve/_mutt
     serve/kserve
     serve/service
