@@ -82,11 +82,18 @@ public:
     return telemetryContext->getLogger(eventName);
   }
 
+  const std::string &getAPILanguage() const { return apiLanguage; }
+
+  void setAPILanguage(const std::string &newAPILanguage) {
+    apiLanguage = newAPILanguage;
+  }
+
   void flush() { telemetryContext->flush(); }
 
 private:
   M::ContextRef context;
   Telemetry::TelemetryContext *telemetryContext;
+  std::string apiLanguage;
 };
 
 /// Increment the count for a particular error code. This function will
@@ -115,7 +122,6 @@ void emitErrorTelemetry(MaxEngineTelemetryContext &ctx, Error error) {
       {"error", error.get()}};
   std::string errorCodeStr = stringifyErrorCode(ErrorCode);
   attributes.insert({"max.engine.error_code", errorCodeStr});
-
   logger->emitL1Event("compile.failure", attributes);
 #endif // MODULAR_ENABLE_TELEMETRY
 }
