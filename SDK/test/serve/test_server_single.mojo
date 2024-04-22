@@ -53,13 +53,19 @@ fn test_basic_add_request(
 
 
 fn main() raises:
-    var USAGE = "Usage: test_server_single.mojo [--num-requests]"
+    var USAGE = "Usage: test_server_single.mojo [-a address] [-n iterations]"
     var argv = sys.argv()
 
     var i = 1
+    var address: String = "localhost:8000"
     var num_requests = 1
     while i < len(argv):
-        if argv[i] == "--num-requests":
+        if argv[i] == "-a":
+            address = str(argv[i + 1]).strip()
+            if not address:
+                raise Error("Must specify non-empty address")
+            i += 2
+        elif argv[i] == "-n":
             num_requests = atol(argv[i + 1])
             i += 2
         else:
@@ -68,10 +74,9 @@ fn main() raises:
 
     var np = Python.import_module("numpy")
     var triton_grpc = Python.import_module("tritonclient.grpc")
-    var client = triton_grpc.InferenceServerClient("localhost:8000")
+    var client = triton_grpc.InferenceServerClient(address)
 
     for i in range(num_requests):
-        _printf("[ Sending request %d/%d ]\n", i + 1, num_requests)
         try:
             test_basic_add_request(np, triton_grpc, client)
         except e:
