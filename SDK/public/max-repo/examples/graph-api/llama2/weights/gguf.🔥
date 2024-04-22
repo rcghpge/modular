@@ -1001,6 +1001,9 @@ struct GGUFFile(LoadableModel):
     var fp: FileHandle
 
     fn __init__(inout self, model_path: Path) raises:
+        # TODO(#38297): Remove once raising initializers are fixed.
+        self.fp = FileHandle()
+
         var reader = GGUFReader(open(model_path, "r"))
 
         # Read the header.
