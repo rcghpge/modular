@@ -7,8 +7,16 @@
 import sys
 
 from max.engine import InferenceSession
-from max.serve.service import ModelInfo
-from max.serve.kserve import KServeGRPCInferenceServer
+from max.serve._mutt import Batch
+from max.serve.service import (
+    FileModel,
+    InferenceRequest,
+    InferenceResponse,
+)
+from max.serve.kserve import (
+    GRPCInferenceServer,
+    SingleModelInferenceService,
+)
 
 
 fn main() raises:
@@ -35,11 +43,11 @@ fn main() raises:
         raise Error("Cannot specify an empty model path!")
 
     var session = InferenceSession()
-    var server = KServeGRPCInferenceServer(
+    var service = SingleModelInferenceService(FileModel(name, path, 0), session)
+    var server = GRPCInferenceServer(
         "0.0.0.0:8000",
-        ModelInfo(name, path, 0),
-        session^,
+        session,
     )
 
     print("Listening on port 8000!")
-    server.serve()
+    server.serve(service)

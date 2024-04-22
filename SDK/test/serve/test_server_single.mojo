@@ -6,8 +6,10 @@
 # UNSUPPORTED: windows
 # RUN: %mojo -debug-level full %s
 
+import sys
+
+from builtin.io import _printf
 from python import Python
-from collections.vector import InlinedFixedVector
 from tensor import Tensor, TensorShape, TensorSpec
 
 from max.engine.tensor import EngineNumpyView
@@ -24,7 +26,7 @@ fn to_tensor[
     return Tensor[dtype](view.spec(), ptr)
 
 
-fn test_request(
+fn test_basic_add_request(
     np: PythonObject, triton_grpc: PythonObject, client: PythonObject
 ) raises:
     var inputs: PythonObject = []
@@ -51,7 +53,26 @@ fn test_request(
 
 
 fn main() raises:
+    var USAGE = "Usage: test_server_single.mojo [--num-requests]"
+    var argv = sys.argv()
+
+    var i = 1
+    var num_requests = 1
+    while i < len(argv):
+        if argv[i] == "--num-requests":
+            num_requests = atol(argv[i + 1])
+            i += 2
+        else:
+            print(USAGE)
+            raise Error("Failed to parse command-line options")
+
     var np = Python.import_module("numpy")
     var triton_grpc = Python.import_module("tritonclient.grpc")
     var client = triton_grpc.InferenceServerClient("localhost:8000")
-    test_request(np, triton_grpc, client)
+
+    for i in range(num_requests):
+        _printf("[ Sending request %d/%d ]\n", i + 1, num_requests)
+        try:
+            test_basic_add_request(np, triton_grpc, client)
+        except e:
+            print(e)
