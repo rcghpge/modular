@@ -160,8 +160,12 @@ struct BPETokenizer:
         in length, so we can always safely recognize an outdated merge.
         """
         var output = List[TokenWithID]()
-        if bos and bos.value() in self.token_ids:
-            output.append(TokenWithID(bos.value(), self.token_ids[bos.value()]))
+        if bos and bos._value_copy() in self.token_ids:
+            output.append(
+                TokenWithID(
+                    bos._value_copy(), self.token_ids[bos._value_copy()]
+                )
+            )
 
         var merge_options = MaxHeap[MergeOption]()
         var tokens = Ball[String]()
@@ -178,7 +182,7 @@ struct BPETokenizer:
         for i in range(len(str)):
             var id = tokens.append(str[i])
             if prev:
-                maybe_add_merge(prev.value(), id)
+                maybe_add_merge(prev._value_copy(), id)
             prev = id
 
         while merge_options:
@@ -196,20 +200,24 @@ struct BPETokenizer:
             tokens[merge.left] = merged
             tokens.remove(merge.right)
             if right:
-                maybe_add_merge(merge.left, right.value())
+                maybe_add_merge(merge.left, right._value_copy())
             if left:
-                maybe_add_merge(left.value(), merge.left)
+                maybe_add_merge(left._value_copy(), merge.left)
 
         # Loop through the final list and construct the token sequence.
         var node_id = tokens._head
         while node_id:
-            var id = node_id.value()
+            var id = node_id._value_copy()
             var token = tokens[id]
             output.append(TokenWithID(token, self._encode_token(token)))
             node_id = tokens.next(id)
 
-        if eos and eos.value() in self.token_ids:
-            output.append(TokenWithID(eos.value(), self.token_ids[eos.value()]))
+        if eos and eos._value_copy() in self.token_ids:
+            output.append(
+                TokenWithID(
+                    eos._value_copy(), self.token_ids[eos._value_copy()]
+                )
+            )
 
         return output
 
