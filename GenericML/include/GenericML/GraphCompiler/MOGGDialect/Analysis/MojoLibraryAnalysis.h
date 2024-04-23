@@ -14,10 +14,10 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 
-#include "GenericML/GraphCompiler/MOGGDialect/MojoDecorators.h"
 #include "KGEN/HLCFDialect/HLCFDialect.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/LITDialect/LITDialect.h"
+#include "KGEN/MOGGPreElab/MOGGDecorators.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 
@@ -108,24 +108,20 @@ public:
   bool kernelHasInputParameter(KGEN::GeneratorOp kernel,
                                StringRef parameterName);
 
-  /// Returns true if the provided kernel or shape function has the decorator
-  /// `decoratorName`.
-  bool kernelHasDecorator(KGEN::GeneratorOp kernel, StringRef decoratorName);
-
   /// Returns true if the kernel is an elementwise kernel.
   inline bool kernelIsElementwise(KGEN::GeneratorOp kernel) {
-    return kernelHasDecorator(kernel, DECORATOR_ELEMENTWISE) ||
-           kernelHasDecorator(kernel, DECORATOR_ELEMENTWISE_PUBLIC);
+    return kernel->hasAttr(KGEN::MOGGPreElab::DECORATOR_ELEMENTWISE) ||
+           kernel->hasAttr(KGEN::MOGGPreElab::DECORATOR_ELEMENTWISE_PUBLIC);
   }
 
   /// Returns true if the kernel is expecting to take indices as last arg.
   inline bool kernelIsViewOp(KGEN::GeneratorOp kernel) {
-    return kernelHasDecorator(kernel, DECORATOR_VIEW);
+    return kernel->hasAttr(KGEN::MOGGPreElab::DECORATOR_VIEW);
   }
 
   /// Returns true if the kernel is a view operation.
   inline bool kernelTakesIndices(KGEN::GeneratorOp kernel) {
-    return kernelHasDecorator(kernel, DECORATOR_TAKES_INDICES);
+    return kernel->hasAttr(KGEN::MOGGPreElab::DECORATOR_TAKES_INDICES);
   }
 
   /// Returns true if the kernel implementation is in the Tensor API.

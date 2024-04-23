@@ -143,34 +143,6 @@ bool MojoLibraryAnalysis::kernelHasInputParameter(KGEN::GeneratorOp kernel,
   });
 }
 
-bool MojoLibraryAnalysis::kernelHasDecorator(KGEN::GeneratorOp kernel,
-                                             StringRef decoratorName) {
-  // Return true if the decorator exists on this generator.
-  auto hasDecorator = [&](TypedAttr attr) {
-    auto sym = dyn_cast<KGEN::SymbolConstantAttr>(attr);
-    if (!sym)
-      return false;
-
-    /// FIXME: This will give a false positive when a decorator is a prefix of
-    /// another one.
-    return sym.getSymbol().getLeafReference().strref().starts_with(
-        decoratorName);
-  };
-
-  for (TypedAttr decorator : kernel.getDecorators()) {
-    // The attribute could just be a symbol directly.
-    if (hasDecorator(decorator))
-      return true;
-
-    // Otherwise look through any bind expressions.
-    auto apply = dyn_cast<KGEN::ParamOperatorAttr>(decorator);
-    if (apply && hasDecorator(apply.getOperand(0)))
-      return true;
-  }
-
-  return false;
-}
-
 // Load a list of kernels from the provided user libraries.
 ErrorOrSuccess MojoLibraryAnalysis::loadUserProvidedKernels(
     ArrayRef<std::string> kernelLibraryPaths) {
@@ -265,31 +237,9 @@ void MojoLibraryAnalysis::updatedLoadedKernelsForCollisions(
     if (!rawMojoKernel.contains(newSymName))
       continue;
 
-    bool isMOGGKernel = false;
-
-    // Check if it has a decorator.
-    for (TypedAttr decorator : op.getDecorators()) {
-      // Decorators are expected to the the apply of a symbol.
-      auto apply = dyn_cast<KGEN::ParamOperatorAttr>(decorator);
-      if (!apply)
-        continue;
-
-      // The first operand is expected to be the symbol we are applying.
-      auto sym = dyn_cast<KGEN::SymbolConstantAttr>(apply.getOperand(0));
-      if (!sym)
-        continue;
-
-      StringRef decoratorName = sym.getSymbol().getLeafReference().strref();
-
-      isMOGGKernel |=
-          decoratorName.starts_with(DECORATOR_REGISTER_OVERRIDE) ||
-          decoratorName.starts_with(DECORATOR_REGISTER_PUBLIC_OVERRIDE) ||
-          decoratorName.starts_with(DECORATOR_REGISTER_SHAPE_FUNC) ||
-          decoratorName.starts_with(DECORATOR_REGISTER_KERNEL);
-    }
-
-    // We ignore duplicated kernels without any decorators.
-    if (!isMOGGKernel)
+    // We ignore duplicated functions which are not kernels or shape functions.
+    if (!(KGEN::MOGGPreElab::isKernel(op) ||
+          KGEN::MOGGPreElab::isV1ShapeFunc(op)))
       continue;
 
     // Create a new symbol which is unique in both files.
@@ -585,44 +535,37 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   // operation.
   DenseMap<StringRef, SmallVector<Candidate>> candidates;
   for (auto generator : getRawMojoKernels()) {
-    Candidate candidate = {generator};
-
-    // Check if it has a decorator.
-    for (TypedAttr decorator : generator.getDecorators()) {
-      // Decorators are expected to the the apply of a symbol.
-      auto apply = dyn_cast<KGEN::ParamOperatorAttr>(decorator);
-      if (!apply)
-        continue;
-
-      // The first operand is expected to be the symbol we are applying.
-      auto sym = dyn_cast<KGEN::SymbolConstantAttr>(apply.getOperand(0));
-      if (!sym)
-        continue;
-
-      StringRef decoratorName = sym.getSymbol().getLeafReference().strref();
-      if (decoratorName.starts_with(DECORATOR_REGISTER_OVERRIDE) ||
-          decoratorName.starts_with(DECORATOR_REGISTER_PUBLIC_OVERRIDE)) {
-        auto asString = cast<StringAttr>(apply.getOperand(1)).strref();
-        auto intPriority = cast<IntegerAttr>(apply.getOperand(2));
+    // Check if the generator has a the registration attribute directly
+    // attached.
+    if (auto regs = generator->getAttrOfType<ArrayAttr>(
+            KGEN::MOGGPreElab::kernelRegistrationAttr)) {
+      ArrayRef<Attribute> kernels = regs.getValue();
+      // Each kernel is stored as a pair of name / priority.
+      for (size_t i = 0; i < kernels.size(); i += 2) {
+        Candidate candidate = {generator};
+        auto asString = cast<StringAttr>(kernels[i]).strref();
+        auto intPriority = cast<IntegerAttr>(kernels[i + 1]);
         candidate.priority = intPriority.getInt();
         candidates[asString].push_back(candidate);
-      } else if (decoratorName.starts_with(DECORATOR_REGISTER_SHAPE_FUNC)) {
-        auto asString = cast<StringAttr>(apply.getOperand(1)).str();
-        registeredShapeFunctionSymbol[asString] =
-            candidate.generator.getSymName();
-      } else if (decoratorName.starts_with(DECORATOR_REGISTER_KERNEL)) {
-        auto asString = cast<StringAttr>(apply.getOperand(1)).strref();
-        candidates[asString].push_back(candidate);
       }
+    }
+
+    // Shape functions are just a list of operations they are the shape function
+    // for.
+    if (auto regs = generator->getAttrOfType<ArrayAttr>(
+            KGEN::MOGGPreElab::shapeFuncRegistrationAttr)) {
+      for (StringRef name : regs.getAsValueRange<StringAttr>())
+        registeredShapeFunctionSymbol[name] = generator.getSymName();
     }
 
     // The generator names are mangled, so we remove the parameter and
     // argument signature.
     StringRef baseName =
         generator.getSymName().split('(').first.split('[').first;
+    // Check if the kernel is in the C++ list of intrinsics.
     for (const auto &[moName, mojoName] : moToMojoKernels) {
       if (baseName == mojoName)
-        candidates[moName].push_back(candidate);
+        candidates[moName].push_back(Candidate{generator});
     }
   }
 
