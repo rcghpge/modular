@@ -1,9 +1,6 @@
 load("//utils/bazel/build/rules:lit.bzl", "lit_tests")
 
-package(
-    default_visibility = ["//visibility:public"],
-    licenses = ["notice"],
-)
+package(default_visibility = ["//visibility:public"])
 
 lit_tests(
     srcs = glob(
