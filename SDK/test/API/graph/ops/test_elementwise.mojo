@@ -207,9 +207,12 @@ def main():
     test_unary()
     test_unary_float()
 
-    # TODO: get the raised exception to capture the message.
-    # with assert_raises(contains="unsafe cast from si16 to f16. Insert an explicit cast op if this conversion is wanted."):
-    with assert_raises():
+    with assert_raises(
+        contains=(
+            "Unsafe cast from si16 to f16. Insert an explicit cast op if this"
+            " conversion is wanted."
+        )
+    ):
         test_bad_implicit_promotion()
 
     # TODO: Update rmo.rebind_tensor_shape to enable a nice message here.
