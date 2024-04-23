@@ -77,8 +77,8 @@ def test_tensor_copy():
     )
     var copy = Tensor(tensor)
 
-    assert_almost_equal(0.6, tensor[0, 1, 2])
-    assert_almost_equal(0.6, copy[0, 1, 2])
+    assert_almost_equal(tensor[0, 1, 2], 0.6)
+    assert_almost_equal(copy[0, 1, 2], 0.6)
     assert_false(tensor._ptr == copy._ptr)
 
 
