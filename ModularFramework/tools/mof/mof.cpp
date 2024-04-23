@@ -20,6 +20,7 @@
 #include "GenericML/Support/CASConfig.h"
 #include "GenericML/Support/HostDeviceSpecs.h"
 #include "GenericML/Support/ModelCollection.h"
+#include "GenericML/Support/Telemetry.h"
 #include "GraphRT/MEFExecutor/MEFFile.h"
 #include "LLCL/CompilerSupport/Context.h"
 #include "MOF/Driver/DriverConfig.h"
@@ -247,8 +248,24 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   // as dense_resource attributes owned by the MLIRContext.
   OwningOpRef<ModuleOp> moduleOp =
       ModuleOp::getFromOpaquePointer(source).clone();
-  if (!moduleOp->getContext()->isMultithreadingEnabled())
-    registerContext(*moduleOp->getContext(), ctxHandle.maxContext);
+
+  registerContext(*moduleOp->getContext(), ctxHandle.maxContext);
+
+  auto telemetryContext =
+      ctxHandle.maxContext->get<GML::MaxEngineTelemetryContext>();
+
+  auto handlerFn = [&](const Diagnostic &diag) {
+    if (telemetryContext) {
+      std::string errorMessage;
+      llvm::raw_string_ostream os(errorMessage);
+      diag.print(os);
+      GML::emitErrorTelemetry<GML::MaxEngineErrorCode::GraphLoweringError>(
+          *telemetryContext, Error(errorMessage));
+    }
+    // Return failure to allow the main handler to process the diagnostic.
+    return failure();
+  };
+  mlir::ScopedDiagnosticHandler diagHandler(moduleOp->getContext(), handlerFn);
 
   // Gather all the options from all the sources.
   MOFLoweringOptions mofLoweringOptions;
@@ -290,7 +307,8 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
                                        M::BufferRef file, FileFormat format) {
   auto *mofContext = ctxHandle.unwrap<MOFContext>();
   CompileToBinaryCtx compileCtx(ctxHandle.maxContext.copy());
-
+  auto telemetryContext =
+      ctxHandle.maxContext->get<GML::MaxEngineTelemetryContext>();
   // Gather all the options from all the sources.
   MOFLoweringOptions mofLoweringOptions;
   MO::MoToMgpOptions moToMgpOptions;
@@ -313,6 +331,20 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
       return Error("cannot compile input with format " + *identityOr);
     }
     }
+
+    auto handlerFn = [&](const Diagnostic &diag) {
+      if (telemetryContext) {
+        std::string errorMessage;
+        llvm::raw_string_ostream os(errorMessage);
+        diag.print(os);
+        GML::emitErrorTelemetry<GML::MaxEngineErrorCode::GraphLoweringError>(
+            *telemetryContext, Error(errorMessage));
+      }
+      // Return failure to allow the main handler to process the diagnostic.
+      return failure();
+    };
+    mlir::ScopedDiagnosticHandler diagHandler(compileCtx.module->getContext(),
+                                              handlerFn);
 
     // We have an MLIR model, try to lower it to a MEF-capable encoding.
     switch (format) {
