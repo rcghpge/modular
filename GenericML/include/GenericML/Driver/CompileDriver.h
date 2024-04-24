@@ -41,7 +41,7 @@ cacheMEFTransform(StringRef frameworkName,
 /// a raw_ostream by reference to get a representation of it.
 template <typename... Options>
 WriteableBufferRef makeCacheKey(BufferRef buffer, Options &...options) {
-  // Make key for MEF
+  // Make key for MEF.
   WriteableBufferRef keyBuffer = WriteableBuffer::get();
 
   /// Add options to key.

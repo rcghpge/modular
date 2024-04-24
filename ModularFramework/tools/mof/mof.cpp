@@ -381,7 +381,7 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
 
   // If kernel paths are not empty then we'd need to inspect them to get the
   // key, so default to not caching at this time.
-  if (!moToMgpOptions.kernelLibraryPaths.empty()) {
+  if (!moToMgpOptions.kernelLibraryPaths.empty() || !isModelIRCacheEnabled()) {
     auto bufOr = loweringTransform();
     if (bufOr)
       return bufOr.takeError();
