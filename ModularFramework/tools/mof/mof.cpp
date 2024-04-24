@@ -390,7 +390,7 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
   }
 
   WriteableBufferRef keyBuffer =
-      makeCacheKey(file.copy(), mofLoweringOptions, moToMgpOptions);
+      makeCacheKey(std::move(file), mofLoweringOptions, moToMgpOptions);
 
   auto bufOr =
       M::cacheMEFTransform("mof", loweringTransform, std::move(keyBuffer));
