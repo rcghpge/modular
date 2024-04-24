@@ -68,7 +68,7 @@ private:
 class MaxEngineTelemetryContext {
 public:
   MaxEngineTelemetryContext(M::ContextRef ctx)
-      : context(std::move(ctx)),
+      : context(ctx.getPointer()),
         telemetryContext(context->get<Telemetry::TelemetryContext>()) {
     assert(telemetryContext && "expected to be setup already");
   }
@@ -91,7 +91,10 @@ public:
   void flush() { telemetryContext->flush(); }
 
 private:
-  M::ContextRef context;
+  // MaxEngineTelemetryContext is stored inside M::ContextRef and the
+  // pointer here is for the parent M::Context. So this is safe to hold
+  // as raw pointer.
+  M::Context *context;
   Telemetry::TelemetryContext *telemetryContext;
   std::string apiLanguage;
 };
