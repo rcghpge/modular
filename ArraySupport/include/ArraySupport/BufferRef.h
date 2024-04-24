@@ -92,7 +92,7 @@ public:
   /// the ownership lies with BufferRef, caller should not free anything that
   /// has been taken by BufferRef.
   static BufferRef take(LLCL::CompactRuntimePtr runtime, size_t size,
-                        std::optional<size_t> alignment, void *takeFrom);
+                        void *takeFrom);
   //===--------------------------------------------------------------------===//
   // Core APIs for working with a BufferRef.
   //===--------------------------------------------------------------------===//
@@ -119,14 +119,6 @@ public:
   /// Returns the size of the underlying buffer. Will return 0 if the
   /// reference is uninitialized or has been moved out of.
   size_t getSize() const { return size; }
-
-  /// Returns the alignment of the underlying buffer, or none if no alignment
-  /// constraint was given.
-  std::optional<size_t> getAlignment() const {
-    return alignment.has_value()
-               ? std::optional<size_t>(static_cast<size_t>(alignment->value()))
-               : std::nullopt;
-  }
 
   /// If the buffer is owning return the memory block which owns the memory.
   AnyAsyncValueRef getMemStorageHandle() {
@@ -162,7 +154,7 @@ private:
 #endif
             )
       : data(buffer), size(size), storageRef(std::move(storageRef)),
-        alignment(alignment), profilerEntry(std::move(profilerEntry))
+        profilerEntry(std::move(profilerEntry))
 #if MODULAR_PARANOID
         ,
         resource(std::move(resource)), use(std::move(use))
@@ -186,9 +178,6 @@ private:
 
   /// Tracks the storage object which preserves the lifetime of data.
   AnyAsyncValueRef storageRef;
-
-  /// Alignment of underlying buffer, or None if no specific alignment given.
-  llvm::MaybeAlign alignment = std::nullopt; // 2 bytes
 
   BufferRefLifetimeProfilerEntry profilerEntry;
 

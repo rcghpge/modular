@@ -59,7 +59,7 @@ public:
   /// the takeFrom pointer is allocated by caller via runtime->getAllocator().
   /// Lifetime of the allocated memory follows any Owned Tensor (via bufferRef)
   static Tensor takeOwned(TensorSpec spec, LLCL::CompactRuntimePtr runtime,
-                          void *takeFrom, std::optional<size_t> alignment);
+                          void *takeFrom);
 
   /// Creates a tensor whose buffer is at the given pointer. It is assumed the
   /// pointer has size appropriate for spec and lifetime exceeding that of

@@ -42,16 +42,9 @@ GML::BufferRef createBorrowedSlice(GML::BufferRef &borroweBufferRef,
                                    size_t offset, size_t size) {
   const void *newBuffer = borroweBufferRef.getBuffer<uint8_t>() + offset;
 
-  // We can preserve the borrow's alignment if the offset is compatible with
-  // it. Otherwise fall back to unknown alignment.
-  std::optional<size_t> alignment = borroweBufferRef.getAlignment();
-  if (size && alignment &&
-      !llvm::isAddrAligned(llvm::Align(*alignment), newBuffer))
-    alignment = std::nullopt;
-
   return GML::BufferRef::create(const_cast<void *>(newBuffer), size,
                                 borroweBufferRef.getMemStorageHandle(),
-                                alignment);
+                                std::optional<size_t>());
 }
 
 //===----------------------------------------------------------------------===//

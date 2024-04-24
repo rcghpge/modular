@@ -26,10 +26,9 @@ Tensor Tensor::createOwned(TensorSpec spec, LLCL::CompactRuntimePtr runtime,
 }
 
 Tensor Tensor::takeOwned(TensorSpec spec, LLCL::CompactRuntimePtr runtime,
-                         void *takeFrom, std::optional<size_t> alignment) {
-  return Tensor(
-      GML::BufferRef::take(runtime, spec.getSizeInBytes(), alignment, takeFrom),
-      std::move(spec));
+                         void *takeFrom) {
+  return Tensor(GML::BufferRef::take(runtime, spec.getSizeInBytes(), takeFrom),
+                std::move(spec));
 }
 
 Tensor Tensor::createBorrowed(void *buffer, TensorSpec spec,

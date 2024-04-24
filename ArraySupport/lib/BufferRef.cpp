@@ -66,12 +66,13 @@ BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
 // Create an owned reference from a taken void* pointer -- This taken
 // pointer will not be freed by anyone else except by the buffer-ref now.
 BufferRef BufferRef::take(LLCL::CompactRuntimePtr runtime, size_t size,
-                          std::optional<size_t> alignment, void *takeFrom) {
+                          void *takeFrom) {
   AnyAsyncValueRef storageRef;
   storageRef = storageRef.createReady<OwnedMemoryBlock>(
-      runtime, size, alignment, runtime, takeFrom);
+      runtime, size, std::nullopt, runtime, takeFrom);
   void *buffer = storageRef.get<OwnedMemoryBlock>().data;
-  return BufferRef::create(buffer, size, std::move(storageRef), alignment);
+  return BufferRef::create(buffer, size, std::move(storageRef),
+                           std::optional<size_t>());
 }
 
 BufferRef::~BufferRef() {
@@ -92,7 +93,7 @@ BufferRef &BufferRef::operator=(BufferRef &&rhs) {
 BufferRef BufferRef::borrow() const {
   return BufferRef::create(data, size,
                            storageRef ? storageRef.copy() : AnyAsyncValueRef{},
-                           alignment);
+                           std::optional<size_t>());
 }
 
 void BufferRef::reset() {
@@ -129,7 +130,6 @@ void BufferRef::swap(BufferRef &rhs) {
   std::swap(data, rhs.data);
   std::swap(size, rhs.size);
   std::swap(storageRef, rhs.storageRef);
-  std::swap(alignment, rhs.alignment);
   std::swap(profilerEntry, rhs.profilerEntry);
 #if MODULAR_PARANOID
   std::swap(resource, rhs.resource);

@@ -80,7 +80,6 @@ TEST(BufferRef, Borrow) {
   BufferRef bor = ref.borrow();
   ASSERT_EQ(bor.getBuffer(), ref.getBuffer());
   ASSERT_EQ(bor.getSize(), ref.getSize());
-  ASSERT_EQ(bor.getAlignment(), ref.getAlignment());
 }
 
 TEST(BufferRef, Destructor) {
