@@ -7,6 +7,7 @@
 #include "GenericML/MGPTransforms/IndexSet.h"
 #include "./Utils.h"
 #include "GenericML/Support/Assert.h"
+#include "GraphRT/GRTDialect/GRTControlFlowInterface.h"
 
 using namespace M;
 using namespace M::MGP;
@@ -17,8 +18,9 @@ void M::MGP::visitValues(IndexSet<Value> &indexSet, Block *block) {
   for (Value arg : block->getArguments())
     indexSet.addV(arg);
   for (Operation &op : block->getOperations()) {
-    for (Region &region : op.getRegions())
-      visitValues(indexSet, &region.front());
+    if (isa<GRT::GRTControlFlowInterface>(op))
+      for (Region &region : op.getRegions())
+        visitValues(indexSet, &region.front());
     for (Value result : op.getResults())
       indexSet.addV(result);
   }
@@ -51,8 +53,9 @@ void M::MGP::visitOperands(IndexSet<const OpOperand *> &indexSet,
   for (Operation &op : block->getOperations()) {
     for (OpOperand &operand : op.getOpOperands())
       indexSet.addV(&operand);
-    for (Region &region : op.getRegions())
-      visitOperands(indexSet, &region.front());
+    if (isa<GRT::GRTControlFlowInterface>(op))
+      for (Region &region : op.getRegions())
+        visitOperands(indexSet, &region.front());
   }
 }
 
@@ -94,8 +97,9 @@ void M::MGP::visitOperations(IndexSet<Operation *> &indexSet, Block *block) {
   indexSet.blockIndexMap.insert({block, blockIndex});
   for (Operation *op : getDataflowOrder(block)) {
     indexSet.addV(op);
-    for (Region &region : op->getRegions())
-      visitOperations(indexSet, &region.front());
+    if (isa<GRT::GRTControlFlowInterface>(op))
+      for (Region &region : op->getRegions())
+        visitOperations(indexSet, &region.front());
   }
 }
 
