@@ -103,7 +103,7 @@ cc_library(
     copts = ["-Ithird-party/"],  # Fixes mlperf-loadgen include path.
     strip_include_prefix = "include",
     deps = [
-        "GraphCompilerHeaders",
+        ":CommonDriver",
         ":Support",
         "//GraphRT:MLIRToMEF",
         "//Support:Base",

@@ -6,8 +6,6 @@ lit_tests(
     srcs = glob(
         ["**/*.mlir"],
         exclude = [
-            "model-specification-validator/**/*",
-
             # These fail
             "GraphCompiler/MOGGDialect/load-mojo-libs.mlir",
             "GraphCompiler/MOGGDialect/generated_code.mlir",
@@ -55,6 +53,7 @@ lit_tests(
         "//GenericML/tools/cuda-opt",
         "//GenericML/tools/mo-cuda-opt:mo-cuda-opt.opt",
         "//GenericML/tools/mo-opt",
+        "//GenericML/tools/model-specification-validator",
         "//GenericML/tools/mosh-opt",
     ],
 )
