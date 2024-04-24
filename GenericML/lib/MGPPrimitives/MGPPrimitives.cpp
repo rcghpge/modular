@@ -18,6 +18,7 @@
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AsyncValue.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
+#include "LLCL/Runtime/Runtime.h"
 #include "LLCL/Support/SpinWaiter.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/MArchTarget/MArchTarget.h"
@@ -328,7 +329,9 @@ static void mgp_cpu_kernel_create_context(Chain inChain, GML::Context &ctx,
   // Establish the context for this executing model.
   ctx.emplaceStateSlot<CompiledKernelsContext>(
       /*slotIndex=*/static_cast<size_t>(*slot),
-      /*numBuffers=*/0, *engineOr);
+      /*numBuffers=*/0, *engineOr,
+      runtime.getProfilerDebuginfo() ==
+          LLCL::RuntimeOptions::ProfilerDebuginfo::kSOProfiler);
 
   std::move(outChain).emplace();
 }

@@ -143,7 +143,8 @@ using CompiledKernelAsyncABIFn = void(void **, void *, void *);
 // of the mgp.context.
 class CompiledKernelsContext : public ReferenceCounted<CompiledKernelsContext> {
 public:
-  CompiledKernelsContext(KGEN::ExecutionEngine *engine) : engine(engine) {}
+  CompiledKernelsContext(KGEN::ExecutionEngine *engine, bool loadDebuginfo)
+      : engine(engine), loadDebuginfo(loadDebuginfo) {}
 
   ~CompiledKernelsContext() = default;
 
@@ -183,6 +184,9 @@ private:
   /// this object since LLCL tasks involving loaded code can't be guaranteed
   /// to have completed until the Runtime's WorkQueue has been shutdown.
   KGEN::ExecutionEngine *engine = nullptr;
+
+  /// Should compiled kernels be loaded with debug info
+  bool loadDebuginfo;
 
   /// The loaded kernels.
   SmallVector<void *, 16> kernels;

@@ -111,7 +111,7 @@ static void mgp_module_load_cpu(Chain inChain, GML::Context &theContext,
                                 MEFDynamicAttr bImage,
                                 MEFAttr<StringRef> cFunctionSymbols,
                                 MEFAttr<StringRef> dConstantSymbols,
-                                MEFAttr<uint64_t> eDeviceId) {
+                                MEFAttr<uint64_t> eDeviceId, Runtime &runtime) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
       static_cast<size_t>(*aRuntimeSlot));
   if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*eDeviceId))
@@ -123,8 +123,11 @@ static void mgp_module_load_cpu(Chain inChain, GML::Context &theContext,
   }
 
   // Create a kernels context.
-  CompiledKernelsContext &module = *cpuRuntime.modules.emplace_back(
-      RCRef<CompiledKernelsContext>::create(cpuRuntime.engine));
+  CompiledKernelsContext &module =
+      *cpuRuntime.modules.emplace_back(RCRef<CompiledKernelsContext>::create(
+          cpuRuntime.engine,
+          runtime.getProfilerDebuginfo() ==
+              RuntimeOptions::ProfilerDebuginfo::kSOProfiler));
 
   // Decode the image.
   ArrayRef<uint8_t> image;
