@@ -122,6 +122,7 @@ void emitErrorTelemetry(MaxEngineTelemetryContext &ctx, Error error) {
       {"error", error.get()}};
   std::string errorCodeStr = stringifyErrorCode(ErrorCode);
   attributes.insert({"max.engine.error_code", errorCodeStr});
+  attributes.insert({"max.engine.api.language", ctx.getAPILanguage()});
   logger->emitL1Event("compile.failure", attributes);
 #endif // MODULAR_ENABLE_TELEMETRY
 }
