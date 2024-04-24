@@ -110,7 +110,6 @@ def test_mnist_helpers():
     var g = Graph(
         "test_mnist_helpers",
         MOTensor(DType.float32, 1, 28, 28, 1),
-        MOTensor(DType.float32, 1, 10),
     )
     var cst_data = Tensor[DType.float32](128, 10)
     cst_data._to_buffer().fill(0.5)
