@@ -50,11 +50,9 @@ fn test_tensor_type() raises:
 
 
 fn test_tensor_unranked() raises:
-    var dt = ElementType(DType.float32)
-    var t = MOTensor(dt, False)
-
-    var s = str(t.to_mlir(context()))
-    testing.assert_equal(s, "!mo.tensor<?, f32>")
+    var unranked_tensor_mlir = _mlir.Type.parse(context(), "!mo.tensor<?, f32>")
+    with testing.assert_raises():
+        MOTensor.from_mlir(unranked_tensor_mlir)
 
 
 fn test_tensor_dynamic_dims() raises:
