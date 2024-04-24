@@ -45,6 +45,10 @@ set(REGISTER_SRCS
   register/register
 )
 
+set(EXTENSIBILITY_SRCS
+  extensibility/extensibility
+)
+
 if (MODULAR_BUILD_SERVE_RT)
   set(SERVE_SRCS
     serve/_mutt
@@ -58,6 +62,7 @@ endif ()
 add_mojo_package(max-mojo PRIVATE
   ${GRAPH_SRCS}
   ${ENGINE_SRCS}
+  ${EXTENSIBILITY_SRCS}
   ${REGISTER_SRCS}
   ${SERVE_SRCS}
 
@@ -67,6 +72,7 @@ add_mojo_package(max-mojo PRIVATE
   DEPENDS
   mojo-buffer
   mojo-tensor
+  mojo-extensibility
 )
 
 # Dependencies aren't automatically included in releases!
