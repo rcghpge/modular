@@ -9,31 +9,32 @@
 
 #include "Support/Context.h"
 #include "Support/Error.h"
+#include "Support/STLExtras.h"
 #include "Support/Telemetry/Telemetry.h"
 
 namespace M::GML {
 
-enum class MaxEngineErrorCode {
+enum class MaxEngineErrorCode : uint32_t {
   // # Error in user supplied data.
-  UserInputError,
+  UserInputError = 0,
 
   // These are specific cases of the above error that we are separately
   // tracking.
-  FileNotFoundError,
-  UnknownFormatError,
+  FileNotFoundError = 1,
+  UnknownFormatError = 2,
 
   // Error in deserializing the framework to appropriate graph
   // level representation
-  TFImportError,
-  TorchImportError,
-  ONNXImportError,
+  TFImportError = 100,
+  TorchImportError = 101,
+  ONNXImportError = 102,
 
   // Error in lowering imported model to internal representation.
-  GraphLoweringError,
-  MissingOpError,
+  GraphLoweringError = 1000,
+  MissingOpError = 1001,
 
   // General case for compilation.
-  CompilationError
+  CompilationError = 10000
 };
 
 std::string stringifyErrorCode(MaxEngineErrorCode code);
@@ -41,20 +42,21 @@ std::string stringifyErrorCode(MaxEngineErrorCode code);
 /// This is a convenience wrapper over telemetry counter to specialize
 /// a counter for an error code. This helps us to store in a context
 /// object and reuse across frameworks and models.
-template <MaxEngineErrorCode ErrorCode>
 class ErrorCodeCounter {
 public:
   ErrorCodeCounter(Telemetry::TelemetryContext &ctx)
-      : counter(makeCounter(ctx, ErrorCode)) {}
+      : counter(makeCounter(ctx)) {}
 
-  void increment() { counter.add(1); }
+  template <MaxEngineErrorCode errorCode>
+  void increment() {
+    std::string category = stringifyErrorCode(errorCode);
+    counter.add(1, {{category, to_underlying(errorCode)}});
+  }
 
 private:
-  Telemetry::Counter<uint64_t> makeCounter(Telemetry::TelemetryContext &ctx,
-                                           MaxEngineErrorCode errorCode) {
-    std::string category = stringifyErrorCode(errorCode);
+  Telemetry::Counter<uint64_t> makeCounter(Telemetry::TelemetryContext &ctx) {
     return ctx.createUInt64Counter(
-        category, M::Telemetry::Level::L1, {},
+        "max.engine.error_code", M::Telemetry::Level::L1, {},
         "Category of failure emitted during model compilation.");
   }
 
@@ -71,10 +73,8 @@ public:
     assert(telemetryContext && "expected to be setup already");
   }
 
-  template <MaxEngineErrorCode ErrorCode>
-  ErrorCodeCounter<ErrorCode> &getErrorCounter() const {
-    return context->emplaceIfMissing<ErrorCodeCounter<ErrorCode>>(
-        *telemetryContext);
+  ErrorCodeCounter &getErrorCounter() const {
+    return context->emplaceIfMissing<ErrorCodeCounter>(*telemetryContext);
   }
 
   std::shared_ptr<Telemetry::Logs::Logger>
@@ -103,8 +103,8 @@ private:
 template <MaxEngineErrorCode ErrorCode>
 void incrementTelemetryErrorCount(MaxEngineTelemetryContext &ctx) {
 #ifdef MODULAR_ENABLE_TELEMETRY
-  auto &counter = ctx.getErrorCounter<ErrorCode>();
-  counter.increment();
+  auto &counter = ctx.getErrorCounter();
+  counter.increment<ErrorCode>();
   ctx.flush();
 #endif // MODULAR_ENABLE_TELEMETRY
 }
