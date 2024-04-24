@@ -26,6 +26,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
+#include <algorithm>
 
 #define DEBUG_TYPE "mgp"
 
@@ -510,6 +511,79 @@ static void mgp_list_insert(List &inputList, AnyAsyncValueRef element,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.list.slice
+//===----------------------------------------------------------------------===//
+
+static void mgp_list_slice(List &inputList, Tensor &startTensor,
+                           Tensor &endTensor, Tensor &stepTensor,
+                           Result<List> output) {
+
+  auto sliceFunctor = [&](auto start, auto end, auto step) {
+    List resultList;
+
+    auto &elems = inputList.getElements();
+
+    // start/end/step
+    ssize_t length = elems.size();
+
+    if (step == 0) {
+      return std::move(output).setToError(
+          "The slice step argument must be a non-zero");
+    }
+
+    const bool stepIsPositive = step > 0;
+
+    // normalize negative start and end values
+    if (start < 0) {
+      start += length;
+    }
+    if (end < 0) {
+      end += length;
+    }
+
+    if (stepIsPositive) {
+      start = std::clamp<decltype(start)>(start, 0, length - 1);
+      end = std::clamp<decltype(end)>(end, 0, length);
+    } else {
+      start = std::clamp<decltype(start)>(start, 0, length - 1);
+      end = std::clamp<decltype(end)>(end, -1, length);
+    }
+
+    if (stepIsPositive) {
+      for (ssize_t i = start; i < end && i < length && i >= 0; i += step) {
+        resultList.getElements().push_back(inputList.getElements()[i]);
+      }
+    } else {
+      for (ssize_t i = start; i > end; i += step) {
+        resultList.getElements().push_back(inputList.getElements()[i]);
+      }
+    }
+
+    std::move(output).emplace(std::move(resultList));
+  };
+
+  startTensor.getEltType()
+      .dispatch<void>(startTensor.getBuffer())
+      .template when<DType::si32, DType::si64>([&](auto *startDataPtr) {
+        auto start = *startDataPtr;
+
+        endTensor.getEltType()
+            .dispatch<void>(endTensor.getBuffer())
+            .template when<DType::si32, DType::si64>([&](auto *endDataPtr) {
+              auto end = *endDataPtr;
+
+              stepTensor.getEltType()
+                  .dispatch<void>(stepTensor.getBuffer())
+                  .template when<DType::si32, DType::si64>(
+                      [&](auto *stepDataPtr) {
+                        auto step = *stepDataPtr;
+                        sliceFunctor(start, end, step);
+                      });
+            });
+      });
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.model
 //===----------------------------------------------------------------------===//
 
@@ -553,6 +627,7 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.list.create", mgp_list_create);
   ADD_PRIMITIVE(registry, "mgp.list.get", mgp_list_get);
   ADD_PRIMITIVE(registry, "mgp.list.insert", mgp_list_insert);
+  ADD_PRIMITIVE(registry, "mgp.list.slice", mgp_list_slice);
   ADD_PRIMITIVE(registry, "mgp.model", mgp_model);
 
   registerMGPCPUPrimitives(registry);

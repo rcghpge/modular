@@ -393,3 +393,121 @@ func.func @list_append_mismatch_dim(
   %t = mgp.list.append %lst, %tsr : (!mgp.list<!mgp.tensor<3x3xf32>>, !mgp.tensor<?x3xf32>) -> !mgp.list<!mgp.tensor<3x3xf32>>
   mef.output %t : !mgp.list<!mgp.tensor<3x3xf32>>
 }
+
+// -----
+
+//
+// mgp.list.slice
+//
+
+// CHECK-LABEL: @list_slice_invalid_start_dtype
+func.func @list_slice_invalid_start_dtype(
+  %lst : !mgp.list<!mgp.tensor<3x3xf32>>,
+  %start : !mgp.tensor<si16>,
+  %end : !mgp.tensor<si64>,
+  %step : !mgp.tensor<si64>
+) {
+  // expected-error@+1 {{'mgp.list.slice' op expected start tensor to have dtype si32 or si64, but got: 'si16'}}
+  %t = mgp.list.slice %lst, %start, %end, %step : (
+    !mgp.list<!mgp.tensor<3x3xf32>>, 
+    !mgp.tensor<si16>, 
+    !mgp.tensor<si64>, 
+    !mgp.tensor<si64>) -> !mgp.list<!mgp.tensor<3x3xf32>>
+
+  mef.output %t : !mgp.list<!mgp.tensor<3x3xf32>>
+}
+
+// -----
+
+// CHECK-LABEL: @list_slice_invalid_end_dtype
+func.func @list_slice_invalid_end_dtype(
+  %lst : !mgp.list<!mgp.tensor<3x3xf32>>,
+  %start : !mgp.tensor<si64>,
+  %end : !mgp.tensor<si16>,
+  %step : !mgp.tensor<si64>
+) {
+  // expected-error@+1 {{'mgp.list.slice' op expected end tensor to have dtype si32 or si64, but got: 'si16'}}
+  %t = mgp.list.slice %lst, %start, %end, %step : (
+    !mgp.list<!mgp.tensor<3x3xf32>>, 
+    !mgp.tensor<si64>, 
+    !mgp.tensor<si16>, 
+    !mgp.tensor<si64>) -> !mgp.list<!mgp.tensor<3x3xf32>>
+
+  mef.output %t : !mgp.list<!mgp.tensor<3x3xf32>>
+}
+
+// -----
+
+// CHECK-LABEL: @list_slice_invalid_step_dtype
+func.func @list_slice_invalid_step_dtype(
+  %lst : !mgp.list<!mgp.tensor<3x3xf32>>,
+  %start : !mgp.tensor<si64>,
+  %end : !mgp.tensor<si64>,
+  %step : !mgp.tensor<si16>
+) {
+  // expected-error@+1 {{'mgp.list.slice' op expected step tensor to have dtype si32 or si64, but got: 'si16'}}
+  %t = mgp.list.slice %lst, %start, %end, %step : (
+    !mgp.list<!mgp.tensor<3x3xf32>>, 
+    !mgp.tensor<si64>, 
+    !mgp.tensor<si64>, 
+    !mgp.tensor<si16>) -> !mgp.list<!mgp.tensor<3x3xf32>>
+
+  mef.output %t : !mgp.list<!mgp.tensor<3x3xf32>>
+}
+
+// -----
+
+// CHECK-LABEL: @list_slice_start_nonscalar
+func.func @list_slice_start_nonscalar(
+  %lst   : !mgp.list<!mgp.tensor<3x3xf32>>,
+  %start : !mgp.tensor<2xsi64>,
+  %end   : !mgp.tensor<si64>,
+  %step  : !mgp.tensor<si64>
+) {
+  // expected-error@+1 {{'mgp.list.slice' op expected start tensor to have 1 element, but got: '!mgp.tensor<2xsi64>'}}
+  %t = mgp.list.slice %lst, %start, %end, %step : (
+    !mgp.list<!mgp.tensor<3x3xf32>>, 
+    !mgp.tensor<2xsi64>, 
+    !mgp.tensor<si64>, 
+    !mgp.tensor<si64>) -> !mgp.list<!mgp.tensor<3x3xf32>>
+
+  mef.output %t : !mgp.list<!mgp.tensor<3x3xf32>>
+}
+
+// -----
+
+// CHECK-LABEL: @list_slice_end_nonscalar
+func.func @list_slice_end_nonscalar(
+  %lst   : !mgp.list<!mgp.tensor<3x3xf32>>,
+  %start : !mgp.tensor<si64>,
+  %end   : !mgp.tensor<2xsi64>,
+  %step  : !mgp.tensor<si64>
+) {
+  // expected-error@+1 {{'mgp.list.slice' op expected end tensor to have 1 element, but got: '!mgp.tensor<2xsi64>'}}
+  %t = mgp.list.slice %lst, %start, %end, %step : (
+    !mgp.list<!mgp.tensor<3x3xf32>>, 
+    !mgp.tensor<si64>, 
+    !mgp.tensor<2xsi64>, 
+    !mgp.tensor<si64>) -> !mgp.list<!mgp.tensor<3x3xf32>>
+
+  mef.output %t : !mgp.list<!mgp.tensor<3x3xf32>>
+}
+
+// -----
+
+// CHECK-LABEL: @list_slice_step_nonscalar
+func.func @list_slice_step_nonscalar(
+  %lst   : !mgp.list<!mgp.tensor<3x3xf32>>,
+  %start : !mgp.tensor<si64>,
+  %end   : !mgp.tensor<si64>,
+  %step  : !mgp.tensor<2xsi64>
+) {
+  // expected-error@+1 {{'mgp.list.slice' op expected step tensor to have 1 element, but got: '!mgp.tensor<2xsi64>'}}
+  %t = mgp.list.slice %lst, %start, %end, %step : (
+    !mgp.list<!mgp.tensor<3x3xf32>>, 
+    !mgp.tensor<si64>, 
+    !mgp.tensor<si64>, 
+    !mgp.tensor<2xsi64>) -> !mgp.list<!mgp.tensor<3x3xf32>>
+
+  mef.output %t : !mgp.list<!mgp.tensor<3x3xf32>>
+}

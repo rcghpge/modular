@@ -1192,6 +1192,65 @@ bool ListInsertOp::mayAlias(size_t operandIndex, size_t resultIndex) {
   return true;
 }
 
+LogicalResult ListSliceOp::verify() {
+  DeviceTensorType startTensorTy = getStart().getType();
+  DeviceTensorType endTensorTy = getEnd().getType();
+  DeviceTensorType stepTensorTy = getStep().getType();
+
+  Type startDtype = startTensorTy.getElementType();
+  Type endDtype = endTensorTy.getElementType();
+  Type stepDtype = stepTensorTy.getElementType();
+
+  auto isValidIndexDtype = [](Type ty) {
+    return ty.isInteger(32) || ty.isInteger(64);
+  };
+
+  auto isOneElementTensor = [](DeviceTensorType ty) {
+    return ty.getTensorSpec().getNumElements() == 1;
+  };
+
+  if (!isValidIndexDtype(startDtype)) {
+    return emitOpError()
+           << "expected start tensor to have dtype si32 or si64, but got: "
+           << startDtype;
+  }
+
+  if (!isValidIndexDtype(endDtype)) {
+    return emitOpError()
+           << "expected end tensor to have dtype si32 or si64, but got: "
+           << endDtype;
+  }
+
+  if (!isValidIndexDtype(stepDtype)) {
+    return emitOpError()
+           << "expected step tensor to have dtype si32 or si64, but got: "
+           << stepDtype;
+  }
+
+  if (!isOneElementTensor(startTensorTy)) {
+    return emitOpError() << "expected start tensor to have 1 element, but got: "
+                         << startTensorTy;
+  }
+
+  if (!isOneElementTensor(endTensorTy)) {
+    return emitOpError() << "expected end tensor to have 1 element, but got: "
+                         << endTensorTy;
+  }
+
+  if (!isOneElementTensor(stepTensorTy)) {
+    return emitOpError() << "expected step tensor to have 1 element, but got: "
+                         << stepTensorTy;
+  }
+
+  return success();
+}
+
+bool ListSliceOp::mayAlias(size_t operandIndex, size_t resultIndex) {
+  // The resulting list contains a shallow copies of input list elements and the
+  // inserted element.
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 // ModelOp
 //===----------------------------------------------------------------------===//

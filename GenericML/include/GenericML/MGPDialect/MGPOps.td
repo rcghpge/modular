@@ -941,6 +941,46 @@ def MGP_ListInsertOp : MGP_Op<"list.insert", [
 }
 
 //===----------------------------------------------------------------------===//
+// ListInsert
+//===----------------------------------------------------------------------===//
+
+def MGP_ListSliceOp : MGP_Op<"list.slice", [
+  // The input list elements and inserted element are all shallow copied into
+  // the output list.
+  DeclareOpInterfaceMethods<GRTMayAliasInterface>,
+]> {
+  let summary = "List slice operation.";
+  let description = [{
+    Creates a new list that's the result of slicing the input list.
+
+    The slicing semantics follow those of Python
+
+    ```mlir
+      %lst   : !mgp.list<!mgp.tensor<3x3xf32>>,
+      %start : !mgp.tensor<si32>
+      %end   : !mgp.tensor<si32>
+      %step  : !mgp.tensor<si32>
+      %t = mgp.list.insert(%lst, %start, %end, %step) : (
+        !mgp.list<!mgp.tensor<3x3xf32>>,
+        !mgp.tensor<si32>, !mgp.tensor<si32>, !mgp.tensor<si32>
+      ) -> !mgp.list<!mgp.tensor<3x3xf32>>
+    ```
+  }];
+
+  let arguments = (ins MGP_List:$input,
+                       MGP_DeviceTensorType:$start,
+                       MGP_DeviceTensorType:$end,
+                       MGP_DeviceTensorType:$step);
+  let results = (outs MGP_List:$result);
+
+  let assemblyFormat = [{
+    ` ` operands ` ` attr-dict `:` functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // ModelOp
 //===----------------------------------------------------------------------===//
 
