@@ -150,6 +150,9 @@ public:
   /// Lowers mo.list.insert op.
   LogicalResult lowerListInsert(MO::ListInsertOp listInsertOp);
 
+  // Lowers mo.list.slice op.
+  LogicalResult lowerListSlice(MO::ListSliceOp listSliceOp);
+
 private:
   /// Lowers a Block
   LogicalResult lowerBlock(mlir::Block *block);
@@ -835,6 +838,31 @@ LogicalResult MOGraphLowering::lowerListInsert(MO::ListInsertOp listInsertOp) {
   return success();
 }
 
+LogicalResult MOGraphLowering::lowerListSlice(MO::ListSliceOp listSliceOp) {
+  GENERICML_ASSERT(MO::isOnHost(listSliceOp))
+      << "mo.list.slice is for host only";
+  MGP::MOOpLoweringState opLoweringState(loweringState, listSliceOp);
+
+  Value mgpInputList =
+      loweringState.lookupExecuteLoweredValue(listSliceOp.getInput());
+  Value mgpStartTensor =
+      loweringState.lookupExecuteLoweredValue(listSliceOp.getStart());
+  Value mgpEndTensor =
+      loweringState.lookupExecuteLoweredValue(listSliceOp.getEnd());
+  Value mgpStepTensor =
+      loweringState.lookupExecuteLoweredValue(listSliceOp.getStep());
+
+  // Construct output mgp list type
+  MGP::ListType mgpOutputListTy = lowerListType(listSliceOp.getType());
+
+  Value mgpOutputTensor = opLoweringState.create<MGP::ListSliceOp>(
+      mgpOutputListTy, mgpInputList, mgpStartTensor, mgpEndTensor,
+      mgpStepTensor);
+  loweringState.emplaceExecuteLoweredValue(listSliceOp, mgpOutputTensor);
+
+  return success();
+}
+
 LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   GENERICML_ASSERT(MO::isOnHost(ifOp)) << "mo.if is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, ifOp);
@@ -1121,6 +1149,12 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
     if (auto listInsertOp = dyn_cast<MO::ListInsertOp>(op)) {
       if (failed(lowerListInsert(listInsertOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto listSliceOp = dyn_cast<MO::ListSliceOp>(op)) {
+      if (failed(lowerListSlice(listSliceOp)))
         return failure();
       continue;
     }
