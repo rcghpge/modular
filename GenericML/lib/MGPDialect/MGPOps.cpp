@@ -576,49 +576,6 @@ static void printElementsAttrWithAlign(AsmPrinter &p, Operation *op,
 }
 
 //===----------------------------------------------------------------------===//
-// CpuBufferAlloc* Utils
-//===----------------------------------------------------------------------===//
-
-/// Verify any of the 6 alloc primitives.
-static LogicalResult verifyAnyAllocOp(
-    MLIRContext *context, llvm::function_ref<InFlightDiagnostic()> emitOpError,
-    std::optional<uint64_t> optSize, uint64_t rawAlign,
-    IndexType optRuntimeSizeType, TensorSpecType optRuntimeSpecType,
-    CpuBufferType resultBufferType) {
-  // First validate our use of the util.
-  GENERICML_ASSERT((optRuntimeSizeType != nullptr ? 1 : 0) +
-                       (optRuntimeSpecType != nullptr ? 1 : 0) +
-                       (optSize.has_value() ? 1 : 0) ==
-                   1)
-      << "expecting exactly one of static size, runtime size, or runtime spec";
-
-  // Check the size and align static values.
-  if (!isValidOptSize(optSize))
-    return emitOpError() << "expected size to be positive.";
-  if (!isValidRawAlign(rawAlign))
-    return emitOpError() << "expected align to be a power of two.";
-
-  // Check the result buffer type is consistent.
-  CpuBufferType impliedBufferType = CpuBufferType::get(context, optSize);
-  if (resultBufferType != impliedBufferType)
-    return emitOpError() << "expected result buffer type to match type "
-                            "implied by operands ("
-                         << resultBufferType << " vs " << impliedBufferType
-                         << ").";
-
-  // Check the tensor spec operand type is consistent.
-  if (optRuntimeSpecType != nullptr) {
-    std::optional<uint64_t> bytes = optRuntimeSpecType.getSizeInBytes();
-    if (bytes)
-      return emitOpError() << "expected tensor spec to not have statically "
-                              "known size (have "
-                           << optRuntimeSpecType << ").";
-  }
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // CpuTensorSpecCreateOp
 //===----------------------------------------------------------------------===//
 
