@@ -36,6 +36,27 @@ struct CPURuntime : public ReferenceCounted<CPURuntime> {
   CPURuntime(size_t virtualDeviceId, KGEN::ExecutionEngine *engine)
       : virtualDeviceId(virtualDeviceId), engine(engine) {}
 
+  ~CPURuntime() {
+    if constexpr (ProfilerEntry<Trace::EnableTrace(Trace::kMojo, 1),
+                                Trace::kMojo>::isEnabled()) {
+      // Mojo static strings are part of the data section of their compiled
+      // object files, which are jitted by the `KGEN::ExecutionEngine`.
+      // Then the `mgp.load.module.cpu` op loads the object files into this
+      // `CPURuntime` (`!mgp.runtime`).
+      // However, the profiler borrows pointers to those static string data on
+      // Mojo kernel `Trace.__enter__()` and `Trace.__exit__()` calls.
+      // Since this dtor is about to unload the object files rendering the
+      // string pointers invalid, intern the strings into the profiler so that
+      // the strings are accessible upon `TimeTraceProfiler::write()` call.
+      if (auto runtime = LLCL::Runtime::getCurrentRuntimeOrNull()) {
+        // Make sure any borrowed strings accumulated during profiling are
+        // converted to owned strings.
+        if (std::optional<TimeTraceProfiler> &profiler = runtime->getProfiler())
+          profiler->intern();
+      }
+    }
+  }
+
   /// Returns the compiled kernel at the given module and kernel indexes.
   GML::CompiledKernelFn *getKernel(size_t moduleIndex,
                                    size_t kernelIndex) const {
