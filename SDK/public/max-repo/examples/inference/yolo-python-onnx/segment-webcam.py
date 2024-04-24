@@ -13,10 +13,9 @@
 # ===----------------------------------------------------------------------=== #
 
 import time
-import os
 import signal
 
-from max.engine import InferenceSession, Model
+from max.engine import InferenceSession
 
 import torch
 import onnxruntime
