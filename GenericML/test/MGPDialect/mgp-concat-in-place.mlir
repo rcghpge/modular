@@ -30,7 +30,7 @@ mgp.model @static_concat : mof init {
   %10 = mgp.buffer.alloc.static %ch1, %ctx[1] : !mgp.buffer<32>
   %12 = "sub"(%ch1, %0, %2, %10) {tempInOutSig = #M.inout_sig<"iiio">} : (!mgp.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.chain
   %14 = mgp.buffer.alloc.static %ch1, %ctx[1] : !mgp.buffer<64>
-  %15 = mgp.cpu.tensor_spec.create : !mgp.tensor_spec<16xf32>
+  %15 = mgp.tensor_spec.create : !mgp.tensor_spec<16xf32>
   %16 = mgp.chain.create %ctx[1], (%6, %12)
   %17 = mgp.buffer.concat %16, %ctx[1], %14, %4, %10 : (!mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.buffer<64>
   %18 = mgp.tensor.create %17, %ctx[1], %14, %15 : !mgp.tensor<16xf32>
@@ -68,11 +68,11 @@ mgp.model @dynamic_concat : mof init {
   %const_32 = mip.constant.index 32
   %4 = mgp.buffer.alloc.dynamic %ch1, %ctx[1], %const_32 : !mgp.buffer<>
   %const_8 = mip.constant.index 8
-  %5 = mgp.cpu.tensor_spec.create %const_8 : !mgp.tensor_spec<?xf32>
+  %5 = mgp.tensor_spec.create %const_8 : !mgp.tensor_spec<?xf32>
   %6 = "add"(%ch1, %0, %2, %4) {tempInOutSig = #M.inout_sig<"iiio">} : (!mgp.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<>) -> !mgp.chain
   %10 = mgp.buffer.alloc.static %ch1, %ctx[1] : !mgp.buffer<32>
   %12 = "sub"(%ch1, %0, %2, %10) {tempInOutSig = #M.inout_sig<"iiio">} : (!mgp.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.chain
-  %14 = mgp.cpu.tensor_spec.create : !mgp.tensor_spec<16xf32>
+  %14 = mgp.tensor_spec.create : !mgp.tensor_spec<16xf32>
   %const_64 = mip.constant.index 64
   %15 = mgp.buffer.alloc.dynamic %ch1, %ctx[1], %const_64 : !mgp.buffer<>
   %16 = mgp.chain.create %ctx[1], (%6, %12)
@@ -104,7 +104,7 @@ mgp.model @concat_with_shared_input_buffer : mof init {
   %10 = mgp.buffer.alloc.static %ch1, %ctx[1] : !mgp.buffer<32>
   %12 = "sub"(%6, %4, %2, %10) {tempInOutSig = #M.inout_sig<"iiio">} : (!mgp.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.chain
   %14 = mgp.buffer.alloc.static %ch1, %ctx[1] : !mgp.buffer<64>
-  %15 = mgp.cpu.tensor_spec.create : !mgp.tensor_spec<16xf32>
+  %15 = mgp.tensor_spec.create : !mgp.tensor_spec<16xf32>
   %16 = mgp.chain.create %ctx[1], (%6, %12)
   %17 = mgp.buffer.concat %16, %ctx[1], %14, %4, %10 : (!mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.buffer<64>
   %18 = mgp.tensor.create %17, %ctx[1], %14, %15 : !mgp.tensor<16xf32>
@@ -133,7 +133,7 @@ mgp.model @non_trivial_chains : mof init {
   %10 = mgp.buffer.alloc.static %6, %ctx[1] : !mgp.buffer<32>
   %12 = "sub"(%6, %0, %2, %10) {numBacOutputBuffers = 1 : ui32} : (!mgp.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.chain
   %14 = mgp.buffer.alloc.static %12, %ctx[1] : !mgp.buffer<64>
-  %15 = mgp.cpu.tensor_spec.create : !mgp.tensor_spec<16xf32>
+  %15 = mgp.tensor_spec.create : !mgp.tensor_spec<16xf32>
   %17 = mgp.buffer.concat %12, %ctx[1], %14, %4, %10 : (!mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.buffer<64>
   %18 = mgp.tensor.create %17, %ctx[1], %14, %15 : !mgp.tensor<16xf32>
   mef.output %ch0, %18 : !mef.chain, !mgp.tensor<16xf32>
@@ -159,7 +159,7 @@ mgp.model @dont_trigger_since_duplicate_buffers : mof init {
   %4 = mgp.buffer.alloc.static %ch1, %ctx[1] : !mgp.buffer<32>
   %6 = "add"(%ch1, %0, %2, %4) {tempInOutSig = #M.inout_sig<"iiio">} : (!mgp.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.chain
   %14 = mgp.buffer.alloc.static %ch1, %ctx[1] : !mgp.buffer<64>
-  %15 = mgp.cpu.tensor_spec.create : !mgp.tensor_spec<16xf32>
+  %15 = mgp.tensor_spec.create : !mgp.tensor_spec<16xf32>
   %17 = mgp.buffer.concat %6, %ctx[1], %14, %4, %4 : (!mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.buffer<64>
   %18 = mgp.tensor.create %17, %ctx[1], %14, %15 : !mgp.tensor<16xf32>
   mef.output %ch0, %18 : !mef.chain, !mgp.tensor<16xf32>

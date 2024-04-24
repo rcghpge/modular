@@ -40,7 +40,7 @@ mgp.model @basic : mof init {
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<8xf32>) {
   %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
-  %spec = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<8xf32>
+  %spec = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
   %2 = mgp.tensor.create %ch1, %ctx[1], %0, %spec : !mgp.tensor<8xf32>
   %3 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
@@ -105,7 +105,7 @@ mgp.model @divergent : mof init {
   %ch4 = "some.op"() : () -> !mgp.chain
   %ch5 = "some.op"() : () -> !mgp.chain
   %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
-  %spec = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<8xf32>
+  %spec = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
   %2 = mgp.tensor.create %ch4, %ctx[1], %0, %spec : !mgp.tensor<8xf32>
   %3 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
   %5 = mgp.tensor.create %ch5, %ctx[1], %3, %spec : !mgp.tensor<8xf32>

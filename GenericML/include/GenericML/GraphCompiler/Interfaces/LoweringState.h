@@ -288,7 +288,7 @@ public:
   /// The given MO inArg (a !mo.tensor) has been lowered to the given MGP
   /// outArg (an !mgp.tensor). If inArg is subject to any dynamic shapes
   /// (rank or dimensions), update the parameter map to capture the MGP values
-  /// they are represented by, either indexes or !mgp.cpu.tensor_specs. Returns
+  /// they are represented by, either indexes or !mgp.tensor_specs. Returns
   /// true if any parameters were mapped.
   ErrorOr<bool> lowerArg(Region *parentRegion, BlockArgument &inArg,
                          BlockArgument &outArg);

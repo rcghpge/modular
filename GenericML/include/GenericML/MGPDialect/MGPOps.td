@@ -405,7 +405,7 @@ def CheckRuntimeOp : MGP_Op<"check_runtime"> {
 // CpuTensorSpecCreateOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecCreateOp : MGP_Op<"cpu.tensor_spec.create", [Pure,
+def CpuTensorSpecCreateOp : MGP_Op<"tensor_spec.create", [Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Creates a CPU tensor spec from a mix of runtime and static dimensions and
@@ -425,10 +425,10 @@ def CpuTensorSpecCreateOp : MGP_Op<"cpu.tensor_spec.create", [Pure,
     %dim0 : index
     %dim1 : index
 
-    %spec = mgp.cpu.tensor_spec.create %dim0, %dim1 : !mgp.tensor_spec<?x?xf32>
+    %spec = mgp.tensor_spec.create %dim0, %dim1 : !mgp.tensor_spec<?x?xf32>
     %spec : !mgp.tensor_spec<?x?xf32>
 
-    %spec = mgp.cpu.tensor_spec.create : !mgp.tensor_spec<32x4xf32>
+    %spec = mgp.tensor_spec.create : !mgp.tensor_spec<32x4xf32>
     %spec : !mgp.tensor_spec<32x4xf32>
     ```
   }];
@@ -457,7 +457,7 @@ def CpuTensorSpecCreateOp : MGP_Op<"cpu.tensor_spec.create", [Pure,
 // CpuTensorSpecCreateDynamicOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecCreateDynamicOp : MGP_Op<"cpu.tensor_spec.create.dynamic", [
+def CpuTensorSpecCreateDynamicOp : MGP_Op<"tensor_spec.create.dynamic", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Creates a CPU tensor spec from a runtime DType and a mix of runtime and
@@ -478,10 +478,10 @@ def CpuTensorSpecCreateDynamicOp : MGP_Op<"cpu.tensor_spec.create.dynamic", [
     %dim1 : index
     %dtype : !mgp.dtype
 
-    %spec = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim0, %dim1 : !mgp.tensor_spec<?x?x?>
+    %spec = mgp.tensor_spec.create.dynamic %dtype, %dim0, %dim1 : !mgp.tensor_spec<?x?x?>
     %spec : !mgp.tensor_spec<?x?x?>
 
-    %spec = mgp.cpu.tensor_spec.create %dtype : !mgp.tensor_spec<32x4x?>
+    %spec = mgp.tensor_spec.create %dtype : !mgp.tensor_spec<32x4x?>
     %spec : !mgp.tensor_spec<32x4x?>
     ```
   }];
@@ -501,7 +501,7 @@ def CpuTensorSpecCreateDynamicOp : MGP_Op<"cpu.tensor_spec.create.dynamic", [
 // CpuTensorSpecWithDTypeOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecWithDTypeOp : MGP_Op<"cpu.tensor_spec.with_dtype", [
+def CpuTensorSpecWithDTypeOp : MGP_Op<"tensor_spec.with_dtype", [
     Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
@@ -515,7 +515,7 @@ def CpuTensorSpecWithDTypeOp : MGP_Op<"cpu.tensor_spec.with_dtype", [
     Example:
     ```mlir
     %shape : !mgp.tensor_spec<?x3xunk>
-    %spec = mgp.cpu.tensor_spec.with_dtype %shape : !mgp.tensor_spec<?x3xf32>
+    %spec = mgp.tensor_spec.with_dtype %shape : !mgp.tensor_spec<?x3xf32>
     %spec : !mgp.tensor_spec<?x3xf32>
     ```
   }];
@@ -532,7 +532,7 @@ def CpuTensorSpecWithDTypeOp : MGP_Op<"cpu.tensor_spec.with_dtype", [
 // CpuTensorSpecEqualStaticOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecEqualStaticOp : MGP_Op<"cpu.tensor_spec.equal.static", [Pure]> {
+def CpuTensorSpecEqualStaticOp : MGP_Op<"tensor_spec.equal.static", [Pure]> {
   let summary = "Returns true if a tensor spec matches static expectations";
   let description = [{
     Mostly used to validate user provided tensors by checking if the tensor has
@@ -545,7 +545,7 @@ def CpuTensorSpecEqualStaticOp : MGP_Op<"cpu.tensor_spec.equal.static", [Pure]> 
     ```mlir
     %spec : !mgp.tensor_spec<2x?xf32>
     // Will return true if first dimension is 2 and data type is f32.
-    %valid = mgp.cpu.tensor_spec.equal.static %spec : !mgp.tensor_spec<?x?xf32>
+    %valid = mgp.tensor_spec.equal.static %spec : !mgp.tensor_spec<?x?xf32>
     ```
   }];
 
@@ -561,7 +561,7 @@ def CpuTensorSpecEqualStaticOp : MGP_Op<"cpu.tensor_spec.equal.static", [Pure]> 
 // CpuTensorSpecDimsDynamicOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecDimsDynamicOp : MGP_Op<"cpu.tensor_spec.dims.dynamic", [
+def CpuTensorSpecDimsDynamicOp : MGP_Op<"tensor_spec.dims.dynamic", [
     Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     Returns the runtime values of the dimensions of CPU tensor spec
@@ -576,15 +576,15 @@ def CpuTensorSpecDimsDynamicOp : MGP_Op<"cpu.tensor_spec.dims.dynamic", [
     Example:
     ```mlir
     %spec : !mgp.tensor_spec<?x?xf32>
-    %dim0, %dim1 = mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<?x?xf32>
+    %dim0, %dim1 = mgp.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<?x?xf32>
     %dim0, %dim1 : index, index
 
     %spec : !mgp.tensor_spec<32x?xf32>
-    %dim = mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<32x?xf32>
+    %dim = mgp.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<32x?xf32>
     %dim : index
 
     %spec : !mgp.tensor_spec<32x4xf32>
-    mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<32x4xf32> // no-op
+    mgp.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<32x4xf32> // no-op
     ```
   }];
 
@@ -601,7 +601,7 @@ def CpuTensorSpecDimsDynamicOp : MGP_Op<"cpu.tensor_spec.dims.dynamic", [
 // CpuTensorSpecSizeOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecSizeOp : MGP_Op<"cpu.tensor_spec.size"> {
+def CpuTensorSpecSizeOp : MGP_Op<"tensor_spec.size"> {
   let summary = [{
     Returns the byte size needed for a CPU buffer for a tensor with
     the given tensor spec.
@@ -615,7 +615,7 @@ def CpuTensorSpecSizeOp : MGP_Op<"cpu.tensor_spec.size"> {
     Example:
     ```mlir
     %spec : !mgp.tensor_spec<32x?xf32>
-    %size = mgp.cpu.tensor_spec.size %spec : !mgp.tensor_spec<32x?xf32>
+    %size = mgp.tensor_spec.size %spec : !mgp.tensor_spec<32x?xf32>
     %size : index
     ```
   }];
@@ -629,7 +629,7 @@ def CpuTensorSpecSizeOp : MGP_Op<"cpu.tensor_spec.size"> {
 // CpuTensorSpecNumElemsOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecNumElemsOp : MGP_Op<"cpu.tensor_spec.num_elems"> {
+def CpuTensorSpecNumElemsOp : MGP_Op<"tensor_spec.num_elems"> {
   let summary = [{
     Returns the number of elements in a CPU tensor with the given
     tensor spec.
@@ -642,7 +642,7 @@ def CpuTensorSpecNumElemsOp : MGP_Op<"cpu.tensor_spec.num_elems"> {
     Example:
     ```mlir
     %spec : !mgp.tensor_spec<32x?xf32>
-    %elems = mgp.cpu.tensor_spec.num_elems %spec : !mgp.tensor_spec<32x?xf32>
+    %elems = mgp.tensor_spec.num_elems %spec : !mgp.tensor_spec<32x?xf32>
     %elems : index
     ```
   }];
@@ -656,7 +656,7 @@ def CpuTensorSpecNumElemsOp : MGP_Op<"cpu.tensor_spec.num_elems"> {
 // CpuTensorSpecDTypeOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecDTypeOp : MGP_Op<"cpu.tensor_spec.dtype"> {
+def CpuTensorSpecDTypeOp : MGP_Op<"tensor_spec.dtype"> {
   let summary = "Returns the DType of the given CPU tensor spec.";
   let description = [{
     Returns the runtime DType of the given CPU tensor spec. Generally the
@@ -666,7 +666,7 @@ def CpuTensorSpecDTypeOp : MGP_Op<"cpu.tensor_spec.dtype"> {
     Example:
     ```mlir
     %spec : !mgp.tensor_spec<32x?xunk>
-    %dtype = mgp.cpu.tensor_spec.dtype %spec : !mgp.tensor_spec<32x?xunk>
+    %dtype = mgp.tensor_spec.dtype %spec : !mgp.tensor_spec<32x?xunk>
     %dtype : !mgp.dtype
     ```
   }];

@@ -68,8 +68,8 @@ def MGPDialect : Dialect {
        independent. However it is not a one-size-fits-all universal tensor
        type (and it is very unlikely if it should be generalized to support
        non-CPU memory and layouts). It is possible to create `!mgp.cpu.tensors`
-       from a pair of `!mgp.cpu.tensor_spec` (backed by `M::TensorSpec`) and
-       `!mgp.cpu.buffer`. It is also possible to create a `!mgp.cpu.tensor_spec`
+       from a pair of `!mgp.tensor_spec` (backed by `M::TensorSpec`) and
+       `!mgp.cpu.buffer`. It is also possible to create a `!mgp.tensor_spec`
        from its dynamic dimensions (as the MLIR builtin index type, backed
        by a size_t). In this way MGP provides baseline support for dynamic
        shapes.

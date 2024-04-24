@@ -4,108 +4,108 @@
 // -----
 
 //
-// mgp.cpu.tensor_spec.create{.dynamic}
+// mgp.tensor_spec.create{.dynamic}
 //
 
 func.func @spec_create_mismatched_dims(%dim : index) {
-  // expected-error@+1 {{'mgp.cpu.tensor_spec.create' op expected 2 dimension operands to match '!mgp.tensor_spec<?x64x?xf32>', but given 1.}}
-  %0 = mgp.cpu.tensor_spec.create %dim : !mgp.tensor_spec<?x64x?xf32>
+  // expected-error@+1 {{'mgp.tensor_spec.create' op expected 2 dimension operands to match '!mgp.tensor_spec<?x64x?xf32>', but given 1.}}
+  %0 = mgp.tensor_spec.create %dim : !mgp.tensor_spec<?x64x?xf32>
   mef.output %0 : !mgp.tensor_spec<?x64x?xf32>
 }
 
 // -----
 
 func.func @spec_create_bogus_type(%dim : index) {
-  // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create' expected a !mgp.cpu.tensor_spec type.}}
-  %0 = mgp.cpu.tensor_spec.create %dim : !mgp.cpu.tensor<?x64xf32>
+  // expected-error@+1 {{custom op 'mgp.tensor_spec.create' expected a !mgp.tensor_spec type.}}
+  %0 = mgp.tensor_spec.create %dim : !mgp.cpu.tensor<?x64xf32>
   mef.output %0 : !mgp.tensor_spec<?x64x?xf32>
 }
 
 // -----
 
 func.func @spec_create_unknown_elem_type(%dim : index) {
-  // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create' expected !mgp.cpu.tensor_spec type to have a known element type.}}
-  %0 = mgp.cpu.tensor_spec.create %dim : !mgp.tensor_spec<?x64xunk>
+  // expected-error@+1 {{custom op 'mgp.tensor_spec.create' expected !mgp.tensor_spec type to have a known element type.}}
+  %0 = mgp.tensor_spec.create %dim : !mgp.tensor_spec<?x64xunk>
   mef.output %0 : !mgp.tensor_spec<?x64xunk>
 }
 
 // -----
 
 func.func @spec_create_dynamic_mismatched_dims(%dim : index, %dtype : !mgp.dtype) {
-  // expected-error@+1 {{'mgp.cpu.tensor_spec.create.dynamic' op expected 2 dimension operands to match '!mgp.tensor_spec<?x64x?xunk>', but given 1.}}
-  %0 = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim : !mgp.tensor_spec<?x64x?xunk>
+  // expected-error@+1 {{'mgp.tensor_spec.create.dynamic' op expected 2 dimension operands to match '!mgp.tensor_spec<?x64x?xunk>', but given 1.}}
+  %0 = mgp.tensor_spec.create.dynamic %dtype, %dim : !mgp.tensor_spec<?x64x?xunk>
   mef.output %0 : !mgp.tensor_spec<?x64x?xunk>
 }
 
 // -----
 
 func.func @spec_create_dynamic_bogus_type(%dim : index, %dtype : !mgp.dtype) {
-  // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create.dynamic' expected a !mgp.cpu.tensor_spec type.}}
-  %0 = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim : !mgp.cpu.tensor<?x64xf32>
+  // expected-error@+1 {{custom op 'mgp.tensor_spec.create.dynamic' expected a !mgp.tensor_spec type.}}
+  %0 = mgp.tensor_spec.create.dynamic %dtype, %dim : !mgp.cpu.tensor<?x64xf32>
   mef.output %0 : !mgp.tensor_spec<?x64x?xf32>
 }
 
 // -----
 
 func.func @spec_create_dynamic_known_elem_type(%dim : index, %dtype : !mgp.dtype) {
-  // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create.dynamic' expected !mgp.cpu.tensor_spec type to have an unknown element type.}}
-  %0 = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim : !mgp.tensor_spec<?x64xf32>
+  // expected-error@+1 {{custom op 'mgp.tensor_spec.create.dynamic' expected !mgp.tensor_spec type to have an unknown element type.}}
+  %0 = mgp.tensor_spec.create.dynamic %dtype, %dim : !mgp.tensor_spec<?x64xf32>
   mef.output %0 : !mgp.tensor_spec<?x64xf32>
 }
 
 // -----
 
 func.func @spec_create_dynamic_rank(%dim : index) {
-  // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create' expected !mgp.cpu.tensor_spec type to have a statically known rank.}}
-  %0 = mgp.cpu.tensor_spec.create %dim : !mgp.tensor_spec<*xf32>
+  // expected-error@+1 {{custom op 'mgp.tensor_spec.create' expected !mgp.tensor_spec type to have a statically known rank.}}
+  %0 = mgp.tensor_spec.create %dim : !mgp.tensor_spec<*xf32>
   mef.output %0 : !mgp.tensor_spec<*xf32>
 }
 
 // -----
 
 func.func @spec_create_dynamic_dynamic_rank(%dim : index, %dtype : !mgp.dtype) {
-  // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.create.dynamic' expected !mgp.cpu.tensor_spec type to have a statically known rank.}}
-  %0 = mgp.cpu.tensor_spec.create.dynamic %dtype, %dim : !mgp.tensor_spec<*xunk>
+  // expected-error@+1 {{custom op 'mgp.tensor_spec.create.dynamic' expected !mgp.tensor_spec type to have a statically known rank.}}
+  %0 = mgp.tensor_spec.create.dynamic %dtype, %dim : !mgp.tensor_spec<*xunk>
   mef.output %0 : !mgp.tensor_spec<*xunk>
 }
 
 // -----
 
 //
-// mgp.cpu.tensor_spec.with_dtype
+// mgp.tensor_spec.with_dtype
 //
 
 func.func @spec_with_known_dtype(%shape : !mgp.tensor_spec<?x3xf32>) { //  expected-note {{prior use here}}
   // expected-error@+1 {{use of value '%shape' expects different type than prior uses: '!mgp.tensor_spec<?x3xunk>' vs '!mgp.tensor_spec<?x3xf32>'}}
-  %0 = mgp.cpu.tensor_spec.with_dtype %shape : !mgp.tensor_spec<?x3xf32>
+  %0 = mgp.tensor_spec.with_dtype %shape : !mgp.tensor_spec<?x3xf32>
   mef.output %0 : !mgp.tensor_spec<?x3xf32>
 }
 
 // -----
 
 func.func @spec_with_unknown_dtype(%shape : !mgp.tensor_spec<?x3xunk>) {
-  // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.with_dtype' expected an !mgp.cpu.tensor_spec type with known dtype.}}
-  %0 = mgp.cpu.tensor_spec.with_dtype %shape : !mgp.tensor_spec<?x3xunk>
+  // expected-error@+1 {{custom op 'mgp.tensor_spec.with_dtype' expected an !mgp.tensor_spec type with known dtype.}}
+  %0 = mgp.tensor_spec.with_dtype %shape : !mgp.tensor_spec<?x3xunk>
   mef.output %0 : !mgp.tensor_spec<?x3xunk>
 }
 
 // -----
 
 //
-// mgp.cpu.tensor_spec.dims.dynamic
+// mgp.tensor_spec.dims.dynamic
 //
 
 func.func @spec_dims_mismatched_dims(%spec : !mgp.tensor_spec<?x64x?xf32>) {
   // expected-error@+1 {{operation defines 2 results but was provided 1 to bind}}
-  %dim0 = mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<?x64x?xf32>
+  %dim0 = mgp.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<?x64x?xf32>
   mef.output %dim0 : index
 }
 
 // -----
 
 func.func @spec_dims_dynamic_rank(%spec : !mgp.tensor_spec<*xf32>) {
-  // expected-error@+1 {{custom op 'mgp.cpu.tensor_spec.dims.dynamic' expected !mgp.cpu.tensor_spec type to have a statically known rank.}}
-  %dim0 = mgp.cpu.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<*xf32>
+  // expected-error@+1 {{custom op 'mgp.tensor_spec.dims.dynamic' expected !mgp.tensor_spec type to have a statically known rank.}}
+  %dim0 = mgp.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<*xf32>
   mef.output %dim0 : index
 }
 

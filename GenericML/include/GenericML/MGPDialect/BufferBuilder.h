@@ -599,7 +599,7 @@ struct BufferizedTensor {
   /// on the device it is to be stored on.
   Value buffer;
 
-  /// The mgp.cpu.tensor_spec describing the shape and dtype of tensor
+  /// The mgp.tensor_spec describing the shape and dtype of tensor
   /// at runtime.
   ///
   /// TODO(#17379): Avoid committing to a tensor spec, and instead just

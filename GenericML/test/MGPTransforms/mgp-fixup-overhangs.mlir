@@ -12,7 +12,7 @@ mgp.model @if : mof init {
   %2 = mgp.buffer.alloc.static %ch0, %arg1[1] : !mgp.buffer<32>
   %const0 = mip.constant.index 0
   %3 = mgp.buffer.set_with_index %arg1[1], %2, %const0 : !mgp.buffer<32>
-  %4 = mgp.cpu.tensor_spec.create  : !mgp.tensor_spec<32xui8>
+  %4 = mgp.tensor_spec.create  : !mgp.tensor_spec<32xui8>
   %5 = mgp.buffer.alloc.static %ch0, %arg1[1] : !mgp.buffer<32>
   %const1 = mip.constant.index 1
   %6 = mgp.buffer.set_with_index %arg1[1], %5, %const1 : !mgp.buffer<32>

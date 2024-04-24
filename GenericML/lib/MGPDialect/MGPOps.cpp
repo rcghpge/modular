@@ -738,7 +738,7 @@ void CpuTensorSpecCreateOp::build(OpBuilder &odsBuilder,
                                   OperationState &odsState, TensorSpecType spec,
                                   ValueRange runtimeDims) {
   GENERICML_ASSERT(spec.hasRank())
-      << "can only construct an mgp.cpu.tensor_spec.create "
+      << "can only construct an mgp.tensor_spec.create "
          "for tensor specs of statically known rank";
   CpuTensorSpecCreateOp::build(odsBuilder, odsState,
                                /*runtimeDims=*/runtimeDims,
@@ -746,7 +746,7 @@ void CpuTensorSpecCreateOp::build(OpBuilder &odsBuilder,
                                /*bRawDType=*/spec.getRawDType());
 }
 
-/// Parses a !mgp.cpu.tensor_spec type where the element type must be known,
+/// Parses a !mgp.tensor_spec type where the element type must be known,
 /// but represented in 'raw form'.
 static ParseResult parseRawDimsAndDType(AsmParser &p,
                                         IntArrayElementsAttr &rawDims,
@@ -757,12 +757,12 @@ static ParseResult parseRawDimsAndDType(AsmParser &p,
     return failure();
   auto tensorSpec = dyn_cast<TensorSpecType>(type);
   if (tensorSpec == nullptr)
-    return p.emitError(loc) << "expected a !mgp.cpu.tensor_spec type.";
+    return p.emitError(loc) << "expected a !mgp.tensor_spec type.";
   if (!tensorSpec.hasRank())
-    return p.emitError(loc) << "expected !mgp.cpu.tensor_spec type to have a "
+    return p.emitError(loc) << "expected !mgp.tensor_spec type to have a "
                                "statically known rank.";
   if (!tensorSpec.getOptDType())
-    return p.emitError(loc) << "expected !mgp.cpu.tensor_spec type to have a "
+    return p.emitError(loc) << "expected !mgp.tensor_spec type to have a "
                                "known element type.";
 
   rawDims = tensorSpec.getRawDims();
@@ -771,7 +771,7 @@ static ParseResult parseRawDimsAndDType(AsmParser &p,
   return success();
 }
 
-/// Prints a !mgp.cpu.tensor_spec type, but represented in 'raw form'.
+/// Prints a !mgp.tensor_spec type, but represented in 'raw form'.
 static void printRawDimsAndDType(AsmPrinter &p, const CpuTensorSpecCreateOp &op,
                                  IntArrayElementsAttr rawDims,
                                  IntegerAttr rawDType) {
@@ -818,7 +818,7 @@ LogicalResult CpuTensorSpecCreateOp::inferReturnTypes(
 // CpuTensorSpecCreateDynamicOp
 //===----------------------------------------------------------------------===//
 
-/// Parses a !mgp.cpu.tensor_spec type where the element type is unknown, but
+/// Parses a !mgp.tensor_spec type where the element type is unknown, but
 /// represented in 'raw form'.
 static ParseResult parseRawDims(AsmParser &p, IntArrayElementsAttr &rawDims) {
   Type type;
@@ -827,12 +827,12 @@ static ParseResult parseRawDims(AsmParser &p, IntArrayElementsAttr &rawDims) {
     return failure();
   auto tensorSpec = dyn_cast<TensorSpecType>(type);
   if (tensorSpec == nullptr)
-    return p.emitError(loc) << "expected a !mgp.cpu.tensor_spec type.";
+    return p.emitError(loc) << "expected a !mgp.tensor_spec type.";
   if (!tensorSpec.hasRank())
-    return p.emitError(loc) << "expected !mgp.cpu.tensor_spec type to have a "
+    return p.emitError(loc) << "expected !mgp.tensor_spec type to have a "
                                "statically known rank.";
   if (tensorSpec.getOptDType())
-    return p.emitError(loc) << "expected !mgp.cpu.tensor_spec type to have an "
+    return p.emitError(loc) << "expected !mgp.tensor_spec type to have an "
                                "unknown element type.";
 
   rawDims = tensorSpec.getRawDims();
@@ -840,7 +840,7 @@ static ParseResult parseRawDims(AsmParser &p, IntArrayElementsAttr &rawDims) {
   return success();
 }
 
-/// Prints a !mgp.cpu.tensor_spec type, but represented in 'raw form'.
+/// Prints a !mgp.tensor_spec type, but represented in 'raw form'.
 static void printRawDims(AsmPrinter &p, const CpuTensorSpecCreateDynamicOp &op,
                          IntArrayElementsAttr rawDims) {
   p << TensorSpecType::get(rawDims, /*rawDTypeOrNull=*/{});
@@ -881,7 +881,7 @@ LogicalResult CpuTensorSpecCreateDynamicOp::inferReturnTypes(
 // CpuTensorSpecWithDTypeOp
 //===----------------------------------------------------------------------===//
 
-/// Parses a !mgp.cpu.tensor_spec type where the element type is extracted
+/// Parses a !mgp.tensor_spec type where the element type is extracted
 /// into the rawDType attribute.
 static ParseResult parseRawDType(AsmParser &p, Type &tensorSpec,
                                  IntegerAttr &rawDType) {
@@ -891,10 +891,10 @@ static ParseResult parseRawDType(AsmParser &p, Type &tensorSpec,
     return failure();
   auto parsedTensorSpec = dyn_cast<TensorSpecType>(type);
   if (parsedTensorSpec == nullptr)
-    return p.emitError(loc) << "expected a !mgp.cpu.tensor_spec type.";
+    return p.emitError(loc) << "expected a !mgp.tensor_spec type.";
   if (!parsedTensorSpec.getOptDType())
     return p.emitError(loc)
-           << "expected an !mgp.cpu.tensor_spec type with known dtype.";
+           << "expected an !mgp.tensor_spec type with known dtype.";
   // The parsed type gives us the requested dtype, which we capture in the
   // rawDType.
   Type ui8 = IntegerType::get(p.getContext(), 8, IntegerType::Unsigned);
@@ -908,7 +908,7 @@ static ParseResult parseRawDType(AsmParser &p, Type &tensorSpec,
   return success();
 }
 
-/// Prints a !mgp.cpu.tensor_spec type.
+/// Prints a !mgp.tensor_spec type.
 static void printRawDType(AsmPrinter &p, const CpuTensorSpecWithDTypeOp op,
                           TensorSpecType tensorSpec, IntegerAttr rawDType) {
   // Print as the tensor spec operand type, but with dtype taken from rawDType.
@@ -950,7 +950,7 @@ static void printTensorSpecTypeWithRawDims(AsmPrinter &p,
 // CpuTensorSpecDimsDynamicOp
 //===----------------------------------------------------------------------===//
 
-/// Parses a !mgp.cpu.tensor_spec type, however also sets the rawDims to
+/// Parses a !mgp.tensor_spec type, however also sets the rawDims to
 /// capture it's dimensions in 'raw form'.
 static ParseResult
 parseTensorSpecTypeWithRawDims(AsmParser &p, Type &specType,
@@ -960,9 +960,9 @@ parseTensorSpecTypeWithRawDims(AsmParser &p, Type &specType,
     return failure();
   auto tensorSpec = dyn_cast<TensorSpecType>(specType);
   if (tensorSpec == nullptr)
-    return p.emitError(loc) << "expected !mgp.cpu.tensor_spec type.";
+    return p.emitError(loc) << "expected !mgp.tensor_spec type.";
   if (!tensorSpec.hasRank())
-    return p.emitError(loc) << "expected !mgp.cpu.tensor_spec type to have a "
+    return p.emitError(loc) << "expected !mgp.tensor_spec type to have a "
                                "statically known rank.";
   rawDims = tensorSpec.getRawDims();
   return success();
