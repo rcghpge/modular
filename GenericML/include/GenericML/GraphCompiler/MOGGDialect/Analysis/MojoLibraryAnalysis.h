@@ -126,8 +126,7 @@ public:
 
   /// Returns true if the kernel implementation is in the Tensor API.
   inline bool kernelUsesTensorAPI(KGEN::GeneratorOp kernel) {
-    return llvm::dyn_cast_if_present<mlir::UnitAttr>(
-               kernel->getAttr("_sliced")) != nullptr;
+    return kernel->hasAttr("_alloc") || kernel->hasAttr("_sliced");
   }
 
 private:
