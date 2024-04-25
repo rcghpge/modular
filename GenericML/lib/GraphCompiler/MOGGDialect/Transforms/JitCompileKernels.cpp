@@ -57,7 +57,9 @@ struct JitCompileKernels
     if (failed(pm.run(m)))
       return signalPassFailure();
 
+    bool isGraph = false;
     for (auto graph : m.getOps<MO::GraphOp>()) {
+      isGraph = true;
       auto errOr = this->runPass(graph, mojoLibraryAnalysis);
       if (errOr.isError())
         return signalPassFailure();
@@ -70,8 +72,10 @@ struct JitCompileKernels
     }
 
     // Strip all KGEN forward decls. There is now nothing they can be lowered
-    // to.
-    m.walk([](KGEN::ExternGeneratorOp op) { op.erase(); });
+    // to. We only do this on the second compile (MGP models). This will be
+    // removed once we only have one compile stage.
+    if (!isGraph)
+      m.walk([](KGEN::ExternGeneratorOp op) { op.erase(); });
   }
 
   template <typename OpContainer>

@@ -82,6 +82,17 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
       context, oldKernel.getOperands(), runtimeSlot, module_index,
       kernel_index);
 
+  SmallVector<Value> oldKernelRes;
+  for (auto [ty, res] :
+       llvm::zip(oldKernel.getResultTypes(), oldKernel.getResults())) {
+    if (!isa<MEF::ChainType>(ty))
+      oldKernelRes.push_back(res);
+  }
+  for (auto [oldRes, newRes] :
+       llvm::zip(oldKernelRes, newExecuteOp.getOutResults())) {
+    oldRes.replaceAllUsesWith(newRes);
+  }
+
   auto replaceAllChainUses = [&](Value originalChain,
                                  TypedValue<MGP::DeviceChainType> newChain) {
     Value toChain = newChain;
@@ -90,8 +101,8 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
       // chain to a MEF chain for valid IR (sigh...)
 
       // Note that since at the point of this pass we've already run
-      // LowerPrimitives, this op will not be lowered to the MOGG primitive and
-      // instead the C++ primitive will be executed by the runtime
+      // LowerPrimitives, this op will not be lowered to the MOGG primitive
+      // and instead the C++ primitive will be executed by the runtime
       toChain = builder.create<MGP::ChainDeviceToHostOp>(
           newExecuteOp->getLoc(), newChain, context, runtimeSlot,
           DeviceRefAttr::getDefault(ctx));
@@ -116,7 +127,8 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
 //    1. Determine the potential insertion point based off following rules
 //       a. If there is ModuleLoadOp for the device --> After ModuleLoadOp +
 //       keep track of Module Index for the host device (skipping non-host)
-//       b. If no ModuleLoadOp for the specific device --> After RuntimeCreateOp
+//       b. If no ModuleLoadOp for the specific device --> After
+//       RuntimeCreateOp
 //    2. Housekeeping to keep track of the kernel index
 // -- Lower MOGG::ExecuteCompiledOp to MGP::ExecuteGenericOp
 //    1. Special consideration has to be taken into account for init block and
@@ -131,8 +143,8 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     Block &execute = *model.getExecuteBlock();
     OpBuilder builder{ctx};
 
-    // MOGG::LoadCompiledKernelOp only on CPU and no other device. We just need
-    // to make sure we use and count the right one for moduleIndex
+    // MOGG::LoadCompiledKernelOp only on CPU and no other device. We just
+    // need to make sure we use and count the right one for moduleIndex
     const auto device = DeviceRefAttr::get(ctx, kCPULabel, 0);
 
     // Track the RuntimeCreateOp and ModuleLoadOp and their last use
@@ -218,8 +230,8 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     Region *parentRegion = nullptr;
     execute.walk([&](MOGG::ExecuteCompiledOp kernel) {
       builder.setInsertionPoint(kernel);
-      // For execute block, need to account for the bounding region in the case
-      // of control flow or other bounding operations.
+      // For execute block, need to account for the bounding region in the
+      // case of control flow or other bounding operations.
       if (parentRegion != kernel->getParentRegion()) {
         parentRegion = kernel->getParentRegion();
         executeContext = nullptr;

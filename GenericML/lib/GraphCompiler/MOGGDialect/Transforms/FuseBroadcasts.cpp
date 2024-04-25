@@ -103,6 +103,9 @@ struct FuseBroadcastsPass
       if (kernel.getIsKGEN().value_or(false))
         continue;
 
+      if (kernel.isInPlaceAlloc())
+        continue;
+
       int32_t preFuseNumOperands = kernel.getNumOperands();
 
       // For safety we check which have already been fused and won't fuse
@@ -156,6 +159,9 @@ struct FuseBroadcastsPass
     // Block arguments have no defining op and obviously cant be fused.
     Operation *edge = kernel.getOperand(index).getDefiningOp();
     if (!edge)
+      return false;
+
+    if (kernel.isInPlaceAlloc())
       return false;
 
     // Currently view ops don't have to have the input fusion interface.

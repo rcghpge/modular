@@ -113,6 +113,7 @@ void LowerPrimitivesPass::runOnOperation() {
     if (isLowerableToGenericRegion(ctx, mojoLibraryAnalysis, op)) {
       // Create the MOGG generic region which contains the compiled MGP.
       SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
+
       auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
           opLoc, op->getResultTypes(), op->getOperands(),
           KGEN::ParamDeclArrayAttr::get(ctx, {}),

@@ -6,6 +6,7 @@
 
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/Support/Assert.h"
 
 using namespace M;
@@ -316,8 +317,20 @@ MOOpLoweringState::createOutputStorage(Value inChain) {
     return failure();
   SmallVector<BufferizedTensor> bufferizedTensors;
   bufferizedTensors.reserve(tensorSpecsOr->size());
-  for (auto [spec, result] :
-       llvm::zip(*tensorSpecsOr, opBeingLowered->getResults())) {
+
+  // We only create the mgp storage for the pre-allocated tensors. For those
+  // have in-place allocation, we skip them.
+  DenseSet<int> inplaceAllocIndicesSet;
+  if (auto kernel = dyn_cast<MOGG::KernelOp>(opBeingLowered))
+    inplaceAllocIndicesSet = kernel.getInplaceAllocIndicesSet();
+
+  SmallVector<Value> results;
+  for (auto [idx, res] : llvm::enumerate(opBeingLowered->getResults())) {
+    if (!inplaceAllocIndicesSet.contains(idx))
+      results.push_back(opBeingLowered->getResult(idx));
+  }
+
+  for (auto [spec, result] : llvm::zip(*tensorSpecsOr, results)) {
     auto bufOr = createBuffer(inChain, spec, result.getType());
     if (failed(bufOr))
       return failure();
@@ -340,10 +353,23 @@ Value MOOpLoweringState::kernelExecute(
 
 void MOOpLoweringState::createOutputs(
     Value inChain, SmallVector<MOOutputStorage> &loweredOutputsStorage) {
-  for (const auto &[idx, outputStorage] :
-       llvm::enumerate(loweredOutputsStorage)) {
-    createOutputTensor(opBeingLowered->getResult(idx), inChain,
-                       outputStorage.buffer, outputStorage.tensorSpec);
+  if (auto kernel = dyn_cast<MOGG::KernelOp>(opBeingLowered)) {
+    DenseSet<int> inplaceAllocIndicesSet = kernel.getInplaceAllocIndicesSet();
+    int index = 0;
+    for (const auto &[idx, res] : llvm::enumerate(kernel.getResults())) {
+      if (!inplaceAllocIndicesSet.contains(idx)) {
+        auto outputStorage = loweredOutputsStorage[index];
+        createOutputTensor(res, inChain, outputStorage.buffer,
+                           outputStorage.tensorSpec);
+        index++;
+      }
+    }
+  } else {
+    for (const auto &[idx, outputStorage] :
+         llvm::enumerate(loweredOutputsStorage)) {
+      createOutputTensor(opBeingLowered->getResult(idx), inChain,
+                         outputStorage.buffer, outputStorage.tensorSpec);
+    }
   }
 }
 
@@ -394,7 +420,16 @@ FailureOr<SmallVector<TypedValue<MGP::TensorSpecType>>>
 MOOpLoweringState::createOutputTensorSpecs() {
   SmallVector<TypedValue<MGP::TensorSpecType>> tensorSpecs;
   tensorSpecs.reserve(opBeingLowered->getNumResults());
-  for (Type type : opBeingLowered->getResults().getType()) {
+
+  DenseSet<int> inplaceAllocIndicesSet;
+  if (auto kernel = dyn_cast<MOGG::KernelOp>(opBeingLowered))
+    inplaceAllocIndicesSet = kernel.getInplaceAllocIndicesSet();
+
+  for (auto [idx, type] :
+       llvm::enumerate(opBeingLowered->getResults().getType())) {
+    if (inplaceAllocIndicesSet.contains(idx))
+      continue;
+
     auto moTensorType = dyn_cast<MO::TensorType>(type);
     GENERICML_ASSERT(moTensorType) << "result of op is not a !mo.tensor";
     FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =

@@ -38,8 +38,8 @@ ParametricTopologyAnalysis::ParametricTopologyAnalysis(mlir::Operation *root) {
         for (auto reference : references) {
           auto whereItIsDeclaredIt =
               nextUseDefGraph.decls.find(reference.getName());
-          GENERICML_ASSERT(whereItIsDeclaredIt != nextUseDefGraph.decls.end())
-              << "Parameter used but not defined: " << reference.getName();
+          if (whereItIsDeclaredIt == nextUseDefGraph.decls.end())
+            continue;
           auto whereItIsDeclared = whereItIsDeclaredIt->second;
           mlir::Operation *parentOp = op;
           do {

@@ -26,6 +26,7 @@ include "mlir/IR/BuiltinTypes.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "GraphRT/MEFDialect/MEFTypes.td"
 
 // Base class for ops in this dialect.
 class MOGG_Op<string mnemonic, list<Trait> traits = []>
@@ -125,7 +126,7 @@ def MOGG_OutputOp
 // MOGG abstract compiled components representation
 //===----------------------------------------------------------------------===//
 
-def MOGG_KernelOp : MOGG_Op<"kernel", [
+def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     IsolatedFromAbove,
     SingleBlock,
     SymbolTable,
@@ -196,6 +197,10 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
     `isKGEN` Is an attribute which marks the MOGG kernel as being represented
     using KGEN ops rather than a kernel composed of mogg ops.
 
+    `allocIndices` is a list attribute containing the indices of the output tensors
+    that have in-place allocation. For example, allocIndices = [0] means the first
+    output tensor has been allocated in the kernel.
+
     Kernels preserve the device of their original MO op.
   }];
 
@@ -207,7 +212,8 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
     OptionalAttr<BoolAttr>:$isViewOp,
     OptionalAttr<BoolAttr>:$isKGEN,
     OptionalAttr<StrAttr>:$summary,
-    OptionalAttr<BoolAttr>:$isAsync
+    OptionalAttr<BoolAttr>:$isAsync,
+    OptionalAttr<ArrayAttr>:$allocIndices
   );
   let results = (outs Variadic<MO_Tensor>:$results);
   let regions = (region SizedRegion<1>:$body);
@@ -292,6 +298,12 @@ def MOGG_KernelOp : MOGG_Op<"kernel", [
 
     /// Returns an output lambda or an empty string if it does not exist.
     StringAttr getOutputFusionInterfaceAt(size_t index);
+
+    /// Get the indices of the output tensors that are in-place allocated
+    DenseSet<int> getInplaceAllocIndicesSet();
+
+    /// Returns whether the kernel is a in-place allocated kernel
+    bool isInPlaceAlloc();
   }];
 }
 
@@ -410,6 +422,23 @@ def MOGG_ShapeToTensorOp : MOGG_Op<"shape_to_tensor"> {
      `(` $shape`)` attr-dict `:` type($shape) `->` type($result)
   }];
   let hasVerifier = 1;
+}
+
+def MOGG_GetShapeOfOp : MOGG_Op<"get_shape_of"> {
+  let summary = "Get the MOGG shape value from a KGEN tensor value";
+  let description = [{
+    Get the `!mogg.shape` value from the output of a mogg.to_kgen(`!mo.tensor`).
+    This intrinsic has direct support from mojo that helps us handling in-place
+    allocated value semantic dynamic tensors.
+
+    Example:
+    ```
+    %shape = mogg.get_shape_of(%tensor) : !kgen.pointer<...> -> !mogg.shape<[D1, D2]>
+    ```
+  }];
+
+  let arguments = (ins AnyType:$tensor);
+  let results = (outs MOGG_Shape:$shape);
 }
 
 
@@ -531,14 +560,14 @@ def MOGG_LambdaOp : MOGG_Op<"lambda",
 def MOGG_StackAllocateTensorsOp : MOGG_Op<"stack_allocate_tensors"> {
   let results = (outs Variadic<MO_Tensor>:$results);
 
-  let summary = "Allocates statically sized NDBuffers on the host's stack.";
+  let summary = "Allocates statically sized NDBuffers/Tensor on the host's stack.";
   let description = [{
-    Each result of this op is an NDBuffer:
+    Each result of this op is an NDBuffer/Tensor:
      - Only statically shaped `!mo.tensor` types are allowed.
      - The shapes should be 'small' so as to not blow the stack.
-     - The NDBuffer will be backed by a stack allocated buffer on the host
-       stack.
-     - Obviously these NDBuffers may only be used for host-side temporaries
+     - The NDBuffer/Tensor will be backed by a stack allocated buffer/tensor
+       on the host stack.
+     - Obviously these NDBuffers/Tensor may only be used for host-side temporaries
        within the kernel and cannot be returned to the caller.
 
     Example:
@@ -573,6 +602,22 @@ def MOGG_CreateEmptyTensorsOp : MOGG_Op<"empty_tensors"> {
   }];
 }
 
+def MOGG_DimFromShapeOp : MOGG_Op<"dim_from_shape", [Pure]> {
+  let summary = "Gets dims from a MOGG shape";
+  let description = [{
+    Given a MOGG shape value which represents a shape and we get the dimensions
+    of it as multiple `index`.
+  }];
+
+  let arguments = (ins MOGG_Shape:$shape);
+  let results = (outs Variadic<Index>:$dims);
+
+  let assemblyFormat = [{
+    attr-dict `(` $shape `:` type($shape) `)` `->` type(results)
+  }];
+}
+
+
 def MOGG_ToTensorFromMGPOp : MOGG_Op<"to_tensor_from_mgp", [Pure]> {
   let arguments = (ins AnyType:$dataPointer, Variadic<Index>:$dims);
   let results = (outs MO_Tensor:$result);
@@ -585,6 +630,16 @@ def MOGG_ToTensorFromMGPOp : MOGG_Op<"to_tensor_from_mgp", [Pure]> {
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:`
         functional-type(operands, results)
+  }];
+}
+
+def MOGG_ToMGPFromTensorOp : MOGG_Op<"to_mgp_from_tensor", [Pure]> {
+  let arguments = (ins AnyType:$tensor);
+  let results = (outs AnyType:$dataPointer);
+  let summary = "Get the data pointer from the kgen tensor";
+  let description = [{
+    Get the data pointer from the kgen tensor. The input tensor is the output of
+    a `to_kgen` taking a `mo.tensor`.
   }];
 }
 

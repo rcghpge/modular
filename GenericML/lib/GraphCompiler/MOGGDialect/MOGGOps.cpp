@@ -302,6 +302,403 @@ bool CallOp::setKGENParamToValueIfPresent(StringRef name, Attribute value) {
 // MOGG KernelOp
 //===----------------------------------------------------------------------===//
 
+SmallVector<KGEN::ParamDeclRefAttr>
+M::MOGG::getKernelUsedParameters(MOGG::CompilableKernel kernel) {
+  DenseSet<KGEN::ParamDeclRefAttr> seenParams;
+  SmallVector<KGEN::ParamDeclRefAttr> usedParameters;
+
+  auto params = kernel.getOutputParamDecls();
+  auto isInOutputParams = [&](StringRef name) {
+    for (KGEN::ParamDeclAttr attr : params) {
+      if (attr.getName().str() == name)
+        return true;
+    }
+    return false;
+  };
+
+  // A walker allows us to crawl the parameters used within expression
+  // attributes.
+  mlir::AttrTypeWalker walker;
+  walker.addWalk([&](KGEN::ParamDeclRefAttr param) {
+    if (seenParams.contains(param))
+      return WalkResult::advance();
+
+    if (isInOutputParams(param.getName()))
+      return WalkResult::advance();
+
+    seenParams.insert(param);
+    usedParameters.push_back(param);
+    return WalkResult::advance();
+  });
+
+  // Track all unique parameters from a given tensor that we haven't seen
+  // already.
+  auto addParamsFromTensor = [&](Type t) {
+    MOSH::ShapeAttr shape;
+
+    // The type can either be a shape or a tensor.
+    MO::TensorType asTensor = dyn_cast<MO::TensorType>(t);
+    if (asTensor)
+      shape = asTensor.getTypedShapeAttr();
+    MOGG::ShapeType asShape = dyn_cast<MOGG::ShapeType>(t);
+    if (asShape)
+      shape = cast<MOSH::ShapeAttr>(asShape.getShapeAttr());
+
+    if (!shape)
+      return;
+    walker.walk(shape);
+  };
+
+  // Get all parameters used by an operation.
+  auto addParamsFromOp = [&](Operation *op) {
+    for (Type t : op->getOperandTypes())
+      addParamsFromTensor(t);
+
+    for (Type t : op->getResultTypes())
+      addParamsFromTensor(t);
+  };
+
+  // Start with the inputs / outputs on the kernel. Generally this would be all
+  // parameters.
+  addParamsFromOp(kernel);
+
+  // However rarely we could create a kernel which internally uses a parameter
+  // which isn't known from the inputs. I.E
+
+  // clang-format off
+  // %0 = broadcast(%input) : tensor<[N]> -> tensor<N, J>
+  // %1 = broadcast(%0) : tensor<[N, J]> -> tensor<N, B>
+  // %3 = broadcast(%1) : tensor<[N, B, K]> -> tensor<N, B, K, M>
+  // clang-format on
+
+  // We would see `N` on the input and `B` / `K` / `M` on the outputs but the
+  // intermediate `J` is not on either.
+
+  // To capture the above legal composition we walk the kernel ops as well.
+  kernel.walk(addParamsFromOp);
+
+  return usedParameters;
+}
+
+LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
+  MGP::MOOpLoweringState opLoweringState(loweringState, *this);
+  mlir::MLIRContext *ctx = getContext();
+  auto &builder = opLoweringState.builder;
+  auto chain = loweringState.getExecuteChain();
+
+  // Gather the lowered op operands.
+  SmallVector<Value> loweredInputOperands =
+      opLoweringState.getLoweredOperands();
+
+  FailureOr<SmallVector<MGP::MOOutputStorage>> loweredOutputsStorageOr =
+      opLoweringState.createOutputStorage(chain);
+  if (failed(loweredOutputsStorageOr))
+    return failure();
+  auto &loweredOutputsStorage = *loweredOutputsStorageOr;
+
+  DenseSet<int> inplaceAllocIndicesSet;
+  SmallVector<int> preAllocIndices;
+  SmallVector<int> inplaceAllocIndices;
+  auto alloc = getAllocIndices();
+  if (alloc.has_value())
+    for (auto idxAttr : alloc.value().getAsValueRange<mlir::IntegerAttr>()) {
+      int64_t idx = idxAttr.getSExtValue();
+      inplaceAllocIndicesSet.insert(idx);
+    }
+
+  for (unsigned int i = 0; i < getNumResults(); i++)
+    if (!inplaceAllocIndicesSet.contains(i))
+      preAllocIndices.push_back(i);
+    else
+      inplaceAllocIndices.push_back(i);
+
+  size_t numInplaceOutputs = inplaceAllocIndicesSet.size();
+
+  size_t numOperands =
+      1 + loweredInputOperands.size() + loweredOutputsStorage.size();
+
+  // Gather all the input and output operands and their in/out semantics.
+  SmallVector<Value> operands;
+  SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
+  operands.reserve(numOperands);
+  operandSemantics.reserve(numOperands);
+
+  operands.push_back(chain);
+  operandSemantics.emplace_back(InOutSignatureAttr::kIn);
+
+  for (auto &outputStorage : loweredOutputsStorage) {
+    operands.push_back(outputStorage.buffer);
+    operandSemantics.emplace_back(InOutSignatureAttr::kOut);
+  }
+
+  for (Value loweredInputOperand : loweredInputOperands) {
+    operands.push_back(loweredInputOperand);
+    operandSemantics.emplace_back(InOutSignatureAttr::kIn);
+  }
+
+  SmallVector<KGEN::ParamDeclRefAttr> usedParams =
+      M::MOGG::getKernelUsedParameters(*this);
+  llvm::StringMap<int> paramDimToIdx;
+  for (auto param : usedParams) {
+    auto symbolicDimOr = loweringState.lowerExpression(
+        opLoweringState.opBeingLowered->getParentRegion(), opLoweringState.loc,
+        param);
+    if (symbolicDimOr.isError())
+      return failure();
+    Value symbol = symbolicDimOr.takeValue();
+    paramDimToIdx[param.getName().strref()] = operands.size();
+    operands.push_back(symbol);
+    operandSemantics.emplace_back(InOutSignatureAttr::kIn);
+  }
+
+  auto idxType = mlir::IndexType::get(ctx);
+  DeviceRefAttr device = MO::getDeviceOrDefaultAny(*this);
+  auto mgpBufferType =
+      MGP::DeviceBufferType::get(device, std::optional<uint64_t>());
+
+  auto outParamNum = getOutputParamDecls().size();
+  llvm::StringMap<int> outParamNameToIdx;
+  SmallVector<mlir::Type> newKernelResTypes;
+
+  newKernelResTypes.push_back(chain.getType());
+  for (size_t i = 0; i < numInplaceOutputs; i++)
+    newKernelResTypes.push_back(mgpBufferType);
+  for (size_t i = 0; i < outParamNum; i++) {
+    newKernelResTypes.push_back(idxType);
+    StringRef name = getOutputParamDecls()[i].getName();
+    outParamNameToIdx[name] = i;
+  }
+
+  // Later update the isAsync instead of hard-coding
+  auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
+      getLoc(), TypeRange{newKernelResTypes}, operands,
+      getOutputParamDeclsAttr(), InOutSignatureAttr::get(ctx, operandSemantics),
+      getIsKGENAttr(),           // isKGEN
+      getSummaryAttr(),          // summary
+      BoolAttr::get(ctx, false), // isAsync
+      BoolAttr::get(ctx, true)   // isFuseable
+  );
+
+  mlir::Block &kernelBody = newKernel.getBody().emplaceBlock();
+  builder.setInsertionPoint(&kernelBody, kernelBody.begin());
+  kernelBody.addArgument(chain.getType(), chain.getLoc());
+  for (auto val : loweredOutputsStorage)
+    kernelBody.addArgument(val.buffer.getType(), val.buffer.getLoc());
+  for (auto val : loweredInputOperands)
+    kernelBody.addArgument(val.getType(), val.getLoc());
+  for (Value operand : newKernel.getOperands()) {
+    if (!isa<MGP::DeviceBufferType>(operand.getType()) && operand != chain)
+      kernelBody.addArgument(operand.getType(), operand.getLoc());
+  }
+
+  DenseMap<TypedAttr, Value> loweredParams;
+  auto addParams = [&](Location loc, Type t) {
+    MO::TensorType asTensor = dyn_cast<MO::TensorType>(t);
+    if (!asTensor)
+      return;
+
+    for (auto ty : asTensor.getDims()) {
+      if (loweredParams.contains(ty))
+        continue;
+
+      if (auto cst = dyn_cast<IntegerAttr>(ty)) {
+        int64_t asInt = cst.getInt();
+        KGEN::ParamConstantOp op = builder.create<KGEN::ParamConstantOp>(
+            loc, builder.getIndexType(), builder.getIndexAttr(asInt));
+
+        loweredParams[ty] = op.getResult();
+      } else if (auto cst = dyn_cast<KGEN::ParamDeclRefAttr>(ty)) {
+        loweredParams[ty] =
+            kernelBody.getArgument(paramDimToIdx[cst.getName()]);
+      } else {
+        // TODO: Add assert here, we shouldn't reach here.
+      }
+    }
+  };
+
+  // Add all the seen shape parameters values as concrete KGEN param values.
+  this->walk([&](Operation *op) {
+    for (auto type : op->getOperandTypes())
+      addParams(op->getLoc(), type);
+    for (auto type : op->getResultTypes())
+      addParams(op->getLoc(), type);
+  });
+
+  IRMapping mapper;
+
+  int outputOffset = 1; // 1 for the input chain
+  OutputPlaceholdersOp oldOutputs = getOutputPlaceholder();
+  for (auto [idx, preAllocIdx] : llvm::enumerate(preAllocIndices)) {
+    Value newBlockArg = kernelBody.getArgument(outputOffset + idx);
+    Value oldOut = oldOutputs.getResult(preAllocIdx);
+
+    MO::TensorType asTensor = cast<MO::TensorType>(oldOut.getType());
+
+    SmallVector<Value> operands;
+    operands.push_back(newBlockArg);
+    for (auto ty : asTensor.getDims())
+      operands.push_back(loweredParams[ty]);
+
+    Value loweredTensor = builder.create<MOGG::ToTensorFromMGPOp>(
+        newBlockArg.getLoc(), oldOut.getType(), operands);
+    mapper.map(oldOut, loweredTensor);
+  }
+
+  int inputOffset = loweredOutputsStorage.size() + 1;
+  for (auto [idx, val] : llvm::enumerate(loweredInputOperands)) {
+    Value newBlockArg = kernelBody.getArgument(idx + inputOffset);
+    Value oldBlockArg = getBody().getArgument(idx);
+
+    MO::TensorType asTensor = cast<MO::TensorType>(oldBlockArg.getType());
+    SmallVector<Value> operands;
+    operands.push_back(newBlockArg);
+    for (auto ty : asTensor.getDims())
+      operands.push_back(loweredParams[ty]);
+
+    Value loweredTensor = builder.create<MOGG::ToTensorFromMGPOp>(
+        newBlockArg.getLoc(), oldBlockArg.getType(), operands);
+    mapper.map(oldBlockArg, loweredTensor);
+  }
+
+  // Allocate stack for in-place tensors
+  SmallVector<Type> internalAllocTypes;
+  Operation *stackAllocOp;
+  for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
+    Value oldOut = oldOutputs.getResult(inPlaceIdx);
+    MO::TensorType asTensor = cast<MO::TensorType>(oldOut.getType());
+    SmallVector<int64_t> dynamicShape(asTensor.getIntDims().size(), 1);
+    auto dynamicTensorTy =
+        MO::TensorType::get(dynamicShape, asTensor.getElementType());
+    internalAllocTypes.push_back(dynamicTensorTy);
+  }
+  if (!internalAllocTypes.empty()) {
+    stackAllocOp = builder.create<MOGG::StackAllocateTensorsOp>(
+        getLoc(), internalAllocTypes);
+    for (auto [oldOut, newAlloc] :
+         llvm::zip(oldOutputs->getResults(), stackAllocOp->getResults()))
+      mapper.map(oldOut, newAlloc);
+  }
+
+  // Clone the graph
+  SmallPtrSet<Operation *, 4> setShapeParamOpSet;
+  for (Operation &op : getBody().front()) {
+    if (isa<MOGG::OutputPlaceholdersOp>(op)) {
+      continue;
+    }
+
+    if (isa<MOGG::OutputOp>(op)) {
+      continue;
+    }
+
+    if (isa<MOGG::SetParameterOp>(op)) {
+      setShapeParamOpSet.insert(builder.clone(op, mapper));
+      continue;
+    }
+
+    builder.clone(op, mapper);
+  }
+
+  DenseMap<int, MOGG::GetShapeOfOp> outIdxToShapeOfOp;
+  DenseMap<int, MOGG::ToKGENOp> outIdxToKgenTensorOp;
+  for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
+    Value moTensor = stackAllocOp->getResult(idx);
+    ToKGENOp toKGEN;
+    for (Operation *user : moTensor.getUsers()) {
+      if (auto tmp = dyn_cast<ToKGENOp>(user))
+        toKGEN = tmp;
+    }
+
+    GENERICML_ASSERT(toKGEN) << " in-place allocated tensor must have a "
+                                "to_kgen op from an outputplaceholder.";
+
+    for (auto user : toKGEN.getResult().getUsers())
+      if (auto shapeOfOp = dyn_cast<MOGG::GetShapeOfOp>(user)) {
+        outIdxToShapeOfOp[inPlaceIdx] = shapeOfOp;
+        outIdxToKgenTensorOp[inPlaceIdx] = toKGEN;
+      }
+  }
+
+  builder.setInsertionPointToEnd(&kernelBody);
+  DenseMap<TypedValue<MOGG::ShapeType>, Operation *> shapeToDimFromShape;
+  llvm::StringMap<Value> paramToDim;
+  for (Operation *newOp : setShapeParamOpSet) {
+    if (auto setParam = dyn_cast<SetParameterOp>(newOp)) {
+      auto inputShape = setParam.getShape();
+      if (!shapeToDimFromShape.contains(inputShape)) {
+        auto shapeAttr =
+            cast<MOGG::ShapeType>(inputShape.getType()).getShapeAttr();
+        auto shapeMosh = cast<MOSH::ShapeAttr>(shapeAttr);
+        size_t rank = shapeMosh.getRank();
+        if (rank == 0)
+          rank = 1;
+
+        SmallVector<Type> resT;
+        for (size_t i = 0; i < rank; i++)
+          resT.push_back(idxType);
+
+        Operation *dsh = builder.create<DimFromShapeOp>(
+            getLoc(), mlir::TypeRange{resT}, inputShape);
+        shapeToDimFromShape[inputShape] = dsh;
+      }
+      int index = setParam.getIndex().getInt();
+      StringRef name = setParam.getParamName().strref();
+      paramToDim[name] = shapeToDimFromShape[inputShape]->getResult(index);
+    }
+  }
+
+  SmallVector<Value> outputs(outParamNum + numInplaceOutputs);
+  // We consider the first result of the output is always a chain.
+  DenseMap<Value, int> innderOutputValToOutIdx;
+  // Add intrinsic to get the data pointer of the kgen tensor.
+  for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
+    MOGG::ToKGENOp toKgenOp = outIdxToKgenTensorOp[inPlaceIdx];
+    Value mgpBuffer = builder.create<MOGG::ToMGPFromTensorOp>(
+        getLoc(), TypeRange{mgpBufferType}, toKgenOp->getResults());
+    outputs[idx] = mgpBuffer;
+    innderOutputValToOutIdx[mgpBuffer] = idx + 1;
+  }
+
+  for (const auto &[name, idx] : outParamNameToIdx) {
+    outputs[idx + numInplaceOutputs] = paramToDim[name];
+    innderOutputValToOutIdx[paramToDim[name]] = idx + numInplaceOutputs + 1;
+  }
+  builder.create<MOGG::OutputOp>(getLoc(), ValueRange{outputs});
+
+  // Each of the parameter outputs now maps onto a concrete dimension value.
+  for (const auto param : getOutputParamDecls()) {
+    if (failed(loweringState.lowerParamDecl(
+            opLoweringState.opBeingLowered->getParentRegion(), param,
+            newKernel.getResult(outParamNameToIdx[param.getName()] + 1 +
+                                numInplaceOutputs))))
+      return failure();
+  }
+
+  builder.setInsertionPointAfter(newKernel);
+  for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
+    auto tensorTy = cast<MO::TensorType>(getResult(inPlaceIdx).getType());
+
+    // Materialize the output tensor spec directly. This will automatically pick
+    // up any of the output dimensions set by the kernel.
+    FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
+        opLoweringState.createTensorSpec(tensorTy);
+    if (failed(tensorSpecOr))
+      return failure();
+    TypedValue<MGP::TensorSpecType> &spec = *tensorSpecOr;
+
+    opLoweringState.createOutputTensor(
+        getResult(inPlaceIdx), newKernel.getResult(0),
+        newKernel.getResult(innderOutputValToOutIdx[outputs[idx]]), spec);
+  }
+
+  opLoweringState.createOutputs(newKernel->getResult(0), loweredOutputsStorage);
+
+  // Clean up useless ops.
+  for (Operation *op : setShapeParamOpSet)
+    op->erase();
+
+  return success();
+}
+
 OutputPlaceholdersOp KernelOp::getOutputPlaceholder() {
   auto placeholder = this->getOps<MOGG::OutputPlaceholdersOp>();
   if (placeholder.empty())
@@ -359,8 +756,8 @@ void KernelOp::disableInputFusionOnInput(size_t index) {
   if (inputLambdas.has_value()) {
     SmallVector<Attribute> lambdaNames;
 
-    // Add all the old attributes to the new one but remove the attribute at the
-    // disabled index.
+    // Add all the old attributes to the new one but remove the attribute at
+    // the disabled index.
     size_t i = 0;
     for (StringAttr attr : inputLambdas->getAsRange<StringAttr>()) {
       if (i == index) {
@@ -397,8 +794,8 @@ void KernelOp::removeOperandAtIndex(size_t index) {
 
   std::optional<ArrayAttr> inputInterfaces = getInputFusionInterface();
 
-  // Update the input fusion interfaces if we have them to remove fusion on this
-  // attr.
+  // Update the input fusion interfaces if we have them to remove fusion on
+  // this attr.
   if (inputInterfaces.has_value()) {
     SmallVector<Attribute> lambdaNames;
     size_t i = 0;
@@ -423,8 +820,8 @@ Value KernelOp::addOperand(Value operand) {
 
   std::optional<ArrayAttr> inputInterfaces = getInputFusionInterface();
 
-  // Update the input fusion interfaces if we have them to remove fusion on this
-  // attr.
+  // Update the input fusion interfaces if we have them to remove fusion on
+  // this attr.
   if (inputInterfaces.has_value()) {
     SmallVector<Attribute> lambdaNames;
     for (StringAttr name : inputInterfaces->getAsRange<StringAttr>())
@@ -440,8 +837,8 @@ Value KernelOp::addOperand(Value operand) {
 void KernelOp::setInputFusionInterface(size_t index, StringRef lambdaName) {
   std::optional<ArrayAttr> inputInterfaces = getInputFusionInterface();
 
-  // Update the input fusion interfaces if we have them to remove fusion on this
-  // attr.
+  // Update the input fusion interfaces if we have them to remove fusion on
+  // this attr.
   if (inputInterfaces.has_value()) {
     SmallVector<Attribute> lambdaNames;
     for (StringAttr name : inputInterfaces->getAsRange<StringAttr>()) {
@@ -526,6 +923,24 @@ StringAttr KernelOp::getInputFusionInterfaceAt(size_t index) {
   auto inputLambdaNames = *inputLambdaNamesOpt;
 
   return inputLambdaNames[index].cast<StringAttr>();
+}
+
+DenseSet<int> KernelOp::getInplaceAllocIndicesSet() {
+  DenseSet<int> inplaceAllocIndicesSet;
+  auto alloc = getAllocIndices();
+  if (alloc.has_value())
+    for (auto idxAttr : alloc.value().getAsValueRange<mlir::IntegerAttr>()) {
+      int64_t idx = idxAttr.getSExtValue();
+      inplaceAllocIndicesSet.insert(idx);
+    }
+  return inplaceAllocIndicesSet;
+}
+
+bool KernelOp::isInPlaceAlloc() {
+  auto alloc = getAllocIndices();
+  if (alloc.has_value())
+    return true;
+  return false;
 }
 
 StringAttr KernelOp::getOutputFusionInterfaceAt(size_t index) {

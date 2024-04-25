@@ -55,6 +55,10 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     if (kernel.getIsKGEN().value_or(false))
       return false;
 
+    // For in-place allocated kernel, we disable for now.
+    if (kernel.isInPlaceAlloc())
+      return false;
+
     // Should be unreachable sanity check. Ensure this is not an elementwise
     // kernel (as if it where after fusion we would trigger more fusions).
     auto isElemwise = kernel.getFusionBodyLambda();
@@ -248,6 +252,10 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     // Restrictive guard for now.
     if (kernel.getNumResults() != 1)
+      return false;
+
+    // For in-place allocated kernel, we disable for now.
+    if (kernel.isInPlaceAlloc())
       return false;
 
     // Should be unreachable sanity check. Ensure this is not an elementwise
@@ -636,7 +644,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
           /*isViewOp=*/kernelToFuseInto.getIsViewOpAttr(),
           /*isKGEN=*/kernelToFuseInto.getIsKGENAttr(),
           /*summary=*/getSummaryString({kernelToFuseInto, userToFuseIn}),
-          /*isAsync=*/kernelToFuseInto.getIsAsyncAttr());
+          /*isAsync=*/kernelToFuseInto.getIsAsyncAttr(),
+          /*allocIndices=*/ArrayAttr{});
 
       if (kernelToFuseInto.getDeviceRef())
         newDstKernel.setDeviceRef(kernelToFuseInto.getDeviceRef());
@@ -909,7 +918,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
           /*isViewOp=*/kernelToFuseInto.getIsViewOpAttr(),
           /*isKGEN=*/kernelToFuseInto.getIsKGENAttr(),
           /*summary=*/getSummaryString({kernelToFuseInto, userToFuseIn}),
-          /*isAsync=*/kernelToFuseInto.getIsAsyncAttr());
+          /*isAsync=*/kernelToFuseInto.getIsAsyncAttr(),
+          /*allocIndices=*/ArrayAttr{});
       if (kernelToFuseInto.getDeviceRef())
         newDstKernel.setDeviceRef(kernelToFuseInto.getDeviceRef());
       newDstKernel.getBody().takeBody(kernelToFuseInto.getBody());

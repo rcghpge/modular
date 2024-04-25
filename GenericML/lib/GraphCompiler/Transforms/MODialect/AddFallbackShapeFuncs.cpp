@@ -108,6 +108,7 @@ HAS_FALLBACK(MO::TileOp)
 template <>
 struct Fallback<MO::CustomOp> {
   ErrorOrSuccess build(GraphOp &graph, OpBuilder &builder, MO::CustomOp op,
+                       KGEN::GeneratorOp mojoKernel,
                        MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis);
 };
 
@@ -224,8 +225,19 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::TileOp)
 
       if (auto asOp = dyn_cast<MO::CustomOp>(op.getOperation())) {
-        auto result = Fallback<MO::CustomOp>{}.build(graph, builder, asOp,
-                                                     mojoLibraryAnalysis);
+        auto mojoKernel =
+            mojoLibraryAnalysis.getRegisteredMojoKernelFor(asOp.getSymbol());
+        if (!mojoKernel) {
+          asOp.emitError() << "Could not find registered mojo kernel.";
+          return mlir::WalkResult::interrupt();
+        }
+
+        // Skip inplace kernels.
+        if (mojoKernel->hasAttr("_alloc"))
+          return mlir::WalkResult::skip();
+
+        auto result = Fallback<MO::CustomOp>{}.build(
+            graph, builder, asOp, mojoKernel, mojoLibraryAnalysis);
         if (result.isError()) {
           asOp.emitError() << "Failed to fallback shape function with error: "
                            << result.takeError();
@@ -456,14 +468,8 @@ ErrorOrSuccess Fallback<MO::ConvTransposeOp>::build(GraphOp &graph,
 
 ErrorOrSuccess
 Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
-                              MO::CustomOp op,
+                              MO::CustomOp op, KGEN::GeneratorOp mojoKernel,
                               MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
-
-  auto mojoKernel =
-      mojoLibraryAnalysis.getRegisteredMojoKernelFor(op.getSymbol());
-
-  if (!mojoKernel)
-    return Error("Could not find registered mojo kernel.");
   StringRef shapeFunctionName;
 
   // Mark all inputs by default.

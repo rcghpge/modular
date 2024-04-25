@@ -160,6 +160,13 @@ struct FuseElementwisePass
             if (uniqueUsers(srcKernelOp) != 1)
               continue;
 
+            // We disable fusion for in-place allocated kernel.
+            if (srcKernelOp.isInPlaceAlloc())
+              continue;
+
+            if (dstKernelOp.isInPlaceAlloc())
+              continue;
+
             operationsThatWerePartOfFusions.insert(srcKernelOp);
             operationsThatWerePartOfFusions.insert(dstKernelOp);
             kernelsToTopologicallySort.insert(dstKernelOp);

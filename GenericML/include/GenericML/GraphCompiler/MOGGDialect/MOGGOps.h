@@ -21,6 +21,13 @@
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
+namespace M::MOGG {
+
+SmallVector<KGEN::ParamDeclRefAttr>
+getKernelUsedParameters(MOGG::CompilableKernel kernel);
+
+} // namespace M::MOGG
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
 //===----------------------------------------------------------------------===//

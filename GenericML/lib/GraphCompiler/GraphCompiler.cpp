@@ -283,6 +283,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
   if (opts.compiledFrameworkLabel.hasValue())
     moToPrimOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
+  pm.addPass(MOGG::createInlineLambdas());
   pm.addPass(MGP::createMOToPrimitives(moToPrimOpts));
 
   if (opts.cacheBuffersAcrossExecutes)
