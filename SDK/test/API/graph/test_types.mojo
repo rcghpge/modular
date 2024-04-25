@@ -11,7 +11,7 @@ import testing
 
 import _mlir
 
-from max.graph import Dim, ElementType, MOList, MOTensor
+from max.graph import Dim, MOList, MOTensor
 
 
 fn context() -> _mlir.Context:
@@ -21,29 +21,8 @@ fn context() -> _mlir.Context:
     return ctx
 
 
-fn test_dtype_to_string() raises:
-    var ui = ElementType(DType.uint8)
-    var s = str(ui.to_mlir(context()))
-
-    testing.assert_equal(len(s), 3)
-    testing.assert_equal(s, "ui8")
-
-
-fn test_dtype() raises:
-    testing.assert_equal(
-        str(ElementType(DType.uint8).to_mlir(context())), "ui8"
-    )
-    testing.assert_equal(
-        str(ElementType(DType.float32).to_mlir(context())), "f32"
-    )
-    testing.assert_equal(
-        str(ElementType(DType.int64).to_mlir(context())), "si64"
-    )
-
-
 fn test_tensor_type() raises:
-    var dt = ElementType(DType.uint8)
-    var t = MOTensor(dt, 1, 2, 3)
+    var t = MOTensor(DType.uint8, 1, 2, 3)
 
     var s = str(t.to_mlir(context()))
     testing.assert_equal(s, "!mo.tensor<[1, 2, 3], ui8>")
@@ -52,12 +31,11 @@ fn test_tensor_type() raises:
 fn test_tensor_unranked() raises:
     var unranked_tensor_mlir = _mlir.Type.parse(context(), "!mo.tensor<?, f32>")
     with testing.assert_raises():
-        MOTensor.from_mlir(unranked_tensor_mlir)
+        _ = MOTensor.from_mlir(unranked_tensor_mlir)
 
 
 fn test_tensor_dynamic_dims() raises:
-    var dt = ElementType(DType.float32)
-    var t = MOTensor(dt, 1, Dim.dynamic(), 4)
+    var t = MOTensor(DType.float32, 1, Dim.dynamic(), 4)
 
     var s = str(t.to_mlir(context()))
     testing.assert_equal(s, "!mo.tensor<[1, ?, 4], f32>")
@@ -70,8 +48,7 @@ fn test_tensor_dynamic_dims_roundtrip() raises:
 
 
 fn test_tensor_symbolic_dims() raises:
-    var dt = ElementType(DType.float32)
-    var t = MOTensor(dt, Dim.symbolic("batch"), 4)
+    var t = MOTensor(DType.float32, Dim.symbolic("batch"), 4)
 
     var s = str(t.to_mlir(context()))
     testing.assert_equal(s, "!mo.tensor<[batch, 4], f32>")
@@ -86,8 +63,7 @@ fn test_tensor_symbolic_dims_roundtrip() raises:
 
 
 fn test_tensor_scalar() raises:
-    var dt = ElementType(DType.float32)
-    var t = MOTensor(dt)
+    var t = MOTensor(DType.float32)
 
     var s = str(t.to_mlir(context()))
     testing.assert_equal(s, "!mo.tensor<[], f32>")
@@ -132,8 +108,6 @@ fn test_list_type() raises:
 
 
 fn main() raises:
-    test_dtype_to_string()
-    test_dtype()
     test_tensor_type()
     test_tensor_unranked()
     test_tensor_dynamic_dims()
