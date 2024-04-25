@@ -313,9 +313,6 @@ struct Candidate {
 #define MO_TO_MOJO(MOOp, MojoName)                                             \
   INTRINSIC_TO_MOJO(MOOp::getOperationName(), MojoName)
 
-#define TYPE_TO_MOJO(Type, MojoName)                                           \
-  INTRINSIC_TO_MOJO(Type::getMnemonic(), MojoName)
-
 ErrorOrSuccess
 MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   /// Define the mapping of MO operations and intrinsics to the mojo code.
@@ -335,16 +332,13 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
       MO_TO_MOJO(MO::GreaterEqualOp, "math::math::greater_equal"),
       MO_TO_MOJO(MO::IsInfOp, "math::math::isinf"),
       MO_TO_MOJO(MO::IsNaNOp, "math::math::isnan"),
-      MO_TO_MOJO(MO::LinAlg::SolveOp, "MOGG::mogg_matrix_solve"),
       MO_TO_MOJO(MO::LinAlg::BandPartOp,
                  "LinAlg::MatrixBandPart::matrix_band_part"),
       MO_TO_MOJO(MO::LogOp, "math::math::log"),
       MO_TO_MOJO(MO::Log1pOp, "math::math::log1p"),
       MO_TO_MOJO(MO::NotOp, "math::math::logical_not"),
-      MO_TO_MOJO(MO::BatchMatmulOp, "MOGG::batched_matmul"),
       MO_TO_MOJO(MO::MulOp, "math::math::mul"),
       MO_TO_MOJO(MO::ModOp, "math::math::mod"),
-      MO_TO_MOJO(MO::NonMaximumSuppressionOp, "MOGG::non_maximum_suppression"),
       MO_TO_MOJO(MO::NotEqualOp, "math::math::not_equal"),
       MO_TO_MOJO(MO::ReluOp, "nn::activations::relu"),
       MO_TO_MOJO(MO::RoundOp, "math::math::round"),
@@ -361,10 +355,8 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
       MO_TO_MOJO(MO::TileOp, "nn::tile::tile"),
 
       // Shape functions.
-      INTRINSIC_TO_MOJO("broadcast_to_shape", "MOGG::broadcast_to_shape"),
       INTRINSIC_TO_MOJO("batch_matmul_shape",
                         "LinAlg::BatchedMatmul::batched_matmul_shape"),
-      INTRINSIC_TO_MOJO("concat_shape", "MOGG::concat_shape"),
       INTRINSIC_TO_MOJO("concat_from_list_shape", "nn::concat::concat_shape"),
       INTRINSIC_TO_MOJO("conv_shape", "nn::conv::conv_shape"),
       INTRINSIC_TO_MOJO("conv_transpose_shape",
@@ -376,12 +368,6 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
                         "nn::normalization::layer_norm_shape"),
       INTRINSIC_TO_MOJO("matrix_solve_shape",
                         "LinAlg::MatrixSolve::matrix_solve_shape"),
-      INTRINSIC_TO_MOJO("non_maximum_suppression_shape",
-                        "MOGG::non_maximum_suppression_shape_func"),
-      INTRINSIC_TO_MOJO("pack_conv_filter_shape",
-                        "MOGG::pack_conv_filter_shape"),
-      INTRINSIC_TO_MOJO("pack_conv_transpose_filter_shape",
-                        "MOGG::pack_conv_transpose_filter_shape"),
       INTRINSIC_TO_MOJO("pack_matmul_b_shape_func",
                         "LinAlg::MatmulPack::pack_matmul_b_shape_func"),
       INTRINSIC_TO_MOJO("pad_shape", "nn::pad::pad_shape"),
@@ -390,8 +376,6 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
       INTRINSIC_TO_MOJO("range_shape", "nn::arange::arange_shape"),
       INTRINSIC_TO_MOJO("reduce_shape", "algorithm::reduction::reduce_shape"),
       INTRINSIC_TO_MOJO("reshape_shape", "nn::reshape::reshape_shape"),
-      INTRINSIC_TO_MOJO("resize_shape", "MOGG::resize_shape"),
-      INTRINSIC_TO_MOJO("roi_align_shape", "MOGG::roi_align_shape"),
       INTRINSIC_TO_MOJO("tile_shape", "nn::tile::tile_shape"),
 
       INTRINSIC_TO_MOJO("scatter_shape",
@@ -399,11 +383,6 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
       INTRINSIC_TO_MOJO("scatter_nd_shape",
                         "nn::gather_scatter::scatter_nd_shape"),
       INTRINSIC_TO_MOJO("slice_shape", "nn::slice::slice_shape"),
-      INTRINSIC_TO_MOJO("split_ith_output_shape",
-                        "MOGG::split_ith_output_shape"),
-      INTRINSIC_TO_MOJO("squeeze_shape_shape", "MOGG::squeeze_shape_shape"),
-      INTRINSIC_TO_MOJO("transpose_shape", "MOGG::transpose_shape"),
-      INTRINSIC_TO_MOJO("unsqueeze_shape_shape", "MOGG::unsqueeze_shape_shape"),
       INTRINSIC_TO_MOJO("arg_nonzero_shape",
                         "nn::arg_nonzero::arg_nonzero_shape"),
 
@@ -412,36 +391,8 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
                         "LinAlg::MatmulPack::pack_b_ndbuffer"),
       INTRINSIC_TO_MOJO("layout_transform_NK_to_KNkni",
                         "LinAlg::MatmulPack::pack_transposed_b_ndbuffer"),
-      INTRINSIC_TO_MOJO("layout_transform_RSCF_to_FRSCf",
-                        "MOGG::pack_conv_filter"),
-      INTRINSIC_TO_MOJO("layout_transform_QRSCF_to_FQRSCf",
-                        "MOGG::pack_conv_filter"),
-      INTRINSIC_TO_MOJO("layout_transform_RSFC_to_FRSCf",
-                        "MOGG::pack_conv_transpose_filter"),
-      INTRINSIC_TO_MOJO("layout_transform_QRSFC_to_FQRSCf",
-                        "MOGG::pack_conv_transpose_filter"),
 
-      INTRINSIC_TO_MOJO("simd_target", "MOGG::get_target_simd"),
-      INTRINSIC_TO_MOJO("simd_target_cuda", "MOGG::get_target_simd_cuda"),
-      INTRINSIC_TO_MOJO("simd_target_to_int", "MOGG::simd_width_to_int"),
       INTRINSIC_TO_MOJO("top_k_shape", "nn::topk::top_k_shape"),
-      INTRINSIC_TO_MOJO("to_buffer", "MOGG::to_buffer"),
-      INTRINSIC_TO_MOJO("to_buffer_list", "MOGG::to_buffer_list"),
-      INTRINSIC_TO_MOJO("destruct_buffer_list", "MOGG::destruct_buffer_list"),
-      INTRINSIC_TO_MOJO("to_shape", "MOGG::to_shape"),
-      INTRINSIC_TO_MOJO("buf_len", "MOGG::bufferLength"),
-      INTRINSIC_TO_MOJO("elementwise", "MOGG::elementwise_wrapper"),
-      INTRINSIC_TO_MOJO("get_int_from_shape", "MOGG::get_int_from_shape"),
-      INTRINSIC_TO_MOJO("shape_to_ndbuffer", "MOGG::shape_to_ndbuffer"),
-      INTRINSIC_TO_MOJO("tensor_to_shape", "MOGG::tensor_to_shape"),
-
-      // Add the types we will need to the registry as well. The types are
-      // treated differently to the functions above. The functions above
-      // _implement_ the operation they map onto. Instead these functions tell
-      // us which type the mapped type matches by inspecting the argument of
-      // the mojo function.
-      TYPE_TO_MOJO(MOGG::IndicesType, "MOGG::TensorIndicesTypeDef"),
-      TYPE_TO_MOJO(MOGG::SimdType, "MOGG::SimdTypeDef"),
   };
 
   llvm::ArrayRef<llvm::StringRef> sources_tag = {
