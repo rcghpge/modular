@@ -30,8 +30,10 @@ struct CompileToBinaryCtx {
     if (profilerOr) {
       // Cache the previous profiling type mask to restore it upon destruction.
       prevRuntimeProfilingTypeMask = profilerOr->runtimeProfilingTypeMask();
-      profilerOr->setRuntimeProfilingTypeMask(
-          1 << Trace::typeBitshift(Trace::kOther));
+      // Disable `kCompiler` profiling events, which bloat the trace to several
+      // GB during graph compilation.
+      profilerOr->setRuntimeProfilingTypeMask(Trace::disableMaskType(
+          prevRuntimeProfilingTypeMask, Trace::kCompiler));
     }
   }
 
