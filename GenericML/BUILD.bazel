@@ -226,6 +226,7 @@ cc_library(
         ":GraphCompilerInterfacesIncGen",
         ":MGPDialect",
         ":MODialect",
+        ":MOGGDialectHeaders",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -693,6 +694,27 @@ gentbl_cc_library(
         ":MOGGDialectTdFiles",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "MOGGDialectHeaders",
+    hdrs = glob([
+        "include/GenericML/GraphCompiler/MOGGDialect/*.h",
+        "include/GenericML/GraphCompiler/MOGGDialect/Support/*.h",
+        "include/GenericML/GraphCompiler/MOGGDialect/Analysis/*.h",
+        "include/GenericML/GraphCompiler/Interfaces/*.h",
+    ]),
+    strip_include_prefix = "include",
+    deps = [
+        ":GraphCompilerConversion",
+        ":MGPDialect",
+        ":MODialect",
+        ":MOGGDialectIncGen",
+        ":MOGGDialectInterfacesIncGen",
+        ":MOGGDialectPassesIncGen",
+        "//KGEN:KGENDialect",
+        "@llvm-project//mlir:IR",
     ],
 )
 
