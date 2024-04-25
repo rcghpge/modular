@@ -10,7 +10,7 @@ from tensor import Tensor, TensorShape
 from utils.index import Index
 
 from max.graph import ops, AnyMOType, Graph, MOTensor, Symbol
-from max.graph._attributes import AttrMap, _tensor_attr
+from max.graph._attributes import _tensor_attr
 
 # Based on the MNIST example at https://www.tensorflow.org/datasets/keras_example:
 #
@@ -42,29 +42,27 @@ def test_mnist_low_level():
     var cst = g.op(
         "mo.constant",
         MOTensor(DType.float32, 128, 10),
-        AttrMap(_tensor_attr(g._context(), "value", cst_data)),
+        _tensor_attr(g._context(), "value", cst_data),
     )
     var cst_0 = g.op(
         "mo.constant",
         MOTensor(DType.float32, 1, 10),
-        AttrMap(
-            _tensor_attr(
-                g._context(),
-                "value",
-                Tensor[DType.float32](
-                    TensorShape(1, 10),
-                    -0.0675942451,
-                    0.0063267909,
-                    7.43086217e-4,
-                    -0.0126994187,
-                    0.0148473661,
-                    0.108896509,
-                    -0.0398316309,
-                    0.0461452715,
-                    -0.0281771384,
-                    -0.0431172103,
-                ),
-            )
+        _tensor_attr(
+            g._context(),
+            "value",
+            Tensor[DType.float32](
+                TensorShape(1, 10),
+                -0.0675942451,
+                0.0063267909,
+                7.43086217e-4,
+                -0.0126994187,
+                0.0148473661,
+                0.108896509,
+                -0.0398316309,
+                0.0461452715,
+                -0.0281771384,
+                -0.0431172103,
+            ),
         ),
     )
 
@@ -73,24 +71,22 @@ def test_mnist_low_level():
     var cst_1 = g.op(
         "mo.constant",
         MOTensor(DType.float32, 784, 128),
-        AttrMap(_tensor_attr(g._context(), "value", cst_1_data)),
+        _tensor_attr(g._context(), "value", cst_1_data),
     )
     var cst_2_data = Tensor[DType.float32](1, 128)
     cst_2_data._to_buffer().fill(0.5)
     var cst_2 = g.op(
         "mo.constant",
         MOTensor(DType.float32, 1, 128),
-        AttrMap(_tensor_attr(g._context(), "value", cst_2_data)),
+        _tensor_attr(g._context(), "value", cst_2_data),
     )
     var cst_3 = g.op(
         "mo.constant",
         MOTensor(DType.int32, 2),
-        AttrMap(
-            _tensor_attr(
-                g._context(),
-                "value",
-                Tensor[DType.int32](TensorShape(2), -1, 784),
-            )
+        _tensor_attr(
+            g._context(),
+            "value",
+            Tensor[DType.int32](TensorShape(2), -1, 784),
         ),
     )
     var p1 = g.op(
