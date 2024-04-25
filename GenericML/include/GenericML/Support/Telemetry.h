@@ -49,8 +49,10 @@ public:
 
   template <MaxEngineErrorCode errorCode>
   void increment() {
+#ifdef MODULAR_ENABLE_TELEMETRY
     std::string category = stringifyErrorCode(errorCode);
     counter.add(1, {{category, to_underlying(errorCode)}});
+#endif // MODULAR_ENABLE_TELEMETRY
   }
 
 private:
