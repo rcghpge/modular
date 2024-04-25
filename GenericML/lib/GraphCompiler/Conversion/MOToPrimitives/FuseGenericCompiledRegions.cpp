@@ -13,9 +13,10 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/SequenceFusionAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "GraphRT/GRTDialect/GRTOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/Transforms/TopologicalSortUtils.h"
+
+#include "GraphRT/GRTDialect/GRTOps.h"
 
 using namespace M;
 
@@ -30,16 +31,16 @@ namespace M::MGP {
 
 namespace {
 
-// Fuses the provided operations. The resulting fused operation has the same
-// output type as the types of valuesToReplace. This differs with standard
-// sequence fusion in that we do not track outside uses (ie output values are
-// values used elsewhere). The call site determines what values should be
-// replaced via valuesToReplace. compiledRegionOpsToFuseTogether must be
-// topologically sorted.
+// This function will sequence fuse a set of MOGG::GenericCompiledRegionOp. It
+// expects the input vector to be topologically sorted.
+template <bool allowDuplication>
 static void fuseCompiledRegionsAndReplaceUses(
-    SmallVector<Operation *> &compiledRegionOpsToFuseTogether,
-    ValueRange valuesToReplace) {
-  // Gather all outside results and operands of all compiledRegions to be fused.
+    const SmallVector<Operation *> &compiledRegionOpsToFuseTogether) {
+  GENERICML_ASSERT(llvm::all_of(compiledRegionOpsToFuseTogether, [](auto op) {
+    return isa<MOGG::GenericCompiledRegionOp>(op);
+  }));
+
+  // Iterate through all the ops to fuse and gather all operand and results.
   llvm::SetVector<Value> allResults;
   llvm::SetVector<Value> allOperands;
   for (Operation *op : compiledRegionOpsToFuseTogether) {
@@ -49,156 +50,243 @@ static void fuseCompiledRegionsAndReplaceUses(
     allOperands.insert(operands.begin(), operands.end());
   }
 
-  // FusedOperations = AllOperands - AllResults
-  // This is because operands that belong to AllResults will be accessible from
-  // within the compiledRegion. Otherwise, a cycle would be created.
-  llvm::SetVector<Value> fusedCompiledRegionOperands = allOperands;
-  fusedCompiledRegionOperands.set_subtract(allResults);
+  // The fused op's operands will be allOperands - allResults.
+  llvm::SetVector<Value> fusedRegionOperands = allOperands;
+  fusedRegionOperands.set_subtract(allResults);
 
-  // Create the output types which is just a 1:1 translation from Value -> Type.
-  SmallVector<Type> fusedCompiledRegionResultTypes;
-  for (Value result : valuesToReplace)
-    fusedCompiledRegionResultTypes.push_back(result.getType());
+  // Iterate through all the results and identify values that need to be return
+  // values after fusion.
+  llvm::SetVector<Value> resultsThatShouldBeReplaced;
+  SmallVector<Type> fusedRegionOutputTypes;
+  DenseSet<Operation *> compiledRegionOpsToFuseTogetherAsSet(
+      compiledRegionOpsToFuseTogether.begin(),
+      compiledRegionOpsToFuseTogether.end());
+  for (auto result : allResults) {
+    if constexpr (allowDuplication) {
+      // If none of the users of this result are in the fusion set, then it is
+      // something that is solely used from the outside.
+      if (llvm::none_of(result.getUsers(), [&](auto user) {
+            return compiledRegionOpsToFuseTogetherAsSet.contains(user);
+          })) {
+        resultsThatShouldBeReplaced.insert(result);
+        fusedRegionOutputTypes.push_back(result.getType());
+      }
+    } else {
+      // If any of the users of this result are used outside, then it must be
+      // output too.
+      if (llvm::any_of(result.getUsers(), [&](auto user) {
+            return !compiledRegionOpsToFuseTogetherAsSet.contains(user);
+          })) {
+        resultsThatShouldBeReplaced.insert(result);
+        fusedRegionOutputTypes.push_back(result.getType());
+      }
+    }
+  }
 
-  // Create the compiledRegion skeleton which is possible now that we have input
-  // operands and output types.
-  auto ctx = compiledRegionOpsToFuseTogether.front()->getContext();
+  // Maintain attributes.
+  auto firstRegionOp = cast<MOGG::GenericCompiledRegionOp>(
+      compiledRegionOpsToFuseTogether.front());
+  const bool isAsync =
+      llvm::any_of(compiledRegionOpsToFuseTogether, [&](auto region) {
+        return cast<MOGG::GenericCompiledRegionOp>(region)
+            .getIsAsync()
+            .value_or(false);
+      });
+  const bool isFusible =
+      llvm::all_of(compiledRegionOpsToFuseTogether, [&](auto region) {
+        return cast<MOGG::GenericCompiledRegionOp>(region)
+            .getCanFuseIntoOther();
+      });
+  const bool canDuplicate =
+      llvm::all_of(compiledRegionOpsToFuseTogether, [&](auto region) {
+        return cast<MOGG::GenericCompiledRegionOp>(region).getCanDuplicate();
+      });
+  GENERICML_ASSERT(
+      llvm::all_of(compiledRegionOpsToFuseTogether, [&](auto region) {
+        return cast<MOGG::GenericCompiledRegionOp>(region).getIsKGEN().value_or(
+                   false) == firstRegionOp.getIsKGEN().value_or(false);
+      }));
+
+  auto ctx = firstRegionOp->getContext();
   OpBuilder builder(ctx);
-  Location loc = compiledRegionOpsToFuseTogether.back()->getLoc();
+  SmallVector<Location> locs;
+  for (auto region : compiledRegionOpsToFuseTogether)
+    locs.push_back(region->getLoc());
+  auto loc = mlir::FusedLoc::get(ctx, locs);
   builder.setInsertionPointAfter(compiledRegionOpsToFuseTogether.back());
   SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
   auto fusedCompiledRegionOp = builder.create<MOGG::GenericCompiledRegionOp>(
-      loc, valuesToReplace.getType(), fusedCompiledRegionOperands.getArrayRef(),
+      loc, fusedRegionOutputTypes, fusedRegionOperands.getArrayRef(),
       KGEN::ParamDeclArrayAttr::get(ctx, {}),
-      InOutSignatureAttr::get(ctx, operandSemantics), BoolAttr{}, StringAttr{},
-      BoolAttr{});
-  mlir::Block &newBody = fusedCompiledRegionOp.getBody().emplaceBlock();
+      InOutSignatureAttr::get(ctx, operandSemantics),
+      firstRegionOp.getIsKGENAttr(),
+      MOGG::getSummaryString(compiledRegionOpsToFuseTogether),
+      BoolAttr::get(ctx, isAsync), isFusible, canDuplicate);
+  Block &newBody = fusedCompiledRegionOp.getBody().emplaceBlock();
   builder.setInsertionPoint(&newBody, newBody.begin());
 
-  // Create the compiledRegion arguments and map outside values to inside
-  // arguments.
-  mlir::DenseMap<Value, Value> outsideValueToInternalValue;
-  for (Value operand : fusedCompiledRegionOperands) {
+  // Create a mapping from outside SSA value to internal SSA value for inputs.
+  DenseMap<Value, Value> outsideValueToInternalValue;
+  for (Value operand : fusedRegionOperands) {
     auto newArg = newBody.addArgument(operand.getType(), loc);
     outsideValueToInternalValue[operand] = newArg;
   }
 
-  mlir::IRMapping remapper;
-  SmallVector<Value> valuesToOutput(valuesToReplace.size(), nullptr);
-  for (auto opToFuse : compiledRegionOpsToFuseTogether) {
-    auto compiledRegionToFuse = cast<MOGG::GenericCompiledRegionOp>(opToFuse);
+  SmallVector<Value> valuesToOutput;
+  IRMapping mapper;
+  for (auto op : compiledRegionOpsToFuseTogether) {
+    auto asRegionOp = cast<MOGG::GenericCompiledRegionOp>(op);
     for (auto [operand, argument] :
-         llvm::zip(opToFuse->getOperands(),
-                   compiledRegionToFuse.getBody().front().getArguments())) {
-      remapper.map(argument, outsideValueToInternalValue[operand]);
+         llvm::zip(asRegionOp->getOperands(),
+                   asRegionOp.getBody().front().getArguments())) {
+      mapper.map(argument, outsideValueToInternalValue[operand]);
     }
 
-    for (auto &internalOp : compiledRegionToFuse.getBody().front()) {
+    for (auto &internalOp : asRegionOp.getBody().front()) {
       // Actual fusion.
-      auto newOp = builder.clone(internalOp, remapper);
-      // If the cloned op is an output op, insert the old outside value into the
-      // outsideValueToInternalValue map. This works because ops which use that
-      // value will be fused after the current op (topologically sorted input).
+      auto newOp = builder.clone(internalOp, mapper);
       if (auto newOutputOp = dyn_cast<MOGG::OutputOp>(newOp)) {
-        for (auto [result, internalValue] :
-             llvm::zip(compiledRegionToFuse->getResults(),
-                       newOutputOp.getOperands())) {
-          outsideValueToInternalValue[result] = internalValue;
-
-          for (auto [i, valueToReplace] : llvm::enumerate(valuesToReplace)) {
-            if (valueToReplace == result) {
-              GENERICML_ASSERT(!valuesToOutput[i]);
-              valuesToOutput[i] = internalValue;
-              break;
-            }
-          }
+        for (auto [oldResult, internalValue] :
+             llvm::zip(asRegionOp->getResults(), newOutputOp.getOperands())) {
+          outsideValueToInternalValue[oldResult] = internalValue;
+          if (resultsThatShouldBeReplaced.contains(oldResult))
+            valuesToOutput.push_back(internalValue);
         }
         newOutputOp->erase();
       }
     }
   }
 
-  builder.create<MOGG::OutputOp>(loc, valuesToOutput);
+  GENERICML_ASSERT(valuesToOutput.size() == resultsThatShouldBeReplaced.size());
 
-  // Use-def replacement.
+  // Creating the output op and replacing outside SSA values.
+  builder.create<MOGG::OutputOp>(loc, valuesToOutput);
   for (auto [oldValue, newValue] :
-       llvm::zip(valuesToReplace, fusedCompiledRegionOp.getResults())) {
+       llvm::zip(resultsThatShouldBeReplaced.takeVector(),
+                 fusedCompiledRegionOp.getResults())) {
     oldValue.replaceAllUsesWith(newValue);
   }
 }
 
-static inline bool isEligibleForFusion(Operation *op) {
-  if (auto casted_op = dyn_cast<MOGG::GenericCompiledRegionOp>(op)) {
-    return casted_op.getIsFuseable();
-  }
+static inline bool isaGenericCompiledRegionOp(Operation *op) {
+  return isa<MOGG::GenericCompiledRegionOp>(op);
+}
+
+static inline bool isFusibleIntoOther(Operation *op) {
+  if (auto asRegion = dyn_cast<MOGG::GenericCompiledRegionOp>(op))
+    return asRegion.getCanFuseIntoOther();
+
   return false;
 }
 
-static inline bool areCompatibleForFusion(Operation *lhs, Operation *rhs) {
-  return isEligibleForFusion(lhs) && isEligibleForFusion(rhs);
+// checkForDuplication controls if we should check duplication. If set, we check
+// that duplicationFlag is the same as getCanDuplicate for the parent op.
+template <bool checkForDuplication, bool duplicationFlag = false>
+static inline bool areCompatibleForFusion(Operation *parent, Operation *child) {
+  auto parentRegion = dyn_cast<MOGG::GenericCompiledRegionOp>(parent);
+  auto childRegion = dyn_cast<MOGG::GenericCompiledRegionOp>(child);
+
+  if (!parentRegion || !childRegion)
+    return false;
+
+  if (parentRegion.getIsKGEN() != childRegion.getIsKGEN())
+    return false;
+
+  if (!parentRegion.getCanFuseIntoOther())
+    return false;
+
+  if constexpr (checkForDuplication) {
+    if (duplicationFlag != parentRegion.getCanDuplicate())
+      return false;
+  }
+
+  return true;
 }
 
-// This pass will fuse *any* connected generic compiled region operation in the
-// graph. It can afford to be greedy because it assumes that the content of
-// generic compiled region operations are computationally trivial. If this
-// changes, the pass must change or else it could be duplicating non trivial
-// compute, in which case, a better, hollistic approach should be used.
-// Example where being greedy could inefficient but it is fine for now:
-// A--|
-// |  |
-// x  |
-// |  |
-// B <-
-// Here, A and B wll be fused despite A not being erased after the pass. This is
-// fine because we assume that A is computationally trivial.
+static inline bool isComputationallySignificant(Operation *op) {
+  if (auto asRegion = dyn_cast<MOGG::GenericCompiledRegionOp>(op))
+    return !asRegion.getCanFuseIntoOther();
+
+  return isa<MGP::KernelExecuteOp>(op);
+}
+
+// SourceDestination sequence fusion is the simplest form of fusion: fuse things
+// down into a region until nothing else can be fused. allowDuplication controls
+// if we allow src ops to duplicate into many dst ops.
+template <bool allowDuplication>
+static void doSourceDestinationSequenceFusion(ModuleOp module) {
+  for (auto model : module.getOps<MGP::ModelOp>()) {
+    for (auto &region : model->getRegions()) {
+      MO::ParametricTopologyAnalysis parametricTopologyAnalysis(model);
+      auto subgraphs = MOGG::sourceDestinationSequenceFusionAnalysis(
+          region, parametricTopologyAnalysis, isaGenericCompiledRegionOp,
+          areCompatibleForFusion<true, allowDuplication>, allowDuplication);
+
+      for (auto &subgraph : subgraphs)
+        parametricTopologyAnalysis.computeTopologicalSorting(subgraph);
+
+      DenseSet<Operation *> opsToErase;
+      for (auto &subgraph : subgraphs)
+        opsToErase.insert(subgraph.begin(), subgraph.end());
+      SmallVector<Operation *> opsToEraseOrdered(opsToErase.begin(),
+                                                 opsToErase.end());
+      parametricTopologyAnalysis.computeTopologicalSorting(opsToEraseOrdered);
+
+      for (auto &subgraph : subgraphs)
+        fuseCompiledRegionsAndReplaceUses<allowDuplication>(subgraph);
+
+      for (auto op : llvm::reverse(opsToEraseOrdered))
+        op->erase();
+    }
+  }
+}
+
+// TODO(#38355): Enable when the runtime crash is fixed.
+// This kind of fusion will fuse things that are not necessarily connected via
+// graph edges. It produces kernels with multiple outputs. It is configured to
+// maintain parallelism of computationally expensive operations.
+[[maybe_unused]] static void
+doTransitiveDependencySequenceFusion(ModuleOp module) {
+  for (auto model : module.getOps<MGP::ModelOp>()) {
+    for (auto &region : model->getRegions()) {
+      MO::ParametricTopologyAnalysis parametricTopologyAnalysis(model);
+      auto subgraphs = MOGG::transitiveDependencySequenceFusionAnalysis(
+          region, parametricTopologyAnalysis, isFusibleIntoOther,
+          areCompatibleForFusion<false>, isComputationallySignificant, true);
+
+      for (auto &subgraph : subgraphs)
+        parametricTopologyAnalysis.computeTopologicalSorting(subgraph);
+
+      DenseSet<Operation *> opsToErase;
+      for (auto &subgraph : subgraphs)
+        opsToErase.insert(subgraph.begin(), subgraph.end());
+      SmallVector<Operation *> opsToEraseOrdered(opsToErase.begin(),
+                                                 opsToErase.end());
+      parametricTopologyAnalysis.computeTopologicalSorting(opsToEraseOrdered);
+
+      for (auto &subgraph : subgraphs)
+        fuseCompiledRegionsAndReplaceUses<false>(subgraph);
+
+      for (auto op : llvm::reverse(opsToEraseOrdered))
+        op->erase();
+    }
+  }
+}
+
 struct FuseGenericCompiledRegions
     : public MGP::impl::FuseGenericCompiledRegionsBase<
           FuseGenericCompiledRegions> {
   using FuseGenericCompiledRegionsBase::FuseGenericCompiledRegionsBase;
 
   void runOnOperation() override {
-    for (auto model : getOperation().getOps<MGP::ModelOp>()) {
-      SmallVector<Operation *> compiledRegions;
-      // Gather all fuse-able compiled regions in the model.
-      model.walk([&](MOGG::GenericCompiledRegionOp compiledRegion) {
-        if (isEligibleForFusion(compiledRegion)) {
-          compiledRegions.push_back(compiledRegion);
-        }
-      });
-      if (compiledRegions.empty())
-        return;
-
-      // Sort them topologically.
-      MO::ParametricTopologyAnalysis parametricTopologyAnalysis(model);
-      parametricTopologyAnalysis.computeTopologicalSorting(compiledRegions);
-
-      // Iterate in post order.
-      for (auto compiledRegion : llvm::reverse(compiledRegions)) {
-        // Operations which have been fused and have no other users can safely
-        // be erased.
-        if (llvm::all_of(compiledRegion->getUsers(),
-                         [](auto user) { return isEligibleForFusion(user); })) {
-          compiledRegion->erase();
-          continue;
-        }
-
-        // Do a floodfill going up to gather all other regions that feed this op
-        // (transitively). Takes care of blocks. Allowing duplication because of
-        // the aforementioned assumptions on trivial compute.
-        auto opsToFuse = MOGG::floodFillFrom<MOGG::Direction::Up, true>(
-            {compiledRegion}, isEligibleForFusion, areCompatibleForFusion,
-            parametricTopologyAnalysis);
-        if (opsToFuse.size() == 1)
-          continue;
-
-        SmallVector<Operation *> sortedOpsToFuse(opsToFuse.begin(),
-                                                 opsToFuse.end());
-        parametricTopologyAnalysis.computeTopologicalSorting(sortedOpsToFuse);
-        fuseCompiledRegionsAndReplaceUses(sortedOpsToFuse,
-                                          compiledRegion->getResults());
-        compiledRegion->erase();
-      }
-    }
+    ModuleOp module = getOperation();
+    // Fuse in any op that can be duplicated.
+    doSourceDestinationSequenceFusion<true>(module);
+    // Fuse in any op that can't be duplicated (must have one user).
+    doSourceDestinationSequenceFusion<false>(module);
+    // TODO(#38355): Enable when the runtime crash is fixed.
+    // Fuse in anything that remains while preserving parallelism.
+    // doTransitiveDependencySequenceFusion(module);
   }
 };
 

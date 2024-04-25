@@ -316,16 +316,17 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     eventually we lower mogg.kernel into this form directly.
   }];
 
-  let arguments = (ins 
+  let arguments = (ins
     Variadic<AnyType>:$operands,
     MO_ParamDecls:$outputParamDecls,
     M_InOutSignatureAttr:$inOutSignature,
     OptionalAttr<BoolAttr>:$isKGEN,
     OptionalAttr<StrAttr>:$summary,
-    OptionalAttr<BoolAttr>:$isAsync, 
-    DefaultValuedOptionalAttr<BoolAttr, "true">:$isFuseable
+    OptionalAttr<BoolAttr>:$isAsync,
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$canFuseIntoOther,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$canDuplicate
   );
-  let results = (outs Variadic<AnyType>:$results);             
+  let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$body);
 
   let assemblyFormat = [{

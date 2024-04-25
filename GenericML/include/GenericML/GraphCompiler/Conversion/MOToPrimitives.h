@@ -33,6 +33,7 @@ namespace M::MGP {
 #define GEN_PASS_DECL_FUSEGENERICCOMPILEDREGIONS
 #define GEN_PASS_DECL_LOWERPRIMITIVES
 #define GEN_PASS_DECL_LOWERMOGGABI
+#define GEN_PASS_DECL_REMOVENONLOWERABLERESULTS
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc"
 
 /// Generate the code for registering the pass.

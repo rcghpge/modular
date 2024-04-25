@@ -42,7 +42,7 @@ struct LowerMOGGRegionCompilesPass
   void rewriteExecuteCompiledOp(OpBuilder &builder, const Value &context,
                                 size_t runtimeSlot, size_t module_index,
                                 size_t kernel_index,
-                                MOGG::ExecuteCompiledOp &old_kernel);
+                                MOGG::ExecuteCompiledOp &oldKernel);
   void runOnOperation() override;
 };
 
@@ -50,23 +50,27 @@ struct LowerMOGGRegionCompilesPass
 void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
     OpBuilder &builder, const Value &context, size_t runtimeSlot,
     size_t module_index, size_t kernel_index,
-    MOGG::ExecuteCompiledOp &old_kernel) {
-  auto ctx = old_kernel.getOperation()->getContext();
-  SmallVector<Type> result_types;
-  SmallVector<Value> chain_outputs;
+    MOGG::ExecuteCompiledOp &oldKernel) {
+  auto ctx = oldKernel.getOperation()->getContext();
+  SmallVector<Value> chainOutputs;
+  SmallVector<Value> nonChainOutputs;
+  SmallVector<Type> resultTypes;
   // When we lower to the generic.execute (which has only 1 chain output)
   // we collapse all chain outputs of the kernel into the 1 output chain.
   for (auto [resTy, res] :
-       llvm::zip(old_kernel.getResultTypes(), old_kernel.getResults()))
-    if (isa<MEF::ChainType>(resTy))
-      chain_outputs.push_back(res);
-    else if (auto mgpChain = dyn_cast<MGP::DeviceChainType>(resTy)) {
+       llvm::zip(oldKernel.getResultTypes(), oldKernel.getResults())) {
+    if (auto mgpChain = dyn_cast<MGP::DeviceChainType>(resTy)) {
       if (mgpChain.getDevice().getLabel() == kCPULabel)
-        chain_outputs.push_back(res);
-    } else
-      result_types.push_back(resTy);
+        chainOutputs.push_back(res);
+    } else if (isa<MEF::ChainType>(resTy)) {
+      chainOutputs.push_back(res);
+    } else {
+      nonChainOutputs.push_back(res);
+      resultTypes.push_back(resTy);
+    }
+  }
 
-  auto device = old_kernel.getDeviceRef();
+  auto device = oldKernel.getDeviceRef();
   if (!device)
     device = DeviceRefAttr::getDefault(ctx);
 
@@ -74,11 +78,9 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
       << "Only CPU ExecuteCompiledOps can be lowered further";
 
   auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
-      old_kernel.getLoc(), MGP::DeviceChainType::get(device), result_types,
-      context, old_kernel.getOperands(), runtimeSlot, module_index,
+      oldKernel.getLoc(), MGP::DeviceChainType::get(device), resultTypes,
+      context, oldKernel.getOperands(), runtimeSlot, module_index,
       kernel_index);
-  if (result_types.size() > 0)
-    old_kernel.replaceAllUsesWith(newExecuteOp.getOutResults());
 
   auto replaceAllChainUses = [&](Value originalChain,
                                  TypedValue<MGP::DeviceChainType> newChain) {
@@ -97,10 +99,16 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
     originalChain.replaceAllUsesWith(toChain);
   };
 
-  for (auto chain : chain_outputs)
-    replaceAllChainUses(chain, cast<TypedValue<MGP::DeviceChainType>>(
-                                   newExecuteOp.getOutChain()));
-  old_kernel.erase();
+  for (auto result : chainOutputs) {
+    replaceAllChainUses(result, cast<TypedValue<MGP::DeviceChainType>>(
+                                    newExecuteOp.getOutChain()));
+  }
+
+  uint64_t idx = 1;
+  for (auto result : nonChainOutputs)
+    result.replaceAllUsesWith(newExecuteOp.getResult(idx++));
+
+  oldKernel.erase();
 }
 
 // Take all the compiled JIT Kernels and lower them

@@ -40,14 +40,17 @@ struct LowerPrimitivesPass
     : public MGP::impl::LowerPrimitivesBase<LowerPrimitivesPass> {
   using LowerPrimitivesBase::LowerPrimitivesBase;
 
-  SmallVector<Type> getMoggCallResultTypes(Operation *op);
   DictionaryAttr getMoggCallAttrs(OpBuilder &builder, Operation *op);
   void runOnOperation() override;
 };
 
 // For staging, we currently only enable fusion of MIP ops in generic regions
 // all other primitives will not be fused.
-static inline bool isFuseable(Operation *op) {
+static inline bool canFuseIntoOther(Operation *op) {
+  return isa<::M::MIP::MIPDialect, MGPDialect>(op->getDialect());
+}
+
+static inline bool canDuplicate(Operation *op) {
   return isa<::M::MIP::MIPDialect>(op->getDialect());
 }
 
@@ -67,27 +70,6 @@ isLowerableToGenericRegion(MLIRContext *ctx,
            (hasDeviceOp.getDevice() == DeviceRefAttr::get(ctx, kCPULabel, 0));
   }
   return isRegistered;
-}
-
-// For staging, didn't want to lower types like Context which are not supported
-// or needed in the generic region
-static inline bool isLowerableType(Type type) {
-  bool result = true;
-  if (isa<MEF::MEFChainTypeInterface, MGP::ContextType>(type))
-    result = false;
-  return result;
-}
-
-// Get a vector of the result types for the lowered mogg call
-SmallVector<Type> LowerPrimitivesPass::getMoggCallResultTypes(Operation *op) {
-  // Chain types are a no-op within a compiled region, so they are dropped
-  // from the return type in a `mogg.call`.  The chain type is preserved
-  // in the output of the generic-region
-  SmallVector<Type> result_types;
-  for (auto resTy : op->getResultTypes())
-    if (isLowerableType(resTy))
-      result_types.push_back(resTy);
-  return result_types;
 }
 
 // Get a dictionary of the attributes for the lowered mogg call
@@ -137,24 +119,21 @@ void LowerPrimitivesPass::runOnOperation() {
           InOutSignatureAttr::get(ctx, operandSemantics), BoolAttr{}, // isKGEN
           StringAttr{},                                               // summary
           BoolAttr{},                                                 // isAsync
-          BoolAttr::get(ctx, isFuseable(op)) // isFuseable
+          BoolAttr::get(ctx, canFuseIntoOther(op)), // canFuseIntoOther
+          BoolAttr::get(ctx, canDuplicate(op))      // canDuplicate
       );
 
       mlir::Block &kernelBody = newKernel.getBody().emplaceBlock();
       builder.setInsertionPoint(&kernelBody, kernelBody.begin());
 
-      SmallVector<Value> newOperands;
-      for (Value operand : newKernel->getOperands()) {
-        Value val = kernelBody.addArgument(operand.getType(), operand.getLoc());
-        if (isLowerableType(operand.getType())) {
-          newOperands.push_back(val);
-        }
-      }
+      for (Value operand : newKernel->getOperands())
+        kernelBody.addArgument(operand.getType(), operand.getLoc());
 
       // Add the call to the actual implementing function in mojo.
       MOGG::CallOp call = builder.create<MOGG::CallOp>(
-          opLoc, getMoggCallResultTypes(op), op->getName().getStringRef(),
-          newOperands, ArrayAttr{}, getMoggCallAttrs(builder, op));
+          opLoc, op->getResultTypes(), op->getName().getStringRef(),
+          kernelBody.getArguments(), ArrayAttr{},
+          getMoggCallAttrs(builder, op));
 
       builder.create<MOGG::OutputOp>(opLoc, call->getResults());
 

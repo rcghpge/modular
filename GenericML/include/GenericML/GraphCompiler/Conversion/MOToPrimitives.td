@@ -99,4 +99,14 @@ def FuseGenericCompiledRegions: Pass<"fuse-generic-compiled-regions", "ModuleOp"
                           "MOGG::MOGGDialect"];
 }
 
+def RemoveNonLowerableResults: Pass<"remove-non-lowerable-results", "ModuleOp"> {
+  let summary = "Removes non lowerable result types from mogg ops";
+  let description = [{}];
+
+  let dependentDialects = ["MEF::MEFDialect",
+                          "MGP::MGPDialect",
+                          "GRT::GRTDialect",
+                          "MOGG::MOGGDialect"];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_TD

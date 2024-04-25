@@ -5,20 +5,82 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/SequenceFusionAnalysis.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/Support/Assert.h"
 
 #include "llvm-project/llvm/include/llvm/ADT/SetOperations.h"
 
 namespace M::MOGG {
 
-llvm::SmallVector<llvm::SmallVector<mlir::Operation *>>
-floodFillSequenceFusionAnalysis(
-    MO::GraphOp graphOp, EligibilityFunction isEligible,
-    CompatibilityFunction areCompatible,
-    MO::ParametricTopologyAnalysis &completeDataflowGraph) {
+enum class Direction { Up, Down };
 
-  llvm::SmallVector<llvm::SmallVector<mlir::Operation *>> subgraphs;
+/// The returned set contains all operations that are eligible, compatible with
+/// one another and all paths to them from the root are void of non eligible
+/// ops. A SetVector is returned for determinism. Will not traverse across
+/// blocks.
+/// Note: The compatibility function is used on the edges during the traversal.
+/// The operands must be interpreted as <from, to>.
+template <Direction direction>
+mlir::SetVector<mlir::Operation *>
+floodFillFrom(const mlir::SmallVector<mlir::Operation *> &roots,
+              EligibilityFunction isEligible,
+              CompatibilityFunction areCompatible,
+              MO::ParametricTopologyAnalysis &completeDataflowGraph) {
+  mlir::SetVector<mlir::Operation *> visitedAsEligible;
+  mlir::SetVector<mlir::Operation *> visitedAsNonEligible;
+
+  mlir::Block *block = roots.front()->getBlock();
+  llvm::SmallVector<std::tuple<mlir::Operation *, Operation *, bool>> workList;
+  for (mlir::Operation *op : roots)
+    workList.push_back({op, nullptr, true});
+
+  while (!workList.empty()) {
+    auto [op, from, asEligible] = workList.pop_back_val();
+    if (op->getBlock() != block)
+      continue;
+
+    asEligible &= isEligible(op);
+    if (asEligible && from) {
+      if constexpr (direction == Direction::Down)
+        asEligible &= areCompatible(from, op);
+      else
+        asEligible &= areCompatible(op, from);
+    }
+
+    if (asEligible) {
+      // If the current op is eligible, then ensure it was not invalidated or
+      // already visited.
+      if (visitedAsNonEligible.contains(op))
+        continue;
+
+      if (!visitedAsEligible.insert(op))
+        continue;
+    } else if (!visitedAsNonEligible.insert(op)) {
+      // If the current op is not eligible, ensure it was not already visited
+      // and remove it from eligible ops if it was thought to be eligible.
+      continue;
+    }
+
+    if constexpr (direction == Direction::Down) {
+      for (auto user : completeDataflowGraph.users(op))
+        workList.push_back({user, op, asEligible});
+    } else {
+      for (auto provider : completeDataflowGraph.providers(op))
+        workList.push_back({provider, op, asEligible});
+    }
+  }
+
+  visitedAsEligible.set_subtract(visitedAsNonEligible);
+
+  return visitedAsEligible;
+}
+
+FusionSubGraphs floodFillSequenceFusionAnalysis(
+    Region &region, MO::ParametricTopologyAnalysis &completeDataflowGraph,
+    EligibilityFunction isEligible, CompatibilityFunction areCompatible) {
+  FusionSubGraphs subgraphs;
   // For every block in the graph (recursively).
-  graphOp.walk([&](Block *block) {
+  region.walk([&](Block *block) {
     mlir::DenseSet<mlir::Operation *> alreadyProcessedKernelOps;
     // For every operation directly in the block.
     for (mlir::Operation &root : block->getOperations()) {
@@ -36,7 +98,7 @@ floodFillSequenceFusionAnalysis(
       // Find all the leaves from the subgraph that was found by the previous
       // step.
       const auto isALeaf = [&](mlir::Operation *op) {
-        return llvm::none_of(op->getUsers(), [&](auto user) {
+        return llvm::none_of(completeDataflowGraph.users(op), [&](auto user) {
           return opsToFuseTogetherDownward.contains(user);
         });
       };
@@ -56,8 +118,11 @@ floodFillSequenceFusionAnalysis(
       for (mlir::Operation *kernelOpInFusionSet : opsToFuseTogetherDownward)
         alreadyProcessedKernelOps.insert(kernelOpInFusionSet);
 
-      subgraphs.push_back(llvm::SmallVector<mlir::Operation *>(
-          opsToFuseTogetherDownward.begin(), opsToFuseTogetherDownward.end()));
+      if (opsToFuseTogetherDownward.size() > 1) {
+        subgraphs.push_back(llvm::SmallVector<mlir::Operation *>(
+            opsToFuseTogetherDownward.begin(),
+            opsToFuseTogetherDownward.end()));
+      }
     }
   });
 
@@ -130,7 +195,7 @@ static void dependencyWalk(
         auto parents = completeDataflowGraph.providers(nextOp);
         workList.append(parents.begin(), parents.end());
       } else {
-        auto users = completeDataflowGraph.users(op);
+        auto users = completeDataflowGraph.users(nextOp);
         workList.append(users.begin(), users.end());
       }
     }
@@ -142,8 +207,10 @@ static void dependencyWalk(
 /// guarantee a deterministic output.
 static std::tuple<llvm::MapVector<mlir::Operation *, OperationDependency>,
                   llvm::BitVector>
-gatherDependencies(Block *block, EligibilityFunction isEligible,
-                   MO::ParametricTopologyAnalysis &completeDataflowGraph) {
+gatherDependencies(
+    Block *block, EligibilityFunction isEligible,
+    ComputationallySignificantFunction isComputationallySignificant,
+    MO::ParametricTopologyAnalysis &completeDataflowGraph) {
   // Maps from any op in the block to it's index in the bit vectors we create.
   mlir::DenseMap<mlir::Operation *, uint64_t> opToIndexInBitVector;
   // The return value which maps an eligible op to its transitive dependencies.
@@ -152,47 +219,53 @@ gatherDependencies(Block *block, EligibilityFunction isEligible,
   llvm::SmallVector<mlir::Operation *> eligibleOps;
   // A mask that can zero-out eligible ops. Useful later, when checking
   // parallelism.
-  llvm::BitVector nonEligibleOpMask;
   uint64_t opIndex = 0;
-  for (auto &op : block->getOperations()) {
-    opToIndexInBitVector[&op] = opIndex++;
-    if (isEligible(&op))
-      eligibleOps.push_back(&op);
-  }
-
+  SmallVector<Operation *> allOps;
+  for (auto &op : block->getOperations())
+    allOps.push_back(&op);
   // Topologically sort the eligible ops and then compute the dependencies in
   // that order. This makes it possible not to traverse the graph again.
-  completeDataflowGraph.computeTopologicalSorting(eligibleOps);
+  completeDataflowGraph.computeTopologicalSorting(allOps);
 
-  nonEligibleOpMask.resize(opToIndexInBitVector.size(), true);
+  for (auto op : allOps) {
+    opToIndexInBitVector[op] = opIndex++;
+    if (isEligible(op))
+      eligibleOps.push_back(op);
+  }
+
+  if (eligibleOps.empty())
+    return {};
+
   for (auto op : eligibleOps) {
     auto &entry = eligibleOpDependencies[op];
     entry.transitiveProviders.resize(opToIndexInBitVector.size(), false);
     entry.transitiveUsers.resize(opToIndexInBitVector.size(), false);
     entry.index = opToIndexInBitVector[op];
-    nonEligibleOpMask[entry.index] = false;
   }
 
-  // Ops in the exlcusion list should not be considered as non-eligible when
-  // checking for added dependencies. They may or may not be eligible.
+  llvm::BitVector computationallySignificantMask;
+  computationallySignificantMask.resize(opToIndexInBitVector.size(), false);
   for (auto [op, index] : opToIndexInBitVector) {
-    if (llvm::isa<EXCLUSION_LIST>(op))
-      nonEligibleOpMask[index] = false;
+    if (isComputationallySignificant(op)) {
+      GENERICML_ASSERT(!isEligible(op))
+          << "Eligible ops are considered computationally insignificant";
+      computationallySignificantMask[index] = true;
+    }
   }
 
-  for (mlir::Operation *eligibleOp : eligibleOps) {
+  for (auto eligibleOp : eligibleOps) {
     dependencyWalk<Direction::Up>(eligibleOp, eligibleOpDependencies,
                                   opToIndexInBitVector, completeDataflowGraph);
   }
 
   // Same logic for going down, except we use the reverse topological sort.
-  for (mlir::Operation *eligibleOp : llvm::reverse(eligibleOps)) {
+  for (auto eligibleOp : llvm::reverse(eligibleOps)) {
     dependencyWalk<Direction::Down>(eligibleOp, eligibleOpDependencies,
                                     opToIndexInBitVector,
                                     completeDataflowGraph);
   }
 
-  return {eligibleOpDependencies, nonEligibleOpMask};
+  return {eligibleOpDependencies, computationallySignificantMask};
 }
 
 /// The analysis applies the following observation:
@@ -218,16 +291,14 @@ gatherDependencies(Block *block, EligibilityFunction isEligible,
 /// can't, it extends the sets by the current op. O(N**3) but with favorable
 /// constants, thanks to the BitVector. The algorithm can also ignore
 /// parallelism and only guard for cycles using `preserveParallelism`.
-llvm::SmallVector<llvm::SmallVector<mlir::Operation *>>
-transitiveDependencySequenceFusionAnalysis(
-    MO::GraphOp graphOp, EligibilityFunction isEligible,
-    CompatibilityFunction areCompatible,
-    MO::ParametricTopologyAnalysis &completeDataflowGraph,
+FusionSubGraphs transitiveDependencySequenceFusionAnalysis(
+    Region &region, MO::ParametricTopologyAnalysis &completeDataflowGraph,
+    EligibilityFunction isEligible, CompatibilityFunction areCompatible,
+    ComputationallySignificantFunction isComputationallySignificant,
     bool preserveParallelism) {
-
   const auto wouldCreateANewDependency =
       [&](const OperationDependency &lhs, const OperationDependency &rhs,
-          const llvm::BitVector &nonEligibleOpsMask) {
+          const llvm::BitVector &computationallySignificantMask) {
         const auto bitsetDifferenceNonEmpty = [&](const llvm::BitVector &lhs,
                                                   const llvm::BitVector &rhs) {
           // |S - O| != 0 implemented with bitwise ops:
@@ -245,10 +316,10 @@ transitiveDependencySequenceFusionAnalysis(
         tmp4 = rhs.transitiveUsers;
 
         // S' = S intersection M
-        tmp1 &= nonEligibleOpsMask;
-        tmp2 &= nonEligibleOpsMask;
-        tmp3 &= nonEligibleOpsMask;
-        tmp4 &= nonEligibleOpsMask;
+        tmp1 &= computationallySignificantMask;
+        tmp2 &= computationallySignificantMask;
+        tmp3 &= computationallySignificantMask;
+        tmp4 &= computationallySignificantMask;
 
         bool createdNewDependency = (bitsetDifferenceNonEmpty(tmp1, tmp2) &&
                                      bitsetDifferenceNonEmpty(tmp4, tmp3)) ||
@@ -279,20 +350,23 @@ transitiveDependencySequenceFusionAnalysis(
 
   struct SubgraphEntry {
     llvm::SmallVector<mlir::Operation *> operations;
+    llvm::BitVector operationsAskMask;
     OperationDependency dependencies;
   };
-  llvm::SmallVector<SubgraphEntry> subgraphEntries;
+  llvm::SmallVector<SubgraphEntry, 4> subgraphEntries;
 
-  graphOp.walk([&](Block *block) {
-    auto [eligibleOpsDependencies, nonEligibleOpsMask] =
-        gatherDependencies(block, isEligible, completeDataflowGraph);
-    for (auto &[eligibleOp, eligibleOpDependencies] : eligibleOpsDependencies) {
-      // It is possible that the current operation can fuse with many subgraphs.
-      // We just pick the first one. This is because it happens very rarely. It
-      // occurs when there are completely disjoint subgraphs (many connected
-      // components).
+  region.walk([&](Block *block) {
+    auto [eligibleOpsDependencies, computationallySignificantMask] =
+        gatherDependencies(block, isEligible, isComputationallySignificant,
+                           completeDataflowGraph);
+    while (!eligibleOpsDependencies.empty()) {
+      auto [eligibleOp, eligibleOpDependencies] =
+          std::move(eligibleOpsDependencies.front());
+      eligibleOpsDependencies.erase(eligibleOpsDependencies.begin());
+
       bool wasInsertedInASubgraph = false;
-      for (auto &[operations, subgraphDependencies] : subgraphEntries) {
+      for (auto &[operations, operationsAskMask, subgraphDependencies] :
+           subgraphEntries) {
         if (operations.front()->getBlock() != block)
           continue;
 
@@ -305,10 +379,11 @@ transitiveDependencySequenceFusionAnalysis(
         if (preserveParallelism &&
             wouldCreateANewDependency(subgraphDependencies,
                                       eligibleOpDependencies,
-                                      nonEligibleOpsMask)) {
+                                      computationallySignificantMask)) {
           continue;
         }
 
+        operationsAskMask[eligibleOpDependencies.index] = true;
         subgraphDependencies.transitiveProviders |=
             eligibleOpDependencies.transitiveProviders;
         subgraphDependencies.transitiveUsers |=
@@ -317,23 +392,139 @@ transitiveDependencySequenceFusionAnalysis(
             false;
         subgraphDependencies.transitiveUsers[eligibleOpDependencies.index] =
             false;
-
         operations.push_back(eligibleOp);
+
+        const auto updateDependenciesAfterFusion =
+            [](OperationDependency &dependenciesToUpdate,
+               const OperationDependency &subgraphDependencies,
+               const llvm::BitVector &mask) {
+              const bool providerOfTheSubgraph =
+                  dependenciesToUpdate.transitiveProviders.anyCommon(mask);
+              if (providerOfTheSubgraph) {
+                dependenciesToUpdate.transitiveProviders |= mask;
+                dependenciesToUpdate.transitiveProviders |=
+                    subgraphDependencies.transitiveProviders;
+              }
+              const bool userOfTheSubgraph =
+                  dependenciesToUpdate.transitiveUsers.anyCommon(mask);
+              if (userOfTheSubgraph) {
+                dependenciesToUpdate.transitiveUsers |= mask;
+                dependenciesToUpdate.transitiveUsers |=
+                    subgraphDependencies.transitiveUsers;
+              }
+              GENERICML_ASSERT(!(providerOfTheSubgraph && userOfTheSubgraph))
+                  << "Created a cycle";
+            };
+
+        // After fusing an operation with a subgraph, update the dependencies of
+        // any other op or subgraph to account for the newly created
+        // dependencies.
+        for (auto &[op, eligibleOpDependencies_] : eligibleOpsDependencies) {
+          if (op->getBlock() == block) {
+            updateDependenciesAfterFusion(eligibleOpDependencies_,
+                                          subgraphDependencies,
+                                          operationsAskMask);
+          }
+        }
+
+        for (auto &[operations_, __, subgraphDependencies_] : subgraphEntries) {
+          if (operations_.front()->getBlock() == block) {
+            updateDependenciesAfterFusion(
+                subgraphDependencies_, subgraphDependencies, operationsAskMask);
+          }
+        }
+
         wasInsertedInASubgraph = true;
 
         break;
       }
 
-      if (!wasInsertedInASubgraph)
+      if (!wasInsertedInASubgraph) {
+        llvm::BitVector operationsAskMask(
+            eligibleOpDependencies.transitiveProviders.size(), false);
+        operationsAskMask[eligibleOpDependencies.index] = true;
         subgraphEntries.push_back(
-            {{eligibleOp}, std::move(eligibleOpDependencies)});
+            {{eligibleOp}, operationsAskMask, eligibleOpDependencies});
+      }
     }
   });
 
-  llvm::SmallVector<llvm::SmallVector<mlir::Operation *>> subgraphs;
-  for (auto &[operations, _] : subgraphEntries)
-    subgraphs.push_back(operations);
+  FusionSubGraphs subgraphs;
+  for (auto &[operations, _, __] : subgraphEntries) {
+    if (operations.size() > 1)
+      subgraphs.push_back(operations);
+  }
 
   return subgraphs;
 }
+
+FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
+    Region &region, MO::ParametricTopologyAnalysis &completeDataflowGraph,
+    EligibilityFunction isEligible, CompatibilityFunction areCompatible,
+    bool allowDuplication) {
+  FusionSubGraphs subgraphs;
+  region.walk([&](Block *block) {
+    SmallVector<Operation *> eligibleOps;
+    for (auto &op : block->getOperations()) {
+      if (isEligible(&op))
+        eligibleOps.push_back(&op);
+    }
+
+    // Safe to do over the subset eligibleOps rather than the whole graph
+    // because if ops are not connected, they won't fuse anyway.
+    completeDataflowGraph.computeTopologicalSorting(eligibleOps);
+
+    DenseSet<Operation *> wouldBeDCE;
+    for (auto op : llvm::reverse(eligibleOps)) {
+      // If an op was fused, it means it will be DCE-ed later so we do not
+      // attempt to fuse things into it.
+      if (wouldBeDCE.contains(op))
+        continue;
+
+      DenseSet<Operation *> subgraph;
+      llvm::SmallVector<std::tuple<mlir::Operation *, Operation *>> workList = {
+          {op, nullptr}};
+
+      auto areSameBlockAndCompatible = [&](Operation *parent,
+                                           Operation *child) {
+        return parent->getBlock() == child->getBlock() &&
+               areCompatible(parent, child);
+      };
+
+      while (!workList.empty()) {
+        auto parent_child = workList.pop_back_val();
+        // Can't use structured bindings because a lambda captures parent which
+        // is possible only in >C++20
+        auto parent = std::get<0>(parent_child);
+        auto child = std::get<1>(parent_child);
+
+        auto users = completeDataflowGraph.users(parent);
+        if (child && !llvm::all_of(users, [&](auto user) {
+              return areSameBlockAndCompatible(parent, user);
+            }))
+          continue;
+
+        // If duplication is not allowed, then the only user of the current op
+        // must be in the fusion subgraph already. Note that if there are more
+        // than one user, this will fail because one of the users will be in
+        // another subgraph from a past iteration.
+        if (child && !allowDuplication && !llvm::all_of(users, [&](auto user) {
+              return subgraph.contains(user);
+            }))
+          continue;
+
+        subgraph.insert(parent);
+        wouldBeDCE.insert(parent);
+
+        for (auto grandParent : completeDataflowGraph.providers(parent))
+          workList.push_back({grandParent, parent});
+      }
+
+      if (subgraph.size() > 1)
+        subgraphs.emplace_back(subgraph.begin(), subgraph.end());
+    }
+  });
+  return subgraphs;
+}
+
 } // namespace M::MOGG

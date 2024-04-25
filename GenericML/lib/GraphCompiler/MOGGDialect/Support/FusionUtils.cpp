@@ -25,6 +25,9 @@ StringAttr getSummaryString(Operation *op) {
   if (auto kernelOp = dyn_cast<MOGG::KernelOp>(op)) {
     if (auto summaryAttr = kernelOp.getSummaryAttr())
       return summaryAttr;
+  } else if (auto kernelOp = dyn_cast<MOGG::GenericCompiledRegionOp>(op)) {
+    if (auto summaryAttr = kernelOp.getSummaryAttr())
+      return summaryAttr;
   }
 
   std::string name;

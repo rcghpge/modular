@@ -81,6 +81,7 @@ void M::MO::registerPasses() {
   MGP::registerLowerPrimitives();
   MGP::registerLowerMOGGABI();
   MGP::registerFuseGenericCompiledRegions();
+  MGP::registerRemoveNonLowerableResults();
   MGP::registerMGPTransformsPasses();
   CUDA::registerCUDATransformsPasses();
   MOGG::registerPasses();
@@ -236,7 +237,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   }
 
   if (opts.performTrivialKernelOpt) {
-    // Mark trivial kernels as being syncronous.
+    // Mark trivial kernels as being synchronous.
     pm.addPass(MOGG::createMarkTrivialKernels());
 
     // Soft fuse trivial and non-host kernels where possible.
@@ -315,6 +316,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
       jitOpts.saveTempPrefix = opts.saveTempPrefix + ".region";
     pm.addPass(MGP::createLowerPrimitives());
     pm.addPass(MGP::createFuseGenericCompiledRegions());
+    pm.addPass(MGP::createRemoveNonLowerableResults());
     pm.addPass(MGP::createLowerMOGGABI());
     pm.addPass(MOGG::createJitCompileKernels(jitOpts));
     pm.addPass(MGP::createLowerMOGGRegionCompiles());

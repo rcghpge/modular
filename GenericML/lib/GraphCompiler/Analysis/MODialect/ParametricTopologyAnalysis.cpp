@@ -36,8 +36,11 @@ ParametricTopologyAnalysis::ParametricTopologyAnalysis(mlir::Operation *root) {
       auto &nextUseDefGraph = *workList.pop_back_val();
       for (auto &[op, references] : nextUseDefGraph.opUses) {
         for (auto reference : references) {
-          auto whereItIsDeclared =
-              nextUseDefGraph.decls.at(reference.getName());
+          auto whereItIsDeclaredIt =
+              nextUseDefGraph.decls.find(reference.getName());
+          GENERICML_ASSERT(whereItIsDeclaredIt != nextUseDefGraph.decls.end())
+              << "Parameter used but not defined: " << reference.getName();
+          auto whereItIsDeclared = whereItIsDeclaredIt->second;
           mlir::Operation *parentOp = op;
           do {
             // Decl <- Use
@@ -135,9 +138,6 @@ bool ParametricTopologyAnalysis::isOpReady(
 
 void ParametricTopologyAnalysis::computeTopologicalSortingImpl(
     mlir::MutableArrayRef<mlir::Operation *> ops) {
-  if (ops.empty())
-    return;
-
   // The set of operations that have not yet been scheduled.
   DenseSet<Operation *> unscheduledOps;
 
