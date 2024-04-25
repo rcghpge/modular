@@ -34,6 +34,7 @@
 #include "mlir/Interfaces/FunctionImplementation.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 
 #include <numeric>
@@ -387,6 +388,19 @@ LogicalResult IndexToTensorOp::canonicalize(IndexToTensorOp op,
 /// the (virtual) devices available to the graph.
 constexpr StringRef kGraphDeviceSpecCollectionAttrName = "device_specs";
 
+/// Traverse the given types and collect unique parameter references, then
+/// return a set of parameter declaration for those references.
+static llvm::SetVector<KGEN::ParamDeclAttr>
+getParamDeclsFromShapes(TypeRange types) {
+  llvm::SetVector<KGEN::ParamDeclAttr> uniqueDecls;
+  for (Type type : types) {
+    type.walk([&](KGEN::ParamDeclRefAttr declRef) {
+      uniqueDecls.insert(KGEN::ParamDeclAttr::get(declRef));
+    });
+  }
+  return uniqueDecls;
+}
+
 void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
                     TypeRange inputTypes, TypeRange resultTypes) {
   // Below we basically inline and specialize `buildWithEntryBlock`, which
@@ -400,9 +414,15 @@ void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
   state.addAttribute(getSignatureAttrName(state.name), TypeAttr::get(sig));
   state.addAttribute(getFunctionTypeAttrName(state.name),
                      TypeAttr::get(funcType));
-  auto emptyParams = KGEN::ParamDeclArrayAttr::get(builder.getContext(), {});
-  state.addAttribute(getInputParamsAttrName(state.name), emptyParams);
-  state.addAttribute(getResultParamsAttrName(state.name), emptyParams);
+
+  // Declare input/result parameters, if any is used in the input/result types.
+  MLIRContext *ctx = builder.getContext();
+  auto inputDecls = KGEN::ParamDeclArrayAttr::get(
+      ctx, getParamDeclsFromShapes(inputTypes).getArrayRef());
+  auto resultDecls = KGEN::ParamDeclArrayAttr::get(
+      ctx, getParamDeclsFromShapes(resultTypes).getArrayRef());
+  state.addAttribute(getInputParamsAttrName(state.name), inputDecls);
+  state.addAttribute(getResultParamsAttrName(state.name), resultDecls);
 
   // Add the function body.
   Region *bodyRegion = state.addRegion();
