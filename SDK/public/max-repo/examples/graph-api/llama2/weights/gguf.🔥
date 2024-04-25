@@ -934,7 +934,10 @@ struct GGUFReader:
                 for i in range(array_n):
                     ptr[i] = self.gguf_string()
 
-                return GGUFKV(key, GGUFValue(ptr.bitcast[Int8]()))
+                return GGUFKV(
+                    key,
+                    GGUFValue(DTypePointer[DType.int8](ptr.bitcast[Int8]())),
+                )
 
             # Read array of dtypes.
             var array_data: Tensor[DType.int8] = self.read_bytes(
