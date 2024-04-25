@@ -11,7 +11,7 @@ from tensor import Tensor, TensorShape
 from testing import assert_true, assert_raises
 from pathlib.path import Path
 
-from max.graph import Graph, MOList, MOTensor, TypeTuple
+from max.graph import Graph, MOList, MOTensor, Symbol, TypeTuple
 
 alias TEMP_DIR = Path(env_get_string["TEMP_DIR"]())
 
@@ -54,7 +54,7 @@ fn test_basic_add() raises:
         TypeTuple(MOTensor(DType.int32), MOTensor(DType.int32)),
         MOTensor(DType.int32),
     )
-    var y = g.op("mo.add", (g[0], g[1]), MOTensor(DType.int32))
+    var y = g.op("mo.add", List[Symbol](g[0], g[1]), MOTensor(DType.int32))
     _ = g.nvop("mo.output", y)
 
     g.verify()
@@ -68,7 +68,7 @@ fn test_add_constant() raises:
         "add_constant", MOTensor(DType.float32, 1), MOTensor(DType.float32, 1)
     )
     var x = g.scalar[DType.float32](1.0, rank=1)
-    var y = g.op("mo.add", (g[0], x), MOTensor(DType.float32, 1))
+    var y = g.op("mo.add", List[Symbol](g[0], x), MOTensor(DType.float32, 1))
     _ = g.nvop("mo.output", y)
 
     g.verify()

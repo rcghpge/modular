@@ -14,7 +14,7 @@
 from collections import List, Optional
 from pathlib import Path
 
-from max.graph import ops, Dim, Graph, MOTensor, Symbol, SymbolTuple, TypeTuple
+from max.graph import ops, Dim, Graph, MOTensor, Symbol, TypeTuple
 
 from weights.loadable_model import LoadableModel, LlamaHParams
 
@@ -77,7 +77,9 @@ struct Attention[float_dtype: DType = DType.float32]:
         seq_len = seq_len.reshape()
         start_pos = start_pos.reshape()
 
-        var mask_val = g.full(Scalar[float_dtype].MIN, (seq_len, seq_len))
+        var mask_val = g.full(
+            Scalar[float_dtype].MIN, List[Symbol](seq_len, seq_len)
+        )
         var mask = ops.band_part(
             mask_val, g.scalar[DType.int64](-1), start_pos, exclude=True
         )
@@ -87,7 +89,9 @@ struct Attention[float_dtype: DType = DType.float32]:
         # the only masked entries are (i, j) for j > cache_len + i, since row i
         # corresponds to token cache_len + i.
         return ops.concat(
-            (g.full[DType.float32](0, (seq_len, start_pos)), mask),
+            List[Symbol](
+                g.full[DType.float32](0, List[Symbol](seq_len, start_pos)), mask
+            ),
             axis=1,
         )
 
@@ -117,8 +121,12 @@ struct Attention[float_dtype: DType = DType.float32]:
         xq = rope(xq, freqs_cis)
         xk = rope(xk, freqs_cis)
 
-        var keys = ops.concat((k_cache, xk.swapaxes(0, 1))).swapaxes(0, 1)
-        var values = ops.concat((v_cache, xv.swapaxes(0, 1))).swapaxes(0, 1)
+        var keys = ops.concat(
+            List[Symbol](k_cache, xk.swapaxes(0, 1))
+        ).swapaxes(0, 1)
+        var values = ops.concat(
+            List[Symbol](v_cache, xv.swapaxes(0, 1))
+        ).swapaxes(0, 1)
 
         keys = self.repeat_kv(keys, self.n_rep)
         values = self.repeat_kv(values, self.n_rep)
@@ -211,7 +219,9 @@ struct Transformer[float_dtype: DType = DType.float32]:
         var t = g.range[float_dtype](0, Self.max_seq_len * 2.0, 1)
         freqs = t.reshape(-1, 1) * freqs.reshape(1, -1)
 
-        var retval = ops.stack((ops.cos(freqs), ops.sin(freqs)), axis=-1)
+        var retval = ops.stack(
+            List[Symbol](ops.cos(freqs), ops.sin(freqs)), axis=-1
+        )
         return ops.cast(retval[start_pos : start_pos + seq_len], float_dtype)
 
     def __call__(
@@ -334,5 +344,9 @@ struct Llama2[ModelT: LoadableModel, float_dtype: DType = DType.float32]:
         var next_token = ops.arg_max(
             logits.reshape(-1, self.hyperparams.vocab_size), axis=-1
         )
-        g.output((next_token.reshape(self.batch_size, -1), k_cache, v_cache))
+        g.output(
+            List[Symbol](
+                next_token.reshape(self.batch_size, -1), k_cache, v_cache
+            )
+        )
         return g

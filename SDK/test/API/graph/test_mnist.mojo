@@ -9,7 +9,7 @@
 from tensor import Tensor, TensorShape
 from utils.index import Index
 
-from max.graph import ops, Graph, MOTensor
+from max.graph import ops, Graph, MOTensor, Symbol
 from max.graph._attributes import AttrMap, _tensor_attr
 
 # Based on the MNIST example at https://www.tensorflow.org/datasets/keras_example:
@@ -93,12 +93,22 @@ def test_mnist_low_level():
             )
         ),
     )
-    var p1 = g.op("mo.reshape", (g[0], cst_3), MOTensor(DType.float32, 1, 784))
-    var p2 = g.op("mo.matmul", (p1, cst_1), MOTensor(DType.float32, 1, 128))
-    var p3 = g.op("mo.add", (p2, cst_2), MOTensor(DType.float32, 1, 128))
+    var p1 = g.op(
+        "mo.reshape", List[Symbol](g[0], cst_3), MOTensor(DType.float32, 1, 784)
+    )
+    var p2 = g.op(
+        "mo.matmul", List[Symbol](p1, cst_1), MOTensor(DType.float32, 1, 128)
+    )
+    var p3 = g.op(
+        "mo.add", List[Symbol](p2, cst_2), MOTensor(DType.float32, 1, 128)
+    )
     var p4 = g.op("mo.relu", p3, MOTensor(DType.float32, 1, 128))
-    var p5 = g.op("mo.matmul", (p4, cst), MOTensor(DType.float32, 1, 10))
-    var p6 = g.op("mo.add", (p5, cst_0), MOTensor(DType.float32, 1, 10))
+    var p5 = g.op(
+        "mo.matmul", List[Symbol](p4, cst), MOTensor(DType.float32, 1, 10)
+    )
+    var p6 = g.op(
+        "mo.add", List[Symbol](p5, cst_0), MOTensor(DType.float32, 1, 10)
+    )
     _ = g.nvop("mo.output", p6)
 
     # CHECK: test_mnist_low_level
