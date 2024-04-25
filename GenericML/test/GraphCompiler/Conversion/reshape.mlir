@@ -63,7 +63,7 @@ mo.graph @reshape_dyn_input_dyn_output(%arg: !mo.tensor<[?], f32>, %shape : !mo.
 
 // Create output tensor with same buffer and new spec
 // CHECK: %[[SIZED_BUF:.*]] = mgp.buffer.resize %[[IN_BUF]] : !mgp.buffer<32>
-// CHECK: %[[CH1:.*]] = "mgp.generic.execute"({{.*}}) {aRuntimeSlot = 1 : ui64, bModuleIndex = 0 : ui64, cFunctionIndex = 2 : ui64} : (!mgp.context, !mef.chain, !mgp.context) -> !mgp.chain
+// CHECK: %[[CH1:.*]] = mgp.chain.host_to_device %[[CH0]], %[[CTX]][1]
 // CHECK: %[[OUT_TENSOR:.*]] =  mgp.tensor.create %[[CH1]], %[[CTX]][1], %[[SIZED_BUF]], %[[OUT_SPEC]] : !mgp.tensor<4x2xf32>
 
 // Merge chains
