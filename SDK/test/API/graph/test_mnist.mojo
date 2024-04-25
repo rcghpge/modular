@@ -9,7 +9,7 @@
 from tensor import Tensor, TensorShape
 from utils.index import Index
 
-from max.graph import ops, AnyMOType, Graph, MOTensor, Symbol
+from max.graph import ops, Type, Graph, TensorType, Symbol
 from max.graph._attributes import _tensor_attr
 
 # Based on the MNIST example at https://www.tensorflow.org/datasets/keras_example:
@@ -34,19 +34,19 @@ from max.graph._attributes import _tensor_attr
 def test_mnist_low_level():
     var g = Graph(
         "test_mnist_low_level",
-        List[AnyMOType](MOTensor(DType.float32, 1, 28, 28, 1)),
-        out_types=List[AnyMOType](MOTensor(DType.float32, 1, 10)),
+        List[Type](TensorType(DType.float32, 1, 28, 28, 1)),
+        out_types=List[Type](TensorType(DType.float32, 1, 10)),
     )
     var cst_data = Tensor[DType.float32](128, 10)
     cst_data._to_buffer().fill(0.5)
     var cst = g.op(
         "mo.constant",
-        MOTensor(DType.float32, 128, 10),
+        TensorType(DType.float32, 128, 10),
         _tensor_attr(g._context(), "value", cst_data),
     )
     var cst_0 = g.op(
         "mo.constant",
-        MOTensor(DType.float32, 1, 10),
+        TensorType(DType.float32, 1, 10),
         _tensor_attr(
             g._context(),
             "value",
@@ -70,19 +70,19 @@ def test_mnist_low_level():
     cst_1_data._to_buffer().fill(0.5)
     var cst_1 = g.op(
         "mo.constant",
-        MOTensor(DType.float32, 784, 128),
+        TensorType(DType.float32, 784, 128),
         _tensor_attr(g._context(), "value", cst_1_data),
     )
     var cst_2_data = Tensor[DType.float32](1, 128)
     cst_2_data._to_buffer().fill(0.5)
     var cst_2 = g.op(
         "mo.constant",
-        MOTensor(DType.float32, 1, 128),
+        TensorType(DType.float32, 1, 128),
         _tensor_attr(g._context(), "value", cst_2_data),
     )
     var cst_3 = g.op(
         "mo.constant",
-        MOTensor(DType.int32, 2),
+        TensorType(DType.int32, 2),
         _tensor_attr(
             g._context(),
             "value",
@@ -90,20 +90,22 @@ def test_mnist_low_level():
         ),
     )
     var p1 = g.op(
-        "mo.reshape", List[Symbol](g[0], cst_3), MOTensor(DType.float32, 1, 784)
+        "mo.reshape",
+        List[Symbol](g[0], cst_3),
+        TensorType(DType.float32, 1, 784),
     )
     var p2 = g.op(
-        "mo.matmul", List[Symbol](p1, cst_1), MOTensor(DType.float32, 1, 128)
+        "mo.matmul", List[Symbol](p1, cst_1), TensorType(DType.float32, 1, 128)
     )
     var p3 = g.op(
-        "mo.add", List[Symbol](p2, cst_2), MOTensor(DType.float32, 1, 128)
+        "mo.add", List[Symbol](p2, cst_2), TensorType(DType.float32, 1, 128)
     )
-    var p4 = g.op("mo.relu", p3, MOTensor(DType.float32, 1, 128))
+    var p4 = g.op("mo.relu", p3, TensorType(DType.float32, 1, 128))
     var p5 = g.op(
-        "mo.matmul", List[Symbol](p4, cst), MOTensor(DType.float32, 1, 10)
+        "mo.matmul", List[Symbol](p4, cst), TensorType(DType.float32, 1, 10)
     )
     var p6 = g.op(
-        "mo.add", List[Symbol](p5, cst_0), MOTensor(DType.float32, 1, 10)
+        "mo.add", List[Symbol](p5, cst_0), TensorType(DType.float32, 1, 10)
     )
     _ = g.nvop("mo.output", p6)
 
@@ -115,7 +117,7 @@ def test_mnist_low_level():
 def test_mnist_helpers():
     var g = Graph(
         "test_mnist_helpers",
-        List[AnyMOType](MOTensor(DType.float32, 1, 28, 28, 1)),
+        List[Type](TensorType(DType.float32, 1, 28, 28, 1)),
     )
     var cst_data = Tensor[DType.float32](128, 10)
     cst_data._to_buffer().fill(0.5)
@@ -148,7 +150,7 @@ def test_mnist_helpers():
     var p1 = g[0].reshape(1, 784)
     var p2 = p1 @ cst_1
     var p3 = p2 + cst_2
-    var p4 = g.op("mo.relu", p3, MOTensor(DType.float32, 1, 128))
+    var p4 = g.op("mo.relu", p3, TensorType(DType.float32, 1, 128))
     var p5 = p4 @ cst
     var p6 = p5 + cst_0
     _ = g.output(p6)

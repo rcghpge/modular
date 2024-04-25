@@ -8,12 +8,12 @@
 
 from tensor import Tensor, TensorShape
 
-from max.graph import _testing, AnyMOType, Graph, MOTensor, Symbol
+from max.graph import _testing, Type, Graph, TensorType, Symbol
 
 
 fn test_insert_transform() raises:
     var g = Graph(
-        List[AnyMOType](MOTensor(DType.int64), MOTensor(DType.int64)),
+        List[Type](TensorType(DType.int64), TensorType(DType.int64)),
     )
     g.output(g[0] + g[1])
 

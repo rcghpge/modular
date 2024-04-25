@@ -7,11 +7,11 @@
 
 from tensor import Tensor, TensorShape
 
-from max.graph import ops, _testing, Dim, Graph, MOTensor
+from max.graph import ops, _testing, Dim, Graph, TensorType
 
 
 fn test_squeeze() raises:
-    var g = Graph(MOTensor(DType.float32, "batch", 1, 3))
+    var g = Graph(TensorType(DType.float32, "batch", 1, 3))
     g.output(ops.squeeze(g[0], 1))
     g.verify()
 

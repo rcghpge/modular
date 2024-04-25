@@ -8,11 +8,11 @@
 
 from tensor import Tensor, TensorShape
 
-from max.graph import _testing, AnyMOType, Dim, Graph, MOTensor
+from max.graph import _testing, Type, Dim, Graph, TensorType
 
 
 fn test_vector_index_int() raises:
-    var g = Graph(MOTensor(DType.int64, 3))
+    var g = Graph(TensorType(DType.int64, 3))
     var arg = g[0]
     g.output(arg[1])
 
@@ -25,7 +25,7 @@ fn test_vector_index_int() raises:
 
 fn test_vector_index_sym() raises:
     var g = Graph(
-        List[AnyMOType](MOTensor(DType.int64, 3), MOTensor(DType.int64)),
+        List[Type](TensorType(DType.int64, 3), TensorType(DType.int64)),
     )
     var arg = g[0]
     var idx = g[1]
@@ -40,7 +40,7 @@ fn test_vector_index_sym() raises:
 
 
 fn test_vector_slice_int() raises:
-    var g = Graph(MOTensor(DType.int64, 3))
+    var g = Graph(TensorType(DType.int64, 3))
     var arg = g[0]
     g.output(arg[1:3])
 
@@ -53,7 +53,7 @@ fn test_vector_slice_int() raises:
 
 fn test_vector_slice_sym() raises:
     var g = Graph(
-        List[AnyMOType](MOTensor(DType.int64, 3), MOTensor(DType.int64)),
+        List[Type](TensorType(DType.int64, 3), TensorType(DType.int64)),
     )
     var arg = g[0]
     var idx = g[1]
@@ -68,7 +68,7 @@ fn test_vector_slice_sym() raises:
 
 
 fn test_matrix_index_int() raises:
-    var g = Graph(MOTensor(DType.int64, 2, 3))
+    var g = Graph(TensorType(DType.int64, 2, 3))
     var arg = g[0]
     g.output(arg[1])
 
@@ -81,7 +81,7 @@ fn test_matrix_index_int() raises:
 
 fn test_matrix_index_sym() raises:
     var g = Graph(
-        List[AnyMOType](MOTensor(DType.int64, 2, 3), MOTensor(DType.int64)),
+        List[Type](TensorType(DType.int64, 2, 3), TensorType(DType.int64)),
     )
     var arg = g[0]
     var idx = g[1]
@@ -96,7 +96,7 @@ fn test_matrix_index_sym() raises:
 
 
 fn test_matrix_slice_int() raises:
-    var g = Graph(MOTensor(DType.int64, 3, 3))
+    var g = Graph(TensorType(DType.int64, 3, 3))
     var arg = g[0]
     g.output(arg[1:3])
 
@@ -109,7 +109,7 @@ fn test_matrix_slice_int() raises:
 
 fn test_matrix_slice_sym() raises:
     var g = Graph(
-        List[AnyMOType](MOTensor(DType.int64, 3, 3), MOTensor(DType.int64)),
+        List[Type](TensorType(DType.int64, 3, 3), TensorType(DType.int64)),
     )
     var arg = g[0]
     var idx = g[1]
@@ -125,7 +125,7 @@ fn test_matrix_slice_sym() raises:
 
 fn test_matrix_slice_double() raises:
     var g = Graph(
-        List[AnyMOType](MOTensor(DType.int64, 3, 3), MOTensor(DType.int64)),
+        List[Type](TensorType(DType.int64, 3, 3), TensorType(DType.int64)),
     )
     var arg = g[0]
     var idx = g[1]

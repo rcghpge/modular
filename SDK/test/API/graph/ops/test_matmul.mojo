@@ -8,13 +8,13 @@
 from tensor import Tensor, TensorShape
 from testing import *
 
-from max.graph import ops, _testing, AnyMOType, Graph, MOTensor
+from max.graph import ops, _testing, Type, Graph, TensorType
 
 
 fn test_matmul() raises:
     var g = Graph(
-        List[AnyMOType](
-            MOTensor(DType.float32, 1, 2, 3), MOTensor(DType.float32, 3, 2)
+        List[Type](
+            TensorType(DType.float32, 1, 2, 3), TensorType(DType.float32, 3, 2)
         ),
     )
     g.output(g[0] @ g[1])
@@ -34,8 +34,8 @@ fn test_matmul() raises:
 
 fn test_batch_matmul() raises:
     var g = Graph(
-        List[AnyMOType](
-            MOTensor(DType.float32, 1, 2, 3), MOTensor(DType.float32, 3, 2)
+        List[Type](
+            TensorType(DType.float32, 1, 2, 3), TensorType(DType.float32, 3, 2)
         ),
     )
     g.output(g[0] @ g[1])
@@ -54,7 +54,7 @@ fn test_batch_matmul() raises:
 
 
 def test_matmul_dimension_mismatch():
-    var graph = Graph(MOTensor(DType.float32, 2, 6))
+    var graph = Graph(TensorType(DType.float32, 2, 6))
 
     var matmul_constant_value = Tensor[DType.float32](2, 6)
     matmul_constant_value._to_buffer().fill(0.15)
@@ -65,7 +65,7 @@ def test_matmul_dimension_mismatch():
 
 
 def test_matmul_rhs_too_small():
-    var graph = Graph(MOTensor(DType.float32, 2, 6))
+    var graph = Graph(TensorType(DType.float32, 2, 6))
 
     var matmul_constant_value = Tensor[DType.float32](6)
     matmul_constant_value._to_buffer().fill(0.15)

@@ -11,7 +11,7 @@ from tensor import Tensor, TensorShape
 from testing import assert_true, assert_raises
 from pathlib.path import Path
 
-from max.graph import AnyMOType, Graph, MOList, MOTensor, Symbol
+from max.graph import Type, Graph, ListType, TensorType, Symbol
 
 alias TEMP_DIR = Path(env_get_string["TEMP_DIR"]())
 
@@ -19,7 +19,7 @@ alias TEMP_DIR = Path(env_get_string["TEMP_DIR"]())
 fn test_identity_graph() raises:
     var g = Graph(
         name="identity_graph",
-        in_types=List[AnyMOType](MOTensor(DType.int32)),
+        in_types=List[Type](TensorType(DType.int32)),
     )
     g.output(g[0])
 
@@ -35,7 +35,7 @@ fn test_identity_graph() raises:
 fn test_identity_graph_no_module() raises:
     var g = Graph(
         name="identity_graph_no_module",
-        in_types=List[AnyMOType](MOTensor(DType.int32)),
+        in_types=List[Type](TensorType(DType.int32)),
     )
     g.output(g[0])
 
@@ -49,9 +49,9 @@ fn test_identity_graph_no_module() raises:
 fn test_basic_add() raises:
     var g = Graph(
         "basic_add",
-        List[AnyMOType](MOTensor(DType.int32), MOTensor(DType.int32)),
+        List[Type](TensorType(DType.int32), TensorType(DType.int32)),
     )
-    var y = g.op("mo.add", List[Symbol](g[0], g[1]), MOTensor(DType.int32))
+    var y = g.op("mo.add", List[Symbol](g[0], g[1]), TensorType(DType.int32))
     g.output(y)
 
     g.verify()
@@ -61,9 +61,9 @@ fn test_basic_add() raises:
 
 
 fn test_add_constant() raises:
-    var g = Graph("add_constant", List[AnyMOType](MOTensor(DType.float32, 1)))
+    var g = Graph("add_constant", List[Type](TensorType(DType.float32, 1)))
     var x = g.scalar[DType.float32](1.0, rank=1)
-    var y = g.op("mo.add", List[Symbol](g[0], x), MOTensor(DType.float32, 1))
+    var y = g.op("mo.add", List[Symbol](g[0], x), TensorType(DType.float32, 1))
     g.output(y)
 
     g.verify()
@@ -76,7 +76,7 @@ fn test_add_constant() raises:
 fn test_symbolic_dim() raises:
     var g = Graph(
         "symbolic_dim",
-        List[AnyMOType](MOTensor(DType.float32, "batch", "x")),
+        List[Type](TensorType(DType.float32, "batch", "x")),
     )
     var x = g.scalar[DType.float32](1.0, rank=1)
     var y = g[0] + x

@@ -9,11 +9,11 @@
 from tensor import Tensor, TensorShape
 import testing
 
-from max.graph import AnyMOType, Graph, MOTensor
+from max.graph import Type, Graph, TensorType
 
 
 fn test_basic_tensor() raises:
-    var g = Graph(List[AnyMOType]())
+    var g = Graph(List[Type]())
     var y = g.constant(Tensor[DType.int32](TensorShape(1, 2), 1, 2))
     g.output(y)
 
@@ -24,7 +24,7 @@ fn test_basic_tensor() raises:
 
 
 fn test_scalar_basic() raises:
-    var g = Graph(List[AnyMOType]())
+    var g = Graph(List[Type]())
     var y = g.scalar[DType.bool](True)
     g.output(y)
 
@@ -33,7 +33,7 @@ fn test_scalar_basic() raises:
 
 
 fn test_scalar_high_rank() raises:
-    var g = Graph(List[AnyMOType]())
+    var g = Graph(List[Type]())
     var y = g.scalar[DType.bool](True, 3)
     g.output(y)
 
@@ -44,7 +44,7 @@ fn test_scalar_high_rank() raises:
 
 
 fn test_basic_i64() raises:
-    var g = Graph(List[AnyMOType]())
+    var g = Graph(List[Type]())
     var y = g.scalar(Int64(1), rank=1)
     _ = g.output(y)
 

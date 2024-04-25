@@ -7,15 +7,15 @@
 
 from tensor import Tensor, TensorShape
 
-from max.graph import _testing, AnyMOType, Graph, MOTensor, Dim
+from max.graph import _testing, Type, Graph, TensorType, Dim
 from max.graph.ops.elementwise import equal, abs, round
 from testing import assert_raises
 
 
 fn test_basic() raises:
     var g = Graph(
-        List[AnyMOType](
-            MOTensor(DType.float32, 1, 2, 3), MOTensor(DType.float32, 2, 3)
+        List[Type](
+            TensorType(DType.float32, 1, 2, 3), TensorType(DType.float32, 2, 3)
         ),
     )
     g.output(g[0] + g[1])
@@ -36,7 +36,7 @@ fn test_basic() raises:
 
 
 fn test_literal() raises:
-    var g = Graph(MOTensor(DType.float32, 1, 2, 3))
+    var g = Graph(TensorType(DType.float32, 1, 2, 3))
     g.output(g[0] - 1.0)
     g.verify()
 
@@ -53,7 +53,7 @@ fn test_literal() raises:
 
 fn test_implicit_promotion() raises:
     var g = Graph(
-        List[AnyMOType](MOTensor(DType.int16, 3), MOTensor(DType.float32, 3)),
+        List[Type](TensorType(DType.int16, 3), TensorType(DType.float32, 3)),
     )
     g.output(g[0] * g[1])
     g.verify()
@@ -70,9 +70,7 @@ fn test_implicit_promotion() raises:
 
 fn test_comparison_results_in_bool() raises:
     var g = Graph(
-        List[AnyMOType](
-            MOTensor(DType.int16, 3), MOTensor(DType.float32, 2, 3)
-        ),
+        List[Type](TensorType(DType.int16, 3), TensorType(DType.float32, 2, 3)),
     )
     g.output(equal(g[0], g[1]))
     g.verify()
@@ -89,7 +87,7 @@ fn test_comparison_results_in_bool() raises:
 
 fn test_bad_implicit_promotion() raises:
     var g = Graph(
-        List[AnyMOType](MOTensor(DType.int16, 3), MOTensor(DType.float16, 3)),
+        List[Type](TensorType(DType.int16, 3), TensorType(DType.float16, 3)),
     )
     g.output(g[0] + g[1])
     g.verify()
@@ -106,9 +104,9 @@ fn test_bad_implicit_promotion() raises:
 
 fn test_bad_broadcast_dynamic_one() raises:
     var g = Graph(
-        List[AnyMOType](
-            MOTensor(DType.float32, Dim.dynamic()),
-            MOTensor(DType.float32, Dim.dynamic()),
+        List[Type](
+            TensorType(DType.float32, Dim.dynamic()),
+            TensorType(DType.float32, Dim.dynamic()),
         ),
     )
     g.output(g[0] + g[1])
@@ -124,9 +122,9 @@ fn test_bad_broadcast_dynamic_one() raises:
 
 fn test_matching_dynamic() raises:
     var g = Graph(
-        List[AnyMOType](
-            MOTensor(DType.float32, Dim.dynamic()),
-            MOTensor(DType.float32, Dim.dynamic()),
+        List[Type](
+            TensorType(DType.float32, Dim.dynamic()),
+            TensorType(DType.float32, Dim.dynamic()),
         ),
     )
     g.output(g[0] + g[1])
@@ -142,8 +140,8 @@ fn test_matching_dynamic() raises:
 
 fn test_unary() raises:
     var g = Graph(
-        List[AnyMOType](
-            MOTensor(DType.int32, 1, 2, 3), MOTensor(DType.int32, 1)
+        List[Type](
+            TensorType(DType.int32, 1, 2, 3), TensorType(DType.int32, 1)
         ),
     )
     g.output(abs(g[0]))
@@ -159,8 +157,8 @@ fn test_unary() raises:
 
 fn test_unary_float() raises:
     var g = Graph(
-        List[AnyMOType](
-            MOTensor(DType.float32, 1, 2, 3), MOTensor(DType.float32, 1)
+        List[Type](
+            TensorType(DType.float32, 1, 2, 3), TensorType(DType.float32, 1)
         ),
     )
     g.output(round(g[0]))
@@ -180,8 +178,8 @@ fn test_unary_float() raises:
 
 fn test_unary_bad_dtype() raises:
     var g = Graph(
-        List[AnyMOType](
-            MOTensor(DType.int32, 1, 2, 3), MOTensor(DType.int32, 1)
+        List[Type](
+            TensorType(DType.int32, 1, 2, 3), TensorType(DType.int32, 1)
         ),
     )
     g.output(round(g[0]))
