@@ -7,12 +7,12 @@
 from tensor import Tensor, TensorShape
 import testing
 
-from max.graph import _testing, Graph, TypeTuple, MOList, MOTensor, Symbol
+from max.graph import _testing, AnyMOType, Graph, MOList, MOTensor, Symbol
 from max.graph import ops
 
 
 fn test_list_empty() raises:
-    var g = Graph(TypeTuple(), MOList(MOTensor(DType.float32, 1)))
+    var g = Graph(List[AnyMOType]())
     var l = ops.list(MOTensor(DType.float32, 1), g)
     g.output(l)
 
@@ -24,11 +24,7 @@ fn test_list_empty() raises:
 
 
 fn test_list_nonempty() raises:
-    var g = Graph(
-        "test_list_nonempty",
-        MOTensor(DType.float32, 1),
-        MOList(MOTensor(DType.float32, 1)),
-    )
+    var g = Graph(MOTensor(DType.float32, 1))
     var l = ops.list(List[Symbol](g[0]))
     g.output(l)
 
@@ -50,9 +46,9 @@ fn test_list_empty_wrong_overload() raises:
 
 fn test_list_mismatched_types() raises:
     var g = Graph(
-        "test_list_mismatched_types",
-        TypeTuple(MOTensor(DType.float32, 1), MOTensor(DType.float32, 1, 2)),
-        TypeTuple(),
+        List[AnyMOType](
+            MOTensor(DType.float32, 1), MOTensor(DType.float32, 1, 2)
+        ),
     )
     with testing.assert_raises():
         _ = ops.list(List[Symbol](g[0], g[1]))

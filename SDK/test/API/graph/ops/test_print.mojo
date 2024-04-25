@@ -7,13 +7,11 @@
 
 from tensor import Tensor, TensorShape
 
-from max.graph import _testing, Dim, Graph, MOTensor, Symbol, TypeTuple
+from max.graph import _testing, Dim, Graph, MOTensor, Symbol
 
 
 fn test_print() raises:
-    var g = Graph(
-        MOTensor(DType.float32, Dim.dynamic(), Dim.dynamic(), 2), TypeTuple()
-    )
+    var g = Graph(MOTensor(DType.float32, Dim.dynamic(), Dim.dynamic(), 2))
     g[0].print()
     g.output(List[Symbol]())
     g.verify()

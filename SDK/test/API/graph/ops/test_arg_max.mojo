@@ -11,7 +11,7 @@ from max.graph import ops, _testing, Graph, MOTensor
 
 
 fn test_arg_max() raises:
-    var g = Graph(MOTensor(DType.float32, 2, 3), MOTensor(DType.int64, 2, 1))
+    var g = Graph(MOTensor(DType.float32, 2, 3))
     g.output(ops.arg_max(g[0], 1))
     g.verify()
 
@@ -25,7 +25,7 @@ fn test_arg_max() raises:
 
 
 fn test_arg_max_neg_axis() raises:
-    var g = Graph(MOTensor(DType.float32, 2, 3), MOTensor(DType.int64, 2, 1))
+    var g = Graph(MOTensor(DType.float32, 2, 3))
     g.output(ops.arg_max(g[0], -1))
     g.verify()
 

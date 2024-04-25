@@ -14,7 +14,7 @@
 from collections import List, Optional
 from pathlib import Path
 
-from max.graph import ops, Dim, Graph, MOTensor, Symbol, TypeTuple
+from max.graph import ops, AnyMOType, Dim, Graph, MOTensor, Symbol
 
 from weights.loadable_model import LoadableModel, LlamaHParams
 
@@ -273,19 +273,9 @@ struct Llama2[ModelT: LoadableModel, float_dtype: DType = DType.float32]:
             self.hyperparams.n_kv_heads,
             self.hyperparams.head_dim,
         )
-        var cache_out_type = MOTensor(  # We can improve our shape inference here!
-            float_dtype,
-            Dim.dynamic(),
-            self.hyperparams.n_layers,
-            Dim.dynamic(),
-            self.hyperparams.n_kv_heads,
-            self.hyperparams.head_dim,
-        )
         var tokens_type = MOTensor(DType.int64, self.batch_size, Dim.dynamic())
         var g = Graph(
-            name,
-            in_types=TypeTuple(tokens_type, cache_type, cache_type),
-            out_types=TypeTuple(tokens_type, cache_out_type, cache_out_type),
+            name, List[AnyMOType](tokens_type, cache_type, cache_type)
         )
 
         @parameter

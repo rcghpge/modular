@@ -9,7 +9,7 @@
 from tensor import Tensor, TensorShape
 from utils.index import Index
 
-from max.graph import ops, Graph, MOTensor, Symbol
+from max.graph import ops, AnyMOType, Graph, MOTensor, Symbol
 from max.graph._attributes import AttrMap, _tensor_attr
 
 # Based on the MNIST example at https://www.tensorflow.org/datasets/keras_example:
@@ -34,8 +34,8 @@ from max.graph._attributes import AttrMap, _tensor_attr
 def test_mnist_low_level():
     var g = Graph(
         "test_mnist_low_level",
-        MOTensor(DType.float32, 1, 28, 28, 1),
-        MOTensor(DType.float32, 1, 10),
+        List[AnyMOType](MOTensor(DType.float32, 1, 28, 28, 1)),
+        out_types=List[AnyMOType](MOTensor(DType.float32, 1, 10)),
     )
     var cst_data = Tensor[DType.float32](128, 10)
     cst_data._to_buffer().fill(0.5)
@@ -119,7 +119,7 @@ def test_mnist_low_level():
 def test_mnist_helpers():
     var g = Graph(
         "test_mnist_helpers",
-        MOTensor(DType.float32, 1, 28, 28, 1),
+        List[AnyMOType](MOTensor(DType.float32, 1, 28, 28, 1)),
     )
     var cst_data = Tensor[DType.float32](128, 10)
     cst_data._to_buffer().fill(0.5)
