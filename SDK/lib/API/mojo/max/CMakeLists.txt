@@ -46,7 +46,7 @@ set(REGISTER_SRCS
 )
 
 set(EXTENSIBILITY_SRCS
-  extensibility/extensibility
+  extensibility/__init__
 )
 
 if (MODULAR_BUILD_SERVE_RT)
