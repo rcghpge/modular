@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//utils/bazel/build/rules:tablegen.bzl", "gentbl_mlir_dialect")
 
@@ -1041,10 +1042,24 @@ cc_library(
     ],
 )
 
+expand_template(
+    name = "gen_definitions_h",
+    out = "include/GenericML/Support/Definitions.h",
+    substitutions = select({
+        "@platforms//os:macos": {
+            '#cmakedefine GENERICML_LINKER_CMD "@GENERICML_LINKER_CMD@"': '#define GENERICML_LINKER_CMD "clang -Wl,-undefined,dynamic_lookup"',
+        },
+        "@platforms//os:linux": {
+            '#cmakedefine GENERICML_LINKER_CMD "@GENERICML_LINKER_CMD@"': '#define GENERICML_LINKER_CMD "clang"',
+        },
+    }),
+    template = "include/GenericML/Support/Definitions.h.in",
+)
+
 cc_library(
     name = "Support",
     srcs = glob(["lib/Support/**/*.cpp"]),
-    hdrs = glob(["include/GenericML/Support/**/*.h"]),
+    hdrs = glob(["include/GenericML/Support/**/*.h"]) + [":gen_definitions_h"],
     strip_include_prefix = "include",
     deps = [
         "//ArraySupport",
