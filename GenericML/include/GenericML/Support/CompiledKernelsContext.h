@@ -110,7 +110,7 @@ struct CompiledKernelCall {
 // are passed at runtime, and no dynamic rank parameters are supported.
 //
 // Each void* arg can be:
-//  - The underlying buffer of a GML::BufferRef (for `!mgp.cpu.buffer`s).
+//  - The underlying buffer of a GML::BufferRef (for `!mgp.buffer`s).
 //    The lifetime is managed by the C++ runtime, possibly my moving
 //    referencs into a sub-task closure.
 //  - The underlying buffer of a CUDA::CUDABuffer (for `!cuda.buffer`s)

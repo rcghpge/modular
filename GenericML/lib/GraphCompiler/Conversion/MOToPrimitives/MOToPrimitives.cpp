@@ -995,7 +995,7 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   //    lowered condition results. However, the grt.while requires the 'cond'
   //    block to return a result for all signature arguments plus the condition,
   //    so we'll need to include those.
-  // 2) The lowered condition will be a mgp.cpu.tensor<bool>, which we need to
+  // 2) The lowered condition will be a mgp.tensor<bool>, which we need to
   //    convert to an i1.
   if (failed(
           lower_block(whileOp.getCondRegion(), loweredWhileOp.getCondRegion())))

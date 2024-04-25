@@ -277,17 +277,6 @@ static void mgp_debug_cpu_spin_wait(Chain inChain, Result<Chain> outChain,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.to_grt_bool.deprecated
-//===----------------------------------------------------------------------===//
-
-static void mgp_to_grt_bool(Chain inChain,
-                            AsyncValueRef<GML::BufferRef> bufferRef,
-                            Result<bool> result, Runtime &runtime) {
-  std::move(result).emplace(
-      *static_cast<const bool *>(bufferRef.get().getBuffer()) != 0);
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.assert
 //===----------------------------------------------------------------------===//
 
@@ -295,89 +284,6 @@ static ErrorOr<Chain> mgp_assert(bool cond, MEFAttr<StringRef> message) {
   if (cond)
     return Chain();
   return Error(*message);
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.cpu.kernel.create_context
-//===----------------------------------------------------------------------===//
-
-static void mgp_cpu_kernel_create_context(Chain inChain, GML::Context &ctx,
-                                          Result<Chain> outChain,
-                                          MEFAttr<uint64_t> slot,
-                                          Runtime &runtime) {
-  // Establish an execution engine, to be shared amongst all loaded models.
-  ErrorOr<KGEN::ExecutionEngine *> engineOr =
-      runtime.context->createIfMissing<KGEN::ExecutionEngine>(
-          []() -> ErrorOr<std::unique_ptr<KGEN::ExecutionEngine>> {
-            // Initialize the host target.
-            llvm::InitializeNativeTarget();
-            llvm::InitializeNativeTargetAsmParser();
-            llvm::InitializeNativeTargetAsmPrinter();
-
-            // Create the execution engine.
-            auto targetMachineOr = getTargetMachineForHost();
-            if (targetMachineOr.isError())
-              return targetMachineOr.takeError();
-
-            return KGEN::ExecutionEngine::createWithStandardLayers(
-                /*options=*/{}, **targetMachineOr);
-          });
-
-  if (engineOr.isError())
-    return std::move(outChain).setToError(engineOr.takeError());
-
-  // Establish the context for this executing model.
-  ctx.emplaceStateSlot<CompiledKernelsContext>(
-      /*slotIndex=*/static_cast<size_t>(*slot),
-      /*numBuffers=*/0, *engineOr,
-      runtime.getProfilerDebuginfo() ==
-          LLCL::RuntimeOptions::ProfilerDebuginfo::kSOProfiler);
-
-  std::move(outChain).emplace();
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.cpu.kernel.load_archive
-//===----------------------------------------------------------------------===//
-
-static void mgp_cpu_kernel_load_archive(Chain inChain, GML::Context &ctx,
-                                        Result<Chain> outChain,
-                                        MEFAttr<uint64_t> aSlot,
-                                        MEFAttr<ArrayRef<uint8_t>> bArchive,
-                                        MEFAttr<StringRef> cKernelNames) {
-  CompiledKernelsContext &kernelsCtx =
-      ctx.getStateSlotPayload<CompiledKernelsContext>(
-          static_cast<size_t>(*aSlot));
-
-  // Split the combined kernel names into a list of individual kernel names.
-  // Remember that M.multiline strings are explicitly null-terminated when
-  // encoded into MEF.
-  SmallVector<StringRef> kernelNames;
-  StringRef combined = *cKernelNames;
-  size_t start = 0;
-  size_t end = combined.size();
-  while (start < end) {
-    size_t next = combined.find('\n', start);
-    if (next == std::string::npos) {
-      GENERICML_ASSERT(start + 1 == end && combined[start] == '\0');
-      break;
-    } else {
-      size_t len = next - start;
-      if (len)
-        kernelNames.emplace_back(combined.data() + start, len);
-      start = next + 1;
-    }
-  }
-  if (kernelNames.empty())
-    return std::move(outChain).setToError(
-        "expecting at least one kernel symbol to load");
-
-  // Load the binary.
-  ErrorOrSuccess errOr = kernelsCtx.load(*bArchive, kernelNames);
-  if (errOr)
-    return std::move(outChain).setToError(errOr.takeError());
-
-  std::move(outChain).emplace();
 }
 
 //===----------------------------------------------------------------------===//
@@ -620,12 +526,7 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.tensor_spec.dtype", mgp_tensor_spec_dtype);
   ADD_PRIMITIVE(registry, "mgp.debug.bool.print", mgp_debug_bool_print);
   ADD_PRIMITIVE(registry, "mgp.debug.cpu.spin_wait", mgp_debug_cpu_spin_wait);
-  ADD_PRIMITIVE(registry, "mgp.to_grt_bool.deprecated", mgp_to_grt_bool);
   ADD_PRIMITIVE(registry, "mgp.assert", mgp_assert);
-  ADD_PRIMITIVE(registry, "mgp.cpu.kernel.create_context",
-                mgp_cpu_kernel_create_context);
-  ADD_PRIMITIVE(registry, "mgp.cpu.kernel.load_archive",
-                mgp_cpu_kernel_load_archive);
   ADD_PRIMITIVE(registry, "mgp.generic.execute", mgp_generic_execute);
   ADD_PRIMITIVE(registry, "mgp.list.append", mgp_list_append);
   ADD_PRIMITIVE(registry, "mgp.list.create", mgp_list_create);

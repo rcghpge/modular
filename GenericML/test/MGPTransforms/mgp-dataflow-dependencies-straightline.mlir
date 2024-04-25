@@ -196,7 +196,7 @@ mgp.model @straightline : mof init {
 }
 
 //
-// mgp.cpu.buffer.split.borrow implicitly takes reference to argument
+// mgp.buffer.split.borrow implicitly takes reference to argument
 //
 
 // For reference here's the model with vars matching the checks:

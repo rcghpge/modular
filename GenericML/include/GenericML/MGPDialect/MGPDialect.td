@@ -50,7 +50,7 @@ def MGPDialect : Dialect {
        base class). A well-known slot can also be used by the compiler to hold
        a framework-specific context object, thus giving all operations access
        to all global context state.
-    3. Provides a generic `!mgp.cpu.buffer type`, backed by
+    3. Provides a generic `!mgp.buffer type`, backed by
        `M::LLCL::BufferRef`, which represents a (possibly owned) array of
        bytes. The bytes are 'uninterpreted', ie we do not attempt to capture
        rank, dimensions, element type or endianness. In this way we support
@@ -60,16 +60,16 @@ def MGPDialect : Dialect {
        wrapper types. Buffers may also be cached in ‘buffer slots’ within
        state slots, thus giving every operation the ability to re-use already
        allocated buffers for temporary and output results if desired.
-    4. Provides a generic `!mgp.cpu.tensor` type, backed by `GML::Tensor`,
+    4. Provides a generic `!mgp.tensor` type, backed by `GML::Tensor`,
        which provides an uncontroversial CPU-only runtime representation for
        a statically-ranked tensor with a shape, dtype and underlying buffer.
        Ops (including the implementations of MO ops) and conversions (see
        below) are free to use this type when convenient so as to be framework
        independent. However it is not a one-size-fits-all universal tensor
        type (and it is very unlikely if it should be generalized to support
-       non-CPU memory and layouts). It is possible to create `!mgp.cpu.tensors`
+       non-CPU memory and layouts). It is possible to create `!mgp.tensors`
        from a pair of `!mgp.tensor_spec` (backed by `M::TensorSpec`) and
-       `!mgp.cpu.buffer`. It is also possible to create a `!mgp.tensor_spec`
+       `!mgp.buffer`. It is also possible to create a `!mgp.tensor_spec`
        from its dynamic dimensions (as the MLIR builtin index type, backed
        by a size_t). In this way MGP provides baseline support for dynamic
        shapes.
@@ -97,7 +97,7 @@ def MGPDialect : Dialect {
       supporting dialect and runtime implementation.
     - GPU or other non-CPU buffer or tensor representations. These will be
       added by supporting dialects.
-    - Transformations into and out of the `!mgp.cpu.tensor` representation.
+    - Transformations into and out of the `!mgp.tensor` representation.
       These must be supplied by the host framework primitive dialect.
 
     Commented examples of MGP reside in `TFLite/test/tfl/mgp-examples.mlir`.

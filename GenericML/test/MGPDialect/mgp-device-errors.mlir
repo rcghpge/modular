@@ -100,7 +100,7 @@ func.func @buffer_section_borrow_static_beyond_end(%ctx : !mgp.context, %ch0 : !
 // -----
 
 //
-// mgp.cpu.buffer.section.borrow.dynamic
+// mgp.buffer.section.borrow.dynamic
 //
 
 func.func @buffer_section_borrow_dynamic_sized(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>, %in_buf : !mgp.buffer<192, <"cuda", 3>>, %scale : index) {

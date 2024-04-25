@@ -992,7 +992,7 @@ static void mgp_kernel_execute_cpu(
 // mgp.buffer.unsize.cpu
 //===----------------------------------------------------------------------===//
 
-// TODO(#30906): Move into MGPPrimitives once mgp.cpu.buffer.unsize removed.
+// TODO(#30906): Move into MGPPrimitives once mgp.buffer.unsize removed.
 static void mgp_buffer_unsize(AnyAsyncValueRef inBuffer,
                               RemainingResults outputs) {
   *outputs.begin() = std::move(inBuffer);
@@ -1052,6 +1052,6 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
                 mgp_debug_tensor_print_cpu);
   ADD_PRIMITIVE(registry, "mgp.kernel.execute.cpu", mgp_kernel_execute_cpu);
 
-  // TODO(#30906): Move into MGPPrimitives once mgp.cpu.buffer.unsize removed.
+  // TODO(#30906): Move into MGPPrimitives once mgp.buffer.unsize removed.
   ADD_PRIMITIVE(registry, "mgp.buffer.unsize", mgp_buffer_unsize);
 }

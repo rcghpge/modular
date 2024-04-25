@@ -1052,7 +1052,7 @@ ErrorOr<MEF::TypeKind> TypeEmitter::getIntFPComplexTypeEncoding(Type type) {
 
 /// Emit an int, float, or complex type.
 LogicalResult TypeEmitter::emitIntFPComplexType(Type type) {
-  // mgp.cpu.tensor_type uses NoneType to represent unknown dtype - encode it as
+  // mgp.tensor_type uses NoneType to represent unknown dtype - encode it as
   // MEF::TypeKind::invalid.
   if (isa<NoneType>(type)) {
     emitter->emitByte(MEF::TypeKind::invalid);

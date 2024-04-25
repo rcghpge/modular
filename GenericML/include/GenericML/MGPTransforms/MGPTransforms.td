@@ -90,14 +90,14 @@ def SimplifyChainsPass : Pass<"simplify-chains", "MGP::ModelOp"> {
 //===----------------------------------------------------------------------===//
 
 def StaticMemoryPlannerPass : Pass<"static-memory-planner", "ModuleOp"> {
-  let summary = "Replace mgp.cpu.buffer.alloc.static.deprecated ops with "
-                "mgp.cpu.buffer.section.static.borrow ops using statically "
+  let summary = "Replace mgp.buffer.alloc.static.deprecated ops with "
+                "mgp.buffer.section.static.borrow ops using statically "
                 "determined offsets.";
   let description = [{
-    This pass replaces mgp.cpu.buffer.alloc.{static,spec} ops with
-    mgp.cpu.buffer.section.{static,dynamic}.borrow ops from (pre-allocated)
+    This pass replaces mgp.buffer.alloc.{static,spec} ops with
+    mgp.buffer.section.{static,dynamic}.borrow ops from (pre-allocated)
     shared buffers. The size of the shared buffers, and the offset to use for
-    each mgp.cpu.buffer.section.{static,dynamic}.borrow op, is chosen by
+    each mgp.buffer.section.{static,dynamic}.borrow op, is chosen by
     this pass so as to ensure no active buffers will ever overlap in their
     borrowed memory.
 
@@ -128,17 +128,17 @@ def RemoveRedundantTensorExtractsPass : Pass<"remove-redundant-tensor-extracts",
   let summary = "Removes unnecessary tensor create/extract operations from "
                 "the graph.";
   let description = [{
-    This pass avoid unnecessary mgp.cpu.tensor.{create,extract} operations in
+    This pass avoid unnecessary mgp.tensor.{create,extract} operations in
     two situations:
 
     1. If the result of a (mgp.cpu/cuda).tensor.create op is exclusively consumed by
        tensor.extract ops, remove them in favor of the original buffer,
        tensor spec and chain used by the tensor.create. Eg:
     ```mlir
-          %tensor0 = mgp.cpu.tensor.create.deprecated %ch0, %inputBuf0, %inputSpec0
-          %tensor1 = mgp.cpu.tensor.create.deprecated %ch1, %inputBuf1, %inputSpec1
-          %buf0, %spec0 = mgp.cpu.tensor.extract.deprecated %tensor0
-          %buf1, %spec1 = mgp.cpu.tensor.extract.deprecated %tensor1
+          %tensor0 = mgp.tensor.create.deprecated %ch0, %inputBuf0, %inputSpec0
+          %tensor1 = mgp.tensor.create.deprecated %ch1, %inputBuf1, %inputSpec1
+          %buf0, %spec0 = mgp.tensor.extract.deprecated %tensor0
+          %buf1, %spec1 = mgp.tensor.extract.deprecated %tensor1
           %ch3 = my.op(%ch2, ..., %buf0, %spec0, %buf1, %spec1)
           // where %buf0, %buf1 are in 'read' positions
     ```
@@ -158,17 +158,17 @@ def RemoveRedundantTensorExtractsPass : Pass<"remove-redundant-tensor-extracts",
        tensor.create op (eg block arguments or the results of other
        primitives) are extracted at most once. Eg:
     ```mlir
-          execute(%tensor : !mgp.cpu.tensor) {
-            %buf, %spec = mgp.cpu.tensor.extract.deprecated %tensor
+          execute(%tensor : !mgp.tensor) {
+            %buf, %spec = mgp.tensor.extract.deprecated %tensor
             my.op(..., %buf, %spec, ...)
-            %buf2, %spec2 = mgp.cpu.tensor.extract.deprecated %tensor
+            %buf2, %spec2 = mgp.tensor.extract.deprecated %tensor
             my.op(..., %buf2, %spec2, ...)
           }
     ```
        becomes:
     ```mlir
-          execute(%tensor : !mgp.cpu.tensor) {
-            %buf, %spec = mgp.cpu.tensor.extract.deprecated %tensor
+          execute(%tensor : !mgp.tensor) {
+            %buf, %spec = mgp.tensor.extract.deprecated %tensor
             my.op(..., %buf, %spec, ...)
             my.op(..., %buf, %spec, ...)
           }
@@ -176,15 +176,15 @@ def RemoveRedundantTensorExtractsPass : Pass<"remove-redundant-tensor-extracts",
 
     These rules apply across control flow boundaries. Eg:
     ```mlir
-          %tensor0 = mgp.cpu.tensor.create.deprecated %ch0, %inputBuf0, %inputSpec0
+          %tensor0 = mgp.tensor.create.deprecated %ch0, %inputBuf0, %inputSpec0
           %ch1, %tensor1 = grt.if %cond (%ch0, %tensor0) -> ... {
-            %buf0, %spec0 = mgp.cpu.tensor.extract.deprecated %tensor0
-            %tensor1 = mgp.cpu.tensor.create.deprecated %ch0, %buf0, %spec0
+            %buf0, %spec0 = mgp.tensor.extract.deprecated %tensor0
+            %tensor1 = mgp.tensor.create.deprecated %ch0, %buf0, %spec0
             mef.output %ch0, %tensor1
           } else {
             ...
           }
-          %buf1, %spec1 = mgp.cpu.tensor.extract.deprecated %tensor1
+          %buf1, %spec1 = mgp.tensor.extract.deprecated %tensor1
           %ch3 = my.op(%ch2, ..., %buf1, %spec1)
           // where %buf1 is in 'read' position
     ```
@@ -209,17 +209,17 @@ def RemoveRedundantTensorExtractsPass : Pass<"remove-redundant-tensor-extracts",
 def DeferAllocsPass : Pass<"defer-allocs", "MGP::ModelOp"> {
   let summary = "Defers allocations until the producing op is ready to execute.";
   let description = [{
-    Ensures mgp.cpu.buffer.alloc.* operations are deferred till they are
+    Ensures mgp.buffer.alloc.* operations are deferred till they are
     about to be written to. Eg:
     ```mlir
-      %buf = mgp.cpu.buffer.alloc.static.deprecated %bufChain, 24
+      %buf = mgp.buffer.alloc.static.deprecated %bufChain, 24
       my_op(%opChain, %buf, ...)
       // where %buf is in an 'output' position
     ```
     becomes:
     ```
       %ch = grt.chain.create (%opChain, %bufChain)
-      %buf = mgp.cpu.buffer.alloc.static.deprecated %ch, 24
+      %buf = mgp.buffer.alloc.static.deprecated %ch, 24
       my_op(%ch, %buf, ...)
     ```
     Assumes:
@@ -368,18 +368,18 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
       %ctx = mgp.context.create 1
       mef.output %ch0, %ctx : !mef.chain, !mgp.context
 
-    } execute (%ch0: !mef.chain, %ctx: !mgp.context, %arg: !mgp.cpu.tensor<?xf32>) -> (!mef.chain, !mgp.cpu.tensor<?xf32>) {
-      %const_buf     : !mgp.cpu.buffer
+    } execute (%ch0: !mef.chain, %ctx: !mgp.context, %arg: !mgp.tensor<?xf32>) -> (!mef.chain, !mgp.tensor<?xf32>) {
+      %const_buf     : !mgp.buffer
       %const_spec    : !mgp.tensor_spec<?xf32>
       %new_const_buf : !mgp.tensor_spec<?xf32>
       %new_const_spec = spec_update_op(%const_spec) : (!mgp.tensor_spec<?xf32>) -> !mgp.tensor_spec<?xf32>
       %kernel_ch1 = kernel_op1(%ch0, %const_buf, %const_spec, %new_const_buf, %new_const_spec) : ... -> mef.chain
 
       %out_spec : !mgp.tensor_spec<?xf32>
-      %out_buf  : !mgp.cpu.buffer
+      %out_buf  : !mgp.buffer
       %kernel_ch2 = kernel_op2(%kernel_ch1, %arg_buf, %arg_spec, %new_const_buf, %new_const_spec, %out_buf, %out_spec) : ...
-      %out_tensor = mgp.cpu.tensor.create.deprecated %kernel_ch2, %out_buf, %out_spec  : !mgp.cpu.tensor<?xf32>
-      mef.output %ch0, %out_tensor : !mef.chain, !mgp.cpu.tensor<?xf32>
+      %out_tensor = mgp.tensor.create.deprecated %kernel_ch2, %out_buf, %out_spec  : !mgp.tensor<?xf32>
+      mef.output %ch0, %out_tensor : !mef.chain, !mgp.tensor<?xf32>
     }
     ```
     is rewritten to (note all the clarifying comments):
@@ -390,7 +390,7 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
       %ctx = mgp.context.create 2
 
       // moved from exec phase
-      %const_buf     : !mgp.cpu.buffer
+      %const_buf     : !mgp.buffer
       %const_spec    : !mgp.tensor_spec<?xf32>
       %new_const_buf : !mgp.tensor_spec<?xf32>
       %new_const_spec = spec_update_op(%const_spec) : ...
@@ -399,26 +399,26 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
       // inserted; buffer.cache may perform a deep copy, so we must wait for the
       // actions on buffers to finish first.
       %buffer_action_ch = grt.merge (%kernel_ch1) // may have more action chain in general
-      %cache_ch = mgp.cpu.buffer.cache %buffer_action_ch, %ctx[1], %new_const_buf : !mgp.cpu.buffer
+      %cache_ch = mgp.buffer.cache %buffer_action_ch, %ctx[1], %new_const_buf : !mgp.buffer
 
       // out chain changed
       %out_ch = grt.merge (%cache_ch) // may have more cache_ch in general
       mef.output %out_ch, %ctx : !mef.chain, !mgp.context
 
-    } execute (%ch0: !mef.chain, %ctx: !mgp.context, %arg: !mgp.cpu.tensor<?xf32>) -> (!mef.chain, !mgp.cpu.tensor<?xf32>) {
+    } execute (%ch0: !mef.chain, %ctx: !mgp.context, %arg: !mgp.tensor<?xf32>) -> (!mef.chain, !mgp.tensor<?xf32>) {
       // cloned
       %const_spec : !mgp.tensor_spec<?xf32>
       %new_const_spec = spec_update_op(%const_spec) : (!mgp.tensor_spec<?xf32>) -> !mgp.tensor_spec<?xf32>
 
       // inserted
-      %new_const_buf = mgp.cpu.buffer.get_cached %ch0, %ctx[1] : !mgp.cpu.buffer
+      %new_const_buf = mgp.buffer.get_cached %ch0, %ctx[1] : !mgp.buffer
 
       // references to `%kernel_ch1` become `%ch0`
       %out_spec : !mgp.tensor_spec<?xf32>
-      %out_buf  : !mgp.cpu.buffer
+      %out_buf  : !mgp.buffer
       %kernel_ch2 = kernel_op2(%ch0, %arg_buf, %arg_spec, %new_const_buf, %new_const_spec, %out_buf, %out_spec) : ... -> mef.chain
-      %out_tensor = mgp.cpu.tensor.create.deprecated %kernel_ch2, %out_buf, %out_spec  : !mgp.cpu.tensor<?xf32>
-      mef.output %ch0, %out_tensor : !mef.chain, !mgp.cpu.tensor<?xf32>
+      %out_tensor = mgp.tensor.create.deprecated %kernel_ch2, %out_buf, %out_spec  : !mgp.tensor<?xf32>
+      mef.output %ch0, %out_tensor : !mef.chain, !mgp.tensor<?xf32>
     }
     ```
 
@@ -446,17 +446,17 @@ def FixupOverhangsPass : Pass<"fixup-overhangs", "MGP::ModelOp"> {
 //===----------------------------------------------------------------------===//
 
 def ReallocBuffersPass : Pass<"realloc-buffers", "MGP::ModelOp"> {
-  let summary = "Replaces calls to mgp.cpu.buffer.alloc.* with corresponding "
+  let summary = "Replaces calls to mgp.buffer.alloc.* with corresponding "
                 "realloc versions";
   let description = [{
-    This pass replaces mgp.cpu.buffer.alloc.* calls in the 'execute' block
-    with mgp.cpu.buffer.realloc.* calls, also in the 'execute' block. Each
+    This pass replaces mgp.buffer.alloc.* calls in the 'execute' block
+    with mgp.buffer.realloc.* calls, also in the 'execute' block. Each
     alloc call gets a dedicated 'default' slot created in the 'init' block.
     In this way buffer allocations will be cached between calls to 'execute'
     unless the required buffer size changes. That reduces dynamic memory
     management overhead at the expense of memory high water mark.
 
-    Note that we do not attempt to move mgp.cpu.buffer.alloc.static.deprecated allocations
+    Note that we do not attempt to move mgp.buffer.alloc.static.deprecated allocations
     to the init phase itself, though that may be worthwhile. Currently there's
     no op to allocate into a slot but return only a chain.
   }];
