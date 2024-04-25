@@ -20,7 +20,8 @@ using namespace M::MOF::GraphBuilder;
 
 static mlir::NamedAttribute denseResourceAttr(StringRef name,
                                               ArrayRef<char> data, mlir::Type t,
-                                              bool owned) {
+                                              bool owned,
+                                              LLCL::Runtime &runtime) {
   auto type = dyn_cast<M::MO::TensorType>(t);
 
   // Choose a default blob alignment to match the attribute's element size.
@@ -32,7 +33,7 @@ static mlir::NamedAttribute denseResourceAttr(StringRef name,
     // Take ownership of `data`, which must have been allocated with
     // `Singleton CurrentRuntime` and deallocate it with the current
     // allocator.
-    M::Allocator *currentAllocator = M::Runtime::getCurrentAllocator();
+    M::Allocator *currentAllocator = runtime.getAllocator();
     blob = mlir::UnmanagedAsmResourceBlob::allocateWithAlign(
         data, elementByteAlign, [currentAllocator](void *data, size_t, size_t) {
           currentAllocator->deallocateBytes(data);
@@ -55,10 +56,12 @@ static mlir::NamedAttribute denseResourceAttr(StringRef name,
 
 mlir::NamedAttribute GraphBuilder::tensorAttr(StringRef name,
                                               ArrayRef<uint8_t> data,
-                                              mlir::Type t, bool owned) {
+                                              mlir::Type t, bool owned,
+                                              LLCL::Runtime &runtime) {
   if (shouldUseOutOfLineAttrStorage(data.size()))
     return denseResourceAttr(
-        name, ArrayRef<char>((const char *)data.data(), data.size()), t, owned);
+        name, ArrayRef<char>((const char *)data.data(), data.size()), t, owned,
+        runtime);
 
   auto moTensorType = dyn_cast<MO::TensorType>(t);
   auto shapedType = RankedTensorType::get(moTensorType.getIntDims(),
@@ -71,8 +74,7 @@ mlir::NamedAttribute GraphBuilder::tensorAttr(StringRef name,
     // this data was allocated in mojo land, which uses the global runtime
     // allocator. So, we need to use the same global runtime deallocator to
     // free.
-    Runtime::getCurrentAllocator()->deallocateBytes(
-        const_cast<uint8_t *>(data.data()));
+    runtime.getAllocator()->deallocateBytes(const_cast<uint8_t *>(data.data()));
   }
 
   StringAttr nameAttr = StringAttr::get(moTensorType.getContext(), name);

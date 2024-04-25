@@ -24,6 +24,19 @@ using namespace M::MOF::GraphBuilder;
 using namespace llvm;
 using namespace mlir;
 
+/// An opaque wrapper around a pointer to an LLCL::Runtime.
+struct LLCLRuntimeRef {
+  void *ptr;
+};
+
+LLCL::Runtime &unwrap(LLCLRuntimeRef ref) {
+  return *reinterpret_cast<LLCL::Runtime *>(ref.ptr);
+}
+template <typename T>
+LLCLRuntimeRef wrap(T *ptr) {
+  return LLCLRuntimeRef{ptr};
+}
+
 MlirNamedAttribute wrap(mlir::NamedAttribute attr) {
   return MlirNamedAttribute{
       wrap(attr.getName()),
@@ -57,19 +70,19 @@ MODULAR_API_EXPORT MlirOperation MAXG_graphNew(MlirModule m, MlirLocation loc,
 // Attribute factories
 //===----------------------------------------------------------------------===//
 
-MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewTensor(StringRef name,
-                                                         void *data, MlirType t,
-                                                         bool owned) {
+MODULAR_API_EXPORT MlirNamedAttribute
+MAXG_attrNewTensor(StringRef name, void *data, MlirType t, bool owned,
+                   LLCLRuntimeRef runtime) {
   auto moType = cast<M::MO::TensorType>(unwrap(t));
   size_t size =
       moType.getDtype().getSizeInBytes() * moType.getNumElements().value();
   return wrap(tensorAttr(
       name, ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(data), size),
-      unwrap(t), owned));
+      unwrap(t), owned, unwrap(runtime)));
 }
 
-MODULAR_API_EXPORT MlirNamedAttribute
-MAXG_attrNewTensorFromFile(StringRef name, StringRef fileName, MlirType t) {
+MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewTensorFromFile(
+    StringRef name, StringRef fileName, MlirType t, LLCLRuntimeRef runtime) {
   auto moType = cast<M::MO::TensorType>(unwrap(t));
   assert(moType.getNumElements().has_value() &&
          "tensor attrs should always be statically sized");
@@ -92,7 +105,7 @@ MAXG_attrNewTensorFromFile(StringRef name, StringRef fileName, MlirType t) {
       tensorAttr(name,
                  ArrayRef<uint8_t>(reinterpret_cast<const uint8_t *>(data),
                                    static_cast<size_t>(size)),
-                 unwrap(t), /*owned=*/false));
+                 unwrap(t), /*owned=*/false, unwrap(runtime)));
 }
 
 //===----------------------------------------------------------------------===//

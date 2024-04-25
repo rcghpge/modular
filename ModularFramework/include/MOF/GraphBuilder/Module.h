@@ -8,6 +8,7 @@
 #define MOF_GRAPHBUILDER_MODULE_H
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "LLCL/Runtime/Runtime.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 
@@ -40,7 +41,7 @@ private:
 // Otherwise, copies `data`; may use dense resource or ArrayElementsAttr.
 mlir::NamedAttribute tensorAttr(llvm::StringRef name,
                                 llvm::ArrayRef<uint8_t> data, mlir::Type t,
-                                bool owned);
+                                bool owned, LLCL::Runtime &runtime);
 
 } // namespace M::MOF::GraphBuilder
 
