@@ -54,7 +54,7 @@ MODULAR_API_EXPORT MlirOperation MAXG_graphNew(MlirModule m, MlirLocation loc,
                                                MlirType signature) {
   auto module = Module(unwrap(m));
   return wrap(module.newGraph(unwrap(loc), name,
-                              unwrap(signature).cast<FunctionType>()));
+                              cast<FunctionType>(unwrap(signature))));
 }
 
 //===----------------------------------------------------------------------===//
@@ -118,7 +118,7 @@ MODULAR_API_EXPORT MlirType MAXG_tensorTypeNew(MlirContext ctx, MlirType dtype,
                                                int32_t rank) {
   llvm::SmallVector<TypedAttr> dim_attrs;
   for (int i = 0; i < rank; ++i) {
-    dim_attrs.push_back(unwrap(dims[i]).cast<TypedAttr>());
+    dim_attrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
   }
   if (ranked) {
     return wrap(MO::TensorType::get(dim_attrs, unwrap(dtype)));
@@ -130,21 +130,21 @@ MODULAR_API_EXPORT MlirType MAXG_tensorTypeNew(MlirContext ctx, MlirType dtype,
 }
 
 MODULAR_API_EXPORT uint8_t MAXG_tensorTypeGetDType(MlirType t) {
-  auto tensorType = unwrap(t).cast<MO::TensorType>();
+  auto tensorType = cast<MO::TensorType>(unwrap(t));
   return tensorType.getDtype().getValue();
 }
 
 MODULAR_API_EXPORT bool MAXG_tensorTypeIsRanked(MlirType t) {
-  return unwrap(t).cast<MO::TensorType>().hasRank();
+  return cast<MO::TensorType>(unwrap(t)).hasRank();
 }
 
 MODULAR_API_EXPORT int64_t MAXG_tensorTypeGetRank(MlirType t) {
-  return unwrap(t).cast<MO::TensorType>().getRank();
+  return cast<MO::TensorType>(unwrap(t)).getRank();
 }
 
 MODULAR_API_EXPORT MlirAttribute MAXG_tensorTypeShapeGetDim(MlirType t,
                                                             int64_t dim) {
-  return wrap(unwrap(t).cast<MO::TensorType>().getDim(dim));
+  return wrap(cast<MO::TensorType>(unwrap(t)).getDim(dim));
 }
 
 MODULAR_API_EXPORT MlirAttribute MAXG_dimNewDynamic(MlirContext context) {
@@ -163,39 +163,39 @@ MODULAR_API_EXPORT MlirAttribute MAXG_dimNewSymbolic(MlirContext context,
 }
 
 MODULAR_API_EXPORT bool MAXG_dimIsDynamic(MlirAttribute a) {
-  auto attr = unwrap(a).cast<TypedAttr>();
-  return attr.isa<KGEN::UnknownAttr>();
+  auto attr = cast<TypedAttr>(unwrap(a));
+  return isa<KGEN::UnknownAttr>(attr);
 }
 
 MODULAR_API_EXPORT bool MAXG_dimIsSymbolic(MlirAttribute a) {
-  auto attr = unwrap(a).cast<TypedAttr>();
-  return attr.isa<KGEN::ParamDeclRefAttr>();
+  auto attr = cast<TypedAttr>(unwrap(a));
+  return isa<KGEN::ParamDeclRefAttr>(attr);
 }
 
 MODULAR_API_EXPORT bool MAXG_dimIsSymbolicExpression(MlirAttribute a) {
-  auto attr = unwrap(a).cast<TypedAttr>();
-  return attr.isa<KGEN::ParamOperatorAttr>();
+  auto attr = cast<TypedAttr>(unwrap(a));
+  return isa<KGEN::ParamOperatorAttr>(attr);
 }
 
 MODULAR_API_EXPORT bool MAXG_dimIsStatic(MlirAttribute a) {
-  auto attr = unwrap(a).cast<TypedAttr>();
-  return attr.isa<IntegerAttr>();
+  auto attr = cast<TypedAttr>(unwrap(a));
+  return isa<IntegerAttr>(attr);
 }
 
 MODULAR_API_EXPORT int64_t MAXG_dimStaticValue(MlirAttribute a) {
-  auto attr = unwrap(a).cast<TypedAttr>();
-  if (!attr.isa<IntegerAttr>()) {
+  auto attr = cast<TypedAttr>(unwrap(a));
+  if (!isa<IntegerAttr>(attr)) {
     return ShapedType::kDynamic;
   }
-  return attr.cast<IntegerAttr>().getInt();
+  return cast<IntegerAttr>(attr).getInt();
 }
 
 MODULAR_API_EXPORT MlirIdentifier MAXG_dimSymbolicName(MlirAttribute a) {
-  auto attr = unwrap(a).cast<TypedAttr>();
-  if (!attr.isa<KGEN::ParamDeclRefAttr>()) {
+  auto attr = cast<TypedAttr>(unwrap(a));
+  if (!isa<KGEN::ParamDeclRefAttr>(attr)) {
     return wrap(StringAttr::get(attr.getContext()));
   }
-  return wrap(attr.cast<KGEN::ParamDeclRefAttr>().getName());
+  return wrap(cast<KGEN::ParamDeclRefAttr>(attr).getName());
 }
 
 MODULAR_API_EXPORT MlirType MAXG_listTypeNew(MlirContext ctx, MlirType eltype) {
@@ -203,13 +203,13 @@ MODULAR_API_EXPORT MlirType MAXG_listTypeNew(MlirContext ctx, MlirType eltype) {
 }
 
 MODULAR_API_EXPORT MlirType MAXG_listTypeElementType(MlirType t) {
-  return wrap(unwrap(t).cast<M::MO::ListType>().getElementType());
+  return wrap(cast<M::MO::ListType>(unwrap(t)).getElementType());
 }
 
 MODULAR_API_EXPORT bool MAXG_typeIsList(MlirType t) {
-  return unwrap(t).isa<M::MO::ListType>();
+  return isa<M::MO::ListType>(unwrap(t));
 }
 
 MODULAR_API_EXPORT bool MAXG_typeIsTensor(MlirType t) {
-  return unwrap(t).isa<M::MO::TensorType>();
+  return isa<M::MO::TensorType>(unwrap(t));
 }
