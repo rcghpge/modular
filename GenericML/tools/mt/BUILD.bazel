@@ -1,3 +1,5 @@
+load("//utils/bazel/build/rules:opt_wrapper.bzl", "opt_wrapper")
+
 package(default_visibility = ["//visibility:public"])
 
 cc_binary(
@@ -7,4 +9,9 @@ cc_binary(
         "//GenericML:CommonDriver",
         "//Support:Init",
     ],
+)
+
+opt_wrapper(
+    name = "mt.opt",
+    dep = ":mt",
 )
