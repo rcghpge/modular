@@ -76,6 +76,37 @@ add_mojo_package(max-mojo PRIVATE
   mojo-extensibility
 )
 
+# FIXME: The documentation for extensibility is currently defined in
+# mojo-extensibility, make sure to copy this over after building the normal max
+# docs. This is a temporary measure until we properly figure out the
+# documentation generation and package layering.
+if(UNIX)
+  add_dependencies(max-mojo-doc mojo-extensibility-doc)
+  get_target_property(MAX_DOCS_DIR max-mojo-doc OUTPUT_DIR)
+  get_target_property(EXTENSIBILITY_DOCS_DIR mojo-extensibility-doc OUTPUT_DIR)
+
+  # Handle the differences in sed behavior between mac and linux.
+  if (APPLE)
+    add_custom_command(TARGET max-mojo-doc
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E remove_directory ${MAX_DOCS_DIR}/extensibility
+      COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${EXTENSIBILITY_DOCS_DIR}/tensor ${MAX_DOCS_DIR}/extensibility
+      COMMAND sed -i '' 's|title: tensor|title: extensibility|g' ${MAX_DOCS_DIR}/extensibility/index.md
+      COMMAND sed -i '' 's|type: module|type: package|g' ${MAX_DOCS_DIR}/extensibility/index.md
+    )
+  else ()
+    add_custom_command(TARGET max-mojo-doc
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E remove_directory ${MAX_DOCS_DIR}/extensibility
+      COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${EXTENSIBILITY_DOCS_DIR}/tensor ${MAX_DOCS_DIR}/extensibility
+      COMMAND sed -i 's|title: tensor|title: extensibility|g' ${MAX_DOCS_DIR}/extensibility/index.md
+      COMMAND sed -i 's|type: module|type: package|g' ${MAX_DOCS_DIR}/extensibility/index.md
+    )
+  endif()
+endif()
+
 # Dependencies aren't automatically included in releases!
 # They need to be manually added to utils/build/engine_packaging/c/CMakeLists.txt
 # See the install-max-graph-c target.
