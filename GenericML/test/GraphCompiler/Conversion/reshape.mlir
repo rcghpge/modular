@@ -53,7 +53,7 @@ mo.graph @reshape_dyn_input_dyn_output(%arg: !mo.tensor<[?], f32>, %shape : !mo.
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[INPUT:.*]]: !mgp.tensor<?xf32>, %[[SHAPE:.*]]: !mgp.tensor<2xsi64>)
 
 // Assert shape constraint
-// CHECK: %[[ASSERT_CHAIN:.*]] = "mgp.generic.execute"({{.*}}) {aRuntimeSlot = 1 : ui64, bModuleIndex = 0 : ui64, cFunctionIndex = 0 : ui64} : (!mgp.context, i1) -> !mgp.chain
+// CHECK: %[[ASSERT_CHAIN:.*]] = "mgp.generic.execute"({{.*}}) {aRuntimeSlot = 1 : ui64, bModuleIndex = 0 : ui64, cFunctionIndex = 0 : ui64, dSummary = {{.*}}} : (!mgp.context, i1) -> !mgp.chain
 
 // Extract the input tensor buffer
 // CHECK: %[[IN_BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[INPUT]] : !mgp.tensor<?xf32>

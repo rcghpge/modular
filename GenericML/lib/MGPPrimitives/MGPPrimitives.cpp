@@ -290,13 +290,15 @@ static ErrorOr<Chain> mgp_assert(bool cond, MEFAttr<StringRef> message) {
 // mgp.generic.execute
 //===----------------------------------------------------------------------===//
 
-static void mgp_generic_execute(GML::Context &ctx, RemainingArguments operands,
-                                Result<Chain> outChain,
-                                RemainingResults outResults,
-                                MEFAttr<uint64_t> aSlot,
-                                MEFAttr<uint64_t> bModuleIndex,
-                                MEFAttr<uint64_t> cFunctionIndex,
-                                Runtime &runtime, EncodedLocation loc) {
+/// Profiler entry for launched CPU kernels.
+using MGPProfilerEntry =
+    ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
+
+static void mgp_generic_execute(
+    GML::Context &ctx, RemainingArguments operands, Result<Chain> outChain,
+    RemainingResults outResults, MEFAttr<uint64_t> aSlot,
+    MEFAttr<uint64_t> bModuleIndex, MEFAttr<uint64_t> cFunctionIndex,
+    MEFAttr<StringRef> dSummary, Runtime &runtime, EncodedLocation loc) {
   M::MGP::CPURuntime &cpuRuntime =
       ctx.getStateSlotPayload<M::MGP::CPURuntime>(static_cast<size_t>(*aSlot));
   CompiledKernelAsyncABIFn *kernelPtr = cpuRuntime.getKernelAsyncABI(
@@ -309,11 +311,17 @@ static void mgp_generic_execute(GML::Context &ctx, RemainingArguments operands,
     kernelInputs.push_back(&input);
   for (AnyAsyncValueRef &result : outResults)
     kernelInputs.push_back(&result);
+
   KGEN::MojoCallContext callContext(outChain.copy(), outChain.copyLocation());
+
+  // Start profiling the kernel, and mark it as the 'current' event so that
+  // it can be picked up as the parent for Mojo trace entries which request it.
+  auto profilerEntry = MGPProfilerEntry::create(*dSummary);
+  profilerEntry.setAsCurrentId();
   kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
             reinterpret_cast<void *>(&runtime),
             reinterpret_cast<void *>(&callContext));
-
+  std::move(profilerEntry).record();
   if (outChain.copy().isError()) {
     // The kernel failed while trying to launch.
     std::move(outResults)
@@ -322,6 +330,11 @@ static void mgp_generic_execute(GML::Context &ctx, RemainingArguments operands,
     return;
   }
   std::move(outChain).emplace();
+
+  // Make sure our profiling entry (or any which the Mojo kernel may have
+  // designated as 'current') does not escape the scope of the Mojo kernel
+  // call, either synchronous or up to first await point for asynchronous.
+  MGPProfilerEntry::clearCurrentId();
 }
 
 //===----------------------------------------------------------------------===//
