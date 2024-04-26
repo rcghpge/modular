@@ -1,0 +1,5 @@
+setuptools>=69.1.0
+pillow==10.2.0
+py-cpuinfo==9.0.0
+torch>=2.1.2
+transformers>=4.0.0
