@@ -17,7 +17,6 @@
 #include "mlir/CAPI/IR.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Verifier.h"
-#include "llvm/ADT/bit.h"
 
 using namespace M;
 using namespace M::MOF::GraphBuilder;
@@ -29,23 +28,15 @@ struct LLCLRuntimeRef {
   void *ptr;
 };
 
-LLCL::Runtime &unwrap(LLCLRuntimeRef ref) {
+static LLCL::Runtime &unwrap(LLCLRuntimeRef ref) {
   return *reinterpret_cast<LLCL::Runtime *>(ref.ptr);
 }
-template <typename T>
-LLCLRuntimeRef wrap(T *ptr) {
-  return LLCLRuntimeRef{ptr};
-}
 
-MlirNamedAttribute wrap(mlir::NamedAttribute attr) {
+static MlirNamedAttribute wrap(mlir::NamedAttribute attr) {
   return MlirNamedAttribute{
       wrap(attr.getName()),
       wrap(attr.getValue()),
   };
-}
-
-mlir::NamedAttribute unwrap(MlirNamedAttribute attr) {
-  return {unwrap(attr.name), unwrap(attr.attribute)};
 }
 
 MODULAR_API_EXPORT void MAXG_loadModularDialects(MlirDialectRegistry registry) {
