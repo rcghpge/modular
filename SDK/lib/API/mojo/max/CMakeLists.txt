@@ -5,6 +5,7 @@
 ##===----------------------------------------------------------------------===##
 
 set(GRAPH_SRCS
+  graph/error
   graph/graph
   graph/symbol
   graph/type

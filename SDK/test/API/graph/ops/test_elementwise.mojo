@@ -89,17 +89,13 @@ fn test_bad_implicit_promotion() raises:
     var g = Graph(
         List[Type](TensorType(DType.int16, 3), TensorType(DType.float16, 3)),
     )
-    g.output(g[0] + g[1])
-    g.verify()
-
-    var x = Tensor[DType.int16](TensorShape(3), -2, -1, 0)
-    var y = Tensor[DType.float16](TensorShape(3), 1.0, 1.0, 0.0)
-    var expected = Tensor[DType.float32](TensorShape(3), -1.0, 0.0, 0.0)
-
-    var actual = _testing.execute_binary[
-        DType.int16, DType.float16, DType.float32
-    ](g, x, y)
-    _testing.assert_tensors_almost_equal(expected, actual, 1e-4)
+    with assert_raises(
+        contains=(
+            "Unsafe cast from si16 to f16. Insert an explicit cast op if this"
+            " conversion is wanted."
+        )
+    ):
+        _ = g[0] + g[1]
 
 
 fn test_bad_broadcast_dynamic_one() raises:
@@ -116,8 +112,9 @@ fn test_bad_broadcast_dynamic_one() raises:
     var y = Tensor[DType.float32](TensorShape(1), 1.0)
     var expected = Tensor[DType.float32](TensorShape(3), -1.0, 0.0, 1.0)
 
-    var actual = _testing.execute_binary(g, x, y)
-    _testing.assert_tensors_almost_equal(expected, actual, 1e-4)
+    # TODO: Update rmo.rebind_tensor_shape to enable a nice message here.
+    with assert_raises(contains="RMO rebind shape check failed"):
+        _ = _testing.execute_binary(g, x, y)
 
 
 fn test_matching_dynamic() raises:
@@ -182,15 +179,13 @@ fn test_unary_bad_dtype() raises:
             TensorType(DType.int32, 1, 2, 3), TensorType(DType.int32, 1)
         ),
     )
-    g.output(round(g[0]))
-    g.verify()
-
-    var x = Tensor[DType.int32](TensorShape(1, 2, 3), -2, -1, 0, 1, 2, 3)
-    var ignored = Tensor[DType.int32](TensorShape(1), -1)
-    var expected = Tensor[DType.int32](TensorShape(1, 2, 3), -2, -1, 0, 1, 2, 3)
-
-    var actual = _testing.execute_binary(g, x, ignored)
-    _testing.assert_tensors_equal(expected, actual)
+    with assert_raises(
+        contains=(
+            "mo.round only supports floating point inputs. Please explicitly"
+            " cast to your desired float type first."
+        )
+    ):
+        _ = round(g[0])
 
 
 def main():
@@ -201,23 +196,6 @@ def main():
     test_comparison_results_in_bool()
     test_unary()
     test_unary_float()
-
-    with assert_raises(
-        contains=(
-            "Unsafe cast from si16 to f16. Insert an explicit cast op if this"
-            " conversion is wanted."
-        )
-    ):
-        test_bad_implicit_promotion()
-
-    # TODO: Update rmo.rebind_tensor_shape to enable a nice message here.
-    with assert_raises(contains="RMO rebind shape check failed"):
-        test_bad_broadcast_dynamic_one()
-
-    with assert_raises(
-        contains=(
-            "mo.round only supports floating point inputs. Please explicitly"
-            " cast to your desired float type first."
-        )
-    ):
-        test_unary_bad_dtype()
+    test_bad_implicit_promotion()
+    test_bad_broadcast_dynamic_one()
+    test_unary_bad_dtype()
