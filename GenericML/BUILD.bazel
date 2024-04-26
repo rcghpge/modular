@@ -1,6 +1,6 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//utils/bazel/build/rules:tablegen.bzl", "gentbl_mlir_dialect")
+load("//utils/bazel/build/rules:tablegen.bzl", "gentbl_mlir_dialect", "gentbl_modular_passes")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -429,21 +429,9 @@ td_library(
     ],
 )
 
-gentbl_cc_library(
+gentbl_modular_passes(
     name = "MOTransformsIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name",
-                "MOTransforms",
-            ],
-            "include/GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    output_name = "MOTransforms",
     td_file = "include/GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.td",
     deps = [
         ":MOTransformsTdFiles",
@@ -482,21 +470,9 @@ td_library(
     ],
 )
 
-gentbl_cc_library(
+gentbl_modular_passes(
     name = "MONameInputDimsPassIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name",
-                "MONameInputDimsPass",
-            ],
-            "include/GenericML/GraphCompiler/Transforms/MODialect/Addons/MONameInputDimsPass.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    output_name = "MONameInputDimsPass",
     td_file = "include/GenericML/GraphCompiler/Transforms/MODialect/Addons/MONameInputDimsPass.td",
     deps = [
         ":MONameInputDimsPassTdFiles",
@@ -598,19 +574,8 @@ td_library(
     ],
 )
 
-gentbl_cc_library(
+gentbl_modular_passes(
     name = "RMOTransformsIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-            ],
-            "include/GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.td",
     deps = [
         ":RMOTransformsTdFiles",
@@ -676,19 +641,8 @@ gentbl_cc_library(
     ],
 )
 
-gentbl_cc_library(
+gentbl_modular_passes(
     name = "MOGGDialectPassesIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-            ],
-            "include/GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/GenericML/GraphCompiler/MOGGDialect/MOGGPasses.td",
     deps = [
         ":MOGGDialectTdFiles",
@@ -1002,22 +956,9 @@ td_library(
     ],
 )
 
-# TODO: translate the add_modular_doc from the "add_modular_passes" func
-gentbl_cc_library(
+gentbl_modular_passes(
     name = "MGPTransformsIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name",
-                "MGPTransforms",
-            ],
-            "include/GenericML/MGPTransforms/MGPTransforms.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    output_name = "MGPTransforms",
     td_file = "include/GenericML/MGPTransforms/MGPTransforms.td",
     deps = [
         ":MGPDialectTdFiles",
@@ -1105,17 +1046,8 @@ td_library(
     ],
 )
 
-gentbl_cc_library(
+gentbl_modular_passes(
     name = "TransformsIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            ["-gen-pass-decls"],
-            "include/GenericML/Transforms/BisectGraphPass.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/GenericML/Transforms/BisectGraphPass.td",
     deps = [
         ":TransformsTdFiles",
@@ -1311,21 +1243,9 @@ td_library(
     ],
 )
 
-gentbl_cc_library(
+gentbl_modular_passes(
     name = "CUDATransformsIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name",
-                "CUDATransforms",
-            ],
-            "include/GenericML/CUDATransforms/CUDATransforms.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    output_name = "CUDATransforms",
     td_file = "include/GenericML/CUDATransforms/CUDATransforms.td",
     deps = [
         ":CUDADialectTdFiles",
@@ -1388,21 +1308,9 @@ td_library(
     ],
 )
 
-gentbl_cc_library(
+gentbl_modular_passes(
     name = "MOToPrimitivesIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name",
-                "MOToPrimitives",
-            ],
-            "include/GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    output_name = "MOToPrimitives",
     td_file = "include/GenericML/GraphCompiler/Conversion/MOToPrimitives.td",
     deps = [
         ":MOToPrimitivesTdFiles",
@@ -1439,21 +1347,9 @@ td_library(
     ],
 )
 
-gentbl_cc_library(
+gentbl_modular_passes(
     name = "MOToMOGGIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name",
-                "MOToMOGG",
-            ],
-            "include/GenericML/GraphCompiler/Conversion/MOToMOGG.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    output_name = "MOToMOGG",
     td_file = "include/GenericML/GraphCompiler/Conversion/MOToMOGG.td",
     deps = [
         ":MOToMOGGTdFiles",
@@ -1522,21 +1418,9 @@ td_library(
     ],
 )
 
-gentbl_cc_library(
+gentbl_modular_passes(
     name = "MOQTransformsIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name",
-                "MOQTransforms",
-            ],
-            "include/GenericML/GraphCompiler/Transforms/MOQDialect/MOQTransforms.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    output_name = "MOQTransforms",
     td_file = "include/GenericML/GraphCompiler/Transforms/MOQDialect/MOQTransforms.td",
     deps = [
         ":MOQTransformsTdFiles",
