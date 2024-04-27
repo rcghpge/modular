@@ -71,6 +71,7 @@ add_mojo_package(max-mojo PRIVATE
   SDK/docs
 
   DEPENDS
+  mof
   mojo-buffer
   mojo-tensor
   mojo-extensibility
