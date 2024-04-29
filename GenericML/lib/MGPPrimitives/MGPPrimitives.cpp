@@ -322,7 +322,7 @@ static void mgp_generic_execute(
             reinterpret_cast<void *>(&runtime),
             reinterpret_cast<void *>(&callContext));
   std::move(profilerEntry).record();
-  if (outChain.copy().isError()) {
+  if (outChain.isError()) {
     // The kernel failed while trying to launch.
     std::move(outResults)
         .setAllToError(outChain.copy().getDiagnostic().getMessage().copy(),

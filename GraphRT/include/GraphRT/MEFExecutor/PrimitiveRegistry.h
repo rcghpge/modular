@@ -230,6 +230,8 @@ public:
 
   RunnablePrimitiveDescriptor &getFrame() const { return frame; }
 
+  bool isError() const { return result.isError(); }
+
 protected:
   AnyAsyncValueRef &result;
 
@@ -255,6 +257,8 @@ public:
   AsyncValueRef<T> copy() const {
     return AsyncValueRef<T>(AnySingleResult::copy());
   }
+
+  bool isError() const { return AnySingleResult::isError(); }
 
   /// Return an owning reference to the AsyncValueRef for this result, along
   /// with an EncodedLocation that allows for elegant async error reporting.
