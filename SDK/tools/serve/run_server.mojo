@@ -7,7 +7,6 @@
 import sys
 
 from max.engine import InferenceSession
-from max.serve._mutt import Batch
 from max.serve.service import (
     FileModel,
     InferenceRequest,

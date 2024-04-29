@@ -52,9 +52,11 @@ set(EXTENSIBILITY_SRCS
 
 if (MODULAR_BUILD_SERVE_RT)
   set(SERVE_SRCS
-    serve/_mutt
+    serve/_kserve_impl
+    serve/_serve_rt
     serve/kserve
     serve/service
+    serve/stats
   )
 else ()
   set(SERVE_SRCS "")
