@@ -54,6 +54,8 @@ if (MODULAR_BUILD_SERVE_RT)
   set(SERVE_SRCS
     serve/_kserve_impl
     serve/_serve_rt
+    serve/config
+    serve/debug
     serve/kserve
     serve/service
     serve/stats
