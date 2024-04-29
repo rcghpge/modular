@@ -233,7 +233,7 @@ struct AddFallbackShapeFunctions
         }
 
         // Skip inplace kernels.
-        if (mojoKernel->hasAttr("_alloc"))
+        if (mojoKernel->hasAttr(KGEN::MOGGPreElab::ALLOCS_ATTR))
           return mlir::WalkResult::skip();
 
         auto result = Fallback<MO::CustomOp>{}.build(
@@ -477,8 +477,7 @@ Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
 
   // If we are dealing with a tensor API kernel then the kernel will have the
   // shape function attached.
-  if (auto attr =
-          dyn_cast_or_null<mlir::UnitAttr>(mojoKernel->getAttr("_sliced"))) {
+  if (mojoKernel->hasAttr(KGEN::MOGGPreElab::SLICED_ATTR)) {
     auto shapeFuncAttr =
         dyn_cast_or_null<StringAttr>(mojoKernel->getAttr("_has_shape_func"));
     if (!shapeFuncAttr)

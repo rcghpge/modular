@@ -110,23 +110,23 @@ public:
 
   /// Returns true if the kernel is an elementwise kernel.
   inline bool kernelIsElementwise(KGEN::GeneratorOp kernel) {
-    return kernel->hasAttr(KGEN::MOGGPreElab::DECORATOR_ELEMENTWISE) ||
-           kernel->hasAttr(KGEN::MOGGPreElab::DECORATOR_ELEMENTWISE_PUBLIC);
+    return kernel->hasAttr(KGEN::MOGGPreElab::Decorators::ELEMENTWISE.attr);
   }
 
   /// Returns true if the kernel is expecting to take indices as last arg.
   inline bool kernelIsViewOp(KGEN::GeneratorOp kernel) {
-    return kernel->hasAttr(KGEN::MOGGPreElab::DECORATOR_VIEW);
+    return kernel->hasAttr(KGEN::MOGGPreElab::IS_VIEW_ATTR);
   }
 
   /// Returns true if the kernel is a view operation.
   inline bool kernelTakesIndices(KGEN::GeneratorOp kernel) {
-    return kernel->hasAttr(KGEN::MOGGPreElab::DECORATOR_TAKES_INDICES);
+    return kernel->hasAttr(KGEN::MOGGPreElab::Decorators::TAKES_INDICES.attr);
   }
 
   /// Returns true if the kernel implementation is in the Tensor API.
   inline bool kernelUsesTensorAPI(KGEN::GeneratorOp kernel) {
-    return kernel->hasAttr("_alloc") || kernel->hasAttr("_sliced");
+    return kernel->hasAttr(KGEN::MOGGPreElab::ALLOCS_ATTR) ||
+           kernel->hasAttr(KGEN::MOGGPreElab::SLICED_ATTR);
   }
 
 private:
