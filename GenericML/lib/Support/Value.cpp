@@ -191,6 +191,8 @@ std::string M::GML::valueToString(const LLCL::AnyAsyncValueRef &value) {
     ss << *boolValue;
   else if (GML::Tensor *tensor = dyn_cast<GML::Tensor>(value))
     ss << tensor->getBuffer();
+  else if (int32_t *intValue = dyn_cast<int32_t>(value))
+    ss << *intValue;
   else
     return "<unknown>";
   return ss.str();

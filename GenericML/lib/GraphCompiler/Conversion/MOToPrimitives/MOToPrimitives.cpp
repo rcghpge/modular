@@ -120,6 +120,9 @@ public:
   /// Lowers mo.constant op.
   LogicalResult lowerConstant(MO::ConstantOp constOp);
 
+  /// Lowers mo.constant.scalar op.
+  LogicalResult lowerConstantScalar(MO::ConstantScalarOp constOp);
+
   /// Lowers mo.reshape op.
   LogicalResult lowerReshape(MO::ReshapeOp reshapeOp);
 
@@ -653,6 +656,34 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
 }
 
 LogicalResult
+MOGraphLowering::lowerConstantScalar(MO::ConstantScalarOp constOp) {
+  MGP::MOOpLoweringState opLoweringState(loweringState, constOp);
+
+  // currently only si32 and i1 constants are supported
+  if (auto boolAttr = dyn_cast<mlir::BoolAttr>(constOp.getValue())) {
+    IntegerAttr intAttr = boolAttr;
+    auto grtConstOp =
+        opLoweringState.create<GRT::ConstantI1Op>(intAttr.getType(), intAttr);
+    loweringState.emplaceExecuteLoweredValue(constOp, grtConstOp);
+
+  } else if (auto intAttr = dyn_cast<mlir::IntegerAttr>(constOp.getValue())) {
+    if (intAttr.getType().isSignedInteger(32)) {
+      auto grtConstOp = opLoweringState.create<GRT::ConstantSI32Op>(
+          intAttr.getType(), intAttr);
+      loweringState.emplaceExecuteLoweredValue(constOp, grtConstOp);
+    } else {
+      return constOp->emitOpError(
+          "Only si32 and i1 constant scalar are currently lowerable");
+    }
+  } else {
+    return constOp->emitOpError(
+        "Only si32 and i1 constant scalar are currently lowerable");
+  }
+
+  return success();
+}
+
+LogicalResult
 MOGraphLowering::lowerStaticReshape(MO::Static::ReshapeOp reshapeOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp);
 
@@ -1101,6 +1132,12 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
     if (auto constOp = dyn_cast<MO::ConstantOp>(op)) {
       if (failed(lowerConstant(constOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto constOp = dyn_cast<MO::ConstantScalarOp>(op)) {
+      if (failed(lowerConstantScalar(constOp)))
         return failure();
       continue;
     }

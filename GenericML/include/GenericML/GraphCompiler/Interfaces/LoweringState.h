@@ -68,6 +68,16 @@ public:
       auto mgpTensorTy = typeBuilder->tensorType(ctx, tensorSpecTy);
       return cast<Type>(MGP::ListType::get(ctx, mgpTensorTy));
     });
+    typeConverter.addConversion([](MO::ScalarType type) -> std::optional<Type> {
+      auto errOrDtype = MO::toMLIRType(type.getContext(), type.getDtype());
+
+      if (errOrDtype.isError()) {
+        return std::nullopt;
+      }
+
+      return *errOrDtype;
+    });
+
     // Add converters for foreign types via the ConvertibleToMGPTypeInterface.
     typeConverter.addConversion([](Type type) -> std::optional<Type> {
       if (auto interface = dyn_cast<ConvertibleToMGPTypeInterface>(type))
