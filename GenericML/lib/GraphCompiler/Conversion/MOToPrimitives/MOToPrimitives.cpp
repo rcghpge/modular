@@ -902,12 +902,20 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   // 'then' and 'else' blocks.
   Value currentChain = loweringState.getCurrentExecuteChain();
 
-  // Lower the condition.
-  MGP::BufferizedTensor bufferizedCond =
-      opLoweringState.getBufferizedInput(ifOp.getCond());
-  Value condBool = opLoweringState.bufferToBool(loweringState.getExecuteChain(),
-                                                bufferizedCond.buffer,
-                                                ifOp.getCond().getType());
+  Value cond = ifOp.getCond();
+
+  bool isScalarCond = isa<MO::ScalarType>(cond.getType());
+
+  Value condBool;
+  if (isScalarCond) {
+    condBool = loweringState.lookupExecuteLoweredValue(cond);
+  } else {
+    // Lower the condition.
+    MGP::BufferizedTensor bufferizedCond =
+        opLoweringState.getBufferizedInput(cond);
+    condBool = opLoweringState.bufferToBool(
+        loweringState.getExecuteChain(), bufferizedCond.buffer, cond.getType());
+  }
 
   SmallVector<Value> operands;
   operands.push_back(condBool);

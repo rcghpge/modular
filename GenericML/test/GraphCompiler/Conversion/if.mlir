@@ -24,3 +24,18 @@ mo.graph @if_op() -> (!mo.tensor<[2], f32>) {
   }
   mo.output %0 : !mo.tensor<[2], f32>
 }
+
+// CHECK: mgp.model @if_op_scalar_cond
+// CHECK: [[BOOL:%.*]] = grt.constant.i1
+// CHECK: grt.if [[BOOL]]
+mo.graph @if_op_scalar_cond() -> (!mo.tensor<[2], f32>) {
+  %cond = mo.constant.scalar {value = 1 : i1} : !mo.scalar<bool>
+  %val1 = mo.constant {value = #M.dense_array<1.0, 2.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
+  %val2 = mo.constant {value = #M.dense_array<3.0, 4.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
+  %0 = mo.if(%cond : !mo.scalar<bool>) -> !mo.tensor<[2], f32> {
+    mo.yield %val1 : !mo.tensor<[2], f32>
+  } else {
+    mo.yield %val2 : !mo.tensor<[2], f32>
+  }
+  mo.output %0 : !mo.tensor<[2], f32>
+}
