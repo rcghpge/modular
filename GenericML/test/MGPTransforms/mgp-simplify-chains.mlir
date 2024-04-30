@@ -151,3 +151,28 @@ mgp.model @chain_singletons : mof init {
   // CHECK-NEXT: mef.output %[[CH2]] : !mef.chain
   mef.output %ch3 : !mef.chain
 }
+
+// CHECK-LABEL: mgp.model @grt_chain_create_rewrite
+mgp.model @grt_chain_create_rewrite : mof init {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 0
+  mef.output %0, %1 : !mef.chain, !mgp.context
+// CHECK: execute (%[[ARG0:.*]]: !mef.chain, %[[ARG1:.*]]: !mgp.context
+} execute (%arg0: !mef.chain, %arg1: !mgp.context) -> !mef.chain {
+  // CHECK-NEXT: %[[CH1:.*]] = "some.op"() : () -> !mgp.chain
+  // CHECK-NEXT: %[[CH2:.*]] = "some.op"() : () -> !mgp.chain
+  // CHECK-NEXT: %[[CH3:.*]] = "some.op"() : () -> !mgp.chain
+  %ch1 = "some.op"() : () -> !mgp.chain
+  %ch2 = "some.op"() : () -> !mgp.chain
+  %ch3 = "some.op"() : () -> !mgp.chain
+
+  %host1 = mgp.chain.device_to_host %ch1, %arg1[1]
+  %host2 = mgp.chain.device_to_host %ch2, %arg1[1]
+  %host3 = mgp.chain.device_to_host %ch3, %arg1[1]
+
+  %out = grt.chain.create (%host1, %host2, %host3)
+  // CHECK-NEXT: %[[MERGED:.*]] = mgp.chain.create %[[ARG1]][1], (%[[CH1]], %[[CH2]], %[[CH3]])
+  // CHECK-NEXT: %[[OUT:.*]] = mgp.chain.device_to_host %[[MERGED]], %[[ARG1]][1]
+  // mef.output %[[OUT]]: !mef.chain
+  mef.output %out : !mef.chain
+}

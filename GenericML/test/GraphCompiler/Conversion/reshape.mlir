@@ -41,7 +41,6 @@ mo.graph @reshape_static_input_static_output(%arg: !mo.tensor<[4], f32>) -> !mo.
 // CHECK: %[[OUT_TENSOR:.*]] =  mgp.tensor.create %{{.*}}, %[[CTX]][1], %[[IN_BUF]], %[[OUT_SPEC]] : !mgp.tensor<?x?xf32>
 
 // Return output
-// CHECK: {{.*}} = mgp.chain.device_to_host %[[FALLBACK_CHAIN]], %arg1[1
 // CHECK: mef.output {{.*}}, %[[OUT_TENSOR]] : !mef.chain, !mgp.tensor<?x?xf32>
 mo.graph @reshape_dyn_input_dyn_output(%arg: !mo.tensor<[?], f32>, %shape : !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32> {
   %res = mo.reshape(%arg, %shape) : (!mo.tensor<[?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
@@ -64,7 +63,7 @@ mo.graph @reshape_dyn_input_dyn_output(%arg: !mo.tensor<[?], f32>, %shape : !mo.
 // CHECK: %[[OUT_TENSOR:.*]] =  mgp.tensor.create %[[CH1]], %[[CTX]][1], %[[SIZED_BUF]], %[[OUT_SPEC]] : !mgp.tensor<4x2xf32>
 
 // Merge chains
-// CHECK: %[[OUT_CHAIN:.*]] = grt.chain.create ({{.*}})
+// CHECK: %[[OUT_CHAIN:.*]] = mgp.chain.create {{.*}}
 
 // Return output
 // CHECK: mef.output {{.*}}, %[[OUT_TENSOR]] : !mef.chain, !mgp.tensor<4x2xf32>
@@ -94,7 +93,6 @@ mo.graph @reshape_dyn_input_static_output(%arg: !mo.tensor<[?], f32>, %shape : !
 // CHECK: %[[OUT_TENSOR:.*]] =  mgp.tensor.create %{{.*}}, %[[CTX]][1], %[[UNSIZED_BUF]], %[[OUT_SPEC]] : !mgp.tensor<?x?xf32>
 
 // Return output
-// CHECK: {{.*}} = mgp.chain.device_to_host %[[FALLBACK_CHAIN]], %arg1[1]
 // CHECK: mef.output {{.*}}, %[[OUT_TENSOR]] : !mef.chain, !mgp.tensor<?x?xf32>
 mo.graph @reshape_static_input_dyn_output(%arg: !mo.tensor<[8], f32>, %shape : !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32> {
   %res = mo.reshape(%arg, %shape) : (!mo.tensor<[8], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>

@@ -100,6 +100,8 @@ class SimplifyChainsPass
 
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
+    MLIRContext *ctx = modelOp.getContext();
+
     // Construct the dependencies from the model. The transforms we
     // do below will preserve these dependencies since we never introduce
     // new bound values or add new dependencies.
@@ -166,6 +168,55 @@ class SimplifyChainsPass
         chainDeviceToHostOp.replaceAllUsesWith(inChain);
         chainDeviceToHostOp->erase();
       }
+    });
+
+    // If there are any grt.chain.create ops that take in more than 2 CPU mgp
+    // chains via device_to_host, we can simplify to mgp.chain.create followed
+    // by a single device_to_host
+
+    modelOp.walk([&](GRT::ChainCreateOp grtChainCreateOp) {
+      SmallVector<MGP::ChainDeviceToHostOp> deviceToHostInputs;
+      SmallVector<Value> otherInputs;
+      for (Value inChain : grtChainCreateOp.getInputChains()) {
+        if (auto mgpDeviceToHostOp =
+                inChain.getDefiningOp<MGP::ChainDeviceToHostOp>())
+          deviceToHostInputs.push_back(mgpDeviceToHostOp);
+        else
+          otherInputs.push_back(inChain);
+      }
+
+      if (deviceToHostInputs.size() < 2)
+        return;
+
+      Location loc = grtChainCreateOp->getLoc();
+      auto context = deviceToHostInputs[0].getTheContext();
+      auto runtimeSlot = deviceToHostInputs[0].getARuntimeSlot();
+
+      bool const allCPU =
+          llvm::all_of(deviceToHostInputs, [](MGP::ChainDeviceToHostOp op) {
+            return op.getBDevice().getLabel() == "cpu";
+          });
+
+      if (!allCPU)
+        return;
+
+      SmallVector<Value> inChains;
+
+      for (auto deviceToHostOp : deviceToHostInputs)
+        inChains.push_back(deviceToHostOp.getInChain());
+      for (auto otherInChain : otherInputs)
+        inChains.push_back(otherInChain);
+
+      OpBuilder builder(grtChainCreateOp);
+      IRRewriter rewriter(builder);
+
+      auto mgpChainCreate = rewriter.create<MGP::ChainCreateOp>(
+          loc, context, inChains, runtimeSlot, DeviceRefAttr::getDefault(ctx),
+          DeviceRefAttr::getDefault(ctx));
+
+      rewriter.replaceOpWithNewOp<MGP::ChainDeviceToHostOp>(
+          grtChainCreateOp, mgpChainCreate, context, runtimeSlot,
+          DeviceRefAttr::getDefault(ctx));
     });
 
     LLVM_DEBUG(llvm::dbgs() << "SimplifyChainsPass: done\n");
