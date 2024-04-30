@@ -1064,3 +1064,46 @@ mo.graph @consecutive_rebind_during_staticization(%arg1: !mo.tensor<[?, ?], si32
   // CHECK-NEXT: mo.output{{.*}} %[[RES]]
   mo.output %22 : !mo.tensor<[?, ?], si32>
 }
+
+// This is a regression test taken from mistral-7b-hf-lptg-onnx, where
+// - D0 := seq_len
+// - D1 := seq_len + past_seq_len
+// - D2 := batch_size
+//
+// Make sure everything folds to a single static broadcast.
+// CHECK-LABEL: mo.graph @staticize_broadcast_on_constants
+// CHECK-SAME:    <[[D0:.*]], [[D1:.*]], [[D2:.*]]>(
+// CHECK-SAME:    %[[LHS:.*]]: !mo.tensor<[1, 1, [[D0]], [[D1]]], f32>,
+// CHECK-SAME:    %[[RHS:.*]]: !mo.tensor<[[[D2]], 1, [[D0]], [[D1]]], f32>
+//
+// CHECK-NEXT:    %[[RES:.*]] = mo.static.broadcast_to(%[[LHS]]) : {{.*}} -> !mo.tensor<[[[D2]], 1, [[D0]], [[D1]]], f32>
+// CHECK-NEXT:    mo.output %[[RES]]
+mo.graph @staticize_broadcast_on_constants<D0, D1, D2 -> D3, D4, D5, D6>(
+  %lhs: !mo.tensor<[1, 1, D0, D1], f32>,
+  %rhs: !mo.tensor<[D2, 1, D0, D1], f32>
+) -> !mo.tensor<[D3, D4, D5, D6], f32> {
+  // Constants.
+  %one = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %neg_one = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+
+  // This is where things got blocked -- we turned off constant folding for
+  // broadcast in #36054, so these broadcasts won't be folded into constants,
+  // and we failed to staticize them, which blocked shape inference all the way
+  // to the broadcast op at the end.
+  %ones = mo.static.broadcast_to(%one) : !mo.tensor<[], si64> -> !mo.tensor<[4], si64>
+  %neg_ones = mo.static.broadcast_to(%neg_one) : !mo.tensor<[], si64> -> !mo.tensor<[4], si64>
+
+  // Input shapes.
+  %lhs_shape = mo.shape_of(%lhs) : (!mo.tensor<[1, 1, D0, D1], f32>) -> !mo.tensor<[4], si64>
+  %rhs_shape = mo.shape_of(%rhs) : (!mo.tensor<[D2, 1, D0, D1], f32>) -> !mo.tensor<[4], si64>
+
+  // Not sure why but this seemingly redundant check shows up in the model.
+  %bools = mo.equal(%rhs_shape, %neg_ones) : (!mo.tensor<[4], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[4], bool>
+  %ones_or_rhs_shape = mo.select(%bools, %ones, %rhs_shape) : (!mo.tensor<[4], bool>, !mo.tensor<[4], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[4], si64>
+
+  // Do the broadcast.
+  %bcast_shape = mo.broadcast_shape(%lhs_shape, %ones_or_rhs_shape) : (!mo.tensor<[4], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[4], si64>
+  %res = mo.broadcast_to<() -> D7, D8, D9, D10>(%lhs, %bcast_shape) : (!mo.tensor<[1, 1, D0, D1], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[D7, D8, D9, D10], f32>
+
+  mo.output<D7, D8, D9, D10> %res : !mo.tensor<[D7, D8, D9, D10], f32>
+}
