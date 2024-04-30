@@ -1,25 +1,34 @@
 # ===----------------------------------------------------------------------=== #
+# Copyright (c) 2024, Modular Inc. All rights reserved.
 #
-# This file is Modular Inc proprietary.
+# Licensed under the Apache License v2.0 with LLVM Exceptions:
+# https://llvm.org/LICENSE.txt
 #
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+# ===----------------------------------------------------------------------=== #
+# Copyright (c) 2024, Modular Inc. All rights reserved.
+# ===----------------------------------------------------------------------=== #
+
+
+from max.extensibility import Tensor, empty_tensor
+from max import register
 
 from algorithm.functional import vectorize, sync_parallelize
 from buffer.list import Dim, DimList
 from math import min, div_ceil
-from register import mogg_register_override
 from runtime.llcl import Runtime
-from MOGGExperimental import empty_tensor
-from MOGGIntList import IntList
-from MOGGTensor import Tensor
 
 
-@mogg_register_override("ggml_rope", 1)
-@export
-fn ggml_rope(
-    input: Tensor, freqs: Tensor
-) -> Tensor[input.type, input.static_shape]:
+@register.op("ggml_rope")
+fn ggml_rope[
+    inType: DType, freqType: DType
+](input: Tensor[inType, 4], freqs: Tensor[freqType, 2]) -> Tensor[inType, 4]:
     """
     Implements the RoPE Kernel:
     https://github.com/meta-llama/llama/blob/b8348da38fde8644ef00a56596efb376f86838d1/llama/model.py#L132
@@ -29,7 +38,7 @@ fn ggml_rope(
 
     Args:
         input: Input tensor of shape (batch, seq_len, n_heads, head_dim).
-        freqs: Freqs tensor of shape (seq_len, head_dim // 2, 2).
+        freqs: Freqs tensor of shape (seq_len, head_dim).
 
 
     This is a bit like a broadcasted 4D complex mul operation:
@@ -41,17 +50,11 @@ fn ggml_rope(
 
     var output = empty_tensor[input.type](input.shape)
 
-    input.enable_fusion()
-    freqs.enable_fusion()
-    output.enable_fusion()
-
     var n_batch = input.shape[0]
     var n_tok = input.shape[1]
     var n_heads = input.shape[2]
     var n_head_dim = input.shape[3]
-    alias static_n_head_dim = Dim() if input.static_rank is None else input.static_shape.at[
-        3
-    ]()
+    var static_n_head_dim = input.shape[3]
 
     # Parallelize on outer dimensions.
     var outer_len = n_batch * n_tok * n_heads
@@ -76,17 +79,15 @@ fn ggml_rope(
             @parameter
             @always_inline
             fn func[width: Int](i3: Int):
-                var idx = IntList[DimList.create_unknown[4]()](
-                    i0, i1, i2, i3 * 2
-                )
-                var f_idx = IntList[DimList.create_unknown[2]()](i1, i3 * 2)
+                var idx = StaticIntTuple[4](i0, i1, i2, i3 * 2)
+                var f_idx = StaticIntTuple[2](i1, i3 * 2)
 
                 var x_c = input.simd_load[width * 2](idx).deinterleave()
                 var x_re = x_c[0]
                 var x_im = x_c[1]
 
                 var f_c = freqs.simd_load[width * 2](f_idx).cast[
-                    input.type
+                    inType
                 ]().deinterleave()
                 var f_re = f_c[0]
                 var f_im = f_c[1]
@@ -101,15 +102,9 @@ fn ggml_rope(
             #  (the outputs needs to be computed 2 at a time).
             alias simd_width = simdwidthof[input.type]()
 
-            @parameter
-            if static_n_head_dim.has_value():
-                vectorize[
-                    func, simd_width, size = static_n_head_dim.get() // 2
-                ]()
-            else:
-                vectorize[func, simd_width](n_head_dim // 2)
+            vectorize[func, simd_width](n_head_dim // 2)
 
     # Manually parallelize / vectorize the loop since output.for_each
     # isn't adapted to complex numbers.
     sync_parallelize[task_func](num_workers)
-    return output
+    return output^
