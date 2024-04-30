@@ -470,35 +470,14 @@ ErrorOrSuccess
 Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
                               MO::CustomOp op, KGEN::GeneratorOp mojoKernel,
                               MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
-  StringRef shapeFunctionName;
-
   // Mark all inputs by default.
   SmallVector<Value> operands{op.getOperands().begin(), op.getOperands().end()};
 
-  // If we are dealing with a tensor API kernel then the kernel will have the
-  // shape function attached.
-  if (mojoKernel->hasAttr(KGEN::MOGGPreElab::SLICED_ATTR)) {
-    auto shapeFuncAttr =
-        dyn_cast_or_null<StringAttr>(mojoKernel->getAttr("_has_shape_func"));
-    if (!shapeFuncAttr)
-      return Error("Couldn't find shape function for mojo kernel");
-
-    shapeFunctionName = shapeFuncAttr;
-    auto shapeKernel = mojoLibraryAnalysis.getMojoFunctionNamed(shapeFuncAttr);
-    auto usedInputAttrs = cast<ArrayAttr>(shapeKernel->getAttr("_used_inputs"));
-
-    // Only pass the arguments which are actually used.
-    operands.clear();
-    for (APInt i : usedInputAttrs.getAsValueRange<IntegerAttr>())
-      operands.push_back(op.getOperands()[i.getLimitedValue()]);
-
-  } else {
-    auto shapeFunction =
-        mojoLibraryAnalysis.getRegisteredMojoShapeFunctionFor(op.getSymbol());
-    if (!shapeFunction)
-      return Error("Couldn't find shape function for mojo kernel");
-    shapeFunctionName = shapeFunction.getName();
-  }
+  auto shapeFunction =
+      mojoLibraryAnalysis.getRegisteredMojoShapeFunctionFor(op.getSymbol());
+  if (!shapeFunction)
+    return Error("Couldn't find shape function for mojo kernel");
+  StringRef shapeFunctionName = shapeFunction.getName();
 
   SmallVector<int32_t> dataDepInputIdxs(operands.size());
   std::iota(dataDepInputIdxs.begin(), dataDepInputIdxs.end(), 0);
