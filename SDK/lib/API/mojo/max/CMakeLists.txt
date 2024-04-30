@@ -11,6 +11,7 @@ set(GRAPH_SRCS
   graph/type
 
   graph/ops/casting
+  graph/ops/convolution
   graph/ops/complex
   graph/ops/elementwise
   graph/ops/linalg
