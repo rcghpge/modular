@@ -490,8 +490,8 @@ static void test_many_tasks(Result<int32_t> result, MEFAttr<int32_t> num,
               if (a < numVal || b < numVal || c < numVal) {
                 // Note: this should never print.  If it does, it means that
                 // the closure was corrupted.
-                printf("%p, %p, %p %d %d %d %d\n", r, s, t, (int)a, (int)b,
-                       (int)c, (int)numVal);
+                printf("%p, %p, %p %d %d %d %d\n", (void *)r, (void *)s,
+                       (void *)t, (int)a, (int)b, (int)c, (int)numVal);
               }
 
               if (--counter == 0)
