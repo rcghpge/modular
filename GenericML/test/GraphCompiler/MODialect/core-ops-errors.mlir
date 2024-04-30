@@ -37,7 +37,7 @@ mo.graph @if_op_missing_yield(%arg0: !mo.tensor<[2, ?, 1], f32>, %arg1: !mo.tens
 // -----
 
 mo.graph @if_op_cond_mismatch(%arg0: !mo.tensor<[2, ?, 1], f32>, %arg1: !mo.tensor<[2, ?, 1], f32>, %cond : !mo.tensor<[5], bool>) -> (!mo.tensor<[2, ?, 1], f32>) {
-  // expected-error@+1 {{'mo.if' op operand #0 must be rank 0 and boolean element type, but got '!mo.tensor<[5], bool>'}}
+  // expected-error@+1 {{'mo.if' op operand #0 must be rank 0 and boolean element type or boolean scalar, but got '!mo.tensor<[5], bool>'}}
   %0 = mo.if(%cond : !mo.tensor<[5], bool>) -> !mo.tensor<[2, ?, 1], f32> {
     mo.yield %arg0 : !mo.tensor<[2, ?, 1], f32>
   } else {

@@ -285,7 +285,7 @@ def IfOp : MO_ControlOp<"if",
     ```
   }];
 
-  let arguments = (ins MO_CondLike:$cond);
+  let arguments = (ins AnyTypeOf<[MO_CondLike, MO_BoolScalar]>:$cond);
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$thenRegion,
                         SizedRegion<1>:$elseRegion);

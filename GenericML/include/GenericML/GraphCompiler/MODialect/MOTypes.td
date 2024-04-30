@@ -318,6 +318,14 @@ def HasRank2LastDim2IfRankedPred : And<[
 class MO_ConfinedTensor<list<Pred> predicates, string summary = ""> :
   ConfinedType<MO_Tensor, predicates, summary, "::M::MO::TensorType">;
 
+class MO_ConfinedScalar<list<Pred> predicates, string summary = ""> :
+  ConfinedType<MO_Scalar, predicates, summary, "::M::MO::ScalarType">;
+
+def BoolScalarPred : CPred<
+  "cast<::M::MO::ScalarType>($_self).getDtype().isBool()">;
+
+def MO_BoolScalar : MO_ConfinedScalar<[BoolScalarPred], "boolean scalar">;
+
 /// Confines the MO_TensorType so that it's ranked and a scalar.
 def MO_RankedScalarTensor : MO_ConfinedTensor<
   [MO_HasAnyRankOfPred<[0]>], "ranked scalar tensor">;
