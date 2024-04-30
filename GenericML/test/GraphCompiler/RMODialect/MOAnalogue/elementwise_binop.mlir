@@ -67,7 +67,7 @@ mo.graph @sub_ok(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.te
 // -----
 
 mo.graph @mod_not_ok_bad_operands(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f64>) -> !mo.tensor<?, f32> {
-  // expected-error@below {{Not all TensorValues has the same dtype.}}
+  // expected-error@below {{Not all TensorValues have the same dtype.}}
   %1 = rmo.mo.mod(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
@@ -75,7 +75,7 @@ mo.graph @mod_not_ok_bad_operands(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?
 // -----
 
 mo.graph @mod_not_ok_bad_results(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f64> {
-  // expected-error@below {{Not all TensorValues has the same dtype.}}
+  // expected-error@below {{Not all TensorValues have the same dtype.}}
   %1 = rmo.mo.mod(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f64>
   mo.output %1 : !mo.tensor<?, f64>
 }
@@ -83,7 +83,7 @@ mo.graph @mod_not_ok_bad_results(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?,
 // -----
 
 mo.graph @min_not_ok_bad_operands(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f64>) -> !mo.tensor<?, f32> {
-  // expected-error@below {{Not all TensorValues has the same dtype.}}
+  // expected-error@below {{Not all TensorValues have the same dtype.}}
   %1 = rmo.mo.min(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
@@ -91,7 +91,7 @@ mo.graph @min_not_ok_bad_operands(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?
 // -----
 
 mo.graph @min_not_ok_bad_results(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f64> {
-  // expected-error@below {{Not all TensorValues has the same dtype.}}
+  // expected-error@below {{Not all TensorValues have the same dtype.}}
   %1 = rmo.mo.min(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f64>
   mo.output %1 : !mo.tensor<?, f64>
 }
@@ -99,7 +99,7 @@ mo.graph @min_not_ok_bad_results(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?,
 // -----
 
 mo.graph @max_not_ok_bad_operands(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f64>) -> !mo.tensor<?, f32> {
-  // expected-error@below {{Not all TensorValues has the same dtype.}}
+  // expected-error@below {{Not all TensorValues have the same dtype.}}
   %1 = rmo.mo.max(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
@@ -107,7 +107,7 @@ mo.graph @max_not_ok_bad_operands(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?
 // -----
 
 mo.graph @max_not_ok_bad_results(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f64> {
-  // expected-error@below {{Not all TensorValues has the same dtype.}}
+  // expected-error@below {{Not all TensorValues have the same dtype.}}
   %1 = rmo.mo.max(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f64>
   mo.output %1 : !mo.tensor<?, f64>
 }
@@ -115,7 +115,7 @@ mo.graph @max_not_ok_bad_results(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?,
 // -----
 
 mo.graph @div_not_ok_bad_operands(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f64>) -> !mo.tensor<?, f32> {
-  // expected-error@below {{Not all TensorValues has the same dtype.}}
+  // expected-error@below {{Not all TensorValues have the same dtype.}}
   %1 = rmo.mo.div(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
@@ -123,7 +123,7 @@ mo.graph @div_not_ok_bad_operands(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?
 // -----
 
 mo.graph @div_not_ok_bad_results(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f64> {
-  // expected-error@below {{Not all TensorValues has the same dtype.}}
+  // expected-error@below {{Not all TensorValues have the same dtype.}}
   %1 = rmo.mo.div(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f64>
   mo.output %1 : !mo.tensor<?, f64>
 }
@@ -131,7 +131,7 @@ mo.graph @div_not_ok_bad_results(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?,
 // -----
 
 mo.graph @pow_not_ok_bad_operands(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f64>) -> !mo.tensor<?, f32> {
-  // expected-error@below {{Not all TensorValues has the same dtype.}}
+  // expected-error@below {{Not all TensorValues have the same dtype.}}
   %1 = rmo.mo.pow(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
@@ -139,7 +139,7 @@ mo.graph @pow_not_ok_bad_operands(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?
 // -----
 
 mo.graph @pow_not_ok_bad_results(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f64> {
-  // expected-error@below {{Not all TensorValues has the same dtype.}}
+  // expected-error@below {{Not all TensorValues have the same dtype.}}
   %1 = rmo.mo.pow(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f64>
   mo.output %1 : !mo.tensor<?, f64>
 }
@@ -147,7 +147,7 @@ mo.graph @pow_not_ok_bad_results(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?,
 // -----
 
 mo.graph @sub_not_ok_bad_operands(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f64>) -> !mo.tensor<?, f32> {
-  // expected-error@below {{Not all TensorValues has the same dtype.}}
+  // expected-error@below {{Not all TensorValues have the same dtype.}}
   %1 = rmo.mo.sub(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f64>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
@@ -155,7 +155,7 @@ mo.graph @sub_not_ok_bad_operands(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?
 // -----
 
 mo.graph @sub_not_ok_bad_results(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f64> {
-  // expected-error@below {{Not all TensorValues has the same dtype.}}
+  // expected-error@below {{Not all TensorValues have the same dtype.}}
   %1 = rmo.mo.sub(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f64>
   mo.output %1 : !mo.tensor<?, f64>
 }

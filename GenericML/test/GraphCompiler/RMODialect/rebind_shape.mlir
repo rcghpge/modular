@@ -44,7 +44,7 @@ mo.graph @rebind_tensor_shape_no_canonicalize_dyn(%arg0: !mo.tensor<?, f32>) -> 
 // -----
 
 mo.graph @rebind_tensor_shape_not_ok(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<?, f64> {
-  // expected-error@below {{Not all TensorValues has the same dtype.}}
+  // expected-error@below {{Not all TensorValues have the same dtype.}}
   %1 = rmo.rebind_tensor_shape(%arg0) : (!mo.tensor<?, f32>) -> !mo.tensor<?, f64>
   mo.output %1 : !mo.tensor<?, f64>
 }

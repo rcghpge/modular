@@ -37,7 +37,7 @@ LogicalResult verifySameDTypeOperandsAndResults(RMOOp op) {
         targetDType = curDType;
 
       if (targetDType != curDType)
-        return Error("Not all TensorValues has the same dtype.");
+        return Error("Not all TensorValues have the same dtype.");
     }
 
     return success();

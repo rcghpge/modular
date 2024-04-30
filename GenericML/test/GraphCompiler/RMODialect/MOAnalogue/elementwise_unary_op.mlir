@@ -240,7 +240,7 @@ mo.graph @not_non_bool_dtypes(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
 // -----
 
 mo.graph @trunc_mismatched_dtype(%arg0: !mo.tensor<?, si32>) -> !mo.tensor<?, f32> {
-  // expected-error @+1{{Not all TensorValues has the same dtype.}}
+  // expected-error @+1{{Not all TensorValues have the same dtype.}}
   %1 = rmo.mo.trunc(%arg0) : (!mo.tensor<?, si32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
