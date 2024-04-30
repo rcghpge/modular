@@ -284,9 +284,8 @@ struct FuseGenericCompiledRegions
     doSourceDestinationSequenceFusion<true>(module);
     // Fuse in any op that can't be duplicated (must have one user).
     doSourceDestinationSequenceFusion<false>(module);
-    // TODO(#38355): Enable when the runtime crash is fixed.
     // Fuse in anything that remains while preserving parallelism.
-    // doTransitiveDependencySequenceFusion(module);
+    doTransitiveDependencySequenceFusion(module);
   }
 };
 
