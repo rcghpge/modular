@@ -325,7 +325,8 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
 
     This is a more generic version of the MOGG.kernel which specifically
     operates on Tensors and other MO level structures. It is intended that
-    eventually we lower mogg.kernel into this form directly.
+    eventually we lower mogg.kernel into this form directly. The first
+    return output is always a mef.chain for now.
   }];
 
   let arguments = (ins

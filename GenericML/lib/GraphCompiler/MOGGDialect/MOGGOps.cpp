@@ -380,6 +380,12 @@ M::MOGG::getKernelUsedParameters(MOGG::CompilableKernel kernel) {
   return usedParameters;
 }
 
+// This function lowers the `mogg.kernel` to `mogg.generic.compiled.region`,
+// adding the ability to consider the in-place allocated dynamic tensors from
+// the user kernels. We do the storage allocation of mgp buffers only for
+// pre-allocated tensors and leave the ones for the in-place allocation. We also
+// convert the parameter values to the indexes (materialization) during the
+// lowering.
 LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   MGP::MOOpLoweringState opLoweringState(loweringState, *this);
   mlir::MLIRContext *ctx = getContext();
@@ -400,17 +406,19 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   SmallVector<int> preAllocIndices;
   SmallVector<int> inplaceAllocIndices;
   auto alloc = getAllocIndices();
-  if (alloc.has_value())
+  if (alloc.has_value()) {
     for (auto idxAttr : alloc.value().getAsValueRange<mlir::IntegerAttr>()) {
       int64_t idx = idxAttr.getSExtValue();
       inplaceAllocIndicesSet.insert(idx);
     }
+  }
 
-  for (unsigned int i = 0; i < getNumResults(); i++)
+  for (unsigned int i = 0; i < getNumResults(); i++) {
     if (!inplaceAllocIndicesSet.contains(i))
       preAllocIndices.push_back(i);
     else
       inplaceAllocIndices.push_back(i);
+  }
 
   size_t numInplaceOutputs = inplaceAllocIndicesSet.size();
 
@@ -443,8 +451,11 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     auto symbolicDimOr = loweringState.lowerExpression(
         opLoweringState.opBeingLowered->getParentRegion(), opLoweringState.loc,
         param);
-    if (symbolicDimOr.isError())
-      return failure();
+
+    GENERICML_ASSERT(!symbolicDimOr.isError())
+        << "can't find the symbolic dimension of the parameter: "
+        << symbolicDimOr.takeError();
+
     Value symbol = symbolicDimOr.takeValue();
     paramDimToIdx[param.getName().strref()] = operands.size();
     operands.push_back(symbol);
@@ -511,7 +522,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         loweredParams[ty] =
             kernelBody.getArgument(paramDimToIdx[cst.getName()]);
       } else {
-        // TODO: Add assert here, we shouldn't reach here.
+        llvm_unreachable("Unsupported dim attribute type.");
       }
     }
   };
@@ -603,19 +614,19 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
     Value moTensor = stackAllocOp->getResult(idx);
     ToKGENOp toKGEN;
-    for (Operation *user : moTensor.getUsers()) {
+    for (Operation *user : moTensor.getUsers())
       if (auto tmp = dyn_cast<ToKGENOp>(user))
         toKGEN = tmp;
-    }
 
     GENERICML_ASSERT(toKGEN) << " in-place allocated tensor must have a "
                                 "to_kgen op from an outputplaceholder.";
 
-    for (auto user : toKGEN.getResult().getUsers())
+    for (auto user : toKGEN.getResult().getUsers()) {
       if (auto shapeOfOp = dyn_cast<MOGG::GetShapeOfOp>(user)) {
         outIdxToShapeOfOp[inPlaceIdx] = shapeOfOp;
         outIdxToKgenTensorOp[inPlaceIdx] = toKGEN;
       }
+    }
   }
 
   builder.setInsertionPointToEnd(&kernelBody);
@@ -928,11 +939,12 @@ StringAttr KernelOp::getInputFusionInterfaceAt(size_t index) {
 DenseSet<int> KernelOp::getInplaceAllocIndicesSet() {
   DenseSet<int> inplaceAllocIndicesSet;
   auto alloc = getAllocIndices();
-  if (alloc.has_value())
+  if (alloc.has_value()) {
     for (auto idxAttr : alloc.value().getAsValueRange<mlir::IntegerAttr>()) {
       int64_t idx = idxAttr.getSExtValue();
       inplaceAllocIndicesSet.insert(idx);
     }
+  }
   return inplaceAllocIndicesSet;
 }
 
