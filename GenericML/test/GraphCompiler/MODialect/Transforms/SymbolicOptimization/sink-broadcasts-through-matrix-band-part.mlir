@@ -91,7 +91,7 @@ mo.graph @intermediate_variable_dominance<A, B, C -> D, E, F>(
 ) -> !mo.tensor<[D, E, F], f32> {
   // Note that new instructions are inserted after `%numUpper`, before `%res`,
   // instead of before `%bcast`.
-  // CHECK-NEXT: %[[NUMUPPER:.*]] = mo.add(%[[NUMLOWER]], %[[NUMLOWER]]) : !mo.tensor<[], si32>
+  // CHECK: %[[NUMUPPER:.*]] = mo.mul(%[[NUMLOWER]], {{.*}}) : !mo.tensor<[], si32>
   // CHECK-NEXT: %[[VAL0:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[], f32> -> !mo.tensor<[[[B]], [[C]]], f32>
   %bcast = mo.static.broadcast_to(%arg0) : !mo.tensor<[], f32> -> !mo.tensor<[A, B, C], f32>
   %numUpper = mo.add(%numLower, %numLower) : !mo.tensor<[], si32>
