@@ -312,8 +312,6 @@ struct Candidate {
 
 ErrorOrSuccess
 MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
-  /// TODO(#23802): Get rid of this mapping (except for types).
-
   llvm::ArrayRef<llvm::StringRef> sources_tag = {
       "mojo-mogg-bindings", "mojo-primitives-mogg-bindings"};
   llvm::ArrayRef<llvm::StringRef> sources = {
