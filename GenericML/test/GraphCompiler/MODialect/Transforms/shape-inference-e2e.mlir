@@ -543,7 +543,12 @@ mo.graph @arg_max(%input: !mo.tensor<[?, ?], si64>) -> !mo.tensor<[?, ?], si64> 
 // CHECK-NEXT:   mo.output [[V1]] : !mo.tensor<[[[D5]], 1], si64>
 // CHECK-NEXT: }
 
-mo.graph @concat(
+// This test ensures we can shape infer through a `mo.concat` op with non-equal
+// dimensions (i.e., it doesn't rely on shape inference being able to prove the
+// dimensions are equal). This is important because sometimes we can't prove as
+// much as we want, but we still want to shape infer through `mo.concat`, which
+// is an important op for shape inference in models like transformer.
+mo.graph @concat_non_equal_dims(
   %input1: !mo.tensor<[?, 1, ?], f32>,
   %input2: !mo.tensor<[?, 2, ?], f32>,
   %input3: !mo.tensor<[?, 3, ?], f32>
@@ -555,11 +560,14 @@ mo.graph @concat(
   mo.output %res : !mo.tensor<[?, ?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @concat<[[D10:.*]], [[D11:.*]], [[D12:.*]], [[D13:.*]], [[D14:.*]], [[D15:.*]] -> [[D16:.*]], [[D17:.*]], [[D18:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D10]], 1, [[D11]]], f32>, [[VARG1:%.*]]: !mo.tensor<[[[D12]], 2, [[D13]]], f32>, [[VARG2:%.*]]: !mo.tensor<[[[D14]], 3, [[D15]]], f32>) -> !mo.tensor<[[[D16]], [[D17]], [[D18]]], f32> no_inline {
+// CHECK-SAME: @concat_non_equal_dims<[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]], [[D5:.*]]>([[INPUT1:%.*]]: !mo.tensor<[[[D0]], 1, [[D1]]], f32>, [[INPUT2:%.*]]: !mo.tensor<[[[D2]], 2, [[D3]]], f32>, [[INPUT3:%.*]]: !mo.tensor<[[[D4]], 3, [[D5]]], f32>) -> !mo.tensor<[[[D0]], 6, [[D1]]], f32> no_inline {
 // CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-// CHECK-NEXT:   mo.invoke_shape_func["concat_shape"]<() -> [[D7:.*]], [[D8:.*]], [[D9:.*]]>([[V0]], [[VARG0]], [[VARG1]], [[VARG2]]) {dataDeptTensors = [0 : i32], kgenParams = {input_rank = 3 : index, input_type = f32}}
-// CHECK-NEXT:   [[V1:%.*]] = mo.concat[[[V0]] : !mo.tensor<[], si64>] ([[VARG0]], [[VARG1]], [[VARG2]]) : (!mo.tensor<[[[D10]], 1, [[D11]]], f32>, !mo.tensor<[[[D12]], 2, [[D13]]], f32>, !mo.tensor<[[[D14]], 3, [[D15]]], f32>) -> !mo.tensor<[[[D7]], [[D8]], [[D9]]], f32>
-// CHECK-NEXT:   mo.output<{{.*}} [[V1]]
+// CHECK-NEXT:   {{.*}}"mosh.assert"{{.*}} "[concat] input shapes must match except at concat axis" {{.*}} eq([[D0]], [[D2]])
+// CHECK-NEXT:   {{.*}}"mosh.assert"{{.*}} "[concat] input shapes must match except at concat axis" {{.*}} eq([[D1]], [[D3]])
+// CHECK-NEXT:   {{.*}}"mosh.assert"{{.*}} "[concat] input shapes must match except at concat axis" {{.*}} eq([[D0]], [[D4]])
+// CHECK-NEXT:   {{.*}}"mosh.assert"{{.*}} "[concat] input shapes must match except at concat axis" {{.*}} eq([[D1]], [[D5]])
+// CHECK-NEXT:   [[RES:%.*]] = mo.concat{{.*}}([[INPUT1]], [[INPUT2]], [[INPUT3]]) : {{.*}} -> !mo.tensor<[[[D0]], 6, [[D1]]], f32>
+// CHECK-NEXT:   mo.output [[RES]]
 // CHECK-NEXT: }
 
 mo.graph @pad_constant(

@@ -607,6 +607,61 @@ private:
     return MOSH::ShapeAttr::get(resDims, lhsShape.getType());
   }
 
+  // Assume `invokeShapeFuncOp` applies the shape function of
+  // `MO::ConcatOp`, try decomposing the shape function call into
+  // `kgen.param.declare` primitives if possible, return null otherwise.
+  ShapeAttr tryDecomposeConcatShape(InvokeShapeFuncOp invokeShapeFuncOp) {
+    // Make sure axis is constant.
+    std::optional<int64_t> axisOr =
+        tryGetConstantInt(cast<TensorValue>(invokeShapeFuncOp.getOperand(0)));
+    if (!axisOr.has_value())
+      return {};
+
+    // Collect statically-ranked input shapes.
+    SmallVector<ShapeAttr> inputShapes;
+    for (Value input : invokeShapeFuncOp.getOperands().drop_front()) {
+      auto inputTensorTy = cast<TensorType>(input.getType());
+      if (auto inputShape = dyn_cast<ShapeAttr>(inputTensorTy.getShapeAttr())) {
+        inputShapes.push_back(inputShape);
+      } else {
+        return {}; // Give up on any dyn-ranked input shape
+      }
+    }
+    // `MO::ConcatOp` verifier ensures there's at least 1 input, and ranks of
+    // inputs all match.
+    ShapeAttr firstInputShape = inputShapes.front();
+    auto restInputShapes = ArrayRef(inputShapes).drop_front();
+    int64_t inputRank = firstInputShape.getRank();
+
+    // Normalize axis and make sure it's in bound.
+    int64_t axis = axisOr.value();
+    axis = axis < 0 ? axis + inputRank : axis;
+    if (axis < 0 || inputRank <= axis)
+      return {}; // TODO handle this error at compile time.
+
+    // Construct output shape and make sure input shapes are compatible.
+    SmallVector<TypedAttr> resDims(firstInputShape.getValues());
+    TypedAttr concatDimSum = resDims[axis];
+    for (ShapeAttr inputShape : restInputShapes) {
+      for (auto [idx, firstInputDim, inputDim] : llvm::enumerate(
+               firstInputShape.getValues(), inputShape.getValues())) {
+        if (static_cast<int64_t>(idx) != axis) {
+          KGEN::ParamDeclRefAttr dimEqual = createDeclToKgenAttr(
+              "concat_dim_equal", KGEN::ParamOperatorAttr::get(
+                                      KGEN::POC::EQ, firstInputDim, inputDim));
+          createAssert("concat_assert",
+                       "[concat] input shapes must match except at concat axis",
+                       dimEqual);
+        }
+      }
+      TypedAttr inputAxisDim = inputShape.getValues()[axis];
+      concatDimSum = KGEN::ParamOperatorAttr::get(KGEN::POC::Add, concatDimSum,
+                                                  inputAxisDim);
+    }
+    resDims[axis] = concatDimSum;
+    return MOSH::ShapeAttr::get(resDims, firstInputShape.getType());
+  }
+
   // Treat certain fallback shape function call as special intrinsics and
   // effectively symbolicizing them _during_ shape propagation.
   //
@@ -638,6 +693,9 @@ private:
 
     } else if (shapeFuncName == "batch_matmul_shape") {
       outputShape = tryDecomposeBatchMatmulShape(invokeShapeFuncOp);
+
+    } else if (shapeFuncName == "concat_shape") {
+      outputShape = tryDecomposeConcatShape(invokeShapeFuncOp);
     }
 
     // Create new declaration of the shape function call's output parameter if
