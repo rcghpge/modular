@@ -242,6 +242,11 @@ void MojoLibraryAnalysis::updatedLoadedKernelsForCollisions(
           KGEN::MOGGPreElab::isV1ShapeFunc(op)))
       continue;
 
+    // Prevent the same kernel from colliding with itself.
+    if (op.getLoc() == rawMojoKernel[newSymName].getLoc() &&
+        !isa<mlir::UnknownLoc>(op.getLoc()))
+      continue;
+
     // Create a new symbol which is unique in both files.
     while (rawMojoKernel.contains(newSymName) ||
            userRawMojoKernel.contains(newSymName)) {
@@ -305,95 +310,9 @@ struct Candidate {
   int64_t priority = -1;
 };
 
-// MOGG intrinsics to their mojo implementation.
-#define INTRINSIC_TO_MOJO(Intrin, MojoName)                                    \
-  { Intrin, MojoName }
-
-// Mapping of the mo op name to the mojo function which implements it.
-#define MO_TO_MOJO(MOOp, MojoName)                                             \
-  INTRINSIC_TO_MOJO(MOOp::getOperationName(), MojoName)
-
 ErrorOrSuccess
 MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
-  /// Define the mapping of MO operations and intrinsics to the mojo code.
   /// TODO(#23802): Get rid of this mapping (except for types).
-  static const llvm::StringMap<StringLiteral> moToMojoKernels{
-      MO_TO_MOJO(MO::AddOp, "math::math::add"),
-      MO_TO_MOJO(MO::AndOp, "math::math::logical_and"),
-      MO_TO_MOJO(MO::CeilOp, "nn::activations::ceil"),
-      MO_TO_MOJO(MO::CosOp, "math::math::cos"),
-      MO_TO_MOJO(MO::DivOp, "math::math::div"),
-      MO_TO_MOJO(MO::ErfOp, "math::math::erf"),
-      MO_TO_MOJO(MO::ExpOp, "math::math::exp"),
-      MO_TO_MOJO(MO::EqualOp, "math::math::equal"),
-      MO_TO_MOJO(MO::FloorOp, "nn::activations::floor"),
-      MO_TO_MOJO(MO::GeluOp, "nn::activations::gelu"),
-      MO_TO_MOJO(MO::GreaterOp, "math::math::greater"),
-      MO_TO_MOJO(MO::GreaterEqualOp, "math::math::greater_equal"),
-      MO_TO_MOJO(MO::IsInfOp, "math::math::isinf"),
-      MO_TO_MOJO(MO::IsNaNOp, "math::math::isnan"),
-      MO_TO_MOJO(MO::LinAlg::BandPartOp,
-                 "LinAlg::MatrixBandPart::matrix_band_part"),
-      MO_TO_MOJO(MO::LogOp, "math::math::log"),
-      MO_TO_MOJO(MO::Log1pOp, "math::math::log1p"),
-      MO_TO_MOJO(MO::NotOp, "math::math::logical_not"),
-      MO_TO_MOJO(MO::MulOp, "math::math::mul"),
-      MO_TO_MOJO(MO::ModOp, "math::math::mod"),
-      MO_TO_MOJO(MO::NotEqualOp, "math::math::not_equal"),
-      MO_TO_MOJO(MO::ReluOp, "nn::activations::relu"),
-      MO_TO_MOJO(MO::RoundOp, "math::math::round"),
-      MO_TO_MOJO(MO::RoundEvenOp, "math::math::roundeven"),
-      MO_TO_MOJO(MO::RsqrtOp, "math::math::rsqrt"),
-      MO_TO_MOJO(MO::SelectOp, "math::math::select"),
-      MO_TO_MOJO(MO::SigmoidOp, "nn::activations::sigmoid"),
-      MO_TO_MOJO(MO::SinOp, "math::math::sin"),
-      MO_TO_MOJO(MO::SubOp, "math::math::sub"),
-      MO_TO_MOJO(MO::TanhOp, "nn::activations::tanh"),
-      MO_TO_MOJO(MO::ArgNonzeroOp, "nn::arg_nonzero::arg_nonzero"),
-      MO_TO_MOJO(MO::TruncOp, "math::math::trunc"),
-      MO_TO_MOJO(MO::XorOp, "math::math::logical_xor"),
-      MO_TO_MOJO(MO::TileOp, "nn::tile::tile"),
-
-      // Shape functions.
-      INTRINSIC_TO_MOJO("batch_matmul_shape",
-                        "LinAlg::BatchedMatmul::batched_matmul_shape"),
-      INTRINSIC_TO_MOJO("concat_from_list_shape", "nn::concat::concat_shape"),
-      INTRINSIC_TO_MOJO("conv_shape", "nn::conv::conv_shape"),
-      INTRINSIC_TO_MOJO("conv_transpose_shape",
-                        "nn::conv_transpose::conv_transpose_shape"),
-      INTRINSIC_TO_MOJO("gather_shape", "nn::gather_scatter::gather_shape"),
-      INTRINSIC_TO_MOJO("gather_nd_shape",
-                        "nn::gather_scatter::gather_nd_shape"),
-      INTRINSIC_TO_MOJO("layer_norm_shape",
-                        "nn::normalization::layer_norm_shape"),
-      INTRINSIC_TO_MOJO("matrix_solve_shape",
-                        "LinAlg::MatrixSolve::matrix_solve_shape"),
-      INTRINSIC_TO_MOJO("pack_matmul_b_shape_func",
-                        "LinAlg::MatmulPack::pack_matmul_b_shape_func"),
-      INTRINSIC_TO_MOJO("pad_shape", "nn::pad::pad_shape"),
-      INTRINSIC_TO_MOJO("pool_shape", "nn::pool::pool_shape"),
-      INTRINSIC_TO_MOJO("pool_shape_ceil", "nn::pool::pool_shape_ceil"),
-      INTRINSIC_TO_MOJO("range_shape", "nn::arange::arange_shape"),
-      INTRINSIC_TO_MOJO("reduce_shape", "algorithm::reduction::reduce_shape"),
-      INTRINSIC_TO_MOJO("reshape_shape", "nn::reshape::reshape_shape"),
-      INTRINSIC_TO_MOJO("tile_shape", "nn::tile::tile_shape"),
-
-      INTRINSIC_TO_MOJO("scatter_shape",
-                        "nn::gather_scatter::scatter_elements_shape"),
-      INTRINSIC_TO_MOJO("scatter_nd_shape",
-                        "nn::gather_scatter::scatter_nd_shape"),
-      INTRINSIC_TO_MOJO("slice_shape", "nn::slice::slice_shape"),
-      INTRINSIC_TO_MOJO("arg_nonzero_shape",
-                        "nn::arg_nonzero::arg_nonzero_shape"),
-
-      // Layout transformations
-      INTRINSIC_TO_MOJO("layout_transform_KN_to_KNkni",
-                        "LinAlg::MatmulPack::pack_b_ndbuffer"),
-      INTRINSIC_TO_MOJO("layout_transform_NK_to_KNkni",
-                        "LinAlg::MatmulPack::pack_transposed_b_ndbuffer"),
-
-      INTRINSIC_TO_MOJO("top_k_shape", "nn::topk::top_k_shape"),
-  };
 
   llvm::ArrayRef<llvm::StringRef> sources_tag = {
       "mojo-mogg-bindings", "mojo-primitives-mogg-bindings"};
@@ -507,16 +426,6 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
             KGEN::MOGGPreElab::shapeFuncRegistrationAttr)) {
       for (StringRef name : regs.getAsValueRange<StringAttr>())
         registeredShapeFunctionSymbol[name] = generator.getSymName();
-    }
-
-    // The generator names are mangled, so we remove the parameter and
-    // argument signature.
-    StringRef baseName =
-        generator.getSymName().split('(').first.split('[').first;
-    // Check if the kernel is in the C++ list of intrinsics.
-    for (const auto &[moName, mojoName] : moToMojoKernels) {
-      if (baseName == mojoName)
-        candidates[moName].push_back(Candidate{generator});
     }
   }
 
