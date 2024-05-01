@@ -473,28 +473,6 @@ mo.graph @reshape_scalar_tensor<() -> D2, D3, D4>(
   mo.output<D5, D6, D7> %res : !mo.tensor<[D5, D6, D7], f32>
 }
 
-// COM: Makes sure we handle reshaping empty tensors with -1 inferred dim and
-// COM: avoid 0/0 cases.
-// CHECK-LABEL: mo.graph
-// CHECK-SAME: @reshape_parametric_shape_inferred_neg_one_empty<[[D0:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[[[D0]], 0], f32>) -> !mo.tensor<[0, 4, 0], f32> no_inline {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.static.reshape([[VARG0]]) : !mo.tensor<[[[D0]], 0], f32> -> !mo.tensor<[0, 4, 0], f32>
-// CHECK-NEXT: mo.output [[V0]] : !mo.tensor<[0, 4, 0], f32>
-mo.graph @reshape_parametric_shape_inferred_neg_one_empty<D0 -> D2, D3, D4>(
-  %input: !mo.tensor<[D0, 0], f32>
-) -> !mo.tensor<[D2, D3, D4], f32> {
-
-  %param_shape = mosh.param.to_value: !mosh.ape = <[-1, 4, 0]>
-  %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[3], si32>
-
-  mo.invoke_shape_func["reshape_shape"]<() -> D5, D6, D7>(%input, %target_shape)
-    {dataDeptTensors = [1]} : (!mo.tensor<[D0, 0], f32>, !mo.tensor<[3], si32>)
-  %res = mo.reshape(%input, %target_shape) : (
-    !mo.tensor<[D0, 0], f32>, !mo.tensor<[3], si32>
-  ) -> !mo.tensor<[D5, D6, D7], f32>
-
-  mo.output<D5, D6, D7> %res : !mo.tensor<[D5, D6, D7], f32>
-}
-
 // CHECK-LABEL: mo.graph @common_expr_dont_reference_across_regions
 mo.graph @common_expr_dont_reference_across_regions<D0, D1 -> D2>(
   %cond: !mo.tensor<[], bool>,

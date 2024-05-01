@@ -1066,10 +1066,8 @@ mo.graph @consecutive_rebind_during_staticization(%arg1: !mo.tensor<[?, ?], si32
   %21 = mo.concat[%5 : !mo.tensor<[], si64>] (%18, %20) : (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<[2], si32>
   %22 = mo.reshape(%arg1, %21) : (!mo.tensor<[?, ?], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[?, ?], si32>
 
-  // The check and rebind should fold away (#36363)
-  // CHECK-NEXT: kgen.param.declare {{.*}}: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "[reshape] input and output number of elements must match"
-  // CHECK-NEXT: %[[RES:.*]] = mo.rebind(%[[ARG1]])
-  // CHECK-NEXT: mo.output{{.*}} %[[RES]]
+  // CHECK-NEXT: "mosh.assert"{{.*}}"[reshape] cannot infer dimension when a specified output dimension is 0"{{.*}}ne({{.*}}, 0))>
+  // CHECK-NEXT: mo.output{{.*}} %[[ARG1]]
   mo.output %22 : !mo.tensor<[?, ?], si32>
 }
 
@@ -1114,4 +1112,23 @@ mo.graph @staticize_broadcast_on_constants<D0, D1, D2 -> D3, D4, D5, D6>(
   %res = mo.broadcast_to<() -> D7, D8, D9, D10>(%lhs, %bcast_shape) : (!mo.tensor<[1, 1, D0, D1], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[D7, D8, D9, D10], f32>
 
   mo.output<D7, D8, D9, D10> %res : !mo.tensor<[D7, D8, D9, D10], f32>
+}
+
+// CHECK-LABEL: mo.graph @reshape_infer_dim_folded
+//  CHECK-SAME:  <[[D0:.*]], [[D1:.*]]>(
+//  CHECK-SAME:  %[[INPUT:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>
+mo.graph @reshape_infer_dim_folded<D0, D1 -> D2, D3>(
+  %input: !mo.tensor<[D0, D1], f32>
+) -> !mo.tensor<[D2, D3], f32> {
+  
+  // CHECK-NEXT: "mosh.assert"{{.*}}"[reshape] cannot infer dimension when a specified output dimension is 0"{{.*}}ne([[D1]], 0))>
+  // CHECK-NEXT: %[[RESULT:.*]] = mo.static.reshape(%[[INPUT]]) : {{.*}} -> !mo.tensor<[[[D1]], [[D0]]], f32>
+  %symbolic_target_shape = mosh.param.to_value: !mosh.ape = <[D1, -1]>
+  %target_shape = mo.shape.to_tensor(%symbolic_target_shape) -> !mo.tensor<[2], si32>
+  %result = mo.reshape<() -> D4, D5>(%input, %target_shape) : (
+    !mo.tensor<[D0, D1], f32>, !mo.tensor<[2], si32>
+  ) -> !mo.tensor<[D4, D5], f32>
+
+  // CHECK-NEXT: mo.output %[[RESULT]] : {{.*}}
+  mo.output<D4, D5> %result : !mo.tensor<[D4, D5], f32>
 }

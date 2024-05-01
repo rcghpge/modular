@@ -425,24 +425,21 @@ private:
 
     // Add a 1 to the shapes to multiply to ensure the denominator is valid
     auto mulDims = targetNonNegOneDims;
-    auto one = IntegerAttr::get(indexType, 1);
-    mulDims.emplace_back(one);
-
+    mulDims.emplace_back(IntegerAttr::get(indexType, 1));
     KGEN::ParamDeclRefAttr denominator = createDeclToKgenExpr(
         "reshape_dyndim_denominator", KGEN::POC::MulNuw, mulDims);
 
-    // Avoid division by 0, occurs for empty tensors in which case the -1 dim
-    // being 0 would always work. There is ambiguity here in allowed values but
-    // in practice probably not important.
-    //
-    // TODO(#36363): think about removing the max(...) as it is very hard to
-    // remove without range-based analysis (and even then it is hard).
-    KGEN::ParamDeclRefAttr denominatorNormalized =
-        createDeclToKgenExpr("reshape_dyndim_denominator_normalized",
-                             KGEN::POC::Max, {one, denominator});
-    KGEN::ParamDeclRefAttr resolvedDim =
-        createDeclToKgenExpr("reshape_dyndim_resolved", KGEN::POC::Div,
-                             {numerator, denominatorNormalized});
+    // Make sure we check for 0 denominator
+    KGEN::ParamDeclRefAttr denomNotZero = createDeclToKgenAttr(
+        "num_elems_equal", KGEN::ParamOperatorAttr::getNE(
+                               denominator, IntegerAttr::get(indexType, 0)));
+    createAssert("reshape_assert",
+                 "[reshape] cannot infer dimension when a specified output "
+                 "dimension is 0",
+                 denomNotZero);
+
+    KGEN::ParamDeclRefAttr resolvedDim = createDeclToKgenExpr(
+        "reshape_dyndim_resolved", KGEN::POC::Div, {numerator, denominator});
 
     SmallVector<TypedAttr> resolvedDims = targetNonNegOneDims;
     resolvedDims.insert(resolvedDims.begin() + maybeTargetNegOneDimIdx.value(),
