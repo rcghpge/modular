@@ -1,3 +1,4 @@
+load("@//utils/bazel/build/rules:rpath_shim.bzl", "rpath_shim")
 load("//utils/bazel/build/rules:opt_wrapper.bzl", "opt_wrapper")
 
 package(default_visibility = ["//visibility:public"])
@@ -5,9 +6,27 @@ package(default_visibility = ["//visibility:public"])
 cc_binary(
     name = "mt",
     srcs = glob(["*.cpp"]),
+    data = [
+        "//ONNX/tools/onnx:monnx",
+        "//PyTorch:StockTorchInterface.shared.file",
+        "//PyTorch:TorchRuntimePlugin",
+        "//PyTorch/tools/torch:mtorch",
+    ],
     deps = [
+        ":rpaths",
         "//GenericML:CommonDriver",
         "//Support:Init",
+    ],
+)
+
+rpath_shim(
+    name = "rpaths",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//ONNX/tools/onnx:monnx.import",
+        "//PyTorch:StockTorchInterface",
+        "//PyTorch:TorchRuntimePlugin.import",
+        "//PyTorch/tools/torch:mtorch.import",
     ],
 )
 
