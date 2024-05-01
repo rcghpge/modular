@@ -48,6 +48,8 @@ python3 -m pip install \
 
 pip install pipx
 
+if [ -z ${MOJO_INSTALL_CHANNEL+x} ]; then echo "MOJO_INSTALL_CHANNEL is unset"; else echo "MOJO_INSTALL_CHANNEL is set to '$MOJO_INSTALL_CHANNEL'"; fi
+
 # Configure and build Modular.
 $CMAKE_COMMAND --sanitizer=none --build-profile=production --build-type=release \
   -D CMAKE_C_COMPILER=$CLANG_PATH \
@@ -57,7 +59,8 @@ $CMAKE_COMMAND --sanitizer=none --build-profile=production --build-type=release 
   -D MODULAR_VERSION_MINOR=$MINOR_VERSION \
   -D MODULAR_VERSION_PATCH=$PATCH_VERSION \
   -D MODULAR_STATIC_LINKED_PYTHON=ON \
-  -D MODULAR_MOJO_INSTALL_CHANNEL=max
+  -D MODULAR_MOJO_INSTALL_CHANNEL=${MOJO_INSTALL_CHANNEL:-max} \
+  -D MODULAR_MAX_INSTALL_CHANNEL=${MAX_INSTALL_CHANNEL:-stable}
 
 
 # The GeneratedTests target explicitly isn't a dependency of the AI Engine Wheel itself
