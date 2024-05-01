@@ -487,7 +487,8 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
 
       auto areSameBlockAndCompatible = [&](Operation *parent,
                                            Operation *child) {
-        return parent->getBlock() == child->getBlock() &&
+        return isEligible(parent) && isEligible(child) &&
+               parent->getBlock() == child->getBlock() &&
                areCompatible(parent, child);
       };
 

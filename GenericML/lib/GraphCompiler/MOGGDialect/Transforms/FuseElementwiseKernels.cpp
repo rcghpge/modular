@@ -19,7 +19,6 @@
 
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Transforms/TopologicalSortUtils.h"
-#include "llvm/ADT/SetOperations.h"
 
 using namespace M;
 
@@ -30,16 +29,20 @@ namespace M::MOGG {
 
 namespace {
 
-static SmallVector<int> getFusionIndices(KernelOp src, KernelOp dst) {
+static std::optional<SmallVector<int>> getFusionIndices(KernelOp src,
+                                                        KernelOp dst) {
+  if (src.getOutputFusionInterfaceAt(0).empty())
+    return std::nullopt;
+
   SmallVector<int> indices;
-  auto srcInterface = src.getOutputFusionInterfaceAt(0);
   for (auto [i, operand] : llvm::enumerate(dst.getOperands())) {
     if (operand.getDefiningOp() != src)
       continue;
 
-    auto dstInterface = dst.getInputFusionInterfaceAt(i);
-    if (!srcInterface.empty() && !dstInterface.empty())
-      indices.push_back(i);
+    if (dst.getInputFusionInterfaceAt(i).empty())
+      return std::nullopt;
+
+    indices.push_back(i);
   }
 
   return indices;
@@ -59,41 +62,11 @@ static inline bool isAnElementwiseKernel(Operation *op) {
   if (!kernelOp.getOutputParamDecls().empty())
     return false;
 
-  return true;
-}
-
-static bool isADstElementwiseKernel(Operation *op) {
-  if (!isAnElementwiseKernel(op))
-    return false;
-
-  auto kernelOp = cast<KernelOp>(op);
-  if (!kernelOp.getInputFusionInterface())
+  // We disable fusion for in-place allocated kernel.
+  if (kernelOp.isInPlaceAlloc())
     return false;
 
   return true;
-}
-
-static bool compatibleFusionInterfaces(KernelOp src, KernelOp dst) {
-  /// ASSUMPTION: Single output kernel. Will break the fusion logic if removed.
-  if (src->getNumResults() != 1)
-    return false;
-
-  auto srcInterface = src.getOutputFusionInterfaceAt(0);
-  for (auto [i, operand] : llvm::enumerate(dst.getOperands())) {
-    if (operand.getDefiningOp() != src)
-      continue;
-
-    auto dstInterface = dst.getInputFusionInterfaceAt(i);
-    if (srcInterface.empty() || dstInterface.empty())
-      return false;
-  }
-
-  return true;
-}
-
-static inline uint64_t uniqueUsers(Operation *op) {
-  auto users = op->getUsers();
-  return DenseSet<Operation *>(users.begin(), users.end()).size();
 }
 
 static inline bool kernelsAreCompatible(Operation *src, Operation *dst) {
@@ -103,7 +76,7 @@ static inline bool kernelsAreCompatible(Operation *src, Operation *dst) {
   if (srcKernel.getIsKGEN() != dstKernel.getIsKGEN())
     return false;
 
-  if (!compatibleFusionInterfaces(srcKernel, dstKernel))
+  if (!getFusionIndices(srcKernel, dstKernel).has_value())
     return false;
 
   return true;
@@ -115,81 +88,35 @@ struct FuseElementwisePass
 
   void runOnOperation() override {
     MO::GraphOp graphOp = getOperation();
-    llvm::SmallPtrSet<Block *, 2> blocksThatContainDstElementwiseKernels;
-    graphOp.walk([&](KernelOp kernelOp) {
-      if (isADstElementwiseKernel(kernelOp))
-        blocksThatContainDstElementwiseKernels.insert(kernelOp->getBlock());
-    });
-
-    DenseSet<KernelOp> kernelsToTopologicallySort;
-    DenseSet<Operation *> operationsThatWerePartOfFusions;
     MO::ParametricTopologyAnalysis topologyAnalysis(graphOp);
+    auto subgraphs = sourceDestinationSequenceFusionAnalysis(
+        graphOp.getBody(), topologyAnalysis, isAnElementwiseKernel,
+        kernelsAreCompatible, false);
 
-    for (Block *block : blocksThatContainDstElementwiseKernels) {
-      auto kernelOpsInBlock = block->getOps<KernelOp>();
-      SmallVector<Operation *> kernelOpsInBlockAsArray(kernelOpsInBlock.begin(),
-                                                       kernelOpsInBlock.end());
+    for (auto &subgraph : subgraphs)
+      topologyAnalysis.computeTopologicalSorting(subgraph);
 
-      topologyAnalysis.computeTopologicalSorting(kernelOpsInBlockAsArray);
-      for (Operation *op : llvm::reverse(kernelOpsInBlockAsArray)) {
-        if (operationsThatWerePartOfFusions.contains(op))
+    for (auto &subgraph : subgraphs) {
+      auto dstKernelOp = cast<KernelOp>(subgraph.back());
+      bool isKGEN = dstKernelOp.getIsKGEN().value_or(false);
+      for (auto op : llvm::reverse(subgraph)) {
+        if (op == dstKernelOp)
           continue;
 
-        if (!isADstElementwiseKernel(op))
-          continue;
+        auto srcKernelOp = cast<KernelOp>(op);
+        if (isKGEN)
+          fuseSrcKernelIntoDstKernelKGEN(srcKernelOp, dstKernelOp);
+        else
+          fuseSrcKernelIntoDstKernelMOGG(srcKernelOp, dstKernelOp);
 
-        auto dstKernelOp = cast<KernelOp>(op);
-        bool isKGEN = dstKernelOp.getIsKGEN().value_or(false);
-
-        bool fused;
-        do {
-          fused = false;
-          auto operands = op->getOperands();
-          for (auto operand :
-               DenseSet<Value>(operands.begin(), operands.end())) {
-            auto srcKernelOp = operand.getDefiningOp<KernelOp>();
-            if (!srcKernelOp)
-              continue;
-
-            if (!isAnElementwiseKernel(srcKernelOp))
-              continue;
-
-            if (!kernelsAreCompatible(srcKernelOp, dstKernelOp))
-              continue;
-
-            if (uniqueUsers(srcKernelOp) != 1)
-              continue;
-
-            // We disable fusion for in-place allocated kernel.
-            if (srcKernelOp.isInPlaceAlloc())
-              continue;
-
-            if (dstKernelOp.isInPlaceAlloc())
-              continue;
-
-            operationsThatWerePartOfFusions.insert(srcKernelOp);
-            operationsThatWerePartOfFusions.insert(dstKernelOp);
-            kernelsToTopologicallySort.insert(dstKernelOp);
-            fused = true;
-
-            if (isKGEN)
-              fuseSrcKernelIntoDstKernelKGEN(srcKernelOp, dstKernelOp);
-            else
-              fuseSrcKernelIntoDstKernelMOGG(srcKernelOp, dstKernelOp);
-
-            dstKernelOp.setSummaryAttr(
-                getSummaryString({srcKernelOp, dstKernelOp}));
-            srcKernelOp.erase();
-          }
-        } while (fused);
+        dstKernelOp.setSummaryAttr(
+            getSummaryString({srcKernelOp, dstKernelOp}));
+        srcKernelOp.erase();
       }
-    }
 
-    for (auto kernelOp : kernelsToTopologicallySort) {
-      // The fusion may have re-ordered the contents of the dst kernels. Sort
-      // their contents them topologically if they are KGEN.
-      if (kernelOp.getIsKGEN().value_or(false))
-        kernelOp.walk([](Block *block) { mlir::sortTopologically(block); });
+      if (isKGEN) {
+        dstKernelOp.walk([](Block *block) { mlir::sortTopologically(block); });
+      }
     }
   }
 
@@ -206,7 +133,7 @@ struct FuseElementwisePass
   // 5. Update the attributes to reflect the new inputs.
   void fuseSrcKernelIntoDstKernelMOGG(MOGG::KernelOp srcKernel,
                                       KernelOp dstKernel) {
-    auto fusionIndices = getFusionIndices(srcKernel, dstKernel);
+    auto fusionIndices = *getFusionIndices(srcKernel, dstKernel);
     // This assumes that srcKernel has a single output. When that changes, we
     // will have to create a mapping.
     Value previouslyFusedValue;
@@ -432,8 +359,7 @@ struct FuseElementwisePass
   void fuseSrcKernelIntoDstKernelKGEN(KernelOp srcKernel, KernelOp dstKernel) {
     stageKernelsForFusion({srcKernel, dstKernel});
 
-    auto fusionIndices = getFusionIndices(srcKernel, dstKernel);
-    GENERICML_ASSERT(!fusionIndices.empty());
+    auto fusionIndices = *getFusionIndices(srcKernel, dstKernel);
 
     IRMapping mapper;
     OpBuilder builder{dstKernel.getContext()};
