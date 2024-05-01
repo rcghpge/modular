@@ -118,7 +118,7 @@ void LowerPrimitivesPass::runOnOperation() {
           opLoc, op->getResultTypes(), op->getOperands(),
           KGEN::ParamDeclArrayAttr::get(ctx, {}),
           InOutSignatureAttr::get(ctx, operandSemantics), BoolAttr{}, // isKGEN
-          StringAttr{},                                               // summary
+          StringAttr::get(ctx, op->getName().getStringRef()),         // summary
           BoolAttr{},                                                 // isAsync
           BoolAttr::get(ctx, canFuseIntoOther(op)), // canFuseIntoOther
           BoolAttr::get(ctx, canDuplicate(op))      // canDuplicate
