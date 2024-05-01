@@ -19,13 +19,17 @@
 
 using namespace M;
 
+#define _STRINGIFY(str) #str
+#define _X_STRINGIFY(str) _STRINGIFY(str)
+#define STRINGIFY_MAX_CONFIG(path) _X_STRINGIFY(MAX_CONFIG_SECTION) path
+
 std::optional<std::filesystem::path> M::getMaxCacheDir() {
   auto configOr = Config::open();
 
   // If config is accessible look if it's set or not. If it's set we are done.
   if (!configOr.isError()) {
     M::Config config = configOr.takeValue();
-    auto maxCacheDir = config.getValue("max.cache_dir");
+    auto maxCacheDir = config.getValue(STRINGIFY_MAX_CONFIG(".cache_dir"));
     if (!maxCacheDir.empty())
       return std::filesystem::path(maxCacheDir.str());
   }
@@ -45,7 +49,7 @@ bool M::isCompileProgressEnabled() {
     return false;
 
   auto compileProgressEnabled =
-      configOr->getValueAsBool("max.enable_compile_progress",
+      configOr->getValueAsBool(STRINGIFY_MAX_CONFIG(".enable_compile_progress"),
                                /*defaultValue=*/true);
   return !compileProgressEnabled.isError() && *compileProgressEnabled;
 }
@@ -57,8 +61,9 @@ bool M::isModelIRCacheEnabled() {
   if (configOr.isError())
     return false;
 
-  auto cacheEnabled = configOr->getValueAsBool("max.enable_model_ir_cache",
-                                               /*defaultValue=*/false);
+  auto cacheEnabled =
+      configOr->getValueAsBool(STRINGIFY_MAX_CONFIG(".enable_model_ir_cache"),
+                               /*defaultValue=*/false);
   return !cacheEnabled.isError() && *cacheEnabled;
 }
 
@@ -68,7 +73,8 @@ std::optional<std::filesystem::path> M::getWeightsCacheDir() {
     return std::nullopt;
 
   auto weightsCacheEnabledOr = configOr->getValueAsBool(
-      /*key=*/"max.enable_weight_cache", /*defaultValue=*/false);
+      /*key=*/STRINGIFY_MAX_CONFIG(".enable_weight_cache"),
+      /*defaultValue=*/false);
 
   if (weightsCacheEnabledOr.isError() || !(*weightsCacheEnabledOr))
     return std::nullopt;
