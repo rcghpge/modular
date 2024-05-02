@@ -9,8 +9,10 @@
 
 #include "Support/Context.h"
 #include "Support/Error.h"
+#include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/STLExtras.h"
 #include "Support/Telemetry/Telemetry.h"
+#include "mlir/IR/Diagnostics.h"
 
 namespace M::GML {
 
@@ -131,6 +133,27 @@ void emitErrorTelemetry(MaxEngineTelemetryContext &ctx, Error error) {
   logger->emitL1Event("compile.failure", attributes);
 #endif // MODULAR_ENABLE_TELEMETRY
 }
+
+/// Scoped handler that emits MLIR diagnostics to telemetry.
+template <MaxEngineErrorCode ErrorCode>
+struct MaxEngineTelemetryScope {
+  MaxEngineTelemetryScope(mlir::MLIRContext *ctx,
+                          GML::MaxEngineTelemetryContext *telemetryContext)
+      : diagHandler(ctx, [telemetryContext](const mlir::Diagnostic &diag) {
+          if (telemetryContext) {
+            std::string errorMessage;
+            llvm::raw_string_ostream os(errorMessage);
+            diag.print(os);
+            GML::emitErrorTelemetry<ErrorCode>(*telemetryContext,
+                                               Error(errorMessage));
+          }
+          // Return failure to allow the main handler to process the diagnostic.
+          return failure();
+        }) {}
+
+  mlir::ScopedDiagnosticHandler diagHandler;
+};
+
 } // namespace M::GML
 
 #endif // GENERICML_SUPPORT_TELEMETRY_H

@@ -249,23 +249,15 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   OwningOpRef<ModuleOp> moduleOp =
       ModuleOp::getFromOpaquePointer(source).clone();
 
-  registerContext(*moduleOp->getContext(), ctxHandle.maxContext);
+  MLIRContext *mlirCtx = moduleOp->getContext();
+  registerContext(*mlirCtx, ctxHandle.maxContext);
 
   auto telemetryContext =
       ctxHandle.maxContext->get<GML::MaxEngineTelemetryContext>();
 
-  auto handlerFn = [&](const Diagnostic &diag) {
-    if (telemetryContext) {
-      std::string errorMessage;
-      llvm::raw_string_ostream os(errorMessage);
-      diag.print(os);
-      GML::emitErrorTelemetry<GML::MaxEngineErrorCode::GraphLoweringError>(
-          *telemetryContext, Error(errorMessage));
-    }
-    // Return failure to allow the main handler to process the diagnostic.
-    return failure();
-  };
-  mlir::ScopedDiagnosticHandler diagHandler(moduleOp->getContext(), handlerFn);
+  // Emit telemetry upon any lowering error.
+  GML::MaxEngineTelemetryScope<GML::MaxEngineErrorCode::GraphLoweringError>
+      loweringDiagScope(mlirCtx, telemetryContext);
 
   // Gather all the options from all the sources.
   MOFLoweringOptions mofLoweringOptions;
@@ -332,19 +324,9 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
     }
     }
 
-    auto handlerFn = [&](const Diagnostic &diag) {
-      if (telemetryContext) {
-        std::string errorMessage;
-        llvm::raw_string_ostream os(errorMessage);
-        diag.print(os);
-        GML::emitErrorTelemetry<GML::MaxEngineErrorCode::GraphLoweringError>(
-            *telemetryContext, Error(errorMessage));
-      }
-      // Return failure to allow the main handler to process the diagnostic.
-      return failure();
-    };
-    mlir::ScopedDiagnosticHandler diagHandler(compileCtx.module->getContext(),
-                                              handlerFn);
+    // Emit telemetry upon any lowering error from hereon.
+    GML::MaxEngineTelemetryScope<GML::MaxEngineErrorCode::GraphLoweringError>
+        loweringDiagScope(&compileCtx.mlirCtx, telemetryContext);
 
     // We have an MLIR model, try to lower it to a MEF-capable encoding.
     switch (format) {
