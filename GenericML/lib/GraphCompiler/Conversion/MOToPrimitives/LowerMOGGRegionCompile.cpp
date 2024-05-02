@@ -82,17 +82,6 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
       context, oldKernel.getOperands(), runtimeSlot, module_index, kernel_index,
       oldKernel.getSummary());
 
-  SmallVector<Value> oldKernelRes;
-  for (auto [ty, res] :
-       llvm::zip(oldKernel.getResultTypes(), oldKernel.getResults())) {
-    if (!isa<MEF::ChainType>(ty))
-      oldKernelRes.push_back(res);
-  }
-  for (auto [oldRes, newRes] :
-       llvm::zip(oldKernelRes, newExecuteOp.getOutResults())) {
-    oldRes.replaceAllUsesWith(newRes);
-  }
-
   auto replaceAllChainUses = [&](Value originalChain,
                                  TypedValue<MGP::DeviceChainType> newChain) {
     Value toChain = newChain;
