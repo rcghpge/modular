@@ -220,7 +220,7 @@ mo.graph @binary_op_asserts(
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @binary_op_asserts<[[D13:.*]], [[D14:.*]], [[D15:.*]], [[D16:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D13]], [[D14]]], f32>, [[VARG1:%.*]]: !mo.tensor<[[[D15]], [[D16]]], f32>) -> !mo.tensor<[[[D13]], [[D14]]], f32> no_inline {
-// CHECK-NEXT:   [[V0:%.*]] = mo.add([[VARG0]], [[VARG0]]) : !mo.tensor<[[[D13]], [[D14]]], f32>
+// CHECK:        [[V0:%.*]] = mo.mul([[VARG0]], {{.*}}) : !mo.tensor<[[[D13]], [[D14]]], f32>
 // CHECK-NEXT:   [[V1:%.*]] = mo.rebind([[VARG1]]) : !mo.tensor<[[[D15]], [[D16]]], f32> -> !mo.tensor<[[[D13]], [[D14]]], f32>
 // CHECK-NEXT:   kgen.param.declare SORS_CH12: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "[add] input shapes must match" : !kgen.string}, and(eq([[D13]], [[D15]]), eq([[D14]], [[D16]])))>
 // CHECK-NEXT:   [[V2:%.*]] = mo.add([[VARG0]], [[V1]]) : !mo.tensor<[[[D13]], [[D14]]], f32>
@@ -237,7 +237,7 @@ mo.graph @binary_op_no_assert(
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @binary_op_no_assert<[[D7:.*]], [[D8:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D7]], [[D8]]], f32>) -> !mo.tensor<[[[D7]], [[D8]]], f32> no_inline {
-// CHECK-NEXT:   [[V0:%.*]] = mo.add([[VARG0]], [[VARG0]]) : !mo.tensor<[[[D7]], [[D8]]], f32>
+// CHECK:        [[V0:%.*]] = mo.mul([[VARG0]], {{.*}}) : !mo.tensor<[[[D7]], [[D8]]], f32>
 // CHECK-NEXT:   [[V1:%.*]] = mo.add([[VARG0]], [[V0]]) : !mo.tensor<[[[D7]], [[D8]]], f32>
 // CHECK-NEXT:   mo.output [[V1]] : !mo.tensor<[[[D7]], [[D8]]], f32>
 // CHECK-NEXT: }
@@ -735,9 +735,9 @@ mo.graph @broadcast_shape_dynamic(%shape1: !mo.tensor<[?], si32>, %shape2: !mo.t
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @broadcast_shape_dynamic<[[D1:.*]], [[D2:.*]] -> [[D3:.*]]>(%[[ARG0:.*]]: !mo.tensor<[[[D1]]], si32>, %[[ARG1:.*]]: !mo.tensor<[[[D2]]], si32>) -> !mo.tensor<[[[D3]]], si32>
-// CHECK-NEXT: kgen.param.declare [[EXPR:.*]] = <max([[D1]], [[D2]])> 
+// CHECK-NEXT: kgen.param.declare [[EXPR:.*]] = <max([[D1]], [[D2]])>
 // CHECK-NEXT: %[[V0:.*]] = mo.broadcast_shape(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[[[D1]]], si32>, !mo.tensor<[[[D2]]], si32>) -> !mo.tensor<[[[EXPR]]], si32>
-// CHECK-NEXT: %[[V1:.*]] = mo.rebind(%[[V0]]) : !mo.tensor<[[[EXPR]]], si32> -> !mo.tensor<[max([[D1]], [[D2]])], si32> 
+// CHECK-NEXT: %[[V1:.*]] = mo.rebind(%[[V0]]) : !mo.tensor<[[[EXPR]]], si32> -> !mo.tensor<[max([[D1]], [[D2]])], si32>
 // CHECK-NEXT: mo.output<{{.*}}> %[[V1]]
 
 mo.graph @broadcast_shape_static(%shape1: !mo.tensor<[3], si32>, %shape2: !mo.tensor<[5], si32>) -> !mo.tensor<[?], si32> {
@@ -1055,7 +1055,7 @@ mo.graph @consecutive_rebind_during_staticization(%arg1: !mo.tensor<[?, ?], si32
   %14 = mo.gather(%10, %8, %1) : (!mo.tensor<[1], si64>, !mo.tensor<[?], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[?], si64>
   %15 = mo.gather(%10, %13, %1) : (!mo.tensor<[1], si64>, !mo.tensor<[?], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[?], si64>
   %16 = mo.concat[%1 : !mo.tensor<[], si32>] (%14, %15) : (!mo.tensor<[?], si64>, !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64>
-  
+
   // This reshape will be canonicalized into a static.reshape, then merged with
   // the subsequent static.reshape, and then become a rebind during shape
   // inference, and we end up having 2 consecutive rebinds starting from %20.
