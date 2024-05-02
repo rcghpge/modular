@@ -1132,3 +1132,36 @@ mo.graph @reshape_infer_dim_folded<D0, D1 -> D2, D3>(
   // CHECK-NEXT: mo.output %[[RESULT]] : {{.*}}
   mo.output<D4, D5> %result : !mo.tensor<[D4, D5], f32>
 }
+
+// This is created from `replitv15-3B-hf-context-encoding-bf16-onnx`, as a
+// regression test to make sure we can staticize `mo.negative`.
+// CHECK-LABEL: mo.graph @staticize_mo_negative
+//  CHECK-SAME:  <[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]] -> {{.*}}>(
+//  CHECK-SAME:  %[[INPUT:.*]]: !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], bf16>
+// TODO(GRA-449)
+//       CHECK:   kgen.param.declare [[PARAM_EXPR:.*]] = <div(mul_nuw([[D2]], -1), -1)>
+//  CHECK-NEXT:   %[[RES:.*]] = mo.range{{.*}} -> !mo.tensor<[[[PARAM_EXPR]]], si64>
+//  CHECK-NEXT:   %[[RES_REB:.*]] = mo.rebind(%[[RES]])
+//  CHECK-NEXT:   mo.output{{.*}} %[[RES_REB:.*]]
+mo.graph @staticize_mo_negative<D0, D1, D2, D3 -> D4>(
+  %input: !mo.tensor<[D0, D1, D2, D3], bf16>
+) -> !mo.tensor<[D4], si64> {
+
+  // Constants
+  %zero = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+  %two = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %neg_one = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+
+  // Extracting `D2` and make it negative
+  %input_shape = mo.shape_of(%input) : (!mo.tensor<[D0, D1, D2, D3], bf16>) -> !mo.tensor<[4], si64>
+  %d2 = mo.gather(%input_shape, %two, %zero) : (!mo.tensor<[4], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1], si64>
+  %d2_scalar = mo.static.reshape(%d2) : !mo.tensor<[1], si64> -> !mo.tensor<[], si64>
+  %neg_d2 = mo.negative(%d2_scalar) : !mo.tensor<[], si64>
+
+  // This part is contrived, in the original model the `mo.negative` was used to
+  // create a negative index for slicing, but I didn't want to go that far for
+  // this test, which focuses on being able to staticize `mo.negative`.
+  %res = mo.range<() -> D5>(%zero, %neg_d2, %neg_one) : (!mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D5], si64>
+
+  mo.output<D5> %res : !mo.tensor<[D5], si64>
+}
