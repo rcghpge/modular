@@ -37,9 +37,6 @@ tools = [
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
 
-config.available_features.add(config.llvm_use_sanitizer.lower())
-
-
 # TODO(#23665): Fix memory leaks.
 config.environment["LSAN_OPTIONS"] = "detect_leaks=0"
 # TODO(#25946): Fix ODR violations.
