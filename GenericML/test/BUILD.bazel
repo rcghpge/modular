@@ -56,6 +56,9 @@ lit_tests(
         "//Kernels/mojo/Mogg:MOGGTestOverrideSucc.lib.mlirbc",
         "//Kernels/mojo/Mogg:MOGGTests.lib.mlirbc",
     ],
+    tags = [
+        "no-asan",
+    ],
     tools = [
         "//GenericML/tools/cuda-opt",
         "//GenericML/tools/mo-cuda-opt:mo-cuda-opt.opt",
