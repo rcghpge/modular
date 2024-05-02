@@ -2064,12 +2064,22 @@ struct SwimViewOpThroughBinaryOpWithConstantSubtree
           op, "Failed to match, the view op input is not a constant subtree");
     }
 
+    // Not applying the pattern to constant foldable subgraphs because there is
+    // no gain and it can lead to cycles with other patterns that sink reshapes
+    // through elementwise operations.
+    bool lhsConstantFoldable = dependsOnConstantsOnly<ConstantOp>(lhsProducer);
+    bool rhsConstantFoldable = dependsOnConstantsOnly<ConstantOp>(rhsProducer);
+    if (lhsConstantFoldable && rhsConstantFoldable) {
+      return rewriter.notifyMatchFailure(
+          op, "Not applying the pattern to a constant foldable subgraph");
+    }
+
     if (constantSubtreeSide == Input::UNK) {
-      if (dependsOnConstantsOnly<MO::ConstantOp>(lhsProducer)) {
+      if (lhsConstantFoldable) {
         constantSubtreeSide = Input::LHS;
         maybeViewOp = rhsProducer;
         maybeConstantSubtreeRootOp = lhsProducer;
-      } else if (dependsOnConstantsOnly<MO::ConstantOp>(rhsProducer)) {
+      } else if (rhsConstantFoldable) {
         constantSubtreeSide = Input::RHS;
         maybeViewOp = lhsProducer;
         maybeConstantSubtreeRootOp = rhsProducer;
@@ -4472,19 +4482,6 @@ struct SymbolicOptimizationPass
     : public MO::impl::SymbolicOptimizationBase<SymbolicOptimizationPass> {
   using SymbolicOptimizationBase::SymbolicOptimizationBase;
 
-  void applyViewOpSwimmingPatterns() {
-    MLIRContext *context = &getContext();
-    RewritePatternSet patterns(context);
-
-    // View op swimming through elementwise binary ops
-    patterns.add<SwimReshapeThroughBinaryOpWithConstantSubtree,
-                 SwimTransposeThroughBinaryOpWithConstantSubtree>(context);
-
-    if (failed(
-            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
-      return signalPassFailure();
-  }
-
   // Runs all default patterns plus the ones provided in the template
   // parameters.
   template <typename... PatternTypes>
@@ -4514,7 +4511,9 @@ struct SymbolicOptimizationPass
         SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp<
             Static::ReshapeOp>,
         SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp<RebindOp>,
-        SinkSqueezeLikeReshapeThroughTranspose>(context);
+        SinkSqueezeLikeReshapeThroughTranspose,
+        SwimReshapeThroughBinaryOpWithConstantSubtree,
+        SwimTransposeThroughBinaryOpWithConstantSubtree>(context);
 
     // Broadcast swimming.
     patterns.add<SinkBroadcastsThroughReduction,
@@ -4632,7 +4631,6 @@ struct SymbolicOptimizationPass
     applyCorePatterns();
     applyBackwardMathematicalCanonicalizations();
     applyCorePatterns();
-    applyViewOpSwimmingPatterns();
   }
 }; // namespace
 

@@ -65,8 +65,8 @@ mo.graph @success_constant_lhs(
 // CHECK-NEXT: [[V8:[^ ]*]] = mo.sub([[V5]], [[V7]]) : !mo.tensor<[16, 64, 128, 128], f32>
 // CHECK-NEXT: mo.output [[V8]] : !mo.tensor<[16, 64, 128, 128], f32>
 mo.graph @failure_non_const_subtree(
-  %arg0: !mo.tensor<[16, 128, 128, 8], f32>, 
-  %arg1: !mo.tensor<[7, 7, 8, 64], f32>, %arg2: !mo.tensor<[1, 1024, 1, 1], f32>, 
+  %arg0: !mo.tensor<[16, 128, 128, 8], f32>,
+  %arg1: !mo.tensor<[7, 7, 8, 64], f32>, %arg2: !mo.tensor<[1, 1024, 1, 1], f32>,
   %arg3: !mo.tensor<[1, 1024, 1, 1], f32>
 ) -> !mo.tensor<[16, 64, 128, 128], f32> no_inline {
   %0 = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
@@ -82,16 +82,13 @@ mo.graph @failure_non_const_subtree(
 }
 
 // -----
-
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @success_transpose_both_sides([[VARG0:[^ ]*]]: !mo.tensor<[16, 128, 128, 64], f32>) -> !mo.tensor<[16, 64, 128, 128], f32> no_inline {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
+// CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<0, 3, 2, 1> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.constant {value = #M.dense_array<0, 3, 1, 2> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
-// CHECK-NEXT: [[V2:[^ ]*]] = mo.constant {value = #M.dense_array<0, 1, 3, 2> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
 // CHECK-NEXT: [[V3:[^ ]*]] = mo.constant {value = #M.dense_array<1.000000e+00> : !M.array<1xf32>} : !mo.tensor<[], f32>
 // CHECK-NEXT: [[V4:[^ ]*]] = mo.static.broadcast_to([[V3]]) : !mo.tensor<[], f32> -> !mo.tensor<[16, 128, 64, 128], f32>
-// CHECK-NEXT: [[V5:[^ ]*]] = mo.transpose([[V4]], [[V2]]) : (!mo.tensor<[16, 128, 64, 128], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[16, 64, 128, 128], f32>
-// CHECK-NEXT: [[V6:[^ ]*]] = mo.transpose([[V5]], [[V0]]) : (!mo.tensor<[16, 64, 128, 128], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[16, 128, 128, 64], f32>
+// CHECK-NEXT: [[V6:[^ ]*]] = mo.transpose([[V4]], [[V0]]) : (!mo.tensor<[16, 128, 64, 128], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[16, 128, 128, 64], f32>
 // CHECK-NEXT: [[V7:[^ ]*]] = mo.sub([[VARG0]], [[V6]]) : !mo.tensor<[16, 128, 128, 64], f32>
 // CHECK-NEXT: [[V8:[^ ]*]] = mo.transpose([[V7]], [[V1]]) : (!mo.tensor<[16, 128, 128, 64], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[16, 64, 128, 128], f32>
 // CHECK-NEXT: mo.output [[V8]] : !mo.tensor<[16, 64, 128, 128], f32>
