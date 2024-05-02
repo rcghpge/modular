@@ -835,9 +835,10 @@ struct PropagateShapesPass
     if (!exprAttr)
       return false;
 
-    // If operands are all non-negative, maximum result will preserve the
+    // If operands are all non-negative, these operations will preserve the
     // property.
-    if (exprAttr.getOpcode() == KGEN::POC::Max) {
+    if (llvm::is_contained({KGEN::POC::Max, KGEN::POC::Add},
+                           exprAttr.getOpcode())) {
       return llvm::all_of(exprAttr.getOperands(), [&](TypedAttr operand) {
         return isDefinitelyNonNegative(operand);
       });
@@ -952,6 +953,16 @@ struct PropagateShapesPass
 
       // lt(non_positive_expr, non_negative_expr) = true
       if (isDefinitelyNonPositive(lhs) && isDefinitelyNonNegative(rhs))
+        return BoolAttr::get(ctx, true);
+
+      // Try more things, since we get this pattern from slice: lt(add(X, Y), X)
+      //     lhs < rhs
+      // <=> lhs - rhs < 0
+      auto diff = tryFoldExprAttr(KGEN::ParamOperatorAttr::getSub(lhs, rhs));
+      if (isDefinitelyNonNegative(diff))
+        return BoolAttr::get(ctx, false);
+
+      if (isDefinitelyNegative(diff))
         return BoolAttr::get(ctx, true);
 
     } else if (opcode == KGEN::POC::EQ) {

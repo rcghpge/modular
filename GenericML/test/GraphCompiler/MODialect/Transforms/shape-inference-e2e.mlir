@@ -1165,3 +1165,37 @@ mo.graph @staticize_mo_negative<D0, D1, D2, D3 -> D4>(
 
   mo.output<D5> %res : !mo.tensor<[D5], si64>
 }
+
+// This checks we can use range-based folding to simplify patterns like `lt(X +
+// Y, X)`. We see such pattern generated from `mo.slice` shape function in
+// `replitv15-3B-hf-context-encoding-bf16-onnx`.
+// CHECK-LABEL: mo.graph @fold_non_trivial_lt
+//  CHECK-SAME:  <[[X:.*]], [[Y:.*]]>(
+//  CHECK-SAME:  %[[INPUT:.*]]: !mo.tensor<[[[X]], [[Y]]], f32>
+//  CHECK-NEXT:   mo.output %[[INPUT]]
+mo.graph @fold_non_trivial_lt<X, Y -> D0, D1>(
+  %input: !mo.tensor<[X, Y], f32>
+) -> !mo.tensor<[D0, D1], f32> {
+
+  // NOTE this is somewhat contrived -- in general shape function (or maybe some
+  // rare staticization) generates these parameter expressions, but this test
+  // aims to check the simplification aspect, so we make this contrived test
+  // case. The generation part is also expected to go through some changes, so
+  // this avoids the churn. We'll likely add more e2e tests once the changes are
+  // completed.
+
+  // This is essentially `(X + Y < Y) ? (X + Y) : X
+  kgen.param.declare P0 = <add(X, Y)>
+  kgen.param.declare P1: i1 = <lt(P0, Y)>
+  kgen.param.declare P2 = <cond(P1, P0, X)>
+
+  // This is essentially `(2*X + Y < X) ? X : Y
+  kgen.param.declare P3 = <add(X, Y, X)>
+  kgen.param.declare P4: i1 = <lt(P0, X)>
+  kgen.param.declare P5 = <cond(P1, X, Y)>
+
+  // This reshape will be folded away since in/out shapes will become equal.
+  %res = mo.static.reshape(%input) : !mo.tensor<[X, Y], f32> -> !mo.tensor<[P2, P5], f32>
+
+  mo.output<P2, P5> %res : !mo.tensor<[P2, P5], f32>
+}
