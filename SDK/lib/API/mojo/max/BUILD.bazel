@@ -1,0 +1,19 @@
+load("//utils/bazel/build/rules:mojo.bzl", "mojo_library")
+
+package(default_visibility = ["//visibility:public"])
+
+mojo_library(
+    name = "max",
+    srcs = glob(["**/*.mojo"]),
+    deps = [
+        "//Kernels/mojo/algorithm",
+        "//Kernels/mojo/benchmark",
+        "//Kernels/mojo/buffer",
+        "//Kernels/mojo/extensibility",
+        "//Kernels/mojo/math",
+        "//Kernels/mojo/runtime",
+        "//Kernels/mojo/stdlib",
+        "//Kernels/mojo/tensor",
+        "//ModularFramework:_mlir",
+    ],
+)

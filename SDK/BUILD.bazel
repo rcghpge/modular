@@ -1,0 +1,119 @@
+load("@llvm-project//mlir:tblgen.bzl", "td_library")
+load("@pybind11_bazel//:build_defs.bzl", "pybind_library")
+load("//utils/bazel/build/rules:tablegen.bzl", "driver_option_tablegen")
+
+package(default_visibility = ["//visibility:public"])
+
+pybind_library(
+    name = "EngineAPI",
+    srcs = glob(["lib/EngineAPI/**/*.cpp"]),
+    hdrs = glob(["include/SDK/EngineAPI/**/*.h"]),
+    copts = ["-frtti"],
+    strip_include_prefix = "include",
+    deps = [
+        "//GenericML:API",
+        "//PyTorch:modular-framework-torch-ext",
+    ],
+)
+
+cc_library(
+    name = "EngineCLI-Visualize",
+    srcs = glob(["lib/EngineCLI/Visualize/*.cpp"]),
+    hdrs = glob(["include/SDK/EngineCLI/Visualize/*.h"]),
+    copts = ["-I$(GENDIR)/SDK/lib/EngineCLI/Visualize/"],
+    strip_include_prefix = "include",
+    deps = [
+        ":EngineCLI-Common",
+        ":VisualizeOptions.help_gen",
+        ":VisualizeOptions.inc_gen",
+        "//Config",
+        "//GenericML:API",
+    ],
+)
+
+cc_library(
+    name = "EngineCLI-Benchmark",
+    srcs = glob(["lib/EngineCLI/Benchmark/*.cpp"]),
+    hdrs = glob(["include/SDK/EngineCLI/Benchmark/*.h"]),
+    copts = [
+        "-Ithird-party/",  # Fixes mlperf-loadgen include path.
+        "-I$(GENDIR)/SDK/lib/EngineCLI/Benchmark/",
+    ],
+    strip_include_prefix = "include",
+    deps = [
+        ":BenchmarkOptions.help_gen",
+        ":BenchmarkOptions.inc_gen",
+        ":EngineCLI-Common",
+        "//GenericML:MaxAPI",
+        "//GenericML:Support",
+        "//Support:Base",
+        "//Support:ML",
+        "//third-party/mlperf-loadgen",
+    ],
+)
+
+cc_library(
+    name = "EngineCLI-Common",
+    srcs = glob(["lib/EngineCLI/Common/*.cpp"]),
+    hdrs = glob(["include/SDK/EngineCLI/Common/*.h"]),
+    strip_include_prefix = "include",
+    deps = [
+        "//GenericML:MaxAPI",
+        "//PyTorch:modular-framework-torch-ext",
+        "//Support:Base",
+        "//Support:Driver",
+    ],
+)
+
+td_library(
+    name = "BenchmarkTdFiles",
+    srcs = glob(["lib/EngineCLI/Benchmark/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+driver_option_tablegen(
+    name = "BenchmarkOptions",
+    srcs = ["lib/EngineCLI/Benchmark/BenchmarkOptions.td"],
+    manual_name = "max-benchmark",
+    markdown_name = "benchmark",
+    td_file = "lib/EngineCLI/Benchmark/BenchmarkOptions.td",
+    deps = [
+        ":BenchmarkTdFiles",
+        ":CommonTdFiles",
+        "//Support:DriverCommandTdFiles",
+    ],
+)
+
+td_library(
+    name = "CommonTdFiles",
+    srcs = glob(["lib/EngineCLI/Common/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+td_library(
+    name = "VisualizeTdFiles",
+    srcs = glob(["lib/EngineCLI/Visualize/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+driver_option_tablegen(
+    name = "VisualizeOptions",
+    srcs = ["lib/EngineCLI/Visualize/VisualizeOptions.td"],
+    manual_name = "max-visualize",
+    markdown_name = "visualize",
+    td_file = "lib/EngineCLI/Visualize/VisualizeOptions.td",
+    deps = [
+        ":CommonTdFiles",
+        ":VisualizeTdFiles",
+        "//Support:DriverCommandTdFiles",
+    ],
+)
