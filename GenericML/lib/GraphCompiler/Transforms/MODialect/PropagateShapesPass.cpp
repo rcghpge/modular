@@ -865,6 +865,58 @@ struct PropagateShapesPass
     return false;
   }
 
+  /// This function serves as shape inference system's extension to KGEN folder
+  /// on `POC::Cond`. It leverages things like range information to enable more
+  /// expression folding, and applies it only to `cond(operands)`, assuming
+  /// `operands` have been folded as much as possible.
+  ///
+  /// Return null if we can't apply any special folding.
+  TypedAttr tryFoldCond(ArrayRef<TypedAttr> operands) {
+
+    // A helper to check whether `attr` is an IntegerAttr of value `val`.
+    auto isIntAttrOfVal = [](TypedAttr attr, int val) {
+      auto intAttr = dyn_cast<IntegerAttr>(attr);
+      return intAttr && intAttr.getInt() == val;
+    };
+
+    // Look for patterns that arise from abs(X), which could materialize into
+    //   cond(ge(X, 1), X, mul_nuw(X, -1))
+    //
+    // Which gets canonicalized into
+    //   cond(xor(lt(X, 1), true), X, mul_nuw(X, -1))
+    TypedAttr cond = operands[0];
+    TypedAttr thenVal = operands[1];
+    TypedAttr elseVal = operands[2];
+
+    // Match xor(..., true)
+    auto trueAttr = BoolAttr::get(cond.getContext(), true);
+    auto xorExpr = dyn_cast<KGEN::ParamOperatorAttr>(cond);
+    if (!xorExpr || xorExpr.getOpcode() != KGEN::POC::Xor ||
+        xorExpr.getOperand(1) != trueAttr)
+      return {};
+
+    // Match lt(X, 1)
+    auto ltExpr = dyn_cast<KGEN::ParamOperatorAttr>(xorExpr.getOperand(0));
+    if (!ltExpr || ltExpr.getOpcode() != KGEN::POC::LT ||
+        ltExpr.getOperand(0) != thenVal ||
+        !isIntAttrOfVal(ltExpr.getOperand(1), 1))
+      return {};
+
+    // Match mul_nuw(X, -1)
+    auto mulExpr = dyn_cast<KGEN::ParamOperatorAttr>(elseVal);
+    if (!mulExpr || mulExpr.getOpcode() != KGEN::POC::MulNuw ||
+        mulExpr.getOperand(0) != thenVal ||
+        !isIntAttrOfVal(mulExpr.getOperand(1), -1))
+      return {};
+
+    // Now we know the whole cond is equivalent to `abs(thenVal)`, and
+    // `abs(nonNegative) == nonNegative`
+    if (isDefinitelyNonNegative(thenVal))
+      return thenVal;
+
+    return {};
+  }
+
   /// This function serves as shape inference system's extension to KGEN
   /// folders. It leverages things like range information to enable more
   /// expression folding, and applies it only to `opcode(operands)`, assuming
@@ -872,6 +924,9 @@ struct PropagateShapesPass
   ///
   /// Return null if we can't apply any special folding.
   TypedAttr tryFoldExprAttr(KGEN::POC opcode, ArrayRef<TypedAttr> operands) {
+    if (opcode == KGEN::POC::Cond)
+      return tryFoldCond(operands);
+
     // Only fold certain binary expression for now.
     if (operands.size() != 2)
       return {};

@@ -511,3 +511,18 @@ mo.graph @common_expr_dont_reference_across_regions<D0, D1 -> D2>(
 
   mo.output<?> %0 : !mo.tensor<[?], f32>
 }
+
+// CHECK-LABEL: mo.graph @fold_abs_on_non_negative_dim
+//  CHECK-SAME:  <[[D0:.*]]>(
+mo.graph @fold_abs_on_non_negative_dim<D0 -> D1>(
+  %dummy: !mo.tensor<[D0], f32>,
+  %scalar: !mo.tensor<[], f32>
+) -> !mo.tensor<[D1], f32> {
+
+  // CHECK-NEXT: %[[RESULT:.*]] = mo.static.broadcast_to{{.*}} -> !mo.tensor<[D0], f32>
+  kgen.param.declare D2 = <cond(ge(D0, 1), D0, mul_nuw(D0, -1))>
+  %result = mo.static.broadcast_to(%scalar) : !mo.tensor<[], f32> -> !mo.tensor<[D2], f32>
+
+  // CHECK-NEXT: mo.output %[[RESULT]]
+  mo.output<D2> %result : !mo.tensor<[D2], f32>
+}
