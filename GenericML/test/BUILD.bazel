@@ -5,7 +5,10 @@ package(default_visibility = ["//visibility:public"])
 lit_tests(
     name = "test",
     srcs = glob(
-        ["**/*.mlir"],
+        [
+            "**/*.mlir",
+            "**/*.yaml",
+        ],
         exclude = [
             # These fail
             "GraphCompiler/MOGGDialect/load-mojo-libs.mlir",
@@ -31,6 +34,9 @@ lit_tests(
             "GraphCompiler/MOGGDialect/many-unfused-broadcasts.mlir",
             "GraphCompiler/MOQDialect/transforms/legalize-moq-operators-to-mo-misc.mlir",
             "GraphCompiler/RMODialect/Lowering/binary_comparison.mlir",
+
+            # Data not tests
+            "GraphCompiler/Experimental/MHACoverage/mha-fusion-coverage-models.yaml",
         ],
     ),
     custom_substitutions = {
