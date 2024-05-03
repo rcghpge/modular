@@ -79,7 +79,7 @@ cc_library(
         "//GraphRT:MLIRToMEF",
         "//Support:Base",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:mlir-opt",
+        "@llvm-project//mlir:MlirOptLib",
     ],
 )
 
