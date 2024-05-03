@@ -102,9 +102,11 @@ void LowerPrimitivesPass::runOnOperation() {
   ModuleOp mod = getOperation();
   MLIRContext *ctx = mod->getContext();
 
-  MOGG::MojoLibraryAnalysis mojoLibraryAnalysis(ctx);
-  if (mojoLibraryAnalysis.init({}).isError())
+  auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
+  ErrorOr<MOGG::MojoLibraryAnalysis *> errOr = analysis.initIfNeeded(ctx, {});
+  if (errOr.isError())
     return signalPassFailure();
+  MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
 
   mod.walk([&](Operation *op) {
     Location opLoc = op->getLoc();

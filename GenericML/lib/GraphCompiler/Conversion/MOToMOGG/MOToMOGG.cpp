@@ -59,12 +59,16 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
 
   void runOnOperation() override {
 
-    auto *ctx = &getContext();
+    MLIRContext *ctx = &getContext();
     RewritePatternSet patterns{ctx};
 
-    MOGG::MojoLibraryAnalysis mojoLibraryAnalysis(ctx);
-    if (mojoLibraryAnalysis.init(kernelLibraryPaths).isError())
+    auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
+    ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
+        analysis.initIfNeeded(ctx, kernelLibraryPaths);
+    if (errOr.isError())
       return signalPassFailure();
+    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
+
     patterns.add<MOOpPattern>(ctx, mojoLibraryAnalysis);
 
     if (failed(

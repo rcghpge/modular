@@ -20,6 +20,7 @@
 #include "KGEN/MOGGPreElab/MOGGDecorators.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Pass/AnalysisManager.h"
 
 //===----------------------------------------------------------------------===//
 // Forward Declarations
@@ -31,13 +32,7 @@ namespace M::MOGG {
 /// an interface to inquire about their content.
 class MojoLibraryAnalysis {
 public:
-  /// We have eager and lazy mode for the library loading. Lazy mode parses the
-  /// mojo library on-demand and is triggered for the full materialization via
-  /// `getMojoBindings()`. Eager mode fully materializes the library during
-  /// `init()`. In general, eager mode has faster bulk materialization API than
-  /// the lazy mode. Therefore, if you know you are going to have a full
-  /// materialization, use eager mode. Otherwise, lazy mode is more efficient.
-  MojoLibraryAnalysis(MLIRContext *ctx, bool eager = false);
+  MojoLibraryAnalysis(MLIRContext *ctx);
 
   MojoLibraryAnalysis(const MojoLibraryAnalysis &other) = delete;
 
@@ -48,7 +43,15 @@ public:
   /// This method must be called before we can use this object. The standard
   /// Mojo kernel library is directly embedded. Only the extra library paths
   /// must be provided.
-  ErrorOrSuccess init(ArrayRef<std::string> kernelLibraryPaths);
+  ///
+  /// We have eager and lazy mode for the library loading. Lazy mode parses the
+  /// mojo library on-demand and is triggered for the full materialization via
+  /// `getMojoBindings()`. Eager mode fully materializes the library during
+  /// `init()`. In general, eager mode has faster bulk materialization API than
+  /// the lazy mode. Therefore, if you know you are going to have a full
+  /// materialization, use eager mode. Otherwise, lazy mode is more efficient.
+  ErrorOrSuccess init(ArrayRef<std::string> kernelLibraryPaths,
+                      bool eager = false);
 
   /// Get the fully materialized module which contains all exported generators
   /// from mojo libraries. If the module has been materialized, it is directly
@@ -138,13 +141,13 @@ private:
 
   /// Load the user libraries lazily.
   ErrorOrSuccess
-  loadUserProvidedKernels(ArrayRef<std::string> kernelLibraryPaths);
+  loadUserProvidedKernels(ArrayRef<std::string> kernelLibraryPaths, bool eager);
 
   /// Helper function to update the module and state data but account for
   /// collisions
-  void updatedLoadedKernelsForCollisions(
+  void updateLoadedKernelsForCollisions(
       Operation *userModule,
-      llvm::StringMap<KGEN::GeneratorOp> &userRawMojoKernel);
+      llvm::StringMap<KGEN::GeneratorOp> &userRawMojoKernel, bool eager);
 
   /// Materialize the specified mojo kernel. It does nothing if the kernel has
   /// been materialized.
@@ -192,9 +195,6 @@ private:
   /// Whether all the mojo libraries are materialized.
   bool finalized = false;
 
-  /// Whether this is a eager mojo library loader.
-  bool eager;
-
   MLIRContext *context;
 
   mlir::ParserConfig config;
@@ -214,6 +214,38 @@ private:
   using RenameEntry = std::pair<std::string, FlatSymbolRefAttr>;
   llvm::DenseMap<Operation *, llvm::SmallVector<RenameEntry, 16>>
       symbolNameRemapping;
+};
+
+/// An analysis "pass" for our passes to use to share the loaded library state.
+struct LoadMojoAnalysisPass {
+  LoadMojoAnalysisPass(Operation *op) : analysis(nullptr) {}
+
+  /// Explicitly invalidate the analysis. This is needed as the alternative is
+  /// every pass would invalidate implicitly (including those we can't control.)
+  void invalidate() { analysis.reset(); }
+
+  /// Aggressively assume it is valid so the passes don't force a load each time
+  /// even when they don't touch it.
+  bool isInvalidated(const mlir::AnalysisManager::PreservedAnalyses &) {
+    return false;
+  }
+
+  ErrorOr<MojoLibraryAnalysis *>
+  initIfNeeded(MLIRContext *ctx, ArrayRef<std::string> kernelLibraryPaths,
+               bool eager = false) {
+    if (analysis)
+      return analysis.get();
+
+    analysis = std::make_unique<MojoLibraryAnalysis>(ctx);
+    auto loadError = analysis->init(kernelLibraryPaths, eager);
+    if (loadError.isError()) {
+      analysis = nullptr;
+      return loadError.takeError();
+    }
+    return analysis.get();
+  }
+
+  std::unique_ptr<MojoLibraryAnalysis> analysis;
 };
 
 //===----------------------------------------------------------------------===//

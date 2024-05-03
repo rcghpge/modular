@@ -145,7 +145,7 @@ bool MojoLibraryAnalysis::kernelHasInputParameter(KGEN::GeneratorOp kernel,
 
 // Load a list of kernels from the provided user libraries.
 ErrorOrSuccess MojoLibraryAnalysis::loadUserProvidedKernels(
-    ArrayRef<std::string> kernelLibraryPaths) {
+    ArrayRef<std::string> kernelLibraryPaths, bool eager) {
 
   // Load each of the extra user libraries and update the book-keepings.
   for (StringRef path : kernelLibraryPaths) {
@@ -214,16 +214,16 @@ ErrorOrSuccess MojoLibraryAnalysis::loadUserProvidedKernels(
                          userRawMojoKernel);
       }
     }
-    updatedLoadedKernelsForCollisions(userModule, userRawMojoKernel);
+    updateLoadedKernelsForCollisions(userModule, userRawMojoKernel, eager);
   }
 
   return success();
 }
 
 // Update the state in MJA for collisions etc.
-void MojoLibraryAnalysis::updatedLoadedKernelsForCollisions(
+void MojoLibraryAnalysis::updateLoadedKernelsForCollisions(
     Operation *userModule,
-    llvm::StringMap<KGEN::GeneratorOp> &userRawMojoKernel) {
+    llvm::StringMap<KGEN::GeneratorOp> &userRawMojoKernel, bool eager) {
 
   // Remap only exposed kernel functions if their name collides with an
   // existing function.
@@ -311,15 +311,8 @@ struct Candidate {
 };
 
 ErrorOrSuccess
-MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
-  llvm::ArrayRef<llvm::StringRef> sources_tag = {
-      "mojo-mogg-bindings", "mojo-primitives-mogg-bindings"};
-  llvm::ArrayRef<llvm::StringRef> sources = {
-      llvm::StringRef{reinterpret_cast<const char *>(MojoMoggBindings::data),
-                      MojoMoggBindings::size},
-      llvm::StringRef{
-          reinterpret_cast<const char *>(MojoPrimitivesMoggBindings::data),
-          MojoPrimitivesMoggBindings::size}};
+MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths,
+                          bool eager) {
 
   llvm::StringRef source{reinterpret_cast<const char *>(MojoMoggBindings::data),
                          MojoMoggBindings::size};
@@ -366,7 +359,8 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
     block.push_back(primitiveModule);
     populateMetadata(primitiveModule, eager, finalizedMojoKernel,
                      primitiveRawMojoKernel);
-    updatedLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel);
+    updateLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel,
+                                     eager);
   } else {
     // Lazy loading the main mojo bindings.
     llvm::MemoryBufferRef buffer(primitive_source,
@@ -391,10 +385,11 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
     llvm::StringMap<KGEN::GeneratorOp> primitiveRawMojoKernel;
     populateRawMetadata(primitiveModule, reader, dedicatedReader,
                         primitiveRawMojoKernel);
-    updatedLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel);
+    updateLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel,
+                                     eager);
   }
 
-  auto loadError = loadUserProvidedKernels(kernelLibraryPaths);
+  auto loadError = loadUserProvidedKernels(kernelLibraryPaths, eager);
   GENERICML_ASSERT(!loadError.isError()) << loadError.takeError();
 
   finalized = eager;
@@ -469,8 +464,8 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   return success();
 }
 
-MojoLibraryAnalysis::MojoLibraryAnalysis(MLIRContext *ctx, bool eager)
-    : eager(eager), context(ctx), config(ctx, false) {}
+MojoLibraryAnalysis::MojoLibraryAnalysis(MLIRContext *ctx)
+    : context(ctx), config(ctx, false) {}
 
 MojoLibraryAnalysis::~MojoLibraryAnalysis() {
   for (auto &rd : readers) {
@@ -567,7 +562,7 @@ ErrorOr<mlir::ModuleOp> MojoLibraryAnalysis::getMojoBindings() {
     // Update all related metadata.
     finalizedMojoKernel.clear();
     rawMojoKernel.clear();
-    populateMetadata(module, eager, finalizedMojoKernel, rawMojoKernel);
+    populateMetadata(module, true, finalizedMojoKernel, rawMojoKernel);
     finalized = true;
   }
 

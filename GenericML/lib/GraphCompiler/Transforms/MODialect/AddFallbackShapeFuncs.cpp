@@ -145,11 +145,28 @@ struct AddFallbackShapeFunctions
 
   void runOnOperation() override {
     MO::GraphOp graph = getOperation();
-    OpBuilder builder{graph.getContext()};
+    MLIRContext *ctx = graph.getContext();
+    OpBuilder builder{ctx};
 
-    MOGG::MojoLibraryAnalysis mojoLibraryAnalysis(graph.getContext());
-    if (mojoLibraryAnalysis.init(kernelLibraryPaths).isError())
-      return signalPassFailure();
+    MOGG::MojoLibraryAnalysis *cachedAnalysis = nullptr;
+
+    // This pass actually only needs to touch the analysis for custom ops, most
+    // ops don't use it.
+    auto getLazyAnalysis = [&]() -> MOGG::MojoLibraryAnalysis * {
+      if (cachedAnalysis)
+        return cachedAnalysis;
+
+      auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
+      ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
+          analysis.initIfNeeded(ctx, kernelLibraryPaths);
+      if (errOr.isError())
+        return nullptr;
+      cachedAnalysis = errOr.takeValue();
+      return cachedAnalysis;
+    };
+
+    // We will never modify the state.
+    markAnalysesPreserved<MOGG::LoadMojoAnalysisPass>();
 
     WalkResult result = graph.walk([&](ParamDeclarationInterface op) {
       // Shape function was already materialized or never needed.
@@ -225,8 +242,12 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::TileOp)
 
       if (auto asOp = dyn_cast<MO::CustomOp>(op.getOperation())) {
+        MOGG::MojoLibraryAnalysis *analysis = getLazyAnalysis();
+        if (!analysis)
+          signalPassFailure();
+
         auto mojoKernel =
-            mojoLibraryAnalysis.getRegisteredMojoKernelFor(asOp.getSymbol());
+            analysis->getRegisteredMojoKernelFor(asOp.getSymbol());
         if (!mojoKernel) {
           asOp.emitError() << "Could not find registered mojo kernel.";
           return mlir::WalkResult::interrupt();
@@ -236,8 +257,8 @@ struct AddFallbackShapeFunctions
         if (mojoKernel->hasAttr(KGEN::MOGGPreElab::ALLOCS_ATTR))
           return mlir::WalkResult::skip();
 
-        auto result = Fallback<MO::CustomOp>{}.build(
-            graph, builder, asOp, mojoKernel, mojoLibraryAnalysis);
+        auto result = Fallback<MO::CustomOp>{}.build(graph, builder, asOp,
+                                                     mojoKernel, *analysis);
         if (result.isError()) {
           asOp.emitError() << "Failed to fallback shape function with error: "
                            << result.takeError();

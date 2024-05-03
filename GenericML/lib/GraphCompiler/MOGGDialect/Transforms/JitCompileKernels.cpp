@@ -44,9 +44,13 @@ struct JitCompileKernels
     mlir::ModuleOp m = getOperation();
     MLIRContext *ctx = m.getContext();
 
-    MOGG::MojoLibraryAnalysis mojoLibraryAnalysis(ctx, true);
-    auto loadError = mojoLibraryAnalysis.init(kernelLibraryPaths);
-    GENERICML_ASSERT(!loadError.isError()) << loadError.takeError();
+    auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
+    analysis.invalidate();
+    ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
+        analysis.initIfNeeded(ctx, kernelLibraryPaths, true);
+    if (errOr.isError())
+      return signalPassFailure();
+    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
 
     // Don't expose any extra stuff in the library.
     mojoLibraryAnalysis.markAllFunctionsAsNotExported();
@@ -76,6 +80,8 @@ struct JitCompileKernels
     // removed once we only have one compile stage.
     if (!isGraph)
       m.walk([](KGEN::ExternGeneratorOp op) { op.erase(); });
+
+    analysis.invalidate();
   }
 
   template <typename OpContainer>
