@@ -80,6 +80,8 @@ add_mojo_package(max-mojo PRIVATE
   mojo-buffer
   mojo-tensor
   mojo-extensibility
+
+  mlir-mojo-api
 )
 
 # FIXME: The documentation for extensibility is currently defined in
@@ -116,8 +118,6 @@ endif()
 # Dependencies aren't automatically included in releases!
 # They need to be manually added to utils/build/engine_packaging/c/CMakeLists.txt
 # See the install-max-graph-c target.
-
-add_dependencies(max-mojo mlir-mojo-api)
 
 if (MODULAR_BUILD_SERVE_RT)
   add_dependencies(max-mojo ServeRTCAPI)
