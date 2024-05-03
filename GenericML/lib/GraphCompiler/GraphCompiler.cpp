@@ -325,6 +325,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   }
   pm.addPass(MGP::createFixupOverhangsPass());
   pm.addPass(MGP::createSimplifyChainsPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 }
 
