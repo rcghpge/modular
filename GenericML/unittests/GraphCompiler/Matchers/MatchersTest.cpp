@@ -57,12 +57,9 @@ protected:
 
   void TearDown() override { module->erase(); }
 
-  // A non-type template parameter cannot have type 'float' before
-  // C++20clang(template_nontype_parm_bad_structural_type)
-  template <int value = 0>
   MO::TensorValue getFloatConst(ArrayRef<int64_t> shape) {
     auto type = MO::TensorType::get(shape, FloatType::getF32(&ctx));
-    SmallVector<APFloat> values(1, APFloat(float(value)));
+    SmallVector<APFloat> values(1, APFloat(0.f));
     MO::TensorValue out = builder.create<ConstantOp>(
         loc, ArrayRef<APFloat>(values), FloatType::getF32(&ctx));
     // Overwrite the output type
@@ -193,18 +190,4 @@ TEST_F(MatchersTest, Logging) {
       "si32>) -> !mo.tensor<[1, 2], f32>\n  %5 = \"mo.sub\"(%4, %arg2) : "
       "(!mo.tensor<[1, 2], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, "
       "2], f32>\n");
-}
-
-TEST_F(MatchersTest, SplatOrBroadcastedConstantOfAnyType) {
-  MO::TensorValue cst123 = getFloatConst<123>({1, 2, 3});
-  auto match123f =
-      m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(123.f);
-  auto match123i =
-      m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(123);
-  auto match1234 =
-      m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(123.4);
-
-  ASSERT_TRUE(match123f.match(cst123));
-  ASSERT_TRUE(match123i.match(cst123));
-  ASSERT_FALSE(match1234.match(cst123));
 }

@@ -746,13 +746,8 @@ struct LayerNormPattern
     auto mean = m_Op<MO::Static::BroadcastToOp>(
         po(), m_Op<MO::MeanOp>(po(), x, last_axis));
     auto diff = m_Op<MO::SubOp>(po(), x, mean);
-    auto square = m_Optional(
-        m_Op<MO::MulOp>(po(), diff, diff),
-        m_Op<MO::PowOp>(
-            po(), diff,
-            m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
-                2)));
-    auto var = m_Op<MO::MeanOp>(po(), square, last_axis);
+    auto var =
+        m_Op<MO::MeanOp>(po(), m_Op<MO::MulOp>(po(), diff, diff), last_axis);
     // pytorch specific pattern
     auto p_ratio = m_Op<MO::DivOp>(
         po(), diff,

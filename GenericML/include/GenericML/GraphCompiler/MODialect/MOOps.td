@@ -3513,7 +3513,6 @@ def MO_RoiAlignOp : MO_TensorOp<"roi_align", [
 
 class MO_DotBase<string name, list<Trait> traits = []> :
     MO_TensorOp<name, traits # [
-    Pure,
     MO_MatmulLike,
     DeclareOpInterfaceMethods<MO_Parameterization>,
     DeclareOpInterfaceMethods<MO_ParamDeclaration>,
@@ -3549,7 +3548,6 @@ def MO_MatmulOp : MO_DotBase<"matmul"> {
 }
 
 def MO_BatchMatmulOp : MO_TensorOp<"batch_matmul", [
-  Pure,
   MO_MatmulLike,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
 ]> {
