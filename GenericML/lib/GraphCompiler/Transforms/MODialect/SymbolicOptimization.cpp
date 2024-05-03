@@ -528,13 +528,50 @@ struct FlattenNestedConcatPattern
 };
 
 /// A pattern that detects a power op whose exponent is a constant floating
-/// point 3, and rewrites it into two multiplications.
+/// point 2.0, and rewrites it into a single multiplication.
 ///
 /// Example:
 ///
 /// input : tensor<[...]>
 ///
-///   res = pow(input, 3)
+///   res = pow(input, 2.0)
+/// ===>
+///   res = input * input
+struct Pow2Pattern : public DeviceAwareRewritePattern<OpRewritePattern, PowOp> {
+  Pow2Pattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::PowOp op,
+                             DeviceAwareRewriter &rewriter) const override {
+    Value input;
+    if (!m_Op<PowOp>(m_Any(&input),
+                     m_Op<Static::BroadcastToOp>(rewriter.pushOp(),
+                                                 m_ScalarConstant(2.0)))
+             .match(op))
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    if (!input)
+      return rewriter.notifyMatchFailure(op, "null input value");
+
+    if (!rewriter.addOps()) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
+
+    rewriter.replaceOpWithNewOp<MulOp>(op, input, input);
+
+    return mlir::success();
+  }
+};
+
+/// A pattern that detects a power op whose exponent is a constant floating
+/// point 3.0, and rewrites it into two multiplications.
+///
+/// Example:
+///
+/// input : tensor<[...]>
+///
+///   res = pow(input, 3.0)
 /// ===>
 ///   res = input * input * input
 struct Pow3Pattern : public DeviceAwareRewritePattern<OpRewritePattern, PowOp> {
@@ -544,13 +581,14 @@ struct Pow3Pattern : public DeviceAwareRewritePattern<OpRewritePattern, PowOp> {
   deviceAwareMatchAndRewrite(MO::PowOp op,
                              DeviceAwareRewriter &rewriter) const override {
     Value input;
-    if (!m_Op<MO::PowOp>(
-             m_Any(&input),
-             m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
-                 2))
-             .match(op)) {
-      return failure();
-    }
+    if (!m_Op<PowOp>(m_Any(&input),
+                     m_Op<Static::BroadcastToOp>(rewriter.pushOp(),
+                                                 m_ScalarConstant(3.0)))
+             .match(op))
+      return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    if (!input)
+      return rewriter.notifyMatchFailure(op, "null input value");
 
     if (!rewriter.addOps()) {
       return rewriter.notifyMatchFailure(
@@ -3478,11 +3516,10 @@ createScalarConstantOpOfType(M::DType dtype, T value,
 
 template <typename T>
 static inline ErrorOr<Value>
-createBroadcastedScalarConstantOpOfType(TensorType bcastType, T value,
-                                        DeviceAwareRewriter &rewriter,
+createBroadcastedScalarConstantOpOfType(TensorType bcastType, M::DType dtype,
+                                        T value, DeviceAwareRewriter &rewriter,
                                         Location loc) {
-  auto cstErrOr =
-      createScalarConstantOpOfType(bcastType.getDtype(), value, rewriter, loc);
+  auto cstErrOr = createScalarConstantOpOfType(dtype, value, rewriter, loc);
   if (cstErrOr.isError())
     return Error(cstErrOr.getError());
 
@@ -3497,7 +3534,7 @@ replaceOpResultWithBcastOfScalarIf(OpType op, T value,
     return failure();
 
   auto bcastErrOr = createBroadcastedScalarConstantOpOfType(
-      op.getType(), value, rewriter, op.getLoc());
+      op.getType(), op.getType().getDtype(), value, rewriter, op.getLoc());
   if (bcastErrOr.isError())
     return rewriter.notifyMatchFailure(op, bcastErrOr.getError());
 
@@ -3943,541 +3980,6 @@ struct ArithmeticFoldingXorSameOperand
   }
 };
 
-// pow(pow(x, y), z) = pow(x, y * z)
-// This pattern can be repeatedly applied for arbitrarily long chains.
-struct MathematicalCanonicalizationChainsOfPowToSinglePow
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::PowOp> {
-  MathematicalCanonicalizationChainsOfPowToSinglePow(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 2) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::PowOp powOp,
-                             DeviceAwareRewriter &rewriter) const override {
-    Value x, y, z;
-    if (!m_Op<MO::PowOp>(m_Op<MO::PowOp>(m_Any(&x), m_Any(&y)), m_Any(&z))
-             .match(powOp)) {
-      return failure();
-    }
-
-    if (y.getType() != z.getType())
-      return failure();
-
-    Location loc = powOp->getLoc();
-    auto add = rewriter.create<MO::MulOp>(loc, y.getType(), y, z);
-    auto newPow = rewriter.create<MO::PowOp>(loc, powOp.getType(), x, add);
-    rewriter.replaceAllUsesWith(powOp, newPow);
-
-    return success();
-  }
-};
-
-// rsqrt(x) -> div(bcast(1), sqrt(x))
-struct ForwardMathematicalCanonicalizationRsqrtToDivSqrt
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::RsqrtOp> {
-  ForwardMathematicalCanonicalizationRsqrtToDivSqrt(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 1) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::RsqrtOp rsqrtOp,
-                             DeviceAwareRewriter &rewriter) const override {
-    Location loc = rsqrtOp->getLoc();
-    TensorType tensorType = rsqrtOp.getType();
-    auto bcast1ErrOr =
-        createBroadcastedScalarConstantOpOfType(tensorType, 1, rewriter, loc);
-    if (bcast1ErrOr.isError())
-      return rewriter.notifyMatchFailure(rsqrtOp, bcast1ErrOr.getError());
-    auto sqrt =
-        rewriter.create<MO::SqrtOp>(loc, tensorType, rsqrtOp.getInput());
-    auto div = rewriter.create<MO::DivOp>(loc, tensorType, *bcast1ErrOr, sqrt);
-    rewriter.replaceAllUsesWith(rsqrtOp, div);
-
-    return success();
-  }
-};
-
-// div(bcast(1), sqrt(x)) -> rsqrt(x)
-struct BackwardMathematicalCanonicalizationDivSqrtToRsqrt
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::DivOp> {
-  BackwardMathematicalCanonicalizationDivSqrtToRsqrt(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 2) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::DivOp divOp,
-                             DeviceAwareRewriter &rewriter) const override {
-    Value x;
-    if (!m_Op<MO::DivOp>(
-             m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
-                 1),
-             m_Op<MO::SqrtOp>(m_Any(&x)))
-             .match(divOp)) {
-      return failure();
-    }
-    auto rsqrt =
-        rewriter.create<MO::RsqrtOp>(divOp->getLoc(), divOp.getType(), x);
-    rewriter.replaceAllUsesWith(divOp, rsqrt);
-
-    return success();
-  }
-};
-
-// relu(x) -> max(x, bcast(0))
-struct ForwardMathematicalCanonicalizationReluToMax
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::ReluOp> {
-  ForwardMathematicalCanonicalizationReluToMax(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 1) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::ReluOp reluOp,
-                             DeviceAwareRewriter &rewriter) const override {
-    Location loc = reluOp->getLoc();
-    TensorType tensorType = reluOp.getType();
-
-    auto bcast0ErrOr =
-        createBroadcastedScalarConstantOpOfType(tensorType, 0, rewriter, loc);
-    if (bcast0ErrOr.isError())
-      return rewriter.notifyMatchFailure(reluOp, bcast0ErrOr.getError());
-    auto maxOp = rewriter.create<MO::MaxOp>(loc, tensorType, reluOp.getInput(),
-                                            *bcast0ErrOr);
-    rewriter.replaceAllUsesWith(reluOp, maxOp);
-
-    return success();
-  }
-};
-
-// max(x, bcast(0)) -> relu(x)
-struct BackwardMathematicalCanonicalizationMaxToRelu
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::MaxOp> {
-  BackwardMathematicalCanonicalizationMaxToRelu(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 2) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::MaxOp maxOp,
-                             DeviceAwareRewriter &rewriter) const override {
-    Value x;
-    if (!m_BinaryCommutativeOp<MO::MaxOp>(
-             m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
-                 0),
-             m_Any(&x))
-             .match(maxOp)) {
-      return failure();
-    }
-    auto relu =
-        rewriter.create<MO::ReluOp>(maxOp->getLoc(), maxOp.getType(), x);
-    rewriter.replaceAllUsesWith(maxOp, relu);
-
-    return success();
-  }
-};
-
-// mul(x, bcast(2)) = add(x, x)
-struct ForwardMathematicalCanonicalizationMulByTwoToAdd
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::MulOp> {
-  ForwardMathematicalCanonicalizationMulByTwoToAdd(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 1) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::MulOp mulOp,
-                             DeviceAwareRewriter &rewriter) const override {
-    Value x;
-    if (!m_BinaryCommutativeOp<MO::MulOp>(
-             m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
-                 2),
-             m_Any(&x))
-             .match(mulOp)) {
-      return failure();
-    }
-    auto add =
-        rewriter.create<MO::AddOp>(mulOp->getLoc(), mulOp.getType(), x, x);
-    rewriter.replaceAllUsesWith(mulOp, add);
-
-    return success();
-  }
-};
-
-// add(x, x) = mul(x, bcast(2))
-struct BackwardMathematicalCanonicalizationMulByTwoToAdd
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::AddOp> {
-  BackwardMathematicalCanonicalizationMulByTwoToAdd(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 1) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::AddOp addOp,
-                             DeviceAwareRewriter &rewriter) const override {
-    if (addOp.getInputX() != addOp.getInputY()) {
-      return failure();
-    }
-
-    auto tensorType = addOp.getType();
-    auto loc = addOp->getLoc();
-    auto bcast2ErrOr =
-        createBroadcastedScalarConstantOpOfType(tensorType, 2, rewriter, loc);
-    if (bcast2ErrOr.isError())
-      return rewriter.notifyMatchFailure(addOp, bcast2ErrOr.getError());
-
-    auto mul = rewriter.create<MO::MulOp>(loc, tensorType, addOp.getInputX(),
-                                          *bcast2ErrOr);
-    rewriter.replaceAllUsesWith(addOp, mul);
-
-    return success();
-  }
-};
-
-// pow(x, 2) = mul(x, x)
-struct ForwardMathematicalCanonicalizationPowByTwoToMul
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::PowOp> {
-  ForwardMathematicalCanonicalizationPowByTwoToMul(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 1) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::PowOp powOp,
-                             DeviceAwareRewriter &rewriter) const override {
-    Value x;
-    if (!m_Op<MO::PowOp>(
-             m_Any(&x),
-             m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
-                 2))
-             .match(powOp)) {
-      return failure();
-    }
-    auto mul =
-        rewriter.create<MO::MulOp>(powOp->getLoc(), powOp.getType(), x, x);
-    rewriter.replaceAllUsesWith(powOp, mul);
-
-    return success();
-  }
-};
-
-// pow(x, -{1, 2}) = div(1, pow(x, {1, 2})
-struct ForwardMathematicalCanonicalizationPowByNegativeOneOrTwoToDivAndPow
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::PowOp> {
-  ForwardMathematicalCanonicalizationPowByNegativeOneOrTwoToDivAndPow(
-      MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 2) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::PowOp powOp,
-                             DeviceAwareRewriter &rewriter) const override {
-    Value x;
-    Value one;
-    Value two;
-    if (!m_Op<MO::PowOp>(m_Any(&x),
-                         m_Optional(m_SplatOrBroadcastedConstantOfAnyType<
-                                        MO::Static::BroadcastToOp>(&one, -1),
-                                    m_SplatOrBroadcastedConstantOfAnyType<
-                                        MO::Static::BroadcastToOp>(&two, -2)))
-             .match(powOp)) {
-      return failure();
-    }
-
-    auto tensorType = powOp.getType();
-    auto loc = powOp->getLoc();
-
-    auto bcastErrOr = createBroadcastedScalarConstantOpOfType(
-        tensorType, one ? 1 : 2, rewriter, loc);
-    if (bcastErrOr.isError())
-      return rewriter.notifyMatchFailure(powOp, bcastErrOr.getError());
-
-    auto bcast1ErrOr =
-        createBroadcastedScalarConstantOpOfType(tensorType, 1, rewriter, loc);
-    if (bcast1ErrOr.isError())
-      return rewriter.notifyMatchFailure(powOp, bcast1ErrOr.getError());
-
-    powOp.setRhsInput(*bcastErrOr);
-    rewriter.setInsertionPointAfter(powOp);
-    auto div = rewriter.create<MO::DivOp>(loc, tensorType, *bcast1ErrOr, powOp);
-    rewriter.replaceAllUsesExcept(powOp, div, div);
-
-    return success();
-  }
-};
-
-// div(1, pow(x, {1, 2}) = pow(x, -{1, 2})
-struct BackwardMathematicalCanonicalizationDivAndPowToPowByNegativeOneOrTwo
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::DivOp> {
-  BackwardMathematicalCanonicalizationDivAndPowToPowByNegativeOneOrTwo(
-      MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 2) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::DivOp divOp,
-                             DeviceAwareRewriter &rewriter) const override {
-    Value x;
-    Value one;
-    Value two;
-    if (!m_Op<MO::DivOp>(
-             m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
-                 1),
-             m_Op<MO::PowOp>(
-                 m_Any(&x),
-                 m_Optional(m_SplatOrBroadcastedConstantOfAnyType<
-                                MO::Static::BroadcastToOp>(&one, 1),
-                            m_SplatOrBroadcastedConstantOfAnyType<
-                                MO::Static::BroadcastToOp>(&two, 2))))
-             .match(divOp)) {
-      return failure();
-    }
-
-    GENERICML_ASSERT(one || two);
-
-    auto tensorType = divOp.getType();
-    auto loc = divOp->getLoc();
-
-    auto bcastErrOr = createBroadcastedScalarConstantOpOfType(
-        tensorType, one ? -1 : -2, rewriter, loc);
-    if (bcastErrOr.isError())
-      return rewriter.notifyMatchFailure(divOp, bcastErrOr.getError());
-
-    auto pow = rewriter.create<MO::PowOp>(loc, tensorType, x, *bcastErrOr);
-    rewriter.replaceAllUsesWith(divOp, pow);
-
-    return success();
-  }
-};
-
-// sub(0, x) = negative(x)
-struct MathematicalCanonicalizationZeroSubToNegative
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::SubOp> {
-  MathematicalCanonicalizationZeroSubToNegative(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 2) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::SubOp subOp,
-                             DeviceAwareRewriter &rewriter) const override {
-    Value x;
-    if (!m_Op<MO::SubOp>(
-             m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
-                 0),
-             m_Any(&x))
-             .match(subOp)) {
-      return failure();
-    }
-    auto neg =
-        rewriter.create<MO::NegativeOp>(subOp->getLoc(), subOp.getType(), x);
-    rewriter.replaceAllUsesWith(subOp, neg);
-
-    return success();
-  }
-};
-
-// add(x, negative(y)) = sub(x, y)
-struct MathematicalSimplificationAddWithNegative
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::AddOp> {
-  MathematicalSimplificationAddWithNegative(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 2) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::AddOp addOp,
-                             DeviceAwareRewriter &rewriter) const override {
-    Value x, y;
-    if (!m_BinaryCommutativeOp<MO::AddOp>(m_Any(&x),
-                                          m_Op<MO::NegativeOp>(m_Any(&y)))
-             .match(addOp)) {
-      return failure();
-    }
-
-    auto sub =
-        rewriter.create<MO::SubOp>(addOp->getLoc(), addOp.getType(), x, y);
-    rewriter.replaceAllUsesWith(addOp, sub);
-
-    return success();
-  }
-};
-
-// sub(x, negative(y)) = add(x, y)
-struct MathematicalSimplificationSubWithNegative
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::SubOp> {
-  MathematicalSimplificationSubWithNegative(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 2) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::SubOp subOp,
-                             DeviceAwareRewriter &rewriter) const override {
-    Value x, y;
-    if (!m_Op<MO::SubOp>(m_Any(&x), m_Op<MO::NegativeOp>(m_Any(&y)))
-             .match(subOp)) {
-      return failure();
-    }
-
-    auto add =
-        rewriter.create<MO::AddOp>(subOp->getLoc(), subOp.getType(), x, y);
-    rewriter.replaceAllUsesWith(subOp, add);
-
-    return success();
-  }
-};
-
-// div(x, div(y, z)) = div(mul(x, z), y)
-struct MathematicalSimplificationDivByDivToDivOfMul
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::DivOp> {
-  MathematicalSimplificationDivByDivToDivOfMul(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 2) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::DivOp divOp,
-                             DeviceAwareRewriter &rewriter) const override {
-    Value x, y, z;
-    if (!m_Op<MO::DivOp>(m_Any(&x), m_Op<MO::DivOp>(m_Any(&y), m_Any(&z)))
-             .match(divOp)) {
-      return failure();
-    }
-
-    auto mul =
-        rewriter.create<MO::MulOp>(divOp->getLoc(), divOp.getType(), x, z);
-    divOp.setLhsInput(mul);
-    divOp.setRhsInput(y);
-
-    return success();
-  }
-};
-
-// div(div(x, y), z) = div(x, mul(y, z))
-struct MathematicalSimplificationDivOfDivToDivByMul
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::DivOp> {
-  MathematicalSimplificationDivOfDivToDivByMul(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 2) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::DivOp divOp,
-                             DeviceAwareRewriter &rewriter) const override {
-    Value x, y, z;
-    if (!m_Op<MO::DivOp>(m_Op<MO::DivOp>(m_Any(&x), m_Any(&y)), m_Any(&z))
-             .match(divOp)) {
-      return failure();
-    }
-
-    auto mul =
-        rewriter.create<MO::MulOp>(divOp->getLoc(), divOp.getType(), y, z);
-    divOp.setLhsInput(x);
-    divOp.setRhsInput(mul);
-
-    return success();
-  }
-};
-
-// div(x, bcast(CST_or_small)) = mul(x, bcast(div(bcast(1), CST_or_small)))
-struct MathematicalSimplificationDivBySmallTensorToMul
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::DivOp> {
-  MathematicalSimplificationDivBySmallTensorToMul(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 1) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::DivOp divOp,
-                             DeviceAwareRewriter &rewriter) const override {
-    auto tensorType = divOp.getType();
-    if (!tensorType.hasStaticShape())
-      return failure();
-
-    auto x = divOp.getInputX();
-    auto y = divOp.getInputY();
-
-    // This is to avoid looping.
-    bool xConstantFoldable =
-        dependsOnConstantsOnly<MO::ConstantOp>(x.getDefiningOp());
-    if (xConstantFoldable)
-      return failure();
-
-    Value origY = y;
-    if (auto bcast =
-            dyn_cast_or_null<MO::Static::BroadcastToOp>(origY.getDefiningOp()))
-      origY = bcast.getInput();
-
-    auto origYType = origY.getType().cast<TensorType>();
-    if (!origYType.hasStaticShape())
-      return failure();
-
-    static constexpr int64_t kMulByDivReciprocalThroughputEstimate = 8;
-    // Add 1 because it still takes time to do a multiplication.
-    static constexpr int64_t kThreshold =
-        kMulByDivReciprocalThroughputEstimate + 1;
-    // This is checking if the broadcasted value is a constant or if it was
-    // broadcasted by a factor of at least `kThreshold`.
-    bool yConstantFoldable =
-        dependsOnConstantsOnly<MO::ConstantOp>(y.getDefiningOp());
-    if (!yConstantFoldable &&
-        *tensorType.getNumElements() / *origYType.getNumElements() < kThreshold)
-      return failure();
-
-    auto loc = divOp->getLoc();
-    auto bcast1ErrOr =
-        createBroadcastedScalarConstantOpOfType(origYType, 1, rewriter, loc);
-    if (bcast1ErrOr.isError())
-      return rewriter.notifyMatchFailure(divOp, bcast1ErrOr.getError());
-
-    auto div = rewriter.create<MO::DivOp>(loc, origYType, *bcast1ErrOr, origY);
-    auto bcastDiv =
-        rewriter.create<MO::Static::BroadcastToOp>(loc, tensorType, div);
-    auto mul = rewriter.create<MO::MulOp>(loc, tensorType, x, bcastDiv);
-
-    rewriter.replaceAllUsesWith(divOp, mul);
-
-    return success();
-  }
-};
-
-// mul(x, div(1, y)) = div(x, y)
-// where y is not a constant or a broadcasted value.
-// This pattern is kind of the opposite of the previous one except it will not
-// affect constants or broadcasted values.
-struct MathematicalSimplificationMulOfDivToDiv
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::MulOp> {
-  MathematicalSimplificationMulOfDivToDiv(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 2) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::MulOp mulOp,
-                             DeviceAwareRewriter &rewriter) const override {
-    if (!mulOp.getInputY().getDefiningOp())
-      return failure();
-
-    Value x, y;
-    if (!m_Op<MulOp>(m_Any(&x),
-                     m_Op<DivOp>(m_SplatOrBroadcastedConstantOfAnyType<
-                                     MO::Static::BroadcastToOp>(1),
-                                 m_Any(&y)))
-             .match(mulOp)) {
-      return failure();
-    }
-
-    if (isa_and_nonnull<MO::ConstantOp, MO::Static::BroadcastToOp>(
-            y.getDefiningOp()))
-      return failure();
-
-    auto div =
-        rewriter.create<MO::DivOp>(mulOp->getLoc(), mulOp.getType(), x, y);
-    rewriter.replaceAllUsesWith(mulOp, div);
-
-    return success();
-  }
-};
-
-// pow(x, bcast(CST_float)) = pow(x, bcast(int(CST_float)))
-// where CST_float == float(int(CST_float))
-struct MathematicalSimplificationPowByFloatToPowByInt
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::PowOp> {
-  MathematicalSimplificationPowByFloatToPowByInt(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 2) {}
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::PowOp powOp,
-                             DeviceAwareRewriter &rewriter) const override {
-
-    auto bcast = dyn_cast_or_null<MO::Static::BroadcastToOp>(
-        powOp.getInputY().getDefiningOp());
-    if (!bcast)
-      return failure();
-
-    auto cst =
-        dyn_cast_or_null<MO::ConstantOp>(bcast.getInput().getDefiningOp());
-    if (!cst)
-      return failure();
-
-    auto dtype = cst.getType().getDtype();
-    if (!dtype.isFloat())
-      return failure();
-
-    auto floatErrOr = tryGetConstantFloat(cst);
-    auto doubleErrOr = tryGetConstantDouble(cst);
-
-    double value = floatErrOr.has_value() ? *floatErrOr : *doubleErrOr;
-    double integerPart;
-    if (std::modf(value, &integerPart))
-      return failure();
-
-    auto bcastIntType = TensorType::get(powOp.getType().getShapeAttr(),
-                                        rewriter.getIntegerType(64, true));
-    auto newCst = createBroadcastedScalarConstantOpOfType(
-        bcastIntType, int64_t(integerPart), rewriter, powOp.getLoc());
-    if (newCst.isError())
-      return rewriter.notifyMatchFailure(powOp, newCst.getError());
-
-    powOp.setRhsInput(*newCst);
-
-    return success();
-  }
-};
-
 struct SymbolicOptimizationPass
     : public MO::impl::SymbolicOptimizationBase<SymbolicOptimizationPass> {
   using SymbolicOptimizationBase::SymbolicOptimizationBase;
@@ -4485,7 +3987,7 @@ struct SymbolicOptimizationPass
   // Runs all default patterns plus the ones provided in the template
   // parameters.
   template <typename... PatternTypes>
-  void applyCorePatternsPlusExtraPatterns() {
+  void optimizeWithPattern() {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
 
@@ -4543,8 +4045,8 @@ struct SymbolicOptimizationPass
                  SwimConcatThroughReshapeLikeOpsPattern<RebindOp>>(context);
 
     // Miscellaneous rewrites.
-    patterns.add<GathersToSplitPattern, GeluPattern, GemvPattern,
-                 SplitAndSqueezesPattern, PadConvPattern>(context);
+    patterns.add<Pow2Pattern, Pow3Pattern, GathersToSplitPattern, GeluPattern,
+                 GemvPattern, SplitAndSqueezesPattern, PadConvPattern>(context);
 
     // Elementwise optimizations.
     patterns
@@ -4552,24 +4054,16 @@ struct SymbolicOptimizationPass
              ArithmeticFoldingMulWithOne, ArithmeticFoldingDivByOne,
              ArithmeticFoldingPowerByOne, ArithmeticFoldingPowerOfOne,
              ArithmeticFoldingMaxSameOperand, ArithmeticFoldingMinSameOperand,
+             ArithmeticFoldingGreatherOrEqualThanSameOperand,
+             ArithmeticFoldingGreatherThanSameOperand,
+             ArithmeticFoldingNotEqualSameOperand,
              ArithmeticFoldingEqualSameOperand, ArithmeticFoldingAndSameOperand,
-             ArithmeticFoldingOrSameOperand, ArithmeticFoldingXorSameOperand,
-             MathematicalCanonicalizationChainsOfPowToSinglePow,
-             MathematicalCanonicalizationZeroSubToNegative,
-             MathematicalSimplificationAddWithNegative,
-             MathematicalSimplificationSubWithNegative>(context);
+             ArithmeticFoldingOrSameOperand, ArithmeticFoldingXorSameOperand>(
+            context);
     if (symbolicFfastMath) {
       patterns.add<ArithmeticFoldingSubWithSame, ArithmeticFoldingMulWithZero,
                    ArithmeticFoldingPowByZero, ArithmeticFoldingMinOfMax,
-                   ArithmeticFoldingMaxOfMin,
-                   ArithmeticFoldingGreatherOrEqualThanSameOperand,
-                   ArithmeticFoldingGreatherThanSameOperand,
-                   ArithmeticFoldingNotEqualSameOperand,
-                   MathematicalSimplificationDivByDivToDivOfMul,
-                   MathematicalSimplificationDivOfDivToDivByMul,
-                   MathematicalSimplificationDivBySmallTensorToMul,
-                   MathematicalSimplificationMulOfDivToDiv,
-                   MathematicalSimplificationPowByFloatToPowByInt>(context);
+                   ArithmeticFoldingMaxOfMin>(context);
     }
     if (symbolicNoUndefinedMath) {
       patterns.add<ArithmeticFoldingZeroDiv, ArithmeticFoldingPowerOfZero,
@@ -4582,56 +4076,33 @@ struct SymbolicOptimizationPass
       return signalPassFailure();
   }
 
-  void applyForwardMathematicalCanonicalizations() {
+  void viewOpSwimmingPatterns() {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
 
-    patterns.add<
-        ForwardMathematicalCanonicalizationRsqrtToDivSqrt,
-        ForwardMathematicalCanonicalizationReluToMax,
-        ForwardMathematicalCanonicalizationMulByTwoToAdd,
-        ForwardMathematicalCanonicalizationPowByTwoToMul,
-        ForwardMathematicalCanonicalizationPowByNegativeOneOrTwoToDivAndPow>(
-        context);
+    // View op swimming through elementwise binary ops
+    patterns.add<SwimReshapeThroughBinaryOpWithConstantSubtree,
+                 SwimTransposeThroughBinaryOpWithConstantSubtree>(context);
 
     if (failed(
             applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
       return signalPassFailure();
-  }
-
-  void applyBackwardMathematicalCanonicalizations() {
-    MLIRContext *context = &getContext();
-    RewritePatternSet patterns(context);
-
-    patterns.add<
-        BackwardMathematicalCanonicalizationDivSqrtToRsqrt,
-        BackwardMathematicalCanonicalizationMaxToRelu,
-        BackwardMathematicalCanonicalizationMulByTwoToAdd,
-        BackwardMathematicalCanonicalizationDivAndPowToPowByNegativeOneOrTwo>(
-        context);
-
-    if (failed(
-            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
-      return signalPassFailure();
-  }
-
-  void applyCorePatterns() {
-    // First run all the optimizations with slices turned into split when
-    // possible.
-    applyCorePatternsPlusExtraPatterns<SliceToSplitPattern>();
-    // Once all split operation patterns have run, convert them to slice and run
-    // all of the other patterns too. Without it, split patterns would never
-    // apply because they would be turned into slices too early.
-    applyCorePatternsPlusExtraPatterns<SplitToSlicePattern>();
   }
 
   void runOnOperation() override {
-    applyCorePatterns();
-    applyForwardMathematicalCanonicalizations();
-    applyCorePatterns();
-    applyBackwardMathematicalCanonicalizations();
-    applyCorePatterns();
+    // First run all the optimizations with slices turned into split when
+    // possible.
+    optimizeWithPattern<SliceToSplitPattern>();
+    // Once all split operation patterns have run, convert them to slice and run
+    // all of the other patterns too. Without it, split patterns would never
+    // apply because they would be turned into slices too early.
+    optimizeWithPattern<SplitToSlicePattern>();
+
+    // TODO (#36567):
+    // Had to lift the application of the view ops to a separate
+    // function to prevent further infinite loops
+    viewOpSwimmingPatterns();
   }
-}; // namespace
+};
 
 } // namespace

@@ -657,13 +657,6 @@ auto m_SplatOrBroadcastedConstantOfAnyType(T targetValue) {
                     m_Op<BCastType>(m_SplatConstantOfAnyType(targetValue)));
 }
 
-template <typename BCastType, typename T>
-auto m_SplatOrBroadcastedConstantOfAnyType(mlir::Value *val, T targetValue) {
-  return m_Optional(
-      m_SplatConstantOfAnyType(val, targetValue),
-      m_Op<BCastType>(m_SplatConstantOfAnyType(val, targetValue)));
-}
-
 template <typename T, typename Matcher>
 auto m_Typed(Matcher matcher) {
   return detail::TypeMatcher<T, Matcher>(matcher);
