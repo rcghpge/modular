@@ -350,52 +350,11 @@ gentbl_cc_library(
     ],
 )
 
-# We do this bonkers mosh-powered mojo to CPP header substitution into
-# MoDialect, so we first need MOSH to make the Byte Code, and then we
-# have a different python utility to convert that to a header. It's so
-# absurd I kinda respect it.
-genrule(
-    name = "MoDialectShapeFunctionsByteCode",
-    srcs = [
-        "lib/GraphCompiler/MODialect/ShapeFunctions.mojo",
-        "//Kernels/mojo/stdlib",
-        "//Kernels/mojo/math",
-        "@llvm-project//compiler-rt:orc_rt",
-        "//KGEN:CompilerRT.shared.file",
-        "//GenericML/tools/mosh",
-    ],
-    outs = ["ShapeFunctions.mlirbc"],
-    cmd = """
-$(location //GenericML/tools/mosh:mosh) \
-$(location lib/GraphCompiler/MODialect/ShapeFunctions.mojo) \
--o $(location ShapeFunctions.mlirbc) \
--I `dirname -- $(location //Kernels/mojo/stdlib)` \
--I `dirname -- $(location //Kernels/mojo/math)`
-""",
-)
-
-genrule(
-    name = "MoDialectShapeFunctionsByteCodeHeader",
-    srcs = [
-        "ShapeFunctions.mlirbc",
-    ],
-    outs = ["ShapeFunctions.mojo.h"],
-    cmd = """
-$(location //utils/build:binary_to_cpp) \
---input $(location ShapeFunctions.mlirbc) \
---output $(location ShapeFunctions.mojo.h) \
---namespace MojoMoshBindings
-""",
-    tools = ["//utils/build:binary_to_cpp"],
-)
-
 cc_library(
     name = "MODialect",
-    srcs = glob(["lib/GraphCompiler/MODialect/*.cpp"]) + ["ShapeFunctions.mojo.h"],
+    srcs = glob(["lib/GraphCompiler/MODialect/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/MODialect/*.h"]),
-    local_defines = [
-        "MOSH_MOJO_BINDING_H='\"$(location ShapeFunctions.mojo.h)\"'",
-    ],
+    local_defines = [],
     strip_include_prefix = "include",
     deps = [
         ":GraphCompilerMatchers",

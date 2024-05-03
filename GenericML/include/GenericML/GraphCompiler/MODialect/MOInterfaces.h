@@ -38,7 +38,6 @@ class ScatterLike;
 class ScatterNdLike;
 class PadLike;
 class SlidingWindow;
-class ShapeFuncMaterializationState;
 
 using M::KGEN::ParamDeclAttr;
 using M::KGEN::ParamDefValue;
@@ -78,17 +77,6 @@ LogicalResult resolveSameOperandsAndResultShapeUnknownParameters(
     ParameterizationInterface op, mlir::RewriterBase &rewriter);
 LogicalResult resolveSameFirstOperandAndResultShapeUnknownParameters(
     ParameterizationInterface op, mlir::RewriterBase &rewriter);
-
-LogicalResult
-materializeReductionShapeInference(Reduction op,
-                                   ShapeFuncMaterializationState &state);
-LogicalResult
-materializeScatterNdLikeShapeInference(ScatterNdLike op,
-                                       ShapeFuncMaterializationState &state);
-
-LogicalResult
-materializePadLikeShapeInference(PadLike op,
-                                 ShapeFuncMaterializationState &state);
 } // namespace impl
 
 template <typename ConcreteType>
@@ -129,92 +117,8 @@ public:
     return impl::verifyMOSameFirstOperandAndResultsElementType(op);
   }
 };
-
-/// A state shared by shape function materilization implementations in
-/// individual ops.
-class ShapeFuncMaterializationState {
-public:
-  /// Constructor which loads a copy of the shape function module, so we can
-  /// manipulate it (insert functions or elaborate the module)
-  ShapeFuncMaterializationState(MLIRContext *ctx);
-
-  /// Return the shape function module, where users can look up for existing
-  /// shape functions or insert new ones.
-  ModuleOp getShapeFuncModule();
-
-  /// Return the rewriter for rewriting MO ops.
-  mlir::RewriterBase &getRewriter();
-
-  /// Set the rewriter for rewriting MO ops. NOTE the pattern rewrite must set
-  /// this before passing the state to the op implementation.
-  void setRewriter(mlir::RewriterBase &rewriter);
-
-  /// Mark given shape function as used, and make sure it won't be removed
-  /// during elaboration.
-  void markShapeFuncAsUsed(KGEN::GeneratorOp func);
-
-  /// ASSUME elaboration has run on the shape function module, return all the
-  /// used shape functions.
-  SmallVector<KGEN::FuncOp, 6> getUsedShapeFuncsAfterElaboration();
-
-private:
-  // A module that contains the following (as pre-elaboration KGEN IR)
-  // - a copy of the mojo shape function module
-  // - newly instantiated shape functions (e.g., a slice shape function with a
-  // specific rank)
-  mlir::OwningOpRef<ModuleOp> shapeFuncModule;
-
-  // The rewriter passed down from the rewrite pattern.
-  mlir::RewriterBase *rewriter;
-
-  // Names of shape functions that are used inside the MO graph.
-  llvm::SetVector<StringAttr> usedShapeFuncNames;
-};
-
 } // namespace M::MO
 
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h.inc"
-
-namespace M::MO {
-// These declarations must follow the include above since they reference
-// classes declared in the generated header.
-
-template <typename ConcreteType>
-class ReductionShapeInferenceMaterialization
-    : public mlir::OpTrait::TraitBase<ConcreteType,
-                                      ReductionShapeInferenceMaterialization> {
-public:
-  LogicalResult
-  materializeShapeInference(ShapeFuncMaterializationState &state) {
-    auto reduction = mlir::cast<Reduction>(this->getOperation());
-    return impl::materializeReductionShapeInference(reduction, state);
-  }
-};
-
-template <typename ConcreteType>
-class ScatterNdLikeShapeInferenceMaterialization
-    : public mlir::OpTrait::TraitBase<
-          ConcreteType, ScatterNdLikeShapeInferenceMaterialization> {
-public:
-  LogicalResult
-  materializeShapeInference(ShapeFuncMaterializationState &state) {
-    auto reduction = mlir::cast<ScatterNdLike>(this->getOperation());
-    return impl::materializeScatterNdLikeShapeInference(reduction, state);
-  }
-};
-
-template <typename ConcreteType>
-class PadShapeInferenceMaterialization
-    : public mlir::OpTrait::TraitBase<ConcreteType,
-                                      PadShapeInferenceMaterialization> {
-public:
-  LogicalResult
-  materializeShapeInference(ShapeFuncMaterializationState &state) {
-    auto pad = mlir::cast<PadLike>(this->getOperation());
-    return impl::materializePadLikeShapeInference(pad, state);
-  }
-};
-
-} // namespace M::MO
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_H

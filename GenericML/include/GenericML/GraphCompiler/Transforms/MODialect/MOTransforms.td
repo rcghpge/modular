@@ -9,33 +9,6 @@
 
 include "mlir/Pass/PassBase.td"
 
-def ShapeInferenceMaterialization :
-    Pass<"materialize-shape-funcs", "ModuleOp"> {
-  let summary = "Materializes the shape inference functions.";
-  let description = [{
-    This pass materializes shape inference functions for parameter-declaring ops
-    that have them, and add invocations to the graph, so that the parameters
-    will be declared and bound to the results of shape inference function
-    invocations, instead of declared by the ops.
-
-    The ops need to be fully parametric (i.e. unknown shapes or dimensions in
-    the arguments and results are not allowed), and the shape inference
-    functions are not evaluated.
-  }];
-
-  let dependentDialects = [
-    "mlir::LLVM::LLVMDialect",
-    "mlir::NVVM::NVVMDialect",
-    "mlir::index::IndexDialect",
-    "M::DebugInfo::DebugInfoDialect",
-    "M::HLCF::HLCFDialect",
-    "M::KGEN::KGENDialect",
-    "M::KGEN::LIT::LITDialect",
-    "M::KGEN::POP::POPDialect",
-    "M::MDialect",
-  ];
-}
-
 def AddFallbackShapeFunctions :
     Pass<"add-fallback-shape-funcs", "GraphOp"> {
   let summary = "Adds fallback shape functions to unmaterialized mo ops";
@@ -93,14 +66,6 @@ def SymbolicizeFallbackShapeFunctions :
     "M::MOGG::MOGGDialect",
     "mlir::NVVM::NVVMDialect",
   ];
-}
-
-def InlineShapeFunctions : Pass<"inline-shape-funcs", "ModuleOp"> {
-  let summary = "Inlines shape functions into the graph.";
-  let description = [{
-    This pass inlines (already materialized) shape functions invocations into
-    the graph as parameter computations.
-  }];
 }
 
 def PropagateShapes : Pass<"propagate-shapes", "GraphOp"> {

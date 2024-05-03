@@ -365,45 +365,6 @@ impl::verifyMOSameFirstOperandAndResultsElementType(Operation *op) {
 }
 
 //===----------------------------------------------------------------------===//
-// ShapeFuncMaterializationState
-//===----------------------------------------------------------------------===//
-
-ShapeFuncMaterializationState::ShapeFuncMaterializationState(MLIRContext *ctx) {
-  auto moDialect = ctx->getLoadedDialect<MODialect>();
-  shapeFuncModule = moDialect->getShapeFuncModule().clone();
-}
-
-void ShapeFuncMaterializationState::setRewriter(mlir::RewriterBase &rewriter) {
-  this->rewriter = &rewriter;
-}
-
-ModuleOp ShapeFuncMaterializationState::getShapeFuncModule() {
-  return shapeFuncModule.get();
-}
-
-mlir::RewriterBase &ShapeFuncMaterializationState::getRewriter() {
-  return *rewriter;
-}
-
-void ShapeFuncMaterializationState::markShapeFuncAsUsed(
-    KGEN::GeneratorOp func) {
-  func.setExported(); // make sure it won't be removed during elaboration
-  usedShapeFuncNames.insert(func.getNameAttr());
-}
-
-SmallVector<KGEN::FuncOp, 6>
-ShapeFuncMaterializationState::getUsedShapeFuncsAfterElaboration() {
-  SmallVector<KGEN::FuncOp> funcs;
-  for (StringAttr name : usedShapeFuncNames) {
-    if (auto func = shapeFuncModule->lookupSymbol<KGEN::FuncOp>(name)) {
-      func.setNotExported(); // this is no longer needed after elaboration
-      funcs.push_back(func);
-    }
-  }
-  return funcs;
-}
-
-//===----------------------------------------------------------------------===//
 // PadLike
 //===----------------------------------------------------------------------===//
 

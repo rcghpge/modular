@@ -15,22 +15,6 @@ using namespace MO;
 namespace M::MO::ShapeInferencePassCommon {
 
 //===----------------------------------------------------------------------===//
-// Common helpers
-//===----------------------------------------------------------------------===//
-
-/// Run all the elaboration passes on given module, and return whether it
-/// succeeded.
-LogicalResult elaborateModule(ModuleOp moduleOp);
-
-/// Copy the elaborated shape functions into the front of `moduleOp` and make
-/// sure they can be symbolically DCEed after getting inlined later.
-void copyElaboratedShapeFuncsToFrontOfModule(
-    ShapeFuncMaterializationState &state, ModuleOp moduleOp);
-
-/// Checks if the attribute is a static invocation using POC::Apply.
-ErrorOrSuccess isApplyOperator(KGEN::ParamOperatorAttr attr);
-
-//===----------------------------------------------------------------------===//
 // Common Patterns
 //===----------------------------------------------------------------------===//
 
@@ -58,21 +42,6 @@ class FoldConsecutiveRebinds
   LogicalResult
   deviceAwareMatchAndRewrite(RebindOp op,
                              DeviceAwareRewriter &rewriter) const override;
-};
-
-class MaterializeShapeFuncs
-    : public mlir::OpInterfaceRewritePattern<ShapeInferenceMaterialization> {
-public:
-  using OpInterfaceRewritePattern<
-      ShapeInferenceMaterialization>::OpInterfaceRewritePattern;
-
-  MaterializeShapeFuncs(MLIRContext *ctx, ShapeFuncMaterializationState *state);
-
-  LogicalResult matchAndRewrite(ShapeInferenceMaterialization op,
-                                PatternRewriter &rewriter) const final;
-
-private:
-  ShapeFuncMaterializationState *state;
 };
 
 } // namespace M::MO::ShapeInferencePassCommon

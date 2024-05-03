@@ -5,63 +5,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "ShapeInferencePassesCommon.h"
-#include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
-#include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
-#include "KGEN/Compiler/KGENCompiler.h"
-#include "KGEN/KGENDialect/KGENAttrs.h"
-#include "KGEN/KGENDialect/KGENOps.h"
-#include "KGEN/KGENDialect/KGENParameters.h"
-#include "LLCL/CompilerSupport/Context.h"
-#include "Support/MArchTarget/Host.h"
 #include "mlir/Pass/PassManager.h"
-#include "llvm/Support/TargetSelect.h"
 
 using namespace M;
 using namespace MO;
 
 namespace M::MO::ShapeInferencePassCommon {
-
-//===----------------------------------------------------------------------===//
-// Common helpers
-//===----------------------------------------------------------------------===//
-
-LogicalResult elaborateModule(ModuleOp moduleOp) {
-  // TODO refactor this with KGENStubBuilder
-  MLIRContext *ctx = moduleOp.getContext();
-  llvm::InitializeNativeTarget();
-  // TODO propagate the target info properly for cross compilation
-  ErrorOr<TargetInfoAttr> target =
-      getTargetInfoFor(ctx, llvm::sys::getDefaultTargetTriple(),
-                       llvm::sys::getHostCPUName(), getHostCPUFeatures());
-  if (target.isError())
-    return failure();
-
-  setTargetInfo(moduleOp, *target);
-
-  // Extend the environment (defines) for the module.
-  KGEN::extendWithModularEnvAttr(moduleOp);
-
-  mlir::PassManager pm(ctx);
-  KGEN::populateElaborateModulePasses(pm, *target, {/*enableSearch=*/false});
-  return pm.run(moduleOp);
-}
-
-void copyElaboratedShapeFuncsToFrontOfModule(
-    ShapeFuncMaterializationState &state, ModuleOp moduleOp) {
-  for (KGEN::FuncOp shapeFunc : state.getUsedShapeFuncsAfterElaboration()) {
-    KGEN::FuncOp shapeFuncCopy = shapeFunc.clone();
-    shapeFuncCopy.setPrivate(); // Make sure it gets symbolic DCEed
-    moduleOp.getBody()->push_front(shapeFuncCopy);
-  }
-}
-
-ErrorOrSuccess isApplyOperator(KGEN::ParamOperatorAttr attr) {
-  if (!attr)
-    return Error("not a parameter operator");
-  if (attr.getOpcode() != KGEN::POC::Apply)
-    return Error("not an apply operator");
-  return success();
-}
 
 //===----------------------------------------------------------------------===//
 // Common Patterns
@@ -97,16 +46,6 @@ LogicalResult FoldConsecutiveRebinds::deviceAwareMatchAndRewrite(
   rewriter.replaceOpWithNewOp<RebindOp>(op, op.getType(), producerOp.getInput(),
                                         op.getOutputParamDecls());
   return success();
-}
-
-MaterializeShapeFuncs::MaterializeShapeFuncs(
-    MLIRContext *ctx, ShapeFuncMaterializationState *state)
-    : OpInterfaceRewritePattern(ctx), state(state) {}
-LogicalResult
-MaterializeShapeFuncs::matchAndRewrite(ShapeInferenceMaterialization op,
-                                       PatternRewriter &rewriter) const {
-  state->setRewriter(rewriter);
-  return op.materializeShapeInference(*state);
 }
 
 } // namespace M::MO::ShapeInferencePassCommon

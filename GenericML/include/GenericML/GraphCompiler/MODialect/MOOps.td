@@ -1258,7 +1258,6 @@ def MO_SelectOp : MO_TensorOp<"select", [Pure, MO_SameOperandsAndResultShape]>{
 
 def MO_SliceOp : MO_TensorOp<"slice", [
   MO_DefaultParameterization,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Slice operation";
@@ -1533,7 +1532,6 @@ def MO_ReduceMaxOp : MO_MonotypeReductionOp<"reduce.max", [
 def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]>{
   let summary = "Average pooling operation";
   let description = [{
@@ -1597,7 +1595,6 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
 def MO_AvgPoolCeilOp : MO_TensorOp<"avg_pool_ceil_mode_true", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]>{
   let summary = "Ceiling-mode average pooling operation";
   let description = [{
@@ -1661,7 +1658,6 @@ def MO_AvgPoolCeilOp : MO_TensorOp<"avg_pool_ceil_mode_true", [
 def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]>{
   let summary = "Maximum pooling operation";
   let description = [{
@@ -1724,7 +1720,6 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
 def MO_MaxPoolCeilOp : MO_TensorOp<"max_pool_ceil_mode_true", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]>{
   let summary = "Ceiling-mode maximum pooling operation";
   let description = [{
@@ -1787,7 +1782,6 @@ def MO_MaxPoolCeilOp : MO_TensorOp<"max_pool_ceil_mode_true", [
 def MO_ConvOp : MO_TensorOp<"conv", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]>{
   let summary = "Convolution operation";
   let description = [{
@@ -2055,7 +2049,7 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
   let hasFolder = 1;
 }
 
-def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
+def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", []> {
   let summary = "Squeeze-shape operation";
   let description = [{
     Calculates the shape from squeeze like operators. Given an input shape
@@ -2097,7 +2091,7 @@ def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [DeclareOpInterfaceM
   let hasCanonicalizeMethod = 1;
 }
 
-def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", [DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
+def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", []> {
   let summary = "Unsqueeze-shape operation";
   let description = [{
     Calculates the shape from unsqueeze like operators. Given an input shape
@@ -2174,7 +2168,6 @@ def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
 def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
   Commutative,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]> {
   let summary = "Broadcast-shape operation";
   let description = [{
@@ -2368,7 +2361,6 @@ def MOStatic_RandomNormalOp : MOStatic_TensorOp<"random.normal", [
 def MO_ConcatOp : MO_TensorOp<"concat", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Concatenation operation";
@@ -2416,7 +2408,6 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
 
 def MO_SplitOp : MO_TensorOp<"split", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]> {
   let summary = "Splitting operation";
   let description = [{
@@ -2469,7 +2460,6 @@ def MO_SplitOp : MO_TensorOp<"split", [
 
 def MO_TransposeOp : MO_TensorOp<"transpose", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Transposition operation";
@@ -2511,7 +2501,6 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
 
 def MO_TileOp : MO_TensorOp<"tile", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
 ]> {
   let summary = "Tiling operation";
   let description = [{
@@ -2664,7 +2653,6 @@ def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [MO_PadLikeTraits]> {
 
 def MO_GatherOp : MO_TensorOp<"gather", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "`gather` operation";
@@ -2725,7 +2713,6 @@ def MO_GatherSumOp : MO_TensorOp<"gather_sum"> {
 
 def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
 ]> {
   let summary = "Multi-dimensional `gather` operation";
   let description = [{
@@ -3347,7 +3334,6 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal",
 def MO_RangeOp : MO_TensorOp<"range", [
   MO_SameOperandsAndResultElementType,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>
 ]> {
   let summary = "Range operation";
   let description = [{
@@ -3562,7 +3548,6 @@ def MO_MatmulOp : MO_DotBase<"matmul"> {
 }
 
 def MO_BatchMatmulOp : MO_TensorOp<"batch_matmul", [
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
   MO_MatmulLike,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
 ]> {
@@ -3679,8 +3664,7 @@ def MO_BandPartOp : MO_LinalgOp<"band_part", [
 
 def MO_SolveOp : MO_LinalgOp<"solve", [
     MO_SameOperandsAndResultElementType,
-    DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-    DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>]> {
+    DeclareOpInterfaceMethods<MO_DefaultParameterization>]> {
   let summary = "Linear solve operation";
   let description = [{
     Solves the system of linear equations described by
@@ -3845,7 +3829,6 @@ def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
 
 def MO_TopKOp : MO_TensorOp<"top_k", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
 ]> {
   let summary = "Top-K operation";
   let description = [{
@@ -3884,7 +3867,6 @@ def MO_TopKOp : MO_TensorOp<"top_k", [
 
 def MO_BottomKOp : MO_TensorOp<"bottom_k", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_ShapeInferenceMaterialization>,
 ]> {
   let summary = "Bottom-K operation";
   let description = [{

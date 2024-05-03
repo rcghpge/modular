@@ -12,9 +12,6 @@
 #include "GraphRT/MIPDialect/MIPDialect.h"
 #include "mlir/Parser/Parser.h"
 
-// Directly embed the mojo file rather than loading dynamically.
-#include MOSH_MOJO_BINDING_H
-
 using namespace M;
 using namespace MO;
 
@@ -56,17 +53,6 @@ Operation *MODialect::materializeConstant(OpBuilder &b, Attribute value,
     return b.create<ConstantOp>(loc, type, elements);
 
   return nullptr;
-}
-
-ModuleOp MODialect::getShapeFuncModule() {
-  if (!shapeFuncModule) {
-    StringRef source{reinterpret_cast<const char *>(MojoMoshBindings::data),
-                     MojoMoshBindings::size};
-    shapeFuncModule = mlir::parseSourceString<ModuleOp>(source, getContext());
-    GENERICML_ASSERT(shapeFuncModule)
-        << "could not load the embedded shape functions";
-  }
-  return *shapeFuncModule;
 }
 
 //===----------------------------------------------------------------------===//

@@ -205,24 +205,6 @@ def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
   }];
 }
 
-def MO_ShapeInferenceMaterialization :
-    MO_TensorOpInterfaceBase<"ShapeInferenceMaterialization"> {
-  let description = [{
-    Shape inference materialization interface.
-
-    Implementers of this interface are responsible for materializing the shape
-    inference functions as IR in the module containing the op, as well as gluing
-    in the appropriate invocations in the graph.
-  }];
-
-  let methods = [
-    InterfaceMethod<
-      "Materializes and invokes the shape inference functions for the op.",
-    "LogicalResult", "materializeShapeInference",
-    (ins "M::MO::ShapeFuncMaterializationState &":$state)>,
-  ];
-}
-
 def MO_MatmulLike : MO_TensorOpInterfaceBase<"MatmulLike"> {
   let description = [{
     Interface for modeling operations that implement matmul-like behavior,
@@ -496,16 +478,10 @@ def MO_SameOperandsAndResultShape: TraitList<[
   MO_SameInputOutputShapesParameterization
 ]>;
 
-/// Should not be used outside this file.
-def _MO_ReductionShapeInferenceMaterialization
-  : MO_OpTrait<"ReductionShapeInferenceMaterialization">;
-
 /// All traits that reduction ops should have.
 def MO_ReductionTraits: TraitList<[
   MO_Reduction,
-  MO_ShapeInferenceMaterialization,
   MO_DefaultParameterization,
-  _MO_ReductionShapeInferenceMaterialization
 ]>;
 
 /// All traits that ScatterND-like ops should have.
@@ -514,16 +490,10 @@ def MO_ScatterLikeTraits: TraitList<[
   MO_DefaultParameterization,
 ]>;
 
-/// Should not be used outside this file.
-def _MO_ScatterNdLikeShapeInferenceMaterialization
-  : MO_OpTrait<"ScatterNdLikeShapeInferenceMaterialization">;
-
 /// All traits that ScatterND-like ops should have.
 def MO_ScatterNdLikeTraits: TraitList<[
   MO_ScatterNdLike,
-  MO_ShapeInferenceMaterialization,
   MO_DefaultParameterization,
-  _MO_ScatterNdLikeShapeInferenceMaterialization
 ]>;
 
 /// Logically similar to the builtin SameOperandsAndResultElementType, but this
@@ -547,14 +517,8 @@ def MO_SameOperandsElementType :
 def MO_SameFirstOperandAndResultsElementType :
     MO_OpTrait<"MOSameFirstOperandAndResultsElementType">;
 
-/// Should not be used outside this file.
-def _MO_PadShapeInferenceMaterialization
-  : MO_OpTrait<"PadShapeInferenceMaterialization">;
-
 def MO_PadLikeTraits: TraitList<[
   MO_PadLike,
-  MO_DefaultParameterization,
-  MO_ShapeInferenceMaterialization,
-  _MO_PadShapeInferenceMaterialization]>;
+  MO_DefaultParameterization]>;
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_TD
