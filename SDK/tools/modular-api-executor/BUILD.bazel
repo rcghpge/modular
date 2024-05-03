@@ -1,0 +1,16 @@
+package(default_visibility = ["//visibility:public"])
+
+cc_binary(
+    name = "modular-api-executor",
+    srcs = glob([
+        "*.cpp",
+        "*.h",
+    ]),
+    deps = [
+        "//ArraySupport",
+        "//GenericML:MaxAPI",
+        "//ONNX:API",
+        "//ONNX:APIStrippedHeaders",
+        "//SDK:EngineCLI-Benchmark",
+    ],
+)

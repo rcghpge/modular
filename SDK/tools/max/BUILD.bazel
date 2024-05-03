@@ -1,0 +1,41 @@
+load("@llvm-project//mlir:tblgen.bzl", "td_library")
+load("//utils/bazel/build/rules:tablegen.bzl", "driver_option_tablegen")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_binary(
+    name = "max",
+    srcs = glob(["*.cpp"]),
+    copts = ["-I$(GENDIR)/SDK/tools/max/"],
+    deps = [
+        ":DriverOptions.help_gen",
+        ":DriverOptions.inc_gen",
+        "//PyTorch:modular-framework-torch-ext.import",
+        "//SDK:EngineCLI-Benchmark",
+        "//SDK:EngineCLI-Visualize",
+    ],
+)
+
+td_library(
+    name = "MaxTdFiles",
+    srcs = glob(["*.td"]),
+    includes = ["include"],
+    deps = [
+        "//SDK:BenchmarkTdFiles",
+        "//SDK:CommonTdFiles",
+        "//SDK:VisualizeTdFiles",
+        "//Support:DriverCommandTdFiles",
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+driver_option_tablegen(
+    name = "DriverOptions",
+    srcs = ["DriverOptions.td"],
+    manual_name = "max",
+    markdown_name = "index",
+    td_file = "DriverOptions.td",
+    deps = [
+        ":MaxTdFiles",
+    ],
+)
