@@ -121,8 +121,14 @@ SmallVector<ConstantOp> M::MO::tryGetConstantOpsOfRank(TensorValue val,
 }
 
 std::optional<float> M::MO::tryGetConstantFloat(TensorValue val) {
-  if (auto maybeIntBlob = tryGetConstantOfRank<float>(val, 0))
-    return maybeIntBlob.value().front();
+  if (auto maybeFloatBlob = tryGetConstantOfRank<float>(val, 0))
+    return maybeFloatBlob.value().front();
+  return std::nullopt;
+}
+
+std::optional<double> M::MO::tryGetConstantDouble(TensorValue val) {
+  if (auto maybeDoubleBlobl = tryGetConstantOfRank<double>(val, 0))
+    return maybeDoubleBlobl.value().front();
   return std::nullopt;
 }
 
