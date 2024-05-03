@@ -1,9 +1,7 @@
 // Note: due to the size of the file, we want to filecheck with --enable-var-scope
 // which prevents variables from being reused across CHECK-LABEL boundaries.
 //
-// COM: `--symbolic-optimize` is optional -- just need to regenerate tests. Was too lazy to do so initially
-// COM: `constant-fold=false` since otherwise it
-// RUN: mo-opt %s --split-input-file --canonicalize --shape-inference=constant-fold=false --symbolic-optimize --canonicalize --hoist-param-exprs | FileCheck %s --enable-var-scope
+// RUN: mo-opt %s --split-input-file --shape-inference --hoist-param-exprs | FileCheck %s --enable-var-scope
 // CHECK-NOT: kgen.func
 
 mo.graph @static_ranks(%arg0: !mo.tensor<[?, ?], f32>, %arg1: !mo.tensor<[?, ?], f32>) -> !mo.tensor<?, f32> {
