@@ -7,7 +7,7 @@
 #include "max/c/custom_ops.h"
 #include "GenericML/API/c/detail/types.h"
 
-#include "detail/helpers.h"
+#include "GenericML/API/c/detail/helpers.h"
 
 #include <filesystem>
 
