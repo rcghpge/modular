@@ -34,6 +34,10 @@ public:
 
   virtual ~DriverConfig() = default;
 
+  virtual std::unique_ptr<DriverConfig> clone() {
+    return std::make_unique<DriverConfig>(*this);
+  }
+
 private:
   const OptionKind Kind;
   const llvm::StringLiteral configName;
@@ -52,6 +56,10 @@ public:
 
   const std::filesystem::path &getPath() const { return kernelLibraryPath; }
 
+  std::unique_ptr<DriverConfig> clone() override {
+    return std::make_unique<KernelLibraryDriverConfig>(*this);
+  }
+
 private:
   std::filesystem::path kernelLibraryPath;
 };
@@ -69,6 +77,10 @@ public:
 
   const std::filesystem::path &getPath() const { return visualizationPath; }
 
+  std::unique_ptr<DriverConfig> clone() override {
+    return std::make_unique<VisualizationConfig>(*this);
+  }
+
 private:
   std::filesystem::path visualizationPath;
 };
@@ -85,6 +97,10 @@ public:
 
   const std::string &getDevice() const { return device; }
   size_t getDeviceID() const { return deviceID; }
+
+  std::unique_ptr<DriverConfig> clone() override {
+    return std::make_unique<DeviceConfig>(*this);
+  }
 
 private:
   std::string device;
