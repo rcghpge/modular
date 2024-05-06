@@ -933,7 +933,7 @@ StringAttr KernelOp::getInputFusionInterfaceAt(size_t index) {
 
   auto inputLambdaNames = *inputLambdaNamesOpt;
 
-  return inputLambdaNames[index].cast<StringAttr>();
+  return cast<StringAttr>(inputLambdaNames[index]);
 }
 
 DenseSet<int> KernelOp::getInplaceAllocIndicesSet() {
@@ -963,7 +963,7 @@ StringAttr KernelOp::getOutputFusionInterfaceAt(size_t index) {
 
   auto inputLambdaNames = *inputLambdaNamesOpt;
 
-  return inputLambdaNames[index].cast<StringAttr>();
+  return cast<StringAttr>(inputLambdaNames[index]);
 }
 
 // Verify that all the `mogg.set_param` set the symbolic dimensions properly.

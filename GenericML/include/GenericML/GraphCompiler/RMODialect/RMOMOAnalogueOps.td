@@ -91,7 +91,7 @@ class RMO_MOAnaloguePureUnaryElementWiseOp<string name, list<Trait> traits = []>
         SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
         SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
         inferMOTypesElemwiseUnaryImpl(
-          context, graphOp, operands.getInput().cast<TensorValue>(),
+          context, graphOp, cast<TensorValue>(operands.getInput()),
           rmoResults, moOperandTypes, moResultTypes, moInputParamDecls,
           moOutputParamDecls);
     }
@@ -305,7 +305,7 @@ def RMO_MONotOp : RMO_MOAnaloguePureTensorOp<"not"> {
         SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
         SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
         inferMOTypesElemwiseUnaryImpl(
-          context, graphOp, operands.getInput().cast<TensorValue>(),
+          context, graphOp, cast<TensorValue>(operands.getInput()),
           rmoResults, moOperandTypes, moResultTypes, moInputParamDecls,
           moOutputParamDecls);
     }
@@ -742,10 +742,10 @@ let arguments = (ins MO_Tensor:$input,
       SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
       SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
         inferMOTypesScatterImpl(
-          context, graphOp, operands.getInput().cast<TensorValue>(),
-          operands.getUpdates().cast<TensorValue>(),
-          operands.getIndices().cast<TensorValue>(),
-          operands.getAxis().cast<TensorValue>(), rmoResults, moOperandTypes,
+          context, graphOp, cast<TensorValue>(operands.getInput()),
+          cast<TensorValue>(operands.getUpdates()),
+          cast<TensorValue>(operands.getIndices()),
+          cast<TensorValue>(operands.getAxis()), rmoResults, moOperandTypes,
           moResultTypes, moInputParamDecls, moOutputParamDecls);
       }
   }];
@@ -2401,9 +2401,9 @@ let arguments = (ins MO_Tensor:$input,
       SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
       SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
         inferMOTypesScatterNdImpl(
-          context, graphOp, operands.getInput().cast<TensorValue>(),
-          operands.getUpdates().cast<TensorValue>(),
-          operands.getIndices().cast<TensorValue>(), rmoResults, moOperandTypes,
+          context, graphOp, cast<TensorValue>(operands.getInput()),
+          cast<TensorValue>(operands.getUpdates()),
+          cast<TensorValue>(operands.getIndices()), rmoResults, moOperandTypes,
           moResultTypes, moInputParamDecls, moOutputParamDecls);
       }
   }];

@@ -315,7 +315,7 @@ static LogicalResult inferReturnTypesBinaryElemwiseImpl(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   bool dynamicRankInputs = llvm::any_of(operands, [](Value v) {
-    return v.getType().cast<TensorType>().isDynamicallyRanked();
+    return cast<TensorType>(v.getType()).isDynamicallyRanked();
   });
   if (dynamicRankInputs) {
     return mlir::emitOptionalError(
@@ -323,8 +323,8 @@ static LogicalResult inferReturnTypesBinaryElemwiseImpl(
         " ops do not support dynamic rank. Use the MO analogue ops instead.");
   }
 
-  auto xType = operands[0].getType().cast<TensorType>();
-  auto yType = operands[1].getType().cast<TensorType>();
+  auto xType = cast<TensorType>(operands[0].getType());
+  auto yType = cast<TensorType>(operands[1].getType());
   ErrorOr<DType> promotedDtype =
       promoteDtype(xType.getDtype(), yType.getDtype());
   if (promotedDtype.isError()) {
@@ -348,8 +348,8 @@ static LogicalResult inferReturnTypesBinaryElemwiseImpl(
 // the issue.
 static bool isCompatibleReturnTypesBinaryElemwiseImpl(TypeRange lhs,
                                                       TypeRange rhs) {
-  auto lhsType = lhs[0].cast<TensorType>();
-  auto rhsType = rhs[0].cast<TensorType>();
+  auto lhsType = cast<TensorType>(lhs[0]);
+  auto rhsType = cast<TensorType>(rhs[0]);
 
   if (lhsType.getDtype() != rhsType.getDtype())
     return false;
@@ -379,7 +379,7 @@ static LogicalResult inferReturnTypesBinaryComparisonImpl(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   bool dynamicRankInputs = llvm::any_of(operands, [](Value v) {
-    return v.getType().cast<TensorType>().isDynamicallyRanked();
+    return cast<TensorType>(v.getType()).isDynamicallyRanked();
   });
   if (dynamicRankInputs) {
     return mlir::emitOptionalError(
@@ -387,8 +387,8 @@ static LogicalResult inferReturnTypesBinaryComparisonImpl(
         " ops do not support dynamic rank. Use the MO analogue ops instead.");
   }
 
-  auto xType = operands[0].getType().cast<TensorType>();
-  auto yType = operands[1].getType().cast<TensorType>();
+  auto xType = cast<TensorType>(operands[0].getType());
+  auto yType = cast<TensorType>(operands[1].getType());
 
   // Even though it is not used in the result type, still calculate the the
   // promotion is valid here.

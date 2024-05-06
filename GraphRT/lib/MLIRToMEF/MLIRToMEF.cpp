@@ -493,7 +493,7 @@ auto EntityTable::decomposeLocation(Location loc) -> LocationTuple {
   StringAttr filename;
   unsigned line = 0, col = 0;
   // TODO: could support more powerful location approach.
-  if (auto fileLineCol = loc.dyn_cast<FileLineColLoc>()) {
+  if (auto fileLineCol = dyn_cast<FileLineColLoc>(loc)) {
     filename = fileLineCol.getFilename();
     line = fileLineCol.getLine();
     col = fileLineCol.getColumn();

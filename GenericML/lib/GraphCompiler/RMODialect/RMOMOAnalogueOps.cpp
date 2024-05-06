@@ -433,8 +433,8 @@ static void inferMOTypesReduceImpl(
       SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,    \
       SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) { \
     inferMOTypesReduceImpl(                                                    \
-        context, graphOp, operands.getInput().cast<TensorValue>(),             \
-        operands.getAxis().cast<TensorValue>(), rmoResults, moOperandTypes,    \
+        context, graphOp, cast<TensorValue>(operands.getInput()),              \
+        cast<TensorValue>(operands.getAxis()), rmoResults, moOperandTypes,     \
         moResultTypes, moInputParamDecls, moOutputParamDecls, ReturnIndices);  \
   }
 

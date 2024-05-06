@@ -418,7 +418,7 @@ private:
 
 inline SmallVector<MO::TensorType> castToMoTensorTypes(TypeRange types) {
   return llvm::map_to_vector(types,
-                             [](Type t) { return t.cast<MO::TensorType>(); });
+                             [](Type t) { return cast<MO::TensorType>(t); });
 }
 
 //===----------------------------------------------------------------------===//

@@ -238,24 +238,24 @@ ErrorOr<ShapeAttr> ShapeAttr::broadcastShapes(ShapeAttr xSh, ShapeAttr ySh) {
       continue;
     }
 
-    if (xShDim->isa<KGEN::ParamDeclRefAttr>()) {
-      if (yShDim->isa<KGEN::UnknownAttr>()) {
+    if (mlir::isa<KGEN::ParamDeclRefAttr>(xShDimVal)) {
+      if (mlir::isa<KGEN::UnknownAttr>(yShDimVal)) {
         return Error(Twine("xShDim and yShDim are incompatible"));
       }
     }
 
-    if (yShDim->isa<KGEN::ParamDeclRefAttr>()) {
-      if (xShDim->isa<KGEN::UnknownAttr>()) {
+    if (mlir::isa<KGEN::ParamDeclRefAttr>(yShDimVal)) {
+      if (mlir::isa<KGEN::UnknownAttr>(xShDimVal)) {
         return Error(Twine("xShDim and yShDim are incompatible"));
       }
     }
 
-    if (xShDim->isa<KGEN::UnknownAttr>()) {
+    if (mlir::isa<KGEN::UnknownAttr>(xShDimVal)) {
       result.push_back(yShDimVal);
       continue;
     }
 
-    if (yShDim->isa<KGEN::UnknownAttr>()) {
+    if (mlir::isa<KGEN::UnknownAttr>(yShDimVal)) {
       result.push_back(xShDimVal);
       continue;
     }

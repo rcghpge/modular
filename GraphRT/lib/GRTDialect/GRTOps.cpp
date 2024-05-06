@@ -293,7 +293,7 @@ ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
                                          /*isIsolatedFromAbove=*/true))
     return failure();
 
-  if (operandInfo.empty() || !operandInfo[0].type.isa<MEF::ChainType>())
+  if (operandInfo.empty() || !isa<MEF::ChainType>(operandInfo[0].type))
     return parser.emitError(
         argLoc, "grt.benchmark must take a chain as its first argument");
 
@@ -316,7 +316,7 @@ ParseResult BenchmarkOp::parse(OpAsmParser &parser, OperationState &result) {
   Operation *bodyTerminator = body->front().getTerminator();
   result.types.assign(bodyTerminator->operand_type_begin(),
                       bodyTerminator->operand_type_end());
-  if (!result.types.front().isa<MEF::ChainType>())
+  if (!isa<MEF::ChainType>(result.types.front()))
     return parser.emitError(
         opLoc, "grt.benchmark must return a chain as its first result.");
 

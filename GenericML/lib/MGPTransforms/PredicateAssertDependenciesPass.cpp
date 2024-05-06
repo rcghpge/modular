@@ -126,7 +126,7 @@ class PredicateAssertDependenciesPass
             if (op && !storeAssertionDependenciesForOp(op, asserts))
               return;
 
-            if (val.getType().isa<EXCLUDED_TYPES>())
+            if (isa<EXCLUDED_TYPES>(val.getType()))
               return;
 
             for (auto user : val.getUsers()) {

@@ -295,7 +295,7 @@ bool MEFToMLIRConverter::parseAttribute(size_t offset,
         return {};
 
       // Construct the NamedAttribute
-      outAttrList.push_back(NamedAttribute(name.cast<StringAttr>(), value));
+      outAttrList.push_back(NamedAttribute(cast<StringAttr>(name), value));
     }
     // Produce a DictionaryAttr for the converter.
     return outAttrList.getDictionary(getContext());
@@ -322,7 +322,7 @@ bool MEFToMLIRConverter::parseAttribute(size_t offset,
 
     // Helper for determining quantized type storage parameters.
     auto getFlagsStorageTypeMinMax = [](Type storageType) {
-      auto intType = storageType.cast<IntegerType>();
+      auto intType = cast<IntegerType>(storageType);
       auto isSigned = intType.isSigned();
       unsigned storageBitWidth = intType.getWidth();
       int64_t storageTypeMin =
@@ -908,7 +908,7 @@ bool RegionParser::parsePrimitiveList() {
         // If we see a !mef.unknown type, then we assume this operation lacks
         // type information, and therefore needs to be constructed as a
         // mef.opaque operation.
-        isOpaqueOp |= type.isa<MEF::UnknownType>();
+        isOpaqueOp |= isa<MEF::UnknownType>(type);
       }
     }
 

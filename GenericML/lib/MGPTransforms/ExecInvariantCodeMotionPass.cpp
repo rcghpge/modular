@@ -781,7 +781,7 @@ class ExecInvariantCodeMotionPass
             TensorBufferDialectInterface::getBuilderForTypeStorage(
                 *builderContext, oldChain.getType());
         Value newChain;
-        if (oldChain.getType().isa<MEF::ChainType>()) {
+        if (isa<MEF::ChainType>(oldChain.getType())) {
           newChain = executeState->getRootChain();
         } else {
           newChain = bufferBuilder->fromHostChain(

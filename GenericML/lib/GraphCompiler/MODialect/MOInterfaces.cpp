@@ -257,7 +257,7 @@ LogicalResult impl::verifySlidingWindow(SlidingWindow op) {
 
 /// Get the element type of a tensor value.
 static Type getElementType(Value v) {
-  return v.getType().cast<MO::TensorType>().getElementType();
+  return cast<MO::TensorType>(v.getType()).getElementType();
 }
 
 /// This follows the builtin verifySameOperandsAndResultElementType.
@@ -293,7 +293,7 @@ LogicalResult impl::verifyMOSameOperandsAndResultElementType(Operation *op) {
 
 /// Get the element type of a tensor value.
 static TypedAttr getShapeAttr(Value v) {
-  return v.getType().cast<MO::TensorType>().getShapeAttr();
+  return cast<MO::TensorType>(v.getType()).getShapeAttr();
 }
 
 LogicalResult impl::verifyMOSameOperandsAndResultShapeAttr(Operation *op) {
