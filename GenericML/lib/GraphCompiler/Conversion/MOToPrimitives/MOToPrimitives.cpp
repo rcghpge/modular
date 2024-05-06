@@ -144,6 +144,9 @@ public:
   /// Lowers mo.list.append op.
   LogicalResult lowerListAppend(MO::ListAppendOp listAppendOp);
 
+  /// Lowers mo.list.concat op.
+  LogicalResult lowerListConcat(MO::ListConcatOp listConcatOp);
+
   /// Lowers mo.list.create op.
   LogicalResult lowerListCreate(MO::ListCreateOp listCreateOp);
 
@@ -805,6 +808,26 @@ LogicalResult MOGraphLowering::lowerListAppend(MO::ListAppendOp listAppendOp) {
   return success();
 }
 
+LogicalResult MOGraphLowering::lowerListConcat(MO::ListConcatOp listConcatOp) {
+  GENERICML_ASSERT(MO::isOnHost(listConcatOp))
+      << "mo.list.concat is for host only";
+  MGP::MOOpLoweringState opLoweringState(loweringState, listConcatOp);
+
+  Value mgpLhsList =
+      loweringState.lookupExecuteLoweredValue(listConcatOp.getLhs());
+  Value mgpRhsList =
+      loweringState.lookupExecuteLoweredValue(listConcatOp.getRhs());
+
+  MGP::ListType mgpOutputListTy = lowerListType(listConcatOp.getType());
+
+  Value mgpOutputList = opLoweringState.create<MGP::ListConcatOp>(
+      mgpOutputListTy, mgpLhsList, mgpRhsList);
+
+  loweringState.emplaceExecuteLoweredValue(listConcatOp, mgpOutputList);
+
+  return mlir::success();
+}
+
 LogicalResult MOGraphLowering::lowerListCreate(MO::ListCreateOp listCreateOp) {
   GENERICML_ASSERT(MO::isOnHost(listCreateOp))
       << "mo.list.create is for host only";
@@ -1176,6 +1199,12 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
     if (auto listAppendOp = dyn_cast<MO::ListAppendOp>(op)) {
       if (failed(lowerListAppend(listAppendOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto listConcatOp = dyn_cast<MO::ListConcatOp>(op)) {
+      if (failed(lowerListConcat(listConcatOp)))
         return failure();
       continue;
     }
