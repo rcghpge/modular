@@ -925,6 +925,36 @@ bool ListAppendOp::mayAlias(size_t operandIndex, size_t resultIndex) {
 }
 
 //===----------------------------------------------------------------------===//
+// ListConcatOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ListConcatOp::verify() {
+  Type lhsListElementTy = getLhs().getType().getElementType();
+  Type rhsListElementTy = getRhs().getType().getElementType();
+
+  Type resultListElementTy = getType().getElementType();
+
+  if (!isSubtype(lhsListElementTy, resultListElementTy)) {
+    return emitError() << "LHS list element type must be a subtype of result "
+                          "list element type: "
+                       << lhsListElementTy << " v.s. " << resultListElementTy;
+  }
+
+  if (!isSubtype(rhsListElementTy, resultListElementTy)) {
+    return emitError() << "RHS list element type must be a subtype of result "
+                          "list element type: "
+                       << rhsListElementTy << " v.s. " << resultListElementTy;
+  }
+
+  return success();
+}
+
+bool ListConcatOp::mayAlias(size_t operandIndex, size_t resultIndex) {
+  // The resulting list contains shallow copies of two input lists' elements
+  return true;
+}
+
+//===----------------------------------------------------------------------===//
 // ListCreateOp
 //===----------------------------------------------------------------------===//
 

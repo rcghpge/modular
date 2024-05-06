@@ -511,3 +511,52 @@ func.func @list_slice_step_nonscalar(
 
   mef.output %t : !mgp.list<!mgp.tensor<3x3xf32>>
 }
+
+// -----
+
+//
+// mgp.list.concat
+//
+
+mo.graph @list_concat_no_subtype_relation_inputs_to_output(
+  %lhs: !mgp.list<!mgp.tensor<30x20xsi64>>,
+  %rhs: !mgp.list<!mgp.tensor<?x20xsi64>>
+) {
+  // expected-error@+1 {{LHS list element type must be a subtype of result list element type: '!mgp.tensor<30x20xsi64>' v.s. '!mgp.tensor<40x?xsi64>'}}
+  %res = mgp.list.concat %lhs, %rhs : (
+    !mgp.list<!mgp.tensor<30x20xsi64>>,
+    !mgp.list<!mgp.tensor<?x20xsi64>>
+  ) -> !mgp.list<!mgp.tensor<40x?xsi64>>
+
+  mo.output
+}
+
+// -----
+
+mo.graph @list_concat_input_dtype_mismatch(
+  %lhs: !mgp.list<!mgp.tensor<30x20xsi64>>,
+  %rhs: !mgp.list<!mgp.tensor<30x20xsi32>>
+) {
+  // expected-error@+1 {{RHS list element type must be a subtype of result list element type: '!mgp.tensor<30x20xsi32>' v.s. '!mgp.tensor<30x20xsi64>'}}
+  %res = mgp.list.concat %lhs, %rhs : (
+    !mgp.list<!mgp.tensor<30x20xsi64>>,
+    !mgp.list<!mgp.tensor<30x20xsi32>>
+  ) -> !mgp.list<!mgp.tensor<30x20xsi64>>
+
+  mo.output
+}
+
+// -----
+
+mo.graph @list_concat_output_dtype_mismatch(
+  %lhs: !mgp.list<!mgp.tensor<30x20xsi64>>,
+  %rhs: !mgp.list<!mgp.tensor<30x20xsi64>>
+) {
+  // expected-error@+1 {{LHS list element type must be a subtype of result list element type: '!mgp.tensor<30x20xsi64>' v.s. '!mgp.tensor<30x20xsi32>'}}
+  %res = mgp.list.concat %lhs, %rhs : (
+    !mgp.list<!mgp.tensor<30x20xsi64>>,
+    !mgp.list<!mgp.tensor<30x20xsi64>>
+  ) -> !mgp.list<!mgp.tensor<30x20xsi32>>
+
+  mo.output
+}

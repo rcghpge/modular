@@ -560,6 +560,41 @@ def MGP_ListAppendOp : MGP_Op<"list.append", [
 }
 
 //===----------------------------------------------------------------------===//
+// ListConcat
+//===----------------------------------------------------------------------===//
+
+def MGP_ListConcatOp : MGP_Op<"list.concat", [
+  // The input elements from the two lists are shallow copied into the result list
+  DeclareOpInterfaceMethods<GRTMayAliasInterface>,
+]> {
+  let summary = "List concat Operation.";
+  let description = [{
+    Creates a new list that's the result of concatenating the two input lists
+    together.
+
+    Example:
+
+    ```mlir
+    %lst : !mgp.list<!mgp.tensor<3x3xf32>>,
+    %tns : !mgp.list<!mgp.tensor<3x4xf32>>,
+    %t = mgp.list.concat(%lst, %tns) : (
+      !mgp.list<!mgp.tensor<3x3xf32>>, !mgp.list<!mgp.tensor<3x4xf32>>
+    ) -> !mgp.list<!mgp.tensor<3x?xf32>>
+    ```
+  }];
+
+  let arguments = (ins MGP_List:$lhs,
+                       MGP_List:$rhs);
+  let results = (outs MGP_List:$result);
+
+  let assemblyFormat = [{
+    ` ` operands ` ` attr-dict `:` functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // ListCreate
 //===----------------------------------------------------------------------===//
 

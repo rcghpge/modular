@@ -359,6 +359,19 @@ static void mgp_list_append(List &inputList, AnyAsyncValueRef element,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.list.concat
+//===----------------------------------------------------------------------===//
+
+static void mgp_list_concat(List &lhs, List &rhs, Result<List> output) {
+  List resultList = lhs.copy();
+  resultList.getElements().insert(resultList.getElements().end(),
+                                  rhs.getElements().begin(),
+                                  rhs.getElements().end());
+
+  std::move(output).emplace(std::move(resultList));
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.list.create
 //===----------------------------------------------------------------------===//
 
@@ -542,6 +555,7 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.assert", mgp_assert);
   ADD_PRIMITIVE(registry, "mgp.generic.execute", mgp_generic_execute);
   ADD_PRIMITIVE(registry, "mgp.list.append", mgp_list_append);
+  ADD_PRIMITIVE(registry, "mgp.list.concat", mgp_list_concat);
   ADD_PRIMITIVE(registry, "mgp.list.create", mgp_list_create);
   ADD_PRIMITIVE(registry, "mgp.list.get", mgp_list_get);
   ADD_PRIMITIVE(registry, "mgp.list.insert", mgp_list_insert);
