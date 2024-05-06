@@ -4035,6 +4035,35 @@ def MO_ListInsertOp : MO_TensorOp<"list.insert", [Pure]> {
   let hasVerifier = 1;
 }
 
+def MO_ListConcatOp : MO_TensorOp<"list.concat", [Pure]> {
+  let summary = "List concatenation operation";
+  let description = [{
+    Creates a new list that's the result of concatenating the two input lists
+    together.
+
+    Example:
+
+    ```mlir
+      %lhs:   !mo.list<!mo.tensor<[2, 2], f32>>
+      %rhs:   !mo.list<!mo.tensor<[2, 2], f32>>
+
+      %tensor = mo.list.concat(%lhs, %rhs) : (
+        !mo.list<!mo.tensor<[2, 2], f32>>, !mo.list<!mo.tensor<[2, 2], f32>>
+      ) -> !mo.list<!mo.tensor<[2, 2], f32>>
+    ```
+  }];
+
+  let arguments = (ins MO_List:$lhs,
+                       MO_List:$rhs);
+  let results  = (outs MO_List:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
 def MO_ListSliceOp : MO_TensorOp<"list.slice", [Pure]> {
   let summary = "List slice operation";
   let description = [{

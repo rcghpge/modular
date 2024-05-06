@@ -3229,6 +3229,28 @@ LogicalResult ListAppendOp::verify() {
   return success();
 }
 
+LogicalResult ListConcatOp::verify() {
+
+  Type lhsListElementTy = getLhs().getType().getElementType();
+  Type rhsListElementTy = getRhs().getType().getElementType();
+
+  Type resultListElementTy = getType().getElementType();
+
+  if (!isSubtype(lhsListElementTy, resultListElementTy)) {
+    return emitError()
+           << "LHS input type must be a subtype of result list element type: "
+           << lhsListElementTy << " v.s. " << resultListElementTy;
+  }
+
+  if (!isSubtype(rhsListElementTy, resultListElementTy)) {
+    return emitError()
+           << "RHS input type must be a subtype of result list element type: "
+           << rhsListElementTy << " v.s. " << resultListElementTy;
+  }
+
+  return success();
+}
+
 LogicalResult ListCreateOp::verify() {
   auto resTy = dyn_cast<TensorType>(getType().getElementType());
   if (!resTy) {
