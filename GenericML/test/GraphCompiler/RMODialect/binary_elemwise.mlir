@@ -5,7 +5,7 @@ mo.graph @binary_elemwise_ok(%arg0: !mo.tensor<[?], f32>, %arg1: !mo.tensor<[?],
   mo.output %1 : !mo.tensor<[?], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @binary_elemwise_ok([[VARG0:[^ ]*]]: !mo.tensor<[?], f32>, [[VARG1:[^ ]*]]: !mo.tensor<[?], f32>) -> !mo.tensor<[?], f32> no_inline {
+// CHECK-SAME: @binary_elemwise_ok([[VARG0:[^ ]*]]: !mo.tensor<[?], f32>, [[VARG1:[^ ]*]]: !mo.tensor<[?], f32>) -> !mo.tensor<[?], f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = rmo.add([[VARG0]], [[VARG1]]) : !mo.tensor<[?], f32>, !mo.tensor<[?], f32>
 // CHECK-NEXT: mo.output [[V0]] : !mo.tensor<[?], f32>
 
@@ -16,7 +16,7 @@ mo.graph @binary_elemwise_ok_cast(%arg0: !mo.tensor<[?], si8>, %arg1: !mo.tensor
   mo.output %1 : !mo.tensor<[?], bf16>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @binary_elemwise_ok_cast([[VARG0:[^ ]*]]: !mo.tensor<[?], si8>, [[VARG1:[^ ]*]]: !mo.tensor<[?], bf16>) -> !mo.tensor<[?], bf16> no_inline {
+// CHECK-SAME: @binary_elemwise_ok_cast([[VARG0:[^ ]*]]: !mo.tensor<[?], si8>, [[VARG1:[^ ]*]]: !mo.tensor<[?], bf16>) -> !mo.tensor<[?], bf16> {
 // CHECK-NEXT: [[V0:[^ ]*]] = rmo.sub([[VARG0]], [[VARG1]]) : !mo.tensor<[?], si8>, !mo.tensor<[?], bf16>
 // CHECK-NEXT: mo.output [[V0]] : !mo.tensor<[?], bf16>
 
@@ -28,7 +28,7 @@ mo.graph @binary_elemwise_ok_cast_ui8_bf16(%arg0: !mo.tensor<[7], ui8>, %arg1: !
     mo.output %1: !mo.tensor<[7], bf16>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @binary_elemwise_ok_cast_ui8_bf16([[VARG0:[^ ]*]]: !mo.tensor<[7], ui8>, [[VARG1:[^ ]*]]: !mo.tensor<[7], bf16>) -> !mo.tensor<[7], bf16> no_inline {
+// CHECK-SAME: @binary_elemwise_ok_cast_ui8_bf16([[VARG0:[^ ]*]]: !mo.tensor<[7], ui8>, [[VARG1:[^ ]*]]: !mo.tensor<[7], bf16>) -> !mo.tensor<[7], bf16> {
 // CHECK-NEXT: [[V0:[^ ]*]] = rmo.mul([[VARG0]], [[VARG1]]) : !mo.tensor<[7], ui8>, !mo.tensor<[7], bf16>
 // CHECK-NEXT: mo.output [[V0]] : !mo.tensor<[7], bf16>
 

@@ -3,7 +3,7 @@
 
 // CHECK: mo.graph @gather_param_no_fold<[[SH0:.*]]: !mosh.ape -> [[SH1:.*]]: !mosh.ape>(
 mo.graph @gather_param_no_fold<Sh0: !mosh.ape -> Sh1: !mosh.ape>(
-    // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[SH0]], si32>) -> !mo.tensor<[[SH1]], si32> no_inline {
+    // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[SH0]], si32>) -> !mo.tensor<[[SH1]], si32> {
     %input: !mo.tensor<Sh0, si32>) -> !mo.tensor<Sh1, si32> {
   // CHECK-DAG: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // CHECK-DAG: %[[INDICES:.*]] = mo.constant {value = #M.dense_array<> : !M.array<0xsi64>} : !mo.tensor<[0], si64>

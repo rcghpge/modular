@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 // RUN: mo-opt %s --canonicalize | FileCheck %s
 
-// CHECK:   mo.graph @resize.nearest(%[[ARG0:.*]]: !mo.tensor<[1, 1, 2, 2], f32>) -> !mo.tensor<[1, 1, 7, 8], f32> no_inline {
+// CHECK:   mo.graph @resize.nearest(%[[ARG0:.*]]: !mo.tensor<[1, 1, 2, 2], f32>) -> !mo.tensor<[1, 1, 7, 8], f32> {
 mo.graph @resize.nearest(%arg0 : !mo.tensor<[1, 1, 2, 2], f32>) -> !mo.tensor<[1, 1, 7, 8], f32> {
     //  CHECK-NEXT: %[[ARG1:.*]] = mo.constant {value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
     %size = mo.constant {value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
@@ -14,7 +14,7 @@ mo.graph @resize.nearest(%arg0 : !mo.tensor<[1, 1, 2, 2], f32>) -> !mo.tensor<[1
     mo.output %output : !mo.tensor<[1, 1, 7, 8], f32>
 }
 
-// CHECK:   mo.graph @resize.nearest3(%[[ARG0:.*]]: !mo.tensor<[1, 1, 2, 2], f32>) -> !mo.tensor<[1, 1, 7, 8], f32> no_inline {
+// CHECK:   mo.graph @resize.nearest3(%[[ARG0:.*]]: !mo.tensor<[1, 1, 2, 2], f32>) -> !mo.tensor<[1, 1, 7, 8], f32> {
 mo.graph @resize.nearest3(%arg0 : !mo.tensor<[1, 1, 2, 2], f32>) -> !mo.tensor<[1, 1, 7, 8], f32> {
     //  CHECK-NEXT: %[[ARG1:.*]] = mo.constant {value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
     %size = mo.constant {value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
@@ -23,7 +23,7 @@ mo.graph @resize.nearest3(%arg0 : !mo.tensor<[1, 1, 2, 2], f32>) -> !mo.tensor<[
     mo.output %output : !mo.tensor<[1, 1, 7, 8], f32>
 }
 
-// CHECK:   mo.graph @resize_linear(%arg0: !mo.tensor<[1, 1, 2, 2], f32>) -> !mo.tensor<[1, 1, 4, 4], f32> no_inline {
+// CHECK:   mo.graph @resize_linear(%arg0: !mo.tensor<[1, 1, 2, 2], f32>) -> !mo.tensor<[1, 1, 4, 4], f32> {
 mo.graph @resize_linear(%arg0 : !mo.tensor<[1, 1, 2, 2], f32>) -> !mo.tensor<[1, 1, 4, 4], f32> {
     // CHECK-NEXT: %[[ARG1:.*]] = mo.constant {value = #M.dense_array<1, 1, 4, 4> : tensor<4xsi64>} : !mo.tensor<[4], si64>
     %size = mo.constant {value = #M.dense_array<1, 1, 4, 4> : tensor<4xsi64>} : !mo.tensor<[4], si64>

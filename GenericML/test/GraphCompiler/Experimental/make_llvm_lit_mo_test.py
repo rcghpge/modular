@@ -20,7 +20,7 @@ We run `mo-opt test.mlir | python make_llvm_lit_test.py` will output:
 
 ```
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @add_static_static([[VARG0:[^ ]*]]: !mo.tensor<[1, 2, 3], f32>, [[VARG1:[^ ]*]]: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32> no_inline {
+// CHECK-SAME: @add_static_static([[VARG0:[^ ]*]]: !mo.tensor<[1, 2, 3], f32>, [[VARG1:[^ ]*]]: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = rmo.mo.add([[VARG0]], [[VARG1]]) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<?, f32>
 // CHECK-NEXT: mo.output [[V0]] : !mo.tensor<?, f32>
 ```

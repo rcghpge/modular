@@ -437,24 +437,56 @@ void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
     body.addArgument(input, state.location);
 }
 
-/// Parses an MO Graph.
-///
-/// operation ::= `graph` function-signature function-attributes? function-body
-///
-ParseResult GraphOp::parse(OpAsmParser &parser, OperationState &result) {
-  return KGEN::parseGeneratorOrFunc(parser, result,
-                                    KGEN::GeneratorOrFuncKind::generator);
+static ParseResult parseGraphOp(OpAsmParser &p, StringAttr &name,
+                                TypeAttr &signatureAttr,
+                                TypeAttr &functionTypeAttr,
+                                KGEN::ParamDeclArrayAttr &inputParams,
+                                KGEN::ParamDeclArrayAttr &resultParams,
+                                NamedAttrList &attrs, Region &body) {
+  if (p.parseSymbolName(name))
+    return failure();
+
+  SmallVector<OpAsmParser::Argument> args;
+  KGEN::SignatureType signature;
+  FunctionType functionType;
+  if (KGEN::parseFunctionSignature(p, args, inputParams, resultParams,
+                                   functionType, signature))
+    return failure();
+  signatureAttr = TypeAttr::get(signature);
+  functionTypeAttr = TypeAttr::get(functionType);
+
+  if (p.parseOptionalAttrDictWithKeyword(attrs) ||
+      p.parseRegion(body, args, /*enableNameShadowing=*/true))
+    return failure();
+  return success();
 }
 
-/// Print the GraphOp.
-void GraphOp::print(OpAsmPrinter &p) { KGEN::printGeneratorOrFunc(p, *this); }
+static void printGraphOp(OpAsmPrinter &p, Operation *op, StringAttr name,
+                         TypeAttr signature, TypeAttr functionType,
+                         KGEN::ParamDeclArrayAttr inputParams,
+                         KGEN::ParamDeclArrayAttr resultParams,
+                         DictionaryAttr attrs, Region &body) {
+  p.printSymbolName(name);
+  printFunctionSignature(p, &body, inputParams, resultParams,
+                         cast<FunctionType>(functionType.getValue()),
+                         cast<SignatureType>(signature.getValue()));
+
+  auto graph = cast<GraphOp>(op);
+  SmallVector<StringRef, 6> elidedAttrs{
+      graph.getSymNameAttrName(), graph.getSignatureAttrName(),
+      graph.getFunctionTypeAttrName(), graph.getInputParamsAttrName(),
+      graph.getResultParamsAttrName()};
+  p.printOptionalAttrDictWithKeyword(attrs.getValue(), elidedAttrs);
+  p << ' ';
+  p.printRegion(body, /*printEntryBlockArgs=*/false);
+}
 
 OutputOp GraphOp::getOutputOp() {
   return cast<OutputOp>(getBodyBlock()->getTerminator());
 }
 
 LogicalResult GraphOp::verify() {
-  mlir::SymbolTableAnalysis symTabAnalysis(getOperation());
+  mlir::SymbolTableAnalysis symTabAnalysis(getOperation()->getParentOp());
   mlir::LockedSymbolTableCollection symtabs(symTabAnalysis.getSymbolTables());
   KGEN::ParameterCollector::Analysis cache;
   KGEN::ParameterUseDefGraph useDefGraph(getRegion());

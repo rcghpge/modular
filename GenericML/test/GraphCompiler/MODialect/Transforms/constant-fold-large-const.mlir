@@ -10,8 +10,8 @@ mo.graph @large_const() -> !mo.tensor<[10], ui32> {
   mo.output %2 : !mo.tensor<[10], ui32>
 }
 
-// CHECK: mo.graph @large_const_aliased_output(%arg0: !mo.tensor<[4096], f32>, %arg1: !mo.tensor<[4096], f32>) -> !mo.tensor<[4096], f32> no_inline
-mo.graph @large_const_aliased_output(%r0 : !mo.tensor<[4096], f32>, %r1 : !mo.tensor<[4096], f32>) -> !mo.tensor<[4096], f32> no_inline {
+// CHECK: mo.graph @large_const_aliased_output(%arg0: !mo.tensor<[4096], f32>, %arg1: !mo.tensor<[4096], f32>) -> !mo.tensor<[4096], f32>
+mo.graph @large_const_aliased_output(%r0 : !mo.tensor<[4096], f32>, %r1 : !mo.tensor<[4096], f32>) -> !mo.tensor<[4096], f32> {
   %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
   %int_cond = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[1], si32>
   %cond = mo.equal(%int_cond, %int_cond) : (!mo.tensor<[1], si32>, !mo.tensor<[1], si32>) -> !mo.tensor<[1], bool>

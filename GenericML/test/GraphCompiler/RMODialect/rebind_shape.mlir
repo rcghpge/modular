@@ -5,7 +5,7 @@ mo.graph @rebind_tensor_shape_canonicalize<A>(%arg0: !mo.tensor<[3, 4, A], f32>)
   mo.output %1 : !mo.tensor<[3, 4, A], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @rebind_tensor_shape_canonicalize<A>([[VARG0:[^ ]*]]: !mo.tensor<[3, 4, A], f32>) -> !mo.tensor<[3, 4, A], f32> no_inline {
+// CHECK-SAME: @rebind_tensor_shape_canonicalize<A>([[VARG0:[^ ]*]]: !mo.tensor<[3, 4, A], f32>) -> !mo.tensor<[3, 4, A], f32> {
 // CHECK-NEXT: mo.output [[VARG0]] : !mo.tensor<[3, 4, A], f32>
 
 // -----
@@ -15,7 +15,7 @@ mo.graph @rebind_tensor_shape_canonicalize_dyn<Sh1: !mosh.ape>(%arg0: !mo.tensor
   mo.output %1 : !mo.tensor<Sh1, f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @rebind_tensor_shape_canonicalize_dyn<[[SH1:[^ ]*]]: !mosh.ape>([[VARG0:[^ ]*]]: !mo.tensor<[[SH1]], f32>) -> !mo.tensor<[[SH1]], f32> no_inline {
+// CHECK-SAME: @rebind_tensor_shape_canonicalize_dyn<[[SH1:[^ ]*]]: !mosh.ape>([[VARG0:[^ ]*]]: !mo.tensor<[[SH1]], f32>) -> !mo.tensor<[[SH1]], f32> {
 // CHECK-NEXT: mo.output [[VARG0]] : !mo.tensor<[[SH1]], f32>
 
 // -----
@@ -26,7 +26,7 @@ mo.graph @rebind_tensor_shape_no_canonicalize(%arg0: !mo.tensor<[3, 4, ?], f32>)
   mo.output %1 : !mo.tensor<[3, 4, ?], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @rebind_tensor_shape_no_canonicalize([[VARG0:[^ ]*]]: !mo.tensor<[3, 4, ?], f32>) -> !mo.tensor<[3, 4, ?], f32> no_inline {
+// CHECK-SAME: @rebind_tensor_shape_no_canonicalize([[VARG0:[^ ]*]]: !mo.tensor<[3, 4, ?], f32>) -> !mo.tensor<[3, 4, ?], f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = rmo.rebind_tensor_shape([[VARG0]]) : (!mo.tensor<[3, 4, ?], f32>) -> !mo.tensor<[3, 4, ?], f32>
 // CHECK-NEXT: mo.output [[V0]] : !mo.tensor<[3, 4, ?], f32>
 
@@ -37,7 +37,7 @@ mo.graph @rebind_tensor_shape_no_canonicalize_dyn(%arg0: !mo.tensor<?, f32>) -> 
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @rebind_tensor_shape_no_canonicalize_dyn([[VARG0:[^ ]*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> no_inline {
+// CHECK-SAME: @rebind_tensor_shape_no_canonicalize_dyn([[VARG0:[^ ]*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = rmo.rebind_tensor_shape([[VARG0]]) : (!mo.tensor<?, f32>) -> !mo.tensor<?, f32>
 // CHECK-NEXT: mo.output [[V0]] : !mo.tensor<?, f32>
 

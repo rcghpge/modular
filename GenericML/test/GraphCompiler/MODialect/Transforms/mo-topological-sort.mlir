@@ -24,7 +24,7 @@ mo.graph @sort_no_nested_region<D0, D1 -> out>(
 // CHECK-SAME:   <[[D0:.*]], [[D1:.*]] -> [[OUT:.*]]>(
 // CHECK-SAME:    %[[INPUT:.*]]: !mo.tensor<[[[D0]]], f32>,
 // CHECK-SAME:    %[[DUMMY:.*]]: !mo.tensor<[[[D1]]], f32>
-// CHECK-SAME:  ) -> !mo.tensor<[[[OUT]], 768], f32> no_inline {
+// CHECK-SAME:  ) -> !mo.tensor<[[[OUT]], 768], f32> {
 //
 // NOTE these are all reordered
 // CHECK-NEXT:    kgen.param.declare [[D2:.*]] = <max([[D1]], 1)>
@@ -67,7 +67,7 @@ mo.graph @sort_with_nested_region<D0, D1>(
 // CHECK-SAME:    %[[COND:.*]]: !mo.tensor<[], bool>,
 // CHECK-SAME:    %[[SCALAR:.*]]: !mo.tensor<[], f32>,
 // CHECK-SAME:    %[[DUMMY:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>
-// CHECK-SAME:  ) -> !mo.tensor<[[[D0]]], f32> no_inline {
+// CHECK-SAME:  ) -> !mo.tensor<[[[D0]]], f32> {
 //
 // NOTE these are reordered
 // CHECK-NEXT:  kgen.param.declare [[D2:.*]] = <add([[D1]], 1)>

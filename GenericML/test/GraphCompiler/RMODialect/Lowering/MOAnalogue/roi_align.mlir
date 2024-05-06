@@ -5,7 +5,7 @@ mo.graph @roi_align_dyn(%input: !mo.tensor<?, f32>, %rois: !mo.tensor<?, f32>, %
   mo.output %0 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @roi_align_dyn<[[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[SH2:[A-Za-z0-9_]*]]: !mosh.ape, [[SH3:[A-Za-z0-9_]*]]: !mosh.ape, [[SH4:[A-Za-z0-9_]*]]: !mosh.ape, [[SH5:[A-Za-z0-9_]*]]: !mosh.ape, [[SH6:[A-Za-z0-9_]*]]: !mosh.ape -> [[SH7:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[SH1]], f32>, [[ARG1:%.*]]: !mo.tensor<[[SH2]], f32>, [[ARG2:%.*]]: !mo.tensor<[[SH3]], si64>, [[ARG3:%.*]]: !mo.tensor<[[SH4]], si32>, [[ARG4:%.*]]: !mo.tensor<[[SH5]], f32>, [[ARG5:%.*]]: !mo.tensor<[[SH6]], f32>) -> !mo.tensor<[[SH7]], f32> no_inline {
+//  CHECK-SAME: @roi_align_dyn<[[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[SH2:[A-Za-z0-9_]*]]: !mosh.ape, [[SH3:[A-Za-z0-9_]*]]: !mosh.ape, [[SH4:[A-Za-z0-9_]*]]: !mosh.ape, [[SH5:[A-Za-z0-9_]*]]: !mosh.ape, [[SH6:[A-Za-z0-9_]*]]: !mosh.ape -> [[SH7:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[SH1]], f32>, [[ARG1:%.*]]: !mo.tensor<[[SH2]], f32>, [[ARG2:%.*]]: !mo.tensor<[[SH3]], si64>, [[ARG3:%.*]]: !mo.tensor<[[SH4]], si32>, [[ARG4:%.*]]: !mo.tensor<[[SH5]], f32>, [[ARG5:%.*]]: !mo.tensor<[[SH6]], f32>) -> !mo.tensor<[[SH7]], f32> {
 //  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[SH8:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH8]], f32>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[SH9:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG1]]) : !mo.tensor<[[SH2]], f32> -> !mo.tensor<[[SH9]], f32>
 //  CHECK-NEXT:   [[V2:%.*]] = mo.rebind<() -> [[SH10:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG2]]) : !mo.tensor<[[SH3]], si64> -> !mo.tensor<[[SH10]], si64>
@@ -29,7 +29,7 @@ mo.graph @roi_align_params(%input: !mo.tensor<[?, ?, ?, ?], f32>, %rois: !mo.ten
   mo.output %0 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @roi_align_params<[[D1:[A-Za-z0-9_]*]], [[D2:[A-Za-z0-9_]*]], [[D3:[A-Za-z0-9_]*]], [[D4:[A-Za-z0-9_]*]], [[D5:[A-Za-z0-9_]*]], [[D6:[A-Za-z0-9_]*]] -> [[SH7:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[[D1]], [[D2]], [[D3]], [[D4]]], f32>, [[ARG1:%.*]]: !mo.tensor<[[[D5]], [[D6]]], f32>, [[ARG2:%.*]]: !mo.tensor<[], si64>, [[ARG3:%.*]]: !mo.tensor<[], si32>, [[ARG4:%.*]]: !mo.tensor<[], f32>, [[ARG5:%.*]]: !mo.tensor<[], f32>) -> !mo.tensor<[[SH7]], f32> no_inline {
+//  CHECK-SAME: @roi_align_params<[[D1:[A-Za-z0-9_]*]], [[D2:[A-Za-z0-9_]*]], [[D3:[A-Za-z0-9_]*]], [[D4:[A-Za-z0-9_]*]], [[D5:[A-Za-z0-9_]*]], [[D6:[A-Za-z0-9_]*]] -> [[SH7:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[[D1]], [[D2]], [[D3]], [[D4]]], f32>, [[ARG1:%.*]]: !mo.tensor<[[[D5]], [[D6]]], f32>, [[ARG2:%.*]]: !mo.tensor<[], si64>, [[ARG3:%.*]]: !mo.tensor<[], si32>, [[ARG4:%.*]]: !mo.tensor<[], f32>, [[ARG5:%.*]]: !mo.tensor<[], f32>) -> !mo.tensor<[[SH7]], f32> {
 //  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]], [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[ARG0]]) : !mo.tensor<[[[D1]], [[D2]], [[D3]], [[D4]]], f32> -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[D12:[A-Za-z0-9_]*]], [[D13:[A-Za-z0-9_]*]]>([[ARG1]]) : !mo.tensor<[[[D5]], [[D6]]], f32> -> !mo.tensor<[[[D12]], [[D13]]], f32>
 //  CHECK-NEXT:   [[V2:%.*]] = rmo.rebind_tensor_shape<() -> [[RMO_D15:[A-Za-z0-9_]*]], [[RMO_D16:[A-Za-z0-9_]*]], [[RMO_D17:[A-Za-z0-9_]*]], [[RMO_D18:[A-Za-z0-9_]*]]>([[V0]]) : (!mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>) -> !mo.tensor<[[[RMO_D15]], [[RMO_D16]], [[RMO_D17]], [[RMO_D18]]], f32>
@@ -45,7 +45,7 @@ mo.graph @roi_align_params_mix(%input: !mo.tensor<[2, ?, ?, ?], f32>, %rois: !mo
   mo.output %0 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @roi_align_params_mix<[[D1:[A-Za-z0-9_]*]], [[D2:[A-Za-z0-9_]*]], [[D3:[A-Za-z0-9_]*]], [[D4:[A-Za-z0-9_]*]] -> [[SH5:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[2, [[D1]], [[D2]], [[D3]]], f32>, [[ARG1:%.*]]: !mo.tensor<[[[D4]], 5], f32>, [[ARG2:%.*]]: !mo.tensor<[], si64>, [[ARG3:%.*]]: !mo.tensor<[], si32>, [[ARG4:%.*]]: !mo.tensor<[], f32>, [[ARG5:%.*]]: !mo.tensor<[], f32>) -> !mo.tensor<[[SH5]], f32> no_inline {
+//  CHECK-SAME: @roi_align_params_mix<[[D1:[A-Za-z0-9_]*]], [[D2:[A-Za-z0-9_]*]], [[D3:[A-Za-z0-9_]*]], [[D4:[A-Za-z0-9_]*]] -> [[SH5:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[2, [[D1]], [[D2]], [[D3]]], f32>, [[ARG1:%.*]]: !mo.tensor<[[[D4]], 5], f32>, [[ARG2:%.*]]: !mo.tensor<[], si64>, [[ARG3:%.*]]: !mo.tensor<[], si32>, [[ARG4:%.*]]: !mo.tensor<[], f32>, [[ARG5:%.*]]: !mo.tensor<[], f32>) -> !mo.tensor<[[SH5]], f32> {
 //  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[D6:[A-Za-z0-9_]*]], [[D7:[A-Za-z0-9_]*]], [[D8:[A-Za-z0-9_]*]]>([[ARG0]]) : !mo.tensor<[2, [[D1]], [[D2]], [[D3]]], f32> -> !mo.tensor<[2, [[D6]], [[D7]], [[D8]]], f32>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[D9:[A-Za-z0-9_]*]]>([[ARG1]]) : !mo.tensor<[[[D4]], 5], f32> -> !mo.tensor<[[[D9]], 5], f32>
 //  CHECK-NEXT:   [[V2:%.*]] = rmo.rebind_tensor_shape<() -> [[RMO_D11:[A-Za-z0-9_]*]], [[RMO_D12:[A-Za-z0-9_]*]], [[RMO_D13:[A-Za-z0-9_]*]], [[RMO_D14:[A-Za-z0-9_]*]]>([[V0]]) : (!mo.tensor<[2, [[D6]], [[D7]], [[D8]]], f32>) -> !mo.tensor<[[[RMO_D11]], [[RMO_D12]], [[RMO_D13]], [[RMO_D14]]], f32>
@@ -61,7 +61,7 @@ mo.graph @roi_align_static(%input: !mo.tensor<[1, 10, 10, 1], f32>, %rois: !mo.t
   mo.output %0 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @roi_align_static<() -> [[SH1:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[1, 10, 10, 1], f32>, [[ARG1:%.*]]: !mo.tensor<[1, 5], f32>, [[ARG2:%.*]]: !mo.tensor<[], si64>, [[ARG3:%.*]]: !mo.tensor<[], si32>, [[ARG4:%.*]]: !mo.tensor<[], f32>, [[ARG5:%.*]]: !mo.tensor<[], f32>) -> !mo.tensor<[[SH1]], f32> no_inline {
+//  CHECK-SAME: @roi_align_static<() -> [[SH1:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[1, 10, 10, 1], f32>, [[ARG1:%.*]]: !mo.tensor<[1, 5], f32>, [[ARG2:%.*]]: !mo.tensor<[], si64>, [[ARG3:%.*]]: !mo.tensor<[], si32>, [[ARG4:%.*]]: !mo.tensor<[], f32>, [[ARG5:%.*]]: !mo.tensor<[], f32>) -> !mo.tensor<[[SH1]], f32> {
 //  CHECK-NEXT:   [[V0:%.*]] = rmo.rebind_tensor_shape<() -> [[RMO_D3:[A-Za-z0-9_]*]], [[RMO_D4:[A-Za-z0-9_]*]], [[RMO_D5:[A-Za-z0-9_]*]], [[RMO_D6:[A-Za-z0-9_]*]]>([[ARG0]]) : (!mo.tensor<[1, 10, 10, 1], f32>) -> !mo.tensor<[[[RMO_D3]], [[RMO_D4]], [[RMO_D5]], [[RMO_D6]]], f32>
 //  CHECK-NEXT:   [[V1:%.*]] = rmo.rebind_tensor_shape<() -> [[RMO_D7:[A-Za-z0-9_]*]], [[RMO_D8:[A-Za-z0-9_]*]]>([[ARG1]]) : (!mo.tensor<[1, 5], f32>) -> !mo.tensor<[[[RMO_D7]], [[RMO_D8]]], f32>
 //  CHECK-NEXT:   [[V2:%.*]] = mo.roi_align<() -> [[RMO_D9:[A-Za-z0-9_]*]], [[RMO_D10:[A-Za-z0-9_]*]], [[RMO_D11:[A-Za-z0-9_]*]], [[RMO_D12:[A-Za-z0-9_]*]]>([[V0]], [[V1]], [[ARG2]], [[ARG3]], [[ARG4]], [[ARG5]]) {aligned = false, mode = "[[AVG:[A-Za-z0-9_]*]]"} : (!mo.tensor<[[[RMO_D3]], [[RMO_D4]], [[RMO_D5]], [[RMO_D6]]], f32>, !mo.tensor<[[[RMO_D7]], [[RMO_D8]]], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[[[RMO_D9]], [[RMO_D10]], [[RMO_D11]], [[RMO_D12]]], f32>

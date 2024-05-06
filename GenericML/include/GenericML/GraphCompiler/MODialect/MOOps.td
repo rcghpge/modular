@@ -108,12 +108,12 @@ def MO_TransferOp : MO_Op<"transfer", [
 //===----------------------------------------------------------------------===//
 
 def MO_GraphOp : MO_TensorOp<"graph", [
-  HasParent<"ModuleOp">, FunctionOpInterface, Symbol, SymbolTable,
+  HasParent<"ModuleOp">, FunctionOpInterface, Symbol,
   IsolatedFromAbove, SingleBlockImplicitTerminator<"OutputOp">,
   DeclareOpInterfaceMethods<MO_Parameterization>,
   RegionKindInterface, HasOnlyGraphRegion,
   // needed to leverage KGEN parameter infra
-  DeclInterface, FuncInterface
+  DeclInterface
 ]> {
   let summary = "Computation graph operation";
   let description = [{
@@ -135,15 +135,19 @@ def MO_GraphOp : MO_TensorOp<"graph", [
   }];
 
   let arguments = (ins
+    StrAttr:$sym_name,
     TypeAttrOf<KGEN_SignatureType>:$signature,
     TypeAttrOf<FunctionType>:$functionType,
     KGEN_ParamDeclArrayAttr:$inputParams,
     KGEN_ParamDeclArrayAttr:$resultParams,
-    OptionalAttr<DictArrayAttr>:$arg_attrs,
-    OptionalAttr<DictArrayAttr>:$res_attrs,
     IntProperty<"int64_t">:$counter
   );
   let regions = (region SizedRegion<1>:$body);
+
+  let assemblyFormat = [{
+    custom<GraphOp>($sym_name, $signature, $functionType, $inputParams,
+                    $resultParams, attr-dict, $body)
+  }];
 
   let extraClassDeclaration = [{
     using FunctionOpInterfaceTrait::front;
@@ -159,11 +163,6 @@ def MO_GraphOp : MO_TensorOp<"graph", [
 
     /// Returns the callable region of this function.
     Region *getCallableRegion() { return &getBodyRegion(); }
-
-    /// We aren't using always_inline functionality in MO.
-    KGEN::InlineLevel getInlineLevel() {
-      return KGEN::InlineLevel::Never;
-    }
 
     /// Return a new dimension parameter of `IndexType`, with a name that starts
     /// with `prefix` and differs from existing parameter names inside this
@@ -203,7 +202,6 @@ def MO_GraphOp : MO_TensorOp<"graph", [
   ];
 
   let hasVerifier = 1;
-  let hasCustomAssemblyFormat = 1;
 }
 
 //===----------------------------------------------------------------------===//

@@ -5,7 +5,7 @@
 // CHECK-SAME: (
 // CHECK-SAME:   %[[INPUT1:.*]]: !mo.tensor<[40000, 2], f32>,
 // CHECK-SAME:   %[[INPUT2:.*]]: !mo.tensor<[80000, 2], f32>
-// CHECK-SAME: ) -> (!mo.tensor<[40000, 3], f32>, !mo.tensor<[80000, 3], f32>) no_inline {
+// CHECK-SAME: ) -> (!mo.tensor<[40000, 3], f32>, !mo.tensor<[80000, 3], f32>) {
 mo.graph @pack_matmul_no_cache(
   %input1: !mo.tensor<[40000, 2], f32>,
   %input2: !mo.tensor<[80000, 2], f32>
@@ -47,7 +47,7 @@ mo.graph @pack_matmul_no_cache(
 // CHECK-SAME: (
 // CHECK-SAME:   %[[INPUT1:.*]]: !mo.tensor<[40000, 2], f32>,
 // CHECK-SAME:   %[[INPUT2:.*]]: !mo.tensor<[40000, 2], f32>
-// CHECK-SAME: ) -> (!mo.tensor<[40000, 3], f32>, !mo.tensor<[40000, 3], f32>) no_inline {
+// CHECK-SAME: ) -> (!mo.tensor<[40000, 3], f32>, !mo.tensor<[40000, 3], f32>) {
 mo.graph @pack_matmul_cached(
   %input1: !mo.tensor<[40000, 2], f32>,
   %input2: !mo.tensor<[40000, 2], f32>

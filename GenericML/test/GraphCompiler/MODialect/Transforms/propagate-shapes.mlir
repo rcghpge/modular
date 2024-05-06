@@ -1,7 +1,7 @@
 // RUN: mo-opt %s --propagate-shapes --canonicalize | FileCheck %s
 
 // CHECK-LABEL: mo.graph @output_param_decl_removed
-// CHECK-SAME: <[[SH0:.*]]: !mosh.ape>(%[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[SH0]], f32> no_inline {
+// CHECK-SAME: <[[SH0:.*]]: !mosh.ape>(%[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[SH0]], f32> {
 mo.graph @output_param_decl_removed<Sh0: !mosh.ape -> Sh1: !mosh.ape>(%arg0: !mo.tensor<Sh0, f32>) -> !mo.tensor<Sh1, f32> {
   kgen.param.declare Sh2: !mosh.ape = <Sh0>
   %0 = mo.rebind(%arg0) : !mo.tensor<Sh0, f32> -> !mo.tensor<Sh2, f32>
@@ -16,7 +16,7 @@ mo.graph @output_param_decl_removed<Sh0: !mosh.ape -> Sh1: !mosh.ape>(%arg0: !mo
 mo.graph @output_param_decl_kept<Sh0: !mosh.ape, Sh1: !mosh.ape -> Sh2: !mosh.ape>(
     // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>, %[[ARG1:.*]]: !mo.tensor<[[SH1]], f32>
     %arg0: !mo.tensor<Sh0, f32>, %arg1: !mo.tensor<Sh1, f32>
-// CHECK-SAME: ) -> !mo.tensor<[[SH2]], f32> no_inline {
+// CHECK-SAME: ) -> !mo.tensor<[[SH2]], f32> {
 ) -> !mo.tensor<Sh2, f32> {
   // CHECK-NEXT: %[[VAL0:.*]] = mo.batch_matmul<() -> [[SH3:.*]]: !mosh.ape>(%[[ARG0]], %[[ARG1]]) : (
   // CHECK-SAME:   !mo.tensor<[[SH0]], f32>, !mo.tensor<[[SH1]], f32>) -> !mo.tensor<[[SH3]], f32>
@@ -33,7 +33,7 @@ mo.graph @batch_matmul_without_certain_checks<D0, D1, D2, D3 -> D4, D5, D6>(
   %arg0: !mo.tensor<[D0, D1, D2], f32>,
   // CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[[[D0]], [[D2]], [[D3]]], f32>
   %arg1: !mo.tensor<[D0, D2, D3], f32>
-// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D3]]], f32> no_inline {
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D3]]], f32> {
 ) -> !mo.tensor<[D4, D5, D6], f32> {
   kgen.param.declare Sh0: !mosh.ape = <[D0, D1, D2]>
   %0 = mo.rebind(%arg0) : !mo.tensor<[D0, D1, D2], f32> -> !mo.tensor<Sh0, f32>
@@ -69,7 +69,7 @@ mo.graph @batch_matmul_without_certain_checks<D0, D1, D2, D3 -> D4, D5, D6>(
 // CHECK-SAME: <[[SH0:.*]]: !mosh.ape, [[SH1:.*]]: !mosh.ape -> [[SH2:.*]]: !mosh.ape>(
 // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>,
 // CHECK-SAME: %[[ARG1:.*]]: !mo.tensor<[[SH1]], f32>
-// CHECK-SAME: ) -> !mo.tensor<[[SH2]], f32> no_inline {
+// CHECK-SAME: ) -> !mo.tensor<[[SH2]], f32> {
 mo.graph @unfolded_apply_shouldnt_be_inlined<Sh0: !mosh.ape, Sh1: !mosh.ape -> Sh2: !mosh.ape>(
   %arg0: !mo.tensor<Sh0, f32>, %arg1: !mo.tensor<Sh1, f32>
 ) -> !mo.tensor<Sh2, f32> {
@@ -98,7 +98,7 @@ mo.graph @graph_with_param_decls_in_ops<D0 -> D1, D2>(
   %arg0: !mo.tensor<[D0, 20, ?], f32>,
   // CHECK-SAME: %[[SHAPE:.*]]: !mo.tensor<[2], si32>
   %shape: !mo.tensor<[2], si32>
-// CHECK-SAME: ) -> !mo.tensor<[[[D1]], [[D2]]], f32> no_inline {
+// CHECK-SAME: ) -> !mo.tensor<[[[D1]], [[D2]]], f32> {
 ) -> !mo.tensor<[D1, D2], f32> {
   kgen.param.declare D3 = <D0>
   kgen.param.declare D4 = <20>
@@ -125,7 +125,7 @@ mo.graph @graph_with_param_decls_in_ops<D0 -> D1, D2>(
 mo.graph @nested_div_mul_simplification<D0, D1 -> D2>(
   // CHECK-SAME: %[[ARG:.*]]: !mo.tensor<[[[D0]], [[D1]], 20], f32>
   %arg: !mo.tensor<[D0, D1, 20], f32>
-// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], 4, 5], f32> no_inline {
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], 4, 5], f32> {
 ) -> !mo.tensor<[D0, D2, 4, 5], f32> {
   kgen.param.declare NUM = <mul_nuw(D0, D1, 20)>
   kgen.param.declare DENOM = <mul_nuw(D0, 4, 5)>
@@ -143,7 +143,7 @@ mo.graph @nested_div_mul_simplification<D0, D1 -> D2>(
 mo.graph @param_expr_apply_no_cse<Sh0: !mosh.ape -> D2, D3>(
   // CHECK-SAME: %[[ARG:.*]]: !mo.tensor<[[SH0]], f32>
   %arg: !mo.tensor<Sh0, f32>
-// CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]]], f32> no_inline {
+// CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]]], f32> {
 ) -> !mo.tensor<[D2, D3], f32> {
   // CHECK-NEXT: kgen.param.declare [[D5:.*]] = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", [[SH0]], 1)>
   // CHECK-NEXT: kgen.param.declare [[D6:.*]] = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", [[SH0]], 1)>
@@ -158,7 +158,7 @@ mo.graph @param_expr_apply_no_cse<Sh0: !mosh.ape -> D2, D3>(
 
 // CHECK-LABEL: mo.graph @param_expr_dce
 // CHECK-SAME:   <[[D0:.*]]>(%[[INPUT:.*]]: !mo.tensor<[[[D0]]], f32>
-// CHECK-SAME: ) -> !mo.tensor<[[[D0]]], f32> no_inline {
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]]], f32> {
 mo.graph @param_expr_dce<D0 -> D1>(
   %input: !mo.tensor<[D0], f32>
 ) -> !mo.tensor<[D1], f32> {
@@ -176,7 +176,7 @@ mo.graph @param_expr_dce<D0 -> D1>(
 // CHECK-SAME: <[[D0:.*]], [[BS:.*]] -> [[OUT:.*]]>(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[D0]]], f32>,
 // CHECK-SAME:   %[[DUMMY:.*]]: !mo.tensor<[[[BS]]], f32>
-// CHECK-SAME: ) -> !mo.tensor<[[[OUT]], 768], f32> no_inline {
+// CHECK-SAME: ) -> !mo.tensor<[[[OUT]], 768], f32> {
 mo.graph @fold_nested_max<D0, bs -> out>(
   %input: !mo.tensor<[D0], f32>,
   %dummy: !mo.tensor<[bs], f32> // this is used solely to help define `bs`
@@ -199,7 +199,7 @@ mo.graph @fold_nested_max<D0, bs -> out>(
 mo.graph @non_mo_tensor_input<D0 -> D1>(
   // CHECK-SAME: <[[D0:.*]]>(%[[INPUT:.*]]: !mo.tensor<[[[D0]]], f32>, %[[SHAPE:.*]]: !mosh.ape
   %input: !mo.tensor<[D0], f32>, %shape: !mosh.ape
-// CHECK-SAME: ) -> (!mo.tensor<[[[D0]]], f32>, !mosh.ape) no_inline {
+// CHECK-SAME: ) -> (!mo.tensor<[[[D0]]], f32>, !mosh.ape) {
 ) -> (!mo.tensor<[D1], f32>, !mosh.ape) {
 
   // CHECK-NEXT: mo.output %[[INPUT]], %[[SHAPE]] : !mo.tensor<[[[D0]]], f32>, !mosh.ape
@@ -209,7 +209,7 @@ mo.graph @non_mo_tensor_input<D0 -> D1>(
 // CHECK-LABEL: mo.graph @internal_dim_param_as_output_binding
 // CHECK-SAME:  <[[D0:.*]] -> [[RES:.*]]: !mosh.ape>
 // CHECK-SAME:    %[[INPUT:.*]]: !mo.tensor<[[[D0]]], f32>
-// CHECK-SAME:  ) -> !mo.tensor<[[RES]], si64> no_inline {
+// CHECK-SAME:  ) -> !mo.tensor<[[RES]], si64> {
 mo.graph @internal_dim_param_as_output_binding<D0 -> res: !mosh.ape>(
   %input: !mo.tensor<[D0], f32>
 ) -> !mo.tensor<res, si64> {
@@ -225,7 +225,7 @@ mo.graph @internal_dim_param_as_output_binding<D0 -> res: !mosh.ape>(
 // CHECK-SAME:  <[[D0:.*]] -> [[OUT:.*]]>(
 // CHECK-SAME:   %[[SCALAR:.*]]: !mo.tensor<[], f32>,
 // CHECK-SAME:   %[[DUMMY:.*]]: !mo.tensor<[[[D0]]], f32>
-// CHECK-SAME: ) -> !mo.tensor<[[[OUT]]], f32> no_inline {
+// CHECK-SAME: ) -> !mo.tensor<[[[OUT]]], f32> {
 mo.graph @out_of_order_instructions<D0 -> out>(
   %scalar: !mo.tensor<[], f32>,
   %dummy: !mo.tensor<[D0], f32> // this is used solely to help define `D0`
@@ -261,7 +261,7 @@ mo.graph @nested_mul<D0>() {
 // CHECK-LABEL: mo.graph @range_based_folding
 // CHECK-SAME:  <[[D0:.*]] -> [[O3:.*]]>(
 // CHECK-SAME:    %[[IN:.*]]: !mo.tensor<[], f32>
-// CHECK-SAME:  ) -> !mo.tensor<[[[D0]], 0, 0, [[O3]]], f32> no_inline {
+// CHECK-SAME:  ) -> !mo.tensor<[[[D0]], 0, 0, [[O3]]], f32> {
 mo.graph @range_based_folding<D0 -> O0, O1, O2, O3>(
   %in: !mo.tensor<[], f32>
 ) -> !mo.tensor<[O0, O1, O2, O3], f32> {
@@ -336,7 +336,7 @@ mo.graph @expand_apply_mosh_broadcast<D0, D1 -> O0, O1>(
 }
 
 // CHECK-LABEL: mo.graph @update_param_declare_rhs
-// CHECK-SAME:  <[[D1:.*]]>() no_inline {
+// CHECK-SAME:  <[[D1:.*]]>() {
 mo.graph @update_param_declare_rhs<D1>() {
   // In cases like this, where we do some folding in the RHS of a
   // `kgen.param.decalre`, we still want to update the RHS to the simplified
@@ -357,7 +357,7 @@ mo.graph @update_param_declare_rhs<D1>() {
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[], f32>,
 // CHECK-SAME:   %[[SHAPE1:.*]]: !mo.tensor<[2], si32>,
 // CHECK-SAME:   %[[SHAPE2:.*]]: !mo.tensor<[2], si32>
-// CHECK-SAME: ) -> (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>) no_inline {
+// CHECK-SAME: ) -> (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>) {
 mo.graph @out_of_order_ops<() -> D0, D1, D2, D3>(
   %input: !mo.tensor<[], f32>,
   %shape1: !mo.tensor<[2], si32>,
@@ -400,7 +400,7 @@ mo.graph @out_of_order_ops<() -> D0, D1, D2, D3>(
 // CHECK-SAME:   <[[D0:.*]], [[D1:.*]]>(
 // CHECK-SAME:    %[[INPUT:.*]]: !mo.tensor<[[[D0]]], f32>,
 // CHECK-SAME:    %[[DUMMY:.*]]: !mo.tensor<[[[D1]]], f32>
-// CHECK-SAME:  ) -> !mo.tensor<[[[D0]], [[D1]]], f32> no_inline {
+// CHECK-SAME:  ) -> !mo.tensor<[[[D0]], [[D1]]], f32> {
 mo.graph @broadcast_to_parametric_shape<D0, D1 -> D2, D3>(
   %input: !mo.tensor<[D0], f32>,
   %dummy: !mo.tensor<[D1], f32>
@@ -428,7 +428,7 @@ mo.graph @broadcast_to_parametric_shape<D0, D1 -> D2, D3>(
 // CHECK-LABEL: mo.graph @reshape_parametric_shape
 // CHECK-SAME:   <[[D0:.*]], [[D1:.*]]>(
 // CHECK-SAME:    %[[INPUT:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>
-// CHECK-SAME:  ) -> !mo.tensor<[[[D0]], 4, 5], f32> no_inline {
+// CHECK-SAME:  ) -> !mo.tensor<[[[D0]], 4, 5], f32> {
 mo.graph @reshape_parametric_shape<D0, D1 -> D2, D3, D4>(
   %input: !mo.tensor<[D0, D1], f32>
 ) -> !mo.tensor<[D2, D3, D4], f32> {
@@ -454,7 +454,7 @@ mo.graph @reshape_parametric_shape<D0, D1 -> D2, D3, D4>(
 
 // COM: Makes sure we handle the case where we are reshaping scalar tensors
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @reshape_scalar_tensor([[VARG0:[^ ]*]]: !mo.tensor<[], f32>) -> !mo.tensor<[1, 1, 1], f32> no_inline {
+// CHECK-SAME: @reshape_scalar_tensor([[VARG0:[^ ]*]]: !mo.tensor<[], f32>) -> !mo.tensor<[1, 1, 1], f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.static.reshape([[VARG0]]) : !mo.tensor<[], f32> -> !mo.tensor<[1, 1, 1], f32>
 // CHECK-NEXT: mo.output [[V0]] : !mo.tensor<[1, 1, 1], f32>
 mo.graph @reshape_scalar_tensor<() -> D2, D3, D4>(

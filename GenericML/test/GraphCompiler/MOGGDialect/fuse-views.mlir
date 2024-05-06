@@ -8,7 +8,7 @@ mo.graph @basicBroadcastFuse<N, M, K>(%arg0: !mo.tensor<[N, M], f32>, %arg1: !mo
 }
 
 // CHECK-LABEL: mo.graph @basicBroadcastFuse<N, M, K>
-// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[N, M], f32>, %[[ARG1:.*]]: !mo.tensor<[K, M], f32>) -> !mo.tensor<[K, M], f32> no_inline {
+// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[N, M], f32>, %[[ARG1:.*]]: !mo.tensor<[K, M], f32>) -> !mo.tensor<[K, M], f32> {
 // CHECK-NEXT:   %[[KERNEL:.*]] = mogg.kernel (%[[ARG1]], %[[ARG0]]) : (%[[IN1:.*]]: !mo.tensor<[K, M], f32>, %[[IN2:.*]]: !mo.tensor<[N, M], f32>) -> !mo.tensor<[K, M], f32>{
 // CHECK-NEXT:   %[[OUT:.*]] = mogg.output_placeholders : !mo.tensor<[K, M], f32>
 // CHECK-NEXT:   %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[K, M]>

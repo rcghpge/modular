@@ -7,7 +7,7 @@ mo.graph @conv_dyn(%input : !mo.tensor<?, f32>, %filter : !mo.tensor<?, f32>, %s
   mo.output %0 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @conv_dyn<[[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[SH2:[A-Za-z0-9_]*]]: !mosh.ape, [[SH3:[A-Za-z0-9_]*]]: !mosh.ape, [[SH4:[A-Za-z0-9_]*]]: !mosh.ape, [[SH5:[A-Za-z0-9_]*]]: !mosh.ape, [[SH6:[A-Za-z0-9_]*]]: !mosh.ape -> [[SH7:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[SH1]], f32>, [[ARG1:%.*]]: !mo.tensor<[[SH2]], f32>, [[ARG2:%.*]]: !mo.tensor<[[SH3]], si64>, [[ARG3:%.*]]: !mo.tensor<[[SH4]], si64>, [[ARG4:%.*]]: !mo.tensor<[[SH5]], si64>, [[ARG5:%.*]]: !mo.tensor<[[SH6]], si64>) -> !mo.tensor<[[SH7]], f32> no_inline {
+//  CHECK-SAME: @conv_dyn<[[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[SH2:[A-Za-z0-9_]*]]: !mosh.ape, [[SH3:[A-Za-z0-9_]*]]: !mosh.ape, [[SH4:[A-Za-z0-9_]*]]: !mosh.ape, [[SH5:[A-Za-z0-9_]*]]: !mosh.ape, [[SH6:[A-Za-z0-9_]*]]: !mosh.ape -> [[SH7:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[SH1]], f32>, [[ARG1:%.*]]: !mo.tensor<[[SH2]], f32>, [[ARG2:%.*]]: !mo.tensor<[[SH3]], si64>, [[ARG3:%.*]]: !mo.tensor<[[SH4]], si64>, [[ARG4:%.*]]: !mo.tensor<[[SH5]], si64>, [[ARG5:%.*]]: !mo.tensor<[[SH6]], si64>) -> !mo.tensor<[[SH7]], f32> {
 //  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[SH8:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH8]], f32>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[SH9:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG1]]) : !mo.tensor<[[SH2]], f32> -> !mo.tensor<[[SH9]], f32>
 //  CHECK-NEXT:   [[V2:%.*]] = mo.rebind<() -> [[SH10:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG2]]) : !mo.tensor<[[SH3]], si64> -> !mo.tensor<[[SH10]], si64>
@@ -31,7 +31,7 @@ mo.graph @conv_dyn_params(%input : !mo.tensor<[?, ?, ?, ?, ?], f32>, %filter : !
   mo.output %0 : !mo.tensor<[?, ?, ?, ?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @conv_dyn_params<D1, D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12, D13 -> D14, D15, D16, D17, D18>([[ARG0:%.*]]: !mo.tensor<[D1, D2, D3, D4, D5], f32>, [[ARG1:%.*]]: !mo.tensor<[D6, D7, D8, D9, D10], f32>, [[ARG2:%.*]]: !mo.tensor<[D11], si64>, [[ARG3:%.*]]: !mo.tensor<[D12], si64>, [[ARG4:%.*]]: !mo.tensor<[D13], si64>, [[ARG5:%.*]]: !mo.tensor<[], si64>) -> !mo.tensor<[D14, D15, D16, D17, D18], f32> no_inline {
+//  CHECK-SAME: @conv_dyn_params<D1, D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12, D13 -> D14, D15, D16, D17, D18>([[ARG0:%.*]]: !mo.tensor<[D1, D2, D3, D4, D5], f32>, [[ARG1:%.*]]: !mo.tensor<[D6, D7, D8, D9, D10], f32>, [[ARG2:%.*]]: !mo.tensor<[D11], si64>, [[ARG3:%.*]]: !mo.tensor<[D12], si64>, [[ARG4:%.*]]: !mo.tensor<[D13], si64>, [[ARG5:%.*]]: !mo.tensor<[], si64>) -> !mo.tensor<[D14, D15, D16, D17, D18], f32> {
 //  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[D19:[A-Za-z0-9_]*]], [[D20:[A-Za-z0-9_]*]], [[D21:[A-Za-z0-9_]*]], [[D22:[A-Za-z0-9_]*]], [[D23:[A-Za-z0-9_]*]]>([[ARG0]]) : !mo.tensor<[D1, D2, D3, D4, D5], f32> -> !mo.tensor<[[[D19]], [[D20]], [[D21]], [[D22]], [[D23]]], f32>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[D24:[A-Za-z0-9_]*]], [[D25:[A-Za-z0-9_]*]], [[D26:[A-Za-z0-9_]*]], [[D27:[A-Za-z0-9_]*]], [[D28:[A-Za-z0-9_]*]]>([[ARG1]]) : !mo.tensor<[D6, D7, D8, D9, D10], f32> -> !mo.tensor<[[[D24]], [[D25]], [[D26]], [[D27]], [[D28]]], f32>
 //  CHECK-NEXT:   [[V2:%.*]] = mo.rebind<() -> [[D29:[A-Za-z0-9_]*]]>([[ARG2]]) : !mo.tensor<[D11], si64> -> !mo.tensor<[[[D29]]], si64>
@@ -51,7 +51,7 @@ mo.graph @conv_static(%input : !mo.tensor<[3, 23, 51, 46, 8], f32>, %filter : !m
   mo.output %0 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @conv_static<() -> [[SH1:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[3, 23, 51, 46, 8], f32>, [[ARG1:%.*]]: !mo.tensor<[3, 4, 5, 4, 16], f32>, [[ARG2:%.*]]: !mo.tensor<[3], si64>, [[ARG3:%.*]]: !mo.tensor<[3], si64>, [[ARG4:%.*]]: !mo.tensor<[6], si64>, [[ARG5:%.*]]: !mo.tensor<[], si64>) -> !mo.tensor<[[SH1]], f32> no_inline {
+//  CHECK-SAME: @conv_static<() -> [[SH1:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[3, 23, 51, 46, 8], f32>, [[ARG1:%.*]]: !mo.tensor<[3, 4, 5, 4, 16], f32>, [[ARG2:%.*]]: !mo.tensor<[3], si64>, [[ARG3:%.*]]: !mo.tensor<[3], si64>, [[ARG4:%.*]]: !mo.tensor<[6], si64>, [[ARG5:%.*]]: !mo.tensor<[], si64>) -> !mo.tensor<[[SH1]], f32> {
 //  CHECK-NEXT:   [[V0:%.*]] = mo.conv<() -> [[RMO_D3:[A-Za-z0-9_]*]], [[RMO_D4:[A-Za-z0-9_]*]], [[RMO_D5:[A-Za-z0-9_]*]], [[RMO_D6:[A-Za-z0-9_]*]], [[RMO_D7:[A-Za-z0-9_]*]]>([[ARG0]], [[ARG1]]) [strides = [[ARG2]], dilations = [[ARG3]], paddings = [[ARG4]], num_groups = [[ARG5]]] : (!mo.tensor<[3, 23, 51, 46, 8], f32>, !mo.tensor<[3, 4, 5, 4, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[[[RMO_D3]], [[RMO_D4]], [[RMO_D5]], [[RMO_D6]], [[RMO_D7]]], f32>
 //  CHECK-NEXT:   [[V1:%.*]] = rmo.rebind_tensor_shape<() -> [[SH2:[A-Za-z0-9_]*]]: !mosh.ape>([[V0]]) : (!mo.tensor<[[[RMO_D3]], [[RMO_D4]], [[RMO_D5]], [[RMO_D6]], [[RMO_D7]]], f32>) -> !mo.tensor<[[SH2]], f32>
 //  CHECK-NEXT:   mo.output<:!mosh.ape [[SH2]]> [[V1]] : !mo.tensor<[[SH2]], f32>
@@ -69,7 +69,7 @@ mo.graph @conv_static_const_params(%input : !mo.tensor<[3, 23, 51, 46, 8], f32>,
   mo.output %0 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @conv_static_const_params<() -> [[SH2:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[3, 23, 51, 46, 8], f32>, [[ARG1:%.*]]: !mo.tensor<[3, 4, 5, 4, 16], f32>) -> !mo.tensor<[[SH2]], f32> no_inline {
+//  CHECK-SAME: @conv_static_const_params<() -> [[SH2:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[3, 23, 51, 46, 8], f32>, [[ARG1:%.*]]: !mo.tensor<[3, 4, 5, 4, 16], f32>) -> !mo.tensor<[[SH2]], f32> {
 //   CHECK-DAG:   [[V0:%.*]] = mo.constant {value = #M.dense_array<2, 3, 2> : tensor<3xsi64>} : !mo.tensor<[3], si64>
 //   CHECK-DAG:   [[V1:%.*]] = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
 //   CHECK-DAG:   [[V2:%.*]] = mo.constant {value = #M.dense_array<1, 1, 3, 3, 2, 2> : tensor<6xsi64>} : !mo.tensor<[6], si64>
@@ -88,7 +88,7 @@ mo.graph @conv_dyn_st_di_diff(%input : !mo.tensor<?, f32>, %filter : !mo.tensor<
 }
 // COM: strides / dilations must have the same size so dilations is rebound to `[2]`
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @conv_dyn_st_di_diff<[[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[SH2:[A-Za-z0-9_]*]]: !mosh.ape, D3, [[SH4:[A-Za-z0-9_]*]]: !mosh.ape, [[SH5:[A-Za-z0-9_]*]]: !mosh.ape -> [[SH6:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[SH1]], f32>, [[ARG1:%.*]]: !mo.tensor<[[SH2]], f32>, [[ARG2:%.*]]: !mo.tensor<[2], si64>, [[ARG3:%.*]]: !mo.tensor<[D3], si64>, [[ARG4:%.*]]: !mo.tensor<[[SH4]], si64>, [[ARG5:%.*]]: !mo.tensor<[[SH5]], si64>) -> !mo.tensor<[[SH6]], f32> no_inline {
+//  CHECK-SAME: @conv_dyn_st_di_diff<[[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[SH2:[A-Za-z0-9_]*]]: !mosh.ape, D3, [[SH4:[A-Za-z0-9_]*]]: !mosh.ape, [[SH5:[A-Za-z0-9_]*]]: !mosh.ape -> [[SH6:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[SH1]], f32>, [[ARG1:%.*]]: !mo.tensor<[[SH2]], f32>, [[ARG2:%.*]]: !mo.tensor<[2], si64>, [[ARG3:%.*]]: !mo.tensor<[D3], si64>, [[ARG4:%.*]]: !mo.tensor<[[SH4]], si64>, [[ARG5:%.*]]: !mo.tensor<[[SH5]], si64>) -> !mo.tensor<[[SH6]], f32> {
 //  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[SH7:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH7]], f32>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[SH8:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG1]]) : !mo.tensor<[[SH2]], f32> -> !mo.tensor<[[SH8]], f32>
 //  CHECK-NEXT:   [[V2:%.*]] = mo.rebind<() -> [[D9:[A-Za-z0-9_]*]]>([[ARG3]]) : !mo.tensor<[D3], si64> -> !mo.tensor<[[[D9]]], si64>

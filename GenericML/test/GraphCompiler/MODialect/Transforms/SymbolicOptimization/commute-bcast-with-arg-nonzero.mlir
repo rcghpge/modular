@@ -1,7 +1,7 @@
 // RUN: mo-opt %s --symbolic-optimize --propagate-shapes --canonicalize -cse | FileCheck %s
 
 // CHECK-LABEL: mo.graph @static_shape
-// CHECK-SAME: <() -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[[[M]], 1], si64> no_inline {
+// CHECK-SAME: <() -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[[[M]], 1], si64> {
 mo.graph @static_shape<() -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M, 1], si64> {
   // CHECK-DAG: %[[RANGE:.*]] = mo.constant {value = #M.dense_array<0, 6, 12, 18, 24> : tensor<5x1xsi64>} : !mo.tensor<[5, 1], si64>
   // CHECK-DAG: %[[PERM:.*]] = mo.constant {value = #M.dense_array<1, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
@@ -20,7 +20,7 @@ mo.graph @static_shape<() -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M
 }
 
 // CHECK-LABEL: mo.graph @static_shape_with_device
-// CHECK-SAME: <() -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[[[M]], 1], si64> no_inline {
+// CHECK-SAME: <() -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[[[M]], 1], si64> {
 mo.graph @static_shape_with_device<() -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M, 1], si64> {
   // CHECK-DAG: %[[RANGE:.*]] = mo.constant {value = #M.dense_array<0, 6, 12, 18, 24> : tensor<5x1xsi64>} : !mo.tensor<[5, 1], si64>
   // CHECK-DAG: %[[PERM:.*]] = mo.constant {{{.*}}value = #M.dense_array<1, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
@@ -39,7 +39,7 @@ mo.graph @static_shape_with_device<() -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !
 }
 
 // CHECK-LABEL: mo.graph @dynamic_shape
-// CHECK-SAME: <[[A:.*]], [[B:.*]] -> [[M:.*]]>(%[[ARG:.*]]: !mo.tensor<[2, [[A]]], f32>) -> !mo.tensor<[[[M]], 1], si64> no_inline {
+// CHECK-SAME: <[[A:.*]], [[B:.*]] -> [[M:.*]]>(%[[ARG:.*]]: !mo.tensor<[2, [[A]]], f32>) -> !mo.tensor<[[[M]], 1], si64> {
 mo.graph @dynamic_shape<A, B -> M>(%arg0: !mo.tensor<[2, A], f32>) -> !mo.tensor<[M, 1], si64> {
   // CHECK-DAG: %[[C0:.*]] = mosh.param.to_value = <mul_nuw([[A]], [[A]], [[B]], 2)>
   // CHECK-DAG: %[[C1:.*]] = mosh.param.to_value = <mul_nuw([[A]], 2)>
@@ -65,7 +65,7 @@ mo.graph @dynamic_shape<A, B -> M>(%arg0: !mo.tensor<[2, A], f32>) -> !mo.tensor
 }
 
 // CHECK-LABEL: mo.graph @non_flat_input
-// CHECK-SAME: <() -> M>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M, 2], si64> no_inline {
+// CHECK-SAME: <() -> M>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M, 2], si64> {
 mo.graph @non_flat_input<() -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M, 2], si64> {
   // CHECK-NEXT: %[[BCASTARG0:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[2, 3], f32> -> !mo.tensor<[5, 2, 3], f32>
   // CHECK-NEXT: %[[RESHAPE:.*]] = mo.static.reshape(%[[BCASTARG0]]) : !mo.tensor<[5, 2, 3], f32> -> !mo.tensor<[5, 6], f32>
@@ -78,7 +78,7 @@ mo.graph @non_flat_input<() -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<
 }
 
 // CHECK-LABEL: mo.graph @no_reshape
-// CHECK-SAME: <[[A:.*]], [[B:.*]] -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[[[A]]], f32>) -> !mo.tensor<[[[M]], 1], si64> no_inline {
+// CHECK-SAME: <[[A:.*]], [[B:.*]] -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[[[A]]], f32>) -> !mo.tensor<[[[M]], 1], si64> {
 mo.graph @no_reshape<A, B -> M>(%arg0: !mo.tensor<[A], f32>) -> !mo.tensor<[M, 1], si64> {
   // CHECK-NEXT: %[[BCASTARG0:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[[[A]]], f32> -> !mo.tensor<[[[B]]], f32>
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A], f32> -> !mo.tensor<[B], f32>
@@ -89,7 +89,7 @@ mo.graph @no_reshape<A, B -> M>(%arg0: !mo.tensor<[A], f32>) -> !mo.tensor<[M, 1
 }
 
 // CHECK-LABEL: mo.graph @reshape_dynamic_input
-// CHECK-SAME: <[[A:.*]], [[SH0:.*]]: !mosh.ape -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[[[M]], 1], si64> no_inline {
+// CHECK-SAME: <[[A:.*]], [[SH0:.*]]: !mosh.ape -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[[[M]], 1], si64> {
 mo.graph @reshape_dynamic_input<A, Sh0: !mosh.ape -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M, 1], si64> {
   // CHECK-NEXT: %[[BCASTARG0:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[2, 3], f32> -> !mo.tensor<[[SH0]], f32>
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[2, 3], f32> -> !mo.tensor<Sh0, f32>
@@ -102,7 +102,7 @@ mo.graph @reshape_dynamic_input<A, Sh0: !mosh.ape -> M>(%arg0: !mo.tensor<[2, 3]
 }
 
 // CHECK-LABEL: mo.graph @bcast_dynamic_input
-// CHECK-SAME: <[[A:.*]], [[B:.*]], [[SH0:.*]]: !mosh.ape -> [[M:.*]]>(%[[ARG0]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[[M]], 1], si64> no_inline {
+// CHECK-SAME: <[[A:.*]], [[B:.*]], [[SH0:.*]]: !mosh.ape -> [[M:.*]]>(%[[ARG0]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[[M]], 1], si64> {
 mo.graph @bcast_dynamic_input<A, B, Sh0: !mosh.ape -> M>(%arg0: !mo.tensor<Sh0, f32>) -> !mo.tensor<[M, 1], si64> {
   // CHECK-NEXT: %[[BCASTARG0:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[[B]], [[B]]], f32>
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<Sh0, f32> -> !mo.tensor<[B, B], f32>
@@ -115,7 +115,7 @@ mo.graph @bcast_dynamic_input<A, B, Sh0: !mosh.ape -> M>(%arg0: !mo.tensor<Sh0, 
 }
 
 // CHECK-LABEL: mo.graph @inconsistent_devices
-// CHECK-SAME: <() -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[[[M]], 1], si64> no_inline {
+// CHECK-SAME: <() -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[[[M]], 1], si64> {
 mo.graph @inconsistent_devices<() -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M, 1], si64> {
   // CHECK-NEXT: %[[BCASTARG0:.*]] = mo.static.broadcast_to(%[[ARG0]]) {device = #M.device_ref<"dev", 1>} : !mo.tensor<[2, 3], f32> -> !mo.tensor<[5, 2, 3], f32>
   %0 = mo.static.broadcast_to(%arg0) {device = #M.device_ref<"dev", 1>} : !mo.tensor<[2, 3], f32> -> !mo.tensor<[5, 2, 3], f32>

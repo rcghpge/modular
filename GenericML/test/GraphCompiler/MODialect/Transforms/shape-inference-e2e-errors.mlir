@@ -32,7 +32,7 @@ mo.graph @reshape_number_of_elems(
 
 // This was adopted from an incorrect lowering of TF slice, which went silent
 // without error. This is a minimized version of the repro test.
-mo.graph @reshape_bad_annotated_rank(%arg0: !mo.tensor<[?, 320], f32>) -> !mo.tensor<[?, ?], f32> no_inline {
+mo.graph @reshape_bad_annotated_rank(%arg0: !mo.tensor<[?, 320], f32>) -> !mo.tensor<[?, ?], f32> {
   %0 = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[1], si32>
   %1 = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
   %2 = mo.constant {value = #M.dense_array<1> : !M.array<1xsi32>} : !mo.tensor<[], si32>

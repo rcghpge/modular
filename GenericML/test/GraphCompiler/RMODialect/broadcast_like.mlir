@@ -5,7 +5,7 @@ mo.graph @bcast_like_ok(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f64>) ->
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @bcast_like_ok([[VARG0:[^ ]*]]: !mo.tensor<?, f32>, [[VARG1:[^ ]*]]: !mo.tensor<?, f64>) -> !mo.tensor<?, f32> no_inline {
+// CHECK-SAME: @bcast_like_ok([[VARG0:[^ ]*]]: !mo.tensor<?, f32>, [[VARG1:[^ ]*]]: !mo.tensor<?, f64>) -> !mo.tensor<?, f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = rmo.broadcast_like([[VARG0]], [[VARG1]]) : (!mo.tensor<?, f32>, !mo.tensor<?, f64>) -> !mo.tensor<?, f32>
 // CHECK-NEXT: mo.output [[V0]] : !mo.tensor<?, f32>
 // CHECK-NEXT: }

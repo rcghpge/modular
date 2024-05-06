@@ -64,7 +64,7 @@ mo.graph @linalg_solve() -> !mo.tensor<[1, 2, 3], f32> {
 // CHECK-SAME:  (
 // CHECK-SAME:    %[[LHS:.*]]: !mo.tensor<?, f32>,
 // CHECK-SAME:    %[[RHS:.*]]: !mo.tensor<[?, ?], f32>
-// CHECK-SAME:  ) -> !mo.tensor<[?, ?], f32> no_inline {
+// CHECK-SAME:  ) -> !mo.tensor<[?, ?], f32> {
 mo.graph @linalg_solve_mismatched_ranks(
   %lhs: !mo.tensor<?, f32>,
   %rhs: !mo.tensor<[?, ?], f32>

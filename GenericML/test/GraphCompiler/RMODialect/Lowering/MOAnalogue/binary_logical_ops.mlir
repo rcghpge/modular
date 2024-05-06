@@ -5,7 +5,7 @@ mo.graph @and_dyn(%arg0: !mo.tensor<?, bool>, %arg1: !mo.tensor<?, bool>) -> !mo
   mo.output %1 : !mo.tensor<?, bool>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @and_dyn<[[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[SH2:[A-Za-z0-9_]*]]: !mosh.ape -> [[SH3:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[SH1]], bool>, [[ARG1:%.*]]: !mo.tensor<[[SH2]], bool>) -> !mo.tensor<[[SH3]], bool> no_inline {
+//  CHECK-SAME: @and_dyn<[[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[SH2:[A-Za-z0-9_]*]]: !mosh.ape -> [[SH3:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[SH1]], bool>, [[ARG1:%.*]]: !mo.tensor<[[SH2]], bool>) -> !mo.tensor<[[SH3]], bool> {
 //  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[SH4:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0]]) : !mo.tensor<[[SH1]], bool> -> !mo.tensor<[[SH4]], bool>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[SH5:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG1]]) : !mo.tensor<[[SH2]], bool> -> !mo.tensor<[[SH5]], bool>
 //  CHECK-NEXT:   [[V2:%.*]] = rmo.rebind_tensor_shape([[V1]]) : (!mo.tensor<[[SH5]], bool>) -> !mo.tensor<[[SH4]], bool>
@@ -20,7 +20,7 @@ mo.graph @and_dyn_params(%arg0: !mo.tensor<?, bool>, %arg1: !mo.tensor<[?, ?], b
   mo.output %1 : !mo.tensor<?, bool>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @and_dyn_params<[[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[D2:[A-Za-z0-9_]*]], [[D3:[A-Za-z0-9_]*]] -> [[SH4:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[SH1]], bool>, [[ARG1:%.*]]: !mo.tensor<[[[D2]], [[D3]]], bool>) -> !mo.tensor<[[SH4]], bool> no_inline {
+//  CHECK-SAME: @and_dyn_params<[[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[D2:[A-Za-z0-9_]*]], [[D3:[A-Za-z0-9_]*]] -> [[SH4:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[SH1]], bool>, [[ARG1:%.*]]: !mo.tensor<[[[D2]], [[D3]]], bool>) -> !mo.tensor<[[SH4]], bool> {
 //  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[SH5:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0]]) : !mo.tensor<[[SH1]], bool> -> !mo.tensor<[[SH5]], bool>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[D6:[A-Za-z0-9_]*]], [[D7:[A-Za-z0-9_]*]]>([[ARG1]]) : !mo.tensor<[[[D2]], [[D3]]], bool> -> !mo.tensor<[[[D6]], [[D7]]], bool>
 //  CHECK-NEXT:   [[V2:%.*]] = rmo.rebind_tensor_shape([[V0]]) : (!mo.tensor<[[SH5]], bool>) -> !mo.tensor<[[[D6]], [[D7]]], bool>
@@ -35,7 +35,7 @@ mo.graph @and_params_params(%arg0: !mo.tensor<[?, ?], bool>, %arg1: !mo.tensor<[
   mo.output %1 : !mo.tensor<?, bool>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @and_params_params<[[D1:[A-Za-z0-9_]*]], [[D2:[A-Za-z0-9_]*]], [[D3:[A-Za-z0-9_]*]], [[D4:[A-Za-z0-9_]*]] -> [[SH5:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[[D1]], [[D2]]], bool>, [[ARG1:%.*]]: !mo.tensor<[[[D3]], [[D4]]], bool>) -> !mo.tensor<[[SH5]], bool> no_inline {
+//  CHECK-SAME: @and_params_params<[[D1:[A-Za-z0-9_]*]], [[D2:[A-Za-z0-9_]*]], [[D3:[A-Za-z0-9_]*]], [[D4:[A-Za-z0-9_]*]] -> [[SH5:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[[D1]], [[D2]]], bool>, [[ARG1:%.*]]: !mo.tensor<[[[D3]], [[D4]]], bool>) -> !mo.tensor<[[SH5]], bool> {
 //  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[D6:[A-Za-z0-9_]*]], [[D7:[A-Za-z0-9_]*]]>([[ARG0]]) : !mo.tensor<[[[D1]], [[D2]]], bool> -> !mo.tensor<[[[D6]], [[D7]]], bool>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]]>([[ARG1]]) : !mo.tensor<[[[D3]], [[D4]]], bool> -> !mo.tensor<[[[D8]], [[D9]]], bool>
 //  CHECK-NEXT:   [[V2:%.*]] = rmo.rebind_tensor_shape([[V1]]) : (!mo.tensor<[[[D8]], [[D9]]], bool>) -> !mo.tensor<[[[D6]], [[D7]]], bool>
@@ -50,7 +50,7 @@ mo.graph @and_mix(%arg0: !mo.tensor<[?, 2, ?], bool>, %arg1: !mo.tensor<[?, ?, 3
   mo.output %1 : !mo.tensor<?, bool>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @and_mix<[[D1:[A-Za-z0-9_]*]], [[D2:[A-Za-z0-9_]*]], [[D3:[A-Za-z0-9_]*]], [[D4:[A-Za-z0-9_]*]] -> [[SH5:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[[D1]], 2, [[D2]]], bool>, [[ARG1:%.*]]: !mo.tensor<[[[D3]], [[D4]], 3], bool>) -> !mo.tensor<[[SH5]], bool> no_inline {
+//  CHECK-SAME: @and_mix<[[D1:[A-Za-z0-9_]*]], [[D2:[A-Za-z0-9_]*]], [[D3:[A-Za-z0-9_]*]], [[D4:[A-Za-z0-9_]*]] -> [[SH5:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[[D1]], 2, [[D2]]], bool>, [[ARG1:%.*]]: !mo.tensor<[[[D3]], [[D4]], 3], bool>) -> !mo.tensor<[[SH5]], bool> {
 //  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[D6:[A-Za-z0-9_]*]], [[D7:[A-Za-z0-9_]*]]>([[ARG0]]) : !mo.tensor<[[[D1]], 2, [[D2]]], bool> -> !mo.tensor<[[[D6]], 2, [[D7]]], bool>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]]>([[ARG1]]) : !mo.tensor<[[[D3]], [[D4]], 3], bool> -> !mo.tensor<[[[D8]], [[D9]], 3], bool>
 //  CHECK-NEXT:   [[V2:%.*]] = rmo.rebind_tensor_shape([[V0]]) : (!mo.tensor<[[[D6]], 2, [[D7]]], bool>) -> !mo.tensor<[[[D6]], 2, 3], bool>
@@ -66,7 +66,7 @@ mo.graph @and_static(%arg0: !mo.tensor<[3, 2], bool>, %arg1: !mo.tensor<[3, 2], 
   mo.output %1 : !mo.tensor<?, bool>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @and_static<() -> [[SH1:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[3, 2], bool>, [[ARG1:%.*]]: !mo.tensor<[3, 2], bool>) -> !mo.tensor<[[SH1]], bool> no_inline {
+//  CHECK-SAME: @and_static<() -> [[SH1:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[3, 2], bool>, [[ARG1:%.*]]: !mo.tensor<[3, 2], bool>) -> !mo.tensor<[[SH1]], bool> {
 //  CHECK-NEXT:   [[V0:%.*]] = mo.and([[ARG0]], [[ARG1]]) : !mo.tensor<[3, 2], bool>
 //  CHECK-NEXT:   [[V1:%.*]] = rmo.rebind_tensor_shape<() -> [[SH2:[A-Za-z0-9_]*]]: !mosh.ape>([[V0]]) : (!mo.tensor<[3, 2], bool>) -> !mo.tensor<[[SH2]], bool>
 //  CHECK-NEXT:   mo.output<:!mosh.ape [[SH2]]> [[V1]] : !mo.tensor<[[SH2]], bool>
@@ -78,7 +78,7 @@ mo.graph @or_dyn(%arg0: !mo.tensor<?, bool>, %arg1: !mo.tensor<?, bool>) -> !mo.
   mo.output %1 : !mo.tensor<?, bool>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @or_dyn<[[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[SH2:[A-Za-z0-9_]*]]: !mosh.ape -> [[SH3:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[SH1]], bool>, [[ARG1:%.*]]: !mo.tensor<[[SH2]], bool>) -> !mo.tensor<[[SH3]], bool> no_inline {
+//  CHECK-SAME: @or_dyn<[[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[SH2:[A-Za-z0-9_]*]]: !mosh.ape -> [[SH3:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[SH1]], bool>, [[ARG1:%.*]]: !mo.tensor<[[SH2]], bool>) -> !mo.tensor<[[SH3]], bool> {
 //  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[SH4:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0]]) : !mo.tensor<[[SH1]], bool> -> !mo.tensor<[[SH4]], bool>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[SH5:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG1]]) : !mo.tensor<[[SH2]], bool> -> !mo.tensor<[[SH5]], bool>
 //  CHECK-NEXT:   [[V2:%.*]] = rmo.rebind_tensor_shape([[V1]]) : (!mo.tensor<[[SH5]], bool>) -> !mo.tensor<[[SH4]], bool>
@@ -93,7 +93,7 @@ mo.graph @xor_dyn(%arg0: !mo.tensor<?, bool>, %arg1: !mo.tensor<?, bool>) -> !mo
   mo.output %1 : !mo.tensor<?, bool>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @xor_dyn<[[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[SH2:[A-Za-z0-9_]*]]: !mosh.ape -> [[SH3:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[SH1]], bool>, [[ARG1:%.*]]: !mo.tensor<[[SH2]], bool>) -> !mo.tensor<[[SH3]], bool> no_inline {
+//  CHECK-SAME: @xor_dyn<[[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[SH2:[A-Za-z0-9_]*]]: !mosh.ape -> [[SH3:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[SH1]], bool>, [[ARG1:%.*]]: !mo.tensor<[[SH2]], bool>) -> !mo.tensor<[[SH3]], bool> {
 //  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[SH4:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0]]) : !mo.tensor<[[SH1]], bool> -> !mo.tensor<[[SH4]], bool>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[SH5:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG1]]) : !mo.tensor<[[SH2]], bool> -> !mo.tensor<[[SH5]], bool>
 //  CHECK-NEXT:   [[V2:%.*]] = rmo.rebind_tensor_shape([[V1]]) : (!mo.tensor<[[SH5]], bool>) -> !mo.tensor<[[SH4]], bool>

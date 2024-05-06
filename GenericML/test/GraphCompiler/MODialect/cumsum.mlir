@@ -6,7 +6,7 @@
 
 // RUN: mo-opt %s --canonicalize | FileCheck %s
 
-// CHECK: mo.graph @cumsum(%[[ARG0:.*]]: !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32> no_inline {
+// CHECK: mo.graph @cumsum(%[[ARG0:.*]]: !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32> {
 mo.graph @cumsum(%arg0 : !mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>) {
   // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>

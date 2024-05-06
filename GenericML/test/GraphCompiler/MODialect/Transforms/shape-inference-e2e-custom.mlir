@@ -4,7 +4,7 @@
 // CHECK-LABEL: mo.graph @custom_op
 // CHECK-SAME: <[[D0:.*]], [[D1:.*]] -> [[O0:.*]], [[O1:.*]]>(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>
-// CHECK-SAME: ) -> !mo.tensor<[[[O0]], [[O1]]], f32> no_inline {
+// CHECK-SAME: ) -> !mo.tensor<[[[O0]], [[O1]]], f32> {
 mo.graph @custom_op(
   %input: !mo.tensor<[?, ?], f32>
 ) -> !mo.tensor<[?, ?], f32> {
@@ -22,4 +22,3 @@ mo.graph @custom_op(
   // CHECK-NEXT:  mo.output<[[D2]], [[D3]]> %[[RES]] : !mo.tensor<[[[D2]], [[D3]]], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
-

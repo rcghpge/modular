@@ -5,7 +5,7 @@ mo.graph @broadcast_shape_ok(%shape0: !mo.tensor<?, si64>, %shape1: !mo.tensor<?
     mo.output %1: !mo.tensor<[?], si64>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @broadcast_shape_ok([[VARG0:[^ ]*]]: !mo.tensor<?, si64>, [[VARG1:[^ ]*]]: !mo.tensor<?, si64>) -> !mo.tensor<[?], si64> no_inline {
+// CHECK-SAME: @broadcast_shape_ok([[VARG0:[^ ]*]]: !mo.tensor<?, si64>, [[VARG1:[^ ]*]]: !mo.tensor<?, si64>) -> !mo.tensor<[?], si64> {
 // CHECK-NEXT: [[V0:[^ ]*]] = rmo.mo.broadcast_shape([[VARG0]], [[VARG1]]) : (!mo.tensor<?, si64>, !mo.tensor<?, si64>) -> !mo.tensor<[?], si64>
 // CHECK-NEXT: mo.output [[V0]] : !mo.tensor<[?], si64>
 

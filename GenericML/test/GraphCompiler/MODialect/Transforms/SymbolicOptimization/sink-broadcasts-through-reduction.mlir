@@ -15,7 +15,7 @@ mo.graph @reduce_sinking_success<A, B, P1, P2, P3>(
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @reduce_sinking_success<[[A:[A-Z0-9]*]], [[B:[A-Z0-9]*]], [[P1:[A-Z0-9]*]], [[P2:[A-Z0-9]*]], [[P3:[A-Z0-9]*]]>
-// CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> (!mo.tensor<[[[P1]], [[P2]], [[P3]], 1, [[B]]], f32>, !mo.tensor<[[[P1]], [[P2]], [[P3]], [[A]], 1], f32>) no_inline {
+// CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> (!mo.tensor<[[[P1]], [[P2]], [[P3]], 1, [[B]]], f32>, !mo.tensor<[[[P1]], [[P2]], [[P3]], [[A]], 1], f32>) {
 // CHECK-DAG: [[V0:%.*]] = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
 // CHECK-DAG: [[V1:%.*]] = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
 // CHECK-NEXT: [[V2:%.*]] = mo.reduce.add([[INPUT]], [[V0]]) : (!mo.tensor<[[[A]], [[B]]], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, [[B]]], f32>
@@ -58,7 +58,7 @@ mo.graph @reduce_sinking_fail_on_unknown_rank<Sh1: !mosh.ape, Sh2: !mosh.ape, Sh
 }
 // CHECK-LABEL: mo.graph @reduce_sinking_fail_on_unknown_rank
 // CHECK-SAME: [[SH1:[A-Za-z0-9]*]]: !mosh.ape, [[SH2:[A-Za-z0-9]*]]: !mosh.ape, [[SH3:[A-Za-z0-9]*]]: !mosh.ape
-// CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[SH1]], f32>) -> !mo.tensor<[[SH3]], f32> no_inline {
+// CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[SH1]], f32>) -> !mo.tensor<[[SH3]], f32> {
 // CHECK-NEXT: [[V0:%.*]] = mo.constant {value = #M.dense_array<-1> : tensor<si64>} : !mo.tensor<[], si64>
 // CHECK-NEXT: [[V1:%.*]] = mo.static.broadcast_to([[INPUT]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH2]], f32>
 // CHECK-NEXT: [[V2:%.*]] = mo.reduce.min([[V1]], [[V0]]) : (!mo.tensor<[[SH2]], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[SH3]], f32>
@@ -79,7 +79,7 @@ mo.graph @reduce_sinking_success_max_mean_on_new_bcasted_dim<A, B, P1, P2, P3>(
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @reduce_sinking_success_max_mean_on_new_bcasted_dim<[[A:[A-Z0-9]*]], [[B:[A-Z0-9]*]], [[P1:[A-Z0-9]*]], [[P2:[A-Z0-9]*]], [[P3:[A-Z0-9]*]]>
-// CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> (!mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], f32>, !mo.tensor<[[[P1]], 1, [[P3]], [[A]], [[B]]], f32>) no_inline {
+// CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> (!mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], f32>, !mo.tensor<[[[P1]], 1, [[P3]], [[A]], [[B]]], f32>) {
 // CHECK-NEXT: [[V0:%.*]] = mo.static.broadcast_to([[INPUT]]) : !mo.tensor<[[[A]], [[B]]], f32> -> !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], f32>
 // CHECK-NEXT: [[V1:%.*]] = mo.static.broadcast_to([[INPUT]]) : !mo.tensor<[[[A]], [[B]]], f32> -> !mo.tensor<[[[P1]], 1, [[P3]], [[A]], [[B]]], f32>
 // CHECK-NEXT: mo.output [[V0]], [[V1]] : !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], f32>, !mo.tensor<[[[P1]], 1, [[P3]], [[A]], [[B]]], f32>
@@ -96,7 +96,7 @@ mo.graph @reduce_sinking_success_min_on_1_bcasted_dim<A, B>(
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @reduce_sinking_success_min_on_1_bcasted_dim<[[A:[A-Z0-9]*]], [[B:[A-Z0-9]*]]>
-// CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[[A]], 1, [[B]]], f32>) -> !mo.tensor<[[[A]], 1, [[B]]], f32> no_inline {
+// CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[[A]], 1, [[B]]], f32>) -> !mo.tensor<[[[A]], 1, [[B]]], f32> {
 // CHECK-NEXT: mo.output [[INPUT]] : !mo.tensor<[[[A]], 1, [[B]]], f32>
 
 // Reduce.add on an axis that was broadcasted => input scaled with mo.mul.
@@ -110,7 +110,7 @@ mo.graph @reduce_sinking_success_add_on_new_bcasted_dim<A, B, P1, P2, P3>(
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @reduce_sinking_success_add_on_new_bcasted_dim<[[A:[A-Z0-9]*]], [[B:[A-Z0-9]*]], [[P1:[A-Z0-9]*]], [[P2:[A-Z0-9]*]], [[P3:[A-Z0-9]*]]>
-// CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], f32> no_inline {
+// CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], f32> {
 // CHECK-NEXT: [[INDEX:%.*]] = mosh.param.to_value = <[[P1]]>
 // CHECK-NEXT: [[V0:%.*]] = mo.index.to_tensor([[INDEX]]) -> !mo.tensor<[], ui64>
 // CHECK-NEXT: [[V1:%.*]] = mo.cast([[V0]]) : (!mo.tensor<[], ui64>) -> !mo.tensor<[], f32>
@@ -130,7 +130,7 @@ mo.graph @reduce_sinking_success_mul_on_new_bcasted_dim<A, B, P1, P2, P3>(
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @reduce_sinking_success_mul_on_new_bcasted_dim<[[A:[A-Z0-9]*]], [[B:[A-Z0-9]*]], [[P1:[A-Z0-9]*]], [[P2:[A-Z0-9]*]], [[P3:[A-Z0-9]*]]>
-// CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], f32> no_inline {
+// CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], f32> {
 // CHECK-NEXT: [[INDEX:%.*]] = mosh.param.to_value = <[[P1]]>
 // CHECK-NEXT: [[V0:%.*]] = mo.index.to_tensor([[INDEX]]) -> !mo.tensor<[], ui64>
 // CHECK-NEXT: [[V1:%.*]] = mo.cast([[V0]]) : (!mo.tensor<[], ui64>) -> !mo.tensor<[], f32>
@@ -151,7 +151,7 @@ mo.graph @reduce_sinking_success_argmin_on_new_bcasted_dim<A, B, P1, P2, P3>(
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @reduce_sinking_success_argmin_on_new_bcasted_dim<[[A:[A-Z0-9]*]], [[B:[A-Z0-9]*]], [[P1:[A-Z0-9]*]], [[P2:[A-Z0-9]*]], [[P3:[A-Z0-9]*]]>
-// CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> (!mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], si64>, !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], si64>) no_inline {
+// CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> (!mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], si64>, !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], si64>) {
 // CHECK-NEXT: [[V0:%.*]] = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
 // CHECK-NEXT: [[V1:%.*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[], si64> -> !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], si64>
 // CHECK-NEXT: mo.output [[V1]], [[V1]] : !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], si64>, !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], si64>

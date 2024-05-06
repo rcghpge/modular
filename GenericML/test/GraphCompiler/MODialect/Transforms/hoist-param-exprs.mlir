@@ -82,14 +82,14 @@ mo.graph @no_rewrite_decl<N, M>(%arg0: !mo.tensor<[N], f32>, %arg1: !mo.tensor<[
 }
 
 // CHECK-LABEL: mo.graph @rebind_output
-// CHECK-SAME: [[D21:.*]], [[D22:.*]], [[D23:.*]], [[D24:.*]] -> [[D27:.*]]>([[VARG0:.*]]: !mo.tensor<[[[D21]], 12, [[D22]]], f32>, [[VARG1:.*]]: !mo.tensor<[[[D23]], [[D24]]], f32>) -> !mo.tensor<[[[D21]], 12, [[D27]]], f32> no_inline {
+// CHECK-SAME: [[D21:.*]], [[D22:.*]], [[D23:.*]], [[D24:.*]] -> [[D27:.*]]>([[VARG0:.*]]: !mo.tensor<[[[D21]], 12, [[D22]]], f32>, [[VARG1:.*]]: !mo.tensor<[[[D23]], [[D24]]], f32>) -> !mo.tensor<[[[D21]], 12, [[D27]]], f32> {
 // [[V0:.*]] = mo.static.broadcast_to([[VARG0]]) : !mo.tensor<[[[D21]], 12, [[D22]]], f32> -> !mo.tensor<[[[D21]], 12, param_expr_1], f32>
 // [[V1:.*]] = mo.static.broadcast_to([[VARG1]]) : !mo.tensor<[[[D23]], [[D24]]], f32> -> !mo.tensor<[[[D21]], 12, param_expr_1], f32>
 // kgen.param.declare param_expr_1 = <cond(eq([[D22]], 1), [[D24]], [[D22]])>
 // [[V2:.*]] = mo.add([[V0]], [[V1]]) : !mo.tensor<[[[D21]], 12, param_expr_1], f32>
 // [[V3:.*]] = mo.rebind([[V2]]) : !mo.tensor<[[[D21]], 12, param_expr_1], f32> -> !mo.tensor<[[[D21]], 12, cond(eq([[D22]], 1), [[D24]], [[D22]])], f32>
 // mo.output<cond(eq([[D22]], 1), [[D24]], [[D22]])> [[V3]] : !mo.tensor<[[[D21]], 12, cond(eq([[D22]], 1), [[D24]], [[D22]])], f32>
-mo.graph @rebind_output<D21, D22, D23, D24 -> D27>(%arg0: !mo.tensor<[D21, 12, D22], f32>, %arg1: !mo.tensor<[D23, D24], f32>) -> !mo.tensor<[D21, 12, D27], f32> no_inline {
+mo.graph @rebind_output<D21, D22, D23, D24 -> D27>(%arg0: !mo.tensor<[D21, 12, D22], f32>, %arg1: !mo.tensor<[D23, D24], f32>) -> !mo.tensor<[D21, 12, D27], f32> {
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[D21, 12, D22], f32> -> !mo.tensor<[D21, 12, cond(eq(D22, 1), D24, D22)], f32>
   %1 = mo.static.broadcast_to(%arg1) : !mo.tensor<[D23, D24], f32> -> !mo.tensor<[D21, 12, cond(eq(D22, 1), D24, D22)], f32>
   %2 = mo.add(%0, %1) : !mo.tensor<[D21, 12, cond(eq(D22, 1), D24, D22)], f32>

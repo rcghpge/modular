@@ -8,7 +8,7 @@
 
 // CHECK-LABEL: mo.graph @conv2d(
 // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[10, 5, 5, 16], f32>,
-// CHECK-SAME: %[[FILTER:.*]]: !mo.tensor<[3, 3, 16, 32], f32>) -> !mo.tensor<[10, 2, 2, 32], f32> no_inline {
+// CHECK-SAME: %[[FILTER:.*]]: !mo.tensor<[3, 3, 16, 32], f32>) -> !mo.tensor<[10, 2, 2, 32], f32> {
 mo.graph @conv2d(
   %input: !mo.tensor<[10, 5, 5, 16], f32>,
   %filter: !mo.tensor<[3, 3, 16, 32], f32>
@@ -32,7 +32,7 @@ mo.graph @conv2d(
 // CHECK-LABEL: mo.graph @conv_dyn_rank(
 // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<?, f32>, %[[FILTER:.*]]: !mo.tensor<?, f32>,
 // CHECK-SAME: %[[ST:.*]]: !mo.tensor<?, si64>, %[[DI:.*]]: !mo.tensor<[?], si64>, %[[PA:.*]]: !mo.tensor<[?], si64>,
-// CHECK-SAME: %[[NG:.*]]: !mo.tensor<[], si64>) -> !mo.tensor<?, f32> no_inline {
+// CHECK-SAME: %[[NG:.*]]: !mo.tensor<[], si64>) -> !mo.tensor<?, f32> {
 mo.graph @conv_dyn_rank(
   %input: !mo.tensor<?, f32>,
   %filter: !mo.tensor<?, f32>,
@@ -55,7 +55,7 @@ mo.graph @conv_dyn_rank(
 
 // CHECK: mo.graph @conv_transpose2d(
 // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[10, 2, 2, 32], f32>,
-// CHECK-SAME: %[[FILTER:.*]]: !mo.tensor<[3, 3, 16, 32], f32>) -> !mo.tensor<[10, 4, 4, 16], f32> no_inline {
+// CHECK-SAME: %[[FILTER:.*]]: !mo.tensor<[3, 3, 16, 32], f32>) -> !mo.tensor<[10, 4, 4, 16], f32> {
 mo.graph @conv_transpose2d(
   %input: !mo.tensor<[10, 2, 2, 32], f32>,
   %filter: !mo.tensor<[3, 3, 16, 32], f32>
@@ -82,7 +82,7 @@ mo.graph @conv_transpose2d(
 // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<?, f32>, %[[FILTER:.*]]: !mo.tensor<?, f32>,
 // CHECK-SAME: %[[ST:.*]]: !mo.tensor<?, si64>,
 // CHECK-SAME: %[[DI:.*]]: !mo.tensor<[?], si64>, %[[PA:.*]]: !mo.tensor<[?], si64>, %[[OP:.*]]: !mo.tensor<[?], si64>
-// CHECK-SAME:) -> !mo.tensor<?, f32> no_inline {
+// CHECK-SAME:) -> !mo.tensor<?, f32> {
 mo.graph @conv_transpose_dyn_rank(
   %input: !mo.tensor<?, f32>,
   %filter: !mo.tensor<?, f32>,
@@ -106,7 +106,7 @@ mo.graph @conv_transpose_dyn_rank(
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: mo.graph @avg_pool(
-// CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[20, 10, 10, 32], f32>) -> !mo.tensor<[20, 9, 5, 32], f32> no_inline {
+// CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[20, 10, 10, 32], f32>) -> !mo.tensor<[20, 9, 5, 32], f32> {
 mo.graph @avg_pool(%input: !mo.tensor<[20, 10, 10, 32], f32>) -> !mo.tensor<[20, 9, 5, 32], f32> {
   // CHECK-DAG: %[[FS:.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // CHECK-DAG: %[[ST:.*]] = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
@@ -123,7 +123,7 @@ mo.graph @avg_pool(%input: !mo.tensor<[20, 10, 10, 32], f32>) -> !mo.tensor<[20,
   mo.output %0 : !mo.tensor<[20, 9, 5, 32], f32>
 }
 
-// CHECK: mo.graph @avg_pool_dyn_rank(%[[INPUT:.*]]: !mo.tensor<?, f32>, %[[FS:.*]]: !mo.tensor<?, si64>, %[[ST:.*]]: !mo.tensor<?, si64>, %[[DI:.*]]: !mo.tensor<?, si64>, %[[PA:.*]]: !mo.tensor<?, si64>) -> !mo.tensor<?, f32> no_inline {
+// CHECK: mo.graph @avg_pool_dyn_rank(%[[INPUT:.*]]: !mo.tensor<?, f32>, %[[FS:.*]]: !mo.tensor<?, si64>, %[[ST:.*]]: !mo.tensor<?, si64>, %[[DI:.*]]: !mo.tensor<?, si64>, %[[PA:.*]]: !mo.tensor<?, si64>) -> !mo.tensor<?, f32> {
 mo.graph @avg_pool_dyn_rank(
     %input: !mo.tensor<?, f32>,
     %fs: !mo.tensor<?, si64>,
@@ -142,7 +142,7 @@ mo.graph @avg_pool_dyn_rank(
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: mo.graph @max_pool(
-// CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[20, 10, 10, 32], f32>) -> !mo.tensor<[20, 9, 5, 32], f32> no_inline {
+// CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[20, 10, 10, 32], f32>) -> !mo.tensor<[20, 9, 5, 32], f32> {
 mo.graph @max_pool(%input: !mo.tensor<[20, 10, 10, 32], f32>) -> !mo.tensor<[20, 9, 5, 32], f32> {
   // CHECK-DAG: %[[FS:.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // CHECK-DAG: %[[ST:.*]] = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
@@ -160,7 +160,7 @@ mo.graph @max_pool(%input: !mo.tensor<[20, 10, 10, 32], f32>) -> !mo.tensor<[20,
 }
 
 // CHECK-LABEL: mo.graph @max_pool_dyn_rank(
-// CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<?, f32>, %[[FS:.*]]: !mo.tensor<?, si64>, %[[ST:.*]]: !mo.tensor<?, si64>, %[[DI:.*]]: !mo.tensor<?, si64>, %[[PA:.*]]: !mo.tensor<[?], si64>) -> !mo.tensor<?, f32> no_inline {
+// CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<?, f32>, %[[FS:.*]]: !mo.tensor<?, si64>, %[[ST:.*]]: !mo.tensor<?, si64>, %[[DI:.*]]: !mo.tensor<?, si64>, %[[PA:.*]]: !mo.tensor<[?], si64>) -> !mo.tensor<?, f32> {
 mo.graph @max_pool_dyn_rank(
     %input: !mo.tensor<?, f32>,
     %fs: !mo.tensor<?, si64>,

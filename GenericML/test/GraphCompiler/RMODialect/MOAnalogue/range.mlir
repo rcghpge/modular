@@ -6,7 +6,7 @@ mo.graph @range(%arg0: !mo.tensor<[], si32>, %arg1: !mo.tensor<[], si32>, %arg2:
 }
 
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @range<() -> [[D1:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[], si32>, [[VARG1:[^ ]*]]: !mo.tensor<[], si32>, [[VARG2:[^ ]*]]: !mo.tensor<[], si32>) -> !mo.tensor<[[[D1]]], si32> no_inline {
+// CHECK-SAME: @range<() -> [[D1:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[], si32>, [[VARG1:[^ ]*]]: !mo.tensor<[], si32>, [[VARG2:[^ ]*]]: !mo.tensor<[], si32>) -> !mo.tensor<[[[D1]]], si32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = rmo.range<() -> [[D2:[^ ]*]]>([[VARG0]], [[VARG1]], [[VARG2]]) : (!mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[D2]]], si32>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.rebind([[V0]]) : !mo.tensor<[[[D2]]], si32> -> !mo.tensor<[[[D1]]], si32>
 // CHECK-NEXT: mo.output<[[D2]]> [[V0]] : !mo.tensor<[[[D2]]], si32>

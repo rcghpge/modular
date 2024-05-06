@@ -4,7 +4,7 @@ Consider the `mo` representation of a model given below.
 
 ```mlir
 module {
-  mo.graph @serving_default(%arg0: !mo.tensor<[8], f32>) -> !mo.tensor<[8], f32> no_inline attributes {argument_names = ["args_0"], result_names = ["output_0"]} {
+  mo.graph @serving_default(%arg0: !mo.tensor<[8], f32>) -> !mo.tensor<[8], f32> attributes {argument_names = ["args_0"], result_names = ["output_0"]} {
     %0 = mo.sqrt(%arg0) : !mo.tensor<[8], f32>
     mo.output %0 : !mo.tensor<[8], f32>
   }

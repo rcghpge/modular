@@ -197,7 +197,7 @@ mo.graph @list() -> (!mo.tensor<[2], f32>, !mo.list<!mo.tensor<[1], f32>>) {
 // Check that transitive dependencies are removed in the policy.
 // CHECK-LABEL: @transitive_remove
 // CHECK: mo.output
-mo.graph @transitive_remove(%arg0: !mo.tensor<[11, 4, 4, 6, 5], f32>) -> !mo.tensor<[11, 2, 2, 2, 10], f32> no_inline {
+mo.graph @transitive_remove(%arg0: !mo.tensor<[11, 4, 4, 6, 5], f32>) -> !mo.tensor<[11, 2, 2, 2, 10], f32> {
   %0 = mo.constant {value = #M.dense_array<0, 0, 0, 0, 0, 0> : tensor<6xsi64>} : !mo.tensor<[6], si64>
   %1 = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %2 = mo.constant {value = #M.dense_array<2, 2, 2> : tensor<3xsi64>} : !mo.tensor<[3], si64>
@@ -238,7 +238,7 @@ mo.graph @fold_mogg_ops() -> !mo.tensor<[2], si64> {
 // CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
 // CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
 // CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<1.000000e+00, 1.000000e+00, 1.000000e+00> : tensor<3xf32>} : !mo.tensor<[3], f32>
-mo.graph @large_op(%arg0: !mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 2], f32> no_inline {
+mo.graph @large_op(%arg0: !mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 2], f32> {
   %0 = mo.constant {value = #M.dense_array<3> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
   %1 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
   %2 = mo.constant {value = #M.dense_array<1.000000e+00, 1.000000e+00, 1.000000e+00> : tensor<3xf32>} : !mo.tensor<[3], f32>
@@ -271,7 +271,7 @@ mo.graph @large_op(%arg0: !mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 2], f32>
 // COM: Do not constant fold parametric outputs in graphs. Depend on shape
 // COM: inference to clean up first. We can go up to the add in this case.
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @partial_fold_parameterized_outputs<() -> O>() -> !mo.tensor<[O], f32> no_inline {
+// CHECK-SAME: @partial_fold_parameterized_outputs<() -> O>() -> !mo.tensor<[O], f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = dense_resource<folded_const> : !M.array<600xf32>} : !mo.tensor<[600], f32>
 // CHECK-NEXT: kgen.param.declare A = <600>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.rebind([[V0]]) : !mo.tensor<[600], f32> -> !mo.tensor<[A], f32>
@@ -294,7 +294,7 @@ mo.graph @partial_fold_parameterized_outputs<() -> O>() -> (!mo.tensor<[O], f32>
 // -----
 
 // CHECK-LABEL: @if_cache_resources
-// CHECK-SAME: ([[ARG0:%.*]]: !mo.tensor<[], bool>, [[ARG1:%.*]]: !mo.tensor<[600], f32>) -> !mo.tensor<[600], f32> no_inline {
+// CHECK-SAME: ([[ARG0:%.*]]: !mo.tensor<[], bool>, [[ARG1:%.*]]: !mo.tensor<[600], f32>) -> !mo.tensor<[600], f32> {
 mo.graph @if_cache_resources(%arg0: !mo.tensor<[], bool>, %arg1: !mo.tensor<[600], f32>) -> (!mo.tensor<[600], f32>) {
 //  CHECK:   [[V0:%.*]] = mo.constant {value = dense_resource<folded_const> : !M.array<600xf32>} : !mo.tensor<[600], f32>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.if([[ARG0]] : !mo.tensor<[], bool>) -> !mo.tensor<[600], f32> {
@@ -334,7 +334,7 @@ mo.graph @if_cache_resources(%arg0: !mo.tensor<[], bool>, %arg1: !mo.tensor<[600
 
 // COM: Do not constant fold broadcasts in the output, but allow them internally
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @partial_fold_bcast() -> !mo.tensor<[4, 2, 4], f32> no_inline {
+// CHECK-SAME: @partial_fold_bcast() -> !mo.tensor<[4, 2, 4], f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00> : !M.array<8xf32>} : !mo.tensor<[1, 2, 4], f32>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[1, 2, 4], f32> -> !mo.tensor<[4, 2, 4], f32>
 // CHECK-NEXT: mo.output [[V1]] : !mo.tensor<[4, 2, 4], f32>

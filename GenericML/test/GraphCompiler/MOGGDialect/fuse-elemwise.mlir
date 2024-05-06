@@ -288,7 +288,7 @@ mo.graph @out_of_order() -> !mo.tensor<[5], f32> {
 // should still fuse the other subgraph.
 //
 
-mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32> no_inline {
+mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32> {
   %0 = mogg.kernel (%arg0) : (%arg1: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
     %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
     mogg.lambda @input_0_fn = (%arg2: !mogg.indices) -> !mogg.simd<ui32>{

@@ -5,7 +5,7 @@ mo.graph @shape_of_ok(%input: !mo.tensor<?, f32>) -> !mo.tensor<[?], si64> {
     mo.output %1: !mo.tensor<[?], si64>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @shape_of_ok([[VARG0:[^ ]*]]: !mo.tensor<?, f32>) -> !mo.tensor<[?], si64> no_inline {
+// CHECK-SAME: @shape_of_ok([[VARG0:[^ ]*]]: !mo.tensor<?, f32>) -> !mo.tensor<[?], si64> {
 // CHECK-NEXT: [[V0:[^ ]*]] = rmo.mo.shape_of([[VARG0]]) : (!mo.tensor<?, f32>) -> !mo.tensor<[?], si64>
 // CHECK-NEXT: mo.output [[V0]] : !mo.tensor<[?], si64>
 

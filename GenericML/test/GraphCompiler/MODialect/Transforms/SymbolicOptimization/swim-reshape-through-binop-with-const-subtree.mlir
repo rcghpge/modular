@@ -1,7 +1,7 @@
 // RUN: mo-opt --symbolic-optimize %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @success_const_rhs([[VARG0:[^ ]*]]: !mo.tensor<[16, 64, 128, 128], f32>) -> !mo.tensor<[1, 1024, 128, 128], f32> no_inline {
+// CHECK-SAME: @success_const_rhs([[VARG0:[^ ]*]]: !mo.tensor<[16, 64, 128, 128], f32>) -> !mo.tensor<[1, 1024, 128, 128], f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[], f32> -> !mo.tensor<[16, 64, 128, 128], f32>
 // CHECK-NEXT: [[V2:[^ ]*]] = mo.sub([[VARG0]], [[V1]]) : !mo.tensor<[16, 64, 128, 128], f32>
@@ -25,7 +25,7 @@ mo.graph @success_const_rhs(
 // -----
 
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @success_const_lhs([[VARG0:[^ ]*]]: !mo.tensor<[16, 64, 128, 128], f32>) -> !mo.tensor<[1, 1024, 128, 128], f32> no_inline {
+// CHECK-SAME: @success_const_lhs([[VARG0:[^ ]*]]: !mo.tensor<[16, 64, 128, 128], f32>) -> !mo.tensor<[1, 1024, 128, 128], f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[], f32> -> !mo.tensor<[16, 64, 128, 128], f32>
 // CHECK-NEXT: [[V2:[^ ]*]] = mo.sub([[V1]], [[VARG0]]) : !mo.tensor<[16, 64, 128, 128], f32>
@@ -49,7 +49,7 @@ mo.graph @success_const_lhs(
 // -----
 
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @failure_non_const_subtree([[VARG0:[^ ]*]]: !mo.tensor<[16, 128, 128, 8], f32>, [[VARG1:[^ ]*]]: !mo.tensor<[7, 7, 8, 64], f32>, [[VARG2:[^ ]*]]: !mo.tensor<[1, 1024, 1, 1], f32>, [[VARG3:[^ ]*]]: !mo.tensor<[1, 1024, 1, 1], f32>) -> !mo.tensor<[1, 1024, 128, 128], f32> no_inline {
+// CHECK-SAME: @failure_non_const_subtree([[VARG0:[^ ]*]]: !mo.tensor<[16, 128, 128, 8], f32>, [[VARG1:[^ ]*]]: !mo.tensor<[7, 7, 8, 64], f32>, [[VARG2:[^ ]*]]: !mo.tensor<[1, 1024, 1, 1], f32>, [[VARG3:[^ ]*]]: !mo.tensor<[1, 1024, 1, 1], f32>) -> !mo.tensor<[1, 1024, 128, 128], f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-NEXT: [[V2:[^ ]*]] = mo.constant {value = #M.dense_array<3, 3, 3, 3> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
@@ -84,7 +84,7 @@ mo.graph @failure_non_const_subtree(
 
 
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @success_reshape_both_sides([[VARG0:[^ ]*]]: !mo.tensor<[16, 64, 128, 128], f32>) -> !mo.tensor<[1, 1024, 128, 128], f32> no_inline {
+// CHECK-SAME: @success_reshape_both_sides([[VARG0:[^ ]*]]: !mo.tensor<[16, 64, 128, 128], f32>) -> !mo.tensor<[1, 1024, 128, 128], f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[], f32> -> !mo.tensor<[16, 64, 128, 128], f32>
 // CHECK-NEXT: [[V2:[^ ]*]] = mo.sub([[VARG0]], [[V1]]) : !mo.tensor<[16, 64, 128, 128], f32>
@@ -111,7 +111,7 @@ mo.graph @success_reshape_both_sides(
 // between this pattern and the BroadcastReshape and BinaryVectorPattern
 //
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @minimal([[VARG0:[^ ]*]]: !mo.tensor<[300, 1], f32>) -> !mo.tensor<[300, 1], f32> no_inline {
+// CHECK-SAME: @minimal([[VARG0:[^ ]*]]: !mo.tensor<[300, 1], f32>) -> !mo.tensor<[300, 1], f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.static.reshape([[VARG0]]) : !mo.tensor<[300, 1], f32> -> !mo.tensor<[300], f32>
 // CHECK-NEXT: [[V2:[^ ]*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[], f32> -> !mo.tensor<[300], f32>
@@ -121,7 +121,7 @@ mo.graph @success_reshape_both_sides(
 // CHECK-NEXT: [[V6:[^ ]*]] = mo.relu([[V5]]) : !mo.tensor<[300], f32>
 // CHECK-NEXT: [[V7:[^ ]*]] = mo.static.reshape([[V6]]) : !mo.tensor<[300], f32> -> !mo.tensor<[300, 1], f32>
 // CHECK-NEXT: mo.output [[V7]] : !mo.tensor<[300, 1], f32>
-mo.graph @minimal(%arg0: !mo.tensor<[300, 1], f32>) -> !mo.tensor<[300, 1], f32> no_inline {
+mo.graph @minimal(%arg0: !mo.tensor<[300, 1], f32>) -> !mo.tensor<[300, 1], f32> {
   %0 = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
   %1 = mo.static.reshape(%0) : !mo.tensor<[], f32> -> !mo.tensor<[], f32>
   %2 = mo.static.broadcast_to(%1) : !mo.tensor<[], f32> -> !mo.tensor<[300], f32>

@@ -4,7 +4,7 @@
 // CHECK:      mo.graph @bmm_no_rebind(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[4, 3, 2], f32>,
 // CHECK-SAME:   %[[WEIGHT:.*]]: !mo.tensor<[2, 3], f32>
-// CHECK-SAME: ) -> !mo.tensor<[4, 3, 3], f32> no_inline {
+// CHECK-SAME: ) -> !mo.tensor<[4, 3, 3], f32> {
 mo.graph @bmm_no_rebind(
   %input: !mo.tensor<[4, 3, 2], f32>,
   %weight: !mo.tensor<[2, 3], f32>
@@ -24,7 +24,7 @@ mo.graph @bmm_no_rebind(
 // CHECK:      mo.graph @bmm_with_rebind<[[D0:.*]], [[D1:.*]]>(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[4, 3, [[D0]]], f32>,
 // CHECK-SAME:   %[[WEIGHT:.*]]: !mo.tensor<[[[D1]], 3], f32>
-// CHECK-SAME: ) -> !mo.tensor<[4, 3, 3], f32> no_inline {
+// CHECK-SAME: ) -> !mo.tensor<[4, 3, 3], f32> {
 mo.graph @bmm_with_rebind<D0, D1>(
   %input: !mo.tensor<[4, 3, D0], f32>,
   %weight: !mo.tensor<[D1, 3], f32>
@@ -44,7 +44,7 @@ mo.graph @bmm_with_rebind<D0, D1>(
 // CHECK:      mo.graph @bmm_with_device(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[4, 3, 2], f32>,
 // CHECK-SAME:   %[[WEIGHT:.*]]: !mo.tensor<[2, 3], f32>
-// CHECK-SAME: ) -> !mo.tensor<[4, 3, 3], f32> no_inline {
+// CHECK-SAME: ) -> !mo.tensor<[4, 3, 3], f32> {
 mo.graph @bmm_with_device(
   %input: !mo.tensor<[4, 3, 2], f32>,
   %weight: !mo.tensor<[2, 3], f32>
@@ -62,7 +62,7 @@ mo.graph @bmm_with_device(
 // CHECK:      mo.graph @bmm_mixed_precision(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[4, 3, 2], f16>,
 // CHECK-SAME:   %[[WEIGHT:.*]]: !mo.tensor<[2, 3], bf16>
-// CHECK-SAME: ) -> !mo.tensor<[4, 3, 3], f32> no_inline {
+// CHECK-SAME: ) -> !mo.tensor<[4, 3, 3], f32> {
 mo.graph @bmm_mixed_precision(
   %input: !mo.tensor<[4, 3, 2], f16>,
   %weight: !mo.tensor<[2, 3], bf16>
@@ -81,7 +81,7 @@ mo.graph @bmm_mixed_precision(
 // CHECK:      mo.graph @bmm_batch_size_one(
 // CHECK-SAME:   %[[A:.*]]: !mo.tensor<[1, 2, 3], f32>
 // CHECK-SAME:   %[[B:.*]]: !mo.tensor<[1, 3, 2], f32>
-// CHECK-SAME: ) -> !mo.tensor<[1, 2, 2], f32> no_inline {
+// CHECK-SAME: ) -> !mo.tensor<[1, 2, 2], f32> {
 mo.graph @bmm_batch_size_one(
   %A: !mo.tensor<[1, 2, 3], f32>,
   %B: !mo.tensor<[1, 3, 2], f32>
@@ -100,7 +100,7 @@ mo.graph @bmm_batch_size_one(
 // CHECK:      mo.graph @bmm_batch_size_ones(
 // CHECK-SAME:   %[[A:.*]]: !mo.tensor<[1, 1, 1, 2, 3], f32>
 // CHECK-SAME:   %[[B:.*]]: !mo.tensor<[1, 1, 1, 3, 2], f32>
-// CHECK-SAME: ) -> !mo.tensor<[1, 1, 1, 2, 2], f32> no_inline {
+// CHECK-SAME: ) -> !mo.tensor<[1, 1, 1, 2, 2], f32> {
 mo.graph @bmm_batch_size_ones(
   %A: !mo.tensor<[1, 1, 1, 2, 3], f32>,
   %B: !mo.tensor<[1, 1, 1, 3, 2], f32>
@@ -119,7 +119,7 @@ mo.graph @bmm_batch_size_ones(
 // CHECK:      mo.graph @bmm_batch_size_ones_mixed_precision(
 // CHECK-SAME:   %[[A:.*]]: !mo.tensor<[1, 1, 1, 2, 3], ui8>
 // CHECK-SAME:   %[[B:.*]]: !mo.tensor<[1, 1, 1, 3, 2], si8>
-// CHECK-SAME: ) -> !mo.tensor<[1, 1, 1, 2, 2], si32> no_inline {
+// CHECK-SAME: ) -> !mo.tensor<[1, 1, 1, 2, 2], si32> {
 mo.graph @bmm_batch_size_ones_mixed_precision(
   %A: !mo.tensor<[1, 1, 1, 2, 3], ui8>,
   %B: !mo.tensor<[1, 1, 1, 3, 2], si8>

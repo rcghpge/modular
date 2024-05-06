@@ -307,7 +307,7 @@ mo.graph @no_sinking_dimensions_are_mixed(%in: !mo.tensor<[2, 4], f32>) -> (!mo.
 
 // COM: 0 element tensors have ambiguous mappings between before and after dims
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @no_sinking_reshape_0ele([[VARG0:[^ ]*]]: !mo.tensor<[0, 8], f32>) -> (!mo.tensor<[0, 2, 2], f32>, !mo.tensor<[0, 2, 2], f32>) no_inline {
+// CHECK-SAME: @no_sinking_reshape_0ele([[VARG0:[^ ]*]]: !mo.tensor<[0, 8], f32>) -> (!mo.tensor<[0, 2, 2], f32>, !mo.tensor<[0, 2, 2], f32>) {
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<9223372036854775807, 8> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.constant {value = #M.dense_array<0, 4> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-NEXT: [[V2:[^ ]*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
