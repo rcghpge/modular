@@ -1432,10 +1432,7 @@ cc_library(
 
 cc_library(
     name = "API",
-    srcs = glob([
-        "lib/API/c/**/*.cpp",
-        "lib/API/c/**/*.h",
-    ]),
+    srcs = glob(["lib/API/c/**/*.cpp"]),
     hdrs = glob(["include/GenericML/API/**/*.h"]),
     strip_include_prefix = "include",
     deps = [
