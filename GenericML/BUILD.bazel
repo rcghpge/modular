@@ -52,7 +52,7 @@ cc_library(
     name = "GraphCompilerHeaders",
     hdrs = glob(["include/GenericML/GraphCompiler/*.h"]),
     strip_include_prefix = "include",
-    deps = [],
+    visibility = ["//visibility:private"],
 )
 
 cc_library(
@@ -619,6 +619,7 @@ cc_library(
         "include/GenericML/GraphCompiler/Interfaces/*.h",
     ]),
     strip_include_prefix = "include",
+    visibility = ["//visibility:private"],
     deps = [
         ":GraphCompilerConversion",
         ":MGPDialect",
