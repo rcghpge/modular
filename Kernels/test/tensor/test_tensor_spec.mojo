@@ -108,7 +108,7 @@ fn test_serialize():
     print(bytes.num_elements() == sizeof[TensorSpec]())
 
     # CHECK: True
-    print(TensorSpec.from_bytes(bytes.data()) == spec)
+    print(TensorSpec.from_bytes(bytes.unsafe_ptr()) == spec)
 
     _ = bytes^
 
