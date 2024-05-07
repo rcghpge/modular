@@ -90,6 +90,7 @@ cc_library(
     copts = ["-Ithird-party/"],  # Fixes mlperf-loadgen include path.
     strip_include_prefix = "include",
     deps = [
+        ":APIHeaders",
         ":GraphCompilerHeaders",
         ":Support",
         "//Support:Base",
@@ -1428,6 +1429,13 @@ cc_library(
     name = "MaxAPI",
     hdrs = glob(["include/GenericML/API/max/**/*.h"]),
     strip_include_prefix = "include/GenericML/API",
+)
+
+cc_library(
+    name = "APIHeaders",
+    hdrs = glob(["include/GenericML/API/**/*.h"]),
+    strip_include_prefix = "include",
+    visibility = ["//visibility:private"],
 )
 
 cc_library(
