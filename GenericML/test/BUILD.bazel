@@ -62,7 +62,7 @@ lit_tests(
     tools = [
         "//GenericML/tools/cuda-opt",
         "//GenericML/tools/mo-cuda-opt:mo-cuda-opt.opt",
-        "//GenericML/tools/mo-opt",
+        "//GenericML/tools/mo-opt:mo-opt.opt",
         "//GenericML/tools/model-specification-validator",
         "//GenericML/tools/mosh-opt",
     ],
