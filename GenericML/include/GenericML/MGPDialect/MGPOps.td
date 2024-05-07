@@ -514,10 +514,11 @@ def ExecuteGenericOp : MGP_Op<"generic.execute"> {
 
   let arguments = (ins MGP_ContextType:$theContext,
                        Variadic<AnyType>:$args,
-                       UI64Attr:$aRuntimeSlot,       // 0
-                       UI64Attr:$bModuleIndex,       // 1
-                       UI64Attr:$cFunctionIndex,     // 2
-                       StrAttr:$dSummary             // 3
+                       UI64Attr:$aRuntimeSlot,                        // 0
+                       UI64Attr:$bModuleIndex,                        // 1
+                       UI64Attr:$cFunctionIndex,                      // 2
+                       StrAttr:$dSummary,                             // 3
+                       DefaultValuedAttr<BoolAttr, "false">:$eIsAsync // 4
                        );
   let results = (outs MGP_DeviceChainType: $outChain, Variadic<AnyType>:$outResults);
 }

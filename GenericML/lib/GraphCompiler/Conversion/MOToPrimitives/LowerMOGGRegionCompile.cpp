@@ -80,7 +80,7 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
   auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
       oldKernel.getLoc(), MGP::DeviceChainType::get(device), resultTypes,
       context, oldKernel.getOperands(), runtimeSlot, module_index, kernel_index,
-      oldKernel.getSummary());
+      oldKernel.getSummary(), oldKernel.getIsAsync());
 
   auto replaceAllChainUses = [&](Value originalChain,
                                  TypedValue<MGP::DeviceChainType> newChain) {
