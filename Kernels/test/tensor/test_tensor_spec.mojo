@@ -8,7 +8,6 @@
 from collections import List
 
 from tensor import TensorShape, TensorSpec
-from tensor.tensor import _serialize_as_tensor
 
 
 # CHECK: test_tensor_shape
@@ -98,22 +97,6 @@ fn test_tensor_spec():
     print(shape == spec.shape)
 
 
-# CHECK: test_serialize
-fn test_serialize():
-    print("== test_serialize")
-
-    var spec = TensorSpec(DType.float32, 1)
-    var bytes = _serialize_as_tensor(spec)
-    # CHECK: True
-    print(bytes.num_elements() == sizeof[TensorSpec]())
-
-    # CHECK: True
-    print(TensorSpec.from_bytes(bytes.unsafe_ptr()) == spec)
-
-    _ = bytes^
-
-
 fn main():
     test_tensor_shape()
     test_tensor_spec()
-    test_serialize()

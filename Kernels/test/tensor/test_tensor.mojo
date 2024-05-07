@@ -7,13 +7,14 @@
 
 from math import iota, sqrt
 from pathlib import Path
-from random import seed
 from sys.param_env import env_get_string
-
-from tensor import Tensor, TensorShape, rand, randn
-from testing import *
-
 from utils.index import Index, StaticIntTuple
+
+from tensor import Tensor, TensorShape, TensorSpec, rand, randn
+from tensor.tensor import _serialize_as_tensor
+
+from testing import assert_almost_equal, assert_false
+
 
 alias TEMP_FILE_DIR = env_get_string["TEMP_FILE_DIR"]()
 
@@ -572,6 +573,21 @@ fn test_print_large():
     print(str(tensor))
 
 
+# CHECK: test_serialize
+fn test_serialize():
+    print("== test_serialize")
+
+    var spec = TensorSpec(DType.float32, 1)
+    var bytes = _serialize_as_tensor(spec)
+    # CHECK: True
+    print(bytes.num_elements() == sizeof[TensorSpec]())
+
+    # CHECK: True
+    print(TensorSpec.from_bytes(bytes.unsafe_ptr()) == spec)
+
+    _ = bytes^
+
+
 # CHECK-LABEL: test_tensor
 def test_tensor_from_file():
     print("== test_tensor")
@@ -629,6 +645,7 @@ def main():
     test_print()
     test_print_small()
     test_print_large()
+    test_serialize()
 
     # File-related tests
     test_tensor_from_file()

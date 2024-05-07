@@ -5,9 +5,8 @@
 # ===----------------------------------------------------------------------=== #
 # RUN: %mojo %s
 
-from algorithm.reduction import *
-from tensor import *
-from testing import *
+from tensor import Tensor, TensorShape
+from testing import assert_equal
 
 
 def test_argmaxmin():
