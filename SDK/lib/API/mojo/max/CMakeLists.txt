@@ -51,19 +51,15 @@ set(EXTENSIBILITY_SRCS
   extensibility/__init__
 )
 
-if (MODULAR_BUILD_SERVE_RT)
-  set(SERVE_SRCS
-    serve/_kserve_impl
-    serve/_serve_rt
-    serve/config
-    serve/debug
-    serve/kserve
-    serve/service
-    serve/stats
-  )
-else ()
-  set(SERVE_SRCS "")
-endif ()
+set(SERVE_SRCS
+  serve/_kserve_impl
+  serve/_serve_rt
+  serve/config
+  serve/debug
+  serve/kserve
+  serve/service
+  serve/stats
+)
 
 set(TENSOR_SRCS
   tensor/__init__
@@ -124,6 +120,4 @@ endif()
 # They need to be manually added to utils/build/engine_packaging/c/CMakeLists.txt
 # See the install-max-graph-c target.
 
-if (MODULAR_BUILD_SERVE_RT)
-  add_dependencies(max-mojo ServeRTCAPI)
-endif ()
+add_dependencies(max-mojo ServeRTCAPI)
