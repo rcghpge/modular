@@ -7,11 +7,9 @@
 # RUN: mojo -D TEMP_DIR=%T %s | FileCheck %s
 
 from sys.param_env import env_get_string
-from tensor import Tensor, TensorShape
-from testing import assert_true, assert_raises
 from pathlib.path import Path
 
-from max.graph import Type, Graph, ListType, TensorType, Symbol
+from max.graph import Type, Graph, TensorType, Symbol
 
 alias TEMP_DIR = Path(env_get_string["TEMP_DIR"]())
 

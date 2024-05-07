@@ -3,8 +3,10 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-from max.graph import Dim, TensorType, Symbol
-from tensor import Tensor, TensorShape
+
+from max.graph import TensorType, Symbol
+from max.tensor import Tensor, TensorShape
+
 from weights.hyperparams import HyperParams
 
 

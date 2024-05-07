@@ -10,9 +10,8 @@ from model.replit import Replit
 from weights.replit_checkpoint import ReplitCheckpoint
 from weights.hyperparams import get_default
 from max.engine import InferenceSession, Model, TensorMap
+from max.tensor import Tensor, TensorShape
 
-from tensor import Tensor, TensorShape
-from tensor._math import join
 from tokenizer import AutoTokenizer
 
 alias MAX_SEQ_LEN = 512

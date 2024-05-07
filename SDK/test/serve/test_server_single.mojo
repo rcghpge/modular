@@ -7,13 +7,11 @@
 # RUN: %mojo -debug-level full %s
 
 import sys
-
-from builtin.io import _printf
 from python import Python
-from tensor import Tensor, TensorShape, TensorSpec
 
 from max.engine.tensor import EngineNumpyView
 from max.graph import _testing
+from max.tensor import Tensor, TensorShape
 
 
 fn to_tensor[

@@ -6,10 +6,10 @@
 # UNSUPPORTED: windows
 # RUN: mojo %s
 
-from tensor import Tensor, TensorShape
 import testing
 
-from max.graph import Type, Graph, TensorType
+from max.graph import Type, Graph
+from max.tensor import Tensor, TensorShape
 
 
 fn test_basic_tensor() raises:

@@ -3,15 +3,16 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-from max.graph import ops, Dim, TensorType, Symbol, Graph
-from math.limit import min_finite
-from tensor import Tensor, TensorShape
+
+from collections import Optional
+
+from max.graph import ops, Symbol, Graph
+
 from layers.attention import GroupedQueryAttention
 from layers.linear import Linear
 from layers.norm import LPLayerNorm
-from weights.replit_checkpoint import ReplitCheckpoint, Checkpoint
+from weights.replit_checkpoint import Checkpoint
 from weights.hyperparams import HyperParams
-from collections import Optional
 
 
 @value

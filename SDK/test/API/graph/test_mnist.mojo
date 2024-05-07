@@ -6,11 +6,9 @@
 # UNSUPPORTED: windows
 # RUN: mojo %s | FileCheck %s
 
-from tensor import Tensor, TensorShape
-from utils.index import Index
-
-from max.graph import ops, Type, Graph, TensorType, Symbol
+from max.graph import Type, Graph, TensorType, Symbol
 from max.graph._attributes import _tensor_attr
+from max.tensor import Tensor, TensorShape
 
 # Based on the MNIST example at https://www.tensorflow.org/datasets/keras_example:
 #

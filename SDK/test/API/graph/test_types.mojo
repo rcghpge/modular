@@ -6,12 +6,12 @@
 # UNSUPPORTED: windows
 # RUN: mojo %s
 
-from tensor import TensorSpec
 import testing
 
 import _mlir
 
 from max.graph import Dim, ListType, TensorType
+from max.tensor import TensorSpec
 
 
 fn context() -> _mlir.Context:

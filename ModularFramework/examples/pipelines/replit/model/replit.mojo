@@ -6,9 +6,9 @@
 import math
 from math.limit import min_finite
 from collections import Optional, List
-from pathlib import Path
+
 from max.graph import ops, Dim, TensorType, Symbol, Graph, Type
-from tensor import Tensor, TensorShape
+from max.tensor import Tensor, TensorShape
 
 from layers.embedding import SharedEmbedding
 from layers.block import MPTBlock

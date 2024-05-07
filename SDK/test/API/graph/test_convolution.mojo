@@ -5,11 +5,9 @@
 # ===----------------------------------------------------------------------=== #
 # RUN: mojo "%s"
 
-from tensor import Tensor, TensorShape
-
-from max.graph import _testing, Graph, TensorType, Dim
+from max.graph import _testing, Graph, TensorType
 from max.graph.ops.convolution import conv2d, conv3d
-from testing import assert_raises
+from max.tensor import Tensor, TensorShape
 
 
 fn test_conv2d_padded() raises:

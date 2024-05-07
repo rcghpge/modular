@@ -65,12 +65,17 @@ else ()
   set(SERVE_SRCS "")
 endif ()
 
+set(TENSOR_SRCS
+  tensor/__init__
+)
+
 add_mojo_package(max-mojo PRIVATE
   ${GRAPH_SRCS}
   ${ENGINE_SRCS}
   ${EXTENSIBILITY_SRCS}
   ${REGISTER_SRCS}
   ${SERVE_SRCS}
+  ${TENSOR_SRCS}
 
   DOCS_DIR
   SDK/docs
@@ -78,7 +83,6 @@ add_mojo_package(max-mojo PRIVATE
   DEPENDS
   mof
   mojo-buffer
-  mojo-tensor
   mojo-extensibility
 
   mlir-mojo-api

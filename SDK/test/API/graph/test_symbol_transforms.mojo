@@ -6,9 +6,8 @@
 # UNSUPPORTED: windows
 # RUN: mojo %s
 
-from tensor import Tensor, TensorShape
-
 from max.graph import _testing, Type, Graph, TensorType, Symbol
+from max.tensor import Tensor, TensorShape
 
 
 fn test_insert_transform() raises:

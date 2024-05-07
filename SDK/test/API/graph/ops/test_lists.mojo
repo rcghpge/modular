@@ -4,11 +4,11 @@
 #
 # ===----------------------------------------------------------------------=== #
 # RUN: mojo %s
-from tensor import Tensor, TensorShape
+
 import testing
 
-from max.graph import _testing, Type, Graph, ListType, TensorType, Symbol
-from max.graph import ops
+from max.graph import _testing, Type, Graph, TensorType, Symbol, ops
+from max.tensor import Tensor, TensorShape
 
 
 fn test_list_empty() raises:

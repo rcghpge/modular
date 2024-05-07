@@ -3,13 +3,16 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
+
+from collections import Optional
+from math.limit import min_finite
+
 from max.graph import ops, Dim, TensorType, Symbol
 from max.graph.error import error
-from math.limit import min_finite
-from tensor import Tensor, TensorShape
+from max.tensor import Tensor, TensorShape
+
 from weights.hyperparams import HyperParams
 from layers.linear import Linear
-from collections import Optional
 
 
 fn permute(input: Symbol, perm: Symbol, out_dims: List[Dim]) raises -> Symbol:

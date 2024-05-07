@@ -6,9 +6,8 @@
 # UNSUPPORTED: windows
 # RUN: mojo %s
 
-from tensor import Tensor, TensorShape
-
-from max.graph import _testing, Type, Dim, Graph, TensorType
+from max.graph import _testing, Type, Graph, TensorType
+from max.tensor import Tensor, TensorShape
 
 
 fn test_vector_index_int() raises:

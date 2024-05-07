@@ -11,11 +11,13 @@
 # Tests in this file are executed in the main block at the bottom.
 from collections import Dict
 from pathlib import Path
-from tensor import Tensor, TensorShape
+
+from max.graph import _testing, Graph, TensorType, Symbol, Type
+from max.tensor import Tensor, TensorShape
+
 from weights.replit_checkpoint import Checkpoint
 from weights.hyperparams import HyperParams
 from model.replit import Replit
-from max.graph import _testing, Dim, Graph, TensorType, Symbol, Type
 from layers.embedding import SharedEmbedding
 from layers.attention import GroupedQueryAttention
 from layers.linear import Linear
