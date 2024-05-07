@@ -14,20 +14,36 @@
 namespace M::MO {
 
 ParametricTopologyAnalysis::ParametricTopologyAnalysis(mlir::Operation *root) {
+  // If from is in another block, then all parents of to must also be users of
+  // from, up to the last parent that is in the same block as from. When
+  // doFirstLevel is set, we will create the dependency between from and to
+  // (parametric dependencies are never present in SSA graphs so we need to do
+  // it unconditonally).
+  const auto applyDependencyToParentOps = [&](Operation *from, Operation *to,
+                                              bool doAtLeastOnce) {
+    const auto applyDependency = [&]() {
+      doAtLeastOnce = true;
+      // provider -> user
+      metadata[from].parametricUsers.insert(to);
+      // user <- provider
+      metadata[to].parametricProviders.insert(from);
+      to = to->getParentOp();
+    };
+
+    while (to && from->getBlock() != to->getBlock())
+      applyDependency();
+
+    // If from and to where not in the same block originally, then do the last
+    // op. Otherwise, don't do anything (we would end up duplicating the SSA
+    // graph in the metadata).
+    if (to && doAtLeastOnce)
+      applyDependency();
+  };
+
   auto paramCache = KGEN::ParameterCollector::Analysis(root);
   for (auto &region : root->getRegions()) {
     KGEN::ParameterUseDefGraph useDefGraph(region);
     useDefGraph.calculate(paramCache);
-
-    auto &rootBlocks = region.getBlocks();
-    const auto isARootBlock = [&](mlir::Block *block) {
-      for (auto &rootBlock : rootBlocks) {
-        if (&rootBlock == block)
-          return true;
-      }
-
-      return false;
-    };
 
     // For every nested use def graph (this is because an op that implements
     // DeclInterface will not appear in the root useDefGraph).
@@ -41,22 +57,7 @@ ParametricTopologyAnalysis::ParametricTopologyAnalysis(mlir::Operation *root) {
           if (whereItIsDeclaredIt == nextUseDefGraph.decls.end())
             continue;
           auto whereItIsDeclared = whereItIsDeclaredIt->second;
-          mlir::Operation *parentOp = op;
-          do {
-            // Decl <- Use
-            metadata[parentOp].parametricProviders.insert(
-                whereItIsDeclared.declOp);
-            // Decl -> Use
-            metadata[whereItIsDeclared.declOp].parametricUsers.insert(parentOp);
-            /// ASSUMPTION: The block where the parameter is defined
-            /// encompasses the block where it is used. This is the same rule
-            /// we have for SSA values.
-            if (parentOp->getBlock() == whereItIsDeclared.declOp->getBlock() ||
-                isARootBlock(parentOp->getBlock()))
-              break;
-
-            parentOp = parentOp->getParentOp();
-          } while (parentOp); // parent op of `mo.graph` is nullptr
+          applyDependencyToParentOps(whereItIsDeclared.declOp, op, true);
         }
       }
 
@@ -64,6 +65,11 @@ ParametricTopologyAnalysis::ParametricTopologyAnalysis(mlir::Operation *root) {
         workList.push_back(&nestedUseDefGraph);
     }
   }
+
+  root->walk([&](Operation *op) {
+    for (auto user : op->getUsers())
+      applyDependencyToParentOps(op, user, false);
+  });
 }
 
 llvm::SmallSetVector<mlir::Operation *, 4>
@@ -106,7 +112,7 @@ ParametricTopologyAnalysis::providers(mlir::Operation *op) const {
 /// parametric world.
 
 /// Return `true` if the given operation is ready to be scheduled.
-bool ParametricTopologyAnalysis::isOpReady(
+bool inline ParametricTopologyAnalysis::isOpReady(
     Operation *op, DenseSet<Operation *> &unscheduledOps) {
   // An operation is ready to be scheduled if all its operands are ready. An
   // operation is ready if:

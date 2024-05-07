@@ -12,11 +12,22 @@
 
 namespace M::MO {
 
-// Parameters cannot be discovered using MLIR's builtin dataflow API such as
+// (1) Parameters cannot be discovered using MLIR's builtin dataflow API such as
 // op->getUsers() because they are attributes. Operations (value) can create
 // parameters (attributes) that other operations (value) consume. This
 // dependency is not directly observable via the dataflow API. This analysis
 // aims at extending it.
+// (2) Furthermore, operations that aren't isolated from above can contain
+// nested operations that depend on other operations in superseding blocks
+// (contained in). Therefore, it is not directly obvious if an operation
+// provides another one if it is only providing nested operations. This analysis
+// aims at extending the regular SSA dataflow with this information.
+// Example:
+// %0 = ...
+// %1 = op1 {
+//   %2 = op2(%0)
+// }
+// Here, %0 is a provider of both op2 AND op1.
 class ParametricTopologyAnalysis {
 public:
   // Construct the state necessary rooted at the given operation.
