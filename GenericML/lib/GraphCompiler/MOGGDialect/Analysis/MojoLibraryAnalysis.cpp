@@ -234,16 +234,20 @@ void MojoLibraryAnalysis::updateLoadedKernelsForCollisions(
     std::string newSymName = op.getSymName().str();
 
     // If there's no collision we can copy directly obviously.
-    if (!rawMojoKernel.contains(newSymName))
+    auto itr = rawMojoKernel.find(newSymName);
+    if (itr == rawMojoKernel.end())
       continue;
 
-    // We ignore duplicated functions which are not kernels or shape functions.
+    bool hasSameSig = op.getSignature() == itr->second.getSignature();
+    // We ignore duplicated functions which are not kernels or shape functions
+    // as long as they share the same signature.
     if (!(KGEN::MOGGPreElab::isKernel(op) ||
-          KGEN::MOGGPreElab::isV1ShapeFunc(op)))
+          KGEN::MOGGPreElab::isV1ShapeFunc(op)) &&
+        hasSameSig)
       continue;
 
     // Prevent the same kernel from colliding with itself.
-    if (op.getLoc() == rawMojoKernel[newSymName].getLoc() &&
+    if (hasSameSig && op.getLoc() == rawMojoKernel[newSymName].getLoc() &&
         !isa<mlir::UnknownLoc>(op.getLoc()))
       continue;
 
@@ -398,6 +402,10 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths,
   // operation.
   DenseMap<StringRef, SmallVector<Candidate>> candidates;
   for (auto generator : getRawMojoKernels()) {
+    // Don't scan internal functions which aren't exported.
+    if (!generator.isExported())
+      continue;
+
     // Check if the generator has a the registration attribute directly
     // attached.
     if (auto regs = generator->getAttrOfType<ArrayAttr>(
