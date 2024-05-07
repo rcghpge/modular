@@ -82,6 +82,7 @@ add_mojo_package(max-mojo PRIVATE
 
   DEPENDS
   mof
+  mojo-tensor
   mojo-buffer
   mojo-extensibility
 
