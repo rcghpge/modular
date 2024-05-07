@@ -28,15 +28,17 @@ namespace M::MO {
 namespace {
 
 struct MOOpPattern : public RewritePattern {
-  MOOpPattern(MLIRContext *ctx, MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis)
+  MOOpPattern(MLIRContext *ctx, MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
+              bool forceSync)
       : RewritePattern(MatchAnyOpTypeTag{}, 1, ctx),
-        mojoLibraryAnalysis(mojoLibraryAnalysis) {}
+        mojoLibraryAnalysis(mojoLibraryAnalysis), forceSync(forceSync) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     OpBuilder insertPoint{op};
     auto maybeOp =
-        MOToMOGGUtils::lowerOpToMOGG(op, insertPoint, mojoLibraryAnalysis);
+        MOToMOGGUtils::lowerOpToMOGG(op, insertPoint, mojoLibraryAnalysis,
+                                     /*forceTrivial=*/false, forceSync);
     if (!maybeOp.has_value())
       return failure();
 
@@ -52,6 +54,7 @@ struct MOOpPattern : public RewritePattern {
 
 private:
   MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis;
+  bool forceSync;
 };
 
 struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
@@ -69,7 +72,7 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
       return signalPassFailure();
     MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
 
-    patterns.add<MOOpPattern>(ctx, mojoLibraryAnalysis);
+    patterns.add<MOOpPattern>(ctx, mojoLibraryAnalysis, forceSync.getValue());
 
     if (failed(
             applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))

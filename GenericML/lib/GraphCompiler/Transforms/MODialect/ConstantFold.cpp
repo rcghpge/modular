@@ -848,6 +848,8 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
   moOpts.compiledFrameworkLabel = "mof";
   // Set default device label to cpu
   moOpts.defaultDeviceLabel = kCPULabel;
+  // Force all kernels to be synchronous. This prevents higher memory usage.
+  moOpts.forceSync = true;
   MO::buildMoToMgpPipeline(pm, moOpts);
   // Run pipeline needs to run on a module.
   if (failed(runPipeline(pm, module)))

@@ -22,6 +22,8 @@ def MOToMOGG : Pass<"mo-to-mogg", "ModuleOp"> {
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
       "Paths to mojo packages containing mojo kernel definitions used "
       "to replace MO ops.">,
+    Option<"forceSync", "force-sync", "bool", "false",
+      "Make all kernels synchronous.">
   ];
 
   let dependentDialects = [

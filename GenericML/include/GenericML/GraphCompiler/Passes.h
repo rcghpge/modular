@@ -183,6 +183,9 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc("If the mha pattern is enabled, allows fusing potentially "
                      "unsafe bcasts with a runtime guard."),
       llvm::cl::init(true)};
+  Option<bool> forceSync{*this, "force-sync",
+                         llvm::cl::desc("Make all kernels synchronous."),
+                         llvm::cl::init(false)};
 };
 
 struct ShapeInferenceOptions
