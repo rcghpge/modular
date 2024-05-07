@@ -21,8 +21,8 @@ fn main() raises:
 
     var i = 1
     var address: String = "localhost:8000"
-    var num_workers = 8
-    var num_requests = 8000
+    var num_workers = 4
+    var num_requests = 4000
     while i < len(argv):
         if argv[i] == "-a":
             address = str(argv[i + 1]).strip()

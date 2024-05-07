@@ -7,6 +7,7 @@
 import sys
 
 from max.engine import InferenceSession
+from max.serve.callbacks import NoopServerCallbacks
 from max.serve.service import (
     FileModel,
     InferenceRequest,
@@ -14,39 +15,44 @@ from max.serve.service import (
 )
 from max.serve.kserve import (
     GRPCInferenceServer,
-    SingleModelInferenceService,
+    MuxInferenceService,
 )
 
 
 fn main() raises:
-    var USAGE = "Usage: run_sync_server.mojo [--name <name>] [--path <path>]"
+    var USAGE = "Usage: run_sync_server.mojo [(--name <name> --path <path>)]..."
     var argv = sys.argv()
 
+    var pairs = List[List[String]]()
     var i = 1
+    var name_seen = False
     var name: String = ""
     var path: String = ""
     while i < len(argv):
-        if argv[i] == "--name":
+        if not name_seen and argv[i] == "--name":
             name = argv[i + 1]
+            name_seen = True
             i += 2
-        elif argv[i] == "--path":
+        elif name_seen and argv[i] == "--path":
             path = argv[i + 1]
+            pairs.append(List(name, path))
+            name_seen = False
             i += 2
         else:
             print(USAGE)
             raise Error("Failed to parse command-line options")
 
-    if not name:
-        raise Error("Cannot specify an empty model name!")
-    if not path:
-        raise Error("Cannot specify an empty model path!")
+    if name_seen:
+        raise Error("Name argument specified without path!")
+
+    var models = List[FileModel]()
+    for pair in pairs:
+        models.append(FileModel(pair[][0], "0", pair[][1]))
 
     var session = InferenceSession()
-    var service = SingleModelInferenceService(FileModel(name, path, 0), session)
-    var server = GRPCInferenceServer(
-        "0.0.0.0:8000",
-        session,
-    )
+    var service = MuxInferenceService(models, session)
+    var server = GRPCInferenceServer.create("0.0.0.0:8000", session)
 
     print("Listening on port 8000!")
+    service.init(server)
     server.serve(service)

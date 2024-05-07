@@ -38,7 +38,7 @@ fn test_basic_add_request(
     _ = inputs[0].set_data_from_numpy(np.array(arr, np.float32))
     _ = inputs[1].set_data_from_numpy(np.array(arr, np.float32))
 
-    var results = client.infer("BasicAdd_float32", inputs, "0", outputs)
+    var results = client.infer("Add", inputs, "0", outputs)
     var output0_arr = results.as_numpy("output_0")
     var actual = to_tensor[DType.float32](output0_arr)
     var expected = Tensor[DType.float32](TensorShape(1, 1), 2)  # 1 + 1 = 2
