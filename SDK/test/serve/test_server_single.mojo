@@ -7,40 +7,34 @@
 # RUN: %mojo -debug-level full %s
 
 import sys
-from python import Python
 
-from max.engine.tensor import EngineNumpyView
+from builtin.io import _printf
+from tensor import Tensor, TensorShape, TensorSpec
+
+from max.engine import InferenceSession
 from max.graph import _testing
-from max.tensor import Tensor, TensorShape
-
-
-fn to_tensor[
-    dtype: DType
-](inout np_array: PythonObject) raises -> Tensor[dtype]:
-    var view = EngineNumpyView(np_array)
-    var size = view.spec().num_elements()
-    var ptr = DTypePointer[dtype].alloc(size)
-    memcpy(ptr, view.unsafe_ptr().bitcast[dtype](), size)
-    return Tensor[dtype](view.spec(), ptr)
+from max.serve.kserve.client import GRPCInferenceClient
 
 
 fn test_basic_add_request(
-    np: PythonObject, triton_grpc: PythonObject, client: PythonObject
+    inout client: GRPCInferenceClient, owned session: InferenceSession
 ) raises:
-    var inputs: PythonObject = []
-    var outputs: PythonObject = []
-    _ = inputs.append(triton_grpc.InferInput("args_0", [1, 1], "FP32"))
-    _ = inputs.append(triton_grpc.InferInput("args_1", [1, 1], "FP32"))
-    _ = outputs.append(triton_grpc.InferRequestedOutput("output_0"))
+    var inputs = session.new_tensor_map()
+    var a = Tensor[DType.float32](1, 1)
+    var b = Tensor[DType.float32](1, 1)
+    a[0][0] = 1
+    b[0][0] = 1
+    inputs.borrow("args_0", a)
+    inputs.borrow("args_1", b)
 
-    var arr: PythonObject = []
-    _ = arr.append([1.0])
-    _ = inputs[0].set_data_from_numpy(np.array(arr, np.float32))
-    _ = inputs[1].set_data_from_numpy(np.array(arr, np.float32))
+    var req_outputs = List[String]("output_0")
+    var response = client.infer("Add", "0", inputs, req_outputs)
+    _ = a^
+    _ = b^
 
-    var results = client.infer("Add", inputs, "0", outputs)
-    var output0_arr = results.as_numpy("output_0")
-    var actual = to_tensor[DType.float32](output0_arr)
+    var actual = response.get_output_tensors().get[DType.float32](
+        req_outputs[0]
+    )
     var expected = Tensor[DType.float32](TensorShape(1, 1), 2)  # 1 + 1 = 2
     _testing.assert_tensors_almost_equal(
         actual,
@@ -48,10 +42,11 @@ fn test_basic_add_request(
         atol=1e-4,
         rtol=1e-4,
     )
+    _ = response^
 
 
 fn main() raises:
-    var USAGE = "Usage: test_server_single.mojo [-a address] [-n iterations]"
+    var USAGE = "Usage: test_single.mojo [-a address] [-n iterations]"
     var argv = sys.argv()
 
     var i = 1
@@ -70,12 +65,11 @@ fn main() raises:
             print(USAGE)
             raise Error("Failed to parse command-line options")
 
-    var np = Python.import_module("numpy")
-    var triton_grpc = Python.import_module("tritonclient.grpc")
-    var client = triton_grpc.InferenceServerClient(address)
+    var session = InferenceSession()
+    var client = GRPCInferenceClient(address, session)
 
     for i in range(num_requests):
         try:
-            test_basic_add_request(np, triton_grpc, client)
+            test_basic_add_request(client, session)
         except e:
             print(e)

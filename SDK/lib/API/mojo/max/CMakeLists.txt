@@ -51,15 +51,21 @@ set(EXTENSIBILITY_SRCS
   extensibility/__init__
 )
 
-set(SERVE_SRCS
-  serve/_kserve_impl
-  serve/_serve_rt
-  serve/config
-  serve/debug
-  serve/kserve
-  serve/service
-  serve/stats
-)
+if (MODULAR_BUILD_SERVE_RT)
+  set(SERVE_SRCS
+    serve/kserve/_kserve_impl
+    serve/kserve/_serve_rt
+    serve/kserve/callbacks
+    serve/kserve/client
+    serve/kserve/config
+    serve/kserve/debug
+    serve/kserve/server
+    serve/kserve/stats
+    serve/service
+  )
+else ()
+  set(SERVE_SRCS "")
+endif ()
 
 set(TENSOR_SRCS
   tensor/__init__

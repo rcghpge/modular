@@ -7,13 +7,13 @@
 import sys
 
 from max.engine import InferenceSession
-from max.serve.callbacks import NoopServerCallbacks
 from max.serve.service import (
     FileModel,
     InferenceRequest,
     InferenceResponse,
 )
-from max.serve.kserve import (
+from max.serve.kserve.callbacks import NoopServerCallbacks
+from max.serve.kserve.server import (
     GRPCInferenceServer,
     MuxInferenceService,
 )
