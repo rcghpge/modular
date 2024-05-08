@@ -35,40 +35,27 @@ lit_tests(
             "GraphCompiler/MOQDialect/transforms/legalize-moq-operators-to-mo-misc.mlir",
             "GraphCompiler/RMODialect/Lowering/binary_comparison.mlir",
 
-            # These tests fail remotely because we bake in the absolute paths to a Mojo Package in MLIR
-            # bytecode, and they can conflict. See below:
-            # https://modular-ai.slack.com/archives/C048UTM8R43/p1715191804815949?thread_ts=1715133270.126709&cid=C048UTM8R43
-            "GraphCompiler/MOGGDialect/experimental-mo-to-mogg.mlir",
-            "GraphCompiler/MOGGDialect/kgen-fuse-constants.mlir",
-            "GraphCompiler/MOGGDialect/kgen-fuse-elemwise.mlir",
-            "GraphCompiler/MOGGDialect/kgen-fuse-epilogue.mlir",
-            "GraphCompiler/MOGGDialect/kgen-fuse-view.mlir",
-            "GraphCompiler/MOGGDialect/kgen-simplify-kernel-operands.mlir",
-            "GraphCompiler/MOGGDialect/sequence-concat-fusion.mo.mlir",
-            "GraphCompiler/MOGGDialect/sequence-fusion.mo.mlir",
-            "GraphCompiler/MOGGDialect/sequence-reshape-fusion.mo.mlir",
-            "GraphCompiler/MOGGDialect/single-thread-blocking-override.mlir",
-
             # Data not tests
             "GraphCompiler/Experimental/MHACoverage/mha-fusion-coverage-models.yaml",
         ],
     ),
     custom_substitutions = {
         "mo-cuda-opt": "$(rlocationpath //GenericML/tools/mo-cuda-opt:mo-cuda-opt.opt)",
-        "%extra_test_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTests.lib.mlirbc)",
-        "%duplicate_override_mojo_bindings": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTestOverrideFail.lib.mlirbc)",
-        "%override_succ_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTestOverrideSucc.lib.mlirbc)",
-        "%override_extra_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTestOverrideExtra.lib.mlirbc)",
-        "%experimental_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGExperimental.lib.mlirbc)",
-        "%dummy_kernels": "$(rlocationpath //Kernels/mojo/Mogg:MOGGExperimentalDummyKernels.lib.mlirbc)",
+        "%extra_test_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTests.lib.mlirbc.opt)",
+        "%duplicate_override_mojo_bindings": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTestOverrideFail.lib.mlirbc.opt)",
+        "%override_succ_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTestOverrideSucc.lib.mlirbc.opt)",
+        "%override_extra_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTestOverrideExtra.lib.mlirbc.opt)",
+        "%experimental_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGExperimental.lib.mlirbc.opt)",
+        "%dummy_kernels": "$(rlocationpath //Kernels/mojo/Mogg:MOGGExperimentalDummyKernels.lib.mlirbc.opt)",
     },
     data = [
-        "//Kernels/mojo/Mogg:MOGGExperimental.lib.mlirbc",
-        "//Kernels/mojo/Mogg:MOGGExperimentalDummyKernels.lib.mlirbc",
-        "//Kernels/mojo/Mogg:MOGGTestOverrideExtra.lib.mlirbc",
-        "//Kernels/mojo/Mogg:MOGGTestOverrideFail.lib.mlirbc",
-        "//Kernels/mojo/Mogg:MOGGTestOverrideSucc.lib.mlirbc",
-        "//Kernels/mojo/Mogg:MOGGTests.lib.mlirbc",
+        # These include a transitive dependency that conflicts with mo-opt.opt if they don't use the opt
+        "//Kernels/mojo/Mogg:MOGGExperimental.lib.mlirbc.opt",
+        "//Kernels/mojo/Mogg:MOGGExperimentalDummyKernels.lib.mlirbc.opt",
+        "//Kernels/mojo/Mogg:MOGGTestOverrideExtra.lib.mlirbc.opt",
+        "//Kernels/mojo/Mogg:MOGGTestOverrideFail.lib.mlirbc.opt",
+        "//Kernels/mojo/Mogg:MOGGTestOverrideSucc.lib.mlirbc.opt",
+        "//Kernels/mojo/Mogg:MOGGTests.lib.mlirbc.opt",
     ],
     tags = [
         "no-asan",
