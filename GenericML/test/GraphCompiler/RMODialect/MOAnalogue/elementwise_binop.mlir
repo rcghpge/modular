@@ -55,6 +55,17 @@ mo.graph @pow_ok(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.te
 
 // -----
 
+mo.graph @pow_mixed_precision(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, si32>) -> !mo.tensor<?, f32> {
+  %1 = rmo.mo.pow(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, si32>) -> !mo.tensor<?, f32>
+  mo.output %1 : !mo.tensor<?, f32>
+}
+// CHECK-LABEL: mo.graph
+// CHECK-SAME: @pow_mixed_precision([[VARG0:[^ ]*]]: !mo.tensor<?, f32>, [[VARG1:[^ ]*]]: !mo.tensor<?, si32>) -> !mo.tensor<?, f32> {
+// CHECK-NEXT: [[V0:[^ ]*]] = rmo.mo.pow([[VARG0]], [[VARG1]]) : (!mo.tensor<?, f32>, !mo.tensor<?, si32>) -> !mo.tensor<?, f32>
+// CHECK-NEXT: mo.output [[V0]] : !mo.tensor<?, f32>
+
+// -----
+
 mo.graph @sub_ok(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
   %1 = rmo.mo.sub(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
@@ -125,22 +136,6 @@ mo.graph @div_not_ok_bad_operands(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?
 mo.graph @div_not_ok_bad_results(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f64> {
   // expected-error@below {{Not all TensorValues have the same dtype.}}
   %1 = rmo.mo.div(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f64>
-  mo.output %1 : !mo.tensor<?, f64>
-}
-
-// -----
-
-mo.graph @pow_not_ok_bad_operands(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f64>) -> !mo.tensor<?, f32> {
-  // expected-error@below {{Not all TensorValues have the same dtype.}}
-  %1 = rmo.mo.pow(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f64>) -> !mo.tensor<?, f32>
-  mo.output %1 : !mo.tensor<?, f32>
-}
-
-// -----
-
-mo.graph @pow_not_ok_bad_results(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f64> {
-  // expected-error@below {{Not all TensorValues have the same dtype.}}
-  %1 = rmo.mo.pow(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f64>
   mo.output %1 : !mo.tensor<?, f64>
 }
 

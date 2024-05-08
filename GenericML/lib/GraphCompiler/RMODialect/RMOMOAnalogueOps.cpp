@@ -127,9 +127,10 @@ TensorType RMO::refineShapeWithDType(TensorType ty1, TensorType ty2,
   return TensorType::get(ty1.getContext(), newDims, dtype, ty1.getMetadata());
 }
 
+// Return a TensorType with refined shape information given ty1 and ty2 which
+// represent the same underlying shape. Returned type will have a DType matching
+// ty1.
 TensorType RMO::refineShape(TensorType ty1, TensorType ty2) {
-  GENERICML_ASSERT(ty1.getDtype() == ty2.getDtype())
-      << " tried to refine types with different dtypes";
   return refineShapeWithDType(ty1, ty2, ty1.getDtype());
 }
 

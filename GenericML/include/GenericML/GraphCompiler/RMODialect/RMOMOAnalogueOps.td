@@ -75,7 +75,7 @@ class RMO_MOAnaloguePureTensorOp<string mnemonic, list<Trait> traits = []>
 //===----------------------------------------------------------------------===//
 
 class RMO_MOAnaloguePureElementWiseOp<string name, list<Trait> traits = []>
-    : RMO_MOAnaloguePureTensorOp<name, [RMO_TensorSameDTypeOperandsAndResults] # traits> {
+    : RMO_MOAnaloguePureTensorOp<name, traits> {
   let results = (outs MO_Tensor:$result);
 }
 
@@ -98,6 +98,9 @@ class RMO_MOAnaloguePureUnaryElementWiseOp<string name, list<Trait> traits = []>
   }];
 }
 
+class RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<string name, list<Trait> traits = []>
+    : RMO_MOAnaloguePureUnaryElementWiseOp<name, [RMO_TensorSameDTypeOperandsAndResults] # traits>;
+
 class RMO_MOAnaloguePureBinaryElementWiseOp<string name, list<Trait> traits = []>
     : RMO_MOAnaloguePureElementWiseOp<name, traits> {
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y, MO_ParamDecls:$outputParamDecls);
@@ -113,9 +116,11 @@ class RMO_MOAnaloguePureBinaryElementWiseOp<string name, list<Trait> traits = []
         MO::TensorType lhsType = cast<MO::TensorType>(operands.getInputX().getType());
         MO::TensorType rhsType = cast<MO::TensorType>(operands.getInputY().getType());
 
+        DType rhsDType = rhsType.getDtype();
+
         MO::TensorType refinedShape = refineShape(lhsType, rhsType);
         moOperandTypes.push_back(refinedShape);
-        moOperandTypes.push_back(refinedShape);
+        moOperandTypes.push_back(refinedShape.cloneWith(rhsDType));
         moInputParamDecls.push_back({});
         moInputParamDecls.push_back({});
 
@@ -125,7 +130,10 @@ class RMO_MOAnaloguePureBinaryElementWiseOp<string name, list<Trait> traits = []
   }];
 }
 
-def RMO_MOAbsOp : RMO_MOAnaloguePureUnaryElementWiseOp<"abs"> {
+class RMO_MOAnaloguePureBinaryElementWiseMonoTypeOp<string name, list<Trait> traits = []>
+    : RMO_MOAnaloguePureBinaryElementWiseOp<name, [RMO_TensorSameDTypeOperandsAndResults] # traits>;
+
+def RMO_MOAbsOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"abs"> {
   let summary = "Absolute value operation";
   let description = [{
     Returns `abs(x)`, where `x` is the input tensors.
@@ -139,7 +147,7 @@ def RMO_MOAbsOp : RMO_MOAnaloguePureUnaryElementWiseOp<"abs"> {
   }];
 }
 
-def RMO_MOCeilOp : RMO_MOAnaloguePureUnaryElementWiseOp<"ceil"> {
+def RMO_MOCeilOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"ceil"> {
   let summary = "Ceiling operation";
   let description = [{
     Returns the smallest largest integer greater than `x`, where `x` is input
@@ -154,7 +162,7 @@ def RMO_MOCeilOp : RMO_MOAnaloguePureUnaryElementWiseOp<"ceil"> {
   }];
 }
 
-def RMO_MOCosOp : RMO_MOAnaloguePureUnaryElementWiseOp<"cos"> {
+def RMO_MOCosOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"cos"> {
   let summary = "Cosine operation";
   let description = [{
     Returns `cos(x)`, where `x` is input tensor.
@@ -167,7 +175,7 @@ def RMO_MOCosOp : RMO_MOAnaloguePureUnaryElementWiseOp<"cos"> {
   }];
 }
 
-def RMO_MOErfOp : RMO_MOAnaloguePureUnaryElementWiseOp<"erf"> {
+def RMO_MOErfOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"erf"> {
   let summary = "(Gaussian) error function operation";
   let description = [{
     Computes the Gauss error function of the input tensor elements.
@@ -181,7 +189,7 @@ def RMO_MOErfOp : RMO_MOAnaloguePureUnaryElementWiseOp<"erf"> {
   }];
 }
 
-def RMO_MOExpOp : RMO_MOAnaloguePureUnaryElementWiseOp<"exp"> {
+def RMO_MOExpOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"exp"> {
   let summary = "Exponential function operation";
   let description = [{
     Returns `exp(x)`, where `x` is the input tensor.
@@ -195,7 +203,7 @@ def RMO_MOExpOp : RMO_MOAnaloguePureUnaryElementWiseOp<"exp"> {
   }];
 }
 
-def RMO_MOFloorOp : RMO_MOAnaloguePureUnaryElementWiseOp<"floor"> {
+def RMO_MOFloorOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"floor"> {
   let summary = "Floor operation";
   let description = [{
     Returns the elementwise largest integer not greater than `x`, where `x` is
@@ -208,7 +216,7 @@ def RMO_MOFloorOp : RMO_MOAnaloguePureUnaryElementWiseOp<"floor"> {
   }];
 }
 
-def RMO_MOGeluOp : RMO_MOAnaloguePureUnaryElementWiseOp<"gelu"> {
+def RMO_MOGeluOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"gelu"> {
   let summary = "Gaussian error linear unit operation";
   let description = [{
     Returns `(x / 2) * (1 + erf(x/sqrt(2)))`, where `erf` denotes the
@@ -223,7 +231,7 @@ def RMO_MOGeluOp : RMO_MOAnaloguePureUnaryElementWiseOp<"gelu"> {
   }];
 }
 
-def RMO_MOLogOp : RMO_MOAnaloguePureUnaryElementWiseOp<"log"> {
+def RMO_MOLogOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"log"> {
   let summary = "Natural logarithm operation";
   let description = [{
     Returns the natural logorithm, `log(x)`.
@@ -237,7 +245,7 @@ def RMO_MOLogOp : RMO_MOAnaloguePureUnaryElementWiseOp<"log"> {
   }];
 }
 
-def RMO_MOLog1pOp : RMO_MOAnaloguePureUnaryElementWiseOp<"log1p"> {
+def RMO_MOLog1pOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"log1p"> {
   let summary = "Natural logarithm of `1 + x` operation ";
   let description = [{
     Returns `log(1 + x)`, maintaining accuracy for small `x` that could
@@ -252,7 +260,7 @@ def RMO_MOLog1pOp : RMO_MOAnaloguePureUnaryElementWiseOp<"log1p"> {
   }];
 }
 
-def RMO_MOLogSoftmaxOp : RMO_MOAnaloguePureUnaryElementWiseOp<"logsoftmax"> {
+def RMO_MOLogSoftmaxOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"logsoftmax"> {
   let summary = "Logarighmic softmax operation";
   let description = [{
     Returns `log(softmax(x))`, where `x` is input tensor.
@@ -268,7 +276,7 @@ def RMO_MOLogSoftmaxOp : RMO_MOAnaloguePureUnaryElementWiseOp<"logsoftmax"> {
   }];
 }
 
-def RMO_MONegativeOp : RMO_MOAnaloguePureUnaryElementWiseOp<"negative"> {
+def RMO_MONegativeOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"negative"> {
   let summary = "Negation operation";
   let description = [{
     Returns `-x`, where `x` is input tensor.
@@ -312,7 +320,7 @@ def RMO_MONotOp : RMO_MOAnaloguePureTensorOp<"not"> {
   }];
 }
 
-def RMO_MOReluOp : RMO_MOAnaloguePureUnaryElementWiseOp<"relu"> {
+def RMO_MOReluOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"relu"> {
   let summary = "Rectified linear unit operation";
   let description = [{
     Returns `max(0, x)`, where `x` is the input tensor.
@@ -326,7 +334,7 @@ def RMO_MOReluOp : RMO_MOAnaloguePureUnaryElementWiseOp<"relu"> {
   }];
 }
 
-def RMO_MORoundOp : RMO_MOAnaloguePureUnaryElementWiseOp<"round"> {
+def RMO_MORoundOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"round"> {
   let summary = "Rounding operation";
   let description = [{
     Returns the elementwise nearest integer, with ties going away from zero.
@@ -338,7 +346,7 @@ def RMO_MORoundOp : RMO_MOAnaloguePureUnaryElementWiseOp<"round"> {
   }];
 }
 
-def RMO_MORoundEvenOp : RMO_MOAnaloguePureUnaryElementWiseOp<"roundeven"> {
+def RMO_MORoundEvenOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"roundeven"> {
   let summary = "Round even operation";
   let description = [{
     Returns the elementwise neareset integer, with ties going toward the
@@ -351,7 +359,7 @@ def RMO_MORoundEvenOp : RMO_MOAnaloguePureUnaryElementWiseOp<"roundeven"> {
   }];
 }
 
-def RMO_MORsqrtOp : RMO_MOAnaloguePureUnaryElementWiseOp<"rsqrt"> {
+def RMO_MORsqrtOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"rsqrt"> {
   let summary = "Inverse square root operation";
   let description = [{
     Returns `1/sqrt(x)`, where `x` is the input tensor.
@@ -365,7 +373,7 @@ def RMO_MORsqrtOp : RMO_MOAnaloguePureUnaryElementWiseOp<"rsqrt"> {
   }];
 }
 
-def RMO_MOSigmoidOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sigmoid"> {
+def RMO_MOSigmoidOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"sigmoid"> {
   let summary = "Logistic sigmoid operation";
   let description = [{
     Returns `\frac{1}{1+e^{-x}} = \fract{e^x}{e^x + 1}`, the logistic sigmoid.
@@ -379,7 +387,7 @@ def RMO_MOSigmoidOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sigmoid"> {
   }];
 }
 
-def RMO_MOSinOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sin"> {
+def RMO_MOSinOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"sin"> {
   let summary = "Sine operation";
   let description = [{
     Returns `sin(x)`, where `x` is input tensor.
@@ -392,7 +400,7 @@ def RMO_MOSinOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sin"> {
   }];
 }
 
-def RMO_MOSqrtOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sqrt"> {
+def RMO_MOSqrtOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"sqrt"> {
   let summary = "Square root operation";
   let description = [{
     Returns `sqrt(x)`, where `x` is the input tensor.
@@ -406,7 +414,7 @@ def RMO_MOSqrtOp : RMO_MOAnaloguePureUnaryElementWiseOp<"sqrt"> {
   }];
 }
 
-def RMO_MOTanhOp : RMO_MOAnaloguePureUnaryElementWiseOp<"tanh"> {
+def RMO_MOTanhOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"tanh"> {
   let summary = "Hyperbolic tangent operation";
   let description = [{
     Computes `tanh(x)`, where `x` is input tensor.
@@ -420,7 +428,7 @@ def RMO_MOTanhOp : RMO_MOAnaloguePureUnaryElementWiseOp<"tanh"> {
   }];
 }
 
-def RMO_MOTruncOp : RMO_MOAnaloguePureUnaryElementWiseOp<"trunc"> {
+def RMO_MOTruncOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"trunc"> {
   let summary = "Truncation operation";
   let description = [{
     Returns the elementwise integer from truncating the decimal. Also known
@@ -433,7 +441,7 @@ def RMO_MOTruncOp : RMO_MOAnaloguePureUnaryElementWiseOp<"trunc"> {
   }];
 }
 
-def RMO_MOAddOp : RMO_MOAnaloguePureBinaryElementWiseOp<"add", [Commutative]> {
+def RMO_MOAddOp : RMO_MOAnaloguePureBinaryElementWiseMonoTypeOp<"add", [Commutative]> {
   let summary = "Binary addition";
   let description = [{
     Does a non-broadcasted elementwise addition.
@@ -500,35 +508,35 @@ def RMO_MOCastOp : RMO_MOAnaloguePureTensorOp<"cast"> {
   ];
 }
 
-def RMO_MOMulOp : RMO_MOAnaloguePureBinaryElementWiseOp<"mul", [Commutative]> {
+def RMO_MOMulOp : RMO_MOAnaloguePureBinaryElementWiseMonoTypeOp<"mul", [Commutative]> {
   let summary = "Binary multiplication";
   let description = [{
     Does a non-broadcasted elementwise multiplication.
   }];
 }
 
-def RMO_MOModOp : RMO_MOAnaloguePureBinaryElementWiseOp<"mod"> {
+def RMO_MOModOp : RMO_MOAnaloguePureBinaryElementWiseMonoTypeOp<"mod"> {
   let summary = "Binary modulus op";
   let description = [{
     Does a non-broadcasted elementwise modulus.
   }];
 }
 
-def RMO_MOMinOp : RMO_MOAnaloguePureBinaryElementWiseOp<"min", [Commutative]> {
+def RMO_MOMinOp : RMO_MOAnaloguePureBinaryElementWiseMonoTypeOp<"min", [Commutative]> {
   let summary = "Binary minimum op";
   let description = [{
     Does a non-broadcasted elementwise minimum.
   }];
 }
 
-def RMO_MOMaxOp : RMO_MOAnaloguePureBinaryElementWiseOp<"max", [Commutative]> {
+def RMO_MOMaxOp : RMO_MOAnaloguePureBinaryElementWiseMonoTypeOp<"max", [Commutative]> {
   let summary = "Binary maximum op";
   let description = [{
     Does a non-broadcasted elementwise maximum.
   }];
 }
 
-def RMO_MODivOp : RMO_MOAnaloguePureBinaryElementWiseOp<"div"> {
+def RMO_MODivOp : RMO_MOAnaloguePureBinaryElementWiseMonoTypeOp<"div"> {
   let summary = "Binary division op";
   let description = [{
     Does a non-broadcasted elementwise division.
@@ -538,11 +546,11 @@ def RMO_MODivOp : RMO_MOAnaloguePureBinaryElementWiseOp<"div"> {
 def RMO_MOPowOp : RMO_MOAnaloguePureBinaryElementWiseOp<"pow"> {
   let summary = "Binary power op";
   let description = [{
-    Does a non-broadcasted elementwise power.
+    Does a non-broadcasted elementwise power. Allows mixed precision operands.
   }];
 }
 
-def RMO_MOSubOp : RMO_MOAnaloguePureBinaryElementWiseOp<"sub"> {
+def RMO_MOSubOp : RMO_MOAnaloguePureBinaryElementWiseMonoTypeOp<"sub"> {
   let summary = "Binary subtraction op";
   let description = [{
     Does a non-broadcasted elementwise subtraction.
@@ -1783,7 +1791,7 @@ def RMO_MOBatchMatmulOp : RMO_MOAnaloguePureTensorOp<"batch_matmul"> {
   ];
 }
 
-def RMO_MOSoftmaxOp : RMO_MOAnaloguePureUnaryElementWiseOp<"softmax"> {
+def RMO_MOSoftmaxOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"softmax"> {
   let summary = "Softmax operation";
   let description = [{
     Returns `exp(input) / sum(exp(input))`, where `x` is input tensor.

@@ -518,6 +518,19 @@ mo.graph @pow_static_static(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor
 
 // -----
 
+mo.graph @pow_static_static_mixed_precision(%arg0: !mo.tensor<[1, 2, 3], f32>, %arg1: !mo.tensor<[1, 2, 3], si32>) -> !mo.tensor<?, f32> {
+  %1 = rmo.mo.pow(%arg0, %arg1) : (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 2, 3], si32>) -> !mo.tensor<?, f32>
+  mo.output %1 : !mo.tensor<?, f32>
+}
+// CHECK-LABEL: mo.graph
+// CHECK-SAME: @pow_static_static_mixed_precision<() -> [[SH1:[^ ]*]]: !mosh.ape>([[VARG0:[^ ]*]]: !mo.tensor<[1, 2, 3], f32>, [[VARG1:[^ ]*]]: !mo.tensor<[1, 2, 3], si32>) -> !mo.tensor<[[SH1]], f32> {
+// CHECK-NEXT: [[V0:[^ ]*]] = mo.pow([[VARG0]] {{.*}}, [[VARG1]] {{.*}}) : !mo.tensor<[1, 2, 3], f32>
+// CHECK-NEXT: [[V1:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[SH2:[^ ]*]]: !mosh.ape>([[V0]]) : (!mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[[SH2]], f32>
+// CHECK-NEXT: mo.output<:!mosh.ape [[SH2]]> [[V1]] : !mo.tensor<[[SH2]], f32>
+// CHECK-NEXT: }
+
+// -----
+
 mo.graph @sub_dyn_dyn(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
   %1 = rmo.mo.sub(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
