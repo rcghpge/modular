@@ -15,6 +15,7 @@
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "mlir/Transforms/TopologicalSortUtils.h"
 #include "llvm/ADT/SetOperations.h"
+#include <type_traits>
 
 using namespace M;
 using namespace MO;
@@ -183,6 +184,297 @@ void updateGraphSignature(GraphOp graphOp) {
   graphOp->setAttrs(attrs.getDictionary(graphOp->getContext()));
 }
 
+// Forward declaration for `Var`.
+class Var;
+
+/// This class helps one create parameter expression in a less elaborate way.
+class ParamExprBuilder {
+public:
+  /// Create a `ParamExprBuilder` with the given metadata.
+  /// - `graphOp` is used for new parameter generation.
+  /// - `loc` is used for newly created ops like `kgen.param.declare X = <...>`.
+  /// - `createdOps` will be appended with newly created ops.
+  ParamExprBuilder(GraphOp graphOp, Location loc,
+                   SmallVector<Operation *> *createdOps)
+      : builder(graphOp.getContext()), graphOp(graphOp), loc(loc),
+        createdOps(createdOps) {}
+
+  /// Create a Var that wraps around given `attr`, and allows one to build more
+  /// parameter expression with the returned Var.
+  Var createVar(TypedAttr attr);
+
+  /// Create an op of the following form
+  ///   kgen.param.declare declPrefix... = <poc(operands...)>
+  ///
+  /// Return a parameter decl ref to the newly created parameter
+  /// `declPrefix...`.
+  KGEN::ParamDeclRefAttr createDeclToKgenExpr(KGEN::POC poc,
+                                              ArrayRef<TypedAttr> operands,
+                                              StringRef declPrefix = "expr");
+
+  /// Create an op of the following form
+  ///   kgen.param.declare declPrefix... = <attr>
+  ///
+  /// Return a parameter decl ref to the newly created parameter
+  /// `declPrefix...`.
+  KGEN::ParamDeclRefAttr createDeclToKgenAttr(TypedAttr attr,
+                                              StringRef declPrefix = "expr");
+
+  /// Create an assert on the boolean parameter expression in `condVar`, with
+  /// given error message.
+  void createAssert(const Var &condVar, StringRef errorMsg);
+
+  /// Create an op of the following form
+  ///   kgen.param.declare ... = <cond(condAttr, thenAttr, elseAttr)>
+  ///
+  /// Where `(condAttr, thenAttr, elseAttr)` are parameter expressions within
+  /// `(convV, thenV, elseV)` respectively.
+  Var createCond(const Var &condV, const Var &thenV, const Var &elseV);
+
+  /// Assume given a variadic number of Var instances, create a new `ShapeAttr`
+  /// consisted of the TypedAttr within those Var, in the given order.
+  template <class... V, typename = std::enable_if_t<(true && ... &&
+                                                     std::is_same_v<V, Var>)>>
+  ShapeAttr getShapeAttr(const V &...dim);
+
+  /// Create a new `ShapeAttr` consisted of the `dimAttrs` in the given order.
+  ShapeAttr getShapeAttr(ArrayRef<TypedAttr> dimAttrs);
+
+private:
+  OpBuilder builder;
+  GraphOp graphOp;
+  Location loc;
+  SmallVector<Operation *> *createdOps;
+};
+
+/// This class wraps around a parameter attribute and allows one to build new
+/// parameter expression easily via operator overloading.
+///
+/// Example:
+///   ParamExprBuilder b(...);
+///   Var x = b.createVar(xAttr);
+///   Var y = (x * x) / 2;
+///   TypedAttr yAttr = y.getAttr();
+class Var {
+private:
+  // Either constant IntegerAttr or DeclRef, to minimize expression nesting and
+  // make debugging possible (otherwise expressions will fold by construction).
+  TypedAttr attr;
+  ParamExprBuilder *builder;
+
+  // Tightly control how one can construct a `Var`.
+  Var(TypedAttr attr, ParamExprBuilder *builder)
+      : attr(attr), builder(builder) {}
+
+  // Allow access to the controlled constructor of Var.
+  friend class ParamExprBuilder;
+
+public:
+  Var(const Var &other) {
+    this->attr = other.attr;
+    this->builder = other.builder;
+  }
+  Var &operator=(const Var &other) = default;
+  Var &operator=(Var &&other) = default;
+
+  // Allows one to write `v1 + v2`.
+  Var operator+(const Var &other) const {
+    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+        KGEN::ParamOperatorAttr::get(KGEN::POC::Add, attr, other.attr),
+        "var_add");
+    return Var(resDeclRef, builder);
+  }
+
+  // Allows one to write `v1 - v2`.
+  Var operator-(const Var &other) const { return *this + (other * -1); }
+
+  // Allows one to write `v1 * v2`.
+  Var operator*(const Var &other) const {
+    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, attr, other.attr),
+        "var_mul");
+    return Var(resDeclRef, builder);
+  }
+
+  // Allows one to write `v1 / v2`.
+  Var operator/(const Var &other) const {
+    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+        KGEN::ParamOperatorAttr::get(KGEN::POC::Div, attr, other.attr),
+        "var_div");
+    return Var(resDeclRef, builder);
+  }
+
+  // Allows one to write `v1 != v2`.
+  Var operator!=(const Var &other) const {
+    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+        KGEN::ParamOperatorAttr::getNE(attr, other.attr), "var_ne");
+    return Var(resDeclRef, builder);
+  }
+
+  // Allows one to write `v1 == v2`.
+  Var operator==(const Var &other) const {
+    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+        KGEN::ParamOperatorAttr::get(KGEN::POC::EQ, {attr, other.attr}),
+        "var_eq");
+    return Var(resDeclRef, builder);
+  }
+
+  // Allows one to write `v1 < v2`.
+  Var operator<(const Var &other) const {
+    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+        KGEN::ParamOperatorAttr::get(KGEN::POC::LT, attr, other.attr),
+        "var_lt");
+    return Var(resDeclRef, builder);
+  }
+
+  // Allows one to write `v1 <= v2`.
+  Var operator<=(const Var &other) const {
+    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+        KGEN::ParamOperatorAttr::get(KGEN::POC::LE, attr, other.attr),
+        "var_le");
+    return Var(resDeclRef, builder);
+  }
+
+  // Allows one to write `v1 > v2`.
+  Var operator>(const Var &other) const { return other < *this; }
+
+  // Allows one to write `v1 >= v2`.
+  Var operator>=(const Var &other) const { return other <= *this; }
+
+  // Allows one to write `v1 || v2`.
+  Var operator||(const Var &other) const {
+    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+        KGEN::ParamOperatorAttr::get(KGEN::POC::Or, attr, other.attr),
+        "var_or");
+    return Var(resDeclRef, builder);
+  }
+
+  // Allows one to write `v1 && v2`.
+  Var operator&&(const Var &other) const {
+    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+        KGEN::ParamOperatorAttr::get(KGEN::POC::And, attr, other.attr),
+        "var_and");
+    return Var(resDeclRef, builder);
+  }
+
+  // Allows one to write `v1 + 42`.
+  Var operator+(int64_t other) const {
+    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
+    return *this + otherVar;
+  }
+
+  // Allows one to write `v1 - 42`.
+  Var operator-(int64_t other) const {
+    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
+    return *this - otherVar;
+  }
+
+  // Allows one to write `v1 * 42`.
+  Var operator*(int64_t other) const {
+    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
+    return *this * otherVar;
+  }
+
+  // Allows one to write `v1 / 42`.
+  Var operator/(int64_t other) const {
+    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
+    return *this / otherVar;
+  }
+
+  // Allows one to write `v1 != 42`.
+  Var operator!=(int64_t other) const {
+    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
+    return *this != otherVar;
+  }
+
+  Var operator==(int64_t other) const {
+    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
+    return *this == otherVar;
+  }
+
+  // Allows one to write `v1 < 42`.
+  Var operator<(int64_t other) const {
+    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
+    return *this < otherVar;
+  }
+
+  // Allows one to write `v1 <= 42`.
+  Var operator<=(int64_t other) const {
+    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
+    return *this <= otherVar;
+  }
+
+  // Allows one to write `v1 > 42`.
+  Var operator>(int64_t other) const {
+    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
+    return *this > otherVar;
+  }
+
+  // Allows one to write `v1 >= 42`.
+  Var operator>=(int64_t other) const {
+    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
+    return *this >= otherVar;
+  }
+
+  TypedAttr getAttr() const { return attr; }
+};
+
+Var ParamExprBuilder::createVar(TypedAttr attr) {
+  auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(attr);
+  if (!declRef)
+    declRef = this->createDeclToKgenAttr(attr, "var");
+  return Var(declRef, this);
+}
+
+KGEN::ParamDeclRefAttr ParamExprBuilder::createDeclToKgenExpr(
+    KGEN::POC poc, ArrayRef<TypedAttr> operands, StringRef declPrefix) {
+  auto exprAttr = KGEN::ParamOperatorAttr::get(poc, operands);
+  return createDeclToKgenAttr(exprAttr, declPrefix);
+};
+
+KGEN::ParamDeclRefAttr
+ParamExprBuilder::createDeclToKgenAttr(TypedAttr attr, StringRef declPrefix) {
+  Type resTy = attr.getType();
+  KGEN::ParamDeclAttr declAttr = graphOp.getNewParamOfType(declPrefix, resTy);
+  auto declOp = builder.create<KGEN::ParamDeclareOp>(loc, declAttr, attr);
+  auto declRefAttr = KGEN::ParamDeclRefAttr::get(declOp.getParamDecl());
+  createdOps->push_back(declOp);
+  return declRefAttr;
+};
+
+Var ParamExprBuilder::createCond(const Var &condV, const Var &thenV,
+                                 const Var &elseV) {
+  auto exprAttr = KGEN::ParamOperatorAttr::get(
+      KGEN::POC::Cond, {condV.getAttr(), thenV.getAttr(), elseV.getAttr()});
+  return createVar(createDeclToKgenAttr(exprAttr, "cond"));
+};
+
+template <class... V, typename>
+ShapeAttr ParamExprBuilder::getShapeAttr(const V &...dim) {
+  return getShapeAttr({dim.getAttr()...});
+}
+
+ShapeAttr ParamExprBuilder::getShapeAttr(ArrayRef<TypedAttr> dimAttrs) {
+  return ShapeAttr::get(dimAttrs, ShapeType::get(graphOp.getContext()));
+}
+
+void ParamExprBuilder::createAssert(const Var &condVar, StringRef errorMsg) {
+  TypedAttr condAttr = condVar.getAttr();
+  MLIRContext *ctx = condAttr.getContext();
+  Type chainType = MOSH::ChainType::get(ctx);
+
+  // Build a new operand list which starts with MLIROpAttr.
+  auto signature = SignatureType::get(ctx, {condAttr.getType()}, chainType);
+  NamedAttribute msgAttr(StringAttr::get(ctx, "message"),
+                         StringAttr::get(errorMsg, KGEN::StringType::get(ctx)));
+  auto dictAttr = DictionaryAttr::get(ctx, {msgAttr});
+  auto opNameAttr = StringAttr::get(ctx, MOSH::AssertOp::getOperationName());
+  SmallVector<TypedAttr> applyOperands{
+      KGEN::MLIROpAttr::get(opNameAttr, dictAttr, signature), condAttr};
+
+  (void)createDeclToKgenExpr(KGEN::POC::Apply, applyOperands, "assert");
+};
+
 /// A class that helps `PropagateShapesPass` handle ops that could be
 /// decomposed when the shape parameters they use have been simplified
 /// already. For instance, in order to simplify `mosh.broadcast`, we often need
@@ -191,52 +483,6 @@ void updateGraphSignature(GraphOp graphOp) {
 /// so we use this `OpDecomposer` to decompose ops on the fly, and letting
 /// `PropagateShapesPass` to further simplify the decomposed ops.
 class OpDecomposer {
-  // Create an op of the following form and track it in `decomposedOps`.
-  //   kgen.param.declare declPrefix... = <poc(operands...)>
-  //
-  // Return a parameter decl ref to the newly created parameter `declPrefix...`.
-  KGEN::ParamDeclRefAttr createDeclToKgenExpr(StringRef declPrefix,
-                                              KGEN::POC poc,
-                                              ArrayRef<TypedAttr> operands) {
-    auto exprAttr = KGEN::ParamOperatorAttr::get(poc, operands);
-    return createDeclToKgenAttr(declPrefix, exprAttr);
-  };
-
-  // Create a new kgen declaration from the given attribute and return a
-  // parameter decl ref to the newly created parameter.
-  KGEN::ParamDeclRefAttr createDeclToKgenAttr(StringRef declPrefix,
-                                              TypedAttr attr) {
-    Type resTy = attr.getType();
-    KGEN::ParamDeclAttr declAttr = graphOp.getNewParamOfType(declPrefix, resTy);
-    auto declOp = builder.create<KGEN::ParamDeclareOp>(loc, declAttr, attr);
-    auto declRefAttr = KGEN::ParamDeclRefAttr::get(declOp.getParamDecl());
-    decomposedOps.push_back(declOp);
-    return declRefAttr;
-  };
-
-  // Create an op of the following form and track it in `decomposedOps`.
-  //   kgen.param.declare declPrefix... =
-  //    <apply(..."mosh.assert", errorMsg, condAttr)>
-  //
-  // Return a parameter decl ref to the newly created parameter `declPrefix...`.
-  KGEN::ParamDeclRefAttr createAssert(StringRef declPrefix, StringRef errorMsg,
-                                      TypedAttr condAttr) {
-    MLIRContext *ctx = condAttr.getContext();
-    Type chainType = MOSH::ChainType::get(ctx);
-
-    // Build a new operand list which starts with MLIROpAttr.
-    auto signature = SignatureType::get(ctx, {condAttr.getType()}, chainType);
-    NamedAttribute msgAttr(
-        StringAttr::get(ctx, "message"),
-        StringAttr::get(errorMsg, KGEN::StringType::get(ctx)));
-    auto dictAttr = DictionaryAttr::get(ctx, {msgAttr});
-    auto opNameAttr = StringAttr::get(ctx, MOSH::AssertOp::getOperationName());
-    SmallVector<TypedAttr> applyOperands{
-        KGEN::MLIROpAttr::get(opNameAttr, dictAttr, signature), condAttr};
-
-    return createDeclToKgenExpr(declPrefix, KGEN::POC::Apply, applyOperands);
-  };
-
   // State that stays invariant across calls.
   OpBuilder builder;
 
@@ -293,9 +539,6 @@ private:
 
     // Check to see if the mlir op expression can be decomposed.
     if (mlirOpAttr.getName() == MOSH::BroadcastOp::getOperationName()) {
-      MLIRContext *ctx = declOp.getContext();
-      auto intOneAttr = IntegerAttr::get(IndexType::get(ctx), 1);
-
       auto shapeAttr1 = dyn_cast<MOSH::ShapeAttr>(operands[1]);
       auto shapeAttr2 = dyn_cast<MOSH::ShapeAttr>(operands[2]);
       if (shapeAttr1 && shapeAttr2) {
@@ -303,26 +546,20 @@ private:
         if (shapeAttr1.getRank() < shapeAttr2.getRank())
           std::swap(shapeAttr1, shapeAttr2);
 
+        // Accumulate ops created into `decomposedOps`
+        ParamExprBuilder b(graphOp, loc, &decomposedOps);
         SmallVector<TypedAttr> resDims;
         size_t rankDiff = shapeAttr1.getRank() - shapeAttr2.getRank();
         for (size_t axis = 0; axis < shapeAttr1.getRank(); axis++) {
           if (axis < rankDiff) {
             resDims.push_back(shapeAttr1[axis]);
           } else {
-            auto dimAttr1 = shapeAttr1[axis];
-            auto dimAttr2 = shapeAttr2[axis - rankDiff];
-            // Insert assertions
-            KGEN::ParamDeclRefAttr dimAttr1IsOne = createDeclToKgenExpr(
-                "dim_1_is_one", KGEN::POC::EQ, {dimAttr1, intOneAttr});
-            KGEN::ParamDeclRefAttr dimAttr2IsOne = createDeclToKgenExpr(
-                "dim_2_is_one", KGEN::POC::EQ, {dimAttr2, intOneAttr});
-            KGEN::ParamDeclRefAttr dimsEqual = createDeclToKgenExpr(
-                "dims_equal", KGEN::POC::EQ, {dimAttr1, dimAttr2});
-            KGEN::ParamDeclRefAttr dimsCompatible =
-                createDeclToKgenExpr("dims_compatible", KGEN::POC::Or,
-                                     {dimAttr1IsOne, dimAttr2IsOne, dimsEqual});
-            createAssert("dims_assert", "dimensions are not broadcastable",
-                         dimsCompatible);
+            Var dim1 = b.createVar(shapeAttr1[axis]);
+            Var dim2 = b.createVar(shapeAttr2[axis - rankDiff]);
+            // Insert assertion
+            b.createAssert(
+                dim1 == 1 || dim2 == 1 || dim1 == dim2,
+                "[broadcast_shape] dimensions are not broadcastable");
 
             // def bcast(D1, D2):
             //     assert `D1 == D2 or D1 == 1 or D2 == 1`
@@ -330,9 +567,8 @@ private:
             //         return D2
             //     else:
             //         return D1
-            TypedAttr newResDim = KGEN::ParamOperatorAttr::get(
-                KGEN::POC::Cond, {dimAttr1IsOne, dimAttr2, dimAttr1});
-            resDims.push_back(newResDim);
+            Var newResDim = b.createCond(dim1 == 1, dim2, dim1);
+            resDims.push_back(newResDim.getAttr());
           }
         }
         auto newDeclOp = cast<KGEN::ParamDeclareOp>(declOp->clone());
@@ -360,25 +596,19 @@ private:
     if (inputRank > outputRank)
       return {};
 
-    MLIRContext *ctx = invokeShapeFuncOp->getContext();
-    auto intOneAttr = IntegerAttr::get(IndexType::get(ctx), 1);
+    // Accumulate ops created into `decomposedOps`
+    ParamExprBuilder b(graphOp, loc, &decomposedOps);
     for (int i = 0; i < inputRank; i++) {
       int inputAxis = inputRank - i - 1;
       int outputAxis = outputRank - i - 1;
-      TypedAttr inputDim = inputShape[inputAxis];
-      TypedAttr outputDim = targetShape[outputAxis];
+      Var inputDim = b.createVar(inputShape[inputAxis]);
+      Var outputDim = b.createVar(targetShape[outputAxis]);
 
       // Insert assertions
-      KGEN::ParamDeclRefAttr inputDimIsOne = createDeclToKgenExpr(
-          "input_dim_is_one", KGEN::POC::EQ, {inputDim, intOneAttr});
-      KGEN::ParamDeclRefAttr dimsEqual = createDeclToKgenExpr(
-          "dims_equal", KGEN::POC::EQ, {inputDim, outputDim});
-      KGEN::ParamDeclRefAttr dimsCompatible = createDeclToKgenExpr(
-          "dims_compatible", KGEN::POC::Or, {inputDimIsOne, dimsEqual});
-      createAssert("dims_assert",
-                   "[broadcast_to] input dim must be either 1 or equal to "
-                   "corresponding output dim starting from the rightmost dim",
-                   dimsCompatible);
+      b.createAssert(
+          inputDim == 1 || inputDim == outputDim,
+          "[broadcast_to] input dim must be either 1 or equal to "
+          "corresponding output dim starting from the rightmost dim");
     }
     return targetShape;
   }
@@ -392,7 +622,8 @@ private:
   ///   returns [D0, RS0, 42]
   /// with the following inserted by `rewriter`
   ///   kgen.param.declare RS0 = <div(mul(3, D4), mul(D0, 42)>
-  ShapeAttr resolveReshapeTargetShape(ShapeAttr inputShapeAttr,
+  ShapeAttr resolveReshapeTargetShape(ParamExprBuilder &b,
+                                      ShapeAttr inputShapeAttr,
                                       ShapeAttr targetShapeAttr) {
     auto indexType = builder.getType<IndexType>();
     // Find index of `-1` dimension (if any), and collect all other dimensions.
@@ -420,32 +651,24 @@ private:
       return targetShapeAttr;
 
     // Infer the actual value of `-1` dimension based on other dimensions
-    KGEN::ParamDeclRefAttr numerator = createDeclToKgenAttr(
-        "reshape_dyndim_numerator", inputShapeAttr.getSymbolicNumElements());
+    Var numerator = b.createVar(inputShapeAttr.getSymbolicNumElements());
 
     // Add a 1 to the shapes to multiply to ensure the denominator is valid
     auto mulDims = targetNonNegOneDims;
     mulDims.emplace_back(IntegerAttr::get(indexType, 1));
-    KGEN::ParamDeclRefAttr denominator = createDeclToKgenExpr(
-        "reshape_dyndim_denominator", KGEN::POC::MulNuw, mulDims);
+    Var denominator =
+        b.createVar(KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, mulDims));
 
     // Make sure we check for 0 denominator
-    KGEN::ParamDeclRefAttr denomNotZero = createDeclToKgenAttr(
-        "num_elems_equal", KGEN::ParamOperatorAttr::getNE(
-                               denominator, IntegerAttr::get(indexType, 0)));
-    createAssert("reshape_assert",
-                 "[reshape] cannot infer dimension when a specified output "
-                 "dimension is 0",
-                 denomNotZero);
+    b.createAssert(denominator != 0,
+                   "[reshape] cannot infer dimension when a specified output "
+                   "dimension is 0");
 
-    KGEN::ParamDeclRefAttr resolvedDim = createDeclToKgenExpr(
-        "reshape_dyndim_resolved", KGEN::POC::Div, {numerator, denominator});
-
+    Var resolvedDim = numerator / denominator;
     SmallVector<TypedAttr> resolvedDims = targetNonNegOneDims;
     resolvedDims.insert(resolvedDims.begin() + maybeTargetNegOneDimIdx.value(),
-                        resolvedDim);
-
-    return ShapeAttr::get(resolvedDims, targetShapeAttr.getType());
+                        resolvedDim.getAttr());
+    return b.getShapeAttr(resolvedDims);
   }
 
   // Assume `invokeShapeFuncOp` applies the shape function of `MO::ReshapeOp`,
@@ -460,23 +683,21 @@ private:
     if (!inputShape || !targetShape)
       return {};
 
+    // Accumulate ops created into `decomposedOps`
+    ParamExprBuilder b(graphOp, loc, &decomposedOps);
+
     // Make sure we are able to resolve any `-1` (inferred dimension) in the
     // target shape.
-    ShapeAttr outputShape = resolveReshapeTargetShape(inputShape, targetShape);
+    ShapeAttr outputShape =
+        resolveReshapeTargetShape(b, inputShape, targetShape);
     if (!outputShape)
       return {};
 
     // Insert assertions
-    KGEN::ParamDeclRefAttr inputNumeElems = createDeclToKgenAttr(
-        "input_num_elems", inputShape.getSymbolicNumElements());
-    KGEN::ParamDeclRefAttr outputNumeElems = createDeclToKgenAttr(
-        "output_num_elems", outputShape.getSymbolicNumElements());
-
-    KGEN::ParamDeclRefAttr numElemsEqual = createDeclToKgenExpr(
-        "num_elems_equal", KGEN::POC::EQ, {inputNumeElems, outputNumeElems});
-    createAssert("reshape_assert",
-                 "[reshape] input and output number of elements must match",
-                 numElemsEqual);
+    Var inputNumeElems = b.createVar(inputShape.getSymbolicNumElements());
+    Var outputNumeElems = b.createVar(outputShape.getSymbolicNumElements());
+    b.createAssert(inputNumeElems == outputNumeElems,
+                   "[reshape] input and output number of elements must match");
 
     return outputShape;
   }
@@ -486,69 +707,33 @@ private:
   // primitives if possible, return null otherwise.
   ShapeAttr tryDecomposeRangeShape(InvokeShapeFuncOp invokeShapeFuncOp) {
     // Make sure both input and target shapes are ranked symbolic shapes.
-    TypedAttr start = tryGetDimAttr(invokeShapeFuncOp.getOperand(0));
-    TypedAttr stop = tryGetDimAttr(invokeShapeFuncOp.getOperand(1));
-    TypedAttr step = tryGetDimAttr(invokeShapeFuncOp.getOperand(2));
-    if (!start || !stop || !step)
+    TypedAttr startAttr = tryGetDimAttr(invokeShapeFuncOp.getOperand(0));
+    TypedAttr stopAttr = tryGetDimAttr(invokeShapeFuncOp.getOperand(1));
+    TypedAttr stepAttr = tryGetDimAttr(invokeShapeFuncOp.getOperand(2));
+    if (!startAttr || !stopAttr || !stepAttr)
       return {};
 
-    // Some metadata
-    auto indexType = builder.getType<IndexType>();
-    auto zero = IntegerAttr::get(indexType, 0);
-    auto one = IntegerAttr::get(indexType, 1);
+    // Accumulate ops created into `decomposedOps`
+    ParamExprBuilder b(graphOp, loc, &decomposedOps);
+    Var start = b.createVar(startAttr);
+    Var stop = b.createVar(stopAttr);
+    Var step = b.createVar(stepAttr);
 
-    // Check step == 0
-    KGEN::ParamDeclRefAttr stepIsZero = createDeclToKgenAttr(
-        "step_is_zero", KGEN::ParamOperatorAttr::getNE(step, zero));
-    createAssert("range_assert", "[range] step must be non-zero", stepIsZero);
+    // Check step != 0
+    b.createAssert(step != 0, "[range] step must be non-zero");
 
-    // Check start/stop are in bounds (1)
-    KGEN::ParamDeclRefAttr stepIsNegative = createDeclToKgenAttr(
-        "step_is_negative",
-        KGEN::ParamOperatorAttr::get(KGEN::POC::LT, step, zero));
-    KGEN::ParamDeclRefAttr startLeStop = createDeclToKgenAttr(
-        "start_le_stop",
-        KGEN::ParamOperatorAttr::get(KGEN::POC::LE, start, stop));
-    KGEN::ParamDeclRefAttr cond1 = createDeclToKgenAttr(
-        "cond1", KGEN::ParamOperatorAttr::get(KGEN::POC::Or, stepIsNegative,
-                                              startLeStop));
-    createAssert("range_assert",
-                 "[range] requires (start <= stop) for positive step", cond1);
+    // Check start/stop are in bounds
+    b.createAssert(start <= stop || step < 0,
+                   "[range] requires (start <= stop) for positive step");
+    b.createAssert(stop <= start || step > 0,
+                   "[range] requires (stop <= start) for negative step");
 
-    // Check start/stop are in bounds (2)
-    KGEN::ParamDeclRefAttr stepIsPositive = createDeclToKgenAttr(
-        "step_is_positive",
-        KGEN::ParamOperatorAttr::get(KGEN::POC::LT, zero, step));
-    KGEN::ParamDeclRefAttr stopLeStart = createDeclToKgenAttr(
-        "stop_le_start",
-        KGEN::ParamOperatorAttr::get(KGEN::POC::LE, stop, start));
-    KGEN::ParamDeclRefAttr cond2 = createDeclToKgenAttr(
-        "cond2", KGEN::ParamOperatorAttr::get(KGEN::POC::Or, stepIsPositive,
-                                              stopLeStart));
-    createAssert("range_assert",
-                 "[range] requires (stop <= start) for negative step", cond2);
-
-    // Compute output shape; need to apply an offset to `diff`, think the length
-    // of range(0, 3, 2).
-    KGEN::ParamDeclRefAttr diff = createDeclToKgenAttr(
-        "diff", KGEN::ParamOperatorAttr::getSub(stop, start));
-    KGEN::ParamDeclRefAttr stepAddOne = createDeclToKgenAttr(
-        "step_add_one",
-        KGEN::ParamOperatorAttr::get(KGEN::POC::Add, step, one));
-    KGEN::ParamDeclRefAttr stepSubOne = createDeclToKgenAttr(
-        "step_sub_one", KGEN::ParamOperatorAttr::getSub(step, one));
-    KGEN::ParamDeclRefAttr offset = createDeclToKgenAttr(
-        "offset",
-        KGEN::ParamOperatorAttr::get(KGEN::POC::Cond,
-                                     {stepIsPositive, stepSubOne, stepAddOne}));
-    KGEN::ParamDeclRefAttr diffAddOffset = createDeclToKgenAttr(
-        "diff_add_offset",
-        KGEN::ParamOperatorAttr::get(KGEN::POC::Add, diff, offset));
-    KGEN::ParamDeclRefAttr outDim = createDeclToKgenAttr(
-        "outdim",
-        KGEN::ParamOperatorAttr::get(KGEN::POC::Div, diffAddOffset, step));
-    auto outputShape = ShapeAttr::get({outDim}, builder.getType<ShapeType>());
-
+    // Compute output shape by simulating a ceiling-div -- think the length of
+    // range(0, 3, 2).
+    Var diff = stop - start;
+    Var offset = b.createCond(step > 0, step - 1, step + 1);
+    Var outDim = (diff + offset) / step;
+    ShapeAttr outputShape = b.getShapeAttr(outDim);
     return outputShape;
   }
 
@@ -570,35 +755,29 @@ private:
     if (rhsShape.getRank() != inputRank || inputRank <= 2)
       return {};
 
+    // Accumulate ops created into `decomposedOps`
+    ParamExprBuilder b(graphOp, loc, &decomposedOps);
     SmallVector<TypedAttr> resDims;
     // Check batch dimensions are equal and collect them into `resDims`.
     for (size_t batchDim = 0; batchDim < inputRank - 2; batchDim++) {
-      TypedAttr lhsDim = lhsShape[batchDim];
-      TypedAttr rhsDim = rhsShape[batchDim];
-      KGEN::ParamDeclRefAttr batchDimEqual = createDeclToKgenAttr(
-          "batch_dim_equal",
-          KGEN::ParamOperatorAttr::get(KGEN::POC::EQ, lhsDim, rhsDim));
-      createAssert("bmm_assert",
-                   "[batch_matmul] inputs batch dimensions must match",
-                   batchDimEqual);
-      resDims.push_back(lhsShape[batchDim]);
+      Var lhsDim = b.createVar(lhsShape[batchDim]);
+      Var rhsDim = b.createVar(rhsShape[batchDim]);
+      b.createAssert(lhsDim == rhsDim,
+                     "[batch_matmul] inputs batch dimensions must match");
+      resDims.push_back(lhsDim.getAttr());
     }
 
     // Check inner dimensions are equal
-    TypedAttr lhsInnerDim = lhsShape[inputRank - 1];
-    TypedAttr rhsInnerDim = rhsShape[inputRank - 2];
-    KGEN::ParamDeclRefAttr batchDimEqual = createDeclToKgenAttr(
-        "batch_dim_equal",
-        KGEN::ParamOperatorAttr::get(KGEN::POC::EQ, lhsInnerDim, rhsInnerDim));
-    createAssert("bmm_assert",
-                 "[batch_matmul] inputs inner dimensions must match",
-                 batchDimEqual);
+    Var lhsInnerDim = b.createVar(lhsShape[inputRank - 1]);
+    Var rhsInnerDim = b.createVar(rhsShape[inputRank - 2]);
+    b.createAssert(lhsInnerDim == rhsInnerDim,
+                   "[batch_matmul] inputs inner dimensions must match");
 
     // Collect outer dims.
     resDims.push_back(lhsShape[inputRank - 2]);
     resDims.push_back(rhsShape[inputRank - 1]);
 
-    return MOSH::ShapeAttr::get(resDims, lhsShape.getType());
+    return b.getShapeAttr(resDims);
   }
 
   // Assume `invokeShapeFuncOp` applies the shape function of
@@ -635,25 +814,25 @@ private:
 
     // Construct output shape and make sure input shapes are compatible.
     SmallVector<TypedAttr> resDims(firstInputShape.getValues());
-    TypedAttr concatDimSum = resDims[axis];
+    // Accumulate ops created into `decomposedOps`
+    ParamExprBuilder b(graphOp, loc, &decomposedOps);
+    Var concatDimSum = b.createVar(resDims[axis]);
     for (ShapeAttr inputShape : restInputShapes) {
-      for (auto [idx, firstInputDim, inputDim] : llvm::enumerate(
+      for (auto [idx, firstInputDimAttr, inputDimAttr] : llvm::enumerate(
                firstInputShape.getValues(), inputShape.getValues())) {
         if (static_cast<int64_t>(idx) != axis) {
-          KGEN::ParamDeclRefAttr dimEqual = createDeclToKgenAttr(
-              "concat_dim_equal", KGEN::ParamOperatorAttr::get(
-                                      KGEN::POC::EQ, firstInputDim, inputDim));
-          createAssert("concat_assert",
-                       "[concat] input shapes must match except at concat axis",
-                       dimEqual);
+          Var firstInputDim = b.createVar(firstInputDimAttr);
+          Var inputDim = b.createVar(inputDimAttr);
+          b.createAssert(
+              firstInputDim == inputDim,
+              "[concat] input shapes must match except at concat axis");
         }
       }
-      TypedAttr inputAxisDim = inputShape[axis];
-      concatDimSum = KGEN::ParamOperatorAttr::get(KGEN::POC::Add, concatDimSum,
-                                                  inputAxisDim);
+      Var inputAxisDim = b.createVar(inputShape[axis]);
+      concatDimSum = concatDimSum + inputAxisDim;
     }
-    resDims[axis] = concatDimSum;
-    return MOSH::ShapeAttr::get(resDims, firstInputShape.getType());
+    resDims[axis] = concatDimSum.getAttr();
+    return b.getShapeAttr(resDims);
   }
 
   // Treat certain fallback shape function call as special intrinsics and
