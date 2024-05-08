@@ -35,6 +35,20 @@ lit_tests(
             "GraphCompiler/MOQDialect/transforms/legalize-moq-operators-to-mo-misc.mlir",
             "GraphCompiler/RMODialect/Lowering/binary_comparison.mlir",
 
+            # These tests fail remotely because we bake in the absolute paths to a Mojo Package in MLIR
+            # bytecode, and they can conflict. See below:
+            # https://modular-ai.slack.com/archives/C048UTM8R43/p1715191804815949?thread_ts=1715133270.126709&cid=C048UTM8R43
+            "GraphCompiler/MOGGDialect/experimental-mo-to-mogg.mlir",
+            "GraphCompiler/MOGGDialect/kgen-fuse-constants.mlir",
+            "GraphCompiler/MOGGDialect/kgen-fuse-elemwise.mlir",
+            "GraphCompiler/MOGGDialect/kgen-fuse-epilogue.mlir",
+            "GraphCompiler/MOGGDialect/kgen-fuse-view.mlir",
+            "GraphCompiler/MOGGDialect/kgen-simplify-kernel-operands.mlir",
+            "GraphCompiler/MOGGDialect/sequence-concat-fusion.mo.mlir",
+            "GraphCompiler/MOGGDialect/sequence-fusion.mo.mlir",
+            "GraphCompiler/MOGGDialect/sequence-reshape-fusion.mo.mlir",
+            "GraphCompiler/MOGGDialect/single-thread-blocking-override.mlir",
+
             # Data not tests
             "GraphCompiler/Experimental/MHACoverage/mha-fusion-coverage-models.yaml",
         ],
