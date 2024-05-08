@@ -3242,7 +3242,7 @@ struct SinkBroadcastsThroughReduction
                 .Case<ReduceAddOp, ReduceMulOp>([&](auto op) {
                   // For reduce.add, the input is multiplied by the size of the
                   // broadcast axis. (For reduce.mul, we use mo.pow instead).
-                  TypedAttr dimAttr = bcastShapeAttr.getValues()[reductionAxis];
+                  TypedAttr dimAttr = bcastShapeAttr[reductionAxis];
                   auto dimIndex =
                       rewriter.create<MOSH::ParamToValueOp>(loc, dimAttr);
                   auto dimT = rewriter.create<IndexToTensorOp>(

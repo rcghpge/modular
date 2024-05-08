@@ -527,7 +527,7 @@ static void inferConvMOTypesImpl(
     windowParamsTypes.push_back(outputPaddings.getType());
   for (TensorType inputTy : windowParamsTypes)
     if (!windowParamsDim && inputTy.hasRank() && inputTy.getRank() == 1)
-      windowParamsDim = inputTy.getTypedShapeAttr().getValues()[0];
+      windowParamsDim = inputTy.getTypedShapeAttr()[0];
   if (!windowParamsDim)
     windowParamsDim = createDynamicDimensionType(graphOp, windowParamDecls);
 
@@ -630,7 +630,7 @@ static void inferMOTypesPoolImpl(
   for (TensorType inputTy :
        {filterShape.getType(), strides.getType(), dilations.getType()})
     if (!windowParamsDim && inputTy.hasRank() && inputTy.getRank() == 1)
-      windowParamsDim = inputTy.getTypedShapeAttr().getValues()[0];
+      windowParamsDim = inputTy.getTypedShapeAttr()[0];
   if (!windowParamsDim)
     windowParamsDim = createDynamicDimensionType(graphOp, windowParamDecls);
 

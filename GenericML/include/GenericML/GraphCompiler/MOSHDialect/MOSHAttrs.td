@@ -65,6 +65,9 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
     /// Returns the rank (i.e. size) of the shape.
     size_t getRank() const { return getValues().size(); };
 
+    /// Returns the dimension attribute at given axis.
+    TypedAttr operator[](int axis) const { return getValues()[axis]; };
+
     /// Whether the shape is static, i.e. all dims are known constants.
     bool isStatic() const { return isConstant(); };
 

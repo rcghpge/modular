@@ -307,10 +307,10 @@ private:
         size_t rankDiff = shapeAttr1.getRank() - shapeAttr2.getRank();
         for (size_t axis = 0; axis < shapeAttr1.getRank(); axis++) {
           if (axis < rankDiff) {
-            resDims.push_back(shapeAttr1.getValues()[axis]);
+            resDims.push_back(shapeAttr1[axis]);
           } else {
-            auto dimAttr1 = shapeAttr1.getValues()[axis];
-            auto dimAttr2 = shapeAttr2.getValues()[axis - rankDiff];
+            auto dimAttr1 = shapeAttr1[axis];
+            auto dimAttr2 = shapeAttr2[axis - rankDiff];
             // Insert assertions
             KGEN::ParamDeclRefAttr dimAttr1IsOne = createDeclToKgenExpr(
                 "dim_1_is_one", KGEN::POC::EQ, {dimAttr1, intOneAttr});
@@ -365,8 +365,8 @@ private:
     for (int i = 0; i < inputRank; i++) {
       int inputAxis = inputRank - i - 1;
       int outputAxis = outputRank - i - 1;
-      TypedAttr inputDim = inputShape.getValues()[inputAxis];
-      TypedAttr outputDim = targetShape.getValues()[outputAxis];
+      TypedAttr inputDim = inputShape[inputAxis];
+      TypedAttr outputDim = targetShape[outputAxis];
 
       // Insert assertions
       KGEN::ParamDeclRefAttr inputDimIsOne = createDeclToKgenExpr(
@@ -570,26 +570,23 @@ private:
     if (rhsShape.getRank() != inputRank || inputRank <= 2)
       return {};
 
-    ArrayRef<TypedAttr> lhsDims = lhsShape.getValues();
-    ArrayRef<TypedAttr> rhsDims = rhsShape.getValues();
     SmallVector<TypedAttr> resDims;
-
     // Check batch dimensions are equal and collect them into `resDims`.
     for (size_t batchDim = 0; batchDim < inputRank - 2; batchDim++) {
-      TypedAttr lhsDim = lhsDims[batchDim];
-      TypedAttr rhsDim = rhsDims[batchDim];
+      TypedAttr lhsDim = lhsShape[batchDim];
+      TypedAttr rhsDim = rhsShape[batchDim];
       KGEN::ParamDeclRefAttr batchDimEqual = createDeclToKgenAttr(
           "batch_dim_equal",
           KGEN::ParamOperatorAttr::get(KGEN::POC::EQ, lhsDim, rhsDim));
       createAssert("bmm_assert",
                    "[batch_matmul] inputs batch dimensions must match",
                    batchDimEqual);
-      resDims.push_back(lhsShape.getValues()[batchDim]);
+      resDims.push_back(lhsShape[batchDim]);
     }
 
     // Check inner dimensions are equal
-    TypedAttr lhsInnerDim = lhsDims[inputRank - 1];
-    TypedAttr rhsInnerDim = rhsDims[inputRank - 2];
+    TypedAttr lhsInnerDim = lhsShape[inputRank - 1];
+    TypedAttr rhsInnerDim = rhsShape[inputRank - 2];
     KGEN::ParamDeclRefAttr batchDimEqual = createDeclToKgenAttr(
         "batch_dim_equal",
         KGEN::ParamOperatorAttr::get(KGEN::POC::EQ, lhsInnerDim, rhsInnerDim));
@@ -598,8 +595,8 @@ private:
                  batchDimEqual);
 
     // Collect outer dims.
-    resDims.push_back(lhsDims[inputRank - 2]);
-    resDims.push_back(rhsDims[inputRank - 1]);
+    resDims.push_back(lhsShape[inputRank - 2]);
+    resDims.push_back(rhsShape[inputRank - 1]);
 
     return MOSH::ShapeAttr::get(resDims, lhsShape.getType());
   }
@@ -651,7 +648,7 @@ private:
                        dimEqual);
         }
       }
-      TypedAttr inputAxisDim = inputShape.getValues()[axis];
+      TypedAttr inputAxisDim = inputShape[axis];
       concatDimSum = KGEN::ParamOperatorAttr::get(KGEN::POC::Add, concatDimSum,
                                                   inputAxisDim);
     }

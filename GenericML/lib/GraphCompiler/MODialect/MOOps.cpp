@@ -2705,8 +2705,8 @@ LogicalResult Static::ReshapeOp::canonicalize(Static::ReshapeOp op,
     if (TypedAttr param = getParamAttrThrough<Shape::ToTensorOp>(inputVal)) {
       if (auto shape = dyn_cast<ShapeAttr>(param);
           shape && shape.getRank() == 1) {
-        auto newConstOp = rewriter.create<MOSH::ParamToValueOp>(
-            op->getLoc(), shape.getValues()[0]);
+        auto newConstOp =
+            rewriter.create<MOSH::ParamToValueOp>(op->getLoc(), shape[0]);
         rewriter.replaceOpWithNewOp<IndexToTensorOp>(op, resTy, newConstOp);
         return success();
       }
