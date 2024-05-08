@@ -6,7 +6,9 @@
 
 import sys
 
-from max.engine import InferenceSession
+from tensor import TensorSpec
+
+from max.engine import InferenceSession, InputSpec
 from max.serve.service import (
     FileModel,
     InferenceRequest,
@@ -47,7 +49,7 @@ fn main() raises:
 
     var models = List[FileModel]()
     for pair in pairs:
-        models.append(FileModel(pair[][0], "0", pair[][1]))
+        models.append(FileModel(pair[][0], "0", pair[][1], None))
 
     var session = InferenceSession()
     var service = MuxInferenceService(models, session)
