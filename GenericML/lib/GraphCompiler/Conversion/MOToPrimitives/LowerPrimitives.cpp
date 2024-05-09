@@ -95,6 +95,15 @@ DictionaryAttr LowerPrimitivesPass::getMoggCallAttrs(OpBuilder &builder,
       attrs.push_back(attr);
     }
   }
+  // For anything that takes in a tensor-spec input, we need to parameterize the
+  // rank so the mojo calls can use that.
+  for (auto operandType : op->getOperands().getTypes()) {
+    if (auto tensorSpec = dyn_cast<MGP::TensorSpecType>(operandType)) {
+      attrs.push_back(builder.getNamedAttr(
+          "rank", builder.getIndexAttr(tensorSpec.getShape().size())));
+    }
+  }
+
   return builder.getDictionaryAttr(attrs);
 }
 
