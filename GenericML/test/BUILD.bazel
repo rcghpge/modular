@@ -10,30 +10,12 @@ lit_tests(
             "**/*.yaml",
         ],
         exclude = [
-            # These fail
-            "GraphCompiler/MOGGDialect/load-mojo-libs.mlir",
-            "GraphCompiler/MOGGDialect/generated_code.mlir",
-
-            # These always time out
-            "GraphCompiler/Conversion/broadcast.mlir",
-            "GraphCompiler/Conversion/cast.mlir",
-            "GraphCompiler/Conversion/element-wise.mlir",
-            "GraphCompiler/Conversion/pad.mlir",
-            "GraphCompiler/Conversion/reshape.mlir",
-            "GraphCompiler/Conversion/slice.mlir",
-            "GraphCompiler/Conversion/split-compile.mlir",
-            "GraphCompiler/Conversion/static-ops.mlir",
-            "GraphCompiler/dlrm_snifftest.mlir",
+            # Failing.
             "GraphCompiler/MODialect/constant-fold-ops.mlir",
-            "GraphCompiler/MODialect/dynamic_op_lowering.mlir",
             "GraphCompiler/MODialect/Transforms/constant-fold-large-const.mlir",
             "GraphCompiler/MODialect/Transforms/constant-fold.mlir",
-            "GraphCompiler/MODialect/Transforms/shape-inference-e2e.mlir",
             "GraphCompiler/MODialect/Transforms/support-conversions-activations.mlir",
-            "GraphCompiler/MODialect/Transforms/SymbolicizeFallbackShapeFuncs/pack-conv-transpose-filter.mlir",
-            "GraphCompiler/MOGGDialect/many-unfused-broadcasts.mlir",
             "GraphCompiler/MOQDialect/transforms/legalize-moq-operators-to-mo-misc.mlir",
-            "GraphCompiler/RMODialect/Lowering/binary_comparison.mlir",
 
             # Data not tests
             "GraphCompiler/Experimental/MHACoverage/mha-fusion-coverage-models.yaml",
