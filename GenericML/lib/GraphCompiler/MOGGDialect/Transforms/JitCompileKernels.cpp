@@ -45,15 +45,11 @@ struct JitCompileKernels
     MLIRContext *ctx = m.getContext();
 
     auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
-    analysis.invalidate();
     ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
         analysis.initIfNeeded(ctx, kernelLibraryPaths, true);
     if (errOr.isError())
       return signalPassFailure();
     MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
-
-    // Don't expose any extra stuff in the library.
-    mojoLibraryAnalysis.markAllFunctionsAsNotExported();
 
     // Run the jit required passes.
     mlir::PassManager pm(ctx);
@@ -80,8 +76,6 @@ struct JitCompileKernels
     // removed once we only have one compile stage.
     if (!isGraph)
       m.walk([](KGEN::ExternGeneratorOp op) { op.erase(); });
-
-    analysis.invalidate();
   }
 
   template <typename OpContainer>

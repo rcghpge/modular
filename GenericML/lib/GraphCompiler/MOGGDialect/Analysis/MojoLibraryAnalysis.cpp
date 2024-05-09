@@ -540,13 +540,15 @@ ErrorOr<mlir::ModuleOp> MojoLibraryAnalysis::getMojoBindings() {
             "[MojoLibraryAnalysis] Could not finalize the bytecode readers.");
     }
 
-    // Re-rename symbol names if there conflicts.
+    // Re-rename symbol names if there are conflicts.
     for (auto userModule : block.getOps<mlir::ModuleOp>()) {
-      for (auto gen : userModule.getOps<KGEN::GeneratorOp>())
-        if (failed(replaceSymbols(gen)))
+      for (auto gen : userModule.getOps<KGEN::GeneratorOp>()) {
+        if (failed(replaceSymbols(gen))) {
           return Error(Twine("[MojoLibraryAnalysis] Could not replace symbol "
                              "names in ") +
                        gen.getSymName());
+        }
+      }
     }
 
     // Clone all user-provided mojo kernels into the major container module.
@@ -581,14 +583,6 @@ Operation *MojoLibraryAnalysis::lookup(StringRef name) {
   if (rawMojoKernel.contains(name))
     return rawMojoKernel[name];
   return nullptr;
-}
-
-void MojoLibraryAnalysis::markAllFunctionsAsNotExported() {
-  for (auto func : module.getOps<KGEN::FuncOp>())
-    func.setNotExported();
-
-  for (auto func : getRawMojoKernels())
-    func.setNotExported();
 }
 
 } // namespace M::MOGG

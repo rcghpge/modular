@@ -39,7 +39,7 @@ def AddFallbackShapeFunctions :
 }
 
 def SymbolicizeFallbackShapeFunctions :
-    Pass<"symbolicize-fallback-shape-funcs", "GraphOp"> {
+    Pass<"symbolicize-fallback-shape-funcs", "mlir::ModuleOp"> {
   let summary = "Symbolically fold fallback shape functions in the graph";
   let description = [{
     This pass examines all fallback shape function calls in the `mo.graph` ops,

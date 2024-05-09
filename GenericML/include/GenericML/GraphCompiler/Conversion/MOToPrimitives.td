@@ -53,6 +53,11 @@ def LowerPrimitives: Pass<"lower-primitives", "ModuleOp"> {
     not the runtime async values.
   }];
 
+  let options = [
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
+  ];
+
   let dependentDialects = ["MEF::MEFDialect",
                           "MGP::MGPDialect",
                           "GRT::GRTDialect",
@@ -74,6 +79,11 @@ def LowerMOGGABI: Pass<"lower-abi", "ModuleOp"> {
     synchronous representation into a runtime executable representation which
     contains the code to unpack from and to async values.
   }];
+
+  let options = [
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
+  ];
 
   let dependentDialects = ["MEF::MEFDialect",
                           "MGP::MGPDialect",

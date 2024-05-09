@@ -100,12 +100,6 @@ public:
   /// Looks up and returns a mojo function as is.
   KGEN::GeneratorOp getMojoFunctionNamed(StringRef name);
 
-  /// When we compile we only want to compile the functions we add so the
-  /// first step is to unmark all the other externals. This method only marks
-  /// the already materialized operators in the module (operators inside the
-  /// generator op might not be marked if not materialized yet).
-  void markAllFunctionsAsNotExported();
-
   /// Return true if the provided kernel or shape function has the input
   /// parameter named `parameterName`.
   bool kernelHasInputParameter(KGEN::GeneratorOp kernel,
@@ -131,6 +125,8 @@ public:
     return kernel->hasAttr(KGEN::MOGGPreElab::ALLOCS_ATTR) ||
            kernel->hasAttr(KGEN::MOGGPreElab::SLICED_ATTR);
   }
+
+  inline bool isFinalized() { return finalized; }
 
 private:
   /// Get the materialized mojo kernel. If the kernel is not materialized, the
@@ -220,10 +216,6 @@ private:
 struct LoadMojoAnalysisPass {
   LoadMojoAnalysisPass(Operation *op) : analysis(nullptr) {}
 
-  /// Explicitly invalidate the analysis. This is needed as the alternative is
-  /// every pass would invalidate implicitly (including those we can't control.)
-  void invalidate() { analysis.reset(); }
-
   /// Aggressively assume it is valid so the passes don't force a load each time
   /// even when they don't touch it.
   bool isInvalidated(const mlir::AnalysisManager::PreservedAnalyses &) {
@@ -233,7 +225,9 @@ struct LoadMojoAnalysisPass {
   ErrorOr<MojoLibraryAnalysis *>
   initIfNeeded(MLIRContext *ctx, ArrayRef<std::string> kernelLibraryPaths,
                bool eager = false) {
-    if (analysis)
+    // Reuse the libary if it exists, however if we are loading eagerly (i.e
+    // everything at once) and the analysis isn't final then
+    if (analysis && (!eager || analysis->isFinalized()))
       return analysis.get();
 
     analysis = std::make_unique<MojoLibraryAnalysis>(ctx);

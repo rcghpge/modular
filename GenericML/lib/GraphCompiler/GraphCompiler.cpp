@@ -315,10 +315,15 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.lowerToCompiledRegions) {
     if (!opts.saveTempPrefix.empty())
       jitOpts.saveTempPrefix = opts.saveTempPrefix + ".region";
-    pm.addPass(MGP::createLowerPrimitives());
+    MGP::LowerPrimitivesOptions lowerPrimOpts;
+    lowerPrimOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+    pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts));
     pm.addPass(MGP::createFuseGenericCompiledRegions());
     pm.addPass(MGP::createRemoveNonLowerableResults());
-    pm.addPass(MGP::createLowerMOGGABI());
+
+    MGP::LowerMOGGABIOptions abiOpts;
+    abiOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+    pm.addPass(MGP::createLowerMOGGABI(abiOpts));
     pm.addPass(MOGG::createJitCompileKernels(jitOpts));
     pm.addPass(MGP::createLowerMOGGRegionCompiles());
     pm.addPass(mlir::createCSEPass());
