@@ -71,6 +71,16 @@ set(TENSOR_SRCS
   tensor/__init__
 )
 
+if (NOT MODULAR_PRODUCTION)
+  set (DRIVER_SRCS
+    driver/device
+  )
+else ()
+  set(DRIVER_SRCS "")
+endif ()
+
+
+
 add_mojo_package(max-mojo PRIVATE
   ${GRAPH_SRCS}
   ${ENGINE_SRCS}
@@ -78,6 +88,7 @@ add_mojo_package(max-mojo PRIVATE
   ${REGISTER_SRCS}
   ${SERVE_SRCS}
   ${TENSOR_SRCS}
+  ${DRIVER_SRCS}
 
   DOCS_DIR
   SDK/docs
