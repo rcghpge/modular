@@ -176,17 +176,6 @@ mo.graph @rsqrt_ok(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
 
 // -----
 
-mo.graph @sigmoid_ok(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mo.sigmoid(%arg0) : (!mo.tensor<?, f32>) -> !mo.tensor<?, f32>
-  mo.output %1 : !mo.tensor<?, f32>
-}
-// CHECK-LABEL: mo.graph
-// CHECK-SAME: @sigmoid_ok([[VARG0:[^ ]*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = rmo.mo.sigmoid([[VARG0]]) : (!mo.tensor<?, f32>) -> !mo.tensor<?, f32>
-// CHECK-NEXT: mo.output [[V0]] : !mo.tensor<?, f32>
-
-// -----
-
 mo.graph @sin_ok(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
   %1 = rmo.mo.sin(%arg0) : (!mo.tensor<?, f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>

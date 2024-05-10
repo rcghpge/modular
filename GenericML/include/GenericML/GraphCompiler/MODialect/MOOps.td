@@ -719,20 +719,6 @@ def MO_Log1pOp : MO_ElementWiseUnaryMonoTypeOp<"log1p"> {
   }];
 }
 
-def MO_SigmoidOp : MO_ElementWiseUnaryMonoTypeOp<"sigmoid"> {
-  let summary = "Logistic sigmoid operation";
-  let description = [{
-    Returns `\frac{1}{1+e^{-x}} = \fract{e^x}{e^x + 1}`, the logistic sigmoid.
-
-    Example:
-
-    ```mlir
-      %arg: !mo.tensor<[2, 3], f32>
-      %res = mo.sigmoid(%arg) : !mo.tensor<[2, 3], f32>
-    ```
-  }];
-}
-
 def MO_MaxOp : MO_ElementWiseBinaryMonoTypeOp<"max", [Commutative]> {
   let summary = "Maximum operation";
   let description = [{

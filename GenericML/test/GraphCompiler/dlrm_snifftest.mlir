@@ -287,6 +287,6 @@ mo.graph @dlrm(%arg0: !mo.tensor<[?, 8, 100], si32>, %arg1: !mo.tensor<[?, 256],
   %279 = mo.broadcast_to(%275, %278) : (!mo.tensor<[?, 1], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, 1], f32>
   %280 = mo.broadcast_to(%13, %278) : (!mo.tensor<[1], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, 1], f32>
   %281 = mo.add(%279, %280) : !mo.tensor<[?, 1], f32>
-  %282 = mo.sigmoid(%281) : !mo.tensor<[?, 1], f32>
+  %282 = mo.sin(%281) : !mo.tensor<[?, 1], f32>
   mo.output %282 : !mo.tensor<[?, 1], f32>
 }
