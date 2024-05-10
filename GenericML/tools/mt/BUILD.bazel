@@ -15,6 +15,7 @@ cc_binary(
     deps = [
         ":rpaths",
         "//GenericML:CommonDriver",
+        "//Support:Globals",
         "//Support:Init",
     ],
 )

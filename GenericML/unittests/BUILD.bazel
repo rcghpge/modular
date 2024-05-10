@@ -3,6 +3,7 @@ cc_test(
     srcs = glob(["*.cpp"]),
     deps = [
         "//GenericML:Support",
+        "//Support:Globals",
         "@com_github_google_googletest//:gtest_main",
     ],
 )
