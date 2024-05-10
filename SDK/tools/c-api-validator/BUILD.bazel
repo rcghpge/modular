@@ -6,5 +6,7 @@ cc_binary(
     deps = [
         "//GenericML:API",
         "//GenericML:ExecutionDriver",
+        "//LLCL:RuntimeGlobals",
+        "//Support:Globals",
     ],
 )

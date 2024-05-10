@@ -13,6 +13,7 @@ cc_binary(
         "//PyTorch:modular-framework-torch-ext.import",
         "//SDK:EngineCLI-Benchmark",
         "//SDK:EngineCLI-Visualize",
+        "//Support:Globals",
     ],
 )
 

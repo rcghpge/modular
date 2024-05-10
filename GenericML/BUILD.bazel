@@ -963,6 +963,7 @@ cc_library(
     deps = [
         ":MGPDialect",
         "//CUDASupport",
+        "//LLCL:RuntimeGlobals",
     ],
 )
 
@@ -991,6 +992,7 @@ cc_library(
         "//KGEN:Compiler",
         "//KGEN:CompilerRT.headers",
         "//KGEN:ExecutionEngine",
+        "//LLCL:RuntimeGlobals",
         "//Support:Base",
         "//Support:ML",
         "@llvm-project//llvm:Support",
@@ -1252,6 +1254,7 @@ cc_library(
     deps = [
         ":CUDADialect",
         ":MGPPrimitives",
+        "//CUDASupport:Globals",
     ],
 )
 
@@ -1447,6 +1450,7 @@ cc_library(
         ":CommonDriver",
         ":CompileDriver",
         ":MaxAPI",
+        "//CUDASupport",
         "//Support:Base",
         "//Support:CrashReporting",
         "//Support:Init",

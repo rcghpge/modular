@@ -12,5 +12,6 @@ cc_binary(
         "//ONNX:API",
         "//ONNX:APIStrippedHeaders",
         "//SDK:EngineCLI-Benchmark",
+        "//Support:Globals",
     ],
 )
