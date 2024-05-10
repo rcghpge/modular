@@ -1069,35 +1069,3 @@ mo.graph @unsqueeze_same_indices(%input_shape: !mo.tensor<[4], si32>) -> !mo.ten
   %res = mo.unsqueeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si64>) -> !mo.tensor<[7], si32>
   mo.output %res : !mo.tensor<[7], si32>
 }
-
-// -----
-
-mo.graph @top_k_different_output_shapes<() -> D0, D1, D2, D3, D4, D5, D6, D7>(
-   %input: !mo.tensor<[32, 10, 20, 3], f32>,
-   %K: !mo.tensor<[], si64>,
-   %axis: !mo.tensor<[], si64>,
-   %sorted : !mo.tensor<[], bool>
-) -> (!mo.tensor<[D0, D1, D2, D3], f32>, !mo.tensor<[D4, D5, D6, D7], si64>) {
-
-  // expected-error@+1 {{'mo.top_k' op values and indices should have the same shape}}
-  %res:2 = mo.top_k<() -> D8, D9, D10, D11, D12, D13, D14, D15>(%input, %K, %axis, %sorted) :
-     (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>)
-    -> (!mo.tensor<[D8, D9, D10, D11], f32>, !mo.tensor<[D12, D13, D14, D15], si64>)
- mo.output<D8, D9, D10, D11, D12, D13, D14, D15> %res#0, %res#1 : !mo.tensor<[D8, D9, D10, D11], f32>, !mo.tensor<[D12, D13, D14, D15], si64>
-}
-
-// -----
-
-mo.graph @bottom_k_different_output_shapes<() -> D0, D1, D2, D3, D4, D5, D6, D7>(
-   %input: !mo.tensor<[32, 10, 20, 3], f32>,
-   %K: !mo.tensor<[], si64>,
-   %axis: !mo.tensor<[], si64>,
-   %sorted : !mo.tensor<[], bool>
-) -> (!mo.tensor<[D0, D1, D2, D3], f32>, !mo.tensor<[D4, D5, D6, D7], si64>) {
-
-  // expected-error@+1 {{'mo.bottom_k' op values and indices should have the same shape}}
-  %res:2 = mo.bottom_k<() -> D8, D9, D10, D11, D12, D13, D14, D15>(%input, %K, %axis, %sorted) :
-     (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>)
-    -> (!mo.tensor<[D8, D9, D10, D11], f32>, !mo.tensor<[D12, D13, D14, D15], si64>)
- mo.output<D8, D9, D10, D11, D12, D13, D14, D15> %res#0, %res#1 : !mo.tensor<[D8, D9, D10, D11], f32>, !mo.tensor<[D12, D13, D14, D15], si64>
-}

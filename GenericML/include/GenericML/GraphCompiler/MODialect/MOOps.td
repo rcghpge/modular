@@ -3827,29 +3827,9 @@ def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
   }];
 }
 
-// Class for top-k/bottom-k operators
-class MO_SelectKLikeOp<string mnemonic, list<Trait> traits = []>
-  : MO_TensorOp<
-      mnemonic, [
-        DeclareOpInterfaceMethods<MO_Parameterization>,
-        DeclareOpInterfaceMethods<MO_ParamDeclaration>
-      ] # traits> {
-  let arguments = (ins MO_Tensor:$input,
-                       MO_RankedScalarIndexTensor:$K,
-                       MO_RankedScalarIndexTensor:$axis,
-                       MO_CondLike:$sorted,
-                       MO_ParamDecls:$outputParamDecls);
-  let results = (outs MO_Tensor:$values,
-                      MO_I64Tensor:$indices);
-  let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
-    functional-type(operands, results)
-  }];
-  let hasVerifier = 1;
-}
-
-
-def MO_TopKOp : MO_SelectKLikeOp<"top_k"> {
+def MO_TopKOp : MO_TensorOp<"top_k", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+]> {
   let summary = "Top-K operation";
   let description = [{
     Computes the largest values and their corresponding indices in a tensor
@@ -3871,9 +3851,23 @@ def MO_TopKOp : MO_SelectKLikeOp<"top_k"> {
       )
     ```
   }];
+
+  let arguments = (ins MO_Tensor:$input,
+                       MO_RankedScalarIndexTensor:$K,
+                       MO_RankedScalarIndexTensor:$axis,
+                       MO_CondLike:$sorted,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$values,
+                      MO_I64Tensor:$indices);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
 }
 
-def MO_BottomKOp : MO_SelectKLikeOp<"bottom_k"> {
+def MO_BottomKOp : MO_TensorOp<"bottom_k", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+]> {
   let summary = "Bottom-K operation";
   let description = [{
     Computes the bottom (lowest) values and their corresponding indices in a
@@ -3894,6 +3888,18 @@ def MO_BottomKOp : MO_SelectKLikeOp<"bottom_k"> {
         !mo.tensor<[2, 3], si64>, !mo.tensor<[2, 3], si64>
       )
     ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input,
+                       MO_RankedScalarIndexTensor:$K,
+                       MO_RankedScalarIndexTensor:$axis,
+                       MO_CondLike:$sorted,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$values,
+                      MO_I64Tensor:$indices);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 

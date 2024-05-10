@@ -2338,26 +2338,6 @@ DeviceRefAttr ReduceMaxOp::getOperandDevice(size_t index) {
 }
 
 //===----------------------------------------------------------------------===//
-// TopK / BottomK
-//===----------------------------------------------------------------------===//
-
-template <typename OrderKOpT>
-LogicalResult verifyOrderedKOp(OrderKOpT op) {
-  auto output1Shape = op.getValues().getType().getShapeAttr();
-  auto output2Shape = op.getIndices().getType().getShapeAttr();
-  if (output1Shape != output2Shape) {
-    return op.emitOpError(
-               "values and indices should have the same shape but got: ")
-           << output1Shape << " vs " << output2Shape << "\n";
-  }
-  return success();
-}
-
-LogicalResult TopKOp::verify() { return verifyOrderedKOp(*this); }
-
-LogicalResult BottomKOp::verify() { return verifyOrderedKOp(*this); }
-
-//===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 
