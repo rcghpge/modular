@@ -50,7 +50,7 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../max
 
 # Finally, install the built Python extension module shared library into the
 # wheel.
-install(TARGETS core
+install(TARGETS max-core
   DESTINATION  max-engine-py-binding/max/engine
   COMPONENT ai-engine-py-binding
 )

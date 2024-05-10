@@ -98,10 +98,10 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/max_engine_installed
   # core-cpython.so as in the release package.
   COMMAND ${CMAKE_COMMAND} -E create_symlink ${MODULAR_BINARY_DIR}/lib ${CMAKE_CURRENT_BINARY_DIR}/max/lib
   # Copy the `core-cpython.so` CPython extension where the editable installation can find it.
-  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:core> ${CMAKE_CURRENT_BINARY_DIR}/max/engine/
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:max-core> ${CMAKE_CURRENT_BINARY_DIR}/max/engine/
   COMMAND ${Python3_EXECUTABLE} -m pip install --quiet --editable ${CMAKE_CURRENT_BINARY_DIR}
   COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_BINARY_DIR}/max_engine_installed
-  DEPENDS $<TARGET_FILE:core> ${MODULAR_FRAMEWORK_LIBS} ${max_python_package_sources}
+  DEPENDS $<TARGET_FILE:max-core> ${MODULAR_FRAMEWORK_LIBS} ${max_python_package_sources}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   COMMENT "Symlinking `max.engine` Python source directory to $MODULAR_DERIVED_PATH and installing to $MODULAR_PYTHON."
   VERBATIM
@@ -128,7 +128,7 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/max
 
 # Finally, install the built Python extension module shared library into the
 # wheel.
-install(TARGETS core
+install(TARGETS max-core
   DESTINATION max-engine-wheel/max/engine
   COMPONENT ai-engine-wheel
 )
