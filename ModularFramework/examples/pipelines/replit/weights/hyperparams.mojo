@@ -17,7 +17,7 @@ struct HyperParams:
     var kv_n_heads: Int
 
 
-fn get_default() -> HyperParams:
+def get_default() -> HyperParams:
     return HyperParams(
         batch_size=1,
         seq_len=4096,

@@ -9,7 +9,7 @@ from max.tensor import Tensor
 
 
 trait Checkpoint(Movable):
-    fn __init__(inout self, path: Path) raises:
+    def __init__(inout self, path: Path):
         """Initializes the weights file from a path.
 
         Args:
@@ -17,7 +17,7 @@ trait Checkpoint(Movable):
         """
         ...
 
-    fn get[type: DType](self, key: String) raises -> Tensor[type]:
+    def get[type: DType](borrowed self, key: String) -> Tensor[type]:
         """Returns a tensor for `key` at layer `layer_idx`, possibly seeking the file.
 
         `self` is `inout` here due to implementations that seek a file pointer.
@@ -40,7 +40,7 @@ struct ReplitCheckpoint(Checkpoint):
 
     var model_path: Path
 
-    fn __init__(inout self, path: Path) raises:
+    def __init__(inout self, path: Path):
         """Initializes the weights from a path.
 
         Args:
@@ -51,7 +51,7 @@ struct ReplitCheckpoint(Checkpoint):
     fn __moveinit__(inout self, owned existing: Self):
         self.model_path = existing.model_path
 
-    fn get[type: DType](self, key: String) raises -> Tensor[type]:
+    def get[type: DType](borrowed self, key: String) -> Tensor[type]:
         """Returns a tensor for `key` at layer `layer_idx`, possibly seeking the file.
 
         `self` is `inout` here due to implementations that seek a file pointer.
@@ -66,7 +66,9 @@ struct ReplitCheckpoint(Checkpoint):
         Raises:
             An error for invalid key arguments.
         """
-        var path = self.model_path / key
+        print("key", key)
+        print("model_path", self.model_path)
+        path = self.model_path / key
         if not path.exists():
             raise "Could not load checkpoint tensor value. " + str(
                 path

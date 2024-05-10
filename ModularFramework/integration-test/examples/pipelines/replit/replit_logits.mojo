@@ -24,11 +24,12 @@ from layers.linear import Linear
 from layers.block import MPTBlock, MPTMLP
 from layers.norm import LPLayerNorm
 
+
 # fmt: off
 struct TestCheckpoint(Checkpoint):
     var weights: Dict[String, Tensor[DType.float32]]
 
-    fn __init__(inout self, path: Path) raises:
+    def __init__(inout self, path: Path):
         """Initializes the weights file from a path.
 
         Args:
@@ -167,7 +168,7 @@ struct TestCheckpoint(Checkpoint):
     fn __copyinit__(inout self, borrowed existing: Self):
         self.weights = existing.weights
 
-    fn get[type: DType](self, key: String) raises -> Tensor[type]:
+    def get[type: DType](borrowed self, key: String) -> Tensor[type]:
         """Returns a tensor for `key` at layer `layer_idx`, possibly seeking the file.
 
         `self` is `inout` here due to implementations that seek a file pointer.

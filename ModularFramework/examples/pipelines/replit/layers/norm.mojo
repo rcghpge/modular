@@ -18,13 +18,13 @@ struct LPLayerNorm:
     var weight: Symbol
     var hyperparams: HyperParams
 
-    fn __call__(self, input: Symbol) raises -> Symbol:
-        var g = input.graph()
-        var beta = g.constant(
+    def __call__(borrowed self, input: Symbol) -> Symbol:
+        g = input.graph()
+        beta = g.constant(
             Tensor[DType.float32](TensorShape(self.hyperparams.d_model), 0)
         )
-        var eps = g.constant(Tensor[DType.float32](TensorShape(1), self.eps))
-        var out = g.op(
+        eps = g.constant(Tensor[DType.float32](TensorShape(1), self.eps))
+        out = g.op(
             "mo.layer_norm",
             List[Symbol](input, self.weight, beta, eps),
             TensorType(DType.float32, input.tensor_type().dims),

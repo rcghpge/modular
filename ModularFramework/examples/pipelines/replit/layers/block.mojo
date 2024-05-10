@@ -22,7 +22,7 @@ struct MPTMLP:
     var up_proj: Linear
     var down_proj: Linear
 
-    fn __call__(self, input: Symbol) raises -> Symbol:
+    def __call__(borrowed self, input: Symbol) -> Symbol:
         return self.down_proj(ops.gelu(self.up_proj(input)))
 
 
@@ -46,14 +46,14 @@ struct MPTBlock[T: Checkpoint, weights_type: DType]:
         self.norm_2 = norm_2
         self.ffn = ffn
 
-    fn __call__(
-        self,
+    def __call__(
+        borrowed self,
         input: Symbol,
         attn_bias: Optional[Symbol] = None,
         k_cache: Optional[Symbol] = None,
         v_cache: Optional[Symbol] = None,
-    ) raises -> (Symbol, Symbol, Symbol):
-        var a = self.norm_1(input)
+    ) -> (Symbol, Symbol, Symbol):
+        a = self.norm_1(input)
         var k_cache_update: Symbol
         var v_cache_update: Symbol
         var b: Symbol
@@ -63,15 +63,18 @@ struct MPTBlock[T: Checkpoint, weights_type: DType]:
         # Rebind the attention output to the shape of the input to allow the
         # `add` op to correctly set shapes.
         b = ops.rebind(b, input.tensor_type().dims)
-        var output = input + b
-        var m = self.norm_2(output)
-        var n = self.ffn(m)
+        output = input + b
+        m = self.norm_2(output)
+        n = self.ffn(m)
         return output + n, k_cache_update, v_cache_update
 
     @staticmethod
-    fn create(
-        params: T, prefix: String, g: Graph, hyperparams: HyperParams
-    ) raises -> MPTBlock[T, weights_type]:
+    def create(
+        borrowed params: T,
+        borrowed prefix: String,
+        g: Graph,
+        hyperparams: HyperParams,
+    ) -> MPTBlock[T, weights_type]:
         """Build a MPT Block from the given params and string prefix.
 
         Args:
@@ -84,20 +87,20 @@ struct MPTBlock[T: Checkpoint, weights_type: DType]:
         """
 
         @parameter
-        fn load_param(name: String) raises -> Symbol:
+        def load_param(name: String) -> Symbol:
             return ops.cast(
                 g.constant(params.get[weights_type](prefix + name)),
                 DType.float32,
             )
 
-        var norm_1 = LPLayerNorm(load_param("norm_1.weight"), hyperparams)
-        var attn = GroupedQueryAttention(
+        norm_1 = LPLayerNorm(load_param("norm_1.weight"), hyperparams)
+        attn = GroupedQueryAttention(
             hyperparams,
             Linear(load_param("attn.Wqkv.weight")),
             Linear(load_param("attn.out_proj.weight")),
         )
-        var norm_2 = LPLayerNorm(load_param("norm_2.weight"), hyperparams)
-        var ffn = MPTMLP(
+        norm_2 = LPLayerNorm(load_param("norm_2.weight"), hyperparams)
+        ffn = MPTMLP(
             Linear(load_param("ffn.up_proj.weight")),
             Linear(load_param("ffn.down_proj.weight")),
         )
