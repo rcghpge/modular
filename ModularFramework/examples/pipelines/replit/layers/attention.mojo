@@ -162,7 +162,7 @@ struct GroupedQueryAttention:
             k_cache_value = k_cache.value()[]
             k = ops.concat(List[Symbol](k_cache_value, k), axis=3)
             if not v_cache:
-                raise error("v_cache cannot be None if k_cache is defined.")
+                raise error(g, "v_cache cannot be None if k_cache is defined.")
             v_cache_value = v_cache.value()[]
             v = ops.concat(List[Symbol](v_cache_value, v), axis=2)
 

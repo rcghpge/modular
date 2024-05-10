@@ -7,14 +7,20 @@
 
 import testing
 
+from max.graph import Graph, Type
 from max.graph.error import error, format_system_stack
 
 
 def test_error():
-    with testing.assert_raises(contains="test_error.mojo:15"):
-        raise error("blah")
+    g = Graph(List[Type]())
+    with testing.assert_raises(contains="test_error.mojo:17"):
+        raise error(g, "blah")
     with testing.assert_raises(contains="System stack:"):
-        raise error("blah")
+        raise error(g, "blah")
+    with testing.assert_raises(contains="foo.bar - blah"):
+        with g.layer("foo"):
+            with g.layer("bar"):
+                raise error(g, "blah")
 
 
 def test_format_system_stack():

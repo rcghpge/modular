@@ -125,6 +125,7 @@ def test_nested_array():
     testing.assert_equal(NodeType.object, js.get("7").type)
     testing.assert_equal(NodeType.string, js.get("7", "key").type)
     testing.assert_equal("another", js.get("7", "key").value)
+    _ = js^
 
 
 def test_empty_object():

@@ -8,6 +8,7 @@
 
 from sys.param_env import env_get_string
 from pathlib.path import Path
+from testing import *
 
 from max.graph import Type, Graph, TensorType, Symbol
 
@@ -85,9 +86,35 @@ fn test_symbolic_dim() raises:
     print(g)
 
 
+def test_layer():
+    g = Graph(List[Type]())
+    testing.assert_equal(g.current_layer(), "")
+    with g.layer("foo"):
+        with g.layer("bar"):
+            x = g.constant[DType.int64](1)
+            g.output(x)
+
+    g.verify()
+    # CHECK: layer = "foo.bar"
+    print(g)
+
+
+def test_current_layer():
+    g = Graph(List[Type]())
+    testing.assert_equal(g.current_layer(), "")
+    with g.layer("foo"):
+        testing.assert_equal(g.current_layer(), "foo")
+        with g.layer("bar"):
+            testing.assert_equal(g.current_layer(), "foo.bar")
+        testing.assert_equal(g.current_layer(), "foo")
+    testing.assert_equal(g.current_layer(), "")
+
+
 fn main() raises:
     test_identity_graph()
     test_identity_graph_no_module()
     test_basic_add()
     test_add_constant()
     test_symbolic_dim()
+    test_layer()
+    test_current_layer()
