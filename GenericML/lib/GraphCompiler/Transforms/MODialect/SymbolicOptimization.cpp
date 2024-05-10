@@ -2802,7 +2802,8 @@ struct SinkSplitThroughElementwisePattern
               "user per result");
     }
 
-    auto firstResultType = op.getResults().front().getType().cast<TensorType>();
+    auto firstResultType =
+        llvm::cast<TensorType>(op.getResults().front().getType());
     int64_t splitAxis = normalizeAxis(*tryGetConstantInt(op.getAxis()),
                                       firstResultType.getRank());
 
@@ -2933,8 +2934,8 @@ struct SinkSplitThroughElementwisePattern
     }
 
     auto elementwiseType =
-        firstOwner->getResultTypes().front().cast<TensorType>().cloneWithNewDim(
-            splitAxis, lastDimSize);
+        llvm::cast<TensorType>(firstOwner->getResultTypes().front())
+            .cloneWithNewDim(splitAxis, lastDimSize);
     OperationState elementwiseOpState(loc, firstOwner->getName(),
                                       elementwiseOperands, elementwiseType);
     auto newElementwise = rewriter.create(elementwiseOpState)->getResult(0);
@@ -3024,14 +3025,12 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
           op, "matched ops have inconsistent devices");
     }
 
-    auto splitType = op.getType(0).cast<TensorType>();
+    auto splitType = llvm::cast<TensorType>(op.getType(0));
     auto shapeBeforeReshape = splitType.getDims();
-    auto shapeAfterReshape = users.begin()
-                                 ->getResults()
-                                 .front()
-                                 .getType()
-                                 .cast<TensorType>()
-                                 .getDims();
+    auto shapeAfterReshape =
+        llvm::cast<TensorType>(users.begin()->getResults().front().getType())
+
+            .getDims();
     const StaticReshapeDimensionsMappingAnalysis
         staticReshapeDimensionsMappingAnalysis(shapeBeforeReshape,
                                                shapeAfterReshape);
@@ -3094,7 +3093,7 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
     auto firstReshapeType = cast<ReshapeOpType>(*users.begin()).getType();
     SmallVector<TypedAttr> newReshapeShape(firstReshapeType.getDims());
     newReshapeShape[newSplitAxis] = rewriter.getIndexAttr(
-        newReshapeShape[newSplitAxis].cast<IntegerAttr>().getInt() *
+        llvm::cast<IntegerAttr>(newReshapeShape[newSplitAxis]).getInt() *
         op->getNumResults());
     auto newReshapeType = TensorType::get(
         ShapeAttr::get(newReshapeShape, rewriter.getType<MOSH::ShapeType>()),

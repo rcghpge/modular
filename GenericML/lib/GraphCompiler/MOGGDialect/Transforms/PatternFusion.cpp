@@ -792,7 +792,7 @@ struct LayerNormPattern
     }
 
     // Handle Scalar beta and gamma
-    auto betaType = beta.getType().cast<MO::TensorType>();
+    auto betaType = llvm::cast<MO::TensorType>(beta.getType());
     if (betaType && betaType.getRank() == 0) {
       beta = rewriter.create<MO::Static::BroadcastToOp>(
           op.getLoc(),
@@ -801,7 +801,7 @@ struct LayerNormPattern
           beta);
     }
 
-    auto gammaType = gamma.getType().cast<MO::TensorType>();
+    auto gammaType = llvm::cast<MO::TensorType>(gamma.getType());
     if (gammaType && gammaType.getRank() == 0) {
       gamma = rewriter.create<MO::Static::BroadcastToOp>(
           op.getLoc(),
