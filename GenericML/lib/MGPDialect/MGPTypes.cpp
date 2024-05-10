@@ -230,14 +230,14 @@ bool CpuBufferType::hasRank() const { return true; }
 //===----------------------------------------------------------------------===//
 
 ErrorOr<std::optional<DType>> DTypeType::fromMlirType(Type mlirType) {
-  if (auto unkType = mlir::dyn_cast<NoneType>(mlirType))
+  if (auto unkType = llvm::dyn_cast<NoneType>(mlirType))
     return std::nullopt; // None denotes unknown.
-  if (auto intType = mlir::dyn_cast<IntegerType>(mlirType)) {
+  if (auto intType = llvm::dyn_cast<IntegerType>(mlirType)) {
     FailureOr<DType> dtype = getEquivalentDType(intType);
     if (succeeded(dtype))
       return *dtype;
   }
-  if (auto floatType = mlir::dyn_cast<FloatType>(mlirType)) {
+  if (auto floatType = llvm::dyn_cast<FloatType>(mlirType)) {
     FailureOr<DType> dtype = getEquivalentDType(floatType);
     if (succeeded(dtype))
       return *dtype;
@@ -564,7 +564,7 @@ IntegerAttr TensorSpecType::getRawDType() const {
 /// ShapedTypeInterface::cloneWith.
 ShapedType CpuTensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                     Type elementType) const {
-  auto tensorSpec = mlir::dyn_cast<TensorSpecType>(
+  auto tensorSpec = llvm::dyn_cast<TensorSpecType>(
       getTensorSpec().cloneWith(shape, elementType));
   return CpuTensorType::get(getContext(), tensorSpec);
 }

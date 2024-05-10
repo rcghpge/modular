@@ -1520,7 +1520,7 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp
           op, "Don't sink reshape that squeezes final dim.");
     }
 
-    auto inputType = inputTensor.getType().cast<TensorType>();
+    auto inputType = llvm::cast<TensorType>(inputTensor.getType());
     // This avoids creating a unary op with unknown shapes.
     if (inputType.hasUnknownShape())
       return rewriter.notifyMatchFailure(op, "Shape must be known");
@@ -2249,7 +2249,7 @@ struct ElementWiseUnaryVectorPattern
     Location loc = op.getLoc();
     TensorValue input = op.getInput();
 
-    auto inType = input.getType().cast<TensorType>();
+    auto inType = llvm::cast<TensorType>(input.getType());
 
     if (!(inType.hasStaticShape() && inType.getRank() == 2 &&
           inType.getIntDim(0) != 1 && inType.getIntDim(1) == 1))
@@ -2286,7 +2286,7 @@ struct ElementWiseBinaryVectorPattern
     TensorValue a = op.getLhsInput();
     TensorValue b = op.getRhsInput();
 
-    auto inType = a.getType().cast<TensorType>();
+    auto inType = llvm::cast<TensorType>(a.getType());
 
     if (!(inType.hasStaticShape() && inType.getRank() == 2 &&
           inType.getIntDim(0) != 1 && inType.getIntDim(1) == 1))
@@ -2328,7 +2328,7 @@ struct BroadcastReshapePattern
     if (!input)
       return rewriter.notifyMatchFailure(op, "null input value");
 
-    TensorType inType = input.getType().cast<TensorType>();
+    TensorType inType = llvm::cast<TensorType>(input.getType());
 
     // Check if the input is a scalar
     if (!inType.hasRank())
@@ -2366,8 +2366,8 @@ struct GemvPattern
     Location loc = op.getLoc();
     Value a = op.getTensorA();
     Value b = op.getTensorB();
-    auto aType = b.getType().cast<TensorType>();
-    auto bType = b.getType().cast<TensorType>();
+    auto aType = llvm::cast<TensorType>(b.getType());
+    auto bType = llvm::cast<TensorType>(b.getType());
 
     if (!(a.getDefiningOp<MO::ConstantOp>() && bType.hasStaticShape() &&
           bType.getIntDim(1) == 1 && op.getType().hasStaticShape() &&
@@ -2378,7 +2378,7 @@ struct GemvPattern
         rewriter.create<ConstantOp>(loc, SmallVector<int64_t>{1, 0});
 
     auto transposeType = [&](Value x) {
-      auto xType = x.getType().cast<TensorType>();
+      auto xType = llvm::cast<TensorType>(x.getType());
       return TensorType::get(
           SmallVector<int64_t>{xType.getIntDim(1), xType.getIntDim(0)},
           xType.getElementType());
@@ -2512,7 +2512,7 @@ struct SliceToSplitPattern
           op, "Start and step operands must be constants");
     }
 
-    auto inputType = input.getType().cast<TensorType>();
+    auto inputType = llvm::cast<TensorType>(input.getType());
     int64_t sliceDimension;
     const auto sliceHasStaticRankKnownShapeAndSlicesOneDimension =
         [&](SliceOp sliceOp) {
@@ -2744,7 +2744,7 @@ struct MergeParallelMatmulPattern
 // Returns true if the split operates on the last dimension and that the
 // dimension is statically known.
 static bool isStaticSplit(SplitOp op) {
-  auto inputType = op.getInput().getType().cast<TensorType>();
+  auto inputType = llvm::cast<TensorType>(op.getInput().getType());
   if (!inputType.hasRank())
     return false;
 
@@ -2872,7 +2872,7 @@ struct SinkSplitThroughElementwisePattern
         GENERICML_ASSERT(constantOp);
 
         constantsToConcatenate.push_back(constantOp.getResult());
-        auto constantOpType = constantOp.getType().cast<TensorType>();
+        auto constantOpType = llvm::cast<TensorType>(constantOp.getType());
         if (constantOpType.getRank() == 0 ||
             constantOpType.getDims().back() !=
                 firstResultType.getDims().back()) {
@@ -2897,14 +2897,14 @@ struct SinkSplitThroughElementwisePattern
 
     Location loc = op.getLoc();
     rewriter.setInsertionPoint(op);
-    auto inputType = op.getInput().getType().cast<TensorType>();
+    auto inputType = llvm::cast<TensorType>(op.getInput().getType());
     uint64_t lastDimSize =
-        inputType.getDims().back().cast<IntegerAttr>().getInt();
+        llvm::cast<IntegerAttr>(inputType.getDims().back()).getInt();
 
     SmallVector<Value, 2> elementwiseOperands;
     if (!constantsToConcatenate.empty()) {
       TensorType constantType =
-          constantsToConcatenate.front().getType().cast<TensorType>();
+          llvm::cast<TensorType>(constantsToConcatenate.front().getType());
       auto concatType =
           constantType.cloneWithNewDim(constantType.getRank() - 1, lastDimSize);
       Value concatAxis =
@@ -4365,7 +4365,7 @@ struct MathematicalSimplificationDivBySmallTensorToMul
             dyn_cast_or_null<MO::Static::BroadcastToOp>(origY.getDefiningOp()))
       origY = bcast.getInput();
 
-    auto origYType = origY.getType().cast<TensorType>();
+    auto origYType = llvm::cast<TensorType>(origY.getType());
     if (!origYType.hasStaticShape())
       return failure();
 

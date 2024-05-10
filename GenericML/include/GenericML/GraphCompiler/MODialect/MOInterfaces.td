@@ -391,7 +391,7 @@ def MO_DefaultParameterization : MO_TensorOpInterfaceBase<
   let extraTraitClassDeclaration = [{
     LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
       auto paramInterface =
-        mlir::cast<ParameterizationInterface>(this->getOperation());
+        llvm::cast<ParameterizationInterface>(this->getOperation());
       return impl::defaultResolveUnknownParameters(paramInterface, rewriter);
     }
   }];
@@ -409,7 +409,7 @@ def MO_SameInputOutputShapesParameterization : MO_TensorOpInterfaceBase<
   let extraTraitClassDeclaration = [{
     LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
       auto paramInterface =
-        mlir::cast<ParameterizationInterface>(this->getOperation());
+        llvm::cast<ParameterizationInterface>(this->getOperation());
       return impl::resolveSameOperandsAndResultShapeUnknownParameters(
         paramInterface, rewriter);
     }
@@ -428,7 +428,7 @@ def MO_SameFirstArgumentOutputShapesParameterization : MO_TensorOpInterfaceBase<
   let extraTraitClassDeclaration = [{
     LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
       auto paramInterface =
-        mlir::cast<ParameterizationInterface>(this->getOperation());
+        llvm::cast<ParameterizationInterface>(this->getOperation());
       return impl::resolveSameFirstOperandAndResultShapeUnknownParameters(
         paramInterface, rewriter);
     }

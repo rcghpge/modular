@@ -137,7 +137,7 @@ bool DeviceBufferType::hasRank() const { return true; }
 
 ShapedType DeviceTensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                        Type elementType) const {
-  auto tensorSpec = mlir::dyn_cast<TensorSpecType>(
+  auto tensorSpec = llvm::dyn_cast<TensorSpecType>(
       getTensorSpec().cloneWith(shape, elementType));
   return CpuTensorType::get(getContext(), tensorSpec);
 }

@@ -169,14 +169,14 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
 
 // TODO : These are shamelessly copied out of MGP. Need to align
 ErrorOr<DType> M::MO::fromMLIRType(Type mlirType) {
-  if (auto unkType = mlir::dyn_cast<NoneType>(mlirType))
+  if (auto unkType = llvm::dyn_cast<NoneType>(mlirType))
     return DType(); // invalid denotes unknown.
-  if (auto intType = mlir::dyn_cast<IntegerType>(mlirType)) {
+  if (auto intType = llvm::dyn_cast<IntegerType>(mlirType)) {
     FailureOr<DType> dtype = getEquivalentDType(intType);
     if (succeeded(dtype) && !(dtype->isInvalid()))
       return *dtype;
   }
-  if (auto floatType = mlir::dyn_cast<FloatType>(mlirType)) {
+  if (auto floatType = llvm::dyn_cast<FloatType>(mlirType)) {
     FailureOr<DType> dtype = getEquivalentDType(floatType);
     if (succeeded(dtype) && !(dtype->isInvalid()))
       return *dtype;
@@ -282,7 +282,7 @@ TensorType TensorType::getVectorSI64Type(MLIRContext *ctx, int64_t size,
 
 LayoutAttr TensorType::getLayoutAttr() {
   Attribute layoutAttrOrNull = getMetadata().get(kLayoutMetadataName);
-  return mlir::dyn_cast_or_null<LayoutAttr>(layoutAttrOrNull);
+  return llvm::dyn_cast_or_null<LayoutAttr>(layoutAttrOrNull);
 }
 
 TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
@@ -423,7 +423,7 @@ bool TensorType::isParameterizedDimParam(TypedAttr attr) {
 }
 
 bool TensorType::isIntegerDimParam(TypedAttr attr) {
-  return attr.isa<IntegerAttr>() && attr.getType().isIndex();
+  return llvm::isa<IntegerAttr>(attr) && attr.getType().isIndex();
 }
 
 SmallVector<int64_t> TensorType::getIntDims() const {

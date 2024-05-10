@@ -751,17 +751,17 @@ static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
          llvm::zip(op->getResults(), tensors)) {
       Type type = opResult.getType();
       // Each result can either be a tensor or a shape.
-      if (type.isa<TensorType>()) {
+      if (llvm::isa<TensorType>(type)) {
         newResults.push_back(runtimeTensorToConstant(
             builder, op->getLoc(), std::get<RuntimeTensor>(constantTensor),
             type));
-      } else if (type.isa<ShapeType>()) {
+      } else if (llvm::isa<ShapeType>(type)) {
         auto intElems = dyn_cast<IntArrayElementsAttr>(
             std::get<RuntimeTensor>(constantTensor).first);
         newResults.push_back(builder.create<MOSH::ParamToValueOp>(
             op->getLoc(), ShapeAttr::get(intElems.asArrayRef<int64_t>(),
                                          MOSH::ShapeType::get(ctx))));
-      } else if (type.isa<ListType>()) {
+      } else if (llvm::isa<ListType>(type)) {
         auto tensors =
             llvm::map_to_vector(std::get<RuntimeList>(constantTensor),
                                 [&](const RuntimeTensor &tensor) {

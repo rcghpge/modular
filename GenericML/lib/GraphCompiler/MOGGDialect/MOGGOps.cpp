@@ -1095,7 +1095,7 @@ LogicalResult KernelOp::verify() {
 
   // Verify that symbolic dims are set properly in the kernel.
   auto setParamCheck =
-      verifyKernelSetParam(mlir::cast<KernelOp>(getOperation()));
+      verifyKernelSetParam(llvm::cast<KernelOp>(getOperation()));
   if (mlir::failed(setParamCheck))
     return setParamCheck;
 
