@@ -4,7 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/RMOSupport/Broadcast.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
@@ -402,46 +401,6 @@ struct LowerBroadcastLike : public OpRewritePattern<RMO::BroadcastLikeOp> {
   }
 };
 
-struct LowerSigmoid : public OpRewritePattern<RMO::SigmoidOp> {
-  LowerSigmoid(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
-  LogicalResult matchAndRewrite(RMO::SigmoidOp op,
-                                PatternRewriter &rewriter) const override {
-    auto graphOp = op->getParentOfType<MO::GraphOp>();
-    Location loc = op->getLoc();
-
-    // Let's decompse the sigmoid operation into RMO analogue operations to
-    // perform this calculation:
-    //
-    // 1/(1+e^-x)
-    //
-
-    TensorValue x = op.getInput();
-
-    TensorValue one = rewriter.create<MO::ConstantOp>(loc, 1.0f);
-
-    TensorValue oneAsInputDtype =
-        rewriter.create<RMO::MOCastOp>(loc, one, x.getType().getDtype());
-
-    TensorValue tensorOne = RMO::broadcastTo(rewriter, loc, oneAsInputDtype, x);
-
-    TensorValue negatedX =
-        rewriter.create<RMO::MONegativeOp>(loc, ValueRange{x}, graphOp);
-    TensorValue eToTheNegatedX =
-        rewriter.create<RMO::MOExpOp>(loc, ValueRange{negatedX}, graphOp);
-
-    TensorValue denominator = rewriter.create<RMO::MOAddOp>(
-        loc, ValueRange{tensorOne, eToTheNegatedX}, graphOp);
-    TensorValue answer = rewriter.create<RMO::MODivOp>(
-        loc, ValueRange{tensorOne, denominator}, graphOp);
-
-    TensorValue reboundAnswer = rebindToShape(
-        graphOp, answer, op.getType(), rewriter, op.getOutputParamDecls());
-
-    rewriter.replaceAllUsesWith(op, reboundAnswer);
-    return success();
-  }
-};
-
 struct LegalizeRMOOps
     : public M::RMO::impl::LegalizeRMOOpsBase<LegalizeRMOOps> {
   using LegalizeRMOOpsBase::LegalizeRMOOpsBase;
@@ -469,6 +428,7 @@ struct LegalizeRMOOps
         LegalizeRMOMOAnalogue<RMO::MORoundOp, MO::RoundOp>,
         LegalizeRMOMOAnalogue<RMO::MORoundEvenOp, MO::RoundEvenOp>,
         LegalizeRMOMOAnalogue<RMO::MORsqrtOp, MO::RsqrtOp>,
+        LegalizeRMOMOAnalogue<RMO::MOSigmoidOp, MO::SigmoidOp>,
         LegalizeRMOMOAnalogue<RMO::MOSinOp, MO::SinOp>,
         LegalizeRMOMOAnalogue<RMO::MOSqrtOp, MO::SqrtOp>,
         LegalizeRMOMOAnalogue<RMO::MOTanhOp, MO::TanhOp>,
@@ -573,7 +533,7 @@ struct LegalizeRMOOps
         LowerCompositeBinaryComparisonOp<RMO::GreaterOp, RMO::MOGreaterOp>,
         LowerCompositeBinaryComparisonOp<RMO::GreaterEqualOp,
                                          RMO::MOGreaterEqualOp>,
-        LowerBroadcastLike, LowerSigmoid>(context);
+        LowerBroadcastLike>(context);
 
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(blockPatterns))))

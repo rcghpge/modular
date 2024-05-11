@@ -204,3 +204,16 @@ mo.graph @rsqrt_static_mixed(%arg0: !mo.tensor<[20, 30], f32>) -> !mo.tensor<[?,
 // CHECK-NEXT: [[V1:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[D2:[^ ]*]]>([[V0]]) : (!mo.tensor<[20, 30], f32>) -> !mo.tensor<[[[D2]], 10], f32>
 // CHECK-NEXT: mo.output<[[D2]]> [[V1]] : !mo.tensor<[[[D2]], 10], f32>
 // CHECK-NEXT: }
+
+// -----
+
+mo.graph @sigmoid_static_static(%arg0: !mo.tensor<[20, 30], f32>) -> !mo.tensor<[20, 10], f32> {
+  %1 = rmo.mo.sigmoid(%arg0) : (!mo.tensor<[20, 30], f32>) -> !mo.tensor<[20, 10], f32>
+  mo.output %1 : !mo.tensor<[20, 10], f32>
+}
+// CHECK-LABEL: mo.graph
+// CHECK-SAME: @sigmoid_static_static([[VARG0:[^ ]*]]: !mo.tensor<[20, 30], f32>) -> !mo.tensor<[20, 10], f32> {
+// CHECK-NEXT: [[V0:[^ ]*]] = mo.sigmoid([[VARG0]]) : !mo.tensor<[20, 30], f32>
+// CHECK-NEXT: [[V1:[^ ]*]] = rmo.rebind_tensor_shape([[V0]]) : (!mo.tensor<[20, 30], f32>) -> !mo.tensor<[20, 10], f32>
+// CHECK-NEXT: mo.output [[V1]] : !mo.tensor<[20, 10], f32>
+// CHECK-NEXT: }

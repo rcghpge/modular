@@ -373,6 +373,20 @@ def RMO_MORsqrtOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"rsqrt"> {
   }];
 }
 
+def RMO_MOSigmoidOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"sigmoid"> {
+  let summary = "Logistic sigmoid operation";
+  let description = [{
+    Returns `\frac{1}{1+e^{-x}} = \fract{e^x}{e^x + 1}`, the logistic sigmoid.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.sigmoid(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
 def RMO_MOSinOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"sin"> {
   let summary = "Sine operation";
   let description = [{
