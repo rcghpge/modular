@@ -30,14 +30,27 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/TargetParser/Host.h"
 
+static std::mutex &getMut() {
+  static std::mutex mut;
+  return mut;
+}
+
+static bool hasInit = false;
+
 namespace M::MOGG::Stub {
 
 LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
   MLIRContext *ctx = kgenModule->getContext();
 
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmParser();
-  llvm::InitializeNativeTargetAsmPrinter();
+  {
+    std::lock_guard<std::mutex> guard(getMut());
+    if (!hasInit) {
+      llvm::InitializeNativeTarget();
+      llvm::InitializeNativeTargetAsmParser();
+      llvm::InitializeNativeTargetAsmPrinter();
+      hasInit = true;
+    }
+  }
 
   mlir::PassManager pm(ctx);
   ErrorOr<TargetInfoAttr> targetOr = M::getTargetInfoFor(
@@ -162,10 +175,15 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
   if (kKernelsBuildType == "relwithdebinfo" || kKernelsBuildType == "debug")
     compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
 
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmParser();
-  llvm::InitializeNativeTargetAsmPrinter();
-
+  {
+    std::lock_guard<std::mutex> guard(getMut());
+    if (!hasInit) {
+      llvm::InitializeNativeTarget();
+      llvm::InitializeNativeTargetAsmParser();
+      llvm::InitializeNativeTargetAsmPrinter();
+      hasInit = true;
+    }
+  }
   if (!saveTempsPrefix.empty())
     compilationOptions.setSaveTemps(saveTempsPrefix);
 
