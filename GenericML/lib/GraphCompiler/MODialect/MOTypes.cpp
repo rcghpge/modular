@@ -157,7 +157,7 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
     return emitError() << "invalid shape attribute " << shapeAttr;
 
   for (TypedAttr dimAttr : attr.getValues()) {
-    if (auto dimIntAttr = dimAttr.dyn_cast<IntegerAttr>()) {
+    if (auto dimIntAttr = llvm::dyn_cast<IntegerAttr>(dimAttr)) {
       if (dimIntAttr.getInt() < 0)
         return emitError()
                << "invalid dimension, expect all dimensions >= 0 got: "
@@ -413,12 +413,12 @@ bool TensorType::isIntegerDim(size_t n) const {
 }
 
 bool TensorType::isUnknownDimParam(TypedAttr attr) {
-  return attr.isa<KGEN::UnknownAttr>() && attr.getType().isIndex();
+  return llvm::isa<KGEN::UnknownAttr>(attr) && attr.getType().isIndex();
 }
 
 bool TensorType::isParameterizedDimParam(TypedAttr attr) {
-  bool isParamOrParamExpr =
-      attr.isa<KGEN::ParamDeclRefAttr>() || attr.isa<KGEN::ParamOperatorAttr>();
+  bool isParamOrParamExpr = llvm::isa<KGEN::ParamDeclRefAttr>(attr) ||
+                            llvm::isa<KGEN::ParamOperatorAttr>(attr);
   return isParamOrParamExpr && attr.getType().isIndex();
 }
 

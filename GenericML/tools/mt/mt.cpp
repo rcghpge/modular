@@ -54,9 +54,8 @@ public:
   GenericDriverCLOptions(int argc, char **argv, GenericDriverOptions &opts,
                          bool skipInitLLVM = false)
       : DriverCommandCLOptions(opts), DriverInputFormatCLOptions(opts),
-        CommonCLOptions(argc, argv, opts, skipInitLLVM), LLCL::RuntimeCLOptions(
-                                                             opts),
-        options(opts) {}
+        CommonCLOptions(argc, argv, opts, skipInitLLVM),
+        LLCL::RuntimeCLOptions(opts), options(opts) {}
 
 private:
   llvm::cl::OptionCategory GenericDriverCLOptionsCategory{
