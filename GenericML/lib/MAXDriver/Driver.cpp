@@ -17,13 +17,19 @@
 namespace M {
 
 namespace Driver {
+
 struct Device : M::ReferenceCounted<Device> {
+  virtual const std::string &getString() const = 0;
+  virtual ~Device() = default;
+};
+
+struct CPUDevice : Device {
   size_t numa_id;
   std::string desc;
 
-  Device(size_t numa_id) : numa_id(numa_id), desc(toString()) {}
+  CPUDevice(size_t numa_id) : numa_id(numa_id), desc(toString()) {}
 
-  const std::string &getString() const { return desc; }
+  const std::string &getString() const override { return desc; }
 
 private:
   std::string toString() const {
@@ -38,21 +44,31 @@ struct DeviceTensor {
   M::RCRef<Device> devicePtr;
   void *data;
   size_t bytes;
+  DeviceTensor(size_t bytes, Device *dev)
+      : devicePtr(M::copyRCRef(dev)), bytes(bytes) {}
+
+  // TODO: decide if this is needed for non-CPU
+  virtual void *release() = 0;
+
+  virtual ~DeviceTensor() = default;
+};
+
+struct CPUDeviceTensor : DeviceTensor {
   M::LLCL::Runtime *runtime;
 
-  DeviceTensor(size_t bytes, Device *dev, M::LLCL::Runtime *runtime)
-      : devicePtr(M::copyRCRef(dev)), bytes(bytes), runtime(runtime) {
+  CPUDeviceTensor(size_t bytes, Device *dev, M::LLCL::Runtime *runtime)
+      : DeviceTensor(bytes, dev), runtime(runtime) {
     data = runtime->getAllocator()->allocateBytes(bytes,
                                                   M::kPreferredMemoryAlignment);
   }
 
-  void *release() {
+  void *release() override {
     auto tmp = data;
     data = nullptr;
     return tmp;
   }
 
-  ~DeviceTensor() {
+  ~CPUDeviceTensor() {
     if (data) {
       runtime->getAllocator()->deallocateBytes(data, bytes);
     }
@@ -65,7 +81,7 @@ struct DeviceTensor {
 using namespace M::Driver;
 
 MODULAR_API_EXPORT Device *M_createCPUDevice(size_t numa_id) {
-  auto devPtr = M::RCRef<Device>::create(numa_id);
+  auto devPtr = M::RCRef<CPUDevice>::create(numa_id);
   return devPtr.release();
 }
 
@@ -84,7 +100,7 @@ MODULAR_API_EXPORT const char *M_getDeviceDesc(const Device *devPtr) {
 
 MODULAR_API_EXPORT DeviceTensor *
 M_createDeviceTensor(size_t bytes, Device *devPtr, M::LLCL::Runtime *runtime) {
-  return new DeviceTensor(bytes, devPtr, runtime);
+  return new CPUDeviceTensor(bytes, devPtr, runtime);
 }
 
 MODULAR_API_EXPORT Device *
