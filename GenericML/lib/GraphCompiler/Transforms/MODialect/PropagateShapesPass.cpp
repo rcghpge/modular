@@ -807,92 +807,108 @@ private:
     }
   }
 
-  // Assume `invokeShapeFuncOp` applies the shape function of `MO::BroadcastTo`,
-  // try decomposing the shape function call into `kgen.param.declare`
-  // primitives if possible, return null otherwise.
-  ShapeAttr tryDecomposeBroadcastToShape(InvokeShapeFuncOp invokeShapeFuncOp) {
-    // TODO refactor this boiler plate conversion to expression attributes
-    TypedAttr inputShape = cast<TensorValue>(invokeShapeFuncOp.getOperand(0))
-                               .getType()
-                               .getShapeAttr();
-    TypedAttr targetShape = tryGetShapeAttr(invokeShapeFuncOp.getOperand(1));
-    if (!targetShape)
-      return {};
+  // Assume `inputs` are staticized inputs for a `MO::BroadcastToOp`,
+  // try generating the shape function logic and return the result shape, if
+  // possible, return null otherwise.
+  ShapeAttr tryDecomposeBroadcastToShape(ArrayRef<TypedAttr> inputs,
+                                         GraphOp graphOp, Location loc) {
+    TypedAttr inputShape = inputs[0];
+    TypedAttr targetShape = inputs[1];
 
     // Accumulate ops created into `decomposedOps`
     ParamExprBuilder b(graphOp, loc, &decomposedOps);
     return buildBroadcastToShapeFunc(b, inputShape, targetShape);
   }
 
-  // Assume `invokeShapeFuncOp` applies the shape function of `MO::ReshapeOp`,
-  // try decomposing the shape function call into `kgen.param.declare`
-  // primitives if possible, return null otherwise.
-  ShapeAttr tryDecomposeReshapeShape(InvokeShapeFuncOp invokeShapeFuncOp) {
-    // TODO refactor this boiler plate conversion to expression attributes
-    TypedAttr inputShape = cast<TensorValue>(invokeShapeFuncOp.getOperand(0))
-                               .getType()
-                               .getShapeAttr();
-    TypedAttr targetShape = tryGetShapeAttr(invokeShapeFuncOp.getOperand(1));
-    if (!targetShape)
-      return {};
+  // Assume `inputs` are staticized inputs for a `MO::ReshapeOp`,
+  // try generating the shape function logic and return the result shape, if
+  // possible, return null otherwise.
+  ShapeAttr tryDecomposeReshapeShape(ArrayRef<TypedAttr> inputs,
+                                     GraphOp graphOp, Location loc) {
+    TypedAttr inputShape = inputs[0];
+    TypedAttr targetShape = inputs[1];
 
     // Accumulate ops created into `decomposedOps`
     ParamExprBuilder b(graphOp, loc, &decomposedOps);
     return buildReshapeShapeFunc(b, inputShape, targetShape);
   }
 
-  // Assume `invokeShapeFuncOp` applies the shape function of `MO::RangeOp`,
-  // try decomposing the shape function call into `kgen.param.declare`
-  // primitives if possible, return null otherwise.
-  ShapeAttr tryDecomposeRangeShape(InvokeShapeFuncOp invokeShapeFuncOp) {
-    // TODO refactor this boiler plate conversion to expression attributes
-    TypedAttr startAttr = tryGetDimAttr(invokeShapeFuncOp.getOperand(0));
-    TypedAttr stopAttr = tryGetDimAttr(invokeShapeFuncOp.getOperand(1));
-    TypedAttr stepAttr = tryGetDimAttr(invokeShapeFuncOp.getOperand(2));
-    if (!startAttr || !stopAttr || !stepAttr)
-      return {};
+  // Assume `inputs` are staticized inputs for a `MO::RangeOp`,
+  // try generating the shape function logic and return the result shape, if
+  // possible, return null otherwise.
+  ShapeAttr tryDecomposeRangeShape(ArrayRef<TypedAttr> inputs, GraphOp graphOp,
+                                   Location loc) {
+    TypedAttr startAttr = inputs[0];
+    TypedAttr stopAttr = inputs[1];
+    TypedAttr stepAttr = inputs[2];
 
     // Accumulate ops created into `decomposedOps`
     ParamExprBuilder b(graphOp, loc, &decomposedOps);
     return buildRangeShapeFunc(b, startAttr, stopAttr, stepAttr);
   }
 
-  // Assume `invokeShapeFuncOp` applies the shape function of
-  // `MO::BatchMatmulOp`, try decomposing the shape function call into
-  // `kgen.param.declare` primitives if possible, return null otherwise.
-  ShapeAttr tryDecomposeBatchMatmulShape(InvokeShapeFuncOp invokeShapeFuncOp) {
-    // TODO refactor this boiler plate conversion to expression attributes
-    TypedAttr lhsShape =
-        cast<TensorType>(invokeShapeFuncOp.getOperand(0).getType())
-            .getShapeAttr();
-    TypedAttr rhsShape =
-        cast<TensorType>(invokeShapeFuncOp.getOperand(1).getType())
-            .getShapeAttr();
+  // Assume `inputs` are staticized inputs for a `MO::BatchMatmulOp`,
+  // try generating the shape function logic and return the result shape, if
+  // possible, return null otherwise.
+  ShapeAttr tryDecomposeBatchMatmulShape(ArrayRef<TypedAttr> inputs,
+                                         GraphOp graphOp, Location loc) {
+    auto lhsShape = inputs[0];
+    auto rhsShape = inputs[1];
+
     // Accumulate ops created into `decomposedOps`
     ParamExprBuilder b(graphOp, loc, &decomposedOps);
     return buildBatchMatmulShapeFunc(b, lhsShape, rhsShape);
   }
 
-  // Assume `invokeShapeFuncOp` applies the shape function of
-  // `MO::ConcatOp`, try decomposing the shape function call into
-  // `kgen.param.declare` primitives if possible, return null otherwise.
-  ShapeAttr tryDecomposeConcatShape(InvokeShapeFuncOp invokeShapeFuncOp) {
-    // TODO refactor all these boiler plate conversion to expression attributes
-    std::optional<int64_t> axisOr =
-        tryGetConstantInt(cast<TensorValue>(invokeShapeFuncOp.getOperand(0)));
-    if (!axisOr.has_value())
-      return {};
-    MLIRContext *ctx = invokeShapeFuncOp.getContext();
-    TypedAttr axisAttr = IntegerAttr::get(IndexType::get(ctx), axisOr.value());
-
-    // Collect statically-ranked input shapes.
-    SmallVector<TypedAttr> inputShapes;
-    for (Value input : invokeShapeFuncOp.getOperands().drop_front())
-      inputShapes.push_back(cast<TensorType>(input.getType()).getShapeAttr());
+  // Assume `inputs` are staticized inputs for a `MO::ConcatOp`,
+  // try generating the shape function logic and return the result shape, if
+  // possible, return null otherwise.
+  ShapeAttr tryDecomposeConcatShape(ArrayRef<TypedAttr> inputs, GraphOp graphOp,
+                                    Location loc) {
+    TypedAttr axis = inputs[0];
+    ArrayRef<TypedAttr> inputShapes = inputs.drop_front();
 
     // Accumulate ops created into `decomposedOps`
     ParamExprBuilder b(graphOp, loc, &decomposedOps);
-    return buildConcatShapeFunc(b, axisAttr, inputShapes);
+    return buildConcatShapeFunc(b, axis, inputShapes);
+  }
+
+  /// Try converting a tensor value to either
+  /// - a symbolic int (if tensor is scalar) or
+  /// - a list of symbolic int (if tensor is 1D).
+  static TypedAttr tryStaticize(Value val) {
+    // Only staticize tensor.
+    auto tensorVal = dyn_cast<TensorValue>(val);
+    if (!tensorVal)
+      return {};
+
+    // Only staticize scalar or 1D tensor.
+    TensorType tensorTy = tensorVal.getType();
+    if (!tensorTy.hasRank() || tensorTy.getRank() > 1)
+      return {};
+
+    // Only staticize int/bool tensor.
+    if (!isa<IntegerType>(tensorTy.getElementType()))
+      return {};
+
+    // Examples: `D0`
+    if (auto dimAttr = tryGetDimAttr(val))
+      return dimAttr;
+
+    // Examples: `[D0, 10, ...]`
+    if (auto shapeAttr = tryGetShapeAttr(val))
+      return shapeAttr;
+
+    MLIRContext *ctx = val.getContext();
+    // Example: 42.
+    if (auto intOr = MO::tryGetConstantInt(tensorVal))
+      return IntegerAttr::get(IndexType::get(ctx), intOr.value());
+
+    // Example: [10, 20, ...]
+    if (auto intsOr = MO::tryGetConstantIntVector(tensorVal))
+      return ShapeAttr::get(intsOr.value(), MOSH::ShapeType::get(ctx));
+
+    return {};
   }
 
   // Treat certain fallback shape function call as special intrinsics and
@@ -901,11 +917,46 @@ private:
   // TODO this should eventually become general symbolicization applied to a
   // single `InvokeShapeFuncOp`, however we can't do it yet since we need to
   // symbolicize in batch in order to minimize the overhead.
+  //
+  // NOTE returning `success()` means decomposition either happened or not
+  // (depending on whether `decomposedOps` is empty), but returning `failure()`
+  // means a fatal failure that should be reported to user.
   LogicalResult
   tryDecomposeInvokeShapeFuncOp(InvokeShapeFuncOp invokeShapeFuncOp) {
     // Dispatch on certain shape function names.
     StringRef shapeFuncName = invokeShapeFuncOp.getShapeFuncName();
     ShapeAttr outputShape;
+
+    // Turn inputs into parameter attributes; the mechanism depends on whether
+    // they are data-dependent or not.
+    DenseSet<int64_t> dataDepInputIdxs;
+    if (auto idxs = invokeShapeFuncOp.getDataDeptTensors()) {
+      for (llvm::APInt index : idxs->getAsValueRange<IntegerAttr>())
+        dataDepInputIdxs.insert(index.getLimitedValue());
+    }
+    SmallVector<TypedAttr> inputAttrs;
+    for (auto [idx, input] : llvm::enumerate(invokeShapeFuncOp.getOperands())) {
+      if (dataDepInputIdxs.contains(idx)) {
+        // Short circuit if a data-dependent input can't be staticized.
+        TypedAttr inputAttr = tryStaticize(input);
+        if (!inputAttr) {
+          return success();
+        }
+
+        inputAttrs.push_back(inputAttr);
+
+      } else {
+        // Short circuit if a non-data-dependent input doesn't have a shape; not
+        // exactly sure how this could happen but just in case.
+        TensorValue tensorInput = dyn_cast<TensorValue>(input);
+        if (!tensorInput) {
+          return success();
+        }
+
+        inputAttrs.push_back(tensorInput.getType().getShapeAttr());
+      }
+    }
+
     // Why we have these here (instead of just relying on symbolicization):
     //
     // - because they can't always be symbolicized (due to KGEN IR complexity or
@@ -916,19 +967,19 @@ private:
     // `mosh.broadcast`, it's _possible_ that we could move these 2 logic into
     // staticization and symbolicization respectively.
     if (shapeFuncName == "broadcast_to_shape") {
-      outputShape = tryDecomposeBroadcastToShape(invokeShapeFuncOp);
+      outputShape = tryDecomposeBroadcastToShape(inputAttrs, graphOp, loc);
 
     } else if (shapeFuncName == "reshape_shape") {
-      outputShape = tryDecomposeReshapeShape(invokeShapeFuncOp);
+      outputShape = tryDecomposeReshapeShape(inputAttrs, graphOp, loc);
 
     } else if (shapeFuncName == "range_shape") {
-      outputShape = tryDecomposeRangeShape(invokeShapeFuncOp);
+      outputShape = tryDecomposeRangeShape(inputAttrs, graphOp, loc);
 
     } else if (shapeFuncName == "batch_matmul_shape") {
-      outputShape = tryDecomposeBatchMatmulShape(invokeShapeFuncOp);
+      outputShape = tryDecomposeBatchMatmulShape(inputAttrs, graphOp, loc);
 
     } else if (shapeFuncName == "concat_shape") {
-      outputShape = tryDecomposeConcatShape(invokeShapeFuncOp);
+      outputShape = tryDecomposeConcatShape(inputAttrs, graphOp, loc);
     }
 
     // Create new declaration of the shape function call's output parameter if
