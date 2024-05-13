@@ -15,6 +15,7 @@
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "mlir/Transforms/TopologicalSortUtils.h"
 #include "llvm/ADT/SetOperations.h"
+#include <optional>
 #include <type_traits>
 
 using namespace M;
@@ -475,6 +476,233 @@ void ParamExprBuilder::createAssert(const Var &condVar, StringRef errorMsg) {
   (void)createDeclToKgenExpr(KGEN::POC::Apply, applyOperands, "assert");
 };
 
+/// Try converting `attr` to a constant integer.
+std::optional<int64_t> tryGetConstantInt(TypedAttr attr) {
+  if (auto intAttr = dyn_cast<IntegerAttr>(attr))
+    return intAttr.getInt();
+  return std::nullopt;
+}
+
+//----------------------------------------------------------------------------//
+//------------------------Shape functions begin-------------------------------//
+
+// NOTE these helpers will eventually be shared between shape inference and
+// GraphAPI shape propagation.
+
+/// Build the shape function for `MO::BatchMatmulOp`.
+ShapeAttr buildBatchMatmulShapeFunc(ParamExprBuilder &b, TypedAttr lhsShapeAttr,
+                                    TypedAttr rhsShapeAttr) {
+  // Make sure both input and target shapes are ranked symbolic shapes.
+  ShapeAttr lhsShape = dyn_cast<ShapeAttr>(lhsShapeAttr);
+  ShapeAttr rhsShape = dyn_cast<ShapeAttr>(rhsShapeAttr);
+  if (!lhsShape || !rhsShape)
+    return {};
+
+  size_t inputRank = lhsShape.getRank();
+  if (rhsShape.getRank() != inputRank || inputRank <= 2)
+    return {}; // TODO emit compile time error
+
+  SmallVector<TypedAttr> resDims;
+  // Check batch dimensions are equal and collect them into `resDims`.
+  for (size_t batchDim = 0; batchDim < inputRank - 2; batchDim++) {
+    Var lhsDim = b.createVar(lhsShape[batchDim]);
+    Var rhsDim = b.createVar(rhsShape[batchDim]);
+    b.createAssert(lhsDim == rhsDim,
+                   "[batch_matmul] inputs batch dimensions must match");
+    resDims.push_back(lhsDim.getAttr());
+  }
+
+  // Check inner dimensions are equal
+  Var lhsInnerDim = b.createVar(lhsShape[inputRank - 1]);
+  Var rhsInnerDim = b.createVar(rhsShape[inputRank - 2]);
+  b.createAssert(lhsInnerDim == rhsInnerDim,
+                 "[batch_matmul] inputs inner dimensions must match");
+
+  // Collect outer dims.
+  resDims.push_back(lhsShape[inputRank - 2]);
+  resDims.push_back(rhsShape[inputRank - 1]);
+
+  return b.getShapeAttr(resDims);
+}
+
+/// Build the shape function for `MO::BroadcastToOp`.
+ShapeAttr buildBroadcastToShapeFunc(ParamExprBuilder &b,
+                                    TypedAttr inputShapeAttr,
+                                    TypedAttr targetShapeAttr) {
+  // Make sure both input and target shapes are ranked symbolic shapes.
+  ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
+  ShapeAttr targetShape = dyn_cast<ShapeAttr>(targetShapeAttr);
+  if (!inputShape || !targetShape)
+    return {};
+
+  int inputRank = inputShape.getRank();
+  int outputRank = targetShape.getRank();
+  if (inputRank > outputRank)
+    return {}; // TODO emit compile time error
+
+  for (int i = 0; i < inputRank; i++) {
+    int inputAxis = inputRank - i - 1;
+    int outputAxis = outputRank - i - 1;
+    Var inputDim = b.createVar(inputShape[inputAxis]);
+    Var outputDim = b.createVar(targetShape[outputAxis]);
+
+    // Insert assertions
+    b.createAssert(inputDim == 1 || inputDim == outputDim,
+                   "[broadcast_to] input dim must be either 1 or equal to "
+                   "corresponding output dim starting from the rightmost dim");
+  }
+  return targetShape;
+}
+
+/// Build the shape function for `MO::ConcatOp`.
+ShapeAttr buildConcatShapeFunc(ParamExprBuilder &b, TypedAttr axisAttr,
+                               ArrayRef<TypedAttr> inputShapeAttrs) {
+  // Check for constant axis
+  std::optional<int64_t> axisOr = tryGetConstantInt(axisAttr);
+  if (!axisOr.has_value())
+    return {};
+  int64_t axis = axisOr.value();
+
+  // Check for statically-ranked input shapes.
+  SmallVector<ShapeAttr> inputShapes;
+  for (TypedAttr inputShapeAttr : inputShapeAttrs) {
+    if (auto inputShape = dyn_cast<ShapeAttr>(inputShapeAttr)) {
+      inputShapes.push_back(inputShape);
+    } else {
+      return {}; // Give up on any dyn-ranked input shape
+    }
+  }
+
+  // `MO::ConcatOp` verifier ensures there's at least 1 input, and ranks of
+  // inputs all match.
+  ShapeAttr firstInputShape = inputShapes.front();
+  auto restInputShapes = ArrayRef(inputShapes).drop_front();
+  int64_t inputRank = firstInputShape.getRank();
+
+  // Normalize axis and make sure it's in bound.
+  axis = axis < 0 ? axis + inputRank : axis;
+  if (axis < 0 || inputRank <= axis)
+    return {}; // TODO handle this error at compile time.
+
+  // Construct output shape and make sure input shapes are compatible.
+  SmallVector<TypedAttr> resDims(firstInputShape.getValues());
+  Var concatDimSum = b.createVar(resDims[axis]);
+  for (ShapeAttr inputShape : restInputShapes) {
+    for (auto [idx, firstInputDimAttr, inputDimAttr] :
+         llvm::enumerate(firstInputShape.getValues(), inputShape.getValues())) {
+      if (static_cast<int64_t>(idx) != axis) {
+        Var firstInputDim = b.createVar(firstInputDimAttr);
+        Var inputDim = b.createVar(inputDimAttr);
+        b.createAssert(
+            firstInputDim == inputDim,
+            "[concat] input shapes must match except at concat axis");
+      }
+    }
+    Var inputAxisDim = b.createVar(inputShape[axis]);
+    concatDimSum = concatDimSum + inputAxisDim;
+  }
+  resDims[axis] = concatDimSum.getAttr();
+  return b.getShapeAttr(resDims);
+}
+
+/// Build the shape function for `MO::RangeOp`.
+ShapeAttr buildRangeShapeFunc(ParamExprBuilder &b, TypedAttr startAttr,
+                              TypedAttr stopAttr, TypedAttr stepAttr) {
+  Var start = b.createVar(startAttr);
+  Var stop = b.createVar(stopAttr);
+  Var step = b.createVar(stepAttr);
+
+  // Check step != 0
+  b.createAssert(step != 0, "[range] step must be non-zero");
+
+  // Check start/stop are in bounds
+  b.createAssert(start <= stop || step < 0,
+                 "[range] requires (start <= stop) for positive step");
+  b.createAssert(stop <= start || step > 0,
+                 "[range] requires (stop <= start) for negative step");
+
+  // Compute output shape by simulating a ceiling-div -- think the length of
+  // range(0, 3, 2).
+  Var diff = stop - start;
+  Var offset = b.createCond(step > 0, step - 1, step + 1);
+  Var outDim = (diff + offset) / step;
+  ShapeAttr outputShape = b.getShapeAttr(outDim);
+  return outputShape;
+}
+
+/// Build the shape function for `MO::ReshapeOp`. If target shape contains a
+/// `-1`, infer it based on the invariant that `inputShapeAttr` and
+/// `targetShapeAttr` represent equal number of elements.
+///
+/// Example:
+///   inputShape = [3, D4]
+///   targetShape = [D0, -1, 42]
+///   returns [D0, RS0, 42]
+/// with the following operation accumulated in `b`
+///   kgen.param.declare RS0 = <div(mul(3, D4), mul(D0, 42)>
+ShapeAttr buildReshapeShapeFunc(ParamExprBuilder &b, TypedAttr inputShapeAttr,
+                                TypedAttr targetShapeAttr) {
+  // Make sure both input and target shapes are ranked symbolic shapes.
+  ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
+  ShapeAttr targetShape = dyn_cast<ShapeAttr>(targetShapeAttr);
+  if (!inputShape || !targetShape)
+    return {};
+
+  // Find index of `-1` dimension (if any), and collect all other dimensions.
+  SmallVector<TypedAttr> targetNonNegOneDims;
+  std::optional<size_t> maybeTargetNegOneDimIdx = std::nullopt;
+  for (auto [idx, targetDim] : llvm::enumerate(targetShape.getValues())) {
+    auto intDim = dyn_cast<IntegerAttr>(targetDim);
+    if (intDim && intDim.getInt() == -1) {
+      // Detected multiple negative one, gives up simplifying this reshape
+      // function call and let runtime handle the error for now.
+      if (maybeTargetNegOneDimIdx.has_value())
+        return {};
+      maybeTargetNegOneDimIdx = idx;
+    } else {
+      // TODO: we are using the assumption that all non-integer attribute
+      // (e.g., `D0` or `mul(D0, D1)`) will be non-negative. To make this
+      // completely safe, we'll need to extend and leverage the range
+      // analysis here.
+      targetNonNegOneDims.push_back(targetDim);
+    }
+  }
+
+  // resolve the `-1` in output shape if needed.
+  ShapeAttr outputShape = targetShape;
+  if (maybeTargetNegOneDimIdx.has_value()) {
+    // Now infer the actual value of `-1` dimension based on other dimensions
+    Var numerator = b.createVar(inputShape.getSymbolicNumElements());
+
+    // Add a 1 to the shapes to multiply to ensure the denominator is valid
+    auto mulDims = targetNonNegOneDims;
+    mulDims.emplace_back(IntegerAttr::get(numerator.getAttr().getType(), 1));
+    Var denominator =
+        b.createVar(KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, mulDims));
+
+    // Make sure we check for 0 denominator
+    b.createAssert(denominator != 0,
+                   "[reshape] cannot infer dimension when a specified output "
+                   "dimension is 0");
+
+    Var resolvedDim = numerator / denominator;
+    SmallVector<TypedAttr> resolvedDims = targetNonNegOneDims;
+    resolvedDims.insert(resolvedDims.begin() + maybeTargetNegOneDimIdx.value(),
+                        resolvedDim.getAttr());
+    outputShape = b.getShapeAttr(resolvedDims);
+  }
+
+  // Insert assertions
+  Var inputNumeElems = b.createVar(inputShape.getSymbolicNumElements());
+  Var outputNumeElems = b.createVar(outputShape.getSymbolicNumElements());
+  b.createAssert(inputNumeElems == outputNumeElems,
+                 "[reshape] input and output number of elements must match");
+  return outputShape;
+}
+
+//------------------------Shape functions end---------------------------------//
+//----------------------------------------------------------------------------//
+
 /// A class that helps `PropagateShapesPass` handle ops that could be
 /// decomposed when the shape parameters they use have been simplified
 /// already. For instance, in order to simplify `mosh.broadcast`, we often need
@@ -583,130 +811,41 @@ private:
   // try decomposing the shape function call into `kgen.param.declare`
   // primitives if possible, return null otherwise.
   ShapeAttr tryDecomposeBroadcastToShape(InvokeShapeFuncOp invokeShapeFuncOp) {
-    auto inputTensorVal = cast<TensorValue>(invokeShapeFuncOp.getOperand(0));
-    auto inputShape =
-        dyn_cast<MOSH::ShapeAttr>(inputTensorVal.getType().getShapeAttr());
-    auto targetShape = tryGetShapeAttr(invokeShapeFuncOp.getOperand(1));
-    if (!inputShape || !targetShape)
-      return {};
-
-    int inputRank = inputShape.getRank();
-    int outputRank = targetShape.getRank();
-    // Illegal broadcast, let runtime handle this error.
-    if (inputRank > outputRank)
+    // TODO refactor this boiler plate conversion to expression attributes
+    TypedAttr inputShape = cast<TensorValue>(invokeShapeFuncOp.getOperand(0))
+                               .getType()
+                               .getShapeAttr();
+    TypedAttr targetShape = tryGetShapeAttr(invokeShapeFuncOp.getOperand(1));
+    if (!targetShape)
       return {};
 
     // Accumulate ops created into `decomposedOps`
     ParamExprBuilder b(graphOp, loc, &decomposedOps);
-    for (int i = 0; i < inputRank; i++) {
-      int inputAxis = inputRank - i - 1;
-      int outputAxis = outputRank - i - 1;
-      Var inputDim = b.createVar(inputShape[inputAxis]);
-      Var outputDim = b.createVar(targetShape[outputAxis]);
-
-      // Insert assertions
-      b.createAssert(
-          inputDim == 1 || inputDim == outputDim,
-          "[broadcast_to] input dim must be either 1 or equal to "
-          "corresponding output dim starting from the rightmost dim");
-    }
-    return targetShape;
-  }
-
-  /// If target shape contains a `-1`, infer it based on the invariant that
-  /// `inputShapeAttr` and `targetShapeAttr` represent equal number of elements.
-  ///
-  /// Example:
-  ///   inputShapeAttr = [3, D4]
-  ///   targetShapeAttr = [D0, -1, 42]
-  ///   returns [D0, RS0, 42]
-  /// with the following inserted by `rewriter`
-  ///   kgen.param.declare RS0 = <div(mul(3, D4), mul(D0, 42)>
-  ShapeAttr resolveReshapeTargetShape(ParamExprBuilder &b,
-                                      ShapeAttr inputShapeAttr,
-                                      ShapeAttr targetShapeAttr) {
-    auto indexType = builder.getType<IndexType>();
-    // Find index of `-1` dimension (if any), and collect all other dimensions.
-    SmallVector<TypedAttr> targetNonNegOneDims;
-    std::optional<size_t> maybeTargetNegOneDimIdx = std::nullopt;
-    for (auto [idx, targetDim] : llvm::enumerate(targetShapeAttr.getValues())) {
-      auto intDim = dyn_cast<IntegerAttr>(targetDim);
-      if (intDim && intDim.getInt() == -1) {
-        // Detected multiple negative one, gives up simplifying this reshape
-        // function call and let runtime handle the error for now.
-        if (maybeTargetNegOneDimIdx.has_value())
-          return {};
-        maybeTargetNegOneDimIdx = idx;
-      } else {
-        // TODO: we are using the assumption that all non-integer attribute
-        // (e.g., `D0` or `mul(D0, D1)`) will be non-negative. To make this
-        // completely safe, we'll need to extend and leverage the range
-        // analysis here.
-        targetNonNegOneDims.push_back(targetDim);
-      }
-    }
-
-    // no literal `-1` dimension, nothing to resolve
-    if (!maybeTargetNegOneDimIdx.has_value())
-      return targetShapeAttr;
-
-    // Infer the actual value of `-1` dimension based on other dimensions
-    Var numerator = b.createVar(inputShapeAttr.getSymbolicNumElements());
-
-    // Add a 1 to the shapes to multiply to ensure the denominator is valid
-    auto mulDims = targetNonNegOneDims;
-    mulDims.emplace_back(IntegerAttr::get(indexType, 1));
-    Var denominator =
-        b.createVar(KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, mulDims));
-
-    // Make sure we check for 0 denominator
-    b.createAssert(denominator != 0,
-                   "[reshape] cannot infer dimension when a specified output "
-                   "dimension is 0");
-
-    Var resolvedDim = numerator / denominator;
-    SmallVector<TypedAttr> resolvedDims = targetNonNegOneDims;
-    resolvedDims.insert(resolvedDims.begin() + maybeTargetNegOneDimIdx.value(),
-                        resolvedDim.getAttr());
-    return b.getShapeAttr(resolvedDims);
+    return buildBroadcastToShapeFunc(b, inputShape, targetShape);
   }
 
   // Assume `invokeShapeFuncOp` applies the shape function of `MO::ReshapeOp`,
   // try decomposing the shape function call into `kgen.param.declare`
   // primitives if possible, return null otherwise.
   ShapeAttr tryDecomposeReshapeShape(InvokeShapeFuncOp invokeShapeFuncOp) {
-    // Make sure both input and target shapes are ranked symbolic shapes.
-    auto inputShape = dyn_cast<ShapeAttr>(
-        cast<TensorType>(invokeShapeFuncOp.getOperand(0).getType())
-            .getShapeAttr());
-    ShapeAttr targetShape = tryGetShapeAttr(invokeShapeFuncOp.getOperand(1));
-    if (!inputShape || !targetShape)
+    // TODO refactor this boiler plate conversion to expression attributes
+    TypedAttr inputShape = cast<TensorValue>(invokeShapeFuncOp.getOperand(0))
+                               .getType()
+                               .getShapeAttr();
+    TypedAttr targetShape = tryGetShapeAttr(invokeShapeFuncOp.getOperand(1));
+    if (!targetShape)
       return {};
 
     // Accumulate ops created into `decomposedOps`
     ParamExprBuilder b(graphOp, loc, &decomposedOps);
-
-    // Make sure we are able to resolve any `-1` (inferred dimension) in the
-    // target shape.
-    ShapeAttr outputShape =
-        resolveReshapeTargetShape(b, inputShape, targetShape);
-    if (!outputShape)
-      return {};
-
-    // Insert assertions
-    Var inputNumeElems = b.createVar(inputShape.getSymbolicNumElements());
-    Var outputNumeElems = b.createVar(outputShape.getSymbolicNumElements());
-    b.createAssert(inputNumeElems == outputNumeElems,
-                   "[reshape] input and output number of elements must match");
-
-    return outputShape;
+    return buildReshapeShapeFunc(b, inputShape, targetShape);
   }
 
   // Assume `invokeShapeFuncOp` applies the shape function of `MO::RangeOp`,
   // try decomposing the shape function call into `kgen.param.declare`
   // primitives if possible, return null otherwise.
   ShapeAttr tryDecomposeRangeShape(InvokeShapeFuncOp invokeShapeFuncOp) {
-    // Make sure both input and target shapes are ranked symbolic shapes.
+    // TODO refactor this boiler plate conversion to expression attributes
     TypedAttr startAttr = tryGetDimAttr(invokeShapeFuncOp.getOperand(0));
     TypedAttr stopAttr = tryGetDimAttr(invokeShapeFuncOp.getOperand(1));
     TypedAttr stepAttr = tryGetDimAttr(invokeShapeFuncOp.getOperand(2));
@@ -715,124 +854,45 @@ private:
 
     // Accumulate ops created into `decomposedOps`
     ParamExprBuilder b(graphOp, loc, &decomposedOps);
-    Var start = b.createVar(startAttr);
-    Var stop = b.createVar(stopAttr);
-    Var step = b.createVar(stepAttr);
-
-    // Check step != 0
-    b.createAssert(step != 0, "[range] step must be non-zero");
-
-    // Check start/stop are in bounds
-    b.createAssert(start <= stop || step < 0,
-                   "[range] requires (start <= stop) for positive step");
-    b.createAssert(stop <= start || step > 0,
-                   "[range] requires (stop <= start) for negative step");
-
-    // Compute output shape by simulating a ceiling-div -- think the length of
-    // range(0, 3, 2).
-    Var diff = stop - start;
-    Var offset = b.createCond(step > 0, step - 1, step + 1);
-    Var outDim = (diff + offset) / step;
-    ShapeAttr outputShape = b.getShapeAttr(outDim);
-    return outputShape;
+    return buildRangeShapeFunc(b, startAttr, stopAttr, stepAttr);
   }
 
   // Assume `invokeShapeFuncOp` applies the shape function of
   // `MO::BatchMatmulOp`, try decomposing the shape function call into
   // `kgen.param.declare` primitives if possible, return null otherwise.
   ShapeAttr tryDecomposeBatchMatmulShape(InvokeShapeFuncOp invokeShapeFuncOp) {
-    // Make sure both input and target shapes are ranked symbolic shapes.
-    auto lhsShape = dyn_cast<ShapeAttr>(
+    // TODO refactor this boiler plate conversion to expression attributes
+    TypedAttr lhsShape =
         cast<TensorType>(invokeShapeFuncOp.getOperand(0).getType())
-            .getShapeAttr());
-    auto rhsShape = dyn_cast<ShapeAttr>(
+            .getShapeAttr();
+    TypedAttr rhsShape =
         cast<TensorType>(invokeShapeFuncOp.getOperand(1).getType())
-            .getShapeAttr());
-    if (!lhsShape || !rhsShape)
-      return {};
-
-    size_t inputRank = lhsShape.getRank();
-    if (rhsShape.getRank() != inputRank || inputRank <= 2)
-      return {};
-
+            .getShapeAttr();
     // Accumulate ops created into `decomposedOps`
     ParamExprBuilder b(graphOp, loc, &decomposedOps);
-    SmallVector<TypedAttr> resDims;
-    // Check batch dimensions are equal and collect them into `resDims`.
-    for (size_t batchDim = 0; batchDim < inputRank - 2; batchDim++) {
-      Var lhsDim = b.createVar(lhsShape[batchDim]);
-      Var rhsDim = b.createVar(rhsShape[batchDim]);
-      b.createAssert(lhsDim == rhsDim,
-                     "[batch_matmul] inputs batch dimensions must match");
-      resDims.push_back(lhsDim.getAttr());
-    }
-
-    // Check inner dimensions are equal
-    Var lhsInnerDim = b.createVar(lhsShape[inputRank - 1]);
-    Var rhsInnerDim = b.createVar(rhsShape[inputRank - 2]);
-    b.createAssert(lhsInnerDim == rhsInnerDim,
-                   "[batch_matmul] inputs inner dimensions must match");
-
-    // Collect outer dims.
-    resDims.push_back(lhsShape[inputRank - 2]);
-    resDims.push_back(rhsShape[inputRank - 1]);
-
-    return b.getShapeAttr(resDims);
+    return buildBatchMatmulShapeFunc(b, lhsShape, rhsShape);
   }
 
   // Assume `invokeShapeFuncOp` applies the shape function of
   // `MO::ConcatOp`, try decomposing the shape function call into
   // `kgen.param.declare` primitives if possible, return null otherwise.
   ShapeAttr tryDecomposeConcatShape(InvokeShapeFuncOp invokeShapeFuncOp) {
-    // Make sure axis is constant.
+    // TODO refactor all these boiler plate conversion to expression attributes
     std::optional<int64_t> axisOr =
         tryGetConstantInt(cast<TensorValue>(invokeShapeFuncOp.getOperand(0)));
     if (!axisOr.has_value())
       return {};
+    MLIRContext *ctx = invokeShapeFuncOp.getContext();
+    TypedAttr axisAttr = IntegerAttr::get(IndexType::get(ctx), axisOr.value());
 
     // Collect statically-ranked input shapes.
-    SmallVector<ShapeAttr> inputShapes;
-    for (Value input : invokeShapeFuncOp.getOperands().drop_front()) {
-      auto inputTensorTy = cast<TensorType>(input.getType());
-      if (auto inputShape = dyn_cast<ShapeAttr>(inputTensorTy.getShapeAttr())) {
-        inputShapes.push_back(inputShape);
-      } else {
-        return {}; // Give up on any dyn-ranked input shape
-      }
-    }
-    // `MO::ConcatOp` verifier ensures there's at least 1 input, and ranks of
-    // inputs all match.
-    ShapeAttr firstInputShape = inputShapes.front();
-    auto restInputShapes = ArrayRef(inputShapes).drop_front();
-    int64_t inputRank = firstInputShape.getRank();
+    SmallVector<TypedAttr> inputShapes;
+    for (Value input : invokeShapeFuncOp.getOperands().drop_front())
+      inputShapes.push_back(cast<TensorType>(input.getType()).getShapeAttr());
 
-    // Normalize axis and make sure it's in bound.
-    int64_t axis = axisOr.value();
-    axis = axis < 0 ? axis + inputRank : axis;
-    if (axis < 0 || inputRank <= axis)
-      return {}; // TODO handle this error at compile time.
-
-    // Construct output shape and make sure input shapes are compatible.
-    SmallVector<TypedAttr> resDims(firstInputShape.getValues());
     // Accumulate ops created into `decomposedOps`
     ParamExprBuilder b(graphOp, loc, &decomposedOps);
-    Var concatDimSum = b.createVar(resDims[axis]);
-    for (ShapeAttr inputShape : restInputShapes) {
-      for (auto [idx, firstInputDimAttr, inputDimAttr] : llvm::enumerate(
-               firstInputShape.getValues(), inputShape.getValues())) {
-        if (static_cast<int64_t>(idx) != axis) {
-          Var firstInputDim = b.createVar(firstInputDimAttr);
-          Var inputDim = b.createVar(inputDimAttr);
-          b.createAssert(
-              firstInputDim == inputDim,
-              "[concat] input shapes must match except at concat axis");
-        }
-      }
-      Var inputAxisDim = b.createVar(inputShape[axis]);
-      concatDimSum = concatDimSum + inputAxisDim;
-    }
-    resDims[axis] = concatDimSum.getAttr();
-    return b.getShapeAttr(resDims);
+    return buildConcatShapeFunc(b, axisAttr, inputShapes);
   }
 
   // Treat certain fallback shape function call as special intrinsics and
