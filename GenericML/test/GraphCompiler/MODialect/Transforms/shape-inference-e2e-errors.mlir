@@ -1,4 +1,4 @@
-// RUN: mo-opt --shape-inference --split-input-file --verify-diagnostics
+// RUN: mo-opt %s --shape-inference --split-input-file --verify-diagnostics
 
 // TODO make first input dimension dynamic dynamic, which would require folding
 // `eq(mul(D0, 10), mul(D0, 8))` in order to emit compile time error.
@@ -28,7 +28,7 @@ mo.graph @reshape_number_of_elems(
   mo.output %result : !mo.tensor<?, f32>
 }
 
-// ---
+// -----
 
 // This was adopted from an incorrect lowering of TF slice, which went silent
 // without error. This is a minimized version of the repro test.
@@ -50,12 +50,12 @@ mo.graph @reshape_bad_annotated_rank(%arg0: !mo.tensor<[?, 320], f32>) -> !mo.te
   %14 = mo.gather(%9, %11, %3) : (!mo.tensor<[2], si64>, !mo.tensor<[?], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[?], si64>
   %15 = mo.gather(%9, %13, %3) : (!mo.tensor<[2], si64>, !mo.tensor<[?], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[?], si64>
   %16 = mo.concat[%3 : !mo.tensor<[], si32>] (%14, %4, %15) : (!mo.tensor<[?], si64>, !mo.tensor<[1], si64>, !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64>
-  // expected-error@below {shape function returned shape of rank 3 but the type annotation has shape of rank 2}
+  // expected-error@below {{shape function returned shape of rank 3 but the type annotation has shape of rank 2}}
   %17 = mo.reshape(%8, %16) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?], f32>
   mo.output %17 : !mo.tensor<[?, ?], f32>
 }
 
-// ---
+// -----
 
 mo.graph @reshape_parametric_shape_inferred_neg_one_empty<D0 -> D2, D3, D4>(
   %input: !mo.tensor<[D0, 0], f32>
@@ -64,7 +64,7 @@ mo.graph @reshape_parametric_shape_inferred_neg_one_empty<D0 -> D2, D3, D4>(
   %param_shape = mosh.param.to_value: !mosh.ape = <[-1, 4, 0]>
   %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[3], si32>
 
-  // expected-error@below {[reshape] cannot infer dimension when a specified output dimension is 0}
+  // expected-error@below {{[reshape] cannot infer dimension when a specified output dimension is 0}}
   mo.invoke_shape_func["reshape_shape"]<() -> D5, D6, D7>(%input, %target_shape)
     {dataDeptTensors = [1]} : (!mo.tensor<[D0, 0], f32>, !mo.tensor<[3], si32>)
   %res = mo.reshape(%input, %target_shape) : (
@@ -72,4 +72,18 @@ mo.graph @reshape_parametric_shape_inferred_neg_one_empty<D0 -> D2, D3, D4>(
   ) -> !mo.tensor<[D5, D6, D7], f32>
 
   mo.output<D5, D6, D7> %res : !mo.tensor<[D5, D6, D7], f32>
+}
+
+// -----
+
+mo.graph @concat_axis_out_of_bound(
+  %input1: !mo.tensor<[?, 1], f32>,
+  %input2: !mo.tensor<[?, 2], f32>
+) -> !mo.tensor<[?, ?], f32> {
+  %axis = mo.constant {value = #M.dense_array<2> : tensor<si64>} : !mo.tensor<[], si64>
+  // expected-error@below {{[concat] normalized axis must be within range [0, input_rank)}}
+  %res = mo.concat[%axis : !mo.tensor<[], si64>](%input1, %input2) : (
+    !mo.tensor<[?, 1], f32>, !mo.tensor<[?, 2], f32>
+  ) -> !mo.tensor<[?, ?], f32>
+  mo.output %res : !mo.tensor<[?, ?], f32>
 }

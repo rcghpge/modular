@@ -185,6 +185,10 @@ void updateGraphSignature(GraphOp graphOp) {
   graphOp->setAttrs(attrs.getDictionary(graphOp->getContext()));
 }
 
+} // namespace
+
+namespace M::MO {
+
 // Forward declaration for `Var`.
 class Var;
 
@@ -483,24 +487,83 @@ std::optional<int64_t> tryGetConstantInt(TypedAttr attr) {
   return std::nullopt;
 }
 
+/// A variant class that contains result of materializing the shape logic of an
+/// op, where the variant is one of
+/// - Success (with the shape function ops and result shape).
+/// - NonMaterializable (when inputs are too dynamic).
+/// - Error (when a fatal error has been detected).
+class ShapeMaterializeResult {
+public:
+  struct Success {
+    SmallVector<Operation *> ops;
+    ShapeAttr resultShape;
+  };
+  struct NonMaterializable {};
+  struct Error {
+    std::string msg;
+  };
+
+  bool isSuccess() { return std::holds_alternative<Success>(result); }
+  bool isNonMaterializable() {
+    return std::holds_alternative<NonMaterializable>(result);
+  }
+  bool isError() { return std::holds_alternative<Error>(result); }
+
+  Success getSuccess() { return std::move(std::get<0>(result)); };
+  Error getError() { return std::move(std::get<2>(result)); };
+
+  static ShapeMaterializeResult success(SmallVector<Operation *> &&ops,
+                                        ShapeAttr resultShape) {
+    return ShapeMaterializeResult(std::move(ops), resultShape);
+  }
+  static ShapeMaterializeResult nonMaterializable() {
+    return ShapeMaterializeResult();
+  }
+  static ShapeMaterializeResult error(const Twine &errMsg) {
+    return ShapeMaterializeResult(errMsg);
+  }
+
+private:
+  ShapeMaterializeResult(SmallVector<Operation *> &&ops,
+                         ShapeAttr resultShape) {
+    result = Success{std::move(ops), resultShape};
+  }
+  ShapeMaterializeResult() { result = NonMaterializable{}; }
+  ShapeMaterializeResult(const Twine &errMsg) { result = Error{errMsg.str()}; }
+  std::variant<Success, NonMaterializable, Error> result;
+};
+
 //----------------------------------------------------------------------------//
 //------------------------Shape functions begin-------------------------------//
 
 // NOTE these helpers will eventually be shared between shape inference and
 // GraphAPI shape propagation.
+//
+// These helpers have pretty uniform input types, where
+// - `GraphOp` is used for new parameter name generation
+// - `Location` is used for newly created instructions
+// - All the `TypedAttr`s are parameteric representation of the op's input
 
-/// Build the shape function for `MO::BatchMatmulOp`.
-ShapeAttr buildBatchMatmulShapeFunc(ParamExprBuilder &b, TypedAttr lhsShapeAttr,
-                                    TypedAttr rhsShapeAttr) {
+/// Materialize the shape logic for `MO::BatchMatmulOp`, assuming given
+ShapeMaterializeResult materializeBatchMatmulShape(GraphOp graphOp,
+                                                   Location loc,
+                                                   TypedAttr lhsShapeAttr,
+                                                   TypedAttr rhsShapeAttr) {
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
   // Make sure both input and target shapes are ranked symbolic shapes.
   ShapeAttr lhsShape = dyn_cast<ShapeAttr>(lhsShapeAttr);
   ShapeAttr rhsShape = dyn_cast<ShapeAttr>(rhsShapeAttr);
   if (!lhsShape || !rhsShape)
-    return {};
+    return ShapeMaterializeResult::nonMaterializable();
 
   size_t inputRank = lhsShape.getRank();
-  if (rhsShape.getRank() != inputRank || inputRank <= 2)
-    return {}; // TODO emit compile time error
+  if (rhsShape.getRank() != inputRank || inputRank <= 2) {
+    return ShapeMaterializeResult::error(
+        "[batch_matmul] input ranks must match and exceed 2");
+  }
 
   SmallVector<TypedAttr> resDims;
   // Check batch dimensions are equal and collect them into `resDims`.
@@ -521,24 +584,31 @@ ShapeAttr buildBatchMatmulShapeFunc(ParamExprBuilder &b, TypedAttr lhsShapeAttr,
   // Collect outer dims.
   resDims.push_back(lhsShape[inputRank - 2]);
   resDims.push_back(rhsShape[inputRank - 1]);
-
-  return b.getShapeAttr(resDims);
+  ShapeAttr resShape = b.getShapeAttr(resDims);
+  return ShapeMaterializeResult::success(std::move(ops), resShape);
 }
 
-/// Build the shape function for `MO::BroadcastToOp`.
-ShapeAttr buildBroadcastToShapeFunc(ParamExprBuilder &b,
-                                    TypedAttr inputShapeAttr,
-                                    TypedAttr targetShapeAttr) {
+/// Materialize the shape logic for `MO::BroadcastToOp`.
+ShapeMaterializeResult materializeBroadcastToShape(GraphOp graphOp,
+                                                   Location loc,
+                                                   TypedAttr inputShapeAttr,
+                                                   TypedAttr targetShapeAttr) {
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
   // Make sure both input and target shapes are ranked symbolic shapes.
   ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   ShapeAttr targetShape = dyn_cast<ShapeAttr>(targetShapeAttr);
   if (!inputShape || !targetShape)
-    return {};
+    return ShapeMaterializeResult::nonMaterializable();
 
   int inputRank = inputShape.getRank();
   int outputRank = targetShape.getRank();
-  if (inputRank > outputRank)
-    return {}; // TODO emit compile time error
+  if (inputRank > outputRank) {
+    return ShapeMaterializeResult::error(
+        "[batch_matmul] input ranks must match and exceed 2");
+  }
 
   for (int i = 0; i < inputRank; i++) {
     int inputAxis = inputRank - i - 1;
@@ -551,16 +621,21 @@ ShapeAttr buildBroadcastToShapeFunc(ParamExprBuilder &b,
                    "[broadcast_to] input dim must be either 1 or equal to "
                    "corresponding output dim starting from the rightmost dim");
   }
-  return targetShape;
+  return ShapeMaterializeResult::success(std::move(ops), targetShape);
 }
 
-/// Build the shape function for `MO::ConcatOp`.
-ShapeAttr buildConcatShapeFunc(ParamExprBuilder &b, TypedAttr axisAttr,
-                               ArrayRef<TypedAttr> inputShapeAttrs) {
+/// Materialize the shape logic for `MO::ConcatOp`.
+ShapeMaterializeResult
+materializeConcatShape(GraphOp graphOp, Location loc, TypedAttr axisAttr,
+                       ArrayRef<TypedAttr> inputShapeAttrs) {
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
   // Check for constant axis
   std::optional<int64_t> axisOr = tryGetConstantInt(axisAttr);
   if (!axisOr.has_value())
-    return {};
+    return ShapeMaterializeResult::nonMaterializable();
   int64_t axis = axisOr.value();
 
   // Check for statically-ranked input shapes.
@@ -569,7 +644,8 @@ ShapeAttr buildConcatShapeFunc(ParamExprBuilder &b, TypedAttr axisAttr,
     if (auto inputShape = dyn_cast<ShapeAttr>(inputShapeAttr)) {
       inputShapes.push_back(inputShape);
     } else {
-      return {}; // Give up on any dyn-ranked input shape
+      // Give up on any dyn-ranked input shape
+      return ShapeMaterializeResult::nonMaterializable();
     }
   }
 
@@ -581,8 +657,10 @@ ShapeAttr buildConcatShapeFunc(ParamExprBuilder &b, TypedAttr axisAttr,
 
   // Normalize axis and make sure it's in bound.
   axis = axis < 0 ? axis + inputRank : axis;
-  if (axis < 0 || inputRank <= axis)
-    return {}; // TODO handle this error at compile time.
+  if (axis < 0 || inputRank <= axis) {
+    return ShapeMaterializeResult::error(
+        "[concat] normalized axis must be within range [0, input_rank)");
+  }
 
   // Construct output shape and make sure input shapes are compatible.
   SmallVector<TypedAttr> resDims(firstInputShape.getValues());
@@ -602,12 +680,19 @@ ShapeAttr buildConcatShapeFunc(ParamExprBuilder &b, TypedAttr axisAttr,
     concatDimSum = concatDimSum + inputAxisDim;
   }
   resDims[axis] = concatDimSum.getAttr();
-  return b.getShapeAttr(resDims);
+  ShapeAttr resShape = b.getShapeAttr(resDims);
+  return ShapeMaterializeResult::success(std::move(ops), resShape);
 }
 
-/// Build the shape function for `MO::RangeOp`.
-ShapeAttr buildRangeShapeFunc(ParamExprBuilder &b, TypedAttr startAttr,
-                              TypedAttr stopAttr, TypedAttr stepAttr) {
+/// Materialize the shape logic for `MO::RangeOp`.
+ShapeMaterializeResult materializeRangeShape(GraphOp graphOp, Location loc,
+                                             TypedAttr startAttr,
+                                             TypedAttr stopAttr,
+                                             TypedAttr stepAttr) {
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
   Var start = b.createVar(startAttr);
   Var stop = b.createVar(stopAttr);
   Var step = b.createVar(stepAttr);
@@ -627,12 +712,14 @@ ShapeAttr buildRangeShapeFunc(ParamExprBuilder &b, TypedAttr startAttr,
   Var offset = b.createCond(step > 0, step - 1, step + 1);
   Var outDim = (diff + offset) / step;
   ShapeAttr outputShape = b.getShapeAttr(outDim);
-  return outputShape;
+  return ShapeMaterializeResult::success(std::move(ops), outputShape);
 }
 
-/// Build the shape function for `MO::ReshapeOp`. If target shape contains a
-/// `-1`, infer it based on the invariant that `inputShapeAttr` and
-/// `targetShapeAttr` represent equal number of elements.
+/// Materialize the shape logic for `MO::ReshapeOp`.
+///
+/// Specifically, if target shape contains a `-1`, infer it based on the
+/// invariant that `inputShapeAttr` and `targetShapeAttr` represent equal number
+/// of elements.
 ///
 /// Example:
 ///   inputShape = [3, D4]
@@ -640,13 +727,18 @@ ShapeAttr buildRangeShapeFunc(ParamExprBuilder &b, TypedAttr startAttr,
 ///   returns [D0, RS0, 42]
 /// with the following operation accumulated in `b`
 ///   kgen.param.declare RS0 = <div(mul(3, D4), mul(D0, 42)>
-ShapeAttr buildReshapeShapeFunc(ParamExprBuilder &b, TypedAttr inputShapeAttr,
-                                TypedAttr targetShapeAttr) {
+ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
+                                               TypedAttr inputShapeAttr,
+                                               TypedAttr targetShapeAttr) {
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
   // Make sure both input and target shapes are ranked symbolic shapes.
   ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   ShapeAttr targetShape = dyn_cast<ShapeAttr>(targetShapeAttr);
   if (!inputShape || !targetShape)
-    return {};
+    return ShapeMaterializeResult::nonMaterializable();
 
   // Find index of `-1` dimension (if any), and collect all other dimensions.
   SmallVector<TypedAttr> targetNonNegOneDims;
@@ -654,10 +746,13 @@ ShapeAttr buildReshapeShapeFunc(ParamExprBuilder &b, TypedAttr inputShapeAttr,
   for (auto [idx, targetDim] : llvm::enumerate(targetShape.getValues())) {
     auto intDim = dyn_cast<IntegerAttr>(targetDim);
     if (intDim && intDim.getInt() == -1) {
-      // Detected multiple negative one, gives up simplifying this reshape
-      // function call and let runtime handle the error for now.
-      if (maybeTargetNegOneDimIdx.has_value())
-        return {};
+      // Detected multiple negative one, gives up and let runtime handle the
+      // error via a shape function call.
+      if (maybeTargetNegOneDimIdx.has_value()) {
+        return ShapeMaterializeResult::error(
+            "[reshape] multiple -1 detected in target shape");
+      }
+
       maybeTargetNegOneDimIdx = idx;
     } else {
       // TODO: we are using the assumption that all non-integer attribute
@@ -697,11 +792,84 @@ ShapeAttr buildReshapeShapeFunc(ParamExprBuilder &b, TypedAttr inputShapeAttr,
   Var outputNumeElems = b.createVar(outputShape.getSymbolicNumElements());
   b.createAssert(inputNumeElems == outputNumeElems,
                  "[reshape] input and output number of elements must match");
-  return outputShape;
+  return ShapeMaterializeResult::success(std::move(ops), outputShape);
 }
 
 //------------------------Shape functions end---------------------------------//
 //----------------------------------------------------------------------------//
+} // namespace M::MO
+
+namespace {
+// Assume `inputs` are staticized inputs for a `MO::BroadcastToOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+materializeBroadcastToShape(ArrayRef<TypedAttr> inputs, GraphOp graphOp,
+                            Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr targetShape = inputs[1];
+  return materializeBroadcastToShape(graphOp, loc, inputShape, targetShape);
+}
+
+// Assume `inputs` are staticized inputs for a `MO::ReshapeOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+materializeReshapeShape(ArrayRef<TypedAttr> inputs, GraphOp graphOp,
+                        Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr targetShape = inputs[1];
+  return materializeReshapeShape(graphOp, loc, inputShape, targetShape);
+}
+
+// Assume `inputs` are staticized inputs for a `MO::RangeOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult materializeRangeShape(ArrayRef<TypedAttr> inputs,
+                                                    GraphOp graphOp,
+                                                    Location loc) {
+  TypedAttr startAttr = inputs[0];
+  TypedAttr stopAttr = inputs[1];
+  TypedAttr stepAttr = inputs[2];
+  return materializeRangeShape(graphOp, loc, startAttr, stopAttr, stepAttr);
+}
+
+// Assume `inputs` are staticized inputs for a `MO::BatchMatmulOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+materializeBatchMatmulShape(ArrayRef<TypedAttr> inputs, GraphOp graphOp,
+                            Location loc) {
+  auto lhsShape = inputs[0];
+  auto rhsShape = inputs[1];
+  return materializeBatchMatmulShape(graphOp, loc, lhsShape, rhsShape);
+}
+
+// Assume `inputs` are staticized inputs for a `MO::ConcatOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult materializeConcatShape(ArrayRef<TypedAttr> inputs,
+                                                     GraphOp graphOp,
+                                                     Location loc) {
+  TypedAttr axis = inputs[0];
+  ArrayRef<TypedAttr> inputShapes = inputs.drop_front();
+  return materializeConcatShape(graphOp, loc, axis, inputShapes);
+}
+
+using ShapeInferFuncTy = std::function<ShapeMaterializeResult(
+    ArrayRef<TypedAttr> inputs, GraphOp graphOp, Location loc)>;
+/// A hard-coded map from shaep function name to how their shape logic can be
+/// materialized.
+/// TODO move all these to a new interface.
+std::optional<ShapeInferFuncTy> tryGetShapeInfer(StringRef shapeFuncName) {
+  static DenseMap<StringRef, ShapeInferFuncTy> nameToFunc = {
+      {"broadcast_to_shape", materializeBroadcastToShape},
+      {"reshape_shape", materializeReshapeShape},
+      {"range_shape", materializeRangeShape},
+      {"batch_matmul_shape", materializeBatchMatmulShape},
+      {"concat_shape", materializeConcatShape},
+  };
+
+  auto iter = nameToFunc.find(shapeFuncName);
+  if (iter == nameToFunc.end())
+    return std::nullopt;
+  return iter->getSecond();
+}
 
 /// A class that helps `PropagateShapesPass` handle ops that could be
 /// decomposed when the shape parameters they use have been simplified
@@ -807,72 +975,6 @@ private:
     }
   }
 
-  // Assume `inputs` are staticized inputs for a `MO::BroadcastToOp`,
-  // try generating the shape function logic and return the result shape, if
-  // possible, return null otherwise.
-  ShapeAttr tryDecomposeBroadcastToShape(ArrayRef<TypedAttr> inputs,
-                                         GraphOp graphOp, Location loc) {
-    TypedAttr inputShape = inputs[0];
-    TypedAttr targetShape = inputs[1];
-
-    // Accumulate ops created into `decomposedOps`
-    ParamExprBuilder b(graphOp, loc, &decomposedOps);
-    return buildBroadcastToShapeFunc(b, inputShape, targetShape);
-  }
-
-  // Assume `inputs` are staticized inputs for a `MO::ReshapeOp`,
-  // try generating the shape function logic and return the result shape, if
-  // possible, return null otherwise.
-  ShapeAttr tryDecomposeReshapeShape(ArrayRef<TypedAttr> inputs,
-                                     GraphOp graphOp, Location loc) {
-    TypedAttr inputShape = inputs[0];
-    TypedAttr targetShape = inputs[1];
-
-    // Accumulate ops created into `decomposedOps`
-    ParamExprBuilder b(graphOp, loc, &decomposedOps);
-    return buildReshapeShapeFunc(b, inputShape, targetShape);
-  }
-
-  // Assume `inputs` are staticized inputs for a `MO::RangeOp`,
-  // try generating the shape function logic and return the result shape, if
-  // possible, return null otherwise.
-  ShapeAttr tryDecomposeRangeShape(ArrayRef<TypedAttr> inputs, GraphOp graphOp,
-                                   Location loc) {
-    TypedAttr startAttr = inputs[0];
-    TypedAttr stopAttr = inputs[1];
-    TypedAttr stepAttr = inputs[2];
-
-    // Accumulate ops created into `decomposedOps`
-    ParamExprBuilder b(graphOp, loc, &decomposedOps);
-    return buildRangeShapeFunc(b, startAttr, stopAttr, stepAttr);
-  }
-
-  // Assume `inputs` are staticized inputs for a `MO::BatchMatmulOp`,
-  // try generating the shape function logic and return the result shape, if
-  // possible, return null otherwise.
-  ShapeAttr tryDecomposeBatchMatmulShape(ArrayRef<TypedAttr> inputs,
-                                         GraphOp graphOp, Location loc) {
-    auto lhsShape = inputs[0];
-    auto rhsShape = inputs[1];
-
-    // Accumulate ops created into `decomposedOps`
-    ParamExprBuilder b(graphOp, loc, &decomposedOps);
-    return buildBatchMatmulShapeFunc(b, lhsShape, rhsShape);
-  }
-
-  // Assume `inputs` are staticized inputs for a `MO::ConcatOp`,
-  // try generating the shape function logic and return the result shape, if
-  // possible, return null otherwise.
-  ShapeAttr tryDecomposeConcatShape(ArrayRef<TypedAttr> inputs, GraphOp graphOp,
-                                    Location loc) {
-    TypedAttr axis = inputs[0];
-    ArrayRef<TypedAttr> inputShapes = inputs.drop_front();
-
-    // Accumulate ops created into `decomposedOps`
-    ParamExprBuilder b(graphOp, loc, &decomposedOps);
-    return buildConcatShapeFunc(b, axis, inputShapes);
-  }
-
   /// Try converting a tensor value to either
   /// - a symbolic int (if tensor is scalar) or
   /// - a list of symbolic int (if tensor is 1D).
@@ -923,10 +1025,6 @@ private:
   // means a fatal failure that should be reported to user.
   LogicalResult
   tryDecomposeInvokeShapeFuncOp(InvokeShapeFuncOp invokeShapeFuncOp) {
-    // Dispatch on certain shape function names.
-    StringRef shapeFuncName = invokeShapeFuncOp.getShapeFuncName();
-    ShapeAttr outputShape;
-
     // Turn inputs into parameter attributes; the mechanism depends on whether
     // they are data-dependent or not.
     DenseSet<int64_t> dataDepInputIdxs;
@@ -957,34 +1055,35 @@ private:
       }
     }
 
-    // Why we have these here (instead of just relying on symbolicization):
-    //
-    // - because they can't always be symbolicized (due to KGEN IR complexity or
-    // phasing), and they are often critical to e2e shape inference and other
-    // optimizations like MHA pattern patching.
-    //
-    // - `broadcast_shape` also because it might rely on simplification of
-    // `mosh.broadcast`, it's _possible_ that we could move these 2 logic into
-    // staticization and symbolicization respectively.
-    if (shapeFuncName == "broadcast_to_shape") {
-      outputShape = tryDecomposeBroadcastToShape(inputAttrs, graphOp, loc);
+    // Dispatch on certain shape function names. TODO instead of using a map
+    // loopkup, guard this against a new interface.
+    StringRef shapeFuncName = invokeShapeFuncOp.getShapeFuncName();
+    auto shapeInferFuncOr = tryGetShapeInfer(shapeFuncName);
+    // Give up if we can't figure out how to infer this shape function.
+    if (!shapeInferFuncOr.has_value())
+      return success();
 
-    } else if (shapeFuncName == "reshape_shape") {
-      outputShape = tryDecomposeReshapeShape(inputAttrs, graphOp, loc);
+    ShapeMaterializeResult result =
+        shapeInferFuncOr.value()(inputAttrs, graphOp, loc);
+    // Give up if we can't materialize the shape logic.
+    if (result.isNonMaterializable())
+      return success();
 
-    } else if (shapeFuncName == "range_shape") {
-      outputShape = tryDecomposeRangeShape(inputAttrs, graphOp, loc);
-
-    } else if (shapeFuncName == "batch_matmul_shape") {
-      outputShape = tryDecomposeBatchMatmulShape(inputAttrs, graphOp, loc);
-
-    } else if (shapeFuncName == "concat_shape") {
-      outputShape = tryDecomposeConcatShape(inputAttrs, graphOp, loc);
+    // Propagate error to caller.
+    if (result.isError()) {
+      invokeShapeFuncOp.emitError() << result.getError().msg;
+      return failure();
     }
 
-    // Create new declaration of the shape function call's output parameter if
-    // decomposition succeeded; `outputShape` has the form `[N0, N1, ...]`
-    if (outputShape) {
+    // Successfully inferred, package and propagate information to caller.
+    if (result.isSuccess()) {
+      // Create new declaration of the shape function call's output parameter;
+      auto success = result.getSuccess();
+      decomposedOps = std::move(success.ops);
+
+      // `outputShape` has the form `[N0, N1, ...]`
+      ShapeAttr outputShape = success.resultShape;
+
       // outputDecls is always one of
       // - Sh2: !mosh.ape
       // - [D0, D1, ...]
@@ -996,7 +1095,8 @@ private:
       // relies on the mojo shape function (and the bottom part of our stack) to
       // support dynamic rank.
       //
-      // However, we don't need to support dynamic
+      // However, we need to support dynamic rank here in order to resolve
+      // pseudo-dynamic-rank which we might get from RMO or Torch.
       if (outputDecls.size() == 1 &&
           isa<ShapeType>(outputDecls.front().getType())) {
         // Create definition the output shape parameter to output shape, i.e.,
