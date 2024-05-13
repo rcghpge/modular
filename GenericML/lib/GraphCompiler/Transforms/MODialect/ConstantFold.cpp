@@ -651,7 +651,7 @@ static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
     for (auto op : subgraph.outputs) {
       for (auto result : op->getResults()) {
         Value newOutput = oldToNew.lookup<Value>(result);
-        if (newOutput.getType().isa<MOSH::ShapeType>()) {
+        if (llvm::isa<MOSH::ShapeType>(newOutput.getType())) {
           // Can't output shapes so we convert it to a rank 1 tensor of unknown
           // size.
           newOutput = builder.create<Shape::ToTensorOp>(
