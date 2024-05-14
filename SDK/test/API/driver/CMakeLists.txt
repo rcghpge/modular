@@ -12,13 +12,12 @@ configure_lit_site_cfg(
 )
 
 
-add_modular_testsuite(check-mojo-driver-api
+add_modular_testsuite(check-max-driver-api
   TOOLS
   mojo
 
   DEPENDS
-  MAXDriver
-  max-mojo
+  max-driver
   mojo-sdk
 
   TOP_LEVEL_CHECK
