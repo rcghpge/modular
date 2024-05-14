@@ -13,7 +13,7 @@ from utils.index import Index, StaticIntTuple
 from tensor import Tensor, TensorShape, TensorSpec, rand, randn
 from tensor.tensor import _serialize_as_tensor
 
-from testing import assert_almost_equal, assert_false
+from testing import assert_almost_equal, assert_equal, assert_false
 
 
 alias TEMP_FILE_DIR = env_get_string["TEMP_FILE_DIR"]()
@@ -233,7 +233,7 @@ fn test_tensor_randn():
 
 
 # CHECK: test_tensor_astype
-fn test_tensor_astype():
+fn test_tensor_astype() raises:
     print("== test_tensor_astype")
     var a = Tensor[DType.float32](2, 2)
 
@@ -243,7 +243,10 @@ fn test_tensor_astype():
 
     # CHECK{LITERAL}: Tensor([[0, 2],
     # CHECK{LITERAL}: [1, 3]], dtype=int64, shape=2x2)
-    print(a.astype[DType.int64]())
+    var a_int64 = a.astype[DType.int64]()
+    print(a_int64)
+
+    assert_equal(str(a_int64._spec.dtype()), "int64")
 
 
 # CHECK: test_euclidean_distance
