@@ -349,6 +349,8 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
   AddFallbackShapeFunctionsOptions passOpts;
   passOpts.restricted = true;
   passOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  SymbolicizeFallbackShapeFunctionsOptions symbolizationOpts{
+      opts.kernelLibraryPaths, /*reducedMode=*/true};
   // Adding fallback shape function calls move the parameter declaration from
   // most MO ops (execpt for rebind and #36956) into the shape function call
   // ops, so that downstream passes won't need to worry about them when rewrting
@@ -364,8 +366,7 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
   // Staticization should always run first because it might open up new
   // opportunities for shape function symbolicization.
   pm.addPass(MO::createStaticizeShapes());
-  pm.addPass(
-      MO::createSymbolicizeFallbackShapeFunctions({opts.kernelLibraryPaths}));
+  pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(symbolizationOpts));
   // Propagation always goes last as it simplifies and propagates all the
   // symbolic expressions we obtained from staticization and symbolicization.
   pm.addPass(MO::createPropagateShapes());
@@ -389,8 +390,7 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
   }
   // The rest follows the ordering from above, also see comments there for why.
   pm.addPass(MO::createStaticizeShapes());
-  pm.addPass(
-      MO::createSymbolicizeFallbackShapeFunctions({opts.kernelLibraryPaths}));
+  pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(symbolizationOpts));
   pm.addPass(MO::createPropagateShapes());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());

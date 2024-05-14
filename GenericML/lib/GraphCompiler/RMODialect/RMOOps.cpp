@@ -314,6 +314,7 @@ static LogicalResult inferReturnTypesBinaryElemwiseImpl(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+
   bool dynamicRankInputs = llvm::any_of(operands, [](Value v) {
     return cast<TensorType>(v.getType()).isDynamicallyRanked();
   });

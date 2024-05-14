@@ -52,6 +52,9 @@ def SymbolicizeFallbackShapeFunctions :
   let options = [
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
       "Paths to mojo packages containing mojo shape functions to be loaded. ">,
+  // TODO remove after shape inference passes are merged.
+    Option<"reducedMode", "reduced", "bool", "false",
+           "Whether to disable shape function symbolization for certain ops">,
   ];
 
   let dependentDialects = [

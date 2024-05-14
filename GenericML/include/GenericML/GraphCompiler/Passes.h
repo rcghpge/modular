@@ -194,7 +194,6 @@ struct ShapeInferenceOptions
       *this, "kernel-library-paths",
       llvm::cl::desc(
           "Paths to mojo packages containing mojo shape function definitions")};
-
   Option<bool> constantFold{
       *this, "constant-fold",
       llvm::cl::desc("For use with the extended pipeline. Whether to use "
