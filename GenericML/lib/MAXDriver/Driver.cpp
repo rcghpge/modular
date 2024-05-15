@@ -68,7 +68,7 @@ struct CPUDeviceTensor : DeviceTensor {
     return tmp;
   }
 
-  ~CPUDeviceTensor() {
+  ~CPUDeviceTensor() final {
     if (data) {
       runtime->getAllocator()->deallocateBytes(data, bytes);
     }
