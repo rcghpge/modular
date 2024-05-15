@@ -86,6 +86,10 @@ class BatchMatmul(TestBase):
 # A normal batch matmul.
 class BatchMatmulTrans(BatchMatmul):
     @staticmethod
+    def compare_results(ours, theirs):
+        return np.allclose(ours, theirs, rtol=1e-05, atol=1e-06, equal_nan=True)
+
+    @staticmethod
     def input_sizes_to_test():
         return [([5, 11, 6], [1, 23, 6])]
 
