@@ -107,11 +107,7 @@ struct Replit[T: Checkpoint, weights_type: DType]:
                 ),
                 TensorType(DType.float32, broadcast_dims),
             )
-            attn_bias = g.op(
-                "mo.select",
-                List[Symbol](mask, attn_bias, min_val),
-                TensorType(DType.float32, broadcast_dims),
-            )
+            attn_bias = ops.select(mask, attn_bias, min_val)
         return attn_bias
 
     def build_graph(

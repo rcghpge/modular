@@ -66,28 +66,13 @@ def tri(rows: Symbol, cols: Symbol, k: Symbol) -> Symbol:
     """
     g = rows.graph()
 
-    N = rows  # Number of rows
-    M = cols  # number of columns
-    int_dtype = N.tensor_type().dtype
+    int_dtype = rows.tensor_type().dtype
+    step = g.scalar(1, int_dtype)
 
-    row = g.op(
-        "mo.range",
-        List[Symbol](
-            g.scalar(0, int_dtype),
-            N,
-            g.scalar(1, int_dtype),
-        ),
-        TensorType(int_dtype, Dim.dynamic()),
+    row = ops.range_fill(
+        start=g.scalar(0, int_dtype), limit=rows, step=step
     ).reshape(-1, 1)
-    col = g.op(
-        "mo.range",
-        List[Symbol](
-            -k,
-            M - k,
-            g.scalar(1, int_dtype),
-        ),
-        TensorType(int_dtype, Dim.dynamic()),
-    ).reshape(1, -1)
+    col = ops.range_fill(start=-k, limit=(cols - k), step=step).reshape(1, -1)
     return ops.greater_equal(row, col)
 
 
@@ -175,39 +160,13 @@ struct GroupedQueryAttention:
             # Repeat interleave k and v to match the number of heads in the
             # query.
             n_repeats = n_heads // kv_n_heads
-            repeats = g.constant(
-                Tensor[DType.int32](
-                    TensorShape(5), batch_size, 1, n_repeats, 1, 1
-                )
-            )
+
             k = k.reshape(batch_size, kv_n_heads, 1, head_dim, -1)
-            k = g.op(
-                "mo.tile",
-                List[Symbol](k, repeats),
-                TensorType(
-                    k.tensor_type().dtype,
-                    batch_size,
-                    kv_n_heads,
-                    n_repeats,
-                    head_dim,
-                    Dim.dynamic(),
-                ),
-            )
+            k = ops.tile(k, List[Int64](1, 1, n_repeats, 1, 1))
             k = k.reshape(batch_size, kv_n_heads * n_repeats, head_dim, -1)
 
             v = v.reshape(batch_size, kv_n_heads, 1, -1, head_dim)
-            v = g.op(
-                "mo.tile",
-                List[Symbol](v, repeats),
-                TensorType(
-                    k.tensor_type().dtype,
-                    batch_size,
-                    kv_n_heads,
-                    n_repeats,
-                    Dim.dynamic(),
-                    head_dim,
-                ),
-            )
+            v = ops.tile(v, List[Int64](batch_size, 1, n_repeats, 1, 1))
             v = v.reshape(1, kv_n_heads * n_repeats, -1, head_dim)
 
         softmax_scale = 1 / math.sqrt(d_model / n_heads)
@@ -260,17 +219,7 @@ struct GroupedQueryAttention:
                     Dim.dynamic(),
                 ),
             )
-            attn_weight = g.op(
-                "mo.select",
-                List[Symbol](causal_mask, attn_weight, min_val),
-                TensorType(
-                    DType.float32,
-                    Dim.dynamic(),
-                    Dim.dynamic(),
-                    Dim.dynamic(),
-                    Dim.dynamic(),
-                ),
-            )
+            attn_weight = ops.select(causal_mask, attn_weight, min_val)
 
         attn_weight = ops.softmax(attn_weight)
         out = attn_weight @ v

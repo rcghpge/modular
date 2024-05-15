@@ -4,7 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from max.graph import TensorType, Symbol
+from max.graph import ops, TensorType, Symbol
 from max.tensor import Tensor, TensorShape
 
 from weights.hyperparams import HyperParams
@@ -23,10 +23,5 @@ struct LPLayerNorm:
         beta = g.constant(
             Tensor[DType.float32](TensorShape(self.hyperparams.d_model), 0)
         )
-        eps = g.constant(Tensor[DType.float32](TensorShape(1), self.eps))
-        out = g.op(
-            "mo.layer_norm",
-            List[Symbol](input, self.weight, beta, eps),
-            TensorType(DType.float32, input.tensor_type().dims),
-        )
+        out = ops.layer_norm(input, self.weight, beta, self.eps)
         return out
