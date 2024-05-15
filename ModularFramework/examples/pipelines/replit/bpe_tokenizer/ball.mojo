@@ -93,7 +93,7 @@ struct Ball[T: CollectionElement]:
         return self._ref(id)[].prev
 
     fn _ref[
-        mutability: __mlir_type.i1,
+        mutability: Bool,
         lifetime: AnyLifetime[mutability].type,
     ](
         self: Reference[Self, mutability, lifetime]._mlir_type, id: Self.ID
@@ -108,7 +108,7 @@ struct Ball[T: CollectionElement]:
         )
 
     fn __refitem__[
-        mutability: __mlir_type.i1,
+        mutability: Bool,
         lifetime: AnyLifetime[mutability].type,
     ](
         self: Reference[Self, mutability, lifetime]._mlir_type, id: Self.ID
