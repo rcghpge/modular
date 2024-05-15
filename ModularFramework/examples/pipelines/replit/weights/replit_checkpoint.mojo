@@ -66,8 +66,6 @@ struct ReplitCheckpoint(Checkpoint):
         Raises:
             An error for invalid key arguments.
         """
-        print("key", key)
-        print("model_path", self.model_path)
         path = self.model_path / key
         if not path.exists():
             raise "Could not load checkpoint tensor value. " + str(

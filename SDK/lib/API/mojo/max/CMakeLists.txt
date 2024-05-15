@@ -10,6 +10,9 @@ set(GRAPH_SRCS
   graph/symbol
   graph/type
 
+  graph/checkpoint/save_load
+  graph/checkpoint/tensor_dict
+
   graph/ops/casting
   graph/ops/convolution
   graph/ops/complex
