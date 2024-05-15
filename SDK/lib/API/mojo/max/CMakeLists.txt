@@ -21,10 +21,6 @@ set(GRAPH_SRCS
   graph/ops/reduction
   graph/ops/slicing
 
-  graph/quantization/quantization_encoding
-  graph/quantization/bfloat16_encoding
-  graph/quantization/q4_0_encoding
-
   graph/_attributes
   graph/_c
   graph/_testing)
