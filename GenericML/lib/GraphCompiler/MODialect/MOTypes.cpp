@@ -458,7 +458,7 @@ std::optional<int64_t> TensorType::getNumElements() const {
     return {};
 
   TypedAttr attr = getSymbolicNumElements();
-  auto resultElements = attr.dyn_cast_or_null<IntegerAttr>();
+  auto resultElements = mlir::dyn_cast_or_null<IntegerAttr>(attr);
   if (!resultElements)
     return {};
 

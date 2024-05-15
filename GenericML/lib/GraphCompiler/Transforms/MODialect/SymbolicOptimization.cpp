@@ -1293,7 +1293,7 @@ struct SwimConcatThroughReshapeLikeOpsPattern
 
     SmallVector<TypedAttr> newConcatOutputShape(firstBeforeType.getDims());
     newConcatOutputShape[newConcatAxis] = rewriter.getIndexAttr(
-        newConcatOutputShape[newConcatAxis].cast<IntegerAttr>().getInt() *
+        cast<IntegerAttr>(newConcatOutputShape[newConcatAxis]).getInt() *
         reshapeOps.size());
     auto newConcatOutputType =
         TensorType::get(ShapeAttr::get(newConcatOutputShape,
@@ -2562,10 +2562,10 @@ struct SliceToSplitPattern
     }
 
     const auto getSliceValue = [&](Value value) {
-      return SmallVector<APInt>(value.getDefiningOp<ConstantOp>()
-                                    .getValue()
-                                    .cast<IntArrayElementsAttr>()
-                                    .getValues())[sliceDimension]
+      return SmallVector<APInt>(
+                 cast<IntArrayElementsAttr>(
+                     value.getDefiningOp<ConstantOp>().getValue())
+                     .getValues())[sliceDimension]
           .getSExtValue();
     };
 
@@ -2659,7 +2659,7 @@ struct MergeParallelMatmulPattern
 
     // Ensure that all matmuls have the same number of rows and that weights are
     // constants.
-    auto oldMatmulType = op.getType().template cast<TensorType>();
+    auto oldMatmulType = cast<TensorType>(op.getType());
     TypedAttr expectedNumberOfRows =
         oldMatmulType.getDim(oldMatmulType.getRank() - 2);
     if (!llvm::all_of(matmulUsers, [&](MatmulOpType matmulOp) {
@@ -2709,8 +2709,8 @@ struct MergeParallelMatmulPattern
 
     // Concatenate the weights.
     auto concatType =
-        op.getInputB().getType().template cast<TensorType>().cloneWithNewDim(
-            oldMatmulType.getRank() - 1, totalColumns);
+        cast<TensorType>(op.getInputB().getType())
+            .cloneWithNewDim(oldMatmulType.getRank() - 1, totalColumns);
     Value concatAxis = rewriter.create<ConstantOp>(loc, 1);
     Value concatenatedWeights =
         rewriter

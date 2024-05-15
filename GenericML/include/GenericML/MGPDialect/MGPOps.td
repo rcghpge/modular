@@ -466,7 +466,7 @@ def DebugCpuSpinWaitOp : MGP_Op<"debug.cpu.spin_wait"> {
 class HasBufferSizePred<list<int> sizes> :
   Or<!foreach(size, sizes,
     CPred<
-     [{$_self.cast<MGP::CpuBufferType>().getRawSize().getValue() == }] # size>)>;
+     [{cast<MGP::CpuBufferType>($_self).getRawSize().getValue() == }] # size>)>;
 
 def MGP_ScalarBuffer : ConfinedType<MGP_CpuBufferType, [HasBufferSizePred<[1]>],
     "scalar buffer"> {
@@ -756,7 +756,7 @@ def MGP_ListSliceOp : MGP_Op<"list.slice", [
 def ModelFrameworkAttr : ConfinedAttr<StrAttr, [
     AttrConstraint<
       CPred<"CompiledFrameworkLabel::isValidFrameworkName("
-            "$_self.cast<StringAttr>().getValue())">,
+            "cast<StringAttr>($_self).getValue())">,
       "must be a recognized framework name.">]>;
 
 def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,

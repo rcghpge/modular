@@ -267,13 +267,13 @@ def MO_Scalar : MO_Type<"Scalar", "scalar"> {
 //===----------------------------------------------------------------------===//
 
 /// Checks if a MO_TensorType has static rank.
-def MO_HasRankPred : CPred<"$_self.cast<MO::TensorType>().hasRank()">;
+def MO_HasRankPred : CPred<"cast<MO::TensorType>($_self).hasRank()">;
 
 // Checks if a MO_TensorType has one of the specified ranks.
 class MO_HasAnyRankOfPred<list<int> ranks> : And<[
   MO_HasRankPred,
   Or<!foreach(rank, ranks,
-    CPred<[{$_self.cast<MO::TensorType>().getRank() == }] # rank>)>]>;
+    CPred<[{cast<MO::TensorType>($_self).getRank() == }] # rank>)>]>;
 
 /// Checks if a type has rank N if statically ranked.
 class HasRankIfRankedPred<int N> :
@@ -281,16 +281,16 @@ class HasRankIfRankedPred<int N> :
 
 /// Checks if a MO_TensorType has float elements.
 def FloatElementTypePred : CPred<
-  "llvm::isa<FloatType>($_self.cast<::M::MO::TensorType>().getElementType())">;
+  "llvm::isa<FloatType>(cast<::M::MO::TensorType>($_self).getElementType())">;
 
 /// Checks if a MO_TensorType has int or index elements.
 def IntOrIndexElementTypePred : CPred<
-  "$_self.cast<::M::MO::TensorType>().getElementType().isIntOrIndex()">;
+  "cast<::M::MO::TensorType>($_self).getElementType().isIntOrIndex()">;
 
 // Checks if a MO_TensorType has signed elements.
 def SignedElementTypePred : CPred<
-  "!$_self.cast<::M::MO::TensorType>().getElementType().isUnsignedInteger() && "
-  "!$_self.cast<::M::MO::TensorType>().getDtype().isBool()">;
+  "!cast<::M::MO::TensorType>($_self).getElementType().isUnsignedInteger() && "
+  "!cast<::M::MO::TensorType>($_self).getDtype().isBool()">;
 
 /// Checks if a MO_TensorType has SI64 elements.
 def HasSI64ElementTypePred : SubstLeaves<
@@ -307,12 +307,12 @@ def HasBoolElementTypePred : SubstLeaves<
 /// Checks if a MO_TensorType has shape [N, 2].
 def HasPaddingShapePred : And<[
   MO_HasAnyRankOfPred<[2]>,
-  CPred<"$_self.cast<::M::MO::TensorType>().getIntDim(1) == 2">]>;
+  CPred<"cast<::M::MO::TensorType>($_self).getIntDim(1) == 2">]>;
 
 /// Checks if a MO_TensorType has shape [N, 2] if ranked.
 def HasRank2LastDim2IfRankedPred : And<[
   HasRankIfRankedPred<2>,
-  CPred<"!$_self.cast<::M::MO::TensorType>().hasStaticShape() || $_self.cast<::M::MO::TensorType>().getIntDim(1) == 2">]>;
+  CPred<"!cast<::M::MO::TensorType>($_self).hasStaticShape() || cast<::M::MO::TensorType>($_self).getIntDim(1) == 2">]>;
 
 /// Base class for defining constraints on MO_TensorType.
 class MO_ConfinedTensor<list<Pred> predicates, string summary = ""> :
@@ -437,7 +437,7 @@ def MO_MatrixIfRanked : MO_ConfinedTensor<
 /// Confines the MO_TensorType so that it cannot have unknown shape or dimension
 /// parameters.
 def MO_KnownTensor : MO_ConfinedTensor<
-  [CPred<"!$_self.cast<MO::TensorType>().hasUnknownShape()">],
+  [CPred<"!cast<MO::TensorType>($_self).hasUnknownShape()">],
   "parametrically known shape">;
 
 /// Confines the MO_TensorType so that it has Boolean elements
