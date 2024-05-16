@@ -668,7 +668,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     originalOuts.erase();
 
     userToFuseIn.replaceAllUsesWith(kernelToFuseInto);
-    userToFuseIn->erase();
+    opsToErase.push_back(userToFuseIn);
 
     return kernelToFuseInto;
   }
