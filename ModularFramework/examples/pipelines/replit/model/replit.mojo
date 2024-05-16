@@ -4,7 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 import math
-from math.limit import min_finite
+from utils.numerics import min_finite
 from collections import Optional, List
 
 from max.graph import ops, Dim, TensorType, Symbol, Graph, Type

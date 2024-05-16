@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from collections import Optional
-from math.limit import min_finite
+from utils.numerics import min_finite
 
 from max.graph import ops, Dim, TensorType, Symbol
 from max.graph.error import error
