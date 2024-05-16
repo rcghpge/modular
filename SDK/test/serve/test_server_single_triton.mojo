@@ -22,7 +22,7 @@ fn to_tensor[
     var view = EngineNumpyView(np_array)
     var size = view.spec().num_elements()
     var ptr = DTypePointer[dtype].alloc(size)
-    memcpy(ptr, view.data().bitcast[dtype](), size)
+    memcpy(ptr, view.unsafe_ptr().bitcast[dtype](), size)
     return Tensor[dtype](view.spec(), ptr)
 
 
@@ -50,6 +50,7 @@ fn test_basic_add_request(
         atol=1e-4,
         rtol=1e-4,
     )
+    print("verified")
 
 
 fn main() raises:
