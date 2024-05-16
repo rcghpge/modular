@@ -115,7 +115,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
   }
 
   void fuseIntoInputLambda(MOGG::KernelOp dstKernel, ArrayAttr fusionInterfaces,
-                           uint64_t inputIdx) {
+                           uint64_t inputIdx,
+                           SmallVectorImpl<KernelOp> &opsToErase) {
     MLIRContext *ctx = dstKernel.getContext();
 
     // We've already guarded that we only have one user. The kernel is cloned in
@@ -233,7 +234,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     dstKernel.removeOperandAtIndex(inputIdx);
 
     // Delete the cloned kernel.
-    srcKernel.erase();
+    opsToErase.push_back(srcKernel);
   }
 
   /// Returns true if we can fuse into the output lambda. This sanity checks a
@@ -653,8 +654,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       newDstKernel.getBody().takeBody(kernelToFuseInto.getBody());
 
       userToFuseIn.getResult(0).replaceAllUsesWith(newDstKernel.getResult(0));
-      userToFuseIn.erase();
-      kernelToFuseInto.erase();
+      opsToErase.push_back(userToFuseIn);
+      opsToErase.push_back(kernelToFuseInto);
 
       return newDstKernel;
     }
@@ -981,7 +982,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
                              inputIdx)) {
           fuseIntoInputLambda(kernelToFuseInto,
                               kernelToFuseInto.getInputFusionInterfaceAttr(),
-                              inputIdx);
+                              inputIdx, kernelOpsToErase);
         }
       }
       GENERICML_ASSERT(beforeDevice == MO::getDeviceOrDefault(kernelToFuseInto))
