@@ -713,17 +713,6 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
-  // Pre-load torch extension libraries
-  SmallVector<llvm::sys::DynamicLibrary> extensionLibs;
-  if (!clOptions.extraTorchLibs.empty()) {
-    for (const auto &path : clOptions.extraTorchLibs) {
-      auto libOr = M::permanentPluginLibrary(path);
-      if (libOr.isError())
-        return clOptions.reportError(libOr.getError());
-      extensionLibs.push_back(libOr.takeValue());
-    }
-  }
-
   CompileConfigPtr compileConfig = {api.newCompileConfig(),
                                     api.freeCompileConfig};
   api.setModelPath(compileConfig.get(), clOptions.inputFilename.c_str());
@@ -805,6 +794,14 @@ int main(int argc, char **argv) {
       specOwners.push_back(std::move(spec));
     }
     api.setTorchInputSpecs(configPtr, specPointers.data(), specPointers.size());
+  }
+  if (!clOptions.extraTorchLibs.empty()) {
+    size_t size = clOptions.extraTorchLibs.size();
+    auto array = std::make_unique<char *[]>(size);
+    for (size_t i = 0; i < size; ++i) {
+      array[i] = const_cast<char *>(clOptions.extraTorchLibs[i].c_str());
+    }
+    api.setTorchLibraries(configPtr, array.get(), size);
   }
   CompiledModelPtr compiledModel{
       api.compileModel(context.get(), &configPtr, status.get()),

@@ -150,6 +150,12 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
     return setTorchInputSpecsOr.takeError();
   setTorchInputSpecs = setTorchInputSpecsOr.takeValue();
 
+  auto setTorchLibrariesOr =
+      fallibleGetSymbol(torchLib, "M_setTorchLibraries", setTorchLibraries);
+  if (setTorchLibrariesOr.isError())
+    return setTorchLibrariesOr.takeError();
+  setTorchLibraries = setTorchLibrariesOr.takeValue();
+
   GET_SYMBOL(compileModel, M_compileModel);
   GET_SYMBOL(waitForCompilation, M_waitForCompilation);
   GET_SYMBOL(freeCompiledModel, M_freeCompiledModel);
