@@ -3,9 +3,9 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-# RUN: mojo -I "%sdk_examples_dir/llama2" %s | FileCheck "%s"
+# RUN: mojo -I "%sdk_examples_dir" %s | FileCheck "%s"
 
-from tokenizer.bpe import BPETokenizer
+from pipelines.llama2.tokenizer.bpe import BPETokenizer
 from collections import List
 
 
