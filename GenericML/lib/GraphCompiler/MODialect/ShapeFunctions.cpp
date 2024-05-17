@@ -74,6 +74,17 @@ std::optional<int64_t> tryGetConstantInt(TypedAttr attr) {
   return std::nullopt;
 }
 
+/// Compute the output spatial dimension for a sliding window op (e.g.,
+/// convolution or pooling).
+static Var getSlidingWindowOutDim(const Var &inputDim, const Var &filterDim,
+                                  const Var &dilation, const Var &stride,
+                                  const Var &padding, bool ceilMode = false) {
+  Var numerator = inputDim + padding - (dilation * (filterDim - 1) + 1);
+  if (ceilMode)
+    return (numerator + stride - 1) / stride + 1;
+  return numerator / stride + 1;
+}
+
 //----------------------------------------------------------------------------//
 //------------------------Shape functions begin-------------------------------//
 
@@ -221,6 +232,162 @@ materializeConcatShape(GraphOp graphOp, Location loc, TypedAttr axisAttr,
     concatDimSum = concatDimSum + inputAxisDim;
   }
   resDims[axis] = concatDimSum.getAttr();
+  ShapeAttr resShape = b.getShapeAttr(resDims);
+  return ShapeMaterializeResult::success(std::move(ops), resShape);
+}
+
+ShapeMaterializeResult
+materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
+                     TypedAttr filterShapeAttr, TypedAttr stridesAttr,
+                     TypedAttr dilationsAttr, TypedAttr paddingsAttr,
+                     TypedAttr numGroupsAttr) {
+  auto inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
+  auto filterShape = dyn_cast<ShapeAttr>(filterShapeAttr);
+  auto strides = dyn_cast<ShapeAttr>(stridesAttr);
+  auto dilations = dyn_cast<ShapeAttr>(dilationsAttr);
+  auto paddings = dyn_cast<ShapeAttr>(paddingsAttr);
+  // Make sure both input and target shapes are ranked symbolic shapes.
+  // No need to check for `numGroupsAttr` because it's just an integer.
+  if (!inputShape || !filterShape || !strides || !dilations || !paddings) {
+    return ShapeMaterializeResult::nonMaterializable();
+  }
+
+  // Preliminary rank checks.
+  size_t inputRank = inputShape.getRank();
+  if (inputRank < 3) {
+    return ShapeMaterializeResult::error(
+        "[convolution] requires (input_rank >= 3)");
+  }
+  if (inputRank != filterShape.getRank()) {
+    return ShapeMaterializeResult::error(
+        "[convolution] requires (input_rank == filter_rank)");
+  }
+  if (strides.getSize() != inputRank - 2 ||
+      dilations.getSize() != inputRank - 2) {
+    return ShapeMaterializeResult::error(
+        "[convolution] requires (len(strides) == len(dilations) == input_rank "
+        "- 2)");
+  }
+  if (paddings.getSize() != 2 * (inputRank - 2)) {
+    return ShapeMaterializeResult::error(
+        "[convolution] requires (len(paddings) == 2 * (input rank - 2))");
+  }
+
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
+  // NOTE
+  // - input and output have layout [batch_size, ...spatial_dims...,
+  //   input_channels]
+  // - filter has layout [...spatial_dims..., filter_channels, output_channels]
+  Var batchSize = b.createVar(inputShape[0]);
+  Var inputChannels = b.createVar(inputShape[inputRank - 1]);
+  Var filterChannels = b.createVar(filterShape[inputRank - 2]);
+  Var outputChannels = b.createVar(filterShape[inputRank - 1]);
+  Var numGroups = b.createVar(numGroupsAttr);
+
+  // More checks on channels and numGroups.
+  b.createAssert(inputChannels == (numGroups * filterChannels),
+                 "[convolution] requires (input_channels == num_groups * "
+                 "filter_channels)");
+  b.createAssert(
+      (outputChannels % numGroups) == 0,
+      "[convolution] output_channels must be divisible by num_groups");
+
+  // Compute and collect output spatial dimensions.
+  SmallVector<TypedAttr> resDims;
+  resDims.push_back(batchSize.getAttr());
+  for (size_t axis = 0; axis < inputRank - 2; axis++) {
+    Var inputSpatialDim = b.createVar(inputShape[axis + 1]);
+    Var filterSpatialDim = b.createVar(filterShape[axis]);
+    Var dilation = b.createVar(dilations[axis]);
+    Var stride = b.createVar(strides[axis]);
+    Var prePadding = b.createVar(paddings[2 * axis]);
+    Var postPadding = b.createVar(paddings[2 * axis + 1]);
+
+    Var outputSpatialDim =
+        getSlidingWindowOutDim(inputSpatialDim, filterSpatialDim, dilation,
+                               stride, prePadding + postPadding);
+    b.createAssert(outputSpatialDim > 0,
+                   "[convolution] output spatial dim must be positive");
+    resDims.push_back(outputSpatialDim.getAttr());
+  }
+
+  // Create output shape
+  resDims.push_back(outputChannels.getAttr());
+  ShapeAttr resShape = b.getShapeAttr(resDims);
+  return ShapeMaterializeResult::success(std::move(ops), resShape);
+}
+
+ShapeMaterializeResult
+materializePoolShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
+                     TypedAttr filterAttr, TypedAttr stridesAttr,
+                     TypedAttr dilationsAttr, TypedAttr paddingsAttr,
+                     bool ceilMode) {
+  auto inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
+  auto filter = dyn_cast<ShapeAttr>(filterAttr);
+  auto strides = dyn_cast<ShapeAttr>(stridesAttr);
+  auto dilations = dyn_cast<ShapeAttr>(dilationsAttr);
+  auto paddings = dyn_cast<ShapeAttr>(paddingsAttr);
+  // Make sure both input and target shapes are ranked symbolic shapes.
+  if (!inputShape || !filter || !strides || !dilations || !paddings) {
+    return ShapeMaterializeResult::nonMaterializable();
+  }
+
+  // Preliminary rank checks.
+  size_t inputRank = inputShape.getRank();
+  // NOTE it's a trivial extension to enable this on arbitrary ranks, but I'm
+  // keeping it the same as the mojo shape function for now.
+  if (inputRank != 4) {
+    return ShapeMaterializeResult::error(
+        "[pooling] requires (input_rank == 4)");
+  }
+
+  size_t filterSize = filter.getSize();
+  if (filterSize != inputRank - 2 ||
+      !llvm::all_equal({filterSize, dilations.getSize(), strides.getSize()})) {
+    return ShapeMaterializeResult::error(
+        "[pooling] requires (len(filter) == len(strides) == len(dilations) == "
+        "input_rank - 2)");
+  }
+  if (paddings.getSize() != 2 * (inputRank - 2)) {
+    return ShapeMaterializeResult::error(
+        "[pooling] requires (len(paddings) == 2 * (input rank - 2))");
+  }
+
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
+  // NOTE
+  // - input and output have layout [batch_size, ...spatial_dims...,
+  // input_channels]
+  // - filter has layout [...spatial_dims..., filter_channels, output_channels]
+  Var batchSize = b.createVar(inputShape[0]);
+  Var inputChannels = b.createVar(inputShape[inputRank - 1]);
+
+  // Compute and collect output spatial dimensions.
+  SmallVector<TypedAttr> resDims;
+  resDims.push_back(batchSize.getAttr());
+  for (size_t axis = 0; axis < inputRank - 2; axis++) {
+    Var inputSpatialDim = b.createVar(inputShape[axis + 1]);
+    Var filterSpatialDim = b.createVar(filter[axis]);
+    Var dilation = b.createVar(dilations[axis]);
+    Var stride = b.createVar(strides[axis]);
+    Var prePadding = b.createVar(paddings[2 * axis]);
+    Var postPadding = b.createVar(paddings[2 * axis + 1]);
+
+    Var outputSpatialDim =
+        getSlidingWindowOutDim(inputSpatialDim, filterSpatialDim, dilation,
+                               stride, prePadding + postPadding, ceilMode);
+    b.createAssert(outputSpatialDim > 0,
+                   "[pooling] output spatial dim must be positive");
+    resDims.push_back(outputSpatialDim.getAttr());
+  }
+
+  // Create output shape
+  resDims.push_back(inputChannels.getAttr());
   ShapeAttr resShape = b.getShapeAttr(resDims);
   return ShapeMaterializeResult::success(std::move(ops), resShape);
 }
@@ -444,6 +611,51 @@ materializeConcatShapeImpl(ArrayRef<TypedAttr> inputs,
   return materializeConcatShape(graphOp, loc, axis, inputShapes);
 }
 
+// Assume `inputs` are staticized inputs for a `MO::ConvOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+materializeConvShapeImpl(ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams,
+                         GraphOp graphOp, Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr filterShape = inputs[1];
+  TypedAttr strides = inputs[2];
+  TypedAttr dilations = inputs[3];
+  TypedAttr paddings = inputs[4];
+  TypedAttr numGroup = inputs[5];
+  return materializeConvShape(graphOp, loc, inputShape, filterShape, strides,
+                              dilations, paddings, numGroup);
+}
+
+// Assume `inputs` are staticized inputs for a Pooling op that rounds _up_ when
+// computing output shapes, try materializing the its shape logic.
+static ShapeMaterializeResult
+materializePoolCeilShapeImpl(ArrayRef<TypedAttr> inputs,
+                             DictionaryAttr kgenParams, GraphOp graphOp,
+                             Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr filter = inputs[1];
+  TypedAttr strides = inputs[2];
+  TypedAttr dilations = inputs[3];
+  TypedAttr paddings = inputs[4];
+  return materializePoolShape(graphOp, loc, inputShape, filter, strides,
+                              dilations, paddings, /*ceilMode=*/true);
+}
+
+// Assume `inputs` are staticized inputs for a Pooling op that rounds _down_
+// when computing output shapes, try materializing the its shape logic.
+static ShapeMaterializeResult
+materializePoolFloorShapeImpl(ArrayRef<TypedAttr> inputs,
+                              DictionaryAttr kgenParams, GraphOp graphOp,
+                              Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr filter = inputs[1];
+  TypedAttr strides = inputs[2];
+  TypedAttr dilations = inputs[3];
+  TypedAttr paddings = inputs[4];
+  return materializePoolShape(graphOp, loc, inputShape, filter, strides,
+                              dilations, paddings, /*ceilMode=*/false);
+}
+
 // Assume `inputs` are staticized inputs for a `MO::SplitiOp`, try
 // materializing the its shape logic for
 static ShapeMaterializeResult
@@ -473,6 +685,9 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
       {"batch_matmul_shape", materializeBatchMatmulShapeImpl},
       {"broadcast_to_shape", materializeBroadcastToShapeImpl},
       {"concat_shape", materializeConcatShapeImpl},
+      {"conv_shape", materializeConvShapeImpl},
+      {"pool_shape", materializePoolFloorShapeImpl},
+      {"pool_shape_ceil", materializePoolCeilShapeImpl},
       {"range_shape", materializeRangeShapeImpl},
       {"reshape_shape", materializeReshapeShapeImpl},
       {"split_ith_output_shape", materializeSplitIthOutputShapeImpl},

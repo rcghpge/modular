@@ -175,6 +175,14 @@ public:
     return Var(resDeclRef, builder);
   }
 
+  // Allows one to write `v1 % v2`.
+  Var operator%(const Var &other) const {
+    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+        KGEN::ParamOperatorAttr::get(KGEN::POC::Mod, attr, other.attr),
+        "var_mod");
+    return Var(resDeclRef, builder);
+  }
+
   // Allows one to write `v1 > v2`.
   Var operator>(const Var &other) const { return other < *this; }
 
@@ -256,6 +264,12 @@ public:
     return *this >= otherVar;
   }
 
+  // Allows one to write `v1 % 42`.
+  Var operator%(int64_t other) const {
+    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
+    return *this % otherVar;
+  }
+
   TypedAttr getAttr() const { return attr; }
 };
 
@@ -317,7 +331,12 @@ private:
 // These helpers have pretty uniform input types, where
 // - `GraphOp` is used for new parameter name generation
 // - `Location` is used for newly created instructions
-// - All the `TypedAttr`s are parameteric representation of the op's input
+// - All the `TypedAttr`s are parameteric representation of the op's input,
+//   specifically, it should be one of the following:
+//   - `IntegerAttr` (a constant integer)
+//   - `KGEN::ParamDeclRefAttr` (a parameter)
+//   - `KGEN::ParamOperatorAttr` (a parameter expression)
+//   - `MOSH::ShapeAttr` (a list of the aforementioned integers)
 
 /// Materialize the shape logic for `MO::BatchMatmulOp`, assuming given
 ShapeMaterializeResult materializeBatchMatmulShape(GraphOp graphOp,
@@ -335,6 +354,21 @@ ShapeMaterializeResult materializeBroadcastToShape(GraphOp graphOp,
 ShapeMaterializeResult
 materializeConcatShape(GraphOp graphOp, Location loc, TypedAttr axisAttr,
                        ArrayRef<TypedAttr> inputShapeAttrs);
+
+/// Materialize the shape logic for `MO::ConvOp`.
+ShapeMaterializeResult
+materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
+                     TypedAttr filterShapeAttr, TypedAttr stridesAttr,
+                     TypedAttr dilationsAttr, TypedAttr paddingsAttr,
+                     TypedAttr numGroupsAttr);
+
+/// Materialize the shape logic for Pooling ops (e.g., `MO::AvgPoolOp`,
+/// `MO::MaxPoolCeilOp`).
+ShapeMaterializeResult
+materializePoolShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
+                     TypedAttr filterAttr, TypedAttr stridesAttr,
+                     TypedAttr dilationsAttr, TypedAttr paddingsAttr,
+                     bool ceilMode);
 
 /// Materialize the shape logic for `MO::RangeOp`.
 ShapeMaterializeResult materializeRangeShape(GraphOp graphOp, Location loc,
