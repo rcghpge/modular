@@ -285,8 +285,9 @@ struct AddFallbackShapeFunctions
 // even if those dimensions are static. This simplifies the lowering as without
 // doing this we would need the lowering to know how many should be produced and
 // to which dimension they should be refering to.
-KGEN::ParamDeclArrayAttr getNewParameterMapping(GraphOp &graph,
-                                                TensorType outTy) {
+KGEN::ParamDeclArrayAttr
+getNewParameterMapping(GraphOp &graph, TensorType outTy,
+                       ArrayRef<ParamDeclAttr> outputParamDecls) {
   MLIRContext *ctx = graph.getContext();
   if (auto rankedParamDeclRef =
           dyn_cast<KGEN::ParamDeclRefAttr>(outTy.getShapeAttr())) {
@@ -294,22 +295,38 @@ KGEN::ParamDeclArrayAttr getNewParameterMapping(GraphOp &graph,
     return KGEN::ParamDeclArrayAttr::get(ctx, {paramDecl});
   }
 
+  llvm::SmallSetVector<ParamDeclAttr, 10> outputParamDeclSet(
+      outputParamDecls.begin(), outputParamDecls.end());
+
   // New attrs. These are either the exact same as the old attribute or a new
   // attribute
   SmallVector<KGEN::ParamDeclAttr> params;
 
+  // We want to move all parameters declared by the associated operator to
+  // to be defined by the new shape func invocation.
+  //
+  // In the case of a dim whose results we don't need to define, we add a new
+  // "F"allback dim which is useless but needed to ensure the contract of the
+  // shape func.
+  auto getShapeFuncSymbol = [&](TypedAttr dim) -> KGEN::ParamDeclAttr {
+    auto asSymbolic = dyn_cast<KGEN::ParamDeclRefAttr>(dim);
+
+    // Is an integer we already know.
+    if (!asSymbolic)
+      return graph.getNewDimParam("F");
+
+    // Is defined by some other shape.
+    auto asParamDeclAttr = KGEN::ParamDeclAttr::get(asSymbolic);
+    if (!outputParamDeclSet.contains(asParamDeclAttr))
+      return graph.getNewDimParam("F");
+
+    return asParamDeclAttr;
+  };
+
   // Parameters assumed to be in order. Add the index of each symbolic
   // dimension.
   for (auto dim : outTy.getTypedShapeAttr().getValues()) {
-    if (auto asSymbolic = dyn_cast<KGEN::ParamDeclRefAttr>(dim)) {
-      // Since this pass happens before shape propagation, for any op that
-      // declares output parameters, the parameters in its output shape must
-      // come from those output parameters.
-      params.push_back(KGEN::ParamDeclAttr::get(asSymbolic));
-    } else {
-      // Add a new placeholder parameter. F for fallback.
-      params.push_back(graph.getNewDimParam("F"));
-    }
+    params.push_back(getShapeFuncSymbol(dim));
   }
   return KGEN::ParamDeclArrayAttr::get(graph.getContext(), params);
 }
@@ -320,8 +337,8 @@ KGEN::ParamDeclArrayAttr getNewParameterMapping(GraphOp &graph,
 
 static ErrorOrSuccess buildForReductionOp(GraphOp &graph, OpBuilder &builder,
                                           MO::Reduction op) {
-  KGEN::ParamDeclArrayAttr shapeParams =
-      getNewParameterMapping(graph, op.getResult().getType());
+  KGEN::ParamDeclArrayAttr shapeParams = getNewParameterMapping(
+      graph, op.getResult().getType(), op.getOutputParamDecls());
 
   // Create the shape function.
   builder.create<MO::InvokeShapeFuncOp>(
@@ -334,8 +351,8 @@ static ErrorOrSuccess buildForReductionOp(GraphOp &graph, OpBuilder &builder,
 
 static ErrorOrSuccess buildForScatterLikeOp(GraphOp &graph, OpBuilder &builder,
                                             MO::ScatterLike op) {
-  KGEN::ParamDeclArrayAttr shapeParams =
-      getNewParameterMapping(graph, op.getResult().getType());
+  KGEN::ParamDeclArrayAttr shapeParams = getNewParameterMapping(
+      graph, op.getResult().getType(), op.getOutputParamDecls());
 
   // Create the shape function.
   builder.create<MO::InvokeShapeFuncOp>(
@@ -349,8 +366,8 @@ static ErrorOrSuccess buildForScatterLikeOp(GraphOp &graph, OpBuilder &builder,
 static ErrorOrSuccess buildForScatterNdLikeOp(GraphOp &graph,
                                               OpBuilder &builder,
                                               MO::ScatterNdLike op) {
-  KGEN::ParamDeclArrayAttr shapeParams =
-      getNewParameterMapping(graph, op.getResult().getType());
+  KGEN::ParamDeclArrayAttr shapeParams = getNewParameterMapping(
+      graph, op.getResult().getType(), op.getOutputParamDecls());
 
   // Create the shape function.
   builder.create<MO::InvokeShapeFuncOp>(
@@ -363,10 +380,11 @@ static ErrorOrSuccess buildForScatterNdLikeOp(GraphOp &graph,
 
 void buildForOpResult(GraphOp &graph, OpBuilder &builder, TensorValue res,
                       StringRef shapeFuncName, ValueRange operands,
+                      ArrayRef<ParamDeclAttr> outputParamDecls,
                       ArrayRef<std::pair<StringRef, Attribute>> kgenParams,
                       ArrayRef<int32_t> dataDepInputIdxs) {
   KGEN::ParamDeclArrayAttr shapeParams =
-      getNewParameterMapping(graph, res.getType());
+      getNewParameterMapping(graph, res.getType(), outputParamDecls);
 
   // TODO we can't deduce parameter from types of variadic inputs
   DictionaryAttr kgenParamAttrs;
@@ -392,6 +410,7 @@ ErrorOrSuccess Fallback<MO::AvgPoolOp>::build(GraphOp &graph,
                                               OpBuilder &builder,
                                               MO::AvgPoolOp op) {
   buildForOpResult(graph, builder, op, "pool_shape", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{1, 2, 3, 4});
   return success();
@@ -401,6 +420,7 @@ ErrorOrSuccess Fallback<MO::AvgPoolCeilOp>::build(GraphOp &graph,
                                                   OpBuilder &builder,
                                                   MO::AvgPoolCeilOp op) {
   buildForOpResult(graph, builder, op, "pool_shape_ceil", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{1, 2, 3, 4});
   return success();
@@ -410,6 +430,7 @@ ErrorOrSuccess Fallback<MO::BatchMatmulOp>::build(GraphOp &graph,
                                                   OpBuilder &builder,
                                                   MO::BatchMatmulOp op) {
   buildForOpResult(graph, builder, op, "batch_matmul_shape", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{});
   return success();
@@ -419,7 +440,7 @@ ErrorOrSuccess Fallback<MO::BottomKOp>::build(GraphOp &graph,
                                               OpBuilder &builder,
                                               MO::BottomKOp op) {
   buildForOpResult(graph, builder, op.getValues(), "top_k_shape",
-                   op.getOperands(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1, 2});
   // indices() guaranteed by verifier to have the same shape as values()
   return success();
@@ -429,6 +450,7 @@ ErrorOrSuccess Fallback<MO::BroadcastToOp>::build(GraphOp &graph,
                                                   OpBuilder &builder,
                                                   MO::BroadcastToOp op) {
   buildForOpResult(graph, builder, op, "broadcast_to_shape", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{1});
   return success();
@@ -438,7 +460,7 @@ ErrorOrSuccess Fallback<MO::BroadcastShapeOp>::build(GraphOp &graph,
                                                      OpBuilder &builder,
                                                      MO::BroadcastShapeOp op) {
   buildForOpResult(graph, builder, op, "broadcast_shape_shape",
-                   op.getOperands(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{});
   return success();
 }
@@ -452,6 +474,7 @@ ErrorOrSuccess Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
 
   buildForOpResult(
       graph, builder, op, "concat_shape", op.getOperands(),
+      op.getOutputParamDecls(),
       /*kgenParams=*/
       {{"input_type", inputDTypeAttr}, {"input_rank", inputRankAttr}},
       /*dataDepInputIdxs=*/{0});
@@ -462,7 +485,7 @@ ErrorOrSuccess Fallback<MO::ConcatFromListOp>::build(GraphOp &graph,
                                                      OpBuilder &builder,
                                                      MO::ConcatFromListOp op) {
   buildForOpResult(graph, builder, op, "concat_from_list_shape",
-                   op.getOperands(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{0, 1});
   return success();
@@ -471,6 +494,7 @@ ErrorOrSuccess Fallback<MO::ConcatFromListOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::ConvOp>::build(GraphOp &graph, OpBuilder &builder,
                                            MO::ConvOp op) {
   buildForOpResult(graph, builder, op, "conv_shape", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{2, 3, 4, 5});
   return success();
 }
@@ -479,6 +503,7 @@ ErrorOrSuccess Fallback<MO::ConvTransposeOp>::build(GraphOp &graph,
                                                     OpBuilder &builder,
                                                     MO::ConvTransposeOp op) {
   buildForOpResult(graph, builder, op, "conv_transpose_shape", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{2, 3, 4, 5});
   return success();
 }
@@ -501,7 +526,7 @@ Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
 
   for (auto [idx, res] : llvm::enumerate(op.getResults())) {
     buildForOpResult(graph, builder, cast<TensorValue>(res), shapeFunctionName,
-                     operands,
+                     operands, op.getOutputParamDecls(),
                      /*kgenParams=*/{{"output_idx", builder.getIndexAttr(idx)}},
                      /*dataDepInputIdxs=*/dataDepInputIdxs);
   }
@@ -512,6 +537,7 @@ Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
 ErrorOrSuccess Fallback<MO::GatherOp>::build(GraphOp &graph, OpBuilder &builder,
                                              MO::GatherOp op) {
   buildForOpResult(graph, builder, op, "gather_shape", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{2});
   return success();
@@ -521,6 +547,7 @@ ErrorOrSuccess Fallback<MO::GatherNdOp>::build(GraphOp &graph,
                                                OpBuilder &builder,
                                                MO::GatherNdOp op) {
   buildForOpResult(graph, builder, op, "gather_nd_shape", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/
                    {
                        {"batch_dims", op.getBatchDims()},
@@ -533,6 +560,7 @@ ErrorOrSuccess Fallback<MO::LayerNormOp>::build(GraphOp &graph,
                                                 OpBuilder &builder,
                                                 MO::LayerNormOp op) {
   buildForOpResult(graph, builder, op, "layer_norm_shape", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{});
   return success();
@@ -542,6 +570,7 @@ ErrorOrSuccess Fallback<MO::LinAlg::SolveOp>::build(GraphOp &graph,
                                                     OpBuilder &builder,
                                                     MO::LinAlg::SolveOp op) {
   buildForOpResult(graph, builder, op, "matrix_solve_shape", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{});
   return success();
@@ -552,6 +581,7 @@ ErrorOrSuccess Fallback<MO::MaxPoolOp>::build(GraphOp &graph,
                                               MO::MaxPoolOp op) {
 
   buildForOpResult(graph, builder, op, "pool_shape", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{1, 2, 3, 4});
   return success();
@@ -562,6 +592,7 @@ ErrorOrSuccess Fallback<MO::MaxPoolCeilOp>::build(GraphOp &graph,
                                                   MO::MaxPoolCeilOp op) {
 
   buildForOpResult(graph, builder, op, "pool_shape_ceil", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{1, 2, 3, 4});
   return success();
@@ -572,7 +603,7 @@ Fallback<MO::NonMaximumSuppressionOp>::build(GraphOp &graph, OpBuilder &builder,
                                              MO::NonMaximumSuppressionOp op) {
   SmallVector<Value> shapeFuncInputs({});
   buildForOpResult(graph, builder, op, "non_maximum_suppression_shape",
-                   op.getOperands(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{0, 1, 2, 3, 4});
   return success();
 }
@@ -582,6 +613,7 @@ ErrorOrSuccess Fallback<MO::PadConstantOp>::build(GraphOp &graph,
                                                   MO::PadConstantOp op) {
   SmallVector<Value> shapeFuncInputs({op.getInput(), op.getPaddings()});
   buildForOpResult(graph, builder, op, "pad_shape", shapeFuncInputs,
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
   return success();
 }
@@ -591,6 +623,7 @@ ErrorOrSuccess Fallback<MO::PadReflectOp>::build(GraphOp &graph,
                                                  MO::PadReflectOp op) {
   SmallVector<Value> shapeFuncInputs({op.getInput(), op.getPaddings()});
   buildForOpResult(graph, builder, op, "pad_shape", shapeFuncInputs,
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
   return success();
 }
@@ -600,6 +633,7 @@ ErrorOrSuccess Fallback<MO::PadRepeatOp>::build(GraphOp &graph,
                                                 MO::PadRepeatOp op) {
   SmallVector<Value> shapeFuncInputs({op.getInput(), op.getPaddings()});
   buildForOpResult(graph, builder, op, "pad_shape", shapeFuncInputs,
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
   return success();
 }
@@ -609,6 +643,7 @@ ErrorOrSuccess Fallback<MO::RandomNormalOp>::build(GraphOp &graph,
                                                    MO::RandomNormalOp op) {
   SmallVector<Value> shapeFuncInputs({op.getOperand(0)});
   buildForOpResult(graph, builder, op, "random_shape", shapeFuncInputs,
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{0});
   return success();
 }
@@ -616,6 +651,7 @@ ErrorOrSuccess Fallback<MO::RandomNormalOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::RangeOp>::build(GraphOp &graph, OpBuilder &builder,
                                             MO::RangeOp op) {
   buildForOpResult(graph, builder, op, "range_shape", op->getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{0, 1, 2});
   return success();
 }
@@ -642,6 +678,7 @@ ErrorOrSuccess Fallback<MO::ReshapeOp>::build(GraphOp &graph,
                                               OpBuilder &builder,
                                               MO::ReshapeOp op) {
   buildForOpResult(graph, builder, op, "reshape_shape", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{1});
   return success();
@@ -651,6 +688,7 @@ ErrorOrSuccess Fallback<MO::ResizeNearestOp>::build(GraphOp &graph,
                                                     OpBuilder &builder,
                                                     MO::ResizeNearestOp op) {
   buildForOpResult(graph, builder, op, "resize_shape", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
   return success();
 }
@@ -659,6 +697,7 @@ ErrorOrSuccess Fallback<MO::ResizeLinearOp>::build(GraphOp &graph,
                                                    OpBuilder &builder,
                                                    MO::ResizeLinearOp op) {
   buildForOpResult(graph, builder, op, "resize_shape", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
   return success();
 }
@@ -668,7 +707,7 @@ ErrorOrSuccess Fallback<MO::RoiAlignOp>::build(GraphOp &graph,
                                                MO::RoiAlignOp op) {
   // The shape function doesn't need spatial_scale and sampling_ratio.
   buildForOpResult(graph, builder, op, "roi_align_shape",
-                   op.getOperands().take_front(4),
+                   op.getOperands().take_front(4), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{2, 3});
   return success();
 }
@@ -708,6 +747,7 @@ BUILD_SCATTER_ND_LIKE_OP(MO::ScatterNdMulOp)
 ErrorOrSuccess Fallback<MO::SliceOp>::build(GraphOp &graph, OpBuilder &builder,
                                             MO::SliceOp op) {
   buildForOpResult(graph, builder, op, "slice_shape", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1, 2, 3});
   return success();
 }
@@ -717,6 +757,7 @@ ErrorOrSuccess Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
   for (auto [idx, res] : llvm::enumerate(op.getResults())) {
     buildForOpResult(graph, builder, cast<TensorValue>(res),
                      "split_ith_output_shape", op.getOperands(),
+                     op.getOutputParamDecls(),
                      /*kgenParams=*/{{"output_idx", builder.getIndexAttr(idx)}},
                      /*dataDepInputIdxs=*/{1, 2});
   }
@@ -727,6 +768,7 @@ ErrorOrSuccess Fallback<MO::SqueezeShapeOp>::build(GraphOp &graph,
                                                    OpBuilder &builder,
                                                    MO::SqueezeShapeOp op) {
   buildForOpResult(graph, builder, op, "squeeze_shape_shape", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{});
   return success();
 }
@@ -734,7 +776,7 @@ ErrorOrSuccess Fallback<MO::SqueezeShapeOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::TopKOp>::build(GraphOp &graph, OpBuilder &builder,
                                            MO::TopKOp op) {
   buildForOpResult(graph, builder, op.getValues(), "top_k_shape",
-                   op.getOperands(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1, 2});
 
   // indices() guaranteed by verifier to have the same shape as values()
@@ -745,6 +787,7 @@ ErrorOrSuccess Fallback<MO::TransposeOp>::build(GraphOp &graph,
                                                 OpBuilder &builder,
                                                 MO::TransposeOp op) {
   buildForOpResult(graph, builder, op, "transpose_shape", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
   return success();
 }
@@ -753,7 +796,7 @@ ErrorOrSuccess Fallback<MO::UnsqueezeShapeOp>::build(GraphOp &graph,
                                                      OpBuilder &builder,
                                                      MO::UnsqueezeShapeOp op) {
   buildForOpResult(graph, builder, op, "unsqueeze_shape_shape",
-                   op.getOperands(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{});
   return success();
 }
@@ -762,6 +805,7 @@ ErrorOrSuccess Fallback<MO::ArgNonzeroOp>::build(GraphOp &graph,
                                                  OpBuilder &builder,
                                                  MO::ArgNonzeroOp op) {
   buildForOpResult(graph, builder, op, "arg_nonzero_shape", op->getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{0});
   return success();
 }
@@ -769,6 +813,7 @@ ErrorOrSuccess Fallback<MO::ArgNonzeroOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::TileOp>::build(GraphOp &graph, OpBuilder &builder,
                                            MO::TileOp op) {
   buildForOpResult(graph, builder, op, "tile_shape", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
   return success();
 }
