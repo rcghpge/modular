@@ -4160,6 +4160,43 @@ def MO_ConcatFromListOp : MO_TensorOp<"concat_from_list", [
   let hasCanonicalizeMethod = 1;
 }
 
+def MO_GuardOp : MO_Op<"guard", [DeclareOpInterfaceMethods<InferTypeOpInterface>]>
+{
+  let summary = "SSA-value guard operation";
+  let description = [{
+    Consumes a mosh.chain operation and a variadic number of inputs and is
+    semantically equivalent to a copy of the variadic inputs. 
+
+    This can be used in conjunction with the !mosh.chain returning ops
+    (currently only mosh.assert) in order to set up execution dependencies
+    between the chain producing op and any appropriate downstream operations.
+
+    Example:
+
+    ```mlir
+      %X: !mo.tensor<[D1, D2], f32>
+      %Y: !mo.tensor<[D2, D3], f32>
+
+      %chain : !mosh.chain
+
+      %guarded:2 = mo.guard[%chain](%X, %Y)
+
+      %z = mo.matmul(%guarded#0, %guarded#1)
+    ```
+  }];
+
+  let arguments = (ins MOSH_ChainType:$chain,
+                       Variadic<AnyType>:$inputs);
+
+  let results = (outs Variadic<AnyType>:$results);
+
+  let assemblyFormat = [{
+    `[` $chain `]` `(` $inputs `)` attr-dict `:` type($inputs)
+  }];
+
+  let hasVerifier = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // "Custom" GPU only ops
 //===----------------------------------------------------------------------===//
