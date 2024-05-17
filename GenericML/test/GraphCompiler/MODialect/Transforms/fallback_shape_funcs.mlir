@@ -43,8 +43,7 @@ mo.graph @avg_pool_fallback_shape_func<() -> D0, D1, D2, D3>(
 //
 // CHECK-NEXT: mo.invoke_shape_func["pool_shape"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
 // CHECK-SAME:   %[[INPUT]], %[[FILTER_SHAPE]], %[[STRIDES]], %[[DILATIONS]], %[[PADDINGS]])
-// CHECK-SAME:   {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32],
-// CHECK-SAME:   kgenParams = {ceil_mode = false}} :
+// CHECK-SAME:   {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>)
 //
 // CHECK-NEXT: %[[RES:.*]] = mo.avg_pool(%[[INPUT]]) [filter_shape = %[[FILTER_SHAPE]], strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]]]
@@ -73,8 +72,7 @@ mo.graph @avg_pool_ceil_mode_true_fallback_shape_func<() -> D0, D1, D2, D3>(
 //
 // CHECK-NEXT: mo.invoke_shape_func["pool_shape_ceil"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
 // CHECK-SAME:   %[[INPUT]], %[[FILTER_SHAPE]], %[[STRIDES]], %[[DILATIONS]], %[[PADDINGS]])
-// CHECK-SAME:   {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32],
-// CHECK-SAME:   kgenParams = {ceil_mode = true}} :
+// CHECK-SAME:   {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>)
 //
 // CHECK-NEXT: %[[RES:.*]] = mo.avg_pool_ceil_mode_true(%[[INPUT]]) [filter_shape = %[[FILTER_SHAPE]], strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]]]
@@ -129,7 +127,7 @@ mo.graph @max_pool_fallback_shape_func<() -> D0, D1, D2, D3>(
 //
 // CHECK-NEXT: mo.invoke_shape_func["pool_shape"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
 // CHECK-SAME:   %[[INPUT]], %[[FILTER_SHAPE]], %[[STRIDES]], %[[DILATIONS]], %[[PADDINGS]])
-// CHECK-SAME:   {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32],
+// CHECK-SAME:   {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>)
 //
 // CHECK-NEXT: %[[RES:.*]] = mo.max_pool(%[[INPUT]]) [filter_shape = %[[FILTER_SHAPE]], strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]]]
@@ -158,8 +156,7 @@ mo.graph @max_pool_ceil_mode_true_fallback_shape_func<() -> D0, D1, D2, D3>(
 //
 // CHECK-NEXT: mo.invoke_shape_func["pool_shape_ceil"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
 // CHECK-SAME:   %[[INPUT]], %[[FILTER_SHAPE]], %[[STRIDES]], %[[DILATIONS]], %[[PADDINGS]])
-// CHECK-SAME:   {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32],
-// CHECK-SAME:   kgenParams = {ceil_mode = true}} :
+// CHECK-SAME:   {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>)
 //
 // CHECK-NEXT: %[[RES:.*]] = mo.max_pool_ceil_mode_true(%[[INPUT]]) [filter_shape = %[[FILTER_SHAPE]], strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]]]

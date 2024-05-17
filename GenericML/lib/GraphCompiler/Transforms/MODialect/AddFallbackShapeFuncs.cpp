@@ -391,9 +391,8 @@ void buildForOpResult(GraphOp &graph, OpBuilder &builder, TensorValue res,
 ErrorOrSuccess Fallback<MO::AvgPoolOp>::build(GraphOp &graph,
                                               OpBuilder &builder,
                                               MO::AvgPoolOp op) {
-  BoolAttr ceilModeAttr = builder.getBoolAttr(false);
   buildForOpResult(graph, builder, op, "pool_shape", op.getOperands(),
-                   /*kgenParams=*/{{"ceil_mode", ceilModeAttr}},
+                   /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{1, 2, 3, 4});
   return success();
 }
@@ -401,9 +400,8 @@ ErrorOrSuccess Fallback<MO::AvgPoolOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::AvgPoolCeilOp>::build(GraphOp &graph,
                                                   OpBuilder &builder,
                                                   MO::AvgPoolCeilOp op) {
-  BoolAttr ceilModeAttr = builder.getBoolAttr(true);
   buildForOpResult(graph, builder, op, "pool_shape_ceil", op.getOperands(),
-                   /*kgenParams=*/{{"ceil_mode", ceilModeAttr}},
+                   /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{1, 2, 3, 4});
   return success();
 }
@@ -553,10 +551,8 @@ ErrorOrSuccess Fallback<MO::MaxPoolOp>::build(GraphOp &graph,
                                               OpBuilder &builder,
                                               MO::MaxPoolOp op) {
 
-  BoolAttr ceilModeAttr = builder.getBoolAttr(false);
-
   buildForOpResult(graph, builder, op, "pool_shape", op.getOperands(),
-                   /*kgenParams=*/{{"ceil_mode", ceilModeAttr}},
+                   /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{1, 2, 3, 4});
   return success();
 }
@@ -565,10 +561,8 @@ ErrorOrSuccess Fallback<MO::MaxPoolCeilOp>::build(GraphOp &graph,
                                                   OpBuilder &builder,
                                                   MO::MaxPoolCeilOp op) {
 
-  BoolAttr ceilModeAttr = builder.getBoolAttr(true);
-
   buildForOpResult(graph, builder, op, "pool_shape_ceil", op.getOperands(),
-                   /*kgenParams=*/{{"ceil_mode", ceilModeAttr}},
+                   /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{1, 2, 3, 4});
   return success();
 }
