@@ -181,19 +181,26 @@ struct InferLayoutPass : public impl::InferLayoutsBase<InferLayoutPass> {
       for (Operation *op : affectedOps) {
         // For now we only look at ops with this trait and mo.transfer, but
         // we might propagate layout through more ops like transpose.
-        if (isa<MO::TransferOp>(op) ||
-            op->hasTrait<mlir::OpTrait::SameOperandsAndResultType>()) {
-          // For some reason `llvm::concat` produces null values.
-          SmallVector<Value> inputAndOutputs(op->getOperands());
-          llvm::append_range(inputAndOutputs, op->getResults());
-          // We must propagate through both inputs and outputs for generality.
-          for (Value val : inputAndOutputs) {
-            if (auto tensorVal = dyn_cast<TensorValue>(val)) {
-              // Short-circuit on any error during layout inference
-              if (failed(addLayoutConstraint(op, tensorVal, layout)))
-                return failure();
-              tryPushOntoWorklist(tensorVal);
-            }
+        SmallVector<Value> valsToPropagate = [](Operation *op) {
+          SmallVector<Value> results;
+          if (isa<MO::GuardOp>(op)) {
+            llvm::append_range(results, op->getOperands().drop_front());
+            llvm::append_range(results, op->getResults());
+          } else if (isa<MO::TransferOp>(op) ||
+                     op->hasTrait<mlir::OpTrait::SameOperandsAndResultType>()) {
+            llvm::append_range(results, op->getOperands());
+            llvm::append_range(results, op->getResults());
+          }
+          return results;
+        }(op);
+
+        // We must propagate through both inputs and outputs for generality.
+        for (Value val : valsToPropagate) {
+          if (auto tensorVal = dyn_cast<TensorValue>(val)) {
+            // Short-circuit on any error during layout inference
+            if (failed(addLayoutConstraint(op, tensorVal, layout)))
+              return failure();
+            tryPushOntoWorklist(tensorVal);
           }
         }
       }

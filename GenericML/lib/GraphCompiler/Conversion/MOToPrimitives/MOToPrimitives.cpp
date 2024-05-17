@@ -159,6 +159,9 @@ public:
   // Lowers mo.list.slice op.
   LogicalResult lowerListSlice(MO::ListSliceOp listSliceOp);
 
+  /// Lowers mo.guard op
+  LogicalResult lowerGuard(MO::GuardOp guardOp);
+
 private:
   /// Lowers a Block
   LogicalResult lowerBlock(mlir::Block *block);
@@ -917,6 +920,30 @@ LogicalResult MOGraphLowering::lowerListSlice(MO::ListSliceOp listSliceOp) {
   return success();
 }
 
+LogicalResult MOGraphLowering::lowerGuard(MO::GuardOp guardOp) {
+  MGP::MOOpLoweringState opLoweringState(loweringState, guardOp);
+
+  Value loweredChain =
+      loweringState.lookupExecuteLoweredValue(guardOp.getChain());
+
+  SmallVector<Value> loweredInputs;
+
+  for (Value val : guardOp.getInputs()) {
+    Value loweredInput = loweringState.lookupExecuteLoweredValue(val);
+    loweredInputs.push_back(loweredInput);
+  }
+
+  auto mgpGuardOp =
+      opLoweringState.create<MGP::GuardOp>(loweredChain, loweredInputs);
+
+  for (auto &&[origRes, loweredRes] :
+       llvm::zip(guardOp.getResults(), mgpGuardOp.getResults())) {
+    loweringState.emplaceExecuteLoweredValue(origRes, loweredRes);
+  }
+
+  return success();
+}
+
 LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   GENERICML_ASSERT(MO::isOnHost(ifOp)) << "mo.if is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, ifOp);
@@ -1259,6 +1286,13 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
     // Lower mo.yield to mef.output trivially.
     if (auto output = dyn_cast<MO::YieldOp>(op)) {
       if (failed(lowerYield(output)))
+        return failure();
+      continue;
+    }
+
+    // Lowers mo.guard to
+    if (auto guardOp = dyn_cast<MO::GuardOp>(op)) {
+      if (failed(lowerGuard(guardOp)))
         return failure();
       continue;
     }
