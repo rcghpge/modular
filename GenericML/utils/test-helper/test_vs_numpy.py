@@ -3,7 +3,7 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-
+import os
 import argparse
 import numpy as np
 from test_cases import get_test_case
@@ -82,9 +82,15 @@ def test_vs_numpy(testCase, file_to_run):
         )
 
     # Execute with mt to get the MO output.
+    mt_command = "mt"
+
+    if "MODULAR_MT" in os.environ:
+        mt_command = os.environ["MODULAR_MT"]
+
     out = subprocess.run(
         (
-            f"mt --execute {file_to_run} --num-runs={testCase.num_runs()}"
+            f"{mt_command} --execute"
+            f" {file_to_run} --num-runs={testCase.num_runs()}"
             f" {input_launch_line} --result-output-style=full"
         ),
         capture_output=True,

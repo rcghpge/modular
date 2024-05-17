@@ -7,6 +7,7 @@ cc_binary(
     name = "mt",
     srcs = glob(["*.cpp"]),
     data = [
+        "//ModularFramework/tools/mof",
         "//ONNX/tools/onnx:monnx",
         "//PyTorch:StockTorchInterface.shared.file",
         "//PyTorch:TorchRuntimePlugin",
@@ -24,6 +25,7 @@ rpath_shim(
     name = "rpaths",
     visibility = ["//visibility:private"],
     deps = [
+        "//ModularFramework/tools/mof:mof.import",
         "//ONNX/tools/onnx:monnx.import",
         "//PyTorch:StockTorchInterface",
         "//PyTorch:TorchRuntimePlugin.import",
