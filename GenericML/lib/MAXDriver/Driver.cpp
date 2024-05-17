@@ -53,7 +53,7 @@ struct DeviceTensor {
   virtual ~DeviceTensor() = default;
 };
 
-struct CPUDeviceTensor : DeviceTensor {
+struct CPUDeviceTensor final : DeviceTensor {
   M::LLCL::Runtime *runtime;
 
   CPUDeviceTensor(size_t bytes, Device *dev, M::LLCL::Runtime *runtime)
