@@ -320,6 +320,101 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   return ShapeMaterializeResult::success(std::move(ops), resShape);
 }
 
+ShapeMaterializeResult materializeConvTransposeShape(
+    GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
+    TypedAttr filterShapeAttr, TypedAttr stridesAttr, TypedAttr dilationsAttr,
+    TypedAttr paddingsAttr, TypedAttr outputPaddingsAttr) {
+  auto inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
+  auto filterShape = dyn_cast<ShapeAttr>(filterShapeAttr);
+  auto strides = dyn_cast<ShapeAttr>(stridesAttr);
+  auto dilations = dyn_cast<ShapeAttr>(dilationsAttr);
+  auto paddings = dyn_cast<ShapeAttr>(paddingsAttr);
+  auto outPaddings = dyn_cast<ShapeAttr>(outputPaddingsAttr);
+  // Make sure both input and target shapes are ranked symbolic shapes.
+  // No need to check for `numGroupsAttr` because it's just an integer.
+  if (!inputShape || !filterShape || !strides || !dilations || !paddings ||
+      !outPaddings) {
+    return ShapeMaterializeResult::nonMaterializable();
+  }
+
+  // Preliminary rank checks.
+  size_t inputRank = inputShape.getRank();
+  if (inputRank != 4 && inputRank != 5) {
+    return ShapeMaterializeResult::error(
+        "[conv_transpose] requires (input_rank == 4 or 5)");
+  }
+  if (inputRank != filterShape.getRank()) {
+    return ShapeMaterializeResult::error(
+        "[conv_transpose] requires (input_rank == kernel_rank)");
+  }
+  if (strides.getSize() != inputRank - 2 ||
+      dilations.getSize() != inputRank - 2) {
+    return ShapeMaterializeResult::error(
+        "[conv_transpose] requires (len(strides) == len(dilations) == "
+        "input_rank - 2)");
+  }
+  if (paddings.getSize() != 2 * (inputRank - 2)) {
+    return ShapeMaterializeResult::error(
+        "[conv_transpose] requires (len(paddings) == 2 * (input rank - 2))");
+  }
+
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
+  // NOTE
+  // - input and output have layout [batch_size, ...spatial_dims...,
+  // input_channels]
+  // - filter has layout [...spatial_dims..., filter_channels, output_channels]
+  //
+  // BUT since ConvTranspose is the inverse of Conv w.r.t. the input, the output
+  // shape would have layout [batch_size, ...spatial_dims..., filter_channels]
+  Var batchSize = b.createVar(inputShape[0]);
+  Var inputChannels = b.createVar(inputShape[inputRank - 1]);
+  Var filterChannels = b.createVar(filterShape[inputRank - 2]);
+  Var outputChannels = b.createVar(filterShape[inputRank - 1]);
+
+  // Check input and kernel channels.
+  b.createAssert(inputChannels == outputChannels,
+                 "[conv_transpose] requires input channel to match output "
+                 "channel in kernel");
+
+  SmallVector<TypedAttr> resDims;
+  resDims.push_back(batchSize.getAttr());
+
+  // Compute a specific output spatial dimension.
+  auto computeOutDim = [](const Var &inputDim, const Var &filterDim,
+                          const Var &dilation, const Var &stride,
+                          const Var &prePad, const Var &postPad,
+                          const Var &outPad) -> Var {
+    return stride * (inputDim - 1) + outPad + ((filterDim - 1) * dilation + 1) -
+           prePad - postPad;
+  };
+
+  // Compute and collect output spatial dimensions;
+  for (size_t axis = 0; axis < inputRank - 2; axis++) {
+    Var inputSpatialDim = b.createVar(inputShape[axis + 1]);
+    Var filterSpatialDim = b.createVar(filterShape[axis]);
+    Var dilation = b.createVar(dilations[axis]);
+    Var stride = b.createVar(strides[axis]);
+    Var prePad = b.createVar(paddings[2 * axis]);
+    Var postPad = b.createVar(paddings[2 * axis + 1]);
+    Var outPad = b.createVar(outPaddings[axis]);
+
+    Var outputSpatialDim =
+        computeOutDim(inputSpatialDim, filterSpatialDim, dilation, stride,
+                      prePad, postPad, outPad);
+    b.createAssert(outputSpatialDim > 0,
+                   "[conv_transpose] output spatial dim must be positive");
+    resDims.push_back(outputSpatialDim.getAttr());
+  }
+
+  // Create output shape
+  resDims.push_back(filterChannels.getAttr());
+  ShapeAttr resShape = b.getShapeAttr(resDims);
+  return ShapeMaterializeResult::success(std::move(ops), resShape);
+}
+
 ShapeMaterializeResult
 materializePoolShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
                      TypedAttr filterAttr, TypedAttr stridesAttr,
@@ -625,6 +720,22 @@ materializeConvShapeImpl(ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams,
   return materializeConvShape(graphOp, loc, inputShape, filterShape, strides,
                               dilations, paddings, numGroup);
 }
+// Assume `inputs` are staticized inputs for a `MO::ConvTransposeOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+materializeConvTransposeShapeImpl(ArrayRef<TypedAttr> inputs,
+                                  DictionaryAttr kgenParams, GraphOp graphOp,
+                                  Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr filterShape = inputs[1];
+  TypedAttr strides = inputs[2];
+  TypedAttr dilations = inputs[3];
+  TypedAttr paddings = inputs[4];
+  TypedAttr outPaddings = inputs[5];
+  return materializeConvTransposeShape(graphOp, loc, inputShape, filterShape,
+                                       strides, dilations, paddings,
+                                       outPaddings);
+}
 
 // Assume `inputs` are staticized inputs for a Pooling op that rounds _up_ when
 // computing output shapes, try materializing the its shape logic.
@@ -686,6 +797,7 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
       {"broadcast_to_shape", materializeBroadcastToShapeImpl},
       {"concat_shape", materializeConcatShapeImpl},
       {"conv_shape", materializeConvShapeImpl},
+      {"conv_transpose_shape", materializeConvTransposeShapeImpl},
       {"pool_shape", materializePoolFloorShapeImpl},
       {"pool_shape_ceil", materializePoolCeilShapeImpl},
       {"range_shape", materializeRangeShapeImpl},

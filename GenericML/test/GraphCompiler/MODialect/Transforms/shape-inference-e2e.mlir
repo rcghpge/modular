@@ -424,6 +424,31 @@ mo.graph @conv2d_dyn_input_dims(
 // CHECK-NEXT:   mo.output [[V4]]
 // CHECK-NEXT: }
 
+// NOTE this is essentially the inverse of `conv2d_dyn_input_dims`, although we
+// can't get the result shape to match the input shape in
+// `conv2d_dyn_input_dims` due to roundings.
+// CHECK-LABEL: mo.graph @conv_transpose_2d_dyn_input_dims
+//  CHECK-SAME:   <[[D9:.*]]>(
+mo.graph @conv_transpose_2d_dyn_input_dims(
+  %input: !mo.tensor<[?, 7, 12, 32], f32>,
+  %filter: !mo.tensor<[3, 3, 16, 32], f32>
+) -> !mo.tensor<[?, ?, ?, ?], f32> {
+  %st = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %di = mo.constant {value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %op = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK: mo.conv_transpose{{.*}} -> !mo.tensor<[[[D9]], 19, 29, 16], f32>
+  %0 = mo.conv_transpose(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+    !mo.tensor<[?, 7, 12, 32], f32>,
+    !mo.tensor<[3, 3, 16, 32], f32>,
+    !mo.tensor<[2], si64>,
+    !mo.tensor<[2], si64>,
+    !mo.tensor<[4], si64>,
+    !mo.tensor<[2], si64>
+  ) -> !mo.tensor<[?, ?, ?, ?], f32>
+  mo.output %0 : !mo.tensor<[?, ?, ?, ?], f32>
+}
+
 mo.graph @max_pool2d_static_input_dims(
   %input: !mo.tensor<[10, 4, 4, 16], f32>
 ) -> !mo.tensor<[?, ?, ?, ?], f32> {
