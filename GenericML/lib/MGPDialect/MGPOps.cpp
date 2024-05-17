@@ -1127,6 +1127,32 @@ bool ListSliceOp::mayAlias(size_t operandIndex, size_t resultIndex) {
 }
 
 //===----------------------------------------------------------------------===//
+// GuardOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult GuardOp::verify() {
+  if (getInputs().size() != getResults().size()) {
+    return emitError() << "Expected the number of inputs and outputs to be "
+                          "exactly the same";
+  }
+  return success();
+}
+
+LogicalResult GuardOp::inferReturnTypes(
+    ::mlir::MLIRContext *context, ::std::optional<::mlir::Location> location,
+    ::mlir::ValueRange operands, ::mlir::DictionaryAttr attributes,
+    ::mlir::OpaqueProperties properties, ::mlir::RegionRange regions,
+    ::llvm::SmallVectorImpl<::mlir::Type> &inferredReturnTypes) {
+
+  for (Value val : llvm::drop_begin(operands))
+    inferredReturnTypes.push_back(val.getType());
+
+  return success();
+}
+
+bool GuardOp::mayAlias(size_t operandIndex, size_t resultIndex) { return true; }
+
+//===----------------------------------------------------------------------===//
 // ModelOp
 //===----------------------------------------------------------------------===//
 

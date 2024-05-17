@@ -223,6 +223,24 @@ mgp.model @invalidExecuteArgType : bogus init {
 // -----
 
 //
+// mgp.guard
+//
+
+mgp.model @guardOpWrongNResults : bogus init {
+  %ch = grt.chain.create ()
+  %ctx = mgp.context.create 1
+  mef.output %ch, %ctx : !mef.chain, !mgp.context
+} execute (%ch: !mef.chain, %ctx: !mgp.context, %tensor: !mgp.tensor<2xsi64>) -> (!mef.chain, !mgp.tensor<2xsi64>) {
+
+  // expected-error@+1 {{operation defines 1 results but was provided 3 to bind}}
+  %results:3 = mgp.guard %ch (%tensor) : !mgp.tensor<2xsi64>
+
+  mef.output %ch, %tensor : !mef.chain, !mgp.tensor<2xsi64>
+}
+
+// -----
+
+//
 // mgp.list.create
 //
 

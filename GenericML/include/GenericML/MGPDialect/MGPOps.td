@@ -750,6 +750,53 @@ def MGP_ListSliceOp : MGP_Op<"list.slice", [
 }
 
 //===----------------------------------------------------------------------===//
+// GuardOp
+//===----------------------------------------------------------------------===//
+
+def GuardOp : MGP_Op<"guard", [
+  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+  DeclareOpInterfaceMethods<GRTMayAliasInterface>,
+]> 
+{
+  let summary = "SSA-value guard operation";
+
+  let description = [{
+    This operation consumes a chain and a variadic list of values and forwards
+    the non-chain inputs through.
+
+    This can be used with !mef.chain returning ops in order to establish
+    execution dependencies between the chain producing op and any downstream
+    operations.
+
+    Example:
+
+    ```mlir
+      %X: !mgp.tensor<?x?xf32>
+      %Y: !mgp.tensor<?x?xf32>
+
+      %spec1:2 = mgp.tensor_spec.dims.dynamic %0 : !mgp.tensor_spec<?x?xf32>
+      %spec2:2 = mgp.tensor_spec.dims.dynamic %2 : !mgp.tensor_spec<?x?xf32>
+
+      %cond = mip.cmp.eq %spec1#1, %spec2#0
+
+      %chain = mgp.assert %cond, "D1 != D2"
+      %Xp, %Yp = mgp.guard %chain (%X, %Y) : !mgp.tensor<?x?xf32>, !mgp.tensor<?x?xf32>
+    ```
+  }];
+
+  let arguments = (ins ChainType:$chain,
+                       Variadic<AnyType>:$inputs);
+  let results = (outs Variadic<AnyType>:$results);
+
+  let assemblyFormat = [{
+    $chain  `(` $inputs `)` attr-dict `:` type($inputs)
+  }];
+
+  let hasVerifier = 1;
+}
+
+
+//===----------------------------------------------------------------------===//
 // ModelOp
 //===----------------------------------------------------------------------===//
 

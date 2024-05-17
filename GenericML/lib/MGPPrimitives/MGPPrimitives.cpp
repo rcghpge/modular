@@ -546,6 +546,23 @@ static void mgp_list_slice(List &inputList, Tensor &startTensor,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.guard
+//===----------------------------------------------------------------------===//
+
+static void mgp_guard(Chain inChain, RemainingArguments inputs,
+                      RemainingResults results) {
+  assert(inputs.size() == results.size());
+
+  auto inputAsyncVals = inputs.get();
+  auto resultAsnycVals = results.get();
+
+  for (const auto &[input, result] :
+       llvm::zip(inputAsyncVals, resultAsnycVals)) {
+    result = std::move(input);
+  }
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.model
 //===----------------------------------------------------------------------===//
 
@@ -579,6 +596,7 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.assert", mgp_assert);
   ADD_PRIMITIVE(registry, "mgp.generic.execute", mgp_generic_execute);
   ADD_PRIMITIVE(registry, "mgp.list.append", mgp_list_append);
+  ADD_PRIMITIVE(registry, "mgp.guard", mgp_guard);
   ADD_PRIMITIVE(registry, "mgp.list.concat", mgp_list_concat);
   ADD_PRIMITIVE(registry, "mgp.list.create", mgp_list_create);
   ADD_PRIMITIVE(registry, "mgp.list.get", mgp_list_get);
