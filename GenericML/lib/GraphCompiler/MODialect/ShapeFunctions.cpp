@@ -7,6 +7,7 @@
 #include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
 
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
+#include "GenericML/Support/Assert.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 
 namespace M::MO {
@@ -16,6 +17,10 @@ Var ParamExprBuilder::createVar(TypedAttr attr) {
   if (!declRef)
     declRef = this->createDeclToKgenAttr(attr, "var");
   return Var(declRef, this);
+}
+
+Var ParamExprBuilder::createVar(int64_t n) {
+  return createVar(IntegerAttr::get(builder.getIndexType(), n));
 }
 
 KGEN::ParamDeclRefAttr ParamExprBuilder::createDeclToKgenExpr(
@@ -331,6 +336,54 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
   return ShapeMaterializeResult::success(std::move(ops), outputShape);
 }
 
+ShapeMaterializeResult materializeSplitIthOutputShape(
+    GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
+    TypedAttr splitSizesAttr, TypedAttr axisAttr, size_t i) {
+  // Make sure input is ranked.
+  ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
+  ShapeAttr splitSizes = dyn_cast<ShapeAttr>(splitSizesAttr);
+  if (!inputShape || !splitSizes)
+    return ShapeMaterializeResult::nonMaterializable();
+
+  // Check for i
+  if (i >= splitSizes.getValues().size()) {
+    return ShapeMaterializeResult::error(
+        "[split] output index must be within range [0, len(split_sizes))");
+  }
+
+  // Check for constant axis
+  std::optional<int64_t> axisOr = tryGetConstantInt(axisAttr);
+  if (!axisOr.has_value())
+    return ShapeMaterializeResult::nonMaterializable();
+  int64_t axis = axisOr.value();
+
+  // Normalize axis and check it's in range.
+  size_t inputRank = inputShape.getRank();
+  axis = axis < 0 ? axis + inputRank : axis;
+  if (axis < 0 || inputRank <= static_cast<size_t>(axis)) {
+    return ShapeMaterializeResult::error(
+        "[split] normalized axis must be within range [0, rank)");
+  }
+
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
+  // Check for sum of splitSizes.
+  Var splitSizesSum = b.createVar(0);
+  for (TypedAttr splitSize : splitSizes.getValues())
+    splitSizesSum = splitSizesSum + b.createVar(splitSize);
+  b.createAssert(
+      splitSizesSum == b.createVar(inputShape[axis]),
+      "[split] sum of split sizes must match input dimension at split axis");
+
+  // Create output shape.
+  SmallVector<TypedAttr> outDims(inputShape.getValues());
+  outDims[axis] = splitSizes[i];
+  ShapeAttr outputShape = b.getShapeAttr(outDims);
+  return ShapeMaterializeResult::success(std::move(ops), outputShape);
+}
+
 //------------------------Shape functions end---------------------------------//
 //----------------------------------------------------------------------------//
 
@@ -339,7 +392,8 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
 // Assume `inputs` are staticized inputs for a `MO::BroadcastToOp`, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
-materializeBroadcastToShapeImpl(ArrayRef<TypedAttr> inputs, GraphOp graphOp,
+materializeBroadcastToShapeImpl(ArrayRef<TypedAttr> inputs,
+                                DictionaryAttr kgenParams, GraphOp graphOp,
                                 Location loc) {
   TypedAttr inputShape = inputs[0];
   TypedAttr targetShape = inputs[1];
@@ -349,7 +403,8 @@ materializeBroadcastToShapeImpl(ArrayRef<TypedAttr> inputs, GraphOp graphOp,
 // Assume `inputs` are staticized inputs for a `MO::ReshapeOp`, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
-materializeReshapeShapeImpl(ArrayRef<TypedAttr> inputs, GraphOp graphOp,
+materializeReshapeShapeImpl(ArrayRef<TypedAttr> inputs,
+                            DictionaryAttr kgenParams, GraphOp graphOp,
                             Location loc) {
   TypedAttr inputShape = inputs[0];
   TypedAttr targetShape = inputs[1];
@@ -359,8 +414,8 @@ materializeReshapeShapeImpl(ArrayRef<TypedAttr> inputs, GraphOp graphOp,
 // Assume `inputs` are staticized inputs for a `MO::RangeOp`, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
-materializeRangeShapeImpl(ArrayRef<TypedAttr> inputs, GraphOp graphOp,
-                          Location loc) {
+materializeRangeShapeImpl(ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams,
+                          GraphOp graphOp, Location loc) {
   TypedAttr startAttr = inputs[0];
   TypedAttr stopAttr = inputs[1];
   TypedAttr stepAttr = inputs[2];
@@ -370,7 +425,8 @@ materializeRangeShapeImpl(ArrayRef<TypedAttr> inputs, GraphOp graphOp,
 // Assume `inputs` are staticized inputs for a `MO::BatchMatmulOp`, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
-materializeBatchMatmulShapeImpl(ArrayRef<TypedAttr> inputs, GraphOp graphOp,
+materializeBatchMatmulShapeImpl(ArrayRef<TypedAttr> inputs,
+                                DictionaryAttr kgenParams, GraphOp graphOp,
                                 Location loc) {
   auto lhsShape = inputs[0];
   auto rhsShape = inputs[1];
@@ -380,11 +436,33 @@ materializeBatchMatmulShapeImpl(ArrayRef<TypedAttr> inputs, GraphOp graphOp,
 // Assume `inputs` are staticized inputs for a `MO::ConcatOp`, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
-materializeConcatShapeImpl(ArrayRef<TypedAttr> inputs, GraphOp graphOp,
+materializeConcatShapeImpl(ArrayRef<TypedAttr> inputs,
+                           DictionaryAttr kgenParams, GraphOp graphOp,
                            Location loc) {
   TypedAttr axis = inputs[0];
   ArrayRef<TypedAttr> inputShapes = inputs.drop_front();
   return materializeConcatShape(graphOp, loc, axis, inputShapes);
+}
+
+// Assume `inputs` are staticized inputs for a `MO::SplitiOp`, try
+// materializing the its shape logic for
+static ShapeMaterializeResult
+materializeSplitIthOutputShapeImpl(ArrayRef<TypedAttr> inputs,
+                                   DictionaryAttr kgenParams, GraphOp graphOp,
+                                   Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr splitSizes = inputs[1];
+  TypedAttr axis = inputs[2];
+
+  GENERICML_ASSERT(kgenParams)
+      << "kgenParams must be available for split_ith_output_shape";
+
+  auto intAttr = dyn_cast_or_null<IntegerAttr>(kgenParams.get("output_idx"));
+  GENERICML_ASSERT(intAttr) << "kgenParams must contain an 'output_idx' "
+                               "integer for split_ith_output_shape";
+
+  return materializeSplitIthOutputShape(graphOp, loc, inputShape, splitSizes,
+                                        axis, intAttr.getInt());
 }
 
 std::optional<MaterializeShapeFuncTy>
@@ -392,11 +470,12 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
   // A hard-coded map from shape function name to how their shape logic can be
   // materialized.
   static DenseMap<StringRef, MaterializeShapeFuncTy> nameToFunc = {
-      {"broadcast_to_shape", materializeBroadcastToShapeImpl},
-      {"reshape_shape", materializeReshapeShapeImpl},
-      {"range_shape", materializeRangeShapeImpl},
       {"batch_matmul_shape", materializeBatchMatmulShapeImpl},
+      {"broadcast_to_shape", materializeBroadcastToShapeImpl},
       {"concat_shape", materializeConcatShapeImpl},
+      {"range_shape", materializeRangeShapeImpl},
+      {"reshape_shape", materializeReshapeShapeImpl},
+      {"split_ith_output_shape", materializeSplitIthOutputShapeImpl},
   };
 
   auto iter = nameToFunc.find(shapeFuncName);

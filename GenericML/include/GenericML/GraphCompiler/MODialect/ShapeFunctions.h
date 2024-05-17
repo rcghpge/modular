@@ -36,6 +36,11 @@ public:
   /// parameter expression with the returned Var.
   Var createVar(TypedAttr attr);
 
+  /// Create a Var that wraps around a newly `IntegerAttr` that contains
+  /// `n`, and allows one to build more parameter expression with the returned
+  /// Var.
+  Var createVar(int64_t n);
+
   /// Create an op of the following form
   ///   kgen.param.declare declPrefix... = <poc(operands...)>
   ///
@@ -353,16 +358,35 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
                                                TypedAttr inputShapeAttr,
                                                TypedAttr targetShapeAttr);
 
+/// Materialize the shape logic for `MO::SplitOp`.
+///
+/// NOTE this one is odd because `MO::SplitOp` has multiple outputs (so one'd
+/// think the result should contain multiple output shapes). However since
+/// currently we wire these C++ shape function with fallback shape function
+/// calls, which contain one shape function call for each split output, the C++
+/// shape function will mirror the fallback shape function.
+///
+/// TODO once we finish migrating staticization and are ready to move
+/// `AddFallbackShapeFuncs` to after shape inference, this will materialize a
+/// single shape function for a `MO::SplitOp`, with _multiple_ output.
+ShapeMaterializeResult materializeSplitIthOutputShape(
+    GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
+    TypedAttr splitSizesAttr, TypedAttr axisAttr, size_t i);
+
 //------------------------Shape functions end---------------------------------//
 //----------------------------------------------------------------------------//
 
 // TODO move the following into a new interface.
-
+// NOTE some of the input arguments will be removed once we move the
+// implementation to a MLIR interface:
+// - we won't need `kgenParams` anymore because it's really a temporary backward
+//   compatibility thing for the fallback shape function.
+// - `loc` will just become the location of the operation itself.;
 using MaterializeShapeFuncTy = std::function<ShapeMaterializeResult(
-    ArrayRef<TypedAttr> inputs, GraphOp graphOp, Location loc)>;
+    ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams, GraphOp graphOp,
+    Location loc)>;
 /// Return a shape materialization function for the mojo shape function with
 /// given name.
-/// TODO move all these to a new interface.
 std::optional<MaterializeShapeFuncTy>
 tryGetShapeMaterializeFunc(StringRef shapeFuncName);
 

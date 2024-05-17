@@ -382,8 +382,9 @@ private:
     if (!shapeMaterializeFunc.has_value())
       return success();
 
+    DictionaryAttr kgenParams = invokeShapeFuncOp.getKgenParamsAttr();
     ShapeMaterializeResult result =
-        shapeMaterializeFunc.value()(inputAttrs, graphOp, loc);
+        shapeMaterializeFunc.value()(inputAttrs, kgenParams, graphOp, loc);
     // Give up if we can't materialize the shape logic.
     if (result.isNonMaterializable())
       return success();

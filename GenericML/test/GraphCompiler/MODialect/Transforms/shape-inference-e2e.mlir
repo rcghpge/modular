@@ -1197,3 +1197,25 @@ mo.graph @fold_non_trivial_lt<X, Y -> D0, D1>(
 
   mo.output<P2, P5> %res : !mo.tensor<[P2, P5], f32>
 }
+
+// CHECK-LABEL: mo.graph @split_shape
+//  CHECK-SAME:  <[[N:.*]]>(
+//  CHECK-SAME:    %[[INPUT:.*]]: !mo.tensor<[[[N]], 20], f32>
+mo.graph @split_shape<N -> D0, D1, D2, D3>(
+  %input: !mo.tensor<[N, 20], f32>
+) -> (!mo.tensor<[D0, D1], f32>, !mo.tensor<[D2, D3], f32>) {
+
+  // CHECK-NEXT: %[[SPLIT_SIZES:.*]] = mo.constant {value = #M.dense_array<5, 15> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
+  %split_sizes = mo.constant {value = #M.dense_array<5, 15> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %axis = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
+
+  //      CHECK: %[[RES:.*]]:2 = mo.split[%[[AXIS]] :{{.*}}] (%[[INPUT]], %[[SPLIT_SIZES]])
+  // CHECK-SAME:   : ({{.*}}) -> (!mo.tensor<[[[N]], 5], f32>, !mo.tensor<[[[N]], 15], f32>)
+  %res:2 = mo.split<() -> D4, D5, D6, D7>[%axis: !mo.tensor<[], si32>](%input, %split_sizes) : (
+    !mo.tensor<[N, 20], f32>, !mo.tensor<[2], si64>
+  ) -> (!mo.tensor<[D4, D5], f32>, !mo.tensor<[D6, D7], f32>)
+
+  // CHECK-NEXT: mo.output %[[RES]]#0, %[[RES]]#1
+  mo.output<D4, D5, D6, D7> %res#0, %res#1 : !mo.tensor<[D4, D5], f32>, !mo.tensor<[D6, D7], f32>
+}
