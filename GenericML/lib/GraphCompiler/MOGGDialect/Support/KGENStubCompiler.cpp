@@ -39,7 +39,7 @@ static bool hasInit = false;
 
 namespace M::MOGG::Stub {
 
-LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
+LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt) {
   MLIRContext *ctx = kgenModule->getContext();
 
   {
@@ -77,6 +77,7 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming) {
   KGEN::CompilationOptions compilationOptions;
   compilationOptions.enableSearch = shouldSearch;
   compilationOptions.enableLLVMPerFunctionSplitting = false;
+  compilationOptions.optimizationLevel = superOpt ? 4 : 3;
 
   static constexpr llvm::StringLiteral kKernelsBuildType =
       STRINGIFY(KERNELS_BUILD_TYPE);

@@ -34,7 +34,7 @@ public:
   compile(mlir::ArrayAttr combinedSymbolName, bool enableTiming = false);
 
   /// Run the KGEN elaboration passes on the module.
-  LogicalResult elaborateKGEN(bool enableTiming = false);
+  LogicalResult elaborateKGEN(bool enableTiming = false, bool superOpt = false);
 
 private:
   /// Lower to an binary object.
