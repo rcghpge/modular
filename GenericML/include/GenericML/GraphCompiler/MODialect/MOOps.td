@@ -4210,22 +4210,55 @@ def MO_GuardOp : MO_Op<"guard", [DeclareOpInterfaceMethods<InferTypeOpInterface>
 // MultiHeadAttentionOp
 //===----------------------------------------------------------------------===//
 
-// TODO(#26018): Turn into a custom op once we have a way to constrain custom
-// ops to GPU only
-
-def MO_MultiHeadFlashAttentionOp : MO_TensorOp<"multi_head_flash_attention", [
+def MO_MultiHeadGPUFlashAttentionOp : MO_TensorOp<"gpu_multi_head_flash_attention", [
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
-  let summary = "GPU multi-head attention operation";
-  // TODO: Write description
+  let summary = "GPU fused multi-head attention operation";
   let description = [{
-    Temporary op.
+    MultiHeadGPUFlashAttentionOp is a hand-fused operator which does something
+    analogous to the following list of operations:
+
+      **Step 0:
+      Transpose:
+      query_processed = transpose(query) # BSHD --> BHSD
+      key_processed = transpose(key)     # BSHD --> BHDS
+      value_processed = transpose(value) # BSHD --> BHSD
+
+      **Step 1:
+      attentionMatrix = query_processed @ key_processed
+
+      **Step 2:
+      norm = broadcast_to(normScalar, shape_of(attentionMatrix))
+
+      **Step 3:
+      # Normalize and apply masking
+      attentionMatrixNorm = attentionMatrix * scale
+
+      # Note attention_mask is HSS and auto-broadcasts
+      attentionMatrixNormMasked = attentionMatrixNorm + attention_mask
+
+      **Step 4:
+      # Apply softmax and reproject result
+      attentionMatrixSoftMax = softmax(attentionMatrixNormMasked)
+      answer = attentionMatrixSoftMax @ value_processed
+
+    Compared to the CPU patterns the notable differences are:
+      1. The mask is rank 3 and is of shape BSS
+      2. The transposes are part of the kernel itself
+
+    The underlying fusion follows ideas taken from the 2022 FlashAttention paper
+    by Tri Dao et al.
+
+    The reason why this is it's own operator vs. a custom op like the CPU
+    flash attention implementations is due to a limitation in invoking
+    custom ops on GPU. See GRA-495. Once GRA-495 is complete we can remove this
+    operator which is tracked under GRA-524.
   }];
 
-  let arguments = (ins MO_Tensor:$q,
-                       MO_Tensor:$k,
-                       MO_Tensor:$v,
-                       MO_Rank3Tensor:$mask,
+  let arguments = (ins MO_Tensor:$query,
+                       MO_Tensor:$key,
+                       MO_Tensor:$value,
+                       MO_Rank3Tensor:$attention_mask,
                        MO_RankedScalarFloatTensor:$scale);
   let results = (outs MO_Tensor:$result);
 

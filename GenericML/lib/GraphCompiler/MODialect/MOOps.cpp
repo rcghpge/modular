@@ -1878,10 +1878,10 @@ LogicalResult BatchMatmulOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// MO_MultiHeadFlashAttentionOp
+// MO_MultiHeadGPUFlashAttentionOp
 //===----------------------------------------------------------------------===//
 
-DeviceRefAttr MultiHeadFlashAttentionOp::getOperandDevice(size_t index) {
+DeviceRefAttr MultiHeadGPUFlashAttentionOp::getOperandDevice(size_t index) {
   return index == getScaleMutable().getOperandNumber()
              ? MO::getHostDeviceAny(getOperation())
              : nullptr;
