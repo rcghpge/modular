@@ -6,7 +6,7 @@
 # UNSUPPORTED: windows
 # RUN: mojo %s
 
-from max.graph import _testing, Type, Graph, TensorType
+from max.graph import _testing, ops, Dim, Graph, TensorType, Type
 from max.tensor import Tensor, TensorShape
 
 
@@ -35,6 +35,18 @@ fn test_vector_index_sym() raises:
     var expected = Tensor[DType.int64](TensorShape(), 2)
 
     var actual = _testing.execute_binary[DType.int64](g, x, i)
+    _testing.assert_tensors_equal[DType.int64](expected, actual)
+
+
+fn test_vector_index_neg_one() raises:
+    var g = Graph(TensorType(DType.int64, 1, Dim.dynamic()))
+    var arg = g[0]
+    g.output(ops.shape_of(arg)[-1])
+
+    var x = Tensor[DType.int64](TensorShape(1, 3), 1, 2, 3)
+    var expected = Tensor[DType.int64](TensorShape(), 3)
+
+    var actual = _testing.execute_unary[DType.int64, DType.int64](g, x)
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
@@ -140,6 +152,7 @@ fn test_matrix_slice_double() raises:
 
 def main():
     test_vector_index_int()
+    test_vector_index_neg_one()
     test_vector_index_sym()
     test_vector_slice_int()
     test_vector_slice_sym()

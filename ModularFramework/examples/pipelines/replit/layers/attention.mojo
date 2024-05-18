@@ -136,9 +136,6 @@ struct GroupedQueryAttention:
         k_out_dims = List[Dim](batch_size, kv_n_heads, head_dim, Dim.dynamic())
         k = permute(k, k_perm, k_out_dims)
 
-        v_shape = g.constant(
-            Tensor[DType.int32](TensorShape(4), 1, kv_n_heads, -1, 128)
-        )
         v = value.reshape(batch_size, -1, kv_n_heads, head_dim)
         v_out_dims = List[Dim](batch_size, kv_n_heads, Dim.dynamic(), head_dim)
         v = permute(v, perm, v_out_dims)
