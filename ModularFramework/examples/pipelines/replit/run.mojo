@@ -23,7 +23,7 @@ def main():
 
     # Generate a graph that does a single forward pass of the replit model.
     print("Building model...")
-    replit = Replit[ReplitCheckpoint, DType.bfloat16](get_default())
+    replit = Replit[ReplitCheckpoint, DType.float32](get_default())
     g = replit.build_graph(
         "replit",
         ReplitCheckpoint(checkpoint_file),
