@@ -76,12 +76,12 @@ def main():
 
 
 def execute(
-    borrowed model: Model,
-    borrowed session: InferenceSession,
-    borrowed tokens: Tensor[DType.int64],
-    borrowed attention_mask: Tensor[DType.bool],
-    borrowed k_cache: Tensor[DType.float32],
-    borrowed v_cache: Tensor[DType.float32],
+    model: Model,
+    session: InferenceSession,
+    tokens: Tensor[DType.int64],
+    attention_mask: Tensor[DType.bool],
+    k_cache: Tensor[DType.float32],
+    v_cache: Tensor[DType.float32],
 ) -> TensorMap:
     input_map = session.new_tensor_map()
     input_map.borrow("input0", tokens)

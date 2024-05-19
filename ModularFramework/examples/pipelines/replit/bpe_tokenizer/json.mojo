@@ -167,9 +167,7 @@ var VALUE_TYPES = Set[TokenType](
 )
 
 
-def get_next_token(
-    borrowed s: String, start: Int = 0
-) -> (StringRef, TokenType, Int):
+def get_next_token(s: String, start: Int = 0) -> (StringRef, TokenType, Int):
     """Gets the next token within the limits and returns the unscanned indices.
 
     Args:
@@ -363,7 +361,7 @@ struct JsonStorage:
         return self.get(args_list)
 
 
-def _from_string(borrowed s: String, start: Int) -> (JsonStorage, Int):
+def _from_string(s: String, start: Int) -> (JsonStorage, Int):
     var token: StringRef
     var token_type: TokenType
 

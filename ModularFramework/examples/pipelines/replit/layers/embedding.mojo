@@ -15,7 +15,7 @@ struct Embedding:
 
     var weights: Symbol
 
-    def __call__(borrowed self, input: Symbol) -> Symbol:
+    def __call__(self, input: Symbol) -> Symbol:
         return ops.gather(self.weights, input, axis=0)
 
 
@@ -25,7 +25,7 @@ struct SharedEmbedding:
 
     var weights: Symbol
 
-    def __call__(borrowed self, input: Symbol, unembed: Bool = False) -> Symbol:
+    def __call__(self, input: Symbol, unembed: Bool = False) -> Symbol:
         if unembed:
             return input @ ops.transpose_matrix(self.weights)
         return ops.gather(self.weights, input, axis=0)

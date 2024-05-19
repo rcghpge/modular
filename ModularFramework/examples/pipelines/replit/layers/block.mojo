@@ -22,7 +22,7 @@ struct MPTMLP:
     var up_proj: Linear
     var down_proj: Linear
 
-    def __call__(borrowed self, input: Symbol) -> Symbol:
+    def __call__(self, input: Symbol) -> Symbol:
         return self.down_proj(ops.gelu(self.up_proj(input)))
 
 
@@ -47,7 +47,7 @@ struct MPTBlock[T: Checkpoint, weights_type: DType]:
         self.ffn = ffn
 
     def __call__(
-        borrowed self,
+        self,
         input: Symbol,
         attn_bias: Optional[Symbol] = None,
         k_cache: Optional[Symbol] = None,
@@ -70,8 +70,8 @@ struct MPTBlock[T: Checkpoint, weights_type: DType]:
 
     @staticmethod
     def create(
-        borrowed params: T,
-        borrowed prefix: String,
+        params: T,
+        prefix: String,
         g: Graph,
         hyperparams: HyperParams,
     ) -> MPTBlock[T, weights_type]:

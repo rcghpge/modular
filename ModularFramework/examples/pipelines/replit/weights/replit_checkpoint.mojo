@@ -17,7 +17,7 @@ trait Checkpoint(Movable):
         """
         ...
 
-    def get[type: DType](borrowed self, key: String) -> Tensor[type]:
+    def get[type: DType](self, key: String) -> Tensor[type]:
         """Returns a tensor for `key` at layer `layer_idx`, possibly seeking the file.
 
         `self` is `inout` here due to implementations that seek a file pointer.
@@ -51,7 +51,7 @@ struct ReplitCheckpoint(Checkpoint):
     fn __moveinit__(inout self, owned existing: Self):
         self.model_path = existing.model_path
 
-    def get[type: DType](borrowed self, key: String) -> Tensor[type]:
+    def get[type: DType](self, key: String) -> Tensor[type]:
         """Returns a tensor for `key` at layer `layer_idx`, possibly seeking the file.
 
         `self` is `inout` here due to implementations that seek a file pointer.

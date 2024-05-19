@@ -47,7 +47,7 @@ struct Replit[T: Checkpoint, weights_type: DType]:
         self.hyperparams = hyperparams
 
     def create_empty_cache(
-        borrowed self,
+        self,
     ) -> (Tensor[DType.float32], Tensor[DType.float32]):
         head_dim = self.hyperparams.d_model // self.hyperparams.n_heads
         return (
@@ -72,7 +72,7 @@ struct Replit[T: Checkpoint, weights_type: DType]:
         )
 
     def _attn_bias(
-        borrowed self, g: Graph, attention_mask: Optional[Symbol] = None
+        self, g: Graph, attention_mask: Optional[Symbol] = None
     ) -> Symbol:
         alibi_bias = ops.cast(
             g.range[DType.int32](1 - self.hyperparams.seq_len, 1, 1),
@@ -111,9 +111,9 @@ struct Replit[T: Checkpoint, weights_type: DType]:
         return attn_bias
 
     def build_graph(
-        borrowed self,
+        self,
         name: String,
-        borrowed params: T,
+        params: T,
         with_attention_mask: Bool = False,
         use_cache: Bool = False,
     ) -> Graph:

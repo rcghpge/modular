@@ -18,7 +18,7 @@ struct LPLayerNorm:
     var weight: Symbol
     var hyperparams: HyperParams
 
-    def __call__(borrowed self, input: Symbol) -> Symbol:
+    def __call__(self, input: Symbol) -> Symbol:
         g = input.graph()
         beta = g.constant(
             Tensor[DType.float32](TensorShape(self.hyperparams.d_model), 0)

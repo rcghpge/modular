@@ -86,7 +86,7 @@ struct GroupedQueryAttention:
     var out_proj: Linear
 
     def __call__(
-        borrowed self,
+        self,
         input: Symbol,
         attn_bias: Optional[Symbol] = None,
         k_cache: Optional[Symbol] = None,

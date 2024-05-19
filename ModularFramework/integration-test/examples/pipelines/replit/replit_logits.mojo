@@ -165,10 +165,10 @@ struct TestCheckpoint(Checkpoint):
     fn __moveinit__(inout self, owned existing: Self):
         self.weights = existing.weights
 
-    fn __copyinit__(inout self, borrowed existing: Self):
+    fn __copyinit__(inout self, existing: Self):
         self.weights = existing.weights
 
-    def get[type: DType](borrowed self, key: String) -> Tensor[type]:
+    def get[type: DType](self, key: String) -> Tensor[type]:
         """Returns a tensor for `key` at layer `layer_idx`, possibly seeking the file.
 
         `self` is `inout` here due to implementations that seek a file pointer.
