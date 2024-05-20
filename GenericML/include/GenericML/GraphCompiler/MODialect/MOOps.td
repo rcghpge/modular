@@ -4241,6 +4241,7 @@ def MO_MultiHeadGPUFlashAttentionOp : MO_TensorOp<"gpu_multi_head_flash_attentio
       # Apply softmax and reproject result
       attentionMatrixSoftMax = softmax(attentionMatrixNormMasked)
       answer = attentionMatrixSoftMax @ value_processed
+      answer = transpose(answer) # BHSD --> BSHD
 
     Compared to the CPU patterns the notable differences are:
       1. The mask is rank 3 and is of shape BSS

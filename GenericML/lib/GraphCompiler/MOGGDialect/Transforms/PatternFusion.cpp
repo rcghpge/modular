@@ -2099,8 +2099,35 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
 
     SmallVector<Value> kernelArgs{query, key, value, rank3ExplicitMask,
                                   matcher.getNormScalar()};
-    rewriter.replaceOpWithNewOp<MultiHeadGPUFlashAttentionOp>(
-        rootOp, rootOp.getType(), kernelArgs);
+
+    // GPU flash attention pattern includes the transposes from
+    // `mhaResult` which is BHSD to BSHD.
+    SmallVector<TypedAttr> initialOutputShape = {
+        rootOp.getType().getTypedShapeAttr().getValues().begin(),
+        rootOp.getType().getTypedShapeAttr().getValues().end()};
+    if (initialOutputShape.size() == 3) {
+      // add elided batch dimension if needed
+      initialOutputShape.insert(
+          initialOutputShape.begin(),
+          mlir::IntegerAttr::get(rewriter.getIndexType(), 1));
+    }
+
+    SmallVector<TypedAttr> mhaOutputShape =
+        permute(initialOutputShape, QVTransposeIndices);
+    auto mhaResult = rewriter.create<MultiHeadGPUFlashAttentionOp>(
+        rootOp.getLoc(), rootOp.getType().cloneWith(mhaOutputShape),
+        kernelArgs);
+
+    // Insert a final transpose to move from BSHD --> BHSD.
+    // This will be canonicalized away in case of adjacent transposes.
+    SmallVector<TypedAttr> finalOutputShape =
+        permute(mhaResult.getType().getTypedShapeAttr().getValues(),
+                QVTransposeIndices);
+    TensorType finalTy = mhaResult.getType().cloneWith(finalOutputShape);
+    auto finalOp = rewriter.create<TransposeOp>(
+        mhaResult.getLoc(), finalTy, mhaResult, QVTransposeIndicesValue);
+
+    rewriter.replaceAllOpUsesWith(rootOp, finalOp);
   }
 
   LogicalResult matchAndRewrite(BatchMatmulOp op,
