@@ -20,6 +20,8 @@ namespace Driver {
 
 struct Device : M::ReferenceCounted<Device> {
   virtual const std::string &getString() const = 0;
+  virtual void *allocateData(size_t bytes) = 0;
+  virtual void freeData(void *ptr) = 0;
   virtual ~Device() = default;
 };
 
@@ -28,6 +30,14 @@ struct CPUDevice : Device {
   std::string desc;
 
   CPUDevice(size_t numa_id) : numa_id(numa_id), desc(toString()) {}
+
+  ~CPUDevice() override = default;
+
+  void *allocateData(size_t bytes) override {
+    return M::alignedAlloc(kPreferredMemoryAlignment, bytes);
+  }
+
+  void freeData(void *data) override { alignedFree(data); }
 
   const std::string &getString() const override { return desc; }
 
@@ -58,8 +68,7 @@ struct CPUDeviceTensor final : DeviceTensor {
 
   CPUDeviceTensor(size_t bytes, Device *dev, M::LLCL::Runtime *runtime)
       : DeviceTensor(bytes, dev), runtime(runtime) {
-    data = runtime->getAllocator()->allocateBytes(bytes,
-                                                  M::kPreferredMemoryAlignment);
+    data = devicePtr->allocateData(bytes);
   }
 
   void *release() override {
@@ -70,7 +79,7 @@ struct CPUDeviceTensor final : DeviceTensor {
 
   ~CPUDeviceTensor() final {
     if (data) {
-      runtime->getAllocator()->deallocateBytes(data, bytes);
+      devicePtr->freeData(data);
     }
   }
 };
@@ -88,6 +97,10 @@ MODULAR_API_EXPORT Device *M_createCPUDevice(size_t numa_id) {
 MODULAR_API_EXPORT Device *M_copyDevice(Device *devPtr) {
   auto newRef = M::copyRCRef(devPtr);
   return newRef.release();
+}
+
+MODULAR_API_EXPORT void M_freeDeviceData(Device *ptr, void *data) {
+  ptr->freeData(data);
 }
 
 MODULAR_API_EXPORT void M_destroyDevice(Device *devPtr) {
