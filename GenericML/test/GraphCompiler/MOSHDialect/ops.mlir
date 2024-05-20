@@ -1,24 +1,5 @@
 // RUN: mosh-opt %s | mosh-opt | FileCheck %s
 
-// CHECK: kgen.func @assert(%[[ARG0:.*]]: index, %[[ARG1:.*]]: index) -> !mosh.chain {
-kgen.func @assert(%arg0: index, %arg1: index) -> !mosh.chain {
-  // CHECK: %[[VAL0:.*]] = index.cmp eq(%[[ARG0]], %[[ARG1]])
-  %0 = index.cmp eq(%arg0, %arg1)
-  // CHECK: mosh.assert %[[VAL0]], "args are not equal"
-  %ch0 = mosh.assert %0, "args are not equal"
-  kgen.return %ch0 : !mosh.chain
-}
-
-// CHECK: kgen.func @guard(%[[ARG0:.*]]: !mosh.ape, %[[ARG1:.*]]: !mosh.ape, %[[COND:.*]]: i1) -> !mosh.chain {
-kgen.func @guard(%sh0: !mosh.ape, %sh1: !mosh.ape, %cond: i1) -> !mosh.chain {
-  // CHECK: %[[CH:.*]] = mosh.assert %[[COND]]
-  %ch = mosh.assert %cond, ""
-  // CHECK: mosh.guard[%[[CH]]] %[[ARG0]], %[[ARG1]] : !mosh.ape, !mosh.ape
-  mosh.guard[%ch] %sh0, %sh1 : !mosh.ape, !mosh.ape
-  // CHECK: kgen.return %[[CH]] : !mosh.chain
-  kgen.return %ch : !mosh.chain
-}
-
 // CHECK: kgen.func @broadcast(%[[SH0:.*]]: !mosh.ape, %[[SH1:.*]]: !mosh.ape) -> !mosh.ape {
 kgen.func @broadcast(%sh0: !mosh.ape, %sh1: !mosh.ape) -> !mosh.ape {
   // CHECK: %[[RES:.*]] = mosh.broadcast(%[[SH0]], %[[SH1]])

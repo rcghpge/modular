@@ -59,4 +59,30 @@ def MO_DTypeAttr : MOAttr<"DType", "dtype"> {
   ];
 }
 
+def MO_ChainAttr : KGEN_ExprAttr<"Chain", "chain"> {
+  let summary = "Chain expression attribute";
+
+  let description = [{
+    Represents non-error chain values. The type of this attribute is always
+    `!mo.chain`.
+
+    Example:
+
+    ```mlir
+    #mo<chain> : !mo.chain
+    ```
+  }];
+
+  let dialect = MODialect;
+  let parameters = (ins
+    AttributeSelfTypeParameter<"", "MO::ChainType">:$type);
+
+  let builders = [
+    TypeBuilderWithInferredContext<(ins "MO::ChainType":$type),
+      [{ return get(type.getContext(), type); }]>
+  ];
+
+  let assemblyFormat = "";
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOATTRS_TD

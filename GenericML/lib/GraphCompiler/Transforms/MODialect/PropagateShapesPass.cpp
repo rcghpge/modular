@@ -764,7 +764,7 @@ struct PropagateShapesPass
     return KGEN::ParamOperatorAttr::get(opcode, foldedOperands);
   }
 
-  /// If `attr` is a `mosh.assert false`, return the error message associated
+  /// If `attr` is a `mo.assert false`, return the error message associated
   /// with it, else return null.
   static StringAttr tryGetAssertFalseErrMsg(TypedAttr attr) {
     // Check it's an expression attribute.
@@ -772,11 +772,10 @@ struct PropagateShapesPass
     if (!paramOperatorAttr)
       return {};
 
-    // Check it's a `mosh.assert`.
+    // Check it's a `mo.assert`.
     auto mlirOpAttr =
         dyn_cast<KGEN::MLIROpAttr>(paramOperatorAttr.getOperand(0));
-    if (!mlirOpAttr ||
-        mlirOpAttr.getName() != MOSH::AssertOp::getOperationName())
+    if (!mlirOpAttr || mlirOpAttr.getName() != MO::AssertOp::getOperationName())
       return {};
 
     // Check assert condition is a static false.
@@ -855,7 +854,7 @@ struct PropagateShapesPass
     // must be non-negative.
     llvm::for_each(graphOp.getInputParams(), markIntParamDeclAsNonNegative);
 
-    // TODO(#9008) inline inputs to `mosh.assert`
+    // TODO(#9008) inline inputs to `mo.assert`
     // A replacer to help replacing parameters in an op with its evaluated form.
     // TODO(#26115) we should switch to replacing manually via
     // `evaluator.getReboundAttribute(shapeAttr)` for each op, since we only
@@ -962,7 +961,7 @@ struct PropagateShapesPass
           evaluator.setParameterValue(declAttr, foldedRhsAttr);
         }
 
-        // Emit compile time error for any `mosh.assert false`
+        // Emit compile time error for any `mo.assert false`
         if (StringAttr errMsg = tryGetAssertFalseErrMsg(foldedRhsAttr)) {
           op->emitError(errMsg.strref());
           return signalPassFailure();

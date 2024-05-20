@@ -3413,6 +3413,34 @@ LogicalResult GuardOp::inferReturnTypes(
   return success();
 }
 
+void AssertOp::build(OpBuilder &builder, OperationState &state, Value cond,
+                     const Twine &message) {
+  auto attr = StringAttr::get(message.str(),
+                              KGEN::StringType::get(builder.getContext()));
+  build(builder, state, cond, cast<TypedAttr>(attr));
+}
+
+TypedAttr AssertOp::emitStaticCall(TypedAttr cond, const Twine &message) {
+  MLIRContext *ctx = cond.getContext();
+  SmallVector<std::pair<StringAttr (*)(mlir::OperationName), Attribute>>
+      msgAttrNameFuncAndArg = {
+          {AssertOp::getMessageAttrName,
+           StringAttr::get(message, KGEN::StringType::get(ctx))}};
+  auto chainTy = ChainType::get(ctx);
+  return KGEN::emitMLIROperationCall(AssertOp::getOperationName(),
+                                     msgAttrNameFuncAndArg, {cond}, chainTy);
+}
+
+OpFoldResult AssertOp::fold(FoldAdaptor adaptor) {
+  // If the condition is true, we return a chain attribute, otherwise we leave
+  // the op as is and a pass can either check for failing asserts or it becomes
+  // a guaranteed runtime failure.
+  if (auto boolAttr = dyn_cast_or_null<BoolAttr>(adaptor.getCond()))
+    if (boolAttr.getValue())
+      return ChainAttr::get(ChainType::get(getContext()));
+  return {};
+}
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
@@ -3420,6 +3448,8 @@ LogicalResult GuardOp::inferReturnTypes(
 // Needed because the type and attribute constraints in the generated file are
 // not placed in the correct namespace by tablegen.
 using namespace Shape;
+using M::KGEN::parseStringParam;
+using M::KGEN::printStringParam;
 
 void MODialect::registerOperations() {
   addOperations<

@@ -345,38 +345,6 @@ OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
-// MO_AssertOp
-//===----------------------------------------------------------------------===//
-
-void AssertOp::build(OpBuilder &builder, OperationState &state, Value cond,
-                     const Twine &message) {
-  auto attr = StringAttr::get(message.str(),
-                              KGEN::StringType::get(builder.getContext()));
-  build(builder, state, cond, cast<TypedAttr>(attr));
-}
-
-TypedAttr AssertOp::emitStaticCall(TypedAttr cond, const Twine &message) {
-  MLIRContext *ctx = cond.getContext();
-  SmallVector<std::pair<StringAttr (*)(mlir::OperationName), Attribute>>
-      msgAttrNameFuncAndArg = {
-          {AssertOp::getMessageAttrName,
-           StringAttr::get(message, KGEN::StringType::get(ctx))}};
-  auto chainTy = ChainType::get(ctx);
-  return KGEN::emitMLIROperationCall(AssertOp::getOperationName(),
-                                     msgAttrNameFuncAndArg, {cond}, chainTy);
-}
-
-OpFoldResult AssertOp::fold(FoldAdaptor adaptor) {
-  // If the condition is true, we return a chain attribute, otherwise we leave
-  // the op as is and a pass can either check for failing asserts or it becomes
-  // a guaranteed runtime failure.
-  if (auto boolAttr = dyn_cast_or_null<BoolAttr>(adaptor.getCond()))
-    if (boolAttr.getValue())
-      return ChainAttr::get(ChainType::get(getContext()));
-  return {};
-}
-
-//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

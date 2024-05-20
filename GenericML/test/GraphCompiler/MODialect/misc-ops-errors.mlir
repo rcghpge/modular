@@ -892,7 +892,7 @@ mo.graph @arg_max_too_many_reductions(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tens
 // GuardOp
 //===----------------------------------------------------------------------===//
 
-mo.graph @guard_mismatched_num_results(%X: !mo.tensor<[D0, D1], f32>, %Y: !mo.tensor<[D2, D3], f32>, %chain: !mosh.chain )
+mo.graph @guard_mismatched_num_results(%X: !mo.tensor<[D0, D1], f32>, %Y: !mo.tensor<[D2, D3], f32>, %chain: !mo.chain )
 {
   //expected-error@+1 {{operation defines 2 results but was provided 3 to bind}}
   %guarded:3 = mo.guard[%chain](%X, %Y) : !mo.tensor<[D0, D1], f32>, !mo.tensor<[D2, D3], f32>

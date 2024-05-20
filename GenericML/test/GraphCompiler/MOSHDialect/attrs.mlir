@@ -21,12 +21,3 @@ kgen.generator @shape_attr_and_type() {
   kgen.param.declare S: !mosh.ape = <[N, 2, ?]>
   kgen.return
 }
-
-// CHECK: kgen.func @chain_attr() {
-kgen.func @chain_attr() {
-  // CHECK-DAG: "foo.chain"() {ch = #mosh.chain : !mosh.chain} : () -> !mosh.chain
-  %0 = "foo.chain"() {ch = #mosh.chain : !mosh.chain} : () -> !mosh.chain
-  // CHECK-DAG: kgen.param.declare [[CH:.*]]: !mosh.chain = <#mosh.chain>
-  kgen.param.declare Ch: !mosh.chain = <#mosh.chain>
-  kgen.return
-}

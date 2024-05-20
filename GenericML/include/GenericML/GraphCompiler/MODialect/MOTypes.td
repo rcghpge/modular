@@ -263,6 +263,19 @@ def MO_Scalar : MO_Type<"Scalar", "scalar"> {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_Chain
+//===----------------------------------------------------------------------===//
+
+def MO_Chain : MO_Type<"Chain", "chain"> { 
+  let summary = "Controls sequencing of side-effecting operations.";
+  let description = [{
+    This type is used to sequence side-efffecting operations. Any operation in
+    the MO dialect that has side-effects should both consume and produce a
+    chain type.
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // ODS constraints to inject verifier logic via type annotation.
 //===----------------------------------------------------------------------===//
 

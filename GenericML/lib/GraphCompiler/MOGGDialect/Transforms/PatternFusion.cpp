@@ -1856,7 +1856,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     rewriter.create<KGEN::ParamDeclareOp>(loc, condAttr, cmpAttr);
 
     // Add runtime assertion into graph
-    TypedAttr assertAttr = MOSH::AssertOp::emitStaticCall(
+    TypedAttr assertAttr = MO::AssertOp::emitStaticCall(
         KGEN::ParamDeclRefAttr::get(condAttr), errorMsg);
     auto chainTy = rewriter.getType<ChainType>();
     KGEN::ParamDeclAttr chainAttr =

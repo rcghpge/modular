@@ -53,14 +53,14 @@ ShapeAttr ParamExprBuilder::getShapeAttr(ArrayRef<TypedAttr> dimAttrs) {
 void ParamExprBuilder::createAssert(const Var &condVar, StringRef errorMsg) {
   TypedAttr condAttr = condVar.getAttr();
   MLIRContext *ctx = condAttr.getContext();
-  Type chainType = MOSH::ChainType::get(ctx);
+  Type chainType = MO::ChainType::get(ctx);
 
   // Build a new operand list which starts with MLIROpAttr.
   auto signature = SignatureType::get(ctx, {condAttr.getType()}, chainType);
   NamedAttribute msgAttr(StringAttr::get(ctx, "message"),
                          StringAttr::get(errorMsg, KGEN::StringType::get(ctx)));
   auto dictAttr = DictionaryAttr::get(ctx, {msgAttr});
-  auto opNameAttr = StringAttr::get(ctx, MOSH::AssertOp::getOperationName());
+  auto opNameAttr = StringAttr::get(ctx, MO::AssertOp::getOperationName());
   SmallVector<TypedAttr> applyOperands{
       KGEN::MLIROpAttr::get(opNameAttr, dictAttr, signature), condAttr};
 

@@ -183,8 +183,8 @@ struct LowerRebindTensorShapeOp
 
     // Add assertion, then return a rebind
     TypedAttr assertAttr =
-        MOSH::AssertOp::emitStaticCall(KGEN::ParamDeclRefAttr::get(condAttr),
-                                       "RMO rebind shape check failed.");
+        MO::AssertOp::emitStaticCall(KGEN::ParamDeclRefAttr::get(condAttr),
+                                     "RMO rebind shape check failed.");
 
     auto chainTy = rewriter.getType<ChainType>();
     KGEN::ParamDeclAttr chainAttr =

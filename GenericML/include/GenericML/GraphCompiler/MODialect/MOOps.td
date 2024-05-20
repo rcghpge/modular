@@ -4160,15 +4160,47 @@ def MO_ConcatFromListOp : MO_TensorOp<"concat_from_list", [
   let hasCanonicalizeMethod = 1;
 }
 
+def MO_AssertOp : MO_Op<"assert"> {
+  let summary = "Assert that a single boolean value is true.";
+  let description = [{
+    Example:
+
+    ```mlir
+    %0 : index
+    %1 : index
+    %b1 = index.cmp eq(%0, %1)
+    %ch1 = mo.assert %b1
+    %b2 = index.cmp lt(%0, %1)
+    %ch2 = mo.assert %b2, "something went wrong"
+    ```
+  }];
+
+  let arguments = (ins I1:$cond,
+                   AttrOfType<KGEN_StringType>:$message);
+  let results = (outs MO_Chain:$chain);
+
+  let builders = [
+    OpBuilder<(ins "Value":$cond, "const Twine &":$message)>,
+  ];
+
+  let assemblyFormat = "$cond `,` custom<StringParam>($message) attr-dict";
+  let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    /// Create a static call to apply(mo.assert, cond, message)
+    static TypedAttr emitStaticCall(TypedAttr cond, const Twine &message);
+  }];
+}
+
 def MO_GuardOp : MO_Op<"guard", [DeclareOpInterfaceMethods<InferTypeOpInterface>]>
 {
   let summary = "SSA-value guard operation";
   let description = [{
-    Consumes a mosh.chain operation and a variadic number of inputs and is
+    Consumes a mo.chain operation and a variadic number of inputs and is
     semantically equivalent to a copy of the variadic inputs. 
 
-    This can be used in conjunction with the !mosh.chain returning ops
-    (currently only mosh.assert) in order to set up execution dependencies
+    This can be used in conjunction with the !mo.chain returning ops
+    (currently only mo.assert) in order to set up execution dependencies
     between the chain producing op and any appropriate downstream operations.
 
     Example:
@@ -4177,7 +4209,7 @@ def MO_GuardOp : MO_Op<"guard", [DeclareOpInterfaceMethods<InferTypeOpInterface>
       %X: !mo.tensor<[D1, D2], f32>
       %Y: !mo.tensor<[D2, D3], f32>
 
-      %chain : !mosh.chain
+      %chain : !mo.chain
 
       %guarded:2 = mo.guard[%chain](%X, %Y)
 
@@ -4185,7 +4217,7 @@ def MO_GuardOp : MO_Op<"guard", [DeclareOpInterfaceMethods<InferTypeOpInterface>
     ```
   }];
 
-  let arguments = (ins MOSH_ChainType:$chain,
+  let arguments = (ins MO_Chain:$chain,
                        Variadic<AnyType>:$inputs);
 
   let results = (outs Variadic<AnyType>:$results);

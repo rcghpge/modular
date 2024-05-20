@@ -24,9 +24,4 @@ class MOSH_Type<string name, string typeMnemonic, list<Trait> traits = []>
 def MOSH_ShapeType : MOSH_Type<"Shape", "ape",
   [DeclareTypeInterfaceMethods<ParameterTypeInterface>]>;
 
-/// The type used to represent explicit control dependencies.
-/// TODO: this is currently in the MOSH dialect because shape functions can use
-/// it. We should find a better place for it.
-def MOSH_ChainType : MOSH_Type<"Chain", "chain">;
-
 #endif // GENERICML_GRAPHCOMPILER_MOSHDIALECT_MOSHTYPES_TD

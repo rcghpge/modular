@@ -121,32 +121,4 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
   let genVerifyDecl = 1;
 }
 
-/// TODO: this is currently in the MOSH dialect because shape functions can use
-/// it. We should find a better place for it.
-def MOSH_ChainAttr : KGEN_ExprAttr<"Chain", "chain"> {
-  let summary = "Chain expression attribute";
-
-  let description = [{
-    Represents non-error chain values. The type of this attribute is always
-    `!mosh.chain`.
-
-    Example:
-
-    ```mlir
-    #mosh<chain> : !mosh.chain
-    ```
-  }];
-
-  let dialect = MOSHDialect;
-  let parameters = (ins
-    AttributeSelfTypeParameter<"", "MOSH::ChainType">:$type);
-
-  let builders = [
-    TypeBuilderWithInferredContext<(ins "MOSH::ChainType":$type),
-      [{ return get(type.getContext(), type); }]>
-  ];
-
-  let assemblyFormat = "";
-}
-
 #endif // GENERICML_GRAPHCOMPILER_MOSHDIALECT_MOSHATTRS_TD

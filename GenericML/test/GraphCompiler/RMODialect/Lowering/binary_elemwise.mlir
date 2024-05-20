@@ -43,7 +43,7 @@ mo.graph @binary_elemwise_dyn_dyn(%arg0: !mo.tensor<[?], si64>, %arg1: !mo.tenso
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @binary_elemwise_dyn_dyn<[[D1:[^ ]*]], [[D2:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[[[D1]]], si64>, [[VARG1:[^ ]*]]: !mo.tensor<[[[D2]]], si64>) -> !mo.tensor<[[[D1]]], si64> {
-// CHECK-NEXT: kgen.param.declare [[RMO_SH_CH10:[^ ]*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "RMO rebind shape check failed." : !kgen.string}, eq([[D1]], [[D2]]))>
+// CHECK-NEXT: kgen.param.declare [[RMO_SH_CH10:[^ ]*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "RMO rebind shape check failed." : !kgen.string}, eq([[D1]], [[D2]]))>
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind([[VARG1]]) : !mo.tensor<[[[D2]]], si64> -> !mo.tensor<[[[D1]]], si64>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.mod([[VARG0]], [[V0]]) : !mo.tensor<[[[D1]]], si64>
 // CHECK-NEXT: mo.output [[V1]] : !mo.tensor<[[[D1]]], si64>
@@ -56,7 +56,7 @@ mo.graph @binary_elemwise_complex<D1, D2, D3>(%arg0: !mo.tensor<[10, D1, D2, 1],
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @binary_elemwise_complex<[[D1:[^ ]*]], [[D2:[^ ]*]], [[D3:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[10, [[D1]], [[D2]], 1], si64>, [[VARG1:[^ ]*]]: !mo.tensor<[[[D1]], [[D3]], 100], si64>) -> !mo.tensor<[10, [[D1]], [[D2]], 100], si64> {
-// CHECK-NEXT: kgen.param.declare [[RMO_SH_CH34:[^ ]*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "RMO rebind shape check failed." : !kgen.string}, eq([[D2]], [[D3]]))>
+// CHECK-NEXT: kgen.param.declare [[RMO_SH_CH34:[^ ]*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "RMO rebind shape check failed." : !kgen.string}, eq([[D2]], [[D3]]))>
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind([[VARG1]]) : !mo.tensor<[[[D1]], [[D3]], 100], si64> -> !mo.tensor<[[[D1]], [[D2]], 100], si64>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.static.broadcast_to([[VARG0]]) : !mo.tensor<[10, [[D1]], [[D2]], 1], si64> -> !mo.tensor<[10, [[D1]], [[D2]], 100], si64>
 // CHECK-NEXT: [[V2:[^ ]*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[[[D1]], [[D2]], 100], si64> -> !mo.tensor<[10, [[D1]], [[D2]], 100], si64>

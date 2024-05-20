@@ -46,7 +46,6 @@ struct FieldParser<M::DType> {
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h.inc"
 
 namespace M::MO {
-using ChainType = MOSH::ChainType;
 using ShapeAttr = MOSH::ShapeAttr;
 using ShapeType = MOSH::ShapeType;
 using TensorValue = M::TypedValue<M::MO::TensorType>;

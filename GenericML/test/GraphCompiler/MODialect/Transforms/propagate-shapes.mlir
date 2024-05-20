@@ -43,9 +43,9 @@ mo.graph @batch_matmul_without_certain_checks<D0, D1, D2, D3 -> D4, D5, D6>(
   kgen.param.declare P1 = <apply(:(!mosh.ape) -> index "mosh.get_rank", Sh0)>
   kgen.param.declare P2 = <apply(:(!mosh.ape) -> index "mosh.get_rank", Sh1)>
   kgen.param.declare P3: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, P1, P2)>
-  kgen.param.declare CH0: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "ranks of left and right inputs are not equal" : !kgen.string}, P3)>
+  kgen.param.declare CH0: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "ranks of left and right inputs are not equal" : !kgen.string}, P3)>
   kgen.param.declare P4: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate sgt>}, P2, P0)>
-  kgen.param.declare CH1: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "input ranks are not greater than 2" : !kgen.string}, P4)>
+  kgen.param.declare CH1: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "input ranks are not greater than 2" : !kgen.string}, P4)>
   kgen.param.declare P8: !mosh.ape = <apply(:(!mosh.ape, index, index) -> !mosh.ape "mosh.slice", Sh0, 0, -2)>
   kgen.param.declare P11 = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", Sh0, -2)>
   kgen.param.declare P12 = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", Sh1, -1)>
@@ -79,8 +79,8 @@ mo.graph @unfolded_apply_shouldnt_be_inlined<Sh0: !mosh.ape, Sh1: !mosh.ape -> S
   kgen.param.declare P2 = <apply(:(!mosh.ape) -> index "mosh.get_rank", Sh1)>
   // CHECK-NEXT: kgen.param.declare [[P3:.*]]: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, [[P1]], [[P2]])>
   kgen.param.declare P3: i1 = <apply(:(index, index) -> i1 "index.cmp"{pred = #index<cmp_predicate eq>}, P1, P2)>
-  // CHECK-NEXT: kgen.param.declare [[CH0:.*]]: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "" : !kgen.string}, [[P3]])>
-  kgen.param.declare CH0: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "" : !kgen.string}, P3)>
+  // CHECK-NEXT: kgen.param.declare [[CH0:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "" : !kgen.string}, [[P3]])>
+  kgen.param.declare CH0: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "" : !kgen.string}, P3)>
 
   // CHECK-NEXT: kgen.param.declare [[P4:.*]]: !mosh.ape = <apply(:(!mosh.ape, index, index) -> !mosh.ape "mosh.slice", [[SH0]], 0, -2)>
   kgen.param.declare P4: !mosh.ape = <apply(:(!mosh.ape, index, index) -> !mosh.ape "mosh.slice", Sh0, 0, -2)>
@@ -252,7 +252,7 @@ mo.graph @nested_mul<D0>() {
   kgen.param.declare P0 = <add(D0, D0)>
   kgen.param.declare P1 = <mod(P0, D0)>
   kgen.param.declare P2: i1 = <eq(P1, 0)>
-  kgen.param.declare P3: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "error" : !kgen.string}, P2)>
+  kgen.param.declare P3: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "error" : !kgen.string}, P2)>
 
   // CHECK-NEXT: mo.output
   mo.output
@@ -324,7 +324,7 @@ mo.graph @expand_apply_mosh_broadcast<D0, D1 -> O0, O1>(
   %in: !mo.tensor<[D0, D1], f32>
 ) -> !mo.tensor<[O0, O1], f32> {
 
-  // CHECK-DAG: {{.*}}"mosh.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq([[D0]], [[D1]]), eq([[D0]], 1), eq([[D1]], 1)))>
+  // CHECK-DAG: {{.*}}"mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq([[D0]], [[D1]]), eq([[D0]], 1), eq([[D1]], 1)))>
   kgen.param.declare NEW_SHAPE: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape) -> !mosh.ape "mosh.broadcast", [D0], [D1])>
   kgen.param.declare R1 = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", NEW_SHAPE, 0)>
 
@@ -342,9 +342,9 @@ mo.graph @update_param_declare_rhs<D1>() {
   // `kgen.param.decalre`, we still want to update the RHS to the simplified
   // version in the IR (not just in the evaluator during the pass).
 
-  // CHECK-NEXT: kgen.param.declare {{.*}}: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "test" : !kgen.string}, eq([[D1]], 1))>
+  // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "test" : !kgen.string}, eq([[D1]], 1))>
   // CHECK-NEXT: mo.output
-  kgen.param.declare CH: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"{message = "test" : !kgen.string}, eq(cond(eq(D1, -1), 1, D1), 1))>
+  kgen.param.declare CH: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "test" : !kgen.string}, eq(cond(eq(D1, -1), 1, D1), 1))>
   mo.output
 }
 
@@ -409,7 +409,7 @@ mo.graph @broadcast_to_parametric_shape<D0, D1 -> D2, D3>(
   %param_shape = mosh.param.to_value: !mosh.ape = <[D0, D1]>
   %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[2], si32>
 
-  // CHECK-NEXT: kgen.param.declare {{.*}}: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"
+  // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"
   // CHECK-SAME:  {message = "[broadcast_to] input dim must be either 1 or equal to corresponding output dim starting from the rightmost dim" : !kgen.string},
   // CHECK-SAME:  or(eq(D0, D1), eq(D0, 1)))>
   mo.invoke_shape_func["broadcast_to_shape"]<() -> D4, D5>(%input, %target_shape)
@@ -436,7 +436,7 @@ mo.graph @reshape_parametric_shape<D0, D1 -> D2, D3, D4>(
   %param_shape = mosh.param.to_value: !mosh.ape = <[D0, 4, 5]>
   %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[3], si32>
 
-  // CHECK-NEXT: kgen.param.declare {{.*}}: !mosh.chain = <apply(:(i1) -> !mosh.chain "mosh.assert"
+  // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"
   // CHECK-SAME:  {message = "[reshape] input and output number of elements must match" : !kgen.string},
   // CHECK-SAME:   eq(mul_nuw([[D0]], [[D1]]), mul_nuw([[D0]], 20)))>
   mo.invoke_shape_func["reshape_shape"]<() -> D5, D6, D7>(%input, %target_shape)

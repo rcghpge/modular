@@ -14,6 +14,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENInterfaces.h"
+#include "KGEN/KGENDialect/KGENUtils.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
@@ -34,6 +35,7 @@ using M::KGEN::ParamDeclArrayAttr;
 using M::KGEN::ParamDeclAttr;
 using M::KGEN::ParamDefValue;
 using M::KGEN::ParameterExprArrayAttr;
+using M::KGEN::printStringParam;
 using M::KGEN::SignatureType;
 
 //===----------------------------------------------------------------------===//
