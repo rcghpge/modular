@@ -124,6 +124,16 @@ mo.graph @concat_canonicalize_single_input(
   mo.output %0 : !mo.tensor<[2, ?], f32>
 }
 
+// CHECK-LABEL: mo.graph @concat_do_not_canonicalize_param_decls
+mo.graph @concat_do_not_canonicalize_param_decls<A -> B>(
+  %arg0: !mo.tensor<[2, A], f32>,  %ax: !mo.tensor<[], si64>
+) -> !mo.tensor<[2, B], f32> {
+
+  // CHECK: mo.concat<() -> O1>
+  %0 = mo.concat<() -> O1>[%ax: !mo.tensor<[], si64>](%arg0) : (!mo.tensor<[2, A], f32>) -> !mo.tensor<[2, O1], f32>
+  mo.output<O1> %0 : !mo.tensor<[2, O1], f32>
+}
+
 //===----------------------------------------------------------------------===//
 // SplitOp
 //===----------------------------------------------------------------------===//

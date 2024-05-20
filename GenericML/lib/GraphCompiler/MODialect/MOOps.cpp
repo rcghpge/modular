@@ -1224,6 +1224,10 @@ LogicalResult ConcatOp::verify() {
 LogicalResult ConcatOp::canonicalize(ConcatOp op, PatternRewriter &rewriter) {
   Operation::operand_range inputs = op.getInputs();
   SmallVector<Value> nonEmptyInputs;
+
+  if (!op.getOutputParamDecls().empty())
+    return Error("Cannot fold concat op with param decls.");
+
   for (Value arg : inputs) {
     TensorType argTy = cast<TensorType>(arg.getType());
     auto isNonZero = [](int64_t dim) { return dim != 0; };
