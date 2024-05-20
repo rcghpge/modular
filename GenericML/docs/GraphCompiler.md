@@ -14,7 +14,44 @@ and the [11/17/22 Onsite notes](https://www.notion.so/modularai/Graph-Compiler-D
 
 ![High Level System Diagram](High-Level_Modular_Stack_Diagram.png)
 
-[Original Image](https://docs.google.com/drawings/d/1VG2DDZZiHlMSuR0nVJxS0382u6scQLpHy3OOw5AtgNU/edit).
+[Original Image](https://docs.google.com/drawings/d/1MwVbZPdFVxe5jy4pr5ymJs_0olsiPNR1EOuBgRwTkWI/edit).
+
+## RMO (Relaxed Modular Operations) Dialect
+
+Whereas [MO operators](#mo-modular-operations-dialect) are designed to be
+strongly typed and do a single thing, RMO is designed to relax this philosophy.
+
+The main issue with MO being strongly typed is it makes it extremely cumbersome
+to build graphs from MO operators. Typically it requires the user to either do
+some kind of shape inference as is done in some of our frontends. Some
+frontends have little shape information so all dimensions are `?`, which forced
+MO to carve-out special exceptions to it's strongly typed nature to deal with
+`?`. Therefore not only are MO graphs hard to build, its hard type system is
+also inconsistent with itself!
+
+RMO handles all of these unknown types, and allows MO to maintain its
+stronly-typed stance.
+
+### Main Design Points
+
+1. All RMO operators do not have shape-based verifiers. Instead the paradigm is
+   to lower to other RMO or MO operators, inserting rebinds with dynamic
+   runtime checks as needed.
+2. All RMO operators lower to a MO operator or an RMO operator which lowers to
+   MO eventually.
+3. RMO operators are either a `MOAnalogue` or an `RMOComposite` operator.
+4. `MOAnalogue` operators match semantics with an associated MO operator in a 1-1
+   fashion. The only difference is RMO accepts all shapes, and lowers to the
+   compatible shaped MO operation. For example `rmo.add` will lower to `mo.add`
+   with some rebinds and dynamic runtime checks inserted.
+5. `RMOComposite` operators are operators which should only lower to other rmo
+   operators.
+6. `?` returns to it's proper place as sugar for "Unique Parameter." It is the
+   goal that MO operators are never created directly, except through RMO.
+   Therefore MO will not have to deal with `?` anymore and the special
+   carve-outs in the MO verifiers for this can be removed.
+7. To make RMO easier to write, and taking advantage of the looser type system
+   we add builders for `MOAnalogue` operators to have implicit return types.
 
 ## MO (Modular Operations) Dialect
 
