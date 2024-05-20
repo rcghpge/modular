@@ -4,9 +4,12 @@
 #
 # ===----------------------------------------------------------------------=== #
 from .device import Device
+from .tensor_slice import TensorSlice
+from utils import StaticTuple
 
 
 @value
+@register_passable
 struct _StaticTensorSpec[type: DType, rank: Int]:
     var shape: StaticIntTuple[rank]
 
@@ -69,6 +72,18 @@ struct Tensor[type: DType, rank: Int]:
           The value at the specified indices.
         """
         return self.load[width=1](indices)
+
+    @always_inline
+    fn __getitem__(
+        self: Reference[Self, _, _], *slices: Slice
+    ) -> TensorSlice[type, rank, self.is_mutable, self.lifetime]:
+        debug_assert(
+            len(slices) == rank, "mismatch between slice count and rank"
+        )
+        var slice_tuple = StaticTuple[Slice, rank]()
+        for i in range(len(slices)):
+            slice_tuple[i] = slices[i]
+        return TensorSlice(self, slice_tuple)
 
     @always_inline
     fn load[*, width: Int = 1](self, *indices: Int) -> SIMD[type, width]:

@@ -8,6 +8,7 @@ set (DRIVER_SRCS
   device
   device_tensor
   tensor
+  tensor_slice
 )
 
 
