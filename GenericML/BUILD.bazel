@@ -975,6 +975,9 @@ expand_template(
         "@platforms//os:macos": {
             '#cmakedefine GENERICML_LINKER_CMD "@GENERICML_LINKER_CMD@"': '#define GENERICML_LINKER_CMD "clang -Wl,-undefined,dynamic_lookup"',
         },
+        "//:linux_aarch64": {
+            '#cmakedefine GENERICML_LINKER_CMD "@GENERICML_LINKER_CMD@"': '#define GENERICML_LINKER_CMD "clang -Wl,-Bsymbolic"',
+        },
         "@platforms//os:linux": {
             '#cmakedefine GENERICML_LINKER_CMD "@GENERICML_LINKER_CMD@"': '#define GENERICML_LINKER_CMD "clang"',
         },
