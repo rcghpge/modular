@@ -4079,9 +4079,8 @@ struct ForwardMathematicalCanonicalizationMulByTwoToAdd
              .match(mulOp)) {
       return failure();
     }
-    auto add =
-        rewriter.create<MO::AddOp>(mulOp->getLoc(), mulOp.getType(), x, x);
-    rewriter.replaceAllUsesWith(mulOp, add);
+
+    rewriter.replaceOpWithNewOp<MO::AddOp>(mulOp, mulOp.getType(), x, x);
 
     return success();
   }
@@ -4106,9 +4105,8 @@ struct BackwardMathematicalCanonicalizationMulByTwoToAdd
     if (bcast2ErrOr.isError())
       return rewriter.notifyMatchFailure(addOp, bcast2ErrOr.getError());
 
-    auto mul = rewriter.create<MO::MulOp>(loc, tensorType, addOp.getInputX(),
-                                          *bcast2ErrOr);
-    rewriter.replaceAllUsesWith(addOp, mul);
+    rewriter.replaceOpWithNewOp<MO::MulOp>(addOp, tensorType, addOp.getInputX(),
+                                           *bcast2ErrOr);
 
     return success();
   }
