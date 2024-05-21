@@ -8,8 +8,7 @@
 
 import sys
 
-from builtin.io import _printf
-from tensor import Tensor, TensorShape, TensorSpec
+from tensor import Tensor, TensorShape
 
 from max.engine import InferenceSession
 from max.graph import _testing

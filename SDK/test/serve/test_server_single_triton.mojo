@@ -8,9 +8,8 @@
 
 import sys
 
-from builtin.io import _printf
 from python import Python
-from tensor import Tensor, TensorShape, TensorSpec
+from tensor import Tensor, TensorShape
 
 from max.engine.tensor import EngineNumpyView
 from max.graph import _testing

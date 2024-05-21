@@ -43,8 +43,7 @@ fn main() raises:
     @parameter
     fn worker(idx: Int):
         try:
-            _printf(
-                "[[ Output %d ]] %s\n",
+            _printf["[[ Output %d ]] %s\n"](
                 idx,
                 subprocess.run(
                     "mojo "
@@ -60,6 +59,6 @@ fn main() raises:
         except e:
             print(e)
 
-    _printf("[ Sending %dx%d requests! ]\n", num_workers, num_requests)
+    _printf["[ Sending %dx%d requests! ]\n"](num_workers, num_requests)
     parallelize[worker](num_workers)
     _ = address^
