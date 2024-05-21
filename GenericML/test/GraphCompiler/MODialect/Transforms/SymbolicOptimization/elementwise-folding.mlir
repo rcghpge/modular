@@ -282,6 +282,8 @@ mo.graph @pow_chain(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3]
   %1 = mo.pow(%0 : !mo.tensor<[1, 2, 3], si64>, %cst_3 : !mo.tensor<[1, 2, 3], si64>) : !mo.tensor<[1, 2, 3], si64>
   mo.output %1 : !mo.tensor<[1, 2, 3], si64>
 }
+
+
 // CHECK-LABEL: @pow_chain
 // CHECK-NEXT: %[[CST4:.*]] = mo.constant
 // CHECK-NEXT: %[[CST3:.*]] = mo.constant
@@ -417,6 +419,28 @@ mo.graph @pow_float_to_pow_int(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tenso
   mo.output %0 : !mo.tensor<[1, 2, 3], f32>
 }
 // CHECK-LABEL:  @pow_float_to_pow_int
-// CHECK-NEXT:    %[[CST:.*]] = mo.constant {value = #M.dense_array<5> : !M.array<1xsi64>} : !mo.tensor<[], si64>
-// CHECK-NEXT:    %[[BCAST:.*]] = mo.static.broadcast_to(%[[CST]]) : !mo.tensor<[], si64> -> !mo.tensor<[1, 2, 3], si64>
-// CHECK-NEXT:    %2 = mo.pow({{.*}}, %[[BCAST]] : !mo.tensor<[1, 2, 3], si64>) : !mo.tensor<[1, 2, 3], f32>
+// CHECK-NEXT:    %[[CST:.*]] = mo.constant {value = #M.dense_array<5> : !M.array<1xsi32>} : !mo.tensor<[], si32>
+// CHECK-NEXT:    %[[BCAST:.*]] = mo.static.broadcast_to(%[[CST]]) : !mo.tensor<[], si32> -> !mo.tensor<[1, 2, 3], si32>
+// CHECK-NEXT:    %2 = mo.pow({{.*}}, %[[BCAST]] : !mo.tensor<[1, 2, 3], si32>) : !mo.tensor<[1, 2, 3], f32>
+
+mo.graph @pow_float_to_pow_float(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2, 3], f32> {
+  %cst = mo.constant {value = #M.dense_array<5.> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %cst_bcast = mo.static.broadcast_to(%cst) : !mo.tensor<[], f32> -> !mo.tensor<[1, 2, 3], f32>
+  %0 = mo.pow(%input : !mo.tensor<[1, 2, 3], f32>, %cst_bcast : !mo.tensor<[1, 2, 3], f32>) : !mo.tensor<[1, 2, 3], f32>
+  mo.output %0 : !mo.tensor<[1, 2, 3], f32>
+}
+// CHECK-LABEL:  @pow_float_to_pow_float
+// CHECK-NEXT:    %[[CST:.*]] = mo.constant {value = #M.dense_array<5> : !M.array<1xsi32>} : !mo.tensor<[], si32>
+// CHECK-NEXT:    %[[BCAST:.*]] = mo.static.broadcast_to(%[[CST]]) : !mo.tensor<[], si32> -> !mo.tensor<[1, 2, 3], si32>
+// CHECK-NEXT:    %2 = mo.pow({{.*}}, %[[BCAST]] : !mo.tensor<[1, 2, 3], si32>) : !mo.tensor<[1, 2, 3], f32>
+
+mo.graph @pow_float16_to_pow_float16(%input: !mo.tensor<[1, 2, 3], f16>) -> !mo.tensor<[1, 2, 3], f16> {
+  %cst = mo.constant {value = #M.dense_array<5.> : tensor<1xf16>} : !mo.tensor<[], f16>
+  %cst_bcast = mo.static.broadcast_to(%cst) : !mo.tensor<[], f16> -> !mo.tensor<[1, 2, 3], f16>
+  %0 = mo.pow(%input : !mo.tensor<[1, 2, 3], f16>, %cst_bcast : !mo.tensor<[1, 2, 3], f16>) : !mo.tensor<[1, 2, 3], f16>
+  mo.output %0 : !mo.tensor<[1, 2, 3], f16>
+}
+// CHECK-LABEL:  @pow_float16_to_pow_float16
+// CHECK-NEXT:    %[[CST:.*]] = mo.constant {value = #M.dense_array<5> : !M.array<1xsi32>} : !mo.tensor<[], si32>
+// CHECK-NEXT:    %[[BCAST:.*]] = mo.static.broadcast_to(%[[CST]]) : !mo.tensor<[], si32> -> !mo.tensor<[1, 2, 3], si32>
+// CHECK-NEXT:    %2 = mo.pow({{.*}}, %[[BCAST]] : !mo.tensor<[1, 2, 3], si32>) : !mo.tensor<[1, 2, 3], f16>

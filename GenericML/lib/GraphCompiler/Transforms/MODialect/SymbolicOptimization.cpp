@@ -4458,18 +4458,33 @@ struct MathematicalSimplificationPowByFloatToPowByInt
     if (!dtype.isFloat())
       return failure();
 
-    auto floatErrOr = tryGetConstantFloat(cst);
-    auto doubleErrOr = tryGetConstantDouble(cst);
+    std::optional<double> value = [&]() -> std::optional<double> {
+      if (auto val = tryGetConstantFloat(cst))
+        return *val;
+      if (auto val = tryGetConstantDouble(cst))
+        return *val;
 
-    double value = floatErrOr.has_value() ? *floatErrOr : *doubleErrOr;
-    double integerPart;
-    if (std::modf(value, &integerPart))
-      return failure();
+      return {};
+    }();
 
-    auto bcastIntType = TensorType::get(powOp.getType().getShapeAttr(),
-                                        rewriter.getIntegerType(64, true));
+    if (!value)
+      return rewriter.notifyMatchFailure(
+          powOp, "unable to get the floating point exponent");
+
+    double exponent;
+    if (std::modf(*value, &exponent))
+      return rewriter.notifyMatchFailure(
+          powOp, "the exponent contains a fractional part");
+
+    // Get the bitwidth of the exponent. If it fits in 32 bits then use that.
+    int bitWidth =
+        std::abs(exponent) < std::numeric_limits<int32_t>::max() ? 32 : 64;
+
+    auto bcastIntType =
+        TensorType::get(powOp.getType().getShapeAttr(),
+                        rewriter.getIntegerType(bitWidth, true));
     auto newCst = createBroadcastedScalarConstantOpOfType(
-        bcastIntType, int64_t(integerPart), rewriter, powOp.getLoc());
+        bcastIntType, int64_t(exponent), rewriter, powOp.getLoc());
     if (newCst.isError())
       return rewriter.notifyMatchFailure(powOp, newCst.getError());
 
