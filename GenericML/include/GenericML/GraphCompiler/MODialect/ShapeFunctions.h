@@ -377,6 +377,11 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
                      TypedAttr dilationsAttr, TypedAttr paddingsAttr,
                      TypedAttr numGroupsAttr);
 
+/// Materialize the shape logic for `MO::PadLike` ops.
+ShapeMaterializeResult materializePadShape(GraphOp graphOp, Location loc,
+                                           TypedAttr inputShapeAttr,
+                                           TypedAttr paddingsAttr);
+
 /// Materialize the shape logic for Pooling ops (e.g., `MO::AvgPoolOp`,
 /// `MO::MaxPoolCeilOp`).
 ShapeMaterializeResult

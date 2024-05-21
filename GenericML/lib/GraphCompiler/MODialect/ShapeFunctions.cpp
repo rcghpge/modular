@@ -439,6 +439,43 @@ ShapeMaterializeResult materializeConvTransposeShape(
   return ShapeMaterializeResult::success(std::move(ops), resShape);
 }
 
+ShapeMaterializeResult materializePadShape(GraphOp graphOp, Location loc,
+                                           TypedAttr inputShapeAttr,
+                                           TypedAttr paddingsAttr) {
+  auto inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
+  auto paddings = dyn_cast<ShapeAttr>(paddingsAttr);
+  // Make sure input shape is ranked and paddings is a list of symbolic integers
+  // with known length.
+  if (!inputShape || !paddings) {
+    return ShapeMaterializeResult::nonMaterializable();
+  }
+
+  // Preliminary rank checks.
+  size_t inputRank = inputShape.getRank();
+  if (2 * inputRank != paddings.getSize()) {
+    return ShapeMaterializeResult::error(
+        "[pad] paddings shape must be (input_rank, 2)");
+  }
+
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
+  // Compute and collect output dimensions.
+  SmallVector<TypedAttr> resDims;
+  for (size_t axis = 0; axis < inputRank; axis++) {
+    Var inputDim = b.createVar(inputShape[axis]);
+    Var prePadding = b.createVar(paddings[2 * axis]);
+    Var postPadding = b.createVar(paddings[2 * axis + 1]);
+    Var outputDim = inputDim + prePadding + postPadding;
+    resDims.push_back(outputDim.getAttr());
+  }
+
+  // Create output shape
+  ShapeAttr resShape = b.getShapeAttr(resDims);
+  return ShapeMaterializeResult::success(std::move(ops), resShape);
+}
+
 ShapeMaterializeResult
 materializePoolShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
                      TypedAttr filterAttr, TypedAttr stridesAttr,
@@ -836,6 +873,16 @@ materializePoolCeilShapeImpl(ArrayRef<TypedAttr> inputs,
                               dilations, paddings, /*ceilMode=*/true);
 }
 
+// Assume `inputs` are staticized inputs for a padding op, try materializing the
+// its shape logic.
+static ShapeMaterializeResult
+materializePadShapeImpl(ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams,
+                        GraphOp graphOp, Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr paddings = inputs[1];
+  return materializePadShape(graphOp, loc, inputShape, paddings);
+}
+
 // Assume `inputs` are staticized inputs for a Pooling op that rounds _down_
 // when computing output shapes, try materializing the its shape logic.
 static ShapeMaterializeResult
@@ -894,6 +941,7 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
       {"concat_shape", materializeConcatShapeImpl},
       {"conv_shape", materializeConvShapeImpl},
       {"conv_transpose_shape", materializeConvTransposeShapeImpl},
+      {"pad_shape", materializePadShapeImpl},
       {"pool_shape", materializePoolFloorShapeImpl},
       {"pool_shape_ceil", materializePoolCeilShapeImpl},
       {"range_shape", materializeRangeShapeImpl},

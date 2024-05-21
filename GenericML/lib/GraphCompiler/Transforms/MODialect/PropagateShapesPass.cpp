@@ -303,9 +303,9 @@ private:
     if (!tensorVal)
       return {};
 
-    // Only staticize scalar or 1D tensor.
+    // Only staticize scalar, 1D or 2D tensor.
     TensorType tensorTy = tensorVal.getType();
-    if (!tensorTy.hasRank() || tensorTy.getRank() > 1)
+    if (!tensorTy.hasRank() || tensorTy.getRank() > 2)
       return {};
 
     // Only staticize int/bool tensor.
@@ -327,6 +327,11 @@ private:
 
     // Example: [10, 20, ...]
     if (auto intsOr = MO::tryGetConstantIntVector(tensorVal))
+      return ShapeAttr::get(intsOr.value(), MOSH::ShapeType::get(ctx));
+
+    // Example: [10, 20, ...]
+    // TODO(GRA-532) remove this special case
+    if (auto intsOr = MO::tryGetConstantOfRank<int64_t>(tensorVal, 2))
       return ShapeAttr::get(intsOr.value(), MOSH::ShapeType::get(ctx));
 
     return {};
