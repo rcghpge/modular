@@ -3417,7 +3417,7 @@ void AssertOp::build(OpBuilder &builder, OperationState &state, Value cond,
                      const Twine &message) {
   auto attr = StringAttr::get(message.str(),
                               KGEN::StringType::get(builder.getContext()));
-  build(builder, state, cond, cast<TypedAttr>(attr));
+  build(builder, state, {}, cond, cast<TypedAttr>(attr));
 }
 
 TypedAttr AssertOp::emitStaticCall(TypedAttr cond, const Twine &message) {

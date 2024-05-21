@@ -4173,15 +4173,16 @@ def MO_AssertOp : MO_Op<"assert"> {
     ```
   }];
 
-  let arguments = (ins I1:$cond,
-                   AttrOfType<KGEN_StringType>:$message);
+  let arguments = (ins Optional<MO_Chain>:$inChain,
+                       I1:$cond,
+                       AttrOfType<KGEN_StringType>:$message);
   let results = (outs MO_Chain:$chain);
 
   let builders = [
     OpBuilder<(ins "Value":$cond, "const Twine &":$message)>,
   ];
 
-  let assemblyFormat = "$cond `,` custom<StringParam>($message) attr-dict";
+  let assemblyFormat = "(`[`$inChain^`]`)? $cond `,` custom<StringParam>($message) attr-dict";
   let hasFolder = 1;
 
   let extraClassDeclaration = [{
