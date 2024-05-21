@@ -46,8 +46,7 @@ class DeferAllocsPass : public impl::DeferAllocsPassBase<DeferAllocsPass> {
     // This helps prevent infinite loop in case an op write to multiple buffers
     DenseSet<Operation *> movedAllocOps;
 
-    // For each mgp.buffer.alloc.*...
-    model.getExecute().walk([&](Operation *op) {
+    auto defer = [&](Operation *op) {
       if (movedAllocOps.contains(op))
         return;
       if (auto allocOp = dyn_cast<MGPBufferAllocOpInterface>(op)) {
@@ -74,7 +73,11 @@ class DeferAllocsPass : public impl::DeferAllocsPassBase<DeferAllocsPass> {
           }
         }
       }
-    });
+    };
+
+    // For each mgp.buffer.alloc.*...
+    model.getExecute().walk(defer);
+    model.getInit().walk(defer);
   }
 };
 
