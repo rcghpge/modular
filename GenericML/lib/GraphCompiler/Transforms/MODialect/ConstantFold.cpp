@@ -844,8 +844,8 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
     moOpts.kernelLibraryPaths = kernelLibraryPaths.value();
   // Avoid infinite recursion.
   moOpts.constantFold = false;
-  // Reduce Memory overhead by not jitting MGP primitives.
-  moOpts.lowerToCompiledRegions = false;
+  // Reduce Memory overhead by not fusing compiled-regions primitives.
+  moOpts.enableCompiledRegionsFusion = false;
   // Use MOF executor so we don't depend on a framework.
   moOpts.compiledFrameworkLabel = "mof";
   // Set default device label to cpu

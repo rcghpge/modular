@@ -131,6 +131,10 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       *this, "lower-to-compiled-regions",
       llvm::cl::desc("If true, will lower MGP Ops down to compiled region."),
       llvm::cl::init(true)};
+  Option<bool> enableCompiledRegionsFusion{
+      *this, "enable-compiled-regions-fusion",
+      llvm::cl::desc("If false, will disable compiled region fusion"),
+      llvm::cl::init(true)};
   Option<bool> genVizSpec{
       *this, "gen-viz-spec",
       llvm::cl::desc(

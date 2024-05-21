@@ -32,6 +32,8 @@ public:
 
   bool lowerToCompiledRegions{true};
 
+  bool enableCompiledRegionsFusion{true};
+
   bool genVizSpec{false};
 
   std::string vizOutputPath{""};
@@ -54,6 +56,7 @@ public:
     moToMgpOptions.defaultDeviceLabel = defaultDeviceLabel;
     moToMgpOptions.enableMemoryPlanning = enableMemoryPlanning;
     moToMgpOptions.lowerToCompiledRegions = lowerToCompiledRegions;
+    moToMgpOptions.enableCompiledRegionsFusion = enableCompiledRegionsFusion;
     moToMgpOptions.genVizSpec = genVizSpec;
     moToMgpOptions.vizOutputPath = vizOutputPath;
     moToMgpOptions.debugPrintAllTensors = debugPrintAllTensors;
@@ -117,6 +120,12 @@ private:
       "lower-to-compiled-regions",
       cl::desc("If true, will lower MGP Ops down to compiled region."),
       llvm::cl::location(options.lowerToCompiledRegions),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+
+  M::cl::MOpt<bool, true> enableCompiledRegionsFusion{
+      "enable-compiled-regions-fusion",
+      cl::desc("If false, will disable compiled region fusion"),
+      llvm::cl::location(options.enableCompiledRegionsFusion),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
   M::cl::MOpt<bool, true> genVizSpec{

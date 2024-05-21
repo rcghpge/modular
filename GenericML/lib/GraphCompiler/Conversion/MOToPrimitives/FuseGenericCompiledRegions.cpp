@@ -319,13 +319,15 @@ struct FuseGenericCompiledRegions
   using FuseGenericCompiledRegionsBase::FuseGenericCompiledRegionsBase;
 
   void runOnOperation() override {
-    ModuleOp module = getOperation();
-    // Fuse in any op that can be duplicated.
-    doSourceDestinationSequenceFusion<true>(module);
-    // Fuse in any op that can't be duplicated (must have one user).
-    doSourceDestinationSequenceFusion<false>(module);
-    // Fuse in anything that remains while preserving parallelism.
-    doTransitiveDependencySequenceFusion(module);
+    if (enableFusion) {
+      ModuleOp module = getOperation();
+      // Fuse in any op that can be duplicated.
+      doSourceDestinationSequenceFusion<true>(module);
+      // Fuse in any op that can't be duplicated (must have one user).
+      doSourceDestinationSequenceFusion<false>(module);
+      // Fuse in anything that remains while preserving parallelism.
+      doTransitiveDependencySequenceFusion(module);
+    }
   }
 };
 
