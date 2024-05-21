@@ -434,6 +434,16 @@ ShapeMaterializeResult materializeSplitIthOutputShape(
     GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
     TypedAttr splitSizesAttr, TypedAttr axisAttr, size_t i);
 
+/// Materialize the shape logic for `MO::TileOp`.
+ShapeMaterializeResult materializeTileShape(GraphOp graphOp, Location loc,
+                                            TypedAttr inputShapeAttr,
+                                            TypedAttr repeatsAttr);
+
+/// Materialize the shape logic for `MO::TransposeOp`.
+ShapeMaterializeResult materializeTransposeShape(GraphOp graphOp, Location loc,
+                                                 TypedAttr inputShapeAttr,
+                                                 TypedAttr permutationsAttr);
+
 //------------------------Shape functions end---------------------------------//
 //----------------------------------------------------------------------------//
 

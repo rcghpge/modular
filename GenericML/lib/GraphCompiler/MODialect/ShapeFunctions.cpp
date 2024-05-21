@@ -767,6 +767,90 @@ ShapeMaterializeResult materializeSplitIthOutputShape(
   return ShapeMaterializeResult::success(std::move(ops), outputShape);
 }
 
+ShapeMaterializeResult materializeTileShape(GraphOp graphOp, Location loc,
+                                            TypedAttr inputShapeAttr,
+                                            TypedAttr repeatsAttr) {
+  auto inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
+  auto repeats = dyn_cast<ShapeAttr>(repeatsAttr);
+  // Make sure input shape is ranked and repeats is a list of symbolic integers
+  // with known length.
+  if (!inputShape || !repeats)
+    return ShapeMaterializeResult::nonMaterializable();
+
+  // Preliminary rank checks.
+  size_t inputRank = inputShape.getRank();
+  if (inputRank != repeats.getSize()) {
+    return ShapeMaterializeResult::error(
+        "[tile] requires (len(repeats) == input_rank)");
+  }
+
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
+  // Compute and collect output dimensions.
+  SmallVector<TypedAttr> resDims;
+  for (size_t axis = 0; axis < inputRank; axis++) {
+    Var inputDim = b.createVar(inputShape[axis]);
+    Var repeat = b.createVar(repeats[axis]);
+    Var outputDim = inputDim * repeat;
+    resDims.push_back(outputDim.getAttr());
+  }
+
+  // Create output shape
+  ShapeAttr resShape = b.getShapeAttr(resDims);
+  return ShapeMaterializeResult::success(std::move(ops), resShape);
+}
+
+ShapeMaterializeResult materializeTransposeShape(GraphOp graphOp, Location loc,
+                                                 TypedAttr inputShapeAttr,
+                                                 TypedAttr permutationsAttr) {
+  // Make sure input shape is ranked.
+  auto inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
+  if (!inputShape)
+    return ShapeMaterializeResult::nonMaterializable();
+
+  // Preliminary rank checks.
+  auto permutations = dyn_cast<ShapeAttr>(permutationsAttr);
+  size_t inputRank = inputShape.getRank();
+  if (inputRank != permutations.getSize()) {
+    return ShapeMaterializeResult::error(
+        "[transpose] permutation size must match input rank");
+  }
+
+  // Make sure permutations is a list of constant integers with known length.
+  SmallVector<int64_t> permInts;
+  for (TypedAttr permAttr : permutations.getValues()) {
+    if (auto permInt = tryGetConstantInt(permAttr)) {
+      permInts.push_back(permInt.value());
+    } else {
+      return ShapeMaterializeResult::nonMaterializable();
+    }
+  }
+
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
+  // Compute and collect output dimensions.
+  SmallVector<TypedAttr> resDims;
+  for (size_t axis = 0; axis < inputRank; axis++) {
+    // Retrieve and validate the constant permutation index.
+    int64_t perm = permInts[axis];
+    if (perm < 0 || inputRank <= static_cast<size_t>(perm)) {
+      return ShapeMaterializeResult::error(
+          "[transpose] each permutation must be within range [0, rank)");
+    }
+    // Retrieve the output dimension.
+    TypedAttr outputDim = inputShape[perm];
+    resDims.push_back(outputDim);
+  }
+
+  // Create output shape
+  ShapeAttr resShape = b.getShapeAttr(resDims);
+  return ShapeMaterializeResult::success(std::move(ops), resShape);
+}
+
 //------------------------Shape functions end---------------------------------//
 //----------------------------------------------------------------------------//
 
@@ -931,6 +1015,27 @@ materializeSplitIthOutputShapeImpl(ArrayRef<TypedAttr> inputs,
                                         axis, intAttr.getInt());
 }
 
+// Assume `inputs` are staticized inputs for a `MO::TileOp`, try materializing
+// the its shape logic.
+static ShapeMaterializeResult
+materializeTileShapeImpl(ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams,
+                         GraphOp graphOp, Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr repeats = inputs[1];
+  return materializeTileShape(graphOp, loc, inputShape, repeats);
+}
+
+// Assume `inputs` are staticized inputs for a `MO::TransposeOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+materializeTransposeShapeImpl(ArrayRef<TypedAttr> inputs,
+                              DictionaryAttr kgenParams, GraphOp graphOp,
+                              Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr permutations = inputs[1];
+  return materializeTransposeShape(graphOp, loc, inputShape, permutations);
+}
+
 std::optional<MaterializeShapeFuncTy>
 tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
   // A hard-coded map from shape function name to how their shape logic can be
@@ -948,6 +1053,8 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
       {"reshape_shape", materializeReshapeShapeImpl},
       {"slice_shape", materializeSliceShapeImpl},
       {"split_ith_output_shape", materializeSplitIthOutputShapeImpl},
+      {"tile_shape", materializeTileShapeImpl},
+      {"transpose_shape", materializeTransposeShapeImpl},
   };
 
   auto iter = nameToFunc.find(shapeFuncName);
