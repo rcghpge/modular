@@ -3,7 +3,7 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-from .device import Device
+from .device import Device, DeviceTensor
 from .tensor_slice import TensorSlice
 from utils import StaticTuple
 from max.tensor import TensorSpec
@@ -187,6 +187,17 @@ struct Tensor[type: DType, rank: Int]:
         for i in range(len(indices) - 1):
             offset = self._spec[i + 1] * offset + indices[i + 1]
         return offset
+
+    fn _steal_ptr(owned self) -> DTypePointer[type]:
+        var tmp = self._ptr
+        self._ptr = DTypePointer[type]()
+        return tmp
+
+    fn _get_device(self) -> Device:
+        return self._device
+
+    fn get_device_tensor(owned self) raises -> DeviceTensor:
+        return DeviceTensor(self^)
 
     fn __del__(owned self):
         self._device._free(self._ptr.bitcast[DType.invalid]())

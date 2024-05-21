@@ -25,10 +25,7 @@ struct AnyTensor:
     fn __init__[
         type: DType, rank: Int
     ](inout self, owned tensor: Tensor[type, rank]) raises:
-        self._device = tensor._device
-        self._spec = tensor.get_tensor_spec()
-        self._data = tensor._ptr.bitcast[DType.invalid]()
-        tensor._ptr = DTypePointer[type]()
+        self = Self(tensor^.get_device_tensor())
 
     fn get_rank(self) -> Int:
         """Gets rank of the tensor.

@@ -28,10 +28,26 @@ struct DeviceTensor(StringableRaising):
             self.lib.get_handle(),
             func_name_create_tensor,
             spec.bytecount(),
-            device._cdev,
-            _get_current_or_global_runtime(),
+            self._device._cdev,
         )
         self.spec = spec
+
+    fn __init__[
+        type: DType, rank: Int
+    ](inout self, owned tensor: Tensor[type, rank]) raises:
+        """Creates a DeviceTensor from given tensor."""
+
+        self._device = tensor._get_device()
+        self.lib = self._device.lib
+        self.spec = tensor.get_tensor_spec()
+        alias func_name_create_tensor = "M_createDeviceTensorFrom"
+        var create_func = self.lib.get_handle().get_function[
+            fn (
+                DTypePointer[DType.invalid], Int, _CDevice
+            ) -> DTypePointer[DType.invalid]
+        ](func_name_create_tensor)
+        var data = tensor^._steal_ptr().bitcast[DType.invalid]()
+        self._ptr = create_func(data, self.spec.bytecount(), self._device._cdev)
 
     fn __del__(owned self):
         alias func_name_destroy = "M_destroyDeviceTensor"

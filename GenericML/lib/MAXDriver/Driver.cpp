@@ -64,11 +64,14 @@ struct DeviceTensor {
 };
 
 struct CPUDeviceTensor final : DeviceTensor {
-  M::LLCL::Runtime *runtime;
 
-  CPUDeviceTensor(size_t bytes, Device *dev, M::LLCL::Runtime *runtime)
-      : DeviceTensor(bytes, dev), runtime(runtime) {
+  CPUDeviceTensor(size_t bytes, Device *dev) : DeviceTensor(bytes, dev) {
     data = devicePtr->allocateData(bytes);
+  }
+
+  CPUDeviceTensor(void *ownedData, size_t bytes, Device *dev)
+      : DeviceTensor(bytes, dev) {
+    data = ownedData;
   }
 
   void *release() override {
@@ -111,9 +114,14 @@ MODULAR_API_EXPORT const char *M_getDeviceDesc(const Device *devPtr) {
   return devPtr->getString().c_str();
 }
 
+MODULAR_API_EXPORT DeviceTensor *M_createDeviceTensor(size_t bytes,
+                                                      Device *devPtr) {
+  return new CPUDeviceTensor(bytes, devPtr);
+}
+
 MODULAR_API_EXPORT DeviceTensor *
-M_createDeviceTensor(size_t bytes, Device *devPtr, M::LLCL::Runtime *runtime) {
-  return new CPUDeviceTensor(bytes, devPtr, runtime);
+M_createDeviceTensorFrom(void *data, size_t bytes, Device *devPtr) {
+  return new CPUDeviceTensor(data, bytes, devPtr);
 }
 
 MODULAR_API_EXPORT Device *
