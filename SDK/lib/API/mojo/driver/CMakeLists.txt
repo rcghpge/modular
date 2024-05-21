@@ -5,6 +5,7 @@
 ##===----------------------------------------------------------------------===##
 
 set (DRIVER_SRCS
+  anytensor
   device
   device_tensor
   tensor

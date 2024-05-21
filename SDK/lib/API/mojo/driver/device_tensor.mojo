@@ -39,6 +39,9 @@ struct DeviceTensor(StringableRaising):
             self.lib.get_handle(), func_name_destroy, self._ptr
         )
 
+    fn get_tensor_spec(self) -> TensorSpec:
+        return self.spec
+
     fn get_device(self) raises -> Device:
         """Returns the device on which the DeviceTensor was allocated."""
 
@@ -51,6 +54,9 @@ struct DeviceTensor(StringableRaising):
             )
         )
 
+    fn get_rank(self) -> Int:
+        return self.spec.rank()
+
     fn __str__(self) raises -> String:
         """Returns a description of the DeviceTensor."""
 
@@ -61,6 +67,16 @@ struct DeviceTensor(StringableRaising):
             + str(self.spec)
             + "))"
         )
+
+    fn _steal_ptr(owned self) -> DTypePointer[DType.invalid]:
+        alias func_name_take_data = "M_takeDataFromDeviceTensor"
+        var take_data_func = self.lib.get_handle().get_function[
+            fn (DTypePointer[DType.invalid]) -> DTypePointer[DType.invalid]
+        ](func_name_take_data)
+        var data = take_data_func(self._ptr)
+        # Extend lifetime of self to avoid the C funtion working on invalid pointer.
+        _ = self^
+        return data
 
     fn get_tensor[
         dtype: DType, rank: Int

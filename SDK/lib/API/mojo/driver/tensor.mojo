@@ -20,6 +20,13 @@ struct StaticTensorSpec[type: DType, rank: Int]:
     fn dtype(self) -> DType:
         return type
 
+    fn get_tensor_spec(self) -> TensorSpec:
+        var shapes = List[Int]()
+        shapes.reserve(rank)
+        for i in range(rank):
+            shapes.append(self[i])
+        return TensorSpec(type, shapes)
+
     fn __getitem__(self, idx: Int) -> Int:
         return self.shape[idx]
 
@@ -49,6 +56,9 @@ struct Tensor[type: DType, rank: Int]:
 
     fn get_dtype(self) -> DType:
         return self._spec.dtype()
+
+    fn get_tensor_spec(self) -> TensorSpec:
+        return self._spec.get_tensor_spec()
 
     @always_inline
     fn __getitem__(self, *indices: Int) -> Scalar[type]:
