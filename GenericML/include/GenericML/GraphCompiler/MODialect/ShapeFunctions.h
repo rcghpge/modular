@@ -69,6 +69,20 @@ public:
   /// `(convV, thenV, elseV)` respectively.
   Var createCond(const Var &condV, const Var &thenV, const Var &elseV);
 
+  /// Create an op of the following form
+  ///   kgen.param.declare ... = <max(lhsAttr, rhsAttr)>
+  ///
+  /// Where `(lhsAttr, rhsAttr)` are parameter expressions within `(lhs, rhs)`
+  /// respectively.
+  Var createMax(const Var &lhs, const Var &rhs);
+
+  /// Create an op of the following form
+  ///   kgen.param.declare ... = <min(lhsAttr, rhsAttr)>
+  ///
+  /// Where `(lhsAttr, rhsAttr)` are parameter expressions within `(lhs, rhs)`
+  /// respectively.
+  Var createMin(const Var &lhs, const Var &rhs);
+
   /// Assume given a variadic number of Var instances, create a new `ShapeAttr`
   /// consisted of the TypedAttr within those Var, in the given order.
   template <class... V, typename = std::enable_if_t<(true && ... &&
@@ -271,6 +285,7 @@ public:
   }
 
   TypedAttr getAttr() const { return attr; }
+  ParamExprBuilder &getBuilder() const { return *builder; }
 };
 
 /// Try converting `attr` to a constant integer.
@@ -391,6 +406,13 @@ ShapeMaterializeResult materializeRangeShape(GraphOp graphOp, Location loc,
 ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
                                                TypedAttr inputShapeAttr,
                                                TypedAttr targetShapeAttr);
+
+/// Materialize the shape logic for `MO::SliceOp`.
+ShapeMaterializeResult materializeSliceShape(GraphOp graphOp, Location loc,
+                                             TypedAttr inputShapeAttr,
+                                             TypedAttr startsAttr,
+                                             TypedAttr stopsAttr,
+                                             TypedAttr stepsAttr);
 
 /// Materialize the shape logic for `MO::SplitOp`.
 ///

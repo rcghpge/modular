@@ -46,6 +46,18 @@ Var ParamExprBuilder::createCond(const Var &condV, const Var &thenV,
   return createVar(createDeclToKgenAttr(exprAttr, "cond"));
 };
 
+Var ParamExprBuilder::createMax(const Var &lhs, const Var &rhs) {
+  auto exprAttr = KGEN::ParamOperatorAttr::get(KGEN::POC::Max, lhs.getAttr(),
+                                               rhs.getAttr());
+  return createVar(createDeclToKgenAttr(exprAttr, "max"));
+}
+
+Var ParamExprBuilder::createMin(const Var &lhs, const Var &rhs) {
+  auto exprAttr = KGEN::ParamOperatorAttr::get(KGEN::POC::Min, lhs.getAttr(),
+                                               rhs.getAttr());
+  return createVar(createDeclToKgenAttr(exprAttr, "min"));
+}
+
 ShapeAttr ParamExprBuilder::getShapeAttr(ArrayRef<TypedAttr> dimAttrs) {
   return ShapeAttr::get(dimAttrs, ShapeType::get(graphOp.getContext()));
 }
@@ -83,6 +95,18 @@ static Var getSlidingWindowOutDim(const Var &inputDim, const Var &filterDim,
   if (ceilMode)
     return (numerator + stride - 1) / stride + 1;
   return numerator / stride + 1;
+}
+
+// Compute the size of a range (assuming validity of input values).
+static Var computeRangeSize(const Var &start, const Var &stop,
+                            const Var &step) {
+  // We need to be careful with offset and negatives, think range(0, 3, 2) and
+  // range(0, -3, -2);
+  ParamExprBuilder &b = start.getBuilder();
+  Var diff = stop - start;
+  Var offset = b.createCond(step > 0, step - 1, step + 1);
+  Var size = (diff + offset) / step;
+  return size;
 }
 
 //----------------------------------------------------------------------------//
@@ -509,11 +533,7 @@ ShapeMaterializeResult materializeRangeShape(GraphOp graphOp, Location loc,
   b.createAssert(stop <= start || step > 0,
                  "[range] requires (stop <= start) for negative step");
 
-  // Compute output shape by simulating a ceiling-div -- think the length of
-  // range(0, 3, 2).
-  Var diff = stop - start;
-  Var offset = b.createCond(step > 0, step - 1, step + 1);
-  Var outDim = (diff + offset) / step;
+  Var outDim = computeRangeSize(start, stop, step);
   ShapeAttr outputShape = b.getShapeAttr(outDim);
   return ShapeMaterializeResult::success(std::move(ops), outputShape);
 }
@@ -595,6 +615,70 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
   Var outputNumeElems = b.createVar(outputShape.getSymbolicNumElements());
   b.createAssert(inputNumeElems == outputNumeElems,
                  "[reshape] input and output number of elements must match");
+  return ShapeMaterializeResult::success(std::move(ops), outputShape);
+}
+
+/// Materialize the shape logic for `MO::SliceOp`.
+ShapeMaterializeResult materializeSliceShape(GraphOp graphOp, Location loc,
+                                             TypedAttr inputShapeAttr,
+                                             TypedAttr startsAttr,
+                                             TypedAttr stopsAttr,
+                                             TypedAttr stepsAttr) {
+  // Make sure input shape is ranked, and bounds are list of symbolic integers
+  // with known sizes.
+  ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
+  ShapeAttr starts = dyn_cast<ShapeAttr>(startsAttr);
+  ShapeAttr stops = dyn_cast<ShapeAttr>(stopsAttr);
+  ShapeAttr steps = dyn_cast<ShapeAttr>(stepsAttr);
+  if (!inputShape || !starts || !stops || !steps)
+    return ShapeMaterializeResult::nonMaterializable();
+
+  size_t inputRank = inputShape.getRank();
+  if (starts.getSize() != inputRank ||
+      !llvm::all_equal({starts.getSize(), stops.getSize(), steps.getSize()})) {
+    return ShapeMaterializeResult::error(
+        "Input rank must match the number of elements in starts/stops/steps "
+        "bounds");
+  }
+
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
+  // Compute and collect output spatial dimensions.
+  SmallVector<TypedAttr> outDims;
+  for (size_t axis = 0; axis < inputRank; axis++) {
+    Var inDim = b.createVar(inputShape[axis]);
+    Var start = b.createVar(starts[axis]);
+    Var stop = b.createVar(stops[axis]);
+    Var step = b.createVar(steps[axis]);
+
+    // Check step != 0
+    b.createAssert(step != 0, "[slice] step must be non-zero");
+
+    // Compute the min/max for clamping start/end
+    Var idxMin = b.createCond(step > 0, b.createVar(0), b.createVar(-1));
+    Var idxMax = b.createCond(step > 0, inDim, inDim - 1);
+
+    // Normalize and clamp start/stop values.
+    start = b.createCond(start < 0, start + inDim, start);
+    start = b.createMax(idxMin, b.createMin(idxMax, start));
+    stop = b.createCond(stop < 0, stop + inDim, stop);
+    stop = b.createMax(idxMin, b.createMin(idxMax, stop));
+
+    // Make sure start and stop don't cross each other.
+    b.createAssert(step < 0 || start <= stop,
+                   "[slice] normalized stop cannot be smaller than start for "
+                   "positive step");
+    b.createAssert(step > 0 || start >= stop,
+                   "[slice] normalized start cannot be smaller than stop for "
+                   "negative step");
+
+    Var outDim = computeRangeSize(start, stop, step);
+    outDims.push_back(outDim.getAttr());
+  }
+
+  ShapeAttr outputShape = b.getShapeAttr(outDims);
   return ShapeMaterializeResult::success(std::move(ops), outputShape);
 }
 
@@ -767,6 +851,18 @@ materializePoolFloorShapeImpl(ArrayRef<TypedAttr> inputs,
                               dilations, paddings, /*ceilMode=*/false);
 }
 
+// Assume `inputs` are staticized inputs for a `MO::SliceOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+materializeSliceShapeImpl(ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams,
+                          GraphOp graphOp, Location loc) {
+  TypedAttr input = inputs[0];
+  TypedAttr starts = inputs[1];
+  TypedAttr stops = inputs[2];
+  TypedAttr steps = inputs[3];
+  return materializeSliceShape(graphOp, loc, input, starts, stops, steps);
+}
+
 // Assume `inputs` are staticized inputs for a `MO::SplitiOp`, try
 // materializing the its shape logic for
 static ShapeMaterializeResult
@@ -802,6 +898,7 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
       {"pool_shape_ceil", materializePoolCeilShapeImpl},
       {"range_shape", materializeRangeShapeImpl},
       {"reshape_shape", materializeReshapeShapeImpl},
+      {"slice_shape", materializeSliceShapeImpl},
       {"split_ith_output_shape", materializeSplitIthOutputShapeImpl},
   };
 
