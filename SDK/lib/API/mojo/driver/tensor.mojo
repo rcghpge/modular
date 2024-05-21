@@ -6,11 +6,12 @@
 from .device import Device
 from .tensor_slice import TensorSlice
 from utils import StaticTuple
+from max.tensor import TensorSpec
 
 
 @value
 @register_passable
-struct _StaticTensorSpec[type: DType, rank: Int]:
+struct StaticTensorSpec[type: DType, rank: Int]:
     var shape: StaticIntTuple[rank]
 
     fn get_rank(self) -> Int:
@@ -25,7 +26,7 @@ struct _StaticTensorSpec[type: DType, rank: Int]:
 
 struct Tensor[type: DType, rank: Int]:
     var _ptr: DTypePointer[type]
-    var _spec: _StaticTensorSpec[type, rank]
+    var _spec: StaticTensorSpec[type, rank]
     var _device: Device
 
     fn __init__(
@@ -35,7 +36,7 @@ struct Tensor[type: DType, rank: Int]:
         device: Device,
     ):
         self._ptr = ptr
-        self._spec = _StaticTensorSpec[type](shape)
+        self._spec = StaticTensorSpec[type](shape)
         self._device = device
 
     fn __moveinit__(inout self, owned existing: Self):
@@ -83,6 +84,7 @@ struct Tensor[type: DType, rank: Int]:
         var slice_tuple = StaticTuple[Slice, rank]()
         for i in range(len(slices)):
             slice_tuple[i] = slices[i]
+            slice_tuple[i].end = min(slice_tuple[i].end, self[]._spec[i])
         return TensorSlice(self, slice_tuple)
 
     @always_inline
@@ -171,11 +173,10 @@ struct Tensor[type: DType, rank: Int]:
         Returns:
           The linearized index into the tensor data.
         """
-        var rank = len(indices)
-        var result = indices[0]
-        for i in range(rank - 1):
-            result = self._spec[i + 1] * result + indices[i + 1]
-        return result
+        var offset = indices[0]
+        for i in range(len(indices) - 1):
+            offset = self._spec[i + 1] * offset + indices[i + 1]
+        return offset
 
     fn __del__(owned self):
         self._device._free(self._ptr.bitcast[DType.invalid]())

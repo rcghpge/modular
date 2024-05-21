@@ -3,8 +3,9 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-from .tensor import Tensor, _StaticTensorSpec
+from .tensor import Tensor, StaticTensorSpec
 from utils import StaticTuple
+from math import ceil
 
 
 @value
@@ -18,27 +19,36 @@ struct TensorSlice[
     alias _ref_type = Reference[Tensor[type, rank], is_mutable, lifetime]
     var _ref: Self._ref_type
     var _slices: StaticTuple[Slice, rank]
-    var _spec: _StaticTensorSpec[type, rank]
+    var _spec: StaticTensorSpec[type, rank]
 
     fn __init__(
         inout self, tensor: Self._ref_type, slices: StaticTuple[Slice, rank]
     ):
         var adjusted_shape = StaticIntTuple[rank]()
         for i in range(rank):
-            debug_assert(
-                slices[i].step == 1,
-                "FIXME: step other than one is not supported",
+            adjusted_shape[i] = int(
+                ceil((slices[i].end - slices[i].start) / slices[i].step)
             )
-            adjusted_shape[i] = slices[i].end - slices[i].start
-        var slice_spec = _StaticTensorSpec[type](adjusted_shape)
+        var slice_spec = StaticTensorSpec[type](adjusted_shape)
         self = Self(tensor, slices, slice_spec)
 
+    @always_inline
     fn _get_adjusted_offset(self, indices: VariadicList[Int]) -> Int:
         var adjusted = StaticIntTuple[rank]()
         for i in range(len(indices)):
             debug_assert(indices[i] < self._spec[i], "index out of bound")
-            adjusted[i] = indices[i] + self._slices[i].start
+            adjusted[i] = (
+                indices[i] * self._slices[i].step + self._slices[i].start
+            )
         return self._ref[]._compute_linear_offset(adjusted)
+
+    fn get_static_spec(self) -> StaticTensorSpec[type, rank]:
+        """Gets the static spec of the slice.
+
+        Returns:
+            Static tensor spec of slice.
+        """
+        return self._spec
 
     @always_inline
     fn __getitem__(self, *indices: Int) -> Scalar[type]:
