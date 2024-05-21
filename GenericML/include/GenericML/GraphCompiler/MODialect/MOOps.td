@@ -2710,11 +2710,9 @@ def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
 
     ```
     output_shape = (
-        batch_dims_shape + list(indices.shape)[batch_dims:-1]
-        if (indices.shape[-1] == data_rank - batch_dims)
-        else batch_dims_shape
-        + list(indices.shape)[batch_dims:-1]
-        + list(data.shape)[batch_dims + indices.shape[-1] :]
+          input.shape[:batch_dims]
+        + indices.shape[batch_dims:-1]
+        + data.shape[batch_dims + indices.shape[-1]:]
     )
     ```
 
