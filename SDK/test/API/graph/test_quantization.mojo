@@ -12,7 +12,7 @@ from memory import memset_zero
 from max.graph import Graph, TensorType, Type
 from max.graph.quantization import BFloat16Encoding
 from max.graph._testing import assert_tensors_almost_equal, execute_unary
-from max.tensor import Tensor, TensorShape, randn
+from max.tensor import Tensor, TensorShape
 
 
 def test_quantize_bfloat16():
@@ -33,7 +33,7 @@ def test_quantize_bfloat16():
     )
 
     # Load token embeddings as float32.
-    f32_tensor = randn[DType.float32](TensorShape(num_tokens, channels))
+    f32_tensor = Tensor[DType.float32].randn(TensorShape(num_tokens, channels))
 
     # Quantize the float32 token embeddings to bfloat16.
     bfloat16_symbol = g.quantize[BFloat16Encoding](f32_tensor)

@@ -10,7 +10,7 @@ from pathlib import Path
 from sys.param_env import env_get_string
 from utils.index import Index, StaticIntTuple
 
-from tensor import Tensor, TensorShape, TensorSpec, rand, randn
+from tensor import Tensor, TensorShape, TensorSpec
 from tensor.tensor import _serialize_as_tensor
 
 from testing import assert_almost_equal, assert_equal, assert_false
@@ -206,30 +206,6 @@ fn test_tensor_fill():
             for k in range(6):
                 if tensor[i, j, k] != (i * 5 + j) * 6 + k:
                     print("ERROR: invalid index fill")
-
-
-# CHECK: test_tensor_rand
-fn test_tensor_rand():
-    print("== test_tensor_rand")
-
-    var tensor = rand[DType.float32](3, 3, 3)
-
-    for i in range(3):
-        for j in range(3):
-            for k in range(3):
-                print(tensor[i, j, k])
-
-
-# CHECK: test_tensor_randn
-fn test_tensor_randn():
-    print("== test_tensor_randn")
-
-    var tensor = randn[DType.float32](TensorShape(3, 3, 3))
-
-    for i in range(3):
-        for j in range(3):
-            for k in range(3):
-                print(tensor[i, j, k])
 
 
 # CHECK: test_tensor_astype
@@ -627,8 +603,6 @@ def main():
     test_tensor_indexing()
     test_tensor_indexing2()
     test_tensor_fill()
-    test_tensor_rand()
-    test_tensor_randn()
     test_tensor_astype()
     test_euclidean_distance()
     test_image_to_grayscale()
