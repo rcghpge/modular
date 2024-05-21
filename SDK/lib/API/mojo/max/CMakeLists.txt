@@ -67,6 +67,7 @@ set(SERVE_SRCS
   serve/kserve/debug
   serve/kserve/server
   serve/kserve/stats
+  serve/batch
   serve/service
 )
 

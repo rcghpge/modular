@@ -1,0 +1,51 @@
+# ===----------------------------------------------------------------------=== #
+#
+# This file is Modular Inc proprietary.
+#
+# ===----------------------------------------------------------------------=== #
+# UNSUPPORTED: windows
+# RUN: %mojo -debug-level full %s
+
+from time import sleep, now
+from runtime.llcl import Runtime, TaskGroup, TaskGroupTaskList
+from max.serve.batch import Batcher
+
+
+fn rand_sleep():
+    var ptr = DTypePointer[DType.int64].alloc(1)
+    random.randint[DType.int64](ptr, 1, 0, 6)  # random workload
+    var rVal = int(ptr.load()[0])
+    var l: Float64 = rVal * 0.01
+    sleep(l)
+
+
+fn count_batch(input: List[Int]) capturing -> List[Int]:
+    rand_sleep()
+    var output = List[Int](capacity=len(input))
+    for _ in input:
+        output.append(len(input))
+    return output
+
+
+fn test_batch():
+    alias BATCH_SIZE = 8
+    alias NUM_REQ = BATCH_SIZE * 128 + (BATCH_SIZE - 1)
+
+    var batcher = Batcher[Int, Int, count_batch](max=BATCH_SIZE, timeout=1)
+
+    @parameter
+    async fn submit(owned n: Int) -> Int:
+        return batcher.submit(n)
+
+    var rt = Runtime()
+    var tg = TaskGroup(rt)
+    var tl = TaskGroupTaskList[Int](NUM_REQ)
+    for i in range(NUM_REQ):
+        tl.add(tg.create_task[Int](submit(i)))
+    tg.wait()
+    _ = tl^
+    _ = batcher^
+
+
+fn main():
+    test_batch()
