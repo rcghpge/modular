@@ -6,7 +6,7 @@
 # RUN: mojo "%s"
 
 from max.graph import ops, _testing, Graph, TensorType
-from max.tensor import Tensor, TensorShape
+from tensor import Tensor, TensorShape
 
 
 fn test_arg_max() raises:

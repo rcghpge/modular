@@ -6,7 +6,7 @@
 # RUN: mojo "%s" | FileCheck %s
 
 from max.graph import _testing, Dim, Graph, TensorType, Symbol
-from max.tensor import Tensor, TensorShape
+from tensor import Tensor, TensorShape
 
 
 fn test_print() raises:

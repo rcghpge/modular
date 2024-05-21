@@ -10,7 +10,7 @@ from sys.param_env import env_get_string
 
 from max.graph import _testing
 from max.graph.checkpoint import save, load, TensorDict
-from max.tensor import Tensor, TensorShape
+from tensor import Tensor, TensorShape
 
 alias TEMP_FILE_DIR = env_get_string["TEMP_FILE_DIR"]()
 

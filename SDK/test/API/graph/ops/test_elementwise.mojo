@@ -9,7 +9,7 @@ from testing import assert_raises
 
 from max.graph import _testing, Type, Graph, TensorType, Dim
 from max.graph.ops.elementwise import equal, abs, round
-from max.tensor import Tensor, TensorShape
+from tensor import Tensor, TensorShape
 
 
 fn test_basic() raises:

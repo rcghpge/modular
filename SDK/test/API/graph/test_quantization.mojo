@@ -12,7 +12,7 @@ from memory import memset_zero
 from max.graph import Graph, TensorType, Type
 from max.graph.quantization import BFloat16Encoding
 from max.graph._testing import assert_tensors_almost_equal, execute_unary
-from max.tensor import Tensor, TensorShape
+from tensor import Tensor, TensorShape
 
 
 def test_quantize_bfloat16():

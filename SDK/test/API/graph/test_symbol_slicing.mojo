@@ -7,7 +7,7 @@
 # RUN: mojo %s
 
 from max.graph import _testing, ops, Dim, Graph, TensorType, Type
-from max.tensor import Tensor, TensorShape
+from tensor import Tensor, TensorShape
 
 
 fn test_vector_index_int() raises:

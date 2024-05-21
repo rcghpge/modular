@@ -71,17 +71,12 @@ set(SERVE_SRCS
   serve/service
 )
 
-set(TENSOR_SRCS
-  tensor/__init__
-)
-
 add_mojo_package(max-mojo PRIVATE
   ${GRAPH_SRCS}
   ${ENGINE_SRCS}
   ${EXTENSIBILITY_SRCS}
   ${REGISTER_SRCS}
   ${SERVE_SRCS}
-  ${TENSOR_SRCS}
 
   DOCS_DIR
   SDK/docs

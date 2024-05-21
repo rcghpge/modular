@@ -6,7 +6,7 @@
 from .device import Device, DeviceTensor
 from .tensor_slice import TensorSlice
 from utils import StaticTuple
-from max.tensor import TensorSpec
+from tensor import TensorSpec
 
 
 @value

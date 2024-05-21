@@ -9,7 +9,7 @@
 import testing
 from max.graph import _testing
 from max.graph.checkpoint import TensorDict
-from max.tensor import Tensor, TensorShape
+from tensor import Tensor, TensorShape
 
 
 fn test_simple() raises:

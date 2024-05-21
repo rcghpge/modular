@@ -7,7 +7,7 @@
 
 from max.graph import _testing, Graph, TensorType
 from max.graph.ops.linalg import layer_norm, range_fill, tile
-from max.tensor import Tensor, TensorShape
+from tensor import Tensor, TensorShape
 
 
 fn test_layer_norm() raises:

@@ -13,7 +13,7 @@ from collections import Dict
 from pathlib import Path
 
 from max.graph import _testing, Graph, TensorType, Symbol, Type
-from max.tensor import Tensor, TensorShape
+from tensor import Tensor, TensorShape
 
 from pipelines.replit.weights.replit_checkpoint import Checkpoint
 from pipelines.replit.weights.hyperparams import HyperParams

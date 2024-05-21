@@ -9,7 +9,7 @@
 import testing
 
 from max.graph import Type, Graph
-from max.tensor import Tensor, TensorShape
+from tensor import Tensor, TensorShape
 
 
 fn test_basic_tensor() raises:
