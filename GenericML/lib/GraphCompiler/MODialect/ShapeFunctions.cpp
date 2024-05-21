@@ -548,6 +548,109 @@ materializePoolShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   return ShapeMaterializeResult::success(std::move(ops), resShape);
 }
 
+ShapeMaterializeResult materializeGatherShape(GraphOp graphOp, Location loc,
+                                              TypedAttr inputShapeAttr,
+                                              TypedAttr indicesShapeAttr,
+                                              TypedAttr axisAttr) {
+  // Make sure input and indices shapes are ranked, and axis is constant.
+  ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
+  ShapeAttr indicesShape = dyn_cast<ShapeAttr>(indicesShapeAttr);
+  auto axisOr = tryGetConstantInt(axisAttr);
+  if (!inputShape || !indicesShape || !axisOr.has_value())
+    return ShapeMaterializeResult::nonMaterializable();
+
+  // Normalize constant and make sure it's in bound.
+  size_t inputRank = inputShape.getRank();
+  int64_t axis = axisOr.value();
+  axis = axis < 0 ? axis + inputRank : axis;
+  if (axis < 0 || inputRank <= static_cast<size_t>(axis)) {
+    return ShapeMaterializeResult::error(
+        "[gather] normalized axis must be within range [0, input_rank)");
+  }
+
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
+  // Compute and collect output dimensions.
+  // Note the output shape is essentially replacing the `axis` dimension of
+  // `input_shape` with `indices_shape`, i.e.,
+  //   output_shape := input_shape[:axis] + indices_shape + input_shape[axis+1:]
+  SmallVector<TypedAttr> resDims;
+  // input_shape[:axis]
+  for (int64_t idx = 0; idx < axis; idx++)
+    resDims.push_back(inputShape[idx]);
+  // indices_shape
+  llvm::append_range(resDims, indicesShape.getValues());
+  // input_shape[axis+1:]
+  for (size_t idx = axis + 1; idx < inputRank; idx++)
+    resDims.push_back(inputShape[idx]);
+
+  // Create and return output shape.
+  ShapeAttr resShape = b.getShapeAttr(resDims);
+  return ShapeMaterializeResult::success(std::move(ops), resShape);
+}
+
+ShapeMaterializeResult materializeGatherNdShape(GraphOp graphOp, Location loc,
+                                                TypedAttr inputShapeAttr,
+                                                TypedAttr indicesShapeAttr,
+                                                int64_t batchDims) {
+  // Make sure input and indices shapes are ranked.
+  ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
+  ShapeAttr indicesShape = dyn_cast<ShapeAttr>(indicesShapeAttr);
+  if (!inputShape || !indicesShape)
+    return ShapeMaterializeResult::nonMaterializable();
+
+  // Preliminary rank checks
+  size_t inputRank = inputShape.getRank();
+  size_t indicesRank = indicesShape.getRank();
+  if (inputRank < 1 || indicesRank < 1) {
+    return ShapeMaterializeResult::error(
+        "[gather_nd] input_rank and indices_rank must be >= 1");
+  }
+
+  // Size of the indexing dimension must be a constant
+  auto idxSizeOr = tryGetConstantInt(indicesShape[indicesRank - 1]);
+  if (!idxSizeOr.has_value())
+    return ShapeMaterializeResult::nonMaterializable();
+  int64_t idxSize = idxSizeOr.value();
+
+  // More shape checks.
+  if (idxSize < 1 || inputRank - batchDims < static_cast<size_t>(idxSize)) {
+    return ShapeMaterializeResult::error(
+        "[gather_nd] index size must be within range [1, input_rank - "
+        "batch_dims]");
+  }
+  if (batchDims >= static_cast<int64_t>(indicesRank)) {
+    return ShapeMaterializeResult::error(
+        "[gather_nd] requires (batch_dims < indices_rank)");
+  }
+
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
+  // Compute and collect output dimensions.
+  //   output_shape = input_shape[:batch_dims]
+  //                  + indices_shape[batch_dims:-1]
+  //                  + input_shape[batch_dims + indices_shape[-1]:]
+  SmallVector<TypedAttr> resDims;
+
+  // input_shape[:batch_dims]
+  for (int64_t idx = 0; idx < batchDims; idx++)
+    resDims.push_back(inputShape[idx]);
+  // indices_shape[batch_dims:-1]
+  llvm::append_range(resDims,
+                     indicesShape.getValues().slice(batchDims).drop_back());
+  // input_shape[batch_dims + indices_shape[-1]:]
+  for (size_t idx = batchDims + idxSize; idx < inputRank; idx++)
+    resDims.push_back(inputShape[idx]);
+
+  // Create and return output shape.
+  ShapeAttr resShape = b.getShapeAttr(resDims);
+  return ShapeMaterializeResult::success(std::move(ops), resShape);
+}
+
 /// Materialize the shape logic for `MO::RangeOp`.
 ShapeMaterializeResult materializeRangeShape(GraphOp graphOp, Location loc,
                                              TypedAttr startAttr,
@@ -878,6 +981,37 @@ materializeReshapeShapeImpl(ArrayRef<TypedAttr> inputs,
   return materializeReshapeShape(graphOp, loc, inputShape, targetShape);
 }
 
+// Assume `inputs` are staticized inputs for a `MO::GatherOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+materializeGatherShapeImpl(ArrayRef<TypedAttr> inputs,
+                           DictionaryAttr kgenParams, GraphOp graphOp,
+                           Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr indicesShape = inputs[1];
+  TypedAttr axis = inputs[2];
+  return materializeGatherShape(graphOp, loc, inputShape, indicesShape, axis);
+}
+
+// Assume `inputs` are staticized inputs for a `MO::GatherNdOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+materializeGatherNdShapeImpl(ArrayRef<TypedAttr> inputs,
+                             DictionaryAttr kgenParams, GraphOp graphOp,
+                             Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr indicesShape = inputs[1];
+
+  GENERICML_ASSERT(kgenParams)
+      << "kgenParams must be available for split_ith_output_shape";
+  auto intAttr = dyn_cast_or_null<IntegerAttr>(kgenParams.get("batch_dims"));
+  GENERICML_ASSERT(intAttr) << "kgenParams must contain an 'batch_dims' "
+                               "integer for gather_nd_shape";
+
+  return materializeGatherNdShape(graphOp, loc, inputShape, indicesShape,
+                                  intAttr.getInt());
+}
+
 // Assume `inputs` are staticized inputs for a `MO::RangeOp`, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
@@ -1046,6 +1180,8 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
       {"concat_shape", materializeConcatShapeImpl},
       {"conv_shape", materializeConvShapeImpl},
       {"conv_transpose_shape", materializeConvTransposeShapeImpl},
+      {"gather_shape", materializeGatherShapeImpl},
+      {"gather_nd_shape", materializeGatherNdShapeImpl},
       {"pad_shape", materializePadShapeImpl},
       {"pool_shape", materializePoolFloorShapeImpl},
       {"pool_shape_ceil", materializePoolCeilShapeImpl},

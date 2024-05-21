@@ -377,6 +377,18 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
                      TypedAttr dilationsAttr, TypedAttr paddingsAttr,
                      TypedAttr numGroupsAttr);
 
+/// Materialize the shape logic for `MO::GatherOp`.
+ShapeMaterializeResult materializeGatherShape(GraphOp graphOp, Location loc,
+                                              TypedAttr inputShapeAttr,
+                                              TypedAttr indicesShapeAttr,
+                                              TypedAttr axisAttr);
+
+/// Materialize the shape logic for `MO::GatherNdOp`.
+ShapeMaterializeResult materializeGatherNdShape(GraphOp graphOp, Location loc,
+                                                TypedAttr inputShapeAttr,
+                                                TypedAttr indicesShapeAttr,
+                                                int64_t batchDims);
+
 /// Materialize the shape logic for `MO::PadLike` ops.
 ShapeMaterializeResult materializePadShape(GraphOp graphOp, Location loc,
                                            TypedAttr inputShapeAttr,
