@@ -3,15 +3,15 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-# RUN: mojo -I %examples_dir/pipelines/replit/ "%s"
+# RUN: mojo -I %sdk_examples_dir "%s"
 """
  Usage:
-   mojo -I ModularFramework/examples/pipelines/replit \
+   mojo -I SDK/public/max-repo/examples/graph-api \
      "ModularFramework/integration-test/examples/pipelines/replit/json_test.mojo"
 """
 import testing
 
-from bpe_tokenizer.json import JsonStorage, NodeType
+from pipelines.replit.bpe_tokenizer.json import JsonStorage, NodeType
 
 
 def test_value():

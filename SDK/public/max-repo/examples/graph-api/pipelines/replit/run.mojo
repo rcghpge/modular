@@ -1,29 +1,82 @@
 # ===----------------------------------------------------------------------=== #
+# Copyright (c) 2024, Modular Inc. All rights reserved.
 #
-# This file is Modular Inc proprietary.
+# Licensed under the Apache License v2.0 with LLVM Exceptions:
+# https://llvm.org/LICENSE.txt
 #
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 # ===----------------------------------------------------------------------=== #
-from pathlib import Path
+from pathlib import cwd, Path
 import sys
 
-from model.replit import Replit
-from weights.replit_checkpoint import ReplitCheckpoint
-from weights.hyperparams import get_default
 from max.engine import InferenceSession, Model, TensorMap
 from max.tensor import Tensor, TensorShape
 
-from tokenizer import AutoTokenizer
+from .model.replit import Replit
+from .weights.replit_checkpoint import ReplitCheckpoint
+from .weights.hyperparams import get_default
+from .autotokenizer import AutoTokenizer
 
 alias MAX_SEQ_LEN = 512
 
 
-def main():
-    args = sys.argv()
-    checkpoint_file = Path(args[1])
+@value
+struct Config:
+    """Configuration for token generation runtime options."""
+
+    var converted_weights_path: Path
+    var prompt: String
+
+    def __init__(
+        inout self,
+        /,
+        converted_weights_path: Path = "",
+        prompt: String = 'def hello():\n  print("hello world")',
+    ):
+        self.converted_weights_path = converted_weights_path
+        self.prompt = prompt
+        self.parse_args()
+
+    def parse_args(inout self):
+        args = sys.argv()
+
+        @parameter
+        def read_value(index: Int) -> StringRef:
+            if index >= len(args):
+                raise "missing value for parameter `" + str(
+                    args[index - 1]
+                ) + "`"
+            return args[index]
+
+        # Skip the run_pipeline.mojo and replit arguments.
+        i = 2
+        while i < len(args):
+            if args[i] == "--converted_weights_path":
+                self.converted_weights_path = Path(read_value(i + 1))
+                i += 2
+            elif args[i] == "--prompt":
+                self.prompt = read_value(i + 1)
+                i += 2
+            else:
+                raise "unsupported CLI argument: " + String(args[i])
+
+        if len(str(self.converted_weights_path)) == 0:
+            self.converted_weights_path = cwd().joinpath(
+                ".cache/replit/converted"
+            )
+
+
+def replit_run():
+    config = Config()
+    checkpoint_file = config.converted_weights_path
 
     # Generate a graph that does a single forward pass of the replit model.
     print("Building model...")
-    replit = Replit[ReplitCheckpoint, DType.float32](get_default())
+    var replit = Replit[ReplitCheckpoint, DType.float32](get_default())
     g = replit.build_graph(
         "replit",
         ReplitCheckpoint(checkpoint_file),
@@ -38,10 +91,10 @@ def main():
     compiled_model = session.load(g)
 
     # Set up input and caches, and preprocess the input.
-    input_string = 'def hello():\n  print("hello world")'
+    input_string = config.prompt
     print("Running on input:", input_string)
     alias hf_model_name = "replit/replit-code-v1_5-3b"
-    bpe_tokenizer = AutoTokenizer(hf_model_name)
+    var bpe_tokenizer = AutoTokenizer(hf_model_name)
     prompt = List[String]()
     prompt.append(input_string)
     tokens = bpe_tokenizer.encode(prompt)

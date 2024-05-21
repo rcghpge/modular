@@ -1,8 +1,16 @@
 # ===----------------------------------------------------------------------=== #
+# Copyright (c) 2024, Modular Inc. All rights reserved.
 #
-# This file is Modular Inc proprietary.
+# Licensed under the Apache License v2.0 with LLVM Exceptions:
+# https://llvm.org/LICENSE.txt
 #
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 # ===----------------------------------------------------------------------=== #
+"""The attention mechanism used within the model."""
 
 from collections import Optional
 from utils.numerics import min_finite
@@ -11,8 +19,8 @@ from max.graph import ops, Dim, TensorType, Symbol
 from max.graph.error import error
 from max.tensor import Tensor, TensorShape
 
-from weights.hyperparams import HyperParams
-from layers.linear import Linear
+from ..weights.hyperparams import HyperParams
+from ..layers.linear import Linear
 
 
 def permute(input: Symbol, perm: Symbol, out_dims: List[Dim]) -> Symbol:

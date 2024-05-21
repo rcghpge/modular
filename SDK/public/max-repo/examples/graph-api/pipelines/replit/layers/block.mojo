@@ -1,18 +1,26 @@
 # ===----------------------------------------------------------------------=== #
+# Copyright (c) 2024, Modular Inc. All rights reserved.
 #
-# This file is Modular Inc proprietary.
+# Licensed under the Apache License v2.0 with LLVM Exceptions:
+# https://llvm.org/LICENSE.txt
 #
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 # ===----------------------------------------------------------------------=== #
+"""The core Transformer block of the model."""
 
 from collections import Optional
 
 from max.graph import ops, Symbol, Graph
 
-from layers.attention import GroupedQueryAttention
-from layers.linear import Linear
-from layers.norm import LPLayerNorm
-from weights.replit_checkpoint import Checkpoint
-from weights.hyperparams import HyperParams
+from ..layers.attention import GroupedQueryAttention
+from ..layers.linear import Linear
+from ..layers.norm import LPLayerNorm
+from ..weights.replit_checkpoint import Checkpoint
+from ..weights.hyperparams import HyperParams
 
 
 @value

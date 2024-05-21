@@ -3,9 +3,9 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-# RUN: mojo -I %examples_dir/pipelines/replit/ "%s"
+# RUN: mojo -I %sdk_examples_dir "%s"
 # Usage:
-#   mojo -I ModularFramework/examples/pipelines/replit \
+#   mojo -I SDK/public/max-repo/examples/graph-api \
 #     "ModularFramework/integration-test/examples/pipelines/replit/replit_logits.mojo"
 #
 # Tests in this file are executed in the main block at the bottom.
@@ -15,14 +15,14 @@ from pathlib import Path
 from max.graph import _testing, Graph, TensorType, Symbol, Type
 from max.tensor import Tensor, TensorShape
 
-from weights.replit_checkpoint import Checkpoint
-from weights.hyperparams import HyperParams
-from model.replit import Replit
-from layers.embedding import SharedEmbedding
-from layers.attention import GroupedQueryAttention
-from layers.linear import Linear
-from layers.block import MPTBlock, MPTMLP
-from layers.norm import LPLayerNorm
+from pipelines.replit.weights.replit_checkpoint import Checkpoint
+from pipelines.replit.weights.hyperparams import HyperParams
+from pipelines.replit.model.replit import Replit
+from pipelines.replit.layers.embedding import SharedEmbedding
+from pipelines.replit.layers.attention import GroupedQueryAttention
+from pipelines.replit.layers.linear import Linear
+from pipelines.replit.layers.block import MPTBlock, MPTMLP
+from pipelines.replit.layers.norm import LPLayerNorm
 
 
 # fmt: off

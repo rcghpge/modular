@@ -1,7 +1,14 @@
 # ===----------------------------------------------------------------------=== #
+# Copyright (c) 2024, Modular Inc. All rights reserved.
 #
-# This file is Modular Inc proprietary.
+# Licensed under the Apache License v2.0 with LLVM Exceptions:
+# https://llvm.org/LICENSE.txt
 #
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 # ===----------------------------------------------------------------------=== #
 import math
 from utils.numerics import min_finite
@@ -10,11 +17,11 @@ from collections import Optional, List
 from max.graph import ops, Dim, TensorType, Symbol, Graph, Type
 from max.tensor import Tensor, TensorShape
 
-from layers.embedding import SharedEmbedding
-from layers.block import MPTBlock
-from layers.norm import LPLayerNorm
-from weights.replit_checkpoint import Checkpoint
-from weights.hyperparams import HyperParams
+from ..layers.embedding import SharedEmbedding
+from ..layers.block import MPTBlock
+from ..layers.norm import LPLayerNorm
+from ..weights.replit_checkpoint import Checkpoint
+from ..weights.hyperparams import HyperParams
 
 
 def gen_slopes(g: Graph, n_heads: Int32, alibi_bias_max: Int32 = 8) -> Symbol:
@@ -176,7 +183,7 @@ struct Replit[T: Checkpoint, weights_type: DType]:
         )
 
         @parameter
-        fn weight(name: String) raises -> Symbol:
+        def weight(name: String) -> Symbol:
             return ops.cast(
                 g.constant(params.get[weights_type](name)), DType.float32
             )
