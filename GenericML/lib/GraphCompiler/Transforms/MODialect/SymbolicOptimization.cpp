@@ -4512,7 +4512,7 @@ struct SymbolicOptimizationPass
   // Runs all default patterns plus the ones provided in the template
   // parameters.
   template <typename... PatternTypes>
-  void applyCorePatternsPlusExtraPatterns() {
+  LogicalResult applyCorePatternsPlusExtraPatterns() {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
 
@@ -4604,12 +4604,10 @@ struct SymbolicOptimizationPass
           context);
     }
 
-    if (failed(
-            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
-      return signalPassFailure();
+    return applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 
-  void applyForwardMathematicalCanonicalizations() {
+  LogicalResult applyForwardMathematicalCanonicalizations() {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
 
@@ -4621,12 +4619,10 @@ struct SymbolicOptimizationPass
         ForwardMathematicalCanonicalizationPowByNegativeOneOrTwoToDivAndPow>(
         context);
 
-    if (failed(
-            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
-      return signalPassFailure();
+    return applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 
-  void applyBackwardMathematicalCanonicalizations() {
+  LogicalResult applyBackwardMathematicalCanonicalizations() {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
 
@@ -4637,27 +4633,32 @@ struct SymbolicOptimizationPass
         BackwardMathematicalCanonicalizationDivAndPowToPowByNegativeOneOrTwo>(
         context);
 
-    if (failed(
-            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
-      return signalPassFailure();
+    return applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 
-  void applyCorePatterns() {
+  LogicalResult applyCorePatterns() {
     // First run all the optimizations with slices turned into split when
     // possible.
-    applyCorePatternsPlusExtraPatterns<SliceToSplitPattern>();
+    if (applyCorePatternsPlusExtraPatterns<SliceToSplitPattern>().failed())
+      return failure();
+
     // Once all split operation patterns have run, convert them to slice and run
     // all of the other patterns too. Without it, split patterns would never
     // apply because they would be turned into slices too early.
-    applyCorePatternsPlusExtraPatterns<SplitToSlicePattern>();
+    return applyCorePatternsPlusExtraPatterns<SplitToSlicePattern>();
   }
 
   void runOnOperation() override {
-    applyCorePatterns();
-    applyForwardMathematicalCanonicalizations();
-    applyCorePatterns();
-    applyBackwardMathematicalCanonicalizations();
-    applyCorePatterns();
+    if (applyCorePatterns().failed())
+      return signalPassFailure();
+    if (applyForwardMathematicalCanonicalizations().failed())
+      return signalPassFailure();
+    if (applyCorePatterns().failed())
+      return signalPassFailure();
+    if (applyBackwardMathematicalCanonicalizations().failed())
+      return signalPassFailure();
+    if (applyCorePatterns().failed())
+      return signalPassFailure();
   }
 }; // namespace
 
