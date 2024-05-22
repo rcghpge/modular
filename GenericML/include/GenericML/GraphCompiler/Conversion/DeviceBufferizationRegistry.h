@@ -55,7 +55,7 @@ struct DeviceSpecificDialect {
   /// loweringState, for example to establish !mgp.context entries appropriate
   /// for the device. This function is called once the lowered 'init' block
   /// has been established but before any MO ops are lowered.
-  virtual LogicalResult
+  virtual CompileDiagnosticOrSuccess
   makeBufferBuilder(DeviceRefAttr hostDevice, DeviceSpecAttr deviceSpec,
                     MGP::MOGraphLoweringState &loweringState) = 0;
 
@@ -77,7 +77,7 @@ struct MGPDeviceSpecificDialect : public DeviceSpecificDialect {
   makeTypeBuilder(DeviceSpecAttr deviceSpec,
                   MGP::MOGraphLoweringState &loweringState) override;
 
-  LogicalResult
+  CompileDiagnosticOrSuccess
   makeBufferBuilder(DeviceRefAttr hostDevice, DeviceSpecAttr deviceSpec,
                     MGP::MOGraphLoweringState &loweringState) override;
 };
@@ -107,7 +107,7 @@ public:
                       MGP::MOGraphLoweringState &loweringState) const;
 
   /// Calls the makeBufferBuilder function appropriate for given args.
-  LogicalResult
+  CompileDiagnosticOrSuccess
   callMakeBufferBuilder(DeviceRefAttr hostDevice, DeviceSpecAttr deviceSpec,
                         MGP::MOGraphLoweringState &loweringState) const;
 
@@ -131,9 +131,9 @@ LogicalResult makeTypeBuilder(DeviceSpecAttr deviceSpec,
                               MGP::MOGraphLoweringState &loweringState);
 
 /// Call the registered make buffer builder function appropriate for given args.
-LogicalResult makeBufferBuilder(DeviceRefAttr hostDevice,
-                                DeviceSpecAttr deviceSpec,
-                                MGP::MOGraphLoweringState &loweringState);
+CompileDiagnosticOrSuccess
+makeBufferBuilder(DeviceRefAttr hostDevice, DeviceSpecAttr deviceSpec,
+                  MGP::MOGraphLoweringState &loweringState);
 
 } // namespace M::MO
 

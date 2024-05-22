@@ -69,7 +69,7 @@ public:
   // Establish buffer builders for all the (virtual) devices needed by the
   // model. Each device will have its 'runtime' created in the 'init' block
   // and held in the !mgp.context.
-  LogicalResult setupBufferBuildersForAllDevices();
+  CompileDiagnosticOrSuccess setupBufferBuildersForAllDevices();
 
   LogicalResult createModelOp();
 
@@ -176,10 +176,10 @@ private:
 //===----------------------------------------------------------------------===//
 
 LogicalResult MOGraphLowering::setupCheckRuntime(Location loc) {
-  FailureOr<DeviceSpecCollectionAttr> deviceSpecsOr =
+  CompileDiagnosticOr<DeviceSpecCollectionAttr> deviceSpecsOr =
       loweringState.getDeviceSpecs();
-  if (failed(deviceSpecsOr))
-    return failure();
+  if (deviceSpecsOr.isError())
+    return deviceSpecsOr.takeError();
 
   uint64_t slot = loweringState.getInitMgpContext().getNumSlots();
   auto checkRuntimeOp =
@@ -188,7 +188,7 @@ LogicalResult MOGraphLowering::setupCheckRuntime(Location loc) {
           /*inChain=*/loweringState.getInitChain(),
           /*theContext=*/loweringState.getInitMgpContext(),
           /*aSlot=*/slot,
-          /*bDevices=*/*deviceSpecsOr);
+          /*bDevices=*/deviceSpecsOr.takeValue());
   loweringState.setCheckRuntimeOp(checkRuntimeOp);
   loweringState.getInitMgpContext().setNumSlots(slot + 1);
   loweringState.setInitChain(checkRuntimeOp.getOutChain());
@@ -196,41 +196,44 @@ LogicalResult MOGraphLowering::setupCheckRuntime(Location loc) {
 }
 
 LogicalResult MOGraphLowering::setupTypeBuildersForAllDevices() {
-  FailureOr<DeviceSpecCollectionAttr> deviceSpecsOr =
+  CompileDiagnosticOr<DeviceSpecCollectionAttr> deviceSpecsOr =
       loweringState.getDeviceSpecs();
-  if (failed(deviceSpecsOr))
-    return failure();
+  if (deviceSpecsOr.isError())
+    return deviceSpecsOr.takeError();
 
-  for (DeviceSpecAttr deviceSpec : deviceSpecsOr->getDevices()) {
+  for (DeviceSpecAttr deviceSpec : deviceSpecsOr.takeValue().getDevices()) {
     if (failed(MO::makeTypeBuilder(deviceSpec, loweringState)))
       return failure();
   }
   return success();
 }
 
-LogicalResult MOGraphLowering::setupBufferBuildersForAllDevices() {
-  FailureOr<DeviceSpecCollectionAttr> deviceSpecsOr =
+CompileDiagnosticOrSuccess MOGraphLowering::setupBufferBuildersForAllDevices() {
+  CompileDiagnosticOr<DeviceSpecCollectionAttr> deviceSpecsOr =
       loweringState.getDeviceSpecs();
-  if (failed(deviceSpecsOr))
-    return failure();
+  if (deviceSpecsOr.isError())
+    return deviceSpecsOr.takeError();
+  auto deviceSpecs = deviceSpecsOr.takeValue();
 
   // Make sure the 'host' device buffer builder is established first since
   // other builders need to refer to it.
-  for (DeviceSpecAttr deviceSpec : deviceSpecsOr->getDevices()) {
-    if (deviceSpec.getRef() != deviceSpecsOr->getHost())
+  for (DeviceSpecAttr deviceSpec : deviceSpecs.getDevices()) {
+    if (deviceSpec.getRef() != deviceSpecs.getHost())
       continue;
-    if (failed(MO::makeBufferBuilder(deviceSpecsOr->getHost(), deviceSpec,
-                                     loweringState)))
-      return failure();
+    if (auto err = MO::makeBufferBuilder(deviceSpecs.getHost(), deviceSpec,
+                                         loweringState);
+        err.isError())
+      return err;
   }
 
   // Now establish buffer builders for all other devices.
-  for (DeviceSpecAttr deviceSpec : deviceSpecsOr->getDevices()) {
-    if (deviceSpec.getRef() == deviceSpecsOr->getHost())
+  for (DeviceSpecAttr deviceSpec : deviceSpecs.getDevices()) {
+    if (deviceSpec.getRef() == deviceSpecs.getHost())
       continue;
-    if (failed(MO::makeBufferBuilder(deviceSpecsOr->getHost(), deviceSpec,
-                                     loweringState)))
-      return failure();
+    if (auto err = MO::makeBufferBuilder(deviceSpecs.getHost(), deviceSpec,
+                                         loweringState);
+        err.isError())
+      return err;
   }
   return success();
 }
@@ -327,8 +330,8 @@ LogicalResult MOGraphLowering::createModelOp() {
   // extra device-specific setup in the 'init' block.
   // CAUTION: Must be done after the 'init' and 'execute' mgp.contexts have
   // been established, but before we lower any device-specific ops.
-  if (failed(setupBufferBuildersForAllDevices()))
-    return failure();
+  if (auto err = setupBufferBuildersForAllDevices(); err.isError())
+    return err.takeError();
 
   return success();
 }

@@ -16,7 +16,8 @@ using namespace M::MGP;
 // MOGraphLoweringState
 //===----------------------------------------------------------------------===//
 
-FailureOr<DeviceSpecCollectionAttr> MOGraphLoweringState::getDeviceSpecs() {
+CompileDiagnosticOr<DeviceSpecCollectionAttr>
+MOGraphLoweringState::getDeviceSpecs() {
   ErrorOr<DeviceSpecCollectionAttr> deviceSpecsOr =
       MO::getDeviceSpecsOrDefault(graph);
   if (deviceSpecsOr)

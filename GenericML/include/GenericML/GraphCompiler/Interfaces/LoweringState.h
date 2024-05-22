@@ -20,6 +20,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/MGPDialect/BufferBuilder.h"
 #include "GenericML/Support/Assert.h"
+#include "GenericML/Support/Diagnostic.h"
 #include "GraphRT/MIPDialect/MIPOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/DialectInterface.h"
@@ -194,7 +195,7 @@ public:
   MO::GraphOp &getGraph() { return graph; }
 
   /// Returns the graph's device_specs annotation.
-  FailureOr<DeviceSpecCollectionAttr> getDeviceSpecs();
+  CompileDiagnosticOr<DeviceSpecCollectionAttr> getDeviceSpecs();
 
   /// Return type converter for lowering known MO types into MGP ones.
   TypeConverter &getTypeConverter() { return typeConverter; }
