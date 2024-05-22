@@ -41,6 +41,9 @@ struct _CDevice:
         alias func_free_data = "M_freeDeviceData"
         call_dylib_func(lib.get_handle(), func_free_data, self, data)
 
+    fn __eq__(self, other: Self) -> Bool:
+        return self._ptr == other._ptr
+
 
 struct Device(Stringable):
     var lib: DriverLibrary
@@ -73,6 +76,10 @@ struct Device(Stringable):
         self.lib = existing.lib
         self._cdev = existing._cdev.copy(self.lib)
 
+    fn __moveinit__(inout self, owned existing: Self):
+        self.lib = existing.lib^
+        self._cdev = existing._cdev^
+
     fn allocate(inout self, spec: TensorSpec) raises -> DeviceMemory:
         """Returns a DeviceMemory allocated in the Device's memory space.
         DeviceMemory holds a reference count to Device.
@@ -101,3 +108,6 @@ struct Device(Stringable):
         call_dylib_func[NoneType](
             self.lib.get_handle(), func_name_destroy, self._cdev
         )
+
+    fn __eq__(self, other: Self) -> Bool:
+        return self._cdev == other._cdev

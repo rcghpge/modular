@@ -70,6 +70,12 @@ struct DeviceMemory(StringableRaising):
             )
         )
 
+    fn __moveinit__(inout self, owned existing: Self):
+        self._ptr = existing._ptr
+        self._device = existing._device^
+        self.lib = existing.lib^
+        self.spec = existing.spec^
+
     fn get_rank(self) -> Int:
         return self.spec.rank()
 
@@ -114,16 +120,41 @@ struct DeviceMemory(StringableRaising):
         )
         return Tensor(data, shape, self._device)
 
-    fn copy_to(self, inout dst_tensor: DeviceMemory) raises:
-        if self.get_tensor_spec() != dst_tensor.get_tensor_spec():
+    fn copy_to(self, inout dst_memory: DeviceMemory) raises:
+        """Copies the contents of self into a preallocated buffer.
+
+        Args:
+            dst_memory: The destination buffer of the copy.
+        """
+        if self.get_tensor_spec() != dst_memory.get_tensor_spec():
             raise "Tensor specs do not match in copy_to(), src=" + str(
                 self.get_tensor_spec()
-            ) + ", dst=" + str(dst_tensor.get_tensor_spec())
+            ) + ", dst=" + str(dst_memory.get_tensor_spec())
 
         alias func_name_steal_data = "M_copyDeviceMemory"
         call_dylib_func(
             self.lib.get_handle(),
             func_name_steal_data,
-            dst_tensor._ptr,
+            dst_memory._ptr,
             self._ptr,
         )
+
+    fn copy_to(self, inout dev: Device) raises -> DeviceMemory:
+        """Copies the contents of self into DeviceMemory allocated on dev.
+        Note: this function allocates memory on dev.
+
+        Args:
+            dev: The Device on which to allocate the new DeviceMemory.
+
+        Returns:
+            Newly allocated DeviceMemory containing a copy of the self's contents.
+
+        Raises:
+            If the DeviceMemory is backed by the same Device object as dev.
+        """
+        if dev == self._device:
+            raise str(self) + "is already allocated on " + str(dev)
+
+        var dst = dev.allocate(self.spec)
+        self.copy_to(dst)
+        return dst^
