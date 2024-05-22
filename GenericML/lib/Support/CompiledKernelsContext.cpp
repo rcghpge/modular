@@ -10,6 +10,7 @@
 #include "GenericML/Support/Assert.h"
 #include "GenericML/Support/Definitions.h"
 #include "GenericML/Support/List.h"
+#include "KGEN/ExecutionEngine/JIT/StaticArchiveLayer.h"
 #include "Support/FileSystemExtras.h"
 #include "Support/Preprocessor.h"
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"

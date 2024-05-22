@@ -8,9 +8,9 @@
 #define GENERICML_SUPPORT_COMPILEDKERNELSCONTEXT_H
 
 #include "GenericML/Support/Assert.h"
-#include "KGEN/Compiler/ExecutionEngine.h"
 #include "KGEN/Compiler/ObjectCompiler.h"
 #include "KGEN/CompilerRT/MojoCallContext.h"
+#include "KGEN/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/BLAKE3.h"
 
