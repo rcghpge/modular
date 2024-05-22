@@ -111,3 +111,17 @@ struct DeviceTensor(StringableRaising):
             self.lib.get_handle(), func_name_steal_data, self._ptr
         )
         return Tensor(data, shape, self._device)
+
+    fn copy_to(self, inout dst_tensor: DeviceTensor) raises:
+        if self.get_tensor_spec() != dst_tensor.get_tensor_spec():
+            raise "Tensor specs do not match in copy_to(), src=" + str(
+                self.get_tensor_spec()
+            ) + ", dst=" + str(dst_tensor.get_tensor_spec())
+
+        alias func_name_steal_data = "M_copyDeviceTensor"
+        call_dylib_func(
+            self.lib.get_handle(),
+            func_name_steal_data,
+            dst_tensor._ptr,
+            self._ptr,
+        )

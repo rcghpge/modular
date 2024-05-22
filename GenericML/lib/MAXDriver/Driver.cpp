@@ -9,6 +9,7 @@
 #include "Support/AlignedAlloc.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/raw_ostream.h"
 #include <memory>
 #include <sstream>
@@ -51,39 +52,61 @@ private:
 };
 
 struct DeviceTensor {
-  M::RCRef<Device> devicePtr;
-  void *data;
-  size_t bytes;
-  DeviceTensor(size_t bytes, Device *dev)
-      : devicePtr(M::copyRCRef(dev)), bytes(bytes) {}
+  enum DeviceTensorKind {
+    K_CPU,
+  };
+  DeviceTensor(DeviceTensorKind kind, size_t bytes, Device *dev)
+      : devicePtr(M::copyRCRef(dev)), bytes(bytes), kind(kind) {}
 
   // TODO: decide if this is needed for non-CPU
   virtual void *release() = 0;
 
+  void *data() { return ptr; }
+
+  size_t bytecount() const { return bytes; }
+
   virtual ~DeviceTensor() = default;
+
+  DeviceTensorKind getKind() const { return kind; }
+
+  M::RCRef<Device> devicePtr;
+
+protected:
+  void *ptr;
+  size_t bytes;
+  const DeviceTensorKind kind;
 };
 
 struct CPUDeviceTensor final : DeviceTensor {
 
-  CPUDeviceTensor(size_t bytes, Device *dev) : DeviceTensor(bytes, dev) {
-    data = devicePtr->allocateData(bytes);
+  CPUDeviceTensor(size_t bytes, Device *dev) : DeviceTensor(K_CPU, bytes, dev) {
+    ptr = devicePtr->allocateData(bytes);
   }
 
   CPUDeviceTensor(void *ownedData, size_t bytes, Device *dev)
-      : DeviceTensor(bytes, dev) {
-    data = ownedData;
+      : DeviceTensor(K_CPU, bytes, dev) {
+    ptr = ownedData;
   }
 
   void *release() override {
-    auto tmp = data;
-    data = nullptr;
+    auto tmp = ptr;
+    ptr = nullptr;
     return tmp;
   }
 
   ~CPUDeviceTensor() final {
-    if (data) {
-      devicePtr->freeData(data);
+    if (ptr) {
+      devicePtr->freeData(ptr);
     }
+  }
+
+  static bool classof(const DeviceTensor *tensor) {
+    return tensor->getKind() == K_CPU;
+  }
+
+  void copy_to(CPUDeviceTensor &other) const {
+    assert(bytecount() == other.bytecount());
+    std::memcpy(other.data(), ptr, bytecount());
   }
 };
 
@@ -135,4 +158,24 @@ MODULAR_API_EXPORT void *M_takeDataFromDeviceTensor(DeviceTensor *tensorPtr) {
 
 MODULAR_API_EXPORT void M_destroyDeviceTensor(DeviceTensor *tensorPtr) {
   delete tensorPtr;
+}
+
+MODULAR_API_EXPORT void M_copyDeviceTensor(DeviceTensor *dst,
+                                           const DeviceTensor *src) {
+  auto errOr =
+      llvm::TypeSwitch<const DeviceTensor *, M::ErrorOrSuccess>(src)
+          .Case([&](const CPUDeviceTensor *src) {
+            return llvm::TypeSwitch<DeviceTensor *, M::ErrorOrSuccess>(dst)
+                .Case([&](CPUDeviceTensor *dst) {
+                  src->copy_to(*dst);
+                  return M::success();
+                })
+                .Default([&](DeviceTensor *dst) {
+                  return M::Error("unknown dst DeviceTensor type");
+                });
+          })
+          .Default([&](const DeviceTensor *unknown) {
+            return M::Error("unknown src DeviceTensor type");
+          });
+  assert(!errOr.isError());
 }
