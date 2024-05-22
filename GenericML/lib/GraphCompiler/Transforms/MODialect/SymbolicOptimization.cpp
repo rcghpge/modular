@@ -855,14 +855,17 @@ struct SinkTransposeThroughUnaryOpPattern
     TensorValue input = transposeOp.getInput();
     TensorValue opRes = op.getResult();
     rewriter.replaceAllUsesWith(op->getResults(), transposeOp.getResult());
-    op.setInput(input);
+    rewriter.modifyOpInPlace(op, [&]() {
+      op.setInput(input);
+      DType unaryResultDType = opRes.getType().getDtype();
+      opRes.setType(input.getType().cloneWith(unaryResultDType));
+    });
 
-    DType unaryResultDType = opRes.getType().getDtype();
-    opRes.setType(input.getType().cloneWith(unaryResultDType));
-    transposeOp.getInputMutable().assign(opRes);
-    transposeOp->moveAfter(op);
-    transposeOp.getResult().setType(finalOutputType);
-
+    rewriter.modifyOpInPlace(transposeOp, [&]() {
+      transposeOp.getInputMutable().assign(opRes);
+      transposeOp->moveAfter(op);
+      transposeOp.getResult().setType(finalOutputType);
+    });
     return mlir::success();
   }
 };
@@ -932,11 +935,14 @@ struct SinkTransposeThroughBinaryOpPattern
     }
 
     TensorValue opRes = op.getResult();
-    op.setLhsInput(input1);
-    op.setRhsInput(input2);
     TensorType oldOpResTy = opRes.getType();
+    rewriter.modifyOpInPlace(op, [&]() {
+      op.setLhsInput(input1);
+      op.setRhsInput(input2);
 
-    opRes.setType(input1Ty.cloneWith(oldOpResTy.getDtype()));
+      opRes.setType(input1Ty.cloneWith(oldOpResTy.getDtype()));
+    });
+
     rewriter.setInsertionPointAfter(op);
     auto finalTransposeOp =
         rewriter.create<TransposeOp>(op->getLoc(), oldOpResTy, opRes, perm1);
@@ -1030,7 +1036,9 @@ struct SinkTransposeThroughStaticBroadcastToOpPattern
           llvm::iota_range<int64_t>(0, extraDims, /*Inclusive=*/false);
       permVec.insert(permVec.begin(), paddedAxes.begin(), paddedAxes.end());
       auto newPerm = rewriter.create<ConstantOp>(op.getLoc(), permVec);
-      transposeOp.getPermMutable().assign(newPerm);
+
+      rewriter.modifyOpInPlace(
+          transposeOp, [&]() { transposeOp.getPermMutable().assign(newPerm); });
     }
     SmallVector<TypedAttr> newBroadcastDims =
         unpermute(oldBroadcastResTy.getDims(), permVec);
@@ -1040,11 +1048,16 @@ struct SinkTransposeThroughStaticBroadcastToOpPattern
         oldBroadcastResTy.cloneWith(ShapeAttr::get(newBroadcastDims, shapeTy));
 
     rewriter.replaceAllUsesWith(op, transposeOp.getResult());
-    op.getInputMutable().assign(input);
-    op.getResult().setType(newBroadcastResTy);
-    transposeOp.getInputMutable().assign(op.getResult());
-    transposeOp->moveAfter(op);
-    transposeOp.getResult().setType(oldBroadcastResTy);
+    rewriter.modifyOpInPlace(op, [&]() {
+      op.getInputMutable().assign(input);
+      op.getResult().setType(newBroadcastResTy);
+    });
+
+    rewriter.modifyOpInPlace(transposeOp, [&]() {
+      transposeOp.getInputMutable().assign(op.getResult());
+      transposeOp->moveAfter(op);
+      transposeOp.getResult().setType(oldBroadcastResTy);
+    });
 
     return mlir::success();
   }

@@ -168,6 +168,11 @@ struct DeviceAwareRewriter {
         rewriter.create<OpTy>(location, std::forward<Args>(args)...));
   }
 
+  template <typename CallableT>
+  void modifyOpInPlace(Operation *root, CallableT &&callable) {
+    rewriter.modifyOpInPlace(root, std::forward<CallableT>(callable));
+  }
+
   /// Like RewriterBase::replaceOpWithNewOp, but the new op is stamped.
   template <typename OpTy, typename... Args>
   OpTy replaceOpWithNewOp(Operation *op, Args &&...args) {
