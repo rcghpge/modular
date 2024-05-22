@@ -961,8 +961,9 @@ LogicalResult ConstantOp::canonicalize(ConstantOp op,
     auto constantOp =
         rewriter.create<ConstantOp>(loc, staticTensorType, elements);
     rewriter.replaceOpWithNewOp<RebindOp>(op, op.getType(), constantOp);
+    return success();
   }
-  return success();
+  return failure();
 }
 
 OpFoldResult ConstantOp::fold(FoldAdaptor adaptor) {
