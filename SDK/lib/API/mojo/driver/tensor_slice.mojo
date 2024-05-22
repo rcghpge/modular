@@ -34,7 +34,7 @@ struct TensorSlice[
 
     @always_inline
     fn _get_adjusted_indices(
-        self, indices: VariadicList[Int]
+        self, indices: StaticIntTuple[rank]
     ) -> StaticIntTuple[rank]:
         var adjusted = StaticIntTuple[rank]()
         for i in range(len(indices)):
@@ -51,6 +51,23 @@ struct TensorSlice[
             Static tensor spec of slice.
         """
         return self._spec
+
+    # FIXME: [MOCO-696] Use variadic length keys
+    # FIXME: [MOCO-706] Use setitem API
+    @always_inline
+    fn set(inout self, indices: StaticIntTuple[rank], value: Scalar[type]):
+        """Sets the value at given index.
+
+        Args:
+            indices: Index to set value at.
+            value: Value to be set.
+        """
+        constrained[self.is_mutable == True, "tensor slice is immutable"]()
+        # TODO: Don't cast to ptr. We have to do this because we don't
+        # have conditional conformance.
+        var mutable_tensor = UnsafePointer(self._ref)[]._get_mut_ref()
+        var adjusted_indices = self._get_adjusted_indices(indices)
+        mutable_tensor[].store(adjusted_indices, value)
 
     @always_inline
     fn __getitem__(self, *indices: Int) -> Scalar[type]:

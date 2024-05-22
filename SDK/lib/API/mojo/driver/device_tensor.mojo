@@ -100,6 +100,9 @@ struct DeviceMemory(StringableRaising):
         if rank != self.spec.rank():
             raise "requested rank does not match existing rank"
 
+        if dtype != self.spec.dtype():
+            raise "requested dtype does not match existing type."
+
         var shape = StaticIntTuple[rank]()
 
         for i in range(rank):

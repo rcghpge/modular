@@ -100,6 +100,11 @@ struct Tensor[type: DType, rank: Int]:
             slice_tuple[i].end = min(slice_tuple[i].end, self[]._spec[i])
         return TensorSlice(self, slice_tuple)
 
+    fn _get_mut_ref(
+        self: Reference[Self, True, _]
+    ) -> Reference[Self, True, self.lifetime]:
+        return self
+
     @always_inline
     fn load[*, width: Int = 1](self, *indices: Int) -> SIMD[type, width]:
         """Gets the SIMD value at the specified indices.
@@ -135,6 +140,7 @@ struct Tensor[type: DType, rank: Int]:
         """
         return self._ptr.load[width=width](self._compute_linear_offset(indices))
 
+    # FIXME: [MOCO-696] Use variadic length keys
     @always_inline
     fn __setitem__(
         inout self, indices: StaticIntTuple[rank], val: Scalar[type]
