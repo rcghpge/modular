@@ -51,11 +51,11 @@ private:
   }
 };
 
-struct DeviceTensor {
-  enum DeviceTensorKind {
+struct DeviceMemory {
+  enum DeviceMemoryKind {
     K_CPU,
   };
-  DeviceTensor(DeviceTensorKind kind, size_t bytes, Device *dev)
+  DeviceMemory(DeviceMemoryKind kind, size_t bytes, Device *dev)
       : devicePtr(M::copyRCRef(dev)), bytes(bytes), kind(kind) {}
 
   // TODO: decide if this is needed for non-CPU
@@ -65,26 +65,26 @@ struct DeviceTensor {
 
   size_t bytecount() const { return bytes; }
 
-  virtual ~DeviceTensor() = default;
+  virtual ~DeviceMemory() = default;
 
-  DeviceTensorKind getKind() const { return kind; }
+  DeviceMemoryKind getKind() const { return kind; }
 
   M::RCRef<Device> devicePtr;
 
 protected:
   void *ptr;
   size_t bytes;
-  const DeviceTensorKind kind;
+  const DeviceMemoryKind kind;
 };
 
-struct CPUDeviceTensor final : DeviceTensor {
+struct CPUDeviceMemory final : DeviceMemory {
 
-  CPUDeviceTensor(size_t bytes, Device *dev) : DeviceTensor(K_CPU, bytes, dev) {
+  CPUDeviceMemory(size_t bytes, Device *dev) : DeviceMemory(K_CPU, bytes, dev) {
     ptr = devicePtr->allocateData(bytes);
   }
 
-  CPUDeviceTensor(void *ownedData, size_t bytes, Device *dev)
-      : DeviceTensor(K_CPU, bytes, dev) {
+  CPUDeviceMemory(void *ownedData, size_t bytes, Device *dev)
+      : DeviceMemory(K_CPU, bytes, dev) {
     ptr = ownedData;
   }
 
@@ -94,17 +94,17 @@ struct CPUDeviceTensor final : DeviceTensor {
     return tmp;
   }
 
-  ~CPUDeviceTensor() final {
+  ~CPUDeviceMemory() final {
     if (ptr) {
       devicePtr->freeData(ptr);
     }
   }
 
-  static bool classof(const DeviceTensor *tensor) {
+  static bool classof(const DeviceMemory *tensor) {
     return tensor->getKind() == K_CPU;
   }
 
-  void copy_to(CPUDeviceTensor &other) const {
+  void copy_to(CPUDeviceMemory &other) const {
     assert(bytecount() == other.bytecount());
     std::memcpy(other.data(), ptr, bytecount());
   }
@@ -137,45 +137,45 @@ MODULAR_API_EXPORT const char *M_getDeviceDesc(const Device *devPtr) {
   return devPtr->getString().c_str();
 }
 
-MODULAR_API_EXPORT DeviceTensor *M_createDeviceTensor(size_t bytes,
+MODULAR_API_EXPORT DeviceMemory *M_createDeviceMemory(size_t bytes,
                                                       Device *devPtr) {
-  return new CPUDeviceTensor(bytes, devPtr);
+  return new CPUDeviceMemory(bytes, devPtr);
 }
 
-MODULAR_API_EXPORT DeviceTensor *
-M_createDeviceTensorFrom(void *data, size_t bytes, Device *devPtr) {
-  return new CPUDeviceTensor(data, bytes, devPtr);
+MODULAR_API_EXPORT DeviceMemory *
+M_createDeviceMemoryFrom(void *data, size_t bytes, Device *devPtr) {
+  return new CPUDeviceMemory(data, bytes, devPtr);
 }
 
 MODULAR_API_EXPORT Device *
-M_getDeviceFromDeviceTensor(DeviceTensor *tensorPtr) {
+M_getDeviceFromDeviceMemory(DeviceMemory *tensorPtr) {
   return tensorPtr->devicePtr.getPointer();
 }
 
-MODULAR_API_EXPORT void *M_takeDataFromDeviceTensor(DeviceTensor *tensorPtr) {
+MODULAR_API_EXPORT void *M_takeDataFromDeviceMemory(DeviceMemory *tensorPtr) {
   return tensorPtr->release();
 }
 
-MODULAR_API_EXPORT void M_destroyDeviceTensor(DeviceTensor *tensorPtr) {
+MODULAR_API_EXPORT void M_destroyDeviceMemory(DeviceMemory *tensorPtr) {
   delete tensorPtr;
 }
 
-MODULAR_API_EXPORT void M_copyDeviceTensor(DeviceTensor *dst,
-                                           const DeviceTensor *src) {
+MODULAR_API_EXPORT void M_copyDeviceMemory(DeviceMemory *dst,
+                                           const DeviceMemory *src) {
   auto errOr =
-      llvm::TypeSwitch<const DeviceTensor *, M::ErrorOrSuccess>(src)
-          .Case([&](const CPUDeviceTensor *src) {
-            return llvm::TypeSwitch<DeviceTensor *, M::ErrorOrSuccess>(dst)
-                .Case([&](CPUDeviceTensor *dst) {
+      llvm::TypeSwitch<const DeviceMemory *, M::ErrorOrSuccess>(src)
+          .Case([&](const CPUDeviceMemory *src) {
+            return llvm::TypeSwitch<DeviceMemory *, M::ErrorOrSuccess>(dst)
+                .Case([&](CPUDeviceMemory *dst) {
                   src->copy_to(*dst);
                   return M::success();
                 })
-                .Default([&](DeviceTensor *dst) {
-                  return M::Error("unknown dst DeviceTensor type");
+                .Default([&](DeviceMemory *dst) {
+                  return M::Error("unknown dst DeviceMemory type");
                 });
           })
-          .Default([&](const DeviceTensor *unknown) {
-            return M::Error("unknown src DeviceTensor type");
+          .Default([&](const DeviceMemory *unknown) {
+            return M::Error("unknown src DeviceMemory type");
           });
   assert(!errOr.isError());
 }

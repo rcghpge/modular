@@ -3,7 +3,7 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-from .device import Device, DeviceTensor
+from .device import Device, DeviceMemory
 from .tensor_slice import TensorSlice
 from utils import StaticTuple
 from tensor import TensorSpec
@@ -187,8 +187,8 @@ struct Tensor[type: DType, rank: Int]:
     fn _get_device(self) -> Device:
         return self._device
 
-    fn get_device_tensor(owned self) raises -> DeviceTensor:
-        return DeviceTensor(self^)
+    fn get_device_tensor(owned self) raises -> DeviceMemory:
+        return DeviceMemory(self^)
 
     fn __del__(owned self):
         self._device._free(self._ptr.bitcast[DType.invalid]())

@@ -3,13 +3,13 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-from .device_tensor import DeviceTensor
+from .device_tensor import DeviceMemory
 from .tensor import Tensor
 from .device import Device
 from tensor import TensorSpec
 
 
-struct AnyTensor:
+struct AnyMemory:
     """A type erased tensor representation that is useful
     for situations where we need variadics of tensors."""
 
@@ -17,7 +17,7 @@ struct AnyTensor:
     var _spec: TensorSpec
     var _device: Device
 
-    fn __init__(inout self, owned device_tensor: DeviceTensor) raises:
+    fn __init__(inout self, owned device_tensor: DeviceMemory) raises:
         self._device = device_tensor.get_device()
         self._spec = device_tensor.get_tensor_spec()
         self._data = device_tensor^._steal_ptr()

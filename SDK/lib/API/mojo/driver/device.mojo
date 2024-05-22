@@ -12,7 +12,7 @@ from max.engine._utils import get_lib_path_from_cfg
 from pathlib import Path
 from tensor import TensorSpec
 from ._driver_library import DriverLibrary, ManagedDLHandle
-from .device_tensor import DeviceTensor
+from .device_tensor import DeviceMemory
 
 
 struct CPUDescriptor:
@@ -73,12 +73,12 @@ struct Device(Stringable):
         self.lib = existing.lib
         self._cdev = existing._cdev.copy(self.lib)
 
-    fn allocate(inout self, spec: TensorSpec) raises -> DeviceTensor:
-        """Returns a DeviceTensor allocated in the Device's memory space.
-        DeviceTensor holds a reference count to Device.
+    fn allocate(inout self, spec: TensorSpec) raises -> DeviceMemory:
+        """Returns a DeviceMemory allocated in the Device's memory space.
+        DeviceMemory holds a reference count to Device.
         """
 
-        return DeviceTensor(spec, self)
+        return DeviceMemory(spec, self)
 
     fn _free(self, data: DTypePointer[DType.invalid]):
         self._cdev.free_data(self.lib, data)

@@ -12,18 +12,18 @@ from .device import Device, _CDevice
 from .tensor import Tensor
 
 
-struct DeviceTensor(StringableRaising):
+struct DeviceMemory(StringableRaising):
     var _ptr: DTypePointer[DType.invalid]
     var _device: Device
     var lib: DriverLibrary
     var spec: TensorSpec
 
     fn __init__(inout self, spec: TensorSpec, device: Device) raises:
-        """Allocates a DeviceTensor from the Device's address space."""
+        """Allocates a DeviceMemory from the Device's address space."""
 
         self._device = device
         self.lib = self._device.lib
-        alias func_name_create_tensor = "M_createDeviceTensor"
+        alias func_name_create_tensor = "M_createDeviceMemory"
         self._ptr = call_dylib_func[DTypePointer[DType.invalid]](
             self.lib.get_handle(),
             func_name_create_tensor,
@@ -35,12 +35,12 @@ struct DeviceTensor(StringableRaising):
     fn __init__[
         type: DType, rank: Int
     ](inout self, owned tensor: Tensor[type, rank]) raises:
-        """Creates a DeviceTensor from given tensor."""
+        """Creates a DeviceMemory from given tensor."""
 
         self._device = tensor._get_device()
         self.lib = self._device.lib
         self.spec = tensor.get_tensor_spec()
-        alias func_name_create_tensor = "M_createDeviceTensorFrom"
+        alias func_name_create_tensor = "M_createDeviceMemoryFrom"
         var create_func = self.lib.get_handle().get_function[
             fn (
                 DTypePointer[DType.invalid], Int, _CDevice
@@ -50,7 +50,7 @@ struct DeviceTensor(StringableRaising):
         self._ptr = create_func(data, self.spec.bytecount(), self._device._cdev)
 
     fn __del__(owned self):
-        alias func_name_destroy = "M_destroyDeviceTensor"
+        alias func_name_destroy = "M_destroyDeviceMemory"
         call_dylib_func[NoneType](
             self.lib.get_handle(), func_name_destroy, self._ptr
         )
@@ -59,9 +59,9 @@ struct DeviceTensor(StringableRaising):
         return self.spec
 
     fn get_device(self) raises -> Device:
-        """Returns the device on which the DeviceTensor was allocated."""
+        """Returns the device on which the DeviceMemory was allocated."""
 
-        alias func_name_get_dev = "M_getDeviceFromDeviceTensor"
+        alias func_name_get_dev = "M_getDeviceFromDeviceMemory"
         return Device(
             _CDevice(
                 call_dylib_func[
@@ -74,10 +74,10 @@ struct DeviceTensor(StringableRaising):
         return self.spec.rank()
 
     fn __str__(self) raises -> String:
-        """Returns a description of the DeviceTensor."""
+        """Returns a description of the DeviceMemory."""
 
         return (
-            "DeviceTensor("
+            "DeviceMemory("
             + str(self.get_device())
             + ",Spec("
             + str(self.spec)
@@ -85,7 +85,7 @@ struct DeviceTensor(StringableRaising):
         )
 
     fn _steal_ptr(owned self) -> DTypePointer[DType.invalid]:
-        alias func_name_take_data = "M_takeDataFromDeviceTensor"
+        alias func_name_take_data = "M_takeDataFromDeviceMemory"
         var take_data_func = self.lib.get_handle().get_function[
             fn (DTypePointer[DType.invalid]) -> DTypePointer[DType.invalid]
         ](func_name_take_data)
@@ -105,19 +105,19 @@ struct DeviceTensor(StringableRaising):
         for i in range(rank):
             shape[i] = self.spec[i]
 
-        alias func_name_steal_data = "M_takeDataFromDeviceTensor"
+        alias func_name_steal_data = "M_takeDataFromDeviceMemory"
         var data = call_dylib_func[DTypePointer[dtype]](
             self.lib.get_handle(), func_name_steal_data, self._ptr
         )
         return Tensor(data, shape, self._device)
 
-    fn copy_to(self, inout dst_tensor: DeviceTensor) raises:
+    fn copy_to(self, inout dst_tensor: DeviceMemory) raises:
         if self.get_tensor_spec() != dst_tensor.get_tensor_spec():
             raise "Tensor specs do not match in copy_to(), src=" + str(
                 self.get_tensor_spec()
             ) + ", dst=" + str(dst_tensor.get_tensor_spec())
 
-        alias func_name_steal_data = "M_copyDeviceTensor"
+        alias func_name_steal_data = "M_copyDeviceMemory"
         call_dylib_func(
             self.lib.get_handle(),
             func_name_steal_data,
