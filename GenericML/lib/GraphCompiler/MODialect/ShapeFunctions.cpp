@@ -8,7 +8,11 @@
 
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/Support/Assert.h"
+#include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/KGENDialect/ParameterEvaluator.h"
+#include <optional>
+#include <utility>
 
 namespace M::MO {
 
@@ -956,6 +960,89 @@ ShapeMaterializeResult materializeTransposeShape(GraphOp graphOp, Location loc,
 
 //------------------------Shape functions end---------------------------------//
 //----------------------------------------------------------------------------//
+
+/// Try to unpack the given attribute as a `KGEN::ParamOperatorAttr` that is
+/// representing a `mo.assert`, and return the `(condAttr, errorMsgAttr)` pair.
+static std::optional<std::pair<TypedAttr, StringAttr>>
+tryGetAssertCondAndMsg(TypedAttr attr) {
+  // Check it's an expression attribute.
+  auto paramOperatorAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr);
+  if (!paramOperatorAttr)
+    return std::nullopt;
+
+  // Check it's a `mo.assert`.
+  auto mlirOpAttr = dyn_cast<KGEN::MLIROpAttr>(paramOperatorAttr.getOperand(0));
+  if (!mlirOpAttr || mlirOpAttr.getName() != MO::AssertOp::getOperationName())
+    return std::nullopt;
+
+  // Package the condition attribute and error message.
+  TypedAttr cond = paramOperatorAttr.getOperand(1);
+  auto msgAttr = mlirOpAttr.getAttrs().getAs<StringAttr>("message");
+  return std::make_pair(cond, msgAttr);
+}
+
+StringAttr tryGetAssertFalseErrMsg(TypedAttr attr) {
+  if (auto condAndMsg = tryGetAssertCondAndMsg(attr)) {
+    TypedAttr cond = condAndMsg.value().first;
+    StringAttr errMsg = condAndMsg.value().second;
+
+    // Check assert condition is a static false.
+    if (auto boolAttr = dyn_cast<BoolAttr>(cond);
+        boolAttr && boolAttr.getValue() == false) {
+      return errMsg;
+    }
+  }
+  return {};
+}
+
+ErrorOr<ShapeAttr> propagateShape(ArrayRef<Operation *> shapeOps,
+                                  ShapeAttr targetShape) {
+
+  // Setting things up
+  KGEN::ParameterEvaluator evaluator;
+  mlir::AttrTypeReplacer replacer;
+  replacer.addReplacement([&](KGEN::ParamDeclRefAttr declRef) -> Attribute {
+    Attribute resolvedAttr = evaluator.getReboundAttribute(declRef);
+    return resolvedAttr;
+  });
+
+  // Process individual ops and propagate by simple substitution.
+  for (Operation *op : shapeOps) {
+
+    // Apply accumulated substitutions to this op.
+    replacer.replaceElementsIn(op, /*replaceAttrs=*/true,
+                               /*replaceLocs=*/true, /*replaceTypes=*/true);
+
+    if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
+      // Process kgen.param.declare LHS = <RHS>
+      KGEN::ParamDeclAttr lhsAttr = declOp.getParamDecl();
+      TypedAttr rhsAttr = declOp.getValue();
+
+      // Check for assert.
+      if (auto condAndMsg = tryGetAssertCondAndMsg(rhsAttr)) {
+        TypedAttr cond = condAndMsg.value().first;
+        StringAttr errMsg = condAndMsg.value().second;
+
+        // Error if condition didn't fold to true.
+        if (auto boolAttr = dyn_cast<BoolAttr>(cond);
+            !boolAttr || !boolAttr.getValue()) {
+          return Error(errMsg.str());
+        }
+      }
+
+      // Otherwise remember this substitution.
+      evaluator.setParameterValue(lhsAttr, rhsAttr);
+
+    } else {
+      // Error if not a `kgen.param.declare`
+      return Error("Unexpected op type: " + op->getName().getStringRef());
+    }
+  }
+
+  // Apply accumulated substitutions to target shape.
+  auto resultShape = cast<ShapeAttr>(replacer.replace(targetShape));
+  return resultShape;
+}
 
 // TODO move the following into a new interface.
 

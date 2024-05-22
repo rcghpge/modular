@@ -301,10 +301,30 @@ public:
   struct Success {
     SmallVector<Operation *> ops;
     ShapeAttr resultShape;
+
+    // Constructors
+    Success() = default;
+    Success(SmallVector<Operation *> &&ops, ShapeAttr resultShape)
+        : ops(std::move(ops)), resultShape(resultShape) {}
+
+    // Disable copy and move.
+    Success(const Success &) = delete;
+    Success(Success &&) = delete;
+    Success &operator=(const Success &) = delete;
+    Success &operator=(Success &&) = delete;
   };
   struct NonMaterializable {};
   struct Error {
     std::string msg;
+
+    // Constructors
+    Error(const Twine &msg) : msg(msg.str()) {}
+
+    // Disable copy and move.
+    Error(const Error &) = delete;
+    Error(Error &&) = delete;
+    Error &operator=(const Error &) = delete;
+    Error &operator=(Error &&) = delete;
   };
 
   bool isSuccess() { return std::holds_alternative<Success>(result); }
@@ -313,8 +333,11 @@ public:
   }
   bool isError() { return std::holds_alternative<Error>(result); }
 
-  Success getSuccess() { return std::move(std::get<0>(result)); };
-  Error getError() { return std::move(std::get<2>(result)); };
+  /// Returning a reference so that we could either use return as
+  /// - a rvalue, e.g., `res.getSuccess().ops` or
+  /// - a lvalue, e.g., `const auto& success = res.getSuccess()`
+  Success &getSuccess() { return std::get<Success>(result); };
+  Error &getError() { return std::get<Error>(result); };
 
   static ShapeMaterializeResult success(SmallVector<Operation *> &&ops,
                                         ShapeAttr resultShape) {
@@ -330,10 +353,12 @@ public:
 private:
   ShapeMaterializeResult(SmallVector<Operation *> &&ops,
                          ShapeAttr resultShape) {
-    result = Success{std::move(ops), resultShape};
+    result.emplace<Success>(std::move(ops), resultShape);
   }
   ShapeMaterializeResult() { result = NonMaterializable{}; }
-  ShapeMaterializeResult(const Twine &errMsg) { result = Error{errMsg.str()}; }
+  ShapeMaterializeResult(const Twine &errMsg) {
+    result.emplace<Error>(errMsg.str());
+  }
   std::variant<Success, NonMaterializable, Error> result;
 };
 
@@ -458,6 +483,21 @@ ShapeMaterializeResult materializeTransposeShape(GraphOp graphOp, Location loc,
 
 //------------------------Shape functions end---------------------------------//
 //----------------------------------------------------------------------------//
+
+/// If `attr` is a `mo.assert false`, return the error message associated
+/// with it, else return null.
+StringAttr tryGetAssertFalseErrMsg(TypedAttr attr);
+
+/// A naive shape propagator that takes all the `kgen.param.declare` ops
+/// materialized by the shape functions, and do a substitute & fold via a single
+/// traverse. As a result, it modifies the `shapeOps` in place (e.g., simplify
+/// the assert conditions), and return a simplified version of `targetShape`.
+///
+/// It returns an error when it encounters an assert whose condition doesn't
+/// fold to `true`. The error message will be the same as the assert error
+/// message.
+ErrorOr<ShapeAttr> propagateShape(ArrayRef<Operation *> shapeOps,
+                                  ShapeAttr targetShape);
 
 // TODO move the following into a new interface.
 // NOTE some of the input arguments will be removed once we move the
