@@ -70,6 +70,9 @@ struct Tensor[type: DType, rank: Int]:
         Returns:
           The value at the specified indices.
         """
+        debug_assert(
+            len(indices) == rank, "mismatch between requested index and rank"
+        )
         return self.load[width=1](indices)
 
     @always_inline
@@ -110,6 +113,9 @@ struct Tensor[type: DType, rank: Int]:
         Returns:
           The SIMD value at the specified indices.
         """
+        debug_assert(
+            len(indices) == rank, "mismatch between requested index and rank"
+        )
         return self._ptr.load[width=width](self._compute_linear_offset(indices))
 
     @always_inline
@@ -172,21 +178,6 @@ struct Tensor[type: DType, rank: Int]:
         for i in range(rank - 1):
             result = self._spec[i + 1] * result + indices[i + 1]
         return result
-
-    @always_inline
-    fn _compute_linear_offset(self, indices: VariadicList[Int]) -> Int:
-        """Computes the linear offset into the tensor from the indices provided.
-
-        Args:
-          indices: The indices to index against.
-
-        Returns:
-          The linearized index into the tensor data.
-        """
-        var offset = indices[0]
-        for i in range(len(indices) - 1):
-            offset = self._spec[i + 1] * offset + indices[i + 1]
-        return offset
 
     fn _steal_ptr(owned self) -> DTypePointer[type]:
         var tmp = self._ptr

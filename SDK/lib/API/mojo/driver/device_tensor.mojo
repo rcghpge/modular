@@ -97,10 +97,9 @@ struct DeviceTensor(StringableRaising):
     fn get_tensor[
         dtype: DType, rank: Int
     ](owned self) raises -> Tensor[dtype, rank]:
-        debug_assert(
-            rank == self.spec.rank(),
-            "requested rank does not match existing rank",
-        )
+        if rank != self.spec.rank():
+            raise "requested rank does not match existing rank"
+
         var shape = StaticIntTuple[rank]()
 
         for i in range(rank):

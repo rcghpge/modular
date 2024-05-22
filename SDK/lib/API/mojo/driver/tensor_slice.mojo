@@ -33,14 +33,16 @@ struct TensorSlice[
         self = Self(tensor, slices, slice_spec)
 
     @always_inline
-    fn _get_adjusted_offset(self, indices: VariadicList[Int]) -> Int:
+    fn _get_adjusted_indices(
+        self, indices: VariadicList[Int]
+    ) -> StaticIntTuple[rank]:
         var adjusted = StaticIntTuple[rank]()
         for i in range(len(indices)):
             debug_assert(indices[i] < self._spec[i], "index out of bound")
             adjusted[i] = (
                 indices[i] * self._slices[i].step + self._slices[i].start
             )
-        return self._ref[]._compute_linear_offset(adjusted)
+        return adjusted
 
     fn get_static_spec(self) -> StaticTensorSpec[type, rank]:
         """Gets the static spec of the slice.
@@ -63,5 +65,5 @@ struct TensorSlice[
         debug_assert(
             len(indices) == rank, "mismatch between requested index and rank"
         )
-        var adjusted_offset = self._get_adjusted_offset(indices)
-        return self._ref[].load(adjusted_offset)
+        var adjusted_indices = self._get_adjusted_indices(indices)
+        return self._ref[][adjusted_indices]
