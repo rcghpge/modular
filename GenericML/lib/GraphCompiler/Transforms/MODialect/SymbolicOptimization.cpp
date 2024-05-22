@@ -4604,7 +4604,12 @@ struct SymbolicOptimizationPass
           context);
     }
 
-    return applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+    // TODO(GRA-540): This is done to avoid potential subtle high-iteration
+    // count loops in the pattern.
+    mlir::GreedyRewriteConfig config;
+    config.useTopDownTraversal = true;
+    return applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
+                                        config);
   }
 
   LogicalResult applyForwardMathematicalCanonicalizations() {
@@ -4619,7 +4624,12 @@ struct SymbolicOptimizationPass
         ForwardMathematicalCanonicalizationPowByNegativeOneOrTwoToDivAndPow>(
         context);
 
-    return applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+    // TODO(GRA-540): This is done to avoid potential subtle high-iteration
+    // count loops in the pattern.
+    mlir::GreedyRewriteConfig config;
+    config.useTopDownTraversal = true;
+    return applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
+                                        config);
   }
 
   LogicalResult applyBackwardMathematicalCanonicalizations() {
@@ -4633,7 +4643,12 @@ struct SymbolicOptimizationPass
         BackwardMathematicalCanonicalizationDivAndPowToPowByNegativeOneOrTwo>(
         context);
 
-    return applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+    // TODO(GRA-540): This is done to avoid potential subtle high-iteration
+    // count loops in the pattern.
+    mlir::GreedyRewriteConfig config;
+    config.useTopDownTraversal = true;
+    return applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
+                                        config);
   }
 
   LogicalResult applyCorePatterns() {
