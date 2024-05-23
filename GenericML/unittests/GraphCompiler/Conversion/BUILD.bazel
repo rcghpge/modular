@@ -1,4 +1,6 @@
-cc_test(
+load("//bazel:api.bzl", "modular_cc_test")
+
+modular_cc_test(
     name = "ConversionTests",
     srcs = glob(["*.cpp"]),
     deps = [
