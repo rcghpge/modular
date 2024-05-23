@@ -384,6 +384,12 @@ ShapeMaterializeResult materializeBatchMatmulShape(GraphOp graphOp,
                                                    TypedAttr lhsShapeAttr,
                                                    TypedAttr rhsShapeAttr);
 
+/// Materialize the shape logic for `MO::BroadcastShapeOp`.
+ShapeMaterializeResult materializeBroadcastShapeShape(GraphOp graphOp,
+                                                      Location loc,
+                                                      TypedAttr lhsShapeAttr,
+                                                      TypedAttr rhsShapeAttr);
+
 /// Materialize the shape logic for `MO::BroadcastToOp`.
 ShapeMaterializeResult materializeBroadcastToShape(GraphOp graphOp,
                                                    Location loc,
@@ -401,6 +407,12 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
                      TypedAttr filterShapeAttr, TypedAttr stridesAttr,
                      TypedAttr dilationsAttr, TypedAttr paddingsAttr,
                      TypedAttr numGroupsAttr);
+
+/// Materialize the shape logic for `MO::MatrixSolveOp`.
+ShapeMaterializeResult materializeMatrixSolveShape(GraphOp graphOp,
+                                                   Location loc,
+                                                   TypedAttr lhsShapeAttr,
+                                                   TypedAttr rhsShapeAttr);
 
 /// Materialize the shape logic for `MO::GatherOp`.
 ShapeMaterializeResult materializeGatherShape(GraphOp graphOp, Location loc,
@@ -454,6 +466,13 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
                                                TypedAttr inputShapeAttr,
                                                TypedAttr targetShapeAttr);
 
+/// Materialize the shape logic for `MO::RoiAlignOp`.
+ShapeMaterializeResult matierlizeRoiAlignShape(GraphOp graphOp, Location loc,
+                                               TypedAttr inputShapeAttr,
+                                               TypedAttr roisShapeAttr,
+                                               TypedAttr outHeightAttr,
+                                               TypedAttr outWidthAttr);
+
 /// Materialize the shape logic for `MO::SliceOp`.
 ShapeMaterializeResult materializeSliceShape(GraphOp graphOp, Location loc,
                                              TypedAttr inputShapeAttr,
@@ -482,6 +501,12 @@ ShapeMaterializeResult materializeSplitIthOutputShape(
 ShapeMaterializeResult materializeTargetShapeLike(GraphOp graphOp, Location loc,
                                                   TypedAttr targetShapeAttr);
 
+/// Materialize the shape logic for `MO::SqueezeShapeOp`.
+ShapeMaterializeResult materializeSqueezeShapeShape(GraphOp graphOp,
+                                                    Location loc,
+                                                    TypedAttr inputShapeAttr,
+                                                    TypedAttr indicesShapeAttr);
+
 /// Materialize the shape logic for `MO::TileOp`.
 ShapeMaterializeResult materializeTileShape(GraphOp graphOp, Location loc,
                                             TypedAttr inputShapeAttr,
@@ -496,6 +521,12 @@ ShapeMaterializeResult materializeTopKShape(GraphOp graphOp, Location loc,
 ShapeMaterializeResult materializeTransposeShape(GraphOp graphOp, Location loc,
                                                  TypedAttr inputShapeAttr,
                                                  TypedAttr permutationsAttr);
+
+/// Materialize the shape logic for `MO::UnsqueezeShapeOp`.
+ShapeMaterializeResult materializesqueezeShapeShape(GraphOp graphOp,
+                                                    Location loc,
+                                                    TypedAttr inputShapeAttr,
+                                                    TypedAttr indicesShapeAttr);
 
 //------------------------Shape functions end---------------------------------//
 //----------------------------------------------------------------------------//

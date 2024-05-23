@@ -269,12 +269,11 @@ mo.graph @linalg_solve_reused_rhs<D0, D1 -> Sh0: !mosh.ape>(
   mo.output<:!mosh.ape Sh4> %1 : !mo.tensor<Sh4, f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @linalg_solve_reused_rhs<[[D0:.*]], [[D1:.*]] -> [[SH0:.*]]: !mosh.ape>([[VARG0:%.*]]: !mo.tensor<[3, [[D0]], [[D0]]], f32>, [[VARG1:%.*]]: !mo.tensor<[3, [[D0]], [[D1]]], f32>) -> !mo.tensor<[[SH0]], f32> {
-// CHECK-NEXT:   mo.invoke_shape_func["matrix_solve_shape"]<() -> [[SH3:.*]]: !mosh.ape>([[VARG0]], [[VARG1]]) {dataDeptTensors = []} : (!mo.tensor<[3, [[D0]], [[D0]]], f32>, !mo.tensor<[3, [[D0]], [[D1]]], f32>)
-// CHECK-NEXT:   [[V0:%.*]] = mo.linalg.solve([[VARG0]], [[VARG1]]) : (!mo.tensor<[3, [[D0]], [[D0]]], f32>, !mo.tensor<[3, [[D0]], [[D1]]], f32>) -> !mo.tensor<[[SH3]], f32>
-// CHECK-NEXT:   mo.invoke_shape_func["matrix_solve_shape"]<() -> [[SH4:.*]]: !mosh.ape>([[V0]], [[VARG1]]) {dataDeptTensors = []} : (!mo.tensor<[[SH3]], f32>, !mo.tensor<[3, [[D0]], [[D1]]], f32>)
-// CHECK-NEXT:   [[V2:%.*]] = mo.linalg.solve([[V0]], [[VARG1]]) : (!mo.tensor<[[SH3]], f32>, !mo.tensor<[3, [[D0]], [[D1]]], f32>) -> !mo.tensor<[[SH4]], f32>
-// CHECK-NEXT:   mo.output<{{.*}} [[V2]]
+// CHECK-SAME: @linalg_solve_reused_rhs<[[D0:.*]], [[D1:.*]]>([[VARG0:%.*]]: !mo.tensor<[3, [[D0]], [[D0]]], f32>, [[VARG1:%.*]]: !mo.tensor<[3, [[D0]], [[D1]]], f32>)
+// CHECK-NEXT:   [[V0:%.*]] = mo.linalg.solve([[VARG0]], [[VARG1]]) : {{.*}} -> !mo.tensor<[3, [[D0]], [[D1]]], f32>
+// CHECK-NEXT:   {{.*}}"mo.assert"{{.*}}"[matrix-solve] first input must be a (batch of) square matrix"{{.*}} eq([[D0]], [[D1]]))
+// CHECK-NEXT:   [[V2:%.*]] = mo.linalg.solve([[V0]], [[VARG1]]) : {{.*}} -> !mo.tensor<[3, [[D0]], [[D1]]], f32>
+// CHECK-NEXT:   mo.output [[V2]]
 // CHECK-NEXT: }
 
 mo.graph @slice_neg_stop(
@@ -766,10 +765,10 @@ mo.graph @unsqueeze_shape_dynamic_shape_with_reshape(%input_tensor: !mo.tensor<[
 // CHECK-SAME: @unsqueeze_shape_dynamic_shape_with_reshape<[[D8:.*]], [[D9:.*]], [[D10:.*]], [[D11:.*]] -> [[Sh12:.*]]: !mosh.ape>([[VARG0:%.*]]: !mo.tensor<[[[D8]], [[D9]], [[D10]]], si32>, [[VARG1:%.*]]: !mo.tensor<[[[D11]]], si32>) -> !mo.tensor<Sh12, si32> {
 // CHECK-NEXT:   [[V0:%.*]] = mosh.param.to_value: !mosh.ape = <[[[D8]], [[D9]], [[D10]]]>
 // CHECK-NEXT:   [[V1:%.*]] = mo.shape.to_tensor([[V0]]) -> !mo.tensor<[3], si32>
-// CHECK-NEXT:   [[V2:%.*]] = mo.unsqueeze_shape([[V1]], [[VARG1]]) : (!mo.tensor<[3], si32>, !mo.tensor<[[[D11]]], si32>) -> !mo.tensor<[param_expr_17], si32>
+// CHECK-NEXT:   [[V2:%.*]] = mo.unsqueeze_shape([[V1]], [[VARG1]]) : (!mo.tensor<[3], si32>, !mo.tensor<[[[D11]]], si32>) -> !mo.tensor<[param_expr_18], si32>
 // CHECK-NEXT:   mo.invoke_shape_func["reshape_shape"]<() -> [[Sh5:.*]]: !mosh.ape>([[VARG0]], [[V2]]) {dataDeptTensors = [1 : i32]}
-// CHECK-NEXT:   kgen.param.declare param_expr_17 = <add([[D11]], 3)>
-// CHECK-NEXT:   [[V3:%.*]] = mo.reshape([[VARG0]], [[V2]]) : (!mo.tensor<[[[D8]], [[D9]], [[D10]]], si32>, !mo.tensor<[param_expr_17], si32>) -> !mo.tensor<[[Sh5]], si32>
+// CHECK-NEXT:   kgen.param.declare param_expr_18 = <add([[D11]], 3)>
+// CHECK-NEXT:   [[V3:%.*]] = mo.reshape([[VARG0]], [[V2]]) : (!mo.tensor<[[[D8]], [[D9]], [[D10]]], si32>, !mo.tensor<[param_expr_18], si32>) -> !mo.tensor<[[Sh5]], si32>
 // CHECK-NEXT:   mo.output<{{.*}} [[V3]]
 // CHECK-NEXT: }
 
@@ -822,7 +821,7 @@ mo.graph @squeeze_shape_dynamic_shape(%input_shape: !mo.tensor<[?], si32>, %indi
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @squeeze_shape_dynamic_shape<[[D1:.*]], [[D2:.*]] -> [[D3:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D1]]], si32>, [[VARG1:%.*]]: !mo.tensor<[[[D2]]], si32>) -> !mo.tensor<[[[D3]]], si32> {
-// CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[squeeze_shape] cannot remove more dimensions than there exists" : !kgen.string}, ge([[D1]], [[D2]]))>
+// CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[squeeze_shape] cannot remove more dimensions than there exists" : !kgen.string}, le([[D2]], [[D1]]))>
 // CHECK-NEXT:   kgen.param.declare [[EXPR:.*]] = <add(mul_nuw([[D2]], -1), [[D1]])>
 // CHECK-NEXT:   [[V0:%.*]] = mo.squeeze_shape([[VARG0]], [[VARG1]]) : (!mo.tensor<[[[D1]]], si32>, !mo.tensor<[[[D2]]], si32>) -> !mo.tensor<[[[EXPR]]], si32>
 // CHECK-NEXT:   [[V1:%.*]] = mo.rebind([[V0]]) : !mo.tensor<[[[EXPR]]], si32> -> !mo.tensor<[add(mul_nuw([[D2]], -1), [[D1]])], si32>
@@ -840,10 +839,10 @@ mo.graph @squeeze_shape_dynamic_shape_with_reshape(%input_tensor: !mo.tensor<[?,
 // CHECK-NEXT:   [[V0:%.*]] = mosh.param.to_value: !mosh.ape = <[[[D8]], [[D9]], [[D10]]]>
 // CHECK-NEXT:   [[V1:%.*]] = mo.shape.to_tensor([[V0]]) -> !mo.tensor<[3], si32>
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[squeeze_shape] cannot remove more dimensions than there exists" : !kgen.string}, lt([[D11]], 4))>
-// CHECK-NEXT:   [[V2:%.*]] = mo.squeeze_shape([[V1]], [[VARG1]]) : (!mo.tensor<[3], si32>, !mo.tensor<[[[D11]]], si32>) -> !mo.tensor<[param_expr_19], si32>
+// CHECK-NEXT:   [[V2:%.*]] = mo.squeeze_shape([[V1]], [[VARG1]]) : (!mo.tensor<[3], si32>, !mo.tensor<[[[D11]]], si32>) -> !mo.tensor<[param_expr_21], si32>
 // CHECK-NEXT:   mo.invoke_shape_func["reshape_shape"]<() -> [[Sh5:.*]]: !mosh.ape>([[VARG0]], [[V2]]) {dataDeptTensors = [1 : i32]}
-// CHECK-NEXT:   kgen.param.declare param_expr_19 = <add(mul_nuw([[D11]], -1), 3)>
-// CHECK-NEXT:   [[V3:%.*]] = mo.reshape([[VARG0]], [[V2]]) : (!mo.tensor<[[[D8]], [[D9]], [[D10]]], si32>, !mo.tensor<[param_expr_19], si32>) -> !mo.tensor<[[Sh5]], si32>
+// CHECK-NEXT:   kgen.param.declare param_expr_21 = <add(mul_nuw([[D11]], -1), 3)>
+// CHECK-NEXT:   [[V3:%.*]] = mo.reshape([[VARG0]], [[V2]]) : (!mo.tensor<[[[D8]], [[D9]], [[D10]]], si32>, !mo.tensor<[param_expr_21], si32>) -> !mo.tensor<[[Sh5]], si32>
 // CHECK-NEXT:   mo.output<{{.*}}> [[V3]]
 // CHECK-NEXT: }
 
@@ -1263,4 +1262,27 @@ mo.graph @split_shape<N -> D0, D1, D2, D3>(
 
   // CHECK-NEXT: mo.output %[[RES]]#0, %[[RES]]#1
   mo.output<D4, D5, D6, D7> %res#0, %res#1 : !mo.tensor<[D4, D5], f32>, !mo.tensor<[D6, D7], f32>
+}
+
+// CHECK-LABEL: mo.graph @roi_align
+//  CHECK-SAME:   <[[C:.*]], [[M:.*]]>(
+//  CHECK-SAME:    %[[INPUT:.*]]: !mo.tensor<[1, 2, 3, [[C]]], f32>,
+//  CHECK-SAME:    %[[ROIS:.*]]: !mo.tensor<[[[M]], 5], f32>
+mo.graph @roi_align<C, M -> D0, D1, D2, D3>(
+  %input: !mo.tensor<[1, 2, 3, C], f32>,
+  %rois: !mo.tensor<[M, 5], f32>
+) -> !mo.tensor<[D0, D1, D2, D3], f32> {
+
+  %out_h = mo.constant {value = #M.dense_array<10> : tensor<si64>} : !mo.tensor<[], si64>
+  %out_w = mo.constant {value = #M.dense_array<20> : tensor<si64>} : !mo.tensor<[], si64>
+  %ss = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %sr = mo.constant {value = #M.dense_array<2.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+
+  // CHECK: %[[RES:.*]] = mo.roi_align{{.*}} -> !mo.tensor<[[[M]], 10, 20, [[C]]], f32>
+  %res = mo.roi_align<() -> D4, D5, D6, D7>(%input, %rois, %out_h, %out_w, %ss, %sr) {aligned = false,  mode = "AVG"} : (
+    !mo.tensor<[1, 2, 3, C], f32>, !mo.tensor<[M, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>
+  ) -> !mo.tensor<[D4, D5, D6, D7], f32>
+
+  // CHECK-NEXT: mo.output %[[RES]]
+  mo.output<D4, D5, D6, D7> %res : !mo.tensor<[D4, D5, D6, D7], f32>
 }

@@ -168,6 +168,31 @@ ShapeMaterializeResult materializeBatchMatmulShape(GraphOp graphOp,
   return ShapeMaterializeResult::success(std::move(ops), resShape);
 }
 
+ShapeMaterializeResult materializeBroadcastShapeShape(GraphOp graphOp,
+                                                      Location loc,
+                                                      TypedAttr lhsShapeAttr,
+                                                      TypedAttr rhsShapeAttr) {
+  // Make sure both lhs and rhs shapes are ranked.
+  ShapeAttr lhsShape = dyn_cast<ShapeAttr>(lhsShapeAttr);
+  ShapeAttr rhsShape = dyn_cast<ShapeAttr>(rhsShapeAttr);
+  if (!lhsShape || !rhsShape)
+    return ShapeMaterializeResult::nonMaterializable();
+
+  // Simple rank check.
+  if (lhsShape.getRank() != 1 || rhsShape.getRank() != 1) {
+    return ShapeMaterializeResult::error(
+        "[broadcast_shape] inputs must be rank 1 shape tensors");
+  }
+
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+  Var lhsDim = b.createVar(lhsShape[0]);
+  Var rhsDim = b.createVar(rhsShape[0]);
+  ShapeAttr outShape = b.getShapeAttr(b.createMax(lhsDim, rhsDim));
+  return ShapeMaterializeResult::success(std::move(ops), outShape);
+}
+
 /// Materialize the shape logic for `MO::BroadcastToOp`.
 ShapeMaterializeResult materializeBroadcastToShape(GraphOp graphOp,
                                                    Location loc,
@@ -441,6 +466,53 @@ ShapeMaterializeResult materializeConvTransposeShape(
   resDims.push_back(filterChannels.getAttr());
   ShapeAttr resShape = b.getShapeAttr(resDims);
   return ShapeMaterializeResult::success(std::move(ops), resShape);
+}
+
+/// Materialize the shape logic for `MO::BatchMatmulOp`, assuming given
+ShapeMaterializeResult materializeMatrixSolveShape(GraphOp graphOp,
+                                                   Location loc,
+                                                   TypedAttr lhsShapeAttr,
+                                                   TypedAttr rhsShapeAttr) {
+  // Make sure both input and target shapes are ranked symbolic shapes.
+  ShapeAttr lhsShape = dyn_cast<ShapeAttr>(lhsShapeAttr);
+  ShapeAttr rhsShape = dyn_cast<ShapeAttr>(rhsShapeAttr);
+  if (!lhsShape || !rhsShape)
+    return ShapeMaterializeResult::nonMaterializable();
+
+  // Basic rank check.
+  size_t inputRank = lhsShape.getRank();
+  if (rhsShape.getRank() != inputRank) {
+    return ShapeMaterializeResult::error(
+        "[matrix-solve] requires input ranks to match");
+  }
+  if (inputRank < 2)
+    return ShapeMaterializeResult::error("[matrix-solve] requires (rank >= 2)");
+
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
+  // lhsShape = [..., lhsOuterDim, lhsInnerDim]
+  Var lhsOuterDim = b.createVar(lhsShape[inputRank - 2]);
+  Var lhsInnerDim = b.createVar(lhsShape[inputRank - 1]);
+  b.createAssert(
+      lhsOuterDim == lhsInnerDim,
+      "[matrix-solve] first input must be a (batch of) square matrix");
+
+  // rhsShape = [..., rhsInnerDim, _]
+  Var rhsInnerDim = b.createVar(rhsShape[inputRank - 2]);
+  b.createAssert(lhsOuterDim == rhsInnerDim,
+                 "[matrix-solve] inputs outter dimensions must match");
+
+  // Check batch dims.
+  for (size_t batchDim = 0; batchDim < inputRank - 2; batchDim++) {
+    Var lhsDim = b.createVar(lhsShape[batchDim]);
+    Var rhsDim = b.createVar(rhsShape[batchDim]);
+    b.createAssert(lhsDim == rhsDim,
+                   "[matrix-solve] inputs batch dimensions must match");
+  }
+
+  return ShapeMaterializeResult::success(std::move(ops), rhsShape);
 }
 
 ShapeMaterializeResult materializePadShape(GraphOp graphOp, Location loc,
@@ -798,6 +870,53 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
   return ShapeMaterializeResult::success(std::move(ops), outputShape);
 }
 
+ShapeMaterializeResult matierlizeRoiAlignShape(GraphOp graphOp, Location loc,
+                                               TypedAttr inputShapeAttr,
+                                               TypedAttr roisShapeAttr,
+                                               TypedAttr outHeightAttr,
+                                               TypedAttr outWidthAttr) {
+  // Make sure input and rois shapes are ranked.
+  ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
+  ShapeAttr roisShape = dyn_cast<ShapeAttr>(roisShapeAttr);
+  if (!inputShape || !roisShape)
+    return ShapeMaterializeResult::nonMaterializable();
+
+  // Basic rank check.
+  if (inputShape.getRank() != 4) {
+    return ShapeMaterializeResult::error(
+        "[roi_align] input shape must have rank 4");
+  }
+  if (roisShape.getRank() != 2) {
+    return ShapeMaterializeResult::error(
+        "[roi_align] rois shape must have rank 2");
+  }
+  if (!outHeightAttr.getType().isIntOrIndex()) {
+    return ShapeMaterializeResult::error(
+        "[roi_align] output height must be a single integer");
+  }
+  if (!outWidthAttr.getType().isIntOrIndex()) {
+    return ShapeMaterializeResult::error(
+        "[roi_align] output width must be a single integer");
+  }
+
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
+  // Check height and width
+  Var outHeight = b.createVar(outHeightAttr);
+  Var outWidth = b.createVar(outWidthAttr);
+  b.createAssert(outHeight >= 0,
+                 "[roi_align] output height must be non-negative");
+  b.createAssert(outWidth >= 0,
+                 "[roi_align] output width must be non-negative");
+
+  // Create and return output shape
+  ShapeAttr outShape = b.getShapeAttr(
+      {roisShape[0], outHeightAttr, outWidthAttr, inputShape[3]});
+  return ShapeMaterializeResult::success(std::move(ops), outShape);
+}
+
 /// Materialize the shape logic for `MO::SliceOp`.
 ShapeMaterializeResult materializeSliceShape(GraphOp graphOp, Location loc,
                                              TypedAttr inputShapeAttr,
@@ -908,6 +1027,37 @@ ShapeMaterializeResult materializeSplitIthOutputShape(
   outDims[axis] = splitSizes[i];
   ShapeAttr outputShape = b.getShapeAttr(outDims);
   return ShapeMaterializeResult::success(std::move(ops), outputShape);
+}
+
+ShapeMaterializeResult
+materializeSqueezeShapeShape(GraphOp graphOp, Location loc,
+                             TypedAttr inputShapeAttr,
+                             TypedAttr indicesShapeAttr) {
+  // Make sure both lhs and rhs shapes are ranked.
+  ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
+  ShapeAttr indicesShape = dyn_cast<ShapeAttr>(indicesShapeAttr);
+  if (!inputShape || !indicesShape)
+    return ShapeMaterializeResult::nonMaterializable();
+
+  // Simple rank check.
+  if (inputShape.getRank() != 1 || indicesShape.getRank() != 1) {
+    return ShapeMaterializeResult::error(
+        "[squeeze_shape] inputs must be rank 1 shape tensors");
+  }
+
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+  Var inputNumElems = b.createVar(inputShape[0]);
+  Var indicesNumElems = b.createVar(indicesShape[0]);
+  b.createAssert(
+      inputNumElems >= indicesNumElems,
+      "[squeeze_shape] cannot remove more dimensions than there exists");
+
+  // Create output shape.
+  Var outputNumElems = inputNumElems - indicesNumElems;
+  ShapeAttr outShape = b.getShapeAttr(outputNumElems);
+  return ShapeMaterializeResult::success(std::move(ops), outShape);
 }
 
 ShapeMaterializeResult materializeTileShape(GraphOp graphOp, Location loc,
@@ -1022,6 +1172,33 @@ ShapeMaterializeResult materializeTopKShape(GraphOp graphOp, Location loc,
                                          b.getShapeAttr(finalShape));
 }
 
+ShapeMaterializeResult
+materializeUnsqueezeShapeShape(GraphOp graphOp, Location loc,
+                               TypedAttr inputShapeAttr,
+                               TypedAttr indicesShapeAttr) {
+  // Make sure both lhs and rhs shapes are ranked.
+  ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
+  ShapeAttr indicesShape = dyn_cast<ShapeAttr>(indicesShapeAttr);
+  if (!inputShape || !indicesShape)
+    return ShapeMaterializeResult::nonMaterializable();
+
+  // Simple rank check.
+  if (inputShape.getRank() != 1 || indicesShape.getRank() != 1) {
+    return ShapeMaterializeResult::error(
+        "[squeeze_shape] inputs must be rank 1 shape tensors");
+  }
+
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+  Var inputNumElems = b.createVar(inputShape[0]);
+  Var indicesNumElems = b.createVar(indicesShape[0]);
+
+  // Create output shape
+  ShapeAttr outShape = b.getShapeAttr(inputNumElems + indicesNumElems);
+  return ShapeMaterializeResult::success(std::move(ops), outShape);
+}
+
 //------------------------Shape functions end---------------------------------//
 //----------------------------------------------------------------------------//
 
@@ -1110,6 +1287,17 @@ ErrorOr<ShapeAttr> propagateShape(ArrayRef<Operation *> shapeOps,
 
 // TODO move the following into a new interface.
 
+// Assume `inputs` are staticized inputs for a `MO::BroadcastShapeOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+materializeBroadcastShapeShapeImpl(ArrayRef<TypedAttr> inputs,
+                                   DictionaryAttr kgenParams, GraphOp graphOp,
+                                   Location loc) {
+  TypedAttr lhsShape = inputs[0];
+  TypedAttr rhsShape = inputs[1];
+  return materializeBroadcastShapeShape(graphOp, loc, lhsShape, rhsShape);
+}
+
 // Assume `inputs` are staticized inputs for a `MO::BroadcastToOp`, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
@@ -1130,6 +1318,20 @@ materializeReshapeShapeImpl(ArrayRef<TypedAttr> inputs,
   TypedAttr inputShape = inputs[0];
   TypedAttr targetShape = inputs[1];
   return materializeReshapeShape(graphOp, loc, inputShape, targetShape);
+}
+
+// Assume `inputs` are staticized inputs for a `MO::RoiAlignOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+matierlizeRoiAlignShapeImpl(ArrayRef<TypedAttr> inputs,
+                            DictionaryAttr kgenParams, GraphOp graphOp,
+                            Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr roisShape = inputs[1];
+  TypedAttr outHeight = inputs[2];
+  TypedAttr outWidth = inputs[3];
+  return matierlizeRoiAlignShape(graphOp, loc, inputShape, roisShape, outHeight,
+                                 outWidth);
 }
 
 // Assume `inputs` are staticized inputs for a `MO::GatherOp`, try
@@ -1245,6 +1447,17 @@ materializeConvTransposeShapeImpl(ArrayRef<TypedAttr> inputs,
                                        outPaddings);
 }
 
+// Assume `inputs` are staticized inputs for a `MO::MatrixSolveOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+materializeMatrixSolveShapeImpl(ArrayRef<TypedAttr> inputs,
+                                DictionaryAttr kgenParams, GraphOp graphOp,
+                                Location loc) {
+  auto lhsShape = inputs[0];
+  auto rhsShape = inputs[1];
+  return materializeMatrixSolveShape(graphOp, loc, lhsShape, rhsShape);
+}
+
 // Assume `inputs` are staticized inputs for a Pooling op that rounds _up_ when
 // computing output shapes, try materializing the its shape logic.
 static ShapeMaterializeResult
@@ -1328,6 +1541,17 @@ materializeSplitIthOutputShapeImpl(ArrayRef<TypedAttr> inputs,
                                         axis, intAttr.getInt());
 }
 
+// Assume `inputs` are staticized inputs for a `MO::SqueezeShapeOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+materializeSqueezeShapeShapeImpl(ArrayRef<TypedAttr> inputs,
+                                 DictionaryAttr kgenParams, GraphOp graphOp,
+                                 Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr indicesShape = inputs[1];
+  return materializeSqueezeShapeShape(graphOp, loc, inputShape, indicesShape);
+}
+
 // Assume `inputs` are staticized inputs for a `MO::TileOp`, try materializing
 // the its shape logic.
 static ShapeMaterializeResult
@@ -1360,18 +1584,31 @@ materializeTransposeShapeImpl(ArrayRef<TypedAttr> inputs,
   return materializeTransposeShape(graphOp, loc, inputShape, permutations);
 }
 
+// Assume `inputs` are staticized inputs for a `MO::UnsqueezeShapeOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+materializeUnsqueezeShapeShapeImpl(ArrayRef<TypedAttr> inputs,
+                                   DictionaryAttr kgenParams, GraphOp graphOp,
+                                   Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr indicesShape = inputs[1];
+  return materializeUnsqueezeShapeShape(graphOp, loc, inputShape, indicesShape);
+}
+
 std::optional<MaterializeShapeFuncTy>
 tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
   // A hard-coded map from shape function name to how their shape logic can be
   // materialized.
   static DenseMap<StringRef, MaterializeShapeFuncTy> nameToFunc = {
       {"batch_matmul_shape", materializeBatchMatmulShapeImpl},
+      {"broadcast_shape_shape", materializeBroadcastShapeShapeImpl},
       {"broadcast_to_shape", materializeBroadcastToShapeImpl},
       {"concat_shape", materializeConcatShapeImpl},
       {"conv_shape", materializeConvShapeImpl},
       {"conv_transpose_shape", materializeConvTransposeShapeImpl},
       {"gather_shape", materializeGatherShapeImpl},
       {"gather_nd_shape", materializeGatherNdShapeImpl},
+      {"matrix_solve_shape", materializeMatrixSolveShapeImpl},
       {"pad_shape", materializePadShapeImpl},
       {"pool_shape", materializePoolFloorShapeImpl},
       {"pool_shape_ceil", materializePoolCeilShapeImpl},
@@ -1380,11 +1617,14 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
       {"reduce_shape", materializeReduceShapeImpl},
       {"resize_shape", materializeResizeShapeImpl},
       {"reshape_shape", materializeReshapeShapeImpl},
+      {"roi_align_shape", matierlizeRoiAlignShapeImpl},
       {"slice_shape", materializeSliceShapeImpl},
       {"split_ith_output_shape", materializeSplitIthOutputShapeImpl},
+      {"squeeze_shape_shape", materializeSqueezeShapeShapeImpl},
       {"tile_shape", materializeTileShapeImpl},
       {"top_k_shape", materializeTopKShapeImpl},
       {"transpose_shape", materializeTransposeShapeImpl},
+      {"unsqueeze_shape_shape", materializeUnsqueezeShapeShapeImpl},
   };
 
   auto iter = nameToFunc.find(shapeFuncName);
