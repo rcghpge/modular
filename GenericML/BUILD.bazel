@@ -1422,17 +1422,6 @@ cc_library(
 )
 
 cc_library(
-    name = "MOQTarget",
-    srcs = glob(["lib/GraphCompiler/Conversion/MOQTarget/*.cpp"]),
-    hdrs = glob(["include/GenericML/GraphCompiler/Conversion/MOQTarget/*.h"]),
-    strip_include_prefix = "include",
-    deps = [
-        ":MOQDialect",
-        ":MOTarget",
-    ],
-)
-
-cc_library(
     name = "MaxAPI",
     hdrs = glob(["include/GenericML/API/max/**/*.h"]),
     strip_include_prefix = "include/GenericML/API",
