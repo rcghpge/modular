@@ -4,23 +4,22 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_SUPPORT_CONTEXT_H
-#define GENERICML_SUPPORT_CONTEXT_H
+#ifndef ARRAY_SUPPORT_STATECONTEXT_H
+#define ARRAY_SUPPORT_STATECONTEXT_H
 
-#include "GenericML/Support/Assert.h"
-#include "GenericML/Support/StateSlot.h"
-#include "Support/AlignedAlloc.h"
+#include "ArraySupport/StateSlot.h"
 
 namespace M::GML {
 
-/// A context holds a number of 'state slots'. The number of state slots is
-/// set at construction time and cannot be changed. Each state slot can hold
+/// A state context holds a number of 'state slots'. The number of state slots
+/// is set at construction time and cannot be changed. Each state slot can hold
 /// an arbitrary, reference counted payload (which should derive from
-/// ReferenceCounted). Generally the context is created during a model's 'init'
-/// phase, each slot is setup using unique slot indexes determined at compile
-/// time, and the context is reused by each call to the model's 'execute' phase.
+/// ReferenceCounted). Generally the state context is created during a model's
+/// 'init' phase, each slot is setup using unique slot indexes determined at
+/// compile time, and the state context is reused by each call to the model's
+/// 'execute' phase.
 ///
-/// State slots may hold context for specific operations in the model, or
+/// State slots may hold state context for specific operations in the model, or
 /// may hold framework or runtime specific state shared across many operations
 /// in the model. State slots also support generically caching buffer
 /// allocations.
@@ -33,31 +32,32 @@ namespace M::GML {
 ///
 /// Note that the same ExecutableModel can only safely support concurrent
 /// calls to the 'execute' block if all state slots are read only.
-class Context {
+/// TODO: GRA-549
+class StateContext {
 public:
-  /// Constructs a new context with numSlots uninitialized state slots.
-  explicit Context(size_t numSlots)
+  /// Constructs a new state context with numSlots uninitialized state slots.
+  explicit StateContext(size_t numSlots)
       : numSlots(numSlots),
         stateSlots(std::make_unique<StateSlot[]>(numSlots)) {}
 
-  /// Destroys all state slots in the context. Slots are destroyed in reverse
-  /// order since later slots may hold implicit references to earlier slots.
-  ~Context() = default;
+  /// Destroys all state slots in the state context. Slots are destroyed in
+  /// reverse order since later slots may hold implicit references to earlier
+  /// slots.
+  ~StateContext() = default;
 
-  /// Returns the number of state slots in the context.
+  /// Returns the number of state slots in the state context.
   size_t getNumStateSlots() const { return numSlots; }
 
   /// Returns true if the state slot at slotIndex has been set or emplaced.
   bool hasStateSlot(size_t slotIndex) {
-    GENERICML_ASSERT(slotIndex < numSlots)
-        << "invalid StateSlot index " << slotIndex << " in context of size "
-        << numSlots;
+    assert(slotIndex < numSlots &&
+           "slotIndex must be within bounds when accessing state context");
     return stateSlots[slotIndex];
   }
 
   // No implicit copying is allowed.
-  Context(const Context &rhs) = delete;
-  Context &operator=(const Context &rhs) = delete;
+  StateContext(const StateContext &rhs) = delete;
+  StateContext &operator=(const StateContext &rhs) = delete;
 
   /// Moves an already constructed reference to T into the state slot
   /// at slotIndex. The state slot must not have been already set or emplaced.
@@ -65,12 +65,10 @@ public:
   /// allocations, which will all initially be null.
   template <typename T>
   T &setStateSlot(size_t slotIndex, RCRef<T> payload, size_t numBuffers = 0) {
-    GENERICML_ASSERT(slotIndex < numSlots)
-        << "invalid StateSlot index " << slotIndex << " in context of size "
-        << numSlots;
-    GENERICML_ASSERT(!stateSlots[slotIndex])
-        << "StateSlot for the slot " << slotIndex
-        << " has already been set or emplaced.";
+    assert(slotIndex < numSlots &&
+           "slotIndex must be within bounds when accessing state context");
+    assert(!stateSlots[slotIndex] &&
+           "slotIndex has already been set or emplaced");
     stateSlots[slotIndex].reset<T>(std::move(payload), numBuffers);
     return stateSlots[slotIndex].get<T>();
   }
@@ -81,12 +79,10 @@ public:
   /// initially be null.
   template <typename T, typename... Args>
   T &emplaceStateSlot(size_t slotIndex, size_t numBuffers, Args &&...args) {
-    GENERICML_ASSERT(slotIndex < numSlots)
-        << "invalid StateSlot index " << slotIndex << " in context of size "
-        << numSlots;
-    GENERICML_ASSERT(!stateSlots[slotIndex])
-        << "StateSlot for the slot " << slotIndex
-        << " has already been set or emplaced.";
+    assert(slotIndex < numSlots &&
+           "slotIndex must be within bounds when accessing state context");
+    assert(!stateSlots[slotIndex] &&
+           "slotIndex has already been set or emplaced");
     stateSlots[slotIndex].reset<T>(
         RCRef<T>::create(std::forward<Args>(args)...), numBuffers);
     return stateSlots[slotIndex].get<T>();
@@ -95,12 +91,9 @@ public:
   /// Returns the state slot at slotIndex. The state slot must have already
   /// been emplaced.
   StateSlot &getStateSlot(size_t slotIndex) {
-    GENERICML_ASSERT(slotIndex < numSlots)
-        << "invalid StateSlot index " << slotIndex << " in context of size "
-        << numSlots;
-    GENERICML_ASSERT(stateSlots[slotIndex])
-        << "StateSlot for the slot " << slotIndex
-        << " has not been set or emplaced.";
+    assert(slotIndex < numSlots &&
+           "slotIndex must be within bounds when accessing state context");
+    assert(stateSlots[slotIndex] && "slotIndex has not been set or emplaced");
     return stateSlots[slotIndex];
   }
 
@@ -118,4 +111,4 @@ private:
 
 } // namespace M::GML
 
-#endif // GENERICML_SUPPORT_CONTEXT_H
+#endif // ARRAY_SUPPORT_STATECONTEXT_H

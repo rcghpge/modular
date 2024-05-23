@@ -5,15 +5,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
+#include "ArraySupport/StateContext.h"
+#include "ArraySupport/StateSlot.h"
 #include "ArraySupport/Tensor.h"
 #include "CUDASupport/CUDATensor.h"
 #include "GenericML/Support/Assert.h"
 #include "GenericML/Support/CompiledKernelsContext.h"
-#include "GenericML/Support/Context.h"
 #include "GenericML/Support/DebugPrint.h"
 #include "GenericML/Support/HostDeviceSpecs.h"
 #include "GenericML/Support/List.h"
-#include "GenericML/Support/StateSlot.h"
 #include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/AsyncValue.h"
@@ -46,9 +46,9 @@ using MGPProfilerEntry =
 // mgp.context.create
 //===----------------------------------------------------------------------===//
 
-/// Fulfills the result with a Context initialized with `numPrimContexts`
+/// Fulfills the result with a StateContext initialized with `numPrimContexts`
 /// primitive contexts.
-static void mgp_context_create(Result<GML::Context> result,
+static void mgp_context_create(Result<GML::StateContext> result,
                                MEFAttr<uint64_t> numSlots) {
   std::move(result).emplace(*numSlots);
 }
@@ -59,7 +59,7 @@ static void mgp_context_create(Result<GML::Context> result,
 
 /// Constructs the default state slot with the given number of cached buffers
 /// under the given slot in the mgp context.
-static Chain mgp_state_slot_create(Chain inChain, GML::Context &ctx,
+static Chain mgp_state_slot_create(Chain inChain, GML::StateContext &ctx,
                                    MEFAttr<uint64_t> numBuffers,
                                    MEFAttr<uint64_t> slot) {
   ctx.emplaceStateSlot<DefaultStateSlot>(*slot, *numBuffers);
@@ -70,7 +70,7 @@ static Chain mgp_state_slot_create(Chain inChain, GML::Context &ctx,
 // mgp.create_runtime
 //===----------------------------------------------------------------------===//
 
-static void mgp_check_runtime(Chain inChain, GML::Context &ctx,
+static void mgp_check_runtime(Chain inChain, GML::StateContext &ctx,
                               Result<Chain> outChain, MEFAttr<uint64_t> aSlot,
                               MEFAttr<StringRef> bDevicesJSON,
                               Runtime &runtime) {
@@ -295,7 +295,7 @@ using MGPProfilerEntry =
     ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
 
 static void
-mgp_generic_execute(GML::Context &ctx, RemainingArguments operands,
+mgp_generic_execute(GML::StateContext &ctx, RemainingArguments operands,
                     Result<Chain> outChain, RemainingResults outResults,
                     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
                     MEFAttr<uint64_t> cFunctionIndex,

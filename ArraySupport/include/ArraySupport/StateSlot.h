@@ -4,11 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_SUPPORT_STATESLOT_H
-#define GENERICML_SUPPORT_STATESLOT_H
+#ifndef ARRAY_SUPPORT_STATESLOT_H
+#define ARRAY_SUPPORT_STATESLOT_H
 
 #include "ArraySupport/BufferRef.h"
-#include "GenericML/Support/Assert.h"
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
 #include "Support/ADT/GenericRCRef.h"
@@ -48,7 +47,7 @@ public:
   /// must match the type id of the state slot.
   template <typename T>
   T &get() {
-    GENERICML_ASSERT(payload) << "StateSlot has no payload";
+    assert(payload && "StateSlot has no payload");
     return *payload.get<T>();
   }
 
@@ -139,4 +138,4 @@ private:
 
 } // namespace M::GML
 
-#endif // GENERICML_SUPPORT_STATESLOT_H
+#endif // ARRAY_SUPPORT_STATESLOT_H
