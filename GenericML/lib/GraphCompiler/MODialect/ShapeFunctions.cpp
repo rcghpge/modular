@@ -655,6 +655,17 @@ ShapeMaterializeResult materializeGatherNdShape(GraphOp graphOp, Location loc,
   return ShapeMaterializeResult::success(std::move(ops), resShape);
 }
 
+// Materialize the shape logic for operation's shape is stored as the *value*
+// of the given input.
+ShapeMaterializeResult materializeTargetShapeLike(GraphOp graphOp, Location loc,
+                                                  TypedAttr targetShapeAttr) {
+  auto asShapeAttr = dyn_cast<ShapeAttr>(targetShapeAttr);
+  if (!asShapeAttr)
+    return ShapeMaterializeResult::nonMaterializable();
+
+  return ShapeMaterializeResult::success({}, asShapeAttr);
+}
+
 /// Materialize the shape logic for `MO::RangeOp`.
 ShapeMaterializeResult materializeRangeShape(GraphOp graphOp, Location loc,
                                              TypedAttr startAttr,
@@ -1099,6 +1110,15 @@ materializeGatherNdShapeImpl(ArrayRef<TypedAttr> inputs,
                                   intAttr.getInt());
 }
 
+// Assume `inputs` are staticized inputs for a `MO::RandomNormalOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+materializeRandomShapeImpl(ArrayRef<TypedAttr> inputs,
+                           DictionaryAttr kgenParams, GraphOp graphOp,
+                           Location loc) {
+  return materializeTargetShapeLike(graphOp, loc, inputs[0]);
+}
+
 // Assume `inputs` are staticized inputs for a `MO::RangeOp`, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
@@ -1108,6 +1128,15 @@ materializeRangeShapeImpl(ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams,
   TypedAttr stopAttr = inputs[1];
   TypedAttr stepAttr = inputs[2];
   return materializeRangeShape(graphOp, loc, startAttr, stopAttr, stepAttr);
+}
+
+// Assume `inputs` are staticized inputs for a `MO::RandomNormalOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+materializeResizeShapeImpl(ArrayRef<TypedAttr> inputs,
+                           DictionaryAttr kgenParams, GraphOp graphOp,
+                           Location loc) {
+  return materializeTargetShapeLike(graphOp, loc, inputs[1]);
 }
 
 // Assume `inputs` are staticized inputs for a `MO::BatchMatmulOp`, try
@@ -1272,7 +1301,9 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
       {"pad_shape", materializePadShapeImpl},
       {"pool_shape", materializePoolFloorShapeImpl},
       {"pool_shape_ceil", materializePoolCeilShapeImpl},
+      {"random_shape", materializeRandomShapeImpl},
       {"range_shape", materializeRangeShapeImpl},
+      {"resize_shape", materializeResizeShapeImpl},
       {"reshape_shape", materializeReshapeShapeImpl},
       {"slice_shape", materializeSliceShapeImpl},
       {"split_ith_output_shape", materializeSplitIthOutputShapeImpl},

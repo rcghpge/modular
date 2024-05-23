@@ -471,6 +471,12 @@ ShapeMaterializeResult materializeSplitIthOutputShape(
     GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
     TypedAttr splitSizesAttr, TypedAttr axisAttr, size_t i);
 
+/// Materialize shape logic for operations whose output shape is equal to one
+/// operand `targetShapeAttr`. E.g. `mo.resize_*` family of operations allows
+/// resizing of image to arbitrary dimension.
+ShapeMaterializeResult materializeTargetShapeLike(GraphOp graphOp, Location loc,
+                                                  TypedAttr targetShapeAttr);
+
 /// Materialize the shape logic for `MO::TileOp`.
 ShapeMaterializeResult materializeTileShape(GraphOp graphOp, Location loc,
                                             TypedAttr inputShapeAttr,
