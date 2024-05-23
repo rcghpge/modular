@@ -6,7 +6,7 @@
 
 // CHECK-LABEL: mgp.model @add_guard
 // CHECK-DAG  : [[CHAIN:%.*]] = mgp.assert
-// CHECK-DAG  : [[RES:%.*]] = mgp.guard [[CHAIN]] ([[ARG0:%.*]], [[ARG1:%.*]])
+// CHECK-DAG  : [[RES:%.*]] = mgp.guard [[CHAIN]], [[ARG0:%.*]], [[ARG1:%.*]]
 // CHECK-DAG  : [[BUF0:%.*]] = mgp.tensor.extract.buffer{{.*}}, 
 // CHECK-SAME : [[RES]]#0
 // CHECK-DAG  : [[BUF1:%.*]] = mgp.tensor.extract.buffer{{.*}}, 

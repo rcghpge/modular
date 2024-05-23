@@ -780,7 +780,7 @@ def GuardOp : MGP_Op<"guard", [
       %cond = mip.cmp.eq %spec1#1, %spec2#0
 
       %chain = mgp.assert %cond, "D1 != D2"
-      %Xp, %Yp = mgp.guard %chain (%X, %Y) : !mgp.tensor<?x?xf32>, !mgp.tensor<?x?xf32>
+      %Xp, %Yp = mgp.guard %chain, %X, %Y : !mgp.tensor<?x?xf32>, !mgp.tensor<?x?xf32>
     ```
   }];
 
@@ -789,7 +789,7 @@ def GuardOp : MGP_Op<"guard", [
   let results = (outs Variadic<AnyType>:$results);
 
   let assemblyFormat = [{
-    $chain  `(` $inputs `)` attr-dict `:` type($inputs)
+    ` ` operands ` ` attr-dict `:` qualified(type($inputs))
   }];
 
   let hasVerifier = 1;
