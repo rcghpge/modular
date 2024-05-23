@@ -706,6 +706,27 @@ mo.graph @top_k(%input : !mo.tensor<[5, 5], si64>, %sorted : !mo.tensor<[], bool
 // CHECK-NEXT:   mo.output [[VVALUES]], [[VINDICES]] : !mo.tensor<[5, 3], si64>, !mo.tensor<[5, 3], si64>
 // CHECK-NEXT: }
 
+// Ensure dynamic K properly generates an assert
+// dummy is just meant to help define the param 'A'
+mo.graph @top_k_dynamic<A>(%input : !mo.tensor<[5, 5], si64>, %sorted : !mo.tensor<[], bool>, %dummy : !mo.tensor<[A], bool>) -> (!mo.tensor<[?, ?], si64>, !mo.tensor<[?, ?], si64>) {
+  %in = "mo.constant"() {value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24> : tensor<5x5xsi64>} : () -> !mo.tensor<[5, 5], si64>
+  %K = mo.shape_of(%dummy) : (!mo.tensor<[A], bool>) -> !mo.tensor<[1], si64>
+  %K_reshape = mo.static.reshape(%K): !mo.tensor<[1], si64> -> !mo.tensor<[], si64>
+  %axis = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () -> !mo.tensor<[], si64>
+  %values, %indices = mo.top_k(%in, %K_reshape, %axis, %sorted) : (
+    !mo.tensor<[5, 5], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[?, ?], si64>, !mo.tensor<[?, ?], si64>)
+  mo.output %values, %indices : !mo.tensor<[?, ?], si64>, !mo.tensor<[?, ?], si64>
+}
+// CHECK-LABEL: mo.graph
+// CHECK-SAME: @top_k_dynamic<A>([[VARG0:[^ ]*]]: !mo.tensor<[5, 5], si64>, [[VARG1:[^ ]*]]: !mo.tensor<[], bool>, [[VARG2:[^ ]*]]: !mo.tensor<[A], bool>) -> (!mo.tensor<[5, A], si64>, !mo.tensor<[5, A], si64>) {
+// CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+// CHECK-NEXT: [[V1:[^ ]*]] = mo.constant {value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24> : tensor<5x5xsi64>} : !mo.tensor<[5, 5], si64>
+// CHECK-NEXT: [[V2:[^ ]*]] = mosh.param.to_value = <A>
+// CHECK-NEXT: [[V3:[^ ]*]] = mo.index.to_tensor([[V2]]) -> !mo.tensor<[], si64>
+// CHECK-NEXT: kgen.param.declare assert9: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[top/bottom-k] k must be between [0, dim_size]." : !kgen.string}, lt(A, 6))>
+// CHECK-NEXT: [[VVALUES:[^ ]*]], [[VINDICES:[^ ]*]] = mo.top_k([[V1]], [[V3]], [[V0]], [[VARG1]]) : (!mo.tensor<[5, 5], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[5, A], si64>, !mo.tensor<[5, A], si64>)
+// CHECK-NEXT: mo.output [[VVALUES]], [[VINDICES]] : !mo.tensor<[5, A], si64>, !mo.tensor<[5, A], si64>
+
 mo.graph @bottom_k(%input : !mo.tensor<[5, 5], si64>, %sorted : !mo.tensor<[], bool>) -> (!mo.tensor<[?, ?], si64>, !mo.tensor<[?, ?], si64>) {
   %in = "mo.constant"() {value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24> : tensor<5x5xsi64>} : () -> !mo.tensor<[5, 5], si64>
   %K = "mo.constant"() {value = #M.dense_array<3> : tensor<si64>} : () -> !mo.tensor<[], si64>

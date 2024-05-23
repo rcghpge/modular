@@ -433,6 +433,11 @@ ShapeMaterializeResult materializeRangeShape(GraphOp graphOp, Location loc,
                                              TypedAttr stopAttr,
                                              TypedAttr stepAttr);
 
+/// Materialize the shape logic for reduction ops like `MO::MeanOp`.
+ShapeMaterializeResult materializeReduceShape(GraphOp graphOp, Location loc,
+                                              TypedAttr inputShape,
+                                              TypedAttr axis);
+
 /// Materialize the shape logic for `MO::ReshapeOp`.
 ///
 /// Specifically, if target shape contains a `-1`, infer it based on the
@@ -481,6 +486,11 @@ ShapeMaterializeResult materializeTargetShapeLike(GraphOp graphOp, Location loc,
 ShapeMaterializeResult materializeTileShape(GraphOp graphOp, Location loc,
                                             TypedAttr inputShapeAttr,
                                             TypedAttr repeatsAttr);
+
+/// Materialize the shape logic for `MO::TopKOp` and `MO::BottomKOp`
+ShapeMaterializeResult materializeTopKShape(GraphOp graphOp, Location loc,
+                                            TypedAttr inputShape, TypedAttr k,
+                                            TypedAttr axis);
 
 /// Materialize the shape logic for `MO::TransposeOp`.
 ShapeMaterializeResult materializeTransposeShape(GraphOp graphOp, Location loc,

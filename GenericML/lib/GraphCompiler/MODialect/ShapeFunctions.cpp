@@ -693,6 +693,31 @@ ShapeMaterializeResult materializeRangeShape(GraphOp graphOp, Location loc,
   return ShapeMaterializeResult::success(std::move(ops), outputShape);
 }
 
+ShapeMaterializeResult materializeReduceShape(GraphOp graphOp, Location loc,
+                                              TypedAttr inputShape,
+                                              TypedAttr axis) {
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
+  auto axisOr = tryGetConstantInt(axis);
+  auto inputShapeAttr = dyn_cast<ShapeAttr>(inputShape);
+
+  if (!axisOr.has_value() || !inputShapeAttr)
+    return ShapeMaterializeResult::nonMaterializable();
+
+  int64_t rank = inputShapeAttr.getRank();
+  int64_t normalizedAxis = (*axisOr < 0) ? (*axisOr + rank) : *axisOr;
+
+  if (normalizedAxis < 0 || normalizedAxis >= rank)
+    return ShapeMaterializeResult::error(
+        "[reduction] normalized axis must be within range [0, input_rank)");
+
+  SmallVector<TypedAttr> finalShape(inputShapeAttr.getValues());
+  finalShape[normalizedAxis] = b.createVar(1).getAttr();
+  return ShapeMaterializeResult::success(std::move(ops),
+                                         b.getShapeAttr(finalShape));
+}
+
 /// Materialize the shape logic for `MO::ReshapeOp`.
 ///
 /// Specifically, if target shape contains a `-1`, infer it based on the
@@ -969,6 +994,34 @@ ShapeMaterializeResult materializeTransposeShape(GraphOp graphOp, Location loc,
   return ShapeMaterializeResult::success(std::move(ops), resShape);
 }
 
+ShapeMaterializeResult materializeTopKShape(GraphOp graphOp, Location loc,
+                                            TypedAttr inputShape, TypedAttr k,
+                                            TypedAttr axis) {
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
+  auto axisOr = tryGetConstantInt(axis);
+  auto inputShapeAttr = dyn_cast<ShapeAttr>(inputShape);
+
+  if (!axisOr.has_value() || !inputShapeAttr)
+    return ShapeMaterializeResult::nonMaterializable();
+
+  int64_t rank = inputShapeAttr.getRank();
+  if (*axisOr < 0 || *axisOr >= rank)
+    return ShapeMaterializeResult::error(
+        "[top/bottom-k] axis must be within [0, rank)");
+
+  auto kVar = b.createVar(k);
+  auto dimVar = b.createVar(inputShapeAttr.getValues()[*axisOr]);
+  b.createAssert(kVar >= 0 && kVar <= dimVar,
+                 "[top/bottom-k] k must be between [0, dim_size].");
+
+  SmallVector<TypedAttr> finalShape(inputShapeAttr.getValues());
+  finalShape[*axisOr] = k;
+  return ShapeMaterializeResult::success(std::move(ops),
+                                         b.getShapeAttr(finalShape));
+}
+
 //------------------------Shape functions end---------------------------------//
 //----------------------------------------------------------------------------//
 
@@ -1232,6 +1285,16 @@ materializePoolFloorShapeImpl(ArrayRef<TypedAttr> inputs,
                               dilations, paddings, /*ceilMode=*/false);
 }
 
+// Assume first operand is shape of input, second operand is axis value
+static ShapeMaterializeResult
+materializeReduceShapeImpl(ArrayRef<TypedAttr> inputs,
+                           DictionaryAttr kgenParams, GraphOp graphOp,
+                           Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr axis = inputs[1];
+  return materializeReduceShape(graphOp, loc, inputShape, axis);
+}
+
 // Assume `inputs` are staticized inputs for a `MO::SliceOp`, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
@@ -1275,6 +1338,17 @@ materializeTileShapeImpl(ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams,
   return materializeTileShape(graphOp, loc, inputShape, repeats);
 }
 
+// Assume `inputs` are staticized inputs for a `MO::TopKOp` or `MO::BottomKOp`,
+// try materializing the its shape logic.
+static ShapeMaterializeResult
+materializeTopKShapeImpl(ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams,
+                         GraphOp graphOp, Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr k = inputs[1];
+  TypedAttr axis = inputs[2];
+  return materializeTopKShape(graphOp, loc, inputShape, k, axis);
+}
+
 // Assume `inputs` are staticized inputs for a `MO::TransposeOp`, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
@@ -1303,11 +1377,13 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
       {"pool_shape_ceil", materializePoolCeilShapeImpl},
       {"random_shape", materializeRandomShapeImpl},
       {"range_shape", materializeRangeShapeImpl},
+      {"reduce_shape", materializeReduceShapeImpl},
       {"resize_shape", materializeResizeShapeImpl},
       {"reshape_shape", materializeReshapeShapeImpl},
       {"slice_shape", materializeSliceShapeImpl},
       {"split_ith_output_shape", materializeSplitIthOutputShapeImpl},
       {"tile_shape", materializeTileShapeImpl},
+      {"top_k_shape", materializeTopKShapeImpl},
       {"transpose_shape", materializeTransposeShapeImpl},
   };
 
