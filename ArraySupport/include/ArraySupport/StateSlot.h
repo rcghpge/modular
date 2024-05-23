@@ -120,7 +120,7 @@ class StateSlotPayloadRef {
 public:
   StateSlotPayloadRef(AnyAsyncValueRef outer, T *payload)
       : outer(std::move(outer)), payload(payload) {
-    GENERICML_ASSERT(payload) << "StateSlotPayloadRef payload cannot be null";
+    assert(payload && "StateSlotPayloadRef payload cannot be null");
   }
 
   T &operator*() const { return *payload; }
