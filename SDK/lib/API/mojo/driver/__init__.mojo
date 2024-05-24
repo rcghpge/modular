@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from .device import Device, CPUDescriptor
-from .device_tensor import DeviceMemory
+from .device_memory import DeviceMemory
 from .tensor import Tensor, StaticTensorSpec
 from .tensor_slice import TensorSlice
-from .anytensor import AnyMemory
+from .anymemory import AnyMemory

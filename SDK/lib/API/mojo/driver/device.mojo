@@ -12,7 +12,7 @@ from max.engine._utils import get_lib_path_from_cfg
 from pathlib import Path
 from tensor import TensorSpec
 from ._driver_library import DriverLibrary, ManagedDLHandle
-from .device_tensor import DeviceMemory
+from .device_memory import DeviceMemory
 
 
 struct CPUDescriptor:

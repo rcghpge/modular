@@ -3,7 +3,7 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-from .device_tensor import DeviceMemory
+from .device_memory import DeviceMemory
 from .tensor import Tensor
 from .device import Device
 from tensor import TensorSpec
@@ -17,15 +17,15 @@ struct AnyMemory:
     var _spec: TensorSpec
     var _device: Device
 
-    fn __init__(inout self, owned device_tensor: DeviceMemory) raises:
-        self._device = device_tensor.get_device()
-        self._spec = device_tensor.get_tensor_spec()
-        self._data = device_tensor^._steal_ptr()
+    fn __init__(inout self, owned device_memory: DeviceMemory) raises:
+        self._device = device_memory.get_device()
+        self._spec = device_memory.get_tensor_spec()
+        self._data = device_memory^._steal_ptr()
 
     fn __init__[
         type: DType, rank: Int
     ](inout self, owned tensor: Tensor[type, rank]) raises:
-        self = Self(tensor^.get_device_tensor())
+        self = Self(tensor^.get_device_memory())
 
     fn get_rank(self) -> Int:
         """Gets rank of the tensor.

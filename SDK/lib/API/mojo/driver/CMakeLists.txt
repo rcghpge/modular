@@ -5,9 +5,9 @@
 ##===----------------------------------------------------------------------===##
 
 set (DRIVER_SRCS
-  anytensor
+  anymemory
   device
-  device_tensor
+  device_memory
   tensor
   tensor_slice
 )

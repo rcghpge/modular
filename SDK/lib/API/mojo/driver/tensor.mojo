@@ -193,7 +193,7 @@ struct Tensor[type: DType, rank: Int]:
     fn _get_device(self) -> Device:
         return self._device
 
-    fn get_device_tensor(owned self) raises -> DeviceMemory:
+    fn get_device_memory(owned self) raises -> DeviceMemory:
         return DeviceMemory(self^)
 
     fn __del__(owned self):
