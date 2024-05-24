@@ -146,12 +146,27 @@ static void fuseCompiledRegionsAndReplaceUses(
       // Actual fusion.
       auto newOp = builder.clone(internalOp, mapper);
       if (auto newOutputOp = dyn_cast<MOGG::OutputOp>(newOp)) {
-        for (auto [oldResult, internalValue] :
-             llvm::zip(asRegionOp->getResults(), newOutputOp.getOperands())) {
+        auto resultRange =
+            llvm::make_filter_range(asRegionOp->getResults(), [](Value val) {
+              return !isa<MEF::ChainType>(val.getType());
+            });
+
+        auto updateMetadataFunc = [&](Value oldResult, Value internalValue) {
           outsideValueToInternalValue[oldResult] = internalValue;
           if (resultsThatShouldBeReplaced.contains(oldResult))
             valuesToOutput.push_back(internalValue);
+        };
+
+        if (asRegionOp->getNumResults() != newOutputOp->getNumOperands()) {
+          for (auto [oldResult, internalValue] :
+               llvm::zip(resultRange, newOutputOp.getOperands()))
+            updateMetadataFunc(oldResult, internalValue);
+        } else {
+          for (auto [oldResult, internalValue] :
+               llvm::zip(asRegionOp->getResults(), newOutputOp.getOperands()))
+            updateMetadataFunc(oldResult, internalValue);
         }
+
         newOutputOp->erase();
       }
     }
