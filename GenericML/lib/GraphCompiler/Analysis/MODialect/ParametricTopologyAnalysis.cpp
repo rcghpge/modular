@@ -74,15 +74,8 @@ ParametricTopologyAnalysis::ParametricTopologyAnalysis(mlir::Operation *root) {
 
 llvm::SmallSetVector<mlir::Operation *, 4>
 ParametricTopologyAnalysis::users(mlir::Operation *op) const {
-  auto dataflowUsers = op->getUsers();
-  llvm::SmallSetVector<mlir::Operation *, 4> ret(dataflowUsers.begin(),
-                                                 dataflowUsers.end());
-
-  auto it = metadata.find(op);
-  if (it != metadata.end()) {
-    ret.insert(it->second.parametricUsers.begin(),
-               it->second.parametricUsers.end());
-  }
+  llvm::SmallSetVector<mlir::Operation *, 4> ret;
+  forEachUser(op, [&](auto user) { ret.insert(user); });
 
   return ret;
 }
@@ -90,18 +83,7 @@ ParametricTopologyAnalysis::users(mlir::Operation *op) const {
 llvm::SmallSetVector<mlir::Operation *, 4>
 ParametricTopologyAnalysis::providers(mlir::Operation *op) const {
   llvm::SmallSetVector<mlir::Operation *, 4> ret;
-
-  auto it = metadata.find(op);
-  if (it != metadata.end()) {
-    ret.insert(it->second.parametricProviders.begin(),
-               it->second.parametricProviders.end());
-  }
-
-  for (mlir::Value operand : op->getOperands()) {
-    auto provider = operand.getDefiningOp();
-    if (provider)
-      ret.insert(provider);
-  }
+  forEachProvider(op, [&](auto provider) { ret.insert(provider); });
 
   return ret;
 }
@@ -133,12 +115,16 @@ bool inline ParametricTopologyAnalysis::isOpReady(
   // An operation is recursively ready to be scheduled of it and its nested
   // operations are ready.
   WalkResult readyToSchedule = op->walk([&](Operation *nestedOp) {
-    return llvm::all_of(
-               providers(nestedOp),
-               [&](mlir::Operation *provider) { return isReady(provider); })
-               ? WalkResult::advance()
-               : WalkResult::interrupt();
+    bool allOf = true;
+    forEachProvider(nestedOp, [&](auto provider) {
+      if (!allOf)
+        return;
+      allOf &= isReady(provider);
+    });
+
+    return allOf ? WalkResult::advance() : WalkResult::interrupt();
   });
+
   return !readyToSchedule.wasInterrupted();
 }
 

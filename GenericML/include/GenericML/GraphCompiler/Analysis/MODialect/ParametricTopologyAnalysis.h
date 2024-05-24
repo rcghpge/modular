@@ -41,6 +41,18 @@ public:
   /// which preserves insertion order.
   llvm::SmallSetVector<mlir::Operation *, 4> users(mlir::Operation *op) const;
 
+  template <typename Func>
+  inline void forEachUser(mlir::Operation *op, Func &&func) const {
+    for (auto user : op->getUsers())
+      func(user);
+
+    auto it = metadata.find(op);
+    if (it != metadata.end()) {
+      for (auto user : it->second.parametricUsers)
+        func(user);
+    }
+  }
+
   // Returns {dataflowProviders(op)} U {parametricProviders(op)}.
   /// NOTE: Passes that leverage this analysis have to emit deterministic IR
   /// meaning two invocations of the same pass over the same input should output
@@ -48,6 +60,20 @@ public:
   /// which preserves insertion order.
   llvm::SmallSetVector<mlir::Operation *, 4>
   providers(mlir::Operation *op) const;
+
+  template <typename Func>
+  void forEachProvider(mlir::Operation *op, Func &&func) const {
+    auto it = metadata.find(op);
+    if (it != metadata.end()) {
+      for (auto provider : it->second.parametricProviders)
+        func(provider);
+    }
+
+    for (auto operand : op->getOperands()) {
+      if (auto provider = operand.getDefiningOp())
+        func(provider);
+    }
+  }
 
   // Will compute the topological sort of a set of operations but accounting
   // for parametric dependencies.

@@ -147,25 +147,13 @@ static void dependencyWalk(
     llvm::MapVector<mlir::Operation *, OperationDependency> &dependencies,
     const mlir::DenseMap<mlir::Operation *, uint64_t> &opToIndexInBitVector,
     MO::ParametricTopologyAnalysis &completeDataflowGraph) {
-
-  llvm::SmallVector<Operation *> workList;
-
-  if constexpr (direction == Direction::Up) {
-    auto parents = completeDataflowGraph.providers(op);
-    workList.append(parents.begin(), parents.end());
-  } else {
-    auto users = completeDataflowGraph.users(op);
-    workList.append(users.begin(), users.end());
-  }
-
-  auto &thisOpDependencies = dependencies[op];
-  while (!workList.empty()) {
-    auto nextOp = workList.pop_back_val();
+  const auto grabDependencies = [&](auto nextOp) {
+    auto &thisOpDependencies = dependencies[op];
     // Lookup the operation. If it is not in the index map, then it does not
     // belong to this block. Ignore it.
     auto operationIndexIt = opToIndexInBitVector.find(nextOp);
     if (operationIndexIt == opToIndexInBitVector.end())
-      continue;
+      return;
     uint64_t operationIndex = operationIndexIt->second;
 
     const auto &dependency = dependencies[nextOp];
@@ -177,7 +165,12 @@ static void dependencyWalk(
       thisOpDependencies.transitiveUsers[operationIndex] = true;
       thisOpDependencies.transitiveUsers |= dependency.transitiveUsers;
     }
-  }
+  };
+
+  if constexpr (direction == Direction::Up)
+    completeDataflowGraph.forEachProvider(op, grabDependencies);
+  else
+    completeDataflowGraph.forEachUser(op, grabDependencies);
 }
 
 /// Gather dependencies for all operations in the provided block. O(n**2) but
