@@ -333,6 +333,28 @@ mo.graph @slice_4d(
 // CHECK-NEXT:   mo.output [[V3]] : !mo.tensor<[3, 3, 8, 8], f32>
 // CHECK-NEXT: }
 
+// CHECK-LABEL: mo.graph @scatter
+// CHECK-SAME:  <[[N:.*]]>(
+// CHECK-SAME:    %[[INPUT:.*]]: !mo.tensor<[N, 2, 3], f32>,
+// CHECK-SAME:    %[[UPDATES:.*]]: !mo.tensor<[1, 1, 2], f32>,
+// CHECK-SAME:    %[[INDICES:.*]]: !mo.tensor<[1, 1, 2], si32>
+mo.graph @scatter<N -> D0, D1, D2>(
+  %input: !mo.tensor<[N, 2, 3], f32>,
+  %updates: !mo.tensor<[1, 1, 2], f32>,
+  %indices: !mo.tensor<[1, 1, 2], si32>
+) -> !mo.tensor<[D0, D1, D2], f32> {
+
+  // CHECK: "mo.assert"{{.*}} ge([[N]], 1)
+  // CHECK: %[[RES:.*]] = mo.scatter{{.*}} -> !mo.tensor<[[[N]], 2, 3], f32>
+  %axis = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
+  %res = mo.scatter<() -> D3, D4, D5>(%input, %updates, %indices, %axis) : (
+    !mo.tensor<[N, 2, 3], f32>, !mo.tensor<[1, 1, 2], f32>, !mo.tensor<[1, 1, 2], si32>, !mo.tensor<[], si32>
+  ) -> !mo.tensor<[D3, D4, D5], f32>
+
+  // CHECK-NEXT: mo.output %[[RES]]
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+
 mo.graph @scatter_nd(
   %input: !mo.tensor<[10, 1, 1], f32>,
   %updates: !mo.tensor<[5, 1, 1], f32>,

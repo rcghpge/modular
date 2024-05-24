@@ -473,6 +473,19 @@ ShapeMaterializeResult matierlizeRoiAlignShape(GraphOp graphOp, Location loc,
                                                TypedAttr outHeightAttr,
                                                TypedAttr outWidthAttr);
 
+/// Materialize the shape logic for `MO::ScatterOp`.
+ShapeMaterializeResult materializeScatterShape(GraphOp graphOp, Location loc,
+                                               TypedAttr inputShapeAttr,
+                                               TypedAttr updatesShapeAttr,
+                                               TypedAttr indicesShapeAttr,
+                                               TypedAttr axisAttr);
+
+/// Materialize the shape logic for `MO::ScatterNd`-family ops.
+ShapeMaterializeResult materializeScatterNdShape(GraphOp graphOp, Location loc,
+                                                 TypedAttr inputShapeAttr,
+                                                 TypedAttr updatesShapeAttr,
+                                                 TypedAttr indicesShapeAttr);
+
 /// Materialize the shape logic for `MO::SliceOp`.
 ShapeMaterializeResult materializeSliceShape(GraphOp graphOp, Location loc,
                                              TypedAttr inputShapeAttr,

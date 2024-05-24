@@ -790,6 +790,117 @@ ShapeMaterializeResult materializeReduceShape(GraphOp graphOp, Location loc,
                                          b.getShapeAttr(finalShape));
 }
 
+ShapeMaterializeResult materializeScatterShape(GraphOp graphOp, Location loc,
+                                               TypedAttr inputShapeAttr,
+                                               TypedAttr updatesShapeAttr,
+                                               TypedAttr indicesShapeAttr,
+                                               TypedAttr axisAttr) {
+  // Make sure input, updates and indices shapes are ranked, and axis is
+  // constant.
+  ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
+  ShapeAttr updatesShape = dyn_cast<ShapeAttr>(updatesShapeAttr);
+  ShapeAttr indicesShape = dyn_cast<ShapeAttr>(indicesShapeAttr);
+  auto axisOr = tryGetConstantInt(axisAttr);
+  if (!inputShape || !updatesShape, !indicesShape || !axisOr.has_value())
+    return ShapeMaterializeResult::nonMaterializable();
+
+  // Basic rank check
+  size_t inputRank = inputShape.getRank();
+  if (!llvm::all_equal(
+          {inputRank, updatesShape.getRank(), indicesShape.getRank()})) {
+    return ShapeMaterializeResult::error(
+        "[scatter] rank of inputs must be equal");
+  }
+
+  // Normalize constant and make sure it's in bound.
+  int64_t axis = axisOr.value();
+  axis = axis < 0 ? axis + inputRank : axis;
+  if (axis < 0 || inputRank <= static_cast<size_t>(axis)) {
+    return ShapeMaterializeResult::error(
+        "[scatter] normalized axis must be within range [0, input_rank)");
+  }
+
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
+  // Check dimensions of input shapes.
+  for (size_t i = 0; i < inputRank; i++) {
+    Var inputDim = b.createVar(inputShape[i]);
+    Var updatesDim = b.createVar(updatesShape[i]);
+    Var indicesDim = b.createVar(indicesShape[i]);
+    b.createAssert(indicesDim == updatesDim,
+                   "[scatter] indices and updates must have the same shape");
+    b.createAssert(indicesDim <= inputDim,
+                   "[scatter] indices shape cannot be bigger than input shape");
+  }
+
+  // Create and return output shape.
+  return ShapeMaterializeResult::success(std::move(ops), inputShape);
+}
+
+ShapeMaterializeResult materializeScatterNdShape(GraphOp graphOp, Location loc,
+                                                 TypedAttr inputShapeAttr,
+                                                 TypedAttr updatesShapeAttr,
+                                                 TypedAttr indicesShapeAttr) {
+  // Make sure input, updates and indices shapes are ranked, and axis is
+  // constant.
+  ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
+  ShapeAttr updatesShape = dyn_cast<ShapeAttr>(updatesShapeAttr);
+  ShapeAttr indicesShape = dyn_cast<ShapeAttr>(indicesShapeAttr);
+  if (!inputShape || !updatesShape, !indicesShape)
+    return ShapeMaterializeResult::nonMaterializable();
+
+  // Basic rank check.
+  int64_t inputRank = inputShape.getRank();
+  int64_t updatesRank = updatesShape.getRank();
+  int64_t indicesRank = indicesShape.getRank();
+  if (indicesRank < 1) {
+    return ShapeMaterializeResult::error(
+        "[scatter_nd] indices cannot be a scalar");
+  }
+
+  // Number of sliced dimensions must be constant
+  auto numSlicedDimsOr = tryGetConstantInt(indicesShape[indicesRank - 1]);
+  if (!numSlicedDimsOr.has_value())
+    return ShapeMaterializeResult::nonMaterializable();
+  int64_t numSlicedDims = numSlicedDimsOr.value();
+
+  // Create builder and track generated ops.
+  SmallVector<Operation *> ops;
+  ParamExprBuilder b(graphOp, loc, &ops);
+
+  // More rank checks.
+  if (numSlicedDims > inputRank) {
+    return ShapeMaterializeResult::error(
+        "[scatter_nd] cannot slice more dimensions than what input has");
+  }
+  if (updatesRank != indicesRank - 1 + inputRank - numSlicedDims) {
+    return ShapeMaterializeResult::error(
+        "[scatter_nd] requires (updates_rank == indices_rank - 1 + input_rank "
+        "- num_sliced_dims)");
+  }
+
+  // Check dimensions of input shapes.
+  for (int64_t i = 0; i < indicesRank - 1; i++) {
+    Var indicesDim = b.createVar(indicesShape[i]);
+    Var updatesDim = b.createVar(updatesShape[i]);
+    b.createAssert(
+        indicesDim == updatesDim,
+        "[scatter_nd] batch dimensions of indices and updates don't match");
+  }
+  for (int64_t i = 0; i < inputRank - numSlicedDims; i++) {
+    Var inputDim = b.createVar(inputShape[i + numSlicedDims]);
+    Var updatesDim = b.createVar(updatesShape[i + indicesRank - 1]);
+    b.createAssert(
+        inputDim == updatesDim,
+        "[scatter_nd] updated dimensions of input and updates don't match");
+  }
+
+  // Create and return output shape.
+  return ShapeMaterializeResult::success(std::move(ops), inputShape);
+}
+
 /// Materialize the shape logic for `MO::ReshapeOp`.
 ///
 /// Specifically, if target shape contains a `-1`, infer it based on the
@@ -1508,6 +1619,33 @@ materializeReduceShapeImpl(ArrayRef<TypedAttr> inputs,
   return materializeReduceShape(graphOp, loc, inputShape, axis);
 }
 
+// Assume `inputs` are staticized inputs for a `MO::ScatterOp`, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+materializeScatterShapeShapeImpl(ArrayRef<TypedAttr> inputs,
+                                 DictionaryAttr kgenParams, GraphOp graphOp,
+                                 Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr updatesShape = inputs[1];
+  TypedAttr indicesShape = inputs[2];
+  TypedAttr axis = inputs[3];
+  return materializeScatterShape(graphOp, loc, inputShape, updatesShape,
+                                 indicesShape, axis);
+}
+
+// Assume `inputs` are staticized inputs for a `MO::ScatterNd`-family op, try
+// materializing the its shape logic.
+static ShapeMaterializeResult
+materializeScatterNdShapeShapeImpl(ArrayRef<TypedAttr> inputs,
+                                   DictionaryAttr kgenParams, GraphOp graphOp,
+                                   Location loc) {
+  TypedAttr inputShape = inputs[0];
+  TypedAttr updatesShape = inputs[1];
+  TypedAttr indicesShape = inputs[2];
+  return materializeScatterNdShape(graphOp, loc, inputShape, updatesShape,
+                                   indicesShape);
+}
+
 // Assume `inputs` are staticized inputs for a `MO::SliceOp`, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
@@ -1618,6 +1756,8 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
       {"resize_shape", materializeResizeShapeImpl},
       {"reshape_shape", materializeReshapeShapeImpl},
       {"roi_align_shape", matierlizeRoiAlignShapeImpl},
+      {"scatter_shape", materializeScatterShapeShapeImpl},
+      {"scatter_nd_shape", materializeScatterNdShapeShapeImpl},
       {"slice_shape", materializeSliceShapeImpl},
       {"split_ith_output_shape", materializeSplitIthOutputShapeImpl},
       {"squeeze_shape_shape", materializeSqueezeShapeShapeImpl},
