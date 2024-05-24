@@ -53,9 +53,10 @@ struct TensorSlice[
         return self._spec
 
     # FIXME: [MOCO-696] Use variadic length keys
-    # FIXME: [MOCO-706] Use setitem API
     @always_inline
-    fn set(inout self, indices: StaticIntTuple[rank], value: Scalar[type]):
+    fn __setitem__(
+        inout self, indices: StaticIntTuple[rank], value: Scalar[type]
+    ):
         """Sets the value at given index.
 
         Args:
@@ -71,6 +72,18 @@ struct TensorSlice[
 
     @always_inline
     fn __getitem__(self, *indices: Int) -> Scalar[type]:
+        """Gets the value at the specified indices.
+
+        Args:
+          indices: The indices of the value to retrieve.
+
+        Returns:
+          The value at the specified indices.
+        """
+        return self[indices]
+
+    @always_inline
+    fn __getitem__(self, indices: StaticIntTuple[rank]) -> Scalar[type]:
         """Gets the value at the specified indices.
 
         Args:
