@@ -34,6 +34,42 @@ fn test_avg_pool_padded() raises:
     )
     var expected = Tensor[DType.float32](
         TensorShape(1, 4, 4, 3),
+        -0.66666, 0.0, 0.66666, -1.33333, 0.0, 1.33333, -2.0, 0.0, 2.0, -1.55555, 0.0, 1.55555,
+        -1.0, 0.0, 1.0, -2.0, 0.0, 2.0, -3.0, 0.0, 3.0, -2.33333, 0.0, 2.33333,
+        -1.0, 0.0, 1.0, -2.0, 0.0, 2.0, -3.0, 0.0, 3.0, -2.33333, 0.0, 2.33333,
+        -0.66666, 0.0, 0.66666, -1.33333, 0.0, 1.33333, -2.0, 0.0, 2.0, -1.55555, 0.0, 1.55555,
+    )
+    # fmt: on
+
+    var actual = _testing.execute_unary(g, x)
+    _testing.assert_tensors_almost_equal(expected, actual, 1e-4)
+
+
+fn test_avg_pool_padded_no_boundary() raises:
+    var g = Graph(TensorType(DType.float32, 1, 4, 4, 3))
+
+    g.output(
+        avg_pool(
+            g[0],
+            filter_shape=(3, 3),
+            stride=(1, 1),
+            dilation=(1, 1),
+            padding=(1, 1, 1, 1),
+            count_boundary=False,
+        )
+    )
+    g.verify()
+
+    # fmt: off
+    var x = Tensor[DType.float32](
+        TensorShape(1, 4, 4, 3),
+        -1.0, 0.0, 1.0, -2.0, 0.0, 2.0, -3.0, 0.0, 3.0, -4.0, 0.0, 4.0,
+        -1.0, 0.0, 1.0, -2.0, 0.0, 2.0, -3.0, 0.0, 3.0, -4.0, 0.0, 4.0,
+        -1.0, 0.0, 1.0, -2.0, 0.0, 2.0, -3.0, 0.0, 3.0, -4.0, 0.0, 4.0,
+        -1.0, 0.0, 1.0, -2.0, 0.0, 2.0, -3.0, 0.0, 3.0, -4.0, 0.0, 4.0,
+    )
+    var expected = Tensor[DType.float32](
+        TensorShape(1, 4, 4, 3),
         -1.5, 0.0, 1.5, -2.0, 0.0, 2.0, -3.0, 0.0, 3.0, -3.5, 0.0, 3.5,
         -1.5, 0.0, 1.5, -2.0, 0.0, 2.0, -3.0, 0.0, 3.0, -3.5, 0.0, 3.5,
         -1.5, 0.0, 1.5, -2.0, 0.0, 2.0, -3.0, 0.0, 3.0, -3.5, 0.0, 3.5,
@@ -409,6 +445,7 @@ fn test_max_pool_no_padding() raises:
 
 def main():
     test_avg_pool_padded()
+    test_avg_pool_padded_no_boundary()
     test_avg_pool_no_padding()
     test_conv2d_padded()
     test_conv2d_no_padding()
