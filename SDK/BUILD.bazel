@@ -1,5 +1,6 @@
 load("@llvm-project//mlir:tblgen.bzl", "td_library")
 load("@pybind11_bazel//:build_defs.bzl", "pybind_library")
+load("//bazel:api.bzl", "modular_cc_library")
 load("//utils/bazel/build/rules:tablegen.bzl", "driver_option_tablegen")
 
 package(default_visibility = ["//visibility:public"])
@@ -16,12 +17,11 @@ pybind_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "EngineCLI-Visualize",
     srcs = glob(["lib/EngineCLI/Visualize/*.cpp"]),
     hdrs = glob(["include/SDK/EngineCLI/Visualize/*.h"]),
     copts = ["-I$(GENDIR)/SDK/lib/EngineCLI/Visualize/"],
-    strip_include_prefix = "include",
     deps = [
         ":EngineCLI-Common",
         ":VisualizeOptions.help_gen",
@@ -31,7 +31,7 @@ cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "EngineCLI-Benchmark",
     srcs = glob(["lib/EngineCLI/Benchmark/*.cpp"]),
     hdrs = glob(["include/SDK/EngineCLI/Benchmark/*.h"]),
@@ -39,7 +39,6 @@ cc_library(
         "-Ithird-party/",  # Fixes mlperf-loadgen include path.
         "-I$(GENDIR)/SDK/lib/EngineCLI/Benchmark/",
     ],
-    strip_include_prefix = "include",
     deps = [
         ":BenchmarkOptions.help_gen",
         ":BenchmarkOptions.inc_gen",
@@ -52,11 +51,10 @@ cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "EngineCLI-Common",
     srcs = glob(["lib/EngineCLI/Common/*.cpp"]),
     hdrs = glob(["include/SDK/EngineCLI/Common/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         "//GenericML:MaxAPI",
         "//PyTorch:modular-framework-torch-ext",

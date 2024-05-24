@@ -1,5 +1,6 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("//bazel:api.bzl", "modular_cc_library")
 load("//utils/bazel/build/rules:tablegen.bzl", "gentbl_mlir_dialect", "gentbl_modular_passes")
 
 package(default_visibility = ["//visibility:public"])
@@ -34,11 +35,10 @@ gentbl_cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "Interfaces",
     srcs = glob(["lib/Interfaces/*.cpp"]),
     hdrs = glob(["include/GenericML/Interfaces/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":InterfacesIncGen",
         "//Support:Base",
@@ -48,18 +48,16 @@ cc_library(
 
 # MOTransforms relies on these, but the GraphCompiler relies
 # on MOTransforms.
-cc_library(
+modular_cc_library(
     name = "GraphCompilerHeaders",
     hdrs = glob(["include/GenericML/GraphCompiler/*.h"]),
-    strip_include_prefix = "include",
     visibility = ["//visibility:private"],
 )
 
-cc_library(
+modular_cc_library(
     name = "GraphCompiler",
     srcs = glob(["lib/GraphCompiler/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":CUDADialect",
         ":CUDATransforms",
@@ -83,12 +81,11 @@ cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "CommonDriver",
     srcs = glob(["lib/Driver/CommonDriver/*.cpp"]),
     hdrs = glob(["include/GenericML/Driver/*.h"]),
     copts = ["-Ithird-party/"],  # Fixes mlperf-loadgen include path.
-    strip_include_prefix = "include",
     deps = [
         ":APIHeaders",
         ":GraphCompilerHeaders",
@@ -98,12 +95,11 @@ cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "CompileDriver",
     srcs = glob(["lib/Driver/CompileDriver/*.cpp"]),
     hdrs = glob(["include/GenericML/Driver/*.h"]),
     copts = ["-Ithird-party/"],  # Fixes mlperf-loadgen include path.
-    strip_include_prefix = "include",
     deps = [
         ":CommonDriver",
         ":Support",
@@ -113,12 +109,11 @@ cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "ExecutionDriver",
     srcs = glob(["lib/Driver/ExecutionDriver/*.cpp"]),
     hdrs = glob(["include/GenericML/Driver/*.h"]),
     copts = ["-Ithird-party/"],  # Fixes mlperf-loadgen include path.
-    strip_include_prefix = "include",
     deps = [
         ":Support",
         "//Support:Base",
@@ -127,19 +122,17 @@ cc_library(
 )
 
 # TODO: Can we move this deeper?
-cc_library(
+modular_cc_library(
     name = "GraphCompilerMatchers",
     hdrs = ["include/GenericML/GraphCompiler/Matchers.h"],
-    strip_include_prefix = "include",
     deps = [
         "@llvm-project//llvm:Support",
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "Assert",
     hdrs = ["include/GenericML/Support/Assert.h"],
-    strip_include_prefix = "include",
     deps = [
         "@llvm-project//llvm:Support",
     ],
@@ -148,7 +141,7 @@ cc_library(
 # TODO: Move deeper into subdirectories, this being so high up is wack.
 # Circular dependency between these two directories, so we need to be
 # mindful.
-cc_library(
+modular_cc_library(
     name = "GraphCompilerConversion",
     srcs = ["lib/GraphCompiler/Conversion/Attributes.cpp"],
     hdrs = glob(
@@ -156,7 +149,6 @@ cc_library(
         # Deal with a circular dependency.
         exclude = ["include/GenericML/GraphCompiler/Conversion/DeviceBufferizationRegistry.h"],
     ),
-    strip_include_prefix = "include",
     deps = [
         ":MOToPrimitivesIncGen",
         "//Support:Base",
@@ -216,11 +208,10 @@ gentbl_cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "GraphCompilerInterfaces",
     srcs = glob(["lib/GraphCompiler/Interfaces/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/Interfaces/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":GraphCompilerConversion",
         ":GraphCompilerConvertibleInterfacesIncGen",
@@ -232,10 +223,9 @@ cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "GraphCompilerDeviceBuggerizationRegistry",
     hdrs = ["include/GenericML/GraphCompiler/Conversion/DeviceBufferizationRegistry.h"],
-    strip_include_prefix = "include",
     deps = [
         ":GraphCompilerInterfaces",
         "@llvm-project//llvm:Support",
@@ -351,12 +341,11 @@ gentbl_cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MODialect",
     srcs = glob(["lib/GraphCompiler/MODialect/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/MODialect/*.h"]),
     local_defines = [],
-    strip_include_prefix = "include",
     deps = [
         ":GraphCompilerMatchers",
         ":Interfaces",
@@ -370,11 +359,10 @@ cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MOAnalysis",
     srcs = glob(["lib/GraphCompiler/Analysis/MODialect/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/Analysis/MODialect/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":MODialect",
     ],
@@ -399,14 +387,13 @@ gentbl_modular_passes(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MOTransforms",
     srcs = glob([
         "lib/GraphCompiler/Transforms/MODialect/*.cpp",
         "lib/GraphCompiler/Transforms/MODialect/*.h",
     ]),
     hdrs = glob(["include/GenericML/GraphCompiler/Transforms/MODialect/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":CommonDriver",
         ":GraphCompilerHeaders",
@@ -440,13 +427,12 @@ gentbl_modular_passes(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MONameInputDimsPass",
     srcs = ["lib/GraphCompiler/Transforms/MODialect/Addons/NameInputDimsPass.cpp"],
     hdrs = [
         "include/GenericML/GraphCompiler/Transforms/MODialect/Addons/MONameInputDimsPass.h",
     ],
-    strip_include_prefix = "include",
     deps = [
         ":MONameInputDimsPassIncGen",
         ":MOTransforms",
@@ -501,11 +487,10 @@ gentbl_cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "RMODialect",
     srcs = glob(["lib/GraphCompiler/RMODialect/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/RMODialect/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":MODialect",
         ":RMODialectIncGen",
@@ -515,11 +500,10 @@ cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "RMOSupport",
     srcs = glob(["lib/GraphCompiler/Conversion/RMOSupport/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/Conversion/RMOSupport/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":RMODialect",
     ],
@@ -543,11 +527,10 @@ gentbl_modular_passes(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "RMOTransforms",
     srcs = glob(["lib/GraphCompiler/Transforms/RMODialect/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/Transforms/RMODialect/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":RMODialect",
         ":RMOSupport",
@@ -612,7 +595,7 @@ gentbl_modular_passes(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MOGGDialectHeaders",
     hdrs = glob([
         "include/GenericML/GraphCompiler/MOGGDialect/*.h",
@@ -620,7 +603,6 @@ cc_library(
         "include/GenericML/GraphCompiler/MOGGDialect/Analysis/*.h",
         "include/GenericML/GraphCompiler/Interfaces/*.h",
     ]),
-    strip_include_prefix = "include",
     visibility = ["//visibility:private"],
     deps = [
         ":GraphCompilerConversion",
@@ -634,7 +616,7 @@ cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MOGGDialect",
     srcs = glob(
         ["lib/GraphCompiler/MOGGDialect/*.cpp"],
@@ -645,7 +627,6 @@ cc_library(
         "include/GenericML/GraphCompiler/MOGGDialect/Support/*.h",
         "include/GenericML/GraphCompiler/MOGGDialect/Analysis/*.h",
     ]),
-    strip_include_prefix = "include",
     deps = [
         ":GraphCompilerInterfaces",
         ":MODialect",
@@ -658,11 +639,10 @@ cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MOGGSupport",
     srcs = glob(["lib/GraphCompiler/MOGGDialect/Support/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/MOGGDialect/Support/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":MOGGDialect",
         ":Support",
@@ -670,7 +650,7 @@ cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MOGGAnalysis",
     srcs = glob(["lib/GraphCompiler/MOGGDialect/Analysis/*.cpp"]) + [
         "//Kernels/mojo/Mogg:MOGG.mojo.h",
@@ -684,7 +664,6 @@ cc_library(
         "MOGG_MOJO_BINDING_H='\"$(location //Kernels/mojo/Mogg:MOGG.mojo.h)\"'",
         "MOGG_PRIMITIVES_MOJO_BINDING_H='\"$(location //Kernels/mojo/Mogg:MOGGPrimitives.mojo.h)\"'",
     ],
-    strip_include_prefix = "include",
     deps = [
         ":GraphCompilerInterfaces",
         ":MOAnalysis",
@@ -694,11 +673,10 @@ cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MOGGTransforms",
     srcs = glob(["lib/GraphCompiler/MOGGDialect/Transforms/*.cpp"]),
     copts = ["-iquoteexternal/"],
-    strip_include_prefix = "include",
     deps = [
         ":MOGGAnalysis",
         ":MOGGDialect",
@@ -888,11 +866,10 @@ gentbl_cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MGPDialect",
     srcs = glob(["lib/MGPDialect/*.cpp"]),
     hdrs = glob(["include/GenericML/MGPDialect/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":MGPDialectAttrsIncGen",
         ":MGPDialectIncGen",
@@ -932,7 +909,7 @@ gentbl_modular_passes(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MGPTransforms",
     srcs = glob(
         [
@@ -945,7 +922,6 @@ cc_library(
     # This is a workaround for those. In the future we will fix the import
     # paths directly.
     copts = ["-iquoteexternal/"],
-    strip_include_prefix = "include",
     deps = [
         ":MGPDialect",
         ":MGPTransformsIncGen",
@@ -956,11 +932,10 @@ cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MGPPrimitives",
     srcs = glob(["lib/MGPPrimitives/*.cpp"]),
     hdrs = glob(["include/GenericML/MGPPrimitives/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":MGPDialect",
         "//CUDASupport",
@@ -985,11 +960,10 @@ expand_template(
     template = "include/GenericML/Support/Definitions.h.in",
 )
 
-cc_library(
+modular_cc_library(
     name = "Support",
     srcs = glob(["lib/Support/**/*.cpp"]),
     hdrs = glob(["include/GenericML/Support/**/*.h"]) + [":gen_definitions_h"],
-    strip_include_prefix = "include",
     deps = [
         "//ArraySupport",
         "//GraphRT:Primitives",
@@ -1022,11 +996,10 @@ gentbl_modular_passes(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "Transforms",
     srcs = glob(["lib/Transforms/*.cpp"]),
     hdrs = glob(["include/GenericML/Transforms/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":Interfaces",
         ":TransformsIncGen",
@@ -1077,11 +1050,10 @@ gentbl_mlir_dialect(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MOSHDialect",
     srcs = glob(["lib/GraphCompiler/MOSHDialect/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/MOSHDialect/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":MOSHDialectIncGen",
         ":Support",
@@ -1181,11 +1153,10 @@ gentbl_cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "CUDADialect",
     srcs = glob(["lib/CUDADialect/*.cpp"]),
     hdrs = glob(["include/GenericML/CUDADialect/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":CUDADialectIncGen",
         ":CUDADialectOpInterfacesIncGen",
@@ -1225,11 +1196,10 @@ gentbl_modular_passes(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "CUDATransforms",
     srcs = glob(["lib/CUDATransforms/*.cpp"]),
     hdrs = glob(["include/GenericML/CUDATransforms/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":CUDADialect",
         ":CUDATransformsIncGen",
@@ -1237,11 +1207,10 @@ cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "CUDARegistration",
     srcs = glob(["lib/CUDARegistration/*.cpp"]),
     hdrs = glob(["include/GenericML/CUDARegistration/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":CUDADialect",
         ":CUDATransformsIncGen",
@@ -1250,11 +1219,10 @@ cc_library(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "CUDAPrimitives",
     srcs = glob(["lib/CUDAPrimitives/*.cpp"]),
     hdrs = glob(["include/GenericML/CUDAPrimitives/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":CUDADialect",
         ":MGPPrimitives",
@@ -1287,10 +1255,9 @@ gentbl_modular_passes(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MOToPrimitives",
     srcs = glob(["lib/GraphCompiler/Conversion/MOToPrimitives/*.cpp"]),
-    strip_include_prefix = "include",
     deps = [
         ":GraphCompilerDeviceBuggerizationRegistry",
         ":MGPTransforms",
@@ -1326,11 +1293,10 @@ gentbl_modular_passes(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MOToMOGG",
     srcs = glob(["lib/GraphCompiler/Conversion/MOToMOGG/*.cpp"]),
     hdrs = ["include/GenericML/GraphCompiler/Conversion/MOToMOGG.h"],
-    strip_include_prefix = "include",
     deps = [
         ":GraphCompilerInterfaces",
         ":MGPDialect",
@@ -1366,11 +1332,10 @@ gentbl_mlir_dialect(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MOQDialect",
     srcs = glob(["lib/GraphCompiler/MOQDialect/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/MOQDialect/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":MODialect",
         ":MOQDialectIncGen",
@@ -1396,11 +1361,10 @@ gentbl_modular_passes(
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MOQTransforms",
     srcs = glob(["lib/GraphCompiler/Transforms/MOQDialect/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/Transforms/MOQDialect/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":MOQDialect",
         ":MOQTransformsIncGen",
@@ -1410,35 +1374,32 @@ cc_library(
 ##
 # Conversion Targets
 ##
-cc_library(
+modular_cc_library(
     name = "MOTarget",
     srcs = glob(["lib/GraphCompiler/Conversion/MOTarget/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/Conversion/MOTarget/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":MODialect",
         ":RMODialect",
     ],
 )
 
-cc_library(
+modular_cc_library(
     name = "MaxAPI",
     hdrs = glob(["include/GenericML/API/max/**/*.h"]),
     strip_include_prefix = "include/GenericML/API",
 )
 
-cc_library(
+modular_cc_library(
     name = "APIHeaders",
     hdrs = glob(["include/GenericML/API/**/*.h"]),
-    strip_include_prefix = "include",
     visibility = ["//visibility:private"],
 )
 
-cc_library(
+modular_cc_library(
     name = "API",
     srcs = glob(["lib/API/c/**/*.cpp"]),
     hdrs = glob(["include/GenericML/API/**/*.h"]),
-    strip_include_prefix = "include",
     deps = [
         ":CommonDriver",
         ":CompileDriver",
