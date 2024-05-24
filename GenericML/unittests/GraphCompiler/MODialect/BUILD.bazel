@@ -6,6 +6,5 @@ modular_cc_test(
     deps = [
         "//GenericML:MODialect",
         "//GenericML:Support",
-        "@com_github_google_googletest//:gtest_main",
     ],
 )

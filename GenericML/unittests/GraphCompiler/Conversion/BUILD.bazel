@@ -8,6 +8,5 @@ modular_cc_test(
         "//GenericML:RMODialect",
         "//GenericML:RMOSupport",
         "//GenericML:Support",
-        "@com_github_google_googletest//:gtest_main",
     ],
 )
