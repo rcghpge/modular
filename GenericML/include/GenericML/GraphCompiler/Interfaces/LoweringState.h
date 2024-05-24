@@ -384,11 +384,10 @@ private:
                                  IntegerAttr intAttr);
 
   /// Lower a parameter expression.
-  static ErrorOr<Value> lowerExpressionImpl(ParameterLoweringState &state,
-                                            OpBuilder &builder, Location loc,
-                                            Region *parentRegion,
-                                            TypedAttr attr,
-                                            ValueRange operands);
+  ErrorOr<Value> lowerExpressionImpl(ParameterLoweringState &state,
+                                     OpBuilder &builder, Location loc,
+                                     Region *parentRegion, TypedAttr attr,
+                                     ValueRange operands);
 
   //===-----------------------------------------------------------------===//
   // Lowering state

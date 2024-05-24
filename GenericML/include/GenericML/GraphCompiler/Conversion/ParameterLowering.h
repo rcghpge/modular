@@ -80,7 +80,7 @@ public:
         return newValueOr.takeError();
       newValue = std::move(*newValueOr);
     } else {
-      auto newValueOr = func(*this, b, loc, parentRegion, attr, {});
+      auto newValueOr = func(*this, b, loc, parentRegion, attr, ValueRange{});
       if (newValueOr.isError())
         return newValueOr.takeError();
       newValue = std::move(*newValueOr);

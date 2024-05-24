@@ -113,7 +113,9 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpression(Region *parentRegion,
                                                      Location loc,
                                                      TypedAttr attr) {
   auto newValOr = params.lowerExpression(
-      getExecuteOpBuilder(), loc, parentRegion, attr, lowerExpressionImpl);
+      getExecuteOpBuilder(), loc, parentRegion, attr,
+      [this](auto &&...args) { return this->lowerExpressionImpl(args...); });
+
   if (newValOr.isError())
     return newValOr.takeError();
   auto newVal = std::move(*newValOr);
@@ -262,15 +264,34 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
                    "' in parameter expression");
     }
 
+    auto cond = [&]() -> Value {
+      bool hasChain = isa<MEF::ChainType>(operands[0].getType());
+
+      if (hasChain) {
+        Value cond = operands[1];
+        auto guardOp = builder.create<MGP::GuardOp>(
+            loc, TypeRange{cond.getType()}, operands[0], ValueRange{cond});
+
+        return guardOp.getResult(0);
+      } else {
+        return operands[0];
+      }
+    }();
+
     // We must be dealing with an assert.
-    newOp = builder.create<MGP::AssertOp>(loc, operands,
+    newOp = builder.create<MGP::AssertOp>(loc, ValueRange{cond},
                                           opAttr.getAttrs().getValue());
+
+    setCurrentExecuteChain(cast<MGP::AssertOp>(newOp).getOutChain());
+
   } else if (auto shapeAttr = dyn_cast<MOSH::ShapeAttr>(attr)) {
     // Lower dimensions recursively.
     SmallVector<Value> dimVals;
     for (TypedAttr dim : shapeAttr.getValues()) {
-      auto dimValOr = state.lowerExpression(builder, loc, parentRegion, dim,
-                                            lowerExpressionImpl);
+      auto dimValOr = state.lowerExpression(
+          builder, loc, parentRegion, dim, [this](auto &&...args) {
+            return this->lowerExpressionImpl(args...);
+          });
       if (dimValOr.isError())
         return dimValOr.takeError();
       dimVals.emplace_back(std::move(*dimValOr));
