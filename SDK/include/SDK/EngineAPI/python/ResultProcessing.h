@@ -17,12 +17,13 @@ namespace py = pybind11;
 
 namespace M::core {
 
-/// Creates a new `py::array` by copying the tensor data from a `GML::Tensor`.
+/// Creates a new `py::array` by copying the tensor data from a
+/// `Tensor`.
 py::object processTensorResult(TensorPtr outTensor);
 
 /// Recursively converts the `value` containing nested generic
-/// `Dict`, `List`, `Tuple`, `None`, `GML::Tensor` and primitive type values
-/// to a nested pybind object value composed of `array`, `dict`, `list`,
+/// `Dict`, `List`, `Tuple`, `None`, `Tensor` and primitive type
+/// values to a nested pybind object value composed of `array`, `dict`, `list`,
 /// `tuple`, `none`, `double`, `long` and `bool`. Tensor data arrays are copied.
 py::object processValueResult(ValuePtr value);
 

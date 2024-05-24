@@ -39,7 +39,7 @@ public:
   TensorResultInfo() = default;
   TensorResultInfo(std::string name, std::string shape);
   TensorResultInfo(const TensorResultInfo &other) = default;
-  TensorResultInfo(std::string name, const GML::Tensor &tensor);
+  TensorResultInfo(std::string name, const Tensor &tensor);
 
   TensorResultInfo operator=(TensorResultInfo other);
   TensorResultInfo &operator=(TensorResultInfo &other);
@@ -85,27 +85,27 @@ public:
   void insertResultInfo(std::shared_ptr<ResultInfo> info);
 
   /// Inserts a new named tensor into the tensor map.
-  void insertTensor(const std::string &name, GML::Tensor *tensor);
+  void insertTensor(const std::string &name, Tensor *tensor);
 
   /// Inserts a new unnamed tensor, assigns it a name and returns the name. If a
   /// tensor with the same underlying buffer already exists, it's name is
   /// returned instead.
-  std::string insertTensor(GML::Tensor *tensor);
+  std::string insertTensor(Tensor *tensor);
 
   /// Returns true if a tensor with the same underlying buffer
   /// exists in the results, and false otherwise.
-  bool containsTensor(GML::Tensor *tensor) const;
+  bool containsTensor(Tensor *tensor) const;
 
   /// Returns the tensor's name if a tensor with the same underlying buffer
   /// exists in the results, and an empty string otherwise. If a tensor is
   /// registered with multiple names, the first matching map entry is returned.
-  std::string getTensorName(GML::Tensor *) const;
+  std::string getTensorName(Tensor *) const;
 
   /// Returns the `ResultInfo`s.
   SmallVector<std::shared_ptr<ResultInfo>> &getResultInfos();
 
   /// Returns the collected named tensors.
-  const std::map<std::string, GML::Tensor *> &getTensors() const;
+  const std::map<std::string, Tensor *> &getTensors() const;
 
 private:
   // Holds the ResultInfo objects for each output.
@@ -113,7 +113,7 @@ private:
   // Counter to count unnamed binary outputs.
   size_t counter;
   // Holds the collected tensors.
-  std::map<std::string, GML::Tensor *> tensors;
+  std::map<std::string, Tensor *> tensors;
 };
 
 } // namespace M

@@ -22,21 +22,21 @@ static std::unique_ptr<LLCL::Runtime> getRuntime() {
 constexpr size_t kN = 4;
 constexpr size_t kM = 6;
 
-static GML::Tensor makeTensor(LLCL::Runtime &runtime) {
+static Tensor makeTensor(LLCL::Runtime &runtime) {
   M::TensorSpec spec({kN, kM}, *DType::getInt(8, /*isSigned=*/false));
-  GML::Tensor result =
-      GML::Tensor::createOwned(std::move(spec), runtime, /*alignment=*/{});
+  Tensor result =
+      Tensor::createOwned(std::move(spec), runtime, /*alignment=*/{});
   for (size_t i = 0, e = result.getSizeInBytes(); i < e; ++i)
     result.getMutableBuffer<uint8_t>()[i] = static_cast<uint8_t>(i);
   return result;
 }
 
-static void incrementContents(GML::Tensor &tensor) {
+static void incrementContents(Tensor &tensor) {
   for (size_t i = 0; i < tensor.getSizeInBytes(); ++i)
     ++tensor.getMutableBuffer<uint8_t>()[i];
 }
 
-static bool haveSameContents(GML::Tensor &lhs, GML::Tensor &rhs) {
+static bool haveSameContents(Tensor &lhs, Tensor &rhs) {
   if (lhs.getSizeInBytes() != rhs.getSizeInBytes())
     return false;
   return std::memcmp(lhs.getBuffer(), rhs.getBuffer(), lhs.getSizeInBytes()) ==
@@ -45,8 +45,8 @@ static bool haveSameContents(GML::Tensor &lhs, GML::Tensor &rhs) {
 
 TEST(Tensor, Borrow) {
   auto runtime = getRuntime();
-  GML::Tensor tensor = makeTensor(*runtime);
-  GML::Tensor borrow = tensor.borrow(GML::BufferRef::kExecute);
+  Tensor tensor = makeTensor(*runtime);
+  Tensor borrow = tensor.borrow(TensorBufferRef::kExecute);
   ASSERT_TRUE(haveSameContents(tensor, borrow));
   incrementContents(tensor);
   ASSERT_TRUE(haveSameContents(tensor, borrow));
@@ -55,11 +55,11 @@ TEST(Tensor, Borrow) {
 TEST(Tensor, FromBuffer) {
   auto runtime = getRuntime();
   TensorSpec spec({kN, kM}, *DType::getInt(8, /*isSigned=*/false));
-  GML::BufferRef ref =
-      GML::BufferRef::createOwned(*runtime, kN * kM, /*alignment=*/{});
+  TensorBufferRef ref = TensorBufferRef::createOwned(*runtime, kN * kM,
+                                                     /*alignment=*/{});
 
   const void *data = ref.getBuffer();
-  GML::Tensor tensor(std::move(ref), std::move(spec));
+  Tensor tensor(std::move(ref), std::move(spec));
   // Tensor takes the ownership from the buffer ref.
   ASSERT_EQ(data, tensor.getBuffer());
   ASSERT_EQ(ref.getBuffer(), nullptr);
@@ -77,14 +77,14 @@ static void checkPrintTensor(LLCL::Runtime &runtime,
             static_cast<size_t>(dtype.getWidthInBits()));
 
   M::TensorSpec spec(shape, dtype);
-  GML::Tensor tensor =
-      GML::Tensor::createOwned(std::move(spec), runtime, /*alignment=*/{});
+  Tensor tensor =
+      Tensor::createOwned(std::move(spec), runtime, /*alignment=*/{});
   ASSERT_EQ(tensor.getSizeInBytes(), data.size() * sizeof(bitWidthT));
   memcpy((void *)tensor.getMutableBuffer(), (void *)data.data(),
          sizeof(bitWidthT) * data.size());
 
   testing::internal::CaptureStdout();
-  ErrorOrSuccess err = tensor.print(GML::ResultOutputStyle::kCompact);
+  ErrorOrSuccess err = tensor.print(ResultOutputStyle::kCompact);
   ASSERT_FALSE(err.isError()) << err.getError();
 
   std::string output = testing::internal::GetCapturedStdout();

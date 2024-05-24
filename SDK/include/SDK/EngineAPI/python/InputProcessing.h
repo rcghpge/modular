@@ -23,20 +23,21 @@ void verifyTensorInputSpecs(const py::object &obj,
                             const TensorSpec &inputTensorSpec);
 
 /// Borrows the data from the array in the pybind object `obj` into a new
-/// `GML::Tensor` wrapped in an `AsyncValue` and sets it's name to `name`.
+/// `Tensor` wrapped in an `AsyncValue` and sets it's name to
+/// `name`.
 M_AsyncValue *processTensorInput(const py::object &obj, const std::string &name,
                                  M_RuntimeContext *context);
 
 /// Borrows the data from the array in the pybind object `obj` into a new
-/// `GML::Tensor` wrapped in an `AsyncValue`.
+/// `Tensor` wrapped in an `AsyncValue`.
 M_AsyncValue *processTensorInput(const py::object &obj,
                                  M_RuntimeContext *context);
 
 /// Recursively converts the pybind object `pyObj` containing a value composed
 /// of `array`, `dict`, `list`, `tuple`, `none`, `double`, `long`, `bool`
 /// objects to a nested value of generic composed (`Dict`, `List`, Tuple`),
-/// tensor (`GML::Tensor`) and primitive types. Tensor data arrays are borrowed
-/// and not copied.
+/// tensor (`Tensor`) and primitive types. Tensor data arrays are
+/// borrowed and not copied.
 M_AsyncValue *processValueInput(const py::object &pyObj,
                                 M_RuntimeContext *context, M_Status *status);
 

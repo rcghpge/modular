@@ -21,7 +21,7 @@ TensorResultInfo TensorResultInfo::operator=(TensorResultInfo other) {
   return *this;
 }
 
-TensorResultInfo::TensorResultInfo(std::string name, const GML::Tensor &tensor)
+TensorResultInfo::TensorResultInfo(std::string name, const Tensor &tensor)
     : ResultInfo(name) {
   shape = tensor.getSpec().getAsString();
 }
@@ -51,7 +51,7 @@ void ProcessedResults::insertResultInfo(std::shared_ptr<ResultInfo> info) {
   resultInfos.push_back(info);
 }
 
-std::string ProcessedResults::insertTensor(GML::Tensor *tensor) {
+std::string ProcessedResults::insertTensor(Tensor *tensor) {
   // If this tensor exists in the results already, instead of inserting it
   // again, return the existing name.
   if (containsTensor(tensor))
@@ -62,12 +62,11 @@ std::string ProcessedResults::insertTensor(GML::Tensor *tensor) {
   return name;
 }
 
-void ProcessedResults::insertTensor(const std::string &name,
-                                    GML::Tensor *tensor) {
+void ProcessedResults::insertTensor(const std::string &name, Tensor *tensor) {
   tensors.insert({name, tensor});
 }
 
-bool ProcessedResults::containsTensor(GML::Tensor *tensor) const {
+bool ProcessedResults::containsTensor(Tensor *tensor) const {
   for (auto &[existingName, existingTensor] : tensors) {
     if (tensor->getBuffer() == existingTensor->getBuffer() &&
         tensor->getSizeInBytes() == existingTensor->getSizeInBytes())
@@ -76,7 +75,7 @@ bool ProcessedResults::containsTensor(GML::Tensor *tensor) const {
   return false;
 }
 
-std::string ProcessedResults::getTensorName(GML::Tensor *tensor) const {
+std::string ProcessedResults::getTensorName(Tensor *tensor) const {
   for (auto &[existingName, existingTensor] : tensors) {
     if (tensor->getBuffer() == existingTensor->getBuffer() &&
         tensor->getSizeInBytes() == existingTensor->getSizeInBytes())
@@ -89,7 +88,6 @@ SmallVector<std::shared_ptr<ResultInfo>> &ProcessedResults::getResultInfos() {
   return resultInfos;
 }
 
-const std::map<std::string, GML::Tensor *> &
-ProcessedResults::getTensors() const {
+const std::map<std::string, Tensor *> &ProcessedResults::getTensors() const {
   return tensors;
 }

@@ -212,13 +212,13 @@ def MGP_CpuTensorType : MGP_Type<"CpuTensor", "cpu.tensor", [
     row-major order according to the runtime tensor spec, with endianness
     according to the target architecture.
 
-    Tensors are represented by GML::Tensor in the modular runtime.
+    Tensors are represented by Tensor in the modular runtime.
 
     Unlike the MLIR builtin tensor type this type:
      - Only supports a DType-representable element types.
      - Does not support quantization attributes on the element type.
      - Does not support affine maps for describing layout.
-     - Is explicitly backed by the GML::Tensor type.
+     - Is explicitly backed by the Tensor type.
      - Allows the element type to be unknown at compile time.
 
     Tensors are immutable. When a tensor is created from a buffer, the buffer

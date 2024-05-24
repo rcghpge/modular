@@ -157,7 +157,7 @@ def MGP_DeviceBufferType : MGP_DeviceType<"DeviceBuffer", "buffer", [
      - 'Raw form': an `mlir::IntegerAttr` or `uint64_t`, with ~0 denoting unknown.
 
     `!mgp.buffer`s are represented by (subclasses of)
-    `LLCL::AsyncValueRef<GML::BufferRef>` in the host C++ runtime. Some devices,
+    `LLCL::AsyncValueRef<BufferRef>` in the host C++ runtime. Some devices,
     such as CUDA, may need to include additional data to control device-side
     synchronization, see `!mgp.chain` for more details.
 
@@ -241,14 +241,14 @@ def MGP_DeviceTensorType : MGP_DeviceType<"DeviceTensor", "tensor", [
     must be copied if it could still be written. When a buffer is extracted
     from a tensor, the buffer must be copied if the tensor could still be read.
 
-    `!mgp.tensor`s are represented by (subclasses of) `GML::Tensor` in the
+    `!mgp.tensor`s are represented by (subclasses of) `Tensor` in the
     host-side C++ runtime. Some devices, such as CUDA, may need to include
     additional data with the tensor, such as synchronization streams. The
     tensor's underlying byte-array buffer may also be passed around as a
     raw `void*` pointer.
 
     `!mgp.tensors`s are represented by (subclasses of)
-    `LLCL::AsyncValueRef<GML::Tensor>` in the host C++ runtime. Some devices,
+    `LLCL::AsyncValueRef<Tensor>` in the host C++ runtime. Some devices,
     such as CUDA, may need to include additional data to control device-side
     synchronization, see `!mgp.chain` for more details.
 

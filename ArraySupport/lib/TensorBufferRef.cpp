@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ArraySupport/BufferRef.h"
+#include "ArraySupport/TensorBufferRef.h"
 
 #include "LLCL/Runtime/AsyncValue.h"
 #include "LLCL/Runtime/Runtime.h"
@@ -12,43 +12,44 @@
 #include "llvm/Support/Format.h"
 
 using namespace M;
-using namespace M::GML;
 
 static constexpr llvm::MaybeAlign
 makeMaybeAlign(std::optional<size_t> alignment) {
   return alignment.has_value() ? llvm::MaybeAlign(*alignment) : std::nullopt;
 }
 
-BufferRef BufferRef::create(void *buffer, size_t size,
-                            AnyAsyncValueRef storageHandle,
-                            std::optional<size_t> alignment) {
-  return BufferRef::create(buffer, size, std::move(storageHandle),
-                           makeMaybeAlign(alignment));
+TensorBufferRef TensorBufferRef::create(void *buffer, size_t size,
+                                        AnyAsyncValueRef storageHandle,
+                                        std::optional<size_t> alignment) {
+  return TensorBufferRef::create(buffer, size, std::move(storageHandle),
+                                 makeMaybeAlign(alignment));
 }
 
-BufferRef BufferRef::create(void *buffer, size_t size,
-                            AnyAsyncValueRef storageHandle,
-                            llvm::MaybeAlign alignment) {
+TensorBufferRef TensorBufferRef::create(void *buffer, size_t size,
+                                        AnyAsyncValueRef storageHandle,
+                                        llvm::MaybeAlign alignment) {
   auto profilerEntry = BufferRefLifetimeProfilerEntry::create(
       "mem.buffer.create", (uint64_t)size);
-  return BufferRef(buffer, size, storageHandle.copy(), alignment,
-                   std::move(profilerEntry));
+  return TensorBufferRef(buffer, size, storageHandle.copy(), alignment,
+                         std::move(profilerEntry));
 }
 
-BufferRef
-BufferRef::createWithNonTrackedMemory(void *buffer, size_t size,
-                                      std::optional<size_t> alignment) {
+TensorBufferRef
+TensorBufferRef::createWithNonTrackedMemory(void *buffer, size_t size,
+                                            std::optional<size_t> alignment) {
   auto profilerEntry = BufferRefLifetimeProfilerEntry::create(
       "mem.buffer.create.nontracked", (uint64_t)size);
-  return BufferRef(buffer, size, /*ownedRef=*/{}, makeMaybeAlign(alignment),
-                   std::move(profilerEntry));
+  return TensorBufferRef(buffer, size, /*ownedRef=*/{},
+                         makeMaybeAlign(alignment), std::move(profilerEntry));
 }
 
-BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
-                                 std::optional<size_t> alignment) {
+TensorBufferRef TensorBufferRef::createOwned(LLCL::CompactRuntimePtr runtime,
+                                             size_t size,
+                                             std::optional<size_t> alignment) {
   // Special case for empty buffer
   if (size == 0) {
-    return BufferRef::createWithNonTrackedMemory(nullptr, size, alignment);
+    return TensorBufferRef::createWithNonTrackedMemory(nullptr, size,
+                                                       alignment);
   }
 
   AnyAsyncValueRef storageRef;
@@ -60,22 +61,23 @@ BufferRef BufferRef::createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
   // upset tests if used before initialized.
   memset(buffer, 0xad, size);
 #endif
-  return BufferRef::create(buffer, size, std::move(storageRef), alignment);
+  return TensorBufferRef::create(buffer, size, std::move(storageRef),
+                                 alignment);
 }
 
 // Create an owned reference from a taken void* pointer -- This taken
 // pointer will not be freed by anyone else except by the buffer-ref now.
-BufferRef BufferRef::take(LLCL::CompactRuntimePtr runtime, size_t size,
-                          void *takeFrom) {
+TensorBufferRef TensorBufferRef::take(LLCL::CompactRuntimePtr runtime,
+                                      size_t size, void *takeFrom) {
   AnyAsyncValueRef storageRef;
   storageRef = storageRef.createReady<OwnedMemoryBlock>(
       runtime, size, std::nullopt, runtime, takeFrom);
   void *buffer = storageRef.get<OwnedMemoryBlock>().data;
-  return BufferRef::create(buffer, size, std::move(storageRef),
-                           std::optional<size_t>());
+  return TensorBufferRef::create(buffer, size, std::move(storageRef),
+                                 std::optional<size_t>());
 }
 
-BufferRef::~BufferRef() {
+TensorBufferRef::~TensorBufferRef() {
 #if MODULAR_PARANOID
   // This buffer should have no active uses.
   if (resource)
@@ -83,20 +85,20 @@ BufferRef::~BufferRef() {
 #endif
 }
 
-BufferRef::BufferRef(BufferRef &&rhs) { swap(rhs); }
+TensorBufferRef::TensorBufferRef(TensorBufferRef &&rhs) { swap(rhs); }
 
-BufferRef &BufferRef::operator=(BufferRef &&rhs) {
+TensorBufferRef &TensorBufferRef::operator=(TensorBufferRef &&rhs) {
   swap(rhs);
   return *this;
 }
 
-BufferRef BufferRef::borrow() const {
-  return BufferRef::create(data, size,
-                           storageRef ? storageRef.copy() : AnyAsyncValueRef{},
-                           std::optional<size_t>());
+TensorBufferRef TensorBufferRef::borrow() const {
+  return TensorBufferRef::create(
+      data, size, storageRef ? storageRef.copy() : AnyAsyncValueRef{},
+      std::optional<size_t>());
 }
 
-void BufferRef::reset() {
+void TensorBufferRef::reset() {
   data = nullptr;
   size = 0;
   // Though the underlying buffer has not been freed, stop the profiling
@@ -113,8 +115,8 @@ void BufferRef::reset() {
 #endif
 }
 
-void BufferRef::printDebug(raw_ostream &os) const {
-  os << "BufferRef(";
+void TensorBufferRef::printDebug(raw_ostream &os) const {
+  os << "TensorBufferRef(";
   os << llvm::format_hex(reinterpret_cast<intptr_t>(getBuffer()),
                          2 + 2 * sizeof(intptr_t));
   os << ", ";
@@ -126,7 +128,7 @@ void BufferRef::printDebug(raw_ostream &os) const {
   os << ")";
 }
 
-void BufferRef::swap(BufferRef &rhs) {
+void TensorBufferRef::swap(TensorBufferRef &rhs) {
   std::swap(data, rhs.data);
   std::swap(size, rhs.size);
   std::swap(storageRef, rhs.storageRef);
@@ -138,18 +140,18 @@ void BufferRef::swap(BufferRef &rhs) {
 }
 
 #if MODULAR_PARANOID
-void BufferRef::collectAccessUses(SmallVectorImpl<LLCL::ResourceUse> &uses,
-                                  StringRef name, LLCL::ResourceUseType useType,
-                                  const LLCL::ResourceSection &section) const {
+void TensorBufferRef::collectAccessUses(
+    SmallVectorImpl<LLCL::ResourceUse> &uses, StringRef name,
+    LLCL::ResourceUseType useType, const LLCL::ResourceSection &section) const {
   if (!resource)
     return;
   // We are using this reference.
   uses.emplace_back(resource->beginUse(name.str(), useType, section));
-  if (storageRef && storageRef.isType<BufferRef>()) {
+  if (storageRef && storageRef.isType<TensorBufferRef>()) {
     // By transitivity, we are using (a section of) the storageRef's buffer.
     // Account for any (offset, size), which will have been captured by our
     // use.
-    const BufferRef &owningBufferRef = storageRef.get<BufferRef>();
+    const TensorBufferRef &owningBufferRef = storageRef.get<TensorBufferRef>();
     LLCL::ResourceSection parentSection =
         LLCL::isAllResourceSection(section)
             ? use.getSection()

@@ -104,9 +104,9 @@ static M::TensorSpec getTensorSpec(const ModularAPIInterface &api,
   inputShape.reserve(numDims);
   for (size_t i = 0, e = (size_t)numDims; i < e; ++i) {
     if (api.getDimAt(spec, i) == api.getDynamicDimensionValue()) {
-      // Shapes in the GML::Tensor layer need to follow MLIR convention where
-      // dynamic dimensions are represented by constant kDynamic which is equal
-      // to std::numeric_limits<int64_t>::min()
+      // Shapes in the Tensor layer need to follow MLIR convention
+      // where dynamic dimensions are represented by constant kDynamic which is
+      // equal to std::numeric_limits<int64_t>::min()
       inputShape.push_back(mlir::ShapedType::kDynamic);
     } else {
       inputShape.push_back(api.getDimAt(spec, i));
@@ -308,15 +308,15 @@ private:
   EncodedLocation location;
 };
 
-static GML::Tensor getTensorFromValue(const M::ModularAPIInterface &api,
-                                      M_AsyncValue *outputValue,
-                                      LLCL::Runtime &runtime) {
+static Tensor getTensorFromValue(const M::ModularAPIInterface &api,
+                                 M_AsyncValue *outputValue,
+                                 LLCL::Runtime &runtime) {
   TensorPtr outputTensor = {api.getTensorFromValue(outputValue),
                             api.freeTensor};
 
   // Create an uninitialized GenericML Tensor to hold the output.
-  auto tensor = GML::Tensor::createOwned(getTensorSpec(api, outputTensor.get()),
-                                         runtime, kPreferredMemoryAlignment);
+  auto tensor = Tensor::createOwned(getTensorSpec(api, outputTensor.get()),
+                                    runtime, kPreferredMemoryAlignment);
 
   // Copy the output data to the output GenericML Tensor
   LLCL::profiledMemcpy(tensor.getMutableBuffer(),
@@ -411,7 +411,7 @@ AnyAsyncValueRef getAsyncValue(ValuePtr value,
     return AnyAsyncValueRef::createReady<bool>(
         runtime, getBoolFromValue(api, value.get()));
   case M_TENSOR_VALUE:
-    return AnyAsyncValueRef::createReady<GML::Tensor>(
+    return AnyAsyncValueRef::createReady<Tensor>(
         runtime, getTensorFromValue(api, value.get(), runtime));
   case M_NONE_VALUE:
     return AnyAsyncValueRef::createReady<GML::None>(runtime);
@@ -449,7 +449,7 @@ public:
 
   AnyAsyncValueRef
   convertToGenericValue(AnyAsyncValueRef unknownValue) const final {
-    if (unknownValue.isType<GML::Tensor>())
+    if (unknownValue.isType<Tensor>())
       return convertToGenericTensor(std::move(unknownValue));
 
     return unknownValue;
@@ -505,7 +505,7 @@ public:
 
           StatusPtr status{api.newStatus(), api.freeStatus};
           for (auto &&[inputIndex, input] : llvm::enumerate(args)) {
-            auto &inputTensor = input.get<GML::Tensor>();
+            auto &inputTensor = input.get<Tensor>();
 
             SmallVector<int64_t> inputShape;
             for (const auto &dim : inputTensor.getShape())

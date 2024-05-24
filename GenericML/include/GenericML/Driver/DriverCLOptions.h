@@ -120,7 +120,7 @@ public:
   size_t minimumCpuAlignment{64};
 
   /// This tells the execution driver how to print output tensors;
-  GML::ResultOutputStyle resultOutputStyle{GML::ResultOutputStyle::kCompact};
+  ResultOutputStyle resultOutputStyle{ResultOutputStyle::kCompact};
 
   unsigned printPrecision{6};
 
@@ -303,22 +303,22 @@ private:
       llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   /// This tells the execution driver how to print output tensors;
-  M::cl::MOpt<GML::ResultOutputStyle, true> resultOutputStyle{
+  M::cl::MOpt<ResultOutputStyle, true> resultOutputStyle{
       "result-output-style", cl::desc("Specify how to display outputs"),
       cl::values(
-          clEnumValN(GML::ResultOutputStyle::kFull, "full",
+          clEnumValN(ResultOutputStyle::kFull, "full",
                      "Display all the elements of result"),
           clEnumValN(
-              GML::ResultOutputStyle::kCompact, "compact",
+              ResultOutputStyle::kCompact, "compact",
               "Display a few elements at the start and end of each dimension"),
           clEnumValN(
-              GML::ResultOutputStyle::kBinary, "binary",
+              ResultOutputStyle::kBinary, "binary",
               "Save outputs to binary files. This creates a directory "
               "with one binary file for each output tensor and a YAML file "
               "containing the name and shape of each output tensor. The "
               "output directory containing these files must be "
               "specified with --binary-output-dir=<output_dir>."),
-          clEnumValN(GML::ResultOutputStyle::kNone, "none",
+          clEnumValN(ResultOutputStyle::kNone, "none",
                      "Do not display any result details")),
       llvm::cl::location(options.resultOutputStyle),
       llvm::cl::cat(ExecutorDriverOptionsCategory)};

@@ -6,15 +6,14 @@
 
 #include "ArraySupport/StateSlot.h"
 
-#include "ArraySupport/BufferRef.h"
+#include "ArraySupport/TensorBufferRef.h"
 
 using namespace M;
-using namespace M::GML;
 
-BufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
-                                       LLCL::CompactRuntimePtr runtime,
-                                       size_t size,
-                                       std::optional<size_t> alignment) {
+TensorBufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
+                                             LLCL::CompactRuntimePtr runtime,
+                                             size_t size,
+                                             std::optional<size_t> alignment) {
   assert(bufferIndex < bufferCache.size() &&
          "buffer index out of bounds in StateSlot");
   auto &entry = bufferCache[bufferIndex];
@@ -23,7 +22,7 @@ BufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
   return entry.borrow();
 }
 
-ErrorOr<BufferRef> StateSlot::getBuffer(size_t bufferIndex) {
+ErrorOr<TensorBufferRef> StateSlot::getBuffer(size_t bufferIndex) {
   assert(bufferIndex < bufferCache.size() &&
          "buffer index out of bounds in StateSlot");
   auto &entry = bufferCache[bufferIndex];
@@ -35,7 +34,8 @@ ErrorOr<BufferRef> StateSlot::getBuffer(size_t bufferIndex) {
   return entry.borrow();
 }
 
-ErrorOrSuccess StateSlot::setBuffer(size_t bufferIndex, BufferRef bufferRef) {
+ErrorOrSuccess StateSlot::setBuffer(size_t bufferIndex,
+                                    TensorBufferRef bufferRef) {
   assert(bufferIndex < bufferCache.size() &&
          "buffer index out of bounds in StateSlot");
   auto &entry = bufferCache[bufferIndex];
@@ -45,7 +45,7 @@ ErrorOrSuccess StateSlot::setBuffer(size_t bufferIndex, BufferRef bufferRef) {
   return success();
 }
 
-void StateSlot::updateCacheIfNeeded(BufferRef &entry,
+void StateSlot::updateCacheIfNeeded(TensorBufferRef &entry,
                                     LLCL::CompactRuntimePtr runtime,
                                     size_t size,
                                     std::optional<size_t> alignment) {
@@ -57,5 +57,5 @@ void StateSlot::updateCacheIfNeeded(BufferRef &entry,
   // Free the existing buffer if exists and create a new one.
   // Since the compiler follows the 'one shot' rules for reallocating
   // buffers, this cannot invalidate any existing borrows.
-  entry = BufferRef::createOwned(runtime, size, alignment);
+  entry = TensorBufferRef::createOwned(runtime, size, alignment);
 }

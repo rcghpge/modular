@@ -7,12 +7,12 @@
 #ifndef ARRAY_SUPPORT_TENSOR_H
 #define ARRAY_SUPPORT_TENSOR_H
 
-#include "ArraySupport/BufferRef.h"
+#include "ArraySupport/TensorBufferRef.h"
 #include "LLCL/Runtime/CompactRuntimePtr.h"
 #include "Support/ML/TensorBase.h"
 #include "Support/ML/TensorSpec.h"
 
-namespace M::GML {
+namespace M {
 
 //===----------------------------------------------------------------------===//
 // Tensor Printing
@@ -32,12 +32,12 @@ ErrorOrSuccess printTensor(raw_ostream &os, const void *srcPtr,
 
 /// Tensors in CPU memory using a dense, row-major element order.
 ///
-/// Tensors are just a pair of a BufferRef and a TensorSpec. Tensors are
+/// Tensors are just a pair of a TensorBufferRef and a TensorSpec. Tensors are
 /// movable and explicitly deep copyable.
 ///
 /// CAUTION: Though movable, this is 48 bytes on 64-bit systems so best not
 ///          to consider it a simple handle.
-class Tensor : public TensorBase<BufferRef> {
+class Tensor : public TensorBase<TensorBufferRef> {
 public:
   using TensorBase::TensorBase;
 
@@ -68,10 +68,10 @@ public:
   /// the lifetime of the buffer.
   static Tensor createBorrowed(void *buffer, TensorSpec spec,
                                std::optional<size_t> alignment,
-                               GML::BufferRef::Lifetime lifetime);
+                               TensorBufferRef::Lifetime lifetime);
   static Tensor createBorrowed(const void *buffer, TensorSpec spec,
                                std::optional<size_t> alignment,
-                               GML::BufferRef::Lifetime lifetime);
+                               TensorBufferRef::Lifetime lifetime);
 
   //===--------------------------------------------------------------------===//
   // Core APIs for working with a Tensor.
@@ -91,11 +91,11 @@ public:
 
   /// Release the ownership of the underlying buffer to the returned reference.
   /// This should be only happen when the tensor will be immediately destroyed.
-  GML::BufferRef releaseBufferRef() { return std::move(bufferRef); }
+  TensorBufferRef releaseBufferRef() { return std::move(bufferRef); }
 
   /// Simple accessor to the buffer ref. To maintain the value semantics of this
   /// tensor it should not be modified.
-  GML::BufferRef &getBufferRef() { return bufferRef; }
+  TensorBufferRef &getBufferRef() { return bufferRef; }
 
   /// Returns a shallow copy of this tensor, with the underlying buffer borrowed
   /// from this tensor. This tensor may owning or itself be borrowing the
@@ -104,7 +104,7 @@ public:
   ///
   /// Assert fails if asking to borrow from a borrow whose lifetime is
   /// not greater or equal to borrowLifetime.
-  Tensor borrow(GML::BufferRef::Lifetime borrowLifetime) const;
+  Tensor borrow(TensorBufferRef::Lifetime borrowLifetime) const;
 
   /// This prints the specified tensor data to stdout.
   ErrorOrSuccess print(ResultOutputStyle style, unsigned precision = 6) const;
@@ -122,6 +122,6 @@ inline raw_ostream &operator<<(raw_ostream &os, const Tensor &value) {
   return os;
 }
 
-} // namespace M::GML
+} // namespace M
 
 #endif // ARRAY_SUPPORT_TENSOR_H

@@ -12,7 +12,6 @@
 #include "gtest/gtest.h"
 
 using namespace M;
-using namespace M::GML;
 
 struct PayloadA : public ReferenceCounted<PayloadA> {
   explicit PayloadA(int i) : i(i) { resource = malloc(1); }
@@ -32,7 +31,7 @@ static std::unique_ptr<LLCL::Runtime> getRuntime() {
 
 #ifndef NDEBUG
 TEST(ContextTest, StateSlotDowncastFailTest) {
-  GML::StateContext ctx(/*numSlots=*/1);
+  StateContext ctx(/*numSlots=*/1);
   ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
   ASSERT_DEATH_IF_SUPPORTED(ctx.getStateSlotPayload<PayloadB>(/*slotIndex=*/0),
                             "mismatch between actual and expected type ids");
@@ -40,7 +39,7 @@ TEST(ContextTest, StateSlotDowncastFailTest) {
 #endif
 
 TEST(ContextTest, StateSlotTest) {
-  GML::StateContext ctx(/*numSlots=*/2);
+  StateContext ctx(/*numSlots=*/2);
   ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
   ctx.setStateSlot(/*slotIndex=*/1, RCRef<PayloadB>::create('a'),
                    /*numBuffers=*/1);
@@ -54,7 +53,7 @@ TEST(ContextTest, getOrCreateBufferTest) {
   auto runtime = getRuntime();
   {
     // Add scope to make sure that the allocator outlives the context.
-    GML::StateContext ctx(/*numSlots=*/1);
+    StateContext ctx(/*numSlots=*/1);
     ctx.emplaceStateSlot<PayloadA>(/*slotIndex=*/0, /*numBuffers=*/1, 43);
 
     auto &stateSlot = ctx.getStateSlot(/*slotIndex=*/0);

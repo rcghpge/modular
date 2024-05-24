@@ -38,20 +38,20 @@ static std::optional<size_t> getRuntimeAlign(uint64_t rawAlign) {
   return getRuntimeSize(rawAlign);
 }
 
-GML::BufferRef createBorrowedSlice(GML::BufferRef &borroweBufferRef,
-                                   size_t offset, size_t size) {
+TensorBufferRef createBorrowedSlice(TensorBufferRef &borroweBufferRef,
+                                    size_t offset, size_t size) {
   const void *newBuffer = borroweBufferRef.getBuffer<uint8_t>() + offset;
 
-  return GML::BufferRef::create(const_cast<void *>(newBuffer), size,
-                                borroweBufferRef.getMemStorageHandle(),
-                                std::optional<size_t>());
+  return TensorBufferRef::create(const_cast<void *>(newBuffer), size,
+                                 borroweBufferRef.getMemStorageHandle(),
+                                 std::optional<size_t>());
 }
 
 //===----------------------------------------------------------------------===//
 // mgp.runtime.create.cpu
 //===----------------------------------------------------------------------===//
 
-void mgp_runtime_create_cpu(Chain inChain, GML::StateContext &theContext,
+void mgp_runtime_create_cpu(Chain inChain, StateContext &theContext,
                             Result<Chain> outChain,
                             MEFAttr<uint64_t> aRuntimeSlot,
                             MEFAttr<uint64_t> bDeviceSpecMapSlot,
@@ -105,7 +105,7 @@ void mgp_runtime_create_cpu(Chain inChain, GML::StateContext &theContext,
 // mgp.module.load.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_module_load_cpu(Chain inChain, GML::StateContext &theContext,
+static void mgp_module_load_cpu(Chain inChain, StateContext &theContext,
                                 Result<Chain> outChain,
                                 MEFAttr<uint64_t> aRuntimeSlot,
                                 MEFDynamicAttr bImage,
@@ -176,7 +176,7 @@ static void mgp_module_load_cpu(Chain inChain, GML::StateContext &theContext,
 // mgp.chain.create.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_chain_create_cpu(GML::StateContext &theContext,
+static void mgp_chain_create_cpu(StateContext &theContext,
                                  RemainingArguments gatingOperands,
                                  Result<Chain> outChain,
                                  MEFAttr<uint64_t> aOtherRuntimeSlot,
@@ -195,7 +195,7 @@ static void mgp_chain_create_cpu(GML::StateContext &theContext,
 // mgp.chain.{device_to_host, host_to_device}.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_chain_noop_cpu(Chain inChain, GML::StateContext &theContext,
+static void mgp_chain_noop_cpu(Chain inChain, StateContext &theContext,
                                Result<Chain> outChain,
                                MEFAttr<uint64_t> aRuntimeSlot,
                                MEFAttr<uint64_t> bDeviceId) {
@@ -210,11 +210,13 @@ static void mgp_chain_noop_cpu(Chain inChain, GML::StateContext &theContext,
 // mgp.buffer.constant.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_constant_cpu(
-    Chain inChain, GML::StateContext &theContext,
-    Result<GML::BufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
-    MEFAttr<ArrayRef<uint8_t>> bValue, MEFAttr<uint64_t> cRawAlign,
-    MEFAttr<uint64_t> dDeviceId, MEFAttr<bool> eIsTrivial) {
+static void mgp_buffer_constant_cpu(Chain inChain, StateContext &theContext,
+                                    Result<TensorBufferRef> outBuffer,
+                                    MEFAttr<uint64_t> aRuntimeSlot,
+                                    MEFAttr<ArrayRef<uint8_t>> bValue,
+                                    MEFAttr<uint64_t> cRawAlign,
+                                    MEFAttr<uint64_t> dDeviceId,
+                                    MEFAttr<bool> eIsTrivial) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
       static_cast<size_t>(*aRuntimeSlot));
   if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*dDeviceId))
@@ -225,7 +227,7 @@ static void mgp_buffer_constant_cpu(
 
   void *buffer =
       reinterpret_cast<void *>(const_cast<uint8_t *>(bValue->data()));
-  std::move(outBuffer).emplace(GML::BufferRef::createWithNonTrackedMemory(
+  std::move(outBuffer).emplace(TensorBufferRef::createWithNonTrackedMemory(
       buffer, bValue->size(), optAlign));
 }
 
@@ -233,8 +235,8 @@ static void mgp_buffer_constant_cpu(
 // mgp.buffer.constant.load.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_constant_load_cpu(GML::StateContext &theContext,
-                                         Result<GML::BufferRef> outBuffer,
+static void mgp_buffer_constant_load_cpu(StateContext &theContext,
+                                         Result<TensorBufferRef> outBuffer,
                                          MEFAttr<uint64_t> aRuntimeSlot,
                                          MEFAttr<uint64_t> bModuleIndex,
                                          MEFAttr<uint64_t> cConstantIndex,
@@ -248,11 +250,13 @@ static void mgp_buffer_constant_load_cpu(GML::StateContext &theContext,
 // mgp.buffer.alloc.static.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_alloc_static_cpu(
-    Chain inChain, GML::StateContext &theContext,
-    Result<GML::BufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
-    MEFAttr<uint64_t> bSize, MEFAttr<uint64_t> cRawAlign,
-    MEFAttr<uint64_t> dDeviceId, Runtime &runtime) {
+static void mgp_buffer_alloc_static_cpu(Chain inChain, StateContext &theContext,
+                                        Result<TensorBufferRef> outBuffer,
+                                        MEFAttr<uint64_t> aRuntimeSlot,
+                                        MEFAttr<uint64_t> bSize,
+                                        MEFAttr<uint64_t> cRawAlign,
+                                        MEFAttr<uint64_t> dDeviceId,
+                                        Runtime &runtime) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
       static_cast<size_t>(*aRuntimeSlot));
   if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*dDeviceId))
@@ -262,7 +266,7 @@ static void mgp_buffer_alloc_static_cpu(
   if (!isValidRawAlign(*cRawAlign))
     return std::move(outBuffer).setToError("invalid align attribute");
   size_t runtimeSize = plainSizeToRuntimeSize(*bSize);
-  std::move(outBuffer).emplace(GML::BufferRef::createOwned(
+  std::move(outBuffer).emplace(TensorBufferRef::createOwned(
       runtime, runtimeSize, getRuntimeAlign(*cRawAlign)));
 }
 
@@ -271,8 +275,8 @@ static void mgp_buffer_alloc_static_cpu(
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_alloc_dynamic_cpu(
-    Chain inChain, GML::StateContext &theContext, size_t runtimeSize,
-    Result<GML::BufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
+    Chain inChain, StateContext &theContext, size_t runtimeSize,
+    Result<TensorBufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
     MEFAttr<uint64_t> bRawAlign, MEFAttr<uint64_t> cDeviceId,
     Runtime &runtime) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
@@ -281,7 +285,7 @@ static void mgp_buffer_alloc_dynamic_cpu(
     return std::move(outBuffer).setToError("mismatched device id");
   if (!isValidRawAlign(*bRawAlign))
     return std::move(outBuffer).setToError("invalid align attribute");
-  std::move(outBuffer).emplace(GML::BufferRef::createOwned(
+  std::move(outBuffer).emplace(TensorBufferRef::createOwned(
       runtime, runtimeSize, getRuntimeAlign(*bRawAlign)));
 }
 
@@ -290,11 +294,11 @@ static void mgp_buffer_alloc_dynamic_cpu(
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_realloc_static_cpu(
-    Chain inChain, GML::StateContext &theContext,
-    Result<GML::BufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
-    MEFAttr<uint64_t> bBufferSlot, MEFAttr<uint64_t> cBufferIndex,
-    MEFAttr<uint64_t> dSize, MEFAttr<uint64_t> eRawAlign,
-    MEFAttr<uint64_t> fDeviceId, Runtime &runtime) {
+    Chain inChain, StateContext &theContext, Result<TensorBufferRef> outBuffer,
+    MEFAttr<uint64_t> aRuntimeSlot, MEFAttr<uint64_t> bBufferSlot,
+    MEFAttr<uint64_t> cBufferIndex, MEFAttr<uint64_t> dSize,
+    MEFAttr<uint64_t> eRawAlign, MEFAttr<uint64_t> fDeviceId,
+    Runtime &runtime) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
       static_cast<size_t>(*aRuntimeSlot));
   if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*fDeviceId))
@@ -315,8 +319,8 @@ static void mgp_buffer_realloc_static_cpu(
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_realloc_dynamic_cpu(
-    Chain inChain, GML::StateContext &theContext, size_t runtimeSize,
-    Result<GML::BufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
+    Chain inChain, StateContext &theContext, size_t runtimeSize,
+    Result<TensorBufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
     MEFAttr<uint64_t> bBufferSlot, MEFAttr<uint64_t> cBufferIndex,
     MEFAttr<uint64_t> dRawAlign, MEFAttr<uint64_t> eDeviceId,
     Runtime &runtime) {
@@ -337,17 +341,17 @@ static void mgp_buffer_realloc_dynamic_cpu(
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_alloc_pinned_static_cpu(
-    Chain inChain, GML::StateContext &theContext,
-    Result<GML::BufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
-    MEFAttr<uint64_t> bSize, MEFAttr<uint64_t> cRawAlign,
-    MEFAttr<uint64_t> dHostDeviceId, MEFAttr<uint64_t> eDeviceId) {
+    Chain inChain, StateContext &theContext, Result<TensorBufferRef> outBuffer,
+    MEFAttr<uint64_t> aRuntimeSlot, MEFAttr<uint64_t> bSize,
+    MEFAttr<uint64_t> cRawAlign, MEFAttr<uint64_t> dHostDeviceId,
+    MEFAttr<uint64_t> eDeviceId) {
   return std::move(outBuffer).setToError(
       "mgp.buffer.alloc_pinned.static.cpu is not implemented");
 }
 
 static void mgp_buffer_alloc_pinned_dynamic_cpu(
-    Chain inChain, GML::StateContext &theContext, size_t runtimeSize,
-    Result<GML::BufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
+    Chain inChain, StateContext &theContext, size_t runtimeSize,
+    Result<TensorBufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
     MEFAttr<uint64_t> bMinPinnedSize, MEFAttr<uint64_t> cRawAlign,
     MEFAttr<uint64_t> dHostDeviceId, MEFAttr<uint64_t> eDeviceId) {
   return std::move(outBuffer).setToError(
@@ -358,8 +362,8 @@ static void mgp_buffer_alloc_pinned_dynamic_cpu(
 // mgp.buffer.cache.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_cache_cpu(Chain inChain, GML::StateContext &theContext,
-                                 AsyncValueRef<GML::BufferRef> buffer,
+static void mgp_buffer_cache_cpu(Chain inChain, StateContext &theContext,
+                                 AsyncValueRef<TensorBufferRef> buffer,
                                  Result<Chain> outChain,
                                  MEFAttr<uint64_t> aRuntimeSlot,
                                  MEFAttr<uint64_t> bBufferSlot,
@@ -386,9 +390,8 @@ static void mgp_buffer_cache_cpu(Chain inChain, GML::StateContext &theContext,
 // mgp.buffer.get_cached.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_get_cached_cpu(Chain inChain,
-                                      GML::StateContext &theContext,
-                                      Result<GML::BufferRef> outBuffer,
+static void mgp_buffer_get_cached_cpu(Chain inChain, StateContext &theContext,
+                                      Result<TensorBufferRef> outBuffer,
                                       MEFAttr<uint64_t> aRuntimeSlot,
                                       MEFAttr<uint64_t> bBufferSlot,
                                       MEFAttr<uint64_t> cRawSize,
@@ -398,7 +401,7 @@ static void mgp_buffer_get_cached_cpu(Chain inChain,
   if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*dDeviceId))
     return std::move(outBuffer).setToError("mismatched device id");
   auto &stateSlot = theContext.getStateSlot(*bBufferSlot);
-  ErrorOr<GML::BufferRef> errOr = stateSlot.getBuffer(/*bufferIndex=*/0);
+  ErrorOr<TensorBufferRef> errOr = stateSlot.getBuffer(/*bufferIndex=*/0);
   if (errOr)
     return std::move(outBuffer).setToError(errOr.takeError());
   std::optional<size_t> optExpectedSize = getRuntimeSize(*cRawSize);
@@ -415,8 +418,8 @@ static void mgp_buffer_get_cached_cpu(Chain inChain,
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_no_transfers_cpu(
-    Chain inChain, GML::StateContext &theContext, GML::BufferRef &hostBuffer,
-    GML::BufferRef &otherBuffer, Result<Chain> outChain,
+    Chain inChain, StateContext &theContext, TensorBufferRef &hostBuffer,
+    TensorBufferRef &otherBuffer, Result<Chain> outChain,
     MEFAttr<uint64_t> aHostRuntimeSlot, MEFAttr<uint64_t> bOtherRuntimeSlot,
     MEFAttr<uint64_t> cHostDeviceId, MEFAttr<uint64_t> dOtherDeviceId) {
   std::move(outChain).setToError(
@@ -428,8 +431,8 @@ static void mgp_buffer_no_transfers_cpu(
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_device_to_device_cpu(
-    Chain inChain, GML::StateContext &theContext, GML::BufferRef &srcBuffer,
-    GML::BufferRef &dstBuffer, Result<Chain> outChain,
+    Chain inChain, StateContext &theContext, TensorBufferRef &srcBuffer,
+    TensorBufferRef &dstBuffer, Result<Chain> outChain,
     MEFAttr<uint64_t> aSrcRuntimeSlot, MEFAttr<uint64_t> bDstRuntimeSlot,
     MEFAttr<uint64_t> cSrcDeviceId, MEFAttr<uint64_t> dDstDeviceId) {
   if (*cSrcDeviceId != *dDstDeviceId) {
@@ -455,7 +458,7 @@ static void mgp_buffer_device_to_device_cpu(
 // mgp.buffer.resize.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_resize_cpu(AsyncValueRef<GML::BufferRef> inBuffer,
+static void mgp_buffer_resize_cpu(AsyncValueRef<TensorBufferRef> inBuffer,
                                   RemainingResults outBuffer,
                                   MEFAttr<uint64_t> aSize,
                                   MEFAttr<uint64_t> bDeviceId,
@@ -473,8 +476,8 @@ static void mgp_buffer_resize_cpu(AsyncValueRef<GML::BufferRef> inBuffer,
 // mgp.buffer.concat.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_concat_cpu(Chain inChain, GML::StateContext &theContext,
-                                  AsyncValueRef<GML::BufferRef> outBuffer,
+static void mgp_buffer_concat_cpu(Chain inChain, StateContext &theContext,
+                                  AsyncValueRef<TensorBufferRef> outBuffer,
                                   RemainingArguments inBuffers,
                                   Result<Chain> outChain,
                                   MEFAttr<uint64_t> aRuntimeSlot,
@@ -488,7 +491,7 @@ static void mgp_buffer_concat_cpu(Chain inChain, GML::StateContext &theContext,
   const size_t outSize = outBuffer->getSize();
   size_t totalSize = 0; // total size of all input buffers processed so far
   for (const auto &inBuffer : inBuffers) {
-    const GML::BufferRef &ref = inBuffer.get<GML::BufferRef>();
+    const TensorBufferRef &ref = inBuffer.get<TensorBufferRef>();
     const size_t thisSize = ref.getSize();
     if (totalSize + thisSize <= outSize) {
       // Just don't copy if it turns out the input sizes overflow the output.
@@ -510,8 +513,8 @@ static void mgp_buffer_concat_cpu(Chain inChain, GML::StateContext &theContext,
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_split_borrow_cpu(
-    Chain inChain, GML::StateContext &theContext,
-    AsyncValueRef<GML::BufferRef> inBuffer, RemainingArguments runtimeSizes,
+    Chain inChain, StateContext &theContext,
+    AsyncValueRef<TensorBufferRef> inBuffer, RemainingArguments runtimeSizes,
     RemainingResults outBuffers, MEFAttr<uint64_t> aRuntimeSlot,
     MEFAttr<ArrayRef<uint64_t>> bOutBufferRawSizes, MEFAttr<uint64_t> cDeviceId,
     Runtime &runtime, EncodedLocation loc) {
@@ -522,7 +525,7 @@ static void mgp_buffer_split_borrow_cpu(
   const size_t inSize = inBuffer->getSize();
   size_t totalSize = 0; // total size of all output buffers processed so far
   size_t runtimeSizeIndex = 0; // index of next runtimeSizes operand to use
-  SmallVector<GML::BufferRef> newBuffers;
+  SmallVector<TensorBufferRef> newBuffers;
   // We'll have an entry in bOutBufferRawSizes for each output buffer, which
   // will be either the output buffer's compile time size or the distinguished
   // 'no value' value.
@@ -563,7 +566,7 @@ static void mgp_buffer_split_borrow_cpu(
   }
 
   for (auto [outBuffer, newBuffer] : llvm::zip(outBuffers.get(), newBuffers))
-    outBuffer = AnyAsyncValueRef::createReady<GML::BufferRef>(
+    outBuffer = AnyAsyncValueRef::createReady<TensorBufferRef>(
         runtime, std::move(newBuffer));
 }
 
@@ -572,8 +575,8 @@ static void mgp_buffer_split_borrow_cpu(
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_section_borrow_static_cpu(
-    Chain inChain, GML::StateContext &theContext,
-    AsyncValueRef<GML::BufferRef> inBuffer, Result<GML::BufferRef> outBuffer,
+    Chain inChain, StateContext &theContext,
+    AsyncValueRef<TensorBufferRef> inBuffer, Result<TensorBufferRef> outBuffer,
     MEFAttr<uint64_t> aRuntimeSlot, MEFAttr<uint64_t> bOffset,
     MEFAttr<uint64_t> cSize, MEFAttr<uint64_t> dDeviceId, Runtime &runtime,
     EncodedLocation loc) {
@@ -601,9 +604,9 @@ static void mgp_buffer_section_borrow_static_cpu(
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_section_borrow_dynamic_cpu(
-    Chain inChain, GML::StateContext &theContext,
-    AsyncValueRef<GML::BufferRef> inBuffer, size_t scale,
-    Result<GML::BufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
+    Chain inChain, StateContext &theContext,
+    AsyncValueRef<TensorBufferRef> inBuffer, size_t scale,
+    Result<TensorBufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
     MEFAttr<uint64_t> bUnscaledOffset, MEFAttr<uint64_t> cUnscaledSize,
     MEFAttr<uint64_t> dDeviceId, EncodedLocation loc) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
@@ -630,8 +633,8 @@ static void mgp_buffer_section_borrow_dynamic_cpu(
 // mgp.buffer.to_bool.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_to_bool_cpu(Chain inChain, GML::StateContext &theContext,
-                                   const GML::BufferRef &buffer,
+static void mgp_buffer_to_bool_cpu(Chain inChain, StateContext &theContext,
+                                   const TensorBufferRef &buffer,
                                    Result<bool> result,
                                    MEFAttr<uint64_t> aRuntimeSlot,
                                    MEFAttr<uint64_t> bDeviceId) {
@@ -652,14 +655,14 @@ static void mgp_buffer_to_bool_cpu(Chain inChain, GML::StateContext &theContext,
 
 /// Helper to fill the buffer with the given index values.
 template <typename T>
-static void fillBuffer(GML::BufferRef &buffer, RemainingArguments idxValues) {
+static void fillBuffer(TensorBufferRef &buffer, RemainingArguments idxValues) {
   T *target = buffer.getBuffer<T>();
   for (const auto &asyncIdx : idxValues)
     *(target++) = static_cast<T>(asyncIdx.get<size_t>());
 }
 
-static void mgp_buffer_set_with_index_cpu(GML::StateContext &theContext,
-                                          GML::BufferRef &buffer,
+static void mgp_buffer_set_with_index_cpu(StateContext &theContext,
+                                          TensorBufferRef &buffer,
                                           RemainingArguments values,
                                           Result<Chain> outChain,
                                           MEFAttr<uint64_t> aRuntimeSlot,
@@ -696,8 +699,8 @@ static void mgp_buffer_set_with_index_cpu(GML::StateContext &theContext,
 // mgp.tensor.create.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_tensor_create_cpu(Chain inChain, GML::StateContext &theContext,
-                                  AsyncValueRef<GML::BufferRef> buffer,
+static void mgp_tensor_create_cpu(Chain inChain, StateContext &theContext,
+                                  AsyncValueRef<TensorBufferRef> buffer,
                                   TensorSpec tensorSpec,
                                   Result<Tensor> outTensor,
                                   MEFAttr<uint64_t> aRuntimeSlot,
@@ -720,9 +723,9 @@ static void mgp_tensor_create_cpu(Chain inChain, GML::StateContext &theContext,
 // mgp.tensor.extract.buffer.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_tensor_extract_buffer_cpu(GML::StateContext &theContext,
+static void mgp_tensor_extract_buffer_cpu(StateContext &theContext,
                                           AsyncValueRef<Tensor> tensor,
-                                          Result<GML::BufferRef> outBuffer,
+                                          Result<TensorBufferRef> outBuffer,
                                           MEFAttr<uint64_t> aRuntimeSlot,
                                           MEFAttr<uint64_t> bDeviceId,
                                           Runtime &runtime) {
@@ -738,7 +741,7 @@ static void mgp_tensor_extract_buffer_cpu(GML::StateContext &theContext,
 //===----------------------------------------------------------------------===//
 
 static void mgp_tensor_extract_tensor_spec_cpu(
-    GML::StateContext &theContext, AsyncValueRef<Tensor> tensor,
+    StateContext &theContext, AsyncValueRef<Tensor> tensor,
     Result<TensorSpec> outSpec, MEFAttr<uint64_t> aRuntimeSlot,
     MEFAttr<uint64_t> bDeviceId, MEFAttr<bool> cIsShapeOnly, Runtime &runtime) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
@@ -756,7 +759,7 @@ static void mgp_tensor_extract_tensor_spec_cpu(
 //===----------------------------------------------------------------------===//
 
 static void mgp_debug_tensor_print_cpu(
-    Chain inChain, GML::StateContext &theContext, const GML::BufferRef &buffer,
+    Chain inChain, StateContext &theContext, const TensorBufferRef &buffer,
     const TensorSpec &spec, Result<Chain> outChain,
     MEFAttr<uint64_t> aRuntimeSlot, MEFAttr<StringRef> bLabel,
     MEFAttr<uint64_t> cDeviceId, Runtime &runtime) {
@@ -792,7 +795,7 @@ using MGPProfilerEntry =
     ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
 
 static void mgp_kernel_execute_cpu(
-    Chain inChain, GML::StateContext &theContext, RemainingArguments operands,
+    Chain inChain, StateContext &theContext, RemainingArguments operands,
     Result<Chain> outChain, RemainingResults outDimensions,
     MEFAttr<uint64_t> aHostRuntimeSlot, MEFAttr<uint64_t> bOtherRuntimeSlot,
     MEFAttr<uint64_t> cHostModuleIndex, MEFAttr<uint64_t> dHostKernelIndex,

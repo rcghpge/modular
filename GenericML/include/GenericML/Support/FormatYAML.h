@@ -79,8 +79,8 @@ namespace M {
 using YamlDictKeyValuePair = std::pair<M::GML::Variant, M::GML::Variant>;
 
 /// Given a composed type model output (`out`), create a copy of the composed
-/// type, replacing `GML::Tensor` leaf nodes with `TensorResultInfo`s
-/// for YAML serialization. The `GML::Tensor`s are collected in
+/// type, replacing `Tensor` leaf nodes with `TensorResultInfo`s
+/// for YAML serialization. The `Tensor`s are collected in
 /// `processedResults` for binary output. Note that the copy is not a deep copy,
 /// and parts of the original output (`out`) can still be referenced in the
 /// output.

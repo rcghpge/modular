@@ -7,14 +7,14 @@
 #ifndef ARRAY_SUPPORT_STATESLOT_H
 #define ARRAY_SUPPORT_STATESLOT_H
 
-#include "ArraySupport/BufferRef.h"
+#include "ArraySupport/TensorBufferRef.h"
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
 #include "Support/ADT/GenericRCRef.h"
 #include "Support/ErrorOr.h"
 #include "Support/TypeID.h"
 
-namespace M::GML {
+namespace M {
 
 /// A type-erased wrapper for all context 'state slots'. Buffer allocations
 /// may be cached within a number of 'buffer slots' determined when the state
@@ -62,9 +62,10 @@ public:
   ///    holding this state slot.
   ///  - no other call to this method for the same state slot and buffer index
   ///    should be made while the returned reference is still in use.
-  BufferRef getOrCreateBuffer(size_t bufferIndex,
-                              LLCL::CompactRuntimePtr runtime, size_t size,
-                              std::optional<size_t> alignment);
+  TensorBufferRef getOrCreateBuffer(size_t bufferIndex,
+                                    LLCL::CompactRuntimePtr runtime,
+                                    size_t size,
+                                    std::optional<size_t> alignment);
 
   /// Returns a reference to the already allocated and cached buffer at
   /// bufferIndex in this state slot. Returns Error if no buffer is cached at
@@ -72,7 +73,7 @@ public:
   ///
   /// The result will always be a 'borrow' of the underlying cached buffer.
   /// See getOrCreateBuffer for safety conditions.
-  ErrorOr<BufferRef> getBuffer(size_t bufferIndex);
+  ErrorOr<TensorBufferRef> getBuffer(size_t bufferIndex);
 
   /// Sets the cached buffer at bufferIndex to the given bufferRef. Returns
   /// error if bufferIndex already contains a buffer.
@@ -80,7 +81,7 @@ public:
   /// If bufferRef is owned we simply take over that ownership. However if
   /// it is borrowed then it must have lifetime of at least 'execute'
   /// so that similarly 'execute'-scoped borrows may be taken from it.
-  ErrorOrSuccess setBuffer(size_t bufferIndex, BufferRef bufferRef);
+  ErrorOrSuccess setBuffer(size_t bufferIndex, TensorBufferRef bufferRef);
 
   /// Returns the type id for the value held by this state slot.
   M::TypeID getTypeID() const { return payload.getTypeID(); }
@@ -88,7 +89,7 @@ public:
 private:
   /// Ensure the buffer in entry is allocated with size, reallocating
   /// any existing buffer if required.
-  static void updateCacheIfNeeded(BufferRef &entry,
+  static void updateCacheIfNeeded(TensorBufferRef &entry,
                                   LLCL::CompactRuntimePtr runtime, size_t size,
                                   std::optional<size_t> alignment);
 
@@ -100,7 +101,7 @@ private:
   /// references will be 'uninitialized' or 'owning', all access to them
   /// will be via 'borrowed' references. Any 'owning' buffers will be
   /// destroyed when the context holding this state slot is destroyed.
-  SmallVector<BufferRef, 1> bufferCache;
+  SmallVector<TensorBufferRef, 1> bufferCache;
 };
 
 /// A state slot with no extra payload state. Useful for testing and for
@@ -136,6 +137,6 @@ private:
   T *payload;
 };
 
-} // namespace M::GML
+} // namespace M
 
 #endif // ARRAY_SUPPORT_STATESLOT_H

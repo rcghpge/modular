@@ -5,8 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Support/CompiledKernelsContext.h"
-#include "ArraySupport/BufferRef.h"
 #include "ArraySupport/Tensor.h"
+#include "ArraySupport/TensorBufferRef.h"
 #include "GenericML/Support/Assert.h"
 #include "GenericML/Support/Definitions.h"
 #include "GenericML/Support/List.h"
@@ -36,8 +36,8 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
 #if MODULAR_PARANOID
   switch (inOutType) {
   case 'i': {
-    if (input.isType<GML::BufferRef>()) {
-      auto &buffer = input.get<GML::BufferRef>();
+    if (input.isType<TensorBufferRef>()) {
+      auto &buffer = input.get<TensorBufferRef>();
       // Record that we'll be reading this buffer while the kernel is
       // in-flight.
       buffer.collectAccessUses(
@@ -50,8 +50,8 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
         const AnyAsyncValueRef &ref = v.getValue();
         // Record that we'll be reading the buffer of this tensor while the
         // kernel is in-flight.
-        if (ref.isType<GML::Tensor>()) {
-          auto &tensor = ref.get<GML::Tensor>();
+        if (ref.isType<Tensor>()) {
+          auto &tensor = ref.get<Tensor>();
           tensor.getBufferRef().collectAccessUses(
               uses,
               (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
@@ -62,8 +62,8 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
     break;
   }
   case 'o': {
-    if (input.isType<GML::BufferRef>()) {
-      auto &buffer = input.get<GML::BufferRef>();
+    if (input.isType<TensorBufferRef>()) {
+      auto &buffer = input.get<TensorBufferRef>();
       // Record that we'll be writing this buffers while the kernel is
       // in-flight.
       buffer.collectAccessUses(
@@ -77,8 +77,8 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
   }
 #endif // MODULAR_PARANOID
 
-  if (input.isType<GML::BufferRef>()) {
-    const void *ptr = input.get<GML::BufferRef>().getBuffer();
+  if (input.isType<TensorBufferRef>()) {
+    const void *ptr = input.get<TensorBufferRef>().getBuffer();
     // Forget the const here since the ABI mixes input and output.
     inputPointers.push_back(const_cast<void *>(ptr));
 
@@ -90,8 +90,8 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
     // NOTE: This is currently not closed under all argument types and cannot
     //       be extended by subclasses.
     for (GML::Variant &ref : runtimeList.getElements()) {
-      if (ref.getValue().isType<GML::Tensor>()) {
-        auto &runtimeTensor = ref.getValue().get<GML::Tensor>();
+      if (ref.getValue().isType<Tensor>()) {
+        auto &runtimeTensor = ref.getValue().get<Tensor>();
         const TensorShape &shape = runtimeTensor.getShape();
         ssize_t *dims;
         // If the Tensor is a scalar, need to upscale to 1D to mojo

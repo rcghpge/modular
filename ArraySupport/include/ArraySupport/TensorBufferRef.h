@@ -18,7 +18,7 @@
 
 #include <utility>
 
-namespace M::GML {
+namespace M {
 
 // A block of owned memory. When there are no more references to this it will
 // free the underlying memory.
@@ -41,7 +41,7 @@ using BufferRefLifetimeProfilerEntry =
 /// uninterpreted and possibly uninitialized bytes, along with metadata needed
 /// to interop with the Modular runtime. Each buffer has an async value to its
 /// storage which will be freed on deconstruction.
-class BufferRef {
+class TensorBufferRef {
 public:
   /// DEPRECATED.
   enum Lifetime : uint8_t {
@@ -52,54 +52,56 @@ public:
 
   /// Constructs a reference in the 'null' state. Useful for references
   /// which are allocated lazily.
-  BufferRef() = default;
+  TensorBufferRef() = default;
 
   /// Deallocates the underlying buffer if an owning reference.
-  ~BufferRef();
+  ~TensorBufferRef();
 
   // Move is allowed for buffer references. The moved-from reference is
   // returned to the default 'null' state.
-  BufferRef(BufferRef &&rhs);
-  BufferRef &operator=(BufferRef &&rhs);
+  TensorBufferRef(TensorBufferRef &&rhs);
+  TensorBufferRef &operator=(TensorBufferRef &&rhs);
 
   //===--------------------------------------------------------------------===//
   // Creation methods.
   //===--------------------------------------------------------------------===//
 
-  /// Creates a BufferRef with a given storage handle. The handle may be shared
-  /// between other buffer refs will last as long as any use is alive. It should
-  /// deallocate `buffer` on its destruction.
-  static BufferRef create(void *buffer, size_t size,
-                          AnyAsyncValueRef storageHandle,
-                          std::optional<size_t> alignment);
-  static BufferRef create(void *buffer, size_t size,
-                          AnyAsyncValueRef storageHandle,
-                          llvm::MaybeAlign alignment);
+  /// Creates a TensorBufferRef with a given storage handle. The handle may be
+  /// shared between other buffer refs will last as long as any use is alive. It
+  /// should deallocate `buffer` on its destruction.
+  static TensorBufferRef create(void *buffer, size_t size,
+                                AnyAsyncValueRef storageHandle,
+                                std::optional<size_t> alignment);
+  static TensorBufferRef create(void *buffer, size_t size,
+                                AnyAsyncValueRef storageHandle,
+                                llvm::MaybeAlign alignment);
 
   /// Create a buffer ref which does not track its memory and will not free the
   /// memory.
-  static BufferRef createWithNonTrackedMemory(void *buffer, size_t size,
-                                              std::optional<size_t> alignment);
+  static TensorBufferRef
+  createWithNonTrackedMemory(void *buffer, size_t size,
+                             std::optional<size_t> alignment);
 
   /// Creates an 'owning' reference by allocating a new underlying buffer of
   /// size and alignment.
-  static BufferRef createOwned(LLCL::CompactRuntimePtr runtime, size_t size,
-                               std::optional<size_t> alignment);
+  static TensorBufferRef createOwned(LLCL::CompactRuntimePtr runtime,
+                                     size_t size,
+                                     std::optional<size_t> alignment);
   /// Creates an 'owning' reference of size and alignment using takeFrom void*
   /// ptr that is allocated by caller. There is an assumption that the takeFrom
   /// pointer is allocated by caller via runtime->getAllocator(). The allocated
-  /// buffer will be freed by BufferRef when the reference is destroyed. Since
-  /// the ownership lies with BufferRef, caller should not free anything that
-  /// has been taken by BufferRef.
-  static BufferRef take(LLCL::CompactRuntimePtr runtime, size_t size,
-                        void *takeFrom);
+  /// buffer will be freed by TensorBufferRef when the reference is destroyed.
+  /// Since the ownership lies with TensorBufferRef, caller should not free
+  /// anything that has been taken by TensorBufferRef.
+  static TensorBufferRef take(LLCL::CompactRuntimePtr runtime, size_t size,
+                              void *takeFrom);
   //===--------------------------------------------------------------------===//
-  // Core APIs for working with a BufferRef.
+  // Core APIs for working with a TensorBufferRef.
   //===--------------------------------------------------------------------===//
 
-  /// Returns a new BufferRef pointing to the same data as this buffer. The new
-  /// BufferRef extends the storage lifetime of the memory.
-  BufferRef borrow() const;
+  /// Returns a new TensorBufferRef pointing to the same data as this buffer.
+  /// The new TensorBufferRef extends the storage lifetime of the memory.
+  TensorBufferRef borrow() const;
 
   /// Returns a pointer to the underlying buffer. Returns nullptr if the
   /// reference is 'null' or has been moved out of. A zero sized buffer
@@ -128,7 +130,7 @@ public:
   }
 
   void printDebug(raw_ostream &os) const;
-  void swap(BufferRef &rhs);
+  void swap(TensorBufferRef &rhs);
 
 #if MODULAR_PARANOID
   /// Adds to uses a fresh use capturing that this buffer reference is being
@@ -145,14 +147,14 @@ public:
 
 private:
   /// Constructs a kOwned or kBorrowed reference.
-  BufferRef(void *buffer, size_t size, AnyAsyncValueRef storageRef,
-            llvm::MaybeAlign alignment,
-            BufferRefLifetimeProfilerEntry profilerEntry
+  TensorBufferRef(void *buffer, size_t size, AnyAsyncValueRef storageRef,
+                  llvm::MaybeAlign alignment,
+                  BufferRefLifetimeProfilerEntry profilerEntry
 #if MODULAR_PARANOID
-            ,
-            LLCL::ResourceRef resource, LLCL::ResourceUse use
+                  ,
+                  LLCL::ResourceRef resource, LLCL::ResourceUse use
 #endif
-            )
+                  )
       : data(buffer), size(size), storageRef(std::move(storageRef)),
         profilerEntry(std::move(profilerEntry))
 #if MODULAR_PARANOID
@@ -163,8 +165,8 @@ private:
   }
 
   // Implicit copying is not allowed.
-  BufferRef(const BufferRef &rhs) = delete;
-  BufferRef &operator=(const BufferRef &rhs) = delete;
+  TensorBufferRef(const TensorBufferRef &rhs) = delete;
+  TensorBufferRef &operator=(const TensorBufferRef &rhs) = delete;
 
   // Reset the reference to the kNull state. However only the ownership,
   // buffer/object, and size fields are reset.
@@ -191,18 +193,18 @@ private:
 #endif
 };
 
-inline raw_ostream &operator<<(raw_ostream &os, const BufferRef &value) {
+inline raw_ostream &operator<<(raw_ostream &os, const TensorBufferRef &value) {
   value.printDebug(os);
   return os;
 }
 
-} // namespace M::GML
+} // namespace M
 
 namespace std {
 
 // For ADL style swap.
 template <>
-inline void swap(M::GML::BufferRef &lhs, M::GML::BufferRef &rhs) {
+inline void swap(M::TensorBufferRef &lhs, M::TensorBufferRef &rhs) {
   lhs.swap(rhs);
 }
 

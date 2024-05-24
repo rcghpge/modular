@@ -34,7 +34,7 @@ struct ABIList {
       : numElems(numElems), elements(elements) {}
 };
 
-// ABI version of GML::Tensor.
+// ABI version of Tensor.
 // NOTE the layout must match the mojo `ABI_Tensor`
 struct ABITensor {
   ssize_t *dims; // Shape, with implied rank
@@ -101,16 +101,18 @@ struct CompiledKernelCall {
 // underlying buffers (in args), combined with their dynamic dimensions (in
 // dims). Statically known dimensions are not passed since they have already
 // been accounted for in the compilation of the kernel. That is, rather than
-// passing `GML::Tensor`s as `CompiledKernelABI::Tensor` with a runtime
-// representation of the entire shape, we instead passed `GML::BufferRefs`
-// as their underlying buffer pointers, and a dimension for each dynamic
-// dimension parameter from the original `!mo.tensor` type.
+// passing `Tensor`s as `CompiledKernelABI::Tensor` with a runtime
+// representation of the entire shape, we instead passed
+// `TensorBufferRefs` as their underlying buffer pointers, and a
+// dimension for each dynamic dimension parameter from the original `!mo.tensor`
+// type.
 //
 // We currently only support static ranks in compiled kernels, so no ranks
 // are passed at runtime, and no dynamic rank parameters are supported.
 //
 // Each void* arg can be:
-//  - The underlying buffer of a GML::BufferRef (for `!mgp.buffer`s).
+//  - The underlying buffer of a TensorBufferRef (for
+//  `!mgp.buffer`s).
 //    The lifetime is managed by the C++ runtime, possibly my moving
 //    referencs into a sub-task closure.
 //  - The underlying buffer of a CUDA::CUDABuffer (for `!cuda.buffer`s)

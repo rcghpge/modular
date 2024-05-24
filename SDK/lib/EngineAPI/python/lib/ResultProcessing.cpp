@@ -16,7 +16,8 @@ using namespace M;
 
 namespace py = pybind11;
 
-/// Creates a new `py::array` by copying the tensor data from a `GML::Tensor`.
+/// Creates a new `py::array` by copying the tensor data from a
+/// `Tensor`.
 py::object core::processTensorResult(TensorPtr outTensor) {
   TensorSpecPtr tensorSpec{M_getTensorSpec(outTensor.get()), &M_freeTensorSpec};
   int64_t numDims = M_getRank(tensorSpec.get());
@@ -28,8 +29,8 @@ py::object core::processTensorResult(TensorPtr outTensor) {
     shape.push_back(M_getDimAt(tensorSpec.get(), d));
 
   // TODO(8114): Currently always copy out.
-  // The underlying M::TensorMap -> GML::Tensor -> M::BufferRef is borrowed,
-  // so we cannot release its buffer to Python.
+  // The underlying M::TensorMap -> Tensor -> M::BufferRef is
+  // borrowed, so we cannot release its buffer to Python.
 
   size_t numElements = M_getTensorNumElements(outTensor.get());
   M_Dtype type = M_getTensorType(outTensor.get());
@@ -46,8 +47,8 @@ py::object core::processTensorResult(TensorPtr outTensor) {
 }
 
 /// Recursively converts the `value` containing nested generic
-/// `Dict`, `List`, `Tuple`, `None`, `GML::Tensor` and primitive type values
-/// to a nested pybind object value composed of `array`, `dict`, `list`,
+/// `Dict`, `List`, `Tuple`, `None`, `Tensor` and primitive type
+/// values to a nested pybind object value composed of `array`, `dict`, `list`,
 /// `tuple`, `none`, `double`, `long` and `bool`. Tensor data arrays are copied.
 py::object core::processValueResult(ValuePtr value) {
   switch (M_getValueType(value.get())) {

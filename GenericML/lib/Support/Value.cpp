@@ -118,7 +118,7 @@ std::ostream &M::GML::operator<<(std::ostream &os, const Variant &variant) {
 }
 
 ErrorOrSuccess M::GML::printGenericValue(const LLCL::AnyAsyncValueRef &value,
-                                         GML::ResultOutputStyle style,
+                                         ResultOutputStyle style,
                                          unsigned precision) {
   auto &os = llvm::outs();
   if (List *list = dyn_cast<List>(value)) {
@@ -160,7 +160,7 @@ ErrorOrSuccess M::GML::printGenericValue(const LLCL::AnyAsyncValueRef &value,
     os << "}";
   } else if (None *none = dyn_cast<None>(value)) {
     os << none;
-  } else if (GML::Tensor *tensor = dyn_cast<GML::Tensor>(value)) {
+  } else if (Tensor *tensor = dyn_cast<Tensor>(value)) {
     ErrorOrSuccess errorOr = printTensor(os, tensor->getBuffer(),
                                          tensor->getSpec(), style, precision);
     if (errorOr.isError())
@@ -189,7 +189,7 @@ std::string M::GML::valueToString(const LLCL::AnyAsyncValueRef &value) {
     ss << *longValue;
   else if (bool *boolValue = dyn_cast<bool>(value))
     ss << *boolValue;
-  else if (GML::Tensor *tensor = dyn_cast<GML::Tensor>(value))
+  else if (Tensor *tensor = dyn_cast<Tensor>(value))
     ss << tensor->getBuffer();
   else if (int32_t *intValue = dyn_cast<int32_t>(value))
     ss << *intValue;
@@ -224,8 +224,8 @@ bool M::GML::valueEqual(const LLCL::AnyAsyncValueRef &lhs,
   } else if (bool *lbool = dyn_cast<bool>(lhs)) {
     if (bool *rbool = dyn_cast<bool>(rhs))
       return *lbool == *rbool;
-  } else if (GML::Tensor *ltensor = dyn_cast<GML::Tensor>(lhs)) {
-    if (GML::Tensor *rtensor = dyn_cast<GML::Tensor>(rhs))
+  } else if (Tensor *ltensor = dyn_cast<Tensor>(lhs)) {
+    if (Tensor *rtensor = dyn_cast<Tensor>(rhs))
       // Consider tensors equal if the underlying data pointer is the same.
       return ltensor->getBuffer() == rtensor->getBuffer();
   }
@@ -258,8 +258,8 @@ bool M::GML::valueLessThan(const LLCL::AnyAsyncValueRef &lhs,
   } else if (bool *lbool = dyn_cast<bool>(lhs)) {
     if (bool *rbool = dyn_cast<bool>(rhs))
       return *lbool < *rbool;
-  } else if (GML::Tensor *ltensor = dyn_cast<GML::Tensor>(lhs)) {
-    if (GML::Tensor *rtensor = dyn_cast<GML::Tensor>(rhs))
+  } else if (Tensor *ltensor = dyn_cast<Tensor>(lhs)) {
+    if (Tensor *rtensor = dyn_cast<Tensor>(rhs))
       // Consider tensors equal if the underlying data pointer is the same.
       return ltensor->getBuffer() < rtensor->getBuffer();
   }
@@ -283,7 +283,7 @@ size_t M::GML::valueHash(const LLCL::AnyAsyncValueRef &value) {
     return std::hash<int64_t>()(*longValue);
   else if (bool *boolValue = dyn_cast<bool>(value))
     return std::hash<bool>()(*boolValue);
-  else if (GML::Tensor *tensor = dyn_cast<GML::Tensor>(value))
+  else if (Tensor *tensor = dyn_cast<Tensor>(value))
     return reinterpret_cast<size_t>(tensor->getBuffer());
   else
     return std::numeric_limits<size_t>::max();

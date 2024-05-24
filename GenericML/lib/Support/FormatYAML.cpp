@@ -436,7 +436,7 @@ M::getResultForBinaryOutput(const LLCL::AnyAsyncValueRef &out,
     }
     return out;
   }
-  if (GML::Tensor *castTensorValue = dyn_cast<GML::Tensor>(out)) {
+  if (Tensor *castTensorValue = dyn_cast<Tensor>(out)) {
     // Insert tensor if it isn't registered already.
     std::string name = processedResults.insertTensor(castTensorValue);
     // Replace tensor with `TensorResultInfo`. We re-export the tensor

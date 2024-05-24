@@ -48,7 +48,7 @@ using MGPProfilerEntry =
 
 /// Fulfills the result with a StateContext initialized with `numPrimContexts`
 /// primitive contexts.
-static void mgp_context_create(Result<GML::StateContext> result,
+static void mgp_context_create(Result<StateContext> result,
                                MEFAttr<uint64_t> numSlots) {
   std::move(result).emplace(*numSlots);
 }
@@ -59,7 +59,7 @@ static void mgp_context_create(Result<GML::StateContext> result,
 
 /// Constructs the default state slot with the given number of cached buffers
 /// under the given slot in the mgp context.
-static Chain mgp_state_slot_create(Chain inChain, GML::StateContext &ctx,
+static Chain mgp_state_slot_create(Chain inChain, StateContext &ctx,
                                    MEFAttr<uint64_t> numBuffers,
                                    MEFAttr<uint64_t> slot) {
   ctx.emplaceStateSlot<DefaultStateSlot>(*slot, *numBuffers);
@@ -70,7 +70,7 @@ static Chain mgp_state_slot_create(Chain inChain, GML::StateContext &ctx,
 // mgp.create_runtime
 //===----------------------------------------------------------------------===//
 
-static void mgp_check_runtime(Chain inChain, GML::StateContext &ctx,
+static void mgp_check_runtime(Chain inChain, StateContext &ctx,
                               Result<Chain> outChain, MEFAttr<uint64_t> aSlot,
                               MEFAttr<StringRef> bDevicesJSON,
                               Runtime &runtime) {
@@ -295,7 +295,7 @@ using MGPProfilerEntry =
     ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
 
 static void
-mgp_generic_execute(GML::StateContext &ctx, RemainingArguments operands,
+mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
                     Result<Chain> outChain, RemainingResults outResults,
                     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
                     MEFAttr<uint64_t> cFunctionIndex,
@@ -367,7 +367,7 @@ mgp_generic_execute(GML::StateContext &ctx, RemainingArguments operands,
 
 static void mgp_list_append(List &inputList, AnyAsyncValueRef element,
                             Result<List> output) {
-  if (element.isType<GML::Tensor>() || element.isType<M::CUDA::CUDATensor>()) {
+  if (element.isType<Tensor>() || element.isType<M::CUDA::CUDATensor>()) {
     if (!inputList.getElements().empty() &&
         inputList.getElements().front().getValue().getPointer()->getTypeID() !=
             element.getPointer()->getTypeID()) {
@@ -434,7 +434,7 @@ static void mgp_list_get(List &inputList, Tensor &idxTensor,
         // (1). list can contain arbitray types of values, so we can't put a
         // single type into `Result<...>`> (2). we want to share the
         // underlying value as `AsyncValueRef` to avoid deep copying expensive
-        // objects like `GML::Tensor`.
+        // objects like `Tensor`.
         *outputs.begin() = inputList.getElements()[idx].getValue().copy();
       });
 }

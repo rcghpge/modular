@@ -228,10 +228,9 @@ static bool isMaybeConstantFoldable(Operation *op) {
 /// If the constant op's users are all in this subgraph, then this returns a
 /// tensor that owns the underlying resource blob.
 /// Otherwise the returned tensor's data is borrowed.
-static GML::Tensor
-denseResourceAsTensor(LLCL::Runtime &runtime, ConstantOp constant,
-                      DenseResourceElementsAttr denseResource,
-                      const Subgraph &subgraph) {
+static Tensor denseResourceAsTensor(LLCL::Runtime &runtime, ConstantOp constant,
+                                    DenseResourceElementsAttr denseResource,
+                                    const Subgraph &subgraph) {
   mlir::AsmResourceBlob *blob = denseResource.getRawHandle().getBlob();
   TensorType ttype = dyn_cast<TensorType>(constant.getType());
   TensorSpec spec(dyn_cast<MOSH::ShapeAttr>(ttype.getShapeAttr()).getIntDims(),
@@ -259,15 +258,15 @@ denseResourceAsTensor(LLCL::Runtime &runtime, ConstantOp constant,
 
     // It is safe to take ownership of blob data if all users are in this
     // subgraph.
-    GML::BufferRef blobBuffer = GML::BufferRef::create(
+    TensorBufferRef blobBuffer = TensorBufferRef::create(
         reinterpret_cast<void *>(const_cast<char *>(blob->getData().data())),
         blob->getData().size(), std::move(ref), blob->getDataAlignment());
-    return GML::Tensor(std::move(blobBuffer), std::move(spec));
+    return Tensor(std::move(blobBuffer), std::move(spec));
   }
 
-  return GML::Tensor::createBorrowed(blob->getData().data(), spec,
-                                     blob->getDataAlignment(),
-                                     GML::BufferRef::Lifetime::kConstant);
+  return Tensor::createBorrowed(blob->getData().data(), spec,
+                                blob->getDataAlignment(),
+                                TensorBufferRef::Lifetime::kConstant);
 }
 
 /// Creates or retrieves an `ElementsAttr` with the same data as `ref`
@@ -276,7 +275,7 @@ static ElementsAttr elementsAttrFromTensor(const AnyAsyncValueRef &ref,
                                            MLIRContext *ctx) {
   // Output shape has runtime-dependent size so we need to read out what
   // the size is.
-  GML::Tensor &tensor = ref.get<GML::Tensor>();
+  Tensor &tensor = ref.get<Tensor>();
   TensorShape shape = tensor.getShape();
   size_t numElements = shape.getNumElements();
   ArrayType arrayType = ArrayType::get(
@@ -289,7 +288,7 @@ static ElementsAttr elementsAttrFromTensor(const AnyAsyncValueRef &ref,
     return getInlineAttrForTensorDataCopy(arrayType, tensorData);
 
   auto resourceManager = DenseResourceElementsHandle::getManagerInterface(ctx);
-  GML::BufferRef &bufferRef = tensor.getBufferRef();
+  TensorBufferRef &bufferRef = tensor.getBufferRef();
 
   // Reuses the data within the BufferRef and extends the lifetime of it.
   mlir::AsmResourceBlob blob =
@@ -308,8 +307,8 @@ static ElementsAttr elementsAttrFromTensor(const AnyAsyncValueRef &ref,
 static RuntimeOutput extractRuntimeOutput(
     const AnyAsyncValueRef &ref, MLIRContext *ctx,
     llvm::DenseMap<M::LLCL::AsyncValue *, ElementsAttr> &cachedConstants) {
-  if (ref.isType<GML::Tensor>()) {
-    GML::Tensor &tensor = ref.get<GML::Tensor>();
+  if (ref.isType<Tensor>()) {
+    Tensor &tensor = ref.get<Tensor>();
     ElementsAttr constantsArr;
     if (auto it = cachedConstants.find(ref.getPointer());
         it != cachedConstants.end()) {
@@ -374,7 +373,7 @@ executeModel(MLIRContext *ctx, const Model *model,
       if (auto denseResource =
               dyn_cast<DenseResourceElementsAttr>(constant.getValueAttr())) {
         inputTensorsInMEFIndexOrder.push_back(
-            AsyncValueRef<GML::Tensor>::createReady(
+            AsyncValueRef<Tensor>::createReady(
                 runtime, denseResourceAsTensor(runtime, constant, denseResource,
                                                subgraph)));
       }
@@ -431,9 +430,9 @@ executeModel(MLIRContext *ctx, const Model *model,
         return LLCL::EncodedDiagnostic(tensor.takeDiagnostic());
       GENERICML_ASSERT(tensor.isReady())
           << "We already awaited, tensor should be ready";
-      GENERICML_ASSERT(tensor.isType<GML::Tensor>())
+      GENERICML_ASSERT(tensor.isType<Tensor>())
           << "Subgraph shape output should be a tensor";
-      GML::Tensor &t = tensor.get<GML::Tensor>();
+      Tensor &t = tensor.get<Tensor>();
       params[paramName] = t.getBuffer<const int64_t>()[0];
       outIdx++;
     }

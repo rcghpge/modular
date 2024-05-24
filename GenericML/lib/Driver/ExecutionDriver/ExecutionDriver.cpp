@@ -155,13 +155,13 @@ ErrorOrSuccess InputDataParser::parseImpl(llvm::cl::Option &options,
 }
 
 /// Replace any non output-conform results with their output-conforming
-/// equivalents (such as `GML::Tensor`).
+/// equivalents (such as `Tensor`).
 static void
 convertResultsToGenericValues(const ExecutableModel *model,
                               MutableArrayRef<AnyAsyncValueRef> results) {
   for (auto &result : results) {
     GENERICML_ASSERT(result.isReady()) << "tensor result should be ready";
-    if (result.isError() || result.isType<GML::Tensor>())
+    if (result.isError() || result.isType<Tensor>())
       continue;
     result = model->convertToGenericValue(std::move(result));
     await(result);
@@ -225,7 +225,7 @@ writeYamlToFile(const std::filesystem::path &yamlFilePath,
 /// with --binary-output-dir=<output_dir>."
 static LogicalResult outputResults(const ExecutableModel *model,
                                    MutableArrayRef<AnyAsyncValueRef> results,
-                                   GML::ResultOutputStyle outputStyle,
+                                   ResultOutputStyle outputStyle,
                                    unsigned precision, StringRef outputDir) {
   auto &os = llvm::outs();
   StringRef name = model->getModel()->getName();
@@ -252,7 +252,7 @@ static LogicalResult outputResults(const ExecutableModel *model,
   GENERICML_ASSERT(allResultsReady) << "model result must be ready";
 
   // If --result-output-style=binary, write output tensors to files and return.
-  if (outputStyle == GML::ResultOutputStyle::kBinary) {
+  if (outputStyle == ResultOutputStyle::kBinary) {
 
     os << "--- Writing Outputs to " << outputDir << "\n";
 
@@ -333,7 +333,7 @@ static LogicalResult outputResults(const ExecutableModel *model,
     if (failed(printDiagIfError(result)))
       hasError = true;
     else {
-      if (auto *tensor = dyn_cast<GML::Tensor>(result)) {
+      if (auto *tensor = dyn_cast<Tensor>(result)) {
         if (auto err = tensor->print(outputStyle, precision)) {
           os << "<error: " << err.getError() << '>';
           hasError = true;
@@ -352,16 +352,17 @@ static LogicalResult outputResults(const ExecutableModel *model,
   return failure(hasError);
 }
 
-// Returns a ready AsyncValueRef<GML::Tensor> for every given generator, ready
-// to be passed to the model's execute function. Each tensor will borrow,
-// at 'execute' scope, from the underlying generotar's 'next' tensor.
+// Returns a ready AsyncValueRef<Tensor> for every given
+// generator, ready to be passed to the model's execute function. Each tensor
+// will borrow, at 'execute' scope, from the underlying generotar's 'next'
+// tensor.
 static SmallVector<AnyAsyncValueRef, 3>
 buildArgs(Runtime &runtime, ArrayRef<ITensorGeneratorPtr> generators) {
   SmallVector<AnyAsyncValueRef, 3> args;
   args.reserve(generators.size());
   for (const auto &generator : generators) {
-    args.emplace_back(AsyncValueRef<GML::Tensor>::createReady(
-        runtime, generator->getNextTensor().borrow(GML::BufferRef::kExecute)));
+    args.emplace_back(AsyncValueRef<Tensor>::createReady(
+        runtime, generator->getNextTensor().borrow(TensorBufferRef::kExecute)));
   }
   return args;
 }
@@ -419,7 +420,7 @@ executeModelSynchronously(Runtime &runtime, ExecutableModel &executableModel,
   SmallVector<LLCL::ResourceUse> uses;
   for (size_t i = 1, n = results.size(); i < n; ++i) {
     const AnyAsyncValueRef &result = results[i];
-    if (auto *tensor = dyn_cast<GML::Tensor>(result)) {
+    if (auto *tensor = dyn_cast<Tensor>(result)) {
       tensor->getBufferRef().collectAccessUses(
           uses, (Twine("output(") + Twine(i - 1) + ")").str(),
           LLCL::kReadingResourceUse);
@@ -463,8 +464,8 @@ executeModel(const Model *model, Runtime &runtime,
   }
 
   // Establish a tensor generator for each model input as per command line
-  // options and shapes. Each tensor generator holds one or more GML::Tensor's
-  // with lifetime matching the generator itself.
+  // options and shapes. Each tensor generator holds one or more
+  // Tensor's with lifetime matching the generator itself.
   auto inputTensorGeneratorsOr = createTensorGenerators(
       options.inputGenKind, inputSpecs, options.inputData,
       options.minimumCpuAlignment, runtime);
@@ -522,10 +523,9 @@ executeModel(const Model *model, Runtime &runtime,
     // If not printing any results we need to still check they are error free.
     // Otherwise, we need only wait for the results and errors will be
     // reported when printing the results below.
-    auto resultsOr =
-        executeModelSynchronously(runtime, *executableModel, args,
-                                  /*checkResults=*/options.resultOutputStyle ==
-                                      GML::ResultOutputStyle::kNone);
+    auto resultsOr = executeModelSynchronously(
+        runtime, *executableModel, args,
+        /*checkResults=*/options.resultOutputStyle == ResultOutputStyle::kNone);
     if (resultsOr.isError())
       return resultsOr.takeError();
     auto results = std::move(*resultsOr);
@@ -533,7 +533,7 @@ executeModel(const Model *model, Runtime &runtime,
 
     std::move(entry).record();
 
-    if (options.resultOutputStyle != GML::ResultOutputStyle::kNone) {
+    if (options.resultOutputStyle != ResultOutputStyle::kNone) {
       // Convert and print the result tensors. This is the one place where
       // AsyncValue errors are printed to stdout and a generic
       // "repeated model execution failed" is returned to the caller instead

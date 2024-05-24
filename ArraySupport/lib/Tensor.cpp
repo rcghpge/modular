@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ArraySupport/Tensor.h"
-#include "ArraySupport/BufferRef.h"
+#include "ArraySupport/TensorBufferRef.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -16,39 +16,38 @@
 #include <numeric>
 
 using namespace M;
-using namespace GML;
 
 Tensor Tensor::createOwned(TensorSpec spec, LLCL::CompactRuntimePtr runtime,
                            std::optional<size_t> alignment) {
   return Tensor(
-      GML::BufferRef::createOwned(runtime, spec.getSizeInBytes(), alignment),
+      TensorBufferRef::createOwned(runtime, spec.getSizeInBytes(), alignment),
       std::move(spec));
 }
 
 Tensor Tensor::takeOwned(TensorSpec spec, LLCL::CompactRuntimePtr runtime,
                          void *takeFrom) {
-  return Tensor(GML::BufferRef::take(runtime, spec.getSizeInBytes(), takeFrom),
+  return Tensor(TensorBufferRef::take(runtime, spec.getSizeInBytes(), takeFrom),
                 std::move(spec));
 }
 
 Tensor Tensor::createBorrowed(void *buffer, TensorSpec spec,
                               std::optional<size_t> alignment,
-                              GML::BufferRef::Lifetime lifetime) {
-  return Tensor(GML::BufferRef::createWithNonTrackedMemory(
+                              TensorBufferRef::Lifetime lifetime) {
+  return Tensor(TensorBufferRef::createWithNonTrackedMemory(
                     buffer, spec.getSizeInBytes(), alignment),
                 std::move(spec));
 }
 
 Tensor Tensor::createBorrowed(const void *buffer, TensorSpec spec,
                               std::optional<size_t> alignment,
-                              GML::BufferRef::Lifetime lifetime) {
+                              TensorBufferRef::Lifetime lifetime) {
   return Tensor(
-      GML::BufferRef::createWithNonTrackedMemory(
+      TensorBufferRef::createWithNonTrackedMemory(
           const_cast<void *>(buffer), spec.getSizeInBytes(), alignment),
       std::move(spec));
 }
 
-Tensor Tensor::borrow(GML::BufferRef::Lifetime borrowLifetime) const {
+Tensor Tensor::borrow(TensorBufferRef::Lifetime borrowLifetime) const {
   return Tensor(bufferRef.borrow(), TensorSpec(spec));
 }
 
@@ -341,10 +340,9 @@ static ErrorOrSuccess printTensorCompact(raw_ostream &os, const void *srcPtr,
 }
 
 /// This kernel prints the specified tensor data to stdout.
-ErrorOrSuccess M::GML::printTensor(raw_ostream &os, const void *srcPtr,
-                                   const TensorSpec &spec,
-                                   ResultOutputStyle style,
-                                   unsigned precision) {
+ErrorOrSuccess M::printTensor(raw_ostream &os, const void *srcPtr,
+                              const TensorSpec &spec, ResultOutputStyle style,
+                              unsigned precision) {
   // TODO: Add print support for quantization.
   switch (style) {
   case ResultOutputStyle::kFull:
