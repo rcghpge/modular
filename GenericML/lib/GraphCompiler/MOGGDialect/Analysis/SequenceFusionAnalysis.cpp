@@ -144,12 +144,10 @@ struct OperationDependency {
 template <Direction direction>
 static void dependencyWalk(
     mlir::Operation *op,
-    llvm::MapVector<mlir::Operation *, OperationDependency>
-        &eligibleOpDependencies,
+    llvm::MapVector<mlir::Operation *, OperationDependency> &dependencies,
     const mlir::DenseMap<mlir::Operation *, uint64_t> &opToIndexInBitVector,
     MO::ParametricTopologyAnalysis &completeDataflowGraph) {
 
-  mlir::DenseSet<Operation *> visited;
   llvm::SmallVector<Operation *> workList;
 
   if constexpr (direction == Direction::Up) {
@@ -160,6 +158,7 @@ static void dependencyWalk(
     workList.append(users.begin(), users.end());
   }
 
+  auto &thisOpDependencies = dependencies[op];
   while (!workList.empty()) {
     auto nextOp = workList.pop_back_val();
     // Lookup the operation. If it is not in the index map, then it does not
@@ -169,35 +168,14 @@ static void dependencyWalk(
       continue;
     uint64_t operationIndex = operationIndexIt->second;
 
+    const auto &dependency = dependencies[nextOp];
     // Op depends (as provider or user) on nextOp.
-    if constexpr (direction == Direction::Up)
-      eligibleOpDependencies[op].transitiveProviders[operationIndex] = true;
-    else
-      eligibleOpDependencies[op].transitiveUsers[operationIndex] = true;
-
-    auto eligibleOpIt = eligibleOpDependencies.find(nextOp);
-    bool isEligible = eligibleOpIt != eligibleOpDependencies.end();
-    if (isEligible) {
-      // If nextOp is eligible and because we are in topological (or reverse)
-      // order, we can just grab the dependencies of this op and not recurse.
-      if constexpr (direction == Direction::Up) {
-        eligibleOpDependencies[op].transitiveProviders |=
-            eligibleOpIt->second.transitiveProviders;
-      } else {
-        eligibleOpDependencies[op].transitiveUsers |=
-            eligibleOpIt->second.transitiveUsers;
-      }
-    } else if (visited.insert(nextOp).second) {
-      // If nextOp is not eligible and it was not visited, then recurse. We do
-      // not track dependencies of non eligible ops because we don't fuse them.
-      // Therefore, we have to recurse.
-      if constexpr (direction == Direction::Up) {
-        auto parents = completeDataflowGraph.providers(nextOp);
-        workList.append(parents.begin(), parents.end());
-      } else {
-        auto users = completeDataflowGraph.users(nextOp);
-        workList.append(users.begin(), users.end());
-      }
+    if constexpr (direction == Direction::Up) {
+      thisOpDependencies.transitiveProviders[operationIndex] = true;
+      thisOpDependencies.transitiveProviders |= dependency.transitiveProviders;
+    } else {
+      thisOpDependencies.transitiveUsers[operationIndex] = true;
+      thisOpDependencies.transitiveUsers |= dependency.transitiveUsers;
     }
   }
 }
@@ -214,9 +192,7 @@ gatherDependencies(
   // Maps from any op in the block to it's index in the bit vectors we create.
   mlir::DenseMap<mlir::Operation *, uint64_t> opToIndexInBitVector;
   // The return value which maps an eligible op to its transitive dependencies.
-  llvm::MapVector<mlir::Operation *, OperationDependency>
-      eligibleOpDependencies;
-  llvm::SmallVector<mlir::Operation *> eligibleOps;
+  llvm::MapVector<mlir::Operation *, OperationDependency> dependencies;
   // A mask that can zero-out eligible ops. Useful later, when checking
   // parallelism.
   uint64_t opIndex = 0;
@@ -227,17 +203,17 @@ gatherDependencies(
   // that order. This makes it possible not to traverse the graph again.
   completeDataflowGraph.computeTopologicalSorting(allOps);
 
+  bool atLeastOneEligibleOp = false;
   for (auto op : allOps) {
     opToIndexInBitVector[op] = opIndex++;
-    if (isEligible(op))
-      eligibleOps.push_back(op);
+    atLeastOneEligibleOp |= isEligible(op);
   }
 
-  if (eligibleOps.empty())
+  if (!atLeastOneEligibleOp)
     return {};
 
-  for (auto op : eligibleOps) {
-    auto &entry = eligibleOpDependencies[op];
+  for (auto op : allOps) {
+    auto &entry = dependencies[op];
     entry.transitiveProviders.resize(opToIndexInBitVector.size(), false);
     entry.transitiveUsers.resize(opToIndexInBitVector.size(), false);
     entry.index = opToIndexInBitVector[op];
@@ -253,19 +229,20 @@ gatherDependencies(
     }
   }
 
-  for (auto eligibleOp : eligibleOps) {
-    dependencyWalk<Direction::Up>(eligibleOp, eligibleOpDependencies,
-                                  opToIndexInBitVector, completeDataflowGraph);
+  for (auto op : allOps) {
+    dependencyWalk<Direction::Up>(op, dependencies, opToIndexInBitVector,
+                                  completeDataflowGraph);
   }
 
   // Same logic for going down, except we use the reverse topological sort.
-  for (auto eligibleOp : llvm::reverse(eligibleOps)) {
-    dependencyWalk<Direction::Down>(eligibleOp, eligibleOpDependencies,
-                                    opToIndexInBitVector,
+  for (auto op : llvm::reverse(allOps)) {
+    dependencyWalk<Direction::Down>(op, dependencies, opToIndexInBitVector,
                                     completeDataflowGraph);
   }
 
-  return {eligibleOpDependencies, computationallySignificantMask};
+  dependencies.remove_if([&](auto entry) { return !isEligible(entry.first); });
+
+  return {dependencies, computationallySignificantMask};
 }
 
 /// The analysis applies the following observation:
