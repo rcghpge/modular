@@ -6,6 +6,7 @@
 
 #include "ArraySupport/StateContext.h"
 #include "ArraySupport/Tensor.h"
+#include "ArraySupport/TensorBufferRef.h"
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
 #include "GenericML/Support/CompiledKernelsContext.h"
 #include "GenericML/Support/DebugPrint.h"

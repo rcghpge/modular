@@ -115,8 +115,6 @@ struct CompiledKernelCall {
 //  `!mgp.buffer`s).
 //    The lifetime is managed by the C++ runtime, possibly my moving
 //    referencs into a sub-task closure.
-//  - The underlying buffer of a CUDA::CUDABuffer (for `!cuda.buffer`s)
-//    The lifetime is managed by the CUDABuffer itself.
 //  - A `CompiledKernelABI::ABIList*` (for `!mgp.list`s). The lifetime is
 //    managed by the `CompiledKernelCall`, and the called kernel shim is
 //    responsible for unmarshalling before returning.

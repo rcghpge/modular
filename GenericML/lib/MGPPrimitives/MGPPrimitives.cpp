@@ -8,7 +8,6 @@
 #include "ArraySupport/StateContext.h"
 #include "ArraySupport/StateSlot.h"
 #include "ArraySupport/Tensor.h"
-#include "CUDASupport/CUDATensor.h"
 #include "GenericML/Support/Assert.h"
 #include "GenericML/Support/CompiledKernelsContext.h"
 #include "GenericML/Support/DebugPrint.h"
@@ -367,7 +366,7 @@ mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
 
 static void mgp_list_append(List &inputList, AnyAsyncValueRef element,
                             Result<List> output) {
-  if (element.isType<Tensor>() || element.isType<M::CUDA::CUDATensor>()) {
+  if (element.isType<Tensor>()) {
     if (!inputList.getElements().empty() &&
         inputList.getElements().front().getValue().getPointer()->getTypeID() !=
             element.getPointer()->getTypeID()) {
