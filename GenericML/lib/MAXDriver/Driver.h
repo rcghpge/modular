@@ -1,0 +1,78 @@
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef GENERICML_LIB_MAXDRIVER_DRIVER
+#define GENERICML_LIB_MAXDRIVER_DRIVER
+
+#include "Support/ErrorOr.h"
+#include "Support/RCRef.h"
+#include "Support/ReferenceCounted.h"
+#include <string>
+namespace M {
+
+namespace Driver {
+
+struct Device;
+struct DeviceMemory {
+  enum DeviceMemoryKind {
+    K_CPU,
+  };
+
+  /// Constructs and allocates DeviceMemory on `dev`, bumping the refcount
+  /// of `dev`.
+  DeviceMemory(DeviceMemoryKind kind, size_t bytes, Device *dev)
+      : devicePtr(M::copyRCRef(dev)), bytes(bytes), kind(kind) {}
+
+  // TODO: does this need to be pure virtual?
+  /// Relinqishes ownership of the underlying data, and returns the pointer.
+  virtual void *release() = 0;
+
+  /// Returns the ptr backing the DeviceMemory object. Does not release
+  /// ownership.
+  void *data() { return ptr; }
+
+  size_t bytecount() const { return bytes; }
+
+  virtual ~DeviceMemory() = default;
+
+  DeviceMemoryKind getKind() const { return kind; }
+
+  M::RCRef<Device> devicePtr;
+
+  /// Copies the contents of DeviceMemory to another chunk of DeviceMemory,
+  /// which may reside on a different device.
+  virtual ErrorOrSuccess copy_to(DeviceMemory &dst) const = 0;
+
+protected:
+  void *ptr;
+  size_t bytes;
+  const DeviceMemoryKind kind;
+};
+struct Device : M::ReferenceCounted<Device> {
+  virtual const std::string &getString() const = 0;
+
+  /// Allocates `bytes` bytes on the device.
+  virtual void *allocateData(size_t bytes) = 0;
+
+  /// Frees ptr created with `allocateData`.
+  virtual void freeData(void *ptr) = 0;
+
+  /// Allocates `bytes` bytes of memory on the device
+  /// and returns the allocation in a DeviceMemory object.
+  /// DeviceMemory contains a RCRef of the underlying Device.
+  virtual DeviceMemory *createDeviceMemory(size_t bytes) = 0;
+
+  /// Takes ownership of `data` in a DeviceMemory object.
+  /// DeviceMemory contains a RCRef of the underlying Device.
+  virtual DeviceMemory *createDeviceMemory(void *data, size_t bytes) = 0;
+
+  virtual ~Device() = default;
+};
+
+} // namespace Driver
+} // namespace M
+
+#endif
