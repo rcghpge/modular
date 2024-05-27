@@ -3,10 +3,12 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-# RUN: mojo -I "%sdk_examples_dir" %s | FileCheck "%s"
+# RUN: mojo -I "%sdk_examples_dir" %s
+
+from collections import List
+from testing import assert_equal
 
 from pipelines.llama2.tokenizer.bpe import BPETokenizer
-from collections import List
 
 
 fn create_dummy_model() raises -> BPETokenizer:
@@ -19,6 +21,8 @@ fn create_dummy_model() raises -> BPETokenizer:
     model.add_token("b", -0.4)
     model.add_token("c", -0.5)
     model.add_token("qr", -0.5)
+    model.add_token("x", -0.6)
+    model.add_token("d", -0.7)
 
     return model^
 
@@ -26,7 +30,7 @@ fn create_dummy_model() raises -> BPETokenizer:
 fn test_tokenization() raises:
     var model = create_dummy_model()
 
-    var tokens = model.encode("xabcabaabcddxabcabaabcdd")
+    var tokens = model.encode(String("xabcabaabcddxabcabaabcdd"))
 
     var expected = List[String]()
     expected.append("x")
@@ -44,24 +48,21 @@ fn test_tokenization() raises:
     expected.append("cd")
     expected.append("d")
 
-    # CHECK: True
-    print(len(tokens) == len(expected))
+    assert_equal(len(tokens), len(expected))
 
     for i in range(len(tokens)):
-        # CHECK-NOT: False
-        print(tokens[i].token == expected[i])
+        assert_equal(model.decode(tokens[i]), expected[i])
 
 
 fn test_decode() raises:
     var model = create_dummy_model()
 
-    var encoded = model.encode("qrcbaabccdabqrcbaabccdab")
+    var encoded = model.encode(String("qrcbaabccdabqrcbaabccdab"))
     var decoded = String()
     for token in encoded:
-        decoded += token[].token
+        decoded += model.decode(token[])
 
-    # CHECK: qrcbaabccdabqrcbaabccdab
-    print(decoded)
+    assert_equal(decoded, "qrcbaabccdabqrcbaabccdab")
 
 
 fn main() raises:
