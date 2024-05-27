@@ -299,25 +299,14 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
         newName = prefix + newName;
 
       auto newDeclRef = KGEN::ParamDeclRefAttr::get(newName, oldDecl.getType());
-      nameToDecl.insert({oldName, cast<TypedAttr>(newDeclRef)});
+      nameToDecl.insert({oldDecl.getName(), cast<TypedAttr>(newDeclRef)});
       parameters.insert(newName);
 
       return KGEN::ParamDeclAttr::get(newDeclRef);
     });
-
-    kernelOp->walk([&](Operation *op) {
-      walker.replaceElementsIn(op, /*replaceAttrs=*/true,
-                               /*replaceLocs=*/false,
-                               /*replaceTypes=*/true);
-
-      // DeclInterface means we are about to recurse into a new parametric
-      // scope. Skip the scope because nothing will leak anyway.
-      if (isa<KGEN::DeclInterface>(op))
-        return WalkResult::skip();
-
-      return WalkResult::advance();
-    });
-
+    walker.recursivelyReplaceElementsIn(kernelOp, /*replaceAttrs=*/true,
+                                        /*replaceLocs=*/false,
+                                        /*replaceTypes=*/true);
     MOGG::remapTypesAndAttrs(kernelOp, nameToDecl);
 
     auto asKernelOp = dyn_cast<KernelOp>(kernelOp);

@@ -21,6 +21,12 @@ ParametricTopologyAnalysis::ParametricTopologyAnalysis(mlir::Operation *root) {
   // it unconditonally).
   const auto applyDependencyToParentOps = [&](Operation *from, Operation *to,
                                               bool doAtLeastOnce) {
+    // Parameters don't obey region dominance like SSA values. An operation can
+    // use a parameter defined in a child region if that child region is not
+    // held by a DeclInterface operation.
+    if (to->getParentRegion()->isProperAncestor(from->getParentRegion()))
+      return;
+
     const auto applyDependency = [&]() {
       doAtLeastOnce = true;
       // provider -> user
