@@ -21,6 +21,6 @@ add_mojo_package(max-driver PRIVATE
   DEPENDS
   mof
   mojo-tensor
-  MAXDriver
+  DeviceDriver
   max-mojo
 )

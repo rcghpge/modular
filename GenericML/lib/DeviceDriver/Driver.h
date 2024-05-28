@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_LIB_MAXDRIVER_DRIVER
-#define GENERICML_LIB_MAXDRIVER_DRIVER
+#ifndef GENERICML_LIB_DEVICEDRIVER_DRIVER
+#define GENERICML_LIB_DEVICEDRIVER_DRIVER
 
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
