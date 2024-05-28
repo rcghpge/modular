@@ -27,7 +27,7 @@ fn _get_driver_path() raises -> String:
 
 
 @value
-@register_passable
+@register_passable("trivial")
 struct _CDevice:
     var _ptr: DTypePointer[DType.invalid]
 
