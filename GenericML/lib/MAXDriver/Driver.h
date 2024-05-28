@@ -16,9 +16,11 @@ namespace M {
 namespace Driver {
 
 struct Device;
+struct CPUDeviceMemory;
 struct DeviceMemory {
   enum DeviceMemoryKind {
     K_CPU,
+    K_CUDA,
   };
 
   /// Constructs and allocates DeviceMemory on `dev`, bumping the refcount

@@ -5,6 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 
 import os
+import subprocess
 from pathlib import Path
 
 from lit.llvm import llvm_config
@@ -33,6 +34,7 @@ tool_dirs = [
 
 tools = [
     "mojo",
+    "is-cuda-available",
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
@@ -41,3 +43,7 @@ llvm_config.add_tool_substitutions(tools, tool_dirs)
 config.environment["LSAN_OPTIONS"] = "detect_leaks=0"
 # TODO(#25946): Fix ODR violations.
 config.environment["ASAN_OPTIONS"] = "detect_odr_violation=0"
+
+output = subprocess.run("is-cuda-available")
+if output.returncode == 0:
+    config.available_features.add("cuda")

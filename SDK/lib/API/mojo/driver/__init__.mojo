@@ -9,3 +9,4 @@ from .device_memory import DeviceMemory
 from .tensor import Tensor, StaticTensorSpec
 from .tensor_slice import TensorSlice
 from .anymemory import AnyMemory
+from .cuda import get_cuda_device

@@ -60,12 +60,14 @@ struct Device(Stringable):
             )
         )
 
-    fn __init__(inout self, _cdev: _CDevice) raises:
+    fn __init__(
+        inout self, lib: DriverLibrary, *, owned owned_ptr: _CDevice
+    ) raises:
         """Creates a CPU Device from an opaque _CDevice object. Not intended for
         external use."""
 
-        self.lib = ManagedDLHandle(DLHandle(_get_driver_path()))
-        self._cdev = _cdev.copy(self.lib)
+        self.lib = lib
+        self._cdev = owned_ptr
 
     fn __copyinit__(inout self, existing: Self):
         """Copy constructor for device.

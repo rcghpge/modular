@@ -19,6 +19,7 @@ add_modular_testsuite(check-max-driver-api
   DEPENDS
   max-driver
   mojo-sdk
+  is-cuda-available
 
   TOP_LEVEL_CHECK
   check-sdk

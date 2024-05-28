@@ -62,13 +62,13 @@ struct DeviceMemory(StringableRaising):
         """Returns the device on which the DeviceMemory was allocated."""
 
         alias func_name_get_dev = "M_getDeviceFromDeviceMemory"
-        return Device(
-            _CDevice(
-                call_dylib_func[
-                    DTypePointer[DType.invalid], DTypePointer[DType.invalid]
-                ](self.lib.get_handle(), func_name_get_dev, self._ptr)
-            )
+        var _cdev = _CDevice(
+            call_dylib_func[
+                DTypePointer[DType.invalid], DTypePointer[DType.invalid]
+            ](self.lib.get_handle(), func_name_get_dev, self._ptr)
         )
+        # copy() is needed to bump the refcount on the device object
+        return Device(self.lib, owned_ptr=_cdev.copy(self.lib))
 
     fn __moveinit__(inout self, owned existing: Self):
         self._ptr = existing._ptr

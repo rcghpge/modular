@@ -10,6 +10,7 @@ set (DRIVER_SRCS
   device_memory
   tensor
   tensor_slice
+  cuda
 )
 
 
