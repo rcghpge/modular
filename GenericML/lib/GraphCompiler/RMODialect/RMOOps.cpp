@@ -13,8 +13,8 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GenericML/GraphCompiler/RMODialect/RMODialect.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOInterfaces.h"
-#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/Dims.h"
+#include "Support/AssertStream.h"
 #include "Support/Compiler/ParserUtils.h"
 #include "Support/ML/RangeUtils.h"
 #include <optional>

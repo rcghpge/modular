@@ -7,10 +7,10 @@
 #include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
 
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
-#include "GenericML/Support/Assert.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
+#include "Support/AssertStream.h"
 #include <optional>
 #include <utility>
 

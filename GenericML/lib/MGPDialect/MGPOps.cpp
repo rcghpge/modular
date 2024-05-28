@@ -10,7 +10,7 @@
 
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/BufferBuilder.h"
-#include "GenericML/Support/Assert.h"
+#include "Support/AssertStream.h"
 #include "Support/Compiler/ParserUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/ErrorOr.h"

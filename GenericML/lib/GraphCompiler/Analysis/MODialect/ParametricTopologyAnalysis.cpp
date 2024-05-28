@@ -6,8 +6,8 @@
 
 #include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "GenericML/Support/Assert.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
+#include "Support/AssertStream.h"
 
 #include "mlir/Pass/AnalysisManager.h"
 

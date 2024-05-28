@@ -12,10 +12,10 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/GraphCompiler/Matchers.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
-#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/DataflowUtils.h"
 #include "GenericML/Support/Dims.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "Support/AssertStream.h"
 #include "Support/ML/Permutation.h"
 #include "llvm/ADT/TypeSwitch.h"
 

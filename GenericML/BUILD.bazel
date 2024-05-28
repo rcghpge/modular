@@ -130,14 +130,6 @@ modular_cc_library(
     ],
 )
 
-modular_cc_library(
-    name = "Assert",
-    hdrs = ["include/GenericML/Support/Assert.h"],
-    deps = [
-        "@llvm-project//llvm:Support",
-    ],
-)
-
 # TODO: Move deeper into subdirectories, this being so high up is wack.
 # Circular dependency between these two directories, so we need to be
 # mindful.

@@ -7,7 +7,7 @@
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "GenericML/Support/Assert.h"
+#include "Support/AssertStream.h"
 
 using namespace M;
 using namespace M::MGP;

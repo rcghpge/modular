@@ -8,7 +8,7 @@
 #include "GenericML/Driver/CXXDriverAPI.h"
 #include "GenericML/Driver/DriverAPI.h"
 #include "GenericML/Driver/DriverInputFormat.h"
-#include "GenericML/Support/Assert.h"
+#include "Support/AssertStream.h"
 #include "Support/Init/Init.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/Process.h"

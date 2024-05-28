@@ -6,8 +6,8 @@
 
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
 
-#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/HostDeviceSpecs.h"
+#include "Support/AssertStream.h"
 
 using namespace M;
 using namespace MO;

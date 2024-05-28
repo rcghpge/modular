@@ -6,7 +6,7 @@
 
 #include "GenericML/MGPDialect/MGPDialect.h"
 #include "GenericML/MGPDialect/MGPTypes.h"
-#include "GenericML/Support/Assert.h"
+#include "Support/AssertStream.h"
 #include "Support/Compiler/MLIRDType.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"

@@ -8,8 +8,8 @@
 
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTypes.h"
-#include "GenericML/Support/Assert.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "Support/AssertStream.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/Support/ErrorHandling.h"
 

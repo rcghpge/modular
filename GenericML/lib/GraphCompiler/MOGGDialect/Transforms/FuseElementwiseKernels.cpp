@@ -14,8 +14,8 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
-#include "GenericML/Support/Assert.h"
 #include "KGEN/POPDialect/POPTypes.h"
+#include "Support/AssertStream.h"
 
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Transforms/TopologicalSortUtils.h"

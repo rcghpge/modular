@@ -8,8 +8,8 @@
 #define GENERICML_GRAPHCOMPILER_CONVERSION_PARAMETERLOWERING_H
 
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
-#include "GenericML/Support/Assert.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "Support/AssertStream.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Builders.h"

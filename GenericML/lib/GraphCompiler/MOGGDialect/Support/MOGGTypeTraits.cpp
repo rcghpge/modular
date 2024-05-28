@@ -17,8 +17,8 @@
 
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
-#include "GenericML/Support/Assert.h"
 #include "KGEN/POPDialect/POPAttrs.h"
+#include "Support/AssertStream.h"
 #include "llvm/ADT/APFloat.h"
 
 namespace M::MOGG {

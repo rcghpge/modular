@@ -5,9 +5,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "SDK/EngineCLI/Benchmark/MLPerfIntegration.h"
-#include "GenericML/Support/Assert.h"
 #include "SDK/EngineCLI/Benchmark/InputGenerator.h"
 #include "SDK/EngineCLI/Benchmark/Main.h"
+#include "Support/AssertStream.h"
 #include "max/cpp/aliases.h"
 #include "mlperf-loadgen/loadgen.h"
 #include "llvm/Support/raw_ostream.h"

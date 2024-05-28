@@ -8,8 +8,8 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/Interfaces/GraphInterfaces.h"
-#include "GenericML/Support/Assert.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
+#include "Support/AssertStream.h"
 #include "mlir/Parser/Parser.h"
 
 using namespace M;

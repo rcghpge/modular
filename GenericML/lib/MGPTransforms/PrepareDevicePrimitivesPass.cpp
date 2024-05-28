@@ -7,7 +7,7 @@
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 
 #include "GenericML/MGPDialect/MGPOps.h"
-#include "GenericML/Support/Assert.h"
+#include "Support/AssertStream.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
 

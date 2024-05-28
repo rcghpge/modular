@@ -6,8 +6,8 @@
 
 #include "GenericML/MGPTransforms/IndexSet.h"
 #include "./Utils.h"
-#include "GenericML/Support/Assert.h"
 #include "GraphRT/GRTDialect/GRTControlFlowInterface.h"
+#include "Support/AssertStream.h"
 
 using namespace M;
 using namespace M::MGP;

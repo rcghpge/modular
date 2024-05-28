@@ -9,8 +9,8 @@
 
 #include "GenericML/MGPDialect/BufferBuilder.h"
 #include "GenericML/MGPDialect/MGPOps.h"
-#include "GenericML/Support/Assert.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "Support/AssertStream.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/SetOperations.h"

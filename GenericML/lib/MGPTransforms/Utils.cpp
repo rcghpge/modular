@@ -8,9 +8,9 @@
 
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
-#include "GenericML/Support/Assert.h"
 #include "GraphRT/MEFDialect/MEFChainIndicatesFinishedInterface.h"
 #include "GraphRT/MEFDialect/MEFNonStrictInterface.h"
+#include "Support/AssertStream.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Transforms/TopologicalSortUtils.h"

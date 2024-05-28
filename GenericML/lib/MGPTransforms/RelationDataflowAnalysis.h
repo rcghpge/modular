@@ -14,8 +14,8 @@
 
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPTransforms/IndexSet.h"
-#include "GenericML/Support/Assert.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "Support/AssertStream.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/Support/Debug.h"

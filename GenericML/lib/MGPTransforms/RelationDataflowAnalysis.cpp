@@ -6,9 +6,9 @@
 
 #include "./RelationDataflowAnalysis.h"
 
-#include "GenericML/Support/Assert.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
+#include "Support/AssertStream.h"
 #include "llvm/ADT/EquivalenceClasses.h"
 
 #include "./Utils.h"

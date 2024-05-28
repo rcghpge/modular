@@ -6,7 +6,7 @@
 
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/SequenceFusionAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "GenericML/Support/Assert.h"
+#include "Support/AssertStream.h"
 
 #include "llvm-project/llvm/include/llvm/ADT/SetOperations.h"
 

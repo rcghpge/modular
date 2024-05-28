@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "SDK/EngineCLI/Common/APIBridge.h"
-#include "GenericML/Support/Assert.h"
+#include "Support/AssertStream.h"
 #include "Support/ML/TensorSpec.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 

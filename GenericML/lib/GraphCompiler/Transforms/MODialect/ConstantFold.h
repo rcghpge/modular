@@ -9,9 +9,9 @@
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
-#include "GenericML/Support/Assert.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
+#include "Support/AssertStream.h"
 
 #include <numeric>
 namespace M::MO {

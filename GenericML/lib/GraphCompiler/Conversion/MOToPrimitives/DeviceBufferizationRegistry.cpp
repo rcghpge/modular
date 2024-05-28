@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/Conversion/DeviceBufferizationRegistry.h"
-#include "GenericML/Support/Assert.h"
+#include "Support/AssertStream.h"
 
 using namespace M;
 using namespace M::MO;

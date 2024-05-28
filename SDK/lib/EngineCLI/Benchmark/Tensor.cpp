@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "SDK/EngineCLI/Benchmark/Tensor.h"
-#include "GenericML/Support/Assert.h"
+#include "Support/AssertStream.h"
 
 using namespace M;
 using namespace M::BenchmarkCLI;

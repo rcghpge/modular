@@ -9,8 +9,8 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
-#include "GenericML/Support/Assert.h"
 #include "KGEN/POPDialect/POPOps.h"
+#include "Support/AssertStream.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
 

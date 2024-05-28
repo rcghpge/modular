@@ -9,10 +9,10 @@
 #ifndef GRAPHCOMPILER_TRANSFORMS_MODIALECT_MEFMODEL_H
 #define GRAPHCOMPILER_TRANSFORMS_MODIALECT_MEFMODEL_H
 
-#include "GenericML/Support/Assert.h"
 #include "GenericML/Support/Model.h"
 #include "GraphRT/MEFExecutor/MEFInvokable.h"
 #include "LLCL/ForwardDecls.h"
+#include "Support/AssertStream.h"
 #include "Support/ForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/ML/CompiledFrameworkLabel.h"

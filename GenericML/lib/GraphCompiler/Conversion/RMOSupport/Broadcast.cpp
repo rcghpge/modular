@@ -9,7 +9,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOOps.h"
-#include "GenericML/Support/Assert.h"
+#include "Support/AssertStream.h"
 
 using M::MO::ShapeAttr;
 using M::MO::ShapeType;

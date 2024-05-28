@@ -8,7 +8,7 @@
 #define GENERICML_MGPTRANSFORMS_VALUEINDEX_H
 
 #include "GenericML/MGPDialect/MGPOps.h"
-#include "GenericML/Support/Assert.h"
+#include "Support/AssertStream.h"
 #include "mlir/IR/Value.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/EquivalenceClasses.h"

@@ -5,11 +5,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "SDK/EngineCLI/Benchmark/InputGenerator.h"
-#include "GenericML/Support/Assert.h"
 #include "SDK/EngineCLI/Benchmark/NPYReader.h"
 #include "SDK/EngineCLI/Benchmark/Tensor.h"
 #include "SDK/EngineCLI/Common/APIBridge.h"
 #include "SDK/EngineCLI/Common/InputGenerationSchema.h"
+#include "Support/AssertStream.h"
 #include "Support/MathExtras.h"
 #include "max/cpp/aliases.h"
 #include "llvm/ADT/APFloat.h"

@@ -5,9 +5,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "SDK/EngineCLI/Benchmark/InputGenerationDefaults.h"
-#include "GenericML/Support/Assert.h"
 #include "SDK/EngineCLI/Common/APIBridge.h"
 #include "SDK/EngineCLI/Common/InputGenerationSchema.h"
+#include "Support/AssertStream.h"
 #include "max/cpp/aliases.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 

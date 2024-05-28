@@ -7,7 +7,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_STATICRESHAPEDIMENSIONSMAPPINGANALYSIS_H
 #define GENERICML_GRAPHCOMPILER_MODIALECT_STATICRESHAPEDIMENSIONSMAPPINGANALYSIS_H
 
-#include "GenericML/Support/Assert.h"
+#include "Support/AssertStream.h"
 #include "mlir/IR/BuiltinAttributes.h"
 
 #include <optional>
