@@ -28,9 +28,8 @@ struct DeviceMemory {
   DeviceMemory(DeviceMemoryKind kind, size_t bytes, Device *dev)
       : devicePtr(M::copyRCRef(dev)), bytes(bytes), kind(kind) {}
 
-  // TODO: does this need to be pure virtual?
   /// Relinqishes ownership of the underlying data, and returns the pointer.
-  virtual void *release() = 0;
+  void *release() { return std::exchange(ptr, nullptr); }
 
   /// Returns the ptr backing the DeviceMemory object. Does not release
   /// ownership.
