@@ -78,7 +78,7 @@ static DTypeCategory getDtypeCategory(DType x) {
   if (x.isFloat())
     return kFloat;
 
-  GENERICML_ASSERT(false) << "Unknown dtype: " << x.getAsString();
+  ASSERT_STREAM(false) << "Unknown dtype: " << x.getAsString();
 }
 
 /// Returns the dtype represented by a category, bit width, and format.
@@ -153,9 +153,9 @@ static DType calcDtype(DTypeCategory category, ssize_t bitWidth,
     break;
   }
 
-  GENERICML_ASSERT(false) << "Dtype promotion suggestion is an invalid dtype. "
-                             "This should not be possible: "
-                          << category << ", " << bitWidth;
+  ASSERT_STREAM(false) << "Dtype promotion suggestion is an invalid dtype. "
+                          "This should not be possible: "
+                       << category << ", " << bitWidth;
 }
 
 /// Given two dtypes, returns the promotion dtype or an error.
@@ -245,7 +245,7 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
 /// Any other dimension mismatches will return an error.
 static ErrorOr<TensorType> refineBroadcastedShape(TensorType ty1,
                                                   TensorType ty2) {
-  GENERICML_ASSERT(!ty1.isDynamicallyRanked() && !ty2.isDynamicallyRanked())
+  ASSERT_STREAM(!ty1.isDynamicallyRanked() && !ty2.isDynamicallyRanked())
       << " only static rank is supported";
 
   auto idxTy = IndexType::get(ty1.getContext());

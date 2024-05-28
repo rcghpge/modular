@@ -216,7 +216,7 @@ gatherDependencies(
   computationallySignificantMask.resize(opToIndexInBitVector.size(), false);
   for (auto [op, index] : opToIndexInBitVector) {
     if (isComputationallySignificant(op)) {
-      GENERICML_ASSERT(!isEligible(op))
+      ASSERT_STREAM(!isEligible(op))
           << "Eligible ops are considered computationally insignificant";
       computationallySignificantMask[index] = true;
     }
@@ -382,7 +382,7 @@ FusionSubGraphs transitiveDependencySequenceFusionAnalysis(
                 dependenciesToUpdate.transitiveUsers |=
                     subgraphDependencies.transitiveUsers;
               }
-              GENERICML_ASSERT(!(providerOfTheSubgraph && userOfTheSubgraph))
+              ASSERT_STREAM(!(providerOfTheSubgraph && userOfTheSubgraph))
                   << "Created a cycle";
             };
 

@@ -151,7 +151,7 @@ static void mgp_module_load_cpu(Chain inChain, StateContext &theContext,
   while (start < end) {
     size_t next = combined.find('\n', start);
     if (next == std::string::npos) {
-      GENERICML_ASSERT(start + 1 == end && combined[start] == '\0');
+      ASSERT_STREAM(start + 1 == end && combined[start] == '\0');
       break;
     } else {
       size_t len = next - start;
@@ -826,7 +826,7 @@ static void mgp_kernel_execute_cpu(
   StringRef inOutSignature = *eInOutSignature;
   size_t numInputs = inOutSignature.size();
 #if MODULAR_DEBUG
-  GENERICML_ASSERT(numInputs <= operands.size())
+  ASSERT_STREAM(numInputs <= operands.size())
       << "invalid inputs signature arity";
 #endif
   size_t numInDimensions = operands.size() - numInputs;
@@ -835,7 +835,7 @@ static void mgp_kernel_execute_cpu(
   //  [outDimension_1, ..., outDimension_numOutDimensions]
   size_t numOutDimensions = static_cast<size_t>(*iNumOutDimensions);
 #if MODULAR_DEBUG
-  GENERICML_ASSERT(numOutDimensions == outDimensions.size())
+  ASSERT_STREAM(numOutDimensions == outDimensions.size())
       << "invalid out dimensions count attribute";
 #endif
 
@@ -899,7 +899,7 @@ static void mgp_kernel_execute_cpu(
     // MojoCallContext and operands are all held alive until the chain is ready.
     //
 #if MODULAR_DEBUG
-    GENERICML_ASSERT(numOutDimensions == 0)
+    ASSERT_STREAM(numOutDimensions == 0)
         << "async kernels cannot return output dimensions";
 #endif
 
@@ -977,7 +977,7 @@ static void mgp_kernel_execute_cpu(
 
     // We can mark the chain as ready.
 #if MODULAR_DEBUG
-    GENERICML_ASSERT(!outChain.copy().isReady())
+    ASSERT_STREAM(!outChain.copy().isReady())
         << "synchronous kernels should not emplace the output chain";
 #endif
     std::move(outChain).emplace();

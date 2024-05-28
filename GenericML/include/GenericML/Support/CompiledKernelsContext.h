@@ -156,20 +156,20 @@ public:
 
   /// Returns the compiled kernel at the given index.
   CompiledKernelFn *getKernel(size_t kernelIndex) const {
-    GENERICML_ASSERT(kernelIndex < kernels.size())
+    ASSERT_STREAM(kernelIndex < kernels.size())
         << "invalid kernel index " << kernelIndex;
     return reinterpret_cast<CompiledKernelFn *>(kernels[kernelIndex]);
   }
 
   CompiledKernelAsyncABIFn *getKernelAsyncABI(size_t kernelIndex) const {
-    GENERICML_ASSERT(kernelIndex < kernels.size())
+    ASSERT_STREAM(kernelIndex < kernels.size())
         << "invalid kernel index " << kernelIndex;
     return reinterpret_cast<CompiledKernelAsyncABIFn *>(kernels[kernelIndex]);
   }
 
   /// Returns the symbol name for the compiled kernel at the given index.
   StringRef getKernelName(size_t kernelIndex) const {
-    GENERICML_ASSERT(kernelIndex < kernels.size())
+    ASSERT_STREAM(kernelIndex < kernels.size())
         << "invalid kernel index " << kernelIndex;
     return symbolTable[kernelIndex];
   }

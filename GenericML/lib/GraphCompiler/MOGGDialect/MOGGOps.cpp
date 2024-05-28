@@ -36,7 +36,7 @@ using namespace MOGG;
 //===----------------------------------------------------------------------===//
 
 LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  GENERICML_ASSERT(MO::isOnHost(*this)) << "mogg.concat is for host only";
+  ASSERT_STREAM(MO::isOnHost(*this)) << "mogg.concat is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, *this);
 
   // Gather the input buffers.
@@ -48,7 +48,7 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
   if (failed(loweredOutputsStorageOr))
     return failure();
   auto &loweredOutputsStorage = *loweredOutputsStorageOr;
-  GENERICML_ASSERT(loweredOutputsStorageOr->size() == 1);
+  ASSERT_STREAM(loweredOutputsStorageOr->size() == 1);
 
   Value outChain = opLoweringState.bufferConcat(
       loweringState.getExecuteChain(), loweredOutputsStorage[0].buffer,
@@ -64,7 +64,7 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  GENERICML_ASSERT(MO::isOnHost(*this)) << "mogg.split is for host only";
+  ASSERT_STREAM(MO::isOnHost(*this)) << "mogg.split is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, *this);
 
   // Gather the input buffer.
@@ -452,7 +452,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         opLoweringState.opBeingLowered->getParentRegion(), opLoweringState.loc,
         param);
 
-    GENERICML_ASSERT(!symbolicDimOr.isError())
+    ASSERT_STREAM(!symbolicDimOr.isError())
         << "can't find the symbolic dimension of the parameter: "
         << symbolicDimOr.takeError();
 
@@ -618,8 +618,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       if (auto tmp = dyn_cast<ToKGENOp>(user))
         toKGEN = tmp;
 
-    GENERICML_ASSERT(toKGEN) << " in-place allocated tensor must have a "
-                                "to_kgen op from an outputplaceholder.";
+    ASSERT_STREAM(toKGEN) << " in-place allocated tensor must have a "
+                             "to_kgen op from an outputplaceholder.";
 
     for (auto user : toKGEN.getResult().getUsers()) {
       if (auto shapeOfOp = dyn_cast<MOGG::GetShapeOfOp>(user)) {
@@ -715,7 +715,7 @@ OutputPlaceholdersOp KernelOp::getOutputPlaceholder() {
   if (placeholder.empty())
     return nullptr;
 
-  GENERICML_ASSERT(llvm::range_size(placeholder) == 1);
+  ASSERT_STREAM(llvm::range_size(placeholder) == 1);
 
   return *placeholder.begin();
 }
@@ -725,7 +725,7 @@ StackAllocateTensorsOp KernelOp::getStackAllocateTensor() {
   if (stackAlloc.empty())
     return nullptr;
 
-  GENERICML_ASSERT(llvm::range_size(stackAlloc) == 1);
+  ASSERT_STREAM(llvm::range_size(stackAlloc) == 1);
 
   return *stackAlloc.begin();
 }
@@ -735,7 +735,7 @@ CreateEmptyTensorsOp KernelOp::getCreateEmptyTensor() {
   if (createEmpty.empty())
     return nullptr;
 
-  GENERICML_ASSERT(llvm::range_size(createEmpty) == 1);
+  ASSERT_STREAM(llvm::range_size(createEmpty) == 1);
 
   return *createEmpty.begin();
 }
@@ -745,7 +745,7 @@ OutputOp KernelOp::getOutputOp() {
   if (createEmpty.empty())
     return nullptr;
 
-  GENERICML_ASSERT(llvm::range_size(createEmpty) == 1);
+  ASSERT_STREAM(llvm::range_size(createEmpty) == 1);
 
   return *createEmpty.begin();
 }
@@ -904,7 +904,7 @@ void KernelOp::fuseBodyIntoNewWithSkip(
         for (SymbolRefAttr sym : params->getAsRange<SymbolRefAttr>()) {
           StringRef name = sym.getLeafReference().strref();
           auto itr = oldLambdaNamesToNew.find(name);
-          GENERICML_ASSERT(itr != oldLambdaNamesToNew.end())
+          ASSERT_STREAM(itr != oldLambdaNamesToNew.end())
               << "First use of lambda inserted before the lambda itself";
           newAttrs.push_back(FlatSymbolRefAttr::get(getContext(), itr->second));
         }
@@ -1179,7 +1179,7 @@ static void printKernel(OpAsmPrinter &p, mlir::Operation *kernel,
 
 InOutSignatureAttr::InOutSemantics
 GenericCompiledRegionOp::getInOutSemantics(size_t index) {
-  GENERICML_ASSERT(index < getNumOperands())
+  ASSERT_STREAM(index < getNumOperands())
       << "GenericCompiledRegionOp::getInOutSemantics index out of range.";
   return getInOutSignature()[index];
 }

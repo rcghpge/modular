@@ -552,7 +552,7 @@ public:
 
   std::pair<uint64_t, uint64_t> getFunction(StringRef name) {
     auto itr = functionToIndexPair.find(name);
-    GENERICML_ASSERT(itr != functionToIndexPair.end())
+    ASSERT_STREAM(itr != functionToIndexPair.end())
         << "No function has been registered for name '" << name
         << "' in the runtime for device '" << device << "'";
     return itr->second;
@@ -560,7 +560,7 @@ public:
 
   std::pair<uint64_t, uint64_t> getConstant(StringRef name) {
     auto itr = constantToIndexPair.find(name);
-    GENERICML_ASSERT(itr != constantToIndexPair.end())
+    ASSERT_STREAM(itr != constantToIndexPair.end())
         << "No constant has been registered for name '" << name
         << "' in the runtime for device '" << device << "'";
     return itr->second;
@@ -635,7 +635,7 @@ public:
                            std::unique_ptr<TypeBuilder> typeBuilder) {
     bool inserted =
         typeBuilderMap.insert({device, std::move(typeBuilder)}).second;
-    GENERICML_ASSERT(inserted)
+    ASSERT_STREAM(inserted)
         << "a type builder has already been registered for device";
   }
 
@@ -643,7 +643,7 @@ public:
   /// this object.
   TypeBuilder *getTypeBuilder(DeviceRefAttr device) const {
     auto itr = typeBuilderMap.find(device);
-    GENERICML_ASSERT(itr != typeBuilderMap.end())
+    ASSERT_STREAM(itr != typeBuilderMap.end())
         << "no type builder has been registered for device";
     return itr->second.get();
   }
@@ -653,16 +653,16 @@ public:
                              std::unique_ptr<BufferBuilder> bufferBuilder) {
     bool inserted =
         bufferBuilderMap.insert({device, std::move(bufferBuilder)}).second;
-    GENERICML_ASSERT(inserted)
+    ASSERT_STREAM(inserted)
         << "a buffer builder has already been registered for device";
   }
 
   /// Returns the buffer builder to use for device. The builder is owned by
   /// this object.
   BufferBuilder *getBufferBuilder(DeviceRefAttr device) const {
-    GENERICML_ASSERT(device);
+    ASSERT_STREAM(device);
     auto itr = bufferBuilderMap.find(device);
-    GENERICML_ASSERT(itr != bufferBuilderMap.end())
+    ASSERT_STREAM(itr != bufferBuilderMap.end())
         << "no buffer builder has been registered for device " << device;
     return itr->second.get();
   }

@@ -67,7 +67,7 @@ class DeferAllocsPass : public impl::DeferAllocsPassBase<DeferAllocsPass> {
             execState.builder.setInsertionPoint(allocOp);
             auto res = alsoWaitForChains(execState.builder, builderContext,
                                          allocOp, {mutatorInChain});
-            GENERICML_ASSERT(succeeded(res))
+            ASSERT_STREAM(succeeded(res))
                 << "all allocation ops must accept an input "
                    "chain to control their timing";
           }

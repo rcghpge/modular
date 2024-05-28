@@ -323,7 +323,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths,
   if (eager) {
     // Eager loading the main mojo bindings.
     module = mlir::parseSourceString<mlir::ModuleOp>(source, context).release();
-    GENERICML_ASSERT(module.getOperation());
+    ASSERT_STREAM(module.getOperation());
     block.push_back(module);
     populateMetadata(module, eager, finalizedMojoKernel, rawMojoKernel);
   } else {
@@ -359,7 +359,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths,
     auto primitiveModule =
         mlir::parseSourceString<mlir::ModuleOp>(primitive_source, context)
             .release();
-    GENERICML_ASSERT(primitiveModule.getOperation());
+    ASSERT_STREAM(primitiveModule.getOperation());
     block.push_back(primitiveModule);
     populateMetadata(primitiveModule, eager, finalizedMojoKernel,
                      primitiveRawMojoKernel);
@@ -394,7 +394,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths,
   }
 
   auto loadError = loadUserProvidedKernels(kernelLibraryPaths, eager);
-  GENERICML_ASSERT(!loadError.isError()) << loadError.takeError();
+  ASSERT_STREAM(!loadError.isError()) << loadError.takeError();
 
   finalized = eager;
 

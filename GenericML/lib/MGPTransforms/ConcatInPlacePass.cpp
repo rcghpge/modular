@@ -92,7 +92,7 @@ class ConcatInPlacePass
       // For each concat input buffer...
       for (Value inBuffer : concatOp.getInBuffers()) {
         auto bufferType = dyn_cast<DeviceBufferType>(inBuffer.getType());
-        GENERICML_ASSERT(bufferType);
+        ASSERT_STREAM(bufferType);
         optSizes.emplace_back(bufferType.getOptSize());
         bufferTypes.emplace_back(bufferType);
         if (!bufferType.getOptSize()) {
@@ -106,8 +106,8 @@ class ConcatInPlacePass
                              inBuffer.getDefiningOp())) {
             runtimeSizes.emplace_back(reallocDynamicOp.getRuntimeSize());
           } else {
-            GENERICML_ASSERT(false) << "unexpected buffer allocation op "
-                                    << *inBuffer.getDefiningOp();
+            ASSERT_STREAM(false) << "unexpected buffer allocation op "
+                                 << *inBuffer.getDefiningOp();
           }
         }
       }

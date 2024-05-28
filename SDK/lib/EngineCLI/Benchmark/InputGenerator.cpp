@@ -185,7 +185,7 @@ void BCD::UniformFloatInputRandomDistribution<kDType>::fill(
   using StorageType = typename BCD::DTypeGenerationTraits<kDType>::StorageType;
   using GenerationType =
       typename BCD::DTypeGenerationTraits<kDType>::GenerationType;
-  GENERICML_ASSERT(getDType() == kDType);
+  ASSERT_STREAM(getDType() == kDType);
   MutableArrayRef<StorageType> outStorage{static_cast<StorageType *>(out),
                                           numElements};
   if constexpr (std::is_same_v<StorageType, GenerationType>) {
@@ -203,7 +203,7 @@ void BCD::UniformFloatInputRandomDistribution<kDType>::fill(
 template <typename T>
 void BCD::UniformIntegerInputRandomDistribution<T>::fill(
     void *out, size_t numElements) const {
-  GENERICML_ASSERT(getDType() == DTypeForCXXType<T>::kind);
+  ASSERT_STREAM(getDType() == DTypeForCXXType<T>::kind);
   T *outT = static_cast<T *>(out);
   fillWithRandomInts({outT, numElements}, min, max);
 }
@@ -718,8 +718,8 @@ M::BenchmarkCLI::createInputGenerator(const InputGenerationInput &spec,
     ok = false;
   if (!ok)
     return nullptr;
-  GENERICML_ASSERT(nameOrIndex.has_value() &&
-                   std::holds_alternative<std::string>(*nameOrIndex));
+  ASSERT_STREAM(nameOrIndex.has_value() &&
+                std::holds_alternative<std::string>(*nameOrIndex));
   return std::make_unique<BCD::InputGeneratorImpl>(
       std::get<0>(std::move(*nameOrIndex)), std::move(shape),
       std::move(dataGenerator));

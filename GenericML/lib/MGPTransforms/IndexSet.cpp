@@ -33,7 +33,7 @@ void M::MGP::printVImpl(IndexSet<Value> &indexSet, llvm::raw_ostream &os,
     return;
   }
   auto itr = indexSet.blockIndexMap.find(value.getParentBlock());
-  GENERICML_ASSERT(itr != indexSet.blockIndexMap.end());
+  ASSERT_STREAM(itr != indexSet.blockIndexMap.end());
   value.printAsOperand(os, mlir::OpPrintingFlags().printGenericOpForm());
   if (value.getParentBlock() != indexSet.model.getExecuteBlock())
     os << "[" << itr->second << "]";
@@ -74,7 +74,7 @@ void M::MGP::printVImpl(IndexSet<const OpOperand *> &indexSet,
   }
   Value value = operand->get();
   auto blockItr = indexSet.blockIndexMap.find(value.getParentBlock());
-  GENERICML_ASSERT(blockItr != indexSet.blockIndexMap.end());
+  ASSERT_STREAM(blockItr != indexSet.blockIndexMap.end());
   value.printAsOperand(os, mlir::OpPrintingFlags().printGenericOpForm());
   if (value.getParentBlock() != indexSet.model.getExecuteBlock() ||
       !value.hasOneUse()) {
@@ -122,7 +122,7 @@ void M::MGP::printVImpl(IndexSet<Operation *> &indexSet, llvm::raw_ostream &os,
     return;
   }
   auto itr = indexSet.blockIndexMap.find(op->getBlock());
-  GENERICML_ASSERT(itr != indexSet.blockIndexMap.end());
+  ASSERT_STREAM(itr != indexSet.blockIndexMap.end());
   if (op->getNumResults() == 0) {
     if (isa<MEF::OutputOp>(op))
       os << "out";

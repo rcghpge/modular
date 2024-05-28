@@ -74,7 +74,7 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
   if (!device)
     device = DeviceRefAttr::getDefault(ctx);
 
-  GENERICML_ASSERT(device.getLabel() == kCPULabel)
+  ASSERT_STREAM(device.getLabel() == kCPULabel)
       << "Only CPU ExecuteCompiledOps can be lowered further";
 
   auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
@@ -148,7 +148,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     }
     for (auto op : init.getOps<MGP::ModuleLoadOp>()) {
       lastDeviceModuleLoadOp[op.getDevice()] = op;
-      GENERICML_ASSERT(deviceModuleIndex.contains(op.getDevice()))
+      ASSERT_STREAM(deviceModuleIndex.contains(op.getDevice()))
           << "Cannot have a ModuleLoadOp for a device: " << op.getDevice()
           << " without a corresponding RuntimeCreateOp";
       deviceModuleIndex[op.getDevice()]++;
@@ -228,7 +228,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
           if (isa<MGP::ContextType>(arg.getType()))
             executeContext = arg;
         }
-        GENERICML_ASSERT(executeContext)
+        ASSERT_STREAM(executeContext)
             << "Cannot find execute context in bounding region of "
                "generic.execute";
       }

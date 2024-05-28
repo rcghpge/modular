@@ -65,7 +65,7 @@ StringAttr getSummaryString(Operation *op) {
 }
 
 StringAttr getSummaryString(ArrayRef<Operation *> ops) {
-  GENERICML_ASSERT(!ops.empty());
+  ASSERT_STREAM(!ops.empty());
 
   if (ops.size() == 1)
     return getSummaryString(ops.front());
@@ -128,7 +128,7 @@ SmallVector<Value> inlineInvoke(MOGG::LambdaInvokeOp invokeOp,
   for (Operation &op : invokeTarget.getBody().front()) {
     // Don't add the terminator obviously
     if (isa<MOGG::OutputOp>(op)) {
-      GENERICML_ASSERT(invokeOp->getNumResults() == op.getNumOperands())
+      ASSERT_STREAM(invokeOp->getNumResults() == op.getNumOperands())
           << "[LAMBDA_INLINE] Return doesn't have same number of results as "
              "caller.";
       if (invokeOp.use_empty())
@@ -310,7 +310,7 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
     MOGG::remapTypesAndAttrs(kernelOp, nameToDecl);
 
     auto asKernelOp = dyn_cast<KernelOp>(kernelOp);
-    GENERICML_ASSERT(asKernelOp);
+    ASSERT_STREAM(asKernelOp);
     // Rename lambdas if they exist and they were renamed.
     for (uint64_t i = 0; i < asKernelOp->getNumOperands(); ++i) {
       if (auto lambdaNameAttr = asKernelOp.getInputFusionInterfaceAt(i)) {

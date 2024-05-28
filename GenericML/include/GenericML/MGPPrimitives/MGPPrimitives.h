@@ -60,14 +60,14 @@ struct CPURuntime : public ReferenceCounted<CPURuntime> {
   /// Returns the compiled kernel at the given module and kernel indexes.
   GML::CompiledKernelFn *getKernel(size_t moduleIndex,
                                    size_t kernelIndex) const {
-    GENERICML_ASSERT(moduleIndex < modules.size())
+    ASSERT_STREAM(moduleIndex < modules.size())
         << "invalid module index " << moduleIndex;
     return modules[moduleIndex]->getKernel(kernelIndex);
   }
   /// Returns the compiled kernelAsyncABI at the given index.
   GML::CompiledKernelAsyncABIFn *getKernelAsyncABI(size_t moduleIndex,
                                                    size_t kernelIndex) const {
-    GENERICML_ASSERT(moduleIndex < modules.size())
+    ASSERT_STREAM(moduleIndex < modules.size())
         << "invalid module index " << moduleIndex;
     return modules[moduleIndex]->getKernelAsyncABI(kernelIndex);
   }

@@ -737,9 +737,9 @@ class ExecInvariantCodeMotionPass
         operationIndex->printV(llvm::dbgs(), op);
         llvm::dbgs() << "\n";
       });
-      GENERICML_ASSERT(!unliftableOps.contains(op))
+      ASSERT_STREAM(!unliftableOps.contains(op))
           << "attempting to clone an op (" << *op << ") which is unliftable";
-      GENERICML_ASSERT(isRecomputableOp(op))
+      ASSERT_STREAM(isRecomputableOp(op))
           << "attempting to clone an op (" << *op
           << ") which is not recomputable";
 
@@ -813,7 +813,7 @@ class ExecInvariantCodeMotionPass
               // We could deal with this properly by cloning the parent or just
               // moving the trivial child anyways, but since very few ops are
               // trivial anyways it won't happen often.
-              GENERICML_ASSERT(!isOpOperandUnliftable(use))
+              ASSERT_STREAM(!isOpOperandUnliftable(use))
                   << "attempting to lift buffer (" << *op
                   << ") which will be further mutated "
                      "in the 'execute' block";
@@ -863,7 +863,7 @@ class ExecInvariantCodeMotionPass
         }
 
       } else {
-        GENERICML_ASSERT(isRecomputableOp(op))
+        ASSERT_STREAM(isRecomputableOp(op))
             << "attempting to lift an op (" << *op
             << ") which is neither a liftable chain or "
                "buffer op, nor a recomputable op";
@@ -909,8 +909,8 @@ class ExecInvariantCodeMotionPass
   }
 
   void runOnOperation() override {
-    GENERICML_ASSERT(!initState && !executeState && !valueIndex &&
-                     !operandIndex && !operationIndex && !builderContext);
+    ASSERT_STREAM(!initState && !executeState && !valueIndex && !operandIndex &&
+                  !operationIndex && !builderContext);
     ModelOp modelOp = getOperation();
     InitState theInitState(modelOp.getContext(), modelOp.getInitBlock());
     initState = &theInitState;

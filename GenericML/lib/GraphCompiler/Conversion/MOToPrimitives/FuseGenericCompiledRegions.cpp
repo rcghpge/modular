@@ -36,7 +36,7 @@ namespace {
 template <bool allowDuplication>
 static void fuseCompiledRegionsAndReplaceUses(
     const SmallVector<Operation *> &compiledRegionOpsToFuseTogether) {
-  GENERICML_ASSERT(llvm::all_of(compiledRegionOpsToFuseTogether, [](auto op) {
+  ASSERT_STREAM(llvm::all_of(compiledRegionOpsToFuseTogether, [](auto op) {
     return isa<MOGG::GenericCompiledRegionOp>(op);
   }));
 
@@ -101,11 +101,10 @@ static void fuseCompiledRegionsAndReplaceUses(
       llvm::all_of(compiledRegionOpsToFuseTogether, [&](auto region) {
         return cast<MOGG::GenericCompiledRegionOp>(region).getCanDuplicate();
       });
-  GENERICML_ASSERT(
-      llvm::all_of(compiledRegionOpsToFuseTogether, [&](auto region) {
-        return cast<MOGG::GenericCompiledRegionOp>(region).getIsKGEN().value_or(
-                   false) == firstRegionOp.getIsKGEN().value_or(false);
-      }));
+  ASSERT_STREAM(llvm::all_of(compiledRegionOpsToFuseTogether, [&](auto region) {
+    return cast<MOGG::GenericCompiledRegionOp>(region).getIsKGEN().value_or(
+               false) == firstRegionOp.getIsKGEN().value_or(false);
+  }));
 
   auto ctx = firstRegionOp->getContext();
   OpBuilder builder(ctx);
@@ -172,7 +171,7 @@ static void fuseCompiledRegionsAndReplaceUses(
     }
   }
 
-  GENERICML_ASSERT(valuesToOutput.size() == resultsThatShouldBeReplaced.size());
+  ASSERT_STREAM(valuesToOutput.size() == resultsThatShouldBeReplaced.size());
 
   // Creating the output op and replacing outside SSA values.
   builder.create<MOGG::OutputOp>(loc, valuesToOutput);
@@ -198,7 +197,7 @@ constexpr size_t kMaxAssertOpsFused = 100;
 //   1. mgp.assertions (which cause nesting) exceeds 150
 static SmallVector<SmallVector<Operation *>> splitSubGraphFusionByNumOps(
     const SmallVector<Operation *> &compiledRegionOpsToFuseTogether) {
-  GENERICML_ASSERT(llvm::all_of(compiledRegionOpsToFuseTogether, [](auto op) {
+  ASSERT_STREAM(llvm::all_of(compiledRegionOpsToFuseTogether, [](auto op) {
     return isa<MOGG::GenericCompiledRegionOp>(op);
   }));
   unsigned int numAssertOpsFused = 0;

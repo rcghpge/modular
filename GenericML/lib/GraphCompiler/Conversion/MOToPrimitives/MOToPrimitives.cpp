@@ -274,7 +274,7 @@ LogicalResult MOGraphLowering::createModelOp() {
       graph->getAttrOfType<ArrayAttr>(kMgpModelArgumentNames);
   ArrayAttr resultNamesAttr =
       graph->getAttrOfType<ArrayAttr>(kMgpModelResultNames);
-  GENERICML_ASSERT((argNamesAttr == nullptr) == (resultNamesAttr == nullptr))
+  ASSERT_STREAM((argNamesAttr == nullptr) == (resultNamesAttr == nullptr))
       << "expected either both or neither of the `argument_names` and "
          "`result_names` attributes.";
   if (argNamesAttr) {
@@ -339,7 +339,7 @@ LogicalResult MOGraphLowering::createModelOp() {
 MGP::ListType MOGraphLowering::lowerListType(MO::ListType listTy) {
   auto outputTensorTy = dyn_cast<MO::TensorType>(listTy.getElementType());
   // TODO(#29947): Support other element types
-  GENERICML_ASSERT(outputTensorTy) << "only support lowering list of tensors";
+  ASSERT_STREAM(outputTensorTy) << "only support lowering list of tensors";
 
   MLIRContext *ctx = listTy.getContext();
   MGP::TensorSpecType outputTensorSpecTy =
@@ -481,7 +481,7 @@ MOGraphLowering::lowerParamToValue(Region *parentRegion,
 
 LogicalResult
 MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
-  GENERICML_ASSERT(MO::isOnHost(toTensorOp))
+  ASSERT_STREAM(MO::isOnHost(toTensorOp))
       << "mo.index.to_tensor is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, toTensorOp);
 
@@ -493,7 +493,7 @@ MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
   auto &outputStorage = (*loweredOutputStorageOr)[0];
   auto bufType =
       dyn_cast<MGP::DeviceBufferType>(outputStorage.buffer.getType());
-  GENERICML_ASSERT(bufType && bufType.getDevice().getLabel() == "cpu")
+  ASSERT_STREAM(bufType && bufType.getDevice().getLabel() == "cpu")
       << "expecting !mgp.buffer on host but it is on " << bufType.getDevice();
 
   // Fill the buffer with the index value.
@@ -511,7 +511,7 @@ MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
 
 LogicalResult
 MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
-  GENERICML_ASSERT(MO::isOnHost(toTensorOp))
+  ASSERT_STREAM(MO::isOnHost(toTensorOp))
       << "mo.shape.to_tensor is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, toTensorOp);
 
@@ -793,7 +793,7 @@ LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
 }
 
 LogicalResult MOGraphLowering::lowerListAppend(MO::ListAppendOp listAppendOp) {
-  GENERICML_ASSERT(MO::isOnHost(listAppendOp))
+  ASSERT_STREAM(MO::isOnHost(listAppendOp))
       << "mo.list.append is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, listAppendOp);
 
@@ -815,7 +815,7 @@ LogicalResult MOGraphLowering::lowerListAppend(MO::ListAppendOp listAppendOp) {
 }
 
 LogicalResult MOGraphLowering::lowerListConcat(MO::ListConcatOp listConcatOp) {
-  GENERICML_ASSERT(MO::isOnHost(listConcatOp))
+  ASSERT_STREAM(MO::isOnHost(listConcatOp))
       << "mo.list.concat is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, listConcatOp);
 
@@ -835,7 +835,7 @@ LogicalResult MOGraphLowering::lowerListConcat(MO::ListConcatOp listConcatOp) {
 }
 
 LogicalResult MOGraphLowering::lowerListCreate(MO::ListCreateOp listCreateOp) {
-  GENERICML_ASSERT(MO::isOnHost(listCreateOp))
+  ASSERT_STREAM(MO::isOnHost(listCreateOp))
       << "mo.list.create is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, listCreateOp);
 
@@ -857,7 +857,7 @@ LogicalResult MOGraphLowering::lowerListCreate(MO::ListCreateOp listCreateOp) {
 }
 
 LogicalResult MOGraphLowering::lowerListGet(MO::ListGetOp listGetOp) {
-  GENERICML_ASSERT(MO::isOnHost(listGetOp)) << "mo.list.get is for host only";
+  ASSERT_STREAM(MO::isOnHost(listGetOp)) << "mo.list.get is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, listGetOp);
 
   // Collect lowered inputs.
@@ -875,7 +875,7 @@ LogicalResult MOGraphLowering::lowerListGet(MO::ListGetOp listGetOp) {
 }
 
 LogicalResult MOGraphLowering::lowerListInsert(MO::ListInsertOp listInsertOp) {
-  GENERICML_ASSERT(MO::isOnHost(listInsertOp))
+  ASSERT_STREAM(MO::isOnHost(listInsertOp))
       << "mo.list.insert is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, listInsertOp);
 
@@ -899,8 +899,7 @@ LogicalResult MOGraphLowering::lowerListInsert(MO::ListInsertOp listInsertOp) {
 }
 
 LogicalResult MOGraphLowering::lowerListSlice(MO::ListSliceOp listSliceOp) {
-  GENERICML_ASSERT(MO::isOnHost(listSliceOp))
-      << "mo.list.slice is for host only";
+  ASSERT_STREAM(MO::isOnHost(listSliceOp)) << "mo.list.slice is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, listSliceOp);
 
   Value mgpInputList =
@@ -948,7 +947,7 @@ LogicalResult MOGraphLowering::lowerGuard(MO::GuardOp guardOp) {
 }
 
 LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
-  GENERICML_ASSERT(MO::isOnHost(ifOp)) << "mo.if is for host only";
+  ASSERT_STREAM(MO::isOnHost(ifOp)) << "mo.if is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, ifOp);
 
   // We'll need to thread the current 'execute' chain through the if
@@ -1019,7 +1018,7 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
 }
 
 LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
-  GENERICML_ASSERT(MO::isOnHost(whileOp)) << "mo.while is for host only";
+  ASSERT_STREAM(MO::isOnHost(whileOp)) << "mo.while is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, whileOp);
 
   // We'll need to thread the current 'execute' chain through the while loop's
@@ -1104,13 +1103,13 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   {
     auto origYieldOp =
         cast<MO::YieldOp>(whileOp.getCondRegion().front().getTerminator());
-    GENERICML_ASSERT(origYieldOp->getNumOperands() == 1); // condition
+    ASSERT_STREAM(origYieldOp->getNumOperands() == 1); // condition
     Type condMoTensorType = origYieldOp.getOperand(0).getType();
 
     auto loweredCondOutputOp = cast<MEF::OutputOp>(
         loweredWhileOp.getCondRegion().front().getTerminator());
-    GENERICML_ASSERT(loweredCondOutputOp->getNumOperands() ==
-                     2); // chain, condition
+    ASSERT_STREAM(loweredCondOutputOp->getNumOperands() ==
+                  2); // chain, condition
     Value loweredOutputChain = loweredCondOutputOp->getOperand(0);
     Value loweredCondTensor = loweredCondOutputOp->getOperand(1);
 
@@ -1140,8 +1139,7 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   }
 
   // Capture the lowered outputs.
-  GENERICML_ASSERT(loweredWhileOp.getNumResults() ==
-                   1 + whileOp.getNumResults());
+  ASSERT_STREAM(loweredWhileOp.getNumResults() == 1 + whileOp.getNumResults());
   loweringState.setCurrentExecuteChain(loweredWhileOp.getResult(0));
   loweringState.setRootExecuteChain(rootChain);
   for (auto [origResult, loweredResult] : llvm::zip(

@@ -1267,8 +1267,8 @@ public:
         curProducingOp, allowUnsafeBCast, allowInternalReshape,
         debugMHAPattern);
 
-    GENERICML_ASSERT(matcher.causalMask.isError() ||
-                     matcher.explicitMask.isError())
+    ASSERT_STREAM(matcher.causalMask.isError() ||
+                  matcher.explicitMask.isError())
         << "[MultiHeadAttentionMaskingMuxMatcher] expect only a single mask "
            "pattern to initial match.";
 

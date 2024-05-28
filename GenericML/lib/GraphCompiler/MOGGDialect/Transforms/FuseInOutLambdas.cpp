@@ -438,8 +438,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
                      builder.clone(op, oldToNew)->getResults());
       }
     }
-    GENERICML_ASSERT(newOutsToKgenOp);
-    GENERICML_ASSERT(newOuts);
+    ASSERT_STREAM(newOutsToKgenOp);
+    ASSERT_STREAM(newOuts);
 
     // Step 3: Clone all input lamba functions in the user kernel into the src
     // kernel. For the fusion input lambda, we treat it specially by nesting it
@@ -491,13 +491,13 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     KGEN::ReturnOp returnOp =
         *newInputLambdaOp.getOps<KGEN::ReturnOp>().begin();
-    GENERICML_ASSERT(returnOp);
+    ASSERT_STREAM(returnOp);
     builder.setInsertionPoint(returnOp);
 
     KGEN::RebindOp rebind = builder.create<KGEN::RebindOp>(
         newInputLambdaOp->getLoc(), bindType, originOutValue);
     KGEN::CallOp simdLoadOp = *newInputLambdaOp.getOps<KGEN::CallOp>().begin();
-    GENERICML_ASSERT(simdLoadOp);
+    ASSERT_STREAM(simdLoadOp);
     simdLoadOp->replaceAllUsesWith(rebind);
     simdLoadOp->erase();
 
@@ -512,7 +512,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // It is guaranteed that the user kernel is an elementwise op.
     auto elementwiseOp = userToFuseIn.findLambda(elementwiseLambdaName);
     KGEN::CallOp outlinedCallOp = *elementwiseOp.getOps<KGEN::CallOp>().begin();
-    GENERICML_ASSERT(outlinedCallOp);
+    ASSERT_STREAM(outlinedCallOp);
 
     auto userOutputLambdaOp = cast<KGEN::ParamDeclareRegionOp>(
         userSymTable.lookup(userOutputLambdaName));
@@ -851,7 +851,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         break;
       }
     }
-    GENERICML_ASSERT(oldOutputOp);
+    ASSERT_STREAM(oldOutputOp);
 
     // Finding the new placeholder that was inserted earlier.
     MOGG::OutputPlaceholdersOp newPlaceholder = nullptr;
@@ -861,8 +861,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         break;
       }
     }
-    GENERICML_ASSERT((isMatmulOrConvolution && !isMixedPrecision) ||
-                     newPlaceholder);
+    ASSERT_STREAM((isMatmulOrConvolution && !isMixedPrecision) ||
+                  newPlaceholder);
 
     Location loc = kernelToFuseInto.getLoc();
     // TODO(#22349)
@@ -967,7 +967,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
           ;
         }
       }
-      GENERICML_ASSERT(beforeDevice == MO::getDeviceOrDefault(kernelToFuseInto))
+      ASSERT_STREAM(beforeDevice == MO::getDeviceOrDefault(kernelToFuseInto))
           << "Must be same device after output lambda fusion";
 
       auto inputLambdas = kernelToFuseInto.getInputFusionInterface();
@@ -985,7 +985,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
                               inputIdx, kernelOpsToErase);
         }
       }
-      GENERICML_ASSERT(beforeDevice == MO::getDeviceOrDefault(kernelToFuseInto))
+      ASSERT_STREAM(beforeDevice == MO::getDeviceOrDefault(kernelToFuseInto))
           << "Must be same device after input lambda fusion";
     }
 

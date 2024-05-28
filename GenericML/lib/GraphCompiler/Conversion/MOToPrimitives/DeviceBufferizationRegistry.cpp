@@ -41,7 +41,7 @@ CompileDiagnosticOrSuccess MGPDeviceSpecificDialect::makeBufferBuilder(
   } else {
     hostBufferBuilder = static_cast<MGP::MGPBufferBuilder *>(
         loweringState.getBufferBuilder(hostDevice));
-    GENERICML_ASSERT(hostBufferBuilder)
+    ASSERT_STREAM(hostBufferBuilder)
         << "no buffer builder has been created for the host device '"
         << hostDevice << "'";
   }
@@ -72,8 +72,8 @@ void DeviceBufferizationRegistry::add(
     std::unique_ptr<DeviceSpecificDialect> deviceSpecificDialect) {
   std::lock_guard<std::mutex> guard(mu);
   bool inserted = map.insert({label, std::move(deviceSpecificDialect)}).second;
-  GENERICML_ASSERT(inserted)
-      << "builder for label " << label << " has already been registered";
+  ASSERT_STREAM(inserted) << "builder for label " << label
+                          << " has already been registered";
 }
 
 void DeviceBufferizationRegistry::callAllRegisterDialects(

@@ -162,7 +162,7 @@ void ParametricTopologyAnalysis::computeTopologicalSortingImpl(
       ++nextScheduledOp;
     }
 
-    GENERICML_ASSERT(scheduledAtLeastOnce)
+    ASSERT_STREAM(scheduledAtLeastOnce)
         << "No op was scheduled, potential cycle in the graph";
   }
 }
@@ -216,7 +216,7 @@ void ParametricTopologyAnalysis::topologicallySortFirstLevelOpsWithin(
       op.moveBefore(block, nextScheduledOp);
     }
 
-    GENERICML_ASSERT(scheduledAtLeastOnce)
+    ASSERT_STREAM(scheduledAtLeastOnce)
         << "No op was scheduled, potential cycle in the graph";
   }
 }

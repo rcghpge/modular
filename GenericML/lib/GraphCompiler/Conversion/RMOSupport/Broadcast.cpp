@@ -23,7 +23,7 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
                                   TensorValue to) {
   Type elemType = builder.getIntegerType(64, /*isSigned=*/true);
 
-  GENERICML_ASSERT(reshapeType.hasRank())
+  ASSERT_STREAM(reshapeType.hasRank())
       << "reshapeType needs to be a statically ranked tensor type but it is "
       << reshapeType;
   auto type = TensorType::get({(int64_t)reshapeType.getRank()}, elemType);
@@ -88,13 +88,13 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
 
   // Get the shapes of the inputs at runtime
   TensorType xType = x.getType();
-  GENERICML_ASSERT(xType.hasRank());
+  ASSERT_STREAM(xType.hasRank());
 
   auto xShape = builder.create<RMO::MOShapeOfOp>(
       x.getLoc(), TensorType::get({(int64_t)xType.getRank()}, intType), x);
 
   TensorType yType = y.getType();
-  GENERICML_ASSERT(yType.hasRank());
+  ASSERT_STREAM(yType.hasRank());
   auto yShape = builder.create<RMO::MOShapeOfOp>(
       y.getLoc(), TensorType::get({(int64_t)yType.getRank()}, intType), y);
 
@@ -121,17 +121,17 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
 
   // Get the shapes of the inputs at runtime
   TensorType xType = x.getType();
-  GENERICML_ASSERT(xType.hasRank());
+  ASSERT_STREAM(xType.hasRank());
   auto xShape = builder.create<RMO::MOShapeOfOp>(
       x.getLoc(), TensorType::get({(int64_t)xType.getRank()}, intType), x);
 
   TensorType yType = y.getType();
-  GENERICML_ASSERT(yType.hasRank());
+  ASSERT_STREAM(yType.hasRank());
   auto yShape = builder.create<RMO::MOShapeOfOp>(
       y.getLoc(), TensorType::get({(int64_t)yType.getRank()}, intType), y);
 
   TensorType zType = z.getType();
-  GENERICML_ASSERT(zType.hasRank());
+  ASSERT_STREAM(zType.hasRank());
   auto zShape = builder.create<RMO::MOShapeOfOp>(
       z.getLoc(), TensorType::get({(int64_t)zType.getRank()}, intType), z);
 
@@ -164,13 +164,13 @@ reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
   if ((xShape == yShape) && (xShape.hasStaticShape()))
     return {x, y};
 
-  GENERICML_ASSERT(xShape.hasRank() && yShape.hasRank())
+  ASSERT_STREAM(xShape.hasRank() && yShape.hasRank())
       << "broadcasting does not support dynamic rank";
 
   ErrorOr<ShapeAttr> errorOrBcastCommonShape = ShapeAttr::broadcastShapes(
       xShape.getTypedShapeAttr(), yShape.getTypedShapeAttr());
 
-  GENERICML_ASSERT(!errorOrBcastCommonShape.isError())
+  ASSERT_STREAM(!errorOrBcastCommonShape.isError())
       << "the shapes are incompatible: " << errorOrBcastCommonShape.takeError();
 
   ShapeAttr bcastCommonShape = *errorOrBcastCommonShape;
@@ -195,12 +195,12 @@ reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
   if ((xShape == yShape) && (yShape == zShape) && (xShape.hasStaticShape()))
     return {x, y, z};
 
-  GENERICML_ASSERT(xShape.hasRank() && yShape.hasRank() && zShape.hasRank())
+  ASSERT_STREAM(xShape.hasRank() && yShape.hasRank() && zShape.hasRank())
       << "broadcasting does not support dynamic rank";
 
   ErrorOr<ShapeAttr> errorOrXYBcastCommonShape = ShapeAttr::broadcastShapes(
       xShape.getTypedShapeAttr(), yShape.getTypedShapeAttr());
-  GENERICML_ASSERT(!errorOrXYBcastCommonShape.isError())
+  ASSERT_STREAM(!errorOrXYBcastCommonShape.isError())
       << "the shapes are incompatible: "
       << errorOrXYBcastCommonShape.takeError();
   ShapeAttr xyCommonShape = *errorOrXYBcastCommonShape;
@@ -208,7 +208,7 @@ reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
   ErrorOr<ShapeAttr> errorOrBcastCommonShape = ShapeAttr::broadcastShapes(
       *errorOrXYBcastCommonShape, zShape.getTypedShapeAttr());
 
-  GENERICML_ASSERT(!errorOrBcastCommonShape.isError())
+  ASSERT_STREAM(!errorOrBcastCommonShape.isError())
       << "the shapes are incompatible: " << errorOrBcastCommonShape.takeError();
 
   ShapeAttr bcastCommonShape = *errorOrBcastCommonShape;
@@ -231,7 +231,7 @@ TensorValue broadcastTo(OpBuilder &builder, Location loc, TensorValue x,
                         TensorValue y) {
   auto [newX, newY] = reifyImplicitBroadcasting(builder, loc, x, y);
 
-  GENERICML_ASSERT(newY.getType() == unifyShapeType(y.getType()))
+  ASSERT_STREAM(newY.getType() == unifyShapeType(y.getType()))
       << "don't use this helper unless you can guarantee x broadcasts to y";
 
   return newX;

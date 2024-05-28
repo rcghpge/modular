@@ -544,7 +544,7 @@ struct constant_op_binder {
     llvm::SmallVector<mlir::OpFoldResult, 1> foldedOp;
     mlir::LogicalResult result = op->fold(/*operands=*/std::nullopt, foldedOp);
     (void)result;
-    GENERICML_ASSERT(succeeded(result))
+    ASSERT_STREAM(succeeded(result))
         << "expected ConstantLike op to be foldable";
 
     if (auto attr =
@@ -715,7 +715,7 @@ inline detail::constant_op_binder<AttrT> m_Constant(AttrT *bind_value) {
 /// Entry point for matching a pattern over a Value.
 template <typename Pattern>
 inline bool matchPattern(mlir::Value value, const Pattern &pattern) {
-  GENERICML_ASSERT(value);
+  ASSERT_STREAM(value);
   // TODO: handle other cases
   if (auto *op = value.getDefiningOp())
     return const_cast<Pattern &>(pattern).match(op);
@@ -725,7 +725,7 @@ inline bool matchPattern(mlir::Value value, const Pattern &pattern) {
 /// Entry point for matching a pattern over an Operation.
 template <typename Pattern>
 inline bool matchPattern(mlir::Operation *op, const Pattern &pattern) {
-  GENERICML_ASSERT(op);
+  ASSERT_STREAM(op);
   return const_cast<Pattern &>(pattern).match(op);
 }
 

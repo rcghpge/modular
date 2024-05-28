@@ -59,7 +59,7 @@ public:
                                     MO::ListType type) -> std::optional<Type> {
       auto tensorTy = dyn_cast<MO::TensorType>(type.getElementType());
       // TODO(#29947): Support other element types
-      GENERICML_ASSERT(tensorTy) << "only support lowering list of tensors";
+      ASSERT_STREAM(tensorTy) << "only support lowering list of tensors";
 
       MLIRContext *ctx = type.getContext();
       MGP::TensorSpecType tensorSpecTy = MGP::createCpuTensorSpecType(tensorTy);
@@ -169,7 +169,7 @@ public:
   // Initializes the client state, only to be called once.
   template <typename T>
   void initClientState(T &&initState) {
-    GENERICML_ASSERT(!hasClientState());
+    ASSERT_STREAM(!hasClientState());
     clientState = std::make_unique<T>(std::forward<T>(initState));
   }
 
@@ -282,7 +282,7 @@ public:
 
   /// Returns the check runtime op.
   MGP::CheckRuntimeOp getCheckRuntimeOp() {
-    GENERICML_ASSERT(init.checkRuntimeOp)
+    ASSERT_STREAM(init.checkRuntimeOp)
         << "no mgp.check.runtime op has been emitted";
     return init.checkRuntimeOp;
   }

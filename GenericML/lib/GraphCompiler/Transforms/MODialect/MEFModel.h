@@ -43,7 +43,7 @@ public:
                ArrayRef<QuantTensorSpec> outputSpecs, EncodedLocation location)
       : Model(inputSpecs, outputSpecs), name(std::move(name)), initFn(initFn),
         executeFn(executeFn), location(std::move(location)) {
-    GENERICML_ASSERT(frameworkLabel == CompiledFrameworkLabel::kModularModel)
+    ASSERT_STREAM(frameworkLabel == CompiledFrameworkLabel::kModularModel)
         << "Expected " << CompiledFrameworkLabel::kModularModel
         << " label for model, but got " << frameworkLabel.getAsString();
   }
@@ -57,7 +57,7 @@ public:
       : Model(inputSpecs, outputSpecs, inputNames, outputNames),
         name(std::move(name)), initFn(initFn), executeFn(executeFn),
         location(std::move(location)) {
-    GENERICML_ASSERT(frameworkLabel == CompiledFrameworkLabel::kModularModel)
+    ASSERT_STREAM(frameworkLabel == CompiledFrameworkLabel::kModularModel)
         << "Expected " << CompiledFrameworkLabel::kModularModel
         << " label for model, but got " << frameworkLabel.getAsString();
   }

@@ -21,7 +21,7 @@ static size_t pickSampleCount(const QueryGenerator &qgen) {
   ssize_t qgenQueries = qgen.getNumQueries();
   if (qgenQueries == -1)
     return kDefaultSampleCount;
-  GENERICML_ASSERT(qgenQueries >= 0);
+  ASSERT_STREAM(qgenQueries >= 0);
   return static_cast<size_t>(qgenQueries);
 }
 
@@ -67,7 +67,7 @@ void QuerySampleLibrary::UnloadSamplesFromRam(
 
 void QuerySampleLibrary::loadSample(mlperf::QuerySampleIndex index,
                                     M_Status *status) {
-  GENERICML_ASSERT(index < sampleCount);
+  ASSERT_STREAM(index < sampleCount);
   auto queryOr = queryGenerator->generateQuery(runtimeContext, index);
   if (queryOr.isError()) {
     llvm::errs() << "Error loading sample " << index << ": "
@@ -90,7 +90,7 @@ void QuerySampleLibrary::loadSample(mlperf::QuerySampleIndex index,
 }
 
 void QuerySampleLibrary::unloadSample(mlperf::QuerySampleIndex index) {
-  GENERICML_ASSERT(index < sampleCount);
+  ASSERT_STREAM(index < sampleCount);
   delete loadedSamples[index].exchange(nullptr);
 }
 

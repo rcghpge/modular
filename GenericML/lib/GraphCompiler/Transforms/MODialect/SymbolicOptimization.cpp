@@ -193,7 +193,7 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     // Make sure we don't drop parameter declarations from the original
     // argNonzero.
     ArrayRef<ParamDeclAttr> oldDecls = argNonzeroOp.getOutputParamDecls();
-    GENERICML_ASSERT(oldDecls.size() == 1)
+    ASSERT_STREAM(oldDecls.size() == 1)
         << "mo.argNonzero declares more than one new param";
     argNonzeroOp.setOutputParamDecls({});
     auto numResAttr = KGEN::ParamOperatorAttr::get(
@@ -1881,7 +1881,7 @@ struct SplitAndSqueezesPattern
     // are compatible with the new result types.
     // TODO(#13348) remove once we have shape inference for SplitOp
     for (Value res : newSplitOp.getResults()) {
-      GENERICML_ASSERT(res.hasOneUse()) << "guards should've enforced this";
+      ASSERT_STREAM(res.hasOneUse()) << "guards should've enforced this";
       if (auto rebindOp = dyn_cast<RebindOp>(*res.user_begin())) {
         TensorType oldResTy = rebindOp.getResult().getType();
         TensorType newResTy = permuteDims(oldResTy, permVec);
@@ -2883,7 +2883,7 @@ struct SinkSplitThroughElementwisePattern
                 op, "Input to the static broadcast must be a constant");
           }
         }
-        GENERICML_ASSERT(constantOp);
+        ASSERT_STREAM(constantOp);
 
         constantsToConcatenate.push_back(constantOp.getResult());
         auto constantOpType = llvm::cast<TensorType>(constantOp.getType());
@@ -4217,7 +4217,7 @@ struct BackwardMathematicalCanonicalizationDivAndPowToPowByNegativeOneOrTwo
       return failure();
     }
 
-    GENERICML_ASSERT(one || two);
+    ASSERT_STREAM(one || two);
 
     auto tensorType = divOp.getType();
     auto loc = divOp->getLoc();

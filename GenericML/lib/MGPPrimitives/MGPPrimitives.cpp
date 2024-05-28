@@ -566,7 +566,7 @@ static void mgp_guard(Chain inChain, RemainingArguments inputs,
 //===----------------------------------------------------------------------===//
 
 static void mgp_model() {
-  GENERICML_ASSERT(false) << "mgp.model should never be invoked";
+  ASSERT_STREAM(false) << "mgp.model should never be invoked";
 }
 
 //===----------------------------------------------------------------------===//

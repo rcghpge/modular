@@ -333,9 +333,9 @@ int main(int argc, char **argv) {
 
     // Otherwise we must be getting op-level information about the model or
     // executing the model.
-    GENERICML_ASSERT((options.command == DriverCommand::printMetadata ||
-                      options.command == DriverCommand::printConstantMetadata ||
-                      options.command == DriverCommand::execute))
+    ASSERT_STREAM((options.command == DriverCommand::printMetadata ||
+                   options.command == DriverCommand::printConstantMetadata ||
+                   options.command == DriverCommand::execute))
         << "unknown command ";
 
     auto binaryFileOr =

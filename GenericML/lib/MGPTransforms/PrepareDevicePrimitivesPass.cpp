@@ -34,8 +34,8 @@ class PrepareDevicePrimitivesPass
     OpBuilder builder(model.getContext());
     model.walk([&](Operation *origOp) {
       if (auto hasDeviceOp = dyn_cast<MGPHasDeviceOpInterface>(origOp)) {
-        GENERICML_ASSERT(!origOp->hasSuccessors());
-        GENERICML_ASSERT(origOp->getNumRegions() == 0);
+        ASSERT_STREAM(!origOp->hasSuccessors());
+        ASSERT_STREAM(origOp->getNumRegions() == 0);
         builder.setInsertionPoint(origOp);
         std::string newOpName = (Twine(origOp->getName().getStringRef()) + "." +
                                  hasDeviceOp.getDevice().getLabel())

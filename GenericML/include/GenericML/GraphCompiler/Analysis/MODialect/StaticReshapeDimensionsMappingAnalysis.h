@@ -55,7 +55,7 @@ public:
   // After   : [1, 2, 3, 2, 2]
   // Forward : [[], [1], [2], [3, 4]]
   inline const DimensionsMapping &forwardMapping() const {
-    GENERICML_ASSERT(isSupported);
+    ASSERT_STREAM(isSupported);
     return forward;
   }
 
@@ -65,7 +65,7 @@ public:
   // After    : [1, 2, 3, 2, 2]
   // Backward : [[], [1], [2], [3], [3]]
   inline const DimensionsMapping &backwardMapping() const {
-    GENERICML_ASSERT(isSupported);
+    ASSERT_STREAM(isSupported);
     return backward;
   }
 

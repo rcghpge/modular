@@ -1466,11 +1466,11 @@ materializeGatherNdShapeImpl(ArrayRef<TypedAttr> inputs,
   TypedAttr inputShape = inputs[0];
   TypedAttr indicesShape = inputs[1];
 
-  GENERICML_ASSERT(kgenParams)
+  ASSERT_STREAM(kgenParams)
       << "kgenParams must be available for split_ith_output_shape";
   auto intAttr = dyn_cast_or_null<IntegerAttr>(kgenParams.get("batch_dims"));
-  GENERICML_ASSERT(intAttr) << "kgenParams must contain an 'batch_dims' "
-                               "integer for gather_nd_shape";
+  ASSERT_STREAM(intAttr) << "kgenParams must contain an 'batch_dims' "
+                            "integer for gather_nd_shape";
 
   return materializeGatherNdShape(graphOp, loc, inputShape, indicesShape,
                                   intAttr.getInt());
@@ -1668,12 +1668,12 @@ materializeSplitIthOutputShapeImpl(ArrayRef<TypedAttr> inputs,
   TypedAttr splitSizes = inputs[1];
   TypedAttr axis = inputs[2];
 
-  GENERICML_ASSERT(kgenParams)
+  ASSERT_STREAM(kgenParams)
       << "kgenParams must be available for split_ith_output_shape";
 
   auto intAttr = dyn_cast_or_null<IntegerAttr>(kgenParams.get("output_idx"));
-  GENERICML_ASSERT(intAttr) << "kgenParams must contain an 'output_idx' "
-                               "integer for split_ith_output_shape";
+  ASSERT_STREAM(intAttr) << "kgenParams must contain an 'output_idx' "
+                            "integer for split_ith_output_shape";
 
   return materializeSplitIthOutputShape(graphOp, loc, inputShape, splitSizes,
                                         axis, intAttr.getInt());

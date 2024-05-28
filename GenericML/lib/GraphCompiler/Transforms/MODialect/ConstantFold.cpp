@@ -345,7 +345,7 @@ static RuntimeOutput extractRuntimeOutput(
     }
     return out;
   } else {
-    GENERICML_ASSERT(false) << "Unexpected GML type";
+    ASSERT_STREAM(false) << "Unexpected GML type";
   }
 }
 
@@ -393,7 +393,7 @@ executeModel(MLIRContext *ctx, const Model *model,
   MutableArrayRef<AnyAsyncValueRef> resultCopy(results.data(), results.size());
 
   const AnyAsyncValueRef &ch = resultCopy.front();
-  GENERICML_ASSERT(ch.isReady() && isa<Chain>(ch))
+  ASSERT_STREAM(ch.isReady() && isa<Chain>(ch))
       << "first result must be a ready chain";
   resultCopy = resultCopy.drop_front();
 
@@ -411,7 +411,7 @@ executeModel(MLIRContext *ctx, const Model *model,
           return LLCL::EncodedDiagnostic(tensorRef.takeDiagnostic());
 
         // Move output tensor into storage.
-        GENERICML_ASSERT(tensorRef.isReady())
+        ASSERT_STREAM(tensorRef.isReady())
             << "We already awaited, tensor should be ready";
         opTensors.push_back(
             extractRuntimeOutput(tensorRef, ctx, cachedConstants));
@@ -428,9 +428,9 @@ executeModel(MLIRContext *ctx, const Model *model,
       auto &tensor = resultCopy[outIdx];
       if (tensor.isError())
         return LLCL::EncodedDiagnostic(tensor.takeDiagnostic());
-      GENERICML_ASSERT(tensor.isReady())
+      ASSERT_STREAM(tensor.isReady())
           << "We already awaited, tensor should be ready";
-      GENERICML_ASSERT(tensor.isType<Tensor>())
+      ASSERT_STREAM(tensor.isType<Tensor>())
           << "Subgraph shape output should be a tensor";
       Tensor &t = tensor.get<Tensor>();
       params[paramName] = t.getBuffer<const int64_t>()[0];
@@ -540,7 +540,7 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
       for (auto user : result.getUsers())
         workQueue.push_back(user);
   }
-  GENERICML_ASSERT(iter < bound_for_maximum_iterations)
+  ASSERT_STREAM(iter < bound_for_maximum_iterations)
       << "Hit bound on maximum number of iterations for detecting constant "
          "subgraphs. Either this graph op is VERY large (in which case this "
          "bound should be increased), or else somehow there is infinite "
@@ -771,7 +771,7 @@ static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
         newResults.push_back(
             builder.create<ListCreateOp>(op->getLoc(), type, tensors));
       } else {
-        GENERICML_ASSERT(false)
+        ASSERT_STREAM(false)
             << "constants must be tensors or shapes but one is a "
             << opResult.getType();
       }
@@ -887,7 +887,7 @@ void ConstantFoldPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
 
   ContextRef maxContext = loadContext(ctx);
-  GENERICML_ASSERT(maxContext.getPointer() != nullptr)
+  ASSERT_STREAM(maxContext.getPointer() != nullptr)
       << "expected max context to be setup here";
   LLCL::Runtime *runtimeFromCtx = maxContext->get<Runtime>();
 
@@ -957,7 +957,7 @@ void ConstantFoldPass::runOnOperation() {
       for (const SubgraphsInfo &subgraphsInfo : subgraphReplacements) {
         const Model *model = modelsOr.get().models->getModelNamed(
             subgraphsInfo.constantSubgraphName);
-        GENERICML_ASSERT(model != nullptr)
+        ASSERT_STREAM(model != nullptr)
             << "Model should exist, make sure names above match.";
         LLCL::ErrorDiagnosticOr<ModelResult> valuesToTensorsOr =
             executeModel(ctx, model, subgraphsInfo);

@@ -59,7 +59,7 @@ OptionalParseResult M::MOSH::parseShapeAttrOrUnknown(AsmParser &p,
 }
 
 void M::MOSH::printShapeTypedAttr(AsmPrinter &p, TypedAttr shapeAttr) {
-  GENERICML_ASSERT(isa<ShapeType>(shapeAttr.getType()));
+  ASSERT_STREAM(isa<ShapeType>(shapeAttr.getType()));
   if (isa<KGEN::UnknownAttr>(shapeAttr)) {
     p << "?";
   } else if (auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(shapeAttr)) {
@@ -312,7 +312,7 @@ ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
   ArrayRef<TypedAttr> beforeDims = beforeShape.getValues();
   ArrayRef<TypedAttr> bcastedDims = bcastedShape.getValues();
 
-  GENERICML_ASSERT(beforeDims.size() <= bcastedDims.size())
+  ASSERT_STREAM(beforeDims.size() <= bcastedDims.size())
       << "Broadcasting can only increase rank but it is trying to decrease "
          "rank from "
       << beforeDims.size() << " to " << bcastedDims.size();

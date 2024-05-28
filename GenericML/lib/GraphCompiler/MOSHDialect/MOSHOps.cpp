@@ -86,7 +86,7 @@ void ParamToValueOp::walkDefinitions(
 // Try to apply `op`'s folder to its input attributes (if any), and return the
 // result attribute if successful, else return an error.
 static ErrorOr<TypedAttr> tryFoldOp(Operation *op) {
-  GENERICML_ASSERT(isa<MOSHDialect>(op->getDialect())) << "expected MOSH op";
+  ASSERT_STREAM(isa<MOSHDialect>(op->getDialect())) << "expected MOSH op";
 
   // Turn inputs into attributes, this works because we know as far as mosh ops
   // are concerned, the inputs are either parametric shape/dimension or index
@@ -121,7 +121,7 @@ static ErrorOr<TypedAttr> tryFoldOp(Operation *op) {
 // convert the result to a `ParamToValueOp` if possible.
 static LogicalResult genericCanonicalize(Operation *op,
                                          PatternRewriter &rewriter) {
-  GENERICML_ASSERT(isa<MOSHDialect>(op->getDialect())) << "expected MOSH op";
+  ASSERT_STREAM(isa<MOSHDialect>(op->getDialect())) << "expected MOSH op";
   Location loc = op->getLoc();
 
   // Apply op's folder
@@ -235,7 +235,7 @@ LogicalResult ConcatOp::canonicalize(ConcatOp op, PatternRewriter &rewriter) {
 }
 
 TypedAttr EqualOp::asExpression(ShapeAttr shape1, ShapeAttr shape2) {
-  GENERICML_ASSERT(shape1.getRank() == shape2.getRank())
+  ASSERT_STREAM(shape1.getRank() == shape2.getRank())
       << "Shapes must have same rank but they are " << shape1.getRank()
       << " and " << shape2.getRank();
   SmallVector<TypedAttr> andOperands;
@@ -282,8 +282,8 @@ OpFoldResult GetDimOp::fold(FoldAdaptor adaptor) {
     auto normalizedAxis =
         normalizeAxis(dim.getValue().getSExtValue(), input.getRank());
     ArrayRef<TypedAttr> values = input.getValues();
-    GENERICML_ASSERT((normalizedAxis >= 0) &&
-                     (normalizedAxis < static_cast<int64_t>(values.size())))
+    ASSERT_STREAM((normalizedAxis >= 0) &&
+                  (normalizedAxis < static_cast<int64_t>(values.size())))
     "Normalized axis must be in range [0, " << values.size() << "] but it is "
                                             << normalizedAxis;
     return values[normalizedAxis];
@@ -333,8 +333,8 @@ OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
 
   // Ensure that the indices we use to create slicedDims are valid.
   if (start > end) {
-    GENERICML_ASSERT(false) << "start index (" << start
-                            << ") must be less than end index (" << end << ")";
+    ASSERT_STREAM(false) << "start index (" << start
+                         << ") must be less than end index (" << end << ")";
     return {};
   }
 

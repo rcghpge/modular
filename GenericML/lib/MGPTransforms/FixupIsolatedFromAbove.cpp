@@ -92,29 +92,29 @@ static void fixup(OpBuilder &builder, Block *inBlock,
         // Rewrite existing operands (possibly excluding last).
         size_t n = inOutputOp->getNumOperands();
         if (beforeLastOutput) {
-          GENERICML_ASSERT(n > 0);
+          ASSERT_STREAM(n > 0);
           --n;
         }
         for (size_t i = 0; i < n; ++i) {
           Value outOperand = mapping.lookupOrNull(inOutputOp->getOperand(i));
-          GENERICML_ASSERT(outOperand) << "unmapped operand";
+          ASSERT_STREAM(outOperand) << "unmapped operand";
           outOperands.emplace_back(outOperand);
         }
         // Include the additional arguments.
         for (Value inFreeValue : freeValues) {
           Value outFreeValue = mapping.lookupOrNull(inFreeValue);
-          GENERICML_ASSERT(outFreeValue) << "unmapped free value";
+          ASSERT_STREAM(outFreeValue) << "unmapped free value";
           outOperands.emplace_back(outFreeValue);
         }
         if (beforeLastOutput) {
           // Rewrite last operand.
           Value outOperand = mapping.lookupOrNull(inOutputOp->getOperand(n));
-          GENERICML_ASSERT(outOperand) << "unmapped operand";
+          ASSERT_STREAM(outOperand) << "unmapped operand";
           outOperands.emplace_back(outOperand);
         }
         Operation *outOutputOp =
             builder.create<MEF::OutputOp>(inOp->getLoc(), outOperands);
-        GENERICML_ASSERT(checkRewrite(inOutputOp, outOutputOp))
+        ASSERT_STREAM(checkRewrite(inOutputOp, outOutputOp))
             << "invalid rewrite for output op";
         continue;
       }
@@ -127,7 +127,7 @@ static void fixup(OpBuilder &builder, Block *inBlock,
       SetVector<Value> subFreeValues;
       for (Region &region : inCfOp->getRegions())
         accumFreeValues(subFreeValues, &region.front(), &region.front());
-      GENERICML_ASSERT(llvm::all_of(subFreeValues, [&](Value subFreeValue) {
+      ASSERT_STREAM(llvm::all_of(subFreeValues, [&](Value subFreeValue) {
         return subFreeValue.getParentBlock() == inBlock ||
                freeValues.contains(subFreeValue);
       }));
@@ -136,20 +136,20 @@ static void fixup(OpBuilder &builder, Block *inBlock,
       SmallVector<Value> outOperands;
       for (Value operand : inCfOp->getOperands()) {
         Value outOperand = mapping.lookupOrNull(operand);
-        GENERICML_ASSERT(outOperand) << "unmapped operand";
+        ASSERT_STREAM(outOperand) << "unmapped operand";
         outOperands.emplace_back(outOperand);
       }
       // Include the additional arguments.
       for (Value inSubFreeValue : subFreeValues) {
         Value outSubFreeValue = mapping.lookupOrNull(inSubFreeValue);
-        GENERICML_ASSERT(outSubFreeValue) << "unmapped sub free value";
+        ASSERT_STREAM(outSubFreeValue) << "unmapped sub free value";
         outOperands.emplace_back(outSubFreeValue);
       }
 
       // New op continues to return existing results (possibly excluding last).
       size_t n = inCfOp->getNumResults();
       if (beforeLastOutput) {
-        GENERICML_ASSERT(n > 0);
+        ASSERT_STREAM(n > 0);
         --n;
       }
       SmallVector<Type> outResultTypes;
@@ -167,7 +167,7 @@ static void fixup(OpBuilder &builder, Block *inBlock,
       // Create the new control flow op with empty sub-regions.
       GRT::GRTControlFlowInterface outCfOp =
           cloneWithArgs(builder, inCfOp, outResultTypes, outOperands);
-      GENERICML_ASSERT(checkRewrite(inCfOp, outCfOp))
+      ASSERT_STREAM(checkRewrite(inCfOp, outCfOp))
           << "invalid rewrite for control flow op";
 
       // Capture mappings for op results. Any additional results,
@@ -198,7 +198,7 @@ static void fixup(OpBuilder &builder, Block *inBlock,
 
     // Default case is just clone the op w.r.t. mapping.
     Operation *outOp = builder.clone(*inOp, mapping);
-    GENERICML_ASSERT(checkRewrite(inOp, outOp)) << "invalid rewrite of op";
+    ASSERT_STREAM(checkRewrite(inOp, outOp)) << "invalid rewrite of op";
   }
 
   LLVM_DEBUG(llvm::dbgs() << "fixup end\n");

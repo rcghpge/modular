@@ -235,7 +235,7 @@ ErrorOrSuccess CompiledKernelsContext::load(ArrayRef<uint8_t> binary,
 
 void CompiledKernelsContext::addKernel(StringRef name, size_t index,
                                        void *kernel) {
-  GENERICML_ASSERT(kernels.size() == index)
+  ASSERT_STREAM(kernels.size() == index)
       << "All kernels must be added to symbol table at the same time.";
   kernels.push_back(kernel);
   symbolTable.push_back(name);

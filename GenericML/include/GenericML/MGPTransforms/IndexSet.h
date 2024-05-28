@@ -45,13 +45,13 @@ public:
   /// Returns the unique index of V in model, or the distinguished value.
   size_t getIndex(V v) const {
     auto itr = vIndexMap.find(v);
-    GENERICML_ASSERT(itr != vIndexMap.end());
+    ASSERT_STREAM(itr != vIndexMap.end());
     return itr->second;
   }
 
   /// Returns the V from model for unique index, or the distinguished value.
   V getV(size_t index) const {
-    GENERICML_ASSERT(index < allVs.size());
+    ASSERT_STREAM(index < allVs.size());
     return allVs[index];
   }
 
@@ -143,7 +143,7 @@ public:
   /// CAUTION: Not stable, use getStableCanonical when printing for unit tests.
   V getCanonical(const Equivalence &equivalence, V v) const {
     auto itr = equivalence.findLeader(getIndex(v));
-    GENERICML_ASSERT(itr != equivalence.member_end());
+    ASSERT_STREAM(itr != equivalence.member_end());
     return getV(*itr);
   }
 
@@ -154,7 +154,7 @@ public:
   /// CAUTION: Slow, use getCanonical during analysis.
   V getStableCanonical(const Equivalence &equivalence, V v) const {
     auto itr = equivalence.findLeader(getIndex(v));
-    GENERICML_ASSERT(itr != equivalence.member_end());
+    ASSERT_STREAM(itr != equivalence.member_end());
     size_t index = *itr;
     ++itr;
     while (itr != equivalence.member_end()) {

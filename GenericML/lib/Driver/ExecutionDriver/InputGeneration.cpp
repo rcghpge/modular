@@ -170,7 +170,7 @@ public:
     return FileTensorGenerator(std::move(tensors), flags);
   }
   const Tensor &getNextTensor() final {
-    GENERICML_ASSERT((isSet(flags, TensorGeneratorFlag::kCycle) || !repeated))
+    ASSERT_STREAM((isSet(flags, TensorGeneratorFlag::kCycle) || !repeated))
         << "All tensors in FileTensor have already been generated. "
            "Add Cycle attribute to --input-data to loop over "
            "available tensors.";
@@ -183,7 +183,7 @@ public:
 
   const Tensor &getTensor(size_t sampleIdx) const final {
     if (!isCycled())
-      GENERICML_ASSERT(sampleIdx < tensors.size())
+      ASSERT_STREAM(sampleIdx < tensors.size())
           << "Requested sampleIdx out of range";
     return tensors[sampleIdx % tensors.size()];
   }

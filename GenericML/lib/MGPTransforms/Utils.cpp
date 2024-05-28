@@ -26,8 +26,7 @@ void M::MGP::accumFreeValues(mlir::SetVector<Value> &freeValues, Block *block,
               bindingBlock->getParent()))
         freeValues.insert(inValue);
       else
-        GENERICML_ASSERT(
-            inValue.getParentRegion()->isAncestor(block->getParent()))
+        ASSERT_STREAM(inValue.getParentRegion()->isAncestor(block->getParent()))
             << "result from operation"
             << Twine(inValue.getDefiningOp()->getName().getStringRef())
             << " used in operation " << Twine(inOp.getName().getStringRef())
@@ -101,7 +100,7 @@ static bool shouldStartVisiting(DenseMap<Operation *, bool> &visited,
   }
 #endif
 
-  GENERICML_ASSERT(itr->second) << "model contains cycle involving op";
+  ASSERT_STREAM(itr->second) << "model contains cycle involving op";
   return false;
 };
 
@@ -151,8 +150,8 @@ static void startVisiting(DenseMap<Operation *, bool> &visited,
 static void finishVisiting(DenseMap<Operation *, bool> &visited,
                            Operation *currOp) {
   auto itr = visited.find(currOp);
-  GENERICML_ASSERT(itr != visited.end()) << "never started visiting op";
-  GENERICML_ASSERT(!itr->second) << "finishing already finished op";
+  ASSERT_STREAM(itr != visited.end()) << "never started visiting op";
+  ASSERT_STREAM(!itr->second) << "finishing already finished op";
   itr->second = true;
 };
 
@@ -381,7 +380,7 @@ static Value waitForChainsReusing(
     BufferBuilder *optBufferBuilder,
     GRT::GRTGatedOnChainOpInterface existingUniqueChainCreateOp,
     ArrayRef<Value> chains) {
-  GENERICML_ASSERT(!chains.empty());
+  ASSERT_STREAM(!chains.empty());
 
   if (chains.size() == 1)
     return chains.front();
@@ -553,7 +552,7 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
 InitState::InitState(MLIRContext *context, Block *init)
     : init(init), builder(context) {
   init->walk([this](ContextCreateOp op) { contextCreateOp = op; });
-  GENERICML_ASSERT(contextCreateOp)
+  ASSERT_STREAM(contextCreateOp)
       << "model is missing mgp.context.create op in init block";
   builder.setInsertionPoint(&init->back());
 }
@@ -586,9 +585,9 @@ TypedValue<ContextType> InitState::getContext() {
 
 ExecuteState::ExecuteState(MLIRContext *context, Block *execute)
     : execute(execute), builder(context) {
-  GENERICML_ASSERT(execute->getNumArguments() >= kExtraArgStartIdx);
-  GENERICML_ASSERT(isa<MEF::ChainType>(execute->getArgument(0).getType()));
-  GENERICML_ASSERT(isa<ContextType>(execute->getArgument(1).getType()));
+  ASSERT_STREAM(execute->getNumArguments() >= kExtraArgStartIdx);
+  ASSERT_STREAM(isa<MEF::ChainType>(execute->getArgument(0).getType()));
+  ASSERT_STREAM(isa<ContextType>(execute->getArgument(1).getType()));
 }
 
 /// Returns 'root' chain, ie the first argument to the 'execute' block.
