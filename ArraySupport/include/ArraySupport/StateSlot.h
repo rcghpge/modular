@@ -86,6 +86,9 @@ public:
   /// Returns the type id for the value held by this state slot.
   M::TypeID getTypeID() const { return payload.getTypeID(); }
 
+  /// Returns the underlying payload pointer held by this state slot.
+  void *getUnderlyingPointer() { return payload.getOpaquePointer(); }
+
 private:
   /// Ensure the buffer in entry is allocated with size, reallocating
   /// any existing buffer if required.
