@@ -9,16 +9,9 @@ import sys
 from tensor import TensorSpec
 
 from max.engine import InferenceSession, InputSpec
-from max.serve.service import (
-    FileModel,
-    InferenceRequest,
-    InferenceResponse,
-)
-from max.serve.kserve.callbacks import NoopServerCallbacks
-from max.serve.kserve.server import (
-    GRPCInferenceServer,
-    MuxInferenceService,
-)
+from max.serve.service import FileModel
+from max.serve.callbacks import NoopServerCallbacks
+from max.serve.server import InferenceServer, MuxInferenceService
 
 
 fn main() raises:
@@ -53,7 +46,7 @@ fn main() raises:
 
     var session = InferenceSession()
     var service = MuxInferenceService(models, session)
-    var server = GRPCInferenceServer.create("0.0.0.0:8000", session)
+    var server = InferenceServer.create("0.0.0.0:8000", session)
 
     print("Listening on port 8000!")
     service.init(server)

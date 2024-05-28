@@ -60,16 +60,16 @@ set(EXTENSIBILITY_SRCS
 )
 
 set(SERVE_SRCS
-  serve/kserve/_kserve_impl
-  serve/kserve/_serve_rt
-  serve/kserve/callbacks
-  serve/kserve/client
-  serve/kserve/config
-  serve/kserve/debug
-  serve/kserve/server
-  serve/kserve/stats
   serve/batch
+  serve/callbacks
+  serve/config
+  serve/debug
+  serve/http/runtime
+  serve/kserve/_client_impl
+  serve/kserve/client
+  serve/server
   serve/service
+  serve/stats
 )
 
 add_mojo_package(max-mojo PRIVATE

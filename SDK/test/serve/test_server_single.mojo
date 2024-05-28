@@ -31,9 +31,10 @@ fn test_basic_add_request(
     _ = a^
     _ = b^
 
-    var actual = response.get_output_tensors().get[DType.float32](
-        req_outputs[0]
-    )
+    var outputs = response.get_output_tensors()
+    print(outputs)
+
+    var actual = outputs.get[DType.float32](req_outputs[0])
     var expected = Tensor[DType.float32](TensorShape(1, 1), 2)  # 1 + 1 = 2
     _testing.assert_tensors_almost_equal(
         actual,
