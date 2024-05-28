@@ -299,13 +299,19 @@ std::optional<int64_t> tryGetConstantInt(TypedAttr attr);
 class ShapeMaterializeResult {
 public:
   struct Success {
-    SmallVector<Operation *> ops;
+    // A series of `kgen.param.declare` ops which define either
+    // - parameter expressions like `D2 = <add(D0, D1)>`
+    // - assertions like `Chain = <...assert(cond, msg)...>`
+    //
+    // These could then be consumed by shape propagation logic which does
+    // substitution & folding, and handles these asserts.
+    SmallVector<Operation *> paramOps;
     ShapeAttr resultShape;
 
     // Constructors
     Success() = default;
-    Success(SmallVector<Operation *> &&ops, ShapeAttr resultShape)
-        : ops(std::move(ops)), resultShape(resultShape) {}
+    Success(SmallVector<Operation *> &&paramops, ShapeAttr resultShape)
+        : paramOps(std::move(paramops)), resultShape(resultShape) {}
 
     // Disable copy and move.
     Success(const Success &) = delete;
@@ -550,13 +556,16 @@ StringAttr tryGetAssertFalseErrMsg(TypedAttr attr);
 
 /// A naive shape propagator that takes all the `kgen.param.declare` ops
 /// materialized by the shape functions, and do a substitute & fold via a single
-/// traverse. As a result, it modifies the `shapeOps` in place (e.g., simplify
+/// traverse. As a result, it modifies the `paramOps` in place (e.g., simplify
 /// the assert conditions), and return a simplified version of `targetShape`.
 ///
 /// It returns an error when it encounters an assert whose condition doesn't
 /// fold to `true`. The error message will be the same as the assert error
 /// message.
-ErrorOr<ShapeAttr> propagateShape(ArrayRef<Operation *> shapeOps,
+///
+/// NOTE this function takes ownership of the ops in `paramOps`, i.e., it will
+/// erase them properly.
+ErrorOr<ShapeAttr> propagateShape(ArrayRef<Operation *> paramOps,
                                   ShapeAttr targetShape);
 
 // TODO move the following into a new interface.

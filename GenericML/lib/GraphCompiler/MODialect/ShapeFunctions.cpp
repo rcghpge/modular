@@ -1347,8 +1347,9 @@ StringAttr tryGetAssertFalseErrMsg(TypedAttr attr) {
   return {};
 }
 
-ErrorOr<ShapeAttr> propagateShape(ArrayRef<Operation *> shapeOps,
-                                  ShapeAttr targetShape) {
+/// Implementation of `propagateShape` which doesn't erase `paramOps`.
+static ErrorOr<ShapeAttr> propagateShapeImpl(ArrayRef<Operation *> paramOps,
+                                             ShapeAttr targetShape) {
 
   // Setting things up
   KGEN::ParameterEvaluator evaluator;
@@ -1359,7 +1360,7 @@ ErrorOr<ShapeAttr> propagateShape(ArrayRef<Operation *> shapeOps,
   });
 
   // Process individual ops and propagate by simple substitution.
-  for (Operation *op : shapeOps) {
+  for (Operation *op : paramOps) {
 
     // Apply accumulated substitutions to this op.
     replacer.replaceElementsIn(op, /*replaceAttrs=*/true,
@@ -1394,6 +1395,15 @@ ErrorOr<ShapeAttr> propagateShape(ArrayRef<Operation *> shapeOps,
   // Apply accumulated substitutions to target shape.
   auto resultShape = cast<ShapeAttr>(replacer.replace(targetShape));
   return resultShape;
+}
+
+ErrorOr<ShapeAttr> propagateShape(ArrayRef<Operation *> paramOps,
+                                  ShapeAttr targetShape) {
+
+  ErrorOr<ShapeAttr> res = propagateShapeImpl(paramOps, targetShape);
+  for (Operation *op : paramOps)
+    op->erase();
+  return res;
 }
 
 // TODO move the following into a new interface.

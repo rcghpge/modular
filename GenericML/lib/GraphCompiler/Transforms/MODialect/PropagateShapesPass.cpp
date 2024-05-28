@@ -404,7 +404,7 @@ private:
     if (result.isSuccess()) {
       // Create new declaration of the shape function call's output parameter;
       auto &success = result.getSuccess();
-      decomposedOps = std::move(success.ops);
+      decomposedOps = std::move(success.paramOps);
 
       // `outputShape` has the form `[N0, N1, ...]`
       ShapeAttr outputShape = success.resultShape;

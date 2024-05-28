@@ -10,10 +10,12 @@
 
 #include "GenericML/GraphCompiler/RMODialect/RMOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
+#include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GenericML/GraphCompiler/RMODialect/RMODialect.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOInterfaces.h"
 #include "GenericML/Support/Dims.h"
+#include "KGEN/KGENDialect/KGENAttrs.h"
 #include "Support/AssertStream.h"
 #include "Support/Compiler/ParserUtils.h"
 #include "Support/ML/RangeUtils.h"
@@ -57,6 +59,39 @@ LogicalResult BroadcastLikeOp::verify() {
   if (getInput().getType().getDtype() != getResult().getType().getDtype())
     return emitError("Input and output tensors do not share dtype!");
   return success();
+}
+
+/// ASSUME `values` are all tensor values, map each input value to the shape
+/// attribute and return the result.
+static SmallVector<TypedAttr> getShapesOf(ValueRange values) {
+  SmallVector<TypedAttr> shapes;
+  for (Value val : values) {
+    auto tensorVal = dyn_cast<MO::TensorValue>(val);
+    ASSERT_STREAM(tensorVal) << "expected tensor value";
+    shapes.push_back(tensorVal.getType().getShapeAttr());
+  }
+  return shapes;
+}
+
+// TODO(GRA-551) remove once we eliminate `?` in Graph API.
+/// Return whether any Attribute in `attrs` is a `ShapeAttr` that contains
+/// the unknown dimension `?`.
+static bool hasUnknownDim(ArrayRef<TypedAttr> attrs) {
+  for (TypedAttr attr : attrs) {
+    if (auto shapeAttr = dyn_cast<ShapeAttr>(attr)) {
+      if (shapeAttr.hasUnknownDims())
+        return true;
+    }
+  }
+  return false;
+}
+
+// TODO(GRA-551) remove once we eliminate `?` in Graph API.
+/// Return a shape attribute of given rank, where each dimension is `?`.
+static ShapeAttr createUnknownShapeOfRank(MLIRContext *ctx, size_t rank) {
+  auto unknownDimAttr = KGEN::UnknownAttr::get(IndexType::get(ctx));
+  SmallVector<TypedAttr> dimAttrs(rank, unknownDimAttr);
+  return ShapeAttr::get(dimAttrs, MOSH::ShapeType::get(ctx));
 }
 
 /// DTypeCategory is the broad classes of dtypes used in calculating promotions.
@@ -415,6 +450,68 @@ static bool isCompatibleReturnTypesBinaryComparisonImpl(TypeRange lhs,
   // Comparisions have all of the same return type compatibility rules as other
   // binary elementwise ops.
   return isCompatibleReturnTypesBinaryElemwiseImpl(lhs, rhs);
+}
+
+//===----------------------------------------------------------------------===//
+// ConcatOp
+//===----------------------------------------------------------------------===//
+
+// TODO(GRA-551) remove once we eliminate `?` in Graph API.
+LogicalResult ConcatOp::refineReturnTypes(
+    MLIRContext *, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    RegionRange regions, SmallVectorImpl<Type> &returnTypes) {
+  return success();
+}
+
+LogicalResult ConcatOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+
+  auto axisAttr = attributes.getAs<IntegerAttr>("axis");
+  ASSERT_STREAM(axisAttr) << "rmo.concat must have a constant integer `axis`";
+
+  // Retrieve input shapes
+  SmallVector<TypedAttr> inputShapes = getShapesOf(operands);
+  // TODO(GRA-551) remove once we eliminate `?` in Graph API.
+  if (hasUnknownDim(inputShapes)) {
+    auto inputTensorTy = cast<TensorType>(operands[0].getType());
+    DType inputDtype = inputTensorTy.getDtype();
+    ShapeAttr resultShape =
+        createUnknownShapeOfRank(context, inputTensorTy.getRank());
+    inferredReturnTypes.push_back(TensorType::get(resultShape, inputDtype));
+    return success();
+  }
+
+  // Materialize shape function.
+  auto graphOp =
+      operands.front().getParentRegion()->getParentOfType<MO::GraphOp>();
+  Location loc = location.value_or(graphOp.getLoc());
+  MO::ShapeMaterializeResult result =
+      MO::materializeConcatShape(graphOp, loc, axisAttr, inputShapes);
+
+  // Preliminary error checks.
+  if (result.isError())
+    return mlir::emitOptionalError(location, result.getError().msg);
+
+  // This depends on GraphAPI having static rank.
+  ASSERT_STREAM(!result.isNonMaterializable())
+      << "concat shape logic must be materializable";
+
+  // Shape propagation over materialized ops and target shape.
+  auto &successRes = result.getSuccess();
+  ErrorOr<ShapeAttr> resultShapeOr =
+      MO::propagateShape(successRes.paramOps, successRes.resultShape);
+  if (resultShapeOr.isError())
+    return mlir::emitOptionalError(location, resultShapeOr.getError());
+
+  // Create output type.
+  ShapeAttr resultShape = resultShapeOr.get();
+  DType inputDtype = cast<TensorType>(operands[0].getType()).getDtype();
+  inferredReturnTypes.push_back(TensorType::get(resultShape, inputDtype));
+
+  return success();
 }
 
 void RMODialect::registerOperations() {

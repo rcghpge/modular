@@ -402,6 +402,24 @@ struct LowerBroadcastLike : public OpRewritePattern<RMO::BroadcastLikeOp> {
   }
 };
 
+struct LowerConcat : public OpRewritePattern<RMO::ConcatOp> {
+  LowerConcat(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
+  LogicalResult matchAndRewrite(RMO::ConcatOp op,
+                                PatternRewriter &rewriter) const override {
+
+    // Create a tensor value for axis.
+    Location loc = op->getLoc();
+    TensorValue axis =
+        rewriter.create<MO::ConstantOp>(loc, op.getAxis().getInt());
+
+    // Replace the `rmo.concat` op with a new `mo.concat` op.
+    rewriter.replaceOpWithNewOp<MO::ConcatOp>(op, op.getResult().getType(),
+                                              axis, op.getInputs(),
+                                              op.getOutputParamDecls());
+    return success();
+  }
+};
+
 struct LowerSigmoid : public OpRewritePattern<RMO::SigmoidOp> {
   LowerSigmoid(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
   LogicalResult matchAndRewrite(RMO::SigmoidOp op,
@@ -573,7 +591,7 @@ struct LegalizeRMOOps
         LowerCompositeBinaryComparisonOp<RMO::GreaterOp, RMO::MOGreaterOp>,
         LowerCompositeBinaryComparisonOp<RMO::GreaterEqualOp,
                                          RMO::MOGreaterEqualOp>,
-        LowerBroadcastLike, LowerSigmoid>(context);
+        LowerBroadcastLike, LowerSigmoid, LowerConcat>(context);
 
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(blockPatterns))))

@@ -303,4 +303,49 @@ def RMO_SigmoidOp : RMO_Op<"sigmoid", [Pure]> {
   ];
 }
 
+def RMO_ConcatOp : RMO_Op<"concat", [
+  Pure,
+  // TODO(GRA-551) remove `refineReturnTypes` once we eliminate `?` in Graph API.
+  DeclareOpInterfaceMethods<InferTypeOpInterface, ["refineReturnTypes"]>,
+]> {
+  let summary = "Concatenation operation";
+  let description = [{
+    Concatenates the input tensors along a given dimension.
+
+    `mo.concat` concatenates the `inputs` tensors into an output tensor. There
+    must be at least 1 input tensor. The input tensors and output tensors all
+    has the same shape except along the constant concatenation dimension `axis`.
+    The size of the concatenation dimension in output tensor would have be the
+    sum of sizes of the concatenation dimension in input tensors.
+
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
+    axis.
+
+    Shape restrictions:
+    1. All inputs must have known and equal ranks.
+    2. Input dimensions must match along non-concat-axis.
+
+    Example:
+
+    ```mlir
+      %arg0: !mo.tensor<[2, 3], f32>
+      %arg1: !mo.tensor<[2, 5], f32>
+      %res = rmo.concat(%arg0, %arg1) {axis = 1}  : (
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>
+      ) -> !mo.tensor<[2, 8], f32>
+    ```
+  }];
+
+  let arguments = (ins
+      Variadic<MO_Tensor>:$inputs,
+      Builtin_IntegerAttr:$axis,
+      MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls)
+    `(` $inputs `)` attr-dict `:` functional-type($inputs, results)
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
