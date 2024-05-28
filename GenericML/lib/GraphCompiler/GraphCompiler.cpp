@@ -375,6 +375,11 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
+  // TODO(GRA-560): There may be more opportunities in staticization exposed by
+  // propagation of shapes which is why it's repeated here.
+  pm.addPass(MO::createStaticizeShapes());
+  pm.addPass(MO::createPropagateShapes());
+
   // Re-run the simplification part of shape inference (i.e., excluding
   // `ResolveUnknownParameters` and `AddFallbackShapeFunctions`)
 
