@@ -58,7 +58,7 @@ def main() -> None:
         sleep(1)
 
     var model_name = "Add"
-    var model_path = "SDK/test/serve/models/model.onnx"
+    var model_path = "SDK/test/serve/models/add.onnx"
     with Runtime() as rt:
         var tg = TaskGroup(rt)
         var server_task = tg.create_task[NoneType](
