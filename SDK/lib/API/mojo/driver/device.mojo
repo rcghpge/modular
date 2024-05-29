@@ -80,10 +80,10 @@ struct Device(Stringable):
 
     fn __moveinit__(inout self, owned existing: Self):
         self.lib = existing.lib^
-        self._cdev = existing._cdev^
+        self._cdev = existing._cdev
 
     fn allocate(
-        inout self, spec: TensorSpec, name: Optional[String] = None
+        self, spec: TensorSpec, name: Optional[String] = None
     ) raises -> DeviceMemory:
         """Returns a DeviceMemory allocated in the Device's memory space.
         DeviceMemory holds a reference count to Device.

@@ -150,7 +150,7 @@ struct DeviceMemory(StringableRaising):
         )
 
     fn copy_to(
-        self, inout dev: Device, name: Optional[String] = None
+        self, dev: Device, name: Optional[String] = None
     ) raises -> DeviceMemory:
         """Copies the contents of self into DeviceMemory allocated on dev.
         Note: this function allocates memory on dev.
