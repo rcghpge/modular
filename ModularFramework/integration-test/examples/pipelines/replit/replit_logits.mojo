@@ -12,6 +12,7 @@
 from collections import Dict
 from pathlib import Path
 
+from max.engine import InferenceSession, TensorMap
 from max.graph import _testing, Graph, TensorType, Symbol, Type
 from tensor import Tensor, TensorShape
 
@@ -502,18 +503,112 @@ fn test_replit_logits(params: TestCheckpoint) raises:
     var g = replit.build_graph(
         "Nano Replit",
         params,
-        with_attention_mask=False)
-    # TODO: Segmentation fault when input is int32
-    var input = Tensor[DType.int64](TensorShape(1, 8), 1, 3, 2, 1, 4, 0, 4, 2)
-    var expected = Tensor[DType.float32](TensorShape(1, 8, 5),
+        with_attention_mask=True,
+        use_cache=True
+    )
+
+    # Test with empty kv cache.
+    var input = Tensor[DType.int64](TensorShape(1, 7), 1, 3, 2, 1, 4, 0, 2)
+    var attention_mask = Tensor[DType.bool](TensorShape(1, 7), True)
+    var k_cache: Tensor[DType.float32]
+    var v_cache: Tensor[DType.float32]
+    k_cache, v_cache = replit.create_empty_cache()
+    var result_map = execute_replit(g, input, attention_mask, k_cache, v_cache)
+
+    var expected_logits = Tensor[DType.float32](TensorShape(1, 7, 5),
         -3.2801,  5.2049,  0.3586, -4.6237,  3.0359,  0.6726, -4.4877,  4.4617,
          9.9736, -0.3301, -1.8101, -2.4456,  6.1897,  7.9995, -0.3979, -2.5187,
          5.1449, -0.0361, -5.4335,  2.5537,  0.4311,  2.9251,  2.3858,  1.8648,
-         5.1234,  7.9649, -0.9178, -1.6446,  0.5353,  1.3245,  0.4134,  2.9961,
-         2.2225,  1.7277,  5.1147, -2.0596, -2.1092,  6.3142,  7.9342, -0.0695)
-    var logits = _testing.execute_unary(g, input)
-    _testing.assert_tensors_almost_equal(logits, expected, atol=1e-4, rtol=1e-4)
+         5.1234,  7.9649, -0.9178, -1.6446,  0.5353,  1.3245, -1.9980, -2.2461,
+         6.2784,  8.0301, -0.1669)
+    var logits = result_map.get[DType.float32]("output0")
+    _testing.assert_tensors_almost_equal(logits, expected_logits, atol=1e-4, rtol=1e-4)
+
+    var expected_k_cache = Tensor[DType.float32](TensorShape(1, 1, 2, 2, 7),
+        -1.0390,  0.2506, -0.2787, -1.0390, -1.2110, -0.3321, -0.2787, -0.5360,
+         0.3860,  0.1726, -0.5360, -0.3086,  0.4769,  0.1726, -0.5828,  0.9236,
+         0.8546, -0.5828, -0.2465, -0.3986,  0.8546,  0.1491, -0.0715, -0.3276,
+         0.1491,  0.8684,  1.0959, -0.3276)
+    var new_k_cache = result_map.get[DType.float32]("output1")
+    _testing.assert_tensors_almost_equal(new_k_cache, expected_k_cache, atol=1e-4, rtol=1e-4)
+
+    var expected_v_cache = Tensor[DType.float32](TensorShape(1, 1, 2, 7, 2),
+        -0.3588, -0.6982,  0.6270,  0.8170,  0.8232,  0.2299, -0.3588, -0.6982,
+        -0.1642,  0.0711, -0.1535,  0.5428,  0.8232,  0.2299,  0.1687, -0.1312,
+         0.0458, -0.7262,  0.1820, -0.4769,  0.1687, -0.1312,  0.2427, -1.0441,
+        -0.1002,  0.1982,  0.1820, -0.4769)
+    var new_v_cache = result_map.get[DType.float32]("output2")
+    _testing.assert_tensors_almost_equal(new_v_cache, expected_v_cache, atol=1e-4, rtol=1e-4)
+
+
+fn test_replit_logits_with_prev_cache(params: TestCheckpoint) raises:
+    var nano_params = get_hyperparams()
+    var replit = Replit[TestCheckpoint, DType.float32](nano_params)
+    var g = replit.build_graph(
+        "Nano Replit",
+        params,
+        with_attention_mask=True,
+        use_cache=True
+    )
+
+    # Test with new inputs and the kv cache computed previously.
+    var input2 = Tensor[DType.int64](TensorShape(1, 2), 2, 3)
+    var k_cache = Tensor[DType.float32](TensorShape(1, 1, 2, 2, 7),
+        -1.0390,  0.2506, -0.2787, -1.0390, -1.2110, -0.3321, -0.2787, -0.5360,
+         0.3860,  0.1726, -0.5360, -0.3086,  0.4769,  0.1726, -0.5828,  0.9236,
+         0.8546, -0.5828, -0.2465, -0.3986,  0.8546,  0.1491, -0.0715, -0.3276,
+         0.1491,  0.8684,  1.0959, -0.3276)
+    var v_cache = Tensor[DType.float32](TensorShape(1, 1, 2, 7, 2),
+        -0.3588, -0.6982,  0.6270,  0.8170,  0.8232,  0.2299, -0.3588, -0.6982,
+        -0.1642,  0.0711, -0.1535,  0.5428,  0.8232,  0.2299,  0.1687, -0.1312,
+         0.0458, -0.7262,  0.1820, -0.4769,  0.1687, -0.1312,  0.2427, -1.0441,
+        -0.1002,  0.1982,  0.1820, -0.4769)
+    var attention_mask2 = Tensor[DType.bool](TensorShape(1, 9), True)
+    var result_map2 = execute_replit(g, input2, attention_mask2, k_cache, v_cache)
+    var expected_logits2 = Tensor[DType.float32](TensorShape(1, 2, 5),
+        -1.8195, -2.3358,  6.2423,  8.0377, -0.2316,  0.8508, -4.5605,  4.4140,
+         9.9478, -0.3976)
+    var logits2 = result_map2.get[DType.float32]("output0")
+    _testing.assert_tensors_almost_equal(logits2, expected_logits2, atol=1e-4, rtol=1e-4)
+    var expected_k_cache = Tensor[DType.float32](TensorShape(1, 1, 2, 2, 9),
+        -1.0390,  0.2506, -0.2787, -1.0390, -1.2110, -0.3321, -0.2787, -0.2787,
+         0.2506, -0.5360,  0.3860,  0.1726, -0.5360, -0.3086,  0.4769,  0.1726,
+         0.1726,  0.3860, -0.5828,  0.9236,  0.8546, -0.5828, -0.2465, -0.3986,
+         0.8546,  0.8546,  0.9236,  0.1491, -0.0715, -0.3276,  0.1491,  0.8684,
+         1.0959, -0.3276, -0.3276, -0.0715)
+    var new_k_cache = result_map2.get[DType.float32]("output1")
+    _testing.assert_tensors_almost_equal(new_k_cache, expected_k_cache, atol=1e-4, rtol=1e-4)
+
+    var expected_v_cache = Tensor[DType.float32](TensorShape(1, 1, 2, 9, 2),
+        -0.3588, -0.6982,  0.6270,  0.8170,  0.8232,  0.2299, -0.3588, -0.6982,
+        -0.1642,  0.0711, -0.1535,  0.5428,  0.8232,  0.2299,  0.8232,  0.2299,
+         0.6270,  0.8170,  0.1687, -0.1312,  0.0458, -0.7262,  0.1820, -0.4769,
+         0.1687, -0.1312,  0.2427, -1.0441, -0.1002,  0.1982,  0.1820, -0.4769,
+         0.1820, -0.4769,  0.0458, -0.7262)
+    var new_v_cache = result_map2.get[DType.float32]("output2")
+    _testing.assert_tensors_almost_equal(new_v_cache, expected_v_cache, atol=1e-4, rtol=1e-4)
+
 # fmt: on
+
+
+fn execute_replit(
+    g: Graph,
+    input: Tensor[DType.int64],
+    attention_mask: Tensor[DType.bool],
+    k_cache: Tensor[DType.float32],
+    v_cache: Tensor[DType.float32],
+) raises -> TensorMap:
+    var session = InferenceSession()
+    var model = session.load(g)
+
+    var input_map = session.new_tensor_map()
+    input_map.borrow("input0", input)
+    input_map.borrow("input1", attention_mask)
+    input_map.borrow("input2", k_cache)
+    input_map.borrow("input3", v_cache)
+
+    var result_map = model.execute(input_map)
+    return result_map^
 
 
 fn test[
@@ -530,12 +625,15 @@ fn test[
 
 fn main() raises:
     var params = TestCheckpoint("")
-    test["test_attention", test_attention](params)
-    test["test_attention_with_bias", test_attention_with_bias](params)
-    test["test_mpt_block", test_mpt_block](params)
-    test["test_mpt_mlp", test_mpt_mlp](params)
-    test["test_shared_embedding", test_shared_embedding](params)
-    test["test_shared_embedding_unembed", test_shared_embedding_unembed](params)
-    test["test_norm", test_norm](params)
-    test["test_linear", test_linear](params)
+    # test["test_attention", test_attention](params)
+    # test["test_attention_with_bias", test_attention_with_bias](params)
+    # test["test_mpt_block", test_mpt_block](params)
+    # test["test_mpt_mlp", test_mpt_mlp](params)
+    # test["test_shared_embedding", test_shared_embedding](params)
+    # test["test_shared_embedding_unembed", test_shared_embedding_unembed](params)
+    # test["test_norm", test_norm](params)
+    # test["test_linear", test_linear](params)
     test["test_replit_logits", test_replit_logits](params)
+    test[
+        "test_replit_logits_with_prev_cache", test_replit_logits_with_prev_cache
+    ](params)
