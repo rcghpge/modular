@@ -4,6 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 # UNSUPPORTED: windows
+# REQUIRES: manual
 # RUN: %mojo -debug-level full %s
 
 import sys

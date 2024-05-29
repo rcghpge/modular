@@ -4,4 +4,4 @@ lit_config.load_config(
     config, "@MODULAR_BINARY_DIR@/utils/build/llvm-lit/lit.common.configured"
 )
 
-lit_config.load_config(config, "@MODULAR_SOURCE_DIR@/SDK/test/serve/lit.cfg.py")
+lit_config.load_config(config, "@MODULAR_SOURCE_DIR@/SDK/test/API/serve/lit.cfg.py")

@@ -4,11 +4,12 @@
 #
 # ===----------------------------------------------------------------------=== #
 # RUN: %mojo %s
+# REQUIRES: manual
 from tensor import TensorSpec
 
 from max.engine import InferenceSession, InputSpec
 from max.serve.service import FileModel
-from max.serve.kserve.server import GRPCInferenceServer, MuxInferenceService
+from max.serve.server import InferenceServer, MuxInferenceService
 from runtime.llcl import (
     Runtime,
     TaskGroup,
@@ -33,7 +34,7 @@ def main() -> None:
     var client_completed = Atomic[DType.int64](0)
     var server_session = InferenceSession()
     alias server_address = "0.0.0.0:8000"
-    var server = GRPCInferenceServer.create(server_address, server_session)
+    var server = InferenceServer.create(server_address, server_session)
     print("[" + elapsed() + "]Created server.")
 
     @parameter
@@ -93,7 +94,7 @@ def main() -> None:
             print("Client error : ", e)
 
     var model_name = "Add"
-    var model_path = "SDK/test/serve/models/add.onnx"
+    var model_path = "SDK/test/API/serve/models/add.onnx"
     with Runtime() as rt:
         var tg = TaskGroup(rt)
         var server_task = tg.create_task[NoneType](

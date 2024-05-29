@@ -4,11 +4,12 @@
 #
 # ===----------------------------------------------------------------------=== #
 # RUN: %mojo %s
+# REQUIRES: manual
 from tensor import TensorSpec
 
 from max.engine import InferenceSession, InputSpec
 from max.serve.service import FileModel
-from max.serve.kserve.server import GRPCInferenceServer, MuxInferenceService
+from max.serve.server import InferenceServer, MuxInferenceService
 from runtime.llcl import (
     Runtime,
     TaskGroup,
@@ -17,7 +18,6 @@ from runtime.llcl import (
     Atomic,
 )
 from time import sleep, now
-from max.serve.kserve.client import GRPCInferenceClient
 from max.tensor import Tensor, TensorShape
 from max.graph._testing import assert_tensors_almost_equal
 
@@ -32,7 +32,7 @@ def main() -> None:
     fn elapsed() -> String:
         return str(int((now() - start_time) / (1_000_000))) + " ms"
 
-    var server = GRPCInferenceServer.create(server_address, server_session)
+    var server = InferenceServer.create(server_address, server_session)
     print("[" + elapsed() + "]Created server.")
 
     @parameter
@@ -53,21 +53,16 @@ def main() -> None:
         except e:
             print("Server execption: ", e)
 
-    @parameter
-    async fn sleeper() -> None:
-        sleep(1)
-
     var model_name = "Add"
-    var model_path = "SDK/test/serve/models/add.onnx"
+    var model_path = "SDK/test/API/serve/models/add.onnx"
     with Runtime() as rt:
         var tg = TaskGroup(rt)
         var server_task = tg.create_task[NoneType](
             server_impl(model_name, model_path)
         )
         while not server_started.load():
-            var sleeper_task = rt.create_task[NoneType](sleeper())
             print(".", end="")
-            sleeper_task.wait()
+            sleep(1)
         server.signal_stop()
 
         tg.wait()
