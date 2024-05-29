@@ -291,53 +291,6 @@ static void mgp_buffer_alloc_dynamic_cpu(
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.buffer.realloc.static.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_buffer_realloc_static_cpu(
-    Chain inChain, StateContext &theContext, Result<TensorBufferRef> outBuffer,
-    MEFAttr<uint64_t> aRuntimeSlot, MEFAttr<uint64_t> bBufferSlot,
-    MEFAttr<uint64_t> cBufferIndex, MEFAttr<uint64_t> dSize,
-    MEFAttr<uint64_t> eRawAlign, MEFAttr<uint64_t> fDeviceId,
-    Runtime &runtime) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*fDeviceId))
-    return std::move(outBuffer).setToError("mismatched device id");
-  if (!isValidPlainSize(*dSize))
-    return std::move(outBuffer).setToError("invalid size attribute");
-  if (!isValidRawAlign(*eRawAlign))
-    return std::move(outBuffer).setToError("invalid align attribute");
-  size_t runtimeSize = plainSizeToRuntimeSize(*dSize);
-  StateSlot &stateSlot =
-      theContext.getStateSlot(static_cast<size_t>(*bBufferSlot));
-  std::move(outBuffer).emplace(stateSlot.getOrCreateBuffer(
-      *cBufferIndex, runtime, runtimeSize, getRuntimeAlign(*eRawAlign)));
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.buffer.realloc.dynamic.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_buffer_realloc_dynamic_cpu(
-    Chain inChain, StateContext &theContext, size_t runtimeSize,
-    Result<TensorBufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
-    MEFAttr<uint64_t> bBufferSlot, MEFAttr<uint64_t> cBufferIndex,
-    MEFAttr<uint64_t> dRawAlign, MEFAttr<uint64_t> eDeviceId,
-    Runtime &runtime) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*eDeviceId))
-    return std::move(outBuffer).setToError("mismatched device id");
-  if (!isValidRawAlign(*dRawAlign))
-    return std::move(outBuffer).setToError("invalid align attribute");
-  StateSlot &stateSlot =
-      theContext.getStateSlot(static_cast<size_t>(*bBufferSlot));
-  std::move(outBuffer).emplace(stateSlot.getOrCreateBuffer(
-      *cBufferIndex, runtime, runtimeSize, getRuntimeAlign(*dRawAlign)));
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.buffer.alloc_pinned.{static,dynamic}
 //===----------------------------------------------------------------------===//
 
@@ -1016,10 +969,6 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
                 mgp_buffer_alloc_static_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.alloc.dynamic.cpu",
                 mgp_buffer_alloc_dynamic_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.realloc.static.cpu",
-                mgp_buffer_realloc_static_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.realloc.dynamic.cpu",
-                mgp_buffer_realloc_dynamic_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.alloc_pinned.static.cpu",
                 mgp_buffer_alloc_pinned_static_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.alloc_pinned.dynamic.cpu",

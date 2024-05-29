@@ -101,10 +101,6 @@ class ConcatInPlacePass
           if (auto allocDynamicOp = dyn_cast<MGP::BufferAllocDynamicOp>(
                   inBuffer.getDefiningOp())) {
             runtimeSizes.emplace_back(allocDynamicOp.getRuntimeSize());
-          } else if (auto reallocDynamicOp =
-                         dyn_cast<MGP::BufferReallocDynamicOp>(
-                             inBuffer.getDefiningOp())) {
-            runtimeSizes.emplace_back(reallocDynamicOp.getRuntimeSize());
           } else {
             ASSERT_STREAM(false) << "unexpected buffer allocation op "
                                  << *inBuffer.getDefiningOp();

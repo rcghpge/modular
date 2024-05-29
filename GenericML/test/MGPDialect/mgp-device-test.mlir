@@ -142,27 +142,6 @@ func.func @buffer_alloc_dynamic(%ctx : !mgp.context, %ch : !mgp.chain<<"cuda", 3
   mef.output %buf : !mgp.buffer<, <"cuda", 3>>
 }
 
-//
-// mgp.buffer.realloc.static
-//
-
-// CHECK-LABEL: @buffer_realloc_static
-func.func @buffer_realloc_static_size(%ctx : !mgp.context, %ch : !mgp.chain<<"cuda", 3>>, %size : index) {
-  // CHECK:  %{{.*}} = mgp.buffer.realloc.static %{{.*}}, %{{.*}}[1, 3, 0] : !mgp.buffer<256, <"cuda", 3>>
-  %0 = mgp.buffer.realloc.static %ch, %ctx[1, 3, 0] : !mgp.buffer<256, <"cuda", 3>>
-  mef.output %0 : !mgp.buffer<256, <"cuda", 3>>
-}
-
-//
-// mgp.buffer.realloc.dynamic
-//
-
-// CHECK-LABEL: @buffer_realloc_dynamic
-func.func @buffer_realloc_dynamic_size(%ctx : !mgp.context, %ch : !mgp.chain<<"cuda", 3>>, %size : index) {
-  // CHECK:  %{{.*}} = mgp.buffer.realloc.dynamic %{{.*}}, %{{.*}}[1, 3, 0], %{{.*}} : !mgp.buffer<, <"cuda", 3>>
-  %0 = mgp.buffer.realloc.dynamic %ch, %ctx[1, 3, 0], %size : !mgp.buffer<, <"cuda", 3>>
-  mef.output %0 : !mgp.buffer<, <"cuda", 3>>
-}
 
 //
 // mgp.buffer.cache

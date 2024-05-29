@@ -61,7 +61,6 @@ public:
     moToMgpOptions.vizOutputPath = vizOutputPath;
     moToMgpOptions.debugPrintAllTensors = debugPrintAllTensors;
     moToMgpOptions.softFusionNonHostKernelLimit = softFusionNonHostKernelLimit;
-    moToMgpOptions.cacheBuffersAcrossExecutes = cacheBuffersAcrossExecutes;
     moToMgpOptions.minPinnedHostBufferSize = minPinnedHostBufferSize;
     moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
   }
@@ -157,15 +156,6 @@ private:
           "Maximum number of non-host kernels to place in a single soft fused "
           "kernel."),
       llvm::cl::location(options.softFusionNonHostKernelLimit),
-      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
-
-  M::cl::MOpt<bool, true> cacheBuffersAcrossExecutes{
-      "cache-buffers-across-executes",
-      cl::desc("If true, allow all buffer allocations to be cached and reused "
-               "across calls to the model's 'execute'. If a buffer's size "
-               "changes between calls due to dynamic shapes then the buffer "
-               "will be reallocated."),
-      llvm::cl::location(options.cacheBuffersAcrossExecutes),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
   M::cl::MOpt<size_t, true> minPinnedHostBufferSize{
