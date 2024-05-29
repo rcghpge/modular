@@ -488,22 +488,29 @@ SmallVector<Value> MGPBufferBuilder::splitBorrow(
   for (auto optSize : outBufferSizes)
     rawSizes.emplace_back(optSizeToRawSize(optSize));
   return builder
-      .create<BufferSplitBorrowOp>(loc,
-                                   /*theContext=*/context,
-                                   /*inBuffer=*/inBuffer,
-                                   /*runtimeSizes=*/runtimeSizes,
-                                   /*aRuntimeSlot=*/runtimeSlot,
-                                   /*bOutBufferRawSizes=*/rawSizes,
-                                   /*cDevice=*/device)
+      .create<BufferSplitBorrowOp>(
+          loc,
+          /*inChain=*/
+          cast<TypedValue<DeviceChainType>>(
+              toNativeChain(builder, loc, context, inChain)),
+          /*theContext=*/context,
+          /*inBuffer=*/inBuffer,
+          /*runtimeSizes=*/runtimeSizes,
+          /*aRuntimeSlot=*/runtimeSlot,
+          /*bOutBufferRawSizes=*/rawSizes,
+          /*cDevice=*/device)
       .getOutBuffers();
 }
 
 Value MGPBufferBuilder::borrowSectionStatic(OpBuilder &builder, Location loc,
                                             TypedValue<ContextType> context,
-                                            Value inBuffer, uint64_t offset,
-                                            uint64_t size) {
+                                            Value inChain, Value inBuffer,
+                                            uint64_t offset, uint64_t size) {
   return builder.create<BufferSectionBorrowStaticOp>(
       loc,
+      /*inChain=*/
+      cast<TypedValue<DeviceChainType>>(
+          toNativeChain(builder, loc, context, inChain)),
       /*theContext=*/context,
       /*inBuffer=*/cast<TypedValue<DeviceBufferType>>(inBuffer),
       /*aRuntimeSlot=*/runtimeSlot,
@@ -514,11 +521,14 @@ Value MGPBufferBuilder::borrowSectionStatic(OpBuilder &builder, Location loc,
 
 Value MGPBufferBuilder::borrowSectionDynamic(OpBuilder &builder, Location loc,
                                              TypedValue<ContextType> context,
-                                             Value inBuffer, Value scale,
+                                             Value inChain, Value inBuffer,
+                                             Value scale,
                                              uint64_t unscaledOffset,
                                              uint64_t unscaledSize) {
   return builder.create<BufferSectionBorrowDynamicOp>(
-      loc,
+      loc, /*inChain=*/
+      cast<TypedValue<DeviceChainType>>(
+          toNativeChain(builder, loc, context, inChain)),
       /*theContext=*/context,
       /*inBuffer=*/cast<TypedValue<DeviceBufferType>>(inBuffer),
       /*scale=*/cast<TypedValue<IndexType>>(scale),

@@ -514,9 +514,9 @@ static void mgp_buffer_concat_cpu(Chain inChain, StateContext &theContext,
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_split_borrow_cpu(
-    StateContext &theContext, AsyncValueRef<TensorBufferRef> inBuffer,
-    RemainingArguments runtimeSizes, RemainingResults outBuffers,
-    MEFAttr<uint64_t> aRuntimeSlot,
+    Chain inChain, StateContext &theContext,
+    AsyncValueRef<TensorBufferRef> inBuffer, RemainingArguments runtimeSizes,
+    RemainingResults outBuffers, MEFAttr<uint64_t> aRuntimeSlot,
     MEFAttr<ArrayRef<uint64_t>> bOutBufferRawSizes, MEFAttr<uint64_t> cDeviceId,
     Runtime &runtime, EncodedLocation loc) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
@@ -576,10 +576,11 @@ static void mgp_buffer_split_borrow_cpu(
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_section_borrow_static_cpu(
-    StateContext &theContext, AsyncValueRef<TensorBufferRef> inBuffer,
-    Result<TensorBufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
-    MEFAttr<uint64_t> bOffset, MEFAttr<uint64_t> cSize,
-    MEFAttr<uint64_t> dDeviceId, Runtime &runtime, EncodedLocation loc) {
+    Chain inChain, StateContext &theContext,
+    AsyncValueRef<TensorBufferRef> inBuffer, Result<TensorBufferRef> outBuffer,
+    MEFAttr<uint64_t> aRuntimeSlot, MEFAttr<uint64_t> bOffset,
+    MEFAttr<uint64_t> cSize, MEFAttr<uint64_t> dDeviceId, Runtime &runtime,
+    EncodedLocation loc) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
       static_cast<size_t>(*aRuntimeSlot));
   if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*dDeviceId))
@@ -604,11 +605,11 @@ static void mgp_buffer_section_borrow_static_cpu(
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_section_borrow_dynamic_cpu(
-    StateContext &theContext, AsyncValueRef<TensorBufferRef> inBuffer,
-    size_t scale, Result<TensorBufferRef> outBuffer,
-    MEFAttr<uint64_t> aRuntimeSlot, MEFAttr<uint64_t> bUnscaledOffset,
-    MEFAttr<uint64_t> cUnscaledSize, MEFAttr<uint64_t> dDeviceId,
-    EncodedLocation loc) {
+    Chain inChain, StateContext &theContext,
+    AsyncValueRef<TensorBufferRef> inBuffer, size_t scale,
+    Result<TensorBufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
+    MEFAttr<uint64_t> bUnscaledOffset, MEFAttr<uint64_t> cUnscaledSize,
+    MEFAttr<uint64_t> dDeviceId, EncodedLocation loc) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
       static_cast<size_t>(*aRuntimeSlot));
   if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*dDeviceId))

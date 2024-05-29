@@ -383,13 +383,13 @@ public:
   /// Borrow a section of a buffer.
   virtual Value borrowSectionStatic(OpBuilder &builder, Location loc,
                                     TypedValue<ContextType> context,
-                                    Value inBuffer, uint64_t offset,
-                                    uint64_t size) = 0;
+                                    Value inChain, Value inBuffer,
+                                    uint64_t offset, uint64_t size) = 0;
 
   /// Borrow a dynamic section of a buffer.
   virtual Value borrowSectionDynamic(OpBuilder &builder, Location loc,
                                      TypedValue<ContextType> context,
-                                     Value inBuffer, Value scale,
+                                     Value inChain, Value inBuffer, Value scale,
                                      uint64_t unscaledOffset,
                                      uint64_t unscaledSize) = 0;
 
@@ -532,12 +532,14 @@ public:
               ArrayRef<std::optional<uint64_t>> outBufferSizes) override;
 
   Value borrowSectionStatic(OpBuilder &builder, Location loc,
-                            TypedValue<ContextType> context, Value inBuffer,
-                            uint64_t offset, uint64_t size) override;
+                            TypedValue<ContextType> context, Value inChain,
+                            Value inBuffer, uint64_t offset,
+                            uint64_t size) override;
 
   Value borrowSectionDynamic(OpBuilder &builder, Location loc,
-                             TypedValue<ContextType> context, Value inBuffer,
-                             Value scale, uint64_t unscaledOffset,
+                             TypedValue<ContextType> context, Value inChain,
+                             Value inBuffer, Value scale,
+                             uint64_t unscaledOffset,
                              uint64_t unscaledSize) override;
 
   Value bufferToBool(OpBuilder &builder, Location loc,

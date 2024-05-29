@@ -1385,12 +1385,13 @@ def BufferSplitBorrowOp : MGP_DeviceOp<"buffer.split.borrow", [
 
     Example:
     ```mlir
+    %ch:  !mgp.chain<<"cuda", 3>>
     %ctx: !mgp.context
     %in_buf : !mgp.buffer<256, <"cuda", 3>>
     %size1 : index
     %size2 : index
     %out0_buf, %out1_buf, %out2_buf =
-        mgp.buffer.split.borrow %ctx[5], %in_buf, %size1, %size2
+        mgp.buffer.split.borrow %ch, %ctx[5], %in_buf, %size1, %size2
         : !mgp.buffer<256, <"cuda", 3>>
            -> (!mgp.buffer<128, <"cuda", 3>>,
                !mgp.buffer<, <"cuda", 3>>,
@@ -1403,7 +1404,8 @@ def BufferSplitBorrowOp : MGP_DeviceOp<"buffer.split.borrow", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_ContextType:$theContext,
+  let arguments = (ins MGP_DeviceChainType:$inChain,
+                       MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$inBuffer,
                        Variadic<Index>:$runtimeSizes,
                        UI64Attr:$aRuntimeSlot,                    // 0
@@ -1411,16 +1413,17 @@ def BufferSplitBorrowOp : MGP_DeviceOp<"buffer.split.borrow", [
                        MGP_OptDeviceRefAttr:$cDevice);            // 2
   let results = (outs Variadic<MGP_DeviceBufferType>:$outBuffers);
   let assemblyFormat = [{
-    $theContext `[` $aRuntimeSlot `]` `,` $inBuffer
+    $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $inBuffer
       ( `,` $runtimeSizes^ )? attr-dict
       `:` custom<BufferTypesToBufferRawSizesDeviceOutBuffers>(
             type($inBuffer), $bOutBufferRawSizes, $cDevice,
-            type($outBuffers))
+            type($outBuffers), type($inChain))
   }];
   let hasVerifier = 1;
 
   let builders = [
-    OpBuilder<(ins "mlir::TypedValue<M::MGP::ContextType>":$theContext,
+    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
+                   "mlir::TypedValue<M::MGP::ContextType>":$theContext,
                    "mlir::TypedValue<M::MGP::DeviceBufferType>":$inBuffer,
                    "llvm::ArrayRef<mlir::TypedValue<mlir::IndexType>>":$runtimeSizes,
                    "uint64_t":$aRuntimeSlot,
@@ -1465,10 +1468,11 @@ def BufferSectionBorrowStaticOp : MGP_DeviceOp<"buffer.section.borrow.static", [
 
     Example:
     ```mlir
+    %ch:  !mgp.chain<<"cuda", 3>>
     %ctx : !mgp.context
     %in_buf : !mgp.buffer<256, <"cuda", 3>>
     %out_buf =
-        mgp.buffer.section.borrow.static %ctx[5], %in_buf, offset 128, size 64
+        mgp.buffer.section.borrow.static %ch, %ctx[5], %in_buf, offset 128, size 64
           : !mgp.buffer<256, <"cuda", 3>>
     %out_buf : !mgp.buffer<64, <"cuda", 3>>
     ```
@@ -1476,7 +1480,8 @@ def BufferSectionBorrowStaticOp : MGP_DeviceOp<"buffer.section.borrow.static", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_ContextType:$theContext,
+  let arguments = (ins MGP_DeviceChainType:$inChain,
+                       MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$inBuffer,
                        UI64Attr:$aRuntimeSlot,         // 0
                        UI64Attr:$bOffset,              // 1
@@ -1484,9 +1489,9 @@ def BufferSectionBorrowStaticOp : MGP_DeviceOp<"buffer.section.borrow.static", [
                        MGP_OptDeviceRefAttr:$dDevice); // 3
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
-    $theContext `[` $aRuntimeSlot `]` `,` $inBuffer `,`
+    $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $inBuffer `,`
     `offset` $bOffset `,` `size` $cSize attr-dict
-    `:` custom<BufferTypeToDevice>(type($inBuffer), $dDevice)
+    `:` custom<BufferTypeToDevice>(type($inBuffer), $dDevice, type($inChain))
   }];
   let hasVerifier = 1;
 
@@ -1520,15 +1525,21 @@ def BufferSectionBorrowDynamicOp : MGP_DeviceOp<"buffer.section.borrow.dynamic",
     Note that no copying is done, and the result buffer merely borrows from
     the (offset into) the input buffer.
 
-    The result buffer will inherit if possible, alignment of the input buffer.
+    The result buffer will inherit the mutablity and, if possible, alignment
+    of the input buffer.
+
+    The runtime will guarantee the input buffer will outlive the result buffer.
+    However, the runtime only checks for overlapping concurrent
+    borrows, or overlapping reads/writes to the same contents, in debug builds.
 
     Example:
     ```mlir
+    %ch:  !mgp.chain<<"cuda", 3>>
     %ctx : !mgp.context
     %in_buf : !mgp.buffer<, <"cuda", 3>>
     %scale : index
     %out_buf =
-        mgp.buffer.section.borrow.dynamic %ctx[5], %in_buf, %scale,
+        mgp.buffer.section.borrow.dynamic %ch, %ctx[5], %in_buf, %scale,
           offset 128, size 64 : !mgp.buffer<, <"cuda", 3>>
     %out_buf : !mgp.buffer<, <"cuda", 3>>
     ```
@@ -1536,7 +1547,8 @@ def BufferSectionBorrowDynamicOp : MGP_DeviceOp<"buffer.section.borrow.dynamic",
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_ContextType:$theContext,
+  let arguments = (ins MGP_DeviceChainType:$inChain,
+                       MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$inBuffer,
                        Index:$scale,
                        UI64Attr:$aRuntimeSlot,         // 0
@@ -1545,9 +1557,9 @@ def BufferSectionBorrowDynamicOp : MGP_DeviceOp<"buffer.section.borrow.dynamic",
                        MGP_OptDeviceRefAttr:$dDevice); // 3
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
-    $theContext `[` $aRuntimeSlot `]` `,` $inBuffer `,` $scale `,`
+    $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $inBuffer `,` $scale `,`
     `offset` $bUnscaledOffset `,` `size` $cUnscaledSize attr-dict
-    `:` custom<BufferTypeToDevice>(type($inBuffer), $dDevice)
+    `:` custom<BufferTypeToDevice>(type($inBuffer), $dDevice, type($inChain))
   }];
   let hasVerifier = 1;
 
@@ -1667,9 +1679,10 @@ def TensorCreateOp : MGP_DeviceOp<"tensor.create", [
     Example:
     ```mlir
     %ctx : !mef.context
+    %ch : !mgp.chain<<"cuda", 3>>
     %buf : !mgp.buffer<256, <"cuda", 3>>
     %spec : !mgp.tensor_spec<4x16xf32>
-    %tensor = mgp.tensor.create %ctx[5], %buf, %spec : !mgp.tensor<4x16xf32, <"cuda", 3>>
+    %tensor = mgp.tensor.create %ch, %ctx[5], %buf, %spec : !mgp.tensor<4x16xf32, <"cuda", 3>>
     %tensor : !mgp.tensor<4x16xf32, <"cuda", 3>>
     ```
   }];

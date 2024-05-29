@@ -978,7 +978,8 @@ BufferConcatOp::getInOutSemantics(size_t index) {
 
 void BufferSplitBorrowOp::build(
     OpBuilder &odsBuilder, OperationState &odsState,
-    TypedValue<ContextType> theContext, TypedValue<DeviceBufferType> inBuffer,
+    TypedValue<DeviceChainType> inChain, TypedValue<ContextType> theContext,
+    TypedValue<DeviceBufferType> inBuffer,
     ArrayRef<TypedValue<IndexType>> runtimeSizes, uint64_t aRuntimeSlot,
     llvm::ArrayRef<std::optional<uint64_t>> bOutBufferOptSizes,
     M::DeviceRefAttr cDevice) {
@@ -990,8 +991,9 @@ void BufferSplitBorrowOp::build(
   }
   SmallVector<Value> runtimeSizesAnyValue;
   llvm::append_range(runtimeSizesAnyValue, runtimeSizes);
-  return build(odsBuilder, odsState, resultBufferTypes, theContext, inBuffer,
-               runtimeSizesAnyValue, aRuntimeSlot, outBufferRawSizes, cDevice);
+  return build(odsBuilder, odsState, resultBufferTypes, inChain, theContext,
+               inBuffer, runtimeSizesAnyValue, aRuntimeSlot, outBufferRawSizes,
+               cDevice);
 }
 
 LogicalResult BufferSplitBorrowOp::verify() {

@@ -8,7 +8,7 @@
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context)
 // CHECK: %[[CH1:.*]] = mgp.chain.host_to_device %[[CH0]], %[[CTX]][1]
 // CHECK: %[[OUT_BUF:.*]] = mgp.buffer.alloc.static %[[CH1]], %[[CTX]][1] : !mgp.buffer<64>
-// CHECK: %[[IN_BUFS:.*]]:2 = mgp.buffer.split.borrow %[[CTX]][1], %[[OUT_BUF]] : !mgp.buffer<64>  -> (!mgp.buffer<32>, !mgp.buffer<32>)
+// CHECK: %[[IN_BUFS:.*]]:2 = mgp.buffer.split.borrow %[[CH1]], %[[CTX]][1], %[[OUT_BUF]] : !mgp.buffer<64>  -> (!mgp.buffer<32>, !mgp.buffer<32>)
 // CHECK: %[[CH2:.*]] = "add"(%[[CH1]], %{{.*}}, %{{.*}}, %[[IN_BUFS]]#0)
 // CHECK: %[[CH3:.*]] = "sub"(%[[CH1]], %{{.*}}, %{{.*}}, %[[IN_BUFS]]#1)
 // CHECK: %[[CH4:.*]] = mgp.chain.create %[[CTX]][1], (%[[CH2]], %[[CH3]])
@@ -47,7 +47,7 @@ mgp.model @static_concat : mof init {
 // CHECK: %[[SPLIT_SIZE:.*]] = mip.constant.index 32
 // CHECK: %[[CH1:.*]] = mgp.chain.host_to_device %[[CH0]], %[[CTX]][1]
 // CHECK: %[[OUT_BUF:.*]] = mgp.buffer.alloc.dynamic %[[CH1]], %[[CTX]][1], %[[TOTAL_SIZE]]
-// CHECK: %[[IN_BUFS:.*]]:2 = mgp.buffer.split.borrow %[[CTX]][1], %[[OUT_BUF]], %[[SPLIT_SIZE]] : !mgp.buffer<>  -> (!mgp.buffer<>, !mgp.buffer<32>)
+// CHECK: %[[IN_BUFS:.*]]:2 = mgp.buffer.split.borrow %[[CH1]], %[[CTX]][1], %[[OUT_BUF]], %[[SPLIT_SIZE]] : !mgp.buffer<>  -> (!mgp.buffer<>, !mgp.buffer<32>)
 // CHECK: %[[CH2:.*]] = "add"(%[[CH1]], %{{.*}}, %{{.*}}, %[[IN_BUFS]]#0)
 // CHECK: %[[CH3:.*]] = "sub"(%[[CH1]], %{{.*}}, %{{.*}}, %[[IN_BUFS]]#1)
 // CHECK: %[[CH4:.*]] = mgp.chain.create %[[CTX]][1], (%[[CH2]], %[[CH3]])
