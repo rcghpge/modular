@@ -16,10 +16,12 @@ struct AnyMemory:
     var _data: DTypePointer[DType.invalid]
     var _spec: TensorSpec
     var _device: Device
+    var _name: Optional[String]
 
     fn __init__(inout self, owned device_memory: DeviceMemory) raises:
         self._device = device_memory.get_device()
         self._spec = device_memory.get_tensor_spec()
+        self._name = device_memory.name
         self._data = device_memory^._steal_ptr()
 
     fn __init__[
@@ -34,6 +36,14 @@ struct AnyMemory:
             Rank of the tensor.
         """
         return self._spec.rank()
+
+    fn _steal_ptr(owned self) -> DTypePointer[DType.invalid]:
+        var ptr = self._data
+        self._data = DTypePointer[DType.invalid]()
+        return ptr
+
+    fn device_memory(owned self) raises -> DeviceMemory:
+        return DeviceMemory(self^)
 
     fn __del__(owned self):
         return self._device._free(self._data)

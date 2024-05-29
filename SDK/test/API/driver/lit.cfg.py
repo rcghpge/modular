@@ -44,6 +44,7 @@ config.environment["LSAN_OPTIONS"] = "detect_leaks=0"
 # TODO(#25946): Fix ODR violations.
 config.environment["ASAN_OPTIONS"] = "detect_odr_violation=0"
 
-output = subprocess.run("is-cuda-available")
+is_cuda_available = Path(config.modular_tools_dir) / "is-cuda-available"
+output = subprocess.run(str(is_cuda_available))
 if output.returncode == 0:
     config.available_features.add("cuda")

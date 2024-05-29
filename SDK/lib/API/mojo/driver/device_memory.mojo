@@ -10,6 +10,7 @@ from max.engine._utils import call_dylib_func
 from builtin._startup import _get_current_or_global_runtime
 from .device import Device, _CDevice
 from .tensor import Tensor
+from .anymemory import AnyMemory
 
 
 struct DeviceMemory(StringableRaising):
@@ -56,6 +57,23 @@ struct DeviceMemory(StringableRaising):
         ](func_name_create_tensor)
         var data = tensor^._steal_ptr().bitcast[DType.invalid]()
         self._ptr = create_func(data, self.spec.bytecount(), self._device._cdev)
+
+    fn __init__(inout self, owned anymemory: AnyMemory) raises:
+        """Creates a device tensor from given anymemory."""
+
+        self._device = anymemory._device
+        self.lib = self._device.lib
+        self.spec = anymemory._spec
+        self.name = anymemory._name
+        alias func_name_create_tensor = "M_createDeviceMemoryFrom"
+        var create_func = self.lib.get_handle().get_function[
+            fn (
+                DTypePointer[DType.invalid], Int, _CDevice
+            ) -> DTypePointer[DType.invalid]
+        ](func_name_create_tensor)
+        self._ptr = create_func(
+            anymemory^._steal_ptr(), self.spec.bytecount(), self._device._cdev
+        )
 
     fn __del__(owned self):
         alias func_name_destroy = "M_destroyDeviceMemory"
