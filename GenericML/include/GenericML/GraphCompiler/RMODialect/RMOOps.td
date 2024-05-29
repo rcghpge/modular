@@ -124,9 +124,8 @@ def RMO_ModOp : RMO_PureBinaryElementWiseOp<"mod", []> {
   }];
 }
 
-// TODO: investigate pow. It looks like the MO op allows for different input types without casting.
-// For example, raising a float to the power of an integer.
-// We may need to expand the analogue op and this op to support that as well.
+// TODO(GRA-568): investigate pow. It looks like the MO op allows for different input types without casting.
+// For example, raising a float to the power of an integer. We update the lowering to avoid unnecessary casts.
 def RMO_PowOp : RMO_PureBinaryElementWiseOp<"pow", []> {
   let summary = "Flexible binary pow op";
   let description = [{

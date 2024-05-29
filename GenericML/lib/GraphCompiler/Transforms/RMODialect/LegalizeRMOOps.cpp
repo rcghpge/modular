@@ -200,6 +200,101 @@ struct LowerRebindTensorShapeOp
   }
 };
 
+template <typename RMOOpT, typename MOAnalogueOpT>
+struct LowerThirdPartyBinaryElemwiseOp : public OpRewritePattern<RMOOpT> {
+  LowerThirdPartyBinaryElemwiseOp(MLIRContext *ctx)
+      : OpRewritePattern<RMOOpT>(ctx, 1) {}
+  LogicalResult matchAndRewrite(RMOOpT op,
+                                PatternRewriter &rewriter) const override {
+    auto graphOp = op->template getParentOfType<MO::GraphOp>();
+    Location loc = op->getLoc();
+
+    TensorValue x = op.getInputX();
+    TensorValue y = op.getInputY();
+    auto xDtype = x.getType().getDtype();
+    auto yDtype = y.getType().getDtype();
+    auto resultDtype = op.getResult().getType().getDtype();
+
+    // Deal with dtype casting if it is needed.
+    if (xDtype != resultDtype) {
+      x = rewriter.create<RMO::MOCastOp>(loc,
+                                         x.getType().cloneWith(resultDtype), x);
+    }
+    if (yDtype != resultDtype) {
+      y = rewriter.create<RMO::MOCastOp>(loc,
+                                         y.getType().cloneWith(resultDtype), y);
+    }
+
+    TensorValue xFinal = x;
+    TensorValue yFinal = y;
+    if (x.getType().getTypedShapeAttr() != y.getType().getTypedShapeAttr()) {
+      TensorValue xShape =
+          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{x}, graphOp);
+      TensorValue yShape =
+          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{y}, graphOp);
+
+      TensorValue commonShape = rewriter.create<RMO::MOBroadcastShapeOp>(
+          loc, ValueRange{xShape, yShape}, graphOp);
+
+      TensorValue xBcast = rewriter.create<RMO::MOBroadcastToOp>(
+          loc, ValueRange{x, commonShape}, graphOp);
+      TensorValue yBcast = rewriter.create<RMO::MOBroadcastToOp>(
+          loc, ValueRange{y, commonShape}, graphOp);
+      xFinal = xBcast;
+      yFinal = yBcast;
+    }
+
+    TensorValue answer = rewriter.create<MOAnalogueOpT>(
+        loc, ValueRange{xFinal, yFinal}, graphOp);
+    TensorValue reboundAnswer = rebindToShape(
+        graphOp, answer, op.getType(), rewriter, op.getOutputParamDecls());
+
+    rewriter.replaceAllUsesWith(op, reboundAnswer);
+    return success();
+  }
+};
+
+template <typename RMOOpT, typename MOAnalogueOpT>
+struct LowerThirdPartyBinaryComparisonOp : public OpRewritePattern<RMOOpT> {
+  LowerThirdPartyBinaryComparisonOp(MLIRContext *ctx)
+      : OpRewritePattern<RMOOpT>(ctx, 1) {}
+  LogicalResult matchAndRewrite(RMOOpT op,
+                                PatternRewriter &rewriter) const override {
+    auto graphOp = op->template getParentOfType<MO::GraphOp>();
+    Location loc = op->getLoc();
+
+    TensorValue x = op.getInputX();
+    TensorValue y = op.getInputY();
+
+    TensorValue xFinal = x;
+    TensorValue yFinal = y;
+    if (x.getType().getTypedShapeAttr() != y.getType().getTypedShapeAttr()) {
+      TensorValue xShape =
+          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{x}, graphOp);
+      TensorValue yShape =
+          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{y}, graphOp);
+
+      TensorValue commonShape = rewriter.create<RMO::MOBroadcastShapeOp>(
+          loc, ValueRange{xShape, yShape}, graphOp);
+
+      TensorValue xBcast = rewriter.create<RMO::MOBroadcastToOp>(
+          loc, ValueRange{x, commonShape}, graphOp);
+      TensorValue yBcast = rewriter.create<RMO::MOBroadcastToOp>(
+          loc, ValueRange{y, commonShape}, graphOp);
+      xFinal = xBcast;
+      yFinal = yBcast;
+    }
+
+    TensorValue answer = rewriter.create<MOAnalogueOpT>(
+        loc, ValueRange{xFinal, yFinal}, graphOp);
+    TensorValue reboundAnswer = rebindToShape(
+        graphOp, answer, op.getType(), rewriter, op.getOutputParamDecls());
+
+    rewriter.replaceAllUsesWith(op, reboundAnswer);
+    return success();
+  }
+};
+
 /// Returns the input values with asserting rebinds to ensure parameterized
 /// dimensions are equal.
 ///
@@ -592,6 +687,28 @@ struct LegalizeRMOOps
         LowerCompositeBinaryComparisonOp<RMO::GreaterEqualOp,
                                          RMO::MOGreaterEqualOp>,
         LowerBroadcastLike, LowerSigmoid, LowerConcat>(context);
+
+    // Lowering third party specific operations.
+    // They have more flexible semantics that separate them from standard rmo
+    // ops.
+    blockPatterns.add<
+        LowerThirdPartyBinaryElemwiseOp<RMO::ThirdPartyAddOp, RMO::MOAddOp>,
+        LowerThirdPartyBinaryElemwiseOp<RMO::ThirdPartySubOp, RMO::MOSubOp>,
+        LowerThirdPartyBinaryElemwiseOp<RMO::ThirdPartyMulOp, RMO::MOMulOp>,
+        LowerThirdPartyBinaryElemwiseOp<RMO::ThirdPartyDivOp, RMO::MODivOp>,
+        LowerThirdPartyBinaryElemwiseOp<RMO::ThirdPartyModOp, RMO::MOModOp>,
+        LowerThirdPartyBinaryElemwiseOp<RMO::ThirdPartyPowOp, RMO::MOPowOp>,
+        LowerThirdPartyBinaryElemwiseOp<RMO::ThirdPartyMinOp, RMO::MOMinOp>,
+        LowerThirdPartyBinaryElemwiseOp<RMO::ThirdPartyMaxOp, RMO::MOMaxOp>,
+        // Comparison ops lower the same as other elemwise ops.
+        LowerThirdPartyBinaryComparisonOp<RMO::ThirdPartyEqualOp,
+                                          RMO::MOEqualOp>,
+        LowerThirdPartyBinaryComparisonOp<RMO::ThirdPartyNotEqualOp,
+                                          RMO::MONotEqualOp>,
+        LowerThirdPartyBinaryComparisonOp<RMO::ThirdPartyGreaterOp,
+                                          RMO::MOGreaterOp>,
+        LowerThirdPartyBinaryComparisonOp<RMO::ThirdPartyGreaterEqualOp,
+                                          RMO::MOGreaterEqualOp>>(context);
 
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(blockPatterns))))
