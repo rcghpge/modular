@@ -409,7 +409,7 @@ static void printTensorTypeToDeviceBufferSpec(OpAsmPrinter &p, Operation *op,
 /// the type !mgp.chain<device>.
 static ParseResult parseBufferTypesToBufferRawSizesDeviceOutBuffers(
     OpAsmParser &p, Type &inBuffer, IntArrayElementsAttr &outBufferRawSizesAttr,
-    DeviceRefAttr &device, SmallVectorImpl<Type> &outBuffers, Type &chain) {
+    DeviceRefAttr &device, SmallVectorImpl<Type> &outBuffers) {
   llvm::SMLoc loc;
   if (p.getCurrentLocation(&loc) || p.parseType(inBuffer))
     return failure();
@@ -417,7 +417,6 @@ static ParseResult parseBufferTypesToBufferRawSizesDeviceOutBuffers(
   if (!inBufferType)
     return p.emitError(loc, "expected an !mgp.buffer type");
   device = inBufferType.getDevice();
-  chain = DeviceChainType::get(device);
   SmallVector<APInt> rawDims;
   if (p.getCurrentLocation(&loc) || p.parseArrowTypeList(outBuffers))
     return failure();
@@ -439,7 +438,7 @@ static ParseResult parseBufferTypesToBufferRawSizesDeviceOutBuffers(
 static void printBufferTypesToBufferRawSizesDeviceOutBuffers(
     OpAsmPrinter &p, Operation *op, DeviceBufferType inBuffer,
     IntArrayElementsAttr outBufferRawSizesAttr, DeviceRefAttr device,
-    TypeRange outBuffers, DeviceChainType chain) {
+    TypeRange outBuffers) {
   p << inBuffer;
   p.printArrowTypeList(outBuffers);
 }
