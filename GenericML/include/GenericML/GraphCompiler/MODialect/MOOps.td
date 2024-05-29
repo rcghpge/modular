@@ -4228,6 +4228,30 @@ def MO_GuardOp : MO_Op<"guard", [DeclareOpInterfaceMethods<InferTypeOpInterface>
   let hasVerifier = 1;
 }
 
+def MO_ChainCreateOp : MO_Op<"chain.create">
+{
+  let summary = "Create a new chain conditioned on a variadic number of inputs";
+  let description = [{
+    This operation consumes an aribtrary number of values and produces a chain.
+    Can be used for the sequencing for side-effecting ops when they might
+    depend on multiple other ops producing chains.
+
+    ```mlir
+
+    %ch0 = mo.assert ...
+    %x = mo.matmul ....
+
+    %ch1 = mo.chain.create %ch0, %x
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$inputs);
+  let results = (outs MO_Chain:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` type($inputs)
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // "Custom" GPU only ops
 //===----------------------------------------------------------------------===//

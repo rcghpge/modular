@@ -162,6 +162,9 @@ public:
   /// Lowers mo.guard op
   LogicalResult lowerGuard(MO::GuardOp guardOp);
 
+  /// Lowers mo.chain.create op
+  LogicalResult lowerChainCreate(MO::ChainCreateOp);
+
 private:
   /// Lowers a Block
   LogicalResult lowerBlock(mlir::Block *block);
@@ -946,6 +949,26 @@ LogicalResult MOGraphLowering::lowerGuard(MO::GuardOp guardOp) {
   return success();
 }
 
+LogicalResult
+MOGraphLowering::lowerChainCreate(MO::ChainCreateOp chainCreateOp) {
+  MGP::MOOpLoweringState opLoweringState(loweringState, chainCreateOp);
+
+  SmallVector<Value> loweredOperands;
+
+  for (Value val : chainCreateOp.getOperands()) {
+    Value loweredOperand = loweringState.lookupExecuteLoweredValue(val);
+    loweredOperands.push_back(loweredOperand);
+  }
+
+  auto grtChainCreateOp =
+      opLoweringState.create<GRT::ChainCreateOp>(loweredOperands);
+
+  loweringState.emplaceExecuteLoweredValue(chainCreateOp.getResult(),
+                                           grtChainCreateOp.getResult());
+
+  return success();
+}
+
 LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   ASSERT_STREAM(MO::isOnHost(ifOp)) << "mo.if is for host only";
   MGP::MOOpLoweringState opLoweringState(loweringState, ifOp);
@@ -1294,6 +1317,13 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
     // Lowers mo.guard to
     if (auto guardOp = dyn_cast<MO::GuardOp>(op)) {
       if (failed(lowerGuard(guardOp)))
+        return failure();
+      continue;
+    }
+
+    // Lowers mo.guard to
+    if (auto chainCreateOp = dyn_cast<MO::ChainCreateOp>(op)) {
+      if (failed(lowerChainCreate(chainCreateOp)))
         return failure();
       continue;
     }
