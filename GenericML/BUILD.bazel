@@ -1,6 +1,6 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//bazel:api.bzl", "modular_cc_library")
+load("//bazel:api.bzl", "modular_cc_library", "modular_shared_library")
 load("//utils/bazel/build/rules:tablegen.bzl", "gentbl_mlir_dialect", "gentbl_modular_passes")
 
 package(default_visibility = ["//visibility:public"])
@@ -1388,8 +1388,8 @@ modular_cc_library(
     visibility = ["//visibility:private"],
 )
 
-modular_cc_library(
-    name = "API",
+modular_shared_library(
+    name = "modular-framework-common",
     srcs = glob(["lib/API/c/**/*.cpp"]),
     hdrs = glob(["include/GenericML/API/**/*.h"]),
     deps = [
@@ -1399,6 +1399,7 @@ modular_cc_library(
         "//CUDASupport",
         "//Support:Base",
         "//Support:CrashReporting",
+        "//Support:Globals",
         "//Support:Init",
         "//Support:Metering",
     ],

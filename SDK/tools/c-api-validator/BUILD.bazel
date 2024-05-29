@@ -4,8 +4,8 @@ cc_binary(
     name = "c-api-validator",
     srcs = glob(["*.cpp"]),
     deps = [
-        "//GenericML:API",
         "//GenericML:ExecutionDriver",
+        "//GenericML:modular-framework-common",
         "//LLCL:RuntimeGlobals",
         "//Support:Globals",
     ],

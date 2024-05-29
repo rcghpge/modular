@@ -10,10 +10,11 @@ cc_binary(
     deps = [
         ":DriverOptions.help_gen",
         ":DriverOptions.inc_gen",
-        "//PyTorch:modular-framework-torch-ext.import",
+        "//PyTorch:modular-framework-torch-ext",
         "//SDK:EngineCLI-Benchmark",
         "//SDK:EngineCLI-Visualize",
         "//Support:Globals",
+        "//Support:Init",
     ],
 )
 

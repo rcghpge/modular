@@ -9,7 +9,7 @@ cc_binary(
     data = [
         "//ModularFramework/tools/mof",
         "//ONNX/tools/onnx:monnx",
-        "//PyTorch:StockTorchInterface.shared.file",
+        "//PyTorch:StockTorchInterface",
         "//PyTorch:TorchRuntimePlugin",
         "//PyTorch/tools/torch:mtorch",
     ],
@@ -25,11 +25,11 @@ rpath_shim(
     name = "rpaths",
     visibility = ["//visibility:private"],
     deps = [
-        "//ModularFramework/tools/mof:mof.import",
-        "//ONNX/tools/onnx:monnx.import",
+        "//ModularFramework/tools/mof",
+        "//ONNX/tools/onnx:monnx",
         "//PyTorch:StockTorchInterface",
-        "//PyTorch:TorchRuntimePlugin.import",
-        "//PyTorch/tools/torch:mtorch.import",
+        "//PyTorch:TorchRuntimePlugin",
+        "//PyTorch/tools/torch:mtorch",
     ],
 )
 

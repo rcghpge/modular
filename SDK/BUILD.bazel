@@ -12,7 +12,7 @@ pybind_library(
     copts = ["-frtti"],
     strip_include_prefix = "include",
     deps = [
-        "//GenericML:API",
+        "//GenericML:modular-framework-common",
         "//PyTorch:modular-framework-torch-ext",
     ],
 )
@@ -27,7 +27,7 @@ modular_cc_library(
         ":VisualizeOptions.help_gen",
         ":VisualizeOptions.inc_gen",
         "//Config",
-        "//GenericML:API",
+        "//GenericML:modular-framework-common",
     ],
 )
 
