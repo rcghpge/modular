@@ -17,8 +17,14 @@ struct DeviceMemory(StringableRaising):
     var _device: Device
     var lib: DriverLibrary
     var spec: TensorSpec
+    var name: Optional[String]
 
-    fn __init__(inout self, spec: TensorSpec, device: Device) raises:
+    fn __init__(
+        inout self,
+        spec: TensorSpec,
+        device: Device,
+        name: Optional[String] = None,
+    ) raises:
         """Allocates a DeviceMemory from the Device's address space."""
 
         self._device = device
@@ -31,6 +37,7 @@ struct DeviceMemory(StringableRaising):
             self._device._cdev,
         )
         self.spec = spec
+        self.name = name
 
     fn __init__[
         type: DType, rank: Int
@@ -40,6 +47,7 @@ struct DeviceMemory(StringableRaising):
         self._device = tensor._get_device()
         self.lib = self._device.lib
         self.spec = tensor.get_tensor_spec()
+        self.name = tensor.name
         alias func_name_create_tensor = "M_createDeviceMemoryFrom"
         var create_func = self.lib.get_handle().get_function[
             fn (
@@ -75,6 +83,7 @@ struct DeviceMemory(StringableRaising):
         self._device = existing._device^
         self.lib = existing.lib^
         self.spec = existing.spec^
+        self.name = existing.name^
 
     fn get_rank(self) -> Int:
         return self.spec.rank()
@@ -84,6 +93,7 @@ struct DeviceMemory(StringableRaising):
 
         return (
             "DeviceMemory("
+            + (self.name.value()[] + "," if self.name else "")
             + str(self.get_device())
             + ",Spec("
             + str(self.spec)
@@ -118,7 +128,7 @@ struct DeviceMemory(StringableRaising):
         var data = call_dylib_func[DTypePointer[dtype]](
             self.lib.get_handle(), func_name_steal_data, self._ptr
         )
-        return Tensor(data, shape, self._device)
+        return Tensor(data, shape, self._device, self.name)
 
     fn copy_to(self, inout dst_memory: DeviceMemory) raises:
         """Copies the contents of self into a preallocated buffer.
@@ -139,12 +149,15 @@ struct DeviceMemory(StringableRaising):
             self._ptr,
         )
 
-    fn copy_to(self, inout dev: Device) raises -> DeviceMemory:
+    fn copy_to(
+        self, inout dev: Device, name: Optional[String] = None
+    ) raises -> DeviceMemory:
         """Copies the contents of self into DeviceMemory allocated on dev.
         Note: this function allocates memory on dev.
 
         Args:
             dev: The Device on which to allocate the new DeviceMemory.
+            name: Optional name of the new DeviceMemory.
 
         Returns:
             Newly allocated DeviceMemory containing a copy of the self's contents.
@@ -155,6 +168,6 @@ struct DeviceMemory(StringableRaising):
         if dev == self._device:
             raise str(self) + "is already allocated on " + str(dev)
 
-        var dst = dev.allocate(self.spec)
+        var dst = dev.allocate(self.spec, name)
         self.copy_to(dst)
         return dst^

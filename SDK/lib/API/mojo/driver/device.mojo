@@ -82,12 +82,14 @@ struct Device(Stringable):
         self.lib = existing.lib^
         self._cdev = existing._cdev^
 
-    fn allocate(inout self, spec: TensorSpec) raises -> DeviceMemory:
+    fn allocate(
+        inout self, spec: TensorSpec, name: Optional[String] = None
+    ) raises -> DeviceMemory:
         """Returns a DeviceMemory allocated in the Device's memory space.
         DeviceMemory holds a reference count to Device.
         """
 
-        return DeviceMemory(spec, self)
+        return DeviceMemory(spec, self, name)
 
     fn _free(self, data: DTypePointer[DType.invalid]):
         self._cdev.free_data(self.lib, data)

@@ -35,21 +35,25 @@ struct Tensor[type: DType, rank: Int]:
     var _ptr: DTypePointer[type]
     var _spec: StaticTensorSpec[type, rank]
     var _device: Device
+    var name: Optional[String]
 
     fn __init__(
         inout self,
         ptr: DTypePointer[type],
         shape: StaticIntTuple[rank],
         device: Device,
+        name: Optional[String] = None,
     ):
         self._ptr = ptr
         self._spec = StaticTensorSpec[type](shape)
         self._device = device
+        self.name = name
 
     fn __moveinit__(inout self, owned existing: Self):
         self._ptr = existing._ptr
         self._spec = existing._spec
         self._device = existing._device
+        self.name = existing.name^
 
     fn get_rank(self) -> Int:
         return self._spec.get_rank()
