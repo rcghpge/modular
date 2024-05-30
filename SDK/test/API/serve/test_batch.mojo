@@ -40,7 +40,7 @@ fn test_batch():
     var rt = Runtime()
     var tg = TaskGroup(rt)
     for i in range(NUM_REQ):
-        tg.create_task[Int](submit(i))
+        tg.create_task(submit(i))
     tg.wait()
     _ = batcher^
 

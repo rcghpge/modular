@@ -95,10 +95,8 @@ def main() -> None:
     var model_path = "SDK/test/API/serve/models/add.onnx"
     with Runtime() as rt:
         var tg = TaskGroup(rt)
-        var server_task = tg.create_task[NoneType](
-            server_impl(model_name, model_path)
-        )
-        var client_task = tg.create_task[NoneType](client(model_name))
+        var server_task = tg.create_task(server_impl(model_name, model_path))
+        var client_task = tg.create_task(client(model_name))
         while not client_completed.load():
             sleep(1)
         server.signal_stop()
