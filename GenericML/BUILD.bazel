@@ -954,9 +954,10 @@ expand_template(
 
 modular_cc_library(
     name = "Support",
-    srcs = glob(["lib/Support/**/*.cpp"]),
-    hdrs = glob(["include/GenericML/Support/**/*.h"]) + [":gen_definitions_h"],
+    srcs = glob(["lib/Support/*.cpp"]),
+    hdrs = glob(["include/GenericML/Support/*.h"]) + [":gen_definitions_h"],
     deps = [
+        ":SupportGlobals",
         "//ArraySupport",
         "//GraphRT:Primitives",
         "//KGEN:Compiler",
@@ -967,6 +968,20 @@ modular_cc_library(
         "//Support:ML",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Transforms",
+    ],
+)
+
+modular_shared_library(
+    name = "SupportGlobals",
+    srcs = glob(["lib/Support/Globals/*.cpp"]),
+    hdrs = glob([
+        "include/GenericML/Support/Globals/*.h",
+        "include/GenericML/Support/*.h",
+    ]),
+    output_name = "GenericMLSupportGlobals",
+    deps = [
+        "//Support:Base",
+        "//Support:SymbolExport",
     ],
 )
 
