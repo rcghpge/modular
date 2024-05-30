@@ -898,6 +898,40 @@ def BufferGetCachedOp : MGP_DeviceOp<"buffer.get_cached", [
 }
 
 //===----------------------------------------------------------------------===//
+// BufferFreeOp
+//===----------------------------------------------------------------------===//
+
+def BufferFreeOp : MGP_Op<"buffer.free", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+]> {
+  let summary = "No-op used to indicate when a buffer is freed.";
+  let description = [{
+    Indicate when a buffer may be freed.
+
+    This operation does nothing and has no primitive backing it. It only exists
+    to make buffer lifetimes explicit. Buffers are refcounted in the runtime and
+    freed when necessary.
+
+    Example:
+    ```mlir
+      %ctx : !mgp.context
+      %ch1 : !mgp.chain
+      %buf0 : !mgp.buffer<4>
+      %ch2 = mgp.buffer.free %ch1, %buf0 : !mgp.buffer<4>
+    ```
+  }];
+
+  let assemblyFormat = [{
+    $inChain `,` $buffer attr-dict
+    `:` custom<BufferTypeToChain>(type($buffer), type($inChain))
+  }];
+
+  let arguments = (ins MGP_DeviceChainType:$inChain,
+                       MGP_DeviceBufferType:$buffer);
+  let results = (outs MGP_DeviceChainType:$outChain);
+}
+
+//===----------------------------------------------------------------------===//
 // BufferHostToDeviceOp
 //===----------------------------------------------------------------------===//
 

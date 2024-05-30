@@ -631,6 +631,19 @@ LogicalResult BufferGetCachedOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// BufferFreeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BufferFreeOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  // Copy over the same device chain type
+  inferredReturnTypes.emplace_back(operands[0].getType());
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BufferHostToDeviceOp
 //===----------------------------------------------------------------------===//
 

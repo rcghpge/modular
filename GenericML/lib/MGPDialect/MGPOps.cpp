@@ -309,6 +309,20 @@ static void printBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
   p << buffer;
 }
 
+static ParseResult parseBufferTypeToChain(OpAsmParser &p, Type &buffer,
+                                          Type &chain) {
+  IntegerAttr rawSize;
+  DeviceRefAttr device;
+  return parseBufferTypeToRawSizeDeviceImpl(p, buffer, rawSize, device,
+                                            {&chain});
+}
+
+static void printBufferTypeToChain(OpAsmPrinter &p, Operation *op,
+                                   DeviceBufferType buffer,
+                                   DeviceChainType chain) {
+  p << buffer;
+}
+
 /// Parses a !mgp.tensor type and extracts its device, buffer type, and
 /// tensor spec type, and assigns chain the type !mgp.chain<device>.
 /// If isShapeOnly is true, the tensor spec will have 'unk' dtype.
