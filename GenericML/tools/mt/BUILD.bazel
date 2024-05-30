@@ -8,6 +8,7 @@ modular_cc_binary(
     name = "mt",
     srcs = glob(["*.cpp"]),
     data = [
+        "//Faux/tools/faux",
         "//ModularFramework/tools/mof",
         "//ONNX/tools/onnx:monnx",
         "//PyTorch:StockTorchInterface",
@@ -26,6 +27,7 @@ rpath_shim(
     name = "rpaths",
     visibility = ["//visibility:private"],
     deps = [
+        "//Faux/tools/faux",
         "//ModularFramework/tools/mof",
         "//ONNX/tools/onnx:monnx",
         "//PyTorch:StockTorchInterface",
