@@ -423,57 +423,49 @@ mo.graph @gather_unranked_output(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.
 // PadOp
 //===----------------------------------------------------------------------===//
 
-mo.graph @pad_non_scalar_constant(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[2, 2], si64>, %constant: !mo.tensor<[2], f32>) -> !mo.tensor<[?, ?], f32> {
+mo.graph @pad_non_scalar_constant(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[4], si64>, %constant: !mo.tensor<[2], f32>) -> !mo.tensor<[?, ?], f32> {
   // expected-error@+1 {{'mo.pad.constant' op operand #2 must be ranked scalar tensor, but got '!mo.tensor<[2], f32>'}}
-  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>, !mo.tensor<[2], f32>) -> !mo.tensor<[?, ?], f32>
+  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[4], si64>, !mo.tensor<[2], f32>) -> !mo.tensor<[?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
 
 // -----
 
-mo.graph @pad_float_paddings(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[2, 2], f32>, %constant: !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32> {
-  // expected-error@+1 {{'mo.pad.constant' op operand #1 must be shape [N, 2] and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2, 2], f32>}}
-  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32>
+mo.graph @pad_float_paddings(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[4], f32>, %constant: !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32> {
+  // expected-error@+1 {{'mo.pad.constant' op operand #1 must be shape [N] and signed 64 or signed 32 integer elements, but got '!mo.tensor<[4], f32>}}
+  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[4], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
 
 // -----
 
-mo.graph @pad_invalid_shape_paddings(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[2, 3], si64>, %constant: !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32> {
-  // expected-error@+1 {{'mo.pad.constant' op operand #1 must be shape [N, 2] and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2, 3], si64>'}}
-  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32>
-  mo.output %res : !mo.tensor<[?, ?], f32>
-}
-
-// -----
-
-mo.graph @pad_invalid_static_paddings(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[3, 2], si64>, %constant: !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32> {
+mo.graph @pad_invalid_static_paddings(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[6], si64>, %constant: !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32> {
   // expected-error@+1 {{'mo.pad.constant' op paddings shape does not match static input rank}}
-  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[3, 2], si64>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32>
+  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[6], si64>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
 
 // -----
 
-mo.graph @pad_invalid_dynamic_paddings(%input: !mo.tensor<?, f32>, %paddings: !mo.tensor<[2, 2], si64>, %constant: !mo.tensor<[], f32>) -> !mo.tensor<?, f32> {
+mo.graph @pad_invalid_dynamic_paddings(%input: !mo.tensor<?, f32>, %paddings: !mo.tensor<[4], si64>, %constant: !mo.tensor<[], f32>) -> !mo.tensor<?, f32> {
   // expected-error@+1 {{'mo.pad.constant' op paddings shape does not match dynamic input rank}}
-  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<?, f32>, !mo.tensor<[2, 2], si64>, !mo.tensor<[], f32>) -> !mo.tensor<?, f32>
+  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<?, f32>, !mo.tensor<[4], si64>, !mo.tensor<[], f32>) -> !mo.tensor<?, f32>
   mo.output %res : !mo.tensor<?, f32>
 }
 
 // -----
 
-mo.graph @pad_input_ranked_res_unranked(%input: !mo.tensor<[?, ?], f32>, %paddings: !mo.tensor<[2, 2], si64>, %constant: !mo.tensor<[], f32>) -> !mo.tensor<?, f32> {
+mo.graph @pad_input_ranked_res_unranked(%input: !mo.tensor<[?, ?], f32>, %paddings: !mo.tensor<[4], si64>, %constant: !mo.tensor<[], f32>) -> !mo.tensor<?, f32> {
   // expected-error@+1 {{'mo.pad.constant' op result must be ranked if input is ranked}}
-  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[2, 2], si64>, !mo.tensor<[], f32>) -> !mo.tensor<?, f32>
+  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[4], si64>, !mo.tensor<[], f32>) -> !mo.tensor<?, f32>
   mo.output %res : !mo.tensor<?, f32>
 }
 
 // -----
 
-mo.graph @pad_input_unranked_res_ranked(%input: !mo.tensor<?, f32>, %paddings: !mo.tensor<[?, 2], si64>, %constant: !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32> {
+mo.graph @pad_input_unranked_res_ranked(%input: !mo.tensor<?, f32>, %paddings: !mo.tensor<[?], si64>, %constant: !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32> {
   // expected-error@+1 {{'mo.pad.constant' op result must be unranked if input is unranked}}
-  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<?, f32>, !mo.tensor<[?, 2], si64>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32>
+  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<?, f32>, !mo.tensor<[?], si64>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
 

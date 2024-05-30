@@ -607,7 +607,7 @@ struct PadConvPattern
     }
 
     std::optional<SmallVector<int64_t>> maybePads =
-        tryGetConstantOfRank<int64_t>(cast<TensorValue>(pads), 2);
+        tryGetConstantIntVector(cast<TensorValue>(pads));
 
     if (!maybePads.has_value())
       return rewriter.notifyMatchFailure(op, "can't rewrite dynamic padding");

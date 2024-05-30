@@ -1386,8 +1386,8 @@ static void inferMOTypesPadImpl(
   std::optional<int64_t> rank;
   if (inputTy.hasRank())
     rank = inputTy.getRank();
-  else if (paddingsTy.hasStaticShape())
-    rank = paddingsTy.getIntDim(0);
+  else if (paddingsTy.hasStaticShape() && paddingsTy.getIntDim(0) % 2 == 0)
+    rank = paddingsTy.getIntDim(0) / 2;
   else if (rmoResults.has_value() &&
            cast<TensorType>((*rmoResults)[0].getType()).hasRank())
     rank = cast<TensorType>((*rmoResults)[0].getType()).getRank();
@@ -1401,14 +1401,13 @@ static void inferMOTypesPadImpl(
           : getUnrankedTensorType(inputTy.getDtype(), graphOp, inputDecls));
   moInputParamDecls.push_back(std::move(inputDecls));
 
-  // paddings shape must be [rank, 2].
+  // paddings shape must be [2 * rank].
   SmallVector<KGEN::ParamDeclAttr> paddingsDecls;
-  TypedAttr rankAttr = rank.has_value()
-                           ? createStaticDimensionType(graphOp, *rank)
-                           : createDynamicDimensionType(graphOp, paddingsDecls);
-  TypedAttr d2Attr = createStaticDimensionType(graphOp, 2);
+  TypedAttr outDimAttr =
+      rank.has_value() ? createStaticDimensionType(graphOp, *rank * 2)
+                       : createDynamicDimensionType(graphOp, paddingsDecls);
   moOperandTypes.push_back(
-      paddingsTy.cloneWith(SmallVector<TypedAttr>{rankAttr, d2Attr}));
+      paddingsTy.cloneWith(SmallVector<TypedAttr>{outDimAttr}));
   moInputParamDecls.push_back(std::move(paddingsDecls));
 
   // constant must be scalar.

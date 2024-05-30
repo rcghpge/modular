@@ -530,7 +530,7 @@ ShapeMaterializeResult materializePadShape(GraphOp graphOp, Location loc,
   size_t inputRank = inputShape.getRank();
   if (2 * inputRank != paddings.getSize()) {
     return ShapeMaterializeResult::error(
-        "[pad] paddings shape must be (input_rank, 2)");
+        "[pad] paddings shape must be (2 * input_rank)");
   }
 
   // Create builder and track generated ops.

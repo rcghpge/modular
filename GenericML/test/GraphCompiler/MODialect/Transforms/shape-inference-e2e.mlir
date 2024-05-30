@@ -618,48 +618,48 @@ mo.graph @pad_constant(
   %input: !mo.tensor<[2, 3], f32>,
   %constant: !mo.tensor<[], f32>
 ) -> !mo.tensor<[?, ?], f32> {
-  %paddings = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+  %paddings = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<4xsi32>} : !mo.tensor<[4], si32>
   %res = mo.pad.constant(%input, %paddings, %constant) : (
-    !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[], f32>
+    !mo.tensor<[2, 3], f32>, !mo.tensor<[4], si32>, !mo.tensor<[], f32>
   ) -> !mo.tensor<[?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @pad_constant([[VARG0:%.*]]: !mo.tensor<[2, 3], f32>, [[VARG1:%.*]]: !mo.tensor<[], f32>) -> !mo.tensor<[32, 73], f32> {
-// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
-// CHECK-NEXT:   [[V1:%.*]] = mo.pad.constant([[VARG0]], [[V0]], [[VARG1]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[], f32>) -> !mo.tensor<[32, 73], f32>
+// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+// CHECK-NEXT:   [[V1:%.*]] = mo.pad.constant([[VARG0]], [[V0]], [[VARG1]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[4], si32>, !mo.tensor<[], f32>) -> !mo.tensor<[32, 73], f32>
 // CHECK-NEXT:   mo.output [[V1]] : !mo.tensor<[32, 73], f32>
 // CHECK-NEXT: }
 
 mo.graph @pad_reflect(
   %input: !mo.tensor<[2, 3], f32>
 ) -> !mo.tensor<[?, ?], f32> {
-  %paddings = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+  %paddings = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<4xsi32>} : !mo.tensor<[4], si32>
   %res = mo.pad.reflect(%input, %paddings) : (
-    !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si32>
+    !mo.tensor<[2, 3], f32>, !mo.tensor<[4], si32>
   ) -> !mo.tensor<[?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @pad_reflect([[VARG0:%.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[32, 73], f32> {
-// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
-// CHECK-NEXT:   [[V1:%.*]] = mo.pad.reflect([[VARG0]], [[V0]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[32, 73], f32>
+// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+// CHECK-NEXT:   [[V1:%.*]] = mo.pad.reflect([[VARG0]], [[V0]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[4], si32>) -> !mo.tensor<[32, 73], f32>
 // CHECK-NEXT:   mo.output [[V1]] : !mo.tensor<[32, 73], f32>
 // CHECK-NEXT: }
 
 mo.graph @pad_repeat(
   %input: !mo.tensor<[2, 3], f32>
 ) -> !mo.tensor<[?, ?], f32> {
-  %paddings = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+  %paddings = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<4xsi32>} : !mo.tensor<[4], si32>
   %res = mo.pad.repeat(%input, %paddings) : (
-    !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si32>
+    !mo.tensor<[2, 3], f32>, !mo.tensor<[4], si32>
   ) -> !mo.tensor<[?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @pad_repeat([[VARG0:%.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[32, 73], f32> {
-// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
-// CHECK-NEXT:   [[V1:%.*]] = mo.pad.repeat([[VARG0]], [[V0]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[32, 73], f32>
+// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<10, 20, 30, 40> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+// CHECK-NEXT:   [[V1:%.*]] = mo.pad.repeat([[VARG0]], [[V0]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[4], si32>) -> !mo.tensor<[32, 73], f32>
 // CHECK-NEXT:   mo.output [[V1]] : !mo.tensor<[32, 73], f32>
 // CHECK-NEXT: }
 

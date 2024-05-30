@@ -2523,10 +2523,10 @@ def MO_PadConstantOp : MO_TensorOp<"pad.constant", [MO_PadLikeTraits]> {
   let description = [{
     Pads the `input` tensor with a scalar tensor `constant` according to the
     `paddings`. Assumes input has rank `N`, the `paddings` tensor should have
-    shape `(N, 2)`, where each row has the form `[before, after]`, indicating
-    how many of `constant` to add before and after the contents of `input` in
-    that dimension. The size of each dimension D of the padded output is:
-    `paddings[D, 0] + input.dim(D) + paddings[D, 1]`.
+    shape `(2 * N)`, where each consecutive pair of elements has the form
+    `[before, after]`, indicating how many of `constant` to add before and after
+    the contents of `input` in that dimension. The size of each dimension D of
+    the padded output is: `paddings[2*D] + input.dim(D) + paddings[2*D+1]`.
 
     Example:
 
@@ -2535,10 +2535,10 @@ def MO_PadConstantOp : MO_TensorOp<"pad.constant", [MO_PadLikeTraits]> {
       %constant = mo.constant {
         value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
       %paddings = mo.constant {
-        value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>
-      } : !mo.tensor<[2, 2], si64>
+        value = #M.dense_array<1, 0, 1, 1> : tensor<4xsi64>
+      } : !mo.tensor<[4], si64>
       %output =   mo.pad.constant(%input, %paddings, %constant) : (
-        !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>, !mo.tensor<[], f32>
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[4], si64>, !mo.tensor<[], f32>
       ) -> !mo.tensor<[3, 5], f32>
     ```
   }];
@@ -2560,11 +2560,12 @@ def MO_PadConstantOp : MO_TensorOp<"pad.constant", [MO_PadLikeTraits]> {
 def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [MO_PadLikeTraits]> {
   let summary = "Reflection-mode padding operation";
   let description = [{
-    Pads the `input` tensor by reflecting it according to the `paddings`. Assumes
-    input has rank `N`, the `paddings` tensor should have shape `(N, 2)`, where
-    each row has the form `[before, after]`, indicating how many of `constant`
-    to add before and after the contents of `input` in that dimension. The size
-    of each dimension D of the padded output is:
+    Pads the `input` tensor by reflecting it according to the `paddings`.
+    Assumes input has rank `N`, the `paddings` tensor should have shape `(2 *
+    N)`, where each consecutive pair of elements has the form `[before, after]`,
+    indicating how many of `constant` to add before and after the contents of
+    `input` in that dimension. The size of each dimension D of the padded output
+    is: `paddings[2*D] + input.dim(D) + paddings[2*D+1]`.
 
     `paddings[D, 0] + input.dim(D) + paddings[D, 1]`.
 
@@ -2573,10 +2574,10 @@ def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [MO_PadLikeTraits]> {
     ```mlir
       %input: !mo.tensor<[2, 3], f32>
       %paddings = mo.constant {
-        value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>
-      } : !mo.tensor<[2, 2], si64>
+        value = #M.dense_array<1, 0, 1, 1> : tensor<4xsi64>
+      } : !mo.tensor<[4], si64>
       %output   = mo.pad.reflect(%input, %paddings) : (
-        !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>) ->
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[4], si64>) ->
         !mo.tensor<[3, 5], f32>
     ```
   }];
@@ -2598,10 +2599,11 @@ def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [MO_PadLikeTraits]> {
   let summary = "Repeat-mode padding operation";
   let description = [{
     Pads the `input` tensor by repeating border values according to `paddings`.
-    Assumes input has rank `N`, the `paddings` tensor should have shape `(N, 2)`, where
-    each row has the form `[before, after]`, indicating how many of the border values
-    to add before and after the contents of `input` in that dimension. The size
-    of each dimension D of the padded output is:
+    Assumes input has rank `N`, the `paddings` tensor should have shape `(2 *
+    N)`, where each consecutive pair of elements has the form `[before, after]`,
+    indicating how many of `constant` to add before and after the contents of
+    `input` in that dimension. The size of each dimension D of the padded output
+    is: `paddings[2*D] + input.dim(D) + paddings[2*D+1]`.
 
     `paddings[D, 0] + input.dim(D) + paddings[D, 1]`.
 
@@ -2610,10 +2612,10 @@ def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [MO_PadLikeTraits]> {
     ```mlir
       %input: !mo.tensor<[2, 3], f32>
       %paddings = mo.constant {
-        value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi64>
-      } : !mo.tensor<[2, 2], si64>
+        value = #M.dense_array<1, 0, 1, 1> : tensor<4xsi64>
+      } : !mo.tensor<[4], si64>
       %output   = mo.pad.repeat(%input, %paddings) : (
-        !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>) ->
+        !mo.tensor<[2, 3], f32>, !mo.tensor<[4], si64>) ->
         !mo.tensor<[3, 5], f32>
     ```
   }];

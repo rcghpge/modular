@@ -1898,7 +1898,7 @@ DeviceRefAttr MultiHeadGPUFlashAttentionOp::getOperandDevice(size_t index) {
 
 LogicalResult canonicalizePadLikeOp(PadLike op, PatternRewriter &rewriter) {
   // Try to extract constant paddings
-  auto maybePaddings = tryGetConstantOfRank<int64_t>(op.getPaddings(), 2);
+  auto maybePaddings = tryGetConstantIntVector(op.getPaddings());
   if (!maybePaddings.has_value())
     return failure();
   ArrayRef<int64_t> paddings = maybePaddings.value();

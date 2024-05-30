@@ -329,11 +329,6 @@ private:
     if (auto intsOr = MO::tryGetConstantIntVector(tensorVal))
       return ShapeAttr::get(intsOr.value(), MOSH::ShapeType::get(ctx));
 
-    // Example: [10, 20, ...]
-    // TODO(GRA-532) remove this special case
-    if (auto intsOr = MO::tryGetConstantOfRank<int64_t>(tensorVal, 2))
-      return ShapeAttr::get(intsOr.value(), MOSH::ShapeType::get(ctx));
-
     return {};
   }
 

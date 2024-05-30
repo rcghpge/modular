@@ -201,28 +201,28 @@ mo.graph @gather_dyn_rank_param(%input: !mo.tensor<?, f32>, %indices: !mo.tensor
 mo.graph @pad_static_output_shape(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 5], f32> {
   // CHECK: %[[CONSTANT:.*]] = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
   %constant = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
-  // CHECK: %[[PADDINGS:.*]] = mo.constant {value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
-  %paddings = mo.constant {value = #M.dense_array<1, 0, 1, 1> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
-  // CHECK: mo.pad.constant(%[[INPUT]], %[[PADDINGS]], %[[CONSTANT]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[], f32>) -> !mo.tensor<[3, 5], f32>
-  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[], f32>) -> !mo.tensor<[3, 5], f32>
+  // CHECK: %[[PADDINGS:.*]] = mo.constant {value = #M.dense_array<1, 0, 1, 1> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  %paddings = mo.constant {value = #M.dense_array<1, 0, 1, 1> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  // CHECK: mo.pad.constant(%[[INPUT]], %[[PADDINGS]], %[[CONSTANT]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[4], si32>, !mo.tensor<[], f32>) -> !mo.tensor<[3, 5], f32>
+  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[4], si32>, !mo.tensor<[], f32>) -> !mo.tensor<[3, 5], f32>
   mo.output %res : !mo.tensor<[3, 5], f32>
 }
 
-// CHECK: mo.graph @pad_dynamic_output_shape(%[[INPUT:.*]]: !mo.tensor<[2, 3], f32>, %[[PADDINGS:.*]]: !mo.tensor<[2, 2], si64>) -> !mo.tensor<[?, ?], f32> {
-mo.graph @pad_dynamic_output_shape(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[2, 2], si64>) -> !mo.tensor<[?, ?], f32> {
+// CHECK: mo.graph @pad_dynamic_output_shape(%[[INPUT:.*]]: !mo.tensor<[2, 3], f32>, %[[PADDINGS:.*]]: !mo.tensor<[4], si64>) -> !mo.tensor<[?, ?], f32> {
+mo.graph @pad_dynamic_output_shape(%input: !mo.tensor<[2, 3], f32>, %paddings: !mo.tensor<[4], si64>) -> !mo.tensor<[?, ?], f32> {
   // CHECK: %[[CONSTANT:.*]] = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} :
   %constant = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
-  // CHECK: mo.pad.constant(%[[INPUT]], %[[PADDINGS]], %[[CONSTANT]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32>
-  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 2], si64>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32>
+  // CHECK: mo.pad.constant(%[[INPUT]], %[[PADDINGS]], %[[CONSTANT]]) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[4], si64>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32>
+  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[4], si64>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
 }
 
-// CHECK: mo.graph @pad_unranked(%[[INPUT:.*]]: !mo.tensor<?, f32>, %[[PADDINGS:.*]]: !mo.tensor<[?, 2], si64>) -> !mo.tensor<?, f32> {
-mo.graph @pad_unranked(%input: !mo.tensor<?, f32>, %paddings: !mo.tensor<[?, 2], si64>) -> !mo.tensor<?, f32> {
+// CHECK: mo.graph @pad_unranked(%[[INPUT:.*]]: !mo.tensor<?, f32>, %[[PADDINGS:.*]]: !mo.tensor<[?], si64>) -> !mo.tensor<?, f32> {
+mo.graph @pad_unranked(%input: !mo.tensor<?, f32>, %paddings: !mo.tensor<[?], si64>) -> !mo.tensor<?, f32> {
   // CHECK: %[[CONSTANT:.*]] = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} :
   %constant = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
-  // CHECK: mo.pad.constant(%[[INPUT]], %[[PADDINGS]], %[[CONSTANT]]) : (!mo.tensor<?, f32>, !mo.tensor<[?, 2], si64>, !mo.tensor<[], f32>) -> !mo.tensor<?, f32>
-  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<?, f32>, !mo.tensor<[?, 2], si64>, !mo.tensor<[], f32>) -> !mo.tensor<?, f32>
+  // CHECK: mo.pad.constant(%[[INPUT]], %[[PADDINGS]], %[[CONSTANT]]) : (!mo.tensor<?, f32>, !mo.tensor<[?], si64>, !mo.tensor<[], f32>) -> !mo.tensor<?, f32>
+  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<?, f32>, !mo.tensor<[?], si64>, !mo.tensor<[], f32>) -> !mo.tensor<?, f32>
   mo.output %res : !mo.tensor<?, f32>
 }
 
@@ -231,8 +231,8 @@ mo.graph @pad_zero_paddings(%input: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[?, ?
 
   // CHECK-NEXT:   %[[RES:.*]] = mo.rebind(%[[INPUT]]) : !mo.tensor<[2, 2], f32> -> !mo.tensor<[?, ?], f32>
   %constant = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
-  %paddings = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
-  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32>
+  %paddings = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[4], si32>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32>
 
   // CHECK-NEXT:   mo.output %[[RES]] : !mo.tensor<[?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
@@ -245,8 +245,8 @@ mo.graph @pad_zero_paddings_with_output_param<() -> D1, D2>(%input: !mo.tensor<[
   // CHECK-DAG: kgen.param.declare [[D4:.*]] = <2>
   // CHECK-NEXT:   %[[RES:.*]] = mo.rebind(%[[INPUT]]) : !mo.tensor<[2, 2], f32> -> !mo.tensor<[[[D3]], [[D4]]], f32>
   %constant = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
-  %paddings = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
-  %res = mo.pad.constant<() -> D3, D4>(%input, %paddings, %constant) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[], f32>) -> !mo.tensor<[D3, D4], f32>
+  %paddings = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  %res = mo.pad.constant<() -> D3, D4>(%input, %paddings, %constant) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[4], si32>, !mo.tensor<[], f32>) -> !mo.tensor<[D3, D4], f32>
 
   // CHECK-NEXT:   mo.output<{{.*}}> %[[RES]]
   mo.output<D3, D4> %res : !mo.tensor<[D3, D4], f32>
