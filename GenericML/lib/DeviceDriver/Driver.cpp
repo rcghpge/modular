@@ -26,14 +26,17 @@ MODULAR_API_EXPORT const char *M_getDeviceDesc(const Device *devPtr) {
   return devPtr->getString().c_str();
 }
 
-MODULAR_API_EXPORT DeviceMemory *M_createDeviceMemory(size_t bytes,
+MODULAR_API_EXPORT DeviceMemory *M_createDeviceMemory(const M::TensorSpec *spec,
                                                       Device *devPtr) {
-  return devPtr->createDeviceMemory(bytes);
+  // CAUTION: this assumes that TensorSpec is bitwise identical in mojo and cpp
+  return devPtr->createDeviceMemory(*spec);
 }
 
 MODULAR_API_EXPORT DeviceMemory *
-M_createDeviceMemoryFrom(void *data, size_t bytes, Device *devPtr) {
-  return devPtr->createDeviceMemory(data, bytes);
+M_createDeviceMemoryFrom(void *data, const M::TensorSpec *spec,
+                         Device *devPtr) {
+  // CAUTION: this assumes that TensorSpec is bitwise identical in mojo and cpp
+  return devPtr->createDeviceMemory(data, *spec);
 }
 
 MODULAR_API_EXPORT Device *

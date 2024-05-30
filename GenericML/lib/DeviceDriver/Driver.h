@@ -8,6 +8,7 @@
 #define GENERICML_LIB_DEVICEDRIVER_DRIVER
 
 #include "Support/ErrorOr.h"
+#include "Support/ML/TensorSpec.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
 #include <string>
@@ -25,8 +26,8 @@ struct DeviceMemory {
 
   /// Constructs and allocates DeviceMemory on `dev`, bumping the refcount
   /// of `dev`.
-  DeviceMemory(DeviceMemoryKind kind, size_t bytes, Device *dev)
-      : devicePtr(M::copyRCRef(dev)), bytes(bytes), kind(kind) {}
+  DeviceMemory(DeviceMemoryKind kind, const TensorSpec &spec, Device *dev)
+      : devicePtr(M::copyRCRef(dev)), spec(spec), kind(kind) {}
 
   /// Relinqishes ownership of the underlying data, and returns the pointer.
   void *release() { return std::exchange(ptr, nullptr); }
@@ -35,7 +36,7 @@ struct DeviceMemory {
   /// ownership.
   void *data() { return ptr; }
 
-  size_t bytecount() const { return bytes; }
+  size_t bytecount() const { return spec.getSizeInBytes(); }
 
   virtual ~DeviceMemory() = default;
 
@@ -49,7 +50,7 @@ struct DeviceMemory {
 
 protected:
   void *ptr;
-  size_t bytes;
+  M::TensorSpec spec;
   const DeviceMemoryKind kind;
 };
 struct Device : M::ReferenceCounted<Device> {
@@ -64,11 +65,12 @@ struct Device : M::ReferenceCounted<Device> {
   /// Allocates `bytes` bytes of memory on the device
   /// and returns the allocation in a DeviceMemory object.
   /// DeviceMemory contains a RCRef of the underlying Device.
-  virtual DeviceMemory *createDeviceMemory(size_t bytes) = 0;
+  virtual DeviceMemory *createDeviceMemory(const TensorSpec &spec) = 0;
 
   /// Takes ownership of `data` in a DeviceMemory object.
   /// DeviceMemory contains a RCRef of the underlying Device.
-  virtual DeviceMemory *createDeviceMemory(void *data, size_t bytes) = 0;
+  virtual DeviceMemory *createDeviceMemory(void *data,
+                                           const TensorSpec &spec) = 0;
 
   virtual ~Device() = default;
 };

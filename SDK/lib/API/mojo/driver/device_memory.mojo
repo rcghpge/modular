@@ -17,6 +17,7 @@ struct DeviceMemory(StringableRaising, CollectionElement):
     var _ptr: DTypePointer[DType.invalid]
     var _device: Device
     var lib: DriverLibrary
+    # TODO: de-duplicate spec on mojo and cpp sides
     var spec: TensorSpec
     var name: Optional[String]
 
@@ -30,10 +31,11 @@ struct DeviceMemory(StringableRaising, CollectionElement):
         self._device = device
         self.lib = self._device.lib
         alias func_name_create_tensor = "M_createDeviceMemory"
+        # CAUTION: this assumes that TensorSpec is bitwise identical in mojo and cpp
         self._ptr = call_dylib_func[DTypePointer[DType.invalid]](
             self.lib.get_handle(),
             func_name_create_tensor,
-            spec.bytecount(),
+            UnsafePointer[TensorSpec].address_of(spec),
             self._device._cdev,
         )
         self.spec = spec
@@ -64,11 +66,18 @@ struct DeviceMemory(StringableRaising, CollectionElement):
         alias func_name_create_tensor = "M_createDeviceMemoryFrom"
         var create_func = self.lib.get_handle().get_function[
             fn (
-                DTypePointer[DType.invalid], Int, _CDevice
+                DTypePointer[DType.invalid], UnsafePointer[TensorSpec], _CDevice
             ) -> DTypePointer[DType.invalid]
         ](func_name_create_tensor)
         var data = tensor^._steal_ptr().bitcast[DType.invalid]()
-        self._ptr = create_func(data, self.spec.bytecount(), self._device._cdev)
+        # Need to initialize self._ptr before calling address_of(self.spec)
+        self._ptr = DTypePointer[DType.invalid]()
+        # CAUTION: this assumes that TensorSpec is bitwise identical in mojo and cpp
+        self._ptr = create_func(
+            data,
+            UnsafePointer[TensorSpec].address_of(self.spec),
+            self._device._cdev,
+        )
 
     fn __init__(inout self, owned anymemory: AnyMemory) raises:
         """Creates a device tensor from given anymemory."""
@@ -80,11 +89,16 @@ struct DeviceMemory(StringableRaising, CollectionElement):
         alias func_name_create_tensor = "M_createDeviceMemoryFrom"
         var create_func = self.lib.get_handle().get_function[
             fn (
-                DTypePointer[DType.invalid], Int, _CDevice
+                DTypePointer[DType.invalid], UnsafePointer[TensorSpec], _CDevice
             ) -> DTypePointer[DType.invalid]
         ](func_name_create_tensor)
+        # Need to initialize self._ptr before calling address_of(self.spec)
+        self._ptr = DTypePointer[DType.invalid]()
+        # CAUTION: this assumes that TensorSpec is bitwise identical in mojo and cpp
         self._ptr = create_func(
-            anymemory^._steal_ptr(), self.spec.bytecount(), self._device._cdev
+            anymemory^._steal_ptr(),
+            UnsafePointer[TensorSpec].address_of(self.spec),
+            self._device._cdev,
         )
 
     fn __del__(owned self):
