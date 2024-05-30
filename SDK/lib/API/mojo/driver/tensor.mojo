@@ -31,7 +31,7 @@ struct StaticTensorSpec[type: DType, rank: Int]:
         return self.shape[idx]
 
 
-struct Tensor[type: DType, rank: Int]:
+struct Tensor[type: DType, rank: Int](CollectionElement):
     var _ptr: DTypePointer[type]
     var _spec: StaticTensorSpec[type, rank]
     var _device: Device
@@ -54,6 +54,16 @@ struct Tensor[type: DType, rank: Int]:
         self._spec = existing._spec
         self._device = existing._device
         self.name = existing.name^
+
+    fn __copyinit__(inout self, existing: Self):
+        # This temporarily exists so that we can store Tensor in a List
+        # TODO(MSTDL-467): Once Copyable requirement on List is removed, this
+        # can be removed
+        constrained[False, "__copyinit__ not supported on Tensor, MSTDL-467"]()
+        self._ptr = existing._ptr
+        self._spec = existing._spec
+        self._device = existing._device
+        self.name = existing.name
 
     fn get_rank(self) -> Int:
         return self._spec.get_rank()

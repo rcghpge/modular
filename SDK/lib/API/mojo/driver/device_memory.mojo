@@ -13,7 +13,7 @@ from .tensor import Tensor
 from .anymemory import AnyMemory
 
 
-struct DeviceMemory(StringableRaising):
+struct DeviceMemory(StringableRaising, CollectionElement):
     var _ptr: DTypePointer[DType.invalid]
     var _device: Device
     var lib: DriverLibrary
@@ -27,7 +27,6 @@ struct DeviceMemory(StringableRaising):
         name: Optional[String] = None,
     ) raises:
         """Allocates a DeviceMemory from the Device's address space."""
-
         self._device = device
         self.lib = self._device.lib
         alias func_name_create_tensor = "M_createDeviceMemory"
@@ -39,6 +38,19 @@ struct DeviceMemory(StringableRaising):
         )
         self.spec = spec
         self.name = name
+
+    fn __copyinit__(inout self, existing: Self):
+        # This temporarily exists so that we can store DeviceMemory in a List
+        # TODO(MSTDL-467): Once Copyable requirement on List is removed, this
+        # can be removed
+        constrained[
+            False, "__copyinit__ not supported on DeviceMemory, MSTDL-467"
+        ]()
+        self._ptr = existing._ptr
+        self._device = existing._device
+        self.lib = existing.lib
+        self.spec = existing.spec
+        self.name = existing.name
 
     fn __init__[
         type: DType, rank: Int
