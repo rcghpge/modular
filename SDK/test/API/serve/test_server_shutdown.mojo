@@ -4,7 +4,6 @@
 #
 # ===----------------------------------------------------------------------=== #
 # RUN: %mojo %s
-# REQUIRES: manual
 from tensor import TensorSpec
 
 from max.engine import InferenceSession, InputSpec
@@ -23,7 +22,7 @@ from max.graph._testing import assert_tensors_almost_equal
 def main() -> None:
     var server_started = Atomic[DType.int64](0)
     var server_session = InferenceSession()
-    alias server_address = "0.0.0.0:8000"
+    alias server_address = "0.0.0.0:0"
     var start_time = now()
 
     @parameter
@@ -34,10 +33,11 @@ def main() -> None:
     print("[" + elapsed() + "]Created server.")
 
     @parameter
-    async fn server_impl(name: StringRef, path: StringRef) -> None:
-        # Load models during service creation:
+    async fn server_impl():
+        # N.B. This is simple startup and shutdown test. We don't actually need
+        # to load any models here, so we just provide the empty list.
         try:
-            var models = List(FileModel(name, "0", path, None))
+            var models = List[FileModel]()
             print("[" + elapsed() + "]Entered stub.")
             var mux_service = MuxInferenceService(models, server_session)
             print("[" + elapsed() + "]Loaded model.")
@@ -51,11 +51,9 @@ def main() -> None:
         except e:
             print("Server execption: ", e)
 
-    var model_name = "Add"
-    var model_path = "SDK/test/API/serve/models/add.onnx"
     with Runtime() as rt:
-        var tg = TaskGroup[__lifetime_of(model_name, model_path)](rt)
-        var server_task = tg.create_task(server_impl(model_name, model_path))
+        var tg = TaskGroup[__lifetime_of(server_started)](rt)
+        var server_task = tg.create_task(server_impl())
         while not server_started.load():
             print(".", end="")
             sleep(1)
