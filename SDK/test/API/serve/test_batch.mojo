@@ -38,7 +38,7 @@ fn test_batch():
         return batcher.submit(n)
 
     var rt = Runtime()
-    var tg = TaskGroup(rt)
+    var tg = TaskGroup[__lifetime_of()](rt)
     for i in range(NUM_REQ):
         tg.create_task(submit(i))
     tg.wait()

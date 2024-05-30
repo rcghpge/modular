@@ -54,7 +54,7 @@ def main() -> None:
     var model_name = "Add"
     var model_path = "SDK/test/API/serve/models/add.onnx"
     with Runtime() as rt:
-        var tg = TaskGroup(rt)
+        var tg = TaskGroup[__lifetime_of(model_name, model_path)](rt)
         var server_task = tg.create_task(server_impl(model_name, model_path))
         while not server_started.load():
             print(".", end="")
