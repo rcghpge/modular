@@ -204,7 +204,7 @@ struct DeviceMemory(StringableRaising, CollectionElement):
         self.copy_to(dst)
         return dst^
 
-    fn data_unsafe(self) -> DTypePointer[DType.invalid]:
+    fn unsafe_ptr(self) -> DTypePointer[DType.invalid]:
         """Returns a pointer to the underlying device memory.
 
         Note: The caller is responsible for ensuring that the returned pointer
