@@ -7,7 +7,7 @@
 # RUN: %mojo -debug-level full %s
 
 from time import sleep, now
-from runtime.llcl import Runtime, TaskGroup, TaskGroupTaskList
+from runtime.llcl import Runtime, TaskGroup
 from max.serve.batch import Batcher
 
 
@@ -39,11 +39,9 @@ fn test_batch():
 
     var rt = Runtime()
     var tg = TaskGroup(rt)
-    var tl = TaskGroupTaskList[Int](NUM_REQ)
     for i in range(NUM_REQ):
-        tl.add(tg.create_task[Int](submit(i)))
+        tg.create_task[Int](submit(i))
     tg.wait()
-    _ = tl^
     _ = batcher^
 
 
