@@ -15,8 +15,10 @@ from max.serve.server import InferenceServer, MuxInferenceService
 
 
 fn main() raises:
-    var USAGE = "Usage: run_sync_server.mojo [(--name <name> --path <path>)]..."
     var argv = sys.argv()
+    var USAGE = String("Usage: mojo ") + argv[
+        0
+    ] + " [(--name <name> --path <path>)]..."
 
     var pairs = List[List[String]]()
     var i = 1
@@ -38,8 +40,11 @@ fn main() raises:
             raise Error("Failed to parse command-line options")
 
     if name_seen:
+        print(USAGE)
         raise Error("Name argument specified without path!")
-
+    if name == "" or path == "":
+        print(USAGE)
+        raise Error("No model or path specified!")
     var models = List[FileModel]()
     for pair in pairs:
         models.append(FileModel(pair[][0], "0", pair[][1], None))
