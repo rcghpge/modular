@@ -121,6 +121,8 @@ struct Device(Stringable):
         call_dylib_func[NoneType](
             self.lib.get_handle(), func_name_destroy, self._cdev
         )
+        # Extend lifetime of library until C function returns.
+        _ = self.lib^
 
     fn __eq__(self, other: Self) -> Bool:
         return self._cdev == other._cdev

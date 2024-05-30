@@ -92,6 +92,8 @@ struct DeviceMemory(StringableRaising, CollectionElement):
         call_dylib_func[NoneType](
             self.lib.get_handle(), func_name_destroy, self._ptr
         )
+        # Extend lifetime of library until C function returns.
+        _ = self.lib^
 
     fn get_tensor_spec(self) -> TensorSpec:
         return self.spec
