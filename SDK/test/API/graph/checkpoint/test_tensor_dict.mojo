@@ -17,20 +17,27 @@ fn test_simple() raises:
     tensors.set("x", Tensor[DType.int32](TensorShape(1, 2, 2), 1, 2, 3, 4))
     tensors.set("y", Tensor[DType.float32](TensorShape(10, 5), -1.23))
     _testing.assert_equal(2, len(tensors))
-    var x = tensors["x"]
+    var x = tensors.get[DType.int32]("x")
     _testing.assert_tensors_equal(
-        x.to_tensor[DType.int32](),
+        x,
         Tensor[DType.int32](TensorShape(1, 2, 2), 1, 2, 3, 4),
     )
 
-    var y = tensors["y"]
+    # Test getting the same key again.
     _testing.assert_tensors_equal(
-        y.to_tensor[DType.float32](),
-        Tensor[DType.float32](TensorShape(10, 5), -1.23),
+        tensors.get[DType.int32]("x"),
+        Tensor[DType.int32](TensorShape(1, 2, 2), 1, 2, 3, 4),
     )
 
+    var y = tensors.pop[DType.float32]("y")
+    _testing.assert_tensors_equal(
+        y,
+        Tensor[DType.float32](TensorShape(10, 5), -1.23),
+    )
+    _testing.assert_equal(1, len(tensors))
+
     with testing.assert_raises():
-        _ = tensors["z"]
+        _ = tensors.get[DType.float32]("z")
 
 
 fn test_overwrite() raises:
@@ -39,23 +46,23 @@ fn test_overwrite() raises:
     tensors.set("x", Tensor[DType.float32](TensorShape(10, 5), -1.23))
     _testing.assert_equal(1, len(tensors))
 
-    var x = tensors["x"]
+    var x = tensors.pop[DType.float32]("x")
     _testing.assert_tensors_equal(
-        x.to_tensor[DType.float32](),
+        x,
         Tensor[DType.float32](TensorShape(10, 5), -1.23),
     )
 
     with testing.assert_raises():
-        _ = tensors["y"]
+        _ = tensors.get[DType.float32]("y")
 
 
 fn test_empty_key() raises:
     var tensors = TensorDict()
     tensors.set("", Tensor[DType.int32](TensorShape(1, 2, 2), 1, 2, 3, 4))
 
-    var t = tensors[""]
+    var t = tensors.get[DType.int32]("")
     _testing.assert_tensors_equal(
-        t.to_tensor[DType.int32](),
+        t,
         Tensor[DType.int32](TensorShape(1, 2, 2), 1, 2, 3, 4),
     )
 
