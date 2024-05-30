@@ -1,9 +1,10 @@
 load("@llvm-project//mlir:tblgen.bzl", "td_library")
+load("//bazel:api.bzl", "modular_cc_binary")
 load("//utils/bazel/build/rules:tablegen.bzl", "driver_option_tablegen")
 
 package(default_visibility = ["//visibility:public"])
 
-cc_binary(
+modular_cc_binary(
     name = "max",
     srcs = glob(["*.cpp"]),
     copts = ["-I$(GENDIR)/SDK/tools/max/"],
