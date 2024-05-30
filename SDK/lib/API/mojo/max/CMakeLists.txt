@@ -18,13 +18,13 @@ set(GRAPH_SRCS
   graph/ops/complex
   graph/ops/elementwise
   graph/ops/linalg
+  graph/ops/quantized_ops
   graph/ops/reduction
   graph/ops/slicing
 
   graph/quantization/__init__
+  graph/quantization/encodings
   graph/quantization/quantization_encoding
-  graph/quantization/bfloat16_encoding
-  graph/quantization/q4_0_encoding
 
   graph/_attributes
   graph/_c
