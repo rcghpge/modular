@@ -710,6 +710,28 @@ struct LegalizeRMOOps
         LowerThirdPartyBinaryComparisonOp<RMO::ThirdPartyGreaterEqualOp,
                                           RMO::MOGreaterEqualOp>>(context);
 
+    // Lowering third party specific operations.
+    // They have more flexible semantics that separate them from standard rmo
+    // ops.
+    blockPatterns.add<
+        LowerThirdPartyBinaryElemwiseOp<RMO::ThirdPartyAddOp, RMO::MOAddOp>,
+        LowerThirdPartyBinaryElemwiseOp<RMO::ThirdPartySubOp, RMO::MOSubOp>,
+        LowerThirdPartyBinaryElemwiseOp<RMO::ThirdPartyMulOp, RMO::MOMulOp>,
+        LowerThirdPartyBinaryElemwiseOp<RMO::ThirdPartyDivOp, RMO::MODivOp>,
+        LowerThirdPartyBinaryElemwiseOp<RMO::ThirdPartyModOp, RMO::MOModOp>,
+        LowerThirdPartyBinaryElemwiseOp<RMO::ThirdPartyPowOp, RMO::MOPowOp>,
+        LowerThirdPartyBinaryElemwiseOp<RMO::ThirdPartyMinOp, RMO::MOMinOp>,
+        LowerThirdPartyBinaryElemwiseOp<RMO::ThirdPartyMaxOp, RMO::MOMaxOp>,
+        // Comparison ops lower the same as other elemwise ops.
+        LowerThirdPartyBinaryComparisonOp<RMO::ThirdPartyEqualOp,
+                                          RMO::MOEqualOp>,
+        LowerThirdPartyBinaryComparisonOp<RMO::ThirdPartyNotEqualOp,
+                                          RMO::MONotEqualOp>,
+        LowerThirdPartyBinaryComparisonOp<RMO::ThirdPartyGreaterOp,
+                                          RMO::MOGreaterOp>,
+        LowerThirdPartyBinaryComparisonOp<RMO::ThirdPartyGreaterEqualOp,
+                                          RMO::MOGreaterEqualOp>>(context);
+
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(blockPatterns))))
       return signalPassFailure();
