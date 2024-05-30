@@ -15,9 +15,15 @@ from max.graph import _testing, Type, Dim, Graph, TensorType, Symbol, ops
 from max.tensor import Tensor, TensorShape
 
 from pipelines.llama3.model import Llama3
-from pipelines.llama3.model.attention import Attention, attention_mask, rope
-from pipelines.llama3.model.layers import Embedding, FeedForward, RMSNorm
-from pipelines.llama3.model.transformer import Transformer, TransformerBlock
+from pipelines.nn.attention import attention_mask, rope
+from pipelines.nn import (
+    Attention,
+    Embedding,
+    FeedForward,
+    RMSNorm,
+    Transformer,
+    TransformerBlock,
+)
 
 from pipelines.weights.loadable_model import LoadableModel, LlamaHParams
 
@@ -116,6 +122,7 @@ struct NanoLlama(LoadableModel):
             wk=self.weight(graph, "attn_k").swapaxes(-1, -2),
             wv=self.weight(graph, "attn_v").swapaxes(-1, -2),
             wo=self.weight(graph, "attn_output").swapaxes(-1, -2),
+            enable_custom_rope_kernel=False,
         )
 
     def feed_forward(self, graph: Graph) -> FeedForward:
@@ -144,6 +151,7 @@ struct NanoLlama(LoadableModel):
             layers=List(layer),
             norm=self.norm(graph, "output_norm"),
             output=self.weight(graph, "output").swapaxes(-1, -2),
+            theta=500000.0,
         )
 
 
@@ -159,6 +167,7 @@ fn test_freqs_cis() raises:
         layers=List[TransformerBlock[]](),
         norm=RMSNorm(1e-5, g.constant(Tensor[DType.float32](2))),
         output=g.constant(Tensor[DType.float32](10, 10)),
+        theta=500000.0,
     )
     _ = g.output(
         dummy.freqs_cis(g.scalar[DType.int64](0), g.scalar[DType.int64](8))
