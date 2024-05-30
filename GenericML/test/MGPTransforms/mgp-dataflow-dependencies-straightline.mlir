@@ -22,7 +22,7 @@
 // CHECK:   %[[SSA46:.*]] = "some.op"(%[[SSA45]], %[[SSA42]]) : (!mef.chain, !mef.chain) -> !mef.chain
 // CHECK:   %[[SSA47:.*]] = "some.op"(%[[SSA44]], %[[SSA46]]) : (!mef.chain, !mef.chain) -> !mef.chain
 // CHECK:   "mef.output"(%[[SSA47]]) : (!mef.chain) -> ()
-// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> (), sym_name = "simple"} : () -> ()
+// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> (), name = "simple"} : () -> ()
 
 // sameAs only ties the 'init' results to the 'execute args
 // CHECK: sameAs begin
@@ -142,7 +142,7 @@ mgp.model @simple : mof init {
 // CHECK:   %[[SSA36:.*]] = "add"(%[[SSA13]], %[[SSA32]], %[[SSA33]], %[[SSA34]]) {tempInOutSig = #M.inout_sig<"iiio">} : (!mgp.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.chain
 // CHECK:   %[[SSA37:.*]] = "mgp.tensor.create"(%[[SSA36]], %arg3, %[[SSA34]], %[[SSA35]]) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mgp.chain, !mgp.context, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>) -> !mgp.tensor<8xf32>
 // CHECK:   "mef.output"(%arg2, %[[SSA37]]) : (!mef.chain, !mgp.tensor<8xf32>) -> ()
-// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<8xf32>, sym_name = "straightline"} : () -> ()
+// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<8xf32>, name = "straightline"} : () -> ()
 
 // Spot check impliesReady
 // CHECK: impliesReady begin
@@ -218,7 +218,7 @@ mgp.model @straightline : mof init {
 // CHECK:   %[[SSA7:.*]] = "mgp.tensor.create"(%[[SSA5]], %arg1, %[[SSA4]], %[[SSA6]]) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mgp.chain, !mgp.context, !mgp.buffer<6>, !mgp.tensor_spec<6xsi8>) -> !mgp.tensor<6xsi8>
 // CHECK:   %[[SSA8:.*]] = "mgp.chain.device_to_host"(%[[SSA5]], %arg1) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mgp.chain, !mgp.context) -> !mef.chain
 // CHECK:   "mef.output"(%[[SSA8]], %[[SSA7]]) : (!mef.chain, !mgp.tensor<6xsi8>) -> ()
-// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<6xsi8>, sym_name = "safe_split_borrow"} : () -> ()
+// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<6xsi8>, name = "safe_split_borrow"} : () -> ()
 
 // CHECK: maybeSameAs begin
 // Note %3#1 is considered maybe the same as %1.

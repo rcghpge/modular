@@ -266,7 +266,7 @@ LogicalResult MOGraphLowering::createModelOp() {
   // Preserve the MO::GraphOp argument locations in the MGP::ModelOp 'execute'
   // block argument locations.
   SmallVector<Location> inputLocs;
-  for (BlockArgument arg : graph.getArguments())
+  for (BlockArgument arg : graph.getBody().front().getArguments())
     inputLocs.push_back(arg.getLoc());
 
   // Collect additional attributes to include with the MGP::ModelOp to guide
@@ -292,7 +292,7 @@ LogicalResult MOGraphLowering::createModelOp() {
   b.setInsertionPoint(graph);
   auto modelOp = b.create<MGP::ModelOp>(
       graph.getLoc(),
-      /*sym_name=*/graph.getNameAttr(),
+      /*name=*/graph.getNameAttr(),
       /*frameworkName=*/loweringState.getCompiledFrameworkLabel(),
       /*inputTypes=*/inputTypes,
       /*outputTypes=*/outputTypes,
@@ -1348,11 +1348,11 @@ LogicalResult MOGraphLowering::run() {
     return failure();
 
   // Enter the main body of the graph
-  for (auto [graphArg, exeArg] :
-       llvm::zip(graph.getArguments(), loweringState.getModelOp()
-                                           .getExecuteBlock()
-                                           ->getArguments()
-                                           .drop_front(2))) {
+  for (auto [graphArg, exeArg] : llvm::zip(
+           graph.getBody().front().getArguments(), loweringState.getModelOp()
+                                                       .getExecuteBlock()
+                                                       ->getArguments()
+                                                       .drop_front(2))) {
     auto hasParamsOr =
         loweringState.lowerArg(&graph.getRegion(), graphArg, exeArg);
     if (hasParamsOr.isError())

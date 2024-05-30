@@ -756,7 +756,7 @@ def MGP_ListSliceOp : MGP_Op<"list.slice", [
 def GuardOp : MGP_Op<"guard", [
   DeclareOpInterfaceMethods<InferTypeOpInterface>,
   DeclareOpInterfaceMethods<GRTMayAliasInterface>,
-]> 
+]>
 {
   let summary = "SSA-value guard operation";
 
@@ -806,7 +806,7 @@ def ModelFrameworkAttr : ConfinedAttr<StrAttr, [
             "cast<StringAttr>($_self).getValue())">,
       "must be a recognized framework name.">]>;
 
-def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,
+def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
                                IsolatedFromAbove, RegionKindInterface,
                                HasOnlyGraphRegion]> {
   let summary = [{
@@ -858,10 +858,10 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,
 
   // CAUTION: There are three constraints on these attribute names and their
   // order:
-  //  - 'sym_name' must match the standard symbol name attribute name (as given
+  //  - 'name' must match the standard symbol name attribute name (as given
   //    by mlir::SymbolTable::getSymbolAttrName()). Note however that we could
   //    probably choose a more consistent name and implement
-  //    DerivedAttributeOpInterface to recover sym_name if we really wanted
+  //    DerivedAttributeOpInterface to recover name if we really wanted
   //    that.
   //  - The attributes are accessed by index within M::Module subclasses and
   //    MEF metadata extraction, and that index matches the MLIR canonical
@@ -869,7 +869,7 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,
   //  - The extra attributes must appear last since optional.
   let arguments = (ins ModelFrameworkAttr:$frameworkName,               // 0
                        TypeAttrOf<FunctionType>:$inputOutputTypes,      // 1
-                       SymbolNameAttr:$sym_name,                        // 2
+                       SymbolNameAttr:$name,                            // 2
                        OptionalAttr<DictionaryAttr>:$theExtraAttrs);    // 3
   let regions = (region SizedRegion<1>:$init, SizedRegion<1>:$execute);
 
@@ -884,7 +884,7 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,
     /// `inputArgLocs` specifies the location information for the
     /// explicit arguments to the 'execute' entry point, and thus should
     /// have the same length as `inputTypes`.
-    OpBuilder<(ins "StringAttr":$sym_name,
+    OpBuilder<(ins "StringAttr":$name,
                    "StringRef":$frameworkName,
                    "ArrayRef<Type>":$inputTypes,
                    "ArrayRef<Type>":$outputTypes,
@@ -893,7 +893,7 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">, Symbol,
   ];
 
   let assemblyFormat = [{
-    $sym_name `:` custom<ClassName>($frameworkName)
+    $name `:` custom<ClassName>($frameworkName)
       ($theExtraAttrs^)?
       `init` $init
       `execute` custom<ExecuteRegion>($inputOutputTypes, $execute)

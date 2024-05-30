@@ -32,7 +32,7 @@
 // CHECK:   }) : (i1, !mef.chain, !mgp.tensor<f32>, !mgp.tensor<f32>, !mgp.tensor<f32>) -> (!mgp.tensor<f32>, !mgp.tensor<f32>, !mgp.tensor<f32>)
 // CHECK:   %[[SSA72:.*]] = "some.op"(%[[SSA71]]#0, %[[SSA71]]#1, %[[SSA71]]#2) : (!mgp.tensor<f32>, !mgp.tensor<f32>, !mgp.tensor<f32>) -> !mgp.tensor<f32>
 // CHECK:   "mef.output"(%arg26, %[[SSA72]]) : (!mef.chain, !mgp.tensor<f32>) -> ()
-// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<f32>, sym_name = "simple"} : () -> ()
+// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<f32>, name = "simple"} : () -> ()
 
 // Notice if results now capture both arms
 // CHECK: maybeSameAs begin
@@ -178,7 +178,7 @@ mgp.model @simple : mof init {
 // CHECK:   }) : (i1, !mef.chain) -> !mef.chain
 // CHECK:   %[[SSA62:.*]] = "grt.chain.create"(%[[SSA58]], %[[SSA59]], %[[SSA61]]) : (!mef.chain, !mef.chain, !mef.chain) -> !mef.chain
 // CHECK:   "mef.output"(%[[SSA62]]) : (!mef.chain) -> ()
-// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> (), sym_name = "redundant"} : () -> ()
+// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> (), name = "redundant"} : () -> ()
 
 // CHECK: sameAs begin
 // CHECK:   %arg25[2] |-> {%[[SSA58]]}
@@ -280,7 +280,7 @@ mgp.model @redundant : mof init {
 // CHECK:   %[[SSA37:.*]] = "mgp.tensor.create"(%[[SSA34]]#0, %arg13, %[[SSA35]], %[[SSA36]]) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mgp.chain, !mgp.context, !mgp.buffer<32>, !mgp.tensor_spec<32xui8>) -> !mgp.tensor<32xui8>
 // CHECK:   %[[SSA38:.*]] = "mgp.chain.device_to_host"(%[[SSA34]]#0, %arg13) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mgp.chain, !mgp.context) -> !mef.chain
 // CHECK:   "mef.output"(%[[SSA38]], %[[SSA37]]) : (!mef.chain, !mgp.tensor<32xui8>) -> ()
-// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<32xui8>, sym_name = "if"} : () -> ()
+// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<32xui8>, name = "if"} : () -> ()
 
 
 // CHECK: sameAs begin
@@ -392,7 +392,7 @@ mgp.model @if : mof init {
 // CHECK:   %[[SSA11:.*]] = "mgp.tensor.create"(%[[SSA10]], %arg1, %[[SSA9]], %[[SSA2]]) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mgp.chain, !mgp.context, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>) -> !mgp.tensor<8xf32>
 // CHECK:   %[[SSA12:.*]] = "mgp.chain.device_to_host"(%[[SSA10]], %arg1) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mgp.chain, !mgp.context) -> !mef.chain
 // CHECK:   "mef.output"(%[[SSA12]], %[[SSA11]]) : (!mef.chain, !mgp.tensor<8xf32>) -> ()
-// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<8xf32>, sym_name = "conditional_c"} : () -> ()
+// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<8xf32>, name = "conditional_c"} : () -> ()
 
 // CHECK: exclusive begin
 // CHECK:   %[[SSA7]] |-> {%[[SSA17]][0], %[[SSA19]][0], %[[SSA0]], %[[SSA1]], %[[SSA4]], %[[SSA5]], %arg7[2], %arg8[2], %arg2[3], %arg3[3], %[[SSA11]], %[[SSA12]]}

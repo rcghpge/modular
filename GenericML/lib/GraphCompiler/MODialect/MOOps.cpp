@@ -411,8 +411,7 @@ void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
                     TypeRange inputTypes, TypeRange resultTypes) {
   // Below we basically inline and specialize `buildWithEntryBlock`, which
   // doesn't work because we use `signature` and not `function_type`.
-  state.addAttribute(M::SymbolTable::getSymbolAttrName(),
-                     builder.getStringAttr(name));
+  state.addAttribute(getNameAttrName(state.name), builder.getStringAttr(name));
 
   // Add signature attribute
   FunctionType funcType = builder.getFunctionType(inputTypes, resultTypes);
@@ -473,7 +472,7 @@ static void printGraphOp(OpAsmPrinter &p, Operation *op, StringAttr name,
 
   auto graph = cast<GraphOp>(op);
   SmallVector<StringRef, 6> elidedAttrs{
-      graph.getSymNameAttrName(), graph.getSignatureAttrName(),
+      graph.getNameAttrName(), graph.getSignatureAttrName(),
       graph.getFunctionTypeAttrName(), graph.getInputParamsAttrName(),
       graph.getResultParamsAttrName()};
   p.printOptionalAttrDictWithKeyword(attrs.getValue(), elidedAttrs);

@@ -24,7 +24,7 @@ fn test_empty_graph() raises:
 
         # CHECK: builtin.module
         # CHECK: mo.graph
-        # CHECK: sym_name = "empty_graph"
+        # CHECK: name = "empty_graph"
         print(m)
 
 

@@ -1244,17 +1244,16 @@ static void printExecuteRegion(OpAsmPrinter &p, const ModelOp &op,
   p.printRegion(executeRegion, /*printEntryBlockArgs=*/false);
 }
 
-void ModelOp::build(OpBuilder &builder, OperationState &state,
-                    StringAttr sym_name, StringRef frameworkName,
-                    ArrayRef<Type> inputTypes, ArrayRef<Type> outputTypes,
-                    ArrayRef<Location> inputArgLocs,
+void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
+                    StringRef frameworkName, ArrayRef<Type> inputTypes,
+                    ArrayRef<Type> outputTypes, ArrayRef<Location> inputArgLocs,
                     ArrayRef<NamedAttribute> extraAttrs) {
   DictionaryAttr extraAttrsDict =
       extraAttrs.empty() ? nullptr
                          : DictionaryAttr::get(state.getContext(), extraAttrs);
   build(builder, state, StringAttr::get(state.getContext(), frameworkName),
-        TypeAttr::get(builder.getFunctionType(inputTypes, outputTypes)),
-        sym_name, extraAttrsDict);
+        TypeAttr::get(builder.getFunctionType(inputTypes, outputTypes)), name,
+        extraAttrsDict);
 
   // The 'init' entry point has no arguments.
   ASSERT_STREAM(implicitInitSignature(builder).getInputs().empty());

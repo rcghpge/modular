@@ -108,7 +108,7 @@ def MO_TransferOp : MO_Op<"transfer", [
 //===----------------------------------------------------------------------===//
 
 def MO_GraphOp : MO_TensorOp<"graph", [
-  HasParent<"ModuleOp">, FunctionOpInterface, Symbol,
+  HasParent<"ModuleOp">,
   IsolatedFromAbove, SingleBlockImplicitTerminator<"OutputOp">,
   DeclareOpInterfaceMethods<MO_Parameterization>,
   RegionKindInterface, HasOnlyGraphRegion,
@@ -135,7 +135,7 @@ def MO_GraphOp : MO_TensorOp<"graph", [
   }];
 
   let arguments = (ins
-    StrAttr:$sym_name,
+    StrAttr:$name,
     TypeAttrOf<KGEN_SignatureType>:$signature,
     TypeAttrOf<FunctionType>:$functionType,
     KGEN_ParamDeclArrayAttr:$inputParams,
@@ -145,13 +145,11 @@ def MO_GraphOp : MO_TensorOp<"graph", [
   let regions = (region SizedRegion<1>:$body);
 
   let assemblyFormat = [{
-    custom<GraphOp>($sym_name, $signature, $functionType, $inputParams,
+    custom<GraphOp>($name, $signature, $functionType, $inputParams,
                     $resultParams, attr-dict, $body)
   }];
 
   let extraClassDeclaration = [{
-    using FunctionOpInterfaceTrait::front;
-    using FunctionOpInterfaceTrait::end;
     Block *getBodyBlock() { return &getBody().front(); }
     OutputOp getOutputOp();
 
@@ -4198,7 +4196,7 @@ def MO_GuardOp : MO_Op<"guard", [DeclareOpInterfaceMethods<InferTypeOpInterface>
   let summary = "SSA-value guard operation";
   let description = [{
     Consumes a mo.chain operation and a variadic number of inputs and is
-    semantically equivalent to a copy of the variadic inputs. 
+    semantically equivalent to a copy of the variadic inputs.
 
     This can be used in conjunction with the !mo.chain returning ops
     (currently only mo.assert) in order to set up execution dependencies

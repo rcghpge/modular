@@ -40,9 +40,9 @@ protected:
     graph = builder.create<MO::GraphOp>(module.getLoc(), "test", inputTypes,
                                         SmallVector<Type>{});
     builder.setInsertionPointToEnd(graph.getBodyBlock());
-    Value in0 = graph.getArgument(0);
-    Value in1 = graph.getArgument(1);
-    Value in2 = graph.getArgument(2);
+    Value in0 = graph.getBody().front().getArgument(0);
+    Value in1 = graph.getBody().front().getArgument(1);
+    Value in2 = graph.getBody().front().getArgument(2);
     Value shape1 = builder.create<MO::ShapeOfOp>(graph.getLoc(),
                                                  cast<MO::TensorValue>(in1));
     Value shape2 = builder.create<MO::ShapeOfOp>(graph.getLoc(),
@@ -128,11 +128,11 @@ TEST_F(MatchersTest, Ranked) {
   Value ranked;
   auto pattern = m_Ranked(2, m_Any(&ranked));
 
-  ASSERT_FALSE(pattern.match(graph.getArgument(0)));
-  ASSERT_NE(graph.getArgument(1), ranked);
-  ASSERT_TRUE(pattern.match(graph.getArgument(1)));
-  ASSERT_EQ(graph.getArgument(1), ranked);
-  ASSERT_FALSE(pattern.match(graph.getArgument(2)));
+  ASSERT_FALSE(pattern.match(graph.getBody().front().getArgument(0)));
+  ASSERT_NE(graph.getBody().front().getArgument(1), ranked);
+  ASSERT_TRUE(pattern.match(graph.getBody().front().getArgument(1)));
+  ASSERT_EQ(graph.getBody().front().getArgument(1), ranked);
+  ASSERT_FALSE(pattern.match(graph.getBody().front().getArgument(2)));
 }
 
 TEST_F(MatchersTest, MOVector_Matrix) {
@@ -140,16 +140,16 @@ TEST_F(MatchersTest, MOVector_Matrix) {
   auto vector = m_MOVector(m_Any(&v));
   auto matrix = m_MOMatrix(m_Any(&m));
 
-  ASSERT_FALSE(matrix.match(graph.getArgument(0)));
-  ASSERT_NE(graph.getArgument(1), m);
-  ASSERT_TRUE(matrix.match(graph.getArgument(1)));
-  ASSERT_EQ(graph.getArgument(1), m);
-  ASSERT_FALSE(matrix.match(graph.getArgument(2)));
+  ASSERT_FALSE(matrix.match(graph.getBody().front().getArgument(0)));
+  ASSERT_NE(graph.getBody().front().getArgument(1), m);
+  ASSERT_TRUE(matrix.match(graph.getBody().front().getArgument(1)));
+  ASSERT_EQ(graph.getBody().front().getArgument(1), m);
+  ASSERT_FALSE(matrix.match(graph.getBody().front().getArgument(2)));
 
-  ASSERT_NE(graph.getArgument(0), v);
-  ASSERT_TRUE(vector.match(graph.getArgument(0)));
-  ASSERT_FALSE(vector.match(graph.getArgument(1)));
-  ASSERT_FALSE(vector.match(graph.getArgument(2)));
+  ASSERT_NE(graph.getBody().front().getArgument(0), v);
+  ASSERT_TRUE(vector.match(graph.getBody().front().getArgument(0)));
+  ASSERT_FALSE(vector.match(graph.getBody().front().getArgument(1)));
+  ASSERT_FALSE(vector.match(graph.getBody().front().getArgument(2)));
 }
 
 TEST_F(MatchersTest, Optional) {
@@ -157,12 +157,12 @@ TEST_F(MatchersTest, Optional) {
   auto any = m_Any(&ranked);
   auto pattern = m_Optional(m_Ranked(2, any), m_Ranked(1, any));
 
-  ASSERT_NE(graph.getArgument(0), ranked);
-  ASSERT_TRUE(pattern.match(graph.getArgument(0)));
-  ASSERT_EQ(graph.getArgument(0), ranked);
-  ASSERT_TRUE(pattern.match(graph.getArgument(1)));
-  ASSERT_EQ(graph.getArgument(1), ranked);
-  ASSERT_FALSE(pattern.match(graph.getArgument(2)));
+  ASSERT_NE(graph.getBody().front().getArgument(0), ranked);
+  ASSERT_TRUE(pattern.match(graph.getBody().front().getArgument(0)));
+  ASSERT_EQ(graph.getBody().front().getArgument(0), ranked);
+  ASSERT_TRUE(pattern.match(graph.getBody().front().getArgument(1)));
+  ASSERT_EQ(graph.getBody().front().getArgument(1), ranked);
+  ASSERT_FALSE(pattern.match(graph.getBody().front().getArgument(2)));
 }
 
 TEST_F(MatchersTest, Typed) {
@@ -170,10 +170,10 @@ TEST_F(MatchersTest, Typed) {
   auto pattern1 = m_Typed<MO::TensorType>(m_Any(&typed));
   auto pattern2 = m_Typed<RankedTensorType>(m_Any(&typed));
 
-  ASSERT_FALSE(pattern2.match(graph.getArgument(0)));
-  ASSERT_NE(graph.getArgument(0), typed);
-  ASSERT_TRUE(pattern1.match(graph.getArgument(0)));
-  ASSERT_EQ(graph.getArgument(0), typed);
+  ASSERT_FALSE(pattern2.match(graph.getBody().front().getArgument(0)));
+  ASSERT_NE(graph.getBody().front().getArgument(0), typed);
+  ASSERT_TRUE(pattern1.match(graph.getBody().front().getArgument(0)));
+  ASSERT_EQ(graph.getBody().front().getArgument(0), typed);
 }
 
 TEST_F(MatchersTest, Logging) {

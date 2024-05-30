@@ -603,6 +603,7 @@ static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
       }
     }
   }
+
   // This name cannot be too long otherwise something breaks :(.
   auto graphop = builder.create<GraphOp>(
       module.getLoc(), (orig.getName() + "_constant_subgraphs").str(), argTypes,

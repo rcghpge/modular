@@ -21,7 +21,7 @@
 // CHECK:   }) : (si32, !mgp.tensor<f32>) -> !mgp.tensor<f32>
 // CHECK:   %[[SSA92:.*]] = "some.op"(%[[SSA91]]) : (!mgp.tensor<f32>) -> !mgp.tensor<f32>
 // CHECK:   "mef.output"(%arg43, %[[SSA92]]) : (!mef.chain, !mgp.tensor<f32>) -> ()
-// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<f32>, sym_name = "repeat1"} : () -> ()
+// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<f32>, name = "repeat1"} : () -> ()
 
 
 // Note the repeat input, result, sub-block arg and sub-block output are all
@@ -68,7 +68,7 @@ mgp.model @repeat1 : mof init {
 // CHECK:   }) : (si32, !mgp.tensor<f32>) -> !mgp.tensor<f32>
 // CHECK:   %[[SSA84:.*]] = "some.op"(%[[SSA83]]) : (!mgp.tensor<f32>) -> !mgp.tensor<f32>
 // CHECK:   "mef.output"(%arg40, %[[SSA84]]) : (!mef.chain, !mgp.tensor<f32>) -> ()
-// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<f32>, sym_name = "repeat2"} : () -> ()
+// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<f32>, name = "repeat2"} : () -> ()
 
 // CHECK: maybeSameAs begin
 // CHECK:   %arg42[2] |-> {%[[SSA82]], %arg42[2]}
@@ -112,7 +112,7 @@ mgp.model @repeat2 : mof init {
 // CHECK:   }) : (si32, !mgp.tensor<f32>, !mgp.tensor<f32>) -> (!mgp.tensor<f32>, !mgp.tensor<f32>)
 // CHECK:   %[[SSA75:.*]] = "some.op"(%[[SSA74]]#0) : (!mgp.tensor<f32>) -> !mgp.tensor<f32>
 // CHECK:   "mef.output"(%arg36, %[[SSA75]]) : (!mef.chain, !mgp.tensor<f32>) -> ()
-// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<f32>, sym_name = "repeat3"} : () -> ()
+// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<f32>, name = "repeat3"} : () -> ()
 
 // CHECK: maybeSameAs begin
 // CHECK:   %arg38[2] |-> {%[[SSA73]], %[[SSA76]][2]}
@@ -170,7 +170,7 @@ mgp.model @repeat3 : mof init {
 // CHECK:   }) : (!mef.chain, !mgp.tensor<f32>, !mgp.tensor<f32>, !mgp.tensor<f32>) -> (!mef.chain, !mgp.tensor<f32>, !mgp.tensor<f32>, !mgp.tensor<f32>)
 // CHECK:   %[[SSA63:.*]] = "some.op"(%[[SSA62]]#1, %[[SSA62]]#2, %[[SSA62]]#3) : (!mgp.tensor<f32>, !mgp.tensor<f32>, !mgp.tensor<f32>) -> !mgp.tensor<f32>
 // CHECK:   "mef.output"(%[[SSA62]]#0, %[[SSA63]]) : (!mef.chain, !mgp.tensor<f32>) -> ()
-// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<f32>, sym_name = "simple"} : () -> ()
+// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<f32>, name = "simple"} : () -> ()
 
 // CHECK: sameAs begin
 // CHECK:   %[[SSA62]]#0 |-> {%[[SSA71]][0], %arg26, %arg32[2], %arg28[3]}
@@ -258,7 +258,7 @@ mgp.model @simple : mof init {
 // CHECK:   }) : (!mgp.tensor<f32>, !mgp.tensor<f32>) -> (!mgp.tensor<f32>, !mgp.tensor<f32>)
 // CHECK:   %[[SSA54:.*]] = "some.op"(%[[SSA53]]#0, %[[SSA53]]#1) : (!mgp.tensor<f32>, !mgp.tensor<f32>) -> !mgp.tensor<f32>
 // CHECK:   "mef.output"(%arg20, %[[SSA54]]) : (!mef.chain, !mgp.tensor<f32>) -> ()
-// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<f32>, sym_name = "crissCross"} : () -> ()
+// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<f32>, name = "crissCross"} : () -> ()
 
 // CHECK: sameAs begin
 // CHECK:   %[[SSA53]]#0 |-> {%arg24[2], %arg22[3]}
@@ -318,7 +318,7 @@ mgp.model @crissCross : mof init {
 // CHECK:   }) : (!mgp.tensor<f32>, !mgp.tensor<f32>, !mgp.tensor<f32>) -> (!mgp.tensor<f32>, !mgp.tensor<f32>, !mgp.tensor<f32>)
 // CHECK:   %[[SSA44:.*]] = "some.op"(%[[SSA43]]#0, %[[SSA43]]#1, %[[SSA43]]#2) : (!mgp.tensor<f32>, !mgp.tensor<f32>, !mgp.tensor<f32>) -> !mgp.tensor<f32>
 // CHECK:   "mef.output"(%arg12, %[[SSA44]]) : (!mef.chain, !mgp.tensor<f32>) -> ()
-// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<f32>, sym_name = "shift"} : () -> ()
+// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<f32>, name = "shift"} : () -> ()
 
 // CHECK: sameAs begin
 // CHECK:   %[[SSA43]]#0 |-> {%arg17[2], %arg14[3]}
@@ -417,7 +417,7 @@ mgp.model @shift : mof init {
 // CHECK:   %[[SSA14:.*]] = "mgp.tensor.create"(%[[SSA0]], %arg1, %[[SSA12]], %[[SSA13]]) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mgp.chain, !mgp.context, !mgp.buffer<32>, !mgp.tensor_spec<32xui8>) -> !mgp.tensor<32xui8>
 // CHECK:   %[[SSA15:.*]] = "mgp.chain.device_to_host"(%[[SSA11]]#0, %arg1) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cpu", 0>} : (!mgp.chain, !mgp.context) -> !mef.chain
 // CHECK:   "mef.output"(%[[SSA15]], %[[SSA14]]) : (!mef.chain, !mgp.tensor<32xui8>) -> ()
-// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<32xui8>, sym_name = "while"} : () -> ()
+// CHECK: }) {frameworkName = "mof", inputOutputTypes = () -> !mgp.tensor<32xui8>, name = "while"} : () -> ()
 
 // CHECK: sameAs begin
 // CHECK:   %[[SSA11]]#0 |-> {%[[SSA0]], %arg7[2], %arg2[3]}
