@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef KGEN_COMPILERRT_MOJOVALUE_H
-#define KGEN_COMPILERRT_MOJOVALUE_H
+#ifndef SUPPORT_MOJOVALUE_H
+#define SUPPORT_MOJOVALUE_H
 
 #include <cstddef>
 
-namespace M::KGEN {
+namespace M {
 
 /// `MojoValue` represents a runtime mojo object.
 /// It owns the object (and release it when the MojoValue is
@@ -60,6 +60,6 @@ private:
   DestructorFn destructor = nullptr;
 };
 
-} // namespace M::KGEN
+} // namespace M
 
-#endif // KGEN_COMPILERRT_MOJOVALUE_H
+#endif // SUPPORT_MOJOVALUE_H
