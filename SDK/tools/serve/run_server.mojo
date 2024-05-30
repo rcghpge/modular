@@ -10,7 +10,7 @@ from tensor import TensorSpec
 
 from max.engine import InferenceSession, InputSpec
 from max.serve.service import FileModel
-from max.serve.callbacks import NoopServerCallbacks
+from max.serve.util.callbacks import NoopServerCallbacks
 from max.serve.server import InferenceServer, MuxInferenceService
 
 

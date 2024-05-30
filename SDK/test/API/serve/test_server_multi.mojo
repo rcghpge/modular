@@ -17,8 +17,10 @@ from pathlib import cwd
 
 
 fn main() raises:
-    var USAGE = "Usage: test_server_multi.mojo [-a address] [-n workers] [-r requests]"
     var argv = sys.argv()
+    var USAGE = str("Usage: ") + argv[
+        0
+    ] + " [-a address] [-n workers] [-r requests]"
 
     var i = 1
     var address: String = "localhost:8000"
@@ -49,7 +51,9 @@ fn main() raises:
                 subprocess.run(
                     "mojo "
                     + str(
-                        cwd().joinpath("SDK/test/serve/test_server_single.mojo")
+                        cwd().joinpath(
+                            "SDK/test/API/serve/test_server_single.mojo"
+                        )
                     )
                     + " -a "
                     + str(address)
