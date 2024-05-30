@@ -69,7 +69,7 @@ fn main() raises:
     var session = InferenceSession()
     var client = GRPCInferenceClient(address, session)
 
-    for i in range(num_requests):
+    for _ in range(num_requests):
         try:
             test_basic_add_request(client, session)
         except e:
