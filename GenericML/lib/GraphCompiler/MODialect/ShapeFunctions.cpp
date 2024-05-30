@@ -130,7 +130,7 @@ ShapeMaterializeResult materializeBatchMatmulShape(GraphOp graphOp,
                                                    TypedAttr lhsShapeAttr,
                                                    TypedAttr rhsShapeAttr) {
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // Make sure both input and target shapes are ranked symbolic shapes.
@@ -185,7 +185,7 @@ ShapeMaterializeResult materializeBroadcastShapeShape(GraphOp graphOp,
   }
 
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
   Var lhsDim = b.createVar(lhsShape[0]);
   Var rhsDim = b.createVar(rhsShape[0]);
@@ -199,7 +199,7 @@ ShapeMaterializeResult materializeBroadcastToShape(GraphOp graphOp,
                                                    TypedAttr inputShapeAttr,
                                                    TypedAttr targetShapeAttr) {
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // Make sure both input and target shapes are ranked symbolic shapes.
@@ -234,7 +234,7 @@ ShapeMaterializeResult
 materializeConcatShape(GraphOp graphOp, Location loc, TypedAttr axisAttr,
                        ArrayRef<TypedAttr> inputShapeAttrs) {
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // Check for constant axis
@@ -327,7 +327,7 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   }
 
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // NOTE
@@ -412,7 +412,7 @@ ShapeMaterializeResult materializeConvTransposeShape(
   }
 
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // NOTE
@@ -489,7 +489,7 @@ ShapeMaterializeResult materializeMatrixSolveShape(GraphOp graphOp,
     return ShapeMaterializeResult::error("[matrix-solve] requires (rank >= 2)");
 
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // lhsShape = [..., lhsOuterDim, lhsInnerDim]
@@ -534,7 +534,7 @@ ShapeMaterializeResult materializePadShape(GraphOp graphOp, Location loc,
   }
 
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // Compute and collect output dimensions.
@@ -589,7 +589,7 @@ materializePoolShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   }
 
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // NOTE
@@ -645,7 +645,7 @@ ShapeMaterializeResult materializeGatherShape(GraphOp graphOp, Location loc,
   }
 
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // Compute and collect output dimensions.
@@ -703,7 +703,7 @@ ShapeMaterializeResult materializeGatherNdShape(GraphOp graphOp, Location loc,
   }
 
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // Compute and collect output dimensions.
@@ -744,7 +744,7 @@ ShapeMaterializeResult materializeRangeShape(GraphOp graphOp, Location loc,
                                              TypedAttr stopAttr,
                                              TypedAttr stepAttr) {
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   Var start = b.createVar(startAttr);
@@ -768,7 +768,7 @@ ShapeMaterializeResult materializeRangeShape(GraphOp graphOp, Location loc,
 ShapeMaterializeResult materializeReduceShape(GraphOp graphOp, Location loc,
                                               TypedAttr inputShape,
                                               TypedAttr axis) {
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   auto axisOr = tryGetConstantInt(axis);
@@ -821,7 +821,7 @@ ShapeMaterializeResult materializeScatterShape(GraphOp graphOp, Location loc,
   }
 
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // Check dimensions of input shapes.
@@ -867,7 +867,7 @@ ShapeMaterializeResult materializeScatterNdShape(GraphOp graphOp, Location loc,
   int64_t numSlicedDims = numSlicedDimsOr.value();
 
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // More rank checks.
@@ -917,7 +917,7 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
                                                TypedAttr inputShapeAttr,
                                                TypedAttr targetShapeAttr) {
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // Make sure both input and target shapes are ranked symbolic shapes.
@@ -1011,7 +1011,7 @@ ShapeMaterializeResult matierlizeRoiAlignShape(GraphOp graphOp, Location loc,
   }
 
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // Check height and width
@@ -1052,7 +1052,7 @@ ShapeMaterializeResult materializeSliceShape(GraphOp graphOp, Location loc,
   }
 
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // Compute and collect output spatial dimensions.
@@ -1122,7 +1122,7 @@ ShapeMaterializeResult materializeSplitIthOutputShape(
   }
 
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // Check for sum of splitSizes.
@@ -1157,7 +1157,7 @@ materializeSqueezeShapeShape(GraphOp graphOp, Location loc,
   }
 
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
   Var inputNumElems = b.createVar(inputShape[0]);
   Var indicesNumElems = b.createVar(indicesShape[0]);
@@ -1189,7 +1189,7 @@ ShapeMaterializeResult materializeTileShape(GraphOp graphOp, Location loc,
   }
 
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // Compute and collect output dimensions.
@@ -1233,7 +1233,7 @@ ShapeMaterializeResult materializeTransposeShape(GraphOp graphOp, Location loc,
   }
 
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   // Compute and collect output dimensions.
@@ -1258,7 +1258,7 @@ ShapeMaterializeResult materializeTransposeShape(GraphOp graphOp, Location loc,
 ShapeMaterializeResult materializeTopKShape(GraphOp graphOp, Location loc,
                                             TypedAttr inputShape, TypedAttr k,
                                             TypedAttr axis) {
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
 
   auto axisOr = tryGetConstantInt(axis);
@@ -1300,7 +1300,7 @@ materializeUnsqueezeShapeShape(GraphOp graphOp, Location loc,
   }
 
   // Create builder and track generated ops.
-  SmallVector<Operation *> ops;
+  SmallVector<KGEN::ParamDeclareOp> ops;
   ParamExprBuilder b(graphOp, loc, &ops);
   Var inputNumElems = b.createVar(inputShape[0]);
   Var indicesNumElems = b.createVar(indicesShape[0]);
@@ -1348,8 +1348,9 @@ StringAttr tryGetAssertFalseErrMsg(TypedAttr attr) {
 }
 
 /// Implementation of `propagateShape` which doesn't erase `paramOps`.
-static ErrorOr<ShapeAttr> propagateShapeImpl(ArrayRef<Operation *> paramOps,
-                                             ShapeAttr targetShape) {
+static ErrorOr<ShapeAttr>
+propagateShapeImpl(ArrayRef<KGEN::ParamDeclareOp> paramOps,
+                   ShapeAttr targetShape) {
 
   // Setting things up
   KGEN::ParameterEvaluator evaluator;
@@ -1360,36 +1361,30 @@ static ErrorOr<ShapeAttr> propagateShapeImpl(ArrayRef<Operation *> paramOps,
   });
 
   // Process individual ops and propagate by simple substitution.
-  for (Operation *op : paramOps) {
+  for (KGEN::ParamDeclareOp declOp : paramOps) {
 
     // Apply accumulated substitutions to this op.
-    replacer.replaceElementsIn(op, /*replaceAttrs=*/true,
+    replacer.replaceElementsIn(declOp, /*replaceAttrs=*/true,
                                /*replaceLocs=*/true, /*replaceTypes=*/true);
 
-    if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
-      // Process kgen.param.declare LHS = <RHS>
-      KGEN::ParamDeclAttr lhsAttr = declOp.getParamDecl();
-      TypedAttr rhsAttr = declOp.getValue();
+    // Process kgen.param.declare LHS = <RHS>
+    KGEN::ParamDeclAttr lhsAttr = declOp.getParamDecl();
+    TypedAttr rhsAttr = declOp.getValue();
 
-      // Check for assert.
-      if (auto condAndMsg = tryGetAssertCondAndMsg(rhsAttr)) {
-        TypedAttr cond = condAndMsg.value().first;
-        StringAttr errMsg = condAndMsg.value().second;
+    // Check for assert.
+    if (auto condAndMsg = tryGetAssertCondAndMsg(rhsAttr)) {
+      TypedAttr cond = condAndMsg.value().first;
+      StringAttr errMsg = condAndMsg.value().second;
 
-        // Error if condition didn't fold to true.
-        if (auto boolAttr = dyn_cast<BoolAttr>(cond);
-            !boolAttr || !boolAttr.getValue()) {
-          return Error(errMsg.str());
-        }
+      // Error if condition didn't fold to true.
+      if (auto boolAttr = dyn_cast<BoolAttr>(cond);
+          !boolAttr || !boolAttr.getValue()) {
+        return Error(errMsg.str());
       }
-
-      // Otherwise remember this substitution.
-      evaluator.setParameterValue(lhsAttr, rhsAttr);
-
-    } else {
-      // Error if not a `kgen.param.declare`
-      return Error("Unexpected op type: " + op->getName().getStringRef());
     }
+
+    // Otherwise remember this substitution.
+    evaluator.setParameterValue(lhsAttr, rhsAttr);
   }
 
   // Apply accumulated substitutions to target shape.
@@ -1397,7 +1392,7 @@ static ErrorOr<ShapeAttr> propagateShapeImpl(ArrayRef<Operation *> paramOps,
   return resultShape;
 }
 
-ErrorOr<ShapeAttr> propagateShape(ArrayRef<Operation *> paramOps,
+ErrorOr<ShapeAttr> propagateShape(ArrayRef<KGEN::ParamDeclareOp> paramOps,
                                   ShapeAttr targetShape) {
 
   ErrorOr<ShapeAttr> res = propagateShapeImpl(paramOps, targetShape);

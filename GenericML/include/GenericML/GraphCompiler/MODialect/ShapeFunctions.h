@@ -12,6 +12,7 @@
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "KGEN/KGENDialect/KGENOps.h"
 
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_SHAPE_FUNCTIONS_H
 #define GENERICML_GRAPHCOMPILER_MODIALECT_SHAPE_FUNCTIONS_H
@@ -28,7 +29,7 @@ public:
   /// - `loc` is used for newly created ops like `kgen.param.declare X = <...>`.
   /// - `createdOps` will be appended with newly created ops.
   ParamExprBuilder(GraphOp graphOp, Location loc,
-                   SmallVector<Operation *> *createdOps)
+                   SmallVector<KGEN::ParamDeclareOp> *createdOps)
       : builder(graphOp.getContext()), graphOp(graphOp), loc(loc),
         createdOps(createdOps) {}
 
@@ -98,7 +99,7 @@ private:
   OpBuilder builder;
   GraphOp graphOp;
   Location loc;
-  SmallVector<Operation *> *createdOps;
+  SmallVector<KGEN::ParamDeclareOp> *createdOps;
 };
 
 /// This class wraps around a parameter attribute and allows one to build new
@@ -305,12 +306,12 @@ public:
     //
     // These could then be consumed by shape propagation logic which does
     // substitution & folding, and handles these asserts.
-    SmallVector<Operation *> paramOps;
+    SmallVector<KGEN::ParamDeclareOp> paramOps;
     ShapeAttr resultShape;
 
     // Constructors
     Success() = default;
-    Success(SmallVector<Operation *> &&paramops, ShapeAttr resultShape)
+    Success(SmallVector<KGEN::ParamDeclareOp> &&paramops, ShapeAttr resultShape)
         : paramOps(std::move(paramops)), resultShape(resultShape) {}
 
     // Disable copy and move.
@@ -345,7 +346,7 @@ public:
   Success &getSuccess() { return std::get<Success>(result); };
   Error &getError() { return std::get<Error>(result); };
 
-  static ShapeMaterializeResult success(SmallVector<Operation *> &&ops,
+  static ShapeMaterializeResult success(SmallVector<KGEN::ParamDeclareOp> &&ops,
                                         ShapeAttr resultShape) {
     return ShapeMaterializeResult(std::move(ops), resultShape);
   }
@@ -357,7 +358,7 @@ public:
   }
 
 private:
-  ShapeMaterializeResult(SmallVector<Operation *> &&ops,
+  ShapeMaterializeResult(SmallVector<KGEN::ParamDeclareOp> &&ops,
                          ShapeAttr resultShape) {
     result.emplace<Success>(std::move(ops), resultShape);
   }
@@ -565,7 +566,7 @@ StringAttr tryGetAssertFalseErrMsg(TypedAttr attr);
 ///
 /// NOTE this function takes ownership of the ops in `paramOps`, i.e., it will
 /// erase them properly.
-ErrorOr<ShapeAttr> propagateShape(ArrayRef<Operation *> paramOps,
+ErrorOr<ShapeAttr> propagateShape(ArrayRef<KGEN::ParamDeclareOp> paramOps,
                                   ShapeAttr targetShape);
 
 // TODO move the following into a new interface.

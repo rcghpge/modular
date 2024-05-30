@@ -204,7 +204,7 @@ class OpDecomposer {
   // State that might change across calls.
   GraphOp graphOp;
   Location loc;
-  SmallVector<Operation *> decomposedOps;
+  SmallVector<KGEN::ParamDeclareOp> decomposedOps;
 
 public:
   /// Create an OpDecomposer with given MLIRContext.
@@ -216,7 +216,7 @@ public:
   ///   decomposition was possible
   /// - else return an empty vector.
   /// The input operation won't be modified.
-  FailureOr<SmallVector<Operation *>> tryDecomposeOp(Operation *op) {
+  FailureOr<SmallVector<KGEN::ParamDeclareOp>> tryDecomposeOp(Operation *op) {
     // Reset transient state.
     graphOp = op->getParentOfType<GraphOp>();
     loc = op->getLoc();
@@ -779,12 +779,12 @@ struct PropagateShapesPass
                            std::deque<Operation *> &worklist) {
 
     // Try decompose the op, and check if it was successful.
-    FailureOr<SmallVector<Operation *>> decomposedOpsOr =
+    FailureOr<SmallVector<KGEN::ParamDeclareOp>> decomposedOpsOr =
         opDecomposer.tryDecomposeOp(op);
     if (failed(decomposedOpsOr))
       return ReplacementResult::FatalError;
 
-    SmallVector<Operation *> &decomposedOps = decomposedOpsOr.value();
+    SmallVector<KGEN::ParamDeclareOp> &decomposedOps = decomposedOpsOr.value();
     if (decomposedOps.empty())
       return ReplacementResult::NotReplaced;
 
