@@ -2183,7 +2183,8 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
         return rewriter.notifyMatchFailure(
             op.getLoc(), "GPU Kernel expects rank 3 or 4 QKV.");
 
-      // CHECK 3: D == 128 and H == 32 due to kernel limitation.
+      // CHECK 3: D == 128 and static H due to kernel limitation.
+      // TODO: lift to static D once kernel is generalized.
       // Query is BHSD, Key is BHDS and Value is BHSD.
       // If rank 3, B is elided.
       // Note due to bcasts, only some of QKV might have static int dimensions.
@@ -2197,18 +2198,20 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
       dimD =
           std::max(dimD, matcher->getValue().getType().getIntDim(3 - isRank3));
 
-      int64_t dimH = -1;
-      dimH =
-          std::max(dimH, matcher->getQuery().getType().getIntDim(1 - isRank3));
-      dimH =
-          std::max(dimH, matcher->getKeyT().getType().getIntDim(1 - isRank3));
-      dimH =
-          std::max(dimH, matcher->getValue().getType().getIntDim(1 - isRank3));
+      SmallVector<int64_t> dimHs{
+          matcher->getQuery().getType().getIntDim(1 - isRank3),
+          matcher->getKeyT().getType().getIntDim(1 - isRank3),
+          matcher->getValue().getType().getIntDim(1 - isRank3),
+      };
+      bool isDimHStatic =
+          std::any_of(dimHs.begin(), dimHs.end(), [](int64_t value) {
+            return value != mlir::ShapedType::kDynamic;
+          });
 
-      if (dimD != 128 || dimH != 32)
+      if (dimD != 128 || !isDimHStatic)
         return rewriter.notifyMatchFailure(
             op->getLoc(),
-            "Right now must prove D == 128 && H == 32 for llama2.");
+            "Right now must prove D == 128 && static H for llama2.");
     }
 
     // Rewrite portion of pattern. Note: it is unsafe to now abort rewrites in
