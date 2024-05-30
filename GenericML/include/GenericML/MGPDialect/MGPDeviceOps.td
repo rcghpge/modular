@@ -1309,10 +1309,16 @@ def BufferSectionBorrowStaticOp : MGP_DeviceOp<"buffer.section.borrow.static", [
     Note that no copying is done, and the result buffer merely borrows from
     the (offset into) the input buffer.
 
-    The result buffer will inherit the alignment of the input buffer.
+    The result buffer will inherit the mutablity and, if possible, alignment
+    of the input buffer.
+
+    The runtime will guarantee the input buffer will outlive the result buffer.
+    However, the runtime only checks for overlapping concurrent borrows, or
+    overlapping reads/writes to the same contents, in debug builds.
 
     Example:
     ```mlir
+    %ch:  !mgp.chain<<"cuda", 3>>
     %ctx : !mgp.context
     %in_buf : !mgp.buffer<256, <"cuda", 3>>
     %out_buf =
@@ -1324,7 +1330,8 @@ def BufferSectionBorrowStaticOp : MGP_DeviceOp<"buffer.section.borrow.static", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_ContextType:$theContext,
+  let arguments = (ins MGP_DeviceChainType:$inChain,
+                       MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$inBuffer,
                        UI64Attr:$aRuntimeSlot,         // 0
                        UI64Attr:$bOffset,              // 1
@@ -1332,9 +1339,9 @@ def BufferSectionBorrowStaticOp : MGP_DeviceOp<"buffer.section.borrow.static", [
                        MGP_OptDeviceRefAttr:$dDevice); // 3
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
-    $theContext `[` $aRuntimeSlot `]` `,` $inBuffer `,`
+    $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $inBuffer `,`
     `offset` $bOffset `,` `size` $cSize attr-dict
-    `:` custom<BufferTypeToDevice>(type($inBuffer), $dDevice)
+    `:` custom<BufferTypeToDevice>(type($inBuffer), $dDevice, type($inChain))
   }];
   let hasVerifier = 1;
 
@@ -1368,15 +1375,21 @@ def BufferSectionBorrowDynamicOp : MGP_DeviceOp<"buffer.section.borrow.dynamic",
     Note that no copying is done, and the result buffer merely borrows from
     the (offset into) the input buffer.
 
-    The result buffer will inherit if possible, the alignment of the input buffer.
+    The result buffer will inherit the mutablity and, if possible, alignment
+    of the input buffer.
+
+    The runtime will guarantee the input buffer will outlive the result buffer.
+    However, the runtime only checks for overlapping concurrent
+    borrows, or overlapping reads/writes to the same contents, in debug builds.
 
     Example:
     ```mlir
+    %ch:  !mgp.chain<<"cuda", 3>>
     %ctx : !mgp.context
     %in_buf : !mgp.buffer<, <"cuda", 3>>
     %scale : index
     %out_buf =
-        mgp.buffer.section.borrow.dynamic %ctx[5], %in_buf, %scale,
+        mgp.buffer.section.borrow.dynamic %ch, %ctx[5], %in_buf, %scale,
           offset 128, size 64 : !mgp.buffer<, <"cuda", 3>>
     %out_buf : !mgp.buffer<, <"cuda", 3>>
     ```
@@ -1384,7 +1397,8 @@ def BufferSectionBorrowDynamicOp : MGP_DeviceOp<"buffer.section.borrow.dynamic",
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_ContextType:$theContext,
+  let arguments = (ins MGP_DeviceChainType:$inChain,
+                       MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$inBuffer,
                        Index:$scale,
                        UI64Attr:$aRuntimeSlot,         // 0
@@ -1393,9 +1407,9 @@ def BufferSectionBorrowDynamicOp : MGP_DeviceOp<"buffer.section.borrow.dynamic",
                        MGP_OptDeviceRefAttr:$dDevice); // 3
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
-    $theContext `[` $aRuntimeSlot `]` `,` $inBuffer `,` $scale `,`
+    $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $inBuffer `,` $scale `,`
     `offset` $bUnscaledOffset `,` `size` $cUnscaledSize attr-dict
-    `:` custom<BufferTypeToDevice>(type($inBuffer), $dDevice)
+    `:` custom<BufferTypeToDevice>(type($inBuffer), $dDevice, type($inChain))
   }];
   let hasVerifier = 1;
 
