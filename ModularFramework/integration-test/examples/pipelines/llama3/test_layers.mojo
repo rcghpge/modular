@@ -82,7 +82,7 @@ struct NanoLlama(LoadableModel):
             -0.7428, -0.1215,
         )
 
-    fn hyperparams(self) -> LlamaHParams:
+    fn hyperparams(self) raises -> LlamaHParams:
         return LlamaHParams(
             dims=2,
             n_layers=1,
