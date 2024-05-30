@@ -30,8 +30,6 @@ public:
 
   bool enableMemoryPlanning{false};
 
-  bool lowerToCompiledRegions{true};
-
   bool enableCompiledRegionsFusion{true};
 
   bool genVizSpec{false};
@@ -55,7 +53,6 @@ public:
     moToMgpOptions.enableFakeCudaDevice = enableFakeCudaDevice;
     moToMgpOptions.defaultDeviceLabel = defaultDeviceLabel;
     moToMgpOptions.enableMemoryPlanning = enableMemoryPlanning;
-    moToMgpOptions.lowerToCompiledRegions = lowerToCompiledRegions;
     moToMgpOptions.enableCompiledRegionsFusion = enableCompiledRegionsFusion;
     moToMgpOptions.genVizSpec = genVizSpec;
     moToMgpOptions.vizOutputPath = vizOutputPath;
@@ -113,12 +110,6 @@ private:
       cl::desc("If true, statically plan as many buffer allocations as "
                "possible."),
       llvm::cl::location(options.enableMemoryPlanning),
-      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
-
-  M::cl::MOpt<bool, true> lowerToCompiledRegions{
-      "lower-to-compiled-regions",
-      cl::desc("If true, will lower MGP Ops down to compiled region."),
-      llvm::cl::location(options.lowerToCompiledRegions),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
   M::cl::MOpt<bool, true> enableCompiledRegionsFusion{

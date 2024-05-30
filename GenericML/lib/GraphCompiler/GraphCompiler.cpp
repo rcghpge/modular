@@ -309,24 +309,22 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MGP::createStripBufferAttributesPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  if (opts.lowerToCompiledRegions) {
-    if (!opts.saveTempPrefix.empty())
-      jitOpts.saveTempPrefix = opts.saveTempPrefix + ".region";
-    MGP::LowerPrimitivesOptions lowerPrimOpts;
-    lowerPrimOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
-    pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts));
-    MGP::FuseGenericCompiledRegionsOptions fuseOpts;
-    fuseOpts.enableFusion = opts.enableCompiledRegionsFusion;
-    pm.addPass(MGP::createFuseGenericCompiledRegions(fuseOpts));
-    pm.addPass(MGP::createRemoveNonLowerableResults());
+  if (!opts.saveTempPrefix.empty())
+    jitOpts.saveTempPrefix = opts.saveTempPrefix + ".region";
+  MGP::LowerPrimitivesOptions lowerPrimOpts;
+  lowerPrimOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts));
+  MGP::FuseGenericCompiledRegionsOptions fuseOpts;
+  fuseOpts.enableFusion = opts.enableCompiledRegionsFusion;
+  pm.addPass(MGP::createFuseGenericCompiledRegions(fuseOpts));
+  pm.addPass(MGP::createRemoveNonLowerableResults());
 
-    MGP::LowerMOGGABIOptions abiOpts;
-    abiOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
-    pm.addPass(MGP::createLowerMOGGABI(abiOpts));
-    pm.addPass(MOGG::createJitCompileKernels(jitOpts));
-    pm.addPass(MGP::createLowerMOGGRegionCompiles());
-    pm.addPass(mlir::createCSEPass());
-  }
+  MGP::LowerMOGGABIOptions abiOpts;
+  abiOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  pm.addPass(MGP::createLowerMOGGABI(abiOpts));
+  pm.addPass(MOGG::createJitCompileKernels(jitOpts));
+  pm.addPass(MGP::createLowerMOGGRegionCompiles());
+  pm.addPass(mlir::createCSEPass());
   pm.addPass(MGP::createFixupOverhangsPass());
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addPass(mlir::createCanonicalizerPass());
