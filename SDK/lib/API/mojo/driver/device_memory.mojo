@@ -201,3 +201,19 @@ struct DeviceMemory(StringableRaising, CollectionElement):
         var dst = dev.allocate(self.spec, name)
         self.copy_to(dst)
         return dst^
+
+    fn data_unsafe(self) -> DTypePointer[DType.invalid]:
+        """Returns a pointer to the underlying device memory.
+
+        Note: The caller is responsible for ensuring that the returned pointer
+        is not used after it's owner is last used.
+        """
+
+        alias func_name_get_data = "M_getData"
+        return call_dylib_func[
+            DTypePointer[DType.invalid], DTypePointer[DType.invalid]
+        ](
+            self.lib.get_handle(),
+            func_name_get_data,
+            self._ptr,
+        )

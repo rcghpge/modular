@@ -54,3 +54,7 @@ MODULAR_API_EXPORT void M_copyDeviceMemory(DeviceMemory *dst,
   auto errOr = src->copy_to(*dst);
   assert(!errOr.isError());
 }
+
+MODULAR_API_EXPORT void *M_getData(DeviceMemory *deviceMem) {
+  return deviceMem->data();
+}

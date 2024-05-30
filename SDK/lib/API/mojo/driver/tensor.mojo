@@ -212,3 +212,11 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
 
     fn __del__(owned self):
         self._device._free(self._ptr.bitcast[DType.invalid]())
+
+    fn data_unsafe(self) -> DTypePointer[type]:
+        """Returns a pointer to the underlying memory.
+
+        Note: The caller is responsible for ensuring that the returned pointer
+        is not used after it's owner is last used.
+        """
+        return self._ptr
