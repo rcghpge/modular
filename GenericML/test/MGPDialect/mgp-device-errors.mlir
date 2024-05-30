@@ -92,8 +92,8 @@ func.func @buffer_split_mismatched_sizes(%ctx : !mgp.context, %ch0 : !mgp.chain<
 
 func.func @buffer_section_borrow_static_beyond_end(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>, %in_buf : !mgp.buffer<192, <"cuda", 3>>) {
   // expected-error@+1 {{'mgp.buffer.section.borrow.static' op requesting section end 256 which is beyond end of input buffer of size 192.}}
-  %buf = "mgp.buffer.section.borrow.static" (%ch0, %ctx, %in_buf) { aRuntimeSlot = 1 : ui64, bOffset = 128 : ui64, cSize = 128 : ui64, dDevice = #M.device_ref<"cuda", 3> }
-           : (!mgp.chain<<"cuda", 3>>, !mgp.context, !mgp.buffer<192, <"cuda", 3>>) -> !mgp.buffer<128, <"cuda", 3>>
+  %buf = "mgp.buffer.section.borrow.static" (%ctx, %in_buf) { aRuntimeSlot = 1 : ui64, bOffset = 128 : ui64, cSize = 128 : ui64, dDevice = #M.device_ref<"cuda", 3> }
+           : (!mgp.context, !mgp.buffer<192, <"cuda", 3>>) -> !mgp.buffer<128, <"cuda", 3>>
   mef.output %buf : !mgp.buffer<128, <"cuda", 3>>
 }
 
@@ -105,8 +105,8 @@ func.func @buffer_section_borrow_static_beyond_end(%ctx : !mgp.context, %ch0 : !
 
 func.func @buffer_section_borrow_dynamic_sized(%ctx : !mgp.context, %ch0 : !mgp.chain<<"cuda", 3>>, %in_buf : !mgp.buffer<192, <"cuda", 3>>, %scale : index) {
   // expected-error@+1 {{'mgp.buffer.section.borrow.dynamic' op expected input buffer to be dynamically sized.}}
-  %buf = "mgp.buffer.section.borrow.dynamic" (%ch0, %ctx, %in_buf, %scale) { aRuntimeSlot = 1 : ui64, bUnscaledOffset = 128 : ui64, cUnscaledSize = 128 : ui64, dDevice = #M.device_ref<"cuda", 3> }
-           : (!mgp.chain<<"cuda", 3>>, !mgp.context, !mgp.buffer<192, <"cuda", 3>>, index) -> !mgp.buffer<, <"cuda", 3>>
+  %buf = "mgp.buffer.section.borrow.dynamic" (%ctx, %in_buf, %scale) { aRuntimeSlot = 1 : ui64, bUnscaledOffset = 128 : ui64, cUnscaledSize = 128 : ui64, dDevice = #M.device_ref<"cuda", 3> }
+           : (!mgp.context, !mgp.buffer<192, <"cuda", 3>>, index) -> !mgp.buffer<, <"cuda", 3>>
   mef.output %buf : !mgp.buffer<, <"cuda", 3>>
 }
 
