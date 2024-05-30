@@ -19,7 +19,7 @@ from max.tensor import Tensor, TensorShape
 from max.graph._testing import assert_tensors_almost_equal
 
 
-def run_shutdown_test() -> None:
+def run_shutdown_test[ENABLE_HTTP: Bool]() -> None:
     var server_started = Atomic[DType.int64](0)
     var server_session = InferenceSession()
     alias server_address = "0.0.0.0:0"
@@ -29,7 +29,9 @@ def run_shutdown_test() -> None:
     fn elapsed() -> String:
         return str(int((now() - start_time) / (1_000_000))) + " ms"
 
-    var server = InferenceServer.create(server_address, server_session)
+    var server = InferenceServer.create[ENABLE_HTTP](
+        server_address, server_session
+    )
     print("[" + elapsed() + "]Created server.")
 
     @parameter
@@ -68,4 +70,4 @@ def run_shutdown_test() -> None:
 
 
 def main():
-    pass
+    run_shutdown_test[False]()

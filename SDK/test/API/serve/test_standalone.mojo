@@ -21,7 +21,7 @@ from max.tensor import Tensor, TensorShape
 from max.graph._testing import assert_tensors_almost_equal
 
 
-def main() -> None:
+def test_standalone_server_client[ENABLE_HTTP_SERVER: Bool]() -> None:
     var start_time = now()
 
     @parameter
@@ -32,7 +32,9 @@ def main() -> None:
     var client_completed = Atomic[DType.int64](0)
     var server_session = InferenceSession()
     alias server_address = "0.0.0.0:8000"
-    var server = InferenceServer.create(server_address, server_session)
+    var server = InferenceServer.create[ENABLE_HTTP_SERVER](
+        server_address, server_session
+    )
     print("[" + elapsed() + "]Created server.")
 
     @parameter
@@ -107,3 +109,7 @@ def main() -> None:
         _ = server_task^
         _ = server^
         _ = rt
+
+
+def main():
+    test_standalone_server_client[False]()
