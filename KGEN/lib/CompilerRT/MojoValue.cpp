@@ -4,13 +4,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Support/MojoValue.h"
+#include "KGEN/CompilerRT/MojoValue.h"
 
 #include "Support/AlignedAlloc.h"
 #include <algorithm>
 #include <cstdlib>
 
 using namespace M;
+using namespace KGEN;
 
 MojoValue::MojoValue(size_t size, size_t align, DestructorFn destructor)
     : MojoValue(alignedAlloc(size, align), destructor) {}
