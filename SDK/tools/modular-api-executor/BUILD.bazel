@@ -11,8 +11,8 @@ modular_cc_binary(
     deps = [
         "//ArraySupport",
         "//GenericML:MaxAPI",
-        "//ONNX:API",
         "//ONNX:APIStrippedHeaders",
+        "//ONNX:modular-framework-onnx-ext",
         "//SDK:EngineCLI-Benchmark",
         "//Support:Globals",
     ],
