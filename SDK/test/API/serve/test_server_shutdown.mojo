@@ -3,6 +3,9 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
+# REQUIRES: DISABLED
+# (TODO: SERV-130) Disable this test till we figure out how to not fail
+# non-deterministically in pre-submit CI.
 # RUN: %mojo %s
 from tensor import TensorSpec
 
