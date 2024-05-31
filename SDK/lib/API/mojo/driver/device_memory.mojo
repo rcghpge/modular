@@ -176,7 +176,7 @@ struct DeviceMemory(StringableRaising, CollectionElement):
         )
         return Tensor(data, shape, self._device, self.name)
 
-    fn copy_to(self, inout dst_memory: DeviceMemory) raises:
+    fn copy_into(self, inout dst_memory: DeviceMemory) raises:
         """Copies the contents of self into a preallocated buffer.
 
         Args:
@@ -215,7 +215,7 @@ struct DeviceMemory(StringableRaising, CollectionElement):
             raise str(self) + "is already allocated on " + str(dev)
 
         var dst = dev.allocate(self.spec, name)
-        self.copy_to(dst)
+        self.copy_into(dst)
         return dst^
 
     fn unsafe_ptr(self) -> DTypePointer[DType.invalid]:
