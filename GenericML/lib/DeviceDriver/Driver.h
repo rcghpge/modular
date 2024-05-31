@@ -38,7 +38,7 @@ struct DeviceMemory {
 
   size_t bytecount() const { return spec.getSizeInBytes(); }
 
-  virtual ~DeviceMemory() = default;
+  virtual ~DeviceMemory();
 
   DeviceMemoryKind getKind() const { return kind; }
 

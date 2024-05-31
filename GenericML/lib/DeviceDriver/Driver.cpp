@@ -9,6 +9,12 @@
 
 using namespace M::Driver;
 
+DeviceMemory::~DeviceMemory() {
+  if (ptr) {
+    devicePtr->freeData(ptr);
+  }
+};
+
 MODULAR_API_EXPORT Device *M_copyDevice(Device *devPtr) {
   auto newRef = M::copyRCRef(devPtr);
   return newRef.release();
