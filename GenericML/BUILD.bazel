@@ -49,7 +49,7 @@ modular_cc_library(
 # MOTransforms relies on these, but the GraphCompiler relies
 # on MOTransforms.
 modular_cc_library(
-    name = "GraphCompilerHeaders",
+    name = "MojoLLDBPublic.headers",
     hdrs = glob(["include/GenericML/GraphCompiler/*.h"]),
     visibility = ["//visibility:private"],
 )
@@ -87,8 +87,8 @@ modular_cc_library(
     hdrs = glob(["include/GenericML/Driver/*.h"]),
     copts = ["-Ithird-party/"],  # Fixes mlperf-loadgen include path.
     deps = [
-        ":APIHeaders",
-        ":GraphCompilerHeaders",
+        ":API.headers",
+        ":MojoLLDBPublic.headers",
         ":Support",
         "//Support:Base",
         "//third-party/mlperf-loadgen",
@@ -210,7 +210,7 @@ modular_cc_library(
         ":GraphCompilerInterfacesIncGen",
         ":MGPDialect",
         ":MODialect",
-        ":MOGGDialectHeaders",
+        ":MOGGDialect.headers",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -388,13 +388,13 @@ modular_cc_library(
     hdrs = glob(["include/GenericML/GraphCompiler/Transforms/MODialect/*.h"]),
     deps = [
         ":CommonDriver",
-        ":GraphCompilerHeaders",
         ":MGPPrimitives",
         ":MOAnalysis",
         ":MODialect",
         ":MOGGDialect",
         ":MOTarget",
         ":MOTransformsIncGen",
+        ":MojoLLDBPublic.headers",
         ":RMODialect",
         ":RMOSupport",
     ],
@@ -588,7 +588,7 @@ gentbl_modular_passes(
 )
 
 modular_cc_library(
-    name = "MOGGDialectHeaders",
+    name = "MOGGDialect.headers",
     hdrs = glob([
         "include/GenericML/GraphCompiler/MOGGDialect/*.h",
         "include/GenericML/GraphCompiler/MOGGDialect/Support/*.h",
@@ -1398,7 +1398,7 @@ modular_cc_library(
 )
 
 modular_cc_library(
-    name = "APIHeaders",
+    name = "API.headers",
     hdrs = glob(["include/GenericML/API/**/*.h"]),
     visibility = ["//visibility:private"],
 )
