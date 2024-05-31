@@ -56,7 +56,9 @@ struct Device(Stringable):
         self.lib = ManagedDLHandle(DLHandle(_get_driver_path()))
         self._cdev = _CDevice(
             call_dylib_func[DTypePointer[DType.invalid]](
-                self.lib.get_handle(), func_name_create, descriptor.numa_id
+                self.lib.get_handle(),
+                func_name_create,
+                Int32(descriptor.numa_id),
             )
         )
 
