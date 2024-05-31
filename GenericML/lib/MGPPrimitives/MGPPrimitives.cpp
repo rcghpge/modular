@@ -328,8 +328,7 @@ mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
       kernelInputs.push_back(&input);
     for (AnyAsyncValueRef &i : outResults)
       kernelInputs.push_back(&i);
-    KGEN::MojoCallContext callContext(outChain.copy(),
-                                      outChain.getLocation().copy());
+    MojoCallContext callContext(outChain.copy(), outChain.getLocation().copy());
     kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
               reinterpret_cast<void *>(runtimePtr.get()),
               reinterpret_cast<void *>(&callContext));

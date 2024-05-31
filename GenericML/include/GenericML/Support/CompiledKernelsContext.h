@@ -8,8 +8,8 @@
 #define GENERICML_SUPPORT_COMPILEDKERNELSCONTEXT_H
 
 #include "KGEN/Compiler/ObjectCompiler.h"
-#include "KGEN/CompilerRT/MojoCallContext.h"
 #include "KGEN/ExecutionEngine/ExecutionEngine.h"
+#include "Runtime/MojoCallContext.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/BLAKE3.h"
@@ -94,7 +94,7 @@ struct CompiledKernelCall {
 //   O = number of 'out' tensor buffers
 //   N = number of 'in' dimension values (for dynamic dims only)
 //   M = number of 'out' dimension values (for compiled shape functions only)
-//   void* args[I + O], ssize_t dims[N + M], KGEN::MojoCallContext*
+//   void* args[I + O], ssize_t dims[N + M], MojoCallContext*
 //
 // Both args and dims take 'in' args (ie read only) followed by 'out' args
 // (ie write only). Arguments representing tensors are passed as their
@@ -128,7 +128,7 @@ struct CompiledKernelCall {
 // MojoCallContext::{complete, setToError}. Note that the kernel must unmarshal
 // all other arguments before returning to the caller after hitting a
 // suspension point.
-using CompiledKernelFn = void(void **, ssize_t *, KGEN::MojoCallContext *);
+using CompiledKernelFn = void(void **, ssize_t *, MojoCallContext *);
 
 // A function pointer representing an alternate ABI which takes in a list of
 // async value pointers as the first value and a runtime, and callContext as

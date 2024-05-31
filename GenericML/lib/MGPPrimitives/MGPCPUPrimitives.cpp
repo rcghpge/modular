@@ -866,7 +866,7 @@ static void mgp_kernel_execute_cpu(
          uses = std::move(uses)
 #endif
     ]() mutable {
-          KGEN::MojoCallContext callContext(outChain.copy(), std::move(loc));
+          MojoCallContext callContext(outChain.copy(), std::move(loc));
 
           kernelPtr(call.inputPointers.data(), dimensions.data(), &callContext);
 
@@ -905,7 +905,7 @@ static void mgp_kernel_execute_cpu(
     // to an error on return, otherwise we'll emplace the outChain to relieve
     // kernels of that responsibility.
     //
-    KGEN::MojoCallContext callContext(outChain.copy(), outChain.copyLocation());
+    MojoCallContext callContext(outChain.copy(), outChain.copyLocation());
     kernelPtr(call.inputPointers.data(), dimensions.data(), &callContext);
     // Stop profiling.
     std::move(profilerEntry).record();
