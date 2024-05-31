@@ -964,6 +964,7 @@ modular_cc_library(
         "//KGEN:CompilerRT.headers",
         "//KGEN:ExecutionEngine",
         "//LLCL:RuntimeGlobals",
+        "//Runtime",
         "//Support:Base",
         "//Support:ML",
         "@llvm-project//llvm:Support",

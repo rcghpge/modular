@@ -7,6 +7,8 @@ modular_cc_library(
     srcs = glob(["lib/*.cpp"]),
     hdrs = glob(["include/Runtime/*.h"]),
     deps = [
+        "//CUDASupport",
+        "//LLCL:Runtime",
         "//Support:Base",
     ],
 )
