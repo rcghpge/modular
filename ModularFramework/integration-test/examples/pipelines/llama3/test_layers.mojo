@@ -33,7 +33,7 @@ from pipelines.weights.loadable_model import LoadableModel, LlamaHParams
 struct NanoLlama(LoadableModel):
     var weights: Dict[String, Tensor[DType.float32]]
 
-    fn __init__(inout self, path: Path) raises:
+    fn __init__(inout self, _path: Path) raises:
         self.__init__()
 
     def __init__(inout self):
@@ -103,7 +103,7 @@ struct NanoLlama(LoadableModel):
     fn get[
         type: DType
     ](
-        inout self, key: String, layer_idx: Optional[Int] = None
+        inout self, key: String, _layer_idx: Optional[Int] = None
     ) raises -> Tensor[type]:
         constrained[type == DType.float32, "bork"]()
         return self.weights[key].astype[type]()
