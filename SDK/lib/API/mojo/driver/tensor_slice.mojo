@@ -16,7 +16,7 @@ struct TensorSlice[
     is_mutable: Bool,
     lifetime: AnyLifetime[is_mutable].type,
 ]:
-    alias _ref_type = Reference[Tensor[type, rank], is_mutable, lifetime]
+    alias _ref_type = Reference[Tensor[type, rank], lifetime]
     var _ref: Self._ref_type
     var _slices: StaticTuple[Slice, rank]
     var _spec: StaticTensorSpec[type, rank]
@@ -66,9 +66,9 @@ struct TensorSlice[
         constrained[self.is_mutable == True, "tensor slice is immutable"]()
         # TODO: Don't cast to ptr. We have to do this because we don't
         # have conditional conformance.
-        var mutable_tensor = UnsafePointer(self._ref)[]._get_mut_ref()
+        var tensor_ptr = UnsafePointer(self._ref)
         var adjusted_indices = self._get_adjusted_indices(indices)
-        mutable_tensor[].store(adjusted_indices, value)
+        tensor_ptr[].store(adjusted_indices, value)
 
     @always_inline
     fn __getitem__(self, *indices: Int) -> Scalar[type]:

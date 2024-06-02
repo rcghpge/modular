@@ -103,7 +103,7 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
 
     @always_inline
     fn __getitem__(
-        self: Reference[Self, _, _], *slices: Slice
+        self: Reference[Self, _], *slices: Slice
     ) -> TensorSlice[type, rank, self.is_mutable, self.lifetime]:
         debug_assert(
             len(slices) == rank, "mismatch between slice count and rank"
@@ -113,11 +113,6 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
             slice_tuple[i] = slices[i]
             slice_tuple[i].end = min(slice_tuple[i].end, self[]._spec[i])
         return TensorSlice(self, slice_tuple)
-
-    fn _get_mut_ref(
-        self: Reference[Self, True, _]
-    ) -> Reference[Self, True, self.lifetime]:
-        return self
 
     @always_inline
     fn load[*, width: Int = 1](self, *indices: Int) -> SIMD[type, width]:
