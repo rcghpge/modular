@@ -97,18 +97,14 @@ def test_standalone_server_client[ENABLE_HTTP_SERVER: Bool]() -> None:
     var model_path = "SDK/test/API/serve/models/add.onnx"
     with Runtime() as rt:
         var tg = TaskGroup[__lifetime_of(model_name, model_path)](rt)
-        var server_task = tg.create_task(server_impl(model_name, model_path))
-        var client_task = tg.create_task(client(model_name))
+        tg.create_task(server_impl(model_name, model_path))
+        tg.create_task(client(model_name))
         while not client_completed.load():
             sleep(1)
         server.signal_stop()
         tg.wait()
-        _ = tg^
         print("[" + elapsed() + "]Done!")
-        _ = client_task^
-        _ = server_task^
         _ = server^
-        _ = rt
 
 
 def main():

@@ -58,15 +58,13 @@ def run_shutdown_test[ENABLE_HTTP: Bool]() -> None:
 
     with Runtime() as rt:
         var tg = TaskGroup[__lifetime_of(server_started)](rt)
-        var server_task = tg.create_task(server_impl())
+        tg.create_task(server_impl())
         while not server_started.load():
             print(".", end="")
             sleep(1)
         server.signal_stop()
 
         tg.wait()
-        _ = tg^
-        _ = server_task^
         _ = rt
         _ = server^
         print("[" + elapsed() + "]Server terminated succesfully.")

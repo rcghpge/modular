@@ -34,13 +34,13 @@ fn test_batch():
     var batcher = Batcher[Int, Int, count_batch](max=BATCH_SIZE, timeout=1)
 
     @parameter
-    async fn submit(owned n: Int) -> Int:
-        return batcher.submit(n)
+    async fn submit(owned n: Int):
+        _ = batcher.submit(n)
 
     var rt = Runtime()
     var tg = TaskGroup[__lifetime_of()](rt)
     for i in range(NUM_REQ):
-        _ = tg.create_task(submit(i))
+        tg.create_task(submit(i))
     tg.wait()
     _ = batcher^
 
