@@ -11,9 +11,9 @@ from math import ceil
 @value
 @register_passable
 struct TensorSlice[
+    is_mutable: Bool, //,
     type: DType,
     rank: Int,
-    is_mutable: Bool,
     lifetime: AnyLifetime[is_mutable].type,
 ]:
     alias _ref_type = Reference[Tensor[type, rank], lifetime]

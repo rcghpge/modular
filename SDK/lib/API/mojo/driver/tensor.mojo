@@ -103,15 +103,15 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
 
     @always_inline
     fn __getitem__(
-        self: Reference[Self, _], *slices: Slice
-    ) -> TensorSlice[type, rank, self.is_mutable, self.lifetime]:
+        ref [_]self: Self, *slices: Slice
+    ) -> TensorSlice[type, rank, __lifetime_of(self)]:
         debug_assert(
             len(slices) == rank, "mismatch between slice count and rank"
         )
         var slice_tuple = StaticTuple[Slice, rank]()
         for i in range(len(slices)):
             slice_tuple[i] = slices[i]
-            slice_tuple[i].end = min(slice_tuple[i].end, self[]._spec[i])
+            slice_tuple[i].end = min(slice_tuple[i].end, self._spec[i])
         return TensorSlice(self, slice_tuple)
 
     @always_inline
