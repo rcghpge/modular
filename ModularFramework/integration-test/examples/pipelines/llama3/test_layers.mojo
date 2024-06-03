@@ -118,11 +118,12 @@ struct NanoLlama(LoadableModel):
             n_kv_heads=params.n_kv_heads,
             head_dim=params.head_dim,
             dim=params.dims,
+            enable_custom_rope_kernel=False,
+            use_custom_attention=False,
             wq=self.weight(graph, "attn_q").swapaxes(-1, -2),
             wk=self.weight(graph, "attn_k").swapaxes(-1, -2),
             wv=self.weight(graph, "attn_v").swapaxes(-1, -2),
             wo=self.weight(graph, "attn_output").swapaxes(-1, -2),
-            enable_custom_rope_kernel=False,
         )
 
     def feed_forward(self, graph: Graph) -> FeedForward:
@@ -204,7 +205,7 @@ fn test_rope() raises:
             TensorType(DType.float32, bs, seqlen, n_local_kv_heads, head_dim)
         ),
     )
-    _ = g.output(rope(x=g[0], freqs_cis=g[1]))
+    _ = g.output(rope(x=g[0], freqs_cis=g[1], enable_custom_rope_kernel=False))
 
     var x = Tensor[DType.float32](TensorShape(bs, seqlen, n_local_kv_heads, head_dim),
         -1.3140, -1.5004,
@@ -244,7 +245,7 @@ fn test_rope_batch_size_2() raises:
             TensorType(DType.float32, bs, seqlen, n_local_kv_heads, head_dim)
         ),
     )
-    _ = g.output(rope(x=g[0], freqs_cis=g[1]))
+    _ = g.output(rope(x=g[0], freqs_cis=g[1], enable_custom_rope_kernel=False))
 
     var x = Tensor[DType.float32](TensorShape(bs, seqlen, n_local_kv_heads, head_dim),
          3.4737,  1.4446,
@@ -284,7 +285,7 @@ fn test_rope_seq_len_5() raises:
             TensorType(DType.float32, bs, seqlen, n_local_kv_heads, head_dim)
         ),
     )
-    _ = g.output(rope(x=g[0], freqs_cis=g[1]))
+    _ = g.output(rope(x=g[0], freqs_cis=g[1], enable_custom_rope_kernel=False))
 
     var freqs_cis = Tensor[DType.float32](TensorShape(seqlen, head_dim // 2, 2),
          1.0000,  0.0000,
@@ -449,16 +450,15 @@ def test_attention() -> None:
     g = Graph(
         List[Type](
             TensorType(DType.float32, batch, seqlen, dim),
-            TensorType(DType.int64, 1),
             TensorType(DType.float32, seqlen, 1, 2),
-            TensorType(DType.float32, batch, startpos, n_kv_heads, head_dim),
-            TensorType(DType.float32, batch, startpos, n_kv_heads, head_dim),
+            TensorType(DType.float32, startpos, 1, batch, n_kv_heads, head_dim),
+            TensorType(DType.float32, startpos, 1, batch, n_kv_heads, head_dim),
         )
     )
 
     llama = NanoLlama()
     layer = llama.attention(g)
-    out = layer(g[0], g[1], g[2], g[3], g[4])
+    out = layer(g[0], g[1], g[2], g[3])
     _ = g.output(List[Symbol](out[0], out[1], out[2]))
 
     input = Tensor[DType.float32](TensorShape(2, 2, dim),
@@ -467,7 +467,6 @@ def test_attention() -> None:
         -0.0088, -1.1315,
          1.1287,  1.7699,
     )
-    start_pos = Tensor[DType.int64](TensorShape(1), 0)
     # This is a complex tensor of shape (2, 1); we use the last dim as
     # (real, imag).
     # These values generated from the correct freqs_cis given Llama hyperparams.
@@ -475,8 +474,8 @@ def test_attention() -> None:
          1.0000,  0.0000,
          0.5403,  0.8415
     )
-    k_cache = Tensor[DType.float32](TensorShape(0, 2, n_kv_heads, head_dim))
-    v_cache = Tensor[DType.float32](TensorShape(0, 2, n_kv_heads, head_dim))
+    k_cache = Tensor[DType.float32](TensorShape(0, 1, 2, n_kv_heads, head_dim))
+    v_cache = Tensor[DType.float32](TensorShape(0, 1, 2, n_kv_heads, head_dim))
     expected_tokens = Tensor[DType.float32](TensorShape(2, 2, dim),
         -0.1979, -0.0316,
         -0.0312, -0.0204,
@@ -500,7 +499,7 @@ def test_attention() -> None:
     )
 
     actuals = _testing.execute_n_args(
-        g, input, start_pos, freq_cis, k_cache, v_cache
+        g, input, freq_cis, k_cache, v_cache
     )
 
     _testing.assert_tensors_almost_equal(
@@ -532,13 +531,12 @@ def test_transformer_block() -> None:
 
     batch_size = Dim.dynamic()
     seq_len = Dim.dynamic()
-    total_len = Dim.dynamic()
-    cache_type = TensorType(DType.float32, batch_size, total_len, n_kv_heads, head_dim)
+    prev_seq_len = Dim.dynamic()
+    cache_type = TensorType(DType.float32, prev_seq_len, 1, batch_size, n_kv_heads, head_dim)
 
     g = Graph(
         List[Type](
             TensorType(DType.float32, batch_size, seq_len, dim),
-            TensorType(DType.int64, 1),
             TensorType(DType.float32, seq_len, 1, 2),
             cache_type,
             cache_type,
@@ -561,7 +559,7 @@ def test_transformer_block() -> None:
         attention_norm=attention_norm,
         ffn_norm=ffn_norm,
     )
-    out = layer(g[0], g[1], g[2], g[3], g[4])
+    out = layer(g[0], g[1], g[2], g[3])
     _ = g.output(List[Symbol](out[0], out[1], out[2]))
 
     input = Tensor[DType.float32](TensorShape(2, 2, dim),
@@ -571,7 +569,6 @@ def test_transformer_block() -> None:
         -0.0088, -1.1315,
          1.1287,  1.7699,
     )
-    start_pos = Tensor[DType.int64](TensorShape(1), 0)
     # This is a complex tensor of shape (2, 1); we use the last dim as
     # (real, imag).
     # These values generated from the correct freqs_cis given Llama hyperparams.
@@ -579,8 +576,8 @@ def test_transformer_block() -> None:
          1.0000,  0.0000,
          0.5403,  0.8415
     )
-    k_cache = Tensor[DType.float32](TensorShape(0, 2, n_kv_heads, head_dim))
-    v_cache = Tensor[DType.float32](TensorShape(0, 2, n_kv_heads, head_dim))
+    k_cache = Tensor[DType.float32](TensorShape(0, 1, 2, n_kv_heads, head_dim))
+    v_cache = Tensor[DType.float32](TensorShape(0, 1, 2, n_kv_heads, head_dim))
     expected_tokens = Tensor[DType.float32](TensorShape(2, 2, dim),
         -1.1102, -2.3339,
         -1.8064,  1.4070,
@@ -604,7 +601,7 @@ def test_transformer_block() -> None:
     )
 
     actuals = _testing.execute_n_args(
-        g, input, start_pos, freq_cis, k_cache, v_cache
+        g, input, freq_cis, k_cache, v_cache
     )
 
     _testing.assert_tensors_almost_equal(
