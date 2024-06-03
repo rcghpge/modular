@@ -288,7 +288,8 @@ struct MatmulConstBPattern
         lowerMatmulPackingFunc(op->getLoc(), rewriter, graphOp, cache, weight,
                                inputType, resultType, transpose);
 
-    op.setOperand(1, packedWeights);
+    rewriter.modifyOpInPlace(op, [&] { op.setOperand(1, packedWeights); });
+
     return mlir::success();
   }
 
@@ -353,7 +354,7 @@ struct MatmulTranspBPattern
     // this layout annotation.
     auto rebWeight = rewriter.create<MO::RebindOp>(
         op.getLoc(), weightType.cloneWith(preTranspWeightLayout), weight);
-    op.setOperand(1, rebWeight);
+    rewriter.modifyOpInPlace(op, [&] { op.setOperand(1, rebWeight); });
 
     return mlir::success();
   }
@@ -407,11 +408,13 @@ struct BatchMatmulAdjBPattern
           op, "matched ops have inconsistent devices");
     }
 
-    // Take the non-transposed weight.
-    op.setOperand(1, weight);
+    rewriter.modifyOpInPlace(op, [&] {
+      // Take the non-transposed weight.
+      op.setOperand(1, weight);
 
-    // Mark this matmul as being a tranposed kernel.
-    op.setTransposeBAttr(rewriter.getBoolAttr(true));
+      // Mark this matmul as being a tranposed kernel.
+      op.setTransposeBAttr(rewriter.getBoolAttr(true));
+    });
 
     return mlir::success();
   }
@@ -606,7 +609,7 @@ struct ConvConstFilterPattern
     // Pack the filter.
     auto packedFilter = rewriter.create<MO::LayoutTransformOp>(
         loc, /*outputTypes=*/packedFilterType, filter, kernelKgenParams);
-    op.setOperand(1, packedFilter);
+    rewriter.modifyOpInPlace(op, [&] { op.setOperand(1, packedFilter); });
     return mlir::success();
   }
 };
@@ -686,7 +689,7 @@ struct ConvTransposeConstFilterPattern
     // Pack the filter.
     auto packedFilter = rewriter.create<MO::LayoutTransformOp>(
         loc, /*outputTypes=*/packedFilterType, filter);
-    op.setOperand(1, packedFilter);
+    rewriter.modifyOpInPlace(op, [&] { op.setOperand(1, packedFilter); });
     return mlir::success();
   }
 };
