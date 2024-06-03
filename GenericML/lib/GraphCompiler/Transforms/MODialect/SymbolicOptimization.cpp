@@ -195,7 +195,8 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     ArrayRef<ParamDeclAttr> oldDecls = argNonzeroOp.getOutputParamDecls();
     ASSERT_STREAM(oldDecls.size() == 1)
         << "mo.argNonzero declares more than one new param";
-    argNonzeroOp.setOutputParamDecls({});
+    rewriter.modifyOpInPlace(argNonzeroOp,
+                             [&]() { argNonzeroOp.setOutputParamDecls({}); });
     auto numResAttr = KGEN::ParamOperatorAttr::get(
         KGEN::POC::MulNuw, SmallVector<TypedAttr>{bsAttr, wRef});
     rewriter.create<KGEN::ParamDeclareOp>(loc, oldDecls[0], numResAttr);
@@ -2313,9 +2314,11 @@ struct ElementWiseBinaryVectorPattern
         loc, newTypeShape.cloneWith(a.getType().getDtype()), a);
     auto reshapeB = rewriter.create<Static::ReshapeOp>(
         loc, newTypeShape.cloneWith(b.getType().getDtype()), b);
-    op.setLhsInput(reshapeA.getResult());
-    op.setRhsInput(reshapeB.getResult());
-    op.getResult().setType(newTypeShape.cloneWith(oldTensorType.getDtype()));
+    rewriter.modifyOpInPlace(op, [&]() {
+      op.setLhsInput(reshapeA.getResult());
+      op.setRhsInput(reshapeB.getResult());
+      op.getResult().setType(newTypeShape.cloneWith(oldTensorType.getDtype()));
+    });
     rewriter.setInsertionPointAfter(op);
     auto out =
         rewriter.create<Static::ReshapeOp>(loc, oldTensorType, op.getResult());
@@ -4183,7 +4186,7 @@ struct ForwardMathematicalCanonicalizationPowByNegativeOneOrTwoToDivAndPow
     if (bcast1ErrOr.isError())
       return rewriter.notifyMatchFailure(powOp, bcast1ErrOr.getError());
 
-    powOp.setRhsInput(*bcastErrOr);
+    rewriter.modifyOpInPlace(powOp, [&]() { powOp.setRhsInput(*bcastErrOr); });
     rewriter.setInsertionPointAfter(powOp);
     auto div = rewriter.create<MO::DivOp>(loc, tensorType, *bcast1ErrOr, powOp);
     rewriter.replaceAllUsesExcept(powOp, div, div);
@@ -4319,8 +4322,10 @@ struct MathematicalSimplificationDivByDivToDivOfMul
 
     auto mul =
         rewriter.create<MO::MulOp>(divOp->getLoc(), divOp.getType(), x, z);
-    divOp.setLhsInput(mul);
-    divOp.setRhsInput(y);
+    rewriter.modifyOpInPlace(divOp, [&]() {
+      divOp.setLhsInput(mul);
+      divOp.setRhsInput(y);
+    });
 
     return success();
   }
@@ -4342,8 +4347,10 @@ struct MathematicalSimplificationDivOfDivToDivByMul
 
     auto mul =
         rewriter.create<MO::MulOp>(divOp->getLoc(), divOp.getType(), y, z);
-    divOp.setLhsInput(x);
-    divOp.setRhsInput(mul);
+    rewriter.modifyOpInPlace(divOp, [&]() {
+      divOp.setLhsInput(x);
+      divOp.setRhsInput(mul);
+    });
 
     return success();
   }
@@ -4499,7 +4506,7 @@ struct MathematicalSimplificationPowByFloatToPowByInt
     if (newCst.isError())
       return rewriter.notifyMatchFailure(powOp, newCst.getError());
 
-    powOp.setRhsInput(*newCst);
+    rewriter.modifyOpInPlace(powOp, [&]() { powOp.setRhsInput(*newCst); });
 
     return success();
   }
