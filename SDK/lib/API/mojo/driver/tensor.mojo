@@ -130,7 +130,9 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
         debug_assert(
             len(indices) == rank, "mismatch between requested index and rank"
         )
-        return self._ptr.load[width=width](self._compute_linear_offset(indices))
+        return SIMD[size=width].load(
+            self._ptr, self._compute_linear_offset(indices)
+        )
 
     @always_inline
     fn load[
@@ -147,7 +149,9 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
         Returns:
           The SIMD value at the specified indices.
         """
-        return self._ptr.load[width=width](self._compute_linear_offset(indices))
+        return SIMD[size=width].load(
+            self._ptr, self._compute_linear_offset(indices)
+        )
 
     # FIXME: [MOCO-696] Use variadic length keys
     @always_inline
@@ -175,7 +179,9 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
           indices: The indices of the value to set.
           val: The SIMD value to store.
         """
-        self._ptr.store[width=width](self._compute_linear_offset(indices), val)
+        SIMD[size=width].store(
+            self._ptr, self._compute_linear_offset(indices), val
+        )
 
     @always_inline
     fn _compute_linear_offset(self, indices: StaticIntTuple[rank]) -> Int:
