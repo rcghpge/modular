@@ -187,7 +187,7 @@ struct TestCheckpoint(Checkpoint):
         constrained[type == DType.float32, "Type must be float32."]()
         var found = self.weights.find(key)
         if found:
-            return found.value()[].astype[type]()
+            return found.value().astype[type]()
         else:
             raise "Could not find key '" + key + "'"
 

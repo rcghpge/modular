@@ -139,7 +139,7 @@ struct DeviceMemory(StringableRaising, CollectionElement):
 
         return (
             "DeviceMemory("
-            + (self.name.value()[] + "," if self.name else "")
+            + (self.name.value() + "," if self.name else "")
             + str(self.get_device())
             + ",Spec("
             + str(self.spec)
