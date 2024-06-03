@@ -151,7 +151,7 @@ struct RewriteParamExprTypes : public RewritePattern {
       else
         inputs.push_back(inp);
     }
-    op->setOperands(inputs);
+    rewriter.modifyOpInPlace(op, [&] { op->setOperands(inputs); });
 
     return LogicalResult::success();
   }
