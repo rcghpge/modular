@@ -2072,8 +2072,10 @@ static LogicalResult materializeShapeInference(RebindOp op,
       }
       if (unknownParamDecls.size() == paramDecls.size())
         return failure();
-      op.setOutputParamDecls(SmallVector<KGEN::ParamDeclAttr>(
-          unknownParamDecls.begin(), unknownParamDecls.end()));
+      rewriter.modifyOpInPlace(op, [&] {
+        op.setOutputParamDecls(SmallVector<KGEN::ParamDeclAttr>(
+            unknownParamDecls.begin(), unknownParamDecls.end()));
+      });
       return success();
     }
   }
