@@ -4,9 +4,9 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from .device import Device, CPUDescriptor
+from .device import Device, CPUDescriptor, cpu_device
 from .device_memory import DeviceMemory
 from .tensor import Tensor, StaticTensorSpec
 from .tensor_slice import TensorSlice
 from .anymemory import AnyMemory
-from .cuda import get_cuda_device
+from .cuda import cuda_device

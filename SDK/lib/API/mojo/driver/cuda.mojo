@@ -10,7 +10,7 @@ from sys.ffi import DLHandle
 from ._driver_library import DriverLibrary, ManagedDLHandle
 
 
-fn get_cuda_device(gpu_id: Int = 0) raises -> Device:
+fn cuda_device(gpu_id: Int = 0) raises -> Device:
     var lib = ManagedDLHandle(DLHandle(_get_driver_path()))
     alias func_name_create = "M_createCUDADevice"
     var _cdev = _CDevice(

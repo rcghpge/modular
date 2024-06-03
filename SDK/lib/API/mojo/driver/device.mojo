@@ -128,3 +128,7 @@ struct Device(Stringable):
 
     fn __eq__(self, other: Self) -> Bool:
         return self._cdev == other._cdev
+
+
+fn cpu_device(descriptor: CPUDescriptor = CPUDescriptor()) raises -> Device:
+    return Device(descriptor)
