@@ -624,7 +624,7 @@ fn test[
 
 
 fn main() raises:
-    var params = TestCheckpoint("")
+    var params = TestCheckpoint(Path(""))
     # test["test_attention", test_attention](params)
     # test["test_attention_with_bias", test_attention_with_bias](params)
     # test["test_mpt_block", test_mpt_block](params)
