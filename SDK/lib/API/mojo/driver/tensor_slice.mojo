@@ -66,7 +66,7 @@ struct TensorSlice[
         constrained[self.is_mutable == True, "tensor slice is immutable"]()
         # TODO: Don't cast to ptr. We have to do this because we don't
         # have conditional conformance.
-        var tensor_ptr = UnsafePointer.address_of(self._ref[])
+        var tensor_ptr = UnsafePointer(self._ref)
         var adjusted_indices = self._get_adjusted_indices(indices)
         tensor_ptr[].store(adjusted_indices, value)
 
