@@ -151,7 +151,9 @@ struct LegalizeRMOMOAnalogue : public OpRewritePattern<RMOOpT> {
       // Copy all attributes (except the outputParamDecls).
       for (auto attr : op->getAttrs())
         if (attr.getName() != op.getOutputParamDeclsAttrName())
-          result->setAttr(attr.getName(), attr.getValue());
+          rewriter.modifyOpInPlace(result, [&] {
+            result->setAttr(attr.getName(), attr.getValue());
+          });
       return cast<MO::ParamDeclarationInterface>(result.getOperation());
     };
     return lowerMOAnalogue(op, rewriter, generator);
