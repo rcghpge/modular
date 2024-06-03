@@ -255,8 +255,9 @@ TypedAttr M::MO::tryGetDimAttr(Value val) {
 /// be the canonical version, i.e., it's guaranteed to be in [0, rank).
 /// NOTE this should be used as the first canonicalization, so other logic in
 /// canonicalization will be able to utilize it.
-LogicalResult canonicalizeStaticNegativeIndicesInPlace(Reduction op,
-                                                       int operandIndex) {
+LogicalResult
+canonicalizeStaticNegativeIndicesInPlace(Reduction op, int operandIndex,
+                                         PatternRewriter &rewriter) {
   TensorValue axisArr = op.getAxis();
   TensorType inputTy = op.getInput().getType();
   std::optional<int64_t> maybeAxis = tryGetConstantInt(axisArr);
@@ -271,7 +272,7 @@ LogicalResult canonicalizeStaticNegativeIndicesInPlace(Reduction op,
   builder.setInsertionPoint(op);
   int64_t new_axis = axis + inputTy.getRank();
   auto newAxis = builder.create<ConstantOp>(op.getLoc(), new_axis);
-  op->setOperand(operandIndex, newAxis);
+  rewriter.modifyOpInPlace(op, [&] { op->setOperand(operandIndex, newAxis); });
   return success();
 }
 
@@ -1718,7 +1719,7 @@ void buildReductionOp(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 LogicalResult ArgMaxOp::canonicalize(ArgMaxOp op, PatternRewriter &rewriter) {
-  return canonicalizeStaticNegativeIndicesInPlace(op, 1);
+  return canonicalizeStaticNegativeIndicesInPlace(op, 1, rewriter);
 }
 
 LogicalResult ArgMaxOp::verify() { return argVerify(this); }
@@ -1737,7 +1738,7 @@ void ArgMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 //===----------------------------------------------------------------------===//
 
 LogicalResult ArgMinOp::canonicalize(ArgMinOp op, PatternRewriter &rewriter) {
-  return canonicalizeStaticNegativeIndicesInPlace(op, 1);
+  return canonicalizeStaticNegativeIndicesInPlace(op, 1, rewriter);
 }
 
 LogicalResult ArgMinOp::verify() { return argVerify(this); }
@@ -2012,7 +2013,7 @@ static LogicalResult materializeShapeInference(RebindOp op,
       // If there is a single declaration in rebind that is a shape parameter,
       // we materialize into a kgen.param.declare.
       rewriter.create<KGEN::ParamDeclareOp>(loc, newDecl, inputShapeAttr);
-      op.setOutputParamDecls({});
+      rewriter.modifyOpInPlace(op, [&] { op.setOutputParamDecls({}); });
       return success();
     }
   }
@@ -2044,7 +2045,7 @@ static LogicalResult materializeShapeInference(RebindOp op,
           rewriter.create<KGEN::ParamDeclareOp>(loc, paramDecl, mlirOpCallAttr);
         }
       }
-      op.setOutputParamDecls({});
+      rewriter.modifyOpInPlace(op, [&] { op.setOutputParamDecls({}); });
       return success();
     }
 
@@ -2180,7 +2181,7 @@ LogicalResult RebindOp::verify() {
 // ===----------------------------------------------------------------------===//
 
 LogicalResult MeanOp::canonicalize(MeanOp op, PatternRewriter &rewriter) {
-  return canonicalizeStaticNegativeIndicesInPlace(op, 1);
+  return canonicalizeStaticNegativeIndicesInPlace(op, 1, rewriter);
 }
 
 void MeanOp::build(OpBuilder &odsBuilder, OperationState &odsState,
@@ -2228,7 +2229,7 @@ LogicalResult RandomNormalOp::canonicalize(RandomNormalOp op,
 
 LogicalResult ReduceMulOp::canonicalize(ReduceMulOp op,
                                         PatternRewriter &rewriter) {
-  return canonicalizeStaticNegativeIndicesInPlace(op, 1);
+  return canonicalizeStaticNegativeIndicesInPlace(op, 1, rewriter);
 }
 
 void ReduceMulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
@@ -2253,7 +2254,7 @@ DeviceRefAttr ReduceMulOp::getOperandDevice(size_t index) {
 
 LogicalResult ReduceAddOp::canonicalize(ReduceAddOp op,
                                         PatternRewriter &rewriter) {
-  return canonicalizeStaticNegativeIndicesInPlace(op, 1);
+  return canonicalizeStaticNegativeIndicesInPlace(op, 1, rewriter);
 }
 
 OpFoldResult ReduceAddOp::fold(FoldAdaptor adaptor) {
@@ -2296,7 +2297,7 @@ DeviceRefAttr ReduceAddOp::getOperandDevice(size_t index) {
 
 LogicalResult ReduceMinOp::canonicalize(ReduceMinOp op,
                                         PatternRewriter &rewriter) {
-  return canonicalizeStaticNegativeIndicesInPlace(op, 1);
+  return canonicalizeStaticNegativeIndicesInPlace(op, 1, rewriter);
 }
 
 void ReduceMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
@@ -2322,7 +2323,7 @@ DeviceRefAttr ReduceMinOp::getOperandDevice(size_t index) {
 
 LogicalResult ReduceMaxOp::canonicalize(ReduceMaxOp op,
                                         PatternRewriter &rewriter) {
-  return canonicalizeStaticNegativeIndicesInPlace(op, 1);
+  return canonicalizeStaticNegativeIndicesInPlace(op, 1, rewriter);
 }
 
 void ReduceMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
@@ -2691,7 +2692,8 @@ LogicalResult Static::ReshapeOp::canonicalize(Static::ReshapeOp op,
                                               PatternRewriter &rewriter) {
   // We fold consecutive static reshapes into a single reshape.
   if (auto precedingOp = op.getInput().getDefiningOp<Static::ReshapeOp>()) {
-    op.setOperand(precedingOp.getInput());
+    rewriter.modifyOpInPlace(op,
+                             [&] { op.setOperand(precedingOp.getInput()); });
     return success();
   }
 
@@ -2706,7 +2708,7 @@ LogicalResult Static::ReshapeOp::canonicalize(Static::ReshapeOp op,
     TensorValue rebIn = rebindOp.getInput();
     TensorType rebInTy = rebIn.getType();
     if (rebInTy.hasRank() && !rebInTy.hasUnknownShape()) {
-      op.setOperand(rebIn);
+      rewriter.modifyOpInPlace(op, [&] { op.setOperand(rebIn); });
       return success();
     }
   }
