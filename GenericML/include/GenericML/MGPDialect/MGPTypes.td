@@ -252,6 +252,28 @@ def MGP_List : MGP_Type<"List", "list",
   let assemblyFormat = "`<` $elementType `>`";
 }
 
+//===----------------------------------------------------------------------===//
+// Opaque
+//===----------------------------------------------------------------------===//
+
+def MGP_OpaqueType : MGP_Type<"Opaque", "opaque",
+  [DeclareTypeInterfaceMethods<MEF_AnyTypeInterface>]> {
+  let summary = "Opaque MGP type";
+  let description = [{
+    This is an opaque type that can represent anything.
+    This is backed by an AnyAsyncValue type.
+
+    Example:
+    ```mlir
+    !mgp.opaque
+    !mgp.opaque<{foo = "bar"}>
+    ```
+  }];
+
+  let parameters = (ins OptionalParameter<"std::optional<DictionaryAttr>">:$metadata);
+  let assemblyFormat = "( `<` $metadata^ `>` )?";
+}
+
 include "GenericML/MGPDialect/MGPDeviceTypes.td"
 
 #endif  // GENERICML_MGPDIALECT_MGPTYPES_TD

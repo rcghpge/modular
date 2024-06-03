@@ -1210,6 +1210,54 @@ LogicalResult ShapeToTensorOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// ToKGENOp
+//===----------------------------------------------------------------------===//
+
+FailureOr<DictionaryAttr>
+ToKGENOp::buildOutputTypeMethodsDict(KGEN::GeneratorOp mojoKernel,
+                                     llvm::ArrayRef<StringRef> methods) {
+  KGEN::ParameterExprArrayAttr conformancesAttr =
+      dyn_cast_or_null<KGEN::ParameterExprArrayAttr>(
+          mojoKernel->getAttr(KGEN::MOGGPreElab::MOGG_RESULT_CONFORMANCES));
+  if (!conformancesAttr) {
+    return mojoKernel.emitError()
+           << "no MOGG type conformance informations found (maybe kernel is "
+              "missing a register decorator like `@mogg_register`)";
+  }
+
+  auto findMethod =
+      [&](StringRef methodName) -> FailureOr<KGEN::VTableEntryAttr> {
+    for (TypedAttr attr : conformancesAttr) {
+      auto typeAttr = cast<KGEN::TypeConstantAttr>(attr);
+      for (KGEN::VTableEntryAttr entry : typeAttr.getVTable().getEntries()) {
+        if (entry.getName() == methodName)
+          return entry;
+      }
+    }
+    return mojoKernel.emitError()
+           << "kernel output type doesn't implement the method `" << methodName
+           << "`. Maybe it's missing a trait implementation.";
+  };
+
+  // Build the dictionary of methods
+  NamedAttrList methodsDict;
+  for (StringRef methName : methods) {
+    FailureOr<KGEN::VTableEntryAttr> entryOr = findMethod(methName);
+    if (failed(entryOr))
+      return failure();
+    methodsDict.set(methName, entryOr->getMethod());
+  }
+  return DictionaryAttr::get(mojoKernel.getContext(), methodsDict);
+}
+
+TypedAttr ToKGENOp::getMethodOfMojoStruct(StringRef methodName) {
+  if (!getTypeMethodsDict().has_value())
+    return nullptr;
+  DictionaryAttr methodsDict = *getTypeMethodsDict();
+  return dyn_cast_or_null<TypedAttr>(methodsDict.get(methodName));
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

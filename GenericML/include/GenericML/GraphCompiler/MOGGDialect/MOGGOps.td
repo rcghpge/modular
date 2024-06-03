@@ -14,6 +14,7 @@
 include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.td"
 include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.td"
 include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.td"
+include "GenericML/MGPDialect/MGPTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOAttrs.td"
 include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
@@ -582,6 +583,27 @@ def MOGG_StackAllocateTensorsOp : MOGG_Op<"stack_allocate_tensors"> {
   }];
 }
 
+def MOGG_StackAllocateOpaquesOp : MOGG_Op<"stack_allocate_opaques"> {
+  let results = (outs Variadic<MGP_OpaqueType>:$results);
+
+  let summary = "Allocates opaque types on the host's stack.";
+  let description = [{
+    Each result of this op is an opaque object.
+    It represents the outputs of a kernel call.
+    This op does a stack allocation for the outputs of the kernel.
+    The data is unitialized, and will be filled by the kernel.
+
+    Example:
+    ```mlir
+      %vals:2 = mogg.stack_allocate_opaques : (!mgp.opaque, !mgp.opaque)
+    ```
+  }];
+
+  let assemblyFormat = [{
+   attr-dict `:` type($results)
+  }];
+}
+
 def MOGG_CreateEmptyTensorsOp : MOGG_Op<"empty_tensors"> {
   let results = (outs Variadic<MO_Tensor>:$results);
 
@@ -644,6 +666,41 @@ def MOGG_ToMGPFromTensorOp : MOGG_Op<"to_mgp_from_tensor", [Pure]> {
   }];
 }
 
+def MOGG_ToOpaqueFromMGPOp : MOGG_Op<"to_opaque_from_mgp", [Pure]> {
+  let arguments = (ins AnyType:$dataPointer);
+  let results = (outs AnyType:$result);
+  let summary = "Represents the construction of an opaque type from a pointer";
+  let description = [{
+    Takes a pointer to the opaque object.
+    `dataPointer` is an !mgp.opaque object and `result` is an !mo.opaque.
+    During lowering, the pointer is passed to the kernel.
+    At the implementation level, it's just a bitcast / rebind / no-op.
+    But it helps preserving the correct types in the IR during lowering.
+  }];
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:`
+        functional-type(operands, results)
+  }];
+}
+
+def MOGG_ToMGPFromOpaqueOp : MOGG_Op<"to_mgp_from_opaque", [Pure]> {
+  let arguments = (ins AnyType:$input);
+  let results = (outs AnyType:$dataPointer);
+  let summary = "Get the opaque pointer from the kgen value";
+  let description = [{
+    `input` is a KGEN object, and `dataPointer` is an !mgp.opaque
+    Get the opaque pointer from the kgen opaque tensor.
+    At the implementation level, it's just a bitcast / rebind / no-op.
+    But it helps preserving the correct types in the IR during lowering.
+  }];
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:`
+        functional-type(operands, results)
+  }];
+}
+
 def MOGG_GetAsyncValuesOp : MOGG_Op<"get_async_vals", [Pure]> {
   let results = (outs Variadic<AnyType>:$result);
   let summary = "Returns pointers for each of the async value inputs ";
@@ -651,6 +708,24 @@ def MOGG_GetAsyncValuesOp : MOGG_Op<"get_async_vals", [Pure]> {
     Each input and output are represented by an async value. This returns a
     pointer to each of the inputs and outputs. Inputs appear first followed
     by the outputs.
+  }];
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:`
+      functional-type(operands, results)
+  }];
+}
+
+def MOGG_CreateAsyncMojoValueOp : MOGG_Op<"create_async_mojo_value"> {
+  let arguments = (ins
+      AnyType:$mojoPointer,
+      AnyType:$asyncVal,
+      AnyType:$runtime
+  );
+  let summary = "Create an AsyncValue from a mojo pointer";
+  let description = [{
+    Create an AnySyncValue<MojoValue> from a mojo pointer.
+    This can't just be a mogg.call like for other asyncs, as the logic is a bit more complex.
   }];
 
   let assemblyFormat = [{
@@ -731,11 +806,28 @@ def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure]> {
     the stride parameter that appears in the kernel.
   }];
 
-  let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape]>:$input,
+  let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape, MGP_OpaqueType]>:$input,
     OptionalAttr<TypedAttrInterface>:$shape,
-    OptionalAttr<TypedAttrInterface>:$strides
+    OptionalAttr<TypedAttrInterface>:$strides,
+    OptionalAttr<DictionaryAttr>:$typeMethodsDict
   );
   let results = (outs AnyType:$results);
+
+  let extraClassDeclaration = [{
+    /// Build the typeMethodsDict attr from a kernel function `mojoKernel`.
+    /// Returns the dictionary of needed methods of the output type.
+    /// It must have a decorator like @mogg_kernel to have the I/O vtable attrs defined.
+    /// This function doesn't get the whole table, but only the methods we are interested (to avoid bloating the IR).
+    /// `methods` list all methods that will be added to the VTable.
+    /// Returns failure if there isn't any type information for this input / output,
+    /// or if one of the requested methods isn't found.
+    static FailureOr<DictionaryAttr> buildOutputTypeMethodsDict(KGEN::GeneratorOp mojoKernel,
+                                                                llvm::ArrayRef<StringRef> methods);
+
+    /// Returns the method `methodName` stored in `typeMethodsDict`.
+    /// Returns nullptr if there isn't a methods dict, or `methodName` isn't in the vtable.
+    TypedAttr getMethodOfMojoStruct(StringRef methodName);
+  }];
 }
 
 def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
