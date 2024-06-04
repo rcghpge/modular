@@ -21,6 +21,7 @@ set(GRAPH_SRCS
   graph/ops/quantized_ops
   graph/ops/reduction
   graph/ops/slicing
+  graph/ops/repeat_interleave
 
   graph/quantization/__init__
   graph/quantization/encodings
