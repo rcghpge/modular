@@ -10,7 +10,7 @@ from sys.param_env import env_get_string
 from pathlib.path import Path
 from testing import *
 
-from max.graph import Type, Graph, TensorType, Symbol
+from max.graph import Dim, Type, Graph, TensorType, Symbol
 
 alias TEMP_DIR = Path(env_get_string["TEMP_DIR"]())
 
@@ -75,7 +75,9 @@ fn test_add_constant() raises:
 fn test_symbolic_dim() raises:
     var g = Graph(
         "symbolic_dim",
-        List[Type](TensorType(DType.float32, "batch", "x")),
+        List[Type](
+            TensorType(DType.float32, Dim(String("batch")), Dim(String("x")))
+        ),
     )
     var x = g.scalar[DType.float32](1.0, rank=1)
     var y = g[0] + x

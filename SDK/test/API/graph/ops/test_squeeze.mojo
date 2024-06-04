@@ -5,12 +5,12 @@
 # ===----------------------------------------------------------------------=== #
 # RUN: mojo "%s"
 
-from max.graph import ops, _testing, Graph, TensorType
+from max.graph import ops, _testing, Dim, Graph, TensorType
 from tensor import Tensor, TensorShape
 
 
 fn test_squeeze() raises:
-    var g = Graph(TensorType(DType.float32, "batch", 1, 3))
+    var g = Graph(TensorType(DType.float32, Dim(String("batch")), 1, 3))
     g.output(ops.squeeze(g[0], 1))
     g.verify()
 
