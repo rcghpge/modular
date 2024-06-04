@@ -7,8 +7,8 @@
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
+#include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/TopologicalSortUtils.h"
 
 namespace M::MO {
 

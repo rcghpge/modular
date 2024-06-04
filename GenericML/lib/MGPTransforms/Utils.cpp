@@ -11,9 +11,9 @@
 #include "GraphRT/MEFDialect/MEFChainIndicatesFinishedInterface.h"
 #include "GraphRT/MEFDialect/MEFNonStrictInterface.h"
 #include "Support/AssertStream.h"
+#include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Transforms/TopologicalSortUtils.h"
 
 using namespace M;
 using namespace M::MGP;

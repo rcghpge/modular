@@ -17,8 +17,8 @@
 #include "KGEN/POPDialect/POPTypes.h"
 #include "Support/AssertStream.h"
 
+#include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/Transforms/TopologicalSortUtils.h"
 
 using namespace M;
 

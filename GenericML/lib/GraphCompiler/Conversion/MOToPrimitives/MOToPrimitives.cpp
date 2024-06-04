@@ -24,8 +24,8 @@
 #include "Support/MArchTarget/MArchTarget.h"
 #include "Support/ML/CommonAttributes.h"
 #include "Support/STLExtras.h"
+#include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
-#include "mlir/Transforms/TopologicalSortUtils.h"
 #include <cassert>
 
 using namespace M;

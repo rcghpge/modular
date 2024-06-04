@@ -15,8 +15,8 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
 #include "Support/AssertStream.h"
+#include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/Transforms/TopologicalSortUtils.h"
 
 using namespace M;
 
