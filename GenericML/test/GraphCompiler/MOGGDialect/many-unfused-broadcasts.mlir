@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --fuse-elementwise --cse --canonicalize --fuse-bcasts --cse --canonicalize --jit-compile-kernels %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --fuse-elementwise --cse --canonicalize --fuse-bcasts --cse --canonicalize --translate-mogg-to-kgen --jit-compile-kernels %s | FileCheck %s
 
 // Check that with many broadcasts of the same value we still produce a unique kernel for each
 
@@ -18,4 +18,3 @@ mo.graph @many_bcasts_same_val(%arg0: !mo.tensor<[1, 100], f32>) -> !mo.tensor<[
 
 
 // CHECK: "mogg.load_compiled_kernel"() {symbols = ["[[SYM1:.*]]", "[[SYM2:.*]]", "[[SYM3:.*]]", "[[SYM4:.*]]"]
-

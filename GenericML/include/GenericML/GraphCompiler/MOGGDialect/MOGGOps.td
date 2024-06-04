@@ -806,7 +806,7 @@ def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure]> {
     the stride parameter that appears in the kernel.
   }];
 
-  let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape, MGP_OpaqueType]>:$input,
+  let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape, MGP_OpaqueType, MO_List]>:$input,
     OptionalAttr<TypedAttrInterface>:$shape,
     OptionalAttr<TypedAttrInterface>:$strides,
     OptionalAttr<DictionaryAttr>:$typeMethodsDict
@@ -828,6 +828,31 @@ def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure]> {
     /// Returns nullptr if there isn't a methods dict, or `methodName` isn't in the vtable.
     TypedAttr getMethodOfMojoStruct(StringRef methodName);
   }];
+}
+
+def MOGG_ToMOGGOp: MOGG_Op<"to_mogg", [Pure]> {
+  let summary = "Converts a KGEN value to a MOGG value";
+  let description = [{
+    Converts a KGEN value to a MOGG value. This is the converse of to_kgen. It
+    helps do partial lowering of the IR.
+  }];
+
+  let arguments = (ins AnyType:$input,
+    OptionalAttr<TypedAttrInterface>:$shape,
+    OptionalAttr<TypedAttrInterface>:$strides
+  );
+  let results = (outs AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape]>:$results);
+}
+
+def MOGG_AssertOp: MOGG_Op<"assert"> {
+  let summary = "Placeholder for inserting a try catch block";
+  let description = [{
+    Placeholder operations that will eventually be lowered to a try catch block.
+    This is necessary because mogg.kernel can't contain the try catch block
+    until after JITing.
+  }];
+
+  let arguments = (ins AnyType:$condition, AnyType:$errorHandle);
 }
 
 def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {

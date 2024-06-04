@@ -264,4 +264,32 @@ def KernelSequenceFuse: Pass<"sequence-fuse-kernels", "ModuleOp"> {
   ];
 }
 
+def TranslateMOGGToKGEN: Pass<"translate-mogg-to-kgen", "ModuleOp"> {
+  let summary = "Translates MOGG kernels into KGEN kernels";
+  let description = [{
+    This pass will convert MOGG kernels (buffer semantics NDBuffer kernels) into
+    KGEN kernels (Buffer/Value semantics Tensor API).
+  }];
+  let dependentDialects = [
+    "M::MDialect",
+    "M::MOGG::MOGGDialect",
+    "M::KGEN::KGENDialect",
+    "M::KGEN::LIT::LITDialect",
+    "M::KGEN::POP::POPDialect",
+    "M::HLCF::HLCFDialect",
+    "M::DebugInfo::DebugInfoDialect",
+    "mlir::LLVM::LLVMDialect",
+    "mlir::NVVM::NVVMDialect",
+    "mlir::index::IndexDialect",
+  ];
+
+  let options = [
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
+    Option<"minimumCpuAlignment", "min-cpu-alignment", "size_t",
+      /*default=*/"kPreferredMemoryAlignment",
+     "Minimum alignment for all CPU buffers (both constants and allocated)">
+  ];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGPASSES_TD

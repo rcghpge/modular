@@ -1,4 +1,4 @@
-// RUN: mo-opt --shape-inference --infer-layouts --add-devices --mo-to-mogg --jit-compile-kernels --mo-to-primitives --mo-topological-sort %s | FileCheck %s
+// RUN: mo-opt --shape-inference --infer-layouts --add-devices --mo-to-mogg --translate-mogg-to-kgen --jit-compile-kernels --mo-to-primitives --mo-topological-sort %s | FileCheck %s
 
 // using the rather laborious specification of passes above because
 // predicate-asserts-deps pass doesn't currently handle mo.guard ops and I dont
@@ -7,11 +7,11 @@
 // CHECK-LABEL: mgp.model @add_guard
 // CHECK-DAG  : [[CHAIN:%.*]] = mgp.assert
 // CHECK-DAG  : [[RES:%.*]] = mgp.guard [[CHAIN]], [[ARG0:%.*]], [[ARG1:%.*]]
-// CHECK-DAG  : [[BUF0:%.*]] = mgp.tensor.extract.buffer{{.*}}, 
+// CHECK-DAG  : [[BUF0:%.*]] = mgp.tensor.extract.buffer{{.*}},
 // CHECK-SAME : [[RES]]#0
-// CHECK-DAG  : [[BUF1:%.*]] = mgp.tensor.extract.buffer{{.*}}, 
+// CHECK-DAG  : [[BUF1:%.*]] = mgp.tensor.extract.buffer{{.*}},
 // CHECK-SAME : [[RES]]#1
-// CHECK-DAG  : mgp.kernel.execute{{.}}( 
+// CHECK-DAG  : mgp.kernel.execute{{.}}(
 // CHECK-SAME : in [[BUF0]]{{.*}}in [[BUF1]]
 mo.graph @add_guard<D0, D1>(%arg0: !mo.tensor<[D0, D1], f32>, %arg1: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32> {
   kgen.param.declare B: i1 = <eq(D0, D1)>

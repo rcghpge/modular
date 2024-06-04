@@ -1042,17 +1042,6 @@ LogicalResult KernelOp::verify() {
         return emitError("Could not find lambda op specified in the input "
                          "fusion interface as \"")
                << interface.str() << "\"";
-
-      if (getIsKGEN().value_or(false) &&
-          !isa<KGEN::ParamDeclareRegionOp>(lambda)) {
-        return emitError("Input lambda \"")
-               << interface.str() << "\""
-               << "is not a " << KGEN::ParamDeclareRegionOp::getOperationName();
-      } else if (!getIsKGEN().value_or(false) && !isa<LambdaOp>(lambda)) {
-        return emitError("Input lambda \"")
-               << interface.str() << "\""
-               << "is not a " << LambdaOp::getOperationName();
-      }
     }
   }
 
@@ -1069,17 +1058,6 @@ LogicalResult KernelOp::verify() {
         return emitError("Could not find lambda op specified in the output "
                          "fusion interface as \"")
                << interface.str() << "\"";
-
-      if (getIsKGEN().value_or(false) &&
-          !isa<KGEN::ParamDeclareRegionOp>(lambda)) {
-        return emitError("Output lambda \"")
-               << interface.str() << "\""
-               << "is not a " << KGEN::ParamDeclareRegionOp::getOperationName();
-      } else if (!getIsKGEN().value_or(false) && !isa<LambdaOp>(lambda)) {
-        return emitError("Output lambda \"")
-               << interface.str() << "\""
-               << "is not a " << LambdaOp::getOperationName();
-      }
     }
   }
 

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --add-devices --mo-to-mogg --jit-compile-kernels --mo-to-primitives | FileCheck %s
+// RUN: mo-opt %s --add-devices --mo-to-mogg --translate-mogg-to-kgen --jit-compile-kernels --mo-to-primitives | FileCheck %s
 
 // CHECK: mgp.model @while_op
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context) -> (!mef.chain, !mgp.tensor<2xf32>) {
@@ -18,7 +18,7 @@
 // CHECK-NEXT:   %[[COND_BUF:.*]]= mgp.tensor.extract.buffer %{{.*}}
 // CHECK:        %[[COND_CH:.*]] = mgp.chain.host_to_device %[[CH0]], %[[CTX]][1]
 // CHECK:        %[[COND_SCALAR:.*]] = mgp.buffer.to_bool %[[COND_CH]], %[[CTX]][1], %[[COND_BUF]]
-// CHECK:        mef.output %[[CH0]], %[[X]], %[[CTX]], %[[ZERO]], %[[Y]], %[[COND_SCALAR]] 
+// CHECK:        mef.output %[[CH0]], %[[X]], %[[CTX]], %[[ZERO]], %[[Y]], %[[COND_SCALAR]]
 // CHECK: } do {
 // CHECK:        %{{.*}} = mgp.tensor.extract.buffer %[[CTX]][1], %[[X]]
 // CHECK:        %{{.*}} = mgp.tensor.extract.tensor_spec %[[CTX]][1], %[[X]]

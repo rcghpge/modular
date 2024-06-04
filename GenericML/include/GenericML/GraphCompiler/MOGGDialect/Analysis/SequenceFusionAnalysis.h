@@ -48,7 +48,7 @@ FusionSubGraphs floodFillSequenceFusionAnalysis(
     EligibilityFunction isEligible, CompatibilityFunction areCompatible);
 
 /// If preserveParallelism is set to true, no additional dependency between
-/// computationally significanted ops is created. Otherwise, it fuses anything
+/// computationally significant ops is created. Otherwise, it fuses anything
 /// as long as no cycle is created. Will not fuse across blocks.
 FusionSubGraphs transitiveDependencySequenceFusionAnalysis(
     Region &region, MO::ParametricTopologyAnalysis &completeDataflowGraph,

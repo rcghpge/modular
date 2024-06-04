@@ -268,6 +268,13 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MOGG::createSimplifyKernelOperands());
 
+  MOGG::TranslateMOGGToKGENOptions translationOpts;
+  translationOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  translationOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
+  pm.addPass(MOGG::createTranslateMOGGToKGEN(translationOpts));
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
+
   // If we are jitting then we need to compile the jit kernels as well.
   MOGG::JitCompileKernelsOptions jitOpts;
   jitOpts.useSearch = opts.useKgenSearch;
