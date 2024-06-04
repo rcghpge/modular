@@ -333,7 +333,7 @@ def test_feed_forward() -> None:
     alias hidden_dim = 2
 
     llama = NanoLlama()
-    g = Graph(TensorType(DType.float32, String("batch"), String("seqlen"), dim))
+    g = Graph(TensorType(DType.float32, "batch", "seqlen", dim))
     layer = llama.feed_forward(g)
     g.output(layer(g[0]))
 

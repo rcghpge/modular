@@ -15,7 +15,7 @@ fn test_concat() raises:
         List[Type](
             TensorType(DType.int32, 3, 2),
             TensorType(DType.int32, 3, 4),
-            TensorType(DType.int32, 3, Dim(String("x"))),
+            TensorType(DType.int32, 3, Dim("x")),
         ),
     )
 
@@ -41,7 +41,7 @@ fn test_concat() raises:
 fn test_concat_error() raises:
     var g = Graph(
         List[Type](
-            TensorType(DType.int32, 3, String("x")),
+            TensorType(DType.int32, 3, Dim("x")),
             TensorType(DType.int32, 5, 6),
         ),
     )
