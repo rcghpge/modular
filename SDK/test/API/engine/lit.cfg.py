@@ -37,8 +37,5 @@ tools = [
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
 
-test_utils_dir = Path(config.modular_src_root) / "Kernels" / "test"
-config.substitutions.append(("%test_utils_pkg_dir", test_utils_dir))
-
 if "numpy" in sys.modules:
     config.available_features.add("numpy")
