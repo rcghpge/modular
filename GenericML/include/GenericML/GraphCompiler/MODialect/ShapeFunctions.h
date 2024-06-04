@@ -21,6 +21,28 @@ namespace M::MO {
 // Forward declaration for `Var`.
 class Var;
 
+/// A struct which which contains the ingredients (lhs parameter name and rhs
+/// parameter expr) to create a `KGEN::ParamDeclareOp` .
+///
+/// This allows shape function materialization and staticization to build up
+/// parameter expressions without having to worry about memory management of any
+/// op, since we won't create the `KGEN::ParamDeclareOp` ops until it's actually
+/// needed. This is especially helpful since we could be building up some
+/// expressions and end up having to short-circuit the process (e.g., due to a
+/// shape error).
+struct ParamBinding {
+  KGEN::ParamDeclAttr decl;
+  TypedAttr value;
+
+  /// A simple constructor.
+  ParamBinding(KGEN::ParamDeclAttr decl, TypedAttr value)
+      : decl(decl), value(value) {}
+
+  /// Create an op based on this param binding, using the given location and
+  /// builder.
+  KGEN::ParamDeclareOp toOp(Location loc, OpBuilder b) const;
+};
+
 /// This class helps one create parameter expression in a less elaborate way.
 class ParamExprBuilder {
 public:
@@ -29,9 +51,8 @@ public:
   /// - `loc` is used for newly created ops like `kgen.param.declare X = <...>`.
   /// - `createdOps` will be appended with newly created ops.
   ParamExprBuilder(GraphOp graphOp, Location loc,
-                   SmallVector<KGEN::ParamDeclareOp> *createdOps)
-      : builder(graphOp.getContext()), graphOp(graphOp), loc(loc),
-        createdOps(createdOps) {}
+                   SmallVector<ParamBinding> *createdOps)
+      : graphOp(graphOp), loc(loc), createdOps(createdOps) {}
 
   /// Create a Var that wraps around given `attr`, and allows one to build more
   /// parameter expression with the returned Var.
@@ -42,7 +63,7 @@ public:
   /// Var.
   Var createVar(int64_t n);
 
-  /// Create an op of the following form
+  /// Create and tracks a `ParamBinding` which models the following op:
   ///   kgen.param.declare declPrefix... = <poc(operands...)>
   ///
   /// Return a parameter decl ref to the newly created parameter
@@ -51,7 +72,7 @@ public:
                                               ArrayRef<TypedAttr> operands,
                                               StringRef declPrefix = "expr");
 
-  /// Create an op of the following form
+  /// Create and tracks a `ParamBinding` which models the following op:
   ///   kgen.param.declare declPrefix... = <attr>
   ///
   /// Return a parameter decl ref to the newly created parameter
@@ -59,18 +80,23 @@ public:
   KGEN::ParamDeclRefAttr createDeclToKgenAttr(TypedAttr attr,
                                               StringRef declPrefix = "expr");
 
-  /// Create an assert on the boolean parameter expression in `condVar`, with
-  /// given error message.
+  /// Creates and tracks a `ParamBinding` which represents an assert on the
+  /// boolean parameter expression in `condVar`, with given error message.
+  ///
+  /// Create and tracks a `ParamBinding` which models the following op:
+  ///   kgen.param.declare ... = <...assert(condAttr, errorMsg)...>
+  ///
+  /// Where `condAttr` is the parameter expression within `condVar`.
   void createAssert(const Var &condVar, StringRef errorMsg);
 
-  /// Create an op of the following form
+  /// Create and tracks a `ParamBinding` which models the following op:
   ///   kgen.param.declare ... = <cond(condAttr, thenAttr, elseAttr)>
   ///
   /// Where `(condAttr, thenAttr, elseAttr)` are parameter expressions within
   /// `(convV, thenV, elseV)` respectively.
   Var createCond(const Var &condV, const Var &thenV, const Var &elseV);
 
-  /// Create an op of the following form
+  /// Create and tracks a `ParamBinding` which models the following op:
   ///   kgen.param.declare ... = <max(lhsAttr, rhsAttr)>
   ///
   /// Where `(lhsAttr, rhsAttr)` are parameter expressions within `(lhs, rhs)`
@@ -96,10 +122,9 @@ public:
   ShapeAttr getShapeAttr(ArrayRef<TypedAttr> dimAttrs);
 
 private:
-  OpBuilder builder;
   GraphOp graphOp;
   Location loc;
-  SmallVector<KGEN::ParamDeclareOp> *createdOps;
+  SmallVector<ParamBinding> *createdOps;
 };
 
 /// This class wraps around a parameter attribute and allows one to build new
@@ -300,19 +325,20 @@ std::optional<int64_t> tryGetConstantInt(TypedAttr attr);
 class ShapeMaterializeResult {
 public:
   struct Success {
-    // A series of `kgen.param.declare` ops which define either
+    // A series of bindings which model `kgen.param.declare` ops that define
+    // either
     // - parameter expressions like `D2 = <add(D0, D1)>`
     // - assertions like `Chain = <...assert(cond, msg)...>`
     //
     // These could then be consumed by shape propagation logic which does
-    // substitution & folding, and handles these asserts.
-    SmallVector<KGEN::ParamDeclareOp> paramOps;
+    // substitution & folding, and handles any asserts.
+    SmallVector<ParamBinding> bindings;
     ShapeAttr resultShape;
 
     // Constructors
     Success() = default;
-    Success(SmallVector<KGEN::ParamDeclareOp> &&paramops, ShapeAttr resultShape)
-        : paramOps(std::move(paramops)), resultShape(resultShape) {}
+    Success(SmallVector<ParamBinding> &&bindings, ShapeAttr resultShape)
+        : bindings(std::move(bindings)), resultShape(resultShape) {}
 
     // Disable copy and move.
     Success(const Success &) = delete;
@@ -341,14 +367,14 @@ public:
   bool isError() { return std::holds_alternative<Error>(result); }
 
   /// Returning a reference so that we could either use return as
-  /// - a rvalue, e.g., `res.getSuccess().ops` or
+  /// - a rvalue, e.g., `res.getSuccess().bindings` or
   /// - a lvalue, e.g., `const auto& success = res.getSuccess()`
   Success &getSuccess() { return std::get<Success>(result); };
   Error &getError() { return std::get<Error>(result); };
 
-  static ShapeMaterializeResult success(SmallVector<KGEN::ParamDeclareOp> &&ops,
+  static ShapeMaterializeResult success(SmallVector<ParamBinding> &&bindings,
                                         ShapeAttr resultShape) {
-    return ShapeMaterializeResult(std::move(ops), resultShape);
+    return ShapeMaterializeResult(std::move(bindings), resultShape);
   }
   static ShapeMaterializeResult nonMaterializable() {
     return ShapeMaterializeResult();
@@ -358,9 +384,9 @@ public:
   }
 
 private:
-  ShapeMaterializeResult(SmallVector<KGEN::ParamDeclareOp> &&ops,
+  ShapeMaterializeResult(SmallVector<ParamBinding> &&bindings,
                          ShapeAttr resultShape) {
-    result.emplace<Success>(std::move(ops), resultShape);
+    result.emplace<Success>(std::move(bindings), resultShape);
   }
   ShapeMaterializeResult() { result = NonMaterializable{}; }
   ShapeMaterializeResult(const Twine &errMsg) {
@@ -555,18 +581,15 @@ ShapeMaterializeResult materializesqueezeShapeShape(GraphOp graphOp,
 /// with it, else return null.
 StringAttr tryGetAssertFalseErrMsg(TypedAttr attr);
 
-/// A naive shape propagator that takes all the `kgen.param.declare` ops
-/// materialized by the shape functions, and do a substitute & fold via a single
-/// traverse. As a result, it modifies the `paramOps` in place (e.g., simplify
-/// the assert conditions), and return a simplified version of `targetShape`.
+/// A naive shape propagator that takes all the `ParamBinding`s materialized by
+/// the shape functions, and do a substitute & fold via a single traverse. At
+/// the end it returns a simplified version of `targetShape` after digesting all
+/// the bindings.
 ///
 /// It returns an error when it encounters an assert whose condition doesn't
 /// fold to `true`. The error message will be the same as the assert error
 /// message.
-///
-/// NOTE this function takes ownership of the ops in `paramOps`, i.e., it will
-/// erase them properly.
-ErrorOr<ShapeAttr> propagateShape(ArrayRef<KGEN::ParamDeclareOp> paramOps,
+ErrorOr<ShapeAttr> propagateShape(ArrayRef<ParamBinding> bindings,
                                   ShapeAttr targetShape);
 
 // TODO move the following into a new interface.

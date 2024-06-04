@@ -502,7 +502,7 @@ LogicalResult ConcatOp::inferReturnTypes(
   // Shape propagation over materialized ops and target shape.
   auto &successRes = result.getSuccess();
   ErrorOr<ShapeAttr> resultShapeOr =
-      MO::propagateShape(successRes.paramOps, successRes.resultShape);
+      MO::propagateShape(successRes.bindings, successRes.resultShape);
   if (resultShapeOr.isError())
     return mlir::emitOptionalError(location, resultShapeOr.getError());
 

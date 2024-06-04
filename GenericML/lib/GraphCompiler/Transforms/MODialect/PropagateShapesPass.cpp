@@ -204,7 +204,9 @@ class OpDecomposer {
   // State that might change across calls.
   GraphOp graphOp;
   Location loc;
-  SmallVector<KGEN::ParamDeclareOp> decomposedOps;
+  // Parameter bindings created during op decomposition, which will be converted
+  // to `KGEN::ParamDeclareOp` if decomposition is successful.
+  SmallVector<ParamBinding> bindings;
 
 public:
   /// Create an OpDecomposer with given MLIRContext.
@@ -220,7 +222,7 @@ public:
     // Reset transient state.
     graphOp = op->getParentOfType<GraphOp>();
     loc = op->getLoc();
-    decomposedOps.clear();
+    bindings.clear();
 
     if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
       tryDecomposeParamDeclOp(declOp);
@@ -230,7 +232,13 @@ public:
         return failure();
     }
 
-    return decomposedOps;
+    // Convert the bindings to actual `kgen.param.declare` ops.
+    SmallVector<KGEN::ParamDeclareOp> ops;
+    for (const ParamBinding &binding : bindings) {
+      KGEN::ParamDeclareOp declOp = binding.toOp(loc, builder);
+      ops.push_back(declOp);
+    }
+    return ops;
   }
 
 private:
@@ -261,8 +269,8 @@ private:
         if (shapeAttr1.getRank() < shapeAttr2.getRank())
           std::swap(shapeAttr1, shapeAttr2);
 
-        // Accumulate ops created into `decomposedOps`
-        ParamExprBuilder b(graphOp, loc, &decomposedOps);
+        // Accumulate parameter expressions created into `bindings`.
+        ParamExprBuilder b(graphOp, loc, &bindings);
         SmallVector<TypedAttr> resDims;
         size_t rankDiff = shapeAttr1.getRank() - shapeAttr2.getRank();
         for (size_t axis = 0; axis < shapeAttr1.getRank(); axis++) {
@@ -286,10 +294,8 @@ private:
             resDims.push_back(newResDim.getAttr());
           }
         }
-        auto newDeclOp = cast<KGEN::ParamDeclareOp>(declOp->clone());
-        newDeclOp.setValueAttr(
-            MOSH::ShapeAttr::get(resDims, shapeAttr1.getType()));
-        decomposedOps.push_back(newDeclOp);
+        auto resShape = MOSH::ShapeAttr::get(resDims, shapeAttr1.getType());
+        bindings.push_back(ParamBinding(declOp.getParamDecl(), resShape));
       }
     }
   }
@@ -399,7 +405,7 @@ private:
     if (result.isSuccess()) {
       // Create new declaration of the shape function call's output parameter;
       auto &success = result.getSuccess();
-      decomposedOps = std::move(success.paramOps);
+      bindings = std::move(success.bindings);
 
       // `outputShape` has the form `[N0, N1, ...]`
       ShapeAttr outputShape = success.resultShape;
@@ -419,11 +425,10 @@ private:
       // pseudo-dynamic-rank which we might get from RMO or Torch.
       if (outputDecls.size() == 1 &&
           isa<ShapeType>(outputDecls.front().getType())) {
-        // Create definition the output shape parameter to output shape, i.e.,
+        // Create binding for the output shape parameter to output shape which
+        // models ops like the following:
         //   kgen.param.decare D0 = <[N0, N1, ...]>
-        auto shapeDeclOp = builder.create<KGEN::ParamDeclareOp>(
-            loc, outputDecls.front(), outputShape);
-        decomposedOps.push_back(shapeDeclOp);
+        bindings.push_back(ParamBinding(outputDecls.front(), outputShape));
 
       } else {
         size_t returnedRank = outputShape.getRank();
@@ -435,15 +440,14 @@ private:
               << annnotatedRank;
           return failure();
         }
-        // Create definition from each output parameter to its dimension, i.e.,
+        // Create binding from each output parameter to its dimension, to model
+        // ops like the following:
         //   kgen.param.decare D0 = <N0>
-        //   kgen.param.decare D1 = <N1>
+        //   kgen.param.decare D1 = <add(N1, 10)>
         //   ...
         for (auto [outputDimDecl, outputDim] :
              llvm::zip(outputDecls, outputShape.getValues())) {
-          auto dimDeclOp = builder.create<KGEN::ParamDeclareOp>(
-              loc, outputDimDecl, outputDim);
-          decomposedOps.push_back(dimDeclOp);
+          bindings.push_back(ParamBinding(outputDimDecl, outputDim));
         }
       }
     }

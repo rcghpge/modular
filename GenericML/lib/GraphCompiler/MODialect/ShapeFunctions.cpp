@@ -16,6 +16,10 @@
 
 namespace M::MO {
 
+KGEN::ParamDeclareOp ParamBinding::toOp(Location loc, OpBuilder b) const {
+  return b.create<KGEN::ParamDeclareOp>(loc, decl, value);
+}
+
 Var ParamExprBuilder::createVar(TypedAttr attr) {
   auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(attr);
   if (!declRef)
@@ -24,7 +28,8 @@ Var ParamExprBuilder::createVar(TypedAttr attr) {
 }
 
 Var ParamExprBuilder::createVar(int64_t n) {
-  return createVar(IntegerAttr::get(builder.getIndexType(), n));
+  auto indexTy = IndexType::get(graphOp.getContext());
+  return createVar(IntegerAttr::get(indexTy, n));
 }
 
 KGEN::ParamDeclRefAttr ParamExprBuilder::createDeclToKgenExpr(
@@ -37,9 +42,8 @@ KGEN::ParamDeclRefAttr
 ParamExprBuilder::createDeclToKgenAttr(TypedAttr attr, StringRef declPrefix) {
   Type resTy = attr.getType();
   KGEN::ParamDeclAttr declAttr = graphOp.getNewParamOfType(declPrefix, resTy);
-  auto declOp = builder.create<KGEN::ParamDeclareOp>(loc, declAttr, attr);
-  auto declRefAttr = KGEN::ParamDeclRefAttr::get(declOp.getParamDecl());
-  createdOps->push_back(declOp);
+  auto declRefAttr = KGEN::ParamDeclRefAttr::get(declAttr);
+  createdOps->push_back(ParamBinding(declAttr, attr));
   return declRefAttr;
 };
 
@@ -129,9 +133,9 @@ ShapeMaterializeResult materializeBatchMatmulShape(GraphOp graphOp,
                                                    Location loc,
                                                    TypedAttr lhsShapeAttr,
                                                    TypedAttr rhsShapeAttr) {
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // Make sure both input and target shapes are ranked symbolic shapes.
   ShapeAttr lhsShape = dyn_cast<ShapeAttr>(lhsShapeAttr);
@@ -165,7 +169,7 @@ ShapeMaterializeResult materializeBatchMatmulShape(GraphOp graphOp,
   resDims.push_back(lhsShape[inputRank - 2]);
   resDims.push_back(rhsShape[inputRank - 1]);
   ShapeAttr resShape = b.getShapeAttr(resDims);
-  return ShapeMaterializeResult::success(std::move(ops), resShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
 
 ShapeMaterializeResult materializeBroadcastShapeShape(GraphOp graphOp,
@@ -184,13 +188,13 @@ ShapeMaterializeResult materializeBroadcastShapeShape(GraphOp graphOp,
         "[broadcast_shape] inputs must be rank 1 shape tensors");
   }
 
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
   Var lhsDim = b.createVar(lhsShape[0]);
   Var rhsDim = b.createVar(rhsShape[0]);
   ShapeAttr outShape = b.getShapeAttr(b.createMax(lhsDim, rhsDim));
-  return ShapeMaterializeResult::success(std::move(ops), outShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), outShape);
 }
 
 /// Materialize the shape logic for `MO::BroadcastToOp`.
@@ -198,9 +202,9 @@ ShapeMaterializeResult materializeBroadcastToShape(GraphOp graphOp,
                                                    Location loc,
                                                    TypedAttr inputShapeAttr,
                                                    TypedAttr targetShapeAttr) {
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // Make sure both input and target shapes are ranked symbolic shapes.
   ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
@@ -226,16 +230,16 @@ ShapeMaterializeResult materializeBroadcastToShape(GraphOp graphOp,
                    "[broadcast_to] input dim must be either 1 or equal to "
                    "corresponding output dim starting from the rightmost dim");
   }
-  return ShapeMaterializeResult::success(std::move(ops), targetShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), targetShape);
 }
 
 /// Materialize the shape logic for `MO::ConcatOp`.
 ShapeMaterializeResult
 materializeConcatShape(GraphOp graphOp, Location loc, TypedAttr axisAttr,
                        ArrayRef<TypedAttr> inputShapeAttrs) {
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // Check for constant axis
   std::optional<int64_t> axisOr = tryGetConstantInt(axisAttr);
@@ -286,7 +290,7 @@ materializeConcatShape(GraphOp graphOp, Location loc, TypedAttr axisAttr,
   }
   resDims[axis] = concatDimSum.getAttr();
   ShapeAttr resShape = b.getShapeAttr(resDims);
-  return ShapeMaterializeResult::success(std::move(ops), resShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
 
 ShapeMaterializeResult
@@ -326,9 +330,9 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
         "[convolution] requires (len(paddings) == 2 * (input rank - 2))");
   }
 
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // NOTE
   // - input and output have layout [batch_size, ...spatial_dims...,
@@ -370,7 +374,7 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   // Create output shape
   resDims.push_back(outputChannels.getAttr());
   ShapeAttr resShape = b.getShapeAttr(resDims);
-  return ShapeMaterializeResult::success(std::move(ops), resShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
 
 ShapeMaterializeResult materializeConvTransposeShape(
@@ -411,9 +415,9 @@ ShapeMaterializeResult materializeConvTransposeShape(
         "[conv_transpose] requires (len(paddings) == 2 * (input rank - 2))");
   }
 
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // NOTE
   // - input and output have layout [batch_size, ...spatial_dims...,
@@ -465,7 +469,7 @@ ShapeMaterializeResult materializeConvTransposeShape(
   // Create output shape
   resDims.push_back(filterChannels.getAttr());
   ShapeAttr resShape = b.getShapeAttr(resDims);
-  return ShapeMaterializeResult::success(std::move(ops), resShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
 
 /// Materialize the shape logic for `MO::BatchMatmulOp`, assuming given
@@ -488,9 +492,9 @@ ShapeMaterializeResult materializeMatrixSolveShape(GraphOp graphOp,
   if (inputRank < 2)
     return ShapeMaterializeResult::error("[matrix-solve] requires (rank >= 2)");
 
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // lhsShape = [..., lhsOuterDim, lhsInnerDim]
   Var lhsOuterDim = b.createVar(lhsShape[inputRank - 2]);
@@ -512,7 +516,7 @@ ShapeMaterializeResult materializeMatrixSolveShape(GraphOp graphOp,
                    "[matrix-solve] inputs batch dimensions must match");
   }
 
-  return ShapeMaterializeResult::success(std::move(ops), rhsShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), rhsShape);
 }
 
 ShapeMaterializeResult materializePadShape(GraphOp graphOp, Location loc,
@@ -533,9 +537,9 @@ ShapeMaterializeResult materializePadShape(GraphOp graphOp, Location loc,
         "[pad] paddings shape must be (2 * input_rank)");
   }
 
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // Compute and collect output dimensions.
   SmallVector<TypedAttr> resDims;
@@ -549,7 +553,7 @@ ShapeMaterializeResult materializePadShape(GraphOp graphOp, Location loc,
 
   // Create output shape
   ShapeAttr resShape = b.getShapeAttr(resDims);
-  return ShapeMaterializeResult::success(std::move(ops), resShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
 
 ShapeMaterializeResult
@@ -588,9 +592,9 @@ materializePoolShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
         "[pooling] requires (len(paddings) == 2 * (input rank - 2))");
   }
 
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // NOTE
   // - input and output have layout [batch_size, ...spatial_dims...,
@@ -621,7 +625,7 @@ materializePoolShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   // Create output shape
   resDims.push_back(inputChannels.getAttr());
   ShapeAttr resShape = b.getShapeAttr(resDims);
-  return ShapeMaterializeResult::success(std::move(ops), resShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
 
 ShapeMaterializeResult materializeGatherShape(GraphOp graphOp, Location loc,
@@ -644,9 +648,9 @@ ShapeMaterializeResult materializeGatherShape(GraphOp graphOp, Location loc,
         "[gather] normalized axis must be within range [0, input_rank)");
   }
 
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // Compute and collect output dimensions.
   // Note the output shape is essentially replacing the `axis` dimension of
@@ -664,7 +668,7 @@ ShapeMaterializeResult materializeGatherShape(GraphOp graphOp, Location loc,
 
   // Create and return output shape.
   ShapeAttr resShape = b.getShapeAttr(resDims);
-  return ShapeMaterializeResult::success(std::move(ops), resShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
 
 ShapeMaterializeResult materializeGatherNdShape(GraphOp graphOp, Location loc,
@@ -702,9 +706,9 @@ ShapeMaterializeResult materializeGatherNdShape(GraphOp graphOp, Location loc,
         "[gather_nd] requires (batch_dims < indices_rank)");
   }
 
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // Compute and collect output dimensions.
   //   output_shape = input_shape[:batch_dims]
@@ -724,7 +728,7 @@ ShapeMaterializeResult materializeGatherNdShape(GraphOp graphOp, Location loc,
 
   // Create and return output shape.
   ShapeAttr resShape = b.getShapeAttr(resDims);
-  return ShapeMaterializeResult::success(std::move(ops), resShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
 
 // Materialize the shape logic for operation's shape is stored as the *value*
@@ -743,9 +747,9 @@ ShapeMaterializeResult materializeRangeShape(GraphOp graphOp, Location loc,
                                              TypedAttr startAttr,
                                              TypedAttr stopAttr,
                                              TypedAttr stepAttr) {
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   Var start = b.createVar(startAttr);
   Var stop = b.createVar(stopAttr);
@@ -762,14 +766,14 @@ ShapeMaterializeResult materializeRangeShape(GraphOp graphOp, Location loc,
 
   Var outDim = computeRangeSize(start, stop, step);
   ShapeAttr outputShape = b.getShapeAttr(outDim);
-  return ShapeMaterializeResult::success(std::move(ops), outputShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), outputShape);
 }
 
 ShapeMaterializeResult materializeReduceShape(GraphOp graphOp, Location loc,
                                               TypedAttr inputShape,
                                               TypedAttr axis) {
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   auto axisOr = tryGetConstantInt(axis);
   auto inputShapeAttr = dyn_cast<ShapeAttr>(inputShape);
@@ -786,7 +790,7 @@ ShapeMaterializeResult materializeReduceShape(GraphOp graphOp, Location loc,
 
   SmallVector<TypedAttr> finalShape(inputShapeAttr.getValues());
   finalShape[normalizedAxis] = b.createVar(1).getAttr();
-  return ShapeMaterializeResult::success(std::move(ops),
+  return ShapeMaterializeResult::success(std::move(paramBindings),
                                          b.getShapeAttr(finalShape));
 }
 
@@ -820,9 +824,9 @@ ShapeMaterializeResult materializeScatterShape(GraphOp graphOp, Location loc,
         "[scatter] normalized axis must be within range [0, input_rank)");
   }
 
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // Check dimensions of input shapes.
   for (size_t i = 0; i < inputRank; i++) {
@@ -836,7 +840,7 @@ ShapeMaterializeResult materializeScatterShape(GraphOp graphOp, Location loc,
   }
 
   // Create and return output shape.
-  return ShapeMaterializeResult::success(std::move(ops), inputShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), inputShape);
 }
 
 ShapeMaterializeResult materializeScatterNdShape(GraphOp graphOp, Location loc,
@@ -866,9 +870,9 @@ ShapeMaterializeResult materializeScatterNdShape(GraphOp graphOp, Location loc,
     return ShapeMaterializeResult::nonMaterializable();
   int64_t numSlicedDims = numSlicedDimsOr.value();
 
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // More rank checks.
   if (numSlicedDims > inputRank) {
@@ -898,7 +902,7 @@ ShapeMaterializeResult materializeScatterNdShape(GraphOp graphOp, Location loc,
   }
 
   // Create and return output shape.
-  return ShapeMaterializeResult::success(std::move(ops), inputShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), inputShape);
 }
 
 /// Materialize the shape logic for `MO::ReshapeOp`.
@@ -916,9 +920,9 @@ ShapeMaterializeResult materializeScatterNdShape(GraphOp graphOp, Location loc,
 ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
                                                TypedAttr inputShapeAttr,
                                                TypedAttr targetShapeAttr) {
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // Make sure both input and target shapes are ranked symbolic shapes.
   ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
@@ -978,7 +982,7 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
   Var outputNumeElems = b.createVar(outputShape.getSymbolicNumElements());
   b.createAssert(inputNumeElems == outputNumeElems,
                  "[reshape] input and output number of elements must match");
-  return ShapeMaterializeResult::success(std::move(ops), outputShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), outputShape);
 }
 
 ShapeMaterializeResult matierlizeRoiAlignShape(GraphOp graphOp, Location loc,
@@ -1010,9 +1014,9 @@ ShapeMaterializeResult matierlizeRoiAlignShape(GraphOp graphOp, Location loc,
         "[roi_align] output width must be a single integer");
   }
 
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // Check height and width
   Var outHeight = b.createVar(outHeightAttr);
@@ -1025,7 +1029,7 @@ ShapeMaterializeResult matierlizeRoiAlignShape(GraphOp graphOp, Location loc,
   // Create and return output shape
   ShapeAttr outShape = b.getShapeAttr(
       {roisShape[0], outHeightAttr, outWidthAttr, inputShape[3]});
-  return ShapeMaterializeResult::success(std::move(ops), outShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), outShape);
 }
 
 /// Materialize the shape logic for `MO::SliceOp`.
@@ -1051,9 +1055,9 @@ ShapeMaterializeResult materializeSliceShape(GraphOp graphOp, Location loc,
         "bounds");
   }
 
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // Compute and collect output spatial dimensions.
   SmallVector<TypedAttr> outDims;
@@ -1089,7 +1093,7 @@ ShapeMaterializeResult materializeSliceShape(GraphOp graphOp, Location loc,
   }
 
   ShapeAttr outputShape = b.getShapeAttr(outDims);
-  return ShapeMaterializeResult::success(std::move(ops), outputShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), outputShape);
 }
 
 ShapeMaterializeResult materializeSplitIthOutputShape(
@@ -1121,9 +1125,9 @@ ShapeMaterializeResult materializeSplitIthOutputShape(
         "[split] normalized axis must be within range [0, rank)");
   }
 
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // Check for sum of splitSizes.
   Var splitSizesSum = b.createVar(0);
@@ -1137,7 +1141,7 @@ ShapeMaterializeResult materializeSplitIthOutputShape(
   SmallVector<TypedAttr> outDims(inputShape.getValues());
   outDims[axis] = splitSizes[i];
   ShapeAttr outputShape = b.getShapeAttr(outDims);
-  return ShapeMaterializeResult::success(std::move(ops), outputShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), outputShape);
 }
 
 ShapeMaterializeResult
@@ -1156,9 +1160,9 @@ materializeSqueezeShapeShape(GraphOp graphOp, Location loc,
         "[squeeze_shape] inputs must be rank 1 shape tensors");
   }
 
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
   Var inputNumElems = b.createVar(inputShape[0]);
   Var indicesNumElems = b.createVar(indicesShape[0]);
   b.createAssert(
@@ -1168,7 +1172,7 @@ materializeSqueezeShapeShape(GraphOp graphOp, Location loc,
   // Create output shape.
   Var outputNumElems = inputNumElems - indicesNumElems;
   ShapeAttr outShape = b.getShapeAttr(outputNumElems);
-  return ShapeMaterializeResult::success(std::move(ops), outShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), outShape);
 }
 
 ShapeMaterializeResult materializeTileShape(GraphOp graphOp, Location loc,
@@ -1188,9 +1192,9 @@ ShapeMaterializeResult materializeTileShape(GraphOp graphOp, Location loc,
         "[tile] requires (len(repeats) == input_rank)");
   }
 
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // Compute and collect output dimensions.
   SmallVector<TypedAttr> resDims;
@@ -1203,7 +1207,7 @@ ShapeMaterializeResult materializeTileShape(GraphOp graphOp, Location loc,
 
   // Create output shape
   ShapeAttr resShape = b.getShapeAttr(resDims);
-  return ShapeMaterializeResult::success(std::move(ops), resShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
 
 ShapeMaterializeResult materializeTransposeShape(GraphOp graphOp, Location loc,
@@ -1232,9 +1236,9 @@ ShapeMaterializeResult materializeTransposeShape(GraphOp graphOp, Location loc,
     }
   }
 
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // Compute and collect output dimensions.
   SmallVector<TypedAttr> resDims;
@@ -1252,14 +1256,14 @@ ShapeMaterializeResult materializeTransposeShape(GraphOp graphOp, Location loc,
 
   // Create output shape
   ShapeAttr resShape = b.getShapeAttr(resDims);
-  return ShapeMaterializeResult::success(std::move(ops), resShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
 
 ShapeMaterializeResult materializeTopKShape(GraphOp graphOp, Location loc,
                                             TypedAttr inputShape, TypedAttr k,
                                             TypedAttr axis) {
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   auto axisOr = tryGetConstantInt(axis);
   auto inputShapeAttr = dyn_cast<ShapeAttr>(inputShape);
@@ -1279,7 +1283,7 @@ ShapeMaterializeResult materializeTopKShape(GraphOp graphOp, Location loc,
 
   SmallVector<TypedAttr> finalShape(inputShapeAttr.getValues());
   finalShape[*axisOr] = k;
-  return ShapeMaterializeResult::success(std::move(ops),
+  return ShapeMaterializeResult::success(std::move(paramBindings),
                                          b.getShapeAttr(finalShape));
 }
 
@@ -1299,15 +1303,15 @@ materializeUnsqueezeShapeShape(GraphOp graphOp, Location loc,
         "[squeeze_shape] inputs must be rank 1 shape tensors");
   }
 
-  // Create builder and track generated ops.
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  ParamExprBuilder b(graphOp, loc, &ops);
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
   Var inputNumElems = b.createVar(inputShape[0]);
   Var indicesNumElems = b.createVar(indicesShape[0]);
 
   // Create output shape
   ShapeAttr outShape = b.getShapeAttr(inputNumElems + indicesNumElems);
-  return ShapeMaterializeResult::success(std::move(ops), outShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), outShape);
 }
 
 //------------------------Shape functions end---------------------------------//
@@ -1347,10 +1351,9 @@ StringAttr tryGetAssertFalseErrMsg(TypedAttr attr) {
   return {};
 }
 
-/// Implementation of `propagateShape` which doesn't erase `paramOps`.
-static ErrorOr<ShapeAttr>
-propagateShapeImpl(ArrayRef<KGEN::ParamDeclareOp> paramOps,
-                   ShapeAttr targetShape) {
+/// Implementation of `propagateShape` which doesn't erase `bindings`.
+ErrorOr<ShapeAttr> propagateShape(ArrayRef<ParamBinding> bindings,
+                                  ShapeAttr targetShape) {
 
   // Setting things up
   KGEN::ParameterEvaluator evaluator;
@@ -1361,15 +1364,12 @@ propagateShapeImpl(ArrayRef<KGEN::ParamDeclareOp> paramOps,
   });
 
   // Process individual ops and propagate by simple substitution.
-  for (KGEN::ParamDeclareOp declOp : paramOps) {
+  for (const ParamBinding &binding : bindings) {
+    KGEN::ParamDeclAttr lhsAttr = binding.decl;
+    TypedAttr rhsAttr = binding.value;
 
-    // Apply accumulated substitutions to this op.
-    replacer.replaceElementsIn(declOp, /*replaceAttrs=*/true,
-                               /*replaceLocs=*/true, /*replaceTypes=*/true);
-
-    // Process kgen.param.declare LHS = <RHS>
-    KGEN::ParamDeclAttr lhsAttr = declOp.getParamDecl();
-    TypedAttr rhsAttr = declOp.getValue();
+    // Apply accumulated substitutions to the binding value.
+    rhsAttr = cast<TypedAttr>(replacer.replace(rhsAttr));
 
     // Check for assert.
     if (auto condAndMsg = tryGetAssertCondAndMsg(rhsAttr)) {
@@ -1390,15 +1390,6 @@ propagateShapeImpl(ArrayRef<KGEN::ParamDeclareOp> paramOps,
   // Apply accumulated substitutions to target shape.
   auto resultShape = cast<ShapeAttr>(replacer.replace(targetShape));
   return resultShape;
-}
-
-ErrorOr<ShapeAttr> propagateShape(ArrayRef<KGEN::ParamDeclareOp> paramOps,
-                                  ShapeAttr targetShape) {
-
-  ErrorOr<ShapeAttr> res = propagateShapeImpl(paramOps, targetShape);
-  for (Operation *op : paramOps)
-    op->erase();
-  return res;
 }
 
 // TODO move the following into a new interface.
