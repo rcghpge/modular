@@ -8,13 +8,12 @@
 from math import iota, sqrt
 from pathlib import Path
 from sys.param_env import env_get_string
-from utils.index import Index, StaticIntTuple
 
 from tensor import Tensor, TensorShape, TensorSpec
 from tensor.tensor import _serialize_as_tensor
-
 from testing import assert_almost_equal, assert_equal, assert_false
 
+from utils.index import Index, StaticIntTuple
 
 alias TEMP_FILE_DIR = env_get_string["TEMP_FILE_DIR"]()
 
