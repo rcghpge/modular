@@ -3,9 +3,6 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-# REQUIRES: DISABLED
-# (TODO: SERV-130) Disable this test till we figure out how to not fail
-# non-deterministically in pre-submit CI.
 # RUN: %mojo %s
 from tensor import TensorSpec
 
@@ -56,15 +53,21 @@ def run_shutdown_test[ENABLE_HTTP: Bool]() -> None:
         except e:
             print("Server execption: ", e)
 
-    with Runtime() as rt:
-        var tg = TaskGroup[__lifetime_of(server_started)](rt)
-        tg.create_task(server_impl())
+    @parameter
+    async fn shutdown_task_impl():
         while not server_started.load():
             print(".", end="")
             sleep(1)
         server.signal_stop()
 
+    with Runtime() as rt:
+        var tg = TaskGroup[__lifetime_of(server_started)](rt)
+        var server_task = tg.create_task(server_impl())
+        var shutdown_task = tg.create_task(shutdown_task_impl())
         tg.wait()
+        _ = tg^
+        _ = server_task^
+        _ = shutdown_task^
         _ = rt
         _ = server^
         print("[" + elapsed() + "]Server terminated succesfully.")
