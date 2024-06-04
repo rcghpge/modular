@@ -75,7 +75,9 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
         return self._spec.get_tensor_spec()
 
     @always_inline
-    fn __getitem__(self, *indices: Int) -> Scalar[type]:
+    fn __getitem__(
+        inout self, *indices: Int
+    ) -> ref [__lifetime_of(self)] Scalar[type]:
         """Gets the value at the specified indices.
 
         Args:
@@ -87,19 +89,8 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
         debug_assert(
             len(indices) == rank, "mismatch between requested index and rank"
         )
-        return self.load[width=1](indices)
-
-    @always_inline
-    fn __getitem__(self, indices: StaticIntTuple[rank]) -> Scalar[type]:
-        """Gets the value at the specified indices.
-
-        Args:
-          indices: The indices of the value to retrieve.
-
-        Returns:
-          The value at the specified indices.
-        """
-        return self.load[width=1](indices)
+        var offset = self._compute_linear_offset(indices)
+        return self._ptr[offset]
 
     @always_inline
     fn __getitem__(
@@ -152,19 +143,6 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
         return SIMD[size=width].load(
             self._ptr, self._compute_linear_offset(indices)
         )
-
-    # FIXME: [MOCO-696] Use variadic length keys
-    @always_inline
-    fn __setitem__(
-        inout self, indices: StaticIntTuple[rank], val: Scalar[type]
-    ):
-        """Sets the value at the specified indices.
-
-        Args:
-          indices: The indices of the value to set.
-          val: The value to store.
-        """
-        self.store[width=1](indices, val)
 
     @always_inline
     fn store[

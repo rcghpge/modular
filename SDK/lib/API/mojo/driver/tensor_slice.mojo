@@ -52,38 +52,8 @@ struct TensorSlice[
         """
         return self._spec
 
-    # FIXME: [MOCO-696] Use variadic length keys
     @always_inline
-    fn __setitem__(
-        inout self, indices: StaticIntTuple[rank], value: Scalar[type]
-    ):
-        """Sets the value at given index.
-
-        Args:
-            indices: Index to set value at.
-            value: Value to be set.
-        """
-        constrained[self.is_mutable == True, "tensor slice is immutable"]()
-        # TODO: Don't cast to ptr. We have to do this because we don't
-        # have conditional conformance.
-        var tensor_ptr = UnsafePointer.address_of(self._ref[])
-        var adjusted_indices = self._get_adjusted_indices(indices)
-        tensor_ptr[].store(adjusted_indices, value)
-
-    @always_inline
-    fn __getitem__(self, *indices: Int) -> Scalar[type]:
-        """Gets the value at the specified indices.
-
-        Args:
-          indices: The indices of the value to retrieve.
-
-        Returns:
-          The value at the specified indices.
-        """
-        return self[indices]
-
-    @always_inline
-    fn __getitem__(self, indices: StaticIntTuple[rank]) -> Scalar[type]:
+    fn __getitem__(inout self, *indices: Int) -> ref [lifetime] Scalar[type]:
         """Gets the value at the specified indices.
 
         Args:
@@ -96,4 +66,5 @@ struct TensorSlice[
             len(indices) == rank, "mismatch between requested index and rank"
         )
         var adjusted_indices = self._get_adjusted_indices(indices)
-        return self._ref[][adjusted_indices]
+        var offset = self._ref[]._compute_linear_offset(adjusted_indices)
+        return self._ref[]._ptr[offset]
