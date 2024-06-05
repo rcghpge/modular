@@ -52,16 +52,12 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt) {
     }
   }
 
-  mlir::PassManager pm(ctx);
   ErrorOr<TargetInfoAttr> targetOr = M::getTargetInfoFor(
       kgenModule->getContext(), llvm::sys::getDefaultTargetTriple(),
       llvm::sys::getHostCPUName(), getHostCPUFeatures());
   if (targetOr.isError())
     return mlir::emitError(kgenModule.getLoc(), targetOr.getError());
   TargetInfoAttr target = *targetOr;
-
-  if (enableTiming)
-    pm.enableTiming();
 
   // Set the environment (defines) for the module.
   KGEN::extendWithModularEnvAttr(kgenModule);
@@ -84,7 +80,11 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt) {
   if (kKernelsBuildType == "relwithdebinfo" || kKernelsBuildType == "debug")
     compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
 
-  KGEN::populateElaborateModulePasses(pm, *targetInfoOr, compilationOptions);
+  KGEN::KGENCompiler compiler(*ctx, compilationOptions);
+  if (enableTiming) {
+    compiler.configurePassManager(
+        [](mlir::PassManager &pm) { pm.enableTiming(); });
+  }
 
   if (!saveTempsPrefix.empty()) {
     std::string outPath = saveTempsPrefix + ".kgen.prelaboration.mlir";
@@ -110,31 +110,26 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt) {
             ->createUInt64Timer<std::chrono::milliseconds>(
                 "mogg.kgen.elaboration.time", M::Telemetry::Level::L2, attrs);
 
-    auto cacheBackend = KGEN::getMojoCacheBackend();
-    if (cacheBackend.isError()) {
-      // Just run the passes.
-      res = pm.run(kgenModule);
-    } else {
-      setTargetInfo(kgenModule, *targetInfoOr);
-      LLCL::AnyAsyncValueRef ready = Cache::cachedTransform(
-          kgenModule,
-          RCRef<Cache::TransformCache>::create(std::move(*cacheBackend)),
-          loadContext(ctx)->get<LLCL::Runtime>()->getReadyChain().copy(), pm,
-          Cache::CacheTelemetryContext::getTelemetryOnMissLambda(
-              "StubCompiler::elaborateKGEN",
-              "mogg.elaborate.kgen.cache.miss.time",
-              {{"pipeline", "StubCompiler::elaborateKGEN"}}),
-          Cache::CacheTelemetryContext::getTelemetryOnHitLambda(
-              "StubCompiler::elaborateKGEN"));
-      LLCL::await(ready);
-      if (ready.isError()) {
-        LLCL::EncodedDiagnostic diag = ready.takeDiagnostic();
-        LLCL::DecodedLocation loc = diag.decodeLocation();
-        mlir::emitError(
-            FileLineColLoc::get(ctx, loc.filename, loc.line, loc.column),
-            diag.getMessage().get());
-        res = failure();
-      }
+    auto *runtime = loadContext(ctx)->get<LLCL::Runtime>();
+
+    setTargetInfo(kgenModule, *targetInfoOr);
+    LLCL::AnyAsyncValueRef ready = compiler.runElaborationPipeline(
+        kgenModule, *targetInfoOr, *runtime, runtime->getReadyChain().copy(),
+        Cache::CacheTelemetryContext::getTelemetryOnMissLambda(
+            "StubCompiler::elaborateKGEN",
+            "mogg.elaborate.kgen.cache.miss.time",
+            {{"pipeline", "StubCompiler::elaborateKGEN"}}),
+        Cache::CacheTelemetryContext::getTelemetryOnHitLambda(
+            "StubCompiler::elaborateKGEN"));
+
+    LLCL::await(ready);
+    if (ready.isError()) {
+      LLCL::EncodedDiagnostic diag = ready.takeDiagnostic();
+      LLCL::DecodedLocation loc = diag.decodeLocation();
+      mlir::emitError(
+          FileLineColLoc::get(ctx, loc.filename, loc.line, loc.column),
+          diag.getMessage().get());
+      res = failure();
     }
   }
 

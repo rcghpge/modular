@@ -68,7 +68,7 @@ ErrorOr<OwningOpRef<ModuleOp>> parseMojoPackage(MLIRContext *ctx,
   // materialized to make it self contained.
   KGEN::KGENCompiler compiler(*(ownedModule->getContext()),
                               KGEN::CompilationOptions());
-  if (auto err = compiler.runLibraryGenerationPipeline(
+  if (auto err = compiler.runGenerateLibraryPipeline(
           *ownedModule, /*materializeDependencies=*/true))
     return err.takeError();
   return ownedModule;
