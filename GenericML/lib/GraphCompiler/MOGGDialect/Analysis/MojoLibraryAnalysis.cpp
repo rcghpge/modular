@@ -67,9 +67,8 @@ ErrorOr<OwningOpRef<ModuleOp>> parseMojoPackage(MLIRContext *ctx,
 
   // Generate a library from the package, ensuring that dependencies are
   // materialized to make it self contained.
-  KGEN::KGENCompiler compiler(
-      *(ownedModule->getContext()), KGEN::CompilationOptions(),
-      [](mlir::PassManager &pm) { M::configurePassManager(pm); });
+  KGEN::KGENCompiler compiler(*(ownedModule->getContext()),
+                              KGEN::CompilationOptions());
 
   if (auto err = compiler.runGenerateLibraryPipeline(
           *ownedModule, /*materializeDependencies=*/true))

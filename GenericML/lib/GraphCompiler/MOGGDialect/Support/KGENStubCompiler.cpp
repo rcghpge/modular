@@ -15,6 +15,7 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "KGEN/ToolCommon/CLOptions.h"
+#include "KGEN/ToolCommon/PassManagerConfigOptions.h"
 #include "LLCL/CompilerSupport/Context.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/Runtime.h"
@@ -80,11 +81,10 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt) {
   if (kKernelsBuildType == "relwithdebinfo" || kKernelsBuildType == "debug")
     compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
 
-  KGEN::KGENCompiler compiler(*ctx, compilationOptions,
-                              [&](mlir::PassManager &pm) {
-                                if (enableTiming)
-                                  pm.enableTiming();
-                              });
+  KGEN::PassManagerConfigOptions pmOptions;
+  if (enableTiming)
+    pmOptions.enableTiming = true;
+  KGEN::KGENCompiler compiler(*ctx, compilationOptions, pmOptions);
 
   if (!saveTempsPrefix.empty()) {
     std::string outPath = saveTempsPrefix + ".kgen.prelaboration.mlir";
@@ -177,12 +177,12 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
   if (!saveTempsPrefix.empty())
     compilationOptions.setSaveTemps(saveTempsPrefix);
 
-  auto compilerOr = KGEN::ObjectCompiler::create(
-      ".mojo_cache", compilationOptions, /*isJit=*/true, *ctx,
-      [&](mlir::PassManager &pm) {
-        if (enableTiming)
-          pm.enableTiming();
-      });
+  KGEN::PassManagerConfigOptions pmOptions;
+  if (enableTiming)
+    pmOptions.enableTiming = true;
+  ErrorOr<std::unique_ptr<KGEN::ObjectCompiler>> compilerOr =
+      KGEN::ObjectCompiler::create(".mojo_cache", compilationOptions,
+                                   /*isJit=*/true, *ctx, pmOptions);
 
   if (compilerOr.isError())
     return compilerOr.takeError();
