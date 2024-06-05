@@ -276,6 +276,26 @@ def MO_Chain : MO_Type<"Chain", "chain"> {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_Opaque
+//===----------------------------------------------------------------------===//
+
+def MO_Opaque : MO_Type<"Opaque", "opaque"> {
+  let summary = "Opaque MO type.";
+  let description = [{
+    This is a custom user-defined type.
+      Example:
+      ```mlir
+        !mo.opaque<"my_list">
+        !mo.opaque<"my_list", {foo = 42}>
+      ```
+  }];
+
+  let parameters = (ins "StringAttr" : $symbol,
+                        OptionalParameter<"std::optional<DictionaryAttr>"> : $metadata);
+  let assemblyFormat = "`<` $symbol (`,` $metadata^)? `>`";
+}
+
+//===----------------------------------------------------------------------===//
 // ODS constraints to inject verifier logic via type annotation.
 //===----------------------------------------------------------------------===//
 
