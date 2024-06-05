@@ -1847,10 +1847,10 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
         allowInternalReshape(allowInternalReshape),
         debugMHAPattern(debugMHAPattern) {}
 
-  void insertShapeGuard(PatternRewriter &rewriter, GraphOp graphOp,
-                        TypedAttr beforeShape, TypedAttr afterShape,
-                        Location loc, const Twine &checkName,
-                        const Twine &errorMsg) const {
+  static void insertShapeGuard(PatternRewriter &rewriter, GraphOp graphOp,
+                               TypedAttr beforeShape, TypedAttr afterShape,
+                               Location loc, const Twine &checkName,
+                               const Twine &errorMsg) {
     // Inserts a runtime guard checking (beforeShape == afterShape)
     IntegerType boolTy = rewriter.getI1Type();
     TypedAttr cmpAttr =
@@ -2037,6 +2037,146 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     }
   }
 
+  // The matcher's for QKV returns values with the following layouts:
+  // Q: BHSD
+  // K: BHDS
+  // V: BHSD
+  //
+  // However, some kernels expect all of these layouts to be `BSHD`.
+  // Within most models with attention, tensors with the layout `BSHD` will be
+  // transposed to the above. Therefore capturing this transformation in the
+  // model is of great importance.
+  //
+  // Unfortunately, because we are importing from ONNX which has super loose
+  // semantics around ops, the transpose may have random `static_reshapes`
+  // and `static_broadcasts` sprinkled throughout. The pattern we support is
+  //
+  // BSHD_tensor --> transpose --> *static_reshape --> *static_broadcast
+  //             --> Q/K/V tensor
+  //
+  // Where all the * are optional.
+  //
+  // We ultimately want to extract the BSHD tensor for these special kernels.
+  // We also must make sure the intermediate `static_reshapes/broadcasts` are
+  // no-ops and do not modify shape (since that is the assumption).
+  //
+  // In addition, we must account for the case that sometimes Q/K/V is rank 3
+  // with the batch dimension elided.
+  //
+  // Finally, we are using this in a rewrite step, which by MLIR contracts means
+  // we cannot fail a rewrite. If the user requests a BSHD tensor when there
+  // is no parent transpose, we must still give it to them by inserting a
+  // transpose.
+  struct TransposeTensorHelper {
+    static TensorValue backwardGetBSHDTensor(
+        // indices for a tranpose operator to move the layout of `start` to BSHD
+        // e.g. {0, 2, 1, 3} implies `start` is BHSD
+        ArrayRef<int64_t> transposeToBSHD, TensorValue start,
+        PatternRewriter &rewriter, GraphOp graphOp) {
+      // Stores all tensor types from intermediate reshapes/broadcasts.
+      // These all need to be equal
+      SmallVector<TensorType> equivalentShapes;
+      TensorValue current = start;
+
+      // Walk past any reshapes/bcasts we assume are no-ops
+      while (current.getDefiningOp<Static::BroadcastToOp>() ||
+             current.getDefiningOp<Static::ReshapeOp>()) {
+        if (auto bcast = current.getDefiningOp<Static::BroadcastToOp>()) {
+          current = bcast.getInput();
+          equivalentShapes.push_back(bcast.getType());
+        }
+        if (auto reshape = current.getDefiningOp<Static::ReshapeOp>()) {
+          current = reshape.getInput();
+          equivalentShapes.push_back(reshape.getType());
+        }
+      }
+
+      // If no transpose, still must return something valid for the kernel.
+      auto transposeOp = current.getDefiningOp<TransposeOp>();
+      if (!transposeOp)
+        return backwardFallbackGetBSHDTensor(transposeToBSHD, start, rewriter);
+
+      TensorValue tensorBSHD = transposeOp.getInput();
+
+      // Runtime Check 1: all reshapes/bcasts really do nothing to shape.
+      for (TensorType equivalentShapeTy : equivalentShapes) {
+        insertShapeGuard(
+            rewriter, graphOp, equivalentShapeTy.getShapeAttr(),
+            start.getType().getShapeAttr(), start.getLoc(),
+            "MHA_QKV_TRANSPOSE_BCAST_OR_RESHAPE_CHECK",
+            "MHA Pattern Detected unsafe broadcast/reshape. This is of great "
+            "interest so please report!");
+      }
+
+      // Runtime Check 2: `tensorBSHD` really is BSHD compared to `start`.
+      // Do this by applying the permutation of `transposeToBSHD` to `start`.
+      // Deal with elided batch dimension by inserting it back in as a `1`
+      SmallVector<TypedAttr> tensorStartDimsRank4Permuted =
+          permute(getRank4Dims(start, rewriter), transposeToBSHD);
+      SmallVector<TypedAttr> tensorBSHDDimsRank4 =
+          getRank4Dims(tensorBSHD, rewriter);
+      auto tensorStartShapePermuted =
+          MOSH::ShapeAttr::get(tensorStartDimsRank4Permuted,
+                               MOSH::ShapeType::get(rewriter.getContext()));
+      auto tensorBSHDShape = MOSH::ShapeAttr::get(
+          tensorBSHDDimsRank4, MOSH::ShapeType::get(rewriter.getContext()));
+      insertShapeGuard(rewriter, graphOp, tensorStartShapePermuted,
+                       tensorBSHDShape, start.getLoc(),
+                       "MHA_QKV_TRANSPOSE_IS_BSHD_CHECK",
+                       "MHA Pattern Detected transpose of QKV which was not "
+                       "from BSHD layout. This is of great "
+                       "interest so please report!");
+
+      return tensorBSHD;
+    }
+
+    // Returns dimensions of value. If value is rank-3, assume batch dimension
+    // was elided and pretends to add it back in as a dim of size `1`.
+    static SmallVector<TypedAttr> getRank4Dims(TensorValue value,
+                                               PatternRewriter &rewriter) {
+      size_t rank = value.getType().getRank();
+      ASSERT_STREAM(rank == 3 || rank == 4) << "Support only rank3/4 inputs.";
+
+      SmallVector<TypedAttr> answer;
+      auto curDims = value.getType().getTypedShapeAttr().getValues();
+      if (curDims.size() == 3)
+        answer.push_back(mlir::IntegerAttr::get(rewriter.getIndexType(), 1));
+
+      answer.append(curDims.begin(), curDims.end());
+      return answer;
+    }
+
+    // If we cannot find a parent, transpose, move from the current layout back
+    // to BSHD.
+    static TensorValue
+    backwardFallbackGetBSHDTensor(ArrayRef<int64_t> transposeToBSHD,
+                                  TensorValue start,
+                                  PatternRewriter &rewriter) {
+      // Pretend everything is rank 4 for simplicity
+      SmallVector<TypedAttr> rank4Dim = getRank4Dims(start, rewriter);
+      TensorValue startRank4 = rewriter.create<Static::ReshapeOp>(
+          start.getLoc(), start.getType().cloneWith(rank4Dim), start);
+
+      SmallVector<TypedAttr> expectedBSHDShape =
+          permute(rank4Dim, transposeToBSHD);
+      ArrayRef<TypedAttr> finalShape = expectedBSHDShape;
+
+      auto permConst =
+          rewriter.create<ConstantOp>(start.getLoc(), transposeToBSHD);
+      TensorValue transposedTensor = rewriter.create<TransposeOp>(
+          start.getLoc(), startRank4.getType().cloneWith(finalShape),
+          startRank4, permConst);
+
+      // If we were rank-3 to begin with, chop off elided batch dimension
+      if (start.getType().getRank() == 3)
+        transposedTensor = rewriter.create<Static::ReshapeOp>(
+            start.getLoc(), start.getType().cloneWith(finalShape.slice(1)),
+            transposedTensor);
+
+      return transposedTensor;
+    };
+  };
+
   // For GPU annotated operations do this rewrite
   void rewriteGPU(BatchMatmulOp rootOp, TensorValue rank3ExplicitMask,
                   PatternRewriter &rewriter,
@@ -2047,60 +2187,26 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     // V: BHSD
     //
     // With possible elided batch dimension.
-    //
-    // However the GPU kernel wants the layout `BSHD`
     TensorValue initQuery = matcher.getQuery();
     TensorValue initKey = matcher.getKeyT();
     TensorValue initValue = matcher.getValue();
 
-    // Add back in implicit batch dimension if needed
-    auto ensureRank4 = [&rewriter](TensorValue val) -> TensorValue {
-      if (val.getType().getRank() == 4)
-        return val;
+    SmallVector<int64_t> permuteBHSD2BSHD = {0, 2, 1, 3};
+    ArrayRef<int64_t> permuteBSHD2BHSD = permuteBHSD2BSHD; // cyclical
 
-      // Via checks before running rewriteGPU, we know it's rank 3
-      SmallVector<TypedAttr> newDims = {
-          mlir::IntegerAttr::get(rewriter.getIndexType(), 1),
-          val.getType().getDim(0), val.getType().getDim(1),
-          val.getType().getDim(2)};
+    SmallVector<int64_t> permuteBHDS2BSHD = {0, 3, 1, 2};
+    auto permuteBSHD2BHSDValue =
+        rewriter.create<ConstantOp>(rootOp.getLoc(), permuteBSHD2BHSD);
 
-      return rewriter.create<Static::ReshapeOp>(
-          val.getLoc(), val.getType().cloneWith(newDims), val);
-    };
-
-    initQuery = ensureRank4(initQuery);
-    initKey = ensureRank4(initKey);
-    initValue = ensureRank4(initValue);
-
-    // Insert transposes to fix this. Note: canonicalization should remove
-    // adjacent transposes.
-    // First calculate the output shapes.
-    SmallVector<int64_t> QVTransposeIndices = {0, 2, 1, 3};
-    SmallVector<int64_t> KTransposeIndices = {0, 3, 1, 2};
-    SmallVector<TypedAttr> queryOutputShape =
-        permute(initQuery.getType().getTypedShapeAttr().getValues(),
-                QVTransposeIndices);
-    SmallVector<TypedAttr> keyOutputShape = permute(
-        initKey.getType().getTypedShapeAttr().getValues(), KTransposeIndices);
-    SmallVector<TypedAttr> valueOutputShape =
-        permute(initValue.getType().getTypedShapeAttr().getValues(),
-                QVTransposeIndices);
-    TensorType queryTy = initQuery.getType().cloneWith(queryOutputShape);
-    TensorType keyTy = initKey.getType().cloneWith(keyOutputShape);
-    TensorType valueTy = initValue.getType().cloneWith(valueOutputShape);
-
-    // Then create the types and make the transposes.
-    auto QVTransposeIndicesValue =
-        rewriter.create<ConstantOp>(rootOp.getLoc(), QVTransposeIndices);
-    auto KTransposeIndicesValue =
-        rewriter.create<ConstantOp>(rootOp.getLoc(), KTransposeIndices);
-    TensorValue query = rewriter.create<TransposeOp>(
-        rootOp->getLoc(), queryTy, initQuery, QVTransposeIndicesValue);
-    TensorValue key = rewriter.create<TransposeOp>(
-        rootOp->getLoc(), keyTy, initKey, KTransposeIndicesValue);
-    TensorValue value = rewriter.create<TransposeOp>(
-        rootOp->getLoc(), valueTy, initValue, QVTransposeIndicesValue);
-
+    // However the GPU kernel wants the layout `BSHD` which we get below
+    // (this also handles elided batch dimensions gracefully).
+    auto graphOp = rootOp->getParentOfType<MO::GraphOp>();
+    TensorValue query = TransposeTensorHelper::backwardGetBSHDTensor(
+        permuteBHSD2BSHD, initQuery, rewriter, graphOp);
+    TensorValue key = TransposeTensorHelper::backwardGetBSHDTensor(
+        permuteBHDS2BSHD, initKey, rewriter, graphOp);
+    TensorValue value = TransposeTensorHelper::backwardGetBSHDTensor(
+        permuteBHSD2BSHD, initValue, rewriter, graphOp);
     SmallVector<Value> kernelArgs{query, key, value, rank3ExplicitMask,
                                   matcher.getNormScalar()};
 
@@ -2117,21 +2223,95 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     }
 
     SmallVector<TypedAttr> mhaOutputShape =
-        permute(initialOutputShape, QVTransposeIndices);
+        permute(initialOutputShape, permuteBHSD2BSHD);
     auto mhaResult = rewriter.create<MultiHeadGPUFlashAttentionOp>(
         rootOp.getLoc(), rootOp.getType().cloneWith(mhaOutputShape),
         kernelArgs);
 
-    // Insert a final transpose to move from BSHD --> BHSD.
-    // This will be canonicalized away in case of adjacent transposes.
-    SmallVector<TypedAttr> finalOutputShape =
-        permute(mhaResult.getType().getTypedShapeAttr().getValues(),
-                QVTransposeIndices);
-    TensorType finalTy = mhaResult.getType().cloneWith(finalOutputShape);
-    auto finalOp = rewriter.create<TransposeOp>(
-        mhaResult.getLoc(), finalTy, mhaResult, QVTransposeIndicesValue);
+    // The mhaResult should be shape BSHD, however the rooted op is layout BHSD.
+    //
+    // Try to go forward from the rooting op until we find a transpose.
+    // Much like `backwardGetBSHDTensor`, except we go forward in uses.
+    bool oneUseBMM = rootOp->hasOneUse();
+    Operation *curOp = oneUseBMM ? *rootOp->getUsers().begin() : nullptr;
 
-    rewriter.replaceAllOpUsesWith(rootOp, finalOp);
+    // Single user ops between the `rootOp` and a future transpose. If we
+    // find a transpose, we will replace the transpose with the kernel call.
+    // Then, we must delete the chain of ops leading from `rootOp` to follow
+    // the pattern rewriter contract (which states the root op must be
+    // modified somehow).
+    //
+    // Includes the `rootOp`, does not include the transpose.
+    SmallVector<Operation *> trailingOpsToTranspose = {rootOp};
+    while (curOp && curOp->hasOneUse() &&
+           isa<Static::ReshapeOp, Static::BroadcastToOp>(curOp)) {
+      TensorValue result = cast<TensorValue>(curOp->getResult(0));
+      if (result.hasOneUse()) {
+        trailingOpsToTranspose.push_back(curOp);
+        curOp = *result.getUsers().begin();
+      }
+    }
+    auto finalTranspose = dyn_cast<TransposeOp>(curOp);
+
+    if (finalTranspose && oneUseBMM) {
+      // The idea is we now have a chain of ops like
+      // *rootOp (BHSD) --> *bcast/reshape --> *bcast/reshape
+      //                --> transpose (BSHD)
+      //
+      // Where the * appear in `oneUseOps`. We now want to replace the final
+      // transpose with the result of the pattern and delete all the previous
+      // operations in `oneUseOps`.
+
+      // Runtime Check 1: make sure all the ops in `oneUseOps` have the same
+      // shape. This guarantees the bcasts/reshapes we collected do nothing.
+      // Note we allow the ellision of batch dimension still.
+      TypedAttr targetShape = ShapeAttr::get(
+          TransposeTensorHelper::getRank4Dims(rootOp.getResult(), rewriter),
+          MOSH::ShapeType::get(rewriter.getContext()));
+      for (Operation *op : trailingOpsToTranspose) {
+        auto curValue = cast<TensorValue>(op->getResult(0));
+        TypedAttr actualShape = ShapeAttr::get(
+            TransposeTensorHelper::getRank4Dims(curValue, rewriter),
+            MOSH::ShapeType::get(rewriter.getContext()));
+        insertShapeGuard(
+            rewriter, graphOp, targetShape, actualShape, rootOp.getLoc(),
+            "MHA_ROOT_TRANSPOSE_BCAST_OR_RESHAPE_CHECK",
+            "MHA Pattern Detected unsafe reshapes/bcasts. This is of great "
+            "interest so please report!");
+      }
+
+      // Runtime Check 2: make sure the transpose does go to BSHD.
+      insertShapeGuard(rewriter, graphOp,
+                       finalTranspose.getType().getShapeAttr(),
+                       mhaResult.getResult().getType().getShapeAttr(),
+                       rootOp->getLoc(), "MHA_ROOT_TRANSPOSE_BSHD_CHECK",
+                       "MHA Pattern Detected final transpose does not go to "
+                       "BSHD layout. This is of great "
+                       "interest so please report!");
+
+      // Replace ops, and delete the rest.
+      rewriter.replaceAllOpUsesWith(finalTranspose, mhaResult);
+      rewriter.eraseOp(finalTranspose);
+      for (Operation *op : llvm::reverse(trailingOpsToTranspose)) {
+        rewriter.eraseOp(op);
+      }
+    } else {
+      // There is not a transpose or we can not otherwise replace the BMM
+      // operation.
+      //
+      // Instead we must manually add a transpose from BSHD --> BHSD.
+      //
+      // Insert a final transpose to move from BSHD --> BHSD.
+      // This will be canonicalized away in case of adjacent transposes.
+      SmallVector<TypedAttr> finalOutputShape =
+          permute(mhaResult.getType().getTypedShapeAttr().getValues(),
+                  permuteBHSD2BSHD);
+      TensorType finalTy = mhaResult.getType().cloneWith(finalOutputShape);
+      auto finalOp = rewriter.create<TransposeOp>(
+          mhaResult.getLoc(), finalTy, mhaResult, permuteBSHD2BHSDValue);
+
+      rewriter.replaceAllOpUsesWith(rootOp, finalOp);
+    }
   }
 
   LogicalResult matchAndRewrite(BatchMatmulOp op,
