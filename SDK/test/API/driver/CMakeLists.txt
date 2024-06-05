@@ -23,4 +23,7 @@ add_modular_testsuite(check-max-driver-api
 
   TOP_LEVEL_CHECK
   check-sdk
+
+  TAGS
+  gpu
 )
