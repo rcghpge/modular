@@ -1731,20 +1731,21 @@ public:
     auto checkInputToPattern =
         [](TensorValue topOfPattern,
            const std::string &name) -> ErrorOr<Operation *> {
-      auto getErrMsgRoot = [&]() -> Twine {
-        return "[MultiHeadAttentionPatternHelper] Intermediate value " +
-               Twine(name) + ": ";
-      };
+      std::string errMsgRoot(
+          "[MultiHeadAttentionPatternHelper] Intermediate value " + name +
+          ": ");
 
       if (!topOfPattern)
-        return Error(getErrMsgRoot() + "is nullptr!");
+        return Error(errMsgRoot + Twine("is nullptr!"));
 
-      if (!topOfPattern.hasOneUse())
-        return Error(getErrMsgRoot() + "has more than one use!");
+      if (!topOfPattern.hasOneUse()) {
+        llvm::dbgs() << errMsgRoot << "\n";
+        return Error(errMsgRoot + Twine("has more than one use!"));
+      }
 
       Operation *definingOp = topOfPattern.getDefiningOp();
       if (!definingOp)
-        return Error(getErrMsgRoot() + "has no defining op!");
+        return Error(errMsgRoot + Twine("has no defining op!"));
 
       return definingOp;
     };
