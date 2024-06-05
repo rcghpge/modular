@@ -24,6 +24,7 @@
 #include "Support/AssertStream.h"
 #include "Support/Compiler/BytecodeReaderWriter.h"
 #include "Support/Compiler/OperationUtils.h"
+#include "Support/Config.h"
 #include "Support/Context.h"
 #include "Support/Filesystem/Paths.h"
 #include "Support/MDialect/MDialect.h"
@@ -66,8 +67,10 @@ ErrorOr<OwningOpRef<ModuleOp>> parseMojoPackage(MLIRContext *ctx,
 
   // Generate a library from the package, ensuring that dependencies are
   // materialized to make it self contained.
-  KGEN::KGENCompiler compiler(*(ownedModule->getContext()),
-                              KGEN::CompilationOptions());
+  KGEN::KGENCompiler compiler(
+      *(ownedModule->getContext()), KGEN::CompilationOptions(),
+      [](mlir::PassManager &pm) { M::configurePassManager(pm); });
+
   if (auto err = compiler.runGenerateLibraryPipeline(
           *ownedModule, /*materializeDependencies=*/true))
     return err.takeError();

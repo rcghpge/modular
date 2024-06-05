@@ -80,11 +80,11 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt) {
   if (kKernelsBuildType == "relwithdebinfo" || kKernelsBuildType == "debug")
     compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
 
-  KGEN::KGENCompiler compiler(*ctx, compilationOptions);
-  if (enableTiming) {
-    compiler.configurePassManager(
-        [](mlir::PassManager &pm) { pm.enableTiming(); });
-  }
+  KGEN::KGENCompiler compiler(*ctx, compilationOptions,
+                              [&](mlir::PassManager &pm) {
+                                if (enableTiming)
+                                  pm.enableTiming();
+                              });
 
   if (!saveTempsPrefix.empty()) {
     std::string outPath = saveTempsPrefix + ".kgen.prelaboration.mlir";
@@ -122,7 +122,6 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt) {
         Cache::CacheTelemetryContext::getTelemetryOnHitLambda(
             "StubCompiler::elaborateKGEN"));
 
-    LLCL::await(ready);
     if (ready.isError()) {
       LLCL::EncodedDiagnostic diag = ready.takeDiagnostic();
       LLCL::DecodedLocation loc = diag.decodeLocation();
@@ -150,11 +149,6 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
                             bool enableTiming) {
   static constexpr llvm::StringLiteral kKernelsBuildType =
       STRINGIFY(KERNELS_BUILD_TYPE);
-
-  mlir::PassManager mgr(ctx);
-
-  if (enableTiming)
-    mgr.enableTiming();
 
   // Compile to LLVM.
   mlir::SymbolTable symTable{kgenModule};
@@ -184,18 +178,23 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
     compilationOptions.setSaveTemps(saveTempsPrefix);
 
   auto compilerOr = KGEN::ObjectCompiler::create(
-      mgr, ".mojo_cache", compilationOptions, /*isJit=*/true);
+      ".mojo_cache", compilationOptions, /*isJit=*/true, *ctx,
+      [&](mlir::PassManager &pm) {
+        if (enableTiming)
+          pm.enableTiming();
+      });
+
   if (compilerOr.isError())
     return compilerOr.takeError();
   llvm::MapVector<StringAttr, KGEN::ExportedSymbol> exportedSymbols =
       KGEN::getExportedSymbols(kgenModule);
 
-  KGEN::ObjectCompiler compiler = compilerOr.takeValue();
+  std::unique_ptr<KGEN::ObjectCompiler> compiler = compilerOr.takeValue();
 
   auto start = std::chrono::high_resolution_clock::now();
 
   auto standaloneOr =
-      compiler.produceStandaloneArchiveAttr(symTable, exportedSymbols, target);
+      compiler->produceStandaloneArchiveAttr(symTable, exportedSymbols, target);
   if (standaloneOr.isError())
     return standaloneOr.takeError();
   ElementsAttr archiveAttr = *standaloneOr;
