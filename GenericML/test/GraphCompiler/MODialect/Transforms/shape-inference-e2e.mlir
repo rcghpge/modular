@@ -954,19 +954,15 @@ mo.graph @nested_broadcast_shapes(
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq([[D30]], [[D32]]), eq([[D30]], 1), eq([[D32]], 1)))>
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_to] input dim must be either 1 or equal to corresponding output dim starting from the rightmost dim" : !kgen.string}
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_to] input dim must be either 1 or equal to corresponding output dim starting from the rightmost dim" : !kgen.string}
-// CHECK-NEXT:   [[V1:%.*]] = mo.static.broadcast_to([[VARG0]]) : !mo.tensor<[[[D29]], [[D30]]], bool> -> !mo.tensor<[param_expr_157, param_expr_158], bool>
-// CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq([[D29]], [[D31]]), eq([[D29]], 1), eq([[D31]], 1)))>
-// CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq([[D30]], [[D32]]), eq([[D30]], 1), eq([[D32]], 1)))>
+// CHECK-NEXT:   [[V1:%.*]] = mo.static.broadcast_to([[VARG0]]) : !mo.tensor<[[[D29]], [[D30]]], bool> -> !mo.tensor<[param_expr_85, param_expr_86], bool>
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_to] input dim must be either 1 or equal to corresponding output dim starting from the rightmost dim" : !kgen.string}
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_to] input dim must be either 1 or equal to corresponding output dim starting from the rightmost dim" : !kgen.string}
-// CHECK-NEXT:   [[V2:%.*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[[[D29]], [[D30]]], si32> -> !mo.tensor<[param_expr_157, param_expr_158], si32>
-// CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq([[D29]], [[D31]]), eq([[D29]], 1), eq([[D31]], 1)))>
-// CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq([[D30]], [[D32]]), eq([[D30]], 1), eq([[D32]], 1)))>
+// CHECK-NEXT:   [[V2:%.*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[[[D29]], [[D30]]], si32> -> !mo.tensor<[param_expr_85, param_expr_86], si32>
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_to] input dim must be either 1 or equal to corresponding output dim starting from the rightmost dim" : !kgen.string}
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_to] input dim must be either 1 or equal to corresponding output dim starting from the rightmost dim" : !kgen.string}
-// CHECK-NEXT:   [[V3:%.*]] = mo.static.broadcast_to([[VARG1]]) : !mo.tensor<[[[D31]], [[D32]]], si32> -> !mo.tensor<[param_expr_157, param_expr_158], si32>
-// CHECK-NEXT:   kgen.param.declare param_expr_157 = <cond(eq([[D29]], 1), [[D31]], [[D29]])>
-// CHECK-NEXT:   kgen.param.declare param_expr_158 = <cond(eq([[D30]], 1), [[D32]], [[D30]])>
+// CHECK-NEXT:   [[V3:%.*]] = mo.static.broadcast_to([[VARG1]]) : !mo.tensor<[[[D31]], [[D32]]], si32> -> !mo.tensor<[param_expr_85, param_expr_86], si32>
+// CHECK-NEXT:   kgen.param.declare param_expr_85 = <cond(eq([[D29]], 1), [[D31]], [[D29]])>
+// CHECK-NEXT:   kgen.param.declare param_expr_86 = <cond(eq([[D30]], 1), [[D32]], [[D30]])>
 // CHECK-NEXT:   [[V4:%.*]] = mo.select([[V1]], [[V2]], [[V3]])
 // CHECK-NEXT:   [[V5:%.*]] = mo.rebind([[V4]]) : {{.*}} -> !mo.tensor<[cond(eq([[D29]], 1), [[D31]], [[D29]]), cond(eq([[D30]], 1), [[D32]], [[D30]])], si32>
 // CHECK-NEXT:   mo.output{{.*}} [[V5]]
@@ -1311,27 +1307,4 @@ mo.graph @roi_align<C, M -> D0, D1, D2, D3>(
 
   // CHECK-NEXT: mo.output %[[RES]]
   mo.output<D4, D5, D6, D7> %res : !mo.tensor<[D4, D5, D6, D7], f32>
-}
-
-// NOTE this pattern shows up from RMO lowering
-// CHECK-LABEL: mo.graph @broadcast_shape_with_rebound_input
-//  CHECK-SAME: <[[D0:.*]]>([[INPUT:%.*]]: !mo.tensor<[10, [[D0]], 1], f32>
-mo.graph @broadcast_shape_with_rebound_input<D0 -> Out: !mosh.ape>(
-  %input: !mo.tensor<[10, D0, 1], f32>
-) -> !mo.tensor<Out, f32> {
-  // Take input shape and another constant shape
-  %shape1 = mo.shape_of(%input) : (!mo.tensor<[10, D0, 1], f32>) -> !mo.tensor<[3], si64>
-  %shape2 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-
-  // Add trivial rebinds
-  %shap1_reb = mo.rebind<() -> D1>(%shape1) : !mo.tensor<[3], si64> -> !mo.tensor<[D1], si64>
-  %shape2_reb = mo.rebind<() -> D2>(%shape2) : !mo.tensor<[2], si64> -> !mo.tensor<[D2], si64>
-
-  // Broadcast the two shapes, and then broadcast input to the result shape.
-  // CHECK-NEXT:   [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[10, [[D0]], 2], f32>
-  %bcast_shape = mo.broadcast_shape<() -> D3>(%shap1_reb, %shape2_reb) : (!mo.tensor<[D1], si64>, !mo.tensor<[D2], si64>) -> !mo.tensor<[D3], si64>
-  %res = mo.broadcast_to<() -> Sh1: !mosh.ape>(%input, %bcast_shape) : (!mo.tensor<[10, D0, 1], f32>, !mo.tensor<[D3], si64>) -> !mo.tensor<Sh1, f32>
-
-  // CHECK-NEXT:   mo.output [[RES]]
-  mo.output<:!mosh.ape Sh1> %res : !mo.tensor<Sh1, f32>
 }

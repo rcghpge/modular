@@ -15,10 +15,8 @@
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetOperations.h"
 #include <optional>
-#include <sstream>
 #include <type_traits>
 
 using namespace M;
@@ -188,312 +186,274 @@ void updateGraphSignature(GraphOp graphOp) {
   graphOp->setAttrs(attrs.getDictionary(graphOp->getContext()));
 }
 
-/// A variant class that contains result of staticizing a series of computation
-/// on shapes tensors.
-/// - Success (with parameter bindings and result attribute).
-/// - NonStaticizable (when inputs are too dynamic).
-/// - Error (when a fatal error has been detected).
-class StaticizeResult {
-public:
-  struct Success {
-    // A series of bindings which model `kgen.param.declare` ops that define
-    // either
-    // - parameter expressions like `D2 = <add(D0, D1)>`
-    // - assertions like `Chain = <...assert(cond, msg)...>`
-    //
-    // These could then be consumed by shape propagation logic which does
-    // substitution & folding, and handles these asserts.
-    SmallVector<ParamBinding> bindings;
-
-    // This is the result of staticization, which could be either
-    // - `IntegerAttr` for a constant integer or boolean.
-    // - `ParamDeclRefAttr` for an integer or boolean parameter.
-    // - `ParamOperatorAttr` for an integer or boolean parameter expression.
-    // - `ShapeAttr` which is a list where each item could be any of the above.
-    TypedAttr resultAttr;
-
-    // Constructors
-    Success() = default;
-    Success(SmallVector<ParamBinding> &&bindings, TypedAttr resultAttr)
-        : bindings(std::move(bindings)), resultAttr(resultAttr) {}
-
-    // Disable copy and move.
-    Success(const Success &) = delete;
-    Success(Success &&) = delete;
-    Success &operator=(const Success &) = delete;
-    Success &operator=(Success &&) = delete;
-  };
-  struct NonStaticizable {};
-  struct Error {
-    std::string msg;
-
-    // Constructors
-    Error(const Twine &msg) : msg(msg.str()) {}
-
-    // Disable copy and move.
-    Error(const Error &) = delete;
-    Error(Error &&) = delete;
-    Error &operator=(const Error &) = delete;
-    Error &operator=(Error &&) = delete;
-  };
-
-  bool isSuccess() { return std::holds_alternative<Success>(result); }
-  bool isNonStaticizable() {
-    return std::holds_alternative<NonStaticizable>(result);
-  }
-  bool isError() { return std::holds_alternative<Error>(result); }
-
-  /// Returning a reference so that we could either use return as
-  /// - a rvalue, e.g., `res.getSuccess().bindings` or
-  /// - a lvalue, e.g., `const auto& success = res.getSuccess()`
-  Success &getSuccess() { return std::get<Success>(result); };
-  Error &getError() { return std::get<Error>(result); };
-
-  static StaticizeResult success(SmallVector<ParamBinding> &&bindings,
-                                 TypedAttr resultAttr) {
-    return StaticizeResult(std::move(bindings), resultAttr);
-  }
-  static StaticizeResult nonStaticizable() { return StaticizeResult(); }
-  static StaticizeResult error(const Twine &errMsg) {
-    return StaticizeResult(errMsg);
-  }
-
-private:
-  StaticizeResult(SmallVector<ParamBinding> &&bindings, TypedAttr resultAttr) {
-    result.emplace<Success>(std::move(bindings), resultAttr);
-  }
-  StaticizeResult() { result = NonStaticizable{}; }
-  StaticizeResult(const Twine &errMsg) { result.emplace<Error>(errMsg.str()); }
-  std::variant<Success, NonStaticizable, Error> result;
-};
-
 } // namespace
 
 namespace {
 
-/// Try converting `val` to either
-/// - a symbolic int/bool (if `val` is a scalar tensor) or
-/// - a list of the above (if `val` is a 1D tensor)
-///
-/// `b` is used to build up and track parameter expressions, if needed.
-static TypedAttr tryStaticizeImpl(Value val, ParamExprBuilder &b) {
-  // Only staticize tensor.
-  auto tensorVal = dyn_cast<TensorValue>(val);
-  if (!tensorVal)
+/// A class that helps `PropagateShapesPass` handle ops that could be
+/// decomposed when the shape parameters they use have been simplified
+/// already. For instance, in order to simplify `mosh.broadcast`, we often need
+/// its two input shapes to be simplified first (e.g., `[D0, 1]` instead of
+/// `Sh0`). However, the simplification happens _during_ `PropagateShapesPass`,
+/// so we use this `OpDecomposer` to decompose ops on the fly, and letting
+/// `PropagateShapesPass` to further simplify the decomposed ops.
+class OpDecomposer {
+  // State that stays invariant across calls.
+  OpBuilder builder;
+
+  // State that might change across calls.
+  GraphOp graphOp;
+  Location loc;
+  // Parameter bindings created during op decomposition, which will be converted
+  // to `KGEN::ParamDeclareOp` if decomposition is successful.
+  SmallVector<ParamBinding> bindings;
+
+public:
+  /// Create an OpDecomposer with given MLIRContext.
+  OpDecomposer(MLIRContext *ctx, Location loc) : builder(ctx), loc(loc) {}
+
+  /// Try decomposing the given Operation if possible. Return either
+  /// - a failure as fatal failure (e.g., some shape assertion failed)
+  /// - a list of decomposed ops (ordered by SSA and parametric dependencies) if
+  ///   decomposition was possible
+  /// - else return an empty vector.
+  /// The input operation won't be modified.
+  FailureOr<SmallVector<KGEN::ParamDeclareOp>> tryDecomposeOp(Operation *op) {
+    // Reset transient state.
+    graphOp = op->getParentOfType<GraphOp>();
+    loc = op->getLoc();
+    bindings.clear();
+
+    if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
+      tryDecomposeParamDeclOp(declOp);
+
+    } else if (auto invokeShapeFuncOp = dyn_cast<InvokeShapeFuncOp>(op)) {
+      if (failed(tryDecomposeInvokeShapeFuncOp(invokeShapeFuncOp)))
+        return failure();
+    }
+
+    // Convert the bindings to actual `kgen.param.declare` ops.
+    SmallVector<KGEN::ParamDeclareOp> ops;
+    for (const ParamBinding &binding : bindings) {
+      KGEN::ParamDeclareOp declOp = binding.toOp(loc, builder);
+      ops.push_back(declOp);
+    }
+    return ops;
+  }
+
+private:
+  // Some parameter declaration can be simplified as long as there are extra
+  // assertions emitted to legalize the simplification. However, not all such
+  // assertions can proven to be trivial statically. In order to still benefit
+  // from the expression simplification and avoid having to provide a runtime
+  // primitive for the original expression, we try to decompose these
+  // expressions into smaller primitives we already support, and try to simplify
+  // those smaller primitives as much as possible.
+  void tryDecomposeParamDeclOp(KGEN::ParamDeclareOp declOp) {
+    // Only try to decompose expression that applies an mlir op.
+    auto operatorAttr = dyn_cast<KGEN::ParamOperatorAttr>(declOp.getValue());
+    if (!operatorAttr || operatorAttr.getOpcode() != KGEN::POC::Apply)
+      return;
+
+    ArrayRef<TypedAttr> operands = operatorAttr.getOperands();
+    auto mlirOpAttr = dyn_cast<KGEN::MLIROpAttr>(operands.front());
+    if (!mlirOpAttr)
+      return;
+
+    // Check to see if the mlir op expression can be decomposed.
+    if (mlirOpAttr.getName() == MOSH::BroadcastOp::getOperationName()) {
+      auto shapeAttr1 = dyn_cast<MOSH::ShapeAttr>(operands[1]);
+      auto shapeAttr2 = dyn_cast<MOSH::ShapeAttr>(operands[2]);
+      if (shapeAttr1 && shapeAttr2) {
+        // Ensure rank(shapeAttr1) >= rank(shapeAttr2)
+        if (shapeAttr1.getRank() < shapeAttr2.getRank())
+          std::swap(shapeAttr1, shapeAttr2);
+
+        // Accumulate parameter expressions created into `bindings`.
+        ParamExprBuilder b(graphOp, loc, &bindings);
+        SmallVector<TypedAttr> resDims;
+        size_t rankDiff = shapeAttr1.getRank() - shapeAttr2.getRank();
+        for (size_t axis = 0; axis < shapeAttr1.getRank(); axis++) {
+          if (axis < rankDiff) {
+            resDims.push_back(shapeAttr1[axis]);
+          } else {
+            Var dim1 = b.createVar(shapeAttr1[axis]);
+            Var dim2 = b.createVar(shapeAttr2[axis - rankDiff]);
+            // Insert assertion
+            b.createAssert(
+                dim1 == 1 || dim2 == 1 || dim1 == dim2,
+                "[broadcast_shape] dimensions are not broadcastable");
+
+            // def bcast(D1, D2):
+            //     assert `D1 == D2 or D1 == 1 or D2 == 1`
+            //     if D1 == 1:
+            //         return D2
+            //     else:
+            //         return D1
+            Var newResDim = b.createCond(dim1 == 1, dim2, dim1);
+            resDims.push_back(newResDim.getAttr());
+          }
+        }
+        auto resShape = MOSH::ShapeAttr::get(resDims, shapeAttr1.getType());
+        bindings.push_back(ParamBinding(declOp.getParamDecl(), resShape));
+      }
+    }
+  }
+
+  /// Try converting a tensor value to either
+  /// - a symbolic int (if tensor is scalar) or
+  /// - a list of symbolic int (if tensor is 1D).
+  static TypedAttr tryStaticize(Value val) {
+    // Only staticize tensor.
+    auto tensorVal = dyn_cast<TensorValue>(val);
+    if (!tensorVal)
+      return {};
+
+    // Only staticize scalar, 1D or 2D tensor.
+    TensorType tensorTy = tensorVal.getType();
+    if (!tensorTy.hasRank() || tensorTy.getRank() > 2)
+      return {};
+
+    // Only staticize int/bool tensor.
+    if (!isa<IntegerType>(tensorTy.getElementType()))
+      return {};
+
+    // Examples: `D0`
+    if (auto dimAttr = tryGetDimAttr(val))
+      return dimAttr;
+
+    // Examples: `[D0, 10, ...]`
+    if (auto shapeAttr = tryGetShapeAttr(val))
+      return shapeAttr;
+
+    MLIRContext *ctx = val.getContext();
+    // Example: 42.
+    if (auto intOr = MO::tryGetConstantInt(tensorVal))
+      return IntegerAttr::get(IndexType::get(ctx), intOr.value());
+
+    // Example: [10, 20, ...]
+    if (auto intsOr = MO::tryGetConstantIntVector(tensorVal))
+      return ShapeAttr::get(intsOr.value(), MOSH::ShapeType::get(ctx));
+
     return {};
+  }
 
-  // TODO move all these to a new interface implementations of the ops.
-  // Only staticize scalar, 1D or 2D tensor.
-  TensorType tensorTy = tensorVal.getType();
-  if (!tensorTy.hasRank() || tensorTy.getRank() > 2)
-    return {};
+  // Treat certain fallback shape function call as special intrinsics and
+  // effectively symbolicizing them _during_ shape propagation.
+  //
+  // TODO this should eventually become general symbolicization applied to a
+  // single `InvokeShapeFuncOp`, however we can't do it yet since we need to
+  // symbolicize in batch in order to minimize the overhead.
+  //
+  // NOTE returning `success()` means decomposition either happened or not
+  // (depending on whether `decomposedOps` is empty), but returning `failure()`
+  // means a fatal failure that should be reported to user.
+  LogicalResult
+  tryDecomposeInvokeShapeFuncOp(InvokeShapeFuncOp invokeShapeFuncOp) {
+    // Turn inputs into parameter attributes; the mechanism depends on whether
+    // they are data-dependent or not.
+    DenseSet<int64_t> dataDepInputIdxs;
+    if (auto idxs = invokeShapeFuncOp.getDataDeptTensors()) {
+      for (llvm::APInt index : idxs->getAsValueRange<IntegerAttr>())
+        dataDepInputIdxs.insert(index.getLimitedValue());
+    }
+    SmallVector<TypedAttr> inputAttrs;
+    for (auto [idx, input] : llvm::enumerate(invokeShapeFuncOp.getOperands())) {
+      if (dataDepInputIdxs.contains(idx)) {
+        // Short circuit if a data-dependent input can't be staticized.
+        TypedAttr inputAttr = tryStaticize(input);
+        if (!inputAttr) {
+          return success();
+        }
 
-  // Only staticize int/bool tensor.
-  if (!isa<IntegerType>(tensorTy.getElementType()))
-    return {};
+        inputAttrs.push_back(inputAttr);
 
-  // Examples: `D0`
-  if (auto dimAttr = tryGetDimAttr(val))
-    return dimAttr;
+      } else {
+        // Short circuit if a non-data-dependent input doesn't have a shape; not
+        // exactly sure how this could happen but just in case.
+        TensorValue tensorInput = dyn_cast<TensorValue>(input);
+        if (!tensorInput) {
+          return success();
+        }
 
-  // Examples: `[D0, 10, ...]`
-  if (auto shapeAttr = tryGetShapeAttr(val))
-    return shapeAttr;
+        inputAttrs.push_back(tensorInput.getType().getShapeAttr());
+      }
+    }
 
-  MLIRContext *ctx = val.getContext();
-  // Example: 42.
-  if (auto intOr = MO::tryGetConstantInt(tensorVal))
-    return IntegerAttr::get(IndexType::get(ctx), intOr.value());
+    // Dispatch on certain shape function names. TODO instead of using a map
+    // loopkup, guard this against a new interface.
+    StringRef shapeFuncName = invokeShapeFuncOp.getShapeFuncName();
+    auto shapeMaterializeFunc = tryGetShapeMaterializeFunc(shapeFuncName);
+    // Give up if we can't figure out how to infer this shape function.
+    if (!shapeMaterializeFunc.has_value())
+      return success();
 
-  // Example: [10, 20, ...]
-  if (auto intsOr = MO::tryGetConstantIntVector(tensorVal))
-    return ShapeAttr::get(intsOr.value(), MOSH::ShapeType::get(ctx));
+    DictionaryAttr kgenParams = invokeShapeFuncOp.getKgenParamsAttr();
+    ShapeMaterializeResult result =
+        shapeMaterializeFunc.value()(inputAttrs, kgenParams, graphOp, loc);
+    // Give up if we can't materialize the shape logic.
+    if (result.isNonMaterializable())
+      return success();
 
-  // Example:
-  //   lhs =     [D0, 1]
-  //   rhs = [D1, 1, 10]
-  //   mo.broadcast_shape(lhs, rhs) --> [D1, D0, 10]
-  if (auto bcastOp = val.getDefiningOp<MO::BroadcastShapeOp>()) {
-    auto shapeAttr1 =
-        dyn_cast_or_null<ShapeAttr>(tryStaticizeImpl(bcastOp.getInputX(), b));
-    auto shapeAttr2 =
-        dyn_cast_or_null<ShapeAttr>(tryStaticizeImpl(bcastOp.getInputY(), b));
-    if (shapeAttr1 && shapeAttr2) {
-      // Ensure rank(shapeAttr1) >= rank(shapeAttr2)
-      if (shapeAttr1.getRank() < shapeAttr2.getRank())
-        std::swap(shapeAttr1, shapeAttr2);
+    // Propagate error to caller.
+    if (result.isError()) {
+      invokeShapeFuncOp.emitError() << result.getError().msg;
+      return failure();
+    }
 
-      SmallVector<TypedAttr> resDims;
-      size_t rankDiff = shapeAttr1.getRank() - shapeAttr2.getRank();
-      for (size_t axis = 0; axis < shapeAttr1.getRank(); axis++) {
-        if (axis < rankDiff) {
-          resDims.push_back(shapeAttr1[axis]);
-        } else {
-          Var dim1 = b.createVar(shapeAttr1[axis]);
-          Var dim2 = b.createVar(shapeAttr2[axis - rankDiff]);
-          // Insert assertion
-          b.createAssert(dim1 == 1 || dim2 == 1 || dim1 == dim2,
-                         "[broadcast_shape] dimensions are not broadcastable");
+    // Successfully inferred, package and propagate information to caller.
+    if (result.isSuccess()) {
+      // Create new declaration of the shape function call's output parameter;
+      auto &success = result.getSuccess();
+      bindings = std::move(success.bindings);
 
-          // def bcast(D1, D2):
-          //     assert `D1 == D2 or D1 == 1 or D2 == 1`
-          //     if D1 == 1:
-          //         return D2
-          //     else:
-          //         return D1
-          Var newResDim = b.createCond(dim1 == 1, dim2, dim1);
-          resDims.push_back(newResDim.getAttr());
+      // `outputShape` has the form `[N0, N1, ...]`
+      ShapeAttr outputShape = success.resultShape;
+
+      // outputDecls is always one of
+      // - Sh2: !mosh.ape
+      // - [D0, D1, ...]
+      ArrayRef<KGEN::ParamDeclAttr> outputDecls =
+          invokeShapeFuncOp.getOutputParamDecls();
+
+      // NOTE symbolicization currently can't handle dynamic output shape, since
+      // it relies on MOGG compiling the shape function down to KGEN IR, which
+      // relies on the mojo shape function (and the bottom part of our stack) to
+      // support dynamic rank.
+      //
+      // However, we need to support dynamic rank here in order to resolve
+      // pseudo-dynamic-rank which we might get from RMO or Torch.
+      if (outputDecls.size() == 1 &&
+          isa<ShapeType>(outputDecls.front().getType())) {
+        // Create binding for the output shape parameter to output shape which
+        // models ops like the following:
+        //   kgen.param.decare D0 = <[N0, N1, ...]>
+        bindings.push_back(ParamBinding(outputDecls.front(), outputShape));
+
+      } else {
+        size_t returnedRank = outputShape.getRank();
+        size_t annnotatedRank = outputDecls.size();
+        if (returnedRank != annnotatedRank) {
+          invokeShapeFuncOp.emitError()
+              << "shape function returned shape of rank " << returnedRank
+              << " but the type annotation has shape of rank "
+              << annnotatedRank;
+          return failure();
+        }
+        // Create binding from each output parameter to its dimension, to model
+        // ops like the following:
+        //   kgen.param.decare D0 = <N0>
+        //   kgen.param.decare D1 = <add(N1, 10)>
+        //   ...
+        for (auto [outputDimDecl, outputDim] :
+             llvm::zip(outputDecls, outputShape.getValues())) {
+          bindings.push_back(ParamBinding(outputDimDecl, outputDim));
         }
       }
-      auto res = MOSH::ShapeAttr::get(resDims, shapeAttr1.getType());
-      return res;
     }
+    return success();
   }
-
-  return {};
-}
-
-/// Try converting `val` to either
-/// - a symbolic int/bool (if `val` is a scalar tensor) or
-/// - a list of the above (if `val` is a 1D tensor)
-static StaticizeResult tryStaticize(Value val) {
-  SmallVector<ParamBinding> bindings;
-  auto graphOp = val.getParentRegion()->getParentOfType<GraphOp>();
-  ParamExprBuilder b(graphOp, val.getLoc(), &bindings);
-  TypedAttr res = tryStaticizeImpl(val, b);
-  if (!res)
-    return StaticizeResult::nonStaticizable();
-
-  return StaticizeResult::success(std::move(bindings), res);
-}
-
-/// Try to shape infer the input op if possible. Return either
-/// - a failure as fatal failure (e.g., some shape assertion failed)
-/// - a list of decomposed ops (ordered by SSA and parametric dependencies) if
-///   decomposition was possible
-/// - else return an empty vector.
-///
-/// NOTE the input op won't be modified.
-/// TODO replace input op type with a `ShapeInferrable` interface.
-static ErrorOr<SmallVector<KGEN::ParamDeclareOp>>
-shapeInferOpImpl(InvokeShapeFuncOp invokeShapeFuncOp) {
-  SmallVector<ParamBinding> bindings;
-  // Turn inputs into parameter attributes; the mechanism depends on whether
-  // they are data-dependent or not.
-  DenseSet<int64_t> dataDepInputIdxs;
-  if (auto idxs = invokeShapeFuncOp.getDataDeptTensors()) {
-    for (llvm::APInt index : idxs->getAsValueRange<IntegerAttr>())
-      dataDepInputIdxs.insert(index.getLimitedValue());
-  }
-  SmallVector<TypedAttr> inputAttrs;
-  for (auto [idx, input] : llvm::enumerate(invokeShapeFuncOp.getOperands())) {
-    if (dataDepInputIdxs.contains(idx)) {
-      StaticizeResult res = tryStaticize(input);
-
-      // Short circuit if a data-dependent input can't be staticized.
-      if (res.isNonStaticizable())
-        return SmallVector<KGEN::ParamDeclareOp>();
-
-      // Short circuit on any fatal error.
-      if (res.isError())
-        return Error(res.getError().msg);
-
-      auto &success = res.getSuccess();
-      llvm::append_range(bindings, success.bindings);
-      inputAttrs.push_back(success.resultAttr);
-
-    } else {
-      // Short circuit if a non-data-dependent input doesn't have a shape; not
-      // exactly sure how this could happen but just in case.
-      TensorValue tensorInput = dyn_cast<TensorValue>(input);
-      if (!tensorInput)
-        return SmallVector<KGEN::ParamDeclareOp>();
-
-      inputAttrs.push_back(tensorInput.getType().getShapeAttr());
-    }
-  }
-
-  // Dispatch on certain shape function names. TODO instead of using a map
-  // loopkup, guard this against a new interface.
-  StringRef shapeFuncName = invokeShapeFuncOp.getShapeFuncName();
-  auto shapeMaterializeFunc = tryGetShapeMaterializeFunc(shapeFuncName);
-  // Give up if we can't figure out how to infer this shape function.
-  if (!shapeMaterializeFunc.has_value())
-    return SmallVector<KGEN::ParamDeclareOp>();
-
-  auto graphOp = invokeShapeFuncOp->getParentOfType<GraphOp>();
-  Location loc = invokeShapeFuncOp.getLoc();
-  DictionaryAttr kgenParams = invokeShapeFuncOp.getKgenParamsAttr();
-  ShapeMaterializeResult result =
-      shapeMaterializeFunc.value()(inputAttrs, kgenParams, graphOp, loc);
-  // Give up if we can't materialize the shape logic.
-  if (result.isNonMaterializable())
-    return SmallVector<KGEN::ParamDeclareOp>();
-
-  // Propagate error to caller.
-  if (result.isError())
-    return Error(result.getError().msg);
-
-  // Successfully inferred, package and propagate information to caller.
-  if (result.isSuccess()) {
-    // Create new declaration of the shape function call's output parameter;
-    auto &success = result.getSuccess();
-    llvm::append_range(bindings, success.bindings);
-
-    // `outputShape` has the form `[N0, N1, ...]`
-    ShapeAttr outputShape = success.resultShape;
-
-    // outputDecls is always one of
-    // - Sh2: !mosh.ape
-    // - [D0, D1, ...]
-    ArrayRef<KGEN::ParamDeclAttr> outputDecls =
-        invokeShapeFuncOp.getOutputParamDecls();
-
-    // NOTE symbolicization currently can't handle dynamic output shape, since
-    // it relies on MOGG compiling the shape function down to KGEN IR, which
-    // relies on the mojo shape function (and the bottom part of our stack) to
-    // support dynamic rank.
-    //
-    // However, we need to support dynamic rank here in order to resolve
-    // pseudo-dynamic-rank which we might get from RMO or Torch.
-    if (outputDecls.size() == 1 &&
-        isa<ShapeType>(outputDecls.front().getType())) {
-      // Create binding for the output shape parameter to output shape which
-      // models ops like the following:
-      //   kgen.param.decare D0 = <[N0, N1, ...]>
-      bindings.push_back(ParamBinding(outputDecls.front(), outputShape));
-
-    } else {
-      size_t returnedRank = outputShape.getRank();
-      size_t annnotatedRank = outputDecls.size();
-      if (returnedRank != annnotatedRank) {
-        std::stringstream ss;
-        ss << "shape function returned shape of rank " << returnedRank
-           << " but the type annotation has shape of rank " << annnotatedRank;
-        return Error(ss.str());
-      }
-      // Create binding from each output parameter to its dimension, to model
-      // ops like the following:
-      //   kgen.param.decare D0 = <N0>
-      //   kgen.param.decare D1 = <add(N1, 10)>
-      //   ...
-      for (auto [outputDimDecl, outputDim] :
-           llvm::zip(outputDecls, outputShape.getValues())) {
-        bindings.push_back(ParamBinding(outputDimDecl, outputDim));
-      }
-    }
-  }
-
-  // Convert the bindings to actual `kgen.param.declare` ops.
-  OpBuilder builder(invokeShapeFuncOp.getContext());
-  SmallVector<KGEN::ParamDeclareOp> ops;
-  for (const ParamBinding &binding : bindings) {
-    auto declOp =
-        builder.create<KGEN::ParamDeclareOp>(loc, binding.decl, binding.value);
-    ops.push_back(declOp);
-  }
-  return ops;
-}
+};
 
 } // namespace
 
@@ -808,20 +768,29 @@ struct PropagateShapesPass
     return KGEN::ParamOperatorAttr::get(opcode, foldedOperands);
   }
 
-  /// Try to shape infer through given op. If successful, replace `op` with the
-  /// newly generated ops, and push the new ops onto `worklist` so they will be
-  /// processed next immediately.
-  static ErrorOrSuccess shapeInferOp(InvokeShapeFuncOp op,
-                                     std::deque<Operation *> &worklist) {
-    // Try shape infer the op, and check if it was successful.
-    ErrorOr<SmallVector<KGEN::ParamDeclareOp>> decomposedOpsOr =
-        shapeInferOpImpl(op);
-    if (decomposedOpsOr.isError())
-      return Error(decomposedOpsOr.getError());
+  /// An enum to signal the result of op `tryDecomposeAndReplaceOp`.
+  enum class ReplacementResult {
+    Replaced,
+    NotReplaced,
+    FatalError,
+  };
 
-    SmallVector<KGEN::ParamDeclareOp> &decomposedOps = decomposedOpsOr.get();
+  /// Try decomposing `op` with `opDecomposer`. If successful, replace `op` with
+  /// the decomposed ops in the graph, and push the decomposed ops onto
+  /// `worklist` so they will be processed next immediately.
+  static ReplacementResult
+  tryDecomposeAndReplaceOp(OpDecomposer &opDecomposer, Operation *op,
+                           std::deque<Operation *> &worklist) {
+
+    // Try decompose the op, and check if it was successful.
+    FailureOr<SmallVector<KGEN::ParamDeclareOp>> decomposedOpsOr =
+        opDecomposer.tryDecomposeOp(op);
+    if (failed(decomposedOpsOr))
+      return ReplacementResult::FatalError;
+
+    SmallVector<KGEN::ParamDeclareOp> &decomposedOps = decomposedOpsOr.value();
     if (decomposedOps.empty())
-      return success();
+      return ReplacementResult::NotReplaced;
 
     OpBuilder builder(op);
     // Replace the original op with decomposed ops in correct order.
@@ -834,7 +803,7 @@ struct PropagateShapesPass
     for (Operation *decomposedOp : llvm::reverse(decomposedOps))
       worklist.push_back(decomposedOp);
 
-    return success();
+    return ReplacementResult::Replaced;
   }
 
   void runOnOperation() override {
@@ -889,7 +858,9 @@ struct PropagateShapesPass
         worklist.push_front(op);
     });
 
-    // A loop to process ops from worklist.
+    // NOTE think of this as a stack machine that also decomposes "pseudo
+    // instructions".
+    OpDecomposer opDecomposer(graphOp.getContext(), graphOp.getLoc());
     while (!worklist.empty()) {
       Operation *op = worklist.back();
       worklist.pop_back();
@@ -899,17 +870,26 @@ struct PropagateShapesPass
       replacer.replaceElementsIn(op, /*replaceAttrs=*/true,
                                  /*replaceLocs=*/true, /*replaceTypes=*/true);
 
-      // TODO replace with a `ShapeInferrable` interface.
-      if (auto invokeShapeFuncOp = dyn_cast<InvokeShapeFuncOp>(op)) {
-        ErrorOrSuccess result = shapeInferOp(invokeShapeFuncOp, worklist);
-        // Short-circuit on fatal error.
-        if (result.isError()) {
-          op->emitError(result.getError());
-          return signalPassFailure();
-        }
-        // Otherwise the op has been shape-inferred, continue.
+      ReplacementResult result =
+          tryDecomposeAndReplaceOp(opDecomposer, op, worklist);
+      switch (result) {
+      // If there was a fatal error, terminate pass immediately.
+      case ReplacementResult::FatalError:
+        return signalPassFailure();
 
-      } else if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
+      // If op was replaced, don't process it anymore, instead continue to
+      // process the decomposed ops which were pushed onto worklist.
+      case ReplacementResult::Replaced:
+        continue;
+
+      // If op wasn't replaced, continue processing it.
+      case ReplacementResult::NotReplaced:
+        break;
+      }
+
+      // Every single `kgen.param.declare x = <expr>` should add a mapping from
+      // `x` to some attribute in `evaluator`.
+      if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
         KGEN::ParamDeclAttr declAttr = declOp.getParamDecl();
         auto foldedRhsAttr = cast<TypedAttr>(declOp.getValue());
 

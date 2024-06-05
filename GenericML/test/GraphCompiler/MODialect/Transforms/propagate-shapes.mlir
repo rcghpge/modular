@@ -319,6 +319,22 @@ mo.graph @propagate_max_add_optimization<A, B -> D1, D2, D3, D4>
   mo.output<expr1, expr2, expr3, expr4> %a, %b, %c, %d : !mo.tensor<[expr1, 1], f32>, !mo.tensor<[expr2, 1], f32>, !mo.tensor<[expr3, 1], f32>, !mo.tensor<[expr4, 1], f32>
 }
 
+// CHECK: mo.graph @expand_apply_mosh_broadcast<[[D0:.*]], [[D1:.*]] -> O0, O1>([[VARG0:%.*]]: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[O0, O1], f32>
+mo.graph @expand_apply_mosh_broadcast<D0, D1 -> O0, O1>(
+  %in: !mo.tensor<[D0, D1], f32>
+) -> !mo.tensor<[O0, O1], f32> {
+
+  // CHECK-DAG: {{.*}}"mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq([[D0]], [[D1]]), eq([[D0]], 1), eq([[D1]], 1)))>
+  kgen.param.declare NEW_SHAPE: !mosh.ape = <apply(:(!mosh.ape, !mosh.ape) -> !mosh.ape "mosh.broadcast", [D0], [D1])>
+  kgen.param.declare R1 = <apply(:(!mosh.ape, index) -> index "mosh.get_dim", NEW_SHAPE, 0)>
+
+  %out = mo.static.broadcast_to(%in): !mo.tensor<[D0, D1], f32> -> !mo.tensor<[R1, R1], f32>
+
+  // CHECK-NEXT: [[V0:%.*]] = mo.static.broadcast_to([[VARG0]]) : !mo.tensor<[[[D0]], [[D1]]], f32> -> !mo.tensor<[cond(eq([[D0]], 1), [[D1]], [[D0]]), cond(eq([[D0]], 1), [[D1]], [[D0]])], f32>
+  // CHECK-NEXT: mo.output<cond(eq([[D0]], 1), [[D1]], [[D0]]), cond(eq([[D0]], 1), [[D1]], [[D0]])> [[V0]] : !mo.tensor<[cond(eq([[D0]], 1), [[D1]], [[D0]]), cond(eq([[D0]], 1), [[D1]], [[D0]])], f32>
+  mo.output<R1, R1> %out : !mo.tensor<[R1, R1], f32>
+}
+
 // CHECK-LABEL: mo.graph @update_param_declare_rhs
 // CHECK-SAME:  <[[D1:.*]]>() {
 mo.graph @update_param_declare_rhs<D1>() {
