@@ -467,27 +467,44 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   auto mgpBufferType =
       MGP::DeviceBufferType::get(device, std::optional<uint64_t>());
 
+  OutputPlaceholdersOp oldOutputs = getOutputPlaceholder();
+  SmallVector<mlir::Type> inPlaceMGPOutputsTypes(numInplaceOutputs);
+  for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
+    Type oldOutTy = oldOutputs.getResult(inPlaceIdx).getType();
+    // mgp.bufer is user for mo.tensor, mgp.opaque for mo.opaque.
+    Type mgpResultTy = mgpBufferType;
+    if (isa<MO::OpaqueType>(oldOutTy))
+      mgpResultTy = MGP::OpaqueType::get(ctx, std::nullopt);
+    inPlaceMGPOutputsTypes[idx] = mgpResultTy;
+  }
+
   auto outParamNum = getOutputParamDecls().size();
   llvm::StringMap<int> outParamNameToIdx;
   SmallVector<mlir::Type> newKernelResTypes;
 
   newKernelResTypes.push_back(chain.getType());
-  for (size_t i = 0; i < numInplaceOutputs; i++)
-    newKernelResTypes.push_back(mgpBufferType);
+  newKernelResTypes.insert(newKernelResTypes.end(),
+                           inPlaceMGPOutputsTypes.begin(),
+                           inPlaceMGPOutputsTypes.end());
   for (size_t i = 0; i < outParamNum; i++) {
     newKernelResTypes.push_back(idxType);
     StringRef name = getOutputParamDecls()[i].getName();
     outParamNameToIdx[name] = i;
   }
 
+  // TODO: Fusing kernels with inplace allocations is not supported
+  // (intermediates allocations unsupported / leaking).
+  bool canFuseIntoOther =
+      !(getAllocIndices().has_value() && !getAllocIndices()->empty());
+
   // Later update the isAsync instead of hard-coding
   auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
       getLoc(), TypeRange{newKernelResTypes}, operands,
       getOutputParamDeclsAttr(), InOutSignatureAttr::get(ctx, operandSemantics),
-      getIsKGENAttr(),           // isKGEN
-      getSummaryAttr(),          // summary
-      BoolAttr::get(ctx, false), // isAsync
-      BoolAttr::get(ctx, true)   // isFuseable
+      getIsKGENAttr(),                     // isKGEN
+      getSummaryAttr(),                    // summary
+      BoolAttr::get(ctx, false),           // isAsync
+      BoolAttr::get(ctx, canFuseIntoOther) // isFuseable
   );
 
   mlir::Block &kernelBody = newKernel.getBody().emplaceBlock();
@@ -498,7 +515,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   for (auto val : loweredInputOperands)
     kernelBody.addArgument(val.getType(), val.getLoc());
   for (Value operand : newKernel.getOperands()) {
-    if (!isa<MGP::DeviceBufferType>(operand.getType()) && operand != chain)
+    if (!isa<MGP::DeviceBufferType, MGP::OpaqueType>(operand.getType()) &&
+        operand != chain)
       kernelBody.addArgument(operand.getType(), operand.getLoc());
   }
 
@@ -537,54 +555,72 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   IRMapping mapper;
 
-  int outputOffset = 1; // 1 for the input chain
-  OutputPlaceholdersOp oldOutputs = getOutputPlaceholder();
-  for (auto [idx, preAllocIdx] : llvm::enumerate(preAllocIndices)) {
-    Value newBlockArg = kernelBody.getArgument(outputOffset + idx);
-    Value oldOut = oldOutputs.getResult(preAllocIdx);
+  // Convert MGP block input to tensor object (!mo.tensor) or opaque.
+  auto convertMGPInputToTensorOrOpaque = [&](Value input, Type oldTy) -> Value {
+    // Opaque types are already pointer to objects, they don't need any
+    // transformation to be passed to the kernel.
+    if (isa<MGP::OpaqueType>(input.getType())) {
+      return builder.create<MOGG::ToOpaqueFromMGPOp>(input.getLoc(), oldTy,
+                                                     input);
+    }
 
-    MO::TensorType asTensor = cast<MO::TensorType>(oldOut.getType());
+    MO::TensorType asTensor = cast<MO::TensorType>(oldTy);
 
     SmallVector<Value> operands;
-    operands.push_back(newBlockArg);
+    operands.push_back(input);
     for (auto ty : asTensor.getDims())
       operands.push_back(loweredParams[ty]);
 
-    Value loweredTensor = builder.create<MOGG::ToTensorFromMGPOp>(
-        newBlockArg.getLoc(), oldOut.getType(), operands);
-    mapper.map(oldOut, loweredTensor);
+    return builder.create<MOGG::ToTensorFromMGPOp>(input.getLoc(), oldTy,
+                                                   operands);
+  };
+
+  int outputOffset = 1; // 1 for the input chain
+  for (auto [idx, preAllocIdx] : llvm::enumerate(preAllocIndices)) {
+    Value newBlockArg = kernelBody.getArgument(outputOffset + idx);
+    Value oldOut = oldOutputs.getResult(preAllocIdx);
+    Value loweredValue =
+        convertMGPInputToTensorOrOpaque(newBlockArg, oldOut.getType());
+    mapper.map(oldOut, loweredValue);
   }
 
   int inputOffset = loweredOutputsStorage.size() + 1;
   for (auto [idx, val] : llvm::enumerate(loweredInputOperands)) {
     Value newBlockArg = kernelBody.getArgument(idx + inputOffset);
     Value oldBlockArg = getBody().getArgument(idx);
-
-    MO::TensorType asTensor = cast<MO::TensorType>(oldBlockArg.getType());
-    SmallVector<Value> operands;
-    operands.push_back(newBlockArg);
-    for (auto ty : asTensor.getDims())
-      operands.push_back(loweredParams[ty]);
-
-    Value loweredTensor = builder.create<MOGG::ToTensorFromMGPOp>(
-        newBlockArg.getLoc(), oldBlockArg.getType(), operands);
-    mapper.map(oldBlockArg, loweredTensor);
+    Value loweredValue =
+        convertMGPInputToTensorOrOpaque(newBlockArg, oldBlockArg.getType());
+    mapper.map(oldBlockArg, loweredValue);
   }
 
   // Allocate stack for in-place tensors
-  SmallVector<Type> internalAllocTypes;
-  Operation *stackAllocOp;
+  SmallVector<Type> internalTensorAllocTypes;
+  SmallVector<Type> internalOpaqueAllocTypes;
+  Operation *stackAllocOp = nullptr;
   for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
     Value oldOut = oldOutputs.getResult(inPlaceIdx);
-    MO::TensorType asTensor = cast<MO::TensorType>(oldOut.getType());
-    SmallVector<int64_t> dynamicShape(asTensor.getIntDims().size(), 1);
-    auto dynamicTensorTy =
-        MO::TensorType::get(dynamicShape, asTensor.getElementType());
-    internalAllocTypes.push_back(dynamicTensorTy);
+    if (auto asTensor = dyn_cast<MO::TensorType>(oldOut.getType())) {
+      SmallVector<int64_t> dynamicShape(asTensor.getIntDims().size(), 1);
+      auto dynamicTensorTy =
+          MO::TensorType::get(dynamicShape, asTensor.getElementType());
+      internalTensorAllocTypes.push_back(dynamicTensorTy);
+    } else {
+      // Opaque type.
+      internalOpaqueAllocTypes.push_back(oldOut.getType());
+    }
   }
-  if (!internalAllocTypes.empty()) {
+  if (!internalTensorAllocTypes.empty()) {
     stackAllocOp = builder.create<MOGG::StackAllocateTensorsOp>(
-        getLoc(), internalAllocTypes);
+        getLoc(), internalTensorAllocTypes);
+    for (auto [oldOut, newAlloc] :
+         llvm::zip(oldOutputs->getResults(), stackAllocOp->getResults()))
+      mapper.map(oldOut, newAlloc);
+  }
+  if (!internalOpaqueAllocTypes.empty()) {
+    assert(!stackAllocOp &&
+           "mix of tensor / opaque output types not supported");
+    stackAllocOp = builder.create<MOGG::StackAllocateOpaquesOp>(
+        getLoc(), internalOpaqueAllocTypes);
     for (auto [oldOut, newAlloc] :
          llvm::zip(oldOutputs->getResults(), stackAllocOp->getResults()))
       mapper.map(oldOut, newAlloc);
@@ -609,7 +645,6 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     builder.clone(op, mapper);
   }
 
-  DenseMap<int, MOGG::GetShapeOfOp> outIdxToShapeOfOp;
   DenseMap<int, MOGG::ToKGENOp> outIdxToKgenTensorOp;
   for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
     Value moTensor = stackAllocOp->getResult(idx);
@@ -620,13 +655,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
     ASSERT_STREAM(toKGEN) << " in-place allocated tensor must have a "
                              "to_kgen op from an outputplaceholder.";
-
-    for (auto user : toKGEN.getResult().getUsers()) {
-      if (auto shapeOfOp = dyn_cast<MOGG::GetShapeOfOp>(user)) {
-        outIdxToShapeOfOp[inPlaceIdx] = shapeOfOp;
-        outIdxToKgenTensorOp[inPlaceIdx] = toKGEN;
-      }
-    }
+    outIdxToKgenTensorOp[inPlaceIdx] = toKGEN;
   }
 
   builder.setInsertionPointToEnd(&kernelBody);
@@ -663,10 +692,17 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // Add intrinsic to get the data pointer of the kgen tensor.
   for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
     MOGG::ToKGENOp toKgenOp = outIdxToKgenTensorOp[inPlaceIdx];
-    Value mgpBuffer = builder.create<MOGG::ToMGPFromTensorOp>(
-        getLoc(), TypeRange{mgpBufferType}, toKgenOp->getResults());
-    outputs[idx] = mgpBuffer;
-    innderOutputValToOutIdx[mgpBuffer] = idx + 1;
+    Value mgpOutput;
+    Type resultTy = inPlaceMGPOutputsTypes[idx];
+    if (isa<MGP::OpaqueType>(resultTy)) {
+      mgpOutput = builder.create<MOGG::ToMGPFromOpaqueOp>(
+          getLoc(), TypeRange{resultTy}, toKgenOp->getResults());
+    } else {
+      mgpOutput = builder.create<MOGG::ToMGPFromTensorOp>(
+          getLoc(), TypeRange{resultTy}, toKgenOp->getResults());
+    }
+    outputs[idx] = mgpOutput;
+    innderOutputValToOutIdx[mgpOutput] = idx + 1;
   }
 
   for (const auto &[name, idx] : outParamNameToIdx) {
@@ -686,7 +722,15 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   builder.setInsertionPointAfter(newKernel);
   for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
-    auto tensorTy = cast<MO::TensorType>(getResult(inPlaceIdx).getType());
+    Type resultTy = getResult(inPlaceIdx).getType();
+    if (isa<MO::OpaqueType>(resultTy)) {
+      // Opaque types don't need to be materialized to a tensor.
+      loweringState.emplaceExecuteLoweredValue(
+          getResult(inPlaceIdx),
+          newKernel.getResult(innderOutputValToOutIdx[outputs[idx]]));
+      continue;
+    }
+    auto tensorTy = cast<MO::TensorType>(resultTy);
 
     // Materialize the output tensor spec directly. This will automatically pick
     // up any of the output dimensions set by the kernel.
@@ -985,7 +1029,9 @@ static LogicalResult verifyKernelSetParam(KernelOp kernel) {
   // assigned by `mogg.set_param`.
   for (auto outputPlaceholder : kernel.getOps<MOGG::OutputPlaceholdersOp>()) {
     if (!llvm::all_of(outputPlaceholder.getResults(), [&](mlir::OpResult res) {
-          auto resType = cast<MO::TensorType>(res.getType());
+          auto resType = dyn_cast<MO::TensorType>(res.getType());
+          if (!resType)
+            return true;
 
           return llvm::all_of(
               resType.getTypedShapeAttr().getValues(),

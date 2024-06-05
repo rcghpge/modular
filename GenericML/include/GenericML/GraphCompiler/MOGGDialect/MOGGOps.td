@@ -205,7 +205,7 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     Kernels preserve the device of their original MO op.
   }];
 
-  let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List]>>:$operands,
+  let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque]>>:$operands,
     MO_ParamDecls:$outputParamDecls,
     OptionalAttr<ArrayAttr>:$inputFusionInterface,
     OptionalAttr<ArrayAttr>:$outputFusionInterface,
@@ -216,7 +216,7 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     OptionalAttr<BoolAttr>:$isAsync,
     OptionalAttr<ArrayAttr>:$allocIndices
   );
-  let results = (outs Variadic<MO_Tensor>:$results);
+  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque]>>:$results);
   let regions = (region SizedRegion<1>:$body);
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
@@ -584,7 +584,7 @@ def MOGG_StackAllocateTensorsOp : MOGG_Op<"stack_allocate_tensors"> {
 }
 
 def MOGG_StackAllocateOpaquesOp : MOGG_Op<"stack_allocate_opaques"> {
-  let results = (outs Variadic<MGP_OpaqueType>:$results);
+  let results = (outs Variadic<AnyTypeOf<[MO_Opaque, MGP_OpaqueType]>>:$results);
 
   let summary = "Allocates opaque types on the host's stack.";
   let description = [{
@@ -595,7 +595,7 @@ def MOGG_StackAllocateOpaquesOp : MOGG_Op<"stack_allocate_opaques"> {
 
     Example:
     ```mlir
-      %vals:2 = mogg.stack_allocate_opaques : (!mgp.opaque, !mgp.opaque)
+      %vals:2 = mogg.stack_allocate_opaques : (!mgp.opaque, !mo.opaque<"my_fp">)
     ```
   }];
 
@@ -747,7 +747,7 @@ def MOGG_RuntimePlaceholderOp : MOGG_Op<"rt_placeholder", [Pure]> {
 }
 
 def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders"> {
-  let results = (outs Variadic<MO_Tensor>:$results);
+  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque]>>:$results);
 
   let summary = "Represents buffer semantic SSA values for the outputs";
   let description = [{
@@ -806,7 +806,7 @@ def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure]> {
     the stride parameter that appears in the kernel.
   }];
 
-  let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape, MGP_OpaqueType, MO_List]>:$input,
+  let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape, MGP_OpaqueType, MO_List, MO_Opaque]>:$input,
     OptionalAttr<TypedAttrInterface>:$shape,
     OptionalAttr<TypedAttrInterface>:$strides,
     OptionalAttr<DictionaryAttr>:$typeMethodsDict

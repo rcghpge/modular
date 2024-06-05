@@ -79,6 +79,10 @@ public:
       return *errOrDtype;
     });
 
+    typeConverter.addConversion([](MO::OpaqueType type) -> std::optional<Type> {
+      return OpaqueType::get(type.getContext(), std::nullopt);
+    });
+
     // Add converters for foreign types via the ConvertibleToMGPTypeInterface.
     typeConverter.addConversion([](Type type) -> std::optional<Type> {
       if (auto interface = dyn_cast<ConvertibleToMGPTypeInterface>(type))
