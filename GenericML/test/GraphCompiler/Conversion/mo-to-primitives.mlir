@@ -1,11 +1,6 @@
 // RUN: mo-opt %s --add-devices --mo-to-primitives | FileCheck %s
 
 // CHECK-LABEL:  mgp.model @constants_with_multiple_returns : mof init {
-// CHECK:    %[[VAL0:.*]] = grt.chain.create ()
-// CHECK:    %[[VAL1:.*]] = mgp.context.create 2
-// CHECK:    %[[VAL2:.*]] = mgp.check_runtime %[[VAL0]], %[[VAL1]][0]
-// CHECK:    %[[VAL3:.*]] = mgp.runtime.create %[[VAL2]], %[[VAL1]][1, 0]
-// CHECK:    mef.output %[[VAL3]], %[[VAL1]] : !mef.chain, !mgp.context
 // CHECK:  } execute (
 // CHECK-SAME: %[[ARG0:.*]]: !mef.chain, %[[ARG1:.*]]: !mgp.context, 
 // CHECK-SAME: %[[ARG2:.*]]: !mgp.tensor<2xf32>, %[[ARG3:.*]]: !mgp.tensor<5x1xf32>

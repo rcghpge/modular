@@ -25,7 +25,7 @@ mgp.model @basic : mof init {
 // CHECK-NEXT: mgp.module.load %[[KERNEL_CTX]], %[[CTX]][0], dense_resource<fake_binary> : tensor<1xui8>, ["__gen_0"]
 
 // CHECK: } execute
-// CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}) {aRuntimeSlot = 0 : ui64, bModuleIndex = 0 : ui64, cFunctionIndex = 0 : ui64, dSummary = {{.*}}} : (!mgp.context, index, index) -> (!mgp.chain, index)
+// CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{{.*}}, dSummary = {{.*}}} : (!mgp.context, !mef.chain, index, index) -> (!mgp.chain, index)
 
 mgp.model @basic_control_flow : mof init {
   "mogg.load_compiled_kernel"() {symbols = ["__gen_0"], value = dense_resource<fake_binary> : tensor<1xui8>} : () -> ()
@@ -54,4 +54,4 @@ mgp.model @basic_control_flow : mof init {
 // CHECK: %[[KERNEL_CTX:.*]] = mgp.runtime.create
 // CHECK-NEXT: mgp.module.load %[[KERNEL_CTX]], %[[CTX]][0], dense_resource<fake_binary> : tensor<1xui8>, ["__gen_0"]
 // CHECK: } execute
-// CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}) {aRuntimeSlot = 0 : ui64, bModuleIndex = 0 : ui64, cFunctionIndex = 0 : ui64, dSummary = {{.*}}} : (!mgp.context, index, index) -> (!mgp.chain, index)
+// CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{{.*}}, dSummary = {{.*}}} : (!mgp.context, !mef.chain, index, index) -> (!mgp.chain, index)

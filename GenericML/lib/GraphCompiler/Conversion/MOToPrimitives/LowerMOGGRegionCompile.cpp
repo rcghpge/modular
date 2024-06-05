@@ -14,6 +14,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "Support/DeviceSpecs.h"
 
@@ -42,7 +43,8 @@ struct LowerMOGGRegionCompilesPass
   void rewriteExecuteCompiledOp(OpBuilder &builder, const Value &context,
                                 size_t runtimeSlot, size_t module_index,
                                 size_t kernel_index,
-                                MOGG::ExecuteCompiledOp &oldKernel);
+                                MOGG::ExecuteCompiledOp &oldKernel,
+                                Value loadChain);
   void runOnOperation() override;
 };
 
@@ -50,7 +52,7 @@ struct LowerMOGGRegionCompilesPass
 void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
     OpBuilder &builder, const Value &context, size_t runtimeSlot,
     size_t module_index, size_t kernel_index,
-    MOGG::ExecuteCompiledOp &oldKernel) {
+    MOGG::ExecuteCompiledOp &oldKernel, Value loadChain) {
   auto ctx = oldKernel.getOperation()->getContext();
   SmallVector<Value> chainOutputs;
   SmallVector<Value> nonChainOutputs;
@@ -79,8 +81,8 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
 
   auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
       oldKernel.getLoc(), MGP::DeviceChainType::get(device), resultTypes,
-      context, oldKernel.getOperands(), runtimeSlot, module_index, kernel_index,
-      oldKernel.getSummary(), oldKernel.getIsAsync());
+      context, loadChain, oldKernel->getOperands(), runtimeSlot, module_index,
+      kernel_index, oldKernel.getSummary(), oldKernel.getIsAsync());
 
   auto replaceAllChainUses = [&](Value originalChain,
                                  TypedValue<MGP::DeviceChainType> newChain) {
@@ -209,10 +211,15 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     init.walk([&](MOGG::ExecuteCompiledOp kernel) {
       // Shunt all the executes for Init stage at the very end of init
       builder.setInsertionPoint(mefOutputOp);
+      Value inChain;
+      if (lastDeviceModuleLoadOp.find(device) != lastDeviceModuleLoadOp.end())
+        inChain = lastDeviceModuleLoadOp[device].getOutChain();
+      else
+        inChain = lastDeviceRuntimeOp[device].getOutChain();
       rewriteExecuteCompiledOp(
           builder, lastDeviceRuntimeOp[device].getTheContext(),
           lastDeviceRuntimeOp[device].getSlot(), deviceModuleIndex[device],
-          deviceKernelIndices[device][kernel.getKernelName()], kernel);
+          deviceKernelIndices[device][kernel.getKernelName()], kernel, inChain);
     });
 
     Value executeContext = nullptr;
@@ -232,10 +239,11 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
             << "Cannot find execute context in bounding region of "
                "generic.execute";
       }
+      auto inChain = builder.create<GRT::ChainCreateOp>(kernel.getLoc());
       rewriteExecuteCompiledOp(
           builder, executeContext, lastDeviceRuntimeOp[device].getSlot(),
           deviceModuleIndex[device],
-          deviceKernelIndices[device][kernel.getKernelName()], kernel);
+          deviceKernelIndices[device][kernel.getKernelName()], kernel, inChain);
     });
   }
 }

@@ -293,13 +293,12 @@ static ErrorOr<Chain> mgp_assert(bool cond, MEFAttr<StringRef> message) {
 using MGPProfilerEntry =
     ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
 
-static void
-mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
-                    Result<Chain> outChain, RemainingResults outResults,
-                    MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
-                    MEFAttr<uint64_t> cFunctionIndex,
-                    MEFAttr<StringRef> dSummary, MEFAttr<bool> eIsAsync,
-                    Runtime &runtime, EncodedLocation loc) {
+static void mgp_generic_execute(
+    StateContext &ctx, Chain inChain, RemainingArguments operands,
+    Result<Chain> outChain, RemainingResults outResults,
+    MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
+    MEFAttr<uint64_t> cFunctionIndex, MEFAttr<StringRef> dSummary,
+    MEFAttr<bool> eIsAsync, Runtime &runtime, EncodedLocation loc) {
   auto profilerEntry = MGPProfilerEntry::create(*dSummary);
   M::MGP::CPURuntime &cpuRuntime =
       ctx.getStateSlotPayload<M::MGP::CPURuntime>(static_cast<size_t>(*aSlot));

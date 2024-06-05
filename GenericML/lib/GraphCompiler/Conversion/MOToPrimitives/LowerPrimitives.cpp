@@ -66,8 +66,11 @@ isLowerableToGenericRegion(MLIRContext *ctx,
   bool isRegistered = mojoLibraryAnalysis.hasRegisteredMojoKernelFor(
       op->getName().getStringRef());
   if (auto hasDeviceOp = dyn_cast<MGPHasDeviceOpInterface>(op)) {
-    return isRegistered &&
-           (hasDeviceOp.getDevice() == DeviceRefAttr::get(ctx, kCPULabel, 0));
+    // DeviceContextCreateOp uses the gpu device context but not the gpu. Allow
+    // it to be lowered.
+    return isRegistered && ((hasDeviceOp.getDevice() ==
+                             DeviceRefAttr::get(ctx, kCPULabel, 0)) ||
+                            dyn_cast<MGP::DeviceContextCreateOp>(op));
   }
   return isRegistered;
 }

@@ -18,6 +18,7 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
+#include "GraphRT/GRTDialect/GRTOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/AssertStream.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -120,12 +121,25 @@ LoadCompiledKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       loweringState.getBufferBuilder(MO::getDeviceOrDefaultAny(*this));
   Value outChain = bufferBuilder->moduleLoad(
       builder, getLoc(), loweringState.getInitMgpContext(),
+      // DANGER: init chain is the result of device context creation which is a
+      // result of runtime creation. Module load does not actually depend on the
+      // device context. And the device context creation is turned into another
+      // module load later. But we need to order module loads by when they are
+      // created, so we make this module load depend only on the runtime
+      // creation.
       /*inChain=*/
-      cast<TypedValue<MEF::ChainType>>(loweringState.getInitChain()),
+      cast<TypedValue<MEF::ChainType>>(
+          loweringState.getInitChain()
+              .getDefiningOp()
+              ->getOperand(0)
+              .getDefiningOp<MGP::RuntimeCreateOp>()
+              .getOutChain()),
       /*image=*/getValue(),
       /*functionSymbols=*/getSymbols(),
       /*constantSymbols=*/{});
-  loweringState.setInitChain(outChain);
+  auto combined = builder.create<GRT::ChainCreateOp>(
+      getLoc(), mlir::ValueRange({outChain, loweringState.getInitChain()}));
+  loweringState.setInitChain(combined);
   return success();
 }
 
