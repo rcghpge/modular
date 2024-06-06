@@ -171,6 +171,10 @@ static bool isMaybeConstantFoldable(Operation *op) {
   if (op->getNumRegions() != 0)
     return false;
 
+  // Don't include transfers between devices.
+  if (isa<MO::TransferOp>(op))
+    return false;
+
   // Skip ops with parameterized shape
   auto findParamDeclRefAttr = [](KGEN::ParamDeclRefAttr paramRef) {
     return WalkResult::interrupt();
@@ -694,6 +698,15 @@ static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
       SignatureType::get(ctx, argTypes, out.getOperandTypes()));
   graphop.setFunctionType(
       mlir::FunctionType::get(ctx, argTypes, out.getOperandTypes()));
+
+  // Rewrite all device attrs to target CPU.
+  mlir::AttrTypeReplacer replacer;
+  replacer.addReplacement(
+      [&](DeviceRefAttr ref) { return DeviceRefAttr::get(ctx, kCPULabel, 0); });
+  replacer.recursivelyReplaceElementsIn(graphop, /*replaceAttrs=*/true,
+                                        /*replaceLocs=*/true,
+                                        /*replaceTypes=*/true);
+
   return {orig, std::string(graphop.getName()), subgraphs};
 }
 
@@ -815,7 +828,6 @@ struct ConstantFoldPass
     cacheDir = origOpts.cacheDir;
     kernelLibraryPaths =
         origOpts.kernelLibraryPaths.operator ArrayRef<std::string>();
-    isCuda = origOpts.defaultDeviceLabel == kCUDALabel;
   }
 
 private:
@@ -830,7 +842,6 @@ private:
   std::string compiledFrameworkLabel;
   std::optional<std::string> cacheDir;
   std::optional<std::vector<std::string>> kernelLibraryPaths;
-  bool isCuda{false};
 };
 
 ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
@@ -881,10 +892,6 @@ void ConstantFoldPass::runOnOperation() {
   // 3. Lowers and executes each GraphOp from the previous step.
   // 4. Replaces subgraph outputs with outputs from the previous step.
 
-  // Don't run on cuda
-  if (isCuda)
-    return;
-
   MLIRContext *ctx = &getContext();
 
   ContextRef maxContext = loadContext(ctx);
@@ -918,10 +925,6 @@ void ConstantFoldPass::runOnOperation() {
       SmallVector<SubgraphsInfo> subgraphReplacements;
       int64_t name_counter = 0;
       getOperation().walk([&](GraphOp graph) {
-        // Can't constant fold cuda yet
-        if (graph.getDeviceRef() &&
-            graph.getDeviceRef().getLabel() != kCPULabel)
-          return mlir::WalkResult::skip();
         auto subgraphs = M::MO::constantSubgraphs(
             graph, getAnalysis<KGEN::ParameterCollector::Analysis>());
         if (subgraphs.empty())
