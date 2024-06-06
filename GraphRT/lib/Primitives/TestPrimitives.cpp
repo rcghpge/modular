@@ -17,7 +17,7 @@
 #include "GraphRT/Primitives.h"
 #include "LLCL/Runtime/Algorithms.h"
 #include "LLCL/Runtime/Runtime.h"
-#include "LLCL/Support/Atomics.h"
+#include "Support/Threading/Atomics.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -743,8 +743,6 @@ static void vec_accumulate_async2(AsyncValueRef<TestVector> vec,
 static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
                               Result<TestFloat32Vector> output,
                               Runtime &runtime) {
-  using LLCL::atomicAdd;
-  using LLCL::atomicMax;
   using ElementType = TestFloat32Vector::ValueType;
 
   // Get the number of elements in the input vector
