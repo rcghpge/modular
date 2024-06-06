@@ -4,7 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 # RUN: %mojo %s
-from tensor import TensorSpec
+from tensor import TensorSpec, Tensor, TensorShape
 
 from max.engine import InferenceSession, InputSpec
 from max.serve.service import FileModel
@@ -15,7 +15,6 @@ from runtime.llcl import (
     Atomic,
 )
 from time import sleep, now
-from max.tensor import Tensor, TensorShape
 from max.graph._testing import assert_tensors_almost_equal
 
 

@@ -10,9 +10,9 @@
 import sys
 from sys.param_env import env_get_string
 from pathlib import Path
+from tensor import Tensor, TensorShape
 
 from max.graph import _testing, Type, Dim, Graph, TensorType, Symbol, ops
-from max.tensor import Tensor, TensorShape
 
 from pipelines.llama3.model import Llama3
 from pipelines.nn.attention import attention_mask, rope

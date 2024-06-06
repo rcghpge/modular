@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 # RUN: %mojo %s
 # REQUIRES: manual
-from tensor import TensorSpec
+from tensor import TensorSpec, Tensor, TensorShape
 
 from max.engine import InferenceSession, InputSpec
 from max.serve.service import FileModel
@@ -17,7 +17,6 @@ from runtime.llcl import (
 )
 from time import sleep, now
 from max.serve.kserve.client import GRPCInferenceClient
-from max.tensor import Tensor, TensorShape
 from max.graph._testing import assert_tensors_almost_equal
 
 
@@ -97,14 +96,18 @@ def test_standalone_server_client[ENABLE_HTTP_SERVER: Bool]() -> None:
     var model_path = "SDK/test/API/serve/models/add.onnx"
     with Runtime() as rt:
         var tg = TaskGroup[__lifetime_of(model_name, model_path)](rt)
-        tg.create_task(server_impl(model_name, model_path))
-        tg.create_task(client(model_name))
+        var server_task = tg.create_task(server_impl(model_name, model_path))
+        var client_task = tg.create_task(client(model_name))
         while not client_completed.load():
             sleep(1)
         server.signal_stop()
         tg.wait()
+        _ = tg^
         print("[" + elapsed() + "]Done!")
+        _ = client_task^
+        _ = server_task^
         _ = server^
+        _ = rt
 
 
 def main():
