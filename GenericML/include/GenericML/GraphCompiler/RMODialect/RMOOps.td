@@ -10,6 +10,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
 #define GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
 
+include "KGEN/KGENDialect/KGENTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
 include "GenericML/GraphCompiler/RMODialect/RMODialect.td"
 include "GenericML/GraphCompiler/RMODialect/RMOInterfaces.td"
@@ -42,12 +43,27 @@ def RMO_RebindTensorShapeOp : RMO_Op<"rebind_tensor_shape", [RMO_TensorSameDType
     change and this operation may return either an error or a tensor.
   }];
 
-  let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ParamDecls:$outputParamDecls,
+    DefaultValuedAttr<StrAttr, "\"RMO rebind shape check failed.\"">:$message
+  );
   let results = (outs MO_Tensor:$output);
 
   let builders = [
-    /// Inferred return type builder
-    OpBuilder<(ins "TensorValue":$input, "ShapeAttr":$newShape, CArg<"ArrayRef<ParamDeclAttr>", "{}">:$outputParamDecls)>
+    /// Inferred return type builders
+    OpBuilder<(ins
+      "TensorValue":$input,
+      "ShapeAttr":$newShape,
+      CArg<"ArrayRef<ParamDeclAttr>", "{}">:$outputParamDecls
+    )>,
+
+    OpBuilder<(ins
+      "TensorValue":$input,
+      "ShapeAttr":$newShape,
+      "StringRef":$message,
+      CArg<"ArrayRef<ParamDeclAttr>", "{}">:$outputParamDecls
+    )>
   ];
 
   // If we can prove the rebind is rebinding to the same shape, become no-op

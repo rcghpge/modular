@@ -48,6 +48,15 @@ void RebindTensorShapeOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                outputParamDecls);
 }
 
+void RebindTensorShapeOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                                TensorValue input, ShapeAttr newShape,
+                                StringRef message,
+                                ArrayRef<ParamDeclAttr> outputParamDecls) {
+  auto message_attr = odsBuilder.getStringAttr(message);
+  return build(odsBuilder, odsState, input.getType().cloneWith(newShape), input,
+               outputParamDecls, message_attr);
+}
+
 void BroadcastLikeOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                             TensorValue input, TensorValue shapeLike) {
   build(odsBuilder, odsState,

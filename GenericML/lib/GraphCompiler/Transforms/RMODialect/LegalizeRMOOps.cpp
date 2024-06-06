@@ -184,9 +184,9 @@ struct LowerRebindTensorShapeOp
     rewriter.create<KGEN::ParamDeclareOp>(loc, condAttr, cmpAttr);
 
     // Add assertion, then return a rebind
-    TypedAttr assertAttr =
-        MO::AssertOp::emitStaticCall(KGEN::ParamDeclRefAttr::get(condAttr),
-                                     "RMO rebind shape check failed.");
+    StringAttr msg = mlir::cast<StringAttr>(op.getMessageAttr());
+    TypedAttr assertAttr = MO::AssertOp::emitStaticCall(
+        KGEN::ParamDeclRefAttr::get(condAttr), msg.str());
 
     auto chainTy = rewriter.getType<ChainType>();
     KGEN::ParamDeclAttr chainAttr =
