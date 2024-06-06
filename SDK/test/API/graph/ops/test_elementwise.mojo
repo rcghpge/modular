@@ -112,8 +112,9 @@ fn test_bad_broadcast_dynamic_one() raises:
     var y = Tensor[DType.float32](TensorShape(1), 1.0)
     var expected = Tensor[DType.float32](TensorShape(3), -1.0, 0.0, 1.0)
 
-    # TODO: Update rmo.rebind_tensor_shape to enable a nice message here.
-    with assert_raises(contains="RMO rebind shape check failed"):
+    with assert_raises(
+        contains="RMO rebind shape check for broadcasting failed at: "
+    ):
         _ = _testing.execute_binary(g, x, y)
 
 

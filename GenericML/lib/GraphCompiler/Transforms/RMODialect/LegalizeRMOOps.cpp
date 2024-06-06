@@ -30,8 +30,12 @@ namespace {
 TensorValue rebindToShape(MO::GraphOp graphOp, TensorValue input,
                           TensorType newTy, mlir::RewriterBase &rewriter,
                           ArrayRef<ParamDeclAttr> newOutputParamDecl = {}) {
-  return rewriter.create<RMO::RebindTensorShapeOp>(input.getLoc(), newTy, input,
-                                                   newOutputParamDecl);
+  std::string message = "RMO rebind shape check failed at: ";
+  llvm::raw_string_ostream ss(message);
+  ss << input.getLoc();
+  return rewriter.create<RMO::RebindTensorShapeOp>(
+      input.getLoc(), newTy, input, newOutputParamDecl,
+      rewriter.getStringAttr(message));
 }
 
 /// `outputParamDecls` contains the param declarations for all outputs.
@@ -305,8 +309,9 @@ struct LowerThirdPartyBinaryComparisonOp : public OpRewritePattern<RMOOpT> {
 /// As such, parameterized dimensions need an asserting rebind to the expected
 /// output. Afterwards, a normal broadcast can be applied.
 std::pair<TensorValue, TensorValue>
-rebindShapesForBroadcasting(Location loc, PatternRewriter &rewriter,
+rebindShapesForBroadcasting(Operation *op, PatternRewriter &rewriter,
                             TensorValue x, TensorValue y) {
+  Location loc = op->getLoc();
   TensorType xType = x.getType();
   TensorType yType = y.getType();
   ShapeAttr xShapeAttr = xType.getTypedShapeAttr();
@@ -350,11 +355,21 @@ rebindShapesForBroadcasting(Location loc, PatternRewriter &rewriter,
   TensorType yRebindType =
       yType.cloneWith(ShapeAttr::get(yRebindShape, yShapeAttr.getType()));
 
+  // TODO: It would be preferable to print the location, but the graph api
+  // doesn't set that. As such, it is just unknown. So, for now, print the
+  // offending op.
+  std::string message = "RMO rebind shape check for broadcasting failed at: ";
+  llvm::raw_string_ostream ss(message);
+  ss << *op;
+  auto messageAttr = rewriter.getStringAttr(message);
+
   if (xRebindType != xType)
-    x = rewriter.create<RMO::RebindTensorShapeOp>(loc, xRebindType, x);
+    x = rewriter.create<RMO::RebindTensorShapeOp>(
+        loc, xRebindType, x, ArrayRef<ParamDeclAttr>{}, messageAttr);
 
   if (yRebindType != yType)
-    y = rewriter.create<RMO::RebindTensorShapeOp>(loc, yRebindType, y);
+    y = rewriter.create<RMO::RebindTensorShapeOp>(
+        loc, yRebindType, y, ArrayRef<ParamDeclAttr>{}, messageAttr);
 
   return {x, y};
 }
@@ -384,8 +399,7 @@ struct LowerCompositeBinaryElemwiseOp : public OpRewritePattern<RMOOpT> {
                                          y.getType().cloneWith(resultDtype), y);
     }
 
-    auto [xRebound, yRebound] =
-        rebindShapesForBroadcasting(loc, rewriter, x, y);
+    auto [xRebound, yRebound] = rebindShapesForBroadcasting(op, rewriter, x, y);
 
     TensorValue xFinal = xRebound;
     TensorValue yFinal = yRebound;
@@ -448,8 +462,7 @@ struct LowerCompositeBinaryComparisonOp : public OpRewritePattern<RMOOpT> {
           loc, y.getType().cloneWith(comparisonDtype), y);
     }
 
-    auto [xRebound, yRebound] =
-        rebindShapesForBroadcasting(loc, rewriter, x, y);
+    auto [xRebound, yRebound] = rebindShapesForBroadcasting(op, rewriter, x, y);
 
     TensorValue xFinal = xRebound;
     TensorValue yFinal = yRebound;
