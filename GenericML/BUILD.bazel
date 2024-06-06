@@ -1,7 +1,5 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//bazel:api.bzl", "modular_cc_library", "modular_shared_library")
-load("//utils/bazel/build/rules:tablegen.bzl", "gentbl_mlir_dialect", "gentbl_modular_passes")
+load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "td_library")
 
 package(default_visibility = ["//visibility:public"])
 
