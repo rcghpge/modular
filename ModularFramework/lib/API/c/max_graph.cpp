@@ -99,6 +99,19 @@ MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewTensorFromFile(
                  unwrap(t), /*owned=*/false, unwrap(runtime)));
 }
 
+MODULAR_API_EXPORT MlirAttribute MAXG_attrNewDimParamDecl(MlirContext ctx,
+                                                          StringRef name) {
+  return wrap(KGEN::ParamDeclAttr::get(name, IndexType::get(unwrap(ctx))));
+}
+
+MODULAR_API_EXPORT MlirAttribute MAXG_attrNewParamDeclArray(
+    MlirContext ctx, MlirAttribute *attrs, int32_t size) {
+  SmallVector<KGEN::ParamDeclAttr> param_attrs;
+  for (int i = 0; i < size; ++i)
+    param_attrs.push_back(cast<KGEN::ParamDeclAttr>(unwrap(attrs[i])));
+  return wrap(KGEN::ParamDeclArrayAttr::get(unwrap(ctx), param_attrs));
+}
+
 //===----------------------------------------------------------------------===//
 // Type helpers
 //===----------------------------------------------------------------------===//
