@@ -95,3 +95,22 @@ mo.graph @rebind_output<D21, D22, D23, D24 -> D27>(%arg0: !mo.tensor<[D21, 12, D
   %2 = mo.add(%0, %1) : !mo.tensor<[D21, 12, cond(eq(D22, 1), D24, D22)], f32>
   mo.output<cond(eq(D22, 1), D24, D22)> %2 : !mo.tensor<[D21, 12, cond(eq(D22, 1), D24, D22)], f32>
 }
+
+// COM: mo.rebind can't used with an opaque type.
+// CHECK-LABEL: mo.graph @dont_rebind_opaque
+mo.graph @dont_rebind_opaque(%arg0: !mo.tensor<[?], f32>, %arg1: !mo.opaque<"Opaque">) -> (!mo.opaque<"Opaque">) {
+
+  // CHECK-NEXT: mo.rebind
+  %0 = mo.rebind<() -> D1>(%arg0) : !mo.tensor<[?], f32> -> !mo.tensor<[D1], f32>
+
+  // CHECK-NEXT: mo.custom
+  %1 = mo.custom {symbol = "custom0"}(%0) (!mo.tensor<[D1], f32>) -> !mo.tensor<[mul_nuw(D1, 2)], f32>
+
+  // CHECK-NEXT: kgen.param.declare [[MUL:.*]] = <mul_nuw
+
+  // CHECK-NEXT: (!mo.tensor<[[[MUL]]], f32>, !mo.opaque<"Opaque">) -> !mo.opaque<"Opaque">
+  %2 = mo.custom {symbol = "custom"}(%1, %arg1) (!mo.tensor<[mul_nuw(D1, 2)], f32>, !mo.opaque<"Opaque">) -> !mo.opaque<"Opaque">
+
+  // CHECK-NEXT: mo.output
+  mo.output %2 : !mo.opaque<"Opaque">
+}

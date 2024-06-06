@@ -139,8 +139,10 @@ struct RewriteParamExprTypes : public RewritePattern {
     // Rebind outputs to original types.
     rewriter.setInsertionPointAfter(op);
     for (auto [res, ty] : llvm::zip(op->getResults(), resTypes)) {
-      auto rebind = rewriter.create<MO::RebindOp>(op->getLoc(), ty, res);
-      rewriter.replaceAllUsesExcept(res, rebind, rebind);
+      if (isa<MO::TensorType>(ty)) {
+        auto rebind = rewriter.create<MO::RebindOp>(op->getLoc(), ty, res);
+        rewriter.replaceAllUsesExcept(res, rebind, rebind);
+      }
     }
 
     // Use rebound inputs with the operation.
