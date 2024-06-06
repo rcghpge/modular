@@ -17,12 +17,12 @@
 #include "LLCL/Runtime/AsyncValue.h"
 #include "LLCL/Runtime/AsyncValueRef.h"
 #include "LLCL/Runtime/Runtime.h"
-#include "LLCL/Support/SpinWaiter.h"
 #include "Support/AssertStream.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/MArchTarget/MArchTarget.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorShape.h"
+#include "Support/Threading/SpinWaiter.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
@@ -267,7 +267,7 @@ static void mgp_debug_cpu_spin_wait(Chain inChain, Result<Chain> outChain,
     TimeTraceScope scope(
         MGPProfilerEntry::create("mgp.debug.cpu.spin_wait task"));
     size_t numLoops = 0;
-    LLCL::BusyWaitSpinWaiter spinner(delay);
+    BusyWaitSpinWaiter spinner(delay);
     while (!spinner.wait())
       ++numLoops;
     (void)numLoops;
