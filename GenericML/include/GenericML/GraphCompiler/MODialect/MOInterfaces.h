@@ -37,6 +37,7 @@ class Reduction;
 class ScatterLike;
 class ScatterNdLike;
 class PadLike;
+class ParamExprBuilder;
 class SlidingWindow;
 
 using M::KGEN::ParamDeclAttr;

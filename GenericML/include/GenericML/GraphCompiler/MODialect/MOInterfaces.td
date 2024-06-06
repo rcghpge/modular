@@ -205,6 +205,32 @@ def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
   }];
 }
 
+def MO_Staticization : OpInterface<"Staticization"> {
+  let description = [{
+    Interface that models op which, if given staticized versions of its inputs,
+    might be able to get staticized as well, where "being staticized" means
+    having the op's output value represented as a parameter expression, i.e.,
+    one of:
+    - `IntegerAttr` for a integer or boolean constant, e.g., `42`.
+    - `BoolAttr` for a boolean constant, e.g., `true`.
+    - `KGEN::ParamDeclRefAttr` for a parameter reference, e.g., `D0`.
+    - `KGEN::ParamOperatorAttr` for a parameter expression, e.g., `add(D1, 2)`.
+  }];
+  let cppNamespace = "::M::MO";
+
+  let methods = [
+    InterfaceMethod<"Try to staticize this op given staticized input values. "
+    "The return value is either an error (for fatal error to be reported), "
+    "a null `TypedAttr` (when staticization cannot happen due to input being "
+    "too dynamic), or the result of staticization. The `ParamExprBuilder` is "
+    " used to build new expression or assertions.",
+      "ErrorOr<TypedAttr>", "tryStaticize",
+      (ins "ArrayRef<TypedAttr>":$inputs, 
+           "ParamExprBuilder&":$b),
+      [{}]>,
+  ];
+}
+
 def MO_MatmulLike : MO_TensorOpInterfaceBase<"MatmulLike"> {
   let description = [{
     Interface for modeling operations that implement matmul-like behavior,

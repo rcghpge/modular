@@ -390,7 +390,9 @@ def MO_YieldOp
 //===----------------------------------------------------------------------===//
 
 def MO_RebindOp : MO_ControlOp<"rebind", [
-    DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<MO_Staticization>,
+]> {
   let summary = "Parameter rebind operation";
   let description = [{
     This op represents the "rebinding" of a type to another type. This can be
@@ -2150,6 +2152,7 @@ def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
 def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
   Commutative,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_Staticization>,
 ]> {
   let summary = "Broadcast-shape operation";
   let description = [{
