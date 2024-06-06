@@ -95,9 +95,8 @@ void mgp_runtime_create_cpu(Chain inChain, StateContext &theContext,
   if (engineOr.isError())
     return std::move(outChain).setToError(engineOr.takeError());
 
-  theContext.emplaceStateSlot<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot),
-      /*numBuffers=*/0, static_cast<size_t>(*cDeviceId), *engineOr);
+  theContext.emplaceStateSlot<CPURuntime>(static_cast<size_t>(*aRuntimeSlot),
+                                          /*numBuffers=*/0, *engineOr);
 
   std::move(outChain).emplace();
 }
@@ -115,8 +114,6 @@ static void mgp_module_load_cpu(Chain inChain, StateContext &theContext,
                                 MEFAttr<uint64_t> eDeviceId, Runtime &runtime) {
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
       static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*eDeviceId))
-    return std::move(outChain).setToError("mismatched device id");
   if (!dConstantSymbols->empty() && !(dConstantSymbols->size() == 0) &&
       !(dConstantSymbols->size() == 1 && *dConstantSymbols->begin() == '\0')) {
     return std::move(outChain).setToError(
@@ -183,12 +180,6 @@ static void mgp_chain_create_cpu(StateContext &theContext,
                                  MEFAttr<uint64_t> aOtherRuntimeSlot,
                                  MEFAttr<uint64_t> bHostDeviceId,
                                  MEFAttr<uint64_t> cOtherDeviceId) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aOtherRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*bHostDeviceId))
-    return std::move(outChain).setToError("mismatched device id");
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*cOtherDeviceId))
-    return std::move(outChain).setToError("mismatched device id");
   std::move(outChain).emplace();
 }
 
@@ -200,10 +191,6 @@ static void mgp_chain_noop_cpu(Chain inChain, StateContext &theContext,
                                Result<Chain> outChain,
                                MEFAttr<uint64_t> aRuntimeSlot,
                                MEFAttr<uint64_t> bDeviceId) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*bDeviceId))
-    return std::move(outChain).setToError("mismatched device id");
   std::move(outChain).emplace();
 }
 
@@ -218,10 +205,6 @@ static void mgp_buffer_constant_cpu(Chain inChain, StateContext &theContext,
                                     MEFAttr<uint64_t> cRawAlign,
                                     MEFAttr<uint64_t> dDeviceId,
                                     MEFAttr<bool> eIsTrivial) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*dDeviceId))
-    return std::move(outBuffer).setToError("mismatched device id");
   std::optional<size_t> optAlign;
   if (hasRawSize(*cRawAlign))
     optAlign = rawSizeToRuntimeSize(*cRawAlign);
@@ -258,10 +241,6 @@ static void mgp_buffer_alloc_static_cpu(Chain inChain, StateContext &theContext,
                                         MEFAttr<uint64_t> cRawAlign,
                                         MEFAttr<uint64_t> dDeviceId,
                                         Runtime &runtime) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*dDeviceId))
-    return std::move(outBuffer).setToError("mismatched device id");
   if (!isValidPlainSize(*bSize))
     return std::move(outBuffer).setToError("invalid size attribute");
   if (!isValidRawAlign(*cRawAlign))
@@ -280,10 +259,6 @@ static void mgp_buffer_alloc_dynamic_cpu(
     Result<TensorBufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
     MEFAttr<uint64_t> bRawAlign, MEFAttr<uint64_t> cDeviceId,
     Runtime &runtime) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*cDeviceId))
-    return std::move(outBuffer).setToError("mismatched device id");
   if (!isValidRawAlign(*bRawAlign))
     return std::move(outBuffer).setToError("invalid align attribute");
   std::move(outBuffer).emplace(TensorBufferRef::createOwned(
@@ -323,10 +298,6 @@ static void mgp_buffer_cache_cpu(Chain inChain, StateContext &theContext,
                                  MEFAttr<uint64_t> bBufferSlot,
                                  MEFAttr<uint64_t> cDeviceId,
                                  Runtime &runtime) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*cDeviceId))
-    return std::move(outChain).setToError("mismatched device id");
   theContext.emplaceStateSlot<DefaultStateSlot>(
       static_cast<size_t>(*bBufferSlot), /*numBuffers=*/1);
   auto &defaultStateSlot = theContext.getStateSlot(*bBufferSlot);
@@ -350,10 +321,6 @@ static void mgp_buffer_get_cached_cpu(Chain inChain, StateContext &theContext,
                                       MEFAttr<uint64_t> bBufferSlot,
                                       MEFAttr<uint64_t> cRawSize,
                                       MEFAttr<uint64_t> dDeviceId) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*dDeviceId))
-    return std::move(outBuffer).setToError("mismatched device id");
   auto &stateSlot = theContext.getStateSlot(*bBufferSlot);
   ErrorOr<TensorBufferRef> errOr = stateSlot.getBuffer(/*bufferIndex=*/0);
   if (errOr)
@@ -394,10 +361,6 @@ static void mgp_buffer_device_to_device_cpu(
         "mgp.buffer.device_to_device.cpu does not support cross device "
         "transfers");
   }
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aSrcRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*cSrcDeviceId))
-    return std::move(outChain).setToError("mismatched device id");
   if (srcBuffer.getSize() != dstBuffer.getSize())
     return std::move(outChain).setToError(
         Twine("attempting to copy from buffer of size ") +
@@ -436,11 +399,6 @@ static void mgp_buffer_concat_cpu(Chain inChain, StateContext &theContext,
                                   Result<Chain> outChain,
                                   MEFAttr<uint64_t> aRuntimeSlot,
                                   MEFAttr<uint64_t> bDeviceId) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*bDeviceId))
-    return std::move(outChain).setToError("mismatched device id");
-
   uint8_t *const out = outBuffer->getBuffer<uint8_t>();
   const size_t outSize = outBuffer->getSize();
   size_t totalSize = 0; // total size of all input buffers processed so far
@@ -472,10 +430,6 @@ static void mgp_buffer_split_borrow_cpu(
     RemainingResults outBuffers, MEFAttr<uint64_t> aRuntimeSlot,
     MEFAttr<ArrayRef<uint64_t>> bOutBufferRawSizes, MEFAttr<uint64_t> cDeviceId,
     Runtime &runtime, EncodedLocation loc) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*cDeviceId))
-    return std::move(outBuffers).setAllToError("mismatched device id", loc);
   const size_t inSize = inBuffer->getSize();
   size_t totalSize = 0; // total size of all output buffers processed so far
   size_t runtimeSizeIndex = 0; // index of next runtimeSizes operand to use
@@ -534,10 +488,6 @@ static void mgp_buffer_section_borrow_static_cpu(
     MEFAttr<uint64_t> aRuntimeSlot, MEFAttr<uint64_t> bOffset,
     MEFAttr<uint64_t> cSize, MEFAttr<uint64_t> dDeviceId, Runtime &runtime,
     EncodedLocation loc) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*dDeviceId))
-    return std::move(outBuffer).setToError("mismatched device id");
   size_t outOffset = static_cast<size_t>(*bOffset);
   size_t outSize = static_cast<size_t>(*cSize);
   size_t outEndOffset = outOffset + outSize; // could overflow
@@ -563,10 +513,6 @@ static void mgp_buffer_section_borrow_dynamic_cpu(
     Result<TensorBufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
     MEFAttr<uint64_t> bUnscaledOffset, MEFAttr<uint64_t> cUnscaledSize,
     MEFAttr<uint64_t> dDeviceId, EncodedLocation loc) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*dDeviceId))
-    return std::move(outBuffer).setToError("mismatched device id");
   // Any of the following could overflow.
   const size_t outOffset = static_cast<size_t>(*bUnscaledOffset) * scale;
   const size_t outSize = static_cast<size_t>(*cUnscaledSize) * scale;
@@ -592,10 +538,6 @@ static void mgp_buffer_to_bool_cpu(Chain inChain, StateContext &theContext,
                                    Result<bool> result,
                                    MEFAttr<uint64_t> aRuntimeSlot,
                                    MEFAttr<uint64_t> bDeviceId) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*bDeviceId))
-    return std::move(result).setToError("mismatched device id");
   if (buffer.getSize() != 1)
     return std::move(result).setToError(
         Twine("expecting buffer to have size 1 (actually is ") +
@@ -621,11 +563,6 @@ static void mgp_buffer_set_with_index_cpu(StateContext &theContext,
                                           Result<Chain> outChain,
                                           MEFAttr<uint64_t> aRuntimeSlot,
                                           MEFAttr<uint64_t> bDeviceId) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*bDeviceId))
-    return std::move(outChain).setToError("mismatched device id");
-
   size_t bufSize = buffer.getSize();
   size_t numArgs = values.size();
   if (bufSize % numArgs != 0) {
@@ -660,10 +597,6 @@ static void mgp_tensor_create_cpu(Chain inChain, StateContext &theContext,
                                   MEFAttr<uint64_t> aRuntimeSlot,
                                   MEFAttr<uint64_t> bDeviceId, Runtime &runtime,
                                   EncodedLocation loc) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*bDeviceId))
-    return std::move(outTensor).setToError("mismatched device id");
   size_t expectedSize = tensorSpec.getSizeInBytes();
   size_t actualSize = buffer->getSize();
   if (expectedSize != actualSize)
@@ -683,10 +616,6 @@ static void mgp_tensor_extract_buffer_cpu(StateContext &theContext,
                                           MEFAttr<uint64_t> aRuntimeSlot,
                                           MEFAttr<uint64_t> bDeviceId,
                                           Runtime &runtime) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*bDeviceId))
-    return std::move(outBuffer).setToError("mismatched device id");
   std::move(outBuffer).emplace(tensor.get().getBufferRef().borrow());
 }
 
@@ -698,10 +627,6 @@ static void mgp_tensor_extract_tensor_spec_cpu(
     StateContext &theContext, AsyncValueRef<Tensor> tensor,
     Result<TensorSpec> outSpec, MEFAttr<uint64_t> aRuntimeSlot,
     MEFAttr<uint64_t> bDeviceId, MEFAttr<bool> cIsShapeOnly, Runtime &runtime) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*bDeviceId))
-    return std::move(outSpec).setToError("mismatched device id");
   if (*cIsShapeOnly)
     std::move(outSpec).emplace(tensor->getSpec().getDimsCopy(), DType());
   else
@@ -717,10 +642,6 @@ static void mgp_debug_tensor_print_cpu(
     const TensorSpec &spec, Result<Chain> outChain,
     MEFAttr<uint64_t> aRuntimeSlot, MEFAttr<StringRef> bLabel,
     MEFAttr<uint64_t> cDeviceId, Runtime &runtime) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*cDeviceId))
-    return std::move(outChain).setToError("mismatched device id");
   if (bLabel->empty()) {
     // Metadata only.
     llvm::outs() << "Tensor(" << spec << ", " << buffer << ")\n";
@@ -766,8 +687,6 @@ static void mgp_kernel_execute_cpu(
 
   CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
       static_cast<size_t>(*aHostRuntimeSlot));
-  if (cpuRuntime.virtualDeviceId != static_cast<size_t>(*fHostDeviceId))
-    return std::move(outChain).setToError("mismatched device id");
 
   CompiledKernelFn *kernelPtr =
       cpuRuntime.getKernel(static_cast<size_t>(*cHostModuleIndex),

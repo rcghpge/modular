@@ -22,10 +22,6 @@ namespace MGP {
 /// If we start supporting a device-per-numa-node architecture then this may
 /// grow to also hold an allocator and work queue.
 struct CPURuntime : public ReferenceCounted<CPURuntime> {
-  // The (virtual) device id for this runtime. Ie the id of the #M.device_ref
-  // attribute corresponding to this runtime.
-  size_t virtualDeviceId;
-
   // Execution engine held by the runtime and shared by all loaded modules.
   KGEN::ExecutionEngine *engine;
 
@@ -33,8 +29,7 @@ struct CPURuntime : public ReferenceCounted<CPURuntime> {
   // index into this vector.
   SmallVector<RCRef<GML::CompiledKernelsContext>> modules;
 
-  CPURuntime(size_t virtualDeviceId, KGEN::ExecutionEngine *engine)
-      : virtualDeviceId(virtualDeviceId), engine(engine) {}
+  CPURuntime(KGEN::ExecutionEngine *engine) : engine(engine) {}
 
   ~CPURuntime() {
     if constexpr (ProfilerEntry<Trace::EnableTrace(Trace::kMojo, 1),
