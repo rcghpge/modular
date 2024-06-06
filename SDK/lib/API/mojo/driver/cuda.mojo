@@ -24,8 +24,9 @@ fn alloc_device_buffer(
     ctx: UnsafePointer[DeviceContext], bytes: Int
 ) -> Pointer[UInt8]:
     try:
-        var buf = ctx[].create_buffer[UInt8](bytes)
-        return buf^.take_ptr()
+        # FIXME: create_buffer returns DType now, we need to update things downstream
+        var buf = ctx[].create_buffer[DType.uint8](bytes)
+        return Pointer[UInt8](address=int(buf^.take_ptr()))
     except e:
         return abort[Pointer[UInt8]]()
 
@@ -74,7 +75,7 @@ fn copy_device_to_device(
 
 
 fn free_buffer(ctx: UnsafePointer[DeviceContext], ptr: Pointer[UInt8]):
-    _ = DeviceBuffer[UInt8](ctx[], ptr, 0, owning=True)
+    _ = DeviceBuffer[DType.uint8](ctx[], ptr, 0, owning=True)
 
 
 fn free_context(ctx: UnsafePointer[DeviceContext]):
