@@ -451,6 +451,7 @@ gentbl_mlir_dialect(
         ":GraphCompilerInterfacesTdFiles",
         ":MGPDialectTdFiles",
         ":MODialectTdFiles",
+        ":MOSHDialectTdFiles",
         ":RMODialectTdFiles",
         "//GraphRT:GRTTdFiles",
     ],
