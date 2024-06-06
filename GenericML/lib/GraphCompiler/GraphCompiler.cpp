@@ -331,7 +331,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MGP::createLowerMOGGABI(abiOpts));
   pm.addPass(MOGG::createJitCompileKernels(jitOpts));
   pm.addPass(MGP::createLowerMOGGRegionCompiles());
-  pm.addPass(mlir::createCSEPass());
   pm.addPass(MGP::createFixupOverhangsPass());
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addPass(mlir::createCanonicalizerPass());
