@@ -17,6 +17,7 @@ include "GenericML/GraphCompiler/RMODialect/RMOInterfaces.td"
 include "GenericML/GraphCompiler/MODialect/MOTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOAttrs.td"
 include "GenericML/GraphCompiler/MODialect/MOEnums.td"
+include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.td"
 include "mlir/IR/BuiltinAttributes.td"
 
 // Base class for ops in this dialect.
@@ -360,6 +361,31 @@ def RMO_ConcatOp : RMO_Op<"concat", [
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls)
     `(` $inputs `)` attr-dict `:` functional-type($inputs, results)
+  }];
+}
+
+def RMO_ReshapeOp : RMO_Op<"reshape", [
+  Pure,
+  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+]> {
+  let summary = "Reshape a tensor";
+  let description = [{
+    Returns a tensor with the same underlying data as `input`, but the shape of `newShape`.
+
+    A static dimension set to `-1` will be automatically computed.
+    Using `-1` will result in an error if `newShapes` contains a zero sized dimensions.
+
+    Shape restrictions:
+    1. `newShape` must have known rank.
+    2. `newShape` may not contain any dynamic dimensions.
+  }];
+  let arguments = (ins
+    MO_KnownTensor:$input,
+    MOSH_ShapeAttr:$newShape);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
 }
 

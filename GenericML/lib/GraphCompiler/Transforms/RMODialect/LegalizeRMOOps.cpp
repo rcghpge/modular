@@ -6,6 +6,7 @@
 
 #include "GenericML/GraphCompiler/Conversion/RMOSupport/Broadcast.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GenericML/GraphCompiler/Matchers.h"
@@ -517,6 +518,58 @@ struct LowerConcat : public OpRewritePattern<RMO::ConcatOp> {
   }
 };
 
+struct LowerReshape : public OpRewritePattern<RMO::ReshapeOp> {
+  LowerReshape(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
+  LogicalResult matchAndRewrite(RMO::ReshapeOp op,
+                                PatternRewriter &rewriter) const override {
+    // If the newShape contains `-1`, at runtime, ensure all other dimensions
+    // multiplied together do not equal 0. Otherwise, the shape of the `-1` dim
+    // is not clear.
+    ArrayRef<TypedAttr> dims = op.getNewShape().getValues();
+    bool containsNegOne = llvm::any_of(dims, [](auto dim) {
+      auto intDim = dyn_cast<IntegerAttr>(dim);
+      return intDim && intDim.getInt() == -1;
+    });
+    if (containsNegOne) {
+      SmallVector<TypedAttr> nonNegOneDims;
+      for (auto dim : dims) {
+        auto intDim = dyn_cast<IntegerAttr>(dim);
+        if (intDim && intDim.getInt() == -1)
+          continue;
+
+        nonNegOneDims.push_back(dim);
+      }
+
+      Location loc = op.getLoc();
+      MO::GraphOp graphOp = op->getParentOfType<MO::GraphOp>();
+
+      SmallVector<ParamBinding> paramBindings;
+      ParamExprBuilder b(graphOp, loc, &paramBindings);
+
+      // Add a 1 to the shapes to multiply to ensure the denominator is valid
+      SmallVector<TypedAttr> mulDims = nonNegOneDims;
+      mulDims.emplace_back(rewriter.getIndexAttr(1));
+      Var denominator =
+          b.createVar(KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, mulDims));
+
+      // Make sure we check for 0 denominator
+      b.createAssert(denominator != 0,
+                     "[reshape] cannot infer dimension when a specified output "
+                     "dimension is 0");
+
+      // Add all ops for the assert to the graph.
+      for (auto binding : paramBindings)
+        binding.toOp(loc, rewriter);
+    }
+
+    // Since the shape is already resolved and can't contain any unknown dims,
+    // simply lower to static reshape.
+    rewriter.replaceOpWithNewOp<MO::Static::ReshapeOp>(
+        op, op.getResult().getType(), op.getInput());
+    return success();
+  }
+};
+
 struct LowerSigmoid : public OpRewritePattern<RMO::SigmoidOp> {
   LowerSigmoid(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
   LogicalResult matchAndRewrite(RMO::SigmoidOp op,
@@ -688,7 +741,7 @@ struct LegalizeRMOOps
         LowerCompositeBinaryComparisonOp<RMO::GreaterOp, RMO::MOGreaterOp>,
         LowerCompositeBinaryComparisonOp<RMO::GreaterEqualOp,
                                          RMO::MOGreaterEqualOp>,
-        LowerBroadcastLike, LowerSigmoid, LowerConcat>(context);
+        LowerBroadcastLike, LowerSigmoid, LowerConcat, LowerReshape>(context);
 
     // Lowering third party specific operations.
     // They have more flexible semantics that separate them from standard rmo

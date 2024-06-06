@@ -7,7 +7,7 @@
 
 from max.graph import _testing, Graph, TensorType, Type, Dim, Symbol
 from max.graph.ops.slicing import concat
-from testing import assert_true
+from testing import assert_true, assert_raises
 
 
 fn test_concat() raises:
@@ -25,7 +25,7 @@ fn test_concat() raises:
     # shape_0: [3, 2]
     # shape_1: [3, 4]
     var cc1 = concat(List[Symbol](g[0], g[1]), axis=1)
-    # TODO(GRA-552)
+    # TODO(GRA-552): Enable comparison of shape directly instead of printing full mlir
     assert_true(str(cc1).endswith("!mo.tensor<[3, 6], si32>"))
 
     #      concat axis
@@ -34,7 +34,7 @@ fn test_concat() raises:
     # shape_0: [3, 4]
     # shape_1: [3, x]
     var cc2 = concat(List[Symbol](g[1], g[2]), axis=1)
-    # TODO(GRA-552)
+    # TODO(GRA-552): Enable comparison of shape directly instead of printing full mlir
     assert_true(str(cc2).endswith("!mo.tensor<[3, add(x, 4)], si32>"))
 
 
@@ -52,14 +52,10 @@ fn test_concat_error() raises:
     # shape_1: [5, 6]
     #
     # NOTE error because `3 != 5`, user made a mistake here.
-    try:
-        var cc3 = concat(List[Symbol](g[0], g[1]), axis=1)
-    except e:
-        assert_true(
-            str(e).endswith(
-                "[concat] input shapes must match except at concat axis"
-            )
-        )
+    with assert_raises(
+        contains="[concat] input shapes must match except at concat axis"
+    ):
+        _ = concat(List[Symbol](g[0], g[1]), axis=1)
 
     #      concat axis
     #           |
@@ -69,14 +65,10 @@ fn test_concat_error() raises:
     #
     # NOTE error because we can't prove `x == 6` at compile time; user must use
     # rebind to "cast" the `x` dimension to 6.
-    try:
-        var cc4 = concat(List[Symbol](g[0], g[1]), axis=0)
-    except e:
-        assert_true(
-            str(e).endswith(
-                "[concat] input shapes must match except at concat axis"
-            )
-        )
+    with assert_raises(
+        contains="[concat] input shapes must match except at concat axis"
+    ):
+        _ = concat(List[Symbol](g[0], g[1]), axis=0)
 
 
 def main():

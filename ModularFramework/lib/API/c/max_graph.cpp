@@ -7,6 +7,7 @@
 #include "MOF/API/c/detail/max_graph.h"
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "KGEN/KGENDialect/KGENDType.h"
 #include "MOF/API/c/symbol_export.h"
@@ -112,6 +113,17 @@ MODULAR_API_EXPORT MlirAttribute MAXG_attrNewParamDeclArray(
   return wrap(KGEN::ParamDeclArrayAttr::get(unwrap(ctx), param_attrs));
 }
 
+MODULAR_API_EXPORT MlirAttribute MAXG_attrNewShape(MlirContext ctx,
+                                                   MlirAttribute *dims,
+                                                   int32_t rank) {
+  SmallVector<TypedAttr> dim_attrs;
+  for (int i = 0; i < rank; ++i)
+    dim_attrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
+
+  auto shapeType = MOSH::ShapeType::get(unwrap(ctx));
+  return wrap(MOSH::ShapeAttr::get(unwrap(ctx), dim_attrs, shapeType));
+}
+
 //===----------------------------------------------------------------------===//
 // Type helpers
 //===----------------------------------------------------------------------===//
@@ -129,10 +141,10 @@ MODULAR_API_EXPORT int64_t MAXG_dimTypeNewDynamic() {
 MODULAR_API_EXPORT MlirType MAXG_tensorTypeNew(MlirContext ctx, MlirType dtype,
                                                bool ranked, MlirAttribute *dims,
                                                int32_t rank) {
-  llvm::SmallVector<TypedAttr> dim_attrs;
-  for (int i = 0; i < rank; ++i) {
+  SmallVector<TypedAttr> dim_attrs;
+  for (int i = 0; i < rank; ++i)
     dim_attrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
-  }
+
   if (ranked) {
     return wrap(MO::TensorType::get(dim_attrs, unwrap(dtype)));
   } else {

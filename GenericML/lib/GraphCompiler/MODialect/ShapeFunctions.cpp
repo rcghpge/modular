@@ -912,15 +912,22 @@ ShapeMaterializeResult materializeScatterNdShape(GraphOp graphOp, Location loc,
 /// invariant that `inputShapeAttr` and `targetShapeAttr` represent equal number
 /// of elements.
 ///
+/// allowParametricDenominator removes the `denominator != 0` check when
+/// parametric expressions are involved (e.g. [-1, X]). The default shape
+/// inference behavour is very pessimistic. It assumes that `X` might be `0`,
+/// which fails the check. This flag allows a more optimistic view where `X` is
+/// assumed to not be `0` (requires runtime assert to be guaranteed).
+///
 /// Example:
 ///   inputShape = [3, D4]
 ///   targetShape = [D0, -1, 42]
 ///   returns [D0, RS0, 42]
 /// with the following operation accumulated in `b`
 ///   kgen.param.declare RS0 = <div(mul(3, D4), mul(D0, 42)>
-ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
-                                               TypedAttr inputShapeAttr,
-                                               TypedAttr targetShapeAttr) {
+ShapeMaterializeResult
+materializeReshapeShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
+                        TypedAttr targetShapeAttr,
+                        bool allowParametricDenominator) {
   // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
@@ -966,10 +973,22 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
     Var denominator =
         b.createVar(KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, mulDims));
 
-    // Make sure we check for 0 denominator
-    b.createAssert(denominator != 0,
-                   "[reshape] cannot infer dimension when a specified output "
-                   "dimension is 0");
+    if (allowParametricDenominator) {
+      for (auto dim : mulDims) {
+        auto intDim = dyn_cast<IntegerAttr>(dim);
+        if (intDim && intDim.getInt() == 0) {
+          // Guaranteed failure either way.
+          return ShapeMaterializeResult::error(
+              "[reshape] cannot infer dimension when a specified output "
+              "dimension is 0");
+        }
+      }
+    } else {
+      // Make sure we check for 0 denominator
+      b.createAssert(denominator != 0,
+                     "[reshape] cannot infer dimension when a specified output "
+                     "dimension is 0");
+    }
 
     Var resolvedDim = numerator / denominator;
     SmallVector<TypedAttr> resolvedDims = targetNonNegOneDims;
