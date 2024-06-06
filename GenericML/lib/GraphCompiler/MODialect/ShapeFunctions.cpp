@@ -21,10 +21,11 @@ KGEN::ParamDeclareOp ParamBinding::toOp(Location loc, OpBuilder b) const {
 }
 
 Var ParamExprBuilder::createVar(TypedAttr attr) {
-  auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(attr);
-  if (!declRef)
-    declRef = this->createDeclToKgenAttr(attr, "var");
-  return Var(declRef, this);
+  // No need to create a new binding if `attr` is simple.
+  TypedAttr varAttr = attr;
+  if (!isa<IntegerAttr, KGEN::ParamDeclRefAttr>(attr))
+    varAttr = this->createDeclToKgenAttr(attr, "var");
+  return Var(varAttr, this);
 }
 
 Var ParamExprBuilder::createVar(int64_t n) {

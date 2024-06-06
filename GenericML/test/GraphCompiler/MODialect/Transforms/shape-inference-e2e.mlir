@@ -744,7 +744,7 @@ mo.graph @top_k_dynamic<A>(%input : !mo.tensor<[5, 5], si64>, %sorted : !mo.tens
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.constant {value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24> : tensor<5x5xsi64>} : !mo.tensor<[5, 5], si64>
 // CHECK-NEXT: [[V2:[^ ]*]] = mosh.param.to_value = <A>
 // CHECK-NEXT: [[V3:[^ ]*]] = mo.index.to_tensor([[V2]]) -> !mo.tensor<[], si64>
-// CHECK-NEXT: kgen.param.declare assert9: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[top/bottom-k] k must be between [0, dim_size]." : !kgen.string}, lt(A, 6))>
+// CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[top/bottom-k] k must be between [0, dim_size]." : !kgen.string}, lt(A, 6))>
 // CHECK-NEXT: [[VVALUES:[^ ]*]], [[VINDICES:[^ ]*]] = mo.top_k([[V1]], [[V3]], [[V0]], [[VARG1]]) : (!mo.tensor<[5, 5], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[5, A], si64>, !mo.tensor<[5, A], si64>)
 // CHECK-NEXT: mo.output [[VVALUES]], [[VINDICES]] : !mo.tensor<[5, A], si64>, !mo.tensor<[5, A], si64>
 
@@ -787,10 +787,10 @@ mo.graph @unsqueeze_shape_dynamic_shape_with_reshape(%input_tensor: !mo.tensor<[
 // CHECK-SAME: @unsqueeze_shape_dynamic_shape_with_reshape<[[D8:.*]], [[D9:.*]], [[D10:.*]], [[D11:.*]] -> [[Sh12:.*]]: !mosh.ape>([[VARG0:%.*]]: !mo.tensor<[[[D8]], [[D9]], [[D10]]], si32>, [[VARG1:%.*]]: !mo.tensor<[[[D11]]], si32>) -> !mo.tensor<Sh12, si32> {
 // CHECK-NEXT:   [[V0:%.*]] = mosh.param.to_value: !mosh.ape = <[[[D8]], [[D9]], [[D10]]]>
 // CHECK-NEXT:   [[V1:%.*]] = mo.shape.to_tensor([[V0]]) -> !mo.tensor<[3], si32>
-// CHECK-NEXT:   [[V2:%.*]] = mo.unsqueeze_shape([[V1]], [[VARG1]]) : (!mo.tensor<[3], si32>, !mo.tensor<[[[D11]]], si32>) -> !mo.tensor<[param_expr_18], si32>
+// CHECK-NEXT:   [[V2:%.*]] = mo.unsqueeze_shape([[V1]], [[VARG1]]) : (!mo.tensor<[3], si32>, !mo.tensor<[[[D11]]], si32>) -> !mo.tensor<[param_expr_17], si32>
 // CHECK-NEXT:   mo.invoke_shape_func["reshape_shape"]<() -> [[Sh5:.*]]: !mosh.ape>([[VARG0]], [[V2]]) {dataDeptTensors = [1 : i32]}
-// CHECK-NEXT:   kgen.param.declare param_expr_18 = <add([[D11]], 3)>
-// CHECK-NEXT:   [[V3:%.*]] = mo.reshape([[VARG0]], [[V2]]) : (!mo.tensor<[[[D8]], [[D9]], [[D10]]], si32>, !mo.tensor<[param_expr_18], si32>) -> !mo.tensor<[[Sh5]], si32>
+// CHECK-NEXT:   kgen.param.declare param_expr_17 = <add([[D11]], 3)>
+// CHECK-NEXT:   [[V3:%.*]] = mo.reshape([[VARG0]], [[V2]]) : (!mo.tensor<[[[D8]], [[D9]], [[D10]]], si32>, !mo.tensor<[param_expr_17], si32>) -> !mo.tensor<[[Sh5]], si32>
 // CHECK-NEXT:   mo.output<{{.*}} [[V3]]
 // CHECK-NEXT: }
 
@@ -861,10 +861,10 @@ mo.graph @squeeze_shape_dynamic_shape_with_reshape(%input_tensor: !mo.tensor<[?,
 // CHECK-NEXT:   [[V0:%.*]] = mosh.param.to_value: !mosh.ape = <[[[D8]], [[D9]], [[D10]]]>
 // CHECK-NEXT:   [[V1:%.*]] = mo.shape.to_tensor([[V0]]) -> !mo.tensor<[3], si32>
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[squeeze_shape] cannot remove more dimensions than there exists" : !kgen.string}, lt([[D11]], 4))>
-// CHECK-NEXT:   [[V2:%.*]] = mo.squeeze_shape([[V1]], [[VARG1]]) : (!mo.tensor<[3], si32>, !mo.tensor<[[[D11]]], si32>) -> !mo.tensor<[param_expr_21], si32>
+// CHECK-NEXT:   [[V2:%.*]] = mo.squeeze_shape([[V1]], [[VARG1]]) : (!mo.tensor<[3], si32>, !mo.tensor<[[[D11]]], si32>) -> !mo.tensor<[param_expr_20], si32>
 // CHECK-NEXT:   mo.invoke_shape_func["reshape_shape"]<() -> [[Sh5:.*]]: !mosh.ape>([[VARG0]], [[V2]]) {dataDeptTensors = [1 : i32]}
-// CHECK-NEXT:   kgen.param.declare param_expr_21 = <add(mul_nuw([[D11]], -1), 3)>
-// CHECK-NEXT:   [[V3:%.*]] = mo.reshape([[VARG0]], [[V2]]) : (!mo.tensor<[[[D8]], [[D9]], [[D10]]], si32>, !mo.tensor<[param_expr_21], si32>) -> !mo.tensor<[[Sh5]], si32>
+// CHECK-NEXT:   kgen.param.declare param_expr_20 = <add(mul_nuw([[D11]], -1), 3)>
+// CHECK-NEXT:   [[V3:%.*]] = mo.reshape([[VARG0]], [[V2]]) : (!mo.tensor<[[[D8]], [[D9]], [[D10]]], si32>, !mo.tensor<[param_expr_20], si32>) -> !mo.tensor<[[Sh5]], si32>
 // CHECK-NEXT:   mo.output<{{.*}}> [[V3]]
 // CHECK-NEXT: }
 
@@ -954,15 +954,19 @@ mo.graph @nested_broadcast_shapes(
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq([[D30]], [[D32]]), eq([[D30]], 1), eq([[D32]], 1)))>
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_to] input dim must be either 1 or equal to corresponding output dim starting from the rightmost dim" : !kgen.string}
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_to] input dim must be either 1 or equal to corresponding output dim starting from the rightmost dim" : !kgen.string}
-// CHECK-NEXT:   [[V1:%.*]] = mo.static.broadcast_to([[VARG0]]) : !mo.tensor<[[[D29]], [[D30]]], bool> -> !mo.tensor<[param_expr_85, param_expr_86], bool>
+// CHECK-NEXT:   [[V1:%.*]] = mo.static.broadcast_to([[VARG0]]) : !mo.tensor<[[[D29]], [[D30]]], bool> -> !mo.tensor<[param_expr_157, param_expr_158], bool>
+// CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq([[D29]], [[D31]]), eq([[D29]], 1), eq([[D31]], 1)))>
+// CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq([[D30]], [[D32]]), eq([[D30]], 1), eq([[D32]], 1)))>
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_to] input dim must be either 1 or equal to corresponding output dim starting from the rightmost dim" : !kgen.string}
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_to] input dim must be either 1 or equal to corresponding output dim starting from the rightmost dim" : !kgen.string}
-// CHECK-NEXT:   [[V2:%.*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[[[D29]], [[D30]]], si32> -> !mo.tensor<[param_expr_85, param_expr_86], si32>
+// CHECK-NEXT:   [[V2:%.*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[[[D29]], [[D30]]], si32> -> !mo.tensor<[param_expr_157, param_expr_158], si32>
+// CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq([[D29]], [[D31]]), eq([[D29]], 1), eq([[D31]], 1)))>
+// CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq([[D30]], [[D32]]), eq([[D30]], 1), eq([[D32]], 1)))>
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_to] input dim must be either 1 or equal to corresponding output dim starting from the rightmost dim" : !kgen.string}
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_to] input dim must be either 1 or equal to corresponding output dim starting from the rightmost dim" : !kgen.string}
-// CHECK-NEXT:   [[V3:%.*]] = mo.static.broadcast_to([[VARG1]]) : !mo.tensor<[[[D31]], [[D32]]], si32> -> !mo.tensor<[param_expr_85, param_expr_86], si32>
-// CHECK-NEXT:   kgen.param.declare param_expr_85 = <cond(eq([[D29]], 1), [[D31]], [[D29]])>
-// CHECK-NEXT:   kgen.param.declare param_expr_86 = <cond(eq([[D30]], 1), [[D32]], [[D30]])>
+// CHECK-NEXT:   [[V3:%.*]] = mo.static.broadcast_to([[VARG1]]) : !mo.tensor<[[[D31]], [[D32]]], si32> -> !mo.tensor<[param_expr_157, param_expr_158], si32>
+// CHECK-NEXT:   kgen.param.declare param_expr_157 = <cond(eq([[D29]], 1), [[D31]], [[D29]])>
+// CHECK-NEXT:   kgen.param.declare param_expr_158 = <cond(eq([[D30]], 1), [[D32]], [[D30]])>
 // CHECK-NEXT:   [[V4:%.*]] = mo.select([[V1]], [[V2]], [[V3]])
 // CHECK-NEXT:   [[V5:%.*]] = mo.rebind([[V4]]) : {{.*}} -> !mo.tensor<[cond(eq([[D29]], 1), [[D31]], [[D29]]), cond(eq([[D30]], 1), [[D32]], [[D30]])], si32>
 // CHECK-NEXT:   mo.output{{.*}} [[V5]]
@@ -1307,4 +1311,28 @@ mo.graph @roi_align<C, M -> D0, D1, D2, D3>(
 
   // CHECK-NEXT: mo.output %[[RES]]
   mo.output<D4, D5, D6, D7> %res : !mo.tensor<[D4, D5, D6, D7], f32>
+}
+
+// NOTE this pattern shows up from RMO lowering
+// CHECK-LABEL: mo.graph @broadcast_shape_with_rebound_input
+//  CHECK-SAME: <[[D0:.*]]>([[INPUT:%.*]]: !mo.tensor<[10, [[D0]], 1], f32>
+mo.graph @broadcast_shape_with_rebound_input<D0 -> Out: !mosh.ape>(
+  %input: !mo.tensor<[10, D0, 1], f32>
+) -> !mo.tensor<Out, f32> {
+  // Take input shape and another constant shape
+  %shape1 = mo.shape_of(%input) : (!mo.tensor<[10, D0, 1], f32>) -> !mo.tensor<[3], si64>
+  %shape2 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+
+  // Add trivial rebinds
+  %shap1_reb = mo.rebind<() -> D1>(%shape1) : !mo.tensor<[3], si64> -> !mo.tensor<[D1], si64>
+  %shape2_reb = mo.rebind<() -> D2>(%shape2) : !mo.tensor<[2], si64> -> !mo.tensor<[D2], si64>
+
+  // Broadcast the two shapes, and then broadcast input to the result shape.
+  // CHECK-NEXT:   [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[10, [[D0]], 2], f32>
+  %bcast_shape = mo.broadcast_shape<() -> D3>(%shap1_reb, %shape2_reb) : (!mo.tensor<[D1], si64>, !mo.tensor<[D2], si64>) -> !mo.tensor<[D3], si64>
+  %bcast_shape_reb = mo.rebind<() -> D4>(%bcast_shape) : !mo.tensor<[D3], si64> -> !mo.tensor<[D4], si64>
+  %res = mo.broadcast_to<() -> Sh1: !mosh.ape>(%input, %bcast_shape) : (!mo.tensor<[10, D0, 1], f32>, !mo.tensor<[D3], si64>) -> !mo.tensor<Sh1, f32>
+
+  // CHECK-NEXT:   mo.output [[RES]]
+  mo.output<:!mosh.ape Sh1> %res : !mo.tensor<Sh1, f32>
 }
