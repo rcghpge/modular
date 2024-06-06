@@ -1,5 +1,4 @@
 load("//bazel:api.bzl", "modular_cc_binary")
-load("//utils/bazel/build/rules:opt_wrapper.bzl", "opt_wrapper")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -12,9 +11,4 @@ modular_cc_binary(
         "//Support:Init",
         "@llvm-project//mlir:MlirOptLib",
     ],
-)
-
-opt_wrapper(
-    name = "mo-opt.opt",
-    dep = ":mo-opt",
 )

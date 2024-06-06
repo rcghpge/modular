@@ -1,6 +1,5 @@
 load("@//utils/bazel/build/rules:rpath_shim.bzl", "rpath_shim")
 load("//bazel:api.bzl", "modular_cc_binary")
-load("//utils/bazel/build/rules:opt_wrapper.bzl", "opt_wrapper")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -34,9 +33,4 @@ rpath_shim(
         "//PyTorch:TorchRuntimePlugin",
         "//PyTorch/tools/torch:mtorch",
     ],
-)
-
-opt_wrapper(
-    name = "mt.opt",
-    dep = ":mt",
 )
