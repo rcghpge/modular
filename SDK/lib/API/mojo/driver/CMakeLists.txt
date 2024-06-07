@@ -11,6 +11,7 @@ set (DRIVER_SRCS
   tensor
   tensor_slice
   cuda
+  graph
 )
 
 

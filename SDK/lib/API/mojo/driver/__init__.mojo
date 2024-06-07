@@ -10,3 +10,4 @@ from .tensor import Tensor, StaticTensorSpec
 from .tensor_slice import TensorSlice
 from .anymemory import AnyMemory
 from .cuda import cuda_device
+from .graph import compile_graph
