@@ -158,6 +158,11 @@ public:
     /// This is a builder appending operations to the end of the invokable.
     OpBuilder builder;
 
+    /// Maps from a (lowered) assert to another (lowered) assert
+    /// if the two asserts were linked with a chain in the MO representation
+    DenseMap<Operation *, Operation *> parentAssert;
+    // DenseMap<MGP::AssertOp, MGP::AssertOp> parentAssert;
+
     ExecuteState(const ExecuteState &) = delete;
     void operator=(const ExecuteState &) = delete;
   };

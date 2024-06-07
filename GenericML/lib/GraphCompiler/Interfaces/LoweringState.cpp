@@ -7,7 +7,10 @@
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GraphRT/MIPDialect/MIPDialect.h"
 #include "Support/AssertStream.h"
+#include <llvm/ADT/STLExtras.h>
+#include <mlir/Support/LLVM.h>
 
 using namespace M;
 using namespace M::MGP;
@@ -249,6 +252,108 @@ Operation *MOGraphLoweringState::lowerIntAttr(OpBuilder &builder, Location loc,
                                               newIntAttr);
 }
 
+/// sequenced assert lowering helper functions
+namespace {
+
+bool isMipOp(Operation *op) { return isa<MIP::MIPDialect>(op->getDialect()); }
+
+DenseSet<Operation *> getAncestors(Operation *root) {
+
+  DenseSet<Operation *> ancestors;
+  SmallVector<Operation *> worklist;
+
+  worklist.push_back(root);
+
+  while (!worklist.empty()) {
+    Operation *op = worklist.pop_back_val();
+
+    if (!op || !isMipOp(op))
+      continue;
+
+    ancestors.insert(op);
+
+    for (Value val : op->getOperands()) {
+      Operation *defOp = val.getDefiningOp();
+
+      if (!ancestors.contains(defOp))
+        worklist.push_back(defOp);
+    }
+  }
+
+  return ancestors;
+}
+
+SmallVector<OpOperand *>
+getBoundaryOpOperands(Operation *root,
+                      const llvm::DenseSet<Operation *> &prevAncestors) {
+
+  DenseSet<OpOperand *> boundaryOpOperands;
+  SmallVector<Operation *> worklist;
+
+  worklist.push_back(root);
+
+  while (!worklist.empty()) {
+
+    Operation *op = worklist.pop_back_val();
+
+    if (!op || !isMipOp(op) || prevAncestors.contains(op))
+      continue;
+
+    for (auto &&opOperand : op->getOpOperands()) {
+      auto defOp = opOperand.get().getDefiningOp();
+      const bool isConstant = defOp->hasTrait<OpTrait::ConstantLike>();
+
+      if (prevAncestors.contains(defOp) && !isConstant)
+        boundaryOpOperands.insert(&opOperand);
+      else
+        worklist.push_back(defOp);
+    }
+  }
+
+  return {boundaryOpOperands.begin(), boundaryOpOperands.end()};
+}
+
+/// Given the operand chain and condition to an assertion gather all
+/// expressions rooted at the current condition and the condition from the
+/// previous producing assertion. The values (OpOperands really) that cross
+/// from the previous assertion's tree to the current assertion's tree.
+SmallVector<OpOperand *> getSequencedAssertBoundaryOperands(
+    Value cond, const SmallVector<Operation *> &parentAsserts) {
+
+  DenseSet<Operation *> allAncestors;
+
+  for (auto parentAssert : parentAsserts) {
+    auto prevAssertCondRoot =
+        dyn_cast<MGP::AssertOp>(parentAssert).getCond().getDefiningOp();
+
+    auto prevAncestors = getAncestors(prevAssertCondRoot);
+
+    allAncestors.insert(prevAncestors.begin(), prevAncestors.end());
+  }
+
+  return getBoundaryOpOperands(cond.getDefiningOp(), allAncestors);
+}
+
+SmallVector<Operation *>
+getParentAsserts(Operation *currentAssert,
+                 const DenseMap<Operation *, Operation *> &parentMap) {
+  SmallVector<Operation *> parents = {currentAssert};
+
+  auto it = parentMap.find(currentAssert);
+  bool hasParent = it != parentMap.end();
+
+  while (hasParent) {
+    currentAssert = it->second;
+    parents.push_back(currentAssert);
+    it = parentMap.find(currentAssert);
+    hasParent = it != parentMap.end();
+  }
+
+  return parents;
+}
+
+} // namespace
+
 ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
     ParameterLoweringState &state, OpBuilder &builder, Location loc,
     Region *parentRegion, TypedAttr attr, ValueRange operands) {
@@ -264,23 +369,62 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
                    "' in parameter expression");
     }
 
-    auto cond = [&]() -> Value {
+    auto [cond, maybeParentAssert] = [&]() -> std::pair<Value, Operation *> {
       bool hasChain = isa<MEF::ChainType>(operands[0].getType());
 
       if (hasChain) {
+        Value chain = operands[0];
         Value cond = operands[1];
-        auto guardOp = builder.create<MGP::GuardOp>(
-            loc, TypeRange{cond.getType()}, operands[0], ValueRange{cond});
 
-        return guardOp.getResult(0);
+        ASSERT_STREAM(isa<MGP::AssertOp>(chain.getDefiningOp()))
+            << "Encountered a mo.assert with a chain that was not produced by "
+               "another mo.assert!";
+
+        SmallVector<Operation *> parentAsserts =
+            getParentAsserts(chain.getDefiningOp(), execute.parentAssert);
+
+        // collects the values (OpOperands really) that span from the tree
+        // of expressions forming condition for the assertion we're looking
+        // at and the assertion that produced the chain
+        auto bOperands =
+            getSequencedAssertBoundaryOperands(cond, parentAsserts);
+
+        // This logic will materialize guards only in the case where there were
+        // shared values between the expression tree rooted at the previous
+        // assertion and the current
+        //
+        // This is desirable as the mgp.guard op doesn't have a Mojo
+        // implementation (and consequently KGEN lowering), blocking the
+        // possibility of sequence fusion
+        if (!bOperands.empty()) {
+          SmallVector<Value> v;
+          for (OpOperand *opOperand : bOperands) {
+            v.push_back(opOperand->get());
+          }
+
+          ValueRange guardedValRange{v};
+
+          auto guardOp = builder.create<MGP::GuardOp>(
+              loc, guardedValRange.getTypes(), chain, guardedValRange);
+
+          for (auto &&[guarded, original] :
+               llvm::zip(guardOp.getResults(), bOperands)) {
+            original->assign(guarded);
+          }
+        }
+
+        return {cond, chain.getDefiningOp()};
       } else {
-        return operands[0];
+        return {operands[0], nullptr};
       }
     }();
 
     // We must be dealing with an assert.
     newOp = builder.create<MGP::AssertOp>(loc, ValueRange{cond},
                                           opAttr.getAttrs().getValue());
+
+    if (maybeParentAssert)
+      execute.parentAssert[newOp] = maybeParentAssert;
 
     setCurrentExecuteChain(cast<MGP::AssertOp>(newOp).getOutChain());
 
