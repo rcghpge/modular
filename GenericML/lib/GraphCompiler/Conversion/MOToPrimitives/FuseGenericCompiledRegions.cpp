@@ -92,6 +92,12 @@ static void fuseCompiledRegionsAndReplaceUses(
             .getIsAsync()
             .value_or(false);
       });
+  const bool hasCuda =
+      llvm::any_of(compiledRegionOpsToFuseTogether, [&](auto region) {
+        return cast<MOGG::GenericCompiledRegionOp>(region)
+            .getHasCuda()
+            .value_or(false);
+      });
   const bool isFusible =
       llvm::all_of(compiledRegionOpsToFuseTogether, [&](auto region) {
         return cast<MOGG::GenericCompiledRegionOp>(region)
@@ -120,7 +126,8 @@ static void fuseCompiledRegionsAndReplaceUses(
       InOutSignatureAttr::get(ctx, operandSemantics),
       firstRegionOp.getIsKGENAttr(),
       MOGG::getSummaryString(compiledRegionOpsToFuseTogether),
-      BoolAttr::get(ctx, isAsync), isFusible, canDuplicate);
+      BoolAttr::get(ctx, isAsync), BoolAttr::get(ctx, hasCuda), isFusible,
+      canDuplicate);
   Block &newBody = fusedCompiledRegionOp.getBody().emplaceBlock();
   builder.setInsertionPoint(&newBody, newBody.begin());
 

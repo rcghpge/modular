@@ -44,7 +44,8 @@ struct LowerMOGGRegionCompilesPass
                                 size_t runtimeSlot, size_t module_index,
                                 size_t kernel_index,
                                 MOGG::ExecuteCompiledOp &oldKernel,
-                                Value loadChain);
+                                Value loadChain,
+                                std::optional<size_t> cuda_runtime_slot);
   void runOnOperation() override;
 };
 
@@ -52,7 +53,8 @@ struct LowerMOGGRegionCompilesPass
 void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
     OpBuilder &builder, const Value &context, size_t runtimeSlot,
     size_t module_index, size_t kernel_index,
-    MOGG::ExecuteCompiledOp &oldKernel, Value loadChain) {
+    MOGG::ExecuteCompiledOp &oldKernel, Value loadChain,
+    std::optional<size_t> cuda_runtime_slot) {
   auto ctx = oldKernel.getOperation()->getContext();
   SmallVector<Value> chainOutputs;
   SmallVector<Value> nonChainOutputs;
@@ -82,7 +84,8 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
   auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
       oldKernel.getLoc(), MGP::DeviceChainType::get(device), resultTypes,
       context, loadChain, oldKernel->getOperands(), runtimeSlot, module_index,
-      kernel_index, oldKernel.getSummary(), oldKernel.getIsAsync());
+      kernel_index, oldKernel.getSummary(), oldKernel.getIsAsync(),
+      oldKernel.getHasCuda(), cuda_runtime_slot.value_or(0));
 
   auto replaceAllChainUses = [&](Value originalChain,
                                  TypedValue<MGP::DeviceChainType> newChain) {
@@ -137,6 +140,8 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     // MOGG::LoadCompiledKernelOp only on CPU and no other device. We just
     // need to make sure we use and count the right one for moduleIndex
     const auto device = DeviceRefAttr::get(ctx, kCPULabel, 0);
+    const auto cudaDevice = DeviceRefAttr::get(ctx, kCUDALabel, 0);
+    std::optional<size_t> cuda_runtime_slot;
 
     // Track the RuntimeCreateOp and ModuleLoadOp and their last use
     llvm::SmallDenseMap<DeviceRefAttr, MGP::RuntimeCreateOp>
@@ -148,6 +153,8 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       lastDeviceRuntimeOp[op.getDevice()] = op;
       deviceModuleIndex[op.getDevice()] = 0;
     }
+    if (lastDeviceRuntimeOp.contains(cudaDevice))
+      cuda_runtime_slot = lastDeviceRuntimeOp[cudaDevice].getSlot();
     for (auto op : init.getOps<MGP::ModuleLoadOp>()) {
       lastDeviceModuleLoadOp[op.getDevice()] = op;
       ASSERT_STREAM(deviceModuleIndex.contains(op.getDevice()))
@@ -219,7 +226,8 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       rewriteExecuteCompiledOp(
           builder, lastDeviceRuntimeOp[device].getTheContext(),
           lastDeviceRuntimeOp[device].getSlot(), deviceModuleIndex[device],
-          deviceKernelIndices[device][kernel.getKernelName()], kernel, inChain);
+          deviceKernelIndices[device][kernel.getKernelName()], kernel, inChain,
+          cuda_runtime_slot);
     });
 
     Value executeContext = nullptr;
@@ -243,7 +251,8 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       rewriteExecuteCompiledOp(
           builder, executeContext, lastDeviceRuntimeOp[device].getSlot(),
           deviceModuleIndex[device],
-          deviceKernelIndices[device][kernel.getKernelName()], kernel, inChain);
+          deviceKernelIndices[device][kernel.getKernelName()], kernel, inChain,
+          cuda_runtime_slot);
     });
   }
 }

@@ -8,6 +8,8 @@
 #include "ArraySupport/StateContext.h"
 #include "ArraySupport/StateSlot.h"
 #include "ArraySupport/Tensor.h"
+#include "CUDASupport/CUDARuntime.h"
+#include "CUDASupport/Globals/Globals.h"
 #include "GenericML/Support/CompiledKernelsContext.h"
 #include "GenericML/Support/DebugPrint.h"
 #include "GenericML/Support/HostDeviceSpecs.h"
@@ -32,6 +34,7 @@
 
 using namespace M;
 using namespace M::GML;
+using namespace M::CUDA;
 
 //===----------------------------------------------------------------------===//
 // Helpers
@@ -298,7 +301,8 @@ static void mgp_generic_execute(
     Result<Chain> outChain, RemainingResults outResults,
     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
     MEFAttr<uint64_t> cFunctionIndex, MEFAttr<StringRef> dSummary,
-    MEFAttr<bool> eIsAsync, Runtime &runtime, EncodedLocation loc) {
+    MEFAttr<bool> eIsAsync, MEFAttr<bool> fHasCuda, MEFAttr<uint64_t> gCudaSlot,
+    Runtime &runtime, EncodedLocation loc) {
   auto profilerEntry = MGPProfilerEntry::create(*dSummary);
   M::MGP::KernelExecutionState &kernelExecutionState =
       ctx.getStateSlotPayload<M::MGP::KernelExecutionState>(
@@ -311,24 +315,36 @@ static void mgp_generic_execute(
   // to use. We always have to allocate indirects even if the kernel is not
   // async because we pass a copy of the results.
   outResults.allocateIndirectResults();
-  auto runKernel = [kernelPtr,
+
+  auto runKernel = [kernelPtr, &ctx,
                     // outResults _must_ be copied
                     outResults = outResults.copyAsVector(),
                     // std::move(operands) does not work, must use takeAsVector
                     takenOperands = operands.takeAsVector(),
                     outChain = outChain.copyWithLocation(),
-                    summary = dSummary->str(),
+                    summary = dSummary->str(), hasCuda = fHasCuda.get(),
+                    cudaSlot = gCudaSlot.get(),
                     profilerEntry = std::move(profilerEntry),
                     runtimePtr = std::move(runtimePtr),
                     loc = std::move(loc)]() mutable {
+    CUDARuntime *cudaRuntimePtr = nullptr;
+    CUstream cudaStream = nullptr;
+    if (hasCuda) {
+      // GRA-594: When Device Context is passed to the primitive directly, we
+      // don't need to set the runtime
+      cudaRuntimePtr = reinterpret_cast<CUDARuntime *>(
+          ctx.getStateSlot(static_cast<size_t>(cudaSlot))
+              .getUnderlyingPointer());
+      cudaStream = cudaRuntimePtr->stream;
+    }
     std::vector<void *> kernelInputs;
     kernelInputs.reserve(outResults.size() + takenOperands.size());
-
     for (AnyAsyncValueRef &input : takenOperands)
       kernelInputs.push_back(&input);
     for (AnyAsyncValueRef &i : outResults)
       kernelInputs.push_back(&i);
-    MojoCallContext callContext(outChain.copy(), outChain.getLocation().copy());
+    MojoCallContext callContext(outChain.copy(), outChain.getLocation().copy(),
+                                cudaStream, cudaRuntimePtr);
     kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
               reinterpret_cast<void *>(runtimePtr.get()),
               reinterpret_cast<void *>(&callContext));
@@ -353,6 +369,7 @@ static void mgp_generic_execute(
     // call, either synchronous or up to first await point for asynchronous.
     MGPProfilerEntry::clearCurrentId();
   };
+
   if (eIsAsync.get())
     runtime.getWorkQueue()->addTask(std::move(runKernel));
   else

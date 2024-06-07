@@ -519,7 +519,9 @@ def ExecuteGenericOp : MGP_Op<"generic.execute"> {
                        UI64Attr:$bModuleIndex,                        // 1
                        UI64Attr:$cFunctionIndex,                      // 2
                        StrAttr:$dSummary,                             // 3
-                       DefaultValuedAttr<BoolAttr, "false">:$eIsAsync // 4
+                       DefaultValuedAttr<BoolAttr, "false">:$eIsAsync,// 4
+                       DefaultValuedAttr<BoolAttr, "false">:$fHasCuda,// 5 // This should be removed once we have device context
+                       UI64Attr:$gCudaSlot                            // 6
                        );
   let results = (outs MGP_DeviceChainType: $outChain, Variadic<AnyType>:$outResults);
 }

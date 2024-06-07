@@ -14,7 +14,7 @@ mgp.model @basic : mof init {
   %0 = grt.chain.create ()
   %1 = mip.constant.index 42
   %2 = mip.constant.index -20
-  %3 = "mogg.execute_kernel"(%1, %2) {isAsync = false, kernelName = "__gen_0", outputParamDecls = #kgen<param.decls[]>, summary = "mogg.generic.compiled.region:14", usedParams = []} : (index, index) -> index
+  %3 = "mogg.execute_kernel"(%1, %2) {hasCuda=false, isAsync = false, kernelName = "__gen_0", outputParamDecls = #kgen<param.decls[]>, summary = "mogg.generic.compiled.region:14", usedParams = []} : (index, index) -> index
   %4 = mip.print.index %3, %0
   mef.output %4 : !mef.chain
 }
@@ -40,7 +40,7 @@ mgp.model @basic_control_flow : mof init {
   %rhs = mip.constant.index -20
   %1 = mgp.buffer.to_bool %ch0, %arg1[1], %arg2 : !mgp.buffer<1>
   %2 = grt.if %1 (%ch0: !mgp.chain, %lhs: index, %rhs: index, %arg1 as %new: !mgp.context) -> !mgp.chain {
-    %3 = "mogg.execute_kernel"(%lhs, %rhs) {isAsync = false, kernelName = "__gen_0", outputParamDecls = #kgen<param.decls[]>, summary = "mogg.generic.compiled.region:14", usedParams = []} : (index, index) -> index
+    %3 = "mogg.execute_kernel"(%lhs, %rhs) {hasCuda=false, isAsync = false, kernelName = "__gen_0", outputParamDecls = #kgen<param.decls[]>, summary = "mogg.generic.compiled.region:14", usedParams = []} : (index, index) -> index
     mef.output %ch0 : !mgp.chain
   } else {
     mef.output %ch0 : !mgp.chain

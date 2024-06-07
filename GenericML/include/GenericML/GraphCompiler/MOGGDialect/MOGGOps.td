@@ -337,7 +337,8 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     OptionalAttr<BoolAttr>:$isKGEN,
     OptionalAttr<StrAttr>:$summary,
     OptionalAttr<BoolAttr>:$isAsync,
-    DefaultValuedOptionalAttr<BoolAttr, "true">:$canFuseIntoOther,
+    OptionalAttr<BoolAttr>:$hasCuda,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$canFuseIntoOther,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$canDuplicate
   );
   let results = (outs Variadic<AnyType>:$results);
@@ -736,7 +737,7 @@ def MOGG_CreateAsyncMojoValueOp : MOGG_Op<"create_async_mojo_value"> {
 
 def MOGG_RuntimePlaceholderOp : MOGG_Op<"rt_placeholder", [Pure]> {
   let results = (outs AnyType:$result);
-  let summary = "Returns a placeholder for the runtime pointer";
+  let summary = "Returns a placeholder for the llcl runtime pointer";
   let description = [{
     This is resolved to an ABI argument during lowering.
   }];
@@ -906,7 +907,8 @@ def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel", [
                        ArrayAttr:$usedParams,
                        MO_ParamDecls:$outputParamDecls,
                        StrAttr:$summary,
-                       BoolAttr:$isAsync);
+                       BoolAttr:$isAsync,
+                       BoolAttr:$hasCuda);
   let results = (outs Variadic<AnyType>:$results);
 }
 

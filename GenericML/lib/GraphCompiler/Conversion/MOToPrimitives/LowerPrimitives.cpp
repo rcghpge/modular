@@ -44,8 +44,7 @@ struct LowerPrimitivesPass
   void runOnOperation() override;
 };
 
-// For staging, we currently only enable fusion of MIP ops in generic regions
-// all other primitives will not be fused.
+// All MIP and MGP Primitives that are registered we will allow fusion of.
 static inline bool canFuseIntoOther(Operation *op) {
   return isa<::M::MIP::MIPDialect, MGPDialect>(op->getDialect());
 }
@@ -54,24 +53,13 @@ static inline bool canDuplicate(Operation *op) {
   return isa<::M::MIP::MIPDialect>(op->getDialect());
 }
 
-// We only allow lowering to generic compiled regions for ops which are
-// registered in mojo and are are CPU only.
-// FIXME: (37088) This is meant to be stop-gap as we expect generic execution
-//        to follow mogg.execute dispatch between cpu/gpu in mojo, but currently
-//        the generic regions are only on cpu.
+// Anything we find a registry for, lower to generic regions
 static inline bool
 isLowerableToGenericRegion(MLIRContext *ctx,
                            MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                            Operation *op) {
   bool isRegistered = mojoLibraryAnalysis.hasRegisteredMojoKernelFor(
       op->getName().getStringRef());
-  if (auto hasDeviceOp = dyn_cast<MGPHasDeviceOpInterface>(op)) {
-    // DeviceContextCreateOp uses the gpu device context but not the gpu. Allow
-    // it to be lowered.
-    return isRegistered && ((hasDeviceOp.getDevice() ==
-                             DeviceRefAttr::get(ctx, kCPULabel, 0)) ||
-                            dyn_cast<MGP::DeviceContextCreateOp>(op));
-  }
   return isRegistered;
 }
 
@@ -128,13 +116,16 @@ void LowerPrimitivesPass::runOnOperation() {
     if (isLowerableToGenericRegion(ctx, mojoLibraryAnalysis, op)) {
       // Create the MOGG generic region which contains the compiled MGP.
       SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
-
+      bool hasCuda = false;
+      if (auto hasDeviceOp = dyn_cast<MGPHasDeviceOpInterface>(op))
+        hasCuda = hasDeviceOp.getDevice().getLabel() == kCUDALabel;
       auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
           opLoc, op->getResultTypes(), op->getOperands(),
           KGEN::ParamDeclArrayAttr::get(ctx, {}),
           InOutSignatureAttr::get(ctx, operandSemantics), BoolAttr{}, // isKGEN
           StringAttr::get(ctx, op->getName().getStringRef()),         // summary
           BoolAttr{},                                                 // isAsync
+          BoolAttr::get(ctx, hasCuda),                                // hasCuda
           BoolAttr::get(ctx, canFuseIntoOther(op)), // canFuseIntoOther
           BoolAttr::get(ctx, canDuplicate(op))      // canDuplicate
       );
@@ -142,8 +133,11 @@ void LowerPrimitivesPass::runOnOperation() {
       mlir::Block &kernelBody = newKernel.getBody().emplaceBlock();
       builder.setInsertionPoint(&kernelBody, kernelBody.begin());
 
-      for (Value operand : newKernel->getOperands())
-        kernelBody.addArgument(operand.getType(), operand.getLoc());
+      llvm::SmallDenseMap<Value, Value> operandToArgMap;
+      for (Value operand : newKernel->getOperands()) {
+        operandToArgMap[operand] =
+            kernelBody.addArgument(operand.getType(), operand.getLoc());
+      }
 
       // Add the call to the actual implementing function in mojo.
       MOGG::CallOp call = builder.create<MOGG::CallOp>(

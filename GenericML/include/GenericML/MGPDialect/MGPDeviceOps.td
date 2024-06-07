@@ -602,6 +602,7 @@ def BufferConstantLoadOp : MGP_DeviceOp<"buffer.constant.load", [
 def BufferAllocStaticOp : MGP_DeviceOp<"buffer.alloc.static", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
+    DeclareOpInterfaceMethods<MGP_HasRuntimeSlotOpInterface>,
     DeclareOpInterfaceMethods<MGP_StaticAllocOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
 ]> {
@@ -662,6 +663,7 @@ def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
     DeclareOpInterfaceMethods<MGP_DynamicAllocOpInterface>,
+    DeclareOpInterfaceMethods<MGP_HasRuntimeSlotOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
 ]> {
   let summary = "Allocates a buffer with dynamically provided byte size on "
