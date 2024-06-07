@@ -14,6 +14,19 @@ from tensor import TensorSpec
 struct StaticTensorSpec[type: DType, rank: Int]:
     var shape: StaticIntTuple[rank]
 
+    fn __init__(inout self, spec: TensorSpec):
+        """Construct from TensorSpec.
+
+        Args:
+            spec: TensorSpec of given rank and type.
+        """
+        debug_assert(spec.rank() == rank, "rank mismatch")
+        debug_assert(spec.dtype() == type, "dtype mismatch")
+        self.shape = StaticIntTuple[rank]()
+
+        for i in range(rank):
+            self.shape[i] = spec[i]
+
     fn get_rank(self) -> Int:
         return rank
 
@@ -37,23 +50,25 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
     var _device: Device
     var name: Optional[String]
 
-    fn __init__(
-        inout self,
-        ptr: DTypePointer[type],
-        shape: StaticIntTuple[rank],
-        device: Device,
-        name: Optional[String] = None,
-    ):
-        self._ptr = ptr
-        self._spec = StaticTensorSpec[type](shape)
-        self._device = device
-        self.name = name
+    # TODO: We should be able to hold DeviceMemory here. Revisit
+    # after DeviceMemory/DeviceTensor work.
+    var _device_memory_impl_ptr: DTypePointer[DType.invalid]
+
+    fn __init__(inout self, owned device_memory: DeviceMemory):
+        self._device = device_memory._device
+        self.name = device_memory.name
+        self._spec = StaticTensorSpec[type, rank](
+            device_memory.get_tensor_spec()
+        )
+        self._ptr = device_memory.unsafe_ptr().bitcast[type]()
+        self._device_memory_impl_ptr = device_memory^._steal_impl_ptr()
 
     fn __moveinit__(inout self, owned existing: Self):
         self._ptr = existing._ptr
         self._spec = existing._spec
         self._device = existing._device
         self.name = existing.name^
+        self._device_memory_impl_ptr = existing._device_memory_impl_ptr
 
     fn __copyinit__(inout self, existing: Self):
         # This temporarily exists so that we can store Tensor in a List
@@ -64,6 +79,7 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
         self._spec = existing._spec
         self._device = existing._device
         self.name = existing.name
+        self._device_memory_impl_ptr = existing._device_memory_impl_ptr
 
     fn get_rank(self) -> Int:
         return self._spec.get_rank()
@@ -190,7 +206,11 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
         return DeviceMemory(self^)
 
     fn __del__(owned self):
-        self._device._free(self._ptr.bitcast[DType.invalid]())
+        _ = DeviceMemory(
+            self._device_memory_impl_ptr,
+            self._spec.get_tensor_spec(),
+            self._device,
+        )
 
     fn unsafe_ptr(self) -> DTypePointer[type]:
         """Returns a pointer to the underlying memory.

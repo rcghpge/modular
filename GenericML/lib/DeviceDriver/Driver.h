@@ -11,6 +11,7 @@
 #include "Support/ML/TensorSpec.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
+#include "llvm/ADT/FunctionExtras.h"
 #include <string>
 namespace M {
 
@@ -32,6 +33,11 @@ struct DeviceMemory {
   /// Relinqishes ownership of the underlying data, and returns the pointer.
   void *release() { return std::exchange(ptr, nullptr); }
 
+  void setDestructorFn(
+      llvm::unique_function<void(void *, const TensorSpec &spec)> destructor) {
+    destructorFn = std::move(destructor);
+  }
+
   /// Returns the ptr backing the DeviceMemory object. Does not release
   /// ownership.
   void *data() { return ptr; }
@@ -41,6 +47,8 @@ struct DeviceMemory {
   virtual ~DeviceMemory();
 
   DeviceMemoryKind getKind() const { return kind; }
+
+  const TensorSpec &getSpec() const { return spec; }
 
   M::RCRef<Device> devicePtr;
 
@@ -52,6 +60,8 @@ protected:
   void *ptr;
   M::TensorSpec spec;
   const DeviceMemoryKind kind;
+  std::optional<llvm::unique_function<void(void *, const TensorSpec &spec)>>
+      destructorFn = std::nullopt;
 };
 struct Device : M::ReferenceCounted<Device> {
   virtual const std::string &getString() const = 0;
@@ -71,6 +81,17 @@ struct Device : M::ReferenceCounted<Device> {
   /// DeviceMemory contains a RCRef of the underlying Device.
   virtual DeviceMemory *createDeviceMemory(void *data,
                                            const TensorSpec &spec) = 0;
+
+  /// Takes ownership of `data` in a DeviceMemory object.
+  /// DeviceMemory contains a RCRef of the underlying Device. The data
+  /// will be destroyed by the given destructor
+  virtual DeviceMemory *createDeviceMemory(
+      void *data, const TensorSpec &spec,
+      llvm::unique_function<void(void *, const TensorSpec &)> destructor) {
+    auto deviceMemory = createDeviceMemory(data, spec);
+    deviceMemory->setDestructorFn(std::move(destructor));
+    return deviceMemory;
+  }
 
   virtual ~Device() = default;
 };

@@ -41,6 +41,20 @@ struct DeviceMemory(StringableRaising, CollectionElement):
         self.spec = spec
         self.name = name
 
+    fn __init__(
+        inout self,
+        owned_ptr: DTypePointer[DType.invalid],
+        spec: TensorSpec,
+        device: Device,
+        name: Optional[String] = None,
+    ):
+        """Creates DeviceMemory from a C Ptr."""
+        self._device = device
+        self.lib = self._device.lib
+        self._ptr = owned_ptr
+        self.spec = spec
+        self.name = name
+
     fn __copyinit__(inout self, existing: Self):
         # This temporarily exists so that we can store DeviceMemory in a List
         # TODO(MSTDL-467): Once Copyable requirement on List is removed, this
@@ -63,21 +77,8 @@ struct DeviceMemory(StringableRaising, CollectionElement):
         self.lib = self._device.lib
         self.spec = tensor.get_tensor_spec()
         self.name = tensor.name
-        alias func_name_create_tensor = "M_createDeviceMemoryFrom"
-        var create_func = self.lib.get_handle().get_function[
-            fn (
-                DTypePointer[DType.invalid], UnsafePointer[TensorSpec], _CDevice
-            ) -> DTypePointer[DType.invalid]
-        ](func_name_create_tensor)
-        var data = tensor^._steal_ptr().bitcast[DType.invalid]()
-        # Need to initialize self._ptr before calling address_of(self.spec)
-        self._ptr = DTypePointer[DType.invalid]()
-        # CAUTION: this assumes that TensorSpec is bitwise identical in mojo and cpp
-        self._ptr = create_func(
-            data,
-            UnsafePointer[TensorSpec].address_of(self.spec),
-            self._device._cdev,
-        )
+        self._ptr = tensor._device_memory_impl_ptr
+        tensor._device_memory_impl_ptr = DTypePointer[DType.invalid]()
 
     fn __init__(inout self, owned anymemory: AnyMemory) raises:
         """Creates a device tensor from given anymemory."""
@@ -86,20 +87,8 @@ struct DeviceMemory(StringableRaising, CollectionElement):
         self.lib = self._device.lib
         self.spec = anymemory._spec
         self.name = anymemory._name
-        alias func_name_create_tensor = "M_createDeviceMemoryFrom"
-        var create_func = self.lib.get_handle().get_function[
-            fn (
-                DTypePointer[DType.invalid], UnsafePointer[TensorSpec], _CDevice
-            ) -> DTypePointer[DType.invalid]
-        ](func_name_create_tensor)
-        # Need to initialize self._ptr before calling address_of(self.spec)
-        self._ptr = DTypePointer[DType.invalid]()
-        # CAUTION: this assumes that TensorSpec is bitwise identical in mojo and cpp
-        self._ptr = create_func(
-            anymemory^._steal_ptr(),
-            UnsafePointer[TensorSpec].address_of(self.spec),
-            self._device._cdev,
-        )
+        self._ptr = anymemory._device_memory_impl_ptr
+        anymemory._device_memory_impl_ptr = DTypePointer[DType.invalid]()
 
     fn __del__(owned self):
         alias func_name_destroy = "M_destroyDeviceMemory"
@@ -146,6 +135,11 @@ struct DeviceMemory(StringableRaising, CollectionElement):
             + "))"
         )
 
+    fn _steal_impl_ptr(owned self) -> DTypePointer[DType.invalid]:
+        var tmp = self._ptr
+        self._ptr = DTypePointer[DType.invalid]()
+        return tmp
+
     fn _steal_ptr(owned self) -> DTypePointer[DType.invalid]:
         alias func_name_take_data = "M_takeDataFromDeviceMemory"
         var take_data_func = self.lib.get_handle().get_function[
@@ -165,16 +159,7 @@ struct DeviceMemory(StringableRaising, CollectionElement):
         if dtype != self.spec.dtype():
             raise "requested dtype does not match existing type."
 
-        var shape = StaticIntTuple[rank]()
-
-        for i in range(rank):
-            shape[i] = self.spec[i]
-
-        alias func_name_steal_data = "M_takeDataFromDeviceMemory"
-        var data = call_dylib_func[DTypePointer[dtype]](
-            self.lib.get_handle(), func_name_steal_data, self._ptr
-        )
-        return Tensor(data, shape, self._device, self.name)
+        return Tensor[dtype, rank](self^)
 
     fn copy_into(self, inout dst_memory: DeviceMemory) raises:
         """Copies the contents of self into a preallocated buffer.

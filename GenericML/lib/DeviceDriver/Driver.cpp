@@ -11,7 +11,10 @@ using namespace M::Driver;
 
 DeviceMemory::~DeviceMemory() {
   if (ptr) {
-    devicePtr->freeData(ptr);
+    if (destructorFn)
+      (*destructorFn)(ptr, getSpec());
+    else
+      devicePtr->freeData(ptr);
   }
 };
 
