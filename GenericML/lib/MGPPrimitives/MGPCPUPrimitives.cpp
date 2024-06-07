@@ -95,8 +95,9 @@ void mgp_runtime_create_cpu(Chain inChain, StateContext &theContext,
   if (engineOr.isError())
     return std::move(outChain).setToError(engineOr.takeError());
 
-  theContext.emplaceStateSlot<CPURuntime>(static_cast<size_t>(*aRuntimeSlot),
-                                          /*numBuffers=*/0, *engineOr);
+  theContext.emplaceStateSlot<KernelExecutionState>(
+      static_cast<size_t>(*aRuntimeSlot),
+      /*numBuffers=*/0, *engineOr);
 
   std::move(outChain).emplace();
 }
@@ -112,8 +113,9 @@ static void mgp_module_load_cpu(Chain inChain, StateContext &theContext,
                                 MEFAttr<StringRef> cFunctionSymbols,
                                 MEFAttr<StringRef> dConstantSymbols,
                                 MEFAttr<uint64_t> eDeviceId, Runtime &runtime) {
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aRuntimeSlot));
+  KernelExecutionState &kernelExecutionState =
+      theContext.getStateSlotPayload<KernelExecutionState>(
+          static_cast<size_t>(*aRuntimeSlot));
   if (!dConstantSymbols->empty() && !(dConstantSymbols->size() == 0) &&
       !(dConstantSymbols->size() == 1 && *dConstantSymbols->begin() == '\0')) {
     return std::move(outChain).setToError(
@@ -121,9 +123,9 @@ static void mgp_module_load_cpu(Chain inChain, StateContext &theContext,
   }
 
   // Create a kernels context.
-  CompiledKernelsContext &module =
-      *cpuRuntime.modules.emplace_back(RCRef<CompiledKernelsContext>::create(
-          cpuRuntime.engine,
+  CompiledKernelsContext &module = *kernelExecutionState.modules.emplace_back(
+      RCRef<CompiledKernelsContext>::create(
+          kernelExecutionState.engine,
           runtime.getProfilerDebuginfo() ==
               RuntimeOptions::ProfilerDebuginfo::kSOProfiler));
 
@@ -685,12 +687,13 @@ static void mgp_kernel_execute_cpu(
         "same");
   }
 
-  CPURuntime &cpuRuntime = theContext.getStateSlotPayload<CPURuntime>(
-      static_cast<size_t>(*aHostRuntimeSlot));
+  KernelExecutionState &kernelExecutionState =
+      theContext.getStateSlotPayload<KernelExecutionState>(
+          static_cast<size_t>(*aHostRuntimeSlot));
 
   CompiledKernelFn *kernelPtr =
-      cpuRuntime.getKernel(static_cast<size_t>(*cHostModuleIndex),
-                           static_cast<size_t>(*dHostKernelIndex));
+      kernelExecutionState.getKernel(static_cast<size_t>(*cHostModuleIndex),
+                                     static_cast<size_t>(*dHostKernelIndex));
 
   // The operands are:
   //  [input_1, ..., input_numInputs,

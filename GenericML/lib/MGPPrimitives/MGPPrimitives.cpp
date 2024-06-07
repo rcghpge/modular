@@ -300,9 +300,10 @@ static void mgp_generic_execute(
     MEFAttr<uint64_t> cFunctionIndex, MEFAttr<StringRef> dSummary,
     MEFAttr<bool> eIsAsync, Runtime &runtime, EncodedLocation loc) {
   auto profilerEntry = MGPProfilerEntry::create(*dSummary);
-  M::MGP::CPURuntime &cpuRuntime =
-      ctx.getStateSlotPayload<M::MGP::CPURuntime>(static_cast<size_t>(*aSlot));
-  CompiledKernelAsyncABIFn *kernelPtr = cpuRuntime.getKernelAsyncABI(
+  M::MGP::KernelExecutionState &kernelExecutionState =
+      ctx.getStateSlotPayload<M::MGP::KernelExecutionState>(
+          static_cast<size_t>(*aSlot));
+  CompiledKernelAsyncABIFn *kernelPtr = kernelExecutionState.getKernelAsyncABI(
       static_cast<size_t>(*bModuleIndex), static_cast<size_t>(*cFunctionIndex));
 
   LLCL::CompactRuntimePtr runtimePtr(runtime);

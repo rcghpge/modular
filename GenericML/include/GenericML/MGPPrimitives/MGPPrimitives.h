@@ -16,12 +16,9 @@ class PrimitiveRegistry;
 
 namespace MGP {
 
-/// Represents the 'runtime' for a CPU device (which is generally also the host
-/// device). This is currently distinct from the LLCL::Runtime.
-///
-/// If we start supporting a device-per-numa-node architecture then this may
-/// grow to also hold an allocator and work queue.
-struct CPURuntime : public ReferenceCounted<CPURuntime> {
+/// Represents the State for kernel execution on CPU/Host device.
+/// This is explicitly the storage of kernel and loaded modules
+struct KernelExecutionState : public ReferenceCounted<KernelExecutionState> {
   // Execution engine held by the runtime and shared by all loaded modules.
   KGEN::ExecutionEngine *engine;
 
@@ -29,15 +26,15 @@ struct CPURuntime : public ReferenceCounted<CPURuntime> {
   // index into this vector.
   SmallVector<RCRef<GML::CompiledKernelsContext>> modules;
 
-  CPURuntime(KGEN::ExecutionEngine *engine) : engine(engine) {}
+  KernelExecutionState(KGEN::ExecutionEngine *engine) : engine(engine) {}
 
-  ~CPURuntime() {
+  ~KernelExecutionState() {
     if constexpr (ProfilerEntry<Trace::EnableTrace(Trace::kMojo, 1),
                                 Trace::kMojo>::isEnabled()) {
       // Mojo static strings are part of the data section of their compiled
       // object files, which are jitted by the `KGEN::ExecutionEngine`.
       // Then the `mgp.load.module.cpu` op loads the object files into this
-      // `CPURuntime` (`!mgp.runtime`).
+      // `KernelExecutionState` (`!mgp.runtime`).
       // However, the profiler borrows pointers to those static string data on
       // Mojo kernel `Trace.__enter__()` and `Trace.__exit__()` calls.
       // Since this dtor is about to unload the object files rendering the

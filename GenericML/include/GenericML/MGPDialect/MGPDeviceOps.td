@@ -207,8 +207,8 @@ def DeviceContextCreateOp : MGP_DeviceOp<"device.context.create"> {
     context is stored in the runtime and passed to every kernel call. The
     context is treated as an opaque pointer.
 
-    device.context.create takes the CPURuntime in addition to the device
-    runtime because the CPURuntime is needed to run Mojo code.
+    device.context.create takes the KernelExecutionState in addition to the device
+    runtime because the KernelExecutionState is needed to run Mojo code.
     device.context.create must come after the context has been created.
 
     Example:
