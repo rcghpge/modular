@@ -314,8 +314,7 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     SymbolTable,
     DeclareOpInterfaceMethods<MOGG_CompilableKernel>,
     MO_HasDeviceInterface,
-    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
-    DeclInterface
+    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>
 ]> {
   let summary = "An abstract function representing a compiled body of code";
   let description = [{
@@ -347,13 +346,6 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
 
   let assemblyFormat = [{
     custom<Kernel>($operands, type($operands), type($results), $body, $outputParamDecls) attr-dict
-  }];
-
-  let extraClassDeclaration = [{
-    /// Returns the KGEN input parameters this depends on. Necessary to
-    /// implement the DeclInterface.
-    ArrayRef<ParamDeclAttr> getInputParams() { return {}; }
-    ArrayRef<ParamDeclAttr> getResultParams() { return {}; }
   }];
 }
 

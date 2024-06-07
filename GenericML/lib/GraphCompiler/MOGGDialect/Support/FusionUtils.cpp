@@ -309,15 +309,15 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
                                         /*replaceTypes=*/true);
     MOGG::remapTypesAndAttrs(kernelOp, nameToDecl);
 
-    if (auto asKernelOp = dyn_cast<KernelOp>(kernelOp)) {
-      // Rename lambdas if they exist and they were renamed.
-      for (uint64_t i = 0; i < asKernelOp->getNumOperands(); ++i) {
-        if (auto lambdaNameAttr = asKernelOp.getInputFusionInterfaceAt(i)) {
-          auto it = nameToDecl.find(lambdaNameAttr);
-          if (it != nameToDecl.end()) {
-            if (auto decl = dyn_cast<KGEN::ParamDeclRefAttr>(it->second))
-              asKernelOp.setInputFusionInterface(i, decl.getName());
-          }
+    auto asKernelOp = dyn_cast<KernelOp>(kernelOp);
+    ASSERT_STREAM(asKernelOp);
+    // Rename lambdas if they exist and they were renamed.
+    for (uint64_t i = 0; i < asKernelOp->getNumOperands(); ++i) {
+      if (auto lambdaNameAttr = asKernelOp.getInputFusionInterfaceAt(i)) {
+        auto it = nameToDecl.find(lambdaNameAttr);
+        if (it != nameToDecl.end()) {
+          if (auto decl = dyn_cast<KGEN::ParamDeclRefAttr>(it->second))
+            asKernelOp.setInputFusionInterface(i, decl.getName());
         }
       }
     }

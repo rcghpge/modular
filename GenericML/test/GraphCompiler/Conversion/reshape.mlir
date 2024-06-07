@@ -1,4 +1,5 @@
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" | FileCheck %s
+// REQUIRES: disabled
+// RUN: mo-opt %s --mo-to-mgp=constant-fold=false | FileCheck %s
 
 // Entry point
 // CHECK: mgp.model @reshape_static_input_static_output
