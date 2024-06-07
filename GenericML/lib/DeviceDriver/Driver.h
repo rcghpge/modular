@@ -50,6 +50,8 @@ struct DeviceMemory {
 
   const TensorSpec &getSpec() const { return spec; }
 
+  TensorSpec getSpec() { return spec; }
+
   M::RCRef<Device> devicePtr;
 
   /// Copies the contents of DeviceMemory to another chunk of DeviceMemory,

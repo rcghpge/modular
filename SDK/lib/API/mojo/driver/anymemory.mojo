@@ -26,7 +26,7 @@ struct AnyMemory:
         self._data = DTypePointer[DType.invalid]()
         self._device_memory_impl_ptr = DTypePointer[DType.invalid]()
 
-    fn __init__(inout self, owned device_memory: DeviceMemory) raises:
+    fn __init__(inout self, owned device_memory: DeviceMemory):
         self._device = device_memory.get_device()
         self._spec = device_memory.get_tensor_spec()
         self._name = device_memory.name
