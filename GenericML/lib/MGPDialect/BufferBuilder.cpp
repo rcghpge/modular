@@ -67,19 +67,12 @@ TypedValue<MEF::ChainType> MGPBufferBuilder::setupForModel(
     return WalkResult::interrupt();
   });
 
-  // Figure out the slot which holds the device map.
-  uint64_t deviceMapSlot = 0;
-  modelOp.walk([&](CheckRuntimeOp checkRuntimeOp) {
-    deviceMapSlot = checkRuntimeOp.getASlot();
-  });
-
   // Create a runtime for the device.
   auto runtime =
       builder.create<MGP::RuntimeCreateOp>(loc,
                                            /*inChain=*/inChain,
                                            /*theContext=*/context,
                                            /*aRuntimeSlot=*/runtimeSlot,
-                                           /*bDeviceSpecMapSlot=*/deviceMapSlot,
                                            /*cDevice=*/device);
   return builder.create<MGP::DeviceContextCreateOp>(
       loc,
@@ -96,7 +89,7 @@ void MGPBufferBuilder::recoverFromModel(ModelOp modelOp,
   // Recover the runtime slot index from the unique mgp.runtime.create op
   // for this device.
   modelOp.walk([&](RuntimeCreateOp runtimeCreateOp) {
-    if (runtimeCreateOp.getCDevice() != device)
+    if (runtimeCreateOp.getBDevice() != device)
       return WalkResult::skip();
     runtimeSlot = runtimeCreateOp.getARuntimeSlot();
     return WalkResult::interrupt();

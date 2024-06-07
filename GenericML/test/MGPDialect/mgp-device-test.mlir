@@ -6,15 +6,15 @@
 
 // CHECK-LABEL: @runtime_create
 func.func @runtime_create(%ctx : !mgp.context, %ch0 : !mef.chain) {
-  // CHECK: %{{.*}} = mgp.runtime.create %{{.*}}, %{{.*}}[1, 2] device <"cuda", 3>
-  %ch1 = mgp.runtime.create %ch0, %ctx[1, 2] device <"cuda", 3>
+  // CHECK: %{{.*}} = mgp.runtime.create %{{.*}}, %{{.*}}[1] device <"cuda", 3>
+  %ch1 = mgp.runtime.create %ch0, %ctx[1] device <"cuda", 3>
   mef.output %ch1 : !mef.chain
 }
 
 // CHECK-LABEL: @runtime_create_host
 func.func @runtime_create_host(%ctx : !mgp.context, %ch0 : !mef.chain) {
-  // CHECK: %{{.*}} = mgp.runtime.create %{{.*}}, %{{.*}}[1, 2]
-  %ch1 = mgp.runtime.create %ch0, %ctx[1, 2]
+  // CHECK: %{{.*}} = mgp.runtime.create %{{.*}}, %{{.*}}[1]
+  %ch1 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch1 : !mef.chain
 }
 

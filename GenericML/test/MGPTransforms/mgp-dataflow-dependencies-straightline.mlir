@@ -10,7 +10,7 @@
 // CHECK:   %[[SSA48:.*]] = "grt.chain.create"() : () -> !mef.chain
 // CHECK:   %[[SSA49:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
 // CHECK:   %[[SSA50:.*]] = "mgp.check_runtime"(%[[SSA48]], %[[SSA49]]) {aSlot = 0 : ui64, bDevices = #M.device_spec_collection<host = <"cpu", 0>, devices = [<ref = <"cpu", 0>, target = <triple = "unknown", arch = "">>]>} : (!mef.chain, !mgp.context) -> !mef.chain
-// CHECK:   %[[SSA51:.*]] = "mgp.runtime.create"(%[[SSA50]], %[[SSA49]]) {aRuntimeSlot = 1 : ui64, bDeviceSpecMapSlot = 0 : ui64, cDevice = #M.device_ref<"cpu", 0>} : (!mef.chain, !mgp.context) -> !mef.chain
+// CHECK:   %[[SSA51:.*]] = "mgp.runtime.create"(%[[SSA50]], %[[SSA49]])
 // CHECK:   "mef.output"(%[[SSA51]], %[[SSA49]]) : (!mef.chain, !mgp.context) -> ()
 // CHECK: }, {
 // ### Block 1 ###
@@ -89,7 +89,7 @@ mgp.model @simple : mof init {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1, 0]
+  %ch2 = mgp.runtime.create %ch1, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %cxt: !mgp.context) -> !mef.chain {
   %ch1 = grt.chain.create ()
@@ -111,7 +111,7 @@ mgp.model @simple : mof init {
 // CHECK:   %[[SSA38:.*]] = "grt.chain.create"() : () -> !mef.chain
 // CHECK:   %[[SSA39:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
 // CHECK:   %[[SSA40:.*]] = "mgp.check_runtime"(%[[SSA38]], %[[SSA39]]) {aSlot = 0 : ui64, bDevices = #M.device_spec_collection<host = <"cpu", 0>, devices = [<ref = <"cpu", 0>, target = <triple = "unknown", arch = "">>]>} : (!mef.chain, !mgp.context) -> !mef.chain
-// CHECK:   %[[SSA41:.*]] = "mgp.runtime.create"(%[[SSA40]], %[[SSA39]]) {aRuntimeSlot = 1 : ui64, bDeviceSpecMapSlot = 0 : ui64, cDevice = #M.device_ref<"cpu", 0>} : (!mef.chain, !mgp.context) -> !mef.chain
+// CHECK:   %[[SSA41:.*]] = "mgp.runtime.create"(%[[SSA40]], %[[SSA39]])
 // CHECK:   "mef.output"(%[[SSA41]], %[[SSA39]]) : (!mef.chain, !mgp.context) -> ()
 // CHECK: }, {
 // ### Block 1 ###
@@ -164,7 +164,7 @@ mgp.model @straightline : mof init {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1, 0]
+  %ch2 = mgp.runtime.create %ch1, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<8xf32>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
@@ -204,7 +204,7 @@ mgp.model @straightline : mof init {
 // CHECK:   %[[SSA9:.*]] = "grt.chain.create"() : () -> !mef.chain
 // CHECK:   %[[SSA10:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
 // CHECK:   %[[SSA11:.*]] = "mgp.check_runtime"(%[[SSA9]], %[[SSA10]]) {aSlot = 0 : ui64, bDevices = #M.device_spec_collection<host = <"cpu", 0>, devices = [<ref = <"cpu", 0>, target = <triple = "unknown", arch = "">>]>} : (!mef.chain, !mgp.context) -> !mef.chain
-// CHECK:   %[[SSA12:.*]] = "mgp.runtime.create"(%[[SSA11]], %[[SSA10]]) {aRuntimeSlot = 1 : ui64, bDeviceSpecMapSlot = 0 : ui64, cDevice = #M.device_ref<"cpu", 0>} : (!mef.chain, !mgp.context) -> !mef.chain
+// CHECK:   %[[SSA12:.*]] = "mgp.runtime.create"(%[[SSA11]], %[[SSA10]])
 // CHECK:   "mef.output"(%[[SSA12]], %[[SSA10]]) : (!mef.chain, !mgp.context) -> ()
 // CHECK: }, {
 // CHECK: ^bb0(%arg0: !mef.chain, %arg1: !mgp.context):
@@ -236,7 +236,7 @@ mgp.model @safe_split_borrow : mof init {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1, 0]
+  %ch2 = mgp.runtime.create %ch1, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<6xsi8>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]

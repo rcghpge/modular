@@ -147,14 +147,10 @@ def RuntimeCreateOp : MGP_DeviceOp<"runtime.create"> {
                 "device.";
   let description = [{
     Creates a device-specific runtime within an `!mgp.context` slot appropriate
-    for the `#M.device_ref` attribute (the 'runtime slot'). The actual
-    'physical' device to use is determined by a combination of runtime
-    configuration options and the `DeviceSpecMap` produced by the already
-    executed `mgp.check_runtime` op which has been stored in the given
-    'device map slot' index.
+    for the `#M.device_ref` attribute (the 'runtime slot').
 
-    All subsequent operations for this device must reference this runtime same
-    slot.
+    All subsequent operations for this device must reference this runtime by the
+    same slot.
 
     There is no universal representation for device runtimes in the host C++
     runtime. Depending on device the op may accept additional attributes.
@@ -164,13 +160,11 @@ def RuntimeCreateOp : MGP_DeviceOp<"runtime.create"> {
 
     Example:
     ```mlir
-      // Establish a CUDA runtime in slot 5, using the device map established
-      // by an earlier mgp.check_runtime op in slot 2 to determine which
-      // physical GPU to use. The physical GPU will be associated with the
-      // virtual device id 3.
+      // Establish a CUDA runtime in slot 5 using the gpu returned 
+      // by cuDevice(3).
       %ch0 : !mef.chain
       %ctx : !mgp.context
-      %ch1 = mgp.runtime.create %ch0, %ctx[5, 2] device <"cuda", 3>
+      %ch1 = mgp.runtime.create %ch0, %ctx[5] device <"cuda", 3>
       %ch1 : !mef.chain
     ```
   }];
@@ -180,18 +174,17 @@ def RuntimeCreateOp : MGP_DeviceOp<"runtime.create"> {
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        UI64Attr:$aRuntimeSlot,         // 1
-                       UI64Attr:$bDeviceSpecMapSlot,   // 2
-                       MGP_OptDeviceRefAttr:$cDevice); // 3
+                       MGP_OptDeviceRefAttr:$bDevice); // 2
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aRuntimeSlot `,` $bDeviceSpecMapSlot `]`
-    ( `device`  $cDevice^ )? attr-dict
+    $inChain `,` $theContext `[` $aRuntimeSlot `]`
+    ( `device`  $bDevice^ )? attr-dict
   }];
 
   let extraClassDefinition = [{
     uint64_t RuntimeCreateOp::getSlot() { return getARuntimeSlot(); }
 
-    M::DeviceRefAttr RuntimeCreateOp::getDevice() { return getCDevice(); }
+    M::DeviceRefAttr RuntimeCreateOp::getDevice() { return getBDevice(); }
   }];
 }
 

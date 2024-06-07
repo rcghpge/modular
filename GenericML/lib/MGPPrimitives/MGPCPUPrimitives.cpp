@@ -55,18 +55,7 @@ TensorBufferRef createBorrowedSlice(TensorBufferRef &borroweBufferRef,
 void mgp_runtime_create_cpu(Chain inChain, StateContext &theContext,
                             Result<Chain> outChain,
                             MEFAttr<uint64_t> aRuntimeSlot,
-                            MEFAttr<uint64_t> bDeviceSpecMapSlot,
-                            MEFAttr<uint64_t> cDeviceId, Runtime &runtime) {
-  // Make sure the runtime actually has the "cpu" device we are trying to use.
-  const auto &deviceSpecMap =
-      theContext.getStateSlotPayload<RuntimeDeviceSpecMap>(
-          static_cast<size_t>(*bDeviceSpecMapSlot));
-  DeviceRef device(kCPULabel, *cDeviceId);
-  auto itr = deviceSpecMap.map.find(device);
-  if (itr == deviceSpecMap.map.end())
-    return std::move(outChain).setToError(Twine("no device matching '") +
-                                          device.toString() + "' is available");
-
+                            MEFAttr<uint64_t> bDeviceId, Runtime &runtime) {
   // Establish an execution engine, to be shared amongst all loaded models
   // across all models using this runtime.
   //

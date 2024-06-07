@@ -3,7 +3,7 @@
 
 module {
   mgp.model @upsideDown : mof init {
-    %2 = mgp.runtime.create %0, %1[1, 0] device<"cpu", 0>
+    %2 = mgp.runtime.create %0, %1[1] device<"cpu", 0>
     %1 = mgp.context.create 1
     %0 = grt.chain.create ()
     mef.output %2, %1 : !mef.chain, !mgp.context
