@@ -40,6 +40,8 @@ static void fuseCompiledRegionsAndReplaceUses(
     return isa<MOGG::GenericCompiledRegionOp>(op);
   }));
 
+  MOGG::stageKernelsForFusion(compiledRegionOpsToFuseTogether);
+
   // Iterate through all the ops to fuse and gather all operand and results.
   llvm::SetVector<Value> allResults;
   llvm::SetVector<Value> allOperands;
@@ -139,6 +141,7 @@ static void fuseCompiledRegionsAndReplaceUses(
   }
 
   SmallVector<Value> valuesToOutput;
+
   IRMapping mapper;
   for (auto op : compiledRegionOpsToFuseTogether) {
     auto asRegionOp = cast<MOGG::GenericCompiledRegionOp>(op);
@@ -178,7 +181,13 @@ static void fuseCompiledRegionsAndReplaceUses(
     }
   }
 
-  ASSERT_STREAM(valuesToOutput.size() == resultsThatShouldBeReplaced.size());
+  // The `valuesToOutput` can have an explicit mef.chain or not. If it has a
+  // mef.chain, then valuesToOutput.size() ==
+  // resultsThatShouldBeReplaced.size(). Otherwise, the `fusedCompiledRegionOp`
+  // output still have an implicit mef.chain and valuesToOutput.size() + 1 ==
+  // resultsThatShouldBeReplaced.size().
+  ASSERT_STREAM(valuesToOutput.size() + 1 >=
+                resultsThatShouldBeReplaced.size());
 
   // Creating the output op and replacing outside SSA values.
   builder.create<MOGG::OutputOp>(loc, valuesToOutput);
