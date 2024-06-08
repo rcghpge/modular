@@ -8,19 +8,18 @@
 from tensor import TensorSpec, Tensor, TensorShape
 
 from max.engine import InferenceSession, InputSpec
-from max.serve.service import FileModel
-from max.serve.server import InferenceServer, MuxInferenceService
+from max.serve.kserve import FileModel, GRPCServer, MuxInferenceService
 from runtime.llcl import (
     Runtime,
     TaskGroup,
     Atomic,
 )
 from time import sleep, now
-from max.serve.kserve.client import GRPCInferenceClient
+from max.serve.kserve import GRPCClient
 from max.graph._testing import assert_tensors_almost_equal
 
 
-def test_standalone_server_client[ENABLE_HTTP_SERVER: Bool]() -> None:
+def test_standalone_server_client() -> None:
     var start_time = now()
 
     @parameter
@@ -31,9 +30,7 @@ def test_standalone_server_client[ENABLE_HTTP_SERVER: Bool]() -> None:
     var client_completed = Atomic[DType.int64](0)
     var server_session = InferenceSession()
     alias server_address = "0.0.0.0:8000"
-    var server = InferenceServer.create[ENABLE_HTTP_SERVER](
-        server_address, server_session
-    )
+    var server = GRPCServer.create(server_address, server_session)
     print("[" + elapsed() + "]Created server.")
 
     @parameter
@@ -42,9 +39,6 @@ def test_standalone_server_client[ENABLE_HTTP_SERVER: Bool]() -> None:
         try:
             var models = List(FileModel(name, "0", path, None))
             var server_service = MuxInferenceService(models, server_session)
-
-            # Create service and start listening:
-            server_service.init(server)
             print(
                 "[" + elapsed() + "]Listening on port " + server_address + "!"
             )
@@ -60,7 +54,7 @@ def test_standalone_server_client[ENABLE_HTTP_SERVER: Bool]() -> None:
                 sleep(1)
             # Load models during service creation:
             var session = InferenceSession()
-            var client = GRPCInferenceClient(server_address, session)
+            var client = GRPCClient(server_address, session)
             var inputs = session.new_tensor_map()
             var a = Tensor[DType.float32](1, 1)
             var b = Tensor[DType.float32](1, 1)
@@ -104,11 +98,9 @@ def test_standalone_server_client[ENABLE_HTTP_SERVER: Bool]() -> None:
         tg.wait()
         _ = tg^
         print("[" + elapsed() + "]Done!")
-        _ = client_task^
-        _ = server_task^
         _ = server^
         _ = rt
 
 
 def main():
-    test_standalone_server_client[False]()
+    test_standalone_server_client()

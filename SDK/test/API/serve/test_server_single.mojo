@@ -13,11 +13,11 @@ from tensor import Tensor, TensorShape
 
 from max.engine import InferenceSession
 from max.graph import _testing
-from max.serve.kserve.client import GRPCInferenceClient
+from max.serve.kserve import GRPCClient
 
 
 fn test_basic_add_request(
-    inout client: GRPCInferenceClient, owned session: InferenceSession
+    inout client: GRPCClient, owned session: InferenceSession
 ) raises:
     var inputs = session.new_tensor_map()
     var a = Tensor[DType.float32](1, 1)
@@ -67,7 +67,7 @@ fn main() raises:
             raise Error("Failed to parse command-line options")
 
     var session = InferenceSession()
-    var client = GRPCInferenceClient(address, session)
+    var client = GRPCClient(address, session)
 
     for _ in range(num_requests):
         try:

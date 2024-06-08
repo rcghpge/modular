@@ -7,8 +7,7 @@
 from tensor import TensorSpec, Tensor, TensorShape
 
 from max.engine import InferenceSession, InputSpec
-from max.serve.service import FileModel
-from max.serve.server import InferenceServer, MuxInferenceService
+from max.serve.kserve import FileModel, GRPCServer, MuxInferenceService
 from runtime.llcl import (
     Runtime,
     TaskGroup,
@@ -18,7 +17,7 @@ from time import sleep, now
 from max.graph._testing import assert_tensors_almost_equal
 
 
-def run_shutdown_test[ENABLE_HTTP: Bool]() -> None:
+def run_shutdown_test() -> None:
     var server_started = Atomic[DType.int64](0)
     var server_session = InferenceSession()
     alias server_address = "0.0.0.0:0"
@@ -28,9 +27,7 @@ def run_shutdown_test[ENABLE_HTTP: Bool]() -> None:
     fn elapsed() -> String:
         return str(int((now() - start_time) / (1_000_000))) + " ms"
 
-    var server = InferenceServer.create[ENABLE_HTTP](
-        server_address, server_session
-    )
+    var server = GRPCServer.create(server_address, server_session)
     print("[" + elapsed() + "]Created server.")
 
     @parameter
@@ -42,8 +39,6 @@ def run_shutdown_test[ENABLE_HTTP: Bool]() -> None:
             print("[" + elapsed() + "]Entered stub.")
             var mux_service = MuxInferenceService(models, server_session)
             print("[" + elapsed() + "]Loaded model.")
-            # Create service and start listening:
-            mux_service.init(server)
             print(
                 "[" + elapsed() + "]Listening on port " + server_address + "!"
             )
@@ -61,16 +56,13 @@ def run_shutdown_test[ENABLE_HTTP: Bool]() -> None:
 
     with Runtime() as rt:
         var tg = TaskGroup[__lifetime_of(server_started)](rt)
-        var server_task = tg.create_task(server_impl())
-        var shutdown_task = tg.create_task(shutdown_task_impl())
+        tg.create_task(server_impl())
+        tg.create_task(shutdown_task_impl())
         tg.wait()
         _ = tg^
-        _ = server_task^
-        _ = shutdown_task^
-        _ = rt
         _ = server^
         print("[" + elapsed() + "]Server terminated succesfully.")
 
 
 def main():
-    run_shutdown_test[False]()
+    run_shutdown_test()
