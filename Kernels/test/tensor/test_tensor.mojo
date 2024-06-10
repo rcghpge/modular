@@ -3,19 +3,17 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-# RUN: %mojo -D TEMP_FILE_DIR=%T -debug-level full %s | FileCheck %s
+# RUN: %mojo -debug-level full %s | FileCheck %s
 
 from math import iota, sqrt
 from pathlib import Path
-from sys.param_env import env_get_string
+from tempfile import NamedTemporaryFile
 
 from tensor import Tensor, TensorShape, TensorSpec
 from tensor.tensor import _serialize_as_tensor
 from testing import assert_almost_equal, assert_equal, assert_false
 
 from utils.index import Index, StaticIntTuple
-
-alias TEMP_FILE_DIR = env_get_string["TEMP_FILE_DIR"]()
 
 
 # CHECK: test_tensor
@@ -570,13 +568,13 @@ fn test_serialize():
 def test_tensor_from_file():
     print("== test_tensor")
     var tensor = Tensor[DType.int8](TensorShape(4), 1, 2, 3, 4)
-    var TEMP_FILE = Path(TEMP_FILE_DIR) / "test_tensor_from_file"
-    tensor.tofile(TEMP_FILE)
-    var tensor_from_file = Tensor[DType.int8].fromfile(TEMP_FILE)
+    with NamedTemporaryFile(name=str("test_tensor_from_file")) as TEMP_FILE:
+        tensor.tofile(TEMP_FILE.name)
+        var tensor_from_file = Tensor[DType.int8].fromfile(TEMP_FILE.name)
 
-    # CHECK-NOT: False
-    for i in range(tensor.num_elements()):
-        print(tensor[i] == tensor_from_file[i])
+        # CHECK-NOT: False
+        for i in range(tensor.num_elements()):
+            print(tensor[i] == tensor_from_file[i])
 
 
 # CHECK-LABEL: test_tensor_load_save
@@ -585,13 +583,13 @@ fn test_tensor_load_save() raises:
     var tensor = Tensor[DType.int8](2, 2, 3)
     tensor._to_buffer().fill(2)
 
-    var TEMP_FILE = Path(TEMP_FILE_DIR) / "test_tensor_load_save"
-    tensor.save(TEMP_FILE)
+    with NamedTemporaryFile(name=str("test_tensor_load_save")) as TEMP_FILE:
+        tensor.save(TEMP_FILE.name)
 
-    var tensor_loaded = Tensor[DType.int8].load(TEMP_FILE)
+        var tensor_loaded = Tensor[DType.int8].load(TEMP_FILE.name)
 
-    # CHECK: True
-    print(tensor == tensor_loaded)
+        # CHECK: True
+        print(tensor == tensor_loaded)
 
 
 def main():
