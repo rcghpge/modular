@@ -6,6 +6,7 @@
 # UNSUPPORTED: windows
 # RUN: mojo %s
 
+from testing import *
 from max.graph import _testing, ops, Dim, Graph, TensorType, Type
 from tensor import Tensor, TensorShape
 
@@ -150,6 +151,66 @@ fn test_matrix_slice_double() raises:
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
+def test_slice_multiple_static_slices():
+    x = Tensor[DType.int64](TensorShape(2, 2, 2), 1, 2, 3, 4, 5, 6, 7, 8)
+
+    g = Graph(TensorType(DType.int64, 2, 2, 2))
+    slice_out = g[0][:, :1]
+    assert_true(TensorType(DType.int64, 2, 1, 2) == slice_out.tensor_type())
+    g.output(slice_out)
+    _testing.assert_tensors_equal(
+        Tensor[DType.int64](TensorShape(2, 1, 2), 1, 2, 5, 6),
+        _testing.execute_unary[outtype = DType.int64](g, x),
+    )
+
+    g = Graph(TensorType(DType.int64, 2, 2, 2))
+    slice_out = g[0][:, :1, :5]
+    assert_true(TensorType(DType.int64, 2, 1, 2) == slice_out.tensor_type())
+    g.output(slice_out)
+    _testing.assert_tensors_equal(
+        Tensor[DType.int64](TensorShape(2, 1, 2), 1, 2, 5, 6),
+        _testing.execute_unary[outtype = DType.int64](g, x),
+    )
+
+    g = Graph(TensorType(DType.int64, 2, 2, 2))
+    slice_out = g[0][1:]
+    assert_true(TensorType(DType.int64, 1, 2, 2) == slice_out.tensor_type())
+    g.output(slice_out)
+    _testing.assert_tensors_equal(
+        Tensor[DType.int64](TensorShape(1, 2, 2), 5, 6, 7, 8),
+        _testing.execute_unary[outtype = DType.int64](g, x),
+    )
+
+    g = Graph(TensorType(DType.int64, 2, 2, 2))
+    slice_out = g[0][:, :, 2:]
+    assert_true(TensorType(DType.int64, 2, 2, 0) == slice_out.tensor_type())
+    g.output(slice_out)
+    _testing.assert_tensors_equal(
+        Tensor[DType.int64](TensorShape(2, 2, 0)),
+        _testing.execute_unary[outtype = DType.int64](g, x),
+    )
+
+    g = Graph(TensorType(DType.int64, "batch", Dim.dynamic(), "z"))
+    slice_out = g[0][1:, :1, :]
+    assert_true(
+        TensorType(DType.int64, Dim.dynamic(), Dim.dynamic(), "z")
+        == slice_out.tensor_type()
+    )
+    g.output(slice_out)
+    _testing.assert_tensors_equal(
+        Tensor[DType.int64](TensorShape(1, 1, 2), 5, 6),
+        _testing.execute_unary[outtype = DType.int64](g, x),
+    )
+
+    g = Graph(TensorType(DType.int64, 2, 2, 2))
+    with assert_raises(contains="unsupported"):
+        g.output(g[0][:, :, ::-1])
+
+    g = Graph(TensorType(DType.int64, 2, 2, 2))
+    with assert_raises(contains="got 4 slices, tensor only has rank 3"):
+        g.output(g[0][1:, 1:, 1:, 1:])
+
+
 def main():
     test_vector_index_int()
     test_vector_index_neg_one()
@@ -162,3 +223,5 @@ def main():
     test_matrix_slice_int()
     test_matrix_slice_sym()
     test_matrix_slice_double()
+
+    test_slice_multiple_static_slices()
