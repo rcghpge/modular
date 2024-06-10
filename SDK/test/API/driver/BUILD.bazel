@@ -4,13 +4,7 @@ package(default_visibility = ["//visibility:public"])
 
 lit_tests(
     name = "test",
-    srcs = glob(
-        ["mojo/*.mojo"],
-        exclude = [
-            "mojo/test_graph.mojo",  # Error DyLIB MOF
-        ],
-    ),
-    custom_substitutions = {},
+    srcs = glob(["mojo/*.mojo"]),
     data = [
         "//GenericML:DeviceDriver",
         "//GenericML:modular-framework-common",

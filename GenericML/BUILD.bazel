@@ -1432,6 +1432,7 @@ modular_shared_library(
         ":Support",
         ":modular-framework-common",
         "//CUDASupport",
+        "//ModularFramework/tools/mof",
         "//Support:Init",
     ],
 )
