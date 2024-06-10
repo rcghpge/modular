@@ -1,0 +1,34 @@
+load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
+load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
+
+pkg_zip(
+    name = "tuf_packaging",
+    srcs = [
+        "setup.py",
+        ":engine",
+        ":pyproject",
+    ],
+    tags = ["manual"],
+)
+
+pkg_files(
+    name = "engine",
+    srcs = [
+        "//SDK/lib/EngineAPI/python/bindings/max/engine:core",
+        "//SDK/lib/EngineAPI/python/max/engine",
+    ],
+    prefix = "max/engine",
+)
+
+expand_template(
+    name = "pyproject",
+    out = "pyproject.toml",
+    # TODO: Handle real version inputs
+    substitutions = {
+        "@MODULAR_VERSION_MAJOR@": "1",
+        "@MODULAR_VERSION_MINOR@": "2",
+        "@MODULAR_VERSION_PATCH@": "3",
+    },
+    template = "pyproject.toml.in",
+)

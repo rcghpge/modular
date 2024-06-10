@@ -4,7 +4,7 @@ load("//bazel:api.bzl", "driver_option_tablegen", "modular_cc_library", "td_libr
 package(default_visibility = ["//visibility:public"])
 
 pybind_library(
-    name = "EngineAPI",
+    name = "ModularFrameworkPython",
     srcs = glob(["lib/EngineAPI/**/*.cpp"]),
     hdrs = glob(["include/SDK/EngineAPI/**/*.h"]),
     copts = ["-frtti"],
