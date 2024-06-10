@@ -65,6 +65,7 @@ protected:
   std::optional<llvm::unique_function<void(void *, const TensorSpec &spec)>>
       destructorFn = std::nullopt;
 };
+
 struct Device : M::ReferenceCounted<Device> {
   virtual const std::string &getString() const = 0;
 
@@ -73,6 +74,10 @@ struct Device : M::ReferenceCounted<Device> {
 
   /// Frees ptr created with `allocateData`.
   virtual void freeData(void *ptr) = 0;
+
+  virtual std::string getLabel() const = 0;
+
+  virtual int getId() const = 0;
 
   /// Allocates `bytes` bytes of memory on the device
   /// and returns the allocation in a DeviceMemory object.

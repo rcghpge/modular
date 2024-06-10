@@ -156,6 +156,28 @@ fn compile_graph(graph: Graph, device: Device) -> CompiledGraph:
         device.lib.get_handle(),
         "M_compileGraph",
         graph._module().c.ptr,
+        device._cdev,
+        max_context,
+    )
+    return CompiledGraph(compiled_ptr, device)
+
+
+fn compile_graph(graph_path: String, device: Device) -> CompiledGraph:
+    """Compiles graph file to the given device.
+
+    Args:
+        graph_path: File path to graph.This should be an mlir file in MO/RMO dialect.
+        device: Device the architecture to which graph needs to be compiled.
+
+    Returns:
+        Compiled graph ready to be loaded and executed.
+    """
+    var max_context = _get_global_or_null["MaxContext"]().address
+    var compiled_ptr = call_dylib_func[_CCompiledGraph](
+        device.lib.get_handle(),
+        "M_compileGraphFromPath",
+        graph_path.unsafe_cstr_ptr(),
+        device._cdev,
         max_context,
     )
     return CompiledGraph(compiled_ptr, device)
