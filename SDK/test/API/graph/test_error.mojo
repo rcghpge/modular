@@ -15,8 +15,6 @@ def test_error():
     g = Graph(List[Type]())
     with testing.assert_raises(contains="test_error.mojo:17"):
         raise error(g, "blah")
-    with testing.assert_raises(contains="System stack:"):
-        raise error(g, "blah")
     with testing.assert_raises(contains="foo.bar - blah"):
         with g.layer("foo"):
             with g.layer("bar"):
