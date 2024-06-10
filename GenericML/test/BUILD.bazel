@@ -1,7 +1,5 @@
 load("//bazel:api.bzl", "lit_tests")
 
-package(default_visibility = ["//visibility:public"])
-
 lit_tests(
     name = "test",
     srcs = glob(

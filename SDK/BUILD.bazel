@@ -1,14 +1,13 @@
 load("@pybind11_bazel//:build_defs.bzl", "pybind_library")
 load("//bazel:api.bzl", "driver_option_tablegen", "modular_cc_library", "td_library")
 
-package(default_visibility = ["//visibility:public"])
-
 pybind_library(
     name = "ModularFrameworkPython",
     srcs = glob(["lib/EngineAPI/**/*.cpp"]),
     hdrs = glob(["include/SDK/EngineAPI/**/*.h"]),
     copts = ["-frtti"],
     strip_include_prefix = "include",
+    visibility = ["//visibility:public"],
     deps = [
         "//GenericML:modular-framework-common",
         "//PyTorch:modular-framework-torch-ext",
@@ -65,6 +64,7 @@ td_library(
     name = "BenchmarkTdFiles",
     srcs = glob(["lib/EngineCLI/Benchmark/*.td"]),
     includes = ["include"],
+    visibility = [":__subpackages__"],
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
     ],
@@ -87,6 +87,7 @@ td_library(
     name = "CommonTdFiles",
     srcs = glob(["lib/EngineCLI/Common/*.td"]),
     includes = ["include"],
+    visibility = [":__subpackages__"],
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
     ],
@@ -96,6 +97,7 @@ td_library(
     name = "VisualizeTdFiles",
     srcs = glob(["lib/EngineCLI/Visualize/*.td"]),
     includes = ["include"],
+    visibility = [":__subpackages__"],
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
     ],

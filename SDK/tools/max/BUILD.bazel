@@ -1,7 +1,5 @@
 load("//bazel:api.bzl", "driver_option_tablegen", "modular_cc_binary", "td_library")
 
-package(default_visibility = ["//visibility:public"])
-
 modular_cc_binary(
     name = "max",
     srcs = glob(["*.cpp"]),

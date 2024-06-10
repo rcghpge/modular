@@ -1,8 +1,6 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "td_library")
 
-package(default_visibility = ["//visibility:public"])
-
 td_library(
     name = "InterfacesTdFiles",
     srcs = glob(["include/GenericML/Interfaces/*.td"]),
@@ -151,6 +149,7 @@ td_library(
     name = "GraphCompilerInterfacesTdFiles",
     srcs = glob(["include/GenericML/GraphCompiler/Interfaces/*.td"]),
     includes = ["include"],
+    visibility = ["//visibility:public"],
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
     ],
@@ -229,6 +228,7 @@ td_library(
     name = "MODialectTdFiles",
     srcs = glob(["include/GenericML/GraphCompiler/MODialect/*.td"]),
     includes = ["include"],
+    visibility = ["//visibility:public"],
     deps = [
         "//KGEN:KGENDialectTdFiles",
         "@llvm-project//mlir:BuiltinDialectTdFiles",
@@ -681,6 +681,7 @@ td_library(
     name = "MGPDialectTdFiles",
     srcs = glob(["include/GenericML/MGPDialect/*.td"]),
     includes = ["include"],
+    visibility = ["//visibility:public"],
     deps = [
         ":MODialectTdFiles",
         ":MOGGDialectTdFiles",
