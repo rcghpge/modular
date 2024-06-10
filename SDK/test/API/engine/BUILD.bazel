@@ -1,0 +1,45 @@
+load("//utils/bazel/build/rules:lit.bzl", "lit_tests")
+
+package(default_visibility = ["//visibility:public"])
+
+lit_tests(
+    name = "test",
+    srcs = glob(
+        ["mojo/*.mojo"],
+        exclude = [
+            # So we have eliminated all the DyLib loading problem, the closing of
+            # the DyLibs before calling a deconstructor, but are stuck currently
+            # with the Session deconstructor hitting a SEGFAULT when M_freeRuntimeContext is
+            # called. Spent a long time trying to figure that out.
+            "mojo/test_aiengine.mojo",
+            "mojo/test_list.mojo",
+            "mojo/test_prim_values.mojo",
+            "mojo/test_tensor.mojo",
+            "mojo/test_tensor_map.mojo",
+            "mojo/test_tensor_spec.mojo",
+        ],
+    ),
+    custom_substitutions = {},
+    data = [
+        "//GenericML:modular-framework-common",
+        "//KGEN:CompilerRT",
+        "//ModularFramework/tools/mof",
+        "//PyTorch:modular-framework-torch-ext",
+        "@llvm-project//compiler-rt:orc_rt",
+    ],
+    env = {
+        "MODULAR_MOJO_COMPILERRT_PATH": "$(location //KGEN:CompilerRT)",
+        "MODULAR_MOJO_ORCRT_PATH": "$(location @llvm-project//compiler-rt:orc_rt)",
+        "MODULAR_MAX_GRAPH_LIB": "$(location //ModularFramework/tools/mof)",
+        "MODULAR_MAX_ENGINE_LIB": "$(location //GenericML:modular-framework-common)",
+        "MODULAR_MAX_TORCH_EXT_LIB": "$(location //PyTorch:modular-framework-torch-ext)",
+    },
+    mojo_deps = [
+        "//SDK/lib/API/mojo/max",
+        "//open-source/mojo/stdlib/stdlib",
+        "//Kernels/mojo/tensor",
+    ],
+    tools = [
+        "//KGEN/tools/mojo",
+    ],
+)

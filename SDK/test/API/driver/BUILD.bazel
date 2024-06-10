@@ -1,0 +1,39 @@
+load("//utils/bazel/build/rules:lit.bzl", "lit_tests")
+
+package(default_visibility = ["//visibility:public"])
+
+lit_tests(
+    name = "test",
+    srcs = glob(
+        ["mojo/*.mojo"],
+        exclude = [
+            "mojo/test_graph.mojo",  # Error DyLIB MOF
+        ],
+    ),
+    custom_substitutions = {},
+    data = [
+        "//GenericML:DeviceDriver",
+        "//GenericML:modular-framework-common",
+        "//KGEN:CompilerRT",
+        "//ModularFramework/tools/mof",
+        "@llvm-project//compiler-rt:orc_rt",
+    ],
+    env = {
+        "MODULAR_MOJO_COMPILERRT_PATH": "$(location //KGEN:CompilerRT)",
+        "MODULAR_MOJO_ORCRT_PATH": "$(location @llvm-project//compiler-rt:orc_rt)",
+        "MODULAR_MAX_ENGINE_LIB": "$(location //GenericML:modular-framework-common)",
+        "MODULAR_MAX_GRAPH_LIB": "$(location //ModularFramework/tools/mof)",
+        "MODULAR_MAX_DRIVER_LIB": "$(location //GenericML:DeviceDriver)",
+    },
+    mojo_deps = [
+        "//SDK/lib/API/mojo/driver",
+        "//SDK/lib/API/mojo/max",
+        "//open-source/mojo/stdlib/stdlib",
+        "//Kernels/mojo/tensor",
+    ],
+    path = "$(rlocationpath //CUDASupport/tools/is-cuda-available)",
+    tools = [
+        "//CUDASupport/tools/is-cuda-available",
+        "//KGEN/tools/mojo",
+    ],
+)

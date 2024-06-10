@@ -1,0 +1,13 @@
+load("//utils/bazel/build/rules:mojo.bzl", "mojo_library")
+
+package(default_visibility = ["//visibility:public"])
+
+mojo_library(
+    name = "driver",
+    srcs = glob(["**/*.mojo"]),
+    deps = [
+        "//Kernels/mojo/tensor",
+        "//SDK/lib/API/mojo/max",
+        "//open-source/mojo/stdlib/stdlib",
+    ],
+)

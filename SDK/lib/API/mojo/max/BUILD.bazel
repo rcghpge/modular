@@ -3,6 +3,7 @@ load("//bazel:api.bzl", "mojo_library")
 mojo_library(
     name = "max",
     srcs = glob(["**/*.mojo"]),
+    visibility = ["//visibility:public"],
     deps = [
         "//Kernels/mojo/algorithm",
         "//Kernels/mojo/benchmark",

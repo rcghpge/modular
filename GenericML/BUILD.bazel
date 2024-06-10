@@ -1420,3 +1420,18 @@ modular_shared_library(
         "//Support:Metering",
     ],
 )
+
+modular_shared_library(
+    name = "DeviceDriver",
+    srcs = glob([
+        "lib/DeviceDriver/*.cpp",
+        "lib/DeviceDriver/*.h",
+    ]),
+    deps = [
+        ":CommonDriver",
+        ":Support",
+        ":modular-framework-common",
+        "//CUDASupport",
+        "//Support:Init",
+    ],
+)
