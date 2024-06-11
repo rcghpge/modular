@@ -27,7 +27,10 @@ struct TensorSlice[
         var adjusted_shape = StaticIntTuple[rank]()
         for i in range(rank):
             adjusted_shape[i] = int(
-                ceil((slices[i].end - slices[i].start) / slices[i].step)
+                ceil(
+                    (slices[i].end.value() - slices[i].start.value())
+                    / slices[i].step
+                )
             )
         var slice_spec = StaticTensorSpec[type](adjusted_shape)
         self = Self(tensor, slices, slice_spec)
@@ -40,7 +43,8 @@ struct TensorSlice[
         for i in range(len(indices)):
             debug_assert(indices[i] < self._spec[i], "index out of bound")
             adjusted[i] = (
-                indices[i] * self._slices[i].step + self._slices[i].start
+                indices[i] * self._slices[i].step
+                + self._slices[i].start.value()
             )
         return adjusted
 
