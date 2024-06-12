@@ -123,4 +123,14 @@ def RemoveNonLowerableResults: Pass<"remove-non-lowerable-results", "ModuleOp"> 
                           "MOGG::MOGGDialect"];
 }
 
+def RemoveRedundantOperands: Pass<"remove-redundant-operands", "ModuleOp"> {
+  let summary = "Removes all redundant operands as a result of seq fusion";
+  let description = [{}];
+
+  let dependentDialects = ["MEF::MEFDialect",
+                          "MGP::MGPDialect",
+                          "GRT::GRTDialect",
+                          "MOGG::MOGGDialect"];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_TD

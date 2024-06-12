@@ -81,6 +81,7 @@ void M::MO::registerPasses() {
   MGP::registerLowerPrimitives();
   MGP::registerLowerMOGGABI();
   MGP::registerFuseGenericCompiledRegions();
+  MGP::registerRemoveRedundantOperands();
   MGP::registerRemoveNonLowerableResults();
   MGP::registerMGPTransformsPasses();
   CUDA::registerCUDATransformsPasses();
@@ -325,6 +326,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   MGP::FuseGenericCompiledRegionsOptions fuseOpts;
   fuseOpts.enableFusion = opts.enableCompiledRegionsFusion;
   pm.addPass(MGP::createFuseGenericCompiledRegions(fuseOpts));
+  pm.addPass(MGP::createRemoveRedundantOperands());
   pm.addPass(MGP::createRemoveNonLowerableResults());
 
   MGP::LowerMOGGABIOptions abiOpts;
