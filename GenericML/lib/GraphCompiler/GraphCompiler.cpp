@@ -196,8 +196,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     // Layout optimizations in `PatternFusion` might add new shape function
     // invocation for the inserted layout transformations, and in most (if not
     // all) cases we can fold them away.
-    pm.addPass(
-        MO::createSymbolicizeFallbackShapeFunctions({opts.kernelLibraryPaths}));
+    SymbolicizeFallbackShapeFunctionsOptions symbolizationOpts{
+        opts.kernelLibraryPaths, /*reducedMode=*/true};
+    pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(symbolizationOpts));
     pm.addPass(MO::createPropagateShapes());
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
