@@ -9,6 +9,7 @@ from sys.ffi import _get_global_or_null
 from .anymemory import AnyMemory
 from .device import _CDevice
 from tensor import TensorSpec
+from ._status import Status, _CStatus
 
 
 @value
@@ -77,6 +78,7 @@ struct ExecutableGraph:
         # to compiled graph.
         var output_list = List[AnyMemory]()
         var output_list_address = UnsafePointer.address_of(output_list)
+        var status = Status(self._device.lib)
 
         var execute_func = self._device.lib.get_handle().get_function[
             fn (
@@ -86,6 +88,7 @@ struct ExecutableGraph:
                 __type_of(Self._add_to_output_list),
                 UnsafePointer[Self],
                 UnsafePointer[NoneType],
+                _CStatus,
             ) -> Int
         ](execute_func_name)
         var output_count = execute_func(
@@ -95,7 +98,11 @@ struct ExecutableGraph:
             Self._add_to_output_list,
             UnsafePointer.address_of(self),
             output_list_address.bitcast[NoneType](),
+            status.impl,
         )
+
+        if status:
+            raise str(status)
 
         if len(output_list) != output_count:
             raise "internal error: mismatch on output count during ffi"
@@ -120,7 +127,7 @@ struct CompiledGraph:
         self._impl = impl
         self._device = device^
 
-    fn load(self) -> ExecutableGraph:
+    fn load(self) raises -> ExecutableGraph:
         """Load and initialize compiled graph. This will run the setup function
         of graph which includes initializing constants, loading constants into
         device of choice etc.
@@ -128,9 +135,15 @@ struct CompiledGraph:
         Returns:
             Model ready for execution.
         """
+        var status = Status(self._device.lib)
         var executable_ptr = call_dylib_func[_CExecutableGraph](
-            self._device.lib.get_handle(), "M_loadGraph", self._impl
+            self._device.lib.get_handle(),
+            "M_loadGraph",
+            self._impl,
+            status.impl,
         )
+        if status:
+            raise str(status)
         return ExecutableGraph(executable_ptr, self._device)
 
     fn __del__(owned self):
@@ -139,7 +152,7 @@ struct CompiledGraph:
         _ = self._device^
 
 
-fn compile_graph(graph: Graph, device: Device) -> CompiledGraph:
+fn compile_graph(graph: Graph, device: Device) raises -> CompiledGraph:
     """Compiles graph to the given device.
 
     Args:
@@ -152,17 +165,21 @@ fn compile_graph(graph: Graph, device: Device) -> CompiledGraph:
     # Graph compiler shares the context with Mojo. This context
     # contains LLCL Runtime, Telemetery etc.
     var max_context = _get_global_or_null["MaxContext"]().address
+    var status = Status(device.lib)
     var compiled_ptr = call_dylib_func[_CCompiledGraph](
         device.lib.get_handle(),
         "M_compileGraph",
         graph._module().c.ptr,
         device._cdev,
         max_context,
+        status.impl,
     )
+    if status:
+        raise str(status)
     return CompiledGraph(compiled_ptr, device)
 
 
-fn compile_graph(graph_path: String, device: Device) -> CompiledGraph:
+fn compile_graph(graph_path: String, device: Device) raises -> CompiledGraph:
     """Compiles graph file to the given device.
 
     Args:
@@ -173,11 +190,15 @@ fn compile_graph(graph_path: String, device: Device) -> CompiledGraph:
         Compiled graph ready to be loaded and executed.
     """
     var max_context = _get_global_or_null["MaxContext"]().address
+    var status = Status(device.lib)
     var compiled_ptr = call_dylib_func[_CCompiledGraph](
         device.lib.get_handle(),
         "M_compileGraphFromPath",
         graph_path.unsafe_cstr_ptr(),
         device._cdev,
         max_context,
+        status.impl,
     )
+    if status:
+        raise str(status)
     return CompiledGraph(compiled_ptr, device)
