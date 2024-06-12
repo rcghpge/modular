@@ -14,6 +14,7 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
+#include "Support/AssertStream.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetOperations.h"
@@ -888,6 +889,101 @@ struct PropagateShapesPass
         }
         // Otherwise the op has been shape-inferred, continue.
 
+      } else if (auto staticization = dyn_cast<Staticization>(op)) {
+        for (size_t i = 0; i < staticization->getNumResults(); i++) {
+          Value curValue = staticization->getResult(i);
+          StaticizeResult result = tryStaticize(curValue);
+
+          // We append to the worklist in topo-order, but the actual worklist
+          // processes elements in the back first. We will eventually append
+          // the worklist reversed.
+          SmallVector<Operation *> worklistAppend;
+
+          // Error/malformed operation we caught early
+          if (result.isError()) {
+            op->emitError(result.getError().msg);
+            return signalPassFailure();
+          }
+
+          // Not enough information to staticize
+          if (result.isNonStaticizable())
+            continue;
+
+          // Materialize `kgen.param.declare` ops from the list of bindings
+          OpBuilder builder(staticization.getContext());
+          builder.setInsertionPoint(staticization);
+
+          for (const ParamBinding &binding : result.getSuccess().bindings) {
+            auto declOp = builder.create<KGEN::ParamDeclareOp>(
+                staticization->getLoc(), binding.decl, binding.value);
+            worklistAppend.push_back(declOp);
+          }
+
+          TensorType outTy = cast<TensorType>(curValue.getType());
+          // Materialize the actual parameterized value as a tensor
+          auto paramValue = builder.create<MOSH::ParamToValueOp>(
+              staticization.getLoc(), result.getSuccess().resultAttr);
+          worklist.push_back(paramValue);
+
+          if (paramValue.getType().isIndex()) {
+            TensorValue finalVal = builder.create<IndexToTensorOp>(
+                staticization->getLoc(), outTy, paramValue);
+            curValue.replaceAllUsesWith(finalVal);
+            worklistAppend.push_back(finalVal.getDefiningOp());
+          } else {
+            auto shapeTy = dyn_cast<MOSH::ShapeType>(paramValue.getType());
+            auto shapeAttr =
+                dyn_cast<ShapeAttr>(result.getSuccess().resultAttr);
+            ASSERT_STREAM(shapeTy)
+                << "Support only staticizing index types or shapes!";
+            ASSERT_STREAM(shapeAttr)
+                << "Underlying shape is not a shape attribute.";
+
+            auto outputShape = ShapeAttr::get(
+                SmallVector<int64_t>{static_cast<int64_t>(shapeAttr.getRank())},
+                MOSH::ShapeType::get(op->getContext()));
+
+            // ShapeToTensor only supports 32 and 64 bit integers.
+            // For staticization to lower bit types, insert a cast.
+            if (outTy.getDtype().getWidthInBits() < 32) {
+              TensorValue initTensor = builder.create<Shape::ToTensorOp>(
+                  staticization->getLoc(),
+                  outTy.cloneWith(DType::si32).cloneWith(outputShape),
+                  paramValue);
+              TensorValue finalVal = builder.create<CastOp>(
+                  op->getLoc(), outTy.cloneWith(outputShape), initTensor);
+
+              // Must insert a rebind since they might expect any arbitrary type
+              // We avoid a rebind op on worklist since it has a staticization
+              // and leads to an infinite loop.
+              TensorValue reboundVal =
+                  builder.create<RebindOp>(op->getLoc(), outTy, finalVal);
+
+              curValue.replaceAllUsesWith(reboundVal);
+
+              worklistAppend.push_back(initTensor.getDefiningOp());
+              worklistAppend.push_back(finalVal.getDefiningOp());
+            } else {
+              auto finalVal = builder.create<Shape::ToTensorOp>(
+                  staticization->getLoc(), outTy.cloneWith(outputShape),
+                  paramValue);
+
+              // Must insert a rebind since they might expect any arbitrary type
+              // We avoid a rebind op on worklist since it has a staticization
+              // and leads to an infinite loop.
+              auto reboundVal =
+                  builder.create<RebindOp>(op->getLoc(), outTy, finalVal);
+              curValue.replaceAllUsesWith(reboundVal);
+
+              worklistAppend.push_back(finalVal);
+            }
+          }
+
+          // Append worklist items in reverse order to
+          // ensure we process in topo order.
+          for (auto reprocess : llvm::reverse(worklistAppend))
+            worklist.push_back(reprocess);
+        }
       } else if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
         KGEN::ParamDeclAttr declAttr = declOp.getParamDecl();
         auto foldedRhsAttr = cast<TypedAttr>(declOp.getValue());
