@@ -328,14 +328,12 @@ static void mgp_generic_execute(
                     runtimePtr = std::move(runtimePtr),
                     loc = std::move(loc)]() mutable {
     CUDARuntime *cudaRuntimePtr = nullptr;
-    CUstream cudaStream = nullptr;
     if (hasCuda) {
       // GRA-594: When Device Context is passed to the primitive directly, we
       // don't need to set the runtime
       cudaRuntimePtr = reinterpret_cast<CUDARuntime *>(
           ctx.getStateSlot(static_cast<size_t>(cudaSlot))
               .getUnderlyingPointer());
-      cudaStream = cudaRuntimePtr->stream;
     }
     std::vector<void *> kernelInputs;
     kernelInputs.reserve(outResults.size() + takenOperands.size());
@@ -344,7 +342,7 @@ static void mgp_generic_execute(
     for (AnyAsyncValueRef &i : outResults)
       kernelInputs.push_back(&i);
     MojoCallContext callContext(outChain.copy(), outChain.getLocation().copy(),
-                                cudaStream, cudaRuntimePtr);
+                                cudaRuntimePtr);
     kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
               reinterpret_cast<void *>(runtimePtr.get()),
               reinterpret_cast<void *>(&callContext));
