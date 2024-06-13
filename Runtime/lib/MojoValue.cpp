@@ -6,19 +6,19 @@
 
 #include "Runtime/MojoValue.h"
 
-#include "Support/AlignedAlloc.h"
+#include "LLCL/Runtime/Runtime.h"
 #include <algorithm>
 #include <cstdlib>
 
 using namespace M;
 
 MojoValue::MojoValue(size_t size, size_t align, DestructorFn destructor)
-    : MojoValue(alignedAlloc(size, align), destructor) {}
+    : MojoValue(allocateBuffer(size, align), destructor) {}
 
 MojoValue::~MojoValue() {
   if (data) {
     destructor(data);
-    alignedFree(data);
+    freeBuffer(data);
   }
 }
 
@@ -28,6 +28,12 @@ MojoValue &MojoValue::operator=(MojoValue &&rhs) {
   swap(rhs);
   return *this;
 }
+
+void *MojoValue::allocateBuffer(size_t size, size_t align) {
+  return alignedAlloc(align, size);
+}
+
+void MojoValue::freeBuffer(void *ptr) { alignedFree(ptr); }
 
 void MojoValue::swap(MojoValue &rhs) {
   std::swap(data, rhs.data);

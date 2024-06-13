@@ -44,6 +44,14 @@ public:
   MojoValue(MojoValue &&rhs);
   MojoValue &operator=(MojoValue &&rhs);
 
+  /// Allocate the heap buffer needed for the mojo value.
+  /// This is exposed to be able to call it from the mojo API.
+  static void *allocateBuffer(size_t size, size_t align);
+
+  /// Free the heap buffer needed for the mojo value.
+  /// This is exposed to be able to call it from the mojo API.
+  static void freeBuffer(void *ptr);
+
   /// Returns a pointer to the mojo object.
   void *getData() const { return data; }
 
