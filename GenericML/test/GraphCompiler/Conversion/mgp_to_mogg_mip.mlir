@@ -4,6 +4,21 @@
 
 //--- mip.constant.index/mip.print.index will be tested throughtout the tests ---/
 
+// CHECK-LABEL: mgp.model @mip_basic
+// CHECK: mogg.call "mip.constant.index"
+// CHECK: mogg.call "mip.print.index"
+mgp.model @mip_basic : mof init {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 2
+  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
+  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+} execute (%arg0: !mef.chain, %arg1: !mgp.context) -> !mef.chain {
+  %ch0 = grt.chain.create ()
+  %lhs = mip.constant.index 42
+  %ch1 = mip.print.index %lhs, %ch0
+  mef.output %ch1 : !mef.chain
+}
 
 // CHECK-LABEL: mgp.model @mip_add
 // CHECK: mogg.call "mip.add"
