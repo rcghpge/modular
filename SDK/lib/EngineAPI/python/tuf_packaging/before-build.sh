@@ -46,6 +46,9 @@ python3 -m pip install \
   -r KGEN/utils/requirements.txt \
   -r SDK/lib/EngineAPI/python/packaging-requirements.txt
 
+# A torch install is required for the build & tests.
+python3 third-party/stock-pytorch/install.py install
+
 pip install pipx
 
 if [ -z ${MOJO_INSTALL_CHANNEL+x} ]; then echo "MOJO_INSTALL_CHANNEL is unset"; else echo "MOJO_INSTALL_CHANNEL is set to '$MOJO_INSTALL_CHANNEL'"; fi

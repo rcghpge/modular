@@ -58,11 +58,6 @@ before-test = [
   "pip install {project}/PyTorch/lib/API/python",
   # PyTorch integration tests implicitly depend on `modular.utils`.
   "pip install {project}/Support/python",
-  # TODO(#14847): PyTorch tests have an implicit requirement on the same stock
-  # PyTorch we use for fallback ops and TorchScript import, due to coupling.
-  # Add `torch` to requirements.txt when these are decoupled.
-  # So install the stock PyTorch downloaded above for this python version.
-  "pip install $(ls {project}/.derived/third-party/stock-pytorch/download/*cp$(python -c 'import sys; print(f\"{sys.version_info.major}{sys.version_info.minor}\")')*.whl | head -n 1)"
 ]
 
 # These tests use generated models from `MODULAR_DERIVED_PATH` and require this
