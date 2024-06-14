@@ -222,41 +222,6 @@ static void mgp_buffer_constant_load_cpu(StateContext &theContext,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.buffer.alloc.static.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_buffer_alloc_static_cpu(Chain inChain, StateContext &theContext,
-                                        Result<TensorBufferRef> outBuffer,
-                                        MEFAttr<uint64_t> aRuntimeSlot,
-                                        MEFAttr<uint64_t> bSize,
-                                        MEFAttr<uint64_t> cRawAlign,
-                                        MEFAttr<uint64_t> dDeviceId,
-                                        Runtime &runtime) {
-  if (!isValidPlainSize(*bSize))
-    return std::move(outBuffer).setToError("invalid size attribute");
-  if (!isValidRawAlign(*cRawAlign))
-    return std::move(outBuffer).setToError("invalid align attribute");
-  size_t runtimeSize = plainSizeToRuntimeSize(*bSize);
-  std::move(outBuffer).emplace(TensorBufferRef::createOwned(
-      runtime, runtimeSize, getRuntimeAlign(*cRawAlign)));
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.buffer.alloc.dynamic.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_buffer_alloc_dynamic_cpu(
-    Chain inChain, StateContext &theContext, size_t runtimeSize,
-    Result<TensorBufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
-    MEFAttr<uint64_t> bRawAlign, MEFAttr<uint64_t> cDeviceId,
-    Runtime &runtime) {
-  if (!isValidRawAlign(*bRawAlign))
-    return std::move(outBuffer).setToError("invalid align attribute");
-  std::move(outBuffer).emplace(TensorBufferRef::createOwned(
-      runtime, runtimeSize, getRuntimeAlign(*bRawAlign)));
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.buffer.alloc_pinned.{static,dynamic}
 //===----------------------------------------------------------------------===//
 
@@ -534,47 +499,6 @@ static void mgp_buffer_to_bool_cpu(Chain inChain, StateContext &theContext,
         Twine("expecting buffer to have size 1 (actually is ") +
         Twine(buffer.getSize()) + ")");
   std::move(result).emplace(*buffer.getBuffer<uint8_t>() != 0);
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.buffer.set_with_index.cpu
-//===----------------------------------------------------------------------===//
-
-/// Helper to fill the buffer with the given index values.
-template <typename T>
-static void fillBuffer(TensorBufferRef &buffer, RemainingArguments idxValues) {
-  T *target = buffer.getBuffer<T>();
-  for (const auto &asyncIdx : idxValues)
-    *(target++) = static_cast<T>(asyncIdx.get<size_t>());
-}
-
-static void mgp_buffer_set_with_index_cpu(StateContext &theContext,
-                                          TensorBufferRef &buffer,
-                                          RemainingArguments values,
-                                          Result<Chain> outChain,
-                                          MEFAttr<uint64_t> aRuntimeSlot,
-                                          MEFAttr<uint64_t> bDeviceId) {
-  size_t bufSize = buffer.getSize();
-  size_t numArgs = values.size();
-  if (bufSize % numArgs != 0) {
-    return std::move(outChain).setToError(
-        Twine("buffer size (") + Twine(bufSize) +
-        ") not divisible by number of index arguments (" + Twine(numArgs) +
-        ")");
-  }
-  size_t elSize = bufSize / numArgs;
-  switch (elSize) {
-  case 4:
-    fillBuffer<int32_t>(buffer, values);
-    break;
-  case 8:
-    fillBuffer<int64_t>(buffer, values);
-    break;
-  default:
-    return std::move(outChain).setToError(
-        Twine("unsupported element size for index buffer: ") + Twine(elSize));
-  }
-  std::move(outChain).emplace();
 }
 
 //===----------------------------------------------------------------------===//
@@ -876,10 +800,6 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.buffer.constant.cpu", mgp_buffer_constant_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.constant.load.cpu",
                 mgp_buffer_constant_load_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.alloc.static.cpu",
-                mgp_buffer_alloc_static_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.alloc.dynamic.cpu",
-                mgp_buffer_alloc_dynamic_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.alloc_pinned.static.cpu",
                 mgp_buffer_alloc_pinned_static_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.alloc_pinned.dynamic.cpu",
@@ -902,8 +822,6 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.buffer.section.borrow.dynamic.cpu",
                 mgp_buffer_section_borrow_dynamic_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.to_bool.cpu", mgp_buffer_to_bool_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.set_with_index.cpu",
-                mgp_buffer_set_with_index_cpu);
   ADD_PRIMITIVE(registry, "mgp.tensor.create.cpu", mgp_tensor_create_cpu);
   ADD_PRIMITIVE(registry, "mgp.tensor.extract.buffer.cpu",
                 mgp_tensor_extract_buffer_cpu);
