@@ -5,6 +5,7 @@ mojo_library(
     srcs = glob(["**/*.mojo"]),
     visibility = ["//visibility:public"],
     deps = [
+        "//Kernels/mojo/_mlir",
         "//Kernels/mojo/algorithm",
         "//Kernels/mojo/benchmark",
         "//Kernels/mojo/buffer",
@@ -14,7 +15,6 @@ mojo_library(
         "//Kernels/mojo/math",
         "//Kernels/mojo/runtime",
         "//Kernels/mojo/tensor",
-        "//ModularFramework:_mlir",
         "//open-source/mojo/stdlib/stdlib",
     ],
 )
