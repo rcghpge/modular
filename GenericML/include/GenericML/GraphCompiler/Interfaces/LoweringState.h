@@ -59,7 +59,7 @@ public:
                                     MO::ListType type) -> std::optional<Type> {
       auto tensorTy = dyn_cast<MO::TensorType>(type.getElementType());
       // TODO(#29947): Support other element types
-      ASSERT_STREAM(tensorTy) << "only support lowering list of tensors";
+      ASSERT_STREAM(tensorTy, << "only support lowering list of tensors");
 
       MLIRContext *ctx = type.getContext();
       MGP::TensorSpecType tensorSpecTy = MGP::createCpuTensorSpecType(tensorTy);
@@ -291,8 +291,8 @@ public:
 
   /// Returns the check runtime op.
   MGP::CheckRuntimeOp getCheckRuntimeOp() {
-    ASSERT_STREAM(init.checkRuntimeOp)
-        << "no mgp.check.runtime op has been emitted";
+    ASSERT_STREAM(init.checkRuntimeOp,
+                  << "no mgp.check.runtime op has been emitted");
     return init.checkRuntimeOp;
   }
 

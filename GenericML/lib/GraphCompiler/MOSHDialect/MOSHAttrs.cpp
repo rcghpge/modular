@@ -312,10 +312,11 @@ ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
   ArrayRef<TypedAttr> beforeDims = beforeShape.getValues();
   ArrayRef<TypedAttr> bcastedDims = bcastedShape.getValues();
 
-  ASSERT_STREAM(beforeDims.size() <= bcastedDims.size())
+  ASSERT_STREAM(
+      beforeDims.size() <= bcastedDims.size(),
       << "Broadcasting can only increase rank but it is trying to decrease "
          "rank from "
-      << beforeDims.size() << " to " << bcastedDims.size();
+      << beforeDims.size() << " to " << bcastedDims.size());
 
   // we will initially add in reverse sorted order since it's easier
   // as bcasting rules follow from the innermost dimensions

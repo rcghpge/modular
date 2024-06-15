@@ -87,8 +87,8 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
     Type targetType = moOperandTypes[i];
     TensorValue tensorVal = dyn_cast<TensorValue>(val);
     if (!tensorVal) {
-      ASSERT_STREAM(targetType == val.getType())
-          << "Disagreement on type for non-tensor argument.";
+      ASSERT_STREAM(targetType == val.getType(),
+                    << "Disagreement on type for non-tensor argument.");
       newOperands.push_back(tensorVal);
       continue;
     }
@@ -447,11 +447,12 @@ struct LowerCompositeBinaryComparisonOp : public OpRewritePattern<RMOOpT> {
 
     // Deal with dtype casting if it is needed.
     ErrorOr<DType> promotedDtype = M::RMO::promoteDtype(xDtype, yDtype);
-    ASSERT_STREAM(!promotedDtype.isError())
+    ASSERT_STREAM(
+        !promotedDtype.isError(),
         << "failed to calculate valid promotion dtype in lowering. This should "
            "be impossible due to it being calculated when inferring the return "
            "type"
-        << promotedDtype.takeError();
+        << promotedDtype.takeError());
     DType comparisonDtype = promotedDtype.takeValue();
     if (xDtype != comparisonDtype) {
       x = rewriter.create<RMO::MOCastOp>(

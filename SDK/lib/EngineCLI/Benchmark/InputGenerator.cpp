@@ -718,8 +718,8 @@ M::BenchmarkCLI::createInputGenerator(const InputGenerationInput &spec,
     ok = false;
   if (!ok)
     return nullptr;
-  ASSERT_STREAM(nameOrIndex.has_value() &&
-                std::holds_alternative<std::string>(*nameOrIndex));
+  assert(nameOrIndex.has_value() &&
+         std::holds_alternative<std::string>(*nameOrIndex));
   return std::make_unique<BCD::InputGeneratorImpl>(
       std::get<0>(std::move(*nameOrIndex)), std::move(shape),
       std::move(dataGenerator));

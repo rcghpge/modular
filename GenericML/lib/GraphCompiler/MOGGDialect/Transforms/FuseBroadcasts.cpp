@@ -269,8 +269,8 @@ struct FuseBroadcastsPass
           remapper.map(op.getResult(0), target);
           // Find the ToKGEN of the producer kernel.
           for (auto user : op.getUsers()) {
-            ASSERT_STREAM(!producerKernelToKGEN)
-                << "Expecting a single ToKGENOp";
+            ASSERT_STREAM(!producerKernelToKGEN,
+                          << "Expecting a single ToKGENOp");
             if (auto toKGENOp = dyn_cast<MOGG::ToKGENOp>(user))
               producerKernelToKGEN = toKGENOp;
           }
@@ -279,8 +279,8 @@ struct FuseBroadcastsPass
         } else
           MOGG::cloneKgenOpsIntoMOGG(builder, &op, paramMapping, remapper);
       }
-      ASSERT_STREAM(producerKernelToKGEN)
-          << "Could not find ToKGENOp for producer kernel";
+      ASSERT_STREAM(producerKernelToKGEN,
+                    << "Could not find ToKGENOp for producer kernel");
 
       // We find the mogg.to_kgen that relates to the output of the
       // `producerKernel`.
@@ -329,15 +329,17 @@ struct FuseBroadcastsPass
       // LoweringHelper.cpp lowered unknown strides for view op outputs.
       auto newStrides = dyn_cast<KGEN::ParamDeclRefAttr>(
           producerKernelToKGEN.getStridesAttr());
-      ASSERT_STREAM(newStrides)
+      ASSERT_STREAM(
+          newStrides,
           << "Expected strides to be a parameter declaration reference. Maybe "
-             "the view kernel was not explicitly parametrized on strides?";
+             "the view kernel was not explicitly parametrized on strides?");
       DenseSet<KGEN::ParamDeclRefAttr> oldStrideParams;
       for (auto value : kgenOut) {
         auto oldStrides = dyn_cast<KGEN::ParamDeclRefAttr>(
             value.getDefiningOp<ToKGENOp>().getStridesAttr());
-        ASSERT_STREAM(oldStrides)
-            << "All kernels should have explicitly parametrized strides";
+        ASSERT_STREAM(
+            oldStrides,
+            << "All kernels should have explicitly parametrized strides");
         oldStrideParams.insert(oldStrides);
       }
       mlir::AttrTypeReplacer walker;
@@ -390,13 +392,15 @@ struct FuseBroadcastsPass
       Operation *newView = nullptr;
       for (auto op : leaf.getOps<MOGG::CallOp>()) {
         if (op->getNumResults() == 1 && op->getResult(0).use_empty()) {
-          ASSERT_STREAM(newView == nullptr)
-              << "More than one view op detected in kernel being fused.";
+          ASSERT_STREAM(
+              newView == nullptr,
+              << "More than one view op detected in kernel being fused.");
           newView = op;
         }
       }
-      ASSERT_STREAM(newView)
-          << "Kernel was marked as a view but could not find a view op";
+      ASSERT_STREAM(
+          newView,
+          << "Kernel was marked as a view but could not find a view op");
 
       leafBlock.getArgument(idx).replaceAllUsesWith(newView->getResult(0));
       leaf.removeOperandAtIndex(idx);

@@ -861,8 +861,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         break;
       }
     }
-    ASSERT_STREAM((isMatmulOrConvolution && !isMixedPrecision) ||
-                  newPlaceholder);
+    assert((isMatmulOrConvolution && !isMixedPrecision) || newPlaceholder);
 
     Location loc = kernelToFuseInto.getLoc();
     // TODO(#22349)
@@ -967,8 +966,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
           ;
         }
       }
-      ASSERT_STREAM(beforeDevice == MO::getDeviceOrDefault(kernelToFuseInto))
-          << "Must be same device after output lambda fusion";
+      ASSERT_STREAM(beforeDevice == MO::getDeviceOrDefault(kernelToFuseInto),
+                    << "Must be same device after output lambda fusion");
 
       auto inputLambdas = kernelToFuseInto.getInputFusionInterface();
       if (!inputLambdas) {
@@ -985,8 +984,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
                               inputIdx, kernelOpsToErase);
         }
       }
-      ASSERT_STREAM(beforeDevice == MO::getDeviceOrDefault(kernelToFuseInto))
-          << "Must be same device after input lambda fusion";
+      ASSERT_STREAM(beforeDevice == MO::getDeviceOrDefault(kernelToFuseInto),
+                    << "Must be same device after input lambda fusion");
     }
 
     for (KernelOp kernelOp : kernelOpsToErase)

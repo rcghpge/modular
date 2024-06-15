@@ -203,9 +203,9 @@ IntegerAttr CpuBufferType::getRawSize() const {
 /// Implements ShapedType::cloneWith
 ShapedType CpuBufferType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                     Type elementType) const {
-  ASSERT_STREAM(!shape) << "cannot change shape in CpuBufferType::cloneWith";
-  ASSERT_STREAM(elementType.isUnsignedInteger(8))
-      << "invalid dtype for CpuBufferType::cloneWith";
+  ASSERT_STREAM(!shape, << "cannot change shape in CpuBufferType::cloneWith");
+  ASSERT_STREAM(elementType.isUnsignedInteger(8),
+                << "invalid dtype for CpuBufferType::cloneWith");
   return CpuBufferType::get(getContext(), getOptSize());
 }
 
@@ -363,9 +363,9 @@ TensorSpecType TensorSpecType::getChecked(
 TensorSpecType TensorSpecType::get(ArrayRef<int64_t> shape, Type elementType) {
   ErrorOr<std::optional<DType>> errOrDType =
       DTypeType::fromMlirType(elementType);
-  ASSERT_STREAM(!errOrDType.isError())
-      << "element type is not representable as a DType: "
-      << errOrDType.takeError();
+  ASSERT_STREAM(!errOrDType.isError(),
+                << "element type is not representable as a DType: "
+                << errOrDType.takeError());
 
   SmallVector<std::optional<uint64_t>> dims;
   dims.reserve(shape.size());
@@ -391,9 +391,9 @@ TensorSpecType::getChecked(function_ref<::mlir::InFlightDiagnostic()> emitError,
 TensorSpecType TensorSpecType::get(Type elementType) {
   ErrorOr<std::optional<DType>> errOrDType =
       DTypeType::fromMlirType(elementType);
-  ASSERT_STREAM(!errOrDType.isError())
-      << "element type is not representable as a DType: "
-      << errOrDType.takeError();
+  ASSERT_STREAM(!errOrDType.isError(),
+                << "element type is not representable as a DType: "
+                << errOrDType.takeError());
   return TensorSpecType::get(elementType.getContext(),
                              /*hasRank=*/false, {}, *errOrDType, {});
 }
@@ -468,7 +468,7 @@ Type TensorSpecType::getElementType() const {
 
 /// ShapedTypeInterface::getShape.
 ArrayRef<int64_t> TensorSpecType::getShape() const {
-  ASSERT_STREAM(getHasRank()) << "tensor spec is dynamically ranked";
+  ASSERT_STREAM(getHasRank(), << "tensor spec is dynamically ranked");
   return getShapeOrEmpty();
 }
 
@@ -481,7 +481,7 @@ TensorSpecType::getOptDims() const {
 }
 
 ArrayRef<std::optional<uint64_t>> TensorSpecType::getDims() const {
-  ASSERT_STREAM(getHasRank()) << "tensor spec is dynamically ranked";
+  ASSERT_STREAM(getHasRank(), << "tensor spec is dynamically ranked");
   return getDimsOrEmpty();
 }
 
@@ -492,7 +492,7 @@ size_t TensorSpecType::getNumDynamicDims() const {
 }
 
 std::optional<uint64_t> TensorSpecType::operator[](size_t i) const {
-  ASSERT_STREAM(i < getDims().size()) << "shape index out of range";
+  ASSERT_STREAM(i < getDims().size(), << "shape index out of range");
   return getDims()[i];
 }
 
@@ -526,7 +526,7 @@ std::optional<uint64_t> TensorSpecType::getSizeInBytes() const {
   if (!numElems)
     return {}; // dynamic rank or dimension
   ssize_t bytes = optDType->getSizeInBytes(plainSizeToRuntimeSize(*numElems));
-  ASSERT_STREAM(bytes >= 0) << "overflow in getSizeInBytes";
+  ASSERT_STREAM(bytes >= 0, << "overflow in getSizeInBytes");
   return static_cast<uint64_t>(bytes);
 }
 
@@ -536,7 +536,7 @@ std::optional<uint64_t> TensorSpecType::getPreScaledSizeInBytes() const {
     return {}; // dynamic dtype
   uint64_t numElems = getPreScaledNumElements();
   ssize_t bytes = optDType->getSizeInBytes(plainSizeToRuntimeSize(numElems));
-  ASSERT_STREAM(bytes >= 0) << "overflow in getPreScaledSizeInBytes";
+  ASSERT_STREAM(bytes >= 0, << "overflow in getPreScaledSizeInBytes");
   return static_cast<uint64_t>(bytes);
 }
 

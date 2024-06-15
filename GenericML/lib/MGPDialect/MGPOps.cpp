@@ -596,9 +596,9 @@ static void printElementsAttrWithAlign(AsmPrinter &p, Operation *op,
 void CpuTensorSpecCreateOp::build(OpBuilder &odsBuilder,
                                   OperationState &odsState, TensorSpecType spec,
                                   ValueRange runtimeDims) {
-  ASSERT_STREAM(spec.hasRank())
-      << "can only construct an mgp.tensor_spec.create "
-         "for tensor specs of statically known rank";
+  ASSERT_STREAM(spec.hasRank(),
+                << "can only construct an mgp.tensor_spec.create "
+                   "for tensor specs of statically known rank");
   CpuTensorSpecCreateOp::build(odsBuilder, odsState,
                                /*runtimeDims=*/runtimeDims,
                                /*aRawDims=*/spec.getRawDims(),
@@ -667,7 +667,7 @@ LogicalResult CpuTensorSpecCreateOp::inferReturnTypes(
       attributes.get(getARawDimsAttrName(name)));
   auto rawDTypeAttr = dyn_cast_if_present<IntegerAttr>(
       attributes.get(getBRawDTypeAttrName(name)));
-  ASSERT_STREAM(rawDimsAttr && rawDTypeAttr) << "mismatched operand type";
+  ASSERT_STREAM(rawDimsAttr && rawDTypeAttr, << "mismatched operand type");
   inferredReturnTypes.emplace_back(
       TensorSpecType::get(rawDimsAttr, rawDTypeAttr));
   return success();
@@ -730,7 +730,7 @@ LogicalResult CpuTensorSpecCreateDynamicOp::inferReturnTypes(
   mlir::OperationName name(getOperationName(), context);
   auto rawDimsAttr = dyn_cast_if_present<IntArrayElementsAttr>(
       attributes.get(getRawDimsAttrName(name)));
-  ASSERT_STREAM(rawDimsAttr) << "mismatched operand type";
+  ASSERT_STREAM(rawDimsAttr, << "mismatched operand type");
   inferredReturnTypes.emplace_back(
       TensorSpecType::get(rawDimsAttr, /*rawDTypeOrNull=*/{}));
   return success();
@@ -781,12 +781,12 @@ LogicalResult CpuTensorSpecWithDTypeOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  ASSERT_STREAM(operands.size() == 1) << "mismatched operand arity";
+  ASSERT_STREAM(operands.size() == 1, << "mismatched operand arity");
   auto tensorSpec = dyn_cast<TensorSpecType>(operands[0].getType());
-  ASSERT_STREAM(tensorSpec) << "mismatched operand type";
+  ASSERT_STREAM(tensorSpec, << "mismatched operand type");
   auto rawDTypeAttr = dyn_cast_if_present<IntegerAttr>(
       attributes.get(getRawDTypeAttrName(name)));
-  ASSERT_STREAM(rawDTypeAttr) << "mismatched operand type";
+  ASSERT_STREAM(rawDTypeAttr, << "mismatched operand type");
   // Result type is the tensor spec operand type but with rawDType as its dtype.
   inferredReturnTypes.emplace_back(
       TensorSpecType::get(context, tensorSpec.getOptDims(),
@@ -856,9 +856,9 @@ LogicalResult CpuTensorSpecDimsDynamicOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  ASSERT_STREAM(operands.size() == 1) << "mismatched operand arity";
+  ASSERT_STREAM(operands.size() == 1, << "mismatched operand arity");
   auto specType = dyn_cast<TensorSpecType>(operands[0].getType());
-  ASSERT_STREAM(specType) << "mismatched operand type";
+  ASSERT_STREAM(specType, << "mismatched operand type");
   for (size_t i = 0, e = specType.getNumDynamicDims(); i < e; ++i)
     inferredReturnTypes.emplace_back(IndexType::get(context));
   return success();

@@ -37,7 +37,7 @@ using namespace MOGG;
 //===----------------------------------------------------------------------===//
 
 LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  ASSERT_STREAM(MO::isOnHost(*this)) << "mogg.concat is for host only";
+  ASSERT_STREAM(MO::isOnHost(*this), << "mogg.concat is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, *this);
 
   // Gather the input buffers.
@@ -65,7 +65,7 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  ASSERT_STREAM(MO::isOnHost(*this)) << "mogg.split is for host only";
+  ASSERT_STREAM(MO::isOnHost(*this), << "mogg.split is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, *this);
 
   // Gather the input buffer.
@@ -466,9 +466,9 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         opLoweringState.opBeingLowered->getParentRegion(), opLoweringState.loc,
         param);
 
-    ASSERT_STREAM(!symbolicDimOr.isError())
-        << "can't find the symbolic dimension of the parameter: "
-        << symbolicDimOr.takeError();
+    ASSERT_STREAM(!symbolicDimOr.isError(),
+                  << "can't find the symbolic dimension of the parameter: "
+                  << symbolicDimOr.takeError());
 
     Value symbol = symbolicDimOr.takeValue();
     paramDimToIdx[param.getName().strref()] = operands.size();
@@ -667,8 +667,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       if (auto tmp = dyn_cast<ToKGENOp>(user))
         toKGEN = tmp;
 
-    ASSERT_STREAM(toKGEN) << " in-place allocated tensor must have a "
-                             "to_kgen op from an outputplaceholder.";
+    ASSERT_STREAM(toKGEN, << " in-place allocated tensor must have a "
+                             "to_kgen op from an outputplaceholder.");
     outIdxToKgenTensorOp[inPlaceIdx] = toKGEN;
   }
 
@@ -962,8 +962,9 @@ void KernelOp::fuseBodyIntoNewWithSkip(
         for (SymbolRefAttr sym : params->getAsRange<SymbolRefAttr>()) {
           StringRef name = sym.getLeafReference().strref();
           auto itr = oldLambdaNamesToNew.find(name);
-          ASSERT_STREAM(itr != oldLambdaNamesToNew.end())
-              << "First use of lambda inserted before the lambda itself";
+          ASSERT_STREAM(
+              itr != oldLambdaNamesToNew.end(),
+              << "First use of lambda inserted before the lambda itself");
           newAttrs.push_back(FlatSymbolRefAttr::get(getContext(), itr->second));
         }
         newCall.setParamsAttr(builder.getArrayAttr(newAttrs));
@@ -1217,8 +1218,9 @@ static void printKernel(OpAsmPrinter &p, mlir::Operation *kernel,
 
 InOutSignatureAttr::InOutSemantics
 GenericCompiledRegionOp::getInOutSemantics(size_t index) {
-  ASSERT_STREAM(index < getNumOperands())
-      << "GenericCompiledRegionOp::getInOutSemantics index out of range.";
+  ASSERT_STREAM(
+      index < getNumOperands(),
+      << "GenericCompiledRegionOp::getInOutSemantics index out of range.");
   return getInOutSignature()[index];
 }
 

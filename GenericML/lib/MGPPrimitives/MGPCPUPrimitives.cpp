@@ -614,8 +614,8 @@ static void mgp_kernel_execute_cpu(
   StringRef inOutSignature = *eInOutSignature;
   size_t numInputs = inOutSignature.size();
 #if MODULAR_DEBUG
-  ASSERT_STREAM(numInputs <= operands.size())
-      << "invalid inputs signature arity";
+  ASSERT_STREAM(numInputs <= operands.size(),
+                << "invalid inputs signature arity");
 #endif
   size_t numInDimensions = operands.size() - numInputs;
 
@@ -623,8 +623,8 @@ static void mgp_kernel_execute_cpu(
   //  [outDimension_1, ..., outDimension_numOutDimensions]
   size_t numOutDimensions = static_cast<size_t>(*iNumOutDimensions);
 #if MODULAR_DEBUG
-  ASSERT_STREAM(numOutDimensions == outDimensions.size())
-      << "invalid out dimensions count attribute";
+  ASSERT_STREAM(numOutDimensions == outDimensions.size(),
+                << "invalid out dimensions count attribute");
 #endif
 
 #if MODULAR_PARANOID
@@ -687,8 +687,8 @@ static void mgp_kernel_execute_cpu(
     // MojoCallContext and operands are all held alive until the chain is ready.
     //
 #if MODULAR_DEBUG
-    ASSERT_STREAM(numOutDimensions == 0)
-        << "async kernels cannot return output dimensions";
+    ASSERT_STREAM(numOutDimensions == 0,
+                  << "async kernels cannot return output dimensions");
 #endif
 
     auto launchKernel =
@@ -765,8 +765,8 @@ static void mgp_kernel_execute_cpu(
 
     // We can mark the chain as ready.
 #if MODULAR_DEBUG
-    ASSERT_STREAM(!outChain.copy().isReady())
-        << "synchronous kernels should not emplace the output chain";
+    ASSERT_STREAM(!outChain.copy().isReady(),
+                  << "synchronous kernels should not emplace the output chain");
 #endif
     std::move(outChain).emplace();
   }

@@ -89,8 +89,8 @@ static DType getDType(std::optional<ValueRange> values, size_t index,
 /// from both existing types
 TensorType RMO::refineShapeWithDType(TensorType ty1, TensorType ty2,
                                      DType dtype) {
-  ASSERT_STREAM(!ty1.hasUnknownShape() && !ty2.hasUnknownShape())
-      << " no question marks should be here";
+  ASSERT_STREAM(!ty1.hasUnknownShape() && !ty2.hasUnknownShape(),
+                << " no question marks should be here");
   bool ty1Ranked = ty1.hasRank();
   bool ty2Ranked = ty2.hasRank();
 
@@ -103,14 +103,15 @@ TensorType RMO::refineShapeWithDType(TensorType ty1, TensorType ty2,
     return ty1.cloneWith(dtype);
 
   // Refine each dimension individually
-  ASSERT_STREAM(ty1.getRank() == ty2.getRank())
-      << " tried to refine types with different ranks";
+  ASSERT_STREAM(ty1.getRank() == ty2.getRank(),
+                << " tried to refine types with different ranks");
   SmallVector<TypedAttr> newDims;
   auto refineDim = [&ty1, &ty2](size_t index) {
     if (ty1.isIntegerDim(index) && ty2.isIntegerDim(index))
-      ASSERT_STREAM(ty1.getIntDim(index) == ty2.getIntDim(index))
+      ASSERT_STREAM(
+          ty1.getIntDim(index) == ty2.getIntDim(index),
           << " trying to refine two tensors whose integer dimensions don't "
-             "match.";
+             "match.");
 
     // Prefer integers over anything else
     if (ty1.isIntegerDim(index))

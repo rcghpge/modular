@@ -934,10 +934,10 @@ struct PropagateShapesPass
             auto shapeTy = dyn_cast<MOSH::ShapeType>(paramValue.getType());
             auto shapeAttr =
                 dyn_cast<ShapeAttr>(result.getSuccess().resultAttr);
-            ASSERT_STREAM(shapeTy)
-                << "Support only staticizing index types or shapes!";
-            ASSERT_STREAM(shapeAttr)
-                << "Underlying shape is not a shape attribute.";
+            ASSERT_STREAM(shapeTy,
+                          << "Support only staticizing index types or shapes!");
+            ASSERT_STREAM(shapeAttr,
+                          << "Underlying shape is not a shape attribute.");
 
             auto outputShape = ShapeAttr::get(
                 SmallVector<int64_t>{static_cast<int64_t>(shapeAttr.getRank())},

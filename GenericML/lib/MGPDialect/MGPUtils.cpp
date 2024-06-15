@@ -33,11 +33,11 @@ TypedValue<MGP::ContextType> MGP::getContextForBlock(Block *block) {
       return createOp.getResult();
     }
     // Next, try one level up.
-    ASSERT_STREAM(!isa<ModelOp>(block->getParentOp()))
-        << "unable to locate an !mgp.context";
+    ASSERT_STREAM(!isa<ModelOp>(block->getParentOp()),
+                  << "unable to locate an !mgp.context");
     block = block->getParentOp()->getBlock();
   }
-  ASSERT_STREAM(false) << "unable to locate an !mgp.context";
+  ASSERT_STREAM(false, << "unable to locate an !mgp.context");
 }
 
 TypedValue<MEF::ChainType> MGP::getRootChainForBlock(Block *block) {
@@ -53,18 +53,18 @@ TypedValue<MEF::ChainType> MGP::getRootChainForBlock(Block *block) {
         return createOp.getResult();
     }
     // Next, try one level up.
-    ASSERT_STREAM(!isa<ModelOp>(block->getParentOp()))
-        << "unable to locate a !mef.chain";
+    ASSERT_STREAM(!isa<ModelOp>(block->getParentOp()),
+                  << "unable to locate a !mef.chain");
     block = block->getParentOp()->getBlock();
   }
-  ASSERT_STREAM(false) << "unable to locate a !mef.chain";
+  ASSERT_STREAM(false, << "unable to locate a !mef.chain");
 }
 
 void MGP::setInOutSignature(Operation *op, InOutSignatureAttr inOutSig) {
-  ASSERT_STREAM(!isa<MGPInOutSemanticsOpInterface>(op))
-      << "op already implements MGPInOutSemanticsOpInterface";
-  ASSERT_STREAM(inOutSig.size() == op->getNumOperands())
-      << "mismatched operation and in/out signature arity";
+  ASSERT_STREAM(!isa<MGPInOutSemanticsOpInterface>(op),
+                << "op already implements MGPInOutSemanticsOpInterface");
+  ASSERT_STREAM(inOutSig.size() == op->getNumOperands(),
+                << "mismatched operation and in/out signature arity");
   op->setAttr(kInOutSigAttribute, inOutSig);
 }
 
@@ -84,8 +84,8 @@ MGP::getInOutSemantics(OpOperand &opOperand) {
   // All other ops may supply an #M.InOutSignature directly.
   if (auto inOutAttr =
           op->getAttrOfType<InOutSignatureAttr>(kInOutSigAttribute)) {
-    ASSERT_STREAM(inOutAttr.size() == op->getNumOperands())
-        << "mismatched operation and in/out signature arity";
+    ASSERT_STREAM(inOutAttr.size() == op->getNumOperands(),
+                  << "mismatched operation and in/out signature arity");
     return inOutAttr[opOperand.getOperandNumber()];
   }
 

@@ -102,8 +102,8 @@ class ConcatInPlacePass
                   inBuffer.getDefiningOp())) {
             runtimeSizes.emplace_back(allocDynamicOp.getRuntimeSize());
           } else {
-            ASSERT_STREAM(false) << "unexpected buffer allocation op "
-                                 << *inBuffer.getDefiningOp();
+            ASSERT_STREAM(false, << "unexpected buffer allocation op "
+                                 << *inBuffer.getDefiningOp());
           }
         }
       }

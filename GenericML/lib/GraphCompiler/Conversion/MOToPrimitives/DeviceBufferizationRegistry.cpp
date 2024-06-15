@@ -41,9 +41,9 @@ CompileDiagnosticOrSuccess MGPDeviceSpecificDialect::makeBufferBuilder(
   } else {
     hostBufferBuilder = static_cast<MGP::MGPBufferBuilder *>(
         loweringState.getBufferBuilder(hostDevice));
-    ASSERT_STREAM(hostBufferBuilder)
-        << "no buffer builder has been created for the host device '"
-        << hostDevice << "'";
+    ASSERT_STREAM(hostBufferBuilder,
+                  << "no buffer builder has been created for the host device '"
+                  << hostDevice << "'");
   }
   auto inChain = cast<TypedValue<MEF::ChainType>>(loweringState.getInitChain());
   // DANGER: init chain is the result of device context creation which is a
@@ -82,8 +82,8 @@ void DeviceBufferizationRegistry::add(
     std::unique_ptr<DeviceSpecificDialect> deviceSpecificDialect) {
   std::lock_guard<std::mutex> guard(mu);
   bool inserted = map.insert({label, std::move(deviceSpecificDialect)}).second;
-  ASSERT_STREAM(inserted) << "builder for label " << label
-                          << " has already been registered";
+  ASSERT_STREAM(inserted, << "builder for label " << label
+                          << " has already been registered");
 }
 
 void DeviceBufferizationRegistry::callAllRegisterDialects(

@@ -1270,10 +1270,10 @@ public:
         curProducingOp, allowUnsafeBCast, allowInternalReshape,
         debugMHAPattern);
 
-    ASSERT_STREAM(matcher.causalMask.isError() ||
-                  matcher.explicitMask.isError())
+    ASSERT_STREAM(
+        matcher.causalMask.isError() || matcher.explicitMask.isError(),
         << "[MultiHeadAttentionMaskingMuxMatcher] expect only a single mask "
-           "pattern to initial match.";
+           "pattern to initial match.");
 
     // no masking at all!
     if (matcher.causalMask.isError() && matcher.explicitMask.isError()) {
@@ -2135,7 +2135,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     static SmallVector<TypedAttr> getRank4Dims(TensorValue value,
                                                PatternRewriter &rewriter) {
       size_t rank = value.getType().getRank();
-      ASSERT_STREAM(rank == 3 || rank == 4) << "Support only rank3/4 inputs.";
+      ASSERT_STREAM(rank == 3 || rank == 4, << "Support only rank3/4 inputs.");
 
       SmallVector<TypedAttr> answer;
       auto curDims = value.getType().getTypedShapeAttr().getValues();

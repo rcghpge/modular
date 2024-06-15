@@ -97,25 +97,25 @@ static void fixup(OpBuilder &builder, Block *inBlock,
         }
         for (size_t i = 0; i < n; ++i) {
           Value outOperand = mapping.lookupOrNull(inOutputOp->getOperand(i));
-          ASSERT_STREAM(outOperand) << "unmapped operand";
+          ASSERT_STREAM(outOperand, << "unmapped operand");
           outOperands.emplace_back(outOperand);
         }
         // Include the additional arguments.
         for (Value inFreeValue : freeValues) {
           Value outFreeValue = mapping.lookupOrNull(inFreeValue);
-          ASSERT_STREAM(outFreeValue) << "unmapped free value";
+          ASSERT_STREAM(outFreeValue, << "unmapped free value");
           outOperands.emplace_back(outFreeValue);
         }
         if (beforeLastOutput) {
           // Rewrite last operand.
           Value outOperand = mapping.lookupOrNull(inOutputOp->getOperand(n));
-          ASSERT_STREAM(outOperand) << "unmapped operand";
+          ASSERT_STREAM(outOperand, << "unmapped operand");
           outOperands.emplace_back(outOperand);
         }
         Operation *outOutputOp =
             builder.create<MEF::OutputOp>(inOp->getLoc(), outOperands);
-        ASSERT_STREAM(checkRewrite(inOutputOp, outOutputOp))
-            << "invalid rewrite for output op";
+        ASSERT_STREAM(checkRewrite(inOutputOp, outOutputOp),
+                      << "invalid rewrite for output op");
         continue;
       }
     }
@@ -127,7 +127,7 @@ static void fixup(OpBuilder &builder, Block *inBlock,
       SetVector<Value> subFreeValues;
       for (Region &region : inCfOp->getRegions())
         accumFreeValues(subFreeValues, &region.front(), &region.front());
-      ASSERT_STREAM(llvm::all_of(subFreeValues, [&](Value subFreeValue) {
+      assert(llvm::all_of(subFreeValues, [&](Value subFreeValue) {
         return subFreeValue.getParentBlock() == inBlock ||
                freeValues.contains(subFreeValue);
       }));
@@ -136,13 +136,13 @@ static void fixup(OpBuilder &builder, Block *inBlock,
       SmallVector<Value> outOperands;
       for (Value operand : inCfOp->getOperands()) {
         Value outOperand = mapping.lookupOrNull(operand);
-        ASSERT_STREAM(outOperand) << "unmapped operand";
+        ASSERT_STREAM(outOperand, << "unmapped operand");
         outOperands.emplace_back(outOperand);
       }
       // Include the additional arguments.
       for (Value inSubFreeValue : subFreeValues) {
         Value outSubFreeValue = mapping.lookupOrNull(inSubFreeValue);
-        ASSERT_STREAM(outSubFreeValue) << "unmapped sub free value";
+        ASSERT_STREAM(outSubFreeValue, << "unmapped sub free value");
         outOperands.emplace_back(outSubFreeValue);
       }
 
@@ -167,8 +167,8 @@ static void fixup(OpBuilder &builder, Block *inBlock,
       // Create the new control flow op with empty sub-regions.
       GRT::GRTControlFlowInterface outCfOp =
           cloneWithArgs(builder, inCfOp, outResultTypes, outOperands);
-      ASSERT_STREAM(checkRewrite(inCfOp, outCfOp))
-          << "invalid rewrite for control flow op";
+      ASSERT_STREAM(checkRewrite(inCfOp, outCfOp),
+                    << "invalid rewrite for control flow op");
 
       // Capture mappings for op results. Any additional results,
       // corresponding to the subOutputValues, can be ignored.
@@ -198,7 +198,7 @@ static void fixup(OpBuilder &builder, Block *inBlock,
 
     // Default case is just clone the op w.r.t. mapping.
     Operation *outOp = builder.clone(*inOp, mapping);
-    ASSERT_STREAM(checkRewrite(inOp, outOp)) << "invalid rewrite of op";
+    ASSERT_STREAM(checkRewrite(inOp, outOp), << "invalid rewrite of op");
   }
 
   LLVM_DEBUG(llvm::dbgs() << "fixup end\n");

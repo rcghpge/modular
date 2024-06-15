@@ -76,7 +76,7 @@ static SmallVector<TypedAttr> getShapesOf(ValueRange values) {
   SmallVector<TypedAttr> shapes;
   for (Value val : values) {
     auto tensorVal = dyn_cast<MO::TensorValue>(val);
-    ASSERT_STREAM(tensorVal) << "expected tensor value";
+    ASSERT_STREAM(tensorVal, << "expected tensor value");
     shapes.push_back(tensorVal.getType().getShapeAttr());
   }
   return shapes;
@@ -122,7 +122,7 @@ static DTypeCategory getDtypeCategory(DType x) {
   if (x.isFloat())
     return kFloat;
 
-  ASSERT_STREAM(false) << "Unknown dtype: " << x.getAsString();
+  ASSERT_STREAM(false, << "Unknown dtype: " << x.getAsString());
 }
 
 /// Returns the dtype represented by a category, bit width, and format.
@@ -197,9 +197,9 @@ static DType calcDtype(DTypeCategory category, ssize_t bitWidth,
     break;
   }
 
-  ASSERT_STREAM(false) << "Dtype promotion suggestion is an invalid dtype. "
+  ASSERT_STREAM(false, << "Dtype promotion suggestion is an invalid dtype. "
                           "This should not be possible: "
-                       << category << ", " << bitWidth;
+                       << category << ", " << bitWidth);
 }
 
 /// Given two dtypes, returns the promotion dtype or an error.
@@ -289,8 +289,8 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
 /// Any other dimension mismatches will return an error.
 static ErrorOr<TensorType> refineBroadcastedShape(TensorType ty1,
                                                   TensorType ty2) {
-  ASSERT_STREAM(!ty1.isDynamicallyRanked() && !ty2.isDynamicallyRanked())
-      << " only static rank is supported";
+  ASSERT_STREAM(!ty1.isDynamicallyRanked() && !ty2.isDynamicallyRanked(),
+                << " only static rank is supported");
 
   auto idxTy = IndexType::get(ty1.getContext());
   auto intDim1 = IntegerAttr::get(idxTy, 1ll);
@@ -479,7 +479,7 @@ LogicalResult ConcatOp::inferReturnTypes(
     RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
 
   auto axisAttr = attributes.getAs<IntegerAttr>("axis");
-  ASSERT_STREAM(axisAttr) << "rmo.concat must have a constant integer `axis`";
+  ASSERT_STREAM(axisAttr, << "rmo.concat must have a constant integer `axis`");
 
   // Retrieve input shapes
   SmallVector<TypedAttr> inputShapes = getShapesOf(operands);
@@ -505,8 +505,8 @@ LogicalResult ConcatOp::inferReturnTypes(
     return mlir::emitOptionalError(location, result.getError().msg);
 
   // This depends on GraphAPI having static rank.
-  ASSERT_STREAM(!result.isNonMaterializable())
-      << "concat shape logic must be materializable";
+  ASSERT_STREAM(!result.isNonMaterializable(),
+                << "concat shape logic must be materializable");
 
   // Shape propagation over materialized ops and target shape.
   auto &successRes = result.getSuccess();
@@ -533,7 +533,8 @@ LogicalResult ReshapeOp::inferReturnTypes(
     RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
 
   auto newShapeAttr = attributes.getAs<ShapeAttr>("newShape");
-  ASSERT_STREAM(newShapeAttr) << "rmo.reshape must have a ShapeAttr `newShape`";
+  ASSERT_STREAM(newShapeAttr,
+                << "rmo.reshape must have a ShapeAttr `newShape`");
   // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
   // check.
   if (newShapeAttr.hasUnknownDims())
@@ -543,8 +544,8 @@ LogicalResult ReshapeOp::inferReturnTypes(
 
   // Retrieve input shape
   SmallVector<TypedAttr> inputShapes = getShapesOf(operands);
-  ASSERT_STREAM(inputShapes.size() == 1)
-      << "rmo.reshape must have exactly one input";
+  ASSERT_STREAM(inputShapes.size() == 1,
+                << "rmo.reshape must have exactly one input");
   auto inputShape = mlir::cast<ShapeAttr>(inputShapes[0]);
   // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
   // check.
@@ -566,8 +567,8 @@ LogicalResult ReshapeOp::inferReturnTypes(
     return mlir::emitOptionalError(location, result.getError().msg);
 
   // This depends on GraphAPI having static rank.
-  ASSERT_STREAM(!result.isNonMaterializable())
-      << "reshape shape logic must be materializable";
+  ASSERT_STREAM(!result.isNonMaterializable(),
+                << "reshape shape logic must be materializable");
 
   // Shape propagation over materialized ops and target shape.
   auto &successRes = result.getSuccess();

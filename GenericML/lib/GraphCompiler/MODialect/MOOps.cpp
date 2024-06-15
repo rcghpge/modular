@@ -314,12 +314,12 @@ LogicalResult TransferOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  ASSERT_STREAM(operands.size() == 1) << "mismatched operand arity";
+  ASSERT_STREAM(operands.size() == 1, << "mismatched operand arity");
   auto sourceType = dyn_cast<TensorType>(operands[0].getType());
-  ASSERT_STREAM(sourceType) << "mismatched operand types";
+  ASSERT_STREAM(sourceType, << "mismatched operand types");
   auto destDeviceAttr = dyn_cast_if_present<DeviceRefAttr>(
       attributes.get(getDestDeviceAttrName(name)));
-  ASSERT_STREAM(destDeviceAttr) << "mismatched operand types";
+  ASSERT_STREAM(destDeviceAttr, << "mismatched operand types");
   inferredReturnTypes.emplace_back(sourceType.cloneWith(destDeviceAttr));
   return success();
 }
@@ -968,7 +968,7 @@ LogicalResult ConstantOp::canonicalize(ConstantOp op,
 
 OpFoldResult ConstantOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
-  ASSERT_STREAM(operands.empty()) << "constant has no operands";
+  ASSERT_STREAM(operands.empty(), << "constant has no operands");
   return getValueAttr();
 }
 
@@ -1099,7 +1099,7 @@ bool ConstantOp::preferResultsDevice() { return true; }
 
 OpFoldResult ConstantScalarOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
-  ASSERT_STREAM(operands.empty()) << "constant.scalar has no operands";
+  ASSERT_STREAM(operands.empty(), << "constant.scalar has no operands");
   return getValueAttr();
 }
 
@@ -2813,8 +2813,8 @@ LogicalResult ShapeOfOp::verify() {
 
 void ShapeOfOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                       TensorValue input, int64_t width) {
-  ASSERT_STREAM(llvm::is_contained({32, 64}, width))
-      << "`mo.shape_of` returns si32 or si64";
+  ASSERT_STREAM(llvm::is_contained({32, 64}, width),
+                << "`mo.shape_of` returns si32 or si64");
   Type intTy = odsBuilder.getIntegerType(width, /*isSigned=*/true);
 
   int64_t outputSize = mlir::ShapedType::kDynamic;

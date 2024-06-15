@@ -397,7 +397,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths,
   }
 
   auto loadError = loadUserProvidedKernels(kernelLibraryPaths, eager);
-  ASSERT_STREAM(!loadError.isError()) << loadError.takeError();
+  ASSERT_STREAM(!loadError.isError(), << loadError.takeError());
 
   finalized = eager;
 

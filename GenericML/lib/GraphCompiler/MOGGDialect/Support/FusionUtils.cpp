@@ -128,9 +128,10 @@ SmallVector<Value> inlineInvoke(MOGG::LambdaInvokeOp invokeOp,
   for (Operation &op : invokeTarget.getBody().front()) {
     // Don't add the terminator obviously
     if (isa<MOGG::OutputOp>(op)) {
-      ASSERT_STREAM(invokeOp->getNumResults() == op.getNumOperands())
+      ASSERT_STREAM(
+          invokeOp->getNumResults() == op.getNumOperands(),
           << "[LAMBDA_INLINE] Return doesn't have same number of results as "
-             "caller.";
+             "caller.");
       if (invokeOp.use_empty())
         continue;
 

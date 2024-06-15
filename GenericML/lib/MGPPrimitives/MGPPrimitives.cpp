@@ -580,7 +580,7 @@ static void mgp_guard(Chain inChain, RemainingArguments inputs,
 //===----------------------------------------------------------------------===//
 
 static void mgp_model() {
-  ASSERT_STREAM(false) << "mgp.model should never be invoked";
+  ASSERT_STREAM(false, << "mgp.model should never be invoked");
 }
 
 //===----------------------------------------------------------------------===//

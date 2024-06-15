@@ -64,7 +64,7 @@ DeviceRefAttr MO::getHostDevice(GraphOp graphOp) {
 
 DeviceRefAttr MO::getHostDeviceAny(Operation *op) {
   auto graphOp = op->getParentOfType<GraphOp>();
-  ASSERT_STREAM(graphOp) << "operation is not contained within a MO::GraphOp";
+  ASSERT_STREAM(graphOp, << "operation is not contained within a MO::GraphOp");
   return getHostDevice(graphOp);
 }
 

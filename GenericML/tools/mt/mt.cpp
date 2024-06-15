@@ -335,8 +335,8 @@ int main(int argc, char **argv) {
     // executing the model.
     ASSERT_STREAM((options.command == DriverCommand::printMetadata ||
                    options.command == DriverCommand::printConstantMetadata ||
-                   options.command == DriverCommand::execute))
-        << "unknown command ";
+                   options.command == DriverCommand::execute),
+                  << "unknown command ");
 
     auto binaryFileOr =
         dylib.openBinaryFile(frameworkCtx, inputInfo.file.copy());

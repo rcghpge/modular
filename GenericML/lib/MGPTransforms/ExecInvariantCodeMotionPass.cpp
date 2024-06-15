@@ -737,11 +737,12 @@ class ExecInvariantCodeMotionPass
         operationIndex->printV(llvm::dbgs(), op);
         llvm::dbgs() << "\n";
       });
-      ASSERT_STREAM(!unliftableOps.contains(op))
-          << "attempting to clone an op (" << *op << ") which is unliftable";
-      ASSERT_STREAM(isRecomputableOp(op))
-          << "attempting to clone an op (" << *op
-          << ") which is not recomputable";
+      ASSERT_STREAM(!unliftableOps.contains(op),
+                    << "attempting to clone an op (" << *op
+                    << ") which is unliftable");
+      ASSERT_STREAM(isRecomputableOp(op), << "attempting to clone an op ("
+                                          << *op
+                                          << ") which is not recomputable");
 
       // Although not required, this makes debugging easier.
       executeState->builder.setInsertionPoint(op);
@@ -813,10 +814,10 @@ class ExecInvariantCodeMotionPass
               // We could deal with this properly by cloning the parent or just
               // moving the trivial child anyways, but since very few ops are
               // trivial anyways it won't happen often.
-              ASSERT_STREAM(!isOpOperandUnliftable(use))
-                  << "attempting to lift buffer (" << *op
-                  << ") which will be further mutated "
-                     "in the 'execute' block";
+              ASSERT_STREAM(!isOpOperandUnliftable(use),
+                            << "attempting to lift buffer (" << *op
+                            << ") which will be further mutated "
+                               "in the 'execute' block");
               for (Value res : use.getOwner()->getResults()) {
                 if (isa<MEF::MEFChainTypeInterface>(res.getType())) {
                   BufferBuilder *bufferBuilder =
@@ -863,10 +864,10 @@ class ExecInvariantCodeMotionPass
         }
 
       } else {
-        ASSERT_STREAM(isRecomputableOp(op))
-            << "attempting to lift an op (" << *op
-            << ") which is neither a liftable chain or "
-               "buffer op, nor a recomputable op";
+        ASSERT_STREAM(isRecomputableOp(op),
+                      << "attempting to lift an op (" << *op
+                      << ") which is neither a liftable chain or "
+                         "buffer op, nor a recomputable op");
 
         // Note that the op may have been cloned by the first pass.
       }
@@ -909,8 +910,8 @@ class ExecInvariantCodeMotionPass
   }
 
   void runOnOperation() override {
-    ASSERT_STREAM(!initState && !executeState && !valueIndex && !operandIndex &&
-                  !operationIndex && !builderContext);
+    assert(!initState && !executeState && !valueIndex && !operandIndex &&
+           !operationIndex && !builderContext);
     ModelOp modelOp = getOperation();
     InitState theInitState(modelOp.getContext(), modelOp.getInitBlock());
     initState = &theInitState;

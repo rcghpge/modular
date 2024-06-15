@@ -115,9 +115,10 @@ IntegerAttr DeviceBufferType::getRawSize() const {
 
 ShapedType DeviceBufferType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                        Type elementType) const {
-  ASSERT_STREAM(!shape) << "cannot change shape in DeviceBufferType::cloneWith";
-  ASSERT_STREAM(elementType.isUnsignedInteger(8))
-      << "invalid dtype for DeviceBufferType::cloneWith";
+  ASSERT_STREAM(
+      !shape, << "cannot change shape in DeviceBufferType::cloneWith");
+  ASSERT_STREAM(elementType.isUnsignedInteger(8),
+                << "invalid dtype for DeviceBufferType::cloneWith");
   return DeviceBufferType::get(getContext(), getDevice(), getOptSize());
 }
 

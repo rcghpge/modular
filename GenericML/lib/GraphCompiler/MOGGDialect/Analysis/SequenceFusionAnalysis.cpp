@@ -216,8 +216,9 @@ gatherDependencies(
   computationallySignificantMask.resize(opToIndexInBitVector.size(), false);
   for (auto [op, index] : opToIndexInBitVector) {
     if (isComputationallySignificant(op)) {
-      ASSERT_STREAM(!isEligible(op))
-          << "Eligible ops are considered computationally insignificant";
+      ASSERT_STREAM(
+          !isEligible(op),
+          << "Eligible ops are considered computationally insignificant");
       computationallySignificantMask[index] = true;
     }
   }
@@ -382,8 +383,8 @@ FusionSubGraphs transitiveDependencySequenceFusionAnalysis(
                 dependenciesToUpdate.transitiveUsers |=
                     subgraphDependencies.transitiveUsers;
               }
-              ASSERT_STREAM(!(providerOfTheSubgraph && userOfTheSubgraph))
-                  << "Created a cycle";
+              ASSERT_STREAM(!(providerOfTheSubgraph && userOfTheSubgraph),
+                            << "Created a cycle");
             };
 
         // After fusing an operation with a subgraph, update the dependencies of

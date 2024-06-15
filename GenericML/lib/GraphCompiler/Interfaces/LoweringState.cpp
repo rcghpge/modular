@@ -376,9 +376,10 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
         Value chain = operands[0];
         Value cond = operands[1];
 
-        ASSERT_STREAM(isa<MGP::AssertOp>(chain.getDefiningOp()))
+        ASSERT_STREAM(
+            isa<MGP::AssertOp>(chain.getDefiningOp()),
             << "Encountered a mo.assert with a chain that was not produced by "
-               "another mo.assert!";
+               "another mo.assert!");
 
         SmallVector<Operation *> parentAsserts =
             getParentAsserts(chain.getDefiningOp(), execute.parentAssert);
@@ -541,7 +542,7 @@ void MOOpLoweringState::createOutputs(
 
 BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {
   Value loweredTensor = loweringState.lookupExecuteLoweredValue(moTensor);
-  ASSERT_STREAM(loweredTensor) << "referenced SSA value has not been lowered";
+  ASSERT_STREAM(loweredTensor, << "referenced SSA value has not been lowered");
   BufferBuilder *bufferBuilder = getStorageBufferBuilder(moTensor.getType());
   auto buffer =
       bufferBuilder->tensorExtractBuffer(builder, loc, context, loweredTensor);
@@ -596,7 +597,7 @@ MOOpLoweringState::createOutputTensorSpecs() {
       continue;
 
     auto moTensorType = dyn_cast<MO::TensorType>(type);
-    ASSERT_STREAM(moTensorType) << "result of op is not a !mo.tensor";
+    ASSERT_STREAM(moTensorType, << "result of op is not a !mo.tensor");
     FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
         createTensorSpec(moTensorType);
     if (failed(tensorSpecOr))
@@ -663,14 +664,14 @@ void MOOpLoweringState::createOutputTensors(
 
 BufferBuilder *MOOpLoweringState::getStorageBufferBuilder(Type moTensorType) {
   auto type = dyn_cast<MO::TensorType>(moTensorType);
-  ASSERT_STREAM(type) << "expecting !mo.tensor type";
+  ASSERT_STREAM(type, << "expecting !mo.tensor type");
   return loweringState.getBufferBuilder(
       MO::getDeviceOrDefault(loweringState.getGraph(), type));
 }
 
 TypeBuilder *MOOpLoweringState::getStorageTypeBuilder(Type moTensorType) {
   auto type = dyn_cast<MO::TensorType>(moTensorType);
-  ASSERT_STREAM(type) << "expecting !mo.tensor type";
+  ASSERT_STREAM(type, << "expecting !mo.tensor type");
   return loweringState.getTypeBuilder(
       MO::getDeviceOrDefault(loweringState.getGraph(), type));
 }

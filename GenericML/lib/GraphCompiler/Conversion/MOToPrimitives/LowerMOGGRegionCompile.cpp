@@ -78,8 +78,8 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
   if (!device)
     device = DeviceRefAttr::getDefault(ctx);
 
-  ASSERT_STREAM(device.getLabel() == kCPULabel)
-      << "Only CPU ExecuteCompiledOps can be lowered further";
+  ASSERT_STREAM(device.getLabel() == kCPULabel,
+                << "Only CPU ExecuteCompiledOps can be lowered further");
 
   auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
       oldKernel.getLoc(), MGP::DeviceChainType::get(device), resultTypes,
@@ -157,9 +157,10 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       cuda_runtime_slot = lastDeviceRuntimeOp[cudaDevice].getSlot();
     for (auto op : init.getOps<MGP::ModuleLoadOp>()) {
       lastDeviceModuleLoadOp[op.getDevice()] = op;
-      ASSERT_STREAM(deviceModuleIndex.contains(op.getDevice()))
-          << "Cannot have a ModuleLoadOp for a device: " << op.getDevice()
-          << " without a corresponding RuntimeCreateOp";
+      ASSERT_STREAM(deviceModuleIndex.contains(op.getDevice()),
+                    << "Cannot have a ModuleLoadOp for a device: "
+                    << op.getDevice()
+                    << " without a corresponding RuntimeCreateOp");
       deviceModuleIndex[op.getDevice()]++;
     }
     llvm::SmallDenseMap<DeviceRefAttr, llvm::StringMap<size_t>>
@@ -243,9 +244,9 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
           if (isa<MGP::ContextType>(arg.getType()))
             executeContext = arg;
         }
-        ASSERT_STREAM(executeContext)
-            << "Cannot find execute context in bounding region of "
-               "generic.execute";
+        ASSERT_STREAM(executeContext,
+                      << "Cannot find execute context in bounding region of "
+                         "generic.execute");
       }
       auto inChain = builder.create<GRT::ChainCreateOp>(kernel.getLoc());
       rewriteExecuteCompiledOp(

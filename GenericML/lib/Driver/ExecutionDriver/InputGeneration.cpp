@@ -170,10 +170,10 @@ public:
     return FileTensorGenerator(std::move(tensors), flags);
   }
   const Tensor &getNextTensor() final {
-    ASSERT_STREAM((isSet(flags, TensorGeneratorFlag::kCycle) || !repeated))
-        << "All tensors in FileTensor have already been generated. "
-           "Add Cycle attribute to --input-data to loop over "
-           "available tensors.";
+    ASSERT_STREAM((isSet(flags, TensorGeneratorFlag::kCycle) || !repeated),
+                  << "All tensors in FileTensor have already been generated. "
+                     "Add Cycle attribute to --input-data to loop over "
+                     "available tensors.");
     if (pos + 1 >= tensors.size())
       repeated = true;
     auto curr = pos;
@@ -183,8 +183,8 @@ public:
 
   const Tensor &getTensor(size_t sampleIdx) const final {
     if (!isCycled())
-      ASSERT_STREAM(sampleIdx < tensors.size())
-          << "Requested sampleIdx out of range";
+      ASSERT_STREAM(sampleIdx < tensors.size(),
+                    << "Requested sampleIdx out of range");
     return tensors[sampleIdx % tensors.size()];
   }
 

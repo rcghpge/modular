@@ -43,9 +43,10 @@ public:
                ArrayRef<QuantTensorSpec> outputSpecs, EncodedLocation location)
       : Model(inputSpecs, outputSpecs), name(std::move(name)), initFn(initFn),
         executeFn(executeFn), location(std::move(location)) {
-    ASSERT_STREAM(frameworkLabel == CompiledFrameworkLabel::kModularModel)
-        << "Expected " << CompiledFrameworkLabel::kModularModel
-        << " label for model, but got " << frameworkLabel.getAsString();
+    ASSERT_STREAM(frameworkLabel == CompiledFrameworkLabel::kModularModel,
+                  << "Expected " << CompiledFrameworkLabel::kModularModel
+                  << " label for model, but got "
+                  << frameworkLabel.getAsString());
   }
 
   ModularModel(std::string name, CompiledFrameworkLabel frameworkLabel,
@@ -57,9 +58,10 @@ public:
       : Model(inputSpecs, outputSpecs, inputNames, outputNames),
         name(std::move(name)), initFn(initFn), executeFn(executeFn),
         location(std::move(location)) {
-    ASSERT_STREAM(frameworkLabel == CompiledFrameworkLabel::kModularModel)
-        << "Expected " << CompiledFrameworkLabel::kModularModel
-        << " label for model, but got " << frameworkLabel.getAsString();
+    ASSERT_STREAM(frameworkLabel == CompiledFrameworkLabel::kModularModel,
+                  << "Expected " << CompiledFrameworkLabel::kModularModel
+                  << " label for model, but got "
+                  << frameworkLabel.getAsString());
   }
 
   /// Returns a ModularModel from an mgp.model descriptor.

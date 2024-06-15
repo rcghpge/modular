@@ -216,9 +216,9 @@ TensorType TensorType::get(TypedAttr shapeAttr, DType dtype,
 TensorType TensorType::get(TypedAttr shapeAttr, Type elementType,
                            DictionaryAttr metadata) {
   ErrorOr<DType> errOrDType = fromMLIRType(elementType);
-  ASSERT_STREAM(!errOrDType.isError())
-      << "element type is not representable as a DType: "
-      << errOrDType.takeError();
+  ASSERT_STREAM(!errOrDType.isError(),
+                << "element type is not representable as a DType: "
+                << errOrDType.takeError());
   return get(shapeAttr, *errOrDType, metadata);
 }
 
@@ -296,9 +296,9 @@ TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
     shapeRef = KGEN::UnknownAttr::get(shapeTy);
 
   ErrorOr<DType> errOrDType = fromMLIRType(dtype);
-  ASSERT_STREAM(!errOrDType.isError())
-      << "element type is not representable as an M::DType: "
-      << errOrDType.takeError();
+  ASSERT_STREAM(!errOrDType.isError(),
+                << "element type is not representable as an M::DType: "
+                << errOrDType.takeError());
   return TensorType::get(shapeRef, *errOrDType, metadata);
 }
 
@@ -361,7 +361,7 @@ bool TensorType::hasRank() const {
 }
 
 size_t TensorType::getRank() const {
-  ASSERT_STREAM(hasRank()) << "cannot get rank if shape is not known";
+  ASSERT_STREAM(hasRank(), << "cannot get rank if shape is not known");
   return getTypedShapeAttr().getRank();
 }
 
@@ -371,9 +371,9 @@ bool TensorType::hasStaticShape() const {
 
 Type TensorType::getElementType() const {
   ErrorOr<Type> errOrType = toMLIRType(getContext(), getDtype());
-  ASSERT_STREAM(!errOrType.isError())
-      << "element type is not representable as an mlir Type: "
-      << errOrType.takeError();
+  ASSERT_STREAM(!errOrType.isError(),
+                << "element type is not representable as an mlir Type: "
+                << errOrType.takeError());
   return *errOrType;
 }
 
@@ -533,9 +533,9 @@ LogicalResult ListType::verify(function_ref<InFlightDiagnostic()> emitError,
 
 Type ScalarType::getDType() const {
   ErrorOr<Type> errOrType = toMLIRType(getContext(), getDtype());
-  ASSERT_STREAM(!errOrType.isError())
-      << "scalar type is not representable as an mlir Type: "
-      << errOrType.takeError();
+  ASSERT_STREAM(!errOrType.isError(),
+                << "scalar type is not representable as an mlir Type: "
+                << errOrType.takeError());
   return *errOrType;
 }
 

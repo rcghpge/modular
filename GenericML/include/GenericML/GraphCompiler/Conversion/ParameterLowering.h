@@ -102,7 +102,7 @@ public:
       auto placeholder = lowered.getDefiningOp<PlaceholderOp>();
       // The parameter verification should ensure we don't have duplicate
       // declarations, so we just assert
-      ASSERT_STREAM(placeholder) << "duplicate declaration of parameter";
+      ASSERT_STREAM(placeholder, << "duplicate declaration of parameter");
 
       // Otherwise, we update the mapping and return the placeholder.
       eraseLowered(parentRegion, declRef);

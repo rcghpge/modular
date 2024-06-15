@@ -552,17 +552,17 @@ public:
 
   std::pair<uint64_t, uint64_t> getFunction(StringRef name) {
     auto itr = functionToIndexPair.find(name);
-    ASSERT_STREAM(itr != functionToIndexPair.end())
-        << "No function has been registered for name '" << name
-        << "' in the runtime for device '" << device << "'";
+    ASSERT_STREAM(itr != functionToIndexPair.end(),
+                  << "No function has been registered for name '" << name
+                  << "' in the runtime for device '" << device << "'");
     return itr->second;
   }
 
   std::pair<uint64_t, uint64_t> getConstant(StringRef name) {
     auto itr = constantToIndexPair.find(name);
-    ASSERT_STREAM(itr != constantToIndexPair.end())
-        << "No constant has been registered for name '" << name
-        << "' in the runtime for device '" << device << "'";
+    ASSERT_STREAM(itr != constantToIndexPair.end(),
+                  << "No constant has been registered for name '" << name
+                  << "' in the runtime for device '" << device << "'");
     return itr->second;
   }
 
@@ -635,16 +635,16 @@ public:
                            std::unique_ptr<TypeBuilder> typeBuilder) {
     bool inserted =
         typeBuilderMap.insert({device, std::move(typeBuilder)}).second;
-    ASSERT_STREAM(inserted)
-        << "a type builder has already been registered for device";
+    ASSERT_STREAM(inserted,
+                  << "a type builder has already been registered for device");
   }
 
   /// Returns the type builder to use for device. The builder is owned by
   /// this object.
   TypeBuilder *getTypeBuilder(DeviceRefAttr device) const {
     auto itr = typeBuilderMap.find(device);
-    ASSERT_STREAM(itr != typeBuilderMap.end())
-        << "no type builder has been registered for device";
+    ASSERT_STREAM(itr != typeBuilderMap.end(),
+                  << "no type builder has been registered for device");
     return itr->second.get();
   }
 
@@ -653,8 +653,8 @@ public:
                              std::unique_ptr<BufferBuilder> bufferBuilder) {
     bool inserted =
         bufferBuilderMap.insert({device, std::move(bufferBuilder)}).second;
-    ASSERT_STREAM(inserted)
-        << "a buffer builder has already been registered for device";
+    ASSERT_STREAM(inserted,
+                  << "a buffer builder has already been registered for device");
   }
 
   /// Returns the buffer builder to use for device. The builder is owned by
@@ -662,8 +662,9 @@ public:
   BufferBuilder *getBufferBuilder(DeviceRefAttr device) const {
     assert(device);
     auto itr = bufferBuilderMap.find(device);
-    ASSERT_STREAM(itr != bufferBuilderMap.end())
-        << "no buffer builder has been registered for device " << device;
+    ASSERT_STREAM(itr != bufferBuilderMap.end(),
+                  << "no buffer builder has been registered for device "
+                  << device);
     return itr->second.get();
   }
 

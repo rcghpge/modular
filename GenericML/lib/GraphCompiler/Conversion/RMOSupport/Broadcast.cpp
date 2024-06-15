@@ -23,9 +23,10 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
                                   TensorValue to) {
   Type elemType = builder.getIntegerType(64, /*isSigned=*/true);
 
-  ASSERT_STREAM(reshapeType.hasRank())
+  ASSERT_STREAM(
+      reshapeType.hasRank(),
       << "reshapeType needs to be a statically ranked tensor type but it is "
-      << reshapeType;
+      << reshapeType);
   auto type = TensorType::get({(int64_t)reshapeType.getRank()}, elemType);
 
   auto valueAttr = builder.getAttr<IntArrayElementsAttr>(
@@ -164,14 +165,15 @@ reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
   if ((xShape == yShape) && (xShape.hasStaticShape()))
     return {x, y};
 
-  ASSERT_STREAM(xShape.hasRank() && yShape.hasRank())
-      << "broadcasting does not support dynamic rank";
+  ASSERT_STREAM(xShape.hasRank() && yShape.hasRank(),
+                << "broadcasting does not support dynamic rank");
 
   ErrorOr<ShapeAttr> errorOrBcastCommonShape = ShapeAttr::broadcastShapes(
       xShape.getTypedShapeAttr(), yShape.getTypedShapeAttr());
 
-  ASSERT_STREAM(!errorOrBcastCommonShape.isError())
-      << "the shapes are incompatible: " << errorOrBcastCommonShape.takeError();
+  ASSERT_STREAM(!errorOrBcastCommonShape.isError(),
+                << "the shapes are incompatible: "
+                << errorOrBcastCommonShape.takeError());
 
   ShapeAttr bcastCommonShape = *errorOrBcastCommonShape;
 
@@ -195,21 +197,22 @@ reifyImplicitBroadcasting(OpBuilder &builder, Location loc, TensorValue x,
   if ((xShape == yShape) && (yShape == zShape) && (xShape.hasStaticShape()))
     return {x, y, z};
 
-  ASSERT_STREAM(xShape.hasRank() && yShape.hasRank() && zShape.hasRank())
-      << "broadcasting does not support dynamic rank";
+  ASSERT_STREAM(xShape.hasRank() && yShape.hasRank() && zShape.hasRank(),
+                << "broadcasting does not support dynamic rank");
 
   ErrorOr<ShapeAttr> errorOrXYBcastCommonShape = ShapeAttr::broadcastShapes(
       xShape.getTypedShapeAttr(), yShape.getTypedShapeAttr());
-  ASSERT_STREAM(!errorOrXYBcastCommonShape.isError())
-      << "the shapes are incompatible: "
-      << errorOrXYBcastCommonShape.takeError();
+  ASSERT_STREAM(!errorOrXYBcastCommonShape.isError(),
+                << "the shapes are incompatible: "
+                << errorOrXYBcastCommonShape.takeError());
   ShapeAttr xyCommonShape = *errorOrXYBcastCommonShape;
 
   ErrorOr<ShapeAttr> errorOrBcastCommonShape = ShapeAttr::broadcastShapes(
       *errorOrXYBcastCommonShape, zShape.getTypedShapeAttr());
 
-  ASSERT_STREAM(!errorOrBcastCommonShape.isError())
-      << "the shapes are incompatible: " << errorOrBcastCommonShape.takeError();
+  ASSERT_STREAM(!errorOrBcastCommonShape.isError(),
+                << "the shapes are incompatible: "
+                << errorOrBcastCommonShape.takeError());
 
   ShapeAttr bcastCommonShape = *errorOrBcastCommonShape;
 
@@ -231,8 +234,9 @@ TensorValue broadcastTo(OpBuilder &builder, Location loc, TensorValue x,
                         TensorValue y) {
   auto [newX, newY] = reifyImplicitBroadcasting(builder, loc, x, y);
 
-  ASSERT_STREAM(newY.getType() == unifyShapeType(y.getType()))
-      << "don't use this helper unless you can guarantee x broadcasts to y";
+  ASSERT_STREAM(
+      newY.getType() == unifyShapeType(y.getType()),
+      << "don't use this helper unless you can guarantee x broadcasts to y");
 
   return newX;
 }

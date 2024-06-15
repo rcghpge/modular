@@ -36,7 +36,7 @@ namespace {
 template <bool allowDuplication>
 static void fuseCompiledRegionsAndReplaceUses(
     const SmallVector<Operation *> &compiledRegionOpsToFuseTogether) {
-  ASSERT_STREAM(llvm::all_of(compiledRegionOpsToFuseTogether, [](auto op) {
+  assert(llvm::all_of(compiledRegionOpsToFuseTogether, [](auto op) {
     return isa<MOGG::GenericCompiledRegionOp>(op);
   }));
 
@@ -109,7 +109,7 @@ static void fuseCompiledRegionsAndReplaceUses(
       llvm::all_of(compiledRegionOpsToFuseTogether, [&](auto region) {
         return cast<MOGG::GenericCompiledRegionOp>(region).getCanDuplicate();
       });
-  ASSERT_STREAM(llvm::all_of(compiledRegionOpsToFuseTogether, [&](auto region) {
+  assert(llvm::all_of(compiledRegionOpsToFuseTogether, [&](auto region) {
     return cast<MOGG::GenericCompiledRegionOp>(region).getIsKGEN().value_or(
                false) == firstRegionOp.getIsKGEN().value_or(false);
   }));
@@ -186,8 +186,7 @@ static void fuseCompiledRegionsAndReplaceUses(
   // resultsThatShouldBeReplaced.size(). Otherwise, the `fusedCompiledRegionOp`
   // output still have an implicit mef.chain and valuesToOutput.size() + 1 ==
   // resultsThatShouldBeReplaced.size().
-  ASSERT_STREAM(valuesToOutput.size() + 1 >=
-                resultsThatShouldBeReplaced.size());
+  assert(valuesToOutput.size() + 1 >= resultsThatShouldBeReplaced.size());
 
   // Creating the output op and replacing outside SSA values.
   builder.create<MOGG::OutputOp>(loc, valuesToOutput);
@@ -213,7 +212,7 @@ constexpr size_t kMaxAssertOpsFused = 100;
 //   1. mgp.assertions (which cause nesting) exceeds 150
 static SmallVector<SmallVector<Operation *>> splitSubGraphFusionByNumOps(
     const SmallVector<Operation *> &compiledRegionOpsToFuseTogether) {
-  ASSERT_STREAM(llvm::all_of(compiledRegionOpsToFuseTogether, [](auto op) {
+  assert(llvm::all_of(compiledRegionOpsToFuseTogether, [](auto op) {
     return isa<MOGG::GenericCompiledRegionOp>(op);
   }));
   unsigned int numAssertOpsFused = 0;

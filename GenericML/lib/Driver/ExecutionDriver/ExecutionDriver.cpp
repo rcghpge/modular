@@ -160,7 +160,7 @@ static void
 convertResultsToGenericValues(const ExecutableModel *model,
                               MutableArrayRef<AnyAsyncValueRef> results) {
   for (auto &result : results) {
-    ASSERT_STREAM(result.isReady()) << "tensor result should be ready";
+    ASSERT_STREAM(result.isReady(), << "tensor result should be ready");
     if (result.isError() || result.isType<Tensor>())
       continue;
     result = model->convertToGenericValue(std::move(result));
@@ -232,12 +232,12 @@ static LogicalResult outputResults(const ExecutableModel *model,
   os << "'" << name << "' returned ";
 
   // We expect the first result to be a chain.
-  ASSERT_STREAM(!results.empty()) << "must have at least one result";
+  ASSERT_STREAM(!results.empty(), << "must have at least one result");
   const AnyAsyncValueRef &ch = results.front();
   if (failed(printDiagIfError(ch)))
     return mlir::failure();
-  ASSERT_STREAM(ch.isValueAvailable() && isa<Chain>(ch))
-      << "first result must be a chain";
+  ASSERT_STREAM(ch.isValueAvailable() && isa<Chain>(ch),
+                << "first result must be a chain");
   results = results.drop_front();
 
   if (results.empty())
@@ -249,7 +249,7 @@ static LogicalResult outputResults(const ExecutableModel *model,
   bool allResultsReady =
       std::all_of(results.begin(), results.end(),
                   [](AnyAsyncValueRef &result) { return result.isReady(); });
-  ASSERT_STREAM(allResultsReady) << "model result must be ready";
+  ASSERT_STREAM(allResultsReady, << "model result must be ready");
 
   // If --result-output-style=binary, write output tensors to files and return.
   if (outputStyle == ResultOutputStyle::kBinary) {

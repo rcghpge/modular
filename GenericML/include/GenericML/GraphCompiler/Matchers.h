@@ -544,8 +544,8 @@ struct constant_op_binder {
     llvm::SmallVector<mlir::OpFoldResult, 1> foldedOp;
     mlir::LogicalResult result = op->fold(/*operands=*/std::nullopt, foldedOp);
     (void)result;
-    ASSERT_STREAM(succeeded(result))
-        << "expected ConstantLike op to be foldable";
+    ASSERT_STREAM(succeeded(result),
+                  << "expected ConstantLike op to be foldable");
 
     if (auto attr =
             llvm::dyn_cast<AttrT>(foldedOp.front().get<mlir::Attribute>())) {

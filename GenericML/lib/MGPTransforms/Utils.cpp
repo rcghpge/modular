@@ -26,11 +26,12 @@ void M::MGP::accumFreeValues(mlir::SetVector<Value> &freeValues, Block *block,
               bindingBlock->getParent()))
         freeValues.insert(inValue);
       else
-        ASSERT_STREAM(inValue.getParentRegion()->isAncestor(block->getParent()))
+        ASSERT_STREAM(
+            inValue.getParentRegion()->isAncestor(block->getParent()),
             << "result from operation"
             << Twine(inValue.getDefiningOp()->getName().getStringRef())
             << " used in operation " << Twine(inOp.getName().getStringRef())
-            << " must be in the ancestor scope";
+            << " must be in the ancestor scope");
     }
     for (Region &subRegion : inOp.getRegions())
       accumFreeValues(freeValues, &subRegion.front(), bindingBlock);
@@ -100,7 +101,7 @@ static bool shouldStartVisiting(DenseMap<Operation *, bool> &visited,
   }
 #endif
 
-  ASSERT_STREAM(itr->second) << "model contains cycle involving op";
+  ASSERT_STREAM(itr->second, << "model contains cycle involving op");
   return false;
 };
 
@@ -150,8 +151,8 @@ static void startVisiting(DenseMap<Operation *, bool> &visited,
 static void finishVisiting(DenseMap<Operation *, bool> &visited,
                            Operation *currOp) {
   auto itr = visited.find(currOp);
-  ASSERT_STREAM(itr != visited.end()) << "never started visiting op";
-  ASSERT_STREAM(!itr->second) << "finishing already finished op";
+  ASSERT_STREAM(itr != visited.end(), << "never started visiting op");
+  ASSERT_STREAM(!itr->second, << "finishing already finished op");
   itr->second = true;
 };
 
@@ -552,8 +553,8 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
 InitState::InitState(MLIRContext *context, Block *init)
     : init(init), builder(context) {
   init->walk([this](ContextCreateOp op) { contextCreateOp = op; });
-  ASSERT_STREAM(contextCreateOp)
-      << "model is missing mgp.context.create op in init block";
+  ASSERT_STREAM(contextCreateOp,
+                << "model is missing mgp.context.create op in init block");
   builder.setInsertionPoint(&init->back());
 }
 

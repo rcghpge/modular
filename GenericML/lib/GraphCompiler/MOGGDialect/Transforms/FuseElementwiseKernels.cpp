@@ -303,10 +303,11 @@ struct FuseElementwisePass
         // Inline the first invoke and then reuse those values.
         if (!previouslyFusedValue) {
           auto newValues = inlineInvoke(toReplace, newOp);
-          ASSERT_STREAM(newValues.size() == 1)
+          ASSERT_STREAM(
+              newValues.size() == 1,
               << "Currently assuming one return from elementwise ops when "
                  "fusing but got "
-              << newValues.size();
+              << newValues.size());
           previouslyFusedValue = newValues.front();
         } else {
           toReplace->replaceAllUsesWith(ValueRange{previouslyFusedValue});
