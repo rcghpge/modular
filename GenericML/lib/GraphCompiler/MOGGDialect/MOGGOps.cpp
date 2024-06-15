@@ -49,7 +49,7 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
   if (failed(loweredOutputsStorageOr))
     return failure();
   auto &loweredOutputsStorage = *loweredOutputsStorageOr;
-  ASSERT_STREAM(loweredOutputsStorageOr->size() == 1);
+  assert(loweredOutputsStorageOr->size() == 1);
 
   Value outChain = opLoweringState.bufferConcat(
       loweringState.getExecuteChain(), loweredOutputsStorage[0].buffer,
@@ -773,7 +773,7 @@ OutputPlaceholdersOp KernelOp::getOutputPlaceholder() {
   if (placeholder.empty())
     return nullptr;
 
-  ASSERT_STREAM(llvm::range_size(placeholder) == 1);
+  assert(llvm::range_size(placeholder) == 1);
 
   return *placeholder.begin();
 }
@@ -783,7 +783,7 @@ StackAllocateTensorsOp KernelOp::getStackAllocateTensor() {
   if (stackAlloc.empty())
     return nullptr;
 
-  ASSERT_STREAM(llvm::range_size(stackAlloc) == 1);
+  assert(llvm::range_size(stackAlloc) == 1);
 
   return *stackAlloc.begin();
 }
@@ -793,7 +793,7 @@ CreateEmptyTensorsOp KernelOp::getCreateEmptyTensor() {
   if (createEmpty.empty())
     return nullptr;
 
-  ASSERT_STREAM(llvm::range_size(createEmpty) == 1);
+  assert(llvm::range_size(createEmpty) == 1);
 
   return *createEmpty.begin();
 }
@@ -803,7 +803,7 @@ OutputOp KernelOp::getOutputOp() {
   if (createEmpty.empty())
     return nullptr;
 
-  ASSERT_STREAM(llvm::range_size(createEmpty) == 1);
+  assert(llvm::range_size(createEmpty) == 1);
 
   return *createEmpty.begin();
 }

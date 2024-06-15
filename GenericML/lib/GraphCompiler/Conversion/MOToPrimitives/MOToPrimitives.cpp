@@ -1126,7 +1126,7 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   {
     auto origYieldOp =
         cast<MO::YieldOp>(whileOp.getCondRegion().front().getTerminator());
-    ASSERT_STREAM(origYieldOp->getNumOperands() == 1); // condition
+    assert(origYieldOp->getNumOperands() == 1); // condition
     Type condMoTensorType = origYieldOp.getOperand(0).getType();
 
     auto loweredCondOutputOp = cast<MEF::OutputOp>(
@@ -1162,7 +1162,7 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   }
 
   // Capture the lowered outputs.
-  ASSERT_STREAM(loweredWhileOp.getNumResults() == 1 + whileOp.getNumResults());
+  assert(loweredWhileOp.getNumResults() == 1 + whileOp.getNumResults());
   loweringState.setCurrentExecuteChain(loweredWhileOp.getResult(0));
   loweringState.setRootExecuteChain(rootChain);
   for (auto [origResult, loweredResult] : llvm::zip(

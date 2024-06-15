@@ -2886,7 +2886,7 @@ struct SinkSplitThroughElementwisePattern
                 op, "Input to the static broadcast must be a constant");
           }
         }
-        ASSERT_STREAM(constantOp);
+        assert(constantOp);
 
         constantsToConcatenate.push_back(constantOp.getResult());
         auto constantOpType = llvm::cast<TensorType>(constantOp.getType());
@@ -4220,7 +4220,7 @@ struct BackwardMathematicalCanonicalizationDivAndPowToPowByNegativeOneOrTwo
       return failure();
     }
 
-    ASSERT_STREAM(one || two);
+    assert(one || two);
 
     auto tensorType = divOp.getType();
     auto loc = divOp->getLoc();

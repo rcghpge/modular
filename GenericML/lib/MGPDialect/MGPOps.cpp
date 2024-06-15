@@ -643,7 +643,7 @@ LogicalResult CpuTensorSpecCreateOp::verify() {
                                  getContext(), getARawDims(), getBRawDType());
   if (impliedSpecType == nullptr)
     return failure();
-  ASSERT_STREAM(impliedSpecType.hasRank());
+  assert(impliedSpecType.hasRank());
   TensorSpecType actualSpecType = getResult().getType();
   if (actualSpecType != impliedSpecType)
     return emitOpError()
@@ -838,7 +838,7 @@ LogicalResult CpuTensorSpecDimsDynamicOp::verify() {
   TensorSpecType actualSpecType = getSpec().getType();
   TensorSpecType impliedSpecType = TensorSpecType::get(
       getContext(), getRawDims(), actualSpecType.getRawDType().getUInt());
-  ASSERT_STREAM(impliedSpecType.hasRank());
+  assert(impliedSpecType.hasRank());
   if (actualSpecType != impliedSpecType)
     return emitOpError() << "expected tensor spec type is " << actualSpecType
                          << ", but static dimensions arguments "
@@ -1270,7 +1270,7 @@ void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
         extraAttrsDict);
 
   // The 'init' entry point has no arguments.
-  ASSERT_STREAM(implicitInitSignature(builder).getInputs().empty());
+  assert(implicitInitSignature(builder).getInputs().empty());
   Region *initRegion = state.regions[0].get();
   initRegion->emplaceBlock();
 
@@ -1292,7 +1292,7 @@ LogicalResult ModelOp::verifyRegions() {
   Block *initBlock = getInitBlock();
   if (auto output = dyn_cast<MEF::OutputOp>(initBlock->getTerminator())) {
     FunctionType implicitInitSig = implicitInitSignature(builder);
-    ASSERT_STREAM(implicitInitSig.getInputs().empty());
+    assert(implicitInitSig.getInputs().empty());
     if (!initBlock->getArgumentTypes().empty())
       return emitOpError()
              << "expected no arguments to the 'init' body, but got "

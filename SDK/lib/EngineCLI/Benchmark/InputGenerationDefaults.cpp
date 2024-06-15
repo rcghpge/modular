@@ -80,10 +80,10 @@ void M::BenchmarkCLI::applyInputShapeDefaults(InputGenerationInput &inputSpec,
     return;
   inputSpec.shape = capiToTensorSpec(capiTensorSpec.get());
   if (overwriteBatch) {
-    ASSERT_STREAM(inputSpec.shape->hasRank());
+    assert(inputSpec.shape->hasRank());
     auto dims = inputSpec.shape->getDimsCopy();
-    ASSERT_STREAM(!dims.empty());
-    ASSERT_STREAM(mlir::ShapedType::isDynamic(dims[0]));
+    assert(!dims.empty());
+    assert(mlir::ShapedType::isDynamic(dims[0]));
     dims[0] = 1;
     inputSpec.shape = TensorSpec(dims, inputSpec.shape->getEltType());
   }

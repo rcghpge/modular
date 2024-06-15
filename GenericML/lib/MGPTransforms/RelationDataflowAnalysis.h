@@ -174,7 +174,7 @@ public:
       }
     });
 
-    ASSERT_STREAM(itr != relation.end());
+    assert(itr != relation.end());
     return itr->second;
   }
 
@@ -204,7 +204,7 @@ public:
         llvm::dbgs() << "\n";
       }
     });
-    ASSERT_STREAM(itr != relation.end());
+    assert(itr != relation.end());
     return itr->second.test(0); // distinguished always has index 0
   }
 
@@ -218,7 +218,7 @@ public:
         llvm::dbgs() << "\n";
       }
     });
-    ASSERT_STREAM(itr != relation.end());
+    assert(itr != relation.end());
     return index->setContains(itr->second, rhs);
   }
 
@@ -260,7 +260,7 @@ public:
     } else {
       // Even if we are setting to empty within a fixed-point iteration, an
       // empty entry must always be empty.
-      ASSERT_STREAM(itr->second.count() == 0);
+      assert(itr->second.count() == 0);
     }
   }
 
@@ -290,7 +290,7 @@ public:
         llvm::dbgs() << "\n";
       }
     });
-    ASSERT_STREAM(itr != domainMap.relation.end());
+    assert(itr != domainMap.relation.end());
 
     LLVM_DEBUG({
       llvm::dbgs() << "leastUpperBoundEntries(";
@@ -331,7 +331,7 @@ public:
         llvm::dbgs() << "\n";
       }
     });
-    ASSERT_STREAM(itr != relation.end());
+    assert(itr != relation.end());
     index->addToSet(itr->second, rhs);
   }
 
@@ -345,7 +345,7 @@ public:
         llvm::dbgs() << "\n";
       }
     });
-    ASSERT_STREAM(itr != relation.end());
+    assert(itr != relation.end());
     itr->second |= set;
   }
 

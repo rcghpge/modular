@@ -92,7 +92,7 @@ static void fixup(OpBuilder &builder, Block *inBlock,
         // Rewrite existing operands (possibly excluding last).
         size_t n = inOutputOp->getNumOperands();
         if (beforeLastOutput) {
-          ASSERT_STREAM(n > 0);
+          assert(n > 0);
           --n;
         }
         for (size_t i = 0; i < n; ++i) {
@@ -149,7 +149,7 @@ static void fixup(OpBuilder &builder, Block *inBlock,
       // New op continues to return existing results (possibly excluding last).
       size_t n = inCfOp->getNumResults();
       if (beforeLastOutput) {
-        ASSERT_STREAM(n > 0);
+        assert(n > 0);
         --n;
       }
       SmallVector<Type> outResultTypes;

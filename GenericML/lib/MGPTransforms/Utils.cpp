@@ -380,7 +380,7 @@ static Value waitForChainsReusing(
     BufferBuilder *optBufferBuilder,
     GRT::GRTGatedOnChainOpInterface existingUniqueChainCreateOp,
     ArrayRef<Value> chains) {
-  ASSERT_STREAM(!chains.empty());
+  assert(!chains.empty());
 
   if (chains.size() == 1)
     return chains.front();
@@ -585,9 +585,9 @@ TypedValue<ContextType> InitState::getContext() {
 
 ExecuteState::ExecuteState(MLIRContext *context, Block *execute)
     : execute(execute), builder(context) {
-  ASSERT_STREAM(execute->getNumArguments() >= kExtraArgStartIdx);
-  ASSERT_STREAM(isa<MEF::ChainType>(execute->getArgument(0).getType()));
-  ASSERT_STREAM(isa<ContextType>(execute->getArgument(1).getType()));
+  assert(execute->getNumArguments() >= kExtraArgStartIdx);
+  assert(isa<MEF::ChainType>(execute->getArgument(0).getType()));
+  assert(isa<ContextType>(execute->getArgument(1).getType()));
 }
 
 /// Returns 'root' chain, ie the first argument to the 'execute' block.

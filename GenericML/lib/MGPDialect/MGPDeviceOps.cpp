@@ -686,7 +686,7 @@ LogicalResult BufferHostToDeviceOp::inferReturnTypes(
 
 InOutSignatureAttr::InOutSemantics
 BufferHostToDeviceOp::getInOutSemantics(size_t index) {
-  ASSERT_STREAM(index < getNumOperands());
+  assert(index < getNumOperands());
   return index == getOtherBufferMutable().getOperandNumber()
              ? InOutSignatureAttr::kOut
              : InOutSignatureAttr::kIn;
@@ -727,7 +727,7 @@ LogicalResult BufferDeviceToHostOp::inferReturnTypes(
 
 InOutSignatureAttr::InOutSemantics
 BufferDeviceToHostOp::getInOutSemantics(size_t index) {
-  ASSERT_STREAM(index < getNumOperands());
+  assert(index < getNumOperands());
   return index == getHostBufferMutable().getOperandNumber()
              ? InOutSignatureAttr::kOut
              : InOutSignatureAttr::kIn;
@@ -776,7 +776,7 @@ LogicalResult BufferDeviceToDeviceOp::inferReturnTypes(
 
 InOutSignatureAttr::InOutSemantics
 BufferDeviceToDeviceOp::getInOutSemantics(size_t index) {
-  ASSERT_STREAM(index < getNumOperands());
+  assert(index < getNumOperands());
   return index == getDstBufferMutable().getOperandNumber()
              ? InOutSignatureAttr::kOut
              : InOutSignatureAttr::kIn;
@@ -910,7 +910,7 @@ LogicalResult BufferConcatOp::inferReturnTypes(
 
 InOutSignatureAttr::InOutSemantics
 BufferConcatOp::getInOutSemantics(size_t index) {
-  ASSERT_STREAM(index < getNumOperands());
+  assert(index < getNumOperands());
   return index == getOutBufferMutable().getOperandNumber()
              ? InOutSignatureAttr::kOut
              : InOutSignatureAttr::kIn;
@@ -1136,7 +1136,7 @@ LogicalResult BufferSetWithIndexOp::inferReturnTypes(
 
 InOutSignatureAttr::InOutSemantics
 BufferSetWithIndexOp::getInOutSemantics(size_t index) {
-  ASSERT_STREAM(index < getNumOperands());
+  assert(index < getNumOperands());
   return index == getBufferMutable().getOperandNumber()
              ? InOutSignatureAttr::kOut
              : InOutSignatureAttr::kIn;
@@ -1350,7 +1350,7 @@ LogicalResult KernelExecuteOp::inferReturnTypes(
 
 InOutSignatureAttr::InOutSemantics
 KernelExecuteOp::getInOutSemantics(size_t index) {
-  ASSERT_STREAM(index < getNumOperands());
+  assert(index < getNumOperands());
   size_t firstArgsIndex = getTheContextMutable().getOperandNumber() + 1;
   size_t endArgsIndex = firstArgsIndex + getArgs().size();
   if (index < firstArgsIndex || index >= endArgsIndex)

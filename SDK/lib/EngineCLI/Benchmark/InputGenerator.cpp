@@ -185,7 +185,7 @@ void BCD::UniformFloatInputRandomDistribution<kDType>::fill(
   using StorageType = typename BCD::DTypeGenerationTraits<kDType>::StorageType;
   using GenerationType =
       typename BCD::DTypeGenerationTraits<kDType>::GenerationType;
-  ASSERT_STREAM(getDType() == kDType);
+  assert(getDType() == kDType);
   MutableArrayRef<StorageType> outStorage{static_cast<StorageType *>(out),
                                           numElements};
   if constexpr (std::is_same_v<StorageType, GenerationType>) {
@@ -203,7 +203,7 @@ void BCD::UniformFloatInputRandomDistribution<kDType>::fill(
 template <typename T>
 void BCD::UniformIntegerInputRandomDistribution<T>::fill(
     void *out, size_t numElements) const {
-  ASSERT_STREAM(getDType() == DTypeForCXXType<T>::kind);
+  assert(getDType() == DTypeForCXXType<T>::kind);
   T *outT = static_cast<T *>(out);
   fillWithRandomInts({outT, numElements}, min, max);
 }

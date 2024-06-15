@@ -25,7 +25,7 @@ namespace M::MGP {
 template <typename T>
 T cloneWithArgs(OpBuilder &builder, T origOp, TypeRange resultTypes,
                 ValueRange operands) {
-  ASSERT_STREAM(!origOp->hasSuccessors());
+  assert(!origOp->hasSuccessors());
   Operation *newOp =
       Operation::create(/*location=*/origOp->getLoc(),
                         /*name=*/origOp->getName(),
@@ -37,7 +37,7 @@ T cloneWithArgs(OpBuilder &builder, T origOp, TypeRange resultTypes,
                         /*numRegions=*/origOp->getNumRegions());
   builder.insert(newOp);
   T result = dyn_cast<T>(newOp);
-  ASSERT_STREAM(result);
+  assert(result);
   return result;
 }
 

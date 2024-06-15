@@ -378,7 +378,7 @@ struct FuseElementwisePass
         cast<StringAttr>(srcKernel.getOutputFusionInterfaceAttr()[0]));
     KGEN::ParamDeclareRegionOp srcElementwiseLambda =
         srcKernel.findLambda(srcKernel.getFusionBodyLambdaAttr());
-    ASSERT_STREAM(srcElementwiseLambda);
+    assert(srcElementwiseLambda);
 
     // Add each of the new operands to the kernel body we are fusing into and
     // the corresponding input lambdas.
@@ -424,7 +424,7 @@ struct FuseElementwisePass
       }
     }
 
-    ASSERT_STREAM(renamedSrcElementwiseLambda);
+    assert(renamedSrcElementwiseLambda);
 
     auto &dstKernelBody = dstKernel.getBody().front();
     for (int fusionIndex : llvm::reverse(fusionIndices)) {

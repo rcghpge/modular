@@ -438,8 +438,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
                      builder.clone(op, oldToNew)->getResults());
       }
     }
-    ASSERT_STREAM(newOutsToKgenOp);
-    ASSERT_STREAM(newOuts);
+    assert(newOutsToKgenOp);
+    assert(newOuts);
 
     // Step 3: Clone all input lamba functions in the user kernel into the src
     // kernel. For the fusion input lambda, we treat it specially by nesting it
@@ -491,13 +491,13 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     KGEN::ReturnOp returnOp =
         *newInputLambdaOp.getOps<KGEN::ReturnOp>().begin();
-    ASSERT_STREAM(returnOp);
+    assert(returnOp);
     builder.setInsertionPoint(returnOp);
 
     KGEN::RebindOp rebind = builder.create<KGEN::RebindOp>(
         newInputLambdaOp->getLoc(), bindType, originOutValue);
     KGEN::CallOp simdLoadOp = *newInputLambdaOp.getOps<KGEN::CallOp>().begin();
-    ASSERT_STREAM(simdLoadOp);
+    assert(simdLoadOp);
     simdLoadOp->replaceAllUsesWith(rebind);
     simdLoadOp->erase();
 
@@ -512,7 +512,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // It is guaranteed that the user kernel is an elementwise op.
     auto elementwiseOp = userToFuseIn.findLambda(elementwiseLambdaName);
     KGEN::CallOp outlinedCallOp = *elementwiseOp.getOps<KGEN::CallOp>().begin();
-    ASSERT_STREAM(outlinedCallOp);
+    assert(outlinedCallOp);
 
     auto userOutputLambdaOp = cast<KGEN::ParamDeclareRegionOp>(
         userSymTable.lookup(userOutputLambdaName));
@@ -851,7 +851,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         break;
       }
     }
-    ASSERT_STREAM(oldOutputOp);
+    assert(oldOutputOp);
 
     // Finding the new placeholder that was inserted earlier.
     MOGG::OutputPlaceholdersOp newPlaceholder = nullptr;

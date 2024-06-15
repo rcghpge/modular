@@ -59,7 +59,7 @@ OptionalParseResult M::MOSH::parseShapeAttrOrUnknown(AsmParser &p,
 }
 
 void M::MOSH::printShapeTypedAttr(AsmPrinter &p, TypedAttr shapeAttr) {
-  ASSERT_STREAM(isa<ShapeType>(shapeAttr.getType()));
+  assert(isa<ShapeType>(shapeAttr.getType()));
   if (isa<KGEN::UnknownAttr>(shapeAttr)) {
     p << "?";
   } else if (auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(shapeAttr)) {

@@ -2090,7 +2090,7 @@ LogicalResult RebindOp::canonicalize(RebindOp op,
 
   // We fold if the result and operand types are the same.
   if (op.getInput().getType() == op.getType()) {
-    ASSERT_STREAM(op.getOutputParamDecls().empty());
+    assert(op.getOutputParamDecls().empty());
     rewriter.replaceOp(op, op.getInput());
     return success();
   }

@@ -88,13 +88,13 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
 
   // Get the shapes of the inputs at runtime
   TensorType xType = x.getType();
-  ASSERT_STREAM(xType.hasRank());
+  assert(xType.hasRank());
 
   auto xShape = builder.create<RMO::MOShapeOfOp>(
       x.getLoc(), TensorType::get({(int64_t)xType.getRank()}, intType), x);
 
   TensorType yType = y.getType();
-  ASSERT_STREAM(yType.hasRank());
+  assert(yType.hasRank());
   auto yShape = builder.create<RMO::MOShapeOfOp>(
       y.getLoc(), TensorType::get({(int64_t)yType.getRank()}, intType), y);
 
@@ -121,17 +121,17 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
 
   // Get the shapes of the inputs at runtime
   TensorType xType = x.getType();
-  ASSERT_STREAM(xType.hasRank());
+  assert(xType.hasRank());
   auto xShape = builder.create<RMO::MOShapeOfOp>(
       x.getLoc(), TensorType::get({(int64_t)xType.getRank()}, intType), x);
 
   TensorType yType = y.getType();
-  ASSERT_STREAM(yType.hasRank());
+  assert(yType.hasRank());
   auto yShape = builder.create<RMO::MOShapeOfOp>(
       y.getLoc(), TensorType::get({(int64_t)yType.getRank()}, intType), y);
 
   TensorType zType = z.getType();
-  ASSERT_STREAM(zType.hasRank());
+  assert(zType.hasRank());
   auto zShape = builder.create<RMO::MOShapeOfOp>(
       z.getLoc(), TensorType::get({(int64_t)zType.getRank()}, intType), z);
 

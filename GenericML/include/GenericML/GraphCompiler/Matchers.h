@@ -715,7 +715,7 @@ inline detail::constant_op_binder<AttrT> m_Constant(AttrT *bind_value) {
 /// Entry point for matching a pattern over a Value.
 template <typename Pattern>
 inline bool matchPattern(mlir::Value value, const Pattern &pattern) {
-  ASSERT_STREAM(value);
+  assert(value);
   // TODO: handle other cases
   if (auto *op = value.getDefiningOp())
     return const_cast<Pattern &>(pattern).match(op);
@@ -725,7 +725,7 @@ inline bool matchPattern(mlir::Value value, const Pattern &pattern) {
 /// Entry point for matching a pattern over an Operation.
 template <typename Pattern>
 inline bool matchPattern(mlir::Operation *op, const Pattern &pattern) {
-  ASSERT_STREAM(op);
+  assert(op);
   return const_cast<Pattern &>(pattern).match(op);
 }
 

@@ -92,7 +92,7 @@ class ConcatInPlacePass
       // For each concat input buffer...
       for (Value inBuffer : concatOp.getInBuffers()) {
         auto bufferType = dyn_cast<DeviceBufferType>(inBuffer.getType());
-        ASSERT_STREAM(bufferType);
+        assert(bufferType);
         optSizes.emplace_back(bufferType.getOptSize());
         bufferTypes.emplace_back(bufferType);
         if (!bufferType.getOptSize()) {

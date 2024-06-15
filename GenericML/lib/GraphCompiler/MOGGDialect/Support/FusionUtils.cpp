@@ -65,7 +65,7 @@ StringAttr getSummaryString(Operation *op) {
 }
 
 StringAttr getSummaryString(ArrayRef<Operation *> ops) {
-  ASSERT_STREAM(!ops.empty());
+  assert(!ops.empty());
 
   if (ops.size() == 1)
     return getSummaryString(ops.front());

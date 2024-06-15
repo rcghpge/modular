@@ -139,7 +139,7 @@ static void mgp_module_load_cpu(Chain inChain, StateContext &theContext,
   while (start < end) {
     size_t next = combined.find('\n', start);
     if (next == std::string::npos) {
-      ASSERT_STREAM(start + 1 == end && combined[start] == '\0');
+      assert(start + 1 == end && combined[start] == '\0');
       break;
     } else {
       size_t len = next - start;

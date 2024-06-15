@@ -178,7 +178,7 @@ public:
   // Initializes the client state, only to be called once.
   template <typename T>
   void initClientState(T &&initState) {
-    ASSERT_STREAM(!hasClientState());
+    assert(!hasClientState());
     clientState = std::make_unique<T>(std::forward<T>(initState));
   }
 

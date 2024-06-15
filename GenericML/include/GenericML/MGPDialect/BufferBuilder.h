@@ -88,9 +88,9 @@ LogicalResult genericTensorCreateVerify(Operation *op, BufferType bufferType,
                                         TensorSpecType tensorSpecType,
                                         TensorType tensorType) {
   if (tensorSpecType != tensorType.getTensorSpec())
-    return op->emitOpError() << "expected spec to match result tensor spec"
-                             << " (" << tensorSpecType << " vs "
-                             << tensorType.getTensorSpec() << ")";
+    return op->emitOpError()
+           << "expected spec to match result tensor spec" << " ("
+           << tensorSpecType << " vs " << tensorType.getTensorSpec() << ")";
 
   BufferType expectedBufferType = BufferType::get(tensorType);
   bool bufferIsStatic = bufferType.getOptSize().has_value();
@@ -121,9 +121,9 @@ LogicalResult genericTensorExtractVerify(Operation *op, TensorType tensorType,
                                          TensorSpecType resultTensorSpecType) {
   if (tensorType.getTensorSpec() != resultTensorSpecType)
     return op->emitOpError()
-           << "expected the result spec to match tensor's spec"
-           << " (" << resultTensorSpecType << " vs "
-           << tensorType.getTensorSpec() << ")";
+           << "expected the result spec to match tensor's spec" << " ("
+           << resultTensorSpecType << " vs " << tensorType.getTensorSpec()
+           << ")";
   BufferType expectedBufferType = BufferType::get(tensorType);
   if (expectedBufferType != resultBufferType)
     return op->emitOpError()
@@ -660,7 +660,7 @@ public:
   /// Returns the buffer builder to use for device. The builder is owned by
   /// this object.
   BufferBuilder *getBufferBuilder(DeviceRefAttr device) const {
-    ASSERT_STREAM(device);
+    assert(device);
     auto itr = bufferBuilderMap.find(device);
     ASSERT_STREAM(itr != bufferBuilderMap.end())
         << "no buffer builder has been registered for device " << device;
