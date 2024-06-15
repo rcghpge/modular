@@ -574,6 +574,20 @@ mo.graph @avg_pool2d_ceil_mode_true_dyn_input_dims(
 // CHECK-NEXT:   mo.output [[V4]] : !mo.tensor<[[[D7]], 10, 15, [[D8]]], f32>
 // CHECK-NEXT: }
 
+mo.graph @arg_min(%input: !mo.tensor<[?, ?], si64>) -> !mo.tensor<[?, ?], si64> {
+  %axis = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %res = mo.arg_min(%input, %axis) :
+    (!mo.tensor<[?, ?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?], si64>
+  mo.output %res : !mo.tensor<[?, ?], si64>
+}
+// CHECK-LABEL: mo.graph
+// CHECK-SAME: @arg_min<[[D5:.*]], [[D6:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D5]], [[D6]]], si64>) -> !mo.tensor<[[[D5]], 1], si64> {
+// CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+// CHECK-NEXT:   [[V1:%.*]] = mo.arg_min([[VARG0]], [[V0]]) : (!mo.tensor<[[[D5]], [[D6]]], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D5]], 1], si64>
+// CHECK-NEXT:   mo.output [[V1]] : !mo.tensor<[[[D5]], 1], si64>
+// CHECK-NEXT: }
+
+
 mo.graph @arg_max(%input: !mo.tensor<[?, ?], si64>) -> !mo.tensor<[?, ?], si64> {
   %axis = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %res = mo.arg_max(%input, %axis) :
