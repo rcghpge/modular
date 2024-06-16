@@ -35,10 +35,6 @@ static std::optional<size_t> getRuntimeSize(uint64_t rawSize) {
              : std::nullopt;
 }
 
-static std::optional<size_t> getRuntimeAlign(uint64_t rawAlign) {
-  return getRuntimeSize(rawAlign);
-}
-
 TensorBufferRef createBorrowedSlice(TensorBufferRef &borroweBufferRef,
                                     size_t offset, size_t size) {
   const void *newBuffer = borroweBufferRef.getBuffer<uint8_t>() + offset;
