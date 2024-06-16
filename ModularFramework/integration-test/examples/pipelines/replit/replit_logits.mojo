@@ -184,7 +184,7 @@ struct TestCheckpoint(Checkpoint):
         Raises:
             An error for invalid key arguments.
         """
-        constrained[type == DType.float32, "Type must be float32."]()
+        constrained[type is DType.float32, "Type must be float32."]()
         var found = self.weights.find(key)
         if found:
             return found.value().astype[type]()

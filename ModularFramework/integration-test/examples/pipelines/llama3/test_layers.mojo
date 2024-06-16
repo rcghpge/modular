@@ -105,7 +105,7 @@ struct NanoLlama(LoadableModel):
     ](
         inout self, key: String, _layer_idx: Optional[Int] = None
     ) raises -> Tensor[type]:
-        constrained[type == DType.float32, "bork"]()
+        constrained[type is DType.float32, "bork"]()
         return self.weights[key].astype[type]()
 
     def weight(self, graph: Graph, name: String) -> Symbol:
