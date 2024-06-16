@@ -12,7 +12,6 @@ mojo_library(
         "//Kernels/mojo/compile",
         "//Kernels/mojo/extensibility",
         "//Kernels/mojo/gpu",
-        "//Kernels/mojo/math",
         "//Kernels/mojo/runtime",
         "//Kernels/mojo/tensor",
         "//open-source/mojo/stdlib/stdlib",
