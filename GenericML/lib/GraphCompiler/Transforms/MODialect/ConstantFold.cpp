@@ -349,7 +349,7 @@ static RuntimeOutput extractRuntimeOutput(
     }
     return out;
   } else {
-    ASSERT_STREAM(false, << "Unexpected GML type");
+    assert(false && "Unexpected GML type");
   }
 }
 

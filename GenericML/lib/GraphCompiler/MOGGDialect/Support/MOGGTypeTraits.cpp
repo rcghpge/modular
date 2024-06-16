@@ -187,6 +187,7 @@ MOGGTypeTraits::convertToSIMD(mlir::MLIRContext *context, const void *data,
   else if (moggType == DType::kBool)
     return convertBoolsToSIMD(moggType, kgenType, context, data, numElems);
   ASSERT_STREAM(false, << "Unimplemented DType " << moggType);
+  llvm_unreachable("Unimplemented DType");
 }
 
 llvm::SmallVector<MOGGTypeTraits> allTypeTraits() {

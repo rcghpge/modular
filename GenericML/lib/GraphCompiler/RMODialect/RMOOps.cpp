@@ -19,6 +19,7 @@
 #include "Support/AssertStream.h"
 #include "Support/Compiler/ParserUtils.h"
 #include "Support/ML/RangeUtils.h"
+#include <llvm/Support/ErrorHandling.h>
 #include <optional>
 
 using namespace M;
@@ -123,6 +124,7 @@ static DTypeCategory getDtypeCategory(DType x) {
     return kFloat;
 
   ASSERT_STREAM(false, << "Unknown dtype: " << x.getAsString());
+  llvm_unreachable("Unknown dtype");
 }
 
 /// Returns the dtype represented by a category, bit width, and format.
@@ -200,6 +202,7 @@ static DType calcDtype(DTypeCategory category, ssize_t bitWidth,
   ASSERT_STREAM(false, << "Dtype promotion suggestion is an invalid dtype. "
                           "This should not be possible: "
                        << category << ", " << bitWidth);
+  llvm_unreachable("Invalid dtype");
 }
 
 /// Given two dtypes, returns the promotion dtype or an error.
