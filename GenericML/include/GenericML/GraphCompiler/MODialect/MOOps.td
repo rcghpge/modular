@@ -1018,7 +1018,10 @@ def MO_SqrtOp : MO_ElementWiseUnaryFloatMonoTypeOp<"sqrt"> {
   }];
 }
 
-def MO_CastOp : MO_ElementWiseUnaryOp<"cast", [Pure]> {
+def MO_CastOp : MO_ElementWiseUnaryOp<"cast", [
+  Pure,
+  DeclareOpInterfaceMethods<MO_Staticization>,
+]> {
   let summary = "Casting operation";
   let description = [{
     Returns the input tensor, cast to the specified element type.
@@ -1998,6 +2001,7 @@ def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to"> {
 
 def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
+  DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["preferResultsDevice"]>,
 ]> {
   let summary = "Reshape operation";
@@ -2274,6 +2278,7 @@ def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to"> {
 }
 
 def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape", [
+  DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["preferResultsDevice"]>,
 ]> {
   let summary = "Reshape operation";

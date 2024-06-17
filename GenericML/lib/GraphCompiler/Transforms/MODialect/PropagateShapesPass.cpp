@@ -278,6 +278,10 @@ namespace {
 ///
 /// `b` is used to build up and track parameter expressions, if needed.
 static ErrorOr<TypedAttr> tryStaticizeImpl(Value val, ParamExprBuilder &b) {
+  // Base case -- source of shape tensor.
+  if (auto shapeOfOp = val.getDefiningOp<ShapeOfOp>())
+    return shapeOfOp.getInput().getType().getShapeAttr();
+
   // Only staticize tensor.
   auto tensorVal = dyn_cast<TensorValue>(val);
   if (!tensorVal)
@@ -954,15 +958,14 @@ struct PropagateShapesPass
                   op->getLoc(), outTy.cloneWith(outputShape), initTensor);
 
               // Must insert a rebind since they might expect any arbitrary type
-              // We avoid a rebind op on worklist since it has a staticization
-              // and leads to an infinite loop.
               TensorValue reboundVal =
                   builder.create<RebindOp>(op->getLoc(), outTy, finalVal);
 
               curValue.replaceAllUsesWith(reboundVal);
 
+              // We avoid putting rebind/cast op on worklist since it has a
+              // staticization and leads to an infinite loop.
               worklistAppend.push_back(initTensor.getDefiningOp());
-              worklistAppend.push_back(finalVal.getDefiningOp());
             } else {
               auto finalVal = builder.create<Shape::ToTensorOp>(
                   staticization->getLoc(), outTy.cloneWith(outputShape),
