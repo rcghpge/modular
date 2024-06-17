@@ -3,8 +3,8 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-from driver import Tensor
 from buffer import NDBuffer
+from driver import Tensor
 from tensor import TensorShape
 
 
