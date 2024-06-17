@@ -4163,16 +4163,48 @@ def MO_ConcatFromListOp : MO_TensorOp<"concat_from_list", [
 
 def MO_AssertOp : MO_Op<"assert"> {
   let summary = "Assert that a single boolean value is true.";
+
   let description = [{
+    Asserts that a single boolean value is true.
+
+    Currently bare assert operations are *not* used in MO graphs,
+    rather they are wrapped first in a KGEN MLIR op attr, a KGEN apply
+    attr and finally materialized as an actual operation via the KGENParamDeclare op.
+
+    In order to properly materialize assert logic for a particular op and ensure
+    the execution dependencies are properly tracked you must:
+
+    1. Create each individual assert via calls to AssertOp's emitStaticCall method
+    2. Supply all the asserts (really KGENParamDeclare ops) to the materializeAllAssertLogic
+       function which will handle linking the individual assertions together via !mo.chains
+       and materialize the remaining structures needed to properly track the execution
+       dependencies from the asserts to their compute op.
+
     Example:
 
     ```mlir
-    %0 : index
-    %1 : index
-    %b1 = index.cmp eq(%0, %1)
-    %ch1 = mo.assert %b1
-    %b2 = index.cmp lt(%0, %1)
-    %ch2 = mo.assert %b2, "something went wrong"
+    // When using emitStaticCall and materializeAllAssertLogic
+    %X: mo.tensor<[D1, D2]>,
+    %Y: mo.tensor<[D3, D4]>
+
+    ...
+
+    kgen.param.declare CH0:
+      <apply(:(i1) -> !mo.chain "mo.assert"{message = "Error 1" : !kgen.string}, eq(D1, D3))>
+
+    kgen.param.declare CH1:
+      <apply(:(!mo.chain, i1) -> !mo.chain "mo.assert"{message = "Error 2" : !kgen.string}, CH0, eq(D2, D4))>
+
+    %chain1 = mosh.param.to_value = <CH0>
+    %chain2 = mosh.param.to_value = <CH1>
+
+    %guard_chain = mo.chain.create(%chain1, %chain2)
+
+    %Xp, Yp = mo.guard[%guard_chain](%X, %Y)
+
+    ...
+
+    %Z = mo.op(%Xp, %Yp)
     ```
   }];
 
@@ -4191,6 +4223,17 @@ def MO_AssertOp : MO_Op<"assert"> {
   let extraClassDeclaration = [{
     /// Create a static call to apply(mo.assert, cond, message)
     static TypedAttr emitStaticCall(TypedAttr cond, const Twine &message);
+
+    /// Links a sequence of assertions together with the op they're meant to precede by:
+    ///
+    /// 1: Linking the sequence of asserts together via their chains
+    /// 2: Converting the chains produced by each individual assert into SSA values via mosh.param.to_value
+    /// 3: Tying these chains all together via mo.chain.create
+    /// 4: Creating a guard op consuming the chain from (3) along with all operands of op
+    /// 5: Replacing all operands for op with those produced by the mo.guard op introduced in (4)
+    static void materializeAllAssertLogic(mlir::RewriterBase &rewriter,
+                                          Operation *op,
+                                          ArrayRef<KGEN::ParamDeclareOp> asserts);
   }];
 }
 

@@ -3424,15 +3424,25 @@ void AssertOp::build(OpBuilder &builder, OperationState &state, Value cond,
   build(builder, state, {}, cond, cast<TypedAttr>(attr));
 }
 
-TypedAttr AssertOp::emitStaticCall(TypedAttr cond, const Twine &message) {
-  MLIRContext *ctx = cond.getContext();
+static TypedAttr emitStaticCallImpl(MLIRContext *ctx,
+                                    ArrayRef<TypedAttr> operands,
+                                    const Twine &message) {
   SmallVector<std::pair<StringAttr (*)(mlir::OperationName), Attribute>>
       msgAttrNameFuncAndArg = {
           {AssertOp::getMessageAttrName,
            StringAttr::get(message, KGEN::StringType::get(ctx))}};
   auto chainTy = ChainType::get(ctx);
   return KGEN::emitMLIROperationCall(AssertOp::getOperationName(),
-                                     msgAttrNameFuncAndArg, {cond}, chainTy);
+                                     msgAttrNameFuncAndArg, operands, chainTy);
+}
+
+TypedAttr AssertOp::emitStaticCall(TypedAttr cond, const Twine &message) {
+  return emitStaticCallImpl(cond.getContext(), {cond}, message);
+}
+
+static TypedAttr emitStaticCall(TypedAttr chain, TypedAttr cond,
+                                const Twine &message) {
+  return emitStaticCallImpl(cond.getContext(), {chain, cond}, message);
 }
 
 OpFoldResult AssertOp::fold(FoldAdaptor adaptor) {
@@ -3443,6 +3453,100 @@ OpFoldResult AssertOp::fold(FoldAdaptor adaptor) {
     if (boolAttr.getValue())
       return ChainAttr::get(ChainType::get(getContext()));
   return {};
+}
+
+static void linkAssertPair(mlir::RewriterBase &rewriter,
+                           Operation *prevAssertOp,
+                           Operation *currentAssertOp) {
+
+  MLIRContext *ctx = currentAssertOp->getContext();
+
+  auto prevAssertDeclareOp = dyn_cast<KGEN::ParamDeclareOp>(prevAssertOp);
+  auto currentAssertDeclareOp = dyn_cast<KGEN::ParamDeclareOp>(currentAssertOp);
+
+  // Grab the names of some relevant attrs so we don't hard code them later on.
+  auto paramDeclOpName =
+      mlir::OperationName(KGEN::ParamDeclareOp::getOperationName(), ctx);
+  auto assertOpName = mlir::OperationName(AssertOp::getOperationName(), ctx);
+
+  auto prevChain = prevAssertDeclareOp.getValue();
+
+  auto operatorAttr = cast<KGEN::ParamOperatorAttr>(prevChain);
+  auto operands = operatorAttr.getOperands();
+
+  auto mlirOp = cast<KGEN::MLIROpAttr>(operands[0]);
+  auto dictAttr = mlirOp.getAttrs();
+  auto message = dictAttr.get(AssertOp::getMessageAttrName(assertOpName));
+
+  StringAttr messageAttr = cast<mlir::StringAttr>(message);
+  auto errorMsg = messageAttr.strref();
+
+  auto currentOperands =
+      cast<KGEN::ParamOperatorAttr>(currentAssertDeclareOp.getValue())
+          .getOperands()
+          .drop_front();
+
+  // finally create the new assert that accepts prevAssertOp's output chain
+  auto newAttr = emitStaticCall(
+      KGEN::ParamDeclRefAttr::get(prevAssertDeclareOp.getParamDecl()),
+      currentOperands[0], errorMsg);
+
+  rewriter.startOpModification(currentAssertDeclareOp);
+  currentAssertDeclareOp->setAttr(
+      KGEN::ParamDeclareOp::getValueAttrName(paramDeclOpName), newAttr);
+  rewriter.finalizeOpModification(currentAssertDeclareOp);
+}
+
+static void linkAssertSequence(mlir::RewriterBase &rewriter,
+                               ArrayRef<KGEN::ParamDeclareOp> asserts) {
+
+  ASSERT_STREAM(!asserts.empty(),
+                << "linkAssertSequence received an empty sequence of asserts!");
+
+  KGEN::ParamDeclareOp prevAssert = asserts.front();
+
+  for (auto assert : asserts.drop_front()) {
+    linkAssertPair(rewriter, prevAssert, assert);
+    prevAssert = assert;
+  }
+}
+
+void AssertOp::materializeAllAssertLogic(
+    mlir::RewriterBase &rewriter, Operation *op,
+    ArrayRef<KGEN::ParamDeclareOp> asserts) {
+
+  if (asserts.empty())
+    return;
+
+  linkAssertSequence(rewriter, asserts);
+
+  mlir::RewriterBase::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPoint(op);
+
+  // the following block takes all the KGEN param level chains and adds ops to
+  // make them actual SSA values
+  SmallVector<Value> allChains;
+  for (auto assert : asserts) {
+    auto declRefAttr = KGEN::ParamDeclRefAttr::get(
+        cast<KGEN::ParamDeclAttr>(assert.getParamDecl()));
+
+    allChains.push_back(
+        rewriter.create<MOSH::ParamToValueOp>(op->getLoc(), declRefAttr));
+  }
+
+  // fan in all the assertion chains as the guard op takes a single chain
+  auto guardChain =
+      rewriter.create<MO::ChainCreateOp>(op->getLoc(), ValueRange{allChains});
+
+  auto guardOp =
+      rewriter.create<MO::GuardOp>(op->getLoc(), guardChain, op->getOperands());
+
+  rewriter.modifyOpInPlace(op, [&guardOp, &op] {
+    for (auto &&[replacement, old] :
+         llvm::zip(guardOp->getResults(), op->getOpOperands())) {
+      old.set(replacement);
+    }
+  });
 }
 
 //===----------------------------------------------------------------------===//
