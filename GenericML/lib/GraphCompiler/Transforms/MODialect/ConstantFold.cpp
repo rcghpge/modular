@@ -39,6 +39,7 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileUtilities.h"
 
 using namespace M;
@@ -349,7 +350,8 @@ static RuntimeOutput extractRuntimeOutput(
     }
     return out;
   } else {
-    assert(false && "Unexpected GML type");
+    ASSERT_STREAM(false, << "Unexpected GML type");
+    llvm_unreachable("Unexpected GML type");
   }
 }
 
