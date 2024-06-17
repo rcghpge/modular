@@ -3,9 +3,11 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
+# UNSUPPORTED: windows
 # RUN: %mojo %s
 # REQUIRES: manual
-from tensor import TensorSpec, Tensor, TensorShape
+
+from tensor import TensorSpec
 
 from max.engine import InferenceSession, InputSpec
 from max.serve.kserve import FileModel, GRPCServer, MuxInferenceService

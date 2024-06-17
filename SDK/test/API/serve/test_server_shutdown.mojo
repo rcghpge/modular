@@ -4,7 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 # RUN: %mojo %s
-from tensor import TensorSpec, Tensor, TensorShape
+from tensor import TensorSpec
 
 from max.engine import InferenceSession, InputSpec
 from max.serve.kserve import FileModel, GRPCServer, MuxInferenceService

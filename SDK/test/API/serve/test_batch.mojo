@@ -5,6 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 # UNSUPPORTED: windows
 # RUN: %mojo -debug-level full %s
+# REQUIRES: manual
 
 from time import sleep, now
 from runtime.llcl import Runtime, TaskGroup
