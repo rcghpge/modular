@@ -1423,10 +1423,8 @@ modular_shared_library(
 
 modular_shared_library(
     name = "DeviceDriver",
-    srcs = glob([
-        "lib/DeviceDriver/*.cpp",
-        "lib/DeviceDriver/*.h",
-    ]),
+    srcs = glob(["lib/DeviceDriver/*.cpp"]),
+    hdrs = glob(["include/GenericML/DeviceDriver/*.h"]),
     deps = [
         ":CommonDriver",
         ":Support",

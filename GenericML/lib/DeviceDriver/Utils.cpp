@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Utils.h"
+#include "GenericML/DeviceDriver/Utils.h"
 
 #include "GenericML/API/max/c/symbol_export.h"
 
