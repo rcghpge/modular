@@ -79,6 +79,32 @@ fn test_vector_slice_sym() raises:
     _testing.assert_tensors_equal[DType.int64](expected, actual)
 
 
+fn test_vector_slice_known_size_restricts() raises:
+    var g = Graph(TensorType(DType.int64, Dim.dynamic()))
+    var arg = g[0]
+
+    var sliced = arg[7:12:2]
+
+    assert_equal(sliced.tensor_type().dims[0], 3)
+
+
+fn test_vector_slice_unknown_size_raises() raises:
+    var g = Graph(TensorType(DType.int64, Dim.dynamic()))
+    var arg = g[0]
+
+    with assert_raises(contains="Please set out_dims"):
+        _ = arg[7:-1]
+
+
+fn test_vector_slice_with_out_dims() raises:
+    var g = Graph(TensorType(DType.int64, Dim.dynamic()))
+    var arg = g[0]
+
+    var sliced = arg[7:-1, out_dims = List[Dim](8)]
+
+    assert_equal(sliced.tensor_type().dims[0], 8)
+
+
 fn test_matrix_index_int() raises:
     var g = Graph(TensorType(DType.int64, 2, 3))
     var arg = g[0]
@@ -164,7 +190,7 @@ def test_slice_multiple_static_slices():
     )
 
     g = Graph(TensorType(DType.int64, 2, 2, 2))
-    slice_out = g[0][:, :1, :5]
+    slice_out = g[0][:, :1, :2]
     assert_true(TensorType(DType.int64, 2, 1, 2) == slice_out.tensor_type())
     g.output(slice_out)
     _testing.assert_tensors_equal(
@@ -191,16 +217,8 @@ def test_slice_multiple_static_slices():
     )
 
     g = Graph(TensorType(DType.int64, "batch", Dim.dynamic(), "z"))
-    slice_out = g[0][1:, :1, :]
-    assert_true(
-        TensorType(DType.int64, Dim.dynamic(), Dim.dynamic(), "z")
-        == slice_out.tensor_type()
-    )
-    g.output(slice_out)
-    _testing.assert_tensors_equal(
-        Tensor[DType.int64](TensorShape(1, 1, 2), 5, 6),
-        _testing.execute_unary[outtype = DType.int64](g, x),
-    )
+    with assert_raises(contains="Please set out_dims"):
+        _ = g[0][1:, :1, :]
 
     g = Graph(TensorType(DType.int64, 2, 2, 2))
     with assert_raises(contains="unsupported"):
@@ -217,6 +235,9 @@ def main():
     test_vector_index_sym()
     test_vector_slice_int()
     test_vector_slice_sym()
+    test_vector_slice_known_size_restricts()
+    test_vector_slice_unknown_size_raises()
+    test_vector_slice_with_out_dims()
 
     test_matrix_index_int()
     test_matrix_index_sym()
