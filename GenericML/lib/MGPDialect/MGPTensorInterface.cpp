@@ -79,21 +79,7 @@ void TensorBufferDialectInterface::vtableAnchor() {}
 
 DeviceRefAttr MGPTensorBufferDialectInterface::addBuilders(
     ModelOp modelOp, BufferBuilderContext &builderContext) {
-  SmallVector<DeviceRefAttr> allDevices;
-  DeviceRefAttr hostDevice;
-  // Recover all the devices used by the model, and the distinguished 'host'
-  // device, from the unique mgp.check_runtime op.
-  modelOp.walk([&](CheckRuntimeOp checkRuntimeOp) {
-    hostDevice = checkRuntimeOp.getBDevices().getHost();
-    for (auto spec : checkRuntimeOp.getBDevices().getDevices())
-      allDevices.emplace_back(spec.getRef());
-    return WalkResult::interrupt();
-  });
-  if (!hostDevice) {
-    // If the model has no such op, fill in a default. (Helps for unit tests).
-    hostDevice = DeviceRefAttr::getDefault(modelOp->getContext());
-    allDevices.emplace_back(hostDevice);
-  }
+  DeviceRefAttr hostDevice = DeviceRefAttr::getDefault(modelOp->getContext());
 
   // Recover the 'host' buffer builder.
   auto hostBufferBuilder = std::make_unique<MGPBufferBuilder>(hostDevice);
@@ -104,10 +90,13 @@ DeviceRefAttr MGPTensorBufferDialectInterface::addBuilders(
   builderContext.registerBufferBuilder(hostDevice,
                                        std::move(hostBufferBuilder));
 
+  // Add the buffer builders for other supported devices.
+  SmallVector<DeviceRefAttr> otherDevices;
+  otherDevices.push_back(
+      DeviceRefAttr::get(modelOp->getContext(), kCUDALabel, 0));
+
   // Recover all the other buffer builders.
-  for (auto device : allDevices) {
-    if (device == hostDevice)
-      continue;
+  for (auto device : otherDevices) {
     auto bufferBuilder = std::make_unique<MGPBufferBuilder>(device);
     bufferBuilder->recoverFromModel(modelOp, hostBufferBuilderPtr);
     builderContext.registerTypeBuilder(

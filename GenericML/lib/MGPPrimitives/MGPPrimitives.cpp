@@ -76,29 +76,9 @@ static void mgp_check_runtime(Chain inChain, StateContext &ctx,
                               Result<Chain> outChain, MEFAttr<uint64_t> aSlot,
                               MEFAttr<StringRef> bDevicesJSON,
                               Runtime &runtime) {
-  auto providedDeviceSpecsOr =
-      runtime.context->createIfMissing<DeviceSpecCollection>(
-          [&runtime]() { return GML::getHostDeviceSpecs(runtime); });
-  if (providedDeviceSpecsOr)
-    return std::move(outChain).setToError(providedDeviceSpecsOr.takeError());
-
-  ErrorOr<DeviceSpecCollection> requiredDeviceSpecsOr =
-      DeviceSpecCollection::deserializeFromJSON(*bDevicesJSON);
-  if (requiredDeviceSpecsOr)
-    return std::move(outChain).setToError(requiredDeviceSpecsOr.takeError());
-
-  // Reconcile the model's required devices against the runtime's provided
-  // devices.
-  ErrorOr<DeviceSpecMap> deviceSpecMapOr =
-      (*providedDeviceSpecsOr)->reconcileDeviceSpecs(*requiredDeviceSpecsOr);
-  if (deviceSpecMapOr) {
-    return std::move(outChain).setToError(
-        Error(Twine("model cannot be executed in the current environment: ") +
-              deviceSpecMapOr.getError()));
-  }
-
+  DeviceSpecMap map;
   ctx.emplaceStateSlot<RuntimeDeviceSpecMap>(*aSlot, /*numBuffers=*/0,
-                                             std::move(*deviceSpecMapOr));
+                                             std::move(map));
   std::move(outChain).emplace();
 }
 
