@@ -527,4 +527,22 @@ def PrepareDevicePrimitivesPass : Pass<"prepare-device-primitives", "MGP::ModelO
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// ExplicitBufferLifetimesPass
+//===----------------------------------------------------------------------===//
+
+def ExplicitBufferLifetimesPass : Pass<"buffer-lifetimes", "MGP::ModelOp"> {
+  let summary = "Inserts mgp.buffer.free ops based on the results of MGPBufferLifetimeAnalysis";
+  let description = [{
+    This pass tries to insert an mgp.buffer.free op for each mgp.alloc.dynamic
+    at a location in the graph where it is guaranteed that there will be no more
+    accesses to the buffer. If there is no such location before the end of the
+    graph, no free will be inserted.
+
+    Note that the buffer.free ops do not actually free the buffer. Buffer memory
+    management is handled by refcounting in the runtime. This pass exists purely
+    as a way to debug and validate BufferLifetimeAnalysisPass.
+  }];
+}
+
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD
