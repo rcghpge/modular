@@ -232,6 +232,59 @@ def DeviceContextCreateOp : MGP_DeviceOp<"device.context.create"> {
 }
 
 //===----------------------------------------------------------------------===//
+// DeviceContextProfileStartOp
+//===----------------------------------------------------------------------===//
+
+def DeviceContextProfileStartOp : MGP_DeviceOp<"device.context.profile.start"> {
+  let summary = "Shim to tag the start of a device context profiling rim";
+  let description = [{This is temporary op. to enable onnx profiling - Should use max-driver for this in future}];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       UI64Attr:$aDeviceRuntimeSlot,   // 0
+                       MGP_OptDeviceRefAttr:$bDevice,  // 1
+                       StrAttr:$cTag,
+                       StrAttr:$dFilePath); // 2
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `[` $aDeviceRuntimeSlot `]` ( `device` $bDevice^ )?  attr-dict
+  }];
+  let hasVerifier = 1;
+  let extraClassDefinition = [{
+    uint64_t DeviceContextProfileStartOp::getSlot() { return getADeviceRuntimeSlot(); }
+
+    M::DeviceRefAttr DeviceContextProfileStartOp::getDevice() { return getBDevice(); }
+  }];
+}
+
+def DeviceContextProfileEndOp : MGP_DeviceOp<"device.context.profile.end"> {
+  let summary = "Shim to tag the start of a device context profiling rim";
+  let description = [{This is temporary op. to enable onnx profiling - Should use max-driver for this in future}];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       UI64Attr:$aDeviceRuntimeSlot,   // 0
+                       MGP_OptDeviceRefAttr:$bDevice,  // 1
+                       StrAttr:$cTag,
+                       StrAttr:$dFilePath); // 2
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `[` $aDeviceRuntimeSlot `]` ( `device` $bDevice^ )?  attr-dict
+  }];
+  let hasVerifier = 1;
+  let extraClassDefinition = [{
+    uint64_t DeviceContextProfileEndOp::getSlot() { return getADeviceRuntimeSlot(); }
+
+    M::DeviceRefAttr DeviceContextProfileEndOp::getDevice() { return getBDevice(); }
+  }];
+}
+
+
+//===----------------------------------------------------------------------===//
 // ModuleLoadOp
 //===----------------------------------------------------------------------===//
 

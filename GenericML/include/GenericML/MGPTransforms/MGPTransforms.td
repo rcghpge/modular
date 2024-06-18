@@ -426,6 +426,24 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// AddDeviceContextProfilingPass
+//===----------------------------------------------------------------------===//
+
+def AddDeviceContextProfilingPass : Pass<"device-context-profiling", "MGP::ModelOp"> {
+  let summary = "If enabled, enable profiling using the Device Context";
+  let description = [{
+    This pass is intended as a stop-gap to allow device-context profiling to be controlled explicitly in the IR. This allows
+    the pathways which won't use the max-driver to be able to dump statistics from the deviceContext. 
+  }];
+  let options = [
+    Option<"enabled", "enabled", "bool", "false",
+           "Profiling is by default off and inserted only if enabled by this specific flag">,
+    Option<"filePath", "filepath", "std::string", "\"./prof.log\"",
+           "Profiling log file-path, it is up to the deviceContext to append device-specific appends to filepath">,
+  ];
+}
+
 
 //===----------------------------------------------------------------------===//
 // FixupOverhangsPass

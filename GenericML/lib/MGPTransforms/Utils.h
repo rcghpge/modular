@@ -19,6 +19,29 @@
 
 namespace M::MGP {
 
+/// Finds the first of type T in a valueRange and returns that in
+/// an optional
+template <typename T>
+std::optional<Value> findFirstOf(const ValueRange &args) {
+  for (const auto &arg : args) {
+    if (isa<T>(arg.getType()))
+      return arg;
+  }
+  return std::nullopt;
+}
+
+/// Finds all of type T in the argument list of a valueRange and returns that in
+/// a SmallVector
+template <typename T>
+llvm::SmallVector<Value> findAllOf(const ValueRange &args) {
+  llvm::SmallVector<Value> res;
+  for (const auto &arg : args) {
+    if (isa<T>(arg.getType()))
+      res.push_back(arg);
+  }
+  return res;
+}
+
 /// Inserts and returns a shallow clone of origOp using given resultTypes and
 /// operands. The result will have an empty region for each region of origOp.
 /// The location, attributes and properties of the result are taken from origOp.
