@@ -1,32 +1,36 @@
-// RUN: mo-opt %s --add-devices --mo-to-mogg --translate-mogg-to-kgen --jit-compile-kernels --mo-to-primitives | FileCheck %s
+// RUN: mo-opt %s --add-devices --mo-to-mogg --translate-mogg-to-kgen --inline-lambdas --mo-to-primitives --lower-primitives --remove-non-lowerable-results --lower-abi --canonicalize -cse --jit-compile-kernels --lower-mogg-region-compile | FileCheck %s
 
 // CHECK: mgp.model @while_op
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context) -> (!mef.chain, !mgp.tensor<2xf32>) {
 // CHECK: %[[UNUSED_CH:.*]] = mgp.chain.host_to_device %[[CH0]], %[[CTX]][1]
 // CHECK: %[[UNUSED:.*]] = mgp.tensor.create %[[UNUSED_CH]], %[[CTX]][1], {{.*}}, %{{.*}} : !mgp.tensor<0xsi64>
-// CHECK: %[[CH1:.*]] = mgp.chain.host_to_device %[[CH0]], %[[CTX]][1]
-// CHECK: %[[ZERO:.*]] = mgp.tensor.create %[[CH1]], %[[CTX]][1], {{.*}}, %{{.*}} : !mgp.tensor<si64>
-// CHECK: %[[CH2:.*]] = mgp.chain.host_to_device %[[CH0]], %[[CTX]][1]
-// CHECK: %[[X:.*]] = mgp.tensor.create %[[CH2]], %[[CTX]][1], %{{.*}}, %{{.*}}  : !mgp.tensor<2xf32>
-// CHECK: %[[CH3:.*]] = mgp.chain.host_to_device %[[CH0]], %[[CTX]][1]
-// CHECK: %[[Y:.*]] = mgp.tensor.create %[[CH3]], %[[CTX]][1], %{{.*}}, %{{.*}}  : !mgp.tensor<f32>
+// CHECK: %[[ZERO:.*]] = mgp.tensor.create %[[UNUSED_CH]], %[[CTX]][1], {{.*}}, %{{.*}} : !mgp.tensor<si64>
+// CHECK: %[[X:.*]] = mgp.tensor.create %[[UNUSED_CH]], %[[CTX]][1], %{{.*}}, %{{.*}}  : !mgp.tensor<2xf32>
+// CHECK: %[[Y:.*]] = mgp.tensor.create %[[UNUSED_CH]], %[[CTX]][1], %{{.*}}, %{{.*}}  : !mgp.tensor<f32>
 // CHECK: %[[OUT:.*]]:5 = grt.while (%[[CH0]]: !mef.chain, %[[X]]: !mgp.tensor<2xf32>, %[[CTX]]: !mgp.context, %[[ZERO]]: !mgp.tensor<si64>, %[[Y]]: !mgp.tensor<f32>) {
-// CHECK:        {{.*}} = mgp.chain.host_to_device %[[CH0]], %[[CTX]][1]
-// CHECK:        %{{.*}} = mgp.kernel.execute {{.*}}, %[[CTX]]{{.*}}, summary "mo.mean{{.*}}"
-// CHECK:        %[[CH2:.*]] = mgp.kernel.execute {{.*}}, %[[CTX]]{{.*}}, summary "mo.greater{{.*}}"
-// CHECK-NEXT:   %[[COND_TEN:.*]] = mgp.tensor.create %[[CH2]], %[[CTX]]{{.*}}
-// CHECK-NEXT:   %[[COND_BUF:.*]]= mgp.tensor.extract.buffer %{{.*}}
-// CHECK:        %[[COND_CH:.*]] = mgp.chain.host_to_device %[[CH0]], %[[CTX]][1]
-// CHECK:        %[[COND_SCALAR:.*]] = mgp.buffer.to_bool %[[COND_CH]], %[[CTX]][1], %[[COND_BUF]]
-// CHECK:        mef.output %[[CH0]], %[[X]], %[[CTX]], %[[ZERO]], %[[Y]], %[[COND_SCALAR]]
+// CHECK: %[[outChain_6:.*]], %[[outResults_7:.*]] = "mgp.generic.execute"(%[[CTX]], %{{.*}}){{.*}}dSummary = "mgp.tensor_spec.create"
+// CHECK: %[[outChain_8:.*]], %[[outResults_9:.*]] = "mgp.generic.execute"(%[[CTX]], %{{.*}}, %{{.*}}, %[[CTX]]){{.*}}dSummary = "mgp.buffer.alloc.static"
+// CHECK: %[[outChain_10:.*]] = "mgp.generic.execute"(%[[CTX]], %{{.*}}, %[[CH0]], %[[outResults_9]], %{{.*}}, %{{.*}}){{.*}}dSummary = "mo.mean
+// CHECK: %[[C_TENSOR:.*]] = mgp.tensor.create %{{.*}}, %[[CTX]][1], %[[outResults_9]], %[[outResults_7]] : !mgp.tensor<1xf32>
+// CHECK: %[[TENSOR:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[C_TENSOR]] : !mgp.tensor<1xf32>
+// CHECK: %[[outChain_11:.*]], %[[outResults_12:.*]] = "mgp.generic.execute"(%[[CTX]], %{{.*}}){{.*}}dSummary = "mgp.tensor_spec.create"
+// CHECK: %[[C1_TENSOR:.*]] = mgp.tensor.create %{{.*}}, %[[CTX]][1], %[[TENSOR]], %[[outResults_12]] : !mgp.tensor<f32>
+// CHECK: %[[BUF1:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[Y]] : !mgp.tensor<f32>
+// CHECK: %[[BUF2:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[C1_TENSOR]] : !mgp.tensor<f32>
+// CHECK: %[[outChain_13:.*]], %[[outResults_14:.*]] = "mgp.generic.execute"{{.*}}dSummary = "mgp.tensor_spec.create"
+// CHECK: %[[outChain_15:.*]], %[[outResults_16:.*]] = "mgp.generic.execute"{{.*}}dSummary = "mgp.buffer.alloc.static"
+// CHECK: %[[outChain_17:.*]] = "mgp.generic.execute"(%[[CTX]], %{{.*}}, %[[CH0]], %[[outResults_16]], %[[BUF1]], %[[BUF2]]){{.*}}dSummary = "mo.greater
+// CHECK: %[[VAL33:.*]] = mgp.tensor.create %{{.*}}, %[[CTX]][1], %[[outResults_16]], %[[outResults_14]] : !mgp.tensor<bool>
+// CHECK: %[[VAL34:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[VAL33]] : !mgp.tensor<bool>
+// CHECK: %[[VAL35:.*]] = mgp.buffer.to_bool %{{.*}}, %[[CTX]][1], %[[VAL34]] : !mgp.buffer<1>
+// CHECK: mef.output %[[CH0]], %[[X]], %[[CTX]], %[[ZERO]], %[[Y]], %[[VAL35]] : !mef.chain, !mgp.tensor<2xf32>, !mgp.context, !mgp.tensor<si64>, !mgp.tensor<f32>, i1
 // CHECK: } do {
-// CHECK:        %{{.*}} = mgp.tensor.extract.buffer %[[CTX]][1], %[[X]]
-// CHECK:        %{{.*}} = mgp.tensor.extract.tensor_spec %[[CTX]][1], %[[X]]
-// CHECK:        %{{.*}} = mgp.tensor.extract.buffer %[[CTX]][1], %[[X]]
-// CHECK:        %{{.*}} = mgp.tensor.extract.tensor_spec %[[CTX]][1], %[[X]]
-// CHECK:        %[[CH3:.*]] = mgp.kernel.execute {{.*}}, %[[CTX]]{{.*}}, summary "mo.add{{.*}}"
-// CHECK:        %[[NEW_X:.*]] = mgp.tensor.create %[[CH3]], %[[CTX]][1], %{{.*}}, %{{.*}}
-// CHECK:        mef.output %[[CH0]], %[[NEW_X]], %[[CTX]], %[[ZERO]], %[[Y]]
+// CHECK: %[[VAL14:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[X]] : !mgp.tensor<2xf32>
+// CHECK: %[[outChain_6:.*]], %[[outResults_7:.*]] = "mgp.generic.execute"{{.*}}dSummary = "mgp.tensor_spec.create"
+// CHECK: %[[outChain_8:.*]], %[[outResults_9:.*]] = "mgp.generic.execute"{{.*}}dSummary = "mgp.buffer.alloc.static"
+// CHECK: %[[outChain_10:.*]] = "mgp.generic.execute"(%[[CTX]], %{{.*}}, %[[CH0]], %[[outResults_9]], %[[VAL14]], %[[VAL14]]){{.*}}dSummary = "mo.add
+// CHECK: %[[VAL21:.*]] = mgp.tensor.create %{{.*}}, %[[CTX]][1], %[[outResults_9]], %[[outResults_7]] : !mgp.tensor<2xf32>
+// CHECK: mef.output %[[CH0]], %[[VAL21]], %[[CTX]], %[[ZERO]], %[[Y]] : !mef.chain, !mgp.tensor<2xf32>, !mgp.context, !mgp.tensor<si64>, !mgp.tensor<f32>
 // CHECK: }
 // CHECK: mef.output %[[OUT]]#0, %[[OUT]]#1 : !mef.chain, !mgp.tensor<2xf32>
 // CHECK: }

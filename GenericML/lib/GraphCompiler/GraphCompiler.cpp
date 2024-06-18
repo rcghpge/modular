@@ -285,6 +285,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
   jitOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
   jitOpts.timeMOGGCompile = opts.timeMOGGCompile;
+  jitOpts.skipJitCompileMiddle = opts.skipJitCompileMiddle;
   pm.addPass(MOGG::createJitCompileKernels(jitOpts));
 
   // Create the options for MoToPrimitives.
@@ -326,7 +327,10 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   MGP::FuseGenericCompiledRegionsOptions fuseOpts;
   fuseOpts.enableFusion = opts.enableCompiledRegionsFusion;
   pm.addPass(MGP::createFuseGenericCompiledRegions(fuseOpts));
-  pm.addPass(MGP::createRemoveRedundantOperands());
+  // FIXME: Remove the `DisableRemoveRedundantOperands` knob after fixing the
+  // runtime error.
+  if (!opts.DisableRemoveRedundantOperands)
+    pm.addPass(MGP::createRemoveRedundantOperands());
   pm.addPass(MGP::createRemoveNonLowerableResults());
 
   MGP::LowerMOGGABIOptions abiOpts;

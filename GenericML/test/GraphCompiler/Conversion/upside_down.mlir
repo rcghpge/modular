@@ -1,4 +1,4 @@
-// RUN: mo-opt -mo-to-mgp=fuse-jit-kernels=false %s | FileCheck %s
+// RUN: mo-opt -mo-to-mgp="fuse-jit-kernels=false skip-jit-compile-middle=true" %s | FileCheck %s
 
 mo.graph @updside_down(
     %arg0: !mo.tensor<[256], f32>
@@ -10,6 +10,6 @@ mo.graph @updside_down(
 }
 
 // CHECK-LABEL: mgp.model @updside_down : mof init {
-// CHECK: mgp.kernel.execute {{.*}}, summary "mo.mul{{.*}}"
-// CHECK: mgp.kernel.execute {{.*}}, summary "mo.add{{.*}}"
-// CHECK: mgp.kernel.execute {{.*}}, summary "mo.relu{{.*}}"
+// CHECK: "mgp.generic.execute"{{.*}}dSummary = "{{.*}}mo.mul{{.*}}"
+// CHECK: "mgp.generic.execute"{{.*}}dSummary = "{{.*}}mo.add{{.*}}"
+// CHECK: "mgp.generic.execute"{{.*}}dSummary = "{{.*}}mo.relu{{.*}}"

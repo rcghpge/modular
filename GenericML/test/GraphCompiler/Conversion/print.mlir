@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" | FileCheck %s
+// RUN: mo-opt %s --mo-to-mgp="constant-fold=false enable-compiled-regions-fusion=true" | FileCheck %s
 
 // CHECK-LABEL: mgp.model @print
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG:.*]]: !mgp.tensor<4x5xf32>)
