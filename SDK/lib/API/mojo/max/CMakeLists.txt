@@ -39,6 +39,7 @@ set(ENGINE_SRCS
   engine/tensor
   engine/tensor_map
   engine/tensor_spec
+  engine/value
 
   engine/_compilation
   engine/_context

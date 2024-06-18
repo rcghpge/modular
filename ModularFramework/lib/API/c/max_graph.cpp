@@ -16,6 +16,7 @@
 #include "mlir-c/BuiltinTypes.h"
 #include "mlir-c/IR.h"
 #include "mlir/CAPI/IR.h"
+#include "mlir/CAPI/Support.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Verifier.h"
 
@@ -237,4 +238,18 @@ MODULAR_API_EXPORT bool MAXG_typeIsList(MlirType t) {
 
 MODULAR_API_EXPORT bool MAXG_typeIsTensor(MlirType t) {
   return isa<M::MO::TensorType>(unwrap(t));
+}
+
+MODULAR_API_EXPORT bool MAXG_typeIsOpaque(MlirType t) {
+  return isa<M::MO::OpaqueType>(unwrap(t));
+}
+
+MODULAR_API_EXPORT MlirType MAXG_opaqueTypeNew(MlirContext context,
+                                               StringRef name) {
+  StringAttr nameAttr = StringAttr::get(unwrap(context), name);
+  return wrap(MO::OpaqueType::get(unwrap(context), nameAttr, std::nullopt));
+}
+
+MODULAR_API_EXPORT MlirStringRef MAXG_opaqueTypeName(MlirType t) {
+  return wrap(cast<M::MO::OpaqueType>(unwrap(t)).getSymbol().strref());
 }
