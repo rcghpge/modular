@@ -12,6 +12,8 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "Support/AssertStream.h"
+#include "llvm/ADT/EquivalenceClasses.h"
+#include "llvm/ADT/SmallSet.h"
 
 #include <numeric>
 namespace M::MO {
@@ -76,6 +78,41 @@ private:
   }
 };
 
+namespace {
+struct ValueParamCompare {
+  bool operator()(const Operation *lhs, const Operation *rhs) const {
+    return hash_value(lhs) < hash_value(rhs);
+  }
+};
+} // namespace
+
+// Consider the undirected version of the subgraph, return all connected
+// components of the graph.
+static SmallVector<Subgraph> getSubgraphComponents(const Subgraph &subgraph) {
+  if (subgraph.ops.empty())
+    return {};
+
+  // Disjoint set containing connected components.
+  llvm::EquivalenceClasses<Operation *, ValueParamCompare> newSubgraphs;
+  for (Operation *curOp : subgraph.ops) {
+    newSubgraphs.insert(curOp);
+    for (Operation *other : curOp->getUsers())
+      if (subgraph.ops.contains(other))
+        newSubgraphs.unionSets(other, curOp);
+  }
+
+  // Create new subgraphs for each connected component.
+  SmallVector<Subgraph> answer;
+  for (auto it = newSubgraphs.begin(), end = newSubgraphs.end(); it != end;
+       ++it) {
+    if (!it->isLeader())
+      continue;
+    answer.emplace_back(llvm::SetVector<Operation *>{
+        newSubgraphs.member_begin(it), newSubgraphs.member_end()});
+  }
+  return answer;
+}
+
 // Interface for controlling whether or not a subgraph is constant folded.
 struct ConstantFoldPolicy {
   // Determines which subgraphs should be constant folded. Must return the
@@ -102,7 +139,8 @@ struct FactorMemIncrease : public ConstantFoldPolicy {
   SmallVector<Subgraph>
   shouldFold(SmallVector<Subgraph> subgraphs) const override {
     SmallVector<Subgraph> foldThese;
-    for (auto &subgraph : subgraphs) {
+    while (!subgraphs.empty()) {
+      Subgraph subgraph = subgraphs.pop_back_val();
       std::optional<int64_t> maybeInitialMem = constantMemUsage(subgraph);
 
       // Greedily remove outputs with the largest size and ensure no
@@ -177,13 +215,25 @@ struct FactorMemIncrease : public ConstantFoldPolicy {
         maybeOutputMem = outputMemUsage(subgraph);
       }
 
+      // The removal process above could have separated our graph into multiple
+      // components. These can help mask increasing memory use (imagine a
+      // big memory component allowing a small memory component balloon in
+      // size). Therefore, only fold single component graphs.
+      SmallVector<Subgraph> result = getSubgraphComponents(subgraph);
+      ASSERT_STREAM(!result.empty(), "Expect non-empty subgraph!");
+
       // NOTE: do not fold subgraphs with parameters in them.
       // We assume shape inference will clean up such shape inference graphs.
-      if (memoryOk() && !llvm::all_of(subgraph.outputs, [](Operation *op) {
+      if (result.size() == 1 && memoryOk() &&
+          !llvm::all_of(subgraph.outputs, [](Operation *op) {
             return dyn_cast<ConstantOp>(op) ||
                    dyn_cast<KGEN::ParamDeclareOp>(op);
-          }))
+          })) {
         foldThese.push_back(subgraph);
+      } else if (result.size() > 1) {
+        // Implies we have multiple components, add them back to the work-list
+        subgraphs.append(result.begin(), result.end());
+      }
     }
     return foldThese;
   }
