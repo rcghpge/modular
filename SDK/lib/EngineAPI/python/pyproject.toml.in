@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 name = "max-engine"
 version = "@MODULAR_VERSION_MAJOR@.@MODULAR_VERSION_MINOR@.@MODULAR_VERSION_PATCH@"
 dependencies = [
-  "numpy >= 1.18",
+  "numpy ~= 1.18",
 ]
 requires-python = ">=3.8"
 
