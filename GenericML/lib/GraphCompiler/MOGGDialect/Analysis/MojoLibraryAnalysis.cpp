@@ -56,12 +56,13 @@ getMOGGUniqueSymbolName(const std::string &baseName,
   return getMOGGUniqueSymbolName(baseName, rawMap, counter);
 }
 
-ErrorOr<OwningOpRef<ModuleOp>> parseMojoPackage(MLIRContext *ctx,
-                                                StringRef path) {
+ErrorOr<OwningOpRef<ModuleOp>>
+parseMojoPackage(MLIRContext *ctx, StringRef path,
+                 const std::shared_ptr<llvm::SourceMgr> &sourceMgr) {
   LLCL::Runtime &runtime = *loadContext(ctx)->get<LLCL::Runtime>();
   OwningOpRef<ModuleOp> ownedModule =
-      KGEN::LIT::importStandaloneMojoBinaryPackage(
-          runtime, std::make_shared<llvm::SourceMgr>(), ctx, path);
+      KGEN::LIT::importStandaloneMojoBinaryPackage(runtime, sourceMgr, ctx,
+                                                   path);
   if (!ownedModule)
     return Error("failed to load Mojo package: " + path);
 
@@ -157,7 +158,7 @@ ErrorOrSuccess MojoLibraryAnalysis::loadUserProvidedKernels(
 
     if (Filesystem::isMojoBinaryPackagePath(path.str())) {
       // Load user library that is a mojo package file.
-      auto userModuleOr = parseMojoPackage(context, path);
+      auto userModuleOr = parseMojoPackage(context, path, sourceMgr);
       if (userModuleOr.isError())
         return userModuleOr.takeError();
 
@@ -186,7 +187,9 @@ ErrorOrSuccess MojoLibraryAnalysis::loadUserProvidedKernels(
         StringRef source = buffers.emplace_back(bufOr.takeValue())->getBuffer();
         llvm::MemoryBufferRef buffer(source, path);
         mlir::BytecodeReader *reader =
-            readers.emplace_back(new mlir::BytecodeReader(buffer, config, true))
+            readers
+                .emplace_back(
+                    new mlir::BytecodeReader(buffer, config, true, sourceMgr))
                 .get();
 
         if (failed(reader->readTopLevel(&block, [&](Operation *op) {
@@ -332,9 +335,10 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths,
   } else {
     // Lazy loading the main mojo bindings.
     llvm::MemoryBufferRef buffer(source, "mojo-mogg-bindings");
-    mlir::BytecodeReader *reader =
-        readers.emplace_back(new mlir::BytecodeReader(buffer, config, true))
-            .get();
+    mlir::BytecodeReader *reader = readers
+                                       .emplace_back(new mlir::BytecodeReader(
+                                           buffer, config, true, sourceMgr))
+                                       .get();
 
     if (failed(reader->readTopLevel(&block, [&](Operation *op) {
           if (isa<mlir::ModuleOp>(op)) {
@@ -372,9 +376,10 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths,
     // Lazy loading the main mojo bindings.
     llvm::MemoryBufferRef buffer(primitive_source,
                                  "mojo-primitives-mogg-bindings");
-    mlir::BytecodeReader *reader =
-        readers.emplace_back(new mlir::BytecodeReader(buffer, config, true))
-            .get();
+    mlir::BytecodeReader *reader = readers
+                                       .emplace_back(new mlir::BytecodeReader(
+                                           buffer, config, true, sourceMgr))
+                                       .get();
 
     if (failed(reader->readTopLevel(&block, [&](Operation *op) {
           if (isa<mlir::ModuleOp>(op)) {
@@ -476,7 +481,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths,
 }
 
 MojoLibraryAnalysis::MojoLibraryAnalysis(MLIRContext *ctx)
-    : context(ctx), config(ctx, false) {}
+    : context(ctx), config(ctx, false), sourceMgr(new llvm::SourceMgr()) {}
 
 MojoLibraryAnalysis::~MojoLibraryAnalysis() {
   for (auto &rd : readers) {

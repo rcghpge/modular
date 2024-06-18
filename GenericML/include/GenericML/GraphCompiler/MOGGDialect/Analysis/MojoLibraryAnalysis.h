@@ -210,6 +210,9 @@ private:
   using RenameEntry = std::pair<std::string, FlatSymbolRefAttr>;
   llvm::DenseMap<Operation *, llvm::SmallVector<RenameEntry, 16>>
       symbolNameRemapping;
+
+  /// Source manager needed for parsing.
+  std::shared_ptr<llvm::SourceMgr> sourceMgr;
 };
 
 /// An analysis "pass" for our passes to use to share the loaded library state.
@@ -225,7 +228,7 @@ struct LoadMojoAnalysisPass {
   ErrorOr<MojoLibraryAnalysis *>
   initIfNeeded(MLIRContext *ctx, ArrayRef<std::string> kernelLibraryPaths,
                bool eager = false) {
-    // Reuse the libary if it exists, however if we are loading eagerly (i.e
+    // Reuse the library if it exists, however if we are loading eagerly (i.e
     // everything at once) and the analysis isn't final then
     if (analysis && (!eager || analysis->isFinalized()))
       return analysis.get();
