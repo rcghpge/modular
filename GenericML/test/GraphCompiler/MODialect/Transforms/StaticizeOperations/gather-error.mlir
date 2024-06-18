@@ -1,18 +1,23 @@
-// RUN: mo-opt %s --propagate-shapes --canonicalize --verify-diagnostics
+// RUN: mo-opt %s --add-fallback-shape-funcs --propagate-shapes --canonicalize --verify-diagnostics
+// TODO(GRA-627) remove `--add-fallback-shape-funcs`
 
 
-mo.graph @gather_error<N1, N2>(
+mo.graph @gather_1d_indices<N1, N2 -> out0, out1>(
+  %input: !mo.tensor<[], si64>,
   %dummy: !mo.tensor<[N1, 10, N2], f32>
-) -> !mo.tensor<[2], si32> {
+) -> !mo.tensor<[out0, out1], si64> {
 
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
-  %indices = mo.constant {value = #M.dense_array<-1, 3> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-  %dummy_shape = mo.shape_of(%dummy) : (!mo.tensor<[N1, 10, N2], f32>) -> !mo.tensor<[3], si32>
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  %indices = mo.constant {value = #M.dense_array<-1, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %dummy_shape = mo.shape_of(%dummy) : (!mo.tensor<[N1, 10, N2], f32>) -> !mo.tensor<[3], si64>
+  %shape = mo.gather(%dummy_shape, %indices, %axis) : (
+    !mo.tensor<[3], si64>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>
+  ) -> !mo.tensor<[2], si64>
 
   // expected-error@+1 {{[gather] index out of bound: 3 for input size: 3}}
-  %res = mo.gather(%dummy_shape, %indices, %axis) : (
-    !mo.tensor<[3], si32>, !mo.tensor<[2], si32>, !mo.tensor<[], si32>
-  ) -> !mo.tensor<[2], si32>
+  %res = mo.broadcast_to<() -> D0, D1>(%input, %shape) : (
+    !mo.tensor<[], si64>, !mo.tensor<[2], si64>
+  ) -> !mo.tensor<[D0, D1], si64>
 
-  mo.output %res : !mo.tensor<[2], si32>
+  mo.output<D0, D1> %res : !mo.tensor<[D0, D1], si64>
 }

@@ -1,21 +1,26 @@
-// RUN: mo-opt %s --propagate-shapes --canonicalize | FileCheck %s
+// RUN: mo-opt %s --add-fallback-shape-funcs --propagate-shapes --canonicalize | FileCheck %s
+// TODO(GRA-627) remove `--add-fallback-shape-funcs`
 
 
 // CHECK-LABEL: mo.graph @reduce_mul
-//  CHECK-SAME:   <[[N1:.*]], [[N2:.*]]>(
-mo.graph @reduce_mul<N1, N2>(
+//  CHECK-SAME:   <[[N1:.*]], [[N2:.*]] -> {{.*}}>(
+//  CHECK-SAME:   [[INPUT:%.*]]: !mo.tensor<[], si64>,
+mo.graph @reduce_mul<N1, N2 -> out>(
+  %input: !mo.tensor<[], si64>,
   %dummy: !mo.tensor<[N1, 10, N2], f32>
-) -> !mo.tensor<[1], si32> {
+) -> !mo.tensor<[out], si64> {
 
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  %dummy_shape = mo.shape_of(%dummy) : (!mo.tensor<[N1, 10, N2], f32>) -> !mo.tensor<[3], si64>
+  %shape = mo.reduce.mul(%dummy_shape, %axis) : (
+    !mo.tensor<[3], si64>, !mo.tensor<[], si64>
+  ) -> !mo.tensor<[1], si64>
 
-  // CHECK: [[MOSH_SHAPE:%.*]] = mosh.param.to_value: !mosh.ape = <[mul_nuw([[N1]], [[N2]], 10)]>
-  // CHECK: [[RES:%.*]] = mo.shape.to_tensor([[MOSH_SHAPE]]) -> !mo.tensor<[1], si32>
-  %dummy_shape = mo.shape_of(%dummy) : (!mo.tensor<[N1, 10, N2], f32>) -> !mo.tensor<[3], si32>
-  %res = mo.reduce.mul(%dummy_shape, %axis) : (
-    !mo.tensor<[3], si32>, !mo.tensor<[], si32>
-  ) -> !mo.tensor<[1], si32>
+  // CHECK-NEXT: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[mul_nuw([[N1]], [[N2]], 10)], si64>
+  %res = mo.broadcast_to<() -> D0>(%input, %shape) : (
+    !mo.tensor<[], si64>, !mo.tensor<[1], si64>
+  ) -> !mo.tensor<[D0], si64>
 
-  // CHECK-NEXT: mo.output [[RES]]
-  mo.output %res : !mo.tensor<[1], si32>
+  // CHECK-NEXT: mo.output{{.*}} [[RES]]
+  mo.output<D0> %res : !mo.tensor<[D0], si64>
 }
