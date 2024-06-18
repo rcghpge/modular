@@ -9,7 +9,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
+#include "GenericML/Support/Dims.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
+#include <sstream>
 
 namespace M::MO {
 
@@ -108,9 +110,97 @@ ErrorOr<TypedAttr> CastOp::tryStaticize(ArrayRef<TypedAttr> inputs,
   return TypedAttr{};
 }
 
+ErrorOr<TypedAttr> ConcatOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                          ParamExprBuilder &b) {
+  // We only staticize over 1D tensors for now, so axis must be 0.
+  if (tryGetConstantInt(inputs[0]) != 0)
+    return TypedAttr{};
+
+  // Build up staticized version of values from individual inputs (ignoring the
+  // first axis input).
+  SmallVector<TypedAttr> outVals;
+  for (TypedAttr input : inputs.drop_front()) {
+    if (auto inputShapeAttr = dyn_cast<ShapeAttr>(input)) {
+      // Accumulate staticized values from this input.
+      llvm::append_range(outVals, inputShapeAttr.getValues());
+
+    } else {
+      // Give up if any input can't be staticized as a 1D tensor.
+      return TypedAttr{};
+    }
+  }
+
+  return b.getShapeAttr(outVals);
+}
+
+ErrorOr<TypedAttr> GatherOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                          ParamExprBuilder &b) {
+  // We only staticize over 1D tensors for now, so axis must be 0.
+  if (tryGetConstantInt(inputs[2]) != 0)
+    return TypedAttr{};
+
+  // We require the input to be staticized to a list of symbolic values.
+  auto inputElems = dyn_cast<ShapeAttr>(inputs[0]);
+  if (!inputElems)
+    return TypedAttr{};
+  int64_t numInputElems = inputElems.getSize();
+
+  // Collect constant indices.
+  SmallVector<int64_t> indices;
+  bool isIndicesScalar = false;
+  if (auto indicesOr = tryGetConstantIntVector(inputs[1])) {
+    indices = indicesOr.value();
+
+  } else if (auto idxOr = tryGetConstantInt(inputs[1])) {
+    indices.push_back(idxOr.value());
+    isIndicesScalar = true;
+
+  } else {
+    // Give up if indices isn't a constant scalar/1D tensor.
+    return TypedAttr{};
+  }
+
+  // Normalize & validate individual index, and collect the corresponding
+  // input elements.
+  SmallVector<TypedAttr> outElems;
+  for (int64_t idx : indices) {
+    int64_t normalizedIdx = normalizeAxis(idx, numInputElems);
+    if (normalizedIdx < 0 || numInputElems <= normalizedIdx) {
+      std::stringstream ss;
+      ss << "[gather] index out of bound: " << idx
+         << " for input size: " << numInputElems;
+      return Error(ss.str());
+    }
+    outElems.push_back(inputElems[normalizedIdx]);
+  }
+
+  // Return a dimension attribute or shape attribute based on whether indices
+  // was a scalar or 1D tensor.
+  if (isIndicesScalar)
+    return outElems.front();
+  return b.getShapeAttr(outElems);
+}
+
 ErrorOr<TypedAttr> RebindOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                           ParamExprBuilder &b) {
   return inputs[0];
+}
+
+ErrorOr<TypedAttr> ReduceMulOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                             ParamExprBuilder &b) {
+  // We only staticize over 1D tensors for now, so axis must be 0.
+  if (tryGetConstantInt(inputs[1]) != 0)
+    return TypedAttr{};
+
+  // The result is just the product of individual symbolic elements from the
+  // staticized input.
+  auto inputElems = dyn_cast<ShapeAttr>(inputs[0]);
+  if (!inputElems)
+    return TypedAttr{};
+
+  TypedAttr productAttr =
+      b.createDeclToKgenExpr(KGEN::POC::MulNuw, inputElems.getValues());
+  return b.getShapeAttr({productAttr});
 }
 
 ErrorOr<TypedAttr> ReshapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,

@@ -317,6 +317,9 @@ public:
 /// Try converting `attr` to a constant integer.
 std::optional<int64_t> tryGetConstantInt(TypedAttr attr);
 
+/// Try converting `attr` to a vector of constant integers.
+std::optional<SmallVector<int64_t>> tryGetConstantIntVector(TypedAttr attr);
+
 /// A variant class that contains result of materializing the shape logic of an
 /// op, where the variant is one of
 /// - Success (with the shape function ops and result shape).

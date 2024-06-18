@@ -95,6 +95,25 @@ std::optional<int64_t> tryGetConstantInt(TypedAttr attr) {
   return std::nullopt;
 }
 
+std::optional<SmallVector<int64_t>> tryGetConstantIntVector(TypedAttr attr) {
+  // First check `attr` is an array of attrs.
+  auto shapeAttr = dyn_cast<ShapeAttr>(attr);
+  if (!shapeAttr)
+    return std::nullopt;
+
+  // Check each element attribute in the array, collect the constant integers,
+  // or short-circuit if any attribute cannot be converted to a constant
+  // integer.
+  SmallVector<int64_t> result;
+  for (TypedAttr maybeIntAttr : shapeAttr.getValues()) {
+    if (auto intOr = tryGetConstantInt(maybeIntAttr))
+      result.push_back(intOr.value());
+    else
+      return std::nullopt;
+  }
+  return result;
+}
+
 /// Compute the output spatial dimension for a sliding window op (e.g.,
 /// convolution or pooling).
 static Var getSlidingWindowOutDim(const Var &inputDim, const Var &filterDim,

@@ -1420,6 +1420,7 @@ def MO_MeanOp : MO_MonotypeReductionOp<"mean", [
 }
 
 def MO_ReduceMulOp : MO_MonotypeReductionOp<"reduce.mul", [
+  DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Product reduction operation";
@@ -2351,6 +2352,7 @@ def MOStatic_RandomNormalOp : MOStatic_TensorOp<"random.normal", [
 def MO_ConcatOp : MO_TensorOp<"concat", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Concatenation operation";
@@ -2645,6 +2647,7 @@ def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [MO_PadLikeTraits]> {
 
 def MO_GatherOp : MO_TensorOp<"gather", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "`gather` operation";
