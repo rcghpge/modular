@@ -120,6 +120,7 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
         var slice_tuple = StaticTuple[Slice, rank]()
         for i in range(len(slices)):
             slice_tuple[i] = slices[i]
+            slice_tuple[i].start = (slice_tuple[i].start or 0).value()
             slice_tuple[i].end = (slice_tuple[i].end or self._spec[i]).value()
         return TensorSlice(self, slice_tuple)
 
