@@ -4,7 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from tensor import TensorSpec
+from tensor import TensorSpec, TensorShape
 from ._driver_library import DriverLibrary
 from max.engine._utils import call_dylib_func
 from builtin._startup import _get_current_or_global_runtime
@@ -13,20 +13,66 @@ from .tensor import Tensor
 from .anymemory import AnyMemory
 
 
-struct DeviceMemory(StringableRaising, CollectionElement):
+trait DeviceBuffer:
+    fn copy_to(self, dev: Device, name: Optional[String]) raises -> Self:
+        """Copies the contents of self into DeviceBuffer allocated on dev.
+        Note: this function allocates memory on dev.
+
+        Args:
+            dev: The Device on which to allocate the new DeviceBuffer.
+            name: Optional name of the new DeviceBuffer.
+
+        Returns:
+            Newly allocated DeviceBuffer containing a copy of self's contents.
+
+        Raises:
+            If the DeviceBuffer is backed by the same Device object as dev.
+        """
+        ...
+
+    fn copy_into(self, inout dst_memory: Self) raises:
+        """Copies the contents of self into a preallocated DeviceBuffer.
+
+        Args:
+            dst_memory: The destination DeviceBuffer of the copy.
+        """
+        ...
+
+    fn unsafe_ptr(self) -> DTypePointer[DType.invalid]:
+        ...
+
+    fn device(self) -> Device:
+        ...
+
+    fn bytecount(self) -> Int:
+        ...
+
+
+struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
+    """DeviceMemory is an owning buffer allocated on a (possibly non-CPU) Device.
+    """
+
     var _ptr: DTypePointer[DType.invalid]
     var _device: Device
     var lib: DriverLibrary
-    # TODO: de-duplicate spec on mojo and cpp sides
-    var spec: TensorSpec
     var name: Optional[String]
+    var num_bytes: Int
 
-    fn __init__(inout self) raises:
-        self = Self(DTypePointer[DType.invalid](), TensorSpec(), Device())
+    fn __init__(inout self):
+        # Workaround for MOCO-840
+        # Removing this will cause mojo to do a double free!
+        try:
+            self = Self(
+                DTypePointer[DType.invalid](),
+                0,
+                Device(),
+            )
+        except e:
+            self = abort[DeviceMemory](e)
 
     fn __init__(
         inout self,
-        spec: TensorSpec,
+        num_bytes: Int,
         device: Device,
         name: Optional[String] = None,
     ) raises:
@@ -34,20 +80,22 @@ struct DeviceMemory(StringableRaising, CollectionElement):
         self._device = device
         self.lib = self._device.lib
         alias func_name_create_tensor = "M_createDeviceMemory"
+        var tmp_spec = TensorSpec(DType.uint8, num_bytes)
         # CAUTION: this assumes that TensorSpec is bitwise identical in mojo and cpp
         self._ptr = call_dylib_func[DTypePointer[DType.invalid]](
             self.lib.get_handle(),
             func_name_create_tensor,
-            UnsafePointer[TensorSpec].address_of(spec),
+            UnsafePointer[TensorSpec].address_of(tmp_spec),
             self._device._cdev,
         )
-        self.spec = spec
         self.name = name
+        self.num_bytes = num_bytes
+        _ = tmp_spec^
 
     fn __init__(
         inout self,
         owned_ptr: DTypePointer[DType.invalid],
-        spec: TensorSpec,
+        num_bytes: Int,
         device: Device,
         name: Optional[String] = None,
     ):
@@ -55,8 +103,8 @@ struct DeviceMemory(StringableRaising, CollectionElement):
         self._device = device
         self.lib = self._device.lib
         self._ptr = owned_ptr
-        self.spec = spec
         self.name = name
+        self.num_bytes = num_bytes
 
     fn __copyinit__(inout self, existing: Self):
         # This temporarily exists so that we can store DeviceMemory in a List
@@ -68,8 +116,8 @@ struct DeviceMemory(StringableRaising, CollectionElement):
         self._ptr = existing._ptr
         self._device = existing._device
         self.lib = existing.lib
-        self.spec = existing.spec
         self.name = existing.name
+        self.num_bytes = existing.num_bytes
 
     fn __init__[
         type: DType, rank: Int
@@ -78,8 +126,8 @@ struct DeviceMemory(StringableRaising, CollectionElement):
 
         self._device = tensor._get_device()
         self.lib = self._device.lib
-        self.spec = tensor.get_tensor_spec()
         self.name = tensor.name
+        self.num_bytes = tensor.get_tensor_spec().bytecount()
         self._ptr = tensor._device_memory_impl_ptr
         tensor._device_memory_impl_ptr = DTypePointer[DType.invalid]()
 
@@ -88,9 +136,9 @@ struct DeviceMemory(StringableRaising, CollectionElement):
 
         self._device = anymemory._device
         self.lib = self._device.lib
-        self.spec = anymemory._spec
         self.name = anymemory._name
         self._ptr = anymemory._device_memory_impl_ptr
+        self.num_bytes = anymemory._spec.bytecount()
         anymemory._device_memory_impl_ptr = DTypePointer[DType.invalid]()
 
     fn __del__(owned self):
@@ -101,10 +149,15 @@ struct DeviceMemory(StringableRaising, CollectionElement):
         # Extend lifetime of library until C function returns.
         _ = self.lib^
 
-    fn get_tensor_spec(self) -> TensorSpec:
-        return self.spec
+    fn bytecount(self) -> Int:
+        return self.num_bytes
 
     fn get_device(self) -> Device:
+        """Returns the device on which the DeviceMemory was allocated."""
+
+        return self._device
+
+    fn device(self) -> Device:
         """Returns the device on which the DeviceMemory was allocated."""
 
         return self._device
@@ -113,11 +166,8 @@ struct DeviceMemory(StringableRaising, CollectionElement):
         self._ptr = existing._ptr
         self._device = existing._device^
         self.lib = existing.lib^
-        self.spec = existing.spec^
         self.name = existing.name^
-
-    fn get_rank(self) -> Int:
-        return self.spec.rank()
+        self.num_bytes = existing.num_bytes
 
     fn __str__(self) raises -> String:
         """Returns a description of the DeviceMemory."""
@@ -126,8 +176,8 @@ struct DeviceMemory(StringableRaising, CollectionElement):
             "DeviceMemory("
             + (self.name.value() + "," if self.name else "")
             + str(self.get_device())
-            + ",Spec("
-            + str(self.spec)
+            + ",Bytecount("
+            + str(self.bytecount())
             + "))"
         )
 
@@ -146,27 +196,9 @@ struct DeviceMemory(StringableRaising, CollectionElement):
         _ = self^
         return data
 
-    fn get_tensor[
-        dtype: DType, rank: Int
-    ](owned self) raises -> Tensor[dtype, rank]:
-        if rank != self.spec.rank():
-            raise "requested rank does not match existing rank"
-
-        if dtype != self.spec.dtype():
-            raise "requested dtype does not match existing type."
-
-        return Tensor[dtype, rank](self^)
-
     fn copy_into(self, inout dst_memory: DeviceMemory) raises:
-        """Copies the contents of self into a preallocated buffer.
-
-        Args:
-            dst_memory: The destination buffer of the copy.
-        """
-        if self.get_tensor_spec() != dst_memory.get_tensor_spec():
-            raise "Tensor specs do not match in copy_to(), src=" + str(
-                self.get_tensor_spec()
-            ) + ", dst=" + str(dst_memory.get_tensor_spec())
+        if self.bytecount() != dst_memory.bytecount():
+            raise "src and dst bytcount mismatch in copy_into()"
 
         alias func_name_steal_data = "M_copyDeviceMemory"
         call_dylib_func(
@@ -179,23 +211,10 @@ struct DeviceMemory(StringableRaising, CollectionElement):
     fn copy_to(
         self, dev: Device, name: Optional[String] = None
     ) raises -> DeviceMemory:
-        """Copies the contents of self into DeviceMemory allocated on dev.
-        Note: this function allocates memory on dev.
-
-        Args:
-            dev: The Device on which to allocate the new DeviceMemory.
-            name: Optional name of the new DeviceMemory.
-
-        Returns:
-            Newly allocated DeviceMemory containing a copy of the self's contents.
-
-        Raises:
-            If the DeviceMemory is backed by the same Device object as dev.
-        """
         if dev == self._device:
             raise str(self) + "is already allocated on " + str(dev)
 
-        var dst = dev.allocate(self.spec, name)
+        var dst = dev.allocate(self.bytecount(), name)
         self.copy_into(dst)
         return dst^
 
@@ -214,3 +233,85 @@ struct DeviceMemory(StringableRaising, CollectionElement):
             func_name_get_data,
             self._ptr,
         )
+
+
+struct DeviceTensor(DeviceBuffer, StringableRaising, CollectionElement):
+    var _storage: DeviceMemory
+    var spec: TensorSpec
+
+    fn __init__(
+        inout self, spec: TensorSpec, device: Device, name: Optional[String]
+    ) raises:
+        self.spec = spec
+        self._storage = DeviceMemory(
+            spec.bytecount(),
+            device,
+            name,
+        )
+
+    fn __init__(
+        inout self, owned storage: DeviceMemory, spec: TensorSpec
+    ) raises:
+        self._storage = storage^
+        self.spec = spec
+
+        if self.bytecount() != self.bytecount():
+            raise "DeviceMemory size does not match DeviceTensor requirements"
+
+    fn copy_to(self, dev: Device, name: Optional[String] = None) raises -> Self:
+        var t = Self(self._storage.copy_to(dev, name), self.spec)
+        return t
+
+    fn copy_into(self, inout dst_tensor: Self) raises:
+        if dst_tensor.spec != self.spec:
+            raise "src and dst tensor specs do not match"
+        self._storage.copy_into(dst_tensor._storage)
+
+    fn unsafe_ptr(self) -> DTypePointer[DType.invalid]:
+        return self._storage.unsafe_ptr()
+
+    fn get_tensor[
+        type: DType, rank: Int
+    ](owned self) raises -> Tensor[type, rank]:
+        if rank != self.spec.rank():
+            raise "requested rank does not match existing rank"
+
+        if type != self.spec.dtype():
+            raise "requested dtype does not match existing type."
+
+        return Tensor[type, rank](self^)
+
+    fn device(self) -> Device:
+        return self._storage.device()
+
+    fn name(self) -> Optional[String]:
+        return self._storage.name
+
+    fn __copyinit__(inout self, existing: Self):
+        # This temporarily exists so that we can store DeviceMemory in a List
+        # TODO(MSTDL-467): Once Copyable requirement on List is removed, this
+        # can be removed
+        constrained[
+            False, "__copyinit__ not supported on DeviceTensor, MSTDL-467"
+        ]()
+        self._storage = existing._storage
+        self.spec = existing.spec
+
+    fn __moveinit__(inout self, owned existing: Self):
+        self._storage = existing._storage^
+        self.spec = existing.spec^
+
+    fn __str__(self) raises -> String:
+        """Returns a description of the DeviceMemory."""
+
+        return (
+            "DeviceTensor("
+            + (self._storage.name.value() + "," if self._storage.name else "")
+            + str(self.device())
+            + ",Spec("
+            + str(self.spec)
+            + "))"
+        )
+
+    fn bytecount(self) -> Int:
+        return self.spec.bytecount()

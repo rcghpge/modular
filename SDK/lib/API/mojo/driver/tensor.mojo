@@ -3,7 +3,7 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-from .device import Device, DeviceMemory
+from .device import Device, DeviceMemory, DeviceTensor
 from .tensor_slice import TensorSlice
 from utils import StaticTuple
 from tensor import TensorSpec
@@ -52,21 +52,23 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
 
     # TODO: We should be able to hold DeviceMemory here. Revisit
     # after DeviceMemory/DeviceTensor work.
+    # this is needed because DeviceMemory may have a custom free
+    # function set on the cpp side.
     var _device_memory_impl_ptr: DTypePointer[DType.invalid]
 
-    fn __init__(inout self, owned device_memory: DeviceMemory):
-        self._device = device_memory._device
-        self.name = device_memory.name
-        self._spec = StaticTensorSpec[type, rank](
-            device_memory.get_tensor_spec()
-        )
-        self._ptr = device_memory.unsafe_ptr().bitcast[type]()
-        self._device_memory_impl_ptr = device_memory^._steal_impl_ptr()
+    fn __init__(inout self, owned device_tensor: DeviceTensor) raises:
+        self._device = device_tensor.device()
+        self.name = device_tensor.name()
+        self._spec = device_tensor.spec
+        self._ptr = device_tensor.unsafe_ptr().bitcast[type]()
+        var tmp = device_tensor._storage^
+        device_tensor._storage = DeviceMemory()
+        self._device_memory_impl_ptr = tmp^._steal_impl_ptr()
 
     fn __moveinit__(inout self, owned existing: Self):
         self._ptr = existing._ptr
-        self._spec = existing._spec
-        self._device = existing._device
+        self._spec = existing._spec^
+        self._device = existing._device^
         self.name = existing.name^
         self._device_memory_impl_ptr = existing._device_memory_impl_ptr
 
@@ -205,10 +207,14 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
     fn get_device_memory(owned self) raises -> DeviceMemory:
         return DeviceMemory(self^)
 
+    fn device_tensor(owned self) raises -> DeviceTensor:
+        var spec = self._spec.get_tensor_spec()
+        return DeviceTensor(DeviceMemory(self^), spec)
+
     fn __del__(owned self):
         _ = DeviceMemory(
             self._device_memory_impl_ptr,
-            self._spec.get_tensor_spec(),
+            self._spec.get_tensor_spec().bytecount(),
             self._device,
         )
 

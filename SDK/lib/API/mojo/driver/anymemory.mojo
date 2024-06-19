@@ -21,17 +21,20 @@ struct AnyMemory:
 
     fn __init__(inout self) raises:
         self._device = Device()
-        self._spec = TensorSpec()
+        self._spec = TensorSpec(DType.uint8, 0)
         self._name = None
         self._data = DTypePointer[DType.invalid]()
         self._device_memory_impl_ptr = DTypePointer[DType.invalid]()
 
-    fn __init__(inout self, owned device_memory: DeviceMemory):
-        self._device = device_memory.get_device()
-        self._spec = device_memory.get_tensor_spec()
-        self._name = device_memory.name
-        self._data = device_memory.unsafe_ptr()
-        self._device_memory_impl_ptr = device_memory^._steal_impl_ptr()
+    fn __init__(inout self, owned device_tensor: DeviceTensor):
+        self._device = device_tensor.device()
+        self._spec = device_tensor.spec
+        self._name = device_tensor.name()
+        self._data = device_tensor.unsafe_ptr()
+        var tmp = device_tensor^
+        var tmp_dm = tmp._storage^
+        tmp._storage = DeviceMemory()
+        self._device_memory_impl_ptr = tmp_dm^._steal_impl_ptr()
 
     fn __copyinit__(inout self, existing: Self):
         constrained[False, "AnyMemory is non-copyable"]()
@@ -51,7 +54,7 @@ struct AnyMemory:
     fn __init__[
         type: DType, rank: Int
     ](inout self, owned tensor: Tensor[type, rank]) raises:
-        self = Self(tensor^.get_device_memory())
+        self = Self(tensor^.device_tensor())
 
     fn get_rank(self) -> Int:
         """Gets rank of the tensor.
@@ -66,8 +69,11 @@ struct AnyMemory:
         self._data = DTypePointer[DType.invalid]()
         return ptr
 
-    fn device_memory(owned self) raises -> DeviceMemory:
-        return DeviceMemory(self^)
+    fn device_tensor(owned self) raises -> DeviceTensor:
+        var spec = self._spec
+        return DeviceTensor(DeviceMemory(self^), spec)
 
     fn __del__(owned self):
-        _ = DeviceMemory(self._device_memory_impl_ptr, self._spec, self._device)
+        _ = DeviceMemory(
+            self._device_memory_impl_ptr, self._spec.bytecount(), self._device
+        )

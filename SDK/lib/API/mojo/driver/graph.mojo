@@ -37,10 +37,20 @@ struct ExecutableGraph:
     fn _steal_device_memory_ptr(
         self, inout memory: AnyMemory
     ) raises -> DTypePointer[DType.invalid]:
+        """This takes `memory` as inout and not owned because it is called on
+        References owned by a List (returned by List.__getitem__()).
+        """
+        # the List still owns `memory` so fill it with default values
+        # so that it doesn't get free'd twice when `tmp` goes out of scope
         var new = AnyMemory()
         var tmp = memory^
         memory = new^
-        var ptr = tmp^.device_memory()._steal_impl_ptr()
+
+        var tmp_dt = tmp^.device_tensor()
+        var tmp_dm = tmp_dt._storage^
+        tmp_dt._storage = DeviceMemory()
+
+        var ptr = tmp_dm^._steal_impl_ptr()
         return ptr
 
     fn _add_to_output_list(
@@ -48,9 +58,12 @@ struct ExecutableGraph:
         list: UnsafePointer[NoneType],
         device_memory_ptr: DTypePointer[DType.invalid],
         spec_ptr: UnsafePointer[NoneType],
-    ):
+    ) raises:
         var spec = spec_ptr.bitcast[TensorSpec]()[]
-        var device_memory = DeviceMemory(device_memory_ptr, spec^, self._device)
+        var device_memory = DeviceTensor(
+            DeviceMemory(device_memory_ptr, spec.bytecount(), self._device),
+            spec,
+        )
         var typed_list = list.bitcast[List[AnyMemory]]()
         typed_list[].append(device_memory^)
 
@@ -67,7 +80,9 @@ struct ExecutableGraph:
         """
         # Collect the C pointers of inputs to pass to C API.
         var inputs_impl = List[DTypePointer[DType.invalid]]()
+        var inputs_spec = List[TensorSpec]()
         for input in inputs:
+            inputs_spec.append(input[]._spec)
             inputs_impl.append(self._steal_device_memory_ptr(input[]))
 
         alias execute_func_name = "M_executeGraph"
@@ -84,6 +99,7 @@ struct ExecutableGraph:
             fn (
                 _CExecutableGraph,
                 UnsafePointer[DTypePointer[DType.invalid]],
+                UnsafePointer[TensorSpec],
                 Int,
                 __type_of(Self._add_to_output_list),
                 UnsafePointer[Self],
@@ -94,6 +110,7 @@ struct ExecutableGraph:
         var output_count = execute_func(
             self._impl,
             inputs_impl.unsafe_ptr(),
+            inputs_spec.unsafe_ptr(),
             len(inputs_impl),
             Self._add_to_output_list,
             UnsafePointer.address_of(self),
@@ -109,6 +126,7 @@ struct ExecutableGraph:
 
         # Make sure inputs are alive
         _ = inputs_impl^
+        _ = inputs_spec^
         return output_list
 
     fn __del__(owned self):
