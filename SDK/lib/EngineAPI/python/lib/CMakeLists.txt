@@ -16,6 +16,7 @@ add_modular_library(ModularFrameworkPython
   Utils.cpp
 
   LINK_LIBS PRIVATE
+  MPython
   modular-framework-common
   modular-framework-tf-ext
   modular-framework-torch-ext

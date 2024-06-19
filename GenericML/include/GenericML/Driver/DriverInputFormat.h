@@ -23,6 +23,7 @@ namespace M {
 /// This must be kept in sync with the Mojo `FrameworkFormat` enum.
 enum class FrameworkFormat : uint8_t {
   MAXGraph = 0,
+  TorchscriptModule = 1,
 };
 
 enum class FileFormat : uint8_t {
@@ -83,6 +84,8 @@ inline FileFormat frameworkToFileFormat(FrameworkFormat frameworkFormat) {
   switch (frameworkFormat) {
   case FrameworkFormat::MAXGraph:
     return FileFormat::kMODialect;
+  case FrameworkFormat::TorchscriptModule:
+    return FileFormat::kPTPickle;
   }
 
   llvm_unreachable("unknown framework format");
