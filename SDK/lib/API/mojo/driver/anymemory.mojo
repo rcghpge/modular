@@ -9,7 +9,7 @@ from .device import Device
 from tensor import TensorSpec
 
 
-struct AnyMemory:
+struct AnyTensor:
     """A type erased tensor representation that is useful
     for situations where we need variadics of tensors."""
 
@@ -37,7 +37,7 @@ struct AnyMemory:
         self._device_memory_impl_ptr = tmp_dm^._steal_impl_ptr()
 
     fn __copyinit__(inout self, existing: Self):
-        constrained[False, "AnyMemory is non-copyable"]()
+        constrained[False, "AnyTensor is non-copyable"]()
         self._device = existing._device
         self._spec = existing._spec
         self._name = existing._name

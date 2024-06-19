@@ -10,7 +10,7 @@ from max.engine._utils import call_dylib_func
 from builtin._startup import _get_current_or_global_runtime
 from .device import Device, _CDevice
 from .tensor import Tensor
-from .anymemory import AnyMemory
+from .anymemory import AnyTensor
 
 
 trait DeviceBuffer:
@@ -131,7 +131,7 @@ struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
         self._ptr = tensor._device_memory_impl_ptr
         tensor._device_memory_impl_ptr = DTypePointer[DType.invalid]()
 
-    fn __init__(inout self, owned anymemory: AnyMemory) raises:
+    fn __init__(inout self, owned anymemory: AnyTensor) raises:
         """Creates a device tensor from given anymemory."""
 
         self._device = anymemory._device

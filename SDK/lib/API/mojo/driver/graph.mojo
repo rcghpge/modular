@@ -6,7 +6,7 @@
 from max.graph import Graph
 from max.engine._utils import call_dylib_func
 from sys.ffi import _get_global_or_null
-from .anymemory import AnyMemory
+from .anymemory import AnyTensor
 from .device import _CDevice
 from tensor import TensorSpec
 from ._status import Status, _CStatus
@@ -35,14 +35,14 @@ struct ExecutableGraph:
         self._device = device
 
     fn _steal_device_memory_ptr(
-        self, inout memory: AnyMemory
+        self, inout memory: AnyTensor
     ) raises -> DTypePointer[DType.invalid]:
         """This takes `memory` as inout and not owned because it is called on
         References owned by a List (returned by List.__getitem__()).
         """
         # the List still owns `memory` so fill it with default values
         # so that it doesn't get free'd twice when `tmp` goes out of scope
-        var new = AnyMemory()
+        var new = AnyTensor()
         var tmp = memory^
         memory = new^
 
@@ -64,10 +64,10 @@ struct ExecutableGraph:
             DeviceMemory(device_memory_ptr, spec.bytecount(), self._device),
             spec,
         )
-        var typed_list = list.bitcast[List[AnyMemory]]()
+        var typed_list = list.bitcast[List[AnyTensor]]()
         typed_list[].append(device_memory^)
 
-    fn execute(self, owned *inputs: AnyMemory) raises -> List[AnyMemory]:
+    fn execute(self, owned *inputs: AnyTensor) raises -> List[AnyTensor]:
         """Execute the graph with given inputs.
 
         Args:
@@ -91,7 +91,7 @@ struct ExecutableGraph:
         # The C API will call the callback to fill the list.
         # TODO: We can reserve this in advance after adding inspection APIs
         # to compiled graph.
-        var output_list = List[AnyMemory]()
+        var output_list = List[AnyTensor]()
         var output_list_address = UnsafePointer.address_of(output_list)
         var status = Status(self._device.lib)
 
