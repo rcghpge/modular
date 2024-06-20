@@ -123,7 +123,7 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
   Option<bool> enableCompiledRegionsFusion{
       *this, "enable-compiled-regions-fusion",
       llvm::cl::desc("If false, will disable compiled region fusion"),
-      llvm::cl::init(false)};
+      llvm::cl::init(true)};
   Option<bool> skipJitCompileMiddle{
       *this, "skip-jit-compile-middle",
       llvm::cl::desc(
