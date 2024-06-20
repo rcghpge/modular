@@ -4118,7 +4118,8 @@ def MO_ListSliceOp : MO_TensorOp<"list.slice", [Pure]> {
 }
 
 def MO_CustomOp : MO_TensorOp<"custom", [
-  DeclareOpInterfaceMethods<MO_DefaultParameterization>
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>
 ]> {
   let summary = "User-defined operation";
   let description = [{
@@ -4144,6 +4145,11 @@ def MO_CustomOp : MO_TensorOp<"custom", [
 
   let arguments = (ins Variadic<AnyType>:$operands,
                        StrAttr:$symbol,
+                       // List of operand indices and the device they belong on.
+                       // If an operand index is not in this array, it depends
+                       // on the default policy of device assignment.
+                       DefaultValuedAttr<MO_DeviceIndexArrayAttr, "ArrayRef<DeviceIndexAttr>({})">:$operandDevices,
+
                        MO_ParamDecls:$outputParamDecls);
   let results = (outs Variadic<AnyType>:$results);
 
@@ -4151,6 +4157,8 @@ def MO_CustomOp : MO_TensorOp<"custom", [
     `` custom<ParamDecls>($outputParamDecls) attr-dict `(` operands `)` `:`
        functional-type(operands, results)
   }];
+
+  let hasVerifier = 1;
 }
 
 def MO_ConcatFromListOp : MO_TensorOp<"concat_from_list", [

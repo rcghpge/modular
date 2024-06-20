@@ -85,4 +85,48 @@ def MO_ChainAttr : KGEN_ExprAttr<"Chain", "chain"> {
   let assemblyFormat = "";
 }
 
+def MO_DeviceIndexAttr : MOAttr<"DeviceIndex", "device_index"> {
+  let summary = "A pair that associates an index with a device ref attr.";
+  let description = [{
+    Associates an index with a device. This is useful for things like mapping
+    operands of operations to devices.
+
+    Example:
+    (4 : index, <"cpu", 0>)
+  }];
+
+  let parameters = (ins
+    "mlir::IntegerAttr":$index,
+    "M::DeviceRefAttr":$device
+  );
+
+  let assemblyFormat = [{
+    `(` $index `,` $device `)`
+  }];
+
+  let builders = [
+    TypeBuilderWithInferredContext<(ins "mlir::IntegerAttr":$index, "M::DeviceRefAttr":$device),
+      [{ return get(index.getContext(), index, device); }]>,
+    TypeBuilderWithInferredContext<(ins "size_t":$index, "M::DeviceRefAttr":$device),
+      [{
+        auto ctx = device.getContext();
+        auto indexTy = IndexType::get(ctx);
+        auto indexAttr = IntegerAttr::get(indexTy, index);
+        return get(indexAttr, device);
+      }]>
+  ];
+}
+
+def MO_DeviceIndexArrayAttr: ArrayOfAttr<MODialect, "DeviceIndexArrayAttr",
+    "DeviceIndex", "MO::DeviceIndexAttr"> {
+  let summary = "An array of DeviceIndex.";
+  let description = [{
+    Associates several indices with a device. This is useful for things like
+    mapping operands of operations to devices.
+
+    Example:
+    #mo<DeviceIndex[(4 : index, <"cpu", 0>), (4 : index, <"cpu", 0>)]>
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOATTRS_TD

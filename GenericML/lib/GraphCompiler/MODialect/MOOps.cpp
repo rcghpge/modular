@@ -3621,6 +3621,38 @@ void AssertOp::materializeAllAssertLogic(
 }
 
 //===----------------------------------------------------------------------===//
+// MO_CustomOp
+//===----------------------------------------------------------------------===//
+
+DeviceRefAttr CustomOp::getOperandDevice(size_t index) {
+  for (auto deviceIndex : getOperandDevices())
+    if (deviceIndex.getIndex().getInt() == static_cast<int64_t>(index))
+      return deviceIndex.getDevice();
+
+  return nullptr;
+}
+
+LogicalResult CustomOp::verify() {
+  SmallVector<bool> assignedIndex(getNumOperands(), false);
+
+  // Ensure device placements for operands are correct
+  for (auto deviceIndex : getOperandDevices()) {
+    int64_t index = deviceIndex.getIndex().getInt();
+    if (index < 0 || index >= getNumOperands())
+      return emitError(
+          "Device operand index out of bounds of [0, numOperands)");
+
+    if (assignedIndex[index])
+      return emitError("Device operand index " + std::to_string(index) +
+                       " defined twice!");
+
+    assignedIndex[index] = true;
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 
