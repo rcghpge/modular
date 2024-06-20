@@ -12,13 +12,6 @@ lit_tests(
         "//ModularFramework/tools/mof",
         "@llvm-project//compiler-rt:orc_rt",
     ],
-    env = {
-        "MODULAR_MOJO_COMPILERRT_PATH": "$(location //KGEN:CompilerRT)",
-        "MODULAR_MOJO_ORCRT_PATH": "$(location @llvm-project//compiler-rt:orc_rt)",
-        "MODULAR_MAX_ENGINE_LIB": "$(location //GenericML:modular-framework-common)",
-        "MODULAR_MAX_GRAPH_LIB": "$(location //ModularFramework/tools/mof)",
-        "MODULAR_MAX_DRIVER_LIB": "$(location //GenericML:DeviceDriver)",
-    },
     mojo_deps = [
         "//SDK/lib/API/mojo/driver",
         "//SDK/lib/API/mojo/max",
