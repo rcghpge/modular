@@ -100,7 +100,7 @@ ParseResult M::MOSH::parseShapeValue(AsmParser &p,
       values.push_back(KGEN::UnknownAttr::get(idxTy));
       return success();
     }
-    return KGEN::parseIndexParamValue(p, values.emplace_back());
+    return KGEN::parseColonTypeParamValue(p, values.emplace_back());
   });
 }
 
@@ -114,7 +114,7 @@ void M::MOSH::printDimensionValue(AsmPrinter &p, TypedAttr value) {
   if (isa<KGEN::UnknownAttr>(value))
     p << '?';
   else
-    KGEN::printParamValue(p, value);
+    KGEN::printColonTypeParamValue(p, value);
 }
 
 void M::MOSH::printShapeValue(AsmPrinter &p, ArrayRef<TypedAttr> values) {
@@ -160,10 +160,11 @@ bool ShapeAttr::hasUnknownDims() const {
 LogicalResult ShapeAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                                 ArrayRef<TypedAttr> values, ShapeType type) {
   for (auto [idx, value] : llvm::enumerate(values)) {
-    if (!value.getType().isIndex()) {
-      return emitError() << "expected all list elements to have type "
-                         << IndexType::get(type.getContext()) << " but got "
-                         << value.getType() << " at position " << idx;
+    Type valueTy = value.getType();
+    if (!valueTy.isIntOrIndex()) {
+      return emitError()
+             << "expected all list elements to have index/integer/bool type "
+             << " but got " << valueTy << " at position " << idx;
     }
   }
   return success();

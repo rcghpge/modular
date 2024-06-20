@@ -1091,7 +1091,10 @@ def MO_IsInfOp : MO_ComparisonUnaryOp<"is_inf"> {
   }];
 }
 
-def MO_EqualOp : MO_ComparisonBinaryOp<"equal", [Commutative]> {
+def MO_EqualOp : MO_ComparisonBinaryOp<"equal", [
+  Commutative,
+  DeclareOpInterfaceMethods<MO_Staticization>,
+]> {
   let summary = "Equality test operation";
   let description = [{
     Returns `x == y`, where `x` and `y` are input tensors.
@@ -1232,7 +1235,11 @@ def MO_XorOp : MO_LogicalBinaryOp<"xor"> {
 }
 
 // TODO: Use an AllElementTypesMatch<["x", "y", "result"]> trait for MO_Tensor.
-def MO_SelectOp : MO_TensorOp<"select", [Pure, MO_SameOperandsAndResultShape]>{
+def MO_SelectOp : MO_TensorOp<"select", [
+  Pure,
+  MO_SameOperandsAndResultShape,
+  DeclareOpInterfaceMethods<MO_Staticization>,
+]>{
   let summary = "Select operation";
   let description = [{
     Returns `cond ? x : y` (element-wise), where `cond`, `x` and `y` are input

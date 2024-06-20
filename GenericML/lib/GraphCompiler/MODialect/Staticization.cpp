@@ -251,6 +251,13 @@ ErrorOr<TypedAttr> DivOp::tryStaticize(ArrayRef<TypedAttr> inputs,
   });
 }
 
+ErrorOr<TypedAttr> EqualOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                         ParamExprBuilder &b) {
+  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
+    return b.createDeclToKgenExpr(KGEN::POC::EQ, scalarInputs);
+  });
+}
+
 ErrorOr<TypedAttr> NegativeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                             ParamExprBuilder &b) {
   return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
@@ -299,6 +306,17 @@ ErrorOr<TypedAttr> ReduceMulOp::tryStaticize(ArrayRef<TypedAttr> inputs,
 ErrorOr<TypedAttr> ReshapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                            ParamExprBuilder &b) {
   return tryStaticizeReshapeLikeOp(getInput().getType(), getType(), inputs, b);
+}
+
+ErrorOr<TypedAttr> SelectOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                          ParamExprBuilder &b) {
+  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
+    Var condVar = b.createVar(scalarInputs[0]);
+    Var thenVar = b.createVar(scalarInputs[1]);
+    Var elseVar = b.createVar(scalarInputs[2]);
+    Var res = b.createCond(condVar, thenVar, elseVar);
+    return res.getAttr();
+  });
 }
 
 ErrorOr<TypedAttr> Static::ReshapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
