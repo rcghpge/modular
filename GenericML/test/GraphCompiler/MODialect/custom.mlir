@@ -5,6 +5,6 @@
 // CHECK-NEXT:  mo.output %[[CUSTOM]]
 
 mo.graph @custom_dynamic(%arg0 : !mo.tensor<[?], f32>) -> !mo.tensor<[?], f32> {
-  %0 = mo.custom {symbol = "test_custom_op"}(%arg0) (!mo.tensor<[?], f32>) -> !mo.tensor<[?], f32>
+  %0 = mo.custom {symbol = "test_custom_op"}(%arg0) : (!mo.tensor<[?], f32>) -> !mo.tensor<[?], f32>
   mo.output %0 : !mo.tensor<[?], f32>
 }

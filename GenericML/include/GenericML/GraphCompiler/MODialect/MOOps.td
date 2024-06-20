@@ -4148,7 +4148,7 @@ def MO_CustomOp : MO_TensorOp<"custom", [
   let results = (outs Variadic<AnyType>:$results);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) attr-dict `(` operands `)`
+    `` custom<ParamDecls>($outputParamDecls) attr-dict `(` operands `)` `:`
        functional-type(operands, results)
   }];
 }

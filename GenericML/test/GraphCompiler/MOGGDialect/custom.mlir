@@ -9,13 +9,13 @@
 // CHECK:      mogg.call "test_custom_op" [@input_0_fn, @output_0_fn]
 mo.graph @input_output_fusion(%arg0: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
   %0 = mo.ceil(%arg0) : !mo.tensor<[2], f32>
-  %1 = mo.custom {symbol = "test_custom_op"}(%0) (!mo.tensor<[2], f32>) -> !mo.tensor<[2], f32>
+  %1 = mo.custom {symbol = "test_custom_op"}(%0) : (!mo.tensor<[2], f32>) -> !mo.tensor<[2], f32>
   %2 = mo.relu(%1) : !mo.tensor<[2], f32>
   mo.output %2 : !mo.tensor<[2], f32>
 }
 
 mo.graph @custom_with_params(%arg0: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
-  %1 = mo.custom {symbol = "test_custom_op_params", extra_param = 42, extra_param2 = "My String Param"}(%arg0) (!mo.tensor<[2], f32>) -> !mo.tensor<[2], f32>
+  %1 = mo.custom {symbol = "test_custom_op_params", extra_param = 42, extra_param2 = "My String Param"}(%arg0) : (!mo.tensor<[2], f32>) -> !mo.tensor<[2], f32>
   mo.output %1 : !mo.tensor<[2], f32>
 }
 

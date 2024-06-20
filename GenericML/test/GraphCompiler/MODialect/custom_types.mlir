@@ -15,6 +15,6 @@ mo.graph @opaque_type_metadata() {
 // -----
 
 mo.graph @opaque_in_out(%arg0: !mo.opaque<"MyInt">) -> !mo.opaque<"MyInt"> {
-  %0 = mo.custom {symbol = "my_int_square"}(%arg0) (!mo.opaque<"MyInt">) -> !mo.opaque<"MyInt">
+  %0 = mo.custom {symbol = "my_int_square"}(%arg0) : (!mo.opaque<"MyInt">) -> !mo.opaque<"MyInt">
   mo.output %0 : !mo.opaque<"MyInt">
 }

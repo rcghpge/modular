@@ -104,12 +104,12 @@ mo.graph @dont_rebind_opaque(%arg0: !mo.tensor<[?], f32>, %arg1: !mo.opaque<"Opa
   %0 = mo.rebind<() -> D1>(%arg0) : !mo.tensor<[?], f32> -> !mo.tensor<[D1], f32>
 
   // CHECK-NEXT: mo.custom
-  %1 = mo.custom {symbol = "custom0"}(%0) (!mo.tensor<[D1], f32>) -> !mo.tensor<[mul_nuw(D1, 2)], f32>
+  %1 = mo.custom {symbol = "custom0"}(%0) : (!mo.tensor<[D1], f32>) -> !mo.tensor<[mul_nuw(D1, 2)], f32>
 
   // CHECK-NEXT: kgen.param.declare [[MUL:.*]] = <mul_nuw
 
   // CHECK-NEXT: (!mo.tensor<[[[MUL]]], f32>, !mo.opaque<"Opaque">) -> !mo.opaque<"Opaque">
-  %2 = mo.custom {symbol = "custom"}(%1, %arg1) (!mo.tensor<[mul_nuw(D1, 2)], f32>, !mo.opaque<"Opaque">) -> !mo.opaque<"Opaque">
+  %2 = mo.custom {symbol = "custom"}(%1, %arg1) : (!mo.tensor<[mul_nuw(D1, 2)], f32>, !mo.opaque<"Opaque">) -> !mo.opaque<"Opaque">
 
   // CHECK-NEXT: mo.output
   mo.output %2 : !mo.opaque<"Opaque">

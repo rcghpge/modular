@@ -2,10 +2,10 @@
 
 mo.graph @blocked_by_unfusible(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
   %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
-  %1 = mo.custom {symbol = "pytorch_operator_custom_test"}(%0) (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
+  %1 = mo.custom {symbol = "pytorch_operator_custom_test"}(%0) : (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
   %2 = mo.add(%0, %1) : !mo.tensor<[4, 3], f32>
   %3 = mo.sqrt(%2) : !mo.tensor<[4, 3], f32>
-  %4 = mo.custom {symbol = "pytorch_operator_custom_test"}(%3) (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
+  %4 = mo.custom {symbol = "pytorch_operator_custom_test"}(%3) : (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
   %5 = mo.add(%2, %4) : !mo.tensor<[4, 3], f32>
   mo.output %5 : !mo.tensor<[4, 3], f32>
 }
