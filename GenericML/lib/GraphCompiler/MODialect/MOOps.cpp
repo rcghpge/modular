@@ -3417,6 +3417,77 @@ LogicalResult GuardOp::inferReturnTypes(
   return success();
 }
 
+/// Folds away the guard op when its input chain comes from a:
+/// mosh.param.to_value: !mo.chain = <#mo.chain>
+/// Such cases occur after successful shape inference and the folder for
+/// mo.chain.create has run (see its docs for more details)
+LogicalResult GuardOp::fold(FoldAdaptor adaptor,
+                            SmallVectorImpl<OpFoldResult> &results) {
+
+  auto chainDefOp = getChain().getDefiningOp<MOSH::ParamToValueOp>();
+
+  if (!chainDefOp)
+    return failure();
+
+  bool isTrivialChain = isa<MO::ChainAttr>(chainDefOp.getValue());
+
+  if (!isTrivialChain)
+    return failure();
+
+  results.insert(results.begin(), getInputs().begin(), getInputs().end());
+
+  return success();
+}
+
+/// Remove inputs that are the results of mosh.param.to_value on constant
+/// mo.chains (i.e. #mo.chain).
+///
+/// Such a structure can occur after shape inference passes run. However,
+/// this will only modify the op if *some* of the inputs are such chains.
+///
+/// In cases where they are all these kinds of constant chains the op is folded
+/// away and replaced with the trivial chain construction:
+/// mosh.param.to_value: !mo.chain = <#mo.chain>).
+OpFoldResult ChainCreateOp::fold(FoldAdaptor adaptor) {
+
+  if (getInputs().empty())
+    return nullptr;
+
+  SmallVector<Value> keptValues;
+
+  for (Value val : getInputs()) {
+    auto chainDefOp = val.getDefiningOp<MOSH::ParamToValueOp>();
+
+    if (!chainDefOp) {
+      keptValues.push_back(val);
+      continue;
+    }
+
+    auto isConstantChain = isa<MO::ChainAttr>(chainDefOp.getValue());
+
+    if (!isConstantChain) {
+      keptValues.push_back(val);
+      continue;
+    }
+  }
+
+  // In this case all the inputs were from 'constant' chains, that is:
+  // mosh.param.to_value: !mo.chain = <#mo.chain>
+  //
+  // replace the output of this op with one of these
+  if (keptValues.empty())
+    return getInputs().front();
+
+  // In this case none of the inputs were constant chains so leave the op
+  // unperturbed.
+  if (keptValues.size() == getInputs().size())
+    return nullptr;
+
+  getOperation()->setOperands(keptValues);
+
+  return nullptr;
+}
+
 void AssertOp::build(OpBuilder &builder, OperationState &state, Value cond,
                      const Twine &message) {
   auto attr = StringAttr::get(message.str(),

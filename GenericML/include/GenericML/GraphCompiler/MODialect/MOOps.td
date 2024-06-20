@@ -4271,7 +4271,7 @@ def MO_AssertOp : MO_Op<"assert"> {
   }];
 }
 
-def MO_GuardOp : MO_Op<"guard", [DeclareOpInterfaceMethods<InferTypeOpInterface>]>
+def MO_GuardOp : MO_Op<"guard", [DeclareOpInterfaceMethods<InferTypeOpInterface>, Pure]>
 {
   let summary = "SSA-value guard operation";
   let description = [{
@@ -4306,9 +4306,10 @@ def MO_GuardOp : MO_Op<"guard", [DeclareOpInterfaceMethods<InferTypeOpInterface>
   }];
 
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
-def MO_ChainCreateOp : MO_Op<"chain.create">
+def MO_ChainCreateOp : MO_Op<"chain.create", [Pure]>
 {
   let summary = "Create a new chain conditioned on a variadic number of inputs";
   let description = [{
@@ -4330,6 +4331,8 @@ def MO_ChainCreateOp : MO_Op<"chain.create">
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` type($inputs)
   }];
+
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
