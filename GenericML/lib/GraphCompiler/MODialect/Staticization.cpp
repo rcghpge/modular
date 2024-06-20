@@ -11,6 +11,8 @@
 #include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GenericML/Support/Dims.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/raw_ostream.h"
 #include <sstream>
 
 namespace M::MO {
@@ -49,6 +51,60 @@ static TypedAttr tryStaticizeReshapeLikeOp(TensorType inputTy,
     return b.getShapeAttr({inputAttr});
 
   return TypedAttr{};
+}
+
+/// Staticization implementation for elementwise ops (e.g., `mo.add`).  `func`
+/// is a function that takes in scalar inputs and return the corresponding
+/// version of the output. For instance, assume the underlying op is `mo.add`,
+/// given
+///   inputs[0] := ShapeAttr([N0, N1])
+///   inputs[1] := ShapeAttr([1, 2])
+///
+/// The result would be
+///   ShapeAttr([func({N0, 1}), func({N1, 2}))
+static ErrorOr<TypedAttr> tryStaticizeElemWiseOp(
+    TensorType outTy, ArrayRef<TypedAttr> inputs, ParamExprBuilder &b,
+    llvm::function_ref<TypedAttr(ArrayRef<TypedAttr> scalarInputs)> func) {
+  // Give up on dynamically ranked elementwise op.
+  if (!outTy.hasRank())
+    return TypedAttr{};
+
+  // Handle scalar case.
+  if (outTy.getRank() == 0)
+    return func(inputs);
+
+  // Handle non-scalar case -- when inputs are lists of param exprs.
+  SmallVector<ShapeAttr> inputShapeAttrs;
+  for (auto [i, input] : llvm::enumerate(inputs)) {
+    // Give up if any input is a shape of a dynamically ranked tensor.
+    auto inputShapeAttr = dyn_cast<ShapeAttr>(input);
+    if (!inputShapeAttr)
+      return TypedAttr{};
+
+    // Make sure all inputs have the same # of elements; this is a sanity check.
+    if (!inputShapeAttrs.empty() &&
+        inputShapeAttrs.front().getSize() != inputShapeAttr.getSize()) {
+      std::string msg;
+      llvm::raw_string_ostream os(msg);
+      os << "Cannot staticize binary ops whose input have different number of "
+            "elements -- first input: "
+         << inputShapeAttrs.front() << ", " << i
+         << "-th input: " << inputShapeAttr;
+      return Error(msg);
+    }
+    inputShapeAttrs.push_back(inputShapeAttr);
+  }
+
+  // Build up output shape
+  SmallVector<TypedAttr> outVals;
+  size_t inputNumElems = inputShapeAttrs.front().getSize();
+  for (size_t i = 0; i < inputNumElems; i++) {
+    SmallVector<TypedAttr> ithIndexScalarInputs;
+    for (ShapeAttr inputShapeAttr : inputShapeAttrs)
+      ithIndexScalarInputs.push_back(inputShapeAttr[i]);
+    outVals.push_back(func(ithIndexScalarInputs));
+  }
+  return b.getShapeAttr(outVals);
 }
 
 } // namespace
@@ -97,6 +153,13 @@ ErrorOr<TypedAttr> BroadcastShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
 
   // Can't staticize.
   return TypedAttr{};
+}
+
+ErrorOr<TypedAttr> AddOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                       ParamExprBuilder &b) {
+  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
+    return b.createDeclToKgenExpr(KGEN::POC::Add, scalarInputs);
+  });
 }
 
 ErrorOr<TypedAttr> CastOp::tryStaticize(ArrayRef<TypedAttr> inputs,
@@ -181,6 +244,36 @@ ErrorOr<TypedAttr> GatherOp::tryStaticize(ArrayRef<TypedAttr> inputs,
   return b.getShapeAttr(outElems);
 }
 
+ErrorOr<TypedAttr> DivOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                       ParamExprBuilder &b) {
+  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
+    return b.createDeclToKgenExpr(KGEN::POC::Div, scalarInputs);
+  });
+}
+
+ErrorOr<TypedAttr> NegativeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                            ParamExprBuilder &b) {
+  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
+    Var input = b.createVar(scalarInputs[0]);
+    Var res = input * -1;
+    return res.getAttr();
+  });
+}
+
+ErrorOr<TypedAttr> MinOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                       ParamExprBuilder &b) {
+  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
+    return b.createDeclToKgenExpr(KGEN::POC::Min, scalarInputs);
+  });
+}
+
+ErrorOr<TypedAttr> MulOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                       ParamExprBuilder &b) {
+  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
+    return b.createDeclToKgenExpr(KGEN::POC::MulNuw, scalarInputs);
+  });
+}
+
 ErrorOr<TypedAttr> RebindOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                           ParamExprBuilder &b) {
   return inputs[0];
@@ -211,6 +304,16 @@ ErrorOr<TypedAttr> ReshapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
 ErrorOr<TypedAttr> Static::ReshapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                                    ParamExprBuilder &b) {
   return tryStaticizeReshapeLikeOp(getInput().getType(), getType(), inputs, b);
+}
+
+ErrorOr<TypedAttr> SubOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                       ParamExprBuilder &b) {
+  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
+    Var lhs = b.createVar(scalarInputs[0]);
+    Var rhs = b.createVar(scalarInputs[1]);
+    Var res = lhs - rhs;
+    return res.getAttr();
+  });
 }
 
 } // namespace M::MO

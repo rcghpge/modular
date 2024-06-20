@@ -1,6 +1,7 @@
 // RUN: mo-opt %s --add-fallback-shape-funcs --propagate-shapes --canonicalize | FileCheck %s
 // TODO(GRA-627) remove `--add-fallback-shape-funcs`
 
+
 // CHECK-LABEL: mo.graph @cast
 //  CHECK-SAME:   <[[N:.*]]>(
 //  CHECK-SAME:   [[INPUT:%.*]]: !mo.tensor<[], si64>,

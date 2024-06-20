@@ -2,6 +2,7 @@
 // TODO(GRA-627) remove `--add-fallback-shape-funcs`
 
 
+
 // CHECK-LABEL: mo.graph @reshape
 //  CHECK-SAME:   <[[N:.*]]>(
 //  CHECK-SAME:   [[INPUT:%.*]]: !mo.tensor<[], si64>,

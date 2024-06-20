@@ -603,7 +603,10 @@ class MO_LogicalBinaryOp<string name, list<Trait> traits = []>
   }];
 }
 
-def MO_AddOp : MO_ElementWiseBinaryMonoTypeOp<"add", [Commutative]> {
+def MO_AddOp : MO_ElementWiseBinaryMonoTypeOp<"add", [
+  Commutative,
+  DeclareOpInterfaceMethods<MO_Staticization>,
+]> {
   let summary = "Add operation";
   let description = [{
     Returns `x + y`, where `x` and `y` are input tensors.
@@ -632,7 +635,9 @@ def MO_AbsOp : MO_ElementWiseUnaryMonoTypeOp<"abs", [Idempotent]> {
   }];
 }
 
-def MO_DivOp : MO_ElementWiseBinaryMonoTypeOp<"div"> {
+def MO_DivOp : MO_ElementWiseBinaryMonoTypeOp<"div", [
+  DeclareOpInterfaceMethods<MO_Staticization>,
+]> {
   let summary = "Divide operation";
   let description = [{
     Returns `x / y`, where `x` and `y` are input tensors.
@@ -734,7 +739,10 @@ def MO_MaxOp : MO_ElementWiseBinaryMonoTypeOp<"max", [Commutative]> {
   }];
 }
 
-def MO_MinOp : MO_ElementWiseBinaryMonoTypeOp<"min", [Commutative]> {
+def MO_MinOp : MO_ElementWiseBinaryMonoTypeOp<"min", [
+  Commutative,
+  DeclareOpInterfaceMethods<MO_Staticization>,
+]> {
   let summary = "Minimum operation";
   let description = [{
     Returns `min(x, y)`, where `x` and `y` are input tensors.
@@ -764,7 +772,10 @@ def MO_ModOp : MO_ElementWiseBinaryMonoTypeOp<"mod"> {
   }];
 }
 
-def MO_MulOp : MO_ElementWiseBinaryMonoTypeOp<"mul", [Commutative]> {
+def MO_MulOp : MO_ElementWiseBinaryMonoTypeOp<"mul", [
+  Commutative,
+  DeclareOpInterfaceMethods<MO_Staticization>,
+]> {
   let summary = "Multiplication operation";
   let description = [{
     Returns `x * y`, where `x` and `y` are input tensors.
@@ -779,7 +790,9 @@ def MO_MulOp : MO_ElementWiseBinaryMonoTypeOp<"mul", [Commutative]> {
   }];
 }
 
-def MO_NegativeOp : MO_ElementWiseUnaryMonoTypeOp<"negative"> {
+def MO_NegativeOp : MO_ElementWiseUnaryMonoTypeOp<"negative", [
+  DeclareOpInterfaceMethods<MO_Staticization>,
+]> {
   let summary = "Negation operation";
   let description = [{
     Returns `-x`, where `x` is input tensor.
@@ -1292,7 +1305,9 @@ def MO_SliceOp : MO_TensorOp<"slice", [
   let hasFolder = 1;
 }
 
-def MO_SubOp : MO_ElementWiseBinaryMonoTypeOp<"sub"> {
+def MO_SubOp : MO_ElementWiseBinaryMonoTypeOp<"sub", [
+  DeclareOpInterfaceMethods<MO_Staticization>,
+]> {
   let summary = "Subtraction operation";
   let description = [{
     Returns `x - y`, where `x` and `y` are input tensors.
