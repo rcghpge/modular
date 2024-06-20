@@ -9,6 +9,27 @@ from utils import StaticTuple
 from tensor import TensorSpec
 
 
+@always_inline
+fn _compute_linear_offset[
+    type: DType, rank: Int
+](spec: StaticTensorSpec[type, rank], indices: StaticIntTuple[rank]) -> Int:
+    """Computes the linear offset into the tensor from the indices provided.
+
+    Args:
+        spec: The spec of the tensor being indexed into.
+        indices: The indices to index against.
+
+    Returns:
+        The linearized index into the tensor data.
+    """
+    var result = indices[0]
+
+    @parameter
+    for i in range(rank - 1):
+        result = spec[i + 1] * result + indices[i + 1]
+    return result
+
+
 @value
 @register_passable
 struct StaticTensorSpec[type: DType, rank: Int]:
@@ -107,16 +128,15 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
         debug_assert(
             len(indices) == rank, "mismatch between requested index and rank"
         )
-        var offset = self._compute_linear_offset(indices)
+        var offset = _compute_linear_offset(self._spec, indices)
         return self._ptr[offset]
 
     @always_inline
     fn __getitem__(
         ref [_]self: Self, *slices: Slice
-    ) -> TensorSlice[type, rank, __lifetime_of(self)]:
-        debug_assert(
-            len(slices) == rank, "mismatch between slice count and rank"
-        )
+    ) raises -> TensorSlice[type, rank, __lifetime_of(self)]:
+        if len(slices) != rank:
+            raise "mismatch between slice count and rank"
         var slice_tuple = StaticTuple[Slice, rank]()
         for i in range(len(slices)):
             slice_tuple[i] = slices[i]
@@ -141,7 +161,7 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
             len(indices) == rank, "mismatch between requested index and rank"
         )
         return SIMD[size=width].load(
-            self._ptr, self._compute_linear_offset(indices)
+            self._ptr, _compute_linear_offset(self._spec, indices)
         )
 
     @always_inline
@@ -160,7 +180,7 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
           The SIMD value at the specified indices.
         """
         return SIMD[size=width].load(
-            self._ptr, self._compute_linear_offset(indices)
+            self._ptr, _compute_linear_offset(self._spec, indices)
         )
 
     @always_inline
@@ -177,25 +197,8 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
           val: The SIMD value to store.
         """
         SIMD[size=width].store(
-            self._ptr, self._compute_linear_offset(indices), val
+            self._ptr, _compute_linear_offset(self._spec, indices), val
         )
-
-    @always_inline
-    fn _compute_linear_offset(self, indices: StaticIntTuple[rank]) -> Int:
-        """Computes the linear offset into the tensor from the indices provided.
-
-        Args:
-          indices: The indices to index against.
-
-        Returns:
-          The linearized index into the tensor data.
-        """
-        var result = indices[0]
-
-        @parameter
-        for i in range(rank - 1):
-            result = self._spec[i + 1] * result + indices[i + 1]
-        return result
 
     fn _steal_ptr(owned self) -> DTypePointer[type]:
         var tmp = self._ptr
