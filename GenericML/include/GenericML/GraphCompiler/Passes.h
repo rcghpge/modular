@@ -130,10 +130,6 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
           "If false, will use the jit compile in the middle code "
           "path for mogg kernels. Otherwise, lower to the compiled region"),
       llvm::cl::init(false)};
-  Option<bool> DisableRemoveRedundantOperands{
-      *this, "disable-remove-redundant-operands",
-      llvm::cl::desc("If true, disable the RemoveRedundantOperands pass"),
-      llvm::cl::init(true)};
   Option<bool> genVizSpec{
       *this, "gen-viz-spec",
       llvm::cl::desc(

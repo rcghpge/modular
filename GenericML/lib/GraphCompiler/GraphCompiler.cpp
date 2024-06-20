@@ -327,10 +327,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   MGP::FuseGenericCompiledRegionsOptions fuseOpts;
   fuseOpts.enableFusion = opts.enableCompiledRegionsFusion;
   pm.addPass(MGP::createFuseGenericCompiledRegions(fuseOpts));
-  // FIXME: Remove the `DisableRemoveRedundantOperands` knob after fixing the
-  // runtime error.
-  if (!opts.DisableRemoveRedundantOperands)
-    pm.addPass(MGP::createRemoveRedundantOperands());
+  pm.addPass(MGP::createRemoveRedundantOperands());
 
   MGP::LowerMOGGABIOptions abiOpts;
   abiOpts.kernelLibraryPaths = opts.kernelLibraryPaths;

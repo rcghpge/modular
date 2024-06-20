@@ -45,19 +45,21 @@ struct RemoveRedundantOperands
       SmallDenseMap<Value, Value> operandToFirstArg;
       SmallVector<OpOperand *> operandsToRemove;
       // Collapse all OpOperands that are duplicates and collapse all arguments
-      // within region to use the same one
-      for (auto &operand : regionOp->getOpOperands()) {
+      // within region to use the same one, go in reverse order
+      for (auto &operand : llvm::reverse(regionOp->getOpOperands())) {
         auto arg =
             regionOp.getBody().front().getArgument(operand.getOperandNumber());
         if (operandToFirstArg.contains(operand.get())) {
+          // Replace all uses of argument, then remove it from the body.  Store
+          // the OpOperand to remove after the fact
           arg.replaceAllUsesWith(operandToFirstArg[operand.get()]);
+          regionOp.getBody().eraseArgument(operand.getOperandNumber());
           operandsToRemove.push_back(&operand);
         } else
           operandToFirstArg[operand.get()] = arg;
       }
-      for (auto operand : llvm::reverse(operandsToRemove)) {
+      for (auto operand : llvm::reverse(operandsToRemove))
         regionOp->eraseOperand(operand->getOperandNumber());
-      }
     });
   }
 };
