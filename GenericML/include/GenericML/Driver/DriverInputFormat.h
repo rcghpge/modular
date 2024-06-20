@@ -24,6 +24,7 @@ namespace M {
 enum class FrameworkFormat : uint8_t {
   MAXGraph = 0,
   TorchscriptModule = 1,
+  TorchMLIR = 2,
 };
 
 enum class FileFormat : uint8_t {
@@ -86,6 +87,8 @@ inline FileFormat frameworkToFileFormat(FrameworkFormat frameworkFormat) {
     return FileFormat::kMODialect;
   case FrameworkFormat::TorchscriptModule:
     return FileFormat::kPTPickle;
+  case FrameworkFormat::TorchMLIR:
+    return FileFormat::kTorchDialect;
   }
 
   llvm_unreachable("unknown framework format");
