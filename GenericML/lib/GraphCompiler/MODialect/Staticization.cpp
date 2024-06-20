@@ -319,6 +319,44 @@ ErrorOr<TypedAttr> SelectOp::tryStaticize(ArrayRef<TypedAttr> inputs,
   });
 }
 
+ErrorOr<TypedAttr> SqueezeShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                                ParamExprBuilder &b) {
+  // Make sure inputs aren't too dynamic.
+  auto inputShapeAttr = dyn_cast<ShapeAttr>(inputs[0]);
+  auto squeezeAxesOr = tryGetConstantIntVector(inputs[1]);
+  if (!inputShapeAttr || !squeezeAxesOr.has_value())
+    return TypedAttr{};
+
+  // Check, normalize and collect squeeze axes into a set.
+  SmallVector<int64_t> &squeezeAxes = squeezeAxesOr.value();
+  DenseSet<int64_t> normalizedSqueezeAxisSet;
+  int64_t inputShapeLen = inputShapeAttr.getValues().size();
+  for (auto &squeezeAxis : squeezeAxes) {
+    if (squeezeAxis < -inputShapeLen || squeezeAxis >= inputShapeLen)
+      return Error("Squeeze axis not in [-in_rank, in_rank).");
+
+    // normalize negative indexing
+    if (squeezeAxis < 0)
+      squeezeAxis += inputShapeLen;
+    normalizedSqueezeAxisSet.insert(squeezeAxis);
+  }
+
+  // Compute the unsqueezed symbolic shape.
+  SmallVector<TypedAttr> finalShape;
+  for (auto [axis, dimAttr] : llvm::enumerate(inputShapeAttr.getValues())) {
+    // Skip if this axis is to be squeezed.
+    if (normalizedSqueezeAxisSet.contains(axis)) {
+      b.createAssert(b.createVar(dimAttr) == 1,
+                     "Attempting to unsqueeze a dimension that is not 1.");
+      continue;
+    }
+    finalShape.push_back(dimAttr);
+  }
+  auto squeezedShapeAttr = b.getShapeAttr(finalShape);
+
+  return squeezedShapeAttr;
+}
+
 ErrorOr<TypedAttr> Static::ReshapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                                    ParamExprBuilder &b) {
   return tryStaticizeReshapeLikeOp(getInput().getType(), getType(), inputs, b);
@@ -332,6 +370,44 @@ ErrorOr<TypedAttr> SubOp::tryStaticize(ArrayRef<TypedAttr> inputs,
     Var res = lhs - rhs;
     return res.getAttr();
   });
+}
+
+ErrorOr<TypedAttr> UnsqueezeShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                                  ParamExprBuilder &b) {
+  // Make sure inputs aren't too dynamic.
+  auto inputShapeAttr = dyn_cast<ShapeAttr>(inputs[0]);
+  auto unsqueezeAxesOr = tryGetConstantIntVector(inputs[1]);
+  if (!inputShapeAttr || !unsqueezeAxesOr.has_value())
+    return TypedAttr{};
+
+  // Check, normalize and collect unsqueeze axes into a set.
+  const SmallVector<int64_t> &unsqueezeAxes = unsqueezeAxesOr.value();
+  DenseSet<int64_t> unsqueezeAxesSet;
+  int64_t outputShapeLen =
+      inputShapeAttr.getValues().size() + unsqueezeAxes.size();
+  for (auto unsqueezeAxis : unsqueezeAxes) {
+    if (unsqueezeAxis < -outputShapeLen || unsqueezeAxis >= outputShapeLen)
+      return Error("Unsqueeze axis not in [-out_rank, out_rank).");
+
+    // normalize negative indexing
+    if (unsqueezeAxis < 0)
+      unsqueezeAxis += outputShapeLen;
+    unsqueezeAxesSet.insert(unsqueezeAxis);
+  }
+
+  // Compute the unsqueezed symbolic shape.
+  SmallVector<TypedAttr> unsqueezedDims;
+  TypedAttr intOneAttr = b.createVar(1).getAttr();
+  for (int64_t idx = 0, nextDimAttrIdx = 0; idx < outputShapeLen; idx++) {
+    if (unsqueezeAxesSet.contains(idx))
+      unsqueezedDims.push_back(intOneAttr);
+    else
+      unsqueezedDims.push_back(inputShapeAttr[nextDimAttrIdx++]);
+  }
+  auto unsqueezedShapeAttr =
+      ShapeAttr::get(unsqueezedDims, inputShapeAttr.getType());
+
+  return unsqueezedShapeAttr;
 }
 
 } // namespace M::MO

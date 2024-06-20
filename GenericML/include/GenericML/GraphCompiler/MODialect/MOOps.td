@@ -2060,7 +2060,9 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
   let hasFolder = 1;
 }
 
-def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", []> {
+def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [
+  DeclareOpInterfaceMethods<MO_Staticization>,
+]> {
   let summary = "Squeeze-shape operation";
   let description = [{
     Calculates the shape from squeeze like operators. Given an input shape
@@ -2102,7 +2104,9 @@ def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", []> {
   let hasCanonicalizeMethod = 1;
 }
 
-def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", []> {
+def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", [
+  DeclareOpInterfaceMethods<MO_Staticization>,
+]> {
   let summary = "Unsqueeze-shape operation";
   let description = [{
     Calculates the shape from unsqueeze like operators. Given an input shape
