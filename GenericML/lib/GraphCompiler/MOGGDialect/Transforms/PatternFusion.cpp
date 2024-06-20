@@ -2207,8 +2207,6 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
         permuteBHDS2BSHD, initKey, rewriter, graphOp);
     TensorValue value = TransposeTensorHelper::backwardGetBSHDTensor(
         permuteBHSD2BSHD, initValue, rewriter, graphOp);
-    SmallVector<Value> kernelArgs{query, key, value, rank3ExplicitMask,
-                                  matcher.getNormScalar()};
 
     // GPU flash attention pattern includes the transposes from
     // `mhaResult` which is BHSD to BSHD.
@@ -2224,9 +2222,23 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
 
     SmallVector<TypedAttr> mhaOutputShape =
         permute(initialOutputShape, permuteBHSD2BSHD);
-    auto mhaResult = rewriter.create<MultiHeadGPUFlashAttentionOp>(
-        rootOp.getLoc(), rootOp.getType().cloneWith(mhaOutputShape),
-        kernelArgs);
+
+    Value normScalar = matcher.getNormScalar();
+    SmallVector<Value> customOpInputs{query, key, value, rank3ExplicitMask,
+                                      normScalar};
+
+    // We require the norm scalar to be on the host device. Done this way to
+    // to avoid dumb errors if we reorder inputs in custom op.
+    int64_t indexNormScalar =
+        llvm::find(customOpInputs, normScalar) - customOpInputs.begin();
+    auto normScalarDevice =
+        MO::DeviceIndexAttr::get(indexNormScalar, getHostDeviceAny(rootOp));
+
+    auto customOp = rewriter.create<CustomOp>(
+        rootOp.getLoc(), TypeRange{rootOp.getType().cloneWith(mhaOutputShape)},
+        customOpInputs, "masked_flash_attention_gpu",
+        SmallVector<DeviceIndexAttr>{normScalarDevice});
+    auto mhaResult = cast<TensorValue>(customOp.getResult(0));
 
     // The mhaResult should be shape BSHD, however the rooted op is layout BHSD.
     //
@@ -2283,8 +2295,8 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
       // Runtime Check 2: make sure the transpose does go to BSHD.
       insertShapeGuard(rewriter, graphOp,
                        finalTranspose.getType().getShapeAttr(),
-                       mhaResult.getResult().getType().getShapeAttr(),
-                       rootOp->getLoc(), "MHA_ROOT_TRANSPOSE_BSHD_CHECK",
+                       mhaResult.getType().getShapeAttr(), rootOp->getLoc(),
+                       "MHA_ROOT_TRANSPOSE_BSHD_CHECK",
                        "MHA Pattern Detected final transpose does not go to "
                        "BSHD layout. This is of great "
                        "interest so please report!");
