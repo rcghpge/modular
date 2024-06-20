@@ -1,9 +1,15 @@
 # ===----------------------------------------------------------------------=== #
+# Copyright (c) 2024, Modular Inc. All rights reserved.
 #
-# This file is Modular Inc proprietary.
+# Licensed under the Apache License v2.0 with LLVM Exceptions:
+# https://llvm.org/LICENSE.txt
 #
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 # ===----------------------------------------------------------------------=== #
-# RUN: mojo -I "%sdk_examples_dir" %s
 
 from collections import List
 from testing import assert_equal
@@ -11,8 +17,8 @@ from testing import assert_equal
 from pipelines.llama2.tokenizer.bpe import BPETokenizer
 
 
-fn create_dummy_model() raises -> BPETokenizer:
-    var model = BPETokenizer()
+def create_dummy_model() -> BPETokenizer:
+    model = BPETokenizer()
 
     model.add_token("ab", 0.0)
     model.add_token("cd", -0.1)
@@ -27,7 +33,7 @@ fn create_dummy_model() raises -> BPETokenizer:
     return model^
 
 
-fn test_tokenization() raises:
+def test_tokenization():
     var model = create_dummy_model()
 
     var tokens = model.encode(String("xabcabaabcddxabcabaabcdd"))

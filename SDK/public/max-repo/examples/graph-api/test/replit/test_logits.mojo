@@ -1,14 +1,15 @@
 # ===----------------------------------------------------------------------=== #
+# Copyright (c) 2024, Modular Inc. All rights reserved.
 #
-# This file is Modular Inc proprietary.
+# Licensed under the Apache License v2.0 with LLVM Exceptions:
+# https://llvm.org/LICENSE.txt
 #
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 # ===----------------------------------------------------------------------=== #
-# RUN: mojo -I %sdk_examples_dir "%s"
-# Usage:
-#   mojo -I SDK/public/max-repo/examples/graph-api \
-#     "ModularFramework/integration-test/examples/pipelines/replit/replit_logits.mojo"
-#
-# Tests in this file are executed in the main block at the bottom.
 from collections import Dict
 from pathlib import Path
 
@@ -206,21 +207,18 @@ fn get_hyperparams() -> HyperParams:
         kv_n_heads=2,
     )
 
-fn test_attention(params: TestCheckpoint) raises:
+fn test_attention() raises:
+    var params = TestCheckpoint(Path(""))
     var nano_params = get_hyperparams()
-    var prefix = "transformer.blocks.0."
 
     var g = Graph(
         List[Type](TensorType(DType.float32, 1, 8, 8)),
     )
 
-    @parameter
-    fn load_param(name: String) raises -> Symbol:
-        return g.constant(params.get[DType.float32](prefix + name))
     var attn = GroupedQueryAttention(
         nano_params,
-        Linear(load_param("attn.Wqkv.weight")),
-        Linear(load_param("attn.out_proj.weight"))
+        Linear(g.constant(params.get[DType.float32]("transformer.blocks.0.attn.Wqkv.weight"))),
+        Linear(g.constant(params.get[DType.float32]("transformer.blocks.0.attn.out_proj.weight")))
     )
     g.output(attn(g[0])[0])
     var input = Tensor[DType.float32](TensorShape(1, 8, 8),
@@ -246,26 +244,20 @@ fn test_attention(params: TestCheckpoint) raises:
     _testing.assert_tensors_almost_equal(actual, expected, atol=1e-4, rtol=1e-4)
 
 
-fn test_attention_with_bias(params: TestCheckpoint) raises:
+fn test_attention_with_bias() raises:
+    var params = TestCheckpoint(Path(""))
     var nano_params = get_hyperparams()
-    var prefix = "transformer.blocks.0."
 
     var g = Graph(
         List[Type](TensorType(DType.float32, 1, 8, 8), TensorType(DType.float32, 1, 4, 1, 10)),
     )
 
-    @parameter
-    fn load_param(name: String) raises -> Symbol:
-        return g.constant(params.get[DType.float32](prefix + name))
-
     var attn = GroupedQueryAttention(
         nano_params,
-        Linear(load_param("attn.Wqkv.weight")),
-        Linear(load_param("attn.out_proj.weight"))
+        Linear(g.constant[DType.float32](params.get[DType.float32]("transformer.blocks.0.attn.Wqkv.weight"))),
+        Linear(g.constant[DType.float32](params.get[DType.float32]("transformer.blocks.0.attn.out_proj.weight")))
     )
     g.output(attn(g[0], g[1])[0])
-    with open('/tmp/g.out', 'w') as f:
-        f.write(str(g))
     var input = Tensor[DType.float32](TensorShape(1, 8, 8),
         2.0151, -0.3334, -0.4256, -0.1741,  1.2037, -0.8116, -1.1967, -0.2774,
         -1.8925,  1.7477,  0.6883,  0.1850, -0.8403, -0.0448, -0.1820,  0.3386,
@@ -296,7 +288,8 @@ fn test_attention_with_bias(params: TestCheckpoint) raises:
 
 
 
-fn test_mpt_block(params: TestCheckpoint) raises:
+fn test_mpt_block() raises:
+    var params = TestCheckpoint(Path(""))
     var nano_params = get_hyperparams()
     var block_prefix = "transformer.blocks.0."
 
@@ -326,20 +319,16 @@ fn test_mpt_block(params: TestCheckpoint) raises:
         -0.3838,  1.8936,  1.5217, -0.1029, -0.5370,  0.0715, -0.1384, -0.3549)
     _testing.assert_tensors_almost_equal(actual, expected, atol=1e-4, rtol=1e-4)
 
-fn test_mpt_mlp(params: TestCheckpoint) raises:
+fn test_mpt_mlp() raises:
+    var params = TestCheckpoint(Path(""))
     var nano_params = get_hyperparams()
-    var prefix = "transformer.blocks.0."
     var g = Graph(
         List[Type](TensorType(DType.float32, 1, 8, 8)),
     )
 
-    @parameter
-    fn load_param(name: String) raises -> Symbol:
-        return g.constant(params.get[DType.float32](prefix + name))
-
     var layer = MPTMLP(
-        Linear(load_param("ffn.up_proj.weight")),
-        Linear(load_param("ffn.down_proj.weight")),)
+        Linear(g.constant[DType.float32](params.get[DType.float32]("transformer.blocks.0.ffn.up_proj.weight"))),
+        Linear(g.constant[DType.float32](params.get[DType.float32]("transformer.blocks.0.ffn.down_proj.weight"))))
     g.output(layer(g[0]))
 
     var input = Tensor[DType.float32](TensorShape(1, 8, 8),
@@ -369,7 +358,8 @@ fn test_mpt_mlp(params: TestCheckpoint) raises:
     _testing.assert_tensors_almost_equal(actual, expected, atol=1e-4, rtol=1e-4)
 
 
-fn test_shared_embedding(params: TestCheckpoint) raises:
+fn test_shared_embedding() raises:
+    var params = TestCheckpoint(Path(""))
     var nano_params = get_hyperparams()
     var g = Graph(
         List[Type](TensorType(DType.int32, 1, 8)),
@@ -391,7 +381,8 @@ fn test_shared_embedding(params: TestCheckpoint) raises:
     var actual = _testing.execute_unary(g, input)
     _testing.assert_tensors_almost_equal(actual, expected, atol=1e-4, rtol=1e-4)
 
-fn test_shared_embedding_unembed(params: TestCheckpoint) raises:
+fn test_shared_embedding_unembed() raises:
+    var params = TestCheckpoint(Path(""))
     var nano_params = get_hyperparams()
     var g = Graph(
         List[Type](TensorType(DType.float32, 1, 8, 8)),
@@ -418,7 +409,8 @@ fn test_shared_embedding_unembed(params: TestCheckpoint) raises:
     _testing.assert_tensors_almost_equal(actual, expected, atol=1e-4, rtol=1e-4)
 
 
-fn test_norm(params: TestCheckpoint) raises:
+fn test_norm() raises:
+    var params = TestCheckpoint(Path(""))
     var nano_params = get_hyperparams()
     var g = Graph(
         List[Type](TensorType(DType.float32, 1, 8, 8)),
@@ -449,7 +441,8 @@ fn test_norm(params: TestCheckpoint) raises:
     _testing.assert_tensors_almost_equal(actual, expected, atol=1e-4, rtol=1e-4)
 
 
-fn test_linear(params: TestCheckpoint) raises:
+fn test_linear() raises:
+    var params = TestCheckpoint(Path(""))
     var nano_params = get_hyperparams()
     var g = Graph(
         List[Type](TensorType(DType.float32, 1, 8, 8)),
@@ -497,7 +490,8 @@ fn test_linear(params: TestCheckpoint) raises:
     var actual = _testing.execute_unary(g, input)
     _testing.assert_tensors_almost_equal(actual, expected, atol=1e-4, rtol=1e-4)
 
-fn test_replit_logits(params: TestCheckpoint) raises:
+fn test_replit_logits() raises:
+    var params = TestCheckpoint(Path(""))
     var nano_params = get_hyperparams()
     var replit = Replit[TestCheckpoint, DType.float32](nano_params)
     var g = replit.build_graph(
@@ -541,7 +535,8 @@ fn test_replit_logits(params: TestCheckpoint) raises:
     _testing.assert_tensors_almost_equal(new_v_cache, expected_v_cache, atol=1e-4, rtol=1e-4)
 
 
-fn test_replit_logits_with_prev_cache(params: TestCheckpoint) raises:
+fn test_replit_logits_with_prev_cache() raises:
+    var params = TestCheckpoint(Path(""))
     var nano_params = get_hyperparams()
     var replit = Replit[TestCheckpoint, DType.float32](nano_params)
     var g = replit.build_graph(
@@ -611,29 +606,14 @@ fn execute_replit(
     return result_map^
 
 
-fn test[
-    name: String, test_fn: fn (TestCheckpoint) raises -> NoneType
-](params: TestCheckpoint) raises:
-    print("Test", name, "...", end="")
-    try:
-        _ = test_fn(params)
-    except e:
-        print("FAIL")
-        raise e
-    print("PASS")
-
-
 fn main() raises:
-    var params = TestCheckpoint(Path(""))
-    # test["test_attention", test_attention](params)
-    # test["test_attention_with_bias", test_attention_with_bias](params)
-    # test["test_mpt_block", test_mpt_block](params)
-    # test["test_mpt_mlp", test_mpt_mlp](params)
-    # test["test_shared_embedding", test_shared_embedding](params)
-    # test["test_shared_embedding_unembed", test_shared_embedding_unembed](params)
-    # test["test_norm", test_norm](params)
-    # test["test_linear", test_linear](params)
-    test["test_replit_logits", test_replit_logits](params)
-    test[
-        "test_replit_logits_with_prev_cache", test_replit_logits_with_prev_cache
-    ](params)
+    test_attention()
+    test_attention_with_bias()
+    test_mpt_block()
+    test_mpt_mlp()
+    test_shared_embedding()
+    test_shared_embedding_unembed()
+    test_norm()
+    test_linear()
+    test_replit_logits()
+    test_replit_logits_with_prev_cache()
