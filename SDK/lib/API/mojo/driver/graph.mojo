@@ -6,7 +6,7 @@
 from max.graph import Graph
 from max.engine._utils import call_dylib_func
 from sys.ffi import _get_global_or_null
-from .anymemory import AnyTensor
+from .anytensor import AnyTensor
 from .device import _CDevice
 from tensor import TensorSpec
 from ._status import Status, _CStatus
@@ -46,7 +46,7 @@ struct ExecutableGraph:
         var tmp = memory^
         memory = new^
 
-        var tmp_dt = tmp^.device_tensor()
+        var tmp_dt = tmp^.to_device_tensor()
         var tmp_dm = tmp_dt._storage^
         tmp_dt._storage = DeviceMemory()
 

@@ -208,10 +208,10 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
     fn _get_device(self) -> Device:
         return self._device
 
-    fn get_device_memory(owned self) raises -> DeviceMemory:
+    fn to_device_memory(owned self) raises -> DeviceMemory:
         return DeviceMemory(self^)
 
-    fn device_tensor(owned self) raises -> DeviceTensor:
+    fn to_device_tensor(owned self) raises -> DeviceTensor:
         var spec = self._spec.get_tensor_spec()
         return DeviceTensor(DeviceMemory(self^), spec)
 

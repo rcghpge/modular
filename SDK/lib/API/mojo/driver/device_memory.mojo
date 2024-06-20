@@ -10,7 +10,7 @@ from max.engine._utils import call_dylib_func
 from builtin._startup import _get_current_or_global_runtime
 from .device import Device, _CDevice
 from .tensor import Tensor
-from .anymemory import AnyTensor
+from .anytensor import AnyTensor
 
 
 trait DeviceBuffer:
@@ -131,15 +131,15 @@ struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
         self._ptr = tensor._device_memory_impl_ptr
         tensor._device_memory_impl_ptr = DTypePointer[DType.invalid]()
 
-    fn __init__(inout self, owned anymemory: AnyTensor) raises:
-        """Creates a device tensor from given anymemory."""
+    fn __init__(inout self, owned anytensor: AnyTensor) raises:
+        """Creates a device tensor from given anytensor."""
 
-        self._device = anymemory._device
+        self._device = anytensor._device
         self.lib = self._device.lib
-        self.name = anymemory._name
-        self._ptr = anymemory._device_memory_impl_ptr
-        self.num_bytes = anymemory._spec.bytecount()
-        anymemory._device_memory_impl_ptr = DTypePointer[DType.invalid]()
+        self.name = anytensor._name
+        self._ptr = anytensor._device_memory_impl_ptr
+        self.num_bytes = anytensor._spec.bytecount()
+        anytensor._device_memory_impl_ptr = DTypePointer[DType.invalid]()
 
     fn __del__(owned self):
         alias func_name_destroy = "M_destroyDeviceMemory"
@@ -270,7 +270,7 @@ struct DeviceTensor(DeviceBuffer, StringableRaising, CollectionElement):
     fn unsafe_ptr(self) -> DTypePointer[DType.invalid]:
         return self._storage.unsafe_ptr()
 
-    fn get_tensor[
+    fn to_tensor[
         type: DType, rank: Int
     ](owned self) raises -> Tensor[type, rank]:
         if rank != self.spec.rank():

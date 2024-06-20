@@ -54,7 +54,7 @@ struct AnyTensor:
     fn __init__[
         type: DType, rank: Int
     ](inout self, owned tensor: Tensor[type, rank]) raises:
-        self = Self(tensor^.device_tensor())
+        self = Self(tensor^.to_device_tensor())
 
     fn get_rank(self) -> Int:
         """Gets rank of the tensor.
@@ -69,7 +69,7 @@ struct AnyTensor:
         self._data = DTypePointer[DType.invalid]()
         return ptr
 
-    fn device_tensor(owned self) raises -> DeviceTensor:
+    fn to_device_tensor(owned self) raises -> DeviceTensor:
         var spec = self._spec
         return DeviceTensor(DeviceMemory(self^), spec)
 
