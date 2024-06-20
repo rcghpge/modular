@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --fuse-elementwise --cse --canonicalize --fuse-bcasts --cse --canonicalize --translate-mogg-to-kgen --inline-lambdas --mo-to-primitives --lower-primitives --remove-non-lowerable-results --lower-abi --canonicalize -cse --jit-compile-kernels --lower-mogg-region-compile %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --fuse-elementwise --cse --canonicalize --fuse-bcasts --cse --canonicalize --translate-mogg-to-kgen --inline-lambdas --mo-to-primitives --lower-primitives --lower-abi --canonicalize -cse --jit-compile-kernels --lower-mogg-region-compile %s | FileCheck %s
 
 // Check that with many broadcasts of the same value we still produce a unique kernel for each
 

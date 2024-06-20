@@ -82,7 +82,6 @@ void M::MO::registerPasses() {
   MGP::registerLowerMOGGABI();
   MGP::registerFuseGenericCompiledRegions();
   MGP::registerRemoveRedundantOperands();
-  MGP::registerRemoveNonLowerableResults();
   MGP::registerMGPTransformsPasses();
   CUDA::registerCUDATransformsPasses();
   MOGG::registerPasses();
@@ -332,7 +331,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   // runtime error.
   if (!opts.DisableRemoveRedundantOperands)
     pm.addPass(MGP::createRemoveRedundantOperands());
-  pm.addPass(MGP::createRemoveNonLowerableResults());
 
   MGP::LowerMOGGABIOptions abiOpts;
   abiOpts.kernelLibraryPaths = opts.kernelLibraryPaths;

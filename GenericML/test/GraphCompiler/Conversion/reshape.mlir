@@ -8,10 +8,10 @@
 // CHECK: %[[IN_BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[INPUT]] : !mgp.tensor<4xf32>
 
 // Create output shape spec
-// CHECK: {{.*}}, %[[OUT_SPEC:.*]] = "mgp.generic.execute"{{.*}} -> (!mgp.chain, !mgp.tensor_spec<2x2xf32>)
+// CHECK: {{.*}}, %[[OUT_RESULT:.*]]:2 = "mgp.generic.execute"{{.*}} -> (!mgp.chain, !mef.chain, !mgp.tensor_spec<2x2xf32>)
 
 // Create output tensor with same buffer and new spec
-// CHECK: %[[OUT_TENSOR:.*]] =  mgp.tensor.create %{{.*}}, %[[CTX]][1], %[[IN_BUF]], %[[OUT_SPEC]] : !mgp.tensor<2x2xf32>
+// CHECK: %[[OUT_TENSOR:.*]] =  mgp.tensor.create %{{.*}}, %[[CTX]][1], %[[IN_BUF]], %[[OUT_RESULT]]#1 : !mgp.tensor<2x2xf32>
 
 // Return output
 // CHECK: mef.output {{.*}}, %[[OUT_TENSOR]] : !mef.chain, !mgp.tensor<2x2xf32>

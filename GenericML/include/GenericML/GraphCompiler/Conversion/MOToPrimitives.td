@@ -113,16 +113,6 @@ def FuseGenericCompiledRegions: Pass<"fuse-generic-compiled-regions", "ModuleOp"
                           "MOGG::MOGGDialect"];
 }
 
-def RemoveNonLowerableResults: Pass<"remove-non-lowerable-results", "ModuleOp"> {
-  let summary = "Removes non lowerable result types from mogg ops";
-  let description = [{}];
-
-  let dependentDialects = ["MEF::MEFDialect",
-                          "MGP::MGPDialect",
-                          "GRT::GRTDialect",
-                          "MOGG::MOGGDialect"];
-}
-
 def RemoveRedundantOperands: Pass<"remove-redundant-operands", "ModuleOp"> {
   let summary = "Removes all redundant operands as a result of seq fusion";
   let description = [{}];

@@ -643,19 +643,13 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // Clone the graph
   SmallPtrSet<Operation *, 4> setShapeParamOpSet;
   for (Operation &op : getBody().front()) {
-    if (isa<MOGG::OutputPlaceholdersOp>(op)) {
+    if (isa<MOGG::OutputPlaceholdersOp, MOGG::OutputOp>(op))
       continue;
-    }
-
-    if (isa<MOGG::OutputOp>(op)) {
-      continue;
-    }
 
     if (isa<MOGG::SetParameterOp>(op)) {
       setShapeParamOpSet.insert(builder.clone(op, mapper));
       continue;
     }
-
     builder.clone(op, mapper);
   }
 
@@ -699,30 +693,33 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       paramToDim[name] = shapeToDimFromShape[inputShape]->getResult(index);
     }
   }
-
-  SmallVector<Value> outputs(outParamNum + numInplaceOutputs);
-  // We consider the first result of the output is always a chain.
-  DenseMap<Value, int> innderOutputValToOutIdx;
-  // Add intrinsic to get the data pointer of the kgen tensor.
+  // newKernel generates outputs as follows:
+  //   mogg.output %other:numPrependedOutputs %inPlaceOutputs:numInplaceOutputs,
+  //   %OutputShapeParams:outParamNum
+  constexpr unsigned int numPrependedOutputs = 1;
+  SmallVector<Value> outputs(numPrependedOutputs + numInplaceOutputs +
+                             outParamNum);
+  // numPrependedOutputs: Create placeholder
+  outputs[0] = builder.create<MOGG::CreateReadyChainOp>(
+      getLoc(), TypeRange{newKernel->getResult(0).getType()});
+  // numInplaceOutputs: Add intrinsic to map to mgp for specific types
   for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
     MOGG::ToKGENOp toKgenOp = outIdxToKgenTensorOp[inPlaceIdx];
-    Value mgpOutput;
     Type resultTy = inPlaceMGPOutputsTypes[idx];
     if (isa<MGP::OpaqueType>(resultTy)) {
-      mgpOutput = builder.create<MOGG::ToMGPFromOpaqueOp>(
-          getLoc(), TypeRange{resultTy}, toKgenOp->getResults());
+      outputs[idx + numPrependedOutputs] =
+          builder.create<MOGG::ToMGPFromOpaqueOp>(getLoc(), TypeRange{resultTy},
+                                                  toKgenOp->getResults());
     } else {
-      mgpOutput = builder.create<MOGG::ToMGPFromTensorOp>(
-          getLoc(), TypeRange{resultTy}, toKgenOp->getResults());
+      outputs[idx + numPrependedOutputs] =
+          builder.create<MOGG::ToMGPFromTensorOp>(getLoc(), TypeRange{resultTy},
+                                                  toKgenOp->getResults());
     }
-    outputs[idx] = mgpOutput;
-    innderOutputValToOutIdx[mgpOutput] = idx + 1;
   }
-
-  for (const auto &[name, idx] : outParamNameToIdx) {
-    outputs[idx + numInplaceOutputs] = paramToDim[name];
-    innderOutputValToOutIdx[paramToDim[name]] = idx + numInplaceOutputs + 1;
-  }
+  // outParamNum: Add all the params from stringMap paramToDim so do lookup
+  for (const auto &[name, idx] : outParamNameToIdx)
+    outputs[idx + numPrependedOutputs + numInplaceOutputs] = paramToDim[name];
+  // Construct a mogg.output that newKernel spec
   builder.create<MOGG::OutputOp>(getLoc(), ValueRange{outputs});
 
   // Each of the parameter outputs now maps onto a concrete dimension value.
@@ -733,19 +730,18 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
                                 numInplaceOutputs))))
       return failure();
   }
-
   builder.setInsertionPointAfter(newKernel);
-  for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
-    Type resultTy = getResult(inPlaceIdx).getType();
-    if (isa<MO::OpaqueType>(resultTy)) {
-      // Opaque types don't need to be materialized to a tensor.
-      loweringState.emplaceExecuteLoweredValue(
-          getResult(inPlaceIdx),
-          newKernel.getResult(innderOutputValToOutIdx[outputs[idx]]));
+  for (unsigned int idx = 0; idx < numInplaceOutputs; ++idx) {
+    unsigned int resultIdx = idx + numPrependedOutputs;
+    Type resultTy = getResult(idx).getType();
+    if (!isa<MO::TensorType>(resultTy)) {
+      // Non-Tensor output types don't need to materialize a tensor or tie it to
+      // chains/specs
+      loweringState.emplaceExecuteLoweredValue(getResult(idx),
+                                               newKernel.getResult(resultIdx));
       continue;
     }
     auto tensorTy = cast<MO::TensorType>(resultTy);
-
     // Materialize the output tensor spec directly. This will automatically pick
     // up any of the output dimensions set by the kernel.
     FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
@@ -754,11 +750,9 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       return failure();
     TypedValue<MGP::TensorSpecType> &spec = *tensorSpecOr;
 
-    opLoweringState.createOutputTensor(
-        getResult(inPlaceIdx), newKernel.getResult(0),
-        newKernel.getResult(innderOutputValToOutIdx[outputs[idx]]), spec);
+    opLoweringState.createOutputTensor(getResult(idx), newKernel.getResult(0),
+                                       newKernel.getResult(resultIdx), spec);
   }
-
   opLoweringState.createOutputs(newKernel->getResult(0), loweredOutputsStorage);
 
   // Clean up useless ops.

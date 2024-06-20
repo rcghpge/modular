@@ -778,6 +778,26 @@ def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders"> {
   }];
 }
 
+def MOGG_CreateReadyChainOp : MOGG_Op<"create_ready_chain", [Pure]> {
+  let results = (outs AnyType:$result);
+
+  let summary = "Represents a chain output placeholder";
+  let description = [{
+    This is to help resolve any chain dependencies for data-dependent operations
+    and help elide chains during fusion when lowering down to a compiled region. 
+
+    This is a special-case to the output placeholders because we remove this much lower 
+    in the kgen pipeline compared to the output_placeholders
+
+    Example:
+    ```mlir
+      %out = mogg.create_ready_chain : !mo.tensor<[2, 3], f32>
+    ```
+    This provides a `%out` SSA value which corresponds to the chain output that kernels
+    want to output
+  }];
+}
+
 def MOGG_TensorCopyOp : MOGG_Op<"tensor_copy"> {
   let summary = "Represents the copy intrinsic whose counterpart is in kgen library";
   let description = [{
