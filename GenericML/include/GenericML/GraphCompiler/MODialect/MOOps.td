@@ -1265,6 +1265,7 @@ def MO_SelectOp : MO_TensorOp<"select", [
 
 def MO_SliceOp : MO_TensorOp<"slice", [
   MO_DefaultParameterization,
+  DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Slice operation";

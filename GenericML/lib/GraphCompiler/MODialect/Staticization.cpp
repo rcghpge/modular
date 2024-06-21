@@ -322,6 +322,46 @@ ErrorOr<TypedAttr> SelectOp::tryStaticize(ArrayRef<TypedAttr> inputs,
   });
 }
 
+ErrorOr<TypedAttr> SliceOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                         ParamExprBuilder &b) {
+  // Make sure input is a list of symbolic values.
+  auto inputElems = dyn_cast<ShapeAttr>(inputs[0]);
+  if (!inputElems)
+    return TypedAttr{};
+
+  // Make sure each bound is a constant vector of 1 integer.
+  std::optional<SmallVector<int64_t>> startOr =
+      tryGetConstantIntVector(inputs[1]);
+  std::optional<SmallVector<int64_t>> stopOr =
+      tryGetConstantIntVector(inputs[2]);
+  std::optional<SmallVector<int64_t>> stepOr =
+      tryGetConstantIntVector(inputs[3]);
+  if (!(startOr.has_value() && startOr->size() == 1 && stopOr.has_value() &&
+        stopOr->size() == 1 && stepOr.has_value() && stepOr->size() == 1))
+    return TypedAttr{};
+
+  // Only support step = 1 for now.
+  if (stepOr->front() != 1)
+    return TypedAttr{};
+
+  // Normalize and validate start/stop values.
+  int64_t inputSize = inputElems.getSize();
+  int64_t normalizedStart = clampAxis(startOr->front(), inputSize);
+  int64_t normalizedStop = clampAxis(stopOr->front(), inputSize);
+  if (normalizedStop < normalizedStart) {
+    std::stringstream ss;
+    ss << "[slice] clamped stop (" << normalizedStop
+       << ") cannot be smaller than clamped start (" << normalizedStart << ")";
+    return Error(ss.str());
+  }
+
+  // Do the actual slice and return the result.
+  ArrayRef<TypedAttr> slicedInputElems = inputElems.getValues().slice(
+      normalizedStart, normalizedStop - normalizedStart);
+  auto resultAttr = b.getShapeAttr(slicedInputElems);
+  return resultAttr;
+}
+
 ErrorOr<TypedAttr> SqueezeShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                                 ParamExprBuilder &b) {
   // Make sure inputs aren't too dynamic.
