@@ -1,13 +1,15 @@
-load("@pybind11_bazel//:build_defs.bzl", "pybind_library")
-load("//bazel:api.bzl", "driver_option_tablegen", "modular_cc_library", "td_library")
+load(
+    "//bazel:api.bzl",
+    "driver_option_tablegen",
+    "modular_cc_library",
+    "modular_pybind_library",
+    "td_library",
+)
 
-pybind_library(
+modular_pybind_library(
     name = "ModularFrameworkPython",
     srcs = glob(["lib/EngineAPI/**/*.cpp"]),
     hdrs = glob(["include/SDK/EngineAPI/**/*.h"]),
-    copts = ["-frtti"],
-    strip_include_prefix = "include",
-    visibility = ["//visibility:public"],
     deps = [
         "//GenericML:modular-framework-common",
         "//PyTorch:modular-framework-torch-ext",
