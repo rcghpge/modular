@@ -4,7 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 from .device import Device, DeviceMemory, DeviceTensor
-from .tensor_slice import TensorSlice
+from .tensor_slice import TensorSlice, UnsafeTensorSlice
 from utils import StaticTuple
 from tensor import TensorSpec
 
@@ -156,18 +156,36 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
         var offset = _dot_prod(indices, self._strides)
         return self._ptr[offset]
 
+    fn _canonicalize_slices(
+        self, slices: VariadicList[Slice]
+    ) -> StaticTuple[Slice, rank]:
+        var slice_tuple = StaticTuple[Slice, rank]()
+        for i in range(len(slices)):
+            slice_tuple[i] = slices[i]
+            slice_tuple[i].start = (slice_tuple[i].start or 0).value()
+            slice_tuple[i].end = (slice_tuple[i].end or self._spec[i]).value()
+        return slice_tuple
+
     @always_inline
     fn __getitem__(
         ref [_]self: Self, *slices: Slice
     ) raises -> TensorSlice[type, rank, __lifetime_of(self)]:
         if len(slices) != rank:
             raise "mismatch between slice count and rank"
-        var slice_tuple = StaticTuple[Slice, rank]()
-        for i in range(len(slices)):
-            slice_tuple[i] = slices[i]
-            slice_tuple[i].start = (slice_tuple[i].start or 0).value()
-            slice_tuple[i].end = (slice_tuple[i].end or self._spec[i]).value()
-        return TensorSlice(self, slice_tuple)
+        return TensorSlice(self, self._canonicalize_slices(slices))
+
+    @always_inline
+    fn unsafe_slice(
+        self,
+        *slices: Slice,
+    ) raises -> UnsafeTensorSlice[type, rank]:
+        if len(slices) != rank:
+            raise "mismatch between slice count and rank"
+        return UnsafeTensorSlice[type, rank](
+            self.unsafe_ptr(),
+            self._canonicalize_slices(slices),
+            self._spec,
+        )
 
     @always_inline
     fn load[*, width: Int = 1](self, *indices: Int) -> SIMD[type, width]:

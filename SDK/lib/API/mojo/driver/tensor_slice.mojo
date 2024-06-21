@@ -120,6 +120,16 @@ struct UnsafeTensorSlice[
 
         self = Self(ptr, slice_spec, start_offset, strides)
 
+    fn __init__(
+        inout self,
+        ptr: DTypePointer[type],
+        shape: StaticIntTuple[rank],
+    ):
+        self._ptr = ptr
+        self._spec = StaticTensorSpec[type, rank](shape)
+        self._strides = _row_major_strides(self._spec)
+        self._start_offset = 0
+
     fn get_static_spec(self) -> StaticTensorSpec[type, rank]:
         """Gets the static spec of the slice.
 
@@ -127,6 +137,19 @@ struct UnsafeTensorSlice[
             Static tensor spec of slice.
         """
         return self._spec
+
+    @always_inline
+    fn __getitem__(inout self, indices: StaticIntTuple[rank]) -> Scalar[type]:
+        """Gets the value at the specified indices.
+
+        Args:
+          indices: The indices of the value to retrieve.
+
+        Returns:
+          The value at the specified indices.
+        """
+        var offset = self._start_offset + _dot_prod(indices, self._strides)
+        return self._ptr[offset]
 
     @always_inline
     fn __getitem__(inout self, *indices: Int) -> Scalar[type]:
@@ -141,6 +164,32 @@ struct UnsafeTensorSlice[
         debug_assert(
             len(indices) == rank, "mismatch between requested index and rank"
         )
-        var coords = StaticIntTuple[rank](indices)
-        var offset = self._start_offset + _dot_prod(coords, self._strides)
-        return self._ptr[offset]
+        return self[indices]
+
+    @always_inline
+    fn __setitem__(inout self, *indices: Int, val: Scalar[type]):
+        """Stores the value at the specified indices.
+
+        Args:
+          indices: The indices of the value to store.
+          val: The value to store.
+
+        """
+        debug_assert(
+            len(indices) == rank, "mismatch between requested index and rank"
+        )
+        self[indices] = val
+
+    @always_inline
+    fn __setitem__(
+        inout self, indices: StaticIntTuple[rank], val: Scalar[type]
+    ):
+        """Stores the value at the specified indices.
+
+        Args:
+          indices: The indices of the value to store.
+          val: The value to store.
+
+        """
+        var offset = self._start_offset + _dot_prod(indices, self._strides)
+        self._ptr[offset] = val
