@@ -69,12 +69,6 @@ struct StaticTensorSpec[type: DType, rank: Int]:
         for i in range(rank):
             self.shape[i] = spec[i]
 
-    fn get_rank(self) -> Int:
-        return rank
-
-    fn dtype(self) -> DType:
-        return type
-
     fn get_tensor_spec(self) -> TensorSpec:
         var shapes = List[Int]()
         shapes.reserve(rank)
@@ -86,7 +80,15 @@ struct StaticTensorSpec[type: DType, rank: Int]:
         return self.shape[idx]
 
 
-struct Tensor[type: DType, rank: Int](CollectionElement):
+trait TensorLike:
+    fn spec(self) -> TensorSpec:
+        ...
+
+    fn unsafe_ptr[type: DType](self) -> DTypePointer[type]:
+        pass
+
+
+struct Tensor[type: DType, rank: Int](CollectionElement, TensorLike):
     var _ptr: DTypePointer[type]
     var _spec: StaticTensorSpec[type, rank]
     var _strides: StaticIntTuple[rank]
@@ -129,13 +131,7 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
         self.name = existing.name
         self._device_memory_impl_ptr = existing._device_memory_impl_ptr
 
-    fn get_rank(self) -> Int:
-        return self._spec.get_rank()
-
-    fn get_dtype(self) -> DType:
-        return self._spec.dtype()
-
-    fn get_tensor_spec(self) -> TensorSpec:
+    fn spec(self) -> TensorSpec:
         return self._spec.get_tensor_spec()
 
     @always_inline
@@ -251,9 +247,6 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
     fn _get_device(self) -> Device:
         return self._device
 
-    fn to_device_memory(owned self) raises -> DeviceMemory:
-        return DeviceMemory(self^)
-
     fn to_device_tensor(owned self) raises -> DeviceTensor:
         var spec = self._spec.get_tensor_spec()
         return DeviceTensor(DeviceMemory(self^), spec)
@@ -265,10 +258,10 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
             self._device,
         )
 
-    fn unsafe_ptr(self) -> DTypePointer[type]:
+    fn unsafe_ptr[__type: DType = type](self) -> DTypePointer[__type]:
         """Returns a pointer to the underlying memory.
 
         Note: The caller is responsible for ensuring that the returned pointer
         is not used after it's owner is last used.
         """
-        return self._ptr
+        return rebind[DTypePointer[__type]](self._ptr)

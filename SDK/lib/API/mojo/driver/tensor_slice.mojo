@@ -5,6 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 from .tensor import (
     Tensor,
+    TensorLike,
     StaticTensorSpec,
     _dot_prod,
     _slice_to_tuple,
@@ -12,6 +13,7 @@ from .tensor import (
 )
 from utils import StaticTuple
 from math import ceil
+from tensor import TensorSpec
 
 
 @value
@@ -21,7 +23,7 @@ struct TensorSlice[
     type: DType,
     rank: Int,
     lifetime: AnyLifetime[is_mutable].type,
-]:
+](TensorLike):
     alias _ref_type = Reference[Tensor[type, rank], lifetime]
     var _ref: Self._ref_type
     var _unsafe_slice: UnsafeTensorSlice[type, rank]
@@ -36,13 +38,19 @@ struct TensorSlice[
             ),
         )
 
-    fn get_static_spec(self) -> StaticTensorSpec[type, rank]:
+    fn static_spec(self) -> StaticTensorSpec[type, rank]:
         """Gets the static spec of the slice.
 
         Returns:
             Static tensor spec of slice.
         """
         return self._unsafe_slice.get_static_spec()
+
+    fn spec(self) -> TensorSpec:
+        return self._unsafe_slice._spec.get_tensor_spec()
+
+    fn unsafe_ptr[__type: DType = type](self) -> DTypePointer[__type]:
+        return rebind[DTypePointer[__type]](self._unsafe_slice._ptr)
 
     @always_inline
     fn __getitem__(inout self, *indices: Int) -> ref [lifetime] Scalar[type]:
@@ -71,7 +79,7 @@ struct TensorSlice[
 struct UnsafeTensorSlice[
     type: DType,
     rank: Int,
-]:
+](TensorLike):
     """UnsafeTensorSlice is like TensorSlice but it contains no reference to
     the original Tensor. Therefore, the user must take care to keep the ptr alive
     until UnsafeTensorSlice's last use.
@@ -193,3 +201,9 @@ struct UnsafeTensorSlice[
         """
         var offset = self._start_offset + _dot_prod(indices, self._strides)
         self._ptr[offset] = val
+
+    fn spec(self) -> TensorSpec:
+        return self._spec.get_tensor_spec()
+
+    fn unsafe_ptr[__type: DType = type](self) -> DTypePointer[__type]:
+        return rebind[DTypePointer[__type]](self._ptr)

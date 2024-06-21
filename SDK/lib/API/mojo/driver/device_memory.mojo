@@ -127,7 +127,7 @@ struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
         self._device = tensor._get_device()
         self.lib = self._device.lib
         self.name = tensor.name
-        self.num_bytes = tensor.get_tensor_spec().bytecount()
+        self.num_bytes = tensor.spec().bytecount()
         self._impl_ptr = tensor._device_memory_impl_ptr
         tensor._device_memory_impl_ptr = UnsafePointer[NoneType]()
 
