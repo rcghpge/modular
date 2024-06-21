@@ -78,6 +78,14 @@ modular_cc_library(
     ],
 )
 
+rpath_shim(
+    name = "rpaths",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//ModularFramework/tools/mof",
+    ],
+)
+
 modular_cc_library(
     name = "CommonDriver",
     srcs = glob(["lib/Driver/CommonDriver/*.cpp"]),
@@ -87,6 +95,7 @@ modular_cc_library(
         ":API.headers",
         ":MojoLLDBPublic.headers",
         ":Support",
+        ":rpaths",
         "//Support:Base",
         "//third-party/mlperf-loadgen",
     ],
@@ -1433,13 +1442,5 @@ modular_shared_library(
         ":rpaths",
         "//CUDASupport",
         "//Support:Init",
-    ],
-)
-
-rpath_shim(
-    name = "rpaths",
-    visibility = ["//visibility:private"],
-    deps = [
-        "//ModularFramework/tools/mof",
     ],
 )
