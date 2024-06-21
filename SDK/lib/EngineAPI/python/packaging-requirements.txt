@@ -1,0 +1,9 @@
+boto3
+# Build temporarily locked to 1.0.3 as workaround for #33351.
+build==1.0.3
+# pillow is required to get the torch tests configured correctly
+# in the wheel build.
+pillow>=10.0.0
+pytest
+tomli
+wheel
