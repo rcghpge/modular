@@ -77,6 +77,5 @@ mo.graph @dontFuseCompound<N, M>(%arg0 : !mo.tensor<[M], ui32>, %arg1 : !mo.tens
 }
 
 // CHECK-LABEL: mo.graph @dontFuseCompound<N, M>
-// CHECK-NEXT: mo.rebind
-// CHECK-NEXT: %[[RESHAPE:.*]] = mo.static.reshape(%{{.*}}) : !mo.tensor<[add(N, 2)], ui32> -> !mo.tensor<[N], ui32>
-// CHECK-NEXT: mogg.kernel (%[[RESHAPE]], %arg1) : (%{{.*}}: !mo.tensor<[N], ui32>, %{{.*}}: !mo.tensor<[N], ui32>) -> !mo.tensor<[N], ui32>{
+// CHECK-NEXT: [[REBIND:%.*]] = mo.rebind
+// CHECK-NEXT: mogg.kernel ([[REBIND]], %arg1) : (%{{.*}}: !mo.tensor<[N], ui32>, %{{.*}}: !mo.tensor<[N], ui32>) -> !mo.tensor<[N], ui32>{
