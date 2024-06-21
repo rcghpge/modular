@@ -23,7 +23,7 @@ DeviceRefAttr MO::getDeviceOrDefault(MOHasDeviceInterface op) {
     return device;
 
   // Fallback to the 'host' device.
-  return getHostDeviceAny(op);
+  return getHostDevice(op);
 }
 
 DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {
@@ -31,7 +31,7 @@ DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {
     return getDeviceOrDefault(hasDeviceOp);
 
   // Fallback to the 'host' device.
-  return getHostDeviceAny(op);
+  return getHostDevice(op);
 }
 
 DeviceRefAttr MO::getDeviceOrDefault(GraphOp graphOp, TensorType type) {
@@ -52,24 +52,12 @@ DeviceRefAttr MO::getDeviceOrDefaultAny(GraphOp graphOp, Type type) {
   return getHostDevice(graphOp);
 }
 
-DeviceRefAttr MO::getHostDevice(GraphOp graphOp) {
-  // Check the device specs annotation.
-  DeviceSpecCollectionAttr deviceSpecs = graphOp.getDeviceSpecs();
-  if (deviceSpecs)
-    return deviceSpecs.getHost();
-
-  // Fall back to 'cpu'.
-  return DeviceRefAttr::getDefault(graphOp.getContext());
-}
-
-DeviceRefAttr MO::getHostDeviceAny(Operation *op) {
-  auto graphOp = op->getParentOfType<GraphOp>();
-  ASSERT_STREAM(graphOp, << "operation is not contained within a MO::GraphOp");
-  return getHostDevice(graphOp);
+DeviceRefAttr MO::getHostDevice(Operation *op) {
+  return DeviceRefAttr::getDefault(op->getContext());
 }
 
 bool MO::isOnHost(Operation *op) {
-  return getDeviceOrDefaultAny(op) == getHostDeviceAny(op);
+  return getDeviceOrDefaultAny(op) == getHostDevice(op);
 }
 
 bool MO::isOnHost(GraphOp graphOp, Type type) {

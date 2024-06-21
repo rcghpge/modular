@@ -259,7 +259,7 @@ struct MatmulConstBPattern
           op, "matched ops have inconsistent devices");
     }
 
-    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDeviceAny(op))) {
+    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDevice(op))) {
       // TODO(#25114): Support outside of host.
       return rewriter.notifyMatchFailure(
           op, "packing is only supported on the host device");
@@ -462,7 +462,7 @@ struct ConcatZeroAxisPattern
       }
     }
 
-    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDeviceAny(concat))) {
+    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDevice(concat))) {
       // TODO(#25626): Support outside of host.
       return rewriter.notifyMatchFailure(
           concat, "concat optimizations only supported on host");
@@ -504,7 +504,7 @@ struct ConvConstFilterPattern
           op, "currently only pack constant num_groups");
     }
 
-    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDeviceAny(op))) {
+    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDevice(op))) {
       // TODO(#25114): Support outside of host.
       return rewriter.notifyMatchFailure(
           op, "packing is only supported on the host device");
@@ -636,7 +636,7 @@ struct ConvTransposeConstFilterPattern
     if (!dependsOnConstantsOnly<MO::ConstantOp>(filter.getDefiningOp()))
       return rewriter.notifyMatchFailure(op, "filter isn't constant");
 
-    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDeviceAny(op))) {
+    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDevice(op))) {
       // TODO(#25114): Support outside of host.
       return rewriter.notifyMatchFailure(
           op, "packing is only supported on the host device");
@@ -710,7 +710,7 @@ struct SplitZeroAxisPattern
     if (op.getInput().getDefiningOp<MO::ConstantOp>())
       return rewriter.notifyMatchFailure(op, "input is a constant");
 
-    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDeviceAny(op))) {
+    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDevice(op))) {
       // TODO(#25626): Support outside of host.
       return rewriter.notifyMatchFailure(
           op, "split optimizations only supported on host");
@@ -790,7 +790,7 @@ struct LayerNormPattern
     }
 
     // TODO(#27337): remove when gpu kernel exists
-    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDeviceAny(op))) {
+    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDevice(op))) {
       return rewriter.notifyMatchFailure(op,
                                          "Layer norm only implemented on cpu");
     }
@@ -2232,7 +2232,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     int64_t indexNormScalar =
         llvm::find(customOpInputs, normScalar) - customOpInputs.begin();
     auto normScalarDevice =
-        MO::DeviceIndexAttr::get(indexNormScalar, getHostDeviceAny(rootOp));
+        MO::DeviceIndexAttr::get(indexNormScalar, getHostDevice(rootOp));
 
     auto customOp = rewriter.create<CustomOp>(
         rootOp.getLoc(), TypeRange{rootOp.getType().cloneWith(mhaOutputShape)},

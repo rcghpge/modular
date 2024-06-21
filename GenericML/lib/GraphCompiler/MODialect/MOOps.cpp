@@ -1256,7 +1256,7 @@ LogicalResult ConcatOp::canonicalize(ConcatOp op, PatternRewriter &rewriter) {
 
 DeviceRefAttr ConcatOp::getOperandDevice(size_t index) {
   return index == getAxisMutable().getOperandNumber()
-             ? MO::getHostDeviceAny(getOperation())
+             ? MO::getHostDevice(getOperation())
              : nullptr;
 }
 
@@ -1268,7 +1268,7 @@ DeviceRefAttr LinAlg::BandPartOp::getOperandDevice(size_t index) {
   return (index == getNumLowerMutable().getOperandNumber() ||
           index == getNumUpperMutable().getOperandNumber() ||
           index == getExcludeMutable().getOperandNumber())
-             ? MO::getHostDeviceAny(getOperation())
+             ? MO::getHostDevice(getOperation())
              : nullptr;
 }
 
@@ -1456,7 +1456,7 @@ LogicalResult GatherOp::verify() {
 
 DeviceRefAttr GatherOp::getOperandDevice(size_t index) {
   return index == getAxisMutable().getOperandNumber()
-             ? MO::getHostDeviceAny(getOperation())
+             ? MO::getHostDevice(getOperation())
              : nullptr;
 }
 
@@ -2187,7 +2187,7 @@ void MeanOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 
 DeviceRefAttr MeanOp::getOperandDevice(size_t index) {
   return index == getAxisMutable().getOperandNumber()
-             ? MO::getHostDeviceAny(getOperation())
+             ? MO::getHostDevice(getOperation())
              : nullptr;
 }
 
@@ -2236,7 +2236,7 @@ void ReduceMulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 
 DeviceRefAttr ReduceMulOp::getOperandDevice(size_t index) {
   return index == getAxisMutable().getOperandNumber()
-             ? MO::getHostDeviceAny(getOperation())
+             ? MO::getHostDevice(getOperation())
              : nullptr;
 }
 
@@ -2279,7 +2279,7 @@ void ReduceAddOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 
 DeviceRefAttr ReduceAddOp::getOperandDevice(size_t index) {
   return index == getAxisMutable().getOperandNumber()
-             ? MO::getHostDeviceAny(getOperation())
+             ? MO::getHostDevice(getOperation())
              : nullptr;
 }
 
@@ -2305,7 +2305,7 @@ void ReduceMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 
 DeviceRefAttr ReduceMinOp::getOperandDevice(size_t index) {
   return index == getAxisMutable().getOperandNumber()
-             ? MO::getHostDeviceAny(getOperation())
+             ? MO::getHostDevice(getOperation())
              : nullptr;
 }
 
@@ -2330,7 +2330,7 @@ void ReduceMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 
 DeviceRefAttr ReduceMaxOp::getOperandDevice(size_t index) {
   return index == getAxisMutable().getOperandNumber()
-             ? MO::getHostDeviceAny(getOperation())
+             ? MO::getHostDevice(getOperation())
              : nullptr;
 }
 
@@ -2894,7 +2894,7 @@ DeviceRefAttr SliceOp::getOperandDevice(size_t index) {
   return (index == getStartMutable().getOperandNumber() ||
           index == getStopMutable().getOperandNumber() ||
           index == getStepMutable().getOperandNumber())
-             ? MO::getHostDeviceAny(getOperation())
+             ? MO::getHostDevice(getOperation())
              : nullptr;
 }
 
@@ -3018,7 +3018,7 @@ LogicalResult TransposeOp::verify() {
 
 DeviceRefAttr TransposeOp::getOperandDevice(size_t index) {
   return index == getPermMutable().getOperandNumber()
-             ? MO::getHostDeviceAny(getOperation())
+             ? MO::getHostDevice(getOperation())
              : nullptr;
 }
 

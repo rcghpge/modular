@@ -202,7 +202,12 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
   }
-  pm.addPass(MO::createAssignDevicesPass());
+
+  MO::AssignDevicesPassOptions assignDevicesPassOpt;
+  assignDevicesPassOpt.targetDevice = opts.defaultDeviceLabel;
+  if (assignDevicesPassOpt.targetDevice == "cpu")
+    assignDevicesPassOpt.targetDevice = "";
+  pm.addPass(MO::createAssignDevicesPass(assignDevicesPassOpt));
 
   // If jiting simplify broadcast patterns to a single op that we can jit.
   pm.addPass(mlir::createCanonicalizerPass());

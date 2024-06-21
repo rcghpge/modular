@@ -31,11 +31,7 @@ DeviceRefAttr getDeviceOrDefault(GraphOp graphOp, TensorType type);
 /// As above, but for any type.
 DeviceRefAttr getDeviceOrDefaultAny(GraphOp graphOp, Type type);
 
-/// Returns the #M.device_ref for the 'host' device of graphOp from its device
-/// specs annotation, or <"cpu", 0> if the graph has no such annotation.
-DeviceRefAttr getHostDevice(GraphOp graphOp);
-
-// (See also getHostDeviceAny, declared in MOOps.h so can be used in MOOps.td)
+// (See also getHostDevice, declared in MOOps.h so can be used in MOOps.td)
 
 /// Returns true if op should execute on the 'host'.
 bool isOnHost(Operation *op);

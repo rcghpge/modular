@@ -317,13 +317,12 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
     The rules are:
      - Ops are processed in reverse dataflow order, ie from outputs to inputs.
      - Unless already annotated, graph input and output tensors are annotated
-       to be stored on the graph's host device.
+       to be stored on the host device.
      - Unless already annotated, an operation is annotated to execute on the
        device found by the following search:
          - the first result or operand tensor with a device annotation;
          - the annotation on the overall graph op;
-         - the 'host' device given by the graph op's
-           `#M.device_spec_collection' attribute.
+         - the 'host' device
      - Unless already annotated, the operand and result tensors of an operation
        are annotated to match the operation.
      - Conflicts are resolved by inserting a mo.transfer op.
@@ -332,9 +331,6 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
 
     Note that this pass has no understanding of the devices themselves, and
     simply works on uninterpreted `#M.device_ref`s.
-
-    The pass is a no-op if the graph op has no `#M.device_spec_collection`
-    attribute, or the collection contains just the 'host' device.
   }];
 
   let options = [
@@ -343,6 +339,10 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
            "'small'. Ops which take and return only 'small' tensors are "
            "themselves considered 'small', and need not be placed on the "
            "overall graph's default device.">,
+    Option<"targetDevice", "target-device",  "std::string", "\"\"",
+           "If non-empty, assign devices using this device">,
+    Option<"copyFromHost", "copy-from-host", "bool", "true",
+           "If true make inputs / outputs host tensors with copies inserted.">,
   ];
 }
 
