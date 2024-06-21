@@ -7,7 +7,7 @@
 # RUN: %mojo %s
 # REQUIRES: manual
 
-from tensor import TensorSpec
+from tensor import TensorSpec, Tensor, TensorShape
 
 from max.engine import InferenceSession, InputSpec
 from max.serve.kserve import FileModel, GRPCServer, MuxInferenceService
@@ -21,7 +21,9 @@ from max.serve.kserve import GRPCClient
 from max.graph._testing import assert_tensors_almost_equal
 
 
-def test_standalone_server_client() -> None:
+def test_standalone_server_client[
+    MODEL_NAME: StringLiteral, MODEL_PATH: StringLiteral
+]() -> None:
     var start_time = now()
 
     @parameter
@@ -30,6 +32,7 @@ def test_standalone_server_client() -> None:
 
     var server_started = Atomic[DType.int64](0)
     var client_completed = Atomic[DType.int64](0)
+    var timeout_error = Atomic[DType.int64](0)
     var server_session = InferenceSession()
     alias server_address = "0.0.0.0:8000"
     var server = GRPCServer.create(server_address, server_session)
@@ -39,7 +42,17 @@ def test_standalone_server_client() -> None:
     async fn server_impl(name: StringRef, path: StringRef) -> None:
         # Load models during service creation:
         try:
-            var models = List(FileModel(name, "0", path, None))
+            var models = List(
+                FileModel(
+                    name,
+                    "0",
+                    path,
+                    List(
+                        InputSpec(TensorSpec(DType.float64, 1, 1)),
+                        InputSpec(TensorSpec(DType.float64, 1, 1)),
+                    ),
+                )
+            )
             var server_service = MuxInferenceService(models, server_session)
             print(
                 "[" + elapsed() + "]Listening on port " + server_address + "!"
@@ -48,6 +61,7 @@ def test_standalone_server_client() -> None:
             server.serve(server_service)
         except e:
             print("Server error : ", e)
+            _ = server_started.fetch_add(1)
 
     @parameter
     async fn client(name: StringRef) -> None:
@@ -88,21 +102,38 @@ def test_standalone_server_client() -> None:
         except e:
             print("Client error : ", e)
 
-    var model_name = "Add"
-    var model_path = "SDK/test/API/serve/models/add.onnx"
+    @parameter
+    async fn timeout_fn() -> None:
+        sleep(60)  # Sleep for 60s
+        # If the client didn't complete, it could be because the server didn't
+        # come up or the client was stuck. Either way, it is a timeout.
+        if not client_completed.load():
+            _ = timeout_error.fetch_add(1)
+        # we need these to be set so that we can have the main thread move
+        # along and terminate the tasks
+        _ = server_started.fetch_add(1)
+        _ = client_completed.fetch_add(1)
+
     with Runtime() as rt:
-        var tg = TaskGroup[__lifetime_of(model_name, model_path)](rt)
-        var server_task = tg.create_task(server_impl(model_name, model_path))
-        var client_task = tg.create_task(client(model_name))
+        var tg = TaskGroup[__lifetime_of(server)](rt)
+        var server_task = tg.create_task(server_impl(MODEL_NAME, MODEL_PATH))
+        var client_task = tg.create_task(client(MODEL_NAME))
+        var timeout_task = tg.create_task(timeout_fn())
         while not client_completed.load():
             sleep(1)
         server.signal_stop()
         tg.wait()
         _ = tg^
+        if timeout_error.load():
+            print("Timeout error!")
         print("[" + elapsed() + "]Done!")
+        _ = server_task
+        _ = client_task
+        _ = timeout_task
         _ = server^
         _ = rt
 
 
 def main():
-    test_standalone_server_client()
+    test_standalone_server_client["Add", "SDK/test/API/serve/models/add.onnx"]()
+    test_standalone_server_client["Add", "SDK/test/API/serve/models/add.pt"]()
