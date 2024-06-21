@@ -43,12 +43,15 @@ static TypedAttr tryStaticizeReshapeLikeOp(TensorType inputTy,
   TypedAttr inputAttr = inputs[0];
 
   // Handle [1] -> [] case.
-  if (inputRank == 1 && isConstantOne(inputShape[0]) && outputRank == 0)
-    return inputAttr;
+  if (inputRank == 1 && isConstantOne(inputShape[0]) && outputRank == 0) {
+    if (auto inputElems = dyn_cast<ShapeAttr>(inputAttr))
+      return inputElems[0];
 
-  // Handle [] -> [1] case.
-  if (inputRank == 0 && outputRank == 1 && isConstantOne(outputShape[0]))
+  } else if (inputRank == 0 && outputRank == 1 &&
+             isConstantOne(outputShape[0])) {
+    // Handle [] -> [1] case.
     return b.getShapeAttr({inputAttr});
+  }
 
   return TypedAttr{};
 }
