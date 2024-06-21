@@ -10,24 +10,45 @@ from tensor import TensorSpec
 
 
 @always_inline
-fn _compute_linear_offset[
-    type: DType, rank: Int
-](spec: StaticTensorSpec[type, rank], indices: StaticIntTuple[rank]) -> Int:
-    """Computes the linear offset into the tensor from the indices provided.
-
-    Args:
-        spec: The spec of the tensor being indexed into.
-        indices: The indices to index against.
-
-    Returns:
-        The linearized index into the tensor data.
-    """
-    var result = indices[0]
+fn _dot_prod[
+    rank: Int
+](x: StaticIntTuple[rank], y: StaticIntTuple[rank]) -> Int:
+    var offset = 0
 
     @parameter
-    for i in range(rank - 1):
-        result = spec[i + 1] * result + indices[i + 1]
-    return result
+    for i in range(rank):
+        offset += x[i] * y[i]
+    return offset
+
+
+@always_inline
+fn _slice_to_tuple[
+    func: fn (Slice) capturing -> Int, rank: Int
+](slices: StaticTuple[Slice, rank]) -> StaticIntTuple[rank]:
+    """Takes a tuple of `Slice`s and returns a tuple of Ints.
+    `func` is used to extract the appropriate field (i.e. start, stop or end)
+    of the Slice.
+    """
+    var tuple = StaticIntTuple[rank]()
+
+    @parameter
+    for i in range(rank):
+        tuple[i] = func(slices[i])
+    return tuple
+
+
+@always_inline
+fn _row_major_strides[
+    type: DType, rank: Int
+](spec: StaticTensorSpec[type, rank]) -> StaticIntTuple[rank]:
+    var offset = 1
+    var strides = StaticIntTuple[rank]()
+
+    @parameter
+    for i in range(rank - 1, -1, -1):
+        strides[i] = offset
+        offset *= spec.shape[i]
+    return strides
 
 
 @value
@@ -68,6 +89,7 @@ struct StaticTensorSpec[type: DType, rank: Int]:
 struct Tensor[type: DType, rank: Int](CollectionElement):
     var _ptr: DTypePointer[type]
     var _spec: StaticTensorSpec[type, rank]
+    var _strides: StaticIntTuple[rank]
     var _device: Device
     var name: Optional[String]
 
@@ -81,6 +103,7 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
         self._device = device_tensor.device()
         self.name = device_tensor.name()
         self._spec = device_tensor.spec
+        self._strides = _row_major_strides(self._spec)
         self._ptr = device_tensor.unsafe_ptr().bitcast[type]()
         var tmp = device_tensor._storage^
         device_tensor._storage = DeviceMemory()
@@ -89,6 +112,7 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
     fn __moveinit__(inout self, owned existing: Self):
         self._ptr = existing._ptr
         self._spec = existing._spec^
+        self._strides = existing._strides
         self._device = existing._device^
         self.name = existing.name^
         self._device_memory_impl_ptr = existing._device_memory_impl_ptr
@@ -100,6 +124,7 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
         constrained[False, "__copyinit__ not supported on Tensor, MSTDL-467"]()
         self._ptr = existing._ptr
         self._spec = existing._spec
+        self._strides = existing._strides
         self._device = existing._device
         self.name = existing.name
         self._device_memory_impl_ptr = existing._device_memory_impl_ptr
@@ -128,7 +153,7 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
         debug_assert(
             len(indices) == rank, "mismatch between requested index and rank"
         )
-        var offset = _compute_linear_offset(self._spec, indices)
+        var offset = _dot_prod(indices, self._strides)
         return self._ptr[offset]
 
     @always_inline
@@ -161,7 +186,7 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
             len(indices) == rank, "mismatch between requested index and rank"
         )
         return SIMD[size=width].load(
-            self._ptr, _compute_linear_offset(self._spec, indices)
+            self._ptr, _dot_prod(indices, self._strides)
         )
 
     @always_inline
@@ -180,7 +205,7 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
           The SIMD value at the specified indices.
         """
         return SIMD[size=width].load(
-            self._ptr, _compute_linear_offset(self._spec, indices)
+            self._ptr, _dot_prod(indices, self._strides)
         )
 
     @always_inline
@@ -197,7 +222,7 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
           val: The SIMD value to store.
         """
         SIMD[size=width].store(
-            self._ptr, _compute_linear_offset(self._spec, indices), val
+            self._ptr, _dot_prod(indices, self._strides), val
         )
 
     fn _steal_ptr(owned self) -> DTypePointer[type]:

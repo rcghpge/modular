@@ -3,7 +3,13 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-from .tensor import Tensor, StaticTensorSpec, _compute_linear_offset
+from .tensor import (
+    Tensor,
+    StaticTensorSpec,
+    _dot_prod,
+    _slice_to_tuple,
+    _row_major_strides,
+)
 from utils import StaticTuple
 from math import ceil
 
@@ -51,9 +57,11 @@ struct TensorSlice[
         debug_assert(
             len(indices) == rank, "mismatch between requested index and rank"
         )
-        var adjusted_indices = self._unsafe_slice._get_adjusted_indices(indices)
-        var offset = _compute_linear_offset(
-            self._unsafe_slice._slicer_spec, adjusted_indices
+        # cannot use UnsafeTensorSlice.__getitem__ because this function returns
+        # a Reference
+        var coords = StaticIntTuple[rank](indices)
+        var offset = self._unsafe_slice._start_offset + _dot_prod(
+            coords, self._unsafe_slice._strides
         )
         return self._unsafe_slice._ptr[offset]
 
@@ -70,9 +78,9 @@ struct UnsafeTensorSlice[
     """
 
     var _ptr: DTypePointer[type]
-    var _slices: StaticTuple[Slice, rank]
-    var _slicer_spec: StaticTensorSpec[type, rank]
     var _spec: StaticTensorSpec[type, rank]
+    var _start_offset: Int
+    var _strides: StaticIntTuple[rank]
 
     fn __init__(
         inout self,
@@ -80,29 +88,37 @@ struct UnsafeTensorSlice[
         slices: StaticTuple[Slice, rank],
         slicer_spec: StaticTensorSpec[type, rank],
     ):
+        @parameter
+        fn start_fn(slice: Slice) -> Int:
+            return slice.start.value()
+
+        @parameter
+        fn stop_fn(slice: Slice) -> Int:
+            return slice.end.value()
+
+        @parameter
+        fn step_fn(slice: Slice) -> Int:
+            return slice.step
+
+        var start = _slice_to_tuple[start_fn](slices)
+        var stop = _slice_to_tuple[stop_fn](slices)
+        var step = _slice_to_tuple[step_fn](slices)
+
         var adjusted_shape = StaticIntTuple[rank]()
         for i in range(rank):
-            adjusted_shape[i] = int(
-                ceil(
-                    (slices[i].end.value() - slices[i].start.value())
-                    / slices[i].step
-                )
-            )
+            adjusted_shape[i] = int(ceil((stop[i] - start[i]) / step[i]))
         var slice_spec = StaticTensorSpec[type](adjusted_shape)
-        self = Self(ptr, slices, slicer_spec, slice_spec)
 
-    @always_inline
-    fn _get_adjusted_indices(
-        self, indices: StaticIntTuple[rank]
-    ) -> StaticIntTuple[rank]:
-        var adjusted = StaticIntTuple[rank]()
-        for i in range(len(indices)):
-            debug_assert(indices[i] < self._spec[i], "index out of bound")
-            adjusted[i] = (
-                indices[i] * self._slices[i].step
-                + self._slices[i].start.value()
-            )
-        return adjusted
+        var slicer_strides = _row_major_strides(slicer_spec)
+        var start_offset = _dot_prod(start, slicer_strides)
+
+        var strides = StaticIntTuple[rank]()
+
+        @parameter
+        for i in range(rank):
+            strides[i] = step[i] * slicer_strides[i]
+
+        self = Self(ptr, slice_spec, start_offset, strides)
 
     fn get_static_spec(self) -> StaticTensorSpec[type, rank]:
         """Gets the static spec of the slice.
@@ -125,6 +141,6 @@ struct UnsafeTensorSlice[
         debug_assert(
             len(indices) == rank, "mismatch between requested index and rank"
         )
-        var adjusted_indices = self._get_adjusted_indices(indices)
-        var offset = _compute_linear_offset(self._slicer_spec, adjusted_indices)
+        var coords = StaticIntTuple[rank](indices)
+        var offset = self._start_offset + _dot_prod(coords, self._strides)
         return self._ptr[offset]
