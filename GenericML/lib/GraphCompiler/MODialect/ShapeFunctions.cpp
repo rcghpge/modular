@@ -22,9 +22,7 @@ KGEN::ParamDeclareOp ParamBinding::toOp(Location loc, OpBuilder b) const {
 
 Var ParamExprBuilder::createVar(TypedAttr attr) {
   // No need to create a new binding if `attr` is simple.
-  TypedAttr varAttr = attr;
-  if (!isa<IntegerAttr, KGEN::ParamDeclRefAttr>(attr))
-    varAttr = this->createDeclToKgenAttr(attr, "var");
+  TypedAttr varAttr = wrapNonTrivialAttrWithDecl(attr, "var");
   return Var(varAttr, this);
 }
 
@@ -33,14 +31,18 @@ Var ParamExprBuilder::createVar(int64_t n) {
   return createVar(IntegerAttr::get(indexTy, n));
 }
 
-KGEN::ParamDeclRefAttr ParamExprBuilder::createDeclToKgenExpr(
-    KGEN::POC poc, ArrayRef<TypedAttr> operands, StringRef declPrefix) {
+TypedAttr ParamExprBuilder::createKgenExpr(KGEN::POC poc,
+                                           ArrayRef<TypedAttr> operands,
+                                           StringRef declPrefix) {
   auto exprAttr = KGEN::ParamOperatorAttr::get(poc, operands);
-  return createDeclToKgenAttr(exprAttr, declPrefix);
+  return wrapNonTrivialAttrWithDecl(exprAttr, declPrefix);
 };
 
-KGEN::ParamDeclRefAttr
-ParamExprBuilder::createDeclToKgenAttr(TypedAttr attr, StringRef declPrefix) {
+TypedAttr ParamExprBuilder::wrapNonTrivialAttrWithDecl(TypedAttr attr,
+                                                       StringRef declPrefix) {
+  if (isa<IntegerAttr, KGEN::ParamDeclRefAttr>(attr))
+    return attr;
+
   Type resTy = attr.getType();
   KGEN::ParamDeclAttr declAttr = graphOp.getNewParamOfType(declPrefix, resTy);
   auto declRefAttr = KGEN::ParamDeclRefAttr::get(declAttr);
@@ -52,19 +54,19 @@ Var ParamExprBuilder::createCond(const Var &condV, const Var &thenV,
                                  const Var &elseV) {
   auto exprAttr = KGEN::ParamOperatorAttr::get(
       KGEN::POC::Cond, {condV.getAttr(), thenV.getAttr(), elseV.getAttr()});
-  return createVar(createDeclToKgenAttr(exprAttr, "cond"));
+  return createVar(wrapNonTrivialAttrWithDecl(exprAttr, "cond"));
 };
 
 Var ParamExprBuilder::createMax(const Var &lhs, const Var &rhs) {
   auto exprAttr = KGEN::ParamOperatorAttr::get(KGEN::POC::Max, lhs.getAttr(),
                                                rhs.getAttr());
-  return createVar(createDeclToKgenAttr(exprAttr, "max"));
+  return createVar(wrapNonTrivialAttrWithDecl(exprAttr, "max"));
 }
 
 Var ParamExprBuilder::createMin(const Var &lhs, const Var &rhs) {
   auto exprAttr = KGEN::ParamOperatorAttr::get(KGEN::POC::Min, lhs.getAttr(),
                                                rhs.getAttr());
-  return createVar(createDeclToKgenAttr(exprAttr, "min"));
+  return createVar(wrapNonTrivialAttrWithDecl(exprAttr, "min"));
 }
 
 ShapeAttr ParamExprBuilder::getShapeAttr(ArrayRef<TypedAttr> dimAttrs) {
@@ -85,7 +87,7 @@ void ParamExprBuilder::createAssert(const Var &condVar, StringRef errorMsg) {
   SmallVector<TypedAttr> applyOperands{
       KGEN::MLIROpAttr::get(opNameAttr, dictAttr, signature), condAttr};
 
-  (void)createDeclToKgenExpr(KGEN::POC::Apply, applyOperands, "assert");
+  (void)createKgenExpr(KGEN::POC::Apply, applyOperands, "assert");
 };
 
 /// Try converting `attr` to a constant integer.

@@ -63,22 +63,25 @@ public:
   /// Var.
   Var createVar(int64_t n);
 
-  /// Create and tracks a `ParamBinding` which models the following op:
+  /// Create a parameter expression `<poc(operands...)>`, and if it doesn't get
+  /// folded into a trivial attribute (parameter reference or constant), create
+  /// and track a `ParamBinding` which models the following op:
+  ///
   ///   kgen.param.declare declPrefix... = <poc(operands...)>
   ///
-  /// Return a parameter decl ref to the newly created parameter
-  /// `declPrefix...`.
-  KGEN::ParamDeclRefAttr createDeclToKgenExpr(KGEN::POC poc,
-                                              ArrayRef<TypedAttr> operands,
-                                              StringRef declPrefix = "expr");
+  /// Return either the folded attribute or a parameter reference.
+  TypedAttr createKgenExpr(KGEN::POC poc, ArrayRef<TypedAttr> operands,
+                           StringRef declPrefix = "expr");
 
-  /// Create and tracks a `ParamBinding` which models the following op:
-  ///   kgen.param.declare declPrefix... = <attr>
+  /// If `attr` is a a trivial attribute (parameter reference or constant),
+  /// return it as is, otherwise create and track a `ParamBinding` which models
+  /// the following op:
   ///
-  /// Return a parameter decl ref to the newly created parameter
-  /// `declPrefix...`.
-  KGEN::ParamDeclRefAttr createDeclToKgenAttr(TypedAttr attr,
-                                              StringRef declPrefix = "expr");
+  ///   kgen.param.declare declPrefix... = <poc(operands...)>
+  ///
+  /// Return either `attr` itself or a parameter reference.
+  TypedAttr wrapNonTrivialAttrWithDecl(TypedAttr attr,
+                                       StringRef declPrefix = "expr");
 
   /// Creates and tracks a `ParamBinding` which represents an assert on the
   /// boolean parameter expression in `condVar`, with given error message.
@@ -159,7 +162,7 @@ public:
 
   // Allows one to write `v1 + v2`.
   Var operator+(const Var &other) const {
-    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+    TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::Add, attr, other.attr),
         "var_add");
     return Var(resDeclRef, builder);
@@ -170,7 +173,7 @@ public:
 
   // Allows one to write `v1 * v2`.
   Var operator*(const Var &other) const {
-    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+    TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, attr, other.attr),
         "var_mul");
     return Var(resDeclRef, builder);
@@ -178,7 +181,7 @@ public:
 
   // Allows one to write `v1 / v2`.
   Var operator/(const Var &other) const {
-    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+    TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::Div, attr, other.attr),
         "var_div");
     return Var(resDeclRef, builder);
@@ -186,14 +189,14 @@ public:
 
   // Allows one to write `v1 != v2`.
   Var operator!=(const Var &other) const {
-    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+    TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::getNE(attr, other.attr), "var_ne");
     return Var(resDeclRef, builder);
   }
 
   // Allows one to write `v1 == v2`.
   Var operator==(const Var &other) const {
-    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+    TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::EQ, {attr, other.attr}),
         "var_eq");
     return Var(resDeclRef, builder);
@@ -201,7 +204,7 @@ public:
 
   // Allows one to write `v1 < v2`.
   Var operator<(const Var &other) const {
-    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+    TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::LT, attr, other.attr),
         "var_lt");
     return Var(resDeclRef, builder);
@@ -209,7 +212,7 @@ public:
 
   // Allows one to write `v1 <= v2`.
   Var operator<=(const Var &other) const {
-    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+    TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::LE, attr, other.attr),
         "var_le");
     return Var(resDeclRef, builder);
@@ -217,7 +220,7 @@ public:
 
   // Allows one to write `v1 % v2`.
   Var operator%(const Var &other) const {
-    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+    TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::Mod, attr, other.attr),
         "var_mod");
     return Var(resDeclRef, builder);
@@ -231,7 +234,7 @@ public:
 
   // Allows one to write `v1 || v2`.
   Var operator||(const Var &other) const {
-    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+    TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::Or, attr, other.attr),
         "var_or");
     return Var(resDeclRef, builder);
@@ -239,7 +242,7 @@ public:
 
   // Allows one to write `v1 && v2`.
   Var operator&&(const Var &other) const {
-    KGEN::ParamDeclRefAttr resDeclRef = builder->createDeclToKgenAttr(
+    TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::And, attr, other.attr),
         "var_and");
     return Var(resDeclRef, builder);

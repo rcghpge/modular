@@ -510,3 +510,34 @@ mo.graph @fold_abs_on_non_negative_dim<D0 -> D1>(
   // CHECK-NEXT: mo.output %[[RESULT]]
   mo.output<D2> %result : !mo.tensor<[D2], f32>
 }
+
+// This test case is extracted from ONNX text encoder.
+// CHECK-LABEL: mo.graph @select_fold_during_staticization
+//  CHECK-SAME:   <[[SEQ_LEN:.*]], [[BATCH_SIZE:.*]]>(
+//  CHECK-SAME:   [[INPUT:%.*]]: !mo.tensor<[[[SEQ_LEN:.*]], [[BATCH_SIZE:.*]]], si32>
+mo.graph @select_fold_during_staticization<seq_len, batch_size -> O1, O2>(
+  %input: !mo.tensor<[seq_len, batch_size], si32>
+) -> !mo.tensor<[O1, O2], si32> {
+
+  %zero = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+  %neg_one = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %zeros = mo.constant {value = #M.dense_array<0, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  %one = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+
+  // Essentially constructing `%target_shape` to represent
+  //   `[-1 == 0 ? seq_len : -1,  batch_size == 0 ? batch_size : batch_size]
+  // which folds to
+  //   `[-1, batch_size]`
+  %input_shape = mo.shape_of(%input) : (!mo.tensor<[seq_len, batch_size], si32>) -> !mo.tensor<[2], si64>
+  %batch_size = mo.gather(%input_shape, %one, %zero) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1], si64>
+  %neg_one_and_batch_size = mo.concat[%zero : !mo.tensor<[], si64>] (%neg_one, %batch_size) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
+  %cond = mo.equal(%neg_one_and_batch_size, %zeros) : (!mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], bool>
+  %target_shape = mo.select(%cond, %input_shape, %neg_one_and_batch_size) : (!mo.tensor<[2], bool>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], si64>
+
+  // reshape(%input, [-1, batch_size]) == %input
+  mo.invoke_shape_func["reshape_shape"]<() -> D1, D2>(%input, %target_shape) {dataDeptTensors = [1]} : (!mo.tensor<[seq_len, batch_size], si32>, !mo.tensor<[2], si64>)
+  %res = mo.static.reshape(%input) : !mo.tensor<[seq_len, batch_size], si32> -> !mo.tensor<[D1, D2], si32>
+
+  // CHECK: mo.output [[INPUT]]
+  mo.output<D1, D2> %res : !mo.tensor<[D1, D2], si32>
+}

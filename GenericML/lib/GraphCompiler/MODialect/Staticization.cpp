@@ -161,7 +161,7 @@ ErrorOr<TypedAttr> BroadcastShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
 ErrorOr<TypedAttr> AddOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                        ParamExprBuilder &b) {
   return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    return b.createDeclToKgenExpr(KGEN::POC::Add, scalarInputs);
+    return b.createKgenExpr(KGEN::POC::Add, scalarInputs);
   });
 }
 
@@ -250,14 +250,14 @@ ErrorOr<TypedAttr> GatherOp::tryStaticize(ArrayRef<TypedAttr> inputs,
 ErrorOr<TypedAttr> DivOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                        ParamExprBuilder &b) {
   return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    return b.createDeclToKgenExpr(KGEN::POC::Div, scalarInputs);
+    return b.createKgenExpr(KGEN::POC::Div, scalarInputs);
   });
 }
 
 ErrorOr<TypedAttr> EqualOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                          ParamExprBuilder &b) {
   return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    return b.createDeclToKgenExpr(KGEN::POC::EQ, scalarInputs);
+    return b.createKgenExpr(KGEN::POC::EQ, scalarInputs);
   });
 }
 
@@ -273,14 +273,14 @@ ErrorOr<TypedAttr> NegativeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
 ErrorOr<TypedAttr> MinOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                        ParamExprBuilder &b) {
   return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    return b.createDeclToKgenExpr(KGEN::POC::Min, scalarInputs);
+    return b.createKgenExpr(KGEN::POC::Min, scalarInputs);
   });
 }
 
 ErrorOr<TypedAttr> MulOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                        ParamExprBuilder &b) {
   return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    return b.createDeclToKgenExpr(KGEN::POC::MulNuw, scalarInputs);
+    return b.createKgenExpr(KGEN::POC::MulNuw, scalarInputs);
   });
 }
 
@@ -302,7 +302,7 @@ ErrorOr<TypedAttr> ReduceMulOp::tryStaticize(ArrayRef<TypedAttr> inputs,
     return TypedAttr{};
 
   TypedAttr productAttr =
-      b.createDeclToKgenExpr(KGEN::POC::MulNuw, inputElems.getValues());
+      b.createKgenExpr(KGEN::POC::MulNuw, inputElems.getValues());
   return b.getShapeAttr({productAttr});
 }
 
