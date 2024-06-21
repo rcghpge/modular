@@ -34,9 +34,9 @@ struct ExecutableGraph:
         self._impl = impl
         self._device = device
 
-    fn _steal_device_memory_ptr(
+    fn _steal_device_memory_impl_ptr(
         self, inout memory: AnyTensor
-    ) raises -> DTypePointer[DType.invalid]:
+    ) raises -> UnsafePointer[NoneType]:
         """This takes `memory` as inout and not owned because it is called on
         References owned by a List (returned by List.__getitem__()).
         """
@@ -56,7 +56,7 @@ struct ExecutableGraph:
     fn _add_to_output_list(
         self,
         list: UnsafePointer[NoneType],
-        device_memory_ptr: DTypePointer[DType.invalid],
+        device_memory_ptr: UnsafePointer[NoneType],
         spec_ptr: UnsafePointer[NoneType],
     ) raises:
         var spec = spec_ptr.bitcast[TensorSpec]()[]
@@ -79,11 +79,11 @@ struct ExecutableGraph:
             output. If there is no annotation it's considered to be in CPU.
         """
         # Collect the C pointers of inputs to pass to C API.
-        var inputs_impl = List[DTypePointer[DType.invalid]]()
+        var inputs_impl = List[UnsafePointer[NoneType]]()
         var inputs_spec = List[TensorSpec]()
         for input in inputs:
             inputs_spec.append(input[]._spec)
-            inputs_impl.append(self._steal_device_memory_ptr(input[]))
+            inputs_impl.append(self._steal_device_memory_impl_ptr(input[]))
 
         alias execute_func_name = "M_executeGraph"
 
@@ -98,7 +98,7 @@ struct ExecutableGraph:
         var execute_func = self._device.lib.get_handle().get_function[
             fn (
                 _CExecutableGraph,
-                UnsafePointer[DTypePointer[DType.invalid]],
+                UnsafePointer[UnsafePointer[NoneType]],
                 UnsafePointer[TensorSpec],
                 Int,
                 __type_of(Self._add_to_output_list),

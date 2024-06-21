@@ -29,15 +29,15 @@ fn _get_driver_path() raises -> String:
 @value
 @register_passable("trivial")
 struct _CDevice:
-    var _ptr: DTypePointer[DType.invalid]
+    var _ptr: UnsafePointer[NoneType]
 
     fn copy(self, lib: DriverLibrary) -> Self:
         alias func_name_copy = "M_copyDevice"
-        return call_dylib_func[DTypePointer[DType.invalid]](
+        return call_dylib_func[UnsafePointer[NoneType]](
             lib.get_handle(), func_name_copy, self
         )
 
-    fn free_data(self, lib: DriverLibrary, data: DTypePointer[DType.invalid]):
+    fn free_data(self, lib: DriverLibrary, data: DTypePointer[DType.uint8]):
         alias func_free_data = "M_freeDeviceData"
         call_dylib_func(lib.get_handle(), func_free_data, self, data)
 
@@ -55,7 +55,7 @@ struct Device(Stringable):
         alias func_name_create = "M_createCPUDevice"
         self.lib = ManagedDLHandle(DLHandle(_get_driver_path()))
         self._cdev = _CDevice(
-            call_dylib_func[DTypePointer[DType.invalid]](
+            call_dylib_func[UnsafePointer[NoneType]](
                 self.lib.get_handle(),
                 func_name_create,
                 Int32(descriptor.numa_id),
@@ -102,7 +102,7 @@ struct Device(Stringable):
 
         return DeviceMemory(bytecount, self, name)
 
-    fn _free(self, data: DTypePointer[DType.invalid]):
+    fn _free(self, data: DTypePointer[DType.uint8]):
         self._cdev.free_data(self.lib, data)
 
     fn __str__(self) -> String:

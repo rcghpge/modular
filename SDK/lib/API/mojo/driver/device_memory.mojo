@@ -38,7 +38,7 @@ trait DeviceBuffer:
         """
         ...
 
-    fn unsafe_ptr(self) -> DTypePointer[DType.invalid]:
+    fn unsafe_ptr(self) -> DTypePointer[DType.uint8]:
         ...
 
     fn device(self) -> Device:
@@ -52,7 +52,7 @@ struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
     """DeviceMemory is an owning buffer allocated on a (possibly non-CPU) Device.
     """
 
-    var _ptr: DTypePointer[DType.invalid]
+    var _impl_ptr: UnsafePointer[NoneType]
     var _device: Device
     var lib: DriverLibrary
     var name: Optional[String]
@@ -63,7 +63,7 @@ struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
         # Removing this will cause mojo to do a double free!
         try:
             self = Self(
-                DTypePointer[DType.invalid](),
+                UnsafePointer[NoneType](),
                 0,
                 Device(),
             )
@@ -82,7 +82,7 @@ struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
         alias func_name_create_tensor = "M_createDeviceMemory"
         var tmp_spec = TensorSpec(DType.uint8, num_bytes)
         # CAUTION: this assumes that TensorSpec is bitwise identical in mojo and cpp
-        self._ptr = call_dylib_func[DTypePointer[DType.invalid]](
+        self._impl_ptr = call_dylib_func[UnsafePointer[NoneType]](
             self.lib.get_handle(),
             func_name_create_tensor,
             UnsafePointer[TensorSpec].address_of(tmp_spec),
@@ -94,7 +94,7 @@ struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
 
     fn __init__(
         inout self,
-        owned_ptr: DTypePointer[DType.invalid],
+        owned_impl_ptr: UnsafePointer[NoneType],
         num_bytes: Int,
         device: Device,
         name: Optional[String] = None,
@@ -102,7 +102,7 @@ struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
         """Creates DeviceMemory from a C Ptr."""
         self._device = device
         self.lib = self._device.lib
-        self._ptr = owned_ptr
+        self._impl_ptr = owned_impl_ptr
         self.name = name
         self.num_bytes = num_bytes
 
@@ -113,7 +113,7 @@ struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
         constrained[
             False, "__copyinit__ not supported on DeviceMemory, MSTDL-467"
         ]()
-        self._ptr = existing._ptr
+        self._impl_ptr = existing._impl_ptr
         self._device = existing._device
         self.lib = existing.lib
         self.name = existing.name
@@ -128,8 +128,8 @@ struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
         self.lib = self._device.lib
         self.name = tensor.name
         self.num_bytes = tensor.get_tensor_spec().bytecount()
-        self._ptr = tensor._device_memory_impl_ptr
-        tensor._device_memory_impl_ptr = DTypePointer[DType.invalid]()
+        self._impl_ptr = tensor._device_memory_impl_ptr
+        tensor._device_memory_impl_ptr = UnsafePointer[NoneType]()
 
     fn __init__(inout self, owned anytensor: AnyTensor) raises:
         """Creates a device tensor from given anytensor."""
@@ -137,14 +137,14 @@ struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
         self._device = anytensor._device
         self.lib = self._device.lib
         self.name = anytensor._name
-        self._ptr = anytensor._device_memory_impl_ptr
+        self._impl_ptr = anytensor._device_memory_impl_ptr
         self.num_bytes = anytensor._spec.bytecount()
-        anytensor._device_memory_impl_ptr = DTypePointer[DType.invalid]()
+        anytensor._device_memory_impl_ptr = UnsafePointer[NoneType]()
 
     fn __del__(owned self):
         alias func_name_destroy = "M_destroyDeviceMemory"
         call_dylib_func[NoneType](
-            self.lib.get_handle(), func_name_destroy, self._ptr
+            self.lib.get_handle(), func_name_destroy, self._impl_ptr
         )
         # Extend lifetime of library until C function returns.
         _ = self.lib^
@@ -163,7 +163,7 @@ struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
         return self._device
 
     fn __moveinit__(inout self, owned existing: Self):
-        self._ptr = existing._ptr
+        self._impl_ptr = existing._impl_ptr
         self._device = existing._device^
         self.lib = existing.lib^
         self.name = existing.name^
@@ -181,17 +181,17 @@ struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
             + "))"
         )
 
-    fn _steal_impl_ptr(owned self) -> DTypePointer[DType.invalid]:
-        var tmp = self._ptr
-        self._ptr = DTypePointer[DType.invalid]()
+    fn _steal_impl_ptr(owned self) -> UnsafePointer[NoneType]:
+        var tmp = self._impl_ptr
+        self._impl_ptr = UnsafePointer[NoneType]()
         return tmp
 
-    fn _steal_ptr(owned self) -> DTypePointer[DType.invalid]:
+    fn _steal_ptr(owned self) -> DTypePointer[DType.uint8]:
         alias func_name_take_data = "M_takeDataFromDeviceMemory"
         var take_data_func = self.lib.get_handle().get_function[
-            fn (DTypePointer[DType.invalid]) -> DTypePointer[DType.invalid]
+            fn (UnsafePointer[NoneType]) -> DTypePointer[DType.uint8]
         ](func_name_take_data)
-        var data = take_data_func(self._ptr)
+        var data = take_data_func(self._impl_ptr)
         # Extend lifetime of self to avoid the C funtion working on invalid pointer.
         _ = self^
         return data
@@ -204,8 +204,8 @@ struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
         call_dylib_func(
             self.lib.get_handle(),
             func_name_steal_data,
-            dst_memory._ptr,
-            self._ptr,
+            dst_memory._impl_ptr,
+            self._impl_ptr,
         )
 
     fn copy_to(
@@ -218,7 +218,7 @@ struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
         self.copy_into(dst)
         return dst^
 
-    fn unsafe_ptr(self) -> DTypePointer[DType.invalid]:
+    fn unsafe_ptr(self) -> DTypePointer[DType.uint8]:
         """Returns a pointer to the underlying device memory.
 
         Note: The caller is responsible for ensuring that the returned pointer
@@ -227,11 +227,12 @@ struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
 
         alias func_name_get_data = "M_getData"
         return call_dylib_func[
-            DTypePointer[DType.invalid], DTypePointer[DType.invalid]
+            DTypePointer[DType.uint8],
+            UnsafePointer[NoneType],
         ](
             self.lib.get_handle(),
             func_name_get_data,
-            self._ptr,
+            self._impl_ptr,
         )
 
 
@@ -267,7 +268,7 @@ struct DeviceTensor(DeviceBuffer, StringableRaising, CollectionElement):
             raise "src and dst tensor specs do not match"
         self._storage.copy_into(dst_tensor._storage)
 
-    fn unsafe_ptr(self) -> DTypePointer[DType.invalid]:
+    fn unsafe_ptr(self) -> DTypePointer[DType.uint8]:
         return self._storage.unsafe_ptr()
 
     fn to_tensor[

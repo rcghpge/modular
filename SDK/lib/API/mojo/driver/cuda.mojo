@@ -130,7 +130,7 @@ fn cuda_device(gpu_id: Int = 0) raises -> Device:
     var device_context_func_ptrs = ContextAPIFuncPtrs()
 
     var _cdev = _CDevice(
-        call_dylib_func[DTypePointer[DType.invalid]](
+        call_dylib_func[UnsafePointer[NoneType]](
             lib.get_handle(),
             func_name_create,
             gpu_id,

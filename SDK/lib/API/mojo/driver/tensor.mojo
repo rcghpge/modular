@@ -97,7 +97,7 @@ struct Tensor[type: DType, rank: Int](CollectionElement):
     # after DeviceMemory/DeviceTensor work.
     # this is needed because DeviceMemory may have a custom free
     # function set on the cpp side.
-    var _device_memory_impl_ptr: DTypePointer[DType.invalid]
+    var _device_memory_impl_ptr: UnsafePointer[NoneType]
 
     fn __init__(inout self, owned device_tensor: DeviceTensor) raises:
         self._device = device_tensor.device()

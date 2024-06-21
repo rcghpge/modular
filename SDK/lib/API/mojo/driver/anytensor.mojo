@@ -13,18 +13,18 @@ struct AnyTensor:
     """A type erased tensor representation that is useful
     for situations where we need variadics of tensors."""
 
-    var _data: DTypePointer[DType.invalid]
+    var _data: DTypePointer[DType.uint8]
     var _spec: TensorSpec
     var _device: Device
     var _name: Optional[String]
-    var _device_memory_impl_ptr: DTypePointer[DType.invalid]
+    var _device_memory_impl_ptr: UnsafePointer[NoneType]
 
     fn __init__(inout self) raises:
         self._device = Device()
         self._spec = TensorSpec(DType.uint8, 0)
         self._name = None
-        self._data = DTypePointer[DType.invalid]()
-        self._device_memory_impl_ptr = DTypePointer[DType.invalid]()
+        self._data = DTypePointer[DType.uint8]()
+        self._device_memory_impl_ptr = UnsafePointer[NoneType]()
 
     fn __init__(inout self, owned device_tensor: DeviceTensor):
         self._device = device_tensor.device()
@@ -64,9 +64,9 @@ struct AnyTensor:
         """
         return self._spec.rank()
 
-    fn _steal_ptr(owned self) -> DTypePointer[DType.invalid]:
+    fn _steal_ptr(owned self) -> DTypePointer[DType.uint8]:
         var ptr = self._data
-        self._data = DTypePointer[DType.invalid]()
+        self._data = DTypePointer[DType.uint8]()
         return ptr
 
     fn to_device_tensor(owned self) raises -> DeviceTensor:
