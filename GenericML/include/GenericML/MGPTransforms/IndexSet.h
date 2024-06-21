@@ -228,7 +228,7 @@ protected:
     size_t index = vIndexMap.size();
     vIndexMap.insert({v, index});
     allVs.emplace_back(v);
-  };
+  }
 
   /// Maps each V to its value index (for bit vector representations).
   DenseMap<V, size_t> vIndexMap;

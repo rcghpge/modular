@@ -293,7 +293,7 @@ public:
   /// Gets the ModelSpec for this model.
   const ModelSpec &getModelSpec() const { return spec; }
 
-  const M_RuntimeContext *getContext() const { return modelState.context; };
+  const M_RuntimeContext *getContext() const { return modelState.context; }
 
   LLCL::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
   setup(Runtime &runtime) const override;

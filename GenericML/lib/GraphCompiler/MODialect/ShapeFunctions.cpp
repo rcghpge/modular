@@ -36,7 +36,7 @@ TypedAttr ParamExprBuilder::createKgenExpr(KGEN::POC poc,
                                            StringRef declPrefix) {
   auto exprAttr = KGEN::ParamOperatorAttr::get(poc, operands);
   return wrapNonTrivialAttrWithDecl(exprAttr, declPrefix);
-};
+}
 
 TypedAttr ParamExprBuilder::wrapNonTrivialAttrWithDecl(TypedAttr attr,
                                                        StringRef declPrefix) {
@@ -48,14 +48,14 @@ TypedAttr ParamExprBuilder::wrapNonTrivialAttrWithDecl(TypedAttr attr,
   auto declRefAttr = KGEN::ParamDeclRefAttr::get(declAttr);
   createdOps->push_back(ParamBinding(declAttr, attr));
   return declRefAttr;
-};
+}
 
 Var ParamExprBuilder::createCond(const Var &condV, const Var &thenV,
                                  const Var &elseV) {
   auto exprAttr = KGEN::ParamOperatorAttr::get(
       KGEN::POC::Cond, {condV.getAttr(), thenV.getAttr(), elseV.getAttr()});
   return createVar(wrapNonTrivialAttrWithDecl(exprAttr, "cond"));
-};
+}
 
 Var ParamExprBuilder::createMax(const Var &lhs, const Var &rhs) {
   auto exprAttr = KGEN::ParamOperatorAttr::get(KGEN::POC::Max, lhs.getAttr(),
@@ -88,7 +88,7 @@ void ParamExprBuilder::createAssert(const Var &condVar, StringRef errorMsg) {
       KGEN::MLIROpAttr::get(opNameAttr, dictAttr, signature), condAttr};
 
   (void)createKgenExpr(KGEN::POC::Apply, applyOperands, "assert");
-};
+}
 
 /// Try converting `attr` to a constant integer.
 std::optional<int64_t> tryGetConstantInt(TypedAttr attr) {

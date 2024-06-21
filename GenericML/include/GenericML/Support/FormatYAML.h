@@ -27,7 +27,7 @@
 
 namespace llvm {
 class MemoryBuffer;
-};
+}
 
 namespace M {
 class ModelSpec;
@@ -50,11 +50,11 @@ struct MappingTraits<M::ModelSpec> {
 } // namespace llvm::yaml
 
 /// Provide the QuantTensorSpec mapping trait for YAML conversion.
-LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::QuantTensorSpec);
+LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::QuantTensorSpec)
 
 /// Use LLVM_YAML_IS_SEQUENCE_VECTOR to specify SequenceTraits<> on the
 /// SmallVector<QuantTensorSpec> type.
-LLVM_FWD_YAML_IS_SEQUENCE_VECTOR(M::QuantTensorSpec);
+LLVM_FWD_YAML_IS_SEQUENCE_VECTOR(M::QuantTensorSpec)
 
 LLVM_FWD_YAML_IS_SEQUENCE_VECTOR(M::TensorResultInfo)
 

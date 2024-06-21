@@ -67,7 +67,7 @@ void printParamDecls(OpAsmPrinter &p, Operation *,
     p << '>';
   }
 }
-}; // namespace M::MO
+} // namespace M::MO
 
 SmallVector<ConstantOp> M::MO::tryGetConstantOpsOfRank(TensorValue val,
                                                        size_t rank) {
@@ -1627,7 +1627,7 @@ verifyWithRankedInput(Op *op, int64_t axis, int64_t resDim, TensorType inputTy,
     reducedDims++;
   }
   return success();
-};
+}
 
 static void verifyWithUnrankedInput(int64_t axis, int64_t resDim,
                                     size_t &dynamicOutDims,
@@ -1638,7 +1638,7 @@ static void verifyWithUnrankedInput(int64_t axis, int64_t resDim,
   }
   if (resDim == 1)
     reducedDims++;
-};
+}
 
 template <typename Op>
 static LogicalResult argVerify(Op *op) {

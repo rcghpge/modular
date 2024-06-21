@@ -46,7 +46,7 @@ struct InferLayoutPass : public impl::InferLayoutsBase<InferLayoutPass> {
     }
 
     return success();
-  };
+  }
 
   llvm::StringRef getConvFilterLayout(size_t rank) {
     switch (rank) {

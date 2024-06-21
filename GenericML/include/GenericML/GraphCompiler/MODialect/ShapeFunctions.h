@@ -375,8 +375,8 @@ public:
   /// Returning a reference so that we could either use return as
   /// - a rvalue, e.g., `res.getSuccess().bindings` or
   /// - a lvalue, e.g., `const auto& success = res.getSuccess()`
-  Success &getSuccess() { return std::get<Success>(result); };
-  Error &getError() { return std::get<Error>(result); };
+  Success &getSuccess() { return std::get<Success>(result); }
+  Error &getError() { return std::get<Error>(result); }
 
   static ShapeMaterializeResult success(SmallVector<ParamBinding> &&bindings,
                                         ShapeAttr resultShape) {

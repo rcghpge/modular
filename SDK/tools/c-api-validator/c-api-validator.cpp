@@ -477,7 +477,7 @@ struct ExecutePhase {
     }
 
     return success();
-  };
+  }
 
   ExecutePhase() = default;
   ~ExecutePhase() {

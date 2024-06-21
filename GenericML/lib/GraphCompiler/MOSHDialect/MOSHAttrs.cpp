@@ -155,7 +155,7 @@ bool ShapeAttr::hasUnknownDims() const {
   return llvm::any_of(getValues(), [](TypedAttr attr) {
     return llvm::isa<KGEN::UnknownAttr>(attr);
   });
-};
+}
 
 LogicalResult ShapeAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                                 ArrayRef<TypedAttr> values, ShapeType type) {

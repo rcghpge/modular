@@ -137,4 +137,4 @@ BufferLifetimeAnalysisPass::BufferLifetimeAnalysisPass(Operation *op) {
     lifetimeInfo.calculateDataflowPostdominance(block->getTerminator());
   });
 }
-}; // namespace M::MGP
+} // namespace M::MGP

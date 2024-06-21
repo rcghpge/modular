@@ -82,7 +82,7 @@ class SupportConversionTestPass
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       return signalPassFailure();
-  };
+  }
 };
 
 } // namespace M::MO

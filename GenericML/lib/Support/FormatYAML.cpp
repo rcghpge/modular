@@ -60,7 +60,7 @@ struct MappingTraits<M::QuantSpec::ScaleZeroPointPair> {
 
 /// Use LLVM_YAML_IS_SEQUENCE_VECTOR to specify SequenceTraits<> on the
 /// SmallVector<QuantSpec::ScaleZeroPointPair> type.
-LLVM_YAML_IS_SEQUENCE_VECTOR(M::QuantSpec::ScaleZeroPointPair);
+LLVM_YAML_IS_SEQUENCE_VECTOR(M::QuantSpec::ScaleZeroPointPair)
 
 /// fromYAML will deserialize a QuantTensorSpec from YAML.
 static void fromYAML(llvm::yaml::IO &io, QuantTensorSpec &quantTensorSpec) {
@@ -178,7 +178,7 @@ struct MappingTraits<M::ModelSpec::ModelIOSpec> {
 
 /// Use LLVM_YAML_IS_SEQUENCE_VECTOR to specify SequenceTraits<> on the
 /// SmallVector<ModelIOSpec> type.
-LLVM_YAML_IS_SEQUENCE_VECTOR(M::ModelSpec::ModelIOSpec);
+LLVM_YAML_IS_SEQUENCE_VECTOR(M::ModelSpec::ModelIOSpec)
 
 //===----------------------------------------------------------------------===//
 // M::ModelSpec::MetricSpec
@@ -198,7 +198,7 @@ struct MappingTraits<M::ModelSpec::Metric> {
 
 /// Use LLVM_YAML_IS_SEQUENCE_VECTOR to specify SequenceTraits<> on the
 /// SmallVector<Metric> type.
-LLVM_YAML_IS_SEQUENCE_VECTOR(M::ModelSpec::Metric);
+LLVM_YAML_IS_SEQUENCE_VECTOR(M::ModelSpec::Metric)
 
 //===----------------------------------------------------------------------===//
 // M::ModelSpec::NameSubstitutions
@@ -278,8 +278,8 @@ struct MappingTraits<M::ModelSpec::ModelBinary> {
 /// Use LLVM_YAML_IS_SEQUENCE_VECTOR to specify SequenceTraits<> on the
 /// SmallVector<M::ModelSpec::ModelBinary> and
 /// SmallVector<M::ModelSpec::NameSubstitution> types.
-LLVM_YAML_IS_SEQUENCE_VECTOR(M::ModelSpec::ModelBinary);
-LLVM_YAML_IS_SEQUENCE_VECTOR(M::ModelSpec::NameSubstitutions);
+LLVM_YAML_IS_SEQUENCE_VECTOR(M::ModelSpec::ModelBinary)
+LLVM_YAML_IS_SEQUENCE_VECTOR(M::ModelSpec::NameSubstitutions)
 
 //===----------------------------------------------------------------------===//
 // ModelSpec
@@ -457,7 +457,7 @@ M::getResultForBinaryOutput(const LLCL::AnyAsyncValueRef &out,
 }
 
 llvm::yaml::MappingTraits<
-    M::GML::Variant>::NormalizedVariant::NormalizedVariant(IO &){};
+    M::GML::Variant>::NormalizedVariant::NormalizedVariant(IO &) {}
 
 llvm::yaml::MappingTraits<M::GML::Variant>::NormalizedVariant::
     NormalizedVariant(IO &, M::GML::Variant &variant) {
@@ -548,7 +548,7 @@ void llvm::yaml::MappingTraits<YamlDictKeyValuePair>::mapping(
   io.mapRequired("value", kv.second);
 }
 
-llvm::yaml::MappingTraits<M::GML::Dict>::NormalizedDict::NormalizedDict(IO &){};
+llvm::yaml::MappingTraits<M::GML::Dict>::NormalizedDict::NormalizedDict(IO &) {}
 
 llvm::yaml::MappingTraits<M::GML::Dict>::NormalizedDict::NormalizedDict(
     IO &, M::GML::Dict &dict) {

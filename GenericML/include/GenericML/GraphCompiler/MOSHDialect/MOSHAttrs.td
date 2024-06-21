@@ -63,18 +63,18 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
 
   let extraClassDeclaration = [{
     /// Returns the rank (i.e. size) of the shape.
-    size_t getRank() const { return getSize(); };
+    size_t getRank() const { return getSize(); }
 
     /// Returns the number of elements inside the shape. This mainly serves to
     /// calls less confusing when `ShapeAttr` is used to represent a list of
     /// ints, rather than shape (e.g., bounds for a slice op).
-    size_t getSize() const { return getValues().size(); };
+    size_t getSize() const { return getValues().size(); }
 
     /// Returns the dimension attribute at given axis.
-    TypedAttr operator[](int axis) const { return getValues()[axis]; };
+    TypedAttr operator[](int axis) const { return getValues()[axis]; }
 
     /// Whether the shape is static, i.e. all dims are known constants.
-    bool isStatic() const { return isConstant(); };
+    bool isStatic() const { return isConstant(); }
 
     /// Returns the shape as integer values, using mlir::ShapedType::kDynamic
     /// for unknown dimensions.

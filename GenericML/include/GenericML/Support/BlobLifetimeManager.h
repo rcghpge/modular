@@ -28,6 +28,6 @@ struct BlobLifetimeManager {
   size_t alignment;
 };
 
-}; // namespace M::GML
+} // namespace M::GML
 
 #endif // GENERICML_SUPPORT_BLOBLIFETIMEMANAGER_H

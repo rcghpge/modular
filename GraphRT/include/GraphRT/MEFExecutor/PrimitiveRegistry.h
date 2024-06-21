@@ -528,7 +528,7 @@ public:
 
 namespace Detail {
 struct TypeAttrEmptyStruct {};
-}; // namespace Detail
+} // namespace Detail
 
 template <typename MEFTypeClass>
 class MEFTypeAttrCommon

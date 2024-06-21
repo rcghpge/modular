@@ -32,7 +32,7 @@
 namespace {
 #include MOGG_MOJO_BINDING_H
 #include MOGG_PRIMITIVES_MOJO_BINDING_H
-}; // namespace
+} // namespace
 
 using namespace M;
 

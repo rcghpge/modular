@@ -15,7 +15,7 @@ using namespace M::LLCL;
 
 /// The FileNameLocationDecoder constructor just stores the filename.
 FileNameLocationDecoder::FileNameLocationDecoder(llvm::StringRef filename)
-    : filename(filename){};
+    : filename(filename) {}
 
 /// Gets and Encoded Location object that contains the filename.
 EncodedLocation
@@ -27,7 +27,7 @@ FileNameLocationDecoder::getEncodedLocation(llvm::StringRef filename) {
 M::LLCL::DecodedLocation
 FileNameLocationDecoder::decode(const EncodedLocation &loc) const {
   return M::LLCL::DecodedLocation{filename};
-};
+}
 
 /// Implement the LocationDecoder hook for addRef.
 void FileNameLocationDecoder::addRef() const {

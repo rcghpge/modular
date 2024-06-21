@@ -178,7 +178,7 @@ struct AttrKindForCXXType {
   template <>                                                                  \
   struct AttrKindForCXXType<CXXTYPE> {                                         \
     static constexpr AttributeKind kind = AttributeKind::KIND;                 \
-  };
+  }
 DECLARE_ATTR_MAPPING(kBool, bool);
 DECLARE_ATTR_MAPPING(kS8, int8_t);
 DECLARE_ATTR_MAPPING(kU8, uint8_t);

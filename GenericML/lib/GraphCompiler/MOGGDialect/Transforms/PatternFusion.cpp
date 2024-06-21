@@ -2174,7 +2174,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
             transposedTensor);
 
       return transposedTensor;
-    };
+    }
   };
 
   // For GPU annotated operations do this rewrite

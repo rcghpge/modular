@@ -447,7 +447,7 @@ bool TensorType::hasUnknownShape() const {
   });
   walker.walk(getTypedShapeAttr());
   return res;
-};
+}
 
 TypedAttr TensorType::getSymbolicNumElements() const {
   return getTypedShapeAttr().getSymbolicNumElements();

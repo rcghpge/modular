@@ -22,7 +22,7 @@ ListLike::ListLike(const ListLike &other) {
         LLCL::AnyAsyncValueRef::copy(elem.getValue().getPointer()));
 }
 
-ListLike::ListLike(ListLike &&other) : elements(std::move(other.elements)) {};
+ListLike::ListLike(ListLike &&other) : elements(std::move(other.elements)) {}
 
 ListLike &ListLike::operator=(ListLike &&other) {
   elements.clear();

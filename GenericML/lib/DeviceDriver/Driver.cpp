@@ -16,7 +16,7 @@ DeviceMemory::~DeviceMemory() {
     else
       devicePtr->freeData(ptr);
   }
-};
+}
 
 MODULAR_API_EXPORT Device *M_copyDevice(Device *devPtr) {
   auto newRef = M::copyRCRef(devPtr);

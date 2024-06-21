@@ -668,7 +668,7 @@ public:
   MEFOffset emitAttribute(Attribute attr, Location loc);
 
 private:
-  void emitAttributeKind(MEF::AttributeKind kind) { emitByte((uint8_t)kind); };
+  void emitAttributeKind(MEF::AttributeKind kind) { emitByte((uint8_t)kind); }
   FailureOr<MEF::AttributeKind> deriveAttributeKind(Type eltType,
                                                     Location loc) const;
 

@@ -28,7 +28,7 @@ public:
   TorchInputSpec(const TorchInputSpec &other)
       : TorchInputSpec(other.specShape, other.specDtype) {}
 
-  InputShapeTy getShape() const { return specShape; };
+  InputShapeTy getShape() const { return specShape; }
 
   M_Dtype getDtype() const { return specDtype; }
 

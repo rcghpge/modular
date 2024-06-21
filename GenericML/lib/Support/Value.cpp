@@ -196,7 +196,7 @@ std::string M::GML::valueToString(const LLCL::AnyAsyncValueRef &value) {
   else
     return "<unknown>";
   return ss.str();
-};
+}
 
 bool M::GML::valueEqual(const LLCL::AnyAsyncValueRef &lhs,
                         const LLCL::AnyAsyncValueRef &rhs) {

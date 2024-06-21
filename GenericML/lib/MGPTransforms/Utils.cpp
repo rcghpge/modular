@@ -103,7 +103,7 @@ static bool shouldStartVisiting(DenseMap<Operation *, bool> &visited,
 
   ASSERT_STREAM(itr->second, << "model contains cycle involving op");
   return false;
-};
+}
 
 namespace {
 /// Records a pending operand to visit.
@@ -145,7 +145,7 @@ static void startVisiting(DenseMap<Operation *, bool> &visited,
 
   // Start with first operand (if any).
   stack.emplace_back(currOp, 0);
-};
+}
 
 /// Records that currOp has been fully visited.
 static void finishVisiting(DenseMap<Operation *, bool> &visited,
@@ -154,7 +154,7 @@ static void finishVisiting(DenseMap<Operation *, bool> &visited,
   ASSERT_STREAM(itr != visited.end(), << "never started visiting op");
   ASSERT_STREAM(!itr->second, << "finishing already finished op");
   itr->second = true;
-};
+}
 
 /// Non-recursively visit inputs of op in dfs order, accumulating post-order
 /// visits into dataflowOrder. In debug builds will detect and report cycles.
@@ -573,7 +573,7 @@ TypedValue<MEF::ChainType> InitState::getFinalChain() {
 /// Update the final 'init' chain result.
 void InitState::updateFinalChain(Value newChain) {
   init->back().setOperand(0, newChain);
-};
+}
 
 /// Returns the 'init' block's context.
 TypedValue<ContextType> InitState::getContext() {

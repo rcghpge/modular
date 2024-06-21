@@ -13,7 +13,7 @@ using namespace M;
 ResultInfo::ResultInfo(std::string name) : name(std::move(name)) {}
 
 TensorResultInfo::TensorResultInfo(std::string name, std::string shape)
-    : ResultInfo(std::move(name)), shape(std::move(shape)) {};
+    : ResultInfo(std::move(name)), shape(std::move(shape)) {}
 
 TensorResultInfo TensorResultInfo::operator=(TensorResultInfo other) {
   name = other.name;
@@ -45,7 +45,7 @@ void VariantResultInfo::map(llvm::yaml::IO &io) {
   io.mapRequired("variant", variant);
 }
 
-ProcessedResults::ProcessedResults() : resultInfos(), counter(0), tensors() {};
+ProcessedResults::ProcessedResults() : resultInfos(), counter(0), tensors() {}
 
 void ProcessedResults::insertResultInfo(std::shared_ptr<ResultInfo> info) {
   resultInfos.push_back(info);

@@ -79,7 +79,7 @@ struct RewriteParamExprTypes : public RewritePattern {
       }
     }
     return found;
-  };
+  }
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &origRewriter) const override {

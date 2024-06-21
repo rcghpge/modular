@@ -27,10 +27,10 @@ namespace M {
 template <typename Value>
 class [[nodiscard]] CompileDiagnosticOr {
 public:
-  CompileDiagnosticOr(Value value) : data(std::move(value)){};
-  CompileDiagnosticOr(mlir::InFlightDiagnostic err) : data(std::move(err)){};
+  CompileDiagnosticOr(Value value) : data(std::move(value)) {}
+  CompileDiagnosticOr(mlir::InFlightDiagnostic err) : data(std::move(err)) {}
   CompileDiagnosticOr(CompileDiagnosticOr &&other)
-      : data(std::move(other.data)){};
+      : data(std::move(other.data)) {}
   CompileDiagnosticOr &operator=(CompileDiagnosticOr &&other) {
     if (&other != this) {
       this->~CompileDiagnosticOr();
