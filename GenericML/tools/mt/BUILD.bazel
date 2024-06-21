@@ -1,5 +1,4 @@
-load("@//utils/bazel/build/rules:rpath_shim.bzl", "rpath_shim")
-load("//bazel:api.bzl", "modular_cc_binary")
+load("//bazel:api.bzl", "modular_cc_binary", "rpath_shim")
 
 modular_cc_binary(
     name = "mt",
