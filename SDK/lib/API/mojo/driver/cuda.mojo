@@ -139,4 +139,5 @@ fn cuda_device(gpu_id: Int = 0) raises -> Device:
             ),
         )
     )
+    _ = device_context_func_ptrs
     return Device(lib^, owned_ptr=_cdev)
