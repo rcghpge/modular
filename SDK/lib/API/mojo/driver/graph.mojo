@@ -195,28 +195,3 @@ fn compile_graph(graph: Graph, device: Device) raises -> CompiledGraph:
     if status:
         raise str(status)
     return CompiledGraph(compiled_ptr, device)
-
-
-fn compile_graph(graph_path: String, device: Device) raises -> CompiledGraph:
-    """Compiles graph file to the given device.
-
-    Args:
-        graph_path: File path to graph.This should be an mlir file in MO/RMO dialect.
-        device: Device the architecture to which graph needs to be compiled.
-
-    Returns:
-        Compiled graph ready to be loaded and executed.
-    """
-    var max_context = _get_global_or_null["MaxContext"]().address
-    var status = Status(device.lib)
-    var compiled_ptr = call_dylib_func[_CCompiledGraph](
-        device.lib.get_handle(),
-        "M_compileGraphFromPath",
-        graph_path.unsafe_cstr_ptr(),
-        device._cdev,
-        max_context,
-        status.impl,
-    )
-    if status:
-        raise str(status)
-    return CompiledGraph(compiled_ptr, device)
