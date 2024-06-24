@@ -50,3 +50,11 @@ std::vector<std::optional<std::string>> core::convertToDimNames(
   }
   return dimNames;
 }
+
+void *core::getUnderlyingPtr(const py::object &obj) {
+  auto *wrapper = reinterpret_cast<py::detail::instance *>(obj.ptr());
+  wrapper->owned = false;
+  void *&valueptr =
+      py::detail::values_and_holders(wrapper).begin()->value_ptr();
+  return valueptr;
+}

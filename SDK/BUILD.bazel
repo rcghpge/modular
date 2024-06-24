@@ -13,7 +13,6 @@ modular_pybind_library(
     deps = [
         "//GenericML:modular-framework-common",
         "//PyTorch:modular-framework-torch-ext",
-        "//Support:Python",
     ],
 )
 
