@@ -89,7 +89,6 @@ modular_cc_library(
     name = "CommonDriver",
     srcs = glob(["lib/Driver/CommonDriver/*.cpp"]),
     hdrs = glob(["include/GenericML/Driver/*.h"]),
-    copts = ["-Ithird-party/"],  # Fixes mlperf-loadgen include path.
     deps = [
         ":API.headers",
         ":MojoLLDBPublic.headers",
@@ -104,7 +103,6 @@ modular_cc_library(
     name = "CompileDriver",
     srcs = glob(["lib/Driver/CompileDriver/*.cpp"]),
     hdrs = glob(["include/GenericML/Driver/*.h"]),
-    copts = ["-Ithird-party/"],  # Fixes mlperf-loadgen include path.
     deps = [
         ":CommonDriver",
         ":Support",
@@ -118,7 +116,6 @@ modular_cc_library(
     name = "ExecutionDriver",
     srcs = glob(["lib/Driver/ExecutionDriver/*.cpp"]),
     hdrs = glob(["include/GenericML/Driver/*.h"]),
-    copts = ["-Ithird-party/"],  # Fixes mlperf-loadgen include path.
     deps = [
         ":Support",
         "//Support:Base",

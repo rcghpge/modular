@@ -35,7 +35,6 @@ modular_cc_library(
     srcs = glob(["lib/EngineCLI/Benchmark/*.cpp"]),
     hdrs = glob(["include/SDK/EngineCLI/Benchmark/*.h"]),
     copts = [
-        "-Ithird-party/",  # Fixes mlperf-loadgen include path.
         "-I$(GENDIR)/SDK/lib/EngineCLI/Benchmark/",
     ],
     deps = [
