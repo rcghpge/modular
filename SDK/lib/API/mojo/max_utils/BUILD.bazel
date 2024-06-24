@@ -1,0 +1,8 @@
+load("//bazel:api.bzl", "mojo_library")
+
+mojo_library(
+    name = "max_utils",
+    srcs = glob(["*.mojo"]),
+    visibility = ["//visibility:public"],
+    deps = ["//open-source/mojo/stdlib/stdlib"],
+)

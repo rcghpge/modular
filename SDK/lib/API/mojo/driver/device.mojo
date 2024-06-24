@@ -7,8 +7,7 @@
 
 from collections import Optional
 from sys.ffi import DLHandle
-from max.engine._utils import call_dylib_func
-from max.engine._utils import get_lib_path_from_cfg
+from max_utils import call_dylib_func, get_lib_path_from_cfg
 from pathlib import Path
 from tensor import TensorSpec
 from ._driver_library import DriverLibrary, ManagedDLHandle

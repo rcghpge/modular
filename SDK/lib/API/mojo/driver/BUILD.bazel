@@ -7,7 +7,7 @@ mojo_library(
     srcs = glob(["**/*.mojo"]),
     deps = [
         "//Kernels/mojo/tensor",
-        "//SDK/lib/API/mojo/max",
+        "//SDK/lib/API/mojo/max_utils",
         "//open-source/mojo/stdlib/stdlib",
     ],
 )

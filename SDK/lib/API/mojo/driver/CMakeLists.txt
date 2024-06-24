@@ -11,7 +11,6 @@ set (DRIVER_SRCS
   tensor
   tensor_slice
   cuda
-  graph
 )
 
 
@@ -23,5 +22,5 @@ add_mojo_package(max-driver PRIVATE
   mof
   mojo-tensor
   DeviceDriver
-  max-mojo
+  max-utils
 )

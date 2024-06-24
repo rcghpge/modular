@@ -5,8 +5,9 @@
 # ===----------------------------------------------------------------------=== #
 
 
+from max_utils import CString, call_dylib_func
+
 from ._driver_library import DriverLibrary
-from max.engine._utils import call_dylib_func, CString
 
 
 @value

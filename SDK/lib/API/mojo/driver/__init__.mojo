@@ -10,4 +10,7 @@ from .tensor import Tensor, StaticTensorSpec
 from .tensor_slice import TensorSlice, UnsafeTensorSlice
 from .anytensor import AnyTensor
 from .cuda import cuda_device
-from .graph import compile_graph
+
+# TODO: Remove this once we move the remainder of max driver
+# into the mainline MAX API
+from ._status import Status, _CStatus

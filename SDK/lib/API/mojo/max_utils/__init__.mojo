@@ -4,11 +4,13 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from memory.unsafe import DTypePointer
-from memory.unsafe_pointer import *
 from os import abort
 from pathlib import Path
-from sys.ffi import DLHandle, C_char
+from sys.ffi import C_char, DLHandle
+
+from memory.unsafe import DTypePointer
+from memory.unsafe_pointer import *
+
 from utils import StringRef
 
 

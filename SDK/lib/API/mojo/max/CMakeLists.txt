@@ -50,8 +50,7 @@ set(ENGINE_SRCS
   engine/_status
   engine/_tensor_impl
   engine/_tensor_map_impl
-  engine/_tensor_spec_impl
-  engine/_utils)
+  engine/_tensor_spec_impl)
 
 set(REGISTER_SRCS
   register/register
@@ -86,12 +85,18 @@ set(SERVE_SRCS
   serve/metrics/_telemetry
 )
 
+set(DRIVER_SRCS
+  _driver/__init__
+  _driver/graph
+)
+
 add_mojo_package(max-mojo PRIVATE
   ${GRAPH_SRCS}
   ${ENGINE_SRCS}
   ${EXTENSIBILITY_SRCS}
   ${REGISTER_SRCS}
   ${SERVE_SRCS}
+  ${DRIVER_SRCS}
 
   DOCS_DIR
   SDK/docs
@@ -101,6 +106,8 @@ add_mojo_package(max-mojo PRIVATE
   mojo-tensor
   mojo-buffer
   mojo-extensibility
+  max-utils
+  max-driver
 
   mlir-mojo-api
 )
