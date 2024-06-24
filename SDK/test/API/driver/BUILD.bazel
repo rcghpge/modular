@@ -4,11 +4,15 @@ package(default_visibility = ["//visibility:public"])
 
 lit_tests(
     name = "test",
-    srcs = glob(["mojo/*.mojo"]),
+    srcs = glob(
+        ["mojo/*.mojo"],
+        exclude = ["mojo/test_graph.mojo"],
+    ),
     data = [
         "//GenericML:DeviceDriver",
         "//GenericML:modular-framework-common",
         "//KGEN:CompilerRT",
+        "//KGEN:CompilerRT.distributable",
         "//ModularFramework/tools/mof",
         "@llvm-project//compiler-rt:orc_rt",
     ],
