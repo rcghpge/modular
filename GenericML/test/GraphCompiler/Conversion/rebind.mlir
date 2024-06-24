@@ -1,7 +1,8 @@
 // RUN: mo-opt %s --add-devices --mo-to-mogg --mo-to-primitives --allow-unregistered-dialect --cse --canonicalize | FileCheck %s
 
-// CHECK: mgp.model @static_ranks_int_to_unknown : mof init {
-// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.tensor<42x?xf32>)
+// CHECK-LABEL: mgp.model @static_ranks_int_to_unknown : mof
+// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
+// CHECK: %[[ARG2:[a-z0-9]*]]: !mgp.tensor<42x?xf32>)
 // CHECK:   %[[CDIM:.*]] = mip.constant.index 42
 // CHECK:   %[[SPEC:.*]] = mgp.tensor.extract.tensor_spec %[[CTX]][1], %[[ARG2]] : !mgp.tensor<42x?xf32>
 // CHECK:   %[[DYNDIM:.*]] = mgp.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.tensor_spec<42x?xf32>
@@ -18,8 +19,9 @@ mo.graph @static_ranks_int_to_unknown<D0, D1>(
   mo.output %res : !mo.tensor<[?, D0], f32>
 }
 
-// CHECK: mgp.model @static_ranks_unknown_to_int : mof init {
-// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.tensor<?x?xf32>)
+// CHECK-LABEL: mgp.model @static_ranks_unknown_to_int : mof
+// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
+// CHECK: %[[ARG2:[a-z0-9]*]]: !mgp.tensor<?x?xf32>)
 // CHECK:   %[[SPEC:.*]] = mgp.tensor.extract.tensor_spec %[[CTX]][1], %[[ARG2]] : !mgp.tensor<?x?xf32>
 // CHECK:   %[[DYNDIMS:.*]]:2 = mgp.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.tensor_spec<?x?xf32>
 // CHECK:   %[[BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[ARG2]] : !mgp.tensor<?x?xf32>
@@ -35,8 +37,9 @@ mo.graph @static_ranks_unknown_to_int<D0, D1 -> ()>(
   mo.output %res : !mo.tensor<[42, D0], f32>
 }
 
-// CHECK: mgp.model @static_ranks_unknown_to_static : mof init {
-// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[ARG2:.*]]: !mgp.tensor<?x?xf32>)
+// CHECK-LABEL: mgp.model @static_ranks_unknown_to_static : mof
+// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context
+// CHECK: %[[ARG2:[a-z0-9]*]]: !mgp.tensor<?x?xf32>)
 // CHECK:   %[[BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[ARG2]] : !mgp.tensor<?x?xf32>
 // CHECK:   %[[NEWSPEC:.*]] = mgp.tensor_spec.create : !mgp.tensor_spec<42x10xf32>
 // CHECK:   %[[SIZED_BUF:.*]] = mgp.buffer.resize %[[BUF]] : !mgp.buffer<1680>

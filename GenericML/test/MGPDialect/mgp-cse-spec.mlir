@@ -10,11 +10,11 @@
 //}
 
 module {
-  mgp.model @basicMoGraph : mof init {
+  mgp.model @basicMoGraph : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
     %0 = grt.chain.create ()
     %1 = mgp.context.create 0
     mef.output %0, %1 : !mef.chain, !mgp.context
-  } execute (%arg0: !mef.chain, %arg1: !mgp.context) -> (!mef.chain, !mgp.tensor<8xf32>) {
+  } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<8xf32>) {
     %0 = mgp.buffer.constant %arg0, %arg1[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
     %1 = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
     %ch = mgp.chain.host_to_device %arg0, %arg1[1]

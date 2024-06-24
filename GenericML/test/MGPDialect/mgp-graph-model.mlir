@@ -2,12 +2,12 @@
 // RUN: mo-opt %s --allow-unregistered-dialect
 
 module {
-  mgp.model @upsideDown : mof init {
+  mgp.model @upsideDown : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
     %2 = mgp.runtime.create %0, %1[1] device<"cpu", 0>
     %1 = mgp.context.create 1
     %0 = grt.chain.create ()
     mef.output %2, %1 : !mef.chain, !mgp.context
-  } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.tensor<8xf32>) -> (!mef.chain, !mgp.tensor<8xf32>) {
+  } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque, %arg2: !mgp.tensor<8xf32>) -> (!mef.chain, !mgp.tensor<8xf32>) {
     %ch0 = mgp.chain.host_to_device %arg0, %arg1[1]
     %spec = mgp.tensor_spec.create : !mgp.tensor_spec<8xf32>
     %buf = mgp.buffer.alloc.static %ch0, %arg1[1] : !mgp.buffer<32>

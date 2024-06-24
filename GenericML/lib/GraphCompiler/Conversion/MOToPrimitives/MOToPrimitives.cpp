@@ -291,10 +291,26 @@ LogicalResult MOGraphLowering::createModelOp() {
 
   // Create the mgp.model and the regions for the init/execute phases.
   b.setInsertionPoint(graph);
+  // Get all the devices
+  ErrorOrSuccess err(success());
+  auto devices = llvm::map_to_vector(
+      loweringState.getDeviceSpecs().takeValue().getDevices(),
+      [&err](DeviceSpecAttr attr) {
+        auto refOr = toRuntimeDeviceRef(attr.getRef());
+        if (refOr.isError()) {
+          err = refOr.takeError();
+          return DeviceRef();
+        } else {
+          return refOr.takeValue();
+        }
+      });
+  if (err.isError())
+    return err;
   auto modelOp = b.create<MGP::ModelOp>(
       graph.getLoc(),
       /*name=*/graph.getNameAttr(),
       /*frameworkName=*/loweringState.getCompiledFrameworkLabel(),
+      /*devices=*/devices,
       /*inputTypes=*/inputTypes,
       /*outputTypes=*/outputTypes,
       /*inputArgLocs=*/inputLocs,
@@ -1349,11 +1365,9 @@ LogicalResult MOGraphLowering::run() {
     return failure();
 
   // Enter the main body of the graph
-  for (auto [graphArg, exeArg] : llvm::zip(
-           graph.getBody().front().getArguments(), loweringState.getModelOp()
-                                                       .getExecuteBlock()
-                                                       ->getArguments()
-                                                       .drop_front(2))) {
+  for (auto [graphArg, exeArg] :
+       llvm::zip(graph.getBody().front().getArguments(),
+                 loweringState.getModelOp().getExecuteInputs())) {
     auto hasParamsOr =
         loweringState.lowerArg(&graph.getRegion(), graphArg, exeArg);
     if (hasParamsOr.isError())

@@ -215,6 +215,7 @@ ModelOp M::MGP::fixupIsolatedFromAbove(mlir::OpBuilder &builder,
   builder.setInsertionPointAfter(inModelOp);
   auto outModelOp = builder.create<MGP::ModelOp>(
       inModelOp.getLoc(),
+      /*devices=*/inModelOp.getDevicesAttr(),
       /*frameworkName=*/inModelOp.getFrameworkNameAttr(),
       /*inputOutputTypes=*/inModelOp.getInputOutputTypes(),
       /*sym_name=*/inModelOp.getName(),

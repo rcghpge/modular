@@ -1,7 +1,7 @@
 // RUN: mo-opt %s --add-devices --mo-to-mogg --translate-mogg-to-kgen --inline-lambdas --mo-to-primitives --lower-primitives --lower-abi --canonicalize -cse --jit-compile-kernels --lower-mogg-region-compile | FileCheck %s
 
 // CHECK: mgp.model @while_op
-// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context) -> (!mef.chain, !mgp.tensor<2xf32>) {
+// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context
 // CHECK: %[[UNUSED_CH:.*]] = mgp.chain.host_to_device %[[CH0]], %[[CTX]][1]
 // CHECK: %[[ZERO:.*]] = mgp.tensor.create %[[UNUSED_CH]], %[[CTX]][1], {{.*}}, %{{.*}} : !mgp.tensor<si64>
 // CHECK: %[[X:.*]] = mgp.tensor.create %[[UNUSED_CH]], %[[CTX]][1], %{{.*}}, %{{.*}}  : !mgp.tensor<2xf32>

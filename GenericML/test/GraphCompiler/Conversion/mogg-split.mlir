@@ -1,11 +1,11 @@
 // RUN: mo-opt %s --add-devices --mo-to-primitives --canonicalize | FileCheck %s
 
-// CHECK: mgp.model @mogg_split : mof init {
+// CHECK: mgp.model @mogg_split : mof
 // CHECK: } execute (
 // CHECK-SAME:   %[[CH:.*]]: !mef.chain,
 // CHECK-SAME:   %[[CTX:.*]]: !mgp.context,
-// CHECK-SAME:   %[[INPUT:.*]]: !mgp.tensor<?x8xf32>,
-// CHECK-SAME:   %[[DUMMY:.*]]: !mgp.tensor<?x?xsi64>
+// CHECK-SAME:   %[[INPUT:[a-z0-9]*]]: !mgp.tensor<?x8xf32>,
+// CHECK-SAME:   %[[DUMMY:[a-z0-9]*]]: !mgp.tensor<?x?xsi64>
 // CHECK-SAME: ) -> (!mef.chain, !mgp.tensor<?x8xf32>, !mgp.tensor<?x8xf32>) {
 // CHECK-NEXT:   %[[DUMMY_SPEC:.*]] = mgp.tensor.extract.tensor_spec %[[CTX]][1], %[[DUMMY]] : !mgp.tensor<?x?xsi64>
 // CHECK-NEXT:   %[[DIMS:.*]]:2 = mgp.tensor_spec.dims.dynamic %[[DUMMY_SPEC]] : !mgp.tensor_spec<?x?xsi64>

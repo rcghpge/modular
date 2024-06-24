@@ -5,7 +5,7 @@
 //
 
 // CHECK-LABEL: mgp.model @static_concat
-// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context)
+// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context
 // CHECK: %[[CH1:.*]] = mgp.chain.host_to_device %[[CH0]], %[[CTX]][1]
 // CHECK: %[[OUT_BUF:.*]] = mgp.buffer.alloc.static %[[CH1]], %[[CTX]][1] : !mgp.buffer<64>
 // CHECK: %[[IN_BUFS:.*]]:2 = mgp.buffer.split.borrow %[[CH1]], %[[CTX]][1], %[[OUT_BUF]] : !mgp.buffer<64>  -> (!mgp.buffer<32>, !mgp.buffer<32>)
@@ -15,13 +15,13 @@
 // CHECK: %[[TEN:.*]] = mgp.tensor.create %[[CH4]], %[[CTX]][1], %[[OUT_BUF]], %{{.*}}
 // CHECK: mef.output %[[CH0]], %[[TEN]]
 
-mgp.model @static_concat : mof init {
+mgp.model @static_concat : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
   %ch2 = mgp.runtime.create %ch1, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
-} execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<16xf32>) {
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<16xf32>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
   %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %2 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
@@ -42,7 +42,7 @@ mgp.model @static_concat : mof init {
 //
 
 // CHECK-LABEL: mgp.model @dynamic_concat
-// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context)
+// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context
 // CHECK: %[[TOTAL_SIZE:.*]] = mip.constant.index 64
 // CHECK: %[[SPLIT_SIZE:.*]] = mip.constant.index 32
 // CHECK: %[[CH1:.*]] = mgp.chain.host_to_device %[[CH0]], %[[CTX]][1]
@@ -55,13 +55,13 @@ mgp.model @static_concat : mof init {
 // CHECK: %[[TEN:.*]] = mgp.tensor.create %[[CH4]], %[[CTX]][1], %[[RESIZED_BUF]], %{{.*}}
 // CHECK: mef.output %[[CH0]], %[[TEN]]
 
-mgp.model @dynamic_concat : mof init {
+mgp.model @dynamic_concat : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
   %ch2 = mgp.runtime.create %ch1, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
-} execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<16xf32>) {
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<16xf32>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
   %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %2 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
@@ -89,13 +89,13 @@ mgp.model @dynamic_concat : mof init {
 // CHECK-LABEL: mgp.model @concat_with_shared_input_buffer
 // CHECK: %{{.*}} = mgp.buffer.split.borrow
 
-mgp.model @concat_with_shared_input_buffer : mof init {
+mgp.model @concat_with_shared_input_buffer : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
   %ch2 = mgp.runtime.create %ch1, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
-} execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<16xf32>) {
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<16xf32>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
   %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %2 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
@@ -118,13 +118,13 @@ mgp.model @concat_with_shared_input_buffer : mof init {
 // CHECK-LABEL: mgp.model @non_trivial_chains
 // CHECK: %{{.*}} = mgp.buffer.split.borrow
 
-mgp.model @non_trivial_chains : mof init {
+mgp.model @non_trivial_chains : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
   %ch2 = mgp.runtime.create %ch1, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
-} execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<16xf32>) {
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<16xf32>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
   %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %2 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
@@ -146,13 +146,13 @@ mgp.model @non_trivial_chains : mof init {
 // CHECK-LABEL: mgp.model @dont_trigger_since_duplicate_buffers
 // CHECK: %{{.*}} = mgp.buffer.concat
 
-mgp.model @dont_trigger_since_duplicate_buffers : mof init {
+mgp.model @dont_trigger_since_duplicate_buffers : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
   %ch2 = mgp.runtime.create %ch1, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
-} execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<16xf32>) {
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<16xf32>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
   %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %2 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>

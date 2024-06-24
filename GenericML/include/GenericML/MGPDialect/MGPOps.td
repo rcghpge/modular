@@ -820,14 +820,17 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
     representing its 'init' and 'execute' entry points.
 
     The 'init' entry point has the implicit signature:
-      () -> (!mef.chain, !mgp.context)
+      (!mgp.opaque, ...) -> (!mef.chain, !mgp.context, !mgp.opaque, ...)
+    where:
+      mgp.opaques are device contexts
 
     The 'execute' entry point has the implicit signature:
-      (!mef.chain, !mgp.context, in1, ..., inn) ->
+      (!mef.chain, !mgp.context, dev0, ... devn, in1, ..., inn) ->
       (!mef.chain, res1, ..., resm)
     where:
       (in1, ..., inn) -> (res1, ..., resm)
-    is given as the op's explicit signature.
+    is given as the op's explicit signature. And dev0, ..., devn are the
+    devices passed to init.
 
     The Modular runtime implicitly calls 'init' when the model executable is
     first loaded, and re-uses the resulting context value for each subsequent
@@ -847,12 +850,12 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
     ```mlir
     // At the top-level
     mgp.model @example_model : tfl { attr="value" }
-      init {
+      init (%cpu: !mgp.opaque) {
         %ch = mef.chain.new
         %ctx = mgp.context.create 0
-        mef.output %ch, %ctx : !mef.chain, !mgp.context
+        mef.output %ch, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque
       }
-      execute (%ch: !mef.chain, %ctx: !mgp.context, %arg: tensor<?x4x16xf32>)
+      execute (%ch: !mef.chain, %ctx: !mgp.context, %cpu: mgp.opaque, %arg: tensor<?x4x16xf32>)
               -> (!mef.chain, tensor<?x10xf32>) {
         mef.output %ch, %arg : !mef.chain, tensor<?x4x16xf32>
       }
@@ -870,15 +873,20 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
   //    MEF metadata extraction, and that index matches the MLIR canonical
   //    asciibetical order.
   //  - The extra attributes must appear last since optional.
-  let arguments = (ins ModelFrameworkAttr:$frameworkName,               // 0
-                       TypeAttrOf<FunctionType>:$inputOutputTypes,      // 1
-                       SymbolNameAttr:$name,                            // 2
-                       OptionalAttr<DictionaryAttr>:$theExtraAttrs);    // 3
+  let arguments = (ins M_DeviceRefArrayAttr:$devices,                   // 0
+                       ModelFrameworkAttr:$frameworkName,               // 1
+                       TypeAttrOf<FunctionType>:$inputOutputTypes,      // 2
+                       SymbolNameAttr:$name,                            // 3
+                       OptionalAttr<DictionaryAttr>:$theExtraAttrs);    // 4
   let regions = (region SizedRegion<1>:$init, SizedRegion<1>:$execute);
 
   let extraClassDeclaration = [{
     Block *getInitBlock() { return &getInit().front(); }
     Block *getExecuteBlock() { return &getExecute().front(); }
+    MutableArrayRef<BlockArgument> getExecuteInputs() { return getExecuteBlock()->getArguments().drop_front(2+getDevices().size());}
+    MutableArrayRef<BlockArgument> getExecuteDevices() { return getExecuteBlock()->getArguments().drop_front(2).take_front(getDevices().size());}
+    MutableArrayRef<BlockArgument> getExecuteImplicitArguments() { return getExecuteBlock()->getArguments().take_front(2+getDevices().size());}
+    BlockArgument getExecuteContext() { return getExecuteBlock()->getArgument(1); }
   }];
 
   let builders = [
@@ -889,6 +897,7 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
     /// have the same length as `inputTypes`.
     OpBuilder<(ins "StringAttr":$name,
                    "StringRef":$frameworkName,
+                   "ArrayRef<DeviceRef>":$devices,
                    "ArrayRef<Type>":$inputTypes,
                    "ArrayRef<Type>":$outputTypes,
                    "ArrayRef<Location>":$inputArgLocs,
@@ -898,8 +907,9 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
   let assemblyFormat = [{
     $name `:` custom<ClassName>($frameworkName)
       ($theExtraAttrs^)?
-      `init` $init
-      `execute` custom<ExecuteRegion>($inputOutputTypes, $execute)
+      `devices` $devices
+      `init` custom<InitRegion>($init)
+      `execute` custom<ExecuteRegion>($inputOutputTypes, $execute, ref($devices))
       attr-dict
   }];
   let hasRegionVerifier = 1;

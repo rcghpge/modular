@@ -697,6 +697,9 @@ private:
                                          Location loc);
   MEFOffset emitDeviceSpecCollectionAttribute(DeviceSpecCollectionAttr attr,
                                               Location loc);
+  MEFOffset emitDeviceRefArrayAttribute(llvm::ArrayRef<Attribute> attr,
+                                        Location loc);
+  MEFOffset emitDeviceRefAttribute(DeviceRefAttr attr, Location loc);
   MEFOffset emitInOutSignatureAttribute(InOutSignatureAttr attr, Location loc);
   EntityTable &entities;
 
@@ -961,6 +964,46 @@ MEFOffset AttributesEmitter::emitDeviceSpecCollectionAttribute(
   // Encode the attribute in JSON. We'll decode at runtime into a
   // DeviceSpecCollection.
   return emitStringAttribute(deviceSpecsOr->serializeToJSON());
+}
+
+MEFOffset
+AttributesEmitter::emitDeviceRefArrayAttribute(llvm::ArrayRef<Attribute> attrs,
+                                               Location loc) {
+  std::string s;
+  llvm::raw_string_ostream os(s);
+  llvm::json::OStream json(os);
+  json.arrayBegin();
+  for (auto attr : attrs) {
+    auto devAttr = dyn_cast<DeviceRefAttr>(attr);
+    if (!devAttr) {
+      entities.emitError(loc) << "DeviceRefArrayAttr is not all DeviceRefAttrs";
+      return {0};
+    }
+    ErrorOr<DeviceRef> deviceOr = toRuntimeDeviceRef(devAttr);
+    if (deviceOr.isError()) {
+      entities.emitError(loc)
+          << "unable to represent DeviceRefAttr: " << deviceOr.takeError();
+      return {0};
+    }
+    deviceOr->serializeToJSON(json);
+  }
+  json.arrayEnd();
+  return emitStringAttribute(s);
+}
+
+MEFOffset AttributesEmitter::emitDeviceRefAttribute(DeviceRefAttr attr,
+                                                    Location loc) {
+  ErrorOr<DeviceRef> deviceOr = toRuntimeDeviceRef(attr);
+  if (deviceOr.isError()) {
+    entities.emitError(loc)
+        << "unable to represent DeviceRefAttr: " << deviceOr.takeError();
+    return {0};
+  }
+  std::string s;
+  llvm::raw_string_ostream os(s);
+  llvm::json::OStream json(os);
+  deviceOr->serializeToJSON(json);
+  return emitStringAttribute(s);
 }
 
 MEFOffset
@@ -1255,8 +1298,11 @@ MEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
   if (auto alignedBytesAttr = dyn_cast<AlignedBytesAttr>(attr))
     return emitAlignedBytesAttribute(alignedBytesAttr, loc);
 
-  if (auto array = dyn_cast<ArrayAttr>(attr))
+  if (auto array = dyn_cast<ArrayAttr>(attr)) {
+    if (array.size() > 0 && dyn_cast<DeviceRefAttr>(array.getValue().front()))
+      return emitDeviceRefArrayAttribute(array.getValue(), loc);
     return emitArrayAttribute(array, loc);
+  }
 
   if (auto dict = dyn_cast<DictionaryAttr>(attr))
     return emitDictionaryAttribute(dict, loc);
@@ -1272,6 +1318,9 @@ MEFOffset AttributesEmitter::emitAttributeInternal(Attribute attr,
 
   if (auto inOutSigAttr = dyn_cast<InOutSignatureAttr>(attr))
     return emitInOutSignatureAttribute(inOutSigAttr, loc);
+
+  if (auto dev = dyn_cast<DeviceRefAttr>(attr))
+    return emitDeviceRefAttribute(dev, loc);
 
   entities.emitError(loc) << "unsupported attribute " << attr;
   return {0};

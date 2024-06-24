@@ -1178,10 +1178,12 @@ static FunctionType implicitInitSignature(Builder &builder) {
 
 /// Returns the implicit signature of the 'execute' entry point, before
 /// any explicit inputs and results have been included.
-static FunctionType implicitExecuteSignature(Builder &builder) {
-  return builder.getFunctionType(
-      {builder.getType<MEF::ChainType>(), builder.getType<MGP::ContextType>()},
-      {builder.getType<MEF::ChainType>()});
+static FunctionType implicitExecuteSignature(Builder &builder, size_t devices) {
+  SmallVector<Type> inputs = {builder.getType<MEF::ChainType>(),
+                              builder.getType<MGP::ContextType>()};
+  for (size_t i = 0; i < devices; i++)
+    inputs.push_back(OpaqueType::get(builder.getContext(), {}));
+  return builder.getFunctionType(inputs, {builder.getType<MEF::ChainType>()});
 }
 
 /// Returns true if requiredTypes is a prefix of actualTypes, in which case
@@ -1212,10 +1214,36 @@ static void printClassName(OpAsmPrinter &p, const ModelOp &op,
   p << frameworkName.getValue();
 }
 
+/// Parse the init region.
+static ParseResult parseInitRegion(OpAsmParser &p, Region &initRegion) {
+  llvm::SMLoc argLoc;
+  SmallVector<OpAsmParser::Argument> args;
+  SmallVector<Type> outputTypes;
+  if (p.getCurrentLocation(&argLoc) ||
+      p.parseArgumentList(args, OpAsmParser::Delimiter::Paren,
+                          /*allowType=*/true) ||
+      p.parseRegion(initRegion, args, /*enableNameShadowing=*/true))
+    return failure();
+
+  return success();
+}
+
+/// Print the init region.
+static void printInitRegion(OpAsmPrinter &p, const ModelOp &op,
+                            Region &initRegion) {
+  Block &initBlock = initRegion.front();
+  p << "(";
+  llvm::interleaveComma(initBlock.getArguments(), p.getStream(),
+                        [&](auto arg) { p.printRegionArgument(arg); });
+  p << ") ";
+  p.printRegion(initRegion, /*printEntryBlockArgs=*/false);
+}
+
 /// Parses the 'execute' body, and extracts from it the implicit signature.
 static ParseResult parseExecuteRegion(OpAsmParser &p,
                                       TypeAttr &inputOutputTypes,
-                                      Region &executeRegion) {
+                                      Region &executeRegion,
+                                      ArrayAttr &devices) {
   llvm::SMLoc argLoc;
   SmallVector<OpAsmParser::Argument> args;
   SmallVector<Type> outputTypes;
@@ -1228,7 +1256,8 @@ static ParseResult parseExecuteRegion(OpAsmParser &p,
 
   // Check the execute region's actual signature, and save its implicit
   // signature into inputOutputTypes.
-  FunctionType implicitExecSig = implicitExecuteSignature(p.getBuilder());
+  FunctionType implicitExecSig =
+      implicitExecuteSignature(p.getBuilder(), devices.size());
   SmallVector<Type> inputTypes(executeRegion.getArgumentTypes());
   if (!checkAndRemovePrefix(implicitExecSig.getInputs(), inputTypes))
     return p.emitError(argLoc)
@@ -1246,8 +1275,8 @@ static ParseResult parseExecuteRegion(OpAsmParser &p,
 
 /// Prints the 'execute' body. The inputOutputTypes are ignored.
 static void printExecuteRegion(OpAsmPrinter &p, const ModelOp &op,
-                               TypeAttr inputOutputTypes,
-                               Region &executeRegion) {
+                               TypeAttr inputOutputTypes, Region &executeRegion,
+                               ArrayAttr devices) {
   Block &executeBlock = executeRegion.front();
   p << "(";
   llvm::interleaveComma(executeBlock.getArguments(), p.getStream(),
@@ -1259,25 +1288,35 @@ static void printExecuteRegion(OpAsmPrinter &p, const ModelOp &op,
 }
 
 void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
-                    StringRef frameworkName, ArrayRef<Type> inputTypes,
-                    ArrayRef<Type> outputTypes, ArrayRef<Location> inputArgLocs,
+                    StringRef frameworkName, ArrayRef<DeviceRef> devices,
+                    ArrayRef<Type> inputTypes, ArrayRef<Type> outputTypes,
+                    ArrayRef<Location> inputArgLocs,
                     ArrayRef<NamedAttribute> extraAttrs) {
   DictionaryAttr extraAttrsDict =
       extraAttrs.empty() ? nullptr
                          : DictionaryAttr::get(state.getContext(), extraAttrs);
-  build(builder, state, StringAttr::get(state.getContext(), frameworkName),
+  auto deviceAttrs = llvm::map_to_vector(devices, [&state](DeviceRef ref) {
+    return dyn_cast<Attribute>(
+        DeviceRefAttr::get(state.getContext(), ref.label, ref.id));
+  });
+  build(builder, state, ArrayAttr::get(state.getContext(), deviceAttrs),
+        StringAttr::get(state.getContext(), frameworkName),
         TypeAttr::get(builder.getFunctionType(inputTypes, outputTypes)), name,
         extraAttrsDict);
 
-  // The 'init' entry point has no arguments.
   assert(implicitInitSignature(builder).getInputs().empty());
   Region *initRegion = state.regions[0].get();
   initRegion->emplaceBlock();
+  for (auto dev : devices) {
+    initRegion->addArgument(OpaqueType::get(builder.getContext(), {}),
+                            state.location);
+  }
 
   // The 'execute' entry point has both implicit and explicit arguments.
   Region *executeRegion = state.regions[1].get();
   executeRegion->emplaceBlock();
-  for (auto type : implicitExecuteSignature(builder).getInputs())
+  for (auto type :
+       implicitExecuteSignature(builder, devices.size()).getInputs())
     executeRegion->addArgument(type, state.location);
   for (auto [type, loc] : llvm::zip(inputTypes, inputArgLocs))
     executeRegion->addArgument(type, loc);
@@ -1293,10 +1332,18 @@ LogicalResult ModelOp::verifyRegions() {
   if (auto output = dyn_cast<MEF::OutputOp>(initBlock->getTerminator())) {
     FunctionType implicitInitSig = implicitInitSignature(builder);
     assert(implicitInitSig.getInputs().empty());
-    if (!initBlock->getArgumentTypes().empty())
-      return emitOpError()
-             << "expected no arguments to the 'init' body, but got "
-             << initBlock->getArgumentTypes() << ".";
+    if (initBlock->getArgumentTypes().size() != getDevices().size()) {
+      return emitOpError() << "Expected the number of arguments to the 'init' "
+                              "body to match the number of devices, but got "
+                           << initBlock->getArgumentTypes().size() << " vs "
+                           << getDevices().size() << ".";
+    }
+    for (auto t : initBlock->getArgumentTypes()) {
+      if (!mlir::isa<OpaqueType>(t)) {
+        return emitOpError()
+               << "init block arguments must be !mgp.opaque, but got " << t;
+      }
+    }
 
     if (failed(checkOperandTypes(output, implicitInitSig.getResults())))
       return failure();
@@ -1309,9 +1356,9 @@ LogicalResult ModelOp::verifyRegions() {
   //   (arg_1, ... arg_n) -> (res_1, ... res_m)
   Block *execBlock = getExecuteBlock();
   if (auto output = dyn_cast<MEF::OutputOp>(execBlock->getTerminator())) {
-    FunctionType implicitExecSig = implicitExecuteSignature(builder);
+    FunctionType implicitExecSig =
+        implicitExecuteSignature(builder, getDevices().size());
     ArrayRef<Type> modelArgTypes = getInputOutputTypes().getInputs();
-
     SmallVector<Type> expectedArgTypes(implicitExecSig.getInputs());
     expectedArgTypes.append(modelArgTypes.begin(), modelArgTypes.end());
     if (execBlock->getArgumentTypes() != expectedArgTypes)

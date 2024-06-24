@@ -13,6 +13,7 @@
 #include "GraphRT/MEFExecutor/MEFInvokable.h"
 #include "LLCL/ForwardDecls.h"
 #include "Support/AssertStream.h"
+#include "Support/DeviceSpecs.h"
 #include "Support/ForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
@@ -37,27 +38,29 @@ loadMGPMEFFile(RCRef<MEFFile> mefFile);
 /// takes and returns.
 class ModularModel final : public Model {
 public:
-  ModularModel(std::string name, CompiledFrameworkLabel frameworkLabel,
+  ModularModel(std::string name, SmallVector<DeviceRef> devices,
+               CompiledFrameworkLabel frameworkLabel,
                const MEFInvokable *initFn, const MEFInvokable *executeFn,
                ArrayRef<QuantTensorSpec> inputSpecs,
                ArrayRef<QuantTensorSpec> outputSpecs, EncodedLocation location)
-      : Model(inputSpecs, outputSpecs), name(std::move(name)), initFn(initFn),
-        executeFn(executeFn), location(std::move(location)) {
+      : Model(inputSpecs, outputSpecs), name(std::move(name)), devices(devices),
+        initFn(initFn), executeFn(executeFn), location(std::move(location)) {
     ASSERT_STREAM(frameworkLabel == CompiledFrameworkLabel::kModularModel,
                   << "Expected " << CompiledFrameworkLabel::kModularModel
                   << " label for model, but got "
                   << frameworkLabel.getAsString());
   }
 
-  ModularModel(std::string name, CompiledFrameworkLabel frameworkLabel,
+  ModularModel(std::string name, SmallVector<DeviceRef> devices,
+               CompiledFrameworkLabel frameworkLabel,
                const MEFInvokable *initFn, const MEFInvokable *executeFn,
                ArrayRef<QuantTensorSpec> inputSpecs,
                ArrayRef<QuantTensorSpec> outputSpecs,
                ArrayRef<StringRef> inputNames, ArrayRef<StringRef> outputNames,
                EncodedLocation location)
       : Model(inputSpecs, outputSpecs, inputNames, outputNames),
-        name(std::move(name)), initFn(initFn), executeFn(executeFn),
-        location(std::move(location)) {
+        name(std::move(name)), devices(devices), initFn(initFn),
+        executeFn(executeFn), location(std::move(location)) {
     ASSERT_STREAM(frameworkLabel == CompiledFrameworkLabel::kModularModel,
                   << "Expected " << CompiledFrameworkLabel::kModularModel
                   << " label for model, but got "
@@ -83,8 +86,11 @@ public:
 
   const EncodedLocation &getLocation() const override { return location; }
 
+  const ArrayRef<DeviceRef> getDevices() const { return devices; }
+
 private:
   std::string name;
+  const SmallVector<DeviceRef> devices;
   const MEFInvokable *initFn;
   const MEFInvokable *executeFn;
 

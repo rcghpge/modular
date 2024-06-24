@@ -253,7 +253,7 @@ public:
 
   static ErrorOr<std::unique_ptr<MGPModel>>
   getFromDescriptor(const PrimitiveDescriptor &descriptor) {
-    StringRef frameworkName = *descriptor.getAttr<StringRef>(0);
+    StringRef frameworkName = *descriptor.getAttr<StringRef>(1);
     return std::make_unique<MGPModel>(frameworkName.str());
   }
 

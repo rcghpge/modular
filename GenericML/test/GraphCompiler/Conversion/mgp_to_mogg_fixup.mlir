@@ -3,14 +3,14 @@
 // Jit compile kernels will output the function execution in a particular way,
 // we need to run a fixup pass over it to convert to the form MGP expects.
 
-mgp.model @basic : mof init {
+mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   "mogg.load_compiled_kernel"() {symbols = ["__gen_0"], value = dense_resource<fake_binary> : tensor<1xui8>} : () -> ()
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
   %ch1 = mgp.check_runtime %0, %1[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
   %2 = mgp.runtime.create %ch1, %1[0] device<"cpu", 0>
   mef.output %2, %1 : !mef.chain, !mgp.context
-} execute (%arg0: !mef.chain, %arg1: !mgp.context) -> !mef.chain {
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %0 = grt.chain.create ()
   %1 = mip.constant.index 42
   %2 = mip.constant.index -20
@@ -27,14 +27,14 @@ mgp.model @basic : mof init {
 // CHECK: } execute
 // CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{{.*}}, dSummary = {{.*}}} : (!mgp.context, !mef.chain, index, index) -> (!mgp.chain, index)
 
-mgp.model @basic_control_flow : mof init {
+mgp.model @basic_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   "mogg.load_compiled_kernel"() {symbols = ["__gen_0"], value = dense_resource<fake_binary> : tensor<1xui8>} : () -> ()
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
   %ch1 = mgp.check_runtime %0, %1[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
   %2 = mgp.runtime.create %ch1, %1[0] device<"cpu", 0>
   mef.output %2, %1 : !mef.chain, !mgp.context
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.buffer<1>) -> !mef.chain {
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque, %arg2: !mgp.buffer<1>) -> !mef.chain {
   %ch0 = mgp.chain.host_to_device %arg0, %arg1[1]
   %lhs = mip.constant.index 42
   %rhs = mip.constant.index -20

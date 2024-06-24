@@ -1,9 +1,9 @@
 // RUN: mo-opt %s --add-devices --mo-to-primitives | FileCheck %s
 
-// CHECK-LABEL:  mgp.model @constants_with_multiple_returns : mof init {
+// CHECK-LABEL:  mgp.model @constants_with_multiple_returns : mof
 // CHECK:  } execute (
-// CHECK-SAME: %[[ARG0:.*]]: !mef.chain, %[[ARG1:.*]]: !mgp.context, 
-// CHECK-SAME: %[[ARG2:.*]]: !mgp.tensor<2xf32>, %[[ARG3:.*]]: !mgp.tensor<5x1xf32>
+// CHECK-SAME: %[[ARG0:.*]]: !mef.chain, %[[ARG1:.*]]: !mgp.context,
+// CHECK-SAME: %[[ARG2:[^:]*]]: !mgp.tensor<2xf32>, %[[ARG3:.*]]: !mgp.tensor<5x1xf32>
 // CHECK-SAME: ) -> (!mef.chain, !mgp.tensor<2xf32>, !mgp.tensor<3xf32>, !mgp.tensor<3xf32>,
 // CHECK-SAME: !mgp.tensor<5x1xf32>, !mgp.tensor<5x1xf32>, !mgp.tensor<4xsi8>) {
 // CHECK-DAG:    %[[VAL0:.*]] = mgp.buffer.constant %{{.*}}, %[[ARG1]][1], #M.aligned_bytes<"0x0000803F0000004000004040", align {{.*}}> : !M.array<12xui8>
@@ -25,10 +25,10 @@ mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<[2], f32>, %arg1: !m
   mo.output %arg0, %0, %0, %arg1, %arg1, %1 : !mo.tensor<[2], f32>, !mo.tensor<[3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[4], si8>
 }
 
-// CHECK-LABEL: mgp.model @foo : mof init {
+// CHECK-LABEL: mgp.model @foo : mof
 // CHECK: } execute (
 // CHECK-SAME: %[[ARG0:.*]]: !mef.chain, %[[ARG1:.*]]: !mgp.context,
-// CHECK-SAME: %[[ARG2:.*]]: !mgp.tensor<1x?xf32>, %[[ARG3:.*]]: !mgp.tensor<?xf32>) -> !mef.chain {
+// CHECK-SAME: %[[ARG2:[^:]*]]: !mgp.tensor<1x?xf32>, %[[ARG3:.*]]: !mgp.tensor<?xf32>) -> !mef.chain {
 // CHECK:   %[[VAL0:.*]] = mgp.tensor.extract.tensor_spec %[[ARG1]][1], %[[ARG2]] : !mgp.tensor<1x?xf32>
 // CHECK:   %[[VAL1:.*]] = mgp.tensor_spec.dims.dynamic %[[VAL0]] : !mgp.tensor_spec<1x?xf32>
 // CHECK:   %[[VAL2:.*]] = mgp.tensor.extract.tensor_spec %[[ARG1]][1], %[[ARG3]] : !mgp.tensor<?xf32>
@@ -38,10 +38,10 @@ mo.graph @foo<N>(%arg0: !mo.tensor<[1, N], f32>, %arg1: !mo.tensor<[N], f32>) {
   mo.output
 }
 
-// CHECK-LABEL: mgp.model @scalar_arg : mof init {
+// CHECK-LABEL: mgp.model @scalar_arg : mof
 // CHECK: } execute (
-// CHECK-SAME: %[[ARG0:.*]]: !mef.chain, %[[ARG1:.*]]: !mgp.context, 
-// CHECK-SAME: %[[ARG2:.*]]: !mgp.tensor<f32>) -> (!mef.chain, !mgp.tensor<f32>) {
+// CHECK-SAME: %[[ARG0:.*]]: !mef.chain, %[[ARG1:.*]]: !mgp.context,
+// CHECK-SAME: %[[ARG2:[^:]*]]: !mgp.tensor<f32>) -> (!mef.chain, !mgp.tensor<f32>) {
 // CHECK:   mef.output %[[ARG0]], %[[ARG2]] : !mef.chain, !mgp.tensor<f32>
 mo.graph @scalar_arg(%arg0: !mo.tensor<[], f32>) -> (!mo.tensor<[], f32>) {
   mo.output %arg0 : !mo.tensor<[], f32>

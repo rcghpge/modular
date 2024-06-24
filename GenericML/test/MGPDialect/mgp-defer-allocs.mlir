@@ -12,8 +12,8 @@
 //  mo.output %r : !mo.tensor<[8], f32>
 //}
 
-// CHECK-LABEL: mgp.model @basic : mof init {
-// CHECK: execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context)
+// CHECK-LABEL: mgp.model @basic : mof
+// CHECK: execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context
 
 // ** No change to mul output allocation.
 // CHECK: %[[CH1:.*]] = mgp.chain.host_to_device %[[CH0]]
@@ -32,13 +32,13 @@
 // CHECK-NEXT: mef.output %[[CH0]], %[[OUT_TENSOR]]
 // CHECK-NEXT: }
 
-mgp.model @basic : mof init {
+mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
   %ch2 = mgp.runtime.create %ch1, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
-} execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<8xf32>) {
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<8xf32>) {
   %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %spec = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
@@ -69,7 +69,7 @@ mgp.model @basic : mof init {
 //
 
 // CHECK-LABEL: mgp.model @divergent
-// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context)
+// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context
 // CHECK-NEXT: %[[CHX:.*]] = mgp.chain.host_to_device %[[CH0]]
 // CHECK-NEXT: %[[CH1:.*]] = "some.op"()
 // CHECK-NEXT: %[[CH2:.*]] = "some.op"()
@@ -92,13 +92,13 @@ mgp.model @basic : mof init {
 // CHECK-NEXT: mef.output %[[CH11]], %[[OUT_TENSOR]]
 // CHECK-NEXT: }
 
-mgp.model @divergent : mof init {
+mgp.model @divergent : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
   %ch2 = mgp.runtime.create %ch1, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
-} execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.tensor<8xf32>) {
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<8xf32>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
   %ch2 = "some.op"() : () -> !mgp.chain
   %ch3 = "some.op"() : () -> !mgp.chain
@@ -131,7 +131,7 @@ mgp.model @divergent : mof init {
 
 // Simply testing for algorithm convergence (in presence of alloc reordering)
 // CHECK-LABEL: mgp.model @multiple_writers_convergence
-// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context)
+// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context
 // CHECK-NEXT: %[[CHX:.*]] = mgp.chain.host_to_device %[[CH0]]
 // CHECK-NEXT: %[[BUF0:.*]] = mgp.buffer.alloc.static %[[CHX]], %[[CTX]][1], align 8
 // CHECK-NEXT: %[[BUF1:.*]] = mgp.buffer.alloc.static %[[CHX]], %[[CTX]][1], align 16
@@ -140,13 +140,13 @@ mgp.model @divergent : mof init {
 // CHECK-NEXT: mef.output %[[CHO]], %[[BUF0]], %[[BUF1]]
 // CHECK-NEXT: }
 
-mgp.model @multiple_writers_convergence : mof init {
+mgp.model @multiple_writers_convergence : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
   %ch2 = mgp.runtime.create %ch1, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
-} execute (%ch0: !mef.chain, %ctx: !mgp.context) -> (!mef.chain, !mgp.buffer<8>, !mgp.buffer<8>) {
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.buffer<8>, !mgp.buffer<8>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
   %buf0 = mgp.buffer.alloc.static %ch1, %ctx[1], align 8 : !mgp.buffer<8>
   %buf1 = mgp.buffer.alloc.static %ch1, %ctx[1], align 16 : !mgp.buffer<8>

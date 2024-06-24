@@ -16,6 +16,7 @@
 #include "LLCL/Runtime/AsyncValue.h"
 #include "LLCL/Runtime/Runtime.h"
 #include "MEFFileImpl.h"
+#include "Support/AssertStream.h"
 #include "llvm/Support/TrailingObjects.h"
 #include <cassert>
 
@@ -799,10 +800,12 @@ MEFInvokableImpl::decode(const EncodedLocation &loc) const {
 void MEFInvokableImpl::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
                               MutableArrayRef<AnyAsyncValueRef> results,
                               Runtime &runtime) const {
-  assert(arguments.size() == getNumArgs() &&
-         "incorrect number of argument to an invokable");
-  assert(results.size() == getNumResults() &&
-         "incorrect number of results for an invokable");
+  ASSERT_STREAM(arguments.size() == getNumArgs(),
+                << "incorrect number of argument to an invokable. "
+                << arguments.size() << " vs " << getNumArgs());
+  ASSERT_STREAM(results.size() == getNumResults(),
+                << "incorrect number of results for an invokable."
+                << results.size() << " vs " << getNumResults());
 
   MEFInvokableDecoder decoder(*this);
   bool headerParseFailure = decoder.decodeHeader();

@@ -216,7 +216,8 @@ static bool isMaybeConstantFoldable(Operation *op) {
       return false;
   }
 
-  return ((isa<MO::MODialect, MOGG::MOGGDialect>(op->getDialect()) &&
+  return ((op->getDialect() &&
+           isa<MO::MODialect, MOGG::MOGGDialect>(op->getDialect()) &&
            // TODO (#29484): Graphs with mo.list outputs can't be lowered to
            // MGP.
            llvm::all_of(

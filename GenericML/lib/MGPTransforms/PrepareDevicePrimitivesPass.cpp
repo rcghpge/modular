@@ -8,6 +8,7 @@
 
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "Support/AssertStream.h"
+#include "Support/MDialect/MAttrs.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
 
