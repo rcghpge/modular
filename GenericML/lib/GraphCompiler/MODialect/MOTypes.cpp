@@ -551,6 +551,120 @@ void MODialect::registerTypes() {
 }
 
 //===----------------------------------------------------------------------===//
+// BufferType
+//===----------------------------------------------------------------------===//
+
+Type BufferType::parse(AsmParser &p) {
+  MLIRContext *ctx = p.getContext();
+  mlir::SMLoc loc = p.getCurrentLocation();
+
+  // parse '<'
+  if (p.parseLess())
+    return {};
+
+  // parse shape
+  TypedAttr shapeAttr;
+  if (parseShapeParam(p, shapeAttr))
+    return {};
+
+  // parse dtype
+  if (p.parseComma())
+    return {};
+  FailureOr<DType> dtypeOr = mlir::FieldParser<DType>::parse(p);
+  if (failed(dtypeOr)) {
+    p.emitError(p.getCurrentLocation(), "invalid dtype in MO::BufferType");
+    return {};
+  }
+  DType dtype = dtypeOr.value();
+
+  // parse optional metadata
+  DictionaryAttr metadata;
+  if (succeeded(p.parseOptionalComma()) && p.parseAttribute(metadata))
+    return {};
+  if (!metadata)
+    metadata = DictionaryAttr::get(ctx);
+
+  // parse '>'
+  if (p.parseGreater())
+    return {};
+
+  return p.getChecked<BufferType>(loc, ctx, shapeAttr, dtype, metadata);
+}
+
+void BufferType::print(AsmPrinter &p) const {
+  p << '<';
+  MOSH::printShapeTypedAttr(p, getShapeAttr());
+  p << ", " << getDtype().getAsString();
+
+  DictionaryAttr metadata = getMetadata();
+  if (!metadata.empty())
+    p << ", " << metadata;
+
+  p << '>';
+}
+
+/// Verifies that the given dimensions represent a valid tensor shape, and
+/// that the element type in DType form is also representable as an MLIR type.
+LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
+                                 TypedAttr shapeAttr, DType dtype,
+                                 DictionaryAttr metadata) {
+  if (auto unkAttr = llvm::dyn_cast<KGEN::UnknownAttr>(shapeAttr)) {
+    return emitError() << "mo.buffer is not allowed to have unknown shape";
+  }
+  if (auto declRef = llvm::dyn_cast<KGEN::ParamDeclRefAttr>(shapeAttr)) {
+    if (Type ty = declRef.getType(); !llvm::isa<ShapeType>(ty)) {
+      return emitError()
+             << "shape parameter reference must have ShapeType, got " << ty;
+    }
+    return success();
+  }
+  if (auto indexRef = ::dyn_cast<KGEN::ParamIndexRefAttr>(shapeAttr)) {
+    if (Type ty = indexRef.getType(); !::isa<ShapeType>(ty)) {
+      return emitError()
+             << "shape parameter reference must have ShapeType, got " << ty;
+    }
+    return success();
+  }
+
+  auto attr = llvm::dyn_cast<ShapeAttr>(shapeAttr);
+  if (!attr)
+    return emitError() << "invalid shape attribute " << shapeAttr;
+
+  for (TypedAttr dimAttr : attr.getValues()) {
+    if (auto dimIntAttr = llvm::dyn_cast<IntegerAttr>(dimAttr)) {
+      if (dimIntAttr.getInt() < 0)
+        return emitError()
+               << "invalid dimension, expect all dimensions >= 0 got: "
+               << dimIntAttr.getInt();
+    } else if (auto unkAttr = llvm::dyn_cast<KGEN::UnknownAttr>(dimAttr)) {
+      return emitError() << "mo.buffer is not allowed to have shapes with '?'";
+    }
+  }
+  return success();
+}
+
+namespace {
+template <typename FromTy, typename ToTy>
+ToTy bufferTensorConverter(FromTy fromTy) {
+  MLIRContext *ctx = fromTy.getContext();
+
+  auto shapeAttr = fromTy.getShapeAttr();
+  auto dtype = fromTy.getDtype();
+  auto metadata = fromTy.getMetadata();
+
+  return ToTy::get(ctx, shapeAttr, dtype, metadata);
+}
+} // namespace
+
+BufferType BufferType::toBuffer(TensorType ty) {
+  return bufferTensorConverter<TensorType, BufferType>(ty);
+}
+
+TensorType BufferType::fromBuffer(BufferType ty) {
+  return bufferTensorConverter<BufferType, TensorType>(ty);
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 
