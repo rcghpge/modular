@@ -1,0 +1,13 @@
+load("//bazel:api.bzl", "modular_cc_test")
+
+modular_cc_test(
+    name = "tests",
+    srcs = glob(["*.cpp"]),
+    data = glob(["Inputs/**"]),
+    env = {
+        "MODULAR_PATH": ".",
+    },
+    deps = [
+        "//SDK:EngineCLI-Benchmark",
+    ],
+)

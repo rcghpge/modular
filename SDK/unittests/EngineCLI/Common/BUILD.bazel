@@ -1,0 +1,10 @@
+load("//bazel:api.bzl", "modular_cc_test")
+
+modular_cc_test(
+    name = "tests",
+    srcs = glob(["*.cpp"]),
+    deps = [
+        "//SDK:EngineCLI-Common",
+        "//Support:ML",
+    ],
+)
