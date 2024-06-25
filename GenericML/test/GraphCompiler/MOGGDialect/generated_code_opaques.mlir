@@ -45,13 +45,15 @@ module {
 // CHECK-NEXT: [[INDEX42:%.*]] = kgen.param.constant = <42>
 // CHECK-NEXT: [[V4:%.*]] = kgen.call @"MOGGTests::MyCustomInt::__init__(MOGGTests::MyCustomInt=&,stdlib::builtin::int::[[INT:[A-Za-z0-9_]*]])"([[V3]], [[INDEX42]]) : (!kgen.pointer<struct<(index) memoryOnly>> init_self, index borrow) -> !kgen.none
 
+// COM: Get the move / del function pointers
+// CHECK-NEXT: [[V5:%.*]] = kgen.create_closure[(!kgen.pointer<struct<(index) memoryOnly>> init_self, !kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none: @"MOGGTests::MyCustomInt::__moveinit__(MOGGTests::MyCustomInt=&,MOGGTests::MyCustomInt)"]()
+// CHECK-NEXT: [[V6:%.*]] = kgen.create_closure[(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none: @"MOGGTests::MyCustomInt::__del__(MOGGTests::MyCustomInt)"]()
+
 // COM: Get the sizeof and alignof properties needed to allocate heap memory for the mojo value.
 // CHECK-NEXT: [[INDEX:%.*]] = kgen.param.constant = <get_sizeof(struct<(index) memoryOnly>, current_target())>
 // CHECK-NEXT: [[INDEX_0:%.*]] = kgen.param.constant = <get_alignof(struct<(index) memoryOnly>, current_target())>
 
-// COM: Get the move / del function pointers and bitcast to the expeced type for create_mojo_value_async.
-// CHECK-NEXT: [[V5:%.*]] = kgen.create_closure[(!kgen.pointer<struct<(index) memoryOnly>> init_self, !kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none: @"MOGGTests::MyCustomInt::__moveinit__(MOGGTests::MyCustomInt=&,MOGGTests::MyCustomInt)"]()
-// CHECK-NEXT: [[V6:%.*]] = kgen.create_closure[(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none: @"MOGGTests::MyCustomInt::__del__(MOGGTests::MyCustomInt)"]()
+// COM: bitcast mov / del the expeced type for create_mojo_value_async.
 // CHECK-NEXT: [[V7:%.*]] = pop.pointer.bitcast [[V5]] : !kgen.signature<(!kgen.pointer<struct<(index) memoryOnly>> init_self, !kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none> to !kgen.signature<(!kgen.pointer<none> borrow, !kgen.pointer<none> borrow) -> !kgen.none>
 // CHECK-NEXT: [[V8:%.*]] = pop.pointer.bitcast [[V6]] : !kgen.signature<(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none> to !kgen.signature<(!kgen.pointer<none> borrow) -> !kgen.none>
 

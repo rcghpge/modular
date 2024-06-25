@@ -784,9 +784,9 @@ def MOGG_CreateReadyChainOp : MOGG_Op<"create_ready_chain", [Pure]> {
   let summary = "Represents a chain output placeholder";
   let description = [{
     This is to help resolve any chain dependencies for data-dependent operations
-    and help elide chains during fusion when lowering down to a compiled region. 
+    and help elide chains during fusion when lowering down to a compiled region.
 
-    This is a special-case to the output placeholders because we remove this much lower 
+    This is a special-case to the output placeholders because we remove this much lower
     in the kgen pipeline compared to the output_placeholders
 
     Example:
@@ -838,7 +838,8 @@ def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure]> {
   let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape, MGP_OpaqueType, MO_List, MO_Opaque]>:$input,
     OptionalAttr<TypedAttrInterface>:$shape,
     OptionalAttr<TypedAttrInterface>:$strides,
-    OptionalAttr<DictionaryAttr>:$typeMethodsDict
+    OptionalAttr<DictionaryAttr>:$typeMethodsDict,
+    UnitAttr:$isRegisterType
   );
   let results = (outs AnyType:$results);
 
@@ -868,9 +869,16 @@ def MOGG_ToMOGGOp: MOGG_Op<"to_mogg", [Pure]> {
 
   let arguments = (ins AnyType:$input,
     OptionalAttr<TypedAttrInterface>:$shape,
-    OptionalAttr<TypedAttrInterface>:$strides
+    OptionalAttr<TypedAttrInterface>:$strides,
+    OptionalAttr<DictionaryAttr>:$typeMethodsDict
   );
-  let results = (outs AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape]>:$results);
+  let results = (outs AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape, MO_Opaque]>:$results);
+
+  let extraClassDeclaration = [{
+    /// Returns the method `methodName` stored in `typeMethodsDict`.
+    /// Returns nullptr if there isn't a methods dict, or `methodName` isn't in the vtable.
+    TypedAttr getMethodOfMojoStruct(StringRef methodName);
+  }];
 }
 
 def MOGG_AssertOp: MOGG_Op<"assert"> {
