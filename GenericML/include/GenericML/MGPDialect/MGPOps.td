@@ -185,80 +185,6 @@ def CpuTensorSpecCreateOp : MGP_Op<"tensor_spec.create", [Pure,
   ];
 }
 
-//===----------------------------------------------------------------------===//
-// CpuTensorSpecCreateDynamicOp
-//===----------------------------------------------------------------------===//
-
-def CpuTensorSpecCreateDynamicOp : MGP_Op<"tensor_spec.create.dynamic", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = [{
-    Creates a CPU tensor spec from a runtime DType and a mix of runtime and
-    static dimensions.
-  }];
-  let description = [{
-    Creates a CPU tensor spec of statically known rank with element type taken
-    at runtime by a DType operand, and dimensions taken from either runtime
-    operands or statically known attributes. Operands must be given for each
-    unknown dimension in order. It is valid for all dimensions to be known
-    statically, in which case only an element type needs to be given.
-
-    Tensor specs are represented as M::TensorSpecs in the Modular runtime.
-
-    Example:
-    ```mlir
-    %dim0 : index
-    %dim1 : index
-    %dtype : !mgp.dtype
-
-    %spec = mgp.tensor_spec.create.dynamic %dtype, %dim0, %dim1 : !mgp.tensor_spec<?x?x?>
-    %spec : !mgp.tensor_spec<?x?x?>
-
-    %spec = mgp.tensor_spec.create %dtype : !mgp.tensor_spec<32x4x?>
-    %spec : !mgp.tensor_spec<32x4x?>
-    ```
-  }];
-
-  // NOTE: The attribute effectively encodes the shape of the result's tensor
-  // spec type in a form understandable by MEF.
-  let arguments = (ins MGP_DTypeType:$runtimeDType,
-                   Variadic<Index>:$runtimeDims,
-                   UI64ArrayElementsAttr:$rawDims);
-  let results = (outs MGP_TensorSpecType:$result);
-  let assemblyFormat = [{ $runtimeDType `,` $runtimeDims attr-dict
-                          `:` custom<RawDims>($rawDims) }];
-  let hasVerifier = 1;
-}
-
-//===----------------------------------------------------------------------===//
-// CpuTensorSpecWithDTypeOp
-//===----------------------------------------------------------------------===//
-
-def CpuTensorSpecWithDTypeOp : MGP_Op<"tensor_spec.with_dtype", [
-    Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = [{
-    Creates a CPU tensor spec from a copy of an existing spec but with
-    statically known dtype.
-  ]};
-  let description = [{
-    Creates a CPU tensor spec as a copy of an existing spec but with a
-    statically known dtype. The existing spec must have an unknown dtype.
-
-    Example:
-    ```mlir
-    %shape : !mgp.tensor_spec<?x3xunk>
-    %spec = mgp.tensor_spec.with_dtype %shape : !mgp.tensor_spec<?x3xf32>
-    %spec : !mgp.tensor_spec<?x3xf32>
-    ```
-  }];
-
-  let arguments = (ins MGP_TensorSpecType:$tensorSpec,
-                   UI8Attr:$rawDType);
-  let results = (outs MGP_TensorSpecType:$result);
-  let assemblyFormat = [{
-    $tensorSpec attr-dict `:` custom<RawDType>(type($tensorSpec), $rawDType)
-  }];
-}
 
 //===----------------------------------------------------------------------===//
 // CpuTensorSpecEqualStaticOp
@@ -357,56 +283,6 @@ def CpuTensorSpecSizeOp : MGP_Op<"tensor_spec.size"> {
   let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
 }
 
-//===----------------------------------------------------------------------===//
-// CpuTensorSpecNumElemsOp
-//===----------------------------------------------------------------------===//
-
-def CpuTensorSpecNumElemsOp : MGP_Op<"tensor_spec.num_elems"> {
-  let summary = [{
-    Returns the number of elements in a CPU tensor with the given
-    tensor spec.
-  }];
-  let description = [{
-    Returns the number of elements in a CPU tensor of the given tensor spec.
-    Generally the tensor spec's type will contain at least one unknown
-    dimension (otherwise the number of elements is already known).
-
-    Example:
-    ```mlir
-    %spec : !mgp.tensor_spec<32x?xf32>
-    %elems = mgp.tensor_spec.num_elems %spec : !mgp.tensor_spec<32x?xf32>
-    %elems : index
-    ```
-  }];
-
-  let arguments = (ins MGP_TensorSpecType: $spec);
-  let results = (outs Index:$result);
-  let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
-}
-
-//===----------------------------------------------------------------------===//
-// CpuTensorSpecDTypeOp
-//===----------------------------------------------------------------------===//
-
-def CpuTensorSpecDTypeOp : MGP_Op<"tensor_spec.dtype"> {
-  let summary = "Returns the DType of the given CPU tensor spec.";
-  let description = [{
-    Returns the runtime DType of the given CPU tensor spec. Generally the
-    tensor spec's type will have an unknown element type (otherwise the result
-    is already known).
-
-    Example:
-    ```mlir
-    %spec : !mgp.tensor_spec<32x?xunk>
-    %dtype = mgp.tensor_spec.dtype %spec : !mgp.tensor_spec<32x?xunk>
-    %dtype : !mgp.dtype
-    ```
-  }];
-
-  let arguments = (ins MGP_TensorSpecType: $spec);
-  let results = (outs MGP_DTypeType:$result);
-  let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
-}
 
 //===----------------------------------------------------------------------===//
 // DebugBoolPrintOp

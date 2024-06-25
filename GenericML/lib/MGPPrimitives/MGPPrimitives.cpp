@@ -83,104 +83,6 @@ static void mgp_check_runtime(Chain inChain, StateContext &ctx,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.tensor_spec.create
-//===----------------------------------------------------------------------===//
-
-/// Creates a TensorSpec by combining the runtime and statically known
-/// shape dimensions and the statically known DType. Only runtime dimensions
-/// corresponding to unknown dimensions should be passed in runtimeDims.
-static void mgp_tensor_spec_create(RemainingArguments runtimeDims,
-                                   Result<TensorSpec> outSpec,
-                                   MEFAttr<ArrayRef<uint64_t>> aRawDims,
-                                   MEFAttr<uint8_t> bRawDType,
-                                   Runtime &runtime) {
-  DType dtype(*bRawDType);
-  if (dtype.isInvalid())
-    return std::move(outSpec).setToError("invalid dtype");
-  auto runtimeDimsVec = runtimeDims.takeAsVector();
-  auto nextRuntimeDim = runtimeDimsVec.begin();
-  SmallVector<uint64_t> shape;
-  shape.reserve(aRawDims.size());
-  for (uint64_t dim : *aRawDims) {
-    if (hasRawSize(dim))
-      shape.push_back(rawSizeToRuntimeSize(dim));
-    else {
-      size_t runtimeDim = (*nextRuntimeDim++).get<size_t>();
-      shape.push_back(runtimeDim);
-    }
-  }
-  std::move(outSpec).emplace(TensorSpec(shape, dtype));
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.tensor_spec.create.dynamic
-//===----------------------------------------------------------------------===//
-
-/// Creates a TensorSpec by combining the runtime and statically known
-/// shape dimensions and a runtime DType. Only runtime dimensions corresponding
-/// to unknown dimensions should be passed in runtimeDims.
-static void mgp_tensor_spec_create_dynamic(DType runtimeDType,
-                                           RemainingArguments runtimeDims,
-                                           Result<TensorSpec> outSpec,
-                                           MEFAttr<ArrayRef<uint64_t>> rawDims,
-                                           Runtime &runtime) {
-  if (runtimeDType.isInvalid())
-    return std::move(outSpec).setToError("invalid dtype");
-  auto runtimeDimsVec = runtimeDims.takeAsVector();
-  auto nextRuntimeDim = runtimeDimsVec.begin();
-  SmallVector<uint64_t> shape;
-  for (auto dim : *rawDims) {
-    if (hasRawSize(dim))
-      shape.push_back(rawSizeToRuntimeSize(dim));
-    else {
-      size_t runtimeDim = (*nextRuntimeDim++).get<size_t>();
-      shape.push_back(runtimeDim);
-    }
-  }
-  std::move(outSpec).emplace(TensorSpec(shape, runtimeDType));
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.tensor_spec.with_dtype
-//===----------------------------------------------------------------------===//
-
-static void mgp_tensor_spec_with_dtype(const TensorSpec &tensorSpec,
-                                       Result<TensorSpec> outSpec,
-                                       MEFAttr<uint8_t> rawDType,
-                                       Runtime &runtime) {
-  DType dtype(*rawDType);
-  if (dtype.isInvalid())
-    return std::move(outSpec).setToError("invalid dtype");
-  std::move(outSpec).emplace(TensorSpec(tensorSpec.getDimsCopy(), dtype));
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.tensor_spec.dims.static
-//===----------------------------------------------------------------------===//
-
-/// Fulfills the result with dimensions of tensor spec which were known at
-/// compile time.
-static void mgp_tensor_spec_equal_static(const TensorSpec &tensorSpec,
-                                         Result<bool> result,
-                                         MEFAttr<ArrayRef<uint64_t>> rawDims,
-                                         Runtime &runtime) {
-  if (tensorSpec.getRank() != rawDims.size()) {
-    std::move(result).emplace(false);
-    return;
-  }
-
-  for (size_t i = 0; i < rawDims->size(); ++i) {
-    const uint64_t expectedDimension = (*rawDims)[i];
-    if (rawSizeToRuntimeSize(expectedDimension) != expectedDimension) {
-      std::move(result).emplace(false);
-      return;
-    }
-  }
-
-  std::move(result).emplace(true);
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.tensor_spec.dims.dynamic
 //===----------------------------------------------------------------------===//
 
@@ -198,33 +100,6 @@ static void mgp_tensor_spec_dims_dynamic(const TensorSpec &tensorSpec,
   for (size_t i = 0, e = rawDims->size(); i < e; ++i)
     if (!hasRawSize((*rawDims)[i]))
       results[next++].copy().emplace<size_t>(tensorSpec[i]);
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.tensor_spec.size
-//===----------------------------------------------------------------------===//
-
-static void mgp_tensor_spec_size(const TensorSpec &tensorSpec,
-                                 Result<size_t> result) {
-  std::move(result).emplace(tensorSpec.getSizeInBytes());
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.tensor_spec.num_elems
-//===----------------------------------------------------------------------===//
-
-static void mgp_tensor_spec_num_elems(const TensorSpec &tensorSpec,
-                                      Result<size_t> result) {
-  std::move(result).emplace(tensorSpec.getNumElements());
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.tensor_spec.dtype
-//===----------------------------------------------------------------------===//
-
-static void mgp_tensor_spec_dtype(const TensorSpec &tensorSpec,
-                                  Result<DType> result) {
-  std::move(result).emplace(tensorSpec.getEltType());
 }
 
 //===----------------------------------------------------------------------===//
@@ -571,19 +446,8 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
   ADD_PRIMITIVE(registry, "mgp.state_slot.create", mgp_state_slot_create);
   ADD_PRIMITIVE(registry, "mgp.check_runtime", mgp_check_runtime);
-  ADD_PRIMITIVE(registry, "mgp.tensor_spec.create", mgp_tensor_spec_create);
-  ADD_PRIMITIVE(registry, "mgp.tensor_spec.create.dynamic",
-                mgp_tensor_spec_create_dynamic);
-  ADD_PRIMITIVE(registry, "mgp.tensor_spec.with_dtype",
-                mgp_tensor_spec_with_dtype);
-  ADD_PRIMITIVE(registry, "mgp.tensor_spec.equal.static",
-                mgp_tensor_spec_equal_static);
   ADD_PRIMITIVE(registry, "mgp.tensor_spec.dims.dynamic",
                 mgp_tensor_spec_dims_dynamic);
-  ADD_PRIMITIVE(registry, "mgp.tensor_spec.size", mgp_tensor_spec_size);
-  ADD_PRIMITIVE(registry, "mgp.tensor_spec.num_elems",
-                mgp_tensor_spec_num_elems);
-  ADD_PRIMITIVE(registry, "mgp.tensor_spec.dtype", mgp_tensor_spec_dtype);
   ADD_PRIMITIVE(registry, "mgp.debug.bool.print", mgp_debug_bool_print);
   ADD_PRIMITIVE(registry, "mgp.debug.cpu.spin_wait", mgp_debug_cpu_spin_wait);
   ADD_PRIMITIVE(registry, "mgp.assert", mgp_assert);
