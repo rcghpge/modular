@@ -37,8 +37,6 @@ target_link_libraries(InferenceSessionTest PRIVATE
   pybind11::embed
 )
 
-LIST(APPEND TEST_ENV "ASAN_OPTIONS=detect_leaks=0,abort_on_error=1,disable_coredump=0")
-
 # NOTE: Ensure the CMake-managed Python interpreter is used.
 # See the ScopedInterpreter note in InferenceSessionTest.cpp.
 LIST(APPEND TEST_ENV "MODULAR_PYTHON_EXECUTABLE=${Python3_EXECUTABLE}")

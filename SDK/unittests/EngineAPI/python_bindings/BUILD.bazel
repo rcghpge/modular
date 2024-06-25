@@ -1,0 +1,14 @@
+load("@pip_deps//:requirements.bzl", "requirement")
+load("//bazel:api.bzl", "modular_pybind_library_test")
+
+modular_pybind_library_test(
+    name = "tests",
+    srcs = glob(["*.cpp"]),
+    local_defines = ["__BAZEL__"],
+    py_deps = [
+        requirement("numpy"),
+    ],
+    deps = [
+        "//SDK:ModularFrameworkPython",
+    ],
+)

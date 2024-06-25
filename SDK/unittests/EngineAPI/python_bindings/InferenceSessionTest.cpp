@@ -11,6 +11,8 @@
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 
+extern "C" const char *__asan_default_options() { return "detect_leaks=0"; }
+
 using namespace M;
 
 /// A scoped helper class to initialize and finalize the Python interpreter.
@@ -63,9 +65,13 @@ ScopedInterpreter::getInterpreter(bool initSignalHandlers, int argc,
   PyConfig_InitIsolatedConfig(&config);
   // Specify isolated Python from the system, since we are embedding Python.
   config.isolated = 0;
+#ifdef __BAZEL__
+  config.use_environment = 1;
+#else
   // Ignore environment variables that influence Python's behaviour, such as
   // PYTHONHOME and PYTHONPATH.
   config.use_environment = 0;
+#endif
   // Initialize signal handlers such as SIGINT for keyboard interrupt?
   config.install_signal_handlers = initSignalHandlers ? 1 : 0;
 
