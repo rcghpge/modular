@@ -1373,7 +1373,10 @@ modular_cc_library(
 modular_shared_library(
     name = "modular-framework-common",
     srcs = glob(["lib/API/c/**/*.cpp"]),
-    hdrs = glob(["include/GenericML/API/**/*.h"]),
+    hdrs = glob([
+        "include/GenericML/API/**/*.h",
+        "include/GenericML/DeviceDriver/*.h",
+    ]),
     deps = [
         ":CommonDriver",
         ":CompileDriver",
