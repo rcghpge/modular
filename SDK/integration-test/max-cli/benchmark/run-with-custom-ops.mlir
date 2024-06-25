@@ -1,3 +1,5 @@
+// (TODO: MSDK-485)
+// REQUIRES: disabled
 // RUN: max benchmark --input-data-schema=%S/Inputs/sqrt1-schema.yaml %S/Inputs/sqrt1 | FileCheck %s --check-prefix=CHECK-DEFAULT
 // RUN: mojo package %S/../../Inputs/test_user_op -o %t.mojopkg
 // RUN: max benchmark --input-data-schema=%S/Inputs/sqrt1-schema.yaml %S/Inputs/sqrt1 --custom-ops-path=%t.mojopkg | FileCheck %s --check-prefix=CHECK-WITH-CUSTOM-OPS

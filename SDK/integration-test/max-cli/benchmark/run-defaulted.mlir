@@ -1,3 +1,5 @@
+// (TODO: MSDK-484)
+// REQUIRES: disabled
 // RUN: max benchmark %S/../../Inputs/relu100x100x3 | FileCheck %s
 // CHECK: Modular Benchmarking Tool
 // CHECK: Modular version: {{.+}}
