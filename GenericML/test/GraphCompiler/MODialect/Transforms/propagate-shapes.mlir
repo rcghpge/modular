@@ -541,3 +541,27 @@ mo.graph @select_fold_during_staticization<seq_len, batch_size -> O1, O2>(
   // CHECK: mo.output [[INPUT]]
   mo.output<D1, D2> %res : !mo.tensor<[D1, D2], si32>
 }
+
+// CHECK-LABEL: mo.graph @range_gather
+//  CHECK-SAME:   <[[N1:.*]], [[N2:.*]], [[N3:.*]]>(
+//  CHECK-SAME:   [[INPUT:%.*]]: !mo.tensor<[], si32>
+mo.graph @range_gather<N1, N2, N3 -> O1, O2>(
+  %input: !mo.tensor<[], si32>,
+  %dummy: !mo.tensor<[N1, N2, N3], si32>
+) -> !mo.tensor<[O1, O2], si32> {
+
+  %zero = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %one = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %dummy_shape = mo.shape_of(%dummy) : (!mo.tensor<[N1, N2, N3], si32>) -> !mo.tensor<[3], si32>
+  %three_idx = mosh.param.to_value = <3>
+  %three = mo.index.to_tensor(%three_idx) -> !mo.tensor<[], si32>
+  %range = mo.range(%one, %three, %one) : (!mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2], si32>
+  %shape = mo.gather(%dummy_shape, %range, %zero) : (!mo.tensor<[3], si32>, !mo.tensor<[2], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2], si32>
+
+  // CHECK: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[[[N2]], [[N3]]], si32>
+  mo.invoke_shape_func["broadcast_to_shape"]<() -> D1, D2>(%input, %shape) {dataDeptTensors = [1]} : (!mo.tensor<[], si32>, !mo.tensor<[2], si32>)
+  %res = mo.static.broadcast_to(%input) : !mo.tensor<[], si32> -> !mo.tensor<[D1, D2], si32>
+
+  // CHECK: mo.output [[RES]]
+  mo.output<D1, D2> %res : !mo.tensor<[D1, D2], si32>
+}

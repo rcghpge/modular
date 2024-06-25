@@ -44,7 +44,10 @@ class MO_ControlOp<string mnemonic, list<Trait> traits = []>
 // IndexToTensorOp
 //===----------------------------------------------------------------------===//
 
-def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [Pure]> {
+def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [
+  Pure,
+  DeclareOpInterfaceMethods<MO_Staticization>,
+]> {
   let summary = "`index` to scalar `!mo.tensor` casting operaton";
   let description = [{
     Example:
@@ -3354,6 +3357,7 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal",
 def MO_RangeOp : MO_TensorOp<"range", [
   MO_SameOperandsAndResultElementType,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_Staticization>,
 ]> {
   let summary = "Range operation";
   let description = [{

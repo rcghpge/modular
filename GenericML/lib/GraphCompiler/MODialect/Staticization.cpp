@@ -11,6 +11,7 @@
 #include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GenericML/Support/Dims.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
+#include "Support/ML/RangeUtils.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include <sstream>
@@ -261,6 +262,11 @@ ErrorOr<TypedAttr> EqualOp::tryStaticize(ArrayRef<TypedAttr> inputs,
   });
 }
 
+ErrorOr<TypedAttr> IndexToTensorOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                                 ParamExprBuilder &b) {
+  return inputs[0];
+}
+
 ErrorOr<TypedAttr> NegativeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                             ParamExprBuilder &b) {
   return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
@@ -282,6 +288,35 @@ ErrorOr<TypedAttr> MulOp::tryStaticize(ArrayRef<TypedAttr> inputs,
   return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
     return b.createKgenExpr(KGEN::POC::MulNuw, scalarInputs);
   });
+}
+
+ErrorOr<TypedAttr> RangeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                         ParamExprBuilder &b) {
+  // Make sure inputs are constants.
+  std::optional<int64_t> startOr = tryGetConstantInt(inputs[0]);
+  std::optional<int64_t> limitOr = tryGetConstantInt(inputs[1]);
+  std::optional<int64_t> stepOr = tryGetConstantInt(inputs[2]);
+  if (!startOr.has_value() || !limitOr.has_value() || !stepOr.has_value())
+    return TypedAttr{};
+  int64_t start = startOr.value();
+  int64_t limit = limitOr.value();
+  int64_t step = stepOr.value();
+
+  // Use a helper validate the input bounds.
+  ErrorOr<int64_t> numOutElemsOr = getRangeNumElements(start, limit, step);
+  if (numOutElemsOr.isError())
+    return numOutElemsOr.takeError();
+  int64_t numOutElems = numOutElemsOr.get();
+
+  // Collect output elements and return an attribute.
+  SmallVector<TypedAttr> outElems;
+  int64_t elem = start;
+  for (int64_t i = 0; i < numOutElems; i++) {
+    outElems.push_back(b.createVar(elem).getAttr());
+    elem += step;
+  }
+  auto resAttr = b.getShapeAttr(outElems);
+  return resAttr;
 }
 
 ErrorOr<TypedAttr> RebindOp::tryStaticize(ArrayRef<TypedAttr> inputs,
