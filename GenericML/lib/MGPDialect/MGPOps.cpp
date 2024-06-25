@@ -155,19 +155,6 @@ static void printOptDeviceRef(OpAsmPrinter &p, Operation *op, StringRef keyword,
     device.print(p);
   }
 }
-static ParseResult parseOptDeviceRef(OpAsmParser &p, StringRef keyword,
-                                     DeviceRefAttr &device) {
-  return parseOptDeviceRefImpl(p, keyword, device, {});
-}
-
-static void printOptDeviceRef(OpAsmPrinter &p, Operation *op, StringRef keyword,
-                              DeviceRefAttr device) {
-  if (device != DeviceRefAttr::getDefault(op->getContext())) {
-    p.printKeywordOrString(keyword);
-    p.getStream() << " ";
-    device.print(p);
-  }
-}
 
 /// Parses a !mgp.buffer type, extracts its raw size and device attributes,
 /// assigns chains the type !mgp.chain<device>.
