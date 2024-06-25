@@ -56,7 +56,6 @@ modular_cc_library(
     hdrs = glob(["include/GenericML/GraphCompiler/*.h"]),
     deps = [
         ":CUDADialect",
-        ":CUDATransforms",
         ":MODialect",
         ":MOGGDialect",
         ":MOGGSupport",
@@ -1183,51 +1182,12 @@ modular_cc_library(
     ],
 )
 
-##
-# CUDA Transforms
-##
-td_library(
-    name = "CUDATransformsTdFiles",
-    srcs = glob(["include/GenericML/CUDATransforms/*.td"]),
-    includes = ["include"],
-    deps = [
-        "@llvm-project//mlir:BuiltinDialectTdFiles",
-    ],
-)
-
-gentbl_modular_passes(
-    name = "CUDATransformsIncGen",
-    output_name = "CUDATransforms",
-    td_file = "include/GenericML/CUDATransforms/CUDATransforms.td",
-    deps = [
-        ":CUDADialectTdFiles",
-        ":CUDATransformsTdFiles",
-        ":MGPDialectTdFiles",
-        "//GraphRT:GRTTdFiles",
-        "//GraphRT:MEFTdFiles",
-        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
-        "@llvm-project//mlir:PassBaseTdFiles",
-    ],
-)
-
-modular_cc_library(
-    name = "CUDATransforms",
-    srcs = glob(["lib/CUDATransforms/*.cpp"]),
-    hdrs = glob(["include/GenericML/CUDATransforms/*.h"]),
-    deps = [
-        ":CUDADialect",
-        ":CUDATransformsIncGen",
-        ":MGPTransforms",
-    ],
-)
-
 modular_cc_library(
     name = "CUDARegistration",
     srcs = glob(["lib/CUDARegistration/*.cpp"]),
     hdrs = glob(["include/GenericML/CUDARegistration/*.h"]),
     deps = [
         ":CUDADialect",
-        ":CUDATransformsIncGen",
         ":GraphCompilerDeviceBuggerizationRegistry",
         "//CUDASupport",
     ],

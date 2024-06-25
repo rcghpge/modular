@@ -6,7 +6,6 @@
 
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "GenericML/CUDADialect/CUDADialect.h"
-#include "GenericML/CUDATransforms/CUDATransforms.h"
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
@@ -83,7 +82,6 @@ void M::MO::registerPasses() {
   MGP::registerFuseGenericCompiledRegions();
   MGP::registerRemoveRedundantOperands();
   MGP::registerMGPTransformsPasses();
-  CUDA::registerCUDATransformsPasses();
   MOGG::registerPasses();
 
   MOQ::registerFixupMOQOpDTypesPass();
@@ -310,11 +308,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MGP::createDeferAllocsPass());
   pm.addPass(MGP::createExecInvariantCodeMotionPass());
   pm.addPass(MGP::createVerifyModelArgumentsPass());
-  if (opts.minPinnedHostBufferSize > 0) {
-    CUDA::CUDAPinHostBuffersPassOptions pinOpts;
-    pinOpts.minPinnedHostBufferSize = opts.minPinnedHostBufferSize;
-    pm.addPass(CUDA::createCUDAPinHostBuffersPass(pinOpts));
-  }
   if (opts.enableMemoryPlanning) {
     // Canonicalization folds calculation of buffer size into a form the
     // memory planner understands.

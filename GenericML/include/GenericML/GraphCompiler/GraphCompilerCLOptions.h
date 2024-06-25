@@ -42,8 +42,6 @@ public:
 
   bool cacheBuffersAcrossExecutes{false};
 
-  size_t minPinnedHostBufferSize{0};
-
   llvm::SmallVector<std::string> kernelLibraryPaths{};
 
   void overrideLoweringOptions(MoToMgpOptions &moToMgpOptions) const {
@@ -58,7 +56,6 @@ public:
     moToMgpOptions.vizOutputPath = vizOutputPath;
     moToMgpOptions.debugPrintAllTensors = debugPrintAllTensors;
     moToMgpOptions.softFusionNonHostKernelLimit = softFusionNonHostKernelLimit;
-    moToMgpOptions.minPinnedHostBufferSize = minPinnedHostBufferSize;
     moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
   }
 };
@@ -148,14 +145,6 @@ private:
           "kernel."),
       llvm::cl::location(options.softFusionNonHostKernelLimit),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
-
-  M::cl::MOpt<size_t, true> minPinnedHostBufferSize{
-      "min-pinned-host-buffer-size",
-      llvm::cl::desc(
-          "If non-zero, replace host-side allocations with pinned allocations "
-          "when the buffer is at least this size in bytes, and is the source "
-          "or target of a host/device memory transfer."),
-      llvm::cl::location(options.minPinnedHostBufferSize)};
 
   M::cl::MListOpt<std::string, llvm::SmallVector<std::string>>
       kernelLibraryPaths{
