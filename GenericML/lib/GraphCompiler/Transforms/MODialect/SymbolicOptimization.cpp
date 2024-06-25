@@ -4394,7 +4394,9 @@ struct MathematicalSimplificationDivBySmallTensorToMul
     // broadcasted by a factor of at least `kThreshold`.
     bool yConstantFoldable =
         dependsOnConstantsOnly<MO::ConstantOp>(y.getDefiningOp());
-    if (!yConstantFoldable && ((*tensorType.getNumElements() /
+    // Avoid division by 0.
+    if (!yConstantFoldable && (*origYType.getNumElements() == 0 ||
+                               (*tensorType.getNumElements() /
                                 *origYType.getNumElements()) < kThreshold)) {
       return failure();
     }

@@ -24,7 +24,8 @@ namespace M {
 enum class FrameworkFormat : uint8_t {
   MAXGraph = 0,
   TorchscriptModule = 1,
-  TorchMLIR = 2,
+  TorchscriptFunction = 2,
+  TorchMLIR = 3,
 };
 
 enum class FileFormat : uint8_t {
@@ -67,6 +68,12 @@ enum class FileFormat : uint8_t {
   /// This looks like a PT file (TorchScript module) in pickled form.
   kPTPickle,
 
+  /// This is a torchscript module object (not a file).
+  kTorchscriptModule,
+
+  /// This is a torchscript function object (not a file).
+  kTorchscriptFunction,
+
   /// This looks like an MLIR file with PyTorch primitives in it.
   /// Those primitives may be from the ATenP or from the Torch dialect after
   /// lowering to MGP.
@@ -86,7 +93,9 @@ inline FileFormat frameworkToFileFormat(FrameworkFormat frameworkFormat) {
   case FrameworkFormat::MAXGraph:
     return FileFormat::kMODialect;
   case FrameworkFormat::TorchscriptModule:
-    return FileFormat::kPTPickle;
+    return FileFormat::kTorchscriptModule;
+  case FrameworkFormat::TorchscriptFunction:
+    return FileFormat::kTorchscriptFunction;
   case FrameworkFormat::TorchMLIR:
     return FileFormat::kTorchDialect;
   }
