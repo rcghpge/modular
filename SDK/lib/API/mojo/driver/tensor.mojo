@@ -101,6 +101,14 @@ struct Tensor[type: DType, rank: Int](CollectionElement, TensorLike):
     # function set on the cpp side.
     var _device_memory_impl_ptr: UnsafePointer[NoneType]
 
+    fn __init__(inout self):
+        self._ptr = DTypePointer[type]()
+        self._spec = StaticTensorSpec[type, rank](StaticIntTuple[rank]())
+        self._strides = StaticIntTuple[rank]()
+        self._device = Device()
+        self.name = None
+        self._device_memory_impl_ptr = UnsafePointer[NoneType]()
+
     fn __init__(inout self, owned device_tensor: DeviceTensor) raises:
         self._device = device_tensor.device()
         self.name = device_tensor.name()
@@ -265,3 +273,10 @@ struct Tensor[type: DType, rank: Int](CollectionElement, TensorLike):
         is not used after it's owner is last used.
         """
         return rebind[DTypePointer[__type]](self._ptr)
+
+    fn take(inout self) -> Self:
+        """The returned value takes self's resources and replaces them with default
+        initialized values."""
+        var tmp = Self()
+        swap(tmp, self)
+        return tmp

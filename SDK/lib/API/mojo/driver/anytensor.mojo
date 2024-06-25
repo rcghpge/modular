@@ -19,7 +19,7 @@ struct AnyTensor:
     var _name: Optional[String]
     var _device_memory_impl_ptr: UnsafePointer[NoneType]
 
-    fn __init__(inout self) raises:
+    fn __init__(inout self):
         self._device = Device()
         self._spec = TensorSpec(DType.uint8, 0)
         self._name = None
@@ -72,6 +72,13 @@ struct AnyTensor:
     fn to_device_tensor(owned self) raises -> DeviceTensor:
         var spec = self._spec
         return DeviceTensor(DeviceMemory(self^), spec)
+
+    fn take(inout self) -> Self:
+        """The returned value takes self's resources and replaces them with default
+        initialized values."""
+        var tmp = Self()
+        swap(self, tmp)
+        return tmp
 
     fn __del__(owned self):
         _ = DeviceMemory(

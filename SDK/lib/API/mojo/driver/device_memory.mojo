@@ -230,6 +230,11 @@ struct DeviceMemory(DeviceBuffer, StringableRaising, CollectionElement):
             self._impl_ptr,
         )
 
+    fn take(inout self) raises -> Self:
+        var tmp = Self()
+        swap(tmp, self)
+        return tmp
+
 
 struct DeviceTensor(DeviceBuffer, StringableRaising, CollectionElement):
     var _storage: DeviceMemory
@@ -244,6 +249,10 @@ struct DeviceTensor(DeviceBuffer, StringableRaising, CollectionElement):
             device,
             name,
         )
+
+    fn __init__(inout self):
+        self.spec = TensorSpec()
+        self._storage = DeviceMemory()
 
     fn __init__(
         inout self, owned storage: DeviceMemory, spec: TensorSpec
@@ -311,3 +320,10 @@ struct DeviceTensor(DeviceBuffer, StringableRaising, CollectionElement):
 
     fn bytecount(self) -> Int:
         return self.spec.bytecount()
+
+    fn take(inout self) -> Self:
+        """The returned value takes self's resources and replaces them with default
+        initialized values."""
+        var tmp = Self()
+        swap(tmp, self)
+        return tmp
