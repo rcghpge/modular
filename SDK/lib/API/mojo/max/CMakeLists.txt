@@ -98,6 +98,10 @@ set(DRIVER_SRCS
   _driver/tensor_slice
 )
 
+set(UTILS_SRCS
+  _utils/__init__
+)
+
 add_mojo_package(max-mojo PRIVATE
   ${GRAPH_SRCS}
   ${ENGINE_SRCS}
@@ -105,6 +109,7 @@ add_mojo_package(max-mojo PRIVATE
   ${REGISTER_SRCS}
   ${SERVE_SRCS}
   ${DRIVER_SRCS}
+  ${UTILS_SRCS}
 
   DOCS_DIR
   SDK/docs
@@ -114,7 +119,6 @@ add_mojo_package(max-mojo PRIVATE
   mojo-tensor
   mojo-buffer
   mojo-extensibility
-  max-utils
   DeviceDriver
 
   mlir-mojo-api
