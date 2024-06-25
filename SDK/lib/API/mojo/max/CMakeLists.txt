@@ -87,7 +87,15 @@ set(SERVE_SRCS
 
 set(DRIVER_SRCS
   _driver/__init__
+  _driver/_driver_library
+  _driver/_status
+  _driver/anytensor
+  _driver/cuda
+  _driver/device
+  _driver/device_memory
   _driver/graph
+  _driver/tensor
+  _driver/tensor_slice
 )
 
 add_mojo_package(max-mojo PRIVATE
@@ -107,7 +115,7 @@ add_mojo_package(max-mojo PRIVATE
   mojo-buffer
   mojo-extensibility
   max-utils
-  max-driver
+  DeviceDriver
 
   mlir-mojo-api
 )

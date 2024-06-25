@@ -14,7 +14,6 @@ mojo_library(
         "//Kernels/mojo/gpu",
         "//Kernels/mojo/runtime",
         "//Kernels/mojo/tensor",
-        "//SDK/lib/API/mojo/driver",
         "//SDK/lib/API/mojo/max_utils",
         "//open-source/mojo/stdlib/stdlib",
     ],

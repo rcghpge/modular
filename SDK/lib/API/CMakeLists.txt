@@ -5,5 +5,4 @@
 ##===----------------------------------------------------------------------===##
 
 add_subdirectory(mojo/max_utils)
-add_subdirectory(mojo/driver)
 add_subdirectory(mojo/max)
