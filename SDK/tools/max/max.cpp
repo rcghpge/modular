@@ -6,11 +6,11 @@
 
 #include "Config/Version.h"
 #include "GenericML/API/max/c/common.h"
+#include "LLCL/Init/Init.h"
 #include "SDK/EngineCLI/Benchmark/Main.h"
 #include "SDK/EngineCLI/Visualize/Main.h"
 #include "Support/CrashReporting.h"
 #include "Support/Driver/DriverSupport.h"
-#include "Support/Init/Init.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/Option.h"
 #include "llvm/Support/FormatVariadic.h"

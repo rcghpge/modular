@@ -8,10 +8,10 @@ modular_cc_binary(
         "//GraphRT:MEFExecutor",
         "//GraphRT:Primitives",
         "//LLCL:CompilerSupport",
+        "//LLCL:Init",
         "//LLCL:Runtime",
         "//LLCL:RuntimeGlobals",
         "//Support:CommonCLOptions",
         "//Support:Globals",
-        "//Support:Init",
     ],
 )

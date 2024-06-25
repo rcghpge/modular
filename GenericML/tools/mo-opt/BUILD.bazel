@@ -5,8 +5,8 @@ modular_cc_binary(
     srcs = glob(["*.cpp"]),
     deps = [
         "//GenericML:GraphCompiler",
+        "//LLCL:Init",
         "//Support:Globals",
-        "//Support:Init",
         "@llvm-project//mlir:MlirOptLib",
     ],
 )

@@ -6,9 +6,9 @@ modular_cc_binary(
     deps = [
         "//GraphRT:AllDialects",
         "//LLCL:CompilerSupport",
+        "//LLCL:Init",
         "//LLCL:RuntimeGlobals",
         "//Support:Globals",
-        "//Support:Init",
         "@llvm-project//mlir:MlirOptLib",
     ],
 )

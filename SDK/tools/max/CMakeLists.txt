@@ -20,9 +20,9 @@ add_modular_tool(max
   EngineCLIBenchmark
   EngineCLIVisualize
   MCrashReporting
+  MLLCLInit
   MSupport
   MSupportDriver
-  MSupportInit
   MSupportGlobals
   LLCLRuntimeGlobals
 )

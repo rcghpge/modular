@@ -8,11 +8,11 @@ modular_cc_binary(
         ":DriverOptions.help_gen",
         ":DriverOptions.inc_gen",
         "//GenericML:modular-framework-common",
+        "//LLCL:Init",
         "//PyTorch:modular-framework-torch-ext",
         "//SDK:EngineCLI-Benchmark",
         "//SDK:EngineCLI-Visualize",
         "//Support:Globals",
-        "//Support:Init",
     ],
 )
 

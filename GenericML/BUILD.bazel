@@ -1419,10 +1419,10 @@ modular_shared_library(
         ":CompileDriver",
         ":MaxAPI",
         "//CUDASupport",
+        "//LLCL:Init",
         "//Support:Base",
         "//Support:CrashReporting",
         "//Support:Globals",
-        "//Support:Init",
         "//Support:Metering",
     ],
 )
@@ -1437,6 +1437,6 @@ modular_shared_library(
         ":modular-framework-common",
         ":rpaths",
         "//CUDASupport",
-        "//Support:Init",
+        "//LLCL:Init",
     ],
 )
