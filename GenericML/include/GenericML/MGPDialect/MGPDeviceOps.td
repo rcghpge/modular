@@ -160,7 +160,7 @@ def RuntimeCreateOp : MGP_DeviceOp<"runtime.create"> {
 
     Example:
     ```mlir
-      // Establish a CUDA runtime in slot 5 using the gpu returned 
+      // Establish a CUDA runtime in slot 5 using the gpu returned
       // by cuDevice(3).
       %ch0 : !mef.chain
       %ctx : !mgp.context
@@ -315,7 +315,7 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
       // constant names. The CUDA module will be associated with the CUDA
       // runtime established in slot 5, which should be for the CUDA GPU with
       // virtual device id 3.
-      %ch1 = mgp.module.load %ch0, %ctx[5],
+      %ch1 = mgp.module.load %ch0, %ctx[5][1],
                dense_resource<label> : !M.aligned_bytes<1000, align 16>,
                ["kernel1", "kernel2"], ["const1", "const2"]
                device <"cuda", 3>
@@ -331,10 +331,12 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
                        AnyAttrOf<[M_MultiLineStringAttr, ElementsAttr]>:$bImage, // 1
                        M_MultiLineStringAttr:$cFunctionSymbols,                  // 2
                        M_MultiLineStringAttr:$dConstantSymbols,                  // 3
-                       MGP_OptDeviceRefAttr:$eDevice);                           // 4
+                       MGP_OptDeviceRefAttr:$eDevice,                            // 4
+                       UI64Attr:$fModuleIndex                                    // 5
+                       );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $bImage `,`
+    $inChain `,` $theContext `[` $aRuntimeSlot `]` `[` $fModuleIndex `]` `,` $bImage `,`
     $cFunctionSymbols `,` $dConstantSymbols
     ( `device` $eDevice^ )? attr-dict
   }];

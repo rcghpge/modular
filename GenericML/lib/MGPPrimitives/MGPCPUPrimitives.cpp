@@ -91,13 +91,13 @@ void mgp_runtime_create_cpu(Chain inChain, StateContext &theContext,
 // mgp.module.load.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_module_load_cpu(Chain inChain, StateContext &theContext,
-                                Result<Chain> outChain,
-                                MEFAttr<uint64_t> aRuntimeSlot,
-                                MEFDynamicAttr bImage,
-                                MEFAttr<StringRef> cFunctionSymbols,
-                                MEFAttr<StringRef> dConstantSymbols,
-                                MEFAttr<uint64_t> eDeviceId, Runtime &runtime) {
+static void
+mgp_module_load_cpu(Chain inChain, StateContext &theContext,
+                    Result<Chain> outChain, MEFAttr<uint64_t> aRuntimeSlot,
+                    MEFDynamicAttr bImage, MEFAttr<StringRef> cFunctionSymbols,
+                    MEFAttr<StringRef> dConstantSymbols,
+                    MEFAttr<uint64_t> eDeviceId, MEFAttr<uint64_t> fModuleIndex,
+                    Runtime &runtime) {
   KernelExecutionState &kernelExecutionState =
       theContext.getStateSlotPayload<KernelExecutionState>(
           static_cast<size_t>(*aRuntimeSlot));
@@ -108,11 +108,15 @@ static void mgp_module_load_cpu(Chain inChain, StateContext &theContext,
   }
 
   // Create a kernels context.
-  CompiledKernelsContext &module = *kernelExecutionState.modules.emplace_back(
+  if (fModuleIndex.get() >= kernelExecutionState.modules.size())
+    kernelExecutionState.modules.resize(fModuleIndex.get() + 1);
+  kernelExecutionState.modules[fModuleIndex.get()] =
       RCRef<CompiledKernelsContext>::create(
           kernelExecutionState.engine,
           runtime.getProfilerDebuginfo() ==
-              RuntimeOptions::ProfilerDebuginfo::kSOProfiler));
+              RuntimeOptions::ProfilerDebuginfo::kSOProfiler);
+  CompiledKernelsContext &module =
+      *kernelExecutionState.modules[fModuleIndex.get()];
 
   // Decode the image.
   ArrayRef<uint8_t> image;

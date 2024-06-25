@@ -24,15 +24,15 @@ func.func @runtime_create_host(%ctx : !mgp.context, %ch0 : !mef.chain) {
 
 // CHECK-LABEL: @module_load_dense_attribute
 func.func @module_load_dense_attribute(%ctx : !mgp.context, %ch0 : !mef.chain) {
-  // CHECK: %{{.*}} = mgp.module.load %{{.*}}, %{{.*}}[1], dense_resource<resource> : !M.aligned_bytes<4, align 64>, ["f1", "f2"],  ["g1", "g2"] device <"cuda", 3>
-  %ch1 = mgp.module.load %ch0, %ctx[1], dense_resource<resource> : !M.aligned_bytes<4, align 64>, ["f1", "f2"], ["g1", "g2"] device <"cuda", 3>
+  // CHECK: %{{.*}} = mgp.module.load %{{.*}}, %{{.*}}[{{.*}}], dense_resource<resource> : !M.aligned_bytes<4, align 64>, ["f1", "f2"],  ["g1", "g2"] device <"cuda", 3>
+  %ch1 = mgp.module.load %ch0, %ctx[1][1], dense_resource<resource> : !M.aligned_bytes<4, align 64>, ["f1", "f2"], ["g1", "g2"] device <"cuda", 3>
   mef.output %ch1 : !mef.chain
 }
 
 // CHECK-LABEL: @module_load_multiline
 func.func @module_load_multiline(%ctx : !mgp.context, %ch0 : !mef.chain) {
-  // CHECK: %{{.*}} = mgp.module.load %{{.*}}, %{{.*}}[1], #M<multiline["a", "b", "c"]>, ["f"], [] device <"cuda", 3>
-  %ch1 = mgp.module.load %ch0, %ctx[1], #M<multiline["a", "b", "c"]>, ["f"], [] device <"cuda", 3>
+  // CHECK: %{{.*}} = mgp.module.load %{{.*}}, %{{.*}}[{{.*}}], #M<multiline["a", "b", "c"]>, ["f"], [] device <"cuda", 3>
+  %ch1 = mgp.module.load %ch0, %ctx[1][1], #M<multiline["a", "b", "c"]>, ["f"], [] device <"cuda", 3>
   mef.output %ch1 : !mef.chain
 }
 

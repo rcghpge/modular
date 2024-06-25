@@ -346,16 +346,19 @@ TypedValue<MEF::ChainType> MGPBufferBuilder::moduleLoad(
                                          functionSymbols, functionToIndexPair);
   auto constantSymbolsAttr = toMultiline(builder, nextModuleIndex,
                                          constantSymbols, constantToIndexPair);
+  auto load =
+      builder.create<ModuleLoadOp>(loc,
+                                   /*inChain=*/
+                                   cast<TypedValue<MEF::ChainType>>(inChain),
+                                   /*theContext=*/context,
+                                   /*aRuntimeSlot=*/runtimeSlot,
+                                   /*bImage=*/image,
+                                   /*cFunctionSymbols=*/functionSymbolsAttr,
+                                   /*dConstantSymbols=*/constantSymbolsAttr,
+                                   /*eDevice=*/device,
+                                   /*fModuleIndex=*/nextModuleIndex);
   ++nextModuleIndex;
-  return builder.create<ModuleLoadOp>(loc,
-                                      /*inChain=*/
-                                      cast<TypedValue<MEF::ChainType>>(inChain),
-                                      /*theContext=*/context,
-                                      /*aRuntimeSlot=*/runtimeSlot,
-                                      /*bImage=*/image,
-                                      /*cFunctionSymbols=*/functionSymbolsAttr,
-                                      /*dConstantSymbols=*/constantSymbolsAttr,
-                                      /*eDevice=*/device);
+  return load;
 }
 
 Value MGPBufferBuilder::kernelExecute(

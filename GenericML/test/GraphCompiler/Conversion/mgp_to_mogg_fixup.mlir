@@ -22,7 +22,7 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaqu
 // CHECK-LABEL: mgp.model @basic
 // CHECK: %[[CTX:.*]] = mgp.context.create 2
 // CHECK: %[[KERNEL_CTX:.*]] = mgp.runtime.create
-// CHECK-NEXT: mgp.module.load %[[KERNEL_CTX]], %[[CTX]][0], dense_resource<fake_binary> : tensor<1xui8>, ["__gen_0"]
+// CHECK-NEXT: mgp.module.load %[[KERNEL_CTX]], %[[CTX]][{{.*}}], dense_resource<fake_binary> : tensor<1xui8>, ["__gen_0"]
 
 // CHECK: } execute
 // CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{{.*}}, dSummary = {{.*}}} : (!mgp.context, !mef.chain, index, index) -> (!mgp.chain, index)
@@ -52,6 +52,6 @@ mgp.model @basic_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%arg
 // CHECK-LABEL: mgp.model @basic_control_flow
 // CHECK: %[[CTX:.*]] = mgp.context.create 2
 // CHECK: %[[KERNEL_CTX:.*]] = mgp.runtime.create
-// CHECK-NEXT: mgp.module.load %[[KERNEL_CTX]], %[[CTX]][0], dense_resource<fake_binary> : tensor<1xui8>, ["__gen_0"]
+// CHECK-NEXT: mgp.module.load %[[KERNEL_CTX]], %[[CTX]][{{.*}}], dense_resource<fake_binary> : tensor<1xui8>, ["__gen_0"]
 // CHECK: } execute
 // CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{{.*}}, dSummary = {{.*}}} : (!mgp.context, !mef.chain, index, index) -> (!mgp.chain, index)

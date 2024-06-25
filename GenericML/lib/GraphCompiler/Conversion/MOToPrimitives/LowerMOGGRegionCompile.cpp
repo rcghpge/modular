@@ -173,9 +173,10 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
           /*bArchive=*/loadKernels.getValue(),
           /*cKernelNames=*/
           MultiLineStringAttr::get(ctx, deviceKernelNameAttrs[device]),
-          /*dConstantSymbols*/
+          /*dConstantSymbols=*/
           MultiLineStringAttr::get(ctx, SmallVector<StringAttr>()),
-          /*device*/ device);
+          /*eDevice=*/device,
+          /*fModuleIndex=*/deviceModuleIndex[device]);
       inChain.replaceAllUsesExcept(loadArchive.getResult(), loadArchive);
       loadKernels.erase();
     }
