@@ -16,6 +16,7 @@
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "Support/AssertStream.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetOperations.h"
 #include <optional>
@@ -878,11 +879,6 @@ struct PropagateShapesPass
       Operation *op = worklist.back();
       worklist.pop_back();
 
-      // Use accumulated param-to-expression mapping to simplify the op first.
-      // This is needed to help DCE get rid of the decls with simplified exprs.
-      replacer.replaceElementsIn(op, /*replaceAttrs=*/true,
-                                 /*replaceLocs=*/true, /*replaceTypes=*/true);
-
       // TODO replace with a `ShapeInferrable` interface.
       if (auto invokeShapeFuncOp = dyn_cast<InvokeShapeFuncOp>(op)) {
         ErrorOrSuccess result = shapeInferOp(invokeShapeFuncOp, worklist);
@@ -891,11 +887,47 @@ struct PropagateShapesPass
           op->emitError(result.getError());
           return signalPassFailure();
         }
-        // Otherwise the op has been shape-inferred, continue.
+        // Otherwise the op has been shape-inferred, continue to process the new
+        // ops that were pushed onto the worklist.
+        continue;
 
-      } else if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
+      } else if (auto shapeOfOp = dyn_cast<ShapeOfOp>(op)) {
+        // TODO merge this branch with the `InvokeShapeFuncOp` branch once we
+        // have a common interface to model shape function logic of MO ops.
+
+        // Skip if input shape is still dynamically ranked. At this stage, it
+        // indicates a rare scenario where there might be a real dynamic rank,
+        // which our stack doesn't support at the moment.
+        if (auto inputShape = dyn_cast<ShapeAttr>(
+                shapeOfOp.getInput().getType().getShapeAttr())) {
+          // Change
+          //   mo.shape_of<() -> D1> : [N1, N2] -> [D1]
+          // to
+          //   kgen.param.declare D1 = <2>
+          //   mo.shape_of : [N1, N2] -> [D1]
+          ArrayRef<KGEN::ParamDeclAttr> outParamDecls =
+              shapeOfOp.getOutputParamDecls();
+          if (!outParamDecls.empty()) {
+            KGEN::ParamDeclAttr decl = outParamDecls.front();
+            ASSERT_STREAM(outParamDecls.size() == 1 && decl.getType().isIndex(),
+                          << "expect only 1 output dimension parameter");
+            ImplicitLocOpBuilder builder(op->getLoc(), op);
+            auto rankAttr = builder.getIndexAttr(inputShape.getRank());
+            auto declOp = builder.create<KGEN::ParamDeclareOp>(decl, rankAttr);
+            shapeOfOp.setOutputParamDecls({});
+            worklist.push_back(op);
+            worklist.push_back(declOp);
+            // Continue to let worklist process the new ops.
+            continue;
+          }
+        }
+      }
+
+      // Then handle existing `kgen.param.declare`.
+      if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
         KGEN::ParamDeclAttr declAttr = declOp.getParamDecl();
-        auto foldedRhsAttr = cast<TypedAttr>(declOp.getValue());
+        auto foldedRhsAttr =
+            cast<TypedAttr>(evaluator.getReboundAttribute(declOp.getValue()));
 
         // Apply shape-inference specific folding
         foldedRhsAttr = tryFoldExprAttr(foldedRhsAttr);
@@ -953,6 +985,13 @@ struct PropagateShapesPass
           return signalPassFailure();
         }
       }
+
+      // At this point, we know replacer has absorbed as much relevant parameter
+      // definitions as possible in order to update parameters in `op`. So we
+      // just use the accumulated param-to-expression mapping to simplify the
+      // op. This helps DCE get rid of the decls with simplified exprs.
+      replacer.replaceElementsIn(op, /*replaceAttrs=*/true,
+                                 /*replaceLocs=*/true, /*replaceTypes=*/true);
     }
 
     handleOutputBindings(graphOp, evaluator);
@@ -965,6 +1004,33 @@ struct PropagateShapesPass
     KGEN::ParameterUseDefGraph useDefGraph(graphOp.getRegion());
     useDefGraph.calculate(paramCache);
     removeDeadParamDeclares(graphOp, useDefGraph);
+
+    // Extra processing to convert
+    //   mo.shape_of(%input) : [N1, 32] -> ...
+    // to
+    //   const_shape = mosh.param.to_value <N, 32>
+    //   shape       = mo.shape.to_tensor(const_shape) : ...
+    //
+    // We need this because it allows us to get rid of the false data dependency
+    // from this op (and all its immediate & transitive users) to the `%input`
+    // value.
+    //
+    // We put them here because
+    // 1. Putting it in the worklist loop above doesn't enable more shape
+    //    propagation, and it adds more complexity to the loop.
+    // 2. Putting it in `ShapeOfOp` canonicalizer would make this happen in _too
+    //    many_ places, which might affect debugging, especially when we want to
+    //    examine the output of frontend lowering (e.g., to check correctness or
+    //    understand model semantics)
+    getOperation().walk([&](ShapeOfOp op) {
+      ImplicitLocOpBuilder builder(op.getLoc(), op);
+      TypedAttr inputShape = op.getInput().getType().getShapeAttr();
+      auto shConst = builder.create<MOSH::ParamToValueOp>(inputShape);
+      auto toTensor = builder.create<Shape::ToTensorOp>(op.getType(), shConst);
+      op.replaceAllUsesWith(toTensor.getResult());
+      op.erase();
+      return WalkResult::advance();
+    });
   }
 
   // State variables used by the pass

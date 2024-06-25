@@ -565,3 +565,41 @@ mo.graph @range_gather<N1, N2, N3 -> O1, O2>(
   // CHECK: mo.output [[RES]]
   mo.output<D1, D2> %res : !mo.tensor<[D1, D2], si32>
 }
+
+// CHECK-LABEL: mo.graph @slice_and_shape_of
+//  CHECK-SAME:   <[[D0:.*]]>(
+//  CHECK-SAME:   [[INPUT:%.*]]: !mo.tensor<[[[D0]], 10], si32>
+mo.graph @slice_and_shape_of<D0 -> O1>(
+  %input: !mo.tensor<[D0, 10], si32>
+) -> !mo.tensor<[O1], si32> {
+
+  // Construct a tensor value that represents `[D0, 10, 1]`
+  %zero_scalar = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %one = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %input_shape = mo.shape_of(%input) : (!mo.tensor<[D0, 10], si32>) -> !mo.tensor<[2], si32>
+  mo.invoke_shape_func["concat_shape"]<() -> D1>(%zero_scalar, %input_shape, %one)
+    {dataDeptTensors = [0]} : (!mo.tensor<[], si32>, !mo.tensor<[2], si32>, !mo.tensor<[1], si32>)
+  %target_shape = mo.concat[%zero_scalar: !mo.tensor<[], si32>](%input_shape, %one) : (
+    !mo.tensor<[2], si32>, !mo.tensor<[1], si32>
+  ) -> !mo.tensor<[D1], si32>
+ 
+  // This reshapes `%input` from `[D0, 10]` to `[D0, 10, 1]`. In practice we
+  // might get such pseudo-dynamic-rank from either PT models or RMO lowering.
+  mo.invoke_shape_func["reshape_shape"]<() -> Sh0: !mosh.ape>(%input, %target_shape)
+    {dataDeptTensors = [1]} : (!mo.tensor<[D0, 10], si32>, !mo.tensor<[D1], si32>)
+  %reshaped = mo.reshape(%input, %target_shape) : (
+    !mo.tensor<[D0, 10], si32>, !mo.tensor<[D1], si32>
+  ) -> !mo.tensor<Sh0, si32>
+
+  // In practice this might be any series of computations
+  %abs = mo.abs(%reshaped) : !mo.tensor<Sh0, si32>
+
+  // In practice we might need to get the shape of this for things like modeling
+  // unsqueeze via reshape or doing slice.
+  %shape = mo.shape_of<() -> D2>(%abs) : (!mo.tensor<Sh0, si32>) -> !mo.tensor<[D2], si32>
+
+  // CHECK-NEXT: [[MOSH_SH:%.*]] = mosh.param.to_value: !mosh.ape = <[[[D0]], 10, 1]>
+  // CHECK-NEXT: [[TENSOR_SH:%.*]] = mo.shape.to_tensor(%0) -> !mo.tensor<[3], si32>
+  // CHECK-NEXT: mo.output [[TENSOR_SH]]
+  mo.output<D2> %shape : !mo.tensor<[D2], si32>
+}
