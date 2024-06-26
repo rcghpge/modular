@@ -12,7 +12,7 @@
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "Support/CommonCLOptions.h"
 #include "Support/Configuration.h"
-#include "Support/CrashReporting.h"
+#include "Support/CrashReporting/CrashReporting.h"
 #include "Support/ErrorOr.h"
 #include "Support/ML/TensorShape.h"
 #include "Support/Process.h"
