@@ -2046,17 +2046,26 @@ static LogicalResult materializeShapeInference(RebindOp op,
       //   kgen.param.declare D4 = <D1>
       //   rebind : [D0, D1, D2] -> [D0, D4, 42]
       llvm::DenseSet<KGEN::ParamDeclAttr> unknownParamDecls;
+
+      // Avoid re-declaring multiple parameters. Example:
+      //  rebind<() -> C> : [A, B] -> [C, C]
+      // --->
+      //   kgen.param.declare C = <A>
+      //   rebind : [A, B] -> [C, C]
+      llvm::SmallSetVector<KGEN::ParamDeclAttr, 4> declaredParams;
       for (auto [inputDimAttr, outputDimAttr] :
            llvm::zip(inputDimAttrs.getValues(), outputDimAttrs.getValues())) {
         if (auto outputDimParamRef =
                 dyn_cast<KGEN::ParamDeclRefAttr>(outputDimAttr)) {
           if (KGEN::ParamDeclAttr paramDecl =
                   nameToParamDecl.lookup(outputDimParamRef.getName())) {
-            if (isa<KGEN::UnknownAttr>(inputDimAttr))
+            if (isa<KGEN::UnknownAttr>(inputDimAttr)) {
               unknownParamDecls.insert(paramDecl);
-            else
+            } else if (!declaredParams.contains(paramDecl)) {
+              declaredParams.insert(paramDecl);
               rewriter.create<KGEN::ParamDeclareOp>(loc, paramDecl,
                                                     inputDimAttr);
+            }
           }
         }
       }

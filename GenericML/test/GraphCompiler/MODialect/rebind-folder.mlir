@@ -46,3 +46,15 @@ mo.graph @rebind_no_fold<N, M, Sh: !mosh.ape>(
   // CHECK-NEXT: mo.output
   mo.output %0, %1 : !mo.tensor<Sh, f32>, !mo.tensor<[N, M], f32>
 }
+
+// Key is only one definition of param C
+// CHECK: mo.graph @rebind_reuse_declared_param<A, B -> O>
+// CHECK-NEXT: kgen.param.declare C = <A>
+// CHECK-NOT: kgen.param.declare
+// CHECK-NEXT: mo.rebind({{.*}}) : !mo.tensor<[A, B], f32> -> !mo.tensor<[C, C], f32>
+mo.graph @rebind_reuse_declared_param<A, B -> O>(
+  %arg0: !mo.tensor<[A, B], f32>
+) -> !mo.tensor<[O, O], f32> {
+  %0 = mo.rebind<() -> C>(%arg0) : !mo.tensor<[A, B], f32> -> !mo.tensor<[C, C], f32>
+  mo.output<C> %0 : !mo.tensor<[C, C], f32>
+}
