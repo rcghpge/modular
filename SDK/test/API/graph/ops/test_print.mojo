@@ -7,6 +7,7 @@
 
 from max.graph import _testing, Dim, Graph, TensorType, Symbol
 from tensor import Tensor, TensorShape
+from max.engine import InferenceSession, TensorMap, PrintStyle
 
 
 fn test_print() raises:
@@ -24,5 +25,27 @@ fn test_print() raises:
     _ = _testing.execute_base(g, x)
 
 
+fn test_print_with_config() raises:
+    var g = Graph(TensorType(DType.float32, Dim.dynamic(), Dim.dynamic(), 2))
+    g[0].print()
+    g.output(List[Symbol]())
+    g.verify()
+
+    var x = Tensor[DType.float32](TensorShape(2, 2, 2), 1, 2, 3, 4, 5, 6, 7, 8)
+
+    var session = InferenceSession()
+    session.set_debug_print_options(style=PrintStyle.FULL, precision=2)
+
+    var model = session.load(g)
+
+    var input_map = session.new_tensor_map()
+    input_map.borrow("input0", x)
+
+    # CHECK: debug_tensor_cpu = tensor<2x2x2xf32> [1.00e+00, 2.00e+00, 3.00e+00, 4.00e+00, 5.00e+00, 6.00e+00, 7.00e+00, 8.00e+00]
+    _ = model.execute(input_map)
+    _ = x^
+
+
 def main():
     test_print()
+    test_print_with_config()
