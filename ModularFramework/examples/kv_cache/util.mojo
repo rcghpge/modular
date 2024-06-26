@@ -4,15 +4,15 @@
 #
 # ===----------------------------------------------------------------------=== #
 from buffer import NDBuffer
-from driver import Tensor
-from max.tensor import TensorShape
+from max._driver import Tensor
+from tensor import TensorShape
 
 
 def ndbuffer_view_from_tensor[
     type: DType, rank: Int
 ](tensor: Tensor[type, rank],) -> NDBuffer[type, rank]:
     return ndbuffer_view_from_tensor_with_tensor_shape[type, rank, rank](
-        tensor, 0, tensor.get_tensor_spec().shape
+        tensor, 0, tensor.spec().shape
     )
 
 
