@@ -2098,7 +2098,16 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
 
       TensorValue tensorBSHD = transposeOp.getInput();
 
-      // Runtime Check 1: all reshapes/bcasts really do nothing to shape.
+      // We must make validate our assumption that initial tensor given
+      // permutation gives us BSHD layout, otherwise just re-transpose.
+      SmallVector<TypedAttr> tensorStartDimsRank4Permuted =
+          permute(getRank4Dims(start, rewriter), transposeToBSHD);
+      SmallVector<TypedAttr> tensorBSHDDimsRank4 =
+          getRank4Dims(tensorBSHD, rewriter);
+      if (tensorStartDimsRank4Permuted != tensorBSHDDimsRank4)
+        return backwardFallbackGetBSHDTensor(transposeToBSHD, start, rewriter);
+
+      // Runtime Check: all reshapes/bcasts really do nothing to shape.
       for (TensorType equivalentShapeTy : equivalentShapes) {
         insertShapeGuard(
             rewriter, graphOp, equivalentShapeTy.getShapeAttr(),
@@ -2107,25 +2116,6 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
             "MHA Pattern Detected unsafe broadcast/reshape. This is of great "
             "interest so please report!");
       }
-
-      // Runtime Check 2: `tensorBSHD` really is BSHD compared to `start`.
-      // Do this by applying the permutation of `transposeToBSHD` to `start`.
-      // Deal with elided batch dimension by inserting it back in as a `1`
-      SmallVector<TypedAttr> tensorStartDimsRank4Permuted =
-          permute(getRank4Dims(start, rewriter), transposeToBSHD);
-      SmallVector<TypedAttr> tensorBSHDDimsRank4 =
-          getRank4Dims(tensorBSHD, rewriter);
-      auto tensorStartShapePermuted =
-          MOSH::ShapeAttr::get(tensorStartDimsRank4Permuted,
-                               MOSH::ShapeType::get(rewriter.getContext()));
-      auto tensorBSHDShape = MOSH::ShapeAttr::get(
-          tensorBSHDDimsRank4, MOSH::ShapeType::get(rewriter.getContext()));
-      insertShapeGuard(rewriter, graphOp, tensorStartShapePermuted,
-                       tensorBSHDShape, start.getLoc(),
-                       "MHA_QKV_TRANSPOSE_IS_BSHD_CHECK",
-                       "MHA Pattern Detected transpose of QKV which was not "
-                       "from BSHD layout. This is of great "
-                       "interest so please report!");
 
       return tensorBSHD;
     }
@@ -2178,8 +2168,9 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
   };
 
   // For GPU annotated operations do this rewrite
-  void rewriteGPU(BatchMatmulOp rootOp, TensorValue rank3ExplicitMask,
-                  PatternRewriter &rewriter,
+  void rewriteGPU(BatchMatmulOp rootOp,
+                  // `gpuMask` has expected shape BSS or B1SS
+                  TensorValue gpuMask, PatternRewriter &rewriter,
                   MultiHeadAttentionPatternHelper &matcher) const {
     // The matcher returns QKV with the following layouts:
     // Q: BHSD
@@ -2220,11 +2211,46 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
           mlir::IntegerAttr::get(rewriter.getIndexType(), 1));
     }
 
+    // Because output shape is rank4, to fit kernel spec, QKV must be rank 4
+    // too. If rank 3 -- add back in elided batch dimension
+    auto getRank4Tensor = [&](TensorValue val) {
+      if (val.getType().getRank() == 4)
+        return val;
+
+      ArrayRef<TypedAttr> dims = val.getType().getTypedShapeAttr().getValues();
+      ASSERT_STREAM(dims.size() == 3, << "Only expect rank 3!");
+      SmallVector<TypedAttr> valShape{
+          mlir::IntegerAttr::get(rewriter.getIndexType(), 1), dims[0], dims[1],
+          dims[2]};
+      TensorType newTy = val.getType().cloneWith(valShape);
+      return rewriter.create<Static::ReshapeOp>(rootOp.getLoc(), newTy, val)
+          .getResult();
+    };
+    query = getRank4Tensor(query);
+    key = getRank4Tensor(key);
+    value = getRank4Tensor(value);
+
     SmallVector<TypedAttr> mhaOutputShape =
         permute(initialOutputShape, permuteBHSD2BSHD);
 
+    // Kernel explicitly requires mask of shape BSS. `gpuMask` may be
+    // BSS OR B1SS.
+    TensorValue rank3GPUMask;
+    if (gpuMask.getType().getRank() == 3) {
+      rank3GPUMask = gpuMask;
+    } else {
+      // Else simply elide the dimension with a reshape
+      ArrayRef<TypedAttr> rank4Dims = gpuMask.getType().getDims();
+      SmallVector<TypedAttr> rank3Dims = {rank4Dims[0], rank4Dims[2],
+                                          rank4Dims[3]};
+
+      TensorType newTy = gpuMask.getType().cloneWith(rank3Dims);
+      rank3GPUMask =
+          rewriter.create<Static::ReshapeOp>(rootOp->getLoc(), newTy, gpuMask);
+    }
+
     Value normScalar = matcher.getNormScalar();
-    SmallVector<Value> customOpInputs{query, key, value, rank3ExplicitMask,
+    SmallVector<Value> customOpInputs{query, key, value, rank3GPUMask,
                                       normScalar};
 
     // We require the norm scalar to be on the host device. Done this way to
@@ -2326,6 +2352,85 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     }
   }
 
+  // The GPU kernel is historically more constrained than the CPU one.
+  // Here we place additional information needed for kernel generation.
+  struct AdditionalGPUInfo {
+    // The MHA mask for GPU expects layout BSS or B1SS
+    TensorValue gpuMask;
+  };
+
+  // Check additional constraints on rewriting MHA operations on GPU, and
+  // extract information as needed.
+  ErrorOr<AdditionalGPUInfo> runAdditionalGPUChecks(
+      ErrorOr<MultiHeadAttentionPatternHelper> &matcher) const {
+
+    // CHECK 1: We expect the mask to be of layout BSS.
+    TensorValue explicitMask = matcher->getExplicitMask();
+    if (!explicitMask)
+      return Error("GPU kernel expects an explicit attention mask.");
+
+    // Expect to broadcast shape 1SS or B1SS to final shape.
+    auto parentBCast = explicitMask.getDefiningOp<Static::BroadcastToOp>();
+    if (!parentBCast)
+      return Error(
+          "GPU kernel explicit mask is not the result of a broadcast!");
+
+    TensorValue originalMask = parentBCast.getInput();
+    if (!originalMask.getType().hasRank())
+      return Error("GPU kernel explicit mask comes from a broadcast of "
+                   "unranked tensor.");
+
+    AdditionalGPUInfo info;
+    if (originalMask.getType().getRank() == 3) {
+      info.gpuMask = originalMask;
+    } else if (originalMask.getType().getRank() == 4) {
+      // can only extract if the shape is B 1 S S
+      ArrayRef<TypedAttr> dims =
+          originalMask.getType().getTypedShapeAttr().getValues();
+
+      auto headDimAsInt = dyn_cast<IntegerAttr>(dims[1]);
+      if (!headDimAsInt || headDimAsInt.getInt() != 1)
+        return Error(
+            "Rank 4 GPU mask does not have a statically 1 head dimension.");
+      info.gpuMask = originalMask;
+    } else {
+      return Error("Unable to derive rank3 mask from explicit mask.");
+    }
+
+    // CHECK 2: Must be rank 3/4 q/k/v only. Note rank(q) == rank(k) ==
+    // rank(v)
+    if (matcher->getQuery().getType().getRank() != 4 &&
+        matcher->getQuery().getType().getRank() != 3)
+      return Error("GPU Kernel expects rank 3 or 4 QKV.");
+
+    // CHECK 3: D == 128 and static H due to kernel limitation.
+    // TODO: lift to static D once kernel is generalized.
+    // Query is BHSD, Key is BHDS and Value is BHSD.
+    // If rank 3, B is elided.
+    // Note due to bcasts, only some of QKV might have static int dimensions.
+    // The rest may be parameters;
+    bool isRank3 = matcher->getQuery().getType().getRank() == 3;
+    int64_t dimD = -1;
+    dimD = std::max(dimD, matcher->getQuery().getType().getIntDim(3 - isRank3));
+    dimD = std::max(dimD, matcher->getKeyT().getType().getIntDim(2 - isRank3));
+    dimD = std::max(dimD, matcher->getValue().getType().getIntDim(3 - isRank3));
+
+    SmallVector<int64_t> dimHs{
+        matcher->getQuery().getType().getIntDim(1 - isRank3),
+        matcher->getKeyT().getType().getIntDim(1 - isRank3),
+        matcher->getValue().getType().getIntDim(1 - isRank3),
+    };
+    bool isDimHStatic =
+        std::any_of(dimHs.begin(), dimHs.end(), [](int64_t value) {
+          return value != mlir::ShapedType::kDynamic;
+        });
+
+    if (dimD != 128 || !isDimHStatic)
+      return Error("Right now must prove D == 128 && static H for llama2.");
+
+    return info;
+  }
+
   LogicalResult matchAndRewrite(BatchMatmulOp op,
                                 PatternRewriter &rewriter) const override {
     DeviceRefAttr device = op->getParentOfType<MO::GraphOp>().getDeviceRef();
@@ -2351,63 +2456,13 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
       return rewriter.notifyMatchFailure(op.getLoc(), matcher.getError());
 
     // The GPU kernel has some additional checks and needs an extracted rank3 op
-    TensorValue gpuRank3ExplicitMask;
+    AdditionalGPUInfo info;
     if (!isCPUDevice) {
-      // CHECK 1: The mask must be the result of broadcasting from a rank 3
-      // tensor
-      TensorValue explicitMask = matcher->getExplicitMask();
-      if (!explicitMask)
-        return rewriter.notifyMatchFailure(
-            op.getLoc(), "GPU kernel expects an explicit attention mask.");
+      ErrorOr<AdditionalGPUInfo> gpuCheck = runAdditionalGPUChecks(matcher);
+      if (gpuCheck.isError())
+        return rewriter.notifyMatchFailure(op.getLoc(), gpuCheck.getError());
 
-      auto parentBCast = explicitMask.getDefiningOp<Static::BroadcastToOp>();
-      if (!parentBCast)
-        return rewriter.notifyMatchFailure(
-            op->getLoc(),
-            "GPU kernel explicit mask is not the result of a broadcast!");
-
-      gpuRank3ExplicitMask = parentBCast.getInput();
-      if (!gpuRank3ExplicitMask.getType().hasRank() ||
-          gpuRank3ExplicitMask.getType().getRank() != 3)
-        return rewriter.notifyMatchFailure(
-            op.getLoc(), "GPU kernel explicit mask must derive from a rank 3");
-
-      // CHECK 2: Must be rank 3/4 q/k/v only. Note rank(q) == rank(k) ==
-      // rank(v)
-      if (matcher->getQuery().getType().getRank() != 4 &&
-          matcher->getQuery().getType().getRank() != 3)
-        return rewriter.notifyMatchFailure(
-            op.getLoc(), "GPU Kernel expects rank 3 or 4 QKV.");
-
-      // CHECK 3: D == 128 and static H due to kernel limitation.
-      // TODO: lift to static D once kernel is generalized.
-      // Query is BHSD, Key is BHDS and Value is BHSD.
-      // If rank 3, B is elided.
-      // Note due to bcasts, only some of QKV might have static int dimensions.
-      // The rest may be parameters;
-      bool isRank3 = matcher->getQuery().getType().getRank() == 3;
-      int64_t dimD = -1;
-      dimD =
-          std::max(dimD, matcher->getQuery().getType().getIntDim(3 - isRank3));
-      dimD =
-          std::max(dimD, matcher->getKeyT().getType().getIntDim(2 - isRank3));
-      dimD =
-          std::max(dimD, matcher->getValue().getType().getIntDim(3 - isRank3));
-
-      SmallVector<int64_t> dimHs{
-          matcher->getQuery().getType().getIntDim(1 - isRank3),
-          matcher->getKeyT().getType().getIntDim(1 - isRank3),
-          matcher->getValue().getType().getIntDim(1 - isRank3),
-      };
-      bool isDimHStatic =
-          std::any_of(dimHs.begin(), dimHs.end(), [](int64_t value) {
-            return value != mlir::ShapedType::kDynamic;
-          });
-
-      if (dimD != 128 || !isDimHStatic)
-        return rewriter.notifyMatchFailure(
-            op->getLoc(),
-            "Right now must prove D == 128 && static H for llama2.");
+      info = gpuCheck.takeValue();
     }
 
     // Rewrite portion of pattern. Note: it is unsafe to now abort rewrites in
@@ -2415,14 +2470,13 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     // succeed now.
 
     // If we have unsafe broadcasts, we want to add runtime guards against them.
-    for (Static::BroadcastToOp unsafeBCast : matcher->getUnsafeBroadcasts()) {
+    for (Static::BroadcastToOp unsafeBCast : matcher->getUnsafeBroadcasts())
       guardUnsafeBCast(unsafeBCast, rewriter);
-    }
 
     if (isCPUDevice)
       rewriteCPU(op, rewriter, *matcher);
     else // isCUDADevice
-      rewriteGPU(op, gpuRank3ExplicitMask, rewriter, *matcher);
+      rewriteGPU(op, info.gpuMask, rewriter, *matcher);
 
     return mlir::success();
   }
