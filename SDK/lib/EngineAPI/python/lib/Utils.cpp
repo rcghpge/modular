@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 #include "SDK/EngineAPI/python/Utils.h"
 #include "max/c/common.h"
+#include "mlir/Bindings/Python/PybindAdaptors.h"
 
 using namespace M;
 
@@ -57,4 +58,9 @@ void *core::getUnderlyingPtr(const py::object &obj) {
   void *&valueptr =
       py::detail::values_and_holders(wrapper).begin()->value_ptr();
   return valueptr;
+}
+
+void *core::getUnderlyingCapsulePtr(const py::object &obj, const char *name) {
+  py::object capsule = mlirApiObjectToCapsule(obj);
+  return PyCapsule_GetPointer(capsule.ptr(), name);
 }

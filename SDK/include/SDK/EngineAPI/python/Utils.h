@@ -28,6 +28,7 @@ std::vector<std::optional<std::string>> convertToDimNames(
 
 /// Extract the underlying data pointer of a pybind11 class.
 void *getUnderlyingPtr(const py::object &obj);
+void *getUnderlyingCapsulePtr(const py::object &obj, const char *name);
 
 /// Wrapping cast where the `obj` will be unpacked, the pybind11 class pointer
 /// extracted, cast to the underlying type (which doesn't have to be defined or
