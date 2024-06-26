@@ -122,7 +122,7 @@ add_mojo_package(max-mojo PRIVATE
 
   DEPENDS
   mof
-  mojo-tensor
+  mojo-algorithm
   mojo-buffer
   mojo-extensibility
   DeviceDriver

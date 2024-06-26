@@ -5,8 +5,9 @@
 # ===----------------------------------------------------------------------=== #
 # RUN: %mojo %s
 
+from max.tensor import Tensor, TensorShape
+
 from algorithm.reduction import argmax
-from tensor import Tensor, TensorShape
 from testing import assert_equal
 
 

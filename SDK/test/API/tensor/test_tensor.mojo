@@ -8,12 +8,12 @@
 from math import iota, sqrt
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-
-from tensor import Tensor, TensorShape, TensorSpec
-from tensor.tensor import _serialize_as_tensor
-from testing import assert_almost_equal, assert_equal, assert_false
-
 from utils.index import Index, StaticIntTuple
+
+from max.tensor import Tensor, TensorShape, TensorSpec
+from max.tensor.tensor import _serialize_as_tensor
+
+from testing import assert_almost_equal, assert_equal, assert_false
 
 
 # CHECK: test_tensor
