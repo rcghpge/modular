@@ -60,6 +60,8 @@ ErrorOr<Type> toMLIRType(MLIRContext *context, DType dType);
 /// Helper used to extract dtype in tablegen.
 DType getDTypeOrInvalid(Type ty);
 
+TypedAttr getShape(Type ty);
+
 } // namespace M::MO
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_H

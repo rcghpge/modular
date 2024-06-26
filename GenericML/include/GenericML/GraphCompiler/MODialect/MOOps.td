@@ -4349,6 +4349,46 @@ def MO_ChainCreateOp : MO_Op<"chain.create", [Pure]>
 }
 
 //===----------------------------------------------------------------------===//
+// Buffer ops
+//===----------------------------------------------------------------------===//
+
+def MO_MutableLoad : MO_Op<"mutable.load", [
+  AllDTypesMatch<["inBuffer", "outTensor"]>,
+  AllShapeAttrsMatch<["inBuffer", "outTensor"]>
+]>
+{
+  let summary = "Take a chain and a buffer semantic tensor and returns a chain and a value semantic tensor.";
+  let description = [{
+    Allows modelling of in-place operations in MO in conjunction with mo.mutable.store
+  }];
+
+  let arguments = (ins MO_Chain:$inChain, MO_Buffer:$inBuffer);
+  let results   = (outs MO_Chain:$outChain, MO_Tensor:$outTensor);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MO_MutableStore : MO_Op<"mutable.store", [
+  AllDTypesMatch<["inBuffer", "inTensor"]>,
+  AllShapeAttrsMatch<["inBuffer", "inTensor"]>
+]>
+{
+  let summary = "Takes a chain, a buffer semantic tensor, and a value semantic tensor and returns a chain";
+  let description = [{
+    Allows modelling of in-place operations in MO in conjunction with mo.mutable.load
+  }];
+
+  let arguments = (ins MO_Chain:$inChain, MO_Buffer:$inBuffer, MO_Tensor:$inTensor);
+  let results   = (outs MO_Chain:$outChain);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // "Custom" GPU only ops
 //===----------------------------------------------------------------------===//
 

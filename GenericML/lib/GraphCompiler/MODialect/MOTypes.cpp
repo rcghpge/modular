@@ -23,6 +23,7 @@
 #include "mlir/IR/DialectImplementation.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include <llvm/Support/ErrorHandling.h>
 
 using namespace M;
 using namespace MO;
@@ -201,8 +202,20 @@ ErrorOr<Type> M::MO::toMLIRType(MLIRContext *context, DType dType) {
 DType M::MO::getDTypeOrInvalid(Type ty) {
   if (auto tensorTy = dyn_cast<TensorType>(ty))
     return tensorTy.getDtype();
+  else if (auto bufferTy = dyn_cast<BufferType>(ty))
+    return bufferTy.getDtype();
   ErrorOr<DType> errOr = fromMLIRType(ty);
   return errOr.isError() ? DType::invalid : *errOr;
+}
+
+TypedAttr M::MO::getShape(Type ty) {
+  if (auto tensorTy = dyn_cast<TensorType>(ty))
+    return tensorTy.getShapeAttr();
+  else if (auto bufferTy = dyn_cast<BufferType>(ty))
+    return bufferTy.getShapeAttr();
+
+  llvm_unreachable(
+      "M::MO::getShape can only take MO::BufferType or MO::TensorType");
 }
 
 TensorType TensorType::get(TypedAttr shapeAttr, DType dtype,

@@ -537,6 +537,8 @@ def MO_I64Tensor : ConfinedType<MO_Tensor,
 
 class DTypeStrFunc<string name> : StrFunc<"::M::MO::getDTypeOrInvalid($" # name # ".getType())">;
 
+class ShapeAttrStrFunc<string name> : StrFunc<"::M::MO::getShape($" # name # ".getType())">;
+
 /// Check all operands `names...` have the same dtype.
 /// eg: `AllDTypesMatch<["input", "result"]>`.
 /// There is an existing `AllElementTypesMatch` def,
@@ -544,5 +546,11 @@ class DTypeStrFunc<string name> : StrFunc<"::M::MO::getDTypeOrInvalid($" # name 
 class AllDTypesMatch<list<string> names> :
     AllMatchSameOperatorTrait<names, DTypeStrFunc<"_self">.result,
                               "dtype">;
+
+/// Check all operands `names...` have the same shapeAttr.
+/// eg: `AllShapeAttrsMatch<["input", "result"]>`.
+class AllShapeAttrsMatch<list<string> names> :
+    AllMatchSameOperatorTrait<names, ShapeAttrStrFunc<"_self">.result,
+                              "shapeAttr">;
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_TD
