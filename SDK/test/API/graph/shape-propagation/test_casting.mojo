@@ -7,7 +7,7 @@
 
 from max.graph import _testing, Graph, TensorType, Type, Dim
 from testing import assert_raises, assert_true
-from tensor import Tensor, TensorShape
+from max.tensor import Tensor, TensorShape
 
 
 fn test_reshape() raises:

@@ -7,7 +7,7 @@
 
 from max.graph import _testing, Graph, TensorType
 from max.graph.ops.slicing import select
-from tensor import Tensor, TensorShape
+from max.tensor import Tensor, TensorShape
 
 
 fn test_select() raises:

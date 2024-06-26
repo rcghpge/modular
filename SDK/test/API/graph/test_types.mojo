@@ -11,7 +11,7 @@ import testing
 import _mlir
 
 from max.graph import Dim, ListType, TensorType
-from tensor import TensorSpec
+from max.tensor import TensorSpec
 
 
 fn context() -> _mlir.Context:

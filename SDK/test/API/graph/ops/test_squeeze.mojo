@@ -6,7 +6,7 @@
 # RUN: mojo "%s"
 
 from max.graph import ops, _testing, Graph, TensorType
-from tensor import Tensor, TensorShape
+from max.tensor import Tensor, TensorShape
 
 
 fn test_squeeze() raises:

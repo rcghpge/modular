@@ -10,7 +10,7 @@
 import sys
 
 from python import Python
-from tensor import Tensor, TensorShape
+from max.tensor import Tensor, TensorShape
 
 from max.engine.tensor import EngineNumpyView
 from max.graph import _testing

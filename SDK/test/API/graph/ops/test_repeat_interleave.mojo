@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 # RUN: mojo "%s"
 
-from tensor import Tensor, TensorShape
+from max.tensor import Tensor, TensorShape
 
 from max.graph import _testing, Graph, TensorType
 from max.graph.ops.repeat_interleave import repeat_interleave

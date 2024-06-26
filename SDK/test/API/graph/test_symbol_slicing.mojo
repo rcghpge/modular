@@ -8,7 +8,7 @@
 
 from testing import *
 from max.graph import _testing, ops, Dim, Graph, TensorType, Type
-from tensor import Tensor, TensorShape
+from max.tensor import Tensor, TensorShape
 
 
 fn test_vector_index_int() raises:

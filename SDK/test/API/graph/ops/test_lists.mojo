@@ -8,7 +8,7 @@
 import testing
 
 from max.graph import _testing, Type, Graph, TensorType, Symbol, ops
-from tensor import Tensor, TensorShape
+from max.tensor import Tensor, TensorShape
 
 
 fn test_list_empty() raises:

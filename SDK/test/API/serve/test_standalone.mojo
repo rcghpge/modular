@@ -7,7 +7,7 @@
 # RUN: %mojo %s
 # REQUIRES: manual
 
-from tensor import TensorSpec, Tensor, TensorShape
+from max.tensor import TensorSpec, Tensor, TensorShape
 
 from max.engine import InferenceSession, InputSpec
 from max.serve.kserve import FileModel, GRPCServer, MuxInferenceService

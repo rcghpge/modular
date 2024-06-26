@@ -7,7 +7,7 @@
 
 from max.graph import _testing, Graph, TensorType
 from max.graph.ops.convolution import avg_pool, conv2d, conv3d, max_pool
-from tensor import Tensor, TensorShape
+from max.tensor import Tensor, TensorShape
 
 
 fn test_avg_pool_padded() raises:

@@ -10,7 +10,7 @@ from tempfile import NamedTemporaryFile
 
 from max.graph import _testing
 from max.graph.checkpoint import save, load, TensorDict
-from tensor import Tensor, TensorShape
+from max.tensor import Tensor, TensorShape
 
 
 fn test_simple() raises:

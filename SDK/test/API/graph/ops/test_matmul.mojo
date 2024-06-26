@@ -8,7 +8,7 @@
 from testing import assert_raises
 
 from max.graph import ops, _testing, Type, Graph, TensorType
-from tensor import Tensor, TensorShape
+from max.tensor import Tensor, TensorShape
 
 
 fn test_matmul() raises:

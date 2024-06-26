@@ -9,7 +9,7 @@
 
 import sys
 
-from tensor import Tensor, TensorShape
+from max.tensor import Tensor, TensorShape
 
 from max.engine import InferenceSession
 from max.graph import _testing

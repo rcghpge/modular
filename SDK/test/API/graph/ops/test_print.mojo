@@ -6,7 +6,7 @@
 # RUN: mojo "%s" | FileCheck %s
 
 from max.graph import _testing, Dim, Graph, TensorType, Symbol
-from tensor import Tensor, TensorShape
+from max.tensor import Tensor, TensorShape
 from max.engine import InferenceSession, TensorMap, PrintStyle
 
 

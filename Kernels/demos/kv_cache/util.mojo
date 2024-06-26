@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 from buffer import NDBuffer
 from driver import Tensor
-from tensor import TensorShape
+from max.tensor import TensorShape
 
 
 def ndbuffer_view_from_tensor[

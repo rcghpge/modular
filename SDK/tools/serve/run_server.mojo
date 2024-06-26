@@ -6,7 +6,7 @@
 
 import sys
 
-from tensor import TensorSpec
+from max.tensor import TensorSpec
 
 from max.engine import InferenceSession, InputSpec
 from max.serve.util.callbacks import NoopServerCallbacks

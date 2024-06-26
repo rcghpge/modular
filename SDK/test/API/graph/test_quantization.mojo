@@ -16,7 +16,7 @@ from max.graph._testing import (
     assert_tensors_equal,
     execute_unary,
 )
-from tensor import Tensor, TensorShape
+from max.tensor import Tensor, TensorShape
 
 
 def test_quantize_bfloat16():
