@@ -8,6 +8,7 @@
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Threading.h"
 #include "mlir/Pass/PassManager.h"
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
@@ -57,19 +58,22 @@ struct JitCompileKernels
     if (failed(pm.run(m)))
       return signalPassFailure();
 
+    // Check if any ops are graph ops so we know if we are the last compile.
     bool isGraph = false;
-    for (auto graph : m.getOps<MO::GraphOp>()) {
+    for (auto graph : m.getOps<MO::GraphOp>())
       isGraph = true;
-      auto errOr = this->runPass(graph, mojoLibraryAnalysis);
-      if (errOr.isError())
-        return signalPassFailure();
-    }
 
-    for (auto graph : m.getOps<MGP::ModelOp>()) {
+    auto func = [&](auto graph) {
       auto errOr = this->runPass(graph, mojoLibraryAnalysis);
       if (errOr.isError())
-        return signalPassFailure();
-    }
+        return this->signalPassFailure();
+    };
+
+    auto range = m.getOps<MO::GraphOp>();
+    mlir::parallelForEach(ctx, range.begin(), range.end(), func);
+
+    auto modelRange = m.getOps<MGP::ModelOp>();
+    mlir::parallelForEach(ctx, modelRange.begin(), modelRange.end(), func);
 
     // Strip all KGEN forward decls. There is now nothing they can be lowered
     // to. We only do this on the second compile (MGP models). This will be

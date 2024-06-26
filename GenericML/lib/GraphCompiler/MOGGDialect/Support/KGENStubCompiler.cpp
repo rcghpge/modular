@@ -38,20 +38,26 @@ static std::mutex &getMut() {
 
 static bool hasInit = false;
 
+void initLLVM() {
+  std::lock_guard<std::mutex> guard(getMut());
+  if (!hasInit) {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmParser();
+    llvm::InitializeNativeTargetAsmPrinter();
+
+    llvm::InitializeAllTargets();
+    llvm::InitializeAllTargetInfos();
+    llvm::InitializeAllTargetMCs();
+    llvm::InitializeAllAsmParsers();
+    llvm::InitializeAllAsmPrinters();
+    hasInit = true;
+  }
+}
 namespace M::MOGG::Stub {
 
 LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt) {
   MLIRContext *ctx = kgenModule->getContext();
-
-  {
-    std::lock_guard<std::mutex> guard(getMut());
-    if (!hasInit) {
-      llvm::InitializeNativeTarget();
-      llvm::InitializeNativeTargetAsmParser();
-      llvm::InitializeNativeTargetAsmPrinter();
-      hasInit = true;
-    }
-  }
+  initLLVM();
 
   ErrorOr<TargetInfoAttr> targetOr = M::getTargetInfoFor(
       kgenModule->getContext(), llvm::sys::getDefaultTargetTriple(),
@@ -165,15 +171,7 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
   if (kKernelsBuildType == "relwithdebinfo" || kKernelsBuildType == "debug")
     compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
 
-  {
-    std::lock_guard<std::mutex> guard(getMut());
-    if (!hasInit) {
-      llvm::InitializeNativeTarget();
-      llvm::InitializeNativeTargetAsmParser();
-      llvm::InitializeNativeTargetAsmPrinter();
-      hasInit = true;
-    }
-  }
+  initLLVM();
   if (!saveTempsPrefix.empty())
     compilationOptions.setSaveTemps(saveTempsPrefix);
 
@@ -216,11 +214,8 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
 
 ErrorOr<MOGG::LoadCompiledKernelOp>
 StubCompiler::compile(mlir::ArrayAttr combinedSymbolName, bool enableTiming) {
-  llvm::InitializeAllTargets();
-  llvm::InitializeAllTargetInfos();
-  llvm::InitializeAllTargetMCs();
-  llvm::InitializeAllAsmParsers();
-  llvm::InitializeAllAsmPrinters();
+
+  initLLVM();
 
   LogicalResult ok = elaborateKGEN(enableTiming);
   if (ok.failed())
