@@ -355,6 +355,7 @@ def RMO_ConcatOp : RMO_Op<"concat", [
   let arguments = (ins
       Variadic<MO_Tensor>:$inputs,
       Builtin_IntegerAttr:$axis,
+      OptionalAttr<AnyAttrOf<[Builtin_IntegerAttr,KGEN_ParamDeclRefAttr]>>:$out_dim,
       MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 

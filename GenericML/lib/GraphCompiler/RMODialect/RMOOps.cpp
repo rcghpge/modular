@@ -520,6 +520,26 @@ LogicalResult ConcatOp::inferReturnTypes(
 
   // Create output type.
   ShapeAttr resultShape = resultShapeOr.get();
+  // If the user set the output dimensions, This is an explicit rebind request
+  // from the user. We trust their input here for shape inference. A rebind is
+  // inserted in lowering to handle this shape specification at runtime.
+  if (auto outDimAttr = attributes.getAs<TypedAttr>("out_dim")) {
+    size_t rank = resultShape.getRank();
+    SmallVector<TypedAttr> resultDims{};
+    resultDims.reserve(rank);
+    int64_t axis = axisAttr.getInt();
+    axis = axis < 0 ? axis + rank : axis;
+
+    for (size_t i = 0; i < rank; ++i) {
+      if (static_cast<size_t>(axis) == i) {
+        resultDims.push_back(outDimAttr);
+        continue;
+      }
+      resultDims.push_back(resultShape[i]);
+    }
+    resultShape = ShapeAttr::get(resultDims, resultShape.getType());
+  }
+
   DType inputDtype = cast<TensorType>(operands[0].getType()).getDtype();
   inferredReturnTypes.push_back(TensorType::get(resultShape, inputDtype));
 

@@ -521,13 +521,44 @@ struct LowerConcat : public OpRewritePattern<RMO::ConcatOp> {
 
     // Create a tensor value for axis.
     Location loc = op->getLoc();
-    TensorValue axis =
-        rewriter.create<MO::ConstantOp>(loc, op.getAxis().getInt());
+    int64_t axisInt = op.getAxis().getInt();
+    TensorValue axis = rewriter.create<MO::ConstantOp>(loc, axisInt);
 
     // Replace the `rmo.concat` op with a new `mo.concat` op.
-    rewriter.replaceOpWithNewOp<MO::ConcatOp>(op, op.getResult().getType(),
-                                              axis, op.getInputs(),
-                                              op.getOutputParamDecls());
+    TensorValue concat =
+        rewriter.create<MO::ConcatOp>(loc, op.getResult().getType(), axis,
+                                      op.getInputs(), op.getOutputParamDecls());
+
+    // If there is a user specified rebind for the axis dim, generate the
+    // required assert.
+    if (TypedAttr outDimAttr =
+            mlir::dyn_cast_or_null<TypedAttr>(op.getOutDimAttr())) {
+      MO::GraphOp graphOp = op->getParentOfType<MO::GraphOp>();
+      SmallVector<ParamBinding> paramBindings;
+      ParamExprBuilder b(graphOp, loc, &paramBindings);
+
+      int64_t rank = op.getResult().getType().getRank();
+      axisInt = (axisInt < 0) ? axisInt + rank : axisInt;
+
+      SmallVector<TypedAttr> inputDims;
+      for (auto input : op.getOperands())
+        inputDims.push_back(mlir::cast<TensorType>(input.getType())
+                                .getTypedShapeAttr()[axisInt]);
+
+      Var concatDimSum =
+          b.createVar(KGEN::ParamOperatorAttr::get(KGEN::POC::Add, inputDims));
+      Var newDim = b.createVar(outDimAttr);
+      b.createAssert(concatDimSum == newDim,
+                     "[concat] out_dim must be equivalent to the sum of the "
+                     "input dims along the concat axis");
+
+      // Add all ops for the assert to the graph.
+      for (auto binding : paramBindings)
+        binding.toOp(loc, rewriter);
+    }
+
+    rewriter.replaceOp(op, concat);
+
     return success();
   }
 };

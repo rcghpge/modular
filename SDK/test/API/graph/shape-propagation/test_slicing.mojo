@@ -8,6 +8,7 @@
 from max.graph import _testing, Graph, TensorType, Type, Dim, Symbol
 from max.graph.ops.slicing import concat
 from testing import assert_true, assert_raises
+from tensor import Tensor, TensorShape
 
 
 fn test_concat() raises:
@@ -33,9 +34,9 @@ fn test_concat() raises:
     #              v
     # shape_0: [3, 4]
     # shape_1: [3, x]
-    var cc2 = concat(List[Symbol](g[1], g[2]), axis=1)
+    var cc2 = concat(List[Symbol](g[1], g[2]), axis=1, out_dim=Dim("y"))
     # TODO(GRA-552): Enable comparison of shape directly instead of printing full mlir
-    assert_true(str(cc2).endswith("!mo.tensor<[3, add(x, 4)], si32>"))
+    assert_true(str(cc2).endswith("!mo.tensor<[3, y], si32>"))
 
 
 fn test_concat_error() raises:
@@ -43,6 +44,7 @@ fn test_concat_error() raises:
         List[Type](
             TensorType(DType.int32, 3, Dim("x")),
             TensorType(DType.int32, 5, 6),
+            TensorType(DType.int32, 3, 2),
         ),
     )
     #      concat axis
@@ -70,7 +72,59 @@ fn test_concat_error() raises:
     ):
         _ = concat(List[Symbol](g[0], g[1]), axis=0)
 
+    #      concat axis
+    #              |
+    #              v
+    # shape_0: [3, x]
+    # shape_1: [3, 2]
+    #
+    # NOTE error because the graph api does not support algebraic expressions in dimensions.
+    # So `x + 2` is not valid. `out_dim` must be set.
+    with assert_raises(contains="Please set out_dim"):
+        _ = concat(List[Symbol](g[0], g[2]), axis=1)
+
+
+fn test_concat_rebind() raises:
+    var g = Graph(
+        List[Type](
+            TensorType(DType.int32, 3, Dim("x")),
+            TensorType(DType.int32, 3, 2),
+        ),
+    )
+
+    g.output(concat(List[Symbol](g[0], g[1]), axis=1, out_dim=Dim("y")))
+
+    var x = Tensor[DType.int32](TensorShape(3, 1), 7)
+    var y = Tensor[DType.int32](TensorShape(3, 2), -1)
+
+    var expected = Tensor[DType.int32](
+        TensorShape(3, 3), 7, -1, -1, 7, -1, -1, 7, -1, -1
+    )
+
+    var res = _testing.execute_binary(g, x, y)
+    _testing.assert_tensors_equal(expected, res)
+
+
+fn test_concat_invalid_rebind() raises:
+    var g = Graph(
+        List[Type](
+            TensorType(DType.int32, 3, Dim("x")),
+            TensorType(DType.int32, 3, 2),
+        ),
+    )
+
+    # This is incorrect, `x+2 != x`. A new name is required here.
+    g.output(concat(List[Symbol](g[0], g[1]), axis=1, out_dim=Dim("x")))
+
+    var x = Tensor[DType.float32](TensorShape(3, 8), 7)
+    var y = Tensor[DType.float32](TensorShape(3, 2), -1)
+
+    with assert_raises():
+        _ = _testing.execute_binary(g, x, y)
+
 
 def main():
     test_concat()
     test_concat_error()
+    test_concat_rebind()
+    test_concat_invalid_rebind()
