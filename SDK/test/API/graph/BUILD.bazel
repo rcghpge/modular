@@ -27,8 +27,8 @@ lit_tests(
             "test_symbol_transforms.mojo",
         ],
     ),
-    custom_substitutions = {},
     data = [
+        "//GenericML:DeviceDriver",
         "//GenericML:modular-framework-common",
         "//KGEN:CompilerRT",
         "//ModularFramework/tools/mof",
