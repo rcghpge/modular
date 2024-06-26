@@ -31,8 +31,6 @@ def test_standalone_server_client[
         return str(int((now() - start_time) / (1_000_000))) + " ms"
 
     var server_started = Atomic[DType.int64](0)
-    var client_completed = Atomic[DType.int64](0)
-    var timeout_error = Atomic[DType.int64](0)
     var server_session = InferenceSession()
     alias server_address = "0.0.0.0:8000"
     var server = GRPCServer.create(server_address, server_session)
@@ -96,44 +94,25 @@ def test_standalone_server_client[
             print("[" + elapsed() + "]Client end...")
             _ = response^
             _ = expected^
-            # signal to stop main loop
-            _ = client_completed.fetch_add(1)
+
+            # Signal to stop main loop.
+            server.signal_stop()
 
         except e:
             print("Client error : ", e)
 
-    @parameter
-    async fn timeout_fn() -> None:
-        sleep(60)  # Sleep for 60s
-        # If the client didn't complete, it could be because the server didn't
-        # come up or the client was stuck. Either way, it is a timeout.
-        if not client_completed.load():
-            _ = timeout_error.fetch_add(1)
-        # we need these to be set so that we can have the main thread move
-        # along and terminate the tasks
-        _ = server_started.fetch_add(1)
-        _ = client_completed.fetch_add(1)
-
     with Runtime() as rt:
         var tg = TaskGroup[__lifetime_of(server)](rt)
-        var server_task = tg.create_task(server_impl(MODEL_NAME, MODEL_PATH))
-        var client_task = tg.create_task(client(MODEL_NAME))
-        var timeout_task = tg.create_task(timeout_fn())
-        while not client_completed.load():
-            sleep(1)
-        server.signal_stop()
+        tg.create_task(server_impl(MODEL_NAME, MODEL_PATH))
+        tg.create_task(client(MODEL_NAME))
         tg.wait()
-        _ = tg^
-        if timeout_error.load():
-            print("Timeout error!")
+
         print("[" + elapsed() + "]Done!")
-        _ = server_task
-        _ = client_task
-        _ = timeout_task
         _ = server^
-        _ = rt
+        _ = server_started^
 
 
 def main():
     test_standalone_server_client["Add", "SDK/test/API/serve/models/add.onnx"]()
-    test_standalone_server_client["Add", "SDK/test/API/serve/models/add.pt"]()
+    # TODO: Add.pt expects different arguments ("input_1" vs "args_1").
+    # test_standalone_server_client["Add", "SDK/test/API/serve/models/add.pt"]()

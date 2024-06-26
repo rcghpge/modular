@@ -17,4 +17,7 @@ add_modular_testsuite(check-max-serve-mojo
 
   DEPENDS
   max-mojo
+
+  LIT_ARGS
+  --max-time=30
 )
