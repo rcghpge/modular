@@ -59,9 +59,7 @@ struct JitCompileKernels
       return signalPassFailure();
 
     // Check if any ops are graph ops so we know if we are the last compile.
-    bool isGraph = false;
-    for (auto graph : m.getOps<MO::GraphOp>())
-      isGraph = true;
+    bool isGraph = !m.getOps<MO::GraphOp>().empty();
 
     auto func = [&](auto graph) {
       auto errOr = this->runPass(graph, mojoLibraryAnalysis);
