@@ -22,7 +22,7 @@ config.test_source_root = os.path.dirname(__file__)
 
 # test_exec_root: The root path where tests should be run.
 config.test_exec_root = os.path.join(
-    config.modular_obj_root, "SDK", "test", "API", "graph"
+    config.modular_obj_root, "SDK", "test", "API", "graph", "mojo"
 )
 
 tool_dirs = [
