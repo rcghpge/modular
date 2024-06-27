@@ -563,4 +563,47 @@ def ExplicitBufferLifetimesPass : Pass<"buffer-lifetimes", "MGP::ModelOp"> {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// SimpleBufferReusePass
+//===----------------------------------------------------------------------===//
+
+def SimpleBufferReusePass : Pass<"simple-buffer-reuse", "MGP::ModelOp"> {
+  let summary = "Reuses allocated buffers in simple cases";
+  let description = [{
+    This pass replaces a mgp.buffer.alloc.dynamic op B with a
+    mgp.buffer.alloc.dynamic op A if the following conditions are met:
+      1) all uses of A are guaranteed to execute before the first use of B
+      2) A has the same runtime size SSA value as B
+      3) A has the same input chain as B
+      4) A has the same device as B
+
+    For example:
+    ```mlir
+      %input = ...
+      %inChain = ...
+      %size = ...
+      %buf0 = mgp.buffer.alloc.dynamic %inChain, %ctx[1], %size, ...
+      %buf1 = mgp.buffer.alloc.dynamic %inChain, %ctx[1], %size, ...
+      %buf2 = mgp.buffer.alloc.dynamic %inChain, %ctx[1], %size, ...
+
+      %outChain_0 = mgp.kernel.execute %inChain ... (in %input, out %buf0)
+      %outChain_1 = mgp.kernel.execute %outChain_0 ... (in %buf0, out %buf1)
+      %outChain_2 = mgp.kernel.execute %outChain_1 ... (in %buf1, out %buf2)
+    ```
+    becomes:
+    ```mlir
+      %input = ...
+      %inChain = ...
+      %size = ...
+      %buf0 = mgp.buffer.alloc.dynamic %inChain, %ctx[1], %size, ...
+      %buf1 = mgp.buffer.alloc.dynamic %inChain, %ctx[1], %size, ...
+
+      %outChain_0 = mgp.kernel.execute %inChain ... (in %input, out %buf0)
+      %outChain_1 = mgp.kernel.execute %outChain_0 ... (in %buf0, out %buf1)
+      %outChain_2 = mgp.kernel.execute %outChain_1 ... (in %buf1, out %buf0)
+    ```
+
+  }];
+}
+
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD
