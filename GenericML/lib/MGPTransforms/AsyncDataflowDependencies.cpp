@@ -6,13 +6,12 @@
 
 #include "./AsyncDataflowDependencies.h"
 
+#include "GenericML/MGPTransforms/Utils.h"
 #include "GraphRT/GRTDialect/GRTExtendsLifetimeInterface.h"
 #include "GraphRT/GRTDialect/GRTMayAliasInterface.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "llvm/ADT/EquivalenceClasses.h"
-
-#include "./Utils.h"
 
 using namespace M;
 using namespace M::MGP;

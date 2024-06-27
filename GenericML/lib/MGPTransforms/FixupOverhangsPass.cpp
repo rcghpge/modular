@@ -8,8 +8,7 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
-
-#include "./Utils.h"
+#include "GenericML/MGPTransforms/Utils.h"
 
 namespace M::MGP {
 

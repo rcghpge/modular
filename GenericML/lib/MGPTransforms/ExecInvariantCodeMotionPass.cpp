@@ -12,6 +12,7 @@
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "GenericML/MGPTransforms/IndexSet.h"
+#include "GenericML/MGPTransforms/Utils.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/AssertStream.h"
@@ -24,7 +25,6 @@
 #include "llvm/Support/Debug.h"
 
 #include "./RelationDataflowAnalysis.h"
-#include "./Utils.h"
 
 using namespace std::placeholders;
 using namespace mlir;

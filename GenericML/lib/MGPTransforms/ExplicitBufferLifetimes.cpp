@@ -9,8 +9,8 @@
 #include "GenericML/MGPDialect/MGPBufferLifetimeAnalysis.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
+#include "GenericML/MGPTransforms/Utils.h"
 #include "Support/AssertStream.h"
-#include "Utils.h"
 
 #define DEBUG_TYPE "mgp-explicit-buffer-lifetimes"
 

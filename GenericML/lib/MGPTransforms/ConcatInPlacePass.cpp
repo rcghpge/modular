@@ -10,6 +10,7 @@
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
+#include "GenericML/MGPTransforms/Utils.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/AssertStream.h"
@@ -20,8 +21,6 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetOperations.h"
 #include "llvm/ADT/SmallPtrSet.h"
-
-#include "./Utils.h"
 
 using namespace mlir;
 

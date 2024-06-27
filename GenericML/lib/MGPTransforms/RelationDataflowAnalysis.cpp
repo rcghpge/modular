@@ -6,12 +6,11 @@
 
 #include "./RelationDataflowAnalysis.h"
 
+#include "GenericML/MGPTransforms/Utils.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/EquivalenceClasses.h"
-
-#include "./Utils.h"
 
 using namespace M;
 using namespace M::MGP;

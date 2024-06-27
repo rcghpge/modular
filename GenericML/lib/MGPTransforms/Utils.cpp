@@ -4,8 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "./Utils.h"
-
+#include "GenericML/MGPTransforms/Utils.h"
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "GraphRT/MEFDialect/MEFChainIndicatesFinishedInterface.h"

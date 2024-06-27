@@ -7,10 +7,9 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
+#include "GenericML/MGPTransforms/Utils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
-
-#include "./Utils.h"
 
 using namespace mlir;
 

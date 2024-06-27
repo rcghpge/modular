@@ -6,14 +6,13 @@
 
 #include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
 
+#include "GenericML/MGPTransforms/Utils.h"
 #include "GraphRT/GRTDialect/GRTControlFlowInterface.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/AssertStream.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Operation.h"
 #include "llvm/ADT/SetVector.h"
-
-#include "./Utils.h"
 
 #define DEBUG_TYPE "mgp-fixup-isolated-from-above"
 

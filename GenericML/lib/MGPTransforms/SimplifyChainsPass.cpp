@@ -7,8 +7,8 @@
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 
 #include "./AsyncDataflowDependencies.h"
-#include "./Utils.h"
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/MGPTransforms/Utils.h"
 #include "GraphRT/GRTDialect/GRTChainInterface.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFTypes.h"
