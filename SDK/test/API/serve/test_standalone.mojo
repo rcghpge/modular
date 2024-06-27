@@ -101,15 +101,14 @@ def test_standalone_server_client[
         except e:
             print("Client error : ", e)
 
-    with Runtime() as rt:
-        var tg = TaskGroup[__lifetime_of(server)](rt)
-        tg.create_task(server_impl(MODEL_NAME, MODEL_PATH))
-        tg.create_task(client(MODEL_NAME))
-        tg.wait()
+    var tg = TaskGroup[__lifetime_of(server)]()
+    tg.create_task(server_impl(MODEL_NAME, MODEL_PATH))
+    tg.create_task(client(MODEL_NAME))
+    tg.wait()
 
-        print("[" + elapsed() + "]Done!")
-        _ = server^
-        _ = server_started^
+    print("[" + elapsed() + "]Done!")
+    _ = server^
+    _ = server_started^
 
 
 def main():

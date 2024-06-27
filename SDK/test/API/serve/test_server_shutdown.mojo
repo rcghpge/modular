@@ -8,11 +8,7 @@ from max.tensor import TensorSpec
 
 from max.engine import InferenceSession, InputSpec
 from max.serve.kserve import FileModel, GRPCServer, MuxInferenceService
-from runtime.llcl import (
-    Runtime,
-    TaskGroup,
-    Atomic,
-)
+from runtime.llcl import TaskGroup, Atomic
 from time import sleep, now
 from max.graph._testing import assert_tensors_almost_equal
 
@@ -54,14 +50,13 @@ def run_shutdown_test() -> None:
             sleep(1)
         server.signal_stop()
 
-    with Runtime() as rt:
-        var tg = TaskGroup[__lifetime_of(server_started)](rt)
-        tg.create_task(server_impl())
-        tg.create_task(shutdown_task_impl())
-        tg.wait()
-        _ = tg^
-        _ = server^
-        print("[" + elapsed() + "]Server terminated succesfully.")
+    var tg = TaskGroup[__lifetime_of(server_started)]()
+    tg.create_task(server_impl())
+    tg.create_task(shutdown_task_impl())
+    tg.wait()
+    _ = tg^
+    _ = server^
+    print("[" + elapsed() + "]Server terminated succesfully.")
 
 
 def main():

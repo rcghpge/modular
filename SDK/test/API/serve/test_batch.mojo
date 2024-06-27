@@ -8,7 +8,7 @@
 # REQUIRES: manual
 
 from time import sleep, now
-from runtime.llcl import Runtime, TaskGroup
+from runtime.llcl import TaskGroup
 from max.serve.batch import Batcher
 
 
@@ -38,8 +38,7 @@ fn test_batch():
     async fn submit(owned n: Int):
         _ = batcher.submit(n)
 
-    var rt = Runtime()
-    var tg = TaskGroup[__lifetime_of()](rt)
+    var tg = TaskGroup[__lifetime_of()]()
     for i in range(NUM_REQ):
         tg.create_task(submit(i))
     tg.wait()
