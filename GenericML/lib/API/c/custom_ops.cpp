@@ -15,11 +15,12 @@ using namespace M;
 
 void M_useKernelsFrom(M_CompileConfig *compileConfig, const char *path,
                       M_Status *status) {
-
-  auto kernelLibraryPath = std::filesystem::path(std::string(path));
+  std::string strPath = path;
+  auto kernelLibraryPath = std::filesystem::path(strPath);
   std::error_code ec;
   if (!std::filesystem::exists(kernelLibraryPath, ec)) {
-    detail::setError(status, Error("invalid path to kernel library"));
+    detail::setError(status,
+                     Error("invalid path to kernel library: " + strPath));
     return;
   }
 
