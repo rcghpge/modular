@@ -54,7 +54,7 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
       /*default=*/"false",
      "Turns on timing for the KGEN passes invoked by mogg">,
     Option<"skipJitCompileMiddle", "skip-jit-compile-middle", "bool",
-      /*default=*/"false",
+      /*default=*/"true",
      "Skip jit compile for mogg kernels, which get lowered to compiled region">,
   ];
 }

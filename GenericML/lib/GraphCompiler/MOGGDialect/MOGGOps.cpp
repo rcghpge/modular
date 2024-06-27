@@ -400,6 +400,7 @@ M::MOGG::getKernelUsedParameters(MOGG::CompilableKernel kernel) {
 // pre-allocated tensors and leave the ones for the in-place allocation. We also
 // convert the parameter values to the indexes (materialization) during the
 // lowering.
+// NOTE: does mogg.kernel --> region lowering
 LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   MGP::MOOpLoweringState opLoweringState(loweringState, *this);
   mlir::MLIRContext *ctx = getContext();
