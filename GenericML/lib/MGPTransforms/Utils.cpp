@@ -13,6 +13,7 @@
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Visitors.h"
+#include <deque>
 
 using namespace M;
 using namespace M::MGP;
