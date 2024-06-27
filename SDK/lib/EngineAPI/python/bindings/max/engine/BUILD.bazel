@@ -1,11 +1,10 @@
-load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
+load("//bazel:api.bzl", "modular_pybind_extension")
 
 package(default_visibility = ["//visibility:public"])
 
-pybind_extension(
+modular_pybind_extension(
     name = "core",
     srcs = ["core.cpp"],
-    copts = ["-frtti"],
     deps = [
         "//SDK:ModularFrameworkPython",
     ],
