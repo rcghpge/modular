@@ -203,6 +203,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   MO::AssignDevicesPassOptions assignDevicesPassOpt;
   assignDevicesPassOpt.targetDevice = opts.defaultDeviceLabel;
+  assignDevicesPassOpt.kernelLibraryPaths = opts.kernelLibraryPaths;
   if (assignDevicesPassOpt.targetDevice == "cpu")
     assignDevicesPassOpt.targetDevice = "";
   // TODO (MSDK-465): Remove env var!

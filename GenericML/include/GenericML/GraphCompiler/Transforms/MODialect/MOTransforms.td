@@ -339,6 +339,8 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
            "'small'. Ops which take and return only 'small' tensors are "
            "themselves considered 'small', and need not be placed on the "
            "overall graph's default device.">,
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string", 
+          "Paths to mojo packages containing mojo shape functions to be loaded. ">,
     Option<"targetDevice", "target-device",  "std::string", "\"\"",
            "If non-empty, assign devices using this device">,
     Option<"copyFromHost", "copy-from-host", "bool", "true",
