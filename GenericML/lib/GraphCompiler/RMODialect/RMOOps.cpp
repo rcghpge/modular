@@ -111,9 +111,10 @@ std::string unknownDimError(const StringRef opName, const StringRef tensorName,
   std::string errorMsg;
   llvm::raw_string_ostream os(errorMsg);
   StreamAsmPrinter printer(os);
-  printer << opName << " does not allow for the " << tensorName << " (shape ";
+  printer << opName << " does not allow for " << tensorName << " (shape ";
   MOSH::printShapeTypedAttr(printer, tensorShape);
-  printer << ") to contain dynamic dimensions.";
+  printer << ") to contain dynamic dimensions. Please rebind the dimensions to "
+             "give them names or integer values.";
   return errorMsg;
 }
 
@@ -489,13 +490,12 @@ LogicalResult ConcatOp::inferReturnTypes(
   // Retrieve input shapes
   SmallVector<TypedAttr> inputShapes = getShapesOf(operands);
   // TODO(GRA-551) remove once we eliminate `?` in Graph API.
-  if (hasUnknownDim(inputShapes)) {
-    auto inputTensorTy = cast<TensorType>(operands[0].getType());
-    DType inputDtype = inputTensorTy.getDtype();
-    ShapeAttr resultShape =
-        createUnknownShapeOfRank(context, inputTensorTy.getRank());
-    inferredReturnTypes.push_back(TensorType::get(resultShape, inputDtype));
-    return success();
+  for (auto [i, inputShapeAttr] : llvm::enumerate(inputShapes)) {
+    auto inputShape = mlir::cast<ShapeAttr>(inputShapeAttr);
+    if (inputShape.hasUnknownDims())
+      return mlir::emitOptionalError(
+          location,
+          unknownDimError("Concat", "input" + std::to_string(i), inputShape));
   }
 
   // Materialize shape function.
