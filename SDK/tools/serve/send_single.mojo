@@ -3,14 +3,10 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-# UNSUPPORTED: windows
-# REQUIRES: manual
-# RUN: %mojo -debug-level full %s
 
 import sys
 
 from max.tensor import Tensor, TensorShape
-
 from max.engine import InferenceSession
 from max.graph import _testing
 from max.serve.kserve import GRPCClient
@@ -47,8 +43,8 @@ fn test_basic_add_request(
 
 
 fn main() raises:
-    var USAGE = "Usage: test_single.mojo [-a address] [-n iterations]"
     var argv = sys.argv()
+    var USAGE = str("Usage: mojo ") + argv[0] + " [-a address] [-n iterations]"
 
     var i = 1
     var address: String = "localhost:8000"

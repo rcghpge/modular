@@ -3,13 +3,9 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-# UNSUPPORTED: windows
-# REQUIRES: manual
-# RUN: %mojo -debug-level full %s
 
 import subprocess
 import sys
-
 
 from algorithm import parallelize
 from builtin.io import _printf
@@ -18,7 +14,7 @@ from pathlib import cwd
 
 fn main() raises:
     var argv = sys.argv()
-    var USAGE = str("Usage: ") + argv[
+    var USAGE = str("Usage: mojo ") + argv[
         0
     ] + " [-a address] [-n workers] [-r requests]"
 
@@ -50,11 +46,7 @@ fn main() raises:
                 idx,
                 subprocess.run(
                     "mojo "
-                    + str(
-                        cwd().joinpath(
-                            "SDK/test/API/serve/test_server_single.mojo"
-                        )
-                    )
+                    + str(cwd().joinpath("SDK/tools/serve/send_single.mojo"))
                     + " -a "
                     + str(address)
                     + " -n "

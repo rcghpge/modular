@@ -3,15 +3,12 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-# UNSUPPORTED: windows
-# REQUIRES: manual
-# RUN: %mojo -debug-level full %s
 
 import sys
 
 from python import Python
-from max.tensor import Tensor, TensorShape
 
+from max.tensor import Tensor, TensorShape
 from max.engine.tensor import EngineNumpyView
 from max.graph import _testing
 
@@ -54,8 +51,8 @@ fn test_basic_add_request(
 
 
 fn main() raises:
-    var USAGE = "Usage: test_single_triton.mojo [-a address] [-n iterations]"
     var argv = sys.argv()
+    var USAGE = str("Usage: mojo ") + argv[0] + " [-a address] [-n iterations]"
 
     var i = 1
     var address: String = "localhost:8000"
@@ -77,7 +74,7 @@ fn main() raises:
     var triton_grpc = Python.import_module("tritonclient.grpc")
     var client = triton_grpc.InferenceServerClient(address)
 
-    for i in range(num_requests):
+    for _ in range(num_requests):
         try:
             test_basic_add_request(np, triton_grpc, client)
         except e:
