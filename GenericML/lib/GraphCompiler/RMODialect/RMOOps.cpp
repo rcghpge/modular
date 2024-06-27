@@ -104,6 +104,19 @@ static ShapeAttr createUnknownShapeOfRank(MLIRContext *ctx, size_t rank) {
   return ShapeAttr::get(dimAttrs, MOSH::ShapeType::get(ctx));
 }
 
+// Creates an error message for when a tensor contains `?`, but that is not
+// allowed.
+std::string unknownDimError(const StringRef opName, const StringRef tensorName,
+                            ShapeAttr tensorShape) {
+  std::string errorMsg;
+  llvm::raw_string_ostream os(errorMsg);
+  StreamAsmPrinter printer(os);
+  printer << opName << " does not allow for the " << tensorName << " (shape ";
+  MOSH::printShapeTypedAttr(printer, tensorShape);
+  printer << ") to contain dynamic dimensions.";
+  return errorMsg;
+}
+
 /// DTypeCategory is the broad classes of dtypes used in calculating promotions.
 enum DTypeCategory {
   kBool,
@@ -326,19 +339,8 @@ static ErrorOr<TensorType> refineBroadcastedShape(TensorType ty1,
         TensorType::isParameterizedDimParam(dim2Val))
       return dim1Val;
 
-    std::string errorMsg;
-    llvm::raw_string_ostream os(errorMsg);
-    StreamAsmPrinter printer(os);
-    printer << "Inputs shapes ";
-    MOSH::printShapeTypedAttr(printer, ty1.getTypedShapeAttr());
-    printer << " and ";
-    MOSH::printShapeTypedAttr(printer, ty2.getTypedShapeAttr());
-    printer << " are not compatible. Dims \"";
-    MOSH::printDimensionValue(printer, dim1Val);
-    printer << "\" and \"";
-    MOSH::printDimensionValue(printer, dim2Val);
-    printer << "\" are neither equivalent nor broadcastable. Insert an "
-               "explicit rebind if these dims will be equivalent at runtime.";
+    std::string errorMsg = MO::shapeBroadcastingErrorMessage(
+        ty1.getTypedShapeAttr(), dim1Val, ty2.getTypedShapeAttr(), dim2Val);
     return Error(Twine(errorMsg));
   };
 
@@ -562,8 +564,7 @@ LogicalResult ReshapeOp::inferReturnTypes(
   // check.
   if (newShapeAttr.hasUnknownDims())
     return mlir::emitOptionalError(
-        location, "rmo.reshape does not allow for `newShape` to contain "
-                  "dynamic dimensions");
+        location, unknownDimError("Reshape", "target", newShapeAttr));
 
   // Retrieve input shape
   SmallVector<TypedAttr> inputShapes = getShapesOf(operands);
@@ -574,8 +575,7 @@ LogicalResult ReshapeOp::inferReturnTypes(
   // check.
   if (inputShape.hasUnknownDims())
     return mlir::emitOptionalError(
-        location, "rmo.reshape does not allow for `inputShape` to contain "
-                  "dynamic dimensions");
+        location, unknownDimError("Reshape", "input", inputShape));
 
   // Materialize shape function.
   auto graphOp =
@@ -604,6 +604,69 @@ LogicalResult ReshapeOp::inferReturnTypes(
   ShapeAttr resultShape = resultShapeOr.get();
   DType inputDtype = cast<TensorType>(operands[0].getType()).getDtype();
   inferredReturnTypes.push_back(TensorType::get(resultShape, inputDtype));
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MatmulOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult MatmulOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+
+  // Retrieve input shape
+  SmallVector<TypedAttr> inputShapes = getShapesOf(operands);
+  ASSERT_STREAM(inputShapes.size() == 2,
+                << "rmo.matmul must have exactly two inputs");
+
+  auto lhsShape = mlir::cast<ShapeAttr>(inputShapes[0]);
+  auto rhsShape = mlir::cast<ShapeAttr>(inputShapes[1]);
+  // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
+  // check.
+  if (lhsShape.hasUnknownDims())
+    return mlir::emitOptionalError(
+        location,
+        unknownDimError("Matrix multiplication", "input lhs", lhsShape));
+  if (rhsShape.hasUnknownDims())
+    return mlir::emitOptionalError(
+        location,
+        unknownDimError("Matrix multiplication", "input rhs", rhsShape));
+
+  ErrorOr<DType> promotedDtype =
+      promoteDtype(mlir::cast<TensorType>(operands[0].getType()).getDtype(),
+                   mlir::cast<TensorType>(operands[1].getType()).getDtype());
+  if (promotedDtype.isError()) {
+    return mlir::emitOptionalError(location, "Failed to resolve valid dtype: ",
+                                   StringRef{promotedDtype.getError()});
+  }
+  // Materialize shape function.
+  auto graphOp =
+      operands.front().getParentRegion()->getParentOfType<MO::GraphOp>();
+  Location loc = location.value_or(graphOp.getLoc());
+  MO::ShapeMaterializeResult result =
+      MO::materializeRmoMatmulShape(graphOp, loc, lhsShape, rhsShape);
+
+  // Preliminary error checks.
+  if (result.isError())
+    return mlir::emitOptionalError(location, result.getError().msg);
+
+  // This depends on GraphAPI having static rank.
+  ASSERT_STREAM(!result.isNonMaterializable(),
+                << "matmul shape logic must be materializable");
+
+  // Shape propagation over materialized ops and target shape.
+  auto &successRes = result.getSuccess();
+  ErrorOr<ShapeAttr> resultShapeOr =
+      MO::propagateShape(successRes.bindings, successRes.resultShape);
+  if (resultShapeOr.isError())
+    return mlir::emitOptionalError(location, resultShapeOr.getError());
+
+  // Create output type.
+  ShapeAttr resultShape = resultShapeOr.get();
+  inferredReturnTypes.push_back(TensorType::get(resultShape, *promotedDtype));
 
   return success();
 }

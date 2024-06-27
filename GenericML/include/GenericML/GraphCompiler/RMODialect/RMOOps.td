@@ -390,4 +390,44 @@ def RMO_ReshapeOp : RMO_Op<"reshape", [
   }];
 }
 
+def RMO_MatmulOp : RMO_Op<"matmul", [
+  Pure,
+  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+]> {
+  let summary = "Matrix multiplication operation";
+  let description = [{
+    Performs general matrix multiplication with broadcasting.
+
+    If the lhs is 1d, it will be reshaped to `1xD`.
+    If the rhs is 1d, it will be reshaped to `Dx1`.
+    In both cases, the addition `1` dimensions will be removed from the output shape.
+
+    For the multiplication, the innermost (rightmost) 2 dimensions are treated as a maxtrix.
+    The lhs matrix will have the shape `MxK`.
+    The rhs matrix will have the shape `KxN`.
+    The output will have the shape `MxN`
+    The `K` dimensions must be equivalent in both matrices.
+
+    The remaining outer dimensions will be broadcasted.
+
+    Example shapes with outputs:
+    [K] @ [K] -> []
+    [5, K] @ [K] -> [5]
+    [K] @ [K, 6] -> [6]
+    [4, K] @ [K, 6] -> [4, 6]
+    [8, 10, 4, K] @ [8, 1, K, 6] -> [8, 10, 4, 6]
+    [10, 4, K] @ [K, 6] -> [10, 4, 6]
+    [10, 4, K] @ [K] -> [10, 4]
+    [K] @ [10, 4, K, 7] -> [10, 4, 7]
+  }];
+  let arguments = (ins
+    MO_Tensor:$input_x,
+    MO_Tensor:$input_y);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD

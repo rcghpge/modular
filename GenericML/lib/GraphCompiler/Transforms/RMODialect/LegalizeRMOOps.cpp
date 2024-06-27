@@ -655,6 +655,98 @@ struct LowerSigmoid : public OpRewritePattern<RMO::SigmoidOp> {
   }
 };
 
+struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
+  LowerMatmul(MLIRContext *ctx) : OpRewritePattern<RMO::MatmulOp>(ctx, 1) {}
+  LogicalResult matchAndRewrite(RMO::MatmulOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+
+    TensorValue lhs = op.getInputX();
+    TensorValue rhs = op.getInputY();
+    TensorType lhsType = lhs.getType();
+    TensorType rhsType = rhs.getType();
+    ShapeAttr lhsShape = lhsType.getTypedShapeAttr();
+    ShapeAttr rhsShape = rhsType.getTypedShapeAttr();
+
+    size_t lhsRank = lhsShape.getRank();
+    size_t rhsRank = rhsShape.getRank();
+    size_t fullRank = std::max(size_t(2), std::max(lhsRank, rhsRank));
+
+    // Deal with dtype casting if it is needed.
+    auto lhsDtype = lhsType.getDtype();
+    auto rhsDtype = rhsType.getDtype();
+    auto resultDtype = op.getResult().getType().getDtype();
+    if (lhsDtype != resultDtype)
+      lhs = rewriter.create<RMO::MOCastOp>(
+          loc, lhs.getType().cloneWith(resultDtype), lhs);
+    if (rhsDtype != resultDtype)
+      rhs = rewriter.create<RMO::MOCastOp>(
+          loc, rhs.getType().cloneWith(resultDtype), rhs);
+
+    // Reshape to ensure both tensors have same rank.
+    auto [lhsReshapeTarget, rhsReshapeTarget] =
+        expandMatmulInputsForBroadcasting(lhsShape, rhsShape);
+
+    auto lhsReshapeShape = ShapeAttr::get(lhsReshapeTarget, lhsShape.getType());
+    if (lhsReshapeShape != lhsShape)
+      lhs = rewriter.create<MO::Static::ReshapeOp>(
+          loc, lhsType.cloneWith(lhsReshapeShape), lhs);
+
+    auto rhsReshapeShape = ShapeAttr::get(rhsReshapeTarget, rhsShape.getType());
+    if (rhsReshapeShape != rhsShape)
+      rhs = rewriter.create<MO::Static::ReshapeOp>(
+          loc, rhsType.cloneWith(rhsReshapeShape), rhs);
+
+    // Calculated broadcast shapes and broadcast outer dims.
+    auto idxTy = IndexType::get(lhsShape.getContext());
+    auto intDim1 = IntegerAttr::get(idxTy, 1ll);
+    SmallVector<TypedAttr> lhsBroadcastTarget{lhsReshapeTarget};
+    SmallVector<TypedAttr> rhsBroadcastTarget{rhsReshapeTarget};
+    for (size_t i = 0; i < fullRank - 2; ++i) {
+      TypedAttr dim;
+      if (lhsReshapeTarget[i] == intDim1)
+        dim = rhsReshapeTarget[i];
+      else
+        dim = lhsReshapeTarget[i];
+
+      lhsBroadcastTarget[i] = dim;
+      rhsBroadcastTarget[i] = dim;
+    }
+
+    auto lhsBroadcastShape =
+        ShapeAttr::get(lhsBroadcastTarget, lhsShape.getType());
+    if (lhsBroadcastShape != lhsReshapeShape)
+      lhs = rewriter.create<MO::Static::BroadcastToOp>(
+          loc, lhsType.cloneWith(lhsBroadcastShape), lhs);
+
+    auto rhsBroadcastShape =
+        ShapeAttr::get(rhsBroadcastTarget, rhsShape.getType());
+    if (rhsBroadcastShape != rhsReshapeShape)
+      rhs = rewriter.create<MO::Static::BroadcastToOp>(
+          loc, rhsType.cloneWith(rhsBroadcastShape), rhs);
+
+    // Execute the actual matmul.
+    SmallVector<TypedAttr> matmulTarget{lhsBroadcastTarget};
+    matmulTarget[fullRank - 1] = rhsBroadcastTarget[fullRank - 1];
+    auto matmulShape = ShapeAttr::get(matmulTarget, rhsShape.getType());
+    auto matmulType = op.getType().cloneWith(matmulShape);
+    TensorValue matmul;
+    if (fullRank == 2)
+      matmul = rewriter.create<MO::MatmulOp>(loc, matmulType, lhs, rhs);
+    else
+      matmul = rewriter.create<MO::BatchMatmulOp>(loc, matmulType, lhs, rhs);
+
+    // Reshape to remove extra one dimensions if they were introduced by vector
+    // inputs.
+    if (matmulShape != op.getType().getTypedShapeAttr())
+      matmul =
+          rewriter.create<MO::Static::ReshapeOp>(loc, op.getType(), matmul);
+
+    rewriter.replaceAllUsesWith(op, matmul);
+    return success();
+  }
+};
+
 struct LegalizeRMOOps
     : public M::RMO::impl::LegalizeRMOOpsBase<LegalizeRMOOps> {
   using LegalizeRMOOpsBase::LegalizeRMOOpsBase;
@@ -786,7 +878,8 @@ struct LegalizeRMOOps
         LowerCompositeBinaryComparisonOp<RMO::GreaterOp, RMO::MOGreaterOp>,
         LowerCompositeBinaryComparisonOp<RMO::GreaterEqualOp,
                                          RMO::MOGreaterEqualOp>,
-        LowerBroadcastLike, LowerSigmoid, LowerConcat, LowerReshape>(context);
+        LowerBroadcastLike, LowerSigmoid, LowerConcat, LowerReshape,
+        LowerMatmul>(context);
 
     // Lowering third party specific operations.
     // They have more flexible semantics that separate them from standard rmo

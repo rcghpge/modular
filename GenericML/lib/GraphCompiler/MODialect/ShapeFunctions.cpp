@@ -11,6 +11,7 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "Support/AssertStream.h"
+#include "Support/Compiler/ParserUtils.h"
 #include <optional>
 #include <utility>
 
@@ -139,6 +140,87 @@ static Var computeRangeSize(const Var &start, const Var &stop,
   return size;
 }
 
+std::string shapeBroadcastingErrorMessage(ShapeAttr lhsShapeAttr,
+                                          TypedAttr lhsDim,
+                                          ShapeAttr rhsShapeAttr,
+                                          TypedAttr rhsDim) {
+  std::string errorMsg;
+  llvm::raw_string_ostream os(errorMsg);
+  StreamAsmPrinter printer(os);
+  printer << "Inputs shapes ";
+  MOSH::printShapeTypedAttr(printer, lhsShapeAttr);
+  printer << " and ";
+  MOSH::printShapeTypedAttr(printer, rhsShapeAttr);
+  printer << " are not compatible. Dims \"";
+  MOSH::printDimensionValue(printer, lhsDim);
+  printer << "\" and \"";
+  MOSH::printDimensionValue(printer, rhsDim);
+  printer << "\" are neither equivalent nor broadcastable. Insert an "
+             "explicit rebind if these dims will be equivalent at runtime.";
+  return errorMsg;
+}
+
+static std::string matmulInnerDimErrorMessage(ShapeAttr lhsShapeAttr,
+                                              TypedAttr lhsDim,
+                                              ShapeAttr rhsShapeAttr,
+                                              TypedAttr rhsDim) {
+  std::string errorMsg;
+  llvm::raw_string_ostream os(errorMsg);
+  StreamAsmPrinter printer(os);
+  printer << "Matrix multiplication input lhs (shape ";
+  MOSH::printShapeTypedAttr(printer, lhsShapeAttr);
+  printer << ") dimension at axis -1 (value ";
+  MOSH::printDimensionValue(printer, lhsDim);
+  printer << ") must match input rhs (shape ";
+  MOSH::printShapeTypedAttr(printer, rhsShapeAttr);
+  printer << ") dimension at axis ";
+
+  if (rhsShapeAttr.getRank() == 1)
+    printer << "-1";
+  else
+    printer << "-2";
+
+  printer << " (value ";
+  MOSH::printDimensionValue(printer, rhsDim);
+  printer << ")";
+  return errorMsg;
+}
+
+// Calculates the full rank shapes for matmul inputs.
+// These shapes should be equivalent after broadcasting.
+// The new dimensions will just be static 1 dimensions.
+std::pair<SmallVector<TypedAttr>, SmallVector<TypedAttr>>
+expandMatmulInputsForBroadcasting(ShapeAttr lhsShape, ShapeAttr rhsShape) {
+  size_t lhsRank = lhsShape.getRank();
+  size_t rhsRank = rhsShape.getRank();
+
+  size_t fullRank = std::max(size_t(2), std::max(lhsRank, rhsRank));
+
+  auto idxTy = IndexType::get(lhsShape.getContext());
+  auto intDim1 = IntegerAttr::get(idxTy, 1ll);
+  SmallVector<TypedAttr> lhsFullShape(fullRank, intDim1);
+  SmallVector<TypedAttr> rhsFullShape(fullRank, intDim1);
+  if (lhsRank == 1) {
+    // `D` -> `1xD`
+    lhsFullShape[fullRank - 1] = lhsShape[0];
+  } else {
+    size_t offset = fullRank - lhsRank;
+    for (size_t i = 0; i < lhsRank; ++i)
+      lhsFullShape[i + offset] = lhsShape[i];
+  }
+
+  if (rhsRank == 1) {
+    // `D` -> `Dx1`
+    rhsFullShape[fullRank - 2] = rhsShape[0];
+  } else {
+    size_t offset = fullRank - rhsRank;
+    for (size_t i = 0; i < rhsRank; ++i)
+      rhsFullShape[i + offset] = rhsShape[i];
+  }
+
+  return {lhsFullShape, rhsFullShape};
+}
+
 //----------------------------------------------------------------------------//
 //------------------------Shape functions begin-------------------------------//
 
@@ -190,6 +272,80 @@ ShapeMaterializeResult materializeBatchMatmulShape(GraphOp graphOp,
   // Collect outer dims.
   resDims.push_back(lhsShape[inputRank - 2]);
   resDims.push_back(rhsShape[inputRank - 1]);
+  ShapeAttr resShape = b.getShapeAttr(resDims);
+  return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
+}
+
+ShapeMaterializeResult materializeRmoMatmulShape(GraphOp graphOp, Location loc,
+                                                 TypedAttr lhsShapeAttr,
+                                                 TypedAttr rhsShapeAttr) {
+  // Create builder and track generated parameter bindings.
+  mlir::MLIRContext *ctx = lhsShapeAttr.getContext();
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
+
+  // Make sure both input and target shapes are ranked symbolic shapes.
+  ShapeAttr lhsShape = dyn_cast<ShapeAttr>(lhsShapeAttr);
+  ShapeAttr rhsShape = dyn_cast<ShapeAttr>(rhsShapeAttr);
+  if (!lhsShape || !rhsShape)
+    return ShapeMaterializeResult::nonMaterializable();
+
+  // Note: this supports both vector and matrix matmuls.
+  // Fundamentally, vectors are consider a `1xD` or `Dx1` matrix.
+  // That said, the resulting `1` dimensions in the output is squeezed away.
+  // All dimensions outside of the innermost 2 are broadcasted.
+  size_t lhsRank = lhsShape.getRank();
+  size_t rhsRank = rhsShape.getRank();
+  if (lhsRank == 0 || rhsRank == 0)
+    return ShapeMaterializeResult::error("Scalar inputs are not supported");
+
+  // The full shape/rank has all of the dimensions that the underlying
+  // mo.matmul/mo.batch_matmul will execute with.
+  // The new dimensions will just be static 1 dimensions.
+  size_t fullRank = std::max(size_t(2), std::max(lhsRank, rhsRank));
+
+  auto idxTy = IndexType::get(ctx);
+  auto intDim1 = IntegerAttr::get(idxTy, 1ll);
+  auto [lhsFullShape, rhsFullShape] =
+      expandMatmulInputsForBroadcasting(lhsShape, rhsShape);
+
+  // Check inner dimensions are equal
+  TypedAttr lhsInnerDim = lhsFullShape[fullRank - 1];
+  TypedAttr rhsInnerDim = rhsFullShape[fullRank - 2];
+  std::string errorMsg =
+      matmulInnerDimErrorMessage(lhsShape, lhsInnerDim, rhsShape, rhsInnerDim);
+  b.createAssert(b.createVar(lhsInnerDim) == b.createVar(rhsInnerDim),
+                 errorMsg);
+
+  SmallVector<TypedAttr> resDims;
+  resDims.reserve(fullRank);
+  // Check batch dimensions are equal or broadcastable and collect them into
+  // `resDims`.
+  for (size_t batchDim = 0; batchDim < fullRank - 2; batchDim++) {
+    if (lhsFullShape[batchDim] == intDim1) {
+      // lhs broadcastable, pick rhs dim as output.
+      resDims.push_back(rhsFullShape[batchDim]);
+    } else if (rhsFullShape[batchDim] == intDim1) {
+      // rhs broadcastable, pick lhs dim as output.
+      resDims.push_back(lhsFullShape[batchDim]);
+    } else {
+      // Neither broadcastable, must be equal.
+      TypedAttr lhsDim = lhsFullShape[batchDim];
+      TypedAttr rhsDim = rhsFullShape[batchDim];
+
+      std::string errorMsg =
+          shapeBroadcastingErrorMessage(lhsShape, lhsDim, rhsShape, rhsDim);
+      b.createAssert(b.createVar(lhsDim) == b.createVar(rhsDim), errorMsg);
+      resDims.push_back(lhsDim);
+    }
+  }
+
+  // Collect inner dims if inputs were not 1d.
+  if (lhsRank != 1)
+    resDims.push_back(lhsFullShape[fullRank - 2]);
+  if (rhsRank != 1)
+    resDims.push_back(rhsFullShape[fullRank - 1]);
+
   ShapeAttr resShape = b.getShapeAttr(resDims);
   return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
