@@ -22,57 +22,6 @@ namespace M::MGP {
 #define GEN_PASS_DEF_EXPLICITBUFFERLIFETIMESPASS
 #include "GenericML/MGPTransforms/MGPTransforms.h.inc"
 
-namespace {
-
-Operation *
-findImmediatePostdominator(Block *block,
-                           const BufferDominationRange &dominationRange,
-                           const BufferLifetimeInfo &lifetimeInfo) {
-  // To find IPDOM, first find all ops in the block that postdominate the given
-  // range. Then, find the one op that appears first in the postorder traversal
-  // in order to find the immediate postdominator
-  SmallVector<Operation *> postDominators;
-  for (auto &op : block->getOperations()) {
-    if (!lifetimeInfo.hasDominationRange(&op))
-      continue;
-
-    const auto &info = lifetimeInfo.getDominationRange(&op);
-    if (BufferLifetimeInfo::postdominates(info, dominationRange)) {
-      postDominators.push_back(&op);
-      LLVM_DEBUG(llvm::dbgs() << "\t postdom found: " << op << "\n");
-    }
-  }
-
-  Operation *ipdom = nullptr;
-  int minPost = std::numeric_limits<int>::max();
-
-  for (auto *postDom : postDominators) {
-    // Only consider postdominators that return a !mgp.chain so
-    // the buffer.free can depend on it
-    bool hasMGPChainOutput = false;
-    for (auto result : postDom->getResults())
-      if (isa<MGP::DeviceChainType>(result.getType()))
-        hasMGPChainOutput = true;
-
-    if (!hasMGPChainOutput)
-      continue;
-
-    // Immediate postdominator is the one that appears first in the
-    // post-order walk
-    if (!lifetimeInfo.hasDominationRange(postDom))
-      continue;
-    const auto &info = lifetimeInfo.getDominationRange(postDom);
-    if (info.postIndex < minPost) {
-      ipdom = postDom;
-      minPost = info.postIndex;
-    }
-  }
-
-  return ipdom;
-}
-
-} // namespace
-
 class ExplicitBufferLifetimesPass
     : public impl::ExplicitBufferLifetimesPassBase<
           ExplicitBufferLifetimesPass> {
@@ -99,43 +48,47 @@ class ExplicitBufferLifetimesPass
           continue;
         numAllocs++;
 
-        auto allocUseRange = analysis.lifetimeInfo.getAllocUseRange(allocOp);
-        if (allocUseRange.isError()) {
-          LLVM_DEBUG(llvm::dbgs() << "invalid allocUseRange for " << allocOp
-                                  << ": " << allocUseRange.getError() << "\n");
+        auto allocUses = getAllocUses(allocOp);
+        if (allocUses.isError())
           continue;
+        auto ipdomNode = analysis.getDomTree(block).findLCA(*allocUses);
+
+        // Traverse up the postdominator tree until we find a node that has an
+        // MGPDeviceChain output, meaning we can insert our free after it
+        while (ipdomNode) {
+          bool hasMGPChainOutput = false;
+          for (auto result : ipdomNode->op->getResults())
+            if (isa<MGP::DeviceChainType>(result.getType()))
+              hasMGPChainOutput = true;
+          if (hasMGPChainOutput)
+            break;
+          ipdomNode = ipdomNode->parent;
         }
 
-        auto ipdom = findImmediatePostdominator(block, allocUseRange.get(),
-                                                analysis.lifetimeInfo);
-
-        if (!ipdom) {
+        if (!ipdomNode) {
           LLVM_DEBUG(llvm::dbgs()
                      << "could not find IPDOM for " << allocOp << "\n");
           continue;
         }
 
+        auto ipdom = ipdomNode->op;
+
         OpBuilder builder(ipdom);
         auto loc = ipdom->getLoc();
-        BufferFreeOp bufferFree;
 
-        // ipdom is guaranteed to have a chain output by
-        // findImmediatePostdominator
         OpResult chainOutput;
         for (auto result : ipdom->getResults()) {
           if (isa<MGP::DeviceChainType>(result.getType())) {
             chainOutput = result;
+            break;
           }
         }
         ASSERT_STREAM(chainOutput, "op should have chain output");
 
-        bufferFree = builder.create<MGP::BufferFreeOp>(loc, chainOutput,
-                                                       allocOp.getOutBuffer());
+        auto bufferFree = builder.create<MGP::BufferFreeOp>(
+            loc, chainOutput, allocOp.getOutBuffer());
 
-        chainOutput.replaceUsesWithIf(bufferFree, [&](auto &opOperand) {
-          return opOperand.getOwner() != bufferFree;
-        });
-
+        chainOutput.replaceAllUsesExcept(bufferFree, bufferFree);
         numFreesAdded++;
       }
     });
