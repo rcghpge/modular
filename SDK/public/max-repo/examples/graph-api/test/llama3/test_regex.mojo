@@ -1,10 +1,16 @@
 # ===----------------------------------------------------------------------=== #
+# Copyright (c) 2024, Modular Inc. All rights reserved.
 #
-# This file is Modular Inc proprietary.
+# Licensed under the Apache License v2.0 with LLVM Exceptions:
+# https://llvm.org/LICENSE.txt
 #
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 # ===----------------------------------------------------------------------=== #
-# RUN: mojo -I %sdk_examples_dir "%s"
-#
+
 # Unit tests for BPETokenizer
 
 from pathlib import Path
@@ -19,8 +25,6 @@ def test_email():
     email = "stef@modular.com"
     m = regex.find(email)
     assert_true(m)
-    print(m.value())
-    print(m.value()._groups.__repr__())
     assert_equal(email, str(m.value()))
     assert_equal("stef", str(m.value()[1]))
     assert_equal("modular", str(m.value()[2]))
