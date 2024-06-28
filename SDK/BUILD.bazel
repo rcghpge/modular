@@ -9,7 +9,7 @@ load("//bazel:config.bzl", "MOJO_CONFIG_SECTION_LOCAL_DEFINES")
 
 modular_pybind_library(
     name = "ModularFrameworkPython",
-    srcs = glob(["lib/EngineAPI/**/*.cpp"]),
+    srcs = ["//SDK/lib/EngineAPI/python:cpp_srcs"],
     hdrs = glob(["include/SDK/EngineAPI/**/*.h"]),
     local_defines = MOJO_CONFIG_SECTION_LOCAL_DEFINES,
     deps = [

@@ -15,8 +15,8 @@ pkg_zip(
 pkg_files(
     name = "engine",
     srcs = [
-        "//SDK/lib/EngineAPI/python/bindings/max/engine:core",
-        "//SDK/lib/EngineAPI/python/max/engine",
+        "//SDK/lib/EngineAPI/python/max/engine:all_srcs",
+        "//SDK/lib/EngineAPI/python/max/engine:core",
     ],
     prefix = "max/engine",
 )

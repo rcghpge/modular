@@ -1,0 +1,24 @@
+load("@pip_deps//:requirements.bzl", "requirement")
+
+filegroup(
+    name = "cpp_srcs",
+    srcs = glob(["lib/**/*.cpp"]),
+    visibility = ["//SDK:__pkg__"],
+)
+
+filegroup(
+    name = "cpp_bindings_srcs",
+    srcs = glob(["bindings/**/*.cpp"]),
+    visibility = [":__subpackages__"],
+)
+
+py_library(
+    name = "max_engine",
+    srcs = ["//SDK/lib/EngineAPI/python/max/engine:all_srcs"],
+    data = ["//SDK/lib/EngineAPI/python/max/engine:core"],
+    imports = ["."],
+    visibility = ["//visibility:public"],
+    deps = [
+        requirement("numpy"),
+    ],
+)

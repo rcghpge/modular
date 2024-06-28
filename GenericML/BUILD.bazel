@@ -81,6 +81,7 @@ rpath_shim(
     visibility = ["//visibility:private"],
     deps = [
         "//ModularFramework/tools/mof",
+        "//ONNX/tools/onnx:monnx",
         "//PyTorch/tools/torch:mtorch",
     ],
 )
