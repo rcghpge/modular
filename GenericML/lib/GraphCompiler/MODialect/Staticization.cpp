@@ -159,6 +159,30 @@ ErrorOr<TypedAttr> BroadcastShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
   return TypedAttr{};
 }
 
+ErrorOr<TypedAttr>
+Static::BroadcastToOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                    ParamExprBuilder &b) {
+  std::optional<int64_t> maybeInt = tryGetConstantInt(inputs[0]);
+  if (!maybeInt.has_value()) {
+    return TypedAttr{};
+  }
+
+  // Check target shape is rank 1
+  TensorType resultTy = getType();
+  if (!resultTy.hasRank() || resultTy.getRank() != 1)
+    return TypedAttr{};
+
+  auto resultDimIntAttr =
+      dyn_cast<IntegerAttr>(resultTy.getTypedShapeAttr().getValues().front());
+  if (!resultDimIntAttr)
+    return TypedAttr{};
+
+  auto resultDimInt = resultDimIntAttr.getInt();
+
+  SmallVector<TypedAttr> broadcastedConst(resultDimInt, inputs[0]);
+  return b.getShapeAttr(broadcastedConst);
+}
+
 ErrorOr<TypedAttr> AddOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                        ParamExprBuilder &b) {
   return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {

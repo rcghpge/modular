@@ -2278,7 +2278,9 @@ class MOStatic_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
   }];
 }
 
-def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to"> {
+def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to", [
+    DeclareOpInterfaceMethods<MO_Staticization>
+  ]> {
   let summary = "Broadcasting operation";
   let description = [{
     Broadcasts the input tensor to the result tensor. The shape of the input and
