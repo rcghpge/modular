@@ -29,7 +29,8 @@ fn test_basic_add_request(
     _ = b^
 
     var outputs = response.get_output_tensors()
-    print(outputs)
+    # TODO: Update for Formatter
+    # print(outputs)
 
     var actual = outputs.get[DType.float32](req_outputs[0])
     var expected = Tensor[DType.float32](TensorShape(1, 1), 2)  # 1 + 1 = 2

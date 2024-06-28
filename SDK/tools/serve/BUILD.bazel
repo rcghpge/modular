@@ -1,0 +1,38 @@
+load("//bazel:api.bzl", "mojo_binary")
+
+mojo_binary(
+    name = "run_server",
+    srcs = ["run_server.mojo"],
+    deps = [
+        "//SDK/lib/API/mojo/max",
+        "//open-source/mojo/stdlib/stdlib",
+    ],
+)
+
+mojo_binary(
+    name = "send_multi",
+    srcs = ["send_multi.mojo"],
+    deps = [
+        "//Kernels/mojo/algorithm",
+        "//Kernels/mojo/subprocess",
+        "//open-source/mojo/stdlib/stdlib",
+    ],
+)
+
+mojo_binary(
+    name = "send_single",
+    srcs = ["send_single.mojo"],
+    deps = [
+        "//SDK/lib/API/mojo/max",
+        "//open-source/mojo/stdlib/stdlib",
+    ],
+)
+
+mojo_binary(
+    name = "send_single_triton",
+    srcs = ["send_single_triton.mojo"],
+    deps = [
+        "//SDK/lib/API/mojo/max",
+        "//open-source/mojo/stdlib/stdlib",
+    ],
+)
