@@ -41,8 +41,3 @@ llvm_config.add_tool_substitutions(tools, tool_dirs)
 
 config.environment["LSAN_OPTIONS"] = "detect_leaks=0"
 config.environment["ASAN_OPTIONS"] = "detect_odr_violation=0"
-
-is_cuda_available = Path(config.modular_tools_dir) / "is-cuda-available"
-output = subprocess.run(str(is_cuda_available))
-if output.returncode == 0:
-    config.available_features.add("cuda")
