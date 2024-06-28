@@ -13,6 +13,7 @@
 #include "mlir/Pass/Pass.h"
 
 // Must include dependent dialects
+#include "KGEN/CustomDialect/CustomDialect.h"
 #include "KGEN/HLCFDialect/HLCFDialect.h"
 #include "KGEN/KGENDialect/KGENDialect.h"
 #include "KGEN/LITDialect/LITDialect.h"
