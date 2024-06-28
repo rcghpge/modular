@@ -1,13 +1,8 @@
 load("//utils/bazel/build/rules:lit.bzl", "lit_tests")
 
-package(default_visibility = ["//visibility:public"])
-
 lit_tests(
     name = "test",
-    srcs = glob(
-        ["mojo/*.mojo"],
-        exclude = ["mojo/test_graph.mojo"],
-    ),
+    srcs = glob(["**/*.mojo"]),
     data = [
         "//GenericML:DeviceDriver",
         "//GenericML:modular-framework-common",
@@ -21,6 +16,10 @@ lit_tests(
         "//open-source/mojo/stdlib/stdlib",
     ],
     path = "$(rlocationpath //CUDASupport/tools/is-cuda-available)",
+    target_compatible_with = select({
+        "//:asan": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
     tools = [
         "//CUDASupport/tools/is-cuda-available",
         "//KGEN/tools/mojo",

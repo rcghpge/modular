@@ -1,26 +1,10 @@
 load("//utils/bazel/build/rules:lit.bzl", "lit_tests")
 
-package(default_visibility = ["//visibility:public"])
-
 lit_tests(
     name = "test",
-    srcs = glob(
-        ["mojo/*.mojo"],
-        exclude = [
-            # So we have eliminated all the DyLib loading problem, the closing of
-            # the DyLibs before calling a deconstructor, but are stuck currently
-            # with the Session deconstructor hitting a SEGFAULT when M_freeRuntimeContext is
-            # called. Spent a long time trying to figure that out.
-            "mojo/test_aiengine.mojo",
-            "mojo/test_list.mojo",
-            "mojo/test_prim_values.mojo",
-            "mojo/test_tensor.mojo",
-            "mojo/test_tensor_map.mojo",
-            "mojo/test_tensor_spec.mojo",
-        ],
-    ),
-    custom_substitutions = {},
+    srcs = glob(["**/*.mojo"]),
     data = [
+        "//GenericML:DeviceDriver",
         "//GenericML:modular-framework-common",
         "//KGEN:CompilerRT",
         "//ModularFramework/tools/mof",
