@@ -83,27 +83,6 @@ static SmallVector<TypedAttr> getShapesOf(ValueRange values) {
   return shapes;
 }
 
-// TODO(GRA-551) remove once we eliminate `?` in Graph API.
-/// Return whether any Attribute in `attrs` is a `ShapeAttr` that contains
-/// the unknown dimension `?`.
-static bool hasUnknownDim(ArrayRef<TypedAttr> attrs) {
-  for (TypedAttr attr : attrs) {
-    if (auto shapeAttr = dyn_cast<ShapeAttr>(attr)) {
-      if (shapeAttr.hasUnknownDims())
-        return true;
-    }
-  }
-  return false;
-}
-
-// TODO(GRA-551) remove once we eliminate `?` in Graph API.
-/// Return a shape attribute of given rank, where each dimension is `?`.
-static ShapeAttr createUnknownShapeOfRank(MLIRContext *ctx, size_t rank) {
-  auto unknownDimAttr = KGEN::UnknownAttr::get(IndexType::get(ctx));
-  SmallVector<TypedAttr> dimAttrs(rank, unknownDimAttr);
-  return ShapeAttr::get(dimAttrs, MOSH::ShapeType::get(ctx));
-}
-
 // Creates an error message for when a tensor contains `?`, but that is not
 // allowed.
 std::string unknownDimError(const StringRef opName, const StringRef tensorName,
