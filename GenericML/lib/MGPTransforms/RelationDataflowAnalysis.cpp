@@ -219,7 +219,7 @@ void ForwardsRelationDataflowAnalysis::flowControlFlow(
       setEntries(domainMap, arg, getEntriesAndId(domainMap, input));
 
     // Until fixed point...
-    size_t n = 0;
+    [[maybe_unused]] size_t n = 0;
     bool outerChanged = domainMap.changed;
     do {
       LLVM_DEBUG(llvm::dbgs() << "fixed point iteration " << ++n << "...\n");
@@ -445,7 +445,7 @@ void BackwardsRelationDataflowAnalysis::flowControlFlow(
 
     // Until fixed point...
     bool outerChanged = domainMap.changed;
-    size_t n = 0;
+    [[maybe_unused]] size_t n = 0;
     do {
       LLVM_DEBUG(llvm::dbgs() << "fixed point iteration " << ++n << "...\n");
       domainMap.changed = false;

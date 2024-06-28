@@ -633,7 +633,7 @@ public:
   /// Register the given type builder for the given device.
   void registerTypeBuilder(DeviceRefAttr device,
                            std::unique_ptr<TypeBuilder> typeBuilder) {
-    bool inserted =
+    [[maybe_unused]] bool inserted =
         typeBuilderMap.insert({device, std::move(typeBuilder)}).second;
     ASSERT_STREAM(inserted,
                   << "a type builder has already been registered for device");
@@ -651,7 +651,7 @@ public:
   /// Register the given buffer builder for the given device.
   void registerBufferBuilder(DeviceRefAttr device,
                              std::unique_ptr<BufferBuilder> bufferBuilder) {
-    bool inserted =
+    [[maybe_unused]] bool inserted =
         bufferBuilderMap.insert({device, std::move(bufferBuilder)}).second;
     ASSERT_STREAM(inserted,
                   << "a buffer builder has already been registered for device");

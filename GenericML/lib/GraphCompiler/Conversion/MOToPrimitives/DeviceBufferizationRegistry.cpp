@@ -81,7 +81,8 @@ void DeviceBufferizationRegistry::add(
     StringRef label,
     std::unique_ptr<DeviceSpecificDialect> deviceSpecificDialect) {
   std::lock_guard<std::mutex> guard(mu);
-  bool inserted = map.insert({label, std::move(deviceSpecificDialect)}).second;
+  [[maybe_unused]] bool inserted =
+      map.insert({label, std::move(deviceSpecificDialect)}).second;
   ASSERT_STREAM(inserted, << "builder for label " << label
                           << " has already been registered");
 }

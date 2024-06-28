@@ -31,7 +31,7 @@ using namespace mlir;
 
 /// Returns false if a value is shared between inOp and outOp.
 /// The caller is expected to then assert fail.
-static bool checkRewrite(Operation *inOp, Operation *outOp) {
+[[maybe_unused]] static bool checkRewrite(Operation *inOp, Operation *outOp) {
 #if MODULAR_DEBUG
   SetVector<Value> inValues = getValues(inOp);
   SetVector<Value> outValues = getValues(outOp);
@@ -111,7 +111,7 @@ static void fixup(OpBuilder &builder, Block *inBlock,
           ASSERT_STREAM(outOperand, << "unmapped operand");
           outOperands.emplace_back(outOperand);
         }
-        Operation *outOutputOp =
+        [[maybe_unused]] Operation *outOutputOp =
             builder.create<MEF::OutputOp>(inOp->getLoc(), outOperands);
         ASSERT_STREAM(checkRewrite(inOutputOp, outOutputOp),
                       << "invalid rewrite for output op");
@@ -196,7 +196,7 @@ static void fixup(OpBuilder &builder, Block *inBlock,
     }
 
     // Default case is just clone the op w.r.t. mapping.
-    Operation *outOp = builder.clone(*inOp, mapping);
+    [[maybe_unused]] Operation *outOp = builder.clone(*inOp, mapping);
     ASSERT_STREAM(checkRewrite(inOp, outOp), << "invalid rewrite of op");
   }
 

@@ -64,8 +64,8 @@ class DeferAllocsPass : public impl::DeferAllocsPassBase<DeferAllocsPass> {
             LLVM_DEBUG(llvm::dbgs() << "adding chain:\n  " << mutatorInChain
                                     << "\nto op:\n  " << allocOp << "\n");
             execState.builder.setInsertionPoint(allocOp);
-            auto res = alsoWaitForChains(execState.builder, builderContext,
-                                         allocOp, {mutatorInChain});
+            [[maybe_unused]] auto res = alsoWaitForChains(
+                execState.builder, builderContext, allocOp, {mutatorInChain});
             ASSERT_STREAM(succeeded(res),
                           << "all allocation ops must accept an input "
                              "chain to control their timing");
