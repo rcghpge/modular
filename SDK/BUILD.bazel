@@ -5,11 +5,13 @@ load(
     "modular_pybind_library",
     "td_library",
 )
+load("//bazel:config.bzl", "MOJO_CONFIG_SECTION_LOCAL_DEFINES")
 
 modular_pybind_library(
     name = "ModularFrameworkPython",
     srcs = glob(["lib/EngineAPI/**/*.cpp"]),
     hdrs = glob(["include/SDK/EngineAPI/**/*.h"]),
+    local_defines = MOJO_CONFIG_SECTION_LOCAL_DEFINES,
     deps = [
         "//GenericML:modular-framework-common",
         "//PyTorch:modular-framework-torch-ext",
