@@ -12,6 +12,7 @@ modular_cc_binary(
         "//GenericML:MaxAPI",
         "//ONNX:APIStrippedHeaders",
         "//ONNX:modular-framework-onnx-ext",
+        "//ONNX/tools/onnx:monnx",
         "//SDK:EngineCLI-Benchmark",
         "//Support:Globals",
     ],
