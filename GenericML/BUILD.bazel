@@ -607,6 +607,7 @@ modular_cc_library(
         ":MOGGDialectIncGen",
         ":MOGGDialectInterfacesIncGen",
         ":MOGGDialectPassesIncGen",
+        "//KGEN:CustomDialect",
         "//KGEN:KGENDialect",
         "@llvm-project//mlir:IR",
     ],

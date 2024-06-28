@@ -2,6 +2,7 @@ load("//bazel:api.bzl", "lit_tests")
 
 lit_tests(
     name = "test",
+    size = "large",
     srcs = glob(["**/*.mojo"]),
     data = [
         "//KGEN:CompilerRT",
