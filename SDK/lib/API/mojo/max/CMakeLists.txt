@@ -107,6 +107,10 @@ set(TENSOR_SRCS
   tensor/__init__
 )
 
+set(COMPILER_SRCS
+  compiler/__init__
+)
+
 add_mojo_package(max-mojo PRIVATE
   ${GRAPH_SRCS}
   ${ENGINE_SRCS}
@@ -116,6 +120,7 @@ add_mojo_package(max-mojo PRIVATE
   ${DRIVER_SRCS}
   ${UTILS_SRCS}
   ${TENSOR_SRCS}
+  ${COMPILER_SRCS}
 
   DOCS_DIR
   SDK/docs
