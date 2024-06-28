@@ -31,6 +31,14 @@ LogicalResult lowerMOToMGP(ModuleOp module,
 /// in the module op, so it is a destructive conversion.
 ErrorOr<BufferRef> convertMGPToMEF(ModuleOp module, bool enableMEFMetadata);
 
+constexpr StringLiteral BugReportMessage =
+    "=================================================================\n"
+    "    !!! MAX AI Engine has encountered an internal error !!!\n"
+    "=================================================================\n"
+    "Please submit a bug report to https://github.com/modularml/max/issues "
+    "and include the crash backtrace along with your command line "
+    "invocation.\n";
+
 } // namespace M::MO
 
 #endif // GENERICML_MO_GRAPHCOMPILER_H
