@@ -129,6 +129,7 @@ def MGP_LiftableChainCreateOpInterface : OpInterface<"MGPLiftableChainCreateOpIn
   ];
 }
 
+
 def MGP_InOutSemanticsOpInterface : OpInterface<"MGPInOutSemanticsOpInterface"> {
   let description = [{
     Interface for ops which may mutate some of their operands.

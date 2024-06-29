@@ -1526,6 +1526,7 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
 def TensorCreateOp : MGP_DeviceOp<"tensor.create", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<GRTMayAliasInterface>,
+    DeclareOpInterfaceMethods<MGP_CreateTensorOpInterface>,
 ]> {
   let summary = "Creates an `!mgp.tensor` from an `!mgp.tensor_spec` and "
                 "`!mgp.buffer`.";
