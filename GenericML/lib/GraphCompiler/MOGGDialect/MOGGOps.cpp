@@ -516,7 +516,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // (intermediates allocations unsupported / leaking).
   bool canFuseIntoOther =
       !(getAllocIndices().has_value() && !getAllocIndices()->empty());
-
+  bool hasCuda = device.getLabel() != kCPULabel;
   // Later update the isAsync instead of hard-coding
   auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
       getLoc(), TypeRange{newKernelResTypes}, operands,
@@ -524,6 +524,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       getIsKGENAttr(),                     // isKGEN
       getSummaryAttr(),                    // summary
       BoolAttr::get(ctx, false),           // isAsync
+      BoolAttr::get(ctx, hasCuda),         // hasCuda
       BoolAttr::get(ctx, canFuseIntoOther) // isFuseable
   );
 

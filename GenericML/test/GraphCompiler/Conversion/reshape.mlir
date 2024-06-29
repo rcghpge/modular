@@ -36,7 +36,7 @@ mo.graph @reshape_static_input_static_output(%arg: !mo.tensor<[4], f32>) -> !mo.
 // CHECK: %[[SHAPE_BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][1], %[[SHAPE]] : !mgp.tensor<2xsi64>
 
 // Invoke fallback shape function (compiled region fusion enabled)
-// CHECK: "mgp.generic.execute"{{.*}}dSummary = "reshape_shape"
+// CHECK: "mgp.generic.execute"{{.*}}dSummary = {{.*}}reshape_shape{{.*}}
 
 // Create output tensor
 // CHECK: %[[OUT_TENSOR:.*]] =  mgp.tensor.create %{{.*}}, %[[CTX]][1], %[[IN_BUF]], %{{.*}} : !mgp.tensor<?x?xf32>
