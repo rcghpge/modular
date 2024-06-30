@@ -1,0 +1,26 @@
+# Use the setuptools build backend
+[build-system]
+requires = ["wheel", "setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "max-graph"
+version = "@MODULAR_VERSION_MAJOR@.@MODULAR_VERSION_MINOR@.@MODULAR_VERSION_PATCH@"
+dependencies = [
+  "numpy >= 1.23, < 2",
+]
+requires-python = ">=3.8"
+
+[tool.setuptools]
+license-files = [
+  "MAX-Platform-Software-License",
+  "Third-Party-Notices",
+]
+
+[tool.black]
+include = '\.pyi?$'
+line-length = 80
+experimental-string-processing = true
+
+[tool.isort]
+profile = "black"

@@ -7,3 +7,4 @@
 add_subdirectory(API)
 add_subdirectory(EngineAPI)
 add_subdirectory(EngineCLI)
+add_subdirectory(GraphAPI/python)
