@@ -28,10 +28,12 @@
 #include "Support/Filesystem/Paths.h"
 #include "Support/MDialect/MDialect.h"
 
-namespace {
-#include MOGG_MOJO_BINDING_H
-#include MOGG_PRIMITIVES_MOJO_BINDING_H
-} // namespace
+// Define the embedded MLIR bytecode arrays in other compilation units to speed
+// up compile times.
+namespace M::MOGG::Embeddings {
+extern llvm::StringRef source;
+extern llvm::StringRef primitiveSource;
+} // namespace M::MOGG::Embeddings
 
 using namespace M;
 using namespace MOGG;
@@ -322,11 +324,10 @@ struct Candidate {
 ErrorOrSuccess
 MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths,
                           bool eager) {
-  llvm::StringRef source{(const char *)MojoMoggBindings::data,
-                         MojoMoggBindings::size};
-  llvm::MemoryBufferRef bufferRef = internMLIRFile(
-      llvm::MemoryBuffer::getMemBuffer(source, "embedded MOGG bindings",
-                                       /*RequiresNullTerminator=*/false));
+  llvm::MemoryBufferRef bufferRef =
+      internMLIRFile(llvm::MemoryBuffer::getMemBuffer(
+          Embeddings::source, "embedded MOGG bindings",
+          /*RequiresNullTerminator=*/false));
   ErrorOr<Operation *> moduleOr =
       loadMLIRKernels(bufferRef, rawMojoKernel, eager, "the standard library");
   if (failed(moduleOr))
@@ -335,11 +336,8 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths,
   if (!eager)
     symbolNameRemapping.insert({module, {}});
 
-  llvm::StringRef primitiveSource{
-      (const char *)MojoPrimitivesMoggBindings::data,
-      MojoPrimitivesMoggBindings::size};
   bufferRef = internMLIRFile(llvm::MemoryBuffer::getMemBuffer(
-      primitiveSource, "embedded MOGG Primitives bindings",
+      Embeddings::primitiveSource, "embedded MOGG Primitives bindings",
       /*RequiresNullTerminator=*/false));
   llvm::StringMap<KGEN::GeneratorOp> primitiveRawMojoKernel;
   moduleOr = loadMLIRKernels(bufferRef, primitiveRawMojoKernel, eager,
