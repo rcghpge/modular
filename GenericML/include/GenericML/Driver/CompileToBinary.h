@@ -11,8 +11,10 @@
 #include "LLCL/Runtime/Runtime.h"
 #include "Support/Config.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "llvm/Support/SourceMgr.h"
 
 namespace M {
 
@@ -21,7 +23,8 @@ struct CompileToBinaryCtx {
   CompileToBinaryCtx(M::ContextRef ctx)
       : prevRuntimeProfilingTypeMask(Trace::kFullyEnabled),
         context(std::move(ctx)), runtime(context->get<Runtime>()),
-        mlirCtx(mlir::MLIRContext::Threading::DISABLED) {
+        mlirCtx(mlir::MLIRContext::Threading::DISABLED),
+        diagHandler(sourceMgr, &mlirCtx) {
     assert(runtime && "expected to have a runtime");
     registerContext(mlirCtx, context);
     configureMLIRContext(mlirCtx);
@@ -49,6 +52,11 @@ struct CompileToBinaryCtx {
   LLCL::Runtime *runtime;
   mlir::MLIRContext mlirCtx;
   mlir::OwningOpRef<mlir::ModuleOp> module;
+
+  // Install a source manager diagnostic handler to properly display MLIR
+  // diagnostics that can originate from downstream compilation errors.
+  llvm::SourceMgr sourceMgr;
+  mlir::SourceMgrDiagnosticHandler diagHandler;
 };
 
 } // namespace M

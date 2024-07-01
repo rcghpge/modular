@@ -255,6 +255,12 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   auto telemetryContext =
       ctxHandle.maxContext->get<GML::MaxEngineTelemetryContext>();
 
+  // Install a source manager diagnostic handler to properly display MLIR
+  // diagnostics that can originate from downstream compilation errors. Do this
+  // *before* the telemetry diagnostic handler.
+  llvm::SourceMgr sourceMgr;
+  mlir::SourceMgrDiagnosticHandler diagHandler(sourceMgr, mlirCtx);
+
   // Emit telemetry upon any lowering error.
   GML::MaxEngineTelemetryScope<GML::MaxEngineErrorCode::GraphLoweringError>
       loweringDiagScope(mlirCtx, telemetryContext);
