@@ -9,7 +9,6 @@
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/SourceMgr.h"
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
@@ -35,28 +34,26 @@ namespace {
 } // namespace
 
 using namespace M;
+using namespace MOGG;
 
-namespace M::MOGG {
-
-namespace {
-
-std::string getMOGGUniqueSymbolName(const std::string &baseName,
-                                    llvm::StringMap<KGEN::GeneratorOp> &rawMap,
-                                    unsigned &counter) {
+static std::string
+getMOGGUniqueSymbolName(const std::string &baseName,
+                        llvm::StringMap<KGEN::GeneratorOp> &rawMap,
+                        unsigned &counter) {
   std::string uniqueName = baseName;
   while (rawMap.contains(uniqueName))
     uniqueName = (baseName + "_" + Twine(counter++)).str();
   return uniqueName;
 }
 
-std::string
+static std::string
 getMOGGUniqueSymbolName(const std::string &baseName,
                         llvm::StringMap<KGEN::GeneratorOp> &rawMap) {
   unsigned counter = 0;
   return getMOGGUniqueSymbolName(baseName, rawMap, counter);
 }
 
-ErrorOr<OwningOpRef<ModuleOp>>
+static ErrorOr<OwningOpRef<ModuleOp>>
 parseMojoPackage(MLIRContext *ctx, StringRef path,
                  const std::shared_ptr<llvm::SourceMgr> &sourceMgr) {
   LLCL::Runtime &runtime = *loadContext(ctx)->get<LLCL::Runtime>();
@@ -77,8 +74,8 @@ parseMojoPackage(MLIRContext *ctx, StringRef path,
   return ownedModule;
 }
 
-mlir::LogicalResult materialize(Operation *target,
-                                mlir::BytecodeReader *reader) {
+static LogicalResult materialize(Operation *target,
+                                 mlir::BytecodeReader *reader) {
   auto walk = target->walk<mlir::WalkOrder::PreOrder>([&](Operation *op) {
     if (reader->isMaterializable(op))
       if (failed(reader->materialize(op)))
@@ -92,9 +89,10 @@ mlir::LogicalResult materialize(Operation *target,
   return success();
 }
 
-void populateMetadata(Operation *module, bool eager,
-                      llvm::SmallPtrSetImpl<Operation *> &finalizedMojoKernel,
-                      llvm::StringMap<KGEN::GeneratorOp> &rawMojoKernel) {
+static void
+populateMetadata(Operation *module, bool eager,
+                 llvm::SmallPtrSetImpl<Operation *> &finalizedMojoKernel,
+                 llvm::StringMap<KGEN::GeneratorOp> &rawMojoKernel) {
   for (KGEN::GeneratorOp op :
        cast<mlir::ModuleOp>(module).getOps<KGEN::GeneratorOp>())
     rawMojoKernel[op.getSymName()] = op;
@@ -107,7 +105,7 @@ void populateMetadata(Operation *module, bool eager,
     finalizedMojoKernel.insert(op);
 }
 
-void populateRawMetadata(
+static void populateRawMetadata(
     Operation *module, mlir::BytecodeReader *reader,
     llvm::DenseMap<Operation *, mlir::BytecodeReader *> &dedicatedReader,
     llvm::StringMap<KGEN::GeneratorOp> &rawMojoKernel) {
@@ -117,8 +115,6 @@ void populateRawMetadata(
     dedicatedReader[gen] = reader;
   }
 }
-
-} // namespace
 
 KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoFunctionFor(
     StringRef name, llvm::StringMap<std::string> &mapping) {
@@ -140,11 +136,47 @@ KGEN::GeneratorOp MojoLibraryAnalysis::getMojoFunctionNamed(StringRef name) {
   return nullptr;
 }
 
+llvm::MemoryBufferRef MojoLibraryAnalysis::internMLIRFile(
+    std::unique_ptr<llvm::MemoryBuffer> buffer) {
+  unsigned bufferId =
+      sourceMgr->AddNewSourceBuffer(std::move(buffer), llvm::SMLoc());
+  return sourceMgr->getMemoryBuffer(bufferId)->getMemBufferRef();
+}
+
+ErrorOr<llvm::MemoryBufferRef>
+MojoLibraryAnalysis::readAndInternMLIRFile(StringRef filename) {
+  auto bufOr = toModularErrorOr(llvm::MemoryBuffer::getFile(filename));
+  if (bufOr.isError())
+    return bufOr.takeError();
+  return internMLIRFile(bufOr.takeValue());
+}
+
 bool MojoLibraryAnalysis::kernelHasInputParameter(KGEN::GeneratorOp kernel,
                                                   StringRef parameterName) {
   return llvm::any_of(kernel.getInputParams(), [&](auto param) {
     return KGEN::LIT::demangleIfNeeded(param).getName() == parameterName;
   });
+}
+
+ErrorOr<Operation *> MojoLibraryAnalysis::loadMLIRKernels(
+    llvm::MemoryBufferRef bufferRef,
+    llvm::StringMap<KGEN::GeneratorOp> &kernelMap, bool eager,
+    const Twine &diag) {
+  mlir::BytecodeReader &reader = *readers.emplace_back(
+      new mlir::BytecodeReader(bufferRef, config, !eager, sourceMgr));
+  if (failed(reader.readTopLevel(
+          &block, [&](Operation *op) { return isa<ModuleOp>(op); }))) {
+    return Error(
+        "[MojoLibraryAnalysis] Could not load the mojo kernel operators in " +
+        diag);
+  }
+
+  Operation *module = &block.back();
+  if (!eager)
+    populateRawMetadata(module, &reader, dedicatedReader, kernelMap);
+  else
+    populateMetadata(module, eager, finalizedMojoKernel, kernelMap);
+  return module;
 }
 
 // Load a list of kernels from the provided user libraries.
@@ -178,47 +210,14 @@ ErrorOrSuccess MojoLibraryAnalysis::loadUserProvidedKernels(
       block.push_back(userModule);
     } else {
       // Load user library that is a mojo mlibrc file.
-      if (!eager) {
-        // Lazy load of user library.
-        auto bufOr = toModularErrorOr(llvm::MemoryBuffer::getFile(path));
-        if (bufOr.isError())
-          return bufOr.takeError();
-
-        StringRef source = buffers.emplace_back(bufOr.takeValue())->getBuffer();
-        llvm::MemoryBufferRef buffer(source, path);
-        mlir::BytecodeReader *reader =
-            readers
-                .emplace_back(
-                    new mlir::BytecodeReader(buffer, config, true, sourceMgr))
-                .get();
-
-        if (failed(reader->readTopLevel(&block, [&](Operation *op) {
-              if (isa<mlir::ModuleOp>(op)) {
-                return true;
-              }
-              return false;
-            })))
-          return Error(
-              Twine("[MojoLibraryAnalysis] Could not load the mojo kernel "
-                    "operators in: ") +
-              path);
-
-        if (!isa<mlir::ModuleOp>(block.back()))
-          return Error("[MojoLibraryAnalysis] Top level op is not ModuleOp.");
-
-        userModule = &block.back();
-        populateRawMetadata(userModule, reader, dedicatedReader,
-                            userRawMojoKernel);
-      } else {
-        // Eager load of user library.
-        userModule =
-            mlir::parseSourceFile<mlir::ModuleOp>(path, context).release();
-
-        block.push_back(userModule);
-
-        populateMetadata(userModule, eager, finalizedMojoKernel,
-                         userRawMojoKernel);
-      }
+      ErrorOr<llvm::MemoryBufferRef> bufOr = readAndInternMLIRFile(path);
+      if (failed(bufOr))
+        return bufOr.takeError();
+      ErrorOr<Operation *> moduleOr =
+          loadMLIRKernels(bufOr.takeValue(), userRawMojoKernel, eager, path);
+      if (failed(moduleOr))
+        return moduleOr.takeError();
+      userModule = moduleOr.takeValue();
     }
     updateLoadedKernelsForCollisions(userModule, userRawMojoKernel, eager);
   }
@@ -323,83 +322,33 @@ struct Candidate {
 ErrorOrSuccess
 MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths,
                           bool eager) {
-
-  llvm::StringRef source{reinterpret_cast<const char *>(MojoMoggBindings::data),
+  llvm::StringRef source{(const char *)MojoMoggBindings::data,
                          MojoMoggBindings::size};
-  if (eager) {
-    // Eager loading the main mojo bindings.
-    module = mlir::parseSourceString<mlir::ModuleOp>(source, context).release();
-    assert(module.getOperation());
-    block.push_back(module);
-    populateMetadata(module, eager, finalizedMojoKernel, rawMojoKernel);
-  } else {
-    // Lazy loading the main mojo bindings.
-    llvm::MemoryBufferRef buffer(source, "mojo-mogg-bindings");
-    mlir::BytecodeReader *reader = readers
-                                       .emplace_back(new mlir::BytecodeReader(
-                                           buffer, config, true, sourceMgr))
-                                       .get();
-
-    if (failed(reader->readTopLevel(&block, [&](Operation *op) {
-          if (isa<mlir::ModuleOp>(op)) {
-            return true;
-          }
-          return false;
-        })))
-      return Error("[MojoLibraryAnalysis] Could not load the mojo kernel "
-                   "operators from the standard library.");
-
-    module = dyn_cast<mlir::ModuleOp>(block.front());
-    if (module == nullptr)
-      return Error("[MojoLibraryAnalysis] Top level op is not ModuleOp.");
-
+  llvm::MemoryBufferRef bufferRef = internMLIRFile(
+      llvm::MemoryBuffer::getMemBuffer(source, "embedded MOGG bindings",
+                                       /*RequiresNullTerminator=*/false));
+  ErrorOr<Operation *> moduleOr =
+      loadMLIRKernels(bufferRef, rawMojoKernel, eager, "the standard library");
+  if (failed(moduleOr))
+    return moduleOr.takeError();
+  module = cast<ModuleOp>(moduleOr.takeValue());
+  if (!eager)
     symbolNameRemapping.insert({module, {}});
-    populateRawMetadata(module, reader, dedicatedReader, rawMojoKernel);
-  }
 
-  llvm::StringRef primitive_source{
-      reinterpret_cast<const char *>(MojoPrimitivesMoggBindings::data),
+  llvm::StringRef primitiveSource{
+      (const char *)MojoPrimitivesMoggBindings::data,
       MojoPrimitivesMoggBindings::size};
-  if (eager) {
-    // Eager loading the main mojo bindings.
-    llvm::StringMap<KGEN::GeneratorOp> primitiveRawMojoKernel;
-    auto primitiveModule =
-        mlir::parseSourceString<mlir::ModuleOp>(primitive_source, context)
-            .release();
-    assert(primitiveModule.getOperation());
-    block.push_back(primitiveModule);
-    populateMetadata(primitiveModule, eager, finalizedMojoKernel,
-                     primitiveRawMojoKernel);
-    updateLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel,
-                                     eager);
-  } else {
-    // Lazy loading the main mojo bindings.
-    llvm::MemoryBufferRef buffer(primitive_source,
-                                 "mojo-primitives-mogg-bindings");
-    mlir::BytecodeReader *reader = readers
-                                       .emplace_back(new mlir::BytecodeReader(
-                                           buffer, config, true, sourceMgr))
-                                       .get();
-
-    if (failed(reader->readTopLevel(&block, [&](Operation *op) {
-          if (isa<mlir::ModuleOp>(op)) {
-            return true;
-          }
-          return false;
-        })))
-      return Error("[MojoLibraryAnalysis] Could not load the mojo kernel "
-                   "operators from the standard library.");
-
-    if (!isa<mlir::ModuleOp>(block.back()))
-      return Error("[MojoLibraryAnalysis] Top level op is not ModuleOp.");
-
-    auto primitiveModule = &block.back();
-    llvm::StringMap<KGEN::GeneratorOp> primitiveRawMojoKernel;
-    populateRawMetadata(primitiveModule, reader, dedicatedReader,
-                        primitiveRawMojoKernel);
-    updateLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel,
-                                     eager);
-  }
+  bufferRef = internMLIRFile(llvm::MemoryBuffer::getMemBuffer(
+      primitiveSource, "embedded MOGG Primitives bindings",
+      /*RequiresNullTerminator=*/false));
+  llvm::StringMap<KGEN::GeneratorOp> primitiveRawMojoKernel;
+  moduleOr = loadMLIRKernels(bufferRef, primitiveRawMojoKernel, eager,
+                             "the standard library");
+  if (failed(moduleOr))
+    return moduleOr.takeError();
+  Operation *primitiveModule = moduleOr.takeValue();
+  updateLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel,
+                                   eager);
 
   auto loadError = loadUserProvidedKernels(kernelLibraryPaths, eager);
   ASSERT_STREAM(!loadError.isError(), << loadError.takeError());
@@ -490,7 +439,7 @@ MojoLibraryAnalysis::~MojoLibraryAnalysis() {
   }
 }
 
-mlir::LogicalResult MojoLibraryAnalysis::ready(KGEN::GeneratorOp gen) {
+LogicalResult MojoLibraryAnalysis::ready(KGEN::GeneratorOp gen) {
   if (finalized)
     return success();
 
@@ -509,7 +458,7 @@ mlir::LogicalResult MojoLibraryAnalysis::ready(KGEN::GeneratorOp gen) {
   return failure();
 }
 
-mlir::LogicalResult MojoLibraryAnalysis::replaceSymbols(KGEN::GeneratorOp gen) {
+LogicalResult MojoLibraryAnalysis::replaceSymbols(KGEN::GeneratorOp gen) {
   // Get the module that holds this op.
   Operation *scope = gen->getParentOp();
 
@@ -592,5 +541,3 @@ Operation *MojoLibraryAnalysis::lookup(StringRef name) {
     return rawMojoKernel[name];
   return nullptr;
 }
-
-} // namespace M::MOGG

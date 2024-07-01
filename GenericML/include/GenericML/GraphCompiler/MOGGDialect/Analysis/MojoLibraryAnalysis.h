@@ -13,6 +13,8 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SourceMgr.h"
 
 #include "KGEN/CustomDialect/CustomDialect.h"
 #include "KGEN/HLCFDialect/HLCFDialect.h"
@@ -146,13 +148,26 @@ private:
       Operation *userModule,
       llvm::StringMap<KGEN::GeneratorOp> &userRawMojoKernel, bool eager);
 
+  /// Internalize an MLIR bytecode buffer into the source manager and return a
+  /// buffer reference.
+  llvm::MemoryBufferRef
+  internMLIRFile(std::unique_ptr<llvm::MemoryBuffer> buffer);
+  /// Read and internalize an MLIR bytecode file from a filepath into the source
+  /// manager and return a buffer reference.
+  ErrorOr<llvm::MemoryBufferRef> readAndInternMLIRFile(StringRef filename);
+  /// Load and process kernels from an MLIR buffer.
+  ErrorOr<Operation *>
+  loadMLIRKernels(llvm::MemoryBufferRef bufferRef,
+                  llvm::StringMap<KGEN::GeneratorOp> &kernelMap, bool eager,
+                  const Twine &diag);
+
   /// Materialize the specified mojo kernel. It does nothing if the kernel has
   /// been materialized.
-  mlir::LogicalResult ready(KGEN::GeneratorOp gen);
+  LogicalResult ready(KGEN::GeneratorOp gen);
 
   /// Replace all symbol names in the specified mojo kernel so that all symbol
   /// name conflicts are resolved after calling this method.
-  mlir::LogicalResult replaceSymbols(KGEN::GeneratorOp gen);
+  LogicalResult replaceSymbols(KGEN::GeneratorOp gen);
 
   /// Get the iterator range of the mojo kernels within the given kernel map.
   inline auto toRawMojoKernelRange(
@@ -202,9 +217,6 @@ private:
   /// This map captures all the mojo kernels (main and user-provided), which
   /// might not be materialized yet.
   llvm::StringMap<KGEN::GeneratorOp> rawMojoKernel;
-
-  /// Internal memory buffer holds the library bytecode to parse.
-  llvm::SmallVector<std::unique_ptr<llvm::MemoryBuffer>, 2> buffers;
 
   /// Stores all re-naming information needed to resolve the symbol name
   /// conflicts (duplication).
