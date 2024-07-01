@@ -53,3 +53,43 @@ mo.graph @mutable_store(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>, %tensor
     (!mo.chain, !mo.buffer<[10, 20], f32>, !mo.tensor<[10, 30], f32>) -> (!mo.chain)
   mo.output
 }
+
+// -----
+
+mo.graph @mutable_load(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>) {
+  // expected-error@+1 {{Results from mo.mutable.load are only allowed to have at most one use -- found 1 for result #1}}
+  %outChain, %tensor = mo.mutable.load(%ch, %buf) :
+    (!mo.chain, !mo.buffer<[10, 20], f32>) ->
+    (!mo.chain, !mo.tensor<[10, 20], f32>)
+
+  mo.add(%tensor, %tensor) : !mo.tensor<[10, 20], f32>
+
+  mo.output
+}
+
+// -----
+
+mo.graph @mutable_store(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>, %tensor: !mo.tensor<[10, 20], f32>) {
+  // expected-error@+1 {{The output chain from mo.mutable.store is only allowed to have at most one use -- found: 2}}
+  %outChain = mo.mutable.store(%ch, %buf, %tensor) :
+    (!mo.chain, !mo.buffer<[10, 20], f32>, !mo.tensor<[10, 20], f32>) -> (!mo.chain)
+
+  %ch0 = mo.chain.create(%outChain, %outChain) : !mo.chain, !mo.chain
+
+  mo.output
+}
+
+// -----
+
+mo.graph @multiple_store_tensor_uses(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>, %tensor: !mo.tensor<[10, 20], f32>) {
+
+  %res = mo.relu(%tensor) : !mo.tensor<[10, 20], f32>
+
+  // expected-error@+1 {{The value semantic tensor copied from has more than one use, found: 2}}
+  %outChain = mo.mutable.store(%ch, %buf, %tensor) :
+    (!mo.chain, !mo.buffer<[10, 20], f32>, !mo.tensor<[10, 20], f32>) -> (!mo.chain)
+
+  %ch0 = mo.chain.create(%outChain) : !mo.chain
+
+  mo.output
+}

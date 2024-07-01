@@ -3658,6 +3658,51 @@ LogicalResult CustomOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// MO Mutable tensor operations
+//===----------------------------------------------------------------------===//
+
+LogicalResult MutableLoad::verify() {
+
+  for (auto &&[idx, result] : llvm::enumerate(getResults())) {
+    auto numUses = llvm::range_size(result.getUses());
+
+    if (numUses > 1) {
+      return emitError() << llvm::formatv(
+                 "Results from {0} are only allowed "
+                 "to have at most one use -- found {1} for result #{1}",
+                 getOperationName(), idx, numUses);
+    }
+  }
+
+  return success();
+}
+
+LogicalResult MutableStore::verify() {
+
+  auto numUses = llvm::range_size(getResult().getUses());
+
+  if (numUses > 1) {
+    return emitError() << llvm::formatv(
+               "The output chain from {0} is only allowed "
+               "to have at most one use -- found: {1}",
+               getOperationName(), numUses);
+  }
+
+  // NOTE: might be able to relax this constraint in the future if we have a
+  // full lowering path, lambda based fusion, and copying of results when
+  // multiple uses exist
+  auto valueTensorNumUses = llvm::range_size(getInTensor().getUses());
+
+  if (valueTensorNumUses > 1) {
+    return emitError() << llvm::formatv("The value semantic tensor copied from "
+                                        "has more than one use, found: {0}",
+                                        valueTensorNumUses);
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

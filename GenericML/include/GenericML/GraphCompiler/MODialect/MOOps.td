@@ -4365,11 +4365,27 @@ def MO_MutableLoad : MO_Op<"mutable.load", [
   let summary = "Take a chain and a buffer semantic tensor and returns a chain and a value semantic tensor.";
   let description = [{
     Allows modelling of in-place operations in MO in conjunction with mo.mutable.store
+
+    The results of this operation are only allowed to have at most one use,
+    this is to prevent forming IR like:
+
+    ```mlir
+    %ch1, %tensor = mo.mutable.load(%ch0, %buffer)
+
+    %result1 = mo.op ...
+    %result1 = mo.op ...
+
+    %ch2 = mo.mutable.store(%ch1, %buffer, %result1)
+    %ch3 = mo.mutable.store(%ch1, %buffer, %result2)
+    ```
+
+    Where there is a data race on `%buffer` from the two store operations.
   }];
 
   let arguments = (ins MO_Chain:$inChain, MO_Buffer:$inBuffer);
   let results   = (outs MO_Chain:$outChain, MO_Tensor:$outTensor);
 
+  let hasVerifier = 1;
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
@@ -4382,12 +4398,32 @@ def MO_MutableStore : MO_Op<"mutable.store", [
 {
   let summary = "Takes a chain, a buffer semantic tensor, and a value semantic tensor and returns a chain";
   let description = [{
-    Allows modelling of in-place operations in MO in conjunction with mo.mutable.load
+    Allows modelling of in-place operations in MO in conjunction with mo.mutable.load.
+
+    The output chain of this operation is only allowed to have at most one use,
+    this is meant to prevent forming IR like:
+
+    ```mlir
+    ...
+    %ch0 = mo.mutable.store(%ch1, %buffer, %result)
+
+    %ch1, %tensor1 = mo.mutable.load(%ch0, %buffer)
+    %res1 = mo.op(%tensor1, ...)
+    mo.mutable.store(%ch1, %tensor1, %res1)
+
+    %ch2, %tensor2 = mo.mutable.load(%ch0, %buffer)
+    %res2 = mo.op(%tensor2, ...)
+    mo.mutable.store(%ch2, %tensor2, %res2)
+    ```
+
+    Where there would be a potential data race after fusing the load/store
+    pairs into their repsective compute ops.
   }];
 
   let arguments = (ins MO_Chain:$inChain, MO_Buffer:$inBuffer, MO_Tensor:$inTensor);
   let results   = (outs MO_Chain:$outChain);
 
+  let hasVerifier = 1;
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
