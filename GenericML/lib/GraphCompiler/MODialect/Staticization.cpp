@@ -300,6 +300,13 @@ ErrorOr<TypedAttr> NegativeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
   });
 }
 
+ErrorOr<TypedAttr> MaxOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                       ParamExprBuilder &b) {
+  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
+    return b.createKgenExpr(KGEN::POC::Max, scalarInputs);
+  });
+}
+
 ErrorOr<TypedAttr> MinOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                        ParamExprBuilder &b) {
   return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {

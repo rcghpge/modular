@@ -727,7 +727,10 @@ def MO_Log1pOp : MO_ElementWiseUnaryMonoTypeOp<"log1p"> {
   }];
 }
 
-def MO_MaxOp : MO_ElementWiseBinaryMonoTypeOp<"max", [Commutative]> {
+def MO_MaxOp : MO_ElementWiseBinaryMonoTypeOp<"max", [
+  Commutative,
+  DeclareOpInterfaceMethods<MO_Staticization>,
+]> {
   let summary = "Maximum operation";
   let description = [{
     Returns `max(x, y)`, where `x` and `y` are input tensors.
