@@ -140,22 +140,24 @@ static Var computeRangeSize(const Var &start, const Var &stop,
   return size;
 }
 
-std::string shapeBroadcastingErrorMessage(ShapeAttr lhsShapeAttr,
-                                          TypedAttr lhsDim,
-                                          ShapeAttr rhsShapeAttr,
-                                          TypedAttr rhsDim) {
+// Generate an error message when dimensions of a shape are
+// not equivalent or broadcastable. This is meant for use with RMO ops.
+static std::string shapeBroadcastingErrorMessage(ShapeAttr lhsShapeAttr,
+                                                 size_t lhsAxis,
+                                                 ShapeAttr rhsShapeAttr,
+                                                 size_t rhsAxis) {
   std::string errorMsg;
   llvm::raw_string_ostream os(errorMsg);
   StreamAsmPrinter printer(os);
-  printer << "Inputs shapes ";
+  printer << "Input lhs (shape ";
   MOSH::printShapeTypedAttr(printer, lhsShapeAttr);
-  printer << " and ";
+  printer << ") dimension at axis " << lhsAxis << " (value ";
+  MOSH::printDimensionValue(printer, lhsShapeAttr[lhsAxis]);
+  printer << ") and input rhs (shape ";
   MOSH::printShapeTypedAttr(printer, rhsShapeAttr);
-  printer << " are not compatible. Dims \"";
-  MOSH::printDimensionValue(printer, lhsDim);
-  printer << "\" and \"";
-  MOSH::printDimensionValue(printer, rhsDim);
-  printer << "\" are neither equivalent nor broadcastable. Insert an "
+  printer << ") dimension at axis " << rhsAxis << " (value ";
+  MOSH::printDimensionValue(printer, rhsShapeAttr[rhsAxis]);
+  printer << ") are neither equivalent nor broadcastable. Insert an "
              "explicit rebind if these dims will be equivalent at runtime.";
   return errorMsg;
 }
@@ -321,6 +323,8 @@ ShapeMaterializeResult materializeRmoMatmulShape(GraphOp graphOp, Location loc,
   resDims.reserve(fullRank);
   // Check batch dimensions are equal or broadcastable and collect them into
   // `resDims`.
+  size_t lhsRankOffset = fullRank - lhsRank;
+  size_t rhsRankOffset = fullRank - rhsRank;
   for (size_t batchDim = 0; batchDim < fullRank - 2; batchDim++) {
     if (lhsFullShape[batchDim] == intDim1) {
       // lhs broadcastable, pick rhs dim as output.
@@ -334,7 +338,8 @@ ShapeMaterializeResult materializeRmoMatmulShape(GraphOp graphOp, Location loc,
       TypedAttr rhsDim = rhsFullShape[batchDim];
 
       std::string errorMsg =
-          shapeBroadcastingErrorMessage(lhsShape, lhsDim, rhsShape, rhsDim);
+          shapeBroadcastingErrorMessage(lhsShape, batchDim - lhsRankOffset,
+                                        rhsShape, batchDim - rhsRankOffset);
       b.createAssert(b.createVar(lhsDim) == b.createVar(rhsDim), errorMsg);
       resDims.push_back(lhsDim);
     }
@@ -348,6 +353,54 @@ ShapeMaterializeResult materializeRmoMatmulShape(GraphOp graphOp, Location loc,
 
   ShapeAttr resShape = b.getShapeAttr(resDims);
   return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
+}
+
+ShapeMaterializeResult
+materializeRmoBinaryElementwiseShape(GraphOp graphOp, Location loc,
+                                     ShapeAttr lhsShape, ShapeAttr rhsShape) {
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
+
+  auto idxTy = IndexType::get(graphOp.getContext());
+  auto intDim1 = IntegerAttr::get(idxTy, 1ll);
+  size_t maxRank = std::max(lhsShape.getRank(), rhsShape.getRank());
+
+  auto getFromEnd = [](ShapeAttr shape, size_t i) -> TypedAttr {
+    if (i >= shape.getRank())
+      return nullptr;
+    return shape[shape.getRank() - i - 1];
+  };
+
+  // Check that all inputs are equivalent or broadcastable while building the
+  // output shape.
+  SmallVector<TypedAttr> outputDims{maxRank, intDim1};
+  for (size_t i = 0; i < maxRank; ++i) {
+    TypedAttr lhsDim = getFromEnd(lhsShape, i);
+    TypedAttr rhsDim = getFromEnd(rhsShape, i);
+    size_t outputIndex = maxRank - i - 1;
+    if (lhsDim && rhsDim) {
+      if (lhsDim == intDim1) {
+        outputDims[outputIndex] = rhsDim;
+      } else if (rhsDim == intDim1) {
+        outputDims[outputIndex] = lhsDim;
+      } else {
+        b.createAssert(b.createVar(lhsDim) == b.createVar(rhsDim),
+                       shapeBroadcastingErrorMessage(
+                           lhsShape, lhsShape.getRank() - i - 1, rhsShape,
+                           rhsShape.getRank() - i - 1));
+        outputDims[outputIndex] = lhsDim;
+      }
+    } else if (lhsDim) {
+      outputDims[outputIndex] = lhsDim;
+    } else {
+      outputDims[outputIndex] = rhsDim;
+    }
+  }
+
+  auto outputShape =
+      ShapeAttr::get(outputDims, ShapeType::get(graphOp.getContext()));
+  return ShapeMaterializeResult::success(std::move(paramBindings), outputShape);
 }
 
 ShapeMaterializeResult materializeBroadcastShapeShape(GraphOp graphOp,

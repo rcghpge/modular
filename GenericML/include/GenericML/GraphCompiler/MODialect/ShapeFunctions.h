@@ -401,13 +401,6 @@ private:
   std::variant<Success, NonMaterializable, Error> result;
 };
 
-// Generate an error message when dimensions of a shape are
-// not equivalent or broadcastable. This is meant for use with RMO ops.
-std::string shapeBroadcastingErrorMessage(ShapeAttr lhsShapeAttr,
-                                          TypedAttr lhsDim,
-                                          ShapeAttr rhsShapeAttr,
-                                          TypedAttr rhsDim);
-
 // Calculates the full rank shapes for matmul inputs.
 // These shapes should be equivalent after broadcasting.
 // The new dimensions will just be static 1 dimensions.
@@ -443,6 +436,12 @@ ShapeMaterializeResult materializeBatchMatmulShape(GraphOp graphOp,
 ShapeMaterializeResult materializeRmoMatmulShape(GraphOp graphOp, Location loc,
                                                  TypedAttr lhsShapeAttr,
                                                  TypedAttr rhsShapeAttr);
+
+/// Materialize the shape logic for RMO binary elementwise ops.
+ShapeMaterializeResult materializeRmoBinaryElementwiseShape(GraphOp graphOp,
+                                                            Location loc,
+                                                            ShapeAttr lhsShape,
+                                                            ShapeAttr rhsShape);
 
 /// Materialize the shape logic for `MO::BroadcastShapeOp`.
 ShapeMaterializeResult materializeBroadcastShapeShape(GraphOp graphOp,

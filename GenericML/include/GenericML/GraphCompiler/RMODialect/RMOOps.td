@@ -81,13 +81,9 @@ class RMO_PureBinaryElementWiseOp<string name, list<Trait> traits = []>
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` type(operands)
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
 
-  let extraClassDeclaration = [{
-    // InferTypeOpInterface:
-    static bool isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs);
-  }];
   let extraClassDefinition = [{
     LogicalResult
     $cppClass::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
@@ -97,11 +93,6 @@ class RMO_PureBinaryElementWiseOp<string name, list<Trait> traits = []>
       return inferReturnTypesBinaryElemwiseImpl<$cppClass>(
           context, location, operands, attributes, properties, regions,
           inferredReturnTypes);
-    }
-
-    // InferTypeOpInterface:
-    bool $cppClass::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
-      return isCompatibleReturnTypesBinaryElemwiseImpl(lhs, rhs);
     }
   }];
 }
@@ -173,13 +164,9 @@ class RMO_PureBinaryComparisonOp<string name, list<Trait> traits = []>
   let results = (outs MO_BooleanMask:$result);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` type(operands)
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
 
-  let extraClassDeclaration = [{
-    // InferTypeOpInterface:
-    static bool isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs);
-  }];
   let extraClassDefinition = [{
     LogicalResult
     $cppClass::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
@@ -189,11 +176,6 @@ class RMO_PureBinaryComparisonOp<string name, list<Trait> traits = []>
       return inferReturnTypesBinaryComparisonImpl<$cppClass>(
           context, location, operands, attributes, properties, regions,
           inferredReturnTypes);
-    }
-
-    // InferTypeOpInterface:
-    bool $cppClass::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
-      return isCompatibleReturnTypesBinaryComparisonImpl(lhs, rhs);
     }
   }];
 }
@@ -321,8 +303,7 @@ def RMO_SigmoidOp : RMO_Op<"sigmoid", [Pure]> {
 
 def RMO_ConcatOp : RMO_Op<"concat", [
   Pure,
-  // TODO(GRA-551) remove `refineReturnTypes` once we eliminate `?` in Graph API.
-  DeclareOpInterfaceMethods<InferTypeOpInterface, ["refineReturnTypes"]>,
+  DeclareOpInterfaceMethods<InferTypeOpInterface>,
 ]> {
   let summary = "Concatenation operation";
   let description = [{

@@ -277,84 +277,24 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
   return result;
 }
 
-/// Given two tensor types which are meant to broadcast to the same shape
-/// return a new type which returns a more "refined type" using information
-/// from both existing types
-///
-/// Only static one dimensions are valid for broadcasting.
-/// Any other dimension mismatches will return an error.
-static ErrorOr<TensorType> refineBroadcastedShape(TensorType ty1,
-                                                  TensorType ty2) {
-  ASSERT_STREAM(!ty1.isDynamicallyRanked() && !ty2.isDynamicallyRanked(),
-                << " only static rank is supported");
-
-  auto idxTy = IndexType::get(ty1.getContext());
-  auto intDim1 = IntegerAttr::get(idxTy, 1ll);
-  auto refineDim = [&ty1, ty2, intDim1](
-                       std::optional<TypedAttr> dim1,
-                       std::optional<TypedAttr> dim2) -> ErrorOr<TypedAttr> {
-    if (!dim1.has_value())
-      return dim2.value();
-    if (!dim2.has_value())
-      return dim1.value();
-
-    TypedAttr dim1Val = dim1.value();
-    TypedAttr dim2Val = dim2.value();
-
-    // Equivalent is always good.
-    if (dim1Val == dim2Val)
-      return dim1Val;
-
-    // Const 1 broadcasts to anything else.
-    if (dim1Val == intDim1)
-      return dim2Val;
-    if (dim2Val == intDim1)
-      return dim1Val;
-
-    // TODO: restrict this further.
-    // For now, 2 different parametric dimensions are considered equivalent.
-    // The current graph api use `[?] + [?]` which will become `[D1] + [D2]`, so
-    // we need to allow it for now.
-    if (TensorType::isParameterizedDimParam(dim1Val) &&
-        TensorType::isParameterizedDimParam(dim2Val))
-      return dim1Val;
-
-    std::string errorMsg = MO::shapeBroadcastingErrorMessage(
-        ty1.getTypedShapeAttr(), dim1Val, ty2.getTypedShapeAttr(), dim2Val);
-    return Error(Twine(errorMsg));
-  };
-
-  SmallVector<TypedAttr> newDims;
-  newDims.reserve(std::max(ty1.getRank(), ty2.getRank()));
-  for (auto [dim1, dim2] : llvm::zip_longest(llvm::reverse(ty1.getDims()),
-                                             llvm::reverse(ty2.getDims()))) {
-    ErrorOr<TypedAttr> refined = refineDim(dim1, dim2);
-    if (refined.isError()) {
-      return refined.takeError();
-    }
-    newDims.push_back(refined.takeValue());
-  }
-
-  return ty1.cloneWith(SmallVector<TypedAttr>(llvm::reverse(newDims)));
-}
-
 template <typename OpT>
 static LogicalResult inferReturnTypesBinaryElemwiseImpl(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-
-  bool dynamicRankInputs = llvm::any_of(operands, [](Value v) {
-    return cast<TensorType>(v.getType()).isDynamicallyRanked();
-  });
-  if (dynamicRankInputs) {
-    return mlir::emitOptionalError(
-        location, OpT::getOperationName(),
-        " ops do not support dynamic rank. Use the MO analogue ops instead.");
-  }
-
   auto xType = cast<TensorType>(operands[0].getType());
   auto yType = cast<TensorType>(operands[1].getType());
+  // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
+  // check.
+  auto xShape = xType.getTypedShapeAttr();
+  if (xShape.hasUnknownDims())
+    return mlir::emitOptionalError(
+        location, unknownDimError(OpT::getOperationName(), "lhs", xShape));
+  auto yShape = yType.getTypedShapeAttr();
+  if (yShape.hasUnknownDims())
+    return mlir::emitOptionalError(
+        location, unknownDimError(OpT::getOperationName(), "rhs", yShape));
+
   ErrorOr<DType> promotedDtype =
       promoteDtype(xType.getDtype(), yType.getDtype());
   if (promotedDtype.isError()) {
@@ -362,45 +302,32 @@ static LogicalResult inferReturnTypesBinaryElemwiseImpl(
                                    StringRef{promotedDtype.getError()});
   }
 
-  ErrorOr<TensorType> resultType = refineBroadcastedShape(xType, yType);
-  if (resultType.isError()) {
-    return mlir::emitOptionalError(location, "Failed to resolve valid shape: ",
-                                   StringRef{resultType.getError()});
-  }
+  // Materialize shape function.
+  auto graphOp =
+      operands.front().getParentRegion()->getParentOfType<MO::GraphOp>();
+  Location loc = location.value_or(graphOp.getLoc());
+  MO::ShapeMaterializeResult result =
+      MO::materializeRmoBinaryElementwiseShape(graphOp, loc, xShape, yShape);
+
+  // Preliminary error checks.
+  if (result.isError())
+    return mlir::emitOptionalError(location, result.getError().msg);
+
+  // This depends on GraphAPI having static rank.
+  ASSERT_STREAM(!result.isNonMaterializable(),
+                << OpT::getOperationName()
+                << " shape logic must be materializable");
+
+  // Shape propagation over materialized ops and target shape.
+  auto &successRes = result.getSuccess();
+  ErrorOr<ShapeAttr> resultShapeOr =
+      MO::propagateShape(successRes.bindings, successRes.resultShape);
+  if (resultShapeOr.isError())
+    return mlir::emitOptionalError(location, resultShapeOr.getError());
 
   inferredReturnTypes.push_back(
-      resultType.takeValue().cloneWith(promotedDtype.takeValue()));
+      TensorType::get(*resultShapeOr, *promotedDtype));
   return success();
-}
-
-// Due to resolution of `?`, we may hit cases where we have 2 differently named
-// dynamic dimensions. Those results are compatible. A later rebind will resolve
-// the issue.
-static bool isCompatibleReturnTypesBinaryElemwiseImpl(TypeRange lhs,
-                                                      TypeRange rhs) {
-  auto lhsType = cast<TensorType>(lhs[0]);
-  auto rhsType = cast<TensorType>(rhs[0]);
-
-  if (lhsType.getDtype() != rhsType.getDtype())
-    return false;
-  if (lhsType.getRank() != rhsType.getRank())
-    return false;
-
-  for (size_t i = 0, e = lhsType.getRank(); i < e; i++) {
-    TypedAttr lhsDim = lhsType.getDim(i);
-    TypedAttr rhsDim = rhsType.getDim(i);
-
-    // If both are paramterized or unknown dims, skip the comparison.
-    if ((TensorType::isParameterizedDimParam(lhsDim) ||
-         TensorType::isUnknownDimParam(lhsDim)) &&
-        (TensorType::isParameterizedDimParam(rhsDim) ||
-         TensorType::isUnknownDimParam(rhsDim)))
-      continue;
-
-    if (lhsDim != rhsDim)
-      return false;
-  }
-  return true;
 }
 
 template <typename OpT>
@@ -408,17 +335,19 @@ static LogicalResult inferReturnTypesBinaryComparisonImpl(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  bool dynamicRankInputs = llvm::any_of(operands, [](Value v) {
-    return cast<TensorType>(v.getType()).isDynamicallyRanked();
-  });
-  if (dynamicRankInputs) {
-    return mlir::emitOptionalError(
-        location, OpT::getOperationName(),
-        " ops do not support dynamic rank. Use the MO analogue ops instead.");
-  }
-
   auto xType = cast<TensorType>(operands[0].getType());
   auto yType = cast<TensorType>(operands[1].getType());
+
+  // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
+  // check.
+  auto xShape = xType.getTypedShapeAttr();
+  if (xShape.hasUnknownDims())
+    return mlir::emitOptionalError(
+        location, unknownDimError(OpT::getOperationName(), "lhs", xShape));
+  auto yShape = yType.getTypedShapeAttr();
+  if (yShape.hasUnknownDims())
+    return mlir::emitOptionalError(
+        location, unknownDimError(OpT::getOperationName(), "rhs", yShape));
 
   // Even though it is not used in the result type, still calculate the the
   // promotion is valid here.
@@ -429,34 +358,36 @@ static LogicalResult inferReturnTypesBinaryComparisonImpl(
                                    StringRef{promotedDtype.getError()});
   }
 
-  ErrorOr<TensorType> resultType = refineBroadcastedShape(xType, yType);
-  if (resultType.isError()) {
-    return mlir::emitOptionalError(location, "Failed to resolve valid shape: ",
-                                   StringRef{resultType.getError()});
-  }
+  // Materialize shape function.
+  auto graphOp =
+      operands.front().getParentRegion()->getParentOfType<MO::GraphOp>();
+  Location loc = location.value_or(graphOp.getLoc());
+  MO::ShapeMaterializeResult result =
+      MO::materializeRmoBinaryElementwiseShape(graphOp, loc, xShape, yShape);
 
-  inferredReturnTypes.push_back(resultType.takeValue().cloneWith(DType::kBool));
+  // Preliminary error checks.
+  if (result.isError())
+    return mlir::emitOptionalError(location, result.getError().msg);
+
+  // This depends on GraphAPI having static rank.
+  ASSERT_STREAM(!result.isNonMaterializable(),
+                << OpT::getOperationName()
+                << " shape logic must be materializable");
+
+  // Shape propagation over materialized ops and target shape.
+  auto &successRes = result.getSuccess();
+  ErrorOr<ShapeAttr> resultShapeOr =
+      MO::propagateShape(successRes.bindings, successRes.resultShape);
+  if (resultShapeOr.isError())
+    return mlir::emitOptionalError(location, resultShapeOr.getError());
+
+  inferredReturnTypes.push_back(TensorType::get(*resultShapeOr, DType::kBool));
   return success();
-}
-
-static bool isCompatibleReturnTypesBinaryComparisonImpl(TypeRange lhs,
-                                                        TypeRange rhs) {
-  // Comparisions have all of the same return type compatibility rules as other
-  // binary elementwise ops.
-  return isCompatibleReturnTypesBinaryElemwiseImpl(lhs, rhs);
 }
 
 //===----------------------------------------------------------------------===//
 // ConcatOp
 //===----------------------------------------------------------------------===//
-
-// TODO(GRA-551) remove once we eliminate `?` in Graph API.
-LogicalResult ConcatOp::refineReturnTypes(
-    MLIRContext *, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    RegionRange regions, SmallVectorImpl<Type> &returnTypes) {
-  return success();
-}
 
 LogicalResult ConcatOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
