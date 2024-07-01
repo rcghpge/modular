@@ -2047,7 +2047,7 @@ static LogicalResult materializeShapeInference(RebindOp op,
       //   rebind : [D0, D1, D2] -> [D0, D4, 42]
       llvm::DenseSet<KGEN::ParamDeclAttr> unknownParamDecls;
 
-      // Avoid re-declaring multiple parameters. Example:
+      // Avoid redeclaring multiple parameters. Example:
       //  rebind<() -> C> : [A, B] -> [C, C]
       // --->
       //   kgen.param.declare C = <A>
@@ -3014,12 +3014,18 @@ LogicalResult TransposeOp::verify() {
 
   // A valid perm must be a permutation of [0, ..., rank - 1].
   if (auto maybePermVec = tryGetConstantIntVector(getPerm())) {
+    auto permVec = maybePermVec.value();
     auto identityPerm =
         llvm::iota_range<int64_t>(0, opRank, /*Inclusive=*/false);
-    SmallVector<int64_t> sortedPerm(maybePermVec.value());
+    SmallVector<int64_t> sortedPerm(permVec);
     llvm::sort(sortedPerm);
     if (!llvm::equal(sortedPerm, identityPerm))
       return emitError("invalid permutations");
+
+    if (inputTy.hasStaticShape() && resTy.hasStaticShape() &&
+        !llvm::equal(resTy.getTypedShapeAttr().getValues(),
+                     permute(inputTy.getTypedShapeAttr().getValues(), permVec)))
+      return emitError("output shape is invalid based on constant permutation");
   }
 
   return success();

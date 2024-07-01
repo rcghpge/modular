@@ -738,6 +738,15 @@ mo.graph @transpose_perm_size_static(%input: !mo.tensor<?, f32>) -> !mo.tensor<?
 
 // -----
 
+mo.graph @transpose_invalid_perm_size_static(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f32> {
+  %perm = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // expected-error@+1 {{output shape is invalid based on constant permutation}}
+  %res = mo.transpose(%input, %perm) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 2], f32>
+  mo.output %res : !mo.tensor<[3, 2], f32>
+}
+
+// -----
+
 mo.graph @transpose_perm_size_dynamic(%input: !mo.tensor<[?, ?], f32>, %perm: !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?], f32> {
   // expected-error@+1 {{argument and result must be dynamically ranked if perm has unknown shape}}
   %res = mo.transpose(%input, %perm) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?], f32>

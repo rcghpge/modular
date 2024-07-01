@@ -84,7 +84,7 @@ mo.graph @failure_non_const_subtree(
 // -----
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @success_transpose_both_sides([[VARG0:[^ ]*]]: !mo.tensor<[16, 128, 128, 64], f32>) -> !mo.tensor<[16, 64, 128, 128], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<0, 3, 2, 1> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
+// CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<0, 1, 3, 2> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.constant {value = #M.dense_array<0, 3, 1, 2> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
 // CHECK-NEXT: [[V3:[^ ]*]] = mo.constant {value = #M.dense_array<1.000000e+00> : !M.array<1xf32>} : !mo.tensor<[], f32>
 // CHECK-NEXT: [[V4:[^ ]*]] = mo.static.broadcast_to([[V3]]) : !mo.tensor<[], f32> -> !mo.tensor<[16, 128, 64, 128], f32>
@@ -96,7 +96,7 @@ mo.graph @success_transpose_both_sides(
   %arg0: !mo.tensor<[16, 128, 128, 64], f32>
 ) ->  !mo.tensor<[16, 64, 128, 128], f32> {
   %perm = mo.constant {value = #M.dense_array<0, 3, 1, 2> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
-  %perm_const = mo.constant {value = #M.dense_array<0, 1, 3, 2> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
+  %perm_const = mo.constant {value = #M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
 
   %cst = mo.constant {value = #M.dense_array<1.0> : !M.array<1xf32>} : !mo.tensor<[], f32>
 
