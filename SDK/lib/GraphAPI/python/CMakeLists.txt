@@ -74,6 +74,8 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/max_graph_installed
 # Instantiation of all Python modules
 ################################################################################
 
+add_flag_if_supported("-Wno-address" SDK_GRAPHAPI_PYTHON_NO_ADDRESS)
+
 add_mlir_python_modules_idempotent(MAXGraphMlirPythonModules
   ROOT_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/max/graph"
   INSTALL_PREFIX ""
