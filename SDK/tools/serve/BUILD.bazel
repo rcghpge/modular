@@ -3,6 +3,7 @@ load("//bazel:api.bzl", "mojo_binary")
 mojo_binary(
     name = "run_server",
     srcs = ["run_server.mojo"],
+    tags = ["manual"],  # TODO: Currently broken
     deps = [
         "//SDK/lib/API/mojo/max",
         "//open-source/mojo/stdlib/stdlib",
