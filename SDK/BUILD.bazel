@@ -12,10 +12,12 @@ modular_pybind_library(
     srcs = ["//SDK/lib/EngineAPI/python:cpp_srcs"],
     hdrs = glob(["include/SDK/EngineAPI/**/*.h"]),
     local_defines = MOJO_CONFIG_SECTION_LOCAL_DEFINES,
+    pybind_deps = [
+        "//:MLIRBindingsPythonHeaders",
+    ],
     deps = [
         "//GenericML:modular-framework-common",
         "//PyTorch:modular-framework-torch-ext",
-        "@llvm-project//mlir:MLIRBindingsPythonHeaders",
     ],
 )
 
