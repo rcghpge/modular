@@ -248,42 +248,55 @@ static void printParamDecls(OpAsmPrinter &p, Operation *,
   }
 }
 
+static ParseResult
+parseRegionArguments(OpAsmParser &p, SmallVectorImpl<Type> &resTypes,
+                     SmallVectorImpl<OpAsmParser::Argument> &args) {
+  auto parseArg = [&] {
+    return p.parseArgument(args.emplace_back(), /*allowType=*/true);
+  };
+  if (p.parseCommaSeparatedList(OpAsmParser::Delimiter::Paren, parseArg) ||
+      p.parseOptionalArrowTypeList(resTypes))
+    return failure();
+  return success();
+}
+
+static void printRegionArguments(OpAsmPrinter &p, TypeRange resTypes,
+                                 ArrayRef<BlockArgument> args) {
+  p << '(';
+  llvm::interleaveComma(args, p,
+                        [&](BlockArgument arg) { p.printRegionArgument(arg); });
+  p << ')';
+  if (resTypes.empty())
+    return;
+  p << ' ';
+  p.printArrowTypeList(resTypes);
+}
+
 static ParseResult parseLambda(OpAsmParser &p, StringAttr &name, TypeAttr &func,
                                Region &region) {
   SmallVector<OpAsmParser::Argument> args;
   llvm::SMLoc loc;
-  KGEN::SignatureType sigType;
-  FunctionType functionType;
-  KGEN::ParamDeclArrayAttr inputParams, resultParams;
+  SmallVector<Type> resTypes;
 
   llvm::SMLoc sigLoc;
   if (p.parseSymbolName(name) || p.parseEqual() ||
       p.getCurrentLocation(&sigLoc) ||
-      KGEN::parseFunctionSignature(p, args, inputParams, resultParams,
-                                   functionType, sigType) ||
-      p.getCurrentLocation(&loc) || p.parseRegion(region, args))
+      parseRegionArguments(p, resTypes, args) || p.getCurrentLocation(&loc) ||
+      p.parseRegion(region, args))
     return failure();
-  if (!inputParams.empty() || !resultParams.empty())
-    return p.emitError(sigLoc, "unexpected input or result parameters");
-
-  func = TypeAttr::get(functionType);
+  func = TypeAttr::get(p.getBuilder().getFunctionType(
+      llvm::map_to_vector(args, [&](auto &arg) { return arg.type; }),
+      resTypes));
   return success();
 }
 
-static void printLambda(OpAsmPrinter &p, mlir::Operation *lambda,
-                        StringAttr name, TypeAttr sig, Region &region) {
+static void printLambda(OpAsmPrinter &p, Operation *lambda, StringAttr name,
+                        TypeAttr sig, Region &region) {
   p.printSymbolName(name.strref());
   p << " = ";
 
-  auto func = cast<FunctionType>(sig.getValue());
-
-  // TODO: what conventions should we use here?
-  SmallVector<KGEN::ArgConvention> conventions(func.getInputs().size(),
-                                               KGEN::ArgConvention::None);
-  auto funcType = FunctionType::get(lambda->getContext(), func.getInputs(),
-                                    func.getResults());
-  auto sigTy = KGEN::SignatureType::get(funcType, conventions);
-  KGEN::printFunctionSignature(p, &region, {}, {}, func, sigTy);
+  auto funcType = cast<FunctionType>(sig.getValue());
+  printRegionArguments(p, funcType.getResults(), region.getArguments());
   p.printRegion(region, /*printEntryBlockArgs=*/false);
 }
 
@@ -1185,47 +1198,28 @@ static ParseResult parseKernel(
     Region &region, KGEN::ParamDeclArrayAttr &resultParams) {
   SmallVector<OpAsmParser::Argument> args;
   llvm::SMLoc loc;
-  KGEN::SignatureType sigType;
-  FunctionType functionType;
-  KGEN::ParamDeclArrayAttr inputParams, dummyRes;
 
   llvm::SMLoc sigLoc;
   if (parseParamDecls(p, resultParams) ||
       p.parseOperandList(operands, AsmParser::Delimiter::Paren) ||
       p.parseColon() || p.getCurrentLocation(&sigLoc) ||
-      KGEN::parseFunctionSignature(p, args, inputParams, dummyRes, functionType,
-                                   sigType) ||
+      parseRegionArguments(p, resultTypes, args) ||
       p.getCurrentLocation(&loc) || p.parseRegion(region, args))
     return failure();
-  if (!inputParams.empty() || !dummyRes.empty())
-    return p.emitError(sigLoc, "unexpected input or result parameters");
-
-  for (const OpAsmParser::Argument &arg : args)
+  for (auto &arg : args)
     operandTypes.push_back(arg.type);
-
-  for (Type res : functionType.getResults())
-    resultTypes.push_back(res);
-
   return success();
 }
 
-static void printKernel(OpAsmPrinter &p, mlir::Operation *kernel,
-                        ValueRange operands, TypeRange operandTypes,
-                        TypeRange resultTypes, Region &region,
-                        KGEN::ParamDeclArrayAttr resultParams) {
+static void printKernel(OpAsmPrinter &p, Operation *kernel, ValueRange operands,
+                        TypeRange operandTypes, TypeRange resultTypes,
+                        Region &region, KGEN::ParamDeclArrayAttr resultParams) {
   printParamDecls(p, kernel, resultParams);
   p << '(';
   p.printOperands(operands);
   p << ") : ";
 
-  auto functionType =
-      FunctionType::get(kernel->getContext(), operandTypes, resultTypes);
-  SmallVector<KGEN::ArgConvention> conventions(operandTypes.size(),
-                                               KGEN::ArgConvention::None);
-
-  KGEN::printFunctionSignature(p, &region, /*inputParams=*/{},
-                               /*resultParams=*/{}, functionType,
-                               SignatureType::get(functionType, conventions));
+  printRegionArguments(p, resultTypes, region.getArguments());
   p.printRegion(region, /*printEntryBlockArgs=*/false);
 }
 
