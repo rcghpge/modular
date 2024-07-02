@@ -4368,6 +4368,10 @@ struct MathematicalSimplificationDivBySmallTensorToMul
     if (!tensorType.hasStaticShape())
       return failure();
 
+    Location loc = divOp->getLoc();
+    if (!tensorType.getDtype().isFloat())
+      return rewriter.notifyMatchFailure(loc, "input type isn't float");
+
     auto x = divOp.getInputX();
     auto y = divOp.getInputY();
 
@@ -4401,7 +4405,6 @@ struct MathematicalSimplificationDivBySmallTensorToMul
       return failure();
     }
 
-    auto loc = divOp->getLoc();
     auto bcast1ErrOr =
         createBroadcastedScalarConstantOpOfType(origYType, 1, rewriter, loc);
     if (bcast1ErrOr.isError())

@@ -400,17 +400,29 @@ mo.graph @div_of_div_to_div_of_mul(%input1: !mo.tensor<[1, 2, 3], f32>, %input2:
 // CHECK-NEXT:    %[[DIV:.*]] = mo.div({{.*}}, %[[MUL]]) : !mo.tensor<[1, 2, 3], f32>
 // CHECK-NEXT:    mo.output %[[DIV]] : !mo.tensor<[1, 2, 3], f32>
 
+// Make sure the rewrite won't fire for non-fp inputs.
 // x / cst -> x * (1 / cst)
-mo.graph @div_by_cst_to_mul_of_reciprocal(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], si64> {
+mo.graph @div_by_cst_to_mul_of_reciprocal_int(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], si64> {
   %cst = mo.constant {value = #M.dense_array<1, 2, 3, 4, 5, 6> : tensor<6xsi64>} : !mo.tensor<[1, 2, 3], si64>
   %0 = mo.div(%input, %cst) : !mo.tensor<[1, 2, 3], si64>
   mo.output %0 : !mo.tensor<[1, 2, 3], si64>
 }
-// CHECK-LABEL:  @div_by_cst_to_mul_of_reciprocal
-// CHECK:         %[[BCAST:.*]] = mo.static.broadcast_to({{.*}}) : !mo.tensor<[], si64> -> !mo.tensor<[1, 2, 3], si64>
+// CHECK-LABEL:  @div_by_cst_to_mul_of_reciprocal_int
+// CHECK-NEXT:    %[[BCAST:.*]] = mo.constant {value = #M.dense_array<1, 2, 3, 4, 5, 6> : tensor<6xsi64>} : !mo.tensor<[1, 2, 3], si64>
 // CHECK-NEXT:    %[[DIV:.*]] = mo.div({{.*}}) : !mo.tensor<[1, 2, 3], si64>
-// CHECK-NEXT:    %[[MUL:.*]] = mo.mul({{.*}}, %[[DIV]]) : !mo.tensor<[1, 2, 3], si64>
-// CHECK-NEXT:    mo.output %[[MUL]] : !mo.tensor<[1, 2, 3], si64>
+// CHECK-NEXT:    mo.output %[[DIV]] : !mo.tensor<[1, 2, 3], si64>
+
+// x / cst -> x * (1 / cst)
+mo.graph @div_by_cst_to_mul_of_reciprocal(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2, 3], f32> {
+  %cst = mo.constant {value = #M.dense_array<1., 2., 3., 4., 5., 6.> : tensor<6xf32>} : !mo.tensor<[1, 2, 3], f32>
+  %0 = mo.div(%input, %cst) : !mo.tensor<[1, 2, 3], f32>
+  mo.output %0 : !mo.tensor<[1, 2, 3], f32>
+}
+// CHECK-LABEL:  @div_by_cst_to_mul_of_reciprocal
+// CHECK:         %[[BCAST:.*]] = mo.static.broadcast_to({{.*}}) : !mo.tensor<[], f32> -> !mo.tensor<[1, 2, 3], f32>
+// CHECK-NEXT:    %[[DIV:.*]] = mo.div({{.*}}) : !mo.tensor<[1, 2, 3], f32>
+// CHECK-NEXT:    %[[MUL:.*]] = mo.mul({{.*}}, %[[DIV]]) : !mo.tensor<[1, 2, 3], f32>
+// CHECK-NEXT:    mo.output %[[MUL]] : !mo.tensor<[1, 2, 3], f32>
 
 mo.graph @pow_float_to_pow_int(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], f32> {
   %cst = mo.constant {value = #M.dense_array<5.> : tensor<1xf32>} : !mo.tensor<[], f32>
