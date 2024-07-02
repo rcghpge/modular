@@ -200,6 +200,12 @@ static void mgp_generic_execute(
       kernelInputs.push_back(&input);
     for (AnyAsyncValueRef &i : outResults)
       kernelInputs.push_back(&i);
+
+    // Setup the current cuda context as the default context for this call.
+    std::optional<CurrentCUDAContext> current;
+    if (hasCuda)
+      current.emplace(*cudaRuntimePtr);
+
     MojoCallContext callContext(outChain.copy(), outChain.getLocation().copy(),
                                 cudaRuntimePtr, deviceContextPtr);
     kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
