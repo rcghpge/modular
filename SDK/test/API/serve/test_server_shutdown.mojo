@@ -13,7 +13,7 @@ from time import sleep, now
 from max.graph._testing import assert_tensors_almost_equal
 
 
-def run_shutdown_test() -> None:
+def run_shutdown_test():
     var server_started = Atomic[DType.int64](0)
     var server_session = InferenceSession()
     alias server_address = "0.0.0.0:0"
@@ -60,6 +60,4 @@ def run_shutdown_test() -> None:
 
 
 def main():
-    pass
-    # TODO re-enable once the failure is solved.
-    # run_shutdown_test()
+    run_shutdown_test()
