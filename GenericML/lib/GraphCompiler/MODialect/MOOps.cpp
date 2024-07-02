@@ -76,11 +76,11 @@ SmallVector<ConstantOp> M::MO::tryGetConstantOpsOfRank(TensorValue val,
 
   // Handle identity chains.
   auto isIdentityLike = [&](Operation *op) {
-    if (dyn_cast_or_null<RebindOp>(op)) {
+    if (isa_and_nonnull<RebindOp>(op))
       return true;
-    } else if (dyn_cast_or_null<mlir::UnrealizedConversionCastOp>(op)) {
+    if (isa_and_nonnull<mlir::UnrealizedConversionCastOp>(op))
       return true;
-    } else if (dyn_cast_or_null<ReshapeOp>(op)) {
+    if (isa_and_nonnull<ReshapeOp>(op)) {
       // After a ReshapeOp, accept constants of any rank.
       rank = std::numeric_limits<size_t>::max();
       return true;
@@ -966,11 +966,7 @@ LogicalResult ConstantOp::canonicalize(ConstantOp op,
   return failure();
 }
 
-OpFoldResult ConstantOp::fold(FoldAdaptor adaptor) {
-  auto operands = adaptor.getOperands();
-  ASSERT_STREAM(operands.empty(), << "constant has no operands");
-  return getValueAttr();
-}
+OpFoldResult ConstantOp::fold(FoldAdaptor adaptor) { return getValueAttr(); }
 
 LogicalResult ConstantOp::verify() {
   auto valType = cast<ShapedType>(getValue().getType()).getElementType();
@@ -1098,8 +1094,6 @@ bool ConstantOp::preferResultsDevice() { return true; }
 //===----------------------------------------------------------------------===//
 
 OpFoldResult ConstantScalarOp::fold(FoldAdaptor adaptor) {
-  auto operands = adaptor.getOperands();
-  ASSERT_STREAM(operands.empty(), << "constant.scalar has no operands");
   return getValueAttr();
 }
 
