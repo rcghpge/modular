@@ -1090,6 +1090,17 @@ public:
     return conditionalStatement.getType().getShapeAttr();
   }
 
+  // Return the conditional such that masking should be applied in the "false"
+  // branch.
+  TensorValue getConditionalStatement(mlir::OpBuilder &builder) {
+    if (attentionMatrixTrueBranch)
+      return conditionalStatement;
+    else
+      return builder.create<NotOp>(conditionalStatement.getLoc(),
+                                   conditionalStatement.getType(),
+                                   conditionalStatement);
+  }
+
   TensorValue getAttentionMask(mlir::OpBuilder &builder) {
     // NOTE: in general `select(%cond, %true, %false)` is:
     //   - %cond * %true + not(%cond) * %false
@@ -1353,27 +1364,35 @@ public:
 
   TensorValue getAttentionMask(OpBuilder &builder) {
     SmallVector<TensorValue> masks;
-    if (!explicitMask.isError())
-      masks.push_back(explicitMask->getAttentionMask());
-    if (!causalMask.isError())
-      masks.push_back(causalMask->getAttentionMask(builder));
 
-    if (masks.empty())
+    bool hasExplicitMask = !explicitMask.isError();
+    bool hasCausalMask = !causalMask.isError();
+
+    if (hasExplicitMask && !hasCausalMask) {
+      return explicitMask->getAttentionMask();
+    } else if (!hasExplicitMask && hasCausalMask) {
+      return causalMask->getAttentionMask(builder);
+    } else if (hasExplicitMask && hasCausalMask) {
+      TensorValue causalMaskValue = causalMask->getAttentionMask(builder);
+      TensorValue explicitMaskValue = explicitMask->getAttentionMask();
+      Location loc = explicitMaskValue.getLoc();
+
+      // static broadcast to the conditional
+      TensorValue conditional = causalMask->getConditionalStatement(builder);
+      auto targetShape = conditional.getType().getTypedShapeAttr().getValues();
+
+      causalMaskValue = builder.create<Static::BroadcastToOp>(
+          loc, causalMaskValue.getType().cloneWith(targetShape),
+          causalMaskValue);
+      explicitMaskValue = builder.create<Static::BroadcastToOp>(
+          loc, explicitMaskValue.getType().cloneWith(targetShape),
+          explicitMaskValue);
+      return builder.create<SelectOp>(loc, explicitMaskValue.getType(),
+                                      conditional, explicitMaskValue,
+                                      causalMaskValue);
+    } else {
       return {};
-
-    if (masks.size() == 1)
-      return masks[0];
-
-    TensorValue mask = masks[0];
-    for (size_t i = 1; i < masks.size(); i++) {
-      // statically cast incoming mask to the current shape
-      // note this is always assumed to be safe because of `allowUnsafeBCast`
-      TensorValue otherMask = masks[i];
-      otherMask = builder.create<BroadcastToOp>(mask.getLoc(), otherMask, mask);
-
-      mask = builder.create<AddOp>(mask.getLoc(), mask, otherMask);
     }
-    return mask;
   }
 
   ErrorOrSuccess hasExpectedRanks() {
@@ -1863,12 +1882,15 @@ public:
 
 // For MIN Llama 2 demo
 struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
-  bool allowUnsafeBCast, allowInternalReshape, debugMHAPattern;
+  bool allowUnsafeBCast, allowInternalReshape, debugMHAPattern,
+      enableRank4GPUMask;
   MultiHeadAttentionPattern(MLIRContext *ctx, bool allowUnsafeBCast,
-                            bool allowInternalReshape, bool debugMHAPattern)
+                            bool allowInternalReshape, bool debugMHAPattern,
+                            bool enableRank4GPUMask)
       : OpRewritePattern(ctx, 20), allowUnsafeBCast(allowUnsafeBCast),
         allowInternalReshape(allowInternalReshape),
-        debugMHAPattern(debugMHAPattern) {}
+        debugMHAPattern(debugMHAPattern),
+        enableRank4GPUMask(enableRank4GPUMask) {}
 
   static void insertShapeGuard(PatternRewriter &rewriter, GraphOp graphOp,
                                TypedAttr beforeShape, TypedAttr afterShape,
@@ -2188,12 +2210,89 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
 
       return transposedTensor;
     }
+
+    // Given a tensor given `backwardGetBSHDTensor`, find the grouped attention
+    // weight tensor.
+    //
+    // Grouped attention is a parameter-compression technique which reuses the
+    // same K and V weights across attention heads.
+    //
+    // Consider a Q @ K multiplication:
+    //
+    // mo.batch_matmul(%Q, %K) : (!mo.tensor<[B, H, S, D], f32>, !mo.tensor<[B,
+    // H, D, S], f32>) -> !mo.tensor<[B, H, S, S], f32>
+    //
+    // Under grouped attention, we have g groups, and H = g * h. We match the
+    // following pattern:
+    //
+    // %K_compressed: !mo.tensor<[B, h, D, S], f32>
+    // %stg1 = mo.static.reshape(%K_compressed): !mo.tensor<[B, h, D, S], f32>
+    // -> !mo.tensor<[B, h, 1, D, S], f32> %stg2 =
+    // mo.static.broadcast_to(%stg1): !mo.tensor<[B, h, 1, D, S], f32> ->
+    // !mo.tensor<[B, h, g, D, S], f32> %K_orig = mo.static.reshape(%stg2):
+    // !mo.tensor<[B, h, g, D, S], f32> -> !mo.tensor<[B, H, D, S], f32> %K =
+    // mo.transpose(%K_orig, %permutes): (!mo.tensor<[B, H, S, D], f32>, ...) ->
+    // !mo.tensor<[B, H, D, S], f32>
+    //
+    // We want to extract `K_compressed`.
+    //
+    // Returns std::nullopt if we cannot grab the compressed tensor.
+    static ErrorOr<TensorValue> extractGroupedAttentionTensorBSHD(
+        TensorValue tensorBSHD, PatternRewriter &rewriter, GraphOp graphOp) {
+      // Go through optional transposes and reshapes which do not matter
+      TensorValue startTensor = tensorBSHD;
+
+      // Dump identity permutation.
+      SmallVector<int64_t> permutationBackToBSHD = {0, 1, 2, 3};
+      while (true) {
+        if (auto transposeOp = startTensor.getDefiningOp<TransposeOp>()) {
+          startTensor = transposeOp.getInput();
+          auto maybePerm = tryGetConstantIntVector(transposeOp.getPerm());
+          if (!maybePerm.has_value())
+            return Error("[extractGroupedAttentionTensor] transpose does not "
+                         "have constant permutation.");
+
+          permutationBackToBSHD =
+              permuteReverse(permutationBackToBSHD, *maybePerm);
+          continue;
+        }
+
+        auto reshapeOp = startTensor.getDefiningOp<Static::ReshapeOp>();
+        if (reshapeOp &&
+            reshapeOp.getInput().getType() == startTensor.getType()) {
+          startTensor = reshapeOp.getInput();
+          continue;
+        }
+
+        break;
+      }
+
+      auto reshape1 = startTensor.getDefiningOp<Static::ReshapeOp>();
+      if (!reshape1)
+        return Error(
+            "[extractGroupedAttentionTensor] unable to get reshape for `orig`");
+
+      TensorValue stg2 = reshape1.getInput();
+      auto staticBcast = stg2.getDefiningOp<Static::BroadcastToOp>();
+      if (!staticBcast)
+        return Error("[extractGroupedAttentionTensor] unable to get broadcast "
+                     "for `stg2`");
+
+      TensorValue stg1 = staticBcast.getInput();
+      auto reshape2 = stg1.getDefiningOp<Static::ReshapeOp>();
+      if (!reshape2)
+        return Error("[extractGroupedAttentionTensor] unable to get broadcast "
+                     "for `stg1`");
+
+      TensorValue compressedValue = reshape2.getInput();
+
+      return backwardGetBSHDTensor(permutationBackToBSHD, compressedValue,
+                                   rewriter, graphOp);
+    }
   };
 
   // For GPU annotated operations do this rewrite
-  void rewriteGPU(BatchMatmulOp rootOp,
-                  // `gpuMask` has expected shape BSS or B1SS
-                  TensorValue gpuMask, PatternRewriter &rewriter,
+  void rewriteGPU(BatchMatmulOp rootOp, PatternRewriter &rewriter,
                   MultiHeadAttentionPatternHelper &matcher) const {
     // The matcher returns QKV with the following layouts:
     // Q: BHSD
@@ -2221,6 +2320,20 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
         permuteBHDS2BSHD, initKey, rewriter, graphOp);
     TensorValue value = TransposeTensorHelper::backwardGetBSHDTensor(
         permuteBHSD2BSHD, initValue, rewriter, graphOp);
+
+    // For grouped query attention, try to extract the non-broadcasted K and V.
+    // We expect K and V to be layout BSHD.
+    auto maybeGroupedKey =
+        TransposeTensorHelper::extractGroupedAttentionTensorBSHD(key, rewriter,
+                                                                 graphOp);
+    auto maybeGroupedValue =
+        TransposeTensorHelper::extractGroupedAttentionTensorBSHD(
+            value, rewriter, graphOp);
+    if (!maybeGroupedKey.isError() && !maybeGroupedValue.isError()) {
+      // Both must extracted both grouped weights to work properly
+      key = maybeGroupedKey.takeValue();
+      value = maybeGroupedValue.takeValue();
+    }
 
     // GPU flash attention pattern includes the transposes from
     // `mhaResult` which is BHSD to BSHD.
@@ -2258,18 +2371,42 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
 
     // Kernel explicitly requires mask of shape BSS. `gpuMask` may be
     // BSS OR B1SS.
+    TensorValue gpuMask = matcher.getAttentionMask();
     TensorValue rank3GPUMask;
     if (gpuMask.getType().getRank() == 3) {
       rank3GPUMask = gpuMask;
     } else {
-      // Else simply elide the dimension with a reshape
+      // Else simply elide the dimension with a reshape, slicing out first head
       ArrayRef<TypedAttr> rank4Dims = gpuMask.getType().getDims();
+      SmallVector<TypedAttr> rank4SliceDims = {
+          rank4Dims[0], mlir::IntegerAttr::get(rewriter.getIndexType(), 1),
+          rank4Dims[2], rank4Dims[3]};
+      auto paramValues = MOSH::ShapeAttr::get(
+          rank4SliceDims, MOSH::ShapeType::get(rewriter.getContext()));
+
+      SmallVector<int64_t> startSlice = {0, 0, 0, 0};
+      SmallVector<int64_t> stepSlice = {1, 1, 1, 1};
+
+      TensorValue startSliceValue =
+          rewriter.create<ConstantOp>(rootOp->getLoc(), startSlice);
+      auto endSliceParamValue =
+          rewriter.create<MOSH::ParamToValueOp>(rootOp.getLoc(), paramValues);
+      TensorValue endSliceValue = rewriter.create<Shape::ToTensorOp>(
+          rootOp.getLoc(), startSliceValue.getType(), endSliceParamValue);
+      TensorValue stepSliceValue =
+          rewriter.create<ConstantOp>(rootOp->getLoc(), stepSlice);
+
+      TensorType sliceTy = gpuMask.getType().cloneWith(rank4SliceDims);
+      TensorValue elidedMask = rewriter.create<SliceOp>(
+          rootOp.getLoc(), sliceTy, gpuMask, startSliceValue, endSliceValue,
+          stepSliceValue);
+
+      // TODO: consider supporting rank 4 mask in kernel
       SmallVector<TypedAttr> rank3Dims = {rank4Dims[0], rank4Dims[2],
                                           rank4Dims[3]};
-
       TensorType newTy = gpuMask.getType().cloneWith(rank3Dims);
-      rank3GPUMask =
-          rewriter.create<Static::ReshapeOp>(rootOp->getLoc(), newTy, gpuMask);
+      rank3GPUMask = rewriter.create<Static::ReshapeOp>(rootOp->getLoc(), newTy,
+                                                        elidedMask);
     }
 
     auto normScalar = cast<TensorValue>(matcher.getNormScalar());
@@ -2380,58 +2517,30 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     }
   }
 
-  // The GPU kernel is historically more constrained than the CPU one.
-  // Here we place additional information needed for kernel generation.
-  struct AdditionalGPUInfo {
-    // The MHA mask for GPU expects layout BSS or B1SS
-    TensorValue gpuMask;
-  };
-
   // Check additional constraints on rewriting MHA operations on GPU, and
   // extract information as needed.
-  ErrorOr<AdditionalGPUInfo> runAdditionalGPUChecks(
+  ErrorOrSuccess runAdditionalGPUChecks(
       ErrorOr<MultiHeadAttentionPatternHelper> &matcher) const {
 
-    // CHECK 1: We expect the mask to be of layout BSS.
-    TensorValue explicitMask = matcher->getExplicitMask();
-    if (!explicitMask)
-      return Error("GPU kernel expects an explicit attention mask.");
-
-    // Expect to broadcast shape 1SS or B1SS to final shape.
-    auto parentBCast = explicitMask.getDefiningOp<Static::BroadcastToOp>();
-    if (!parentBCast)
-      return Error(
-          "GPU kernel explicit mask is not the result of a broadcast!");
-
-    TensorValue originalMask = parentBCast.getInput();
-    if (!originalMask.getType().hasRank())
-      return Error("GPU kernel explicit mask comes from a broadcast of "
-                   "unranked tensor.");
-
-    AdditionalGPUInfo info;
-    if (originalMask.getType().getRank() == 3) {
-      info.gpuMask = originalMask;
-    } else if (originalMask.getType().getRank() == 4) {
-      // can only extract if the shape is B 1 S S
-      ArrayRef<TypedAttr> dims =
-          originalMask.getType().getTypedShapeAttr().getValues();
-
-      auto headDimAsInt = dyn_cast<IntegerAttr>(dims[1]);
-      if (!headDimAsInt || headDimAsInt.getInt() != 1)
-        return Error(
-            "Rank 4 GPU mask does not have a statically 1 head dimension.");
-      info.gpuMask = originalMask;
-    } else {
-      return Error("Unable to derive rank3 mask from explicit mask.");
-    }
-
-    // CHECK 2: Must be rank 3/4 q/k/v only. Note rank(q) == rank(k) ==
+    // CHECK 1: Must be rank 3/4 q/k/v only. Note rank(q) == rank(k) ==
     // rank(v)
     if (matcher->getQuery().getType().getRank() != 4 &&
         matcher->getQuery().getType().getRank() != 3)
       return Error("GPU Kernel expects rank 3 or 4 QKV.");
 
-    // CHECK 3: D == 128 and static H due to kernel limitation.
+    // We expect the GPU mask to be rank 3 for GPU unless an env variable is
+    // defined.
+    //
+    // TODO(GRA-718): Remove which will enable for replit/mistral by default.
+    // Previously gone due to accuracy issues.
+    size_t maskRank = matcher->getExplicitMask().getType().getRank();
+    if (maskRank != 3 &&
+        !llvm::sys::Process::GetEnv("MODULAR_MHA_GPU_RANK4").has_value() &&
+        !enableRank4GPUMask) {
+      return Error("Expect GPU mask to be rank 3 BSS.");
+    }
+
+    // CHECK 2: D == 128 and static H due to kernel limitation.
     // TODO: lift to static D once kernel is generalized.
     // Query is BHSD, Key is BHDS and Value is BHSD.
     // If rank 3, B is elided.
@@ -2456,7 +2565,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     if (dimD != 128 || !isDimHStatic)
       return Error("Right now must prove D == 128 && static H for llama2.");
 
-    return info;
+    return success();
   }
 
   LogicalResult matchAndRewrite(BatchMatmulOp op,
@@ -2484,13 +2593,10 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
       return rewriter.notifyMatchFailure(op.getLoc(), matcher.getError());
 
     // The GPU kernel has some additional checks and needs an extracted rank3 op
-    AdditionalGPUInfo info;
     if (!isCPUDevice) {
-      ErrorOr<AdditionalGPUInfo> gpuCheck = runAdditionalGPUChecks(matcher);
+      ErrorOrSuccess gpuCheck = runAdditionalGPUChecks(matcher);
       if (gpuCheck.isError())
         return rewriter.notifyMatchFailure(op.getLoc(), gpuCheck.getError());
-
-      info = gpuCheck.takeValue();
     }
 
     // Rewrite portion of pattern. Note: it is unsafe to now abort rewrites in
@@ -2504,7 +2610,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     if (isCPUDevice)
       rewriteCPU(op, rewriter, *matcher);
     else // isCUDADevice
-      rewriteGPU(op, info.gpuMask, rewriter, *matcher);
+      rewriteGPU(op, rewriter, *matcher);
 
     return mlir::success();
   }
@@ -2531,7 +2637,8 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
     if (enableMHAPattern.getValue()) {
       patterns.add<MultiHeadAttentionPattern>(
           ctx, mhaAllowUnsafeBCast.getValue(),
-          mhaAllowInternalReshape.getValue(), debugMHAPattern.getValue());
+          mhaAllowInternalReshape.getValue(), debugMHAPattern.getValue(),
+          enableRank4GPUMask.getValue());
     }
 
     MO::GraphOp graphOp = getOperation();
