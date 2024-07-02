@@ -27,6 +27,9 @@ git-lfs pull
 
 arch=$(uname -m)
 
+# Install requirements for building MLIR Python bindings.
+pip install -r $MODULAR_PATH/third-party/llvm-project/mlir/python/requirements.txt
+
 # Build LLVM.
 # Note: LLDB Python breaks because manylinux ships with a statically linked Python interpreter.
 DISABLE_LLDB_PYTHON_SCRIPTING=true \
