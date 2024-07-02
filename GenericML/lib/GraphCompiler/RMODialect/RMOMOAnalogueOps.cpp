@@ -1516,11 +1516,32 @@ void MOSliceOp::inferMOTypesImpl(
 
   // set output rank if possible.
   SmallVector<KGEN::ParamDeclAttr> outputDecls;
-  moResultTypes.push_back(
-      rank.has_value()
-          ? getRankedParamTensorType(*rank, inputTy.getDtype(), graphOp,
-                                     outputDecls)
-          : getUnrankedTensorType(inputTy.getDtype(), graphOp, outputDecls));
+  TensorType resultTy;
+
+  if (rank.has_value()) {
+    // If the user provides us an annotation of the correct rank, assume we
+    // want to use that instead.
+    //
+    // NOTE: this is only allowed for slice due to the extreme difficulty of
+    // shape inferring slice.
+    if (rmoResults.has_value()) {
+      auto value = cast<TensorValue>(rmoResults.value()[0]);
+      resultTy = value.getType();
+
+      // Remember to forward to declared parameters for output
+      auto parent = value.getDefiningOp<RMO::MOSliceOp>();
+
+      auto oldDecls = parent.getOutputParamDecls();
+      outputDecls.append(oldDecls.begin(), oldDecls.end());
+    } else {
+      resultTy = getRankedParamTensorType(*rank, inputTy.getDtype(), graphOp,
+                                          outputDecls);
+    }
+  } else {
+    resultTy = getUnrankedTensorType(inputTy.getDtype(), graphOp, outputDecls);
+  }
+
+  moResultTypes.push_back(resultTy);
   moOutputParamDecls.push_back(std::move(outputDecls));
 }
 
