@@ -27,3 +27,5 @@ add_modular_testsuite(check-max-driver-api
   TAGS
   gpu
 )
+
+add_subdirectory(python)
