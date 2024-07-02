@@ -61,3 +61,22 @@ mo.graph @static_broadcast2<() -> out0,out1>(
   mo.output<D0,D1> %res : !mo.tensor<[D0,D1], si64>
 }
 
+
+// CHECK-LABEL: mo.graph @static_broadcast_1d_input
+//  CHECK-SAME:   [[INPUT:%.*]]: !mo.tensor<[], si64>
+//  CHECK-SAME: -> !mo.tensor<[3, 3], si64> {
+mo.graph @static_broadcast_1d_input<() -> out0, out1>(
+  %input: !mo.tensor<[], si64>
+) -> !mo.tensor<[out0, out1], si64> {
+
+  %three = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %shape = mo.static.broadcast_to(%three): !mo.tensor<[1], si64> -> !mo.tensor<[2], si64>
+
+  // CHECK-NEXT: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[3, 3], si64>
+  %res = mo.broadcast_to<()-> D0, D1>(%input, %shape) : (
+    !mo.tensor<[], si64>, !mo.tensor<[2], si64>
+  ) -> !mo.tensor<[D0, D1], si64>
+
+  // CHECK-NEXT: mo.output [[RES]]
+  mo.output<D0, D1> %res : !mo.tensor<[D0, D1], si64>
+}
