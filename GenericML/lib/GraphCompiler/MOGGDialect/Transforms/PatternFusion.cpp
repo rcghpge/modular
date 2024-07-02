@@ -920,7 +920,7 @@ public:
 
     // support up to two optional casts (from bf16 --> fp32 --> bf16)
     auto maybeCast1 = pOptionalCast(&matcher.optCast1, pSoftmaxAttnMatrix);
-    auto maybeCast2 = pOptionalCast(&matcher.optCast1, maybeCast1);
+    auto maybeCast2 = pOptionalCast(&matcher.optCast2, maybeCast1);
 
     // optional broadcast + re-project using V
     auto maybeReshape2 = pOptionalReshape(&matcher.optReshape2, maybeCast2);
