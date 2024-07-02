@@ -868,6 +868,16 @@ auto inline pOptionalReshape(Operation **bindDest, pInT patternIn) {
   auto reshape = m_Op<Static::ReshapeOp>(bindDest, patternIn);
   return m_Optional(reshape, patternIn);
 }
+
+template <typename pInT>
+auto inline pOptionalCast(Operation **bindDest, pInT patternIn) {
+  // Allows optional insertion of reshapes and bcasts between this pattern
+  // Specifically patternIn --> (optional) mo.static.reshape
+  //  --> (optional) mo.static.broadcast
+  auto reshape = m_Op<CastOp>(bindDest, patternIn);
+  return m_Optional(reshape, patternIn);
+}
+
 /// A helper for matching against softmax(input) @ V for fused attention
 class MultiHeadAttentionEpilogueMatcher {
 private:
@@ -887,6 +897,10 @@ private:
   Operation *optReshape1 = nullptr;
   Operation *optReshape2 = nullptr;
 
+  // For optional casts
+  Operation *optCast1 = nullptr;
+  Operation *optCast2 = nullptr;
+
   graph_compiler::Logger patternMatcherLogger;
   MultiHeadAttentionEpilogueMatcher() = default;
 
@@ -904,9 +918,12 @@ public:
     auto pSoftmaxAttnMatrix =
         m_Op<SoftmaxOp>(&matcher.softmaxProducer, maybeBCast1);
 
+    // support up to two optional casts (from bf16 --> fp32 --> bf16)
+    auto maybeCast1 = pOptionalCast(&matcher.optCast1, pSoftmaxAttnMatrix);
+    auto maybeCast2 = pOptionalCast(&matcher.optCast1, maybeCast1);
+
     // optional broadcast + re-project using V
-    auto maybeReshape2 =
-        pOptionalReshape(&matcher.optReshape2, pSoftmaxAttnMatrix);
+    auto maybeReshape2 = pOptionalReshape(&matcher.optReshape2, maybeCast2);
     auto maybeBCast2 = pOptionalBroadcast(&matcher.optBCast2, maybeReshape2);
     auto pAnswer =
         m_Op<BatchMatmulOp>(&matcher.reprojectProducer, maybeBCast2, pV);
@@ -1432,6 +1449,9 @@ private:
   // For internal reshapes
   Operation *optReshape1 = nullptr;
 
+  // For internal casts
+  Operation *optCast1 = nullptr;
+
   MultiHeadAttentionNormalizationMatcher() = default;
 
 public:
@@ -1456,8 +1476,11 @@ public:
     auto maybeBCast1 = pOptionalBroadcast(&matcher.optBCast1, maybeReshape1);
     auto pNormalizedByMul =
         m_Op<MulOp>(&matcher.normalizationProducer, maybeBCast1, pNorm);
+
+    // Allow additional cast
+    auto maybeCast = pOptionalCast(&matcher.optCast1, pNormalizedByMul);
     bool matchesMul =
-        pNormalizedByMul.match(producingOp, &patternMatcherLogger);
+        maybeCast.match(producingOp->getResult(0), &patternMatcherLogger);
     bool bcastAllowedMul = allowUnsafeBCast || !matcher.optBCast1;
     bool internalReshapeAllowedMul =
         allowInternalReshape || !matcher.optReshape1;
@@ -2249,14 +2272,19 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
           rewriter.create<Static::ReshapeOp>(rootOp->getLoc(), newTy, gpuMask);
     }
 
-    Value normScalar = matcher.getNormScalar();
+    auto normScalar = cast<TensorValue>(matcher.getNormScalar());
+
+    // GPU expects fp32 input
+    TensorValue normScalarAsFP32 = rewriter.create<CastOp>(
+        rootOp.getLoc(), normScalar.getType().cloneWith(DType::f32),
+        normScalar);
     SmallVector<Value> customOpInputs{query, key, value, rank3GPUMask,
-                                      normScalar};
+                                      normScalarAsFP32};
 
     // We require the norm scalar to be on the host device. Done this way to
     // to avoid dumb errors if we reorder inputs in custom op.
     int64_t indexNormScalar =
-        llvm::find(customOpInputs, normScalar) - customOpInputs.begin();
+        llvm::find(customOpInputs, normScalarAsFP32) - customOpInputs.begin();
     auto normScalarDevice =
         MO::DeviceIndexAttr::get(indexNormScalar, getHostDevice(rootOp));
 
