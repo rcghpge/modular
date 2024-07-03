@@ -36,7 +36,7 @@ M_Dtype M::core::mapPybind11Type(pybind11::dtype dtype) {
   else if (dtype.is(pybind11::dtype::of<bool>()))
     return M_BOOL;
   else
-    throw std::runtime_error("Unrecognized DType");
+    throw pybind11::type_error("Unrecognized DType");
 }
 
 pybind11::dtype M::core::mapDType(M_Dtype dtype) {
@@ -69,7 +69,7 @@ pybind11::dtype M::core::mapDType(M_Dtype dtype) {
   case M_BOOL:
     return pybind11::dtype::of<bool>();
   default:
-    throw std::runtime_error("Unrecognized DType");
+    throw pybind11::type_error("Unrecognized DType");
   }
 }
 
@@ -102,6 +102,6 @@ std::string M::core::printDType(M_Dtype dtype) {
   case M_BOOL:
     return "DType.bool";
   default:
-    throw std::runtime_error("Unrecognized DType");
+    throw pybind11::type_error("Unrecognized DType");
   }
 }

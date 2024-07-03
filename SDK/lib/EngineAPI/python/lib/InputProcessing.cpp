@@ -27,7 +27,7 @@ void core::verifyTensorInputSpecs(const py::object &obj,
   // Assert same dtype.
   if (pybind11::dtype expectedDtype = mapDType(inputTensorSpec.getDtype());
       !tensor.dtype().is(expectedDtype))
-    throw std::runtime_error(
+    throw std::invalid_argument(
         "Input tensor has incompatible type. Expected type " +
         printDType(inputTensorSpec.getDtype()) + " but got " +
         printDType(mapPybind11Type(tensor.dtype())) + " instead.");
@@ -38,7 +38,7 @@ void core::verifyTensorInputSpecs(const py::object &obj,
     const std::vector<std::optional<int64_t>> &shape = *shapeOr;
     if (unsigned long expectedNDim = shape.size();
         (unsigned long)tensor.ndim() != expectedNDim) {
-      throw std::runtime_error(
+      throw std::invalid_argument(
           "Input tensor has incompatible number of dimensions. Expected "
           "number of dimensions to be " +
           std::to_string(expectedNDim) + " but input has " +
@@ -49,7 +49,7 @@ void core::verifyTensorInputSpecs(const py::object &obj,
     for (ssize_t d = 0, ndim = tensor.ndim(); d < ndim; ++d) {
       auto expectedDimOr = shape.at(d);
       if (expectedDimOr && *expectedDimOr != tensor.shape(d)) {
-        throw std::runtime_error(
+        throw std::invalid_argument(
             "Input tensor has incompatible dimension along axis " +
             std::to_string(d) + ". Expected " + std::to_string(*expectedDimOr) +
             " but found " + std::to_string(tensor.shape(d)) + ".");

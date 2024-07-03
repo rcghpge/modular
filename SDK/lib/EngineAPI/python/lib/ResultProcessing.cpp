@@ -22,7 +22,7 @@ py::object core::processTensorResult(TensorPtr outTensor) {
   TensorSpecPtr tensorSpec{M_getTensorSpec(outTensor.get()), &M_freeTensorSpec};
   int64_t numDims = M_getRank(tensorSpec.get());
   if (numDims == M_getDynamicRankValue())
-    throw std::runtime_error("dynamic ranked tensor is not supported yet.");
+    throw std::invalid_argument("dynamic ranked tensor is not supported yet.");
 
   std::vector<int64_t> shape;
   for (size_t d = 0; d < (size_t)numDims; ++d)
@@ -103,6 +103,6 @@ py::object core::processValueResult(ValuePtr value) {
     return processTensorResult(std::move(tensorPtr));
   }
   default:
-    throw std::runtime_error("Unhandled value type.");
+    throw py::type_error("Unhandled value type.");
   }
 }

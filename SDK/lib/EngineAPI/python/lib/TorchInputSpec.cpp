@@ -23,7 +23,7 @@ core::TorchInputSpec::TorchInputSpec(
       specDtype(dtype) {
   StatusPtr status{M_newStatus(), M_freeStatus};
   if (!status)
-    throw std::runtime_error("Unable to create status");
+    throw std::invalid_argument("Unable to create status");
   if (specShape) {
     std::vector<int64_t> convertedShape = convertToShape(*specShape);
     std::vector<std::optional<std::string>> dimNames =
@@ -43,5 +43,5 @@ core::TorchInputSpec::TorchInputSpec(
                                       status.get()));
   }
   if (M_isError(status.get()))
-    throw std::runtime_error(M_getError(status.get()));
+    throw std::invalid_argument(M_getError(status.get()));
 }
