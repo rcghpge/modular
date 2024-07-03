@@ -73,8 +73,9 @@ public:
 
   /// Calls the model's setup function using `runtime` and returns the results
   /// immediately. This function does not await the results to be ready.
-  LLCL::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
-  setup(Runtime &runtime) const override;
+  LLCL::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>> setup(
+      Runtime &runtime,
+      const Driver::DeviceMap &deviceMap = Driver::DeviceMap()) const override;
 
   static StringLiteral getEntityName() { return "mgp.model"; }
 

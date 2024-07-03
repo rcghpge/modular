@@ -8,6 +8,7 @@
 #include "GenericML/API/max/c/symbol_export.h"
 
 using namespace M::Driver;
+using namespace M;
 
 DeviceMemory::~DeviceMemory() {
   if (ptr) {
@@ -69,4 +70,34 @@ MODULAR_API_EXPORT void M_copyDeviceMemory(DeviceMemory *dst,
 
 MODULAR_API_EXPORT void *M_getData(DeviceMemory *deviceMem) {
   return deviceMem->data();
+}
+
+MODULAR_VISIBILITY_EXPORT ErrorOr<llvm::SmallVector<AnyAsyncValueRef>>
+M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
+                                  const Driver::DeviceMap &deviceMap,
+                                  Runtime &runtime) {
+
+  llvm::SmallVector<AnyAsyncValueRef> deviceContexts;
+  for (const auto &devRef : deviceRefs) {
+    // CPU device not explicity yet so deviceMap["cpu"] may be null
+    if (devRef.label == kCPULabel) {
+      deviceContexts.push_back(AnyAsyncValueRef());
+    } else {
+      if (deviceMap.contains(devRef) && deviceMap.at(devRef)) {
+        const auto &dev = deviceMap.at(devRef);
+        // ==== CAUTION! ====
+        // Need to ensure that dev (Device) outlives this AsyncValue
+        // because Device will free the DeviceContext in its destructor.
+        // This should be fixed by either:
+        // 1. the graph compiler taking a Device* not a DeviceContext*.
+        // 2. have MGP take an AnyAsyncValueRef<RCRef<DeviceContext>>.
+        deviceContexts.push_back(AnyAsyncValueRef::createReady<void *>(
+            runtime, dev->tmpGetDeviceContext()));
+      } else {
+        // This should be an error, but for now we'll default construct in MGP
+        deviceContexts.push_back(AnyAsyncValueRef());
+      }
+    }
+  }
+  return deviceContexts;
 }

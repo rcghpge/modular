@@ -7,6 +7,9 @@
 #ifndef GENERICML_LIB_DEVICEDRIVER_DRIVER
 #define GENERICML_LIB_DEVICEDRIVER_DRIVER
 
+#include "LLCL/ForwardDecls.h"
+#include "LLCL/Runtime/AnyAsyncValueRef.h"
+#include "Support/DeviceSpecs.h"
 #include "Support/ErrorOr.h"
 #include "Support/ML/TensorSpec.h"
 #include "Support/RCRef.h"
@@ -16,9 +19,12 @@
 namespace M {
 
 namespace Driver {
+// Maps compile time device info to runtime device handle
 
 struct Device;
 struct CPUDeviceMemory;
+
+using DeviceMap = llvm::DenseMap<DeviceRef, RCRef<M::Driver::Device>>;
 struct DeviceMemory {
   enum DeviceMemoryKind {
     K_CPU,
@@ -101,7 +107,25 @@ struct Device : M::ReferenceCounted<Device> {
   }
 
   virtual ~Device() = default;
+
+  /// TODO(): This is temporarily needed to unwrap the
+  /// DeviceContext pointer from the CUDA Device impl,
+  /// because the graph compiler expects it. In the future,
+  /// the graph compiler should expect a Device* and this
+  /// should be removed.
+  virtual void *tmpGetDeviceContext() = 0;
 };
+
+/// Returns an array of AnyAsyncValueRef of DeviceContext* corresponding to the
+/// deviceRefs array. i.e. ret[i] = AnyAsyncValueRef(deviceMap[deviceRefs[i]]).
+/// Note: currently creates an AnyAsyncValueRef of a nullptr when the DeviceRef
+/// is not found in the map, expecting the graph compiler to default initialize
+/// the DeviceContext in this case. This will be an error in the future once we
+/// can create the DeviceContext from cpp (if it has not been supplied by the
+/// mojo impl of the MAX driver).
+MODULAR_VISIBILITY_EXPORT ErrorOr<llvm::SmallVector<AnyAsyncValueRef>>
+mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
+                       const Driver::DeviceMap &deviceMap, Runtime &runtime);
 
 } // namespace Driver
 } // namespace M

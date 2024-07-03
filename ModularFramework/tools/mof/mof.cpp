@@ -169,9 +169,9 @@ public:
             kernelLibraryConfig->getPath().string());
       } else if (auto deviceConfig =
                      dyn_cast<DeviceConfig>(driverConfig.get())) {
-        mofConfig->defaultDeviceLabel = deviceConfig->getDevice();
+        mofConfig->defaultDeviceLabel = deviceConfig->getDeviceLabel();
         mofConfig->deviceID = deviceConfig->getDeviceID();
-        mofConfig->enableExtraDevices = !deviceConfig->getDevice().empty();
+        mofConfig->enableExtraDevices = !deviceConfig->getDeviceLabel().empty();
       }
     }
     return success();

@@ -295,8 +295,9 @@ public:
 
   const M_RuntimeContext *getContext() const { return modelState.context; }
 
-  LLCL::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
-  setup(Runtime &runtime) const override;
+  LLCL::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>> setup(
+      Runtime &runtime,
+      const Driver::DeviceMap &deviceMap = Driver::DeviceMap()) const override;
 
   ~ModularModel() override = default;
 
@@ -583,7 +584,8 @@ private:
 /// Initialize the model using `runtime`, allocating memory, setting up data
 /// structures, or whatever else the model needs.  This never blocks.
 LLCL::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
-ModularModel::setup(Runtime &runtime) const {
+ModularModel::setup(Runtime &runtime,
+                    const Driver::DeviceMap &deviceMap) const {
   checkUniqueRuntime(runtime);
   checkKnownCallingThread(runtime);
   // Create the executable model.

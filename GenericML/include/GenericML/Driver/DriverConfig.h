@@ -89,13 +89,13 @@ class DeviceConfig : public DriverConfig {
 public:
   DeviceConfig(std::string device, size_t deviceID)
       : DriverConfig(OptionKind::kDevice, "device-configuration"),
-        device(std::move(device)), deviceID(deviceID) {}
+        deviceLabel(std::move(device)), deviceID(deviceID) {}
 
   static bool classof(const DriverConfig *config) {
     return config->getKind() == OptionKind::kDevice;
   }
 
-  const std::string &getDevice() const { return device; }
+  const std::string &getDeviceLabel() const { return deviceLabel; }
   size_t getDeviceID() const { return deviceID; }
 
   std::unique_ptr<DriverConfig> clone() override {
@@ -103,7 +103,7 @@ public:
   }
 
 private:
-  std::string device;
+  std::string deviceLabel;
   size_t deviceID;
 };
 
