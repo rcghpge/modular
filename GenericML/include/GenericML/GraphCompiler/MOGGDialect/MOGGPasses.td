@@ -97,8 +97,6 @@ def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
             "Enable multi-head attention pattern.">,
     Option<"debugMHAPattern", "mha-debug", "bool", /*default=*/"false",
             "Enable multi-head attention pattern matching logs. Useful for debugging pattern matching failures.">,
-    Option<"enableRank4GPUMask", "mha-gpu-enable-rank4-mask", "bool", /*default=*/"false",
-            "Enable masks on GPU to be rank 4.">,
     Option<"mhaAllowUnsafeBCast", "mha-allow-unsafe-bcast", "bool", /*default=*/"true",
             "Allow potentially unsafe broadcasts to be pattern matched for MHA patterns.">,
     Option<"mhaAllowInternalReshape", "mha-allow-internal-reshape", "bool", /*default=*/"true",
