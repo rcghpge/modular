@@ -964,6 +964,7 @@ modular_cc_library(
     srcs = glob(["lib/Support/*.cpp"]),
     hdrs = glob(["include/GenericML/Support/*.h"]) + [":gen_definitions_h"],
     deps = [
+        ":DeviceDriver.headers",
         ":SupportGlobals",
         "//ArraySupport",
         "//GraphRT:Primitives",
@@ -1375,13 +1376,11 @@ modular_cc_library(
 modular_shared_library(
     name = "modular-framework-common",
     srcs = glob(["lib/API/c/**/*.cpp"]),
-    hdrs = glob([
-        "include/GenericML/API/**/*.h",
-        "include/GenericML/DeviceDriver/*.h",
-    ]),
+    hdrs = glob(["include/GenericML/API/**/*.h"]),
     deps = [
         ":CommonDriver",
         ":CompileDriver",
+        ":DeviceDriver.headers",
         ":MaxAPI",
         ":rpaths",
         "//CUDASupport",
