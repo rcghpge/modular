@@ -12,13 +12,13 @@ mo.graph @basicMatmul<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor
 // CHECK: mogg.output_placeholders
 // CHECK-NEXT: mogg.param_shape_to_value
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"
-// CHECK-NEXT: mogg.lambda @output_0_fn
+// CHECK-NEXT: mogg.lambda @normal_op_output_0_fn
 // CHECK-NEXT: mogg.call "simd_load"
 // CHECK-NEXT: mogg.call "mo.add"
 // CHECK-NEXT: mogg.call "simd_store"
 // CHECK-NEXT: mogg.output
 // CHECK-NEXT: }
-// CHECK-NEXT: mogg.call "mo.matmul" [@output_0_fn{{.*}}{lambdas_have_fusion = true
+// CHECK-NEXT: mogg.call "mo.matmul" [@normal_op_output_0_fn{{.*}}{lambdas_have_fusion = true
 // CHECK: mo.output
 
 mo.graph @noFuseMultiUse<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32, {layout = #mo.layout<KN>}>, %arg3: !mo.tensor<[], f32>, %arg4: !mo.tensor<[], f32>) -> (!mo.tensor<[M, N], f32>, !mo.tensor<[M, N], f32>) {

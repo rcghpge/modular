@@ -14,26 +14,26 @@ mo.graph @basicBroadcastFuse<N, M, K>(%arg0: !mo.tensor<[N, M], f32>, %arg1: !mo
 // CHECK-NEXT:   %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[K, M]>
 // CHECK-NEXT:   %[[BCAST_1:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN2]], %[[SHAPE]]) {single_thread_blocking_override = false} : !mo.tensor<[N, M], f32>, !mogg.shape<[K, M]> -> !mo.tensor<[K, M], f32>
 // CHECK-NEXT:   %[[BCAST_2:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN1]], %[[SHAPE]]) {single_thread_blocking_override = false} : !mo.tensor<[K, M], f32>, !mogg.shape<[K, M]> -> !mo.tensor<[K, M], f32>
-// CHECK-NEXT:   mogg.lambda @input_0_fn = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<f32>{
+// CHECK-NEXT:   mogg.lambda @[[INPUT_0_FN:.*]] = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<f32>{
 // CHECK-NEXT:      %[[LOAD:.*]] = mogg.call "simd_load"(%[[BCAST_1]], %[[INDICES]]) : !mo.tensor<[K, M], f32>, !mogg.indices -> !mogg.simd<f32>
 // CHECK-NEXT:      mogg.output %[[LOAD]] : !mogg.simd<f32>
 // CHECK-NEXT:   }
-// CHECK-NEXT:   mogg.lambda @input_1_fn = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<f32>{
+// CHECK-NEXT:   mogg.lambda @[[INPUT_1_FN:.*]] = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<f32>{
 // CHECK-NEXT:      %[[LOAD:.*]] = mogg.call "simd_load"(%[[BCAST_2]], %[[INDICES]]) : !mo.tensor<[K, M], f32>, !mogg.indices -> !mogg.simd<f32>
 // CHECK-NEXT:      mogg.output %[[LOAD]] : !mogg.simd<f32>
 // CHECK-NEXT:   }
-// CHECK-NEXT:   mogg.lambda @output_0_fn = (%[[INDICES:.*]]: !mogg.indices, %[[VALUE:.*]]: !mogg.simd<f32>){
+// CHECK-NEXT:   mogg.lambda @[[OUTPUT_0_FN:.*]] = (%[[INDICES:.*]]: !mogg.indices, %[[VALUE:.*]]: !mogg.simd<f32>){
 // CHECK-NEXT:      mogg.call "simd_store"(%[[OUT]], %[[INDICES]], %[[VALUE]]) : !mo.tensor<[K, M], f32>, !mogg.indices, !mogg.simd<f32>
 // CHECK-NEXT:      mogg.output
 // CHECK-NEXT:   }
-// CHECK-NEXT:   mogg.lambda @elemwise_compute_lambda = (%[[INDICES]]: !mogg.indices){
-// CHECK-NEXT:      %[[LOAD_IN1:.*]] = mogg.invoke @input_0_fn(%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
-// CHECK-NEXT:      %[[LOAD_IN2:.*]] = mogg.invoke @input_1_fn(%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
+// CHECK-NEXT:   mogg.lambda @[[ELEMWISE_COMPUTE_LAMBDA:.*]] = (%[[INDICES]]: !mogg.indices){
+// CHECK-NEXT:      %[[LOAD_IN1:.*]] = mogg.invoke @[[INPUT_0_FN]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
+// CHECK-NEXT:      %[[LOAD_IN2:.*]] = mogg.invoke @[[INPUT_1_FN]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
 // CHECK-NEXT:      %[[ADD:.*]] = mogg.call "mo.add"(%[[LOAD_IN1]], %[[LOAD_IN2]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:      mogg.invoke @output_0_fn(%[[INDICES]], %[[ADD]]) : !mogg.indices, !mogg.simd<f32>
+// CHECK-NEXT:      mogg.invoke @[[OUTPUT_0_FN]](%[[INDICES]], %[[ADD]]) : !mogg.indices, !mogg.simd<f32>
 // CHECK-NEXT:      mogg.output
 // CHECK-NEXT:   }
-// CHECK-NEXT:   mogg.call "elementwise" [@elemwise_compute_lambda](%[[OUT]]) {single_thread_blocking_override = false} : !mo.tensor<[K, M], f32>
+// CHECK-NEXT:   mogg.call "elementwise" [@[[ELEMWISE_COMPUTE_LAMBDA]]](%[[OUT]]) {single_thread_blocking_override = false} : !mo.tensor<[K, M], f32>
 // CHECK-NEXT:   mogg.output %[[OUT]] : !mo.tensor<[K, M], f32>
 
 // Check the attributes have been stripped so this can no longer be fused.
@@ -50,7 +50,8 @@ mo.graph @basicBroadcastIntoElemwise(%arg0: !mo.tensor<[10, 12, 1, 50], f32>, %a
   mo.output %4 : !mo.tensor<[10, 12, 100, 50], f32>
 }
 
-// CHECK:  mo.graph @basicBroadcastIntoElemwise(%[[ARG0:.*]]: !mo.tensor<[10, 12, 1, 50], f32>, %[[ARG1:.*]]: !mo.tensor<[100, 1], f32>)
+// CHECK-LABEL:  mo.graph @basicBroadcastIntoElemwise
+// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[10, 12, 1, 50], f32>, %[[ARG1:.*]]: !mo.tensor<[100, 1], f32>)
 // CHECK-NEXT:   %[[KERNEL:.*]] = mogg.kernel (%[[ARG1]], %[[ARG0]]) : (%[[IN1:.*]]: !mo.tensor<[100, 1], f32>, %[[IN2:.*]]: !mo.tensor<[10, 12, 1, 50], f32>) -> !mo.tensor<[10, 12, 100, 50], f32>
 // CHECK-NEXT:   mogg.output_placeholders
 // CHECK-NEXT:   %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[10, 12, 100, 50]>
@@ -58,21 +59,21 @@ mo.graph @basicBroadcastIntoElemwise(%arg0: !mo.tensor<[10, 12, 1, 50], f32>, %a
 // CHECK-NEXT:   %[[BCAST_2:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN1]], %[[SHAPE]]) {single_thread_blocking_override = false} : !mo.tensor<[100, 1], f32>, !mogg.shape<[10, 12, 100, 50]> -> !mo.tensor<[10, 12, 100, 50], f32>
 
 // Check we load from the bcasts
-// CHECK: mogg.lambda @input_0_fn = (%[[INDICES:.*]]: !mogg.indices)
+// CHECK: mogg.lambda @[[INPUT_0_FN:.*]] = (%[[INDICES:.*]]: !mogg.indices)
 // CHECK-NEXT:  mogg.call "simd_load"(%[[BCAST_1]], %[[INDICES]]) : !mo.tensor<[10, 12, 100, 50], f32>, !mogg.indices -> !mogg.simd<f32>
 
-// CHECK:mogg.lambda @input_1_fn = (%[[INDICES:.*]]: !mogg.indices)
+// CHECK:mogg.lambda @[[INPUT_1_FN:.*]] = (%[[INDICES:.*]]: !mogg.indices)
 // CHECK-NEXT:      mogg.call "simd_load"(%[[BCAST_2]], %[[INDICES]]) : !mo.tensor<[10, 12, 100, 50], f32>, !mogg.indices -> !mogg.simd<f32>
 
 // Check the elementwise was still fused.
-// CHECK:   mogg.lambda @elemwise_compute_lambda = (%[[INDICES]]: !mogg.indices)
-// CHECK-NEXT:      %[[LOAD_IN1:.*]] = mogg.invoke @input_0_fn(%[[INDICES]])
-// CHECK-NEXT:      %[[LOAD_IN2:.*]] = mogg.invoke @input_1_fn(%[[INDICES]])
+// CHECK:   mogg.lambda @[[ELEMWISE_COMPUTE_LAMBDA:.*]] = (%[[INDICES]]: !mogg.indices)
+// CHECK-NEXT:      %[[LOAD_IN1:.*]] = mogg.invoke @[[INPUT_0_FN]](%[[INDICES]])
+// CHECK-NEXT:      %[[LOAD_IN2:.*]] = mogg.invoke @[[INPUT_1_FN]](%[[INDICES]])
 // CHECK-NEXT:      %[[ADD:.*]] = mogg.call "mo.add"(%[[LOAD_IN1]], %[[LOAD_IN2]])
 // CHECK-NEXT:      %[[SQRT:.*]] = mogg.call "mo.sqrt"(%[[ADD]])
 // CHECK-NEXT:      %[[TANH:.*]] = mogg.call "mo.tanh"(%[[ADD]])
 // CHECK-NEXT:      %[[MUL:.*]] = mogg.call "mo.mul"(%[[SQRT]], %[[TANH]])
-// CHECK-NEXT:      mogg.invoke @output_0_fn(%[[INDICES]], %[[MUL]]) : !mogg.indices, !mogg.simd<f32>
+// CHECK-NEXT:      mogg.invoke @[[OUTPUT_0_FN:.*]](%[[INDICES]], %[[MUL]]) : !mogg.indices, !mogg.simd<f32>
 // CHECK-NEXT:      mogg.output
 
 // Check we produce one kernel. The mo primitive tests check this kernel so we don't
@@ -102,10 +103,10 @@ mo.graph @many_bcasts() -> !mo.tensor<[2, 2, 3], f32> {
 // CHECK-NEXT:  %[[BCAST_2:.*]] = mogg.call "mo.static.broadcast_to"
 // CHECK-NEXT:  %[[BCAST_3:.*]] = mogg.call "mo.static.broadcast_to"
 
-// CHECK: mogg.lambda @elemwise_compute_lambda =
-// CHECK-NEXT:  %[[LOAD1:.*]] = mogg.invoke @input_0_fn_0
-// CHECK-NEXT:  %[[LOAD2:.*]] = mogg.invoke @input_0_fn
-// CHECK-NEXT:  %[[LOAD3:.*]] = mogg.invoke @input_1_fn_0
+// CHECK: mogg.lambda @elemwise_compute_lambda_
+// CHECK-NEXT:  %[[LOAD1:.*]] = mogg.invoke @[[INPUT_0_FN:.*]]
+// CHECK-NEXT:  %[[LOAD2:.*]] = mogg.invoke @[[INPUT_1_FN:.*]]
+// CHECK-NEXT:  %[[LOAD3:.*]] = mogg.invoke @[[INPUT_2_FN:.*]]
 // CHECK-NEXT:  %[[ADD:.*]] = mogg.call "mo.add"(%[[LOAD2]], %[[LOAD3]])
 // CHECK-NEXT:  %[[MUL:.*]] = mogg.call "mo.mul"(%[[LOAD1]], %[[ADD]])
 // CHECK-NEXT:  %[[LOAD4:.*]] = mogg.invoke @input_1_fn
@@ -135,7 +136,7 @@ mo.graph @check_no_fuse_if<N, M>(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"
 
 // Check that the elementwise kernel is a straight up copy, i.e an unfused broadcast.
-// CHECK:  mogg.lambda @copy_view = (%[[INDICES:.*]]: !mogg.indices)
+// CHECK:  mogg.lambda @[[COPY_VIEW:.*]] = (%[[INDICES:.*]]: !mogg.indices)
 // CHECK-NEXT:  %[[LOAD:.*]] = mogg.call "simd_load"
 // CHECK-NEXT:  mogg.call "simd_store"(%[[OUT]], %[[INDICES]], %[[LOAD]])
 
@@ -166,15 +167,15 @@ mo.graph @transpose_and_bcast_fused(%arg0 : !mo.tensor<[], si32>) -> !mo.tensor<
 // CHECK-NEXT:  %[[BCAST:.*]] = mogg.call "mo.static.broadcast_to"
 // CHECK-NEXT:  %[[TRANSPOSE:.*]] = mogg.call "mo.transpose"
 
-// CHECK:   mogg.lambda @input_0_fn = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<si32>{
+// CHECK:   mogg.lambda @[[INPUT_0_FN:.*]] = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<si32>{
 // CHECK-NEXT:      mogg.call "simd_load"(%[[BCAST]], %[[INDICES]])
 
-// CHECK:   mogg.lambda @input_1_fn = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<si32>{
+// CHECK:   mogg.lambda @[[INPUT_1_FN:.*]] = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<si32>{
 // CHECK-NEXT:      mogg.call "simd_load"(%[[TRANSPOSE]], %[[INDICES]])
 
-// CHECK: mogg.lambda @elemwise_compute_lambda =
-// CHECK-NEXT:  %[[LOAD1:.*]] = mogg.invoke @input_0_fn
-// CHECK-NEXT:  %[[LOAD2:.*]] = mogg.invoke @input_1_fn
+// CHECK: mogg.lambda @elemwise_compute_lambda_
+// CHECK-NEXT:  %[[LOAD1:.*]] = mogg.invoke @[[INPUT_0_FN]]
+// CHECK-NEXT:  %[[LOAD2:.*]] = mogg.invoke @[[INPUT_1_FN]]
 // CHECK-NEXT:  %[[ADD:.*]] = mogg.call "mo.add"(%[[LOAD1]], %[[LOAD2]])
 
 

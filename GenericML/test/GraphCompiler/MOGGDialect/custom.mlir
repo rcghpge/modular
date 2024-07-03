@@ -2,11 +2,11 @@
 
 // CHECK: mo.graph @input_output_fusion(%[[ARG0:.*]]: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
 // CHECK-NEXT: %0 = mogg.kernel (%[[ARG0]]) : (%[[ARG1:.*]]: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32>{
-// CHECK:      mogg.lambda @input_0_fn
+// CHECK:      mogg.lambda @[[INPUT_0_FN:.*]] =
 // CHECK:        mogg.call "mo.ceil"
-// CHECK:      mogg.lambda @output_0_fn = (%arg2: !mogg.indices, %arg3: !mogg.simd<f32>){
+// CHECK:      mogg.lambda @[[OUTPUT_0_FN:.*]] = (%arg2: !mogg.indices, %arg3: !mogg.simd<f32>){
 // CHECK-NEXT:   mogg.call "mo.relu"
-// CHECK:      mogg.call "test_custom_op" [@input_0_fn, @output_0_fn]
+// CHECK:      mogg.call "test_custom_op" [@[[INPUT_0_FN]], @[[OUTPUT_0_FN]]]
 mo.graph @input_output_fusion(%arg0: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
   %0 = mo.ceil(%arg0) : !mo.tensor<[2], f32>
   %1 = mo.custom {symbol = "test_custom_op"}(%0) : (!mo.tensor<[2], f32>) -> !mo.tensor<[2], f32>

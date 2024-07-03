@@ -14,14 +14,14 @@ mo.graph @bcast_basic<N, L, M, K>(%arg0: !mo.tensor<[N, M, L], f32>) -> (!mo.ten
 // CHECK-NEXT: %[[BCAST:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN1]], %[[SHAPE]]) {single_thread_blocking_override = false} : !mo.tensor<[N, M, L], f32>, !mogg.shape<[N, M, K]> -> !mo.tensor<[N, M, K], f32>
 
 // The copy is implemented with the elementwise kernel as before.
-// CHECK-NEXT:  mogg.lambda @copy_view = (%[[INDICES:.*]]: !mogg.indices){
+// CHECK-NEXT:  mogg.lambda @[[COPY_VIEW:.*]] = (%[[INDICES:.*]]: !mogg.indices){
 // CHECK-NEXT:    %[[LOAD:.*]] = mogg.call "simd_load"(%[[BCAST]], %[[INDICES]]) : !mo.tensor<[N, M, K], f32>, !mogg.indices -> !mogg.simd<f32>
 // CHECK-NEXT:    mogg.call "simd_store"(%[[OUT]], %[[INDICES]], %[[LOAD]]) : !mo.tensor<[N, M, K], f32>, !mogg.indices, !mogg.simd<f32>
 // CHECK-NEXT:    mogg.output
 // CHECK-NEXT:  }
 
 // Invoke the elementwise copy.
-// CHECK-NEXT:  mogg.call "elementwise" [@copy_view](%[[OUT]]) {single_thread_blocking_override = false} : !mo.tensor<[N, M, K], f32>
+// CHECK-NEXT:  mogg.call "elementwise" [@[[COPY_VIEW]]](%[[OUT]]) {single_thread_blocking_override = false} : !mo.tensor<[N, M, K], f32>
 // CHECK-NEXT:  mogg.output %[[OUT]] : !mo.tensor<[N, M, K], f32>
 
 // No fusion interfaces but it does have the indcies of the inputs which are broadcast and the isView marking.
