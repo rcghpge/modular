@@ -96,6 +96,7 @@ set(DRIVER_SRCS
   _driver/graph
   _driver/tensor
   _driver/tensor_slice
+  _driver/utils
 )
 
 set(UTILS_SRCS
