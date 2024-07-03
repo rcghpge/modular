@@ -781,7 +781,8 @@ LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
   MGP::BufferizedTensor bufferizedInput =
       opLoweringState.getBufferizedInput(transferOp.getInput());
   FailureOr<SmallVector<MGP::MOOutputStorage>> loweredOutputsStorageOr =
-      opLoweringState.createOutputStorage(loweringState.getExecuteChain());
+      opLoweringState.createOutputStorage(loweringState.getExecuteChain(),
+                                          {bufferizedInput.tensorSpec});
   if (failed(loweredOutputsStorageOr))
     return failure();
   auto &loweredOutputsStorage = *loweredOutputsStorageOr;

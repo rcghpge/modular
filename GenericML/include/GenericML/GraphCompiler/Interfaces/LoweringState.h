@@ -468,6 +468,11 @@ struct MOOpLoweringState {
   /// - All other operands are passed in the lowered form directly.
   SmallVector<Value> getLoweredOperands();
 
+  /// Same as the other `createOutputStorage`, but instead of taking in output
+  /// specs, this method will create output specs based on the output type of
+  /// the op currently being lowered.
+  FailureOr<SmallVector<MOOutputStorage>> createOutputStorage(Value inChain);
+
   /// Returns the storage for all of the op's results, which will be passed in
   /// destination-passing-style.
   ///  - !mo.tensor results are passed as a freshly allocated buffer. The buffer
@@ -475,7 +480,9 @@ struct MOOpLoweringState {
   ///  - A tensor spec will also be created, and paired with the buffer in the
   ///    results.
   ///  - No other types are currently supported in output form.
-  FailureOr<SmallVector<MOOutputStorage>> createOutputStorage(Value inChain);
+  FailureOr<SmallVector<MOOutputStorage>>
+  createOutputStorage(Value inChain,
+                      ArrayRef<TypedValue<MGP::TensorSpecType>> outSpecs);
 
   /// Call the given kernel, which should execute on the same device as the
   /// op being lowered.

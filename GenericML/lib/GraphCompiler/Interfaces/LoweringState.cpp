@@ -478,12 +478,17 @@ SmallVector<Value> MOOpLoweringState::getLoweredOperands() {
 
 FailureOr<SmallVector<MOOutputStorage>>
 MOOpLoweringState::createOutputStorage(Value inChain) {
-  FailureOr<SmallVector<TypedValue<MGP::TensorSpecType>>> tensorSpecsOr =
+  FailureOr<SmallVector<TypedValue<MGP::TensorSpecType>>> outSpecsOr =
       createOutputTensorSpecs();
-  if (failed(tensorSpecsOr))
+  if (failed(outSpecsOr))
     return failure();
+  return createOutputStorage(inChain, outSpecsOr.value());
+}
+
+FailureOr<SmallVector<MOOutputStorage>> MOOpLoweringState::createOutputStorage(
+    Value inChain, ArrayRef<TypedValue<MGP::TensorSpecType>> outSpecs) {
   SmallVector<BufferizedTensor> bufferizedTensors;
-  bufferizedTensors.reserve(tensorSpecsOr->size());
+  bufferizedTensors.reserve(outSpecs.size());
 
   // We only create the mgp storage for the pre-allocated tensors. For those
   // have in-place allocation, we skip them.
@@ -497,7 +502,7 @@ MOOpLoweringState::createOutputStorage(Value inChain) {
       results.push_back(opBeingLowered->getResult(idx));
   }
 
-  for (auto [spec, result] : llvm::zip(*tensorSpecsOr, results)) {
+  for (auto [spec, result] : llvm::zip(outSpecs, results)) {
     auto bufOr = createBuffer(inChain, spec, result.getType());
     if (failed(bufOr))
       return failure();
@@ -619,27 +624,10 @@ FailureOr<BufferizedTensor> MOOpLoweringState::createBuffer(
                                          *optSize, minimumCpuAlignment),
         tensorSpec);
   } else {
-    // Dynamically sized. Calculate the byte size using mip.nary.mul.
-    // Extract runtime dims.
-    MOSH::ShapeAttr shapeAttr =
-        cast<MO::TensorType>(moTensorType).getTypedShapeAttr();
-    auto runtimeDimsOr = loweringState.lowerShapeAttrDynDims(
-        opBeingLowered->getParentRegion(), shapeAttr, loc);
-    if (runtimeDimsOr) {
-      opBeingLowered->emitOpError(runtimeDimsOr.getError());
-      return failure();
-    }
-
-    // Extract compile time dims.
-    int64_t staticSizeProduct =
-        loweringState.extractShapeAttrStaticDimsProduct(shapeAttr, loc);
-    size_t dtypeNumBytes = tensorSpec.getType().getOptDType()->getSizeInBytes();
-    Value dynSize = builder.create<MIP::NaryMulOp>(
-        loc, IndexType::get(moTensorType.getContext()), *runtimeDimsOr,
-        staticSizeProduct * dtypeNumBytes);
+    Value numBytes = builder.create<MGP::CpuTensorSpecSizeOp>(loc, tensorSpec);
     return BufferizedTensor(
         bufferBuilder->bufferAllocDynamic(builder, loc, context, inChain,
-                                          dynSize, minimumCpuAlignment),
+                                          numBytes, minimumCpuAlignment),
         tensorSpec);
   }
 }
