@@ -5,7 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/DeviceDriver/Driver.h"
-#include "GenericML/API/max/c/symbol_export.h"
 
 using namespace M::Driver;
 using namespace M;

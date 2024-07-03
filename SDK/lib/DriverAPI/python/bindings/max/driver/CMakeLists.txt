@@ -14,7 +14,7 @@ pybind11_add_module(max-driver-core
 
 add_dependencies(max-driver max-driver-core)
 
-target_link_libraries(max-driver-core PRIVATE DeviceDriver)
+target_link_libraries(max-driver-core PRIVATE DriverPython)
 
 # The extension itself must be compiled with RTTI and exceptions enabled.
 set_rtti_exceptions(max-driver-core)

@@ -18,6 +18,8 @@ modular_find_python3_development()
 
 include(AddPyBind11)
 
+add_subdirectory(lib)
+
 # Include the build files for the MAX Driver Python bindings.
 add_subdirectory(bindings/max/driver)
 

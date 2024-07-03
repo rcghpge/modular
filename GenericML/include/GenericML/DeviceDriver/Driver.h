@@ -7,6 +7,7 @@
 #ifndef GENERICML_LIB_DEVICEDRIVER_DRIVER
 #define GENERICML_LIB_DEVICEDRIVER_DRIVER
 
+#include "GenericML/API/max/c/symbol_export.h"
 #include "LLCL/ForwardDecls.h"
 #include "LLCL/Runtime/AnyAsyncValueRef.h"
 #include "Support/DeviceSpecs.h"
@@ -129,5 +130,13 @@ mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
 
 } // namespace Driver
 } // namespace M
+
+MODULAR_API_EXPORT M::Driver::Device *M_copyDevice(M::Driver::Device *devPtr);
+
+MODULAR_API_EXPORT void M_freeDeviceData(M::Driver::Device *ptr, void *data);
+
+MODULAR_API_EXPORT void M_destroyDevice(M::Driver::Device *devPtr);
+
+MODULAR_API_EXPORT const char *M_getDeviceDesc(const M::Driver::Device *devPtr);
 
 #endif
