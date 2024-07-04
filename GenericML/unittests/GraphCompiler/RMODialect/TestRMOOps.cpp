@@ -110,6 +110,8 @@ TEST(testRMOOpHelpers, testRefineShape) {
 }
 
 TEST(testRMOOpHelpers, testRefineDifferentIntegralDims) {
+  // TODO(GRA-715): Audit asserts on production builds.
+#ifndef NDEBUG
   mlir::MLIRContext ctx{mlir::MLIRContext::Threading::DISABLED};
   ctx.loadDialect<RMO::RMODialect, MO::MODialect>();
 
@@ -125,6 +127,7 @@ TEST(testRMOOpHelpers, testRefineDifferentIntegralDims) {
   EXPECT_DEATH(
       M::RMO::refineShape(shape1Ty, shape2Ty),
       "trying to refine two tensors whose integer dimensions don't match.");
+#endif
 }
 
 } // namespace

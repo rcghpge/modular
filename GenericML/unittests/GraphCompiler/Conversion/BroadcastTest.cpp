@@ -80,11 +80,14 @@ protected:
 };
 
 TEST_F(BroadcastTest, Failure) {
+  // TODO(GRA-715): Audit asserts on production builds.
+#ifndef NDEBUG
   MO::TensorValue x = getTestValue({1, 3});
   MO::TensorValue y = getTestValue({1, 1});
   EXPECT_DEATH(
       RMO::broadcastTo(builder, loc, x, y),
       "don't use this helper unless you can guarantee x broadcasts to y");
+#endif
 }
 
 TEST_F(BroadcastTest, Basic) {
