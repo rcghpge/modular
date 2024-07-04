@@ -132,7 +132,7 @@ struct FuseElementwisePass
   // 4. Remove the old argument and associated lambda.
   // 5. Update the attributes to reflect the new inputs.
   void fuseSrcKernelIntoDstKernelMOGG(MOGG::KernelOp srcKernel,
-                                      MOGG::KernelOp dstKernel) {
+                                      KernelOp dstKernel) {
     auto fusionIndices = *getFusionIndices(srcKernel, dstKernel);
     // This assumes that srcKernel has a single output. When that changes, we
     // will have to create a mapping.
@@ -254,7 +254,7 @@ struct FuseElementwisePass
 
       // Track the calls to the output lambda[s] so they can be removed.
       llvm::SmallDenseSet<StringRef> outputFns;
-      ArrayAttr outputHooks = srcKernel.getOutputFusionInterfaceAttr();
+      ArrayAttr outputHooks = dstKernel.getOutputFusionInterfaceAttr();
       for (StringRef name : outputHooks.getAsValueRange<StringAttr>())
         outputFns.insert(name);
 

@@ -32,11 +32,11 @@ mo.graph @simpleDoubleUse(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3],
 // CHECK: mogg.lambda @[[IN_NAME:.*]] = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<f32>{
 
 // Check the main body.
-// CHECK: mogg.lambda @[[ELEMWISE_COMPUTE_LAMBDA:.*]] = (%[[INDICES:.*]]: !mogg.indices){
+// CHECK: mogg.lambda @elemwise_compute_lambda = (%[[INDICES:.*]]: !mogg.indices){
 // CHECK-NEXT:    %[[LOAD:.*]] = mogg.invoke @[[IN_NAME]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
 // CHECK-NEXT:    %[[SQRT:.*]] = mogg.call "mo.sqrt"(%[[LOAD]]) : !mogg.simd<f32> -> !mogg.simd<f32>
 // CHECK-NEXT:    %[[ADD:.*]] = mogg.call "mo.add"(%[[SQRT]], %[[SQRT]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    mogg.invoke @[[OUTPUT_0_FN:.*]](%[[INDICES]], %[[ADD]]) : !mogg.indices, !mogg.simd<f32>
+// CHECK-NEXT:    mogg.invoke @output_0_fn(%[[INDICES]], %[[ADD]]) : !mogg.indices, !mogg.simd<f32>
 
 
 mo.graph @rightmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
@@ -51,7 +51,7 @@ mo.graph @rightmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<
 
 // CHECK-LABEL: mo.graph @rightmostTreeFusion
 // CHECK: %[[KERNEL_OUT:.*]] = mogg.kernel (%[[ARG1:.*]], %[[ARG2:.*]])
-// CHECK: mogg.lambda @[[ELEMWISE_COMPUTE_LAMBDA:.*]] = (%[[INDICES:.*]]: !mogg.indices){
+// CHECK: mogg.lambda @elemwise_compute_lambda = (%[[INDICES:.*]]: !mogg.indices){
 // CHECK-NEXT:    %[[LOAD1:.*]] = mogg.invoke @[[ANY_NAME:.*]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
 // CHECK-NEXT:    %[[LOAD2:.*]] = mogg.invoke @[[ANY_NAME:.*]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
 // CHECK-NEXT:    %[[SQRT1:.*]] = mogg.call "mo.sqrt"(%[[LOAD2]]) : !mogg.simd<f32> -> !mogg.simd<f32>
@@ -63,9 +63,9 @@ mo.graph @rightmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<
 // CHECK-NEXT:    mogg.invoke @[[ANY_NAME:.*]](%[[INDICES]], %[[ADD]]) : !mogg.indices, !mogg.simd<f32>
 // CHECK-NEXT:    mogg.output
 // CHECK-NEXT:}
-// CHECK-NEXT: mogg.call "elementwise" [@[[ELEMWISE_COMPUTE_LAMBDA]]]
+// CHECK-NEXT: mogg.call "elementwise" [@elemwise_compute_lambda]
 // CHECK-NEXT: mogg.output
-// CHECK-NEXT:} {fusionBodyLambda = "[[ELEMWISE_COMPUTE_LAMBDA]]", inputFusionInterface = ["{{.*}}", "{{.*}}"], isAsync = true, outputFusionInterface = ["{{.*}}"], summary = "mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sub{{.*}}+mo.add{{.*}}"}
+// CHECK-NEXT:} {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn", "input_0_fn_1"], isAsync = true, outputFusionInterface = ["output_0_fn"], summary = "mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sub{{.*}}+mo.add{{.*}}"}
 // CHECK:  mo.output %[[KERNEL_OUT]]
 
 
@@ -81,7 +81,7 @@ mo.graph @leftmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[
 
 // CHECK-LABEL: mo.graph @leftmostTreeFusion
 // CHECK: %[[KERNEL_OUT:.*]] = mogg.kernel (%[[ARG1:.*]], %[[ARG2:.*]])
-// CHECK: mogg.lambda @[[ELEMWISE_COMPUTE_LAMBDA:.*]] = (%[[INDICES:.*]]: !mogg.indices){
+// CHECK: mogg.lambda @elemwise_compute_lambda = (%[[INDICES:.*]]: !mogg.indices){
 // CHECK-NEXT:    %[[LOAD1:.*]] = mogg.invoke @[[ANY_NAME:.*]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
 // CHECK-NEXT:    %[[SQRT1:.*]] = mogg.call "mo.sqrt"(%[[LOAD1]]) : !mogg.simd<f32> -> !mogg.simd<f32>
 // CHECK-NEXT:    %[[SQRT2:.*]] = mogg.call "mo.sqrt"(%[[SQRT1]]) : !mogg.simd<f32> -> !mogg.simd<f32>
@@ -93,9 +93,9 @@ mo.graph @leftmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[
 // CHECK-NEXT:    mogg.invoke @[[ANY_NAME:.*]](%[[INDICES]], %[[ADD]]) : !mogg.indices, !mogg.simd<f32>
 // CHECK-NEXT:    mogg.output
 // CHECK-NEXT:}
-// CHECK-NEXT: mogg.call "elementwise" [@[[ELEMWISE_COMPUTE_LAMBDA]]]
+// CHECK-NEXT: mogg.call "elementwise" [@elemwise_compute_lambda]
 // CHECK-NEXT: mogg.output
-// CHECK-NEXT:} {fusionBodyLambda = "[[ELEMWISE_COMPUTE_LAMBDA]]", inputFusionInterface = ["{{.*}}", "{{.*}}"], isAsync = true, outputFusionInterface = ["{{.*}}"], summary = "mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sub{{.*}}+mo.add{{.*}}"}
+// CHECK-NEXT:} {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_1_fn", "input_0_fn_0"], isAsync = true, outputFusionInterface = ["output_0_fn"], summary = "mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sub{{.*}}+mo.add{{.*}}"}
 // CHECK:  mo.output %[[KERNEL_OUT]]
 
 
@@ -118,7 +118,7 @@ mo.graph @multipleDiamondPattern(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<
 
 // CHECK-LABEL: mo.graph @multipleDiamondPattern
 // CHECK-NEXT: mogg.kernel (%[[NULL:.*]]) : (%[[ARG1:.*]]: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
-// CHECK: mogg.lambda @[[ELEMWISE_COMPUTE_LAMBDA:.*]] = (%[[INDICES:.*]]: !mogg.indices){
+// CHECK: mogg.lambda @elemwise_compute_lambda = (%[[INDICES:.*]]: !mogg.indices){
 // CHECK-NEXT:    %[[IN:.*]] = mogg.invoke @[[INPUT_LAMBDA:.*]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
 // CHECK-NEXT:    %[[SQRT:.*]] = mogg.call "mo.sqrt"(%[[IN]]) : !mogg.simd<f32> -> !mogg.simd<f32>
 // CHECK-NEXT:    %[[RSQRT:.*]] = mogg.call "mo.rsqrt"(%[[SQRT]]) : !mogg.simd<f32> -> !mogg.simd<f32>
@@ -166,7 +166,7 @@ mo.graph @inversePyramid(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3
 
 // CHECK-LABEL: mo.graph @inversePyramid
 // CHECK-NEXT: mogg.kernel (%[[NULL:.*]]) : (%[[ARG1:.*]]: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
-// CHECK: mogg.lambda @[[ELEMWISE_COMPUTE_LAMBDA:.*]] = (%[[INDICES:.*]]: !mogg.indices){
+// CHECK: mogg.lambda @elemwise_compute_lambda = (%[[INDICES:.*]]: !mogg.indices){
 // CHECK-NEXT:    %[[IN1:.*]] = mogg.invoke @[[INPUT_LAMBDA:.*]](%[[INDICES]])
 // CHECK-NEXT:    %[[OP0:.*]] = mogg.call "mo.sqrt"(%[[IN1]])
 // CHECK-NEXT:    %[[OP1:.*]] = mogg.call "mo.relu"(%[[IN1]])
@@ -213,7 +213,7 @@ mo.graph @fused_si32(%arg0: !mo.tensor<[6], si32>, %arg1: !mo.tensor<[6], si32>)
 // CHECK-LABEL: mo.graph @fused_si32
 
 // CHECK: mogg.lambda @elemwise_compute_lambda
-// CHECK-NEXT: %[[LOAD1:.*]] = mogg.invoke @input_0_fn
+// CHECK-NEXT: %[[LOAD1:.*]] = mogg.invoke @input_0_fn_0
 // CHECK-NEXT: %[[LOAD2:.*]] = mogg.invoke @input_1_fn
 // CHECK-NEXT: %[[ADD:.*]] = mogg.call "mo.add"(%[[LOAD1]], %[[LOAD2]]) : !mogg.simd<si32>, !mogg.simd<si32> -> !mogg.simd<si32>
 // CHECK-NEXT: %[[RELU:.*]] = mogg.call "mo.relu"(%[[ADD]]) : !mogg.simd<si32> -> !mogg.simd<si32>
