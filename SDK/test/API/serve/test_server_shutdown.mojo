@@ -9,7 +9,7 @@ from max.tensor import TensorSpec
 from max.engine import InferenceSession, InputSpec
 from max.serve.kserve import FileModel, GRPCServer, MuxInferenceService
 from runtime.llcl import TaskGroup, Atomic
-from time import sleep, now
+from time import sleep, perf_counter_ns
 from max.graph._testing import assert_tensors_almost_equal
 
 
@@ -17,11 +17,11 @@ def run_shutdown_test():
     var server_started = Atomic[DType.int64](0)
     var server_session = InferenceSession()
     alias server_address = "0.0.0.0:0"
-    var start_time = now()
+    var start_time = perf_counter_ns()
 
     @parameter
     fn elapsed() -> String:
-        return str(int((now() - start_time) / (1_000_000))) + " ms"
+        return str(int((perf_counter_ns() - start_time) / (1_000_000))) + " ms"
 
     var server = GRPCServer.create(server_address, server_session)
     print("[" + elapsed() + "]Created server.")

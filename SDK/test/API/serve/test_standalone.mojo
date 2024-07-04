@@ -16,7 +16,7 @@ from runtime.llcl import (
     TaskGroup,
     Atomic,
 )
-from time import sleep, now
+from time import sleep, perf_counter_ns
 from max.serve.kserve import GRPCClient
 from max.graph._testing import assert_tensors_almost_equal
 
@@ -24,11 +24,11 @@ from max.graph._testing import assert_tensors_almost_equal
 def test_standalone_server_client[
     MODEL_NAME: StringLiteral, MODEL_PATH: StringLiteral
 ]() -> None:
-    var start_time = now()
+    var start_time = perf_counter_ns()
 
     @parameter
     fn elapsed() -> String:
-        return str(int((now() - start_time) / (1_000_000))) + " ms"
+        return str(int((perf_counter_ns() - start_time) / (1_000_000))) + " ms"
 
     var server_started = Atomic[DType.int64](0)
     var server_session = InferenceSession()
