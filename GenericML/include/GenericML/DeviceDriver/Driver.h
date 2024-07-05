@@ -115,6 +115,9 @@ struct Device : M::ReferenceCounted<Device> {
   /// the graph compiler should expect a Device* and this
   /// should be removed.
   virtual void *tmpGetDeviceContext() = 0;
+
+  /// Blocks until any pending async work on the device completes.
+  virtual void synchronize() = 0;
 };
 
 /// Returns an array of AnyAsyncValueRef of DeviceContext* corresponding to the

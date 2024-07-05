@@ -76,6 +76,13 @@ M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
                                   const Driver::DeviceMap &deviceMap,
                                   Runtime &runtime) {
 
+  // We need to explicitly synchronize the device here until MGP shares the same
+  // DeviceContext as the driver. Otherwise there may be an async alloc/copy
+  // pending on the driver when the first kernel tries to access the resource.
+  for (auto &dev : deviceMap)
+    if (dev.second)
+      dev.second->synchronize();
+
   llvm::SmallVector<AnyAsyncValueRef> deviceContexts;
   for (const auto &devRef : deviceRefs) {
     // CPU device not explicity yet so deviceMap["cpu"] may be null
