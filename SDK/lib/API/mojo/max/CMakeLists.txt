@@ -109,7 +109,7 @@ set(TENSOR_SRCS
 )
 
 set(COMPILER_SRCS
-  compiler/__init__
+  _compiler/__init__
 )
 
 add_mojo_package(max-mojo PRIVATE
