@@ -103,6 +103,7 @@ modular_cc_library(
     name = "CompileDriver",
     srcs = glob(["lib/Driver/CompileDriver/*.cpp"]),
     hdrs = glob(["include/GenericML/Driver/*.h"]),
+    local_defines = ["MAX_CONFIG_SECTION=max"],
     deps = [
         ":CommonDriver",
         ":Support",

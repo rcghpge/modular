@@ -5,6 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "CUDASupport/CUDARuntimeOptions.h"
+#include "Cache/CacheTelemetryContext.h"
+#include "Cache/CachedTransform.h"
 #include "Cache/Support/Keys.h"
 #include "Config/Version.h"
 #include "GenericML/CUDARegistration/CUDARegistration.h"
@@ -23,6 +25,7 @@
 #include "GenericML/Support/Telemetry.h"
 #include "GraphRT/MEFExecutor/MEFFile.h"
 #include "LLCL/CompilerSupport/Context.h"
+#include "LLCL/Runtime/Algorithms.h"
 #include "MOF/Driver/DriverConfig.h"
 #include "MOF/Driver/DriverImpl.h"
 #include "MOF/ModularModel/ModularModelFile.h"
@@ -30,6 +33,7 @@
 #include "Support/ML/CompiledFrameworkLabel.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/Pass/PassManager.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/Threading.h"
@@ -238,6 +242,33 @@ bool M_isBinary(FrameworkContextHandle ctx, M::BufferRef file,
   return false;
 }
 
+/// Lowers a module op to MGP then exports it to MEF.
+static ErrorOr<BufferRef> convertMOToMEF(ModuleOp moduleOp,
+                                         mlir::PassManager &moToMgpPasses,
+                                         bool enableMEFMetadata) {
+  if (failed(moToMgpPasses.run(moduleOp)))
+    return Error::getStaticString("failed to run the MOToMGP pass manager");
+
+  // Save MGP IR pre export to MEF.
+  writeIntermediateFileIfRequested("mgp", moduleOp, /*options=*/nullptr,
+                                   BufferRef());
+
+  auto bufOr = MO::convertMGPToMEF(moduleOp, enableMEFMetadata);
+  if (bufOr)
+    return bufOr.takeError();
+  return bufOr.takeValue();
+}
+
+/// Lowers a module op to MGP, exports to MEF, and returns a raw pointer.
+static ErrorOr<Buffer *> convertMOToMEFRawPtr(ModuleOp moduleOp,
+                                              mlir::PassManager &moToMgpPasses,
+                                              bool enableMEFMetadata) {
+  auto outBufOr = convertMOToMEF(moduleOp, moToMgpPasses, enableMEFMetadata);
+  if (outBufOr.isError())
+    return outBufOr.takeError();
+  return outBufOr.takeValue().release();
+}
+
 M::ErrorOr<M::Buffer *>
 M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
                             FileFormat format) {
@@ -271,24 +302,81 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   mofContext->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
 
   mofLoweringOptions.setupContext(ctxHandle.maxContext.copy());
+  bool enableMEFMetadata = mofContext->getEnableMEFMetadata();
+
+  auto moToMgpPasses = mlir::PassManager::on<ModuleOp>(
+      mlirCtx, mlir::OpPassManager::Nesting::Implicit);
+
+  // Build the MOToMGP pass pipeline and add instrumentation.
+  MO::buildMoToMgpPipeline(moToMgpPasses, moToMgpOptions);
 
   // Enable saving intermediate IR by setting `max.temps_dir` in modular.cfg.
   // Save MO IR pre mo-to-mgp.
   writeIntermediateFileIfRequested("mo", *moduleOp, /*options=*/nullptr,
                                    BufferRef());
 
-  if (failed(lowerMOToMGP(*moduleOp, moToMgpOptions)))
-    return Error("unable to lower MO to MGP");
+  auto baseCacheDirOr = M::getMaxCacheDir();
 
-  // Save MGP IR pre export to MEF.
-  writeIntermediateFileIfRequested("mgp", *moduleOp, /*options=*/nullptr,
-                                   BufferRef());
+  // Disable caching if set or we can't find any suitable location to cache.
+  if (!isModelIRCacheEnabled() || !baseCacheDirOr)
+    return convertMOToMEFRawPtr(*moduleOp, moToMgpPasses, enableMEFMetadata);
 
-  auto bufOr =
-      MO::convertMGPToMEF(*moduleOp, mofContext->getEnableMEFMetadata());
-  if (bufOr)
-    return bufOr.takeError();
-  M::BufferRef outputBuffer = bufOr.takeValue();
+  // Create the MEF cache filesystem backend.
+  const std::filesystem::path &baseCacheDir = *baseCacheDirOr;
+  auto mefBackendOr = Cache::getLocalDefaultBackendChain(
+      (baseCacheDir / "mof" / "mef").string(),
+      std::string(M::getModularVersionString()));
+
+  if (mefBackendOr.isError()) {
+    // We couldn't create a cache, so don't cache.
+    return convertMOToMEFRawPtr(*moduleOp, moToMgpPasses, enableMEFMetadata);
+  }
+
+  // Write the MAX Graph MEF cache key:
+  // - The pass pipeline as a list of pass names.
+  // - Graph compiler options that affect lowering and export.
+  // - The model IR, by writing the ModuleOp.
+  //   This currently includes the model weights.
+  WriteableBufferRef keyBuf = WriteableBuffer::get();
+  mofLoweringOptions.print(*keyBuf);
+  moToMgpOptions.print(*keyBuf);
+  moToMgpPasses.printAsTextualPipeline(*keyBuf);
+
+  if (failed(Cache::writeOperationToCacheKey(*moduleOp, keyBuf)))
+    return Error::getStaticString("failed to write module op to cache key");
+
+  // Look up the model in the MEF cache.
+  auto mefCache = RCRef<Cache::TransformCache>::create(*mefBackendOr);
+  auto maybeMefOr = mefCache->findSync(keyBuf.copy());
+  if (maybeMefOr.isError())
+    return maybeMefOr.takeError();
+  std::optional<BufferRef> maybeMef = maybeMefOr.takeValue();
+  if (maybeMef) {
+    // Report telemetry on MEF cache hit.
+    auto onHitLambda = Cache::CacheTelemetryContext::getTelemetryOnHitLambda(
+        "mof::M_compileToBinaryFromSource");
+    onHitLambda(*moduleOp);
+
+    // On cache hit, directly return the MEF buffer.
+    return maybeMef->release();
+  }
+
+  // Otherwise, on cache miss, lower and export to MEF.
+  // First, write telemetry data indicating a MEF cache miss for this model.
+  auto onMissLambda = Cache::CacheTelemetryContext::getTelemetryOnMissLambda(
+      "mof::M_compileToBinaryFromSource",
+      "mof.compiletobinaryfromsource.cache.miss.time",
+      {{"pipeline", "mof::M_compileToBinaryFromSource"}});
+  onMissLambda(*moduleOp);
+
+  auto outBufOr = convertMOToMEF(*moduleOp, moToMgpPasses, enableMEFMetadata);
+  if (outBufOr.isError())
+    return outBufOr.takeError();
+  BufferRef outputBuffer = outBufOr.takeValue();
+
+  // Insert MEF buffer to cache, ignoring failure to insert.
+  (void)mefCache->insertSync(std::move(keyBuf), outputBuffer.copy());
+
   return outputBuffer.release();
 }
 
