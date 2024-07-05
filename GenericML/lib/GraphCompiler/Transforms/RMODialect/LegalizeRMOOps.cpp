@@ -302,78 +302,6 @@ struct LowerThirdPartyBinaryComparisonOp : public OpRewritePattern<RMOOpT> {
   }
 };
 
-/// Returns the input values with asserting rebinds to ensure parameterized
-/// dimensions are equal.
-///
-/// Broadcasting in RMO does not allow parameterized dimensions to broadcast.
-/// As such, parameterized dimensions need an asserting rebind to the expected
-/// output. Afterwards, a normal broadcast can be applied.
-std::pair<TensorValue, TensorValue>
-rebindShapesForBroadcasting(Operation *op, PatternRewriter &rewriter,
-                            TensorValue x, TensorValue y) {
-  Location loc = op->getLoc();
-  TensorType xType = x.getType();
-  TensorType yType = y.getType();
-  ShapeAttr xShapeAttr = xType.getTypedShapeAttr();
-  ShapeAttr yShapeAttr = yType.getTypedShapeAttr();
-
-  if (xShapeAttr == yShapeAttr) {
-    return {x, y};
-  }
-
-  ArrayRef<TypedAttr> xShape = xShapeAttr.getValues();
-  ArrayRef<TypedAttr> yShape = yShapeAttr.getValues();
-  SmallVector<TypedAttr> xRebindShape{xShape};
-  SmallVector<TypedAttr> yRebindShape{yShape};
-
-  size_t xSize = xShape.size();
-  size_t ySize = yShape.size();
-  size_t minSize = std::min(xSize, ySize);
-
-  auto idxTy = IndexType::get(xType.getContext());
-  auto intDim1 = IntegerAttr::get(idxTy, 1ll);
-
-  // Note: dimensions match from the innermost to outermost.
-  // Thus, accesses are with `size - i - 1`.
-  for (size_t i = 0; i < minSize; ++i) {
-    // Parameters in x get rebound if the value in y is a static integer besides
-    // a static one dim.
-    if (TensorType::isParameterizedDimParam(xRebindShape[xSize - i - 1]) &&
-        TensorType::isIntegerDimParam(yShape[ySize - i - 1]) &&
-        yShape[ySize - i - 1] != intDim1)
-      xRebindShape[xSize - i - 1] = yShape[ySize - i - 1];
-
-    // Parameters in y get rebound to the value in x as long as it isn't a
-    // static one dim.
-    if (TensorType::isParameterizedDimParam(yRebindShape[ySize - i - 1]) &&
-        xShape[xSize - i - 1] != intDim1)
-      yRebindShape[ySize - i - 1] = xShape[xSize - i - 1];
-  }
-
-  TensorType xRebindType =
-      xType.cloneWith(ShapeAttr::get(xRebindShape, xShapeAttr.getType()));
-  TensorType yRebindType =
-      yType.cloneWith(ShapeAttr::get(yRebindShape, yShapeAttr.getType()));
-
-  // TODO: It would be preferable to print the location, but the graph api
-  // doesn't set that. As such, it is just unknown. So, for now, print the
-  // offending op.
-  std::string message = "RMO rebind shape check for broadcasting failed at: ";
-  llvm::raw_string_ostream ss(message);
-  ss << *op;
-  auto messageAttr = rewriter.getStringAttr(message);
-
-  if (xRebindType != xType)
-    x = rewriter.create<RMO::RebindTensorShapeOp>(
-        loc, xRebindType, x, ArrayRef<ParamDeclAttr>{}, messageAttr);
-
-  if (yRebindType != yType)
-    y = rewriter.create<RMO::RebindTensorShapeOp>(
-        loc, yRebindType, y, ArrayRef<ParamDeclAttr>{}, messageAttr);
-
-  return {x, y};
-}
-
 template <typename RMOOpT, typename MOAnalogueOpT>
 struct LowerCompositeBinaryElemwiseOp : public OpRewritePattern<RMOOpT> {
   LowerCompositeBinaryElemwiseOp(MLIRContext *ctx)
@@ -399,24 +327,21 @@ struct LowerCompositeBinaryElemwiseOp : public OpRewritePattern<RMOOpT> {
                                          y.getType().cloneWith(resultDtype), y);
     }
 
-    auto [xRebound, yRebound] = rebindShapesForBroadcasting(op, rewriter, x, y);
-
-    TensorValue xFinal = xRebound;
-    TensorValue yFinal = yRebound;
-    if (xRebound.getType().getTypedShapeAttr() !=
-        yRebound.getType().getTypedShapeAttr()) {
+    TensorValue xFinal = x;
+    TensorValue yFinal = y;
+    if (x.getType().getTypedShapeAttr() != y.getType().getTypedShapeAttr()) {
       TensorValue xShape =
-          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{xRebound}, graphOp);
+          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{x}, graphOp);
       TensorValue yShape =
-          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{yRebound}, graphOp);
+          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{y}, graphOp);
 
       TensorValue commonShape = rewriter.create<RMO::MOBroadcastShapeOp>(
           loc, ValueRange{xShape, yShape}, graphOp);
 
       TensorValue xBcast = rewriter.create<RMO::MOBroadcastToOp>(
-          loc, ValueRange{xRebound, commonShape}, graphOp);
+          loc, ValueRange{x, commonShape}, graphOp);
       TensorValue yBcast = rewriter.create<RMO::MOBroadcastToOp>(
-          loc, ValueRange{yRebound, commonShape}, graphOp);
+          loc, ValueRange{y, commonShape}, graphOp);
       xFinal = xBcast;
       yFinal = yBcast;
     }
@@ -463,24 +388,21 @@ struct LowerCompositeBinaryComparisonOp : public OpRewritePattern<RMOOpT> {
           loc, y.getType().cloneWith(comparisonDtype), y);
     }
 
-    auto [xRebound, yRebound] = rebindShapesForBroadcasting(op, rewriter, x, y);
-
-    TensorValue xFinal = xRebound;
-    TensorValue yFinal = yRebound;
-    if (xRebound.getType().getTypedShapeAttr() !=
-        yRebound.getType().getTypedShapeAttr()) {
+    TensorValue xFinal = x;
+    TensorValue yFinal = y;
+    if (x.getType().getTypedShapeAttr() != y.getType().getTypedShapeAttr()) {
       TensorValue xShape =
-          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{xRebound}, graphOp);
+          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{x}, graphOp);
       TensorValue yShape =
-          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{yRebound}, graphOp);
+          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{y}, graphOp);
 
       TensorValue commonShape = rewriter.create<RMO::MOBroadcastShapeOp>(
           loc, ValueRange{xShape, yShape}, graphOp);
 
       TensorValue xBcast = rewriter.create<RMO::MOBroadcastToOp>(
-          loc, ValueRange{xRebound, commonShape}, graphOp);
+          loc, ValueRange{x, commonShape}, graphOp);
       TensorValue yBcast = rewriter.create<RMO::MOBroadcastToOp>(
-          loc, ValueRange{yRebound, commonShape}, graphOp);
+          loc, ValueRange{y, commonShape}, graphOp);
       xFinal = xBcast;
       yFinal = yBcast;
     }
