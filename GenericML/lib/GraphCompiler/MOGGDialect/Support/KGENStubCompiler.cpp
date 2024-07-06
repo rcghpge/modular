@@ -157,7 +157,6 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
       STRINGIFY(KERNELS_BUILD_TYPE);
 
   // Compile to LLVM.
-  mlir::SymbolTable symTable{kgenModule};
   TargetInfoAttr target = getTargetInfo(kgenModule);
   KGEN::CompilationOptions compilationOptions;
   compilationOptions.targetTriple = target.getTripleStr();
@@ -184,15 +183,12 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
 
   if (compilerOr.isError())
     return compilerOr.takeError();
-  llvm::MapVector<StringAttr, KGEN::ExportedSymbol> exportedSymbols =
-      KGEN::getExportedSymbols(kgenModule);
 
   std::unique_ptr<KGEN::ObjectCompiler> compiler = compilerOr.takeValue();
 
   auto start = std::chrono::high_resolution_clock::now();
 
-  auto standaloneOr =
-      compiler->produceStandaloneArchiveAttr(symTable, exportedSymbols, target);
+  auto standaloneOr = compiler->emitArchiveAttr(kgenModule);
   if (standaloneOr.isError())
     return standaloneOr.takeError();
   ElementsAttr archiveAttr = *standaloneOr;
