@@ -46,8 +46,8 @@ module {
 // CHECK-NEXT: [[V4:%.*]] = kgen.call @"MOGGTests::MyCustomInt::__init__(MOGGTests::MyCustomInt=&,stdlib::builtin::int::[[INT:[A-Za-z0-9_]*]])"([[V3]], [[INDEX42]]) : (!kgen.pointer<struct<(index) memoryOnly>> init_self, index) -> !kgen.none
 
 // COM: Get the move / del function pointers
-// CHECK-NEXT: [[V5:%.*]] = kgen.create_closure[(!kgen.pointer<struct<(index) memoryOnly>> init_self, !kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none: @"MOGGTests::MyCustomInt::__moveinit__(MOGGTests::MyCustomInt=&,MOGGTests::MyCustomInt)"]()
-// CHECK-NEXT: [[V6:%.*]] = kgen.create_closure[(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none: @"MOGGTests::MyCustomInt::__del__(MOGGTests::MyCustomInt)"]()
+// CHECK-NEXT: [[V5:%.*]] = kgen.create_reg_stub [(!kgen.pointer<struct<(index) memoryOnly>> init_self, !kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none: @"MOGGTests::MyCustomInt::__moveinit__(MOGGTests::MyCustomInt=&,MOGGTests::MyCustomInt)"] : <(!kgen.pointer<struct<(index) memoryOnly>> init_self, !kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none>
+// CHECK-NEXT: [[V6:%.*]] = kgen.create_reg_stub [(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none: @"MOGGTests::MyCustomInt::__del__(MOGGTests::MyCustomInt)"] : <(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none>
 
 // COM: Get the sizeof and alignof properties needed to allocate heap memory for the mojo value.
 // CHECK-NEXT: [[INDEX:%.*]] = kgen.param.constant = <get_sizeof(struct<(index) memoryOnly>, current_target())>
