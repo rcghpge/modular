@@ -20,6 +20,7 @@
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
+#include "KGEN/POPDialect/POPOps.h"
 #include "Support/AssertStream.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
@@ -555,12 +556,17 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   }
 
   DenseMap<TypedAttr, Value> loweredParams;
-  auto addParams = [&](Location loc, Type t) {
-    MO::TensorType asTensor = dyn_cast<MO::TensorType>(t);
-    if (!asTensor)
-      return;
+  auto addParams = [&](Location loc, Operation &op,
+                       Type t) -> CompileDiagnosticOrSuccess {
+    ArrayRef<TypedAttr> dims;
+    if (auto asTensor = dyn_cast<MO::TensorType>(t))
+      dims = asTensor.getDims();
+    else if (auto shape = dyn_cast<MOGG::ShapeType>(t))
+      dims = dyn_cast<MOSH::ShapeAttr>(shape.getShapeAttr()).getValues();
+    else
+      return success();
 
-    for (auto ty : asTensor.getDims()) {
+    for (auto ty : dims) {
       if (loweredParams.contains(ty))
         continue;
 
@@ -574,18 +580,25 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         loweredParams[ty] =
             kernelBody.getArgument(paramDimToIdx[cst.getName()]);
       } else {
-        llvm_unreachable("Unsupported dim attribute type.");
+        return op.emitError("Unsupported dim attribute type: ") << ty;
       }
     }
+    return success();
   };
 
   // Add all the seen shape parameters values as concrete KGEN param values.
-  this->walk([&](Operation *op) {
-    for (auto type : op->getOperandTypes())
-      addParams(op->getLoc(), type);
-    for (auto type : op->getResultTypes())
-      addParams(op->getLoc(), type);
-  });
+  for (auto &op : this->getOps()) {
+    for (auto type : op.getOperandTypes()) {
+      auto err = addParams(op.getLoc(), op, type);
+      if (err.isError())
+        return err.takeError();
+    }
+    for (auto type : op.getResultTypes()) {
+      auto err = addParams(op.getLoc(), op, type);
+      if (err.isError())
+        return err.takeError();
+    }
+  }
 
   IRMapping mapper;
 
@@ -676,6 +689,30 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     }
     builder.clone(op, mapper);
   }
+
+  // We must remove all param_shape_to_value ops because parameters don't exist
+  // in MGP.
+  SmallVector<MOGG::ParamShapeToValueOp> shapes(
+      kernelBody.getOps<MOGG::ParamShapeToValueOp>());
+  for (auto getShape : shapes) {
+    builder.setInsertionPointAfter(getShape);
+    SmallVector<Value> dimensions;
+    for (auto dim : dyn_cast<MOSH::ShapeAttr>(
+                        getShape.getResult().getType().getShapeAttr())
+                        .getValues()) {
+      auto param = loweredParams.find(dim);
+      if (param == loweredParams.end())
+        return getShape->emitError("Parameter has not been lowered: ") << dim;
+      dimensions.push_back(param->second);
+    }
+    auto arrayCreate =
+        builder.create<KGEN::POP::ArrayCreateOp>(getShape.getLoc(), dimensions);
+    auto toMOGG = builder.create<MOGG::ToMOGGOp>(
+        getShape.getLoc(), TypeRange(getShape.getResult().getType()),
+        ValueRange(arrayCreate));
+    getShape.replaceAllUsesWith(toMOGG.getResult());
+    getShape->erase();
+  };
 
   DenseMap<int, MOGG::ToKGENOp> outIdxToKgenTensorOp;
   for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
