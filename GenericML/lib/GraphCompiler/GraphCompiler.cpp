@@ -141,12 +141,24 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
+  // Label for constant fold.
+  std::string_view compiledFrameworkLabel;
+  if (opts.compiledFrameworkLabel.hasValue())
+    compiledFrameworkLabel = opts.compiledFrameworkLabel;
+
   if (opts.useShapeInference) {
     ShapeInferenceOptions shapeInferenceOpts;
     shapeInferenceOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
     shapeInferenceOpts.constantFold = opts.constantFold;
     shapeInferenceOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
     buildShapeInferencePipeline(pm, shapeInferenceOpts, opts);
+
+    // We constant fold after shape inference because
+    // 1. shape annotation helps constant fold's policy to avoid memory blow up.
+    // 2. constant fold might open up new opportunities for symbolic
+    // optimization.
+    if (opts.constantFold)
+      pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
 
     // Run symbolic optimizations after shape inference to avoid complicating
     // tracing shape pipeline.
@@ -166,10 +178,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
   }
-
-  std::string_view compiledFrameworkLabel;
-  if (opts.compiledFrameworkLabel.hasValue())
-    compiledFrameworkLabel = opts.compiledFrameworkLabel;
 
   if (opts.constantFold)
     pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
@@ -370,39 +378,9 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
   // 2. Materialize parameter definition for `mo.rebind` that still declare
   //    output parameters.
   pm.addPass(mlir::createCanonicalizerPass());
-  // Staticization should always run first because it might open up new
-  // opportunities for shape function symbolicization.
-  pm.addPass(MO::createStaticizeShapes());
   pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(symbolizationOpts));
   // Propagation always goes last as it simplifies and propagates all the
   // symbolic expressions we obtained from staticization and symbolicization.
-  pm.addPass(MO::createPropagateShapes());
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-
-  // TODO(GRA-560): There may be more opportunities in staticization exposed by
-  // propagation of shapes which is why it's repeated here.
-  pm.addPass(MO::createStaticizeShapes());
-  pm.addPass(MO::createPropagateShapes());
-
-  // Re-run the simplification part of shape inference (i.e., excluding
-  // `ResolveUnknownParameters` and `AddFallbackShapeFunctions`)
-
-  // We run constant folding here because sometimes not all constant ops
-  // have static output shape (and constant folding will conservatively not fold
-  // those), e.g., `mo.range : ... -> !mo.tensor<[?], si32>`. Constant folding
-  // is needed because Staticization currently only works on a limited set
-  // of shape computation encoded in MO.
-  if (opts.constantFold) {
-    pm.addPass(
-        MO::createConstantFoldPass(opts.compiledFrameworkLabel.hasValue()
-                                       ? opts.compiledFrameworkLabel.getValue()
-                                       : "",
-                                   moToMgpOptions));
-  }
-  // The rest follows the ordering from above, also see comments there for why.
-  pm.addPass(MO::createStaticizeShapes());
-  pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(symbolizationOpts));
   pm.addPass(MO::createPropagateShapes());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
