@@ -348,8 +348,9 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths,
   updateLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel,
                                    eager);
 
-  auto loadError = loadUserProvidedKernels(kernelLibraryPaths, eager);
-  ASSERT_STREAM(!loadError.isError(), << loadError.takeError());
+  if (auto loadError = loadUserProvidedKernels(kernelLibraryPaths, eager))
+    return Error(Twine("failed to load user-provided kernels: ") +
+                 loadError.getError());
 
   finalized = eager;
 
