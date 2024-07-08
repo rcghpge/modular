@@ -3811,10 +3811,19 @@ def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [Pure]> {
 
 def MO_LayerNormOp : MO_TensorOp<"layer_norm", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Layer normalization operation";
   let description = [{
-    Layer normalization operation
+    Layer normalization operation which operates on the last dimension of
+    `input`:
+
+      meanInput = mean(input)
+      varInput = var(input)
+      result = (input - meanInput) / sqrt(varInput + epsilon) * gamma + beta.
+
+    We expect gamma and beta to be shape [channels], where channels is the size
+    of the last input dimension.
   }];
 
   let arguments = (ins MO_Tensor:$input,

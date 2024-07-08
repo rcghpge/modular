@@ -30,6 +30,8 @@ RMOConversionTarget::RMOConversionTarget(MLIRContext &ctx)
       MO::ConcatFromListOp,
       // Custom ops allowed for now
       MO::CustomOp,
+      // TODO (GRA-723)
+      MO::LayerNormOp,
       // Copied from MOConversionTarget
       ModuleOp, mlir::UnrealizedConversionCastOp>();
 }

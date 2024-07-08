@@ -3697,6 +3697,16 @@ LogicalResult MutableStore::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_LayerNormOp
+//===----------------------------------------------------------------------===//
+
+DeviceRefAttr LayerNormOp::getOperandDevice(size_t index) {
+  return index == getEpsilonMutable().getOperandNumber()
+             ? getHostDevice(getOperation())
+             : nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 
