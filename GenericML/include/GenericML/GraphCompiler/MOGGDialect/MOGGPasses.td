@@ -175,6 +175,26 @@ def FuseInOutLambdas: Pass<"fuse-in-out-lambdas", "MO::GraphOp"> {
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }
 
+def FuseMutableOps: Pass<"fuse-mutable-ops", "MO::GraphOp"> {
+  let summary = "Fuse mo.mutable.load/store ops into kernel bodies.";
+  let description = [{
+    Will fuse in a mo.mutable.load and mo.mutable.store op pair surrounding a
+    mogg.kernel under appropriate conditions.
+
+    Mechanically this is done by:
+    1. Replacing the value semantic tensor created by the mo.mutable.load op
+    that is input to the kernel with the buffer semantic tensor it's derived
+    from.
+    2. Adding the chain consumed by the load op as operand of the kernel op.
+    3. Replacing the old output of the kernel with a chain and having all
+    former consumers of the output chain produced by the store op take this new
+    chain.
+    4. Rewriting the kernel body to make use of the buffer semantic tensor in
+    the output lambda rather than the one created by the output placeholder op.
+  }];
+  let dependentDialects = ["M::MOGG::MOGGDialect"];
+}
+
 def MarkTrivialKernels: Pass<"mark-trivial-kernels", "MO::GraphOp"> {
   let summary = "Decide which `MOGG::KernelOp`s can be sequentially fused.";
   let description = [{

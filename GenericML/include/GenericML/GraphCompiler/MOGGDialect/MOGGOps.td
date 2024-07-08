@@ -205,7 +205,7 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     Kernels preserve the device of their original MO op.
   }];
 
-  let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque]>>:$operands,
+  let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Buffer, MO_Chain]>>:$operands,
     MO_ParamDecls:$outputParamDecls,
     OptionalAttr<ArrayAttr>:$inputFusionInterface,
     OptionalAttr<ArrayAttr>:$outputFusionInterface,
@@ -216,7 +216,7 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     OptionalAttr<BoolAttr>:$isAsync,
     OptionalAttr<ArrayAttr>:$allocIndices
   );
-  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque]>>:$results);
+  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Buffer, MO_Chain]>>:$results);
   let regions = (region SizedRegion<1>:$body);
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
@@ -756,7 +756,7 @@ def MOGG_RuntimePlaceholderOp : MOGG_Op<"rt_placeholder", [Pure]> {
 }
 
 def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders"> {
-  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque]>>:$results);
+  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Buffer, MO_Chain]>>:$results);
 
   let summary = "Represents buffer semantic SSA values for the outputs";
   let description = [{
