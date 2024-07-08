@@ -1,0 +1,19 @@
+filegroup(
+    name = "cpp_bindings_srcs",
+    srcs = glob(["bindings/**/*.cpp"]),
+    visibility = [":__subpackages__"],
+)
+
+filegroup(
+    name = "cpp_srcs",
+    srcs = glob(["lib/**/*.cpp"]),
+    visibility = ["//SDK:__pkg__"],
+)
+
+py_library(
+    name = "max_driver",
+    srcs = ["//SDK/lib/DriverAPI/python/max/driver:py_srcs"],
+    data = ["//SDK/lib/DriverAPI/python/max/driver:driver_core"],
+    imports = ["."],
+    visibility = ["//visibility:public"],
+)

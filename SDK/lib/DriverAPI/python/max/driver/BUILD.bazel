@@ -1,0 +1,17 @@
+load("//bazel:api.bzl", "modular_pybind_extension")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "py_srcs",
+    srcs = glob(["**/*.py"]),
+)
+
+modular_pybind_extension(
+    name = "driver_core",
+    srcs = ["//SDK/lib/DriverAPI/python:cpp_bindings_srcs"],
+    deps = [
+        "//SDK:DriverPython",
+        "@llvm-project//llvm:Support",
+    ],
+)

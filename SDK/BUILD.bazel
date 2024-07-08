@@ -121,3 +121,12 @@ driver_option_tablegen(
         "//Support:DriverCommandTdFiles",
     ],
 )
+
+modular_cc_library(
+    name = "DriverPython",
+    srcs = ["//SDK/lib/DriverAPI/python:cpp_srcs"],
+    hdrs = glob(["include/SDK/DriverAPI/python/*.h"]),
+    deps = [
+        "//GenericML:DeviceDriver",
+    ],
+)
