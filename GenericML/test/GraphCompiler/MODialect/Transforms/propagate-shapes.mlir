@@ -603,3 +603,46 @@ mo.graph @slice_and_shape_of<D0 -> O1>(
   // CHECK-NEXT: mo.output [[TENSOR_SH]]
   mo.output<D2> %shape : !mo.tensor<[D2], si32>
 }
+
+// This test ensures that staticized input actually gets materialized via
+// `mo.shape.to_tensor`, so that we don't have to run all the shape computation
+// via kernels. This is important for ops which can be shape inferred and have
+// non-trivial data dependent input.
+// CHECK-LABEL: mo.graph @slice_with_staticized_input
+//  CHECK-SAME: <[[D0:.*]]>(
+//  CHECK-SAME: [[INPUT:%.*]]: !mo.tensor<[[[D0]], 2304], f32>
+//   CHECK-DAG:   [[STEP:%.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+//   CHECK-DAG:   [[START:%.*]] = mo.constant {value = #M.dense_array<0, 768> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+//   CHECK-DAG:   [[STOP_MOSH:%.*]] = mosh.param.to_value: !mosh.ape = <[[[D0]], 1536]>
+//  CHECK-NEXT:   [[STOP:%.*]] = mo.shape.to_tensor([[STOP_MOSH]]) -> !mo.tensor<[2], si64>
+//  CHECK-NEXT:   [[RES:%.*]] = mo.slice([[INPUT]], [[START]], [[STOP]], [[STEP]]) : {{.*}} -> !mo.tensor<[D0, 768], f32>
+//  CHECK-NEXT:   mo.output [[RES]]
+mo.graph @slice_with_staticized_input<D0 -> D1, D2>(
+  %input: !mo.tensor<[D0, 2304], f32>
+) -> !mo.tensor<[D1, D2], f32> {
+  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %two = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %zero = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
+  %zero_scalar = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+  %neg_one = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %three = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+
+  // The following is a generic way to compute N // 3 (where N == 2304 in our
+  // case). It can't be constant folded because `mo.shape_of(%input)` isn't a
+  // constant op as it's formulated (the 1st input dimension is dynamic).
+  %in_shape = mo.shape_of(%input) : (!mo.tensor<[D0, 2304], f32>) -> !mo.tensor<[2], si64>
+  %last_dim = mo.gather(%in_shape, %neg_one, %zero_scalar) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1], si64>
+  %add = mo.add(%last_dim, %two) : !mo.tensor<[1], si64>
+  %div = mo.div(%add, %three) : !mo.tensor<[1], si64>
+  %mul = mo.mul(%div, %two) : !mo.tensor<[1], si64>
+
+  // Prepare the start/stop bounds.
+  %d0 = mo.gather(%in_shape, %zero, %zero_scalar) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1], si64>
+  %start = mo.concat[%zero_scalar : !mo.tensor<[], si64>] (%zero, %div) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
+  %stop = mo.concat[%zero_scalar : !mo.tensor<[], si64>] (%d0, %mul) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
+
+  mo.invoke_shape_func["slice_shape"]<() -> D3, D4>(%input, %start, %stop, %step)
+    {dataDeptTensors = [1, 2, 3]} : (!mo.tensor<[D0, 2304], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
+  %res = mo.slice(%input, %start, %stop, %step) : (!mo.tensor<[D0, 2304], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[D3, D4], f32>
+  mo.output<D3, D4> %res : !mo.tensor<[D3, D4], f32>
+}

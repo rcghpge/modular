@@ -352,7 +352,8 @@ static StaticizeResult tryStaticize(Value val) {
   return StaticizeResult::success(std::move(bindings), res);
 }
 
-/// Try to shape infer the input op if possible. Return either
+/// Try to shape infer the input op if possible, given the input shapes or
+/// staticized input data. Return either
 /// - a failure as fatal failure (e.g., some shape assertion failed)
 /// - a list of decomposed ops (ordered by SSA and parametric dependencies) if
 ///   decomposition was possible
@@ -361,42 +362,8 @@ static StaticizeResult tryStaticize(Value val) {
 /// NOTE the input op won't be modified.
 /// TODO replace input op type with a `ShapeInferrable` interface.
 static ErrorOr<SmallVector<KGEN::ParamDeclareOp>>
-shapeInferOpImpl(InvokeShapeFuncOp invokeShapeFuncOp) {
-  SmallVector<ParamBinding> bindings;
-  // Turn inputs into parameter attributes; the mechanism depends on whether
-  // they are data-dependent or not.
-  DenseSet<int64_t> dataDepInputIdxs;
-  if (auto idxs = invokeShapeFuncOp.getDataDeptTensors()) {
-    for (llvm::APInt index : idxs->getAsValueRange<IntegerAttr>())
-      dataDepInputIdxs.insert(index.getLimitedValue());
-  }
-  SmallVector<TypedAttr> inputAttrs;
-  for (auto [idx, input] : llvm::enumerate(invokeShapeFuncOp.getOperands())) {
-    if (dataDepInputIdxs.contains(idx)) {
-      StaticizeResult res = tryStaticize(input);
-
-      // Short circuit if a data-dependent input can't be staticized.
-      if (res.isNonStaticizable())
-        return SmallVector<KGEN::ParamDeclareOp>();
-
-      // Short circuit on any fatal error.
-      if (res.isError())
-        return Error(res.getError().msg);
-
-      auto &success = res.getSuccess();
-      llvm::append_range(bindings, success.bindings);
-      inputAttrs.push_back(success.resultAttr);
-
-    } else {
-      // Short circuit if a non-data-dependent input doesn't have a shape; not
-      // exactly sure how this could happen but just in case.
-      TensorValue tensorInput = dyn_cast<TensorValue>(input);
-      if (!tensorInput)
-        return SmallVector<KGEN::ParamDeclareOp>();
-
-      inputAttrs.push_back(tensorInput.getType().getShapeAttr());
-    }
-  }
+shapeInferOpImpl(InvokeShapeFuncOp invokeShapeFuncOp,
+                 ArrayRef<TypedAttr> inputAttrs) {
 
   // Dispatch on certain shape function names. TODO instead of using a map
   // loopkup, guard this against a new interface.
@@ -420,6 +387,7 @@ shapeInferOpImpl(InvokeShapeFuncOp invokeShapeFuncOp) {
     return Error(result.getError().msg);
 
   // Successfully inferred, package and propagate information to caller.
+  SmallVector<ParamBinding> bindings;
   if (result.isSuccess()) {
     // Create new declaration of the shape function call's output parameter;
     auto &success = result.getSuccess();
@@ -798,26 +766,116 @@ struct PropagateShapesPass
   /// processed next immediately.
   static ErrorOrSuccess shapeInferOp(InvokeShapeFuncOp op,
                                      std::deque<Operation *> &worklist) {
-    // Try shape infer the op, and check if it was successful.
-    ErrorOr<SmallVector<KGEN::ParamDeclareOp>> decomposedOpsOr =
-        shapeInferOpImpl(op);
-    if (decomposedOpsOr.isError())
-      return Error(decomposedOpsOr.getError());
+    // Turn inputs into parameter attributes; the mechanism depends on whether
+    // they are data-dependent or not.
+    SmallVector<ParamBinding> staticizationBindings;
+    DenseSet<int64_t> dataDepInputIdxs;
+    if (auto idxs = op.getDataDeptTensors()) {
+      for (llvm::APInt index : idxs->getAsValueRange<IntegerAttr>())
+        dataDepInputIdxs.insert(index.getLimitedValue());
+    }
+    SmallVector<TypedAttr> inputAttrs;
+    for (auto [idx, input] : llvm::enumerate(op.getOperands())) {
+      if (dataDepInputIdxs.contains(idx)) {
+        StaticizeResult res = tryStaticize(input);
 
-    SmallVector<KGEN::ParamDeclareOp> &decomposedOps = decomposedOpsOr.get();
-    if (decomposedOps.empty())
+        // Short circuit if a data-dependent input can't be staticized.
+        if (res.isNonStaticizable())
+          return success();
+
+        // Short circuit on any fatal error.
+        if (res.isError())
+          return Error(res.getError().msg);
+
+        auto &success = res.getSuccess();
+        llvm::append_range(staticizationBindings, success.bindings);
+        inputAttrs.push_back(success.resultAttr);
+
+      } else {
+        // Short circuit if a non-data-dependent input doesn't have a shape; not
+        // exactly sure how this could happen but just in case.
+        TensorValue tensorInput = dyn_cast<TensorValue>(input);
+        if (!tensorInput)
+          return success();
+
+        inputAttrs.push_back(tensorInput.getType().getShapeAttr());
+      }
+    }
+
+    // Try shape infer the op, and check if it was successful.
+    ErrorOr<SmallVector<KGEN::ParamDeclareOp>> paramDeclOpsOr =
+        shapeInferOpImpl(op, inputAttrs);
+    if (paramDeclOpsOr.isError())
+      return Error(paramDeclOpsOr.getError());
+
+    SmallVector<KGEN::ParamDeclareOp> &paramDeclOps = paramDeclOpsOr.get();
+    if (paramDeclOps.empty())
       return success();
 
+    // Materialize staticized values; we do this because for certain ops (e.g.,
+    // `mo.slice`), the data dependent input might still get fed to the op
+    // itself, even after the op has been shape inferred. In such cases it's
+    // better to have those input something like
+    //   %tmp = mosh.param.to_value: !mosh.ape = <[10, D0]>
+    //   %input = mo.shape.to_tensor(%tmp) : !mo.tensor<[2], si32>
+    // rather than
+    //   %shape = mo.shape_of(%x)
+    //   %d0 = mo.gather(%shape)
+    //   %input = mo.concat(%ten, %d0) : ... -> !mo.tensor<[2], si32>
     OpBuilder builder(op);
-    // Replace the original op with decomposed ops in correct order.
-    for (Operation *decomposedOp : decomposedOps)
-      builder.insert(decomposedOp);
+    Location loc = op.getLoc();
+    SmallVector<Operation *> newOps; // Tracks all the newly created ops.
+    for (ParamBinding &binding : staticizationBindings)
+      newOps.push_back(binding.toOp(loc, builder));
+    for (auto [idx, input] : llvm::enumerate(op.getOperands())) {
+      // Skip if it's not a data dependent input, or if it's already been
+      // materialized (this occurs if the input is shared between multiple ops).
+      if (!dataDepInputIdxs.contains(idx) ||
+          !input.getDefiningOp<Staticization>())
+        continue;
+
+      TensorType inputTensorTy = cast<TensorType>(input.getType());
+      DType inputDtype = inputTensorTy.getDtype();
+      // We only staticize input of type `si32` or `si64`, this is a practical
+      // restriction we can easily extend if there are perf needs.
+      if (!inputDtype.isInt() ||
+          !llvm::is_contained({32, 64}, inputDtype.getWidthInBits()))
+        continue;
+
+      // Grab the saved staticization result, and create
+      //   %tmp   = mosh.param.to_value: !mosh.ape = <[10, D0]>
+      //   %input = mo.shape.to_tensor(%tmp) : !mo.tensor<...>
+      TypedAttr inputAttr = inputAttrs[idx];
+      auto paramToValOp =
+          builder.create<MOSH::ParamToValueOp>(loc, inputAttrs[idx]);
+      Value newInputVal;
+      if (isa<ShapeType>(inputAttr.getType())) {
+        newInputVal = builder.create<Shape::ToTensorOp>(
+            loc, inputTensorTy, paramToValOp.getResult());
+      } else {
+        newInputVal = builder.create<IndexToTensorOp>(loc, inputTensorTy,
+                                                      paramToValOp.getResult());
+      }
+      // Track the new ops so they'll get processed in the worklist loop later.
+      newOps.push_back(paramToValOp);
+      newOps.push_back(newInputVal.getDefiningOp());
+
+      // Replace old uses with the new op.
+      input.replaceAllUsesWith(newInputVal);
+    }
+
+    // Replace the original op with param decl ops in correct order.
+    // Note that the ops from staticization has already been inserted correctly
+    // since they were built with `builder`.
+    for (Operation *declOp : paramDeclOps)
+      builder.insert(declOp);
     op->erase();
 
-    // The first decomposed op must be processed next in the worklist, so we
-    // push the decomposed ops onto the worklist in reversed order.
-    for (Operation *decomposedOp : llvm::reverse(decomposedOps))
-      worklist.push_back(decomposedOp);
+    llvm::append_range(newOps, paramDeclOps);
+    // The first new op must be processed next in the worklist, so we push the
+    // new ops onto the worklist in reversed order.
+    for (Operation *newOp : llvm::reverse(newOps))
+      worklist.push_back(newOp);
 
     return success();
   }
