@@ -2235,7 +2235,11 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
       TensorValue startTensor = tensorBSHD;
 
       // Dump identity permutation.
-      SmallVector<int64_t> permutationBackToBSHD = {0, 1, 2, 3};
+      SmallVector<int64_t> identityPermutation = {0, 1, 2, 3};
+
+      // Keep track the layout of `startTensor` as we push through transposes.
+      // We map the identity permutation to BSHD, e.g. H = 2.
+      SmallVector<int64_t> curLayout = identityPermutation;
       while (true) {
         if (auto transposeOp = startTensor.getDefiningOp<TransposeOp>()) {
           startTensor = transposeOp.getInput();
@@ -2244,8 +2248,8 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
             return Error("[extractGroupedAttentionTensor] transpose does not "
                          "have constant permutation.");
 
-          permutationBackToBSHD =
-              permuteReverse(permutationBackToBSHD, *maybePerm);
+          // Get the input layout given the permutation
+          curLayout = permuteReverse(curLayout, *maybePerm);
           continue;
         }
 
@@ -2278,6 +2282,10 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
 
       TensorValue compressedValue = reshape2.getInput();
 
+      // We want to go back to curLayout --> identityPermutation.
+      // So figure this out.
+      SmallVector<int64_t> permutationBackToBSHD =
+          solvePermutation(identityPermutation, curLayout);
       return backwardGetBSHDTensor(permutationBackToBSHD, compressedValue,
                                    rewriter, graphOp);
     }
