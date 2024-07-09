@@ -232,6 +232,43 @@ def DeviceContextCreateOp : MGP_DeviceOp<"device.context.create"> {
 }
 
 //===----------------------------------------------------------------------===//
+// DeviceContextExtractOp
+//===----------------------------------------------------------------------===//
+
+def DeviceContextExtractOp : MGP_DeviceOp<"device.context.extract"> {
+  let summary = "Creates Mojo-side device context.";
+  let description = [{
+    Device context is stored in the runtime. The context is treated as an 
+    opaque pointer. This primitive will extract the device context and return 
+    it explicitly as an OpaqueType
+
+    Example:
+    ```mlir
+      %device_ctx = mgp.device.context.create %ch0, %ctx[5] device <"cuda", 3>
+      %ch1 : !mef.chain
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       UI64Attr:$aDeviceRuntimeSlot,   // 0
+                       MGP_OptDeviceRefAttr:$bDevice); // 1
+  let results = (outs AnyType:$outDeviceContext);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `[` $aDeviceRuntimeSlot `]` ( `device` $bDevice^ )?  attr-dict `:` type($outDeviceContext)
+  }];
+  let hasVerifier = 1;
+  let extraClassDefinition = [{
+    uint64_t DeviceContextExtractOp::getSlot() { return getADeviceRuntimeSlot(); }
+
+    M::DeviceRefAttr DeviceContextExtractOp::getDevice() { return getBDevice(); }
+  }];
+}
+
+
+//===----------------------------------------------------------------------===//
 // DeviceContextProfileStartOp
 //===----------------------------------------------------------------------===//
 

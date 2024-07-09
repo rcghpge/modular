@@ -766,6 +766,19 @@ static void mgp_buffer_unsize(AnyAsyncValueRef inBuffer,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.device.context.extract.cpu
+//===----------------------------------------------------------------------===//
+
+static void mgp_device_context_extract_cpu(Chain inChain,
+                                           StateContext &theContext,
+                                           Result<void *> output,
+                                           MEFAttr<uint64_t> aRuntimeSlot,
+                                           MEFAttr<uint64_t> bDeviceId,
+                                           Runtime &runtime) {
+  std::move(output).emplace(nullptr);
+}
+
+//===----------------------------------------------------------------------===//
 // Registration
 //===----------------------------------------------------------------------===//
 
@@ -804,6 +817,8 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.debug.tensor.print.cpu",
                 mgp_debug_tensor_print_cpu);
   ADD_PRIMITIVE(registry, "mgp.kernel.execute.cpu", mgp_kernel_execute_cpu);
+  ADD_PRIMITIVE(registry, "mgp.device.context.extract.cpu",
+                mgp_device_context_extract_cpu);
 
   // TODO(#30906): Move into MGPPrimitives once mgp.buffer.unsize removed.
   ADD_PRIMITIVE(registry, "mgp.buffer.unsize", mgp_buffer_unsize);

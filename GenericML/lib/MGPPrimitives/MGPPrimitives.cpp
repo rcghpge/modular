@@ -152,12 +152,12 @@ using MGPProfilerEntry =
     ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
 
 static void mgp_generic_execute(
-    StateContext &ctx, Chain inChain, RemainingArguments operands,
-    Result<Chain> outChain, RemainingResults outResults,
-    MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
-    MEFAttr<uint64_t> cFunctionIndex, MEFAttr<StringRef> dSummary,
-    MEFAttr<bool> eIsAsync, MEFAttr<bool> fHasCuda, MEFAttr<uint64_t> gCudaSlot,
-    Runtime &runtime, EncodedLocation loc) {
+    StateContext &ctx, Chain inChain, AnyAsyncValueRef deviceContext,
+    RemainingArguments operands, Result<Chain> outChain,
+    RemainingResults outResults, MEFAttr<uint64_t> aSlot,
+    MEFAttr<uint64_t> bModuleIndex, MEFAttr<uint64_t> cFunctionIndex,
+    MEFAttr<StringRef> dSummary, MEFAttr<bool> eIsAsync, MEFAttr<bool> fHasCuda,
+    MEFAttr<uint64_t> gCudaSlot, Runtime &runtime, EncodedLocation loc) {
   auto profilerEntry = MGPProfilerEntry::create(*dSummary);
   M::MGP::KernelExecutionState &kernelExecutionState =
       ctx.getStateSlotPayload<M::MGP::KernelExecutionState>(
@@ -181,18 +181,19 @@ static void mgp_generic_execute(
                     cudaSlot = gCudaSlot.get(),
                     profilerEntry = std::move(profilerEntry),
                     runtimePtr = std::move(runtimePtr),
+                    deviceContext = std::move(deviceContext),
                     loc = std::move(loc)]() mutable {
     CUDARuntime *cudaRuntimePtr = nullptr;
-    void *deviceContextPtr = nullptr;
+    void *deviceContextPtr = deviceContext.get<void *>();
+    // Setup the current cuda context as the default context for this call.
+    std::optional<CurrentCUDAContext> current;
     if (hasCuda) {
       // GRA-594: When Device Context is passed to the primitive directly, we
       // don't need to set the runtime
       cudaRuntimePtr = reinterpret_cast<CUDARuntime *>(
           ctx.getStateSlot(static_cast<size_t>(cudaSlot))
               .getUnderlyingPointer());
-      if (cudaRuntimePtr->deviceContext.has_value()) {
-        deviceContextPtr = cudaRuntimePtr->deviceContext.value().getData();
-      }
+      current.emplace(*cudaRuntimePtr);
     }
     std::vector<void *> kernelInputs;
     kernelInputs.reserve(outResults.size() + takenOperands.size());
@@ -200,11 +201,6 @@ static void mgp_generic_execute(
       kernelInputs.push_back(&input);
     for (AnyAsyncValueRef &i : outResults)
       kernelInputs.push_back(&i);
-
-    // Setup the current cuda context as the default context for this call.
-    std::optional<CurrentCUDAContext> current;
-    if (hasCuda)
-      current.emplace(*cudaRuntimePtr);
 
     MojoCallContext callContext(outChain.copy(), outChain.getLocation().copy(),
                                 cudaRuntimePtr, deviceContextPtr);

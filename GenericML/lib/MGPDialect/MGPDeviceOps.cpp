@@ -162,6 +162,14 @@ LogicalResult DeviceContextCreateOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// DeviceContextExtractOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DeviceContextExtractOp::verify() {
+  return verifyConsistentDevices(getOperation(), {getBDevice()});
+}
+
+//===----------------------------------------------------------------------===//
 // DeviceContextProfileStartOp
 //===----------------------------------------------------------------------===//
 

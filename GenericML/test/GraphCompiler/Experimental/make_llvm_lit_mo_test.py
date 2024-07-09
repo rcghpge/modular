@@ -77,10 +77,10 @@ def pretty_print_module_string(module_str: str):
     module_str = "\n".join(module_str.split("\n")[1:-1])
 
     # get all the stuff after mo.graph (which we use to generate a CHECK-LABEL)
-    module_str = module_str.split("mo.graph ")[1]
+    module_str = module_str.split("mgp.model ")[1]
     lines = module_str.split("\n")
 
-    print("// CHECK-LABEL: mo.graph")
+    print("// CHECK-LABEL: mgp.model")
     for i, line in enumerate(lines):
         prefix = "CHECK-SAME" if i == 0 else "CHECK-NEXT"
         print(f"// {prefix}: {line.strip()}")

@@ -14,7 +14,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
+#include "GenericML/MGPTransforms/Utils.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "Support/DeviceSpecs.h"
 
@@ -39,21 +39,57 @@ struct LowerMOGGRegionCompilesPass
     : public MGP::impl::LowerMOGGRegionCompilesBase<
           LowerMOGGRegionCompilesPass> {
   using LowerMOGGRegionCompilesBase::LowerMOGGRegionCompilesBase;
-
+  Value getOrCreateDeviceContextExtractOp(
+      OpBuilder &builder, const Location &loc, const Value &inChain,
+      const Value &inContext, const size_t runtimeSlot,
+      const DeviceRefAttr device, Region *region,
+      llvm::SmallDenseMap<
+          std::tuple<Region *, Value>,
+          llvm::SmallDenseMap<DeviceRefAttr, MGP::DeviceContextExtractOp>>
+          &deviceContextExtractOpMap);
   void rewriteExecuteCompiledOp(OpBuilder &builder, const Value &context,
                                 size_t runtimeSlot, size_t module_index,
                                 size_t kernel_index,
                                 MOGG::ExecuteCompiledOp &oldKernel,
-                                Value loadChain,
+                                Value loadChain, Value deviceContext,
                                 std::optional<size_t> cuda_runtime_slot);
   void runOnOperation() override;
 };
+
+// This method will take a map that keeps track of all deviceContextExtractions
+// and their region/inChain/device. If it cannot find one, it will create one
+// and save it. This allows us to lazily create an extract only when we need it.
+Value LowerMOGGRegionCompilesPass::getOrCreateDeviceContextExtractOp(
+    OpBuilder &builder, const Location &loc, const Value &inChain,
+    const Value &inContext, const size_t runtimeSlot,
+    const DeviceRefAttr device, Region *region,
+    llvm::SmallDenseMap<
+        std::tuple<Region *, Value>,
+        llvm::SmallDenseMap<DeviceRefAttr, MGP::DeviceContextExtractOp>>
+        &deviceContextExtractOpMap) {
+  if (!deviceContextExtractOpMap.contains(std::tuple(region, inChain))) {
+    deviceContextExtractOpMap[std::tuple(region, inChain)] =
+        llvm::SmallDenseMap<DeviceRefAttr, MGP::DeviceContextExtractOp>();
+  }
+  if (!deviceContextExtractOpMap[std::tuple(region, inChain)].contains(
+          device)) {
+    deviceContextExtractOpMap[std::tuple(region, inChain)][device] =
+        builder.create<MGP::DeviceContextExtractOp>(
+            loc,
+            TypeRange{MGP::OpaqueType::get(builder.getContext(), std::nullopt)},
+            /*inChain=*/inChain,
+            /*theContext*/ inContext,
+            /*aDeviceRuntimeSlot=*/runtimeSlot,
+            /*bDevice=*/device);
+  }
+  return deviceContextExtractOpMap[std::tuple(region, inChain)][device];
+}
 
 // Rewrite the MOGG::ExecuteCompiledOp into a MGP::ExecuteGenericOp
 void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
     OpBuilder &builder, const Value &context, size_t runtimeSlot,
     size_t module_index, size_t kernel_index,
-    MOGG::ExecuteCompiledOp &oldKernel, Value loadChain,
+    MOGG::ExecuteCompiledOp &oldKernel, Value loadChain, Value deviceContext,
     std::optional<size_t> cuda_runtime_slot) {
   auto ctx = oldKernel.getOperation()->getContext();
   SmallVector<Value> outputs;
@@ -73,9 +109,10 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
 
   auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
       oldKernel.getLoc(), MGP::DeviceChainType::get(device), resultTypes,
-      context, loadChain, oldKernel->getOperands(), runtimeSlot, module_index,
-      kernel_index, oldKernel.getSummary(), oldKernel.getIsAsync(),
-      oldKernel.getHasCuda(), cuda_runtime_slot.value_or(0));
+      context, loadChain, deviceContext, oldKernel->getOperands(), runtimeSlot,
+      module_index, kernel_index, oldKernel.getSummary(),
+      oldKernel.getIsAsync(), oldKernel.getHasCuda(),
+      cuda_runtime_slot.value_or(0));
 
   uint64_t idx = 1;
   for (auto result : outputs)
@@ -100,10 +137,12 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
 
   MLIRContext *ctx = getOperation().getContext();
   for (auto model : getOperation().getOps<MGP::ModelOp>()) {
-
     Block &init = *model.getInitBlock();
     Block &execute = *model.getExecuteBlock();
     OpBuilder builder{ctx};
+
+    // Setup the exec state
+    ExecuteState execState(ctx, &execute);
 
     // MOGG::LoadCompiledKernelOp only on CPU and no other device. We just
     // need to make sure we use and count the right one for moduleIndex
@@ -112,6 +151,8 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     std::optional<size_t> cuda_runtime_slot;
 
     // Track the RuntimeCreateOp and ModuleLoadOp and their last use
+    // Mainly used to make sure we target the right module load and device
+    // runtime for the executions
     llvm::SmallDenseMap<DeviceRefAttr, MGP::RuntimeCreateOp>
         lastDeviceRuntimeOp;
     llvm::SmallDenseMap<DeviceRefAttr, MGP::ModuleLoadOp>
@@ -121,6 +162,13 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       lastDeviceRuntimeOp[op.getDevice()] = op;
       deviceModuleIndex[op.getDevice()] = 0;
     }
+
+    // Stores for this model op, all the device context extractions.
+    llvm::SmallDenseMap<
+        std::tuple<Region *, Value>,
+        llvm::SmallDenseMap<DeviceRefAttr, MGP::DeviceContextExtractOp>>
+        deviceContextExtractOpMap;
+
     if (lastDeviceRuntimeOp.contains(cudaDevice))
       cuda_runtime_slot = lastDeviceRuntimeOp[cudaDevice].getSlot();
     for (auto op : init.getOps<MGP::ModuleLoadOp>()) {
@@ -193,13 +241,36 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
         inChain = lastDeviceModuleLoadOp[device].getOutChain();
       else
         inChain = lastDeviceRuntimeOp[device].getOutChain();
+      Value inDeviceContext;
+      if (kernel.getHasCuda()) {
+        assert(lastDeviceRuntimeOp.contains(cudaDevice) &&
+               "Must have a mgp.runtime.create which uses a cuda device");
+        // lazily insert extractions so we don't need to pipe deviceContext
+        // everywhere.
+        // In the init, we have to be safe and wait on all operands of original
+        // kernel for extraction.
+        auto extractionChain = builder.create<GRT::ChainCreateOp>(
+            kernel.getLoc(), kernel.getOperands());
+        inDeviceContext = getOrCreateDeviceContextExtractOp(
+            builder, mefOutputOp.getLoc(), extractionChain,
+            lastDeviceRuntimeOp[cudaDevice].getTheContext(),
+            lastDeviceRuntimeOp[cudaDevice].getSlot(), cudaDevice,
+            kernel->getParentRegion(), deviceContextExtractOpMap);
+      } else {
+        auto extractionChain = builder.create<GRT::ChainCreateOp>(
+            kernel.getLoc(), kernel.getOperands());
+        inDeviceContext = getOrCreateDeviceContextExtractOp(
+            builder, mefOutputOp.getLoc(), extractionChain,
+            lastDeviceRuntimeOp[device].getTheContext(),
+            lastDeviceRuntimeOp[device].getSlot(), device,
+            kernel->getParentRegion(), deviceContextExtractOpMap);
+      }
       rewriteExecuteCompiledOp(
           builder, lastDeviceRuntimeOp[device].getTheContext(),
           lastDeviceRuntimeOp[device].getSlot(), deviceModuleIndex[device],
           deviceKernelIndices[device][kernel.getKernelName()], kernel, inChain,
-          cuda_runtime_slot);
+          inDeviceContext, cuda_runtime_slot);
     });
-
     Value executeContext = nullptr;
     Region *parentRegion = nullptr;
     execute.walk([&](MOGG::ExecuteCompiledOp kernel) {
@@ -218,11 +289,27 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
                          "generic.execute");
       }
       auto inChain = builder.create<GRT::ChainCreateOp>(kernel.getLoc());
+      Value inDeviceContext;
+      if (kernel.getHasCuda()) {
+        assert(lastDeviceRuntimeOp.contains(cudaDevice) &&
+               "Must have a mgp.runtime.create which uses a cuda device");
+        // lazily insert extractions so we don't need to pipe deviceContext
+        // everywhere.
+        inDeviceContext = getOrCreateDeviceContextExtractOp(
+            builder, kernel.getLoc(), inChain, executeContext,
+            lastDeviceRuntimeOp[cudaDevice].getSlot(), cudaDevice,
+            kernel->getParentRegion(), deviceContextExtractOpMap);
+      } else {
+        inDeviceContext = getOrCreateDeviceContextExtractOp(
+            builder, kernel.getLoc(), inChain, executeContext,
+            lastDeviceRuntimeOp[device].getSlot(), device,
+            kernel->getParentRegion(), deviceContextExtractOpMap);
+      }
       rewriteExecuteCompiledOp(
           builder, executeContext, lastDeviceRuntimeOp[device].getSlot(),
           deviceModuleIndex[device],
           deviceKernelIndices[device][kernel.getKernelName()], kernel, inChain,
-          cuda_runtime_slot);
+          inDeviceContext, cuda_runtime_slot);
     });
   }
 }
