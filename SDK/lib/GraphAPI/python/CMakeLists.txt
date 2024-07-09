@@ -51,6 +51,7 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/max_graph_installed
   # `CMAKE_CURRENT_BINARY_DIR/max/graph/`, but we don't want to put it in the
   # source tree.
   COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/max/graph/__init__.py ${CMAKE_CURRENT_BINARY_DIR}/max/graph/__init__.py
+  COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/max/graph/mlir/__init__.py ${CMAKE_CURRENT_BINARY_DIR}/max/graph/mlir/__init__.py
   COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/max/graph/graph.py ${CMAKE_CURRENT_BINARY_DIR}/max/graph/graph.py
   # Copy setup.py, which is needed for editable installations.
   COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/setup.py ${CMAKE_CURRENT_BINARY_DIR}/setup.py
@@ -77,11 +78,10 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/max_graph_installed
 add_flag_if_supported("-Wno-address" SDK_GRAPHAPI_PYTHON_NO_ADDRESS)
 
 add_mlir_python_modules_idempotent(MAXGraphMlirPythonModules
-  ROOT_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/max/graph"
+  ROOT_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/max/graph/mlir"
   INSTALL_PREFIX ""
   DECLARED_SOURCES
-    MLIRPythonExtension.RegisterEverything
-    MLIRPythonSources
+    MLIRPythonSources.Core
   COMMON_CAPI_LINK_LIBS
     mof
 )
