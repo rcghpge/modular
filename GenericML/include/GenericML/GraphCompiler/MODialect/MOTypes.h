@@ -62,6 +62,18 @@ DType getDTypeOrInvalid(Type ty);
 
 TypedAttr getShape(Type ty);
 
+/// Helper function for working with mo.buffer types. If given a TensorType will
+/// pass it through and if given a BufferType will create the equivalent
+/// TensorType and return that. If not given one of these two types returns
+/// nullptr.
+TensorType dynCastFromTensorLike(Type ty);
+
+/// Helper function for working with mo.buffer types. If given a TensorType will
+/// pass it through and if given a BufferType will create the equivalent
+/// TensorType and return that. Asserts that ty is one of BufferType or
+/// TensorType.
+TensorType castFromTensorLike(Type ty);
+
 } // namespace M::MO
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_H

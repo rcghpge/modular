@@ -677,6 +677,22 @@ TensorType BufferType::fromBuffer(BufferType ty) {
   return bufferTensorConverter<BufferType, TensorType>(ty);
 }
 
+TensorType M::MO::castFromTensorLike(Type ty) {
+  if (auto tensorTy = dyn_cast<TensorType>(ty))
+    return tensorTy;
+  else
+    return BufferType::fromBuffer(cast<MO::BufferType>(ty));
+}
+
+TensorType M::MO::dynCastFromTensorLike(Type ty) {
+  if (auto tensorTy = dyn_cast<TensorType>(ty))
+    return tensorTy;
+  else if (auto bufferTy = dyn_cast<BufferType>(ty))
+    return BufferType::fromBuffer(bufferTy);
+  else
+    return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//

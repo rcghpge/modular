@@ -835,7 +835,7 @@ def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure]> {
     the stride parameter that appears in the kernel.
   }];
 
-  let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape, MGP_OpaqueType, MO_List, MO_Opaque]>:$input,
+  let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MO_Buffer, MOGG_Indices, MOGG_Shape, MGP_OpaqueType, MO_List, MO_Opaque]>:$input,
     OptionalAttr<TypedAttrInterface>:$shape,
     OptionalAttr<TypedAttrInterface>:$strides,
     OptionalAttr<DictionaryAttr>:$typeMethodsDict,
