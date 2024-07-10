@@ -262,7 +262,6 @@ static void fuseInputAtIndex(MOGG::KernelOp kernel, int32_t idx) {
 
   // Clone the constant and add it to the kernel.
   MO::ConstantOp newOp = cst.clone();
-  newOp.getResult().setType(cast<MO::TensorType>(inputVal.getType()));
 
   builder.insert(newOp);
 
