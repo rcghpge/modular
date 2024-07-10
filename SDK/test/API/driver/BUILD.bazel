@@ -16,7 +16,6 @@ lit_tests(
         "//SDK/lib/API/mojo/max",
         "//open-source/mojo/stdlib/stdlib",
     ],
-    path = "$(rlocationpath //CUDASupport/tools/is-cuda-available)",
     target_compatible_with = select({
         "//:asan": ["@platforms//:incompatible"],
         "//conditions:default": [],
