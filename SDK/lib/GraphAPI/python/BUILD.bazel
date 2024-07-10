@@ -1,5 +1,6 @@
-load("//bazel:api.bzl", "modular_pybind_py_library")
+load("//bazel:api.bzl", "modular_pybind_py_library", "modular_python_editable_dir")
 
+# Label for all bindings sources.
 filegroup(
     name = "cpp_bindings_srcs",
     srcs = glob(["bindings/**/*.cpp"]),
@@ -13,5 +14,30 @@ modular_pybind_py_library(
     pybind_data = [
         "//SDK/lib/GraphAPI/python/max/graph:max-graph-core",
     ],
+    visibility = ["//visibility:public"],
+)
+
+# Target for a max.graph editable installation.
+modular_python_editable_dir(
+    name = "max_graph_editable",
+    srcs = [
+        "setup.py",
+        "//SDK/lib/GraphAPI/python/max/graph:__init__.py",
+        "//SDK/lib/GraphAPI/python/max/graph/mlir:__init__.py",
+        "@llvm-project//mlir/python:IRPyFiles",
+        "@llvm-project//mlir/python:IRPyIFiles",
+        "@llvm-project//mlir/python:MlirLibsPyFiles",
+    ],
+    compiled_extensions = [
+        "//SDK/lib/GraphAPI/python/max/graph:max-graph-core",
+    ],
+    config_file = "pyproject.toml.in",
+    prefix_map = {
+        # Put Python sources directly under max/graph/mlir.
+        "external/llvm-project/mlir/python": "max/graph",
+        # Modular monorepo C extensions and Python sources already have the
+        # correct directory structure.
+        "SDK/lib/GraphAPI/python": "",
+    },
     visibility = ["//visibility:public"],
 )
