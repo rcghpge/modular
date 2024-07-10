@@ -70,8 +70,7 @@ parseMojoPackage(MLIRContext *ctx, StringRef path,
   KGEN::KGENCompiler compiler(*(ownedModule->getContext()),
                               KGEN::CompilationOptions());
 
-  if (auto err = compiler.runGenerateLibraryPipeline(
-          *ownedModule, /*materializeDependencies=*/true))
+  if (auto err = compiler.runGenerateLibraryPipeline(*ownedModule))
     return err.takeError();
   return ownedModule;
 }
