@@ -43,8 +43,7 @@ fi
 
 python3 -m pip install \
   -e Support/python \
-  -r KGEN/utils/requirements.txt \
-  -r SDK/lib/EngineAPI/python/packaging-requirements.txt
+  -r utils/build/requirements.txt
 
 # A torch install is required for the build & tests.
 python3 third-party/stock-pytorch/install.py install

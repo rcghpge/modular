@@ -20,15 +20,11 @@ source ./utils/start-modular.sh
 
 rm -rf .derived
 
-setup_virtualenv
-${MODULAR_PYTHON} -m pip install -e Support/python
+install_python_deps
 git-lfs install
 git-lfs pull
 
 arch=$(uname -m)
-
-# Install requirements for building MLIR Python bindings.
-pip install -r $MODULAR_PATH/third-party/llvm-project/mlir/python/requirements.txt
 
 # Build LLVM.
 # Note: LLDB Python breaks because manylinux ships with a statically linked Python interpreter.
@@ -40,10 +36,5 @@ cmake-llvm --sanitizer=none --build-type=release --build-profile=production \
 build-llvm
 
 build-tcmalloc
-
-pip install \
-  -e Support/python \
-  -r KGEN/utils/requirements.txt \
-  -r SDK/lib/EngineAPI/python/packaging-requirements.txt
 
 pip install pipx
