@@ -152,36 +152,54 @@ LogicalResult
 ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   MGP::MOOpLoweringState opLoweringState(loweringState, *this);
 
+  const bool isInplace = llvm::any_of(getOperands(), [](Value val) {
+    return isa<MO::BufferType>(val.getType());
+  });
+
+  if (isInplace)
+    ASSERT_STREAM(getResults().size() == 1 &&
+                      isa<MO::ChainType>(getResult(0).getType()),
+                  "In-place kernels (those with buffer inputs) are not allowed "
+                  "to have any outputs other than a single chain.");
+
   // Gather the lowered op operands.
   SmallVector<Value> loweredInputOperands =
       opLoweringState.getLoweredOperands();
 
-  // Allocate for the op's results.
-  // At this stage we gate the allocations only on the overall 'execute' block's
-  // chain. The DeferAllocsPass will change this to use the chain which signals
-  // when all of the operation's input buffers are ready to be read, thus
-  // ensuring we allocate buffers just-in-time for their writers.
-  FailureOr<SmallVector<MGP::MOOutputStorage>> loweredOutputsStorageOr =
-      opLoweringState.createOutputStorage(loweringState.getExecuteChain());
-  if (failed(loweredOutputsStorageOr))
-    return failure();
-  auto &loweredOutputsStorage = *loweredOutputsStorageOr;
-
-  size_t numOperands =
-      loweredInputOperands.size() + loweredOutputsStorage.size();
+  SmallVector<Value> chainOperands;
 
   // Gather all the input and output operands and their in/out semantics.
   SmallVector<Value> operands;
   SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
-  operands.reserve(numOperands);
-  operandSemantics.reserve(numOperands);
-  for (Value loweredInputOperand : loweredInputOperands) {
+  for (auto [origOperand, loweredInputOperand] :
+       llvm::zip(getOperands(), loweredInputOperands)) {
+    if (isa<MO::ChainType>(origOperand.getType())) {
+      chainOperands.push_back(origOperand);
+      continue;
+    }
+    auto sig = isa<MO::BufferType>(origOperand.getType())
+                   ? InOutSignatureAttr::kMut
+                   : InOutSignatureAttr::kIn;
+
     operands.push_back(loweredInputOperand);
-    operandSemantics.emplace_back(InOutSignatureAttr::kIn);
+    operandSemantics.emplace_back(sig);
   }
-  for (auto &outputStorage : loweredOutputsStorage) {
-    operands.push_back(outputStorage.buffer);
-    operandSemantics.emplace_back(InOutSignatureAttr::kOut);
+  FailureOr<SmallVector<MGP::MOOutputStorage>> loweredOutputsStorageOr;
+  if (!isInplace) {
+    // Allocate for the op's results.
+    // At this stage we gate the allocations only on the overall 'execute'
+    // block's chain. The DeferAllocsPass will change this to use the chain
+    // which signals when all of the operation's input buffers are ready to be
+    // read, thus ensuring we allocate buffers just-in-time for their writers.
+    loweredOutputsStorageOr =
+        opLoweringState.createOutputStorage(loweringState.getExecuteChain());
+    if (failed(loweredOutputsStorageOr))
+      return failure();
+    auto &loweredOutputsStorage = *loweredOutputsStorageOr;
+    for (auto &outputStorage : loweredOutputsStorage) {
+      operands.push_back(outputStorage.buffer);
+      operandSemantics.emplace_back(InOutSignatureAttr::kOut);
+    }
   }
 
   // Gather the input dimensions from the dimension parameters in the
@@ -197,11 +215,21 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
     inDimensions.push_back(symbolicDimOr.takeValue());
   }
 
+  ASSERT_STREAM(chainOperands.size() <= 1,
+                "mogg.execute_kernel can have at most one chain input");
+
+  auto inChain = [&]() -> Value {
+    if (chainOperands.size() == 1)
+      return loweringState.lookupExecuteLoweredValue(chainOperands.front());
+    else
+      return loweringState.getExecuteChain();
+  }();
+
   // Emit the kernel call.
   SmallVector<Value> outDimensions;
   auto outChain = opLoweringState.kernelExecute(
       /*kernelName=*/getKernelName(),
-      /*inChain=*/loweringState.getExecuteChain(),
+      /*inChain=*/inChain,
       /*args=*/operands,
       /*inOutSemantics=*/operandSemantics,
       /*inDimensions=*/inDimensions,
@@ -218,9 +246,14 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
       return failure();
   }
 
-  // Create outputs from their output storage, but only once the op has
-  // completed.
-  opLoweringState.createOutputs(outChain, loweredOutputsStorage);
+  if (!isInplace) {
+    // Create outputs from their output storage, but only once the op has
+    // completed.
+    auto &loweredOutputsStorage = *loweredOutputsStorageOr;
+    opLoweringState.createOutputs(outChain, loweredOutputsStorage);
+  } else {
+    loweringState.emplaceExecuteLoweredValue(getResult(0), outChain);
+  }
 
   return success();
 }

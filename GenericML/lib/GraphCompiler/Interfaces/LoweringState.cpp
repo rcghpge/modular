@@ -58,8 +58,7 @@ ErrorOr<bool> MOGraphLoweringState::lowerArg(Region *parentRegion,
                                              BlockArgument &outArg) {
   bool hasParams = false;
   Location loc = inArg.getLoc();
-  if (auto inTensorArg = dyn_cast<MO::TensorValue>(inArg)) {
-    MO::TensorType argType = inTensorArg.getType();
+  if (auto argType = MO::dynCastFromTensorLike(inArg.getType())) {
     DeviceRefAttr argDevice = MO::getDeviceOrDefault(graph, argType);
     if (argType.hasStaticShape()) {
       // No parameters to deal with.
@@ -466,7 +465,8 @@ SmallVector<Value> MOOpLoweringState::getLoweredOperands() {
   for (Value operand : opBeingLowered->getOperands()) {
     Value loweredInput = loweringState.lookupExecuteLoweredValue(operand);
 
-    if (isa<MO::TensorType>(operand.getType())) {
+    if (isa<MO::TensorType>(operand.getType()) ||
+        isa<MO::BufferType>(operand.getType())) {
       BufferizedTensor bufferizedInput = getBufferizedInput(operand);
       loweredOperands.push_back(bufferizedInput.buffer);
     } else {
@@ -548,7 +548,9 @@ void MOOpLoweringState::createOutputs(
 BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {
   Value loweredTensor = loweringState.lookupExecuteLoweredValue(moTensor);
   ASSERT_STREAM(loweredTensor, << "referenced SSA value has not been lowered");
-  BufferBuilder *bufferBuilder = getStorageBufferBuilder(moTensor.getType());
+
+  MO::TensorType ty = MO::castFromTensorLike(moTensor.getType());
+  BufferBuilder *bufferBuilder = getStorageBufferBuilder(ty);
   auto buffer =
       bufferBuilder->tensorExtractBuffer(builder, loc, context, loweredTensor);
   auto tensorSpec = bufferBuilder->tensorExtractTensorSpec(
