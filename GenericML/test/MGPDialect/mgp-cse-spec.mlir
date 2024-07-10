@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --allow-unregistered-dialect --cse | FileCheck %s
+// RUN: mo-opt %s --allow-unregistered-dialect --cse --split-input-file | FileCheck %s
 
 // Original graph
 // mo.graph @oneOp() -> (!mo.tensor<[8], f32>) {
@@ -58,3 +58,22 @@ module {
 // CHECK: mgp.model @basicMoGraph
 // CHECK: mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
 // CHECK-NOT: mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
+
+// -----
+
+mgp.model @tensor_spec_size : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 2
+  mef.output %0, %1 : !mef.chain, !mgp.context
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque, %inTensor: !mgp.tensor<1234x5678xf32>) -> (!mef.chain, !mgp.tensor<1234x5678xf32>) {
+  %spec = mgp.tensor.extract.tensor_spec %arg1[1], %inTensor: !mgp.tensor<1234x5678xf32>
+  %size0 = mgp.tensor_spec.size %spec : !mgp.tensor_spec<1234x5678xf32>
+  %size1 = mgp.tensor_spec.size %spec : !mgp.tensor_spec<1234x5678xf32>
+  %ch0 = mip.print.index %size0, %arg0
+  %ch1 = mip.print.index %size1, %ch0
+  mef.output %ch1, %inTensor : !mef.chain, !mgp.tensor<1234x5678xf32>
+}
+
+// CHECK: mgp.model @tensor_spec_size
+// CHECK: mgp.tensor_spec.size %{{.*}} : !mgp.tensor_spec<1234x5678xf32>
+// CHECK-NOT: mgp.tensor_spec.size %{{.*}} : !mgp.tensor_spec<1234x5678xf32>

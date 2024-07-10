@@ -259,7 +259,7 @@ def CpuTensorSpecDimsDynamicOp : MGP_Op<"tensor_spec.dims.dynamic", [
 // CpuTensorSpecSizeOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecSizeOp : MGP_Op<"tensor_spec.size"> {
+def CpuTensorSpecSizeOp : MGP_Op<"tensor_spec.size", [Pure]> {
   let summary = [{
     Returns the byte size needed for a CPU buffer for a tensor with
     the given tensor spec.
