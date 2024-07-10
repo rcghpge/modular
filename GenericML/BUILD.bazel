@@ -617,18 +617,12 @@ modular_cc_library(
 
 modular_cc_library(
     name = "MOGGDialect",
-    srcs = glob(
-        ["lib/GraphCompiler/MOGGDialect/*.cpp"],
-    ),
-    hdrs = glob([
-        "include/GenericML/GraphCompiler/MOGGDialect/*.h",
-        # Weird circular dependency between MOGGOps.cpp and MOGGSupport and MOGGAnalysis.
-        "include/GenericML/GraphCompiler/MOGGDialect/Support/*.h",
-        "include/GenericML/GraphCompiler/MOGGDialect/Analysis/*.h",
-    ]),
+    srcs = glob(["lib/GraphCompiler/MOGGDialect/*.cpp"]),
+    hdrs = glob(["include/GenericML/GraphCompiler/MOGGDialect/*.h"]),
     deps = [
         ":GraphCompilerInterfaces",
         ":MODialect",
+        ":MOGGAnalysis",
         ":MOGGDialectIncGen",
         ":MOGGDialectInterfacesIncGen",
         ":MOGGDialectPassesIncGen",
@@ -663,10 +657,10 @@ modular_cc_library(
         "MOGG_MOJO_BINDING_H='\"$(location //Kernels/mojo/Mogg:MOGG.mojo.h)\"'",
         "MOGG_PRIMITIVES_MOJO_BINDING_H='\"$(location //Kernels/mojo/Mogg:MOGGPrimitives.mojo.h)\"'",
     ],
+    visibility = ["//visibility:private"],
     deps = [
         ":GraphCompilerInterfaces",
         ":MOAnalysis",
-        ":MOGGDialect",
         ":Support",
         "//KGEN:MojoParser",
     ],
@@ -973,6 +967,7 @@ modular_cc_library(
         "//KGEN:Compiler",
         "//KGEN:CompilerRT.headers",
         "//KGEN:ExecutionEngine",
+        "//KGEN:ObjectCompiler",
         "//LLCL:RuntimeGlobals",
         "//Runtime",
         "//Support:Base",
