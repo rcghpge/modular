@@ -2535,7 +2535,8 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     // Previously gone due to accuracy issues.
     size_t maskRank = matcher->getExplicitMask().getType().getRank();
     if (maskRank != 3 &&
-        !llvm::sys::Process::GetEnv("MODULAR_MHA_GPU_RANK4").has_value() &&
+        llvm::sys::Process::GetEnv("MODULAR_MHA_GPU_RANK4").value_or("0") !=
+            "1" &&
         !enableRank4GPUMask) {
       return Error("Expect GPU mask to be rank 3 BSS.");
     }
