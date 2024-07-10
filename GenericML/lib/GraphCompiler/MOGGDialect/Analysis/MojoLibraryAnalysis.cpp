@@ -20,7 +20,6 @@
 #include "KGEN/ToolCommon/CompilationOptions.h"
 #include "LLCL/CompilerSupport/Context.h"
 #include "LLCL/Runtime/Runtime.h"
-#include "Support/AssertStream.h"
 #include "Support/Compiler/BytecodeReaderWriter.h"
 #include "Support/Compiler/OperationUtils.h"
 #include "Support/Config.h"

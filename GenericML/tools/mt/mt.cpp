@@ -85,11 +85,11 @@ private:
       llvm::cl::location(options.unparsed)};
 };
 } // namespace
-
 // TODO(#1639): Remove.
-/// Returns a string that describes the contents of the file. Given that this
-/// driver cannot link the MEF libraries, it relies on the symbols provided by
-/// the framework supplied with dylib if the input is a MEF file.
+/// Returns a string that describes the contents of the file. Given that
+/// this driver cannot link the MEF libraries, it relies on the symbols
+/// provided by the framework supplied with dylib if the input is a MEF
+/// file.
 static M::ErrorOr<std::string>
 getFileContentIdentity(M::BufferRef file, FileFormat format,
                        FrameworkContextHandle ctxHandle, CXXDriverAPI dylib) {
@@ -333,10 +333,11 @@ int main(int argc, char **argv) {
 
     // Otherwise we must be getting op-level information about the model or
     // executing the model.
-    ASSERT_STREAM((options.command == DriverCommand::printMetadata ||
-                   options.command == DriverCommand::printConstantMetadata ||
-                   options.command == DriverCommand::execute),
-                  << "unknown command ");
+    if (!(options.command == DriverCommand::printMetadata ||
+          options.command == DriverCommand::printConstantMetadata ||
+          options.command == DriverCommand::execute)) {
+      return options.reportError("Unknown command:");
+    }
 
     auto binaryFileOr =
         dylib.openBinaryFile(frameworkCtx, inputInfo.file.copy());
