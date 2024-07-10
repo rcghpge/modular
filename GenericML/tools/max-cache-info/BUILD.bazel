@@ -1,0 +1,13 @@
+load("//bazel:api.bzl", "modular_cc_binary")
+
+modular_cc_binary(
+    name = "max-cache-info",
+    srcs = glob(["*.cpp"]),
+    deps = [
+        "//GenericML:CompileDriver",
+        "//Support:Base",
+        "//Support:Globals",
+        "@llvm-project//mlir:BytecodeReader",
+        "@llvm-project//mlir:Pass",
+    ],
+)
