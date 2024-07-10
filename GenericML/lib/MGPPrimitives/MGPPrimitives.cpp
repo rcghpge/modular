@@ -209,8 +209,9 @@ static void mgp_generic_execute(
               reinterpret_cast<void *>(&callContext));
 
     if (outChain.isError()) {
-      // The kernel failed while trying to launch.
       for (auto &result : outResults) {
+        if (result.isReady())
+          continue;
         std::move(result).setToError(EncodedDiagnostic(
             outChain.copy().getDiagnostic().getMessage().copy(), loc.copy()));
       }
