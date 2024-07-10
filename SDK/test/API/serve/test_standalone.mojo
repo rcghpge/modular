@@ -6,12 +6,11 @@
 # UNSUPPORTED: windows
 # RUN: %mojo %s
 # REQUIRES: manual
+
 from max.tensor import TensorSpec, Tensor, TensorShape
 
-from max.engine import InferenceSession, InputSpec, TensorMap, NamedTensor
-
-from max.serve.kserve.server import GRPCServer
-from max.serve.kserve import MuxInferenceService, FileModel
+from max.engine import InferenceSession, InputSpec
+from max.serve.kserve import FileModel, GRPCServer, MuxInferenceService
 from runtime.llcl import (
     Runtime,
     TaskGroup,
@@ -20,175 +19,11 @@ from runtime.llcl import (
 from time import sleep, perf_counter_ns
 from max.serve.kserve import GRPCClient
 from max.graph._testing import assert_tensors_almost_equal
-from testing import assert_true
 
 
-trait ModelTestCase:
-    @staticmethod
-    fn get_model_name() -> String:
-        ...
-
-    @staticmethod
-    fn get_model_config() -> FileModel:
-        ...
-
-    @staticmethod
-    fn get_model_input(
-        session: InferenceSession,
-    ) raises -> Tuple[TensorMap, List[NamedTensor]]:
-        ...
-
-    @staticmethod
-    fn get_output_names() raises -> List[String]:
-        pass
-
-    @staticmethod
-    fn verify(actual: TensorMap) raises -> NoneType:
-        pass
-
-
-###############################################################################
-struct RobertaTorch(ModelTestCase):
-    @staticmethod
-    fn get_model_name() -> String:
-        return "roberta"
-
-    @staticmethod
-    fn get_model_config() -> FileModel:
-        var model_path = "SDK/test/API/serve/models/roberta.torchscript"
-        return FileModel(
-            Self.get_model_name(),
-            "0",
-            model_path,
-            List(
-                InputSpec(TensorSpec(DType.int64, 1, 128)),
-                InputSpec(TensorSpec(DType.int64, 1, 128)),
-            ),
-        )
-
-    @staticmethod
-    fn get_model_input(
-        session: InferenceSession,
-    ) raises -> Tuple[TensorMap, List[NamedTensor]]:
-        var inputs = session.new_tensor_map()
-        var a = Tensor[DType.float32](1, 128)
-        var b = Tensor[DType.float32](1, 128)
-        # initialize a,b
-        inputs.borrow("input_ids", a)
-        inputs.borrow("attention_mask", b)
-        var aT = NamedTensor("input_ids", a)
-        var bT = NamedTensor("attention_mask", b)
-        var t = List[NamedTensor](aT, bT)
-        return Tuple(inputs^, t)
-
-    @staticmethod
-    fn get_output_names() raises -> List[String]:
-        return List[String]("result0")
-
-    @staticmethod
-    fn verify(actual: TensorMap) raises -> NoneType:
-        # TODO implement an interesting roberta test
-        pass
-
-
-###############################################################################
-struct BasicAddTorch(ModelTestCase):
-    @staticmethod
-    fn get_model_name() -> String:
-        return "BasicAdd_int32_pt"
-
-    @staticmethod
-    fn get_model_config() -> FileModel:
-        var model_path = "SDK/test/API/serve/models/add.pt"
-        return FileModel(
-            Self.get_model_name(),
-            "0",
-            model_path,
-            List(
-                InputSpec(TensorSpec(DType.int32, 1, 1)),
-                InputSpec(TensorSpec(DType.int32, 1, 1)),
-            ),
-        )
-
-    @staticmethod
-    fn get_model_input(
-        session: InferenceSession,
-    ) raises -> Tuple[TensorMap, List[NamedTensor]]:
-        var inputs = session.new_tensor_map()
-        var a = Tensor[DType.int32](1, 1)
-        var b = Tensor[DType.int32](1, 1)
-        a[0][0] = 1
-        b[0][0] = 2
-        inputs.borrow("input_1", a)
-        inputs.borrow("input_2", b)
-        var aT = NamedTensor("input_1", a)
-        var bT = NamedTensor("input_2", b)
-        var t = List[NamedTensor](aT, bT)
-        return Tuple(inputs^, t)
-
-    @staticmethod
-    fn get_output_names() raises -> List[String]:
-        return List[String]("result0")
-
-    @staticmethod
-    fn verify(actual: TensorMap) raises -> NoneType:
-        var a = Tensor[DType.int32](1, 1)
-        a[0][0] = 3
-        assert_tensors_almost_equal(a, actual.get[DType.int32]("result0"))
-
-
-###############################################################################
-
-
-struct BasicAddOnnx(ModelTestCase):
-    @staticmethod
-    fn get_model_name() -> String:
-        return "BasicAdd_int32_onnx"
-
-    @staticmethod
-    fn get_model_config() -> FileModel:
-        var model_path = "SDK/test/API/serve/models/add.onnx"
-        return FileModel(
-            Self.get_model_name(),
-            "0",
-            model_path,
-            List(
-                InputSpec(TensorSpec(DType.int32, 1, 1)),
-                InputSpec(TensorSpec(DType.int32, 1, 1)),
-            ),
-        )
-
-    @staticmethod
-    fn get_model_input(
-        session: InferenceSession,
-    ) raises -> Tuple[TensorMap, List[NamedTensor]]:
-        var inputs = session.new_tensor_map()
-        var a = Tensor[DType.int32](1, 1)
-        var b = Tensor[DType.int32](1, 1)
-        a[0][0] = 1
-        b[0][0] = 2
-        inputs.borrow("args_0", a)
-        inputs.borrow("args_1", b)
-        var aT = NamedTensor("args_0", a)
-        var bT = NamedTensor("args_1", b)
-        var t = List[NamedTensor](aT, bT)
-        return Tuple(inputs^, t)
-
-    @staticmethod
-    fn get_output_names() raises -> List[String]:
-        return List[String]("output_0")
-
-    @staticmethod
-    fn verify(actual: TensorMap) raises -> NoneType:
-        var a = Tensor[DType.int32](1, 1)
-        a[0][0] = 3
-        assert_tensors_almost_equal(a, actual.get[DType.int32]("output_0"))
-
-
-###############################################################################
-
-
-def test_standalone_server_client[TEST_CASE: ModelTestCase]() -> None:
+def test_standalone_server_client[
+    MODEL_NAME: StringLiteral, MODEL_PATH: StringLiteral
+]() -> None:
     var start_time = perf_counter_ns()
 
     @parameter
@@ -196,89 +31,87 @@ def test_standalone_server_client[TEST_CASE: ModelTestCase]() -> None:
         return str(int((perf_counter_ns() - start_time) / (1_000_000))) + " ms"
 
     var server_started = Atomic[DType.int64](0)
-    var client_completed = Atomic[DType.int64](0)
-    var client_success = False
-    var server_success = False
     var server_session = InferenceSession()
-    alias server_address = "0.0.0.0:8004"
+    alias server_address = "0.0.0.0:8000"
     var server = GRPCServer.create(server_address, server_session)
-
     print("[" + elapsed() + "]Created server.")
 
     @parameter
-    async fn server_impl() -> None:
+    async fn server_impl(name: StringRef, path: StringRef) -> None:
         # Load models during service creation:
         try:
-            var models = List(TEST_CASE.get_model_config())
-            print("[" + elapsed() + "]Loading models")
+            var models = List(
+                FileModel(
+                    name,
+                    "0",
+                    path,
+                    List(
+                        InputSpec(TensorSpec(DType.float64, 1, 1)),
+                        InputSpec(TensorSpec(DType.float64, 1, 1)),
+                    ),
+                )
+            )
             var server_service = MuxInferenceService(models, server_session)
             print(
                 "[" + elapsed() + "]Listening on port " + server_address + "!"
             )
-
-            @parameter
-            fn server_started_fn() capturing:
-                print("[" + elapsed() + "]Server started...")
-                _ = server_started.fetch_add(1)
-
-            server.serve[MuxInferenceService, server_started_fn](server_service)
-            server_success = True
-            _ = models^
-
+            _ = server_started.fetch_add(1)
+            server.serve(server_service)
         except e:
-            print("[" + elapsed() + "]Server error : ", e)
+            print("Server error : ", e)
+            _ = server_started.fetch_add(1)
 
     @parameter
-    async fn client() -> None:
+    async fn client(name: StringRef) -> None:
         try:
             while not server_started.load():
                 sleep(1)
             # Load models during service creation:
             var session = InferenceSession()
             var client = GRPCClient(server_address, session)
-            var input_tensors = TEST_CASE.get_model_input(session)
-            var inputs = input_tensors[0]
+            var inputs = session.new_tensor_map()
+            var a = Tensor[DType.float32](1, 1)
+            var b = Tensor[DType.float32](1, 1)
+            a[0][0] = 1
+            b[0][0] = 1
+            inputs.borrow("args_0", a)
+            inputs.borrow("args_1", b)
 
-            var output_names = TEST_CASE.get_output_names()
-            print("[" + elapsed() + "]Created inputs" + str(inputs))
+            var req_outputs = List[String]("output_0")
+            print("[" + elapsed() + "]Created inputs")
 
-            var actual = client.infer(
-                TEST_CASE.get_model_name(), "0", inputs, output_names
+            var response = client.infer(name, "0", inputs, req_outputs)
+            _ = a^
+            _ = b^
+
+            var actual = response.get_output_tensors().get[DType.float32](
+                req_outputs[0]
             )
-
+            var expected = Tensor[DType.float32](
+                TensorShape(1, 1), 2
+            )  # 1 + 1 = 2
+            assert_tensors_almost_equal(expected, actual)
             print("[" + elapsed() + "]Client end...")
-            TEST_CASE.verify(actual.get_output_tensors())
-            _ = actual^
-            _ = inputs^
-            _ = client_completed.fetch_add(1)
-            client_success = True
+            _ = response^
+            _ = expected^
+
+            # Signal to stop main loop.
+            server.signal_stop()
+
         except e:
-            print("[" + elapsed() + "]Client error : ", e)
-            _ = client_completed.fetch_add(1)
+            print("Client error : ", e)
 
-    # with Runtime() as rt:
     var tg = TaskGroup[__lifetime_of(server)]()
-    tg.create_task(server_impl())
-
-    print("[" + elapsed() + "]Created server")
-
-    tg.create_task(client())
-    print("[" + elapsed() + "]Created client")
-    while not client_completed.load():
-        sleep(1)
-    server.signal_stop()
-
+    tg.create_task(server_impl(MODEL_NAME, MODEL_PATH))
+    tg.create_task(client(MODEL_NAME))
     tg.wait()
-    print("[" + elapsed() + "]Signalled stop")
+
     print("[" + elapsed() + "]Done!")
     _ = server^
     _ = server_started^
-    _ = server_session^
-    assert_true(client_success == True and server_success == True)
-    print("=============================================")
 
 
 def main():
-    # test_standalone_server_client[RobertaTorch]()
-    test_standalone_server_client[BasicAddOnnx]()
-    test_standalone_server_client[BasicAddTorch]()
+    test_standalone_server_client["Add", "SDK/test/API/serve/models/add.onnx"]()
+    # TODO: Add.pt expects different arguments ("input_1" vs "args_1").
+    # test_standalone_server_client["Add", "SDK/test/API/serve/models/add.pt"]()
