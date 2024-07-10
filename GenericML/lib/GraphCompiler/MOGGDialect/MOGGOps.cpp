@@ -705,6 +705,14 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         return getShape->emitError("Parameter has not been lowered: ") << dim;
       dimensions.push_back(param->second);
     }
+
+    // NOTE(GRA-531): Right now we assume a rank0 tensor maps to a shape of [1].
+    if (dimensions.empty()) {
+      auto kgenOne = builder.create<KGEN::ParamConstantOp>(
+          getShape->getLoc(), IntegerAttr::get(builder.getIndexType(), 1));
+      dimensions.push_back(kgenOne);
+    }
+
     auto arrayCreate =
         builder.create<KGEN::POP::ArrayCreateOp>(getShape.getLoc(), dimensions);
     auto toMOGG = builder.create<MOGG::ToMOGGOp>(
