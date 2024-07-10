@@ -69,15 +69,23 @@ getDeviceMemoryFromAsyncTensor(M::ContextRef context, Driver::Device *device,
 SmallVector<AnyAsyncValueRef>
 M::Driver::prepareInputs(Runtime &runtime,
                          M::Driver::DeviceMemory **inputMemories,
-                         TensorSpec *inputSpecs, size_t inputCount) {
+                         TensorSpec *inputSpecs, size_t inputCount,
+                         DriverMojoValue *mojoValues, size_t mojoValuesCount) {
   SmallVector<AnyAsyncValueRef> inputs;
-  inputs.reserve(inputCount);
+  inputs.reserve(inputCount + mojoValuesCount);
   for (size_t i = 0; i < inputCount; ++i, ++inputMemories, ++inputSpecs) {
     // Convert inputs from device memory we received from mojo to AsyncValue
     // of tensor as expected by graph. We take ownership of inputs here.
     inputs.push_back(AnyAsyncValueRef::createReady<Tensor>(
         runtime,
         getTensorFromDeviceMemory(runtime, *inputMemories, *inputSpecs)));
+  }
+  for (size_t i = 0; i < mojoValuesCount; ++i, ++mojoValues) {
+    // Take mojo values. Here everything is completely opaque to
+    // us. Directly pass this to mgp and we rely on op author to do the
+    // right thing with it.
+    inputs.push_back(AnyAsyncValueRef::createReady<M::MojoValue>(
+        runtime, mojoValues->data, mojoValues->destructor));
   }
 
   return inputs;
@@ -93,12 +101,17 @@ size_t M::Driver::processResults(
   llvm::SmallVector<AnyAsyncValueRef> outputTensorRefs;
   outputTensorRefs.reserve(results.size());
   for (auto &result : results) {
-    // Each framework has their own way to convert to tensor. So call this
-    // function to get the generic form.
-    outputTensorRefs.push_back(
-        model->convertToGenericTensor(std::move(result)));
+    // Convert only outputs that are of tensor types.
+    // TODO: Support returning mojo values.
+    if (result.isType<Tensor>()) {
+      // Each framework has their own way to convert to tensor. So call this
+      // function to get the generic form.
+      outputTensorRefs.push_back(
+          model->convertToGenericTensor(std::move(result)));
+    }
   }
   LLCL::await(outputTensorRefs);
+
   for (auto &&outputTensorRef : outputTensorRefs) {
     // Convert tensor back to device memory and call the callback we got from
     // mojo. Here we take ownership of output.
