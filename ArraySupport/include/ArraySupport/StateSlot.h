@@ -62,7 +62,7 @@ public:
   ///  - no other call to this method for the same state slot and buffer index
   ///    should be made while the returned reference is still in use.
   TensorBufferRef getOrCreateBuffer(size_t bufferIndex,
-                                    LLCL::CompactRuntimePtr runtime,
+                                    AsyncRT::CompactRuntimePtr runtime,
                                     size_t size,
                                     std::optional<size_t> alignment);
 
@@ -92,8 +92,8 @@ private:
   /// Ensure the buffer in entry is allocated with size, reallocating
   /// any existing buffer if required.
   static void updateCacheIfNeeded(TensorBufferRef &entry,
-                                  LLCL::CompactRuntimePtr runtime, size_t size,
-                                  std::optional<size_t> alignment);
+                                  AsyncRT::CompactRuntimePtr runtime,
+                                  size_t size, std::optional<size_t> alignment);
 
   /// The state slot payload.
   GenericRCRef payload;

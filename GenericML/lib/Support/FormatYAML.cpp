@@ -381,19 +381,19 @@ void llvm::yaml::MappingTraits<std::shared_ptr<M::ResultInfo>>::mapping(
   info->map(io);
 }
 
-ErrorOr<LLCL::AnyAsyncValueRef>
-M::getResultForBinaryOutput(const LLCL::AnyAsyncValueRef &out,
+ErrorOr<AsyncRT::AnyAsyncValueRef>
+M::getResultForBinaryOutput(const AsyncRT::AnyAsyncValueRef &out,
                             ProcessedResults &processedResults) {
-  M::LLCL::CompactRuntimePtr runtime = out.getRuntime();
+  M::AsyncRT::CompactRuntimePtr runtime = out.getRuntime();
 
   if (GML::List *castListValue = dyn_cast<GML::List>(out)) {
     // Create a new list.
-    LLCL::AnyAsyncValueRef out =
-        LLCL::AnyAsyncValueRef::createReady<GML::List>(runtime);
+    AsyncRT::AnyAsyncValueRef out =
+        AsyncRT::AnyAsyncValueRef::createReady<GML::List>(runtime);
     out.get<GML::List>().getElements().reserve(
         castListValue->getElements().size());
     for (GML::Variant &elem : castListValue->getElements()) {
-      ErrorOr<LLCL::AnyAsyncValueRef> newElemOr =
+      ErrorOr<AsyncRT::AnyAsyncValueRef> newElemOr =
           getResultForBinaryOutput(elem.getValue(), processedResults);
       if (newElemOr->isError())
         return newElemOr.takeError();
@@ -403,12 +403,12 @@ M::getResultForBinaryOutput(const LLCL::AnyAsyncValueRef &out,
   }
   if (GML::Tuple *castTupleValue = dyn_cast<GML::Tuple>(out)) {
     // Create a new tuple.
-    LLCL::AnyAsyncValueRef out =
-        LLCL::AnyAsyncValueRef::createReady<GML::Tuple>(runtime);
+    AsyncRT::AnyAsyncValueRef out =
+        AsyncRT::AnyAsyncValueRef::createReady<GML::Tuple>(runtime);
     out.get<GML::Tuple>().getElements().reserve(
         castTupleValue->getElements().size());
     for (GML::Variant &elem : castTupleValue->getElements()) {
-      ErrorOr<LLCL::AnyAsyncValueRef> newElemOr =
+      ErrorOr<AsyncRT::AnyAsyncValueRef> newElemOr =
           getResultForBinaryOutput(elem.getValue(), processedResults);
       if (newElemOr->isError())
         return newElemOr.takeError();
@@ -418,14 +418,14 @@ M::getResultForBinaryOutput(const LLCL::AnyAsyncValueRef &out,
   }
   if (GML::Dict *castDictValue = dyn_cast<GML::Dict>(out)) {
     // Create a new dict.
-    LLCL::AnyAsyncValueRef out =
-        LLCL::AnyAsyncValueRef::createReady<GML::Dict>(runtime);
+    AsyncRT::AnyAsyncValueRef out =
+        AsyncRT::AnyAsyncValueRef::createReady<GML::Dict>(runtime);
     out.get<GML::Dict>().getElements().reserve(
         castDictValue->getElements().size());
     for (auto &[key, value] : castDictValue->getElements()) {
-      ErrorOr<LLCL::AnyAsyncValueRef> newKeyOr =
+      ErrorOr<AsyncRT::AnyAsyncValueRef> newKeyOr =
           getResultForBinaryOutput(key.getValue(), processedResults);
-      ErrorOr<LLCL::AnyAsyncValueRef> newValueOr =
+      ErrorOr<AsyncRT::AnyAsyncValueRef> newValueOr =
           getResultForBinaryOutput(value.getValue(), processedResults);
       if (newKeyOr.isError())
         return newKeyOr.takeError();
@@ -442,9 +442,9 @@ M::getResultForBinaryOutput(const LLCL::AnyAsyncValueRef &out,
     // Replace tensor with `TensorResultInfo`. We re-export the tensor
     // information, so if the tensors differ in shape due to a reshape, they are
     // still the same if the underlying buffer (pointer and size) is the same.
-    LLCL::AnyAsyncValueRef out =
-        LLCL::AnyAsyncValueRef::createReady<TensorResultInfo>(runtime, name,
-                                                              *castTensorValue);
+    AsyncRT::AnyAsyncValueRef out =
+        AsyncRT::AnyAsyncValueRef::createReady<TensorResultInfo>(
+            runtime, name, *castTensorValue);
     return out;
   }
   // Copy references to primitive types (string, double, long, bool, None).
@@ -486,30 +486,31 @@ llvm::yaml::MappingTraits<M::GML::Variant>::NormalizedVariant::
 M::GML::Variant
 llvm::yaml::MappingTraits<M::GML::Variant>::NormalizedVariant::denormalize(
     IO &) {
-  LLCL::Runtime &runtime = Runtime::getCurrentRuntime();
+  AsyncRT::Runtime &runtime = Runtime::getCurrentRuntime();
   M::GML::Variant variant;
   if (stringValue) {
-    variant =
-        LLCL::AnyAsyncValueRef::createReady<std::string>(runtime, *stringValue);
+    variant = AsyncRT::AnyAsyncValueRef::createReady<std::string>(runtime,
+                                                                  *stringValue);
   } else if (doubleValue) {
     variant =
-        LLCL::AnyAsyncValueRef::createReady<double>(runtime, *doubleValue);
+        AsyncRT::AnyAsyncValueRef::createReady<double>(runtime, *doubleValue);
   } else if (longValue) {
-    variant = LLCL::AnyAsyncValueRef::createReady<int64_t>(runtime, *longValue);
+    variant =
+        AsyncRT::AnyAsyncValueRef::createReady<int64_t>(runtime, *longValue);
   } else if (boolValue) {
-    variant = LLCL::AnyAsyncValueRef::createReady<bool>(runtime, *boolValue);
+    variant = AsyncRT::AnyAsyncValueRef::createReady<bool>(runtime, *boolValue);
   } else if (listValue) {
     variant =
-        LLCL::AnyAsyncValueRef::createReady<GML::List>(runtime, *listValue);
+        AsyncRT::AnyAsyncValueRef::createReady<GML::List>(runtime, *listValue);
   } else if (tupleValue) {
-    variant =
-        LLCL::AnyAsyncValueRef::createReady<GML::Tuple>(runtime, *tupleValue);
+    variant = AsyncRT::AnyAsyncValueRef::createReady<GML::Tuple>(runtime,
+                                                                 *tupleValue);
   } else if (dictValue) {
     variant =
-        LLCL::AnyAsyncValueRef::createReady<GML::Dict>(runtime, *dictValue);
+        AsyncRT::AnyAsyncValueRef::createReady<GML::Dict>(runtime, *dictValue);
   } else if (noneValue) {
     variant =
-        LLCL::AnyAsyncValueRef::createReady<GML::None>(runtime, *noneValue);
+        AsyncRT::AnyAsyncValueRef::createReady<GML::None>(runtime, *noneValue);
   }
   return variant;
 }

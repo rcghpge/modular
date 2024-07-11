@@ -19,7 +19,7 @@ ListLike::ListLike(const SmallVector<Variant> &elements) : elements(elements) {}
 ListLike::ListLike(const ListLike &other) {
   for (const Variant &elem : other.getElements())
     getElements().push_back(
-        LLCL::AnyAsyncValueRef::copy(elem.getValue().getPointer()));
+        AsyncRT::AnyAsyncValueRef::copy(elem.getValue().getPointer()));
 }
 
 ListLike::ListLike(ListLike &&other) : elements(std::move(other.elements)) {}

@@ -15,8 +15,8 @@
 
 using namespace M;
 
-static std::unique_ptr<LLCL::Runtime> getRuntime() {
-  return LLCL::createUniqueRuntime(LLCL::RuntimeOptions().forDebug());
+static std::unique_ptr<AsyncRT::Runtime> getRuntime() {
+  return AsyncRT::createUniqueRuntime(AsyncRT::RuntimeOptions().forDebug());
 }
 
 TEST(TensorBufferRef, Default) {

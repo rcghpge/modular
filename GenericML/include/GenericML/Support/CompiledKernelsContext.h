@@ -81,7 +81,7 @@ struct CompiledKernelCall {
                             StringRef summary, const EncodedLocation &loc
 #if MODULAR_PARANOID
                             ,
-                            SmallVectorImpl<LLCL::ResourceUse> &uses
+                            SmallVectorImpl<AsyncRT::ResourceUse> &uses
 #endif
   );
 };

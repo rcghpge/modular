@@ -40,7 +40,7 @@ struct KernelExecutionState : public ReferenceCounted<KernelExecutionState> {
       // Since this dtor is about to unload the object files rendering the
       // string pointers invalid, intern the strings into the profiler so that
       // the strings are accessible upon `TimeTraceProfiler::write()` call.
-      if (auto runtime = LLCL::Runtime::getCurrentRuntimeOrNull()) {
+      if (auto runtime = AsyncRT::Runtime::getCurrentRuntimeOrNull()) {
         // Make sure any borrowed strings accumulated during profiling are
         // converted to owned strings.
         if (std::optional<TimeTraceProfiler> &profiler = runtime->getProfiler())

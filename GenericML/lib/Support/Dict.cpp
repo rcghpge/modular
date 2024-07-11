@@ -16,7 +16,7 @@ using namespace M::GML;
 Dict::Dict(const Dict &other) {
   for (const auto &elem : other.getElements()) {
     getElements()[elem.first] = Variant(
-        LLCL::AnyAsyncValueRef::copy(elem.second.getValue().getPointer()));
+        AsyncRT::AnyAsyncValueRef::copy(elem.second.getValue().getPointer()));
   }
 }
 

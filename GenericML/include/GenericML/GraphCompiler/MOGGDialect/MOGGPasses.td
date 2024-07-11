@@ -198,7 +198,7 @@ def MarkTrivialKernels: Pass<"mark-trivial-kernels", "MO::GraphOp"> {
   let description = [{
     Adds the attribute `single_thread_blocking_override=true` to all
     `MOGG::KernelOp` which can be fused into a sequence of kernel calls.
-    Such a sequence can avoid the overhead of the LLCL::AsyncValue machinery
+    Such a sequence can avoid the overhead of the AsyncRT::AsyncValue machinery
     to coordinate dataflow between kernel calls.
 
     On CPU this is only enabled for 'trivial' kernels, ie those with small

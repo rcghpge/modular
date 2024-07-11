@@ -48,10 +48,10 @@ def MGP_DeviceChainType : MGP_DeviceType<"DeviceChain", "chain", [
     `!mgp.chain`.
 
     All model values are represented in the host C++ runtime system by
-    `LLCL::AsyncValueRef<T>`s. These become 'ready' when the asynchronous
+    `AsyncRT::AsyncValueRef<T>`s. These become 'ready' when the asynchronous
     computation producing the `T` has completed in some sense (possibly
     with an error). Instances of `!mgp.chain` use `T`s which are (a subclass
-    of) the empty struct `LLCL::Chain`.
+    of) the empty struct `AsyncRT::Chain`.
 
     CPU computations only have two phases:
      - The computation may 'begin execution' when all inputs, including any
@@ -82,7 +82,7 @@ def MGP_DeviceChainType : MGP_DeviceType<"DeviceChain", "chain", [
     downstream computations may also be launched), but have some device-specific
     way to convey when the underlying computation has 'finished'. This 'ready'
     vs 'finished' distinction is why some devices may use a subtype of
-    LLCL::Chain for their runtime representation.
+    AsyncRT::Chain for their runtime representation.
 
     The same 'ready' vs 'finished' distinction also applies to other core
     MGP types, such as `!mgp.buffer and `!mgp.tensor`.
@@ -92,7 +92,7 @@ def MGP_DeviceChainType : MGP_DeviceType<"DeviceChain", "chain", [
     synchronization.
 
     An `!mgp.chain` on the host device has the same runtime representation
-    as a `!mef.chain`, ie `LLCL::AsyncValueRef<LLCL::Chain>`. No-op conversions
+    as a `!mef.chain`, ie `AsyncRT::AsyncValueRef<AsyncRT::Chain>`. No-op conversions
     may be required in some places.
 
     Examples:
@@ -157,7 +157,7 @@ def MGP_DeviceBufferType : MGP_DeviceType<"DeviceBuffer", "buffer", [
      - 'Raw form': an `mlir::IntegerAttr` or `uint64_t`, with ~0 denoting unknown.
 
     `!mgp.buffer`s are represented by (subclasses of)
-    `LLCL::AsyncValueRef<BufferRef>` in the host C++ runtime. Some devices,
+    `AsyncRT::AsyncValueRef<BufferRef>` in the host C++ runtime. Some devices,
     such as CUDA, may need to include additional data to control device-side
     synchronization, see `!mgp.chain` for more details.
 
@@ -248,7 +248,7 @@ def MGP_DeviceTensorType : MGP_DeviceType<"DeviceTensor", "tensor", [
     raw `void*` pointer.
 
     `!mgp.tensors`s are represented by (subclasses of)
-    `LLCL::AsyncValueRef<Tensor>` in the host C++ runtime. Some devices,
+    `AsyncRT::AsyncValueRef<Tensor>` in the host C++ runtime. Some devices,
     such as CUDA, may need to include additional data to control device-side
     synchronization, see `!mgp.chain` for more details.
 

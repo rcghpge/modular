@@ -49,7 +49,7 @@ struct CompileToBinaryCtx {
 
   uint64_t prevRuntimeProfilingTypeMask;
   M::ContextRef context;
-  LLCL::Runtime *runtime;
+  AsyncRT::Runtime *runtime;
   mlir::MLIRContext mlirCtx;
   mlir::OwningOpRef<mlir::ModuleOp> module;
 

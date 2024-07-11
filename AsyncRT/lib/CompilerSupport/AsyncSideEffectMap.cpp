@@ -7,7 +7,7 @@
 #include "AsyncRT/CompilerSupport/AsyncSideEffectMap.h"
 #include "mlir/IR/Operation.h"
 
-using namespace M::LLCL;
+using namespace M::AsyncRT;
 
 void AsyncSideEffectMap::andThenSync(Operation *key,
                                      llvm::function_ref<void(void)> callable) {

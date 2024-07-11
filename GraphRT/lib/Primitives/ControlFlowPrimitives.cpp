@@ -39,7 +39,7 @@ static void grt_chain_fanout(Chain inChain, RemainingResults results,
   assert(static_cast<size_t>(*numResults) == results.size());
   for (AnyAsyncValueRef &result : results) {
     result = AsyncValueRef<Chain>::allocate(runtime);
-    LLCL::addTask(runtime, [result = result.copy()]() mutable {
+    AsyncRT::addTask(runtime, [result = result.copy()]() mutable {
       std::move(result).emplace<Chain>();
     });
   }

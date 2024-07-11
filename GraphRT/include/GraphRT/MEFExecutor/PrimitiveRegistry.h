@@ -262,7 +262,7 @@ public:
 
   /// Return an owning reference to the AsyncValueRef for this result, along
   /// with an EncodedLocation that allows for elegant async error reporting.
-  LLCL::AsyncValueRefWithEncodedLocation<AsyncValueRef<T>>
+  AsyncRT::AsyncValueRefWithEncodedLocation<AsyncValueRef<T>>
   copyWithLocation() const {
     return {copy(), copyLocation()};
   }
@@ -296,7 +296,7 @@ public:
 
   /// Return an owning reference to the AsyncValueRef for this result, along
   /// with an EncodedLocation that allows for elegant async error reporting.
-  LLCL::AsyncValueRefWithEncodedLocation<AnyAsyncValueRef>
+  AsyncRT::AsyncValueRefWithEncodedLocation<AnyAsyncValueRef>
   copyWithLocation() const {
     return {copy(), copyLocation()};
   }

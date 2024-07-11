@@ -29,7 +29,7 @@ namespace {
 class GenericDriverOptions : public DriverCommandOptions,
                              public DriverInputFormatOptions,
                              public CommonOptions,
-                             public LLCL::RuntimeOptions {
+                             public AsyncRT::RuntimeOptions {
 public:
   //===--------------------------------------------------------------------===//
   // Force loading a specific dylib
@@ -47,7 +47,7 @@ public:
 class GenericDriverCLOptions : public DriverCommandCLOptions,
                                public DriverInputFormatCLOptions,
                                public CommonCLOptions,
-                               public LLCL::RuntimeCLOptions {
+                               public AsyncRT::RuntimeCLOptions {
 
 public:
   GenericDriverOptions &options;
@@ -55,7 +55,7 @@ public:
                          bool skipInitLLVM = false)
       : DriverCommandCLOptions(opts), DriverInputFormatCLOptions(opts),
         CommonCLOptions(argc, argv, opts, skipInitLLVM),
-        LLCL::RuntimeCLOptions(opts), options(opts) {}
+        AsyncRT::RuntimeCLOptions(opts), options(opts) {}
 
 private:
   llvm::cl::OptionCategory GenericDriverCLOptionsCategory{

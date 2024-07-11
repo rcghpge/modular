@@ -21,7 +21,7 @@
 #define DEBUG_TYPE "mgp"
 
 using namespace M;
-using namespace M::LLCL;
+using namespace M::AsyncRT;
 using namespace M::GML;
 using namespace M::MGP;
 
@@ -611,7 +611,7 @@ static void mgp_kernel_execute_cpu(
   /// of the refs below are for BufferRefs which are being read, written or
   /// modified while the call is active, and thus detect use-after-free and
   /// data races over BufferRefs.
-  SmallVector<LLCL::ResourceUse> uses;
+  SmallVector<AsyncRT::ResourceUse> uses;
 #endif
 
   // Hold on to ABI intermediate datastructures until the kernel returns.

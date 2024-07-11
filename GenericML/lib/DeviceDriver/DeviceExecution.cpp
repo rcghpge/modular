@@ -22,7 +22,7 @@ struct OwnedDeviceMemoryBlock {
 };
 } // namespace
 
-static M::Tensor getTensorFromDeviceMemory(LLCL::Runtime &runtime,
+static M::Tensor getTensorFromDeviceMemory(AsyncRT::Runtime &runtime,
                                            Driver::DeviceMemory *memory,
                                            TensorSpec spec) {
   AnyAsyncValueRef storageRef =
@@ -43,7 +43,7 @@ getDeviceMemoryFromAsyncTensor(M::ContextRef context, Driver::Device *device,
   TensorBufferRef bufferRef = tensor.releaseBufferRef();
   AnyAsyncValueRef storageRef = bufferRef.getMemStorageHandle();
 
-  LLCL::await(storageRef);
+  AsyncRT::await(storageRef);
 
   auto destructor = [context = std::move(context),
                      storageRef = storageRef.copy()](
@@ -110,7 +110,7 @@ size_t M::Driver::processResults(
           model->convertToGenericTensor(std::move(result)));
     }
   }
-  LLCL::await(outputTensorRefs);
+  AsyncRT::await(outputTensorRefs);
 
   for (auto &&outputTensorRef : outputTensorRefs) {
     // Convert tensor back to device memory and call the callback we got from

@@ -191,7 +191,7 @@ bool MEFFileReader::readNextSection() {
 MEFFileImpl::~MEFFileImpl() {
   if constexpr (PrimitiveProfilerEntry::isEnabled()) {
     // Profilers only exist in their owning `Runtime`.
-    if (auto runtime = LLCL::Runtime::getCurrentRuntimeOrNull()) {
+    if (auto runtime = AsyncRT::Runtime::getCurrentRuntimeOrNull()) {
       // Make sure any borrowed strings accumulated during profiling are
       // converted to owned strings before the MEFFile they are borrowed from is
       // destroyed.

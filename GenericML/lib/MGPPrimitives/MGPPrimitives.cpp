@@ -165,7 +165,7 @@ static void mgp_generic_execute(
   CompiledKernelAsyncABIFn *kernelPtr = kernelExecutionState.getKernelAsyncABI(
       static_cast<size_t>(*bModuleIndex), static_cast<size_t>(*cFunctionIndex));
 
-  LLCL::CompactRuntimePtr runtimePtr(runtime);
+  AsyncRT::CompactRuntimePtr runtimePtr(runtime);
   // Allocate indirect results so that the primitive scheduler has something
   // to use. We always have to allocate indirects even if the kernel is not
   // async because we pass a copy of the results.

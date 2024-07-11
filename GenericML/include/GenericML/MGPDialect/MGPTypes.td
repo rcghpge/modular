@@ -51,7 +51,7 @@ def MGP_CpuBufferType : MGP_Type<"CpuBuffer", "cpu.buffer",
     `uint8_t` with optimally known first dimension. This in turn supports the
     `ElementsAttrInterface` on buffer attributes.
 
-    Buffers are represented by `M::LLCL::BufferRef` in the Modular runtime.
+    Buffers are represented by `M::AsyncRT::BufferRef` in the Modular runtime.
 
     Note that buffers may respect alignment constraints. However those are
     specified either when the buffer is created, or are encoded in the

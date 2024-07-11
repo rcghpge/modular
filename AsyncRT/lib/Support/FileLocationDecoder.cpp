@@ -11,7 +11,7 @@
 #include "AsyncRT/Support/FileLocationDecoder.h"
 #include "llvm/ADT/StringRef.h"
 
-using namespace M::LLCL;
+using namespace M::AsyncRT;
 
 /// The FileNameLocationDecoder constructor just stores the filename.
 FileNameLocationDecoder::FileNameLocationDecoder(llvm::StringRef filename)
@@ -24,9 +24,9 @@ FileNameLocationDecoder::getEncodedLocation(llvm::StringRef filename) {
 }
 
 /// Decode the file name information in this object into a DecodedLocation.
-M::LLCL::DecodedLocation
+M::AsyncRT::DecodedLocation
 FileNameLocationDecoder::decode(const EncodedLocation &loc) const {
-  return M::LLCL::DecodedLocation{filename};
+  return M::AsyncRT::DecodedLocation{filename};
 }
 
 /// Implement the LocationDecoder hook for addRef.

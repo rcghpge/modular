@@ -50,7 +50,7 @@ public:
   ///
   /// TODO(#5799): We're requiring all callers to be explicit about alignment
   /// (or lack thereof) to help track down 'forgotten alignment' problems.
-  static Tensor createOwned(TensorSpec spec, LLCL::CompactRuntimePtr runtime,
+  static Tensor createOwned(TensorSpec spec, AsyncRT::CompactRuntimePtr runtime,
                             std::optional<size_t> alignment);
 
   /// Creates an owned tensor whose buffer is from a taken void* pointer -- This
@@ -58,7 +58,7 @@ public:
   /// bufferRef which has control over the lifetime. There is an assumption that
   /// the takeFrom pointer is allocated by caller via runtime->getAllocator().
   /// Lifetime of the allocated memory follows any Owned Tensor (via bufferRef)
-  static Tensor takeOwned(TensorSpec spec, LLCL::CompactRuntimePtr runtime,
+  static Tensor takeOwned(TensorSpec spec, AsyncRT::CompactRuntimePtr runtime,
                           void *takeFrom);
 
   /// Creates a tensor whose buffer is at the given pointer. It is assumed the

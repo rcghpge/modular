@@ -22,12 +22,12 @@ namespace M {
 struct OwnedMemoryBlock {
   OwnedMemoryBlock() = default;
   OwnedMemoryBlock(size_t size, std::optional<size_t> alignment,
-                   LLCL::CompactRuntimePtr rt, void *takePtr = nullptr);
+                   AsyncRT::CompactRuntimePtr rt, void *takePtr = nullptr);
   ~OwnedMemoryBlock();
   void *data;
   size_t size;
 
-  LLCL::CompactRuntimePtr runtime;
+  AsyncRT::CompactRuntimePtr runtime;
 };
 
 /// Profiler entry for tracking the lifetimes of owned buffers.
@@ -81,7 +81,7 @@ public:
 
   /// Creates an 'owning' reference by allocating a new underlying buffer of
   /// size and alignment.
-  static TensorBufferRef createOwned(LLCL::CompactRuntimePtr runtime,
+  static TensorBufferRef createOwned(AsyncRT::CompactRuntimePtr runtime,
                                      size_t size,
                                      std::optional<size_t> alignment);
   /// Creates an 'owning' reference of size and alignment using takeFrom void*
@@ -90,7 +90,7 @@ public:
   /// buffer will be freed by TensorBufferRef when the reference is destroyed.
   /// Since the ownership lies with TensorBufferRef, caller should not free
   /// anything that has been taken by TensorBufferRef.
-  static TensorBufferRef take(LLCL::CompactRuntimePtr runtime, size_t size,
+  static TensorBufferRef take(AsyncRT::CompactRuntimePtr runtime, size_t size,
                               void *takeFrom);
   //===--------------------------------------------------------------------===//
   // Core APIs for working with a TensorBufferRef.
@@ -136,10 +136,10 @@ public:
   /// transitive read/write/mutate, and so on to closure. All these uses should
   /// be held for the duration of the kernel which is performing the access,
   /// but no longer.
-  void collectAccessUses(
-      SmallVectorImpl<LLCL::ResourceUse> &uses, StringRef name,
-      LLCL::ResourceUseType useType,
-      const LLCL::ResourceSection &section = LLCL::allResourceSection()) const;
+  void collectAccessUses(SmallVectorImpl<AsyncRT::ResourceUse> &uses,
+                         StringRef name, AsyncRT::ResourceUseType useType,
+                         const AsyncRT::ResourceSection &section =
+                             AsyncRT::allResourceSection()) const;
 #endif
 
 private:
@@ -149,7 +149,7 @@ private:
                   BufferRefLifetimeProfilerEntry profilerEntry
 #if MODULAR_PARANOID
                   ,
-                  LLCL::ResourceRef resource, LLCL::ResourceUse use
+                  AsyncRT::ResourceRef resource, AsyncRT::ResourceUse use
 #endif
                   )
       : data(buffer), size(size), storageRef(std::move(storageRef)),
@@ -183,10 +183,10 @@ private:
 #if MODULAR_PARANOID
   /// An abstract 'resource' to represent this buffer. May be 'used' by
   /// borrows from this buffer.
-  LLCL::ResourceRef resource;
+  AsyncRT::ResourceRef resource;
 
   /// If the buffer is kBorrowed, an abstract 'use' of borrowee. Otherwise null.
-  LLCL::ResourceUse use;
+  AsyncRT::ResourceUse use;
 #endif
 };
 

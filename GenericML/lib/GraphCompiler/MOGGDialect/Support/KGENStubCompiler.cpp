@@ -116,10 +116,10 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt) {
             ->createUInt64Timer<std::chrono::milliseconds>(
                 "mogg.kgen.elaboration.time", M::Telemetry::Level::L2, attrs);
 
-    auto *runtime = loadContext(ctx)->get<LLCL::Runtime>();
+    auto *runtime = loadContext(ctx)->get<AsyncRT::Runtime>();
 
     setTargetInfo(kgenModule, *targetInfoOr);
-    LLCL::AnyAsyncValueRef ready = compiler.runElaborationPipeline(
+    AsyncRT::AnyAsyncValueRef ready = compiler.runElaborationPipeline(
         kgenModule, *targetInfoOr, *runtime, runtime->getReadyChain().copy(),
         Cache::CacheTelemetryContext::getTelemetryOnMissLambda(
             "StubCompiler::elaborateKGEN",
@@ -129,8 +129,8 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt) {
             "StubCompiler::elaborateKGEN"));
 
     if (ready.isError()) {
-      LLCL::EncodedDiagnostic diag = ready.takeDiagnostic();
-      LLCL::DecodedLocation loc = diag.decodeLocation();
+      AsyncRT::EncodedDiagnostic diag = ready.takeDiagnostic();
+      AsyncRT::DecodedLocation loc = diag.decodeLocation();
       mlir::emitError(
           FileLineColLoc::get(ctx, loc.filename, loc.line, loc.column),
           diag.getMessage().get());

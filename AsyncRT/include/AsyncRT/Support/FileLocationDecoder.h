@@ -17,7 +17,7 @@
 #include "Support/ReferenceCounted.h"
 #include <string>
 
-namespace M::LLCL {
+namespace M::AsyncRT {
 
 /// This class implements LocationDecoder and reports just the the file name.
 /// FileNameLocationDecoder is used when line and column information cannot be
@@ -40,6 +40,6 @@ private:
   std::string filename;
 };
 
-} // namespace M::LLCL
+} // namespace M::AsyncRT
 
 #endif // LLCL_SUPPORT_FILELOCATIONDECODER_H

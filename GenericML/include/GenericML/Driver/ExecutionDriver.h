@@ -64,7 +64,7 @@ enum class BenchmarkScenario { kOnline, kBatched };
 
 /// Run `model` using the command line options flags configured by the user.
 LogicalResult runModel(MLIRContext *ctx, const Model *model,
-                       LLCL::Runtime &runtime,
+                       AsyncRT::Runtime &runtime,
                        const ExecutorDriverOptions &options);
 
 } // namespace M

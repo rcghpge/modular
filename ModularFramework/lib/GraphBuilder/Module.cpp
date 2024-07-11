@@ -19,7 +19,7 @@ using namespace M::MOF::GraphBuilder;
 static mlir::NamedAttribute denseResourceAttr(StringRef name,
                                               ArrayRef<char> data, mlir::Type t,
                                               bool owned,
-                                              LLCL::Runtime &runtime) {
+                                              AsyncRT::Runtime &runtime) {
   auto type = dyn_cast<M::MO::TensorType>(t);
 
   // Choose a default blob alignment to match the attribute's element size.
@@ -55,7 +55,7 @@ static mlir::NamedAttribute denseResourceAttr(StringRef name,
 mlir::NamedAttribute GraphBuilder::tensorAttr(StringRef name,
                                               ArrayRef<uint8_t> data,
                                               mlir::Type t, bool owned,
-                                              LLCL::Runtime &runtime) {
+                                              AsyncRT::Runtime &runtime) {
   if (shouldUseOutOfLineAttrStorage(data.size()))
     return denseResourceAttr(
         name, ArrayRef<char>((const char *)data.data(), data.size()), t, owned,

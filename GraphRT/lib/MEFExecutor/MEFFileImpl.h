@@ -100,7 +100,7 @@ public:
 
   /// Implement the only remaining LocationDecoder hook. Since we have a pointer
   /// to the MEFFileImpl we can easily decode a location provided to us.
-  M::LLCL::DecodedLocation decode(const EncodedLocation &loc) const override;
+  M::AsyncRT::DecodedLocation decode(const EncodedLocation &loc) const override;
 
 public:
   const uint32_t bodyOffset;

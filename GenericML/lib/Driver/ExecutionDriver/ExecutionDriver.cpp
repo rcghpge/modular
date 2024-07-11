@@ -376,7 +376,7 @@ executeModelSynchronously(Runtime &runtime, ExecutableModel &executableModel,
                           bool checkResults) {
 #if MODULAR_PARANOID
   // Create an abstract 'resource' to represent this execution.
-  auto resource = LLCL::Resource::allocate(
+  auto resource = AsyncRT::Resource::allocate(
       Twine("execute(")
           .concat(executableModel.getModel()->getName())
           .concat(")")
@@ -417,13 +417,13 @@ executeModelSynchronously(Runtime &runtime, ExecutableModel &executableModel,
   // Simulate the caller concurrently accessing all the results. This will
   // assert fail if any of them overlap, which could happen if there's a
   // compiler bug in memory planning or concat-in-place.
-  SmallVector<LLCL::ResourceUse> uses;
+  SmallVector<AsyncRT::ResourceUse> uses;
   for (size_t i = 1, n = results.size(); i < n; ++i) {
     const AnyAsyncValueRef &result = results[i];
     if (auto *tensor = dyn_cast<Tensor>(result)) {
       tensor->getBufferRef().collectAccessUses(
           uses, (Twine("output(") + Twine(i - 1) + ")").str(),
-          LLCL::kReadingResourceUse);
+          AsyncRT::kReadingResourceUse);
     }
   }
 #endif
@@ -616,7 +616,7 @@ static void saveInputSpecs(ArrayRef<QuantTensorSpec> specs,
 
 /// Run `model` using the command line options flags configured by the user.
 LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
-                          LLCL::Runtime &runtime,
+                          AsyncRT::Runtime &runtime,
                           const ExecutorDriverOptions &options) {
   SmallVector<TensorSpec> userInputSpecs;
   if (!options.inputSpecs.empty()) {

@@ -25,7 +25,7 @@
 #include "llvm/Support/SourceMgr.h"
 
 using namespace M;
-using namespace M::LLCL;
+using namespace M::AsyncRT;
 using mlir::MLIRContext;
 
 /// This method can be used to print the results of `invokable` in the
@@ -105,7 +105,7 @@ static ErrorOrSuccess runTestcase(ContextRef ctx, const GRTTestcase &test,
            test.getName().data());
     fflush(stdout);
 
-    LLCL::Runtime &runtime = *ctx->get<LLCL::Runtime>();
+    AsyncRT::Runtime &runtime = *ctx->get<AsyncRT::Runtime>();
     auto results = test.getBody()->invoke(/*arguments=*/{}, runtime);
 
     // Block until the invokable results are fully resolved.
@@ -156,8 +156,8 @@ runTestcases(SmallVectorImpl<GRTTestcase> &testcasesToExecute,
       Init::createContext("mef-executor", Init::Options());
   if (ctxOr.isError())
     return ctxOr.takeError();
-  auto err = (*ctxOr)->createIfMissing<LLCL::Runtime>(
-      [&]() -> ErrorOr<std::unique_ptr<LLCL::Runtime>> {
+  auto err = (*ctxOr)->createIfMissing<AsyncRT::Runtime>(
+      [&]() -> ErrorOr<std::unique_ptr<AsyncRT::Runtime>> {
         return options.createRuntime();
       });
   if (err.isError())

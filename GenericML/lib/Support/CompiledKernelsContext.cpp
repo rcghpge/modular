@@ -30,7 +30,7 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
     const EncodedLocation &loc
 #if MODULAR_PARANOID
     ,
-    SmallVectorImpl<LLCL::ResourceUse> &uses
+    SmallVectorImpl<AsyncRT::ResourceUse> &uses
 #endif
 ) {
 #if MODULAR_PARANOID
@@ -42,7 +42,7 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
       // in-flight.
       buffer.collectAccessUses(
           uses, (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
-          LLCL::kReadingResourceUse);
+          AsyncRT::kReadingResourceUse);
 
     } else if (input.isType<List>()) {
       auto &list = input.get<List>();
@@ -55,7 +55,7 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
           tensor.getBufferRef().collectAccessUses(
               uses,
               (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
-              LLCL::kReadingResourceUse);
+              AsyncRT::kReadingResourceUse);
         }
       }
     }
@@ -68,7 +68,7 @@ ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
       // in-flight.
       buffer.collectAccessUses(
           uses, (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
-          LLCL::kWritingResourceUse);
+          AsyncRT::kWritingResourceUse);
     }
     break;
   }

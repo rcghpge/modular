@@ -68,7 +68,7 @@ class Variant {
 public:
   Variant();
 
-  Variant(const LLCL::AnyAsyncValueRef &other);
+  Variant(const AsyncRT::AnyAsyncValueRef &other);
   Variant(const Variant &other);
   Variant(const DenseMapInfoKey &info);
 
@@ -78,7 +78,7 @@ public:
   DenseMapInfoKey getInfo() const;
 
   /// Returns a reference to the wrapped `AnyAsyncValueRef`.
-  const LLCL::AnyAsyncValueRef &getValue() const;
+  const AsyncRT::AnyAsyncValueRef &getValue() const;
 
   /// Copy assignment operator required for assignment to `Variant`. Note
   /// that the implementation copies the value ref and increments the ref count.
@@ -87,7 +87,7 @@ public:
 
 private:
   DenseMapInfoKey info;
-  LLCL::AnyAsyncValueRef value;
+  AsyncRT::AnyAsyncValueRef value;
 };
 
 /// Defines equality on the underlying `AnyAsyncValueRef`s. See `Value.h` for
@@ -108,36 +108,36 @@ std::ostream &operator<<(std::ostream &os, const Variant &variant);
 
 /// This prints the (nested) values to stdout. Leaf node tensors are printed
 /// with `Kernels::printTensor`.
-ErrorOrSuccess printGenericValue(const LLCL::AnyAsyncValueRef &value,
+ErrorOrSuccess printGenericValue(const AsyncRT::AnyAsyncValueRef &value,
                                  ResultOutputStyle style, unsigned precision);
 
 /// Returns a string representation of an `AnyAsyncValueRef` referencing
 /// a supported composed type or tensor. Note: The function is deliberately
 /// not called `to_string` due to not being generic.
-std::string valueToString(const LLCL::AnyAsyncValueRef &value);
+std::string valueToString(const AsyncRT::AnyAsyncValueRef &value);
 
 /// Returns true if two `AnyAsyncValueRef`s are equal. Equality is defined
 /// similarly to PyTorch/Python. Container types are uniquely identified by
 /// their content, tensors by their underlying buffer pointer. Note: The
 /// function is deliberately not overriding the `==` operator due to not being
 /// generic.
-bool valueEqual(const LLCL::AnyAsyncValueRef &lhs,
-                const LLCL::AnyAsyncValueRef &rhs);
+bool valueEqual(const AsyncRT::AnyAsyncValueRef &lhs,
+                const AsyncRT::AnyAsyncValueRef &rhs);
 
 /// Returns true if one `AnyAsyncValueRef` is less than the other. Less-than is
 /// defined similarly to PyTorch/Python. Container types are compared
 /// by their content, tensors by their underlying buffer pointer. Note: The
 /// function is deliberately not overriding the `<` operator due to not being
 /// generic.
-bool valueLessThan(const LLCL::AnyAsyncValueRef &lhs,
-                   const LLCL::AnyAsyncValueRef &rhs);
+bool valueLessThan(const AsyncRT::AnyAsyncValueRef &lhs,
+                   const AsyncRT::AnyAsyncValueRef &rhs);
 
 /// Returns a hash for  `AnyAsyncValueRef`s. The hash is computed based on
 /// container type contents, and for tensors, the underlying buffer pointer is
 /// used. Note: The function is deliberately not overriding the hash-struct
 /// due to not being generic. Unsupported wrapped types are mapped to
 /// `std::numeric_limits<size_t>::max()` as hash.
-size_t valueHash(const LLCL::AnyAsyncValueRef &value);
+size_t valueHash(const AsyncRT::AnyAsyncValueRef &value);
 
 /// Combines an existing hash with a new hash using an algorithm based on the
 /// golden ratio.

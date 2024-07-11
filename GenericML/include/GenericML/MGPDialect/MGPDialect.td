@@ -51,7 +51,7 @@ def MGPDialect : Dialect {
        a framework-specific context object, thus giving all operations access
        to all global context state.
     3. Provides a generic `!mgp.buffer type`, backed by
-       `M::LLCL::BufferRef`, which represents a (possibly owned) array of
+       `M::AsyncRT::BufferRef`, which represents a (possibly owned) array of
        bytes. The bytes are 'uninterpreted', ie we do not attempt to capture
        rank, dimensions, element type or endianness. In this way we support
        future third-party types beyond tensors, support library-specific

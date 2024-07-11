@@ -295,7 +295,7 @@ public:
 
   const M_RuntimeContext *getContext() const { return modelState.context; }
 
-  LLCL::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>> setup(
+  AsyncRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>> setup(
       Runtime &runtime,
       const Driver::DeviceMap &deviceMap = Driver::DeviceMap()) const override;
 
@@ -311,7 +311,7 @@ private:
 
 static Tensor getTensorFromValue(const M::ModularAPIInterface &api,
                                  M_AsyncValue *outputValue,
-                                 LLCL::Runtime &runtime) {
+                                 AsyncRT::Runtime &runtime) {
   TensorPtr outputTensor = {api.getTensorFromValue(outputValue),
                             api.freeTensor};
 
@@ -320,9 +320,9 @@ static Tensor getTensorFromValue(const M::ModularAPIInterface &api,
                                     runtime, kPreferredMemoryAlignment);
 
   // Copy the output data to the output GenericML Tensor
-  LLCL::profiledMemcpy(tensor.getMutableBuffer(),
-                       api.getTensorData(outputTensor.get()),
-                       getSizeOf(api, outputTensor.get()));
+  AsyncRT::profiledMemcpy(tensor.getMutableBuffer(),
+                          api.getTensorData(outputTensor.get()),
+                          getSizeOf(api, outputTensor.get()));
   return tensor;
 }
 
@@ -348,11 +348,11 @@ static bool getBoolFromValue(const M::ModularAPIInterface &api,
 
 static AnyAsyncValueRef getAsyncValue(ValuePtr value,
                                       const M::ModularAPIInterface &api,
-                                      LLCL::Runtime &runtime);
+                                      AsyncRT::Runtime &runtime);
 
 static GML::Dict getDictFromValue(const M::ModularAPIInterface &api,
                                   M_AsyncValue *outputValue,
-                                  LLCL::Runtime &runtime) {
+                                  AsyncRT::Runtime &runtime) {
   DictPtr outputDict = {api.getDictFromValue(outputValue), api.freeDict};
   size_t dictSize = api.getDictSize(outputDict.get());
   GML::Dict dict;
@@ -368,7 +368,7 @@ static GML::Dict getDictFromValue(const M::ModularAPIInterface &api,
 
 static GML::List getListFromValue(const M::ModularAPIInterface &api,
                                   M_AsyncValue *outputValue,
-                                  LLCL::Runtime &runtime) {
+                                  AsyncRT::Runtime &runtime) {
   ListPtr outputList = {api.getListFromValue(outputValue), api.freeList};
   size_t listSize = api.getListSize(outputList.get());
   SmallVector<AnyAsyncValueRef> list;
@@ -382,7 +382,7 @@ static GML::List getListFromValue(const M::ModularAPIInterface &api,
 
 static GML::Tuple getTupleFromValue(const M::ModularAPIInterface &api,
                                     M_AsyncValue *outputValue,
-                                    LLCL::Runtime &runtime) {
+                                    AsyncRT::Runtime &runtime) {
   TuplePtr outputTuple = {api.getTupleFromValue(outputValue), api.freeTuple};
   size_t tupleSize = api.getTupleSize(outputTuple.get());
   GML::Tuple tuple;
@@ -396,7 +396,7 @@ static GML::Tuple getTupleFromValue(const M::ModularAPIInterface &api,
 
 AnyAsyncValueRef getAsyncValue(ValuePtr value,
                                const M::ModularAPIInterface &api,
-                               LLCL::Runtime &runtime) {
+                               AsyncRT::Runtime &runtime) {
   M_ValueType valueType = api.getValueType(value.get());
   switch (valueType) {
   case M_STRING_VALUE:
@@ -428,8 +428,9 @@ AnyAsyncValueRef getAsyncValue(ValuePtr value,
   case M_UNKNOWN_VALUE:
     break;
   }
-  LLCL::EncodedDiagnostic diagnostic =
-      LLCL::UnknownLocationDecoder::getDiagnostic(Error("unsupported value"));
+  AsyncRT::EncodedDiagnostic diagnostic =
+      AsyncRT::UnknownLocationDecoder::getDiagnostic(
+          Error("unsupported value"));
   return AnyAsyncValueRef::createError(runtime, std::move(diagnostic));
 }
 
@@ -583,7 +584,7 @@ private:
 
 /// Initialize the model using `runtime`, allocating memory, setting up data
 /// structures, or whatever else the model needs.  This never blocks.
-LLCL::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
+AsyncRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
 ModularModel::setup(Runtime &runtime,
                     const Driver::DeviceMap &deviceMap) const {
   checkUniqueRuntime(runtime);
@@ -836,7 +837,7 @@ int main(int argc, char **argv) {
   }
 
   ModelState state = {context.get(), compiledModel.get()};
-  EncodedLocation loc = LLCL::FileNameLocationDecoder::getEncodedLocation(
+  EncodedLocation loc = AsyncRT::FileNameLocationDecoder::getEncodedLocation(
       clOptions.inputFilename);
 
   // Create the ModularModel. Note that the Model object will outlive
@@ -848,7 +849,7 @@ int main(int argc, char **argv) {
   // Run with leak checking.
   if (failed(clOptions.configureMLIRContextAndExecute(
           std::move(inputFile), [&](MLIRContext *ctx) {
-            return LLCL::runWithLeakCheckedRuntime(
+            return AsyncRT::runWithLeakCheckedRuntime(
                 "modular-api-executor", [&]() {
                   return runModel(ctx, model.get(), *runtime, clOptions);
                 });

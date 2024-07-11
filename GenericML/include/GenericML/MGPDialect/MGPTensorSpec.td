@@ -78,7 +78,7 @@ def MGP_TensorSpecType : MGP_BaseType<"TensorSpec", "tensor_spec", [
           dtype.
         - 'raw' form: uint8_t, where 0 (ie invalid) denotes a dynamic dtype.
 
-    `!mgp.tensor_specs` are represented by `LLCL::AsyncValueRef<M::TensorSpec>`
+    `!mgp.tensor_specs` are represented by `AsyncRT::AsyncValueRef<M::TensorSpec>`
     in the host C++ runtime. All dimensions in the runtime value should 'refine'
     the corresponding compile time spec, ie runtime dims must equal statically
     known compile-time dims.

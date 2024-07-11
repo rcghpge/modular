@@ -45,7 +45,7 @@
 #include <utility>
 
 using namespace M;
-using namespace M::LLCL;
+using namespace M::AsyncRT;
 using namespace M::MOF;
 using llvm::MemoryBuffer;
 

@@ -11,7 +11,7 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "llvm/ADT/DenseMap.h"
 
-namespace M::LLCL {
+namespace M::AsyncRT {
 
 /// This class provides a mapping of Operation to AnyAsyncValueRef. Using async
 /// functions to mutate IR often requires synchronizing state, or waiting for
@@ -51,13 +51,13 @@ public:
 
   /// Await any side effects of the provided operation to complete. If the
   /// operation is not in the map, this method simply returns. This forwards to
-  /// LLCL::await and therefore donates the current thread to completing work
+  /// AsyncRT::await and therefore donates the current thread to completing work
   /// items. If the chain is resolved to an error, this takes ownership of the
   /// error and returns it.
   ErrorOrSuccess await(Operation *key) {
     auto found = chainMap.find(key);
     if (found != chainMap.end())
-      LLCL::await(found->getSecond());
+      AsyncRT::await(found->getSecond());
 
     if (found->getSecond().isError())
       return std::move(found->getSecond().takeDiagnostic().getMessage());
@@ -68,7 +68,7 @@ public:
   /// Await all side effects for every operation in the map.
   void awaitAll() {
     for (auto &av : chainMap)
-      LLCL::await(av.getSecond());
+      AsyncRT::await(av.getSecond());
   }
 
 private:
@@ -79,6 +79,6 @@ private:
   /// effects.
   DenseMap<Operation *, AnyAsyncValueRef> chainMap;
 };
-} // namespace M::LLCL
+} // namespace M::AsyncRT
 
 #endif // LLCL_COMPILERSUPPORT_ASYNCSIDEEFFECTMAP_H

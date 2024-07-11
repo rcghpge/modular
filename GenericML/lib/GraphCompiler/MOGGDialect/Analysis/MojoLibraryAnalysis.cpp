@@ -57,7 +57,7 @@ getMOGGUniqueSymbolName(const std::string &baseName,
 static ErrorOr<OwningOpRef<ModuleOp>>
 parseMojoPackage(MLIRContext *ctx, StringRef path,
                  const std::shared_ptr<llvm::SourceMgr> &sourceMgr) {
-  LLCL::Runtime &runtime = *loadContext(ctx)->get<LLCL::Runtime>();
+  AsyncRT::Runtime &runtime = *loadContext(ctx)->get<AsyncRT::Runtime>();
   OwningOpRef<ModuleOp> ownedModule =
       KGEN::LIT::importStandaloneMojoBinaryPackage(runtime, sourceMgr, ctx,
                                                    path);

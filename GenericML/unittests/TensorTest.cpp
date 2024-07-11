@@ -15,14 +15,14 @@
 
 using namespace M;
 
-static std::unique_ptr<LLCL::Runtime> getRuntime() {
-  return LLCL::createUniqueRuntime(LLCL::RuntimeOptions().forDebug());
+static std::unique_ptr<AsyncRT::Runtime> getRuntime() {
+  return AsyncRT::createUniqueRuntime(AsyncRT::RuntimeOptions().forDebug());
 }
 
 constexpr size_t kN = 4;
 constexpr size_t kM = 6;
 
-static Tensor makeTensor(LLCL::Runtime &runtime) {
+static Tensor makeTensor(AsyncRT::Runtime &runtime) {
   M::TensorSpec spec({kN, kM}, *DType::getInt(8, /*isSigned=*/false));
   Tensor result =
       Tensor::createOwned(std::move(spec), runtime, /*alignment=*/{});
@@ -67,7 +67,7 @@ TEST(Tensor, FromBuffer) {
 
 // bitWidthT should be a type of the same bit-width as dtype
 template <typename bitWidthT>
-static void checkPrintTensor(LLCL::Runtime &runtime,
+static void checkPrintTensor(AsyncRT::Runtime &runtime,
                              std::initializer_list<int64_t> shape,
                              const DType &dtype, SmallVector<bitWidthT> &&data,
                              const std::string &checkString) {

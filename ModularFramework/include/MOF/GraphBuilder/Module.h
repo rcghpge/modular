@@ -41,7 +41,7 @@ private:
 // Otherwise, copies `data`; may use dense resource or ArrayElementsAttr.
 mlir::NamedAttribute tensorAttr(llvm::StringRef name,
                                 llvm::ArrayRef<uint8_t> data, mlir::Type t,
-                                bool owned, LLCL::Runtime &runtime);
+                                bool owned, AsyncRT::Runtime &runtime);
 
 } // namespace M::MOF::GraphBuilder
 

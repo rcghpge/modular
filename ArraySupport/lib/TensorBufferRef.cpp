@@ -42,7 +42,7 @@ TensorBufferRef::createWithNonTrackedMemory(void *buffer, size_t size,
                          makeMaybeAlign(alignment), std::move(profilerEntry));
 }
 
-TensorBufferRef TensorBufferRef::createOwned(LLCL::CompactRuntimePtr runtime,
+TensorBufferRef TensorBufferRef::createOwned(AsyncRT::CompactRuntimePtr runtime,
                                              size_t size,
                                              std::optional<size_t> alignment) {
   // Special case for empty buffer
@@ -66,7 +66,7 @@ TensorBufferRef TensorBufferRef::createOwned(LLCL::CompactRuntimePtr runtime,
 
 // Create an owned reference from a taken void* pointer -- This taken
 // pointer will not be freed by anyone else except by the buffer-ref now.
-TensorBufferRef TensorBufferRef::take(LLCL::CompactRuntimePtr runtime,
+TensorBufferRef TensorBufferRef::take(AsyncRT::CompactRuntimePtr runtime,
                                       size_t size, void *takeFrom) {
   AnyAsyncValueRef storageRef;
   storageRef = storageRef.createReady<OwnedMemoryBlock>(
@@ -140,8 +140,9 @@ void TensorBufferRef::swap(TensorBufferRef &rhs) {
 
 #if MODULAR_PARANOID
 void TensorBufferRef::collectAccessUses(
-    SmallVectorImpl<LLCL::ResourceUse> &uses, StringRef name,
-    LLCL::ResourceUseType useType, const LLCL::ResourceSection &section) const {
+    SmallVectorImpl<AsyncRT::ResourceUse> &uses, StringRef name,
+    AsyncRT::ResourceUseType useType,
+    const AsyncRT::ResourceSection &section) const {
   if (!resource)
     return;
   // We are using this reference.
@@ -151,18 +152,19 @@ void TensorBufferRef::collectAccessUses(
     // Account for any (offset, size), which will have been captured by our
     // use.
     const TensorBufferRef &owningBufferRef = storageRef.get<TensorBufferRef>();
-    LLCL::ResourceSection parentSection =
-        LLCL::isAllResourceSection(section)
+    AsyncRT::ResourceSection parentSection =
+        AsyncRT::isAllResourceSection(section)
             ? use.getSection()
-            : LLCL::ResourceSection(section.start() + use.getSection().start(),
-                                    section.end() + use.getSection().start());
+            : AsyncRT::ResourceSection(
+                  section.start() + use.getSection().start(),
+                  section.end() + use.getSection().start());
     owningBufferRef.collectAccessUses(uses, name, useType, parentSection);
   }
 }
 #endif
 
 OwnedMemoryBlock::OwnedMemoryBlock(size_t size, std::optional<size_t> alignment,
-                                   LLCL::CompactRuntimePtr rt, void *takePtr)
+                                   AsyncRT::CompactRuntimePtr rt, void *takePtr)
     : data(nullptr), size(size), runtime(rt) {
   if (takePtr)
     data = takePtr;

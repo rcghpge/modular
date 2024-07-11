@@ -234,7 +234,8 @@ static bool isMaybeConstantFoldable(Operation *op) {
 /// If the constant op's users are all in this subgraph, then this returns a
 /// tensor that owns the underlying resource blob.
 /// Otherwise the returned tensor's data is borrowed.
-static Tensor denseResourceAsTensor(LLCL::Runtime &runtime, ConstantOp constant,
+static Tensor denseResourceAsTensor(AsyncRT::Runtime &runtime,
+                                    ConstantOp constant,
                                     DenseResourceElementsAttr denseResource,
                                     const Subgraph &subgraph) {
   mlir::AsmResourceBlob *blob = denseResource.getRawHandle().getBlob();
@@ -312,7 +313,7 @@ static ElementsAttr elementsAttrFromTensor(const AnyAsyncValueRef &ref,
 
 static RuntimeOutput extractRuntimeOutput(
     const AnyAsyncValueRef &ref, MLIRContext *ctx,
-    llvm::DenseMap<M::LLCL::AsyncValue *, ElementsAttr> &cachedConstants) {
+    llvm::DenseMap<M::AsyncRT::AsyncValue *, ElementsAttr> &cachedConstants) {
   if (ref.isType<Tensor>()) {
     Tensor &tensor = ref.get<Tensor>();
     ElementsAttr constantsArr;
@@ -359,10 +360,10 @@ static RuntimeOutput extractRuntimeOutput(
 /// Run a Model to get the constant outputs to a subgraph. Returns a mapping
 /// from output Value to ElementsAttr containing the constant resulting from
 /// folding.
-static LLCL::ErrorDiagnosticOr<ModelResult>
+static AsyncRT::ErrorDiagnosticOr<ModelResult>
 executeModel(MLIRContext *ctx, const Model *model,
              const SubgraphsInfo &subgraphsInfo) {
-  LLCL::Runtime &runtime = *loadContext(ctx)->get<LLCL::Runtime>();
+  AsyncRT::Runtime &runtime = *loadContext(ctx)->get<AsyncRT::Runtime>();
   auto executableModelOr = model->setup(runtime);
   if (executableModelOr.isError())
     return executableModelOr.takeError();
@@ -370,7 +371,7 @@ executeModel(MLIRContext *ctx, const Model *model,
   auto executableModel = executableModelOr.takeValue();
   auto setupErrorOrSuccess = executableModel->waitForModelSetup();
   if (setupErrorOrSuccess.isError())
-    return LLCL::EncodedDiagnostic(
+    return AsyncRT::EncodedDiagnostic(
         Error("Model setup failed, not ready for execution"),
         model->getLocation().copy());
 
@@ -389,13 +390,13 @@ executeModel(MLIRContext *ctx, const Model *model,
   auto results = executableModel->execute(inputTensorsInMEFIndexOrder);
 
   if (results.empty())
-    return LLCL::EncodedDiagnostic("Failed to execute model",
-                                   model->getLocation().copy());
+    return AsyncRT::EncodedDiagnostic("Failed to execute model",
+                                      model->getLocation().copy());
 
-  LLCL::await(results);
+  AsyncRT::await(results);
   for (auto &result : results)
     if (result.isError())
-      return LLCL::EncodedDiagnostic(result.takeDiagnostic());
+      return AsyncRT::EncodedDiagnostic(result.takeDiagnostic());
 
   MutableArrayRef<AnyAsyncValueRef> resultCopy(results.data(), results.size());
 
@@ -405,7 +406,7 @@ executeModel(MLIRContext *ctx, const Model *model,
   resultCopy = resultCopy.drop_front();
 
   // Get the constant values.
-  llvm::DenseMap<M::LLCL::AsyncValue *, ElementsAttr> cachedConstants;
+  llvm::DenseMap<M::AsyncRT::AsyncValue *, ElementsAttr> cachedConstants;
   llvm::DenseMap<Operation *, SmallVector<RuntimeOutput>> opToTensors;
   auto resourceManager = DenseResourceElementsHandle::getManagerInterface(ctx);
   size_t outIdx = 0;
@@ -415,7 +416,7 @@ executeModel(MLIRContext *ctx, const Model *model,
       for (size_t i = 0; i < op->getNumResults(); i++) {
         AnyAsyncValueRef &tensorRef = resultCopy[outIdx];
         if (tensorRef.isError())
-          return LLCL::EncodedDiagnostic(tensorRef.takeDiagnostic());
+          return AsyncRT::EncodedDiagnostic(tensorRef.takeDiagnostic());
 
         // Move output tensor into storage.
         ASSERT_STREAM(tensorRef.isReady(),
@@ -434,7 +435,7 @@ executeModel(MLIRContext *ctx, const Model *model,
     for (auto paramName : subgraph.paramDeclarations()) {
       auto &tensor = resultCopy[outIdx];
       if (tensor.isError())
-        return LLCL::EncodedDiagnostic(tensor.takeDiagnostic());
+        return AsyncRT::EncodedDiagnostic(tensor.takeDiagnostic());
       ASSERT_STREAM(tensor.isReady(),
                     << "We already awaited, tensor should be ready");
       ASSERT_STREAM(tensor.isType<Tensor>(),
@@ -901,13 +902,15 @@ void ConstantFoldPass::runOnOperation() {
   ContextRef maxContext = loadContext(ctx);
   ASSERT_STREAM(maxContext.getPointer() != nullptr,
                 << "expected max context to be setup here");
-  LLCL::Runtime *runtimeFromCtx = maxContext->get<Runtime>();
+  AsyncRT::Runtime *runtimeFromCtx = maxContext->get<Runtime>();
 
   auto readyChain = AsyncValueRef<Chain>::allocate(runtimeFromCtx);
 
-  LLCL::addTask(*runtimeFromCtx, [&, readyChain = readyChain.copy()]() mutable {
+  AsyncRT::addTask(*runtimeFromCtx, [&,
+                                     readyChain = readyChain.copy()]() mutable {
     auto setError = [&](mlir::Location loc, const Twine &errorMessage) {
-      auto encodedLocation = LLCL::MLIRLocationDecoder::getEncodedLocation(loc);
+      auto encodedLocation =
+          AsyncRT::MLIRLocationDecoder::getEncodedLocation(loc);
       return std::move(readyChain)
           .setToError({Error(errorMessage), std::move(encodedLocation)});
     };
@@ -967,10 +970,10 @@ void ConstantFoldPass::runOnOperation() {
             subgraphsInfo.constantSubgraphName);
         ASSERT_STREAM(model != nullptr,
                       << "Model should exist, make sure names above match.");
-        LLCL::ErrorDiagnosticOr<ModelResult> valuesToTensorsOr =
+        AsyncRT::ErrorDiagnosticOr<ModelResult> valuesToTensorsOr =
             executeModel(ctx, model, subgraphsInfo);
         if (valuesToTensorsOr.isError()) {
-          LLCL::EncodedDiagnostic err = valuesToTensorsOr.takeError();
+          AsyncRT::EncodedDiagnostic err = valuesToTensorsOr.takeError();
           auto decoded = err.decodeLocation();
           auto loc =
               mlir::FileLineColLoc::get(module.getContext(), decoded.filename,
@@ -1011,10 +1014,11 @@ void ConstantFoldPass::runOnOperation() {
     }
     return std::move(readyChain).emplace();
   });
-  LLCL::await(readyChain);
+  AsyncRT::await(readyChain);
   if (readyChain.isError()) {
     std::string errorMessage = readyChain.getDiagnostic().getMessage().get();
-    LLCL::DecodedLocation decoded = readyChain.getDiagnostic().decodeLocation();
+    AsyncRT::DecodedLocation decoded =
+        readyChain.getDiagnostic().decodeLocation();
     auto loc = mlir::FileLineColLoc::get(ctx, decoded.filename, decoded.line,
                                          decoded.column);
     mlir::emitError(loc, errorMessage);
