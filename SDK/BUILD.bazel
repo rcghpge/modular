@@ -133,11 +133,12 @@ pkg_files(
     visibility = ["//visibility:public"],
 )
 
-modular_cc_library(
+modular_pybind_library(
     name = "DriverPython",
     srcs = ["//SDK/lib/DriverAPI/python:cpp_srcs"],
     hdrs = glob(["include/SDK/DriverAPI/python/*.h"]),
     deps = [
         "//GenericML:DeviceDriver",
+        "//Support:ML",
     ],
 )

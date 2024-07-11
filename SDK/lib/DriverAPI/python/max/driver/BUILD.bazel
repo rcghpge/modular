@@ -10,8 +10,10 @@ filegroup(
 modular_pybind_extension(
     name = "driver_core",
     srcs = ["//SDK/lib/DriverAPI/python:cpp_bindings_srcs"],
-    deps = [
+    pybind_deps = [
         "//SDK:DriverPython",
+    ],
+    deps = [
         "@llvm-project//llvm:Support",
     ],
 )

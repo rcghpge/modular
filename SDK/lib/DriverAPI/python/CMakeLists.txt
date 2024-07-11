@@ -32,6 +32,8 @@ set(MODULAR_FRAMEWORK_LIBS $<TARGET_FILE:mof>)
 set(max_python_package_sources
   ${CMAKE_CURRENT_SOURCE_DIR}/max/driver/__init__.py
   ${CMAKE_CURRENT_SOURCE_DIR}/max/driver/driver.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/max/driver/tensor.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/max/driver/types.py
 )
 
 # Configure and generate a pyproject.toml for local editable installation.
@@ -53,6 +55,8 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/max_driver_installed
   # source tree.
   COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/max/driver/__init__.py ${CMAKE_CURRENT_BINARY_DIR}/max/driver/__init__.py
   COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/max/driver/driver.py ${CMAKE_CURRENT_BINARY_DIR}/max/driver/driver.py
+  COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/max/driver/tensor.py ${CMAKE_CURRENT_BINARY_DIR}/max/driver/tensor.py
+  COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/max/driver/types.py ${CMAKE_CURRENT_BINARY_DIR}/max/driver/types.py
   # Copy setup.py, which is needed for editable installations.
   COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/setup.py ${CMAKE_CURRENT_BINARY_DIR}/setup.py
   # Symlink the lib directory to the same expected relative location from
