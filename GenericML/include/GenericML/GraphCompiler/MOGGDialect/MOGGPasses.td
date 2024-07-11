@@ -57,6 +57,9 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
     Option<"skipJitCompileMiddle", "skip-jit-compile-middle", "bool",
       /*default=*/"true",
      "Skip jit compile for mogg kernels, which get lowered to compiled region">,
+    Option<"dryRun", "dry-run", "bool",
+      /*default=*/"false",
+     "Run the pass but don't actually compile.">
   ];
 }
 

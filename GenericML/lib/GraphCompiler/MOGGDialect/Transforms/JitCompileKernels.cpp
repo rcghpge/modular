@@ -15,7 +15,6 @@
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/NameMangling.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 
 #include "ArraySupport/Tensor.h"
@@ -92,7 +91,8 @@ struct JitCompileKernels
         skipJitCompileMiddle.getValue(), dumpStub.getValue(),
         createMOGGReproducers.getValue(), useSearch.getValue(),
         saveTempPrefix.getValue(), minimumCpuAlignment.getValue(),
-        splitBinaryCompile.getValue(), timeMOGGCompile.getValue());
+        splitBinaryCompile.getValue(), timeMOGGCompile.getValue(),
+        dryRun.getValue());
 
     if (err.isError())
       return err.takeError();

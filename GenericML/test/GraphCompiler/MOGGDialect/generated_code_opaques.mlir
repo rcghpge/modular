@@ -1,4 +1,4 @@
-// RUN: mo-opt --jit-compile-kernels="dump-stub=true kernel-library-paths="%extra_test_lib"" %s -o %t 2>&1 | FileCheck %s
+// RUN: mo-opt --jit-compile-kernels="dry-run=true dump-stub=true kernel-library-paths="%extra_test_lib"" %s -o %t 2>&1 | FileCheck %s
 
 
 module {
@@ -28,7 +28,7 @@ module {
 }
 
 
-// CHECK-LABEL: kgen.generator export @__gen__
+// CHECK-LABEL: kgen.generator export @"__stub_
 //  CHECK-SAME: ([[ARG0:%.*]]: !kgen.pointer<pointer<none>>, [[ARG1:%.*]]: !kgen.pointer<none>, [[ARG2:%.*]]: !kgen.pointer<none>) {
 //  CHECK-NEXT: kgen.param.declare simd_width = <1>
 
