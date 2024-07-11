@@ -55,6 +55,9 @@ public:
   /// Returns a pointer to the mojo object.
   void *getData() const { return data; }
 
+  /// Returns the destructor to the mojo object.
+  DestructorFn getDestructor() const { return destructor; }
+
   /// Take ownership of the mojo object.
   /// The caller is responsible for freeing the memory.
   void *take();
