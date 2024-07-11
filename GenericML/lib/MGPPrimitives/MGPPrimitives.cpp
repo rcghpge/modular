@@ -103,16 +103,6 @@ static void mgp_tensor_spec_dims_dynamic(const TensorSpec &tensorSpec,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.assert
-//===----------------------------------------------------------------------===//
-
-static ErrorOr<Chain> mgp_assert(bool cond, MEFAttr<StringRef> message) {
-  if (cond)
-    return Chain();
-  return Error(*message);
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.generic.execute
 //===----------------------------------------------------------------------===//
 
@@ -424,7 +414,6 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.check_runtime", mgp_check_runtime);
   ADD_PRIMITIVE(registry, "mgp.tensor_spec.dims.dynamic",
                 mgp_tensor_spec_dims_dynamic);
-  ADD_PRIMITIVE(registry, "mgp.assert", mgp_assert);
   ADD_PRIMITIVE(registry, "mgp.generic.execute", mgp_generic_execute);
   ADD_PRIMITIVE(registry, "mgp.list.append", mgp_list_append);
   ADD_PRIMITIVE(registry, "mgp.guard", mgp_guard);
