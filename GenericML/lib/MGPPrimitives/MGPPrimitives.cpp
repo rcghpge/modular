@@ -103,37 +103,6 @@ static void mgp_tensor_spec_dims_dynamic(const TensorSpec &tensorSpec,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.debug.bool.print
-//===----------------------------------------------------------------------===//
-
-static void mgp_debug_bool_print(Chain inChain, const bool &cond,
-                                 Result<Chain> outChain, Runtime &runtime) {
-  llvm::outs() << cond << "\n";
-  llvm::outs().flush();
-  std::move(outChain).emplace();
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.debug.cpu.spin_wait
-//===----------------------------------------------------------------------===//
-
-static void mgp_debug_cpu_spin_wait(Chain inChain, Result<Chain> outChain,
-                                    MEFAttr<uint64_t> delayUs,
-                                    Runtime &runtime) {
-  std::chrono::microseconds delay(*delayUs);
-  addTask(runtime, [delay, outChain = outChain.copy()]() mutable {
-    TimeTraceScope scope(
-        MGPProfilerEntry::create("mgp.debug.cpu.spin_wait task"));
-    size_t numLoops = 0;
-    BusyWaitSpinWaiter spinner(delay);
-    while (!spinner.wait())
-      ++numLoops;
-    (void)numLoops;
-    std::move(outChain).emplace();
-  });
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.assert
 //===----------------------------------------------------------------------===//
 
@@ -455,8 +424,6 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.check_runtime", mgp_check_runtime);
   ADD_PRIMITIVE(registry, "mgp.tensor_spec.dims.dynamic",
                 mgp_tensor_spec_dims_dynamic);
-  ADD_PRIMITIVE(registry, "mgp.debug.bool.print", mgp_debug_bool_print);
-  ADD_PRIMITIVE(registry, "mgp.debug.cpu.spin_wait", mgp_debug_cpu_spin_wait);
   ADD_PRIMITIVE(registry, "mgp.assert", mgp_assert);
   ADD_PRIMITIVE(registry, "mgp.generic.execute", mgp_generic_execute);
   ADD_PRIMITIVE(registry, "mgp.list.append", mgp_list_append);
