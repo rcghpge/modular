@@ -9,8 +9,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLCL_SUPPORT_FILELOCATIONDECODER_H
-#define LLCL_SUPPORT_FILELOCATIONDECODER_H
+#ifndef ASYNCRT_SUPPORT_FILELOCATIONDECODER_H
+#define ASYNCRT_SUPPORT_FILELOCATIONDECODER_H
 
 #include "AsyncRT/Support/Location.h"
 #include "Support/LLVMForwardDecls.h"
@@ -42,4 +42,4 @@ private:
 
 } // namespace M::AsyncRT
 
-#endif // LLCL_SUPPORT_FILELOCATIONDECODER_H
+#endif // ASYNCRT_SUPPORT_FILELOCATIONDECODER_H
