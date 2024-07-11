@@ -1,3 +1,4 @@
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load(
     "//bazel:api.bzl",
     "driver_option_tablegen",
@@ -120,6 +121,16 @@ driver_option_tablegen(
         ":VisualizeTdFiles",
         "//Support:DriverCommandTdFiles",
     ],
+)
+
+pkg_files(
+    name = "docs",
+    srcs = [
+        ":BenchmarkOptions.man_files",
+        ":VisualizeOptions.man_files",
+        "//SDK/tools/max:DriverOptions.man_files",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 modular_cc_library(

@@ -1,5 +1,8 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "rpath_shim", "td_library")
+
+package(default_visibility = ["//visibility:public"])
 
 td_library(
     name = "InterfacesTdFiles",
@@ -1367,6 +1370,11 @@ modular_cc_library(
     name = "API.headers",
     hdrs = glob(["include/GenericML/API/**/*.h"]),
     visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "API.c.headers",
+    srcs = glob(["include/GenericML/API/max/c/*.h"]),
 )
 
 modular_shared_library(

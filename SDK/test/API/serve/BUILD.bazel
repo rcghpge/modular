@@ -7,7 +7,7 @@ lit_tests(
         "//GenericML:DeviceDriver",
         "//GenericML:modular-framework-common",
         "//KGEN:CompilerRT",
-        "//ModelServing:ServeRT",
+        "//ModelServing:ServeRTCAPI",
         "@llvm-project//compiler-rt:orc_rt",
     ],
     mojo_deps = [
