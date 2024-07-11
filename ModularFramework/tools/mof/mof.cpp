@@ -343,12 +343,6 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   moToMgpOptions.print(*keyBuf);
   moToMgpPasses.printAsTextualPipeline(*keyBuf);
 
-  /// Add environment variables that affect graph compilation to key.
-  /// TODO(GRA-718): Remove these environment variables or formally
-  /// make them graph compiler CL options.
-  (*keyBuf)
-      << llvm::sys::Process::GetEnv("MODULAR_MHA_GPU_RANK4").value_or("0");
-
   if (failed(Cache::writeOperationToCacheKey(*moduleOp, keyBuf)))
     return Error::getStaticString("failed to write module op to cache key");
 

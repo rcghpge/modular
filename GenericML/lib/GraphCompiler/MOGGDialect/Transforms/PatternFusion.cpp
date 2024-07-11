@@ -1874,15 +1874,12 @@ public:
 
 // For MIN Llama 2 demo
 struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
-  bool allowUnsafeBCast, allowInternalReshape, debugMHAPattern,
-      enableRank4GPUMask;
+  bool allowUnsafeBCast, allowInternalReshape, debugMHAPattern;
   MultiHeadAttentionPattern(MLIRContext *ctx, bool allowUnsafeBCast,
-                            bool allowInternalReshape, bool debugMHAPattern,
-                            bool enableRank4GPUMask)
+                            bool allowInternalReshape, bool debugMHAPattern)
       : OpRewritePattern(ctx, 20), allowUnsafeBCast(allowUnsafeBCast),
         allowInternalReshape(allowInternalReshape),
-        debugMHAPattern(debugMHAPattern),
-        enableRank4GPUMask(enableRank4GPUMask) {}
+        debugMHAPattern(debugMHAPattern) {}
 
   static void insertShapeGuard(PatternRewriter &rewriter, GraphOp graphOp,
                                TypedAttr beforeShape, TypedAttr afterShape,
@@ -2372,50 +2369,13 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     // Kernel explicitly requires mask of shape BSS. `gpuMask` may be
     // BSS OR B1SS.
     TensorValue gpuMask = matcher.getAttentionMask();
-    TensorValue rank3GPUMask;
-    if (gpuMask.getType().getRank() == 3) {
-      rank3GPUMask = gpuMask;
-    } else {
-      // Else simply elide the dimension with a reshape, slicing out first head
-      ArrayRef<TypedAttr> rank4Dims = gpuMask.getType().getDims();
-      SmallVector<TypedAttr> rank4SliceDims = {
-          rank4Dims[0], mlir::IntegerAttr::get(rewriter.getIndexType(), 1),
-          rank4Dims[2], rank4Dims[3]};
-      auto paramValues = MOSH::ShapeAttr::get(
-          rank4SliceDims, MOSH::ShapeType::get(rewriter.getContext()));
-
-      SmallVector<int64_t> startSlice = {0, 0, 0, 0};
-      SmallVector<int64_t> stepSlice = {1, 1, 1, 1};
-
-      TensorValue startSliceValue =
-          rewriter.create<ConstantOp>(rootOp->getLoc(), startSlice);
-      auto endSliceParamValue =
-          rewriter.create<MOSH::ParamToValueOp>(rootOp.getLoc(), paramValues);
-      TensorValue endSliceValue = rewriter.create<Shape::ToTensorOp>(
-          rootOp.getLoc(), startSliceValue.getType(), endSliceParamValue);
-      TensorValue stepSliceValue =
-          rewriter.create<ConstantOp>(rootOp->getLoc(), stepSlice);
-
-      TensorType sliceTy = gpuMask.getType().cloneWith(rank4SliceDims);
-      TensorValue elidedMask = rewriter.create<SliceOp>(
-          rootOp.getLoc(), sliceTy, gpuMask, startSliceValue, endSliceValue,
-          stepSliceValue);
-
-      // TODO: consider supporting rank 4 mask in kernel
-      SmallVector<TypedAttr> rank3Dims = {rank4Dims[0], rank4Dims[2],
-                                          rank4Dims[3]};
-      TensorType newTy = gpuMask.getType().cloneWith(rank3Dims);
-      rank3GPUMask = rewriter.create<Static::ReshapeOp>(rootOp->getLoc(), newTy,
-                                                        elidedMask);
-    }
-
     auto normScalar = cast<TensorValue>(matcher.getNormScalar());
 
     // GPU expects fp32 input
     TensorValue normScalarAsFP32 = rewriter.create<CastOp>(
         rootOp.getLoc(), normScalar.getType().cloneWith(DType::f32),
         normScalar);
-    SmallVector<Value> customOpInputs{query, key, value, rank3GPUMask,
+    SmallVector<Value> customOpInputs{query, key, value, gpuMask,
                                       normScalarAsFP32};
 
     // We require the norm scalar to be on the host device. Done this way to
@@ -2528,19 +2488,6 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
         matcher->getQuery().getType().getRank() != 3)
       return Error("GPU Kernel expects rank 3 or 4 QKV.");
 
-    // We expect the GPU mask to be rank 3 for GPU unless an env variable is
-    // defined.
-    //
-    // TODO(GRA-718): Remove which will enable for replit/mistral by default.
-    // Previously gone due to accuracy issues.
-    size_t maskRank = matcher->getExplicitMask().getType().getRank();
-    if (maskRank != 3 &&
-        llvm::sys::Process::GetEnv("MODULAR_MHA_GPU_RANK4").value_or("0") !=
-            "1" &&
-        !enableRank4GPUMask) {
-      return Error("Expect GPU mask to be rank 3 BSS.");
-    }
-
     // CHECK 2: D == 128 and static H due to kernel limitation.
     // TODO: lift to static D once kernel is generalized.
     // Query is BHSD, Key is BHDS and Value is BHSD.
@@ -2638,8 +2585,7 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
     if (enableMHAPattern.getValue()) {
       patterns.add<MultiHeadAttentionPattern>(
           ctx, mhaAllowUnsafeBCast.getValue(),
-          mhaAllowInternalReshape.getValue(), debugMHAPattern.getValue(),
-          enableRank4GPUMask.getValue());
+          mhaAllowInternalReshape.getValue(), debugMHAPattern.getValue());
     }
 
     MO::GraphOp graphOp = getOperation();

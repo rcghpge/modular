@@ -49,12 +49,6 @@ WriteableBufferRef makeCacheKey(BufferRef buffer, Options &...options) {
   auto insertOptionToKey = [&](auto &option) { option.print(*keyBuffer); };
   (insertOptionToKey(options), ...);
 
-  /// Add environment variables that affect graph compilation to key.
-  /// TODO(GRA-718): Remove these environment variables or formally
-  /// make them graph compiler CL options.
-  (*keyBuffer)
-      << llvm::sys::Process::GetEnv("MODULAR_MHA_GPU_RANK4").value_or("0");
-
   /// Add source buffer.
   std::string bufferKey =
       Cache::Keys::TypeKey<BufferRef>::hashKey(std::move(buffer));
