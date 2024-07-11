@@ -101,11 +101,11 @@ class SimpleBufferReusePass
         // current allocation can reuse
         auto toReuse =
             llvm::find_if(liveAllocs, [&](MGP::BufferAllocDynamicOp candidate) {
-              return hasBeenFreed(candidate) &&
-                     candidate.getRuntimeSize() == curAlloc.getRuntimeSize() &&
+              return candidate.getRuntimeSize() == curAlloc.getRuntimeSize() &&
                      candidate.getDevice() == curAlloc.getDevice() &&
                      candidate.getInChain() == curAlloc.getInChain() &&
-                     candidate.getRawAlign() == curAlloc.getRawAlign();
+                     candidate.getRawAlign() == curAlloc.getRawAlign() &&
+                     hasBeenFreed(candidate);
             });
 
         if (toReuse != liveAllocs.end()) {
