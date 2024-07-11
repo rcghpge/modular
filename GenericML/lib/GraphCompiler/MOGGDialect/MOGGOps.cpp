@@ -138,8 +138,8 @@ LoadCompiledKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       /*image=*/getValue(),
       /*functionSymbols=*/getSymbols(),
       /*constantSymbols=*/{});
-  auto combined = builder.create<GRT::ChainCreateOp>(
-      getLoc(), mlir::ValueRange({outChain, loweringState.getInitChain()}));
+  SmallVector<Value> values = {outChain, loweringState.getInitChain()};
+  auto combined = builder.create<GRT::ChainCreateOp>(getLoc(), values);
   loweringState.setInitChain(combined);
   return success();
 }
@@ -589,8 +589,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   }
 
   DenseMap<TypedAttr, Value> loweredParams;
-  auto addParams = [&](Location loc, Operation &op,
-                       Type t) -> CompileDiagnosticOrSuccess {
+  auto addParams = [&](Location loc, Type t) -> CompileDiagnosticOrSuccess {
     ArrayRef<TypedAttr> dims;
     if (auto asTensor = dyn_cast<MO::TensorType>(t))
       dims = asTensor.getDims();
@@ -613,21 +612,26 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         loweredParams[ty] =
             kernelBody.getArgument(paramDimToIdx[cst.getName()]);
       } else {
-        return op.emitError("Unsupported dim attribute type: ") << ty;
+        return mlir::emitError(loc, "Unsupported dim attribute type: ") << ty;
       }
     }
     return success();
   };
 
   // Add all the seen shape parameters values as concrete KGEN param values.
+  for (auto arg : this->getBodyRegion().getArguments()) {
+    auto err = addParams(arg.getLoc(), arg.getType());
+    if (err.isError())
+      return err.takeError();
+  }
   for (auto &op : this->getOps()) {
     for (auto type : op.getOperandTypes()) {
-      auto err = addParams(op.getLoc(), op, type);
+      auto err = addParams(op.getLoc(), type);
       if (err.isError())
         return err.takeError();
     }
     for (auto type : op.getResultTypes()) {
-      auto err = addParams(op.getLoc(), op, type);
+      auto err = addParams(op.getLoc(), type);
       if (err.isError())
         return err.takeError();
     }
@@ -649,7 +653,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     SmallVector<Value> operands;
     operands.push_back(input);
     for (auto ty : asTensor.getDims())
-      operands.push_back(loweredParams[ty]);
+      operands.push_back(loweredParams.at(ty));
 
     return builder.create<MOGG::ToTensorFromMGPOp>(input.getLoc(), oldTy,
                                                    operands);
@@ -748,9 +752,9 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
     auto arrayCreate =
         builder.create<KGEN::POP::ArrayCreateOp>(getShape.getLoc(), dimensions);
+    SmallVector<Value> values = {arrayCreate};
     auto toMOGG = builder.create<MOGG::ToMOGGOp>(
-        getShape.getLoc(), TypeRange(getShape.getResult().getType()),
-        ValueRange(arrayCreate));
+        getShape.getLoc(), TypeRange(getShape.getResult().getType()), values);
     getShape.replaceAllUsesWith(toMOGG.getResult());
     getShape->erase();
   };
@@ -834,7 +838,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   for (const auto &[name, idx] : outParamNameToIdx)
     outputs[idx + numPrependedOutputs + numInplaceOutputs] = paramToDim[name];
   // Construct a mogg.output that newKernel spec
-  builder.create<MOGG::OutputOp>(getLoc(), ValueRange{outputs});
+  builder.create<MOGG::OutputOp>(getLoc(), outputs);
 
   // Each of the parameter outputs now maps onto a concrete dimension value.
   for (const auto param : getOutputParamDecls()) {
@@ -991,7 +995,8 @@ void KernelOp::removeOperandAtIndex(size_t index) {
 /// Fixes up the input fusion interfaces to disallow input fusion on this
 /// position. Returns the added kernel argument.
 Value KernelOp::addOperand(Value operand) {
-  (*this)->insertOperands(getNumOperands(), ValueRange{operand});
+  SmallVector<Value> values = {operand};
+  (*this)->insertOperands(getNumOperands(), values);
   Value blockArg =
       getBody().front().addArgument(operand.getType(), operand.getLoc());
 

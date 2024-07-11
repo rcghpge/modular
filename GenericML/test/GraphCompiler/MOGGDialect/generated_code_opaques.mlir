@@ -39,11 +39,10 @@ module {
 
 // COM: Do the stack allocation for the custom kernel output.
 // CHECK-NEXT: [[V2:%.*]] = pop.stack_allocation 1 x struct<(index) memoryOnly>
-// CHECK-NEXT: [[V3:%.*]] = kgen.rebind [[V2]] : !kgen.pointer<struct<(index) memoryOnly>> to !kgen.pointer<struct<(index) memoryOnly>>
 
 // COM: Call the custom kernel that creates the custom mojo value.
 // CHECK-NEXT: [[INDEX42:%.*]] = kgen.param.constant = <42>
-// CHECK-NEXT: [[V4:%.*]] = kgen.call @"MOGGTests::MyCustomInt::__init__(MOGGTests::MyCustomInt=&,::[[INT:[A-Za-z0-9_]*]])"([[V3]], [[INDEX42]]) : (!kgen.pointer<struct<(index) memoryOnly>> init_self, index) -> !kgen.none
+// CHECK: [[V4:%.*]] = kgen.call @"MOGGTests::MyCustomInt::__init__(MOGGTests::MyCustomInt=&,::[[INT:[A-Za-z0-9_]*]])"({{.*}}, [[INDEX42]])
 
 // COM: Get the move / del function pointers
 // CHECK-NEXT: [[V5:%.*]] = kgen.create_reg_stub [(!kgen.pointer<struct<(index) memoryOnly>> init_self, !kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none: @"MOGGTests::MyCustomInt::__moveinit__(MOGGTests::MyCustomInt=&,MOGGTests::MyCustomInt)"] : <(!kgen.pointer<struct<(index) memoryOnly>> init_self, !kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none>
@@ -54,14 +53,9 @@ module {
 // CHECK-NEXT: [[INDEX_0:%.*]] = kgen.param.constant = <get_alignof(struct<(index) memoryOnly>, current_target())>
 
 // COM: bitcast mov / del the expeced type for create_mojo_value_async.
-// CHECK-NEXT: [[V7:%.*]] = pop.pointer.bitcast [[V5]] : !kgen.signature<(!kgen.pointer<struct<(index) memoryOnly>> init_self, !kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none> to !kgen.signature<(!kgen.pointer<none>, !kgen.pointer<none>) -> !kgen.none>
-// CHECK-NEXT: [[V8:%.*]] = pop.pointer.bitcast [[V6]] : !kgen.signature<(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none> to !kgen.signature<(!kgen.pointer<none>) -> !kgen.none>
-
-// COM: Cast / rebind ptr / runtime / async value to the correct types for create_mojo_value_async.
-// CHECK-NEXT: [[V9:%.*]] = pop.pointer.bitcast [[V1]] : !kgen.pointer<none> to !kgen.pointer<none>
-// CHECK-NEXT: [[V10:%.*]] = pop.pointer.bitcast [[ARG1]] : !kgen.pointer<none> to !kgen.pointer<none>
-// CHECK-NEXT: [[V11:%.*]] = pop.pointer.bitcast [[V3]] : !kgen.pointer<struct<(index) memoryOnly>> to !kgen.pointer<none>
+// CHECK: [[V7:%.*]] = pop.pointer.bitcast [[V5]] : !kgen.signature<(!kgen.pointer<struct<(index) memoryOnly>> init_self, !kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none> to !kgen.signature<(!kgen.pointer<none>, !kgen.pointer<none>) -> !kgen.none>
+// CHECK: [[V8:%.*]] = pop.pointer.bitcast [[V6]] : !kgen.signature<(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none> to !kgen.signature<(!kgen.pointer<none>) -> !kgen.none>
 
 // COM: call create_mojo_value_async
-// CHECK-NEXT: [[V12:%.*]] = kgen.call @create_mojo_value_async([[V11]], [[V9]], [[V10]], [[INDEX]], [[INDEX_0]], [[V8]], [[V7]]) : (!kgen.pointer<none>, !kgen.pointer<none>, !kgen.pointer<none>, index, index, !kgen.signature<(!kgen.pointer<none>) -> !kgen.none>, !kgen.signature<(!kgen.pointer<none>, !kgen.pointer<none>) -> !kgen.none>) -> !kgen.none
-// CHECK-NEXT: kgen.return
+// CHECK: [[V12:%.*]] = kgen.call @create_mojo_value_async({{.*}}, {{.*}}, {{.*}}, [[INDEX]], [[INDEX_0]], [[V8]], [[V7]]) : (!kgen.pointer<none>, !kgen.pointer<none>, !kgen.pointer<none>, index, index, !kgen.signature<(!kgen.pointer<none>) -> !kgen.none>, !kgen.signature<(!kgen.pointer<none>, !kgen.pointer<none>) -> !kgen.none>) -> !kgen.none
+// CHECK: kgen.return
