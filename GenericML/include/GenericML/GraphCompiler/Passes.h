@@ -7,8 +7,8 @@
 #ifndef GENERICML_MO_GRAPHCOMPILER_PASSES_H
 #define GENERICML_MO_GRAPHCOMPILER_PASSES_H
 
+#include "AsyncRT/ForwardDecls.h"
 #include "GenericML/GraphCompiler/GraphCompiler.h"
-#include "LLCL/ForwardDecls.h"
 #include "Support/AlignedAlloc.h"
 #include "mlir/Pass/PassOptions.h"
 

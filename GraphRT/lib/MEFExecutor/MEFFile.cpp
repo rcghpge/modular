@@ -10,9 +10,9 @@
 
 #include "GraphRT/MEFExecutor/MEFFile.h"
 
+#include "AsyncRT/Runtime/Runtime.h"
 #include "GraphRT/MEF/MEFReader.h"
 #include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
-#include "LLCL/Runtime/Runtime.h"
 #include "MEFFileImpl.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/RCRef.h"

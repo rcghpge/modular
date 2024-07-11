@@ -5,8 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "ArraySupport/StateContext.h"
-#include "LLCL/Runtime/Allocator.h"
-#include "LLCL/Runtime/Runtime.h"
+#include "AsyncRT/Runtime/Allocator.h"
+#include "AsyncRT/Runtime/Runtime.h"
 #include "Support/TypeID.h"
 
 #include "gtest/gtest.h"

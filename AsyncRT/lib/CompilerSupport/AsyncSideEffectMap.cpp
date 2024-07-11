@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LLCL/CompilerSupport/AsyncSideEffectMap.h"
+#include "AsyncRT/CompilerSupport/AsyncSideEffectMap.h"
 #include "mlir/IR/Operation.h"
 
 using namespace M::LLCL;

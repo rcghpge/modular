@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/DeviceDriver/DeviceExecution.h"
-#include "LLCL/Runtime/Algorithms.h"
+#include "AsyncRT/Runtime/Algorithms.h"
 
 using namespace M;
 namespace {

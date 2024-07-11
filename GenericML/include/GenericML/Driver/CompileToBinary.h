@@ -7,8 +7,8 @@
 #ifndef GENERICML_DRIVER_COMPILETOBINARY_H
 #define GENERICML_DRIVER_COMPILETOBINARY_H
 
-#include "LLCL/CompilerSupport/Context.h"
-#include "LLCL/Runtime/Runtime.h"
+#include "AsyncRT/CompilerSupport/Context.h"
+#include "AsyncRT/Runtime/Runtime.h"
 #include "Support/Config.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"

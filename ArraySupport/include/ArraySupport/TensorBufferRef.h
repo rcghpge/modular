@@ -7,8 +7,8 @@
 #ifndef ARRAY_SUPPORT_BUFFERREF_H
 #define ARRAY_SUPPORT_BUFFERREF_H
 
-#include "LLCL/Runtime/AnyAsyncValueRef.h"
-#include "LLCL/Runtime/CompactRuntimePtr.h"
+#include "AsyncRT/Runtime/AnyAsyncValueRef.h"
+#include "AsyncRT/Runtime/CompactRuntimePtr.h"
 #include "Support/Profiling/TimeProfiler.h"
 
 #include "llvm/Support/Alignment.h"

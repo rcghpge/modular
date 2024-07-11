@@ -7,7 +7,7 @@
 #ifndef LLCL_COMPILERSUPPORT_ASYNCSIDEEFFECTMAP_H
 #define LLCL_COMPILERSUPPORT_ASYNCSIDEEFFECTMAP_H
 
-#include "LLCL/Runtime/Algorithms.h"
+#include "AsyncRT/Runtime/Algorithms.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "llvm/ADT/DenseMap.h"
 

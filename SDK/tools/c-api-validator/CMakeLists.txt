@@ -12,6 +12,6 @@ add_modular_tool(c-api-validator
   modular-framework-tf-ext
   GenericMLExecutionDriver
   GenericMLSupportGlobals
-  LLCLRuntimeGlobals
+  AsyncRTRuntimeGlobals
   MSupportGlobals
 )

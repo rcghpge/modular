@@ -11,10 +11,10 @@
 
 #include "GraphRT/MEFExecutor/MEFInvokable.h"
 
+#include "AsyncRT/Runtime/AsyncValue.h"
+#include "AsyncRT/Runtime/Runtime.h"
 #include "GraphRT/MEF/MEFReader.h"
 #include "GraphRT/MEFExecutor/PrimitiveDescriptor.h"
-#include "LLCL/Runtime/AsyncValue.h"
-#include "LLCL/Runtime/Runtime.h"
 #include "MEFFileImpl.h"
 #include "Support/AssertStream.h"
 #include "llvm/Support/TrailingObjects.h"

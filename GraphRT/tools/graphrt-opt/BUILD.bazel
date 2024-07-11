@@ -4,10 +4,10 @@ modular_cc_binary(
     name = "graphrt-opt",
     srcs = glob(["*.cpp"]),
     deps = [
+        "//AsyncRT:CompilerSupport",
+        "//AsyncRT:Init",
+        "//AsyncRT:RuntimeGlobals",
         "//GraphRT:AllDialects",
-        "//LLCL:CompilerSupport",
-        "//LLCL:Init",
-        "//LLCL:RuntimeGlobals",
         "//Support:Globals",
         "@llvm-project//mlir:MlirOptLib",
     ],

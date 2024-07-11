@@ -20,11 +20,11 @@ add_modular_tool(max
   EngineCLIBenchmark
   EngineCLIVisualize
   MCrashReporting
-  MLLCLInit
+  MAsyncRTInit
   MSupport
   MSupportDriver
   MSupportGlobals
-  LLCLRuntimeGlobals
+  AsyncRTRuntimeGlobals
 )
 
 target_include_directories(max PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")

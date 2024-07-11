@@ -932,8 +932,8 @@ modular_cc_library(
     hdrs = glob(["include/GenericML/MGPPrimitives/*.h"]),
     deps = [
         ":MGPDialect",
+        "//AsyncRT:RuntimeGlobals",
         "//CUDASupport",
-        "//LLCL:RuntimeGlobals",
     ],
 )
 
@@ -963,12 +963,12 @@ modular_cc_library(
         ":DeviceDriver.headers",
         ":SupportGlobals",
         "//ArraySupport",
+        "//AsyncRT:RuntimeGlobals",
         "//GraphRT:Primitives",
         "//KGEN:Compiler",
         "//KGEN:CompilerRT.headers",
         "//KGEN:ExecutionEngine",
         "//KGEN:ObjectCompiler",
-        "//LLCL:RuntimeGlobals",
         "//Runtime",
         "//Support:Base",
         "//Support:ML",
@@ -1380,8 +1380,8 @@ modular_shared_library(
         ":DeviceDriver",
         ":MaxAPI",
         ":rpaths",
+        "//AsyncRT:Init",
         "//CUDASupport",
-        "//LLCL:Init",
         "//Support:Base",
         "//Support:CrashReporting",
         "//Support:Globals",
@@ -1397,8 +1397,8 @@ modular_shared_library(
         ":CommonDriver",
         ":Support",
         ":rpaths",
+        "//AsyncRT:Init",
         "//CUDASupport",
-        "//LLCL:Init",
         "//Support:Globals",
     ],
 )

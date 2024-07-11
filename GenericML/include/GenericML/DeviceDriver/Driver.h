@@ -7,9 +7,9 @@
 #ifndef GENERICML_LIB_DEVICEDRIVER_DRIVER
 #define GENERICML_LIB_DEVICEDRIVER_DRIVER
 
+#include "AsyncRT/ForwardDecls.h"
+#include "AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "GenericML/API/max/c/symbol_export.h"
-#include "LLCL/ForwardDecls.h"
-#include "LLCL/Runtime/AnyAsyncValueRef.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/ErrorOr.h"
 #include "Support/ML/TensorSpec.h"

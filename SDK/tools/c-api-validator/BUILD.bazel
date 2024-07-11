@@ -4,9 +4,9 @@ modular_cc_binary(
     name = "c-api-validator",
     srcs = glob(["*.cpp"]),
     deps = [
+        "//AsyncRT:RuntimeGlobals",
         "//GenericML:ExecutionDriver",
         "//GenericML:modular-framework-common",
-        "//LLCL:RuntimeGlobals",
         "//Support:Globals",
     ],
 )

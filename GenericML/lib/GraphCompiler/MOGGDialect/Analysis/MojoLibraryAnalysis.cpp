@@ -10,6 +10,8 @@
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/ADT/StringExtras.h"
 
+#include "AsyncRT/CompilerSupport/Context.h"
+#include "AsyncRT/Runtime/Runtime.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
@@ -18,8 +20,6 @@
 #include "KGEN/LITDialect/LITUtils.h"
 #include "KGEN/MojoParser/EntryPoint.h"
 #include "KGEN/ToolCommon/CompilationOptions.h"
-#include "LLCL/CompilerSupport/Context.h"
-#include "LLCL/Runtime/Runtime.h"
 #include "Support/Compiler/BytecodeReaderWriter.h"
 #include "Support/Compiler/OperationUtils.h"
 #include "Support/Config.h"

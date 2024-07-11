@@ -7,8 +7,8 @@ modular_cc_binary(
     deps = [
         ":DriverOptions.help_gen",
         ":DriverOptions.inc_gen",
+        "//AsyncRT:Init",
         "//GenericML:modular-framework-common",
-        "//LLCL:Init",
         "//PyTorch:modular-framework-torch-ext",
         "//SDK:EngineCLI-Benchmark",
         "//SDK:EngineCLI-Visualize",

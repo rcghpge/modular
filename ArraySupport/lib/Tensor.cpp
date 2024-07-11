@@ -6,7 +6,7 @@
 
 #include "ArraySupport/Tensor.h"
 #include "ArraySupport/TensorBufferRef.h"
-#include "LLCL/Runtime/Runtime.h"
+#include "AsyncRT/Runtime/Runtime.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/Twine.h"

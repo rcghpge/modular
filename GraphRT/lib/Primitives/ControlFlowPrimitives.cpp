@@ -10,12 +10,12 @@
 
 #include "GraphRT/Primitives.h"
 
+#include "AsyncRT/ForwardDecls.h"
+#include "AsyncRT/Runtime/Algorithms.h"
+#include "AsyncRT/Runtime/AsyncValueRef.h"
+#include "AsyncRT/Runtime/Runtime.h"
 #include "GraphRT/MEFExecutor/MEFInvokable.h"
 #include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
-#include "LLCL/ForwardDecls.h"
-#include "LLCL/Runtime/Algorithms.h"
-#include "LLCL/Runtime/AsyncValueRef.h"
-#include "LLCL/Runtime/Runtime.h"
 
 using namespace M;
 

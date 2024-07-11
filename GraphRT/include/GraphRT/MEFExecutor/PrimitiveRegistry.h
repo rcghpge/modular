@@ -7,11 +7,11 @@
 #ifndef GRAPHRT_MEFEXECUTOR_PRIMITIVE_REGISTRY_H
 #define GRAPHRT_MEFEXECUTOR_PRIMITIVE_REGISTRY_H
 
+#include "AsyncRT/Runtime/Runtime.h"
+#include "AsyncRT/Support/Chain.h"
 #include "GraphRT/MEF/MEFEncoding.h"
 #include "GraphRT/MEF/MEFTypes.h"
 #include "GraphRT/MEFExecutor/PrimitiveDescriptor.h"
-#include "LLCL/Runtime/Runtime.h"
-#include "LLCL/Support/Chain.h"
 #include "Support/ErrorOr.h"
 #include "Support/Profiling/TimeProfiler.h"
 #include "Support/ReferenceCounted.h"

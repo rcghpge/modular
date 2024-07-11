@@ -5,11 +5,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Driver/CompileDriver.h"
+#include "AsyncRT/Runtime/Algorithms.h"
+#include "AsyncRT/Support/UnknownLocationDecoder.h"
 #include "Config/Version.h"
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "GraphRT/MLIRToMEF.h"
-#include "LLCL/Runtime/Algorithms.h"
-#include "LLCL/Support/UnknownLocationDecoder.h"
 #include "Support/ADT/ConcatenationTree.h"
 #include "Support/Configuration.h"
 #include "Support/ML/SizeUtils.h"

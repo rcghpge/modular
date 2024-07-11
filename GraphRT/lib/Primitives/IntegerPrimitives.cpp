@@ -11,8 +11,8 @@
 
 #include "GraphRT/Primitives.h"
 
+#include "AsyncRT/Runtime/Runtime.h"
 #include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
-#include "LLCL/Runtime/Runtime.h"
 #include "llvm/ADT/StringRef.h"
 using namespace M;
 

@@ -6,10 +6,10 @@
 
 #include "ArraySupport/TensorBufferRef.h"
 
-#include "LLCL/Runtime/Allocator.h"
-#include "LLCL/Runtime/Runtime.h"
-#include "LLCL/Support/Location.h"
-#include "LLCL/Support/UnknownLocationDecoder.h"
+#include "AsyncRT/Runtime/Allocator.h"
+#include "AsyncRT/Runtime/Runtime.h"
+#include "AsyncRT/Support/Location.h"
+#include "AsyncRT/Support/UnknownLocationDecoder.h"
 
 #include "gtest/gtest.h"
 

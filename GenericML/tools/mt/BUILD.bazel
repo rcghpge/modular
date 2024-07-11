@@ -13,8 +13,8 @@ modular_cc_binary(
     ],
     deps = [
         ":rpaths",
+        "//AsyncRT:Init",
         "//GenericML:CommonDriver",
-        "//LLCL:Init",
         "//Support:Globals",
     ],
 )

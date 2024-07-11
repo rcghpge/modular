@@ -6,12 +6,12 @@
 
 #include "ArraySupport/Tensor.h"
 #include "ArraySupport/TensorBufferRef.h"
+#include "AsyncRT/ForwardDecls.h"
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "GenericML/Driver/DriverInternals.h"
 #include "GenericML/Driver/ExecutionDriver.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/QuantSpec.h"
-#include "LLCL/ForwardDecls.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/AssertStream.h"
 #include "Support/Error.h"

@@ -9,9 +9,9 @@
 #ifndef GRAPHCOMPILER_TRANSFORMS_MODIALECT_MEFMODEL_H
 #define GRAPHCOMPILER_TRANSFORMS_MODIALECT_MEFMODEL_H
 
+#include "AsyncRT/ForwardDecls.h"
 #include "GenericML/Support/Model.h"
 #include "GraphRT/MEFExecutor/MEFInvokable.h"
-#include "LLCL/ForwardDecls.h"
 #include "Support/AssertStream.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/ForwardDecls.h"

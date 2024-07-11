@@ -5,7 +5,7 @@ modular_cc_library(
     srcs = glob(["lib/*.cpp"]),
     hdrs = glob(["include/Runtime/*.h"]),
     deps = [
-        "//LLCL:Runtime",
+        "//AsyncRT:Runtime",
         "//Support:Base",
     ],
 )

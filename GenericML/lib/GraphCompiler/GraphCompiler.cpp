@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/GraphCompiler.h"
+#include "AsyncRT/Runtime/Runtime.h"
 #include "GenericML/CUDADialect/CUDADialect.h"
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
@@ -26,7 +27,6 @@
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
 #include "GraphRT/MLIRToMEF.h"
-#include "LLCL/Runtime/Runtime.h"
 #include "Support/ADT/ConcatenationTree.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/PassManager.h"

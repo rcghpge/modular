@@ -7,8 +7,8 @@
 #ifndef MOF_GRAPHBUILDER_MODULE_H
 #define MOF_GRAPHBUILDER_MODULE_H
 
+#include "AsyncRT/Runtime/Runtime.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "LLCL/Runtime/Runtime.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 

@@ -7,7 +7,7 @@
 #ifndef GENERICML_MO_GRAPHCOMPILER_H
 #define GENERICML_MO_GRAPHCOMPILER_H
 
-#include "LLCL/ForwardDecls.h"
+#include "AsyncRT/ForwardDecls.h"
 #include "Support/Buffer.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/DialectRegistry.h"

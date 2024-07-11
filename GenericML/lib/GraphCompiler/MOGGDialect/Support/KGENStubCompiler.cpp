@@ -6,6 +6,9 @@
 
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
 
+#include "AsyncRT/CompilerSupport/Context.h"
+#include "AsyncRT/Runtime/Algorithms.h"
+#include "AsyncRT/Runtime/Runtime.h"
 #include "Cache/CacheTelemetryContext.h"
 #include "Cache/CachedTransform.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
@@ -16,9 +19,6 @@
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "KGEN/ToolCommon/CLOptions.h"
 #include "KGEN/ToolCommon/PassManagerConfigOptions.h"
-#include "LLCL/CompilerSupport/Context.h"
-#include "LLCL/Runtime/Algorithms.h"
-#include "LLCL/Runtime/Runtime.h"
 #include "Support/Context.h"
 #include "Support/MArchTarget/Host.h"
 #include "Support/MDialect/MAttrs.h"

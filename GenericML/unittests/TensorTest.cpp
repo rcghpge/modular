@@ -7,9 +7,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "ArraySupport/Tensor.h"
-#include "LLCL/Runtime/Allocator.h"
-#include "LLCL/Runtime/Runtime.h"
-#include "LLCL/Runtime/WorkQueue.h"
+#include "AsyncRT/Runtime/Allocator.h"
+#include "AsyncRT/Runtime/Runtime.h"
+#include "AsyncRT/Runtime/WorkQueue.h"
 
 #include "gtest/gtest.h"
 

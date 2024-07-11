@@ -4,8 +4,8 @@ modular_cc_binary(
     name = "mo-opt",
     srcs = glob(["*.cpp"]),
     deps = [
+        "//AsyncRT:Init",
         "//GenericML:GraphCompiler",
-        "//LLCL:Init",
         "//Support:Globals",
         "@llvm-project//mlir:MlirOptLib",
     ],

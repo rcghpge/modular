@@ -6,8 +6,8 @@
 
 #include "ArraySupport/TensorBufferRef.h"
 
-#include "LLCL/Runtime/AsyncValue.h"
-#include "LLCL/Runtime/Runtime.h"
+#include "AsyncRT/Runtime/AsyncValue.h"
+#include "AsyncRT/Runtime/Runtime.h"
 #include "llvm/Support/Format.h"
 
 using namespace M;

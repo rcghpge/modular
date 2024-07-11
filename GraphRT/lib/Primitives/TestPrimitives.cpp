@@ -13,10 +13,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AsyncRT/Runtime/Algorithms.h"
+#include "AsyncRT/Runtime/Runtime.h"
 #include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "GraphRT/Primitives.h"
-#include "LLCL/Runtime/Algorithms.h"
-#include "LLCL/Runtime/Runtime.h"
 #include "Support/Threading/Atomics.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"

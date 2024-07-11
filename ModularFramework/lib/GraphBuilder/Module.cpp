@@ -6,7 +6,7 @@
 
 #include "MOF/GraphBuilder/Module.h"
 
-#include "LLCL/Runtime/Runtime.h"
+#include "AsyncRT/Runtime/Runtime.h"
 #include "Support/Compiler/MLIRDenseAttr.h"
 
 #include "mlir/IR/Builders.h"

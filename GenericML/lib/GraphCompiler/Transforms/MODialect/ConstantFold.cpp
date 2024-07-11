@@ -5,6 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "ConstantFold.h"
+#include "AsyncRT/CompilerSupport/Context.h"
+#include "AsyncRT/CompilerSupport/MLIRLocationDecoder.h"
+#include "AsyncRT/Runtime/Algorithms.h"
+#include "AsyncRT/Runtime/Runtime.h"
 #include "GenericML/Driver/CXXDriverAPI.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
@@ -21,10 +25,6 @@
 #include "GraphRT/MEFExecutor/MEFFile.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
-#include "LLCL/CompilerSupport/Context.h"
-#include "LLCL/CompilerSupport/MLIRLocationDecoder.h"
-#include "LLCL/Runtime/Algorithms.h"
-#include "LLCL/Runtime/Runtime.h"
 #include "MEFModel.h"
 #include "Support/Buffer.h"
 #include "Support/Compiler/MLIRDenseAttr.h"

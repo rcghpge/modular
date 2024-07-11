@@ -20,9 +20,9 @@ add_modular_tool(modular-api-executor
   GenericMLSupport
   GenericMLSupportGlobals
   MSupportGlobals
-  LLCLRuntime
-  LLCLRuntimeGlobals
-  LLCLSupport
+  AsyncRTRuntime
+  AsyncRTRuntimeGlobals
+  AsyncRTSupport
   )
 
 target_include_directories(modular-api-executor PUBLIC
