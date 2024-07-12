@@ -464,22 +464,6 @@ static void mgp_buffer_section_borrow_dynamic_cpu(
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.buffer.to_bool.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_buffer_to_bool_cpu(Chain inChain, StateContext &theContext,
-                                   const TensorBufferRef &buffer,
-                                   Result<bool> result,
-                                   MEFAttr<uint64_t> aRuntimeSlot,
-                                   MEFAttr<uint64_t> bDeviceId) {
-  if (buffer.getSize() != 1)
-    return std::move(result).setToError(
-        Twine("expecting buffer to have size 1 (actually is ") +
-        Twine(buffer.getSize()) + ")");
-  std::move(result).emplace(*buffer.getBuffer<uint8_t>() != 0);
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.tensor.create.cpu
 //===----------------------------------------------------------------------===//
 
@@ -808,7 +792,6 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
                 mgp_buffer_section_borrow_static_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.section.borrow.dynamic.cpu",
                 mgp_buffer_section_borrow_dynamic_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.to_bool.cpu", mgp_buffer_to_bool_cpu);
   ADD_PRIMITIVE(registry, "mgp.tensor.create.cpu", mgp_tensor_create_cpu);
   ADD_PRIMITIVE(registry, "mgp.tensor.extract.buffer.cpu",
                 mgp_tensor_extract_buffer_cpu);
