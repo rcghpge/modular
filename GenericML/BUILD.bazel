@@ -971,6 +971,7 @@ modular_cc_library(
         "//KGEN:Compiler",
         "//KGEN:CompilerRT.headers",
         "//KGEN:ExecutionEngine",
+        "//KGEN:ObjectCompiler",
         "//Runtime",
         "//Support:Base",
         "//Support:ML",
