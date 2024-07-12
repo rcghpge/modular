@@ -45,7 +45,7 @@ MODULAR_API_EXPORT void MAXG_loadModularDialects(MlirDialectRegistry registry) {
   M::MO::loadDialects(*unwrap(registry));
 }
 
-// Note: Keep sections below in sync with max_graph.cpp.
+// Note: Keep sections below in sync with max/graph/_c.mojo.
 
 //===----------------------------------------------------------------------===//
 // Op factories

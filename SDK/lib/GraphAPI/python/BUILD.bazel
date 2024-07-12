@@ -12,7 +12,7 @@ modular_pybind_py_library(
     srcs = ["//SDK/lib/GraphAPI/python/max/graph:py_srcs"],
     imports = ["."],
     pybind_data = [
-        "//SDK/lib/GraphAPI/python/max/graph:max-graph-core",
+        "//SDK/lib/GraphAPI/python/max/graph:core",
     ],
     visibility = ["//visibility:public"],
 )
@@ -22,14 +22,14 @@ modular_python_editable_dir(
     name = "max_graph_editable",
     srcs = [
         "setup.py",
-        "//SDK/lib/GraphAPI/python/max/graph:__init__.py",
+        "//SDK/lib/GraphAPI/python/max/graph:modular_py_srcs",
         "//SDK/lib/GraphAPI/python/max/graph/mlir:__init__.py",
         "@llvm-project//mlir/python:IRPyFiles",
         "@llvm-project//mlir/python:IRPyIFiles",
         "@llvm-project//mlir/python:MlirLibsPyFiles",
     ],
     compiled_extensions = [
-        "//SDK/lib/GraphAPI/python/max/graph:max-graph-core",
+        "//SDK/lib/GraphAPI/python/max/graph:core",
     ],
     config_file = "pyproject.toml.in",
     prefix_map = {
