@@ -66,6 +66,18 @@ getDeviceMemoryFromAsyncTensor(M::ContextRef context, Driver::Device *device,
                                     std::move(destructor));
 }
 
+// Given an AsyncValue that contains a MojoValue convert to a type that
+// we can pass to mojo. We assume the outputValue is already awaited.
+static Driver::DriverMojoValue
+getMojoValueFromAsyncValue(AnyAsyncValueRef outputValue) {
+  // Take ownership of underlying mojo value.
+  auto mojoValue = std::move(outputValue.get<MojoValue>());
+  Driver::DriverMojoValue value;
+  value.destructor = mojoValue.getDestructor();
+  value.data = mojoValue.take();
+  return value;
+}
+
 SmallVector<AnyAsyncValueRef>
 M::Driver::prepareInputs(Runtime &runtime,
                          M::Driver::DeviceMemory **inputMemories,
@@ -93,36 +105,45 @@ M::Driver::prepareInputs(Runtime &runtime,
 
 size_t M::Driver::processResults(
     llvm::MutableArrayRef<AnyAsyncValueRef> results, M::ExecutableModel *model,
-    decltype(M::Driver::addToOutputList) addToOutputListFn,
+    decltype(addTensorToOutputList) addTensorToOutputListFn,
+    decltype(addValueToOutputList) addValueToOutputListFn,
     const ContextRef &maxContext, const RCRef<M::Driver::Device> &device,
     void *mojoContext, void *outputList) {
   // First result is a chain.
   results = results.drop_front();
-  llvm::SmallVector<AnyAsyncValueRef> outputTensorRefs;
-  outputTensorRefs.reserve(results.size());
+  llvm::SmallVector<AnyAsyncValueRef> outputRefs;
+  outputRefs.reserve(results.size());
   for (auto &result : results) {
     // Convert only outputs that are of tensor types.
-    // TODO: Support returning mojo values.
     if (result.isType<Tensor>()) {
       // Each framework has their own way to convert to tensor. So call this
       // function to get the generic form.
-      outputTensorRefs.push_back(
-          model->convertToGenericTensor(std::move(result)));
+      outputRefs.push_back(model->convertToGenericTensor(std::move(result)));
+    } else {
+      outputRefs.push_back(std::move(result));
     }
   }
-  AsyncRT::await(outputTensorRefs);
+  AsyncRT::await(outputRefs);
 
-  for (auto &&outputTensorRef : outputTensorRefs) {
-    // Convert tensor back to device memory and call the callback we got from
-    // mojo. Here we take ownership of output.
-    Driver::DeviceMemory *outputMemory = getDeviceMemoryFromAsyncTensor(
-        maxContext, device.getPointer(), std::move(outputTensorRef));
-    const TensorSpec &spec = outputMemory->getSpec();
-    addToOutputListFn(mojoContext, outputList, outputMemory,
-                      const_cast<TensorSpec *>(&spec));
+  for (auto &&outputRef : outputRefs) {
+    if (outputRef.isType<Tensor>()) {
+      // Convert tensor back to device memory and call the callback we got from
+      // mojo. Here we take ownership of output.
+      Driver::DeviceMemory *outputMemory = getDeviceMemoryFromAsyncTensor(
+          maxContext, device.getPointer(), std::move(outputRef));
+      const TensorSpec &spec = outputMemory->getSpec();
+      addTensorToOutputListFn(mojoContext, outputList, outputMemory,
+                              const_cast<TensorSpec *>(&spec));
+    } else if (outputRef.isType<MojoValue>()) {
+      // Pass through opaque mojo types. We don't have much info here and
+      // rely on caller to do the right thing.
+      Driver::DriverMojoValue value =
+          getMojoValueFromAsyncValue(std::move(outputRef));
+      addValueToOutputListFn(mojoContext, outputList, value);
+    }
   }
 
   // Return back the output count. This is mostly useful of verification on
   // mojo side.
-  return outputTensorRefs.size();
+  return outputRefs.size();
 }
