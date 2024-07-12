@@ -31,10 +31,6 @@
 #include <fstream>
 #include <numeric>
 
-#ifdef MODULAR_PROFILING_NSIGHT
-#include "Support/CUDA/Profile.h"
-#endif // MODULAR_PROFILING_NSIGHT
-
 using namespace M;
 using mlir::MLIRContext;
 
@@ -501,14 +497,6 @@ executeModel(const Model *model, Runtime &runtime,
     llvm::outs().flush();
   }
 
-#ifdef MODULAR_PROFILING_NSIGHT
-  // don't start the profiler if executeModel is only being used for warm-up
-  if (numRuns > 0) {
-    if (auto err = M::CUDA::profileStart())
-      return err.takeError();
-  }
-#endif
-
   for (unsigned i = 0; i < numRuns; ++i) {
     auto args = buildArgs(runtime, inputTensorGenerators);
 
@@ -558,13 +546,6 @@ executeModel(const Model *model, Runtime &runtime,
 
     llvm::outs().flush();
   }
-
-#ifdef MODULAR_PROFILING_NSIGHT
-  if (numRuns > 0) {
-    if (auto err = M::CUDA::profileStop())
-      return err.takeError();
-  }
-#endif
 
   return executableModel;
 }
