@@ -34,12 +34,11 @@ static M::Tensor getTensorFromDeviceMemory(AsyncRT::Runtime &runtime,
                 TensorSpec{std::move(spec)});
 }
 
-static Driver::DeviceMemory *
-getDeviceMemoryFromAsyncTensor(M::ContextRef context, Driver::Device *device,
-                               AnyAsyncValueRef outputTensor) {
+static Driver::DeviceMemory *getDeviceMemoryFromTensor(M::ContextRef context,
+                                                       Driver::Device *device,
+                                                       M::Tensor tensor) {
 
   // Take ownership of underlying tensor storage.
-  Tensor &tensor = outputTensor.get<Tensor>();
   TensorBufferRef bufferRef = tensor.releaseBufferRef();
   AnyAsyncValueRef storageRef = bufferRef.getMemStorageHandle();
 
@@ -103,12 +102,10 @@ M::Driver::prepareInputs(Runtime &runtime,
   return inputs;
 }
 
-size_t M::Driver::processResults(
-    llvm::MutableArrayRef<AnyAsyncValueRef> results, M::ExecutableModel *model,
-    decltype(addTensorToOutputList) addTensorToOutputListFn,
-    decltype(addValueToOutputList) addValueToOutputListFn,
-    const ContextRef &maxContext, const RCRef<M::Driver::Device> &device,
-    void *mojoContext, void *outputList) {
+Driver::GraphExecutionResultsTy
+M::Driver::processResults(llvm::MutableArrayRef<AnyAsyncValueRef> results,
+                          ExecutableModel *model, ContextRef maxContext,
+                          RCRef<Driver::Device> device) {
   // First result is a chain.
   results = results.drop_front();
   llvm::SmallVector<AnyAsyncValueRef> outputRefs;
@@ -125,25 +122,64 @@ size_t M::Driver::processResults(
   }
   AsyncRT::await(outputRefs);
 
+  Driver::GraphExecutionResultsTy outputs;
+
   for (auto &&outputRef : outputRefs) {
     if (outputRef.isType<Tensor>()) {
-      // Convert tensor back to device memory and call the callback we got from
-      // mojo. Here we take ownership of output.
-      Driver::DeviceMemory *outputMemory = getDeviceMemoryFromAsyncTensor(
-          maxContext, device.getPointer(), std::move(outputRef));
-      const TensorSpec &spec = outputMemory->getSpec();
-      addTensorToOutputListFn(mojoContext, outputList, outputMemory,
-                              const_cast<TensorSpec *>(&spec));
+      outputs.push_back(std::move(outputRef.get<Tensor>()));
     } else if (outputRef.isType<MojoValue>()) {
       // Pass through opaque mojo types. We don't have much info here and
       // rely on caller to do the right thing.
       Driver::DriverMojoValue value =
           getMojoValueFromAsyncValue(std::move(outputRef));
-      addValueToOutputListFn(mojoContext, outputList, value);
+      outputs.push_back(value);
     }
   }
 
   // Return back the output count. This is mostly useful of verification on
   // mojo side.
-  return outputRefs.size();
+  return outputs;
+}
+
+void M::Driver::passResultsToMojo(
+    MutableArrayRef<std::variant<M::Tensor, M::Driver::DriverMojoValue>>
+        results,
+    decltype(addTensorToOutputList) addTensorToOutputListFn,
+    decltype(addValueToOutputList) addValueToOutputListFn, void *mojoContext,
+    void *outputList, ContextRef maxContext, RCRef<Driver::Device> device) {
+  for (auto &output : results) {
+    if (std::holds_alternative<Tensor>(output)) {
+      // Convert tensor back to device memory and call the callback we got from
+      // mojo. Here we take ownership of output.
+      Driver::DeviceMemory *outputMemory =
+          getDeviceMemoryFromTensor(std::move(maxContext), device.getPointer(),
+                                    std::move(std::get<M::Tensor>(output)));
+      auto spec = outputMemory->getSpec();
+      addTensorToOutputListFn(mojoContext, outputList, outputMemory, &spec);
+    } else {
+      // Pass through opaque mojo types. We don't have much info here and
+      // rely on caller to do the right thing.
+      addValueToOutputListFn(mojoContext, outputList,
+                             std::get<DriverMojoValue>(output));
+    }
+  }
+}
+
+size_t M::Driver::processResults(
+    llvm::MutableArrayRef<AnyAsyncValueRef> results, M::ExecutableModel *model,
+    decltype(addTensorToOutputList) addTensorToOutputListFn,
+    decltype(addValueToOutputList) addValueToOutputListFn,
+    ContextRef maxContext, RCRef<M::Driver::Device> device, void *mojoContext,
+    void *outputList) {
+
+  auto outputsResolved =
+      processResults(results, model, maxContext.copy(), device.copy());
+
+  passResultsToMojo(outputsResolved, addTensorToOutputListFn,
+                    addValueToOutputListFn, mojoContext, outputList, maxContext,
+                    device);
+
+  // Return back the output count. This is mostly useful of verification on
+  // mojo side.
+  return outputsResolved.size();
 }

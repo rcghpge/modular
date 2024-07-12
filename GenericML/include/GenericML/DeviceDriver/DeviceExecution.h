@@ -41,13 +41,32 @@ prepareInputs(Runtime &runtime, DeviceMemory **inputMemories,
               DriverMojoValue *mojoValues = nullptr,
               size_t mojoValuesCount = 0);
 
+using GraphExecutionResultsTy =
+    SmallVector<std::variant<M::Tensor, Driver::DriverMojoValue>>;
+
+// Process results array and convert to max driver types.
+MODULAR_VISIBILITY_EXPORT
+GraphExecutionResultsTy
+processResults(llvm::MutableArrayRef<AnyAsyncValueRef> results,
+               ExecutableModel *model, ContextRef maxContext,
+               RCRef<Device> device);
+
+// Writes results to mojo callback function
+MODULAR_VISIBILITY_EXPORT
+void passResultsToMojo(
+    MutableArrayRef<std::variant<M::Tensor, DriverMojoValue>> results,
+    decltype(addTensorToOutputList) addTensorToOutputListFn,
+    decltype(addValueToOutputList) addValueToOutputListFn, void *mojoContext,
+    void *outputList, ContextRef maxContext, RCRef<Driver::Device> device);
+
 // Writes results array back to mojo list.
 MODULAR_VISIBILITY_EXPORT size_t processResults(
     llvm::MutableArrayRef<AnyAsyncValueRef> results, ExecutableModel *model,
     decltype(addTensorToOutputList) addTensorToOutputListFn,
     decltype(addValueToOutputList) addValueToOutputListFn,
-    const ContextRef &maxContext, const RCRef<Device> &device,
-    void *mojoContext, void *outputList);
+    ContextRef maxContext, RCRef<Device> device, void *mojoContext,
+    void *outputList);
+
 } // namespace M::Driver
 
 #endif
