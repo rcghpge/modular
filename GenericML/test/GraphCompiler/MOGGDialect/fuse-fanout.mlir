@@ -14,7 +14,7 @@ mo.graph @simpleTwoKernels(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3]
 
 // CHECK: mo.graph @simpleTwoKernels(%[[ARG0:.*]]: !mo.tensor<[4, 3], f32>)
 // CHECK-NEXT: %[[KERNEL_1:.*]] = mogg.kernel (%[[ARG0]])
-// CHECK: mogg.lambda @elemwise_compute_lambda = (%[[INDICES:.*]]: !mogg.indices){
+// CHECK: mogg.lambda @[[ELEMWISE_COMPUTE_LAMBDA:.*]] = (%[[INDICES:.*]]: !mogg.indices){
 // CHECK-NEXT:    %[[IN:.*]] = mogg.invoke @[[IN_LAMBDA:.*]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
 // CHECK-NEXT:    %[[SQRT:.*]] = mogg.call "mo.sqrt"(%[[IN]]) : !mogg.simd<f32> -> !mogg.simd<f32>
 // CHECK-NEXT:    %[[TANH:.*]] = mogg.call "mo.tanh"(%[[SQRT]]) : !mogg.simd<f32> -> !mogg.simd<f32>
@@ -24,7 +24,7 @@ mo.graph @simpleTwoKernels(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3]
 
 
 // CHECK: %[[KERNEL_2:.*]] = mogg.kernel (%[[KERNEL_1]], %[[ARG0]])
-// CHECK: mogg.lambda @elemwise_compute_lambda = (%[[INDICES:.*]]: !mogg.indices){
+// CHECK: mogg.lambda @[[ELEMWISE_COMPUTE_LAMBDA:.*]]  = (%[[INDICES:.*]]: !mogg.indices){
 // CHECK-NEXT:    %[[IN1:.*]] = mogg.invoke @[[IN_LAMBDA1:.*]](%[[INDICES]])
 // CHECK-NEXT:    %[[IN2:.*]] = mogg.invoke @[[IN_LAMBDA2:.*]](%[[INDICES]])
 // CHECK-NEXT:    %[[SUB:.*]] = mogg.call "mo.sub"(%[[IN1]], %[[IN2]])
