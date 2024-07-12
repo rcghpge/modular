@@ -15,7 +15,7 @@ opinionated, and they should not depend on any specific framework modules.
 This library provides common types for reasoning about Tensors with
 low-dependencies, suitable for use by both compiler and runtime clients. This is
 allowed to depend on LLVM Support, the Modular Support library, GraphRT, and
-LLCL. It is not allowed to depend on any specific framework's libraries (for
+AsyncRT. It is not allowed to depend on any specific framework's libraries (for
 example TFLite, Faux, PyTorch etc). Further, this cannot depend on MLIR because
 it is intended to be usable at runtime.
 

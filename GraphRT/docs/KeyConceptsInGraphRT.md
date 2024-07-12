@@ -11,12 +11,13 @@ GraphRT.
 
 ## Non-blocking, asynchronous, and lock-free
 
-As with [the LLCL library](../../LLCL/docs/README.md), GraphRT is designed to be
-completely non-blocking, and built on the principle of executing asynchronous
-operations across an efficient thread pool (which aims to have a 1:1
-mapping to hardware threads in the steady state).  The implementation of the MEF
-executor is fully thread safe, but uses lightweight atomic operations instead of
-locks.  As with LLCL, GraphRT is designed with full error propagation support.
+As with [the AsyncRT library](../../AsyncRT/docs/README.md), GraphRT is
+designed to be completely non-blocking, and built on the principle of executing
+asynchronous operations across an efficient thread pool (which aims to have a
+1:1 mapping to hardware threads in the steady state).  The implementation of
+the MEF executor is fully thread safe, but uses lightweight atomic operations
+instead of locks.  As with AsyncRT, GraphRT is designed with full error
+propagation support.
 
 GraphRT is also compatible with "regions of synchronicity" for specialized
 situations that don't benefit from asyncronous designs.
@@ -211,11 +212,11 @@ can run in any order (or, indeed, in parallel) but the prints have a data
 dependence between them, so the first runs before the second one.
 
 If you look at the [definition of the
-`M::AsyncRT::Chain`](../../LLCL/include/LLCL/Support/Chain.h) struct, you'll see
-that it is empty. What is happening here though is that the `AsyncValue`
-containing the chain is only marked as "ready" when the side effect for the
-print is completed. This composes naturally with GraphRT's notion of strict and
-non-strict primitives.
+`M::AsyncRT::Chain`](../../AsyncRT/include/AsyncRT/Support/Chain.h) struct,
+you'll see that it is empty. What is happening here though is that the
+`AsyncValue` containing the chain is only marked as "ready" when the side
+effect for the print is completed. This composes naturally with GraphRT's
+notion of strict and non-strict primitives.
 
 ## Implicit error propagation
 

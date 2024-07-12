@@ -37,7 +37,7 @@ on the *structure* of the operations, but doesn't know "what they do".  The MLIR
 syntax for the primitive has a directly corresponding runtime behavior:
 
 1) Each SSA value operand and result in MLIR is an
-   [`AsyncValue`](../../LLCL/docs/AsyncValue.md) operand or result to the
+   [`AsyncValue`](../../AsyncRT/docs/AsyncValue.md) operand or result to the
    primitive.
 2) Each MLIR attribute turns into a runtime pointer to static data of a
    corresponding C++ type.  For example an MLIR `4 : i32` attribute will turn
@@ -164,7 +164,7 @@ receive.
 
 ### Producing errors and multiple results in synchronous primitives
 
-Primitives in MEF may return multiple results, and both LLCL/GraphRT support
+Primitives in MEF may return multiple results, and both AsyncRT/GraphRT support
 full error propagation with `AsyncValue`s.  `ADD_PRIMITIVE` makes this extremely
 simple and direct for synchronous primitives (ones that compute their values on
 the calling thread, as opposed to using `addTask` to do it in the background).
@@ -370,7 +370,7 @@ static void takes_any_attribute(MEFDynamicAttr value) {
 Now that you know how to register and implement primitives, it is important to
 understand the general design principles that go into implementing them well.
 
-Let's start by reminding ourselves of the general GraphRT and LLCL execution
+Let's start by reminding ourselves of the general GraphRT and AsyncRT execution
 model: we want to have a stable pool of threads that are executing non-blocking
 work, and discovering and dispatching that work quickly - so massively multicore
 machines are always kept busy with "things to do".
@@ -378,7 +378,7 @@ machines are always kept busy with "things to do".
 As such, real GraphRT programs generally aren't composed of simple integer
 operations like we use for our examples, it is generally made up of more
 complicated operations that do real work, typically in the background on lots of
-threads in the LLCL work queue.  In machine learning workloads, there is
+threads in the AsyncRT work queue.  In machine learning workloads, there is
 typically a significant amount of parallelism within an operation kernel
 (intra-op), but also a significant amount of graph-level parallelism as well
 (inter-op).
@@ -406,7 +406,7 @@ bites of computation to keep all those cores busy.  There are a few things
 to keep in mind for an efficient and well balanced system:
 
 1) Most important: all computation needs to be thread safe, and should not
-   block.  This is core to the LLCL computation model.  Do not use things like
+   block.  This is core to the AsyncRT computation model.  Do not use things like
    `llvm::outs()` because it is not thread safe.
 2) Don't do synchronous work that can take unbounded time (for example it is dependent
    on the input sizes).  Fork/join parallelism is an extremely common pattern,
