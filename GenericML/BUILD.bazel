@@ -1,6 +1,6 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
-load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "rpath_shim", "td_library")
+load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "gentbl_modular_passes", "kgen_kernel", "modular_cc_library", "modular_shared_library", "rpath_shim", "td_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -1397,13 +1397,28 @@ modular_shared_library(
     ],
 )
 
+kgen_kernel(
+    name = "device_context_interface",
+    src = "lib/DeviceDriver/device_context_interface.mojo",
+    deps = [
+        "//Kernels/mojo/gpu",
+    ],
+)
+
 modular_shared_library(
     name = "DeviceDriver",
     srcs = glob(["lib/DeviceDriver/*.cpp"]),
     hdrs = glob(["include/GenericML/DeviceDriver/*.h"]),
+    linkopts = select({
+        "@platforms//os:linux": [
+            "-Wl,-Bsymbolic",
+        ],
+        "//conditions:default": [],
+    }),
     deps = [
         ":CommonDriver",
         ":Support",
+        ":device_context_interface",
         ":rpaths",
         "//AsyncRT:Init",
         "//CUDASupport",
