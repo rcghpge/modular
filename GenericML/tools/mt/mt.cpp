@@ -226,7 +226,7 @@ int main(int argc, char **argv) {
       // llvm::formatv does not support octal, so do it the hard way.
       char profilingLevelStr[16];
       snprintf(profilingLevelStr, sizeof(profilingLevelStr), "%#o",
-               MODULAR_LLCL_MAX_PROFILING_LEVEL);
+               MODULAR_ASYNCRT_MAX_PROFILING_LEVEL);
       llvm::outs() << "mt: " << getModularVersionString()
                    << "\nFramework: " << dylib.getVersion()
                    << "\nmt profiling level: " << profilingLevelStr << "\n";
