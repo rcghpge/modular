@@ -3,10 +3,6 @@ load("//bazel:api.bzl", "modular_cc_test")
 modular_cc_test(
     name = "RMODialectTests",
     srcs = glob(["*.cpp"]),
-    target_compatible_with = select({
-        "//:asan": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),
     deps = [
         "//GenericML:RMODialect",
         "//GenericML:Support",
