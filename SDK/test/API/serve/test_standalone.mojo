@@ -12,11 +12,7 @@ from max.engine import InferenceSession, InputSpec, TensorMap, NamedTensor
 
 from max.serve.kserve.server import GRPCServer
 from max.serve.kserve import MuxInferenceService, FileModel
-from runtime.llcl import (
-    Runtime,
-    TaskGroup,
-    Atomic,
-)
+from runtime.llcl import TaskGroup, Atomic
 from time import sleep, perf_counter_ns
 from max.serve.kserve import GRPCClient
 from max.graph._testing import assert_tensors_almost_equal
@@ -262,7 +258,6 @@ def test_standalone_server_client[TEST_CASE: ModelTestCase]() -> None:
             print("[" + elapsed() + "]Client error : ", e)
             _ = client_completed.fetch_add(1)
 
-    # with Runtime() as rt:
     var tg = TaskGroup[__lifetime_of(server)]()
     tg.create_task(server_impl())
 
