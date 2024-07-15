@@ -142,3 +142,15 @@ modular_pybind_library(
         "//Support:ML",
     ],
 )
+
+modular_pybind_library(
+    name = "GraphPython",
+    srcs = ["//SDK/lib/GraphAPI/python:cpp_srcs"],
+    hdrs = glob(["include/SDK/GraphAPI/python/*.h"]),
+    pybind_deps = [
+        "//:MLIRBindingsPythonHeaders",
+    ],
+    deps = [
+        "//ModularFramework:API",
+    ],
+)

@@ -1,5 +1,12 @@
 load("//bazel:api.bzl", "modular_pybind_py_library", "modular_python_editable_dir")
 
+# Label for M::Graph::Python sources.
+filegroup(
+    name = "cpp_srcs",
+    srcs = glob(["lib/**/*.cpp"]),
+    visibility = ["//SDK:__pkg__"],
+)
+
 # Label for all bindings sources.
 filegroup(
     name = "cpp_bindings_srcs",
