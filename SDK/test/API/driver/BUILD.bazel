@@ -16,6 +16,7 @@ lit_tests(
         "//SDK/lib/API/mojo/max",
         "//open-source/mojo/stdlib/stdlib",
     ],
+    tags = ["gpu"],
     target_compatible_with = select({
         "//:asan": ["@platforms//:incompatible"],
         "//conditions:default": [],

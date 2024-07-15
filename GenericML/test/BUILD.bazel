@@ -36,6 +36,7 @@ lit_tests(
         "//Kernels/mojo/Mogg:MOGGTestOverrideSucc.lib.mlirbc",
         "//Kernels/mojo/Mogg:MOGGTests.lib.mlirbc",
     ],
+    tags = ["gpu"],
     target_compatible_with = select({
         "//:tsan": ["@platforms//:incompatible"],
         "//conditions:default": [],
