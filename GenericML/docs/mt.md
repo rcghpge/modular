@@ -26,7 +26,7 @@ will provide an error message and exit.
 > loaded.
 
 The next step is to perform any prerequisites to the command specified. For
-example, if the input file is a TFLite flatbuffer file and the command was
+example, if the input file is a pytorch flatbuffer file and the command was
 `-execute`, `mt` will load the `tfl` framework and ask it to compile the input
 into a MEF file, then ask the framework to execute the resulting MEF file.
 
@@ -36,14 +36,14 @@ a C++ structure. These are the set of options that can be found in
 options are passed into the loaded framework. For example:
 
 ```shell
-$  mt --execute .derived/models/tflite/MobileBert-float-384-20200602.tflite \
-      --load=libstock-tflite-plugin.dylib \
+$  mt --execute .derived/models/pytorch/MobileBert-float-384-20200602.pytorch \
+      --load=libstock-pytorch-plugin.dylib \
       --model-specification=Models/model_spec.yaml \
       --delegate=xnnpack
 ```
 
 `mt` clearly doesn't know anything about the `--delegate` option, as it only has
-meaning for the `stock-tflite-plugin` framework. This exact pattern should be
+meaning for the `stock-pytorch-plugin` framework. This exact pattern should be
 used for all framework-specific options.
 
 ### Consequences
@@ -60,7 +60,7 @@ framework, along with their CMake target to simplify building the target.
 | CMake target          | Binary                      | Framework          |
 | --------------------- | --------------------------- | ------------------ |
 | `tf`                  | `libtf.so`                  | Modular TensorFlow |
-| `stock-tflite-plugin` | `libstock-tflite-plugin.so` | Stock TFLite       |
+| `stock-pytorch-plugin` | `libstock-pytorch-plugin.so` | Stock pytorch       |
 
 Another consequence is that `mt --help` cannot work the way many users expect
 it to. Passing the help option to `mt` will result in getting the `mt` help,
