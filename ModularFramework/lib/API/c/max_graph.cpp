@@ -25,11 +25,6 @@ using namespace M::MOF::GraphBuilder;
 using namespace llvm;
 using namespace mlir;
 
-/// An opaque wrapper around a pointer to an AsyncRT::Runtime.
-struct LLCLRuntimeRef {
-  void *ptr;
-};
-
 static AsyncRT::Runtime &unwrap(LLCLRuntimeRef ref) {
   return *reinterpret_cast<AsyncRT::Runtime *>(ref.ptr);
 }

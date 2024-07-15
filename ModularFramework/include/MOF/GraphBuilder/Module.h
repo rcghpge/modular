@@ -12,9 +12,6 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 
-// TODO: Decide whether the module should be the carrier of the MLIR context.
-// An alternative might be to just carry MLIR objects around.
-
 namespace M::MOF::GraphBuilder {
 
 class Module {

@@ -7,6 +7,93 @@
 #ifndef MOF_API_C_DETAIL_MAX_GRAPH_H
 #define MOF_API_C_DETAIL_MAX_GRAPH_H
 
+#include "MOF/API/c/symbol_export.h"
 #include "MOF/GraphBuilder/Module.h"
+#include "Support/ForwardDecls.h"
+#include "Support/LLVMForwardDecls.h"
+#include "mlir-c/IR.h"
+
+/// An opaque wrapper around a pointer to an AsyncRT::Runtime.
+struct LLCLRuntimeRef {
+  void *ptr;
+};
+
+/// Loads all MLIR dialects needed for building MAX graphs.
+MODULAR_API_EXPORT void MAXG_loadModularDialects(MlirDialectRegistry registry);
+
+//===----------------------------------------------------------------------===//
+// Op factories
+//===----------------------------------------------------------------------===//
+
+/// Creates a graph op at the start of the module's body region and returns it.
+MODULAR_API_EXPORT MlirOperation MAXG_graphNew(MlirModule m, MlirLocation loc,
+                                               llvm::StringRef name,
+                                               MlirType signature);
+
+//===----------------------------------------------------------------------===//
+// Attribute factories
+//===----------------------------------------------------------------------===//
+
+/// Creates a named ArrayElementsAttr (dense_array) backed by a builtin tensor.
+MODULAR_API_EXPORT MlirNamedAttribute
+MAXG_attrNewTensor(M::StringRef name, void *data, MlirType t, bool owned,
+                   LLCLRuntimeRef runtime);
+
+/// Creates a ParamDeclAttr (param.decl) with the given name and index type.
+MODULAR_API_EXPORT MlirAttribute MAXG_attrNewDimParamDecl(MlirContext ctx,
+                                                          llvm::StringRef name);
+
+/// Creates a ParamDeclArrayAttr (param.decls) from an array of ParamDeclAttrs.
+MODULAR_API_EXPORT MlirAttribute
+MAXG_attrNewParamDeclArray(MlirContext ctx, MlirAttribute *attrs, int32_t size);
+
+/// Creates a MOSH ShapeAttr (#mosh<ape[]>).
+MODULAR_API_EXPORT MlirAttribute MAXG_attrNewShape(MlirContext ctx,
+                                                   MlirAttribute *dims,
+                                                   int32_t rank);
+
+//===----------------------------------------------------------------------===//
+// Type helpers
+//===----------------------------------------------------------------------===//
+
+/// Convert the give M::DType corresponding to `value` to an MLIR type.
+MODULAR_API_EXPORT MlirType MAXG_dTypeNew(MlirContext ctx, uint8_t value);
+
+/// Create a new MO::TensorType (!mo.tensor).
+MODULAR_API_EXPORT MlirType MAXG_tensorTypeNew(MlirContext ctx, MlirType dtype,
+                                               bool ranked, MlirAttribute *dims,
+                                               int32_t rank);
+
+/// Accessors for !mo.tensor.
+MODULAR_API_EXPORT uint8_t MAXG_tensorTypeGetDType(MlirType t);
+MODULAR_API_EXPORT int64_t MAXG_tensorTypeGetRank(MlirType t);
+MODULAR_API_EXPORT MlirAttribute MAXG_tensorTypeShapeGetDim(MlirType t,
+                                                            int64_t dim);
+
+/// Create static or symbolic dimension attributes.
+MODULAR_API_EXPORT MlirAttribute MAXG_dimNewStatic(MlirContext context,
+                                                   int64_t dim);
+MODULAR_API_EXPORT MlirAttribute MAXG_dimNewSymbolic(MlirContext context,
+                                                     llvm::StringRef name);
+
+/// Query functions for the type of a given dim.
+MODULAR_API_EXPORT bool MAXG_dimIsSymbolic(MlirAttribute a);
+MODULAR_API_EXPORT bool MAXG_dimIsSymbolicExpression(MlirAttribute a);
+MODULAR_API_EXPORT bool MAXG_dimIsStatic(MlirAttribute a);
+
+/// Accessors for dim attributes.
+MODULAR_API_EXPORT int64_t MAXG_dimStaticValue(MlirAttribute a);
+MODULAR_API_EXPORT MlirIdentifier MAXG_dimSymbolicName(MlirAttribute a);
+
+/// Query functions for tensor and opaque types.
+MODULAR_API_EXPORT bool MAXG_typeIsTensor(MlirType t);
+MODULAR_API_EXPORT bool MAXG_typeIsOpaque(MlirType t);
+
+/// Creates a new MO::Opaque type (!mo.opaque).
+MODULAR_API_EXPORT MlirType MAXG_opaqueTypeNew(MlirContext context,
+                                               llvm::StringRef name);
+
+/// Accessors for !mo.opaque.
+MODULAR_API_EXPORT MlirStringRef MAXG_opaqueTypeName(MlirType t);
 
 #endif // MOF_API_C_DETAIL_MAX_GRAPH_H
