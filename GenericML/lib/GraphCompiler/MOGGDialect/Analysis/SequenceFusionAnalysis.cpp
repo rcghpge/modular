@@ -8,6 +8,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "Support/AssertStream.h"
 
+#include "llvm-project/llvm/include/llvm/ADT/PriorityQueue.h"
 #include "llvm-project/llvm/include/llvm/ADT/SetOperations.h"
 
 namespace M::MOGG {
@@ -435,26 +436,50 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
     bool allowDuplication) {
   FusionSubGraphs subgraphs;
   region.walk([&](Block *block) {
-    SmallVector<Operation *> eligibleOps;
-    for (auto &op : block->getOperations()) {
-      if (isEligible(&op))
-        eligibleOps.push_back(&op);
-    }
+    int64_t numOps = block->getOperations().size();
+    SmallVector<Operation *> topoSortedOps;
+    topoSortedOps.reserve(numOps);
+    for (auto &op : block->getOperations())
+      topoSortedOps.push_back(&op);
 
-    // Safe to do over the subset eligibleOps rather than the whole graph
-    // because if ops are not connected, they won't fuse anyway.
-    completeDataflowGraph.computeTopologicalSorting(eligibleOps);
+    // This mutates `topoSortedOps` in place to a sorted order.
+    completeDataflowGraph.computeTopologicalSorting(topoSortedOps);
 
-    DenseSet<Operation *> wouldBeDCE;
-    for (auto op : llvm::reverse(eligibleOps)) {
-      // If an op was fused, it means it will be DCE-ed later so we do not
-      // attempt to fuse things into it.
-      if (wouldBeDCE.contains(op))
+    // Map each operation in the block to the topological index
+    DenseMap<Operation *, int64_t> operationToTopoIndex;
+    operationToTopoIndex.reserve(numOps * 2);
+    for (auto [i, op] : llvm::enumerate(topoSortedOps))
+      operationToTopoIndex[op] = i;
+
+    // Set of operations included in a fuseable subgraph.
+    DenseSet<Operation *> includedInASubgraph;
+    for (auto op : llvm::reverse(topoSortedOps)) {
+      if (!isEligible(op))
         continue;
 
-      DenseSet<Operation *> subgraph;
-      llvm::SmallVector<std::tuple<mlir::Operation *, Operation *>> workList = {
-          {op, nullptr}};
+      // If an op was fused, it means it will be DCE-ed later so we do not
+      // attempt to fuse things into it.
+      if (includedInASubgraph.contains(op))
+        continue;
+
+      DenseSet<Operation *> curSubgraph;
+
+      typedef std::tuple<mlir::Operation *, Operation *> FusionPair;
+
+      // Comparator ensures the highest priority items are those whose "parents"
+      // in FusionPair (e.g. the first element of the tuple) has a higher
+      // topographical order. E.g. we want to visit pairs in a reverse
+      // topological order.
+      auto comp = [&operationToTopoIndex](const FusionPair &a,
+                                          const FusionPair &b) {
+        auto parentA = std::get<0>(a);
+        auto parentB = std::get<0>(b);
+        return operationToTopoIndex.at(parentA) <
+               operationToTopoIndex.at(parentB);
+      };
+      llvm::PriorityQueue<FusionPair, std::vector<FusionPair>, decltype(comp)>
+          workQueue(comp);
+      workQueue.emplace(op, nullptr);
 
       auto areSameBlockAndCompatible = [&](Operation *parent,
                                            Operation *child) {
@@ -463,12 +488,21 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
                areCompatible(parent, child);
       };
 
-      while (!workList.empty()) {
-        auto parent_child = workList.pop_back_val();
+      // Parents we've visited already. Once we've visited we know whether they
+      // are part of the subgraph or not already.
+      DenseSet<Operation *> visited;
+      while (!workQueue.empty()) {
+        auto parent_child = workQueue.top();
+        workQueue.pop();
+
         // Can't use structured bindings because a lambda captures parent which
         // is possible only in >C++20
         auto parent = std::get<0>(parent_child);
         auto child = std::get<1>(parent_child);
+
+        if (visited.contains(parent))
+          continue;
+        visited.insert(parent);
 
         auto users = completeDataflowGraph.users(parent);
         if (child && !llvm::all_of(users, [&](auto user) {
@@ -481,19 +515,21 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
         // than one user, this will fail because one of the users will be in
         // another subgraph from a past iteration.
         if (child && !allowDuplication && !llvm::all_of(users, [&](auto user) {
-              return subgraph.contains(user);
+              return curSubgraph.contains(user);
             }))
           continue;
 
-        subgraph.insert(parent);
-        wouldBeDCE.insert(parent);
+        curSubgraph.insert(parent);
+        includedInASubgraph.insert(parent);
 
         for (auto grandParent : completeDataflowGraph.providers(parent))
-          workList.push_back({grandParent, parent});
+          // Don't include ops not in the current block
+          if (operationToTopoIndex.contains(grandParent))
+            workQueue.emplace(grandParent, parent);
       }
 
-      if (subgraph.size() > 1)
-        subgraphs.emplace_back(subgraph.begin(), subgraph.end());
+      if (curSubgraph.size() > 1)
+        subgraphs.emplace_back(curSubgraph.begin(), curSubgraph.end());
     }
   });
   return subgraphs;
