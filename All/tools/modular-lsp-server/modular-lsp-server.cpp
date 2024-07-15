@@ -21,7 +21,6 @@
 #include "KGEN/ToolCommon/InitAllDialects.h"
 #include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
 #include "Support/MDialect/MDialect.h"
-#include "TensorFlow/InitAllDialects.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -47,6 +46,5 @@ int main(int argc, char **argv) {
       MOSH::MOSHDialect, MO::MODialect, MOQ::MOQDialect, MOGG::MOGGDialect>();
   // Add the KGEN Dialects.
   registerAllKGENDialects(registry);
-  TF::registerAllDialects(registry);
   return failed(MlirLspServerMain(argc, argv, registry));
 }

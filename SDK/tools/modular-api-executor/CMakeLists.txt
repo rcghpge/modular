@@ -10,7 +10,6 @@ add_modular_tool(modular-api-executor
 
   DEPENDS
   modular-framework-common
-  modular-framework-tf-ext
   modular-framework-onnx-ext
   modular-framework-torch-ext
 

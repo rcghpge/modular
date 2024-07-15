@@ -17,7 +17,6 @@ add_modular_library(ModularFrameworkPython
 
   LINK_LIBS PRIVATE
   modular-framework-common
-  modular-framework-tf-ext
   modular-framework-torch-ext
 )
 # Set `MOJO_CONFIG_SECTION` so that `InferenceSession` can override

@@ -51,7 +51,6 @@ manylinux-aarch64-image = "ghcr.io/modularml/modular/ai-engine-packaging-aarch64
 skip = ["cp36-* cp37-*, *-manylinux_i686", "*-musllinux*"]
 
 before-test = [
-  "pip install -r {project}/TensorFlow/integration-test/API/python/pytests/requirements.txt",
   "pip install -r {project}/PyTorch/integration-test/python/pytests/requirements.txt",
   "pip install -r {project}/PyTorch/integration-test/python/pytorch_op_tests/requirements.txt",
   # `modular.pytorch` is required for testing.
@@ -63,7 +62,6 @@ before-test = [
 # These tests use generated models from `MODULAR_DERIVED_PATH` and require this
 # environment variable to be set.
 test-command = [
-  "MODULAR_DERIVED_PATH={project}/.derived pytest {project}/TensorFlow/integration-test/API/python/pytests",
   "MODULAR_DERIVED_PATH={project}/.derived pytest {project}/PyTorch/integration-test/python/pytests/test_ops.py",
 ]
 

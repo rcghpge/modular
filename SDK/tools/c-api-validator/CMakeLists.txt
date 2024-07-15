@@ -9,7 +9,6 @@ add_modular_tool(c-api-validator
 
   LINK_LIBS PRIVATE
   modular-framework-common
-  modular-framework-tf-ext
   GenericMLExecutionDriver
   GenericMLSupportGlobals
   AsyncRTRuntimeGlobals
