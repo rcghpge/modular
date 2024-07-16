@@ -811,7 +811,7 @@ struct PropagateShapesPass
     SmallVector<ParamBinding> staticizationBindings;
     DenseSet<int32_t> dataDepInputIdxs;
     for (int32_t idx : op.getDataDependentInputIndices()) {
-      ASSERT_STREAM(0 <= idx && idx < op->getNumOperands(),
+      ASSERT_STREAM(0 <= idx && uint32_t(idx) < op->getNumOperands(),
                     << "data depedent input index must be in bound");
       dataDepInputIdxs.insert(idx);
     }
