@@ -65,9 +65,7 @@ mo.graph @reshape_parametric_shape_inferred_neg_one_empty<D0 -> D2, D3, D4>(
   %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[3], si32>
 
   // expected-error@below {{[reshape] cannot infer dimension when a specified output dimension is 0}}
-  mo.invoke_shape_func["reshape_shape"]<() -> D5, D6, D7>(%input, %target_shape)
-    {dataDeptTensors = [1]} : (!mo.tensor<[D0, 0], f32>, !mo.tensor<[3], si32>)
-  %res = mo.reshape(%input, %target_shape) : (
+  %res = mo.reshape<() -> D5, D6, D7>(%input, %target_shape) : (
     !mo.tensor<[D0, 0], f32>, !mo.tensor<[3], si32>
   ) -> !mo.tensor<[D5, D6, D7], f32>
 

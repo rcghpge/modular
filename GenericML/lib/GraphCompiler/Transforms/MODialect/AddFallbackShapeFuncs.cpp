@@ -184,7 +184,11 @@ struct AddFallbackShapeFunctions
       //
       // For these ops, we avoid materializing their shape function call until
       // the very end.
-      if (restricted && isa<MO::ArgNonzeroOp>(op.getOperation()))
+      //
+      // TODO(GRA-627) move this pass after `PropagateShapesPass` and remove
+      // `ShapeMaterialization` here.
+      if (restricted &&
+          isa<MO::ArgNonzeroOp, ShapeMaterialization>(op.getOperation()))
         return mlir::WalkResult::advance();
 
       // Call the fallbacks.
@@ -680,8 +684,7 @@ ErrorOrSuccess Fallback<MO::ReshapeOp>::build(GraphOp &graph,
                                               MO::ReshapeOp op) {
   buildForOpResult(graph, builder, op, "reshape_shape", op.getOperands(),
                    op.getOutputParamDecls(),
-                   /*kgenParams=*/{},
-                   /*dataDepInputIdxs=*/{1});
+                   /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
 

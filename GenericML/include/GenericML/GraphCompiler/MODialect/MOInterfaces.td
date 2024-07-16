@@ -231,6 +231,32 @@ def MO_Staticization : OpInterface<"Staticization"> {
   ];
 }
 
+def MO_ShapeMaterialization : MO_TensorOpInterfaceBase<"ShapeMaterialization", [MO_ParamDeclaration]> {
+  let description = [{
+    Interface that models ops which
+    1. declare parameters whose values depend on the op's input shape or data.
+    2. might know how to define the declared parameters in terms of new ops
+       (a best effort process that depends on the op type and its inputs).
+  }];
+  let cppNamespace = "::M::MO";
+
+  let methods = [
+    InterfaceMethod<
+    "Return indices of the inputs whose actual data (not shape) are needed for "
+    "computing the output parameters.",
+    "SmallVector<int32_t>", "getDataDependentInputIndices",
+      (ins), [{}]>,
+
+    InterfaceMethod<
+    "Try returning a list of ops (ordered by use-def chains) that will define "
+    "the shape parameters declared by this op, assuming `inputAttrs` are the "
+    "symbolic values of the op's individual input shape or data.",
+    "ShapeMaterializeResult", "materializeShapeDefs",
+      (ins "ArrayRef<TypedAttr>":$inputAttrs),
+    [{}]>,
+  ];
+}
+
 def MO_MatmulLike : MO_TensorOpInterfaceBase<"MatmulLike"> {
   let description = [{
     Interface for modeling operations that implement matmul-like behavior,

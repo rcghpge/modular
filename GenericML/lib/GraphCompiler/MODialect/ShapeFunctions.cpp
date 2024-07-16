@@ -1666,17 +1666,6 @@ materializeBroadcastToShapeImpl(ArrayRef<TypedAttr> inputs,
   return materializeBroadcastToShape(graphOp, loc, inputShape, targetShape);
 }
 
-// Assume `inputs` are staticized inputs for a `MO::ReshapeOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeReshapeShapeImpl(ArrayRef<TypedAttr> inputs,
-                            DictionaryAttr kgenParams, GraphOp graphOp,
-                            Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr targetShape = inputs[1];
-  return materializeReshapeShape(graphOp, loc, inputShape, targetShape);
-}
-
 // Assume `inputs` are staticized inputs for a `MO::RoiAlignOp`, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
@@ -2000,7 +1989,6 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
       {"range_shape", materializeRangeShapeImpl},
       {"reduce_shape", materializeReduceShapeImpl},
       {"resize_shape", materializeResizeShapeImpl},
-      {"reshape_shape", materializeReshapeShapeImpl},
       {"roi_align_shape", matierlizeRoiAlignShapeImpl},
       {"scatter_shape", materializeScatterShapeShapeImpl},
       {"scatter_nd_shape", materializeScatterNdShapeShapeImpl},

@@ -2032,6 +2032,7 @@ def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to"> {
 def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["preferResultsDevice"]>,
 ]> {
   let summary = "Reshape operation";
@@ -3738,7 +3739,9 @@ def MO_SolveOp : MO_LinalgOp<"solve", [
 //===----------------------------------------------------------------------===//
 
 def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
-    DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+]> {
   let summary = "Shape function call operation";
   let description = [{
     Invokes a shape function with given name and bind its return values to the

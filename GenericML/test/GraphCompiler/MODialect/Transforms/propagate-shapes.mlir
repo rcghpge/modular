@@ -423,12 +423,10 @@ mo.graph @reshape_parametric_shape<D0, D1 -> D2, D3, D4>(
   // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"
   // CHECK-SAME:  {message = "[reshape] input and output number of elements must match" : !kgen.string},
   // CHECK-SAME:   eq(mul_nuw([[D0]], [[D1]]), mul_nuw([[D0]], 20)))>
-  mo.invoke_shape_func["reshape_shape"]<() -> D5, D6, D7>(%input, %target_shape)
-    {dataDeptTensors = [1]} : (!mo.tensor<[D0, D1], f32>, !mo.tensor<[3], si32>)
-
+  //
   // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]])
   // CHECK-SAME:   : !mo.tensor<[[[D0]], [[D1]]], f32> -> !mo.tensor<[[[D0]], 4, 5], f32>
-  %res = mo.reshape(%input, %target_shape) : (
+  %res = mo.reshape<() -> D5, D6, D7>(%input, %target_shape) : (
     !mo.tensor<[D0, D1], f32>, !mo.tensor<[3], si32>
   ) -> !mo.tensor<[D5, D6, D7], f32>
 
@@ -447,10 +445,7 @@ mo.graph @reshape_scalar_tensor<() -> D2, D3, D4>(
 
   %param_shape = mosh.param.to_value: !mosh.ape = <[1, 1, -1]>
   %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[3], si32>
-
-  mo.invoke_shape_func["reshape_shape"]<() -> D5, D6, D7>(%input, %target_shape)
-    {dataDeptTensors = [1]} : (!mo.tensor<[], f32>, !mo.tensor<[3], si32>)
-  %res = mo.reshape(%input, %target_shape) : (
+  %res = mo.reshape<() -> D5, D6, D7>(%input, %target_shape) : (
     !mo.tensor<[], f32>, !mo.tensor<[3], si32>
   ) -> !mo.tensor<[D5, D6, D7], f32>
 
@@ -535,8 +530,9 @@ mo.graph @select_fold_during_staticization<seq_len, batch_size -> O1, O2>(
   %target_shape = mo.select(%cond, %input_shape, %neg_one_and_batch_size) : (!mo.tensor<[2], bool>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], si64>
 
   // reshape(%input, [-1, batch_size]) == %input
-  mo.invoke_shape_func["reshape_shape"]<() -> D1, D2>(%input, %target_shape) {dataDeptTensors = [1]} : (!mo.tensor<[seq_len, batch_size], si32>, !mo.tensor<[2], si64>)
-  %res = mo.static.reshape(%input) : !mo.tensor<[seq_len, batch_size], si32> -> !mo.tensor<[D1, D2], si32>
+  %res = mo.reshape<() -> D1, D2>(%input, %target_shape) : (
+    !mo.tensor<[seq_len, batch_size], si32>, !mo.tensor<[2], si64>
+  ) -> !mo.tensor<[D1, D2], si32>
 
   // CHECK: mo.output [[INPUT]]
   mo.output<D1, D2> %res : !mo.tensor<[D1, D2], si32>
@@ -585,9 +581,7 @@ mo.graph @slice_and_shape_of<D0 -> O1>(
  
   // This reshapes `%input` from `[D0, 10]` to `[D0, 10, 1]`. In practice we
   // might get such pseudo-dynamic-rank from either PT models or RMO lowering.
-  mo.invoke_shape_func["reshape_shape"]<() -> Sh0: !mosh.ape>(%input, %target_shape)
-    {dataDeptTensors = [1]} : (!mo.tensor<[D0, 10], si32>, !mo.tensor<[D1], si32>)
-  %reshaped = mo.reshape(%input, %target_shape) : (
+  %reshaped = mo.reshape<() -> Sh0: !mosh.ape>(%input, %target_shape) : (
     !mo.tensor<[D0, 10], si32>, !mo.tensor<[D1], si32>
   ) -> !mo.tensor<Sh0, si32>
 

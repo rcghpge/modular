@@ -356,28 +356,12 @@ static StaticizeResult tryStaticize(Value val) {
 /// staticized input data. Return either
 /// - a failure as fatal failure (e.g., some shape assertion failed)
 /// - a list of decomposed ops (ordered by SSA and parametric dependencies) if
-///   decomposition was possible
+///   materialization was possible
 /// - else return an empty vector.
-///
-/// NOTE the input op won't be modified.
-/// TODO replace input op type with a `ShapeInferrable` interface.
 static ErrorOr<SmallVector<KGEN::ParamDeclareOp>>
-shapeInferOpImpl(InvokeShapeFuncOp invokeShapeFuncOp,
-                 ArrayRef<TypedAttr> inputAttrs) {
+shapeInferOpImpl(ShapeMaterialization op, ArrayRef<TypedAttr> inputAttrs) {
 
-  // Dispatch on certain shape function names. TODO instead of using a map
-  // loopkup, guard this against a new interface.
-  StringRef shapeFuncName = invokeShapeFuncOp.getShapeFuncName();
-  auto shapeMaterializeFunc = tryGetShapeMaterializeFunc(shapeFuncName);
-  // Give up if we can't figure out how to infer this shape function.
-  if (!shapeMaterializeFunc.has_value())
-    return SmallVector<KGEN::ParamDeclareOp>();
-
-  auto graphOp = invokeShapeFuncOp->getParentOfType<GraphOp>();
-  Location loc = invokeShapeFuncOp.getLoc();
-  DictionaryAttr kgenParams = invokeShapeFuncOp.getKgenParamsAttr();
-  ShapeMaterializeResult result =
-      shapeMaterializeFunc.value()(inputAttrs, kgenParams, graphOp, loc);
+  ShapeMaterializeResult result = op.materializeShapeDefs(inputAttrs);
   // Give up if we can't materialize the shape logic.
   if (result.isNonMaterializable())
     return SmallVector<KGEN::ParamDeclareOp>();
@@ -399,8 +383,7 @@ shapeInferOpImpl(InvokeShapeFuncOp invokeShapeFuncOp,
     // outputDecls is always one of
     // - Sh2: !mosh.ape
     // - [D0, D1, ...]
-    ArrayRef<KGEN::ParamDeclAttr> outputDecls =
-        invokeShapeFuncOp.getOutputParamDecls();
+    ArrayRef<KGEN::ParamDeclAttr> outputDecls = op.getOutputParamDecls();
 
     // NOTE symbolicization currently can't handle dynamic output shape, since
     // it relies on MOGG compiling the shape function down to KGEN IR, which
@@ -409,37 +392,94 @@ shapeInferOpImpl(InvokeShapeFuncOp invokeShapeFuncOp,
     //
     // However, we need to support dynamic rank here in order to resolve
     // pseudo-dynamic-rank which we might get from RMO or Torch.
-    if (outputDecls.size() == 1 &&
-        isa<ShapeType>(outputDecls.front().getType())) {
-      // Create binding for the output shape parameter to output shape which
-      // models ops like the following:
-      //   kgen.param.decare D0 = <[N0, N1, ...]>
-      bindings.push_back(ParamBinding(outputDecls.front(), outputShape));
+    // TODO(GRA-927) remove this branch.
+    if (isa<InvokeShapeFuncOp>(op)) {
+      if (outputDecls.size() == 1 &&
+          isa<ShapeType>(outputDecls.front().getType())) {
+        // Create binding for the output shape parameter to output shape which
+        // models ops like the following:
+        //   kgen.param.decare D0 = <[N0, N1, ...]>
+        bindings.push_back(ParamBinding(outputDecls.front(), outputShape));
+
+      } else {
+        size_t returnedRank = outputShape.getRank();
+        size_t annnotatedRank = outputDecls.size();
+        if (returnedRank != annnotatedRank) {
+          std::stringstream ss;
+          ss << "shape function returned shape of rank " << returnedRank
+             << " but the type annotation has shape of rank " << annnotatedRank;
+          return Error(ss.str());
+        }
+        // Create binding from each output parameter to its dimension, to model
+        // ops like the following:
+        //   kgen.param.decare D0 = <N0>
+        //   kgen.param.decare D1 = <add(N1, 10)>
+        //   ...
+        for (auto [outputDimDecl, outputDim] :
+             llvm::zip(outputDecls, outputShape.getValues())) {
+          bindings.push_back(ParamBinding(outputDimDecl, outputDim));
+        }
+      }
 
     } else {
-      size_t returnedRank = outputShape.getRank();
-      size_t annnotatedRank = outputDecls.size();
-      if (returnedRank != annnotatedRank) {
-        std::stringstream ss;
-        ss << "shape function returned shape of rank " << returnedRank
-           << " but the type annotation has shape of rank " << annnotatedRank;
-        return Error(ss.str());
-      }
-      // Create binding from each output parameter to its dimension, to model
-      // ops like the following:
-      //   kgen.param.decare D0 = <N0>
-      //   kgen.param.decare D1 = <add(N1, 10)>
-      //   ...
-      for (auto [outputDimDecl, outputDim] :
-           llvm::zip(outputDecls, outputShape.getValues())) {
-        bindings.push_back(ParamBinding(outputDimDecl, outputDim));
+      if (outputDecls.size() == 1 &&
+          isa<ShapeType>(outputDecls.front().getType())) {
+        // Case 0 (output decl is a shape)
+        //   mo.reshape<() -> Sh0: !mosh.ape> : ... -> Sh0
+        //
+        // Create binding for the output shape parameter to output shape which
+        // models ops like the following:
+        //   kgen.param.decare Sh0 = <[N0, N1, ...]>
+        bindings.push_back(ParamBinding(outputDecls.front(), outputShape));
+      } else {
+        // Case 1 (output decls are dimensions)
+        //   mo.reshape<() -> D1, D2> : ... -> [D1, D2]
+        //   mo.reshape<() -> D1> : ... -> [10, D1]
+        //
+        // Create binding for the output shape parameter to output dims which
+        // models ops like the following:
+        //   kgen.param.decare D1 = <N0>
+        //   kgen.param.decare D2 = <add(N1, 10)>
+        //
+        // TODO support variadic output
+        ShapeAttr annotatedOutShape =
+            cast<TensorType>(op->getResult(0).getType()).getTypedShapeAttr();
+        size_t returnedRank = outputShape.getRank();
+        size_t annnotatedRank = annotatedOutShape.getRank();
+        if (returnedRank != annnotatedRank) {
+          std::stringstream ss;
+          ss << "shape function returned shape of rank " << returnedRank
+             << " but the type annotation has shape of rank " << annnotatedRank;
+          return Error(ss.str());
+        }
+        // Given `outputShape` for
+        //   mo.reshape<() -> D1> : ... -> [10, D1]
+        // Generate
+        //   D1 = <outputShape[1]>
+        llvm::SmallSetVector<ParamDeclAttr, 9> outputDeclSet(
+            outputDecls.begin(), outputDecls.end());
+        for (auto [axis, dim] :
+             llvm::enumerate(annotatedOutShape.getValues())) {
+          // Skip if `dim` is not a dimension parameter
+          auto paramDim = dyn_cast<KGEN::ParamDeclRefAttr>(dim);
+          if (!paramDim)
+            continue;
+
+          // Skip if `dim` is defined elsewhere.
+          auto paramDecl = KGEN::ParamDeclAttr::get(paramDim);
+          if (!outputDeclSet.contains(paramDecl))
+            continue;
+
+          bindings.push_back(ParamBinding(paramDecl, outputShape[axis]));
+        }
       }
     }
   }
 
   // Convert the bindings to actual `kgen.param.declare` ops.
-  OpBuilder builder(invokeShapeFuncOp.getContext());
+  OpBuilder builder(op.getContext());
   SmallVector<KGEN::ParamDeclareOp> ops;
+  Location loc = op->getLoc();
   for (const ParamBinding &binding : bindings) {
     auto declOp =
         builder.create<KGEN::ParamDeclareOp>(loc, binding.decl, binding.value);
@@ -764,18 +804,19 @@ struct PropagateShapesPass
   /// Try to shape infer through given op. If successful, replace `op` with the
   /// newly generated ops, and push the new ops onto `worklist` so they will be
   /// processed next immediately.
-  static ErrorOrSuccess shapeInferOp(InvokeShapeFuncOp op,
+  static ErrorOrSuccess shapeInferOp(ShapeMaterialization op,
                                      std::deque<Operation *> &worklist) {
     // Turn inputs into parameter attributes; the mechanism depends on whether
     // they are data-dependent or not.
     SmallVector<ParamBinding> staticizationBindings;
-    DenseSet<int64_t> dataDepInputIdxs;
-    if (auto idxs = op.getDataDeptTensors()) {
-      for (llvm::APInt index : idxs->getAsValueRange<IntegerAttr>())
-        dataDepInputIdxs.insert(index.getLimitedValue());
+    DenseSet<int32_t> dataDepInputIdxs;
+    for (int32_t idx : op.getDataDependentInputIndices()) {
+      ASSERT_STREAM(0 <= idx && idx < op->getNumOperands(),
+                    << "data depedent input index must be in bound");
+      dataDepInputIdxs.insert(idx);
     }
     SmallVector<TypedAttr> inputAttrs;
-    for (auto [idx, input] : llvm::enumerate(op.getOperands())) {
+    for (auto [idx, input] : llvm::enumerate(op->getOperands())) {
       if (dataDepInputIdxs.contains(idx)) {
         StaticizeResult res = tryStaticize(input);
 
@@ -827,7 +868,7 @@ struct PropagateShapesPass
     SmallVector<Operation *> newOps; // Tracks all the newly created ops.
     for (ParamBinding &binding : staticizationBindings)
       newOps.push_back(binding.toOp(loc, builder));
-    for (auto [idx, input] : llvm::enumerate(op.getOperands())) {
+    for (auto [idx, input] : llvm::enumerate(op->getOperands())) {
       // Skip if it's not a data dependent input, or if it's already been
       // materialized (this occurs if the input is shared between multiple ops).
       if (!dataDepInputIdxs.contains(idx) ||
@@ -869,11 +910,23 @@ struct PropagateShapesPass
     // since they were built with `builder`.
     for (Operation *declOp : paramDeclOps)
       builder.insert(declOp);
-    op->erase();
+    // TODO(GRA-627) remove the true branch
+    bool isInvokeShapeFuncOp = isa<InvokeShapeFuncOp>(op);
+    if (isInvokeShapeFuncOp)
+      op.erase();
+    else
+      op.setOutputParamDecls({});
 
-    llvm::append_range(newOps, paramDeclOps);
     // The first new op must be processed next in the worklist, so we push the
     // new ops onto the worklist in reversed order.
+    llvm::append_range(newOps, paramDeclOps);
+    // Note that we also put `op` itself back onto the worklist, to be
+    // re-visited after we visit all the new ops, since that's when we'll have
+    // all the information needede to update the output shape of `op` (if
+    // needed).
+    // TODO(GRA-627) remove this branch
+    if (!isInvokeShapeFuncOp)
+      worklist.push_back(op);
     for (Operation *newOp : llvm::reverse(newOps))
       worklist.push_back(newOp);
 
@@ -937,17 +990,21 @@ struct PropagateShapesPass
       Operation *op = worklist.back();
       worklist.pop_back();
 
-      // TODO replace with a `ShapeInferrable` interface.
-      if (auto invokeShapeFuncOp = dyn_cast<InvokeShapeFuncOp>(op)) {
-        ErrorOrSuccess result = shapeInferOp(invokeShapeFuncOp, worklist);
-        // Short-circuit on fatal error.
-        if (result.isError()) {
-          op->emitError(result.getError());
-          return signalPassFailure();
+      if (auto shapeMaterialization = dyn_cast<ShapeMaterialization>(op)) {
+        // If output param decl is empty, then we skip this branch, and proceed
+        // to then end of this loop body, where replacer updates the parameter
+        // within `op`.
+        if (!shapeMaterialization.getOutputParamDecls().empty()) {
+          ErrorOrSuccess result = shapeInferOp(shapeMaterialization, worklist);
+          // Short-circuit on fatal error.
+          if (result.isError()) {
+            op->emitError(result.getError());
+            return signalPassFailure();
+          }
+          // Otherwise the op has been shape-inferred, continue to process the
+          // new ops that were pushed onto the worklist.
+          continue;
         }
-        // Otherwise the op has been shape-inferred, continue to process the new
-        // ops that were pushed onto the worklist.
-        continue;
 
       } else if (auto shapeOfOp = dyn_cast<ShapeOfOp>(op)) {
         // TODO merge this branch with the `InvokeShapeFuncOp` branch once we

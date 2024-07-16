@@ -802,9 +802,8 @@ mo.graph @unsqueeze_shape_dynamic_shape_with_reshape(%input_tensor: !mo.tensor<[
 // CHECK-NEXT:   [[V0:%.*]] = mosh.param.to_value: !mosh.ape = <[[[D8]], [[D9]], [[D10]]]>
 // CHECK-NEXT:   [[V1:%.*]] = mo.shape.to_tensor([[V0]]) -> !mo.tensor<[3], si32>
 // CHECK-NEXT:   [[V2:%.*]] = mo.unsqueeze_shape([[V1]], [[VARG1]]) : (!mo.tensor<[3], si32>, !mo.tensor<[[[D11]]], si32>) -> !mo.tensor<[param_expr_17], si32>
-// CHECK-NEXT:   mo.invoke_shape_func["reshape_shape"]<() -> [[Sh5:.*]]: !mosh.ape>([[VARG0]], [[V2]]) {dataDeptTensors = [1 : i32]}
 // CHECK-NEXT:   kgen.param.declare param_expr_17 = <add([[D11]], 3)>
-// CHECK-NEXT:   [[V3:%.*]] = mo.reshape([[VARG0]], [[V2]]) : (!mo.tensor<[[[D8]], [[D9]], [[D10]]], si32>, !mo.tensor<[param_expr_17], si32>) -> !mo.tensor<[[Sh5]], si32>
+// CHECK-NEXT:   [[V3:%.*]] = mo.reshape<() -> [[Sh5:.*]]: !mosh.ape>([[VARG0]], [[V2]]) : (!mo.tensor<[[[D8]], [[D9]], [[D10]]], si32>, !mo.tensor<[param_expr_17], si32>) -> !mo.tensor<[[Sh5]], si32>
 // CHECK-NEXT:   mo.output<{{.*}} [[V3]]
 // CHECK-NEXT: }
 
@@ -876,9 +875,8 @@ mo.graph @squeeze_shape_dynamic_shape_with_reshape(%input_tensor: !mo.tensor<[?,
 // CHECK-NEXT:   [[V1:%.*]] = mo.shape.to_tensor([[V0]]) -> !mo.tensor<[3], si32>
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[squeeze_shape] cannot remove more dimensions than there exists" : !kgen.string}, lt([[D11]], 4))>
 // CHECK-NEXT:   [[V2:%.*]] = mo.squeeze_shape([[V1]], [[VARG1]]) : (!mo.tensor<[3], si32>, !mo.tensor<[[[D11]]], si32>) -> !mo.tensor<[param_expr_20], si32>
-// CHECK-NEXT:   mo.invoke_shape_func["reshape_shape"]<() -> [[Sh5:.*]]: !mosh.ape>([[VARG0]], [[V2]]) {dataDeptTensors = [1 : i32]}
 // CHECK-NEXT:   kgen.param.declare param_expr_20 = <add(mul_nuw([[D11]], -1), 3)>
-// CHECK-NEXT:   [[V3:%.*]] = mo.reshape([[VARG0]], [[V2]]) : (!mo.tensor<[[[D8]], [[D9]], [[D10]]], si32>, !mo.tensor<[param_expr_20], si32>) -> !mo.tensor<[[Sh5]], si32>
+// CHECK-NEXT:   [[V3:%.*]] = mo.reshape<() -> [[Sh5:.*]]: !mosh.ape>([[VARG0]], [[V2]]) : (!mo.tensor<[[[D8]], [[D9]], [[D10]]], si32>, !mo.tensor<[param_expr_20], si32>) -> !mo.tensor<[[Sh5]], si32>
 // CHECK-NEXT:   mo.output<{{.*}}> [[V3]]
 // CHECK-NEXT: }
 
