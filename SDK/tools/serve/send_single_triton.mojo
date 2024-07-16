@@ -19,7 +19,7 @@ fn to_tensor[
     var view = EngineNumpyView(np_array)
     var size = view.spec().num_elements()
     var ptr = DTypePointer[dtype].alloc(size)
-    memcpy(ptr, view.unsafe_ptr().bitcast[dtype](), size)
+    memcpy(ptr.address, view.unsafe_ptr().bitcast[dtype]().address, size)
     return Tensor[dtype](view.spec(), ptr)
 
 
