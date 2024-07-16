@@ -9,7 +9,7 @@
 // MANY of these are doing things in weird or non-canonical ways.  This is all
 // about unit tests, not about doing things the right way.
 //
-// See also LLCL/unittests/AsyncValueTest.cpp.
+// See also AsyncRT/unittests/AsyncValueTest.cpp.
 //
 //===----------------------------------------------------------------------===//
 

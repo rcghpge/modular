@@ -50,7 +50,7 @@ static Driver::DeviceMemory *getDeviceMemoryFromTensor(M::ContextRef context,
     // When the last reference goes out of scope the data will be deallocated.
     (void)storageRef;
 
-    // When graph deallocates CPU memory it is done through LLCL Runtime. So
+    // When graph deallocates CPU memory it is done through AsyncRT Runtime. So
     // we need to keep runtime alive until the usage of output is complete.
     // During `mojo run` this happens automatically since `mojo` maintains
     // context. However for `mojo build` we need to make sure of that.

@@ -181,7 +181,7 @@ private:
   /// mutable borrow for convenience.
   ///
   /// Note that the execution engine must outlive the MGP Context holding
-  /// this object since LLCL tasks involving loaded code can't be guaranteed
+  /// this object since AsyncRT tasks involving loaded code can't be guaranteed
   /// to have completed until the Runtime's WorkQueue has been shutdown.
   KGEN::ExecutionEngine *engine = nullptr;
 

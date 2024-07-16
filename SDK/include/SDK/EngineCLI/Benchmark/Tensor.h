@@ -14,9 +14,9 @@ namespace M::BenchmarkCLI {
 
 /// Wrapper around a TensorSpec and some data.
 ///
-/// Used because a Tensor requires an LLCL runtime to be able to
+/// Used because a Tensor requires an AsyncRT runtime to be able to
 /// create tensors, which we'd like to avoid, since we don't otherwise deal with
-/// LLCL runtimes directly.  Otherwise mimics a similar API to
+/// AsyncRT runtimes directly.  Otherwise mimics a similar API to
 /// Tensor.
 class Tensor {
 public:

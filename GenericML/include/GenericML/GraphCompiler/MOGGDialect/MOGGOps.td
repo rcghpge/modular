@@ -745,7 +745,7 @@ def MOGG_CreateAsyncMojoValueOp : MOGG_Op<"create_async_mojo_value"> {
 
 def MOGG_RuntimePlaceholderOp : MOGG_Op<"rt_placeholder", [Pure]> {
   let results = (outs AnyType:$result);
-  let summary = "Returns a placeholder for the llcl runtime pointer";
+  let summary = "Returns a placeholder for the asyncrt runtime pointer";
   let description = [{
     This is resolved to an ABI argument during lowering.
   }];

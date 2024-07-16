@@ -8,7 +8,7 @@
 # REQUIRES: manual
 
 from time import sleep, now
-from runtime.llcl import TaskGroup
+from runtime.asyncrt import TaskGroup
 from max.serve.batch import Batcher
 
 

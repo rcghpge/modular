@@ -25,7 +25,7 @@ using namespace M::MOF::GraphBuilder;
 using namespace llvm;
 using namespace mlir;
 
-static AsyncRT::Runtime &unwrap(LLCLRuntimeRef ref) {
+static AsyncRT::Runtime &unwrap(AsyncRTRuntimeRef ref) {
   return *reinterpret_cast<AsyncRT::Runtime *>(ref.ptr);
 }
 
@@ -60,7 +60,7 @@ MODULAR_API_EXPORT MlirOperation MAXG_graphNew(MlirModule m, MlirLocation loc,
 
 MODULAR_API_EXPORT MlirNamedAttribute
 MAXG_attrNewTensor(StringRef name, void *data, MlirType t, bool owned,
-                   LLCLRuntimeRef runtime) {
+                   AsyncRTRuntimeRef runtime) {
   auto moType = cast<M::MO::TensorType>(unwrap(t));
   size_t size =
       moType.getDtype().getSizeInBytes() * moType.getNumElements().value();
@@ -70,7 +70,7 @@ MAXG_attrNewTensor(StringRef name, void *data, MlirType t, bool owned,
 }
 
 MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewTensorFromFile(
-    StringRef name, StringRef fileName, MlirType t, LLCLRuntimeRef runtime) {
+    StringRef name, StringRef fileName, MlirType t, AsyncRTRuntimeRef runtime) {
   auto moType = cast<M::MO::TensorType>(unwrap(t));
   assert(moType.getNumElements().has_value() &&
          "tensor attrs should always be statically sized");

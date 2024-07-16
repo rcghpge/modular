@@ -8,7 +8,7 @@ from max.tensor import TensorSpec
 
 from max.engine import InferenceSession, InputSpec
 from max.serve.kserve import FileModel, GRPCServer, MuxInferenceService
-from runtime.llcl import TaskGroup, Atomic
+from runtime.asyncrt import TaskGroup, Atomic
 from time import sleep, perf_counter_ns
 from max.graph._testing import assert_tensors_almost_equal
 

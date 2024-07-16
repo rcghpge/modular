@@ -14,7 +14,7 @@
 #include "mlir-c/IR.h"
 
 /// An opaque wrapper around a pointer to an AsyncRT::Runtime.
-struct LLCLRuntimeRef {
+struct AsyncRTRuntimeRef {
   void *ptr;
 };
 
@@ -37,7 +37,7 @@ MODULAR_API_EXPORT MlirOperation MAXG_graphNew(MlirModule m, MlirLocation loc,
 /// Creates a named ArrayElementsAttr (dense_array) backed by a builtin tensor.
 MODULAR_API_EXPORT MlirNamedAttribute
 MAXG_attrNewTensor(M::StringRef name, void *data, MlirType t, bool owned,
-                   LLCLRuntimeRef runtime);
+                   AsyncRTRuntimeRef runtime);
 
 /// Creates a ParamDeclAttr (param.decl) with the given name and index type.
 MODULAR_API_EXPORT MlirAttribute MAXG_attrNewDimParamDecl(MlirContext ctx,
