@@ -1127,6 +1127,12 @@ bool KernelOp::isInPlaceAlloc() {
   return false;
 }
 
+bool KernelOp::isInPlace() {
+  return llvm::any_of(getOperands(), [](Value val) {
+    return isa<MO::BufferType>(val.getType());
+  });
+}
+
 StringAttr KernelOp::getOutputFusionInterfaceAt(size_t index) {
   auto ctx = getContext();
   auto inputLambdaNamesOpt = getOutputFusionInterface();

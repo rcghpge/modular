@@ -305,6 +305,9 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
 
     /// Returns whether the kernel is a in-place allocated kernel
     bool isInPlaceAlloc();
+
+    /// Returns whether the kernel operates on one of its inputs in-place.
+    bool isInPlace();
   }];
 }
 
