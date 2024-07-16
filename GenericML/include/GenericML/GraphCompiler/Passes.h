@@ -129,7 +129,7 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc(
           "If false, will use the jit compile in the middle code "
           "path for mogg kernels. Otherwise, lower to the compiled region"),
-      llvm::cl::init(true)};
+      llvm::cl::init(false)};
   Option<bool> genVizSpec{
       *this, "gen-viz-spec",
       llvm::cl::desc(
