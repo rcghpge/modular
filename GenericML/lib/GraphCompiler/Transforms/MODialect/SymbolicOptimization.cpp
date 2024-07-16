@@ -2370,55 +2370,6 @@ struct BroadcastReshapePattern
   }
 };
 
-/// A pattern that detects a matmul with a vector weight and a constant
-/// input, and transposes it.
-struct GemvPattern
-    : public DeviceAwareRewritePattern<OpRewritePattern, MatmulOp> {
-  GemvPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
-
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::MatmulOp op,
-                             DeviceAwareRewriter &rewriter) const override {
-    Location loc = op.getLoc();
-    Value a = op.getTensorA();
-    Value b = op.getTensorB();
-    auto aType = llvm::cast<TensorType>(b.getType());
-    auto bType = llvm::cast<TensorType>(b.getType());
-
-    if (!(a.getDefiningOp<MO::ConstantOp>() && bType.hasStaticShape() &&
-          bType.getIntDim(1) == 1 && op.getType().hasStaticShape() &&
-          aType.hasStaticShape()))
-      return rewriter.notifyMatchFailure(op, "failed to match pattern");
-
-    // The output might be a 1x1 tensor. In that case, this pattern rewrite
-    // really does not help, and in fact can cause a poor interaction with
-    // transpose, reshape, and constant folding that leads to an infinite loop,
-    // where this pattern keeps trying to add new constant ops to the graph.
-    if (op.getType().getIntDims() == SmallVector<int64_t>{1, 1})
-      return rewriter.notifyMatchFailure(
-          op, "No need to apply pattern for 1x1 output");
-
-    TensorValue perm =
-        rewriter.create<ConstantOp>(loc, SmallVector<int64_t>{1, 0});
-
-    auto transposeType = [&](Value x) {
-      auto xType = llvm::cast<TensorType>(x.getType());
-      return TensorType::get(
-          SmallVector<int64_t>{xType.getIntDim(1), xType.getIntDim(0)},
-          xType.getElementType());
-    };
-    auto transpose = [&](Value x) {
-      auto xTransposeTy = transposeType(x);
-      return rewriter.create<TransposeOp>(loc, xTransposeTy, x, perm);
-    };
-
-    auto matmul = rewriter.create<MatmulOp>(loc, transposeType(op),
-                                            transpose(b), transpose(a));
-    rewriter.replaceOp(op, transpose(matmul));
-    return mlir::success();
-  }
-};
-
 /// A pattern that replaces a split with several slices to enable fusion.
 struct SplitToSlicePattern
     : public DeviceAwareRewritePattern<OpRewritePattern, SplitOp> {
@@ -4590,8 +4541,8 @@ struct SymbolicOptimizationPass
                  SwimConcatThroughReshapeLikeOpsPattern<RebindOp>>(context);
 
     // Miscellaneous rewrites.
-    patterns.add<GathersToSplitPattern, GeluPattern, GemvPattern,
-                 SplitAndSqueezesPattern, PadConvPattern>(context);
+    patterns.add<GathersToSplitPattern, GeluPattern, SplitAndSqueezesPattern,
+                 PadConvPattern>(context);
 
     // Elementwise optimizations.
     patterns
