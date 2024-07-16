@@ -446,8 +446,8 @@ ShapeMaterializeResult materializeBroadcastToShape(GraphOp graphOp,
   int inputRank = inputShape.getRank();
   int outputRank = targetShape.getRank();
   if (inputRank > outputRank) {
-    return ShapeMaterializeResult::error(
-        "[batch_matmul] input ranks must match and exceed 2");
+    return ShapeMaterializeResult::error("[broadcast_to] input ranks must less "
+                                         "than or equal to the output rank");
   }
 
   for (int i = 0; i < inputRank; i++) {

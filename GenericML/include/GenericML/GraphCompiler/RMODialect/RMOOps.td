@@ -371,6 +371,28 @@ def RMO_ReshapeOp : RMO_Op<"reshape", [
   }];
 }
 
+def RMO_BroadcastToOp : RMO_Op<"broadcast_to", [
+  Pure,
+  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+]> {
+  let summary = "Broadcast a tensor";
+  let description = [{
+    Broadcasts the input tensor to the specified shape.
+
+    Shape restrictions:
+    1. `newShape` must have known rank.
+    2. `newShape` may not contain any dynamic dimensions.
+  }];
+  let arguments = (ins
+    MO_KnownTensor:$input,
+    MOSH_ShapeAttr:$newShape);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 def RMO_MatmulOp : RMO_Op<"matmul", [
   Pure,
   DeclareOpInterfaceMethods<InferTypeOpInterface>,

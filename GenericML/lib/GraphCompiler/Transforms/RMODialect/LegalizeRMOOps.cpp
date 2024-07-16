@@ -537,6 +537,18 @@ struct LowerReshape : public OpRewritePattern<RMO::ReshapeOp> {
   }
 };
 
+struct LowerBroadcastTo : public OpRewritePattern<RMO::BroadcastToOp> {
+  LowerBroadcastTo(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
+  LogicalResult matchAndRewrite(RMO::BroadcastToOp op,
+                                PatternRewriter &rewriter) const override {
+    // Since the shape is already resolved and can't contain any unknown dims,
+    // simply lower to static broadcast_to.
+    rewriter.replaceOpWithNewOp<MO::Static::BroadcastToOp>(
+        op, op.getResult().getType(), op.getInput());
+    return success();
+  }
+};
+
 struct LowerSigmoid : public OpRewritePattern<RMO::SigmoidOp> {
   LowerSigmoid(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
   LogicalResult matchAndRewrite(RMO::SigmoidOp op,
@@ -801,7 +813,7 @@ struct LegalizeRMOOps
         LowerCompositeBinaryComparisonOp<RMO::GreaterEqualOp,
                                          RMO::MOGreaterEqualOp>,
         LowerBroadcastLike, LowerSigmoid, LowerConcat, LowerReshape,
-        LowerMatmul>(context);
+        LowerMatmul, LowerBroadcastTo>(context);
 
     // Lowering third party specific operations.
     // They have more flexible semantics that separate them from standard rmo

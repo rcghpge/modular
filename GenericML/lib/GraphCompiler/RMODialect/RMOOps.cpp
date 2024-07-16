@@ -519,6 +519,65 @@ LogicalResult ReshapeOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// BroadcastToOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BroadcastToOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+
+  auto newShapeAttr = attributes.getAs<ShapeAttr>("newShape");
+  ASSERT_STREAM(newShapeAttr,
+                << "rmo.broadcast_to must have a ShapeAttr `newShape`");
+  // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
+  // check.
+  if (newShapeAttr.hasUnknownDims())
+    return mlir::emitOptionalError(
+        location, unknownDimError("BroadcastTo", "target", newShapeAttr));
+
+  // Retrieve input shape
+  SmallVector<TypedAttr> inputShapes = getShapesOf(operands);
+  ASSERT_STREAM(inputShapes.size() == 1,
+                << "rmo.broadcast_to must have exactly one input");
+  auto inputShape = mlir::cast<ShapeAttr>(inputShapes[0]);
+  // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
+  // check.
+  if (inputShape.hasUnknownDims())
+    return mlir::emitOptionalError(
+        location, unknownDimError("BroadcastTo", "input", inputShape));
+
+  // Materialize shape function.
+  auto graphOp =
+      operands.front().getParentRegion()->getParentOfType<MO::GraphOp>();
+  Location loc = location.value_or(graphOp.getLoc());
+  MO::ShapeMaterializeResult result =
+      MO::materializeBroadcastToShape(graphOp, loc, inputShape, newShapeAttr);
+
+  // Preliminary error checks.
+  if (result.isError())
+    return mlir::emitOptionalError(location, result.getError().msg);
+
+  // This depends on GraphAPI having static rank.
+  ASSERT_STREAM(!result.isNonMaterializable(),
+                << "broadcast_to shape logic must be materializable");
+
+  // Shape propagation over materialized ops and target shape.
+  auto &successRes = result.getSuccess();
+  ErrorOr<ShapeAttr> resultShapeOr =
+      MO::propagateShape(successRes.bindings, successRes.resultShape);
+  if (resultShapeOr.isError())
+    return mlir::emitOptionalError(location, resultShapeOr.getError());
+
+  // Create output type.
+  ShapeAttr resultShape = resultShapeOr.get();
+  DType inputDtype = cast<TensorType>(operands[0].getType()).getDtype();
+  inferredReturnTypes.push_back(TensorType::get(resultShape, inputDtype));
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MatmulOp
 //===----------------------------------------------------------------------===//
 
