@@ -12,6 +12,7 @@ lit_tests(
         "//ModularFramework/tools/mof",
         "@llvm-project//compiler-rt:orc_rt",
     ],
+    gpu_only_srcs = glob(["mojo/cuda/*.mojo"]),
     mojo_deps = [
         "//SDK/lib/API/mojo/max",
         "//open-source/mojo/stdlib/stdlib",
