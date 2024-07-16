@@ -2390,6 +2390,14 @@ struct GemvPattern
           aType.hasStaticShape()))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
+    // The output might be a 1x1 tensor. In that case, this pattern rewrite
+    // really does not help, and in fact can cause a poor interaction with
+    // transpose, reshape, and constant folding that leads to an infinite loop,
+    // where this pattern keeps trying to add new constant ops to the graph.
+    if (op.getType().getIntDims() == SmallVector<int64_t>{1, 1})
+      return rewriter.notifyMatchFailure(
+          op, "No need to apply pattern for 1x1 output");
+
     TensorValue perm =
         rewriter.create<ConstantOp>(loc, SmallVector<int64_t>{1, 0});
 
