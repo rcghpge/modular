@@ -1,0 +1,48 @@
+load("//bazel:api.bzl", "mojo_test")
+
+mojo_test(
+    name = "test_bpe_tokenizer",
+    srcs = ["test_bpe_tokenizer.mojo"],
+    data = [
+        "//GenericML:DeviceDriver",
+        "//GenericML:modular-framework-common",
+        "//KGEN:CompilerRT",
+        "//ModularFramework/tools/mof",
+        "@llvm-project//compiler-rt:orc_rt",
+    ],
+    extra_srcs = [
+        "//SDK/public/max-repo/examples/graph-api",
+    ],
+    target_compatible_with = select({
+        "//:asan": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "//SDK/lib/API/mojo/max",
+        "//open-source/mojo/stdlib/stdlib",
+    ],
+)
+
+# TODO(MSDK-611): Flake.
+# mojo_test(
+#     name = "test_layers",
+#     srcs = ["test_layers.mojo"],
+#     data = [
+#         "//GenericML:DeviceDriver",
+#         "//GenericML:modular-framework-common",
+#         "//KGEN:CompilerRT",
+#         "//ModularFramework/tools/mof",
+#         "@llvm-project//compiler-rt:orc_rt",
+#     ],
+#     extra_srcs = [
+#         "//SDK/public/max-repo/examples/graph-api",
+#     ],
+#     target_compatible_with = select({
+#         "//:asan": ["@platforms//:incompatible"],
+#         "//conditions:default": [],
+#     }),
+#     deps = [
+#         "//SDK/lib/API/mojo/max",
+#         "//open-source/mojo/stdlib/stdlib",
+#     ],
+# )
