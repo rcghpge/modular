@@ -151,6 +151,6 @@ modular_pybind_library(
         "//:MLIRBindingsPythonHeaders",
     ],
     deps = [
-        "//ModularFramework:API",
+        "//ModularFramework/tools/mof",
     ],
 )
