@@ -1257,6 +1257,30 @@ LogicalResult KernelOp::verify() {
   if (mlir::failed(setParamCheck))
     return setParamCheck;
 
+  // verify invariants we make use of in in-place lowerings are valid
+  if (isInPlace()) {
+    auto isChain = [](Value val) { return isa<MO::ChainType>(val.getType()); };
+
+    // check that we have a single input chain in the first position
+    auto nInChains = llvm::count_if(getOperands(), isChain);
+    if (nInChains != 1) {
+      return emitError(llvm::formatv("Expected to find exactly one input chain "
+                                     "for an in-place kernel, found: {0}",
+                                     nInChains));
+    }
+    if (getNumOperands() < 1 || !isChain(getOperands().back())) {
+      return emitError(
+          "Expected the last operand of an in-place kernel to be a !mo.chain");
+    }
+
+    // check that we have a single result that is of type mo.chain
+    if (getNumResults() > 1 || !isChain(getResult(0))) {
+      return emitError(
+          "In-place kernels are allowed to have only one result that "
+          "must be a !mo.chain");
+    }
+  }
+
   return success();
 }
 
