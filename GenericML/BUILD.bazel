@@ -1,6 +1,6 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
-load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "rpath_shim", "td_library")
+load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_filegroup", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "rpath_shim", "td_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -274,6 +274,26 @@ gentbl_mlir_dialect(
     ],
 )
 
+gentbl_filegroup(
+    name = "MOBindingIncGen",
+    tbl_outs = [(
+        [
+            "-gen-python-op-bindings",
+            "-bind-dialect=mo",
+        ],
+        ":include/GenericML/GraphCompiler/MODialect/mo.py",
+    )],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = ":include/GenericML/GraphCompiler/MODialect/MO.td",
+    deps = [
+        ":MODialectTdFiles",
+        ":MOSHDialectTdFiles",
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
+        "@llvm-project//mlir:FunctionInterfacesTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+    ],
+)
+
 gentbl_cc_library(
     name = "MODialectEnumsIncGen",
     includes = ["include"],
@@ -455,6 +475,27 @@ gentbl_mlir_dialect(
     name = "RMODialectIncGen",
     dialect = "rmo",
     td_file = "include/GenericML/GraphCompiler/RMODialect/RMO.td",
+    deps = [
+        ":GraphCompilerInterfacesTdFiles",
+        ":MGPDialectTdFiles",
+        ":MODialectTdFiles",
+        ":MOSHDialectTdFiles",
+        ":RMODialectTdFiles",
+        "//GraphRT:GRTTdFiles",
+    ],
+)
+
+gentbl_filegroup(
+    name = "RMOBindingIncGen",
+    tbl_outs = [(
+        [
+            "-gen-python-op-bindings",
+            "-bind-dialect=rmo",
+        ],
+        ":include/GenericML/GraphCompiler/RMODialect/rmo.py",
+    )],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = ":include/GenericML/GraphCompiler/RMODialect/RMO.td",
     deps = [
         ":GraphCompilerInterfacesTdFiles",
         ":MGPDialectTdFiles",

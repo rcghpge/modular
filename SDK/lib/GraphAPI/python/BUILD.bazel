@@ -30,7 +30,7 @@ modular_python_editable_dir(
     srcs = [
         "setup.py",
         "//SDK/lib/GraphAPI/python/max/graph:modular_py_srcs",
-        "//SDK/lib/GraphAPI/python/max/graph/mlir:__init__.py",
+        "//SDK/lib/GraphAPI/python/max/graph/mlir:dialect_srcs",
         "@llvm-project//mlir/python:IRPyFiles",
         "@llvm-project//mlir/python:IRPyIFiles",
         "@llvm-project//mlir/python:MlirLibsPyFiles",
