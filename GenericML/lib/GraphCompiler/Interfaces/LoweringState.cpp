@@ -529,7 +529,10 @@ void MOOpLoweringState::createOutputs(
     DenseSet<int> inplaceAllocIndicesSet = kernel.getInplaceAllocIndicesSet();
     int index = 0;
     for (const auto &[idx, res] : llvm::enumerate(kernel.getResults())) {
-      if (!inplaceAllocIndicesSet.contains(idx)) {
+      // ignore chain types as there are currently special carveouts in all
+      // instances of KernelOp lowerings
+      if (!inplaceAllocIndicesSet.contains(idx) &&
+          !isa<MO::ChainType>(res.getType())) {
         auto outputStorage = loweredOutputsStorage[index];
         createOutputTensor(res, inChain, outputStorage.buffer,
                            outputStorage.tensorSpec);

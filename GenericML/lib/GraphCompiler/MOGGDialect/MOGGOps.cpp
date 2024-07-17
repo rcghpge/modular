@@ -452,17 +452,37 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   MGP::MOOpLoweringState opLoweringState(loweringState, *this);
   mlir::MLIRContext *ctx = getContext();
   auto &builder = opLoweringState.builder;
-  auto chain = loweringState.getExecuteChain();
+
+  const bool isInplace = isInPlace();
+
+  auto chain = [&]() -> Value {
+    if (isInplace)
+      // The KernelOp verifier makes sure theres an input chain in the final
+      // operand position for in-place kernels.
+      return loweringState.lookupExecuteLoweredValue(getOperands().back());
+    else
+      return loweringState.getExecuteChain();
+  }();
 
   // Gather the lowered op operands.
-  SmallVector<Value> loweredInputOperands =
-      opLoweringState.getLoweredOperands();
+  SmallVector<Value> loweredInputOperands = [&]() {
+    // Dropping the lowered input chain simplifies subsequent lowering logic in
+    // this function.
+    if (isInplace) {
+      return SmallVector<Value>{
+          llvm::drop_end(opLoweringState.getLoweredOperands())};
+    } else
+      return opLoweringState.getLoweredOperands();
+  }();
 
-  FailureOr<SmallVector<MGP::MOOutputStorage>> loweredOutputsStorageOr =
-      opLoweringState.createOutputStorage(chain);
-  if (failed(loweredOutputsStorageOr))
-    return failure();
-  auto &loweredOutputsStorage = *loweredOutputsStorageOr;
+  SmallVector<MGP::MOOutputStorage> loweredOutputsStorage;
+  if (!isInplace) {
+    FailureOr<SmallVector<MGP::MOOutputStorage>> loweredOutputsStorageOr =
+        opLoweringState.createOutputStorage(chain);
+    if (failed(loweredOutputsStorageOr))
+      return failure();
+    loweredOutputsStorage = *std::move(loweredOutputsStorageOr);
+  }
 
   DenseSet<int> inplaceAllocIndicesSet;
   SmallVector<int> preAllocIndices;
@@ -484,8 +504,12 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       returnAllocIndicesSet.insert(i);
     if (!inplaceAllocIndicesSet.contains(i))
       preAllocIndices.push_back(i);
-    else
-      inplaceAllocIndices.push_back(i);
+    else {
+      // want to ignore the output chain of an in-place kernel as the code below
+      // makes the strong assumption that none are present
+      if (!isa<MO::ChainType>(getResult(i).getType()))
+        inplaceAllocIndices.push_back(i);
+    }
   }
 
   size_t numInplaceOutputs = inplaceAllocIndicesSet.size();
@@ -507,9 +531,15 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     operandSemantics.emplace_back(InOutSignatureAttr::kOut);
   }
 
-  for (Value loweredInputOperand : loweredInputOperands) {
+  for (auto &&[origOperand, loweredInputOperand] :
+       llvm::zip(getOperands(), loweredInputOperands)) {
+
+    auto sig = isa<MO::BufferType>(origOperand.getType())
+                   ? InOutSignatureAttr::kMut
+                   : InOutSignatureAttr::kIn;
+
     operands.push_back(loweredInputOperand);
-    operandSemantics.emplace_back(InOutSignatureAttr::kIn);
+    operandSemantics.emplace_back(sig);
   }
 
   SmallVector<KGEN::ParamDeclRefAttr> usedParams =
@@ -591,7 +621,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   DenseMap<TypedAttr, Value> loweredParams;
   auto addParams = [&](Location loc, Type t) -> CompileDiagnosticOrSuccess {
     ArrayRef<TypedAttr> dims;
-    if (auto asTensor = dyn_cast<MO::TensorType>(t))
+    if (auto asTensor = MO::dynCastFromTensorLike(t))
       dims = asTensor.getDims();
     else if (auto shape = dyn_cast<MOGG::ShapeType>(t))
       dims = dyn_cast<MOSH::ShapeAttr>(shape.getShapeAttr()).getValues();
@@ -648,24 +678,26 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
                                                      input);
     }
 
-    MO::TensorType asTensor = cast<MO::TensorType>(oldTy);
+    MO::TensorType asTensor = MO::castFromTensorLike(oldTy);
 
     SmallVector<Value> operands;
     operands.push_back(input);
     for (auto ty : asTensor.getDims())
       operands.push_back(loweredParams.at(ty));
 
-    return builder.create<MOGG::ToTensorFromMGPOp>(input.getLoc(), oldTy,
+    return builder.create<MOGG::ToTensorFromMGPOp>(input.getLoc(), asTensor,
                                                    operands);
   };
 
-  int outputOffset = 1; // 1 for the input chain
-  for (auto [idx, preAllocIdx] : llvm::enumerate(preAllocIndices)) {
-    Value newBlockArg = kernelBody.getArgument(outputOffset + idx);
-    Value oldOut = oldOutputs.getResult(preAllocIdx);
-    Value loweredValue =
-        convertMGPInputToTensorOrOpaque(newBlockArg, oldOut.getType());
-    mapper.map(oldOut, loweredValue);
+  if (!isInplace) {
+    int outputOffset = 1; // 1 for the input chain
+    for (auto [idx, preAllocIdx] : llvm::enumerate(preAllocIndices)) {
+      Value newBlockArg = kernelBody.getArgument(outputOffset + idx);
+      Value oldOut = oldOutputs.getResult(preAllocIdx);
+      Value loweredValue =
+          convertMGPInputToTensorOrOpaque(newBlockArg, oldOut.getType());
+      mapper.map(oldOut, loweredValue);
+    }
   }
 
   int inputOffset = loweredOutputsStorage.size() + 1;
@@ -872,6 +904,11 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
                                        newKernel.getResult(resultIdx), spec);
   }
   opLoweringState.createOutputs(newKernel->getResult(0), loweredOutputsStorage);
+
+  if (isInplace) {
+    loweringState.emplaceExecuteLoweredValue(getResult(0),
+                                             newKernel.getResult(0));
+  }
 
   // Clean up useless ops.
   for (Operation *op : setShapeParamOpSet)
