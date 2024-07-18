@@ -185,6 +185,17 @@ LogicalResult resolveSameOperandsAndResultShapeUnknownParameters(
     ParameterizationInterface op, mlir::RewriterBase &rewriter);
 LogicalResult resolveSameFirstOperandAndResultShapeUnknownParameters(
     ParameterizationInterface op, mlir::RewriterBase &rewriter);
+
+ShapeMaterializeResult
+materializeReductionShapeDefs(Reduction op, ArrayRef<TypedAttr> inputAttrs);
+
+ShapeMaterializeResult
+materializeScatterLikeShapeDefs(ScatterLike op, ArrayRef<TypedAttr> inputAttrs);
+
+ShapeMaterializeResult
+materializeScatterNdLikeShapeDefs(ScatterNdLike op,
+                                  ArrayRef<TypedAttr> inputAttrs);
+
 } // namespace impl
 
 template <typename ConcreteType>
@@ -225,6 +236,46 @@ public:
     return impl::verifyMOSameFirstOperandAndResultsElementType(op);
   }
 };
+
+template <typename ConcreteType>
+class ReductionShapeMaterialization
+    : public mlir::OpTrait::TraitBase<ConcreteType,
+                                      ReductionShapeMaterialization> {
+public:
+  SmallVector<int32_t> getDataDependentInputIndices() { return {1}; }
+
+  ShapeMaterializeResult materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+    auto reduction = mlir::cast<Reduction>(this->getOperation());
+    return impl::materializeReductionShapeDefs(reduction, inputAttrs);
+  }
+};
+
+template <typename ConcreteType>
+class ScatterLikeShapeMaterialization
+    : public mlir::OpTrait::TraitBase<ConcreteType,
+                                      ScatterLikeShapeMaterialization> {
+public:
+  SmallVector<int32_t> getDataDependentInputIndices() { return {3}; }
+
+  ShapeMaterializeResult materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+    auto scatterLike = mlir::cast<ScatterLike>(this->getOperation());
+    return impl::materializeScatterLikeShapeDefs(scatterLike, inputAttrs);
+  }
+};
+
+template <typename ConcreteType>
+class ScatterNdLikeShapeMaterialization
+    : public mlir::OpTrait::TraitBase<ConcreteType,
+                                      ScatterNdLikeShapeMaterialization> {
+public:
+  SmallVector<int32_t> getDataDependentInputIndices() { return {}; }
+
+  ShapeMaterializeResult materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+    auto scatterNdLike = mlir::cast<ScatterNdLike>(this->getOperation());
+    return impl::materializeScatterNdLikeShapeDefs(scatterNdLike, inputAttrs);
+  }
+};
+
 } // namespace M::MO
 
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h.inc"

@@ -533,19 +533,25 @@ def MO_SameOperandsAndResultShape: TraitList<[
 /// All traits that reduction ops should have.
 def MO_ReductionTraits: TraitList<[
   MO_Reduction,
+  MO_ShapeMaterialization,
   MO_DefaultParameterization,
+  MO_OpTrait<"ReductionShapeMaterialization">,
 ]>;
 
 /// All traits that ScatterND-like ops should have.
 def MO_ScatterLikeTraits: TraitList<[
   MO_ScatterLike,
+  MO_ShapeMaterialization,
   MO_DefaultParameterization,
+  MO_OpTrait<"ScatterLikeShapeMaterialization">,
 ]>;
 
 /// All traits that ScatterND-like ops should have.
 def MO_ScatterNdLikeTraits: TraitList<[
   MO_ScatterNdLike,
+  MO_ShapeMaterialization,
   MO_DefaultParameterization,
+  MO_OpTrait<"ScatterNdLikeShapeMaterialization">,
 ]>;
 
 /// Logically similar to the builtin SameOperandsAndResultElementType, but this

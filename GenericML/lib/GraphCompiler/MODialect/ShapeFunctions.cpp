@@ -1850,30 +1850,6 @@ materializePoolFloorShapeImpl(ArrayRef<TypedAttr> inputs,
                               dilations, paddings, /*ceilMode=*/false);
 }
 
-// Assume first operand is shape of input, second operand is axis value
-static ShapeMaterializeResult
-materializeReduceShapeImpl(ArrayRef<TypedAttr> inputs,
-                           DictionaryAttr kgenParams, GraphOp graphOp,
-                           Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr axis = inputs[1];
-  return materializeReduceShape(graphOp, loc, inputShape, axis);
-}
-
-// Assume `inputs` are staticized inputs for a `MO::ScatterOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeScatterShapeShapeImpl(ArrayRef<TypedAttr> inputs,
-                                 DictionaryAttr kgenParams, GraphOp graphOp,
-                                 Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr updatesShape = inputs[1];
-  TypedAttr indicesShape = inputs[2];
-  TypedAttr axis = inputs[3];
-  return materializeScatterShape(graphOp, loc, inputShape, updatesShape,
-                                 indicesShape, axis);
-}
-
 // Assume `inputs` are staticized inputs for a `MO::ScatterNd`-family op, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
@@ -1972,10 +1948,8 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
       {"pool_shape_ceil", materializePoolCeilShapeImpl},
       {"random_shape", materializeRandomShapeImpl},
       {"range_shape", materializeRangeShapeImpl},
-      {"reduce_shape", materializeReduceShapeImpl},
       {"resize_shape", materializeResizeShapeImpl},
       {"roi_align_shape", matierlizeRoiAlignShapeImpl},
-      {"scatter_shape", materializeScatterShapeShapeImpl},
       {"scatter_nd_shape", materializeScatterNdShapeShapeImpl},
       {"slice_shape", materializeSliceShapeImpl},
       {"squeeze_shape_shape", materializeSqueezeShapeShapeImpl},

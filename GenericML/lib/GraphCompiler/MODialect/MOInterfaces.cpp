@@ -11,6 +11,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "KGEN/KGENDialect/KGENOps.h"
@@ -176,6 +177,16 @@ static LogicalResult verifyGenericScatterInputOutputShapes(Operation *op,
   return success();
 }
 
+ShapeMaterializeResult
+impl::materializeReductionShapeDefs(Reduction op,
+                                    ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = op->getParentOfType<GraphOp>();
+  Location loc = op->getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr axis = inputAttrs[1];
+  return materializeReduceShape(graphOp, loc, inputShape, axis);
+}
+
 //===----------------------------------------------------------------------===//
 // ScatterLike
 //===----------------------------------------------------------------------===//
@@ -185,6 +196,19 @@ LogicalResult impl::verifyScatterLike(ScatterLike op) {
                                                op.getResult().getType());
 }
 
+ShapeMaterializeResult
+impl::materializeScatterLikeShapeDefs(ScatterLike op,
+                                      ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = op->getParentOfType<GraphOp>();
+  Location loc = op->getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr updatesShape = inputAttrs[1];
+  TypedAttr indicesShape = inputAttrs[2];
+  TypedAttr axis = inputAttrs[3];
+  return materializeScatterShape(graphOp, loc, inputShape, updatesShape,
+                                 indicesShape, axis);
+}
+
 //===----------------------------------------------------------------------===//
 // ScatterNdLike
 //===----------------------------------------------------------------------===//
@@ -192,6 +216,18 @@ LogicalResult impl::verifyScatterLike(ScatterLike op) {
 LogicalResult impl::verifyScatterNdLike(ScatterNdLike op) {
   return verifyGenericScatterInputOutputShapes(op, op.getInput().getType(),
                                                op.getResult().getType());
+}
+
+ShapeMaterializeResult
+impl::materializeScatterNdLikeShapeDefs(ScatterNdLike op,
+                                        ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = op->getParentOfType<GraphOp>();
+  Location loc = op->getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr updatesShape = inputAttrs[1];
+  TypedAttr indicesShape = inputAttrs[2];
+  return materializeScatterNdShape(graphOp, loc, inputShape, updatesShape,
+                                   indicesShape);
 }
 
 //===----------------------------------------------------------------------===//
