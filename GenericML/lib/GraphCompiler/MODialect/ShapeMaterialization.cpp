@@ -42,6 +42,58 @@ InvokeShapeFuncOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
 }
 
 //===----------------------------------------------------------------------===//
+// BroadcastShapeOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> BroadcastShapeOp::getDataDependentInputIndices() {
+  return {};
+}
+
+ShapeMaterializeResult
+BroadcastShapeOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  TypedAttr lhsShape = inputAttrs[0];
+  TypedAttr rhsShape = inputAttrs[1];
+  return materializeBroadcastShapeShape(graphOp, loc, lhsShape, rhsShape);
+}
+
+//===----------------------------------------------------------------------===//
+// BroadcastToOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> BroadcastToOp::getDataDependentInputIndices() {
+  return {1};
+}
+
+ShapeMaterializeResult
+BroadcastToOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr targetShape = inputAttrs[1];
+  return materializeBroadcastToShape(graphOp, loc, inputShape, targetShape);
+}
+
+//===----------------------------------------------------------------------===//
+// RangeOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> RangeOp::getDataDependentInputIndices() {
+  return {0, 1, 2};
+}
+
+ShapeMaterializeResult
+RangeOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  TypedAttr startAttr = inputAttrs[0];
+  TypedAttr stopAttr = inputAttrs[1];
+  TypedAttr stepAttr = inputAttrs[2];
+  return materializeRangeShape(graphOp, loc, startAttr, stopAttr, stepAttr);
+}
+
+//===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 

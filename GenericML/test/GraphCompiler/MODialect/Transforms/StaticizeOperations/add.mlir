@@ -1,5 +1,4 @@
-// RUN: mo-opt %s --add-fallback-shape-funcs --propagate-shapes --canonicalize | FileCheck %s
-// TODO(GRA-627) remove `--add-fallback-shape-funcs`
+// RUN: mo-opt %s --propagate-shapes --canonicalize | FileCheck %s
 
 
 // CHECK-LABEL: mo.graph @add_scalar

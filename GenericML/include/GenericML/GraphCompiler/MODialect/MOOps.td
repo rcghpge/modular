@@ -1998,7 +1998,9 @@ class MO_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
   }];
 }
 
-def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to"> {
+def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to", [
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+]> {
   let summary = "Broadcast operation";
   let description = [{
     Broadcasts the input tensor to the specified shape.
@@ -2191,6 +2193,7 @@ def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
 def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
   Commutative,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
 ]> {
   let summary = "Broadcast-shape operation";
@@ -3364,6 +3367,7 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal",
 def MO_RangeOp : MO_TensorOp<"range", [
   MO_SameOperandsAndResultElementType,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
 ]> {
   let summary = "Range operation";

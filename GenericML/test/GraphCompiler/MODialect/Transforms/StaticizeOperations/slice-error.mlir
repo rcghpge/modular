@@ -1,5 +1,4 @@
-// RUN: mo-opt %s --add-fallback-shape-funcs --propagate-shapes --canonicalize --verify-diagnostics
-// TODO(GRA-627) remove `--add-fallback-shape-funcs`
+// RUN: mo-opt %s --propagate-shapes --canonicalize --verify-diagnostics
 
 
 mo.graph @slice_error<N2, N3 -> O1, O2>(

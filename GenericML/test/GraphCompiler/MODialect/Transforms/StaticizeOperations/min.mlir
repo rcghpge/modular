@@ -1,6 +1,4 @@
-// RUN: mo-opt %s --add-fallback-shape-funcs --propagate-shapes --canonicalize | FileCheck %s
-// TODO(GRA-627) remove `--min-fallback-shape-funcs`
-
+// RUN: mo-opt %s --propagate-shapes --canonicalize | FileCheck %s
 
 // CHECK-LABEL: mo.graph @min_scalar
 //  CHECK-SAME:   <[[N:.*]] -> {{.*}}>(

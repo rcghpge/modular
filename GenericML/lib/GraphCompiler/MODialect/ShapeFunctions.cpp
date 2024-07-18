@@ -1650,28 +1650,6 @@ propagateShape(ArrayRef<ParamBinding> bindings,
 
 // TODO move the following into a new interface.
 
-// Assume `inputs` are staticized inputs for a `MO::BroadcastShapeOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeBroadcastShapeShapeImpl(ArrayRef<TypedAttr> inputs,
-                                   DictionaryAttr kgenParams, GraphOp graphOp,
-                                   Location loc) {
-  TypedAttr lhsShape = inputs[0];
-  TypedAttr rhsShape = inputs[1];
-  return materializeBroadcastShapeShape(graphOp, loc, lhsShape, rhsShape);
-}
-
-// Assume `inputs` are staticized inputs for a `MO::BroadcastToOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeBroadcastToShapeImpl(ArrayRef<TypedAttr> inputs,
-                                DictionaryAttr kgenParams, GraphOp graphOp,
-                                Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr targetShape = inputs[1];
-  return materializeBroadcastToShape(graphOp, loc, inputShape, targetShape);
-}
-
 // Assume `inputs` are staticized inputs for a `MO::RoiAlignOp`, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
@@ -1724,17 +1702,6 @@ materializeRandomShapeImpl(ArrayRef<TypedAttr> inputs,
                            DictionaryAttr kgenParams, GraphOp graphOp,
                            Location loc) {
   return materializeTargetShapeLike(graphOp, loc, inputs[0]);
-}
-
-// Assume `inputs` are staticized inputs for a `MO::RangeOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeRangeShapeImpl(ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams,
-                          GraphOp graphOp, Location loc) {
-  TypedAttr startAttr = inputs[0];
-  TypedAttr stopAttr = inputs[1];
-  TypedAttr stepAttr = inputs[2];
-  return materializeRangeShape(graphOp, loc, startAttr, stopAttr, stepAttr);
 }
 
 // Assume `inputs` are staticized inputs for a `MO::RandomNormalOp`, try
@@ -1935,8 +1902,6 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
   // materialized.
   static DenseMap<StringRef, MaterializeShapeFuncTy> nameToFunc = {
       {"batch_matmul_shape", materializeBatchMatmulShapeImpl},
-      {"broadcast_shape_shape", materializeBroadcastShapeShapeImpl},
-      {"broadcast_to_shape", materializeBroadcastToShapeImpl},
       {"concat_shape", materializeConcatShapeImpl},
       {"conv_shape", materializeConvShapeImpl},
       {"conv_transpose_shape", materializeConvTransposeShapeImpl},
@@ -1947,7 +1912,6 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
       {"pool_shape", materializePoolFloorShapeImpl},
       {"pool_shape_ceil", materializePoolCeilShapeImpl},
       {"random_shape", materializeRandomShapeImpl},
-      {"range_shape", materializeRangeShapeImpl},
       {"resize_shape", materializeResizeShapeImpl},
       {"roi_align_shape", matierlizeRoiAlignShapeImpl},
       {"scatter_nd_shape", materializeScatterNdShapeShapeImpl},

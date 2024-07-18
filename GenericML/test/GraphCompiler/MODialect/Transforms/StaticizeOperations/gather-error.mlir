@@ -1,5 +1,4 @@
-// RUN: mo-opt %s --add-fallback-shape-funcs --propagate-shapes --canonicalize --verify-diagnostics
-// TODO(GRA-627) remove `--add-fallback-shape-funcs`
+// RUN: mo-opt %s --propagate-shapes --canonicalize --verify-diagnostics
 
 
 mo.graph @gather_1d_indices<N1, N2 -> out0, out1>(

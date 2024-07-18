@@ -396,12 +396,10 @@ mo.graph @broadcast_to_parametric_shape<D0, D1 -> D2, D3>(
   // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"
   // CHECK-SAME:  {message = "[broadcast_to] input dim must be either 1 or equal to corresponding output dim starting from the rightmost dim" : !kgen.string},
   // CHECK-SAME:  or(eq(D0, D1), eq(D0, 1)))>
-  mo.invoke_shape_func["broadcast_to_shape"]<() -> D4, D5>(%input, %target_shape)
-    {dataDeptTensors = [1]} : (!mo.tensor<[D0], f32>, !mo.tensor<[2], si32>)
-
+  //
   // CHECK-NEXT: %[[RES:.*]] = mo.static.broadcast_to(%[[INPUT]])
   // CHECK-SAME:   : !mo.tensor<[[[D0]]], f32> -> !mo.tensor<[[[D0]], [[D1]]], f32>
-  %res = mo.broadcast_to(%input, %target_shape) : (
+  %res = mo.broadcast_to<() -> D4, D5>(%input, %target_shape) : (
     !mo.tensor<[D0], f32>, !mo.tensor<[2], si32>
   ) -> !mo.tensor<[D4, D5], f32>
 
@@ -555,8 +553,7 @@ mo.graph @range_gather<N1, N2, N3 -> O1, O2>(
   %shape = mo.gather(%dummy_shape, %range, %zero) : (!mo.tensor<[3], si32>, !mo.tensor<[2], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2], si32>
 
   // CHECK: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[[[N2]], [[N3]]], si32>
-  mo.invoke_shape_func["broadcast_to_shape"]<() -> D1, D2>(%input, %shape) {dataDeptTensors = [1]} : (!mo.tensor<[], si32>, !mo.tensor<[2], si32>)
-  %res = mo.static.broadcast_to(%input) : !mo.tensor<[], si32> -> !mo.tensor<[D1, D2], si32>
+  %res = mo.broadcast_to<() -> D1, D2>(%input, %shape) : (!mo.tensor<[], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[D1, D2], si32>
 
   // CHECK: mo.output [[RES]]
   mo.output<D1, D2> %res : !mo.tensor<[D1, D2], si32>

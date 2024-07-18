@@ -1,5 +1,4 @@
-// RUN: mo-opt %s --add-fallback-shape-funcs --propagate-shapes --canonicalize | FileCheck %s
-// TODO(GRA-627) remove `--add-fallback-shape-funcs`
+// RUN: mo-opt %s --propagate-shapes --canonicalize | FileCheck %s
 
 // CHECK-LABEL: mo.graph @broadcast_shape
 // CHECK-DAG: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq(D0, 1), eq(D0, 50)))>
