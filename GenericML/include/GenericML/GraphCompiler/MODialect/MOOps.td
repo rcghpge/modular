@@ -4374,7 +4374,7 @@ def MO_ChainCreateOp : MO_Op<"chain.create", [Pure]>
 // Buffer ops
 //===----------------------------------------------------------------------===//
 
-def MO_MutableLoad : MO_Op<"mutable.load", [
+def MO_MutableLoadOp : MO_Op<"mutable.load", [
   AllDTypesMatch<["inBuffer", "outTensor"]>,
   AllShapeAttrsMatch<["inBuffer", "outTensor"]>
 ]>
@@ -4408,7 +4408,7 @@ def MO_MutableLoad : MO_Op<"mutable.load", [
   }];
 }
 
-def MO_MutableStore : MO_Op<"mutable.store", [
+def MO_MutableStoreOp : MO_Op<"mutable.store", [
   AllDTypesMatch<["inBuffer", "inTensor"]>,
   AllShapeAttrsMatch<["inBuffer", "inTensor"]>
 ]>

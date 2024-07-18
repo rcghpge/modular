@@ -3655,7 +3655,7 @@ LogicalResult CustomOp::verify() {
 // MO Mutable tensor operations
 //===----------------------------------------------------------------------===//
 
-LogicalResult MutableLoad::verify() {
+LogicalResult MutableLoadOp::verify() {
 
   for (auto &&[idx, result] : llvm::enumerate(getResults())) {
     auto numUses = llvm::range_size(result.getUses());
@@ -3671,7 +3671,7 @@ LogicalResult MutableLoad::verify() {
   return success();
 }
 
-LogicalResult MutableStore::verify() {
+LogicalResult MutableStoreOp::verify() {
 
   auto numUses = llvm::range_size(getResult().getUses());
 
