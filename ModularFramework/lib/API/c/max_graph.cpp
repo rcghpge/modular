@@ -272,6 +272,16 @@ MODULAR_API_EXPORT MlirType MAXG_tensorTypeNew(MlirContext ctx, MlirType dtype,
   }
 }
 
+MODULAR_API_EXPORT char *MAXG_tensorTypeGetDTypeAsString(MlirType type) {
+  auto tensorType = cast<MO::TensorType>(unwrap(type));
+  std::string dtypeStr = tensorType.getDtype().getAsString();
+  // Initialize to zeros so that result is null terminated.
+  char *result = new char[dtypeStr.size() + 1]{};
+  // Copy to a string owned by the caller.
+  dtypeStr.copy(result, dtypeStr.size());
+  return result;
+}
+
 MODULAR_API_EXPORT uint8_t MAXG_tensorTypeGetDType(MlirType t) {
   auto tensorType = cast<MO::TensorType>(unwrap(t));
   return tensorType.getDtype().getValue();
