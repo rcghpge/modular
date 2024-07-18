@@ -18,6 +18,29 @@ struct AsyncRTRuntimeRef {
   void *ptr;
 };
 
+/// Contains the success or failure of an API call.
+///
+/// In general, any API that may fail accepts a `MAXG_Status` argument
+/// that is filled in with a meaningful error message on failure.
+///
+/// Construct a `MAXG_Status` with `MAXG_newStatus()`.
+/// Deallocate it with `MAXG_freeStatus()`.
+typedef struct MAXG_Status MAXG_Status;
+
+/// Creates a new status object.
+MODULAR_API_EXPORT MAXG_Status *MAXG_newStatus();
+
+/// Gets an error message from a status object.
+/// The returned pointer is owned by the status and only valid for the lifetime
+/// of the status.
+MODULAR_API_EXPORT const char *MAXG_getError(const MAXG_Status *status);
+
+/// Checks if status holds an error value.
+MODULAR_API_EXPORT int MAXG_isError(const MAXG_Status *status);
+
+/// Deallocates the memory for the status object.  No-op if `status` is NULL.
+MODULAR_API_EXPORT void MAXG_freeStatus(MAXG_Status *status);
+
 /// Loads all MLIR dialects needed for building MAX graphs.
 MODULAR_API_EXPORT void MAXG_loadModularDialects(MlirDialectRegistry registry);
 

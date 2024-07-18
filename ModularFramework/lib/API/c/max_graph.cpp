@@ -25,6 +25,32 @@ using namespace M::MOF::GraphBuilder;
 using namespace llvm;
 using namespace mlir;
 
+//===----------------------------------------------------------------------===//
+// Error handling
+//===----------------------------------------------------------------------===//
+
+struct MAXG_Status {
+  ErrorOrSuccess status;
+};
+
+MODULAR_API_EXPORT MAXG_Status *MAXG_newStatus() {
+  auto *status = new MAXG_Status();
+  status->status = M::success();
+  return status;
+}
+
+MODULAR_API_EXPORT const char *MAXG_getError(const MAXG_Status *status) {
+  auto &statusImpl = status->status;
+  return statusImpl.getError();
+}
+
+MODULAR_API_EXPORT int MAXG_isError(const MAXG_Status *status) {
+  auto &statusImpl = status->status;
+  return statusImpl.isError();
+}
+
+MODULAR_API_EXPORT void MAXG_freeStatus(MAXG_Status *status) { delete status; }
+
 static AsyncRT::Runtime &unwrap(AsyncRTRuntimeRef ref) {
   return *reinterpret_cast<AsyncRT::Runtime *>(ref.ptr);
 }
