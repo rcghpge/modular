@@ -2000,6 +2000,7 @@ class MO_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
 
 def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to", [
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  DeclareOpInterfaceMethods<MO_Staticization>,
 ]> {
   let summary = "Broadcast operation";
   let description = [{

@@ -65,6 +65,45 @@ static TypedAttr tryStaticizeReshapeLikeOp(TensorType inputTy,
   return TypedAttr{};
 }
 
+/// Staticization implementation for `mo.broadcast_to` and
+/// `mo.static.broadcast_to`.
+TypedAttr tryStaticizeBroadcastLikeOp(TensorType inputTy, TensorType resultTy,
+                                      TypedAttr staticizedInput,
+                                      ParamExprBuilder &b) {
+  // Check target shape is rank 1
+  if (!resultTy.hasRank() || resultTy.getRank() != 1)
+    return TypedAttr{};
+  auto resultDimIntAttr =
+      dyn_cast<IntegerAttr>(resultTy.getTypedShapeAttr().getValues().front());
+  if (!resultDimIntAttr)
+    return TypedAttr{};
+  int64_t resultDimInt = resultDimIntAttr.getInt();
+
+  // Input must be ranked
+  if (!inputTy.hasRank())
+    return TypedAttr{};
+
+  // Extract a single staticized input attr.
+  TypedAttr inputScalarAttr;
+  if (isScalar(inputTy)) {
+    // Handle scalar input
+    inputScalarAttr = staticizedInput;
+
+  } else if (is1dTensorWithOneElem(inputTy)) {
+    // Handle 1d tensor input
+    inputScalarAttr = cast<ShapeAttr>(staticizedInput)[0];
+  }
+
+  // Only support constant input for now.
+  std::optional<int64_t> maybeInt = tryGetConstantInt(inputScalarAttr);
+  if (!maybeInt.has_value())
+    return TypedAttr{};
+
+  // Build and return the staticized output.
+  SmallVector<TypedAttr> broadcastedConst(resultDimInt, inputScalarAttr);
+  return b.getShapeAttr(broadcastedConst);
+}
+
 /// Staticization implementation for elementwise ops (e.g., `mo.add`).  `func`
 /// is a function that takes in scalar inputs and return the corresponding
 /// version of the output. For instance, assume the underlying op is `mo.add`,
@@ -170,40 +209,16 @@ ErrorOr<TypedAttr> BroadcastShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
 ErrorOr<TypedAttr>
 Static::BroadcastToOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                     ParamExprBuilder &b) {
-  // Check target shape is rank 1
-  TensorType resultTy = getType();
-  if (!resultTy.hasRank() || resultTy.getRank() != 1)
-    return TypedAttr{};
-  auto resultDimIntAttr =
-      dyn_cast<IntegerAttr>(resultTy.getTypedShapeAttr().getValues().front());
-  if (!resultDimIntAttr)
-    return TypedAttr{};
-  int64_t resultDimInt = resultDimIntAttr.getInt();
-
-  // Input must be ranked
   TensorType inputTy = getInput().getType();
-  if (!inputTy.hasRank())
-    return TypedAttr{};
+  TensorType resultTy = getType();
+  return tryStaticizeBroadcastLikeOp(inputTy, resultTy, inputs[0], b);
+}
 
-  // Extract a single staticized input attr.
-  TypedAttr inputScalarAttr;
-  if (isScalar(inputTy)) {
-    // Handle scalar input
-    inputScalarAttr = inputs[0];
-
-  } else if (is1dTensorWithOneElem(inputTy)) {
-    // Handle 1d tensor input
-    inputScalarAttr = cast<ShapeAttr>(inputs[0])[0];
-  }
-
-  // Only support constant input for now.
-  std::optional<int64_t> maybeInt = tryGetConstantInt(inputScalarAttr);
-  if (!maybeInt.has_value())
-    return TypedAttr{};
-
-  // Build and return the staticized output.
-  SmallVector<TypedAttr> broadcastedConst(resultDimInt, inputScalarAttr);
-  return b.getShapeAttr(broadcastedConst);
+ErrorOr<TypedAttr> BroadcastToOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                               ParamExprBuilder &b) {
+  TensorType inputTy = getInput().getType();
+  TensorType resultTy = getType();
+  return tryStaticizeBroadcastLikeOp(inputTy, resultTy, inputs[0], b);
 }
 
 ErrorOr<TypedAttr> AddOp::tryStaticize(ArrayRef<TypedAttr> inputs,
