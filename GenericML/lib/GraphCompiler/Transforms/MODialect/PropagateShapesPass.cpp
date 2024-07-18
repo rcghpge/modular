@@ -17,6 +17,7 @@
 #include "Support/AssertStream.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetOperations.h"
 #include <optional>
@@ -377,9 +378,6 @@ shapeInferOpImpl(ShapeMaterialization op, ArrayRef<TypedAttr> inputAttrs) {
     auto &success = result.getSuccess();
     llvm::append_range(bindings, success.bindings);
 
-    // `outputShape` has the form `[N0, N1, ...]`
-    ShapeAttr outputShape = success.resultShape;
-
     // outputDecls is always one of
     // - Sh2: !mosh.ape
     // - [D0, D1, ...]
@@ -394,6 +392,11 @@ shapeInferOpImpl(ShapeMaterialization op, ArrayRef<TypedAttr> inputAttrs) {
     // pseudo-dynamic-rank which we might get from RMO or Torch.
     // TODO(GRA-927) remove this branch.
     if (isa<InvokeShapeFuncOp>(op)) {
+      // `outputShape` has the form `[N0, N1, ...]`
+      ASSERT_STREAM(success.resultShapes.size() == 1,
+                    << "expect a single output");
+      ShapeAttr outputShape = success.resultShapes.front();
+
       if (outputDecls.size() == 1 &&
           isa<ShapeType>(outputDecls.front().getType())) {
         // Create binding for the output shape parameter to output shape which
@@ -424,6 +427,11 @@ shapeInferOpImpl(ShapeMaterialization op, ArrayRef<TypedAttr> inputAttrs) {
     } else {
       if (outputDecls.size() == 1 &&
           isa<ShapeType>(outputDecls.front().getType())) {
+        // `outputShape` has the form `[N0, N1, ...]`
+        ASSERT_STREAM(success.resultShapes.size() == 1,
+                      << "expect a single output");
+        ShapeAttr outputShape = success.resultShapes.front();
+
         // Case 0 (output decl is a shape)
         //   mo.reshape<() -> Sh0: !mosh.ape> : ... -> Sh0
         //
@@ -432,45 +440,53 @@ shapeInferOpImpl(ShapeMaterialization op, ArrayRef<TypedAttr> inputAttrs) {
         //   kgen.param.decare Sh0 = <[N0, N1, ...]>
         bindings.push_back(ParamBinding(outputDecls.front(), outputShape));
       } else {
-        // Case 1 (output decls are dimensions)
-        //   mo.reshape<() -> D1, D2> : ... -> [D1, D2]
-        //   mo.reshape<() -> D1> : ... -> [10, D1]
-        //
-        // Create binding for the output shape parameter to output dims which
-        // models ops like the following:
-        //   kgen.param.decare D1 = <N0>
-        //   kgen.param.decare D2 = <add(N1, 10)>
-        //
-        // TODO support variadic output
-        ShapeAttr annotatedOutShape =
-            cast<TensorType>(op->getResult(0).getType()).getTypedShapeAttr();
-        size_t returnedRank = outputShape.getRank();
-        size_t annnotatedRank = annotatedOutShape.getRank();
-        if (returnedRank != annnotatedRank) {
-          std::stringstream ss;
-          ss << "shape function returned shape of rank " << returnedRank
-             << " but the type annotation has shape of rank " << annnotatedRank;
-          return Error(ss.str());
-        }
-        // Given `outputShape` for
-        //   mo.reshape<() -> D1> : ... -> [10, D1]
-        // Generate
-        //   D1 = <outputShape[1]>
-        llvm::SmallSetVector<ParamDeclAttr, 9> outputDeclSet(
-            outputDecls.begin(), outputDecls.end());
-        for (auto [axis, dim] :
-             llvm::enumerate(annotatedOutShape.getValues())) {
-          // Skip if `dim` is not a dimension parameter
-          auto paramDim = dyn_cast<KGEN::ParamDeclRefAttr>(dim);
-          if (!paramDim)
-            continue;
+        llvm::DenseSet<ParamDeclAttr> outputDeclSet(outputDecls.begin(),
+                                                    outputDecls.end());
+        llvm::DenseSet<KGEN::ParamDeclRefAttr> processedDeclRefs;
+        for (auto [i, res, outputShape] :
+             llvm::enumerate(op->getResults(), success.resultShapes)) {
+          // Case 1 (output decls are dimensions)
+          //   mo.reshape<() -> D1, D2> : ... -> [D1, D2]
+          //   mo.reshape<() -> D1> : ... -> [10, D1]
+          //
+          // Create binding for the output shape parameter to output dims which
+          // models ops like the following:
+          //   kgen.param.decare D1 = <N0>
+          //   kgen.param.decare D2 = <add(N1, 10)>
+          ShapeAttr annotatedOutShape =
+              cast<TensorType>(res.getType()).getTypedShapeAttr();
+          size_t returnedRank = outputShape.getRank();
+          size_t annnotatedRank = annotatedOutShape.getRank();
+          if (returnedRank != annnotatedRank) {
+            std::stringstream ss;
+            ss << "shape function result #" << i << " returned shape of rank "
+               << returnedRank << ", but the type annotation has shape of rank "
+               << annnotatedRank;
+            return Error(ss.str());
+          }
+          // Given `outputShape` for
+          //   mo.reshape<() -> D1> : ... -> [10, D1]
+          // Generate
+          //   D1 = <outputShape[1]>
+          for (auto [axis, dim] :
+               llvm::enumerate(annotatedOutShape.getValues())) {
+            // Skip if `dim` is not a dimension parameter
+            auto paramDim = dyn_cast<KGEN::ParamDeclRefAttr>(dim);
+            if (!paramDim)
+              continue;
 
-          // Skip if `dim` is defined elsewhere.
-          auto paramDecl = KGEN::ParamDeclAttr::get(paramDim);
-          if (!outputDeclSet.contains(paramDecl))
-            continue;
+            // Skip if already added binding to define this parameter.
+            if (auto [_, inserted] = processedDeclRefs.insert(paramDim);
+                !inserted)
+              continue;
 
-          bindings.push_back(ParamBinding(paramDecl, outputShape[axis]));
+            // Skip if `dim` is defined elsewhere.
+            auto paramDecl = KGEN::ParamDeclAttr::get(paramDim);
+            if (!outputDeclSet.contains(paramDecl))
+              continue;
+
+            bindings.push_back(ParamBinding(paramDecl, outputShape[axis]));
+          }
         }
       }
     }

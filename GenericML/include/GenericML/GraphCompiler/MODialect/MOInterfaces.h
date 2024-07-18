@@ -80,12 +80,13 @@ public:
     // These could then be consumed by shape propagation logic which does
     // substitution & folding, and handles any asserts.
     SmallVector<ParamBinding> bindings;
-    ShapeAttr resultShape;
+    SmallVector<ShapeAttr> resultShapes;
 
     // Constructors
     Success() = default;
-    Success(SmallVector<ParamBinding> &&bindings, ShapeAttr resultShape)
-        : bindings(std::move(bindings)), resultShape(resultShape) {}
+    Success(SmallVector<ParamBinding> &&bindings,
+            SmallVector<ShapeAttr> &&resultShapes)
+        : bindings(std::move(bindings)), resultShapes(resultShapes) {}
 
     // Disable copy and move.
     Success(const Success &) = delete;
@@ -121,7 +122,11 @@ public:
 
   static ShapeMaterializeResult success(SmallVector<ParamBinding> &&bindings,
                                         ShapeAttr resultShape) {
-    return ShapeMaterializeResult(std::move(bindings), resultShape);
+    return ShapeMaterializeResult(std::move(bindings), {resultShape});
+  }
+  static ShapeMaterializeResult success(SmallVector<ParamBinding> &&bindings,
+                                        SmallVector<ShapeAttr> &&resultShapes) {
+    return ShapeMaterializeResult(std::move(bindings), std::move(resultShapes));
   }
   static ShapeMaterializeResult nonMaterializable() {
     return ShapeMaterializeResult();
@@ -132,8 +137,8 @@ public:
 
 private:
   ShapeMaterializeResult(SmallVector<ParamBinding> &&bindings,
-                         ShapeAttr resultShape) {
-    result.emplace<Success>(std::move(bindings), resultShape);
+                         SmallVector<ShapeAttr> &&resultShapes) {
+    result.emplace<Success>(std::move(bindings), std::move(resultShapes));
   }
   ShapeMaterializeResult() { result = NonMaterializable{}; }
   ShapeMaterializeResult(const Twine &errMsg) {

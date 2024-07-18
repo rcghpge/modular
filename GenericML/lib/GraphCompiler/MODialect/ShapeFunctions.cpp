@@ -1346,20 +1346,16 @@ ShapeMaterializeResult materializeSliceShape(GraphOp graphOp, Location loc,
   return ShapeMaterializeResult::success(std::move(paramBindings), outputShape);
 }
 
-ShapeMaterializeResult materializeSplitIthOutputShape(
-    GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
-    TypedAttr splitSizesAttr, TypedAttr axisAttr, size_t i) {
+ShapeMaterializeResult materializeSplitOutputShapes(GraphOp graphOp,
+                                                    Location loc,
+                                                    TypedAttr inputShapeAttr,
+                                                    TypedAttr splitSizesAttr,
+                                                    TypedAttr axisAttr) {
   // Make sure input is ranked.
   ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   ShapeAttr splitSizes = dyn_cast<ShapeAttr>(splitSizesAttr);
   if (!inputShape || !splitSizes)
     return ShapeMaterializeResult::nonMaterializable();
-
-  // Check for i
-  if (i >= splitSizes.getValues().size()) {
-    return ShapeMaterializeResult::error(
-        "[split] output index must be within range [0, len(split_sizes))");
-  }
 
   // Check for constant axis
   std::optional<int64_t> axisOr = tryGetConstantInt(axisAttr);
@@ -1388,10 +1384,15 @@ ShapeMaterializeResult materializeSplitIthOutputShape(
       "[split] sum of split sizes must match input dimension at split axis");
 
   // Create output shape.
-  SmallVector<TypedAttr> outDims(inputShape.getValues());
-  outDims[axis] = splitSizes[i];
-  ShapeAttr outputShape = b.getShapeAttr(outDims);
-  return ShapeMaterializeResult::success(std::move(paramBindings), outputShape);
+  SmallVector<ShapeAttr> outShapes;
+  for (size_t i = 0; i < splitSizes.getRank(); i++) {
+    SmallVector<TypedAttr> outDims(inputShape.getValues());
+    outDims[axis] = splitSizes[i];
+    ShapeAttr outputShape = b.getShapeAttr(outDims);
+    outShapes.push_back(outputShape);
+  }
+  return ShapeMaterializeResult::success(std::move(paramBindings),
+                                         std::move(outShapes));
 }
 
 ShapeMaterializeResult
@@ -1602,8 +1603,9 @@ StringAttr tryGetAssertFalseErrMsg(TypedAttr attr) {
 }
 
 /// Implementation of `propagateShape` which doesn't erase `bindings`.
-ErrorOr<ShapeAttr> propagateShape(ArrayRef<ParamBinding> bindings,
-                                  ShapeAttr targetShape) {
+ErrorOr<SmallVector<ShapeAttr>>
+propagateShape(ArrayRef<ParamBinding> bindings,
+               ArrayRef<ShapeAttr> targetShapes) {
 
   // Setting things up
   KGEN::ParameterEvaluator evaluator;
@@ -1638,8 +1640,12 @@ ErrorOr<ShapeAttr> propagateShape(ArrayRef<ParamBinding> bindings,
   }
 
   // Apply accumulated substitutions to target shape.
-  auto resultShape = cast<ShapeAttr>(replacer.replace(targetShape));
-  return resultShape;
+  SmallVector<ShapeAttr> resultShapes;
+  for (ShapeAttr targetShape : targetShapes) {
+    auto resultShape = cast<ShapeAttr>(replacer.replace(targetShape));
+    resultShapes.push_back(resultShape);
+  }
+  return resultShapes;
 }
 
 // TODO move the following into a new interface.
@@ -1893,27 +1899,6 @@ materializeSliceShapeImpl(ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams,
   return materializeSliceShape(graphOp, loc, input, starts, stops, steps);
 }
 
-// Assume `inputs` are staticized inputs for a `MO::SplitiOp`, try
-// materializing the its shape logic for
-static ShapeMaterializeResult
-materializeSplitIthOutputShapeImpl(ArrayRef<TypedAttr> inputs,
-                                   DictionaryAttr kgenParams, GraphOp graphOp,
-                                   Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr splitSizes = inputs[1];
-  TypedAttr axis = inputs[2];
-
-  ASSERT_STREAM(kgenParams,
-                << "kgenParams must be available for split_ith_output_shape");
-
-  auto intAttr = dyn_cast_or_null<IntegerAttr>(kgenParams.get("output_idx"));
-  ASSERT_STREAM(intAttr, << "kgenParams must contain an 'output_idx' "
-                            "integer for split_ith_output_shape");
-
-  return materializeSplitIthOutputShape(graphOp, loc, inputShape, splitSizes,
-                                        axis, intAttr.getInt());
-}
-
 // Assume `inputs` are staticized inputs for a `MO::SqueezeShapeOp`, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
@@ -1993,7 +1978,6 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
       {"scatter_shape", materializeScatterShapeShapeImpl},
       {"scatter_nd_shape", materializeScatterNdShapeShapeImpl},
       {"slice_shape", materializeSliceShapeImpl},
-      {"split_ith_output_shape", materializeSplitIthOutputShapeImpl},
       {"squeeze_shape_shape", materializeSqueezeShapeShapeImpl},
       {"tile_shape", materializeTileShapeImpl},
       {"top_k_shape", materializeTopKShapeImpl},

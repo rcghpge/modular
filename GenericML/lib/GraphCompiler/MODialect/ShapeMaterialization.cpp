@@ -56,4 +56,21 @@ ReshapeOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
   return materializeReshapeShape(graphOp, loc, inputShape, targetShape);
 }
 
+//===----------------------------------------------------------------------===//
+// SplitOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> SplitOp::getDataDependentInputIndices() { return {1, 2}; }
+
+ShapeMaterializeResult
+SplitOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr splitSizes = inputAttrs[1];
+  TypedAttr axis = inputAttrs[2];
+  return materializeSplitOutputShapes(graphOp, loc, inputShape, splitSizes,
+                                      axis);
+}
+
 } // namespace M::MO

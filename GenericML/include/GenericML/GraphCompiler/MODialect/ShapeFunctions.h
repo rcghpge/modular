@@ -461,19 +461,11 @@ ShapeMaterializeResult materializeSliceShape(GraphOp graphOp, Location loc,
                                              TypedAttr stepsAttr);
 
 /// Materialize the shape logic for `MO::SplitOp`.
-///
-/// NOTE this one is odd because `MO::SplitOp` has multiple outputs (so one'd
-/// think the result should contain multiple output shapes). However since
-/// currently we wire these C++ shape function with fallback shape function
-/// calls, which contain one shape function call for each split output, the C++
-/// shape function will mirror the fallback shape function.
-///
-/// TODO once we finish migrating staticization and are ready to move
-/// `AddFallbackShapeFuncs` to after shape inference, this will materialize a
-/// single shape function for a `MO::SplitOp`, with _multiple_ output.
-ShapeMaterializeResult materializeSplitIthOutputShape(
-    GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
-    TypedAttr splitSizesAttr, TypedAttr axisAttr, size_t i);
+ShapeMaterializeResult materializeSplitOutputShapes(GraphOp graphOp,
+                                                    Location loc,
+                                                    TypedAttr inputShapeAttr,
+                                                    TypedAttr splitSizesAttr,
+                                                    TypedAttr axisAttr);
 
 /// Materialize shape logic for operations whose output shape is equal to one
 /// operand `targetShapeAttr`. E.g. `mo.resize_*` family of operations allows
@@ -517,14 +509,15 @@ StringAttr tryGetAssertFalseErrMsg(TypedAttr attr);
 
 /// A naive shape propagator that takes all the `ParamBinding`s materialized by
 /// the shape functions, and do a substitute & fold via a single traverse. At
-/// the end it returns a simplified version of `targetShape` after digesting all
-/// the bindings.
+/// the end it returns a simplified version of `targetShapes` after digesting
+/// all the bindings.
 ///
 /// It returns an error when it encounters an assert whose condition doesn't
 /// fold to `true`. The error message will be the same as the assert error
 /// message.
-ErrorOr<ShapeAttr> propagateShape(ArrayRef<ParamBinding> bindings,
-                                  ShapeAttr targetShape);
+ErrorOr<SmallVector<ShapeAttr>>
+propagateShape(ArrayRef<ParamBinding> bindings,
+               ArrayRef<ShapeAttr> targetShapes);
 
 // TODO move the following into a new interface.
 // NOTE some of the input arguments will be removed once we move the

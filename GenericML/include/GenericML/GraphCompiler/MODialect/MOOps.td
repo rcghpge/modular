@@ -2436,6 +2436,7 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
 
 def MO_SplitOp : MO_TensorOp<"split", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]> {
   let summary = "Splitting operation";
   let description = [{

@@ -320,13 +320,13 @@ static LogicalResult inferReturnTypesBinaryElemwiseImpl(
 
   // Shape propagation over materialized ops and target shape.
   auto &successRes = result.getSuccess();
-  ErrorOr<ShapeAttr> resultShapeOr =
-      MO::propagateShape(successRes.bindings, successRes.resultShape);
-  if (resultShapeOr.isError())
-    return mlir::emitOptionalError(location, resultShapeOr.getError());
+  ErrorOr<SmallVector<ShapeAttr>> resultShapesOr =
+      MO::propagateShape(successRes.bindings, successRes.resultShapes);
+  if (resultShapesOr.isError())
+    return mlir::emitOptionalError(location, resultShapesOr.getError());
 
   inferredReturnTypes.push_back(
-      TensorType::get(*resultShapeOr, *promotedDtype));
+      TensorType::get(resultShapesOr->front(), *promotedDtype));
   return success();
 }
 
@@ -376,12 +376,13 @@ static LogicalResult inferReturnTypesBinaryComparisonImpl(
 
   // Shape propagation over materialized ops and target shape.
   auto &successRes = result.getSuccess();
-  ErrorOr<ShapeAttr> resultShapeOr =
-      MO::propagateShape(successRes.bindings, successRes.resultShape);
-  if (resultShapeOr.isError())
-    return mlir::emitOptionalError(location, resultShapeOr.getError());
+  ErrorOr<SmallVector<ShapeAttr>> resultShapesOr =
+      MO::propagateShape(successRes.bindings, successRes.resultShapes);
+  if (resultShapesOr.isError())
+    return mlir::emitOptionalError(location, resultShapesOr.getError());
 
-  inferredReturnTypes.push_back(TensorType::get(*resultShapeOr, DType::kBool));
+  inferredReturnTypes.push_back(
+      TensorType::get(resultShapesOr->front(), DType::kBool));
   return success();
 }
 
@@ -425,13 +426,13 @@ LogicalResult ConcatOp::inferReturnTypes(
 
   // Shape propagation over materialized ops and target shape.
   auto &successRes = result.getSuccess();
-  ErrorOr<ShapeAttr> resultShapeOr =
-      MO::propagateShape(successRes.bindings, successRes.resultShape);
-  if (resultShapeOr.isError())
-    return mlir::emitOptionalError(location, resultShapeOr.getError());
+  ErrorOr<SmallVector<ShapeAttr>> resultShapesOr =
+      MO::propagateShape(successRes.bindings, successRes.resultShapes);
+  if (resultShapesOr.isError())
+    return mlir::emitOptionalError(location, resultShapesOr.getError());
 
   // Create output type.
-  ShapeAttr resultShape = resultShapeOr.get();
+  ShapeAttr resultShape = resultShapesOr.get().front();
   // If the user set the output dimensions, This is an explicit rebind request
   // from the user. We trust their input here for shape inference. A rebind is
   // inserted in lowering to handle this shape specification at runtime.
@@ -505,13 +506,13 @@ LogicalResult ReshapeOp::inferReturnTypes(
 
   // Shape propagation over materialized ops and target shape.
   auto &successRes = result.getSuccess();
-  ErrorOr<ShapeAttr> resultShapeOr =
-      MO::propagateShape(successRes.bindings, successRes.resultShape);
-  if (resultShapeOr.isError())
-    return mlir::emitOptionalError(location, resultShapeOr.getError());
+  ErrorOr<SmallVector<ShapeAttr>> resultShapesOr =
+      MO::propagateShape(successRes.bindings, successRes.resultShapes);
+  if (resultShapesOr.isError())
+    return mlir::emitOptionalError(location, resultShapesOr.getError());
 
   // Create output type.
-  ShapeAttr resultShape = resultShapeOr.get();
+  ShapeAttr resultShape = resultShapesOr.get().front();
   DType inputDtype = cast<TensorType>(operands[0].getType()).getDtype();
   inferredReturnTypes.push_back(TensorType::get(resultShape, inputDtype));
 
@@ -564,13 +565,13 @@ LogicalResult BroadcastToOp::inferReturnTypes(
 
   // Shape propagation over materialized ops and target shape.
   auto &successRes = result.getSuccess();
-  ErrorOr<ShapeAttr> resultShapeOr =
-      MO::propagateShape(successRes.bindings, successRes.resultShape);
-  if (resultShapeOr.isError())
-    return mlir::emitOptionalError(location, resultShapeOr.getError());
+  ErrorOr<SmallVector<ShapeAttr>> resultShapesOr =
+      MO::propagateShape(successRes.bindings, successRes.resultShapes);
+  if (resultShapesOr.isError())
+    return mlir::emitOptionalError(location, resultShapesOr.getError());
 
   // Create output type.
-  ShapeAttr resultShape = resultShapeOr.get();
+  ShapeAttr resultShape = resultShapesOr->front();
   DType inputDtype = cast<TensorType>(operands[0].getType()).getDtype();
   inferredReturnTypes.push_back(TensorType::get(resultShape, inputDtype));
 
@@ -628,13 +629,13 @@ LogicalResult MatmulOp::inferReturnTypes(
 
   // Shape propagation over materialized ops and target shape.
   auto &successRes = result.getSuccess();
-  ErrorOr<ShapeAttr> resultShapeOr =
-      MO::propagateShape(successRes.bindings, successRes.resultShape);
-  if (resultShapeOr.isError())
-    return mlir::emitOptionalError(location, resultShapeOr.getError());
+  ErrorOr<SmallVector<ShapeAttr>> resultShapesOr =
+      MO::propagateShape(successRes.bindings, successRes.resultShapes);
+  if (resultShapesOr.isError())
+    return mlir::emitOptionalError(location, resultShapesOr.getError());
 
   // Create output type.
-  ShapeAttr resultShape = resultShapeOr.get();
+  ShapeAttr resultShape = resultShapesOr.get().front();
   inferredReturnTypes.push_back(TensorType::get(resultShape, *promotedDtype));
 
   return success();

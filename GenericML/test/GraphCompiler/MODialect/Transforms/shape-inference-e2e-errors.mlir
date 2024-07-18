@@ -50,7 +50,7 @@ mo.graph @reshape_bad_annotated_rank(%arg0: !mo.tensor<[?, 320], f32>) -> !mo.te
   %14 = mo.gather(%9, %11, %3) : (!mo.tensor<[2], si64>, !mo.tensor<[?], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[?], si64>
   %15 = mo.gather(%9, %13, %3) : (!mo.tensor<[2], si64>, !mo.tensor<[?], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[?], si64>
   %16 = mo.concat[%3 : !mo.tensor<[], si32>] (%14, %4, %15) : (!mo.tensor<[?], si64>, !mo.tensor<[1], si64>, !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64>
-  // expected-error@below {{shape function returned shape of rank 3 but the type annotation has shape of rank 2}}
+  // expected-error@below {{shape function result #0 returned shape of rank 3, but the type annotation has shape of rank 2}}
   %17 = mo.reshape(%8, %16) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?], f32>
   mo.output %17 : !mo.tensor<[?, ?], f32>
 }
