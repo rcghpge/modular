@@ -53,14 +53,11 @@ public:
   /// `init()`. In general, eager mode has faster bulk materialization API than
   /// the lazy mode. Therefore, if you know you are going to have a full
   /// materialization, use eager mode. Otherwise, lazy mode is more efficient.
-  ErrorOrSuccess init(ArrayRef<std::string> kernelLibraryPaths,
-                      bool eager = false);
+  ErrorOrSuccess init(ArrayRef<std::string> kernelLibraryPaths);
 
   /// Get the fully materialized module which contains all exported generators
-  /// from mojo libraries. If the module has been materialized, it is directly
-  /// returned. The first call to this function is usually expensive but the
-  /// subsequent calls are cheap.
-  ErrorOr<mlir::ModuleOp> getMojoBindings();
+  /// from mojo libraries.
+  mlir::ModuleOp getMojoBindings() { return module; }
 
   /// Query the mojo kernel with the specified `name`. Return nullptr if not
   /// existed.
@@ -129,8 +126,6 @@ public:
            kernel->hasAttr(KGEN::MOGGPreElab::SLICED_ATTR);
   }
 
-  inline bool isFinalized() { return finalized; }
-
 private:
   /// Get the materialized mojo kernel. If the kernel is not materialized, the
   /// materialization happens in place.
@@ -140,13 +135,13 @@ private:
 
   /// Load the user libraries lazily.
   ErrorOrSuccess
-  loadUserProvidedKernels(ArrayRef<std::string> kernelLibraryPaths, bool eager);
+  loadUserProvidedKernels(ArrayRef<std::string> kernelLibraryPaths);
 
   /// Helper function to update the module and state data but account for
   /// collisions
   void updateLoadedKernelsForCollisions(
       Operation *userModule,
-      llvm::StringMap<KGEN::GeneratorOp> &userRawMojoKernel, bool eager);
+      llvm::StringMap<KGEN::GeneratorOp> &userRawMojoKernel);
 
   /// Internalize an MLIR bytecode buffer into the source manager and return a
   /// buffer reference.
@@ -158,7 +153,7 @@ private:
   /// Load and process kernels from an MLIR buffer.
   ErrorOr<Operation *>
   loadMLIRKernels(llvm::MemoryBufferRef bufferRef,
-                  llvm::StringMap<KGEN::GeneratorOp> &kernelMap, bool eager,
+                  llvm::StringMap<KGEN::GeneratorOp> &kernelMap,
                   const Twine &diag);
 
   /// Materialize the specified mojo kernel. It does nothing if the kernel has
@@ -189,9 +184,6 @@ private:
   /// has a dedicated reader.
   llvm::SmallVector<std::unique_ptr<mlir::BytecodeReader>> readers;
 
-  /// The mapping to capture the mojo kernel's reader.
-  llvm::DenseMap<Operation *, mlir::BytecodeReader *> dedicatedReader;
-
   /// This block holds the MLIR modules (might be partially loaded) from mojo
   /// libraries. It holds all of the Module OPs. Each library (either the
   /// main binding or the user-provided ones) would have a module op, which
@@ -204,15 +196,9 @@ private:
   /// materialization (enforced by the `getMojoBindings` call).
   ModuleOp module;
 
-  /// Whether all the mojo libraries are materialized.
-  bool finalized = false;
-
   MLIRContext *context;
 
   mlir::ParserConfig config;
-
-  /// This set captures the already materialized mojo kernels.
-  llvm::SmallPtrSet<Operation *, 16> finalizedMojoKernel;
 
   /// This map captures all the mojo kernels (main and user-provided), which
   /// might not be materialized yet.
@@ -239,15 +225,13 @@ struct LoadMojoAnalysisPass {
   }
 
   ErrorOr<MojoLibraryAnalysis *>
-  initIfNeeded(MLIRContext *ctx, ArrayRef<std::string> kernelLibraryPaths,
-               bool eager = false) {
-    // Reuse the library if it exists, however if we are loading eagerly (i.e
-    // everything at once) and the analysis isn't final then
-    if (analysis && (!eager || analysis->isFinalized()))
+  initIfNeeded(MLIRContext *ctx, ArrayRef<std::string> kernelLibraryPaths) {
+    // Reuse the library if it exists.
+    if (analysis)
       return analysis.get();
 
     analysis = std::make_unique<MojoLibraryAnalysis>(ctx);
-    auto loadError = analysis->init(kernelLibraryPaths, eager);
+    auto loadError = analysis->init(kernelLibraryPaths);
     if (loadError.isError()) {
       analysis = nullptr;
       return loadError.takeError();

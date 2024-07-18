@@ -46,7 +46,7 @@ struct JitCompileKernels
 
     auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
     ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
-        analysis.initIfNeeded(ctx, kernelLibraryPaths, true);
+        analysis.initIfNeeded(ctx, kernelLibraryPaths);
     if (errOr.isError())
       return signalPassFailure();
     MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();

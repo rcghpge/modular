@@ -349,6 +349,20 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
     Option<"copyFromHost", "copy-from-host", "bool", "true",
            "If true make inputs / outputs host tensors with copies inserted.">,
   ];
+
+  // We need to include all the dialects as we access the mojo library.
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::index::IndexDialect",
+    "M::DebugInfo::DebugInfoDialect",
+    "M::HLCF::HLCFDialect",
+    "M::KGEN::Custom::CustomDialect",
+    "M::KGEN::KGENDialect",
+    "M::KGEN::LIT::LITDialect",
+    "M::KGEN::POP::POPDialect",
+    "M::MDialect",
+    "mlir::NVVM::NVVMDialect",
+  ];
 }
 
 def DebugPrintAllTensorsPass : Pass<"debug-print-all-tensors", "GraphOp"> {
