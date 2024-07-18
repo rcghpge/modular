@@ -444,6 +444,18 @@ def AddDeviceContextProfilingPass : Pass<"device-context-profiling", "MGP::Model
   ];
 }
 
+//===----------------------------------------------------------------------===//
+// AwaitOutputsPass
+//===----------------------------------------------------------------------===//
+
+def AwaitOutputsPass : Pass<"await-outputs", "MGP::ModelOp"> {
+  let summary = "Ensures any device specific outputs are waiting upon";
+  let description = [{
+    This pass is intended as a stop-gap to make sure all device specific outputs are waited upon to ensure they are done computation. 
+    Since there is a distinction between device and driver and the device-context, we need to temporarily insert an explicit sync. 
+  }];
+}
+
 
 //===----------------------------------------------------------------------===//
 // FixupOverhangsPass

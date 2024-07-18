@@ -180,7 +180,10 @@ class SimplifyChainsPass
       for (Value inChain : grtChainCreateOp.getInputChains()) {
         if (auto mgpDeviceToHostOp =
                 inChain.getDefiningOp<MGP::ChainDeviceToHostOp>())
-          deviceToHostInputs.push_back(mgpDeviceToHostOp);
+          if (mgpDeviceToHostOp.getBDevice().getLabel() == kCPULabel)
+            deviceToHostInputs.push_back(mgpDeviceToHostOp);
+          else
+            otherInputs.push_back(inChain);
         else
           otherInputs.push_back(inChain);
       }
@@ -191,14 +194,6 @@ class SimplifyChainsPass
       Location loc = grtChainCreateOp->getLoc();
       auto context = deviceToHostInputs[0].getTheContext();
       auto runtimeSlot = deviceToHostInputs[0].getARuntimeSlot();
-
-      bool const allCPU =
-          llvm::all_of(deviceToHostInputs, [](MGP::ChainDeviceToHostOp op) {
-            return op.getBDevice().getLabel() == "cpu";
-          });
-
-      if (!allCPU)
-        return;
 
       SmallVector<Value> inChains;
 
