@@ -3,21 +3,70 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-from enum import IntEnum
+# Need this import to silence error from circular type dependency between dtype
+# and scalar
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
 
 
-class dtype(IntEnum):
-    bool = 0
-    int8 = 4
-    int16 = 5
-    int32 = 6
-    int64 = 7
-    uint8 = 15
-    uint16 = 16
-    uint32 = 17
-    uint64 = 18
-    float16 = 25
-    float32 = 26
-    float64 = 27
-    bfloat16 = 33
-    unknown = -1
+@dataclass
+class dtype:
+    """
+    Data type of tensor elements.
+    :param id: Integer ID of dtype. Corresponds to IDs in C++ backend.
+    :type id: int
+    :param: scalar_name: Printable name of dtype.
+    :type scalar_name: str
+    """
+
+    id: int
+    scalar_name: str
+
+    def __str__(self) -> str:
+        return f"max.{self.scalar_name}"
+
+    def __repr__(self) -> str:
+        return str(self)
+
+    def create(self, value: Any) -> scalar:
+        return scalar(value, self)
+
+
+@dataclass
+class scalar:
+    """
+    Scalar representation of dtype instantiations.
+    :param value: Value of underlying scalar.
+    :type value: Any
+    :param dtype: DType of scalar
+    :type dtype: dtype
+    """
+
+    value: Any
+    dtype: dtype
+
+    def __str__(self) -> str:
+        val_repr = f"{self.value}"
+        if isinstance(self.value, float):
+            val_repr = f"{self.value:.2f}"
+        return f"max.{self.dtype}({val_repr})"
+
+    def __repr__(self) -> str:
+        return str(self)
+
+
+# Instantiations of supported dtypes.
+bool_ = dtype(0, "bool")
+int8 = dtype(4, "int8")
+int16 = dtype(5, "int16")
+int32 = dtype(6, "int32")
+int64 = dtype(7, "int64")
+uint8 = dtype(15, "uint8")
+uint16 = dtype(16, "uint16")
+uint32 = dtype(17, "uint32")
+uint64 = dtype(18, "uint64")
+float16 = dtype(25, "float16")
+float32 = dtype(26, "float32")
+float64 = dtype(27, "float64")
