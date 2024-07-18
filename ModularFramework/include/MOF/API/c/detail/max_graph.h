@@ -8,7 +8,6 @@
 #define MOF_API_C_DETAIL_MAX_GRAPH_H
 
 #include "MOF/API/c/symbol_export.h"
-#include "MOF/GraphBuilder/Module.h"
 #include "Support/ForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
 #include "mlir-c/IR.h"
@@ -57,9 +56,21 @@ MODULAR_API_EXPORT MlirOperation MAXG_graphNew(MlirModule m, MlirLocation loc,
 // Attribute factories
 //===----------------------------------------------------------------------===//
 
+/// Creates a dense_resource attribute backed by an mmap'ed read-only file.
+MODULAR_API_EXPORT MlirNamedAttribute MAXG_weightsAttr(const char *filepath,
+                                                       size_t offset,
+                                                       MlirType type,
+                                                       llvm::StringRef name,
+                                                       MAXG_Status *status);
+
+/// Creates a named ArrayElementsAttr (dense_array) backed by a builtin tensor.
+/// The tensor data is always borrowed.
+MODULAR_API_EXPORT MlirNamedAttribute
+MAXG_attrNewTensorBorrowed(llvm::StringRef name, void *data, MlirType type);
+
 /// Creates a named ArrayElementsAttr (dense_array) backed by a builtin tensor.
 MODULAR_API_EXPORT MlirNamedAttribute
-MAXG_attrNewTensor(M::StringRef name, void *data, MlirType t, bool owned,
+MAXG_attrNewTensor(llvm::StringRef name, void *data, MlirType t, bool owned,
                    AsyncRTRuntimeRef runtime);
 
 /// Creates a ParamDeclAttr (param.decl) with the given name and index type.
@@ -79,10 +90,15 @@ MODULAR_API_EXPORT MlirAttribute MAXG_attrNewShape(MlirContext ctx,
 // Type helpers
 //===----------------------------------------------------------------------===//
 
-/// Convert the give M::DType corresponding to `value` to an MLIR type.
+/// Converts the given M::DType corresponding to `value` to an MLIR type.
+MODULAR_API_EXPORT MlirType MAXG_dTypeNewFromString(MlirContext ctx,
+                                                    const char *value,
+                                                    MAXG_Status *status);
+
+/// Converts the given M::DType corresponding to `value` to an MLIR type.
 MODULAR_API_EXPORT MlirType MAXG_dTypeNew(MlirContext ctx, uint8_t value);
 
-/// Create a new MO::TensorType (!mo.tensor).
+/// Creates a new MO::TensorType (!mo.tensor).
 MODULAR_API_EXPORT MlirType MAXG_tensorTypeNew(MlirContext ctx, MlirType dtype,
                                                bool ranked, MlirAttribute *dims,
                                                int32_t rank);

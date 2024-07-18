@@ -11,6 +11,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "KGEN/KGENDialect/KGENDType.h"
 #include "MOF/API/c/symbol_export.h"
+#include "MOF/GraphBuilder/Module.h"
 #include "Support/Buffer.h"
 #include "Support/ML/TensorSpec.h"
 #include "mlir-c/BuiltinTypes.h"
@@ -19,6 +20,8 @@
 #include "mlir/CAPI/Support.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Verifier.h"
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/bit.h"
 
 using namespace M;
 using namespace M::MOF::GraphBuilder;
@@ -83,6 +86,81 @@ MODULAR_API_EXPORT MlirOperation MAXG_graphNew(MlirModule m, MlirLocation loc,
 //===----------------------------------------------------------------------===//
 // Attribute factories
 //===----------------------------------------------------------------------===//
+
+MODULAR_API_EXPORT MlirNamedAttribute MAXG_weightsAttr(const char *filepath,
+                                                       size_t offsetBytes,
+                                                       MlirType type,
+                                                       StringRef name,
+                                                       MAXG_Status *status) {
+  auto moType = cast<M::MO::TensorType>(unwrap(type));
+  if (!moType.getNumElements().has_value()) {
+    status->status = M::Error::getStaticString(
+        "tensor attrs should always be statically sized");
+    return wrap(NamedAttribute(StringAttr(), Attribute()));
+  }
+  int64_t sizeBytes =
+      moType.getDtype().getSizeInBytes() * moType.getNumElements().value();
+
+  // mmap the provided filepath as read-only.
+  auto bufferOr = M::Buffer::getFile(filepath, sizeBytes, offsetBytes);
+  if (bufferOr.isError()) {
+    status->status = bufferOr.takeError();
+    return wrap(NamedAttribute(StringAttr(), Attribute()));
+  }
+  M::BufferRef bufferRef = bufferOr.takeValue();
+
+  auto buff_size = static_cast<int64_t>(bufferRef->getBufferSize());
+  if (buff_size != sizeBytes) {
+    status->status =
+        M::Error(Twine("Size mismatch, want ") + std::to_string(sizeBytes) +
+                 " got " + std::to_string(buff_size) + "\n");
+    return wrap(NamedAttribute(StringAttr(), Attribute()));
+  }
+
+  // Choose a default blob alignment to match the attribute's element size.
+  size_t elementByteAlign = llvm::PowerOf2Ceil(
+      llvm::divideCeil(moType.getDtype().getWidthInBits(), CHAR_BIT));
+
+  // Reuses the data within the BufferRef and extends the lifetime of it.
+  mlir::AsmResourceBlob blob =
+      mlir::UnmanagedAsmResourceBlob::allocateWithAlign(
+          arrayRefFromStringRef<char>(bufferRef->getBuffer()), elementByteAlign,
+          [storage = bufferRef.copy()](void *, size_t, size_t) {
+            // No-op that drops the `bufferRef` when the closure is
+            // destroyed.
+          });
+
+  auto resourceManager = mlir::DenseResourceElementsHandle::getManagerInterface(
+      moType.getContext());
+
+  // Create the dense_resource backed by the mmap'ed file and with the passed
+  // tensor shape.
+  auto shapedType =
+      mlir::RankedTensorType::get(moType.getIntDims(), moType.getElementType());
+  auto denseResource = mlir::DenseResourceElementsAttr::get(
+      shapedType, resourceManager.insert(name, std::move(blob)));
+  mlir::StringAttr nameAttr = mlir::StringAttr::get(moType.getContext(), name);
+  return wrap(mlir::NamedAttribute(nameAttr, denseResource));
+}
+
+MODULAR_API_EXPORT MlirNamedAttribute
+MAXG_attrNewTensorBorrowed(llvm::StringRef name, void *data, MlirType type) {
+  // Create an ND array from data, taking the size and shape from the tensor
+  // type argument.
+  auto moTensorType = cast<M::MO::TensorType>(unwrap(type));
+  size_t size = moTensorType.getDtype().getSizeInBytes() *
+                moTensorType.getNumElements().value();
+  ArrayRef<uint8_t> bytes_array(llvm::bit_cast<uint8_t *>(data), size);
+
+  auto shapedType = RankedTensorType::get(moTensorType.getIntDims(),
+                                          moTensorType.getElementType());
+
+  auto attr = ArrayElementsAttr::get({bytes_array.data(), bytes_array.size()},
+                                     shapedType);
+
+  StringAttr nameAttr = StringAttr::get(moTensorType.getContext(), name);
+  return wrap(NamedAttribute(nameAttr, attr));
+}
 
 MODULAR_API_EXPORT MlirNamedAttribute
 MAXG_attrNewTensor(StringRef name, void *data, MlirType t, bool owned,
@@ -149,6 +227,24 @@ MODULAR_API_EXPORT MlirAttribute MAXG_attrNewShape(MlirContext ctx,
 //===----------------------------------------------------------------------===//
 // Type helpers
 //===----------------------------------------------------------------------===//
+
+MODULAR_API_EXPORT MlirType MAXG_dTypeNewFromString(MlirContext ctx,
+                                                    const char *value,
+                                                    MAXG_Status *status) {
+  auto typeOr = M::DType::getFromString(value);
+  if (failed(typeOr)) {
+    status->status = M::Error(Twine("invalid dtype argument: ") + value);
+    return wrap(Type());
+  }
+
+  auto mlirTypeOr = MO::toMLIRType(unwrap(ctx), *typeOr);
+  if (mlirTypeOr.isError()) {
+    status->status = mlirTypeOr.takeError();
+    return wrap(Type());
+  }
+
+  return wrap(*mlirTypeOr);
+}
 
 MODULAR_API_EXPORT MlirType MAXG_dTypeNew(MlirContext ctx, uint8_t value) {
   auto mlirType = M::MO::toMLIRType(unwrap(ctx), M::DType(value));

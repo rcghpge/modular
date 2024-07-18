@@ -40,6 +40,19 @@ PYBIND11_MODULE(core, m) {
 }
 ```
 
+max/graph/core.cpp and GraphAPI/python/Bindings.h have the following
+responsibilities:
+
+- core.cpp: this should be restricted to exposing the Python bindings'
+  interfaces through pybind11.
+  So for example, defining method signatures and return value ownership is done
+  in this file.
+  Any needed conversion from PyObject to C++ types that isn't already in a type
+  caster should be done here in core.cpp.
+- Bindings.h: this calls into the MAXG C API and shouldn't use pybind11.
+  This is also where the C API errors are converted into C++ exceptions, which
+  pybind11 will convert into Python exception
+
 ### Package architecture
 
 The relevant target definitions are:
