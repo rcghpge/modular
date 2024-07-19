@@ -681,6 +681,68 @@ struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
   }
 };
 
+struct LowerSelect : public OpRewritePattern<RMO::SelectOp> {
+  LowerSelect(MLIRContext *ctx) : OpRewritePattern<RMO::SelectOp>(ctx, 1) {}
+  LogicalResult matchAndRewrite(RMO::SelectOp op,
+                                PatternRewriter &rewriter) const override {
+    auto graphOp = op->template getParentOfType<MO::GraphOp>();
+    Location loc = op->getLoc();
+
+    TensorValue cond = op.getCond();
+    TensorValue x = op.getInputX();
+    TensorValue y = op.getInputY();
+    auto xDtype = x.getType().getDtype();
+    auto yDtype = y.getType().getDtype();
+    auto resultDtype = op.getResult().getType().getDtype();
+
+    // Deal with dtype casting if it is needed.
+    if (xDtype != resultDtype) {
+      x = rewriter.create<RMO::MOCastOp>(loc,
+                                         x.getType().cloneWith(resultDtype), x);
+    }
+    if (yDtype != resultDtype) {
+      y = rewriter.create<RMO::MOCastOp>(loc,
+                                         y.getType().cloneWith(resultDtype), y);
+    }
+
+    TensorValue condFinal = cond;
+    TensorValue xFinal = x;
+    TensorValue yFinal = y;
+    if (x.getType().getTypedShapeAttr() != y.getType().getTypedShapeAttr() ||
+        x.getType().getTypedShapeAttr() != cond.getType().getTypedShapeAttr()) {
+      TensorValue condShape =
+          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{cond}, graphOp);
+      TensorValue xShape =
+          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{x}, graphOp);
+      TensorValue yShape =
+          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{y}, graphOp);
+
+      TensorValue xyShape = rewriter.create<RMO::MOBroadcastShapeOp>(
+          loc, ValueRange{xShape, yShape}, graphOp);
+      TensorValue commonShape = rewriter.create<RMO::MOBroadcastShapeOp>(
+          loc, ValueRange{condShape, xyShape}, graphOp);
+
+      TensorValue condBcast = rewriter.create<RMO::MOBroadcastToOp>(
+          loc, ValueRange{cond, commonShape}, graphOp);
+      TensorValue xBcast = rewriter.create<RMO::MOBroadcastToOp>(
+          loc, ValueRange{x, commonShape}, graphOp);
+      TensorValue yBcast = rewriter.create<RMO::MOBroadcastToOp>(
+          loc, ValueRange{y, commonShape}, graphOp);
+      condFinal = condBcast;
+      xFinal = xBcast;
+      yFinal = yBcast;
+    }
+
+    TensorValue answer = rewriter.create<RMO::MOSelectOp>(
+        loc, ValueRange{condFinal, xFinal, yFinal}, graphOp);
+    TensorValue reboundAnswer = rebindToShape(
+        graphOp, answer, op.getType(), rewriter, op.getOutputParamDecls());
+
+    rewriter.replaceAllUsesWith(op, reboundAnswer);
+    return success();
+  }
+};
+
 struct LegalizeRMOOps
     : public M::RMO::impl::LegalizeRMOOpsBase<LegalizeRMOOps> {
   using LegalizeRMOOpsBase::LegalizeRMOOpsBase;
@@ -813,7 +875,7 @@ struct LegalizeRMOOps
         LowerCompositeBinaryComparisonOp<RMO::GreaterEqualOp,
                                          RMO::MOGreaterEqualOp>,
         LowerBroadcastLike, LowerSigmoid, LowerConcat, LowerReshape,
-        LowerMatmul, LowerBroadcastTo>(context);
+        LowerMatmul, LowerBroadcastTo, LowerSelect>(context);
 
     // Lowering third party specific operations.
     // They have more flexible semantics that separate them from standard rmo

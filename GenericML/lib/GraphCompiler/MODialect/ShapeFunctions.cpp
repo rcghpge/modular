@@ -142,18 +142,18 @@ static Var computeRangeSize(const Var &start, const Var &stop,
 
 // Generate an error message when dimensions of a shape are
 // not equivalent or broadcastable. This is meant for use with RMO ops.
-static std::string shapeBroadcastingErrorMessage(ShapeAttr lhsShapeAttr,
-                                                 size_t lhsAxis,
-                                                 ShapeAttr rhsShapeAttr,
-                                                 size_t rhsAxis) {
+static std::string
+shapeBroadcastingErrorMessage(StringRef lhsName, ShapeAttr lhsShapeAttr,
+                              size_t lhsAxis, StringRef rhsName,
+                              ShapeAttr rhsShapeAttr, size_t rhsAxis) {
   std::string errorMsg;
   llvm::raw_string_ostream os(errorMsg);
   StreamAsmPrinter printer(os);
-  printer << "Input lhs (shape ";
+  printer << "Input " << lhsName << " (shape ";
   MOSH::printShapeTypedAttr(printer, lhsShapeAttr);
   printer << ") dimension at axis " << lhsAxis << " (value ";
   MOSH::printDimensionValue(printer, lhsShapeAttr[lhsAxis]);
-  printer << ") and input rhs (shape ";
+  printer << ") and input " << rhsName << " (shape ";
   MOSH::printShapeTypedAttr(printer, rhsShapeAttr);
   printer << ") dimension at axis " << rhsAxis << " (value ";
   MOSH::printDimensionValue(printer, rhsShapeAttr[rhsAxis]);
@@ -337,9 +337,9 @@ ShapeMaterializeResult materializeRmoMatmulShape(GraphOp graphOp, Location loc,
       TypedAttr lhsDim = lhsFullShape[batchDim];
       TypedAttr rhsDim = rhsFullShape[batchDim];
 
-      std::string errorMsg =
-          shapeBroadcastingErrorMessage(lhsShape, batchDim - lhsRankOffset,
-                                        rhsShape, batchDim - rhsRankOffset);
+      std::string errorMsg = shapeBroadcastingErrorMessage(
+          "lhs", lhsShape, batchDim - lhsRankOffset, "rhs", rhsShape,
+          batchDim - rhsRankOffset);
       b.createAssert(b.createVar(lhsDim) == b.createVar(rhsDim), errorMsg);
       resDims.push_back(lhsDim);
     }
@@ -387,14 +387,71 @@ materializeRmoBinaryElementwiseShape(GraphOp graphOp, Location loc,
       } else {
         b.createAssert(b.createVar(lhsDim) == b.createVar(rhsDim),
                        shapeBroadcastingErrorMessage(
-                           lhsShape, lhsShape.getRank() - i - 1, rhsShape,
-                           rhsShape.getRank() - i - 1));
+                           "lhs", lhsShape, lhsShape.getRank() - i - 1, "rhs",
+                           rhsShape, rhsShape.getRank() - i - 1));
         outputDims[outputIndex] = lhsDim;
       }
     } else if (lhsDim) {
       outputDims[outputIndex] = lhsDim;
     } else {
       outputDims[outputIndex] = rhsDim;
+    }
+  }
+
+  auto outputShape =
+      ShapeAttr::get(outputDims, ShapeType::get(graphOp.getContext()));
+  return ShapeMaterializeResult::success(std::move(paramBindings), outputShape);
+}
+
+ShapeMaterializeResult materializeRmoSelectShape(GraphOp graphOp, Location loc,
+                                                 ShapeAttr condShape,
+                                                 ShapeAttr xShape,
+                                                 ShapeAttr yShape) {
+  // Create builder and track generated parameter bindings.
+  SmallVector<ParamBinding> paramBindings;
+  ParamExprBuilder b(graphOp, loc, &paramBindings);
+
+  auto idxTy = IndexType::get(graphOp.getContext());
+  auto intDim1 = IntegerAttr::get(idxTy, 1ll);
+  size_t maxRank = std::max(condShape.getRank(),
+                            std::max(xShape.getRank(), yShape.getRank()));
+
+  auto getFromEndOrOne = [intDim1](ShapeAttr shape, size_t i) -> TypedAttr {
+    if (i >= shape.getRank())
+      return intDim1;
+    return shape[shape.getRank() - i - 1];
+  };
+
+  // Check that all inputs are equivalent or broadcastable while building the
+  // output shape.
+  SmallVector<TypedAttr> outputDims{maxRank, intDim1};
+  for (size_t i = 0; i < maxRank; ++i) {
+    TypedAttr condDim = getFromEndOrOne(condShape, i);
+    TypedAttr xDim = getFromEndOrOne(xShape, i);
+    TypedAttr yDim = getFromEndOrOne(yShape, i);
+    size_t outputIndex = maxRank - i - 1;
+
+    SmallVector<std::tuple<StringRef, ShapeAttr, TypedAttr>, 3> nonOneDims{};
+    if (condDim != intDim1)
+      nonOneDims.push_back({"condition", condShape, condDim});
+    if (xDim != intDim1)
+      nonOneDims.push_back({"x", xShape, xDim});
+    if (yDim != intDim1)
+      nonOneDims.push_back({"y", yShape, yDim});
+
+    for (size_t j = 1; j < nonOneDims.size(); ++j) {
+      auto [expectedName, expectedShape, expectedDim] = nonOneDims[0];
+      auto [actualName, actualShape, actualDim] = nonOneDims[j];
+      b.createAssert(b.createVar(expectedDim) == b.createVar(actualDim),
+                     shapeBroadcastingErrorMessage(
+                         expectedName, expectedShape,
+                         expectedShape.getRank() - i - 1, actualName,
+                         actualShape, actualShape.getRank() - i - 1));
+    }
+
+    if (!nonOneDims.empty()) {
+      auto [_name, _shape, dim] = nonOneDims[0];
+      outputDims[outputIndex] = dim;
     }
   }
 

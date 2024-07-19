@@ -641,6 +641,71 @@ LogicalResult MatmulOp::inferReturnTypes(
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// SelectOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult SelectOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+
+  // Retrieve input shape
+  SmallVector<TypedAttr> inputShapes = getShapesOf(operands);
+  ASSERT_STREAM(inputShapes.size() == 3,
+                << "rmo.select must have exactly two inputs");
+
+  auto condShape = mlir::cast<ShapeAttr>(inputShapes[0]);
+  auto xShape = mlir::cast<ShapeAttr>(inputShapes[1]);
+  auto yShape = mlir::cast<ShapeAttr>(inputShapes[2]);
+  // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
+  // check.
+  if (condShape.hasUnknownDims())
+    return mlir::emitOptionalError(
+        location, unknownDimError("Select", "input cond", condShape));
+  if (xShape.hasUnknownDims())
+    return mlir::emitOptionalError(
+        location, unknownDimError("Select", "input x", xShape));
+  if (yShape.hasUnknownDims())
+    return mlir::emitOptionalError(
+        location, unknownDimError("Select", "input y", yShape));
+
+  ErrorOr<DType> promotedDtype =
+      promoteDtype(mlir::cast<TensorType>(operands[1].getType()).getDtype(),
+                   mlir::cast<TensorType>(operands[2].getType()).getDtype());
+  if (promotedDtype.isError()) {
+    return mlir::emitOptionalError(location, "Failed to resolve valid dtype: ",
+                                   StringRef{promotedDtype.getError()});
+  }
+  // Materialize shape function.
+  auto graphOp =
+      operands.front().getParentRegion()->getParentOfType<MO::GraphOp>();
+  Location loc = location.value_or(graphOp.getLoc());
+  MO::ShapeMaterializeResult result =
+      MO::materializeRmoSelectShape(graphOp, loc, condShape, xShape, yShape);
+
+  // Preliminary error checks.
+  if (result.isError())
+    return mlir::emitOptionalError(location, result.getError().msg);
+
+  // This depends on GraphAPI having static rank.
+  ASSERT_STREAM(!result.isNonMaterializable(),
+                << "matmul shape logic must be materializable");
+
+  // Shape propagation over materialized ops and target shape.
+  auto &successRes = result.getSuccess();
+  ErrorOr<SmallVector<ShapeAttr>> resultShapesOr =
+      MO::propagateShape(successRes.bindings, successRes.resultShapes);
+  if (resultShapesOr.isError())
+    return mlir::emitOptionalError(location, resultShapesOr.getError());
+
+  // Create output type.
+  ShapeAttr resultShape = resultShapesOr.get().front();
+  inferredReturnTypes.push_back(TensorType::get(resultShape, *promotedDtype));
+
+  return success();
+}
+
 void RMODialect::registerOperations() {
   addOperations<
 #define GET_OP_LIST

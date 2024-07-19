@@ -344,6 +344,12 @@ ShapeMaterializeResult materializeRmoBinaryElementwiseShape(GraphOp graphOp,
                                                             ShapeAttr lhsShape,
                                                             ShapeAttr rhsShape);
 
+/// Materialize the shape logic for RMO select ops.
+ShapeMaterializeResult materializeRmoSelectShape(GraphOp graphOp, Location loc,
+                                                 ShapeAttr condShape,
+                                                 ShapeAttr xShape,
+                                                 ShapeAttr yShape);
+
 /// Materialize the shape logic for `MO::BroadcastShapeOp`.
 ShapeMaterializeResult materializeBroadcastShapeShape(GraphOp graphOp,
                                                       Location loc,

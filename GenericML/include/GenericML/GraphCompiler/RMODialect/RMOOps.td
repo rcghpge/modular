@@ -433,4 +433,40 @@ def RMO_MatmulOp : RMO_Op<"matmul", [
   }];
 }
 
+def RMO_SelectOp : RMO_Op<"select", [
+  Pure,
+  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+]> {
+  let summary = "Select operation with broadcasting and dtype casting";
+  let description = [{
+    Returns `cond ? x : y` (element-wise), where `cond`, `x` and `y` are input
+    tensors.
+
+    Broadcasting is handled by first calculating the common shape between `x` and `y`.
+    Then, the `cond` shape and common shape are merged to figure out the final shape.
+    All inputs are broadcast to the same final shape.
+
+    Dtype casting only applies to the `x` and `y` inputs. `cond` must be a bool.
+
+    Example:
+
+    ```mlir
+      %cond: !mo.tensor<[2, 3], bool>
+      %x: !mo.tensor<[1, 3], f32>
+      %y: !mo.tensor<[2, 3], i8>
+      %res = rmo.select(%cond, %x, %y) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+  let arguments = (ins
+    MO_BooleanMask:$cond,
+    MO_Tensor:$input_x,
+    MO_Tensor:$input_y
+  );
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
