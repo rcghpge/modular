@@ -9,7 +9,6 @@
 
 #include <string>
 
-#include "mlir/IR/MLIRContext.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -21,6 +20,7 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/LITDialect/LITDialect.h"
 #include "KGEN/MOGGPreElab/MOGGDecorators.h"
+#include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Pass/AnalysisManager.h"
