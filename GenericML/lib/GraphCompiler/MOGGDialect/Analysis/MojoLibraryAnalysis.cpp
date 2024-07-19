@@ -74,21 +74,6 @@ parseMojoPackage(MLIRContext *ctx, StringRef path,
   return ownedModule;
 }
 
-static LogicalResult materialize(Operation *target,
-                                 mlir::BytecodeReader *reader) {
-  auto walk = target->walk<mlir::WalkOrder::PreOrder>([&](Operation *op) {
-    if (reader->isMaterializable(op))
-      if (failed(reader->materialize(op)))
-        return WalkResult::interrupt();
-    return WalkResult::advance();
-  });
-
-  if (walk.wasInterrupted())
-    return failure();
-
-  return success();
-}
-
 static void
 populateMetadata(Operation *module,
                  llvm::StringMap<KGEN::GeneratorOp> &rawMojoKernel) {
