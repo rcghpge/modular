@@ -591,18 +591,31 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // TODO: Fusing kernels with inplace allocations is not supported
   // (intermediates allocations unsupported / leaking).
-  bool canFuseIntoOther =
+  bool hasInternalAllocs =
       !(getAllocIndices().has_value() && !getAllocIndices()->empty());
+
+  // TODO(GRA-780): Right now prevent MOGG Kernels fusing into children
+  // (but allowing other kernels to fuse into the MOGG kernel) since
+  // we do not have good heuristics for determining when it's appropriate.
+  //
+  // We can also look into allowing duplication for some select forms of ops.
+  bool canFuseIntoOther = !hasInternalAllocs && false;
+
+  // To match behavior before removing middle-jit (GRA-425)
+  bool canBeFusedInto = false;
+
   bool hasCuda = device.getLabel() != kCPULabel;
   // Later update the isAsync instead of hard-coding
   auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
       getLoc(), TypeRange{newKernelResTypes}, operands,
       getOutputParamDeclsAttr(), InOutSignatureAttr::get(ctx, operandSemantics),
-      getIsKGENAttr(),                     // isKGEN
-      getSummaryAttr(),                    // summary
-      BoolAttr::get(ctx, false),           // isAsync
-      BoolAttr::get(ctx, hasCuda),         // hasCuda
-      BoolAttr::get(ctx, canFuseIntoOther) // isFuseable
+      getIsKGENAttr(),                                  // isKGEN
+      getSummaryAttr(),                                 // summary
+      BoolAttr::get(ctx, getIsAsync().value_or(false)), // isAsync
+      BoolAttr::get(ctx, hasCuda),                      // hasCuda
+      BoolAttr::get(ctx, canFuseIntoOther),             // canFuseIntoOther
+      BoolAttr::get(ctx, canBeFusedInto),               // canBeFusedInto
+      BoolAttr::get(ctx, false)                         // canDuplicate
   );
 
   mlir::Block &kernelBody = newKernel.getBody().emplaceBlock();

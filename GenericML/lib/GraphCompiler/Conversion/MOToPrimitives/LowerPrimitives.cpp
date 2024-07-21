@@ -45,12 +45,15 @@ struct LowerPrimitivesPass
 };
 
 // All MIP and MGP Primitives that are registered we will allow fusion of.
-static inline bool canFuseIntoOther(Operation *op) {
+static inline bool canFuseOp(Operation *op) {
   return isa<::M::MIP::MIPDialect, MGPDialect>(op->getDialect());
 }
 
 static inline bool canDuplicate(Operation *op) {
-  return isa<::M::MIP::MIPDialect>(op->getDialect());
+  // TODO(GRA-784): This is disabled since certain subgraphs can bloat
+  // compile times.
+  // return isa<::M::MIP::MIPDialect>(op->getDialect());
+  return false;
 }
 
 // Anything we find a registry for, lower to generic regions
@@ -126,8 +129,9 @@ void LowerPrimitivesPass::runOnOperation() {
           StringAttr::get(ctx, op->getName().getStringRef()),         // summary
           BoolAttr{},                                                 // isAsync
           BoolAttr::get(ctx, hasCuda),                                // hasCuda
-          BoolAttr::get(ctx, canFuseIntoOther(op)), // canFuseIntoOther
-          BoolAttr::get(ctx, canDuplicate(op))      // canDuplicate
+          BoolAttr::get(ctx, canFuseOp(op)),   // canFuseIntoOther
+          BoolAttr::get(ctx, canFuseOp(op)),   // canBeFusedInto
+          BoolAttr::get(ctx, canDuplicate(op)) // canDuplicate
       );
 
       mlir::Block &kernelBody = newKernel.getBody().emplaceBlock();

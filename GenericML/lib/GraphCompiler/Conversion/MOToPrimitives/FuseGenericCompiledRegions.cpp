@@ -100,10 +100,14 @@ static void fuseCompiledRegionsAndReplaceUses(
             .getHasCuda()
             .value_or(false);
       });
-  const bool isFusible =
+  const bool canFuseIntoOther =
       llvm::all_of(compiledRegionOpsToFuseTogether, [&](auto region) {
         return cast<MOGG::GenericCompiledRegionOp>(region)
             .getCanFuseIntoOther();
+      });
+  const bool canBeFusedInto =
+      llvm::all_of(compiledRegionOpsToFuseTogether, [&](auto region) {
+        return cast<MOGG::GenericCompiledRegionOp>(region).getCanBeFusedInto();
       });
   const bool canDuplicate =
       llvm::all_of(compiledRegionOpsToFuseTogether, [&](auto region) {
@@ -128,8 +132,8 @@ static void fuseCompiledRegionsAndReplaceUses(
       InOutSignatureAttr::get(ctx, operandSemantics),
       firstRegionOp.getIsKGENAttr(),
       MOGG::getSummaryString(compiledRegionOpsToFuseTogether),
-      BoolAttr::get(ctx, isAsync), BoolAttr::get(ctx, hasCuda), isFusible,
-      canDuplicate);
+      BoolAttr::get(ctx, isAsync), BoolAttr::get(ctx, hasCuda),
+      canFuseIntoOther, canBeFusedInto, canDuplicate);
   Block &newBody = fusedCompiledRegionOp.getBody().emplaceBlock();
   builder.setInsertionPoint(&newBody, newBody.begin());
 
@@ -264,6 +268,9 @@ static inline bool areCompatibleForFusion(Operation *parent, Operation *child) {
   if (!parentRegion.getCanFuseIntoOther())
     return false;
 
+  if (!childRegion.getCanBeFusedInto())
+    return false;
+
   if constexpr (checkForDuplication) {
     if (duplicationFlag != parentRegion.getCanDuplicate())
       return false;
@@ -350,6 +357,7 @@ struct FuseGenericCompiledRegions
   void runOnOperation() override {
     if (enableFusion) {
       ModuleOp module = getOperation();
+      // TODO(GRA-784): NOTE: all generic regions should not allow duplication.
       // Fuse in any op that can be duplicated.
       doSourceDestinationSequenceFusion<true>(module);
       // Fuse in any op that can't be duplicated (must have one user).
