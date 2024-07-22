@@ -1386,6 +1386,15 @@ static void printKernel(OpAsmPrinter &p, Operation *kernel, ValueRange operands,
   p.printRegion(region, /*printEntryBlockArgs=*/false);
 }
 
+void KernelOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  if (isInPlace()) {
+    effects.emplace_back(mlir::MemoryEffects::Write::get());
+    effects.emplace_back(mlir::MemoryEffects::Read::get());
+  } else if (!getOutputParamDecls().empty())
+    effects.emplace_back(mlir::MemoryEffects::Write::get());
+}
+
 //===----------------------------------------------------------------------===//
 // GenericCompiledRegionOp
 //===----------------------------------------------------------------------===//

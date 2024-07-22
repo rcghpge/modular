@@ -134,6 +134,7 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     DeclInterface,
     DeclareOpInterfaceMethods<MO_ParamDeclaration>,
     DeclareOpInterfaceMethods<MOGG_CompilableKernel>,
+    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
     MO_HasDeviceInterface]> {
   let summary = "A representation of a kernel which can be fused into and compiled";
   let description = [{
