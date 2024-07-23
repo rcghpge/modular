@@ -701,7 +701,6 @@ modular_cc_library(
         "MOGG_MOJO_BINDING_H='\"$(location //Kernels/mojo/Mogg:MOGG.mojo.h)\"'",
         "MOGG_PRIMITIVES_MOJO_BINDING_H='\"$(location //Kernels/mojo/Mogg:MOGGPrimitives.mojo.h)\"'",
     ],
-    visibility = ["//visibility:private"],
     deps = [
         ":GraphCompilerInterfaces",
         ":MOAnalysis",
