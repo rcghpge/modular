@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_cc_binary")
+load("//bazel:api.bzl", "modular_cc_binary", "run_tool")
 
 modular_cc_binary(
     name = "mo-opt",
@@ -9,4 +9,18 @@ modular_cc_binary(
         "//Support:Globals",
         "@llvm-project//mlir:MlirOptLib",
     ],
+)
+
+run_tool(
+    name = "mo-opt-standalone",
+    data = [
+        "//KGEN:CompilerRT",
+        "@llvm-project//compiler-rt:orc_rt",
+    ],
+    env = {
+        "MODULAR_CRASH_REPORTING_ENABLED": "false",
+    },
+    tags = ["manual"],
+    tool = ":mo-opt",
+    visibility = ["//visibility:private"],
 )
