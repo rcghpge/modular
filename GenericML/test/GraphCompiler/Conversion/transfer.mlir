@@ -8,14 +8,14 @@
 // the same shape as the input.
 // CHECK-LABEL: mgp.model @transfer_with_unknown_dims : mof
 //       CHECK: } execute ([[CH:%.*]]: !mef.chain, [[CTX:%.*]]: !mgp.context, {{.*}}, [[INPUT:.*]]: !mgp.tensor<?xsi64>) -> (!mef.chain, !mgp.tensor<?xsi64, <"cpu", 1>>) {
-//  CHECK-NEXT:   [[IN_BUF:%.*]] = mgp.tensor.extract.buffer [[CTX]][1], [[INPUT]] : !mgp.tensor<?xsi64>
-//  CHECK-NEXT:   [[IN_SPEC:%.*]] = mgp.tensor.extract.tensor_spec [[CTX]][1], [[INPUT]] : !mgp.tensor<?xsi64>
+//  CHECK-NEXT:   [[IN_BUF:%.*]] = mgp.tensor.extract.buffer [[CTX]][0], [[INPUT]] : !mgp.tensor<?xsi64>
+//  CHECK-NEXT:   [[IN_SPEC:%.*]] = mgp.tensor.extract.tensor_spec [[CTX]][0], [[INPUT]] : !mgp.tensor<?xsi64>
 //  CHECK-NEXT:   [[IN_SIZE:%.*]] = mgp.tensor_spec.size [[IN_SPEC]] : !mgp.tensor_spec<?xsi64>
 //  CHECK-NEXT:   {{.*}} = mgp.chain.host_to_device
-//  CHECK-NEXT:   [[NEW_BUF:%.*]] = mgp.buffer.alloc.dynamic {{.*}}, [[CTX]][2], [[IN_SIZE]], align {{.*}} : !mgp.buffer<, <"cpu", 1>>
+//  CHECK-NEXT:   [[NEW_BUF:%.*]] = mgp.buffer.alloc.dynamic {{.*}}, [[CTX]][1], [[IN_SIZE]], align {{.*}} : !mgp.buffer<, <"cpu", 1>>
 //  CHECK-NEXT:   {{.*}} = mgp.chain.host_to_device
-//  CHECK-NEXT:   [[OUT_CH:%.*]] = mgp.buffer.host_to_device {{.*}}, [[CTX]][1, 2], [[IN_BUF]], [[NEW_BUF]] : !mgp.buffer<> -> !mgp.buffer<, <"cpu", 1>>
-//  CHECK-NEXT:   [[OUTPUT:%.*]] = mgp.tensor.create [[OUT_CH]], [[CTX]][2], [[NEW_BUF]], [[IN_SPEC]] : !mgp.tensor<?xsi64, <"cpu", 1>>
+//  CHECK-NEXT:   [[OUT_CH:%.*]] = mgp.buffer.host_to_device {{.*}}, [[CTX]][0, 1], [[IN_BUF]], [[NEW_BUF]] : !mgp.buffer<> -> !mgp.buffer<, <"cpu", 1>>
+//  CHECK-NEXT:   [[OUTPUT:%.*]] = mgp.tensor.create [[OUT_CH]], [[CTX]][1], [[NEW_BUF]], [[IN_SPEC]] : !mgp.tensor<?xsi64, <"cpu", 1>>
 //  CHECK-NEXT:   mef.output [[CH]], [[OUTPUT]]
 //  CHECK-NEXT: }
 mo.graph @transfer_with_unknown_dims(

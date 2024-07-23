@@ -6,14 +6,14 @@
 // CHECK-SAME: %[[ARG2:[^:]*]]: !mgp.tensor<2xf32>, %[[ARG3:.*]]: !mgp.tensor<5x1xf32>
 // CHECK-SAME: ) -> (!mef.chain, !mgp.tensor<2xf32>, !mgp.tensor<3xf32>, !mgp.tensor<3xf32>,
 // CHECK-SAME: !mgp.tensor<5x1xf32>, !mgp.tensor<5x1xf32>, !mgp.tensor<4xsi8>) {
-// CHECK-DAG:    %[[VAL0:.*]] = mgp.buffer.constant %{{.*}}, %[[ARG1]][1], #M.aligned_bytes<"0x0000803F0000004000004040", align {{.*}}> : !M.array<12xui8>
+// CHECK-DAG:    %[[VAL0:.*]] = mgp.buffer.constant %{{.*}}, %[[ARG1]][0], #M.aligned_bytes<"0x0000803F0000004000004040", align {{.*}}> : !M.array<12xui8>
 // CHECK-DAG:    %[[VAL1:.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<3xf32>
-// CHECK-DAG:    %[[VAL2:.*]] = mgp.chain.host_to_device %[[ARG0]], %[[ARG1]][1]
-// CHECK-DAG:    %[[VAL3:.*]] = mgp.tensor.create %[[VAL2]], %[[ARG1]][1], %[[VAL0]], %[[VAL1]] : !mgp.tensor<3xf32>
-// CHECK-DAG:    %[[VAL4:.*]] = mgp.buffer.constant %{{.*}}, %[[ARG1]][1], dense_resource<mtfl_buffer> : !M.aligned_bytes<4, align 64>
+// CHECK-DAG:    %[[VAL2:.*]] = mgp.chain.host_to_device %[[ARG0]], %[[ARG1]][0]
+// CHECK-DAG:    %[[VAL3:.*]] = mgp.tensor.create %[[VAL2]], %[[ARG1]][0], %[[VAL0]], %[[VAL1]] : !mgp.tensor<3xf32>
+// CHECK-DAG:    %[[VAL4:.*]] = mgp.buffer.constant %{{.*}}, %[[ARG1]][0], dense_resource<mtfl_buffer> : !M.aligned_bytes<4, align 64>
 // CHECK-DAG:    %[[VAL5:.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<4xsi8>
-// CHECK-DAG:    %[[VAL6:.*]] = mgp.chain.host_to_device %[[ARG0]], %[[ARG1]][1]
-// CHECK:    %[[VAL7:.*]] = mgp.tensor.create %[[VAL6]], %[[ARG1]][1], %[[VAL4]], %[[VAL5]] : !mgp.tensor<4xsi8>
+// CHECK-DAG:    %[[VAL6:.*]] = mgp.chain.host_to_device %[[ARG0]], %[[ARG1]][0]
+// CHECK:    %[[VAL7:.*]] = mgp.tensor.create %[[VAL6]], %[[ARG1]][0], %[[VAL4]], %[[VAL5]] : !mgp.tensor<4xsi8>
 // CHECK:    mef.output %[[ARG0]], %[[ARG2]], %[[VAL3]], %[[VAL3]], %[[ARG3]], %[[ARG3]], %[[VAL7]] : !mef.chain, !mgp.tensor<2xf32>, !mgp.tensor<3xf32>, !mgp.tensor<3xf32>, !mgp.tensor<5x1xf32>, !mgp.tensor<5x1xf32>, !mgp.tensor<4xsi8>
 // CHECK:  }
 
@@ -29,9 +29,9 @@ mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<[2], f32>, %arg1: !m
 // CHECK: } execute (
 // CHECK-SAME: %[[ARG0:.*]]: !mef.chain, %[[ARG1:.*]]: !mgp.context,
 // CHECK-SAME: %[[ARG2:[^:]*]]: !mgp.tensor<1x?xf32>, %[[ARG3:.*]]: !mgp.tensor<?xf32>) -> !mef.chain {
-// CHECK:   %[[VAL0:.*]] = mgp.tensor.extract.tensor_spec %[[ARG1]][1], %[[ARG2]] : !mgp.tensor<1x?xf32>
+// CHECK:   %[[VAL0:.*]] = mgp.tensor.extract.tensor_spec %[[ARG1]][0], %[[ARG2]] : !mgp.tensor<1x?xf32>
 // CHECK:   %[[VAL1:.*]] = mgp.tensor_spec.dims.dynamic %[[VAL0]] : !mgp.tensor_spec<1x?xf32>
-// CHECK:   %[[VAL2:.*]] = mgp.tensor.extract.tensor_spec %[[ARG1]][1], %[[ARG3]] : !mgp.tensor<?xf32>
+// CHECK:   %[[VAL2:.*]] = mgp.tensor.extract.tensor_spec %[[ARG1]][0], %[[ARG3]] : !mgp.tensor<?xf32>
 // CHECK:   %[[VAL3:.*]] = mgp.tensor_spec.dims.dynamic %[[VAL2]] : !mgp.tensor_spec<?xf32>
 // CHECK:   mef.output %[[ARG0:.*]] : !mef.chain
 mo.graph @foo<N>(%arg0: !mo.tensor<[1, N], f32>, %arg1: !mo.tensor<[N], f32>) {

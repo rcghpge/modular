@@ -5,8 +5,7 @@
 // ### Block 0 ###
 // CHECK:   %[[SSA94:.*]] = "grt.chain.create"() : () -> !mef.chain
 // CHECK:   %[[SSA95:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
-// CHECK:   %[[SSA96:.*]] = "mgp.check_runtime"(%[[SSA94]], %[[SSA95]]) {aSlot = 0 : ui64, bDevices = #M.device_spec_collection<host = <"cpu", 0>, devices = [<ref = <"cpu", 0>, target = <triple = "unknown", arch = "">>]>} : (!mef.chain, !mgp.context) -> !mef.chain
-// CHECK:   %[[SSA97:.*]] = "mgp.runtime.create"(%[[SSA96]], %[[SSA95]])
+// CHECK:   %[[SSA97:.*]] = "mgp.runtime.create"(%[[SSA94]], %[[SSA95]])
 // CHECK:   "mef.output"(%[[SSA97]], %[[SSA95]]) : (!mef.chain, !mgp.context) -> ()
 // CHECK: }, {
 // ### Block 1 ###
@@ -34,8 +33,7 @@
 mgp.model @repeat1 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
   %c = "some.op"(%ch0) : (!mef.chain) -> si32
@@ -53,8 +51,7 @@ mgp.model @repeat1 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 // ### Block ###
 // CHECK:   %[[SSA85:.*]] = "grt.chain.create"() : () -> !mef.chain
 // CHECK:   %[[SSA86:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
-// CHECK:   %[[SSA87:.*]] = "mgp.check_runtime"(%[[SSA85]], %[[SSA86]]) {aSlot = 0 : ui64, bDevices = #M.device_spec_collection<host = <"cpu", 0>, devices = [<ref = <"cpu", 0>, target = <triple = "unknown", arch = "">>]>} : (!mef.chain, !mgp.context) -> !mef.chain
-// CHECK:   %[[SSA88:.*]] = "mgp.runtime.create"(%[[SSA87]], %[[SSA86]])
+// CHECK:   %[[SSA88:.*]] = "mgp.runtime.create"(%[[SSA85]], %[[SSA86]])
 // CHECK:   "mef.output"(%[[SSA88]], %[[SSA86]]) : (!mef.chain, !mgp.context) -> ()
 // CHECK: }, {
 // ### Block 1 ###
@@ -78,8 +75,7 @@ mgp.model @repeat1 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 mgp.model @repeat2 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
   %c = "some.op"(%ch0) : (!mef.chain) -> si32
@@ -96,8 +92,7 @@ mgp.model @repeat2 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 // ### Block 0 ###
 // CHECK:   %[[SSA77:.*]] = "grt.chain.create"() : () -> !mef.chain
 // CHECK:   %[[SSA78:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
-// CHECK:   %[[SSA79:.*]] = "mgp.check_runtime"(%[[SSA77]], %[[SSA78]]) {aSlot = 0 : ui64, bDevices = #M.device_spec_collection<host = <"cpu", 0>, devices = [<ref = <"cpu", 0>, target = <triple = "unknown", arch = "">>]>} : (!mef.chain, !mgp.context) -> !mef.chain
-// CHECK:   %[[SSA80:.*]] = "mgp.runtime.create"(%[[SSA79]], %[[SSA78]])
+// CHECK:   %[[SSA80:.*]] = "mgp.runtime.create"(%[[SSA77]], %[[SSA78]])
 // CHECK:   "mef.output"(%[[SSA80]], %[[SSA78]]) : (!mef.chain, !mgp.context) -> ()
 // CHECK: }, {
 // ### Block 1 ###
@@ -124,8 +119,7 @@ mgp.model @repeat2 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 mgp.model @repeat3 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
   %c = "some.op"(%ch0) : (!mef.chain) -> si32
@@ -147,8 +141,7 @@ mgp.model @repeat3 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 // CHECK: "mgp.model"() ({
 // CHECK:   %[[SSA68:.*]] = "grt.chain.create"() : () -> !mef.chain
 // CHECK:   %[[SSA69:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
-// CHECK:   %[[SSA70:.*]] = "mgp.check_runtime"(%[[SSA68]], %[[SSA69]]) {aSlot = 0 : ui64, bDevices = #M.device_spec_collection<host = <"cpu", 0>, devices = [<ref = <"cpu", 0>, target = <triple = "unknown", arch = "">>]>} : (!mef.chain, !mgp.context) -> !mef.chain
-// CHECK:   %[[SSA71:.*]] = "mgp.runtime.create"(%[[SSA70]], %[[SSA69]])
+// CHECK:   %[[SSA71:.*]] = "mgp.runtime.create"(%[[SSA68]], %[[SSA69]])
 // CHECK:   "mef.output"(%[[SSA71]], %[[SSA69]]) : (!mef.chain, !mgp.context) -> ()
 // CHECK: }, {
 // ### Block 1 ###
@@ -187,8 +180,8 @@ mgp.model @repeat3 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 // CHECK: maybeSameAs end
 
 // CHECK: impliesReady begin
-// CHECK:   %[[SSA64]][3] |-> {%[[SSA68]][0], %[[SSA69]][0], %[[SSA70]][0], %[[SSA71]][0], %[[arg26]], %[[SSA61]], %[[arg34]][2], %[[SSA66]][2], %[[arg30]][3]}
-// CHECK:   %[[SSA62]]#0 |-> {%[[SSA68]][0], %[[SSA69]][0], %[[SSA70]][0], %[[SSA71]][0], %[[arg26]], %[[SSA61]], %[[arg32]][2], %[[arg34]][2], %[[arg35]][2], %[[SSA65]][2], %[[SSA66]][2], %[[arg28]][3], %[[arg29]][3], %[[arg30]][3], %[[arg31]][3], %[[SSA64]][3]}
+// CHECK:   %[[SSA64]][3] |-> {%[[SSA68]][0], %[[SSA69]][0], %[[SSA71]][0], %[[arg26]], %[[SSA61]], %[[arg34]][2], %[[SSA66]][2], %[[arg30]][3]}
+// CHECK:   %[[SSA62]]#0 |-> {%[[SSA68]][0], %[[SSA69]][0], %[[SSA71]][0], %[[arg26]], %[[SSA61]], %[[arg32]][2], %[[arg34]][2], %[[arg35]][2], %[[SSA65]][2], %[[SSA66]][2], %[[arg28]][3], %[[arg29]][3], %[[arg30]][3], %[[arg31]][3], %[[SSA64]][3]}
 // CHECK: impliesReady end
 
 // No branches, so this relation is empty.
@@ -210,8 +203,7 @@ mgp.model @repeat3 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 mgp.model @simple : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
   %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
@@ -238,8 +230,7 @@ mgp.model @simple : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaq
 // CHECK: "mgp.model"() ({
 // CHECK:   %[[SSA56:.*]] = "grt.chain.create"() : () -> !mef.chain
 // CHECK:   %[[SSA57:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
-// CHECK:   %[[SSA58:.*]] = "mgp.check_runtime"(%[[SSA56]], %[[SSA57]]) {aSlot = 0 : ui64, bDevices = #M.device_spec_collection<host = <"cpu", 0>, devices = [<ref = <"cpu", 0>, target = <triple = "unknown", arch = "">>]>} : (!mef.chain, !mgp.context) -> !mef.chain
-// CHECK:   %[[SSA59:.*]] = "mgp.runtime.create"(%[[SSA58]], %[[SSA57]])
+// CHECK:   %[[SSA59:.*]] = "mgp.runtime.create"(%[[SSA56]], %[[SSA57]])
 // CHECK:   "mef.output"(%[[SSA59]], %[[SSA57]]) : (!mef.chain, !mgp.context) -> ()
 // CHECK: }, {
 // ### Block 1 ###
@@ -273,8 +264,7 @@ mgp.model @simple : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaq
 mgp.model @crissCross : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
   %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
@@ -298,8 +288,7 @@ mgp.model @crissCross : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.
 // CHECK: "mgp.model"() ({
 // CHECK:   %[[SSA47:.*]] = "grt.chain.create"() : () -> !mef.chain
 // CHECK:   %[[SSA48:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
-// CHECK:   %[[SSA49:.*]] = "mgp.check_runtime"(%[[SSA47]], %[[SSA48]]) {aSlot = 0 : ui64, bDevices = #M.device_spec_collection<host = <"cpu", 0>, devices = [<ref = <"cpu", 0>, target = <triple = "unknown", arch = "">>]>} : (!mef.chain, !mgp.context) -> !mef.chain
-// CHECK:   %[[SSA50:.*]] = "mgp.runtime.create"(%[[SSA49]], %[[SSA48]])
+// CHECK:   %[[SSA50:.*]] = "mgp.runtime.create"(%[[SSA47]], %[[SSA48]])
 // CHECK:   "mef.output"(%[[SSA50]], %[[SSA48]]) : (!mef.chain, !mgp.context) -> ()
 // CHECK: }, {
 // ### Block 1 ###
@@ -339,8 +328,7 @@ mgp.model @crissCross : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.
 mgp.model @shift : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
   %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
@@ -364,8 +352,7 @@ mgp.model @shift : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaqu
 // CHECK: "mgp.model"() ({
 // CHECK:   %[[SSA38:.*]] = "grt.chain.create"() : () -> !mef.chain
 // CHECK:   %[[SSA39:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
-// CHECK:   %[[SSA40:.*]] = "mgp.check_runtime"(%[[SSA38]], %[[SSA39]]) {aSlot = 0 : ui64, bDevices = #M.device_spec_collection<host = <"cpu", 0>, devices = [<ref = <"cpu", 0>, target = <triple = "unknown", arch = "">>]>} : (!mef.chain, !mgp.context) -> !mef.chain
-// CHECK:   %[[SSA41:.*]] = "mgp.runtime.create"(%[[SSA40]], %[[SSA39]])
+// CHECK:   %[[SSA41:.*]] = "mgp.runtime.create"(%[[SSA38]], %[[SSA39]])
 // CHECK:   "mef.output"(%[[SSA41]], %[[SSA39]]) : (!mef.chain, !mgp.context) -> ()
 // CHECK: }, {
 // ### Block 1 ###
@@ -428,23 +415,22 @@ mgp.model @shift : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaqu
 // CHECK: sameAs end
 
 // CHECK: impliesReady begin
-// CHECK:   %[[SSA10]] |-> {%[[SSA38]][0], %[[SSA39]][0], %[[SSA40]][0], %[[SSA41]][0], %[[arg0]], %[[arg1]], %[[SSA0]], %[[SSA6]], %[[SSA8]], %[[SSA9]]}
-// CHECK:   %[[arg8]][2] |-> {%[[SSA38]][0], %[[SSA39]][0], %[[SSA40]][0], %[[SSA41]][0], %[[arg0]], %[[arg1]], %[[SSA0]], %[[SSA1]], %[[SSA2]], %[[SSA3]]}
-// CHECK:   %[[arg9]][2] |-> {%[[SSA38]][0], %[[SSA39]][0], %[[SSA40]][0], %[[SSA41]][0], %[[arg0]], %[[arg1]], %[[SSA0]], %[[SSA4]], %[[SSA5]], %[[SSA6]], %[[SSA7]]}
-// CHECK:   %[[SSA11]]#0 |-> {%[[SSA38]][0], %[[SSA39]][0], %[[SSA40]][0], %[[SSA41]][0], %[[arg0]], %[[arg1]], %[[SSA0]], %[[SSA1]], %[[SSA2]], %[[SSA3]], %[[SSA4]], %[[SSA5]], %[[SSA6]], %[[SSA7]], %[[SSA8]], %[[SSA9]], %[[SSA10]], %[[arg7]][2], %[[arg8]][2], %[[arg9]][2], %[[arg10]][2], %[[arg11]][2], %[[arg2]][3], %[[arg3]][3], %[[arg4]][3], %[[arg5]][3], %[[arg6]][3], %[[SSA16]][3], %[[SSA17]][3], %[[SSA18]][3], %[[SSA19]][3], %[[SSA20]][3], %[[SSA21]][3], %[[SSA22]][3], %[[SSA23]][3], %[[SSA24]][3], %[[SSA25]][3], %[[SSA26]][3], %[[SSA27]][3], %[[SSA28]][3]}
-// CHECK:   %[[SSA14]] |-> {%[[SSA38]][0], %[[SSA39]][0], %[[SSA40]][0], %[[SSA41]][0], %[[arg0]], %[[arg1]], %[[SSA0]], %[[SSA1]], %[[SSA2]], %[[SSA3]], %[[SSA4]], %[[SSA5]], %[[SSA6]], %[[SSA7]], %[[SSA8]], %[[SSA9]], %[[SSA10]], %[[arg7]][2], %[[arg8]][2], %[[arg9]][2], %[[arg10]][2], %[[arg11]][2], %[[arg2]][3], %[[arg3]][3], %[[arg4]][3], %[[arg5]][3], %[[arg6]][3], %[[SSA16]][3], %[[SSA17]][3], %[[SSA18]][3], %[[SSA19]][3], %[[SSA20]][3], %[[SSA21]][3], %[[SSA22]][3], %[[SSA23]][3], %[[SSA24]][3], %[[SSA25]][3], %[[SSA26]][3], %[[SSA27]][3], %[[SSA28]][3], %[[SSA11]]#2, %[[SSA12]], %[[SSA13]]}
+// CHECK:   %[[SSA10]] |-> {%[[SSA38]][0], %[[SSA39]][0], %[[SSA41]][0], %[[arg0]], %[[arg1]], %[[SSA0]], %[[SSA6]], %[[SSA8]], %[[SSA9]]}
+// CHECK:   %[[arg8]][2] |-> {%[[SSA38]][0], %[[SSA39]][0], %[[SSA41]][0], %[[arg0]], %[[arg1]], %[[SSA0]], %[[SSA1]], %[[SSA2]], %[[SSA3]]}
+// CHECK:   %[[arg9]][2] |-> {%[[SSA38]][0], %[[SSA39]][0], %[[SSA41]][0], %[[arg0]], %[[arg1]], %[[SSA0]], %[[SSA4]], %[[SSA5]], %[[SSA6]], %[[SSA7]]}
+// CHECK:   %[[SSA11]]#0 |-> {%[[SSA38]][0], %[[SSA39]][0], %[[SSA41]][0], %[[arg0]], %[[arg1]], %[[SSA0]], %[[SSA1]], %[[SSA2]], %[[SSA3]], %[[SSA4]], %[[SSA5]], %[[SSA6]], %[[SSA7]], %[[SSA8]], %[[SSA9]], %[[SSA10]], %[[arg7]][2], %[[arg8]][2], %[[arg9]][2], %[[arg10]][2], %[[arg11]][2], %[[arg2]][3], %[[arg3]][3], %[[arg4]][3], %[[arg5]][3], %[[arg6]][3], %[[SSA16]][3], %[[SSA17]][3], %[[SSA18]][3], %[[SSA19]][3], %[[SSA20]][3], %[[SSA21]][3], %[[SSA22]][3], %[[SSA23]][3], %[[SSA24]][3], %[[SSA25]][3], %[[SSA26]][3], %[[SSA27]][3], %[[SSA28]][3]}
+// CHECK:   %[[SSA14]] |-> {%[[SSA38]][0], %[[SSA39]][0], %[[SSA41]][0], %[[arg0]], %[[arg1]], %[[SSA0]], %[[SSA1]], %[[SSA2]], %[[SSA3]], %[[SSA4]], %[[SSA5]], %[[SSA6]], %[[SSA7]], %[[SSA8]], %[[SSA9]], %[[SSA10]], %[[arg7]][2], %[[arg8]][2], %[[arg9]][2], %[[arg10]][2], %[[arg11]][2], %[[arg2]][3], %[[arg3]][3], %[[arg4]][3], %[[arg5]][3], %[[arg6]][3], %[[SSA16]][3], %[[SSA17]][3], %[[SSA18]][3], %[[SSA19]][3], %[[SSA20]][3], %[[SSA21]][3], %[[SSA22]][3], %[[SSA23]][3], %[[SSA24]][3], %[[SSA25]][3], %[[SSA26]][3], %[[SSA27]][3], %[[SSA28]][3], %[[SSA11]]#2, %[[SSA12]], %[[SSA13]]}
 // CHECK: impliesReady end
 
 // The tensor.{create,extract} aliasing excludes entries.
 // CHECK: exclusive begin
-// CHECK:   %[[SSA21]][3] |-> {%[[SSA38]][0], %[[SSA40]][0], %[[SSA5]], %[[SSA6]], %[[SSA9]]}
+// CHECK:   %[[SSA21]][3] |-> {%[[SSA38]][0], %[[SSA5]], %[[SSA6]], %[[SSA9]]}
 // CHECK: exclusive end
 
 mgp.model @while : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<32xui8>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]

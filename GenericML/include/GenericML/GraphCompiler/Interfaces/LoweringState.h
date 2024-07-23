@@ -129,10 +129,6 @@ public:
     /// This op creates and returns the overall MGP context.
     MGP::ContextCreateOp mgpContext;
 
-    /// This operation checks the available runtime devices match the required
-    /// devices.
-    MGP::CheckRuntimeOp checkRuntimeOp;
-
     /// This is a builder appending operations to the end of the invokable.
     OpBuilder builder;
 
@@ -290,18 +286,6 @@ public:
 
   /// Return and increment the next available constant identifier.
   size_t getExecuteNextConstId() { return execute.nextConstId++; }
-
-  /// Set the check runtime op.
-  void setCheckRuntimeOp(MGP::CheckRuntimeOp checkRuntimeOp) {
-    init.checkRuntimeOp = checkRuntimeOp;
-  }
-
-  /// Returns the check runtime op.
-  MGP::CheckRuntimeOp getCheckRuntimeOp() {
-    ASSERT_STREAM(init.checkRuntimeOp,
-                  << "no mgp.check.runtime op has been emitted");
-    return init.checkRuntimeOp;
-  }
 
   /// Returns the shape of a lowered tensor which is on the given device.
   TypedValue<MGP::TensorSpecType> getShape(Location loc, Value loweredTensor,

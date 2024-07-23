@@ -10,8 +10,7 @@
 mgp.model @mip_basic : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %ch0 = grt.chain.create ()
@@ -25,8 +24,7 @@ mgp.model @mip_basic : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.o
 mgp.model @mip_add : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %ch0 = grt.chain.create ()
@@ -42,8 +40,7 @@ mgp.model @mip_add : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 mgp.model @mip_div : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %ch0 = grt.chain.create ()
@@ -59,8 +56,7 @@ mgp.model @mip_div : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 mgp.model @mip_div_ceil : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %ch0 = grt.chain.create ()
@@ -76,8 +72,7 @@ mgp.model @mip_div_ceil : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mg
 mgp.model @mip_cmp_eq : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %ch0 = grt.chain.create ()
@@ -94,8 +89,7 @@ mgp.model @mip_cmp_eq : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.
 mgp.model @mip_cmp_lt : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %ch0 = grt.chain.create ()
@@ -113,8 +107,7 @@ mgp.model @mip_cmp_lt : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.
 mgp.model @mip_cmp_le : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %ch0 = grt.chain.create ()
@@ -132,8 +125,7 @@ mgp.model @mip_cmp_le : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.
 mgp.model @mip_max : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %ch0 = grt.chain.create ()
@@ -149,8 +141,7 @@ mgp.model @mip_max : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 mgp.model @mip_min : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %ch0 = grt.chain.create ()
@@ -166,8 +157,7 @@ mgp.model @mip_min : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 mgp.model @mip_mod : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %ch0 = grt.chain.create ()
@@ -183,8 +173,7 @@ mgp.model @mip_mod : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 mgp.model @mip_mul : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %ch0 = grt.chain.create ()
@@ -200,8 +189,7 @@ mgp.model @mip_mul : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 mgp.model @mip_nary_mul : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %ch0 = grt.chain.create ()
@@ -218,8 +206,7 @@ mgp.model @mip_nary_mul : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mg
 mgp.model @mip_and : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
     %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, i1) {
   %ch0 = grt.chain.create ()
@@ -236,8 +223,7 @@ mgp.model @mip_and : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 mgp.model @mip_or : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
     %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, i1) {
   %ch0 = grt.chain.create ()
@@ -254,8 +240,7 @@ mgp.model @mip_or : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaq
 mgp.model @mip_xor : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
     %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, i1) {
   %ch0 = grt.chain.create ()
@@ -272,8 +257,7 @@ mgp.model @mip_xor : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 mgp.model @mip_select : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
     %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
-  %ch1 = mgp.check_runtime %ch0, %ctx[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %ch2 = mgp.runtime.create %ch1, %ctx[1]
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain) {
   %ch0 = grt.chain.create ()

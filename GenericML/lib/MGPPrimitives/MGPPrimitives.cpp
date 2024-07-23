@@ -69,20 +69,6 @@ static Chain mgp_state_slot_create(Chain inChain, StateContext &ctx,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.create_runtime
-//===----------------------------------------------------------------------===//
-
-static void mgp_check_runtime(Chain inChain, StateContext &ctx,
-                              Result<Chain> outChain, MEFAttr<uint64_t> aSlot,
-                              MEFAttr<StringRef> bDevicesJSON,
-                              Runtime &runtime) {
-  DeviceSpecMap map;
-  ctx.emplaceStateSlot<RuntimeDeviceSpecMap>(*aSlot, /*numBuffers=*/0,
-                                             std::move(map));
-  std::move(outChain).emplace();
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.tensor_spec.dims.dynamic
 //===----------------------------------------------------------------------===//
 
@@ -411,7 +397,6 @@ static void mgp_model() {
 void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
   ADD_PRIMITIVE(registry, "mgp.state_slot.create", mgp_state_slot_create);
-  ADD_PRIMITIVE(registry, "mgp.check_runtime", mgp_check_runtime);
   ADD_PRIMITIVE(registry, "mgp.tensor_spec.dims.dynamic",
                 mgp_tensor_spec_dims_dynamic);
   ADD_PRIMITIVE(registry, "mgp.generic.execute", mgp_generic_execute);

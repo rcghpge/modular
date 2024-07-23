@@ -8,8 +8,7 @@ module {
   mgp.model @graph : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
     %0 = grt.chain.create ()
     %1 = mgp.context.create 2
-    %2 = mgp.check_runtime %0, %1[0], <host = <"cpu", 0>, devices = [<ref = <"cpu", 0>, target = <triple = "arm64-apple-darwin22.6.0", arch = "apple-m2", features = "+aes,+bf16,+complxnum,+crc,+dotprod,+fp-armv8,+fp16fml,+fullfp16,+i8mm,+jsconv,+lse,+neon,+pauth,+ras,+rcpc,+rdm,+sha2,+sha3">>]>
-    %3 = mgp.runtime.create %2, %1[1]
+    %3 = mgp.runtime.create %0, %1[1]
     mef.output %3, %1 : !mef.chain, !mgp.context
   } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.opaque) {
     %0:2 = mogg.generic.compiled.region (%arg0) : (%arg2: !mef.chain) -> (!mef.chain, !mgp.opaque){

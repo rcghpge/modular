@@ -58,11 +58,6 @@ public:
   /// Lower the mo.graph to mgp.model.
   LogicalResult run();
 
-  // Emit code into the 'init' block to check the runtime environment
-  // satisfies all the compile-time device specs. This requires an
-  // !mgp.context slot to hold the calculated device spec map.
-  LogicalResult setupCheckRuntime(Location loc);
-
   // Establish type builders for all the (virtual) devices needed by the model.
   LogicalResult setupTypeBuildersForAllDevices();
 
@@ -173,30 +168,6 @@ private:
 };
 
 } // namespace
-
-//===----------------------------------------------------------------------===//
-// Creation of the init/execute invokables
-//===----------------------------------------------------------------------===//
-
-LogicalResult MOGraphLowering::setupCheckRuntime(Location loc) {
-  CompileDiagnosticOr<DeviceSpecCollectionAttr> deviceSpecsOr =
-      loweringState.getDeviceSpecs();
-  if (deviceSpecsOr.isError())
-    return deviceSpecsOr.takeError();
-
-  uint64_t slot = loweringState.getInitMgpContext().getNumSlots();
-  auto checkRuntimeOp =
-      loweringState.getInitOpBuilder().create<MGP::CheckRuntimeOp>(
-          loc,
-          /*inChain=*/loweringState.getInitChain(),
-          /*theContext=*/loweringState.getInitMgpContext(),
-          /*aSlot=*/slot,
-          /*bDevices=*/deviceSpecsOr.takeValue());
-  loweringState.setCheckRuntimeOp(checkRuntimeOp);
-  loweringState.getInitMgpContext().setNumSlots(slot + 1);
-  loweringState.setInitChain(checkRuntimeOp.getOutChain());
-  return success();
-}
 
 LogicalResult MOGraphLowering::setupTypeBuildersForAllDevices() {
   CompileDiagnosticOr<DeviceSpecCollectionAttr> deviceSpecsOr =
@@ -332,10 +303,6 @@ LogicalResult MOGraphLowering::createModelOp() {
   loweringState.setInitMgpContext(
       loweringState.getInitOpBuilder().create<MGP::ContextCreateOp>(
           graph.getLoc(), /*numSlots=*/0));
-
-  // Check the runtime environment.
-  if (failed(setupCheckRuntime(graph.getLoc())))
-    return failure();
 
   // Initialize the execute state.
   Block *executeBlock = loweringState.getModelOp().getExecuteBlock();

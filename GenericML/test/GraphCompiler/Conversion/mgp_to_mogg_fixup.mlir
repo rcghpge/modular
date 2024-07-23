@@ -7,8 +7,7 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaqu
   "mogg.load_compiled_kernel"() {symbols = ["__gen_0"], value = dense_resource<fake_binary> : tensor<1xui8>} : () -> ()
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
-  %ch1 = mgp.check_runtime %0, %1[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %2 = mgp.runtime.create %ch1, %1[0] device<"cpu", 0>
+  %2 = mgp.runtime.create %0, %1[0] device<"cpu", 0>
   mef.output %2, %1 : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %0 = grt.chain.create ()
@@ -31,8 +30,7 @@ mgp.model @basic_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%arg
   "mogg.load_compiled_kernel"() {symbols = ["__gen_0"], value = dense_resource<fake_binary> : tensor<1xui8>} : () -> ()
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
-  %ch1 = mgp.check_runtime %0, %1[0], <host=<"cpu", 0>, devices=[<ref=<"cpu", 0>, target=<triple="", arch="", features="">>]>
-  %2 = mgp.runtime.create %ch1, %1[0] device<"cpu", 0>
+  %2 = mgp.runtime.create %0, %1[0] device<"cpu", 0>
   mef.output %2, %1 : !mef.chain, !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque, %arg2: !mgp.buffer<1>) -> !mef.chain {
   %ch0 = mgp.chain.host_to_device %arg0, %arg1[1]
