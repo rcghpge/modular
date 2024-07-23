@@ -25,6 +25,7 @@
 #include "Support/Config.h"
 #include "Support/Context.h"
 #include "Support/Filesystem/Paths.h"
+#include "Support/HashUtils.h"
 #include "Support/MDialect/MDialect.h"
 
 // Define the embedded MLIR bytecode arrays in other compilation units to speed
@@ -36,6 +37,13 @@ extern llvm::StringRef primitiveSource;
 
 using namespace M;
 using namespace MOGG;
+
+static bool areFunctionsTheSame(KGEN::GeneratorOp gen1,
+                                KGEN::GeneratorOp gen2) {
+  if (gen1.getSignature() == gen2.getSignature())
+    return false;
+  return areBlocksSame(*gen1.getBody(), *gen2.getBody());
+}
 
 static std::string
 getMOGGUniqueSymbolName(const std::string &baseName,
@@ -200,14 +208,14 @@ void MojoLibraryAnalysis::updateLoadedKernelsForCollisions(
     if (itr == rawMojoKernel.end())
       continue;
 
-    bool hasSameSig = op.getSignature() == itr->second.getSignature();
     // We ignore duplicated functions which are not kernels or shape functions
     // as long as they share the same signature.
     if (!(KGEN::MOGGPreElab::isKernel(op) ||
           KGEN::MOGGPreElab::isV1ShapeFunc(op)) &&
-        hasSameSig)
+        areFunctionsTheSame(op, itr->second))
       continue;
 
+    bool hasSameSig = op.getSignature() == itr->second.getSignature();
     // Prevent the same kernel from colliding with itself.
     if (hasSameSig && op.getLoc() == rawMojoKernel[newSymName].getLoc() &&
         !isa<mlir::UnknownLoc>(op.getLoc()))
