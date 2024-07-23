@@ -1,4 +1,5 @@
 load("//bazel:api.bzl", "modular_cc_binary", "rpath_shim")
+load("//bazel:config.bzl", "ASYNCRT_PROFILING_LOCAL_DEFINES")
 
 modular_cc_binary(
     name = "mt",
@@ -11,6 +12,7 @@ modular_cc_binary(
         "//PyTorch:TorchRuntimePlugin",
         "//PyTorch/tools/torch:mtorch",
     ],
+    local_defines = ASYNCRT_PROFILING_LOCAL_DEFINES,
     deps = [
         ":rpaths",
         "//AsyncRT:Init",
