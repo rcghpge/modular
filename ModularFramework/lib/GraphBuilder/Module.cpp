@@ -7,7 +7,9 @@
 #include "MOF/GraphBuilder/Module.h"
 
 #include "AsyncRT/Runtime/Runtime.h"
+#include "GenericML/GraphCompiler/Conversion/Attributes.h"
 #include "Support/Compiler/MLIRDenseAttr.h"
+#include "Support/ML/CommonAttributes.h"
 
 #include "mlir/IR/Builders.h"
 
@@ -89,10 +91,20 @@ Module::Module(mlir::ModuleOp op) : op(op), builder(op) {
 
 mlir::Operation *Module::newGraph(mlir::Location loc, StringRef name,
                                   const mlir::FunctionType signature) {
-  return builder
-      .create<M::MO::GraphOp>(loc, name, signature.getInputs(),
-                              signature.getResults())
-      .getOperation();
+  auto graphOp = builder.create<M::MO::GraphOp>(
+      loc, name, signature.getInputs(), signature.getResults());
+
+  // Set default argument and result names on the staged mo.graph op.
+  // These are currently required by the max.engine API.
+  ArrayAttr argNameAttrs =
+      genNameAttrSequence(builder, "input", graphOp.getArgumentTypes().size());
+  ArrayAttr resultNameAttrs =
+      genNameAttrSequence(builder, "output", graphOp.getResultTypes().size());
+
+  graphOp->setAttr(kMgpModelArgumentNames, argNameAttrs);
+  graphOp->setAttr(kMgpModelResultNames, resultNameAttrs);
+
+  return graphOp;
 }
 
 mlir::MLIRContext *Module::getContext() { return op->getContext(); }
