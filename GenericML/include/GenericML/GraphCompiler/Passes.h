@@ -50,6 +50,12 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
           "Fusing kernels is on by default but will do nothing if useJit is "
           "off. If use jit is on then we will fuse incoming jit kernels."),
       llvm::cl::init(true)};
+  Option<bool> fuseMutableLoadStore{
+      *this, "fuse-mutable-load-store",
+      llvm::cl::desc("If set to false will disable the creation of in-place "
+                     "kernels, instead lowering to explicit copies into and "
+                     "out of mo.buffer values. Primarily used for testing."),
+      llvm::cl::init(true)};
   Option<bool> usePatterns{
       *this, "use-patterns",
       llvm::cl::desc("Lower to hand-fused kernels using pattern matching."),

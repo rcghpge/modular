@@ -160,6 +160,12 @@ public:
   /// Lowers mo.chain.create op
   LogicalResult lowerChainCreate(MO::ChainCreateOp);
 
+  /// Lowers mo.mutable.store op
+  LogicalResult lowerMutableStore(MO::MutableStoreOp);
+
+  /// Lowers mo.mutable.load op
+  LogicalResult lowerMutableLoad(MO::MutableLoadOp);
+
 private:
   /// Lowers a Block
   LogicalResult lowerBlock(mlir::Block *block);
@@ -955,6 +961,81 @@ MOGraphLowering::lowerChainCreate(MO::ChainCreateOp chainCreateOp) {
   return success();
 }
 
+LogicalResult
+MOGraphLowering::lowerMutableStore(MO::MutableStoreOp mutableStoreOp) {
+  MGP::MOOpLoweringState opLoweringState(loweringState, mutableStoreOp);
+
+  MO::TensorType srcType = mutableStoreOp.getInTensor().getType();
+  MO::TensorType dstType =
+      MO::castFromTensorLike(mutableStoreOp.getInBuffer().getType());
+
+  auto srcBufferized =
+      opLoweringState.getBufferizedInput(mutableStoreOp.getInTensor());
+  auto dstBufferized =
+      opLoweringState.getBufferizedInput(mutableStoreOp.getInBuffer());
+
+  auto inChain =
+      loweringState.lookupExecuteLoweredValue(mutableStoreOp.getInChain());
+
+  auto loweredChain = opLoweringState.bufferTransferDevice(
+      inChain, srcBufferized.buffer, dstBufferized.buffer, srcType, dstType);
+
+  auto bb = opLoweringState.getStorageBufferBuilder(srcType);
+
+  auto finalChain =
+      bb->toHostChain(opLoweringState.builder, opLoweringState.loc,
+                      opLoweringState.context, loweredChain);
+
+  loweringState.emplaceExecuteLoweredValue(mutableStoreOp.getResult(),
+                                           finalChain);
+
+  loweringState.setCurrentExecuteChain(finalChain);
+
+  return success();
+}
+
+LogicalResult
+MOGraphLowering::lowerMutableLoad(MO::MutableLoadOp mutableLoadOp) {
+  MGP::MOOpLoweringState opLoweringState(loweringState, mutableLoadOp);
+
+  auto inChain =
+      loweringState.lookupExecuteLoweredValue(mutableLoadOp.getInChain());
+
+  auto bufferizedInput =
+      opLoweringState.getBufferizedInput(mutableLoadOp.getInBuffer());
+
+  auto bufOr =
+      opLoweringState.createBuffer(inChain, bufferizedInput.tensorSpec,
+                                   mutableLoadOp.getOutTensor().getType());
+  if (failed(bufOr))
+    return failure();
+
+  auto &outputStorage = *bufOr;
+
+  opLoweringState.createOutputTensor(mutableLoadOp.getOutTensor(), inChain,
+                                     outputStorage.buffer,
+                                     outputStorage.tensorSpec);
+
+  auto loweredChain = opLoweringState.bufferTransferDevice(
+      inChain, bufferizedInput.buffer, outputStorage.buffer,
+      MO::castFromTensorLike(mutableLoadOp.getInBuffer().getType()),
+      mutableLoadOp.getOutTensor().getType());
+
+  auto bufferBuilder = opLoweringState.getStorageBufferBuilder(
+      MO::castFromTensorLike(mutableLoadOp.getInBuffer().getType()));
+
+  auto finalChain =
+      bufferBuilder->toHostChain(opLoweringState.builder, opLoweringState.loc,
+                                 opLoweringState.context, loweredChain);
+
+  loweringState.emplaceExecuteLoweredValue(mutableLoadOp.getOutChain(),
+                                           finalChain);
+
+  loweringState.setCurrentExecuteChain(finalChain);
+
+  return success();
+}
+
 LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   ASSERT_STREAM(MO::isOnHost(ifOp), << "mo.if is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, ifOp);
@@ -1309,6 +1390,20 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
     // Lowers mo.guard to
     if (auto chainCreateOp = dyn_cast<MO::ChainCreateOp>(op)) {
       if (failed(lowerChainCreate(chainCreateOp)))
+        return failure();
+      continue;
+    }
+
+    // Lowers mo.mutable.store to a mgp.buffer.device_to_device
+    if (auto mop = dyn_cast<MO::MutableStoreOp>(op)) {
+      if (failed(lowerMutableStore(mop)))
+        return failure();
+      continue;
+    }
+
+    // Lowers mo.mutable.load to a mgp.buffer.device_to_device
+    if (auto mop = dyn_cast<MO::MutableLoadOp>(op)) {
+      if (failed(lowerMutableLoad(mop)))
         return failure();
       continue;
     }
