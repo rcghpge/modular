@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_cc_binary", "rpath_shim")
+load("//bazel:api.bzl", "modular_cc_binary", "rpath_shim", "run_tool")
 load("//bazel:config.bzl", "ASYNCRT_PROFILING_LOCAL_DEFINES")
 
 modular_cc_binary(
@@ -32,4 +32,17 @@ rpath_shim(
         "//PyTorch:TorchRuntimePlugin",
         "//PyTorch/tools/torch:mtorch",
     ],
+)
+
+run_tool(
+    name = "mt-standalone",
+    data = [
+        "@llvm-project//compiler-rt:orc_rt",
+    ],
+    env = {
+        "MODULAR_CRASH_REPORTING_ENABLED": "false",
+    },
+    tags = ["manual"],
+    tool = ":mt",
+    visibility = ["//visibility:private"],
 )
