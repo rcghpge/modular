@@ -266,7 +266,9 @@ struct ReplitPipeline[dtype: DType]:
         self._k_cache = kv_cache[0].take()
         self._v_cache = kv_cache[1].take()
         self._next_token_tensor = AnyTensor()
-        self._prompt_attention_mask = Tensor[DType.int64, 2]((0, 0))
+        self._prompt_attention_mask = Tensor[DType.int64, 2](
+            (0, 0), self._cpu_device
+        )
         self._prompt_len = 0
         self._cur_seq_len = 0
         self._is_end_of_text = True
@@ -301,12 +303,16 @@ struct ReplitPipeline[dtype: DType]:
         encoded_prompt, attn_mask = self._tokenizer.encode(
             List(prompt), pad_to_multiple_of=self._pad_to_multiple_of
         )
-        next_token_tensor = Tensor[DType.int64, 2]((1, len(encoded_prompt)))
+        next_token_tensor = Tensor[DType.int64, 2](
+            (1, len(encoded_prompt)), self._cpu_device
+        )
         for i in range(len(encoded_prompt)):
             next_token_tensor[0, i] = encoded_prompt[i]
         self._set_next_token_tensor(next_token_tensor)
 
-        attn_mask_tensor = Tensor[DType.bool, 2]((1, len(encoded_prompt)))
+        attn_mask_tensor = Tensor[DType.bool, 2](
+            (1, len(encoded_prompt)), self._cpu_device
+        )
         for i in range(len(encoded_prompt)):
             attn_mask_tensor[0, i] = attn_mask[i].cast[DType.bool]()
         self._prompt_attention_mask = attn_mask_tensor^
@@ -332,7 +338,9 @@ struct ReplitPipeline[dtype: DType]:
         Result is placed on the chosen device.
         """
 
-        attention_mask_tensor = Tensor[DType.bool, 2]((1, self._cur_seq_len))
+        attention_mask_tensor = Tensor[DType.bool, 2](
+            (1, self._cur_seq_len), self._cpu_device
+        )
         for i in range(self._prompt_len):
             attention_mask_tensor[0, i] = self._prompt_attention_mask[0, i]
         for i in range(self._prompt_len, self._cur_seq_len):
@@ -369,7 +377,7 @@ struct ReplitPipeline[dtype: DType]:
             return None
         self._cur_seq_len += 1
 
-        next_token_tensor = Tensor[DType.int64, 2]((1, 1))
+        next_token_tensor = Tensor[DType.int64, 2]((1, 1), self._cpu_device)
         next_token_tensor[0, 0] = token
         self._set_next_token_tensor(next_token_tensor)
 
