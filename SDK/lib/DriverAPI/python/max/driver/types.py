@@ -30,31 +30,8 @@ class dtype:
     def __repr__(self) -> str:
         return str(self)
 
-    def create(self, value: Any) -> scalar:
-        return scalar(value, self)
-
-
-@dataclass
-class scalar:
-    """
-    Scalar representation of dtype instantiations.
-    :param value: Value of underlying scalar.
-    :type value: Any
-    :param dtype: DType of scalar
-    :type dtype: dtype
-    """
-
-    value: Any
-    dtype: dtype
-
-    def __str__(self) -> str:
-        val_repr = f"{self.value}"
-        if isinstance(self.value, float):
-            val_repr = f"{self.value:.2f}"
-        return f"max.{self.dtype}({val_repr})"
-
-    def __repr__(self) -> str:
-        return str(self)
+    def __eq__(self, other: dtype) -> bool:
+        return self.id == other.id and self.scalar_name == other.scalar_name
 
 
 # Instantiations of supported dtypes.
