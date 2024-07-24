@@ -703,34 +703,32 @@ modular_cc_library(
 
 modular_cc_library(
     name = "MOGGAnalysis",
-    srcs = glob(["lib/GraphCompiler/MOGGDialect/Analysis/*.cpp"]) + select({
+    srcs = glob(["lib/GraphCompiler/MOGGDialect/Analysis/*.cpp"]),
+    hdrs = glob(["include/GenericML/GraphCompiler/MOGGDialect/Analysis/*.h"]),
+    additional_compiler_inputs = select({
         "//conditions:default": [
             "//Kernels/mojo/Mogg:MOGG.mojo.h",
             "//Kernels/mojo/Mogg:MOGGPrimitives.mojo.h",
         ],
         "//GenericML:mogg_no_link_setting": [],
     }),
-    hdrs = glob([
-        "include/GenericML/GraphCompiler/MOGGDialect/Analysis/*.h",
-    ]),
-    copts = ["-iquoteexternal/"],
+    copts = ["-iquoteexternal/"] + select({
+        "//GenericML:mogg_no_link_setting": [
+            "-DMODULAR_MOGG_NO_LINK",
+            "-DMOGG_MOJO_BINDINGS_PATH='\"$(location //Kernels/mojo/Mogg:MOGG.lib.mlirbc)\"'",
+            "-DMOGG_PRIMITIVES_MOJO_BINDINGS_PATH='\"$(location //Kernels/mojo/Mogg:MOGGPrimitives.lib.mlirbc)\"'",
+        ],
+        "//conditions:default": [
+            "-DMOGG_MOJO_BINDING_H='\"$(location //Kernels/mojo/Mogg:MOGG.mojo.h)\"'",
+            "-DMOGG_PRIMITIVES_MOJO_BINDING_H='\"$(location //Kernels/mojo/Mogg:MOGGPrimitives.mojo.h)\"'",
+        ],
+    }),
     data = select({
-        "//conditions:default": [],
         "//GenericML:mogg_no_link_setting": [
             "//Kernels/mojo/Mogg:MOGG.lib.mlirbc",
             "//Kernels/mojo/Mogg:MOGGPrimitives.lib.mlirbc",
         ],
-    }),
-    local_defines = select({
-        "//GenericML:mogg_no_link_setting": [
-            "MODULAR_MOGG_NO_LINK",
-            "MOGG_MOJO_BINDINGS_PATH='\"$(location //Kernels/mojo/Mogg:MOGG.lib.mlirbc)\"'",
-            "MOGG_PRIMITIVES_MOJO_BINDINGS_PATH='\"$(location //Kernels/mojo/Mogg:MOGGPrimitives.lib.mlirbc)\"'",
-        ],
-        "//conditions:default": [
-            "MOGG_MOJO_BINDING_H='\"$(location //Kernels/mojo/Mogg:MOGG.mojo.h)\"'",
-            "MOGG_PRIMITIVES_MOJO_BINDING_H='\"$(location //Kernels/mojo/Mogg:MOGGPrimitives.mojo.h)\"'",
-        ],
+        "//conditions:default": [],
     }),
     deps = [
         ":GraphCompilerInterfaces",
