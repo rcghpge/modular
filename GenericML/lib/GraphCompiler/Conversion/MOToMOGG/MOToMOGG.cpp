@@ -70,16 +70,6 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
 
     if (result.wasInterrupted())
       return signalPassFailure();
-
-    // Run canonicalization to kill dead code
-    mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
-        ctx, mlir::OpPassManager::Nesting::Implicit);
-    pm.addPass(mlir::createCanonicalizerPass());
-    if (failed(runPipeline(pm, getOperation()))) {
-      emitError(getOperation().getLoc(),
-                "[MO_TO_MOGG] Failed to run post-pass canonicalization.");
-      return signalPassFailure();
-    }
   }
 };
 

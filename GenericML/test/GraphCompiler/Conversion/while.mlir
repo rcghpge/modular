@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --add-devices --mo-to-mogg --translate-mogg-to-kgen --inline-lambdas --mo-to-primitives --lower-primitives --lower-abi --canonicalize -cse --jit-compile-kernels --lower-mogg-region-compile | FileCheck %s
+// RUN: mo-opt %s --add-devices --mo-to-mogg --canonicalize --translate-mogg-to-kgen --inline-lambdas --mo-to-primitives --lower-primitives --lower-abi --canonicalize -cse --jit-compile-kernels --lower-mogg-region-compile | FileCheck %s
 // CHECK-LABEL: mgp.model
 // CHECK-SAME: @while_op : mof devices [#M.device_ref<"cpu", 0>] init ([[VARG0:[^ ]*]]: !mgp.opaque) {
 // CHECK-NEXT: [[V0:[^ ]*]] = grt.chain.create ()

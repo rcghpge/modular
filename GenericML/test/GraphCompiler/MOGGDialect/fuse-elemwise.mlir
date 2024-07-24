@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --fuse-elementwise --canonicalize --cse %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --canonicalize --fuse-elementwise --canonicalize --cse %s | FileCheck %s
 
 mo.graph @blocked_by_unfusible(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
   %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
