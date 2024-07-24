@@ -14,7 +14,7 @@ from max.serve.batch import Batcher
 
 fn rand_sleep():
     var ptr = UnsafePointer[Int64].alloc(1)
-    random.randint[DType.int64](ptr.address, 1, 0, 6)  # random workload
+    random.randint[DType.int64](ptr, 1, 0, 6)  # random workload
     var rVal = int(Scalar.load(ptr)[0])
     var l: Float64 = rVal * 0.01
     sleep(l)
