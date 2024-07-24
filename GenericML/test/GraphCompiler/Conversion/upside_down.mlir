@@ -1,4 +1,4 @@
-// RUN: mo-opt -mo-to-mgp="fuse-jit-kernels=false skip-jit-compile-middle=true" %s | FileCheck %s
+// RUN: mo-opt -mo-to-mgp="fuse-jit-kernels=false" %s | FileCheck %s
 
 mo.graph @updside_down(
     %arg0: !mo.tensor<[256], f32>

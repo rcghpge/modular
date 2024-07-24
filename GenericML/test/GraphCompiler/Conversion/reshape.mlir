@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false enable-compiled-regions-fusion=true skip-jit-compile-middle=true" | FileCheck %s
+// RUN: mo-opt %s --mo-to-mgp="constant-fold=false enable-compiled-regions-fusion=true" | FileCheck %s
 
 // Entry point
 // CHECK: mgp.model @reshape_static_input_static_output
