@@ -8,7 +8,7 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaqu
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
   %2 = mgp.runtime.create %0, %1[0] device<"cpu", 0>
-  mef.output %2, %1 : !mef.chain, !mgp.context
+  mef.output %2, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %0 = grt.chain.create ()
   %1 = mip.constant.index 42
@@ -31,7 +31,7 @@ mgp.model @basic_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%arg
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
   %2 = mgp.runtime.create %0, %1[0] device<"cpu", 0>
-  mef.output %2, %1 : !mef.chain, !mgp.context
+  mef.output %2, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque, %arg2: !mgp.buffer<1>) -> !mef.chain {
   %ch0 = mgp.chain.host_to_device %arg0, %arg1[1]
   %lhs = mip.constant.index 42

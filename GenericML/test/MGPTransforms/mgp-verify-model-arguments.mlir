@@ -16,7 +16,7 @@ mgp.model @static : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaq
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque, %arg2: !mgp.tensor<2x4xf32>, %arg3: !mgp.tensor<2x4xf32>) -> (!mef.chain, !mgp.tensor<2x4xf32>, !mgp.tensor<2x4xf32>) {
   mef.output %arg0, %arg2, %arg3 : !mef.chain, !mgp.tensor<2x4xf32>, !mgp.tensor<2x4xf32>
 }
@@ -29,7 +29,7 @@ mgp.model @dynamic : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque, %arg2: !mgp.tensor<?x?xf32>, %arg3: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>, !mgp.tensor<?x?xf32>) {
   mef.output %arg0, %arg2, %arg3 : !mef.chain, !mgp.tensor<?x?xf32>, !mgp.tensor<?x?xf32>
 }
@@ -49,7 +49,7 @@ mgp.model @mixed : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaqu
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque, %arg2: !mgp.tensor<?x4xf32>, %arg3: !mgp.tensor<?x4xf32>) -> (!mef.chain, !mgp.tensor<?x4xf32>, !mgp.tensor<?x4xf32>) {
   mef.output %arg0, %arg2, %arg3 : !mef.chain, !mgp.tensor<?x4xf32>, !mgp.tensor<?x4xf32>
 }

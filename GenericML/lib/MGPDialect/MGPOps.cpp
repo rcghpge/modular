@@ -1037,9 +1037,12 @@ bool GuardOp::mayAlias(size_t operandIndex, size_t resultIndex) { return true; }
 //===----------------------------------------------------------------------===//
 
 /// Returns the implicit signature of the 'init' entry point.
-static FunctionType implicitInitSignature(Builder &builder) {
-  return builder.getFunctionType({}, {builder.getType<MEF::ChainType>(),
-                                      builder.getType<MGP::ContextType>()});
+static FunctionType implicitInitSignature(Builder &builder, size_t devices) {
+  SmallVector<Type> outputs = {builder.getType<MEF::ChainType>(),
+                               builder.getType<MGP::ContextType>()};
+  for (size_t i = 0; i < devices; i++)
+    outputs.push_back(OpaqueType::get(builder.getContext(), {}));
+  return builder.getFunctionType({}, outputs);
 }
 
 /// Returns the implicit signature of the 'execute' entry point, before
@@ -1170,7 +1173,7 @@ void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
         TypeAttr::get(builder.getFunctionType(inputTypes, outputTypes)), name,
         extraAttrsDict);
 
-  assert(implicitInitSignature(builder).getInputs().empty());
+  assert(implicitInitSignature(builder, devices.size()).getInputs().empty());
   Region *initRegion = state.regions[0].get();
   initRegion->emplaceBlock();
   for (auto dev : devices) {
@@ -1196,7 +1199,8 @@ LogicalResult ModelOp::verifyRegions() {
   //  () -> (!mef.chain, !mgp.context)
   Block *initBlock = getInitBlock();
   if (auto output = dyn_cast<MEF::OutputOp>(initBlock->getTerminator())) {
-    FunctionType implicitInitSig = implicitInitSignature(builder);
+    FunctionType implicitInitSig =
+        implicitInitSignature(builder, getDevices().size());
     assert(implicitInitSig.getInputs().empty());
     if (initBlock->getArgumentTypes().size() != getDevices().size()) {
       return emitOpError() << "Expected the number of arguments to the 'init' "

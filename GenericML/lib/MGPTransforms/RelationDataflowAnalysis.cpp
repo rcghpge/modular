@@ -285,11 +285,11 @@ void ForwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
   // Flow from 'init' outputs {0, 1} to 'execute' args {0, 1}.
   for (const auto &[output, arg] :
        llvm::zip(initBlock->getTerminator()->getOperands(),
-                 executeBlock->getArguments()))
+                 modelOp.getExecuteImplicitArguments()))
     setEntries(domainMap, arg, getEntriesAndId(domainMap, output));
 
   // Start the remaining 'execute' args.
-  for (Value arg : llvm::drop_begin(executeBlock->getArguments(), 2))
+  for (Value arg : modelOp.getExecuteInputs())
     setDefault(domainMap, arg);
 
   // Flow forwards through 'execute' block.
@@ -515,9 +515,22 @@ void BackwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
 
   // Flow from 'execute' args {0, 1} backwards to 'init' outputs {0, 1}.
   for (const auto &[arg, output] :
-       llvm::zip(execBlock->getArguments(),
+       llvm::zip(modelOp.getExecuteChainContext(),
                  initBlock->getTerminator()->getOpOperands()))
     setEntries(domainMap, &output, operandCombination(domainMap, arg));
+
+  // Flow up devices. Have to be careful here. If the init output op is the only
+  // user of the device, then we cannot set it as a regular entry, we need to
+  // set it as empty.
+  for (const auto &[arg, output] :
+       llvm::zip(modelOp.getExecuteDevices(),
+                 initBlock->getTerminator()->getOpOperands().drop_front(
+                     modelOp.getExecuteChainContext().size()))) {
+    if (output.get().getDefiningOp())
+      setEntries(domainMap, &output, operandCombination(domainMap, arg));
+    else
+      setEmpty(domainMap, &output);
+  }
 
   // Flow backwards through 'init' block.
   flowBlock(initBlock, domainMap, flowOp);

@@ -319,6 +319,11 @@ LogicalResult MOGraphLowering::createModelOp() {
   loweringState.setCurrentExecuteChain(executeBlock->getArgument(0));
   loweringState.setExecuteMgpContext(executeBlock->getArgument(1));
 
+  for (auto [devRef, devArg] :
+       llvm::zip(modelOp.getDevices(), modelOp.getInitBlock()->getArguments()))
+    loweringState.setInitDevice(dyn_cast<DeviceRefAttr>(devRef),
+                                dyn_cast<TypedValue<MGP::OpaqueType>>(devArg));
+
   // Establish buffer builders for all the devices. This may require some
   // extra device-specific setup in the 'init' block.
   // CAUTION: Must be done after the 'init' and 'execute' mgp.contexts have
@@ -348,9 +353,14 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
   // Init phase lowering.
 
   // Return the final chain.
-  loweringState.getInitOpBuilder().create<MEF::OutputOp>(
-      output.getLoc(), ArrayRef<Value>{loweringState.getInitChain(),
-                                       loweringState.getInitMgpContext()});
+  SmallVector<Value> outputs;
+  outputs.push_back(loweringState.getInitChain());
+  outputs.push_back(loweringState.getInitMgpContext());
+  for (auto dev : loweringState.getModelOp().getDevices())
+    outputs.push_back(
+        loweringState.getInitDevice(dyn_cast<DeviceRefAttr>(dev)));
+  loweringState.getInitOpBuilder().create<MEF::OutputOp>(output.getLoc(),
+                                                         outputs);
 
   // Execute phase lowering.
 

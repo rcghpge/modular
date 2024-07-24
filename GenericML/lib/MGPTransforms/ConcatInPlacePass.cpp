@@ -44,7 +44,7 @@ class ConcatInPlacePass
     ModelOp modelOp = getOperation();
     BufferBuilderContext builderContext =
         TensorBufferDialectInterface::getAllBufferBuilders(modelOp);
-    ExecuteState execState(modelOp->getContext(), modelOp.getExecuteBlock());
+    ExecuteState execState(modelOp->getContext(), modelOp);
 
     modelOp.getExecute().walk([&](BufferConcatOp concatOp) {
       if (concatOp.getInBuffers().empty())

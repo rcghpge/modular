@@ -53,7 +53,7 @@ class VerifyModelArgumentsPass
     BufferBuilderContext builderContext =
         TensorBufferDialectInterface::getAllBufferBuilders(model);
     Block *executeBlock = model.getExecuteBlock();
-    ExecuteState executeState(&ctx, executeBlock);
+    ExecuteState executeState(&ctx, model);
     Location loc = model->getLoc();
 
     builder.setInsertionPointToStart(executeBlock);
@@ -83,7 +83,7 @@ class VerifyModelArgumentsPass
       llvm::raw_string_ostream stream(message);
       stream << llvm::format(
           "Tensor type mismatch for argument %ld: Expected shape: [%s]",
-          arg.getArgNumber() - ExecuteState::kExtraArgStartIdx,
+          arg.getArgNumber() - model.getExecuteImplicitArguments().size(),
           shapeToString(expectedTensorSpec.getShape()).c_str());
       builder.create<AssertOp>(loc, areEqual,
                                StringAttr::get(&ctx, stream.str()));

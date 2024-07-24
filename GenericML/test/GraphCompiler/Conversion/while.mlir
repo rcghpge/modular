@@ -8,8 +8,8 @@
 // CHECK-NEXT: [[V5:[^ ]*]] = grt.chain.create ([[V4]], [[V1]]: !mgp.context)
 // CHECK-NEXT: [[V6:[^ ]*]] = mgp.device.context.extract [[V5]], [[V1]][0] : !mgp.opaque
 // CHECK-NEXT: [[VOUTCHAIN:[^ ]*]], [[VOUTRESULTS:[^ ]*]] = "mgp.generic.execute"([[V1]], [[V3]], [[V6]], [[V4]], [[V1]]) {aRuntimeSlot = 0 : ui64, bModuleIndex = 0 : ui64, cFunctionIndex = 0 : ui64, dSummary = "mgp.device.context.create", eIsAsync = false, fHasCuda = false, gCudaSlot = 0 : ui64} : (!mgp.context, !mef.chain, !mgp.opaque, !mef.chain, !mgp.context) -> (!mgp.chain, !mef.chain)
-// CHECK-NEXT: mef.output [[VOUTRESULTS]], [[V1]] : !mef.chain, !mgp.context
-// CHECK-NEXT: } execute ([[VARG0]]: !mef.chain, [[VARG1:[^ ]*]]: !mgp.context, [[VARG2:[^ ]*]]: !mgp.opaque) -> (!mef.chain, !mgp.tensor<2xf32>) {
+// CHECK-NEXT: mef.output [[VOUTRESULTS]], [[V1]]
+// CHECK-NEXT: } execute ([[VARG0]]: !mef.chain, [[VARG1:[^ ]*]]: !mgp.context, [[VARG2:[^ ]*]]: !mgp.opaque
 // CHECK-NEXT: [[V0]] = mgp.buffer.constant [[VARG0]], [[VARG1]][0], #M.aligned_bytes<"0x0000000000000000"
 // CHECK-NEXT: [[V1]] = grt.chain.create ()
 // CHECK-NEXT: [[V2:[^ ]*]] = mgp.device.context.extract [[V1]], [[VARG1]][0] : !mgp.opaque

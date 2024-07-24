@@ -104,7 +104,7 @@ func.func @dtype_unrepresentable(%x : !mgp.tensor_spec<5x10xf8>) {}
   ^bb0(%cpu: !mgp.opaque):
     %ch = grt.chain.create ()
     %ctx = mgp.context.create 1
-    // expected-error@+1 {{'mef.output' op expected 2 operands, but given 1}}
+    // expected-error@+1 {{'mef.output' op expected 3 operands, but given 1}}
     mef.output %ch : !mef.chain
 }, {
   ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %x: tensor<3xf32>):
@@ -118,7 +118,7 @@ func.func @dtype_unrepresentable(%x : !mgp.tensor_spec<5x10xf8>) {}
   ^bb0(%cpu: !mgp.opaque):
     %ch = grt.chain.create ()
     %ctx = mgp.context.create 1
-    mef.output %ch, %ctx : !mef.chain, !mgp.context
+    mef.output %ch, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque
 }, {
   ^bb0(%ch: !mef.chain, %x: tensor<3xf32>, %ctx: !mgp.context):
     mef.output %ch, %x : !mef.chain, tensor<3xf32>
@@ -131,7 +131,7 @@ func.func @dtype_unrepresentable(%x : !mgp.tensor_spec<5x10xf8>) {}
   ^bb0(%cpu: !mgp.opaque):
     %ch = grt.chain.create ()
     %ctx = mgp.context.create 1
-    mef.output %ch, %ctx : !mef.chain, !mgp.context
+    mef.output %ch, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque
 }, {
   ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque, %x: tensor<3xf32>):
     mef.output %ch, %x : !mef.chain, tensor<3xf32>
@@ -143,7 +143,7 @@ func.func @dtype_unrepresentable(%x : !mgp.tensor_spec<5x10xf8>) {}
   ^bb0(%cpu: !mgp.opaque):
     %ch = grt.chain.create ()
     %ctx = mgp.context.create 1
-    mef.output %ch, %ctx : !mef.chain, !mgp.context
+    mef.output %ch, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque
 }, {
   ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque, %x: tensor<3xf32>):
     // expected-error@+1 {{'mef.output' op expected 1 operands, but given 2}}
@@ -156,7 +156,7 @@ mgp.model @mismatchedContextType : tf devices [#M.device_ref<"cpu", 0>] init (%a
   %ch = grt.chain.create ()
   %unk = mef.opaque "bogus" [] () : ()->!mef.unknown
   // expected-error@+1 {{'mef.output' op operand #1 has type '!mef.unknown' but expected '!mgp.context'}}
-  mef.output %ch, %unk : !mef.chain, !mef.unknown
+  mef.output %ch, %unk, %arg0 : !mef.chain, !mef.unknown, !mgp.opaque
 } execute (%ch: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque, %x: tensor<2xf32>) -> (!mef.chain, tensor<2xf32>) {
   mef.output %ch, %x : !mef.chain, tensor<2xf32>
 }
@@ -168,7 +168,7 @@ mgp.model @mismatchedContextType : tf devices [#M.device_ref<"cpu", 0>] init (%a
 mgp.model @invalidExecuteArgType : bogus devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch = grt.chain.create ()
   %ctx = mgp.context.create 1
-  mef.output %ch, %ctx : !mef.chain, !mgp.context
+  mef.output %ch, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%ch: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque, %x: index) -> (!mef.chain, index) {
   mef.output %ch, %x : !mef.chain, index
 }
@@ -182,7 +182,7 @@ mgp.model @invalidExecuteArgType : bogus devices [#M.device_ref<"cpu", 0>] init 
 mgp.model @guardOpWrongNResults : bogus devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %ch = grt.chain.create ()
   %ctx = mgp.context.create 1
-  mef.output %ch, %ctx : !mef.chain, !mgp.context
+  mef.output %ch, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%ch: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque, %tensor: !mgp.tensor<2xsi64>) -> (!mef.chain, !mgp.tensor<2xsi64>) {
 
   // expected-error@+1 {{operation defines 1 results but was provided 3 to bind}}
@@ -380,9 +380,9 @@ func.func @list_slice_invalid_start_dtype(
 ) {
   // expected-error@+1 {{'mgp.list.slice' op expected start tensor to have dtype si32 or si64, but got: 'si16'}}
   %t = mgp.list.slice %lst, %start, %end, %step : (
-    !mgp.list<!mgp.tensor<3x3xf32>>, 
-    !mgp.tensor<si16>, 
-    !mgp.tensor<si64>, 
+    !mgp.list<!mgp.tensor<3x3xf32>>,
+    !mgp.tensor<si16>,
+    !mgp.tensor<si64>,
     !mgp.tensor<si64>) -> !mgp.list<!mgp.tensor<3x3xf32>>
 
   mef.output %t : !mgp.list<!mgp.tensor<3x3xf32>>
@@ -399,9 +399,9 @@ func.func @list_slice_invalid_end_dtype(
 ) {
   // expected-error@+1 {{'mgp.list.slice' op expected end tensor to have dtype si32 or si64, but got: 'si16'}}
   %t = mgp.list.slice %lst, %start, %end, %step : (
-    !mgp.list<!mgp.tensor<3x3xf32>>, 
-    !mgp.tensor<si64>, 
-    !mgp.tensor<si16>, 
+    !mgp.list<!mgp.tensor<3x3xf32>>,
+    !mgp.tensor<si64>,
+    !mgp.tensor<si16>,
     !mgp.tensor<si64>) -> !mgp.list<!mgp.tensor<3x3xf32>>
 
   mef.output %t : !mgp.list<!mgp.tensor<3x3xf32>>
@@ -418,9 +418,9 @@ func.func @list_slice_invalid_step_dtype(
 ) {
   // expected-error@+1 {{'mgp.list.slice' op expected step tensor to have dtype si32 or si64, but got: 'si16'}}
   %t = mgp.list.slice %lst, %start, %end, %step : (
-    !mgp.list<!mgp.tensor<3x3xf32>>, 
-    !mgp.tensor<si64>, 
-    !mgp.tensor<si64>, 
+    !mgp.list<!mgp.tensor<3x3xf32>>,
+    !mgp.tensor<si64>,
+    !mgp.tensor<si64>,
     !mgp.tensor<si16>) -> !mgp.list<!mgp.tensor<3x3xf32>>
 
   mef.output %t : !mgp.list<!mgp.tensor<3x3xf32>>
@@ -437,9 +437,9 @@ func.func @list_slice_start_nonscalar(
 ) {
   // expected-error@+1 {{'mgp.list.slice' op expected start tensor to have 1 element, but got: '!mgp.tensor<2xsi64>'}}
   %t = mgp.list.slice %lst, %start, %end, %step : (
-    !mgp.list<!mgp.tensor<3x3xf32>>, 
-    !mgp.tensor<2xsi64>, 
-    !mgp.tensor<si64>, 
+    !mgp.list<!mgp.tensor<3x3xf32>>,
+    !mgp.tensor<2xsi64>,
+    !mgp.tensor<si64>,
     !mgp.tensor<si64>) -> !mgp.list<!mgp.tensor<3x3xf32>>
 
   mef.output %t : !mgp.list<!mgp.tensor<3x3xf32>>
@@ -456,9 +456,9 @@ func.func @list_slice_end_nonscalar(
 ) {
   // expected-error@+1 {{'mgp.list.slice' op expected end tensor to have 1 element, but got: '!mgp.tensor<2xsi64>'}}
   %t = mgp.list.slice %lst, %start, %end, %step : (
-    !mgp.list<!mgp.tensor<3x3xf32>>, 
-    !mgp.tensor<si64>, 
-    !mgp.tensor<2xsi64>, 
+    !mgp.list<!mgp.tensor<3x3xf32>>,
+    !mgp.tensor<si64>,
+    !mgp.tensor<2xsi64>,
     !mgp.tensor<si64>) -> !mgp.list<!mgp.tensor<3x3xf32>>
 
   mef.output %t : !mgp.list<!mgp.tensor<3x3xf32>>
@@ -475,9 +475,9 @@ func.func @list_slice_step_nonscalar(
 ) {
   // expected-error@+1 {{'mgp.list.slice' op expected step tensor to have 1 element, but got: '!mgp.tensor<2xsi64>'}}
   %t = mgp.list.slice %lst, %start, %end, %step : (
-    !mgp.list<!mgp.tensor<3x3xf32>>, 
-    !mgp.tensor<si64>, 
-    !mgp.tensor<si64>, 
+    !mgp.list<!mgp.tensor<3x3xf32>>,
+    !mgp.tensor<si64>,
+    !mgp.tensor<si64>,
     !mgp.tensor<2xsi64>) -> !mgp.list<!mgp.tensor<3x3xf32>>
 
   mef.output %t : !mgp.list<!mgp.tensor<3x3xf32>>

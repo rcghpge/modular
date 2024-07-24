@@ -37,7 +37,7 @@ namespace {
 class DeferAllocsPass : public impl::DeferAllocsPassBase<DeferAllocsPass> {
   void runOnOperation() override {
     ModelOp model = getOperation();
-    ExecuteState execState(model.getContext(), model.getExecuteBlock());
+    ExecuteState execState(model.getContext(), model);
     // Recover type and buffer builders appropriate for the model.
     BufferBuilderContext builderContext =
         TensorBufferDialectInterface::getAllBufferBuilders(model);

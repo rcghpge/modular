@@ -4,7 +4,7 @@ mgp.model @remove_redundant_operands : mof devices [#M.device_ref<"cpu", 0>] ini
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
   %out_chain = mgp.runtime.create %0, %1[1] device <"cpu", 0>
-  mef.output %out_chain, %1 : !mef.chain, !mgp.context
+  mef.output %out_chain, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %0 = grt.chain.create ()
   %lhs = mip.constant.index 42

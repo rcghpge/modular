@@ -246,10 +246,9 @@ private:
                         analysis.index->emptySet(),
                         analysis.index->unitSet(analysis.index->distinguished));
 
-    // The extra 'execute' args (ie not the !mef.chain or !mgp.context)
-    // vacuously depend on 'execute' args.
-    for (Value arg : llvm::drop_begin(
-             analysis.index->model.getExecuteBlock()->getArguments(), 2))
+    // The extra 'execute' args (ie not the !mef.chain or !mgp.context or
+    // devices) vacuously depend on 'execute' args.
+    for (Value arg : analysis.index->model.getExecuteInputs())
       analysis.setTrue(domainMap, arg);
 
     analysis.flowModel(analysis.index->model, domainMap,
@@ -915,8 +914,7 @@ class ExecInvariantCodeMotionPass
     ModelOp modelOp = getOperation();
     InitState theInitState(modelOp.getContext(), modelOp.getInitBlock());
     initState = &theInitState;
-    ExecuteState theExecuteState(modelOp.getContext(),
-                                 modelOp.getExecuteBlock());
+    ExecuteState theExecuteState(modelOp.getContext(), modelOp);
     executeState = &theExecuteState;
     IndexSet<Value> theValueIndex = createValueIndexSet(modelOp);
     valueIndex = &theValueIndex;

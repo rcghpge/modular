@@ -6,7 +6,7 @@
 // CHECK:   %[[SSA94:.*]] = "grt.chain.create"() : () -> !mef.chain
 // CHECK:   %[[SSA95:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
 // CHECK:   %[[SSA97:.*]] = "mgp.runtime.create"(%[[SSA94]], %[[SSA95]])
-// CHECK:   "mef.output"(%[[SSA97]], %[[SSA95]]) : (!mef.chain, !mgp.context) -> ()
+// CHECK:   "mef.output"(%[[SSA97]], %[[SSA95]]
 // CHECK: }, {
 // ### Block 1 ###
 // CHECK: ^bb0(%[[arg43:[a-z0-9]*]]: !mef.chain, %[[arg44:[a-z0-9]*]]: !mgp.context
@@ -34,7 +34,7 @@ mgp.model @repeat1 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
   %c = "some.op"(%ch0) : (!mef.chain) -> si32
   %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
@@ -52,7 +52,7 @@ mgp.model @repeat1 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 // CHECK:   %[[SSA85:.*]] = "grt.chain.create"() : () -> !mef.chain
 // CHECK:   %[[SSA86:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
 // CHECK:   %[[SSA88:.*]] = "mgp.runtime.create"(%[[SSA85]], %[[SSA86]])
-// CHECK:   "mef.output"(%[[SSA88]], %[[SSA86]]) : (!mef.chain, !mgp.context) -> ()
+// CHECK:   "mef.output"(%[[SSA88]], %[[SSA86]]
 // CHECK: }, {
 // ### Block 1 ###
 // CHECK: ^bb0(%[[arg40:[a-z0-9]*]]: !mef.chain, %[[arg41:[a-z0-9]*]]: !mgp.context
@@ -76,7 +76,7 @@ mgp.model @repeat2 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
   %c = "some.op"(%ch0) : (!mef.chain) -> si32
   %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
@@ -93,7 +93,7 @@ mgp.model @repeat2 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 // CHECK:   %[[SSA77:.*]] = "grt.chain.create"() : () -> !mef.chain
 // CHECK:   %[[SSA78:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
 // CHECK:   %[[SSA80:.*]] = "mgp.runtime.create"(%[[SSA77]], %[[SSA78]])
-// CHECK:   "mef.output"(%[[SSA80]], %[[SSA78]]) : (!mef.chain, !mgp.context) -> ()
+// CHECK:   "mef.output"(%[[SSA80]], %[[SSA78]]
 // CHECK: }, {
 // ### Block 1 ###
 // CHECK: ^bb0(%[[arg36:[a-z0-9]*]]: !mef.chain, %[[arg37:[a-z0-9]*]]: !mgp.context
@@ -120,7 +120,7 @@ mgp.model @repeat3 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
   %c = "some.op"(%ch0) : (!mef.chain) -> si32
   %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
@@ -142,7 +142,7 @@ mgp.model @repeat3 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 // CHECK:   %[[SSA68:.*]] = "grt.chain.create"() : () -> !mef.chain
 // CHECK:   %[[SSA69:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
 // CHECK:   %[[SSA71:.*]] = "mgp.runtime.create"(%[[SSA68]], %[[SSA69]])
-// CHECK:   "mef.output"(%[[SSA71]], %[[SSA69]]) : (!mef.chain, !mgp.context) -> ()
+// CHECK:   "mef.output"(%[[SSA71]], %[[SSA69]]
 // CHECK: }, {
 // ### Block 1 ###
 // CHECK: ^bb0(%[[arg26:[a-z0-9]*]]: !mef.chain, %[[arg27:[a-z0-9]*]]: !mgp.context
@@ -204,7 +204,7 @@ mgp.model @simple : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaq
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
   %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
   %y = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
@@ -231,7 +231,7 @@ mgp.model @simple : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaq
 // CHECK:   %[[SSA56:.*]] = "grt.chain.create"() : () -> !mef.chain
 // CHECK:   %[[SSA57:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
 // CHECK:   %[[SSA59:.*]] = "mgp.runtime.create"(%[[SSA56]], %[[SSA57]])
-// CHECK:   "mef.output"(%[[SSA59]], %[[SSA57]]) : (!mef.chain, !mgp.context) -> ()
+// CHECK:   "mef.output"(%[[SSA59]], %[[SSA57]]
 // CHECK: }, {
 // ### Block 1 ###
 // CHECK: ^bb0(%[[arg20:[a-z0-9]*]]: !mef.chain, %[[arg21:[a-z0-9]*]]: !mgp.context
@@ -265,7 +265,7 @@ mgp.model @crissCross : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
   %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
   %y = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
@@ -289,7 +289,7 @@ mgp.model @crissCross : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.
 // CHECK:   %[[SSA47:.*]] = "grt.chain.create"() : () -> !mef.chain
 // CHECK:   %[[SSA48:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
 // CHECK:   %[[SSA50:.*]] = "mgp.runtime.create"(%[[SSA47]], %[[SSA48]])
-// CHECK:   "mef.output"(%[[SSA50]], %[[SSA48]]) : (!mef.chain, !mgp.context) -> ()
+// CHECK:   "mef.output"(%[[SSA50]], %[[SSA48]]
 // CHECK: }, {
 // ### Block 1 ###
 // CHECK: ^bb0(%[[arg12:[a-z0-9]*]]: !mef.chain, %[[arg13:[a-z0-9]*]]: !mgp.context
@@ -329,7 +329,7 @@ mgp.model @shift : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaqu
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
   %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
   %i, %j, %k = grt.while (%x: !mgp.tensor<f32>, %x as %y: !mgp.tensor<f32>, %x as %z: !mgp.tensor<f32>) {
@@ -353,7 +353,7 @@ mgp.model @shift : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaqu
 // CHECK:   %[[SSA38:.*]] = "grt.chain.create"() : () -> !mef.chain
 // CHECK:   %[[SSA39:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
 // CHECK:   %[[SSA41:.*]] = "mgp.runtime.create"(%[[SSA38]], %[[SSA39]])
-// CHECK:   "mef.output"(%[[SSA41]], %[[SSA39]]) : (!mef.chain, !mgp.context) -> ()
+// CHECK:   "mef.output"(%[[SSA41]], %[[SSA39]]
 // CHECK: }, {
 // ### Block 1 ###
 // CHECK: ^bb0(%[[arg0:[a-z0-9]*]]: !mef.chain, %[[arg1:[a-z0-9]*]]: !mgp.context
@@ -431,7 +431,7 @@ mgp.model @while : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaqu
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<32xui8>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
   %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x00000004", align 8> : !M.array<4xui8>

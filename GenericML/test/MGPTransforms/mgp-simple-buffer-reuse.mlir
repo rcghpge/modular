@@ -15,7 +15,7 @@
 mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
-  mef.output %0, %1 : !mef.chain, !mgp.context
+  mef.output %0, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
   %ch = mgp.chain.host_to_device %arg0, %arg1[1]
   // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer {{.*}}
@@ -56,7 +56,7 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaq
 mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
-  mef.output %0, %1 : !mef.chain, !mgp.context
+  mef.output %0, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
   %ch = mgp.chain.host_to_device %arg0, %arg1[1]
   // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer {{.*}}

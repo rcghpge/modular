@@ -9,7 +9,7 @@ module {
     %0 = grt.chain.create ()
     %1 = mgp.context.create 2
     %3 = mgp.runtime.create %0, %1[1]
-    mef.output %3, %1 : !mef.chain, !mgp.context
+    mef.output %3, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
   } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.opaque) {
     %0:2 = mogg.generic.compiled.region (%arg0) : (%arg2: !mef.chain) -> (!mef.chain, !mgp.opaque){
       %1:2 = mogg.get_async_vals() : () -> (!kgen.pointer<none>, !kgen.pointer<none>)

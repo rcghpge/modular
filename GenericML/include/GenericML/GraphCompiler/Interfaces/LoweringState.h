@@ -218,6 +218,16 @@ public:
   /// Set the current chain value being added to.
   void setInitChain(Value chain) { init.chain = chain; }
 
+  /// Get the device context for a device ref in init.
+  TypedValue<OpaqueType> getInitDevice(DeviceRefAttr dev) {
+    return devices[dev];
+  }
+
+  /// Set the device context form a device ref in init.
+  void setInitDevice(DeviceRefAttr dev, TypedValue<OpaqueType> val) {
+    devices[dev] = val;
+  }
+
   /// Return the builder for appending operations to the end of the invokable.
   OpBuilder &getInitOpBuilder() { return init.builder; }
 
@@ -414,6 +424,9 @@ private:
 
   /// Keeps track of all values that map to parameter placeholders.
   DenseMap<Value, SmallVector<Value>> placeholderMap;
+
+  /// Mapping from device ref to value in init.
+  SmallDenseMap<DeviceRefAttr, TypedValue<OpaqueType>> devices;
 };
 
 inline SmallVector<MO::TensorType> castToMoTensorTypes(TypeRange types) {

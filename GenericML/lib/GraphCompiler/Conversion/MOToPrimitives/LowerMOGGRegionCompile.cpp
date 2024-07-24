@@ -142,7 +142,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     OpBuilder builder{ctx};
 
     // Setup the exec state
-    ExecuteState execState(ctx, &execute);
+    ExecuteState execState(ctx, model);
 
     // MOGG::LoadCompiledKernelOp only on CPU and no other device. We just
     // need to make sure we use and count the right one for moduleIndex

@@ -113,9 +113,10 @@ public:
   execute(MutableArrayRef<AnyAsyncValueRef> args) const override;
 
   ModularExecutableModel(AnyAsyncValueRef chain, AnyAsyncValueRef mgpContext,
+                         SmallVector<AnyAsyncValueRef> &&devices,
                          const ModularModel *model, Runtime &runtime)
       : ExecutableModel(model, runtime), chain(std::move(chain)),
-        mgpContext(std::move(mgpContext)) {}
+        mgpContext(std::move(mgpContext)), devices(std::move(devices)) {}
 
   AnyAsyncValueRef
   convertToGenericTensor(AnyAsyncValueRef unknownTensor) const override {
@@ -126,6 +127,7 @@ public:
 
 private:
   AnyAsyncValueRef chain, mgpContext;
+  SmallVector<AnyAsyncValueRef> devices;
 };
 
 /// Load all the models from the contents of the specified MEFFile, which

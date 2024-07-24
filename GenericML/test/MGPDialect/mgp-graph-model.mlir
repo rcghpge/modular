@@ -6,7 +6,7 @@ module {
     %2 = mgp.runtime.create %0, %1[1] device<"cpu", 0>
     %1 = mgp.context.create 1
     %0 = grt.chain.create ()
-    mef.output %2, %1 : !mef.chain, !mgp.context
+    mef.output %2, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
   } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque, %arg2: !mgp.tensor<8xf32>) -> (!mef.chain, !mgp.tensor<8xf32>) {
     %ch0 = mgp.chain.host_to_device %arg0, %arg1[1]
     %spec = mgp.tensor_spec.create : !mgp.tensor_spec<8xf32>

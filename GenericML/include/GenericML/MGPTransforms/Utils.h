@@ -175,8 +175,7 @@ struct InitState {
 
 /// Helper for modifying the 'execute' block.
 struct ExecuteState {
-  static constexpr int64_t kExtraArgStartIdx = 2;
-  ExecuteState(MLIRContext *context, Block *execute);
+  ExecuteState(MLIRContext *context, ModelOp model);
 
   /// Returns 'root' chain, ie the first argument to the 'execute' block.
   /// If any non-root chain is ready then the root chain is guaranteed to be
@@ -187,9 +186,10 @@ struct ExecuteState {
   TypedValue<ContextType> getContext() const;
 
   /// Returns the additional arguments to 'execute' block
-  iterator_range<mlir::BlockArgument *> getExtraArgs() const;
+  iterator_range<mlir::BlockArgument *> getExtraArgs();
 
   Block *execute;
+  ModelOp model;
   OpBuilder builder;
 };
 

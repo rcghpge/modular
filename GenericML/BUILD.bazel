@@ -428,6 +428,7 @@ modular_cc_library(
     hdrs = glob(["include/GenericML/GraphCompiler/Transforms/MODialect/*.h"]),
     deps = [
         ":CommonDriver",
+        ":DeviceDriver",
         ":MGPPrimitives",
         ":MOAnalysis",
         ":MODialect",

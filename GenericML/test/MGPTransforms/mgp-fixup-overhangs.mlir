@@ -5,7 +5,7 @@ mgp.model @if : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) 
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   %2 = grt.chain.create (%0, %1 : !mgp.context)
-  mef.output %2, %1 : !mef.chain, !mgp.context
+  mef.output %2, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<32xui8>) {
   %0 = mgp.buffer.constant %arg0, %arg1[1], #M.aligned_bytes<"0x01", align 8> : !M.array<1xui8>
   %ch0 = mgp.chain.host_to_device %arg0, %arg1[1]

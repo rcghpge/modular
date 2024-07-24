@@ -4,7 +4,7 @@
 mgp.model @chains : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
-  mef.output %0, %1 : !mef.chain, !mgp.context
+  mef.output %0, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 // CHECK: execute (%[[CH0:.*]]: !mef.chain,
 } execute (%ch0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   // %ch1 -> %ch0
@@ -53,7 +53,7 @@ mgp.model @arg0_not_always_ready : mof devices [#M.device_ref<"cpu", 0>] init (%
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   %2 = "some.op" (%0) : (!mef.chain) -> !mef.chain
-  mef.output %2, %1 : !mef.chain, !mgp.context
+  mef.output %2, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 // CHECK: execute (%[[CH0:.*]]: !mef.chain,
 } execute (%ch0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   // CHECK-NEXT: %{{.*}} = grt.chain.create ()
@@ -66,7 +66,7 @@ mgp.model @arg0_not_always_ready : mof devices [#M.device_ref<"cpu", 0>] init (%
 mgp.model @chain_merge_canonicalized : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
-  mef.output %0, %1 : !mef.chain, !mgp.context
+  mef.output %0, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 // CHECK: execute
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   // CHECK-NEXT: %[[CH0:.*]] = "some.op"()
@@ -88,7 +88,7 @@ mgp.model @chain_merge_canonicalized : mof devices [#M.device_ref<"cpu", 0>] ini
 mgp.model @chain_merge_fold_empty_operands : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
-  mef.output %0, %1 : !mef.chain, !mgp.context
+  mef.output %0, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 // CHECK: execute (%[[CH0:.*]]: !mef.chain
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %ch1 = grt.chain.create ()
@@ -100,7 +100,7 @@ mgp.model @chain_merge_fold_empty_operands : mof devices [#M.device_ref<"cpu", 0
 mgp.model @chain_merge_fold_consecutive : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
-  mef.output %0, %1 : !mef.chain, !mgp.context
+  mef.output %0, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 // CHECK: execute
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   // CHECK-NEXT: %[[CH0:.*]] = "some.op"()
@@ -122,7 +122,7 @@ mgp.model @chain_merge_fold_consecutive : mof devices [#M.device_ref<"cpu", 0>] 
 mgp.model @chain_merge_fold_operands_uniqued : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
-  mef.output %0, %1 : !mef.chain, !mgp.context
+  mef.output %0, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 // CHECK: execute
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   // CHECK-NEXT: %[[RES:.*]] = "some.op"()
@@ -139,7 +139,7 @@ mgp.model @chain_merge_fold_operands_uniqued : mof devices [#M.device_ref<"cpu",
 mgp.model @chain_singletons : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
-  mef.output %0, %1 : !mef.chain, !mgp.context
+  mef.output %0, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 // CHECK: execute (%[[ARG0:.*]]: !mef.chain,
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   %ch1 = grt.chain.create (%arg0)
@@ -156,7 +156,7 @@ mgp.model @chain_singletons : mof devices [#M.device_ref<"cpu", 0>] init (%arg0:
 mgp.model @grt_chain_create_rewrite : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
-  mef.output %0, %1 : !mef.chain, !mgp.context
+  mef.output %0, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 // CHECK: execute (%[[ARG0:.*]]: !mef.chain, %[[ARG1:.*]]: !mgp.context
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
   // CHECK-NEXT: %[[CH1:.*]] = "some.op"() : () -> !mgp.chain

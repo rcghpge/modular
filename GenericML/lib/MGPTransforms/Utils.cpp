@@ -584,9 +584,8 @@ TypedValue<ContextType> InitState::getContext() {
 // ExecuteState
 //===----------------------------------------------------------------------===//
 
-ExecuteState::ExecuteState(MLIRContext *context, Block *execute)
-    : execute(execute), builder(context) {
-  assert(execute->getNumArguments() >= kExtraArgStartIdx);
+ExecuteState::ExecuteState(MLIRContext *context, ModelOp model)
+    : execute(model.getExecuteBlock()), model(model), builder(context) {
   assert(isa<MEF::ChainType>(execute->getArgument(0).getType()));
   assert(isa<ContextType>(execute->getArgument(1).getType()));
 }
@@ -604,6 +603,6 @@ TypedValue<ContextType> ExecuteState::getContext() const {
 }
 
 /// Returns the additional arguments to 'execute' block
-iterator_range<mlir::BlockArgument *> ExecuteState::getExtraArgs() const {
-  return llvm::drop_begin(execute->getArguments(), kExtraArgStartIdx);
+iterator_range<mlir::BlockArgument *> ExecuteState::getExtraArgs() {
+  return model.getExecuteInputs();
 }

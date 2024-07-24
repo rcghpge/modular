@@ -36,7 +36,7 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaqu
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<8xf32>) {
   %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %spec = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
@@ -95,7 +95,7 @@ mgp.model @divergent : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.o
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<8xf32>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
   %ch2 = "some.op"() : () -> !mgp.chain
@@ -142,7 +142,7 @@ mgp.model @multiple_writers_convergence : mof devices [#M.device_ref<"cpu", 0>] 
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx : !mef.chain, !mgp.context
+  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.buffer<8>, !mgp.buffer<8>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
   %buf0 = mgp.buffer.alloc.static %ch1, %ctx[1], align 8 : !mgp.buffer<8>
