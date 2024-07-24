@@ -1,6 +1,7 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_filegroup", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "rpath_shim", "td_library")
+load("//bazel:config.bzl", "KERNELS_BUILD_TYPE_LOCAL_DEFINES")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -663,6 +664,7 @@ modular_cc_library(
     name = "MOGGDialect",
     srcs = glob(["lib/GraphCompiler/MOGGDialect/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/MOGGDialect/*.h"]),
+    local_defines = KERNELS_BUILD_TYPE_LOCAL_DEFINES,
     deps = [
         ":GraphCompilerInterfaces",
         ":MODialect",
