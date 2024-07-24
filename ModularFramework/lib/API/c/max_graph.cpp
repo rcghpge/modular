@@ -96,7 +96,7 @@ MODULAR_API_EXPORT MlirNamedAttribute MAXG_weightsAttr(const char *filepath,
   if (!moType.getNumElements().has_value()) {
     status->status = M::Error::getStaticString(
         "tensor attrs should always be statically sized");
-    return wrap(NamedAttribute(StringAttr(), Attribute()));
+    return {{nullptr}, {nullptr}};
   }
   int64_t sizeBytes =
       moType.getDtype().getSizeInBytes() * moType.getNumElements().value();
@@ -105,7 +105,7 @@ MODULAR_API_EXPORT MlirNamedAttribute MAXG_weightsAttr(const char *filepath,
   auto bufferOr = M::Buffer::getFile(filepath, sizeBytes, offsetBytes);
   if (bufferOr.isError()) {
     status->status = bufferOr.takeError();
-    return wrap(NamedAttribute(StringAttr(), Attribute()));
+    return {{nullptr}, {nullptr}};
   }
   M::BufferRef bufferRef = bufferOr.takeValue();
 
@@ -114,7 +114,7 @@ MODULAR_API_EXPORT MlirNamedAttribute MAXG_weightsAttr(const char *filepath,
     status->status =
         M::Error(Twine("Size mismatch, want ") + std::to_string(sizeBytes) +
                  " got " + std::to_string(buff_size) + "\n");
-    return wrap(NamedAttribute(StringAttr(), Attribute()));
+    return {{nullptr}, {nullptr}};
   }
 
   // Choose a default blob alignment to match the attribute's element size.
