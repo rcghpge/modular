@@ -334,17 +334,17 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     eventually we lower mogg.kernel into this form directly. The first
     return output is always a mef.chain for now.
 
-    `canFuseIntoOther`, `canBeFusedInto`, and `canDuplicate` dictate how 
-    sequence fusion (e.g. fusion which just concatenates code without 
+    `canFuseIntoOther`, `canBeFusedInto`, and `canDuplicate` dictate how
+    sequence fusion (e.g. fusion which just concatenates code without
     additional optimization) can interact with the compiled region.
 
-    Sequence fusion looks at potential `parent --> child` relationships 
+    Sequence fusion looks at potential `parent --> child` relationships
     between compiled regions and tries to fuse the parent into the child.
     `canFuseIntoOther` determines if this region can fuse as `parent`.
     `canBeFusedInto` determines if this region can fuse as `child`.
-    `canDuplicate` determines whether we can duplicate kernels in the 
-    fusion process (usually small ones). E.g. consider a region A with 
-    children B and C, if `canDuplicate` for A, then we may allow A 
+    `canDuplicate` determines whether we can duplicate kernels in the
+    fusion process (usually small ones). E.g. consider a region A with
+    children B and C, if `canDuplicate` for A, then we may allow A
     to inline into B AND C, effectively copying the code for A twice.
   }];
 

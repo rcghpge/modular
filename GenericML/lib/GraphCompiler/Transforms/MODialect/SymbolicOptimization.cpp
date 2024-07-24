@@ -4487,9 +4487,10 @@ struct SymbolicOptimizationPass
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
 
-    if constexpr (sizeof...(PatternTypes))
+    if constexpr (sizeof...(PatternTypes)) {
       // Pattern that should execute now.
       patterns.add<PatternTypes...>(context);
+    }
 
     // Transpose swimming.
     patterns.add<SinkTransposeThroughUnaryOpPattern,
