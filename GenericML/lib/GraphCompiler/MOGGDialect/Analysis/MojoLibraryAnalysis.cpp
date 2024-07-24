@@ -31,8 +31,14 @@
 // Define the embedded MLIR bytecode arrays in other compilation units to speed
 // up compile times.
 namespace M::MOGG::Embeddings {
+#ifdef MODULAR_MOGG_NO_LINK
+extern llvm::StringRef sourceFilename;
+extern llvm::StringRef primitiveSourceFilename;
+#else  // MODULAR_MOGG_NO_LINK
 extern llvm::StringRef source;
 extern llvm::StringRef primitiveSource;
+#endif // MODULAR_MOGG_NO_LINK
+
 } // namespace M::MOGG::Embeddings
 
 using namespace M;
@@ -43,6 +49,35 @@ static bool areFunctionsTheSame(KGEN::GeneratorOp gen1,
   if (gen1.getSignature() == gen2.getSignature())
     return false;
   return areBlocksSame(*gen1.getBody(), *gen2.getBody());
+}
+
+static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
+getEmbeddingsSourceBuffer() {
+#ifdef MODULAR_MOGG_NO_LINK
+  return toModularErrorOr(
+      llvm::MemoryBuffer::getFile(Embeddings::sourceFilename, /*IsText=*/false,
+                                  /*RequiresNullTerminator=*/false));
+#else  // MODULAR_MOGG_NO_LINK
+  return ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>(
+      llvm::MemoryBuffer::getMemBuffer(Embeddings::source,
+                                       "embedded MOGG bindings",
+                                       /*RequiresNullTerminator=*/false));
+#endif // MODULAR_MOGG_NO_LINK
+}
+
+static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
+getEmbeddingsPrimitiveSourceBuffer() {
+#ifdef MODULAR_MOGG_NO_LINK
+  return toModularErrorOr(
+      llvm::MemoryBuffer::getFile(Embeddings::primitiveSourceFilename,
+                                  /*IsText=*/false,
+                                  /*RequiresNullTerminator=*/false));
+#else  // MODULAR_MOGG_NO_LINK
+  return ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>(
+      llvm::MemoryBuffer::getMemBuffer(Embeddings::primitiveSource,
+                                       "embedded MOGG Primitives bindings",
+                                       /*RequiresNullTerminator=*/false));
+#endif // MODULAR_MOGG_NO_LINK
 }
 
 static std::string
@@ -276,19 +311,23 @@ struct Candidate {
 
 ErrorOrSuccess
 MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
-  llvm::MemoryBufferRef bufferRef =
-      internMLIRFile(llvm::MemoryBuffer::getMemBuffer(
-          Embeddings::source, "embedded MOGG bindings",
-          /*RequiresNullTerminator=*/false));
+  ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> bufferOr =
+      getEmbeddingsSourceBuffer();
+  if (failed(bufferOr))
+    return bufferOr.takeError();
+
+  llvm::MemoryBufferRef bufferRef = internMLIRFile(bufferOr.takeValue());
   ErrorOr<Operation *> moduleOr =
       loadMLIRKernels(bufferRef, rawMojoKernel, "the standard library");
   if (failed(moduleOr))
     return moduleOr.takeError();
   module = cast<ModuleOp>(moduleOr.takeValue());
 
-  bufferRef = internMLIRFile(llvm::MemoryBuffer::getMemBuffer(
-      Embeddings::primitiveSource, "embedded MOGG Primitives bindings",
-      /*RequiresNullTerminator=*/false));
+  bufferOr = getEmbeddingsPrimitiveSourceBuffer();
+  if (failed(bufferOr))
+    return bufferOr.takeError();
+
+  bufferRef = internMLIRFile(bufferOr.takeValue());
   llvm::StringMap<KGEN::GeneratorOp> primitiveRawMojoKernel;
   moduleOr = loadMLIRKernels(bufferRef, primitiveRawMojoKernel,
                              "the standard library");
