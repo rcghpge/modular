@@ -37,8 +37,8 @@ from configs.parse_args import (
     OptionValue,
     register_pipeline_configs,
 )
-from pipelines.samplers.token_sampler import TokenSampler
-from pipelines.samplers.weighted_sampler import WeightedSampler
+from samplers.token_sampler import TokenSampler
+from samplers.weighted_sampler import WeightedSampler
 from tokenizer import AutoTokenizer
 from metrics.metrics import Metrics
 from pipelines.weights.download import download_to_cache
