@@ -38,9 +38,8 @@ class ExplicitBufferLifetimesPass
 
     modelOp->walk([&](Block *block) {
       // Walk each block, then for each alloc.dynamic in each block, insert a
-      // buffer free at the op that postdominates all of the alloc's uses, which
-      // means it is guaranteed to free memory only after all uses of the buffer
-      // have finished executing
+      // buffer free at the op that is guaranteed to execute after all of the
+      // alloc's uses
 
       for (Operation &op : block->getOperations()) {
         auto allocOp = dyn_cast<MGP::BufferAllocDynamicOp>(op);
@@ -51,33 +50,33 @@ class ExplicitBufferLifetimesPass
         auto allocUses = getAllocUses(allocOp);
         if (allocUses.isError())
           continue;
-        auto ipdomNode = analysis.getDomTree(block).findLCA(*allocUses);
+        auto lcaNode = analysis.getDepTree(block).findLCA(*allocUses);
 
-        // Traverse up the postdominator tree until we find a node that has an
+        // Traverse up the dependency tree until we find a node that has an
         // MGPDeviceChain output, meaning we can insert our free after it
-        while (ipdomNode) {
+        while (lcaNode) {
           bool hasMGPChainOutput = false;
-          for (auto result : ipdomNode->op->getResults())
+          for (auto result : lcaNode->op->getResults())
             if (isa<MGP::DeviceChainType>(result.getType()))
               hasMGPChainOutput = true;
           if (hasMGPChainOutput)
             break;
-          ipdomNode = ipdomNode->parent;
+          lcaNode = lcaNode->parent;
         }
 
-        if (!ipdomNode) {
+        if (!lcaNode) {
           LLVM_DEBUG(llvm::dbgs()
-                     << "could not find IPDOM for " << allocOp << "\n");
+                     << "could not find LCA for " << allocOp << "\n");
           continue;
         }
 
-        auto ipdom = ipdomNode->op;
+        auto lca = lcaNode->op;
 
-        OpBuilder builder(ipdom);
-        auto loc = ipdom->getLoc();
+        OpBuilder builder(lca);
+        auto loc = lca->getLoc();
 
         OpResult chainOutput;
-        for (auto result : ipdom->getResults()) {
+        for (auto result : lca->getResults()) {
           if (isa<MGP::DeviceChainType>(result.getType())) {
             chainOutput = result;
             break;
