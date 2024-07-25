@@ -846,7 +846,8 @@ def MOGG_MojoCallContextPlaceholderOp: MOGG_Op<"runtime_mojocallcontext_placehol
   let results = (outs AnyType:$results);
 }
 
-def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure]> {
+def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure,
+  DeclareOpInterfaceMethods<MOGG_MojoObjectInfosInterface>]> {
   let summary = "Converts a MOGG value to a KGEN value";
   let description = [{
     Converts a mogg/mo value to a kgen value. Includes the shape and optionally,
@@ -862,23 +863,13 @@ def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure]> {
   let results = (outs AnyType:$results);
 
   let extraClassDeclaration = [{
-    /// Build the typeMethodsDict attr from a kernel function `mojoKernel`.
-    /// Returns the dictionary of needed methods of the output type.
-    /// It must have a decorator like @mogg_kernel to have the I/O vtable attrs defined.
-    /// This function doesn't get the whole table, but only the methods we are interested (to avoid bloating the IR).
-    /// `methods` list all methods that will be added to the VTable.
-    /// Returns failure if there isn't any type information for this input / output,
-    /// or if one of the requested methods isn't found.
-    static FailureOr<DictionaryAttr> buildOutputTypeMethodsDict(KGEN::GeneratorOp mojoKernel,
-                                                                llvm::ArrayRef<StringRef> methods);
-
-    /// Returns the method `methodName` stored in `typeMethodsDict`.
-    /// Returns nullptr if there isn't a methods dict, or `methodName` isn't in the vtable.
-    TypedAttr getMethodOfMojoStruct(StringRef methodName);
+    /// Necessary to implement MojoObjectInfosInterface.
+    Value getKGENMojoValueImpl() { return getResults(); }
   }];
 }
 
-def MOGG_ToMOGGOp: MOGG_Op<"to_mogg", [Pure]> {
+def MOGG_ToMOGGOp: MOGG_Op<"to_mogg", [Pure,
+  DeclareOpInterfaceMethods<MOGG_MojoObjectInfosInterface>]> {
   let summary = "Converts a KGEN value to a MOGG value";
   let description = [{
     Converts a KGEN value to a MOGG value. This is the converse of to_kgen. It
@@ -888,14 +879,14 @@ def MOGG_ToMOGGOp: MOGG_Op<"to_mogg", [Pure]> {
   let arguments = (ins AnyType:$input,
     OptionalAttr<TypedAttrInterface>:$shape,
     OptionalAttr<TypedAttrInterface>:$strides,
-    OptionalAttr<DictionaryAttr>:$typeMethodsDict
+    OptionalAttr<DictionaryAttr>:$typeMethodsDict,
+    UnitAttr:$isRegisterType
   );
   let results = (outs AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape, MO_Opaque]>:$results);
 
   let extraClassDeclaration = [{
-    /// Returns the method `methodName` stored in `typeMethodsDict`.
-    /// Returns nullptr if there isn't a methods dict, or `methodName` isn't in the vtable.
-    TypedAttr getMethodOfMojoStruct(StringRef methodName);
+    /// Necessary to implement MojoObjectInfosInterface.
+    Value getKGENMojoValueImpl() { return getInput(); }
   }];
 }
 
