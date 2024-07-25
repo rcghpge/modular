@@ -46,10 +46,16 @@ struct LowerPrimitivesPass
 
 // All MIP and MGP Primitives that are registered we will allow fusion of.
 static inline bool canFuseOp(Operation *op) {
-  return isa<::M::MIP::MIPDialect, MGPDialect>(op->getDialect());
+  // Allow for custom ops starting with "testfuse." for testing purposes.
+  return isa_and_nonnull<::M::MIP::MIPDialect, MGPDialect>(op->getDialect()) ||
+         op->getName().getIdentifier().strref().starts_with("testfuse.");
 }
 
 static inline bool canDuplicate(Operation *op) {
+  // Allow for custom ops with "testfuse" for testing purposes.
+  if (op->getName().getIdentifier().strref().starts_with("testfuse."))
+    return true;
+
   // TODO(GRA-784): This is disabled since certain subgraphs can bloat
   // compile times.
   // return isa<::M::MIP::MIPDialect>(op->getDialect());
@@ -143,14 +149,85 @@ void LowerPrimitivesPass::runOnOperation() {
             kernelBody.addArgument(operand.getType(), operand.getLoc());
       }
 
+      KGEN::GeneratorOp kernel = nullptr;
+
+      // Convert opaque inputs.
+      SmallVector<Value> inputs(kernelBody.getArguments());
+      for (auto [idx, ty] : llvm::enumerate(newKernel.getOperandTypes())) {
+        if (!isa<MGP::OpaqueType>(ty))
+          continue;
+
+        // Need to add extra ops for opaque outputs.
+        // Load the type infos from the kernel.
+        if (!kernel)
+          kernel = mojoLibraryAnalysis.getRegisteredMojoKernelFor(
+              op->getName().getStringRef());
+        ASSERT_STREAM(kernel != nullptr, << "kernel `"
+                                         << op->getName().getStringRef()
+                                         << "` not found");
+        bool isRegisterType = kernel.getSignature().getArgConvention(idx) ==
+                              KGEN::ArgConvention::BorrowedInReg;
+
+        // Convert MGP value to opaque.
+        // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GRA-812).
+        Value val = inputs[idx];
+        auto moOpaqueTy = MO::OpaqueType::get(
+            kernel->getContext(),
+            StringAttr::get(kernel->getContext(), "OpaquePrimitive"),
+            std::nullopt);
+        val = builder.create<MOGG::ToOpaqueFromMGPOp>(opLoc, moOpaqueTy, val);
+        inputs[idx] = builder.create<MOGG::ToKGENOp>(
+            opLoc, kernel.getFunctionType().getInput(idx), val,
+            /*shape=*/nullptr,
+            /*strides=*/nullptr, /*typeMethodDict=*/nullptr, isRegisterType);
+      }
+
       // Add the call to the actual implementing function in mojo.
       MOGG::CallOp call = builder.create<MOGG::CallOp>(
-          opLoc, op->getResultTypes(), op->getName().getStringRef(),
-          kernelBody.getArguments(), ArrayAttr{},
-          getMoggCallAttrs(builder, op));
+          opLoc, op->getResultTypes(), op->getName().getStringRef(), inputs,
+          ArrayAttr{}, getMoggCallAttrs(builder, op));
 
-      builder.create<MOGG::OutputOp>(opLoc, call->getResults());
+      // Convert opaque outputs
+      SmallVector<Value> outputs(call->getResults());
+      for (auto [idx, ty] : llvm::enumerate(op->getResultTypes())) {
+        if (!isa<MGP::OpaqueType>(ty))
+          continue;
 
+        // Need to add extra ops for opaque outputs.
+        // Load the type infos from the kernel.
+        if (!kernel)
+          kernel = mojoLibraryAnalysis.getRegisteredMojoKernelFor(
+              op->getName().getStringRef());
+        ASSERT_STREAM(kernel != nullptr, << "kernel `"
+                                         << op->getName().getStringRef()
+                                         << "` not found");
+
+        FailureOr<DictionaryAttr> methodsDictAttrOr =
+            MOGG::buildMojoObjectInfosOutputMethodsDict(
+                kernel, ArrayRef<StringRef>{"__moveinit__", "__del__"});
+        if (failed(methodsDictAttrOr)) {
+          op->emitError("missing methods for the primitive output opaque type: "
+                        "__moveinit__ / __del__ not found");
+          signalPassFailure();
+          return;
+        }
+        bool isRegister = !kernel.getSignature().hasMemoryOnlyResult();
+
+        // Convert opaque to MGP value.
+        // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GRA-812).
+        Value val = outputs[idx];
+        auto moOpaqueTy = MO::OpaqueType::get(
+            kernel->getContext(),
+            StringAttr::get(kernel->getContext(), "OpaquePrimitive"),
+            std::nullopt);
+        val = builder.create<MOGG::ToMOGGOp>(
+            opLoc, moOpaqueTy, val, /*shape=*/nullptr, /*strides=*/nullptr,
+            *methodsDictAttrOr, isRegister);
+        outputs[idx] = builder.create<MOGG::ToMGPFromOpaqueOp>(
+            opLoc, outputs[idx].getType(), val);
+      }
+
+      builder.create<MOGG::OutputOp>(opLoc, outputs);
       op->replaceAllUsesWith(newKernel);
       op->erase();
     }
