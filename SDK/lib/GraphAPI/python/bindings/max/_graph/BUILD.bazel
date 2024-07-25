@@ -1,0 +1,15 @@
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "_graph",
+    srcs = glob([
+        "**/*.py",
+        "**/*.pyi",
+    ]),
+)
+
+# Label for all bindings sources.
+filegroup(
+    name = "cpp_bindings_srcs",
+    srcs = glob(["**/*.cpp"]),
+)

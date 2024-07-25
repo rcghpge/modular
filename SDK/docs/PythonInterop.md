@@ -72,8 +72,3 @@ The relevant target definitions are:
   SDK/lib/GraphAPI/python/bindings/max/graph/core.cpp.
   The corresponding sources are
   `//SDK/lib/GraphAPI/python:cpp_bindings_srcs`.
-
-- `//SDK/lib/GraphAPI/python:max_graph_editable`
-  This defines the local editable installation target for the MAX graph
-  Python API.
-  See ModularFramework/docs/README.md for usage.
