@@ -235,6 +235,10 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   // Fuse connected elementwise kernels.
   if (opts.fuseJitKernels) {
+    // Only run this when fusion is enabled as otherwise we might pessimize
+    // model execution by introducing extraneous copies.
+    pm.addPass(MO::createElideRedundantMutableOps());
+
     pm.addPass(MOGG::createFuseElementwise());
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());

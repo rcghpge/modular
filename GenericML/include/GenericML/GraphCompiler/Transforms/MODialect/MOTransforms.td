@@ -402,4 +402,58 @@ def TopologicalSort :
   }];
 }
 
+def ElideRedundantMutableOps :
+    Pass<"elide-redundant-mutable-ops", "GraphOp"> {
+  let summary = "Eliminates redundant mo.mutable.store and mo.mutable.load ops.";
+  let description = [{
+    This pass contains patterns meant to eliminate mo.mutable.store and
+    mo.mutable.load ops under appropriate conditions they are:
+
+    For mo.mutable.load ops:
+      Erase the load when it is immediately preceded by a store operating on
+      the same buffer and the load is the sole consumer of the store's output
+      chain.
+
+      e.g.
+
+      ```
+      %ch1 = mo.mutable.store(%ch0, %buffer, %tensor0)
+      %ch2, %tensor1 = mo.mutable.load(%ch1, %buffer)
+
+      %res = mo.op(%tensor1, ...)
+
+      %ch3 = mo.mutable.store(%ch2, %buffer, %res)
+
+      ==>
+
+      %ch1 = mo.mutable.store(%ch0, %buffer, %tensor0)
+
+      %res = mo.op(%tensor0, ...)
+
+      %ch3 = mo.mutable.store(%ch1, %buffer, %res)
+      ```
+
+    For mo.mutable.store ops:
+      Erase a store when it is followed by another store operating on the same
+      buffer and the first store's output chain is solely consumed by the second
+      store.
+
+
+      e.g.
+
+      ```
+      %ch1 = mo.mutable.store(%ch0, %buffer, %tensor)
+      %res = mo.op(%tensor, ...)
+      %ch3 = mo.mutable.store(%ch1, %buffer, %res)
+
+      ==>
+
+      %res = mo.op(%tensor, ...)
+      %ch3 = mo.mutable.store(%ch0, %buffer, %res)
+      ```
+
+    This enables the fusion passes in MOGG to work with in-place operations.
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_TD

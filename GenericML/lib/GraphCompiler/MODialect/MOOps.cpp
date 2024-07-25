@@ -3682,17 +3682,6 @@ LogicalResult MutableStoreOp::verify() {
                getOperationName(), numUses);
   }
 
-  // NOTE: might be able to relax this constraint in the future if we have a
-  // full lowering path, lambda based fusion, and copying of results when
-  // multiple uses exist
-  auto valueTensorNumUses = llvm::range_size(getInTensor().getUses());
-
-  if (valueTensorNumUses > 1) {
-    return emitError() << llvm::formatv("The value semantic tensor copied from "
-                                        "has more than one use, found: {0}",
-                                        valueTensorNumUses);
-  }
-
   return success();
 }
 
