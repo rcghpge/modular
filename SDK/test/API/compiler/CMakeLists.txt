@@ -11,7 +11,7 @@ configure_lit_site_cfg(
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.cfg.py
 )
 
-add_modular_testsuite(check-max-extensibility-compiler
+add_modular_testsuite(check-max-compiler-api
   TOOLS
   mojo
 

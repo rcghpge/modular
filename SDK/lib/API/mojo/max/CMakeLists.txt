@@ -103,14 +103,12 @@ set(UTILS_SRCS
   _utils/__init__
 )
 
+set(COMPILER_SRCS _compiler/__init__)
 
-set(TENSOR_SRCS
-  tensor/__init__
-)
+set(TENSOR_SRCS tensor/__init__)
 
-set(COMPILER_SRCS
-  _compiler/__init__
-)
+set(TENSOR_UTILS_SRCS tensor_utils/__init__)
+
 
 add_mojo_package(max-mojo PRIVATE
   ${GRAPH_SRCS}
@@ -120,8 +118,9 @@ add_mojo_package(max-mojo PRIVATE
   ${SERVE_SRCS}
   ${DRIVER_SRCS}
   ${UTILS_SRCS}
-  ${TENSOR_SRCS}
   ${COMPILER_SRCS}
+  ${TENSOR_SRCS}
+  ${TENSOR_UTILS_SRCS}
 
   DOCS_DIR
   SDK/docs
@@ -133,42 +132,52 @@ add_mojo_package(max-mojo PRIVATE
   mojo-extensibility
   DeviceDriver
 
+  max-compiler
+  max-tensor-utils
+  max-tensor
+
   mlir-mojo-api
 )
 
-# FIXME: The documentation for extensibility is currently defined in
-# mojo-extensibility, make sure to copy this over after building the normal max
-# docs. This is a temporary measure until we properly figure out the
-# documentation generation and package layering.
-if(UNIX)
-  add_dependencies(max-mojo-doc mojo-extensibility-doc)
-  get_target_property(MAX_DOCS_DIR max-mojo-doc OUTPUT_DIR)
-  get_target_property(EXTENSIBILITY_DOCS_DIR mojo-extensibility-doc OUTPUT_DIR)
+# FIXME: The documentation for modules located outside of max/ must be copied
+# into the MAX_DOCS_DIR to make it look like they are submodules. This is a hack
+# until proper documentation support is figured out.
 
-  # Handle the differences in sed behavior between mac and linux.
-  if (APPLE)
+# Primer:
+# 1. A Mojo target that has documentation will have its name appended with -doc.
+# 2. Mojo targets that start with an underscore will not have documentation.
+# 3. A Mojo target's documentation consists of nested directories, all the way down
+#    to mojo entities (structs and functions).
+if(UNIX)
+  # TARGET_NAME: Name of the mojo target (without the -doc).
+  # TARGET_NAME_IN_DOCS: Name it should have in the max-mojo-doc.
+  function(import_external_doc_into_max TARGET_NAME TARGET_NAME_IN_DOCS)
+    # Handle the differences in sed behavior between mac and linux.
+    if (APPLE)
+      set(SED_CMD_PREFIX "\'\'")
+    else ()
+      set(SED_CMD_PREFIX "")
+    endif()
+
+    set(TARGET_DOC ${TARGET_NAME}-doc)
+    add_dependencies(max-mojo-doc ${TARGET_DOC})
+    get_target_property(MAX_DOCS_DIR max-mojo-doc OUTPUT_DIR)
+    get_target_property(TARGET_DOCS_DIR ${TARGET_DOC} OUTPUT_DIR)
     add_custom_command(TARGET max-mojo-doc
-      POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E remove_directory ${MAX_DOCS_DIR}/extensibility
-      COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${EXTENSIBILITY_DOCS_DIR}/tensor ${MAX_DOCS_DIR}/extensibility
-      COMMAND sed -i '' 's|title: tensor|title: extensibility|g' ${MAX_DOCS_DIR}/extensibility/index.md
-      COMMAND sed -i '' 's|type: module|type: package|g' ${MAX_DOCS_DIR}/extensibility/index.md
+     POST_BUILD
+     COMMAND ${CMAKE_COMMAND} -E remove_directory ${MAX_DOCS_DIR}/${TARGET_NAME_IN_DOCS}
+     COMMAND ${CMAKE_COMMAND} -E copy_directory
+     ${TARGET_DOCS_DIR} ${MAX_DOCS_DIR}/${TARGET_NAME_IN_DOCS}
+     COMMAND sed -i ${SED_CMD_PREFIX} 's|type: module|type: package|g' ${MAX_DOCS_DIR}/${DISPLAY_NAME}/index.md
     )
-  else ()
-    add_custom_command(TARGET max-mojo-doc
-      POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E remove_directory ${MAX_DOCS_DIR}/extensibility
-      COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${EXTENSIBILITY_DOCS_DIR}/tensor ${MAX_DOCS_DIR}/extensibility
-      COMMAND sed -i 's|title: tensor|title: extensibility|g' ${MAX_DOCS_DIR}/extensibility/index.md
-      COMMAND sed -i 's|type: module|type: package|g' ${MAX_DOCS_DIR}/extensibility/index.md
-    )
-  endif()
+  endfunction()
+
+  import_external_doc_into_max(max-tensor tensor)
+  import_external_doc_into_max(max-tensor-utils tensor_utils)
+  import_external_doc_into_max(mojo-extensibility extensibility)
 endif()
 
 # Dependencies aren't automatically included in releases!
 # They need to be manually added to utils/build/engine_packaging/c/CMakeLists.txt
 # See the install-max-graph-c target.
-
 add_dependencies(max-mojo ServeRTCAPI)

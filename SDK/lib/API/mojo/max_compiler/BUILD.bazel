@@ -1,0 +1,12 @@
+load("//bazel:api.bzl", "mojo_library")
+
+mojo_library(
+    name = "max_compiler",
+    srcs = glob(["**/*.mojo"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//Kernels/mojo/algorithm",
+        "//Kernels/mojo/buffer",
+        "//SDK/lib/API/mojo/max_tensor_utils",
+    ],
+)
