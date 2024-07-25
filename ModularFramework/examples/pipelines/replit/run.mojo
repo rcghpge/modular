@@ -40,7 +40,7 @@ from configs.parse_args import (
 from pipelines.samplers.token_sampler import TokenSampler
 from pipelines.samplers.weighted_sampler import WeightedSampler
 from tokenizer import AutoTokenizer
-from pipelines.llama3.metrics import Metrics
+from metrics.metrics import Metrics
 from pipelines.weights.download import download_to_cache
 
 alias DEFAULT_MAX_SEQ_LEN = 512
@@ -406,7 +406,6 @@ def dispatch[dtype: DType](config: Config):
         max_new_tokens=max_new_tokens,
         pad_to_multiple_of=pad_to_multiple_of,
     )
-    metrics.end_timing_startup()
 
     input_string = config.get("prompt")[String]
     print("Running on input:", input_string)
@@ -415,7 +414,6 @@ def dispatch[dtype: DType](config: Config):
     prompt = input_string.replace("\\n", "\n")
 
     # Run code generation.
-    metrics.begin_timing_prompt()
     sampler = WeightedSampler(
         config.get("temperature")[Float64].cast[DType.float32](),
         config.get("min-p")[Float64].cast[DType.float32](),
@@ -423,14 +421,16 @@ def dispatch[dtype: DType](config: Config):
 
     # If a pipeline warmup is needed, run a single token completion after the
     # prompt, get a token after that, and reset.
-    if config.get("warmup-pipeline")[Bool]:
+    num_warmups = config.get("num-warmups")[Int]
+    if num_warmups > 0:
         print("Warming up pipeline...")
-        metrics.begin_timing_warmup()
-        _ = replit.reset(prompt)
-        _ = replit.next_token(sampler)
-        _ = replit.next_token(sampler)
-        metrics.end_timing_warmup()
+        for i in range(num_warmups):
+            _ = replit.reset(prompt)
+            _ = replit.next_token(sampler)
+            _ = replit.next_token(sampler)
 
+    metrics.end_timing_startup()
+    metrics.begin_timing_prompt()
     tokens_in_prompt = replit.reset(prompt)
     metrics.set_tokens_in_prompt(tokens_in_prompt)
 
