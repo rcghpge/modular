@@ -13,9 +13,9 @@ mojo_library(
         "//Kernels/mojo/extensibility",
         "//Kernels/mojo/gpu",
         "//Kernels/mojo/runtime",
-        "//SDK/lib/API/mojo/max_compiler",
-        "//SDK/lib/API/mojo/max_tensor",
-        "//SDK/lib/API/mojo/max_tensor_utils",
+        "//SDK/lib/API/mojo/max/compiler",
+        "//SDK/lib/API/mojo/max/tensor",
+        "//SDK/lib/API/mojo/max/tensor_utils",
         "//open-source/mojo/stdlib/stdlib",
     ],
 )

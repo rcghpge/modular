@@ -4,7 +4,7 @@
 #
 ##===----------------------------------------------------------------------===##
 
-add_subdirectory(mojo/max_tensor)
-add_subdirectory(mojo/max_tensor_utils)
-add_subdirectory(mojo/max_compiler)
-add_subdirectory(mojo/max)
+add_subdirectory(mojo/max/tensor)
+add_subdirectory(mojo/max/tensor_utils)
+add_subdirectory(mojo/max/compiler)
+add_subdirectory(mojo/max/max)

@@ -18,7 +18,7 @@ mojo_test(
         "//conditions:default": [],
     }),
     deps = [
-        "//SDK/lib/API/mojo/max",
+        "//SDK/lib/API/mojo/max/max",
         "//open-source/mojo/stdlib/stdlib",
     ],
 )
@@ -39,7 +39,7 @@ mojo_test(
 #         "//conditions:default": [],
 #     }),
 #     deps = [
-#         "//SDK/lib/API/mojo/max",
+#         "//SDK/lib/API/mojo/max/max",
 #         "//Support:Globals",
 #         "//open-source/mojo/stdlib/stdlib",
 #     ],
@@ -61,7 +61,7 @@ mojo_test(
 #         "//conditions:default": [],
 #     }),
 #     deps = [
-#         "//SDK/lib/API/mojo/max",
+#         "//SDK/lib/API/mojo/max/max",
 #         "//Support:Globals",
 #         "//open-source/mojo/stdlib/stdlib",
 #     ],

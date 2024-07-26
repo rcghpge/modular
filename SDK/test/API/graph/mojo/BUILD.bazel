@@ -12,7 +12,7 @@ lit_tests(
         "@llvm-project//compiler-rt:orc_rt",
     ],
     mojo_deps = [
-        "//SDK/lib/API/mojo/max",
+        "//SDK/lib/API/mojo/max/max",
         "//open-source/mojo/stdlib/stdlib",
     ],
     tools = [

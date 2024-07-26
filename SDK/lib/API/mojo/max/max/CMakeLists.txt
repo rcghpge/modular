@@ -107,7 +107,7 @@ set(COMPILER_SRCS _compiler/__init__)
 
 set(TENSOR_SRCS tensor/__init__)
 
-set(TENSOR_UTILS_SRCS tensor_utils/__init__)
+set(TENSOR_UTILS_SRCS _tensor_utils/__init__)
 
 
 add_mojo_package(max-mojo PRIVATE
@@ -173,8 +173,11 @@ if(UNIX)
   endfunction()
 
   import_external_doc_into_max(max-tensor tensor)
-  import_external_doc_into_max(max-tensor-utils tensor_utils)
   import_external_doc_into_max(mojo-extensibility extensibility)
+
+  # The following two packages are omitted until they are needed as public APIs.
+  # import_external_doc_into_max(max-tensor-utils tensor_utils)
+  # import_external_doc_into_max(max-compiler compiler)
 endif()
 
 # Dependencies aren't automatically included in releases!

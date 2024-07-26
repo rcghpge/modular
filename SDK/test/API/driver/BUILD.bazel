@@ -14,7 +14,7 @@ lit_tests(
     ],
     gpu_only_srcs = glob(["mojo/cuda/*.mojo"]),
     mojo_deps = [
-        "//SDK/lib/API/mojo/max",
+        "//SDK/lib/API/mojo/max/max",
         "//open-source/mojo/stdlib/stdlib",
     ],
     tags = ["gpu"],

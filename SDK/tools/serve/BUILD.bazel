@@ -5,7 +5,7 @@ mojo_binary(
     srcs = ["run_server.mojo"],
     tags = ["manual"],  # TODO: Currently broken
     deps = [
-        "//SDK/lib/API/mojo/max",
+        "//SDK/lib/API/mojo/max/max",
         "//open-source/mojo/stdlib/stdlib",
     ],
 )
@@ -25,7 +25,7 @@ mojo_binary(
     srcs = ["send_single.mojo"],
     tags = ["manual"],  # TODO: Currently broken
     deps = [
-        "//SDK/lib/API/mojo/max",
+        "//SDK/lib/API/mojo/max/max",
         "//open-source/mojo/stdlib/stdlib",
     ],
 )
@@ -34,7 +34,7 @@ mojo_binary(
     name = "send_single_triton",
     srcs = ["send_single_triton.mojo"],
     deps = [
-        "//SDK/lib/API/mojo/max",
+        "//SDK/lib/API/mojo/max/max",
         "//open-source/mojo/stdlib/stdlib",
     ],
 )

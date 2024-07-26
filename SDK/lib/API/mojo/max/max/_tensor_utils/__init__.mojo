@@ -3,6 +3,6 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
+"""Tensor utilities for working with tensor-like objects"""
 
-from .unsafe_tensor_slice import UnsafeTensorSlice
-from .tensor_like import TensorLike
+from tensor_utils import UnsafeTensorSlice, TensorLike

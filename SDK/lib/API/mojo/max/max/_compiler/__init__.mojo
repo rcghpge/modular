@@ -3,8 +3,13 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-"""Implements the MAX tensor package."""
+"""The root package for the compiler module in MAX."""
 
-from .tensor import Tensor
-from .tensor_shape import TensorShape
-from .tensor_spec import TensorSpec, StaticTensorSpec
+from compiler import (
+    foreach,
+    register,
+    elementwise,
+    shapeof,
+    stridesof,
+    output_lambda,
+)
