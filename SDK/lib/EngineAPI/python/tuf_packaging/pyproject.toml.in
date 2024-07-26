@@ -10,7 +10,7 @@ dependencies = [
   "numpy ~= 1.18",
   "max-engine-libs==@MODULAR_VERSION_MAJOR@.@MODULAR_VERSION_MINOR@.@MODULAR_VERSION_PATCH@"
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 
 [tool.setuptools]
 license-files = [
@@ -28,7 +28,7 @@ experimental-string-processing = true
 archs = ["native"]
 before-all = "{project}/SDK/lib/EngineAPI/python/tuf_packaging/before-all.sh"
 before-build = "{project}/SDK/lib/EngineAPI/python/tuf_packaging/before-build.sh @MODULAR_VERSION_MAJOR@ @MODULAR_VERSION_MINOR@ @MODULAR_VERSION_PATCH@"
-build = "cp{38,39,310,311}-manylinux*"
+build = "cp{39,310,311}-manylinux*"
 build-frontend = "build"
 environment-pass = [
   "AWS_ACCESS_KEY_ID",
@@ -51,7 +51,7 @@ environment-pass = [
 ]
 manylinux-x86_64-image = "ghcr.io/modularml/modular/ai-engine-packaging-x86_64:sha-85d1b47"
 manylinux-aarch64-image = "ghcr.io/modularml/modular/ai-engine-packaging-aarch64:sha-85d1b47"
-skip = ["cp36-* cp37-*, *-manylinux_i686", "*-musllinux*"]
+skip = ["cp36-*", "cp37-*", "cp38-*", "*-manylinux_i686", "*-musllinux*"]
 
 [tool.cibuildwheel.linux]
 repair-wheel-command = ""
