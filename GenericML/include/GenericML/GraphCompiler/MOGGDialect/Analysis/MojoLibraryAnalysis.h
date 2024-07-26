@@ -229,8 +229,7 @@ struct LoadMojoAnalysisPass {
     // Reuse the library if it exists.
     if (analysis)
       return analysis.get();
-
-    analysis = std::make_unique<MojoLibraryAnalysis>(ctx);
+    analysis = std::make_shared<MojoLibraryAnalysis>(ctx);
     auto loadError = analysis->init(kernelLibraryPaths);
     if (loadError.isError()) {
       analysis = nullptr;
@@ -239,7 +238,7 @@ struct LoadMojoAnalysisPass {
     return analysis.get();
   }
 
-  std::unique_ptr<MojoLibraryAnalysis> analysis;
+  std::shared_ptr<MojoLibraryAnalysis> analysis;
 };
 
 //===----------------------------------------------------------------------===//
