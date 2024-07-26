@@ -110,12 +110,13 @@
 // CHECK:   %[[SSA72]] |-> {%[[SSA76]][0], %[[SSA68]]}
 // CHECK: exclusive end
 
-mgp.model @simple : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @simple : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<f32>) {
   %cond = "some.op"(%ch0) : (!mef.chain) -> i1
   %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
   %y = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
@@ -195,12 +196,13 @@ mgp.model @simple : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaq
 // CHECK:   %[[SSA56]] |-> {%[[SSA64]][0], %[[SSA49]], %[[SSA50]], %[[SSA51]], %[[SSA59]], %[[SSA62]]}
 // CHECK: exclusive end
 
-mgp.model @redundant : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @redundant : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch1 = grt.chain.create (%ch0)
   %ch2 = grt.chain.create (%ch1, %ch1)
   %ch3 = "some.op"(%ch2) : (!mef.chain) -> !mef.chain
@@ -300,12 +302,13 @@ mgp.model @redundant : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.o
 // CHECK:   %[[SSA34]]#1 |-> {%[[SSA45]][0], %[[SSA22]], %[[SSA23]], %[[SSA24]], %[[SSA26]], %[[SSA30]], %[[SSA32]]}
 // CHECK: exclusive end
 
-mgp.model @if : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @if : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<32xui8>) {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<32xui8>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
   %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x01", align 8> : !M.array<1xui8>
   %1 = mgp.tensor_spec.create : !mgp.tensor_spec<bool>
@@ -387,12 +390,13 @@ mgp.model @if : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) 
 // CHECK:   %[[SSA7]] |-> {%[[SSA17]][0], %[[SSA0]], %[[SSA1]], %[[SSA4]], %[[SSA5]], %[[arg7]][2], %[[arg8]][2], %[[arg2]][3], %[[arg3]][3], %[[SSA11]], %[[SSA12]]}
 // CHECK: exclusive end
 
-mgp.model @conditional_c : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @conditional_c : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<8xf32>) {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<8xf32>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
   %a = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32> : !M.array<32xui8>
   %spec = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>

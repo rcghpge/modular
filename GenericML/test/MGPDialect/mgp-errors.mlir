@@ -101,7 +101,7 @@ func.func @dtype_unrepresentable(%x : !mgp.tensor_spec<5x10xf8>) {}
 // -----
 
 "mgp.model"() ({
-  ^bb0(%cpu: !mgp.opaque):
+  ^bb0(%cpu: !mgp.opaque<"cpu0_context">):
     %ch = grt.chain.create ()
     %ctx = mgp.context.create 1
     // expected-error@+1 {{'mef.output' op expected 3 operands, but given 1}}
@@ -113,12 +113,12 @@ func.func @dtype_unrepresentable(%x : !mgp.tensor_spec<5x10xf8>) {}
 
 // -----
 
-// expected-error@+1 {{'mgp.model' op expected the arguments of the 'execute' body to be '!mef.chain', '!mgp.context', '!mgp.opaque', 'tensor<3xf32>', but got '!mef.chain', 'tensor<3xf32>', '!mgp.context'.}}
+// expected-error@+1 {{'mgp.model' op expected the arguments of the 'execute' body to be '!mef.chain', '!mgp.context', '!mgp.opaque<"cpu0_context">', 'tensor<3xf32>', but got '!mef.chain', 'tensor<3xf32>', '!mgp.context'.}}
 "mgp.model"() ({
-  ^bb0(%cpu: !mgp.opaque):
+  ^bb0(%cpu: !mgp.opaque<"cpu0_context">):
     %ch = grt.chain.create ()
     %ctx = mgp.context.create 1
-    mef.output %ch, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque
+    mef.output %ch, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
 }, {
   ^bb0(%ch: !mef.chain, %x: tensor<3xf32>, %ctx: !mgp.context):
     mef.output %ch, %x : !mef.chain, tensor<3xf32>
@@ -126,38 +126,38 @@ func.func @dtype_unrepresentable(%x : !mgp.tensor_spec<5x10xf8>) {}
 
 // -----
 
-// expected-error@+1 {{'mgp.model' op expected the arguments of the 'execute' body to be '!mef.chain', '!mgp.context', '!mgp.opaque', 'tensor<4xf32>', but got '!mef.chain', '!mgp.context', '!mgp.opaque', 'tensor<3xf32>'.}}
+// expected-error@+1 {{'mgp.model' op expected the arguments of the 'execute' body to be '!mef.chain', '!mgp.context', '!mgp.opaque<"cpu0_context">', 'tensor<4xf32>', but got '!mef.chain', '!mgp.context', '!mgp.opaque<"cpu0_context">', 'tensor<3xf32>'.}}
 "mgp.model"() ({
-  ^bb0(%cpu: !mgp.opaque):
+  ^bb0(%cpu: !mgp.opaque<"cpu0_context">):
     %ch = grt.chain.create ()
     %ctx = mgp.context.create 1
-    mef.output %ch, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque
+    mef.output %ch, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
 }, {
-  ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque, %x: tensor<3xf32>):
+  ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %x: tensor<3xf32>):
     mef.output %ch, %x : !mef.chain, tensor<3xf32>
 }) {frameworkName = "tf", devices = [#M.device_ref<"cpu", 0>], inputOutputTypes = (tensor<4xf32>) -> (tensor<3xf32>), name = "badExecuteArgs2"} : () -> ()
 
 // -----
 
 "mgp.model"() ({
-  ^bb0(%cpu: !mgp.opaque):
+  ^bb0(%cpu: !mgp.opaque<"cpu0_context">):
     %ch = grt.chain.create ()
     %ctx = mgp.context.create 1
-    mef.output %ch, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque
+    mef.output %ch, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
 }, {
-  ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque, %x: tensor<3xf32>):
+  ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %x: tensor<3xf32>):
     // expected-error@+1 {{'mef.output' op expected 1 operands, but given 2}}
     mef.output %ch, %x : !mef.chain, tensor<3xf32>
 }) {frameworkName = "tf", devices = [#M.device_ref<"cpu", 0>], inputOutputTypes = (tensor<3xf32>) -> (), name = "badExecuteResults"} : () -> ()
 
 // -----
 
-mgp.model @mismatchedContextType : tf devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @mismatchedContextType : tf devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch = grt.chain.create ()
   %unk = mef.opaque "bogus" [] () : ()->!mef.unknown
   // expected-error@+1 {{'mef.output' op operand #1 has type '!mef.unknown' but expected '!mgp.context'}}
-  mef.output %ch, %unk, %arg0 : !mef.chain, !mef.unknown, !mgp.opaque
-} execute (%ch: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque, %x: tensor<2xf32>) -> (!mef.chain, tensor<2xf32>) {
+  mef.output %ch, %unk, %cpu : !mef.chain, !mef.unknown, !mgp.opaque<"cpu0_context">
+} execute (%ch: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %x: tensor<2xf32>) -> (!mef.chain, tensor<2xf32>) {
   mef.output %ch, %x : !mef.chain, tensor<2xf32>
 }
 
@@ -165,11 +165,11 @@ mgp.model @mismatchedContextType : tf devices [#M.device_ref<"cpu", 0>] init (%a
 // -----
 
 // expected-error@+1 {{'mgp.model' op attribute 'frameworkName' failed to satisfy constraint: string attribute must be a recognized framework name.}}
-mgp.model @invalidExecuteArgType : bogus devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @invalidExecuteArgType : bogus devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch = grt.chain.create ()
   %ctx = mgp.context.create 1
-  mef.output %ch, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%ch: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque, %x: index) -> (!mef.chain, index) {
+  mef.output %ch, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%ch: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %x: index) -> (!mef.chain, index) {
   mef.output %ch, %x : !mef.chain, index
 }
 
@@ -179,11 +179,11 @@ mgp.model @invalidExecuteArgType : bogus devices [#M.device_ref<"cpu", 0>] init 
 // mgp.guard
 //
 
-mgp.model @guardOpWrongNResults : bogus devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @guardOpWrongNResults : bogus devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch = grt.chain.create ()
   %ctx = mgp.context.create 1
-  mef.output %ch, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%ch: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque, %tensor: !mgp.tensor<2xsi64>) -> (!mef.chain, !mgp.tensor<2xsi64>) {
+  mef.output %ch, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%ch: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %tensor: !mgp.tensor<2xsi64>) -> (!mef.chain, !mgp.tensor<2xsi64>) {
 
   // expected-error@+1 {{operation defines 1 results but was provided 3 to bind}}
   %results:3 = mgp.guard %ch, %tensor : !mgp.tensor<2xsi64>

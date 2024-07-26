@@ -1,10 +1,11 @@
 // RUN: mo-opt %s --allow-unregistered-dialect --buffer-lifetimes --split-input-file --verify-diagnostics | FileCheck %s
 
-mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
-  mef.output %0, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
+  mef.output %0, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
   %ch = mgp.chain.host_to_device %arg0, %arg1[1]
   // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer {{.*}}
   %inBuffer = mgp.tensor.extract.buffer %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
@@ -35,11 +36,12 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaq
 
 // -----
 
-mgp.model @parallel : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @parallel : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
-  mef.output %0, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
+  mef.output %0, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
   %ch = mgp.chain.host_to_device %arg0, %arg1[1]
   // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer {{.*}}
   %inBuffer = mgp.tensor.extract.buffer %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
@@ -73,11 +75,12 @@ mgp.model @parallel : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.op
 
 // -----
 
-mgp.model @tensor_create_aliased : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @tensor_create_aliased : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
-  mef.output %0, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
+  mef.output %0, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
   %ch = mgp.chain.host_to_device %arg0, %arg1[1]
   // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer {{.*}}
   %inBuffer = mgp.tensor.extract.buffer %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
@@ -114,11 +117,12 @@ mgp.model @tensor_create_aliased : mof devices [#M.device_ref<"cpu", 0>] init (%
 
 // -----
 
-mgp.model @nested_block : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @nested_block : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
-  mef.output %0, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
+  mef.output %0, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
   %ch = mgp.chain.host_to_device %arg0, %arg1[1]
   // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer {{.*}}
   %inBuffer = mgp.tensor.extract.buffer %arg1[1], %inTensor : !mgp.tensor<?x?xf32>

@@ -76,7 +76,13 @@ Value LowerMOGGRegionCompilesPass::getOrCreateDeviceContextExtractOp(
     deviceContextExtractOpMap[std::tuple(region, inChain)][device] =
         builder.create<MGP::DeviceContextExtractOp>(
             loc,
-            TypeRange{MGP::OpaqueType::get(builder.getContext(), std::nullopt)},
+            TypeRange{MGP::OpaqueType::get(
+                builder.getContext(),
+                StringAttr::get(builder.getContext(),
+                                device.getLabel() +
+                                    std::to_string(device.getId()) +
+                                    "_context"),
+                std::nullopt)},
             /*inChain=*/inChain,
             /*theContext*/ inContext,
             /*aDeviceRuntimeSlot=*/runtimeSlot,

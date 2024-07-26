@@ -6,7 +6,7 @@
 
 // CHECK-LABEL: mgp.model @unfused_mutable_load_store
 // CHECK: execute
-// CHECK-SAME: !mgp.opaque, [[buf:%.*]]: !mgp.tensor<2x2xf32>, [[rhs:%.*]]: !mgp.tensor<2x2xf32>)
+// CHECK-SAME: !mgp.opaque{{.*}}, [[buf:%.*]]: !mgp.tensor<2x2xf32>, [[rhs:%.*]]: !mgp.tensor<2x2xf32>)
 // CHECK: grt.chain.create ([[buf]]
 // CHECK: [[ebuf:%.*]] = mgp.tensor.extract.buffer{{.*}} [[buf]] : !mgp.tensor<2x2xf32>
 // The check below corresponds to the (lowered) mo.mutable.load

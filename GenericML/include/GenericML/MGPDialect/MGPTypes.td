@@ -270,8 +270,9 @@ def MGP_OpaqueType : MGP_Type<"Opaque", "opaque",
     ```
   }];
 
-  let parameters = (ins OptionalParameter<"std::optional<DictionaryAttr>">:$metadata);
-  let assemblyFormat = "( `<` $metadata^ `>` )?";
+  let parameters = (ins "StringAttr": $symbol,
+                        OptionalParameter<"std::optional<DictionaryAttr>">:$metadata);
+  let assemblyFormat = "`<` $symbol (`,` $metadata^)? `>`";
 }
 
 include "GenericML/MGPDialect/MGPDeviceTypes.td"

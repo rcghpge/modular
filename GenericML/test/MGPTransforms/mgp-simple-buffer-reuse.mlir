@@ -12,11 +12,12 @@
 //  -> execute(in %alloc0, out %alloc1)
 //  -> execute(in %alloc1, out %alloc0)
 
-mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
-  mef.output %0, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
+  mef.output %0, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
   %ch = mgp.chain.host_to_device %arg0, %arg1[1]
   // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer {{.*}}
   %inBuffer = mgp.tensor.extract.buffer %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
@@ -53,11 +54,12 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaq
 // Even though the lifetimes are the same as above and indicate that the buffer
 // can be reused, the sizes are different so the simple buffer reuse pass will
 // not reuse.
-mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
-  mef.output %0, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
+  mef.output %0, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
   %ch = mgp.chain.host_to_device %arg0, %arg1[1]
   // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer {{.*}}
   %inBuffer = mgp.tensor.extract.buffer %arg1[1], %inTensor : !mgp.tensor<?x?xf32>

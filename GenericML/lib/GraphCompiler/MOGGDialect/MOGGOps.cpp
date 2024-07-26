@@ -570,8 +570,9 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     Type oldOutTy = getResult(inPlaceIdx).getType();
     // mgp.bufer is user for mo.tensor, mgp.opaque for mo.opaque.
     Type mgpResultTy = mgpBufferType;
-    if (isa<MO::OpaqueType>(oldOutTy))
-      mgpResultTy = MGP::OpaqueType::get(ctx, std::nullopt);
+    if (auto moOpaqueType = dyn_cast<MO::OpaqueType>(oldOutTy))
+      mgpResultTy =
+          MGP::OpaqueType::get(ctx, moOpaqueType.getSymbol(), std::nullopt);
     inPlaceMGPOutputsTypes[idx] = mgpResultTy;
   }
 

@@ -7,12 +7,12 @@
 // CHECK-LABEL: mgp.model @mip_basic
 // CHECK: mogg.call "mip.constant.index"
 // CHECK: mogg.call "mip.print.index"
-mgp.model @mip_basic : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @mip_basic : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
   %lhs = mip.constant.index 42
   %ch1 = mip.print.index %lhs, %ch0
@@ -21,12 +21,12 @@ mgp.model @mip_basic : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.o
 
 // CHECK-LABEL: mgp.model @mip_add
 // CHECK: mogg.call "mip.add"
-mgp.model @mip_add : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @mip_add : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
   %lhs = mip.constant.index 42
   %rhs = mip.constant.index -20
@@ -37,12 +37,12 @@ mgp.model @mip_add : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 
 // CHECK-LABEL: mgp.model @mip_div
 // CHECK: mogg.call "mip.div"
-mgp.model @mip_div : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @mip_div : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
   %lhs = mip.constant.index 42
   %rhs = mip.constant.index -2
@@ -53,12 +53,12 @@ mgp.model @mip_div : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 
 // CHECK-LABEL: mgp.model @mip_div_ceil
 // CHECK: mogg.call "mip.div.ceil"
-mgp.model @mip_div_ceil : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @mip_div_ceil : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
   %lhs = mip.constant.index 42
   %rhs = mip.constant.index -4
@@ -69,12 +69,12 @@ mgp.model @mip_div_ceil : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mg
 
 // CHECK-LABEL: mgp.model @mip_cmp_eq
 // CHECK: mogg.call "mip.cmp.eq"
-mgp.model @mip_cmp_eq : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @mip_cmp_eq : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
   %lhs = mip.constant.index 4
   %rhs = mip.constant.index 4
@@ -86,12 +86,12 @@ mgp.model @mip_cmp_eq : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.
 
 // CHECK-LABEL: mgp.model @mip_cmp_lt
 // CHECK: mogg.call "mip.cmp.lt"
-mgp.model @mip_cmp_lt : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @mip_cmp_lt : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
   %lhs = mip.constant.index 4
   %rhs = mip.constant.index 4
@@ -104,12 +104,12 @@ mgp.model @mip_cmp_lt : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.
 
 // CHECK-LABEL: mgp.model @mip_cmp_le
 // CHECK: mogg.call "mip.cmp.le"
-mgp.model @mip_cmp_le : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @mip_cmp_le : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
   %lhs = mip.constant.index 5
   %rhs = mip.constant.index 4
@@ -122,12 +122,12 @@ mgp.model @mip_cmp_le : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.
 
 // CHECK-LABEL: mgp.model @mip_max
 // CHECK: mogg.call "mip.max"
-mgp.model @mip_max : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @mip_max : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
   %lhs = mip.constant.index 42
   %rhs = mip.constant.index -2
@@ -138,12 +138,13 @@ mgp.model @mip_max : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 
 // CHECK-LABEL: mgp.model @mip_min
 // CHECK: mogg.call "mip.min"
-mgp.model @mip_min : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @mip_min : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
   %lhs = mip.constant.index 42
   %rhs = mip.constant.index -2
@@ -154,12 +155,13 @@ mgp.model @mip_min : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 
 // CHECK-LABEL: mgp.model @mip_mod
 // CHECK: mogg.call "mip.mod"
-mgp.model @mip_mod : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @mip_mod : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
   %lhs = mip.constant.index 42
   %rhs = mip.constant.index 4
@@ -170,12 +172,13 @@ mgp.model @mip_mod : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 
 // CHECK-LABEL: mgp.model @mip_mul
 // CHECK: mogg.call "mip.mul"
-mgp.model @mip_mul : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @mip_mul : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
   %lhs = mip.constant.index 42
   %rhs = mip.constant.index 4
@@ -186,12 +189,13 @@ mgp.model @mip_mul : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 
 // CHECK-LABEL: mgp.model @mip_nary_mul
 // CHECK: mogg.call "mip.nary.mul"
-mgp.model @mip_nary_mul : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @mip_nary_mul : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
   %a = mip.constant.index 3
   %b = mip.constant.index -5
@@ -203,12 +207,13 @@ mgp.model @mip_nary_mul : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mg
 
 // CHECK-LABEL: mgp.model @mip_and
 // CHECK: mogg.call "mip.bool.and"
-mgp.model @mip_and : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @mip_and : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
     %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, i1) {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, i1) {
   %ch0 = grt.chain.create ()
   %zero = mip.constant.index 0
   %one = mip.constant.index 1
@@ -220,12 +225,13 @@ mgp.model @mip_and : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 
 // CHECK-LABEL: mgp.model @mip_or
 // CHECK: mogg.call "mip.bool.or"
-mgp.model @mip_or : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @mip_or : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
     %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, i1) {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, i1) {
   %ch0 = grt.chain.create ()
   %zero = mip.constant.index 0
   %one = mip.constant.index 1
@@ -237,12 +243,13 @@ mgp.model @mip_or : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaq
 
 // CHECK-LABEL: mgp.model @mip_xor
 // CHECK: mogg.call "mip.bool.xor"
-mgp.model @mip_xor : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @mip_xor : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
     %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, i1) {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, i1) {
   %ch0 = grt.chain.create ()
   %zero = mip.constant.index 0
   %one = mip.constant.index 1
@@ -254,12 +261,13 @@ mgp.model @mip_xor : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 
 // CHECK-LABEL: mgp.model @mip_select
 // CHECK: mogg.call "mip.select"
-mgp.model @mip_select : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @mip_select : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
     %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain) {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain) {
   %ch0 = grt.chain.create ()
   %zero = mip.constant.index 0
   %one = mip.constant.index 1

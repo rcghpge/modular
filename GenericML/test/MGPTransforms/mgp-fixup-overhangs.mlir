@@ -1,12 +1,12 @@
 // RUN: mo-opt %s --allow-unregistered-dialect --fixup-overhangs --split-input-file --verify-diagnostics | FileCheck %s
 
 // This test case is based on mgp-check-overhangs-errors.mlir
-mgp.model @if : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @if : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   %2 = grt.chain.create (%0, %1 : !mgp.context)
-  mef.output %2, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<32xui8>) {
+  mef.output %2, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<32xui8>) {
   %0 = mgp.buffer.constant %arg0, %arg1[1], #M.aligned_bytes<"0x01", align 8> : !M.array<1xui8>
   %ch0 = mgp.chain.host_to_device %arg0, %arg1[1]
   %2 = mgp.buffer.alloc.static %ch0, %arg1[1] : !mgp.buffer<32>

@@ -30,12 +30,12 @@
 // CHECK:   %[[SSA91]] |-> {%[[SSA90]], %[[arg45]][2], %[[SSA93]][2]}
 // CHECK: maybeSameAs end
 
-mgp.model @repeat1 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @repeat1 : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<f32>) {
   %c = "some.op"(%ch0) : (!mef.chain) -> si32
   %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
   %z = grt.repeat.i32 %c (%x : !mgp.tensor<f32>) {
@@ -72,12 +72,12 @@ mgp.model @repeat1 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 // CHECK:   %[[SSA83]] |-> {%[[SSA82]], %[[arg42]][2]}
 // CHECK: maybeSameAs end
 
-mgp.model @repeat2 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @repeat2 : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<f32>) {
   %c = "some.op"(%ch0) : (!mef.chain) -> si32
   %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
   %z = grt.repeat.i32 %c (%x : !mgp.tensor<f32>) {
@@ -116,12 +116,12 @@ mgp.model @repeat2 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 // CHECK:   %[[SSA74]]#1 |-> {%[[SSA73]], %[[arg39]][2]}
 // CHECK: maybeSameAs end
 
-mgp.model @repeat3 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @repeat3 : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<f32>) {
   %c = "some.op"(%ch0) : (!mef.chain) -> si32
   %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
   %z, %dummy = grt.repeat.i32 %c (%x as %x0: !mgp.tensor<f32>, %x as %x1: !mgp.tensor<f32>)  {
@@ -200,12 +200,12 @@ mgp.model @repeat3 : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opa
 // CHECK:   %[[SSA65]][2] |-> {%[[SSA63]]}
 // CHECK: runsLater end
 
-mgp.model @simple : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @simple : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<f32>) {
   %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
   %y = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
   %ch1, %i, %j, %k = grt.while (%ch0: !mef.chain, %x: !mgp.tensor<f32>, %y: !mgp.tensor<f32>, %y as %z: !mgp.tensor<f32>) {
@@ -261,12 +261,12 @@ mgp.model @simple : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaq
 // CHECK:   %[[SSA53]]#1 |-> {%[[SSA51]], %[[SSA52]], %[[arg24]][2], %[[arg25]][2], %[[arg22]][3], %[[arg23]][3]}
 // CHECK: maybeSameAs end
 
-mgp.model @crissCross : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @crissCross : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<f32>) {
   %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
   %y = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
   %i, %j = grt.while (%x: !mgp.tensor<f32>, %y: !mgp.tensor<f32>) {
@@ -325,12 +325,12 @@ mgp.model @crissCross : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.
 // CHECK:   %[[SSA44]] |-> {%[[arg17]][2], %[[arg18]][2], %[[arg19]][2], %[[arg14]][3], %[[arg15]][3], %[[arg16]][3], %[[SSA45]][3], %[[SSA43]]#0, %[[SSA43]]#1, %[[SSA43]]#2}
 // CHECK: impliesReady end
 
-mgp.model @shift : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @shift : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<f32>) {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<f32>) {
   %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
   %i, %j, %k = grt.while (%x: !mgp.tensor<f32>, %x as %y: !mgp.tensor<f32>, %x as %z: !mgp.tensor<f32>) {
     %c = "some.op"() : () -> i1
@@ -427,12 +427,12 @@ mgp.model @shift : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaqu
 // CHECK:   %[[SSA21]][3] |-> {%[[SSA38]][0], %[[SSA5]], %[[SSA6]], %[[SSA9]]}
 // CHECK: exclusive end
 
-mgp.model @while : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @while : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque) -> (!mef.chain, !mgp.tensor<32xui8>) {
+  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<32xui8>) {
   %ch1 = mgp.chain.host_to_device %ch0, %ctx[1]
   %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x00000004", align 8> : !M.array<4xui8>
   %1 = mgp.tensor_spec.create  : !mgp.tensor_spec<ui32>

@@ -26,6 +26,8 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "llvm/Support/Base64.h"
+#include <mutex>
+#include <string>
 
 using namespace M;
 using namespace MGP;
@@ -1037,21 +1039,31 @@ bool GuardOp::mayAlias(size_t operandIndex, size_t resultIndex) { return true; }
 //===----------------------------------------------------------------------===//
 
 /// Returns the implicit signature of the 'init' entry point.
-static FunctionType implicitInitSignature(Builder &builder, size_t devices) {
+static FunctionType implicitInitSignature(Builder &builder,
+                                          ArrayRef<DeviceRef> devices) {
   SmallVector<Type> outputs = {builder.getType<MEF::ChainType>(),
                                builder.getType<MGP::ContextType>()};
-  for (size_t i = 0; i < devices; i++)
-    outputs.push_back(OpaqueType::get(builder.getContext(), {}));
+  for (auto device : devices)
+    outputs.push_back(OpaqueType::get(
+        builder.getContext(),
+        StringAttr::get(builder.getContext(),
+                        device.label + std::to_string(device.id) + "_context"),
+        {}));
   return builder.getFunctionType({}, outputs);
 }
 
 /// Returns the implicit signature of the 'execute' entry point, before
 /// any explicit inputs and results have been included.
-static FunctionType implicitExecuteSignature(Builder &builder, size_t devices) {
+static FunctionType implicitExecuteSignature(Builder &builder,
+                                             ArrayRef<DeviceRef> devices) {
   SmallVector<Type> inputs = {builder.getType<MEF::ChainType>(),
                               builder.getType<MGP::ContextType>()};
-  for (size_t i = 0; i < devices; i++)
-    inputs.push_back(OpaqueType::get(builder.getContext(), {}));
+  for (auto device : devices)
+    inputs.push_back(OpaqueType::get(
+        builder.getContext(),
+        StringAttr::get(builder.getContext(),
+                        device.label + std::to_string(device.id) + "_context"),
+        {}));
   return builder.getFunctionType(inputs, {builder.getType<MEF::ChainType>()});
 }
 
@@ -1112,7 +1124,7 @@ static void printInitRegion(OpAsmPrinter &p, const ModelOp &op,
 static ParseResult parseExecuteRegion(OpAsmParser &p,
                                       TypeAttr &inputOutputTypes,
                                       Region &executeRegion,
-                                      ArrayAttr &devices) {
+                                      ArrayAttr &deviceAttrs) {
   llvm::SMLoc argLoc;
   SmallVector<OpAsmParser::Argument> args;
   SmallVector<Type> outputTypes;
@@ -1125,8 +1137,14 @@ static ParseResult parseExecuteRegion(OpAsmParser &p,
 
   // Check the execute region's actual signature, and save its implicit
   // signature into inputOutputTypes.
+  SmallVector<DeviceRef> devices;
+  for (auto attr : deviceAttrs) {
+    if (auto deviceAttr = dyn_cast<DeviceRefAttr>(attr))
+      devices.emplace_back(
+          DeviceRef(deviceAttr.getLabel().str(), deviceAttr.getId()));
+  }
   FunctionType implicitExecSig =
-      implicitExecuteSignature(p.getBuilder(), devices.size());
+      implicitExecuteSignature(p.getBuilder(), devices);
   SmallVector<Type> inputTypes(executeRegion.getArgumentTypes());
   if (!checkAndRemovePrefix(implicitExecSig.getInputs(), inputTypes))
     return p.emitError(argLoc)
@@ -1173,19 +1191,23 @@ void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
         TypeAttr::get(builder.getFunctionType(inputTypes, outputTypes)), name,
         extraAttrsDict);
 
-  assert(implicitInitSignature(builder, devices.size()).getInputs().empty());
+  assert(implicitInitSignature(builder, devices).getInputs().empty());
   Region *initRegion = state.regions[0].get();
   initRegion->emplaceBlock();
   for (auto dev : devices) {
-    initRegion->addArgument(OpaqueType::get(builder.getContext(), {}),
-                            state.location);
+    initRegion->addArgument(
+        OpaqueType::get(
+            builder.getContext(),
+            StringAttr::get(builder.getContext(),
+                            dev.label + std::to_string(dev.id) + "_context"),
+            {}),
+        state.location);
   }
 
   // The 'execute' entry point has both implicit and explicit arguments.
   Region *executeRegion = state.regions[1].get();
   executeRegion->emplaceBlock();
-  for (auto type :
-       implicitExecuteSignature(builder, devices.size()).getInputs())
+  for (auto type : implicitExecuteSignature(builder, devices).getInputs())
     executeRegion->addArgument(type, state.location);
   for (auto [type, loc] : llvm::zip(inputTypes, inputArgLocs))
     executeRegion->addArgument(type, loc);
@@ -1195,12 +1217,17 @@ void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
 LogicalResult ModelOp::verifyRegions() {
   OpBuilder builder(getContext());
 
+  SmallVector<DeviceRef> devices;
+  for (auto attr : getDevices()) {
+    if (auto deviceAttr = dyn_cast<DeviceRefAttr>(attr))
+      devices.emplace_back(
+          DeviceRef(deviceAttr.getLabel().str(), deviceAttr.getId()));
+  }
   // The type of the init region is
   //  () -> (!mef.chain, !mgp.context)
   Block *initBlock = getInitBlock();
   if (auto output = dyn_cast<MEF::OutputOp>(initBlock->getTerminator())) {
-    FunctionType implicitInitSig =
-        implicitInitSignature(builder, getDevices().size());
+    FunctionType implicitInitSig = implicitInitSignature(builder, devices);
     assert(implicitInitSig.getInputs().empty());
     if (initBlock->getArgumentTypes().size() != getDevices().size()) {
       return emitOpError() << "Expected the number of arguments to the 'init' "
@@ -1226,8 +1253,7 @@ LogicalResult ModelOp::verifyRegions() {
   //   (arg_1, ... arg_n) -> (res_1, ... res_m)
   Block *execBlock = getExecuteBlock();
   if (auto output = dyn_cast<MEF::OutputOp>(execBlock->getTerminator())) {
-    FunctionType implicitExecSig =
-        implicitExecuteSignature(builder, getDevices().size());
+    FunctionType implicitExecSig = implicitExecuteSignature(builder, devices);
     ArrayRef<Type> modelArgTypes = getInputOutputTypes().getInputs();
     SmallVector<Type> expectedArgTypes(implicitExecSig.getInputs());
     expectedArgTypes.append(modelArgTypes.begin(), modelArgTypes.end());

@@ -1,11 +1,11 @@
 // RUN: mo-opt %s --remove-redundant-operands | FileCheck %s
 
-mgp.model @remove_redundant_operands : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque) {
+mgp.model @remove_redundant_operands : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
   %out_chain = mgp.runtime.create %0, %1[1] device <"cpu", 0>
-  mef.output %out_chain, %1, %arg0 : !mef.chain, !mgp.context, !mgp.opaque
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque) -> !mef.chain {
+  mef.output %out_chain, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %0 = grt.chain.create ()
   %lhs = mip.constant.index 42
   %rhs = mip.constant.index -20

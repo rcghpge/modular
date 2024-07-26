@@ -621,7 +621,7 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
     ```mlir
     // At the top-level
     mgp.model @example_model : tfl { attr="value" }
-      init (%cpu: !mgp.opaque) {
+      init (%cpu: !mgp.opaque<"cpu0_context"><>) {
         %ch = mef.chain.new
         %ctx = mgp.context.create 0
         mef.output %ch, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque
