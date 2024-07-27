@@ -1,3 +1,4 @@
+// UNSUPPORTED: asan
 // RUN: mo-opt --split-input-file --constant-fold %s | FileCheck %s
 
 // COM: Examine dumped MO constant subgraph before execution

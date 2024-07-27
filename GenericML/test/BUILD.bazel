@@ -8,14 +8,6 @@ lit_tests(
             "**/*.yaml",
         ],
         exclude = [
-            # Failing.
-            "GraphCompiler/MODialect/constant-fold-ops.mlir",
-            "GraphCompiler/MODialect/Transforms/constant-fold-large-const.mlir",
-            "GraphCompiler/MODialect/Transforms/constant-fold.mlir",
-            "GraphCompiler/MODialect/Transforms/support-conversions-activations.mlir",
-            "GraphCompiler/MOQDialect/transforms/legalize-moq-operators-to-mo-misc.mlir",
-
-            # Data not tests
             "GraphCompiler/Experimental/MHACoverage/mha-fusion-coverage-models.yaml",
         ],
     ),
@@ -29,12 +21,14 @@ lit_tests(
         "%dummy_kernels": "$(rlocationpath //Kernels/mojo/Mogg:MOGGExperimentalDummyKernels.lib.mlirbc)",
     },
     data = [
+        "//KGEN:CompilerRT",
         "//Kernels/mojo/Mogg:MOGGExperimental.lib.mlirbc",
         "//Kernels/mojo/Mogg:MOGGExperimentalDummyKernels.lib.mlirbc",
         "//Kernels/mojo/Mogg:MOGGTestOverrideExtra.lib.mlirbc",
         "//Kernels/mojo/Mogg:MOGGTestOverrideFail.lib.mlirbc",
         "//Kernels/mojo/Mogg:MOGGTestOverrideSucc.lib.mlirbc",
         "//Kernels/mojo/Mogg:MOGGTests.lib.mlirbc",
+        "@llvm-project//compiler-rt:orc_rt",
     ],
     requires_gpu = False,
     tags = ["gpu"],
