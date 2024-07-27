@@ -1,0 +1,16 @@
+load("//bazel:api.bzl", "modular_cc_binary")
+
+modular_cc_binary(
+    name = "modular-lsp-server",
+    srcs = glob(["*.cpp"]),
+    deps = [
+        "//Cache",
+        "//Faux:FauxDialect",
+        "//GenericML:MODialect",
+        "//GenericML:MOGGDialect",
+        "//GenericML:MOQDialect",
+        "//GenericML:RMODialect",
+        "//KGEN:ToolCommon",
+        "@llvm-project//mlir:MlirLspServerLib",
+    ],
+)
