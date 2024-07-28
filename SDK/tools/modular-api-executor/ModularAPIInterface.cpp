@@ -150,11 +150,23 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
     return setTorchInputSpecsOr.takeError();
   setTorchInputSpecs = setTorchInputSpecsOr.takeValue();
 
-  auto setTorchLibrariesOr =
-      fallibleGetSymbol(torchLib, "M_setTorchLibraries", setTorchLibraries);
-  if (setTorchLibrariesOr.isError())
-    return setTorchLibrariesOr.takeError();
-  setTorchLibraries = setTorchLibrariesOr.takeValue();
+  auto setTorchLibraryPathOr =
+      fallibleGetSymbol(torchLib, "M_setTorchLibraryPath", setTorchLibraryPath);
+  if (setTorchLibraryPathOr.isError())
+    return setTorchLibraryPathOr.takeError();
+  setTorchLibraryPath = setTorchLibraryPathOr.takeValue();
+
+  auto setTorchMetadataLibraryPathOr = fallibleGetSymbol(
+      torchLib, "M_setTorchMetadataLibraryPath", setTorchMetadataLibraryPath);
+  if (setTorchMetadataLibraryPathOr.isError())
+    return setTorchMetadataLibraryPathOr.takeError();
+  setTorchMetadataLibraryPath = setTorchMetadataLibraryPathOr.takeValue();
+
+  auto setTorchLibraryPtrOr = fallibleGetSymbol(
+      torchLib, "M_setTorchMetadataLibraryPtr", setTorchMetadataLibraryPtr);
+  if (setTorchLibraryPathOr.isError())
+    return setTorchLibraryPathOr.takeError();
+  setTorchLibraryPath = setTorchLibraryPathOr.takeValue();
 
   GET_SYMBOL(compileModel, M_compileModel);
   GET_SYMBOL(waitForCompilation, M_waitForCompilation);

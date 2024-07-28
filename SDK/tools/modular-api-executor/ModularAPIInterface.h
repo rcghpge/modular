@@ -105,7 +105,10 @@ public:
   decltype(&M_enableMemoryPlanning) enableMemoryPlanning = nullptr;
   decltype(&M_newTorchInputSpec) newTorchInputSpec = nullptr;
   decltype(&M_setTorchInputSpecs) setTorchInputSpecs = nullptr;
-  decltype(&M_setTorchLibraries) setTorchLibraries = nullptr;
+  decltype(&M_setTorchLibraryPath) setTorchLibraryPath = nullptr;
+  decltype(&M_setTorchMetadataLibraryPath) setTorchMetadataLibraryPath =
+      nullptr;
+  decltype(&M_setTorchMetadataLibraryPtr) setTorchMetadataLibraryPtr = nullptr;
   decltype(&M_freeTorchInputSpec) freeTorchInputSpec = nullptr;
 };
 } // namespace M

@@ -212,7 +212,7 @@ private:
       llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
 
   M::cl::MListOpt<std::string, llvm::SmallVector<std::string>> extraTorchLibs{
-      "torch-library",
+      "torch-library-paths",
       cl::desc("Path to a custom library built for PyTorch "
                "(for example a custom operator library)."),
       llvm::cl::location(options.extraTorchLibs),
@@ -799,12 +799,24 @@ int main(int argc, char **argv) {
     api.setTorchInputSpecs(configPtr, specPointers.data(), specPointers.size());
   }
   if (!clOptions.extraTorchLibs.empty()) {
-    size_t size = clOptions.extraTorchLibs.size();
-    auto array = std::make_unique<char *[]>(size);
-    for (size_t i = 0; i < size; ++i) {
-      array[i] = const_cast<char *>(clOptions.extraTorchLibs[i].c_str());
+    for (std::string &extraTorchLib : clOptions.extraTorchLibs) {
+      std::filesystem::path path(extraTorchLib);
+      if (!path.empty() && path.has_extension() &&
+          (path.filename().string().find(".so.") != std::string::npos ||
+           path.extension() == ".so" || path.extension() == ".dylib" ||
+           path.extension() == ".dll")) {
+        // PyTorch custom ops library.
+        api.setTorchLibraryPath(configPtr, extraTorchLib.c_str());
+      } else if (!path.empty() && path.has_extension() &&
+                 (path.extension() == ".pt" ||
+                  path.extension() == ".torchscript")) {
+        // PyTorch metadata library.
+        api.setTorchMetadataLibraryPath(configPtr, extraTorchLib.c_str());
+      } else {
+        llvm::errs() << "Error: Unsupported torch library '" << path << "'\n";
+        exit(EXIT_FAILURE);
+      }
     }
-    api.setTorchLibraries(configPtr, array.get(), size);
   }
   CompiledModelPtr compiledModel{
       api.compileModel(context.get(), &configPtr, status.get()),
