@@ -3165,6 +3165,55 @@ LogicalResult Shape::ToTensorOp::canonicalize(Shape::ToTensorOp op,
 }
 
 //===----------------------------------------------------------------------===//
+// MO_MulOp
+//===----------------------------------------------------------------------===//
+
+bool isOne(Value val) {
+  Operation *definingOp = val.getDefiningOp();
+  if (!definingOp)
+    return false;
+
+  // Look through views.
+  if (isa<RebindOp, Static::BroadcastToOp, SliceOp, TransposeOp>(definingOp))
+    return isOne(definingOp->getOperand(0));
+
+  if (auto asCst = dyn_cast<ConstantOp>(definingOp)) {
+    TensorValue out = asCst.getResult();
+    size_t rank = asCst.getType().getRank();
+    Type elemTy = out.getType().getElementType();
+    if (elemTy.isInteger(1)) {
+      if (auto maybeBlob = tryGetConstantOfRank<bool>(out, rank)) {
+        return llvm::all_of(maybeBlob.value(), [](bool b) { return b; });
+      }
+    } else if (elemTy.isInteger()) {
+      if (auto maybeBlob = tryGetConstantOfRank<int64_t>(out, rank)) {
+        return llvm::all_of(maybeBlob.value(),
+                            [](int64_t v) { return v == 1; });
+      }
+    } else if (elemTy.isIntOrFloat()) {
+      if (auto maybeBlob = tryGetConstantOfRank<float>(out, rank)) {
+        return llvm::all_of(maybeBlob.value(),
+                            [](float v) { return v == 1.0f; });
+      }
+    }
+  }
+
+  return false;
+}
+
+LogicalResult MulOp::canonicalize(MulOp op, PatternRewriter &rewriter) {
+  if (isOne(op.getInputX())) {
+    rewriter.replaceOp(op, op.getInputY());
+    return success();
+  } else if (isOne(op.getInputY())) {
+    rewriter.replaceOp(op, op.getInputX());
+    return success();
+  }
+
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
 // MO_LayoutTransformOp
 //===----------------------------------------------------------------------===//
 

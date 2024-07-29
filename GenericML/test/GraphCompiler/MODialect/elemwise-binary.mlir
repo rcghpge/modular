@@ -104,3 +104,52 @@ mo.graph @mod(%arg0: !mo.tensor<[2, 3], si32>, %arg1: !mo.tensor<[2, 3], si32>) 
   %0 = mo.mod(%arg0, %arg1) : !mo.tensor<[2, 3], si32>
   mo.output %0 : !mo.tensor<[2, 3], si32>
 }
+
+// CHECK-LABEL: mo.graph @mul_by_one_fold<N, K, L>
+// CHECK: (%{{.*}}: !mo.tensor<[N, N], bool>, %[[ARG1:.*]]: !mo.tensor<[L, L], bool>,
+// CHECK-NEXT: mo.output %[[ARG1]], %[[ARG1]]
+
+mo.graph @mul_by_one_fold<N, K, L>(%arg0: !mo.tensor<[N, N], bool>, %arg1: !mo.tensor<[L, L], bool>, %arg2: !mo.tensor<[2], si64>) -> (!mo.tensor<[L, L], bool>, !mo.tensor<[L, L], bool>) {
+  %0 = mo.constant {value = #M.dense_array<true> : tensor<i1>} : !mo.tensor<[], bool>
+  %1 = mo.static.broadcast_to(%0) : !mo.tensor<[], bool> -> !mo.tensor<[N, N], bool>
+  %2 = mo.slice(%1, %arg2, %arg2, %arg2) : (!mo.tensor<[N, N], bool>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[K, K], bool>
+  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %3 = mo.transpose(%2, %perm) : (!mo.tensor<[K, K], bool>, !mo.tensor<[2], si64>) -> !mo.tensor<[K, K], bool>
+  %4 = mo.rebind(%3) : !mo.tensor<[K, K], bool> -> !mo.tensor<[L, L], bool>
+  %5 = mo.mul(%4, %arg1) : !mo.tensor<[L, L], bool>
+  %6 = mo.mul(%arg1, %4) : !mo.tensor<[L, L], bool>
+  mo.output %5, %6 : !mo.tensor<[L, L], bool>, !mo.tensor<[L, L], bool>
+}
+
+
+// CHECK-LABEL: mo.graph @mul_by_one_foldf32<N, K, L>
+// CHECK: (%{{.*}}: !mo.tensor<[N, N], f32>, %[[ARG1:.*]]: !mo.tensor<[L, L], f32>,
+// CHECK-NEXT: mo.output %[[ARG1]], %[[ARG1]]
+
+mo.graph @mul_by_one_foldf32<N, K, L>(%arg0: !mo.tensor<[N, N], f32>, %arg1: !mo.tensor<[L, L], f32>, %arg2: !mo.tensor<[2], si64>) -> (!mo.tensor<[L, L], f32>, !mo.tensor<[L, L], f32>) {
+  %0 = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
+  %1 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32> -> !mo.tensor<[N, N], f32>
+  %2 = mo.slice(%1, %arg2, %arg2, %arg2) : (!mo.tensor<[N, N], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[K, K], f32>
+  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %3 = mo.transpose(%2, %perm) : (!mo.tensor<[K, K], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[K, K], f32>
+  %4 = mo.rebind(%3) : !mo.tensor<[K, K], f32> -> !mo.tensor<[L, L], f32>
+  %5 = mo.mul(%4, %arg1) : !mo.tensor<[L, L], f32>
+  %6 = mo.mul(%arg1, %4) : !mo.tensor<[L, L], f32>
+  mo.output %5, %6 : !mo.tensor<[L, L], f32>, !mo.tensor<[L, L], f32>
+}
+
+// CHECK-LABEL: mo.graph @mul_by_one_foldsi64<N, K, L>
+// CHECK: (%{{.*}}: !mo.tensor<[N, N], si64>, %[[ARG1:.*]]: !mo.tensor<[L, L], si64>,
+// CHECK-NEXT: mo.output %[[ARG1]], %[[ARG1]]
+
+mo.graph @mul_by_one_foldsi64<N, K, L>(%arg0: !mo.tensor<[N, N], si64>, %arg1: !mo.tensor<[L, L], si64>, %arg2: !mo.tensor<[2], si64>) -> (!mo.tensor<[L, L], si64>, !mo.tensor<[L, L], si64>) {
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %1 = mo.static.broadcast_to(%0) : !mo.tensor<[], si64> -> !mo.tensor<[N, N], si64>
+  %2 = mo.slice(%1, %arg2, %arg2, %arg2) : (!mo.tensor<[N, N], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[K, K], si64>
+  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %3 = mo.transpose(%2, %perm) : (!mo.tensor<[K, K], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[K, K], si64>
+  %4 = mo.rebind(%3) : !mo.tensor<[K, K], si64> -> !mo.tensor<[L, L], si64>
+  %5 = mo.mul(%4, %arg1) : !mo.tensor<[L, L], si64>
+  %6 = mo.mul(%arg1, %4) : !mo.tensor<[L, L], si64>
+  mo.output %5, %6 : !mo.tensor<[L, L], si64>, !mo.tensor<[L, L], si64>
+}

@@ -794,6 +794,8 @@ def MO_MulOp : MO_ElementWiseBinaryMonoTypeOp<"mul", [
       %res = mo.mul(%lhs, %rhs) : !mo.tensor<[2, 3], f32>
     ```
   }];
+
+  let hasCanonicalizeMethod = 1;
 }
 
 def MO_NegativeOp : MO_ElementWiseUnaryMonoTypeOp<"negative", [
