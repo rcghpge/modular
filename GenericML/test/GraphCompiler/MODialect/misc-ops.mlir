@@ -633,6 +633,26 @@ mo.graph @slice_dyn_rank(%input: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], 
 }
 
 //===----------------------------------------------------------------------===//
+// SliceDimOp
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: mo.graph @slice_dim
+// CHECK-NEXT: %[[ONE:.*]] = mo.constant
+// CHECK-NEXT: %[[NEG_ONE:.*]] = mo.constant
+// CHECK-NEXT: %[[RES:.*]] = mo.slice_dim[0 : i64] (%{{.*}}, %[[ONE]], %[[NEG_ONE]], %[[ONE]])
+// CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[8, 10], f32>
+
+mo.graph @slice_dim(%input: !mo.tensor<[10, 10], f32>) -> !mo.tensor<[8, 10], f32> {
+  %one = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %neg_one = mo.constant {value = #M.dense_array<-1> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %res = mo.slice_dim[0 : i64](%input, %one, %neg_one, %one) : (
+    !mo.tensor<[10, 10], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si32>, !mo.tensor<[], si64>
+  ) -> !mo.tensor<[8, 10], f32>
+  mo.output %res : !mo.tensor<[8, 10], f32>
+}
+
+
+//===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
 

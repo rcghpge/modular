@@ -2902,6 +2902,18 @@ DeviceRefAttr SliceOp::getOperandDevice(size_t index) {
 }
 
 //===----------------------------------------------------------------------===//
+// SliceDimOp
+//===----------------------------------------------------------------------===//
+
+DeviceRefAttr SliceDimOp::getOperandDevice(size_t index) {
+  return (index == getStartMutable().getOperandNumber() ||
+          index == getStopMutable().getOperandNumber() ||
+          index == getStepMutable().getOperandNumber())
+             ? MO::getHostDevice(getOperation())
+             : nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
 
