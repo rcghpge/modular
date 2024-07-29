@@ -6,13 +6,13 @@ load(
     "modular_pybind_library",
     "td_library",
 )
-load("//bazel:config.bzl", "MOJO_CONFIG_SECTION_LOCAL_DEFINES")
+load("//bazel:config.bzl", "CONFIG_SECTION_LOCAL_DEFINES")
 
 modular_pybind_library(
     name = "ModularFrameworkPython",
     srcs = ["//SDK/lib/EngineAPI/python:cpp_srcs"],
     hdrs = glob(["include/SDK/EngineAPI/**/*.h"]),
-    local_defines = MOJO_CONFIG_SECTION_LOCAL_DEFINES,
+    local_defines = CONFIG_SECTION_LOCAL_DEFINES,
     pybind_deps = [
         "//:MLIRBindingsPythonHeaders",
     ],

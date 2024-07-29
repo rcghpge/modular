@@ -2,7 +2,7 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_filegroup", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "rpath_shim", "td_library")
-load("//bazel:config.bzl", "KERNELS_BUILD_TYPE_LOCAL_DEFINES")
+load("//bazel:config.bzl", "CONFIG_SECTION_LOCAL_DEFINES", "KERNELS_BUILD_TYPE_LOCAL_DEFINES")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -118,7 +118,7 @@ modular_cc_library(
     name = "CompileDriver",
     srcs = glob(["lib/Driver/CompileDriver/*.cpp"]),
     hdrs = glob(["include/GenericML/Driver/*.h"]),
-    local_defines = ["MAX_CONFIG_SECTION=max"],
+    local_defines = CONFIG_SECTION_LOCAL_DEFINES,
     deps = [
         ":CommonDriver",
         ":Support",
