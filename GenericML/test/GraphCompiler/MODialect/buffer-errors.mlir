@@ -56,13 +56,12 @@ mo.graph @mutable_store(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>, %tensor
 
 // -----
 
-mo.graph @mutable_load(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>) {
-  // expected-error@+1 {{Results from mo.mutable.load are only allowed to have at most one use -- found 1 for result #1}}
-  %outChain, %tensor = mo.mutable.load(%ch, %buf) :
-    (!mo.chain, !mo.buffer<[10, 20], f32>) ->
-    (!mo.chain, !mo.tensor<[10, 20], f32>)
+mo.graph @mutable_store(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>, %tensor: !mo.tensor<[10, 20], f32>) {
+  // expected-error@+1 {{The output chain from mo.mutable.store can be used at most once found: 2 uses}}
+  %outChain = mo.mutable.store(%ch, %buf, %tensor) :
+    (!mo.chain, !mo.buffer<[10, 20], f32>, !mo.tensor<[10, 20], f32>) -> (!mo.chain)
 
-  mo.add(%tensor, %tensor) : !mo.tensor<[10, 20], f32>
+  %ch0 = mo.chain.create(%outChain, %outChain) : !mo.chain, !mo.chain
 
   mo.output
 }
@@ -70,11 +69,38 @@ mo.graph @mutable_load(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>) {
 // -----
 
 mo.graph @mutable_store(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>, %tensor: !mo.tensor<[10, 20], f32>) {
-  // expected-error@+1 {{The output chain from mo.mutable.store is only allowed to have at most one use -- found: 2}}
+  %ch0 = mo.chain.create(%ch, %ch) : !mo.chain, !mo.chain
+
+  // expected-error@+1 {{mo.mutable.store must have exclusive access to its input chain found: 2 other uses.}}
   %outChain = mo.mutable.store(%ch, %buf, %tensor) :
     (!mo.chain, !mo.buffer<[10, 20], f32>, !mo.tensor<[10, 20], f32>) -> (!mo.chain)
 
+  mo.output
+}
+
+// -----
+
+mo.graph @mutable_load(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>) {
+  // expected-error@+1 {{The output chain from mo.mutable.load can be used at most once found: 2 uses}}
+  %outChain, %tensor = mo.mutable.load(%ch, %buf) :
+    (!mo.chain, !mo.buffer<[10, 20], f32>) ->
+    (!mo.chain, !mo.tensor<[10, 20], f32>)
+
   %ch0 = mo.chain.create(%outChain, %outChain) : !mo.chain, !mo.chain
+
+  mo.output
+}
+
+// -----
+
+mo.graph @mutable_load(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>) {
+  %ch0 = mo.chain.create(%ch, %ch) : !mo.chain, !mo.chain
+
+  // expected-error@+1 {{mo.mutable.load must have exclusive access to its input chain found: 2 other uses.}}
+  %outChain, %tensor = mo.mutable.load(%ch, %buf) :
+    (!mo.chain, !mo.buffer<[10, 20], f32>) ->
+    (!mo.chain, !mo.tensor<[10, 20], f32>)
+
 
   mo.output
 }

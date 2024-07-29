@@ -1022,14 +1022,14 @@ MOGraphLowering::lowerMutableLoad(MO::MutableLoadOp mutableLoadOp) {
 
   auto &outputStorage = *bufOr;
 
-  opLoweringState.createOutputTensor(mutableLoadOp.getOutTensor(), inChain,
-                                     outputStorage.buffer,
-                                     outputStorage.tensorSpec);
-
   auto loweredChain = opLoweringState.bufferTransferDevice(
       inChain, bufferizedInput.buffer, outputStorage.buffer,
       MO::castFromTensorLike(mutableLoadOp.getInBuffer().getType()),
       mutableLoadOp.getOutTensor().getType());
+
+  opLoweringState.createOutputTensor(mutableLoadOp.getOutTensor(), loweredChain,
+                                     outputStorage.buffer,
+                                     outputStorage.tensorSpec);
 
   auto bufferBuilder = opLoweringState.getStorageBufferBuilder(
       MO::castFromTensorLike(mutableLoadOp.getInBuffer().getType()));

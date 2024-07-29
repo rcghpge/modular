@@ -3668,31 +3668,42 @@ LogicalResult CustomOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult MutableLoadOp::verify() {
+  auto inChainUses = llvm::range_size(getInChain().getUses());
 
-  for (auto &&[idx, result] : llvm::enumerate(getResults())) {
-    auto numUses = llvm::range_size(result.getUses());
+  if (inChainUses > 1)
+    return emitError() << llvm::formatv(
+               "mo.mutable.load must have exclusive access to its input chain "
+               "found: {0} other uses.",
+               inChainUses - 1);
 
-    if (numUses > 1) {
-      return emitError() << llvm::formatv(
-                 "Results from {0} are only allowed "
-                 "to have at most one use -- found {1} for result #{1}",
-                 getOperationName(), idx, numUses);
-    }
-  }
+  auto outChainUses = llvm::range_size(getOutChain().getUses());
+
+  if (outChainUses > 1)
+    return emitError() << llvm::formatv(
+               "The output chain from mo.mutable.load can be used at most once "
+               "found: {0} uses",
+               outChainUses);
 
   return success();
 }
 
 LogicalResult MutableStoreOp::verify() {
+  auto inChainUses = llvm::range_size(getInChain().getUses());
 
-  auto numUses = llvm::range_size(getResult().getUses());
-
-  if (numUses > 1) {
+  if (inChainUses > 1)
     return emitError() << llvm::formatv(
-               "The output chain from {0} is only allowed "
-               "to have at most one use -- found: {1}",
-               getOperationName(), numUses);
-  }
+               "mo.mutable.store must have exclusive access to its input chain "
+               "found: {0} other uses.",
+               inChainUses - 1);
+
+  auto outChainUses = llvm::range_size(getOutChain().getUses());
+
+  if (outChainUses > 1)
+    return emitError() << llvm::formatv(
+               "The output chain from mo.mutable.store can be used at most "
+               "once "
+               "found: {0} uses",
+               outChainUses);
 
   return success();
 }
