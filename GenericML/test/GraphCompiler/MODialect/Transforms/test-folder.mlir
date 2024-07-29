@@ -143,6 +143,20 @@ mo.graph @no_fold_slice_parameter<N, M>(%arg0: !mo.tensor<[N, M], f64>,
 // CHECK-NEXT: %[[OUT:.*]] = mo.slice
 // CHECK-NEXT: mo.output %[[OUT]]
 
+
+mo.graph @fold_slice_dim(%arg0: !mo.tensor<[5, 500], f64>,
+    %start: !mo.tensor<[], si64>,
+    %stop: !mo.tensor<[], si64>) -> !mo.tensor<[5, 500], f64> {
+    %step = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+    %2 = mo.slice_dim[0](%arg0, %start, %stop, %step) : (!mo.tensor<[5, 500], f64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[5, 500], f64>    
+    %3 = mo.slice_dim[1](%2, %start, %stop, %step) : (!mo.tensor<[5, 500], f64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[5, 500], f64>
+    mo.output %3 : !mo.tensor<[5, 500], f64>
+}
+// CHECK-LABEL: mo.graph @fold_slice_dim
+// CHECK:(%[[ARG0:.*]]: !mo.tensor<[5, 500
+// CHECK-NEXT: mo.output %[[ARG0]] : !mo.tensor<[5, 500], f64>
+
+
 mo.graph @fold_reduce_add(%arg0 : !mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 10, 1], f32> {
     %axis = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
     %res = mo.reduce.add(%arg0, %axis) : (!mo.tensor<[1, 10, 1], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[1, 10, 1], f32>

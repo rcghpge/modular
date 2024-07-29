@@ -251,6 +251,38 @@ TypedAttr M::MO::tryGetDimAttr(Value val) {
   return builder.getIndexAttr(*maybeConst);
 }
 
+template <typename SliceTy, typename AdaptorTy>
+static OpFoldResult foldSliceHelper(SliceTy slice, AdaptorTy adaptor) {
+  // We must be able to see the steps are all `1` as a condition of folding.
+  auto steps = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getStep());
+  if (!steps)
+    return {};
+
+  TypedValue<TensorType> input = slice.getInput();
+  TensorType inputTy = input.getType();
+
+  // If the input and the output are the same and neither have ? in them then
+  // we can maybe fold.
+  if (slice.getResult().getType() != inputTy || inputTy.hasUnknownShape())
+    return {};
+
+  // If all of the steps are `1` then this is an identity. We need to check
+  // this as you could produce the same shape by walking backwards through the
+  // slice i.e -1. So we must check they are 1 which means the only way to
+  // produce the same shape as input is through start of 0 and end of -1. I.E
+  // an identity.
+  auto stepsData = tryGetConstantBlob<int64_t>(
+      cast<ElementsAttr>(steps), slice.getStep().getType().getDtype());
+  if (!stepsData.has_value())
+    return {};
+
+  for (int64_t step : *stepsData) {
+    if (step != 1)
+      return {};
+  }
+  return input;
+}
+
 /// If `op`'s axis is constant and input rank is known, modify `op`'s `axis` to
 /// be the canonical version, i.e., it's guaranteed to be in [0, rank).
 /// NOTE this should be used as the first canonicalization, so other logic in
@@ -2863,34 +2895,7 @@ LogicalResult SliceOp::verify() {
 }
 
 OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
-  // We must be able to see the steps are all `1` as a condition of folding.
-  auto steps = dyn_cast_or_null<IntArrayElementsAttr>(adaptor.getStep());
-  if (!steps)
-    return {};
-
-  TensorType inputTy = getInput().getType();
-
-  // If the input and the output are the same and neither have ? in them then
-  // we can maybe fold.
-  if (getResult().getType() != inputTy || inputTy.hasUnknownShape())
-    return {};
-
-  // If all of the steps are `1` then this is an identity. We need to check
-  // this as you could produce the same shape by walking backwards through the
-  // slice i.e -1. So we must check they are 1 which means the only way to
-  // produce the same shape as input is through start of 0 and end of -1. I.E
-  // an identity.
-  auto stepsData = tryGetConstantBlob<int64_t>(cast<ElementsAttr>(steps),
-                                               getStep().getType().getDtype());
-  if (!stepsData.has_value())
-    return {};
-
-  for (int64_t step : *stepsData) {
-    if (step != 1)
-      return {};
-  }
-
-  return getInput();
+  return foldSliceHelper(*this, adaptor);
 }
 
 DeviceRefAttr SliceOp::getOperandDevice(size_t index) {
@@ -2911,6 +2916,10 @@ DeviceRefAttr SliceDimOp::getOperandDevice(size_t index) {
           index == getStepMutable().getOperandNumber())
              ? MO::getHostDevice(getOperation())
              : nullptr;
+}
+
+OpFoldResult SliceDimOp::fold(FoldAdaptor adaptor) {
+  return foldSliceHelper(*this, adaptor);
 }
 
 //===----------------------------------------------------------------------===//
