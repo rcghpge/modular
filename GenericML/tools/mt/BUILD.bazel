@@ -37,6 +37,7 @@ rpath_shim(
 run_tool(
     name = "mt-standalone",
     data = [
+        "//KGEN:CompilerRT",
         "@llvm-project//compiler-rt:orc_rt",
     ],
     env = {
