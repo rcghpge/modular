@@ -6,7 +6,8 @@
 
 import sys
 
-from python import Python
+from memory import memcpy
+from python import Python, PythonObject
 
 from max.tensor import Tensor, TensorShape
 from max.engine.tensor import EngineNumpyView
