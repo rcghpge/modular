@@ -3,11 +3,20 @@ load("//bazel:api.bzl", "lit_tests")
 lit_tests(
     name = "test",
     srcs = glob(["**/*.mojo"]),
+    custom_substitutions = {
+        "%add_onnx": "$(rlocationpath models/add.onnx)",
+        "%add_pt": "$(rlocationpath models/add.pt)",
+    },
     data = [
+        "models/add.onnx",
+        "models/add.pt",
         "//GenericML:DeviceDriver",
         "//GenericML:modular-framework-common",
         "//KGEN:CompilerRT",
         "//ModelServing:ServeRTCAPI",
+        "//ONNX/tools/onnx:monnx",
+        "//PyTorch:modular-framework-torch-ext",
+        "//PyTorch/tools/torch:mtorch",
         "@llvm-project//compiler-rt:orc_rt",
     ],
     mojo_deps = [

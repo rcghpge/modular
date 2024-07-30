@@ -285,8 +285,8 @@ fn print_m[TEST_CASE: ModelTestCase]():
 
 def main():
     # test_standalone_server_client[RobertaTorch]()
-    test_standalone_server_client[BasicAddOnnx]()
-    # test_standalone_server_client[BasicAddTorch]()
-    alias m = BasicAddOnnx
+    # test_standalone_server_client[BasicAddOnnx]()
+    test_standalone_server_client[BasicAddTorch]()
+    alias m = BasicAddTorch
     print_m[m]()
     # print(m.get_output_names())
