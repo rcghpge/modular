@@ -298,17 +298,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
-  // If we are jitting then we need to compile the jit kernels as well.
-  MOGG::JitCompileKernelsOptions jitOpts;
-  jitOpts.useSearch = opts.useKgenSearch;
-  jitOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
-  jitOpts.saveTempPrefix = opts.saveTempPrefix;
-  jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
-  jitOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
-  jitOpts.timeMOGGCompile = opts.timeMOGGCompile;
-  jitOpts.skipJitCompileMiddle = opts.skipJitCompileMiddle;
-  pm.addPass(MOGG::createJitCompileKernels(jitOpts));
-
   // Create the options for MoToPrimitives.
   MGP::MOToPrimitivesOptions moToPrimOpts;
   moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
@@ -338,8 +327,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MGP::createAwaitOutputsPass());
   pm.addPass(MGP::createAddDeviceContextProfilingPass());
-  if (!opts.saveTempPrefix.empty())
-    jitOpts.saveTempPrefix = opts.saveTempPrefix + ".region";
+
   MGP::LowerPrimitivesOptions lowerPrimOpts;
   lowerPrimOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
   pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts));
@@ -351,6 +339,19 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   MGP::LowerMOGGABIOptions abiOpts;
   abiOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
   pm.addPass(MGP::createLowerMOGGABI(abiOpts));
+
+  // If we are jitting then we need to compile the jit kernels as well.
+  MOGG::JitCompileKernelsOptions jitOpts;
+  jitOpts.useSearch = opts.useKgenSearch;
+  jitOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
+  jitOpts.saveTempPrefix = opts.saveTempPrefix;
+  jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
+  jitOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  jitOpts.timeMOGGCompile = opts.timeMOGGCompile;
+  jitOpts.skipJitCompileMiddle = opts.skipJitCompileMiddle;
+  if (!opts.saveTempPrefix.empty())
+    jitOpts.saveTempPrefix = opts.saveTempPrefix + ".region";
+
   pm.addPass(MOGG::createJitCompileKernels(jitOpts));
   pm.addPass(MGP::createLowerMOGGRegionCompiles());
   pm.addPass(MGP::createFixupOverhangsPass());
