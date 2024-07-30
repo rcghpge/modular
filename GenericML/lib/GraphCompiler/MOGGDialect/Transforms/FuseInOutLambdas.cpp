@@ -946,7 +946,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     SmallVector<MOGG::KernelOp> kernelOpsToErase;
     for (MOGG::KernelOp kernelToFuseInto : moGraph.getOps<MOGG::KernelOp>()) {
-      DeviceRefAttr beforeDevice = MO::getDeviceOrDefault(kernelToFuseInto);
+      [[maybe_unused]] DeviceRefAttr beforeDevice =
+          MO::getDeviceOrDefault(kernelToFuseInto);
       std::optional<ArrayAttr> outputLambdas =
           kernelToFuseInto.getOutputFusionInterface();
       // Try fuse into the output lambda if we have a fusion interface for that

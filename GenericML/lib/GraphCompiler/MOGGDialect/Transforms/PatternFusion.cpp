@@ -2158,7 +2158,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     // was elided and pretends to add it back in as a dim of size `1`.
     static SmallVector<TypedAttr> getRank4Dims(TensorValue value,
                                                PatternRewriter &rewriter) {
-      size_t rank = value.getType().getRank();
+      [[maybe_unused]] size_t rank = value.getType().getRank();
       ASSERT_STREAM(rank == 3 || rank == 4, << "Support only rank3/4 inputs.");
 
       SmallVector<TypedAttr> answer;

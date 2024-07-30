@@ -494,7 +494,7 @@ MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
   if (failed(loweredOutputStorageOr))
     return failure();
   auto &outputStorage = (*loweredOutputStorageOr)[0];
-  auto bufType =
+  [[maybe_unused]] auto bufType =
       dyn_cast<MGP::DeviceBufferType>(outputStorage.buffer.getType());
   ASSERT_STREAM(bufType && bufType.getDevice().getLabel() == "cpu",
                 << "expecting !mgp.buffer on host but it is on "

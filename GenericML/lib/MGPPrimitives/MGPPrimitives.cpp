@@ -274,7 +274,7 @@ static void mgp_generic_execute(
       return;
     }
 
-    for (auto &result : outResults)
+    for ([[maybe_unused]] auto &result : outResults)
       assert(result.isReady());
 
     std::move(outChain).emplace();
