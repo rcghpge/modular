@@ -6,6 +6,7 @@
 from buffer import NDBuffer
 from max._driver import Tensor
 from max.tensor import TensorShape
+from utils import StaticIntTuple
 
 
 def ndbuffer_view_from_tensor[
