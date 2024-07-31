@@ -400,7 +400,7 @@ executeModel(MLIRContext *ctx, const Model *model,
 
   MutableArrayRef<AnyAsyncValueRef> resultCopy(results.data(), results.size());
 
-  const AnyAsyncValueRef &ch = resultCopy.front();
+  [[maybe_unused]] const AnyAsyncValueRef &ch = resultCopy.front();
   ASSERT_STREAM(ch.isReady() && isa<Chain>(ch),
                 << "first result must be a ready chain");
   resultCopy = resultCopy.drop_front();

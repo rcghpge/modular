@@ -242,7 +242,7 @@ static LogicalResult outputResults(const ExecutableModel *model,
   convertResultsToGenericValues(model, results);
 
   // Check that all results are ready before accessing them.
-  bool allResultsReady =
+  [[maybe_unused]] bool allResultsReady =
       std::all_of(results.begin(), results.end(),
                   [](AnyAsyncValueRef &result) { return result.isReady(); });
   ASSERT_STREAM(allResultsReady, << "model result must be ready");

@@ -152,15 +152,15 @@ LogicalResult
 ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
   MGP::MOOpLoweringState opLoweringState(loweringState, *this);
 
-  const bool isInplace = llvm::any_of(getOperands(), [](Value val) {
-    return isa<MO::BufferType>(val.getType());
-  });
+  [[maybe_unused]] const bool isInplace =
+      llvm::any_of(getOperands(), [](Value val) {
+        return isa<MO::BufferType>(val.getType());
+      });
 
-  if (isInplace)
-    ASSERT_STREAM(getResults().size() == 1 &&
-                      isa<MO::ChainType>(getResult(0).getType()),
-                  "In-place kernels (those with buffer inputs) are not allowed "
-                  "to have any outputs other than a single chain.");
+  ASSERT_STREAM(isInplace && getResults().size() == 1 &&
+                    isa<MO::ChainType>(getResult(0).getType()),
+                "In-place kernels (those with buffer inputs) are not allowed "
+                "to have any outputs other than a single chain.");
 
   // Gather the lowered op operands.
   SmallVector<Value> loweredInputOperands =

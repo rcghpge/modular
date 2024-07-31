@@ -146,7 +146,7 @@ void ParametricTopologyAnalysis::computeTopologicalSortingImpl(
   unsigned nextScheduledOp = 0;
 
   while (!unscheduledOps.empty()) {
-    bool scheduledAtLeastOnce = false;
+    [[maybe_unused]] bool scheduledAtLeastOnce = false;
 
     // Loop over the ops that are not sorted yet, try to find the ones "ready",
     // i.e. the ones for which there aren't any operand produced by an op in the
@@ -190,7 +190,7 @@ void ParametricTopologyAnalysis::topologicallySortFirstLevelOpsWithin(
   Block::iterator end = block->end();
 
   while (!unscheduledOps.empty()) {
-    bool scheduledAtLeastOnce = false;
+    [[maybe_unused]] bool scheduledAtLeastOnce = false;
 
     // Loop over the ops that are not sorted yet, try to find the ones "ready",
     // i.e. the ones for which there aren't any operand produced by an op in the
