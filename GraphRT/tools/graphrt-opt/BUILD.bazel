@@ -10,5 +10,6 @@ modular_cc_binary(
         "//GraphRT:AllDialects",
         "//Support:Globals",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Transforms",
     ],
 )

@@ -11,6 +11,8 @@ modular_cc_binary(
         "//GenericML:MOQDialect",
         "//GenericML:RMODialect",
         "//KGEN:ToolCommon",
+        "@llvm-project//mlir:IndexDialect",
+        "@llvm-project//mlir:MLProgramDialect",
         "@llvm-project//mlir:MlirLspServerLib",
     ],
 )
