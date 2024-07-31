@@ -726,25 +726,6 @@ def MOGG_ToOpaqueFromMGPOp : MOGG_Op<"to_opaque_from_mgp", [Pure]> {
   }];
 }
 
-def MOGG_ToListFromMGPOp : MOGG_Op<"to_list_from_mgp", [Pure]> {
-  let arguments = (ins AnyType:$dataPointer);
-  let results = (outs AnyType:$result);
-  let summary = "Represents the construction of an list type from a pointer";
-  let description = [{
-    Takes a pointer to !mgp.list to !mo.list.
-
-    `dataPointer` is an !mgp.list object and `result` is a !mo.list.
-
-    At the implementation level, it's just a rebind since we define the ABI for
-    both objects the same way (ABIList).
-  }];
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:`
-        functional-type(operands, results)
-  }];
-}
-
 def MOGG_ToMGPFromOpaqueOp : MOGG_Op<"to_mgp_from_opaque", [Pure]> {
   let arguments = (ins AnyType:$input);
   let results = (outs AnyType:$dataPointer);
@@ -906,7 +887,7 @@ def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure,
     the stride parameter that appears in the kernel.
   }];
 
-  let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MO_Buffer, MOGG_Indices, MOGG_Shape, MGP_OpaqueType, MGP_List, MO_List, MO_Opaque]>:$input,
+  let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MO_Buffer, MOGG_Indices, MOGG_Shape, MGP_OpaqueType, MO_List, MO_Opaque]>:$input,
     OptionalAttr<TypedAttrInterface>:$shape,
     OptionalAttr<TypedAttrInterface>:$strides,
     OptionalAttr<DictionaryAttr>:$typeMethodsDict,
