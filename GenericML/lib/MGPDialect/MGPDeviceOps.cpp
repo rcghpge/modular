@@ -1019,6 +1019,33 @@ bool BufferSectionBorrowDynamicOp::extendsLifetime(size_t operandIndex,
 }
 
 //===----------------------------------------------------------------------===//
+// BufferSliceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BufferSliceOp::verify() {
+  if (getOutBuffer().getType().getOptSize())
+    return emitOpError("expected output buffer to be dynamically sized.");
+  return success();
+}
+
+LogicalResult BufferSliceOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+
+  auto inBufferTy = dyn_cast<DeviceBufferType>(operands[0].getType());
+  if (!inBufferTy)
+    return failure();
+  inferredReturnTypes.emplace_back(
+      DeviceBufferType::get(inBufferTy.getDevice(), std::optional<uint64_t>()));
+  return success();
+}
+
+bool BufferSliceOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
+  return operandIndex == getInBufferMutable().getOperandNumber();
+}
+
+//===----------------------------------------------------------------------===//
 // BufferToBoolOp
 //===----------------------------------------------------------------------===//
 

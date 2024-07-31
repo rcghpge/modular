@@ -1467,6 +1467,55 @@ def BufferSectionBorrowDynamicOp : MGP_DeviceOp<"buffer.section.borrow.dynamic",
 }
 
 //===----------------------------------------------------------------------===//
+// BufferSliceOp
+//===----------------------------------------------------------------------===//
+
+def BufferSliceOp : MGP_Op<"buffer.slice", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
+]> {
+  let summary = "Borrows a slice of parent buffer on device with dynamically "
+                "known offset and size.";
+  let description = [{
+    Returns a borrowed buffer whose underlying storage points into a section of
+    the input buffer. The offset and size of the section is given by
+    the offset and size arguments.
+
+    Note that no copying is done, and the result buffer merely borrows from
+    the (offset into) the input buffer.
+
+    Example:
+    ```mlir
+    %ch:  !mgp.chain
+    %ctx : !mgp.context
+    %in_buf : !mgp.buffer<24>
+    %offset : index
+    %size : index
+    %out_buf =
+        mgp.buffer.slice %in_buf, %offset, %size : !mgp.buffer<24>
+    %out_buf : !mgp.buffer<>
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins MGP_DeviceBufferType:$inBuffer,
+                       Index:$offset,
+                       Index:$size
+                       );
+
+  let results = (outs MGP_DeviceBufferType:$outBuffer);
+
+  let assemblyFormat = [{
+    $inBuffer `,` $offset `,` $size attr-dict
+      `:` type($inBuffer)
+  }];
+
+  let hasVerifier = 1;
+}
+
+
+//===----------------------------------------------------------------------===//
 // BufferToBoolOp
 //===----------------------------------------------------------------------===//
 

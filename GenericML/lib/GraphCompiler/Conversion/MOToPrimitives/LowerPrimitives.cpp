@@ -187,8 +187,24 @@ void LowerPrimitivesPass::runOnOperation() {
           opLoc, op->getResultTypes(), op->getName().getStringRef(), inputs,
           ArrayAttr{}, getMoggCallAttrs(builder, op));
 
-      // Convert opaque outputs
       SmallVector<Value> outputs(call->getResults());
+
+      // Handle ops that may extend buffer lifetimes
+      if (auto extendsLifetime =
+              dyn_cast<GRT::GRTExtendsLifetimeInterface>(*op)) {
+        for (size_t resultIdx = 0; resultIdx < op->getNumResults(); ++resultIdx)
+          for (size_t operandIdx = 0; operandIdx < op->getNumOperands();
+               ++operandIdx)
+            if (extendsLifetime.extendsLifetime(operandIdx, resultIdx))
+              outputs[resultIdx] =
+                  builder
+                      .create<MOGG::BufferBorrowOp>(opLoc, op->getResultTypes(),
+                                                    outputs[resultIdx],
+                                                    inputs[operandIdx])
+                      ->getResult(0);
+      }
+
+      // Convert opaque outputs
       for (auto [idx, ty] : llvm::enumerate(op->getResultTypes())) {
         if (!isa<MGP::OpaqueType>(ty))
           continue;
