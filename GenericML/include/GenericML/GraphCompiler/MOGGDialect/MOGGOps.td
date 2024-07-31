@@ -667,6 +667,21 @@ def MOGG_DimFromShapeOp : MOGG_Op<"dim_from_shape", [Pure]> {
   }];
 }
 
+def MOGG_BufferBorrowOp : MOGG_Op<"buffer.borrow", [Pure]> {
+  let arguments = (ins AnyType:$buf, AnyType:$borrowee);
+  let results = (outs AnyType:$result);
+  let summary = "Intrinsic to create a buffer but extend lifetime of another";
+  let description = [{
+    Represents a placeholder operation which on lowering to will produce a
+    new buffer which extends a shared lifetime with the other.
+  }];
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:`
+        functional-type(operands, results)
+  }];
+}
+
 
 def MOGG_ToTensorFromMGPOp : MOGG_Op<"to_tensor_from_mgp", [Pure]> {
   let arguments = (ins AnyType:$dataPointer, Variadic<Index>:$dims);
