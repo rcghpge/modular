@@ -1,3 +1,5 @@
+load("//bazel:api.bzl", "py_repl")
+
 filegroup(
     name = "cpp_bindings_srcs",
     srcs = glob(["bindings/**/*.cpp"]),
@@ -16,4 +18,12 @@ py_library(
     data = ["//SDK/lib/DriverAPI/python/max/driver:driver_core"],
     imports = ["."],
     visibility = ["//visibility:public"],
+)
+
+py_repl(
+    name = "repl",
+    tags = ["manual"],
+    deps = [
+        ":max_driver",
+    ],
 )
