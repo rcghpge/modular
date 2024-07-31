@@ -795,6 +795,24 @@ def MOGG_CreateAsyncMojoValueOp : MOGG_Op<"create_async_mojo_value"> {
   }];
 }
 
+def MOGG_ReleaseMojoValueOp : MOGG_Op<"release_mojo_value"> {
+  let arguments = (ins
+      AnyType:$mojoValue
+  );
+  let summary = "Call the mojo destructor on a mojo object";
+  let description = [{
+    Call the destructor method on a KGEN mojo value.
+    Mojo objects are usually stored in an AnySyncValue<MojoValue>.
+    But when fusing regions, some leftover objects are never released.
+    This op takes care of realising them.
+  }];
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:`
+      functional-type(operands, results)
+  }];
+}
+
 def MOGG_RuntimePlaceholderOp : MOGG_Op<"rt_placeholder", [Pure]> {
   let results = (outs AnyType:$result);
   let summary = "Returns a placeholder for the asyncrt runtime pointer";

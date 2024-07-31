@@ -192,6 +192,23 @@ static void fuseCompiledRegionsAndReplaceUses(
   // resultsThatShouldBeReplaced.size().
   assert(valuesToOutput.size() + 1 >= resultsThatShouldBeReplaced.size());
 
+  // After fusion, some opaque outputs become intermediates (they are leaking).
+  // Manually insert destructor calls.
+  // Inserting them at the end of the block is conservative.
+  // Insert after last use isn't trivial, another pass will take care of moving
+  // up the destructor call.
+  for (Operation *op : compiledRegionOpsToFuseTogether) {
+    for (auto [idx, resultVal] : llvm::enumerate(op->getResults())) {
+      if (!isa<MGP::OpaqueType>(resultVal.getType()) ||
+          resultsThatShouldBeReplaced.contains(resultVal))
+        continue;
+
+      Value oldVal = op->getRegion(0).front().getTerminator()->getOperand(idx);
+      Value newVal = mapper.lookup(oldVal);
+      builder.create<MOGG::ReleaseMojoValueOp>(oldVal.getLoc(), newVal);
+    }
+  }
+
   // Creating the output op and replacing outside SSA values.
   builder.create<MOGG::OutputOp>(loc, valuesToOutput);
   for (auto [oldValue, newValue] :
