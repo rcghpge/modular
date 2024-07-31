@@ -1,4 +1,5 @@
 load("@pip_deps//:requirements.bzl", "requirement")
+load("//bazel:api.bzl", "py_repl")
 
 # Label for M::Graph::Python sources.
 filegroup(
@@ -16,5 +17,13 @@ py_library(
         "//SDK/lib/GraphAPI/python/max/_graph",
         "//SDK/lib/GraphAPI/python/max/mlir",
         requirement("numpy"),
+    ],
+)
+
+py_repl(
+    name = "repl",
+    tags = ["manual"],
+    deps = [
+        ":max_graph",
     ],
 )
