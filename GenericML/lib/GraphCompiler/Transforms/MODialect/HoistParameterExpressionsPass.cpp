@@ -32,8 +32,7 @@ struct RewriteParamExprTypes : public RewritePattern {
       llvm::DenseMap<Region *,
                      llvm::DenseMap<KGEN::ParamOperatorAttr, std::string>>
           &&regionToExprToParam)
-      : RewritePattern(mlir::Pattern::MatchInterfaceOpTypeTag(),
-                       MO::MOTensorOpInterface::getInterfaceID(), 1, context),
+      : RewritePattern(mlir::Pattern::MatchAnyOpTypeTag(), 1, context),
         regionToExprToParam(regionToExprToParam) {}
   mutable llvm::DenseMap<Region *,
                          llvm::DenseMap<KGEN::ParamOperatorAttr, std::string>>
@@ -44,7 +43,8 @@ struct RewriteParamExprTypes : public RewritePattern {
   /// new parameter for that expression, and add the mapping to
   /// `regionToExprToParam`.
   ///
-  /// Return true if `ty` contains _any_ parameter expression.
+  /// Return true if `ty` contains _any_ parameter expression though will ignore
+  /// any shapes with unknown dimension (e.g. `?`).
   bool collectComplexParams(DeviceAwareRewriter &rewriter, Operation *op,
                             Type ty) const {
     auto graphOp = op->getParentOfType<GraphOp>();
@@ -52,6 +52,8 @@ struct RewriteParamExprTypes : public RewritePattern {
     bool found = false;
     auto tensor_ty = dyn_cast<MO::TensorType>(ty);
     if (!tensor_ty)
+      return false;
+    if (tensor_ty.hasUnknownShape())
       return false;
     auto shapeAttr = dyn_cast<MOSH::ShapeAttr>(tensor_ty.getShapeAttr());
     if (!shapeAttr)

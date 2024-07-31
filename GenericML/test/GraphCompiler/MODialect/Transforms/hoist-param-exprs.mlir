@@ -114,3 +114,27 @@ mo.graph @dont_rebind_opaque(%arg0: !mo.tensor<[?], f32>, %arg1: !mo.opaque<"Opa
   // CHECK-NEXT: mo.output
   mo.output %2 : !mo.opaque<"Opaque">
 }
+
+// CHECK-LABEL: mo.graph @complex_expression_non_mo
+mo.graph @complex_expression_non_mo<N, M>(%arg0: !mo.tensor<[N], f32>, %arg1: !mo.tensor<[M], f32>) -> (!mo.tensor<[add(N, M)], f32>) {
+  // NOTE: this is a mogg.concat not a mo.concat
+  // CHECK-NEXT: mogg.concat
+  %1 = mogg.concat(%arg0, %arg1):(!mo.tensor<[N], f32>, !mo.tensor<[M], f32>) -> !mo.tensor<[add(N, M)], f32>
+  // CHECK-NEXT: kgen.param.declare [[NAME:[a-zA-Z0-9_]+]] = <add
+  // CHECK-NEXT: mo.mul({{.*}}) : !mo.tensor<[[[NAME]]], f32>
+  // CHECK-NEXT: rebind
+  // CHECK-NEXT: mo.output{{.*}} : !mo.tensor<[add({{.*}})], f32>
+  %2 = mo.mul(%1, %1) :!mo.tensor<[add(N, M)], f32>
+  mo.output %2 : !mo.tensor<[add(N, M)], f32>
+}
+
+// CHECK-LABEL: mo.graph @dont_outline_unknown_dims
+mo.graph @dont_outline_unknown_dims<N, M>(%arg0: !mo.tensor<[N, ?], f32>, %arg1: !mo.tensor<[M, ?], f32>) -> (!mo.tensor<[add(N, M), ?], f32>) {
+  // No question marks should dissapear (there are 8 in the current IR)
+  // CHECK-COUNT-8: ?
+  // COUNT-NOT: ?
+  %ax = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %1 = mo.concat[%ax:!mo.tensor<[],si64>](%arg0, %arg1):(!mo.tensor<[N, ?], f32>, !mo.tensor<[M, ?], f32>) -> !mo.tensor<[add(N, M), ?], f32>
+  %2 = mo.mul(%1, %1) :!mo.tensor<[add(N, M), ?], f32>
+  mo.output %2 : !mo.tensor<[add(N, M), ?], f32>
+}
