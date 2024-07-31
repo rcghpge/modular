@@ -9,7 +9,7 @@ modular_cc_binary(
         "//ModularFramework/tools/mof",
         "//ONNX/tools/onnx:monnx",
         "//PyTorch:StockTorchInterface",
-        "//PyTorch:TorchRuntimePlugin",
+        "//PyTorch:TorchRuntimePlugins",
         "//PyTorch/tools/torch:mtorch",
     ],
     local_defines = ASYNCRT_PROFILING_LOCAL_DEFINES,
@@ -29,7 +29,7 @@ rpath_shim(
         "//ModularFramework/tools/mof",
         "//ONNX/tools/onnx:monnx",
         "//PyTorch:StockTorchInterface",
-        "//PyTorch:TorchRuntimePlugin",
+        "//PyTorch:TorchRuntimePlugins",
         "//PyTorch/tools/torch:mtorch",
     ],
 )
