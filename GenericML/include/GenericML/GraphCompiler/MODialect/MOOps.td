@@ -398,21 +398,34 @@ def MO_RebindOp : MO_ControlOp<"rebind", [
 ]> {
   let summary = "Parameter rebind operation";
   let description = [{
-    This op represents the "rebinding" of a type to another type. This can be
-    used to convert all attributes of types such as `!mo.tensor`, inlcuding
-    shape, element type, and metadata.
+    This op represents the "rebinding" of a type to another type. This is
+    typically used for rebinding the shape of !mo.tensor types to other
+    !mo.tensor types to get things to type-check due to strict shape-related
+    verifiers.
 
     Rebinding is similar to casting, except no data conversion takes place.
-    Rather, the it represents an assertion that the two types ultimately
-    prove to be the same.
+    It is assumed that the two types ultimately prove to be the same at runtime.
+
+    Therefore, in cases where it is not statically provable, the left and right
+    runtime types are the same, it is expected we will insert runtime assertions
+    of some sort. Note, this operation does not do this, and any assertions
+    must be inserted separately.
+
+    Note, rebinds which use parameters they declare essentially "rename"
+    the associated dimensions which is a useful tool. These types of rebinds
+    are guaranteed to be removed by shape inference unless they are used to
+    name unknown dims (denoted by `?`) from 3P dialects like those in PT.
 
     Examples:
     ```mlir
-      %0 = mo.rebind(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, 1], f32>
+      // something like ASSERT N == 3 AND Sh == {3, 1} if we aren't statically
+      // sure of this fact.
       %1 = mo.rebind(%0) : !mo.tensor<[N, 1], f32> -> !mo.tensor<Sh, f32>
-      %2 = mo.rebind(%1) : !mo.tensor<Sh, f32> -> !mo.tensor<[], f32>
+      %2 = mo.rebind(%1) : !mo.tensor<Sh, f32> -> !mo.tensor<[3, 1], f32>
+
+      // Renames dims. K == 3, M == 1
       %3 = mo.rebind<() -> K, M>(%0) :
-        !mo.tensor<[N, 1], f32> -> !mo.tensor<[K, M], f32>
+        !mo.tensor<[3, 1], f32> -> !mo.tensor<[K, M], f32>
     ```
   }];
 
