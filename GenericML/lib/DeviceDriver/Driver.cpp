@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/DeviceDriver/Driver.h"
+#include "Runtime/MojoValue.h"
 
 using namespace M::Driver;
 using namespace M;
@@ -97,8 +98,8 @@ M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
         // This should be fixed by either:
         // 1. the graph compiler taking a Device* not a DeviceContext*.
         // 2. have MGP take an AnyAsyncValueRef<RCRef<DeviceContext>>.
-        deviceContexts.push_back(AnyAsyncValueRef::createReady<void *>(
-            runtime, dev->tmpGetDeviceContext()));
+        deviceContexts.push_back(AnyAsyncValueRef::createReady<MojoValue>(
+            runtime, MojoValue::createRef(dev->tmpGetDeviceContext())));
       } else {
         // This should be an error, but for now we'll default construct in MGP
         deviceContexts.push_back(

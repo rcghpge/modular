@@ -37,7 +37,13 @@ public:
   /// `data` is also owned and released by MojoValue (it must be allocated with
   /// malloc).
   MojoValue(void *data, DestructorFn destructor)
-      : data(data), destructor(destructor) {}
+      : data(data), destructor(destructor), owning(true) {}
+
+  /// Create a reference to an existing Mojo object. The object must outlive the
+  /// lifetime of this MojoValue.
+  static MojoValue createRef(void *data) {
+    return MojoValue(data, nullptr, false);
+  }
 
   ~MojoValue();
 
@@ -67,8 +73,14 @@ public:
   void swap(MojoValue &rhs);
 
 private:
+  MojoValue(void *data, DestructorFn destructor, bool owning)
+      : data(data), destructor(destructor), owning(owning) {}
+
   void *data = nullptr;
   DestructorFn destructor = nullptr;
+  /// Does the mojo value own this value. Data not freed and destructor not run
+  /// if not owned.
+  bool owning;
 };
 
 } // namespace M

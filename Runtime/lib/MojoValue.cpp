@@ -16,7 +16,7 @@ MojoValue::MojoValue(size_t size, size_t align, DestructorFn destructor)
     : MojoValue(allocateBuffer(size, align), destructor) {}
 
 MojoValue::~MojoValue() {
-  if (data) {
+  if (owning && data) {
     destructor(data);
     freeBuffer(data);
   }
@@ -38,11 +38,13 @@ void MojoValue::freeBuffer(void *ptr) { alignedFree(ptr); }
 void MojoValue::swap(MojoValue &rhs) {
   std::swap(data, rhs.data);
   std::swap(destructor, rhs.destructor);
+  std::swap(owning, rhs.owning);
 }
 
 void *MojoValue::take() {
   void *ptr = data;
   data = nullptr;
   destructor = nullptr;
+  owning = false;
   return ptr;
 }
