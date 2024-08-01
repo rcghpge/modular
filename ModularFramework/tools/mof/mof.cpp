@@ -94,6 +94,7 @@ struct MOFConfig {
   std::optional<bool> enableExtraDevices;
   std::optional<size_t> deviceID;
   CASConfig commonCasConfig;
+  bool inputsAndOutputsOnDevice;
 
   void overrideLoweringOptions(MOFLoweringOptions &mofLoweringOptions,
                                MO::MoToMgpOptions &moToMgpOptions) const {
@@ -112,6 +113,7 @@ struct MOFConfig {
       moToMgpOptions.enableExtraDevices = *enableExtraDevices;
     if (commonCasConfig.getCacheDir())
       moToMgpOptions.cacheDir = commonCasConfig.getCacheDir()->getPath().str();
+    moToMgpOptions.inputsAndOutputsOnDevice = inputsAndOutputsOnDevice;
   }
 };
 
@@ -178,6 +180,8 @@ public:
         mofConfig->defaultDeviceLabel = deviceConfig->getDeviceLabel();
         mofConfig->deviceID = deviceConfig->getDeviceID();
         mofConfig->enableExtraDevices = !deviceConfig->getDeviceLabel().empty();
+        mofConfig->inputsAndOutputsOnDevice =
+            deviceConfig->inputsAndOutputsOnDevice;
       }
     }
     return success();

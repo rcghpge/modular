@@ -87,8 +87,10 @@ private:
 
 class DeviceConfig : public DriverConfig {
 public:
-  DeviceConfig(std::string device, size_t deviceID)
+  DeviceConfig(std::string device, size_t deviceID,
+               bool inputsAndOutputsOnDevice = false)
       : DriverConfig(OptionKind::kDevice, "device-configuration"),
+        inputsAndOutputsOnDevice(inputsAndOutputsOnDevice),
         deviceLabel(std::move(device)), deviceID(deviceID) {}
 
   static bool classof(const DriverConfig *config) {
@@ -101,6 +103,8 @@ public:
   std::unique_ptr<DriverConfig> clone() override {
     return std::make_unique<DeviceConfig>(*this);
   }
+
+  bool inputsAndOutputsOnDevice{false};
 
 private:
   std::string deviceLabel;

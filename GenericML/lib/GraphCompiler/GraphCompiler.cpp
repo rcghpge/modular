@@ -214,9 +214,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   assignDevicesPassOpt.kernelLibraryPaths = opts.kernelLibraryPaths;
   if (assignDevicesPassOpt.targetDevice == "cpu")
     assignDevicesPassOpt.targetDevice = "";
-  // TODO (MSDK-465): Remove env var!
-  if (getenv("TMP_ALLOCATE_ON_DEVICE") != nullptr)
-    assignDevicesPassOpt.copyFromHost = false;
+  assignDevicesPassOpt.copyFromHost = !opts.inputsAndOutputsOnDevice;
   pm.addPass(MO::createAssignDevicesPass(assignDevicesPassOpt));
 
   // If jiting simplify broadcast patterns to a single op that we can jit.
