@@ -203,6 +203,9 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     that have in-place allocation. For example, allocIndices = [0] means the first
     output tensor has been allocated in the kernel.
 
+    `isInPlace` Is a bool attribute marking whether the kernel has a `mo.buffer` input
+    it operates on in-place.
+
     Kernels preserve the device of their original MO op.
   }];
 
@@ -215,7 +218,8 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     OptionalAttr<BoolAttr>:$isKGEN,
     OptionalAttr<StrAttr>:$summary,
     OptionalAttr<BoolAttr>:$isAsync,
-    OptionalAttr<ArrayAttr>:$allocIndices
+    OptionalAttr<ArrayAttr>:$allocIndices,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$isInPlace
   );
   let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Buffer, MO_Chain]>>:$results);
   let regions = (region SizedRegion<1>:$body);
@@ -309,6 +313,12 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
 
     /// Returns whether the kernel operates on one of its inputs in-place.
     bool isInPlace();
+
+    /// Returns the sole input chain (if present) and std::nullopt otherwise.
+    std::optional<Value> getInChain();
+
+    /// Returns the sole output chain (if present) and std::nullopt otherwise.
+    std::optional<Value> getOutChain();
   }];
 }
 

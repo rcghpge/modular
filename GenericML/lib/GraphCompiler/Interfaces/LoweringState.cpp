@@ -498,7 +498,8 @@ FailureOr<SmallVector<MOOutputStorage>> MOOpLoweringState::createOutputStorage(
 
   SmallVector<Value> results;
   for (auto [idx, res] : llvm::enumerate(opBeingLowered->getResults())) {
-    if (!inplaceAllocIndicesSet.contains(idx))
+    if (!inplaceAllocIndicesSet.contains(idx) &&
+        !isa<MO::ChainType>(res.getType()))
       results.push_back(opBeingLowered->getResult(idx));
   }
 
@@ -604,6 +605,9 @@ MOOpLoweringState::createOutputTensorSpecs() {
   for (auto [idx, type] :
        llvm::enumerate(opBeingLowered->getResults().getType())) {
     if (inplaceAllocIndicesSet.contains(idx))
+      continue;
+
+    if (isa<MO::ChainType>(type))
       continue;
 
     auto moTensorType = dyn_cast<MO::TensorType>(type);

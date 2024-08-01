@@ -12,6 +12,7 @@
 // CHECK: mogg.call "elementwise" [@elemwise_compute_lambda]([[kbuffer]])
 // CHECK: mogg.output [[kChain]] : !mo.chain
 // CHECK: inputFusionInterface = ["input_0_fn", "input_1_fn", ""]
+// CHECK-SAME: isInPlace = true
 // CHECK-SAME: outputFusionInterface = [""]
 // CHECK-SAME: summary = "inplace_mo.add
 // CHECK: mo.mutable.load([[ch2]], [[buffer]])
@@ -59,6 +60,7 @@ mo.graph @single_add_buffer_lhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.te
 // CHECK: mogg.call "elementwise" [@{{.*}}]([[kbuffer]])
 // CHECK: mogg.output [[kChain]] : !mo.chain
 // CHECK: inputFusionInterface = ["input_0_fn{{.*}}", "input_1_fn{{.*}}", ""]
+// CHECK-SAME: isInPlace = true
 // CHECK-SAME: outputFusionInterface = [""]
 // CHECK-SAME: summary = "inplace_mo.add
 // CHECK: mo.mutable.load([[ch2]], [[buffer]])
@@ -85,6 +87,7 @@ mo.graph @single_add_buffer_rhs(%arg0: !mo.buffer<[10, 10], f32>, %arg1: !mo.ten
 // CHECK: mogg.call "elementwise" [@{{.*}}]([[kbuffer]])
 // CHECK: mogg.output [[kChain]] : !mo.chain
 // CHECK: inputFusionInterface = ["input_0_fn{{.*}}", "input_1_fn{{.*}}", ""]
+// CHECK-SAME: isInPlace = true
 // CHECK-SAME: outputFusionInterface = [""]
 // CHECK-SAME: summary = "inplace_mo.add
 // CHECK: [[ch3:%.*]] = mogg.kernel ([[buffer]], [[rhs]], [[ch2]])
@@ -96,6 +99,7 @@ mo.graph @single_add_buffer_rhs(%arg0: !mo.buffer<[10, 10], f32>, %arg1: !mo.ten
 // CHECK: mogg.call "elementwise" [@{{.*}}]([[kbuffer]])
 // CHECK: mogg.output [[kChain]] : !mo.chain
 // CHECK: inputFusionInterface = ["input_0_fn{{.*}}", "input_1_fn{{.*}}", ""]
+// CHECK-SAME: isInPlace = true
 // CHECK-SAME: outputFusionInterface = [""]
 // CHECK-SAME: summary = "inplace_mo.add
 // CHECK: mo.mutable.load([[ch3]], [[buffer]])

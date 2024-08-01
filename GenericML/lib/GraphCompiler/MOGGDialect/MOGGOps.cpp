@@ -29,6 +29,7 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include <llvm/ADT/STLExtras.h>
 
 using namespace M;
 using namespace MOGG;
@@ -157,10 +158,8 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
         return isa<MO::BufferType>(val.getType());
       });
 
-  ASSERT_STREAM(!isInplace || (getResults().size() == 1 &&
-                               isa<MO::ChainType>(getResult(0).getType())),
-                "In-place kernels (those with buffer inputs) are not allowed "
-                "to have any outputs other than a single chain.");
+  ASSERT_STREAM(isInplace == false, "Lowering in place kernels is no longer "
+                                    "supported via the middle jit path.");
 
   // Gather the lowered op operands.
   SmallVector<Value> loweredInputOperands =
@@ -453,13 +452,12 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   mlir::MLIRContext *ctx = getContext();
   auto &builder = opLoweringState.builder;
 
-  const bool isInplace = isInPlace();
+  auto maybeInChain = getInChain();
+  auto maybeOutChain = getOutChain();
 
   auto chain = [&]() -> Value {
-    if (isInplace)
-      // The KernelOp verifier makes sure theres an input chain in the final
-      // operand position for in-place kernels.
-      return loweringState.lookupExecuteLoweredValue(getOperands().back());
+    if (maybeInChain)
+      return loweringState.lookupExecuteLoweredValue(*maybeInChain);
     else
       return loweringState.getExecuteChain();
   }();
@@ -468,7 +466,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   SmallVector<Value> loweredInputOperands = [&]() {
     // Dropping the lowered input chain simplifies subsequent lowering logic in
     // this function.
-    if (isInplace) {
+    if (maybeInChain) {
       return SmallVector<Value>{
           llvm::drop_end(opLoweringState.getLoweredOperands())};
     } else
@@ -476,13 +474,11 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   }();
 
   SmallVector<MGP::MOOutputStorage> loweredOutputsStorage;
-  if (!isInplace) {
-    FailureOr<SmallVector<MGP::MOOutputStorage>> loweredOutputsStorageOr =
-        opLoweringState.createOutputStorage(chain);
-    if (failed(loweredOutputsStorageOr))
-      return failure();
-    loweredOutputsStorage = *std::move(loweredOutputsStorageOr);
-  }
+  FailureOr<SmallVector<MGP::MOOutputStorage>> loweredOutputsStorageOr =
+      opLoweringState.createOutputStorage(chain);
+  if (failed(loweredOutputsStorageOr))
+    return failure();
+  loweredOutputsStorage = *std::move(loweredOutputsStorageOr);
 
   DenseSet<int> inplaceAllocIndicesSet;
   SmallVector<int> preAllocIndices;
@@ -502,14 +498,11 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   for (unsigned int i = 0; i < getNumResults(); i++) {
     if (i >= oldOutputs->getNumResults())
       returnAllocIndicesSet.insert(i);
-    if (!inplaceAllocIndicesSet.contains(i))
-      preAllocIndices.push_back(i);
-    else {
-      // want to ignore the output chain of an in-place kernel as the code below
-      // makes the strong assumption that none are present
+    if (!inplaceAllocIndicesSet.contains(i)) {
       if (!isa<MO::ChainType>(getResult(i).getType()))
-        inplaceAllocIndices.push_back(i);
-    }
+        preAllocIndices.push_back(i);
+    } else
+      inplaceAllocIndices.push_back(i);
   }
 
   size_t numInplaceOutputs = inplaceAllocIndicesSet.size();
@@ -703,15 +696,13 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
                                                    operands);
   };
 
-  if (!isInplace) {
-    int outputOffset = 1; // 1 for the input chain
-    for (auto [idx, preAllocIdx] : llvm::enumerate(preAllocIndices)) {
-      Value newBlockArg = kernelBody.getArgument(outputOffset + idx);
-      Value oldOut = oldOutputs.getResult(preAllocIdx);
-      Value loweredValue =
-          convertMGPInputToTensorOrOpaque(newBlockArg, oldOut.getType());
-      mapper.map(oldOut, loweredValue);
-    }
+  int outputOffset = 1; // 1 for the input chain
+  for (auto [idx, preAllocIdx] : llvm::enumerate(preAllocIndices)) {
+    Value newBlockArg = kernelBody.getArgument(outputOffset + idx);
+    Value oldOut = oldOutputs.getResult(preAllocIdx);
+    Value loweredValue =
+        convertMGPInputToTensorOrOpaque(newBlockArg, oldOut.getType());
+    mapper.map(oldOut, loweredValue);
   }
 
   int inputOffset = loweredOutputsStorage.size() + 1;
@@ -919,8 +910,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   }
   opLoweringState.createOutputs(newKernel->getResult(0), loweredOutputsStorage);
 
-  if (isInplace) {
-    loweringState.emplaceExecuteLoweredValue(getResult(0),
+  if (maybeOutChain) {
+    loweringState.emplaceExecuteLoweredValue(*maybeOutChain,
                                              newKernel.getResult(0));
   }
 
@@ -1178,10 +1169,30 @@ bool KernelOp::isInPlaceAlloc() {
   return false;
 }
 
-bool KernelOp::isInPlace() {
-  return llvm::any_of(getOperands(), [](Value val) {
-    return isa<MO::BufferType>(val.getType());
-  });
+bool KernelOp::isInPlace() { return getIsInPlace(); }
+
+std::optional<Value> KernelOp::getInChain() {
+  if (getNumOperands() == 0)
+    return std::nullopt;
+
+  auto finalVal = getOperands().back();
+
+  if (isa<MO::ChainType>(finalVal.getType()))
+    return finalVal;
+  else
+    return std::nullopt;
+}
+
+std::optional<Value> KernelOp::getOutChain() {
+  if (getNumResults() == 0)
+    return std::nullopt;
+
+  auto finalVal = getResults().back();
+
+  if (isa<MO::ChainType>(finalVal.getType()))
+    return finalVal;
+  else
+    return std::nullopt;
 }
 
 StringAttr KernelOp::getOutputFusionInterfaceAt(size_t index) {
@@ -1308,28 +1319,29 @@ LogicalResult KernelOp::verify() {
   if (mlir::failed(setParamCheck))
     return setParamCheck;
 
-  // verify invariants we make use of in in-place lowerings are valid
+  auto isChain = [](Value val) { return isa<MO::ChainType>(val.getType()); };
+
+  auto chainIsLastIfPresent = [&isChain](auto &&rng) {
+    auto chainIter = llvm::find_if(rng, isChain);
+
+    if (chainIter == rng.end())
+      return true;
+
+    return std::next(chainIter) == rng.end();
+  };
+
+  if (!chainIsLastIfPresent(getOperands()))
+    return emitError("Found a chain operand that is not in the final position");
+
+  if (!chainIsLastIfPresent(getResults()))
+    return emitError("Found an output chain that is not in the final position");
+
   if (isInPlace()) {
-    auto isChain = [](Value val) { return isa<MO::ChainType>(val.getType()); };
+    if (llvm::count_if(getOperands(), isChain) != 1)
+      return emitError("In-place kernels must have exactly one input chain");
 
-    // check that we have a single input chain in the first position
-    auto nInChains = llvm::count_if(getOperands(), isChain);
-    if (nInChains != 1) {
-      return emitError(llvm::formatv("Expected to find exactly one input chain "
-                                     "for an in-place kernel, found: {0}",
-                                     nInChains));
-    }
-    if (getNumOperands() < 1 || !isChain(getOperands().back())) {
-      return emitError(
-          "Expected the last operand of an in-place kernel to be a !mo.chain");
-    }
-
-    // check that we have a single result that is of type mo.chain
-    if (getNumResults() > 1 || !isChain(getResult(0))) {
-      return emitError(
-          "In-place kernels are allowed to have only one result that "
-          "must be a !mo.chain");
-    }
+    if (llvm::count_if(getResults(), isChain) != 1)
+      return emitError("In-place kernels must have exactly one output chain");
   }
 
   return success();
