@@ -1,0 +1,18 @@
+load("@pip_deps//:requirements.bzl", "requirement")
+
+filegroup(
+    name = "py_llama3",
+    srcs = glob(["llama3/**/*.py"]),
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "llama3",
+    srcs = [":py_llama3"],
+    imports = ["."],
+    visibility = ["//visibility:public"],
+    deps = [
+        requirement("numpy"),
+        "//SDK/lib/GraphAPI/python:max_graph",
+    ],
+)
