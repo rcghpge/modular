@@ -4,6 +4,7 @@ load(
     "driver_option_tablegen",
     "modular_cc_library",
     "modular_pybind_library",
+    "py_repl",
     "td_library",
 )
 load("//bazel:config.bzl", "CONFIG_SECTION_LOCAL_DEFINES")
@@ -152,5 +153,15 @@ modular_pybind_library(
     ],
     deps = [
         "//ModularFramework/tools/mof",
+    ],
+)
+
+py_repl(
+    name = "python",
+    tags = ["manual"],
+    deps = [
+        "//SDK/lib/DriverAPI/python:max_driver",
+        "//SDK/lib/EngineAPI/python:max_engine",
+        "//SDK/lib/GraphAPI/python:max_graph",
     ],
 )
