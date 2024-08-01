@@ -228,41 +228,6 @@ def DeferAllocsPass : Pass<"defer-allocs", "MGP::ModelOp"> {
 }
 
 //===----------------------------------------------------------------------===//
-// DeferTensorCreateExecPass
-//===----------------------------------------------------------------------===//
-
-def DeferTensorCreateExecPass : Pass<"defer-tensor-create-exec", "MGP::ModelOp"> {
-  let summary = "Defers execution of `mgp.tensor.create` until its buffer has "
-                "no uses.";
-  let description = [{
-    Ensures `mgp.tensor.create` operations which are operands to the
-    `mef.output` are deferred until their buffers have no other uses. In this
-    way we avoid an additional and unnecessary buffer copy.
-
-    For example:
-    ```mlir
-      %buf = mgp.buffer.alloc.static ...
-      %ch1 = op1 (... out: %buf, ...)
-      %tensor = mgp.tensor.create %ch1, %buf ...
-      %ch2 = op2 (... in: %buf, ...)
-      mef.output ... %tensor ...
-    ```
-    becomes:
-    ```
-      %buf = mgp.buffer.alloc.static ...
-      %ch1 = op1 (... out: %buf, ...)
-      %ch2 = op2 (... in: %buf, ...)
-      %ch3 = mgp.chain.create (%ch1, %ch2)
-      %tensor = mgp.tensor.create %ch3, %buf ...
-      mef.output ... %tensor ...
-    ```
-
-    CAUTION: Does not look inside control flow ops, and does not track all
-             possible buffer uses.
-  }];
-}
-
-//===----------------------------------------------------------------------===//
 // StripBufferAttributesPass
 //===----------------------------------------------------------------------===//
 
