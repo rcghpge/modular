@@ -45,6 +45,93 @@ using MGPProfilerEntry =
     ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
 
 //===----------------------------------------------------------------------===//
+// List Helpers
+//===----------------------------------------------------------------------===//
+
+// TODO(GRA-801): Replace mo.list with opaque type implementation
+namespace {
+// ABI version of GML::List.
+// NOTE the layout must match the mojo `ABI_List`
+struct ABIList {
+  size_t numElems;
+  void *elements; // Currently always points to ABITensors
+
+  /// Constructor
+  ABIList(size_t numElems, void *elements)
+      : numElems(numElems), elements(elements) {}
+};
+
+// ABI version of Tensor.
+// NOTE the layout must match the mojo `ABI_Tensor`
+// Used only for handling lists of tensors
+struct ABITensor {
+  ssize_t *dims; // Shape, with implied rank
+  void *dataPtr; // The underlying buffer
+
+  // Constructor
+  ABITensor(ssize_t *dims, void *dataPtr) : dims(dims), dataPtr(dataPtr) {}
+};
+
+// Converts runtime GML::List (used to back mo.list), into a form known to MOGG.
+// Allocates in the past `*Memory` vectors
+ErrorOr<void *>
+listToABIListPtr(GML::List &runtimeList,
+                 SmallVector<AnyAsyncValueRef> &listMemory,
+                 SmallVector<SmallVector<ABITensor>> &listTensorMemory,
+                 SmallVector<SmallVector<SmallVector<ssize_t>>> &listDimMemory,
+                 Runtime &runtime) {
+  auto &abiTensors = listTensorMemory.emplace_back();
+  auto &abiDims = listDimMemory.emplace_back();
+  abiDims.reserve(runtimeList.getElements().size());
+  abiTensors.reserve(runtimeList.getElements().size());
+
+  // Convert individual elements to their corresponding ABI structures.
+  // NOTE: This is currently not closed under all argument types and cannot
+  //       be extended by subclasses.
+  for (GML::Variant &ref : runtimeList.getElements()) {
+    if (ref.getValue().isType<Tensor>()) {
+      auto &runtimeTensor = ref.getValue().get<Tensor>();
+      const TensorShape &shape = runtimeTensor.getShape();
+      ssize_t *dims;
+      // If the Tensor is a scalar, need to upscale to 1D so mojo
+      // can reason about it
+      if (shape.getRank() == 0)
+        dims = abiDims.emplace_back(1, 1).data();
+      else
+        dims = abiDims.emplace_back(shape.begin(), shape.end()).data();
+      void *data = const_cast<void *>(runtimeTensor.getBuffer());
+      abiTensors.emplace_back(dims, data);
+    } else {
+      return Error(Twine("Invalid list element type: ") +
+                   ref.getValue().getPointer()->getTypeID().getTypeName());
+    }
+  }
+
+  // Convert an entire list to its ABI structure.
+  listMemory.push_back(AnyAsyncValueRef::createReady<ABIList>(
+      runtime, runtimeList.getElements().size(), abiTensors.data()));
+
+  return &listMemory.back();
+}
+
+/// Marshalls the given async value (mainly for handling lists) and may allocate
+/// into the given `*Memory` tensors which backs the returned ptr.
+ErrorOr<void *> getAnyAsyncValueRefPtr(
+    AnyAsyncValueRef &input, SmallVector<AnyAsyncValueRef> &listMemory,
+    SmallVector<SmallVector<ABITensor>> &listTensorMemory,
+    SmallVector<SmallVector<SmallVector<ssize_t>>> &listDimMemory,
+    Runtime &runtime) {
+  if (input.isType<GML::List>()) {
+    return listToABIListPtr(input.get<GML::List>(), listMemory,
+                            listTensorMemory, listDimMemory, runtime);
+  }
+
+  return &input;
+}
+
+} // namespace
+
+//===----------------------------------------------------------------------===//
 // mgp.context.create
 //===----------------------------------------------------------------------===//
 
@@ -116,7 +203,7 @@ static void mgp_generic_execute(
   // async because we pass a copy of the results.
   outResults.allocateIndirectResults();
 
-  auto runKernel = [kernelPtr, &ctx,
+  auto runKernel = [kernelPtr, &ctx, &runtime,
                     // outResults _must_ be copied
                     outResults = outResults.copyAsVector(),
                     // std::move(operands) does not work, must use takeAsVector
@@ -142,10 +229,42 @@ static void mgp_generic_execute(
     }
     std::vector<void *> kernelInputs;
     kernelInputs.reserve(outResults.size() + takenOperands.size());
-    for (AnyAsyncValueRef &input : takenOperands)
-      kernelInputs.push_back(&input);
-    for (AnyAsyncValueRef &i : outResults)
-      kernelInputs.push_back(&i);
+
+    // Stack allocation needed to handle marshalling to ABIList.
+    // Holds references to ABIList wrapped in AnyAsyncValue.
+    SmallVector<AnyAsyncValueRef> listMemory;
+
+    // For each associated ABIList, holds the ABITensors in the list.
+    SmallVector<SmallVector<ABITensor>> listTensorMemory;
+
+    // For each associated ABITensor, holds the dimensions of the tensor.
+    // listDimMemory[1] --> the storage for the index 1 list
+    // listDimMemory[0][1] --> the storage for the index 0 lists's 1st tensor
+    // listDimMemory[0][1][2] --> the 2nd index dimension of the above
+    SmallVector<SmallVector<SmallVector<ssize_t>>> listDimMemory;
+
+    // Note we must be careful of reference invalidation with our SmallVectors
+    // as we typically pass pointers to the data directly. Therefore, reserve
+    // space to avoid issues.
+    size_t maxNumLists = takenOperands.size() + outResults.size();
+    listMemory.reserve(maxNumLists);
+    listTensorMemory.reserve(maxNumLists);
+    listDimMemory.reserve(maxNumLists);
+
+    for (AnyAsyncValueRef &res :
+         llvm::concat<AnyAsyncValueRef>(takenOperands, outResults)) {
+      ErrorOr<void *> ptrToMarshalledValue = getAnyAsyncValueRefPtr(
+          res, listMemory, listTensorMemory, listDimMemory, runtime);
+
+      if (ptrToMarshalledValue.isError()) {
+        std::move(res).setToError(EncodedDiagnostic(
+            outChain.copy().getDiagnostic().getMessage().copy(), loc.copy()));
+        std::move(outChain).setToError(ptrToMarshalledValue.takeError().copy());
+        return;
+      }
+
+      kernelInputs.push_back(ptrToMarshalledValue.takeValue());
+    }
 
     MojoCallContext callContext(outChain.copy(), outChain.getLocation().copy(),
                                 cudaRuntimePtr, deviceContextPtr);

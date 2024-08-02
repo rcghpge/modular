@@ -515,7 +515,6 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
   operands.reserve(numOperands);
   operandSemantics.reserve(numOperands);
-
   operands.push_back(chain);
   operandSemantics.emplace_back(InOutSignatureAttr::kIn);
 
@@ -561,11 +560,12 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   SmallVector<mlir::Type> inPlaceMGPOutputsTypes(numInplaceOutputs);
   for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
     Type oldOutTy = getResult(inPlaceIdx).getType();
-    // mgp.bufer is user for mo.tensor, mgp.opaque for mo.opaque.
+    // mgp.buffer is user for mo.tensor, mgp.opaque for mo.opaque.
     Type mgpResultTy = mgpBufferType;
     if (auto moOpaqueType = dyn_cast<MO::OpaqueType>(oldOutTy))
       mgpResultTy =
           MGP::OpaqueType::get(ctx, moOpaqueType.getSymbol(), std::nullopt);
+    ASSERT_STREAM(!isa<MO::ListType>(oldOutTy), "in place list not supported");
     inPlaceMGPOutputsTypes[idx] = mgpResultTy;
   }
 
@@ -620,7 +620,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   for (auto val : loweredInputOperands)
     kernelBody.addArgument(val.getType(), val.getLoc());
   for (Value operand : newKernel.getOperands()) {
-    if (!isa<MGP::DeviceBufferType, MGP::OpaqueType>(operand.getType()) &&
+    if (!isa<MGP::DeviceBufferType, MGP::OpaqueType, MGP::ListType>(
+            operand.getType()) &&
         operand != chain)
       kernelBody.addArgument(operand.getType(), operand.getLoc());
   }
@@ -683,6 +684,24 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     if (isa<MGP::OpaqueType>(input.getType())) {
       return builder.create<MOGG::ToOpaqueFromMGPOp>(input.getLoc(), oldTy,
                                                      input);
+    } else if (isa<MO::TensorType, MO::BufferType>(oldTy)) {
+      MO::TensorType asTensor = MO::castFromTensorLike(oldTy);
+
+      SmallVector<Value> operands;
+      operands.push_back(input);
+      for (auto ty : asTensor.getDims())
+        operands.push_back(loweredParams.at(ty));
+
+      return builder.create<MOGG::ToTensorFromMGPOp>(input.getLoc(), asTensor,
+                                                     operands);
+    } else if (auto asListTy = dyn_cast<MO::ListType>(oldTy)) {
+      return builder.create<MOGG::ToListFromMGPOp>(input.getLoc(), oldTy,
+                                                   input);
+    } else {
+      ASSERT_STREAM(false, << "Unknown type " << oldTy << " with value "
+                           << input);
+      llvm_unreachable("[convertMGPInputToMOValue] Unknown type.");
+      return {};
     }
 
     MO::TensorType asTensor = MO::castFromTensorLike(oldTy);
@@ -729,7 +748,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       auto dynamicTensorTy =
           MO::TensorType::get(dynamicShape, asTensor.getElementType());
       internalTensorAllocTypes.push_back(dynamicTensorTy);
-    } else {
+    } else if (isa<MO::OpaqueType>(oldOut.getType())) {
       // Opaque type.
       internalOpaqueAllocTypes.push_back(oldOut.getType());
     }
