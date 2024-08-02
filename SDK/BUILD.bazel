@@ -1,3 +1,4 @@
+load("@pip_deps//:requirements.bzl", "requirement")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load(
     "//bazel:api.bzl",
@@ -163,5 +164,6 @@ py_repl(
         "//SDK/lib/DriverAPI/python:max_driver",
         "//SDK/lib/EngineAPI/python:max_engine",
         "//SDK/lib/GraphAPI/python:max_graph",
+        requirement("notebook"),
     ],
 )
