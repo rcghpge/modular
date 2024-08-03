@@ -306,6 +306,41 @@ gentbl_filegroup(
     ],
 )
 
+gentbl_filegroup(
+    name = "mo_json",
+    tbl_outs = [(
+        ["--dump-json"],
+        "mo.json",
+    )],
+    tblgen = "@llvm-project//llvm:llvm-tblgen",
+    td_file = "include/GenericML/GraphCompiler/MODialect/MO.td",
+    deps = [
+        "//GenericML:MODialectTdFiles",
+        "//GenericML:MOSHDialectTdFiles",
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
+        "@llvm-project//mlir:FunctionInterfacesTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+    ],
+)
+
+gentbl_filegroup(
+    name = "rmo_json",
+    tbl_outs = [(
+        ["--dump-json"],
+        "rmo.json",
+    )],
+    tblgen = "@llvm-project//llvm:llvm-tblgen",
+    td_file = "include/GenericML/GraphCompiler/RMODialect/RMO.td",
+    deps = [
+        "//GenericML:MODialectTdFiles",
+        "//GenericML:MOSHDialectTdFiles",
+        "//GenericML:RMODialectTdFiles",
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
+        "@llvm-project//mlir:FunctionInterfacesTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+    ],
+)
+
 gentbl_cc_library(
     name = "MODialectEnumsIncGen",
     includes = ["include"],

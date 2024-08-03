@@ -4347,7 +4347,7 @@ def MO_AssertOp : MO_Op<"assert"> {
   let results = (outs MO_Chain:$chain);
 
   let builders = [
-    OpBuilder<(ins "Value":$cond, "const Twine &":$message)>,
+    OpBuilder<(ins "Value":$cond, "const llvm::Twine &":$message)>,
   ];
 
   let assemblyFormat = "(`[`$inChain^`]`)? $cond `,` custom<StringParam>($message) attr-dict";

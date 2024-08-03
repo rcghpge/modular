@@ -9,6 +9,7 @@ load(
     "td_library",
 )
 load("//bazel:config.bzl", "CONFIG_SECTION_LOCAL_DEFINES")
+load("//SDK/lib/GraphAPI/python/bindings:tblgen.bzl", "tblgen_pybind")
 
 modular_pybind_library(
     name = "ModularFrameworkPython",
@@ -155,6 +156,20 @@ modular_pybind_library(
     deps = [
         "//ModularFramework/tools/mof",
     ],
+)
+
+tblgen_pybind(
+    name = "MODialectPybindInc",
+    src = "//GenericML:mo_json",
+    dialect = "MODialect",
+    # MO_ConstantScalarOp isn't actually defined.
+    # MO_Chain for some reason lacks a ChainType::get and I don't know why.
+    exclude = [
+        "MO_ConstantScalarOp",
+        "MO_Chain",
+    ],
+    output = "include/SDK/GraphAPI/python/mo_dialect_pybind.cpp.inc",
+    visibility = ["//visibility:public"],
 )
 
 py_repl(

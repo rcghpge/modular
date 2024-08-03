@@ -12,16 +12,19 @@ copy_files(
 # max._graph C extension module.
 modular_pybind_extension(
     name = "core",
-    srcs = ["//SDK/lib/GraphAPI/python/bindings/max/_graph:cpp_bindings_srcs"],
+    srcs = [
+        "//SDK/lib/GraphAPI/python/bindings/max/_graph:core_srcs",
+    ],
     local_defines = [
         # Set definition used in Interop.h to prefix the MLIR package.
         "MLIR_PYTHON_PACKAGE_PREFIX=max._mlir.",
     ],
-    pybind_data = ["//SDK/lib/GraphAPI/python/max/_mlir/_mlir_libs:_mlir"],
-    pybind_deps = ["//SDK:GraphPython"],
+    pybind_data = [
+        "//SDK/lib/GraphAPI/python/max/_mlir/_mlir_libs:_mlir",
+    ],
     deps = [
-        "//GenericML:modular-framework-common",
-        "//ModularFramework/tools/mof",
+        "//GenericML:GraphCompiler",
+        "//SDK/lib/GraphAPI/python/bindings/max/_graph:MODialectPybind",
     ],
 )
 

@@ -1,3 +1,5 @@
+load("//bazel:api.bzl", "modular_pybind_library")
+
 package(default_visibility = ["//visibility:public"])
 
 filegroup(
@@ -10,6 +12,21 @@ filegroup(
 
 # Label for all bindings sources.
 filegroup(
-    name = "cpp_bindings_srcs",
-    srcs = glob(["**/*.cpp"]),
+    name = "core_srcs",
+    srcs = ["core.cpp"],
+)
+
+modular_pybind_library(
+    name = "MODialectPybind",
+    srcs = [
+        "mo.cpp",
+        "//SDK:MODialectPybindInc",
+    ],
+    deps = [
+        "//GenericML:GraphCompiler",
+        "//GenericML:modular-framework-common",
+        "//ModularFramework/tools/mof",
+        "//SDK:GraphPython",
+        "@llvm-project//mlir:IR",
+    ],
 )
