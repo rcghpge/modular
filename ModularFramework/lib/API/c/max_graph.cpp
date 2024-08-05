@@ -22,6 +22,7 @@
 #include "mlir/IR/Verifier.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/bit.h"
+#include "llvm/Support/MemoryBuffer.h"
 
 using namespace M;
 using namespace M::MOF::GraphBuilder;
@@ -101,15 +102,26 @@ MODULAR_API_EXPORT MlirNamedAttribute MAXG_weightsAttr(const char *filepath,
   int64_t sizeBytes =
       moType.getDtype().getSizeInBytes() * moType.getNumElements().value();
 
+  // Ensure that offset is aligned. mmap saves pages of data.
+  int alignment = llvm::sys::fs::mapped_file_region::alignment();
+  size_t alignedOffset = (offsetBytes / alignment) * alignment;
+  int64_t alignedSize = sizeBytes + (offsetBytes - alignedOffset);
+
   // mmap the provided filepath as read-only.
-  auto bufferOr = M::Buffer::getFile(filepath, sizeBytes, offsetBytes);
-  if (bufferOr.isError()) {
-    status->status = bufferOr.takeError();
+  auto alignedBufferOr =
+      M::Buffer::getFile(filepath, alignedSize, alignedOffset);
+  if (alignedBufferOr.isError()) {
+    status->status = alignedBufferOr.takeError();
     return {{nullptr}, {nullptr}};
   }
-  M::BufferRef bufferRef = bufferOr.takeValue();
+  M::BufferRef alignedBufferRef = alignedBufferOr.takeValue();
+
+  // Get the buffer at the actual provided offset.
+  M::BufferRef bufferRef = M::Buffer::getAlias(
+      alignedBufferRef, offsetBytes - alignedOffset, sizeBytes);
 
   auto buff_size = static_cast<int64_t>(bufferRef->getBufferSize());
+
   if (buff_size != sizeBytes) {
     status->status =
         M::Error(Twine("Size mismatch, want ") + std::to_string(sizeBytes) +
