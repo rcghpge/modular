@@ -417,7 +417,7 @@ ErrorOrSuccess Fallback<MO::AvgPoolOp>::build(GraphOp &graph,
   buildForOpResult(graph, builder, op, "pool_shape", op.getOperands(),
                    op.getOutputParamDecls(),
                    /*kgenParams=*/{},
-                   /*dataDepInputIdxs=*/{1, 2, 3, 4});
+                   /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
 }
 
@@ -427,7 +427,7 @@ ErrorOrSuccess Fallback<MO::AvgPoolCeilOp>::build(GraphOp &graph,
   buildForOpResult(graph, builder, op, "pool_shape_ceil", op.getOperands(),
                    op.getOutputParamDecls(),
                    /*kgenParams=*/{},
-                   /*dataDepInputIdxs=*/{1, 2, 3, 4});
+                   /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
 }
 
@@ -576,8 +576,7 @@ ErrorOrSuccess Fallback<MO::LinAlg::SolveOp>::build(GraphOp &graph,
                                                     MO::LinAlg::SolveOp op) {
   buildForOpResult(graph, builder, op, "matrix_solve_shape", op.getOperands(),
                    op.getOutputParamDecls(),
-                   /*kgenParams=*/{},
-                   /*dataDepInputIdxs=*/{});
+                   /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
 
@@ -588,7 +587,7 @@ ErrorOrSuccess Fallback<MO::MaxPoolOp>::build(GraphOp &graph,
   buildForOpResult(graph, builder, op, "pool_shape", op.getOperands(),
                    op.getOutputParamDecls(),
                    /*kgenParams=*/{},
-                   /*dataDepInputIdxs=*/{1, 2, 3, 4});
+                   /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
 }
 
@@ -599,7 +598,7 @@ ErrorOrSuccess Fallback<MO::MaxPoolCeilOp>::build(GraphOp &graph,
   buildForOpResult(graph, builder, op, "pool_shape_ceil", op.getOperands(),
                    op.getOutputParamDecls(),
                    /*kgenParams=*/{},
-                   /*dataDepInputIdxs=*/{1, 2, 3, 4});
+                   /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
 }
 
@@ -619,7 +618,7 @@ ErrorOrSuccess Fallback<MO::PadConstantOp>::build(GraphOp &graph,
   SmallVector<Value> shapeFuncInputs({op.getInput(), op.getPaddings()});
   buildForOpResult(graph, builder, op, "pad_shape", shapeFuncInputs,
                    op.getOutputParamDecls(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
+                   /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
 
@@ -629,7 +628,7 @@ ErrorOrSuccess Fallback<MO::PadReflectOp>::build(GraphOp &graph,
   SmallVector<Value> shapeFuncInputs({op.getInput(), op.getPaddings()});
   buildForOpResult(graph, builder, op, "pad_shape", shapeFuncInputs,
                    op.getOutputParamDecls(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
+                   /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
 
@@ -639,7 +638,7 @@ ErrorOrSuccess Fallback<MO::PadRepeatOp>::build(GraphOp &graph,
   SmallVector<Value> shapeFuncInputs({op.getInput(), op.getPaddings()});
   buildForOpResult(graph, builder, op, "pad_shape", shapeFuncInputs,
                    op.getOutputParamDecls(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
+                   /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
 

@@ -197,6 +197,108 @@ GatherNdOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
 }
 
 //===----------------------------------------------------------------------===//
+// Linalg::SolveOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> LinAlg::SolveOp::getDataDependentInputIndices() {
+  return {};
+}
+
+ShapeMaterializeResult
+LinAlg::SolveOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  auto lhsShape = inputAttrs[0];
+  auto rhsShape = inputAttrs[1];
+
+  return materializeMatrixSolveShape(graphOp, loc, lhsShape, rhsShape);
+}
+
+//===----------------------------------------------------------------------===//
+// Pad*Op
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> PadConstantOp::getDataDependentInputIndices() {
+  return {1};
+}
+SmallVector<int32_t> PadReflectOp::getDataDependentInputIndices() {
+  return {1};
+}
+SmallVector<int32_t> PadRepeatOp::getDataDependentInputIndices() { return {1}; }
+
+static ShapeMaterializeResult
+commonPadMaterializeShapeDefs(Operation *op, ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = op->getParentOfType<GraphOp>();
+  Location loc = op->getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr paddings = inputAttrs[1];
+
+  return materializePadShape(graphOp, loc, inputShape, paddings);
+}
+
+ShapeMaterializeResult
+PadConstantOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  return commonPadMaterializeShapeDefs(getOperation(), inputAttrs);
+}
+ShapeMaterializeResult
+PadReflectOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  return commonPadMaterializeShapeDefs(getOperation(), inputAttrs);
+}
+ShapeMaterializeResult
+PadRepeatOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  return commonPadMaterializeShapeDefs(getOperation(), inputAttrs);
+}
+
+//===----------------------------------------------------------------------===//
+// *PoolOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> MaxPoolOp::getDataDependentInputIndices() {
+  return {1, 2, 3, 4};
+}
+SmallVector<int32_t> AvgPoolOp::getDataDependentInputIndices() {
+  return {1, 2, 3, 4};
+}
+SmallVector<int32_t> MaxPoolCeilOp::getDataDependentInputIndices() {
+  return {1, 2, 3, 4};
+}
+SmallVector<int32_t> AvgPoolCeilOp::getDataDependentInputIndices() {
+  return {1, 2, 3, 4};
+}
+
+static ShapeMaterializeResult
+commonPoolMaterializeShapeDefs(Operation *op, ArrayRef<TypedAttr> inputAttrs,
+                               bool ceilMode) {
+  auto graphOp = op->getParentOfType<GraphOp>();
+  Location loc = op->getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr filter = inputAttrs[1];
+  TypedAttr strides = inputAttrs[2];
+  TypedAttr dilations = inputAttrs[3];
+  TypedAttr paddings = inputAttrs[4];
+
+  return materializePoolShape(graphOp, loc, inputShape, filter, strides,
+                              dilations, paddings, ceilMode);
+}
+
+ShapeMaterializeResult
+MaxPoolOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  return commonPoolMaterializeShapeDefs(getOperation(), inputAttrs, false);
+}
+ShapeMaterializeResult
+AvgPoolOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  return commonPoolMaterializeShapeDefs(getOperation(), inputAttrs, false);
+}
+ShapeMaterializeResult
+MaxPoolCeilOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  return commonPoolMaterializeShapeDefs(getOperation(), inputAttrs, true);
+}
+ShapeMaterializeResult
+AvgPoolCeilOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  return commonPoolMaterializeShapeDefs(getOperation(), inputAttrs, true);
+}
+
+//===----------------------------------------------------------------------===//
 // RangeOp
 //===----------------------------------------------------------------------===//
 

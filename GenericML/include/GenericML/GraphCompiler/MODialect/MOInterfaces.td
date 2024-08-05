@@ -225,7 +225,7 @@ def MO_Staticization : OpInterface<"Staticization"> {
     "too dynamic), or the result of staticization. The `ParamExprBuilder` is "
     " used to build new expression or assertions.",
       "ErrorOr<TypedAttr>", "tryStaticize",
-      (ins "ArrayRef<TypedAttr>":$inputs, 
+      (ins "ArrayRef<TypedAttr>":$inputs,
            "ParamExprBuilder&":$b),
       [{}]>,
   ];
@@ -577,6 +577,8 @@ def MO_SameFirstOperandAndResultsElementType :
 
 def MO_PadLikeTraits: TraitList<[
   MO_PadLike,
-  MO_DefaultParameterization]>;
+  MO_DefaultParameterization,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+]>;
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_TD

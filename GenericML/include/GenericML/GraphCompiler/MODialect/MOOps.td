@@ -1612,6 +1612,7 @@ def MO_ReduceMaxOp : MO_MonotypeReductionOp<"reduce.max", [
 def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]>{
   let summary = "Average pooling operation";
   let description = [{
@@ -1675,6 +1676,7 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
 def MO_AvgPoolCeilOp : MO_TensorOp<"avg_pool_ceil_mode_true", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]>{
   let summary = "Ceiling-mode average pooling operation";
   let description = [{
@@ -1738,6 +1740,7 @@ def MO_AvgPoolCeilOp : MO_TensorOp<"avg_pool_ceil_mode_true", [
 def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]>{
   let summary = "Maximum pooling operation";
   let description = [{
@@ -1800,6 +1803,7 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
 def MO_MaxPoolCeilOp : MO_TensorOp<"max_pool_ceil_mode_true", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]>{
   let summary = "Ceiling-mode maximum pooling operation";
   let description = [{
@@ -3771,7 +3775,9 @@ def MO_BandPartOp : MO_LinalgOp<"band_part", [
 
 def MO_SolveOp : MO_LinalgOp<"solve", [
     MO_SameOperandsAndResultElementType,
-    DeclareOpInterfaceMethods<MO_DefaultParameterization>]> {
+    DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+    DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+]> {
   let summary = "Linear solve operation";
   let description = [{
     Solves the system of linear equations described by

@@ -511,8 +511,8 @@ mo.graph @max_pool2d_ceil_mode_true_static_input_dims(
   ) -> !mo.tensor<[?, ?, ?, ?], f32>
   mo.output %0 : !mo.tensor<[?, ?, ?, ?], f32>
 }
-// CHECK-LABEL: mo.graph
-// CHECK-SAME: @max_pool2d_ceil_mode_true_static_input_dims([[VARG0:%.*]]: !mo.tensor<[10, 4, 4, 16], f32>) -> !mo.tensor<[10, 2, 2, 16], f32> {
+// CHECK-LABEL: mo.graph @max_pool2d_ceil_mode_true_static_input_dims
+// CHECK-SAME: ([[VARG0:%.*]]: !mo.tensor<[10, 4, 4, 16], f32>) -> !mo.tensor<[10, 2, 2, 16], f32> {
 // CHECK-NEXT:   [[V0:%.*]] = mo.constant {value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-NEXT:   [[V1:%.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-NEXT:   [[V2:%.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>

@@ -1739,57 +1739,6 @@ materializeResizeShapeImpl(ArrayRef<TypedAttr> inputs,
   return materializeTargetShapeLike(graphOp, loc, inputs[1]);
 }
 
-// Assume `inputs` are staticized inputs for a `MO::MatrixSolveOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeMatrixSolveShapeImpl(ArrayRef<TypedAttr> inputs,
-                                DictionaryAttr kgenParams, GraphOp graphOp,
-                                Location loc) {
-  auto lhsShape = inputs[0];
-  auto rhsShape = inputs[1];
-  return materializeMatrixSolveShape(graphOp, loc, lhsShape, rhsShape);
-}
-
-// Assume `inputs` are staticized inputs for a Pooling op that rounds _up_ when
-// computing output shapes, try materializing the its shape logic.
-static ShapeMaterializeResult
-materializePoolCeilShapeImpl(ArrayRef<TypedAttr> inputs,
-                             DictionaryAttr kgenParams, GraphOp graphOp,
-                             Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr filter = inputs[1];
-  TypedAttr strides = inputs[2];
-  TypedAttr dilations = inputs[3];
-  TypedAttr paddings = inputs[4];
-  return materializePoolShape(graphOp, loc, inputShape, filter, strides,
-                              dilations, paddings, /*ceilMode=*/true);
-}
-
-// Assume `inputs` are staticized inputs for a padding op, try materializing the
-// its shape logic.
-static ShapeMaterializeResult
-materializePadShapeImpl(ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams,
-                        GraphOp graphOp, Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr paddings = inputs[1];
-  return materializePadShape(graphOp, loc, inputShape, paddings);
-}
-
-// Assume `inputs` are staticized inputs for a Pooling op that rounds _down_
-// when computing output shapes, try materializing the its shape logic.
-static ShapeMaterializeResult
-materializePoolFloorShapeImpl(ArrayRef<TypedAttr> inputs,
-                              DictionaryAttr kgenParams, GraphOp graphOp,
-                              Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr filter = inputs[1];
-  TypedAttr strides = inputs[2];
-  TypedAttr dilations = inputs[3];
-  TypedAttr paddings = inputs[4];
-  return materializePoolShape(graphOp, loc, inputShape, filter, strides,
-                              dilations, paddings, /*ceilMode=*/false);
-}
-
 // Assume `inputs` are staticized inputs for a `MO::ScatterNd`-family op, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
@@ -1874,10 +1823,6 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
   // A hard-coded map from shape function name to how their shape logic can be
   // materialized.
   static DenseMap<StringRef, MaterializeShapeFuncTy> nameToFunc = {
-      {"matrix_solve_shape", materializeMatrixSolveShapeImpl},
-      {"pad_shape", materializePadShapeImpl},
-      {"pool_shape", materializePoolFloorShapeImpl},
-      {"pool_shape_ceil", materializePoolCeilShapeImpl},
       {"random_shape", materializeRandomShapeImpl},
       {"resize_shape", materializeResizeShapeImpl},
       {"roi_align_shape", matierlizeRoiAlignShapeImpl},
