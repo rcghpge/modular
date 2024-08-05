@@ -443,6 +443,10 @@ def dispatch[dtype: DType](config: Config):
     print()
     metrics.print()
 
+    # Avoid destroying heavyweight objects inside the timing loop.
+    _ = sampler^
+    _ = replit^
+
 
 def main():
     config = Config()
