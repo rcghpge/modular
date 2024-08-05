@@ -1721,37 +1721,6 @@ matierlizeRoiAlignShapeImpl(ArrayRef<TypedAttr> inputs,
                                  outWidth);
 }
 
-// Assume `inputs` are staticized inputs for a `MO::GatherOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeGatherShapeImpl(ArrayRef<TypedAttr> inputs,
-                           DictionaryAttr kgenParams, GraphOp graphOp,
-                           Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr indicesShape = inputs[1];
-  TypedAttr axis = inputs[2];
-  return materializeGatherShape(graphOp, loc, inputShape, indicesShape, axis);
-}
-
-// Assume `inputs` are staticized inputs for a `MO::GatherNdOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeGatherNdShapeImpl(ArrayRef<TypedAttr> inputs,
-                             DictionaryAttr kgenParams, GraphOp graphOp,
-                             Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr indicesShape = inputs[1];
-
-  ASSERT_STREAM(kgenParams,
-                << "kgenParams must be available for split_ith_output_shape");
-  auto intAttr = dyn_cast_or_null<IntegerAttr>(kgenParams.get("batch_dims"));
-  ASSERT_STREAM(intAttr, << "kgenParams must contain an 'batch_dims' "
-                            "integer for gather_nd_shape");
-
-  return materializeGatherNdShape(graphOp, loc, inputShape, indicesShape,
-                                  intAttr.getInt());
-}
-
 // Assume `inputs` are staticized inputs for a `MO::RandomNormalOp`, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
@@ -1768,23 +1737,6 @@ materializeResizeShapeImpl(ArrayRef<TypedAttr> inputs,
                            DictionaryAttr kgenParams, GraphOp graphOp,
                            Location loc) {
   return materializeTargetShapeLike(graphOp, loc, inputs[1]);
-}
-
-// Assume `inputs` are staticized inputs for a `MO::ConvTransposeOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeConvTransposeShapeImpl(ArrayRef<TypedAttr> inputs,
-                                  DictionaryAttr kgenParams, GraphOp graphOp,
-                                  Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr filterShape = inputs[1];
-  TypedAttr strides = inputs[2];
-  TypedAttr dilations = inputs[3];
-  TypedAttr paddings = inputs[4];
-  TypedAttr outPaddings = inputs[5];
-  return materializeConvTransposeShape(graphOp, loc, inputShape, filterShape,
-                                       strides, dilations, paddings,
-                                       outPaddings);
 }
 
 // Assume `inputs` are staticized inputs for a `MO::MatrixSolveOp`, try
@@ -1922,9 +1874,6 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
   // A hard-coded map from shape function name to how their shape logic can be
   // materialized.
   static DenseMap<StringRef, MaterializeShapeFuncTy> nameToFunc = {
-      {"conv_transpose_shape", materializeConvTransposeShapeImpl},
-      {"gather_shape", materializeGatherShapeImpl},
-      {"gather_nd_shape", materializeGatherNdShapeImpl},
       {"matrix_solve_shape", materializeMatrixSolveShapeImpl},
       {"pad_shape", materializePadShapeImpl},
       {"pool_shape", materializePoolFloorShapeImpl},

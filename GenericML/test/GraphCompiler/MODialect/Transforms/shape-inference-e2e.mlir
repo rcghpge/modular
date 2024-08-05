@@ -833,8 +833,7 @@ mo.graph @gather_nd(%input: !mo.tensor<[?, ?, ?], si64>, %indices: !mo.tensor<[?
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @gather_nd<[[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]], [[D5:.*]] -> [[Sh6:.*]]: !mosh.ape>([[VARG0:%.*]]: !mo.tensor<[[[D1]], [[D2]], [[D3]]], si64>, [[VARG1:%.*]]: !mo.tensor<[[[D4]], [[D5]]], si64>) -> !mo.tensor<Sh6, si64> {
-// CHECK-NEXT:   mo.invoke_shape_func["gather_nd_shape"]<() -> [[SH12:.*]]: !mosh.ape>([[VARG0]], [[VARG1]]) {dataDeptTensors = [], kgenParams = {batch_dims = 1 : i64}} : (!mo.tensor<[[[D1]], [[D2]], [[D3]]], si64>, !mo.tensor<[[[D4]], [[D5]]], si64>)
-// CHECK-NEXT:   [[V0:%.*]] = mo.gather_nd([[VARG0]], [[VARG1]]) {batchDims = 1 : i64} : (!mo.tensor<[[[D1]], [[D2]], [[D3]]], si64>, !mo.tensor<[[[D4]], [[D5]]], si64>) -> !mo.tensor<[[SH12]], si64>
+// CHECK-NEXT:   [[V0:%.*]] = mo.gather_nd<() -> [[SH12:.*]]: !mosh.ape>([[VARG0]], [[VARG1]]) {batchDims = 1 : i64} : (!mo.tensor<[[[D1]], [[D2]], [[D3]]], si64>, !mo.tensor<[[[D4]], [[D5]]], si64>) -> !mo.tensor<[[SH12]], si64>
 // CHECK-NEXT:   mo.output<{{.*}}> [[V0]]
 // CHECK-NEXT: }
 

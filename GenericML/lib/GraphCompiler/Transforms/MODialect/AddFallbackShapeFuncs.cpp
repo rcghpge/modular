@@ -508,7 +508,8 @@ ErrorOrSuccess Fallback<MO::ConvTransposeOp>::build(GraphOp &graph,
                                                     MO::ConvTransposeOp op) {
   buildForOpResult(graph, builder, op, "conv_transpose_shape", op.getOperands(),
                    op.getOutputParamDecls(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{2, 3, 4, 5});
+                   /*kgenParams=*/{},
+                   /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
 }
 
@@ -543,7 +544,7 @@ ErrorOrSuccess Fallback<MO::GatherOp>::build(GraphOp &graph, OpBuilder &builder,
   buildForOpResult(graph, builder, op, "gather_shape", op.getOperands(),
                    op.getOutputParamDecls(),
                    /*kgenParams=*/{},
-                   /*dataDepInputIdxs=*/{2});
+                   /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
 }
 
@@ -556,7 +557,7 @@ ErrorOrSuccess Fallback<MO::GatherNdOp>::build(GraphOp &graph,
                    {
                        {"batch_dims", op.getBatchDims()},
                    },
-                   /*dataDepInputIdxs=*/{});
+                   op.getDataDependentInputIndices());
   return success();
 }
 

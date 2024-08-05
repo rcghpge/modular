@@ -1953,6 +1953,7 @@ def MO_ConvOp : MO_TensorOp<"conv", [
 def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]>{
   let summary = "Transposed convolution operation";
   let description = [{
@@ -2754,6 +2755,7 @@ def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [MO_PadLikeTraits]> {
 def MO_GatherOp : MO_TensorOp<"gather", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "`gather` operation";
@@ -2814,6 +2816,7 @@ def MO_GatherSumOp : MO_TensorOp<"gather_sum"> {
 
 def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]> {
   let summary = "Multi-dimensional `gather` operation";
   let description = [{

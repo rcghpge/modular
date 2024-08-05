@@ -140,6 +140,63 @@ ConvOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
 }
 
 //===----------------------------------------------------------------------===//
+// ConvTransposeOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> ConvTransposeOp::getDataDependentInputIndices() {
+  return {2, 3, 4, 5};
+}
+
+ShapeMaterializeResult
+ConvTransposeOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr filterShape = inputAttrs[1];
+  TypedAttr strides = inputAttrs[2];
+  TypedAttr dilations = inputAttrs[3];
+  TypedAttr paddings = inputAttrs[4];
+  TypedAttr outPaddings = inputAttrs[5];
+  return materializeConvTransposeShape(graphOp, loc, inputShape, filterShape,
+                                       strides, dilations, paddings,
+                                       outPaddings);
+}
+
+//===----------------------------------------------------------------------===//
+// GatherOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> GatherOp::getDataDependentInputIndices() { return {2}; }
+
+ShapeMaterializeResult
+GatherOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr indicesShape = inputAttrs[1];
+  TypedAttr axis = inputAttrs[2];
+  return materializeGatherShape(graphOp, loc, inputShape, indicesShape, axis);
+}
+
+//===----------------------------------------------------------------------===//
+// GatherNdOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> GatherNdOp::getDataDependentInputIndices() { return {}; }
+
+ShapeMaterializeResult
+GatherNdOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr indicesShape = inputAttrs[1];
+
+  auto batchDims = getBatchDimsAttr().getInt();
+  return materializeGatherNdShape(graphOp, loc, inputShape, indicesShape,
+                                  batchDims);
+}
+
+//===----------------------------------------------------------------------===//
 // RangeOp
 //===----------------------------------------------------------------------===//
 
