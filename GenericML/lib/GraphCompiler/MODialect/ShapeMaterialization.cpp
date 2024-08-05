@@ -299,6 +299,21 @@ AvgPoolCeilOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
 }
 
 //===----------------------------------------------------------------------===//
+// RandomOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> RandomNormalOp::getDataDependentInputIndices() {
+  return {0};
+}
+
+ShapeMaterializeResult
+RandomNormalOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  return materializeTargetShapeLike(graphOp, loc, inputAttrs[0]);
+}
+
+//===----------------------------------------------------------------------===//
 // RangeOp
 //===----------------------------------------------------------------------===//
 
@@ -329,6 +344,50 @@ ReshapeOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
   TypedAttr inputShape = inputAttrs[0];
   TypedAttr targetShape = inputAttrs[1];
   return materializeReshapeShape(graphOp, loc, inputShape, targetShape);
+}
+
+//===----------------------------------------------------------------------===//
+// Resize*Op
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> ResizeLinearOp::getDataDependentInputIndices() {
+  return {1};
+}
+SmallVector<int32_t> ResizeNearestOp::getDataDependentInputIndices() {
+  return {1};
+}
+
+ShapeMaterializeResult
+ResizeLinearOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  return materializeTargetShapeLike(graphOp, loc, inputAttrs[1]);
+}
+ShapeMaterializeResult
+ResizeNearestOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  return materializeTargetShapeLike(graphOp, loc, inputAttrs[1]);
+}
+
+//===----------------------------------------------------------------------===//
+// ROIAlignOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> RoiAlignOp::getDataDependentInputIndices() {
+  return {2, 3};
+}
+
+ShapeMaterializeResult
+RoiAlignOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr roisShape = inputAttrs[1];
+  TypedAttr outHeight = inputAttrs[2];
+  TypedAttr outWidth = inputAttrs[3];
+  return materializeRoiAlignShape(graphOp, loc, inputShape, roisShape,
+                                  outHeight, outWidth);
 }
 
 //===----------------------------------------------------------------------===//

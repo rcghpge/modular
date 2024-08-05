@@ -1292,11 +1292,11 @@ materializeReshapeShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   return ShapeMaterializeResult::success(std::move(paramBindings), outputShape);
 }
 
-ShapeMaterializeResult matierlizeRoiAlignShape(GraphOp graphOp, Location loc,
-                                               TypedAttr inputShapeAttr,
-                                               TypedAttr roisShapeAttr,
-                                               TypedAttr outHeightAttr,
-                                               TypedAttr outWidthAttr) {
+ShapeMaterializeResult materializeRoiAlignShape(GraphOp graphOp, Location loc,
+                                                TypedAttr inputShapeAttr,
+                                                TypedAttr roisShapeAttr,
+                                                TypedAttr outHeightAttr,
+                                                TypedAttr outWidthAttr) {
   // Make sure input and rois shapes are ranked.
   ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   ShapeAttr roisShape = dyn_cast<ShapeAttr>(roisShapeAttr);
@@ -1705,40 +1705,6 @@ propagateShape(ArrayRef<ParamBinding> bindings,
   return resultShapes;
 }
 
-// TODO move the following into a new interface.
-
-// Assume `inputs` are staticized inputs for a `MO::RoiAlignOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-matierlizeRoiAlignShapeImpl(ArrayRef<TypedAttr> inputs,
-                            DictionaryAttr kgenParams, GraphOp graphOp,
-                            Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr roisShape = inputs[1];
-  TypedAttr outHeight = inputs[2];
-  TypedAttr outWidth = inputs[3];
-  return matierlizeRoiAlignShape(graphOp, loc, inputShape, roisShape, outHeight,
-                                 outWidth);
-}
-
-// Assume `inputs` are staticized inputs for a `MO::RandomNormalOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeRandomShapeImpl(ArrayRef<TypedAttr> inputs,
-                           DictionaryAttr kgenParams, GraphOp graphOp,
-                           Location loc) {
-  return materializeTargetShapeLike(graphOp, loc, inputs[0]);
-}
-
-// Assume `inputs` are staticized inputs for a `MO::RandomNormalOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeResizeShapeImpl(ArrayRef<TypedAttr> inputs,
-                           DictionaryAttr kgenParams, GraphOp graphOp,
-                           Location loc) {
-  return materializeTargetShapeLike(graphOp, loc, inputs[1]);
-}
-
 // Assume `inputs` are staticized inputs for a `MO::ScatterNd`-family op, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
@@ -1823,9 +1789,6 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
   // A hard-coded map from shape function name to how their shape logic can be
   // materialized.
   static DenseMap<StringRef, MaterializeShapeFuncTy> nameToFunc = {
-      {"random_shape", materializeRandomShapeImpl},
-      {"resize_shape", materializeResizeShapeImpl},
-      {"roi_align_shape", matierlizeRoiAlignShapeImpl},
       {"scatter_nd_shape", materializeScatterNdShapeShapeImpl},
       {"slice_shape", materializeSliceShapeImpl},
       {"squeeze_shape_shape", materializeSqueezeShapeShapeImpl},

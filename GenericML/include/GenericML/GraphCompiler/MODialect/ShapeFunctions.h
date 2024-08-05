@@ -446,11 +446,11 @@ materializeReshapeShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
                         bool allowParametricDenominator = false);
 
 /// Materialize the shape logic for `MO::RoiAlignOp`.
-ShapeMaterializeResult matierlizeRoiAlignShape(GraphOp graphOp, Location loc,
-                                               TypedAttr inputShapeAttr,
-                                               TypedAttr roisShapeAttr,
-                                               TypedAttr outHeightAttr,
-                                               TypedAttr outWidthAttr);
+ShapeMaterializeResult materializeRoiAlignShape(GraphOp graphOp, Location loc,
+                                                TypedAttr inputShapeAttr,
+                                                TypedAttr roisShapeAttr,
+                                                TypedAttr outHeightAttr,
+                                                TypedAttr outWidthAttr);
 
 /// Materialize the shape logic for `MO::ScatterOp`.
 ShapeMaterializeResult materializeScatterShape(GraphOp graphOp, Location loc,

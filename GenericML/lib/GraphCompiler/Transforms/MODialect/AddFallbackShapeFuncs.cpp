@@ -648,7 +648,7 @@ ErrorOrSuccess Fallback<MO::RandomNormalOp>::build(GraphOp &graph,
   SmallVector<Value> shapeFuncInputs({op.getOperand(0)});
   buildForOpResult(graph, builder, op, "random_shape", shapeFuncInputs,
                    op.getOutputParamDecls(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{0});
+                   /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
 
@@ -692,7 +692,7 @@ ErrorOrSuccess Fallback<MO::ResizeNearestOp>::build(GraphOp &graph,
                                                     MO::ResizeNearestOp op) {
   buildForOpResult(graph, builder, op, "resize_shape", op.getOperands(),
                    op.getOutputParamDecls(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
+                   /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
 
@@ -701,7 +701,7 @@ ErrorOrSuccess Fallback<MO::ResizeLinearOp>::build(GraphOp &graph,
                                                    MO::ResizeLinearOp op) {
   buildForOpResult(graph, builder, op, "resize_shape", op.getOperands(),
                    op.getOutputParamDecls(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
+                   /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
 
@@ -711,7 +711,8 @@ ErrorOrSuccess Fallback<MO::RoiAlignOp>::build(GraphOp &graph,
   // The shape function doesn't need spatial_scale and sampling_ratio.
   buildForOpResult(graph, builder, op, "roi_align_shape",
                    op.getOperands().take_front(4), op.getOutputParamDecls(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{2, 3});
+                   /*kgenParams=*/{},
+                   /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
 }
 

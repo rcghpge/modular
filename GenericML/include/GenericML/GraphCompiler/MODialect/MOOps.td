@@ -3392,8 +3392,10 @@ def MO_ArgMinOp : MO_ArgMinMaxOp<"arg_min"> {
 // RandomNormalOp
 //===----------------------------------------------------------------------===//
 
-def MO_RandomNormalOp : MO_TensorOp<"random.normal",
-    [DeclareOpInterfaceMethods<MO_DefaultParameterization>]> {
+def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+]> {
   let summary = "Normal distribution operation";
   let description = [{
     Returns a tensor with shape `shape` populated with random
@@ -3499,7 +3501,8 @@ def MO_RangeOp : MO_TensorOp<"range", [
 
 
 def MO_ResizeLinearOp : MO_TensorOp<"resize.linear",
-  [DeclareOpInterfaceMethods<MO_DefaultParameterization>]> {
+  [DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+   DeclareOpInterfaceMethods<MO_ShapeMaterialization>]> {
   let summary = "Linear resize operation";
   let description = [{
     Resizes a tensor to a new shape using the linear algorithm.
@@ -3525,7 +3528,8 @@ def MO_ResizeLinearOp : MO_TensorOp<"resize.linear",
 
 
 def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
-  [DeclareOpInterfaceMethods<MO_DefaultParameterization>]> {
+  [DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+   DeclareOpInterfaceMethods<MO_ShapeMaterialization>]> {
   let summary = "Nearest-neighbor resize operation";
   let description = [{
     Resizes a tensor to a new shape using the nearest-neighbor algorithm.
@@ -3572,7 +3576,8 @@ def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
 
 def MO_RoiAlignOp : MO_TensorOp<"roi_align", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>]> {
     let summary = "ROI alignment operation";
     let description = [{
       ROI align consumes an input tensor and regions of interest in which to apply pooling.
