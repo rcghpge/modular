@@ -436,8 +436,7 @@ ErrorOrSuccess Fallback<MO::BatchMatmulOp>::build(GraphOp &graph,
                                                   MO::BatchMatmulOp op) {
   buildForOpResult(graph, builder, op, "batch_matmul_shape", op.getOperands(),
                    op.getOutputParamDecls(),
-                   /*kgenParams=*/{},
-                   /*dataDepInputIdxs=*/{});
+                   /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
 
@@ -482,7 +481,7 @@ ErrorOrSuccess Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
       op.getOutputParamDecls(),
       /*kgenParams=*/
       {{"input_type", inputDTypeAttr}, {"input_rank", inputRankAttr}},
-      /*dataDepInputIdxs=*/{0});
+      op.getDataDependentInputIndices());
   return success();
 }
 
@@ -500,7 +499,7 @@ ErrorOrSuccess Fallback<MO::ConvOp>::build(GraphOp &graph, OpBuilder &builder,
                                            MO::ConvOp op) {
   buildForOpResult(graph, builder, op, "conv_shape", op.getOperands(),
                    op.getOutputParamDecls(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{2, 3, 4, 5});
+                   /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
 

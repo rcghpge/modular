@@ -575,7 +575,7 @@ mo.graph @slice_and_shape_of<D0 -> O1>(
   %target_shape = mo.concat[%zero_scalar: !mo.tensor<[], si32>](%input_shape, %one) : (
     !mo.tensor<[2], si32>, !mo.tensor<[1], si32>
   ) -> !mo.tensor<[D1], si32>
- 
+
   // This reshapes `%input` from `[D0, 10]` to `[D0, 10, 1]`. In practice we
   // might get such pseudo-dynamic-rank from either PT models or RMO lowering.
   %reshaped = mo.reshape<() -> Sh0: !mosh.ape>(%input, %target_shape) : (
@@ -589,8 +589,8 @@ mo.graph @slice_and_shape_of<D0 -> O1>(
   // unsqueeze via reshape or doing slice.
   %shape = mo.shape_of<() -> D2>(%abs) : (!mo.tensor<Sh0, si32>) -> !mo.tensor<[D2], si32>
 
-  // CHECK-NEXT: [[MOSH_SH:%.*]] = mosh.param.to_value: !mosh.ape = <[[[D0]], 10, 1]>
-  // CHECK-NEXT: [[TENSOR_SH:%.*]] = mo.shape.to_tensor(%0) -> !mo.tensor<[3], si32>
+  // CHECK: [[MOSH_SH:%.*]] = mosh.param.to_value: !mosh.ape = <[[[D0]], 10, 1]>
+  // CHECK-NEXT: [[TENSOR_SH:%.*]] = mo.shape.to_tensor([[MOSH_SH]]) -> !mo.tensor<[3], si32>
   // CHECK-NEXT: mo.output [[TENSOR_SH]]
   mo.output<D2> %shape : !mo.tensor<[D2], si32>
 }

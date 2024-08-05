@@ -1770,42 +1770,6 @@ materializeResizeShapeImpl(ArrayRef<TypedAttr> inputs,
   return materializeTargetShapeLike(graphOp, loc, inputs[1]);
 }
 
-// Assume `inputs` are staticized inputs for a `MO::BatchMatmulOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeBatchMatmulShapeImpl(ArrayRef<TypedAttr> inputs,
-                                DictionaryAttr kgenParams, GraphOp graphOp,
-                                Location loc) {
-  auto lhsShape = inputs[0];
-  auto rhsShape = inputs[1];
-  return materializeBatchMatmulShape(graphOp, loc, lhsShape, rhsShape);
-}
-
-// Assume `inputs` are staticized inputs for a `MO::ConcatOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeConcatShapeImpl(ArrayRef<TypedAttr> inputs,
-                           DictionaryAttr kgenParams, GraphOp graphOp,
-                           Location loc) {
-  TypedAttr axis = inputs[0];
-  ArrayRef<TypedAttr> inputShapes = inputs.drop_front();
-  return materializeConcatShape(graphOp, loc, axis, inputShapes);
-}
-
-// Assume `inputs` are staticized inputs for a `MO::ConvOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeConvShapeImpl(ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams,
-                         GraphOp graphOp, Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr filterShape = inputs[1];
-  TypedAttr strides = inputs[2];
-  TypedAttr dilations = inputs[3];
-  TypedAttr paddings = inputs[4];
-  TypedAttr numGroup = inputs[5];
-  return materializeConvShape(graphOp, loc, inputShape, filterShape, strides,
-                              dilations, paddings, numGroup);
-}
 // Assume `inputs` are staticized inputs for a `MO::ConvTransposeOp`, try
 // materializing the its shape logic.
 static ShapeMaterializeResult
@@ -1958,9 +1922,6 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
   // A hard-coded map from shape function name to how their shape logic can be
   // materialized.
   static DenseMap<StringRef, MaterializeShapeFuncTy> nameToFunc = {
-      {"batch_matmul_shape", materializeBatchMatmulShapeImpl},
-      {"concat_shape", materializeConcatShapeImpl},
-      {"conv_shape", materializeConvShapeImpl},
       {"conv_transpose_shape", materializeConvTransposeShapeImpl},
       {"gather_shape", materializeGatherShapeImpl},
       {"gather_nd_shape", materializeGatherNdShapeImpl},

@@ -1862,6 +1862,7 @@ def MO_MaxPoolCeilOp : MO_TensorOp<"max_pool_ceil_mode_true", [
 def MO_ConvOp : MO_TensorOp<"conv", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]>{
   let summary = "Convolution operation";
   let description = [{
@@ -2457,6 +2458,7 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]> {
   let summary = "Concatenation operation";
   let description = [{
@@ -3651,6 +3653,7 @@ def MO_BatchMatmulOp : MO_TensorOp<"batch_matmul", [
   Pure,
   MO_MatmulLike,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]> {
   let summary = "Batched matrix-matrix multiplication operation";
   let description = [{

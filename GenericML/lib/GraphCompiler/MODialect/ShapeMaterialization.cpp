@@ -10,6 +10,7 @@
 
 #include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GenericML/Support/Dims.h"
+#include "Support/AssertStream.h"
 
 namespace M::MO {
 
@@ -39,6 +40,31 @@ InvokeShapeFuncOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
   Location loc = getLoc();
   DictionaryAttr kgenParams = getKgenParamsAttr();
   return shapeMaterializeFunc.value()(inputAttrs, kgenParams, graphOp, loc);
+}
+
+//===----------------------------------------------------------------------===//
+// BatchMatmulOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> BatchMatmulOp::getDataDependentInputIndices() {
+  return {};
+}
+
+ShapeMaterializeResult
+BatchMatmulOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  TypedAttr inputA = inputAttrs[0];
+  TypedAttr inputB = inputAttrs[1];
+
+  if (inputAttrs.size() > 2) {
+    auto transposeBAsBool =
+        llvm::dyn_cast_or_null<mlir::BoolAttr>(inputAttrs[2]);
+    ASSERT_STREAM(!transposeBAsBool || !transposeBAsBool.getValue(),
+                  "Do not support staticization of transposeB.");
+  }
+
+  return materializeBatchMatmulShape(graphOp, loc, inputA, inputB);
 }
 
 //===----------------------------------------------------------------------===//
@@ -73,6 +99,44 @@ BroadcastToOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
   TypedAttr inputShape = inputAttrs[0];
   TypedAttr targetShape = inputAttrs[1];
   return materializeBroadcastToShape(graphOp, loc, inputShape, targetShape);
+}
+
+//===----------------------------------------------------------------------===//
+// ConcatOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> ConcatOp::getDataDependentInputIndices() { return {0}; }
+
+ShapeMaterializeResult
+ConcatOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  TypedAttr axis = inputAttrs[0];
+  ArrayRef<TypedAttr> inputShapes = inputAttrs.drop_front();
+
+  return materializeConcatShape(graphOp, loc, axis, inputShapes);
+}
+
+//===----------------------------------------------------------------------===//
+// ConvOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> ConvOp::getDataDependentInputIndices() {
+  return {2, 3, 4, 5};
+}
+
+ShapeMaterializeResult
+ConvOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr filterShape = inputAttrs[1];
+  TypedAttr strides = inputAttrs[2];
+  TypedAttr dilations = inputAttrs[3];
+  TypedAttr paddings = inputAttrs[4];
+  TypedAttr numGroup = inputAttrs[5];
+  return materializeConvShape(graphOp, loc, inputShape, filterShape, strides,
+                              dilations, paddings, numGroup);
 }
 
 //===----------------------------------------------------------------------===//
