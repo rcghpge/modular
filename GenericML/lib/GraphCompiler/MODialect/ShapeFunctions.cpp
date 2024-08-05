@@ -1591,8 +1591,10 @@ ShapeMaterializeResult materializeTopKShape(GraphOp graphOp, Location loc,
 
   SmallVector<TypedAttr> finalShape(inputShapeAttr.getValues());
   finalShape[*axisOr] = k;
+
+  ShapeAttr shape = b.getShapeAttr(finalShape);
   return ShapeMaterializeResult::success(std::move(paramBindings),
-                                         b.getShapeAttr(finalShape));
+                                         SmallVector<ShapeAttr>{shape, shape});
 }
 
 ShapeMaterializeResult
@@ -1705,49 +1707,11 @@ propagateShape(ArrayRef<ParamBinding> bindings,
   return resultShapes;
 }
 
-// Assume `inputs` are staticized inputs for a `MO::TopKOp` or `MO::BottomKOp`,
-// try materializing the its shape logic.
-static ShapeMaterializeResult
-materializeTopKShapeImpl(ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams,
-                         GraphOp graphOp, Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr k = inputs[1];
-  TypedAttr axis = inputs[2];
-  return materializeTopKShape(graphOp, loc, inputShape, k, axis);
-}
-
-// Assume `inputs` are staticized inputs for a `MO::TransposeOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeTransposeShapeImpl(ArrayRef<TypedAttr> inputs,
-                              DictionaryAttr kgenParams, GraphOp graphOp,
-                              Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr permutations = inputs[1];
-  return materializeTransposeShape(graphOp, loc, inputShape, permutations);
-}
-
-// Assume `inputs` are staticized inputs for a `MO::UnsqueezeShapeOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeUnsqueezeShapeShapeImpl(ArrayRef<TypedAttr> inputs,
-                                   DictionaryAttr kgenParams, GraphOp graphOp,
-                                   Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr indicesShape = inputs[1];
-  return materializeUnsqueezeShapeShape(graphOp, loc, inputShape, indicesShape);
-}
-
 std::optional<MaterializeShapeFuncTy>
 tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
   // A hard-coded map from shape function name to how their shape logic can be
   // materialized.
-  static DenseMap<StringRef, MaterializeShapeFuncTy> nameToFunc = {
-      {"top_k_shape", materializeTopKShapeImpl},
-      {"transpose_shape", materializeTransposeShapeImpl},
-      {"unsqueeze_shape_shape", materializeUnsqueezeShapeShapeImpl},
-  };
-
+  static DenseMap<StringRef, MaterializeShapeFuncTy> nameToFunc;
   auto iter = nameToFunc.find(shapeFuncName);
   if (iter == nameToFunc.end())
     return std::nullopt;

@@ -513,4 +513,64 @@ TileOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
   return materializeTileShape(graphOp, loc, inputShape, repeats);
 }
 
+//===----------------------------------------------------------------------===//
+// TopKOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> TopKOp::getDataDependentInputIndices() { return {1, 2}; }
+SmallVector<int32_t> BottomKOp::getDataDependentInputIndices() {
+  return {1, 2};
+}
+
+ShapeMaterializeResult
+materializeCommonTopKShapeDefs(Operation *op, ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = op->getParentOfType<GraphOp>();
+  Location loc = op->getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr k = inputAttrs[1];
+  TypedAttr axis = inputAttrs[2];
+  return materializeTopKShape(graphOp, loc, inputShape, k, axis);
+}
+
+ShapeMaterializeResult
+TopKOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  return materializeCommonTopKShapeDefs(getOperation(), inputAttrs);
+}
+ShapeMaterializeResult
+BottomKOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  return materializeCommonTopKShapeDefs(getOperation(), inputAttrs);
+}
+
+//===----------------------------------------------------------------------===//
+// TransposeOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> TransposeOp::getDataDependentInputIndices() { return {1}; }
+
+ShapeMaterializeResult
+TransposeOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr permutations = inputAttrs[1];
+  return materializeTransposeShape(graphOp, loc, inputShape, permutations);
+}
+
+//===----------------------------------------------------------------------===//
+// UnsqueezeShapeOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> UnsqueezeShapeOp::getDataDependentInputIndices() {
+  return {};
+}
+
+ShapeMaterializeResult
+UnsqueezeShapeOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr indicesShape = inputAttrs[1];
+  return materializeUnsqueezeShapeShape(graphOp, loc, inputShape, indicesShape);
+}
+
 } // namespace M::MO

@@ -2188,6 +2188,7 @@ def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [
 
 def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", [
   DeclareOpInterfaceMethods<MO_Staticization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]> {
   let summary = "Unsqueeze-shape operation";
   let description = [{
@@ -2565,6 +2566,7 @@ def MO_SplitOp : MO_TensorOp<"split", [
 
 def MO_TransposeOp : MO_TensorOp<"transpose", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Transposition operation";
@@ -3964,7 +3966,8 @@ class MO_SelectKLikeOp<string mnemonic, list<Trait> traits = []>
   : MO_TensorOp<
       mnemonic, [
         DeclareOpInterfaceMethods<MO_Parameterization>,
-        DeclareOpInterfaceMethods<MO_ParamDeclaration>
+        DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+        DeclareOpInterfaceMethods<MO_ShapeMaterialization>
       ] # traits> {
   let arguments = (ins MO_Tensor:$input,
                        MO_RankedScalarIndexTensor:$K,

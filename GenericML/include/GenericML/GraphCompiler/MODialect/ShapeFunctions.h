@@ -507,10 +507,10 @@ ShapeMaterializeResult materializeTransposeShape(GraphOp graphOp, Location loc,
                                                  TypedAttr permutationsAttr);
 
 /// Materialize the shape logic for `MO::UnsqueezeShapeOp`.
-ShapeMaterializeResult materializesqueezeShapeShape(GraphOp graphOp,
-                                                    Location loc,
-                                                    TypedAttr inputShapeAttr,
-                                                    TypedAttr indicesShapeAttr);
+ShapeMaterializeResult
+materializeUnsqueezeShapeShape(GraphOp graphOp, Location loc,
+                               TypedAttr inputShapeAttr,
+                               TypedAttr indicesShapeAttr);
 
 //------------------------Shape functions end---------------------------------//
 //----------------------------------------------------------------------------//

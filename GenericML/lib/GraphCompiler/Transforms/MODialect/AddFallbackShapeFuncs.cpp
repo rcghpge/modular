@@ -782,7 +782,7 @@ ErrorOrSuccess Fallback<MO::TopKOp>::build(GraphOp &graph, OpBuilder &builder,
                                            MO::TopKOp op) {
   buildForOpResult(graph, builder, op.getValues(), "top_k_shape",
                    op.getOperands(), op.getOutputParamDecls(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1, 2});
+                   /*kgenParams=*/{}, op.getDataDependentInputIndices());
 
   // indices() guaranteed by verifier to have the same shape as values()
   return success();
@@ -793,7 +793,7 @@ ErrorOrSuccess Fallback<MO::TransposeOp>::build(GraphOp &graph,
                                                 MO::TransposeOp op) {
   buildForOpResult(graph, builder, op, "transpose_shape", op.getOperands(),
                    op.getOutputParamDecls(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
+                   /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
 
@@ -802,7 +802,7 @@ ErrorOrSuccess Fallback<MO::UnsqueezeShapeOp>::build(GraphOp &graph,
                                                      MO::UnsqueezeShapeOp op) {
   buildForOpResult(graph, builder, op, "unsqueeze_shape_shape",
                    op.getOperands(), op.getOutputParamDecls(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{});
+                   /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
 
