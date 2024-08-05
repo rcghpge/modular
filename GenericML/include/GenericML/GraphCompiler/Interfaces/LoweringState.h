@@ -154,6 +154,11 @@ public:
     /// Keeps track of what runtime SSA values the graph SSA values lower to.
     DenseMap<Value, Value> loweredValues;
 
+    /// Maps each buffer / tensor onto each chain which protects the first write
+    /// to the tensor / buffer. Any operation reading the buffer / tensor needs
+    /// to depend on this chain.
+    DenseMap<Value, Value> loweredBufferChains;
+
     /// The next available constant identifier. Used to assign names
     /// to dense_resource attributes capturing MO constants.
     size_t nextConstId = 0;
@@ -281,6 +286,10 @@ public:
     return execute.loweredValues.lookup(key);
   }
 
+  Value getChainGuardingValueOrNull(Value key) {
+    return execute.loweredBufferChains.lookup(key);
+  }
+
   using ParamPlaceholderOp = ParameterLoweringState::PlaceholderOp;
 
   /// Register what runtime SSA value the given graph SSA value is lowered to.
@@ -291,6 +300,11 @@ public:
     if (auto placeholder = value.getDefiningOp<ParamPlaceholderOp>())
       placeholderMap.find(placeholder)->getSecond().emplace_back(key);
 
+    execute.loweredValues.try_emplace(key, value);
+  }
+
+  void emplaceExecuteLoweredBufferValue(Value key, Value value, Value chain) {
+    execute.loweredBufferChains.try_emplace(key, chain);
     execute.loweredValues.try_emplace(key, value);
   }
 
@@ -471,6 +485,10 @@ struct MOOpLoweringState {
   ///   associated with the !mo.tensor type.
   /// - All other operands are passed in the lowered form directly.
   SmallVector<Value> getLoweredOperands();
+
+  /// Given a chain returns either that chain or a merge of that chain and other
+  /// chains which should be waited on to schedule this operation.
+  Value getGuardChain(Value chain);
 
   /// Same as the other `createOutputStorage`, but instead of taking in output
   /// specs, this method will create output specs based on the output type of

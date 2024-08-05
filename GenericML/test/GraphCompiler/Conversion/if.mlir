@@ -5,12 +5,13 @@
 // CHECK: %[[COND:.*]] = mgp.tensor.create %[[CHAIN1:.*]], %[[CTX1:.*]], %[[BUF1:.*]], %[[SPEC1:.*]] : !mgp.tensor<bool>
 // CHECK: %[[VAL1:.*]] = mgp.tensor.create %[[CHAIN2:.*]], %[[CTX1]], %[[BUF2:.*]], %[[SPEC2:.*]] : !mgp.tensor<2xf32>
 // CHECK: %[[VAL2:.*]] = mgp.tensor.create %[[CHAIN3:.*]], %[[CTX1]], %[[BUF3:.*]], %[[SPEC4:.*]] : !mgp.tensor<2xf32>
+// CHECK: %[[CHAIN_MERGE:.*]] = grt.chain.create (%[[CHAIN]], %[[CHAIN]])
 // CHECK: %[[BOOL_BUF:.*]] = mgp.tensor.extract.buffer %[[CTX1]], %[[COND]] : !mgp.tensor<bool>
 // CHECK: %[[BOOL:.*]] = mgp.buffer.to_bool %[[CHAIN4:.*]], %[[CTX1]], %[[BOOL_BUF]] : !mgp.buffer<1>
-// CHECK: %[[OUT:.*]]:2 = grt.if %[[BOOL]] (%[[CHAIN]]: !mef.chain, %[[VAL1]]: !mgp.tensor<2xf32>, %[[VAL2]]: !mgp.tensor<2xf32>)
+// CHECK: %[[OUT:.*]]:2 = grt.if %[[BOOL]] (%[[CHAIN]]: !mef.chain, %[[VAL1]]: !mgp.tensor<2xf32>, %[[CHAIN_MERGE]]: !mef.chain, %[[VAL2]]: !mgp.tensor<2xf32>)
 // CHECK: mef.output %[[CHAIN]], %[[VAL1]]
 // CHECK: } else {
-// CHECK: mef.output %[[CHAIN]], %[[VAL2]]
+// CHECK: mef.output %[[CHAIN_MERGE]], %[[VAL2]]
 // CHECK: }
 // CHECK: mef.output %[[OUT]]#0, %[[OUT]]#1 : !mef.chain, !mgp.tensor<2xf32>
 mo.graph @if_op() -> (!mo.tensor<[2], f32>) {

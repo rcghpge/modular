@@ -7,6 +7,7 @@
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
 #include "Support/AssertStream.h"
 #include <llvm/ADT/STLExtras.h>
@@ -476,6 +477,19 @@ SmallVector<Value> MOOpLoweringState::getLoweredOperands() {
   return loweredOperands;
 }
 
+Value MOOpLoweringState::getGuardChain(Value chain) {
+  SmallVector<Value> inputChains;
+  for (Value operand : opBeingLowered->getOperands()) {
+    if (Value c = loweringState.getChainGuardingValueOrNull(operand))
+      inputChains.push_back(c);
+  }
+  if (!inputChains.empty()) {
+    inputChains.push_back(chain);
+    chain = create<GRT::ChainCreateOp>(inputChains).getResult();
+  }
+  return chain;
+}
+
 FailureOr<SmallVector<MOOutputStorage>>
 MOOpLoweringState::createOutputStorage(Value inChain) {
   FailureOr<SmallVector<TypedValue<MGP::TensorSpecType>>> outSpecsOr =
@@ -547,6 +561,9 @@ void MOOpLoweringState::createOutputs(
                          outputStorage.buffer, outputStorage.tensorSpec);
     }
   }
+
+  if (auto ch = dyn_cast<TypedValue<MEF::ChainType>>(inChain))
+    loweringState.setCurrentExecuteChain(ch);
 }
 
 BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {
@@ -647,7 +664,8 @@ void MOOpLoweringState::createOutputTensor(
   Value loweredTensor =
       getStorageBufferBuilder(moTensor.getType())
           ->tensorCreate(builder, loc, context, inChain, buffer, tensorSpec);
-  loweringState.emplaceExecuteLoweredValue(moTensor, loweredTensor);
+  loweringState.emplaceExecuteLoweredBufferValue(moTensor, loweredTensor,
+                                                 inChain);
 }
 
 void MOOpLoweringState::createOutputTensors(

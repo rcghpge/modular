@@ -1053,6 +1053,7 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   // We'll need to thread the current 'execute' chain through the if
   // 'then' and 'else' blocks.
   Value currentChain = loweringState.getCurrentExecuteChain();
+  currentChain = opLoweringState.getGuardChain(currentChain);
 
   Value cond = ifOp.getCond();
 
@@ -1126,6 +1127,7 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   Value rootChain = loweringState.getExecuteChain();
   Value currentChain = loweringState.getCurrentExecuteChain();
   bool currentIsRoot = currentChain == rootChain;
+  currentChain = opLoweringState.getGuardChain(currentChain);
 
   // Collect the lowered form of all the outer SSA values which (may) appear
   // in the final grt.while 'cond' and 'body' blocks.

@@ -459,7 +459,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     if (maybeInChain)
       return loweringState.lookupExecuteLoweredValue(*maybeInChain);
     else
-      return loweringState.getExecuteChain();
+      return opLoweringState.getGuardChain(loweringState.getExecuteChain());
   }();
 
   // Gather the lowered op operands.
