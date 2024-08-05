@@ -368,21 +368,6 @@ static ErrorOrSuccess buildForScatterLikeOp(GraphOp &graph, OpBuilder &builder,
   return success();
 }
 
-static ErrorOrSuccess buildForScatterNdLikeOp(GraphOp &graph,
-                                              OpBuilder &builder,
-                                              MO::ScatterNdLike op) {
-  KGEN::ParamDeclArrayAttr shapeParams = getNewParameterMapping(
-      graph, op.getResult().getType(), op.getOutputParamDecls());
-
-  // Create the shape function.
-  builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), op->getOperands(), "scatter_nd_shape", shapeParams,
-      /*kgenAttrs*/ DictionaryAttr{},
-      /*Data dependent input indices*/ builder.getI32ArrayAttr({}));
-
-  return success();
-}
-
 void buildForOpResult(GraphOp &graph, OpBuilder &builder, TensorValue res,
                       StringRef shapeFuncName, ValueRange operands,
                       ArrayRef<ParamDeclAttr> outputParamDecls,
@@ -410,6 +395,20 @@ void buildForOpResult(GraphOp &graph, OpBuilder &builder, TensorValue res,
 //===----------------------------------------------------------------------===//
 // Actual fallback implementations
 //===----------------------------------------------------------------------===//
+
+template <typename OpT>
+static ErrorOrSuccess buildForScatterNdLikeOp(GraphOp &graph,
+                                              OpBuilder &builder, OpT op) {
+
+  KGEN::ParamDeclArrayAttr shapeParams = getNewParameterMapping(
+      graph, op.getResult().getType(), op.getOutputParamDecls());
+  buildForOpResult(graph, builder, op, "scatter_nd_shape", op.getOperands(),
+                   shapeParams,
+                   /*kgenParams=*/{},
+                   /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
+
+  return success();
+}
 
 ErrorOrSuccess Fallback<MO::AvgPoolOp>::build(GraphOp &graph,
                                               OpBuilder &builder,
@@ -752,7 +751,8 @@ ErrorOrSuccess Fallback<MO::SliceOp>::build(GraphOp &graph, OpBuilder &builder,
                                             MO::SliceOp op) {
   buildForOpResult(graph, builder, op, "slice_shape", op.getOperands(),
                    op.getOutputParamDecls(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1, 2, 3});
+                   /*kgenParams=*/{},
+                   /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
 }
 
@@ -773,7 +773,8 @@ ErrorOrSuccess Fallback<MO::SqueezeShapeOp>::build(GraphOp &graph,
                                                    MO::SqueezeShapeOp op) {
   buildForOpResult(graph, builder, op, "squeeze_shape_shape", op.getOperands(),
                    op.getOutputParamDecls(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{});
+                   /*kgenParams=*/{},
+                   /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
 }
 
@@ -818,7 +819,7 @@ ErrorOrSuccess Fallback<MO::TileOp>::build(GraphOp &graph, OpBuilder &builder,
                                            MO::TileOp op) {
   buildForOpResult(graph, builder, op, "tile_shape", op.getOperands(),
                    op.getOutputParamDecls(),
-                   /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1});
+                   /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
 

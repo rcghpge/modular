@@ -632,8 +632,6 @@ mo.graph @slice_with_staticized_input<D0 -> D1, D2>(
   %start = mo.concat[%zero_scalar : !mo.tensor<[], si64>] (%zero, %div) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
   %stop = mo.concat[%zero_scalar : !mo.tensor<[], si64>] (%d0, %mul) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
 
-  mo.invoke_shape_func["slice_shape"]<() -> D3, D4>(%input, %start, %stop, %step)
-    {dataDeptTensors = [1, 2, 3]} : (!mo.tensor<[D0, 2304], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
-  %res = mo.slice(%input, %start, %stop, %step) : (!mo.tensor<[D0, 2304], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[D3, D4], f32>
+  %res = mo.slice<() -> D3, D4>(%input, %start, %stop, %step) : (!mo.tensor<[D0, 2304], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[D3, D4], f32>
   mo.output<D3, D4> %res : !mo.tensor<[D3, D4], f32>
 }

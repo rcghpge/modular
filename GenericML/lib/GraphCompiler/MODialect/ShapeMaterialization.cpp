@@ -391,6 +391,97 @@ RoiAlignOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
 }
 
 //===----------------------------------------------------------------------===//
+// ScatterNdOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> ScatterNdOp::getDataDependentInputIndices() { return {}; }
+SmallVector<int32_t> ScatterNdAddOp::getDataDependentInputIndices() {
+  return {};
+}
+SmallVector<int32_t> ScatterNdMaxOp::getDataDependentInputIndices() {
+  return {};
+}
+SmallVector<int32_t> ScatterNdMulOp::getDataDependentInputIndices() {
+  return {};
+}
+SmallVector<int32_t> ScatterNdMinOp::getDataDependentInputIndices() {
+  return {};
+}
+
+ShapeMaterializeResult
+materializeCommonScatterNdShapeDefs(Operation *op,
+                                    ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = op->getParentOfType<GraphOp>();
+  Location loc = op->getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr updatesShape = inputAttrs[1];
+  TypedAttr indicesShape = inputAttrs[2];
+  return materializeScatterNdShape(graphOp, loc, inputShape, updatesShape,
+                                   indicesShape);
+}
+
+ShapeMaterializeResult
+ScatterNdOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  return materializeCommonScatterNdShapeDefs(getOperation(), inputAttrs);
+}
+
+ShapeMaterializeResult
+ScatterNdAddOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  return materializeCommonScatterNdShapeDefs(getOperation(), inputAttrs);
+}
+
+ShapeMaterializeResult
+ScatterNdMaxOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  return materializeCommonScatterNdShapeDefs(getOperation(), inputAttrs);
+}
+
+ShapeMaterializeResult
+ScatterNdMulOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  return materializeCommonScatterNdShapeDefs(getOperation(), inputAttrs);
+}
+
+ShapeMaterializeResult
+ScatterNdMinOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  return materializeCommonScatterNdShapeDefs(getOperation(), inputAttrs);
+}
+
+//===----------------------------------------------------------------------===//
+// SliceOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> SliceOp::getDataDependentInputIndices() {
+  return {1, 2, 3};
+}
+
+ShapeMaterializeResult
+SliceOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  TypedAttr input = inputAttrs[0];
+  TypedAttr starts = inputAttrs[1];
+  TypedAttr stops = inputAttrs[2];
+  TypedAttr steps = inputAttrs[3];
+  return materializeSliceShape(graphOp, loc, input, starts, stops, steps);
+}
+
+//===----------------------------------------------------------------------===//
+// SqueezeShapeOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> SqueezeShapeOp::getDataDependentInputIndices() {
+  return {};
+}
+
+ShapeMaterializeResult
+SqueezeShapeOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr indicesShape = inputAttrs[1];
+  return materializeSqueezeShapeShape(graphOp, loc, inputShape, indicesShape);
+}
+
+//===----------------------------------------------------------------------===//
 // SplitOp
 //===----------------------------------------------------------------------===//
 
@@ -405,6 +496,21 @@ SplitOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
   TypedAttr axis = inputAttrs[2];
   return materializeSplitOutputShapes(graphOp, loc, inputShape, splitSizes,
                                       axis);
+}
+
+//===----------------------------------------------------------------------===//
+// TileOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> TileOp::getDataDependentInputIndices() { return {1}; }
+
+ShapeMaterializeResult
+TileOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr repeats = inputAttrs[1];
+  return materializeTileShape(graphOp, loc, inputShape, repeats);
 }
 
 } // namespace M::MO

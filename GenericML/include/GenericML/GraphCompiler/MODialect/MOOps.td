@@ -1287,6 +1287,7 @@ def MO_SelectOp : MO_TensorOp<"select", [
 def MO_SliceOp : MO_TensorOp<"slice", [
   MO_DefaultParameterization,
   DeclareOpInterfaceMethods<MO_Staticization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Slice operation";
@@ -2142,6 +2143,7 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
 
 def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [
   DeclareOpInterfaceMethods<MO_Staticization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]> {
   let summary = "Squeeze-shape operation";
   let description = [{
@@ -2604,6 +2606,7 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
 
 def MO_TileOp : MO_TensorOp<"tile", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]> {
   let summary = "Tiling operation";
   let description = [{

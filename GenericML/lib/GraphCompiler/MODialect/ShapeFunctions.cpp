@@ -1705,52 +1705,6 @@ propagateShape(ArrayRef<ParamBinding> bindings,
   return resultShapes;
 }
 
-// Assume `inputs` are staticized inputs for a `MO::ScatterNd`-family op, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeScatterNdShapeShapeImpl(ArrayRef<TypedAttr> inputs,
-                                   DictionaryAttr kgenParams, GraphOp graphOp,
-                                   Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr updatesShape = inputs[1];
-  TypedAttr indicesShape = inputs[2];
-  return materializeScatterNdShape(graphOp, loc, inputShape, updatesShape,
-                                   indicesShape);
-}
-
-// Assume `inputs` are staticized inputs for a `MO::SliceOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeSliceShapeImpl(ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams,
-                          GraphOp graphOp, Location loc) {
-  TypedAttr input = inputs[0];
-  TypedAttr starts = inputs[1];
-  TypedAttr stops = inputs[2];
-  TypedAttr steps = inputs[3];
-  return materializeSliceShape(graphOp, loc, input, starts, stops, steps);
-}
-
-// Assume `inputs` are staticized inputs for a `MO::SqueezeShapeOp`, try
-// materializing the its shape logic.
-static ShapeMaterializeResult
-materializeSqueezeShapeShapeImpl(ArrayRef<TypedAttr> inputs,
-                                 DictionaryAttr kgenParams, GraphOp graphOp,
-                                 Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr indicesShape = inputs[1];
-  return materializeSqueezeShapeShape(graphOp, loc, inputShape, indicesShape);
-}
-
-// Assume `inputs` are staticized inputs for a `MO::TileOp`, try materializing
-// the its shape logic.
-static ShapeMaterializeResult
-materializeTileShapeImpl(ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams,
-                         GraphOp graphOp, Location loc) {
-  TypedAttr inputShape = inputs[0];
-  TypedAttr repeats = inputs[1];
-  return materializeTileShape(graphOp, loc, inputShape, repeats);
-}
-
 // Assume `inputs` are staticized inputs for a `MO::TopKOp` or `MO::BottomKOp`,
 // try materializing the its shape logic.
 static ShapeMaterializeResult
@@ -1789,10 +1743,6 @@ tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
   // A hard-coded map from shape function name to how their shape logic can be
   // materialized.
   static DenseMap<StringRef, MaterializeShapeFuncTy> nameToFunc = {
-      {"scatter_nd_shape", materializeScatterNdShapeShapeImpl},
-      {"slice_shape", materializeSliceShapeImpl},
-      {"squeeze_shape_shape", materializeSqueezeShapeShapeImpl},
-      {"tile_shape", materializeTileShapeImpl},
       {"top_k_shape", materializeTopKShapeImpl},
       {"transpose_shape", materializeTransposeShapeImpl},
       {"unsqueeze_shape_shape", materializeUnsqueezeShapeShapeImpl},

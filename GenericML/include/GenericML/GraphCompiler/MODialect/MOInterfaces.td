@@ -373,7 +373,7 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
 
 
 def MO_ScatterLike : MO_TensorOpInterfaceBase<"ScatterLike",
-    [MO_ParamDeclaration]> {
+    [MO_ParamDeclaration,]> {
   let description = [{
     Interface for modeling Scatter-like operations (i.e., regular Scatter
     and Scatter with reductions).
@@ -549,9 +549,9 @@ def MO_ScatterLikeTraits: TraitList<[
 /// All traits that ScatterND-like ops should have.
 def MO_ScatterNdLikeTraits: TraitList<[
   MO_ScatterNdLike,
-  MO_ShapeMaterialization,
   MO_DefaultParameterization,
   MO_OpTrait<"ScatterNdLikeShapeMaterialization">,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]>;
 
 /// Logically similar to the builtin SameOperandsAndResultElementType, but this
