@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_cc_binary")
+load("//bazel:api.bzl", "modular_cc_binary", "run_tool")
 
 modular_cc_binary(
     name = "modular-api-executor",
@@ -10,10 +10,25 @@ modular_cc_binary(
         "//ArraySupport",
         "//GenericML:ExecutionDriver",
         "//GenericML:MaxAPI",
+        "//ModularFramework/tools/mof",
         "//ONNX:APIStrippedHeaders",
         "//ONNX:modular-framework-onnx-ext",
         "//ONNX/tools/onnx:monnx",
         "//SDK:EngineCLI-Benchmark",
         "//Support:Globals",
     ],
+)
+
+run_tool(
+    name = "modular-api-executor-standalone",
+    data = [
+        "//KGEN:CompilerRT",
+        "@llvm-project//compiler-rt:orc_rt",
+    ],
+    env = {
+        "MODULAR_CRASH_REPORTING_ENABLED": "false",
+    },
+    tags = ["manual"],
+    tool = ":modular-api-executor",
+    visibility = ["//visibility:private"],
 )
