@@ -196,6 +196,20 @@ def FuseMutableOps: Pass<"fuse-mutable-ops", "MO::GraphOp"> {
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }
 
+def FuseMutableLoads: Pass<"fuse-mutable-loads", "MO::GraphOp"> {
+  let summary = "'Fuse' mo.mutable.load ops with mogg.kernel ops.";
+  let description = [{
+    Will perform 'fusion' of a mo.mutable.load op with a mogg.kernel op.
+    This amounts to:
+      1. Replacing the value semantic tensor created by the mutable.load op
+         with the buffer semantic tensor
+      2. Making the input chain of the load op an input of the mogg.kernel op
+      3. Adding the output chain of the mutable.load op to the output of the
+         mogg.kernel op
+  }];
+  let dependentDialects = ["M::MOGG::MOGGDialect"];
+}
+
 def MarkTrivialKernels: Pass<"mark-trivial-kernels", "MO::GraphOp"> {
   let summary = "Decide which `MOGG::KernelOp`s can be sequentially fused.";
   let description = [{
