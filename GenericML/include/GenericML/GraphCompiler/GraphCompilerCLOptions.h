@@ -44,6 +44,8 @@ public:
 
   llvm::SmallVector<std::string> kernelLibraryPaths{};
 
+  bool debugKGENStubs{false};
+
   void overrideLoweringOptions(MoToMgpOptions &moToMgpOptions) const {
 
     moToMgpOptions.cacheDir = cacheDir;
@@ -57,6 +59,7 @@ public:
     moToMgpOptions.debugPrintAllTensors = debugPrintAllTensors;
     moToMgpOptions.softFusionNonHostKernelLimit = softFusionNonHostKernelLimit;
     moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
+    moToMgpOptions.debugKGENStubs = debugKGENStubs;
   }
 };
 
@@ -154,6 +157,13 @@ private:
               "to replace TF and MO ops."),
           llvm::cl::location(options.kernelLibraryPaths),
           llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+
+  M::cl::MOpt<bool, true> debugKGENStubs{
+      "debug-kgen-stubs",
+      cl::desc(
+          "Build stubs with debuginfo so that they show up in the debugger."),
+      llvm::cl::location(options.debugKGENStubs),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 };
 
 } // namespace M::MO

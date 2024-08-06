@@ -190,6 +190,11 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
           "If enabled, the graph compiler assumes that the inputs will be "
           "located on the device, and will return outputs on the device."),
       llvm::cl::init(false)};
+  Option<bool> debugKGENStubs{
+      *this, "debug-kgen-stubs",
+      llvm::cl::desc(
+          "Create debuginfo for stubs so they show up in the debugger."),
+      llvm::cl::init(false)};
 };
 
 struct ShapeInferenceOptions

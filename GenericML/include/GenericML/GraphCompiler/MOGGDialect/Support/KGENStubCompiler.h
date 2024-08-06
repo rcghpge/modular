@@ -31,15 +31,18 @@ public:
   /// Compile to binary object. Tell the jit all of the given symbols as symbols
   /// within it that can be executed at runtime.
   ErrorOr<MOGG::LoadCompiledKernelOp>
-  compile(mlir::ArrayAttr combinedSymbolName, bool enableTiming = false);
+  compile(mlir::ArrayAttr combinedSymbolName, bool enableTiming = false,
+          bool debugKGENStubs = false);
 
   /// Run the KGEN elaboration passes on the module.
-  LogicalResult elaborateKGEN(bool enableTiming = false, bool superOpt = false);
+  LogicalResult elaborateKGEN(bool enableTiming = false, bool superOpt = false,
+                              bool debugKGENStubs = false);
 
 private:
   /// Lower to an binary object.
   ErrorOr<MOGG::LoadCompiledKernelOp>
-  compileToLLVM(mlir::ArrayAttr combinedSymbolName, bool enableTiming);
+  compileToLLVM(mlir::ArrayAttr combinedSymbolName, bool enableTiming,
+                bool debugKGENStubs);
 
   MLIRContext *ctx;
 

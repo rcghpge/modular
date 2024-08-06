@@ -20,6 +20,7 @@
 #include "KGEN/ToolCommon/CLOptions.h"
 #include "KGEN/ToolCommon/PassManagerConfigOptions.h"
 #include "Support/Context.h"
+#include "Support/DebugInfoDialect/Transforms/Passes.h"
 #include "Support/MArchTarget/Host.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/MDialect/MDialect.h"
@@ -55,7 +56,8 @@ void initLLVM() {
 }
 namespace M::MOGG::Stub {
 
-LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt) {
+LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
+                                          bool debugKGENStubs) {
   MLIRContext *ctx = kgenModule->getContext();
   initLLVM();
 
@@ -77,6 +79,13 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt) {
   if (targetInfoOr)
     return kgenModule->emitError(targetInfoOr.getError());
 
+  if (debugKGENStubs) {
+    mlir::PassManager pm(ctx);
+    pm.addPass(DebugInfo::createDebugInfoSnapshot());
+    if (failed(pm.run(kgenModule)))
+      mlir::emitError(kgenModule.getLoc(), "Could not synthesize debuginfo");
+  }
+
   KGEN::CompilationOptions compilationOptions;
   compilationOptions.enableSearch = shouldSearch;
   compilationOptions.enableLLVMPerFunctionSplitting = false;
@@ -84,7 +93,8 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt) {
 
   static constexpr llvm::StringLiteral kKernelsBuildType =
       STRINGIFY(KERNELS_BUILD_TYPE);
-  if (kKernelsBuildType == "relwithdebinfo" || kKernelsBuildType == "debug")
+  if (debugKGENStubs || kKernelsBuildType == "relwithdebinfo" ||
+      kKernelsBuildType == "debug")
     compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
 
   KGEN::PassManagerConfigOptions pmOptions;
@@ -152,7 +162,7 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt) {
 
 ErrorOr<MOGG::LoadCompiledKernelOp>
 StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
-                            bool enableTiming) {
+                            bool enableTiming, bool debugKGENStubs) {
   static constexpr llvm::StringLiteral kKernelsBuildType =
       STRINGIFY(KERNELS_BUILD_TYPE);
 
@@ -167,7 +177,8 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
   if (kKernelsBuildType == "debug")
     compilationOptions.optimizationLevel = 0;
 
-  if (kKernelsBuildType == "relwithdebinfo" || kKernelsBuildType == "debug")
+  if (debugKGENStubs || kKernelsBuildType == "relwithdebinfo" ||
+      kKernelsBuildType == "debug")
     compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
 
   initLLVM();
@@ -209,15 +220,16 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
 }
 
 ErrorOr<MOGG::LoadCompiledKernelOp>
-StubCompiler::compile(mlir::ArrayAttr combinedSymbolName, bool enableTiming) {
+StubCompiler::compile(mlir::ArrayAttr combinedSymbolName, bool enableTiming,
+                      bool debugKGENStubs) {
 
   initLLVM();
 
-  LogicalResult ok = elaborateKGEN(enableTiming);
+  LogicalResult ok = elaborateKGEN(enableTiming, false, debugKGENStubs);
   if (ok.failed())
     return Error("KGEN elaboration failed");
 
-  return compileToLLVM(combinedSymbolName, enableTiming);
+  return compileToLLVM(combinedSymbolName, enableTiming, debugKGENStubs);
 }
 
 } // namespace M::MOGG::Stub

@@ -202,11 +202,11 @@ ErrorOrSuccess CompiledKernelsContext::load(ArrayRef<uint8_t> binary,
     cmd_s << std::string(GENERICML_LINKER_CMD) << " -shared ";
     llvm::interleave(objectFiles, cmd_s, " ");
     cmd_s << " -o " << outPath;
-    LLVM_DEBUG(llvm::dbgs() << "Linked shared library: " << cmd << "\n");
+    (llvm::outs() << "Linked shared library: " << cmd << "\n");
     int r = system(cmd.c_str());
     if (r != 0)
       return Error("Could not link shared object");
-    LLVM_DEBUG(llvm::dbgs() << "Loading shared library " << outPath << "\n");
+    (llvm::outs() << "Loading shared library " << outPath << "\n");
     auto gen = llvm::orc::DynamicLibrarySearchGenerator::Load(
         outPath.c_str(), engine->getDataLayout().getGlobalPrefix());
     if (!gen)

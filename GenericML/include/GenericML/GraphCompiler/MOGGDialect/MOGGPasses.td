@@ -59,7 +59,10 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
      "Skip jit compile for mogg kernels, which get lowered to compiled region">,
     Option<"dryRun", "dry-run", "bool",
       /*default=*/"false",
-     "Run the pass but don't actually compile.">
+     "Run the pass but don't actually compile.">,
+    Option<"debugKGENStubs", "debug-kgen-stubs", "bool",
+      /*default=*/"false",
+      "Create debuginfo for kgen stubs such that the debugger will give linenumbers for the stubs">
   ];
 }
 

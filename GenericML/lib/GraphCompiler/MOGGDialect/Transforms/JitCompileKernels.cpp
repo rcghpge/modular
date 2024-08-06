@@ -92,7 +92,7 @@ struct JitCompileKernels
         createMOGGReproducers.getValue(), useSearch.getValue(),
         saveTempPrefix.getValue(), minimumCpuAlignment.getValue(),
         splitBinaryCompile.getValue(), timeMOGGCompile.getValue(),
-        dryRun.getValue());
+        dryRun.getValue(), debugKGENStubs.getValue());
 
     if (err.isError())
       return err.takeError();
