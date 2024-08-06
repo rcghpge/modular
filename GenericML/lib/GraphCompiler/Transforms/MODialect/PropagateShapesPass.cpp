@@ -926,12 +926,11 @@ struct PropagateShapesPass
     // since they were built with `builder`.
     for (Operation *declOp : paramDeclOps)
       builder.insert(declOp);
-    // TODO(GRA-627) remove the true branch
-    bool isInvokeShapeFuncOp = isa<InvokeShapeFuncOp>(op);
-    if (isInvokeShapeFuncOp)
-      op.erase();
-    else
-      op.setOutputParamDecls({});
+
+    ASSERT_STREAM(!isa<InvokeShapeFuncOp>(op),
+                  << "We do not expect InvokeShapeFuncOp to be in the IR "
+                     "before PropagateShape!");
+    op.setOutputParamDecls({});
 
     // The first new op must be processed next in the worklist, so we push the
     // new ops onto the worklist in reversed order.
@@ -940,9 +939,7 @@ struct PropagateShapesPass
     // re-visited after we visit all the new ops, since that's when we'll have
     // all the information needede to update the output shape of `op` (if
     // needed).
-    // TODO(GRA-627) remove this branch
-    if (!isInvokeShapeFuncOp)
-      worklist.push_back(op);
+    worklist.push_back(op);
     for (Operation *newOp : llvm::reverse(newOps))
       worklist.push_back(newOp);
 

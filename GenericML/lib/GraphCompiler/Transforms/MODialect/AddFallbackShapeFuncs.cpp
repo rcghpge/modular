@@ -173,24 +173,6 @@ struct AddFallbackShapeFunctions
       if (op.getOutputParamDecls().empty())
         return mlir::WalkResult::advance();
 
-      // NOTE for most ops, we can materialize their shape function calls once
-      // and for all, since if there is any shape-changing rewrite, we can
-      // generally compose the new shape out of existing shape parameters.
-      //
-      // However, there are certain ops like `mo.arg_nonzero` where
-      // 1. it's never possible to resolve its output shape at compile time
-      // 2. we have rewrite (e.g., sink broadcast through `mo.arg_nonzero`) that
-      // changes its output shape.
-      //
-      // For these ops, we avoid materializing their shape function call until
-      // the very end.
-      //
-      // TODO(GRA-627) move this pass after `PropagateShapesPass` and remove
-      // `ShapeMaterialization` here.
-      if (restricted &&
-          isa<MO::ArgNonzeroOp, ShapeMaterialization>(op.getOperation()))
-        return mlir::WalkResult::advance();
-
       // Call the fallbacks.
       builder.setInsertionPoint(op);
       CALL_FALLBACK(MO::ArgMaxOp)

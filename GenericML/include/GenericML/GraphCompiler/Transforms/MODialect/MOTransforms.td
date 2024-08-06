@@ -20,9 +20,7 @@ def AddFallbackShapeFunctions :
 
   let options = [
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo shape functions to be loaded. ">,
-    Option<"restricted", "restricted", "bool", "false",
-      "If set to true, only add fallback shape functions for a limited set of ops.">,
+      "Paths to mojo packages containing mojo shape functions to be loaded. ">
   ];
 
   let dependentDialects = [
@@ -52,10 +50,7 @@ def SymbolicizeFallbackShapeFunctions :
 
   let options = [
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo shape functions to be loaded. ">,
-  // TODO remove after shape inference passes are merged.
-    Option<"reducedMode", "reduced", "bool", "false",
-           "Whether to disable shape function symbolization for certain ops">,
+      "Paths to mojo packages containing mojo shape functions to be loaded. ">
   ];
 
   let dependentDialects = [
@@ -342,7 +337,7 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
            "'small'. Ops which take and return only 'small' tensors are "
            "themselves considered 'small', and need not be placed on the "
            "overall graph's default device.">,
-    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string", 
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
           "Paths to mojo packages containing mojo shape functions to be loaded. ">,
     Option<"targetDevice", "target-device",  "std::string", "\"\"",
            "If non-empty, assign devices using this device">,

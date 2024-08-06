@@ -540,10 +540,6 @@ propagateShape(ArrayRef<ParamBinding> bindings,
 using MaterializeShapeFuncTy = std::function<ShapeMaterializeResult(
     ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams, GraphOp graphOp,
     Location loc)>;
-/// Return a shape materialization function for the mojo shape function with
-/// given name.
-std::optional<MaterializeShapeFuncTy>
-tryGetShapeMaterializeFunc(StringRef shapeFuncName);
 
 } // namespace M::MO
 

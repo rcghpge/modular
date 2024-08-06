@@ -1,4 +1,4 @@
-// RUN: mo-opt --shape-inference="kernel-library-paths=%extra_test_lib" %s | FileCheck %s
+// RUN: mo-opt --shape-inference="kernel-library-paths=%extra_test_lib" --add-fallback-shape-funcs="kernel-library-paths=%extra_test_lib" %s | FileCheck %s
 
 
 // CHECK-LABEL: mo.graph @custom_op

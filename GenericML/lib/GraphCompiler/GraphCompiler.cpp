@@ -146,41 +146,30 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.compiledFrameworkLabel.hasValue())
     compiledFrameworkLabel = opts.compiledFrameworkLabel;
 
-  if (opts.useShapeInference) {
-    ShapeInferenceOptions shapeInferenceOpts;
-    shapeInferenceOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
-    shapeInferenceOpts.constantFold = opts.constantFold;
-    shapeInferenceOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  // Run shape inference and constant fold.
+  ShapeInferenceOptions shapeInferenceOpts;
+  shapeInferenceOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
+  shapeInferenceOpts.constantFold = opts.constantFold;
+  shapeInferenceOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  if (opts.useShapeInference)
     buildShapeInferencePipeline(pm, shapeInferenceOpts, opts);
-
-    // We constant fold after shape inference because
-    // 1. shape annotation helps constant fold's policy to avoid memory blow up.
-    // 2. constant fold might open up new opportunities for symbolic
-    // optimization.
-    if (opts.constantFold)
-      pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
-
-    // Run symbolic optimizations after shape inference to avoid complicating
-    // tracing shape pipeline.
-    SymbolicOptimizationOptions symbolicOptimizationOpts;
-    symbolicOptimizationOpts.symbolicFfastMath = opts.symbolicFfastMath;
-    symbolicOptimizationOpts.symbolicNoUndefinedMath =
-        opts.symbolicNoUndefinedMath;
-    pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
-
-    // Add fallback shape functions for any remaining unhandled ops.
-    // NOTE: https://github.com/modularml/modular/issues/36956 means we need
-    // this to handle mo.arg_nonzero.
-    pm.addPass(MO::createAddFallbackShapeFunctions({opts.kernelLibraryPaths}));
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(mlir::createCSEPass());
-    pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(mlir::createCSEPass());
-  }
-
   if (opts.constantFold)
     pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
+
+  // Run symbolic operator set domain-specific optimizations
+  SymbolicOptimizationOptions symbolicOptimizationOpts;
+  symbolicOptimizationOpts.symbolicFfastMath = opts.symbolicFfastMath;
+  symbolicOptimizationOpts.symbolicNoUndefinedMath =
+      opts.symbolicNoUndefinedMath;
+  pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
+
+  // Add fallback shape functions for any remaining unhandled ops.
+  pm.addPass(MO::createAddFallbackShapeFunctions({opts.kernelLibraryPaths}));
+  pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
 
   MO::AddDevicesPassOptions addDevicesOpts;
   addDevicesOpts.enableExtraDevices = opts.enableExtraDevices;
@@ -202,7 +191,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     // invocation for the inserted layout transformations, and in most (if not
     // all) cases we can fold them away.
     SymbolicizeFallbackShapeFunctionsOptions symbolizationOpts{
-        opts.kernelLibraryPaths, /*reducedMode=*/true};
+        opts.kernelLibraryPaths};
     pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(symbolizationOpts));
     pm.addPass(MO::createPropagateShapes());
     pm.addPass(mlir::createCanonicalizerPass());
@@ -371,16 +360,6 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
                                         const ShapeInferenceOptions &opts,
                                         const MoToMgpOptions &moToMgpOptions) {
   pm.addPass(MO::createResolveUnknownParameters());
-  AddFallbackShapeFunctionsOptions passOpts;
-  passOpts.restricted = true;
-  passOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
-  SymbolicizeFallbackShapeFunctionsOptions symbolizationOpts{
-      opts.kernelLibraryPaths, /*reducedMode=*/true};
-  // Adding fallback shape function calls move the parameter declaration from
-  // most MO ops (execpt for rebind and #36956) into the shape function call
-  // ops, so that downstream passes won't need to worry about them when rewrting
-  // the MO ops.
-  pm.addPass(MO::createAddFallbackShapeFunctions(passOpts));
 
   // This canonicalizer pass serves the following purposes:
   // 1. Convert static reshapes like `[D0] -> [1]` into rebind, otherwise
@@ -388,9 +367,11 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
   // 2. Materialize parameter definition for `mo.rebind` that still declare
   //    output parameters.
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(symbolizationOpts));
-  // Propagation always goes last as it simplifies and propagates all the
-  // symbolic expressions we obtained from staticization and symbolicization.
+
+  // Propagation does 3 things:
+  // 1. Run calculations of certain constant ops in parameter domain
+  // 2. Materializes shape functions using parameter domain values
+  // 3. Simplifies parameter binding using substitution and constraint solving.
   pm.addPass(MO::createPropagateShapes());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());

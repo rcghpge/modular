@@ -1707,15 +1707,4 @@ propagateShape(ArrayRef<ParamBinding> bindings,
   return resultShapes;
 }
 
-std::optional<MaterializeShapeFuncTy>
-tryGetShapeMaterializeFunc(StringRef shapeFuncName) {
-  // A hard-coded map from shape function name to how their shape logic can be
-  // materialized.
-  static DenseMap<StringRef, MaterializeShapeFuncTy> nameToFunc;
-  auto iter = nameToFunc.find(shapeFuncName);
-  if (iter == nameToFunc.end())
-    return std::nullopt;
-  return iter->getSecond();
-}
-
 } // namespace M::MO
