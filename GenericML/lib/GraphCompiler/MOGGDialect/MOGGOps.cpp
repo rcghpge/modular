@@ -1363,6 +1363,13 @@ LogicalResult KernelOp::verify() {
       return emitError("In-place kernels must have exactly one output chain");
   }
 
+  bool hasBufferOperand = llvm::count_if(getOperands(), [](Value val) {
+                            return isa<MO::BufferType>(val.getType());
+                          }) > 0;
+
+  if (hasBufferOperand)
+    return success(getOutChain() && getInChain());
+
   return success();
 }
 

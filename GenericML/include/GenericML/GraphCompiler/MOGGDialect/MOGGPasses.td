@@ -210,6 +210,23 @@ def FuseMutableLoads: Pass<"fuse-mutable-loads", "MO::GraphOp"> {
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }
 
+def FuseMutableStores: Pass<"fuse-mutable-stores", "MO::GraphOp"> {
+  let summary = "'Fuse' mo.mutable.store ops with mogg.kernel ops.";
+  let description = [{
+    Will perform 'fusion' of a mo.mutable.store op with a mogg.kernel op.
+    Currently this will only work with elementwise compute kernels.
+    Mechanically this is done by:
+     1. Identifying the output placeholder tensor corresponding to the input
+        value semantic tensor of the store operation.
+     2. Replacing all uses of the output placeholder tensor with the
+        corresponding !mo.buffer value
+     3. Removing any references to the output placeholder tensor.
+     4. Replacing all uses of the output chain of the store op with the output
+        chain from the kernel op.
+  }];
+  let dependentDialects = ["M::MOGG::MOGGDialect"];
+}
+
 def MarkTrivialKernels: Pass<"mark-trivial-kernels", "MO::GraphOp"> {
   let summary = "Decide which `MOGG::KernelOp`s can be sequentially fused.";
   let description = [{
