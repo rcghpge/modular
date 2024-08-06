@@ -1,0 +1,11 @@
+load("@pip_deps//:requirements.bzl", "requirement")
+load("//bazel:api.bzl", "modular_py_test")
+
+modular_py_test(
+    name = "tests",
+    srcs = glob(["**/*.py"]),
+    deps = [
+        "//SDK/lib/ServeAPI/python/max/serve",
+        requirement("hypothesis"),
+    ],
+)

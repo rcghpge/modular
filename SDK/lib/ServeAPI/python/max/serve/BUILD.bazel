@@ -1,0 +1,18 @@
+load("@pip_deps//:requirements.bzl", "requirement")
+
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "serve",
+    srcs = glob(["*.py"]),
+    imports = ["../.."],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//SDK/lib/ServeAPI/python/max/serve/executor",
+        "//SDK/lib/ServeAPI/python/max/serve/mocks",
+        "//SDK/lib/ServeAPI/python/max/serve/pipelines",
+        "//SDK/lib/ServeAPI/python/max/serve/router",
+        "//SDK/lib/ServeAPI/python/max/serve/scheduler",
+        requirement("pydantic-settings"),
+    ],
+)
