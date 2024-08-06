@@ -27,6 +27,33 @@ mo.graph @parallel_matmuls_static(%A: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2,
   mo.output %7 : !mo.tensor<[2, 2], f32>
 }
 
+// CHECK:         @parallel_batch_matmuls_static(%[[ACT:.*]]: {{.*}})
+// CHECK:         %[[AXIS:.*]] = mo.constant {value = #M.dense_array<2> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+// CHECK-NEXT:    %[[CONCAT:.*]] = mo.concat[%[[AXIS]] {{.*}} : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>) -> !mo.tensor<[2, 2, 8], f32>
+// CHECK-NEXT:    %[[MATMUL:.*]] = mo.batch_matmul(%[[ACT]], %[[CONCAT]]) : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 8], f32>) -> !mo.tensor<[2, 2, 8], f32>
+// CHECK-NEXT:    %[[SLICE0:.*]] = mo.slice(%[[MATMUL]], {{.*}}) : (!mo.tensor<[2, 2, 8], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 2], f32>
+// CHECK-NEXT:    %[[SLICE1:.*]] = mo.slice(%[[MATMUL]], {{.*}}) : (!mo.tensor<[2, 2, 8], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 2], f32>
+// CHECK-NEXT:    %[[SLICE2:.*]] = mo.slice(%[[MATMUL]], {{.*}}) : (!mo.tensor<[2, 2, 8], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 2], f32>
+// CHECK-NEXT:    %[[SLICE3:.*]] = mo.slice(%[[MATMUL]], {{.*}}) : (!mo.tensor<[2, 2, 8], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 2], f32>
+// CHECK-NEXT:    %[[ADD0:.*]] = mo.add({{.*}}) : !mo.tensor<[2, 2, 2], f32>
+// CHECK-NEXT:    %[[ADD1:.*]] = mo.add({{.*}}) : !mo.tensor<[2, 2, 2], f32>
+// CHECK-NEXT:    %[[ADD2:.*]] = mo.add({{.*}}) : !mo.tensor<[2, 2, 2], f32>
+// CHECK-NEXT:    mo.output %[[ADD2]]
+mo.graph @parallel_batch_matmuls_static(%A: !mo.tensor<[2, 2, 2], f32>) -> !mo.tensor<[2, 2, 2], f32> {
+  %W0 = mo.constant {value = #M.dense_array<0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0> : tensor<2x2x2xf32>} : !mo.tensor<[2, 2, 2], f32>
+  %W1 = mo.constant {value = #M.dense_array<1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0> : tensor<2x2x2xf32>} : !mo.tensor<[2, 2, 2], f32>
+  %W2 = mo.constant {value = #M.dense_array<2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0> : tensor<2x2x2xf32>} : !mo.tensor<[2, 2, 2], f32>
+  %W3 = mo.constant {value = #M.dense_array<3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0> : tensor<2x2x2xf32>} : !mo.tensor<[2, 2, 2], f32>
+  %1 = mo.batch_matmul(%A, %W0) : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>) -> !mo.tensor<[2, 2, 2], f32>
+  %2 = mo.batch_matmul(%A, %W1) : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>) -> !mo.tensor<[2, 2, 2], f32>
+  %3 = mo.batch_matmul(%A, %W2) : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>) -> !mo.tensor<[2, 2, 2], f32>
+  %4 = mo.batch_matmul(%A, %W3) : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>) -> !mo.tensor<[2, 2, 2], f32>
+  %5 = mo.add(%1, %2) : !mo.tensor<[2, 2, 2], f32>
+  %6 = mo.add(%3, %4) : !mo.tensor<[2, 2, 2], f32>
+  %7 = mo.add(%5, %6) : !mo.tensor<[2, 2, 2], f32>
+  mo.output %7 : !mo.tensor<[2, 2, 2], f32>
+}
+
 
 // CHECK:         @parallel_matmuls_insertion_point(%[[ACT:.*]]:{{.*}})
 // CHECK:         %[[CONCAT:.*]] = mo.concat{{.*}} : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 8], f32>

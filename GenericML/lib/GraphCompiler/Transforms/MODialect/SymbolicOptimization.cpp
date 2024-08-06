@@ -2686,7 +2686,9 @@ struct MergeParallelMatmulPattern
     auto concatType =
         cast<TensorType>(op.getInputB().getType())
             .cloneWithNewDim(oldMatmulType.getRank() - 1, totalColumns);
-    Value concatAxis = rewriter.create<ConstantOp>(loc, 1);
+
+    int64_t innerDimIndex = oldMatmulType.getRank() - 1;
+    Value concatAxis = rewriter.create<ConstantOp>(loc, innerDimIndex);
     Value concatenatedWeights =
         rewriter
             .create<ConcatOp>(loc, concatType, concatAxis, weightsToConcatenate)
