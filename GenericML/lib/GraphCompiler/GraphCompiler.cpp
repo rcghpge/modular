@@ -286,8 +286,10 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MOGG::createSimplifyKernelOperands());
 
-  if (opts.fuseMutableLoadStore)
-    pm.addPass(MOGG::createFuseMutableOps());
+  if (opts.fuseMutableLoadStore) {
+    pm.addPass(MOGG::createFuseMutableLoads());
+    pm.addPass(MOGG::createFuseMutableStores());
+  }
 
   MOGG::TranslateMOGGToKGENOptions translationOpts;
   translationOpts.kernelLibraryPaths = opts.kernelLibraryPaths;

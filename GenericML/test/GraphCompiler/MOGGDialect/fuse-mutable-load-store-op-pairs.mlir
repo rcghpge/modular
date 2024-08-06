@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --fuse-mutable-ops %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --fuse-mutable-loads --fuse-mutable-stores %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @single_add_buffer_lhs(
 // CHECK-SAME: [[buffer:%.*]]: !mo.buffer<[10, 10], f32>, [[rhs:%.*]]: !mo.tensor<[10, 10], f32>
@@ -11,7 +11,7 @@
 // CHECK: mogg.call "simd_store"([[kbuffer]]
 // CHECK: mogg.call "elementwise" [@elemwise_compute_lambda]([[kbuffer]])
 // CHECK: mogg.output [[kChain]] : !mo.chain
-// CHECK: inputFusionInterface = ["input_0_fn", "input_1_fn", ""]
+// CHECK: inputFusionInterface = ["", "input_1_fn", ""]
 // CHECK-SAME: isInPlace = true
 // CHECK-SAME: outputFusionInterface = [""]
 // CHECK-SAME: summary = "inplace_mo.add
@@ -59,7 +59,7 @@ mo.graph @single_add_buffer_lhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.te
 // CHECK: mogg.call "simd_store"([[kbuffer]]
 // CHECK: mogg.call "elementwise" [@{{.*}}]([[kbuffer]])
 // CHECK: mogg.output [[kChain]] : !mo.chain
-// CHECK: inputFusionInterface = ["input_0_fn{{.*}}", "input_1_fn{{.*}}", ""]
+// CHECK: inputFusionInterface = ["input_0_fn{{.*}}", "", ""]
 // CHECK-SAME: isInPlace = true
 // CHECK-SAME: outputFusionInterface = [""]
 // CHECK-SAME: summary = "inplace_mo.add
@@ -86,7 +86,7 @@ mo.graph @single_add_buffer_rhs(%arg0: !mo.buffer<[10, 10], f32>, %arg1: !mo.ten
 // CHECK: mogg.call "simd_store"([[kbuffer]]
 // CHECK: mogg.call "elementwise" [@{{.*}}]([[kbuffer]])
 // CHECK: mogg.output [[kChain]] : !mo.chain
-// CHECK: inputFusionInterface = ["input_0_fn{{.*}}", "input_1_fn{{.*}}", ""]
+// CHECK: inputFusionInterface = ["", "input_1_fn{{.*}}", ""]
 // CHECK-SAME: isInPlace = true
 // CHECK-SAME: outputFusionInterface = [""]
 // CHECK-SAME: summary = "inplace_mo.add
@@ -98,7 +98,7 @@ mo.graph @single_add_buffer_rhs(%arg0: !mo.buffer<[10, 10], f32>, %arg1: !mo.ten
 // CHECK: mogg.call "simd_store"([[kbuffer]]
 // CHECK: mogg.call "elementwise" [@{{.*}}]([[kbuffer]])
 // CHECK: mogg.output [[kChain]] : !mo.chain
-// CHECK: inputFusionInterface = ["input_0_fn{{.*}}", "input_1_fn{{.*}}", ""]
+// CHECK: inputFusionInterface = ["", "input_1_fn{{.*}}", ""]
 // CHECK-SAME: isInPlace = true
 // CHECK-SAME: outputFusionInterface = [""]
 // CHECK-SAME: summary = "inplace_mo.add
@@ -121,7 +121,6 @@ mo.graph @sequenced_add(%arg0: !mo.buffer<[10, 10], f32>, %arg1: !mo.tensor<[10,
 
 // In this particular case mutable op fusion is not valid on the first mo.add as its result has multiple consumers
 // CHECK-LABEL: mo.graph @no_valid_fusion(
-// CHECK: mo.mutable.load
 // CHECK: mogg.kernel
 // CHECK: summary = "mo.add
 // CHECK: mo.mutable.store
