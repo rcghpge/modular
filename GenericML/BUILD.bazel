@@ -750,8 +750,6 @@ modular_cc_library(
     copts = ["-iquoteexternal/"] + select({
         "//GenericML:mogg_no_link_setting": [
             "-DMODULAR_MOGG_NO_LINK",
-            "-DMOGG_MOJO_BINDINGS_PATH='\"$(location //Kernels/mojo/Mogg:MOGG.lib.mlirbc)\"'",
-            "-DMOGG_PRIMITIVES_MOJO_BINDINGS_PATH='\"$(location //Kernels/mojo/Mogg:MOGGPrimitives.lib.mlirbc)\"'",
         ],
         "//conditions:default": [
             "-DMOGG_MOJO_BINDING_H='\"$(location //Kernels/mojo/Mogg:MOGG.mojo.h)\"'",

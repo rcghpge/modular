@@ -19,6 +19,7 @@
 #include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
 #include "KGEN/MojoParser/EntryPoint.h"
+#include "KGEN/Support/Configuration.h"
 #include "KGEN/ToolCommon/CompilationOptions.h"
 #include "Support/Compiler/BytecodeReaderWriter.h"
 #include "Support/Compiler/OperationUtils.h"
@@ -32,8 +33,10 @@
 // up compile times.
 namespace M::MOGG::Embeddings {
 #ifdef MODULAR_MOGG_NO_LINK
+#ifdef MODULAR_CMAKE_BUILD
 extern llvm::StringRef sourceFilename;
 extern llvm::StringRef primitiveSourceFilename;
+#endif // MODULAR_CMAKE_BUILD
 #else  // MODULAR_MOGG_NO_LINK
 extern llvm::StringRef source;
 extern llvm::StringRef primitiveSource;
@@ -54,9 +57,26 @@ static bool areFunctionsTheSame(KGEN::GeneratorOp gen1,
 static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
 getEmbeddingsSourceBuffer() {
 #ifdef MODULAR_MOGG_NO_LINK
-  return toModularErrorOr(
-      llvm::MemoryBuffer::getFile(Embeddings::sourceFilename, /*IsText=*/false,
+#ifndef MODULAR_CMAKE_BUILD
+  ErrorOr<KGEN::MojoConfig> config = KGEN::MojoConfig::open();
+  if (failed(config))
+    return config.takeError();
+
+  auto filepath = config->getMOGGLibPath();
+
+  auto memBufferOr = toModularErrorOr(
+      llvm::MemoryBuffer::getFile(filepath, /*IsText=*/false,
                                   /*RequiresNullTerminator=*/false));
+  if (memBufferOr.isError())
+    return Error(memBufferOr.getError() + Twine(" [" + filepath + "]"));
+
+  return memBufferOr;
+#else  // !MODULAR_CMAKE_BUILD
+  return toModularErrorOr(
+      llvm::MemoryBuffer::getFile(Embeddings::sourceFilename,
+                                  /*IsText=*/false,
+                                  /*RequiresNullTerminator=*/false));
+#endif // !MODULAR_CMAKE_BUILD
 #else  // MODULAR_MOGG_NO_LINK
   return ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>(
       llvm::MemoryBuffer::getMemBuffer(Embeddings::source,
@@ -68,10 +88,26 @@ getEmbeddingsSourceBuffer() {
 static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
 getEmbeddingsPrimitiveSourceBuffer() {
 #ifdef MODULAR_MOGG_NO_LINK
+#ifndef MODULAR_CMAKE_BUILD
+  ErrorOr<KGEN::MojoConfig> config = KGEN::MojoConfig::open();
+  if (failed(config))
+    return config.takeError();
+
+  auto filepath = config->getMOGGPrimitivesLibPath();
+
+  auto memBufferOr = toModularErrorOr(
+      llvm::MemoryBuffer::getFile(filepath, /*IsText=*/false,
+                                  /*RequiresNullTerminator=*/false));
+  if (memBufferOr.isError())
+    return Error(memBufferOr.getError() + Twine(" [" + filepath + "]"));
+
+  return memBufferOr;
+#else  // !MODULAR_CMAKE_BUILD
   return toModularErrorOr(
       llvm::MemoryBuffer::getFile(Embeddings::primitiveSourceFilename,
                                   /*IsText=*/false,
                                   /*RequiresNullTerminator=*/false));
+#endif // !MODULAR_CMAKE_BUILD
 #else  // MODULAR_MOGG_NO_LINK
   return ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>(
       llvm::MemoryBuffer::getMemBuffer(Embeddings::primitiveSource,
@@ -314,7 +350,8 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> bufferOr =
       getEmbeddingsSourceBuffer();
   if (failed(bufferOr))
-    return bufferOr.takeError();
+    return Error(Twine("failed to load compiled MOGG.mojo: ") +
+                 bufferOr.getError());
 
   llvm::MemoryBufferRef bufferRef = internMLIRFile(bufferOr.takeValue());
   ErrorOr<Operation *> moduleOr =
@@ -325,7 +362,8 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
 
   bufferOr = getEmbeddingsPrimitiveSourceBuffer();
   if (failed(bufferOr))
-    return bufferOr.takeError();
+    return Error(Twine("failed to load compiled MOGGPrimitives.mojo: ") +
+                 bufferOr.getError());
 
   bufferRef = internMLIRFile(bufferOr.takeValue());
   llvm::StringMap<KGEN::GeneratorOp> primitiveRawMojoKernel;

@@ -79,7 +79,8 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
         analysis.initIfNeeded(&getContext(), kernelLibraryPaths);
     if (errOr.isError()) {
       emitError(getOperation().getLoc(),
-                "[MO_TO_MOGG] Failed to load MOJO analysis.");
+                Twine("[MO_TO_MOGG] Failed to load MOJO analysis: ") +
+                    errOr.getError());
       return false;
     }
     MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
