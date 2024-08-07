@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 from max.graph import GraphValue, ops, ValueLike, TensorType, DType
 from .mlp import Linear
+from .rotary_embedding import RotaryEmbedding
 import math
 
 
@@ -72,18 +73,7 @@ class Attention:
     wv: Linear
     wo: Linear
 
-    def __init__(
-        self, params, wq: ValueLike, wk: ValueLike, wv: ValueLike, wo: ValueLike
-    ):
-        self.n_heads = params["n_heads"]
-        self.n_kv_heads = params["n_kv_heads"]
-        self.head_dim = params["head_dim"]
-        self.dim = params["dims"]
-
-        self.wq = Linear(wq)
-        self.wk = Linear(wk)
-        self.wv = Linear(wv)
-        self.wo = Linear(wo)
+    rope: RotaryEmbedding
 
     def repeat_kv(self, kv: GraphValue):
         """Repeats key/value tensors to match the number of query heads."""
@@ -122,8 +112,6 @@ class Attention:
             math.sqrt(1.0 / self.head_dim), dtype=xq.tensor_type.dtype
         )
 
-        mask = attention_mask(prev_seq_len, seq_len, xq.tensor_type.dtype)
-
         scores = scores + attention_mask(
             prev_seq_len, seq_len, xq.tensor_type.dtype
         )
@@ -133,11 +121,11 @@ class Attention:
     def __call__(
         self,
         x: ValueLike,
-        freqs_cis: ValueLike,
         k_cache: ValueLike,
         v_cache: ValueLike,
     ):
         batch, seq_len = x.tensor_type.shape[0], x.tensor_type.shape[1]
+        start_pos = k_cache.shape[0]
         # matmul weights
         xq = self.wq(x)
         xk = self.wk(x)
@@ -147,9 +135,9 @@ class Attention:
         xk = ops.reshape(xk, [batch, seq_len, self.n_heads, self.head_dim])
         xv = ops.reshape(xv, [batch, seq_len, self.n_heads, self.head_dim])
 
-        xq = rope(xq, freqs_cis)
-        xk = rope(xk, freqs_cis)
+        xq = self.rope(xq, start_pos, seq_len)
+        xk = self.rope(xq, start_pos, seq_len)
 
         output = self.attention(xq, xk, xv, k_cache, v_cache)
 
-        return xq
+        return output
