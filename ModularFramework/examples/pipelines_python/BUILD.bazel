@@ -1,18 +1,15 @@
 load("@pip_deps//:requirements.bzl", "requirement")
 
-filegroup(
-    name = "py_llama3",
-    srcs = glob(["llama3/**/*.py"]),
-    visibility = ["//visibility:public"],
-)
+package(default_visibility = ["//visibility:public"])
 
-py_library(
-    name = "llama3",
-    srcs = [":py_llama3"],
+py_binary(
+    name = "pipelines",
+    srcs = ["pipelines.py"],
     imports = ["."],
-    visibility = ["//visibility:public"],
     deps = [
-        requirement("numpy"),
-        "//SDK/lib/GraphAPI/python:max_graph",
+        requirement("click"),
+        "//ModularFramework/examples/pipelines_python/llama3",
+        "//ModularFramework/examples/pipelines_python/text_streaming",
+        "//ModularFramework/examples/pipelines_python/utils",
     ],
 )
