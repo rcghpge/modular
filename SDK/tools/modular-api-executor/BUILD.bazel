@@ -8,6 +8,7 @@ modular_cc_binary(
     ]),
     deps = [
         "//ArraySupport",
+        "//AsyncRT:Init",
         "//GenericML:ExecutionDriver",
         "//GenericML:MaxAPI",
         "//ModularFramework/tools/mof",

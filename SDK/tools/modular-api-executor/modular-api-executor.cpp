@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ArraySupport/Tensor.h"
+#include "AsyncRT/Init/Init.h"
 #include "AsyncRT/Runtime/Algorithms.h"
 #include "AsyncRT/Support/FileLocationDecoder.h"
 #include "AsyncRT/Support/UnknownLocationDecoder.h"
@@ -700,10 +701,22 @@ int main(int argc, char **argv) {
   // We don't really have a file to load here now.
   std::unique_ptr<llvm::MemoryBuffer> inputFile;
 
+  // FIXME: We really shouldn't be mixed and matching internal and external
+  // APIs in this tool. Unfortunately there's a lot of implementation that
+  // consumes underlying details and breaks these abstractions. For now, work
+  // around the double runtime problem by at least setting the maxContext in
+  // the created runtime to be the top-level context.
+  ErrorOr<ContextRef> ctxOr = Init::createContext(
+      "modular-api-executor",
+      Init::Options().withRuntimeOptions(AsyncRT::RuntimeOptions()));
+  if (ctxOr.isError()) {
+    llvm::errs() << "Error: " << ctxOr.getError() << "\n";
+    exit(EXIT_FAILURE);
+  }
   StatusPtr status{api.newStatus(), api.freeStatus};
   RuntimeConfigPtr runtimeConfig{api.newRuntimeConfig(), api.freeRuntimeConfig};
-  std::unique_ptr<Runtime> runtime =
-      clOptions.withMainWillNotDonate().createRuntime();
+  api.setMaxContext(runtimeConfig.get(),
+                    reinterpret_cast<M_MaxContext *>(ctxOr->getPointer()));
 
   if (clOptions.gpu)
     api.setDevice(runtimeConfig.get(), "cuda", /*deviceID=*/0);
@@ -863,7 +876,9 @@ int main(int argc, char **argv) {
           std::move(inputFile), [&](MLIRContext *ctx) {
             return AsyncRT::runWithLeakCheckedRuntime(
                 "modular-api-executor", [&]() {
-                  return runModel(ctx, model.get(), *runtime, clOptions);
+                  return runModel(ctx, model.get(),
+                                  *(*ctxOr)->get<AsyncRT::Runtime>(),
+                                  clOptions);
                 });
           })))
     return EXIT_FAILURE;
