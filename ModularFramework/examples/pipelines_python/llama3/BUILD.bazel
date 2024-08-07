@@ -8,6 +8,8 @@ py_library(
     imports = [".."],
     deps = [
         requirement("numpy"),
+        requirement("torch"),
+        "//SDK/lib/EngineAPI/python:max_engine",
         "//SDK/lib/GraphAPI/python:max_graph",
     ],
 )

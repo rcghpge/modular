@@ -19,6 +19,14 @@ class Llama3Config:
     max_length: int = 512
     max_new_tokens: int = -1
 
+    batch_size: int = 1
+    # TODO: Read from GGUF file.
+    seq_len: int = 4096
+    n_heads: int = 24
+    n_layers: int = 32
+    n_kv_heads: int = 8
+    head_dim: int = 8
+
     def remote_weight_location(self):
         if self.weight_path is not None:
             return self.weight_path
