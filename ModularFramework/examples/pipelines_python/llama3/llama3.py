@@ -5,13 +5,18 @@
 # ===----------------------------------------------------------------------=== #
 
 from dataclasses import dataclass
-from max.engine import InferenceSession, Model
-from max.graph import DType, Graph, TensorType, ops
 from pathlib import Path
-from typing import Generic, Protocol, TypeAlias, TypeVar
+from typing import Generic, Protocol, TypeVar
+
 import numpy as np
+from max.engine import InferenceSession, Model
+from max.graph import DType, Graph, TensorType
+from max.graph.utils import load_gguf  # TODO Use this
+
+from utils import tokenizer_from_gguf
 
 from .config import Llama3Config
+from .embedding import Embedding
 from .kv_cache import KVCache
 
 Context = TypeVar("Context")
@@ -42,6 +47,7 @@ def get_max_tokens_to_generate(
 class Llama3Context:
     """The context for text generation using a Llama 3 model."""
 
+    next_token: np.ndarray
     prompt_size: int
     max_tokens: int
 
@@ -56,7 +62,7 @@ class Llama3:
 
     def __init__(self, config: Llama3Config):
         self.config = config
-        print(self.config)
+        self._tokenizer = tokenizer_from_gguf(self.config.weight_path)
         # TODO: Load hyperparameters from the GGUF weights.
         self._build_graph("llama3")
 
@@ -79,8 +85,14 @@ class Llama3:
         with Graph(
             name, input_types=[tokens_type, cache_type, cache_type]
         ) as graph:
+            embedding = Embedding(
+                np.random.uniform(
+                    size=(self.config.vocab_size, self.config.hidden_dim)
+                )
+            )
+            out = embedding(graph.inputs[0])
             graph.output(
-                ops.constant(np.array([0.0, 0.5, 1.0, 1.5])),
+                out,
                 graph.inputs[1],
                 graph.inputs[2],
             )
@@ -88,7 +100,8 @@ class Llama3:
 
     async def new_context(self, prompt: str) -> Llama3Context:
         # TODO: Encode prompt
-        prompt_size = len(prompt)
+        encoded_prompt = self._tokenizer.encode(prompt)
+        prompt_size = len(encoded_prompt)
         max_tokens = get_max_tokens_to_generate(
             prompt_size, self.config.max_length, self.config.max_new_tokens
         )
@@ -99,9 +112,10 @@ class Llama3:
             self.config.n_kv_heads,
             self.config.head_dim,
         )
-        # TODO: Get prompt tensor
         print("Initializing context for Llama 3...")
-        return Llama3Context(prompt_size, max_tokens)
+        return Llama3Context(
+            np.array(encoded_prompt).reshape(1, -1), prompt_size, max_tokens
+        )
 
     async def next_token(
         self, contexts: dict[str, Llama3Context]
@@ -109,9 +123,7 @@ class Llama3:
         # Note: assuming a single request.
         request_id, context = next(iter(contexts.items()))
 
-        # TODO: Provide previous tokens to compiled model
-
-        tokens = np.zeros(shape=[1, 1]).astype(np.int64)
+        tokens = context.next_token
         input_names = [t.name for t in self._compiled_model.input_metadata]
         result = self._compiled_model.execute(
             **dict(
@@ -130,13 +142,11 @@ class Llama3:
         self._kv_cache.update(result[output_names[1]], result[output_names[2]])
 
         # TODO: Add a weighted sampler here.
-        next_token = logits.argmax()
-        tokens = next_token
+        # Get argmax of the logits of the last token.
+        next_token = logits.argmax(axis=-1)[0, -1]
+        context.next_token = next_token.reshape(1, -1)
+        decoded_token = self._tokenizer.decode(next_token)
 
-        # TODO: Decode token using tokenizer.
-        decoded_token = str(next_token)
-
-        # TODO: Check against proper end-of-text token here.
-        if decoded_token == "end":
+        if decoded_token == self._tokenizer.eos_token:
             return {}
         return {request_id: decoded_token}

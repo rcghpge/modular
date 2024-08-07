@@ -13,11 +13,19 @@ from typing import Optional, Union
 @dataclass
 class Llama3Config:
     weight_path: Optional[Union[str, Path]] = None
+    """Path or URL of the model weights."""
+
     version: float = 3.1
-    quantization_encoding: str = "q4_k"
+    """Llama version."""
+
+    quantization_encoding: str = "float32"  # TODO: Change to "q4_k"
+    """Quantization encoding type."""
 
     max_length: int = 512
+    """Controls the maximum length of the text sequence (includes the input tokens)."""
+
     max_new_tokens: int = -1
+    """Controls the maximum length of the text sequence (does not include the input tokens)."""
 
     batch_size: int = 1
     # TODO: Read from GGUF file.
@@ -26,6 +34,28 @@ class Llama3Config:
     n_layers: int = 32
     n_kv_heads: int = 8
     head_dim: int = 8
+    vocab_size: int = 100  # TODO: FAKE
+    hidden_dim: int = 30  # TODO: FAKE
+
+    @staticmethod
+    def help():
+        return {
+            "weight_path": (
+                "Path or URL of the model weights. If not provided, default"
+                " weights will be downloaded based on the version and"
+                " quantization encoding."
+            ),
+            "version": "Llama version.",
+            "quantization_encoding": "Quantization encoding type.",
+            "max_length": (
+                "Controls the maximum length of the text sequence (includes the"
+                " input tokens)."
+            ),
+            "version": (
+                "Controls the maximum length of the text sequence (does not"
+                " include the input tokens)."
+            ),
+        }
 
     def remote_weight_location(self):
         if self.weight_path is not None:

@@ -5,8 +5,13 @@ package(default_visibility = ["//visibility:public"])
 py_library(
     name = "utils",
     srcs = glob(["**/*.py"]),
+    imports = [".."],
     visibility = ["//visibility:public"],
     deps = [
         requirement("click"),
+        requirement("gguf"),
+        requirement("sentencepiece"),
+        requirement("numpy"),
+        requirement("transformers"),
     ],
 )

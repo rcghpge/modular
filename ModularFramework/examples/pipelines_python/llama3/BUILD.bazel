@@ -9,6 +9,7 @@ py_library(
     deps = [
         requirement("numpy"),
         requirement("torch"),
+        "//ModularFramework/examples/pipelines_python/utils",
         "//SDK/lib/EngineAPI/python:max_engine",
         "//SDK/lib/GraphAPI/python:max_graph",
     ],
