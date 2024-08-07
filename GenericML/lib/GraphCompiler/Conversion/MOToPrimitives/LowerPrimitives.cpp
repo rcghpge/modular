@@ -15,6 +15,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/MGPDialect/MGPOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
 #include "Support/MDialect/MAttrs.h"
@@ -46,9 +47,17 @@ struct LowerPrimitivesPass
 
 // All MIP and MGP Primitives that are registered we will allow fusion of.
 static inline bool canFuseOp(Operation *op) {
+  if (isa<MGP::SyncOp>(op))
+    return false;
+
   // Allow for custom ops starting with "testfuse." for testing purposes.
   return isa_and_nonnull<::M::MIP::MIPDialect, MGPDialect>(op->getDialect()) ||
          op->getName().getIdentifier().strref().starts_with("testfuse.");
+}
+
+static inline bool isAsync(Operation *op) {
+  // Event sync should be launched in a seperate thread.
+  return isa<MGP::SyncOp>(op);
 }
 
 static inline bool canDuplicate(Operation *op) {
@@ -133,8 +142,8 @@ void LowerPrimitivesPass::runOnOperation() {
           KGEN::ParamDeclArrayAttr::get(ctx, {}),
           InOutSignatureAttr::get(ctx, operandSemantics), BoolAttr{}, // isKGEN
           StringAttr::get(ctx, op->getName().getStringRef()),         // summary
-          BoolAttr{},                                                 // isAsync
-          BoolAttr::get(ctx, hasCuda),                                // hasCuda
+          BoolAttr::get(ctx, isAsync(op)),     // isAsync // isAsync
+          BoolAttr::get(ctx, hasCuda),         // hasCuda
           BoolAttr::get(ctx, canFuseOp(op)),   // canFuseIntoOther
           BoolAttr::get(ctx, canFuseOp(op)),   // canBeFusedInto
           BoolAttr::get(ctx, canDuplicate(op)) // canDuplicate

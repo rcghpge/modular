@@ -1890,4 +1890,29 @@ def KernelExecuteOp : MGP_DeviceOp<"kernel.execute", [
   }];
 }
 
+def MGP_SyncOp : MGP_DeviceOp<"sync"> {
+  let summary = "Schedules a device specifc sync";
+  let description = [{
+    Returns a ready chain once the device has synchronized. In
+    cpu this is a nop as the sync happens with the chain, on
+    gpu this records a cuda event.
+  }];
+
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       UI64Attr:$aRuntimeSlot,                       // 0
+                       MGP_OptDeviceRefAttr:$bDevice);               // 1
+  let results = (outs ChainType: $outChain);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:`
+        functional-type(operands, results)
+  }];
+
+  let extraClassDefinition = [{
+    uint64_t SyncOp::getSlot() { return getARuntimeSlot(); }
+
+    M::DeviceRefAttr SyncOp::getDevice() { return getBDevice(); }
+  }];
+}
+
 #endif  // GENERICML_MGPDIALECT_MGPDEVICEOPS_TD
