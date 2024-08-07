@@ -17,9 +17,6 @@ run_tool(
         "//KGEN:CompilerRT",
         "@llvm-project//compiler-rt:orc_rt",
     ],
-    env = {
-        "MODULAR_CRASH_REPORTING_ENABLED": "false",
-    },
     tags = ["manual"],
     tool = ":mo-opt",
     visibility = ["//visibility:private"],
