@@ -8,6 +8,10 @@ mojo_test(
         "//GenericML:modular-framework-common",
         "//KGEN:CompilerRT",
         "//ModularFramework/tools/mof",
+        # TODO(SDLC-918): remove when landed
+        # TODO(SDLC-918): remove when landed
+        "//Kernels/mojo/Mogg:MOGG.lib.mlirbc",
+        "//Kernels/mojo/Mogg:MOGGPrimitives.lib.mlirbc",
         "@llvm-project//compiler-rt:orc_rt",
     ],
     extra_srcs = [
@@ -30,6 +34,9 @@ mojo_test(
         "//GenericML:DeviceDriver",
         "//GenericML:modular-framework-common",
         "//ModularFramework/tools/mof",
+        # TODO(SDLC-918): remove when landed
+        "//Kernels/mojo/Mogg:MOGG.lib.mlirbc",
+        "//Kernels/mojo/Mogg:MOGGPrimitives.lib.mlirbc",
     ],
     extra_srcs = [
         "//SDK/public/max-repo/examples/graph-api",

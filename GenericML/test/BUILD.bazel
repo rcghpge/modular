@@ -29,6 +29,9 @@ lit_tests(
         "//Kernels/mojo/Mogg:MOGGTestOverrideSucc.lib.mlirbc",
         "//Kernels/mojo/Mogg:MOGGTests.lib.mlirbc",
         "@llvm-project//compiler-rt:orc_rt",
+        # TODO(SDLC-918): remove when landed
+        "//Kernels/mojo/Mogg:MOGG.lib.mlirbc",
+        "//Kernels/mojo/Mogg:MOGGPrimitives.lib.mlirbc",
     ],
     requires_gpu = False,
     tags = ["gpu"],
