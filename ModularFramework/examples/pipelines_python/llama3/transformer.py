@@ -6,11 +6,10 @@
 
 from dataclasses import dataclass
 import numpy as np
-from max.graph import GraphValue, ops
+from max.graph import ValueLike
 from .attention import Attention
-from .mlp import MLP, Linear
+from .mlp import MLP
 from .norm import RMSNorm
-from typing import List
 
 
 @dataclass
@@ -20,7 +19,7 @@ class TransformerBlock:
     attention_norm: RMSNorm
     mlp_norm: RMSNorm
 
-    def __call__(self, x, k_cache, v_cache):
+    def __call__(self, x: ValueLike, k_cache: ValueLike, v_cache: ValueLike):
         attention_out, k_cache_update, v_cache_update = self.attention(
             self.attention_norm(input), k_cache, v_cache
         )
