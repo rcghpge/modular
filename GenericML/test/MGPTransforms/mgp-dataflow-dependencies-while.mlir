@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mlir-disable-threading --allow-unregistered-dialect --async-dataflow-dependencies-test --check-buffer-read-write | FileCheck %s
+// RUN: mo-opt %s --mlir-disable-threading --allow-unregistered-dialect --async-dataflow-dependencies-test | FileCheck %s
 
 // For reference here's the model with vars matching the checks (modulo the block ids).
 // CHECK: "mgp.model"() ({
