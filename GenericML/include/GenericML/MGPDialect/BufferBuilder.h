@@ -645,7 +645,8 @@ public:
   TypeBuilder *getTypeBuilder(DeviceRefAttr device) const {
     auto itr = typeBuilderMap.find(device);
     ASSERT_STREAM(itr != typeBuilderMap.end(),
-                  << "no type builder has been registered for device");
+                  << "no type builder has been registered for device: "
+                  << device);
     return itr->second.get();
   }
 

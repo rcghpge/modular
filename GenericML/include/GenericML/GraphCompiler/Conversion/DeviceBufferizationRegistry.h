@@ -46,7 +46,7 @@ struct DeviceSpecificDialect {
   /// the device specification within loweringState. This function is called
   /// during lowering before any MO types are lowered.
   virtual LogicalResult
-  makeTypeBuilder(DeviceSpecAttr deviceSpec,
+  makeTypeBuilder(DeviceRefAttr device,
                   MGP::MOGraphLoweringState &loweringState) = 0;
 
   /// Given an #M.device_spec, registers a MGP::BufferBuilder appropriate for
@@ -56,7 +56,7 @@ struct DeviceSpecificDialect {
   /// for the device. This function is called once the lowered 'init' block
   /// has been established but before any MO ops are lowered.
   virtual CompileDiagnosticOrSuccess
-  makeBufferBuilder(DeviceRefAttr hostDevice, DeviceSpecAttr deviceSpec,
+  makeBufferBuilder(DeviceRefAttr hostDevice, DeviceRefAttr targetDevice,
                     MGP::MOGraphLoweringState &loweringState) = 0;
 
   virtual void vtableAnchor();
@@ -74,11 +74,11 @@ struct MGPDeviceSpecificDialect : public DeviceSpecificDialect {
   void registerDialect(DialectRegistry &registry) override;
 
   LogicalResult
-  makeTypeBuilder(DeviceSpecAttr deviceSpec,
+  makeTypeBuilder(DeviceRefAttr device,
                   MGP::MOGraphLoweringState &loweringState) override;
 
   CompileDiagnosticOrSuccess
-  makeBufferBuilder(DeviceRefAttr hostDevice, DeviceSpecAttr deviceSpec,
+  makeBufferBuilder(DeviceRefAttr hostDevice, DeviceRefAttr targetDevice,
                     MGP::MOGraphLoweringState &loweringState) override;
 };
 
@@ -103,12 +103,12 @@ public:
 
   /// Calls the makeTypeBuilder function appropriate for given args.
   LogicalResult
-  callMakeTypeBuilder(DeviceSpecAttr deviceSpec,
+  callMakeTypeBuilder(DeviceRefAttr device,
                       MGP::MOGraphLoweringState &loweringState) const;
 
   /// Calls the makeBufferBuilder function appropriate for given args.
   CompileDiagnosticOrSuccess
-  callMakeBufferBuilder(DeviceRefAttr hostDevice, DeviceSpecAttr deviceSpec,
+  callMakeBufferBuilder(DeviceRefAttr hostDevice, DeviceRefAttr targetDevice,
                         MGP::MOGraphLoweringState &loweringState) const;
 
 private:
@@ -127,12 +127,12 @@ void registerDeviceSpecificDialect(
 void registerAllDeviceDialects(DialectRegistry &registry);
 
 /// Call the registered make type builder function appropriate for given args.
-LogicalResult makeTypeBuilder(DeviceSpecAttr deviceSpec,
+LogicalResult makeTypeBuilder(DeviceRefAttr device,
                               MGP::MOGraphLoweringState &loweringState);
 
 /// Call the registered make buffer builder function appropriate for given args.
 CompileDiagnosticOrSuccess
-makeBufferBuilder(DeviceRefAttr hostDevice, DeviceSpecAttr deviceSpec,
+makeBufferBuilder(DeviceRefAttr hostDevice, DeviceRefAttr targetDevice,
                   MGP::MOGraphLoweringState &loweringState);
 
 } // namespace M::MO

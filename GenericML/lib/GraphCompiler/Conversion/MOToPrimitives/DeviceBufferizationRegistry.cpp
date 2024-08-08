@@ -23,20 +23,18 @@ void DeviceSpecificDialect::vtableAnchor() {}
 void MGPDeviceSpecificDialect::registerDialect(DialectRegistry &registry) {}
 
 LogicalResult MGPDeviceSpecificDialect::makeTypeBuilder(
-    DeviceSpecAttr deviceSpec, MGP::MOGraphLoweringState &loweringState) {
+    DeviceRefAttr device, MGP::MOGraphLoweringState &loweringState) {
   loweringState.registerTypeBuilder(
-      deviceSpec.getRef(),
-      std::make_unique<MGP::MGPTypeBuilder>(deviceSpec.getRef()));
+      device, std::make_unique<MGP::MGPTypeBuilder>(device));
   return success();
 }
 
 CompileDiagnosticOrSuccess MGPDeviceSpecificDialect::makeBufferBuilder(
-    DeviceRefAttr hostDevice, DeviceSpecAttr deviceSpec,
+    DeviceRefAttr hostDevice, DeviceRefAttr targetDevice,
     MGP::MOGraphLoweringState &loweringState) {
   MGP::MGPBufferBuilder *hostBufferBuilder;
-  auto bufferBuilder =
-      std::make_unique<MGP::MGPBufferBuilder>(deviceSpec.getRef());
-  if (hostDevice == deviceSpec.getRef()) {
+  auto bufferBuilder = std::make_unique<MGP::MGPBufferBuilder>(targetDevice);
+  if (hostDevice == targetDevice) {
     hostBufferBuilder = bufferBuilder.get();
   } else {
     hostBufferBuilder = static_cast<MGP::MGPBufferBuilder *>(
@@ -61,8 +59,7 @@ CompileDiagnosticOrSuccess MGPDeviceSpecificDialect::makeBufferBuilder(
       inChain, loweringState.getInitDevice(bufferBuilder->device));
   loweringState.setInitChain(chainAndDevice.first);
   loweringState.setInitDevice(bufferBuilder->device, chainAndDevice.second);
-  loweringState.registerBufferBuilder(deviceSpec.getRef(),
-                                      std::move(bufferBuilder));
+  loweringState.registerBufferBuilder(targetDevice, std::move(bufferBuilder));
   return success();
 }
 
@@ -93,26 +90,27 @@ void DeviceBufferizationRegistry::callAllRegisterDialects(
 }
 
 LogicalResult DeviceBufferizationRegistry::callMakeTypeBuilder(
-    DeviceSpecAttr deviceSpec, MGP::MOGraphLoweringState &loweringState) const {
+    DeviceRefAttr device, MGP::MOGraphLoweringState &loweringState) const {
   std::lock_guard<std::mutex> guard(mu);
-  auto itr = map.find(deviceSpec.getRef().getLabel());
+  auto itr = map.find(device.getLabel());
   if (itr == map.end()) {
     return loweringState.getGraph().emitOpError("no type builder for label '")
-           << deviceSpec.getRef().getLabel() << "' has been registered.";
+           << device.getLabel() << "' has been registered.";
   }
-  return itr->second->makeTypeBuilder(deviceSpec, loweringState);
+  return itr->second->makeTypeBuilder(device, loweringState);
 }
 
 CompileDiagnosticOrSuccess DeviceBufferizationRegistry::callMakeBufferBuilder(
-    DeviceRefAttr hostDevice, DeviceSpecAttr deviceSpec,
+    DeviceRefAttr hostDevice, DeviceRefAttr targetDevice,
     MGP::MOGraphLoweringState &loweringState) const {
   std::lock_guard<std::mutex> guard(mu);
-  auto itr = map.find(deviceSpec.getRef().getLabel());
+  auto itr = map.find(targetDevice.getLabel());
   if (itr == map.end()) {
     return loweringState.getGraph().emitOpError("no buffer builder for label '")
-           << deviceSpec.getRef().getLabel() << "' has been registered.";
+           << targetDevice.getLabel() << "' has been registered.";
   }
-  return itr->second->makeBufferBuilder(hostDevice, deviceSpec, loweringState);
+  return itr->second->makeBufferBuilder(hostDevice, targetDevice,
+                                        loweringState);
 }
 
 //  TODO: May need to move into dedicated 'globals' shared library.
@@ -137,14 +135,14 @@ void MO::registerAllDeviceDialects(DialectRegistry &registry) {
   getRegistry().callAllRegisterDialects(registry);
 }
 
-LogicalResult MO::makeTypeBuilder(DeviceSpecAttr deviceSpec,
+LogicalResult MO::makeTypeBuilder(DeviceRefAttr device,
                                   MGP::MOGraphLoweringState &loweringState) {
-  return getRegistry().callMakeTypeBuilder(deviceSpec, loweringState);
+  return getRegistry().callMakeTypeBuilder(device, loweringState);
 }
 
 CompileDiagnosticOrSuccess
-MO::makeBufferBuilder(DeviceRefAttr hostDevice, DeviceSpecAttr deviceSpec,
+MO::makeBufferBuilder(DeviceRefAttr hostDevice, DeviceRefAttr targetDevice,
                       MGP::MOGraphLoweringState &loweringState) {
-  return getRegistry().callMakeBufferBuilder(hostDevice, deviceSpec,
+  return getRegistry().callMakeBufferBuilder(hostDevice, targetDevice,
                                              loweringState);
 }

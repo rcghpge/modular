@@ -15,7 +15,6 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
-#include "GenericML/Support/HostDeviceSpecs.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/AssertStream.h"
@@ -59,7 +58,7 @@ public:
   LogicalResult run();
 
   // Establish type builders for all the (virtual) devices needed by the model.
-  LogicalResult setupTypeBuildersForAllDevices();
+  LogicalResult setupTypeBuildersForAllDevices(MO::GraphOp graph);
 
   // Establish buffer builders for all the (virtual) devices needed by the
   // model. Each device will have its 'runtime' created in the 'init' block
@@ -175,46 +174,73 @@ private:
 
 } // namespace
 
-LogicalResult MOGraphLowering::setupTypeBuildersForAllDevices() {
-  CompileDiagnosticOr<DeviceSpecCollectionAttr> deviceSpecsOr =
-      loweringState.getDeviceSpecs();
-  if (deviceSpecsOr.isError())
-    return deviceSpecsOr.takeError();
+static SmallVector<DeviceRefAttr> getAllDevicesUsedInGraph(MO::GraphOp graph) {
 
-  for (DeviceSpecAttr deviceSpec : deviceSpecsOr.takeValue().getDevices()) {
-    if (failed(MO::makeTypeBuilder(deviceSpec, loweringState)))
+  // This is not a list of devices that are actually available on a given
+  // machine, but rather devices that are used in the graph. Each device is
+  // in the list exactly once.
+  llvm::DenseSet<DeviceRefAttr> devices;
+
+  // Always add the host device, it may not be explicitly in the graph.
+  DeviceRefAttr hostDevice = DeviceRefAttr::getDefault(graph->getContext());
+  devices.insert(hostDevice);
+
+  mlir::AttrTypeWalker walker;
+  walker.addWalk([&](DeviceRefAttr attr) { devices.insert(attr); });
+  graph->walk([&](Operation *op) {
+    walker.walk(op->getAttrDictionary());
+    for (Type type : op->getOperands().getTypes())
+      walker.walk(type);
+    for (Type type : op->getResultTypes())
+      walker.walk(type);
+    for (Region &region : op->getRegions()) {
+      for (Type type : region.getArgumentTypes())
+        walker.walk(type);
+    }
+  });
+
+  // Sort the results so that the host device is always listed first. The sort
+  // other devices in alphabetical order by their string representation. This
+  // allows the device attributes on the graph to have a consistent sorting.
+  SmallVector<DeviceRefAttr> sorted = llvm::to_vector(devices);
+  llvm::sort(sorted.begin(), sorted.end(),
+             [hostDevice](DeviceRefAttr left, DeviceRefAttr right) {
+               if (left == hostDevice)
+                 return true;
+               if (right == hostDevice)
+                 return false;
+               return left.toString() < right.toString();
+             });
+  return sorted;
+}
+
+LogicalResult
+MOGraphLowering::setupTypeBuildersForAllDevices(MO::GraphOp graph) {
+  for (DeviceRefAttr device : getAllDevicesUsedInGraph(graph)) {
+    if (failed(MO::makeTypeBuilder(device, loweringState)))
       return failure();
   }
   return success();
 }
 
 CompileDiagnosticOrSuccess MOGraphLowering::setupBufferBuildersForAllDevices() {
-  CompileDiagnosticOr<DeviceSpecCollectionAttr> deviceSpecsOr =
-      loweringState.getDeviceSpecs();
-  if (deviceSpecsOr.isError())
-    return deviceSpecsOr.takeError();
-  auto deviceSpecs = deviceSpecsOr.takeValue();
+  DeviceRefAttr hostDevice =
+      DeviceRefAttr::getDefault(loweringState.getModelOp()->getContext());
 
-  // Make sure the 'host' device buffer builder is established first since
-  // other builders need to refer to it.
-  for (DeviceSpecAttr deviceSpec : deviceSpecs.getDevices()) {
-    if (deviceSpec.getRef() != deviceSpecs.getHost())
-      continue;
-    if (auto err = MO::makeBufferBuilder(deviceSpecs.getHost(), deviceSpec,
-                                         loweringState);
-        err.isError())
-      return err;
+  // Make the host buffer builder first.
+  if (auto err = MO::makeBufferBuilder(hostDevice, hostDevice, loweringState);
+      err.isError())
+    return err;
+
+  // Add the buffer builders for other supported devices.
+  for (auto device : getAllDevicesUsedInGraph(loweringState.getGraph())) {
+    if (device != hostDevice) {
+      if (auto err = MO::makeBufferBuilder(hostDevice, device, loweringState);
+          err.isError())
+        return err;
+    }
   }
 
-  // Now establish buffer builders for all other devices.
-  for (DeviceSpecAttr deviceSpec : deviceSpecs.getDevices()) {
-    if (deviceSpec.getRef() == deviceSpecs.getHost())
-      continue;
-    if (auto err = MO::makeBufferBuilder(deviceSpecs.getHost(), deviceSpec,
-                                         loweringState);
-        err.isError())
-      return err;
-  }
   return success();
 }
 
@@ -224,8 +250,9 @@ LogicalResult MOGraphLowering::createModelOp() {
   OpBuilder b(graph);
 
   // Establish type builders for all the devices.
-  // CAUTION: Must be done before any types are lowered, eg the next paragraph.
-  if (failed(setupTypeBuildersForAllDevices()))
+  // CAUTION: Must be done before any types are lowered, eg the next
+  // paragraph.
+  if (failed(setupTypeBuildersForAllDevices(graph)))
     return failure();
 
   // Convert the tensor types for the model signature over.
@@ -270,17 +297,16 @@ LogicalResult MOGraphLowering::createModelOp() {
   b.setInsertionPoint(graph);
   // Get all the devices
   ErrorOrSuccess err(success());
-  auto devices = llvm::map_to_vector(
-      loweringState.getDeviceSpecs().takeValue().getDevices(),
-      [&err](DeviceSpecAttr attr) {
-        auto refOr = toRuntimeDeviceRef(attr.getRef());
-        if (refOr.isError()) {
-          err = refOr.takeError();
-          return DeviceRef();
-        } else {
-          return refOr.takeValue();
-        }
-      });
+  auto devices = llvm::map_to_vector(getAllDevicesUsedInGraph(graph),
+                                     [&err](DeviceRefAttr attr) {
+                                       auto refOr = toRuntimeDeviceRef(attr);
+                                       if (refOr.isError()) {
+                                         err = refOr.takeError();
+                                         return DeviceRef();
+                                       } else {
+                                         return refOr.takeValue();
+                                       }
+                                     });
   if (err.isError())
     return err;
   auto modelOp = b.create<MGP::ModelOp>(
@@ -299,7 +325,8 @@ LogicalResult MOGraphLowering::createModelOp() {
   loweringState.getInitOpBuilder().setInsertionPointToEnd(
       loweringState.getModelOp().getInitBlock());
   // Get the chain and context values for the body.
-  // This field tracks the current output chain as we lower into the init body.
+  // This field tracks the current output chain as we lower into the init
+  // body.
   loweringState.setInitChain(
       loweringState.getInitOpBuilder().create<GRT::ChainCreateOp>(
           graph.getLoc()));
@@ -554,8 +581,8 @@ static Value getRebindResTensor(MO::RebindOp rebindOp,
   MO::TensorType inputTy = inputTensor.getType();
   MO::TensorType resTy = rebindOp.getResult().getType();
 
-  // If the input and output specs are the same, we can just map to the already
-  // lowered tensor.
+  // If the input and output specs are the same, we can just map to the
+  // already lowered tensor.
   auto outSpecTy = MGP::createCpuTensorSpecType(resTy);
   auto inSpecTy = MGP::createCpuTensorSpecType(inputTy);
   Value loweredInput = loweringState.lookupExecuteLoweredValue(inputTensor);
@@ -574,8 +601,8 @@ static Value getRebindResTensor(MO::RebindOp rebindOp,
     if (isa<IntegerAttr>(resDim))
       continue;
 
-    // If the input dimension is static, and the result is dynamic, we create a
-    // constant runtime dimension.
+    // If the input dimension is static, and the result is dynamic, we create
+    // a constant runtime dimension.
     if (auto intAttr = dyn_cast<IntegerAttr>(inDim)) {
       IntegerType si64Ty = exeBuilder.getIntegerType(64, /*isSigned=*/true);
       auto newIntAttr = exeBuilder.getIntegerAttr(si64Ty, intAttr.getInt());
@@ -1156,14 +1183,16 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
     Block &newBlock = outputRegion.emplaceBlock();
     opLoweringState.builder.setInsertionPointToEnd(&newBlock);
 
-    // Establish the block's arguments. The current 'execute' chain comes first.
+    // Establish the block's arguments. The current 'execute' chain comes
+    // first.
     auto loweredChainArg =
         outputRegion.addArgument(currentChain.getType(), whileOp.getLoc());
     loweringState.setCurrentExecuteChain(loweredChainArg);
     if (currentIsRoot)
       loweringState.setRootExecuteChain(loweredChainArg);
     // else: if the block needs to reference the root chain then an
-    //       additional block argument will be added by fixupIsolatedFromAbove.
+    //       additional block argument will be added by
+    //       fixupIsolatedFromAbove.
 
     // Then an arg for each of the original region args.
     // We'll use the loweredFreeValues since they have the lowered types
@@ -1183,11 +1212,12 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   };
 
   // Lower the 'cond' block. We'll later need to make 2 adjustments:
-  // 1) The mo.while 'cond' block will mo.yield only the condition result. That
+  // 1) The mo.while 'cond' block will mo.yield only the condition result.
+  // That
   //    mo.yield will be lowered to a mef.output with the 'execute' chain and
   //    lowered condition results. However, the grt.while requires the 'cond'
-  //    block to return a result for all signature arguments plus the condition,
-  //    so we'll need to include those.
+  //    block to return a result for all signature arguments plus the
+  //    condition, so we'll need to include those.
   // 2) The lowered condition will be a mgp.tensor<bool>, which we need to
   //    convert to an i1.
   if (failed(
