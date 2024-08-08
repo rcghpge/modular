@@ -8,11 +8,11 @@
 include(RTTIExceptions)
 add_modular_library(DriverPython STATIC
     Device.cpp
-    DType.cpp
     Tensor.cpp
 
     LINK_LIBS PUBLIC
     DeviceDriver
+    modular-framework-common
 )
 
 set_rtti_exceptions(DriverPython)

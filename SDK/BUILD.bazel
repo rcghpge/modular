@@ -142,6 +142,7 @@ modular_pybind_library(
     hdrs = glob(["include/SDK/DriverAPI/python/*.h"]),
     deps = [
         "//GenericML:DeviceDriver",
+        "//GenericML:modular-framework-common",
         "//Support:ML",
     ],
 )

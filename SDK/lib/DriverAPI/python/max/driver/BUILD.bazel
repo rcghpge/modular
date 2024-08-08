@@ -14,6 +14,7 @@ modular_pybind_extension(
         "//SDK:DriverPython",
     ],
     deps = [
+        "//GenericML:modular-framework-common",
         "@llvm-project//llvm:Support",
     ],
 )
