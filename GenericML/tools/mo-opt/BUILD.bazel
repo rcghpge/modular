@@ -16,6 +16,9 @@ run_tool(
     data = [
         "//KGEN:CompilerRT",
         "@llvm-project//compiler-rt:orc_rt",
+        # TODO(SDLC-918): remove when landed
+        "//Kernels/mojo/Mogg:MOGG.lib.mlirbc",
+        "//Kernels/mojo/Mogg:MOGGPrimitives.lib.mlirbc",
     ],
     tags = ["manual"],
     tool = ":mo-opt",
