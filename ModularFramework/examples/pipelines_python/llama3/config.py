@@ -21,6 +21,9 @@ class Llama3Config:
     quantization_encoding: str = "float32"  # TODO: Change to "q4_k"
     """Quantization encoding type."""
 
+    serialized_model_path: Optional[Union[str, Path]] = None
+    """If specified, tries to load a serialized model from this path."""
+
     max_length: int = 512
     """Controls the maximum length of the text sequence (includes the input tokens)."""
 
@@ -33,7 +36,7 @@ class Llama3Config:
     n_heads: int = 24
     n_layers: int = 32
     n_kv_heads: int = 8
-    head_dim: int = 8
+    head_dim: int = 128
     vocab_size: int = 100  # TODO: FAKE
     hidden_dim: int = 30  # TODO: FAKE
 

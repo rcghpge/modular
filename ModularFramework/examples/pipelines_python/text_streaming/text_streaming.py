@@ -4,7 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from llama3.llama3 import TokenGenerator
+from max.serve.pipelines.llm_pipeline_serving import TokenGenerator
 
 
 async def stream_text_to_console(model: TokenGenerator, prompt: str):

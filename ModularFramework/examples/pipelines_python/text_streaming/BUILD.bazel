@@ -5,5 +5,6 @@ py_library(
     srcs = glob(["**/*.py"]),
     deps = [
         "//ModularFramework/examples/pipelines_python/llama3",
+        "//SDK/lib/ServeAPI/python/max/serve",
     ],
 )

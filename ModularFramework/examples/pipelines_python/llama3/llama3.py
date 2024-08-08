@@ -6,8 +6,6 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generic, Protocol, TypeVar
-
 import numpy as np
 from max.engine import InferenceSession, Model
 from max.graph import DType, Graph, TensorType
@@ -18,19 +16,6 @@ from utils import tokenizer_from_gguf
 from .config import Llama3Config
 from .embedding import Embedding
 from .kv_cache import KVCache
-
-Context = TypeVar("Context")
-
-
-# TODO: Remove this re-implementation when max.serve is in monorepo.
-class TokenGenerator(Generic[Context], Protocol):
-    """Interface for LLM token-generator models."""
-
-    async def new_context(self, prompt: str) -> Context:
-        ...
-
-    async def next_token(self, contexts: dict[str, Context]) -> dict[str, str]:
-        ...
 
 
 def get_max_tokens_to_generate(
@@ -82,21 +67,22 @@ class Llama3:
             DType.int64, shape=[self.config.batch_size, "seq_len"]
         )
 
-        with Graph(
-            name, input_types=[tokens_type, cache_type, cache_type]
-        ) as graph:
-            embedding = Embedding(
-                np.random.uniform(
-                    size=(self.config.vocab_size, self.config.hidden_dim)
+        if self.config.serialized_model_path:
+            self._compiled_model = self._session.load(
+                self.config.serialized_model_path
+            )
+        else:
+            with Graph(
+                name, input_types=[tokens_type, cache_type, cache_type]
+            ) as graph:
+                embedding = Embedding(
+                    np.random.uniform(
+                        size=(self.config.vocab_size, self.config.hidden_dim)
+                    )
                 )
-            )
-            out = embedding(graph.inputs[0])
-            graph.output(
-                out,
-                graph.inputs[1],
-                graph.inputs[2],
-            )
-            self._compiled_model = self._session.load(graph)
+                out = embedding(graph.inputs[0])
+                graph.output(out, graph.inputs[1], graph.inputs[2])
+                self._compiled_model = self._session.load(graph)
 
     async def new_context(self, prompt: str) -> Llama3Context:
         # TODO: Encode prompt
@@ -143,7 +129,7 @@ class Llama3:
 
         # TODO: Add a weighted sampler here.
         # Get argmax of the logits of the last token.
-        next_token = logits.argmax(axis=-1)[0, -1]
+        next_token = logits.argmax(axis=-1)[-1]
         context.next_token = next_token.reshape(1, -1)
         decoded_token = self._tokenizer.decode(next_token)
 
