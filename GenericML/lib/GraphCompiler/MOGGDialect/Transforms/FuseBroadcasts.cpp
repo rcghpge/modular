@@ -152,6 +152,19 @@ struct FuseBroadcastsPass
         }
       }
     }
+
+    // FIXME(GRA-865): This pass is generating invalid IR. Fix it up here.
+    getOperation().walk([](KGEN::CallOp call) {
+      OpBuilder b(call);
+      for (auto [arg, opOperand, type] :
+           llvm::zip(call.getOperands(), call->getOpOperands(),
+                     call.getCallee().getType().getArguments())) {
+        if (arg.getType() != type) {
+          Value rebound = b.create<KGEN::RebindOp>(call.getLoc(), type, arg);
+          opOperand.set(rebound);
+        }
+      }
+    });
   }
 
   /// Return the index of the input to fuse or -1 if nothing can be fused.

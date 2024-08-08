@@ -533,13 +533,20 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
                      srcSimdStoreOp.getOperand(1));
 
     // Remap SIMD indices for the COMPUTE_OUTLINED call.
+    builder.setInsertionPointAfter(newInputLambdaOp);
     for (Value operand : outlinedCallOp->getOperands()) {
-      if (isa<mlir::BlockArgument>(operand))
+      if (isa<mlir::BlockArgument>(operand)) {
         kgenOldToNew.map(operand, srcSimdStoreOp.getOperand(1));
+        // FIXME(GRA-865): FuseBroadcasts might have inserted a rebind.
+      } else if (auto rebind = operand.getDefiningOp<KGEN::RebindOp>();
+                 rebind && elementwiseOp.getBodyRegion().isAncestor(
+                               rebind->getParentRegion())) {
+        kgenOldToNew.map(operand, cast<KGEN::RebindOp>(
+                                      builder.clone(*rebind, kgenOldToNew)));
+      }
     }
 
     // Clone all the elementwise lambdas except the final one.
-    builder.setInsertionPointAfter(newInputLambdaOp);
     for (auto declRegion : userToFuseIn.getOps<KGEN::ParamDeclareRegionOp>()) {
       StringAttr regionName = declRegion.getParamDeclAttr().getName();
       if (!lambdaSkipSet.contains(regionName)) {
@@ -991,6 +998,19 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     for (KernelOp kernelOp : kernelOpsToErase)
       kernelOp.erase();
+
+    // FIXME(GRA-865): This pass is generating invalid IR. Fix it up here.
+    getOperation().walk([](KGEN::CallOp call) {
+      OpBuilder b(call);
+      for (auto [arg, opOperand, type] :
+           llvm::zip(call.getOperands(), call->getOpOperands(),
+                     call.getCallee().getType().getArguments())) {
+        if (arg.getType() != type) {
+          Value rebound = b.create<KGEN::RebindOp>(call.getLoc(), type, arg);
+          opOperand.set(rebound);
+        }
+      }
+    });
   }
 };
 

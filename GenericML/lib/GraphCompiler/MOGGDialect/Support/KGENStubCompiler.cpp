@@ -26,6 +26,7 @@
 #include "Support/MDialect/MDialect.h"
 #include "Support/Preprocessor.h"
 #include "Support/Telemetry/Telemetry.h"
+#include "mlir/IR/Verifier.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/Support/TargetSelect.h"
@@ -224,6 +225,11 @@ StubCompiler::compile(mlir::ArrayAttr combinedSymbolName, bool enableTiming,
                       bool debugKGENStubs) {
 
   initLLVM();
+
+#ifndef MODULAR_PRODUCTION
+  if (failed(mlir::verify(kgenModule)))
+    return Error("generated KGEN IR is invalid");
+#endif
 
   LogicalResult ok = elaborateKGEN(enableTiming, false, debugKGENStubs);
   if (ok.failed())
