@@ -6,6 +6,7 @@
 from pathlib import cwd, Path
 import sys
 from os import setenv
+from time import now
 
 from max.engine import InferenceSession, Model
 from max.graph.quantization import (
@@ -118,7 +119,10 @@ struct Config:
         _model_path = self.config["model-path"]
         model_path = _model_path[Path]
         if not model_path:
+            print("Downloading weights...", end="")
+            start_time = now()
             model_path = download_to_cache(get_replit_model_url(raw_type))
+            print("done. Took", (now() - start_time) / 1e9, "seconds.")
             print("Using checkpoint at", model_path)
             self.config["model-path"] = model_path
         if not model_path.exists():
@@ -235,14 +239,15 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
     ):
         """Builds and compiles a Replit model to get ready for execution."""
         # Generate a graph that does a single forward pass of the replit model.
-        print("Building model...")
+        print("Building model...", end="")
         self._replit = Replit[GGUFFile, dtype, kv_params](get_default())
+        start_time = now()
         model = GGUFFile(model_path)
         g = self._replit.build_graph(
             model,
             "replit",
         )
-
+        print("done. Took", (now() - start_time) / 1e9, "seconds.")
         self._device = cuda_device() if use_gpu else cpu_device()
         self._run_on_gpu = use_gpu
         self._cpu_device = cpu_device() if use_gpu else self._device
@@ -252,11 +257,13 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
 
         # Compile and load the graph, which generates the MLIR and runs
         # optimization passes on it.
-        print("Compiling...")
+        print("Compiling...", end="")
+        start_time = now()
         self._model = self._session.load(
             g,
             custom_ops_paths=custom_ops_paths,
         )
+        print("done. Took", (now() - start_time) / 1e9, "seconds.")
 
         # Set up tokenizer.
         var hf_model_name = "replit/replit-code-v1_5-3b"
