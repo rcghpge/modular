@@ -3,7 +3,9 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
+from collections import Optional, Dict
 from pathlib import cwd, Path
+from utils import StaticIntTuple
 import sys
 from os import setenv
 from time import now
@@ -508,7 +510,7 @@ def main():
     config = Config()
 
     @parameter
-    if not is_x86():
+    if not sys.info.is_x86():
         dispatch[DType.float32, replit_kv_params](config)
     else:
         encoding = config.get("quantization-encoding")[String]

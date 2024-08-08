@@ -7,6 +7,7 @@
 from max.graph import ops, Symbol, _OpaqueType, TensorType, Type, Dim, Graph
 from max.graph.quantization import Float32Encoding, QuantizationEncoding
 from max.tensor import Tensor, TensorShape
+import math
 from utils.numerics import min_finite
 
 from pipelines.nn import Linear, Embedding, FeedForward
