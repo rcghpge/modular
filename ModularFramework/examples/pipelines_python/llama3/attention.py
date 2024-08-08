@@ -12,31 +12,6 @@ from .rotary_embedding import RotaryEmbedding
 import math
 
 
-def rope(x: ValueLike, freqs_cis: ValueLike) -> GraphValue:
-    v = GraphValue(x)
-
-    complex = ops.as_interleaved_complex(v)
-    freqs_cis_bcast = ops.unsqueeze(ops.unsqueeze(freqs_cis, 1), 0)
-
-    x_re = complex[..., 0]
-    x_im = complex[..., 1]
-
-    freqs_re = freqs_cis_bcast[..., 0]
-    freqs_im = freqs_cis_bcast[..., 1]
-
-    # TODO: Replace with '-' and '+' below when supported.
-    rope_re = ops.sub((x_re * freqs_re), (x_im * freqs_im))
-    rope_im = ops.add((x_re * freqs_im), (x_im * freqs_re))
-
-    # TODO: Use stack (or as_complex?) here.
-    # TODO: rope_complex = ops.concat([rope_re[..., None], rope_im[..., None]], axis=-1) should also work, but does not
-    rope_complex = ops.concat(
-        [ops.unsqueeze(rope_re, -1), ops.unsqueeze(rope_im, -1)], axis=-1
-    )
-
-    return ops.reshape(rope_complex, v.tensor_type.shape)
-
-
 def attention_mask(start_pos, seq_len, activation_dtype):
     mask_val = ops.cast(
         ops.broadcast_to(
