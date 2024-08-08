@@ -1,5 +1,11 @@
 load("//bazel:api.bzl", "mojo_test")
 
+filegroup(
+    name = "replit",
+    srcs = glob(["*.mojo"]),
+    visibility = ["//visibility:public"],
+)
+
 mojo_test(
     name = "test_logits",
     srcs = ["test_logits.mojo"],

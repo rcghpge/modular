@@ -1,5 +1,13 @@
 load("//bazel:api.bzl", "mojo_test")
 
+filegroup(
+    name = "test",
+    srcs = glob(["**/*.mojo"]) + [
+        "//SDK/public/max-repo/examples/graph-api/test/configs",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 mojo_test(
     name = "test_heap",
     srcs = ["test_heap.mojo"],
