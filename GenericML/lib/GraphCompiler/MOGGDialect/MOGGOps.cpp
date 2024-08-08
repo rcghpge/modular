@@ -1427,11 +1427,32 @@ static void printKernel(OpAsmPrinter &p, Operation *kernel, ValueRange operands,
 
 void KernelOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+
+  bool hasWriteEffect = false;
+  bool hasReadEffect = false;
+
   if (isInPlace()) {
+    hasWriteEffect |= true;
+    hasReadEffect |= true;
+  }
+
+  if (!getOutputParamDecls().empty())
+    hasWriteEffect |= true;
+
+  auto outChain = getOutChain();
+  if (outChain) {
+    for (auto &&user : outChain->getUsers()) {
+      if (isa<MO::MutableStoreOp>(user)) {
+        hasWriteEffect |= true;
+        hasReadEffect |= true;
+      }
+    }
+  }
+
+  if (hasWriteEffect)
     effects.emplace_back(mlir::MemoryEffects::Write::get());
+  if (hasReadEffect)
     effects.emplace_back(mlir::MemoryEffects::Read::get());
-  } else if (!getOutputParamDecls().empty())
-    effects.emplace_back(mlir::MemoryEffects::Write::get());
 }
 
 //===----------------------------------------------------------------------===//
