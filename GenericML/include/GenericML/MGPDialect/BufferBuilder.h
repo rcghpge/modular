@@ -88,9 +88,9 @@ LogicalResult genericTensorCreateVerify(Operation *op, BufferType bufferType,
                                         TensorSpecType tensorSpecType,
                                         TensorType tensorType) {
   if (tensorSpecType != tensorType.getTensorSpec())
-    return op->emitOpError()
-           << "expected spec to match result tensor spec" << " ("
-           << tensorSpecType << " vs " << tensorType.getTensorSpec() << ")";
+    return op->emitOpError() << "expected spec to match result tensor spec"
+                             << " (" << tensorSpecType << " vs "
+                             << tensorType.getTensorSpec() << ")";
 
   BufferType expectedBufferType = BufferType::get(tensorType);
   bool bufferIsStatic = bufferType.getOptSize().has_value();
@@ -121,9 +121,9 @@ LogicalResult genericTensorExtractVerify(Operation *op, TensorType tensorType,
                                          TensorSpecType resultTensorSpecType) {
   if (tensorType.getTensorSpec() != resultTensorSpecType)
     return op->emitOpError()
-           << "expected the result spec to match tensor's spec" << " ("
-           << resultTensorSpecType << " vs " << tensorType.getTensorSpec()
-           << ")";
+           << "expected the result spec to match tensor's spec"
+           << " (" << resultTensorSpecType << " vs "
+           << tensorType.getTensorSpec() << ")";
   BufferType expectedBufferType = BufferType::get(tensorType);
   if (expectedBufferType != resultBufferType)
     return op->emitOpError()
@@ -420,10 +420,11 @@ public:
 
   /// Setup the state for emitting ops into a ModelOp. Returns the chain
   /// indicating when the runtime has been established.
-  TypedValue<MEF::ChainType> setupForModel(ModelOp modelOp,
-                                           MGPBufferBuilder *hostBufferBuilder,
-                                           OpBuilder &builder, Location loc,
-                                           TypedValue<MEF::ChainType> inChain);
+  std::pair<TypedValue<MEF::ChainType>, TypedValue<MGP::OpaqueType>>
+  setupForModel(ModelOp modelOp, MGPBufferBuilder *hostBufferBuilder,
+                OpBuilder &builder, Location loc,
+                TypedValue<MEF::ChainType> inChain,
+                TypedValue<OpaqueType> inDevice);
 
   /// Recover the state from modelOp for this device-specific buffer builder.
   void recoverFromModel(ModelOp modelOp, MGPBufferBuilder *hostBufferBuilder);

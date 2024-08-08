@@ -217,7 +217,6 @@ static void mgp_generic_execute(
                     loc = std::move(loc)]() mutable {
     CUDARuntime *cudaRuntimePtr = nullptr;
     void *deviceContextPtr = deviceContext.get<void *>();
-    // Setup the current cuda context as the default context for this call.
     std::optional<CurrentCUDAContext> current;
     if (hasCuda) {
       // GRA-594: When Device Context is passed to the primitive directly, we

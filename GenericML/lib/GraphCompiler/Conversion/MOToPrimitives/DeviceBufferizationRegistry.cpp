@@ -55,16 +55,14 @@ CompileDiagnosticOrSuccess MGPDeviceSpecificDialect::makeBufferBuilder(
     inChain = deviceContextCreate.getOperand(0)
                   .getDefiningOp<MGP::RuntimeCreateOp>()
                   .getOutChain();
-  CompileDiagnosticOr<TypedValue<MEF::ChainType>> outChainOr =
-      bufferBuilder->setupForModel(loweringState.getModelOp(),
-                                   hostBufferBuilder,
-                                   loweringState.getInitOpBuilder(),
-                                   loweringState.getGraph()->getLoc(), inChain);
-  if (outChainOr.isError())
-    return outChainOr.takeError();
+  auto chainAndDevice = bufferBuilder->setupForModel(
+      loweringState.getModelOp(), hostBufferBuilder,
+      loweringState.getInitOpBuilder(), loweringState.getGraph()->getLoc(),
+      inChain, loweringState.getInitDevice(bufferBuilder->device));
+  loweringState.setInitChain(chainAndDevice.first);
+  loweringState.setInitDevice(bufferBuilder->device, chainAndDevice.second);
   loweringState.registerBufferBuilder(deviceSpec.getRef(),
                                       std::move(bufferBuilder));
-  loweringState.setInitChain(outChainOr.takeValue());
   return success();
 }
 

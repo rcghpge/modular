@@ -53,9 +53,12 @@ void BufferBuilder::vtableAnchor() {}
 // MGPBufferBuilder
 //===----------------------------------------------------------------------===//
 
-TypedValue<MEF::ChainType> MGPBufferBuilder::setupForModel(
-    ModelOp modelOp, MGPBufferBuilder *hostBufferBuilder, OpBuilder &builder,
-    Location loc, TypedValue<MEF::ChainType> inChain) {
+std::pair<TypedValue<MEF::ChainType>, TypedValue<OpaqueType>>
+MGPBufferBuilder::setupForModel(ModelOp modelOp,
+                                MGPBufferBuilder *hostBufferBuilder,
+                                OpBuilder &builder, Location loc,
+                                TypedValue<MEF::ChainType> inChain,
+                                TypedValue<OpaqueType> inDevice) {
   this->hostBufferBuilder = hostBufferBuilder;
 
   // Allocate a runtime slot to hold the runtime.
@@ -76,12 +79,16 @@ TypedValue<MEF::ChainType> MGPBufferBuilder::setupForModel(
                                            /*cDevice=*/device);
   auto deviceCtx = builder.create<MGP::DeviceContextCreateOp>(
       loc,
+      /*outChain=*/MEF::ChainType::get(builder.getContext()),
+      /*outDeviceContext=*/
+      OpaqueType::get(builder.getContext(), inDevice.getType().getSymbol(), {}),
       /*inChain=*/runtime.getOutChain(),
       /*theContext=*/context,
-      /*aDeviceRuntimeSlow=*/runtimeSlot,
+      /*deviceContext=*/inDevice,
+      /*aDeviceRuntimeSlot=*/runtimeSlot,
       /*bDevice=*/device);
-
-  return deviceCtx.getOutChain();
+  return {dyn_cast<TypedValue<MEF::ChainType>>(deviceCtx.getResult(0)),
+          dyn_cast<TypedValue<OpaqueType>>(deviceCtx.getResult(1))};
 }
 
 void MGPBufferBuilder::recoverFromModel(ModelOp modelOp,
