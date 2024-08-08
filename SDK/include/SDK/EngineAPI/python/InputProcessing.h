@@ -23,7 +23,7 @@ void verifyTensorInputSpecs(const py::object &obj,
                             const TensorSpec &inputTensorSpec);
 
 /// Borrows the data from the array in the pybind object `obj` into a new
-/// `Tensor` wrapped in an `AsyncValue` and sets it's name to
+/// `Tensor` wrapped in an `AsyncValue` and sets its name to
 /// `name`.
 M_AsyncValue *processTensorInput(const py::object &obj, const std::string &name,
                                  M_RuntimeContext *context);

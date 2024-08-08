@@ -25,7 +25,7 @@ The main issue with MO being strongly typed is it makes it extremely cumbersome
 to build graphs from MO operators. Typically it requires the user to either do
 some kind of shape inference as is done in some of our frontends. Some
 frontends have little shape information so all dimensions are `?`, which forced
-MO to carve-out special exceptions to it's strongly typed nature to deal with
+MO to carve out special exceptions to its strongly typed nature to deal with
 `?`. Therefore not only are MO graphs hard to build, its hard type system is
 also inconsistent with itself!
 
@@ -46,18 +46,18 @@ stronly-typed stance.
    with some rebinds and dynamic runtime checks inserted.
 5. `RMOComposite` operators are operators which should only lower to other rmo
    operators.
-6. `?` returns to it's proper place as sugar for "Unique Parameter." It is the
+6. `?` returns to its proper place as sugar for "Unique Parameter." It is the
    goal that MO operators are never created directly, except through RMO.
    Therefore MO will not have to deal with `?` anymore and the special
    carve-outs in the MO verifiers for this can be removed.
-7. To make RMO easier to write, and taking advantage of the looser type system
-   we add builders for `MOAnalogue` operators to have implicit return types.
+7. Taking advantage of the looser type system to make RMO easier to write,
+   we add builders for `MOAnalogue` operators that have implicit return types.
 
 ## MO (Modular Operations) Dialect
 
 MO is intended to be the framework-level interface to Modular optimizations.
-Supported in MO operators from Tensorflow, TFLite, and other frameworks will
-be lowered to MO and will take advantage of optimizations, and for not
+Supported-in-MO operators from Tensorflow, TFLite, and other frameworks will
+be lowered to MO and will take advantage of optimizations, and for not-
 supported ops the default framework implementation will be used. This will
 ensure long-tail coverage of user models.
 
@@ -76,7 +76,7 @@ extensions we don't need at Modular (i.e., affine integration), and is missing
 features we do need (i.e, M::DType). Thus, we will fork the builtin tensor and
 `hack-to-own`.
 
-We will extend the built in tensor with the following features.
+We will extend the built-in tensor with the following features:
 
 - Shape
   - Dynamic shapes and ranks

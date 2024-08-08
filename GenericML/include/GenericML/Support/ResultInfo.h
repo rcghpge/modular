@@ -88,7 +88,7 @@ public:
   void insertTensor(const std::string &name, Tensor *tensor);
 
   /// Inserts a new unnamed tensor, assigns it a name and returns the name. If a
-  /// tensor with the same underlying buffer already exists, it's name is
+  /// tensor with the same underlying buffer already exists, its name is
   /// returned instead.
   std::string insertTensor(Tensor *tensor);
 

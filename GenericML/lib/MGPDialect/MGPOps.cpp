@@ -678,7 +678,7 @@ static void printTensorSpecTypeWithRawDims(AsmPrinter &p,
 //===----------------------------------------------------------------------===//
 
 /// Parses a !mgp.tensor_spec type, however also sets the rawDims to
-/// capture it's dimensions in 'raw form'.
+/// capture its dimensions in 'raw form'.
 static ParseResult
 parseTensorSpecTypeWithRawDims(AsmParser &p, Type &specType,
                                IntArrayElementsAttr &rawDims) {

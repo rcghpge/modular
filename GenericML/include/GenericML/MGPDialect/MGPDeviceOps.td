@@ -342,7 +342,7 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
     by (module index, constant index) in `mgp.buffer.contant.load`.
 
     There is no universal representation for device modules in the host C++
-    runtime, each device type may use it's own representation.
+    runtime, each device type may use its own representation.
 
     Note that this operation accepts and returns `!mef.chain`s since it is
     part of device setup on the host.

@@ -543,7 +543,7 @@ private:
       for (OpOperand &opOperand : op->getOpOperands())
         analysis.setTrue(domainMap, &opOperand);
     } else if (canBeConveyed(op)) {
-      // This op can be lifted, and it's results recovered in the 'execute'
+      // This op can be lifted, and its results recovered in the 'execute'
       // block. Thus, the op's operands don't impose any constraint on upstream
       // ops.
       analysis.flowDefault(op, domainMap);

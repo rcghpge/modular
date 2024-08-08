@@ -1623,7 +1623,7 @@ public:
   }
 };
 
-/// A helper to match multi-headed attention and it's variations
+/// A helper to match multi-headed attention and its variations
 class MultiHeadAttentionPatternHelper {
   /*
   Input values to the pattern.

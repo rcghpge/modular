@@ -61,7 +61,7 @@ void getParamDeclsFor(TensorType targetTy,
       addAttrIfDecl(dimAttr);
 }
 
-/// Lower the given RMO::MOAnalogue op to it's MO analogue given by `generator`.
+/// Lower the given RMO::MOAnalogue op to its MO analogue given by `generator`.
 LogicalResult
 lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
                 const std::function<MO::ParamDeclarationInterface(
