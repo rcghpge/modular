@@ -397,7 +397,7 @@ M::MOGG::getKernelUsedParameters(MOGG::CompilableKernel kernel) {
     MOSH::ShapeAttr shape;
 
     // The type can either be a shape or a tensor.
-    MO::TensorType asTensor = dyn_cast<MO::TensorType>(t);
+    MO::TensorType asTensor = MO::dynCastFromTensorLike(t);
     if (asTensor)
       shape = asTensor.getTypedShapeAttr();
     MOGG::ShapeType asShape = dyn_cast<MOGG::ShapeType>(t);
