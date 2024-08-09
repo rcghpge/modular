@@ -8,9 +8,10 @@
 
 import math
 from dataclasses import dataclass
-import numpy as np
 
-from max.graph import GraphValue, ops, ValueLike, DType, DimLike
+import numpy as np
+from max.graph import DimLike, DType, GraphValue, ValueLike, ops
+
 from .mlp import Linear
 from .rotary_embedding import RotaryEmbedding
 
@@ -135,7 +136,7 @@ class Attention:
         xv = ops.reshape(xv, [batch, seq_len, self.n_heads, self.head_dim])
 
         xq = self.rope(xq, start_pos, seq_len)
-        xk = self.rope(xq, start_pos, seq_len)
+        xk = self.rope(xk, start_pos, seq_len)
 
         output = self.attention(xq, xk, xv, k_cache, v_cache)
 
