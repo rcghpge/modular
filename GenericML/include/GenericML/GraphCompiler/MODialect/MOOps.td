@@ -4532,6 +4532,55 @@ def MO_MutableStoreOp : MO_Op<"mutable.store", [
   }];
 }
 
+def MO_MutableStoreSliceOp : MO_TensorOp<"mutable.store.slice"> {
+  let summary = "Stores a tensor to a slice of a buffer semantic tensor.";
+  let description = [{
+    Stores the  tensor `slice` to a subset of the elements in `inBuffer`.
+
+    The subset is chosen using the `start`, `stop`, and `step`
+    1D index tensors; each index tensor has N elements, one for each dimension
+    of the `input` tensor.
+
+    The semantics follows the numpy index semantics, such that
+    1. For each dimension `i`, `start[i]:stop[i]:step[i]` represents the
+       "indexing" along that dimension.
+    2. Negative indices are supported for `start` and `stop`, e.g., -1
+       represents the largest axis.
+    3. Out of bound indices in `start` and `stop` will be clamped to
+       [-dim, dim], where `dim` is the dimension in the corresponding axis.
+    4. `step` must contain nonzero elements.
+
+    Example:
+    ```mlir
+    ```mlir
+      %buffer: !mo.buffer<[20, 20], f32>
+      %slice: !mo.tensor<[?, ?], f32>
+      %ch: !mo.chain
+
+      %start: !mo.tensor<[2], si64> // [1,  -6]
+      %stop: !mo.tensor<[2], si32>  // [-3, -3]
+      %step: !mo.tensor<[2], si64>  // [5,   1]
+
+      // equivalent to this in numpy: `buffer[1:-3:5, -6:-3:1] = slice`
+      %ch' = mo.mutable.store.slice(%ch, %buffer, %slice, %start, %stop, %step)
+    ```
+    Both consumes and produces a chain.
+  }];
+  let arguments = (ins MO_Chain:$inChain,
+                       MO_Buffer:$inBuffer,
+                       MO_Tensor:$slice,
+                       MO_IndicesVectorIfRanked:$start,
+                       MO_IndicesVectorIfRanked:$stop,
+                       MO_IndicesVectorIfRanked:$step,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Chain:$outChain);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+  let hasVerifier = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // "Custom" GPU only ops
 //===----------------------------------------------------------------------===//

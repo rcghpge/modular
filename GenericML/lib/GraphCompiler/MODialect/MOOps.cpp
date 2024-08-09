@@ -3766,6 +3766,41 @@ LogicalResult MutableStoreOp::verify() {
   return success();
 }
 
+LogicalResult MutableStoreSliceOp::verify() {
+  auto inChainUses = llvm::range_size(getInChain().getUses());
+  if (inChainUses > 1)
+    return emitError() << llvm::formatv("mo.mutable.store.slice must have "
+                                        "exclusive access to its input chain "
+                                        "found: {0} other uses.",
+                                        inChainUses - 1);
+
+  auto outChainUses = llvm::range_size(getOutChain().getUses());
+  if (outChainUses > 1)
+    return emitError() << llvm::formatv(
+               "The output chain from mo.mutable.store.slice can be used at "
+               "most "
+               "once "
+               "found: {0} uses",
+               outChainUses);
+
+  // Copied wholesale from the mo.slice verifier
+  TensorType inputTy = castFromTensorLike(getInBuffer().getType());
+  TensorType startTy = getStart().getType();
+  TensorType stopTy = getStop().getType();
+  TensorType stepTy = getStep().getType();
+  int64_t inputRank = inputTy.getRank();
+  if (startTy.hasStaticShape() && startTy.getIntDim(0) != inputRank)
+    return emitError("start shape must be [inputRank] if it's static");
+
+  if (stopTy.hasStaticShape() && stopTy.getIntDim(0) != inputRank)
+    return emitError("stop shape must be [inputRank] if it's static");
+
+  if (stepTy.hasStaticShape() && stepTy.getIntDim(0) != inputRank)
+    return emitError("step shape must be [inputRank] if it's static");
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // MO_LayerNormOp
 //===----------------------------------------------------------------------===//
