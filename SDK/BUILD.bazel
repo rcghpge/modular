@@ -180,6 +180,8 @@ py_repl(
         "//SDK/lib/DriverAPI/python:max_driver",
         "//SDK/lib/EngineAPI/python:max_engine",
         "//SDK/lib/GraphAPI/python:max_graph",
+        requirement("hypothesis"),
         requirement("notebook"),
+        requirement("pytest"),
     ],
 )
