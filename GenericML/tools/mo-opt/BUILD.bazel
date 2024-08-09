@@ -15,6 +15,10 @@ run_tool(
     name = "mo-opt-standalone",
     data = [
         "//KGEN:CompilerRT",
+        "//Kernels/mojo/Mogg:MOGG.lib.mlirbc",
+        "//Kernels/mojo/Mogg:MOGGPrimitives.lib.mlirbc",
+        "//Kernels/mojo/Mogg:MOGGPrimitives_debuginfo.lib.mlirbc",
+        "//Kernels/mojo/Mogg:MOGG_debuginfo.lib.mlirbc",
         "@llvm-project//compiler-rt:orc_rt",
         # TODO(SDLC-918): remove when landed
         "//Kernels/mojo/Mogg:MOGG.lib.mlirbc",

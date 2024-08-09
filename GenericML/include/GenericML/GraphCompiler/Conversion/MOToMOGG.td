@@ -22,6 +22,9 @@ def MOToMOGG : Pass<"mo-to-mogg", "ModuleOp"> {
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
       "Paths to mojo packages containing mojo kernel definitions used "
       "to replace MO ops.">,
+    Option<"withDebuginfo", "with-debuginfo", "bool",
+      /*default=*/"false",
+      "Should kernels and stubs be built with debuginfo.">,
     Option<"forceSync", "force-sync", "bool", "false",
       "Make all kernels synchronous.">
   ];

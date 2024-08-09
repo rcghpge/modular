@@ -12,6 +12,7 @@
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "Support/ForwardDecls.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
@@ -23,10 +24,10 @@ namespace M::MOGG::Stub {
 class StubCompiler {
 public:
   StubCompiler(mlir::ModuleOp kgenStubs, Operation *graph, bool shouldSearch,
-               std::string saveTempsPrefix)
+               std::string saveTempsPrefix, KernelBuildType kernelBuildType)
       : ctx(graph->getContext()), kgenModule(kgenStubs), loc(graph->getLoc()),
-        saveTempsPrefix(std::move(saveTempsPrefix)),
-        shouldSearch(shouldSearch) {}
+        saveTempsPrefix(std::move(saveTempsPrefix)), shouldSearch(shouldSearch),
+        kernelBuildType(kernelBuildType) {}
 
   /// Compile to binary object. Tell the jit all of the given symbols as symbols
   /// within it that can be executed at runtime.
@@ -59,6 +60,10 @@ private:
 
   /// Should tell KGEN to search.
   bool shouldSearch;
+
+  /// How should kernels be compiled. If debuginfo is included in kernels then
+  /// it will be added to the stubs.
+  KernelBuildType kernelBuildType;
 };
 
 } // namespace M::MOGG::Stub

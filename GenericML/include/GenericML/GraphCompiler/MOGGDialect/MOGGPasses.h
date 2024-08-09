@@ -27,6 +27,32 @@
 
 namespace M::MOGG {
 
+/// How to build kernels. Release is optimized with no debug information,
+/// relwithdebinfo is optimimized with debug information, debug is not optimized
+/// with debug information.
+enum class KernelBuildType {
+  kRelease,
+  kRelWithDebInfo,
+  kDebug,
+};
+
+/// Does the kernel build type have debuginfo.
+inline bool hasDebuginfo(KernelBuildType kernelBuildType) {
+  return kernelBuildType == KernelBuildType::kRelWithDebInfo ||
+         kernelBuildType == KernelBuildType::kDebug;
+}
+
+/// Build type as a string.
+inline std::string buildTypeString(KernelBuildType bt) {
+  if (bt == KernelBuildType::kRelease)
+    return "release";
+  if (bt == KernelBuildType::kRelWithDebInfo)
+    return "relwithdebinfo";
+  if (bt == KernelBuildType::kDebug)
+    return "debug";
+  llvm_unreachable("All cases should be covered");
+}
+
 //===----------------------------------------------------------------------===//
 // Generated Pass Classes and Registration
 //===----------------------------------------------------------------------===//

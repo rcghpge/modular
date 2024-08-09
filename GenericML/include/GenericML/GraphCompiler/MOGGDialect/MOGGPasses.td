@@ -45,6 +45,9 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
             "Creates isolated reproducers of each kernel in a new mo graph.">,
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
       "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
+    Option<"withDebuginfo", "with-debuginfo", "bool",
+      /*default=*/"false",
+      "Should kernels and stubs be built with debuginfo.">,
     Option<"minimumCpuAlignment", "min-cpu-alignment", "size_t",
       /*default=*/"kPreferredMemoryAlignment",
      "Minimum alignment for all CPU buffers (both constants and allocated)">,
@@ -290,6 +293,9 @@ def KernelSequenceFuse: Pass<"sequence-fuse-kernels", "ModuleOp"> {
            "fuse. Choices are (greedy|conservative|floodfill).">,
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
       "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
+    Option<"withDebuginfo", "with-debuginfo", "bool",
+      /*default=*/"false",
+      "Should kernels and stubs be built with debuginfo.">,
   ];
 
   let dependentDialects = [
@@ -330,6 +336,9 @@ def TranslateMOGGToKGEN: Pass<"translate-mogg-to-kgen", "ModuleOp"> {
   let options = [
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
       "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
+    Option<"withDebuginfo", "with-debuginfo", "bool",
+      /*default=*/"false",
+      "Should kernels and stubs be built with debuginfo.">,
     Option<"minimumCpuAlignment", "min-cpu-alignment", "size_t",
       /*default=*/"kPreferredMemoryAlignment",
      "Minimum alignment for all CPU buffers (both constants and allocated)">

@@ -164,6 +164,11 @@ private:
           "Build stubs with debuginfo so that they show up in the debugger."),
       llvm::cl::location(options.debugKGENStubs),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+
+  M::cl::MOpt<bool> withDebuginfo{
+      "with-debuginfo",
+      llvm::cl::desc("Should kernels be built with debuginfo."),
+      llvm::cl::init(false)};
 };
 
 } // namespace M::MO

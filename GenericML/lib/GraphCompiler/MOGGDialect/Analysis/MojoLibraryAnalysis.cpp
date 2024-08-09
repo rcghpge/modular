@@ -55,15 +55,7 @@ static bool areFunctionsTheSame(KGEN::GeneratorOp gen1,
 }
 
 static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
-getEmbeddingsSourceBuffer() {
-#ifdef MODULAR_MOGG_NO_LINK
-#ifndef MODULAR_CMAKE_BUILD
-  ErrorOr<KGEN::MojoConfig> config = KGEN::MojoConfig::open();
-  if (failed(config))
-    return config.takeError();
-
-  auto filepath = config->getMOGGLibPath();
-
+getFile(llvm::StringRef filepath) {
   auto memBufferOr = toModularErrorOr(
       llvm::MemoryBuffer::getFile(filepath, /*IsText=*/false,
                                   /*RequiresNullTerminator=*/false));
@@ -71,6 +63,19 @@ getEmbeddingsSourceBuffer() {
     return Error(memBufferOr.getError() + Twine(" [" + filepath + "]"));
 
   return memBufferOr;
+}
+
+static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
+getEmbeddingsSourceBuffer(bool withDebuginfo) {
+#ifdef MODULAR_MOGG_NO_LINK
+#ifndef MODULAR_CMAKE_BUILD
+  ErrorOr<KGEN::MojoConfig> config = KGEN::MojoConfig::open();
+  if (failed(config))
+    return config.takeError();
+
+  if (withDebuginfo)
+    return getFile(config->getMOGGLibDebuginfoPath());
+  return getFile(config->getMOGGLibPath());
 #else  // !MODULAR_CMAKE_BUILD
   return toModularErrorOr(
       llvm::MemoryBuffer::getFile(Embeddings::sourceFilename,
@@ -86,22 +91,16 @@ getEmbeddingsSourceBuffer() {
 }
 
 static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
-getEmbeddingsPrimitiveSourceBuffer() {
+getEmbeddingsPrimitiveSourceBuffer(bool withDebuginfo) {
 #ifdef MODULAR_MOGG_NO_LINK
 #ifndef MODULAR_CMAKE_BUILD
   ErrorOr<KGEN::MojoConfig> config = KGEN::MojoConfig::open();
   if (failed(config))
     return config.takeError();
 
-  auto filepath = config->getMOGGPrimitivesLibPath();
-
-  auto memBufferOr = toModularErrorOr(
-      llvm::MemoryBuffer::getFile(filepath, /*IsText=*/false,
-                                  /*RequiresNullTerminator=*/false));
-  if (memBufferOr.isError())
-    return Error(memBufferOr.getError() + Twine(" [" + filepath + "]"));
-
-  return memBufferOr;
+  if (withDebuginfo)
+    return getFile(config->getMOGGPrimitivesLibDebuginfoPath());
+  return getFile(config->getMOGGPrimitivesLibPath());
 #else  // !MODULAR_CMAKE_BUILD
   return toModularErrorOr(
       llvm::MemoryBuffer::getFile(Embeddings::primitiveSourceFilename,
@@ -221,11 +220,23 @@ ErrorOrSuccess MojoLibraryAnalysis::loadUserProvidedKernels(
     ArrayRef<std::string> kernelLibraryPaths) {
 
   // Load each of the extra user libraries and update the book-keepings.
-  for (StringRef path : kernelLibraryPaths) {
+  for (StringRef pathRef : kernelLibraryPaths) {
+    std::string path = pathRef.str();
     llvm::StringMap<KGEN::GeneratorOp> userRawMojoKernel;
     Operation *userModule;
 
-    if (Filesystem::isMojoBinaryPackagePath(path.str())) {
+    // Look to see if a debuginfo version of the library was built. It will have
+    // the _debuginfo suffix.
+    if (withDebuginfo) {
+      std::filesystem::path p(path);
+      auto debuginfoPath =
+          (p.parent_path() /
+           (p.stem().string() + "_debuginfo" + p.extension().string()));
+      if (std::filesystem::exists(debuginfoPath))
+        path = debuginfoPath.string();
+    }
+
+    if (Filesystem::isMojoBinaryPackagePath(path)) {
       // Load user library that is a mojo package file.
       auto userModuleOr = parseMojoPackage(context, path, sourceMgr);
       if (userModuleOr.isError())
@@ -348,7 +359,7 @@ struct Candidate {
 ErrorOrSuccess
 MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> bufferOr =
-      getEmbeddingsSourceBuffer();
+      getEmbeddingsSourceBuffer(withDebuginfo);
   if (failed(bufferOr))
     return Error(Twine("failed to load compiled MOGG.mojo: ") +
                  bufferOr.getError());
@@ -360,7 +371,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
     return moduleOr.takeError();
   module = cast<ModuleOp>(moduleOr.takeValue());
 
-  bufferOr = getEmbeddingsPrimitiveSourceBuffer();
+  bufferOr = getEmbeddingsPrimitiveSourceBuffer(withDebuginfo);
   if (failed(bufferOr))
     return Error(Twine("failed to load compiled MOGGPrimitives.mojo: ") +
                  bufferOr.getError());
@@ -452,8 +463,9 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   return success();
 }
 
-MojoLibraryAnalysis::MojoLibraryAnalysis(MLIRContext *ctx)
-    : context(ctx), config(ctx, false), sourceMgr(new llvm::SourceMgr()) {}
+MojoLibraryAnalysis::MojoLibraryAnalysis(MLIRContext *ctx, bool withDebuginfo)
+    : context(ctx), withDebuginfo(withDebuginfo), config(ctx, false),
+      sourceMgr(new llvm::SourceMgr()) {}
 
 MojoLibraryAnalysis::~MojoLibraryAnalysis() {
   for (auto &rd : readers) {

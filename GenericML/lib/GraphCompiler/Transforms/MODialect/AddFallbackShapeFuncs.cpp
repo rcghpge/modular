@@ -158,7 +158,7 @@ struct AddFallbackShapeFunctions
 
       auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
       ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
-          analysis.initIfNeeded(ctx, kernelLibraryPaths);
+          analysis.initIfNeeded(ctx, kernelLibraryPaths, withDebuginfo);
       if (errOr.isError())
         return nullptr;
       cachedAnalysis = errOr.takeValue();

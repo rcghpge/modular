@@ -70,6 +70,10 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc(
           "Paths to mojo packages containing mojo kernel definitions used to "
           "replace MO ops.")};
+  Option<bool> withDebuginfo{
+      *this, "with-debuginfo",
+      llvm::cl::desc("Should kernels be built with debuginfo."),
+      llvm::cl::init(false)};
   Option<bool> useShapeInference{
       *this, "mo-shape-inference",
       llvm::cl::desc("Run shape inference on the input before other "
@@ -203,6 +207,10 @@ struct ShapeInferenceOptions
       *this, "kernel-library-paths",
       llvm::cl::desc(
           "Paths to mojo packages containing mojo shape function definitions")};
+  Option<bool> withDebuginfo{
+      *this, "with-debuginfo",
+      llvm::cl::desc("Should kernels be built with debuginfo."),
+      llvm::cl::init(false)};
   Option<bool> constantFold{
       *this, "constant-fold",
       llvm::cl::desc("For use with the extended pipeline. Whether to use "

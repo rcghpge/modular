@@ -92,10 +92,7 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
   compilationOptions.enableLLVMPerFunctionSplitting = false;
   compilationOptions.optimizationLevel = superOpt ? 4 : 3;
 
-  static constexpr llvm::StringLiteral kKernelsBuildType =
-      STRINGIFY(KERNELS_BUILD_TYPE);
-  if (debugKGENStubs || kKernelsBuildType == "relwithdebinfo" ||
-      kKernelsBuildType == "debug")
+  if (debugKGENStubs || hasDebuginfo(kernelBuildType))
     compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
 
   KGEN::PassManagerConfigOptions pmOptions;
@@ -164,9 +161,6 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
 ErrorOr<MOGG::LoadCompiledKernelOp>
 StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
                             bool enableTiming, bool debugKGENStubs) {
-  static constexpr llvm::StringLiteral kKernelsBuildType =
-      STRINGIFY(KERNELS_BUILD_TYPE);
-
   // Compile to LLVM.
   TargetInfoAttr target = getTargetInfo(kgenModule);
   KGEN::CompilationOptions compilationOptions;
@@ -175,11 +169,10 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
   compilationOptions.targetFeatures = target.getFeatures();
   compilationOptions.enableLLVMPerFunctionSplitting = false;
 
-  if (kKernelsBuildType == "debug")
+  if (kernelBuildType == KernelBuildType::kDebug)
     compilationOptions.optimizationLevel = 0;
 
-  if (debugKGENStubs || kKernelsBuildType == "relwithdebinfo" ||
-      kKernelsBuildType == "debug")
+  if (debugKGENStubs || hasDebuginfo(kernelBuildType))
     compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
 
   initLLVM();
@@ -223,7 +216,6 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
 ErrorOr<MOGG::LoadCompiledKernelOp>
 StubCompiler::compile(mlir::ArrayAttr combinedSymbolName, bool enableTiming,
                       bool debugKGENStubs) {
-
   initLLVM();
 
 #ifndef MODULAR_PRODUCTION

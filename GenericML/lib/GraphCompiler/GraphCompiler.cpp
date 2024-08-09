@@ -151,8 +151,10 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   shapeInferenceOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
   shapeInferenceOpts.constantFold = opts.constantFold;
   shapeInferenceOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  shapeInferenceOpts.withDebuginfo = opts.withDebuginfo;
   if (opts.useShapeInference)
     buildShapeInferencePipeline(pm, shapeInferenceOpts, opts);
+
   if (opts.constantFold)
     pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
 
@@ -191,7 +193,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     // invocation for the inserted layout transformations, and in most (if not
     // all) cases we can fold them away.
     SymbolicizeFallbackShapeFunctionsOptions symbolizationOpts{
-        opts.kernelLibraryPaths};
+        opts.kernelLibraryPaths, opts.withDebuginfo};
     pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(symbolizationOpts));
     pm.addPass(MO::createPropagateShapes());
     pm.addPass(mlir::createCanonicalizerPass());
@@ -201,6 +203,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   MO::AssignDevicesPassOptions assignDevicesPassOpt;
   assignDevicesPassOpt.targetDevice = opts.defaultDeviceLabel;
   assignDevicesPassOpt.kernelLibraryPaths = opts.kernelLibraryPaths;
+  assignDevicesPassOpt.withDebuginfo = opts.withDebuginfo;
   if (assignDevicesPassOpt.targetDevice == "cpu")
     assignDevicesPassOpt.targetDevice = "";
   assignDevicesPassOpt.copyFromHost = !opts.inputsAndOutputsOnDevice;
@@ -214,7 +217,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
 
   pm.addPass(MO::createHoistParameterExpressions());
-  pm.addPass(MO::createMOToMOGG({opts.kernelLibraryPaths, opts.forceSync}));
+  pm.addPass(MO::createMOToMOGG(
+      {opts.kernelLibraryPaths, opts.withDebuginfo, opts.forceSync}));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(MOGG::createSimplifyKernelOperands());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -257,6 +261,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
       MOGG::KernelSequenceFuseOptions sequenceFusionOpts;
       sequenceFusionOpts.nonHostKernelLimit = opts.softFusionNonHostKernelLimit;
       sequenceFusionOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+      sequenceFusionOpts.withDebuginfo = opts.withDebuginfo;
       pm.addPass(MOGG::createKernelSequenceFuse(sequenceFusionOpts));
 
       pm.addPass(mlir::createCanonicalizerPass());
@@ -282,6 +287,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   MOGG::TranslateMOGGToKGENOptions translationOpts;
   translationOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  translationOpts.withDebuginfo = opts.withDebuginfo;
   translationOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
   pm.addPass(MOGG::createTranslateMOGGToKGEN(translationOpts));
   pm.addPass(mlir::createCanonicalizerPass());
@@ -318,6 +324,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   MGP::LowerPrimitivesOptions lowerPrimOpts;
   lowerPrimOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  lowerPrimOpts.withDebuginfo = opts.withDebuginfo;
   pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts));
   MGP::FuseGenericCompiledRegionsOptions fuseOpts;
   fuseOpts.enableFusion = opts.enableCompiledRegionsFusion;
@@ -326,6 +333,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   MGP::LowerMOGGABIOptions abiOpts;
   abiOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  abiOpts.withDebuginfo = opts.withDebuginfo;
   pm.addPass(MGP::createLowerMOGGABI(abiOpts));
 
   // If we are jitting then we need to compile the jit kernels as well.
@@ -353,6 +361,7 @@ void M::MO::buildShapeInferencePipelineDefaultOpts(
     mlir::OpPassManager &pm, const ShapeInferenceOptions &opts) {
   MoToMgpOptions moToMgpOptions;
   moToMgpOptions.kernelLibraryPaths = opts.kernelLibraryPaths;
+  moToMgpOptions.withDebuginfo = opts.withDebuginfo;
   moToMgpOptions.compiledFrameworkLabel = opts.compiledFrameworkLabel;
   buildShapeInferencePipeline(pm, opts, moToMgpOptions);
 }

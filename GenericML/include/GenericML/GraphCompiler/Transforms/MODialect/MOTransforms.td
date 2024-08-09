@@ -20,7 +20,10 @@ def AddFallbackShapeFunctions :
 
   let options = [
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo shape functions to be loaded. ">
+      "Paths to mojo packages containing mojo shape functions to be loaded. ">,
+    Option<"withDebuginfo", "with-debuginfo", "bool",
+      /*default=*/"false",
+      "Should kernels and stubs be built with debuginfo.">,
   ];
 
   let dependentDialects = [
@@ -50,7 +53,10 @@ def SymbolicizeFallbackShapeFunctions :
 
   let options = [
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo shape functions to be loaded. ">
+      "Paths to mojo packages containing mojo shape functions to be loaded. ">,
+    Option<"withDebuginfo", "with-debuginfo", "bool",
+      /*default=*/"false",
+      "Should kernels and stubs be built with debuginfo.">,
   ];
 
   let dependentDialects = [
@@ -339,6 +345,9 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
            "overall graph's default device.">,
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
           "Paths to mojo packages containing mojo shape functions to be loaded. ">,
+    Option<"withDebuginfo", "with-debuginfo", "bool",
+      /*default=*/"false",
+      "Should kernels and stubs be built with debuginfo.">,
     Option<"targetDevice", "target-device",  "std::string", "\"\"",
            "If non-empty, assign devices using this device">,
     Option<"copyFromHost", "copy-from-host", "bool", "true",
