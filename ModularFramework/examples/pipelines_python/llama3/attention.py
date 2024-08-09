@@ -4,15 +4,21 @@
 #
 # ===----------------------------------------------------------------------=== #
 
+"""The attention mechanism used within the model."""
+
+import math
 from dataclasses import dataclass
 import numpy as np
-from max.graph import GraphValue, ops, ValueLike, TensorType, DType
+
+from max.graph import GraphValue, ops, ValueLike, DType, DimLike
 from .mlp import Linear
 from .rotary_embedding import RotaryEmbedding
-import math
 
 
-def attention_mask(start_pos, seq_len, activation_dtype):
+def attention_mask(
+    start_pos: DimLike, seq_len: DimLike, activation_dtype: DType
+) -> GraphValue:
+    """Computes Attention mask."""
     mask_val = ops.cast(
         ops.broadcast_to(
             ops.scalar(float("-inf"), dtype=DType.float32),
@@ -62,7 +68,14 @@ class Attention:
             kv = ops.concat(tiles, axis=i)
         return ops.reshape(kv, [batch, -1, self.n_heads, self.head_dim])
 
-    def attention(self, xq, xk, xv, k_cache, v_cache):
+    def attention(
+        self,
+        xq: ValueLike,
+        xk: ValueLike,
+        xv: ValueLike,
+        k_cache: ValueLike,
+        v_cache: ValueLike,
+    ) -> GraphValue:
         prev_seq_len = k_cache.tensor_type.shape[0]
         seq_len = xq.tensor_type.shape[1]
 
@@ -98,7 +111,18 @@ class Attention:
         x: ValueLike,
         k_cache: ValueLike,
         v_cache: ValueLike,
-    ):
+    ) -> GraphValue:
+        """Computes attention on x, reusing the KV cache.
+
+        Args:
+            x: Activations with shape (batch, seq_len, dim).
+            k_cache: Previously computed keys with shape
+                (prev_seq_len, 1, batch, n_kv_heads, head_dim).
+            v_cache: Previously computed values with shape
+                (prev_seq_len, 1, batch, n_kv_heads, head_dim).
+
+        Returns the result of multi-headed self attention on the input.
+        """
         batch, seq_len = x.tensor_type.shape[0], x.tensor_type.shape[1]
         start_pos = k_cache.shape[0]
         # matmul weights
