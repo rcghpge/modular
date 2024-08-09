@@ -35,6 +35,7 @@ class Llama3Context:
     next_token: np.ndarray
     prompt_size: int
     max_tokens: int
+    prompt: str
 
 
 class Llama3:
@@ -49,10 +50,13 @@ class Llama3:
         self.config = config
         self._tokenizer = tokenizer_from_gguf(self.config.weight_path)
         # TODO: Load hyperparameters from the GGUF weights.
-        self._build_graph("llama3")
+        self._session = InferenceSession()
+        if self.config.serialized_model_path:
+            self._load_graph(self.config.serialized_model_path)
+        else:
+            self._build_graph("llama3")
 
     def _build_graph(self, name: str):
-        self._session = InferenceSession()
         cache_type = TensorType(
             DType.float32,
             shape=[
@@ -67,25 +71,24 @@ class Llama3:
             DType.int64, shape=[self.config.batch_size, "seq_len"]
         )
 
-        if self.config.serialized_model_path:
-            self._compiled_model = self._session.load(
-                self.config.serialized_model_path
-            )
-        else:
-            with Graph(
-                name, input_types=[tokens_type, cache_type, cache_type]
-            ) as graph:
-                embedding = Embedding(
-                    np.random.uniform(
-                        size=(self.config.vocab_size, self.config.hidden_dim)
-                    )
+        print("Compiling...")
+        with Graph(
+            name, input_types=[tokens_type, cache_type, cache_type]
+        ) as graph:
+            embedding = Embedding(
+                np.random.uniform(
+                    size=(self.config.vocab_size, self.config.hidden_dim)
                 )
-                out = embedding(graph.inputs[0])
-                graph.output(out, graph.inputs[1], graph.inputs[2])
-                self._compiled_model = self._session.load(graph)
+            )
+            out = embedding(graph.inputs[0])
+            graph.output(out, graph.inputs[1], graph.inputs[2])
+            self._compiled_model = self._session.load(graph)
+
+    def _load_graph(self, file: Path):
+        print("Loading serialized model from", file, "...")
+        self._compiled_model = self._session.load(file)
 
     async def new_context(self, prompt: str) -> Llama3Context:
-        # TODO: Encode prompt
         encoded_prompt = self._tokenizer.encode(prompt)
         prompt_size = len(encoded_prompt)
         max_tokens = get_max_tokens_to_generate(
@@ -98,9 +101,11 @@ class Llama3:
             self.config.n_kv_heads,
             self.config.head_dim,
         )
-        print("Initializing context for Llama 3...")
         return Llama3Context(
-            np.array(encoded_prompt).reshape(1, -1), prompt_size, max_tokens
+            np.array(encoded_prompt).reshape(1, -1),
+            prompt_size,
+            max_tokens,
+            prompt,
         )
 
     async def next_token(
