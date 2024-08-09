@@ -573,3 +573,11 @@ Value MGPBufferBuilder::bufferSetWithIndex(OpBuilder &builder, Location loc,
       /*aRuntimeSlot=*/runtimeSlot,
       /*bDevice=*/device);
 }
+
+Value MGPBufferBuilder::sync(OpBuilder &builder, Location loc,
+                             TypedValue<ContextType> context, Value chain) {
+  return builder
+      .create<MGP::SyncOp>(loc, chain, context, /*aRuntimeSlot*/ runtimeSlot,
+                           /*bDevice*/ device)
+      .getResult();
+}
