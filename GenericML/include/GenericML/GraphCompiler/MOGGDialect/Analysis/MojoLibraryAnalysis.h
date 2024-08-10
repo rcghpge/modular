@@ -120,10 +120,15 @@ public:
     return kernel->hasAttr(KGEN::MOGGPreElab::Decorators::TAKES_INDICES.attr);
   }
 
-  /// Returns true if the kernel implementation is in the Tensor API.
-  inline bool kernelUsesTensorAPI(KGEN::GeneratorOp kernel) {
+  /// Returns true if the kernel implementation is in the deprecated Tensor API.
+  inline bool kernelUsesOldTensorAPI(KGEN::GeneratorOp kernel) {
     return kernel->hasAttr(KGEN::MOGGPreElab::ALLOCS_ATTR) ||
            kernel->hasAttr(KGEN::MOGGPreElab::SLICED_ATTR);
+  }
+
+  /// Returns true if the kernel implementation is in the Tensor API.
+  inline bool kernelUsesKernelAPI(KGEN::GeneratorOp kernel) {
+    return kernel->hasAttr(KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel);
   }
 
 private:

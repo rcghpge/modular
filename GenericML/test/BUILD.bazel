@@ -19,6 +19,7 @@ lit_tests(
         "%override_extra_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTestOverrideExtra.lib.mlirbc)",
         "%experimental_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGExperimental.lib.mlirbc)",
         "%dummy_kernels": "$(rlocationpath //Kernels/mojo/Mogg:MOGGExperimentalDummyKernels.lib.mlirbc)",
+        "%kernel_api_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGKernelAPI.lib.mlirbc)",
     },
     data = [
         "//KGEN:CompilerRT",
@@ -28,6 +29,7 @@ lit_tests(
         "//Kernels/mojo/Mogg:MOGGTestOverrideFail.lib.mlirbc",
         "//Kernels/mojo/Mogg:MOGGTestOverrideSucc.lib.mlirbc",
         "//Kernels/mojo/Mogg:MOGGTests.lib.mlirbc",
+        "//Kernels/mojo/Mogg:MOGGKernelAPI.lib.mlirbc",
         "@llvm-project//compiler-rt:orc_rt",
         # TODO(SDLC-918): remove when landed
         "//Kernels/mojo/Mogg:MOGG.lib.mlirbc",

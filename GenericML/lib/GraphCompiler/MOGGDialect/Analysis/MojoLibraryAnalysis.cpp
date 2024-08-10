@@ -293,7 +293,9 @@ void MojoLibraryAnalysis::updateLoadedKernelsForCollisions(
     // We ignore duplicated functions which are not kernels or shape functions
     // as long as they share the same signature.
     if (!(KGEN::MOGGPreElab::isKernel(op) ||
-          KGEN::MOGGPreElab::isV1ShapeFunc(op)) &&
+          KGEN::MOGGPreElab::isV1ShapeFunc(op) ||
+          KGEN::MOGGPreElab::isExecuteFunc(op) ||
+          KGEN::MOGGPreElab::isShapeFunc(op)) &&
         areFunctionsTheSame(op, itr->second))
       continue;
 
@@ -393,7 +395,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   // operation.
   DenseMap<StringRef, SmallVector<Candidate>> candidates;
   for (auto generator : getRawMojoKernels()) {
-    // Don't scan internal functions which aren't exported.
+    // Skipping functions that aren't exported.
     if (!generator.isExported())
       continue;
 
@@ -410,14 +412,18 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
         candidate.priority = intPriority.getInt();
         candidates[asString].push_back(candidate);
       }
-    }
-
-    // Shape functions are just a list of operations they are the shape function
-    // for.
-    if (auto regs = generator->getAttrOfType<ArrayAttr>(
-            KGEN::MOGGPreElab::shapeFuncRegistrationAttr)) {
+    } else if (auto kernelName = generator->getAttrOfType<StringAttr>(
+                   KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel)) {
+      Candidate candidate = {generator};
+      candidate.priority = 0;
+      candidates[kernelName.strref()].push_back(candidate);
+    } else if (auto regs = generator->getAttrOfType<ArrayAttr>(
+                   KGEN::MOGGPreElab::shapeFuncRegistrationAttr)) {
       for (StringRef name : regs.getAsValueRange<StringAttr>())
         registeredShapeFunctionSymbol[name] = generator.getSymName();
+    } else if (auto name = generator->getAttrOfType<StringAttr>(
+                   KGEN::MOGGPreElab::kMOGGShapeFunctionLabel)) {
+      registeredShapeFunctionSymbol[name] = generator.getSymName();
     }
   }
 

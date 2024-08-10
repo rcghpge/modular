@@ -234,6 +234,12 @@ struct AddFallbackShapeFunctions
 
         auto mojoKernel =
             analysis->getRegisteredMojoKernelFor(asOp.getSymbol());
+
+        if (!mojoKernel) {
+          mojoKernel =
+              analysis->getRegisteredMojoShapeFunctionFor(asOp.getSymbol());
+        }
+
         if (!mojoKernel) {
           asOp.emitError() << "Could not find registered mojo kernel named "
                            << asOp.getSymbol();
