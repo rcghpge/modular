@@ -70,7 +70,7 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
 
 /// Function that ensures tensor types before and after broadcast are
 /// comparable, by ensuring the `TensorType` is statically shaped.
-static TensorType unifyShapeType(TensorType type) {
+[[maybe_unused]] static TensorType unifyShapeType(TensorType type) {
   if (!type.hasRank())
     return type;
   SmallVector<TypedAttr> result{type.getDims()};

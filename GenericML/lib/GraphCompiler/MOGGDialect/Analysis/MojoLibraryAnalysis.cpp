@@ -54,7 +54,7 @@ static bool areFunctionsTheSame(KGEN::GeneratorOp gen1,
   return areBlocksSame(*gen1.getBody(), *gen2.getBody());
 }
 
-static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
+[[maybe_unused]] static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
 getFile(llvm::StringRef filepath) {
   auto memBufferOr = toModularErrorOr(
       llvm::MemoryBuffer::getFile(filepath, /*IsText=*/false,

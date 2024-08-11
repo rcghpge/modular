@@ -30,7 +30,7 @@ BatchMatmulOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
   TypedAttr inputB = inputAttrs[1];
 
   if (inputAttrs.size() > 2) {
-    auto transposeBAsBool =
+    [[maybe_unused]] auto transposeBAsBool =
         llvm::dyn_cast_or_null<mlir::BoolAttr>(inputAttrs[2]);
     ASSERT_STREAM(!transposeBAsBool || !transposeBAsBool.getValue(),
                   "Do not support staticization of transposeB.");
