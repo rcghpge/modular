@@ -297,6 +297,8 @@ private:
   PackParamCache &cache;
 };
 
+// Detects a matmul with a `mo.matmul(A, transpose(B))` pattern and replaces it
+// with a single operation `mo.matmul(A, B, transpose_B=true)`.
 struct MatmulTranspBPattern
     : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::MatmulOp> {
   MatmulTranspBPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
@@ -304,11 +306,6 @@ struct MatmulTranspBPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::MatmulOp op,
                              MO::DeviceAwareRewriter &rewriter) const override {
-    // CUDA does not support transposed weights
-    DeviceRefAttr device = op->getParentOfType<MO::GraphOp>().getDeviceRef();
-    if (device && device.getLabel() == M::kCUDALabel)
-      return failure();
-
     Value input, weight, perm;
 
     auto weightTransP = m_Op<MO::TransposeOp>(rewriter.pushOp(), m_Any(&weight),
@@ -357,6 +354,76 @@ struct MatmulTranspBPattern
     rewriter.modifyOpInPlace(op, [&] { op.setOperand(1, rebWeight); });
 
     return mlir::success();
+  }
+};
+
+// A pattern which detects `matmul(A, B)` where B is a constant and makes things
+// `matmul(A, transpose(B), transpose_b=true)`. We expect constant-folding to
+// materialize transpose(B) at compile time. Only for GPU at the moment.
+//
+// It differs from `MatmulTranspBPattern` in that it will force even regular
+// matmuls into a transposed form if it's weights are constants.
+//
+// In combination with `MatmulTranspBPattern` this pattern will make most
+// matmuls operate on transposed pre-packed weights, which are faster on GPU
+// type architectures.
+struct ForceMatmulTransposeBForGPU
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::ConstantOp> {
+  ForceMatmulTransposeBForGPU(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 2) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::ConstantOp weights,
+                             MO::DeviceAwareRewriter &rewriter) const override {
+    DeviceRefAttr defaultDevice =
+        weights->getParentOfType<MO::GraphOp>().getDeviceRef();
+    bool defaultDeviceIsCuda =
+        defaultDevice && defaultDevice.getLabel() == M::kCUDALabel;
+
+    // Ensure all usages of constant hit a matmul (allow chains of rebinds to
+    // the matmul) which is meant to run on cuda.
+    for (Operation *user : weights->getUsers()) {
+      auto asMatmul = dyn_cast<MO::MatmulOp>(user);
+      if (!asMatmul)
+        return rewriter.notifyMatchFailure(
+            weights, "Not all users of constant are matmuls.");
+
+      if (asMatmul.getInputB().getDefiningOp() != weights.getOperation())
+        return rewriter.notifyMatchFailure(
+            asMatmul, "Not all matmul users use constant as weights");
+
+      if (asMatmul.getInputB().getType().getLayoutAttr().getFormat() != "KN")
+        return rewriter.notifyMatchFailure(
+            asMatmul, "Matmul use of weights is not annotated with the "
+                      "expected default layout.");
+
+      if (!defaultDeviceIsCuda && !asMatmul.getDeviceRef())
+        return rewriter.notifyMatchFailure(
+            asMatmul,
+            "Matmul use does not have device and default device is not cuda.");
+
+      if (asMatmul.getDeviceRef() &&
+          asMatmul.getDeviceRef().getLabel() != M::kCUDALabel)
+        return rewriter.notifyMatchFailure(
+            asMatmul, "Matmul is explicitly not run on cuda");
+    }
+
+    LayoutAttr matmulWeightsLayout =
+        LayoutAttr::get(rewriter.getIndexType().getContext(), "NK");
+
+    // Transpose weights (assume to be folded by constant-folding)
+    auto oldShape = weights.getType().getTypedShapeAttr().getValues();
+    SmallVector<TypedAttr> newShape = {oldShape[1], oldShape[0]};
+    auto newTransposeTy =
+        weights.getType().cloneWith(newShape).cloneWith(matmulWeightsLayout);
+    auto perm = rewriter.create<ConstantOp>(weights->getLoc(),
+                                            SmallVector<int64_t>{1, 0});
+    auto transposedWeights = rewriter.create<MO::TransposeOp>(
+        weights->getLoc(), newTransposeTy, weights, perm);
+
+    rewriter.replaceAllUsesExcept(weights, transposedWeights,
+                                  transposedWeights);
+    return success();
   }
 };
 
@@ -2578,9 +2645,9 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
     patterns.add<MatmulConstBPattern>(ctx, cache);
 
     patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
-                 ConcatZeroAxisPattern, ConvConstFilterPattern,
-                 ConvTransposeConstFilterPattern, SplitZeroAxisPattern,
-                 LayerNormPattern>(ctx);
+                 ForceMatmulTransposeBForGPU, ConcatZeroAxisPattern,
+                 ConvConstFilterPattern, ConvTransposeConstFilterPattern,
+                 SplitZeroAxisPattern, LayerNormPattern>(ctx);
 
     if (enableMHAPattern.getValue()) {
       patterns.add<MultiHeadAttentionPattern>(
