@@ -15,7 +15,7 @@ class Llama3Config:
     weight_path: Optional[Union[str, Path]] = None
     """Path or URL of the model weights."""
 
-    version: float = 3.1
+    version: str = "3.1"
     """Llama version."""
 
     quantization_encoding: str = "float32"  # TODO: Change to "q4_k"
@@ -63,7 +63,7 @@ class Llama3Config:
     def remote_weight_location(self):
         if self.weight_path is not None:
             return self.weight_path
-        if self.version == 3:
+        if self.version == "3":
             if self.quantization_encoding == "q4_0":
                 return "https://huggingface.co/QuantFactory/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct.Q4_0.gguf"
             elif self.quantization_encoding == "q4_k":
@@ -79,7 +79,7 @@ class Llama3Config:
                     f"quantization of {self.quantization_encoding} not"
                     f" supported for version {self.version}"
                 )
-        elif self.version == 3.1:
+        elif self.version == "3.1":
             if self.quantization_encoding == "q4_0":
                 return "https://huggingface.co/kaetemi/Meta-Llama-3.1-8B-Q4_0-GGUF/resolve/main/meta-llama-3.1-8b-q4_0.gguf"
             elif self.quantization_encoding == "q4_k":
