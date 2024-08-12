@@ -429,8 +429,8 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
             UnsafePointer[Int64](),
             StaticIntTuple[2](prev_token_shape[0], prev_token_shape[1]),
         )
-
-        self._kv_manager.step(tokens_nd, self._kv_collection.value())
+        var valid_lengths = List[Int](prev_token_shape[1])
+        self._kv_manager.step(valid_lengths, self._kv_collection.value())
         return self._tokenizer.decode(token)
 
 
