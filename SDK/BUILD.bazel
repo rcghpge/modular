@@ -175,6 +175,10 @@ tblgen_pybind(
 
 py_repl(
     name = "python",
+    data = [
+        "//KGEN:CompilerRT",
+        "@llvm-project//compiler-rt:orc_rt",
+    ],
     tags = ["manual"],
     deps = [
         "//SDK/lib/DriverAPI/python:max_driver",
