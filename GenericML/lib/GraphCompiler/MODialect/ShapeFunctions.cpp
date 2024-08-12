@@ -1285,9 +1285,9 @@ materializeReshapeShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   }
 
   // Insert assertions
-  Var inputNumeElems = b.createVar(inputShape.getSymbolicNumElements());
-  Var outputNumeElems = b.createVar(outputShape.getSymbolicNumElements());
-  b.createAssert(inputNumeElems == outputNumeElems,
+  Var inputNumElems = b.createVar(inputShape.getSymbolicNumElements());
+  Var outputNumElems = b.createVar(outputShape.getSymbolicNumElements());
+  b.createAssert(inputNumElems == outputNumElems,
                  "[reshape] input and output number of elements must match");
   return ShapeMaterializeResult::success(std::move(paramBindings), outputShape);
 }
