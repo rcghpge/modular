@@ -21,3 +21,10 @@ py_binary(
         "//ModularFramework/examples/pipelines_python/utils",
     ],
 )
+
+filegroup(
+    name = "pipelines_python",
+    srcs = glob([
+        "**/*.py",
+    ]),
+)
