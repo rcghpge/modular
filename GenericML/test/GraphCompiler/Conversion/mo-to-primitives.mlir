@@ -8,12 +8,10 @@
 // CHECK-SAME: !mgp.tensor<5x1xf32>, !mgp.tensor<5x1xf32>, !mgp.tensor<4xsi8>) {
 // CHECK-DAG:    %[[VAL0:.*]] = mgp.buffer.constant %{{.*}}, %[[ARG1]][0], #M.aligned_bytes<"0x0000803F0000004000004040", align {{.*}}> : !M.array<12xui8>
 // CHECK-DAG:    %[[VAL1:.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<3xf32>
-// CHECK-DAG:    %[[VAL2:.*]] = mgp.chain.host_to_device %[[ARG0]], %[[ARG1]][0]
-// CHECK-DAG:    %[[VAL3:.*]] = mgp.tensor.create %[[VAL2]], %[[ARG1]][0], %[[VAL0]], %[[VAL1]] : !mgp.tensor<3xf32>
+// CHECK-DAG:    %[[VAL3:.*]] = mgp.tensor.create %[[ARG0]], %[[ARG1]][0], %[[VAL0]], %[[VAL1]] : !mgp.tensor<3xf32>
 // CHECK-DAG:    %[[VAL4:.*]] = mgp.buffer.constant %{{.*}}, %[[ARG1]][0], dense_resource<mtfl_buffer> : !M.aligned_bytes<4, align 64>
 // CHECK-DAG:    %[[VAL5:.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<4xsi8>
-// CHECK-DAG:    %[[VAL6:.*]] = mgp.chain.host_to_device %[[ARG0]], %[[ARG1]][0]
-// CHECK:    %[[VAL7:.*]] = mgp.tensor.create %[[VAL6]], %[[ARG1]][0], %[[VAL4]], %[[VAL5]] : !mgp.tensor<4xsi8>
+// CHECK:    %[[VAL7:.*]] = mgp.tensor.create %[[ARG0]], %[[ARG1]][0], %[[VAL4]], %[[VAL5]] : !mgp.tensor<4xsi8>
 // CHECK:    mef.output %[[ARG0]], %[[ARG2]], %[[VAL3]], %[[VAL3]], %[[ARG3]], %[[ARG3]], %[[VAL7]] : !mef.chain, !mgp.tensor<2xf32>, !mgp.tensor<3xf32>, !mgp.tensor<3xf32>, !mgp.tensor<5x1xf32>, !mgp.tensor<5x1xf32>, !mgp.tensor<4xsi8>
 // CHECK:  }
 

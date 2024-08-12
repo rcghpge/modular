@@ -1017,16 +1017,10 @@ MOGraphLowering::lowerMutableStore(MO::MutableStoreOp mutableStoreOp) {
   auto loweredChain = opLoweringState.bufferTransferDevice(
       inChain, srcBufferized.buffer, dstBufferized.buffer, srcType, dstType);
 
-  auto bb = opLoweringState.getStorageBufferBuilder(srcType);
-
-  auto finalChain =
-      bb->toHostChain(opLoweringState.builder, opLoweringState.loc,
-                      opLoweringState.context, loweredChain);
-
   loweringState.emplaceExecuteLoweredValue(mutableStoreOp.getResult(),
-                                           finalChain);
+                                           loweredChain);
 
-  loweringState.setCurrentExecuteChain(finalChain);
+  loweringState.setCurrentExecuteChain(loweredChain);
 
   return success();
 }
@@ -1058,17 +1052,10 @@ MOGraphLowering::lowerMutableLoad(MO::MutableLoadOp mutableLoadOp) {
                                      outputStorage.buffer,
                                      outputStorage.tensorSpec);
 
-  auto bufferBuilder = opLoweringState.getStorageBufferBuilder(
-      MO::castFromTensorLike(mutableLoadOp.getInBuffer().getType()));
-
-  auto finalChain =
-      bufferBuilder->toHostChain(opLoweringState.builder, opLoweringState.loc,
-                                 opLoweringState.context, loweredChain);
-
   loweringState.emplaceExecuteLoweredValue(mutableLoadOp.getOutChain(),
-                                           finalChain);
+                                           loweredChain);
 
-  loweringState.setCurrentExecuteChain(finalChain);
+  loweringState.setCurrentExecuteChain(loweredChain);
 
   return success();
 }

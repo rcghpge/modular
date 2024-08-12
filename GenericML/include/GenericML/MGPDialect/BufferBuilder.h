@@ -178,9 +178,7 @@ public:
     return DeviceBufferType::get(device, optSize);
   }
 
-  Type chainType(MLIRContext *ctx) override {
-    return DeviceChainType::get(device);
-  }
+  Type chainType(MLIRContext *ctx) override { return MEF::ChainType::get(ctx); }
 };
 
 //===----------------------------------------------------------------------===//
@@ -204,26 +202,6 @@ public:
 
   /// Returns the !mgp.context appropriate for op, or null if none can be found.
   virtual TypedValue<ContextType> getContextForOp(Operation *op);
-
-  /// The given chain should be either a !mef.chain or in the native form for
-  /// the given chainBuilder. Return it as either a !mef.chain or in the native
-  /// form for this builder.
-  ///
-  /// This can be used when creating a device-specific create chain op, which
-  /// will accept both host and native chains. Cross-device synchronization
-  /// may be required for chains from some other device.
-  Value anyToNativeOrHostChain(OpBuilder &builder, Location loc,
-                               TypedValue<ContextType> context,
-                               BufferBuilder *chainBuilder, Value chain);
-
-  /// The given chain should be either a !mef.chain or in the native form for
-  /// this builder. Return it in the native form for this builder.
-  ///
-  /// This can be used when a native chain is required, but the argument chain
-  /// is known not to be from some other device. No cross-device synchronization
-  /// will be required.
-  Value toNativeChain(OpBuilder &builder, Location loc,
-                      TypedValue<ContextType> context, Value chain);
 
   /// Returns the constant buffer with given attribute as its contents.
   virtual Value bufferConstant(OpBuilder &builder, Location loc,
@@ -354,19 +332,7 @@ public:
   /// Returns the join of all the given chain values, which must be all native
   /// to this builder.
   virtual Value chainCreate(OpBuilder &builder, Location loc,
-                            TypedValue<ContextType> context,
                             ArrayRef<Value> inChains) = 0;
-
-  /// The given chain should be either a !mef.chain or in the native form for
-  /// this builder. Returns it as a !mef.chain.
-  virtual TypedValue<MEF::ChainType>
-  toHostChain(OpBuilder &builder, Location loc, TypedValue<ContextType> context,
-              Value inChain) = 0;
-
-  /// Returns the given !mef.chain as a chain in builder native form.
-  virtual Value fromHostChain(OpBuilder &builder, Location loc,
-                              TypedValue<ContextType> context,
-                              TypedValue<MEF::ChainType> inChain) = 0;
 
   /// Returns a chain indicating when the given input buffers have been
   /// copied into the output buffer.
@@ -507,7 +473,6 @@ public:
                 bool isAsync) override;
 
   Value chainCreate(OpBuilder &builder, Location loc,
-                    TypedValue<ContextType> context,
                     ArrayRef<Value> inChains) override;
 
   std::pair<TypedValue<MEF::ChainType>, uint64_t>
@@ -519,14 +484,6 @@ public:
                   TypedValue<ContextType> context,
                   TypedValue<MEF::ChainType> inChain, uint64_t bufferSlot,
                   Type expectedBufferType) override;
-
-  TypedValue<MEF::ChainType> toHostChain(OpBuilder &builder, Location loc,
-                                         TypedValue<ContextType> context,
-                                         Value inChain) override;
-
-  Value fromHostChain(OpBuilder &builder, Location loc,
-                      TypedValue<ContextType> context,
-                      TypedValue<MEF::ChainType> inChain) override;
 
   Value bufferConcat(OpBuilder &builder, Location loc,
                      TypedValue<ContextType> context, Value inChain,

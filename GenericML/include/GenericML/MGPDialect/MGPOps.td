@@ -294,7 +294,7 @@ def ExecuteGenericOp : MGP_Op<"generic.execute"> {
                        DefaultValuedAttr<BoolAttr, "false">:$fHasCuda,// 5 // This should be removed once we have device context
                        UI64Attr:$gCudaSlot                            // 6
                        );
-  let results = (outs MGP_DeviceChainType: $outChain, Variadic<AnyType>:$outResults);
+  let results = (outs ChainType: $outChain, Variadic<AnyType>:$outResults);
 }
 
 //===----------------------------------------------------------------------===//
@@ -569,6 +569,21 @@ def GuardOp : MGP_Op<"guard", [
   let hasVerifier = 1;
 }
 
+
+def ExtendLifetimeOp : MGP_Op<"extend.lifetime"> {
+  let summary = "SSA-value guard operation";
+
+  let description = [{
+    This operation consumes a chain and a variadic list of values and forwards
+    the non-chain inputs through.
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$inputs);
+  let results = (outs ChainType:$results);
+  let assemblyFormat = [{
+    ` ` operands ` ` attr-dict `:` functional-type(operands, results)
+  }];
+}
 
 //===----------------------------------------------------------------------===//
 // ModelOp

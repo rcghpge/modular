@@ -194,127 +194,6 @@ LogicalResult ModuleLoadOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// ChainCreateOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult ChainCreateOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  DeviceRefAttr otherDevice;
-  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                    attributes, getCOtherDeviceAttrName(name),
-                                    otherDevice)))
-    return failure();
-  inferredReturnTypes.emplace_back(DeviceChainType::get(otherDevice));
-  return success();
-}
-
-LogicalResult ChainCreateOp::verify() {
-  return verifyConsistentDevices(getOperation(),
-                                 {getBHostDevice(), getCOtherDevice()});
-}
-
-LogicalResult ChainCreateOp::canonicalize(ChainCreateOp createOp,
-                                          PatternRewriter &rewriter) {
-  llvm::SetVector<Value> operands;
-  for (auto operand : createOp.getGatingOperands())
-    operands.insert(operand);
-  // Replace chain.create(x) with x provided the types agree.
-  if (operands.size() == 1 &&
-      operands.front().getType() == createOp.getResult().getType()) {
-    rewriter.replaceOp(createOp, operands.front());
-    return success();
-  }
-  // Remove duplicate operands.
-  if (operands.size() < createOp.getGatingOperands().size()) {
-    createOp.getGatingOperandsMutable().clear();
-    createOp.getGatingOperandsMutable().append(operands.takeVector());
-    return success();
-  }
-  return failure();
-}
-
-llvm::SmallVector<mlir::Value> ChainCreateOp::getInputChains() {
-  return getGatingOperands();
-}
-
-void ChainCreateOp::setInputChains(::mlir::ValueRange gatingOperands) {
-  getGatingOperandsMutable().assign(gatingOperands);
-}
-
-//===----------------------------------------------------------------------===//
-// ChainDeviceToHostOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult ChainDeviceToHostOp::verify() {
-  return verifyConsistentDevices(getOperation(), {getBDevice()});
-}
-
-LogicalResult
-ChainDeviceToHostOp::canonicalize(ChainDeviceToHostOp deviceToHostOp,
-                                  PatternRewriter &rewriter) {
-  // Replace device_to_host(host_to_device(x)) with x.
-  Operation *input = deviceToHostOp.getInChain().getDefiningOp();
-  if (!input)
-    return failure();
-  auto hostToDeviceOp = dyn_cast<ChainHostToDeviceOp>(input);
-  if (!hostToDeviceOp)
-    return failure();
-  // devices must match
-  if (hostToDeviceOp.getBDevice() != deviceToHostOp.getBDevice())
-    return failure();
-  bool hostToDeviceUnique = hostToDeviceOp->hasOneUse();
-  rewriter.replaceOp(deviceToHostOp, hostToDeviceOp.getInChain());
-  if (hostToDeviceUnique)
-    rewriter.eraseOp(hostToDeviceOp);
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// ChainHostToDeviceOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult ChainHostToDeviceOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  DeviceRefAttr device;
-  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                    attributes, getBDeviceAttrName(name),
-                                    device)))
-    return failure();
-  inferredReturnTypes.emplace_back(DeviceChainType::get(device));
-  return success();
-}
-
-LogicalResult ChainHostToDeviceOp::verify() {
-  return verifyConsistentDevices(getOperation(), {getBDevice()});
-}
-
-LogicalResult
-ChainHostToDeviceOp::canonicalize(ChainHostToDeviceOp hostToDeviceOp,
-                                  PatternRewriter &rewriter) {
-  // Replace host_to_device(device_to_host(x)) with x.
-  Operation *input = hostToDeviceOp.getInChain().getDefiningOp();
-  if (!input)
-    return failure();
-  auto deviceToHostOp = dyn_cast<ChainDeviceToHostOp>(input);
-  if (!deviceToHostOp)
-    return failure();
-  // devices must match
-  if (deviceToHostOp.getBDevice() != hostToDeviceOp.getBDevice())
-    return failure();
-  bool deviceToHostUnique = deviceToHostOp->hasOneUse();
-  rewriter.replaceOp(hostToDeviceOp, deviceToHostOp.getInChain());
-  if (deviceToHostUnique)
-    rewriter.eraseOp(deviceToHostOp);
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // BufferConstantOp
 //===----------------------------------------------------------------------===//
 
@@ -560,19 +439,6 @@ LogicalResult BufferGetCachedOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
-// BufferFreeOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult BufferFreeOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  // Copy over the same device chain type
-  inferredReturnTypes.emplace_back(operands[0].getType());
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // BufferHostToDeviceOp
 //===----------------------------------------------------------------------===//
 
@@ -588,20 +454,6 @@ LogicalResult BufferHostToDeviceOp::verify() {
     return emitOpError("host and other buffer sizes do not match (")
            << optSizeToString(getHostBuffer().getType().getOptSize()) << " vs "
            << optSizeToString(getOtherBuffer().getType().getOptSize()) << ").";
-  return success();
-}
-
-LogicalResult BufferHostToDeviceOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  DeviceRefAttr device;
-  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                    attributes, getDOtherDeviceAttrName(name),
-                                    device)))
-    return failure();
-  inferredReturnTypes.emplace_back(DeviceChainType::get(device));
   return success();
 }
 
@@ -632,20 +484,6 @@ LogicalResult BufferDeviceToHostOp::verify() {
   return success();
 }
 
-LogicalResult BufferDeviceToHostOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  DeviceRefAttr device;
-  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                    attributes, getDHostDeviceAttrName(name),
-                                    device)))
-    return failure();
-  inferredReturnTypes.emplace_back(DeviceChainType::get(device));
-  return success();
-}
-
 InOutSignatureAttr::InOutSemantics
 BufferDeviceToHostOp::getInOutSemantics(size_t index) {
   assert(index < getNumOperands());
@@ -669,29 +507,13 @@ LogicalResult BufferDeviceToDeviceOp::verify() {
                        "same device label.");
   }
   if (getSrcBuffer().getType().getDevice() != getCSrcDevice() ||
-      getInChain().getType().getDevice() != getCSrcDevice() ||
-      getDstBuffer().getType().getDevice() != getDDstDevice() ||
-      getOutChain().getType().getDevice() != getDDstDevice()) {
+      getDstBuffer().getType().getDevice() != getDDstDevice()) {
     return emitOpError(
                "expecting input chain and source buffer to be on device '")
            << getCSrcDevice()
            << "', and output chain and destination buffer to be on device '"
            << getDDstDevice() << "'.";
   }
-  return success();
-}
-
-LogicalResult BufferDeviceToDeviceOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  DeviceRefAttr dstDevice;
-  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                    attributes, getDDstDeviceAttrName(name),
-                                    dstDevice)))
-    return failure();
-  inferredReturnTypes.emplace_back(DeviceChainType::get(dstDevice));
   return success();
 }
 
@@ -815,20 +637,6 @@ LogicalResult BufferConcatOp::verify() {
   return success();
 }
 
-LogicalResult BufferConcatOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  DeviceRefAttr device;
-  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                    attributes, getBDeviceAttrName(name),
-                                    device)))
-    return failure();
-  inferredReturnTypes.emplace_back(DeviceChainType::get(device));
-  return success();
-}
-
 InOutSignatureAttr::InOutSemantics
 BufferConcatOp::getInOutSemantics(size_t index) {
   assert(index < getNumOperands());
@@ -843,7 +651,7 @@ BufferConcatOp::getInOutSemantics(size_t index) {
 
 void BufferSplitBorrowOp::build(
     OpBuilder &odsBuilder, OperationState &odsState,
-    TypedValue<DeviceChainType> inChain, TypedValue<ContextType> theContext,
+    TypedValue<MEF::ChainType> inChain, TypedValue<ContextType> theContext,
     TypedValue<DeviceBufferType> inBuffer,
     ArrayRef<TypedValue<IndexType>> runtimeSizes, uint64_t aRuntimeSlot,
     llvm::ArrayRef<std::optional<uint64_t>> bOutBufferOptSizes,
@@ -1068,20 +876,6 @@ LogicalResult BufferSetWithIndexOp::verify() {
   return verifyConsistentDevices(getOperation(), {getBDevice()});
 }
 
-LogicalResult BufferSetWithIndexOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  DeviceRefAttr device;
-  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                    attributes, getBDeviceAttrName(name),
-                                    device)))
-    return failure();
-  inferredReturnTypes.emplace_back(DeviceChainType::get(device));
-  return success();
-}
-
 InOutSignatureAttr::InOutSemantics
 BufferSetWithIndexOp::getInOutSemantics(size_t index) {
   assert(index < getNumOperands());
@@ -1240,13 +1034,6 @@ LogicalResult DebugTensorPrintOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult KernelExecuteOp::verify() {
-  if (getInChain().getType().getDevice() != getGOtherDevice())
-    return emitOpError("expected input chain to be on 'other' device ")
-           << getGOtherDevice() << ".";
-  if (getOutChain().getType().getDevice() != getGOtherDevice())
-    return emitOpError("expected output chain to be on 'other' device ")
-           << getGOtherDevice() << ".";
-
   if (getEInOutSignature().size() != getArgs().size())
     return emitOpError("kernel has ")
            << getArgs().size()
@@ -1290,7 +1077,7 @@ LogicalResult KernelExecuteOp::inferReturnTypes(
                                  numOutDimensions)))
     return failure();
 
-  inferredReturnTypes.emplace_back(DeviceChainType::get(otherDevice));
+  inferredReturnTypes.emplace_back(MEF::ChainType::get(context));
   while (numOutDimensions-- > 0)
     inferredReturnTypes.emplace_back(IndexType::get(context));
   return success();

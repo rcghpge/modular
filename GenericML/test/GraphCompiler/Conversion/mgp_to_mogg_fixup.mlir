@@ -24,7 +24,7 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque
 // CHECK-NEXT: mgp.module.load %[[KERNEL_CTX]], %[[CTX]][{{.*}}], dense_resource<fake_binary> : tensor<1xui8>, ["__gen_0"]
 
 // CHECK: } execute
-// CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{{.*}}, dSummary = {{.*}}} : (!mgp.context, !mef.chain, !mgp.opaque{{.*}}, index, index) -> (!mgp.chain, index)
+// CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{{.*}}, dSummary = {{.*}}} : (!mgp.context, !mef.chain, !mgp.opaque{{.*}}, index, index) -> (!mef.chain, index)
 
 mgp.model @basic_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
   "mogg.load_compiled_kernel"() {symbols = ["__gen_0"], value = dense_resource<fake_binary> : tensor<1xui8>} : () -> ()
@@ -32,19 +32,17 @@ mgp.model @basic_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%cpu
   %1 = mgp.context.create 2
   %2 = mgp.runtime.create %0, %1[0] device<"cpu", 0>
   mef.output %2, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.buffer<1>) -> !mef.chain {
-  %ch0 = mgp.chain.host_to_device %arg0, %arg1[1]
+} execute (%ch0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.buffer<1>) -> !mef.chain {
   %lhs = mip.constant.index 42
   %rhs = mip.constant.index -20
   %1 = mgp.buffer.to_bool %ch0, %arg1[1], %arg2 : !mgp.buffer<1>
-  %2 = grt.if %1 (%ch0: !mgp.chain, %lhs: index, %rhs: index, %arg1 as %new: !mgp.context) -> !mgp.chain {
+  %2 = grt.if %1 (%ch0: !mef.chain, %lhs: index, %rhs: index, %arg1 as %new: !mgp.context) -> !mef.chain {
     %3 = "mogg.execute_kernel"(%lhs, %rhs) {hasCuda=false, isAsync = false, kernelName = "__gen_0", outputParamDecls = #kgen<param.decls[]>, summary = "mogg.generic.compiled.region:14", usedParams = []} : (index, index) -> index
-    mef.output %ch0 : !mgp.chain
+    mef.output %ch0 : !mef.chain
   } else {
-    mef.output %ch0 : !mgp.chain
+    mef.output %ch0 : !mef.chain
   }
-  %ch1 = mgp.chain.device_to_host %2, %arg1[1]
-  mef.output %ch1 : !mef.chain
+  mef.output %2 : !mef.chain
 }
 
 // CHECK-LABEL: mgp.model @basic_control_flow
@@ -52,4 +50,4 @@ mgp.model @basic_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%cpu
 // CHECK: %[[KERNEL_CTX:.*]] = mgp.runtime.create
 // CHECK-NEXT: mgp.module.load %[[KERNEL_CTX]], %[[CTX]][{{.*}}], dense_resource<fake_binary> : tensor<1xui8>, ["__gen_0"]
 // CHECK: } execute
-// CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{{.*}}, dSummary = {{.*}}} : (!mgp.context, !mef.chain, !mgp.opaque{{.*}}, index, index) -> (!mgp.chain, index)
+// CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{{.*}}, dSummary = {{.*}}} : (!mgp.context, !mef.chain, !mgp.opaque{{.*}}, index, index) -> (!mef.chain, index)

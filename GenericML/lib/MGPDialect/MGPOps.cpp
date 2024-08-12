@@ -116,13 +116,6 @@ LogicalResult M::MGP::verifyConsistentDevices(
 // Custom parsers
 //===----------------------------------------------------------------------===//
 
-/// Returns device, or <"cpu", 0> if it is null.
-static DeviceRefAttr deviceOrDefault(MLIRContext *ctx, DeviceRefAttr device) {
-  if (device)
-    return device;
-  return DeviceRefAttr::getDefault(ctx);
-}
-
 /// Parses an optional keyword and #M.device_ref into device, then assigns
 /// chains the type !mgp.chain<device>.
 static ParseResult parseOptDeviceRefImpl(OpAsmParser &p, StringRef keyword,
@@ -140,7 +133,7 @@ static ParseResult parseOptDeviceRefImpl(OpAsmParser &p, StringRef keyword,
     device = DeviceRefAttr::getDefault(p.getContext());
   }
   for (Type *chain : chains)
-    *chain = DeviceChainType::get(device);
+    *chain = MEF::ChainType::get(p.getContext());
   return success();
 }
 
@@ -150,7 +143,7 @@ static ParseResult parseOptDeviceRef(OpAsmParser &p, StringRef keyword,
 }
 
 static void printOptDeviceRef(OpAsmPrinter &p, Operation *op, StringRef keyword,
-                              DeviceRefAttr device, DeviceChainType chain) {
+                              DeviceRefAttr device, MEF::ChainType chain) {
   if (device != DeviceRefAttr::getDefault(op->getContext())) {
     p.printKeywordOrString(keyword);
     p.getStream() << " ";
@@ -174,7 +167,7 @@ static ParseResult parseBufferTypeToRawSizeDeviceImpl(OpAsmParser &p,
   rawSize = bufferType.getRawSize();
   device = bufferType.getDevice();
   for (Type *chain : chains)
-    *chain = DeviceChainType::get(device);
+    *chain = MEF::ChainType::get(p.getContext());
   return success();
 }
 
@@ -229,7 +222,7 @@ static void printStaticBufferTypeToSizeDevice(OpAsmPrinter &p, Operation *op,
                                               DeviceBufferType buffer,
                                               IntegerAttr rawSize,
                                               DeviceRefAttr device,
-                                              DeviceChainType chain) {
+                                              MEF::ChainType chain) {
   p << buffer;
 }
 
@@ -268,7 +261,7 @@ static ParseResult parseDynamicBufferTypeToDevice(OpAsmParser &p, Type &buffer,
 static void printDynamicBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
                                            DeviceBufferType buffer,
                                            DeviceRefAttr device,
-                                           DeviceChainType chain) {
+                                           MEF::ChainType chain) {
   p << buffer;
 }
 
@@ -294,7 +287,7 @@ static ParseResult parseBufferTypeToDevice(OpAsmParser &p, Type &buffer,
 static void printBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
                                     DeviceBufferType buffer,
                                     DeviceRefAttr device,
-                                    DeviceChainType chain) {
+                                    MEF::ChainType chain) {
   p << buffer;
 }
 
@@ -308,7 +301,7 @@ static ParseResult parseBufferTypeToChain(OpAsmParser &p, Type &buffer,
 
 static void printBufferTypeToChain(OpAsmPrinter &p, Operation *op,
                                    DeviceBufferType buffer,
-                                   DeviceChainType chain) {
+                                   MEF::ChainType chain) {
   p << buffer;
 }
 
@@ -334,7 +327,7 @@ static ParseResult parseTensorTypeToDeviceBufferSpecImpl(
   }
   buffer = DeviceBufferType::get(tensorType);
   for (Type *chain : chains)
-    *chain = DeviceChainType::get(device);
+    *chain = MEF::ChainType::get(p.getContext());
   return success();
 }
 
@@ -402,7 +395,7 @@ static void printTensorTypeToDeviceBufferSpec(OpAsmPrinter &p, Operation *op,
                                               DeviceRefAttr device,
                                               DeviceBufferType buffer,
                                               TensorSpecType tensorSpec,
-                                              DeviceChainType chain) {
+                                              MEF::ChainType chain) {
   p << tensorType;
 }
 
@@ -420,7 +413,7 @@ static ParseResult parseBufferTypesToBufferRawSizesDeviceOutBuffers(
   if (!inBufferType)
     return p.emitError(loc, "expected an !mgp.buffer type");
   device = inBufferType.getDevice();
-  chain = DeviceChainType::get(device);
+  chain = MEF::ChainType::get(p.getContext());
   SmallVector<APInt> rawDims;
   if (p.getCurrentLocation(&loc) || p.parseArrowTypeList(outBuffers))
     return failure();
@@ -442,7 +435,7 @@ static ParseResult parseBufferTypesToBufferRawSizesDeviceOutBuffers(
 static void printBufferTypesToBufferRawSizesDeviceOutBuffers(
     OpAsmPrinter &p, Operation *op, DeviceBufferType inBuffer,
     IntArrayElementsAttr outBufferRawSizesAttr, DeviceRefAttr device,
-    TypeRange outBuffers, DeviceChainType chain) {
+    TypeRange outBuffers, MEF::ChainType chain) {
   p << inBuffer;
   p.printArrowTypeList(outBuffers);
 }
@@ -475,14 +468,14 @@ parseBufferTypesToDevice(OpAsmParser &p, SmallVectorImpl<Type> &inBuffers,
     return p.emitError(loc, "all !mgp.buffer types must agree on device");
   device = outBufferType.getDevice();
 
-  chain = DeviceChainType::get(device);
+  chain = MEF::ChainType::get(p.getContext());
   return success();
 }
 
 static void printBufferTypesToDevice(OpAsmPrinter &p, Operation *op,
                                      TypeRange inBuffers, Type outBuffer,
                                      DeviceRefAttr device,
-                                     DeviceChainType chain) {
+                                     MEF::ChainType chain) {
   p.getStream() << "(";
   llvm::interleaveComma(inBuffers, p.getStream(),
                         [&](Type inBuffer) { p.printType(inBuffer); });
@@ -512,7 +505,7 @@ parseSrcDstBufferTypesToDevices(OpAsmParser &p, Type &srcBuffer,
     return p.emitError(loc, "expected an !mgp.buffer type");
   srcDevice = srcBufferType.getDevice();
   dstDevice = dstBufferType.getDevice();
-  inChain = DeviceChainType::get(srcDevice);
+  inChain = MEF::ChainType::get(p.getContext());
   return success();
 }
 
@@ -521,29 +514,10 @@ static void printSrcDstBufferTypesToDevices(OpAsmPrinter &p, Operation *op,
                                             DeviceBufferType dstBuffer,
                                             DeviceRefAttr srcDevice,
                                             DeviceRefAttr dstDevice,
-                                            DeviceChainType inChain) {
+                                            MEF::ChainType inChain) {
   p << srcBuffer;
   p << " -> ";
   p << dstBuffer;
-}
-
-/// Parses optionally type-annotated operands into $gatingOperands, using
-/// the default type !mgp.chain<$device>.
-static ParseResult parseChainCreateParenOperandList(
-    OpAsmParser &p, DeviceRefAttr device,
-    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &gatingOperands,
-    SmallVectorImpl<Type> &gatingOperandTypes) {
-  Type defaultType =
-      DeviceChainType::get(deviceOrDefault(p.getContext(), device));
-  return parseParenOperandListWithDefaultType(p, gatingOperands,
-                                              gatingOperandTypes, defaultType);
-}
-
-static void printChainCreateParenOperandList(
-    OpAsmPrinter &p, Operation *op, DeviceRefAttr device,
-    const OperandRange &gatingOperands, const TypeRange &gatingOperandTypes) {
-  Type defaultType = DeviceChainType::get(device);
-  return printParenOperandListWithDefaultType(p, gatingOperands, defaultType);
 }
 
 //===----------------------------------------------------------------------===//

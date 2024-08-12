@@ -123,16 +123,14 @@ class ConcatInPlacePass
       TypedValue<ContextType> context =
           bufferBuilder->getContextForOp(concatOp);
       execState.builder.setInsertionPoint(concatOp);
-      Value nativeRootChain = bufferBuilder->toNativeChain(
-          execState.builder, concatOp->getLoc(), context, rootChain);
-      allocOutputOp.setInChain(nativeRootChain);
+      allocOutputOp.setInChain(rootChain);
 
       // We are now ready to create the split op.
       // For the moment, place it before the concat it will replace.
       execState.builder.setInsertionPoint(concatOp);
       Value concatenatedBuffer = concatOp.getOutBuffer();
       auto outBuffers = bufferBuilder->splitBorrow(
-          execState.builder, concatOp->getLoc(), context, nativeRootChain,
+          execState.builder, concatOp->getLoc(), context, rootChain,
           concatenatedBuffer, runtimeSizes, optSizes);
 
       // The input buffers are now provided by the split.

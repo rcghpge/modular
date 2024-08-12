@@ -18,7 +18,6 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaqu
   mef.output %0, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
 
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
-  %ch = mgp.chain.host_to_device %arg0, %arg1[1]
   // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer {{.*}}
   %inBuffer = mgp.tensor.extract.buffer %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
   %inTensorSpec = mgp.tensor.extract.tensor_spec %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
@@ -30,13 +29,13 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaqu
 
   // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc.dynamic {{.*}}
   // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc.dynamic {{.*}}
-  %alloc0 = mgp.buffer.alloc.dynamic %ch, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc1 = mgp.buffer.alloc.dynamic %ch, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc2 = mgp.buffer.alloc.dynamic %ch, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
+  %alloc0 = mgp.buffer.alloc.dynamic %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
+  %alloc1 = mgp.buffer.alloc.dynamic %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
+  %alloc2 = mgp.buffer.alloc.dynamic %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
 
 
   // CHECK-NEXT: %[[CH0:.*]] = mgp.kernel.execute {{.*}} (in %[[INBUFFER]] : !mgp.buffer<>, out %[[ALLOC0]] : !mgp.buffer<>)
-  %outChain_0 = mgp.kernel.execute %ch, %arg1[1, 1], (0, 1), (in %inBuffer : !mgp.buffer<>, out %alloc0 : !mgp.buffer<>), (%inDims#0, %inDims#1),  summary "" is_async true
+  %outChain_0 = mgp.kernel.execute %arg0, %arg1[1, 1], (0, 1), (in %inBuffer : !mgp.buffer<>, out %alloc0 : !mgp.buffer<>), (%inDims#0, %inDims#1),  summary "" is_async true
   // CHECK-NEXT: %[[CH1:.*]] = mgp.kernel.execute {{.*}} (in %[[ALLOC0]] : !mgp.buffer<>, out %[[ALLOC1]] : !mgp.buffer<>)
   %outChain_1 = mgp.kernel.execute %outChain_0, %arg1[1, 1], (0, 1), (in %alloc0 : !mgp.buffer<>, out %alloc1 : !mgp.buffer<>), (%inDims#0, %inDims#1),  summary "" is_async true
 
@@ -60,7 +59,6 @@ mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !
   mef.output %0, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
 
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
-  %ch = mgp.chain.host_to_device %arg0, %arg1[1]
   // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer {{.*}}
   %inBuffer = mgp.tensor.extract.buffer %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
   %inTensorSpec = mgp.tensor.extract.tensor_spec %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
@@ -75,13 +73,13 @@ mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !
   // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc.dynamic {{.*}}
   // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc.dynamic {{.*}}
   // CHECK-NEXT: %[[ALLOC2:.*]] = mgp.buffer.alloc.dynamic {{.*}}
-  %alloc0 = mgp.buffer.alloc.dynamic %ch, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc1 = mgp.buffer.alloc.dynamic %ch, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc2 = mgp.buffer.alloc.dynamic %ch, %arg1[1], %allocSizeDifferent, align 16 : !mgp.buffer<>
+  %alloc0 = mgp.buffer.alloc.dynamic %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
+  %alloc1 = mgp.buffer.alloc.dynamic %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
+  %alloc2 = mgp.buffer.alloc.dynamic %arg0, %arg1[1], %allocSizeDifferent, align 16 : !mgp.buffer<>
 
 
   // CHECK-NEXT: %[[CH0:.*]] = mgp.kernel.execute {{.*}} (in %[[INBUFFER]] : !mgp.buffer<>, out %[[ALLOC0]] : !mgp.buffer<>)
-  %outChain_0 = mgp.kernel.execute %ch, %arg1[1, 1], (0, 1), (in %inBuffer : !mgp.buffer<>, out %alloc0 : !mgp.buffer<>), (%inDims#0, %inDims#1),  summary "" is_async true
+  %outChain_0 = mgp.kernel.execute %arg0, %arg1[1, 1], (0, 1), (in %inBuffer : !mgp.buffer<>, out %alloc0 : !mgp.buffer<>), (%inDims#0, %inDims#1),  summary "" is_async true
   // CHECK-NEXT: %[[CH1:.*]] = mgp.kernel.execute {{.*}} (in %[[ALLOC0]] : !mgp.buffer<>, out %[[ALLOC1]] : !mgp.buffer<>)
   %outChain_1 = mgp.kernel.execute %outChain_0, %arg1[1, 1], (0, 1), (in %alloc0 : !mgp.buffer<>, out %alloc1 : !mgp.buffer<>), (%inDims#0, %inDims#1),  summary "" is_async true
   // CHECK-NEXT: %[[CH2:.*]] = mgp.kernel.execute %[[CH1]], {{.*}} (in %[[ALLOC1]] : !mgp.buffer<>, out %[[ALLOC2]] : !mgp.buffer<>)

@@ -92,15 +92,8 @@ class SimplifyChainsPass
     }
   }
 
-  bool isChainGenericOp(Operation *op) {
-    // Some ops, like mgp.generic.execute, can accept both MEF chains and MGP
-    // CPU chains.
-    return isa<MGP::ExecuteGenericOp, MGP::ChainCreateOp>(op);
-  }
-
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
-    MLIRContext *ctx = modelOp.getContext();
 
     // Construct the dependencies from the model. The transforms we
     // do below will preserve these dependencies since we never introduce
@@ -152,66 +145,6 @@ class SimplifyChainsPass
                 chainCreateOp.getOperation()))
           chainSetOp.setInputChains(values);
       }
-    });
-
-    // Remove any CPU chain.device_to_host ops that are only consumed by ops
-    // that can take in MGP chains directly
-    modelOp.walk([&](MGP::ChainDeviceToHostOp chainDeviceToHostOp) {
-      auto inChain = chainDeviceToHostOp.getInChain();
-      if (inChain.getType().getDevice().getLabel() != "cpu") {
-        return;
-      }
-
-      if (llvm::all_of(chainDeviceToHostOp->getUsers(), [this](Operation *op) {
-            return isChainGenericOp(op);
-          })) {
-        chainDeviceToHostOp.replaceAllUsesWith(inChain);
-        chainDeviceToHostOp->erase();
-      }
-    });
-
-    // If there are any grt.chain.create ops that take in more than 2 CPU mgp
-    // chains via device_to_host, we can simplify to mgp.chain.create followed
-    // by a single device_to_host
-
-    modelOp.walk([&](GRT::ChainCreateOp grtChainCreateOp) {
-      SmallVector<MGP::ChainDeviceToHostOp> deviceToHostInputs;
-      SmallVector<Value> otherInputs;
-      for (Value inChain : grtChainCreateOp.getInputChains()) {
-        if (auto mgpDeviceToHostOp =
-                inChain.getDefiningOp<MGP::ChainDeviceToHostOp>())
-          if (mgpDeviceToHostOp.getBDevice().getLabel() == kCPULabel)
-            deviceToHostInputs.push_back(mgpDeviceToHostOp);
-          else
-            otherInputs.push_back(inChain);
-        else
-          otherInputs.push_back(inChain);
-      }
-
-      if (deviceToHostInputs.size() < 2)
-        return;
-
-      Location loc = grtChainCreateOp->getLoc();
-      auto context = deviceToHostInputs[0].getTheContext();
-      auto runtimeSlot = deviceToHostInputs[0].getARuntimeSlot();
-
-      SmallVector<Value> inChains;
-
-      for (auto deviceToHostOp : deviceToHostInputs)
-        inChains.push_back(deviceToHostOp.getInChain());
-      for (auto otherInChain : otherInputs)
-        inChains.push_back(otherInChain);
-
-      OpBuilder builder(grtChainCreateOp);
-      IRRewriter rewriter(builder);
-
-      auto mgpChainCreate = rewriter.create<MGP::ChainCreateOp>(
-          loc, context, inChains, runtimeSlot, DeviceRefAttr::getDefault(ctx),
-          DeviceRefAttr::getDefault(ctx));
-
-      rewriter.replaceOpWithNewOp<MGP::ChainDeviceToHostOp>(
-          grtChainCreateOp, mgpChainCreate, context, runtimeSlot,
-          DeviceRefAttr::getDefault(ctx));
     });
 
     LLVM_DEBUG(llvm::dbgs() << "SimplifyChainsPass: done\n");

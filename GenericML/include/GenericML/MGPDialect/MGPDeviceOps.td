@@ -390,182 +390,6 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
 }
 
 //===----------------------------------------------------------------------===//
-// ChainCreateOp
-//===----------------------------------------------------------------------===//
-
-def ChainCreateOp : MGP_DeviceOp<"chain.create", [
-    Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<GRT_ChainCreateOpInterface>,
-    DeclareOpInterfaceMethods<GRT_GatedOnChainOpInterface>,
-    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
-]> {
-  let summary = "Returns an `!mgp.chain` gated by zero or more operands.";
-  let description = [{
-    Returns an `!mgp.chain` for a device which is 'gated' by zero or more
-    operands. The gating operands may be of any type, however all device-generic
-    operands must be on either the 'host' or 'other' device.
-
-    Some devices may support the notion of a chain being 'finished' separately
-    from it being 'ready'. See `!mgp.chain` for more details. For these
-    devices, additional synchronization may be required on gating operands
-    which are on the other device so that the result chain is only 'finished'
-    when all 'other' device operands are 'finished'. Otherwise, this op is
-    equivalent to `grt.chain.create`.
-
-    It is valid for the 'other' and 'host' devices to be the same if
-    creating a chain for the host device.
-
-    Example:
-    ```mlir
-      %ctx : !mgp.context
-      %ch0 : !mgp.chain<<"cuda", 3>>
-      %ch1 : !mgp.chain
-      %ch2 : !mef.chain
-      %val : !mgp.buffer<64, <"cuda", 3>>
-      // Returns a chain which is ready when %ch0, %ch1, %ch2 and %val are
-      // ready, but which is 'finished' only when %ch0 and %val are 'finished'.
-      // Uses the CUDA runtime established in slot 5, which must be for CUDA
-      // virtual device id 3.
-      %ch3 = mgp.chain.create %ctx[5], other <"cuda", 3>,
-             (
-               %ch0,
-               %ch1: !mgp.chain,
-               %ch2: !mef.chain,
-               %val: !mgp.buffer<64, <"cuda", 3>>
-             )
-      %ch3 : !mgp.chain<<"cuda", 3>>
-    ```
-  }];
-
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
-  let arguments = (ins MGP_ContextType:$theContext,
-                       Variadic<AnyType>:$gatingOperands,
-                       UI64Attr:$aOtherRuntimeSlot,         // 0
-                       MGP_OptDeviceRefAttr:$bHostDevice,   // 1
-                       MGP_OptDeviceRefAttr:$cOtherDevice); // 2
-  let results = (outs MGP_DeviceChainType:$outChain);
-  let assemblyFormat = [{
-    $theContext `[` $aOtherRuntimeSlot `]` `,`
-    ( `host` $bHostDevice^ `,` )?
-    ( `other` $cOtherDevice^ `,` )?
-    custom<ChainCreateParenOperandList>(
-      ref($cOtherDevice), $gatingOperands, type($gatingOperands))
-    attr-dict
-  }];
-  let hasVerifier = 1;
-  let hasCanonicalizeMethod = 1;
-
-  let extraClassDefinition = [{
-    uint64_t ChainCreateOp::getSlot() { return getAOtherRuntimeSlot(); }
-
-    M::DeviceRefAttr ChainCreateOp::getDevice() { return getCOtherDevice(); }
-  }];
-}
-
-//===----------------------------------------------------------------------===//
-// ChainDeviceToHostOp
-//===----------------------------------------------------------------------===//
-
-def ChainDeviceToHostOp : MGP_DeviceOp<"chain.device_to_host", [
-    Pure,
-    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
-]> {
-  let summary = "Returns a `!mef.chain` which is ready when the given device "
-                "`!mgp.chain` is 'finished'.";
-  let description = [{
-    Some non-host devices may need to represent the notion of a computation
-    being 'finished', see `!mgp.chain` for more details. This op returns a
-    host `!mef.chain` which is 'ready' only when the device `!mgp.chain`
-    is 'finished'. Generally this may require additional synchronization between
-    the non-host device and the host-device, which impose additional latency.
-
-    It is valid for the device to be the host device, in which case this
-    op is a no-op.
-
-    Example:
-    ```mlir
-      %ch0 : !mgp.chain<<"cuda", 3>>
-      %ctx : !mgp.context
-      // Returns a chain for the host CPU, with appropriate synchronization
-      // on chains for the CUDA GPU with virtual device id and runtime
-      // established in slot 5. The host runtime has been established in slot 4.
-      %ch1 = mgp.chain.device_to_host %ch0, %ctx[5] device <"cuda", 3>
-      %ch1 : !mef.chain
-    ```
-  }];
-
-  let arguments = (ins MGP_DeviceChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       UI64Attr:$aRuntimeSlot,         // 0
-                       MGP_OptDeviceRefAttr:$bDevice); // 1
-  let results = (outs ChainType:$outChain);
-  let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aRuntimeSlot `]`
-    custom<OptDeviceRef>("\"device\"", $bDevice, type($inChain)) attr-dict
-  }];
-  let hasVerifier = 1;
-  let hasCanonicalizeMethod = 1;
-
-  let extraClassDefinition = [{
-    uint64_t ChainDeviceToHostOp::getSlot() { return getARuntimeSlot(); }
-
-    M::DeviceRefAttr ChainDeviceToHostOp::getDevice() { return getBDevice(); }
-  }];
-}
-
-//===----------------------------------------------------------------------===//
-// ChainHostToDeviceOp
-//===----------------------------------------------------------------------===//
-
-def ChainHostToDeviceOp : MGP_DeviceOp<"chain.host_to_device", [
-    Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
-]> {
-  let summary = "Returns an `!mgp.chain` which is 'finished' when the given "
-                "`!mef.chain` is ready.";
-  let description = [{
-    Some non-host devices may need to represent the notion of a computation
-    being 'finished', see `!mgp.chain` for more details. This op returns a
-    device `!mgp.chain` which is 'finished' only when the operand `!mef.chain`
-    is ready. Generally this does not require any device synchronization.
-
-    It is valid for the device to be the host device, in which case this
-    op is a no-op.
-
-    Example:
-    ```mlir
-      %ctx : !mgp.context
-      %ch0 : !mef.chain
-      %ch1 = mgp.chain.host_to_device %ch0, %ctx[5] device <"cuda", 3>
-      %ch1 : !mgp.chain<<"cuda", 3>>
-    ```
-  }];
-
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       UI64Attr:$aRuntimeSlot,         // 0
-                       MGP_OptDeviceRefAttr:$bDevice); // 1
-  let results = (outs MGP_DeviceChainType:$outChain);
-  let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aRuntimeSlot `]`
-    ( `device` $bDevice^ )? attr-dict
-  }];
-  let hasVerifier = 1;
-  let hasCanonicalizeMethod = 1;
-
-  let extraClassDefinition = [{
-    uint64_t ChainHostToDeviceOp::getSlot() { return getARuntimeSlot(); }
-
-    M::DeviceRefAttr ChainHostToDeviceOp::getDevice() { return getBDevice(); }
-  }];
-}
-
-//===----------------------------------------------------------------------===//
 // BufferConstantOp
 //===----------------------------------------------------------------------===//
 
@@ -719,7 +543,7 @@ def BufferAllocStaticOp : MGP_DeviceOp<"buffer.alloc.static", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_DeviceChainType:$inChain,
+  let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        UI64Attr:$aRuntimeSlot,                                 // 0
                        UI64Attr:$bSize,                                        // 1
@@ -781,7 +605,7 @@ def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_DeviceChainType:$inChain,
+  let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        Index:$runtimeSize,
                        UI64Attr:$aRuntimeSlot,                                 // 0
@@ -916,9 +740,7 @@ def BufferGetCachedOp : MGP_DeviceOp<"buffer.get_cached", [
 // BufferFreeOp
 //===----------------------------------------------------------------------===//
 
-def BufferFreeOp : MGP_Op<"buffer.free", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-]> {
+def BufferFreeOp : MGP_Op<"buffer.free"> {
   let summary = "No-op used to indicate when a buffer is freed.";
   let description = [{
     Indicate when a buffer may be freed.
@@ -941,9 +763,9 @@ def BufferFreeOp : MGP_Op<"buffer.free", [
     `:` custom<BufferTypeToChain>(type($buffer), type($inChain))
   }];
 
-  let arguments = (ins MGP_DeviceChainType:$inChain,
+  let arguments = (ins ChainType:$inChain,
                        MGP_DeviceBufferType:$buffer);
-  let results = (outs MGP_DeviceChainType:$outChain);
+  let results = (outs ChainType:$outChain);
 }
 
 //===----------------------------------------------------------------------===//
@@ -951,7 +773,6 @@ def BufferFreeOp : MGP_Op<"buffer.free", [
 //===----------------------------------------------------------------------===//
 
 def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
 ]> {
@@ -978,7 +799,7 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_DeviceChainType:$inChain,
+  let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$hostBuffer,
                        MGP_DeviceBufferType:$otherBuffer,
@@ -986,7 +807,7 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
                        UI64Attr:$bOtherRuntimeSlot,         // 1
                        MGP_OptDeviceRefAttr:$cHostDevice,   // 2
                        MGP_OptDeviceRefAttr:$dOtherDevice); // 3
-  let results = (outs MGP_DeviceChainType:$outChain);
+  let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aHostRuntimeSlot `,` $bOtherRuntimeSlot `]`
     `,` $hostBuffer `,` $otherBuffer attr-dict
@@ -1008,7 +829,6 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
 //===----------------------------------------------------------------------===//
 
 def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
 ]> {
@@ -1035,7 +855,7 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_DeviceChainType:$inChain,
+  let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$otherBuffer,
                        MGP_DeviceBufferType:$hostBuffer,
@@ -1043,7 +863,7 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
                        UI64Attr:$bHostRuntimeSlot,         // 1
                        MGP_OptDeviceRefAttr:$cOtherDevice, // 2
                        MGP_OptDeviceRefAttr:$dHostDevice); // 3
-  let results = (outs MGP_DeviceChainType:$outChain);
+  let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aOtherRuntimeSlot `,` $bHostRuntimeSlot `]`
     `,` $otherBuffer `,` $hostBuffer attr-dict
@@ -1065,7 +885,6 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
 //===----------------------------------------------------------------------===//
 
 def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
 ]> {
@@ -1089,7 +908,7 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_DeviceChainType:$inChain,
+  let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$srcBuffer,
                        MGP_DeviceBufferType:$dstBuffer,
@@ -1097,7 +916,7 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
                        UI64Attr:$bDstRuntimeSlot,     // 1
                        M_DeviceRefAttr:$cSrcDevice,   // 2
                        M_DeviceRefAttr:$dDstDevice);  // 3
-  let results = (outs MGP_DeviceChainType:$outChain);
+  let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aSrcRuntimeSlot `,` $bDstRuntimeSlot `]` `,`
     $srcBuffer `,` $dstBuffer attr-dict
@@ -1199,7 +1018,6 @@ def BufferResizeOp : MGP_Op<"buffer.resize", [
 //===----------------------------------------------------------------------===//
 
 def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
 ]> {
@@ -1230,13 +1048,13 @@ def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_DeviceChainType:$inChain,
+  let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$outBuffer,
                        Variadic<MGP_DeviceBufferType>:$inBuffers,
                        UI64Attr:$aRuntimeSlot,         // 0
                        MGP_OptDeviceRefAttr:$bDevice); // 1
-  let results = (outs MGP_DeviceChainType:$outChain);
+  let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,`  $theContext `[` $aRuntimeSlot `]` `,` $outBuffer `,`
     $inBuffers attr-dict
@@ -1303,7 +1121,7 @@ def BufferSplitBorrowOp : MGP_DeviceOp<"buffer.split.borrow", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_DeviceChainType:$inChain,
+  let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$inBuffer,
                        Variadic<Index>:$runtimeSizes,
@@ -1321,7 +1139,7 @@ def BufferSplitBorrowOp : MGP_DeviceOp<"buffer.split.borrow", [
   let hasVerifier = 1;
 
   let builders = [
-    OpBuilder<(ins "mlir::TypedValue<M::MGP::DeviceChainType>":$inChain,
+    OpBuilder<(ins "mlir::TypedValue<M::MEF::ChainType>":$inChain,
                    "mlir::TypedValue<M::MGP::ContextType>":$theContext,
                    "mlir::TypedValue<M::MGP::DeviceBufferType>":$inBuffer,
                    "llvm::ArrayRef<mlir::TypedValue<mlir::IndexType>>":$runtimeSizes,
@@ -1379,7 +1197,7 @@ def BufferSectionBorrowStaticOp : MGP_DeviceOp<"buffer.section.borrow.static", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_DeviceChainType:$inChain,
+  let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$inBuffer,
                        UI64Attr:$aRuntimeSlot,         // 0
@@ -1446,7 +1264,7 @@ def BufferSectionBorrowDynamicOp : MGP_DeviceOp<"buffer.section.borrow.dynamic",
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_DeviceChainType:$inChain,
+  let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$inBuffer,
                        Index:$scale,
@@ -1535,7 +1353,7 @@ def BufferToBoolOp : MGP_DeviceOp<"buffer.to_bool"> {
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_DeviceChainType:$inChain,
+  let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$buffer,
                        UI64Attr:$aRuntimeSlot,          // 0
@@ -1560,7 +1378,6 @@ def BufferToBoolOp : MGP_DeviceOp<"buffer.to_bool"> {
 //===----------------------------------------------------------------------===//
 
 def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     // TODO: #37615
     /* DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>, */
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
@@ -1594,7 +1411,7 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
                        Variadic<Index>:$values,
                        UI64Attr:$aRuntimeSlot,         // 0
                        MGP_OptDeviceRefAttr:$bDevice); // 1
-  let results = (outs MGP_DeviceChainType:$outChain);
+  let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $theContext `[` $aRuntimeSlot `]` `,`  $buffer ( `,` $values^ )? attr-dict
     `:` custom<BufferTypeToDevice>(type($buffer), $bDevice)
@@ -1636,7 +1453,7 @@ def TensorCreateOp : MGP_DeviceOp<"tensor.create", [
     ```
   }];
 
-  let arguments = (ins MGP_DeviceChainType:$inChain,
+  let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$buffer,
                        MGP_TensorSpecType:$tensorSpec,
@@ -1855,7 +1672,7 @@ def KernelExecuteOp : MGP_DeviceOp<"kernel.execute", [
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins
-    MGP_DeviceChainType:$inChain,
+    ChainType:$inChain,
     MGP_ContextType:$theContext,
     Variadic<AnyTypeOf<[MGP_DeviceBufferType, MGP_List]>>:$args,
     Variadic<Index>:$inDimensions,
@@ -1869,7 +1686,7 @@ def KernelExecuteOp : MGP_DeviceOp<"kernel.execute", [
     StrAttr:$hSummary,                                   // 7
     DefaultValuedAttr<UI64Attr, "0">:$iNumOutDimensions, // 8
     DefaultValuedAttr<BoolAttr, "false">:$jIsAsync);     // 9
-  let results = (outs MGP_DeviceChainType:$outChain,
+  let results = (outs ChainType:$outChain,
                       Variadic<Index>:$outDimensions);
   let assemblyFormat = [{
     $inChain `,`
@@ -1893,7 +1710,9 @@ def KernelExecuteOp : MGP_DeviceOp<"kernel.execute", [
   }];
 }
 
-def MGP_SyncOp : MGP_DeviceOp<"sync"> {
+def MGP_SyncOp : MGP_DeviceOp<"sync", 
+  [DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>]
+> {
   let summary = "Schedules a device specifc sync";
   let description = [{
     Returns a ready chain once the device has synchronized. In

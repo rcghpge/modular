@@ -66,6 +66,9 @@ bool isLiftableTrivialOp(Operation *op) {
   // Consider all pure ops to be trivial.
   if (isPure(op))
     return true;
+  if (isa<MGP::ExtendLifetimeOp>(op))
+    return true;
+
   // Liftable buffer ops declare whether they are trivial.
   if (auto liftableOp = dyn_cast<MGPLiftableBufferCreateOpInterface>(op))
     return liftableOp.isTrivial();
@@ -777,17 +780,7 @@ class ExecInvariantCodeMotionPass
         // let CSE clean up any duplication for those new chains.
         // The remaining references to oldChain remain in-place, since those
         // ops will likewise be lifted.
-        BufferBuilder *bufferBuilder =
-            TensorBufferDialectInterface::getBuilderForTypeStorage(
-                *builderContext, oldChain.getType());
-        Value newChain;
-        if (isa<MEF::ChainType>(oldChain.getType())) {
-          newChain = executeState->getRootChain();
-        } else {
-          newChain = bufferBuilder->fromHostChain(
-              executeState->builder, op->getLoc(), executeState->getContext(),
-              executeState->getRootChain());
-        }
+        Value newChain = executeState->getRootChain();
         oldChain.replaceUsesWithIf(newChain, isOpOperandUnliftable);
         LLVM_DEBUG(llvm::dbgs() << "will lift chain op and replace old chain:\n"
                                 << oldChain << "\nwith:\n"
@@ -818,15 +811,8 @@ class ExecInvariantCodeMotionPass
                             << ") which will be further mutated "
                                "in the 'execute' block");
               for (Value res : use.getOwner()->getResults()) {
-                if (isa<MEF::MEFChainTypeInterface>(res.getType())) {
-                  BufferBuilder *bufferBuilder =
-                      TensorBufferDialectInterface::getBuilderForTypeStorage(
-                          *builderContext, res.getType());
-                  potentialBufferActionChains.push_back(
-                      bufferBuilder->toHostChain(initState->builder,
-                                                 op->getLoc(),
-                                                 initState->getContext(), res));
-                }
+                if (isa<MEF::MEFChainTypeInterface>(res.getType()))
+                  potentialBufferActionChains.push_back(res);
               }
             }
           }

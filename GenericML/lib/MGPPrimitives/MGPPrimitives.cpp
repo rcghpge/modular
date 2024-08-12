@@ -509,6 +509,16 @@ static void mgp_model() {
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.extend.lifetime
+//===----------------------------------------------------------------------===//
+
+// No-op, will be scheduled once all are ready (preventing the inputs from being
+// freed).
+static void mgp_nop(RemainingArguments operands, Result<Chain> outChain) {
+  std::move(outChain).emplace();
+}
+
+//===----------------------------------------------------------------------===//
 // registerMGPPrimitives
 //===----------------------------------------------------------------------===//
 
@@ -526,6 +536,8 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.list.insert", mgp_list_insert);
   ADD_PRIMITIVE(registry, "mgp.list.slice", mgp_list_slice);
   ADD_PRIMITIVE(registry, "mgp.model", mgp_model);
+
+  ADD_PRIMITIVE(registry, "mgp.extend.lifetime", mgp_nop);
 
   registerMGPCPUPrimitives(registry);
 }

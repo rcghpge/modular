@@ -270,14 +270,6 @@ void AsyncDataflowDependencies::flowAlwaysReady(Operation *op,
           set, valueAnalysis.getEntriesAndId(domainMap, operand));
     }
     valueAnalysis.setEntries(domainMap, chainCreateOp.getChainResult(), set);
-  } else if (auto hostToDeviceOp = dyn_cast<ChainHostToDeviceOp>(op)) {
-    valueAnalysis.setEntries(
-        domainMap, hostToDeviceOp.getOutChain(),
-        valueAnalysis.getEntriesAndId(domainMap, hostToDeviceOp.getInChain()));
-  } else if (auto deviceToHostOp = dyn_cast<ChainDeviceToHostOp>(op)) {
-    valueAnalysis.setEntries(
-        domainMap, deviceToHostOp.getOutChain(),
-        valueAnalysis.getEntriesAndId(domainMap, deviceToHostOp.getInChain()));
   } else if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op)) {
     valueAnalysis.flowControlFlow(
         cfOp, domainMap,

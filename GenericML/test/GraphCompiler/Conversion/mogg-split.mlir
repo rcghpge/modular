@@ -14,13 +14,10 @@
 // CHECK-NEXT:   %[[SPLIT_SPEC2:.*]] = mgp.tensor_spec.create %[[DIMS]]#1 : !mgp.tensor_spec<?x8xf32>
 // CHECK-NEXT:   %[[SPLIT_SIZE1:.*]] = mgp.tensor_spec.size %[[SPLIT_SPEC1]] : !mgp.tensor_spec<?x8xf32>
 // CHECK-NEXT:   %[[SPLIT_SIZE2:.*]] = mgp.tensor_spec.size %[[SPLIT_SPEC2]] : !mgp.tensor_spec<?x8xf32>
-// CHECK-NEXT:   %[[CH1:.*]] = mgp.chain.host_to_device %[[CH]], %[[CTX]][0]
-// CHECK-NEXT:   %[[SPLIT_BUFS:.*]]:2 = mgp.buffer.split.borrow %[[CH1]], %[[CTX]][0], %[[INPUT_BUF]], %[[SPLIT_SIZE1]], %[[SPLIT_SIZE2]]
+// CHECK-NEXT:   %[[SPLIT_BUFS:.*]]:2 = mgp.buffer.split.borrow %[[CH]], %[[CTX]][0], %[[INPUT_BUF]], %[[SPLIT_SIZE1]], %[[SPLIT_SIZE2]]
 // CHECK-SAME:   : !mgp.buffer<>  -> (!mgp.buffer<>, !mgp.buffer<>)
-// CHECK-NEXT:   %[[CH2:.*]] = mgp.chain.host_to_device %[[CH]], %[[CTX]][0]
-// CHECK-NEXT:   %[[SPLIT_TENSOR1:.*]] = mgp.tensor.create %[[CH2]], %[[CTX]][0], %[[SPLIT_BUFS]]#0, %[[SPLIT_SPEC1]]  : !mgp.tensor<?x8xf32>
-// CHECK-NEXT:   %[[CH3:.*]] = mgp.chain.host_to_device %[[CH]], %[[CTX]][0]
-// CHECK-NEXT:   %[[SPLIT_TENSOR2:.*]] = mgp.tensor.create %[[CH3]], %[[CTX]][0], %[[SPLIT_BUFS]]#1, %[[SPLIT_SPEC2]]  : !mgp.tensor<?x8xf32>
+// CHECK-NEXT:   %[[SPLIT_TENSOR1:.*]] = mgp.tensor.create %[[CH]], %[[CTX]][0], %[[SPLIT_BUFS]]#0, %[[SPLIT_SPEC1]]  : !mgp.tensor<?x8xf32>
+// CHECK-NEXT:   %[[SPLIT_TENSOR2:.*]] = mgp.tensor.create %[[CH]], %[[CTX]][0], %[[SPLIT_BUFS]]#1, %[[SPLIT_SPEC2]]  : !mgp.tensor<?x8xf32>
 // CHECK-NEXT:   mef.output %[[CH]], %[[SPLIT_TENSOR1]], %[[SPLIT_TENSOR2]] : !mef.chain, !mgp.tensor<?x8xf32>, !mgp.tensor<?x8xf32>
 // CHECK-NEXT: }
 

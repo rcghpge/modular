@@ -27,26 +27,6 @@ TypedValue<ContextType> BufferBuilder::getContextForOp(Operation *op) {
   return getContextForBlock(op->getBlock());
 }
 
-Value BufferBuilder::anyToNativeOrHostChain(OpBuilder &builder, Location loc,
-                                            TypedValue<ContextType> context,
-                                            BufferBuilder *chainBuilder,
-                                            Value chain) {
-  if (chainBuilder == this)
-    return chain;
-  else
-    return chainBuilder->toHostChain(builder, loc, context, chain);
-}
-
-Value BufferBuilder::toNativeChain(OpBuilder &builder, Location loc,
-                                   TypedValue<ContextType> context,
-                                   Value chain) {
-  if (isa<MEF::ChainType>(chain.getType()))
-    return fromHostChain(builder, loc, context,
-                         cast<TypedValue<MEF::ChainType>>(chain));
-  else
-    return chain;
-}
-
 void BufferBuilder::vtableAnchor() {}
 
 //===----------------------------------------------------------------------===//
@@ -194,32 +174,26 @@ Value MGPBufferBuilder::tensorCreate(OpBuilder &builder, Location loc,
     deviceBuffer = cast<TypedValue<DeviceBufferType>>(
         bufferUnsize(builder, loc, context, deviceBuffer));
   }
-  return builder.create<TensorCreateOp>(
-      loc,
-      /*inChain=*/
-      cast<TypedValue<DeviceChainType>>(
-          toNativeChain(builder, loc, context, inChain)),
-      /*theContext=*/context,
-      /*buffer=*/deviceBuffer,
-      /*tensorSpec=*/tensorSpec,
-      /*aRuntimeSlot=*/runtimeSlot,
-      /*bDevice=*/device);
+  return builder.create<TensorCreateOp>(loc,
+                                        /*inChain=*/inChain,
+                                        /*theContext=*/context,
+                                        /*buffer=*/deviceBuffer,
+                                        /*tensorSpec=*/tensorSpec,
+                                        /*aRuntimeSlot=*/runtimeSlot,
+                                        /*bDevice=*/device);
 }
 
 Value MGPBufferBuilder::bufferAllocStatic(OpBuilder &builder, Location loc,
                                           TypedValue<ContextType> context,
                                           Value inChain, uint64_t size,
                                           uint64_t alignment) {
-  return builder.create<BufferAllocStaticOp>(
-      loc,
-      /*inChain=*/
-      cast<TypedValue<DeviceChainType>>(
-          toNativeChain(builder, loc, context, inChain)),
-      /*theContext=*/context,
-      /*aRuntimeSlot=*/runtimeSlot,
-      /*bSize=*/size,
-      /*cAlign=*/alignment,
-      /*dDevice=*/device);
+  return builder.create<BufferAllocStaticOp>(loc,
+                                             /*inChain=*/inChain,
+                                             /*theContext=*/context,
+                                             /*aRuntimeSlot=*/runtimeSlot,
+                                             /*bSize=*/size,
+                                             /*cAlign=*/alignment,
+                                             /*dDevice=*/device);
 }
 
 Value MGPBufferBuilder::bufferAllocDynamic(OpBuilder &builder, Location loc,
@@ -228,9 +202,7 @@ Value MGPBufferBuilder::bufferAllocDynamic(OpBuilder &builder, Location loc,
                                            uint64_t alignment) {
   return builder.create<BufferAllocDynamicOp>(
       loc,
-      /*inChain=*/
-      cast<TypedValue<DeviceChainType>>(
-          toNativeChain(builder, loc, context, inChain)),
+      /*inChain=*/inChain,
       /*theContext=*/context,
       /*runtimeSize=*/cast<TypedValue<IndexType>>(size),
       /*aRuntimeSlot=*/runtimeSlot,
@@ -244,18 +216,26 @@ Value MGPBufferBuilder::bufferTransferFromHost(OpBuilder &builder, Location loc,
                                                BufferBuilder *srcBuilder,
                                                Value srcBuffer,
                                                Value dstBuffer) {
-  return builder.create<BufferHostToDeviceOp>(
-      loc,
-      /*inChain=*/
-      cast<TypedValue<DeviceChainType>>(
-          srcBuilder->toNativeChain(builder, loc, context, inChain)),
-      /*theContext=*/context,
-      /*hostBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
-      /*otherBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
-      /*aHostRuntimeSlot=*/hostBufferBuilder->runtimeSlot,
-      /*bOtherRuntimeSlot=*/runtimeSlot,
-      /*cHostDevice=*/hostBufferBuilder->device,
-      /*dOtherDevice=*/device);
+  Value copyChain =
+      builder
+          .create<BufferHostToDeviceOp>(
+              loc,
+              /*inChain=*/inChain,
+              /*theContext=*/context,
+              /*hostBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
+              /*otherBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
+              /*aHostRuntimeSlot=*/hostBufferBuilder->runtimeSlot,
+              /*bOtherRuntimeSlot=*/runtimeSlot,
+              /*cHostDevice=*/hostBufferBuilder->device,
+              /*dOtherDevice=*/device)
+          .getResult();
+
+  Value syncChain = builder.create<MGP::SyncOp>(loc, copyChain, context,
+                                                /*aRuntimeSlot*/ runtimeSlot,
+                                                /*bDevice*/ device);
+
+  builder.create<MGP::ExtendLifetimeOp>(loc, ValueRange{syncChain, srcBuffer});
+  return copyChain;
 }
 
 Value MGPBufferBuilder::bufferTransferToHost(OpBuilder &builder, Location loc,
@@ -263,18 +243,26 @@ Value MGPBufferBuilder::bufferTransferToHost(OpBuilder &builder, Location loc,
                                              Value inChain, Value srcBuffer,
                                              BufferBuilder *dstBuilder,
                                              Value dstBuffer) {
-  return builder.create<BufferDeviceToHostOp>(
-      loc,
-      /*inChain=*/
-      cast<TypedValue<DeviceChainType>>(
-          toNativeChain(builder, loc, context, inChain)),
-      /*theContext=*/context,
-      /*otherBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
-      /*hostBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
-      /*aOtherRuntimeSlot=*/runtimeSlot,
-      /*bHostRuntimeSlot=*/hostBufferBuilder->runtimeSlot,
-      /*cOtherDevice=*/device,
-      /*dHostDevice=*/hostBufferBuilder->device);
+  Value copyChain =
+      builder
+          .create<BufferDeviceToHostOp>(
+              loc,
+              /*inChain=*/inChain,
+              /*theContext=*/context,
+              /*otherBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
+              /*hostBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
+              /*aOtherRuntimeSlot=*/runtimeSlot,
+              /*bHostRuntimeSlot=*/hostBufferBuilder->runtimeSlot,
+              /*cOtherDevice=*/device,
+              /*dHostDevice=*/hostBufferBuilder->device)
+          .getResult();
+  Value syncChain = builder.create<MGP::SyncOp>(loc, copyChain, context,
+                                                /*aRuntimeSlot*/ runtimeSlot,
+                                                /*bDevice*/ device);
+
+  builder.create<MGP::ExtendLifetimeOp>(
+      loc, ValueRange{syncChain, srcBuffer, dstBuffer});
+  return syncChain;
 }
 
 Value MGPBufferBuilder::bufferTransferDevice(OpBuilder &builder, Location loc,
@@ -285,9 +273,7 @@ Value MGPBufferBuilder::bufferTransferDevice(OpBuilder &builder, Location loc,
   auto dstMGPBufferBuilder = static_cast<MGPBufferBuilder *>(dstBufferBuilder);
   return builder.create<BufferDeviceToDeviceOp>(
       loc,
-      /*inChain=*/
-      cast<TypedValue<DeviceChainType>>(
-          toNativeChain(builder, loc, context, inChain)),
+      /*inChain=*/inChain,
       /*theContext=*/context,
       /*srcBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
       /*dstBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
@@ -322,7 +308,7 @@ Value MGPBufferBuilder::debugTensorPrint(OpBuilder &builder, Location loc,
                                          StringAttr label) {
   return builder.create<DebugTensorPrintOp>(
       loc,
-      /*inChain=*/toHostChain(builder, loc, context, inChain),
+      /*inChain=*/inChain,
       /*theContext=*/context,
       /*buffer=*/cast<TypedValue<DeviceBufferType>>(buffer),
       /*spec=*/spec,
@@ -392,9 +378,7 @@ Value MGPBufferBuilder::kernelExecute(
 
   auto executeOp = builder.create<KernelExecuteOp>(
       loc,
-      /*inChain=*/
-      cast<TypedValue<DeviceChainType>>(
-          toNativeChain(builder, loc, context, inChain)),
+      /*inChain=*/inChain,
       /*theContext=*/context,
       /*args=*/args,
       /*inDimensions=*/inDimensions,
@@ -416,15 +400,8 @@ Value MGPBufferBuilder::kernelExecute(
 }
 
 Value MGPBufferBuilder::chainCreate(OpBuilder &builder, Location loc,
-                                    TypedValue<ContextType> context,
                                     ArrayRef<Value> inChains) {
-  return builder.create<ChainCreateOp>(
-      loc,
-      /*theContext=*/context,
-      /*gatingOperands=*/inChains,
-      /*aOtherRuntimeSlot=*/runtimeSlot,
-      /*bHostDevice=*/hostBufferBuilder->device,
-      /*cOtherDevice=*/device);
+  return builder.create<GRT::ChainCreateOp>(loc, inChains);
 }
 
 std::pair<TypedValue<MEF::ChainType>, uint64_t>
@@ -456,35 +433,12 @@ Value MGPBufferBuilder::getCached(OpBuilder &builder, Location loc,
       /*dDevice=*/device);
 }
 
-TypedValue<MEF::ChainType>
-MGPBufferBuilder::toHostChain(OpBuilder &builder, Location loc,
-                              TypedValue<ContextType> context, Value inChain) {
-  if (isa<MEF::ChainType>(inChain.getType()))
-    return cast<TypedValue<MEF::ChainType>>(inChain);
-  return builder.create<ChainDeviceToHostOp>(
-      loc,
-      /*inChain=*/cast<TypedValue<DeviceChainType>>(inChain),
-      /*theContext=*/context,
-      /*aRuntimeSlot=*/runtimeSlot,
-      /*bDevice=*/device);
-}
-
-Value MGPBufferBuilder::fromHostChain(OpBuilder &builder, Location loc,
-                                      TypedValue<ContextType> context,
-                                      TypedValue<MEF::ChainType> inChain) {
-  return builder.create<ChainHostToDeviceOp>(
-      loc, /*inChain=*/inChain, /*theContext=*/context,
-      /*aRuntimeSlot=*/runtimeSlot, /*bDevice=*/device);
-}
-
 Value MGPBufferBuilder::bufferConcat(OpBuilder &builder, Location loc,
                                      TypedValue<ContextType> context,
                                      Value inChain, Value outBuffer,
                                      ArrayRef<Value> inBuffers) {
   return builder.create<BufferConcatOp>(
-      loc, /*inChain=*/
-      cast<TypedValue<DeviceChainType>>(
-          toNativeChain(builder, loc, context, inChain)),
+      loc, /*inChain=*/inChain,
       /*theContext=*/context,
       /*outBuffer=*/cast<TypedValue<DeviceBufferType>>(outBuffer),
       /*inBuffers=*/inBuffers,
@@ -500,17 +454,14 @@ SmallVector<Value> MGPBufferBuilder::splitBorrow(
   for (auto optSize : outBufferSizes)
     rawSizes.emplace_back(optSizeToRawSize(optSize));
   return builder
-      .create<BufferSplitBorrowOp>(
-          loc,
-          /*inChain=*/
-          cast<TypedValue<DeviceChainType>>(
-              toNativeChain(builder, loc, context, inChain)),
-          /*theContext=*/context,
-          /*inBuffer=*/inBuffer,
-          /*runtimeSizes=*/runtimeSizes,
-          /*aRuntimeSlot=*/runtimeSlot,
-          /*bOutBufferRawSizes=*/rawSizes,
-          /*cDevice=*/device)
+      .create<BufferSplitBorrowOp>(loc,
+                                   /*inChain=*/inChain,
+                                   /*theContext=*/context,
+                                   /*inBuffer=*/inBuffer,
+                                   /*runtimeSizes=*/runtimeSizes,
+                                   /*aRuntimeSlot=*/runtimeSlot,
+                                   /*bOutBufferRawSizes=*/rawSizes,
+                                   /*cDevice=*/device)
       .getOutBuffers();
 }
 
@@ -520,9 +471,7 @@ Value MGPBufferBuilder::borrowSectionStatic(OpBuilder &builder, Location loc,
                                             uint64_t offset, uint64_t size) {
   return builder.create<BufferSectionBorrowStaticOp>(
       loc,
-      /*inChain=*/
-      cast<TypedValue<DeviceChainType>>(
-          toNativeChain(builder, loc, context, inChain)),
+      /*inChain=*/inChain,
       /*theContext=*/context,
       /*inBuffer=*/cast<TypedValue<DeviceBufferType>>(inBuffer),
       /*aRuntimeSlot=*/runtimeSlot,
@@ -538,9 +487,7 @@ Value MGPBufferBuilder::borrowSectionDynamic(OpBuilder &builder, Location loc,
                                              uint64_t unscaledOffset,
                                              uint64_t unscaledSize) {
   return builder.create<BufferSectionBorrowDynamicOp>(
-      loc, /*inChain=*/
-      cast<TypedValue<DeviceChainType>>(
-          toNativeChain(builder, loc, context, inChain)),
+      loc, /*inChain=*/inChain,
       /*theContext=*/context,
       /*inBuffer=*/cast<TypedValue<DeviceBufferType>>(inBuffer),
       /*scale=*/cast<TypedValue<IndexType>>(scale),
@@ -554,9 +501,7 @@ Value MGPBufferBuilder::bufferToBool(OpBuilder &builder, Location loc,
                                      TypedValue<ContextType> context,
                                      Value inChain, Value inBuffer) {
   return builder.create<BufferToBoolOp>(
-      loc, /*inChain=*/
-      cast<TypedValue<DeviceChainType>>(
-          toNativeChain(builder, loc, context, inChain)),
+      loc, /*inChain=*/inChain,
       /*theContext=*/context,
       /*inBuffer=*/cast<TypedValue<DeviceBufferType>>(inBuffer),
       /*aRuntimeSlot=*/runtimeSlot,

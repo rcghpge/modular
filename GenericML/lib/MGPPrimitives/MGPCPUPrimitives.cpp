@@ -162,30 +162,6 @@ mgp_module_load_cpu(Chain inChain, StateContext &theContext,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.chain.create.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_chain_create_cpu(StateContext &theContext,
-                                 RemainingArguments gatingOperands,
-                                 Result<Chain> outChain,
-                                 MEFAttr<uint64_t> aOtherRuntimeSlot,
-                                 MEFAttr<uint64_t> bHostDeviceId,
-                                 MEFAttr<uint64_t> cOtherDeviceId) {
-  std::move(outChain).emplace();
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.chain.{device_to_host, host_to_device}.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_chain_noop_cpu(Chain inChain, StateContext &theContext,
-                               Result<Chain> outChain,
-                               MEFAttr<uint64_t> aRuntimeSlot,
-                               MEFAttr<uint64_t> bDeviceId) {
-  std::move(outChain).emplace();
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.buffer.constant.cpu
 //===----------------------------------------------------------------------===//
 
@@ -769,9 +745,6 @@ static void mgp_device_context_extract_cpu(Chain inChain,
 void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.runtime.create.cpu", mgp_runtime_create_cpu);
   ADD_PRIMITIVE(registry, "mgp.module.load.cpu", mgp_module_load_cpu);
-  ADD_PRIMITIVE(registry, "mgp.chain.create.cpu", mgp_chain_create_cpu);
-  ADD_PRIMITIVE(registry, "mgp.chain.device_to_host.cpu", mgp_chain_noop_cpu);
-  ADD_PRIMITIVE(registry, "mgp.chain.host_to_device.cpu", mgp_chain_noop_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.constant.cpu", mgp_buffer_constant_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.constant.load.cpu",
                 mgp_buffer_constant_load_cpu);

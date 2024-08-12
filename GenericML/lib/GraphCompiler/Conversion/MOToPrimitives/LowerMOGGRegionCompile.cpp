@@ -114,8 +114,8 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
                 << "Only CPU ExecuteCompiledOps can be lowered further");
 
   auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
-      oldKernel.getLoc(), MGP::DeviceChainType::get(device), resultTypes,
-      context, loadChain, deviceContext, oldKernel->getOperands(), runtimeSlot,
+      oldKernel.getLoc(), MEF::ChainType::get(ctx), resultTypes, context,
+      loadChain, deviceContext, oldKernel->getOperands(), runtimeSlot,
       module_index, kernel_index, oldKernel.getSummary(),
       oldKernel.getIsAsync(), oldKernel.getHasCuda(),
       cuda_runtime_slot.value_or(0));

@@ -24,14 +24,6 @@ using namespace M;
 using namespace MGP;
 
 //===----------------------------------------------------------------------===//
-// DeviceChainType
-//===----------------------------------------------------------------------===//
-
-DeviceChainType DeviceChainType::get(DeviceRefAttr device) {
-  return DeviceChainType::get(device.getContext(), device);
-}
-
-//===----------------------------------------------------------------------===//
 // DeviceBufferType
 //===----------------------------------------------------------------------===//
 
