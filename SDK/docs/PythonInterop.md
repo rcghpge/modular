@@ -64,11 +64,9 @@ The relevant target definitions are:
   The target for the corresponding C++ sources is
   `//SDK/lib/GraphAPI/python:cpp_srcs`.
 
-- `//SDK/lib/GraphAPI/python/max/graph:core`
+- `//SDK/lib/GraphAPI/python/max/_graph:core`
   The pybind module shared library.
-  This defines the `PyInit` function for `max.graph.core` and all the
-  methods on the module via `PYBIND11_MODULE`.
+  This defines the `PyInit` function for `max._graph` and all the methods on
+  the module via `PYBIND11_MODULE`.
   This is Python code defined via pybind11 in
-  SDK/lib/GraphAPI/python/bindings/max/graph/core.cpp.
-  The corresponding sources are
-  `//SDK/lib/GraphAPI/python:cpp_bindings_srcs`.
+  SDK/lib/GraphAPI/python/bindings/max/_graph/core.cpp.

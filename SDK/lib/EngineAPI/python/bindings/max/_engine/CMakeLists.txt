@@ -22,7 +22,7 @@ set_rtti_exceptions(max-core)
 
 # Set the relative RPATH for the `core` library.
 # This assumes that in the Python wheel, shared libraries needed by `core`
-# reside at modular/lib, relative to `core`'s location at max/engine.
+# reside at modular/lib, relative to `core`'s location at max/_engine.
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set(relative_rpath "$ORIGIN/../lib")
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Darwin")

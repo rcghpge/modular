@@ -51,6 +51,6 @@ setup(
     package_data={
         "max.engine": EXECUTABLES + SHARED_LIBS + MOJO_CACHE + MODULAR_CFG
     },
-    packages=["max.engine"],
+    packages=["max.engine", "max._engine"],
     include_package_data=True,
 )

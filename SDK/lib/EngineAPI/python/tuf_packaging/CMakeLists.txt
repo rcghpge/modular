@@ -16,11 +16,6 @@ modular_find_python3_development()
 
 include(AddPyBind11)
 
-set(max_python_package_sources
-  ${CMAKE_CURRENT_SOURCE_DIR}/max/engine/api.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/max/engine/core.pyi
-)
-
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/pyproject.toml.in
   ${CMAKE_CURRENT_BINARY_DIR}/pyproject.toml.in

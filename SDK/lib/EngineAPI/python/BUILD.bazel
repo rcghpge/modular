@@ -6,20 +6,14 @@ filegroup(
     visibility = ["//SDK:__pkg__"],
 )
 
-filegroup(
-    name = "cpp_bindings_srcs",
-    srcs = glob(["bindings/**/*.cpp"]),
-    visibility = [":__subpackages__"],
-)
-
 py_library(
     name = "max_engine",
-    srcs = ["//SDK/lib/EngineAPI/python/max/engine:all_srcs"],
-    data = ["//SDK/lib/EngineAPI/python/max/engine:core"],
+    srcs = ["//SDK/lib/EngineAPI/python/max/engine"],
     imports = ["."],
     visibility = ["//visibility:public"],
     deps = [
-        requirement("numpy"),
+        "//SDK/lib/EngineAPI/python/max/_engine",
         "//SDK/lib/GraphAPI/python:max_graph",
+        requirement("numpy"),
     ],
 )
