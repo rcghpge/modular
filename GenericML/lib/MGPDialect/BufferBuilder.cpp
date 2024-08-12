@@ -79,7 +79,6 @@ MGPBufferBuilder::setupForModel(ModelOp modelOp,
                                            /*cDevice=*/device);
   auto deviceCtx = builder.create<MGP::DeviceContextCreateOp>(
       loc,
-      /*outChain=*/MEF::ChainType::get(builder.getContext()),
       /*outDeviceContext=*/
       OpaqueType::get(builder.getContext(), inDevice.getType().getSymbol(), {}),
       /*inChain=*/runtime.getOutChain(),
@@ -87,8 +86,10 @@ MGPBufferBuilder::setupForModel(ModelOp modelOp,
       /*deviceContext=*/inDevice,
       /*aDeviceRuntimeSlot=*/runtimeSlot,
       /*bDevice=*/device);
-  return {dyn_cast<TypedValue<MEF::ChainType>>(deviceCtx.getResult(0)),
-          dyn_cast<TypedValue<OpaqueType>>(deviceCtx.getResult(1))};
+  auto chain =
+      builder.create<GRT::ChainCreateOp>(loc,
+                                         /*operands=*/deviceCtx.getResult());
+  return {chain, dyn_cast<TypedValue<OpaqueType>>(deviceCtx.getResult())};
 }
 
 void MGPBufferBuilder::recoverFromModel(ModelOp modelOp,

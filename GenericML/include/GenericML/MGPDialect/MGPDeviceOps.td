@@ -221,7 +221,7 @@ def DeviceContextCreateOp : MGP_DeviceOp<"device.context.create"> {
                        MGP_OpaqueType:$deviceContext,
                        UI64Attr:$aDeviceRuntimeSlot,   // 0
                        MGP_OptDeviceRefAttr:$bDevice); // 1
-  let results = (outs ChainType:$outChain, MGP_OpaqueType:$outDeviceContext);
+  let results = (outs MGP_OpaqueType:$outDeviceContext);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aDeviceRuntimeSlot `]` `,` $deviceContext`:` type($deviceContext)
     ( `device` $bDevice^ )?  attr-dict `->` type($outDeviceContext)
