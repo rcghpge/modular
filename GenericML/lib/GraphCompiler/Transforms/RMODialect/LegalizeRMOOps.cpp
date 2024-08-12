@@ -743,6 +743,22 @@ struct LowerSelect : public OpRewritePattern<RMO::SelectOp> {
   }
 };
 
+struct LowerShapeToTensor : public OpRewritePattern<RMO::ShapeToTensorOp> {
+  LowerShapeToTensor(MLIRContext *ctx)
+      : OpRewritePattern<RMO::ShapeToTensorOp>(ctx, 1) {}
+
+  LogicalResult matchAndRewrite(RMO::ShapeToTensorOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    TypedAttr shape = op.getShape();
+    TensorType resTy = op.getType();
+
+    auto shConst = rewriter.create<MOSH::ParamToValueOp>(loc, shape);
+    rewriter.replaceOpWithNewOp<Shape::ToTensorOp>(op, resTy, shConst);
+    return success();
+  }
+};
+
 struct LegalizeRMOOps
     : public M::RMO::impl::LegalizeRMOOpsBase<LegalizeRMOOps> {
   using LegalizeRMOOpsBase::LegalizeRMOOpsBase;
@@ -875,7 +891,8 @@ struct LegalizeRMOOps
         LowerCompositeBinaryComparisonOp<RMO::GreaterEqualOp,
                                          RMO::MOGreaterEqualOp>,
         LowerBroadcastLike, LowerSigmoid, LowerConcat, LowerReshape,
-        LowerMatmul, LowerBroadcastTo, LowerSelect>(context);
+        LowerMatmul, LowerBroadcastTo, LowerSelect, LowerShapeToTensor>(
+        context);
 
     // Lowering third party specific operations.
     // They have more flexible semantics that separate them from standard rmo

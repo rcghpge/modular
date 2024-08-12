@@ -714,6 +714,34 @@ void RMODialect::registerOperations() {
 }
 
 //===----------------------------------------------------------------------===//
+// ShapeToTensor
+//===----------------------------------------------------------------------===//
+
+LogicalResult ShapeToTensorOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+
+  auto shapeAttr = attributes.getAs<ShapeAttr>("shape");
+  ASSERT_STREAM(
+      shapeAttr, << "rmo.shape_to_tensor must have a ShapeAttr `shape`");
+  // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
+  // check.
+  if (shapeAttr.hasUnknownDims())
+    return mlir::emitOptionalError(
+        location, unknownDimError("ShapeToTensor", "shape", shapeAttr));
+
+  // The output is simply an i64 tensor with rank 1.
+  inferredReturnTypes.push_back(TensorType::get(
+      ShapeAttr::get(
+          {IntegerAttr::get(IndexType::get(context), shapeAttr.getRank())},
+          shapeAttr.getType()),
+      DType::si64));
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

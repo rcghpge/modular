@@ -393,6 +393,22 @@ def RMO_BroadcastToOp : RMO_Op<"broadcast_to", [
   }];
 }
 
+def RMO_ShapeToTensorOp : RMO_Op<"shape_to_tensor", [
+  Pure,
+  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+]> {
+  let summary = "Converts a shape to a tensor";
+  let description = [{
+    Converts a statically known shape attr into a 1d tensor of the shape.
+  }];
+  let arguments = (ins MOSH_ShapeAttr:$shape);
+  let results = (outs MO_ShapeLike:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 def RMO_MatmulOp : RMO_Op<"matmul", [
   Pure,
   DeclareOpInterfaceMethods<InferTypeOpInterface>,
