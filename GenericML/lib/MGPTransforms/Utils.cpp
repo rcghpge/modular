@@ -428,7 +428,7 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
     Value inChain = inChainOpOperand->get();
 
     // The builder for inChain, or null if it's a !mef.chain.
-    BufferBuilder *optChainBufferBuilder;
+    BufferBuilder *optChainBufferBuilder = nullptr;
 
     // Though the SimplifyChainsPass and CSE can clean things up, a few
     // simple syntactic tests can avoid unnecessary changes.
