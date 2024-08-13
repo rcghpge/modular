@@ -885,6 +885,33 @@ BufferSetWithIndexOp::getInOutSemantics(size_t index) {
 }
 
 //===----------------------------------------------------------------------===//
+// BufferPlanOp
+//===----------------------------------------------------------------------===//
+LogicalResult BufferPlanOp::verify() {
+
+  if (!llvm::all_equal({getRuntimeSizes().size(), getOffsets().size(),
+                        getAAlignments().size(), getBMinPre().size(),
+                        getCMinPost().size(), getDMaxPre().size(),
+                        getEMaxPost().size()}))
+    return emitOpError("expected number of sizes, output offsets, alignments "
+                       "and lifetime info attributes to "
+                       "be equal.");
+  return success();
+}
+
+LogicalResult BufferPlanOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  // All outputs are index
+  inferredReturnTypes.reserve(operands.size() + 1);
+  for (size_t i = 0; i < operands.size() + 1; ++i)
+    inferredReturnTypes.emplace_back(mlir::IndexType::get(context));
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TensorCreateOp
 //===----------------------------------------------------------------------===//
 

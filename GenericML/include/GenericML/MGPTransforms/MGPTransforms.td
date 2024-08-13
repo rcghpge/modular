@@ -552,4 +552,19 @@ def SimpleBufferReusePass : Pass<"simple-buffer-reuse", "MGP::ModelOp"> {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// DynamicMemoryPlanningPass
+//===----------------------------------------------------------------------===//
+
+def DynamicMemoryPlanningPass : Pass<"dynamic-memory-planning", "MGP::ModelOp"> {
+  let summary = "Dynamic (runtime) memory planning";
+  let description = [{
+    Uses BufferLifetimeAnalysisPass to compute lifetimes of all buffers, then
+    inserts BufferPlanOp to do runtime memory planning. The high watermark
+    returned by BufferPlanOp is used to make a single large allocation, and all
+    former allocations are replaced with slices (BufferSliceOp) into the single
+    large allocation.
+  }];
+}
+
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD

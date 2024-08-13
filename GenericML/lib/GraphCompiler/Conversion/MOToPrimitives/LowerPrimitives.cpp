@@ -50,6 +50,9 @@ static inline bool canFuseOp(Operation *op) {
   if (isa<MGP::SyncOp>(op))
     return false;
 
+  if (isa<MGP::BufferAllocDynamicOp>(*op))
+    return false;
+
   // Allow for custom ops starting with "testfuse." for testing purposes.
   return isa_and_nonnull<::M::MIP::MIPDialect, MGPDialect>(op->getDialect()) ||
          op->getName().getIdentifier().strref().starts_with("testfuse.");

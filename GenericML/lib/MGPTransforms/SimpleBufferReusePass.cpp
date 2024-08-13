@@ -104,7 +104,6 @@ class SimpleBufferReusePass
             llvm::find_if(liveAllocs, [&](MGP::BufferAllocDynamicOp candidate) {
               return candidate.getRuntimeSize() == curAlloc.getRuntimeSize() &&
                      candidate.getDevice() == curAlloc.getDevice() &&
-                     candidate.getInChain() == curAlloc.getInChain() &&
                      candidate.getRawAlign() == curAlloc.getRawAlign() &&
                      hasBeenFreed(candidate);
             });

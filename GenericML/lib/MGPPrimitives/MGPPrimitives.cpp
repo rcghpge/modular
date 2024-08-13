@@ -484,6 +484,126 @@ static void mgp_list_slice(List &inputList, Tensor &startTensor,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.buffer.plan
+//===----------------------------------------------------------------------===//
+
+static void mgp_buffer_plan(
+    RemainingArguments inputs, Result<size_t> highWaterMark,
+    RemainingResults results, MEFAttr<ArrayRef<uint64_t>> alignments,
+    MEFAttr<ArrayRef<uint64_t>> minPre, MEFAttr<ArrayRef<uint64_t>> minPost,
+    MEFAttr<ArrayRef<uint64_t>> maxPre, MEFAttr<ArrayRef<uint64_t>> maxPost,
+    Runtime &runtime) {
+
+  // This function implements a simple greedy algorithm to reuse memory blocks
+  // from allocations that do not overlap in lifetime.
+
+  // Allocations should be passed to this primitive in roughly topological order
+  // since this algorithm does a single pass through all allocations in order
+
+  // For each allocation:
+  //  1. Try to find the smallest existing memory block that can be reused.
+  //     A block can be reused if its lifetime doesn't overlap with the
+  //     current allocation. This information comes from checking ancestry in
+  //     the dependency tree. See MGPBufferLifetimeAnalysis for more details.
+  //  2. If a reusable block is found, use its offset for this allocation
+  //  (according to alignment constraints) and update its lifetime.
+  //  3. If no reusable block is found, allocate a new block at
+  //    the end of the pool.
+
+  struct MemoryBlock {
+    size_t offset;
+    size_t size;
+    uint64_t minPre;
+    uint64_t maxPre;
+    uint64_t minPost;
+    uint64_t maxPost;
+  };
+
+  size_t numAllocs = inputs.size();
+  for (auto &result : results)
+    result = AsyncValueRef<size_t>::allocate(runtime);
+
+  auto canReuse = [&](size_t i, const MemoryBlock &block) {
+    return maxPre[i] < block.minPre && minPost[i] > block.maxPost;
+  };
+
+  assert(!alignments->empty());
+  uint64_t maxAlignment = *llvm::max_element(alignments.get());
+
+  SmallVector<MemoryBlock, 64> memoryBlocks;
+  memoryBlocks.reserve(inputs.size());
+
+  size_t poolSize = 0;
+  size_t numReused = 0;
+  for (size_t i = 0; i < numAllocs; ++i) {
+    size_t bestSize = std::numeric_limits<size_t>::max();
+    size_t allocSize = inputs[i].get<size_t>();
+
+    // Try to find the smallest memory block we can reuse
+    MemoryBlock *bestBlock = nullptr;
+    for (auto &block : memoryBlocks) {
+      if (canReuse(i, block) && allocSize <= block.size) {
+        if (block.size < bestSize) {
+          bestSize = block.size;
+          bestBlock = &block;
+        }
+      }
+    }
+
+    if (bestBlock) {
+      // We found a memory block to reuse. Align the offset to this allocation's
+      // alignment and emplace the output
+      results[i].copy().emplace<size_t>(bestBlock->offset);
+
+      numReused++;
+
+      // Update lifetime of memory block
+      bestBlock->minPre = std::min(bestBlock->minPre, minPre[i]);
+      bestBlock->maxPre = std::max(bestBlock->maxPre, maxPre[i]);
+      bestBlock->minPost = std::min(bestBlock->minPost, minPost[i]);
+      bestBlock->maxPost = std::max(bestBlock->maxPost, maxPost[i]);
+    } else {
+      // If we couldn't find a block to reuse, increment the poolSize and create
+      // a new memory block
+      size_t newOffset = llvm::alignTo(poolSize, maxAlignment);
+      results[i].copy().emplace<size_t>(newOffset);
+
+      poolSize = newOffset + allocSize;
+
+      memoryBlocks.push_back(
+          {newOffset, allocSize, minPre[i], maxPre[i], minPost[i], maxPost[i]});
+    }
+  }
+
+  // Emplace highWaterMark
+  std::move(highWaterMark).emplace(poolSize);
+
+  LLVM_DEBUG({
+    size_t totalAllocSize = 0;
+    for (const auto &input : inputs) {
+      size_t size = input.get<size_t>();
+      totalAllocSize += size;
+    }
+
+    // Calculate statistics
+    size_t memorySaved = totalAllocSize - poolSize;
+    double reusePercentage = (static_cast<double>(numReused) / numAllocs) * 100;
+    double savingsPercentage =
+        (static_cast<double>(memorySaved) / totalAllocSize) * 100;
+
+    // Print statistics
+    llvm::dbgs() << "mgp.buffer.plan stats:\n";
+    llvm::dbgs() << "  Total Allocations: " << numAllocs << "\n";
+    llvm::dbgs() << "  Reused Allocations: " << numReused << " ("
+                 << llvm::format("%.2f", reusePercentage) << "%)\n";
+    llvm::dbgs() << "  Total Allocation Size: " << totalAllocSize << " bytes\n";
+    llvm::dbgs() << "  Final Pool Size: " << poolSize << " bytes\n";
+    llvm::dbgs() << "  Memory Saved: " << memorySaved << " bytes ("
+                 << llvm::format("%.2f", savingsPercentage) << "%)\n";
+  });
+}
+
+//===----------------------------------------------------------------------===//
 // mgp.guard
 //===----------------------------------------------------------------------===//
 
@@ -523,6 +643,7 @@ static void mgp_nop(RemainingArguments operands, Result<Chain> outChain) {
 //===----------------------------------------------------------------------===//
 
 void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
+  ADD_PRIMITIVE(registry, "mgp.buffer.plan", mgp_buffer_plan);
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
   ADD_PRIMITIVE(registry, "mgp.state_slot.create", mgp_state_slot_create);
   ADD_PRIMITIVE(registry, "mgp.tensor_spec.dims.dynamic",
