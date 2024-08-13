@@ -411,12 +411,11 @@ def ElideRedundantMutableOps :
   let summary = "Eliminates redundant mo.mutable.store and mo.mutable.load ops.";
   let description = [{
     This pass contains patterns meant to eliminate mo.mutable.store and
-    mo.mutable.load ops under appropriate conditions they are:
+    mo.mutable.load ops under appropriate conditions.
 
     For mo.mutable.load ops:
-      Erase the load when it is immediately preceded by a store operating on
-      the same buffer and the load is the sole consumer of the store's output
-      chain.
+      Erase the load when it is preceded by a store operating on the same
+      buffer and consumes the store's output chain.
 
       e.g.
 
@@ -439,9 +438,7 @@ def ElideRedundantMutableOps :
 
     For mo.mutable.store ops:
       Erase a store when it is followed by another store operating on the same
-      buffer and the first store's output chain is solely consumed by the second
-      store.
-
+      buffer and the first store's output chain
 
       e.g.
 

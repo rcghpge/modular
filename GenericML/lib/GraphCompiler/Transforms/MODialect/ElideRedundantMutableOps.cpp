@@ -40,10 +40,6 @@ struct EliminateRedundantLoads
 
     auto inChain = loadOp.getInChain();
 
-    if (!inChain.hasOneUse())
-      return rewriter.notifyMatchFailure(loc,
-                                         "input chain has more than one use");
-
     auto storeOp = dyn_cast_if_present<MutableStoreOp>(inChain.getDefiningOp());
 
     if (!storeOp)
@@ -76,9 +72,8 @@ struct EliminateRedundantStores
 
     auto outChain = currStoreOp.getOutChain();
 
-    if (!outChain.hasOneUse())
-      return rewriter.notifyMatchFailure(loc,
-                                         "output chain has more than one use");
+    if (outChain.use_empty())
+      return rewriter.notifyMatchFailure(loc, "no proceeding store op");
 
     auto nextStoreOp = dyn_cast<MutableStoreOp>(*outChain.user_begin());
 
