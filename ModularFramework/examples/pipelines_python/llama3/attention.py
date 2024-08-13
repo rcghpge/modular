@@ -138,6 +138,10 @@ class Attention:
         xq = self.rope(xq, start_pos, seq_len)
         xk = self.rope(xk, start_pos, seq_len)
 
-        output = self.attention(xq, xk, xv, k_cache, v_cache)
+        output = (
+            self.attention(xq, xk, xv, k_cache, v_cache)
+            .transpose(1, 2)
+            .reshape([batch, seq_len, -1])
+        )
 
-        return output
+        return self.wo(output), xk, xv
