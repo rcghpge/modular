@@ -8,11 +8,8 @@
 # RUN: grep mo.graph $(dirname %t)/temp.mo.mlir
 # RUN: grep mgp.model $(dirname %t)/temp.mgp.mlir
 
-from pathlib.path import Path
-from testing import *
-
-from max.graph import Type, Graph, TensorType, Symbol
-from max._driver import cpu_device, Tensor
+from max.graph import Type, Graph, TensorType
+from max.engine import InferenceSession
 
 
 fn test_identity_graph() raises:
@@ -22,8 +19,8 @@ fn test_identity_graph() raises:
     )
     g.output(g[0])
 
-    var cpu = cpu_device()
-    cpu.compile(g)
+    var session = InferenceSession()
+    _ = session.load(g)
 
 
 fn main() raises:
