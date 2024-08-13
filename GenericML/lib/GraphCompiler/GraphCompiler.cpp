@@ -155,6 +155,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.useShapeInference)
     buildShapeInferencePipeline(pm, shapeInferenceOpts, opts);
 
+  // TODO(GRA-886): Remove dependency of constant folding for symbolic
+  // optimization
   if (opts.constantFold)
     pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
 
@@ -163,15 +165,19 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   symbolicOptimizationOpts.symbolicFfastMath = opts.symbolicFfastMath;
   symbolicOptimizationOpts.symbolicNoUndefinedMath =
       opts.symbolicNoUndefinedMath;
+
+  // Add fallback shape functions for any remaining unhandled ops.
   pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
-  // Add fallback shape functions for any remaining unhandled ops.
   pm.addPass(MO::createAddFallbackShapeFunctions({opts.kernelLibraryPaths}));
   pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
+
+  if (opts.constantFold)
+    pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
 
   MO::AddDevicesPassOptions addDevicesOpts;
   addDevicesOpts.enableExtraDevices = opts.enableExtraDevices;
