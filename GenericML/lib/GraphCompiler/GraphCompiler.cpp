@@ -85,8 +85,8 @@ void M::MO::registerPasses() {
   MOGG::registerPasses();
 
   MOQ::registerFixupMOQOpDTypesPass();
-  MOQ::registerLegalizeMOQOpsToMOPass();
-  MOQ::registerLowerQDQOperatorsToMOPass();
+  MOQ::registerLegalizeMOQOpsToRMOPass();
+  MOQ::registerLowerQDQOperatorsToMOQPass();
   MOQ::registerSimplifyQDQPatternsPass();
 
   RMO::registerLegalizeRMOOpsPass();
@@ -115,6 +115,15 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   pm.addPass(MO::createNameInputDimsPass({opts.dimNames}));
 
+  // MOQ pipeline:
+  // TODO: rename createLegalizeMOQOpsToMO to createLegalizeMOQOpsToRMO
+  if (opts.lowerQDQOperators) {
+    pm.addPass(MOQ::createLowerQDQOperatorsToMOQ());
+    pm.addPass(MOQ::createFixupMOQOpDTypes());
+    pm.addPass(MOQ::createSimplifyQDQPatterns());
+  }
+  pm.addPass(MOQ::createLegalizeMOQOpsToRMO());
+
   // RMO pipeline:
   ResolveUnknownParametersOptions resolveUnknownParametersOpts;
   resolveUnknownParametersOpts.resolveRMOOnly = true;
@@ -124,13 +133,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   // MO pipeline:
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
-
-  if (opts.lowerQDQOperators) {
-    pm.addPass(MOQ::createLowerQDQOperatorsToMO());
-    pm.addPass(MOQ::createFixupMOQOpDTypes());
-    pm.addPass(MOQ::createSimplifyQDQPatterns());
-  }
-  pm.addPass(MOQ::createLegalizeMOQOpsToMO());
 
   if (opts.genVizSpec)
     pm.addPass(MO::createGenVizSpec({opts.vizOutputPath}));

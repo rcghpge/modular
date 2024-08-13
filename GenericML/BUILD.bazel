@@ -1415,8 +1415,8 @@ modular_cc_library(
     srcs = glob(["lib/GraphCompiler/MOQDialect/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/MOQDialect/*.h"]),
     deps = [
-        ":MODialect",
         ":MOQDialectIncGen",
+        ":RMODialect",
     ],
 )
 
