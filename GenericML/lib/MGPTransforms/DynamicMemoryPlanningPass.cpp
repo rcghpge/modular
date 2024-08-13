@@ -37,21 +37,35 @@ struct AllocInfo {
 // arithmetic and tensor_spec ops) from a block argument. This is used to
 // determine if a given value representing the size of an allocation is
 // data-dependent
-bool isTriviallyComputable(Value v) {
-  if (Operation *producer = v.getDefiningOp()) {
-    bool trivialOp =
-        isa<MIP::MIPDialect>(*producer->getDialect()) ||
-        isa<TensorExtractTensorSpecOp, CpuTensorSpecSizeOp,
-            CpuTensorSpecCreateOp, CpuTensorSpecDimsDynamicOp>(*producer);
+bool isTriviallyComputable(Value v, DenseSet<Value> &trivial) {
+  Operation *producer = v.getDefiningOp();
 
-    return trivialOp &&
-           llvm::all_of(producer->getOperands(), [&](Value operand) {
-             return isTriviallyComputable(operand);
-           });
-  } else {
-    // block argument is trivial
+  // Block argument is trivial
+  if (!producer)
     return true;
-  }
+
+  // If we already know this is trivial, continue
+  if (trivial.contains(v))
+    return true;
+
+  // If the producing op isn't trivial, this isn't a trivial value
+  bool isTrivialOp =
+      isa<MIP::MIPDialect>(*producer->getDialect()) ||
+      isa<TensorExtractTensorSpecOp, CpuTensorSpecSizeOp, CpuTensorSpecCreateOp,
+          CpuTensorSpecDimsDynamicOp, BufferAllocDynamicOp>(*producer);
+  if (!isTrivialOp)
+    return false;
+
+  // If all operands of the defining op aren't trivial, this isn't a trivial
+  // value
+  if (!llvm::all_of(producer->getOperands(), [&](Value operand) {
+        return isTriviallyComputable(operand, trivial);
+      }))
+    return false;
+
+  trivial.insert(v);
+
+  return true;
 }
 
 class DynamicMemoryPlanningPass
@@ -74,8 +88,14 @@ class DynamicMemoryPlanningPass
 
     DenseMap<DeviceRefAttr, SmallVector<AllocInfo>> deviceToAllocs;
 
+    DenseSet<Value> trivialVals;
+
     for (auto allocOp :
          execState.execute->getOps<MGP::BufferAllocDynamicOp>()) {
+      // Ignore CPU allocations for now. Will be addressed by GRA-557
+      if (allocOp.getDevice().getLabel() == "cpu")
+        continue;
+
       auto allocUses = getAllocUses(allocOp);
 
       // Skip any allocations that have no uses or have untraceable aliases
@@ -83,7 +103,7 @@ class DynamicMemoryPlanningPass
         continue;
 
       // Ignore data-dependent allocations
-      if (!isTriviallyComputable(allocOp.getRuntimeSize()))
+      if (!isTriviallyComputable(allocOp.getRuntimeSize(), trivialVals))
         continue;
 
       uint64_t maxPre = std::numeric_limits<uint64_t>::min();
@@ -120,10 +140,6 @@ class DynamicMemoryPlanningPass
 
     for (auto &[device, allocs] : deviceToAllocs) {
       if (allocs.size() <= 1)
-        continue;
-
-      // Ignore CPU allocations for now. Will be addressed by GRA-557
-      if (device.getLabel() == "cpu")
         continue;
 
       // Sort allocs by postorder
