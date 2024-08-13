@@ -96,7 +96,7 @@ struct Replit[T: LoadableModel, dtype: DType, kv_params: KVCacheStaticParams]:
             attention = KVCacheOptimizedAttention[dtype, kv_params](
                 n_heads=self.hyperparams.n_heads,
                 dim=self.hyperparams.d_model,
-                wqkv=weight("attn_qkv", layer).swapaxes(0, 1),
+                wqkv=weight("attn_qkv", layer),
                 wo=Linear(weight("attn_output", layer).swapaxes(0, 1)),
             )
 
