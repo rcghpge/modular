@@ -50,7 +50,7 @@ else()
 endif()
 add_custom_target(max-pybind-ext ${ext_all} DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/max_engine_installed)
 
-add_dependencies(max-pybind-ext max-engine)
+add_dependencies(max-pybind-ext max-engine max-driver-pybind-ext)
 add_subdirectory(bindings/max/_engine)
 
 # Needs to be added after cmake knows about `core` defined in

@@ -469,7 +469,7 @@ TEST(RandomInputDataGenerator, fromDistribution) {
             lastFillCallNumElements = numElements;
           }));
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr =
+  ErrorOr<BenchmarkCLI::Tensor> tensorOr =
       gen->generate(/*queryIndex=*/0, TensorShape({1, 2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
   EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
@@ -486,7 +486,7 @@ TEST(RandomInputDataGenerator, basic) {
   auto gen = createRandomInputDataGenerator(DType::f32, spec, errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr =
+  ErrorOr<BenchmarkCLI::Tensor> tensorOr =
       gen->generate(/*queryIndex=*/0, TensorShape({1, 2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
   EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
@@ -500,7 +500,7 @@ TEST(RandomInputDataGenerator, noShape) {
   auto gen = createRandomInputDataGenerator(DType::f32, spec, errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr =
+  ErrorOr<BenchmarkCLI::Tensor> tensorOr =
       gen->generate(/*queryIndex=*/0, TensorShape(kDynamicallyRanked));
   ASSERT_TRUE(tensorOr.isError());
   // TODO: Ideally we would be able to detect this at generator creation time,
@@ -547,7 +547,7 @@ TYPED_TEST(ConstantInputDataGeneratorInteger, basic) {
   auto gen = createConstantInputDataGenerator(dtype, "123", errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr =
+  ErrorOr<BenchmarkCLI::Tensor> tensorOr =
       gen->generate(/*queryIndex=*/0, TensorShape({1, 2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
   EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
@@ -564,7 +564,7 @@ TYPED_TEST(ConstantInputDataGeneratorNativeFloat, basic) {
   auto gen = createConstantInputDataGenerator(dtype, "-1.23", errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr =
+  ErrorOr<BenchmarkCLI::Tensor> tensorOr =
       gen->generate(/*queryIndex=*/0, TensorShape({1, 2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
   EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
@@ -598,7 +598,7 @@ TEST(ConstantInputDataGeneratorOther, float16) {
       createConstantInputDataGenerator(DType::f16, "-1.23", errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr =
+  ErrorOr<BenchmarkCLI::Tensor> tensorOr =
       gen->generate(/*queryIndex=*/0, TensorShape({1, 2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
   EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
@@ -616,7 +616,7 @@ TEST(ConstantInputDataGeneratorOther, boolean) {
       createConstantInputDataGenerator(DType::kBool, "true", errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr =
+  ErrorOr<BenchmarkCLI::Tensor> tensorOr =
       gen->generate(/*queryIndex=*/0, TensorShape({1, 2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
   EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
@@ -644,10 +644,10 @@ TEST(FileInputDataGenerator, basic) {
   auto gen = createFileInputDataGenerator(std::nullopt, spec, errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr =
+  ErrorOr<BenchmarkCLI::Tensor> tensorOr =
       gen->generate(/*queryIndex=*/0, TensorShape(kDynamicallyRanked));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
-  Tensor tensor = tensorOr.takeValue();
+  BenchmarkCLI::Tensor tensor = tensorOr.takeValue();
   EXPECT_EQ(TensorSpec({2, 3}, DType::si64), tensor.getSpec());
   auto data = static_cast<const int64_t *>(tensor.getBuffer());
   EXPECT_EQ(0, data[0]);
@@ -665,7 +665,7 @@ TEST(FileInputDataGenerator, specifiedShape) {
   auto gen = createFileInputDataGenerator(std::nullopt, spec, errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr =
+  ErrorOr<BenchmarkCLI::Tensor> tensorOr =
       gen->generate(/*queryIndex=*/0, TensorShape({2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
   tensorOr = gen->generate(
@@ -687,7 +687,7 @@ TEST(FileInputDataGenerator, multiQuery) {
   ASSERT_NE(nullptr, gen);
   EXPECT_EQ(3, gen->getNumQueries());
   for (size_t i = 0; i < 3; ++i) {
-    ErrorOr<Tensor> tensorOr =
+    ErrorOr<BenchmarkCLI::Tensor> tensorOr =
         gen->generate(/*queryIndex=*/i, TensorShape({3}));
     ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
     EXPECT_EQ(TensorSpec({3}, DType::si64), tensorOr->getSpec());
@@ -718,7 +718,7 @@ TEST(FileInputDataGenerator, shapeMismatch) {
   auto gen = createFileInputDataGenerator(std::nullopt, spec, errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  ErrorOr<Tensor> tensorOr =
+  ErrorOr<BenchmarkCLI::Tensor> tensorOr =
       gen->generate(/*queryIndex=*/0, TensorShape({5, 6}));
   ASSERT_TRUE(tensorOr.isError());
   EXPECT_STREQ("Declared shape 5x6 incompatible with file intrinsic shape 2x3: "
@@ -835,7 +835,7 @@ TEST(InputDataGenerator, constant) {
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
   EXPECT_EQ(-1, gen->getNumQueries());
-  ErrorOr<Tensor> tensorOr =
+  ErrorOr<BenchmarkCLI::Tensor> tensorOr =
       gen->generate(/*queryIndex=*/0, TensorShape({1, 2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
   EXPECT_EQ(TensorShape({1, 2, 3}), tensorOr->getShape());
@@ -866,10 +866,10 @@ TEST(InputDataGenerator, file) {
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
   EXPECT_EQ(1, gen->getNumQueries());
-  ErrorOr<Tensor> tensorOr =
+  ErrorOr<BenchmarkCLI::Tensor> tensorOr =
       gen->generate(/*queryIndex=*/0, TensorShape({2, 3}));
   ASSERT_FALSE(tensorOr.isError()) << tensorOr.getError();
-  Tensor tensor = tensorOr.takeValue();
+  BenchmarkCLI::Tensor tensor = tensorOr.takeValue();
   EXPECT_EQ(TensorSpec({2, 3}, DType::si64), tensor.getSpec());
   auto data = static_cast<const int64_t *>(tensor.getBuffer());
   EXPECT_EQ(0, data[0]);

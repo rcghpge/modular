@@ -360,7 +360,7 @@ private:
 
 ssize_t BCD::RandomInputDataGenerator::getNumQueries() const { return -1; }
 
-ErrorOr<Tensor>
+ErrorOr<BenchmarkCLI::Tensor>
 BCD::RandomInputDataGenerator::generate(size_t queryIndex,
                                         const TensorShape &shape) const {
   // TODO: Use query index.
@@ -409,7 +409,7 @@ private:
 } // namespace M::BenchmarkCLI::Detail
 
 template <typename T>
-ErrorOr<Tensor>
+ErrorOr<BenchmarkCLI::Tensor>
 BCD::ConstantInputDataGenerator<T>::generate(size_t queryIndex,
                                              const TensorShape &shape) const {
   (void)queryIndex; // Constants do not change based on query index.
@@ -490,7 +490,7 @@ ssize_t BCD::FileInputDataGenerator::getNumQueries() const {
   return wholeTensor->getSpec()[0];
 }
 
-ErrorOr<Tensor>
+ErrorOr<BenchmarkCLI::Tensor>
 BCD::FileInputDataGenerator::generate(size_t queryIndex,
                                       const TensorShape &shape) const {
   TensorShape actualShape(wholeTensor->getSpec().begin() + 1,

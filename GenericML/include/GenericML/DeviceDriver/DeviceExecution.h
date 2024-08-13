@@ -23,6 +23,12 @@ extern "C" struct DriverMojoValue {
   M::MojoValue::DestructorFn destructor;
 };
 
+// Construct a DeviceMemory block to hold the provided tensor.
+MODULAR_VISIBILITY_EXPORT
+Driver::DeviceMemory *constructDeviceMemoryFromTensor(M::ContextRef context,
+                                                      Driver::Device *device,
+                                                      M::Tensor tensor);
+
 // Fill output. These are defined and passed as a callback by mojo.
 void addTensorToOutputList(void *mojoExecutableGraph, void *outputList,
                            DeviceMemory *memory, TensorSpec *spec);
@@ -50,6 +56,12 @@ GraphExecutionResultsTy
 processResults(llvm::MutableArrayRef<AnyAsyncValueRef> results,
                ExecutableModel *model, ContextRef maxContext,
                RCRef<Device> device);
+
+// Processes results and convert them into tensors.
+MODULAR_VISIBILITY_EXPORT SmallVector<M::Tensor>
+processTensorResults(llvm::MutableArrayRef<AnyAsyncValueRef> results,
+                     ExecutableModel *model, ContextRef maxContext,
+                     RCRef<Device> device);
 
 // Writes results to mojo callback function
 MODULAR_VISIBILITY_EXPORT

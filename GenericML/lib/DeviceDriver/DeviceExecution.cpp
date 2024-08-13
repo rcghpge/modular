@@ -34,9 +34,9 @@ static M::Tensor getTensorFromDeviceMemory(AsyncRT::Runtime &runtime,
                 TensorSpec{std::move(spec)});
 }
 
-static Driver::DeviceMemory *getDeviceMemoryFromTensor(M::ContextRef context,
-                                                       Driver::Device *device,
-                                                       M::Tensor tensor) {
+// Constrcuts on-device memory to hold a provided tensor.
+Driver::DeviceMemory *M::Driver::constructDeviceMemoryFromTensor(
+    M::ContextRef context, Driver::Device *device, M::Tensor tensor) {
 
   // Take ownership of underlying tensor storage.
   TensorBufferRef bufferRef = tensor.releaseBufferRef();
@@ -136,8 +136,35 @@ M::Driver::processResults(llvm::MutableArrayRef<AnyAsyncValueRef> results,
     }
   }
 
-  // Return back the output count. This is mostly useful of verification on
-  // mojo side.
+  return outputs;
+}
+
+SmallVector<M::Tensor>
+M::Driver::processTensorResults(llvm::MutableArrayRef<AnyAsyncValueRef> results,
+                                ExecutableModel *model, ContextRef maxContext,
+                                RCRef<Device> device) {
+  // First result is a chain.
+  results = results.drop_front();
+  llvm::SmallVector<AnyAsyncValueRef> outputRefs;
+  outputRefs.reserve(results.size());
+  for (AnyAsyncValueRef &result : results) {
+    // Convert only outputs that are of tensor types.
+    if (result.isType<Tensor>()) {
+      // Each framework has their own way to convert to tensor. So call this
+      // function to get the generic form.
+      outputRefs.push_back(model->convertToGenericTensor(std::move(result)));
+    }
+  }
+  AsyncRT::await(outputRefs);
+
+  SmallVector<Tensor> outputs;
+
+  for (AnyAsyncValueRef &outputRef : outputRefs) {
+    if (outputRef.isType<Tensor>()) {
+      outputs.push_back(std::move(outputRef.get<Tensor>()));
+    }
+  }
+
   return outputs;
 }
 
@@ -152,8 +179,9 @@ void M::Driver::passResultsToMojo(
       // Convert tensor back to device memory and call the callback we got from
       // mojo. Here we take ownership of output.
       Driver::DeviceMemory *outputMemory =
-          getDeviceMemoryFromTensor(std::move(maxContext), device.getPointer(),
-                                    std::move(std::get<M::Tensor>(output)));
+          M::Driver::constructDeviceMemoryFromTensor(
+              std::move(maxContext), device.getPointer(),
+              std::move(std::get<M::Tensor>(output)));
       auto spec = outputMemory->getSpec();
       addTensorToOutputListFn(mojoContext, outputList, outputMemory, &spec);
     } else {

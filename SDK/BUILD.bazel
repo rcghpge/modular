@@ -18,6 +18,7 @@ modular_pybind_library(
     local_defines = CONFIG_SECTION_LOCAL_DEFINES,
     pybind_deps = [
         "//:MLIRBindingsPythonHeaders",
+        "//SDK:DriverPython",
     ],
     deps = [
         "//GenericML:modular-framework-common",

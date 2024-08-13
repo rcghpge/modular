@@ -14,6 +14,7 @@ pybind11_add_module(max-core
 target_link_libraries(max-core
   PRIVATE
   ModularFrameworkPython
+  DriverPython
 )
 add_dependencies(max-engine max-core)
 
