@@ -1507,7 +1507,6 @@ modular_shared_library(
         ":Support",
         ":rpaths",
         "//AsyncRT:Init",
-        "//CUDASupport",
-        "//Support:Globals",
+        "//Kernels:DeviceContext",
     ],
 )
