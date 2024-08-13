@@ -4467,22 +4467,14 @@ def MO_MutableLoadOp : MO_Op<"mutable.load", [
 {
   let summary = "Take a chain and a buffer semantic tensor and returns a chain and a value semantic tensor.";
   let description = [{
-    Allows modelling of in-place operations in MO in conjunction with mo.mutable.store
+    Allows modelling of in-place operations in MO in conjunction with mo.mutable.store.
 
-    The results of this operation are only allowed to have at most one use,
-    this is to prevent forming IR like:
+    This is semantically equivalent to a copy from `inBuffer` to `outTensor`
 
-    ```mlir
-    %ch1, %tensor = mo.mutable.load(%ch0, %buffer)
+    The output chain of this operation is only allowed to have at most one use.
 
-    %result1 = mo.op ...
-    %result1 = mo.op ...
-
-    %ch2 = mo.mutable.store(%ch1, %buffer, %result1)
-    %ch3 = mo.mutable.store(%ch1, %buffer, %result2)
-    ```
-
-    Where there is a data race on `%buffer` from the two store operations.
+    If the value semantic output of this operation has more than one use the
+    operation becomes ineligibile for fusion with compute operations.
   }];
 
   let arguments = (ins MO_Chain:$inChain, MO_Buffer:$inBuffer);
@@ -4503,24 +4495,12 @@ def MO_MutableStoreOp : MO_Op<"mutable.store", [
   let description = [{
     Allows modelling of in-place operations in MO in conjunction with mo.mutable.load.
 
-    The output chain of this operation is only allowed to have at most one use,
-    this is meant to prevent forming IR like:
+    This is semantically equivalent to a copy from `inTensor` to `inBuffer`
 
-    ```mlir
-    ...
-    %ch0 = mo.mutable.store(%ch1, %buffer, %result)
+    The output chain of this operation is only allowed to have at most one use.
 
-    %ch1, %tensor1 = mo.mutable.load(%ch0, %buffer)
-    %res1 = mo.op(%tensor1, ...)
-    mo.mutable.store(%ch1, %tensor1, %res1)
-
-    %ch2, %tensor2 = mo.mutable.load(%ch0, %buffer)
-    %res2 = mo.op(%tensor2, ...)
-    mo.mutable.store(%ch2, %tensor2, %res2)
-    ```
-
-    Where there would be a potential data race after fusing the load/store
-    pairs into their repsective compute ops.
+    If the value semantic tensor input of this operation has more than one use
+    the operation becomes ineligibile for fusion with compute operations.
   }];
 
   let arguments = (ins MO_Chain:$inChain, MO_Buffer:$inBuffer, MO_Tensor:$inTensor);
@@ -4554,7 +4534,7 @@ def MO_MutableStoreSliceOp : MO_TensorOp<"mutable.store.slice"> {
     ```mlir
     ```mlir
       %buffer: !mo.buffer<[20, 20], f32>
-      %slice: !mo.tensor<[?, ?], f32>
+      %slice: !mo.tensor<[D0, D1], f32>
       %ch: !mo.chain
 
       %start: !mo.tensor<[2], si64> // [1,  -6]
@@ -4564,7 +4544,9 @@ def MO_MutableStoreSliceOp : MO_TensorOp<"mutable.store.slice"> {
       // equivalent to this in numpy: `buffer[1:-3:5, -6:-3:1] = slice`
       %ch' = mo.mutable.store.slice(%ch, %buffer, %slice, %start, %stop, %step)
     ```
-    Both consumes and produces a chain.
+
+    Both consumes and produces a chain. The output chain is allowed to have at
+    most one use.
   }];
   let arguments = (ins MO_Chain:$inChain,
                        MO_Buffer:$inBuffer,
