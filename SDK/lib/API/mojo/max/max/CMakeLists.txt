@@ -93,7 +93,6 @@ set(DRIVER_SRCS
   _driver/cuda
   _driver/device
   _driver/device_memory
-  _driver/graph
   _driver/tensor
   _driver/tensor_slice
   _driver/utils
