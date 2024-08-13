@@ -314,7 +314,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addPass(MGP::createConcatInPlacePass());
   pm.addPass(MGP::createSimpleBufferReusePass());
-  pm.addPass(MGP::createDynamicMemoryPlanningPass());
+
+  // TODO(GRA-805): Re-enable once regressions in GPT2 fixed
+  // pm.addPass(MGP::createDynamicMemoryPlanningPass());
   pm.addPass(MGP::createDeferAllocsPass());
   pm.addPass(MGP::createExecInvariantCodeMotionPass());
   pm.addPass(MGP::createVerifyModelArgumentsPass());
