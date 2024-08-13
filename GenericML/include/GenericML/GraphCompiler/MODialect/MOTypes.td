@@ -269,28 +269,23 @@ def MO_Scalar : MO_Type<"Scalar", "scalar"> {
 def MO_Buffer : MO_Type<"Buffer", "buffer"> {
   let summary = "Mutable tensor type.";
   let description = [{
-    This is a close analogue of the existing mo.tensor (note how all
-    the fields are shared with that type).
+    This is a close analogue of the existing mo.tensor type but is meant
+    to represent tensors that can be mutated.
 
     In conjunction with the operations mo.mutable.load and mo.mutable.store
-    this type can be used to represent in-place operations in the MO dialect.
+    this type can be used to model in-place operations in the MO dialect.
 
     The `shapeAttr` is one of:
-    1. `KGEN::UnknownAttr` for unparameterized shape of unknown rank, e.g., `?`.
-    2. `KGEN::ParamDeclRefAttr` for a a shape parameter, e.g., `Sh0`.
-    3. `MOSH::ShapeAttr` for a shape of known rank, e.g., `[D0, 42, ?]`.
+    1. `KGEN::ParamDeclRefAttr` for a a shape parameter, e.g., `Sh0`.
+    2. `MOSH::ShapeAttr` for a shape of known rank, e.g., `[D0, 42, D1]`.
 
     The element type is an M::DType, with `invalid` denoting an unknown type.
-    The type implements a subset of the methods in ShapedTypeInterface.
 
     Examples:
     ```mlir
     !mo.buffer<[4, 16], f32>    // static shape
     !mo.buffer<[N, N, 6], i32>  // parameterized shape
-    !mo.buffer<[?, ?], i32>     // unknown shape of known rank
-    !mo.buffer<[1, ?, N], i32>  // partially known and parameterized shape
-    !mo.buffer<?, invalid>      // unknown shape of unknown rank
-    !mo.buffer<Sh, invalid>     // shape parameter reference
+    !mo.tensor<Sh, invalid>     // shape parameter reference
     ```
   }];
 
