@@ -562,8 +562,7 @@ void MOOpLoweringState::createOutputs(
     }
   }
 
-  if (auto ch = dyn_cast<TypedValue<MEF::ChainType>>(inChain))
-    loweringState.setCurrentExecuteChain(ch);
+  loweringState.setCurrentExecuteChain(inChain);
 }
 
 BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {

@@ -53,9 +53,12 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
   auto &loweredOutputsStorage = *loweredOutputsStorageOr;
   assert(loweredOutputsStorageOr->size() == 1);
 
+  Value executeChain =
+      opLoweringState.getGuardChain(loweringState.getExecuteChain());
+
   Value outChain = opLoweringState.bufferConcat(
-      loweringState.getExecuteChain(), loweredOutputsStorage[0].buffer,
-      loweredOperands, getResult().getType());
+      executeChain, loweredOutputsStorage[0].buffer, loweredOperands,
+      getResult().getType());
 
   // Create the output tensors, but only once the op has completed.
   opLoweringState.createOutputs(outChain, loweredOutputsStorage);

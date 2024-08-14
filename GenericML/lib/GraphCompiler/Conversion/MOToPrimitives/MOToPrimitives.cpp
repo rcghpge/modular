@@ -1119,11 +1119,21 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   if (failed(lower_block(ifOp.getElseRegion(), outputIf.getElseRegion())))
     return failure();
 
+  Value outChain = outputIf.getResult(0);
+
   // Set the outputs
-  loweringState.setCurrentExecuteChain(outputIf.getResult(0));
+  loweringState.setCurrentExecuteChain(outChain);
+
   for (auto [origResult, loweredResult] :
-       llvm::zip(ifOp.getResults(), llvm::drop_begin(outputIf.getResults())))
-    loweringState.emplaceExecuteLoweredValue(origResult, loweredResult);
+       llvm::zip(ifOp.getResults(), llvm::drop_begin(outputIf.getResults()))) {
+
+    if (isa<MGP::DeviceTensorType>(loweredResult.getType())) {
+      loweringState.emplaceExecuteLoweredBufferValue(origResult, loweredResult,
+                                                     outChain);
+    } else {
+      loweringState.emplaceExecuteLoweredValue(origResult, loweredResult);
+    }
+  }
 
   // Since we moved the insertion points for the then/else, reset to the main
   // block.
@@ -1258,11 +1268,22 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
 
   // Capture the lowered outputs.
   assert(loweredWhileOp.getNumResults() == 1 + whileOp.getNumResults());
-  loweringState.setCurrentExecuteChain(loweredWhileOp.getResult(0));
+
+  Value outChain = loweredWhileOp.getResult(0);
+
+  loweringState.setCurrentExecuteChain(outChain);
   loweringState.setRootExecuteChain(rootChain);
-  for (auto [origResult, loweredResult] : llvm::zip(
-           whileOp.getResults(), llvm::drop_begin(loweredWhileOp.getResults())))
-    loweringState.emplaceExecuteLoweredValue(origResult, loweredResult);
+
+  for (auto [origResult, loweredResult] :
+       llvm::zip(whileOp.getResults(),
+                 llvm::drop_begin(loweredWhileOp.getResults()))) {
+    if (isa<MGP::DeviceTensorType>(loweredResult.getType())) {
+      loweringState.emplaceExecuteLoweredBufferValue(origResult, loweredResult,
+                                                     outChain);
+    } else {
+      loweringState.emplaceExecuteLoweredValue(origResult, loweredResult);
+    }
+  }
 
   // Since we moved the insertion points for the 'cond' and 'body' blocks,
   // reset back to the main block
