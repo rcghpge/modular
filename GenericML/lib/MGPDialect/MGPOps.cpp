@@ -1017,7 +1017,7 @@ static FunctionType implicitInitSignature(Builder &builder,
                                           ArrayRef<DeviceRef> devices) {
   SmallVector<Type> outputs = {builder.getType<MEF::ChainType>(),
                                builder.getType<MGP::ContextType>()};
-  for (auto device : devices)
+  for (const DeviceRef &device : devices)
     outputs.push_back(OpaqueType::get(
         builder.getContext(),
         StringAttr::get(builder.getContext(),
@@ -1032,7 +1032,7 @@ static FunctionType implicitExecuteSignature(Builder &builder,
                                              ArrayRef<DeviceRef> devices) {
   SmallVector<Type> inputs = {builder.getType<MEF::ChainType>(),
                               builder.getType<MGP::ContextType>()};
-  for (auto device : devices)
+  for (const DeviceRef &device : devices)
     inputs.push_back(OpaqueType::get(
         builder.getContext(),
         StringAttr::get(builder.getContext(),
@@ -1156,10 +1156,11 @@ void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
   DictionaryAttr extraAttrsDict =
       extraAttrs.empty() ? nullptr
                          : DictionaryAttr::get(state.getContext(), extraAttrs);
-  auto deviceAttrs = llvm::map_to_vector(devices, [&state](DeviceRef ref) {
-    return dyn_cast<Attribute>(
-        DeviceRefAttr::get(state.getContext(), ref.label, ref.id));
-  });
+  auto deviceAttrs =
+      llvm::map_to_vector(devices, [&state](const DeviceRef &ref) {
+        return dyn_cast<Attribute>(
+            DeviceRefAttr::get(state.getContext(), ref.label, ref.id));
+      });
   build(builder, state, ArrayAttr::get(state.getContext(), deviceAttrs),
         StringAttr::get(state.getContext(), frameworkName),
         TypeAttr::get(builder.getFunctionType(inputTypes, outputTypes)), name,
@@ -1168,7 +1169,7 @@ void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
   assert(implicitInitSignature(builder, devices).getInputs().empty());
   Region *initRegion = state.regions[0].get();
   initRegion->emplaceBlock();
-  for (auto dev : devices) {
+  for (const DeviceRef &dev : devices) {
     initRegion->addArgument(
         OpaqueType::get(
             builder.getContext(),

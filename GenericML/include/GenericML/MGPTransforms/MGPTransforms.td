@@ -263,7 +263,7 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
     the `!mgp.context` to forward the results, subject to heuristics to:
       - avoid moving 'trivial' code, where the cost of caching and retrieving
         the result outweighs the cost of the computation itself;
-      - avoid moving code who's result is awkward to forward within the
+      - avoid moving code whose result is awkward to forward within the
         `!mgp.context`.
       - avoid caching results which are now only needed within the 'init' block.
 
@@ -368,7 +368,7 @@ def AddDeviceContextProfilingPass : Pass<"device-context-profiling", "MGP::Model
   let summary = "If enabled, enable profiling using the Device Context";
   let description = [{
     This pass is intended as a stop-gap to allow device-context profiling to be controlled explicitly in the IR. This allows
-    the pathways which won't use the max-driver to be able to dump statistics from the deviceContext. 
+    the pathways which won't use the max-driver to be able to dump statistics from the deviceContext.
   }];
   let options = [
     Option<"enabled", "enabled", "bool", "false",
@@ -385,8 +385,8 @@ def AddDeviceContextProfilingPass : Pass<"device-context-profiling", "MGP::Model
 def AwaitOutputsPass : Pass<"await-outputs", "MGP::ModelOp"> {
   let summary = "Ensures any device specific outputs are waiting upon";
   let description = [{
-    This pass is intended as a stop-gap to make sure all device specific outputs are waited upon to ensure they are done computation. 
-    Since there is a distinction between device and driver and the device-context, we need to temporarily insert an explicit sync. 
+    This pass is intended as a stop-gap to make sure all device specific outputs are waited upon to ensure they are done computation.
+    Since there is a distinction between device and driver and the device-context, we need to temporarily insert an explicit sync.
   }];
 }
 

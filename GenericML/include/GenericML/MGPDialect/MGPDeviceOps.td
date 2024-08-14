@@ -398,7 +398,7 @@ def BufferConstantOp : MGP_DeviceOp<"buffer.constant", [
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
 ]> {
-  let summary = "Allocates and initialized a buffer from a host attribute.";
+  let summary = "Allocates and initializes a buffer from a host attribute.";
   let description = [{
     Returns an `!mgp.buffer` on the given device initialized with the byte
     array in the given attribute (which will be loaded from the MEFFile holding
@@ -641,7 +641,7 @@ def BufferCacheOp : MGP_DeviceOp<"buffer.cache"> {
 
     If the buffer is immutable, or this op holds the only reference to the
     buffer, then it will be moved into the cache. Otherwise a deep copy of
-    the buffer will be take.
+    the buffer will be taken.
 
     Note this op accepts and returns `!mef.chain`s since the buffer cache is
     held on the host.
@@ -1749,7 +1749,7 @@ def KernelExecuteOp : MGP_DeviceOp<"kernel.execute", [
   }];
 }
 
-def MGP_SyncOp : MGP_DeviceOp<"sync", 
+def MGP_SyncOp : MGP_DeviceOp<"sync",
   [DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>]
 > {
   let summary = "Schedules a device specifc sync";

@@ -38,7 +38,7 @@ TensorBufferRef::createWithNonTrackedMemory(void *buffer, size_t size,
                                             std::optional<size_t> alignment) {
   auto profilerEntry = BufferRefLifetimeProfilerEntry::create(
       "mem.buffer.create.nontracked", (uint64_t)size);
-  return TensorBufferRef(buffer, size, /*ownedRef=*/{},
+  return TensorBufferRef(buffer, size, /*storageRef=*/{},
                          makeMaybeAlign(alignment), std::move(profilerEntry));
 }
 
