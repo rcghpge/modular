@@ -454,6 +454,18 @@ LogicalResult ConcatOp::inferReturnTypes(
   }
 
   DType inputDtype = cast<TensorType>(operands[0].getType()).getDtype();
+  for (auto [i, operand] : llvm::enumerate(operands)) {
+    DType opDtype = cast<TensorType>(operand.getType()).getDtype();
+    if (opDtype != inputDtype) {
+      std::string errorMsg;
+      llvm::raw_string_ostream os(errorMsg);
+      StreamAsmPrinter printer(os);
+      printer << "Concat does not allow for input" << i << " (dtype " << opDtype
+              << ") to have a differing dtype from input0 (dtype " << inputDtype
+              << ").";
+      return mlir::emitOptionalError(location, errorMsg);
+    }
+  }
   inferredReturnTypes.push_back(TensorType::get(resultShape, inputDtype));
 
   return success();
