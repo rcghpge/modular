@@ -1466,7 +1466,6 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
 //===----------------------------------------------------------------------===//
 
 def TensorCreateOp : MGP_DeviceOp<"tensor.create", [
-    Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<GRTMayAliasInterface>,
     DeclareOpInterfaceMethods<MGP_CreateTensorOpInterface>,
@@ -1545,7 +1544,6 @@ def TensorExtractBufferOp : MGP_DeviceOp<"tensor.extract.buffer", [
     $theContext `[` $aRuntimeSlot `]` `,` $tensor attr-dict
     `:` custom<TensorTypeToDeviceBuffer>(type($tensor), $bDevice, type($outBuffer))
   }];
-  let hasFolder = 1;
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
@@ -1591,7 +1589,6 @@ def TensorExtractTensorSpecOp : MGP_DeviceOp<"tensor.extract.tensor_spec", [
           ref($cIsShapeOnly), type($tensor), $bDevice, type($outSpec))
   }];
   let hasVerifier = 1;
-  let hasFolder = 1;
 
   let extraClassDefinition = [{
     uint64_t TensorExtractTensorSpecOp::getSlot() { return getARuntimeSlot(); }

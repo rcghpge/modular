@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --allow-unregistered-dialect --cse --canonicalize --split-input-file | FileCheck %s
+// RUN: mo-opt %s --allow-unregistered-dialect --cse --split-input-file | FileCheck %s
 
 // Original graph
 // mo.graph @oneOp() -> (!mo.tensor<[8], f32>) {
@@ -51,7 +51,7 @@ module {
 
 // Check that we remove all but one of the spec creates.
 
-// CHECK-LABEL: mgp.model @basicMoGraph
+// CHECK: mgp.model @basicMoGraph
 // CHECK: mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
 // CHECK-NOT: mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
 
@@ -70,23 +70,6 @@ mgp.model @tensor_spec_size : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: 
   mef.output %ch1, %inTensor : !mef.chain, !mgp.tensor<1234x5678xf32>
 }
 
-// CHECK-LABEL: mgp.model @tensor_spec_size
+// CHECK: mgp.model @tensor_spec_size
 // CHECK: mgp.tensor_spec.size %{{.*}} : !mgp.tensor_spec<1234x5678xf32>
 // CHECK-NOT: mgp.tensor_spec.size %{{.*}} : !mgp.tensor_spec<1234x5678xf32>
-
-// -----
-
-mgp.model @tensor_extract_fold : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
-  %0 = grt.chain.create ()
-  %1 = mgp.context.create 0
-  mef.output %0, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %in_spec: !mgp.tensor_spec<si32>, %in_buf: !mgp.buffer<4>) -> (!mef.chain, !mgp.buffer<4>, !mgp.tensor_spec<si32>) {
-  %0 = mgp.tensor.create %arg0, %arg1[1], %in_buf, %in_spec  : !mgp.tensor<si32>
-  %buf = mgp.tensor.extract.buffer %arg1[1], %0 : !mgp.tensor<si32>
-  %spec = mgp.tensor.extract.tensor_spec %arg1[1], %0 : !mgp.tensor<si32>
-  mef.output %arg0, %buf, %spec : !mef.chain, !mgp.buffer<4>, !mgp.tensor_spec<si32>
-}
-
-// CHECK-LABEL: mgp.model @tensor_extract_fold
-// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain,{{.*}}%[[SPEC:.*]]: !mgp.tensor_spec<si32>, %[[BUF:.*]]: !mgp.buffer<4>) ->
-// CHECK-NEXT: mef.output %[[CHAIN]], %[[BUF]], %[[SPEC]] :

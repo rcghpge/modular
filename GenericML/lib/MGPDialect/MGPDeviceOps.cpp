@@ -1004,14 +1004,6 @@ bool TensorExtractBufferOp::mayAlias(size_t operandIndex, size_t resultIndex) {
   return operandIndex == getTensorMutable().getOperandNumber();
 }
 
-OpFoldResult TensorExtractBufferOp::fold(FoldAdaptor adaptor) {
-  Operation *tensorProducer = getTensor().getDefiningOp();
-  if (auto create = dyn_cast_or_null<TensorCreateOp>(tensorProducer))
-    return create.getBuffer();
-
-  return {};
-}
-
 //===----------------------------------------------------------------------===//
 // TensorExtractTensorSpecOp
 //===----------------------------------------------------------------------===//
@@ -1047,13 +1039,6 @@ LogicalResult TensorExtractTensorSpecOp::inferReturnTypes(
     return failure();
   inferredReturnTypes.emplace_back(tensorType.getTensorSpec(isShapeOnly));
   return success();
-}
-
-OpFoldResult TensorExtractTensorSpecOp::fold(FoldAdaptor adaptor) {
-  Operation *tensorProducer = getTensor().getDefiningOp();
-  if (auto create = dyn_cast_or_null<TensorCreateOp>(tensorProducer))
-    return create.getTensorSpec();
-  return {};
 }
 
 //===----------------------------------------------------------------------===//
