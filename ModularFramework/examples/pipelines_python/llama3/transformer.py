@@ -33,6 +33,8 @@ class TransformerBlock:
         attention_out, k_cache_update, v_cache_update = self.attention(
             self.attention_norm(x), k_cache, v_cache
         )
+
         h = x + attention_out
         h = h + self.mlp(self.mlp_norm(h))
+
         return h, k_cache_update, v_cache_update

@@ -84,10 +84,28 @@ class Attention:
         v_cache = ops.squeeze(v_cache, axis=1)
 
         keys = ops.transpose(
-            ops.concat([k_cache, ops.transpose(xk, 0, 1)]), 0, 1
+            ops.concat(
+                [
+                    k_cache,
+                    ops.cast(
+                        ops.transpose(xk, 0, 1), k_cache.tensor_type.dtype
+                    ),
+                ]
+            ),
+            0,
+            1,
         )
         values = ops.transpose(
-            ops.concat([v_cache, ops.transpose(xv, 0, 1)]), 0, 1
+            ops.concat(
+                [
+                    v_cache,
+                    ops.cast(
+                        ops.transpose(xv, 0, 1), v_cache.tensor_type.dtype
+                    ),
+                ]
+            ),
+            0,
+            1,
         )
 
         keys = self.repeat_kv(keys)
