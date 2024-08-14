@@ -34,31 +34,30 @@ mojo_test(
     ],
 )
 
-# TODO(MSDK-611): Flake.
-# mojo_test(
-#     name = "test_layers",
-#     srcs = ["test_layers.mojo"],
-#     data = [
-#         "//GenericML:DeviceDriver",
-#         "//GenericML:modular-framework-common",
-#         "//KGEN:CompilerRT",
-#         "//ModularFramework/tools/mof",
-# TODO(SDLC-918): remove when landed
-#         "//Kernels/mojo/Mogg:MOGG.lib.mlirbc",
-#         "//Kernels/mojo/Mogg:MOGG_debuginfo.lib.mlirbc",
-#         "//Kernels/mojo/Mogg:MOGGPrimitives.lib.mlirbc",
-#         "//Kernels/mojo/Mogg:MOGGPrimitives_debuginfo.lib.mlirbc",
-#         "@llvm-project//compiler-rt:orc_rt",
-#     ],
-#     extra_srcs = [
-#         "//SDK/public/max-repo/examples/graph-api",
-#     ],
-#     target_compatible_with = select({
-#         "//:asan": ["@platforms//:incompatible"],
-#         "//conditions:default": [],
-#     }),
-#     deps = [
-#         "//SDK/lib/API/mojo/max/max",
-#         "//open-source/mojo/stdlib/stdlib",
-#     ],
-# )
+mojo_test(
+    name = "test_layers",
+    srcs = ["test_layers.mojo"],
+    data = [
+        "//GenericML:DeviceDriver",
+        "//GenericML:modular-framework-common",
+        "//KGEN:CompilerRT",
+        "//ModularFramework/tools/mof",
+        # TODO(SDLC-918): remove when landed
+        "//Kernels/mojo/Mogg:MOGG.lib.mlirbc",
+        "//Kernels/mojo/Mogg:MOGG_debuginfo.lib.mlirbc",
+        "//Kernels/mojo/Mogg:MOGGPrimitives.lib.mlirbc",
+        "//Kernels/mojo/Mogg:MOGGPrimitives_debuginfo.lib.mlirbc",
+        "@llvm-project//compiler-rt:orc_rt",
+    ],
+    extra_srcs = [
+        "//SDK/public/max-repo/examples/graph-api",
+    ],
+    target_compatible_with = select({
+        "//:asan": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "//SDK/lib/API/mojo/max/max",
+        "//open-source/mojo/stdlib/stdlib",
+    ],
+)
