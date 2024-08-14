@@ -12,5 +12,5 @@ add_modular_pytest(check-max-driver
   $<TARGET_FILE_DIR:mof>
 
   DEPENDS
-  max-driver-pybind-ext
+  max-pybind-ext
 )

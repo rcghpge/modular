@@ -39,6 +39,11 @@ SHARED_LIBS = [
         + glob(os.path.join("max", "engine", f"*{PY_MODULE_EXTENSION}"))
     )
 ]
+DRIVER_SHARED_LIBS = [
+    os.path.abspath(p)
+    for p in glob(os.path.join("max", "driver", f"*{PY_MODULE_EXTENSION}"))
+]
+
 EXECUTABLES = [os.path.abspath(os.path.join("max", "bin", "*"))]
 # Copy everything under `.mojo_cache` to the wheel.
 MOJO_CACHE = [os.path.abspath(os.path.join("max", ".mojo_cache", "**", "*"))]
@@ -49,8 +54,9 @@ setup(
     cmdclass={"bdist_wheel": bdist_wheel},
     name="max-engine",
     package_data={
-        "max.engine": EXECUTABLES + SHARED_LIBS + MOJO_CACHE + MODULAR_CFG
+        "max.engine": EXECUTABLES + SHARED_LIBS + MOJO_CACHE + MODULAR_CFG,
+        "max.driver": EXECUTABLES + SHARED_LIBS + MOJO_CACHE + MODULAR_CFG,
     },
-    packages=["max.engine", "max._engine"],
+    packages=["max.driver", "max._driver", "max.engine", "max._engine"],
     include_package_data=True,
 )

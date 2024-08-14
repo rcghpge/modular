@@ -1,0 +1,44 @@
+load("//bazel:api.bzl", "copy_files", "modular_pybind_extension", "modular_pybind_py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+copy_files(
+    name = "py_srcs",
+    srcs = ["//SDK/lib/EngineAPI/python/bindings/max/_driver"],
+    outs = [
+        "__init__.py",
+        "core.pyi",
+    ],
+)
+
+# max._driver C extension module.
+modular_pybind_extension(
+    name = "core",
+    srcs = [
+        "//SDK/lib/EngineAPI/python/bindings/max/_driver:core_srcs",
+    ],
+    pybind_deps = [
+        "//SDK:DriverPython",
+    ],
+    deps = [
+        "//GenericML:modular-framework-common",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_pybind_py_library(
+    name = "_driver_pybind",
+    srcs = [],
+    pybind_data = [":core"],
+)
+
+py_library(
+    name = "_driver",
+    srcs = [],
+    data = [
+        "py_srcs",
+    ],
+    deps = [
+        ":_driver_pybind",
+    ],
+)

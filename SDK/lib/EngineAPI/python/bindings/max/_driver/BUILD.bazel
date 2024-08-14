@@ -1,0 +1,15 @@
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "_driver",
+    srcs = glob([
+        "**/*.py",
+        "**/*.pyi",
+    ]),
+)
+
+# Label for all bindings sources.
+filegroup(
+    name = "core_srcs",
+    srcs = ["core.cpp"],
+)

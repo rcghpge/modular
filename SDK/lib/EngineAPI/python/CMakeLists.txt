@@ -50,8 +50,9 @@ else()
 endif()
 add_custom_target(max-pybind-ext ${ext_all} DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/max_engine_installed)
 
-add_dependencies(max-pybind-ext max-engine max-driver-pybind-ext)
+add_dependencies(max-pybind-ext max-engine max-driver)
 add_subdirectory(bindings/max/_engine)
+add_subdirectory(bindings/max/_driver)
 
 # Needs to be added after cmake knows about `core` defined in
 # bindings/max/engine.
@@ -68,6 +69,11 @@ set(max_python_package_sources
   ${CMAKE_CURRENT_SOURCE_DIR}/max/engine/__init__.py
   ${CMAKE_CURRENT_SOURCE_DIR}/max/engine/api.py
   ${CMAKE_CURRENT_SOURCE_DIR}/bindings/max/_engine/core.pyi
+  ${CMAKE_CURRENT_SOURCE_DIR}/max/driver/__init__.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/max/driver/driver.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/max/driver/dtype.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/max/driver/tensor.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/bindings/max/_driver/core.pyi
 )
 
 # Note that ${CMAKE_CURRENT_BINARY_DIR} == ${WHEEL_DIR} so the
@@ -87,6 +93,8 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/max_engine_installed
   COMMAND ${CMAKE_COMMAND} -E make_directory
     ${CMAKE_CURRENT_BINARY_DIR}/max/engine
     ${CMAKE_CURRENT_BINARY_DIR}/max/_engine
+    ${CMAKE_CURRENT_BINARY_DIR}/max/driver
+    ${CMAKE_CURRENT_BINARY_DIR}/max/_driver
   # Symlink all Python source files.
   # Track these manually because we need to copy/symlink core-cpython.so to
   # `CMAKE_CURRENT_BINARY_DIR/max/engine/`, but we don't want to put it in the
@@ -95,6 +103,14 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/max_engine_installed
   COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/max/engine/api.py ${CMAKE_CURRENT_BINARY_DIR}/max/engine/api.py
   COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/bindings/max/_engine/core.pyi ${CMAKE_CURRENT_BINARY_DIR}/max/_engine/core.pyi
   COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/bindings/max/_engine/__init__.py ${CMAKE_CURRENT_BINARY_DIR}/max/_engine/__init__.py
+
+  COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/max/driver/__init__.py ${CMAKE_CURRENT_BINARY_DIR}/max/driver/__init__.py
+  COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/max/driver/driver.py ${CMAKE_CURRENT_BINARY_DIR}/max/driver/driver.py
+  COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/max/driver/dtype.py ${CMAKE_CURRENT_BINARY_DIR}/max/driver/dtype.py
+  COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/max/driver/tensor.py ${CMAKE_CURRENT_BINARY_DIR}/max/driver/tensor.py
+  COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/bindings/max/_driver/core.pyi ${CMAKE_CURRENT_BINARY_DIR}/max/_driver/core.pyi
+  COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/bindings/max/_driver/__init__.py ${CMAKE_CURRENT_BINARY_DIR}/max/_driver/__init__.py
+
   # Copy setup.py, which is needed for editable installations.
   COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/setup.py ${CMAKE_CURRENT_BINARY_DIR}/setup.py
   # Symlink the lib directory to the same expected relative location from
@@ -102,11 +118,12 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/max_engine_installed
   COMMAND ${CMAKE_COMMAND} -E create_symlink ${MODULAR_BINARY_DIR}/lib ${CMAKE_CURRENT_BINARY_DIR}/max/lib
   # Copy the `core-cpython.so` CPython extension where the editable installation can find it.
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:max-core> ${CMAKE_CURRENT_BINARY_DIR}/max/_engine/
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:max-driver-core> ${CMAKE_CURRENT_BINARY_DIR}/max/_driver/
   COMMAND ${Python3_EXECUTABLE} -m pip install --quiet --editable ${CMAKE_CURRENT_BINARY_DIR}
   COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_BINARY_DIR}/max_engine_installed
-  DEPENDS $<TARGET_FILE:max-core> ${MODULAR_FRAMEWORK_LIBS} ${max_python_package_sources}
+  DEPENDS $<TARGET_FILE:max-core> $<TARGET_FILE:max-driver-core> ${MODULAR_FRAMEWORK_LIBS} ${max_python_package_sources}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  COMMENT "Symlinking `max.engine` Python source directory to $MODULAR_DERIVED_PATH and installing to $MODULAR_PYTHON."
+  COMMENT "Symlinking `max.engine` and `max.driver` Python source directories to $MODULAR_DERIVED_PATH and installing to $MODULAR_PYTHON."
   VERBATIM
 )
 
@@ -133,5 +150,9 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/max
 # wheel.
 install(TARGETS max-core
   DESTINATION max-engine-wheel/max/engine
+  COMPONENT ai-engine-wheel
+)
+install(TARGETS max-driver-core
+  DESTINATION max-engine-wheel/max/driver
   COMPONENT ai-engine-wheel
 )

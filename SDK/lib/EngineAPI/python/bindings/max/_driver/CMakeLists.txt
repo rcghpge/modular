@@ -35,10 +35,10 @@ set_target_properties(max-driver-core PROPERTIES
   # The bindings should always be loaded from the package directory structure.
   # At a future point we will set `BUILD_WITH_INSTALL_RPATH` to `TRUE`, but for
   # the time being set it to `FALSE` so that the path of each library that
-  # `driver_core` links to is baked into the `max-driver-core` library
+  # `core` links to is baked into the `max-driver-core` library
   # itself.
   # This is to ensure stability until we have a fully contained wheel.
-  OUTPUT_NAME "driver_core"
+  OUTPUT_NAME "core"
   BUILD_WITH_INSTALL_RPATH FALSE
   BUILD_RPATH "${relative_rpath}"
   INSTALL_RPATH "${relative_rpath}"

@@ -13,7 +13,7 @@ load("//SDK/lib/GraphAPI/python/bindings:tblgen.bzl", "tblgen_pybind")
 
 modular_pybind_library(
     name = "ModularFrameworkPython",
-    srcs = ["//SDK/lib/EngineAPI/python:cpp_srcs"],
+    srcs = ["//SDK/lib/EngineAPI/python:engine_srcs"],
     hdrs = glob(["include/SDK/EngineAPI/**/*.h"]),
     local_defines = CONFIG_SECTION_LOCAL_DEFINES,
     pybind_deps = [
@@ -139,7 +139,7 @@ pkg_files(
 
 modular_pybind_library(
     name = "DriverPython",
-    srcs = ["//SDK/lib/DriverAPI/python:cpp_srcs"],
+    srcs = ["//SDK/lib/EngineAPI/python:driver_srcs"],
     hdrs = glob(["include/SDK/DriverAPI/python/*.h"]),
     deps = [
         "//GenericML:DeviceDriver",
@@ -182,7 +182,6 @@ py_repl(
     ],
     tags = ["manual"],
     deps = [
-        "//SDK/lib/DriverAPI/python:max_driver",
         "//SDK/lib/EngineAPI/python:max_engine",
         "//SDK/lib/GraphAPI/python:max_graph",
         requirement("notebook"),
