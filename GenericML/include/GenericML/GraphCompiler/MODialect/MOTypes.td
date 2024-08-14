@@ -298,8 +298,7 @@ def MO_Buffer : MO_Type<"Buffer", "buffer"> {
   let hasCustomAssemblyFormat = 1;
 
   let extraClassDeclaration = [{
-    static BufferType toBuffer(TensorType type);
-    static TensorType fromBuffer(BufferType type);
+    static TensorType toTensorType(BufferType type);
   }];
 }
 

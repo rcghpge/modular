@@ -57,7 +57,7 @@ public:
         });
     typeConverter.addConversion(
         [this](MO::BufferType bufferType) -> std::optional<Type> {
-          auto type = MO::BufferType::fromBuffer(bufferType);
+          auto type = MO::BufferType::toTensorType(bufferType);
           return getTypeBuilder(MO::getDeviceOrDefault(this->graph, type))
               ->tensorType(this->graph.getContext(),
                            MGP::createCpuTensorSpecType(type));
