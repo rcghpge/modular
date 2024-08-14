@@ -117,9 +117,6 @@ public:
   /// Lowers mo.constant.scalar op.
   LogicalResult lowerConstantScalar(MO::ConstantScalarOp constOp);
 
-  /// Lowers mo.reshape op.
-  LogicalResult lowerReshape(MO::ReshapeOp reshapeOp);
-
   /// Lowers mo.static.reshape op.
   LogicalResult lowerStaticReshape(MO::Static::ReshapeOp reshapeOp);
 
@@ -634,6 +631,8 @@ static Value getRebindResTensor(MO::RebindOp rebindOp,
 }
 
 LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
+  MGP::MOOpLoweringState opLoweringState(loweringState, rebindOp);
+
   MO::TensorValue inputTensor = rebindOp.getInput();
   MO::TensorValue resTensor = rebindOp.getResult();
 
@@ -643,8 +642,14 @@ LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
     return rebindOp.emitOpError(
         "rebind lowering doesn't support unknown shapes");
 
+  // The input chain is propagated to also guard the users of the reshaped
+  // buffer.
+  Value inChain =
+      opLoweringState.getGuardChain(loweringState.getExecuteChain());
+
   Value loweredOutput = getRebindResTensor(rebindOp, loweringState);
-  loweringState.emplaceExecuteLoweredValue(resTensor, loweredOutput);
+  loweringState.emplaceExecuteLoweredBufferValue(resTensor, loweredOutput,
+                                                 inChain);
 
   // Establish the lowered form of the rebind's result parameters.
   // TODO: Note this may end up extracting the dynamic dimensions from the
@@ -737,28 +742,13 @@ MOGraphLowering::lowerStaticReshape(MO::Static::ReshapeOp reshapeOp) {
       opLoweringState.createTensorSpec(reshapeOp.getType());
   if (failed(tensorSpecOr))
     return failure();
-  opLoweringState.createOutputTensor(reshapeOp.getResult(),
-                                     loweringState.getExecuteChain(), buffer,
-                                     *tensorSpecOr);
-  return success();
-}
 
-LogicalResult MOGraphLowering::lowerReshape(MO::ReshapeOp reshapeOp) {
-  // Note the lowering is currently identical to Static::ReshapeOp.
-  // TODO(#12718): Validate user-annotated shape.
-  MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp);
+  // The input chain is propagated to also guard the users of the reshaped
+  // buffer.
+  Value inChain =
+      opLoweringState.getGuardChain(loweringState.getExecuteChain());
 
-  // Get the bufferized input.
-  MGP::BufferizedTensor bufferizedInput =
-      opLoweringState.getBufferizedInput(reshapeOp.getInput());
-  Value buffer = bufferizedInput.buffer;
-
-  FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
-      opLoweringState.createTensorSpec(reshapeOp.getType());
-  if (failed(tensorSpecOr))
-    return failure();
-  opLoweringState.createOutputTensor(reshapeOp.getResult(),
-                                     loweringState.getExecuteChain(), buffer,
+  opLoweringState.createOutputTensor(reshapeOp.getResult(), inChain, buffer,
                                      *tensorSpecOr);
   return success();
 }
@@ -1336,12 +1326,6 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
     if (auto constOp = dyn_cast<MO::ConstantScalarOp>(op)) {
       if (failed(lowerConstantScalar(constOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto reshapeOp = dyn_cast<MO::ReshapeOp>(op)) {
-      if (failed(lowerReshape(reshapeOp)))
         return failure();
       continue;
     }

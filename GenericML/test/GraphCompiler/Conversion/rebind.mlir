@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --add-devices --mo-to-mogg --mo-to-primitives --allow-unregistered-dialect --cse --canonicalize | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg --mo-to-primitives --allow-unregistered-dialect --cse --canonicalize | FileCheck %s
 
 // CHECK-LABEL: mgp.model @static_ranks_int_to_unknown : mof
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
@@ -49,4 +49,37 @@ mo.graph @static_ranks_unknown_to_static<D0, D1>(
 ) -> !mo.tensor<[42, 10], f32> {
   %res = mo.rebind(%arg0) : !mo.tensor<[D1, D0], f32> -> !mo.tensor<[42, 10], f32>
   mo.output %res : !mo.tensor<[42, 10], f32>
+}
+
+// CHECK-LABEL: mgp.model @multiple_rebind : mof
+// CHECK: } execute (%[[CH0:.*]]: !mef.chain,
+
+// CHECK: %[[CH1:.*]] = mogg.generic.compiled.region (%[[CH0]]
+
+// CHECK: %[[CH2:.*]] = grt.chain.create (%[[CH1]], %[[CH0]])
+
+// CHECK: %[[CH3:.*]] = mogg.generic.compiled.region (%[[CH2]]
+
+// CHECK: %[[CH4:.*]] = grt.chain.create (%[[CH3]], %[[CH0]])
+
+// CHECK: %[[CH5:.*]] = mogg.generic.compiled.region (%[[CH4]]
+
+
+mo.graph @multiple_rebind<D0, D1>(
+  %arg0: !mo.tensor<[D1, D0], f32>
+) -> !mo.tensor<[42, 10], f32> {
+
+  %0 = mo.relu (%arg0) : !mo.tensor<[D1, D0], f32>
+
+  %1 = mo.rebind(%0) : !mo.tensor<[D1, D0], f32> -> !mo.tensor<[42, 10], f32>
+
+  %2 = mo.relu (%1) : !mo.tensor<[42, 10], f32>
+
+  %3 = mo.rebind(%2) : !mo.tensor<[42, 10], f32> -> !mo.tensor<[D1, D0], f32>
+
+  %4 = mo.relu (%3) : !mo.tensor<[D1, D0], f32>
+
+  %5 = mo.rebind(%4) : !mo.tensor<[D1, D0], f32> -> !mo.tensor<[42, 10], f32>
+
+  mo.output %5 : !mo.tensor<[42, 10], f32>
 }

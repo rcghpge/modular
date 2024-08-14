@@ -1,7 +1,7 @@
 // RUN: mo-opt %s --mo-to-primitives | FileCheck %s
 
 // Entry point
-// CHECK:   mgp.model @static_reshape : mof
+// CHECK-LABEL:   mgp.model @static_reshape : mof
 //
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK-SAME: %[[ARG2:[^:]*]]: !mgp.tensor<?x?xf32>, %[[ARG3:.*]]: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
@@ -22,4 +22,22 @@
 mo.graph @static_reshape<D4, D5, D6, D7>(%arg0: !mo.tensor<[D4, D5], f32>, %arg1: !mo.tensor<[D6, D7], f32>) -> !mo.tensor<[D6, D7], f32> {
   %1 = mo.static.reshape(%arg0) : !mo.tensor<[D4, D5], f32> -> !mo.tensor<[D6, D7], f32>
   mo.output %1 : !mo.tensor<[D6, D7], f32>
+}
+
+// CHECK-LABEL: mgp.model @multi_reshape : mof
+// CHECK: } execute (%[[CH0:.*]]: !mef.chain,
+
+// CHECK: mgp.tensor.create %[[CH0]]
+
+// CHECK: %[[CH1:.*]] = grt.chain.create (%[[CH0]], %[[CH0]])
+// CHECK: mgp.tensor.create %[[CH1]]
+
+// CHECK: %[[CH2:.*]] = grt.chain.create (%[[CH1]], %[[CH0]])
+// CHECK: mgp.tensor.create %[[CH2]]
+
+mo.graph @multi_reshape<D4, D5, D6, D7>(%arg0: !mo.tensor<[D4, D5], f32>, %arg1: !mo.tensor<[D6, D7], f32>) -> !mo.tensor<[D7, D7], f32> {
+  %1 = mo.static.reshape(%arg0) : !mo.tensor<[D4, D5], f32> -> !mo.tensor<[D6, D7], f32>
+  %2 = mo.static.reshape(%1) : !mo.tensor<[D6, D7], f32> -> !mo.tensor<[D5, D4], f32>
+  %3 = mo.static.reshape(%2) : !mo.tensor<[D5, D4], f32> -> !mo.tensor<[D7, D7], f32>
+  mo.output %3 : !mo.tensor<[D7, D7], f32>
 }
