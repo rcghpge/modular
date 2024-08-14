@@ -610,12 +610,14 @@ struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
     auto lhsDtype = lhsType.getDtype();
     auto rhsDtype = rhsType.getDtype();
     auto resultDtype = op.getResult().getType().getDtype();
-    if (lhsDtype != resultDtype)
-      lhs = rewriter.create<RMO::MOCastOp>(
-          loc, lhs.getType().cloneWith(resultDtype), lhs);
-    if (rhsDtype != resultDtype)
-      rhs = rewriter.create<RMO::MOCastOp>(
-          loc, rhs.getType().cloneWith(resultDtype), rhs);
+    if (lhsDtype != resultDtype) {
+      lhsType = lhsType.cloneWith(resultDtype);
+      lhs = rewriter.create<RMO::MOCastOp>(loc, lhsType, lhs);
+    }
+    if (rhsDtype != resultDtype) {
+      rhsType = rhsType.cloneWith(resultDtype);
+      rhs = rewriter.create<RMO::MOCastOp>(loc, rhsType, rhs);
+    }
 
     // Reshape to ensure both tensors have same rank.
     auto [lhsReshapeTarget, rhsReshapeTarget] =
