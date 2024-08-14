@@ -6,26 +6,19 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Union
+
+import gguf
 import numpy as np
 from max.engine import InferenceSession, Model
 from max.graph import DType, Graph, TensorType
 from max.graph.utils import load_gguf  # TODO Use this
 
-from utils import tokenizer_from_gguf
+from utils import gguf_utils, tokenizer_from_gguf
 
 from .config import Llama3Config
 from .embedding import Embedding
 from .kv_cache import KVCache
-
-
-def get_max_tokens_to_generate(
-    prompt_len: int, max_length: int, max_new_tokens: int
-) -> int:
-    """Returns the max number of tokens to generate (including the prompt)."""
-    if max_new_tokens < 0:
-        return max_length
-
-    return min(max_new_tokens + prompt_len, max_length)
 
 
 @dataclass
@@ -48,15 +41,24 @@ class Llama3:
 
     def __init__(self, config: Llama3Config):
         self.config = config
-        self._tokenizer = tokenizer_from_gguf(self.config.weight_path)
-        # TODO: Load hyperparameters from the GGUF weights.
+        assert self.config.weight_path is not None
+        gguf_reader = gguf.GGUFReader(self.config.weight_path)
+        _override_config(self.config, gguf_reader)
+        self._tokenizer = tokenizer_from_gguf(gguf_reader)
+
+        # Work around for older Llama 1/2 GGUFs, where the vocab size may be -1.
+        # See https://github.com/ggerganov/llama.cpp/pull/4258.
+        if self.config.vocab_size < 0:
+            self.config.vocab_size = self._tokenizer.vocab_size
+
         self._session = InferenceSession()
         if self.config.serialized_model_path:
             self._load_graph(self.config.serialized_model_path)
         else:
-            self._build_graph("llama3")
+            self._build_graph("llama3", gguf_reader)
 
-    def _build_graph(self, name: str):
+    def _build_graph(self, name: str, gguf_reader: gguf.GGUFReader):
+        self._session = InferenceSession()
         cache_type = TensorType(
             DType.float32,
             shape=[
@@ -84,14 +86,14 @@ class Llama3:
             graph.output(out, graph.inputs[1], graph.inputs[2])
             self._compiled_model = self._session.load(graph)
 
-    def _load_graph(self, file: Path):
+    def _load_graph(self, file: Union[str, Path]):
         print("Loading serialized model from", file, "...")
         self._compiled_model = self._session.load(file)
 
     async def new_context(self, prompt: str) -> Llama3Context:
         encoded_prompt = self._tokenizer.encode(prompt)
         prompt_size = len(encoded_prompt)
-        max_tokens = get_max_tokens_to_generate(
+        max_tokens = _get_max_tokens_to_generate(
             prompt_size, self.config.max_length, self.config.max_new_tokens
         )
         self._kv_cache = KVCache(
@@ -136,8 +138,40 @@ class Llama3:
         # Get argmax of the logits of the last token.
         next_token = logits.argmax(axis=-1)[-1]
         context.next_token = next_token.reshape(1, -1)
+        print("\nnext", next_token)
         decoded_token = self._tokenizer.decode(next_token)
 
         if decoded_token == self._tokenizer.eos_token:
             return {}
         return {request_id: decoded_token}
+
+
+def _get_max_tokens_to_generate(
+    prompt_len: int, max_length: int, max_new_tokens: int
+) -> int:
+    """Returns the max number of tokens to generate (including the prompt)."""
+    if max_new_tokens < 0:
+        return max_length
+
+    return min(max_new_tokens + prompt_len, max_length)
+
+
+def _override_config(config: Llama3Config, reader: gguf.GGUFReader):
+    """Overrides parameters from config if they're in the GGUF checkpoint."""
+
+    def _maybe_override(attribute, gguf_name):
+        value = gguf_utils.read_number(reader, gguf_name)
+        if value is not None:
+            setattr(config, attribute, value)
+
+    _maybe_override("seq_len", "llama.context_length")
+    _maybe_override("n_layers", "llama.block_count")
+    _maybe_override("n_heads", "llama.attention.head_count")
+    _maybe_override("n_kv_heads", "llama.attention.head_count_kv")
+    _maybe_override("vocab_size", "llama.vocab_size")
+    _maybe_override("hidden_dim", "llama.embedding_length")
+    _maybe_override("rope_theta", "llama.rope.freq_base")
+    _maybe_override(
+        "layer_norm_rms_epsilon", "llama.attention.layer_norm_rms_epsilon"
+    )
+    config.head_dim = config.hidden_dim // config.n_heads

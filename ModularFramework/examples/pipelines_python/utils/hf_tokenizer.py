@@ -6,7 +6,8 @@
 
 """Utilities for creating a HuggingFace tokenizer for a pipeline model."""
 
-from typing import List, Optional
+import os
+from typing import List, Optional, Union
 
 import gguf
 import numpy as np
@@ -22,26 +23,30 @@ from tokenizers import (
 from tokenizers.models import BPE
 from transformers import PreTrainedTokenizerFast
 
+from . import gguf_utils
 
-def tokenizer_from_gguf(gguf_or_path) -> Tokenizer:
+
+def tokenizer_from_gguf(
+    gguf_or_path: Union[GGUFReader, os.PathLike],
+) -> Tokenizer:
     reader = gguf_or_path
     if not isinstance(gguf_or_path, GGUFReader):
         reader = GGUFReader(gguf_or_path)
 
-    architecture = _read_string(reader, gguf.KEY_GENERAL_ARCHITECTURE)
+    architecture = gguf_utils.read_string(reader, gguf.KEY_GENERAL_ARCHITECTURE)
     if architecture != "llama":
         raise NotImplementedError(f"Unsupported GGUF architecture: {model}")
 
-    model = _read_string(reader, Keys.Tokenizer.MODEL)
+    model = gguf_utils.read_string(reader, Keys.Tokenizer.MODEL)
     if model != "gpt2":
         raise NotImplementedError(f"Unsupported tokenizer model: {model}")
 
-    vocab_list = _read_string_array(reader, Keys.Tokenizer.LIST)
+    vocab_list = gguf_utils.read_string_array(reader, Keys.Tokenizer.LIST)
     if vocab_list is None:
         raise ValueError("Unable to find vocab list in GGUF weight file.")
     bpe_vocab = {token: n for n, token in enumerate(vocab_list)}
 
-    merges = _read_string_array(reader, Keys.Tokenizer.MERGES)
+    merges = gguf_utils.read_string_array(reader, Keys.Tokenizer.MERGES)
     if merges:
         merges = [tuple(s.split(" ")) for s in merges]
 
@@ -58,7 +63,7 @@ def tokenizer_from_gguf(gguf_or_path) -> Tokenizer:
     # Mark special tokens.
     special_tokens = []
     bos_token = None
-    bos_token_id = _read_int(reader, Keys.Tokenizer.BOS_ID)
+    bos_token_id = gguf_utils.read_number(reader, Keys.Tokenizer.BOS_ID)
     if bos_token_id is not None:
         bos_token = vocab_list[bos_token_id]
         special_tokens.append(
@@ -66,13 +71,13 @@ def tokenizer_from_gguf(gguf_or_path) -> Tokenizer:
         )
 
     eos_token = None
-    eos_token_id = _read_int(reader, Keys.Tokenizer.EOS_ID)
+    eos_token_id = gguf_utils.read_number(reader, Keys.Tokenizer.EOS_ID)
     if eos_token_id is not None:
         eos_token = vocab_list[eos_token_id]
         special_tokens.append(
             AddedToken(vocab_list[eos_token_id], normalized=False, special=True)
         )
-    token_type = _read_int_array(reader, Keys.Tokenizer.TOKEN_TYPE)
+    token_type = gguf_utils.read_array(reader, Keys.Tokenizer.TOKEN_TYPE)
     if token_type:
         for i, type in enumerate(token_type):
             if type == LlamaTokenType.LLAMA_TOKEN_TYPE_CONTROL:
@@ -127,41 +132,6 @@ def tokenizer_from_gguf(gguf_or_path) -> Tokenizer:
     return PreTrainedTokenizerFast(
         tokenizer_object=tokenizer, **pretrained_tokenizer_kwargs
     )
-
-
-def _to_string(arr: np.ndarray) -> str:
-    return arr.tobytes().decode()
-
-
-def _read_string(reader, key) -> Optional[str]:
-    field = reader.get_field(key)
-    if field is None:
-        return None
-    assert field.types[0] == GGUFValueType.STRING
-    return _to_string(field.parts[field.data[0]])
-
-
-def _read_string_array(reader, key) -> Optional[List[str]]:
-    field = reader.get_field(key)
-    if field is None:
-        return None
-    assert field.types[0] == GGUFValueType.ARRAY
-    assert field.types[1] == GGUFValueType.STRING
-    return [_to_string(field.parts[x]) for x in field.data]
-
-
-def _read_int(reader, key) -> Optional[int]:
-    field = reader.get_field(key)
-    if field is None:
-        return None
-    return field.parts[field.data[0]][0]
-
-
-def _read_int_array(reader, key) -> Optional[List[int]]:
-    field = reader.get_field(key)
-    if field is None:
-        return None
-    return [field.parts[x][0] for x in field.data]
 
 
 # Llama token types from
