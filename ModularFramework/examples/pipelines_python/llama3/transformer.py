@@ -9,10 +9,12 @@ from typing import Tuple
 
 import numpy as np
 
-from max.graph import ValueLike, GraphValue
+from max.graph import ValueLike, GraphValue, ops
 from .attention import Attention
-from .mlp import MLP
+from .mlp import MLP, Linear
 from .norm import RMSNorm
+from .embedding import Embedding
+from typing import List
 
 
 @dataclass
@@ -38,3 +40,40 @@ class TransformerBlock:
         h = h + self.mlp(self.mlp_norm(h))
 
         return h, k_cache_update, v_cache_update
+
+
+@dataclass
+class Transformer:
+    """
+    Transformer model consisting of TransformerBlock layers.
+    """
+
+    dim: int
+    n_heads: int
+    layers: List[TransformerBlock]
+    norm: RMSNorm
+    output: Linear
+    theta: float
+    embedding: Embedding
+    rope_scaling: ValueLike
+
+    def __call__(self, tokens, k_cache, v_cache):
+        h = self.embedding(tokens)
+        k_cache_updates = []
+        v_cache_updates = []
+        for i in range(len(self.layers)):
+            h, k_cache_layer_update, v_cache_layer_update = self.layers[i](
+                h,
+                k_cache[:, i],
+                v_cache[:, i],
+            )
+            k_cache_updates.append(ops.transpose(k_cache_layer_update, 0, 1))
+            v_cache_updates.append(ops.transpose(v_cache_layer_update, 0, 1))
+
+            h = self.norm(h)
+
+        return (
+            self.output(h),
+            ops.stack(k_cache_updates, axis=1),
+            ops.stack(v_cache_updates, axis=1),
+        )
