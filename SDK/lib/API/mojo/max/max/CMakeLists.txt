@@ -90,7 +90,7 @@ set(DRIVER_SRCS
   driver/_driver_library
   driver/_status
   driver/anytensor
-  driver/cuda
+  driver/_cuda
   driver/device
   driver/device_memory
   driver/tensor
