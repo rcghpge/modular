@@ -79,15 +79,15 @@ set(SERVE_SRCS
 
 set(DRIVER_SRCS
   driver/__init__
+  driver/_cuda
   driver/_driver_library
   driver/_status
+  driver/_utils
   driver/anytensor
-  driver/_cuda
   driver/device
   driver/device_memory
   driver/tensor
   driver/tensor_slice
-  driver/utils
 )
 
 set(UTILS_SRCS
