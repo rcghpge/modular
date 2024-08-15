@@ -52,14 +52,6 @@ set(ENGINE_SRCS
   engine/_tensor_map_impl
   engine/_tensor_spec_impl)
 
-set(REGISTER_SRCS
-  register/register
-)
-
-set(EXTENSIBILITY_SRCS
-  extensibility/__init__
-)
-
 set(SERVE_SRCS
   serve/__init__
   serve/_batch
@@ -112,8 +104,6 @@ set(TENSOR_UTILS_SRCS _tensor_utils/__init__)
 add_mojo_package(max-mojo PRIVATE
   ${GRAPH_SRCS}
   ${ENGINE_SRCS}
-  ${EXTENSIBILITY_SRCS}
-  ${REGISTER_SRCS}
   ${SERVE_SRCS}
   ${DRIVER_SRCS}
   ${UTILS_SRCS}
@@ -128,7 +118,6 @@ add_mojo_package(max-mojo PRIVATE
   mof
   mojo-algorithm
   mojo-buffer
-  mojo-extensibility
   DeviceDriver
 
   max-compiler
@@ -172,7 +161,6 @@ if(UNIX)
   endfunction()
 
   import_external_doc_into_max(max-tensor tensor)
-  import_external_doc_into_max(mojo-extensibility extensibility)
 
   # The following two packages are omitted until they are needed as public APIs.
   # import_external_doc_into_max(max-tensor-utils tensor_utils)
