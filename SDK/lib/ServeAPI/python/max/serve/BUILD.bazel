@@ -13,6 +13,7 @@ py_library(
         "//SDK/lib/ServeAPI/python/max/serve/pipelines",
         "//SDK/lib/ServeAPI/python/max/serve/router",
         "//SDK/lib/ServeAPI/python/max/serve/scheduler",
+        "//SDK/lib/ServeAPI/python/max/serve/schemas",
         requirement("pydantic-settings"),
     ],
 )
