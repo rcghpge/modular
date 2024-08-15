@@ -55,41 +55,6 @@ def SimplifyChainsPass : Pass<"simplify-chains", "MGP::ModelOp"> {
 }
 
 //===----------------------------------------------------------------------===//
-// StaticMemoryPlanerPass
-//===----------------------------------------------------------------------===//
-
-def StaticMemoryPlannerPass : Pass<"static-memory-planner", "ModuleOp"> {
-  let summary = "Replace mgp.buffer.alloc.static.deprecated ops with "
-                "mgp.buffer.section.static.borrow ops using statically "
-                "determined offsets.";
-  let description = [{
-    This pass replaces mgp.buffer.alloc.{static,spec} ops with
-    mgp.buffer.section.{static,dynamic}.borrow ops from (pre-allocated)
-    shared buffers. The size of the shared buffers, and the offset to use for
-    each mgp.buffer.section.{static,dynamic}.borrow op, is chosen by
-    this pass so as to ensure no active buffers will ever overlap in their
-    borrowed memory.
-
-    Heuristics are used to decide when planning is worthwhile, and to choose
-    offsets within the shared buffers.
-  }];
-
-  let options = [
-    Option<"minBuffers", "min-buffers", "size_t", "10",
-           "The minimum number of buffers within a planning group to "
-           "consider static memory planning worthwhile. If zero then "
-           "static memory planning is disabled. If one then no restriction.">,
-    Option<"maxHighWaterMarkPercentage", "max-highwatermark-percentage",
-           "double", "50.0",
-           "The maximum high-watermark percentage to consider planning "
-           "worthwhile. This percentage is the reduction in maximum memory "
-           "usage using memory planned buffers as compared with simply "
-           "pre-allocating every buffer at the beginning of execution. "
-           "If zero then no restriction.">,
-  ];
-}
-
-//===----------------------------------------------------------------------===//
 // RemoveRedundantTensorExtractsPass
 //===----------------------------------------------------------------------===//
 

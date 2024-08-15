@@ -126,12 +126,6 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
   if (!useKernelsOr.isError())
     useKernelsFrom = useKernelsOr.takeValue();
 
-  auto enableMemoryPlanningOr = fallibleGetSymbol(
-      onnxLib, "M_enableMemoryPlanning", enableMemoryPlanning);
-  if (enableMemoryPlanningOr.isError())
-    return enableMemoryPlanningOr.takeError();
-  enableMemoryPlanning = enableMemoryPlanningOr.takeValue();
-
   auto newTorchInputSpecOr =
       fallibleGetSymbol(torchLib, "M_newTorchInputSpec", newTorchInputSpec);
   if (newTorchInputSpecOr.isError())

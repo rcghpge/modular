@@ -102,7 +102,6 @@ public:
 
   decltype(&M_executeModelSync) executeModelSync = nullptr;
   decltype(&M_setDevice) setDevice = nullptr;
-  decltype(&M_enableMemoryPlanning) enableMemoryPlanning = nullptr;
   decltype(&M_newTorchInputSpec) newTorchInputSpec = nullptr;
   decltype(&M_setTorchInputSpecs) setTorchInputSpecs = nullptr;
   decltype(&M_setTorchLibraryPath) setTorchLibraryPath = nullptr;

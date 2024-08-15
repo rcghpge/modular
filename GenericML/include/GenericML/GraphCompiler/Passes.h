@@ -125,11 +125,6 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
           "If non-empty, assign as many ops as possible to the device "
           "with the given label (and device id zero)."),
       llvm::cl::init("")};
-  Option<bool> enableMemoryPlanning{
-      *this, "enable-memory-planning",
-      llvm::cl::desc("If true, statically plan as many buffer allocations as "
-                     "possible."),
-      llvm::cl::init(false)};
   Option<bool> enableCompiledRegionsFusion{
       *this, "enable-compiled-regions-fusion",
       llvm::cl::desc("If false, will disable compiled region fusion"),

@@ -28,8 +28,6 @@ public:
 
   std::string defaultDeviceLabel{""};
 
-  bool enableMemoryPlanning{false};
-
   bool enableCompiledRegionsFusion{true};
 
   bool genVizSpec{false};
@@ -52,7 +50,6 @@ public:
     moToMgpOptions.enableExtraDevices = enableExtraDevices;
     moToMgpOptions.enableFakeCudaDevice = enableFakeCudaDevice;
     moToMgpOptions.defaultDeviceLabel = defaultDeviceLabel;
-    moToMgpOptions.enableMemoryPlanning = enableMemoryPlanning;
     moToMgpOptions.enableCompiledRegionsFusion = enableCompiledRegionsFusion;
     moToMgpOptions.genVizSpec = genVizSpec;
     moToMgpOptions.vizOutputPath = vizOutputPath;
@@ -103,13 +100,6 @@ private:
       cl::desc("If non-empty, assign as many ops as possible to the device "
                "with the given label (and device id zero)."),
       llvm::cl::location(options.defaultDeviceLabel),
-      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
-
-  M::cl::MOpt<bool, true> enableMemoryPlanning{
-      "enable-memory-planning",
-      cl::desc("If true, statically plan as many buffer allocations as "
-               "possible."),
-      llvm::cl::location(options.enableMemoryPlanning),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
   M::cl::MOpt<bool, true> enableCompiledRegionsFusion{

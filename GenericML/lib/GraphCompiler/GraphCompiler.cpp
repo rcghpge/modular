@@ -317,12 +317,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MGP::createDeferAllocsPass());
   pm.addPass(MGP::createExecInvariantCodeMotionPass());
   pm.addPass(MGP::createVerifyModelArgumentsPass());
-  if (opts.enableMemoryPlanning) {
-    // Canonicalization folds calculation of buffer size into a form the
-    // memory planner understands.
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(MGP::createStaticMemoryPlannerPass());
-  }
   pm.addPass(MGP::createPredicateAssertDependenciesPass());
   pm.addPass(MGP::createStripBufferAttributesPass());
   pm.addPass(mlir::createCanonicalizerPass());
