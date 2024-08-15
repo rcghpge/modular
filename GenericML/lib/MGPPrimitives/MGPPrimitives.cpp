@@ -216,15 +216,16 @@ static void mgp_generic_execute(
                     deviceContext = std::move(deviceContext),
                     loc = std::move(loc)]() mutable {
     CUDARuntime *cudaRuntimePtr = nullptr;
-    void *deviceContextPtr = deviceContext.get<void *>();
-    std::optional<CurrentCUDAContext> current;
+    void *deviceContextPtr = deviceContext.getPointerToData();
     if (hasCuda) {
       // GRA-594: When Device Context is passed to the primitive directly, we
       // don't need to set the runtime
       cudaRuntimePtr = reinterpret_cast<CUDARuntime *>(
           ctx.getStateSlot(static_cast<size_t>(cudaSlot))
               .getUnderlyingPointer());
-      current.emplace(*cudaRuntimePtr);
+      // GRA-604 - Before we move storage to mojo, need to ensure the mojo
+      // device context is held by runtime.
+      cudaRuntimePtr->deviceContext = deviceContext.copy();
     }
     std::vector<void *> kernelInputs;
     kernelInputs.reserve(outResults.size() + takenOperands.size());

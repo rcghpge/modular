@@ -14,6 +14,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
 #include "GenericML/MGPTransforms/Utils.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "Support/DeviceSpecs.h"
@@ -35,18 +36,63 @@ namespace M::MGP {
 
 namespace {
 
+/// DeviceContextState is used to track device contexts within a model op
+struct DeviceContextState {
+  // State information to keep track of a deviceContext and the region it exists
+  // in
+  llvm::SmallDenseMap<std::tuple<Region *, DeviceRefAttr>, Value>
+      regionDeviceToContextMap;
+  llvm::SmallDenseMap<DeviceRefAttr, Value> initInputContextMap;
+
+  // Initializes the starting value
+  void init(MGP::ModelOp model) {
+    // Populate arguments for init region
+    for (const auto &[device, context] :
+         llvm::zip(model.getDevices(), model.getInitDevices()))
+      initInputContextMap[dyn_cast<DeviceRefAttr>(device)] = context;
+
+    // Populate starting value for init region using the output device-context
+    // because the device_context can be created by an init-phase operation
+    for (const auto &[device, context] :
+         llvm::zip(model.getDevices(), model.getInitOutputDevices())) {
+      Region *initRegion = model.getInitBlock()->getParent();
+      DeviceRefAttr deviceAttr = dyn_cast<DeviceRefAttr>(device);
+      setDeviceContext(deviceAttr, initRegion, context);
+    }
+
+    // Populate starting value for exec region using the input argument
+    for (const auto &[device, context] :
+         llvm::zip(model.getDevices(), model.getExecuteDevices())) {
+      Region *execRegion = model.getExecuteBlock()->getParent();
+      DeviceRefAttr deviceAttr = dyn_cast<DeviceRefAttr>(device);
+      setDeviceContext(deviceAttr, execRegion, context);
+    }
+  }
+
+  /// This function gets the DeviceContext defined for this region.
+  Value getDeviceContext(DeviceRefAttr deviceAttr, Region *region) {
+    assert(regionDeviceToContextMap.contains({region, deviceAttr}) &&
+           "Region must contain the context as args");
+    return regionDeviceToContextMap[{region, deviceAttr}];
+  }
+
+  /// This function sets the DeviceContext defined for this region.
+  void setDeviceContext(DeviceRefAttr deviceAttr, Region *region, Value value) {
+    regionDeviceToContextMap[{region, deviceAttr}] = value;
+  }
+
+  /// This function gets the DeviceContext from Init Args
+  Value getDeviceContextFromInitArgs(DeviceRefAttr deviceAttr) {
+    assert(initInputContextMap.contains(deviceAttr) &&
+           "Args must contain the context dor the device as arg");
+    return initInputContextMap[deviceAttr];
+  }
+};
+
 struct LowerMOGGRegionCompilesPass
     : public MGP::impl::LowerMOGGRegionCompilesBase<
           LowerMOGGRegionCompilesPass> {
   using LowerMOGGRegionCompilesBase::LowerMOGGRegionCompilesBase;
-  Value getOrCreateDeviceContextExtractOp(
-      OpBuilder &builder, const Location &loc, const Value &inChain,
-      const Value &inContext, const size_t runtimeSlot,
-      const DeviceRefAttr device, Region *region,
-      llvm::SmallDenseMap<
-          std::tuple<Region *, Value>,
-          llvm::SmallDenseMap<DeviceRefAttr, MGP::DeviceContextExtractOp>>
-          &deviceContextExtractOpMap);
   void rewriteExecuteCompiledOp(OpBuilder &builder, const Value &context,
                                 size_t runtimeSlot, size_t module_index,
                                 size_t kernel_index,
@@ -54,42 +100,8 @@ struct LowerMOGGRegionCompilesPass
                                 Value loadChain, Value deviceContext,
                                 std::optional<size_t> cuda_runtime_slot);
   void runOnOperation() override;
+  DeviceContextState deviceContexts;
 };
-
-// This method will take a map that keeps track of all deviceContextExtractions
-// and their region/inChain/device. If it cannot find one, it will create one
-// and save it. This allows us to lazily create an extract only when we need it.
-Value LowerMOGGRegionCompilesPass::getOrCreateDeviceContextExtractOp(
-    OpBuilder &builder, const Location &loc, const Value &inChain,
-    const Value &inContext, const size_t runtimeSlot,
-    const DeviceRefAttr device, Region *region,
-    llvm::SmallDenseMap<
-        std::tuple<Region *, Value>,
-        llvm::SmallDenseMap<DeviceRefAttr, MGP::DeviceContextExtractOp>>
-        &deviceContextExtractOpMap) {
-  if (!deviceContextExtractOpMap.contains(std::tuple(region, inChain))) {
-    deviceContextExtractOpMap[std::tuple(region, inChain)] =
-        llvm::SmallDenseMap<DeviceRefAttr, MGP::DeviceContextExtractOp>();
-  }
-  if (!deviceContextExtractOpMap[std::tuple(region, inChain)].contains(
-          device)) {
-    deviceContextExtractOpMap[std::tuple(region, inChain)][device] =
-        builder.create<MGP::DeviceContextExtractOp>(
-            loc,
-            TypeRange{MGP::OpaqueType::get(
-                builder.getContext(),
-                StringAttr::get(builder.getContext(),
-                                device.getLabel() +
-                                    std::to_string(device.getId()) +
-                                    "_context"),
-                std::nullopt)},
-            /*inChain=*/inChain,
-            /*theContext*/ inContext,
-            /*aDeviceRuntimeSlot=*/runtimeSlot,
-            /*bDevice=*/device);
-  }
-  return deviceContextExtractOpMap[std::tuple(region, inChain)][device];
-}
 
 // Rewrite the MOGG::ExecuteCompiledOp into a MGP::ExecuteGenericOp
 void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
@@ -140,9 +152,9 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
 //       ordering of the operations
 //    2. Both init and execute blocks are processed.
 void LowerMOGGRegionCompilesPass::runOnOperation() {
-
   MLIRContext *ctx = getOperation().getContext();
-  for (auto model : getOperation().getOps<MGP::ModelOp>()) {
+  for (auto model :
+       llvm::make_early_inc_range(getOperation().getOps<MGP::ModelOp>())) {
     Block &init = *model.getInitBlock();
     Block &execute = *model.getExecuteBlock();
     OpBuilder builder{ctx};
@@ -152,7 +164,10 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
 
     // MOGG::LoadCompiledKernelOp only on CPU and no other device. We just
     // need to make sure we use and count the right one for moduleIndex
-    const auto device = DeviceRefAttr::get(ctx, kCPULabel, 0);
+    const auto hostDevice = DeviceRefAttr::get(ctx, kCPULabel, 0);
+
+    // TODO: (GRA-831) Remove cudaDevice and cuda_runtime_slot from
+    // generic.execute once device_context plumbed
     const auto cudaDevice = DeviceRefAttr::get(ctx, kCUDALabel, 0);
     std::optional<size_t> cuda_runtime_slot;
 
@@ -168,12 +183,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       lastDeviceRuntimeOp[op.getDevice()] = op;
       deviceModuleIndex[op.getDevice()] = 0;
     }
-
-    // Stores for this model op, all the device context extractions.
-    llvm::SmallDenseMap<
-        std::tuple<Region *, Value>,
-        llvm::SmallDenseMap<DeviceRefAttr, MGP::DeviceContextExtractOp>>
-        deviceContextExtractOpMap;
+    deviceContexts.init(model);
 
     if (lastDeviceRuntimeOp.contains(cudaDevice))
       cuda_runtime_slot = lastDeviceRuntimeOp[cudaDevice].getSlot();
@@ -192,29 +202,29 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     MGP::ModuleLoadOp loadArchive;
     for (auto loadKernels : llvm::make_early_inc_range(
              init.getOps<MOGG::LoadCompiledKernelOp>())) {
-
       // Determine the kernelIndices and kernelNameAttrs
-      deviceKernelIndices[device] = llvm::StringMap<size_t>();
-      deviceKernelNameAttrs[device] = SmallVector<StringAttr>();
+      deviceKernelIndices[hostDevice] = llvm::StringMap<size_t>();
+      deviceKernelNameAttrs[hostDevice] = SmallVector<StringAttr>();
       for (StringAttr attr :
            loadKernels.getSymbols().getAsRange<StringAttr>()) {
-        deviceKernelIndices[device][attr] = deviceKernelIndices[device].size();
-        deviceKernelNameAttrs[device].push_back(attr);
+        deviceKernelIndices[hostDevice][attr] =
+            deviceKernelIndices[hostDevice].size();
+        deviceKernelNameAttrs[hostDevice].push_back(attr);
       }
     }
 
     // Rewrite the MOGG::LoadCompiledKernelOp in init blocks.
     for (auto loadKernels : llvm::make_early_inc_range(
              init.getOps<MOGG::LoadCompiledKernelOp>())) {
-      Operation *insertionOp = lastDeviceRuntimeOp[device].getOperation();
-      size_t runtimeSlot = lastDeviceRuntimeOp[device].getSlot();
-      Value opContext = lastDeviceRuntimeOp[device].getTheContext();
-      Value inChain = lastDeviceRuntimeOp[device].getResult();
-      if (lastDeviceModuleLoadOp.contains(device)) {
-        insertionOp = lastDeviceModuleLoadOp[device].getOperation();
-        runtimeSlot = lastDeviceModuleLoadOp[device].getSlot();
-        opContext = lastDeviceModuleLoadOp[device].getTheContext();
-        inChain = lastDeviceModuleLoadOp[device].getResult();
+      Operation *insertionOp = lastDeviceRuntimeOp[hostDevice].getOperation();
+      size_t runtimeSlot = lastDeviceRuntimeOp[hostDevice].getSlot();
+      Value opContext = lastDeviceRuntimeOp[hostDevice].getTheContext();
+      Value inChain = lastDeviceRuntimeOp[hostDevice].getResult();
+      if (lastDeviceModuleLoadOp.contains(hostDevice)) {
+        insertionOp = lastDeviceModuleLoadOp[hostDevice].getOperation();
+        runtimeSlot = lastDeviceModuleLoadOp[hostDevice].getSlot();
+        opContext = lastDeviceModuleLoadOp[hostDevice].getTheContext();
+        inChain = lastDeviceModuleLoadOp[hostDevice].getResult();
       }
 
       // Rewrite the MOGG::LoadCompiledKernelOp into a MGP::ModuleLoadOp
@@ -226,57 +236,42 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
           /*aSlot=*/runtimeSlot,
           /*bArchive=*/loadKernels.getValue(),
           /*cKernelNames=*/
-          MultiLineStringAttr::get(ctx, deviceKernelNameAttrs[device]),
+          MultiLineStringAttr::get(ctx, deviceKernelNameAttrs[hostDevice]),
           /*dConstantSymbols=*/
           MultiLineStringAttr::get(ctx, SmallVector<StringAttr>()),
-          /*eDevice=*/device,
-          /*fModuleIndex=*/deviceModuleIndex[device]);
+          /*eDevice=*/hostDevice,
+          /*fModuleIndex=*/deviceModuleIndex[hostDevice]);
       inChain.replaceAllUsesExcept(loadArchive.getResult(), loadArchive);
       loadKernels.erase();
     }
-
     // Rewrite the MOGG::ExecuteCompiledOp in both init and execute blocks.
-    MEF::OutputOp mefOutputOp;
-    for (auto op : init.getOps<MEF::OutputOp>())
-      mefOutputOp = op;
+    // Shunt all the executes for Init stage at the very end of init
+    builder.setInsertionPoint(init.getTerminator());
     init.walk([&](MOGG::ExecuteCompiledOp kernel) {
-      // Shunt all the executes for Init stage at the very end of init
-      builder.setInsertionPoint(mefOutputOp);
       Value inChain;
-      if (lastDeviceModuleLoadOp.find(device) != lastDeviceModuleLoadOp.end())
-        inChain = lastDeviceModuleLoadOp[device].getOutChain();
+      if (lastDeviceModuleLoadOp.find(hostDevice) !=
+          lastDeviceModuleLoadOp.end())
+        inChain = lastDeviceModuleLoadOp[hostDevice].getOutChain();
       else
-        inChain = lastDeviceRuntimeOp[device].getOutChain();
-      Value inDeviceContext;
-      if (kernel.getHasCuda()) {
-        assert(lastDeviceRuntimeOp.contains(cudaDevice) &&
-               "Must have a mgp.runtime.create which uses a cuda device");
-        // lazily insert extractions so we don't need to pipe deviceContext
-        // everywhere.
-        // In the init, we have to be safe and wait on all operands of original
-        // kernel for extraction.
-        auto extractionChain = builder.create<GRT::ChainCreateOp>(
-            kernel.getLoc(), kernel.getOperands());
-        inDeviceContext = getOrCreateDeviceContextExtractOp(
-            builder, mefOutputOp.getLoc(), extractionChain,
-            lastDeviceRuntimeOp[cudaDevice].getTheContext(),
-            lastDeviceRuntimeOp[cudaDevice].getSlot(), cudaDevice,
-            kernel->getParentRegion(), deviceContextExtractOpMap);
-      } else {
-        auto extractionChain = builder.create<GRT::ChainCreateOp>(
-            kernel.getLoc(), kernel.getOperands());
-        inDeviceContext = getOrCreateDeviceContextExtractOp(
-            builder, mefOutputOp.getLoc(), extractionChain,
-            lastDeviceRuntimeOp[device].getTheContext(),
-            lastDeviceRuntimeOp[device].getSlot(), device,
-            kernel->getParentRegion(), deviceContextExtractOpMap);
-      }
+        inChain = lastDeviceRuntimeOp[hostDevice].getOutChain();
+      auto device = kernel.getHasCuda() ? cudaDevice : hostDevice;
+      Value inDeviceContext =
+          deviceContexts.getDeviceContext(device, init.getParent());
+      bool isCreator = inDeviceContext.getDefiningOp() == kernel;
+      if (isCreator)
+        inDeviceContext = deviceContexts.getDeviceContextFromInitArgs(device);
       rewriteExecuteCompiledOp(
-          builder, lastDeviceRuntimeOp[device].getTheContext(),
-          lastDeviceRuntimeOp[device].getSlot(), deviceModuleIndex[device],
-          deviceKernelIndices[device][kernel.getKernelName()], kernel, inChain,
-          inDeviceContext, cuda_runtime_slot);
+          builder, lastDeviceRuntimeOp[hostDevice].getTheContext(),
+          lastDeviceRuntimeOp[hostDevice].getSlot(),
+          deviceModuleIndex[hostDevice],
+          deviceKernelIndices[hostDevice][kernel.getKernelName()], kernel,
+          inChain, inDeviceContext, cuda_runtime_slot);
+      // Since this execute op created the deviceContext, we should update the
+      // value mapping.
+      if (isCreator)
+        deviceContexts.init(model);
     });
+
     Value executeContext = nullptr;
     Region *parentRegion = nullptr;
     execute.walk([&](MOGG::ExecuteCompiledOp kernel) {
@@ -295,28 +290,18 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
                          "generic.execute");
       }
       auto inChain = builder.create<GRT::ChainCreateOp>(kernel.getLoc());
-      Value inDeviceContext;
-      if (kernel.getHasCuda()) {
-        assert(lastDeviceRuntimeOp.contains(cudaDevice) &&
-               "Must have a mgp.runtime.create which uses a cuda device");
-        // lazily insert extractions so we don't need to pipe deviceContext
-        // everywhere.
-        inDeviceContext = getOrCreateDeviceContextExtractOp(
-            builder, kernel.getLoc(), inChain, executeContext,
-            lastDeviceRuntimeOp[cudaDevice].getSlot(), cudaDevice,
-            kernel->getParentRegion(), deviceContextExtractOpMap);
-      } else {
-        inDeviceContext = getOrCreateDeviceContextExtractOp(
-            builder, kernel.getLoc(), inChain, executeContext,
-            lastDeviceRuntimeOp[device].getSlot(), device,
-            kernel->getParentRegion(), deviceContextExtractOpMap);
-      }
+      Value inDeviceContext = deviceContexts.getDeviceContext(
+          kernel.getHasCuda() ? cudaDevice : hostDevice, execute.getParent());
       rewriteExecuteCompiledOp(
-          builder, executeContext, lastDeviceRuntimeOp[device].getSlot(),
-          deviceModuleIndex[device],
-          deviceKernelIndices[device][kernel.getKernelName()], kernel, inChain,
-          inDeviceContext, cuda_runtime_slot);
+          builder, executeContext, lastDeviceRuntimeOp[hostDevice].getSlot(),
+          deviceModuleIndex[hostDevice],
+          deviceKernelIndices[hostDevice][kernel.getKernelName()], kernel,
+          inChain, inDeviceContext, cuda_runtime_slot);
     });
+    // The introduction of generic execute may introduce unbound free-values.
+    // Use fixupIsolatedFromAbove to rebind these.
+    (void)fixupIsolatedFromAbove(builder, model);
+    model.erase();
   }
 }
 

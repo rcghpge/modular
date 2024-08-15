@@ -89,7 +89,7 @@ M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
     // CPU device not explicity yet so deviceMap["cpu"] may be null
     if (devRef.label == kCPULabel) {
       deviceContexts.push_back(AnyAsyncValueRef::createReady<MojoValue>(
-          runtime, nullptr, [](void *) {}));
+          runtime, MojoValue::createRef(nullptr)));
     } else {
       if (deviceMap.contains(devRef) && deviceMap.at(devRef)) {
         const auto &dev = deviceMap.at(devRef);
@@ -104,7 +104,7 @@ M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
       } else {
         // This should be an error, but for now we'll default construct in MGP
         deviceContexts.push_back(AnyAsyncValueRef::createReady<MojoValue>(
-            runtime, nullptr, [](void *) {}));
+            runtime, MojoValue::createRef(nullptr)));
       }
     }
   }

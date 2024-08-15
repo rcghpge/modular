@@ -669,6 +669,8 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
   let extraClassDeclaration = [{
     Block *getInitBlock() { return &getInit().front(); }
     Block *getExecuteBlock() { return &getExecute().front(); }
+    MutableArrayRef<BlockArgument> getInitDevices() { return getInitBlock()->getArguments().take_front(getDevices().size());}
+    OperandRange getInitOutputDevices() { return getInitBlock()->getTerminator()->getOperands().drop_front(2).take_front(getDevices().size());}
     MutableArrayRef<BlockArgument> getExecuteInputs() { return getExecuteBlock()->getArguments().drop_front(2+getDevices().size());}
     MutableArrayRef<BlockArgument> getExecuteChainContext() { return getExecuteBlock()->getArguments().take_front(2);}
     MutableArrayRef<BlockArgument> getExecuteDevices() { return getExecuteBlock()->getArguments().drop_front(2).take_front(getDevices().size());}
