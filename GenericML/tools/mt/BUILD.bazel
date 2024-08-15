@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_cc_binary", "rpath_shim", "run_tool")
+load("//bazel:api.bzl", "modular_cc_binary", "rpath_shim")
 load("//bazel:config.bzl", "ASYNCRT_PROFILING_LOCAL_DEFINES")
 
 modular_cc_binary(
@@ -6,11 +6,13 @@ modular_cc_binary(
     srcs = glob(["*.cpp"]),
     data = [
         "//Faux/tools/faux",
+        "//KGEN:CompilerRT",
         "//ModularFramework/tools/mof",
         "//ONNX/tools/onnx:monnx",
         "//PyTorch:StockTorchInterface",
         "//PyTorch:TorchRuntimePlugins",
         "//PyTorch/tools/torch:mtorch",
+        "@llvm-project//compiler-rt:orc_rt",
     ],
     local_defines = ASYNCRT_PROFILING_LOCAL_DEFINES,
     deps = [
@@ -32,15 +34,4 @@ rpath_shim(
         "//PyTorch:TorchRuntimePlugins",
         "//PyTorch/tools/torch:mtorch",
     ],
-)
-
-run_tool(
-    name = "mt-standalone",
-    data = [
-        "//KGEN:CompilerRT",
-        "@llvm-project//compiler-rt:orc_rt",
-    ],
-    tags = ["manual"],
-    tool = ":mt",
-    visibility = ["//visibility:private"],
 )

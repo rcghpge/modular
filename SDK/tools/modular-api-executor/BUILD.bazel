@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_cc_binary", "run_tool")
+load("//bazel:api.bzl", "modular_cc_binary")
 
 modular_cc_binary(
     name = "modular-api-executor",
@@ -6,6 +6,10 @@ modular_cc_binary(
         "*.cpp",
         "*.h",
     ]),
+    data = [
+        "//KGEN:CompilerRT",
+        "@llvm-project//compiler-rt:orc_rt",
+    ],
     deps = [
         "//ArraySupport",
         "//AsyncRT:Init",
@@ -18,15 +22,4 @@ modular_cc_binary(
         "//SDK:EngineCLI-Benchmark",
         "//Support:Globals",
     ],
-)
-
-run_tool(
-    name = "modular-api-executor-standalone",
-    data = [
-        "//KGEN:CompilerRT",
-        "@llvm-project//compiler-rt:orc_rt",
-    ],
-    tags = ["manual"],
-    tool = ":modular-api-executor",
-    visibility = ["//visibility:private"],
 )
