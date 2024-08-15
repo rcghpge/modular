@@ -980,7 +980,8 @@ def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
     ConfinedAttr<
       ElementsAttr,
       [AnyAttrOf<[Builtin_DenseResourceElementsAttr]>]
-    >:$value
+    >:$value,
+    DefaultValuedAttr<BoolAttr, "false">:$debuginfo
   );
 }
 

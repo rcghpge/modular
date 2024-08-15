@@ -240,7 +240,8 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
           /*dConstantSymbols=*/
           MultiLineStringAttr::get(ctx, SmallVector<StringAttr>()),
           /*eDevice=*/hostDevice,
-          /*fModuleIndex=*/deviceModuleIndex[hostDevice]);
+          /*fModuleIndex=*/deviceModuleIndex[hostDevice],
+          /*gDebuginfo=*/loadKernels.getDebuginfo());
       inChain.replaceAllUsesExcept(loadArchive.getResult(), loadArchive);
       loadKernels.erase();
     }

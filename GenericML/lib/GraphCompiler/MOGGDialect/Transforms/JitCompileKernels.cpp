@@ -35,7 +35,7 @@ namespace M::MOGG {
 
 namespace {
 
-// Convert all possible operations directly to the avaliable operation.
+// Convert all possible operations directly to the available operation.
 struct JitCompileKernels
     : public impl::JitCompileKernelsBase<JitCompileKernels> {
   using JitCompileKernelsBase::JitCompileKernelsBase;

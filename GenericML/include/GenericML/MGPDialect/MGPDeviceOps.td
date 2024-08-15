@@ -336,13 +336,14 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
                        M_MultiLineStringAttr:$cFunctionSymbols,                  // 2
                        M_MultiLineStringAttr:$dConstantSymbols,                  // 3
                        MGP_OptDeviceRefAttr:$eDevice,                            // 4
-                       UI64Attr:$fModuleIndex                                    // 5
+                       UI64Attr:$fModuleIndex,                                   // 5
+                       DefaultValuedAttr<BoolAttr, "false">:$gDebuginfo          // 6
                        );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aRuntimeSlot `]` `[` $fModuleIndex `]` `,` $bImage `,`
     $cFunctionSymbols `,` $dConstantSymbols
-    ( `device` $eDevice^ )? attr-dict
+    ( `device` $eDevice^ )? ( `debuginfo` $gDebuginfo^ )? attr-dict
   }];
   let hasVerifier = 1;
 

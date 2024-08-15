@@ -210,7 +210,8 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
   // Add the compiled kernels as a constant.
   OpBuilder builder{ctx};
   return builder.create<MOGG::LoadCompiledKernelOp>(
-      loc, /*symbols=*/combinedSymbolName, /*value=*/archiveAttr);
+      loc, /*symbols=*/combinedSymbolName, /*value=*/archiveAttr,
+      /*debuginfo=*/debugKGENStubs || hasDebuginfo(kernelBuildType));
 }
 
 ErrorOr<MOGG::LoadCompiledKernelOp>

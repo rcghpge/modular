@@ -347,6 +347,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   jitOpts.timeMOGGCompile = opts.timeMOGGCompile;
   jitOpts.skipJitCompileMiddle = opts.skipJitCompileMiddle;
   jitOpts.debugKGENStubs = opts.debugKGENStubs;
+  jitOpts.withDebuginfo = opts.withDebuginfo;
   if (!opts.saveTempPrefix.empty())
     jitOpts.saveTempPrefix = opts.saveTempPrefix + ".region";
 
