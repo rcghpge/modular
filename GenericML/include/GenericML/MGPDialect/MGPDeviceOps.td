@@ -302,7 +302,7 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
     constant index within that module (starting at 0). The functions and
     constants will be associated with the runtime established in the given
     `!mgp.context` slot. A functions may be referenced by
-    (module index, function index) in `mgp.kernel.execute`, and constant
+    (module index, function index) in `mgp.generic.execute`, and constant
     by (module index, constant index) in `mgp.buffer.contant.load`.
 
     There is no universal representation for device modules in the host C++
@@ -1662,7 +1662,7 @@ def KernelExecuteOp : MGP_DeviceOp<"kernel.execute", [
     //  - The kernel takes two input buffers and one output buffer. The
     //    first buffer resides on the host, the other two are on the GPU.
     //  - The kernel takes two runtime dimensions.
-    %ch1 = mgp.kernel.execute %ch0,
+    %ch1 = mgp.generic.execute %ch0,
              %ctx[4, 5], (7, 9),
              (in %buf0 : !mgp.buffer<>,
               in %buf1 : !mgp.buffer<, <"cuda", 3>>,

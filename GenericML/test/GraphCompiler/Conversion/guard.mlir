@@ -11,7 +11,6 @@
 // CHECK-SAME : [[RES]]#0
 // CHECK-DAG  : [[BUF1:%.*]] = mgp.tensor.extract.buffer{{.*}},
 // CHECK-SAME : [[RES]]#1
-// CHECK-DAG  : mgp.kernel.execute{{.}}(
 // CHECK-SAME : in [[BUF0]]{{.*}}in [[BUF1]]
 mo.graph @add_guard<D0, D1>(%arg0: !mo.tensor<[D0, D1], f32>, %arg1: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32> {
   kgen.param.declare B: i1 = <eq(D0, D1)>

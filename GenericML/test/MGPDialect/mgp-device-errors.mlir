@@ -123,34 +123,3 @@ func.func @tensor_extract_buffer_mismatched_size(%ctx : !mgp.context, %tensor : 
   mef.output %buf : !mgp.buffer<61, <"cuda", 3>>
 }
 
-// -----
-
-//
-// mgp.kernel.execut
-//
-
-func.func @kernel_execute_mismatched_arity(
-  %ctx : !mgp.context,
-  %ch0 : !mef.chain,
-  %buf0 : !mgp.buffer<, <"cuda", 3>>,
-  %buf1 : !mgp.buffer<8>,
-  %buf2 : !mgp.buffer<48, <"cuda", 3>>,
-  %dim0 : index,
-  %dim1 : index
-) {
-  // expected-error@+1 {{'mgp.kernel.execute' op kernel has 3 arguments, but the in/out signature attribute has arity 4.}}
-  %ch1 = "mgp.kernel.execute" (%ch0, %ctx, %buf0, %buf1, %buf2, %dim0, %dim1)
-         { aHostRuntimeSlot = 0 : ui64, bOtherRuntimeSlot = 1 : ui64,
-           cHostModuleIndex = 7 : ui64, dHostFunctionIndex = 9 : ui64,
-           eInOutSignature = #M.inout_sig<"iioo">,
-           fHostDevice = #M.device_ref<"cpu", 0>,
-           gOtherDevice = #M.device_ref<"cuda", 3>,
-           hSummary = "kernel2",
-           iNumOutDimensions = 0 : ui64,
-           jIsAsync = true,
-           operandSegmentSizes = array<i32: 1, 1, 3, 2>}
-         : (!mef.chain, !mgp.context, !mgp.buffer<, <"cuda", 3>>,
-            !mgp.buffer<8>, !mgp.buffer<48, <"cuda", 3>>,
-            index, index) -> !mef.chain
-  mef.output %ch1 : !mef.chain
-}

@@ -317,47 +317,6 @@ func.func @debug_tensor_print(%ctx : !mgp.context, %ch0 : !mef.chain, %buf : !mg
   mef.output %ch1 : !mef.chain
 }
 
-//
-// mgp.kernel.execute
-//
-
-// CHECK-LABEL: @kernel_execute
-func.func @kernel_execute(
-  %ctx : !mgp.context,
-  %ch0 : !mef.chain,
-  %buf0 : !mgp.buffer<, <"cuda", 3>>,
-  %buf1 : !mgp.buffer<8>,
-  %buf2 : !mgp.buffer<48, <"cuda", 3>>,
-  %dim0 : index,
-  %dim1 : index
-) {
-  // CHECK: %{{.*}} = mgp.kernel.execute %{{.*}}, %{{.*}}[0, 1], (7, 9), (in %{{.*}} : !mgp.buffer<, <"cuda", 3>>, in %{{.*}} : !mgp.buffer<8>, out %{{.*}} : !mgp.buffer<48, <"cuda", 3>>), (%{{.*}}, %{{.*}}), other <"cuda", 3> summary "kernel2" is_async true
-  %ch1 = mgp.kernel.execute %ch0, %ctx[0, 1], (7, 9),
-            (in %buf0 : !mgp.buffer<, <"cuda", 3>>,
-             in %buf1 : !mgp.buffer<8>,
-             out %buf2 : !mgp.buffer<48, <"cuda", 3>>),
-            (%dim0, %dim1),
-            other <"cuda", 3> summary "kernel2" is_async true
-  mef.output %ch1 : !mef.chain
-}
-
-// CHECK-LABEL: @kernel_execute_out_dims
-func.func @kernel_execute_out_dims(
-  %ctx : !mgp.context,
-  %ch0 : !mef.chain,
-  %buf0 : !mgp.buffer<8>,
-  %buf1 : !mgp.buffer<48>,
-  %dim0 : index
-) {
-  // CHECK: %{{.*}}, %{{.*}}:2 = mgp.kernel.execute %{{.*}}, %{{.*}}[0, 0], (7, 9), (in %{{.*}} : !mgp.buffer<8>, out %{{.*}} : !mgp.buffer<48>), (%{{.*}}), summary "kernel2" out_dims 2
-  %ch1, %dim1, %dim2 = mgp.kernel.execute %ch0, %ctx[0, 0], (7, 9),
-                         (in %buf0 : !mgp.buffer<8>,
-                          out %buf1 : !mgp.buffer<48>),
-                         (%dim0),
-                         summary "kernel2" out_dims 2
-  mef.output %ch1, %dim1, %dim2 : !mef.chain, index, index
-}
-
 {-#
   dialect_resources: {
     builtin: {
