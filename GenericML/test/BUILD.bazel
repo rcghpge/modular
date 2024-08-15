@@ -44,7 +44,6 @@ lit_tests(
         "//conditions:default": [],
     }),
     tools = [
-        "//GenericML/tools/cuda-opt",
         "//GenericML/tools/mo-cuda-opt",
         "//GenericML/tools/mo-opt",
         "//GenericML/tools/model-specification-validator",

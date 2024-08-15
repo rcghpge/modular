@@ -6,7 +6,6 @@
 
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "AsyncRT/Runtime/Runtime.h"
-#include "GenericML/CUDADialect/CUDADialect.h"
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
@@ -53,7 +52,7 @@ using namespace MO;
 void M::MO::loadDialects(mlir::DialectRegistry &registry) {
   registry.insert<MO::MODialect, MOQ::MOQDialect, MOSH::MOSHDialect,
                   MIP::MIPDialect, MOGG::MOGGDialect, MGP::MGPDialect,
-                  GRT::GRTDialect, CUDA::CUDADialect, RMO::RMODialect>();
+                  GRT::GRTDialect, RMO::RMODialect>();
   M::registerAllKGENDialects(registry);
   M::registerKGENToLLVMTranslation(registry);
 }

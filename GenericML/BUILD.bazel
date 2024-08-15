@@ -70,7 +70,6 @@ modular_cc_library(
     srcs = glob(["lib/GraphCompiler/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/*.h"]),
     deps = [
-        ":CUDADialect",
         ":MODialect",
         ":MOGGDialect",
         ":MOGGSupport",
@@ -1180,118 +1179,11 @@ modular_cc_library(
     ],
 )
 
-##
-# CUDA dialect. TODO: Move these deeper into the subdirectories.
-##
-
-td_library(
-    name = "CUDADialectTdFiles",
-    srcs = glob(["include/GenericML/CUDADialect/*.td"]),
-    includes = ["include"],
-    deps = [
-        "@llvm-project//mlir:BuiltinDialectTdFiles",
-    ],
-)
-
-gentbl_mlir_dialect(
-    name = "CUDADialectIncGen",
-    dialect = "cuda",
-    extra_tbl_outs = [
-        (
-            [
-                "-gen-attrdef-decls",
-                "-attrdefs-dialect=cuda",
-            ],
-            "include/GenericML/CUDADialect/CUDAAttrs.h.inc",
-        ),
-        (
-            [
-                "-gen-attrdef-defs",
-                "-attrdefs-dialect=cuda",
-            ],
-            "include/GenericML/CUDADialect/CUDAAttrs.cpp.inc",
-        ),
-    ],
-    td_file = "include/GenericML/CUDADialect/CUDA.td",
-    deps = [
-        ":CUDADialectTdFiles",
-        ":MGPDialectTdFiles",
-        "//GraphRT:GRTTdFiles",
-    ],
-)
-
-gentbl_cc_library(
-    name = "CUDADialectTypeInterfacesIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            [
-                "-gen-type-interface-decls",
-            ],
-            "include/GenericML/CUDADialect/CUDATypeInterfaces.h.inc",
-        ),
-        (
-            [
-                "-gen-type-interface-defs",
-            ],
-            "include/GenericML/CUDADialect/CUDATypeInterfaces.cpp.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/GenericML/CUDADialect/CUDATypeInterfaces.td",
-    deps = [
-        ":CUDADialectTdFiles",
-    ],
-)
-
-gentbl_cc_library(
-    name = "CUDADialectOpInterfacesIncGen",
-    includes = ["include"],
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            [
-                "-gen-op-interface-decls",
-            ],
-            "include/GenericML/CUDADialect/CUDAOpInterfaces.h.inc",
-        ),
-        (
-            [
-                "-gen-op-interface-defs",
-            ],
-            "include/GenericML/CUDADialect/CUDAOpInterfaces.cpp.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/GenericML/CUDADialect/CUDAOpInterfaces.td",
-    deps = [
-        ":CUDADialectTdFiles",
-    ],
-)
-
-modular_cc_library(
-    name = "CUDADialect",
-    srcs = glob(["lib/CUDADialect/*.cpp"]),
-    hdrs = glob(["include/GenericML/CUDADialect/*.h"]),
-    deps = [
-        ":CUDADialectIncGen",
-        ":CUDADialectOpInterfacesIncGen",
-        ":CUDADialectTypeInterfacesIncGen",
-        ":MGPDialect",
-        ":Support",
-        "//GraphRT:MEFDialect",
-        "//GraphRT:MIPDialect",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
 modular_cc_library(
     name = "CUDARegistration",
     srcs = glob(["lib/CUDARegistration/*.cpp"]),
     hdrs = glob(["include/GenericML/CUDARegistration/*.h"]),
     deps = [
-        ":CUDADialect",
         ":GraphCompilerDeviceBuggerizationRegistry",
         "//CUDASupport",
     ],
@@ -1302,7 +1194,6 @@ modular_cc_library(
     srcs = glob(["lib/CUDAPrimitives/*.cpp"]),
     hdrs = glob(["include/GenericML/CUDAPrimitives/*.h"]),
     deps = [
-        ":CUDADialect",
         ":MGPPrimitives",
         "//CUDASupport:Globals",
     ],
