@@ -17,7 +17,7 @@ from max.graph.quantization import (
     QuantizationEncoding,
 )
 from max.tensor import TensorSpec
-from max._driver import (
+from max.driver import (
     Device,
     Tensor,
     AnyTensor,
@@ -396,7 +396,7 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
             return None
 
         prev_token_shape = self._next_token_tensor.spec().shape
-        results = self._model._execute(
+        results = self._model.execute(
             self._next_token_tensor.take(),
             self._get_attention_mask(),
             AnyMojoValue(self._kv_collection.take()),

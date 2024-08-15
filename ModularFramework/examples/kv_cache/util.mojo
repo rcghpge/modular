@@ -4,7 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 from buffer import NDBuffer
-from max._driver import Tensor
+from max.driver import Tensor
 from max.tensor import TensorShape
 from utils import StaticIntTuple
 

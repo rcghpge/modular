@@ -14,7 +14,7 @@ from kv_cache.types import (
 from max.graph import _OpaqueType as OpaqueType
 from max.graph import ops, Dim, TensorType, Symbol, Graph, Type
 from max.tensor import TensorSpec
-from max._driver import AnyTensor, Device
+from max.driver import AnyTensor, Device
 from pipelines.nn import Embedding, Linear
 from pipelines.weights.gguf import GGUFFile
 from pipelines.weights.loadable_model import LoadableModel
