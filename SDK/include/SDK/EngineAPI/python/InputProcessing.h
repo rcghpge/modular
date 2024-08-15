@@ -28,11 +28,6 @@ void verifyTensorInputSpecs(const py::object &obj,
 M_AsyncValue *processTensorInput(const py::object &obj, const std::string &name,
                                  M_RuntimeContext *context);
 
-/// Borrows the data from the array in the pybind object `obj` into a new
-/// `Tensor` wrapped in an `AsyncValue`.
-M_AsyncValue *processTensorInput(const py::object &obj,
-                                 M_RuntimeContext *context);
-
 /// Recursively converts the pybind object `pyObj` containing a value composed
 /// of `array`, `dict`, `list`, `tuple`, `none`, `double`, `long`, `bool`
 /// objects to a nested value of generic composed (`Dict`, `List`, Tuple`),

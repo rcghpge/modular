@@ -21,38 +21,40 @@ namespace py = pybind11;
 /// data type as the tensor spec.
 void core::verifyTensorInputSpecs(const py::object &obj,
                                   const TensorSpec &inputTensorSpec) {
-  const auto tensor = obj.cast<py::array>();
-
+  TensorData tensor = obj.cast<core::TensorData>();
   // Assert the input tensor has the same tensor specification
   // Assert same dtype.
-  if (pybind11::dtype expectedDtype = mapDType(inputTensorSpec.getDtype());
-      !tensor.dtype().is(expectedDtype))
+  if (M_Dtype expectedDtype = inputTensorSpec.getDtype();
+      tensor.dtype != expectedDtype)
     throw std::invalid_argument(
         "Input tensor has incompatible type. Expected type " +
-        printDType(inputTensorSpec.getDtype()) + " but got " +
-        printDType(mapPybind11Type(tensor.dtype())) + " instead.");
+        printDType(expectedDtype) + " but got " + printDType(tensor.dtype) +
+        " instead.");
 
   // Assert same number of dims
   auto shapeOr = inputTensorSpec.getShape();
   if (shapeOr) {
     const std::vector<std::optional<int64_t>> &shape = *shapeOr;
+    size_t actualNumDims = tensor.shape.size();
     if (unsigned long expectedNDim = shape.size();
-        (unsigned long)tensor.ndim() != expectedNDim) {
+        actualNumDims != expectedNDim) {
       throw std::invalid_argument(
           "Input tensor has incompatible number of dimensions. Expected "
           "number of dimensions to be " +
           std::to_string(expectedNDim) + " but input has " +
-          std::to_string(tensor.ndim()) + " dimensions.");
+          std::to_string(actualNumDims) + " dimensions.");
     }
 
     // Assert same shape
-    for (ssize_t d = 0, ndim = tensor.ndim(); d < ndim; ++d) {
+    for (ssize_t d = 0, ndim = actualNumDims; d < ndim; ++d) {
       auto expectedDimOr = shape.at(d);
-      if (expectedDimOr && *expectedDimOr != tensor.shape(d)) {
+      if (!expectedDimOr)
+        continue;
+      if (int64_t actualDim = tensor.shape[d]; *expectedDimOr != actualDim) {
         throw std::invalid_argument(
             "Input tensor has incompatible dimension along axis " +
             std::to_string(d) + ". Expected " + std::to_string(*expectedDimOr) +
-            " but found " + std::to_string(tensor.shape(d)) + ".");
+            " but found " + std::to_string(actualDim) + ".");
       }
     }
   }
@@ -64,32 +66,19 @@ void core::verifyTensorInputSpecs(const py::object &obj,
 M_AsyncValue *core::processTensorInput(const py::object &obj,
                                        const std::string &name,
                                        M_RuntimeContext *context) {
-  const auto tensor = obj.cast<py::array>();
-
-  std::vector<int64_t> inputShape;
-  for (ssize_t d = 0; d < tensor.ndim(); ++d)
-    inputShape.push_back(tensor.shape(d));
-
-  TensorSpecPtr tensorSpec{M_newTensorSpec(inputShape.data(), inputShape.size(),
-                                           mapPybind11Type(tensor.dtype()),
+  TensorData tensor = obj.cast<core::TensorData>();
+  TensorSpecPtr tensorSpec{M_newTensorSpec(tensor.shape.data(),
+                                           tensor.shape.size(), tensor.dtype,
                                            name.c_str()),
                            &M_freeTensorSpec};
-  // tensor points to a buffer owned by the input py::array.
+  // tensor points to a buffer owned by the input tensor.
   // Since .execute() is synchronous currently, the tensor will survive at
   // least as long as we need it: we won't use the input tensor anymore
   // after .execute() returns.
   //
   // TODO(#7919): Figure out lifetime management for input tensors in the
   // asynchronous case.
-  return M_createBorrowedTensor(tensor.data(), tensorSpec.get(), context);
-}
-
-/// Borrows the data from the array in the pybind object `obj` into a new
-/// `Tensor` wrapped in an `AsyncValue`.
-M_AsyncValue *core::processTensorInput(const py::object &obj,
-                                       M_RuntimeContext *context) {
-  std::string name("");
-  return processTensorInput(obj, name, context);
+  return M_createBorrowedTensor(tensor.dataPtr, tensorSpec.get(), context);
 }
 
 /// Recursively converts the pybind object `pyObj` containing a value composed
@@ -100,8 +89,8 @@ M_AsyncValue *core::processTensorInput(const py::object &obj,
 M_AsyncValue *core::processValueInput(const py::object &pyObj,
                                       M_RuntimeContext *context,
                                       M_Status *status) {
-  if (py::isinstance<py::array>(pyObj))
-    return processTensorInput(pyObj, context);
+  if (py::isinstance<core::TensorData>(pyObj))
+    return processTensorInput(pyObj, /*name=*/"", context);
 
   if (py::isinstance<py::dict>(pyObj)) {
     const auto pyDict = pyObj.cast<py::dict>();
