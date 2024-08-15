@@ -6,11 +6,40 @@
 """Download utilities."""
 
 import hashlib
-from warnings import warn
 import os
 import urllib.request
-import requests
 from pathlib import Path
+from warnings import warn
+
+import requests
+from tqdm.auto import tqdm
+
+
+class _TqdmUpTo(tqdm):
+    """Class for adding progress bar to download.
+
+    Code from https://github.com/tqdm/tqdm/blob/master/examples/tqdm_wget.py
+
+    Original description:
+
+    Provides `update_to(n)` which uses `tqdm.update(delta_n)`.
+
+    Inspired by [twine#242](https://github.com/pypa/twine/pull/242),
+    [here](https://github.com/pypa/twine/commit/42e55e06).
+    """
+
+    def update_to(self, b=1, bsize=1, tsize=None):
+        """
+        b  : int, optional
+            Number of blocks transferred so far [default: 1].
+        bsize  : int, optional
+            Size of each block (in tqdm units) [default: 1].
+        tsize  : int, optional
+            Total size (in tqdm units). If [default: None] remains unchanged.
+        """
+        if tsize is not None:
+            self.total = tsize
+        return self.update(b * bsize - self.n)  # also sets self.n = b * bsize
 
 
 def modular_cache_dir() -> Path:
@@ -38,7 +67,18 @@ def download_to_cache(url: str, verify: bool) -> Path:
 
     if not destination.is_file():
         tmp_destination = str(destination) + ".tmp"
-        urllib.request.urlretrieve(url, tmp_destination)
+
+        with _TqdmUpTo(
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1024,
+            miniters=1,
+            desc=last_component,
+        ) as t:  # all optional kwargs
+            urllib.request.urlretrieve(  # nosec
+                url, filename=tmp_destination, reporthook=t.update_to, data=None
+            )
+            t.total = t.n
 
         # Once finished, mv the file so we hit the cache next time
         if _check_HF_sha(url, tmp_destination):

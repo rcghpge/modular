@@ -72,9 +72,6 @@ class Llama3Config:
     n_kv_heads: int = 8
     """Number of key and value heads to use in the MultiHeadAttention layers."""
 
-    head_dim: int = 128
-    """Dimension of each head."""
-
     vocab_size: int = 128256
     """Number of tokens in the vocabulary."""
 
@@ -124,7 +121,6 @@ class Llama3Config:
                 "Number of key and value heads to use in the MultiHeadAttention"
                 " layers."
             ),
-            "head_dim": "Dimension of each head.",
             "vocab_size": "Number of tokens in the vocabulary.",
             "hidden_dim": "Hidden dimension of embedded tokens.",
             "rope_theta": "Rotary period hyperparameter for rope embeddings.",
@@ -165,3 +161,13 @@ class Llama3Config:
                 f"quantization of {self.quantization_encoding} not"
                 f" supported for version {self.version}"
             )
+
+    @property
+    def head_dim(self):
+        """Dimension of each head."""
+        return self.hidden_dim // self.n_heads
+
+    @property
+    def kv_weight_dim(self):
+        """Dimension of the key and value attention weights."""
+        return self.head_dim * self.n_kv_heads

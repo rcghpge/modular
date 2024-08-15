@@ -174,4 +174,3 @@ def _override_config(config: Llama3Config, reader: gguf.GGUFReader):
     _maybe_override(
         "layer_norm_rms_epsilon", "llama.attention.layer_norm_rms_epsilon"
     )
-    config.head_dim = config.hidden_dim // config.n_heads
