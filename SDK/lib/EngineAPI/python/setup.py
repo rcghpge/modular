@@ -43,6 +43,11 @@ DRIVER_SHARED_LIBS = [
     os.path.abspath(p)
     for p in glob(os.path.join("max", "driver", f"*{PY_MODULE_EXTENSION}"))
 ]
+DTYPE_SHARED_LIBS = [
+    os.path.abspath(p)
+    for p in glob(os.path.join("max", "dtype", f"*{PY_MODULE_EXTENSION}"))
+]
+
 
 EXECUTABLES = [os.path.abspath(os.path.join("max", "bin", "*"))]
 # Copy everything under `.mojo_cache` to the wheel.
@@ -55,8 +60,22 @@ setup(
     name="max-engine",
     package_data={
         "max.engine": EXECUTABLES + SHARED_LIBS + MOJO_CACHE + MODULAR_CFG,
-        "max.driver": EXECUTABLES + SHARED_LIBS + MOJO_CACHE + MODULAR_CFG,
+        "max.driver": EXECUTABLES
+        + DRIVER_SHARED_LIBS
+        + MOJO_CACHE
+        + MODULAR_CFG,
+        "max.driver": EXECUTABLES
+        + DTYPE_SHARED_LIBS
+        + MOJO_CACHE
+        + MODULAR_CFG,
     },
-    packages=["max.driver", "max._driver", "max.engine", "max._engine"],
+    packages=[
+        "max.dtype",
+        "max._dtype",
+        "max.driver",
+        "max._driver",
+        "max.engine",
+        "max._engine",
+    ],
     include_package_data=True,
 )

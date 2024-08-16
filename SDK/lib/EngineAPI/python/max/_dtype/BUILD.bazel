@@ -1,0 +1,41 @@
+load("//bazel:api.bzl", "copy_files", "modular_pybind_extension", "modular_pybind_py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+copy_files(
+    name = "py_srcs",
+    srcs = ["//SDK/lib/EngineAPI/python/bindings/max/_dtype"],
+    outs = [
+        "__init__.py",
+        "core.pyi",
+    ],
+)
+
+# max._dtype C extension module.
+modular_pybind_extension(
+    name = "core",
+    srcs = [
+        "//SDK/lib/EngineAPI/python/bindings/max/_dtype:core_srcs",
+    ],
+    deps = [
+        "//GenericML:API.headers",
+        "//GenericML:MaxAPI",
+    ],
+)
+
+modular_pybind_py_library(
+    name = "_dtype_pybind",
+    srcs = [],
+    pybind_data = [":core"],
+)
+
+py_library(
+    name = "_dtype",
+    srcs = [],
+    data = [
+        "py_srcs",
+    ],
+    deps = [
+        ":_dtype_pybind",
+    ],
+)

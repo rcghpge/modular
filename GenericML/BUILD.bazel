@@ -1362,7 +1362,6 @@ modular_cc_library(
 modular_cc_library(
     name = "API.headers",
     hdrs = glob(["include/GenericML/API/**/*.h"]),
-    visibility = ["//visibility:private"],
 )
 
 pkg_files(

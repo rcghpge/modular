@@ -1,0 +1,27 @@
+load("//bazel:api.bzl", "modular_relink_object")
+load("//bazel/internal:config.bzl", "PYTHON_VERSIONS", "python_version_name")  # buildifier: disable=bzl-visibility
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "_dtype",
+    srcs = glob([
+        "**/*.py",
+        "**/*.pyi",
+    ]),
+)
+
+# Label for all bindings sources.
+filegroup(
+    name = "core_srcs",
+    srcs = ["core.cpp"],
+)
+
+[
+    modular_relink_object(
+        name = python_version_name("dtype-core", version) + ".fixed",
+        src = "//SDK/lib/EngineAPI/python/max/_dtype:" + python_version_name("core", version),
+        new_root = "../lib",
+    )
+    for version in PYTHON_VERSIONS
+]
