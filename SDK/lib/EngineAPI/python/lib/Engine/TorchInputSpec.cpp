@@ -5,7 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "SDK/EngineAPI/python/TorchInputSpec.h"
-#include "GenericML/API/max/c/tensor.h"
 #include "GenericML/API/max/c/types.h"
 #include "GenericML/API/max/cpp/aliases.h"
 #include "SDK/EngineAPI/python/Utils.h"

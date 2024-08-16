@@ -6,10 +6,9 @@
 
 #include "SDK/EngineAPI/python/Types.h"
 #include "Support/ErrorOr.h"
+#include "pybind11/embed.h"
+#include "pybind11/pybind11.h"
 #include "gtest/gtest.h"
-#include <pybind11/embed.h>
-#include <pybind11/numpy.h>
-#include <pybind11/pybind11.h>
 
 extern "C" const char *__asan_default_options() { return "detect_leaks=0"; }
 

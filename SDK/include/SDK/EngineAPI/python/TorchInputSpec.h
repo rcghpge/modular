@@ -3,14 +3,11 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
-#ifndef SDK_ENGINEAPI_PYTHON_TorchInputSpec_H
-#define SDK_ENGINEAPI_PYTHON_TorchInputSpec_H
+#ifndef SDK_ENGINEAPI_PYTHON_TORCHINPUTSPEC_H
+#define SDK_ENGINEAPI_PYTHON_TORCHINPUTSPEC_H
 
-#include "GenericML/API/max/c/tensor.h"
 #include "GenericML/API/max/c/types.h"
-#include "GenericML/API/max/cpp/aliases.h"
 #include "PyTorch/API/max/cpp/pytorch/aliases.h"
-#include <memory>
 #include <optional>
 #include <string>
 #include <variant>
@@ -39,4 +36,4 @@ public:
 
 } // namespace M::core
 
-#endif // SDK_ENGINEAPI_PYTHON_TorchInputSpec_H
+#endif // SDK_ENGINEAPI_PYTHON_TORCHINPUTSPEC_H

@@ -7,9 +7,9 @@
 #define SDK_ENGINEAPI_PYTHON_TYPES_H
 
 #include "GenericML/API/max/c/types.h"
-#include <pybind11/numpy.h>
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
+#include "pybind11/numpy.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 
 namespace M::core {
 M_Dtype mapPybind11Type(pybind11::dtype dtype);
