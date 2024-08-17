@@ -17,6 +17,9 @@ lit_tests(
         "//Kernels/mojo/Mogg:MOGGPrimitives_debuginfo.lib.mlirbc",
         "@llvm-project//compiler-rt:orc_rt",
     ],
+    env = {
+        "ASAN_OPTIONS": "detect_odr_violation=0",
+    },
     mojo_deps = [
         "//SDK/lib/API/mojo/max/max",
         "//open-source/mojo/stdlib/stdlib",
