@@ -189,6 +189,17 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
           "If enabled, the graph compiler assumes that the inputs will be "
           "located on the device, and will return outputs on the device."),
       llvm::cl::init(false)};
+  Option<std::string> defaultDeviceTargetTriple{
+      *this, "default-device-target-triple",
+      llvm::cl::desc("llvm::Triple representing the compilation target for the "
+                     "defaultDevice."),
+      llvm::cl::init("")};
+  Option<std::string> defaultDeviceTargetArch{
+      *this, "default-device-target-arch",
+      llvm::cl::desc("String representing the architecture of the "
+                     "defaultDevice. For example, for NVIDIA GPUs this is the "
+                     "compute capability (i.e. sm_X)"),
+      llvm::cl::init("")};
   Option<bool> debugKGENStubs{
       *this, "debug-kgen-stubs",
       llvm::cl::desc(

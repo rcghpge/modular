@@ -7,6 +7,7 @@
 #ifndef GENERICML_DRIVER_DRIVERCONFIG_H
 #define GENERICML_DRIVER_DRIVERCONFIG_H
 
+#include "Support/DeviceSpecs.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 
@@ -88,10 +89,12 @@ private:
 class DeviceConfig : public DriverConfig {
 public:
   DeviceConfig(std::string device, size_t deviceID,
+               const std::optional<DeviceSpec> &deviceSpec,
                bool inputsAndOutputsOnDevice = false)
       : DriverConfig(OptionKind::kDevice, "device-configuration"),
         inputsAndOutputsOnDevice(inputsAndOutputsOnDevice),
-        deviceLabel(std::move(device)), deviceID(deviceID) {}
+        deviceSpec(deviceSpec), deviceLabel(std::move(device)),
+        deviceID(deviceID) {}
 
   static bool classof(const DriverConfig *config) {
     return config->getKind() == OptionKind::kDevice;
@@ -105,6 +108,7 @@ public:
   }
 
   bool inputsAndOutputsOnDevice{false};
+  std::optional<DeviceSpec> deviceSpec;
 
 private:
   std::string deviceLabel;

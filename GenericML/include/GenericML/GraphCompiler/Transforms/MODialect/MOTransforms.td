@@ -305,6 +305,13 @@ def AddDevicesPass : Pass<"add-devices", "GraphOp"> {
     Option<"defaultDeviceLabel", "default-device-label", "std::string", "\"\"",
            "If non-empty, assign as many ops as possible to the device "
            "with the given label (and device id zero).">,
+    Option<"defaultDeviceTargetTriple", "default-device-target-triple", "std::string", "\"\"",
+      "llvm::Triple representing the compilation target for the "
+                     "defaultDevice.">,
+    Option<"defaultDeviceTargetArch", "default-device-target-arch", "std::string", "\"\"",
+      "String representing the architecture of the "
+                     "defaultDevice. For example, for NVIDIA GPUs this is the "
+                     "compute capability (i.e. sm_X)">,
   ];
 }
 

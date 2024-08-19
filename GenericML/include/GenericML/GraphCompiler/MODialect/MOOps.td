@@ -191,6 +191,14 @@ def MO_GraphOp : MO_TensorOp<"graph", [
     /// Sets the #M.device_spec_collection annotation for this graph op,
     /// overwriting any existing annotation.
     void setDeviceSpecs(DeviceSpecCollectionAttr deviceSpecs);
+
+    /// Sets the #M.device_spec_collection annotation for this graph op,
+    /// overwriting any existing annotation.
+    void setDeviceTargetInfo(TargetInfoAttr targetInfo);
+
+    /// Sets the #M.device_spec_collection annotation for this graph op,
+    /// overwriting any existing annotation.
+    TargetInfoAttr getDeviceTargetInfo();
   }];
 
   let builders = [

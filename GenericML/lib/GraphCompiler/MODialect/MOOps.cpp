@@ -427,6 +427,8 @@ LogicalResult IndexToTensorOp::canonicalize(IndexToTensorOp op,
 /// the (virtual) devices available to the graph.
 constexpr StringRef kGraphDeviceSpecCollectionAttrName = "device_specs";
 
+constexpr StringRef kGraphTargetInfoAttrName = "target_info";
+
 /// Traverse the given types and collect unique parameter references, then
 /// return a set of parameter declaration for those references.
 static llvm::SetVector<KGEN::ParamDeclAttr>
@@ -565,6 +567,14 @@ DeviceSpecCollectionAttr GraphOp::getDeviceSpecs() {
 
 void GraphOp::setDeviceSpecs(DeviceSpecCollectionAttr deviceSpecs) {
   getOperation()->setAttr(kGraphDeviceSpecCollectionAttrName, deviceSpecs);
+}
+
+TargetInfoAttr GraphOp::getDeviceTargetInfo() {
+  return dyn_cast_if_present<TargetInfoAttr>(
+      getOperation()->getAttr(kGraphTargetInfoAttrName));
+}
+void GraphOp::setDeviceTargetInfo(TargetInfoAttr targetInfo) {
+  getOperation()->setAttr(kGraphTargetInfoAttrName, targetInfo);
 }
 
 //===----------------------------------------------------------------------===//

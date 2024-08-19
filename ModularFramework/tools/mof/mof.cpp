@@ -30,6 +30,7 @@
 #include "MOF/Driver/DriverConfig.h"
 #include "MOF/Driver/DriverImpl.h"
 #include "MOF/ModularModel/ModularModelFile.h"
+#include "Support/DeviceSpecs.h"
 #include "Support/ErrorOr.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -93,6 +94,7 @@ struct MOFConfig {
   std::optional<std::string> defaultDeviceLabel;
   std::optional<bool> enableExtraDevices;
   std::optional<size_t> deviceID;
+  std::optional<DeviceSpec> deviceSpec;
   CASConfig commonCasConfig;
   bool inputsAndOutputsOnDevice;
 
@@ -114,6 +116,10 @@ struct MOFConfig {
     if (commonCasConfig.getCacheDir())
       moToMgpOptions.cacheDir = commonCasConfig.getCacheDir()->getPath().str();
     moToMgpOptions.inputsAndOutputsOnDevice = inputsAndOutputsOnDevice;
+    moToMgpOptions.defaultDeviceTargetTriple =
+        deviceSpec ? deviceSpec.value().target.triple.str() : "";
+    moToMgpOptions.defaultDeviceTargetArch =
+        deviceSpec ? deviceSpec.value().target.arch : "";
   }
 };
 
@@ -182,6 +188,7 @@ public:
         mofConfig->enableExtraDevices = !deviceConfig->getDeviceLabel().empty();
         mofConfig->inputsAndOutputsOnDevice =
             deviceConfig->inputsAndOutputsOnDevice;
+        mofConfig->deviceSpec = deviceConfig->deviceSpec;
       }
     }
     return success();

@@ -184,6 +184,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   addDevicesOpts.enableExtraDevices = opts.enableExtraDevices;
   addDevicesOpts.enableFakeCudaDevice = opts.enableFakeCudaDevice;
   addDevicesOpts.defaultDeviceLabel = opts.defaultDeviceLabel;
+  addDevicesOpts.defaultDeviceTargetTriple = opts.defaultDeviceTargetTriple;
+  addDevicesOpts.defaultDeviceTargetArch = opts.defaultDeviceTargetArch;
   pm.addPass(MO::createAddDevicesPass(addDevicesOpts));
   pm.addPass(MO::createInferLayouts());
 
