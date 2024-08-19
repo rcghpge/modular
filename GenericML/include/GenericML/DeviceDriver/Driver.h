@@ -82,9 +82,7 @@ struct Device : M::ReferenceCounted<Device> {
   /// Frees ptr created with `allocateData`.
   virtual void freeData(void *ptr) = 0;
 
-  virtual std::string getLabel() const = 0;
-
-  virtual int getId() const = 0;
+  virtual ErrorOr<DeviceSpec> getDeviceSpec() const = 0;
 
   /// Allocates `bytes` bytes of memory on the device
   /// and returns the allocation in a DeviceMemory object.
