@@ -238,6 +238,8 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
         max_new_tokens: Optional[Int] = None,
         max_batch_size: Int = 1,
         pad_to_multiple_of: Optional[Int] = None,
+        mef_load_path: String = "",
+        mef_store_path: String = "",
     ):
         """Builds and compiles a Replit model to get ready for execution."""
         # Generate a graph that does a single forward pass of the replit model.
@@ -261,10 +263,17 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
         # optimization passes on it.
         print("Compiling...", end="")
         start_time = now()
-        self._model = self._session.load(
-            g,
-            custom_ops_paths=custom_ops_paths,
-        )
+        if mef_load_path != "":
+            self._model = self._session.load(
+                mef_load_path, custom_ops_paths=custom_ops_paths
+            )
+        else:
+            self._model = self._session.load(
+                g,
+                custom_ops_paths=custom_ops_paths,
+            )
+        if mef_store_path != "":
+            self._model.export_compiled_model(mef_store_path)
         print("done. Took", (now() - start_time) / 1e9, "seconds.")
 
         # Set up tokenizer.
@@ -457,6 +466,8 @@ def dispatch[dtype: DType, kv_params: KVCacheStaticParams](config: Config):
         max_new_tokens=max_new_tokens,
         max_batch_size=config.get("max-batch-size")[Int],
         pad_to_multiple_of=pad_to_multiple_of,
+        mef_load_path=config.get("experimental-load-graph")[String],
+        mef_store_path=config.get("experimental-store-graph")[String],
     )
 
     input_string = config.get("prompt")[String]
