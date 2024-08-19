@@ -32,8 +32,6 @@ constexpr std::string_view modularTorchExtensionLibraryName =
 #else
 constexpr std::string_view modularFrameworkLibraryName =
     "libmodular-framework-common.so";
-constexpr std::string_view modularONNXExtensionLibraryName =
-    "libmodular-framework-onnx-ext.so";
 constexpr std::string_view modularTorchExtensionLibraryName =
     "libmodular-framework-torch-ext.so";
 #endif
@@ -76,16 +74,11 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
   if (dylibOr.isError())
     return dylibOr.takeError();
 
-  auto onnxLibOr = fallibleLibraryLoad(modularONNXExtensionLibraryName);
-  if (onnxLibOr.isError())
-    return onnxLibOr.takeError();
-
   auto torchLibOr = fallibleLibraryLoad(modularTorchExtensionLibraryName);
   if (torchLibOr.isError())
     return torchLibOr.takeError();
 
   llvm::sys::DynamicLibrary dylib = dylibOr.takeValue();
-  llvm::sys::DynamicLibrary onnxLib = onnxLibOr.takeValue();
   llvm::sys::DynamicLibrary torchLib = torchLibOr.takeValue();
 
 #define STRINGIFY_SYMBOL(x) #x
