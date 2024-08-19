@@ -10,10 +10,8 @@
 #define GRAPHCOMPILER_TRANSFORMS_MODIALECT_MEFMODEL_H
 
 #include "AsyncRT/ForwardDecls.h"
+#include "GenericML/Support/MGPModel.h"
 #include "GenericML/Support/Model.h"
-#include "GraphRT/MEFExecutor/MEFInvokable.h"
-#include "Support/AssertStream.h"
-#include "Support/DeviceSpecs.h"
 #include "Support/ForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
@@ -27,6 +25,8 @@ class ModelCollection;
 
 namespace M::MO {
 
+class ModularExecutableModel;
+
 /// Load all the models from the contents of the specified MEFFile, which
 /// holds them compiled to MEF format. Assumes the
 /// MemoryBuffer will outlive the ModelCollection.
@@ -36,66 +36,12 @@ loadMGPMEFFile(RCRef<MEFFile> mefFile);
 /// This class describes a model overall, including the MEF
 /// invokables that implement its phases and metadata about what tensors it
 /// takes and returns.
-class ModularModel final : public Model {
-public:
-  ModularModel(std::string name, SmallVector<DeviceRef> devices,
-               CompiledFrameworkLabel frameworkLabel,
-               const MEFInvokable *initFn, const MEFInvokable *executeFn,
-               ArrayRef<QuantTensorSpec> inputSpecs,
-               ArrayRef<QuantTensorSpec> outputSpecs, EncodedLocation location)
-      : Model(inputSpecs, outputSpecs), name(std::move(name)), devices(devices),
-        initFn(initFn), executeFn(executeFn), location(std::move(location)) {
-    ASSERT_STREAM(frameworkLabel == CompiledFrameworkLabel::kModularModel,
-                  << "Expected " << CompiledFrameworkLabel::kModularModel
-                  << " label for model, but got "
-                  << frameworkLabel.getAsString());
-  }
+struct ModularModel final : public MGPModelImpl<ModularModel> {
+  using MGPModelImpl::MGPModelImpl;
+  using ExecutableModelType = ModularExecutableModel;
 
-  ModularModel(std::string name, SmallVector<DeviceRef> devices,
-               CompiledFrameworkLabel frameworkLabel,
-               const MEFInvokable *initFn, const MEFInvokable *executeFn,
-               ArrayRef<QuantTensorSpec> inputSpecs,
-               ArrayRef<QuantTensorSpec> outputSpecs,
-               ArrayRef<StringRef> inputNames, ArrayRef<StringRef> outputNames,
-               EncodedLocation location)
-      : Model(inputSpecs, outputSpecs, inputNames, outputNames),
-        name(std::move(name)), devices(devices), initFn(initFn),
-        executeFn(executeFn), location(std::move(location)) {
-    ASSERT_STREAM(frameworkLabel == CompiledFrameworkLabel::kModularModel,
-                  << "Expected " << CompiledFrameworkLabel::kModularModel
-                  << " label for model, but got "
-                  << frameworkLabel.getAsString());
-  }
-
-  /// Returns a ModularModel from an mgp.model descriptor.
-  static ErrorOr<std::unique_ptr<ModularModel>>
-  getFromDescriptor(const PrimitiveDescriptor &descriptor);
-
-  /// Calls the model's setup function using `runtime` and returns the results
-  /// immediately. This function does not await the results to be ready.
-  AsyncRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>> setup(
-      Runtime &runtime,
-      const Driver::DeviceMap &deviceMap = Driver::DeviceMap()) const override;
-
-  static StringLiteral getEntityName() { return "mgp.model"; }
-
-  /// Returns the name of the model.
-  StringRef getName() const override { return name; }
-
-  const MEFInvokable *getInitFn() const { return initFn; }
-  const MEFInvokable *getExecuteFn() const { return executeFn; }
-
-  const EncodedLocation &getLocation() const override { return location; }
-
-  const ArrayRef<DeviceRef> getDevices() const { return devices; }
-
-private:
-  std::string name;
-  const SmallVector<DeviceRef> devices;
-  const MEFInvokable *initFn;
-  const MEFInvokable *executeFn;
-
-  EncodedLocation location;
+  static constexpr CompiledFrameworkLabel kFrameworkLabel{
+      CompiledFrameworkLabel::kModularModel};
 };
 
 class ModularExecutableModel final : public ExecutableModel {
@@ -114,7 +60,7 @@ public:
 
   ModularExecutableModel(AnyAsyncValueRef chain, AnyAsyncValueRef mgpContext,
                          SmallVector<AnyAsyncValueRef> &&devices,
-                         const ModularModel *model, Runtime &runtime)
+                         const Model *model, Runtime &runtime)
       : ExecutableModel(model, runtime), chain(std::move(chain)),
         mgpContext(std::move(mgpContext)), devices(std::move(devices)) {}
 
