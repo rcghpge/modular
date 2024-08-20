@@ -1,4 +1,4 @@
-sphinx==7.2
+sphinx==7.2.6
 sphinx_rtd_theme
 Jinja2
 beautifulsoup4 # TODO(scott): Remove this after docsite migration
