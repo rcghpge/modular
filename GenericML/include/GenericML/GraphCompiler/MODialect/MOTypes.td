@@ -306,7 +306,7 @@ def MO_Buffer : MO_Type<"Buffer", "buffer"> {
 // MO_Chain
 //===----------------------------------------------------------------------===//
 
-def MO_Chain : MO_Type<"Chain", "chain"> { 
+def MO_Chain : MO_Type<"Chain", "chain"> {
   let summary = "Controls sequencing of side-effecting operations.";
   let description = [{
     This type is used to sequence side-efffecting operations. Any operation in
@@ -511,7 +511,7 @@ def MO_BooleanMask : MO_ConfinedTensor<
 def MO_CondLike : ConfinedType<MO_Tensor,
     [MO_HasAnyRankOfPred<[0]>, HasBoolElementTypePred],
     "rank 0 and boolean element type"> {
-  let cppClassName = "::M::MO::TensorType";
+  let cppType = "::M::MO::TensorType";
 }
 
 /// Confines the MO_TensorType so that it has Boolean elements and rank 0 if
@@ -519,14 +519,14 @@ def MO_CondLike : ConfinedType<MO_Tensor,
 def MO_CondLikeIfRanked : ConfinedType<MO_Tensor,
     [HasRankIfRankedPred<0>, HasBoolElementTypePred],
     "rank 0 or unranked with boolean element type"> {
-  let cppClassName = "::M::MO::TensorType";
+  let cppType = "::M::MO::TensorType";
 }
 
 /// Confines the MO_TensorType so that it has signed 64-bit integer elements
 def MO_I64Tensor : ConfinedType<MO_Tensor,
     [HasSI64ElementTypePred],
     "signed 64 integer element type"> {
-  let cppClassName = "::M::MO::TensorType";
+  let cppType = "::M::MO::TensorType";
 }
 
 class DTypeStrFunc<string name> : StrFunc<"::M::MO::getDTypeOrInvalid($" # name # ".getType())">;
