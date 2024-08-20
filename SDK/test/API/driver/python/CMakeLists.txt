@@ -13,4 +13,5 @@ add_modular_pytest(check-max-driver
 
   DEPENDS
   max-pybind-ext
+  is-cuda-available
 )
