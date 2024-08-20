@@ -346,18 +346,8 @@ public:
               Value inChain, Value inBuffer, ArrayRef<Value> runtimeSizes,
               ArrayRef<std::optional<uint64_t>> outBufferSizes) = 0;
 
-  /// Borrow a section of a buffer.
-  virtual Value borrowSectionStatic(OpBuilder &builder, Location loc,
-                                    TypedValue<ContextType> context,
-                                    Value inChain, Value inBuffer,
-                                    uint64_t offset, uint64_t size) = 0;
-
-  /// Borrow a dynamic section of a buffer.
-  virtual Value borrowSectionDynamic(OpBuilder &builder, Location loc,
-                                     TypedValue<ContextType> context,
-                                     Value inChain, Value inBuffer, Value scale,
-                                     uint64_t unscaledOffset,
-                                     uint64_t unscaledSize) = 0;
+  virtual Value bufferSlice(OpBuilder &builder, Location loc, Value inBuffer,
+                            Value offset, Value size) = 0;
 
   /// Returns the bool contents of a single-byte buffer.
   virtual Value bufferToBool(OpBuilder &builder, Location loc,
@@ -494,16 +484,8 @@ public:
               Value inChain, Value inBuffer, ArrayRef<Value> runtimeSizes,
               ArrayRef<std::optional<uint64_t>> outBufferSizes) override;
 
-  Value borrowSectionStatic(OpBuilder &builder, Location loc,
-                            TypedValue<ContextType> context, Value inChain,
-                            Value inBuffer, uint64_t offset,
-                            uint64_t size) override;
-
-  Value borrowSectionDynamic(OpBuilder &builder, Location loc,
-                             TypedValue<ContextType> context, Value inChain,
-                             Value inBuffer, Value scale,
-                             uint64_t unscaledOffset,
-                             uint64_t unscaledSize) override;
+  Value bufferSlice(OpBuilder &builder, Location loc, Value inBuffer,
+                    Value offset, Value size) override;
 
   Value bufferToBool(OpBuilder &builder, Location loc,
                      TypedValue<ContextType> context, Value inChain,

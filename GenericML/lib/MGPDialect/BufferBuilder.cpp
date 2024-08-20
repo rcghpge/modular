@@ -464,37 +464,13 @@ SmallVector<Value> MGPBufferBuilder::splitBorrow(
                                    /*cDevice=*/device)
       .getOutBuffers();
 }
-
-Value MGPBufferBuilder::borrowSectionStatic(OpBuilder &builder, Location loc,
-                                            TypedValue<ContextType> context,
-                                            Value inChain, Value inBuffer,
-                                            uint64_t offset, uint64_t size) {
-  return builder.create<BufferSectionBorrowStaticOp>(
+Value MGPBufferBuilder::bufferSlice(OpBuilder &builder, Location loc,
+                                    Value inBuffer, Value offset, Value size) {
+  return builder.create<BufferSliceOp>(
       loc,
-      /*inChain=*/inChain,
-      /*theContext=*/context,
       /*inBuffer=*/cast<TypedValue<DeviceBufferType>>(inBuffer),
-      /*aRuntimeSlot=*/runtimeSlot,
-      /*bOffset=*/offset,
-      /*cSize=*/size,
-      /*dDevice=*/device);
-}
-
-Value MGPBufferBuilder::borrowSectionDynamic(OpBuilder &builder, Location loc,
-                                             TypedValue<ContextType> context,
-                                             Value inChain, Value inBuffer,
-                                             Value scale,
-                                             uint64_t unscaledOffset,
-                                             uint64_t unscaledSize) {
-  return builder.create<BufferSectionBorrowDynamicOp>(
-      loc, /*inChain=*/inChain,
-      /*theContext=*/context,
-      /*inBuffer=*/cast<TypedValue<DeviceBufferType>>(inBuffer),
-      /*scale=*/cast<TypedValue<IndexType>>(scale),
-      /*aRuntimeSlot=*/runtimeSlot,
-      /*bUnscaledOffset=*/unscaledOffset,
-      /*cUnscaledSize=*/unscaledSize,
-      /*dDevice=*/device);
+      /*offset=*/offset,
+      /*size=*/size);
 }
 
 Value MGPBufferBuilder::bufferToBool(OpBuilder &builder, Location loc,
