@@ -22,6 +22,7 @@
 #include "Support/ErrorOr.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/MDialect/MAttrs.h"
+#include "Support/ML/CommonAttributes.h"
 #include "Support/ML/SizeUtils.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/OpImplementation.h"

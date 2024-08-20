@@ -212,7 +212,7 @@ static void mgp_generic_execute(
                     summary = dSummary->str(), hasCuda = fHasCuda.get(),
                     cudaSlot = gCudaSlot.get(),
                     profilerEntry = std::move(profilerEntry),
-                    runtimePtr = std::move(runtimePtr),
+                    runtimePtr = runtimePtr,
                     deviceContext = std::move(deviceContext),
                     loc = std::move(loc)]() mutable {
     CUDARuntime *cudaRuntimePtr = nullptr;

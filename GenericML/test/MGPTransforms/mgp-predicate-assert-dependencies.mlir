@@ -8,13 +8,13 @@
 // CHECK: %[[BUF:.*]] = mgp.buffer.alloc.dynamic %[[CH3]], %[[CTX]][1], %{{.*}}, align 16 : !mgp.buffer<>
 // CHECK: %{{.*}} = mgp.kernel.execute %[[CH3]], %[[CTX]][1, 1], (0, 0), (in %{{.*}} : !mgp.buffer<>, in %{{.*}} : !mgp.buffer<>, out %[[BUF]] : !mgp.buffer<>), (%{{.*}}, %{{.*}}),  summary "foo"
 
-mgp.model @simple_case : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
+mgp.model @simple_case : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+  mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
-} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.tensor<?x?xf32>, %arg3: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.tensor<?x?xf32>, %arg3: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
   %bufferResult = mgp.tensor.extract.buffer %ctx[1], %arg2 : !mgp.tensor<?x?xf32>
   %tensorSpecResult = mgp.tensor.extract.tensor_spec %ctx[1], %arg2 : !mgp.tensor<?x?xf32>
   %0:2 = mgp.tensor_spec.dims.dynamic %tensorSpecResult : !mgp.tensor_spec<?x?xf32>
@@ -43,13 +43,13 @@ mgp.model @simple_case : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.
 // CHECK: %[[BUF:.*]] = mgp.buffer.alloc.dynamic %[[CH4]], %[[CTX]][1], %{{.*}}, align 16 : !mgp.buffer<>
 // CHECK: %{{.*}} = mgp.kernel.execute %[[CH4]], %[[CTX]][1, 1], (0, 0), (in %{{.*}} : !mgp.buffer<>, in %{{.*}} : !mgp.buffer<>, out %[[BUF]]
 
-mgp.model @two_asserts : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
+mgp.model @two_asserts : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+  mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
-} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.tensor<?x?xf32>, %arg3: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.tensor<?x?xf32>, %arg3: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
   %bufferResult = mgp.tensor.extract.buffer %ctx[1], %arg2 : !mgp.tensor<?x?xf32>
   %tensorSpecResult = mgp.tensor.extract.tensor_spec %ctx[1], %arg2 : !mgp.tensor<?x?xf32>
   %0:2 = mgp.tensor_spec.dims.dynamic %tensorSpecResult : !mgp.tensor_spec<?x?xf32>
@@ -78,13 +78,13 @@ mgp.model @two_asserts : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.
 // CHECK: %[[BUF:.*]] = mgp.buffer.alloc.dynamic %[[CH3]], %[[CTX]][1], %{{.*}}, align 16 : !mgp.buffer<>
 // CHECK: %{{.*}} = mgp.kernel.execute %[[CH3]], %[[CTX]][1, 1], (0, 0), (in %{{.*}} : !mgp.buffer<>, in %{{.*}} : !mgp.buffer<>, out %[[BUF]] : !mgp.buffer<>), (%{{.*}}, %{{.*}}),  summary "foo"
 
-mgp.model @assert_depends_on_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
+mgp.model @assert_depends_on_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+  mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
-} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.tensor<?x?xf32>, %arg3: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.tensor<?x?xf32>, %arg3: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
   %bufferResult = mgp.tensor.extract.buffer %ctx[1], %arg2 : !mgp.tensor<?x?xf32>
   %tensorSpecResult = mgp.tensor.extract.tensor_spec %ctx[1], %arg2 : !mgp.tensor<?x?xf32>
   %0:2 = mgp.tensor_spec.dims.dynamic %tensorSpecResult : !mgp.tensor_spec<?x?xf32>
@@ -123,13 +123,13 @@ mgp.model @assert_depends_on_control_flow : mof devices [#M.device_ref<"cpu", 0>
 // CHECK: %[[BUF:.*]] = mgp.buffer.alloc.dynamic %[[CH0]], %[[CTX]][1], %{{.*}}, align 16 : !mgp.buffer<>
 // CHECK: %{{.*}} = mgp.kernel.execute %[[CH0]], %[[CTX]][1, 1], (0, 0), (in %{{.*}} : !mgp.buffer<>, in %{{.*}} : !mgp.buffer<>, out %[[BUF]]
 
-mgp.model @assert_in_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
+mgp.model @assert_in_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+  mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
-} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.tensor<?x?xf32>, %arg3: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.tensor<?x?xf32>, %arg3: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
   %bufferResult = mgp.tensor.extract.buffer %ctx[1], %arg2 : !mgp.tensor<?x?xf32>
   %tensorSpecResult = mgp.tensor.extract.tensor_spec %ctx[1], %arg2 : !mgp.tensor<?x?xf32>
   %0:2 = mgp.tensor_spec.dims.dynamic %tensorSpecResult : !mgp.tensor_spec<?x?xf32>
@@ -160,13 +160,13 @@ mgp.model @assert_in_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (
 // CHECK: %{{.*}} = mgp.assert %{{.*}}, "input shapes must match"
 // CHECK-NEXT: mef.output %[[CH0]] : !mef.chain
 
-mgp.model @no_predication : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
+mgp.model @no_predication : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+  mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
-} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.tensor<?x?xf32>, %arg3: !mgp.tensor<?x?xf32>) -> (!mef.chain) {
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.tensor<?x?xf32>, %arg3: !mgp.tensor<?x?xf32>) -> (!mef.chain) {
   %bufferResult = mgp.tensor.extract.buffer %ctx[1], %arg2 : !mgp.tensor<?x?xf32>
   %tensorSpecResult = mgp.tensor.extract.tensor_spec %ctx[1], %arg2 : !mgp.tensor<?x?xf32>
   %0:2 = mgp.tensor_spec.dims.dynamic %tensorSpecResult : !mgp.tensor_spec<?x?xf32>
@@ -187,13 +187,13 @@ mgp.model @no_predication : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !m
 // CHECK: %[[CH3:.*]] = grt.chain.create (%[[CH0]], %[[CH1]], %[[CH2]])
 // CHECK: mef.output %[[CH3]]
 
-mgp.model @on_output_op : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
+mgp.model @on_output_op : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+  mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
-} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.tensor<2x4xf32>, %arg3: !mgp.tensor<2x4xf32>) -> (!mef.chain, !mgp.tensor<2x4xf32>, !mgp.tensor<2x4xf32>) {
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.tensor<2x4xf32>, %arg3: !mgp.tensor<2x4xf32>) -> (!mef.chain, !mgp.tensor<2x4xf32>, !mgp.tensor<2x4xf32>) {
   %0 = mgp.tensor.extract.tensor_spec %ctx[1], %arg2 shape_only true : !mgp.tensor<2x4xf32>
   %1 = mgp.tensor_spec.equal.static %0 : !mgp.tensor_spec<2x4xunk>
   %2 = mgp.assert %1, "Tensor type mismatch for argument 0"

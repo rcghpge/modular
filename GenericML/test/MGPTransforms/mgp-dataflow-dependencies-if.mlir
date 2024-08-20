@@ -110,13 +110,13 @@
 // CHECK:   %[[SSA72]] |-> {%[[SSA76]][0], %[[SSA68]]}
 // CHECK: exclusive end
 
-mgp.model @simple : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
+mgp.model @simple : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+  mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
-} execute (%ch0: !mef.chain, %cxt: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<f32>) {
+} execute (%ch0: !mef.chain, %cxt: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<f32>) {
   %cond = "some.op"(%ch0) : (!mef.chain) -> i1
   %x = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
   %y = "some.op"(%ch0) : (!mef.chain) -> !mgp.tensor<f32>
@@ -196,13 +196,13 @@ mgp.model @simple : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaqu
 // CHECK:   %[[SSA56]] |-> {%[[SSA64]][0], %[[SSA49]], %[[SSA50]], %[[SSA51]], %[[SSA59]], %[[SSA62]]}
 // CHECK: exclusive end
 
-mgp.model @redundant : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
+mgp.model @redundant : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
+  mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
-} execute (%ch0: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch1 = grt.chain.create (%ch0)
   %ch2 = grt.chain.create (%ch1, %ch1)
   %ch3 = "some.op"(%ch2) : (!mef.chain) -> !mef.chain

@@ -344,7 +344,7 @@ LogicalResult MOGraphLowering::createModelOp() {
   loweringState.setExecuteMgpContext(executeBlock->getArgument(1));
 
   for (auto [devRef, devArg] :
-       llvm::zip(modelOp.getDevices(), modelOp.getInitBlock()->getArguments()))
+       llvm::zip(modelOp.getDevices(), modelOp.getInitDevices()))
     loweringState.setInitDevice(dyn_cast<DeviceRefAttr>(devRef),
                                 dyn_cast<TypedValue<MGP::OpaqueType>>(devArg));
 
@@ -380,6 +380,7 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
   SmallVector<Value> outputs;
   outputs.push_back(loweringState.getInitChain());
   outputs.push_back(loweringState.getInitMgpContext());
+  outputs.push_back(loweringState.getModelOp().getInitWeightsRegistry());
   for (auto dev : loweringState.getModelOp().getDevices())
     outputs.push_back(
         loweringState.getInitDevice(dyn_cast<DeviceRefAttr>(dev)));
@@ -1384,7 +1385,7 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
       continue;
     }
 
-    // Lower mo.output to mef.output trivially.
+    // Lower mo.output to mef.output, accounting for implicit init/exec args.
     if (auto output = dyn_cast<MO::OutputOp>(op)) {
       if (failed(lowerOutput(output)))
         return failure();

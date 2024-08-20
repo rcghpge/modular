@@ -525,12 +525,17 @@ void BackwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
   for (const auto &[arg, output] :
        llvm::zip(modelOp.getExecuteDevices(),
                  initBlock->getTerminator()->getOpOperands().drop_front(
-                     modelOp.getExecuteChainContext().size()))) {
+                     kMgpModelNumFixedImplicitExecArgs))) {
     if (output.get().getDefiningOp())
       setEntries(domainMap, &output, operandCombination(domainMap, arg));
     else
       setEmpty(domainMap, &output);
   }
+
+  // Set the weights registry to empty since the init output is its only user.
+  setEmpty(domainMap,
+           &initBlock->getTerminator()
+                ->getOpOperands()[kMgpModelNumFixedImplicitExecArgs - 1]);
 
   // Flow backwards through 'init' block.
   flowBlock(initBlock, domainMap, flowOp);

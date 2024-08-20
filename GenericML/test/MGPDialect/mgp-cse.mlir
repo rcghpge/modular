@@ -10,11 +10,11 @@
 //}
 
 module {
-  mgp.model @basicMoGraph : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
+  mgp.model @basicMoGraph : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
     %0 = grt.chain.create ()
     %1 = mgp.context.create 0
-    mef.output %0, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
-  } execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<8xf32>) {
+    mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
+  } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<8xf32>) {
     %0 = mgp.buffer.constant %arg0, %arg1[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
     %1 = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
     %2 = mgp.tensor.create %arg0, %arg1[1], %0 , %1 : !mgp.tensor<8xf32>
@@ -57,11 +57,11 @@ module {
 
 // -----
 
-mgp.model @tensor_spec_size : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
+mgp.model @tensor_spec_size : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
-  mef.output %0, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<1234x5678xf32>) -> (!mef.chain, !mgp.tensor<1234x5678xf32>) {
+  mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<1234x5678xf32>) -> (!mef.chain, !mgp.tensor<1234x5678xf32>) {
   %spec = mgp.tensor.extract.tensor_spec %arg1[1], %inTensor: !mgp.tensor<1234x5678xf32>
   %size0 = mgp.tensor_spec.size %spec : !mgp.tensor_spec<1234x5678xf32>
   %size1 = mgp.tensor_spec.size %spec : !mgp.tensor_spec<1234x5678xf32>
@@ -76,11 +76,11 @@ mgp.model @tensor_spec_size : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: 
 
 // -----
 
-mgp.model @tensor_extract_fold : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
+mgp.model @tensor_extract_fold : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
-  mef.output %0, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %in_spec: !mgp.tensor_spec<si32>, %in_buf: !mgp.buffer<4>) -> (!mef.chain, !mgp.buffer<4>, !mgp.tensor_spec<si32>) {
+  mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %in_spec: !mgp.tensor_spec<si32>, %in_buf: !mgp.buffer<4>) -> (!mef.chain, !mgp.buffer<4>, !mgp.tensor_spec<si32>) {
   %0 = mgp.tensor.create %arg0, %arg1[1], %in_buf, %in_spec  : !mgp.tensor<si32>
   %buf = mgp.tensor.extract.buffer %arg1[1], %0 : !mgp.tensor<si32>
   %spec = mgp.tensor.extract.tensor_spec %arg1[1], %0 : !mgp.tensor<si32>

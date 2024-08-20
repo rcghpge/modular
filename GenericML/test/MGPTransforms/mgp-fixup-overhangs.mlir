@@ -1,12 +1,12 @@
 // RUN: mo-opt %s --allow-unregistered-dialect --fixup-overhangs | FileCheck %s
 
 // This test case is based on mgp-check-overhangs-errors.mlir
-mgp.model @if : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
+mgp.model @if : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   %2 = grt.chain.create (%0, %1 : !mgp.context)
-  mef.output %2, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<32xui8>) {
+  mef.output %2, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<32xui8>) {
   %0 = mgp.buffer.constant %arg0, %arg1[1], #M.aligned_bytes<"0x01", align 8> : !M.array<1xui8>
   %2 = mgp.buffer.alloc.static %arg0, %arg1[1] : !mgp.buffer<32>
   %const0 = mip.constant.index 0

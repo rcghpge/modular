@@ -1012,18 +1012,40 @@ bool GuardOp::mayAlias(size_t operandIndex, size_t resultIndex) { return true; }
 // ModelOp
 //===----------------------------------------------------------------------===//
 
+// Builds an !mgp.opaque type with the given symbol name.
+static OpaqueType opaqueType(MLIRContext *ctx, StringRef symbol) {
+  return OpaqueType::get(ctx, StringAttr::get(ctx, symbol),
+                         /*metadata=*/{});
+};
+
+// Gets a device context symbol for a device. For example: cpu0_context.
+static std::string deviceCtxSymbol(const DeviceRef &device) {
+  return device.label + std::to_string(device.id) + "_context";
+}
+
+// Extends args with the weights registry and device context implicit args.
+static void appendInitExecImplicitArgs(SmallVectorImpl<Type> &args,
+                                       MLIRContext *ctx,
+                                       ArrayRef<DeviceRef> devices) {
+  // Add the weights registry to the implicit signature.
+  args.push_back(opaqueType(ctx, "weights_registry"));
+
+  // Add all the device contexts to the implicit signature.
+  for (const DeviceRef &device : devices)
+    args.push_back(opaqueType(ctx, deviceCtxSymbol(device)));
+}
+
 /// Returns the implicit signature of the 'init' entry point.
 static FunctionType implicitInitSignature(Builder &builder,
                                           ArrayRef<DeviceRef> devices) {
+  SmallVector<Type> inputs;
+  appendInitExecImplicitArgs(inputs, builder.getContext(), devices);
+
   SmallVector<Type> outputs = {builder.getType<MEF::ChainType>(),
                                builder.getType<MGP::ContextType>()};
-  for (const DeviceRef &device : devices)
-    outputs.push_back(OpaqueType::get(
-        builder.getContext(),
-        StringAttr::get(builder.getContext(),
-                        device.label + std::to_string(device.id) + "_context"),
-        {}));
-  return builder.getFunctionType({}, outputs);
+  appendInitExecImplicitArgs(outputs, builder.getContext(), devices);
+
+  return builder.getFunctionType(inputs, outputs);
 }
 
 /// Returns the implicit signature of the 'execute' entry point, before
@@ -1032,13 +1054,11 @@ static FunctionType implicitExecuteSignature(Builder &builder,
                                              ArrayRef<DeviceRef> devices) {
   SmallVector<Type> inputs = {builder.getType<MEF::ChainType>(),
                               builder.getType<MGP::ContextType>()};
-  for (const DeviceRef &device : devices)
-    inputs.push_back(OpaqueType::get(
-        builder.getContext(),
-        StringAttr::get(builder.getContext(),
-                        device.label + std::to_string(device.id) + "_context"),
-        {}));
-  return builder.getFunctionType(inputs, {builder.getType<MEF::ChainType>()});
+
+  appendInitExecImplicitArgs(inputs, builder.getContext(), devices);
+
+  return builder.getFunctionType(
+      inputs, /*results=*/{builder.getType<MEF::ChainType>()});
 }
 
 /// Returns true if requiredTypes is a prefix of actualTypes, in which case
@@ -1153,31 +1173,24 @@ void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
                     ArrayRef<Type> inputTypes, ArrayRef<Type> outputTypes,
                     ArrayRef<Location> inputArgLocs,
                     ArrayRef<NamedAttribute> extraAttrs) {
+  MLIRContext *ctx = state.getContext();
+
   DictionaryAttr extraAttrsDict =
-      extraAttrs.empty() ? nullptr
-                         : DictionaryAttr::get(state.getContext(), extraAttrs);
-  auto deviceAttrs =
-      llvm::map_to_vector(devices, [&state](const DeviceRef &ref) {
-        return dyn_cast<Attribute>(
-            DeviceRefAttr::get(state.getContext(), ref.label, ref.id));
-      });
-  build(builder, state, ArrayAttr::get(state.getContext(), deviceAttrs),
-        StringAttr::get(state.getContext(), frameworkName),
+      extraAttrs.empty() ? nullptr : DictionaryAttr::get(ctx, extraAttrs);
+  auto deviceAttrs = llvm::map_to_vector(devices, [ctx](const DeviceRef &ref) {
+    return dyn_cast<Attribute>(DeviceRefAttr::get(ctx, ref.label, ref.id));
+  });
+  build(builder, state, ArrayAttr::get(ctx, deviceAttrs),
+        StringAttr::get(ctx, frameworkName),
         TypeAttr::get(builder.getFunctionType(inputTypes, outputTypes)), name,
         extraAttrsDict);
 
-  assert(implicitInitSignature(builder, devices).getInputs().empty());
   Region *initRegion = state.regions[0].get();
   initRegion->emplaceBlock();
-  for (const DeviceRef &dev : devices) {
-    initRegion->addArgument(
-        OpaqueType::get(
-            builder.getContext(),
-            StringAttr::get(builder.getContext(),
-                            dev.label + std::to_string(dev.id) + "_context"),
-            {}),
-        state.location);
-  }
+
+  // Add the implicit weights registry and device context args to init.
+  for (auto type : implicitInitSignature(builder, devices).getInputs())
+    initRegion->addArgument(type, state.location);
 
   // The 'execute' entry point has both implicit and explicit arguments.
   Region *executeRegion = state.regions[1].get();
@@ -1190,6 +1203,8 @@ void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
 
 /// Verifies the init and execute regions of the model.
 LogicalResult ModelOp::verifyRegions() {
+  using BlockArgTypeRange = mlir::ValueTypeRange<mlir::Block::BlockArgListType>;
+
   OpBuilder builder(getContext());
 
   SmallVector<DeviceRef> devices;
@@ -1198,19 +1213,24 @@ LogicalResult ModelOp::verifyRegions() {
       devices.emplace_back(
           DeviceRef(deviceAttr.getLabel().str(), deviceAttr.getId()));
   }
+
   // The type of the init region is
   //  () -> (!mef.chain, !mgp.context)
   Block *initBlock = getInitBlock();
+  BlockArgTypeRange initArgTypes = initBlock->getArgumentTypes();
   if (auto output = dyn_cast<MEF::OutputOp>(initBlock->getTerminator())) {
     FunctionType implicitInitSig = implicitInitSignature(builder, devices);
-    assert(implicitInitSig.getInputs().empty());
-    if (initBlock->getArgumentTypes().size() != getDevices().size()) {
+
+    // Check that the number of init block arguments matches the number of
+    // devices + 1 for the weights registry.
+    size_t numDeviceArgs = initArgTypes.size() - 1;
+    if (numDeviceArgs != getDevices().size()) {
       return emitOpError() << "Expected the number of arguments to the 'init' "
                               "body to match the number of devices, but got "
-                           << initBlock->getArgumentTypes().size() << " vs "
-                           << getDevices().size() << ".";
+                           << numDeviceArgs << " vs " << getDevices().size()
+                           << ".";
     }
-    for (auto t : initBlock->getArgumentTypes()) {
+    for (auto t : initArgTypes) {
       if (!mlir::isa<OpaqueType>(t)) {
         return emitOpError()
                << "init block arguments must be !mgp.opaque, but got " << t;
@@ -1222,7 +1242,8 @@ LogicalResult ModelOp::verifyRegions() {
   }
 
   // The type of the execute region is:
-  //   (!mef.chain, !mgp.context, arg_1, ... arg_n) ->
+  //   (!mef.chain, !mgp.context, weights_registry, dev_1, ..., dev_n, arg_1,
+  //   ... arg_n) ->
   //   (!mef.chain, res_1, ... res_m)
   // where the ModelOp's inputOutputTypes are:
   //   (arg_1, ... arg_n) -> (res_1, ... res_m)

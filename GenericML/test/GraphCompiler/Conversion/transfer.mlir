@@ -7,7 +7,7 @@
 // non-MO op or list ops. They can easily handle this because their output has
 // the same shape as the input.
 // CHECK-LABEL: mgp.model @transfer_with_unknown_dims : mof
-//       CHECK: } execute ([[CH:%.*]]: !mef.chain, [[CTX:%.*]]: !mgp.context, {{.*}}, [[INPUT:.*]]: !mgp.tensor<?xsi64>) -> (!mef.chain, !mgp.tensor<?xsi64, <"cpu", 1>>) {
+//       CHECK: } execute ([[CH:%.*]]: !mef.chain, [[CTX:%.*]]: !mgp.context, {{.*}}, %{{.*}}: !mgp.opaque{{.*}}, [[INPUT:.*]]: !mgp.tensor<?xsi64>) -> (!mef.chain, !mgp.tensor<?xsi64, <"cpu", 1>>) {
 //  CHECK-NEXT:   [[IN_BUF:%.*]] = mgp.tensor.extract.buffer [[CTX]][0], [[INPUT]] : !mgp.tensor<?xsi64>
 //  CHECK-NEXT:   [[IN_SPEC:%.*]] = mgp.tensor.extract.tensor_spec [[CTX]][0], [[INPUT]] : !mgp.tensor<?xsi64>
 //  CHECK-NEXT:   [[IN_SIZE:%.*]] = mgp.tensor_spec.size [[IN_SPEC]] : !mgp.tensor_spec<?xsi64>

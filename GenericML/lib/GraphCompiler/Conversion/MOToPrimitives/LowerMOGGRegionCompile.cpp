@@ -84,7 +84,7 @@ struct DeviceContextState {
   /// This function gets the DeviceContext from Init Args
   Value getDeviceContextFromInitArgs(DeviceRefAttr deviceAttr) {
     assert(initInputContextMap.contains(deviceAttr) &&
-           "Args must contain the context dor the device as arg");
+           "Args must contain the context or the device as arg");
     return initInputContextMap[deviceAttr];
   }
 };

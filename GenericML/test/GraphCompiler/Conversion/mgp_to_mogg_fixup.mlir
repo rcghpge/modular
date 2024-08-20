@@ -3,13 +3,13 @@
 // Jit compile kernels will output the function execution in a particular way,
 // we need to run a fixup pass over it to convert to the form MGP expects.
 
-mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
+mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   "mogg.load_compiled_kernel"() {symbols = ["__gen_0"], value = dense_resource<fake_binary> : tensor<1xui8>} : () -> ()
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
   %2 = mgp.runtime.create %0, %1[0] device<"cpu", 0>
-  mef.output %2, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
+  mef.output %2, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %0 = grt.chain.create ()
   %1 = mip.constant.index 42
   %2 = mip.constant.index -20
@@ -26,13 +26,13 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque
 // CHECK: } execute
 // CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{{.*}}, dSummary = {{.*}}} : (!mgp.context, !mef.chain, !mgp.opaque{{.*}}, index, index) -> (!mef.chain, index)
 
-mgp.model @basic_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%cpu: !mgp.opaque<"cpu0_context">) {
+mgp.model @basic_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   "mogg.load_compiled_kernel"() {symbols = ["__gen_0"], value = dense_resource<fake_binary> : tensor<1xui8>} : () -> ()
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
   %2 = mgp.runtime.create %0, %1[0] device<"cpu", 0>
-  mef.output %2, %1, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"cpu0_context">
-} execute (%ch0: !mef.chain, %arg1: !mgp.context, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.buffer<1>) -> !mef.chain {
+  mef.output %2, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
+} execute (%ch0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.buffer<1>) -> !mef.chain {
   %lhs = mip.constant.index 42
   %rhs = mip.constant.index -20
   %1 = mgp.buffer.to_bool %ch0, %arg1[1], %arg2 : !mgp.buffer<1>

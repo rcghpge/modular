@@ -606,17 +606,19 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
     representing its 'init' and 'execute' entry points.
 
     The 'init' entry point has the implicit signature:
-      (!mgp.opaque, ...) -> (!mef.chain, !mgp.context, !mgp.opaque, ...)
+      (!mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">, ...) ->
+      (!mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">, ...)
     where:
-      mgp.opaques are device contexts
+      mgp.opaques are the weights registry and device contexts.
 
     The 'execute' entry point has the implicit signature:
-      (!mef.chain, !mgp.context, dev0, ... devn, in1, ..., inn) ->
+      (!mef.chain, !mgp.context, weights_registry, dev0, ... devn, in1, ..., inn) ->
       (!mef.chain, res1, ..., resm)
     where:
       (in1, ..., inn) -> (res1, ..., resm)
     is given as the op's explicit signature. And dev0, ..., devn are the
-    devices passed to init.
+    devices passed to init, while weights_registry is the weights registry
+    passed to init.
 
     The Modular runtime implicitly calls 'init' when the model executable is
     first loaded, and re-uses the resulting context value for each subsequent
@@ -635,13 +637,13 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
     Example:
     ```mlir
     // At the top-level
-    mgp.model @example_model : tfl { attr="value" }
-      init (%cpu: !mgp.opaque<"cpu0_context"><>) {
+    mgp.model @example_model : mof { attr="value" }
+      init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
         %ch = mef.chain.new
         %ctx = mgp.context.create 0
-        mef.output %ch, %ctx, %cpu : !mef.chain, !mgp.context, !mgp.opaque
+        mef.output %ch, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque, !mgp.opaque
       }
-      execute (%ch: !mef.chain, %ctx: !mgp.context, %cpu: mgp.opaque, %arg: tensor<?x4x16xf32>)
+      execute (%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque, %cpu: mgp.opaque, %arg: tensor<?x4x16xf32>)
               -> (!mef.chain, tensor<?x10xf32>) {
         mef.output %ch, %arg : !mef.chain, tensor<?x4x16xf32>
       }
@@ -669,13 +671,35 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
   let extraClassDeclaration = [{
     Block *getInitBlock() { return &getInit().front(); }
     Block *getExecuteBlock() { return &getExecute().front(); }
-    MutableArrayRef<BlockArgument> getInitDevices() { return getInitBlock()->getArguments().take_front(getDevices().size());}
-    OperandRange getInitOutputDevices() { return getInitBlock()->getTerminator()->getOperands().drop_front(2).take_front(getDevices().size());}
-    MutableArrayRef<BlockArgument> getExecuteInputs() { return getExecuteBlock()->getArguments().drop_front(2+getDevices().size());}
-    MutableArrayRef<BlockArgument> getExecuteChainContext() { return getExecuteBlock()->getArguments().take_front(2);}
-    MutableArrayRef<BlockArgument> getExecuteDevices() { return getExecuteBlock()->getArguments().drop_front(2).take_front(getDevices().size());}
-    MutableArrayRef<BlockArgument> getExecuteImplicitArguments() { return getExecuteBlock()->getArguments().take_front(2+getDevices().size());}
+    MutableArrayRef<BlockArgument> getInitDevices() {
+      return getInitBlock()->getArguments().drop_front(kMgpModelNumFixedImplicitInitArgs).take_front(getDevices().size());
+    }
+    OperandRange getInitOutputDevices() {
+      return getInitBlock()->getTerminator()->getOperands().drop_front(
+        // Fixed implicit exececute args are also fixed implicit init output args.
+        kMgpModelNumFixedImplicitExecArgs
+      ).take_front(getDevices().size());
+    }
+
+    BlockArgument getInitWeightsRegistry() {
+      return getInitBlock()->getArgument(0);
+    }
+
+    MutableArrayRef<BlockArgument> getExecuteInputs() {
+      return getExecuteBlock()->getArguments().drop_front(kMgpModelNumFixedImplicitExecArgs + getDevices().size());
+    }
+    MutableArrayRef<BlockArgument> getExecuteChainContext() {
+      return getExecuteBlock()->getArguments().take_front(2);
+    }
+    MutableArrayRef<BlockArgument> getExecuteDevices() {
+      return getExecuteBlock()->getArguments().drop_front(kMgpModelNumFixedImplicitExecArgs).take_front(getDevices().size());
+    }
+    MutableArrayRef<BlockArgument> getExecuteImplicitArguments() {
+      return getExecuteBlock()->getArguments().take_front(kMgpModelNumFixedImplicitExecArgs + getDevices().size());
+    }
+    BlockArgument getExecuteChain() { return getExecuteBlock()->getArgument(0); }
     BlockArgument getExecuteContext() { return getExecuteBlock()->getArgument(1); }
+    BlockArgument getExecuteWeightsRegistry() { return getExecuteBlock()->getArgument(2); }
   }];
 
   let builders = [
