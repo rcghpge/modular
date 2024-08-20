@@ -18,7 +18,7 @@ lit_tests(
         "@llvm-project//compiler-rt:orc_rt",
     ],
     env = {
-        "ASAN_OPTIONS": "detect_odr_violation=0",
+        "ASAN_OPTIONS": "detect_odr_violation=0,use_sigaltstack=0",
     },
     mojo_deps = [
         "//SDK/lib/API/mojo/max/max",
