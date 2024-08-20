@@ -169,9 +169,6 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
         kv_params: The static parameters to the key and value cache.
     """
 
-    var _replit: Replit[GGUFFile, dtype, kv_params]
-    """Class that builds the Replit model graph."""
-
     var _device: Device
     """Chosen device for execution."""
 
@@ -243,21 +240,17 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
     ):
         """Builds and compiles a Replit model to get ready for execution."""
         # Generate a graph that does a single forward pass of the replit model.
-        print("Building model...", end="")
-        self._replit = Replit[GGUFFile, dtype, kv_params](get_default())
-        start_time = now()
-        model = GGUFFile(model_path)
-        g = self._replit.build_graph(
-            model,
-            "replit",
-        )
-        print("done. Took", (now() - start_time) / 1e9, "seconds.")
+
         self._device = cuda_device() if use_gpu else cpu_device()
         self._run_on_gpu = use_gpu
         self._cpu_device = cpu_device() if use_gpu else self._device
         self._session = InferenceSession(
             self._device,
         )
+        # TODO - is this right? This is the default, and stays so if we are loading
+        # a MEF. The params are read from GGUF, which is not done if we are reading MEF
+        # but we should have a cleaner way of storing this in the MEF as well.
+        num_blocks = 32
 
         # Compile and load the graph, which generates the MLIR and runs
         # optimization passes on it.
@@ -268,6 +261,16 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
                 mef_load_path, custom_ops_paths=custom_ops_paths
             )
         else:
+            print("Building model...", end="")
+            start_time = now()
+            var _replit = Replit[GGUFFile, dtype, kv_params](get_default())
+            num_blocks = _replit.hyperparams.num_blocks
+            model = GGUFFile(model_path)
+            g = _replit.build_graph(
+                model,
+                "replit",
+            )
+            print("done. Took", (now() - start_time) / 1e9, "seconds.")
             self._model = self._session.load(
                 g,
                 custom_ops_paths=custom_ops_paths,
@@ -302,7 +305,7 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
         self._kv_manager = ContiguousKVCacheManager[dtype, kv_params](
             max_batch_size,
             kv_max_length,
-            self._replit.hyperparams.num_blocks,
+            num_blocks,
             self._device,
             self._cpu_device,
         )
