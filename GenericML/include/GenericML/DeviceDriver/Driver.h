@@ -75,6 +75,7 @@ protected:
 
 struct Device : M::ReferenceCounted<Device> {
   virtual const std::string &getString() const = 0;
+  virtual std::string toString() const = 0;
 
   /// Allocates `bytes` bytes on the device.
   virtual void *allocateData(size_t bytes) = 0;
@@ -117,6 +118,19 @@ struct Device : M::ReferenceCounted<Device> {
   /// Blocks until any pending async work on the device completes.
   virtual void synchronize() = 0;
 };
+
+inline std::string formatTarget(const DeviceSpec &deviceSpec) {
+  std::string str;
+  llvm::raw_string_ostream oss(str);
+  oss << "target_info(";
+  oss << "triple=" << deviceSpec.target.triple.str() << ",";
+  oss << "arch=" << deviceSpec.target.arch << ",";
+  oss << "features=[";
+  for (const auto &f : deviceSpec.target.features)
+    oss << f << ",";
+  oss << "])";
+  return str;
+}
 
 /// Returns an array of AnyAsyncValueRef of DeviceContext* corresponding to the
 /// deviceRefs array. i.e. ret[i] = AnyAsyncValueRef(deviceMap[deviceRefs[i]]).
