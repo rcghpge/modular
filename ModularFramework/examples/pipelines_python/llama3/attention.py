@@ -40,7 +40,7 @@ def attention_mask(
             mask,
         ],
         axis=1,
-    )
+    ).rebind(["seq_len", "post_seq_len"])
 
 
 @dataclass
@@ -78,7 +78,7 @@ class Attention:
         v_cache: ValueLike,
     ) -> GraphValue:
         prev_seq_len = k_cache.tensor_type.shape[0]
-        seq_len = xq.tensor_type.shape[1]
+        batch, seq_len = xq.tensor_type.shape[:2]
 
         k_cache = ops.squeeze(k_cache, axis=1)
         v_cache = ops.squeeze(v_cache, axis=1)
@@ -91,7 +91,7 @@ class Attention:
                         ops.transpose(xk, 0, 1), k_cache.tensor_type.dtype
                     ),
                 ]
-            ),
+            ).rebind(["post_seq_len", batch, self.n_kv_heads, self.head_dim]),
             0,
             1,
         )
@@ -103,7 +103,7 @@ class Attention:
                         ops.transpose(xv, 0, 1), v_cache.tensor_type.dtype
                     ),
                 ]
-            ),
+            ).rebind(["post_seq_len", batch, self.n_kv_heads, self.head_dim]),
             0,
             1,
         )
@@ -150,16 +150,15 @@ class Attention:
         xv = self.wv(x)
 
         xq = ops.reshape(xq, [batch, seq_len, self.n_heads, self.head_dim])
-        xk = ops.reshape(xk, [batch, seq_len, self.n_heads, self.head_dim])
-        xv = ops.reshape(xv, [batch, seq_len, self.n_heads, self.head_dim])
+
+        xk = ops.reshape(xk, [batch, seq_len, self.n_kv_heads, self.head_dim])
+        xv = ops.reshape(xv, [batch, seq_len, self.n_kv_heads, self.head_dim])
 
         xq = self.rope(xq, start_pos, seq_len)
         xk = self.rope(xk, start_pos, seq_len)
-
         output = (
             self.attention(xq, xk, xv, k_cache, v_cache)
             .transpose(1, 2)
             .reshape([batch, seq_len, -1])
         )
-
         return self.wo(output), xk, xv

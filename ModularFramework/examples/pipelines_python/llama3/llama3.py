@@ -12,7 +12,13 @@ import gguf
 import numpy as np
 from max.engine import InferenceSession, Model
 from max.graph import DType, Graph, TensorType
-from max.graph.utils import load_gguf  # TODO Use this
+from max.graph.utils import load_gguf
+from max.graph.weight import Weight
+from .transformer import Transformer, TransformerBlock
+from .attention import Attention
+from .mlp import MLP, Linear
+from .norm import RMSNorm
+from .rotary_embedding import RotaryEmbedding
 
 from utils import gguf_utils, tokenizer_from_gguf
 
@@ -41,9 +47,11 @@ class Llama3:
 
     def __init__(self, config: Llama3Config):
         self.config = config
+
         assert self.config.weight_path is not None
         gguf_reader = gguf.GGUFReader(self.config.weight_path)
         _override_config(self.config, gguf_reader)
+
         self._tokenizer = tokenizer_from_gguf(gguf_reader)
 
         # Work around for older Llama 1/2 GGUFs, where the vocab size may be -1.
@@ -73,17 +81,74 @@ class Llama3:
             DType.int64, shape=[self.config.batch_size, "seq_len"]
         )
 
+        def linear_from_weight(weight: Weight) -> Linear:
+            if weight.quantization_encoding is None:
+                return Linear(weight.value.transpose(-2, -1))
+            else:
+                return Linear(weight.value, weight.quantization_encoding)
+
         print("Compiling...")
         with Graph(
             name, input_types=[tokens_type, cache_type, cache_type]
         ) as graph:
-            embedding = Embedding(
-                np.random.uniform(
-                    size=(self.config.vocab_size, self.config.hidden_dim)
-                )
+            w = load_gguf(self.config.weight_path)
+            transformer = Transformer(
+                dim=self.config.hidden_dim,
+                n_heads=self.config.n_heads,
+                layers=[
+                    TransformerBlock(
+                        attention=Attention(
+                            n_heads=self.config.n_heads,
+                            n_kv_heads=self.config.n_kv_heads,
+                            head_dim=self.config.head_dim,
+                            dim=self.config.hidden_dim,
+                            wk=linear_from_weight(
+                                w[f"blk.{layer}.attn_k.weight"]
+                            ),
+                            wv=linear_from_weight(
+                                w[f"blk.{layer}.attn_v.weight"]
+                            ),
+                            wq=linear_from_weight(
+                                w[f"blk.{layer}.attn_q.weight"]
+                            ),
+                            wo=linear_from_weight(
+                                w[f"blk.{layer}.attn_output.weight"]
+                            ),
+                            rope=RotaryEmbedding(
+                                dim=self.config.hidden_dim,
+                                n_heads=self.config.n_heads,
+                                theta=self.config.rope_theta,
+                                max_seq_len=self.config.seq_len,
+                            ),
+                        ),
+                        mlp=MLP(
+                            linear_from_weight(
+                                w[f"blk.{layer}.ffn_gate.weight"]
+                            ),
+                            linear_from_weight(
+                                w[f"blk.{layer}.ffn_down.weight"]
+                            ),
+                            linear_from_weight(w[f"blk.{layer}.ffn_up.weight"]),
+                        ),
+                        attention_norm=RMSNorm(
+                            w[f"blk.{layer}.attn_norm.weight"].value
+                        ),
+                        mlp_norm=RMSNorm(
+                            w[f"blk.{layer}.ffn_norm.weight"].value
+                        ),
+                    )
+                    for layer in range(self.config.n_layers)
+                ],
+                norm=RMSNorm(w["output_norm.weight"].value),
+                output=Linear(w["output.weight"].value.transpose(-2, -1)),
+                theta=self.config.rope_theta,
+                embedding=Embedding(w["token_embd.weight"].value),
+                rope_scaling=w["rope_freqs.weight"].value.transpose(-2, -1),
             )
-            out = embedding(graph.inputs[0])
-            graph.output(out, graph.inputs[1], graph.inputs[2])
+            logits, k_update, v_update = transformer(*graph.inputs)
+            # TODO (MSDK-813): This logic should be included here instead of with logits in next_token.
+            # graph.output(logits[:, -1], k_update, v_update)
+            graph.output(logits, k_update, v_update)
             self._compiled_model = self._session.load(graph)
 
     def _load_graph(self, file: Union[str, Path]):
@@ -116,14 +181,13 @@ class Llama3:
         # Note: assuming a single request.
         request_id, context = next(iter(contexts.items()))
 
-        tokens = context.next_token
         input_names = [t.name for t in self._compiled_model.input_metadata]
         result = self._compiled_model.execute(
             **dict(
                 zip(
                     input_names,
                     [
-                        tokens,
+                        context.next_token,
                         self._kv_cache.keys_view(),
                         self._kv_cache.values_view(),
                     ],
@@ -131,7 +195,8 @@ class Llama3:
             )
         )
         output_names = [t.name for t in self._compiled_model.output_metadata]
-        logits = result[output_names[0]]
+        # TODO (MSDK-813): This slicing should move into graph output above when working.
+        logits = result[output_names[0]][:, -1]
         self._kv_cache.update(result[output_names[1]], result[output_names[2]])
 
         # TODO: Add a weighted sampler here.
@@ -140,7 +205,6 @@ class Llama3:
         context.next_token = next_token.reshape(1, -1)
         print("\nnext", next_token)
         decoded_token = self._tokenizer.decode(next_token)
-
         if decoded_token == self._tokenizer.eos_token:
             return {}
         return {request_id: decoded_token}
