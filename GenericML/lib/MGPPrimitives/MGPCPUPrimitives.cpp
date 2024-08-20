@@ -246,43 +246,6 @@ static void mgp_buffer_get_cached_cpu(Chain inChain, StateContext &theContext,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.buffer.{host_to_device, device_to_host}.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_buffer_no_transfers_cpu(
-    Chain inChain, StateContext &theContext, TensorBufferRef &hostBuffer,
-    TensorBufferRef &otherBuffer, Result<Chain> outChain,
-    MEFAttr<uint64_t> aHostRuntimeSlot, MEFAttr<uint64_t> bOtherRuntimeSlot,
-    MEFAttr<uint64_t> cHostDeviceId, MEFAttr<uint64_t> dOtherDeviceId) {
-  std::move(outChain).setToError(
-      "mgp.buffer.{host_to_device, device_to_host}.cpu not supported");
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.buffer.device_to_device.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_buffer_device_to_device_cpu(
-    Chain inChain, StateContext &theContext, TensorBufferRef &srcBuffer,
-    TensorBufferRef &dstBuffer, Result<Chain> outChain,
-    MEFAttr<uint64_t> aSrcRuntimeSlot, MEFAttr<uint64_t> bDstRuntimeSlot,
-    MEFAttr<uint64_t> cSrcDeviceId, MEFAttr<uint64_t> dDstDeviceId) {
-  if (*cSrcDeviceId != *dDstDeviceId) {
-    return std::move(outChain).setToError(
-        "mgp.buffer.device_to_device.cpu does not support cross device "
-        "transfers");
-  }
-  if (srcBuffer.getSize() != dstBuffer.getSize())
-    return std::move(outChain).setToError(
-        Twine("attempting to copy from buffer of size ") +
-        Twine(srcBuffer.getSize()) + " to buffer of size " +
-        Twine(dstBuffer.getSize()));
-  profiledMemcpy(dstBuffer.getBuffer(), srcBuffer.getBuffer(),
-                 srcBuffer.getSize());
-  std::move(outChain).emplace();
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.buffer.resize.cpu
 //===----------------------------------------------------------------------===//
 
@@ -390,57 +353,6 @@ static void mgp_buffer_split_borrow_cpu(
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.buffer.section.borrow.static.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_buffer_section_borrow_static_cpu(
-    Chain inChain, StateContext &theContext,
-    AsyncValueRef<TensorBufferRef> inBuffer, Result<TensorBufferRef> outBuffer,
-    MEFAttr<uint64_t> aRuntimeSlot, MEFAttr<uint64_t> bOffset,
-    MEFAttr<uint64_t> cSize, MEFAttr<uint64_t> dDeviceId, Runtime &runtime,
-    EncodedLocation loc) {
-  size_t outOffset = static_cast<size_t>(*bOffset);
-  size_t outSize = static_cast<size_t>(*cSize);
-  size_t outEndOffset = outOffset + outSize; // could overflow
-  if (outEndOffset < outOffset || outEndOffset > inBuffer->getSize()) {
-    return std::move(outBuffer).setToError(
-        Twine("mgp.buffer.section.borrow.static.cpu is "
-              "requesting a section of ") +
-        Twine(outSize) + " bytes, starting at offset " + Twine(outOffset) +
-        ", which is outside the range of the input buffer of " +
-        Twine(inBuffer->getSize()) + " bytes");
-  }
-  std::move(outBuffer).emplace(
-      createBorrowedSlice(inBuffer.get(), outOffset, outSize));
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.buffer.section.borrow.dynamic.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_buffer_section_borrow_dynamic_cpu(
-    Chain inChain, StateContext &theContext,
-    AsyncValueRef<TensorBufferRef> inBuffer, size_t scale,
-    Result<TensorBufferRef> outBuffer, MEFAttr<uint64_t> aRuntimeSlot,
-    MEFAttr<uint64_t> bUnscaledOffset, MEFAttr<uint64_t> cUnscaledSize,
-    MEFAttr<uint64_t> dDeviceId, EncodedLocation loc) {
-  // Any of the following could overflow.
-  const size_t outOffset = static_cast<size_t>(*bUnscaledOffset) * scale;
-  const size_t outSize = static_cast<size_t>(*cUnscaledSize) * scale;
-  const size_t outEndOffset = outOffset + outSize;
-  if (outEndOffset < outOffset || outEndOffset > inBuffer->getSize()) {
-    return std::move(outBuffer).setToError(
-        Twine("mgp.buffer.section.borrow.dynamic.cpu is "
-              "requesting a section of ") +
-        Twine(outSize) + " bytes, starting at offset " + Twine(outOffset) +
-        ", which is outside the range of the input buffer of " +
-        Twine(inBuffer->getSize()) + " bytes");
-  }
-  std::move(outBuffer).emplace(
-      createBorrowedSlice(inBuffer.get(), outOffset, outSize));
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.tensor.create.cpu
 //===----------------------------------------------------------------------===//
 
@@ -542,20 +454,10 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.buffer.cache.cpu", mgp_buffer_cache_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.get_cached.cpu",
                 mgp_buffer_get_cached_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.host_to_device.cpu",
-                mgp_buffer_no_transfers_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.device_to_host.cpu",
-                mgp_buffer_no_transfers_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.device_to_device.cpu",
-                mgp_buffer_device_to_device_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.resize.cpu", mgp_buffer_resize_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.concat.cpu", mgp_buffer_concat_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.split.borrow.cpu",
                 mgp_buffer_split_borrow_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.section.borrow.static.cpu",
-                mgp_buffer_section_borrow_static_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.section.borrow.dynamic.cpu",
-                mgp_buffer_section_borrow_dynamic_cpu);
   ADD_PRIMITIVE(registry, "mgp.tensor.create.cpu", mgp_tensor_create_cpu);
   ADD_PRIMITIVE(registry, "mgp.tensor.extract.buffer.cpu",
                 mgp_tensor_extract_buffer_cpu);
