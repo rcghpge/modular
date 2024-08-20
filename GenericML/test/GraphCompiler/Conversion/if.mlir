@@ -7,7 +7,7 @@
 // CHECK: %[[VAL2:.*]] = mgp.tensor.create %[[CHAIN3:.*]], %[[CTX1]], %[[BUF3:.*]], %[[SPEC4:.*]] : !mgp.tensor<2xf32>
 // CHECK: %[[CHAIN_MERGE:.*]] = grt.chain.create (%[[CHAIN]], %[[CHAIN]])
 // CHECK: %[[BOOL_BUF:.*]] = mgp.tensor.extract.buffer %[[CTX1]], %[[COND]] : !mgp.tensor<bool>
-// CHECK: %[[BOOL:.*]] = mgp.buffer.to_bool %[[CHAIN4:.*]], %[[CTX1]], %[[BOOL_BUF]] : !mgp.buffer<1>
+// CHECK: %[[BOOL:.*]] = mgp.buffer.to_bool %[[CHAIN_MERGE]], %[[CTX1]], %[[BOOL_BUF]] : !mgp.buffer<1>
 // CHECK: %[[OUT:.*]]:2 = grt.if %[[BOOL]] (%[[CHAIN]]: !mef.chain, %[[VAL1]]: !mgp.tensor<2xf32>, %[[CHAIN_MERGE]]: !mef.chain, %[[VAL2]]: !mgp.tensor<2xf32>)
 // CHECK: mef.output %[[CHAIN]], %[[VAL1]]
 // CHECK: } else {
@@ -43,23 +43,23 @@ mo.graph @if_op_scalar_cond() -> (!mo.tensor<[2], f32>) {
 
 
 // CHECK-LABEL: mgp.model @if_op_multi_if
-// CHECK: } execute (%[[CH0:.*]]: !mef.chain,
+// CHECK: } execute (%[[ENTRY_CH:.*]]: !mef.chain,
+
+// CHECK: %[[CH0:.*]] = grt.chain.create (%[[ENTRY_CH]], %[[ENTRY_CH]])
 
 // CHECK: %[[IF_OUT:.*]]:2 = grt.if
-// CHECK: %[[TRUE_CH0:.*]] = mogg.generic.compiled.region (%[[CH0]]
-// CHECK: mef.output %[[TRUE_CH0]]
+// CHECK: %[[TRUE_CH0:.*]] = mogg.generic.compiled.region (%[[ENTRY_CH]]
 // } else {
 // CHECK: %[[FALSE_CH0:.*]] = mogg.generic.compiled.region (%[[CH0]]
-// CHECK: mef.output %[[FALSE_CH0]]
+
+// CHECK: %[[CND_CH:.*]] = grt.chain.create (%[[ENTRY_CH]], %[[IF_OUT]]#0)
 
 // CHECK: grt.if
-// CHECK: %[[CH1:.*]] = grt.chain.create (%[[IF_OUT]]#0, %[[IF_OUT]]#0, %[[CH0]])
+// CHECK: %[[CH1:.*]] = grt.chain.create (%[[IF_OUT]]#0, %[[IF_OUT]]#0, %[[IF_OUT]]#0)
 // CHECK: %[[TRUE_CH1:.*]] = mogg.generic.compiled.region (%[[CH1]]
-// CHECK: mef.output %[[TRUE_CH1]]
 // } else {
-// CHECK: %[[CH1:.*]] = grt.chain.create (%[[IF_OUT]]#0, %[[CH0]])
+// CHECK: %[[CH1:.*]] = grt.chain.create (%[[IF_OUT]]#0, %[[CND_CH]])
 // CHECK: %[[FALSE_CH1:.*]] = mogg.generic.compiled.region (%[[CH1]]
-// CHECK: mef.output %[[FALSE_CH1]]
 
 mo.graph @if_op_multi_if(%arg0: !mo.tensor<[2], f32>) -> (!mo.tensor<[2], f32>) {
   %cond = mo.constant {value = #M.dense_array<1> : tensor<1xi8>} : !mo.tensor<[], bool>

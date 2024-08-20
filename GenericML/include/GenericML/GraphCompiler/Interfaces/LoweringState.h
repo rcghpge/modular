@@ -290,6 +290,10 @@ public:
     return execute.loweredBufferChains.lookup(key);
   }
 
+  void guardValueWithChain(Value key, Value chain) {
+    execute.loweredBufferChains.try_emplace(key, chain);
+  }
+
   using ParamPlaceholderOp = ParameterLoweringState::PlaceholderOp;
 
   /// Register what runtime SSA value the given graph SSA value is lowered to.
@@ -304,7 +308,8 @@ public:
   }
 
   void emplaceExecuteLoweredBufferValue(Value key, Value value, Value chain) {
-    execute.loweredBufferChains.try_emplace(key, chain);
+    guardValueWithChain(key, chain);
+    guardValueWithChain(value, chain);
     execute.loweredValues.try_emplace(key, value);
   }
 
@@ -586,13 +591,18 @@ struct MOOpLoweringState {
                                                      loweredTensor);
     auto spec = bufferBuilder->tensorExtractTensorSpec(builder, loc, context,
                                                        loweredTensor);
+    loweringState.guardValueWithChain(
+        buffer, loweringState.getChainGuardingValueOrNull(loweredTensor));
     return std::make_pair(buffer, spec);
   }
 
   Value tensorCreate(Value inChain, Value buffer,
                      TypedValue<TensorSpecType> tensorSpec, Type moTensorType) {
-    return getStorageBufferBuilder(moTensorType)
-        ->tensorCreate(builder, loc, context, inChain, buffer, tensorSpec);
+    Value tensor =
+        getStorageBufferBuilder(moTensorType)
+            ->tensorCreate(builder, loc, context, inChain, buffer, tensorSpec);
+    loweringState.guardValueWithChain(tensor, inChain);
+    return tensor;
   }
 
   Value bufferConstant(TypedValue<MEF::ChainType> inChain, ElementsAttr value,

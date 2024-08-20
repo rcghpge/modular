@@ -31,7 +31,6 @@ mo.graph @assert_sequence<D0, D1, D2, D3>(%arg0: !mo.tensor<[D0, D1], f32>, %arg
 // CHECK: [[CH0:%.*]] = mgp.assert {{.*}} "error 1"
 // CHECK: mgp.guard [[CH0]], [[DENOM]]
 // CHECK: [[CH1:%.*]] = mgp.assert{{.*}} "error 2"
-// CHECK: mef.output [[CH1]]
 mo.graph @needs_guard<D0, D1, D2>(%arg0 : !mo.tensor<[D1, D1, D2], f32>) {
 
   kgen.param.declare DENOM = <add(D0, -1)>
