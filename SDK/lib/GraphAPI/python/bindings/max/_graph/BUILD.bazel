@@ -23,11 +23,13 @@ modular_pybind_library(
         "mo.cpp",
         "//SDK:MODialectPybindInc",
     ],
+    pybind_deps = [
+        "//SDK:GraphPython",
+    ],
     deps = [
         "//GenericML:GraphCompiler",
         "//GenericML:modular-framework-common",
         "//ModularFramework/tools/mof",
-        "//SDK:GraphPython",
         "@llvm-project//mlir:IR",
     ],
 )

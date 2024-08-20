@@ -23,12 +23,12 @@ modular_pybind_extension(
     ],
     pybind_deps = [
         "//SDK:GraphPython",
+        "//SDK/lib/GraphAPI/python/bindings/max/_graph:MODialectPybind",
     ],
     deps = [
         "//GenericML:GraphCompiler",
         "//GenericML:modular-framework-common",
         "//ModularFramework/tools/mof",
-        "//SDK/lib/GraphAPI/python/bindings/max/_graph:MODialectPybind",
     ],
 )
 
