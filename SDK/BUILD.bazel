@@ -137,6 +137,16 @@ pkg_files(
     visibility = ["//visibility:public"],
 )
 
+pkg_files(
+    name = "md-docs",
+    srcs = [
+        ":BenchmarkOptions.md_files",
+        ":VisualizeOptions.md_files",
+        "//SDK/tools/max:DriverOptions.md_files",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 modular_pybind_library(
     name = "DriverPython",
     srcs = ["//SDK/lib/EngineAPI/python:driver_srcs"],
