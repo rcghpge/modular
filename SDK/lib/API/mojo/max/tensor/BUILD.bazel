@@ -1,4 +1,3 @@
-load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
 load("//bazel:api.bzl", "mojo_library")
 
 mojo_library(
@@ -8,20 +7,4 @@ mojo_library(
     deps = [
         "//Kernels/mojo/extensibility/tensor_internal",
     ],
-)
-
-filegroup(
-    name = "docs-group",
-    srcs = [
-        ":tensor",
-    ],
-    output_group = "docs",
-)
-
-pkg_files(
-    name = "docs",
-    srcs = [":docs-group"],
-    prefix = "tensor",
-    strip_prefix = strip_prefix.from_pkg("tensor.docs"),
-    visibility = ["//visibility:public"],
 )

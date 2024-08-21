@@ -36,7 +36,7 @@ pkg_filegroup(
     name = "max-mojo-doc",
     srcs = [
         ":docs",
-        "//SDK/lib/API/mojo/max/tensor:docs",
+        "//Kernels/mojo/extensibility/tensor_internal:docs",
     ],
     visibility = ["//visibility:public"],
 )
