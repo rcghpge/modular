@@ -36,6 +36,24 @@ class _SupportedVersions(str, Enum):
         return self.value
 
 
+PRETRAINED_MODEL_WEIGHTS = {
+    _SupportedVersions.llama3: {
+        _SupportedEncodings.q4_0: "https://huggingface.co/QuantFactory/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct.Q4_0.gguf",
+        _SupportedEncodings.q4_k: "https://huggingface.co/bartowski/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct-Q4_K_M.gguf",
+        _SupportedEncodings.q6_k: "https://huggingface.co/bartowski/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct-Q6_K.gguf",
+        _SupportedEncodings.bfloat16: "https://huggingface.co/ddh0/Meta-Llama-3-8B-Instruct-bf16-GGUF/resolve/main/Meta-Llama-3-8B-Instruct-bf16.gguf",
+        _SupportedEncodings.float32: "https://huggingface.co/brendanduke/Llama-3-8B-f32.gguf/resolve/main/llama3-8b-f32.gguf",
+    },
+    _SupportedVersions.llama3_1: {
+        _SupportedEncodings.q4_0: "https://huggingface.co/kaetemi/Meta-Llama-3.1-8B-Q4_0-GGUF/resolve/main/meta-llama-3.1-8b-q4_0.gguf",
+        _SupportedEncodings.q4_k: "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+        _SupportedEncodings.q6_k: "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q6_K.gguf",
+        _SupportedEncodings.bfloat16: "https://huggingface.co/bullerwins/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-bf16.gguf",
+        _SupportedEncodings.float32: "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-f32.gguf",
+    },
+}
+
+
 @dataclass
 class Llama3Config:
     weight_path: Optional[Union[str, Path]] = None
@@ -132,26 +150,8 @@ class Llama3Config:
     def remote_weight_location(self):
         if self.weight_path is not None:
             return self.weight_path
-
-        pretrained_weights = {
-            _SupportedVersions.llama3: {
-                _SupportedEncodings.q4_0: "https://huggingface.co/QuantFactory/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct.Q4_0.gguf",
-                _SupportedEncodings.q4_k: "https://huggingface.co/bartowski/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct-Q4_K_M.gguf",
-                _SupportedEncodings.q6_k: "https://huggingface.co/bartowski/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct-Q6_K.gguf",
-                _SupportedEncodings.bfloat16: "https://huggingface.co/ddh0/Meta-Llama-3-8B-Instruct-bf16-GGUF/resolve/main/Meta-Llama-3-8B-Instruct-bf16.gguf",
-                _SupportedEncodings.float32: "https://huggingface.co/brendanduke/Llama-3-8B-f32.gguf/resolve/main/llama3-8b-f32.gguf",
-            },
-            _SupportedVersions.llama3_1: {
-                _SupportedEncodings.q4_0: "https://huggingface.co/kaetemi/Meta-Llama-3.1-8B-Q4_0-GGUF/resolve/main/meta-llama-3.1-8b-q4_0.gguf",
-                _SupportedEncodings.q4_k: "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
-                _SupportedEncodings.q6_k: "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q6_K.gguf",
-                _SupportedEncodings.bfloat16: "https://huggingface.co/bullerwins/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-bf16.gguf",
-                _SupportedEncodings.float32: "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-f32.gguf",
-            },
-        }
-
         try:
-            version_weights = pretrained_weights[self.version]
+            version_weights = self.pretrained_weight_urls()[self.version]
         except KeyError:
             raise ValueError(f"unsupported model version {self.version}")
         try:
