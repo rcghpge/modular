@@ -379,7 +379,7 @@ public:
   MGPBufferBuilder(DeviceRefAttr device) : device(device) {}
   ~MGPBufferBuilder() override = default;
 
-  /// Setup the state for emitting ops into a ModelOp. Returns the chain
+  /// Set up the state for emitting ops into a ModelOp. Returns the chain
   /// indicating when the runtime has been established.
   std::pair<TypedValue<MEF::ChainType>, TypedValue<MGP::OpaqueType>>
   setupForModel(ModelOp modelOp, MGPBufferBuilder *hostBufferBuilder,

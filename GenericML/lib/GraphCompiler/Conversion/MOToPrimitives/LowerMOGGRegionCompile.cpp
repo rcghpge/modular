@@ -159,7 +159,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     Block &execute = *model.getExecuteBlock();
     OpBuilder builder{ctx};
 
-    // Setup the exec state
+    // Set up the exec state
     ExecuteState execState(ctx, model);
 
     // MOGG::LoadCompiledKernelOp only on CPU and no other device. We just

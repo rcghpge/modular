@@ -130,7 +130,7 @@ ErrorOrSuccess CompiledKernelsContext::load(ArrayRef<uint8_t> binary,
                                             size_t kernelIndex) {
   // We have two problems here:
   //  - Compiled kernels from different models may share the same names.
-  //  - The same model, with the same complied kernels, may be setup more
+  //  - The same model, with the same compiled kernels, may be set up more
   //    than one.
   // We deal with these by loading into a dylib with a name derived from
   // the archive hash, and using the engine's atomic 'addIfAbsent' to

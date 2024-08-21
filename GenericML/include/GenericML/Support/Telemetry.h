@@ -67,7 +67,7 @@ private:
   Telemetry::Counter<uint64_t> counter;
 };
 
-/// A convenience wrapper over TelemetryContext for MaxEngine specific
+/// A convenience wrapper over TelemetryContext for MaxEngine-specific
 /// telemetry.
 class MaxEngineTelemetryContext {
 public:

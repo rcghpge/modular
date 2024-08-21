@@ -35,7 +35,7 @@ int setupMLIRAndRun(M::ContextRef context, const ExecutorDriverOptions &options,
   if (failed(options.configureMLIRContextAndExecute(
           std::move(file), [&](MLIRContext *ctx) {
             AsyncRT::Runtime *runtime = context->get<Runtime>();
-            assert(runtime && "caller should have setup runtime for this");
+            assert(runtime && "caller should have set up runtime for this");
             registerContext(*ctx, context);
             return AsyncRT::runWithLeakCheckedRuntime(
                 testName, [&]() { return bodyFn(*runtime, ctx); });

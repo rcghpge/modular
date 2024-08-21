@@ -513,7 +513,7 @@ MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
                 << "mo.index.to_tensor is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, toTensorOp);
 
-  // Setup output buffer.
+  // Set up output buffer.
   FailureOr<SmallVector<MGP::MOOutputStorage>> loweredOutputStorageOr =
       opLoweringState.createOutputStorage(loweringState.getExecuteChain());
   if (failed(loweredOutputStorageOr))
@@ -533,7 +533,7 @@ MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
   auto outChain = opLoweringState.bufferSetWithIndex(
       outputStorage.buffer, values, toTensorOp.getResult().getType());
 
-  // Setup output tensor.
+  // Set up output tensor.
   opLoweringState.createOutputs(outChain, *loweredOutputStorageOr);
   return success();
 }
@@ -544,7 +544,7 @@ MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
                 << "mo.shape.to_tensor is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, toTensorOp);
 
-  // Setup output buffer.
+  // Set up output buffer.
   FailureOr<SmallVector<MGP::MOOutputStorage>> loweredOutputsStorageOr =
       opLoweringState.createOutputStorage(loweringState.getExecuteChain());
   if (failed(loweredOutputsStorageOr))
@@ -565,7 +565,7 @@ MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
   auto outChain = opLoweringState.bufferSetWithIndex(
       outputStorage.buffer, values, toTensorOp.getResult().getType());
 
-  // Setup output tensor.
+  // Set up output tensor.
   opLoweringState.createOutputs(outChain, *loweredOutputsStorageOr);
   return success();
 }

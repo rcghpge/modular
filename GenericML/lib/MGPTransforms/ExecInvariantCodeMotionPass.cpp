@@ -683,7 +683,7 @@ class ExecInvariantCodeMotionPass
   /// Lift (and clone if necessary) the ops that need to be lifted from the
   /// 'execute' to the 'init' blocks.
   void rewrite(const std::pair<OperationSet, OperationSet> &sets) {
-    // Setup to use the analysis results.
+    // Set up to use the analysis results.
     DenseSet<Operation *> unliftableOps;
     for (Operation *op : operationIndex->setToVector(sets.first))
       unliftableOps.insert(op);

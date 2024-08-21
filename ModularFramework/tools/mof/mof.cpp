@@ -431,7 +431,7 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
     }
     }
 
-    // Emit telemetry upon any lowering error from hereon.
+    // Emit telemetry upon any lowering error from here on.
     GML::MaxEngineTelemetryScope<GML::MaxEngineErrorCode::GraphLoweringError>
         loweringDiagScope(&compileCtx.mlirCtx, telemetryContext);
 
