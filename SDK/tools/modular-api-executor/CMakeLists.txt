@@ -19,7 +19,7 @@ add_modular_tool(modular-api-executor
   GenericMLSupport
   GenericMLSupportGlobals
   MSupportGlobals
-  MAsyncRTInit
+  Init
   AsyncRTRuntime
   AsyncRTRuntimeGlobals
   AsyncRTSupport

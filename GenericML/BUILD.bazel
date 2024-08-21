@@ -1386,8 +1386,8 @@ modular_shared_library(
         ":DeviceDriver",
         ":MaxAPI",
         ":rpaths",
-        "//AsyncRT:Init",
         "//CUDASupport",
+        "//Init",
         "//Support:Base",
         "//Support:CrashReporting",
         "//Support:Globals",
@@ -1403,7 +1403,7 @@ modular_shared_library(
         ":CommonDriver",
         ":Support",
         ":rpaths",
-        "//AsyncRT:Init",
+        "//Init",
         "//Kernels:DeviceContext",
     ],
 )

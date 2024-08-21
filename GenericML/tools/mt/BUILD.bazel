@@ -17,8 +17,8 @@ modular_cc_binary(
     local_defines = ASYNCRT_PROFILING_LOCAL_DEFINES,
     deps = [
         ":rpaths",
-        "//AsyncRT:Init",
         "//GenericML:CommonDriver",
+        "//Init",
         "//Support:Globals",
     ],
 )

@@ -12,9 +12,9 @@ modular_cc_binary(
     ],
     deps = [
         "//ArraySupport",
-        "//AsyncRT:Init",
         "//GenericML:ExecutionDriver",
         "//GenericML:MaxAPI",
+        "//Init",
         "//ModularFramework/tools/mof",
         "//ONNX:APIStrippedHeaders",
         "//ONNX:modular-framework-onnx-ext",

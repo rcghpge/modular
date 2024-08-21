@@ -13,8 +13,8 @@ modular_cc_binary(
         "@llvm-project//compiler-rt:orc_rt",
     ],
     deps = [
-        "//AsyncRT:Init",
         "//GenericML:GraphCompiler",
+        "//Init",
         "//Support:Globals",
         "@llvm-project//mlir:MlirOptLib",
     ],

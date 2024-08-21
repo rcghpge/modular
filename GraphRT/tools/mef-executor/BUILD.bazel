@@ -5,12 +5,12 @@ modular_cc_binary(
     srcs = glob(["*.cpp"]),
     deps = [
         "//AsyncRT:CompilerSupport",
-        "//AsyncRT:Init",
         "//AsyncRT:Runtime",
         "//AsyncRT:RuntimeGlobals",
         "//GraphRT:GRTRuntime",
         "//GraphRT:MEFExecutor",
         "//GraphRT:Primitives",
+        "//Init",
         "//Support:CommonCLOptions",
         "//Support:Globals",
     ],

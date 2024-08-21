@@ -5,9 +5,9 @@ modular_cc_binary(
     srcs = glob(["*.cpp"]),
     deps = [
         "//AsyncRT:CompilerSupport",
-        "//AsyncRT:Init",
         "//AsyncRT:RuntimeGlobals",
         "//GraphRT:AllDialects",
+        "//Init",
         "//Support:Globals",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Transforms",

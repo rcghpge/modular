@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "AsyncRT/CompilerSupport/Context.h"
-#include "AsyncRT/Init/Init.h"
 #include "AsyncRT/Runtime/Algorithms.h"
 #include "AsyncRT/Runtime/RuntimeCLOptions.h"
 #include "AsyncRT/Runtime/Utils.h"
@@ -18,6 +17,7 @@
 #include "GraphRT/MEFExecutor/MEFInvokable.h"
 #include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "GraphRT/Primitives.h"
+#include "Init/Init.h"
 #include "Support/CommandLine.h"
 #include "Support/CommonCLOptions.h"
 #include "Support/LLVMCompilerForwardDecls.h"
