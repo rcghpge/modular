@@ -83,7 +83,7 @@ struct Device : M::ReferenceCounted<Device> {
   /// Frees ptr created with `allocateData`.
   virtual void freeData(void *ptr) = 0;
 
-  virtual ErrorOr<DeviceSpec> getDeviceSpec() const = 0;
+  DeviceSpec getDeviceSpec() const { return deviceSpecification; };
 
   /// Allocates `bytes` bytes of memory on the device
   /// and returns the allocation in a DeviceMemory object.
@@ -117,6 +117,8 @@ struct Device : M::ReferenceCounted<Device> {
 
   /// Blocks until any pending async work on the device completes.
   virtual void synchronize() = 0;
+
+  DeviceSpec deviceSpecification;
 };
 
 inline std::string formatTarget(const DeviceSpec &deviceSpec) {
