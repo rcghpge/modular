@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --allow-unregistered-dialect --canonicalize --defer-allocs --simplify-chains -cse | FileCheck %s
+// RUN: mo-opt %s --allow-unregistered-dialect --remove-redundant-tensor-extracts --defer-allocs --simplify-chains -cse | FileCheck %s
 
 // Check mgp.buffer.alloc.* ops are deferred until the writing op is ready.
 
@@ -44,22 +44,21 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.op
   %5 = mgp.tensor.create %ch0, %ctx[1], %3, %spec : !mgp.tensor<8xf32>
   %buf0 = mgp.tensor.extract.buffer %ctx[1], %2 : !mgp.tensor<8xf32>
   %buf1 = mgp.tensor.extract.buffer %ctx[1], %5 : !mgp.tensor<8xf32>
-  %6 = mgp.buffer.alloc.static %ch0, %ctx[1] : !mgp.buffer<32>  
+  %6 = mgp.buffer.alloc.static %ch0, %ctx[1] : !mgp.buffer<32>
+
   %ch2 = "mul"(%ch0, %buf0, %buf1, %6) { tempInOutSig=#M.inout_sig<"iiio"> } : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
   %9 = mgp.tensor.create %ch2, %ctx[1], %6, %spec : !mgp.tensor<8xf32>
   %buf2 = mgp.tensor.extract.buffer %ctx[1], %9 : !mgp.tensor<8xf32>
   %buf3 = mgp.tensor.extract.buffer %ctx[1], %5 : !mgp.tensor<8xf32>
   %10 = mgp.buffer.alloc.static %ch0, %ctx[1] : !mgp.buffer<32>
 
-  %cmb_ch = grt.chain.create (%ch0, %ch2)
-  %ch3 = "sub"(%cmb_ch, %buf2, %buf3, %10) { tempInOutSig=#M.inout_sig<"iiio"> } : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
+  %ch3 = "sub"(%ch0, %buf2, %buf3, %10) { tempInOutSig=#M.inout_sig<"iiio"> } : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
   %13 = mgp.tensor.create %ch3, %ctx[1], %10, %spec : !mgp.tensor<8xf32>
   %buf4 = mgp.tensor.extract.buffer %ctx[1], %13 : !mgp.tensor<8xf32>
   %buf5 = mgp.tensor.extract.buffer %ctx[1], %9 : !mgp.tensor<8xf32>
   %14 = mgp.buffer.alloc.static %ch0, %ctx[1] : !mgp.buffer<32>
 
-  %cmb_ch2 = grt.chain.create (%ch0, %ch2, %ch3)
-  %ch4 = "add"(%cmb_ch2, %buf4, %buf5, %14) { tempInOutSig=#M.inout_sig<"iiio"> } : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
+  %ch4 = "add"(%ch0, %buf4, %buf5, %14) { tempInOutSig=#M.inout_sig<"iiio"> } : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
   %17 = mgp.tensor.create %ch4, %ctx[1], %14, %spec : !mgp.tensor<8xf32>
   mef.output %ch0, %17 : !mef.chain, !mgp.tensor<8xf32>
 }
@@ -107,23 +106,18 @@ mgp.model @divergent : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mg
   %5 = mgp.tensor.create %ch5, %ctx[1], %3, %spec : !mgp.tensor<8xf32>
   %buf0 = mgp.tensor.extract.buffer %ctx[1], %2 : !mgp.tensor<8xf32>
   %buf1 = mgp.tensor.extract.buffer %ctx[1], %5 : !mgp.tensor<8xf32>
-
-  %combined_ch = grt.chain.create (%ch0, %ch4, %ch5)
   %6 = mgp.buffer.alloc.static %ch0, %ctx[1] : !mgp.buffer<32>
-  %ch6 = "mul"(%combined_ch, %buf0, %buf1, %6) { tempInOutSig=#M.inout_sig<"iiio"> } : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
+  %ch6 = "mul"(%ch0, %buf0, %buf1, %6) { tempInOutSig=#M.inout_sig<"iiio"> } : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
   %9 = mgp.tensor.create %ch6, %ctx[1], %6, %spec : !mgp.tensor<8xf32>
   %buf2 = mgp.tensor.extract.buffer %ctx[1], %9 : !mgp.tensor<8xf32>
   %buf3 = mgp.tensor.extract.buffer %ctx[1], %5 : !mgp.tensor<8xf32>
   %10 = mgp.buffer.alloc.static %ch0, %ctx[1] : !mgp.buffer<32>
-  
-  %combined_ch2 = grt.chain.create (%ch2, %ch6, %ch5)
-  %ch7 = "sub"(%combined_ch2, %buf2, %buf3, %10) { tempInOutSig=#M.inout_sig<"iiio"> } : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
+  %ch7 = "sub"(%ch2, %buf2, %buf3, %10) { tempInOutSig=#M.inout_sig<"iiio"> } : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
   %13 = mgp.tensor.create %ch7, %ctx[1], %10, %spec : !mgp.tensor<8xf32>
   %buf4 = mgp.tensor.extract.buffer %ctx[1], %13 : !mgp.tensor<8xf32>
   %buf5 = mgp.tensor.extract.buffer %ctx[1], %9 : !mgp.tensor<8xf32>
   %14 = mgp.buffer.alloc.static %ch0, %ctx[1] : !mgp.buffer<32>
-  
-  %ch8 = grt.chain.create (%ch2, %ch7, %ch6, %ch3)
+  %ch8 = grt.chain.create (%ch2, %ch3)
   %ch9 = "add"(%ch8, %buf4, %buf5, %14) { tempInOutSig=#M.inout_sig<"iiio"> } : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
   %17 = mgp.tensor.create %ch9, %ctx[1], %14, %spec : !mgp.tensor<8xf32>
   mef.output %ch9, %17 : !mef.chain, !mgp.tensor<8xf32>

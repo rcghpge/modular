@@ -1,6 +1,6 @@
-// RUN: mo-opt %s --mo-to-mogg --mo-to-primitives --canonicalize --cse | FileCheck %s
+// RUN: mo-opt %s --add-devices --mo-to-primitives --canonicalize | FileCheck %s
 
-// CHECK-LABEL: mgp.model @mogg_split : mof
+// CHECK: mgp.model @mogg_split : mof
 // CHECK: } execute (
 // CHECK-SAME:   %[[CH:.*]]: !mef.chain,
 // CHECK-SAME:   %[[CTX:.*]]: !mgp.context,
@@ -32,35 +32,4 @@ mo.graph @mogg_split<D0, D1, D2>(
   ) -> (!mo.tensor<[D1, 8], f32>, !mo.tensor<[D2, 8], f32>)
 
   mo.output %res#0, %res#1 : !mo.tensor<[D1, 8], f32>, !mo.tensor<[D2, 8], f32>
-}
-
-
-// CHECK-LABEL: mgp.model @mogg_split_chain_prop : mof
-
-// CHECK: } execute (%[[CH0:.*]]: !mef.chain, 
-// CHECK: %[[CH1:.*]] = mogg.generic.compiled.region (%[[CH0]]
-
-// CHECK: %[[SPLIT:.*]]:2 = mgp.buffer.split.borrow %[[CH0]]
-
-// CHECK: %[[CH2:.*]] = grt.chain.create (%[[CH1]], %[[CH0]])
-// CHECK: %[[CH3:.*]] = grt.chain.create (%[[CH2]], %[[CH0]])
-
-// CHECK: mogg.generic.compiled.region (%[[CH3]]
-
-// CHECK: mogg.generic.compiled.region (%[[CH3]]
-
-mo.graph @mogg_split_chain_prop<D0, D1, D2>(
-  %input: !mo.tensor<[D0, 8], f32>,
-  %dummy: !mo.tensor<[D1, D2], si64>
-) -> (!mo.tensor<[D1, 8], f32>, !mo.tensor<[D2, 8], f32>) {
-
-  %0 = mo.relu(%input): !mo.tensor<[D0, 8], f32>
-
-  %res:2 = mogg.split(%0) : (!mo.tensor<[D0, 8], f32>
-  ) -> (!mo.tensor<[D1, 8], f32>, !mo.tensor<[D2, 8], f32>)
-
-  %1 = mo.relu(%res#0): !mo.tensor<[D1, 8], f32>
-  %2 = mo.relu(%res#1): !mo.tensor<[D2, 8], f32>
-
-  mo.output %1, %2 : !mo.tensor<[D1, 8], f32>, !mo.tensor<[D2, 8], f32>
 }

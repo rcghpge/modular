@@ -21,6 +21,16 @@ def AsyncDataflowDependenciesTestPass : Pass<"async-dataflow-dependencies-test",
 }
 
 //===----------------------------------------------------------------------===//
+// TensorExtractAnalysisTestPass
+//===----------------------------------------------------------------------===//
+
+def TensorExtractAnalysisTestPass : Pass<"tensor-extract-analysis-test", "MGP::ModelOp"> {
+  let summary = "Prints the isTensorExtract predicate for all values in the "
+                "input module, leaving the module unchanged. For unit testing "
+                "only.";
+}
+
+//===----------------------------------------------------------------------===//
 // SimplifyChainsPass
 //===----------------------------------------------------------------------===//
 
@@ -41,6 +51,88 @@ def SimplifyChainsPass : Pass<"simplify-chains", "MGP::ModelOp"> {
     simply replace %a for %x and remove the merge.
 
     If any operand is known to be isAlwaysReady then it can be removed.
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// RemoveRedundantTensorExtractsPass
+//===----------------------------------------------------------------------===//
+
+def RemoveRedundantTensorExtractsPass : Pass<"remove-redundant-tensor-extracts", "ModuleOp"> {
+  let summary = "Removes unnecessary tensor create/extract operations from "
+                "the graph.";
+  let description = [{
+    This pass avoid unnecessary mgp.tensor.{create,extract} operations in
+    two situations:
+
+    1. If the result of a (mgp.cpu/cuda).tensor.create op is exclusively consumed by
+       tensor.extract ops, remove them in favor of the original buffer,
+       tensor spec and chain used by the tensor.create. Eg:
+    ```mlir
+          %tensor0 = mgp.tensor.create.deprecated %ch0, %inputBuf0, %inputSpec0
+          %tensor1 = mgp.tensor.create.deprecated %ch1, %inputBuf1, %inputSpec1
+          %buf0, %spec0 = mgp.tensor.extract.deprecated %tensor0
+          %buf1, %spec1 = mgp.tensor.extract.deprecated %tensor1
+          %ch3 = my.op(%ch2, ..., %buf0, %spec0, %buf1, %spec1)
+          // where %buf0, %buf1 are in 'read' positions
+    ```
+       becomes:
+    ```mlir
+          %ch4 = grt.chain.create %ch2, %ch0, %ch1
+          %ch3 = my.op(%ch4, ...,
+                       %inputBuf0, %inputSpec0,  %inputBuf1, %inputSpec1)
+    ```
+       Assumes:
+        - All buffers passed to tensor.create will not be further
+          mutated once the chain to that op is ready. This is currently true
+          for the GraphCompiler, but need not be true in general.
+        - Ops have buffer annotations indicating which are in 'write' positions.
+
+    2. Ensures values of type !(mgp.cpu/cuda).tensor not otherwise the result of an
+       tensor.create op (eg block arguments or the results of other
+       primitives) are extracted at most once. Eg:
+    ```mlir
+          execute(%tensor : !mgp.tensor) {
+            %buf, %spec = mgp.tensor.extract.deprecated %tensor
+            my.op(..., %buf, %spec, ...)
+            %buf2, %spec2 = mgp.tensor.extract.deprecated %tensor
+            my.op(..., %buf2, %spec2, ...)
+          }
+    ```
+       becomes:
+    ```mlir
+          execute(%tensor : !mgp.tensor) {
+            %buf, %spec = mgp.tensor.extract.deprecated %tensor
+            my.op(..., %buf, %spec, ...)
+            my.op(..., %buf, %spec, ...)
+          }
+    ```
+
+    These rules apply across control flow boundaries. Eg:
+    ```mlir
+          %tensor0 = mgp.tensor.create.deprecated %ch0, %inputBuf0, %inputSpec0
+          %ch1, %tensor1 = grt.if %cond (%ch0, %tensor0) -> ... {
+            %buf0, %spec0 = mgp.tensor.extract.deprecated %tensor0
+            %tensor1 = mgp.tensor.create.deprecated %ch0, %buf0, %spec0
+            mef.output %ch0, %tensor1
+          } else {
+            ...
+          }
+          %buf1, %spec1 = mgp.tensor.extract.deprecated %tensor1
+          %ch3 = my.op(%ch2, ..., %buf1, %spec1)
+          // where %buf1 is in 'read' position
+    ```
+    becomes:
+    ```mlir
+          %ch1, %buf1, %spec1 = grt.if %cond (%ch0, %inputBuf0, %inputSpec0) -> ... {
+            mef.output %ch0, %inputBuf0, %inputSpec0
+          } else {
+            ...
+          }
+          %ch4 = grt.chain.create %ch2, %ch1
+          %ch3 = my_op(%ch4, ..., %buf1, %spec1)
+          // where %buf1 is in 'read' position
+    ```
   }];
 }
 

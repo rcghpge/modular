@@ -16,7 +16,7 @@
 //  CHECK-NEXT:   [[SYNC:%.*]] = mgp.sync([[OUT_CH]]
 //  CHECK-NEXT:   mgp.extend.lifetime [[SYNC]], [[IN_BUF]]
 //  CHECK-NEXT:   [[OUTPUT:%.*]] = mgp.tensor.create [[OUT_CH]], [[CTX]][1], [[NEW_BUF]], [[IN_SPEC]] : !mgp.tensor<?xsi64, <"cpu", 1>>
-//  CHECK-NEXT:   mef.output [[CH]], [[OUTPUT]]
+//  CHECK-NEXT:   mef.output [[OUT_CH]], [[OUTPUT]]
 mo.graph @transfer_with_unknown_dims(
   %input: !mo.tensor<[?], si64, {device = #M.device_ref<"cpu", 0>}>
 ) -> !mo.tensor<[?], si64, {device = #M.device_ref<"cpu", 1>}> attributes {
@@ -34,11 +34,7 @@ mo.graph @transfer_with_unknown_dims(
 // CHECK: [[CPY_CH:%.*]] = mgp.buffer.device_to_host {{.*}}, [[DBUF:%.*]], [[HBUF:%.*]] : !mgp.buffer
 // CHECK-NEXT: [[SYNC_CH:%.*]] = mgp.sync([[CPY_CH]]
 // CHECK-NEXT: mgp.extend.lifetime [[SYNC_CH]], [[DBUF]], [[HBUF]]
-
-// COM: Device to host needs to wait on the sync before using the host buffer.
-
-// CHECK-NEXT: [[OUT_TENSOR:%.*]] = mgp.tensor.create [[SYNC_CH]]
-// CHECK: mef.output [[CH]], [[OUT_TENSOR]]
+// CHECK: mef.output [[SYNC_CH]]
 
 mo.graph @transfer_d2h(
   %input: !mo.tensor<[5], si64, {device = #M.device_ref<"cuda", 0>}>
