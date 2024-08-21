@@ -151,7 +151,7 @@ class Llama3Config:
         if self.weight_path is not None:
             return self.weight_path
         try:
-            version_weights = self.pretrained_weight_urls()[self.version]
+            version_weights = PRETRAINED_MODEL_WEIGHTS[self.version]
         except KeyError:
             raise ValueError(f"unsupported model version {self.version}")
         try:
