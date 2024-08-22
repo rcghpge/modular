@@ -18,14 +18,10 @@ from max.graph.weight import Weight
 
 from utils import gguf_utils, tokenizer_from_gguf
 
-from .attention import Attention
-from .config import Hyperparameters, InferenceConfig
-from .embedding import Embedding
+from .config import InferenceConfig
+from .gguf import transformer
 from .kv_cache import KVCache
-from .mlp import MLP, Linear
-from .norm import RMSNorm
-from .rotary_embedding import RotaryEmbedding
-from .transformer import Transformer, TransformerBlock
+from .model.hyperparameters import Hyperparameters
 
 
 @dataclass
@@ -36,45 +32,6 @@ class Llama3Context:
     prompt_size: int
     max_tokens: int
     prompt: str
-
-
-def feed_forward(weights: Weights):
-    return MLP(
-        linear(weights.ffn_gate),
-        linear(weights.ffn_down),
-        linear(weights.ffn_up),
-    )
-
-
-def linear(weights: Weights) -> Linear:
-    weight: Weight = weights.weight(Graph.current)
-    if weight.quantization_encoding is None:
-        return Linear(weight.value.T)
-    else:
-        return Linear(weight.value, weight.quantization_encoding)
-
-
-def rms_norm(weights: Weights):
-    return RMSNorm(weights.weight(Graph.current).value)
-
-
-def embedding(weights: Weights):
-    weight: Weight = weights.weight(Graph.current)
-    return Embedding(weight.value, weight.quantization_encoding)
-
-
-def attention(params: Hyperparameters, weights: Weights, rope: RotaryEmbedding):
-    return Attention(
-        n_heads=params.n_heads,
-        n_kv_heads=params.n_kv_heads,
-        head_dim=params.head_dim,
-        dim=params.hidden_dim,
-        wk=linear(weights.attn_k),
-        wv=linear(weights.attn_v),
-        wq=linear(weights.attn_q),
-        wo=linear(weights.attn_output),
-        rope=rope,
-    )
 
 
 def _llama_graph(
@@ -95,36 +52,8 @@ def _llama_graph(
     with Graph(
         "llama3", input_types=[tokens_type, cache_type, cache_type]
     ) as graph:
-        rope = RotaryEmbedding(
-            dim=params.hidden_dim,
-            n_heads=params.n_heads,
-            theta=params.rope_theta,
-            max_seq_len=params.seq_len,
-        )
-
-        layers = [
-            TransformerBlock(
-                attention=attention(params, weights.blk[i], rope),
-                mlp=feed_forward(weights.blk[i]),
-                attention_norm=rms_norm(weights.blk[i].attn_norm),
-                mlp_norm=rms_norm(weights.blk[i].ffn_norm),
-            )
-            for i in range(params.n_layers)
-        ]
-
-        rope_scaling = weights.rope_freqs.weight(Graph.current).value.T
-
-        transformer = Transformer(
-            dim=params.hidden_dim,
-            n_heads=params.n_heads,
-            layers=layers,
-            norm=rms_norm(weights.output_norm),
-            output=linear(weights.output),
-            theta=params.rope_theta,
-            embedding=embedding(weights.token_embd),
-            rope_scaling=rope_scaling,
-        )
-        logits, k_update, v_update = transformer(*graph.inputs)
+        model = transformer(graph, params, weights)
+        logits, k_update, v_update = model(*graph.inputs)
         graph.output(logits[:, -1], k_update, v_update)
         return graph
 

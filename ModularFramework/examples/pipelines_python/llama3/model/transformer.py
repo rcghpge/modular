@@ -10,11 +10,12 @@ from typing import Tuple
 import numpy as np
 
 from max.graph import ValueLike, GraphValue, ops
+from typing import List
+
 from .attention import Attention
 from .mlp import MLP, Linear
 from .norm import RMSNorm
 from .embedding import Embedding
-from typing import List
 
 
 @dataclass
