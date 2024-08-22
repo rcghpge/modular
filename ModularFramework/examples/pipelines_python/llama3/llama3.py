@@ -19,7 +19,7 @@ from max.graph.weight import Weight
 from utils import gguf_utils, tokenizer_from_gguf
 
 from .attention import Attention
-from .config import Llama3Config
+from .config import Hyperparameters, InferenceConfig
 from .embedding import Embedding
 from .kv_cache import KVCache
 from .mlp import MLP, Linear
@@ -63,12 +63,12 @@ def embedding(weights: Weights):
     return Embedding(weight.value, weight.quantization_encoding)
 
 
-def attention(config: Llama3Config, weights: Weights, rope: RotaryEmbedding):
+def attention(params: Hyperparameters, weights: Weights, rope: RotaryEmbedding):
     return Attention(
-        n_heads=config.n_heads,
-        n_kv_heads=config.n_kv_heads,
-        head_dim=config.head_dim,
-        dim=config.hidden_dim,
+        n_heads=params.n_heads,
+        n_kv_heads=params.n_kv_heads,
+        head_dim=params.head_dim,
+        dim=params.hidden_dim,
         wk=linear(weights.attn_k),
         wv=linear(weights.attn_v),
         wq=linear(weights.attn_q),
@@ -77,51 +77,50 @@ def attention(config: Llama3Config, weights: Weights, rope: RotaryEmbedding):
     )
 
 
-def _llama_graph(config: Llama3Config, gguf_reader: gguf.GGUFReader) -> Graph:
+def _llama_graph(
+    batch_size: int, params: Hyperparameters, weights: Weights
+) -> Graph:
     cache_type = TensorType(
         DType.float32,
         shape=[
             "start_pos",
-            config.n_layers,
-            config.batch_size,
-            config.n_kv_heads,
-            config.head_dim,
+            params.n_layers,
+            batch_size,
+            params.n_kv_heads,
+            params.head_dim,
         ],
     )
-    tokens_type = TensorType(DType.int64, shape=[config.batch_size, "seq_len"])
-
-    assert config.weight_path
-    weights = Weights(gguf.GGUFReader(config.weight_path))
+    tokens_type = TensorType(DType.int64, shape=[batch_size, "seq_len"])
 
     with Graph(
         "llama3", input_types=[tokens_type, cache_type, cache_type]
     ) as graph:
         rope = RotaryEmbedding(
-            dim=config.hidden_dim,
-            n_heads=config.n_heads,
-            theta=config.rope_theta,
-            max_seq_len=config.seq_len,
+            dim=params.hidden_dim,
+            n_heads=params.n_heads,
+            theta=params.rope_theta,
+            max_seq_len=params.seq_len,
         )
 
         layers = [
             TransformerBlock(
-                attention=attention(config, weights.blk[i], rope),
+                attention=attention(params, weights.blk[i], rope),
                 mlp=feed_forward(weights.blk[i]),
                 attention_norm=rms_norm(weights.blk[i].attn_norm),
                 mlp_norm=rms_norm(weights.blk[i].ffn_norm),
             )
-            for i in range(config.n_layers)
+            for i in range(params.n_layers)
         ]
 
         rope_scaling = weights.rope_freqs.weight(Graph.current).value.T
 
         transformer = Transformer(
-            dim=config.hidden_dim,
-            n_heads=config.n_heads,
+            dim=params.hidden_dim,
+            n_heads=params.n_heads,
             layers=layers,
             norm=rms_norm(weights.output_norm),
             output=linear(weights.output),
-            theta=config.rope_theta,
+            theta=params.rope_theta,
             embedding=embedding(weights.token_embd),
             rope_scaling=rope_scaling,
         )
@@ -135,42 +134,45 @@ def _llama_graph(config: Llama3Config, gguf_reader: gguf.GGUFReader) -> Graph:
 class Llama3:
     """The overall interface to the Llama 3 model."""
 
-    config: Llama3Config
+    config: InferenceConfig
     _model: Model
     _kv_cache: KVCache
 
-    def __init__(self, config: Llama3Config):
+    def __init__(self, config: InferenceConfig):
         self.config = config
 
         assert config.weight_path is not None
         gguf_reader = gguf.GGUFReader(config.weight_path)
-        _override_config(config, gguf_reader)
 
-        self._model = self._load_model(config, gguf_reader)
+        params = _read_hyperparameters(gguf_reader)
+        self._model = self._load_model(config, params, gguf_reader)
         self._tokenizer = tokenizer_from_gguf(gguf_reader)
 
         # Work around for older Llama 1/2 GGUFs, where the vocab size may be -1.
         # See https://github.com/ggerganov/llama.cpp/pull/4258.
-        if config.vocab_size < 0:
-            config.vocab_size = self._tokenizer.vocab_size
+        if params.vocab_size < 0:
+            params.vocab_size = self._tokenizer.vocab_size
 
         self._kv_cache = KVCache(
-            self.config.seq_len,
-            self.config.batch_size,
-            self.config.n_layers,
-            self.config.n_kv_heads,
-            self.config.head_dim,
+            params.seq_len,
+            config.batch_size,
+            params.n_layers,
+            params.n_kv_heads,
+            params.head_dim,
         )
 
     def _load_model(
-        self, config: Llama3Config, reader: gguf.GGUFReader
+        self,
+        config: InferenceConfig,
+        params: Hyperparameters,
+        reader: gguf.GGUFReader,
     ) -> Model:
         session = InferenceSession()
         if serialized_path := config.serialized_model_path:
             print("Loading serialized model from", serialized_path, "...")
             return session.load(serialized_path)
         else:
-            graph = _llama_graph(config, reader)
+            graph = _llama_graph(config.batch_size, params, Weights(reader))
             print("Compiling...")
             return session.load(graph)
 
@@ -211,28 +213,29 @@ class Llama3:
         return {request_id: decoded_token}
 
 
-def _max_tokens_to_generate(prompt_size: int, config: Llama3Config) -> int:
+def _max_tokens_to_generate(prompt_size: int, config: InferenceConfig) -> int:
     """Returns the max number of tokens to generate (including the prompt)."""
     if config.max_new_tokens < 0:
         return config.max_length
     return min(config.max_new_tokens + prompt_size, config.max_length)
 
 
-def _override_config(config: Llama3Config, reader: gguf.GGUFReader):
-    """Overrides parameters from config if they're in the GGUF checkpoint."""
+def _read_hyperparameters(reader: gguf.GGUFReader) -> Hyperparameters:
+    key_names = {
+        "seq_len": "llama.context_length",
+        "n_layers": "llama.block_count",
+        "n_heads": "llama.attention.head_count",
+        "n_kv_heads": "llama.attention.head_count_kv",
+        "vocab_size": "llama.vocab_size",
+        "hidden_dim": "llama.embedding_length",
+        "rope_theta": "llama.rope.freq_base",
+        "layer_norm_rms_epsilon": "llama.attention.layer_norm_rms_epsilon",
+    }
 
-    def _maybe_override(attribute, gguf_name):
-        value = gguf_utils.read_number(reader, gguf_name)
-        if value is not None:
-            setattr(config, attribute, value)
+    configured_params = {
+        name: value
+        for name, key in key_names.items()
+        if (value := gguf_utils.read_number(reader, key)) is not None
+    }
 
-    _maybe_override("seq_len", "llama.context_length")
-    _maybe_override("n_layers", "llama.block_count")
-    _maybe_override("n_heads", "llama.attention.head_count")
-    _maybe_override("n_kv_heads", "llama.attention.head_count_kv")
-    _maybe_override("vocab_size", "llama.vocab_size")
-    _maybe_override("hidden_dim", "llama.embedding_length")
-    _maybe_override("rope_theta", "llama.rope.freq_base")
-    _maybe_override(
-        "layer_norm_rms_epsilon", "llama.attention.layer_norm_rms_epsilon"
-    )
+    return Hyperparameters(**configured_params)
