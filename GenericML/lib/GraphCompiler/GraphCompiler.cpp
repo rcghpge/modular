@@ -211,6 +211,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   MO::AssignDevicesPassOptions assignDevicesPassOpt;
   assignDevicesPassOpt.targetDevice = opts.defaultDeviceLabel;
+  assignDevicesPassOpt.smallTensorLimit = opts.smallTensorLimit;
   assignDevicesPassOpt.kernelLibraryPaths = opts.kernelLibraryPaths;
   assignDevicesPassOpt.withDebuginfo = opts.withDebuginfo;
   if (assignDevicesPassOpt.targetDevice == "cpu")

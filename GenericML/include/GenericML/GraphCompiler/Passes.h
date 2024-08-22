@@ -189,6 +189,14 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
           "If enabled, the graph compiler assumes that the inputs will be "
           "located on the device, and will return outputs on the device."),
       llvm::cl::init(false)};
+  Option<int64_t> smallTensorLimit{
+      *this, "small-tensor-limit",
+      llvm::cl::desc(
+          "Maximum number of elements a tensor may have to be considered "
+          "'small' by the graph compiler. Ops which take and return only "
+          "'small' tensors are themselves considered 'small', and need not be "
+          "placed on the overall graph's default device."),
+      llvm::cl::init(1024)};
   Option<std::string> defaultDeviceTargetTriple{
       *this, "default-device-target-triple",
       llvm::cl::desc("llvm::Triple representing the compilation target for the "
