@@ -13,6 +13,13 @@ filegroup(
     visibility = ["//SDK:__pkg__"],
 )
 
+# Label for M::Graph::Python sources.
+filegroup(
+    name = "graph_srcs",
+    srcs = glob(["lib/Graph/*.cpp"]),
+    visibility = ["//SDK:__pkg__"],
+)
+
 py_library(
     name = "max_engine",
     srcs = [
@@ -23,9 +30,9 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":max_dtype",
+        ":max_graph",
         "//SDK/lib/API/python/max/_driver",
         "//SDK/lib/API/python/max/_engine",
-        "//SDK/lib/GraphAPI/python:max_graph",
         requirement("numpy"),
     ],
 )
@@ -43,6 +50,19 @@ py_library(
     ],
 )
 
+py_library(
+    name = "max_graph",
+    srcs = ["//SDK/lib/API/python/max/graph"],
+    imports = ["."],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":max_dtype",
+        "//SDK/lib/API/python/max/_graph",
+        "//SDK/lib/API/python/max/mlir",
+        requirement("numpy"),
+    ],
+)
+
 py_repl(
     name = "repl",
     data = [
@@ -52,5 +72,6 @@ py_repl(
     tags = ["manual"],
     deps = [
         ":max_engine",
+        ":max_graph",
     ],
 )

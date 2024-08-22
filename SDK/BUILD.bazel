@@ -9,7 +9,7 @@ load(
     "td_library",
 )
 load("//bazel:config.bzl", "CONFIG_SECTION_LOCAL_DEFINES")
-load("//SDK/lib/GraphAPI/python/bindings:tblgen.bzl", "tblgen_pybind")
+load("//SDK/lib/API/python/bindings:tblgen.bzl", "tblgen_pybind")
 
 modular_pybind_library(
     name = "ModularFrameworkPython",
@@ -160,7 +160,7 @@ modular_pybind_library(
 
 modular_pybind_library(
     name = "GraphPython",
-    srcs = ["//SDK/lib/GraphAPI/python:cpp_srcs"],
+    srcs = ["//SDK/lib/API/python:graph_srcs"],
     hdrs = glob(["include/SDK/GraphAPI/python/*.h"]),
     pybind_deps = [
         "//:MLIRBindingsPythonHeaders",
@@ -193,7 +193,7 @@ py_repl(
     tags = ["manual"],
     deps = [
         "//SDK/lib/API/python:max_engine",
-        "//SDK/lib/GraphAPI/python:max_graph",
+        "//SDK/lib/API/python:max_graph",
         requirement("notebook"),
     ],
 )

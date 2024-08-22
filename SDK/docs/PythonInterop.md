@@ -33,7 +33,7 @@ void load_modular_dialects(MlirDialectRegistry registry) {
   MAXG_loadModularDialects(registry);
 }
 
-// SDK/lib/GraphAPI/python/bindings/max/graph/core.cpp
+// SDK/lib/API/python/bindings/max/graph/core.cpp
 PYBIND11_MODULE(core, m) {
   /// Dialect registration.
   m.def("load_modular_dialects", &Python::load_modular_dialects);
@@ -59,14 +59,14 @@ The relevant target definitions are:
 
 - `//SDK:GraphPython`
   Contains the C++ bindings logic defined in C++
-  files under SDK/lib/GraphAPI/python/lib.
+  files under SDK/lib/API/python/lib.
   Currently these are just calls into the MAX graph C API.
   The target for the corresponding C++ sources is
-  `//SDK/lib/GraphAPI/python:cpp_srcs`.
+  `//SDK/lib/API/python:graph_srcs`.
 
-- `//SDK/lib/GraphAPI/python/max/_graph:core`
+- `//SDK/lib/API/python/bindings/max/_graph:core`
   The pybind module shared library.
   This defines the `PyInit` function for `max._graph` and all the methods on
   the module via `PYBIND11_MODULE`.
   This is Python code defined via pybind11 in
-  SDK/lib/GraphAPI/python/bindings/max/_graph/core.cpp.
+  SDK/lib/API/python/bindings/max/_graph/core.cpp.

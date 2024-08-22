@@ -38,7 +38,7 @@ modular_pybind_library(
 [
     modular_relink_object(
         name = python_version_name("graph-core", version) + ".fixed",
-        src = "//SDK/lib/GraphAPI/python/max/_graph:" + python_version_name("core", version),
+        src = "//SDK/lib/API/python/max/_graph:" + python_version_name("core", version),
         new_root = "../lib",
     )
     for version in PYTHON_VERSIONS

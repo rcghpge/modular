@@ -4,7 +4,7 @@ package(default_visibility = ["//visibility:public"])
 
 copy_files(
     name = "py_srcs",
-    srcs = ["//SDK/lib/GraphAPI/python/bindings/max/_graph"],
+    srcs = ["//SDK/lib/API/python/bindings/max/_graph"],
     outs = [
         "__init__.py",
         "core.pyi",
@@ -15,7 +15,7 @@ copy_files(
 modular_pybind_extension(
     name = "core",
     srcs = [
-        "//SDK/lib/GraphAPI/python/bindings/max/_graph:core_srcs",
+        "//SDK/lib/API/python/bindings/max/_graph:core_srcs",
     ],
     local_defines = [
         # Set definition used in Interop.h to prefix the MLIR package.
@@ -23,7 +23,7 @@ modular_pybind_extension(
     ],
     pybind_deps = [
         "//SDK:GraphPython",
-        "//SDK/lib/GraphAPI/python/bindings/max/_graph:MODialectPybind",
+        "//SDK/lib/API/python/bindings/max/_graph:MODialectPybind",
     ],
     deps = [
         "//GenericML:GraphCompiler",

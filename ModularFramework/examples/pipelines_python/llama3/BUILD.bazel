@@ -14,6 +14,6 @@ py_library(
         "//ModularFramework/examples/pipelines_python/utils",
         "//SDK/lib/API/python:max_dtype",
         "//SDK/lib/API/python:max_engine",
-        "//SDK/lib/GraphAPI/python:max_graph",
+        "//SDK/lib/API/python:max_graph",
     ],
 )
