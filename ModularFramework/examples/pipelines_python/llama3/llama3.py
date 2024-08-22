@@ -154,6 +154,14 @@ class Llama3:
         if config.vocab_size < 0:
             config.vocab_size = self._tokenizer.vocab_size
 
+        self._kv_cache = KVCache(
+            self.config.seq_len,
+            self.config.batch_size,
+            self.config.n_layers,
+            self.config.n_kv_heads,
+            self.config.head_dim,
+        )
+
     def _load_model(
         self, config: Llama3Config, reader: gguf.GGUFReader
     ) -> Model:
@@ -169,22 +177,11 @@ class Llama3:
     async def new_context(self, prompt: str) -> Llama3Context:
         encoded_prompt = self._tokenizer.encode(prompt)
         prompt_size = len(encoded_prompt)
-        max_tokens = _get_max_tokens_to_generate(
-            prompt_size, self.config.max_length, self.config.max_new_tokens
-        )
-        # Note: assuming a single request.
-        self._kv_cache = KVCache(
-            max_tokens,
-            self.config.batch_size,
-            self.config.n_layers,
-            self.config.n_kv_heads,
-            self.config.head_dim,
-        )
         return Llama3Context(
-            np.array(encoded_prompt).reshape(1, -1),
-            prompt_size,
-            max_tokens,
-            prompt,
+            next_token=np.array(encoded_prompt).reshape(1, -1),
+            prompt_size=prompt_size,
+            max_tokens=_max_tokens_to_generate(prompt_size, self.config),
+            prompt=prompt,
         )
 
     async def next_token(
@@ -193,43 +190,32 @@ class Llama3:
         # Note: assuming a single request.
         request_id, context = next(iter(contexts.items()))
 
+        cache = self._kv_cache
         input_names = [t.name for t in self._model.input_metadata]
-        result = self._model.execute(
-            **dict(
-                zip(
-                    input_names,
-                    [
-                        context.next_token,
-                        self._kv_cache.keys_view(),
-                        self._kv_cache.values_view(),
-                    ],
-                )
-            )
-        )
         output_names = [t.name for t in self._model.output_metadata]
-        # TODO (MSDK-813): This slicing should move into graph output above when working.
-        logits = result[output_names[0]][:, -1]
-        self._kv_cache.update(result[output_names[1]], result[output_names[2]])
+        inputs = [context.next_token, cache.keys_view(), cache.values_view()]
 
+        result = self._model.execute(**dict(zip(input_names, inputs)))
+        logits, k_cache, v_cache = (result[o] for o in output_names)
+        self._kv_cache.update(k_cache, v_cache)
+
+        # TODO (MSDK-813): This slicing should move into graph output above when working.
         # TODO: Add a weighted sampler here.
         # Get argmax of the logits of the last token.
-        next_token = logits.argmax(axis=-1)[-1]
+        next_token = logits[:, -1].argmax(axis=-1)[-1]
         context.next_token = next_token.reshape(1, -1)
-        print("\nnext", next_token)
+        print(f"\nDEBUG: {next_token=}")
         decoded_token = self._tokenizer.decode(next_token)
         if decoded_token == self._tokenizer.eos_token:
             return {}
         return {request_id: decoded_token}
 
 
-def _get_max_tokens_to_generate(
-    prompt_len: int, max_length: int, max_new_tokens: int
-) -> int:
+def _max_tokens_to_generate(prompt_size: int, config: Llama3Config) -> int:
     """Returns the max number of tokens to generate (including the prompt)."""
-    if max_new_tokens < 0:
-        return max_length
-
-    return min(max_new_tokens + prompt_len, max_length)
+    if config.max_new_tokens < 0:
+        return config.max_length
+    return min(config.max_new_tokens + prompt_size, config.max_length)
 
 
 def _override_config(config: Llama3Config, reader: gguf.GGUFReader):
