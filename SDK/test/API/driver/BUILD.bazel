@@ -21,7 +21,7 @@ lit_tests(
         "//conditions:default": [],
     }),
     tools = [
-        "//CUDASupport/tools/is-cuda-available",
         "//KGEN/tools/mojo",
+        "//Runtime/tools/is-cuda-available",
     ],
 )

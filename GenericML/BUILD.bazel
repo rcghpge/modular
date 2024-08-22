@@ -1039,7 +1039,7 @@ modular_cc_library(
     deps = [
         ":MGPDialect",
         "//AsyncRT:RuntimeGlobals",
-        "//CUDASupport",
+        "//Runtime:CUDA",
     ],
 )
 
@@ -1185,7 +1185,7 @@ modular_cc_library(
     hdrs = glob(["include/GenericML/CUDARegistration/*.h"]),
     deps = [
         ":GraphCompilerDeviceBuggerizationRegistry",
-        "//CUDASupport",
+        "//Runtime:CUDA",
     ],
 )
 
@@ -1195,7 +1195,7 @@ modular_cc_library(
     hdrs = glob(["include/GenericML/CUDAPrimitives/*.h"]),
     deps = [
         ":MGPPrimitives",
-        "//CUDASupport:Globals",
+        "//Runtime:CUDAGlobals",
     ],
 )
 
@@ -1386,8 +1386,8 @@ modular_shared_library(
         ":DeviceDriver",
         ":MaxAPI",
         ":rpaths",
-        "//CUDASupport",
         "//Init",
+        "//Runtime:CUDA",
         "//Support:Base",
         "//Support:CrashReporting",
         "//Support:Globals",
