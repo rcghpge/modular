@@ -125,9 +125,7 @@ def _llama_graph(
             rope_scaling=rope_scaling,
         )
         logits, k_update, v_update = transformer(*graph.inputs)
-        # TODO (MSDK-813): This logic should be included here instead of with logits in next_token.
-        # graph.output(logits[:, -1], k_update, v_update)
-        graph.output(logits, k_update, v_update)
+        graph.output(logits[:, -1], k_update, v_update)
         return graph
 
 
@@ -176,6 +174,10 @@ class Llama3:
             print("Compiling...")
             return session.load(graph)
 
+    def _get_attention_mask(self, n: int):
+        mask = np.ones(shape=(1, n)).astype(bool)
+        return mask
+
     async def new_context(self, prompt: str) -> Llama3Context:
         encoded_prompt = self._tokenizer.encode(prompt)
         prompt_size = len(encoded_prompt)
@@ -195,18 +197,31 @@ class Llama3:
         cache = self._kv_cache
         input_names = [t.name for t in self._model.input_metadata]
         output_names = [t.name for t in self._model.output_metadata]
-        inputs = [context.next_token, cache.keys_view(), cache.values_view()]
+        # TODO (MSDK-844): Remove this when attention masks are harmonized between Mojo and Python graphs.
+        if len(input_names) == 4:
+            inputs = [
+                context.next_token,
+                self._get_attention_mask(
+                    cache.sequence_length + context.next_token.shape[1]
+                ),
+                cache.keys_view(),
+                cache.values_view(),
+            ]
+        else:
+            inputs = [
+                context.next_token,
+                cache.keys_view(),
+                cache.values_view(),
+            ]
 
         result = self._model.execute(**dict(zip(input_names, inputs)))
         logits, k_cache, v_cache = (result[o] for o in output_names)
         self._kv_cache.update(k_cache, v_cache)
 
-        # TODO (MSDK-813): This slicing should move into graph output above when working.
         # TODO: Add a weighted sampler here.
         # Get argmax of the logits of the last token.
-        next_token = logits[:, -1].argmax(axis=-1)[-1]
+        next_token = logits.argmax(axis=-1)[-1]
         context.next_token = next_token.reshape(1, -1)
-        print(f"\nDEBUG: {next_token=}")
         decoded_token = self._tokenizer.decode(next_token)
         if decoded_token == self._tokenizer.eos_token:
             return {}
