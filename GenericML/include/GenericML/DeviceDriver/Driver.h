@@ -132,8 +132,7 @@ inline std::string formatTarget(const DeviceSpec &deviceSpec) {
   oss << "triple=" << deviceSpec.target.triple.str() << ",";
   oss << "arch=" << deviceSpec.target.arch << ",";
   oss << "features=[";
-  for (const auto &f : deviceSpec.target.features)
-    oss << f << ",";
+  llvm::interleaveComma(deviceSpec.target.features, oss);
   oss << "])";
   return str;
 }
