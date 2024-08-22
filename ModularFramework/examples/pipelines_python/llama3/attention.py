@@ -10,7 +10,8 @@ import math
 from dataclasses import dataclass
 
 import numpy as np
-from max.graph import DimLike, DType, GraphValue, ValueLike, ops
+from max.dtype import DType
+from max.graph import DimLike, GraphValue, ValueLike, ops
 
 from .mlp import Linear
 from .rotary_embedding import RotaryEmbedding

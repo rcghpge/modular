@@ -17,16 +17,28 @@ py_library(
     name = "max_engine",
     srcs = [
         "//SDK/lib/EngineAPI/python/max/driver",
-        "//SDK/lib/EngineAPI/python/max/dtype",
         "//SDK/lib/EngineAPI/python/max/engine",
     ],
     imports = ["."],
     visibility = ["//visibility:public"],
     deps = [
+        ":max_dtype",
         "//SDK/lib/EngineAPI/python/max/_driver",
-        "//SDK/lib/EngineAPI/python/max/_dtype",
         "//SDK/lib/EngineAPI/python/max/_engine",
         "//SDK/lib/GraphAPI/python:max_graph",
+        requirement("numpy"),
+    ],
+)
+
+py_library(
+    name = "max_dtype",
+    srcs = [
+        "//SDK/lib/EngineAPI/python/max/dtype",
+    ],
+    imports = ["."],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//SDK/lib/EngineAPI/python/max/_dtype",
         requirement("numpy"),
     ],
 )

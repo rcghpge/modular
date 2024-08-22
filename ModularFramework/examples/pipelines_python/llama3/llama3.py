@@ -10,21 +10,22 @@ from typing import Union
 
 import gguf
 import numpy as np
+from max.dtype import DType
 from max.engine import InferenceSession, Model
-from max.graph import DType, Graph, TensorType
+from max.graph import Graph, TensorType
 from max.graph.utils import load_gguf
 from max.graph.weight import Weight
-from .transformer import Transformer, TransformerBlock
-from .attention import Attention
-from .mlp import MLP, Linear
-from .norm import RMSNorm
-from .rotary_embedding import RotaryEmbedding
 
 from utils import gguf_utils, tokenizer_from_gguf
 
+from .attention import Attention
 from .config import Llama3Config
 from .embedding import Embedding
 from .kv_cache import KVCache
+from .mlp import MLP, Linear
+from .norm import RMSNorm
+from .rotary_embedding import RotaryEmbedding
+from .transformer import Transformer, TransformerBlock
 
 
 @dataclass
