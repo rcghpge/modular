@@ -13,7 +13,7 @@ import numpy as np
 from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.graph import Graph, TensorType
-from max.graph.utils import load_gguf
+from max.graph.utils.load_gguf import Weights
 from max.graph.weight import Weight
 
 from utils import gguf_utils, tokenizer_from_gguf
@@ -38,6 +38,31 @@ class Llama3Context:
     prompt: str
 
 
+def feed_forward(weights: Weights):
+    return MLP(
+        linear(weights.ffn_gate),
+        linear(weights.ffn_down),
+        linear(weights.ffn_up),
+    )
+
+
+def linear(weights: Weights) -> Linear:
+    weight: Weight = weights.weight(Graph.current)
+    if weight.quantization_encoding is None:
+        return Linear(weight.value.T)
+    else:
+        return Linear(weight.value, weight.quantization_encoding)
+
+
+def rms_norm(weights: Weights):
+    return RMSNorm(weights.weight(Graph.current).value)
+
+
+def embedding(weights: Weights):
+    weight: Weight = weights.weight(Graph.current)
+    return Embedding(weight.value, weight.quantization_encoding)
+
+
 class Llama3:
     """The overall interface to the Llama 3 model."""
 
@@ -53,18 +78,18 @@ class Llama3:
         gguf_reader = gguf.GGUFReader(self.config.weight_path)
         _override_config(self.config, gguf_reader)
 
+        self._session = InferenceSession()
+        if self.config.serialized_model_path:
+            self._load_graph(self.config.serialized_model_path)
+        else:
+            self._build_graph("llama3", gguf_reader)
+
         self._tokenizer = tokenizer_from_gguf(gguf_reader)
 
         # Work around for older Llama 1/2 GGUFs, where the vocab size may be -1.
         # See https://github.com/ggerganov/llama.cpp/pull/4258.
         if self.config.vocab_size < 0:
             self.config.vocab_size = self._tokenizer.vocab_size
-
-        self._session = InferenceSession()
-        if self.config.serialized_model_path:
-            self._load_graph(self.config.serialized_model_path)
-        else:
-            self._build_graph("llama3", gguf_reader)
 
     def _build_graph(self, name: str, gguf_reader: gguf.GGUFReader):
         self._session = InferenceSession()
@@ -82,69 +107,54 @@ class Llama3:
             DType.int64, shape=[self.config.batch_size, "seq_len"]
         )
 
-        def linear_from_weight(weight: Weight) -> Linear:
-            if weight.quantization_encoding is None:
-                return Linear(weight.value.transpose(-2, -1))
-            else:
-                return Linear(weight.value, weight.quantization_encoding)
+        weights = Weights(gguf.GGUFReader(self.config.weight_path))
+
+        def attention(weights: Weights):
+            return Attention(
+                n_heads=self.config.n_heads,
+                n_kv_heads=self.config.n_kv_heads,
+                head_dim=self.config.head_dim,
+                dim=self.config.hidden_dim,
+                wk=linear(weights.attn_k),
+                wv=linear(weights.attn_v),
+                wq=linear(weights.attn_q),
+                wo=linear(weights.attn_output),
+                rope=rope,
+            )
 
         print("Compiling...")
+
         with Graph(
             name, input_types=[tokens_type, cache_type, cache_type]
         ) as graph:
-            w = load_gguf(self.config.weight_path)
+            rope = RotaryEmbedding(
+                dim=self.config.hidden_dim,
+                n_heads=self.config.n_heads,
+                theta=self.config.rope_theta,
+                max_seq_len=self.config.seq_len,
+            )
+
+            layers = [
+                TransformerBlock(
+                    attention=attention(weights.blk[i]),
+                    mlp=feed_forward(weights.blk[i]),
+                    attention_norm=rms_norm(weights.blk[i].attn_norm),
+                    mlp_norm=rms_norm(weights.blk[i].ffn_norm),
+                )
+                for i in range(self.config.n_layers)
+            ]
+
+            rope_scaling = weights.rope_freqs.weight(Graph.current).value.T
+
             transformer = Transformer(
                 dim=self.config.hidden_dim,
                 n_heads=self.config.n_heads,
-                layers=[
-                    TransformerBlock(
-                        attention=Attention(
-                            n_heads=self.config.n_heads,
-                            n_kv_heads=self.config.n_kv_heads,
-                            head_dim=self.config.head_dim,
-                            dim=self.config.hidden_dim,
-                            wk=linear_from_weight(
-                                w[f"blk.{layer}.attn_k.weight"]
-                            ),
-                            wv=linear_from_weight(
-                                w[f"blk.{layer}.attn_v.weight"]
-                            ),
-                            wq=linear_from_weight(
-                                w[f"blk.{layer}.attn_q.weight"]
-                            ),
-                            wo=linear_from_weight(
-                                w[f"blk.{layer}.attn_output.weight"]
-                            ),
-                            rope=RotaryEmbedding(
-                                dim=self.config.hidden_dim,
-                                n_heads=self.config.n_heads,
-                                theta=self.config.rope_theta,
-                                max_seq_len=self.config.seq_len,
-                            ),
-                        ),
-                        mlp=MLP(
-                            linear_from_weight(
-                                w[f"blk.{layer}.ffn_gate.weight"]
-                            ),
-                            linear_from_weight(
-                                w[f"blk.{layer}.ffn_down.weight"]
-                            ),
-                            linear_from_weight(w[f"blk.{layer}.ffn_up.weight"]),
-                        ),
-                        attention_norm=RMSNorm(
-                            w[f"blk.{layer}.attn_norm.weight"].value
-                        ),
-                        mlp_norm=RMSNorm(
-                            w[f"blk.{layer}.ffn_norm.weight"].value
-                        ),
-                    )
-                    for layer in range(self.config.n_layers)
-                ],
-                norm=RMSNorm(w["output_norm.weight"].value),
-                output=Linear(w["output.weight"].value.transpose(-2, -1)),
+                layers=layers,
+                norm=rms_norm(weights.output_norm),
+                output=linear(weights.output),
                 theta=self.config.rope_theta,
-                embedding=Embedding(w["token_embd.weight"].value),
-                rope_scaling=w["rope_freqs.weight"].value.transpose(-2, -1),
+                embedding=embedding(weights.token_embd),
+                rope_scaling=rope_scaling,
             )
             logits, k_update, v_update = transformer(*graph.inputs)
             graph.output(logits[:, -1], k_update, v_update)
@@ -160,6 +170,7 @@ class Llama3:
         max_tokens = _get_max_tokens_to_generate(
             prompt_size, self.config.max_length, self.config.max_new_tokens
         )
+        # Note: assuming a single request.
         self._kv_cache = KVCache(
             max_tokens,
             self.config.batch_size,
