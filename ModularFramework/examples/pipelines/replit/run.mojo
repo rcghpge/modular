@@ -48,8 +48,8 @@ from samplers.weighted_sampler import WeightedSampler
 from tokenizer import AutoTokenizer
 from metrics.metrics import Metrics
 from pipelines.weights.download import download_to_cache
+from max.serve.kv_cache.types import ContiguousKVCacheManager
 from kv_cache.types import (
-    ContiguousKVCacheManager,
     ContiguousKVCacheCollection,
     KVCacheStaticParams,
     KVCacheLayout,
@@ -229,7 +229,6 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
     def __init__(
         inout self,
         model_path: Path,
-        custom_ops_paths: List[Path],
         use_gpu: Bool = False,
         max_length: Optional[Int] = None,
         max_new_tokens: Optional[Int] = None,
@@ -257,9 +256,7 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
         print("Compiling...", end="")
         start_time = now()
         if mef_load_path != "":
-            self._model = self._session.load(
-                mef_load_path, custom_ops_paths=custom_ops_paths
-            )
+            self._model = self._session.load(mef_load_path)
         else:
             print("Building model...", end="")
             start_time = now()
@@ -273,7 +270,6 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
             print("done. Took", (now() - start_time) / 1e9, "seconds.")
             self._model = self._session.load(
                 g,
-                custom_ops_paths=custom_ops_paths,
             )
         if mef_store_path != "":
             self._model.export_compiled_model(mef_store_path)
@@ -463,7 +459,6 @@ def dispatch[dtype: DType, kv_params: KVCacheStaticParams](config: Config):
         pad_to_multiple_of = config.get("pad-to-multiple-of")[Int]
     replit = ReplitPipeline[dtype, kv_params](
         config.get("model-path")[Path],
-        config.get("custom-ops-path")[List[Path]],
         use_gpu=config.get("experimental-use-gpu")[Bool],
         max_length=max_length,
         max_new_tokens=max_new_tokens,

@@ -12,6 +12,7 @@ mojo_library(
         "//Kernels/mojo/buffer",
         "//Kernels/mojo/compile",
         "//Kernels/mojo/gpu",
+        "//Kernels/mojo/kv_cache",
         "//Kernels/mojo/runtime",
         "//SDK/lib/API/mojo/max/compiler",
         "//SDK/lib/API/mojo/max/tensor",

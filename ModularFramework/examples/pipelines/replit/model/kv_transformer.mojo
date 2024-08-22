@@ -20,7 +20,7 @@ from kv_cache.types import (
     KVCacheLayout,
     KVCacheStaticParams,
 )
-from kv_cache.kernels import _kv_cache_kernel_names
+from max.serve.kv_cache.kernel_names import _kv_cache_kernel_names
 
 
 def kv_cache_length[
