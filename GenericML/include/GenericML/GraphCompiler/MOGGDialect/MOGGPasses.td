@@ -224,7 +224,26 @@ def MarkTrivialKernels: Pass<"mark-trivial-kernels", "MO::GraphOp"> {
     On CPU this is only enabled for 'trivial' kernels, ie those with small
     input and output shapes. For GPU this is enabled generally.
   }];
-  let dependentDialects = ["M::MOGG::MOGGDialect"];
+
+  // Balloons due to dependency on MojoLibrarryAnalysis
+  let dependentDialects = [
+    "M::MDialect",
+    "M::MOGG::MOGGDialect",
+    "M::KGEN::Custom::CustomDialect",
+    "M::KGEN::KGENDialect",
+    "M::KGEN::LIT::LITDialect",
+    "M::KGEN::POP::POPDialect",
+    "M::HLCF::HLCFDialect",
+    "M::DebugInfo::DebugInfoDialect",
+    "mlir::LLVM::LLVMDialect",
+    "mlir::NVVM::NVVMDialect",
+    "mlir::index::IndexDialect",
+  ];
+
+  let options = [
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
+  ];
 }
 
 def InlineLambdas: Pass<"inline-lambdas", "MO::GraphOp"> {

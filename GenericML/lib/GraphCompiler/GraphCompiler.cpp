@@ -258,7 +258,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   if (opts.performTrivialKernelOpt) {
     // Mark trivial kernels as being synchronous.
-    pm.addPass(MOGG::createMarkTrivialKernels());
+    pm.addPass(MOGG::createMarkTrivialKernels({opts.kernelLibraryPaths}));
 
     // Soft fuse trivial and non-host kernels where possible.
     if (opts.fuseJitKernels) {
