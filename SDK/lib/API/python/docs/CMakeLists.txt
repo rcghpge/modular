@@ -28,7 +28,7 @@ if(Sphinx_FOUND)
       -c ${CMAKE_CURRENT_BINARY_DIR}
       -q # quiet
       -W # treat warnings as errors for now
-      ${CMAKE_SOURCE_DIR}/SDK/lib/API/python/max/engine # Source
+      ${CMAKE_SOURCE_DIR}/SDK/lib/API/python/docs # Source
       ${sphinx_output_dir} # Output
     DEPENDS max-pybind-ext # ensure the wheel is always up-to-date
     COMMENT "Generating Sphinx documentation for AI Engine Python API into ${sphinx_output_dir}."
@@ -47,7 +47,7 @@ if(Sphinx_FOUND)
       COMMAND ${CMAKE_COMMAND} -E rm -rf _static _sources
       COMMAND ${CMAKE_COMMAND} -E rm -f objects.inv searchindex.js
       COMMAND ${CMAKE_COMMAND} -E rm -f genindex.html search.html py-modindex.html index.html
-      COMMAND ${CMAKE_COMMAND} -E rm -f genindex.md search.md py-modindex.md index.md
+      COMMAND ${CMAKE_COMMAND} -E rm -f genindex.md search.md py-modindex.md
 
       WORKING_DIRECTORY ${sphinx_output_dir}
       COMMENT "Remove unwanted directories and files from the sphinx-build."
