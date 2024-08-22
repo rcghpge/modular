@@ -147,9 +147,7 @@ class Llama3:
                 rope_scaling=w["rope_freqs.weight"].value.transpose(-2, -1),
             )
             logits, k_update, v_update = transformer(*graph.inputs)
-            # TODO (MSDK-813): This logic should be included here instead of with logits in next_token.
-            # graph.output(logits[:, -1], k_update, v_update)
-            graph.output(logits, k_update, v_update)
+            graph.output(logits[:, -1], k_update, v_update)
             self._compiled_model = self._session.load(graph)
 
     def _load_graph(self, file: Union[str, Path]):
@@ -196,8 +194,7 @@ class Llama3:
             )
         )
         output_names = [t.name for t in self._compiled_model.output_metadata]
-        # TODO (MSDK-813): This slicing should move into graph output above when working.
-        logits = result[output_names[0]][:, -1]
+        logits = result[output_names[0]]
         self._kv_cache.update(result[output_names[1]], result[output_names[2]])
 
         # TODO: Add a weighted sampler here.
