@@ -17,6 +17,7 @@
 #include "Support/ReferenceCounted.h"
 #include "llvm/ADT/FunctionExtras.h"
 #include <string>
+#include <utility>
 namespace M {
 
 namespace Driver {
@@ -74,8 +75,10 @@ protected:
 };
 
 struct Device : M::ReferenceCounted<Device> {
-  virtual const std::string &getString() const = 0;
-  virtual std::string toString() const = 0;
+
+  Device(DeviceSpec spec) : deviceSpecification(std::move(spec)) {}
+
+  virtual const std::string &getString() const { return deviceDescription; };
 
   /// Allocates `bytes` bytes on the device.
   virtual void *allocateData(size_t bytes) = 0;
@@ -119,6 +122,7 @@ struct Device : M::ReferenceCounted<Device> {
   virtual void synchronize() = 0;
 
   DeviceSpec deviceSpecification;
+  std::string deviceDescription;
 };
 
 inline std::string formatTarget(const DeviceSpec &deviceSpec) {
