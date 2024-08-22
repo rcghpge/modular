@@ -4,38 +4,41 @@ package(default_visibility = ["//visibility:public"])
 
 copy_files(
     name = "py_srcs",
-    srcs = ["//SDK/lib/EngineAPI/python/bindings/max/_dtype"],
+    srcs = ["//SDK/lib/API/python/bindings/max/_driver"],
     outs = [
         "__init__.py",
         "core.pyi",
     ],
 )
 
-# max._dtype C extension module.
+# max._driver C extension module.
 modular_pybind_extension(
     name = "core",
     srcs = [
-        "//SDK/lib/EngineAPI/python/bindings/max/_dtype:core_srcs",
+        "//SDK/lib/API/python/bindings/max/_driver:core_srcs",
+    ],
+    pybind_deps = [
+        "//SDK:DriverPython",
     ],
     deps = [
-        "//GenericML:API.headers",
-        "//GenericML:MaxAPI",
+        "//GenericML:modular-framework-common",
+        "@llvm-project//llvm:Support",
     ],
 )
 
 modular_pybind_py_library(
-    name = "_dtype_pybind",
+    name = "_driver_pybind",
     srcs = [],
     pybind_data = [":core"],
 )
 
 py_library(
-    name = "_dtype",
+    name = "_driver",
     srcs = [],
     data = [
         "py_srcs",
     ],
     deps = [
-        ":_dtype_pybind",
+        ":_driver_pybind",
     ],
 )

@@ -28,7 +28,7 @@ if(Sphinx_FOUND)
       -c ${CMAKE_CURRENT_BINARY_DIR}
       -q # quiet
       -W # treat warnings as errors for now
-      ${CMAKE_SOURCE_DIR}/SDK/lib/EngineAPI/python/max/engine # Source
+      ${CMAKE_SOURCE_DIR}/SDK/lib/API/python/max/engine # Source
       ${sphinx_output_dir} # Output
     DEPENDS max-pybind-ext # ensure the wheel is always up-to-date
     COMMENT "Generating Sphinx documentation for AI Engine Python API into ${sphinx_output_dir}."

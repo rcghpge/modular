@@ -20,7 +20,7 @@ filegroup(
 [
     modular_relink_object(
         name = python_version_name("dtype-core", version) + ".fixed",
-        src = "//SDK/lib/EngineAPI/python/max/_dtype:" + python_version_name("core", version),
+        src = "//SDK/lib/API/python/max/_dtype:" + python_version_name("core", version),
         new_root = "../lib",
     )
     for version in PYTHON_VERSIONS

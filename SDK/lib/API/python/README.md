@@ -30,7 +30,7 @@ Here's how to build and install the Python package:
 
    ```shell
    # Finish this filename as appropriate:
-   python3 -m pip install .derived/build/SDK/lib/EngineAPI/python/max_engine-...whl
+   python3 -m pip install .derived/build/SDK/lib/API/python/max_engine-...whl
    ```
 
 Now you should be all set.

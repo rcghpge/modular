@@ -12,8 +12,8 @@ py_library(
         requirement("gguf"),
         requirement("sentencepiece"),
         "//ModularFramework/examples/pipelines_python/utils",
-        "//SDK/lib/EngineAPI/python:max_dtype",
-        "//SDK/lib/EngineAPI/python:max_engine",
+        "//SDK/lib/API/python:max_dtype",
+        "//SDK/lib/API/python:max_engine",
         "//SDK/lib/GraphAPI/python:max_graph",
     ],
 )

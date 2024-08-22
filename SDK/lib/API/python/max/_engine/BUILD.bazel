@@ -4,7 +4,7 @@ package(default_visibility = ["//visibility:public"])
 
 copy_files(
     name = "py_srcs",
-    srcs = ["//SDK/lib/EngineAPI/python/bindings/max/_engine"],
+    srcs = ["//SDK/lib/API/python/bindings/max/_engine"],
     outs = [
         "__init__.py",
         "core.pyi",
@@ -15,7 +15,7 @@ copy_files(
 modular_pybind_extension(
     name = "core",
     srcs = [
-        "//SDK/lib/EngineAPI/python/bindings/max/_engine:core_srcs",
+        "//SDK/lib/API/python/bindings/max/_engine:core_srcs",
     ],
     pybind_deps = [
         "//SDK:ModularFrameworkPython",
