@@ -63,106 +63,108 @@ def embedding(weights: Weights):
     return Embedding(weight.value, weight.quantization_encoding)
 
 
+def attention(config: Llama3Config, weights: Weights, rope: RotaryEmbedding):
+    return Attention(
+        n_heads=config.n_heads,
+        n_kv_heads=config.n_kv_heads,
+        head_dim=config.head_dim,
+        dim=config.hidden_dim,
+        wk=linear(weights.attn_k),
+        wv=linear(weights.attn_v),
+        wq=linear(weights.attn_q),
+        wo=linear(weights.attn_output),
+        rope=rope,
+    )
+
+
+def _llama_graph(config: Llama3Config, gguf_reader: gguf.GGUFReader) -> Graph:
+    cache_type = TensorType(
+        DType.float32,
+        shape=[
+            "start_pos",
+            config.n_layers,
+            config.batch_size,
+            config.n_kv_heads,
+            config.head_dim,
+        ],
+    )
+    tokens_type = TensorType(DType.int64, shape=[config.batch_size, "seq_len"])
+
+    assert config.weight_path
+    weights = Weights(gguf.GGUFReader(config.weight_path))
+
+    with Graph(
+        "llama3", input_types=[tokens_type, cache_type, cache_type]
+    ) as graph:
+        rope = RotaryEmbedding(
+            dim=config.hidden_dim,
+            n_heads=config.n_heads,
+            theta=config.rope_theta,
+            max_seq_len=config.seq_len,
+        )
+
+        layers = [
+            TransformerBlock(
+                attention=attention(config, weights.blk[i], rope),
+                mlp=feed_forward(weights.blk[i]),
+                attention_norm=rms_norm(weights.blk[i].attn_norm),
+                mlp_norm=rms_norm(weights.blk[i].ffn_norm),
+            )
+            for i in range(config.n_layers)
+        ]
+
+        rope_scaling = weights.rope_freqs.weight(Graph.current).value.T
+
+        transformer = Transformer(
+            dim=config.hidden_dim,
+            n_heads=config.n_heads,
+            layers=layers,
+            norm=rms_norm(weights.output_norm),
+            output=linear(weights.output),
+            theta=config.rope_theta,
+            embedding=embedding(weights.token_embd),
+            rope_scaling=rope_scaling,
+        )
+        logits, k_update, v_update = transformer(*graph.inputs)
+        # TODO (MSDK-813): This logic should be included here instead of with logits in next_token.
+        # graph.output(logits[:, -1], k_update, v_update)
+        graph.output(logits, k_update, v_update)
+        return graph
+
+
 class Llama3:
     """The overall interface to the Llama 3 model."""
 
     config: Llama3Config
-    _session: InferenceSession
-    _compiled_model: Model
+    _model: Model
     _kv_cache: KVCache
 
     def __init__(self, config: Llama3Config):
         self.config = config
 
-        assert self.config.weight_path is not None
-        gguf_reader = gguf.GGUFReader(self.config.weight_path)
-        _override_config(self.config, gguf_reader)
+        assert config.weight_path is not None
+        gguf_reader = gguf.GGUFReader(config.weight_path)
+        _override_config(config, gguf_reader)
 
-        self._session = InferenceSession()
-        if self.config.serialized_model_path:
-            self._load_graph(self.config.serialized_model_path)
-        else:
-            self._build_graph("llama3", gguf_reader)
-
+        self._model = self._load_model(config, gguf_reader)
         self._tokenizer = tokenizer_from_gguf(gguf_reader)
 
         # Work around for older Llama 1/2 GGUFs, where the vocab size may be -1.
         # See https://github.com/ggerganov/llama.cpp/pull/4258.
-        if self.config.vocab_size < 0:
-            self.config.vocab_size = self._tokenizer.vocab_size
+        if config.vocab_size < 0:
+            config.vocab_size = self._tokenizer.vocab_size
 
-    def _build_graph(self, name: str, gguf_reader: gguf.GGUFReader):
-        self._session = InferenceSession()
-        cache_type = TensorType(
-            DType.float32,
-            shape=[
-                "prev_seq_len",
-                self.config.n_layers,
-                self.config.batch_size,
-                self.config.n_kv_heads,
-                self.config.head_dim,
-            ],
-        )
-        tokens_type = TensorType(
-            DType.int64, shape=[self.config.batch_size, "seq_len"]
-        )
-
-        weights = Weights(gguf.GGUFReader(self.config.weight_path))
-
-        def attention(weights: Weights):
-            return Attention(
-                n_heads=self.config.n_heads,
-                n_kv_heads=self.config.n_kv_heads,
-                head_dim=self.config.head_dim,
-                dim=self.config.hidden_dim,
-                wk=linear(weights.attn_k),
-                wv=linear(weights.attn_v),
-                wq=linear(weights.attn_q),
-                wo=linear(weights.attn_output),
-                rope=rope,
-            )
-
-        print("Compiling...")
-
-        with Graph(
-            name, input_types=[tokens_type, cache_type, cache_type]
-        ) as graph:
-            rope = RotaryEmbedding(
-                dim=self.config.hidden_dim,
-                n_heads=self.config.n_heads,
-                theta=self.config.rope_theta,
-                max_seq_len=self.config.seq_len,
-            )
-
-            layers = [
-                TransformerBlock(
-                    attention=attention(weights.blk[i]),
-                    mlp=feed_forward(weights.blk[i]),
-                    attention_norm=rms_norm(weights.blk[i].attn_norm),
-                    mlp_norm=rms_norm(weights.blk[i].ffn_norm),
-                )
-                for i in range(self.config.n_layers)
-            ]
-
-            rope_scaling = weights.rope_freqs.weight(Graph.current).value.T
-
-            transformer = Transformer(
-                dim=self.config.hidden_dim,
-                n_heads=self.config.n_heads,
-                layers=layers,
-                norm=rms_norm(weights.output_norm),
-                output=linear(weights.output),
-                theta=self.config.rope_theta,
-                embedding=embedding(weights.token_embd),
-                rope_scaling=rope_scaling,
-            )
-            logits, k_update, v_update = transformer(*graph.inputs)
-            graph.output(logits[:, -1], k_update, v_update)
-            self._compiled_model = self._session.load(graph)
-
-    def _load_graph(self, file: Union[str, Path]):
-        print("Loading serialized model from", file, "...")
-        self._compiled_model = self._session.load(file)
+    def _load_model(
+        self, config: Llama3Config, reader: gguf.GGUFReader
+    ) -> Model:
+        session = InferenceSession()
+        if serialized_path := config.serialized_model_path:
+            print("Loading serialized model from", serialized_path, "...")
+            return session.load(serialized_path)
+        else:
+            graph = _llama_graph(config, reader)
+            print("Compiling...")
+            return session.load(graph)
 
     async def new_context(self, prompt: str) -> Llama3Context:
         encoded_prompt = self._tokenizer.encode(prompt)
@@ -191,8 +193,8 @@ class Llama3:
         # Note: assuming a single request.
         request_id, context = next(iter(contexts.items()))
 
-        input_names = [t.name for t in self._compiled_model.input_metadata]
-        result = self._compiled_model.execute(
+        input_names = [t.name for t in self._model.input_metadata]
+        result = self._model.execute(
             **dict(
                 zip(
                     input_names,
@@ -204,8 +206,9 @@ class Llama3:
                 )
             )
         )
-        output_names = [t.name for t in self._compiled_model.output_metadata]
-        logits = result[output_names[0]]
+        output_names = [t.name for t in self._model.output_metadata]
+        # TODO (MSDK-813): This slicing should move into graph output above when working.
+        logits = result[output_names[0]][:, -1]
         self._kv_cache.update(result[output_names[1]], result[output_names[2]])
 
         # TODO: Add a weighted sampler here.
