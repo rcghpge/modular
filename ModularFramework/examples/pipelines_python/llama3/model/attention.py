@@ -85,49 +85,24 @@ class Attention:
         k_cache = ops.squeeze(k_cache, axis=1)
         v_cache = ops.squeeze(v_cache, axis=1)
 
-        keys = ops.transpose(
-            ops.concat(
-                [
-                    k_cache,
-                    ops.cast(
-                        ops.transpose(xk, 0, 1), k_cache.tensor_type.dtype
-                    ),
-                ],
-                new_dim="post_seq_len",
-            ),
-            0,
-            1,
-        )
-        values = ops.transpose(
-            ops.concat(
-                [
-                    v_cache,
-                    ops.cast(
-                        ops.transpose(xv, 0, 1), v_cache.tensor_type.dtype
-                    ),
-                ],
-                new_dim="post_seq_len",
-            ),
-            0,
-            1,
-        )
+        keys = ops.concat(
+            [k_cache, xk.transpose(0, 1)], new_dim="post_seq_len"
+        ).transpose(0, 1)
+        values = ops.concat(
+            [v_cache, xv.transpose(0, 1)], new_dim="post_seq_len"
+        ).transpose(0, 1)
 
         keys = self.repeat_kv(keys)
         values = self.repeat_kv(values)
 
-        xq = ops.transpose(xq, 1, 2)
-        keys = ops.transpose(keys, 1, 2)
-        values = ops.transpose(values, 1, 2)
+        xq = xq.transpose(1, 2)
+        keys = keys.transpose(1, 2)
+        values = values.transpose(1, 2)
 
-        scores = (xq @ ops.transpose(keys, 2, 3)) * ops.scalar(
-            math.sqrt(1.0 / self.head_dim), dtype=xq.tensor_type.dtype
-        )
-
-        scores = scores + attention_mask(
-            prev_seq_len, seq_len, xq.tensor_type.dtype
-        )
-
-        return ops.softmax(scores) @ values
+        scale = ops.scalar(math.sqrt(1.0 / self.head_dim), dtype=xq.dtype)
+        mask = attention_mask(prev_seq_len, seq_len, xq.dtype)
+        scores = xq @ ops.transpose(keys, 2, 3)
+        return ops.softmax(scale * scores + mask) @ values
 
     def __call__(
         self,

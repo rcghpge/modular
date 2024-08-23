@@ -58,7 +58,6 @@ def attention(params: Hyperparameters, weights: Weights, rope: RotaryEmbedding):
 
 def transformer(graph: Graph, params: Hyperparameters, weights: Weights):
     with graph:
-        print("building transformer")
         rope = RotaryEmbedding(
             dim=params.hidden_dim,
             n_heads=params.n_heads,
