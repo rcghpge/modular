@@ -22,11 +22,13 @@ class KVCache:
         head_dim: int,
     ):
         self.keys = np.zeros(
-            shape=(max_length, n_layers, batch_size, n_kv_heads, head_dim)
-        ).astype(np.float32)
+            shape=(max_length, n_layers, batch_size, n_kv_heads, head_dim),
+            dtype=np.float32,
+        )
         self.values = np.zeros(
-            shape=(max_length, n_layers, batch_size, n_kv_heads, head_dim)
-        ).astype(np.float32)
+            shape=(max_length, n_layers, batch_size, n_kv_heads, head_dim),
+            dtype=np.float32,
+        )
         self.sequence_length = 0
 
     def update(self, new_keys: np.array, new_values: np.array):
