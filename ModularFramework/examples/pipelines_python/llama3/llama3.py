@@ -6,7 +6,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union
+from typing import KeysView, Union
 
 import gguf
 import numpy as np
@@ -64,6 +64,7 @@ class Llama3:
     config: InferenceConfig
     _model: Model
     _kv_cache: KVCache
+    _sessions: dict[str, int]
 
     def __init__(self, config: InferenceConfig):
         self.config = config
@@ -87,6 +88,7 @@ class Llama3:
             params.n_kv_heads,
             params.head_dim,
         )
+        self._sessions = {}
 
     def _load_model(
         self,
@@ -121,7 +123,13 @@ class Llama3:
         self, contexts: dict[str, Llama3Context]
     ) -> dict[str, str]:
         # Note: assuming a single request.
+        assert len(contexts) == self.config.batch_size == 1
         request_id, context = next(iter(contexts.items()))
+        # This feels really contrived, but it's because our KV cache setup
+        # just doesn't meaningfully support batch size > 1 yet.
+        if request_id not in self._sessions:
+            self._sessions[request_id] = 0
+            self._kv_cache.sequence_length = 0
 
         cache = self._kv_cache
         input_names = [t.name for t in self._model.input_metadata]
