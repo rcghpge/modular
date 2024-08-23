@@ -33,8 +33,8 @@ def linear(weights: Weights) -> Linear:
         return Linear(weight.value, weight.quantization_encoding)
 
 
-def rms_norm(weights: Weights):
-    return RMSNorm(weights.weight(Graph.current).value)
+def rms_norm(weights: Weights, eps: float):
+    return RMSNorm(weights.weight(Graph.current).value, eps)
 
 
 def embedding(weights: Weights):
@@ -69,19 +69,26 @@ def transformer(graph: Graph, params: Hyperparameters, weights: Weights):
             TransformerBlock(
                 attention=attention(params, weights.blk[i], rope),
                 mlp=feed_forward(weights.blk[i]),
-                attention_norm=rms_norm(weights.blk[i].attn_norm),
-                mlp_norm=rms_norm(weights.blk[i].ffn_norm),
+                attention_norm=rms_norm(
+                    weights.blk[i].attn_norm, params.layer_norm_rms_epsilon
+                ),
+                mlp_norm=rms_norm(
+                    weights.blk[i].ffn_norm, params.layer_norm_rms_epsilon
+                ),
             )
             for i in range(params.n_layers)
         ]
 
-        rope_scaling = weights.rope_freqs.weight(graph).value.T
+        try:
+            rope_scaling = weights.rope_freqs.weight(graph).value.T
+        except:
+            rope_scaling = 1.0
 
         return Transformer(
             dim=params.hidden_dim,
             n_heads=params.n_heads,
             layers=layers,
-            norm=rms_norm(weights.output_norm),
+            norm=rms_norm(weights.output_norm, params.layer_norm_rms_epsilon),
             output=linear(weights.output),
             theta=params.rope_theta,
             embedding=embedding(weights.token_embd),

@@ -71,10 +71,8 @@ class Transformer:
             k_cache_updates.append(ops.transpose(k_cache_layer_update, 0, 1))
             v_cache_updates.append(ops.transpose(v_cache_layer_update, 0, 1))
 
-            h = self.norm(h)
-
         return (
-            self.output(h),
+            self.output(self.norm(h)),
             ops.stack(k_cache_updates, axis=1),
             ops.stack(v_cache_updates, axis=1),
         )
