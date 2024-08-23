@@ -41,7 +41,8 @@ def attention_mask(
             mask,
         ],
         axis=1,
-    ).rebind(["seq_len", "post_seq_len"])
+        new_dim="post_seq_len",
+    )
 
 
 @dataclass
@@ -91,8 +92,9 @@ class Attention:
                     ops.cast(
                         ops.transpose(xk, 0, 1), k_cache.tensor_type.dtype
                     ),
-                ]
-            ).rebind(["post_seq_len", batch, self.n_kv_heads, self.head_dim]),
+                ],
+                new_dim="post_seq_len",
+            ),
             0,
             1,
         )
@@ -103,8 +105,9 @@ class Attention:
                     ops.cast(
                         ops.transpose(xv, 0, 1), v_cache.tensor_type.dtype
                     ),
-                ]
-            ).rebind(["post_seq_len", batch, self.n_kv_heads, self.head_dim]),
+                ],
+                new_dim="post_seq_len",
+            ),
             0,
             1,
         )
