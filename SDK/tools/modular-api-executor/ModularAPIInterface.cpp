@@ -110,7 +110,6 @@ ErrorOrSuccess M::ModularAPIInterface::loadModularAndInitSymbols() {
   GET_SYMBOL(setMaxContext, M_setMaxContext);
   GET_SYMBOL(setAllocatorType, M_setAllocatorType);
   GET_SYMBOL(setModelPath, M_setModelPath);
-  GET_SYMBOL(setDevice, M_setDevice);
 
   auto useKernelsOr =
       fallibleGetSymbol(dylib, "M_useKernelsFrom", useKernelsFrom);

@@ -143,7 +143,6 @@ public:
   SmallVector<std::string> extraTorchLibs;
   bool printMetadata{false};
   SmallVector<std::string> kernelLibraryPaths;
-  bool gpu{false};
 
   /// Reads a model specification from the YAML file set via the
   /// "model-specification" option.
@@ -248,11 +247,6 @@ private:
       cl::desc("Paths to mojo packages containing mojo kernel definitions used "
                "to replace MO and Framework ops."),
       llvm::cl::location(options.kernelLibraryPaths),
-      llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
-
-  M::cl::MOpt<bool, true> gpu{
-      "gpu", cl::desc("Enable execution using a GPU device."),
-      llvm::cl::location(options.gpu),
       llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
 };
 
@@ -718,8 +712,6 @@ int main(int argc, char **argv) {
   api.setMaxContext(runtimeConfig.get(),
                     reinterpret_cast<M_MaxContext *>(ctxOr->getPointer()));
 
-  if (clOptions.gpu)
-    api.setDevice(runtimeConfig.get(), "cuda", /*deviceID=*/0);
   RuntimeContextPtr context = {
       api.newRuntimeContext(runtimeConfig.get(), status.get()),
       api.freeRuntimeContext};
