@@ -191,8 +191,10 @@ mo.graph @scalar_to_tensor_reshapes_before_staticization(
   %arg_dim0 = mo.slice(%arg_shape, %tensor_zero, %tensor_one, %tensor_one) : (!mo.tensor<[2], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>) -> !mo.tensor<[?], si32>
   %empty_tensor = mo.range(%scalar_zero, %scalar_zero, %scalar_one) : (!mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[?], si32>
   %one_ = mo.gather(%tensor_one, %empty_tensor, %scalar_zero) : (!mo.tensor<[1], si32>, !mo.tensor<[?], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[?], si32>
-  %one_one = mo.concat[%scalar_zero : !mo.tensor<[], si32>] (%one_, %one_) : (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<[?], si64>
-  %arg_dim0_rs1 = mo.reshape(%arg_dim0, %one_one) : (!mo.tensor<[?], si32>, !mo.tensor<[?], si64>) -> !mo.tensor<[], si32>
+
+  %one_one = mo.concat[%scalar_zero : !mo.tensor<[], si32>] (%one_, %one_) : (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<[?], si32>
+
+  %arg_dim0_rs1 = mo.reshape(%arg_dim0, %one_one) : (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<[], si32>
   %arg_dim0_rs2 = mo.reshape(%arg_dim0_rs1, %tensor_one) : (!mo.tensor<[], si32>, !mo.tensor<[1], si32>) -> !mo.tensor<[?], si32>
   %arg_dim0_dim0 = mo.concat[%scalar_zero : !mo.tensor<[], si32>] (%arg_dim0_rs2, %arg_dim0_rs2)
   : (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<[2], si32>
@@ -919,7 +921,9 @@ mo.graph @slice_out_a_third_of_constant_axis(
   %1220 = mo.mul(%1218, %12) : !mo.tensor<[1], si64>
   %1230 = mo.shape_of(%1207) : (!mo.tensor<[50, ?, 2304], f32>) -> !mo.tensor<[3], si32>
   %1231 = mo.gather(%1230, %23, %19) : (!mo.tensor<[3], si32>, !mo.tensor<[1], si64>, !mo.tensor<[], si32>) -> !mo.tensor<[1], si32>
-  %1232 = mo.concat[%19 : !mo.tensor<[], si32>] (%16, %1231) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si32>) -> !mo.tensor<[2], si64>
+
+  %cast = mo.cast(%1231) : (!mo.tensor<[1], si32>) -> !mo.tensor<[1], si64>
+  %1232 = mo.concat[%19 : !mo.tensor<[], si32>] (%16, %cast) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
   %1233 = mo.gather(%1218, %24, %19) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si32>) -> !mo.tensor<[1], si64>
   %1234 = mo.gather(%1220, %24, %19) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[], si32>) -> !mo.tensor<[1], si64>
   %1235 = mo.concat[%19 : !mo.tensor<[], si32>] (%4, %1233) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[3], si64>

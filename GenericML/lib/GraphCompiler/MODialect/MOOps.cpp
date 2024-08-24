@@ -1255,6 +1255,13 @@ LogicalResult ConcatOp::verify() {
         "input and output ranks must be all dynamic, or all static and match");
   }
 
+  auto elementTypes = llvm::map_range(
+      tensors, [](TensorValue val) { return val.getType().getElementType(); });
+
+  if (!llvm::all_equal(elementTypes)) {
+    return emitError("input and output element types must match");
+  }
+
   return success();
 }
 

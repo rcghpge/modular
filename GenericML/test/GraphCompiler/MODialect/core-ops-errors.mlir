@@ -179,3 +179,16 @@ mo.graph @cycle<D0 -> O0, O1, O2, O3>(
 
   mo.output<D5, D6, D3, D4> %temp1, %temp2 : !mo.tensor<[D5, D6], f32>, !mo.tensor<[D3, D4], f32>
 }
+
+// -----
+
+mo.graph @concat_incorrect_element_type(%arg0: !mo.tensor<[1], si64>, %arg1: !mo.tensor<[1], si32>) -> !mo.tensor<[2], si64> {
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+
+  // expected-error @below {{input and output element types must match}}
+  %res = mo.concat[%axis: !mo.tensor<[], si32>](%arg0, %arg1) : (
+    !mo.tensor<[1], si64>, !mo.tensor<[1], si32>
+  ) -> !mo.tensor<[2], si64>
+
+  mo.output %res: !mo.tensor<[2], si64>
+}

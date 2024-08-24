@@ -2481,10 +2481,15 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
     Concatenates the input tensors along a given dimension.
 
     `mo.concat` concatenates the `inputs` tensors into an output tensor. There
-    must be at least 1 input tensor. The input tensors and output tensors all
-    has the same shape except along the concatenation dimension `axis`. The size
-    of the concatenation dimension in output tensor would have be the sum of
-    sizes of the concatenation dimension in input tensors.
+    must be at least 1 input tensor.
+
+    The following constraints apply to the inputs/outputs:
+
+    - The input tensors and output tensors all has the same shape except along
+      the concatenation dimension `axis`.
+    - The size of the concatenation dimension in output tensor have be the sum
+      of sizes of the concatenation dimension in input tensors.
+    - The element type of the input and output tensors must match.
 
     The value of `axis` follows numpy semantics, e.g., -1 represents the last
     axis.
