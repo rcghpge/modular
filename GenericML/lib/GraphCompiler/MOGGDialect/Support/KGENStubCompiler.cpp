@@ -88,7 +88,6 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
   }
 
   KGEN::CompilationOptions compilationOptions;
-  compilationOptions.enableSearch = shouldSearch;
   compilationOptions.enableLLVMPerFunctionSplitting = false;
   compilationOptions.optimizationLevel = superOpt ? 4 : 3;
 
