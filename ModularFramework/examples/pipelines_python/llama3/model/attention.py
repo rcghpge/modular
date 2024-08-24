@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from max.dtype import DType
-from max.graph import DimLike, GraphValue, ValueLike, ops
+from max.graph import DimLike, TensorValue, ValueLike, ops
 
 from .mlp import Linear
 from .rotary_embedding import RotaryEmbedding
@@ -19,7 +19,7 @@ from .rotary_embedding import RotaryEmbedding
 
 def attention_mask(
     start_pos: DimLike, seq_len: DimLike, activation_dtype: DType
-) -> GraphValue:
+) -> TensorValue:
     """Computes Attention mask."""
     mask_val = ops.cast(
         ops.broadcast_to(
@@ -59,9 +59,9 @@ class Attention:
 
     rope: RotaryEmbedding
 
-    def repeat_kv(self, kv: GraphValue):
+    def repeat_kv(self, kv: TensorValue):
         """Repeats key/value tensors to match the number of query heads."""
-        batch = kv.tensor_type.shape[0]
+        batch = kv.shape[0]
         kv = ops.reshape(kv, [batch, -1, self.n_kv_heads, 1, self.head_dim])
 
         # TODO (MSDK-655): Should use a ops.tile() implementation here when available.
@@ -78,9 +78,9 @@ class Attention:
         xv: ValueLike,
         k_cache: ValueLike,
         v_cache: ValueLike,
-    ) -> GraphValue:
-        prev_seq_len = k_cache.tensor_type.shape[0]
-        batch, seq_len = xq.tensor_type.shape[:2]
+    ) -> TensorValue:
+        prev_seq_len = k_cache.shape[0]
+        batch, seq_len = xq.shape[:2]
 
         k_cache = ops.squeeze(k_cache, axis=1)
         v_cache = ops.squeeze(v_cache, axis=1)
@@ -109,7 +109,7 @@ class Attention:
         x: ValueLike,
         k_cache: ValueLike,
         v_cache: ValueLike,
-    ) -> GraphValue:
+    ) -> TensorValue:
         """Computes attention on x, reusing the KV cache.
 
         Args:
@@ -121,7 +121,7 @@ class Attention:
 
         Returns the result of multi-headed self attention on the input.
         """
-        batch, seq_len = x.tensor_type.shape[0], x.tensor_type.shape[1]
+        batch, seq_len = x.shape[0], x.shape[1]
         start_pos = k_cache.shape[0]
         # matmul weights
         xq = self.wq(x)

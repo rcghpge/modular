@@ -9,7 +9,7 @@ from typing import Tuple
 
 import numpy as np
 
-from max.graph import ValueLike, GraphValue, ops
+from max.graph import ValueLike, TensorValue, ops
 from typing import List
 
 from .attention import Attention
@@ -32,7 +32,7 @@ class TransformerBlock:
 
     def __call__(
         self, x: ValueLike, k_cache: ValueLike, v_cache: ValueLike
-    ) -> Tuple[GraphValue, GraphValue, GraphValue]:
+    ) -> Tuple[TensorValue, TensorValue, TensorValue]:
         attention_out, k_cache_update, v_cache_update = self.attention(
             self.attention_norm(x), k_cache, v_cache
         )
