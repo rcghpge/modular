@@ -1776,3 +1776,45 @@ void MOCumSumOp::inferMOTypesImpl(
   moOperandTypes.push_back(axis.getType().cloneWith(ArrayRef<TypedAttr>{}));
   moInputParamDecls.push_back({});
 }
+
+void MOMutableLoadOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+  auto inBufferTy = operands.getInBuffer().getType();
+
+  auto chainTy = operands.getInChain().getType();
+
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(chainTy);
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(inBufferTy);
+
+  moOutputParamDecls.push_back({});
+  moResultTypes.push_back(chainTy);
+  moOutputParamDecls.push_back({});
+  moResultTypes.push_back(MO::castFromTensorLike(inBufferTy));
+}
+
+void MOMutableStoreOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  auto inBufferTy = operands.getInBuffer().getType();
+  auto chainTy = operands.getInChain().getType();
+
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(chainTy);
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(inBufferTy);
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(MO::castFromTensorLike(inBufferTy));
+
+  moOutputParamDecls.push_back({});
+  moResultTypes.push_back(chainTy);
+}

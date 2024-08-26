@@ -19,9 +19,8 @@ include "GenericML/GraphCompiler/MODialect/MOAttrs.td"
 include "GenericML/GraphCompiler/MODialect/MOEnums.td"
 include "mlir/IR/BuiltinAttributes.td"
 
-// Base class for ops that map directly to a MO tensor op
-class RMO_MOAnaloguePureTensorOp<string mnemonic, list<Trait> traits = []>
-  : RMO_Op<"mo." # mnemonic, traits # [DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>, Pure]> {
+class RMO_MOAnalogueOp<string mnemonic, list<Trait> traits = []>
+  : RMO_Op<"mo." # mnemonic, traits # [DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>]> {
   let builders = [
     /// This builder is an implicit return type based on "inferMOTypes" from
     /// the RMO_MOAnalogue interface.
@@ -69,6 +68,11 @@ class RMO_MOAnaloguePureTensorOp<string mnemonic, list<Trait> traits = []>
     );
   }];
 }
+
+// Base class for ops that map directly to a MO tensor op
+class RMO_MOAnaloguePureTensorOp<string mnemonic, list<Trait> traits = []>
+  : RMO_MOAnalogueOp<mnemonic, traits # [Pure]>;
+
 
 //===----------------------------------------------------------------------===//
 // 1-1 MO Op Analogues
@@ -2642,6 +2646,40 @@ def RMO_MOCumSumOp: RMO_MOAnaloguePureTensorOp<"cumsum",
                        Builtin_IntegerAttr:$reverse,
                        MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
+}
+
+def RMO_MOMutableLoadOp : RMO_MOAnalogueOp<"mutable.load", [
+  MemoryEffects<[MemRead]>,
+  AllDTypesMatch<["inBuffer", "outTensor"]>,
+  DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>,
+]>
+{
+  let arguments = (ins MO_Chain:$inChain, MO_Buffer:$inBuffer, MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Chain:$outChain, MO_Tensor:$outTensor);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+def RMO_MOMutableStoreOp : RMO_MOAnalogueOp<"mutable.store", [
+  MemoryEffects<[MemWrite]>,
+  AllDTypesMatch<["inBuffer", "inTensor"]>,
+  DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>
+]>
+{
+  let arguments = (ins MO_Chain:$inChain, 
+                       MO_Buffer:$inBuffer, 
+                       MO_Tensor:$inTensor, 
+                       MO_ParamDecls:$outputParamDecls);
+
+  let results = (outs MO_Chain:$outChain);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
 }
 
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOMOANALOGUEOPS_TD
