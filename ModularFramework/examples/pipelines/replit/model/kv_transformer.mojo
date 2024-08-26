@@ -252,8 +252,9 @@ struct KVCacheOptimizedTransformer[type: DType, kv_params: KVCacheStaticParams]:
         # create named dims and shape symbols
         full_seq_len = Dim("full_seq_len")
         seq_len = Dim("seq_len")
-        start_pos = kv_cache_length[type, kv_params](kv_cache)
         seq_len_sym = ops.shape_of(tokens)[1]
+        full_seq_len_sym = ops.shape_of(attention_mask)[1]
+        start_pos = kv_cache_length[type, kv_params](kv_cache)
 
         # build our ALIBI biases
         attention_bias = attn_bias[type](
@@ -271,10 +272,10 @@ struct KVCacheOptimizedTransformer[type: DType, kv_params: KVCacheStaticParams]:
             num_upper=g.scalar[DType.int64](0),
             exclude=False,
         )
-        seq_len_w_cache = start_pos + seq_len_sym
+
         causal_mask = causal_mask[
             -seq_len_sym:,
-            -seq_len_w_cache:,
+            -full_seq_len_sym:,
             out_dims = List[Dim](seq_len, full_seq_len),
         ].reshape(1, 1, seq_len, full_seq_len)
 
