@@ -7,7 +7,7 @@
 #ifndef ARRAY_SUPPORT_STATECONTEXT_H
 #define ARRAY_SUPPORT_STATECONTEXT_H
 
-#include "ArraySupport/StateSlot.h"
+#include "Runtime/Tensor/StateSlot.h"
 
 namespace M {
 

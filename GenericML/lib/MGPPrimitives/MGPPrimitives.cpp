@@ -5,9 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
-#include "ArraySupport/StateContext.h"
-#include "ArraySupport/StateSlot.h"
-#include "ArraySupport/Tensor.h"
 #include "AsyncRT/Runtime/Algorithms.h"
 #include "AsyncRT/Runtime/AsyncValue.h"
 #include "AsyncRT/Runtime/AsyncValueRef.h"
@@ -19,6 +16,9 @@
 #include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "Runtime/CUDA/CUDARuntime.h"
 #include "Runtime/CUDA/Globals/Globals.h"
+#include "Runtime/Tensor/StateContext.h"
+#include "Runtime/Tensor/StateSlot.h"
+#include "Runtime/Tensor/Tensor.h"
 #include "Support/AssertStream.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/MArchTarget/MArchTarget.h"

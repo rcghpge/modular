@@ -4,9 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ArraySupport/StateSlot.h"
+#include "Runtime/Tensor/StateSlot.h"
 
-#include "ArraySupport/TensorBufferRef.h"
+#include "Runtime/Tensor/TensorBufferRef.h"
 
 using namespace M;
 

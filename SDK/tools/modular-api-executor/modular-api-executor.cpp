@@ -4,7 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ArraySupport/Tensor.h"
 #include "AsyncRT/Runtime/Algorithms.h"
 #include "AsyncRT/Support/FileLocationDecoder.h"
 #include "AsyncRT/Support/UnknownLocationDecoder.h"
@@ -14,6 +13,7 @@
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/ModelSpec.h"
 #include "Init/Init.h"
+#include "Runtime/Tensor/Tensor.h"
 #include "Support/DynamicLibrary.h"
 #include "Support/ML/DType.h"
 #include "llvm/ADT/StringExtras.h"

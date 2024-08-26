@@ -5,11 +5,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Support/CompiledKernelsContext.h"
-#include "ArraySupport/Tensor.h"
-#include "ArraySupport/TensorBufferRef.h"
 #include "GenericML/Support/Definitions.h"
 #include "GenericML/Support/List.h"
 #include "KGEN/ExecutionEngine/JIT/StaticArchiveLayer.h"
+#include "Runtime/Tensor/Tensor.h"
+#include "Runtime/Tensor/TensorBufferRef.h"
 #include "Support/AssertStream.h"
 #include "Support/FileSystemExtras.h"
 #include "Support/Preprocessor.h"

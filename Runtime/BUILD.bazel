@@ -36,3 +36,12 @@ modular_cc_library(
         "@llvm-project//llvm:Support",
     ],
 )
+
+modular_cc_library(
+    name = "Tensor",
+    srcs = glob(["lib/Tensor/*.cpp"]),
+    hdrs = glob(["include/Runtime/Tensor/*.h"]),
+    deps = [
+        "//AsyncRT:Runtime",
+    ],
+)

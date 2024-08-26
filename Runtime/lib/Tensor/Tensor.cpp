@@ -4,9 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ArraySupport/Tensor.h"
-#include "ArraySupport/TensorBufferRef.h"
+#include "Runtime/Tensor/Tensor.h"
 #include "AsyncRT/Runtime/Runtime.h"
+#include "Runtime/Tensor/TensorBufferRef.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/Twine.h"

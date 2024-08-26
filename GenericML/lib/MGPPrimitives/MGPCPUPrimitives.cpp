@@ -4,14 +4,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ArraySupport/StateContext.h"
-#include "ArraySupport/Tensor.h"
-#include "ArraySupport/TensorBufferRef.h"
 #include "AsyncRT/Support/Chain.h"
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
 #include "GenericML/Support/CompiledKernelsContext.h"
 #include "GenericML/Support/DebugPrint.h"
 #include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
+#include "Runtime/Tensor/StateContext.h"
+#include "Runtime/Tensor/Tensor.h"
+#include "Runtime/Tensor/TensorBufferRef.h"
 #include "Support/MArchTarget/MArchTarget.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorSpec.h"

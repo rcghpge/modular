@@ -7,8 +7,8 @@
 #ifndef ARRAY_SUPPORT_STATESLOT_H
 #define ARRAY_SUPPORT_STATESLOT_H
 
-#include "ArraySupport/TensorBufferRef.h"
 #include "AsyncRT/ForwardDecls.h"
+#include "Runtime/Tensor/TensorBufferRef.h"
 #include "Support/ADT/GenericRCRef.h"
 #include "Support/ErrorOr.h"
 #include "Support/TypeID.h"

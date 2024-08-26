@@ -17,7 +17,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 
-#include "ArraySupport/Tensor.h"
+#include "Runtime/Tensor/Tensor.h"
 
 #include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"

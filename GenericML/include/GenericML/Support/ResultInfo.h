@@ -12,8 +12,8 @@
 #ifndef GENERICML_SUPPORT_RESULTINFO_H
 #define GENERICML_SUPPORT_RESULTINFO_H
 
-#include "ArraySupport/Tensor.h"
 #include "GenericML/Support/Value.h"
+#include "Runtime/Tensor/Tensor.h"
 #include "Support/ML/TensorSpec.h"
 #include <map>
 
