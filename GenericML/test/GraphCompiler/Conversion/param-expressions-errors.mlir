@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --add-devices --mo-to-mogg --mo-to-primitives --split-input-file --verify-diagnostics
+// RUN: mo-opt %s --mo-to-mogg --mo-to-primitives --split-input-file --verify-diagnostics
 
 kgen.func @foo() -> index {
   %c = mosh.param.to_value = <42>

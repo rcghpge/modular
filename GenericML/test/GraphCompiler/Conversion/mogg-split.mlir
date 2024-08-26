@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --add-devices --mo-to-primitives --canonicalize | FileCheck %s
+// RUN: mo-opt %s --mo-to-primitives --canonicalize | FileCheck %s
 
 // CHECK: mgp.model @mogg_split : mof
 // CHECK: } execute (

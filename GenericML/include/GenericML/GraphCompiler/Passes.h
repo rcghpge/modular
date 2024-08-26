@@ -108,11 +108,6 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       *this, "lower-quantized-operators",
       llvm::cl::desc("Dispatch to quantized operations around Q-DQ regions."),
       llvm::cl::init(true)};
-  Option<bool> enableExtraDevices{
-      *this, "enable-extra-devices",
-      llvm::cl::desc("Include all host devices instead of just the CPU during "
-                     "compilation."),
-      llvm::cl::init(false)};
   Option<bool> enableFakeCudaDevice{
       *this, "enable-fake-cuda-device",
       llvm::cl::desc(

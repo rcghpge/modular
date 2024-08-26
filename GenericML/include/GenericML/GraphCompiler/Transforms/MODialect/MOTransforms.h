@@ -7,7 +7,6 @@
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_H
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_H
 
-#include "GenericML/GraphCompiler/Transforms/MODialect/AddDevicesPass.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/ConstantFoldPass.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/Pass.h"

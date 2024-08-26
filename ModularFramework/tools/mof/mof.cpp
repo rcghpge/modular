@@ -92,7 +92,6 @@ public:
 struct MOFConfig {
   SmallVector<std::string> kernelLibraryPaths;
   std::optional<std::string> defaultDeviceLabel;
-  std::optional<bool> enableExtraDevices;
   std::optional<size_t> deviceID;
   std::optional<DeviceSpec> deviceSpec;
   CASConfig commonCasConfig;
@@ -111,8 +110,6 @@ struct MOFConfig {
     moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
     if (defaultDeviceLabel)
       moToMgpOptions.defaultDeviceLabel = *defaultDeviceLabel;
-    if (enableExtraDevices)
-      moToMgpOptions.enableExtraDevices = *enableExtraDevices;
     if (commonCasConfig.getCacheDir())
       moToMgpOptions.cacheDir = commonCasConfig.getCacheDir()->getPath().str();
     moToMgpOptions.inputsAndOutputsOnDevice = inputsAndOutputsOnDevice;
@@ -185,7 +182,6 @@ public:
                      dyn_cast<DeviceConfig>(driverConfig.get())) {
         mofConfig->defaultDeviceLabel = deviceConfig->getDeviceLabel();
         mofConfig->deviceID = deviceConfig->getDeviceID();
-        mofConfig->enableExtraDevices = !deviceConfig->getDeviceLabel().empty();
         mofConfig->inputsAndOutputsOnDevice =
             deviceConfig->inputsAndOutputsOnDevice;
         mofConfig->deviceSpec = deviceConfig->deviceSpec;

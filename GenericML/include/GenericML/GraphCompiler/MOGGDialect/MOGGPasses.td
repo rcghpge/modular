@@ -110,6 +110,9 @@ def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
             "Allow potentially unsafe broadcasts to be pattern matched for MHA patterns.">,
     Option<"mhaAllowInternalReshape", "mha-allow-internal-reshape", "bool", /*default=*/"true",
             "Allow potentially unsafe broadcasts to be pattern matched for MHA patterns.">,
+    Option<"targetDevice", "target-device",  "std::string", "\"\"",
+           "If the graph operation does not already have a device specified, "
+           "use this device for pattern fusion passes that depend on the target device.">,
   ];
 }
 

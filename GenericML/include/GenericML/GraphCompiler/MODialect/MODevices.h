@@ -42,10 +42,6 @@ bool isOnHost(GraphOp graphOp, Type type);
 /// Returns the #M.device_spec_collection annotation for graphOp, or a
 /// description of just the current CPU device (ignoring any other device types)
 /// if it has no such annotation.
-///
-/// NOTE: AddDevicesPass will fill in the device specs annotation on the graph
-/// based on all available devices. This helper is to support units tests which
-/// don't want to have to deal with devices.
 ErrorOr<DeviceSpecCollectionAttr> getDeviceSpecsOrDefault(GraphOp graphOp);
 
 //===----------------------------------------------------------------------===//

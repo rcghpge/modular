@@ -22,8 +22,6 @@ class GraphCompilerOptions {
 public:
   std::string cacheDir{""};
 
-  bool enableExtraDevices{false};
-
   bool enableFakeCudaDevice{false};
 
   std::string defaultDeviceLabel{""};
@@ -49,7 +47,6 @@ public:
   void overrideLoweringOptions(MoToMgpOptions &moToMgpOptions) const {
 
     moToMgpOptions.cacheDir = cacheDir;
-    moToMgpOptions.enableExtraDevices = enableExtraDevices;
     moToMgpOptions.enableFakeCudaDevice = enableFakeCudaDevice;
     moToMgpOptions.defaultDeviceLabel = defaultDeviceLabel;
     moToMgpOptions.enableCompiledRegionsFusion = enableCompiledRegionsFusion;
@@ -80,15 +77,6 @@ private:
                "constants from the same instance at model 'init' time. "
                "Default empty (ie disabled)."),
       llvm::cl::location(options.cacheDir),
-      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
-
-  M::cl::MOpt<bool, true> enableExtraDevices{
-      "enable-extra-devices",
-      cl::desc("If true, account for all host devices during compilation, "
-               "including any host GPUs in addition to the CPU. The resulting "
-               "model will only be runnable on a similarly provisioned host. "
-               "Default is false, which will include just the host CPU."),
-      llvm::cl::location(options.enableExtraDevices),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
   M::cl::MOpt<bool, true> enableFakeCudaDevice{

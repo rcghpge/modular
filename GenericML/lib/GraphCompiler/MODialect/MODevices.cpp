@@ -71,7 +71,6 @@ ErrorOr<DeviceSpecCollectionAttr> MO::getDeviceSpecsOrDefault(GraphOp graphOp) {
     return deviceSpecs;
 
   // Fallback to a description of the host CPU.
-  // CAUTION: Unlike AddDevicesPass, no additional devices will be included.
   // This is to support unit tests which don't want to deal with devices.
   ErrorOr<std::unique_ptr<DeviceSpecCollection>> runtimeDeviceSpecsOr =
       GML::getHostCPUDeviceSpecs();

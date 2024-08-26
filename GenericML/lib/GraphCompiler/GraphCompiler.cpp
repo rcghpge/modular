@@ -180,13 +180,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.constantFold)
     pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
 
-  MO::AddDevicesPassOptions addDevicesOpts;
-  addDevicesOpts.enableExtraDevices = opts.enableExtraDevices;
-  addDevicesOpts.enableFakeCudaDevice = opts.enableFakeCudaDevice;
-  addDevicesOpts.defaultDeviceLabel = opts.defaultDeviceLabel;
-  addDevicesOpts.defaultDeviceTargetTriple = opts.defaultDeviceTargetTriple;
-  addDevicesOpts.defaultDeviceTargetArch = opts.defaultDeviceTargetArch;
-  pm.addPass(MO::createAddDevicesPass(addDevicesOpts));
   pm.addPass(MO::createInferLayouts());
 
   if (opts.usePatterns) {
@@ -196,6 +189,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     patternFusionOpts.mhaAllowInternalReshape =
         opts.patternFusionMHAAllowInternalReshape;
     patternFusionOpts.enableMHAPattern = opts.patternFusionMHAEnable;
+    patternFusionOpts.targetDevice = opts.defaultDeviceLabel;
     pm.addPass(MOGG::createPatternFusion(patternFusionOpts));
 
     // Layout optimizations in `PatternFusion` might add new shape function
@@ -214,6 +208,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   assignDevicesPassOpt.smallTensorLimit = opts.smallTensorLimit;
   assignDevicesPassOpt.kernelLibraryPaths = opts.kernelLibraryPaths;
   assignDevicesPassOpt.withDebuginfo = opts.withDebuginfo;
+  assignDevicesPassOpt.defaultDeviceTargetTriple =
+      opts.defaultDeviceTargetTriple;
+  assignDevicesPassOpt.defaultDeviceTargetArch = opts.defaultDeviceTargetArch;
   if (assignDevicesPassOpt.targetDevice == "cpu")
     assignDevicesPassOpt.targetDevice = "";
   assignDevicesPassOpt.copyFromHost = !opts.inputsAndOutputsOnDevice;

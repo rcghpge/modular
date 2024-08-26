@@ -71,6 +71,15 @@ static bool isBMMSmall(MO::BatchMatmulOp matmul) {
   return approxFlops < kTinyBMMatmulFlops;
 }
 
+static DeviceRefAttr getGraphDevice(MO::GraphOp graphOp,
+                                    DeviceRefAttr targetDevice) {
+  DeviceRefAttr graphDevice = graphOp.getDeviceRef();
+  if (!graphDevice && targetDevice) {
+    graphDevice = targetDevice;
+  }
+  return graphDevice;
+}
+
 // TODO(#29430) make this more general and apply to all shape function calls.
 struct PackParamCache {
   /// Associate `outputTy` with `(inputTy, kgenParams)` as a new cache entry.
@@ -208,13 +217,17 @@ static LogicalResult validate2DTranspose(Value perm) {
 
 struct MatmulConstBPattern
     : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::MatmulOp> {
-  MatmulConstBPattern(MLIRContext *ctx, PackParamCache &cache)
-      : DeviceAwareRewritePattern(ctx, 3), cache(cache) {}
+  DeviceRefAttr targetDevice;
+  MatmulConstBPattern(MLIRContext *ctx, PackParamCache &cache,
+                      DeviceRefAttr targetDevice)
+      : DeviceAwareRewritePattern(ctx, 3), targetDevice(targetDevice),
+        cache(cache) {}
 
   LogicalResult
   deviceAwareMatchAndRewrite(MO::MatmulOp op,
                              MO::DeviceAwareRewriter &rewriter) const override {
-    DeviceRefAttr device = op->getParentOfType<MO::GraphOp>().getDeviceRef();
+    DeviceRefAttr device =
+        getGraphDevice(op->getParentOfType<MO::GraphOp>(), targetDevice);
     // TODO: CUDA does not support pre-packing yet
     if (device && device.getLabel() == M::kCUDALabel)
       return failure();
@@ -369,14 +382,15 @@ struct MatmulTranspBPattern
 // type architectures.
 struct ForceMatmulTransposeBForGPU
     : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::ConstantOp> {
-  ForceMatmulTransposeBForGPU(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 2) {}
+  DeviceRefAttr targetDevice;
+  ForceMatmulTransposeBForGPU(MLIRContext *ctx, DeviceRefAttr targetDevice)
+      : DeviceAwareRewritePattern(ctx, 2), targetDevice(targetDevice) {}
 
   LogicalResult
   deviceAwareMatchAndRewrite(MO::ConstantOp weights,
                              MO::DeviceAwareRewriter &rewriter) const override {
     DeviceRefAttr defaultDevice =
-        weights->getParentOfType<MO::GraphOp>().getDeviceRef();
+        getGraphDevice(weights->getParentOfType<MO::GraphOp>(), targetDevice);
     bool defaultDeviceIsCuda =
         defaultDevice && defaultDevice.getLabel() == M::kCUDALabel;
 
@@ -1942,11 +1956,13 @@ public:
 // For MIN Llama 2 demo
 struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
   bool allowUnsafeBCast, allowInternalReshape, debugMHAPattern;
+  DeviceRefAttr targetDevice;
   MultiHeadAttentionPattern(MLIRContext *ctx, bool allowUnsafeBCast,
-                            bool allowInternalReshape, bool debugMHAPattern)
+                            bool allowInternalReshape, bool debugMHAPattern,
+                            DeviceRefAttr targetDevice)
       : OpRewritePattern(ctx, 20), allowUnsafeBCast(allowUnsafeBCast),
         allowInternalReshape(allowInternalReshape),
-        debugMHAPattern(debugMHAPattern) {}
+        debugMHAPattern(debugMHAPattern), targetDevice(targetDevice) {}
 
   static void insertShapeGuard(PatternRewriter &rewriter, GraphOp graphOp,
                                TypedAttr beforeShape, TypedAttr afterShape,
@@ -2585,7 +2601,8 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
 
   LogicalResult matchAndRewrite(BatchMatmulOp op,
                                 PatternRewriter &rewriter) const override {
-    DeviceRefAttr device = op->getParentOfType<MO::GraphOp>().getDeviceRef();
+    DeviceRefAttr device =
+        getGraphDevice(op->getParentOfType<MO::GraphOp>(), targetDevice);
 
     // Just assume we want to use the CPU kernel only if the default device
     // is cpu (e.g. if the default was CUDA, run on CUDA).
@@ -2641,18 +2658,26 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
 
     RewritePatternSet patterns{ctx};
 
+    DeviceRefAttr targetDeviceRef =
+        targetDevice == ""
+            ? NULL
+            : DeviceRefAttr::get(ctx, targetDevice.getValue(), 0);
+
     PackParamCache cache;
-    patterns.add<MatmulConstBPattern>(ctx, cache);
+    patterns.add<MatmulConstBPattern>(ctx, cache, targetDeviceRef);
 
     patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
-                 ForceMatmulTransposeBForGPU, ConcatZeroAxisPattern,
-                 ConvConstFilterPattern, ConvTransposeConstFilterPattern,
-                 SplitZeroAxisPattern, LayerNormPattern>(ctx);
+                 ConcatZeroAxisPattern, ConvConstFilterPattern,
+                 ConvTransposeConstFilterPattern, SplitZeroAxisPattern,
+                 LayerNormPattern>(ctx);
+
+    patterns.add<ForceMatmulTransposeBForGPU>(ctx, targetDeviceRef);
 
     if (enableMHAPattern.getValue()) {
       patterns.add<MultiHeadAttentionPattern>(
           ctx, mhaAllowUnsafeBCast.getValue(),
-          mhaAllowInternalReshape.getValue(), debugMHAPattern.getValue());
+          mhaAllowInternalReshape.getValue(), debugMHAPattern.getValue(),
+          targetDeviceRef);
     }
 
     MO::GraphOp graphOp = getOperation();

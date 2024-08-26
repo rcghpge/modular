@@ -279,42 +279,6 @@ def SupportConversionsTest : Pass<"support-conversions-test", "ModuleOp"> {
   ];
 }
 
-def AddDevicesPass : Pass<"add-devices", "GraphOp"> {
-  let summary = "Adds `device_specs` and `device` attributes to the `mo.graph`.";
-  let description = [{
-    This pass ensures the `mo.graph` has a `device_specs` attribute describing
-    the intended runtime target. By default that will be identical to the
-    current host machine, including the CPU 'host' device specification and
-    any additional non-CPU devices (if `enable-extra-devices` is on).
-
-    If `default-device-label` is non-empty, also add a `device` attribute to
-    the `mo.graph` if it does not already have one. This can be used to
-    establish the graph-wide default device on which ops should be executed.
-
-    TODO(#21801): TEMPORARY until we have proper compilation configuration handling.
-  }];
-
-  let dependentDialects = ["M::MDialect"];
-
-  let options = [
-    Option<"enableExtraDevices", "enable-extra-devices", "bool", "false",
-           "Include all host devices instead of just the CPU during compilation.">,
-    Option<"enableFakeCudaDevice", "enable-fake-cuda-device", "bool", "false",
-           "Include a simulated CUDA device for testing on hosts without an "
-           "actual GPU.">,
-    Option<"defaultDeviceLabel", "default-device-label", "std::string", "\"\"",
-           "If non-empty, assign as many ops as possible to the device "
-           "with the given label (and device id zero).">,
-    Option<"defaultDeviceTargetTriple", "default-device-target-triple", "std::string", "\"\"",
-      "llvm::Triple representing the compilation target for the "
-                     "defaultDevice.">,
-    Option<"defaultDeviceTargetArch", "default-device-target-arch", "std::string", "\"\"",
-      "String representing the architecture of the "
-                     "defaultDevice. For example, for NVIDIA GPUs this is the "
-                     "compute capability (i.e. sm_X)">,
-  ];
-}
-
 def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
   let summary = "Assigns an `#M.device_spec` annotation to every operation "
                 "and tensor.";
@@ -359,6 +323,13 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
            "If non-empty, assign devices using this device">,
     Option<"copyFromHost", "copy-from-host", "bool", "true",
            "If true make inputs / outputs host tensors with copies inserted.">,
+    Option<"defaultDeviceTargetTriple", "default-device-target-triple", "std::string", "\"\"",
+      "llvm::Triple representing the compilation target for the "
+                     "defaultDevice.">,
+    Option<"defaultDeviceTargetArch", "default-device-target-arch", "std::string", "\"\"",
+      "String representing the architecture of the "
+                     "defaultDevice. For example, for NVIDIA GPUs this is the "
+                     "compute capability (i.e. sm_X)">,
   ];
 
   // We need to include all the dialects as we access the mojo library.

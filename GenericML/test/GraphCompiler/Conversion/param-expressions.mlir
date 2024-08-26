@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --add-devices --mo-to-mogg --mo-to-primitives | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg --mo-to-primitives | FileCheck %s
 
 // CHECK-LABEL: mgp.model @add_expressions : mof
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
