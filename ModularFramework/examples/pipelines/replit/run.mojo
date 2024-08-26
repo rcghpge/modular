@@ -234,8 +234,7 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
         max_new_tokens: Optional[Int] = None,
         max_batch_size: Int = 1,
         pad_to_multiple_of: Optional[Int] = None,
-        mef_load_path: String = "",
-        mef_store_path: String = "",
+        mef_use_or_gen_path: String = "",
     ):
         """Builds and compiles a Replit model to get ready for execution."""
         # Generate a graph that does a single forward pass of the replit model.
@@ -255,8 +254,15 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
         # optimization passes on it.
         print("Compiling...", end="")
         start_time = now()
-        if mef_load_path != "":
-            self._model = self._session.load(mef_load_path)
+        store_mef = True
+        # mef_use_or_gen_path specifies the path that should be used to load
+        # the model if it exists, otherwise the model will be built and then
+        # saved to the specified path.
+        if mef_use_or_gen_path != "" and Path(mef_use_or_gen_path).exists():
+            # path is specified and exists, so load it
+            self._model = self._session.load(mef_use_or_gen_path)
+            # since we are loading the model, do not overwrite
+            store_mef = False
         else:
             print("Building model...", end="")
             start_time = now()
@@ -271,8 +277,10 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
             self._model = self._session.load(
                 g,
             )
-        if mef_store_path != "":
-            self._model.export_compiled_model(mef_store_path)
+
+        # if the path is specified and did not exist, write the mef.
+        if mef_use_or_gen_path != "" and store_mef:
+            self._model.export_compiled_model(mef_use_or_gen_path)
         print("done. Took", (now() - start_time) / 1e9, "seconds.")
 
         # Set up tokenizer.
@@ -464,8 +472,7 @@ def dispatch[dtype: DType, kv_params: KVCacheStaticParams](config: Config):
         max_new_tokens=max_new_tokens,
         max_batch_size=config.get("max-batch-size")[Int],
         pad_to_multiple_of=pad_to_multiple_of,
-        mef_load_path=config.get("experimental-load-graph")[String],
-        mef_store_path=config.get("experimental-store-graph")[String],
+        mef_use_or_gen_path=config.get("mef-use-or-gen-path")[String],
     )
 
     input_string = config.get("prompt")[String]
