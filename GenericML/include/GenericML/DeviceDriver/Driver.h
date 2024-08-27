@@ -10,6 +10,7 @@
 #include "AsyncRT/ForwardDecls.h"
 #include "AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "GenericML/API/max/c/symbol_export.h"
+#include "GenericML/DeviceDriver/Utils.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/ErrorOr.h"
 #include "Support/ML/TensorSpec.h"
@@ -156,7 +157,8 @@ mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
 
 MODULAR_API_EXPORT M::Driver::Device *M_copyDevice(M::Driver::Device *devPtr);
 
-MODULAR_API_EXPORT void M_freeDeviceData(M::Driver::Device *ptr, void *data);
+MODULAR_API_EXPORT void M_freeDeviceData(M::Driver::Device *ptr, void *data,
+                                         M::Driver::Status *status);
 
 MODULAR_API_EXPORT void M_destroyDevice(M::Driver::Device *devPtr);
 

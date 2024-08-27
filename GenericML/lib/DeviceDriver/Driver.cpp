@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/DeviceDriver/Driver.h"
+#include "GenericML/DeviceDriver/Utils.h"
 #include "Runtime/MojoValue.h"
 
 using namespace M::Driver;
@@ -24,9 +25,10 @@ MODULAR_API_EXPORT Device *M_copyDevice(Device *devPtr) {
   return newRef.release();
 }
 
-MODULAR_API_EXPORT void M_freeDeviceData(Device *ptr, void *data) {
+MODULAR_API_EXPORT void M_freeDeviceData(Device *ptr, void *data,
+                                         M::Driver::Status *status) {
   if (auto err = ptr->freeData(data))
-    llvm::report_fatal_error(err.getError());
+    status->errorOr = err.takeError();
 }
 
 MODULAR_API_EXPORT void M_destroyDevice(Device *devPtr) {
@@ -37,12 +39,15 @@ MODULAR_API_EXPORT const char *M_getDeviceDesc(const Device *devPtr) {
   return devPtr->getString().c_str();
 }
 
-MODULAR_API_EXPORT DeviceMemory *M_createDeviceMemory(const M::TensorSpec *spec,
-                                                      Device *devPtr) {
+MODULAR_API_EXPORT DeviceMemory *
+M_createDeviceMemory(const M::TensorSpec *spec, Device *devPtr,
+                     M::Driver::Status *status) {
   // CAUTION: this assumes that TensorSpec is bitwise identical in mojo and cpp
   auto deviceMemoryOr = devPtr->createDeviceMemory(*spec);
-  if (deviceMemoryOr.isError())
-    llvm::report_fatal_error(deviceMemoryOr.getError());
+  if (deviceMemoryOr.isError()) {
+    status->errorOr = deviceMemoryOr.takeError();
+    return nullptr;
+  }
   return *deviceMemoryOr;
 }
 
@@ -67,9 +72,10 @@ MODULAR_API_EXPORT void M_destroyDeviceMemory(DeviceMemory *tensorPtr) {
 }
 
 MODULAR_API_EXPORT void M_copyDeviceMemory(DeviceMemory *dst,
-                                           const DeviceMemory *src) {
+                                           const DeviceMemory *src,
+                                           M::Driver::Status *status) {
   if (auto err = src->copyTo(*dst))
-    llvm::report_fatal_error(err.getError());
+    status->errorOr = err.takeError();
 }
 
 MODULAR_API_EXPORT void *M_getData(DeviceMemory *deviceMem) {
