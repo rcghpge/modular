@@ -35,10 +35,12 @@ struct DeviceMemory {
 
   /// Constructs and allocates DeviceMemory on `dev`, bumping the refcount
   /// of `dev`.
-  DeviceMemory(DeviceMemoryKind kind, const TensorSpec &spec, Device *dev)
-      : devicePtr(M::copyRCRef(dev)), spec(spec), kind(kind) {}
+  DeviceMemory(DeviceMemoryKind kind, void *allocatedPtr,
+               const TensorSpec &spec, Device *dev)
+      : devicePtr(M::copyRCRef(dev)), ptr(allocatedPtr), spec(spec),
+        kind(kind) {}
 
-  /// Relinqishes ownership of the underlying data, and returns the pointer.
+  /// Relinquishes ownership of the underlying data, and returns the pointer.
   void *release() { return std::exchange(ptr, nullptr); }
 
   void setDestructorFn(
@@ -48,7 +50,7 @@ struct DeviceMemory {
 
   /// Returns the ptr backing the DeviceMemory object. Does not release
   /// ownership.
-  void *data() { return ptr; }
+  void *data() const { return ptr; }
 
   size_t bytecount() const { return spec.getSizeInBytes(); }
 
@@ -64,7 +66,7 @@ struct DeviceMemory {
 
   /// Copies the contents of DeviceMemory to another chunk of DeviceMemory,
   /// which may reside on a different device.
-  virtual ErrorOrSuccess copy_to(DeviceMemory &dst) const = 0;
+  virtual ErrorOrSuccess copyTo(DeviceMemory &dst) const = 0;
 
 protected:
   void *ptr;
@@ -81,17 +83,18 @@ struct Device : M::ReferenceCounted<Device> {
   virtual const std::string &getString() const { return deviceDescription; };
 
   /// Allocates `bytes` bytes on the device.
-  virtual void *allocateData(size_t bytes) = 0;
+  virtual ErrorOr<void *> allocateData(size_t bytes) = 0;
 
   /// Frees ptr created with `allocateData`.
-  virtual void freeData(void *ptr) = 0;
+  virtual ErrorOrSuccess freeData(void *ptr) = 0;
 
   DeviceSpec getDeviceSpec() const { return deviceSpecification; };
 
   /// Allocates `bytes` bytes of memory on the device
   /// and returns the allocation in a DeviceMemory object.
   /// DeviceMemory contains a RCRef of the underlying Device.
-  virtual DeviceMemory *createDeviceMemory(const TensorSpec &spec) = 0;
+  virtual ErrorOr<DeviceMemory *>
+  createDeviceMemory(const TensorSpec &spec) = 0;
 
   /// Takes ownership of `data` in a DeviceMemory object.
   /// DeviceMemory contains a RCRef of the underlying Device.
@@ -119,7 +122,7 @@ struct Device : M::ReferenceCounted<Device> {
   virtual void *tmpGetDeviceContext() = 0;
 
   /// Blocks until any pending async work on the device completes.
-  virtual void synchronize() = 0;
+  virtual ErrorOrSuccess synchronize() = 0;
 
   DeviceSpec deviceSpecification;
   std::string deviceDescription;

@@ -14,8 +14,8 @@ DeviceMemory::~DeviceMemory() {
   if (ptr) {
     if (destructorFn)
       (*destructorFn)(ptr, getSpec());
-    else
-      devicePtr->freeData(ptr);
+    else if (auto err = devicePtr->freeData(ptr))
+      llvm::report_fatal_error(err.getError());
   }
 }
 
@@ -25,7 +25,8 @@ MODULAR_API_EXPORT Device *M_copyDevice(Device *devPtr) {
 }
 
 MODULAR_API_EXPORT void M_freeDeviceData(Device *ptr, void *data) {
-  ptr->freeData(data);
+  if (auto err = ptr->freeData(data))
+    llvm::report_fatal_error(err.getError());
 }
 
 MODULAR_API_EXPORT void M_destroyDevice(Device *devPtr) {
@@ -39,7 +40,10 @@ MODULAR_API_EXPORT const char *M_getDeviceDesc(const Device *devPtr) {
 MODULAR_API_EXPORT DeviceMemory *M_createDeviceMemory(const M::TensorSpec *spec,
                                                       Device *devPtr) {
   // CAUTION: this assumes that TensorSpec is bitwise identical in mojo and cpp
-  return devPtr->createDeviceMemory(*spec);
+  auto deviceMemoryOr = devPtr->createDeviceMemory(*spec);
+  if (deviceMemoryOr.isError())
+    llvm::report_fatal_error(deviceMemoryOr.getError());
+  return *deviceMemoryOr;
 }
 
 MODULAR_API_EXPORT DeviceMemory *
@@ -64,8 +68,8 @@ MODULAR_API_EXPORT void M_destroyDeviceMemory(DeviceMemory *tensorPtr) {
 
 MODULAR_API_EXPORT void M_copyDeviceMemory(DeviceMemory *dst,
                                            const DeviceMemory *src) {
-  auto errOr = src->copy_to(*dst);
-  assert(!errOr.isError());
+  if (auto err = src->copyTo(*dst))
+    llvm::report_fatal_error(err.getError());
 }
 
 MODULAR_API_EXPORT void *M_getData(DeviceMemory *deviceMem) {
@@ -80,9 +84,12 @@ M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
   // We need to explicitly synchronize the device here until MGP shares the same
   // DeviceContext as the driver. Otherwise there may be an async alloc/copy
   // pending on the driver when the first kernel tries to access the resource.
-  for (auto &dev : deviceMap)
-    if (dev.second)
-      dev.second->synchronize();
+  for (auto &dev : deviceMap) {
+    if (dev.second) {
+      if (auto err = dev.second->synchronize())
+        return err.takeError();
+    }
+  }
 
   llvm::SmallVector<AnyAsyncValueRef> deviceContexts;
   for (const auto &devRef : deviceRefs) {
