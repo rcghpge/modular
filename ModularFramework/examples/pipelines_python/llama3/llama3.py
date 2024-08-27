@@ -119,11 +119,11 @@ class Llama3:
         )
 
     async def next_token(
-        self, contexts: dict[str, Llama3Context]
+        self, batch: dict[str, Llama3Context]
     ) -> dict[str, str]:
         # Note: assuming a single request.
-        assert len(contexts) == self.config.batch_size == 1
-        request_id, context = next(iter(contexts.items()))
+        assert len(batch) == self.config.batch_size == 1
+        request_id, context = next(iter(batch.items()))
         # This feels really contrived, but it's because our KV cache setup
         # just doesn't meaningfully support batch size > 1 yet.
         if request_id not in self._sessions:
