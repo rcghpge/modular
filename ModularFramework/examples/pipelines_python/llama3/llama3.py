@@ -14,7 +14,6 @@ from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.graph import Graph, TensorType
 from max.graph.utils.load_gguf import Weights
-from max.graph.weight import Weight
 
 from utils import gguf_utils, tokenizer_from_gguf
 

@@ -9,6 +9,7 @@
 #include "GenericML/API/max/c/model.h"
 #include "GenericML/API/max/c/tensor.h"
 #include "GenericML/API/max/cpp/aliases.h"
+#include "GenericML/API/max/cpp/internal/aliases.h"
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "Support/CommonCLOptions.h"
 #include "Support/Configuration.h"
@@ -355,7 +356,8 @@ struct InitializedModelPhase {
     log(threaded, "INFO: Initializing %s",
         compiledModel->externalModel->path.c_str());
     result.model = M_initModel(compiledModel->runtimeContext->context,
-                               compiledModel->compiledModel, status.get());
+                               compiledModel->compiledModel,
+                               /*weightsRegistry=*/nullptr, status.get());
     RETURN_IF_ERROR(status);
 
     M_waitForModel(result.model, status.get());

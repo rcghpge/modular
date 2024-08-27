@@ -13,6 +13,7 @@
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/ModelSpec.h"
 #include "Init/Init.h"
+#include "Kernels/WeightsRegistry.h"
 #include "Runtime/Tensor/Tensor.h"
 #include "Support/DynamicLibrary.h"
 #include "Support/ML/DType.h"
@@ -291,7 +292,7 @@ public:
   const M_RuntimeContext *getContext() const { return modelState.context; }
 
   AsyncRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>> setup(
-      Runtime &runtime,
+      Runtime &runtime, const WeightsRegistry *weightsRegistry = {},
       const Driver::DeviceMap &deviceMap = Driver::DeviceMap()) const override;
 
   ~ModularModel() override = default;
@@ -580,14 +581,15 @@ private:
 /// Initialize the model using `runtime`, allocating memory, setting up data
 /// structures, or whatever else the model needs.  This never blocks.
 AsyncRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
-ModularModel::setup(Runtime &runtime,
+ModularModel::setup(Runtime &runtime, const WeightsRegistry *weightsRegistry,
                     const Driver::DeviceMap &deviceMap) const {
   checkUniqueRuntime(runtime);
   checkKnownCallingThread(runtime);
   // Create the executable model.
   StatusPtr status = {api.newStatus(), api.freeStatus};
   ModelPtr initializedModel = {
-      api.initModel(modelState.context, modelState.compiledModel, status.get()),
+      api.initModel(modelState.context, modelState.compiledModel,
+                    /*weightsRegistry=*/nullptr, status.get()),
       api.freeModel};
   return {std::make_unique<ModularExecutableModel>(
       this, runtime, std::move(initializedModel))};

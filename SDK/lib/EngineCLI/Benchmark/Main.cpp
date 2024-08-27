@@ -165,7 +165,8 @@ static ErrorOr<RuntimeContextPtr> makeRuntimeContext(M_Status *status,
 static ErrorOr<ModelPtr> prepareModel(M_RuntimeContext *runtimeContext,
                                       M_AsyncCompiledModel *compiledModel,
                                       M_Status *status) {
-  ModelPtr model(M_initModel(runtimeContext, compiledModel, status),
+  ModelPtr model(M_initModel(runtimeContext, compiledModel,
+                             /*weightsRegistry=*/nullptr, status),
                  M_freeModel);
   if (!model)
     return Error(M_getError(status));
