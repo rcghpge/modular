@@ -186,6 +186,35 @@ LogicalResult ModuleLoadOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// BufferConstantExternalOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BufferConstantExternalOp::verify() {
+  uint64_t align = getDAlign();
+  if (!isValidOptAlign(align))
+    return emitOpError("invalid alignment ") << align << ".";
+
+  return success();
+}
+
+LogicalResult BufferConstantExternalOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  // Directly take the size and device of the result buffer from op attributes.
+  uint64_t sizeBytes = cast<IntegerAttr>(attributes.get("cSize")).getUInt();
+
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(
+          location.value_or(operands[0].getLoc()), attributes,
+          getEDeviceAttrName(/*name=*/{getOperationName(), context}), device)))
+    return failure();
+  inferredReturnTypes.emplace_back(
+      DeviceBufferType::get(context, device, sizeBytes));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BufferConstantOp
 //===----------------------------------------------------------------------===//
 

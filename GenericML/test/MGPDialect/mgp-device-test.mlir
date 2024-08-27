@@ -37,6 +37,16 @@ func.func @module_load_multiline(%ctx : !mgp.context, %ch0 : !mef.chain) {
 }
 
 //
+// mgp.buffer.constant.external
+//
+// CHECK-LABEL: @buffer_constant_external
+func.func @buffer_constant_external(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">) {
+  // CHECK: %{{.*}} = mgp.buffer.constant.external %{{.*}}, %{{.*}}, %{{.*}}["foo", 16384, align 16] : !mgp.opaque<"weights_registry"> -> !mgp.buffer<16384>
+  %buf = mgp.buffer.constant.external %ch, %ctx[0], %weights["foo", 16384, align 16] : !mgp.opaque<"weights_registry"> -> !mgp.buffer<16384>
+  mef.output %buf : !mgp.buffer<16384>
+}
+
+//
 // mgp.buffer.constant
 //
 

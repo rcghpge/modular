@@ -355,6 +355,70 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
 }
 
 //===----------------------------------------------------------------------===//
+// BufferConstantExternalOp
+//===----------------------------------------------------------------------===//
+
+def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
+    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
+]> {
+  let summary = "Initializes a buffer from an external constant.";
+  let description = [{
+    Returns an `!mgp.buffer` on the given device that is initialized at
+    runtime.
+    The buffer is backed by a pointer retrieved by its name from a weights
+    registry, which is simply a mapping from names to pointers.
+    At runtime, the retrieved pointer must respect the alignment set on the op.
+    Furthermore, like mgp.buffer.constant, the lifetime of the returned buffer
+    is untracked and assumed to outlive graph execution.
+
+    Example:
+    ```mlir
+    %weights : !mgp.opaque<"weights_registry">
+    %ch : !mef.chain
+    // Return a buffer corresponding to the named weight "foo" in the
+    // weights registry.
+    %buf = mgp.buffer.constant.external
+      %ch, %ctx[0], %weights["foo", 16384, align 16] :
+      !mgp.opaque<"weights_registry"> -> !mgp.buffer<16384>
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,                      // 0
+                       MGP_OpaqueType:$weightsRegistry,                  // 1
+                       UI64Attr:$aRuntimeSlot,                           // 2
+                       StrAttr:$bName,                                   // 3
+                       UI64Attr:$cSize,                                  // 4
+                       UI64Attr:$dAlign,                                 // 5
+                       MGP_OptDeviceRefAttr:$eDevice);                   // 6
+  let results = (outs MGP_DeviceBufferType:$outBuffer);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `[` $aRuntimeSlot  `]` `,` $weightsRegistry
+    `[` $bName `,`$cSize `,` `align` $dAlign `]`
+    ( `device` $eDevice^ )? attr-dict `:` qualified(type($weightsRegistry))
+    `->` qualified(type($outBuffer))
+  }];
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns the buffer's alignment.
+    std::optional<uint64_t> getOptAlign();
+  }];
+
+  let extraClassDefinition = [{
+    uint64_t BufferConstantExternalOp::getSlot() { return getARuntimeSlot(); }
+
+    M::DeviceRefAttr BufferConstantExternalOp::getDevice() { return getEDevice(); }
+
+    bool BufferConstantExternalOp::isTrivial() { return false; }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // BufferConstantOp
 //===----------------------------------------------------------------------===//
 
