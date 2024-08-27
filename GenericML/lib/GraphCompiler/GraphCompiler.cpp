@@ -339,7 +339,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   // If we are jitting then we need to compile the jit kernels as well.
   MOGG::JitCompileKernelsOptions jitOpts;
-  jitOpts.useSearch = opts.useKgenSearch;
   jitOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
   jitOpts.saveTempPrefix = opts.saveTempPrefix;
   jitOpts.createMOGGReproducers = opts.createMOGGReproducers;

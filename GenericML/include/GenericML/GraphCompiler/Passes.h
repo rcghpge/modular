@@ -27,10 +27,6 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       *this, "minimum-cpu-alignment",
       llvm::cl::desc("Alignment for all CPU-allocated buffers."),
       llvm::cl::init(kPreferredMemoryAlignment)};
-  Option<bool> useKgenSearch{
-      *this, "use-kgen-search",
-      llvm::cl::desc("When jitting kernels should we enable the KGEN search."),
-      llvm::cl::init(false)};
   Option<bool> symbolicFfastMath{
       *this, "symbolic-ffast-math",
       llvm::cl::desc(

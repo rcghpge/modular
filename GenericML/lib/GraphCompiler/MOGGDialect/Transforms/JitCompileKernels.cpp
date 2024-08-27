@@ -95,10 +95,10 @@ struct JitCompileKernels
     auto err = compileToBinary(
         graph, mojoLibraryAnalysis, unusedOverrideMap,
         skipJitCompileMiddle.getValue(), dumpStub.getValue(),
-        createMOGGReproducers.getValue(), useSearch.getValue(),
-        saveTempPrefix.getValue(), minimumCpuAlignment.getValue(),
-        splitBinaryCompile.getValue(), timeMOGGCompile.getValue(),
-        dryRun.getValue(), debugKGENStubs.getValue(), bt);
+        createMOGGReproducers.getValue(), saveTempPrefix.getValue(),
+        minimumCpuAlignment.getValue(), splitBinaryCompile.getValue(),
+        timeMOGGCompile.getValue(), dryRun.getValue(),
+        debugKGENStubs.getValue(), bt);
 
     if (err.isError())
       return err.takeError();

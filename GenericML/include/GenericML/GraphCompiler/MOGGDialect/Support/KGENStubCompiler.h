@@ -23,10 +23,10 @@ namespace M::MOGG::Stub {
 /// binary stuff from the KGEN stub creation process.
 class StubCompiler {
 public:
-  StubCompiler(mlir::ModuleOp kgenStubs, Operation *graph, bool shouldSearch,
+  StubCompiler(mlir::ModuleOp kgenStubs, Operation *graph,
                std::string saveTempsPrefix, KernelBuildType kernelBuildType)
       : ctx(graph->getContext()), kgenModule(kgenStubs), loc(graph->getLoc()),
-        saveTempsPrefix(std::move(saveTempsPrefix)), shouldSearch(shouldSearch),
+        saveTempsPrefix(std::move(saveTempsPrefix)),
         kernelBuildType(kernelBuildType) {}
 
   /// Compile to binary object. Tell the jit all of the given symbols as symbols
@@ -57,9 +57,6 @@ private:
   /// given prefix. Currently emits KGEN before and after elaboration, llvm
   /// before and after optimization, and the final assembly.
   std::string saveTempsPrefix;
-
-  /// Should tell KGEN to search.
-  bool shouldSearch;
 
   /// How should kernels be compiled. If debuginfo is included in kernels then
   /// it will be added to the stubs.
