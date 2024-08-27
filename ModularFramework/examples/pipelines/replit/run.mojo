@@ -260,11 +260,12 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
         # saved to the specified path.
         if mef_use_or_gen_path != "" and Path(mef_use_or_gen_path).exists():
             # path is specified and exists, so load it
+            print(", loading from ", mef_use_or_gen_path)
             self._model = self._session.load(mef_use_or_gen_path)
             # since we are loading the model, do not overwrite
             store_mef = False
         else:
-            print("Building model...", end="")
+            print(", building model...", end="")
             start_time = now()
             var _replit = Replit[GGUFFile, dtype, kv_params](get_default())
             num_blocks = _replit.hyperparams.num_blocks
@@ -280,6 +281,7 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
 
         # if the path is specified and did not exist, write the mef.
         if mef_use_or_gen_path != "" and store_mef:
+            print("Writing mef to ", mef_use_or_gen_path)
             self._model.export_compiled_model(mef_use_or_gen_path)
         print("done. Took", (now() - start_time) / 1e9, "seconds.")
 
