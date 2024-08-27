@@ -11,6 +11,9 @@
 
 namespace M::Driver {
 struct Status {
+
+  Status() : errorOr(success()) {}
+
   M::ErrorOrSuccess errorOr;
 };
 } // namespace M::Driver
