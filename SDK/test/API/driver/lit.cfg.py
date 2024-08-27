@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 from lit.llvm import llvm_config
+from modular.utils.misc import has_gpu
 
 # Configuration file for the 'lit' test runner.
 
@@ -34,7 +35,6 @@ tool_dirs = [
 
 tools = [
     "mojo",
-    "is-cuda-available",
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
@@ -44,7 +44,5 @@ config.environment["LSAN_OPTIONS"] = "detect_leaks=0"
 # TODO(#25946): Fix ODR violations.
 config.environment["ASAN_OPTIONS"] = "detect_odr_violation=0"
 
-is_cuda_available = Path(config.modular_tools_dir) / "is-cuda-available"
-output = subprocess.run(str(is_cuda_available))
-if output.returncode == 0:
+if has_gpu():
     config.available_features.add("cuda")

@@ -34,7 +34,6 @@ tool_dirs = [
 
 tools = [
     "mojo",
-    "is-cuda-available",
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
