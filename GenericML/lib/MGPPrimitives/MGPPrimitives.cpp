@@ -535,7 +535,7 @@ static void mgp_buffer_plan(
   memoryBlocks.reserve(inputs.size());
 
   size_t poolSize = 0;
-  size_t numReused = 0;
+  [[maybe_unused]] size_t numReused = 0;
   for (size_t i = 0; i < numAllocs; ++i) {
     size_t bestSize = std::numeric_limits<size_t>::max();
     size_t allocSize = inputs[i].get<size_t>();
