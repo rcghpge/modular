@@ -62,8 +62,7 @@ class InferenceConfig:
     version: SupportedVersions = SupportedVersions.llama3_1
     """Llama version."""
 
-    # TODO: Change default to "q4_k"
-    quantization_encoding: SupportedEncodings = SupportedEncodings.float32
+    quantization_encoding: SupportedEncodings = SupportedEncodings.q4_k
     """Quantization encoding type."""
 
     serialized_model_path: Optional[Union[str, Path]] = None

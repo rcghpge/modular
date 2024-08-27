@@ -7,8 +7,6 @@
 from dataclasses import dataclass
 from typing import Tuple
 
-import numpy as np
-
 from max.graph import ValueLike, TensorValue, ops
 from typing import List
 
@@ -56,7 +54,6 @@ class Transformer:
     output: Linear
     theta: float
     embedding: Embedding
-    rope_scaling: ValueLike
 
     def __call__(self, tokens, k_cache, v_cache):
         h = self.embedding(tokens)

@@ -58,11 +58,17 @@ def attention(params: Hyperparameters, weights: Weights, rope: RotaryEmbedding):
 
 def transformer(graph: Graph, params: Hyperparameters, weights: Weights):
     with graph:
+        try:
+            rope_scaling = weights._tensors["rope_freqs.weight"].data
+        except:
+            rope_scaling = None
+
         rope = RotaryEmbedding(
             dim=params.hidden_dim,
             n_heads=params.n_heads,
             theta=params.rope_theta,
             max_seq_len=params.seq_len,
+            rope_scaling=rope_scaling,
         )
 
         layers = [
@@ -79,11 +85,6 @@ def transformer(graph: Graph, params: Hyperparameters, weights: Weights):
             for i in range(params.n_layers)
         ]
 
-        try:
-            rope_scaling = weights.rope_freqs.weight(graph).value.T
-        except:
-            rope_scaling = 1.0
-
         return Transformer(
             dim=params.hidden_dim,
             n_heads=params.n_heads,
@@ -92,5 +93,4 @@ def transformer(graph: Graph, params: Hyperparameters, weights: Weights):
             output=linear(weights.output),
             theta=params.rope_theta,
             embedding=embedding(weights.token_embd),
-            rope_scaling=rope_scaling,
         )

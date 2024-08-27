@@ -173,7 +173,6 @@ def _max_tokens_to_generate(prompt_size: int, config: InferenceConfig) -> int:
 
 def _read_hyperparameters(reader: gguf.GGUFReader) -> Hyperparameters:
     key_names = {
-        "seq_len": "llama.context_length",
         "n_layers": "llama.block_count",
         "n_heads": "llama.attention.head_count",
         "n_kv_heads": "llama.attention.head_count_kv",

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 @dataclass
 class Hyperparameters:
-    seq_len: int = 4096
+    seq_len: int = 2048
     """Maximum length of the token sequence that can be processed by this model."""
 
     n_layers: int = 32
