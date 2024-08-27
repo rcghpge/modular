@@ -7,5 +7,6 @@ modular_py_test(
     deps = [
         "//SDK/lib/ServeAPI/python/max/serve",
         requirement("hypothesis"),
+        requirement("sseclient-py"),
     ],
 )

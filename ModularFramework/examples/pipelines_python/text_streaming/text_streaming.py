@@ -4,7 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from max.serve.pipelines.llm_pipeline_serving import TokenGenerator
+from max.serve.pipelines.llm import TokenGenerator
 from typing import Optional
 from utils import TextGenerationMetrics
 
