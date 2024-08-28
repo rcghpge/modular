@@ -16,9 +16,9 @@ py_binary(
     imports = ["."],
     deps = [
         requirement("click"),
-        "//ModularFramework/examples/pipelines_python/llama3",
-        "//ModularFramework/examples/pipelines_python/text_streaming",
-        "//ModularFramework/examples/pipelines_python/utils",
+        "//SDK/public/max-repo/pipelines/python/llama3",
+        "//SDK/public/max-repo/pipelines/python/text_streaming",
+        "//SDK/public/max-repo/pipelines/python/utils",
     ],
 )
 

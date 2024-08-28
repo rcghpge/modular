@@ -4,7 +4,8 @@ py_library(
     name = "text_streaming",
     srcs = glob(["**/*.py"]),
     deps = [
-        "//ModularFramework/examples/pipelines_python/llama3",
         "//SDK/lib/ServeAPI/python/max/serve",
+        "//SDK/public/max-repo/pipelines/python/llama3",
+        "//SDK/public/max-repo/pipelines/python/utils",
     ],
 )

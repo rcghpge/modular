@@ -11,9 +11,9 @@ py_library(
         requirement("torch"),
         requirement("gguf"),
         requirement("sentencepiece"),
-        "//ModularFramework/examples/pipelines_python/utils",
         "//SDK/lib/API/python:max_dtype",
         "//SDK/lib/API/python:max_engine",
         "//SDK/lib/API/python:max_graph",
+        "//SDK/public/max-repo/pipelines/python/utils",
     ],
 )
