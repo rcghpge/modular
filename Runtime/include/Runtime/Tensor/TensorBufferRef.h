@@ -64,8 +64,8 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Creates a TensorBufferRef with a given storage handle. The handle may be
-  /// shared between other buffer refs will last as long as any use is alive. It
-  /// should deallocate `buffer` on its destruction.
+  /// shared between other buffer refs will last as long as any use is alive.
+  /// The storage handle must deallocate `buffer` on its destruction.
   static TensorBufferRef create(void *buffer, size_t size,
                                 AnyAsyncValueRef storageHandle,
                                 std::optional<size_t> alignment);
