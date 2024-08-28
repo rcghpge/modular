@@ -6,9 +6,8 @@
 
 from typing import Optional
 
-from max.serve.pipelines.llm import TokenGenerator
-
-from utils import TextGenerationMetrics
+from ..interfaces import TokenGenerator
+from ..utils import TextGenerationMetrics
 
 
 async def stream_text_to_console(

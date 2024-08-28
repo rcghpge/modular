@@ -17,7 +17,6 @@ py_binary(
     deps = [
         requirement("click"),
         "//ModularFramework/examples/pipelines_python/llama3",
-        "//ModularFramework/examples/pipelines_python/text_serving",
         "//ModularFramework/examples/pipelines_python/text_streaming",
         "//ModularFramework/examples/pipelines_python/utils",
     ],
