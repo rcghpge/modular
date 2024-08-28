@@ -2,6 +2,8 @@
 :title: Casting operations
 :sidebar_label: casting
 
+Ops that modify the shape or data type of a symbolic tensor.
+
 .. toctree::
    :maxdepth: 1
 
