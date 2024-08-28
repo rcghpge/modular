@@ -3742,63 +3742,7 @@ LogicalResult CustomOp::verify() {
 // MO Mutable tensor operations
 //===----------------------------------------------------------------------===//
 
-LogicalResult MutableLoadOp::verify() {
-  auto inChainUses = llvm::range_size(getInChain().getUses());
-
-  if (inChainUses > 1)
-    return emitError() << llvm::formatv(
-               "mo.mutable.load must have exclusive access to its input chain "
-               "found: {0} other uses.",
-               inChainUses - 1);
-
-  auto outChainUses = llvm::range_size(getOutChain().getUses());
-
-  if (outChainUses > 1)
-    return emitError() << llvm::formatv(
-               "The output chain from mo.mutable.load can be used at most once "
-               "found: {0} uses",
-               outChainUses);
-
-  return success();
-}
-
-LogicalResult MutableStoreOp::verify() {
-  auto inChainUses = llvm::range_size(getInChain().getUses());
-
-  if (inChainUses > 1)
-    return emitError() << llvm::formatv(
-               "mo.mutable.store must have exclusive access to its input chain "
-               "found: {0} other uses.",
-               inChainUses - 1);
-
-  auto outChainUses = llvm::range_size(getOutChain().getUses());
-
-  if (outChainUses > 1)
-    return emitError() << llvm::formatv(
-               "The output chain from mo.mutable.store can be used at most "
-               "once "
-               "found: {0} uses",
-               outChainUses);
-
-  return success();
-}
-
 LogicalResult MutableStoreSliceOp::verify() {
-  auto inChainUses = llvm::range_size(getInChain().getUses());
-  if (inChainUses > 1)
-    return emitError() << llvm::formatv("mo.mutable.store.slice must have "
-                                        "exclusive access to its input chain "
-                                        "found: {0} other uses.",
-                                        inChainUses - 1);
-
-  auto outChainUses = llvm::range_size(getOutChain().getUses());
-  if (outChainUses > 1)
-    return emitError() << llvm::formatv(
-               "The output chain from mo.mutable.store.slice can be used at "
-               "most "
-               "once "
-               "found: {0} uses",
-               outChainUses);
 
   // Copied wholesale from the mo.slice verifier
   TensorType inputTy = castFromTensorLike(getInBuffer().getType());

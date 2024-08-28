@@ -56,3 +56,64 @@ mo.graph @add_relu(%buf: !bt, %rhs: !tt) -> !bt
 
   mo.output %gb : !bt
 }
+
+// CHECK-LABEL: mo.graph @multiple_chain_users_load(
+// CHECK-SAME: [[buf:%.*]]: !mo.buffer<[2, 2], f32>
+// CHECK-SAME: [[rhs:%.*]]: !mo.tensor<[2, 2], f32>
+// CHECK: [[ch1:%.*]], [[vbuf:%.*]] = mo.mutable.load
+// CHECK: [[res1:%.*]] = mo.add([[vbuf]], [[rhs]])
+// CHECK: [[ch2:%.*]] =  mo.mutable.store([[ch1]]
+// CHECK: [[ch3:%.*]] = mo.chain.create([[ch2]])
+// CHECK: [[ch3:%.*]] = mo.chain.create([[ch2]])
+mo.graph @multiple_chain_users_load(%buf: !bt, %rhs: !tt) -> (!bt, !bt, !tt)
+{
+  %ch0 = mo.chain.create(%buf) : !bt
+
+  %ch1, %vbuf = mo.mutable.load(%ch0, %buf) : (!ct, !bt) -> (!ct, !tt)
+  %res1 = mo.add(%vbuf, %rhs) : !tt
+  %ch2 = mo.mutable.store(%ch1, %buf, %res1) : (!ct, !bt, !tt) -> (!ct)
+
+  %ch5 = mo.chain.create(%ch2) : !mo.chain
+  %ch3, %vbuf2 = mo.mutable.load(%ch2, %buf) : (!ct, !bt) -> (!ct, !tt)
+  %ch6 = mo.chain.create(%ch3) : !mo.chain
+
+  %res2 = mo.add(%vbuf2, %rhs) : !tt
+
+  %cf = mo.chain.create(%ch3, %ch5, %ch6) : !ct, !ct, !ct
+
+  %gb = mo.guard[%cf](%buf) : !bt
+
+  mo.output %buf, %gb, %res2 : !bt, !bt, !tt 
+}
+
+// CHECK-LABEL: mo.graph @multiple_chain_users_store(
+// CHECK-SAME: [[buf:%.*]]: !mo.buffer<[2, 2], f32>
+// CHECK-SAME: [[rhs:%.*]]: !mo.tensor<[2, 2], f32>
+// CHECK: [[ch1:%.*]], [[vbuf:%.*]] = mo.mutable.load
+// CHECK: [[res1:%.*]] = mo.add([[vbuf]], [[rhs]])
+// CHECK: mo.chain.create([[ch1]])
+// CHECK: mo.chain.create([[ch1]])
+// CHECK-NOT: mo.mutable.store
+// CHECK-NOT: mo.mutable.load
+// CHECK: [[res2:%.*]] = mo.add([[res1]], [[rhs]])
+// CHECK: mo.mutable.store([[ch1]], [[buf]], [[res2]])
+mo.graph @multiple_chain_users_store(%buf: !bt, %rhs: !tt) -> (!bt, !bt)
+{
+  %ch0 = mo.chain.create(%buf) : !bt
+
+  %ch1, %vbuf = mo.mutable.load(%ch0, %buf) : (!ct, !bt) -> (!ct, !tt)
+  %res1 = mo.add(%vbuf, %rhs) : !tt
+
+  %ch5 = mo.chain.create(%ch1) : !ct
+  %ch2 = mo.mutable.store(%ch1, %buf, %res1) : (!ct, !bt, !tt) -> (!ct)
+  %ch6 = mo.chain.create(%ch2) : !ct
+
+  %res2 = mo.add(%res1, %rhs) : !tt
+  %ch4 = mo.mutable.store(%ch2, %buf, %res2) : (!ct, !bt, !tt) -> (!ct)
+
+  %cf = mo.chain.create(%ch4, %ch5, %ch6) : !ct, !ct, !ct
+
+  %gb = mo.guard[%cf](%buf) : !bt
+
+  mo.output %buf, %gb : !bt, !bt
+}

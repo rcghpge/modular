@@ -37,3 +37,20 @@ mo.graph @single_add_buffer_rhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.te
   %2 = mo.mutable.store(%outChain, %buffer, %1) : (!mo.chain, !mo.buffer<[10, 10], f32>, !mo.tensor<[10, 10], f32>) -> !mo.chain
   mo.output
 }
+
+// CHECK-LABEL: mo.graph @multiple_chain_users(
+// CHECK-SAME: [[buffer:%.*]]: !mo.buffer<[10, 10], f32>, [[rhs:%.*]]: !mo.tensor<[10, 10], f32>
+// CHECK: [[ch0:%.*]] = mo.chain.create([[buffer]])
+// CHECK: mo.chain.create([[ch0]])
+// CHECK: [[out:%.*]]:2 = mogg.kernel ([[rhs]], [[buffer]], [[ch0]])
+// CHECK-DAG: mo.mutable.store([[out]]#1, [[buffer]], [[out]]#0)
+// CHECK-DAG: mo.chain.create([[out]]#1)
+mo.graph @multiple_chain_users(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.tensor<[10, 10], f32>) {
+  %0 = mo.chain.create(%buffer) : !mo.buffer<[10, 10], f32>
+  mo.chain.create(%0) : !mo.chain
+  %outChain, %outTensor = mo.mutable.load(%0, %buffer) : (!mo.chain, !mo.buffer<[10, 10], f32>) -> (!mo.chain, !mo.tensor<[10, 10], f32>)
+  %1 = mo.add(%rhs, %outTensor) : !mo.tensor<[10, 10], f32>
+  mo.chain.create(%outChain) : !mo.chain
+  %2 = mo.mutable.store(%outChain, %buffer, %1) : (!mo.chain, !mo.buffer<[10, 10], f32>, !mo.tensor<[10, 10], f32>) -> !mo.chain
+  mo.output
+}

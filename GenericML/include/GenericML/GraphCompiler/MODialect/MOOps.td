@@ -4493,7 +4493,6 @@ def MO_MutableLoadOp : MO_Op<"mutable.load", [
   let arguments = (ins MO_Chain:$inChain, MO_Buffer:$inBuffer);
   let results   = (outs MO_Chain:$outChain, MO_Tensor:$outTensor);
 
-  let hasVerifier = 1;
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
@@ -4519,7 +4518,6 @@ def MO_MutableStoreOp : MO_Op<"mutable.store", [
   let arguments = (ins MO_Chain:$inChain, MO_Buffer:$inBuffer, MO_Tensor:$inTensor);
   let results   = (outs MO_Chain:$outChain);
 
-  let hasVerifier = 1;
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
