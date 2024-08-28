@@ -1,9 +1,9 @@
 :description: The MAX Graph Python API reference.
-:title: max.graph.quantization.BlockParameters
+:title: BlockParameters
 :sidebar_label: BlockParameters
 
-max.graph.quantization.BlockParameters
-======================================
+BlockParameters
+===============
 
 .. py:currentmodule:: max.graph
 

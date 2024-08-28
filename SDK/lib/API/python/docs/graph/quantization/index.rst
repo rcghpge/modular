@@ -3,11 +3,12 @@
 :sidebar_label: quantization
 
 quantization
-======================
+============
+
+APIs to quantize graph tensors.
 
 .. toctree::
    :maxdepth: 1
 
-   overview
    blockparameters
    quantizationencoding

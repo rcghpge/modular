@@ -1,9 +1,9 @@
 :description: The MAX Graph Python API reference.
-:title: max.graph.quantization.QuantizationEncoding
+:title: QuantizationEncoding
 :sidebar_label: QuantizationEncoding
 
-max.graph.quantization.QuantizationEncoding
-===========================================
+QuantizationEncoding
+====================
 
 .. py:currentmodule:: max.graph
 
