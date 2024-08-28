@@ -3,7 +3,7 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-# RUN: %mojo-no-debug %s
+# RUN: %mojo %s
 from max.tensor import TensorSpec
 
 from max.engine import InferenceSession, InputSpec
