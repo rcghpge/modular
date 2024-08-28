@@ -317,7 +317,7 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
         )
         self._kv_collection = None
         self._next_token_tensor = AnyTensor()
-        self._prompt_attention_mask = Tensor[DType.int64, 2](
+        self._prompt_attention_mask = Tensor[DType.bool, 2](
             (0, 0), self._cpu_device
         )
         self._prompt_len = 0
