@@ -1,5 +1,5 @@
 :description: The MAX Graph Python API reference.
-:title: max.graph.quantization.TensorType
+:title: TensorType
 :sidebar_label: TensorType
 
 TensorType

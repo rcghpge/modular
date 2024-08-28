@@ -8,10 +8,9 @@ MAX Python Graph API - Type
 .. toctree::
    :maxdepth: 1
 
-   overview
    dim
    shape
    staticdim
    symbolicdim
    tensortype
-   type
+   type_class

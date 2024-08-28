@@ -1,5 +1,5 @@
 :description: The MAX Graph Python API reference.
-:title: max.graph.quantization.Type
+:title: Type
 :sidebar_label: Type
 
 Type

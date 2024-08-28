@@ -1,5 +1,5 @@
 :description: The MAX Graph Python API reference.
-:title: max.graph.quantization.StaticDim
+:title: StaticDim
 :sidebar_label: StaticDim
 
 StaticDim

@@ -5,5 +5,5 @@
 .. toctree::
    :maxdepth: 1
 
-   constant
+   constant_function
    scalar

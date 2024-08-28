@@ -1,5 +1,5 @@
 :description: The MAX Graph Python API reference.
-:title: max.graph.quantization.Shape
+:title: Shape
 :sidebar_label: Shape
 
 Shape
