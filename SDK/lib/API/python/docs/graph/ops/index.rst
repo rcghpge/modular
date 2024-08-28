@@ -2,8 +2,10 @@
 :title: MAX Python API
 :sidebar_label: max
 
-MAX Python API
-==============
+Ops
+===
+
+Implements various ops used when building a graph.
 
 .. toctree::
    :maxdepth: 1
