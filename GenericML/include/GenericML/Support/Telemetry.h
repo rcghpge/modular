@@ -74,7 +74,7 @@ public:
   MaxEngineTelemetryContext(M::ContextRef ctx)
       : context(ctx.getPointer()),
         telemetryContext(context->get<Telemetry::TelemetryContext>()) {
-    assert(telemetryContext && "expected to be setup already");
+    assert(telemetryContext && "expected to be set up already");
   }
 
   ErrorCodeCounter &getErrorCounter() const {
