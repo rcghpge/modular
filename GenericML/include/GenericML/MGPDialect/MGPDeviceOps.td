@@ -1268,6 +1268,36 @@ def BufferSliceOp : MGP_Op<"buffer.slice", [
   let hasVerifier = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// BufferToIndexOp
+//===----------------------------------------------------------------------===//
+
+def BufferToIndexOp : MGP_Op<"buffer.to_index", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
+]> {
+  let summary = "Returns contents of the buffer to an `index`";
+  let description = [{
+    Returns contents of a 4- or 8-byte buffer as a 64-bit `index`.
+
+    Sign extension is performed when upcasting from a 32-bit integer.
+
+    Example:
+    ```mlir
+    %0 = mgp.buffer.to_index %ch0, %buf : !mgp.buffer<8>
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$inChain,
+                       MGP_DeviceBufferType:$inBuffer);
+
+  let results = (outs Index:$out);
+
+  let assemblyFormat = [{
+     $inChain `,` $inBuffer attr-dict `:` type($inBuffer)
+  }];
+}
 
 //===----------------------------------------------------------------------===//
 // BufferToBoolOp
