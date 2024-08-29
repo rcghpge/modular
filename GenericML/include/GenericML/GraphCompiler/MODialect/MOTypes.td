@@ -279,9 +279,8 @@ def MO_Buffer : MO_Type<"Buffer", "buffer"> {
     In conjunction with the operations mo.mutable.load and mo.mutable.store
     this type can be used to model in-place operations in the MO dialect.
 
-    The `shapeAttr` is one of:
-    1. `KGEN::ParamDeclRefAttr` for a a shape parameter, e.g., `Sh0`.
-    2. `MOSH::ShapeAttr` for a shape of known rank, e.g., `[D0, 42, D1]`.
+    The `shapeAttr` is less permisive than the equivalent for `!mo.tensor`
+    values and must be a `MOSH::ShapeAttr` (i.e. statically ranked).
 
     The element type is an M::DType, with `invalid` denoting an unknown type.
 

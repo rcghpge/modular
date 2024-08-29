@@ -694,27 +694,11 @@ LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
                                  TypedAttr shapeAttr, DType dtype,
                                  DeviceRefAttr deviceRef,
                                  DictionaryAttr metadata) {
-  if (auto unkAttr = llvm::dyn_cast<KGEN::UnknownAttr>(shapeAttr)) {
-    return emitError() << "mo.buffer is not allowed to have unknown shape";
-  }
-  if (auto declRef = llvm::dyn_cast<KGEN::ParamDeclRefAttr>(shapeAttr)) {
-    if (Type ty = declRef.getType(); !llvm::isa<ShapeType>(ty)) {
-      return emitError()
-             << "shape parameter reference must have ShapeType, got " << ty;
-    }
-    return success();
-  }
-  if (auto indexRef = ::dyn_cast<KGEN::ParamIndexRefAttr>(shapeAttr)) {
-    if (Type ty = indexRef.getType(); !::isa<ShapeType>(ty)) {
-      return emitError()
-             << "shape parameter reference must have ShapeType, got " << ty;
-    }
-    return success();
-  }
-
   auto attr = llvm::dyn_cast<ShapeAttr>(shapeAttr);
   if (!attr)
-    return emitError() << "invalid shape attribute " << shapeAttr;
+    return emitError() << "invalid shape attribute, only MOSH::ShapeAttr is "
+                          "allowed for buffer types, got: "
+                       << shapeAttr;
 
   for (TypedAttr dimAttr : attr.getValues()) {
     if (auto dimIntAttr = llvm::dyn_cast<IntegerAttr>(dimAttr)) {
