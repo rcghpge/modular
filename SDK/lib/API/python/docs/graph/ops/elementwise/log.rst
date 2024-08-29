@@ -1,6 +1,7 @@
 :description: log operation for the MAX Graph Python API
 :title: log
-:sidebar_label: log
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

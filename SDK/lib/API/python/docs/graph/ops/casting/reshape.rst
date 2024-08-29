@@ -1,6 +1,7 @@
 :description: reshape operation for the MAX Graph Python API
 :title: reshape
-:sidebar_label: reshape
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

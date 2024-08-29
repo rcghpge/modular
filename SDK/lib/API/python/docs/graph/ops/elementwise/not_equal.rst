@@ -1,6 +1,7 @@
 :description: not_equal operation for the MAX Graph Python API
 :title: not_equal
-:sidebar_label: not_equal
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

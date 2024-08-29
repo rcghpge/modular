@@ -1,6 +1,7 @@
 :description: pow operation for the MAX Graph Python API
 :title: pow
-:sidebar_label: pow
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

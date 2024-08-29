@@ -1,6 +1,7 @@
 :description: Casting operations for the MAX Graph Python API
-:title: Casting operations
-:sidebar_label: casting
+:title: casting
+:type: module
+:lang: python
 
 Ops that modify the shape or data type of a symbolic tensor.
 

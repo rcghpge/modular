@@ -1,6 +1,7 @@
 :description: rebind operation for the MAX Graph Python API
 :title: rebind
-:sidebar_label: rebind
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

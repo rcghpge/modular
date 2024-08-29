@@ -1,6 +1,7 @@
 :description: erf operation for the MAX Graph Python API
 :title: erf
-:sidebar_label: erf
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

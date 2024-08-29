@@ -1,6 +1,7 @@
 :description: scalar operation for the MAX Graph Python API
 :title: scalar
-:sidebar_label: scalar
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

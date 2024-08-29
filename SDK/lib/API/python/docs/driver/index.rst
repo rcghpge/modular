@@ -1,9 +1,7 @@
 :description: Driver documentation for MAX Python API reference.
-:title: Driver
-:sidebar_label: driver
-
-Driver
-======
+:title: driver
+:type: module
+:lang: python
 
 .. toctree::
    :maxdepth: 2
@@ -12,4 +10,3 @@ Driver
    cpu
    cuda
    tensor
-   

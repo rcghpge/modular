@@ -1,6 +1,7 @@
 :description: max operation for the MAX Graph Python API
 :title: max
-:sidebar_label: max
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

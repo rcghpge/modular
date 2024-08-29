@@ -1,6 +1,7 @@
 :description: qmatmul operation for the MAX Graph Python API
 :title: qmatmul
-:sidebar_label: qmatmul
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

@@ -1,6 +1,7 @@
 :description: Constant operations for the MAX Graph Python API
-:title: Constant operations
-:sidebar_label: constant
+:title: constant
+:type: module
+:lang: python
 
 .. toctree::
    :maxdepth: 1

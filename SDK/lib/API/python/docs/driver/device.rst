@@ -1,6 +1,7 @@
 :description: The Device class for Python API reference.
-:title: device
-:sidebar_label: device
+:title: Device
+:type: class
+:lang: python
 
 .. py:currentmodule:: max.driver
 

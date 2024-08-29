@@ -1,6 +1,7 @@
 :description: gelu operation for the MAX Graph Python API
 :title: gelu
-:sidebar_label: gelu
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

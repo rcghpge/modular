@@ -1,6 +1,7 @@
 :description: silu operation for the MAX Graph Python API
 :title: silu
-:sidebar_label: silu
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

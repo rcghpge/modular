@@ -1,6 +1,7 @@
 :description: sin operation for the MAX Graph Python API
 :title: sin
-:sidebar_label: sin
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

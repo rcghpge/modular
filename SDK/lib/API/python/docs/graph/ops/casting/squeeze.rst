@@ -1,6 +1,7 @@
 :description: squeeze operation for the MAX Graph Python API
 :title: squeeze
-:sidebar_label: squeeze
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

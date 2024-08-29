@@ -1,6 +1,7 @@
 :description: The CPU class for Python API reference.
-:title: cpu
-:sidebar_label: cpu
+:title: CPU
+:type: class
+:lang: python
 
 .. py:currentmodule:: max.driver
 

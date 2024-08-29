@@ -1,6 +1,7 @@
 :description: negate operation for the MAX Graph Python API
 :title: negate
-:sidebar_label: negate
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

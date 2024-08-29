@@ -1,6 +1,7 @@
 :description: trunc operation for the MAX Graph Python API
 :title: trunc
-:sidebar_label: trunc
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

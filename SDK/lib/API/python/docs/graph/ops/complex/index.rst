@@ -1,6 +1,7 @@
 :description: Complex operations for the MAX Graph Python API
-:title: Complex operations
-:sidebar_label: complex
+:title: complex
+:type: module
+:lang: python
 
 Complex operators
 =================

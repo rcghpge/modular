@@ -1,6 +1,7 @@
 :description: unsqueeze operation for the MAX Graph Python API
 :title: unsqueeze
-:sidebar_label: unsqueeze
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

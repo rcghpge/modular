@@ -1,6 +1,7 @@
 :description: relu operation for the MAX Graph Python API
 :title: relu
-:sidebar_label: relu
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

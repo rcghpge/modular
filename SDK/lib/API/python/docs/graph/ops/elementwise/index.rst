@@ -1,6 +1,7 @@
 :description: Elementwise operations for the MAX Graph Python API
-:title: Elementwise operations
-:sidebar_label: elementwise
+:title: elementwise
+:type: module
+:lang: python
 
 Elementwise operations
 ======================

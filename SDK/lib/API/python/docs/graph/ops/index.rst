@@ -1,9 +1,7 @@
 :description: The MAX Python API reference.
-:title: MAX Python API
-:sidebar_label: max
-
-Ops
-===
+:title: ops
+:type: package
+:lang: python
 
 Implements various ops used when building a graph.
 

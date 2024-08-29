@@ -1,9 +1,7 @@
 :description: The MAX Graph Python API reference.
 :title: Type
-:sidebar_label: Type
-
-Type
-====
+:type: class
+:lang: python
 
 .. py:currentmodule:: max.graph
 

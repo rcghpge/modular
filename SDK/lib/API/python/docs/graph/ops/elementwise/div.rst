@@ -1,6 +1,7 @@
 :description: div operation for the MAX Graph Python API
 :title: div
-:sidebar_label: div
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

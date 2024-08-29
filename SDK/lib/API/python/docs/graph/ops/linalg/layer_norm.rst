@@ -1,6 +1,7 @@
 :description: layer_norm operation for the MAX Graph Python API
 :title: layer_norm
-:sidebar_label: layer_norm
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

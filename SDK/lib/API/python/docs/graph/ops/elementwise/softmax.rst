@@ -1,6 +1,7 @@
 :description: softmax operation for the MAX Graph Python API
 :title: softmax
-:sidebar_label: softmax
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

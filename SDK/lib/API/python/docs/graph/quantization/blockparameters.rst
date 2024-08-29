@@ -1,9 +1,7 @@
 :description: The MAX Graph Python API reference.
 :title: BlockParameters
-:sidebar_label: BlockParameters
-
-BlockParameters
-===============
+:type: class
+:lang: python
 
 .. py:currentmodule:: max.graph
 

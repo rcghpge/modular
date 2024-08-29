@@ -1,6 +1,7 @@
 :description: matmul operation for the MAX Graph Python API
 :title: matmul
-:sidebar_label: matmul
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

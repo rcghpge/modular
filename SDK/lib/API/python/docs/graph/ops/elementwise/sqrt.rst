@@ -1,6 +1,7 @@
 :description: sqrt operation for the MAX Graph Python API
 :title: sqrt
-:sidebar_label: sqrt
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

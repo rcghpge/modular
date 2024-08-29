@@ -1,6 +1,7 @@
 :description: broadcast_to operation for the MAX Graph Python API
 :title: broadcast_to
-:sidebar_label: broadcast_to
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

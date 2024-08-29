@@ -1,6 +1,7 @@
 :description: shape_to_tensor operation for the MAX Graph Python API
 :title: shape_to_tensor
-:sidebar_label: shape_to_tensor
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

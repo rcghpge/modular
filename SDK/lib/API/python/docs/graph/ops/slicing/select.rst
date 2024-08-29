@@ -1,6 +1,7 @@
 :description: select operation for the MAX Graph Python API
 :title: select
-:sidebar_label: select
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

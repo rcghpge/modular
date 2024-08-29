@@ -1,6 +1,7 @@
 :description: The MAX Graph Python API reference.
-:title: max.graph.quantization
-:sidebar_label: quantization
+:title: quantization
+:type: package
+:lang: python
 
 quantization
 ============

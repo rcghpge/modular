@@ -1,6 +1,7 @@
 :description: Slicing operations for the MAX Graph Python API
-:title: Slicing operations
-:sidebar_label: slicing
+:title: slicing
+:type: module
+:lang: python
 
 .. toctree::
    :maxdepth: 1

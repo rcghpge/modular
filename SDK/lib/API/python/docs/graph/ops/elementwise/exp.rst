@@ -1,6 +1,7 @@
 :description: exp operation for the MAX Graph Python API
 :title: exp
-:sidebar_label: exp
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

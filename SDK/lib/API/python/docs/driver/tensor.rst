@@ -1,6 +1,7 @@
 :description: The Tensor class for Python API reference.
 :title: Tensor
-:sidebar_label: tensor
+:type: class
+:lang: python
 
 .. py:currentmodule:: max.driver
 

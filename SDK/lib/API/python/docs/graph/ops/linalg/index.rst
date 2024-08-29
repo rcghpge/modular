@@ -1,6 +1,7 @@
 :description: Linalg operations for the MAX Graph Python API
-:title: linalg operations
-:sidebar_label: linalg
+:title: linalg
+:type: module
+:lang: python
 
 .. toctree::
    :maxdepth: 1

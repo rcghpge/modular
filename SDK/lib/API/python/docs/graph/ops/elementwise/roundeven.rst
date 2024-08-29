@@ -1,6 +1,7 @@
 :description: roundeven operation for the MAX Graph Python API
 :title: roundeven
-:sidebar_label: roundeven
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

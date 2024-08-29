@@ -1,6 +1,7 @@
 :description: round operation for the MAX Graph Python API
 :title: round
-:sidebar_label: round
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

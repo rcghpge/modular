@@ -1,6 +1,7 @@
 :description: as_interleaved_complex operation for the MAX Graph Python API
 :title: as_interleaved_complex
-:sidebar_label: as_interleaved_complex
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

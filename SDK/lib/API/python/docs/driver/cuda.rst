@@ -1,6 +1,7 @@
 :description: The CUDA class for Python API reference.
 :title: CUDA
-:sidebar_label: cuda
+:type: class
+:lang: python
 
 .. py:currentmodule:: max.driver
 

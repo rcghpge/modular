@@ -1,6 +1,7 @@
 :description: equal operation for the MAX Graph Python API
 :title: equal
-:sidebar_label: equal
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

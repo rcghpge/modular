@@ -1,6 +1,7 @@
 :description: logsoftmax operation for the MAX Graph Python API
 :title: logsoftmax
-:sidebar_label: logsoftmax
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

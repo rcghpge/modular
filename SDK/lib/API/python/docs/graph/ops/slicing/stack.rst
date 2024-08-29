@@ -1,6 +1,7 @@
 :description: stack operation for the MAX Graph Python API
 :title: stack
-:sidebar_label: stack
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

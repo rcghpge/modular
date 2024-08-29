@@ -1,6 +1,7 @@
 :description: floor operation for the MAX Graph Python API
 :title: floor
-:sidebar_label: floor
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

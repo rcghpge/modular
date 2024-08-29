@@ -1,6 +1,7 @@
 :description: abs operation for the MAX Graph Python API
 :title: abs
-:sidebar_label: abs
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

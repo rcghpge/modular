@@ -1,9 +1,7 @@
 :description: The MAX Graph Python API reference.
 :title: TensorType
-:sidebar_label: TensorType
-
-TensorType
-======================================
+:type: class
+:lang: python
 
 .. py:currentmodule:: max.graph
 

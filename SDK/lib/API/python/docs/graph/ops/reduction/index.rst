@@ -1,6 +1,7 @@
 :description: Reduction operations for the MAX Graph Python API
-:title: Reduction operations
-:sidebar_label: reduction
+:title: reduction
+:type: module
+:lang: python
 
 .. toctree::
    :maxdepth: 1

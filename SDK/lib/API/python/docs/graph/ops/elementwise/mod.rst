@@ -1,6 +1,7 @@
 :description: mod operation for the MAX Graph Python API
 :title: mod
-:sidebar_label: mod
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

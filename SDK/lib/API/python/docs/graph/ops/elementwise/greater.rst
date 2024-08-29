@@ -1,6 +1,7 @@
 :description: greater operation for the MAX Graph Python API
 :title: greater
-:sidebar_label: greater
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

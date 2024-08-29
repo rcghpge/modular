@@ -1,6 +1,7 @@
 :description: cast operation for the MAX Graph Python API
 :title: cast
-:sidebar_label: cast
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

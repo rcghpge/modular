@@ -1,6 +1,7 @@
 :description: gather operation for the MAX Graph Python API
 :title: gather
-:sidebar_label: gather
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

@@ -1,6 +1,7 @@
 :description: concat operation for the MAX Graph Python API
 :title: concat
-:sidebar_label: concat
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

@@ -1,9 +1,7 @@
 :description: The MAX Graph Python API reference.
 :title: SymbolicDim
-:sidebar_label: SymbolicDim
-
-SymbolicDim
-======================================
+:type: class
+:lang: python
 
 .. py:currentmodule:: max.graph
 

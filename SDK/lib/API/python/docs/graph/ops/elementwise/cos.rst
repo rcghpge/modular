@@ -1,6 +1,7 @@
 :description: cos operation for the MAX Graph Python API
 :title: cos
-:sidebar_label: cos
+:type: function
+:lang: python
 
 .. py:currentmodule:: max.graph
 

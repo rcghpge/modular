@@ -1,6 +1,7 @@
 :description: Quantized_ops operations for the MAX Graph Python API
-:title: Quantized_ops operations
-:sidebar_label: quantized_ops
+:title: quantized_ops
+:type: module
+:lang: python
 
 .. toctree::
    :maxdepth: 1
