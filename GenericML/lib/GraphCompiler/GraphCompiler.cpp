@@ -37,7 +37,9 @@
 #include "KGEN/HLCFDialect/HLCFDialect.h"
 #include "KGEN/POPDialect/POPDialect.h"
 #include "KGEN/ToolCommon/InitAllDialects.h"
+#include "Support/Compiler/PassTimingUtils.h"
 #include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
+#include "Support/FileSystemExtras.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 
@@ -45,6 +47,7 @@
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MEFDialect/MEFDialect.h"
 #include "mlir/IR/AsmState.h"
+#include "mlir/Support/Timing.h"
 
 using namespace M;
 using namespace MO;
@@ -99,11 +102,21 @@ void M::MO::registerPasses() {
 
 LogicalResult MO::lowerMOToMGP(ModuleOp module,
                                const MoToMgpOptions &moToMgpOptions) {
+
   mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
       module.getContext(), mlir::OpPassManager::Nesting::Implicit);
 
-  MO::buildMoToMgpPipeline(pm, moToMgpOptions);
+  if (!moToMgpOptions.mlirTimingOutDir.empty()) {
+    const char *pipelineName = "MOToMGP Pipeline";
+    auto enabledTiming = M::configureMLIRPassTimingJSONOutput(
+        pm, moToMgpOptions.mlirTimingOutDir.getValue(), pipelineName);
+    if (enabledTiming.isError()) {
+      llvm::errs() << enabledTiming.getError() << "\n";
+      return failure();
+    }
+  }
 
+  MO::buildMoToMgpPipeline(pm, moToMgpOptions);
   return pm.run(module);
 }
 
