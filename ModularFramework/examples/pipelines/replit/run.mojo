@@ -239,9 +239,11 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
         """Builds and compiles a Replit model to get ready for execution."""
         # Generate a graph that does a single forward pass of the replit model.
 
-        self._device = cuda_device() if use_gpu else cpu_device()
+        var dev = cuda_device() if use_gpu else cpu_device()
+        var cpu_dev = cpu_device() if use_gpu else dev
+        self._device = dev
         self._run_on_gpu = use_gpu
-        self._cpu_device = cpu_device() if use_gpu else self._device
+        self._cpu_device = cpu_dev
         self._session = InferenceSession(
             self._device,
         )
@@ -286,8 +288,7 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
         print("done. Took", (now() - start_time) / 1e9, "seconds.")
 
         # Set up tokenizer.
-        var hf_model_name = "replit/replit-code-v1_5-3b"
-        self._tokenizer = AutoTokenizer(hf_model_name)
+        self._tokenizer = AutoTokenizer("replit/replit-code-v1_5-3b")
 
         # Set default token generation options.
         self._max_length = None
@@ -312,8 +313,8 @@ struct ReplitPipeline[dtype: DType, kv_params: KVCacheStaticParams]:
             max_batch_size,
             kv_max_length,
             num_blocks,
-            self._device,
-            self._cpu_device,
+            dev,
+            cpu_dev,
         )
         self._kv_collection = None
         self._next_token_tensor = AnyTensor()
