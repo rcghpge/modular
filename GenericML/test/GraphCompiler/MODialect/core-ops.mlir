@@ -199,10 +199,10 @@ mo.graph @constant_unknown_shape_fold() -> !mo.tensor<[2, ?], si32> {
 //===----------------------------------------------------------------------===//
 
 // CHECK: mo.graph @transfer
-mo.graph @transfer(%arg0 : !mo.tensor<[3, 2], f32, { device = #M.device_ref<"cuda", 3> }>) -> !mo.tensor<[3, 2], f32, { device = #M.device_ref<"cpu", 0> }> {
-  // CHECK: %{{.*}} = mo.transfer %{{.*}} : !mo.tensor<[3, 2], f32, {device = #M.device_ref<"cuda", 3>}> to <"cpu", 0>
-  %0 = mo.transfer %arg0 : !mo.tensor<[3, 2], f32, { device = #M.device_ref<"cuda", 3> }> to <"cpu", 0>
-  mo.output %0 : !mo.tensor<[3, 2], f32, { device = #M.device_ref<"cpu", 0> }>
+mo.graph @transfer(%arg0 : !mo.tensor<[3, 2], f32, cuda:3>) -> !mo.tensor<[3, 2], f32, cpu:0> {
+  // CHECK: %{{.*}} = mo.transfer %{{.*}} : !mo.tensor<[3, 2], f32, cuda:3> to <"cpu", 0>
+  %0 = mo.transfer %arg0 : !mo.tensor<[3, 2], f32, cuda:3> to <"cpu", 0>
+  mo.output %0 : !mo.tensor<[3, 2], f32, cpu:0>
 }
 
 {-#

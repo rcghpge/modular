@@ -320,9 +320,7 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
 
     if (auto funcOutTensorTy = dyn_cast<TensorType>(funcOutTy)) {
       auto newOutTensorTy = cast<TensorType>(newOutTy);
-      DictionaryAttr newMetadata = newOutTensorTy.getMetadata();
-      if (funcOutTensorTy.getMetadata() != newMetadata)
-        newResTy = funcOutTensorTy.cloneWith(newMetadata);
+      newResTy = funcOutTensorTy.cloneWithMetadataAndDeviceRef(newOutTensorTy);
     }
 
     newResTypes.push_back(newResTy);
@@ -3293,8 +3291,6 @@ static bool isSubtype(TensorType ty1, TensorType ty2) {
     if (ty2Metadata.contains(ty1Name))
       numMatches++;
 
-    if (ty1Name == "device")
-      continue;
     if (ty2Metadata.get(ty1Name) != ty1Value)
       return false;
   }

@@ -153,10 +153,10 @@ mo.graph @tensor_type_neg_dim(%arg0: !mo.tensor<[-1, 10], f32>) -> !mo.tensor<[-
 
 // -----
 
-mo.graph @transfer_missing_annot(%arg0 : !mo.tensor<[3, 2], f32>) -> !mo.tensor<[3, 2], f32, { device = #M.device_ref<"cpu", 0> }> {
+mo.graph @transfer_missing_annot(%arg0 : !mo.tensor<[3, 2], f32>) -> !mo.tensor<[3, 2], f32, cpu:0> {
   // expected-error @below {{expected input tensor type to have a #M.device_ref annotation}}
   %0 = mo.transfer %arg0 : !mo.tensor<[3, 2], f32> to <"cpu", 0>
-  mo.output %0 : !mo.tensor<[3, 2], f32, { device = #M.device_ref<"cpu", 0> }>
+  mo.output %0 : !mo.tensor<[3, 2], f32, cpu:0>
 }
 
 // -----

@@ -29,8 +29,8 @@ class MO_Type<string name, string typeMnemonic, list<Trait> traits = []>
 def MO_Tensor : MO_Type<"Tensor", "tensor"> {
   let summary = "Type of tensor specs of statically known rank.";
   let description = [{
-    This type represents the shape and element type of a tensor, plus an
-    optional dictionary of metadata (e.g., layout, device, etc.).
+    This type represents the shape and element type of a tensor, an optional
+    device ref, and an optional dictionary of metadata (e.g., layout, etc.).
 
     The `shapeAttr` is one of:
     1. `KGEN::UnknownAttr` for unparameterized shape of unknown rank, e.g., `?`.
@@ -40,20 +40,24 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     The element type is an M::DType, with `invalid` denoting an unknown type.
     The type implements a subset of the methods in ShapedTypeInterface.
 
+    The `deviceRef` optional field denotes the device the tensor lives on.
+
     Examples:
     ```mlir
-    !mo.tensor<[4, 16], f32>    // static shape
-    !mo.tensor<[N, N, 6], i32>  // parameterized shape
-    !mo.tensor<[?, ?], i32>     // unknown shape of known rank
-    !mo.tensor<[1, ?, N], i32>  // partially known and parameterized shape
-    !mo.tensor<?, invalid>      // unknown shape of unknown rank
-    !mo.tensor<Sh, invalid>     // shape parameter reference
+    !mo.tensor<[4, 16], f32>           // static shape
+    !mo.tensor<[N, N, 6], i32>         // parameterized shape
+    !mo.tensor<[?, ?], i32>            // unknown shape of known rank
+    !mo.tensor<[1, ?, N], i32>         // partially known and parameterized shape
+    !mo.tensor<?, invalid>             // unknown shape of unknown rank
+    !mo.tensor<Sh, invalid>            // shape parameter reference
+    !mo.tensor<[4, 16], f32, cpu:0>    // optional device
     ```
   }];
 
   let parameters = (ins
     "TypedAttr" : $shapeAttr,
     "DType" : $dtype,
+    OptionalParameter<"::M::DeviceRefAttr"> : $deviceRef,
     "DictionaryAttr" : $metadata);
 
   let genVerifyDecl = 1;
@@ -111,15 +115,19 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Returns clone with a new metadata attribute.
     TensorType cloneWith(DictionaryAttr metadataAttr) const;
 
+    /// Returns a clone of type with given #M.device_ref annotation. The
+    /// type must not already have such an annotation.
+    TensorType cloneWith(DeviceRefAttr device) const;
+
     /// Returns clone with a shape of unknown rank.
     TensorType cloneWithUnknownRank() const;
 
     /// Returns clone with a shape of known rank, but unknown dims
     TensorType cloneWithUnknownDims(int64_t rank) const;
 
-    /// Returns a clone of type with given #M.device_ref annotation. The
-    /// type must not already have such an annotation.
-    TensorType cloneWith(DeviceRefAttr device) const;
+    /// Clone the current type with the metadata and device_ref from
+    /// `source`.
+    TensorType cloneWithMetadataAndDeviceRef(TensorType source) const;
 
     /// Checks if the tensor is statically ranked.
     bool isDynamicallyRanked() const;
@@ -215,10 +223,6 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// attribute is specified, return a null attribute `LayoutAttr{}`.
     MO::LayoutAttr getLayoutAttr();
 
-    /// Returns the #M.device_ref annotation for this type, or null if no
-    /// such annotation.
-    DeviceRefAttr getDeviceRef() const;
-
     /// Duplicates a tensor type but with a dimension set to a new value.
     TensorType cloneWithNewDim(uint64_t dim, uint64_t size);
   }];
@@ -292,12 +296,21 @@ def MO_Buffer : MO_Type<"Buffer", "buffer"> {
   let parameters = (ins
     "TypedAttr" : $shapeAttr,
     "DType" : $dtype,
+    OptionalParameter<"::M::DeviceRefAttr"> : $deviceRef,
     "DictionaryAttr" : $metadata);
 
   let genVerifyDecl = 1;
   let hasCustomAssemblyFormat = 1;
 
+  let builders = [
+    TypeBuilderWithInferredContext<(ins
+      "TypedAttr" : $shapeAttr,
+      "DType" : $dtype,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>,
+  ];
+
   let extraClassDeclaration = [{
+    /// Convert `mo.buffer` to the corresponding `mo.tensor` type
     static TensorType toTensorType(BufferType type);
   }];
 }

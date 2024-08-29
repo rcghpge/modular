@@ -9,6 +9,7 @@
 
 include "mlir/IR/DialectBase.td"
 include "KGEN/KGENDialect/KGENDialect.td"
+include "Support/MDialect/MDialect.td"
 
 //===----------------------------------------------------------------------===//
 // MODialect
@@ -25,8 +26,9 @@ def MODialect : Dialect {
 
   let cppNamespace = "::M::MO";
   let dependentDialects = [
-    "MOSH::MOSHDialect",
+    "M::MDialect",
     "MIP::MIPDialect",
+    "MOSH::MOSHDialect",
   ];
   let hasConstantMaterializer = 1;
   let useDefaultAttributePrinterParser = 1;

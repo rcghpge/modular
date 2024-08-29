@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --canonicalize --split-input-file --verify-diagnostics 
+// RUN: mo-opt %s --canonicalize --split-input-file --verify-diagnostics
 
 mo.graph @ranked_unk(
   // expected-error@+1 {{mo.buffer is not allowed to have shapes with '?'}}
