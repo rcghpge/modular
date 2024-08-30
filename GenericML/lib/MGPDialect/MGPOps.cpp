@@ -10,6 +10,7 @@
 
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/BufferBuilder.h"
+#include "GraphRT/include/GraphRT/MIPDialect/MIPOps.h"
 #include "Support/AssertStream.h"
 #include "Support/Compiler/ParserUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
@@ -704,6 +705,26 @@ LogicalResult CpuTensorSpecDimsDynamicOp::inferReturnTypes(
   for (size_t i = 0, e = specType.getNumDynamicDims(); i < e; ++i)
     inferredReturnTypes.emplace_back(IndexType::get(context));
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CpuTensorSpecSizeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CpuTensorSpecSizeOp::canonicalize(CpuTensorSpecSizeOp op,
+                                                PatternRewriter &rewriter) {
+
+  TensorSpecType specType = op.getSpec().getType();
+  std::optional<uint64_t> constSize = specType.getSizeInBytes();
+  if (constSize) {
+    auto si64Ty = rewriter.getIntegerType(64, true);
+    auto sizeAttr = rewriter.getIntegerAttr(si64Ty, constSize.value());
+    rewriter.replaceOpWithNewOp<MIP::ConstantIndexOp>(
+        op, rewriter.getIndexType(), sizeAttr);
+    return success();
+  }
+
+  return failure();
 }
 
 /// Return whether `ty1` is a subtype of `ty2`, i.e., the set of possible

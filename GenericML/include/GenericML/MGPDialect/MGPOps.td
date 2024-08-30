@@ -236,6 +236,8 @@ def CpuTensorSpecSizeOp : MGP_Op<"tensor_spec.size", [Pure]> {
     ```
   }];
 
+  let hasCanonicalizeMethod = 1;
+
   let arguments = (ins MGP_TensorSpecType: $spec);
   let results = (outs Index:$result);
   let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";

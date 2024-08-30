@@ -71,8 +71,8 @@ mgp.model @tensor_spec_size : mof devices [#M.device_ref<"cpu", 0>] init (%weigh
 }
 
 // CHECK-LABEL: mgp.model @tensor_spec_size
-// CHECK: mgp.tensor_spec.size %{{.*}} : !mgp.tensor_spec<1234x5678xf32>
-// CHECK-NOT: mgp.tensor_spec.size %{{.*}} : !mgp.tensor_spec<1234x5678xf32>
+// CHECK: mip.constant.index 28026608
+// CHECK-NOT: mip.constant.index 28026608
 
 // -----
 
