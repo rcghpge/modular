@@ -51,7 +51,7 @@ public:
 
   CUdeviceptr cuda_ptr() const;
 
-  static const CUDADeviceBuffer *cast(const DeviceBufferRef &ref);
+  static const CUDADeviceBuffer &cast(const DeviceBuffer &buf);
 
 private:
   CUdeviceptr dptr_;
@@ -70,12 +70,11 @@ public:
   DeviceBufferRef createBuffer(size_t len, size_t elem_size) const override;
 
   // DeviceBuffer copies.
-  void enqueueCopyToDevice(const DeviceBufferRef &dst,
+  void enqueueCopyToDevice(const DeviceBuffer &dst,
                            const void *src) const override;
-  void enqueueCopyFromDevice(void *dst,
-                             const DeviceBufferRef &src) const override;
-  void enqueueCopyDeviceToDevice(const DeviceBufferRef &dst,
-                                 const DeviceBufferRef &src) const override;
+  void enqueueCopyFromDevice(void *dst, const DeviceBuffer &src) const override;
+  void enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
+                                 const DeviceBuffer &src) const override;
 
   // Synchronize asynchronous operations.
   void synchronize() const override;
@@ -83,7 +82,7 @@ public:
   const CUDADevice *cuda_device() const;
   CUstream cuda_stream() const;
 
-  static const CUDADeviceContext *cast(const DeviceContextRef &ref);
+  static const CUDADeviceContext &cast(const DeviceContext &ctx);
 
   static CUDADeviceContextRef create();
 

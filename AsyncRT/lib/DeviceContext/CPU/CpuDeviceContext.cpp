@@ -49,6 +49,10 @@ CpuDeviceBuffer::~CpuDeviceBuffer() { free(ptr_); }
 
 void *CpuDeviceBuffer::cpu_ptr() const { return ptr_; }
 
+const CpuDeviceBuffer &CpuDeviceBuffer::cast(const DeviceBuffer &buf) {
+  return static_cast<const CpuDeviceBuffer &>(buf);
+}
+
 //
 // ===== CpuDeviceContext === //
 //
@@ -80,33 +84,33 @@ DeviceBufferRef CpuDeviceContext::createBuffer(size_t len,
                                     elem_size, ptr);
 }
 
-void CpuDeviceContext::enqueueCopyToDevice(const DeviceBufferRef &dst,
+void CpuDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
                                            const void *src) const {
-  void *dst_ptr =
-      reinterpret_cast<const CpuDeviceBuffer *>(dst.getPointer())->cpu_ptr();
-  size_t byte_size = dst->len() * dst->elem_size();
+  void *dst_ptr = CpuDeviceBuffer::cast(dst).cpu_ptr();
+  size_t byte_size = dst.len() * dst.elem_size();
   memcpy(dst_ptr, src, byte_size);
 }
 
 void CpuDeviceContext::enqueueCopyFromDevice(void *dst,
-                                             const DeviceBufferRef &src) const {
-  void *src_ptr =
-      reinterpret_cast<const CpuDeviceBuffer *>(src.getPointer())->cpu_ptr();
-  size_t byte_size = src->len() * src->elem_size();
+                                             const DeviceBuffer &src) const {
+  void *src_ptr = CpuDeviceBuffer::cast(src).cpu_ptr();
+  size_t byte_size = src.len() * src.elem_size();
   memcpy(dst, src_ptr, byte_size);
 }
 void CpuDeviceContext::enqueueCopyDeviceToDevice(
-    const DeviceBufferRef &dst, const DeviceBufferRef &src) const {
-  void *src_ptr =
-      reinterpret_cast<const CpuDeviceBuffer *>(src.getPointer())->cpu_ptr();
-  void *dst_ptr =
-      reinterpret_cast<const CpuDeviceBuffer *>(dst.getPointer())->cpu_ptr();
-  size_t byte_size = dst->len() * dst->elem_size();
+    const DeviceBuffer &dst, const DeviceBuffer &src) const {
+  void *src_ptr = CpuDeviceBuffer::cast(src).cpu_ptr();
+  void *dst_ptr = CpuDeviceBuffer::cast(dst).cpu_ptr();
+  size_t byte_size = dst.len() * dst.elem_size();
   memcpy(dst_ptr, src_ptr, byte_size);
 }
 
 void CpuDeviceContext::synchronize() const {
   // Currently we do not schedule asynchronous work.
+}
+
+const CpuDeviceContext &CpuDeviceContext::cast(const DeviceContext &ctx) {
+  return static_cast<const CpuDeviceContext &>(ctx);
 }
 
 CpuDeviceContextRef CpuDeviceContext::create() {

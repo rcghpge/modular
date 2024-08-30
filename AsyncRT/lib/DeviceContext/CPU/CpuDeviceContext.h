@@ -43,6 +43,8 @@ public:
 
   void *cpu_ptr() const;
 
+  static const CpuDeviceBuffer &cast(const DeviceBuffer &buf);
+
 private:
   void *ptr_;
 };
@@ -60,15 +62,16 @@ public:
   DeviceBufferRef createBuffer(size_t len, size_t elem_size) const override;
 
   // DeviceBuffer copies.
-  void enqueueCopyToDevice(const DeviceBufferRef &dst,
+  void enqueueCopyToDevice(const DeviceBuffer &dst,
                            const void *src) const override;
-  void enqueueCopyFromDevice(void *dst,
-                             const DeviceBufferRef &src) const override;
-  void enqueueCopyDeviceToDevice(const DeviceBufferRef &dst,
-                                 const DeviceBufferRef &src) const override;
+  void enqueueCopyFromDevice(void *dst, const DeviceBuffer &src) const override;
+  void enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
+                                 const DeviceBuffer &src) const override;
 
   // Synchronize asynchronous operations.
   void synchronize() const override;
+
+  static const CpuDeviceContext &cast(const DeviceContext &ctx);
 
   static CpuDeviceContextRef create();
 };

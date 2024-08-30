@@ -66,12 +66,12 @@ public:
   virtual DeviceBufferRef createBuffer(size_t len, size_t elem_size) const = 0;
 
   // DeviceBuffer copies.
-  virtual void enqueueCopyToDevice(const DeviceBufferRef &dst,
+  virtual void enqueueCopyToDevice(const DeviceBuffer &dst,
                                    const void *src) const = 0;
   virtual void enqueueCopyFromDevice(void *dst,
-                                     const DeviceBufferRef &src) const = 0;
-  virtual void enqueueCopyDeviceToDevice(const DeviceBufferRef &dst,
-                                         const DeviceBufferRef &src) const = 0;
+                                     const DeviceBuffer &src) const = 0;
+  virtual void enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
+                                         const DeviceBuffer &src) const = 0;
 
   // Synchronize asynchronous operations.
   virtual void synchronize() const = 0;

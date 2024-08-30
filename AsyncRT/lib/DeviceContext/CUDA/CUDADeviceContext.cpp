@@ -61,16 +61,16 @@ CUDADeviceBuffer::CUDADeviceBuffer(CUDADeviceContextRef context, size_t len,
     : DeviceBuffer(std::move(context), len, elem_size), dptr_(dptr) {}
 
 CUDADeviceBuffer::~CUDADeviceBuffer() {
-  const auto *cuda_context = CUDADeviceContext::cast(context());
+  const auto &cuda_context = CUDADeviceContext::cast(*context());
 
-  CUDA_CHECK(cuda_context->cuda_device()->driver()->MemFreeAsync(
-      dptr_, cuda_context->cuda_stream()));
+  CUDA_CHECK(cuda_context.cuda_device()->driver()->MemFreeAsync(
+      dptr_, cuda_context.cuda_stream()));
 }
 
 CUdeviceptr CUDADeviceBuffer::cuda_ptr() const { return dptr_; }
 
-const CUDADeviceBuffer *CUDADeviceBuffer::cast(const DeviceBufferRef &ref) {
-  return reinterpret_cast<const CUDADeviceBuffer *>(ref.getPointer());
+const CUDADeviceBuffer &CUDADeviceBuffer::cast(const DeviceBuffer &buf) {
+  return static_cast<const CUDADeviceBuffer &>(buf);
 }
 
 // ===== CUDADeviceContext ===== //
@@ -106,24 +106,24 @@ DeviceBufferRef CUDADeviceContext::createBuffer(size_t len,
                                      elem_size, dptr);
 }
 
-void CUDADeviceContext::enqueueCopyToDevice(const DeviceBufferRef &dst,
+void CUDADeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
                                             const void *src) const {
-  CUdeviceptr dst_ptr = CUDADeviceBuffer::cast(dst)->cuda_ptr();
-  size_t byte_size = dst->len() * dst->elem_size();
+  CUdeviceptr dst_ptr = CUDADeviceBuffer::cast(dst).cuda_ptr();
+  size_t byte_size = dst.len() * dst.elem_size();
   CUDA_CHECK(driver_->MemcpyHtoDAsync(dst_ptr, src, byte_size, stream_));
 }
 
-void CUDADeviceContext::enqueueCopyFromDevice(
-    void *dst, const DeviceBufferRef &src) const {
-  CUdeviceptr src_ptr = CUDADeviceBuffer::cast(src)->cuda_ptr();
-  size_t byte_size = src->len() * src->elem_size();
+void CUDADeviceContext::enqueueCopyFromDevice(void *dst,
+                                              const DeviceBuffer &src) const {
+  CUdeviceptr src_ptr = CUDADeviceBuffer::cast(src).cuda_ptr();
+  size_t byte_size = src.len() * src.elem_size();
   CUDA_CHECK(driver_->MemcpyDtoHAsync(dst, src_ptr, byte_size, stream_));
 }
 void CUDADeviceContext::enqueueCopyDeviceToDevice(
-    const DeviceBufferRef &dst, const DeviceBufferRef &src) const {
-  CUdeviceptr src_ptr = CUDADeviceBuffer::cast(src)->cuda_ptr();
-  CUdeviceptr dst_ptr = CUDADeviceBuffer::cast(dst)->cuda_ptr();
-  size_t byte_size = dst->len() * dst->elem_size();
+    const DeviceBuffer &dst, const DeviceBuffer &src) const {
+  CUdeviceptr src_ptr = CUDADeviceBuffer::cast(src).cuda_ptr();
+  CUdeviceptr dst_ptr = CUDADeviceBuffer::cast(dst).cuda_ptr();
+  size_t byte_size = dst.len() * dst.elem_size();
   CUDA_CHECK(driver_->MemcpyDtoDAsync(dst_ptr, src_ptr, byte_size, stream_));
 }
 
@@ -137,8 +137,8 @@ const CUDADevice *CUDADeviceContext::cuda_device() const {
 
 CUstream CUDADeviceContext::cuda_stream() const { return stream_; }
 
-const CUDADeviceContext *CUDADeviceContext::cast(const DeviceContextRef &ref) {
-  return reinterpret_cast<const CUDADeviceContext *>(ref.getPointer());
+const CUDADeviceContext &CUDADeviceContext::cast(const DeviceContext &ctx) {
+  return static_cast<const CUDADeviceContext &>(ctx);
 }
 
 CUDADeviceContextRef CUDADeviceContext::create() {

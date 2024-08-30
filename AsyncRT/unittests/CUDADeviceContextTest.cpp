@@ -58,9 +58,9 @@ TEST(CUDADeviceContextTest, DeviceBuffers) {
 
   // Copy between different buffers.
   memcpy(a_ptr, check_data, 256);
-  ctx->enqueueCopyToDevice(b_buf, a_ptr);
-  ctx->enqueueCopyDeviceToDevice(c_buf, b_buf);
-  ctx->enqueueCopyFromDevice(d_ptr, c_buf);
+  ctx->enqueueCopyToDevice(*b_buf, a_ptr);
+  ctx->enqueueCopyDeviceToDevice(*c_buf, *b_buf);
+  ctx->enqueueCopyFromDevice(d_ptr, *c_buf);
 
   // Ensure that all copy operations have finished.
   ctx->synchronize();
