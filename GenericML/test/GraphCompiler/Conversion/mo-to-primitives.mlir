@@ -73,11 +73,10 @@ mo.graph @test_lowered_async(%arg0: !mo.tensor<[], si64>, %arg1: !mo.tensor<[], 
 
 // CHECK: execute (%[[CH0:.*]]: !mef.chain
 // CHECK: %[[CH1:.*]] = mogg.generic.compiled.region (%[[CH0]],
-// CHECK: %[[MERGE:.*]] = grt.chain.create (%[[CH1]], %[[CH0]])
-// CHECK: %[[CH2:.*]] = mogg.generic.compiled.region (%[[MERGE]]
-// CHECK: %[[MERGE:.*]] = grt.chain.create (%[[CH1]], %[[CH2]], %[[CH0]])
-// CHECK: %[[CH3:.*]] = mogg.generic.compiled.region (%[[MERGE]],
-// CHECK: mef.output %[[CH3]],
+// CHECK: %[[MERGE1:.*]] = grt.chain.create (%[[CH1]], %[[CH0]]
+// CHECK: %[[CH2:.*]] = mogg.generic.compiled.region (%[[MERGE1]]
+// CHECK: %[[MERGE2:.*]] = grt.chain.create (%[[CH1]], %[[CH2]], %[[CH0]]
+// CHECK: %[[CH3:.*]] = mogg.generic.compiled.region (%[[MERGE2]],
 
 mo.graph @test_buffer_dependencies(%arg0: !mo.tensor<[], si64>) -> !mo.tensor<[], si64> attributes {device_specs = #M.device_spec_collection<host = <"cpu", 0>, devices = [<ref = <"cpu", 0>, target = <triple = "x86_64-unknown-linux-gnu", arch = "icelake-server", features = "+adx,+aes,+avx,+avx2,+avx512bitalg,+avx512bw,+avx512cd,+avx512dq,+avx512f,+avx512ifma,+avx512vbmi,+avx512vbmi2,+avx512vl,+avx512vnni,+avx512vpopcntdq,+bmi,+bmi2,+clflushopt,+clwb,+cmov,+crc32,+cx16,+cx8,+evex512,+f16c,+fma,+fsgsbase,+fxsr,+gfni,+invpcid,+lzcnt,+mmx,+movbe,+pclmul,+pconfig,+pku,+popcnt,+prfchw,+rdpid,+rdrnd,+rdseed,+sahf,+sgx,+sha,+sse,+sse2,+sse3,+sse4.1,+sse4.2,+ssse3,+vaes,+vpclmulqdq,+wbnoinvd,+x87,+xsave,+xsavec,+xsaveopt,+xsaves">>]>} {
     %0 = mo.relu(%arg0): !mo.tensor<[], si64>

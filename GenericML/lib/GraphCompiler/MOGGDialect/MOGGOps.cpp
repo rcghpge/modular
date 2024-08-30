@@ -54,7 +54,7 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
   assert(loweredOutputsStorageOr->size() == 1);
 
   Value executeChain =
-      opLoweringState.getGuardChain(loweringState.getExecuteChain());
+      opLoweringState.getGuardChain(loweringState.getCurrentExecuteChain());
 
   Value outChain = opLoweringState.bufferConcat(
       executeChain, loweredOutputsStorage[0].buffer, loweredOperands,
@@ -107,11 +107,16 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
   }
 
   SmallVector<Value> outputBuffers = opLoweringState.splitBorrow(
-      loweringState.getExecuteChain(), inputBuffer, runtimeSizes,
+      loweringState.getCurrentExecuteChain(), inputBuffer, runtimeSizes,
       outBufferSizes, getInput().getType());
+
+  // The split can only be accessed once it's safe to access the inputs. Though
+  // fine to perfom the actual split.
+  Value guardChain =
+      opLoweringState.getGuardChain(loweringState.getCurrentExecuteChain());
+
   // Create the output tensors. Note there's no new chain to wait on.
-  opLoweringState.createOutputTensors(loweringState.getExecuteChain(),
-                                      outputBuffers, outputSpecs);
+  opLoweringState.createOutputTensors(guardChain, outputBuffers, outputSpecs);
   return success();
 }
 
@@ -224,7 +229,7 @@ ExecuteCompiledOp::lower(MGP::MOGraphLoweringState &loweringState) {
     if (chainOperands.size() == 1)
       return loweringState.lookupExecuteLoweredValue(chainOperands.front());
     else
-      return loweringState.getExecuteChain();
+      return loweringState.getCurrentExecuteChain();
   }();
 
   // Emit the kernel call.
@@ -458,12 +463,10 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   auto maybeInChain = getInChain();
   auto maybeOutChain = getOutChain();
 
-  auto chain = [&]() -> Value {
-    if (maybeInChain)
-      return loweringState.lookupExecuteLoweredValue(*maybeInChain);
-    else
-      return opLoweringState.getGuardChain(loweringState.getExecuteChain());
-  }();
+  Value chain = loweringState.getCurrentExecuteChain();
+  if (maybeInChain)
+    chain = loweringState.lookupExecuteLoweredValue(*maybeInChain);
+  chain = opLoweringState.getGuardChain(chain);
 
   // Gather the lowered op operands.
   SmallVector<Value> loweredInputOperands = [&]() {

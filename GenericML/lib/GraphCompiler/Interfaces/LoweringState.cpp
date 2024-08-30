@@ -421,14 +421,12 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
     }();
 
     // We must be dealing with an assert.
-    newOp = builder.create<MGP::AssertOp>(loc, ValueRange{cond},
-                                          opAttr.getAttrs().getValue());
+    MGP::AssertOp assertOp = builder.create<MGP::AssertOp>(
+        loc, ValueRange{cond}, opAttr.getAttrs().getValue());
 
+    newOp = assertOp;
     if (maybeParentAssert)
       execute.parentAssert[newOp] = maybeParentAssert;
-
-    setCurrentExecuteChain(cast<MGP::AssertOp>(newOp).getOutChain());
-
   } else if (auto shapeAttr = dyn_cast<MOSH::ShapeAttr>(attr)) {
     // Lower dimensions recursively.
     SmallVector<Value> dimVals;
@@ -561,8 +559,6 @@ void MOOpLoweringState::createOutputs(
                          outputStorage.buffer, outputStorage.tensorSpec);
     }
   }
-
-  loweringState.setCurrentExecuteChain(inChain);
 }
 
 BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {

@@ -788,23 +788,24 @@ LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
     return failure();
   auto &loweredOutputsStorage = *loweredOutputsStorageOr;
 
+  Value inChain =
+      opLoweringState.getGuardChain(loweringState.getExecuteChain());
   Value outChain;
   if (srcDevice == hostDevice) {
     outChain = opLoweringState.bufferTransferFromHost(
-        loweringState.getExecuteChain(),
+        inChain,
         cast<TypedValue<MGP::DeviceBufferType>>(bufferizedInput.buffer),
         loweredOutputsStorage[0].buffer, transferOp.getResult().getType());
   } else if (dstDevice == hostDevice) {
     outChain = opLoweringState.bufferTransferToHost(
-        loweringState.getExecuteChain(), bufferizedInput.buffer,
+        inChain, bufferizedInput.buffer,
         cast<TypedValue<MGP::DeviceBufferType>>(
             loweredOutputsStorage[0].buffer),
         transferOp.getInput().getType());
   } else if (srcDevice.getLabel() == dstDevice.getLabel()) {
     outChain = opLoweringState.bufferTransferDevice(
-        loweringState.getExecuteChain(), bufferizedInput.buffer,
-        loweredOutputsStorage[0].buffer, transferOp.getInput().getType(),
-        transferOp.getResult().getType());
+        inChain, bufferizedInput.buffer, loweredOutputsStorage[0].buffer,
+        transferOp.getInput().getType(), transferOp.getResult().getType());
   } else {
     return transferOp->emitOpError("mo.transfer from device '")
            << srcDevice << "' to device '" << dstDevice
@@ -1004,14 +1005,13 @@ MOGraphLowering::lowerMutableStore(MO::MutableStoreOp mutableStoreOp) {
 
   auto inChain =
       loweringState.lookupExecuteLoweredValue(mutableStoreOp.getInChain());
+  inChain = opLoweringState.getGuardChain(inChain);
 
   auto loweredChain = opLoweringState.bufferTransferDevice(
       inChain, srcBufferized.buffer, dstBufferized.buffer, srcType, dstType);
 
   loweringState.emplaceExecuteLoweredValue(mutableStoreOp.getResult(),
                                            loweredChain);
-
-  loweringState.setCurrentExecuteChain(loweredChain);
 
   return success();
 }
@@ -1026,6 +1026,7 @@ MOGraphLowering::lowerMutableLoad(MO::MutableLoadOp mutableLoadOp) {
   auto bufferizedInput =
       opLoweringState.getBufferizedInput(mutableLoadOp.getInBuffer());
 
+  inChain = opLoweringState.getGuardChain(inChain);
   auto bufOr =
       opLoweringState.createBuffer(inChain, bufferizedInput.tensorSpec,
                                    mutableLoadOp.getOutTensor().getType());
@@ -1045,8 +1046,6 @@ MOGraphLowering::lowerMutableLoad(MO::MutableLoadOp mutableLoadOp) {
 
   loweringState.emplaceExecuteLoweredValue(mutableLoadOp.getOutChain(),
                                            loweredChain);
-
-  loweringState.setCurrentExecuteChain(loweredChain);
 
   return success();
 }
@@ -1071,8 +1070,8 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
     // Lower the condition.
     MGP::BufferizedTensor bufferizedCond =
         opLoweringState.getBufferizedInput(cond);
-    condBool = opLoweringState.bufferToBool(
-        loweringState.getExecuteChain(), bufferizedCond.buffer, cond.getType());
+    condBool = opLoweringState.bufferToBool(currentChain, bufferizedCond.buffer,
+                                            cond.getType());
   }
 
   SmallVector<Value> operands;
@@ -1189,7 +1188,12 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
              llvm::drop_begin(loweredFreeValues), inputRegion.getArguments())) {
       Value loweredArg =
           outputRegion.addArgument(loweredFreeValue.getType(), arg.getLoc());
-      loweringState.emplaceExecuteLoweredValue(arg, loweredArg);
+      if (isa<MGP::DeviceTensorType>(loweredArg.getType())) {
+        loweringState.emplaceExecuteLoweredBufferValue(arg, loweredArg,
+                                                       loweredChainArg);
+      } else {
+        loweringState.emplaceExecuteLoweredValue(arg, loweredArg);
+      }
     }
 
     // Lower the block, including its terminating mo.yield.
@@ -1224,7 +1228,9 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
     auto origYieldOp =
         cast<MO::YieldOp>(whileOp.getCondRegion().front().getTerminator());
     assert(origYieldOp->getNumOperands() == 1); // condition
-    Type condMoTensorType = origYieldOp.getOperand(0).getType();
+
+    Value origTensor = origYieldOp.getOperand(0);
+    Type condMoTensorType = origTensor.getType();
 
     auto loweredCondOutputOp = cast<MEF::OutputOp>(
         loweredWhileOp.getCondRegion().front().getTerminator());
@@ -1248,9 +1254,17 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
     Value condBuffer =
         opLoweringState.tensorExtract(loweredCondTensor, condMoTensorType)
             .first;
-    Value loweredInputChain = loweredWhileOp.getCondRegion().getArgument(0);
-    Value condBool = opLoweringState.bufferToBool(loweredInputChain, condBuffer,
-                                                  condMoTensorType);
+
+    Value chain = loweredOutputChain;
+    if (Value guardChain =
+            loweringState.getChainGuardingValueOrNull(origTensor)) {
+      chain = opLoweringState.builder
+                  .create<GRT::ChainCreateOp>(whileOp.getLoc(),
+                                              ValueRange{guardChain, chain})
+                  .getResult();
+    }
+    Value condBool =
+        opLoweringState.bufferToBool(chain, condBuffer, condMoTensorType);
     condOutputOpOperands.emplace_back(condBool);
 
     loweredCondOutputOp.getOperandsMutable().clear();
