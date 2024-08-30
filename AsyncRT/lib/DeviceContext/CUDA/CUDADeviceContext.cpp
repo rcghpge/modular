@@ -8,11 +8,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AsyncRT/lib/DeviceContext/CUDA/CUDADeviceContext.h"
+#include "CUDADeviceContext.h"
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
-#include "AsyncRT/lib/DeviceContext/CUDA/CUDADeviceContext.h"
-#include "AsyncRT/lib/DeviceContext/CUDA/CUDADriver.h"
+#include "CUDADriver.h"
 
 #include <iostream>
 #include <string>

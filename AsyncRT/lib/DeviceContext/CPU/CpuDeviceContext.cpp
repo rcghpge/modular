@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AsyncRT/lib/DeviceContext/CPU/CpuDeviceContext.h"
+#include "CpuDeviceContext.h"
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 

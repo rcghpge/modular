@@ -10,8 +10,8 @@
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 
-#include "AsyncRT/lib/DeviceContext/CPU/CpuDeviceContext.h"
-#include "AsyncRT/lib/DeviceContext/CUDA/CUDADeviceContext.h"
+#include "CPU/CpuDeviceContext.h"
+#include "CUDA/CUDADeviceContext.h"
 
 #include <string.h>
 

@@ -12,7 +12,7 @@
 #define ASYNCRT_LIB_DEVICECONTEXT_CUDA_CUDADEVICECONTEXT_H
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
-#include "AsyncRT/lib/DeviceContext/CUDA/CUDADriver.h"
+#include "CUDADriver.h"
 #include "Support/RCRef.h"
 
 #include <string>

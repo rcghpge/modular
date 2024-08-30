@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AsyncRT/lib/DeviceContext/CUDA/CUDADriver.h"
+#include "CUDADriver.h"
 
 #include <dlfcn.h>
 #include <iostream>
