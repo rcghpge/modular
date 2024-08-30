@@ -178,6 +178,7 @@ py_repl(
     name = "python",
     data = [
         "//KGEN:CompilerRT",
+        "//ModularFramework/tools/mof",
         "@llvm-project//compiler-rt:orc_rt",
     ],
     tags = ["manual"],
