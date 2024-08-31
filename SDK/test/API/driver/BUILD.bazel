@@ -22,5 +22,6 @@ lit_tests(
     }),
     tools = [
         "//KGEN/tools/mojo",
+        "//Runtime/tools/is-cuda-available",
     ],
 )
