@@ -329,6 +329,7 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     DeclareOpInterfaceMethods<MOGG_CompilableKernel>,
     MO_HasDeviceInterface,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
+    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclInterface
 ]> {
   let summary = "An abstract function representing a compiled body of code";

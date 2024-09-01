@@ -76,10 +76,13 @@ bool isLiftableTrivialOp(Operation *op) {
 }
 
 /// Returns the chain returned by op, which must be the only op result,
-/// and the op must be safely liftable into the 'init' block. Otherwise
-/// returns null. These ops can be lifted to the 'init' block provided the
-/// chain finds its way into the 'init' block output chain, which in turn
-/// is used by the 'execute' block input chain.
+/// and the op must be safely liftable into the 'init' block. Otherwise, if the
+/// op has multiple results or can't safely be lifted into the 'init' block,
+/// then this returns null.
+///
+/// These ops can be lifted to the 'init' block provided the chain finds its way
+/// into the 'init' block output chain, which in turn is used by the 'execute'
+/// block input chain.
 Value getLiftableChainOp(Operation *op) {
   if (auto createChainOp = dyn_cast<GRT::ChainCreateOp>(op))
     return createChainOp.getResult();

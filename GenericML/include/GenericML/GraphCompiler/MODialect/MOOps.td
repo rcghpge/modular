@@ -3849,7 +3849,7 @@ def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
   let description = [{
     Invokes a shape function with given name and bind its return values to the
     output parameters. Each argument must be a shape-like or integer scalar
-    tensor. The `kgenParams` will be passed along to the shapep function as is.
+    tensor. The `kgenParams` will be passed along to the shape function as is.
 
     Example:
 
