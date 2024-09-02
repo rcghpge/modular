@@ -17,6 +17,9 @@ namespace M::MOGG::Utils {
 constexpr llvm::StringLiteral MOGGTensorForEach =
     "MOGGTensor::Tensor::for_each";
 
+constexpr llvm::StringLiteral DPSTensorForEach =
+    "tensor_utils_internal::managed_tensor_slice::foreach";
+
 constexpr llvm::StringLiteral MOGGElementwiseTarget = "elementwise";
 
 constexpr llvm::StringLiteral MOGGSimdLoadTarget = "simd_load";
