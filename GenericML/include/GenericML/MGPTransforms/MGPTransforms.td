@@ -152,7 +152,7 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
                because it merely adds more caching without saving us any
                computation.
 
-      2. We want to lift ops that modifies the lifted buffers into the init
+      2. We want to lift ops that modify the lifted buffers into the init
          phase (e.g., matmul weights pre-packing). Usually such ops produces a
          chain; in order to preserve control dependency, we must:
           (a). Update the 'init' block to output a chain that accounts for the

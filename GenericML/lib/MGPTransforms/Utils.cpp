@@ -487,8 +487,8 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
 // InitState
 //===----------------------------------------------------------------------===//
 
-InitState::InitState(MLIRContext *context, Block *init)
-    : init(init), builder(context) {
+InitState::InitState(ModelOp model)
+    : init(model.getInitBlock()), builder(model.getContext()), model(model) {
   init->walk([this](ContextCreateOp op) { contextCreateOp = op; });
   ASSERT_STREAM(contextCreateOp,
                 << "model is missing mgp.context.create op in init block");

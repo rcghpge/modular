@@ -19,6 +19,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Value.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace M::MGP {
 
@@ -209,6 +210,14 @@ public:
                                TypedValue<ContextType> context,
                                ElementsAttr value) = 0;
 
+  /// Returns an undefined, external constant with the given name.
+  virtual Value
+  bufferConstantExternal(OpBuilder &builder, Location loc,
+                         TypedValue<MEF::ChainType> inChain,
+                         TypedValue<ContextType> context,
+                         TypedValue<MGP::OpaqueType> weightsRegistry,
+                         StringRef name, uint64_t size, uint64_t align) = 0;
+
   /// Returns the buffer held by tensor.
   virtual Value tensorExtractBuffer(OpBuilder &builder, Location loc,
                                     TypedValue<ContextType> context,
@@ -397,7 +406,14 @@ public:
   Value bufferConstant(OpBuilder &builder, Location loc,
                        TypedValue<MEF::ChainType> inChain,
                        TypedValue<ContextType> context,
-                       ElementsAttr data) override;
+                       ElementsAttr value) override;
+
+  Value bufferConstantExternal(OpBuilder &builder, Location loc,
+                               TypedValue<MEF::ChainType> inChain,
+                               TypedValue<ContextType> context,
+                               TypedValue<MGP::OpaqueType> weightsRegistry,
+                               StringRef name, uint64_t size,
+                               uint64_t align) override;
 
   Value tensorExtractBuffer(OpBuilder &builder, Location loc,
                             TypedValue<ContextType> context,
@@ -553,7 +569,7 @@ struct BufferizedTensor {
   /// TODO(#17379): Avoid committing to a tensor spec, and instead just
   /// capture the index-typed values holding dynamic dimensions, or the
   /// 'shape' (ie a spec with unknown dtype) if the tensor has dynamic rank.
-  /// I think this change is best done when finishing supprot for dynamic
+  /// I think this change is best done when finishing support for dynamic
   /// ranked MO tensors.
   TypedValue<TensorSpecType> tensorSpec;
 

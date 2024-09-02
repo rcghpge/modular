@@ -252,8 +252,8 @@ private:
                         analysis.index->emptySet(),
                         analysis.index->unitSet(analysis.index->distinguished));
 
-    // The extra 'execute' args (ie not the !mef.chain or !mgp.context or
-    // devices) vacuously depend on 'execute' args.
+    // The extra 'execute' args (ie not the !mef.chain, !mgp.context, weights
+    // registry, or devices) vacuously depend on 'execute' args.
     for (Value arg : analysis.index->model.getExecuteInputs())
       analysis.setTrue(domainMap, arg);
 
@@ -866,19 +866,25 @@ class ExecInvariantCodeMotionPass
       op->moveBefore(initOutputOp);
     }
 
+    // Checks if the op that this operand belongs to is in the init block.
+    auto isInInitBlock = [this](OpOperand &operand) -> bool {
+      return operand.getOwner()->getBlock() == initState->init;
+    };
+
     // Replace all uses of the 'execute' block's input chain with the output
     // chain of the 'init' block BEFORE we updated in above.
-    executeState->getRootChain().replaceUsesWithIf(
-        initOriginalChain, [&](OpOperand &operand) {
-          return operand.getOwner()->getBlock() == initState->init;
-        });
+    executeState->getRootChain().replaceUsesWithIf(initOriginalChain,
+                                                   isInInitBlock);
 
     // Similarly, replace all uses of the 'execute' block's input context
     // with the context from the 'init' block.
-    executeState->getContext().replaceUsesWithIf(
-        initState->contextCreateOp, [&](OpOperand &operand) {
-          return operand.getOwner()->getBlock() == initState->init;
-        });
+    executeState->getContext().replaceUsesWithIf(initState->contextCreateOp,
+                                                 isInInitBlock);
+
+    // Also replace all uses of the 'execute' block's weights registry with the
+    // weights registry from the 'init' block.
+    executeState->getWeightsRegistry().replaceUsesWithIf(
+        initState->getWeightsRegistry(), isInInitBlock);
 
     // Replace the caching placeholder chain with the !mef.chain which is
     // ready only when all side effects on all buffers lifted to the 'init'
@@ -901,7 +907,7 @@ class ExecInvariantCodeMotionPass
     assert(!initState && !executeState && !valueIndex && !operandIndex &&
            !operationIndex && !builderContext);
     ModelOp modelOp = getOperation();
-    InitState theInitState(modelOp.getContext(), modelOp.getInitBlock());
+    InitState theInitState(modelOp);
     initState = &theInitState;
     ExecuteState theExecuteState(modelOp.getContext(), modelOp);
     executeState = &theExecuteState;

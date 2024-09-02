@@ -114,6 +114,9 @@ public:
   /// Lowers mo.constant op.
   LogicalResult lowerConstant(MO::ConstantOp constOp);
 
+  /// Lowers mo.constant.external op.
+  LogicalResult lowerConstantExternal(MO::ConstantExternalOp constExternalOp);
+
   /// Lowers mo.constant.scalar op.
   LogicalResult lowerConstantScalar(MO::ConstantScalarOp constOp);
 
@@ -698,6 +701,29 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   opLoweringState.createOutputTensor(constOp.getResult(),
                                      loweringState.getExecuteChain(), buffer,
                                      *tensorSpecOr);
+  return success();
+}
+
+LogicalResult
+MOGraphLowering::lowerConstantExternal(MO::ConstantExternalOp constExternalOp) {
+  MGP::MOOpLoweringState opLoweringState(loweringState, constExternalOp);
+
+  // Use the tensor spec to get the external constant's size and result type.
+  auto tensorSpecOr =
+      opLoweringState.createTensorSpec(constExternalOp.getType());
+  if (failed(tensorSpecOr))
+    return failure();
+  TypedValue<MGP::TensorSpecType> &tensorSpec = *tensorSpecOr;
+
+  // Create the mgp.buffer.constant.external op.
+  Value buffer = opLoweringState.bufferConstantExternal(
+      loweringState.getExecuteChain(), constExternalOp.getName(),
+      *tensorSpec.getType().getSizeInBytes(), constExternalOp.getAlign(),
+      constExternalOp.getResult().getType());
+  opLoweringState.createOutputTensor(constExternalOp.getResult(),
+                                     loweringState.getExecuteChain(), buffer,
+                                     *tensorSpecOr);
+
   return success();
 }
 
@@ -1335,6 +1361,12 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
     if (auto constOp = dyn_cast<MO::ConstantOp>(op)) {
       if (failed(lowerConstant(constOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto constExternalOp = dyn_cast<MO::ConstantExternalOp>(op)) {
+      if (failed(lowerConstantExternal(constExternalOp)))
         return failure();
       continue;
     }

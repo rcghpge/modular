@@ -450,6 +450,37 @@ def MO_RebindOp : MO_ControlOp<"rebind", [
 }
 
 //===----------------------------------------------------------------------===//
+// ConstantExternalOp
+//===----------------------------------------------------------------------===//
+
+def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
+    Pure,
+]> {
+  let summary = "External constant operation";
+  let description = [{
+    Represents an undefined reference to an "external" constant.
+    This constant's backing data is undefined at graph compile time, but all
+    other attributes of the tensor are statically known.
+    In a given mo.graph, mo.constant.external ops should be uniquely named.
+
+    Example:
+
+    ```mlir
+    %weight = mo.constant.external {
+      align = 16 : ui64, device = #M.device_ref<"cuda", 0>, name = "foo"
+    } : !mo.tensor<[4096, 4096], bf16>
+  }];
+
+  let arguments = (ins
+    StrAttr:$name,
+    UI64Attr:$align
+  );
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = "attr-dict `:` qualified(type($result))";
+}
+
+//===----------------------------------------------------------------------===//
 // ConstantOp
 //===----------------------------------------------------------------------===//
 

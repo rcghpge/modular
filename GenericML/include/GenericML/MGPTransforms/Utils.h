@@ -154,7 +154,7 @@ LogicalResult alsoWaitForChains(OpBuilder &builder,
 
 /// Helper for modifying the 'init' block.
 struct InitState {
-  InitState(MLIRContext *context, Block *init);
+  InitState(ModelOp model);
 
   /// 'Allocates' a slot in the context.
   size_t allocSlot();
@@ -168,9 +168,15 @@ struct InitState {
   /// Returns the 'init' block's context.
   TypedValue<ContextType> getContext();
 
+  /// Returns the weights registry argument to the 'init' block.
+  TypedValue<MGP::OpaqueType> getWeightsRegistry() {
+    return cast<TypedValue<MGP::OpaqueType>>(model.getInitWeightsRegistry());
+  }
+
   Block *init;
   OpBuilder builder;
   ContextCreateOp contextCreateOp;
+  ModelOp model;
 };
 
 /// Helper for modifying the 'execute' block.
@@ -184,6 +190,11 @@ struct ExecuteState {
 
   /// Returns MGP context argument to the 'execute' block.
   TypedValue<ContextType> getContext() const;
+
+  /// Returns the weights registry argument to the 'execute' block.
+  TypedValue<MGP::OpaqueType> getWeightsRegistry() {
+    return cast<TypedValue<MGP::OpaqueType>>(model.getExecuteWeightsRegistry());
+  }
 
   /// Returns the additional arguments to 'execute' block
   iterator_range<mlir::BlockArgument *> getExtraArgs();

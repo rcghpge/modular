@@ -244,6 +244,12 @@ public:
   /// return op to create and return the overall MGP context.
   MGP::ContextCreateOp &getInitMgpContext() { return init.mgpContext; }
 
+  /// Return weights registry argument to the init block.
+  TypedValue<MGP::OpaqueType> getInitWeightsRegistry() {
+    return cast<TypedValue<MGP::OpaqueType>>(
+        common.modelOp.getInitWeightsRegistry());
+  }
+
   /// Return the builder for appending operations to the end of the invokable.
   OpBuilder &getExecuteOpBuilder() { return execute.builder; }
 
@@ -255,6 +261,12 @@ public:
   /// Return the MGP context appropriate for the 'execute' block.
   TypedValue<MGP::ContextType> getExecuteMgpContext() {
     return execute.mgpContext;
+  }
+
+  /// Return the weights registry appropriate for the 'execute' block.
+  TypedValue<MGP::OpaqueType> getExecuteWeightsRegistry() {
+    return cast<TypedValue<MGP::OpaqueType>>(
+        common.modelOp.getExecuteWeightsRegistry());
   }
 
   /// Sets the 'root' chain for the 'execute' block to chain.
@@ -471,6 +483,7 @@ struct MOOpLoweringState {
   mlir::Operation *opBeingLowered;
   mlir::Location loc;
   TypedValue<MGP::ContextType> context;
+  TypedValue<MGP::OpaqueType> weightsRegistry;
   uint64_t minimumCpuAlignment;
 
   MOOpLoweringState(MGP::MOGraphLoweringState &loweringState,
@@ -478,6 +491,7 @@ struct MOOpLoweringState {
       : loweringState(loweringState),
         builder(loweringState.getExecuteOpBuilder()), opBeingLowered(op),
         loc(op->getLoc()), context(loweringState.getExecuteMgpContext()),
+        weightsRegistry(loweringState.getExecuteWeightsRegistry()),
         minimumCpuAlignment(loweringState.getMinimumCpuAlignment()) {}
 
   //===-----------------------------------------------------------------===//
@@ -609,6 +623,14 @@ struct MOOpLoweringState {
                        Type moTensorType) {
     return getStorageBufferBuilder(moTensorType)
         ->bufferConstant(builder, loc, inChain, context, value);
+  }
+
+  Value bufferConstantExternal(TypedValue<MEF::ChainType> inChain,
+                               StringRef name, uint64_t size, uint64_t align,
+                               Type moTensorType) {
+    return getStorageBufferBuilder(moTensorType)
+        ->bufferConstantExternal(builder, loc, inChain, context,
+                                 weightsRegistry, name, size, align);
   }
 
   Value debugTensorPrint(Value inChain, Value buffer,

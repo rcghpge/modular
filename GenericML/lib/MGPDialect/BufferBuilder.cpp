@@ -125,6 +125,23 @@ Value MGPBufferBuilder::bufferConstant(OpBuilder &builder, Location loc,
                                           /*eIsTrivial=*/isOnHost);
 }
 
+Value MGPBufferBuilder::bufferConstantExternal(
+    OpBuilder &builder, Location loc, TypedValue<MEF::ChainType> inChain,
+    TypedValue<ContextType> context,
+    TypedValue<MGP::OpaqueType> weightsRegistry, StringRef name, uint64_t size,
+    uint64_t align) {
+  return builder.create<BufferConstantExternalOp>(
+      loc,
+      /*inChain=*/inChain,
+      /*theContext=*/context,
+      /*weightsRegistry=*/weightsRegistry,
+      /*aRuntimeSlot=*/runtimeSlot,
+      /*bName=*/name,
+      /*cSize=*/size,
+      /*dAlign=*/align,
+      /*eDevice=*/device);
+}
+
 Value MGPBufferBuilder::tensorExtractBuffer(OpBuilder &builder, Location loc,
                                             TypedValue<ContextType> context,
                                             Value tensor) {
