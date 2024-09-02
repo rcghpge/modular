@@ -28,6 +28,8 @@ constexpr llvm::StringLiteral MOGGSimdStoreTarget = "simd_store";
 
 constexpr llvm::StringLiteral LambdasHaveFusion = "lambdas_have_fusion";
 
+constexpr llvm::StringLiteral DPSTensorCopy = "MOGGKernelAPI::view_copy_impl";
+
 } // namespace M::MOGG::Utils
 
 #endif // GENERICML_GRAPH_COMPILER_MOGGSUPPORT_MOJOTARGETFUNCTIONS_H

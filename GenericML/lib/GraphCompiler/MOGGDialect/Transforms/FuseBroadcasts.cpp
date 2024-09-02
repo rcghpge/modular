@@ -13,6 +13,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
 #include "Runtime/Tensor/Tensor.h"
 #include "Support/AssertStream.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
@@ -306,15 +307,32 @@ struct FuseBroadcastsPass
         }
       });
 
-      // We find the pop.stack_allocation that relates to the output of the
-      // `producerKernel`.
+      bool isMOGGTensor =
+          isa<KGEN::PointerType>(producerKernelToKGEN.getResult().getType());
+
+      // For MOGGTensor, We find the pop.stack_allocation that relates to the
+      // output of the `producerKernel`.
+      // For DPS, we find the call to the view_copy function.
       Value stackAlloc;
-      leaf.walk([&](MOGG::TensorCopyOp tensorCopy) {
-        if (kgenOut.contains(tensorCopy.getDst())) {
-          stackAlloc = tensorCopy.getSrc();
-          toDelete.insert(tensorCopy);
-        }
-      });
+      if (isMOGGTensor) {
+        leaf.walk([&](MOGG::TensorCopyOp tensorCopy) {
+          if (kgenOut.contains(tensorCopy.getDst())) {
+            stackAlloc = tensorCopy.getSrc();
+            toDelete.insert(tensorCopy);
+          }
+        });
+      } else {
+        leaf.walk([&](KGEN::CallOp callOp) {
+          StringRef funcName =
+              cast<mlir::FlatSymbolRefAttr>(callOp.getCalleeSymbol())
+                  .getValue();
+          if (funcName.starts_with(Utils::DPSTensorCopy)) {
+            stackAlloc = callOp->getOperand(1);
+            toDelete.insert(callOp);
+          }
+        });
+      }
+      ASSERT_STREAM(stackAlloc != nullptr, "stack view not found !");
 
       target.replaceAllUsesWith(stackAlloc);
       leaf.removeOperandAtIndex(idx);
@@ -340,26 +358,28 @@ struct FuseBroadcastsPass
       // information to be statically unknown. It is achieved by replacing old
       // static strides which can be known to the new, unknown own. This assumes
       // LoweringHelper.cpp lowered unknown strides for view op outputs.
-      auto newStrides = dyn_cast<KGEN::ParamDeclRefAttr>(
+      // TODO: We only need to reparameterize the strides for MOGGTensor.
+      // Get rid of this logic once it's removed.
+      auto newStrides = dyn_cast_or_null<KGEN::ParamDeclRefAttr>(
           producerKernelToKGEN.getStridesAttr());
-      ASSERT_STREAM(
-          newStrides,
-          << "Expected strides to be a parameter declaration reference. Maybe "
-             "the view kernel was not explicitly parametrized on strides?");
       DenseSet<KGEN::ParamDeclRefAttr> oldStrideParams;
       for (auto value : kgenOut) {
-        auto oldStrides = dyn_cast<KGEN::ParamDeclRefAttr>(
+        auto oldStrides = dyn_cast_or_null<KGEN::ParamDeclRefAttr>(
             value.getDefiningOp<ToKGENOp>().getStridesAttr());
-        ASSERT_STREAM(
-            oldStrides,
-            << "All kernels should have explicitly parametrized strides");
-        oldStrideParams.insert(oldStrides);
+        if (oldStrides)
+          oldStrideParams.insert(oldStrides);
       }
       mlir::AttrTypeReplacer walker;
       walker.addReplacement([&](KGEN::ParamDeclRefAttr attr)
                                 -> std::optional<KGEN::ParamDeclRefAttr> {
-        if (oldStrideParams.contains(attr))
+        if (oldStrideParams.contains(attr)) {
+          ASSERT_STREAM(
+              newStrides,
+              << "Expected strides to be a parameter declaration reference. "
+                 "Maybe "
+                 "the view kernel was not explicitly parametrized on strides?");
           return newStrides;
+        }
         return std::nullopt;
       });
       walker.recursivelyReplaceElementsIn(leaf, /*replaceAttrs=*/true,

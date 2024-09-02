@@ -1,0 +1,18 @@
+// RUN: mo-opt %s --mo-to-mogg="kernel-library-paths=%kernel_api_lib" | FileCheck %s
+
+// Check mo-to-mogg correctly lowers a view KernelAPI
+
+// CHECK: mogg.kernel
+// CHECK: %[[OUT:.*]] = mogg.output_placeholders
+// CHECK: %[[KOUT:.*]] = "mogg.to_kgen"(%[[OUT]])
+// COM: Build shape
+// CHECK: %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[6, 3, 8]>
+// CHECK: %[[KSHAPE:.*]] = "mogg.to_kgen"(%[[SHAPE]]) : (!mogg.shape<[6, 3, 8]>) -> !pop.array<3, index>
+// COM: Call to the mojo copy implementation
+// CHECK: kgen.call @"MOGGKernelAPI::view_copy_impl{{.+}}"<{{.+}}>(%[[KOUT]], %{{.+}})
+// CHECK-NEXT: mogg.output %[[OUT]]
+
+mo.graph @broadcast_to(%arg0: !mo.tensor<[1, 8], f32>) -> !mo.tensor<[6, 3, 8], f32> {
+  %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[1, 8], f32> -> !mo.tensor<[6, 3, 8], f32>
+  mo.output %0 : !mo.tensor<[6, 3, 8], f32>
+}
