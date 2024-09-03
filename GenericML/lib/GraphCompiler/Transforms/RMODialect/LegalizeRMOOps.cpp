@@ -859,7 +859,7 @@ struct LegalizeRMOOps
         LegalizeRMOMOAnalogue<RMO::MOReluOp, MO::ReluOp>,
         LegalizeRMOMOAnalogue<RMO::MORoundOp, MO::RoundOp>,
         LegalizeRMOMOAnalogue<RMO::MORoundEvenOp, MO::RoundEvenOp>,
-        LegalizeRMOMOAnalogue<RMO::MORsqrtOp, MO::RsqrtOp>,
+        LegalizeRMOMOAnalogue<RMO::MOIsqrtOp, MO::IsqrtOp>,
         LegalizeRMOMOAnalogue<RMO::MOSinOp, MO::SinOp>,
         LegalizeRMOMOAnalogue<RMO::MOSqrtOp, MO::SqrtOp>,
         LegalizeRMOMOAnalogue<RMO::MOTanhOp, MO::TanhOp>,

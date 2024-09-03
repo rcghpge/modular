@@ -101,17 +101,17 @@ mo.graph @leftmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[
 
 mo.graph @multipleDiamondPattern(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
   %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
-  %1 = mo.rsqrt(%0) : !mo.tensor<[4, 3], f32>
+  %1 = mo.isqrt(%0) : !mo.tensor<[4, 3], f32>
   %2 = mo.tanh(%0) : !mo.tensor<[4, 3], f32>
   %3 = mo.sub(%1, %2) : !mo.tensor<[4, 3], f32>
   %4 = mo.sqrt(%3) : !mo.tensor<[4, 3], f32>
-  %5 = mo.rsqrt(%3) : !mo.tensor<[4, 3], f32>
+  %5 = mo.isqrt(%3) : !mo.tensor<[4, 3], f32>
   %6 = mo.add(%4, %5) : !mo.tensor<[4, 3], f32>
   %7 = mo.sqrt(%6) : !mo.tensor<[4, 3], f32>
-  %8 = mo.rsqrt(%6) : !mo.tensor<[4, 3], f32>
+  %8 = mo.isqrt(%6) : !mo.tensor<[4, 3], f32>
   %9 = mo.mul(%7, %8) : !mo.tensor<[4, 3], f32>
   %10 = mo.sqrt(%9) : !mo.tensor<[4, 3], f32>
-  %11 = mo.rsqrt(%9) : !mo.tensor<[4, 3], f32>
+  %11 = mo.isqrt(%9) : !mo.tensor<[4, 3], f32>
   %12 = mo.mul(%10, %11) : !mo.tensor<[4, 3], f32>
   mo.output %12 : !mo.tensor<[4, 3], f32>
 }
@@ -121,18 +121,18 @@ mo.graph @multipleDiamondPattern(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<
 // CHECK: mogg.lambda @[[ELEMWISE_COMPUTE_LAMBDA:.*]] = (%[[INDICES:.*]]: !mogg.indices){
 // CHECK-NEXT:    %[[IN:.*]] = mogg.invoke @[[INPUT_LAMBDA:.*]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
 // CHECK-NEXT:    %[[SQRT:.*]] = mogg.call "mo.sqrt"(%[[IN]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[RSQRT:.*]] = mogg.call "mo.rsqrt"(%[[SQRT]]) : !mogg.simd<f32> -> !mogg.simd<f32>
+// CHECK-NEXT:    %[[ISQRT:.*]] = mogg.call "mo.isqrt"(%[[SQRT]]) : !mogg.simd<f32> -> !mogg.simd<f32>
 // CHECK-NEXT:    %[[TANH:.*]] = mogg.call "mo.tanh"(%[[SQRT]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[SUB:.*]] = mogg.call "mo.sub"(%[[RSQRT]], %[[TANH]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
+// CHECK-NEXT:    %[[SUB:.*]] = mogg.call "mo.sub"(%[[ISQRT]], %[[TANH]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
 // CHECK-NEXT:    %[[SQRT2:.*]] = mogg.call "mo.sqrt"(%[[SUB]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[RSQRT2:.*]] = mogg.call "mo.rsqrt"(%[[SUB]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[ADD:.*]] = mogg.call "mo.add"(%[[SQRT2]], %[[RSQRT2]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
+// CHECK-NEXT:    %[[ISQRT2:.*]] = mogg.call "mo.isqrt"(%[[SUB]]) : !mogg.simd<f32> -> !mogg.simd<f32>
+// CHECK-NEXT:    %[[ADD:.*]] = mogg.call "mo.add"(%[[SQRT2]], %[[ISQRT2]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
 // CHECK-NEXT:    %[[SQRT3:.*]] = mogg.call "mo.sqrt"(%[[ADD]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[RSQRT3:.*]] = mogg.call "mo.rsqrt"(%[[ADD]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[MUL:.*]] = mogg.call "mo.mul"(%[[SQRT3]], %[[RSQRT3]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
+// CHECK-NEXT:    %[[ISQRT3:.*]] = mogg.call "mo.isqrt"(%[[ADD]]) : !mogg.simd<f32> -> !mogg.simd<f32>
+// CHECK-NEXT:    %[[MUL:.*]] = mogg.call "mo.mul"(%[[SQRT3]], %[[ISQRT3]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
 // CHECK-NEXT:    %[[SQRT4:.*]] = mogg.call "mo.sqrt"(%[[MUL]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[RSQRT4:.*]] = mogg.call "mo.rsqrt"(%[[MUL]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[MUL:.*]] = mogg.call "mo.mul"(%[[SQRT4]], %[[RSQRT4]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
+// CHECK-NEXT:    %[[ISQRT4:.*]] = mogg.call "mo.isqrt"(%[[MUL]]) : !mogg.simd<f32> -> !mogg.simd<f32>
+// CHECK-NEXT:    %[[MUL:.*]] = mogg.call "mo.mul"(%[[SQRT4]], %[[ISQRT4]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
 // CHECK-NEXT:    mogg.invoke @[[OUTPUT_LAMBDA:.*]](%[[INDICES]], %[[MUL]]) : !mogg.indices, !mogg.simd<f32>
 // CHECK-NEXT:    mogg.output
 

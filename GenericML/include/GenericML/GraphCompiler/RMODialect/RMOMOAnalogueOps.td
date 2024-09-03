@@ -363,7 +363,7 @@ def RMO_MORoundEvenOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"roundeven"
   }];
 }
 
-def RMO_MORsqrtOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"rsqrt"> {
+def RMO_MOIsqrtOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"isqrt"> {
   let summary = "Inverse square root operation";
   let description = [{
     Returns `1/sqrt(x)`, where `x` is the input tensor.
@@ -372,7 +372,7 @@ def RMO_MORsqrtOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"rsqrt"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.mo.rsqrt(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.isqrt(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }

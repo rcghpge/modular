@@ -194,13 +194,13 @@ mo.graph @roundeven_static_params(%arg0: !mo.tensor<[20, 30], f32>) -> !mo.tenso
 
 // -----
 
-mo.graph @rsqrt_static_mixed(%arg0: !mo.tensor<[20, 30], f32>) -> !mo.tensor<[?, 10], f32> {
-  %1 = rmo.mo.rsqrt(%arg0) : (!mo.tensor<[20, 30], f32>) -> !mo.tensor<[?, 10], f32>
+mo.graph @isqrt_static_mixed(%arg0: !mo.tensor<[20, 30], f32>) -> !mo.tensor<[?, 10], f32> {
+  %1 = rmo.mo.isqrt(%arg0) : (!mo.tensor<[20, 30], f32>) -> !mo.tensor<[?, 10], f32>
   mo.output %1 : !mo.tensor<[?, 10], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @rsqrt_static_mixed<() -> [[D1:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[20, 30], f32>) -> !mo.tensor<[[[D1]], 10], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rsqrt([[VARG0]]) : !mo.tensor<[20, 30], f32>
+// CHECK-SAME: @isqrt_static_mixed<() -> [[D1:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[20, 30], f32>) -> !mo.tensor<[[[D1]], 10], f32> {
+// CHECK-NEXT: [[V0:[^ ]*]] = mo.isqrt([[VARG0]]) : !mo.tensor<[20, 30], f32>
 // CHECK-NEXT: [[V1:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[D2:[^ ]*]]>([[V0]]) {{.*}} : (!mo.tensor<[20, 30], f32>) -> !mo.tensor<[[[D2]], 10], f32>
 // CHECK-NEXT: mo.output<[[D2]]> [[V1]] : !mo.tensor<[[[D2]], 10], f32>
 // CHECK-NEXT: }

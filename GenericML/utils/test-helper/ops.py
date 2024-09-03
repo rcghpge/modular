@@ -162,7 +162,7 @@ class NumpyImpl(CommonImpls):
     def logical_xor(self, x, y):
         return np.logical_xor(x, y)
 
-    def rsqrt(self, x):
+    def isqrt(self, x):
         return 1.0 / np.sqrt(x)
 
 
@@ -254,5 +254,5 @@ class TFImpl(CommonImpls):
     def logical_xor(self, x, y):
         return tf.math.logical_xor(x, y)
 
-    def rsqrt(self, x):
+    def isqrt(self, x):
         return tf.math.rsqrt(x)

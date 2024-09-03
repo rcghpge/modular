@@ -3,7 +3,7 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-from math import rsqrt, ceil, log2
+from math import isqrt, ceil, log2
 
 from max.tensor import Tensor, TensorShape
 from max.graph import ops, Dim, Symbol, TensorType, _OpaqueType as OpaqueType
