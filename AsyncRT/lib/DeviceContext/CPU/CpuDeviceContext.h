@@ -12,6 +12,7 @@
 #define ASYNCRT_LIB_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
 
 #include <stddef.h>
@@ -55,25 +56,28 @@ public:
   ~CpuDeviceContext() override;
 
   // Host memory allocation.
-  void *malloc_host(size_t size) const override;
-  void free_host(void *ptr) const override;
+  ErrorOr<void *> malloc_host(size_t size) const override;
+  ErrorOrSuccess free_host(void *ptr) const override;
 
   // DeviceBuffer allocation.
-  DeviceBufferRef createBuffer(size_t len, size_t elem_size) const override;
+  ErrorOr<DeviceBufferRef> createBuffer(size_t len,
+                                        size_t elem_size) const override;
 
   // DeviceBuffer copies.
-  void enqueueCopyToDevice(const DeviceBuffer &dst,
-                           const void *src) const override;
-  void enqueueCopyFromDevice(void *dst, const DeviceBuffer &src) const override;
-  void enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
-                                 const DeviceBuffer &src) const override;
+  ErrorOrSuccess enqueueCopyToDevice(const DeviceBuffer &dst,
+                                     const void *src) const override;
+  ErrorOrSuccess enqueueCopyFromDevice(void *dst,
+                                       const DeviceBuffer &src) const override;
+  ErrorOrSuccess
+  enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
+                            const DeviceBuffer &src) const override;
 
   // Synchronize asynchronous operations.
-  void synchronize() const override;
+  ErrorOrSuccess synchronize() const override;
 
   static const CpuDeviceContext &cast(const DeviceContext &ctx);
 
-  static CpuDeviceContextRef create();
+  static ErrorOr<CpuDeviceContextRef> create();
 };
 
 } // namespace M::AsyncRT

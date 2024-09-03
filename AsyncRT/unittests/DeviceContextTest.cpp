@@ -11,18 +11,24 @@
 #include <cstring>
 
 using namespace M::AsyncRT;
+using M::ErrorOr;
+using M::ErrorOrSuccess;
 
 namespace {
 
 TEST(DeviceContextTest, Smoke) {
-  DeviceContextRef ctx = DeviceContext::create("cpu");
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu");
+  EXPECT_FALSE(err_ctx) << err_ctx.getError() << "\n";
+  DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
 
   EXPECT_EQ(ctx->device().name(), "cpu");
 }
 
 TEST(DeviceContextTest, DeviceBuffers) {
-  DeviceContextRef ctx = DeviceContext::create("cpu");
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu");
+  EXPECT_FALSE(err_ctx) << err_ctx.getError() << "\n";
+  DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
 
   char check_data[] = {
@@ -47,28 +53,43 @@ TEST(DeviceContextTest, DeviceBuffers) {
   };
 
   const size_t alloc_len = 256;
-  void *a_ptr = ctx->malloc_host(alloc_len);
+
+  ErrorOr<void *> err_ptr = ctx->malloc_host(alloc_len);
+  EXPECT_FALSE(err_ptr) << err_ptr.getError() << "\n";
+  void *a_ptr = err_ptr.get();
   EXPECT_NE(a_ptr, nullptr);
-  DeviceBufferRef b_buf = ctx->createBuffer(256, 1);
+
+  ErrorOr<DeviceBufferRef> err_ref = ctx->createBuffer(256, 1);
+  EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
+  DeviceBufferRef b_buf = std::move(err_ref.get());
   EXPECT_TRUE(b_buf);
-  DeviceBufferRef c_buf = ctx->createBuffer(16, 16);
+
+  err_ref = ctx->createBuffer(16, 16);
+  EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
+  DeviceBufferRef c_buf = std::move(err_ref.get());
   EXPECT_TRUE(c_buf);
+
   void *d_ptr = malloc(256);
   EXPECT_NE(d_ptr, nullptr);
 
   // Copy between different buffers.
   memcpy(a_ptr, check_data, 256);
-  ctx->enqueueCopyToDevice(*b_buf, a_ptr);
-  ctx->enqueueCopyDeviceToDevice(*c_buf, *b_buf);
-  ctx->enqueueCopyFromDevice(d_ptr, *c_buf);
+  ErrorOrSuccess err = ctx->enqueueCopyToDevice(*b_buf, a_ptr);
+  EXPECT_FALSE(err) << err.getError() << "\n";
+  err = ctx->enqueueCopyDeviceToDevice(*c_buf, *b_buf);
+  EXPECT_FALSE(err) << err.getError() << "\n";
+  err = ctx->enqueueCopyFromDevice(d_ptr, *c_buf);
+  EXPECT_FALSE(err) << err.getError() << "\n";
 
   // Ensure that all copy operations have finished.
-  ctx->synchronize();
+  err = ctx->synchronize();
+  EXPECT_FALSE(err) << err.getError() << "\n";
 
   EXPECT_EQ(memcmp(d_ptr, check_data, 256), 0);
 
   free(d_ptr);
-  ctx->free_host(a_ptr);
+  err = ctx->free_host(a_ptr);
+  EXPECT_FALSE(err) << err.getError() << "\n";
 }
 
 } // namespace

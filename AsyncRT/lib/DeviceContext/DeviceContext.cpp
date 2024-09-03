@@ -47,7 +47,7 @@ DeviceContext::~DeviceContext() {}
 
 const Device &DeviceContext::device() const { return *device_; }
 
-DeviceContextRef DeviceContext::create(const char *kind) {
+ErrorOr<DeviceContextRef> DeviceContext::create(const char *kind) {
   // TODO(iposva): Implement dynamic registration mechanism.
   if (strcmp(kind, "cuda") == 0) {
     return CUDADeviceContext::create();

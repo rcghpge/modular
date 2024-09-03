@@ -11,6 +11,7 @@
 #ifndef ASYNCRT_DEVICECONTEXT_DEVICECONTEXT_H
 #define ASYNCRT_DEVICECONTEXT_DEVICECONTEXT_H
 
+#include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
 
@@ -59,24 +60,26 @@ public:
   const Device &device() const;
 
   // Host memory allocation.
-  virtual void *malloc_host(size_t size) const = 0;
-  virtual void free_host(void *ptr) const = 0;
+  virtual ErrorOr<void *> malloc_host(size_t size) const = 0;
+  virtual ErrorOrSuccess free_host(void *ptr) const = 0;
 
   // DeviceBuffer allocation.
-  virtual DeviceBufferRef createBuffer(size_t len, size_t elem_size) const = 0;
+  virtual ErrorOr<DeviceBufferRef> createBuffer(size_t len,
+                                                size_t elem_size) const = 0;
 
   // DeviceBuffer copies.
-  virtual void enqueueCopyToDevice(const DeviceBuffer &dst,
-                                   const void *src) const = 0;
-  virtual void enqueueCopyFromDevice(void *dst,
-                                     const DeviceBuffer &src) const = 0;
-  virtual void enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
-                                         const DeviceBuffer &src) const = 0;
+  virtual ErrorOrSuccess enqueueCopyToDevice(const DeviceBuffer &dst,
+                                             const void *src) const = 0;
+  virtual ErrorOrSuccess
+  enqueueCopyFromDevice(void *dst, const DeviceBuffer &src) const = 0;
+  virtual ErrorOrSuccess
+  enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
+                            const DeviceBuffer &src) const = 0;
 
   // Synchronize asynchronous operations.
-  virtual void synchronize() const = 0;
+  virtual ErrorOrSuccess synchronize() const = 0;
 
-  static DeviceContextRef create(const char *kind);
+  static ErrorOr<DeviceContextRef> create(const char *kind);
 
 protected:
   DeviceContext(const Device &device);
