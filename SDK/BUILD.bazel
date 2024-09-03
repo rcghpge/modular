@@ -185,6 +185,7 @@ py_repl(
     deps = [
         "//SDK/lib/API/python:max_engine",
         "//SDK/lib/API/python:max_graph",
+        "//SDK/lib/API/python:max_serve",
         requirement("hypothesis"),
         requirement("notebook"),
         requirement("pytest"),

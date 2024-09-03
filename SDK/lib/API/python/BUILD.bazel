@@ -63,6 +63,16 @@ py_library(
     ],
 )
 
+py_library(
+    name = "max_serve",
+    srcs = ["//SDK/lib/API/python/max/serve"],
+    imports = ["."],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//SDK/lib/API/python/max/serve",
+    ],
+)
+
 py_repl(
     name = "repl",
     data = [
@@ -73,5 +83,6 @@ py_repl(
     deps = [
         ":max_engine",
         ":max_graph",
+        ":max_serve",
     ],
 )
