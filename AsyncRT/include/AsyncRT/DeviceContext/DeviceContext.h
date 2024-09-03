@@ -38,13 +38,13 @@ class DeviceBuffer : public ReferenceCounted<DeviceBuffer> {
 public:
   virtual ~DeviceBuffer();
 
-  const DeviceContextRef &context() const;
+  const DeviceContext &context() const;
 
   size_t len() const;
   size_t elem_size() const;
 
 protected:
-  DeviceBuffer(DeviceContextRef context, size_t len, size_t elem_size);
+  DeviceBuffer(const DeviceContext &context, size_t len, size_t elem_size);
 
 private:
   DeviceContextRef context_;
@@ -56,7 +56,7 @@ class DeviceContext : public ReferenceCounted<DeviceContext> {
 public:
   virtual ~DeviceContext();
 
-  const Device *device() const;
+  const Device &device() const;
 
   // Host memory allocation.
   virtual void *malloc_host(size_t size) const = 0;
@@ -79,7 +79,7 @@ public:
   static DeviceContextRef create(const char *kind);
 
 protected:
-  DeviceContext(DeviceRef device);
+  DeviceContext(const Device &device);
 
 private:
   DeviceRef device_;

@@ -26,52 +26,55 @@ public:
     SUCCESS = 0,
   };
 
-  Result Init(unsigned int flags) { return cuInit_(flags); }
-
-  Result CtxCreate(CUcontext *pctx, unsigned int flags, CUdevice dev) {
+  Result CtxCreate(CUcontext *pctx, unsigned int flags, CUdevice dev) const {
     return cuCtxCreate_v2_(pctx, flags, dev);
   }
-  Result CtxDestroy(CUcontext ctx) { return cuCtxDestroy_(ctx); }
+  Result CtxDestroy(CUcontext ctx) const { return cuCtxDestroy_(ctx); }
 
-  Result StreamCreate(CUstream *phStream, unsigned int flags) {
+  Result StreamCreate(CUstream *phStream, unsigned int flags) const {
     return cuStreamCreate_(phStream, flags);
   }
-  Result StreamDestroy(CUstream hStream) { return cuStreamDestroy_(hStream); }
-  Result StreamSynchronize(CUstream hStream) {
+  Result StreamDestroy(CUstream hStream) const {
+    return cuStreamDestroy_(hStream);
+  }
+  Result StreamSynchronize(CUstream hStream) const {
     return cuStreamSynchronize_(hStream);
   }
 
-  Result MemAllocHost(void **pp, size_t bytesize) {
+  Result MemAllocHost(void **pp, size_t bytesize) const {
     return cuMemAllocHost_v2_(pp, bytesize);
   }
-  Result MemFreeHost(void *p) { return cuMemFreeHost_(p); }
+  Result MemFreeHost(void *p) const { return cuMemFreeHost_(p); }
 
-  Result MemAllocAsync(CUdeviceptr *pdptr, size_t bytesize, CUstream hStream) {
+  Result MemAllocAsync(CUdeviceptr *pdptr, size_t bytesize,
+                       CUstream hStream) const {
     return cuMemAllocAsync_(pdptr, bytesize, hStream);
   }
-  Result MemFreeAsync(CUdeviceptr dptr, CUstream hStream) {
+  Result MemFreeAsync(CUdeviceptr dptr, CUstream hStream) const {
     return cuMemFreeAsync_(dptr, hStream);
   }
 
   Result MemcpyHtoDAsync(CUdeviceptr dstDevice, const void *srcHost,
-                         size_t bytesize, CUstream hStream) {
+                         size_t bytesize, CUstream hStream) const {
     return cuMemcpyHtoDAsync_v2_(dstDevice, srcHost, bytesize, hStream);
   }
   Result MemcpyDtoHAsync(void *dstHost, CUdeviceptr srcDevice, size_t bytesize,
-                         CUstream hStream) {
+                         CUstream hStream) const {
     return cuMemcpyDtoHAsync_v2_(dstHost, srcDevice, bytesize, hStream);
   }
   Result MemcpyDtoDAsync(CUdeviceptr dstDevice, CUdeviceptr srcDevice,
-                         size_t bytesize, CUstream hStream) {
+                         size_t bytesize, CUstream hStream) const {
     return cuMemcpyDtoDAsync_v2_(dstDevice, srcDevice, bytesize, hStream);
   }
 
-  static CUDADriver *get();
+  static const CUDADriver *get();
 
 private:
   // Shared library name for the CUDA driver.
   static const char lib_name[];
 
+  // Driver is only initialized from internal code.
+  Result Init(unsigned int flags) const { return cuInit_(flags); }
   using tcuInit = Result(unsigned int);
   tcuInit *cuInit_;
 
@@ -115,7 +118,7 @@ private:
 
   CUDADriver() = default;
 
-  static CUDADriver *allocAndInitDriver();
+  static const CUDADriver *allocAndInitDriver();
 };
 
 } // namespace M::AsyncRT

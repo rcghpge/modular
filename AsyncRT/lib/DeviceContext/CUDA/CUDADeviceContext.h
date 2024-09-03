@@ -29,24 +29,24 @@ using CUDADeviceContextRef = RCRef<const CUDADeviceContext>;
 
 class CUDADevice : public Device {
 public:
-  CUDADevice();
+  CUDADevice(const CUDADriver &driver, CUdevice id);
   ~CUDADevice() override;
 
-  CUDADriver *driver() const;
+  const CUDADriver &driver() const;
 
   CUdevice id() const;
 
   std::string name() const override;
 
 private:
-  CUDADriver *driver_;
+  const CUDADriver &driver_;
   CUdevice id_;
 };
 
 class CUDADeviceBuffer : public DeviceBuffer {
 public:
-  CUDADeviceBuffer(CUDADeviceContextRef context, size_t len, size_t elem_size,
-                   CUdeviceptr ptr);
+  CUDADeviceBuffer(const CUDADeviceContext &context, size_t len,
+                   size_t elem_size, CUdeviceptr ptr);
   ~CUDADeviceBuffer() override;
 
   CUdeviceptr cuda_ptr() const;
@@ -59,7 +59,8 @@ private:
 
 class CUDADeviceContext : public DeviceContext {
 public:
-  CUDADeviceContext(CUDADeviceRef device, CUcontext context, CUstream stream);
+  CUDADeviceContext(const CUDADevice &device, CUcontext context,
+                    CUstream stream);
   ~CUDADeviceContext() override;
 
   // Host memory allocation.
@@ -79,7 +80,7 @@ public:
   // Synchronize asynchronous operations.
   void synchronize() const override;
 
-  const CUDADevice *cuda_device() const;
+  const CUDADriver &cuda_driver() const;
   CUstream cuda_stream() const;
 
   static const CUDADeviceContext &cast(const DeviceContext &ctx);
@@ -87,7 +88,7 @@ public:
   static CUDADeviceContextRef create();
 
 private:
-  CUDADriver *driver_;
+  const CUDADriver &driver_;
   CUcontext context_;
   CUstream stream_;
 };

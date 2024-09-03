@@ -16,14 +16,14 @@ namespace {
 
 TEST(DeviceContextTest, Smoke) {
   DeviceContextRef ctx = DeviceContext::create("cpu");
-  EXPECT_TRUE(ctx);
+  ASSERT_TRUE(ctx);
 
-  EXPECT_EQ(ctx->device()->name(), "cpu");
+  EXPECT_EQ(ctx->device().name(), "cpu");
 }
 
 TEST(DeviceContextTest, DeviceBuffers) {
   DeviceContextRef ctx = DeviceContext::create("cpu");
-  EXPECT_TRUE(ctx);
+  ASSERT_TRUE(ctx);
 
   char check_data[] = {
       '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',

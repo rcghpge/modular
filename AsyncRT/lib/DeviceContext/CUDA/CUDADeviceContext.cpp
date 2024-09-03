@@ -42,11 +42,12 @@
 namespace M::AsyncRT {
 
 // ===== CUDADevice ===== //
-CUDADevice::CUDADevice() : Device(), driver_(CUDADriver::get()), id_(0) {}
+CUDADevice::CUDADevice(const CUDADriver &driver, CUdevice id)
+    : Device(), driver_(driver), id_(id) {}
 
 CUDADevice::~CUDADevice() {}
 
-CUDADriver *CUDADevice::driver() const { return driver_; }
+const CUDADriver &CUDADevice::driver() const { return driver_; }
 
 CUdevice CUDADevice::id() const { return id_; }
 
@@ -56,14 +57,14 @@ std::string CUDADevice::name() const {
 }
 
 // ===== CUDADeviceBuffer ===== //
-CUDADeviceBuffer::CUDADeviceBuffer(CUDADeviceContextRef context, size_t len,
+CUDADeviceBuffer::CUDADeviceBuffer(const CUDADeviceContext &context, size_t len,
                                    size_t elem_size, CUdeviceptr dptr)
-    : DeviceBuffer(std::move(context), len, elem_size), dptr_(dptr) {}
+    : DeviceBuffer(context, len, elem_size), dptr_(dptr) {}
 
 CUDADeviceBuffer::~CUDADeviceBuffer() {
-  const auto &cuda_context = CUDADeviceContext::cast(*context());
+  const auto &cuda_context = CUDADeviceContext::cast(context());
 
-  CUDA_CHECK(cuda_context.cuda_device()->driver()->MemFreeAsync(
+  CUDA_CHECK(cuda_context.cuda_driver().MemFreeAsync(
       dptr_, cuda_context.cuda_stream()));
 }
 
@@ -74,66 +75,63 @@ const CUDADeviceBuffer &CUDADeviceBuffer::cast(const DeviceBuffer &buf) {
 }
 
 // ===== CUDADeviceContext ===== //
-CUDADeviceContext::CUDADeviceContext(CUDADeviceRef device, CUcontext context,
-                                     CUstream stream)
-    : DeviceContext(std::move(device)), driver_(cuda_device()->driver()),
-      context_(context), stream_(stream) {}
+CUDADeviceContext::CUDADeviceContext(const CUDADevice &device,
+                                     CUcontext context, CUstream stream)
+    : DeviceContext(device), driver_(device.driver()), context_(context),
+      stream_(stream) {}
 
 CUDADeviceContext::~CUDADeviceContext() {
   // We do not need to synchronize on possible work queued on this stream.
   // Resources will be released automatically once work has been completed.
-  CUDA_CHECK(driver_->StreamDestroy(stream_));
-  CUDA_CHECK(driver_->CtxDestroy(context_));
+  CUDA_CHECK(driver_.StreamDestroy(stream_));
+  CUDA_CHECK(driver_.CtxDestroy(context_));
 }
 
 void *CUDADeviceContext::malloc_host(size_t size) const {
   void *ptr;
-  CUDA_CHECK_RETURN(driver_->MemAllocHost(&ptr, size), nullptr);
+  CUDA_CHECK_RETURN(driver_.MemAllocHost(&ptr, size), nullptr);
   return ptr;
 }
 
 void CUDADeviceContext::free_host(void *ptr) const {
-  CUDA_CHECK(driver_->MemFreeHost(ptr));
+  CUDA_CHECK(driver_.MemFreeHost(ptr));
 }
 
 DeviceBufferRef CUDADeviceContext::createBuffer(size_t len,
                                                 size_t elem_size) const {
   size_t bytesize = len * elem_size;
   CUdeviceptr dptr;
-  CUDA_CHECK_RETURN(driver_->MemAllocAsync(&dptr, bytesize, stream_),
+  CUDA_CHECK_RETURN(driver_.MemAllocAsync(&dptr, bytesize, stream_),
                     CUDADeviceBufferRef());
-  return CUDADeviceBufferRef::create(CUDADeviceContextRef::copy(this), len,
-                                     elem_size, dptr);
+  return CUDADeviceBufferRef::create(*this, len, elem_size, dptr);
 }
 
 void CUDADeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
                                             const void *src) const {
   CUdeviceptr dst_ptr = CUDADeviceBuffer::cast(dst).cuda_ptr();
   size_t byte_size = dst.len() * dst.elem_size();
-  CUDA_CHECK(driver_->MemcpyHtoDAsync(dst_ptr, src, byte_size, stream_));
+  CUDA_CHECK(driver_.MemcpyHtoDAsync(dst_ptr, src, byte_size, stream_));
 }
 
 void CUDADeviceContext::enqueueCopyFromDevice(void *dst,
                                               const DeviceBuffer &src) const {
   CUdeviceptr src_ptr = CUDADeviceBuffer::cast(src).cuda_ptr();
   size_t byte_size = src.len() * src.elem_size();
-  CUDA_CHECK(driver_->MemcpyDtoHAsync(dst, src_ptr, byte_size, stream_));
+  CUDA_CHECK(driver_.MemcpyDtoHAsync(dst, src_ptr, byte_size, stream_));
 }
 void CUDADeviceContext::enqueueCopyDeviceToDevice(
     const DeviceBuffer &dst, const DeviceBuffer &src) const {
   CUdeviceptr src_ptr = CUDADeviceBuffer::cast(src).cuda_ptr();
   CUdeviceptr dst_ptr = CUDADeviceBuffer::cast(dst).cuda_ptr();
   size_t byte_size = dst.len() * dst.elem_size();
-  CUDA_CHECK(driver_->MemcpyDtoDAsync(dst_ptr, src_ptr, byte_size, stream_));
+  CUDA_CHECK(driver_.MemcpyDtoDAsync(dst_ptr, src_ptr, byte_size, stream_));
 }
 
 void CUDADeviceContext::synchronize() const {
-  CUDA_CHECK(driver_->StreamSynchronize(stream_));
+  CUDA_CHECK(driver_.StreamSynchronize(stream_));
 }
 
-const CUDADevice *CUDADeviceContext::cuda_device() const {
-  return reinterpret_cast<const CUDADevice *>(device());
-}
+const CUDADriver &CUDADeviceContext::cuda_driver() const { return driver_; }
 
 CUstream CUDADeviceContext::cuda_stream() const { return stream_; }
 
@@ -142,20 +140,20 @@ const CUDADeviceContext &CUDADeviceContext::cast(const DeviceContext &ctx) {
 }
 
 CUDADeviceContextRef CUDADeviceContext::create() {
-  CUDADeviceRef device = CUDADeviceRef::create();
-  if (device->driver() == nullptr) {
+  CUdevice id = 0; // By default we select the first device.
+  const CUDADriver *driver = CUDADriver::get();
+  if (driver == nullptr) {
     return CUDADeviceContextRef();
   }
 
   CUcontext context;
-  CUDA_CHECK_RETURN(device->driver()->CtxCreate(&context, 0, device->id()),
-                    CUDADeviceContextRef());
+  CUDA_CHECK_RETURN(driver->CtxCreate(&context, 0, id), CUDADeviceContextRef());
 
   CUstream stream;
-  CUDA_CHECK_RETURN(device->driver()->StreamCreate(&stream, 0),
-                    CUDADeviceContextRef());
+  CUDA_CHECK_RETURN(driver->StreamCreate(&stream, 0), CUDADeviceContextRef());
 
-  return CUDADeviceContextRef::create(std::move(device), context, stream);
+  return CUDADeviceContextRef::create(*CUDADeviceRef::create(*driver, id),
+                                      context, stream);
 }
 
 } // namespace M::AsyncRT

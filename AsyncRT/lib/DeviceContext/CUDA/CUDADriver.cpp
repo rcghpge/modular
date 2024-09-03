@@ -32,7 +32,7 @@ const char CUDADriver::lib_name[] = "libcuda.so.1";
     return nullptr;                                                            \
   }
 
-CUDADriver *CUDADriver::allocAndInitDriver() {
+const CUDADriver *CUDADriver::allocAndInitDriver() {
   // Attempt to open the shared library of the CUDA driver.
   void *dl_lib = dlopen(lib_name, RTLD_NOW);
   if (dl_lib == nullptr) {
@@ -65,8 +65,8 @@ CUDADriver *CUDADriver::allocAndInitDriver() {
   return driver;
 }
 
-CUDADriver *CUDADriver::get() {
-  static CUDADriver *driver = allocAndInitDriver();
+const CUDADriver *CUDADriver::get() {
+  static const CUDADriver *driver = allocAndInitDriver();
 
   return driver;
 }

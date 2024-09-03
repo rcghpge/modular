@@ -41,9 +41,9 @@ std::string CpuDevice::name() const {
 //
 // ===== CpuDeviceBuffer === //
 //
-CpuDeviceBuffer::CpuDeviceBuffer(CpuDeviceContextRef context, size_t len,
+CpuDeviceBuffer::CpuDeviceBuffer(const CpuDeviceContext &context, size_t len,
                                  size_t elem_size, void *ptr)
-    : DeviceBuffer(std::move(context), len, elem_size), ptr_(ptr) {}
+    : DeviceBuffer(context, len, elem_size), ptr_(ptr) {}
 
 CpuDeviceBuffer::~CpuDeviceBuffer() { free(ptr_); }
 
@@ -56,8 +56,8 @@ const CpuDeviceBuffer &CpuDeviceBuffer::cast(const DeviceBuffer &buf) {
 //
 // ===== CpuDeviceContext === //
 //
-CpuDeviceContext::CpuDeviceContext(CpuDeviceRef device)
-    : DeviceContext(std::move(device)) {}
+CpuDeviceContext::CpuDeviceContext(const CpuDevice &device)
+    : DeviceContext(device) {}
 
 CpuDeviceContext::~CpuDeviceContext() {
   // A CpuDeviceContext does not currently hold any local information.
@@ -80,8 +80,7 @@ DeviceBufferRef CpuDeviceContext::createBuffer(size_t len,
   if (ptr == nullptr) {
     RAISE_ERROR_RETURN(CpuDeviceBufferRef());
   }
-  return CpuDeviceBufferRef::create(CpuDeviceContextRef::copy(this), len,
-                                    elem_size, ptr);
+  return CpuDeviceBufferRef::create(*this, len, elem_size, ptr);
 }
 
 void CpuDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
@@ -119,7 +118,7 @@ CpuDeviceContextRef CpuDeviceContext::create() {
     return CpuDeviceContextRef();
   }
 
-  return CpuDeviceContextRef::create(std::move(device));
+  return CpuDeviceContextRef::create(*device);
 }
 
 } // namespace M::AsyncRT

@@ -37,7 +37,7 @@ public:
 
 class CpuDeviceBuffer : public DeviceBuffer {
 public:
-  CpuDeviceBuffer(CpuDeviceContextRef context, size_t len, size_t elem_size,
+  CpuDeviceBuffer(const CpuDeviceContext &context, size_t len, size_t elem_size,
                   void *ptr);
   ~CpuDeviceBuffer() override;
 
@@ -51,7 +51,7 @@ private:
 
 class CpuDeviceContext : public DeviceContext {
 public:
-  CpuDeviceContext(CpuDeviceRef device);
+  CpuDeviceContext(const CpuDevice &device);
   ~CpuDeviceContext() override;
 
   // Host memory allocation.
