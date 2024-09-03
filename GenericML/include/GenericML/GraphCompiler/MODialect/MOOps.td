@@ -3896,7 +3896,7 @@ def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
 
     `dataDeptTensors` Is an instruction to the lowering that the inputs at
     these indices should be treated as data dependent tensors. These tensors
-    include things like dyanmic "axis" in reductions or "steps" in slice. Any
+    include things like dynamic "axis" in reductions or "steps" in slice. Any
     tensor which needs to have its values read to compute the shape for the op
     falls into this category.
   }];

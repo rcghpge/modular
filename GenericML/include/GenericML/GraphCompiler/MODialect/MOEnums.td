@@ -34,7 +34,7 @@ def MO_CoordinateTransformMode : MO_Enum<
 
 def MO_CoordinateTransformModeAttr : EnumAttr<MODialect, MO_CoordinateTransformMode, "coord_trans_mode">
 {
-  let summary = "oordinate transformations";
+  let summary = "coordinate transformations";
   let description = [{
     This attribute is used by `mo.resize`.
   }];
