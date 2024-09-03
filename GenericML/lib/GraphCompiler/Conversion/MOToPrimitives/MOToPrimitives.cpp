@@ -129,6 +129,9 @@ public:
   /// Lowers mo.transfer op.
   LogicalResult lowerTransfer(MO::TransferOp transferOp);
 
+  // Lowers mo.slice_dim_outer op.
+  LogicalResult lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp);
+
   /// Lowers mo.if op.
   LogicalResult lowerIf(MO::IfOp ifOp);
 
@@ -743,13 +746,14 @@ MOGraphLowering::lowerConstantScalar(MO::ConstantScalarOp constOp) {
       auto grtConstOp = opLoweringState.create<GRT::ConstantSI32Op>(
           intAttr.getType(), intAttr);
       loweringState.emplaceExecuteLoweredValue(constOp, grtConstOp);
-    } else {
-      return constOp->emitOpError(
-          "Only si32 and i1 constant scalar are currently lowerable");
+    } else if (intAttr.getType().isSignedInteger(64)) {
+      auto mipConstOp = opLoweringState.create<MIP::ConstantIndexOp>(
+          intAttr.getType(), intAttr);
+      loweringState.emplaceExecuteLoweredValue(constOp, mipConstOp);
     }
   } else {
     return constOp->emitOpError(
-        "Only si32 and i1 constant scalar are currently lowerable");
+        "Only si32, si64 and i1 constant scalar are currently lowerable");
   }
 
   return success();
@@ -839,6 +843,121 @@ LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
   }
 
   opLoweringState.createOutputs(outChain, loweredOutputsStorage);
+  return success();
+}
+
+LogicalResult MOGraphLowering::lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp) {
+  MGP::MOOpLoweringState opLoweringState(loweringState, sliceOp);
+
+  FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
+      opLoweringState.createTensorSpec(sliceOp.getType());
+  if (failed(tensorSpecOr))
+    return failure();
+
+  auto si64Ty = opLoweringState.builder.getIntegerType(64, true);
+  auto indexTy = opLoweringState.builder.getIndexType();
+  auto i1Ty = opLoweringState.builder.getI1Type();
+
+  // Arithmetic helpers
+  auto constant = [&](int64_t val) -> Value {
+    IntegerAttr attr = opLoweringState.builder.getIntegerAttr(si64Ty, val);
+    return opLoweringState.create<MIP::ConstantIndexOp>(indexTy, attr);
+  };
+
+  auto mul = [&](Value a, Value b) -> Value {
+    return opLoweringState.create<MIP::MulOp>(indexTy, a, b);
+  };
+
+  auto add = [&](Value a, Value b) -> Value {
+    return opLoweringState.create<MIP::AddOp>(indexTy, a, b);
+  };
+
+  auto div = [&](Value a, Value b) -> Value {
+    return opLoweringState.create<MIP::DivOp>(indexTy, a, b);
+  };
+
+  auto ifPositive = [&](Value check, Value yes, Value no) -> Value {
+    auto cond =
+        opLoweringState.create<MIP::LessThanOp>(i1Ty, check, constant(0));
+    return opLoweringState.create<MIP::SelectOp>(indexTy, cond, no, yes);
+  };
+
+  Value inChain =
+      opLoweringState.getGuardChain(loweringState.getExecuteChain());
+
+  // Slice input
+  MGP::BufferizedTensor bufferizedInput =
+      opLoweringState.getBufferizedInput(sliceOp.getInput());
+
+  // Start of slice in outer dimension
+  MGP::BufferizedTensor startBuffer =
+      opLoweringState.getBufferizedInput(sliceOp.getStart());
+
+  // Stop of slice in outer dimension
+  MGP::BufferizedTensor stopBuffer =
+      opLoweringState.getBufferizedInput(sliceOp.getStop());
+
+  // Get index values for start and stop
+  Value start =
+      opLoweringState.create<MGP::BufferToIndexOp>(inChain, startBuffer.buffer);
+  Value stop =
+      opLoweringState.create<MGP::BufferToIndexOp>(inChain, stopBuffer.buffer);
+
+  auto tensorType = sliceOp.getInput().getType();
+  auto dataType = tensorType.getDtype();
+  Value elemSize = constant(dataType.getSizeInBytes());
+
+  // Get size of the outermost dimension either as static constant or from
+  // dims.dynamic op
+  Value outermostDim;
+  auto outermostDimStatic =
+      bufferizedInput.tensorSpec.getType().getDims().front();
+  if (outermostDimStatic)
+    outermostDim = constant(outermostDimStatic.value());
+  else {
+    auto dynamicDims = opLoweringState.create<MGP::CpuTensorSpecDimsDynamicOp>(
+        /*spec=*/bufferizedInput.tensorSpec,
+        /*rawDims=*/bufferizedInput.tensorSpec.getType().getRawDims());
+
+    outermostDim = dynamicDims->getResults().front();
+  }
+
+  // Calculate stride assuming contiguous memory layout
+  // outerStride = (bufferSizeBytes / elemSize) / outermostDim
+  Value bufferSizeBytes = opLoweringState.create<MGP::CpuTensorSpecSizeOp>(
+      bufferizedInput.tensorSpec);
+  Value bufferSizeElems = div(bufferSizeBytes, elemSize);
+  Value outerStride = div(bufferSizeElems, outermostDim);
+
+  // Multiply start/stop by stride
+  // start *= outerStride
+  // stop *= outerStride
+  start = mul(start, outerStride);
+  stop = mul(stop, outerStride);
+
+  // If start or stop are negative, add bufferSize elems to make them positive
+  // start = start < 0 ? (start + bufferSizeElems) : start
+  // stop = stop < 0 ? (stop + bufferSizeElems) : stop
+  auto startAdded = add(start, bufferSizeElems);
+  auto stopAdded = add(stop, bufferSizeElems);
+  start = ifPositive(start, start, startAdded);
+  stop = ifPositive(stop, stop, stopAdded);
+
+  // MGP buffer slice takes in a size, not a stop, so calculate the size
+  // size = stop - start = stop + (-1 * start)
+  Value negStart = mul(start, constant(-1));
+  Value size = add(stop, negStart);
+
+  // Multiply to get offset and size in bytes
+  Value offsetBytes = mul(start, elemSize);
+  Value sizeBytes = mul(size, elemSize);
+
+  // Create MGP buffer slice
+  auto sliced = opLoweringState.bufferSlice(bufferizedInput.buffer, offsetBytes,
+                                            sizeBytes, tensorType);
+
+  opLoweringState.createOutputTensor(sliceOp.getResult(), inChain, sliced,
+                                     *tensorSpecOr);
   return success();
 }
 
@@ -1391,6 +1510,12 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
     if (auto transferOp = dyn_cast<MO::TransferOp>(op)) {
       if (failed(lowerTransfer(transferOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto sliceDimOuterOp = dyn_cast<MO::SliceDimOuterOp>(op)) {
+      if (failed(lowerSliceDimOuter(sliceDimOuterOp)))
         return failure();
       continue;
     }

@@ -2938,6 +2938,17 @@ OpFoldResult SliceDimOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
+// SliceDimOuterOp
+//===----------------------------------------------------------------------===//
+
+DeviceRefAttr SliceDimOuterOp::getOperandDevice(size_t index) {
+  return (index == getStartMutable().getOperandNumber() ||
+          index == getStopMutable().getOperandNumber())
+             ? MO::getHostDevice(getOperation())
+             : nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
 
