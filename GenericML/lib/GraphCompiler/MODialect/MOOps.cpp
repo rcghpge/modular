@@ -2933,6 +2933,16 @@ DeviceRefAttr SliceDimOp::getOperandDevice(size_t index) {
              : nullptr;
 }
 
+LogicalResult SliceDimOp::verify() {
+  TensorType inputType = getInput().getType();
+  if (inputType.hasRank()) {
+    if (getAxis().getInt() >= inputType.getRank()) {
+      return emitError("Slice axis is greater than rank of input");
+    }
+  }
+  return success();
+}
+
 OpFoldResult SliceDimOp::fold(FoldAdaptor adaptor) {
   return foldSliceHelper(*this, adaptor);
 }

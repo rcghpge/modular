@@ -1418,6 +1418,7 @@ def MO_SliceDimOp : MO_TensorOp<"slice_dim", [
     `[` $axis `]``(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
+  let hasVerifier = 1;
   let hasFolder = 1;
 }
 

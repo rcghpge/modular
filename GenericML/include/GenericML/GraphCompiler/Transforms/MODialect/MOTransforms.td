@@ -435,4 +435,13 @@ def ElideRedundantMutableOps :
   }];
 }
 
+def DecomposeViewOps : Pass<"decompose-views", "ModuleOp"> {
+  let summary = "Decompose view ops into simpler ops";
+  let description = [{
+    Breaks down large CISC like view ops into a series of simpler
+    RISC like view ops. Each one has a simpler lowering in mojo and
+    offers potentially cleaner fusion semantics.
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_TD
