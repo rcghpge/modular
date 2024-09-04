@@ -48,6 +48,12 @@ setup(
     cmdclass={"bdist_wheel": bdist_wheel},
     name="max-serve",
     package_data={"max.serve": SHARED_LIBS + MOJO_CACHE + MODULAR_CFG},
-    packages=["max.serve"],
+    packages=[
+        "max.serve",
+        "max.serve.pipelines",
+        "max.serve.scheduler",
+        "max.serve.router",
+        "max.serve.schemas",
+    ],
     include_package_data=True,
 )
