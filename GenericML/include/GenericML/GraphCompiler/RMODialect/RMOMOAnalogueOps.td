@@ -2682,4 +2682,23 @@ def RMO_MOMutableStoreOp : RMO_MOAnalogueOp<"mutable.store", [
   }];
 }
 
+def RMO_MOMutableStoreSliceOp : RMO_MOAnalogueOp<"mutable.store.slice", [
+  MemoryEffects<[MemWrite]>,
+  AllDTypesMatch<["inBuffer", "slice"]>,
+]> {
+  let arguments = (ins MO_Chain:$inChain,
+                       MO_Buffer:$inBuffer,
+                       MO_Tensor:$slice,
+                       MO_IndicesVectorIfRanked:$start,
+                       MO_IndicesVectorIfRanked:$stop,
+                       MO_IndicesVectorIfRanked:$step,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Chain:$outChain);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOMOANALOGUEOPS_TD

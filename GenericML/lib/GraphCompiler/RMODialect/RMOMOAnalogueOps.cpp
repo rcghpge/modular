@@ -1818,3 +1818,51 @@ void MOMutableStoreOp::inferMOTypesImpl(
   moOutputParamDecls.push_back({});
   moResultTypes.push_back(chainTy);
 }
+
+void MOMutableStoreSliceOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  auto inBufferTy = operands.getInBuffer().getType();
+  auto chainTy = operands.getInChain().getType();
+
+  TensorType inTensorTy = MO::castFromTensorLike(inBufferTy);
+  TensorType sliceTy = cast<TensorType>(operands.getSlice().getType());
+  TensorValue start = cast<TensorValue>(operands.getStart());
+  TensorValue stop = cast<TensorValue>(operands.getStop());
+  TensorValue step = cast<TensorValue>(operands.getStep());
+
+  // As opposed to the standard mo.slice inferMOTypes which does a bunch of
+  // shenanigans around trying to infer a rank to use for all inputs the we can
+  // just directly use the rank of the buffer input as BufferTypes are
+  // guaranteed to have ranked inputs (at time of writing).
+  auto rank = inTensorTy.getRank();
+
+  moOperandTypes.push_back(chainTy);
+  moInputParamDecls.push_back({});
+
+  moOperandTypes.push_back(inBufferTy);
+  moInputParamDecls.push_back({});
+
+  SmallVector<KGEN::ParamDeclAttr> inputDecls;
+  moOperandTypes.push_back(
+      getRankedParamTensorType(rank, sliceTy.getDtype(), graphOp, inputDecls));
+  moInputParamDecls.push_back(std::move(inputDecls));
+
+  // start / stop / step have shape `[rank]`.
+  SmallVector<KGEN::ParamDeclAttr> startParamDecls;
+  // Only assign param declarations to the `start` operand.
+  SmallVector<TypedAttr> sliceDims{createStaticDimensionType(graphOp, rank)};
+
+  moOperandTypes.push_back(start.getType().cloneWith(sliceDims));
+  moInputParamDecls.push_back(std::move(startParamDecls));
+  moOperandTypes.push_back(stop.getType().cloneWith(sliceDims));
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(step.getType().cloneWith(sliceDims));
+  moInputParamDecls.push_back({});
+
+  moResultTypes.push_back(chainTy);
+  moOutputParamDecls.push_back({});
+}

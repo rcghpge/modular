@@ -1373,8 +1373,25 @@ LogicalResult KernelOp::verify() {
                             return isa<MO::BufferType>(val.getType());
                           }) > 0;
 
-  if (hasBufferOperand)
-    return success(getOutChain() && getInChain());
+  if (hasBufferOperand) {
+    bool hasInOutChains = getOutChain() && getInChain();
+    // HACK: In general we do want to be checking that we have I/O chains in the
+    // presence of reading or reading + writing to a buffer. However in the case
+    // of lowered shape functions if the buffer input is not one of the data
+    // dependent inputs then there really isn't any need to have chains to allow
+    // sequencing since none of the actual contents of the underlying buffer are
+    // read. Such a case is the shape function for slices. Right now hackily
+    // check if the kernel derived from the shape slice based on the kernel
+    // summary string.
+    //
+    // TODO(GRA-957): Replace the isInPlace kernel attribute with more preceise
+    // 'hasBufferRead' and 'hasBufferWrite' attributes instead. This will allow
+    // the removal of the below hack.
+    if (this->getSummaryAttr().strref() != "slice_shape" && !hasInOutChains) {
+      return emitError(
+          "Kernels with buffer inputs must have chain inputs and outputs");
+    }
+  }
 
   return success();
 }

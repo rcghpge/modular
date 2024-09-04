@@ -237,6 +237,75 @@ struct LegalizeMutableStoreOp : public OpRewritePattern<RMO::MOMutableStoreOp> {
   }
 };
 
+struct LegalizeMutableStoreSliceOp
+    : public OpRewritePattern<RMO::MOMutableStoreSliceOp> {
+  LegalizeMutableStoreSliceOp(MLIRContext *ctx)
+      : OpRewritePattern<RMO::MOMutableStoreSliceOp>(ctx, 1) {}
+  LogicalResult matchAndRewrite(RMO::MOMutableStoreSliceOp op,
+                                PatternRewriter &rewriter) const override {
+
+    auto graphOp = op->getParentOfType<MO::GraphOp>();
+
+    SmallVector<Type> moOperandTypes, moResultTypes;
+    SmallVector<SmallVector<KGEN::ParamDeclAttr>> moInputParamDecls;
+    SmallVector<SmallVector<KGEN::ParamDeclAttr>> moOutputParamDecls;
+
+    RMO::MOAnalogue rmaOp = op;
+    rmaOp.inferMOTypes(op->getContext(), graphOp, op->getOperands(),
+                       op->getAttrDictionary(), op->getResults(),
+                       moOperandTypes, moResultTypes, moInputParamDecls,
+                       moOutputParamDecls);
+
+    SmallVector<Value> moOperands;
+
+    moOperands.push_back(op.getInChain());
+    moOperands.push_back(op.getInBuffer());
+
+    {
+      // build the call to the slice shape func
+      auto sliceInputDecls = moInputParamDecls[2];
+      SmallVector<Value> operands = {op.getInBuffer(), op.getStart(),
+                                     op.getStop(), op.getStep()};
+
+      rewriter.create<MO::InvokeShapeFuncOp>(
+          op.getLoc(), operands, rewriter.getStringAttr("slice_shape"),
+          KGEN::ParamDeclArrayAttr::get(op->getContext(), sliceInputDecls),
+          nullptr, rewriter.getI32ArrayAttr({1, 2, 3}));
+
+      SmallVector<TypedAttr> newDims;
+
+      for (auto &attr : sliceInputDecls)
+        newDims.push_back(KGEN::ParamDeclRefAttr::get(attr));
+
+      auto newTy = op.getSlice().getType().cloneWith(newDims);
+
+      auto rebound = rebindToShape(
+          graphOp, cast<TensorValue>(op->getOperand(2)), newTy, rewriter);
+
+      moOperands.push_back(rebound);
+    }
+
+    for (size_t i = 3; i < moOperandTypes.size(); i++) {
+      SmallVector<KGEN::ParamDeclAttr> &curInputDecls = moInputParamDecls[i];
+
+      auto rebound = rebindToShape(
+          graphOp, cast<TensorValue>(op->getOperand(i)),
+          cast<TensorType>(moOperandTypes[i]), rewriter, curInputDecls);
+
+      moOperands.push_back(rebound);
+    }
+
+    auto moOp = rewriter.create<MO::MutableStoreSliceOp>(
+        op->getLoc(), moResultTypes, moOperands, op->getAttrs());
+
+    rewriter.replaceAllUsesWith(op.getOutChain(), moOp.getOutChain());
+
+    op->erase();
+
+    return success();
+  }
+};
+
 struct LowerRebindTensorShapeOp
     : public OpRewritePattern<RMO::RebindTensorShapeOp> {
   LowerRebindTensorShapeOp(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
@@ -944,7 +1013,8 @@ struct LegalizeRMOOps
         LegalizeRMOMOAnalogue<RMO::MOArgNonzeroOp, MO::ArgNonzeroOp>,
         LegalizeRMOMOAnalogue<RMO::MOCumSumOp, MO::CumSumOp>>(context);
 
-    blockPatterns.add<LegalizeMutableLoadOp, LegalizeMutableStoreOp>(context);
+    blockPatterns.add<LegalizeMutableLoadOp, LegalizeMutableStoreOp,
+                      LegalizeMutableStoreSliceOp>(context);
 
     // Lowering rebind
     if (!skipRMORebind)
