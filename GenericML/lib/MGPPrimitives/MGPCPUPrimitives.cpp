@@ -264,37 +264,6 @@ static void mgp_buffer_resize_cpu(AsyncValueRef<TensorBufferRef> inBuffer,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.buffer.concat.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_buffer_concat_cpu(Chain inChain, StateContext &theContext,
-                                  AsyncValueRef<TensorBufferRef> outBuffer,
-                                  RemainingArguments inBuffers,
-                                  Result<Chain> outChain,
-                                  MEFAttr<uint64_t> aRuntimeSlot,
-                                  MEFAttr<uint64_t> bDeviceId) {
-  uint8_t *const out = outBuffer->getBuffer<uint8_t>();
-  const size_t outSize = outBuffer->getSize();
-  size_t totalSize = 0; // total size of all input buffers processed so far
-  for (const auto &inBuffer : inBuffers) {
-    const TensorBufferRef &ref = inBuffer.get<TensorBufferRef>();
-    const size_t thisSize = ref.getSize();
-    if (totalSize + thisSize <= outSize) {
-      // Just don't copy if it turns out the input sizes overflow the output.
-      // We'll report failure below.
-      memcpy(out + totalSize, ref.getBuffer(), thisSize);
-    }
-    totalSize += thisSize;
-  }
-  if (totalSize != outBuffer->getSize()) {
-    return std::move(outChain).setToError(
-        Twine("output buffer size must be sum of input buffer sizes (") +
-        Twine(outBuffer->getSize()) + " vs " + Twine(totalSize));
-  }
-  std::move(outChain).emplace();
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.buffer.split.borrow.cpu
 //===----------------------------------------------------------------------===//
 
@@ -455,7 +424,6 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.buffer.get_cached.cpu",
                 mgp_buffer_get_cached_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.resize.cpu", mgp_buffer_resize_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.concat.cpu", mgp_buffer_concat_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.split.borrow.cpu",
                 mgp_buffer_split_borrow_cpu);
   ADD_PRIMITIVE(registry, "mgp.tensor.create.cpu", mgp_tensor_create_cpu);
