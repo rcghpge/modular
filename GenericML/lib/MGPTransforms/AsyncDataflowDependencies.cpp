@@ -4,13 +4,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "./AsyncDataflowDependencies.h"
+#include "AsyncDataflowDependencies.h"
 
 #include "GenericML/MGPTransforms/Utils.h"
 #include "GraphRT/GRTDialect/GRTExtendsLifetimeInterface.h"
 #include "GraphRT/GRTDialect/GRTMayAliasInterface.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
+#include "Support/STLExtras.h"
 #include "llvm/ADT/EquivalenceClasses.h"
 
 using namespace M;
@@ -566,9 +567,9 @@ AsyncDataflowDependencies::getEffectiveOwner(const OpOperand *opOperand) const {
 
   if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op)) {
     ArrayRef<OpOperand> inputOpOperands = cfOp.getInputOpOperands();
-    if (llvm::find_if(inputOpOperands, [&](const OpOperand &inputOpOperand) {
+    if (contains_if(inputOpOperands, [&](const OpOperand &inputOpOperand) {
           return &inputOpOperand == opOperand;
-        }) != inputOpOperands.end()) {
+        })) {
       // Inputs to control flow ops are just plumbing.
       return nullptr;
     }

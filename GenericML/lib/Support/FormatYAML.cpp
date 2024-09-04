@@ -15,6 +15,7 @@
 #include "GenericML/Support/ResultInfo.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
+#include "Support/STLExtras.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/YAMLTraits.h"
 #include "llvm/Support/raw_ostream.h"
@@ -312,9 +313,9 @@ std::string validateNameSubstitutions(
   llvm::StringMap<std::string> nativeToPreferredMap;
   for (const auto &kv : nameSubstitutions.preferredToNativeMap) {
     // The 'preferred' name must exist.
-    if (llvm::find_if(names, [&kv](const M::ModelSpec::ModelIOSpec &spec) {
+    if (!contains_if(names, [&kv](const M::ModelSpec::ModelIOSpec &spec) {
           return spec.name == kv.getKey();
-        }) == names.end()) {
+        })) {
       return (Twine("No such preferred ") + inputOrOutput + " name '" +
               kv.getKey() + "' for " + inputOrOutput +
               " substitution in format " + format)
