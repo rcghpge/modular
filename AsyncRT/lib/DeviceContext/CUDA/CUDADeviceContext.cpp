@@ -55,8 +55,6 @@ namespace M::AsyncRT {
 CUDADevice::CUDADevice(const CUDADriver &driver, CUdevice id)
     : Device(), driver_(driver), id_(id) {}
 
-CUDADevice::~CUDADevice() {}
-
 const CUDADriver &CUDADevice::driver() const { return driver_; }
 
 CUdevice CUDADevice::id() const { return id_; }
@@ -85,9 +83,6 @@ const CUDADeviceBuffer &CUDADeviceBuffer::cast(const DeviceBuffer &buf) {
 }
 
 // ===== CUDADeviceFunctionArguments ===== //
-CUDADeviceFunctionArguments::CUDADeviceFunctionArguments() {}
-CUDADeviceFunctionArguments::~CUDADeviceFunctionArguments() {}
-
 void CUDADeviceFunctionArguments::pushArg(int index, const uint64_t &val) {
   arg_values_.push_back(reinterpret_cast<void *>(val));
 }

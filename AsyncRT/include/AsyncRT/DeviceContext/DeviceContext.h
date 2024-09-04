@@ -35,14 +35,17 @@ using DeviceFunctionArgumentsRef = RCRef<const DeviceFunctionArguments>;
 
 class Device : public ReferenceCounted<Device> {
 public:
-  virtual ~Device();
+  virtual ~Device() = default;
 
   virtual std::string name() const = 0;
+
+protected:
+  Device() = default;
 };
 
 class DeviceBuffer : public ReferenceCounted<DeviceBuffer> {
 public:
-  virtual ~DeviceBuffer();
+  virtual ~DeviceBuffer() = default;
 
   const DeviceContext &context() const;
 
@@ -61,10 +64,10 @@ private:
 class DeviceFunctionArguments
     : public ReferenceCounted<DeviceFunctionArguments> {
 public:
-  virtual ~DeviceFunctionArguments();
+  virtual ~DeviceFunctionArguments() = default;
 
 protected:
-  DeviceFunctionArguments();
+  DeviceFunctionArguments() = default;
 
   // The implementations of these methods are being called based on the
   // arguments being passed to the DeviceFunction::buildArguments() method.
@@ -87,7 +90,7 @@ private:
 
 class DeviceFunction : public ReferenceCounted<DeviceFunction> {
 public:
-  virtual ~DeviceFunction();
+  virtual ~DeviceFunction() = default;
 
   const DeviceContextRef &context() const;
 
@@ -107,7 +110,7 @@ private:
 
 class DeviceContext : public ReferenceCounted<DeviceContext> {
 public:
-  virtual ~DeviceContext();
+  virtual ~DeviceContext() = default;
 
   const Device &device() const;
 

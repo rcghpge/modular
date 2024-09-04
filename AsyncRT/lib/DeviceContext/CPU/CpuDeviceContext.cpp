@@ -45,9 +45,6 @@ namespace M::AsyncRT {
 //
 // ===== CpuDevice ===== //
 //
-CpuDevice::CpuDevice() : Device() {}
-
-CpuDevice::~CpuDevice() {}
 
 std::string CpuDevice::name() const {
   // TODO(iposva): Return the actual device name.
@@ -74,10 +71,6 @@ const CpuDeviceBuffer &CpuDeviceBuffer::cast(const DeviceBuffer &buf) {
 //
 CpuDeviceContext::CpuDeviceContext(const CpuDevice &device)
     : DeviceContext(device) {}
-
-CpuDeviceContext::~CpuDeviceContext() {
-  // A CpuDeviceContext does not currently hold any local information.
-}
 
 ErrorOr<void *> CpuDeviceContext::malloc_host(size_t size) const {
   void *ptr = malloc(size);

@@ -95,6 +95,10 @@ private:
   // Shared library name for the CUDA driver.
   static const char lib_name[];
 
+  // Once created, the CUDADriver object cannot be deleted.
+  CUDADriver() = default;
+  ~CUDADriver() = delete;
+
   // Driver is only initialized from internal code.
   Result Init(unsigned int flags) const { return cuInit_(flags); }
   using tcuInit = Result(unsigned int);
@@ -152,8 +156,6 @@ private:
                                  unsigned int, unsigned int, CUstream, void **,
                                  void **);
   tcuLaunchKernel *cuLaunchKernel_;
-
-  CUDADriver() = default;
 
   static const CUDADriver *allocAndInitDriver();
 };

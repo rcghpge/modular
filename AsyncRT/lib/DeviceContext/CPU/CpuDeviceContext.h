@@ -31,8 +31,8 @@ using CpuDeviceContextRef = RCRef<const CpuDeviceContext>;
 
 class CpuDevice : public Device {
 public:
-  CpuDevice();
-  ~CpuDevice() override;
+  CpuDevice() = default;
+  ~CpuDevice() override = default;
 
   std::string name() const override;
 };
@@ -54,7 +54,7 @@ private:
 class CpuDeviceContext : public DeviceContext {
 public:
   CpuDeviceContext(const CpuDevice &device);
-  ~CpuDeviceContext() override;
+  ~CpuDeviceContext() override = default;
 
   // Host memory allocation.
   ErrorOr<void *> malloc_host(size_t size) const override;

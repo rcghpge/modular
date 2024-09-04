@@ -37,7 +37,7 @@ using CUDADeviceFunctionArgumentsRef = RCRef<const CUDADeviceFunctionArguments>;
 class CUDADevice : public Device {
 public:
   CUDADevice(const CUDADriver &driver, CUdevice id);
-  ~CUDADevice() override;
+  ~CUDADevice() override = default;
 
   const CUDADriver &driver() const;
 
@@ -66,8 +66,8 @@ private:
 
 class CUDADeviceFunctionArguments : public DeviceFunctionArguments {
 public:
-  CUDADeviceFunctionArguments();
-  ~CUDADeviceFunctionArguments() override;
+  CUDADeviceFunctionArguments() = default;
+  ~CUDADeviceFunctionArguments() override = default;
 
   void pushArg(int index, const uint64_t &val) override;
   void pushArg(int index, const DeviceBuffer &val) override;
