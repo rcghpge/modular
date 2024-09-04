@@ -3,7 +3,7 @@ load("//bazel:api.bzl", "py_repl")
 
 filegroup(
     name = "driver_srcs",
-    srcs = glob(["lib/Driver/*.cpp"]),
+    srcs = glob(["lib/Driver/*.cpp"]) + ["lib/Driver/dlpack.h"],
     visibility = ["//SDK:__pkg__"],
 )
 
