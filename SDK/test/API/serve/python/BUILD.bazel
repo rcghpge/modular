@@ -5,9 +5,9 @@ modular_py_test(
     name = "tests",
     srcs = glob(["**/*.py"]),
     deps = [
-        "//SDK/lib/API/python:max_serve",
         requirement("pytest-asyncio"),
         requirement("hypothesis"),
         requirement("sseclient-py"),
+        "//SDK/lib/API/python:max_serve",
     ],
 )
