@@ -15,6 +15,7 @@
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
 
+#include <cstdint>
 #include <stddef.h>
 #include <string>
 
@@ -71,6 +72,15 @@ public:
   ErrorOrSuccess
   enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
                             const DeviceBuffer &src) const override;
+
+  // DeviceFunction compilation and execution.
+  ErrorOr<DeviceFunctionRef> compileFunction(const char *function_name,
+                                             const void *data) const override;
+  ErrorOrSuccess
+  enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
+                      uint32_t gridY, uint32_t gridZ, uint32_t blockX,
+                      uint32_t blockY, uint32_t blockZ,
+                      const DeviceFunctionArguments &args) const override;
 
   // Synchronize asynchronous operations.
   ErrorOrSuccess synchronize() const override;

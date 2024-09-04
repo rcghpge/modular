@@ -16,17 +16,23 @@
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace M::AsyncRT {
 
 class CUDADevice;
 class CUDADeviceBuffer;
 class CUDADeviceContext;
+class CUDADeviceFunction;
+class CUDADeviceFunctionArguments;
 
 using CUDADeviceRef = RCRef<const CUDADevice>;
 using CUDADeviceBufferRef = RCRef<const CUDADeviceBuffer>;
 using CUDADeviceContextRef = RCRef<const CUDADeviceContext>;
+using CUDADeviceFunctionRef = RCRef<const CUDADeviceFunction>;
+using CUDADeviceFunctionArgumentsRef = RCRef<const CUDADeviceFunctionArguments>;
 
 class CUDADevice : public Device {
 public:
@@ -58,6 +64,48 @@ private:
   CUdeviceptr dptr_;
 };
 
+class CUDADeviceFunctionArguments : public DeviceFunctionArguments {
+public:
+  CUDADeviceFunctionArguments();
+  ~CUDADeviceFunctionArguments() override;
+
+  void pushArg(int index, const uint64_t &val) override;
+  void pushArg(int index, const DeviceBuffer &val) override;
+
+  std::vector<void *> cuda_args() const;
+
+  static const CUDADeviceFunctionArguments &
+  cast(const DeviceFunctionArguments &args);
+
+private:
+  std::vector<void *> arg_values_;
+  std::vector<DeviceBufferRef> refs_;
+};
+
+class CUDADeviceFunction : public DeviceFunction {
+public:
+  CUDADeviceFunction(CUDADeviceContextRef context, std::string name,
+                     CUmodule module, CUfunction function);
+  ~CUDADeviceFunction() override;
+
+  const std::string &name() const override;
+
+  DeviceFunctionArguments *allocateArguments() const override;
+
+  ErrorOrSuccess cuda_callKernel(uint32_t gridX, uint32_t gridY, uint32_t gridZ,
+                                 uint32_t blockX, uint32_t blockY,
+                                 uint32_t blockZ,
+                                 const CUDADeviceFunctionArguments &args,
+                                 CUstream stream) const;
+
+  static const CUDADeviceFunction &cast(const DeviceFunction &func);
+
+private:
+  CUmodule module_;
+  CUfunction function_;
+  std::string name_;
+};
+
 class CUDADeviceContext : public DeviceContext {
 public:
   CUDADeviceContext(const CUDADevice &device, CUcontext context,
@@ -80,6 +128,15 @@ public:
   ErrorOrSuccess
   enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
                             const DeviceBuffer &src) const override;
+
+  // DeviceFunction compilation and execution.
+  ErrorOr<DeviceFunctionRef> compileFunction(const char *function_name,
+                                             const void *data) const override;
+  ErrorOrSuccess
+  enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
+                      uint32_t gridY, uint32_t gridZ, uint32_t blockX,
+                      uint32_t blockY, uint32_t blockZ,
+                      const DeviceFunctionArguments &args) const override;
 
   // Synchronize asynchronous operations.
   ErrorOrSuccess synchronize() const override;

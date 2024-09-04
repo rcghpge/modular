@@ -14,15 +14,18 @@
 #include "Support/ErrorOr.h"
 #include "llvm/ADT/Twine.h"
 
+#include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <string>
 
 namespace M::AsyncRT {
 namespace {
-Error formatError(const char *file, int line, const char *func) {
+Error formatError(const char *file, int line, const char *func,
+                  const char *msg = nullptr) {
   return Error(llvm::Twine(file) + ":" + llvm::Twine(line) + " - " + func +
-               " failed.");
+               " failed" + ((msg == nullptr) ? "." : ": ") +
+               ((msg == nullptr) ? "" : msg));
 }
 } // namespace
 } // namespace M::AsyncRT
@@ -32,12 +35,9 @@ Error formatError(const char *file, int line, const char *func) {
     return formatError(__FILE__, __LINE__, __FUNCTION__);                      \
   } while (0)
 
-#define RAISE_ERROR_RETURN(result)                                             \
+#define RAISE_ERROR_MESSAGE(msg)                                               \
   do {                                                                         \
-    std::cerr << __FILE__ << ":" << __LINE__ << " -  " << __FUNCTION__         \
-              << " failed.\n";                                                 \
-    abort();                                                                   \
-    return result;                                                             \
+    return formatError(__FILE__, __LINE__, __FUNCTION__, msg);                 \
   } while (0)
 
 namespace M::AsyncRT {
@@ -127,6 +127,21 @@ CpuDeviceContext::enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
   size_t byte_size = dst.len() * dst.elem_size();
   memcpy(dst_ptr, src_ptr, byte_size);
   return success();
+}
+
+ErrorOr<DeviceFunctionRef>
+CpuDeviceContext::compileFunction(const char *function_name,
+                                  const void *data) const {
+  // Currently not implemented. Maybe never to be implemented.
+  RAISE_ERROR_MESSAGE("Unimplemented");
+}
+
+ErrorOrSuccess CpuDeviceContext::enqueueFunctionExec(
+    const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
+    uint32_t blockX, uint32_t blockY, uint32_t blockZ,
+    const DeviceFunctionArguments &args) const {
+  // Currently not implemented. Maybe never to be implemented.
+  RAISE_ERROR_MESSAGE("Unimplemented");
 }
 
 ErrorOrSuccess CpuDeviceContext::synchronize() const {

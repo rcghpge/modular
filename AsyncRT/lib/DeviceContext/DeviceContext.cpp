@@ -19,7 +19,9 @@ namespace M::AsyncRT {
 //
 // ===== Device ===== //
 //
-Device::~Device() {}
+Device::~Device() {
+  // Nothing to be done currently.
+}
 
 //
 // ===== DeviceBuffer ===== //
@@ -29,7 +31,9 @@ DeviceBuffer::DeviceBuffer(const DeviceContext &context, size_t len,
     : context_(DeviceContextRef::copy(&context)), len_(len),
       elem_size_(elem_size) {}
 
-DeviceBuffer::~DeviceBuffer() {}
+DeviceBuffer::~DeviceBuffer() {
+  // Nothing to be done currently.
+}
 
 const DeviceContext &DeviceBuffer::context() const { return *context_; }
 
@@ -38,12 +42,35 @@ size_t DeviceBuffer::len() const { return len_; }
 size_t DeviceBuffer::elem_size() const { return elem_size_; }
 
 //
+// ===== DeviceFunctionArguments ===== //
+//
+DeviceFunctionArguments::DeviceFunctionArguments() {}
+
+DeviceFunctionArguments::~DeviceFunctionArguments() {
+  // Nothing to be done currently.
+}
+
+//
+// ===== DeviceFunction ===== //
+//
+DeviceFunction::DeviceFunction(DeviceContextRef context)
+    : context_(std::move(context)) {}
+
+DeviceFunction::~DeviceFunction() {
+  // Nothing to be done currently.
+}
+
+const DeviceContextRef &DeviceFunction::context() const { return context_; }
+
+//
 // ===== DeviceContext ===== //
 //
 DeviceContext::DeviceContext(const Device &device)
     : device_(DeviceRef::copy(&device)) {}
 
-DeviceContext::~DeviceContext() {}
+DeviceContext::~DeviceContext() {
+  // Nothing to be done currently.
+}
 
 const Device &DeviceContext::device() const { return *device_; }
 

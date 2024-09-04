@@ -15,9 +15,11 @@
 
 namespace M::AsyncRT {
 
+using CUcontext = struct CUctx_st *;
 using CUdevice = int;
 using CUdeviceptr = void *;
-using CUcontext = struct CUctx_st *;
+using CUfunction = struct CUfunc_st *;
+using CUmodule = struct CUmod_st *;
 using CUstream = struct CUstream_st *;
 
 class CUDADriver {
@@ -65,6 +67,26 @@ public:
   Result MemcpyDtoDAsync(CUdeviceptr dstDevice, CUdeviceptr srcDevice,
                          size_t bytesize, CUstream hStream) const {
     return cuMemcpyDtoDAsync_v2_(dstDevice, srcDevice, bytesize, hStream);
+  }
+
+  Result ModuleLoadData(CUmodule *module, const void *image) const {
+    return cuModuleLoadData_(module, image);
+  }
+  Result ModuleUnload(CUmodule hmod) const { return cuModuleUnload_(hmod); }
+  Result ModuleGetFunction(CUfunction *hfunc, CUmodule hmod,
+                           const char *name) const {
+    return cuModuleGetFunction_(hfunc, hmod, name);
+  }
+
+  Result LaunchKernel(CUfunction f, unsigned int gridDimX,
+                      unsigned int gridDimY, unsigned int gridDimZ,
+                      unsigned int blockDimX, unsigned int blockDimY,
+                      unsigned int blockDimZ, unsigned int sharedMemBytes,
+                      CUstream hStream, void **kernelParams,
+                      void **extra) const {
+    return cuLaunchKernel_(f, gridDimX, gridDimY, gridDimZ, blockDimX,
+                           blockDimY, blockDimZ, sharedMemBytes, hStream,
+                           kernelParams, extra);
   }
 
   static const CUDADriver *get();
@@ -115,6 +137,21 @@ private:
   using tcuMemcpyDtoDAsync_v2 = Result(CUdeviceptr, CUdeviceptr, size_t,
                                        CUstream);
   tcuMemcpyDtoDAsync_v2 *cuMemcpyDtoDAsync_v2_;
+
+  using tcuModuleLoadData = Result(CUmodule *, const void *);
+  tcuModuleLoadData *cuModuleLoadData_;
+
+  using tcuModuleUnload = Result(CUmodule);
+  tcuModuleUnload *cuModuleUnload_;
+
+  using tcuModuleGetFunction = Result(CUfunction *, CUmodule, const char *);
+  tcuModuleGetFunction *cuModuleGetFunction_;
+
+  using tcuLaunchKernel = Result(CUfunction, unsigned int, unsigned int,
+                                 unsigned int, unsigned int, unsigned int,
+                                 unsigned int, unsigned int, CUstream, void **,
+                                 void **);
+  tcuLaunchKernel *cuLaunchKernel_;
 
   CUDADriver() = default;
 

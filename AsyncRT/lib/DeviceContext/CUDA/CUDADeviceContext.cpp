@@ -15,6 +15,7 @@
 #include "Support/ErrorOr.h"
 #include "llvm/ADT/Twine.h"
 
+#include <cstdint>
 #include <iostream>
 #include <string>
 
@@ -45,17 +46,6 @@ Error formatError(const char *file, int line, const char *func,
       std::cerr << __FILE__ << ":" << __LINE__ << " - CUDA call in "           \
                 << __FUNCTION__ << " failed: " << cuda_result << "\n";         \
       abort();                                                                 \
-    }                                                                          \
-  } while (0)
-
-#define CUDA_CHECK_RETURN(cuda_call, result)                                   \
-  do {                                                                         \
-    CUDADriver::Result cuda_result = cuda_call;                                \
-    if (cuda_result != CUDADriver::SUCCESS) {                                  \
-      std::cerr << __FILE__ << ":" << __LINE__ << " - CUDA call in "           \
-                << __FUNCTION__ << " failed: " << cuda_result << "\n";         \
-      abort();                                                                 \
-      return result;                                                           \
     }                                                                          \
   } while (0)
 
@@ -92,6 +82,70 @@ CUdeviceptr CUDADeviceBuffer::cuda_ptr() const { return dptr_; }
 
 const CUDADeviceBuffer &CUDADeviceBuffer::cast(const DeviceBuffer &buf) {
   return static_cast<const CUDADeviceBuffer &>(buf);
+}
+
+// ===== CUDADeviceFunctionArguments ===== //
+CUDADeviceFunctionArguments::CUDADeviceFunctionArguments() {}
+CUDADeviceFunctionArguments::~CUDADeviceFunctionArguments() {}
+
+void CUDADeviceFunctionArguments::pushArg(int index, const uint64_t &val) {
+  arg_values_.push_back(reinterpret_cast<void *>(val));
+}
+
+void CUDADeviceFunctionArguments::pushArg(int index, const DeviceBuffer &val) {
+  // Ensure buffer is preserved by increasing the reference count through
+  // copy().
+  refs_.emplace_back(DeviceBufferRef::copy(&val));
+  arg_values_.push_back(CUDADeviceBuffer::cast(val).cuda_ptr());
+}
+
+std::vector<void *> CUDADeviceFunctionArguments::cuda_args() const {
+  std::vector<void *> launch_args;
+  launch_args.reserve(arg_values_.size());
+  for (size_t i = 0; i < arg_values_.size(); i++) {
+    launch_args.push_back(const_cast<void **>(&arg_values_[i]));
+  }
+  return launch_args;
+}
+
+const CUDADeviceFunctionArguments &
+CUDADeviceFunctionArguments::cast(const DeviceFunctionArguments &args) {
+  return static_cast<const CUDADeviceFunctionArguments &>(args);
+}
+
+// ===== CUDADeviceFunction ===== //
+CUDADeviceFunction::CUDADeviceFunction(CUDADeviceContextRef context,
+                                       std::string name, CUmodule module,
+                                       CUfunction function)
+    : DeviceFunction(std::move(context)), module_(module), function_(function),
+      name_(std::move(name)) {}
+
+CUDADeviceFunction::~CUDADeviceFunction() {
+  const auto &cuda_context = CUDADeviceContext::cast(*context());
+
+  CUDA_CHECK(cuda_context.cuda_driver().ModuleUnload(module_));
+}
+
+DeviceFunctionArguments *CUDADeviceFunction::allocateArguments() const {
+  return new CUDADeviceFunctionArguments();
+}
+
+ErrorOrSuccess CUDADeviceFunction::cuda_callKernel(
+    uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
+    uint32_t blockY, uint32_t blockZ, const CUDADeviceFunctionArguments &args,
+    CUstream stream) const {
+  const auto &cuda_context = CUDADeviceContext::cast(*context());
+
+  CUDA_CHECK_ERR(cuda_context.cuda_driver().LaunchKernel(
+      function_, gridX, gridY, gridZ, blockX, blockY, blockZ, 0, stream,
+      args.cuda_args().data(), nullptr));
+  return success();
+}
+
+const std::string &CUDADeviceFunction::name() const { return name_; }
+
+const CUDADeviceFunction &CUDADeviceFunction::cast(const DeviceFunction &func) {
+  return static_cast<const CUDADeviceFunction &>(func);
 }
 
 // ===== CUDADeviceContext ===== //
@@ -151,6 +205,33 @@ CUDADeviceContext::enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
   size_t byte_size = dst.len() * dst.elem_size();
   CUDA_CHECK_ERR(driver_.MemcpyDtoDAsync(dst_ptr, src_ptr, byte_size, stream_));
   return success();
+}
+
+ErrorOr<DeviceFunctionRef>
+CUDADeviceContext::compileFunction(const char *function_name,
+                                   const void *data) const {
+  std::cerr << "CUDADeviceContext::compileFunction(" << function_name << "):\n"
+            << reinterpret_cast<const char *>(data) << "\n";
+  CUmodule module;
+  CUDA_CHECK_ERR(driver_.ModuleLoadData(&module, data));
+
+  CUfunction function;
+  CUDA_CHECK_ERR(driver_.ModuleGetFunction(&function, module, function_name));
+
+  return CUDADeviceFunctionRef::create(CUDADeviceContextRef::copy(this),
+                                       std::string(function_name), module,
+                                       function);
+}
+
+ErrorOrSuccess CUDADeviceContext::enqueueFunctionExec(
+    const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
+    uint32_t blockX, uint32_t blockY, uint32_t blockZ,
+    const DeviceFunctionArguments &args) const {
+  const auto &cuda_func = CUDADeviceFunction::cast(func);
+
+  return cuda_func.cuda_callKernel(gridX, gridY, gridZ, blockX, blockY, blockZ,
+                                   CUDADeviceFunctionArguments::cast(args),
+                                   stream_);
 }
 
 ErrorOrSuccess CUDADeviceContext::synchronize() const {

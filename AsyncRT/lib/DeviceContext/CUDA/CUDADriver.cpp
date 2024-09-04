@@ -55,6 +55,10 @@ const CUDADriver *CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuMemcpyHtoDAsync_v2);
   GET_FUNC(cuMemcpyDtoHAsync_v2);
   GET_FUNC(cuMemcpyDtoDAsync_v2);
+  GET_FUNC(cuModuleLoadData);
+  GET_FUNC(cuModuleUnload);
+  GET_FUNC(cuModuleGetFunction);
+  GET_FUNC(cuLaunchKernel);
 
   // Initialize the driver and return the newly allocated driver if successful.
   Result err = driver->Init(0);
