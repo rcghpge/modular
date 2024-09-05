@@ -42,6 +42,12 @@ struct EliminateRedundantLoads
 
     auto storeOp = dyn_cast_if_present<MutableStoreOp>(inChain.getDefiningOp());
 
+    if (!inChain.hasOneUse()) {
+      return rewriter.notifyMatchFailure(
+          loc, "load elision is possible only when it has exclusive access to "
+               "its input chain");
+    }
+
     if (!storeOp)
       return rewriter.notifyMatchFailure(
           loc, "input chain not produced by a mo.mutable.store op");
@@ -74,6 +80,12 @@ struct EliminateRedundantStores
 
     if (outChain.use_empty())
       return rewriter.notifyMatchFailure(loc, "no proceeding store op");
+
+    if (!outChain.hasOneUse()) {
+      return rewriter.notifyMatchFailure(
+          loc, "store elision is supported only when the output chain has "
+               "exactly one use");
+    }
 
     auto nextStoreOp = dyn_cast<MutableStoreOp>(*outChain.user_begin());
 

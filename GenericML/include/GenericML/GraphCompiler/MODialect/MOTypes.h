@@ -50,6 +50,8 @@ using ShapeAttr = MOSH::ShapeAttr;
 using ShapeType = MOSH::ShapeType;
 using TensorValue = M::TypedValue<M::MO::TensorType>;
 using ListValue = M::TypedValue<M::MO::ListType>;
+using BufferValue = M::TypedValue<M::MO::BufferType>;
+using ChainValue = M::TypedValue<M::MO::ChainType>;
 
 ErrorOr<DType> fromMLIRType(Type mlirType);
 ErrorOr<Type> toMLIRType(MLIRContext *context, DType dType);

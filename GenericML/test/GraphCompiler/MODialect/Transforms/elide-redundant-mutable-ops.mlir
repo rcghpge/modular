@@ -63,8 +63,6 @@ mo.graph @add_relu(%buf: !bt, %rhs: !tt) -> !bt
 // CHECK: [[ch1:%.*]], [[vbuf:%.*]] = mo.mutable.load
 // CHECK: [[res1:%.*]] = mo.add([[vbuf]], [[rhs]])
 // CHECK: [[ch2:%.*]] =  mo.mutable.store([[ch1]]
-// CHECK: [[ch3:%.*]] = mo.chain.create([[ch2]])
-// CHECK: [[ch3:%.*]] = mo.chain.create([[ch2]])
 mo.graph @multiple_chain_users_load(%buf: !bt, %rhs: !tt) -> (!bt, !bt, !tt)
 {
   %ch0 = mo.chain.create(%buf) : !bt
@@ -91,12 +89,9 @@ mo.graph @multiple_chain_users_load(%buf: !bt, %rhs: !tt) -> (!bt, !bt, !tt)
 // CHECK-SAME: [[rhs:%.*]]: !mo.tensor<[2, 2], f32>
 // CHECK: [[ch1:%.*]], [[vbuf:%.*]] = mo.mutable.load
 // CHECK: [[res1:%.*]] = mo.add([[vbuf]], [[rhs]])
-// CHECK: mo.chain.create([[ch1]])
-// CHECK: mo.chain.create([[ch1]])
-// CHECK-NOT: mo.mutable.store
-// CHECK-NOT: mo.mutable.load
+// CHECK: [[ch2:%.*]] = mo.mutable.store([[ch1]], [[buf]], [[res1]])
 // CHECK: [[res2:%.*]] = mo.add([[res1]], [[rhs]])
-// CHECK: mo.mutable.store([[ch1]], [[buf]], [[res2]])
+// CHECK: mo.mutable.store([[ch2]], [[buf]], [[res2]])
 mo.graph @multiple_chain_users_store(%buf: !bt, %rhs: !tt) -> (!bt, !bt)
 {
   %ch0 = mo.chain.create(%buf) : !bt

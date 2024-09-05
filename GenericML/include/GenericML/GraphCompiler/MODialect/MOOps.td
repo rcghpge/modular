@@ -40,6 +40,9 @@ class MO_TensorOp<string mnemonic, list<Trait> traits = []>
 class MO_ControlOp<string mnemonic, list<Trait> traits = []>
   : MO_TensorOp<mnemonic, [MO_ControlOpInterface] # traits>;
 
+class MO_MutableOp<string mnemonic, list<Trait> traits = []>
+  : MO_Op<mnemonic, [MO_MutableOpInterface] # traits>;
+
 //===----------------------------------------------------------------------===//
 // IndexToTensorOp
 //===----------------------------------------------------------------------===//
@@ -4537,7 +4540,7 @@ def MO_ChainCreateOp : MO_Op<"chain.create", [Pure]>
 // Buffer ops
 //===----------------------------------------------------------------------===//
 
-def MO_MutableLoadOp : MO_Op<"mutable.load", [
+def MO_MutableLoadOp : MO_MutableOp<"mutable.load", [
   AllDTypesMatch<["inBuffer", "outTensor"]>,
   AllShapeAttrsMatch<["inBuffer", "outTensor"]>
 ]>
@@ -4560,9 +4563,11 @@ def MO_MutableLoadOp : MO_Op<"mutable.load", [
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+
+  let hasCanonicalizer = 1;
 }
 
-def MO_MutableStoreOp : MO_Op<"mutable.store", [
+def MO_MutableStoreOp : MO_MutableOp<"mutable.store", [
   AllDTypesMatch<["inBuffer", "inTensor"]>,
   AllShapeAttrsMatch<["inBuffer", "inTensor"]>
 ]>
@@ -4585,9 +4590,12 @@ def MO_MutableStoreOp : MO_Op<"mutable.store", [
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+
+  let hasCanonicalizer = 1;
 }
 
-def MO_MutableStoreSliceOp : MO_TensorOp<"mutable.store.slice"> {
+def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice">
+{
   let summary = "Stores a tensor to a slice of a buffer semantic tensor.";
   let description = [{
     Stores the  tensor `slice` to a subset of the elements in `inBuffer`.
@@ -4636,6 +4644,8 @@ def MO_MutableStoreSliceOp : MO_TensorOp<"mutable.store.slice"> {
     functional-type(operands, results)
   }];
   let hasVerifier = 1;
+
+  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//

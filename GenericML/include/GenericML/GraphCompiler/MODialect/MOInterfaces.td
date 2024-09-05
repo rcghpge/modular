@@ -36,6 +36,36 @@ def MO_TensorOpInterface : OpInterface<"MOTensorOpInterface"> {
   ];
 }
 
+def MO_MutableOpInterface : OpInterface<"MOMutableOpInterface"> {
+  let description = [{
+    Interface that all mo.mutable ops should implement, mainly providing typed
+    accessors to the input buffer and input/output chains.
+  }];
+  let cppNamespace = "::M::MO";
+
+  let methods = [
+    InterfaceMethod<"Get the input buffer as a BufferValue",
+      "BufferValue", "getInBuffer",
+      (ins), [{}],
+      [{ return ::llvm::cast<BufferValue>($_op->getInBuffer()); }]>,
+
+    InterfaceMethod<"Get the input chain as a ChainValue",
+      "ChainValue", "getInChain",
+      (ins), [{}],
+      [{ return ::llvm::cast<ChainValue>($_op->getInChain()); }]>,
+
+    InterfaceMethod<"Get the output chain as a ChainValue",
+      "ChainValue", "getOutChain",
+      (ins), [{}],
+      [{ return ::llvm::cast<ChainValue>($_op->getOutChain()); }]>,
+
+    InterfaceMethod<"Get the input chain as a OpOperand ref",
+      "::mlir::OpOperand &", "getInChainMutable",
+      (ins), [{}],
+      [{ return $_op.getInChainMutable(); }]>
+  ];
+}
+
 def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
   let description = [{
     Interface for ops with an optional `#M.device_ref` attribute describing the

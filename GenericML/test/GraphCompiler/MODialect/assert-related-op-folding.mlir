@@ -6,7 +6,8 @@
 // CHECK: kgen.param.declare [[CH:.*]]: !mo.chain
 // CHECK: [[CH0:%.*]] = mosh.param.to_value{{.*}}<[[CH]]>
 // CHECK-NOT: mosh.param.to_value: !mo.chain = <#mo.chain>
-// CHECK: mo.chain.create([[CH0]]) : !mo.chain
+// CHECK-NOT: mo.chain.create
+// CHECK: mo.guard[[[CH0]]] ([[ARG0]], [[ARG0]])
 mo.graph @chain_create_input_folded_away<D1, D2, D3, D4>
 (
   %arg0: !mo.tensor<[D1, D2, D3, D4], f32>

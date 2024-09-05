@@ -3556,6 +3556,10 @@ OpFoldResult ChainCreateOp::fold(FoldAdaptor adaptor) {
   if (getInputs().empty())
     return nullptr;
 
+  if (getNumOperands() == 1 && isa<ChainType>(getOperand(0).getType())) {
+    return getOperand(0);
+  }
+
   SmallVector<Value> keptValues;
 
   for (Value val : getInputs()) {
@@ -3777,6 +3781,79 @@ LogicalResult MutableStoreSliceOp::verify() {
     return emitError("step shape must be [inputRank] if it's static");
 
   return success();
+}
+
+static bool areBuffersAliased(Value buf1, Value buf2) { return buf1 == buf2; }
+
+struct CanonicalizeMutable
+    : public OpInterfaceRewritePattern<MOMutableOpInterface> {
+  CanonicalizeMutable(MLIRContext *ctx)
+      : OpInterfaceRewritePattern(ctx, /*benefit=*/1) {}
+
+  LogicalResult matchAndRewrite(MOMutableOpInterface op,
+                                PatternRewriter &rewriter) const override {
+    auto inChain = op.getInChain();
+    auto up = inChain.getDefiningOp();
+
+    rewriter.setInsertionPointAfter(op);
+
+    if (auto parent = dyn_cast_or_null<MOMutableOpInterface>(up)) {
+      if (!areBuffersAliased(op.getInBuffer(), parent.getInBuffer())) {
+        op.getInChainMutable().set(parent.getInChain());
+
+        auto merge = rewriter.create<ChainCreateOp>(
+            op.getLoc(), ValueRange({op.getOutChain(), parent.getOutChain()}));
+
+        rewriter.replaceAllUsesExcept(op.getOutChain(), merge.getResult(),
+                                      merge);
+
+        return success();
+      } else
+        return failure();
+    } else if (auto parent = dyn_cast_or_null<ChainCreateOp>(up)) {
+      mlir::BitVector eraseIdxs(parent->getNumOperands());
+
+      SmallVector<Value> coperands = {op.getOutChain()};
+
+      for (auto &&[idx, operand] : llvm::enumerate(parent->getOperands())) {
+        if (!isa<ChainType>(operand.getType()))
+          continue;
+        if (auto upstream = dyn_cast_or_null<MOMutableOpInterface>(
+                operand.getDefiningOp())) {
+          if (!areBuffersAliased(op.getInBuffer(), upstream.getInBuffer())) {
+            eraseIdxs[idx] = true;
+            coperands.push_back(operand);
+          }
+        }
+      }
+      if (coperands.size() == 1)
+        return failure();
+
+      auto merge = rewriter.create<ChainCreateOp>(op.getLoc(), coperands);
+
+      rewriter.replaceAllUsesExcept(op.getOutChain(), merge.getResult(), merge);
+
+      parent->eraseOperands(eraseIdxs);
+      return success();
+    } else {
+      return failure();
+    }
+  }
+};
+
+void MutableStoreOp::getCanonicalizationPatterns(
+    mlir::RewritePatternSet &patterns, mlir::MLIRContext *ctx) {
+  patterns.add<CanonicalizeMutable>(ctx);
+}
+
+void MutableLoadOp::getCanonicalizationPatterns(
+    mlir::RewritePatternSet &patterns, mlir::MLIRContext *ctx) {
+  patterns.add<CanonicalizeMutable>(ctx);
+}
+
+void MutableStoreSliceOp::getCanonicalizationPatterns(
+    mlir::RewritePatternSet &patterns, mlir::MLIRContext *ctx) {
+  patterns.add<CanonicalizeMutable>(ctx);
 }
 
 //===----------------------------------------------------------------------===//
