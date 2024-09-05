@@ -2935,11 +2935,9 @@ DeviceRefAttr SliceDimOp::getOperandDevice(size_t index) {
 
 LogicalResult SliceDimOp::verify() {
   TensorType inputType = getInput().getType();
-  if (inputType.hasRank()) {
-    if (getAxis().getInt() >= inputType.getRank()) {
+  if (inputType.hasRank())
+    if ((size_t)getAxis().getInt() >= inputType.getRank())
       return emitError("Slice axis is greater than rank of input");
-    }
-  }
   return success();
 }
 
