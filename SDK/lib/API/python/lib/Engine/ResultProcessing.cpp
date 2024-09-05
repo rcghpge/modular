@@ -5,8 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "SDK/EngineAPI/python/ResultProcessing.h"
+#include "GenericML/API/max/c/internal/value.h"
 #include "GenericML/API/max/c/value.h"
 #include "GenericML/API/max/cpp/aliases.h"
+#include "SDK/EngineAPI/python/MojoValue.h"
 #include "SDK/EngineAPI/python/Types.h"
 #include <vector>
 
@@ -48,7 +50,7 @@ py::object core::processTensorResult(TensorPtr outTensor) {
 /// `Dict`, `List`, `Tuple`, `None`, `Tensor` and primitive type
 /// values to a nested pybind object value composed of `array`, `dict`, `list`,
 /// `tuple`, `none`, `double`, `long` and `bool`. Tensor data arrays are copied.
-py::object core::processValueResult(ValuePtr value) {
+py::object core::processValueResult(ValuePtr value, M_RuntimeContext *context) {
   switch (M_getValueType(value.get())) {
   case M_DICT_VALUE: {
     M_AsyncDict *dict = M_getDictFromValue(value.get());
@@ -56,9 +58,10 @@ py::object core::processValueResult(ValuePtr value) {
     size_t size = M_getDictSize(dict);
     for (size_t i = 0, e = M_getDictSize(dict); i < e; ++i) {
       for (size_t i = 0; i < size; ++i) {
-        pyDict[processValueResult(
-            ValuePtr(M_getDictKey(dict, i), M_freeValue))] =
-            processValueResult(ValuePtr{M_getDictValue(dict, i), M_freeValue});
+        pyDict[processValueResult(ValuePtr(M_getDictKey(dict, i), M_freeValue),
+                                  context)] =
+            processValueResult(ValuePtr{M_getDictValue(dict, i), M_freeValue},
+                               context);
       }
     }
     M_freeDict(dict);
@@ -69,8 +72,8 @@ py::object core::processValueResult(ValuePtr value) {
     size_t size = M_getListSize(list);
     py::list pyList;
     for (size_t i = 0; i < size; ++i) {
-      pyList.append(
-          processValueResult(ValuePtr{M_getListValue(list, i), M_freeValue}));
+      pyList.append(processValueResult(
+          ValuePtr{M_getListValue(list, i), M_freeValue}, context));
     }
     M_freeList(list);
     return pyList;
@@ -80,8 +83,8 @@ py::object core::processValueResult(ValuePtr value) {
     size_t size = M_getTupleSize(tuple);
     py::tuple pyTuple(size);
     for (size_t i = 0; i < size; ++i) {
-      pyTuple[i] =
-          processValueResult(ValuePtr{M_getTupleValue(tuple, i), M_freeValue});
+      pyTuple[i] = processValueResult(
+          ValuePtr{M_getTupleValue(tuple, i), M_freeValue}, context);
     }
     M_freeTuple(tuple);
     return pyTuple;
@@ -100,6 +103,10 @@ py::object core::processValueResult(ValuePtr value) {
     TensorPtr tensorPtr{M_getTensorFromValue(value.get()), &M_freeTensor};
     return processTensorResult(std::move(tensorPtr));
   }
+  case M_MOJO_VALUE:
+    return py::cast(M::core::MojoValue(
+        ValuePtr(M_createMojoAsyncValueTakenFromExisting(value.get(), context),
+                 &M_freeValue)));
   default:
     throw py::type_error("Unhandled value type.");
   }

@@ -5,8 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "SDK/EngineAPI/python/InputProcessing.h"
+#include "GenericML/API/max/c/internal/value.h"
 #include "GenericML/API/max/c/value.h"
 #include "GenericML/API/max/cpp/aliases.h"
+#include "SDK/EngineAPI/python/MojoValue.h"
 #include "SDK/EngineAPI/python/Types.h"
 #include <vector>
 
@@ -150,6 +152,10 @@ M_AsyncValue *core::processValueInput(const py::object &pyObj,
 
   if (py::isinstance<py::bool_>(pyObj))
     return M_createBoolAsyncValue(pyObj.cast<bool>(), context);
+
+  if (py::isinstance<core::MojoValue>(pyObj))
+    return M_createMojoAsyncValueBorrowingFromExisting(
+        pyObj.cast<core::MojoValue *>()->value.get(), context);
 
   return nullptr;
 }
