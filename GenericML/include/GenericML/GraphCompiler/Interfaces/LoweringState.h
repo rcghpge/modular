@@ -633,6 +633,13 @@ struct MOOpLoweringState {
                                  weightsRegistry, name, size, align);
   }
 
+  Value hostBufferConstantExternal(TypedValue<MEF::ChainType> inChain,
+                                   StringRef name, uint64_t size,
+                                   uint64_t align) {
+    return loweringState.getHostBufferBuilder()->bufferConstantExternal(
+        builder, loc, inChain, context, weightsRegistry, name, size, align);
+  }
+
   Value debugTensorPrint(Value inChain, Value buffer,
                          TypedValue<TensorSpecType> tensorSpec,
                          StringAttr label, Type moTensorType) {
@@ -694,6 +701,12 @@ struct MOOpLoweringState {
                            Type moTensorType) {
     return getStorageBufferBuilder(moTensorType)
         ->bufferSetWithIndex(builder, loc, context, buffer, values);
+  }
+
+  Value bufferAllocStatic(TypedValue<MEF::ChainType> inChain, uint64_t size,
+                          uint64_t align, Type moTensorType) {
+    return getStorageBufferBuilder(moTensorType)
+        ->bufferAllocStatic(builder, loc, context, inChain, size, align);
   }
 };
 

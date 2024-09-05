@@ -716,14 +716,42 @@ MOGraphLowering::lowerConstantExternal(MO::ConstantExternalOp constExternalOp) {
     return failure();
   TypedValue<MGP::TensorSpecType> &tensorSpec = *tensorSpecOr;
 
-  // Create the mgp.buffer.constant.external op.
-  Value buffer = opLoweringState.bufferConstantExternal(
-      loweringState.getExecuteChain(), constExternalOp.getName(),
-      *tensorSpec.getType().getSizeInBytes(), constExternalOp.getAlign(),
+  TypedValue<MEF::ChainType> chain = loweringState.getExecuteChain();
+  StringRef name = constExternalOp.getName();
+  uint64_t sizeInBytes = *tensorSpec.getType().getSizeInBytes();
+  uint64_t alignment = constExternalOp.getAlign();
+  auto moTensorType =
+      cast<MO::TensorType>(constExternalOp.getResult().getType());
+
+  DeviceRefAttr device =
+      MO::getDeviceOrDefault(loweringState.getGraph(), moTensorType);
+  DeviceRefAttr hostDevice = loweringState.getHostDevice();
+  if (device == hostDevice) {
+    // Create the mgp.buffer.constant.external op directly on the host.
+    Value buffer = opLoweringState.bufferConstantExternal(
+        chain, name, sizeInBytes, alignment, moTensorType);
+    opLoweringState.createOutputTensor(constExternalOp.getResult(), chain,
+                                       buffer, *tensorSpecOr);
+
+    return success();
+  }
+
+  // Otherwise, first allocate a device buffer, then perform a host to device
+  // copy from the external host bufer.
+  Value hostBuffer = opLoweringState.hostBufferConstantExternal(
+      chain, name, sizeInBytes, alignment);
+  Value deviceBuffer = opLoweringState.bufferAllocStatic(
+      chain, sizeInBytes, alignment, moTensorType);
+
+  // Use bufferTransferFromHost to also take care of the stream sync.
+  // Note that this is needlessly conservative because the constant external's
+  // lifetime is controlled outside the graph.
+  Value outChain = opLoweringState.bufferTransferFromHost(
+      chain, cast<TypedValue<MGP::DeviceBufferType>>(hostBuffer), deviceBuffer,
       constExternalOp.getResult().getType());
-  opLoweringState.createOutputTensor(constExternalOp.getResult(),
-                                     loweringState.getExecuteChain(), buffer,
-                                     *tensorSpecOr);
+
+  opLoweringState.createOutputTensor(constExternalOp.getResult(), outChain,
+                                     deviceBuffer, *tensorSpecOr);
 
   return success();
 }

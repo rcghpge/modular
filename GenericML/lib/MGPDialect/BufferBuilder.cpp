@@ -248,8 +248,8 @@ Value MGPBufferBuilder::bufferTransferFromHost(OpBuilder &builder, Location loc,
           .getResult();
 
   Value syncChain = builder.create<MGP::SyncOp>(loc, copyChain, context,
-                                                /*aRuntimeSlot*/ runtimeSlot,
-                                                /*bDevice*/ device);
+                                                /*aRuntimeSlot=*/runtimeSlot,
+                                                /*bDevice=*/device);
 
   builder.create<MGP::ExtendLifetimeOp>(loc, ValueRange{syncChain, srcBuffer});
   return copyChain;
