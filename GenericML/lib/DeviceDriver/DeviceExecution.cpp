@@ -34,7 +34,7 @@ static M::Tensor getTensorFromDeviceMemory(AsyncRT::Runtime &runtime,
                 TensorSpec{std::move(spec)});
 }
 
-// Constrcuts on-device memory to hold a provided tensor.
+// Construct on-device memory to hold a provided tensor.
 Driver::DeviceMemory *M::Driver::constructDeviceMemoryFromTensor(
     M::ContextRef context, Driver::Device *device, M::Tensor tensor) {
 
@@ -47,7 +47,7 @@ Driver::DeviceMemory *M::Driver::constructDeviceMemoryFromTensor(
   auto destructor = [context = std::move(context),
                      storageRef = storageRef.copy()](
                         void *ptr, const TensorSpec &spec) mutable {
-    // When the last reference goes out of scope the data will be deallocated.
+    // When the last reference goes out of scope, the data will be deallocated.
     (void)storageRef;
 
     // When graph deallocates CPU memory it is done through AsyncRT Runtime. So
