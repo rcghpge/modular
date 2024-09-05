@@ -169,7 +169,8 @@ OwnedMemoryBlock::OwnedMemoryBlock(size_t size, std::optional<size_t> alignment,
   if (takePtr)
     data = takePtr;
   else
-    data = runtime->getAllocator()->allocateBytes(size, alignment.value_or(1));
+    data = runtime->getAllocator()->allocateBytes(
+        size, alignment.value_or(kPreferredMemoryAlignment));
 }
 
 OwnedMemoryBlock::~OwnedMemoryBlock() {
