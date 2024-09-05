@@ -7,8 +7,8 @@ mgp.model @remove_redundant_operands : mof devices [#M.device_ref<"cpu", 0>] ini
   mef.output %out_chain, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %0 = grt.chain.create ()
-  %lhs = mip.constant.index 42
-  %rhs = mip.constant.index -20
+  %lhs = index.constant 42
+  %rhs = index.constant -20
   %3 = mogg.generic.compiled.region (%lhs, %rhs, %lhs, %rhs) : (%arg2: index, %arg3: index, %arg4: index, %arg5: index) -> index{
     %5 = mogg.call "mip.add"(%arg2, %arg3) {} : index, index -> index
     %6 = mogg.call "mip.add"(%5, %arg4) {} : index, index -> index

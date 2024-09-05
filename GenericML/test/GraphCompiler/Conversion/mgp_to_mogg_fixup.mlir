@@ -11,8 +11,8 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.op
   mef.output %2, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %0 = grt.chain.create ()
-  %1 = mip.constant.index 42
-  %2 = mip.constant.index -20
+  %1 = index.constant 42
+  %2 = index.constant -20
   %3 = "mogg.execute_kernel"(%1, %2) {hasCuda=false, isAsync = false, kernelName = "__gen_0", outputParamDecls = #kgen<param.decls[]>, summary = "mogg.generic.compiled.region:14", usedParams = []} : (index, index) -> index
   %4 = mip.print.index %3, %0
   mef.output %4 : !mef.chain
@@ -33,8 +33,8 @@ mgp.model @basic_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%wei
   %2 = mgp.runtime.create %0, %1[0] device<"cpu", 0>
   mef.output %2, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 } execute (%ch0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.buffer<1>) -> !mef.chain {
-  %lhs = mip.constant.index 42
-  %rhs = mip.constant.index -20
+  %lhs = index.constant 42
+  %rhs = index.constant -20
   %1 = mgp.buffer.to_bool %ch0, %arg1[1], %arg2 : !mgp.buffer<1>
   %2 = grt.if %1 (%ch0: !mef.chain, %lhs: index, %rhs: index, %arg1 as %new: !mgp.context) -> !mef.chain {
     %3 = "mogg.execute_kernel"(%lhs, %rhs) {hasCuda=false, isAsync = false, kernelName = "__gen_0", outputParamDecls = #kgen<param.decls[]>, summary = "mogg.generic.compiled.region:14", usedParams = []} : (index, index) -> index

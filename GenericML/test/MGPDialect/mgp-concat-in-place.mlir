@@ -40,8 +40,8 @@ mgp.model @static_concat : mof devices [#M.device_ref<"cpu", 0>] init (%weights:
 
 // CHECK-LABEL: mgp.model @dynamic_concat
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context
-// CHECK: %[[TOTAL_SIZE:.*]] = mip.constant.index 64
-// CHECK: %[[SPLIT_SIZE:.*]] = mip.constant.index 32
+// CHECK: %[[TOTAL_SIZE:.*]] = index.constant 64
+// CHECK: %[[SPLIT_SIZE:.*]] = index.constant 32
 // CHECK: %[[OUT_BUF:.*]] = mgp.buffer.alloc.dynamic %[[CH0]], %[[CTX]][1], %[[TOTAL_SIZE]]
 // CHECK: %[[IN_BUFS:.*]]:2 = mgp.buffer.split.borrow %[[CH0]], %[[CTX]][1], %[[OUT_BUF]], %[[SPLIT_SIZE]] : !mgp.buffer<>  -> (!mgp.buffer<>, !mgp.buffer<32>)
 // CHECK: %[[CH2:.*]] = "add"(%[[CH0]], %{{.*}}, %{{.*}}, %[[IN_BUFS]]#0)
@@ -59,15 +59,15 @@ mgp.model @dynamic_concat : mof devices [#M.device_ref<"cpu", 0>] init (%weights
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<16xf32>) {
   %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %2 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
-  %const_32 = mip.constant.index 32
+  %const_32 = index.constant 32
   %4 = mgp.buffer.alloc.dynamic %ch0, %ctx[1], %const_32 : !mgp.buffer<>
-  %const_8 = mip.constant.index 8
+  %const_8 = index.constant 8
   %5 = mgp.tensor_spec.create %const_8 : !mgp.tensor_spec<?xf32>
   %6 = "add"(%ch0, %0, %2, %4) {tempInOutSig = #M.inout_sig<"iiio">} : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<>) -> !mef.chain
   %10 = mgp.buffer.alloc.static %ch0, %ctx[1] : !mgp.buffer<32>
   %12 = "sub"(%ch0, %0, %2, %10) {tempInOutSig = #M.inout_sig<"iiio">} : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
   %14 = mgp.tensor_spec.create : !mgp.tensor_spec<16xf32>
-  %const_64 = mip.constant.index 64
+  %const_64 = index.constant 64
   %15 = mgp.buffer.alloc.dynamic %ch0, %ctx[1], %const_64 : !mgp.buffer<>
   %16 = grt.chain.create(%6: !mef.chain, %12: !mef.chain)
   %17 = mgp.buffer.concat %16, %ctx[1], %15, %4, %10 : (!mgp.buffer<>, !mgp.buffer<32>) -> !mgp.buffer<>

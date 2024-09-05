@@ -105,6 +105,7 @@ def MGPDialect : Dialect {
 
   let cppNamespace = "::M::MGP";
   let dependentDialects = [
+    "mlir::index::IndexDialect",
     "::M::MDialect",
     "::M::MEF::MEFDialect",
     "::M::MIP::MIPDialect",

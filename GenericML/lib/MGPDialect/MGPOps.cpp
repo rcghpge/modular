@@ -19,6 +19,7 @@
 #include "Support/ML/CompiledFrameworkLabel.h"
 #include "Support/ML/DType.h"
 #include "Support/ML/SizeUtils.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -717,10 +718,7 @@ LogicalResult CpuTensorSpecSizeOp::canonicalize(CpuTensorSpecSizeOp op,
   TensorSpecType specType = op.getSpec().getType();
   std::optional<uint64_t> constSize = specType.getSizeInBytes();
   if (constSize) {
-    auto si64Ty = rewriter.getIntegerType(64, true);
-    auto sizeAttr = rewriter.getIntegerAttr(si64Ty, constSize.value());
-    rewriter.replaceOpWithNewOp<MIP::ConstantIndexOp>(
-        op, rewriter.getIndexType(), sizeAttr);
+    rewriter.replaceOpWithNewOp<mlir::index::ConstantOp>(op, constSize.value());
     return success();
   }
 

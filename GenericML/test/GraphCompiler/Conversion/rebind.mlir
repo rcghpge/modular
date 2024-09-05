@@ -3,7 +3,7 @@
 // CHECK-LABEL: mgp.model @static_ranks_int_to_unknown : mof
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK: %[[ARG2:[a-z0-9]*]]: !mgp.tensor<42x?xf32>)
-// CHECK:   %[[CDIM:.*]] = mip.constant.index 42
+// CHECK:   %[[CDIM:.*]] = index.constant 42
 // CHECK:   %[[SPEC:.*]] = mgp.tensor.extract.tensor_spec %[[CTX]][0], %[[ARG2]] : !mgp.tensor<42x?xf32>
 // CHECK:   %[[DYNDIM:.*]] = mgp.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.tensor_spec<42x?xf32>
 // CHECK:   %[[BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][0], %[[ARG2]] : !mgp.tensor<42x?xf32>

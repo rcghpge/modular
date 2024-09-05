@@ -9,11 +9,11 @@ mgp.model @if : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaqu
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<32xui8>) {
   %0 = mgp.buffer.constant %arg0, %arg1[1], #M.aligned_bytes<"0x01", align 8> : !M.array<1xui8>
   %2 = mgp.buffer.alloc.static %arg0, %arg1[1] : !mgp.buffer<32>
-  %const0 = mip.constant.index 0
+  %const0 = index.constant 0
   %3 = mgp.buffer.set_with_index %arg1[1], %2, %const0 : !mgp.buffer<32>
   %4 = mgp.tensor_spec.create  : !mgp.tensor_spec<32xui8>
   %5 = mgp.buffer.alloc.static %arg0, %arg1[1] : !mgp.buffer<32>
-  %const1 = mip.constant.index 1
+  %const1 = index.constant 1
   %6 = mgp.buffer.set_with_index %arg1[1], %5, %const1 : !mgp.buffer<32>
   %7 = mgp.buffer.to_bool %arg0, %arg1[1], %0 : !mgp.buffer<1>
   // CHECK: %[[IF_OUTS:.*]]:4 = grt.if

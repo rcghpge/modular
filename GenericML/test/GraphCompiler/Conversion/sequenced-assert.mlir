@@ -25,7 +25,7 @@ mo.graph @assert_sequence<D0, D1, D2, D3>(%arg0: !mo.tensor<[D0, D1], f32>, %arg
 // second assert consumes a chain from the first
 
 // CHECK-LABEL: @needs_guard
-// CHECK: [[NEG1:%.*]] = mip.constant.index -1
+// CHECK: [[NEG1:%.*]] = index.constant -1
 // CHECK: [[DENOM:%.*]] = mip.add [[BS:%.*]], [[NEG1]]
 // CHECK: [[CH0:%.*]] = mgp.assert {{.*}} "error 1"
 // CHECK: mgp.guard [[CH0]], [[DENOM]]
@@ -63,10 +63,10 @@ mo.graph @matching_conds<S2, C1_S2, RS, BC1, BC2, BC3, BC4>()
 // Make sure we're handling cases with more than two asserts correctly We don't
 // expect any guard to be materialized between the 1st and 2nd assert as no
 // parameters are shared but we do expect one between the 2nd and 3rd asserts
-// on the 'DENOM' param 
+// on the 'DENOM' param
 
 // CHECK-LABEL @three_asserts
-// CHECK: [[NEG1:%.*]] = mip.constant.index -1
+// CHECK: [[NEG1:%.*]] = index.constant -1
 // CHECK: [[DENOM:%.*]] = mip.add [[BS:%.*]], [[NEG1]]
 // CHECK: [[CH0:%.*]] = mgp.assert {{.*}} "error 1"
 // CHECK-NOT: mgp.guard

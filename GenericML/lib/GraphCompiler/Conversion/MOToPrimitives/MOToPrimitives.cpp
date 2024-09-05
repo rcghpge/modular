@@ -24,6 +24,7 @@
 #include "Support/ML/CommonAttributes.h"
 #include "Support/STLExtras.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include <cassert>
 
@@ -596,7 +597,6 @@ static Value getRebindResTensor(MO::RebindOp rebindOp,
   // We will collect the runtime dimensions for the result spec.
   SmallVector<Value> runtimeDims;
   MGP::CpuTensorSpecDimsDynamicOp dynDimsOp;
-  OpBuilder &exeBuilder = loweringState.getExecuteOpBuilder();
   Location loc = opLoweringState.loc;
   for (auto [idx, inDim, resDim] :
        llvm::enumerate(inputTy.getDims(), resTy.getDims())) {
@@ -608,10 +608,8 @@ static Value getRebindResTensor(MO::RebindOp rebindOp,
     // If the input dimension is static, and the result is dynamic, we create
     // a constant runtime dimension.
     if (auto intAttr = dyn_cast<IntegerAttr>(inDim)) {
-      IntegerType si64Ty = exeBuilder.getIntegerType(64, /*isSigned=*/true);
-      auto newIntAttr = exeBuilder.getIntegerAttr(si64Ty, intAttr.getInt());
-      auto constOp = opLoweringState.create<MIP::ConstantIndexOp>(
-          intAttr.getType(), newIntAttr);
+      auto constOp =
+          opLoweringState.create<mlir::index::ConstantOp>(intAttr.getInt());
       runtimeDims.emplace_back(constOp.getResult());
       continue;
     }
@@ -747,8 +745,8 @@ MOGraphLowering::lowerConstantScalar(MO::ConstantScalarOp constOp) {
           intAttr.getType(), intAttr);
       loweringState.emplaceExecuteLoweredValue(constOp, grtConstOp);
     } else if (intAttr.getType().isSignedInteger(64)) {
-      auto mipConstOp = opLoweringState.create<MIP::ConstantIndexOp>(
-          intAttr.getType(), intAttr);
+      auto mipConstOp =
+          opLoweringState.create<mlir::index::ConstantOp>(intAttr.getInt());
       loweringState.emplaceExecuteLoweredValue(constOp, mipConstOp);
     }
   } else {
@@ -854,14 +852,12 @@ LogicalResult MOGraphLowering::lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp) {
   if (failed(tensorSpecOr))
     return failure();
 
-  auto si64Ty = opLoweringState.builder.getIntegerType(64, true);
   auto indexTy = opLoweringState.builder.getIndexType();
   auto i1Ty = opLoweringState.builder.getI1Type();
 
   // Arithmetic helpers
   auto constant = [&](int64_t val) -> Value {
-    IntegerAttr attr = opLoweringState.builder.getIntegerAttr(si64Ty, val);
-    return opLoweringState.create<MIP::ConstantIndexOp>(indexTy, attr);
+    return opLoweringState.create<mlir::index::ConstantOp>(val);
   };
 
   auto mul = [&](Value a, Value b) -> Value {

@@ -11,6 +11,7 @@
 #include "GraphRT/MIPDialect/MIPDialect.h"
 #include "Support/AssertStream.h"
 #include <llvm/ADT/STLExtras.h>
+#include <mlir/Dialect/Index/IR/IndexOps.h>
 #include <mlir/Support/LLVM.h>
 
 using namespace M;
@@ -243,13 +244,10 @@ MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
 Operation *MOGraphLoweringState::lowerIntAttr(OpBuilder &builder, Location loc,
                                               IntegerAttr intAttr) {
   if (auto boolAttr = dyn_cast<BoolAttr>(intAttr)) {
-    return builder.create<MIP::ConstantBoolOp>(loc, intAttr.getType(),
-                                               boolAttr);
+    return builder.create<mlir::index::BoolConstantOp>(loc,
+                                                       boolAttr.getValue());
   }
-  IntegerType si64Ty = builder.getIntegerType(64, /*isSigned=*/true);
-  auto newIntAttr = builder.getIntegerAttr(si64Ty, intAttr.getInt());
-  return builder.create<MIP::ConstantIndexOp>(loc, intAttr.getType(),
-                                              newIntAttr);
+  return builder.create<mlir::index::ConstantOp>(loc, intAttr.getInt());
 }
 
 /// sequenced assert lowering helper functions

@@ -12,6 +12,7 @@
 #include "Init/Init.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "llvm/Support/PrettyStackTrace.h"
 

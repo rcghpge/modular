@@ -2,10 +2,10 @@
 
 //--- Test lowering of MIP Index Primitives
 
-//--- mip.constant.index/mip.print.index will be tested throughtout the tests ---/
+//--- index.constant/mip.print.index will be tested throughtout the tests ---/
 
 // CHECK-LABEL: mgp.model @mip_basic
-// CHECK: mogg.call "mip.constant.index"
+// CHECK: mogg.call "index.constant"
 // CHECK: mogg.call "mip.print.index"
 mgp.model @mip_basic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
@@ -14,7 +14,7 @@ mgp.model @mip_basic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mg
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
-  %lhs = mip.constant.index 42
+  %lhs = index.constant 42
   %ch1 = mip.print.index %lhs, %ch0
   mef.output %ch1 : !mef.chain
 }
@@ -28,8 +28,8 @@ mgp.model @mip_add : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
-  %lhs = mip.constant.index 42
-  %rhs = mip.constant.index -20
+  %lhs = index.constant 42
+  %rhs = index.constant -20
   %res1 = mip.add %lhs, %rhs
   %ch1 = mip.print.index %res1, %ch0
   mef.output %ch1 : !mef.chain
@@ -44,8 +44,8 @@ mgp.model @mip_div : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
-  %lhs = mip.constant.index 42
-  %rhs = mip.constant.index -2
+  %lhs = index.constant 42
+  %rhs = index.constant -2
   %res1 = mip.div %lhs, %rhs
   %ch1 = mip.print.index %res1, %ch0
   mef.output %ch1 : !mef.chain
@@ -60,8 +60,8 @@ mgp.model @mip_div_ceil : mof devices [#M.device_ref<"cpu", 0>] init (%weights: 
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
-  %lhs = mip.constant.index 42
-  %rhs = mip.constant.index -4
+  %lhs = index.constant 42
+  %rhs = index.constant -4
   %res1 = mip.div.ceil %lhs, %rhs
   %ch1 = mip.print.index %res1, %ch0
   mef.output %ch1 : !mef.chain
@@ -76,10 +76,10 @@ mgp.model @mip_cmp_eq : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !m
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
-  %lhs = mip.constant.index 4
-  %rhs = mip.constant.index 4
+  %lhs = index.constant 4
+  %rhs = index.constant 4
   %res1 = mip.cmp.eq %lhs, %rhs
-  %lhs1 = mip.constant.index 2
+  %lhs1 = index.constant 2
   %res2 = mip.cmp.eq %lhs1, %rhs
   mef.output %ch0 : !mef.chain
 }
@@ -93,10 +93,10 @@ mgp.model @mip_cmp_lt : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !m
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
-  %lhs = mip.constant.index 4
-  %rhs = mip.constant.index 4
+  %lhs = index.constant 4
+  %rhs = index.constant 4
   %res1 = mip.cmp.lt %lhs, %rhs
-  %lhs1 = mip.constant.index 2
+  %lhs1 = index.constant 2
   %res2 = mip.cmp.lt %lhs1, %rhs
   mef.output %ch0 : !mef.chain
 }
@@ -111,10 +111,10 @@ mgp.model @mip_cmp_le : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !m
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
-  %lhs = mip.constant.index 5
-  %rhs = mip.constant.index 4
+  %lhs = index.constant 5
+  %rhs = index.constant 4
   %res1 = mip.cmp.le %lhs, %rhs
-  %lhs1 = mip.constant.index 4
+  %lhs1 = index.constant 4
   %res2 = mip.cmp.le %lhs1, %rhs
   mef.output %ch0 : !mef.chain
 }
@@ -129,8 +129,8 @@ mgp.model @mip_max : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
-  %lhs = mip.constant.index 42
-  %rhs = mip.constant.index -2
+  %lhs = index.constant 42
+  %rhs = index.constant -2
   %res1 = mip.max %lhs, %rhs
   %ch1 = mip.print.index %res1, %ch0
   mef.output %ch1 : !mef.chain
@@ -146,8 +146,8 @@ mgp.model @mip_min : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
 
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
-  %lhs = mip.constant.index 42
-  %rhs = mip.constant.index -2
+  %lhs = index.constant 42
+  %rhs = index.constant -2
   %res1 = mip.min %lhs, %rhs
   %ch1 = mip.print.index %res1, %ch0
   mef.output %ch1 : !mef.chain
@@ -163,8 +163,8 @@ mgp.model @mip_mod : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
 
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
-  %lhs = mip.constant.index 42
-  %rhs = mip.constant.index 4
+  %lhs = index.constant 42
+  %rhs = index.constant 4
   %res1 = mip.mod %lhs, %rhs
   %ch1 = mip.print.index %res1, %ch0
   mef.output %ch1 : !mef.chain
@@ -180,8 +180,8 @@ mgp.model @mip_mul : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
 
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
-  %lhs = mip.constant.index 42
-  %rhs = mip.constant.index 4
+  %lhs = index.constant 42
+  %rhs = index.constant 4
   %res1 = mip.mul %lhs, %rhs
   %ch1 = mip.print.index %res1, %ch0
   mef.output %ch1 : !mef.chain
@@ -197,9 +197,9 @@ mgp.model @mip_nary_mul : mof devices [#M.device_ref<"cpu", 0>] init (%weights: 
 
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
   %ch0 = grt.chain.create ()
-  %a = mip.constant.index 3
-  %b = mip.constant.index -5
-  %c = mip.constant.index 7
+  %a = index.constant 3
+  %b = index.constant -5
+  %c = index.constant 7
   %res1 = mip.nary.mul (%a, %b, %c)
   %ch1 = mip.print.index %res1, %ch0
   mef.output %ch1 : !mef.chain
@@ -215,10 +215,10 @@ mgp.model @mip_and : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
 
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, i1) {
   %ch0 = grt.chain.create ()
-  %zero = mip.constant.index 0
-  %one = mip.constant.index 1
-  %lhs = mip.constant.bool true
-  %rhs = mip.constant.bool true
+  %zero = index.constant 0
+  %one = index.constant 1
+  %lhs = index.bool.constant true
+  %rhs = index.bool.constant true
   %res1 = mip.bool.and %lhs, %rhs
   mef.output %ch0, %res1: !mef.chain, i1
 }
@@ -233,10 +233,10 @@ mgp.model @mip_or : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
 
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, i1) {
   %ch0 = grt.chain.create ()
-  %zero = mip.constant.index 0
-  %one = mip.constant.index 1
-  %lhs = mip.constant.bool true
-  %rhs = mip.constant.bool false
+  %zero = index.constant 0
+  %one = index.constant 1
+  %lhs = index.bool.constant true
+  %rhs = index.bool.constant false
   %res1 = mip.bool.or %lhs, %rhs
   mef.output %ch0, %res1: !mef.chain, i1
 }
@@ -251,10 +251,10 @@ mgp.model @mip_xor : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
 
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, i1) {
   %ch0 = grt.chain.create ()
-  %zero = mip.constant.index 0
-  %one = mip.constant.index 1
-  %lhs = mip.constant.bool true
-  %rhs = mip.constant.bool false
+  %zero = index.constant 0
+  %one = index.constant 1
+  %lhs = index.bool.constant true
+  %rhs = index.bool.constant false
   %res1 = mip.bool.xor %lhs, %rhs
   mef.output %ch0, %res1: !mef.chain, i1
 }
@@ -269,9 +269,9 @@ mgp.model @mip_select : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !m
 
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain) {
   %ch0 = grt.chain.create ()
-  %zero = mip.constant.index 0
-  %one = mip.constant.index 1
-  %cond = mip.constant.bool true
+  %zero = index.constant 0
+  %one = index.constant 1
+  %cond = index.bool.constant true
   %res1 = mip.select %cond, %one, %zero : (i1, index, index) -> index
   %ch1 = mip.print.index %res1, %ch0
   mef.output %ch1: !mef.chain
