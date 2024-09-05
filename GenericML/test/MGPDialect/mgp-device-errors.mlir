@@ -23,19 +23,6 @@ func.func @buffer_constant_invalid_elem_type(%ch: !mef.chain, %ctx : !mgp.contex
 // -----
 
 //
-// mgp.buffer.alloc.static
-//
-
-func.func @buffer_alloc_static_mismatched_size(%ctx : !mgp.context, %ch : !mef.chain) {
-  // expected-error@+1 {{'mgp.buffer.alloc.static' op expected result buffer type does not match actual result buffer type ('!mgp.buffer<125, <"cuda", 3>>' vs '!mgp.buffer<124, <"cuda", 3>>').}}
-  %buf = "mgp.buffer.alloc.static" (%ch, %ctx) { aRuntimeSlot = 1 : ui64, bSize = 125 : ui64, cRawAlign = 32 : ui64, dDevice = #M.device_ref<"cuda", 3> }
-           : (!mef.chain, !mgp.context) -> !mgp.buffer<124, <"cuda", 3>>
-  mef.output %buf : !mgp.buffer<124, <"cuda", 3>>
-}
-
-// -----
-
-//
 // mgp.buffer.host_to_device
 //
 
@@ -96,4 +83,3 @@ func.func @tensor_extract_buffer_mismatched_size(%ctx : !mgp.context, %tensor : 
            : (!mgp.context, !mgp.tensor<3x5xf32, <"cuda", 3>>) -> !mgp.buffer<61, <"cuda", 3>>
   mef.output %buf : !mgp.buffer<61, <"cuda", 3>>
 }
-

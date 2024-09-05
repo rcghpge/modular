@@ -89,9 +89,9 @@ LogicalResult genericTensorCreateVerify(Operation *op, BufferType bufferType,
                                         TensorSpecType tensorSpecType,
                                         TensorType tensorType) {
   if (tensorSpecType != tensorType.getTensorSpec())
-    return op->emitOpError() << "expected spec to match result tensor spec"
-                             << " (" << tensorSpecType << " vs "
-                             << tensorType.getTensorSpec() << ")";
+    return op->emitOpError()
+           << "expected spec to match result tensor spec" << " ("
+           << tensorSpecType << " vs " << tensorType.getTensorSpec() << ")";
 
   BufferType expectedBufferType = BufferType::get(tensorType);
   bool bufferIsStatic = bufferType.getOptSize().has_value();
@@ -122,9 +122,9 @@ LogicalResult genericTensorExtractVerify(Operation *op, TensorType tensorType,
                                          TensorSpecType resultTensorSpecType) {
   if (tensorType.getTensorSpec() != resultTensorSpecType)
     return op->emitOpError()
-           << "expected the result spec to match tensor's spec"
-           << " (" << resultTensorSpecType << " vs "
-           << tensorType.getTensorSpec() << ")";
+           << "expected the result spec to match tensor's spec" << " ("
+           << resultTensorSpecType << " vs " << tensorType.getTensorSpec()
+           << ")";
   BufferType expectedBufferType = BufferType::get(tensorType);
   if (expectedBufferType != resultBufferType)
     return op->emitOpError()
@@ -237,18 +237,12 @@ public:
                              Value buffer,
                              TypedValue<TensorSpecType> tensorSpec) = 0;
 
-  /// Returns the buffer of given statically known size and alignment. The
-  /// alignment may be ignored for some devices.
-  virtual Value bufferAllocStatic(OpBuilder &builder, Location loc,
-                                  TypedValue<ContextType> context,
-                                  Value inChain, uint64_t size,
-                                  uint64_t alignment) = 0;
-
   /// Returns the buffer of size. The alignment may be ignored for some devices.
-  virtual Value bufferAllocDynamic(OpBuilder &builder, Location loc,
-                                   TypedValue<ContextType> context,
-                                   Value inChain, Value size,
-                                   uint64_t alignment) = 0;
+  virtual Value
+  bufferAllocDynamic(OpBuilder &builder, Location loc,
+                     TypedValue<ContextType> context, Value inChain, Value size,
+                     uint64_t alignment,
+                     std::optional<uint64_t> optSize = std::nullopt) = 0;
 
   /// Returns the chain indicating when srcBuffer on the host device has been
   /// transferred to dstBuffer on this builder's device.
@@ -429,13 +423,11 @@ public:
                      Value buffer,
                      TypedValue<TensorSpecType> tensorSpec) override;
 
-  Value bufferAllocStatic(OpBuilder &builder, Location loc,
-                          TypedValue<ContextType> context, Value inChain,
-                          uint64_t size, uint64_t alignment) override;
-
-  Value bufferAllocDynamic(OpBuilder &builder, Location loc,
-                           TypedValue<ContextType> context, Value inChain,
-                           Value size, uint64_t alignment) override;
+  Value
+  bufferAllocDynamic(OpBuilder &builder, Location loc,
+                     TypedValue<ContextType> context, Value inChain, Value size,
+                     uint64_t alignment,
+                     std::optional<uint64_t> optSize = std::nullopt) override;
 
   Value bufferTransferFromHost(OpBuilder &builder, Location loc,
                                TypedValue<ContextType> context, Value inChain,

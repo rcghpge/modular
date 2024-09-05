@@ -33,55 +33,9 @@ def MGP_BufferAllocOpInterface : OpInterface<"MGPBufferAllocOpInterface"> {
       "Returns the buffer allocated by this op.",
       "mlir::Value", "getOutBuffer", (ins)
     >,
-  ];
-}
-
-def MGP_StaticAllocOpInterface : OpInterface<"MGPStaticAllocOpInterface"> {
-  let description = [{
-    Interface for ops which statically allocate buffers.
-  }];
-  let cppNamespace = "::M::MGP";
-  let methods = [
-    InterfaceMethod<
-      "Returns the input chain gating this op's allocation.",
-      "mlir::Value", "getInChain", (ins)
-    >,
-    InterfaceMethod<
-      "The size of the allocation",
-      "uint64_t", "getSize", (ins)
-    >,
     InterfaceMethod<
       "The alignment of the allocation",
       "uint64_t", "getRawAlign", (ins)
-    >,
-    InterfaceMethod<
-      "Returns the buffer allocated by this op.",
-      "mlir::Value", "getOutBuffer", (ins)
-    >,
-  ];
-}
-
-def MGP_DynamicAllocOpInterface : OpInterface<"MGPDynamicAllocOpInterface"> {
-  let description = [{
-    Interface for ops which dynamically allocate buffers.
-  }];
-  let cppNamespace = "::M::MGP";
-  let methods = [
-    InterfaceMethod<
-      "Returns the input chain gating this op's allocation.",
-      "mlir::Value", "getInChain", (ins)
-    >,
-InterfaceMethod<
-      "The runtime size of the allocation",
-      "mlir::TypedValue<::mlir::IndexType>", "getRuntimeSize", (ins)
-    >,
-    InterfaceMethod<
-      "The alignment of the allocation",
-      "uint64_t", "getRawAlign", (ins)
-    >,
-    InterfaceMethod<
-      "Returns the buffer allocated by this op.",
-      "mlir::Value", "getOutBuffer", (ins)
     >,
   ];
 }

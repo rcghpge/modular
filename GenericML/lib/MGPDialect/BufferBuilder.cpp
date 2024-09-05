@@ -200,25 +200,13 @@ Value MGPBufferBuilder::tensorCreate(OpBuilder &builder, Location loc,
                                         /*bDevice=*/device);
 }
 
-Value MGPBufferBuilder::bufferAllocStatic(OpBuilder &builder, Location loc,
-                                          TypedValue<ContextType> context,
-                                          Value inChain, uint64_t size,
-                                          uint64_t alignment) {
-  return builder.create<BufferAllocStaticOp>(loc,
-                                             /*inChain=*/inChain,
-                                             /*theContext=*/context,
-                                             /*aRuntimeSlot=*/runtimeSlot,
-                                             /*bSize=*/size,
-                                             /*cAlign=*/alignment,
-                                             /*dDevice=*/device);
-}
-
 Value MGPBufferBuilder::bufferAllocDynamic(OpBuilder &builder, Location loc,
                                            TypedValue<ContextType> context,
                                            Value inChain, Value size,
-                                           uint64_t alignment) {
+                                           uint64_t alignment,
+                                           std::optional<uint64_t> optSize) {
   return builder.create<BufferAllocDynamicOp>(
-      loc,
+      loc, DeviceBufferType::get(device, optSize),
       /*inChain=*/inChain,
       /*theContext=*/context,
       /*runtimeSize=*/cast<TypedValue<IndexType>>(size),

@@ -25,7 +25,8 @@ module {
     %tensorSpecResult = mgp.tensor.extract.tensor_spec %arg1[1], %2 : !mgp.tensor<8xf32>
     %bufferResult_0 = mgp.tensor.extract.buffer %arg1[1], %5 : !mgp.tensor<8xf32>
     %tensorSpecResult_1 = mgp.tensor.extract.tensor_spec %arg1[1], %5 : !mgp.tensor<8xf32>
-    %6 = mgp.buffer.alloc.static %arg0, %arg1[1] : !mgp.buffer<32>
+    %size = index.constant 32
+    %6 = mgp.buffer.alloc.dynamic %arg0, %arg1[1], %size : !mgp.buffer<32>
     %7 = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
     %8 = "mop.kernels.mul"(%arg0, %bufferResult, %tensorSpecResult, %bufferResult_0, %tensorSpecResult_1, %6, %7) : (!mef.chain, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>) -> !mef.chain
     %9 = mgp.tensor.create %8, %arg1[1], %6 , %7 : !mgp.tensor<8xf32>
@@ -33,7 +34,7 @@ module {
     %tensorSpecResult_3 = mgp.tensor.extract.tensor_spec %arg1[1], %9 : !mgp.tensor<8xf32>
     %bufferResult_4 = mgp.tensor.extract.buffer %arg1[1], %5 : !mgp.tensor<8xf32>
     %tensorSpecResult_5 = mgp.tensor.extract.tensor_spec %arg1[1], %5 : !mgp.tensor<8xf32>
-    %10 = mgp.buffer.alloc.static %arg0, %arg1[1] : !mgp.buffer<32>
+    %10 = mgp.buffer.alloc.dynamic %arg0, %arg1[1], %size : !mgp.buffer<32>
     %11 = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
     %12 = "mop.kernels.mul"(%8, %bufferResult_2, %tensorSpecResult_3, %bufferResult_4, %tensorSpecResult_5, %10, %11) : (!mef.chain, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>) -> !mef.chain
     %13 = mgp.tensor.create %12, %arg1[1], %10 , %11 : !mgp.tensor<8xf32>
@@ -41,7 +42,7 @@ module {
     %tensorSpecResult_7 = mgp.tensor.extract.tensor_spec %arg1[1], %13 : !mgp.tensor<8xf32>
     %bufferResult_8 = mgp.tensor.extract.buffer %arg1[1], %5 : !mgp.tensor<8xf32>
     %tensorSpecResult_9 = mgp.tensor.extract.tensor_spec %arg1[1], %5 : !mgp.tensor<8xf32>
-    %14 = mgp.buffer.alloc.static %arg0, %arg1[1] : !mgp.buffer<32>
+    %14 = mgp.buffer.alloc.dynamic %arg0, %arg1[1], %size : !mgp.buffer<32>
     %15 = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
     %16 = "mop.kernels.add"(%12, %bufferResult_6, %tensorSpecResult_7, %bufferResult_8, %tensorSpecResult_9, %14, %15) : (!mef.chain, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>) -> !mef.chain
     %17 = mgp.tensor.create %16, %arg1[1], %14 , %15 : !mgp.tensor<8xf32>

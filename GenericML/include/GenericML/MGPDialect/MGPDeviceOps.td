@@ -536,73 +536,11 @@ def BufferConstantLoadOp : MGP_DeviceOp<"buffer.constant.load", [
 }
 
 //===----------------------------------------------------------------------===//
-// BufferAllocStaticOp
-//===----------------------------------------------------------------------===//
-
-def BufferAllocStaticOp : MGP_DeviceOp<"buffer.alloc.static", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
-    DeclareOpInterfaceMethods<MGP_HasRuntimeSlotOpInterface>,
-    DeclareOpInterfaceMethods<MGP_StaticAllocOpInterface>,
-    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
-]> {
-  let summary = "Allocates a buffer with statically known byte size on given device.";
-  let description = [{
-    One of a family of 6 buffer allocation primitives.
-
-    Allocates (possibly asynchronously) an uninitialized buffer from a device's
-    default memory pool with a statically known byte size and optional
-    statically known alignment. The allocation uses the device-appropriate
-    runtime established in the given `!mgp.context` slot. Not all devices
-    support the notion of alignment.
-
-    The buffer will be freed when the last reference to it is destroyed.
-
-    Example:
-    ```mlir
-      %ch : !mgp.chain<<"cuda", 3>>
-      %ctx : !mgp.context
-      // Allocates 256 bytes using the CUDA runtime established in slot 5,
-      // which should correspond to the the CUDA GPU with virtual device id 3.
-      %buf = mgp.buffer.alloc.static %ch, %ctx[5] : !mgp.buffer<256, <"cuda", 3>>
-      %buf : !mgp.buffer<256, <"cuda", 3>>
-    ```
-  }];
-
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       UI64Attr:$aRuntimeSlot,                                 // 0
-                       UI64Attr:$bSize,                                        // 1
-                       DefaultValuedAttr<UI64Attr, "kUnknownSize">:$cRawAlign, // 2
-                       MGP_OptDeviceRefAttr:$dDevice);                         // 3
-  let results = (outs MGP_DeviceBufferType:$outBuffer);
-  let assemblyFormat = [{
-    $inChain  `,` $theContext `[` $aRuntimeSlot `]`
-    ( `,` `align` $cRawAlign^ )? attr-dict
-    `:` custom<StaticBufferTypeToSizeDevice>(
-          type($outBuffer), $bSize, $dDevice, type($inChain))
-  }];
-  let hasVerifier = 1;
-
-  let extraClassDefinition = [{
-    bool BufferAllocStaticOp::isTrivial() { return true; }
-
-    uint64_t BufferAllocStaticOp::getSlot() { return getARuntimeSlot(); }
-
-    M::DeviceRefAttr BufferAllocStaticOp::getDevice() { return getDDevice(); }
-  }];
-}
-
-//===----------------------------------------------------------------------===//
 // BufferAllocDynamicOp
 //===----------------------------------------------------------------------===//
 
 def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
-    DeclareOpInterfaceMethods<MGP_DynamicAllocOpInterface>,
     DeclareOpInterfaceMethods<MGP_HasRuntimeSlotOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
 ]> {
@@ -643,13 +581,15 @@ def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aRuntimeSlot `]` `,` $runtimeSize
     ( `,` `align` $bRawAlign^ )? attr-dict
-    `:` custom<DynamicBufferTypeToDevice>(
+    `:` custom<BufferTypeToDevice>(
           type($outBuffer), $cDevice, type($inChain))
   }];
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
     uint64_t BufferAllocDynamicOp::getSlot() { return getARuntimeSlot(); }
+
+    uint64_t BufferAllocDynamicOp::getRawAlign() { return getBRawAlign(); }
 
     M::DeviceRefAttr BufferAllocDynamicOp::getDevice() { return getCDevice(); }
   }];

@@ -54,14 +54,14 @@ def DeferAllocsPass : Pass<"defer-allocs", "MGP::ModelOp"> {
     Ensures mgp.buffer.alloc.* operations are deferred till they are
     about to be written to. Eg:
     ```mlir
-      %buf = mgp.buffer.alloc.static.deprecated %bufChain, 24
+      %buf = mgp.buffer.alloc %bufChain, 24
       my_op(%opChain, %buf, ...)
       // where %buf is in an 'output' position
     ```
     becomes:
     ```
       %ch = grt.chain.create (%opChain, %bufChain)
-      %buf = mgp.buffer.alloc.static.deprecated %ch, 24
+      %buf = mgp.buffer.alloc %ch, 24
       my_op(%ch, %buf, ...)
     ```
     Assumes:
@@ -95,7 +95,7 @@ def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
 
     For example:
     ```mlir
-    %in1_buf = mgp.buffer.alloc.static ... : !mgp.buffer<size1>
+    %in1_buf = mgp.buffer.alloc.dynamic ... : !mgp.buffer<size1>
     %in1_ch = ... writer to %in1_buf ...
     %in2_bytes = ...
     %in2_buf = mgp.buffer.alloc.dynamic ..., %in2_bytes
@@ -336,17 +336,16 @@ def PrepareDevicePrimitivesPass : Pass<"prepare-device-primitives", "MGP::ModelO
 
     For example:
     ```mlir
-      %buf = mgp.buffer.alloc.static %ch, %ctx[1] : !mgp.buffer<<"cuda", 3>, 124>
+      %buf = mgp.buffer.alloc.dynamic %ch, %ctx[1], %size: !mgp.buffer<<"cuda", 3>>
     ```
     becomes:
     ```mlir
-      %buf = "mgp.buffer.alloc.static.cuda" (%ch, %ctx)
+      %buf = "mgp.buffer.alloc.dynamic.cuda" (%ch, %ctx)
                { aRuntimeSlot = 1 : ui64,
-                 bSize = 124 : ui64,
-                 cRawAlign = kUnknownSize,
-                 dDeviceId = 3 : ui64 }
+                 bRawAlign = kUnknownSize,
+                 cDevice = 3 : ui64 }
                : (!mgp.chain<<"cuda", 3>>, !mgp.context) ->
-                 !mgp.buffer<<"cuda", 3>, 124>
+                 !mgp.buffer<<"cuda", 3>>
     ```
   }];
 }

@@ -206,28 +206,6 @@ static void printStaticBufferTypeToSizeDevice(OpAsmPrinter &p, Operation *op,
   p << buffer;
 }
 
-static ParseResult parseStaticBufferTypeToSizeDevice(OpAsmParser &p,
-                                                     Type &buffer,
-                                                     IntegerAttr &size,
-                                                     DeviceRefAttr &device,
-                                                     Type &chain) {
-  mlir::SMLoc loc;
-  if (p.getCurrentLocation(&loc) ||
-      parseBufferTypeToRawSizeDeviceImpl(p, buffer, size, device, {&chain}))
-    return failure();
-  if (!rawSizeToOptSize(size.getUInt()))
-    return p.emitError(loc, "expecting statically sized !mgp.buffer type");
-  return success();
-}
-
-static void printStaticBufferTypeToSizeDevice(OpAsmPrinter &p, Operation *op,
-                                              DeviceBufferType buffer,
-                                              IntegerAttr rawSize,
-                                              DeviceRefAttr device,
-                                              MEF::ChainType chain) {
-  p << buffer;
-}
-
 static ParseResult parseStaticBufferTypeToSizeDeviceBuffer(
     OpAsmParser &p, Type &staticBuffer, IntegerAttr &size,
     DeviceRefAttr &device, Type &dynamicBuffer) {
@@ -245,26 +223,6 @@ static void printStaticBufferTypeToSizeDeviceBuffer(
     OpAsmPrinter &p, Operation *op, DeviceBufferType staticBuffer,
     IntegerAttr rawSize, DeviceRefAttr device, DeviceBufferType dynamicBuffer) {
   p << staticBuffer;
-}
-
-static ParseResult parseDynamicBufferTypeToDevice(OpAsmParser &p, Type &buffer,
-                                                  DeviceRefAttr &device,
-                                                  Type &chain) {
-  IntegerAttr rawSize;
-  mlir::SMLoc loc;
-  if (p.getCurrentLocation(&loc) ||
-      parseBufferTypeToRawSizeDeviceImpl(p, buffer, rawSize, device, {&chain}))
-    return failure();
-  if (rawSizeToOptSize(rawSize.getUInt()))
-    return p.emitError(loc, "expecting dynamically sized !mgp.buffer type");
-  return success();
-}
-
-static void printDynamicBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
-                                           DeviceBufferType buffer,
-                                           DeviceRefAttr device,
-                                           MEF::ChainType chain) {
-  p << buffer;
 }
 
 static ParseResult parseBufferTypeToDevice(OpAsmParser &p, Type &buffer,

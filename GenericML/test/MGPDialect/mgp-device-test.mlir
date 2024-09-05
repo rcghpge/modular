@@ -69,17 +69,6 @@ func.func @buffer_constant_load(%ctx : !mgp.context) {
 }
 
 //
-// mgp.buffer.alloc.static
-//
-
-// CHECK-LABEL: @buffer_alloc_static
-func.func @buffer_alloc_static(%ctx : !mgp.context, %ch : !mef.chain) {
-  // CHECK: %{{.*}} = mgp.buffer.alloc.static %{{.*}}, %{{.*}}[1] : !mgp.buffer<124, <"cuda", 3>>
-  %buf = mgp.buffer.alloc.static %ch, %ctx[1] : !mgp.buffer<124, <"cuda", 3>>
-  mef.output %buf : !mgp.buffer<124, <"cuda", 3>>
-}
-
-//
 // mgp.buffer.alloc.dynamic
 //
 

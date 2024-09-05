@@ -634,21 +634,15 @@ MOOpLoweringState::createOutputTensorSpecs() {
 FailureOr<BufferizedTensor> MOOpLoweringState::createBuffer(
     Value inChain, TypedValue<TensorSpecType> tensorSpec, Type moTensorType) {
   BufferBuilder *bufferBuilder = getStorageBufferBuilder(moTensorType);
+  Value numBytes = builder.create<MGP::CpuTensorSpecSizeOp>(loc, tensorSpec);
+
+  // If static size is known, it's used for the output type
   std::optional<uint64_t> optSize = tensorSpec.getType().getSizeInBytes();
-  if (optSize) {
-    // Statically sized. We don't actually need the tensor spec value to
-    // allocate, and it may end up being eliminated by DCE.
-    return BufferizedTensor(
-        bufferBuilder->bufferAllocStatic(builder, loc, context, inChain,
-                                         *optSize, minimumCpuAlignment),
-        tensorSpec);
-  } else {
-    Value numBytes = builder.create<MGP::CpuTensorSpecSizeOp>(loc, tensorSpec);
-    return BufferizedTensor(
-        bufferBuilder->bufferAllocDynamic(builder, loc, context, inChain,
-                                          numBytes, minimumCpuAlignment),
-        tensorSpec);
-  }
+
+  return BufferizedTensor(
+      bufferBuilder->bufferAllocDynamic(builder, loc, context, inChain,
+                                        numBytes, minimumCpuAlignment, optSize),
+      tensorSpec);
 }
 
 void MOOpLoweringState::createOutputTensor(
