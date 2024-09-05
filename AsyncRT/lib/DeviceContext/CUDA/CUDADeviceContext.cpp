@@ -109,14 +109,14 @@ CUDADeviceFunctionArguments::cast(const DeviceFunctionArguments &args) {
 }
 
 // ===== CUDADeviceFunction ===== //
-CUDADeviceFunction::CUDADeviceFunction(CUDADeviceContextRef context,
+CUDADeviceFunction::CUDADeviceFunction(const CUDADeviceContext &context,
                                        std::string name, CUmodule module,
                                        CUfunction function)
-    : DeviceFunction(std::move(context)), module_(module), function_(function),
+    : DeviceFunction(context), module_(module), function_(function),
       name_(std::move(name)) {}
 
 CUDADeviceFunction::~CUDADeviceFunction() {
-  const auto &cuda_context = CUDADeviceContext::cast(*context());
+  const auto &cuda_context = CUDADeviceContext::cast(context());
 
   CUDA_CHECK(cuda_context.cuda_driver().ModuleUnload(module_));
 }
@@ -129,7 +129,7 @@ ErrorOrSuccess CUDADeviceFunction::cuda_callKernel(
     uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
     uint32_t blockY, uint32_t blockZ, const CUDADeviceFunctionArguments &args,
     CUstream stream) const {
-  const auto &cuda_context = CUDADeviceContext::cast(*context());
+  const auto &cuda_context = CUDADeviceContext::cast(context());
 
   CUDA_CHECK_ERR(cuda_context.cuda_driver().LaunchKernel(
       function_, gridX, gridY, gridZ, blockX, blockY, blockZ, 0, stream,
@@ -213,9 +213,8 @@ CUDADeviceContext::compileFunction(const char *function_name,
   CUfunction function;
   CUDA_CHECK_ERR(driver_.ModuleGetFunction(&function, module, function_name));
 
-  return CUDADeviceFunctionRef::create(CUDADeviceContextRef::copy(this),
-                                       std::string(function_name), module,
-                                       function);
+  return CUDADeviceFunctionRef::create(*this, std::string(function_name),
+                                       module, function);
 }
 
 ErrorOrSuccess CUDADeviceContext::enqueueFunctionExec(

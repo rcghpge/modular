@@ -33,10 +33,10 @@ size_t DeviceBuffer::elem_size() const { return elem_size_; }
 //
 // ===== DeviceFunction ===== //
 //
-DeviceFunction::DeviceFunction(DeviceContextRef context)
-    : context_(std::move(context)) {}
+DeviceFunction::DeviceFunction(const DeviceContext &context)
+    : context_(DeviceContextRef::copy(&context)) {}
 
-const DeviceContextRef &DeviceFunction::context() const { return context_; }
+const DeviceContext &DeviceFunction::context() const { return *context_; }
 
 //
 // ===== DeviceContext ===== //

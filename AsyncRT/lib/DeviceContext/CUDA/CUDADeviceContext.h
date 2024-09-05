@@ -84,7 +84,7 @@ private:
 
 class CUDADeviceFunction : public DeviceFunction {
 public:
-  CUDADeviceFunction(CUDADeviceContextRef context, std::string name,
+  CUDADeviceFunction(const CUDADeviceContext &context, std::string name,
                      CUmodule module, CUfunction function);
   ~CUDADeviceFunction() override;
 

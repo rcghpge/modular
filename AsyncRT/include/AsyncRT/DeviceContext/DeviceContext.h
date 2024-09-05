@@ -92,7 +92,7 @@ class DeviceFunction : public ReferenceCounted<DeviceFunction> {
 public:
   virtual ~DeviceFunction() = default;
 
-  const DeviceContextRef &context() const;
+  const DeviceContext &context() const;
 
   virtual const std::string &name() const = 0;
 
@@ -100,7 +100,7 @@ public:
   DeviceFunctionArgumentsRef buildArguments(const Ts &...ts) const;
 
 protected:
-  DeviceFunction(DeviceContextRef context);
+  DeviceFunction(const DeviceContext &context);
 
   virtual DeviceFunctionArguments *allocateArguments() const = 0;
 
