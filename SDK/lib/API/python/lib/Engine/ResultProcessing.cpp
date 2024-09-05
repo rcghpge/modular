@@ -50,7 +50,7 @@ py::object core::processTensorResult(TensorPtr outTensor) {
 /// `tuple`, `none`, `double`, `long` and `bool`. Tensor data arrays are copied.
 py::object core::processValueResult(ValuePtr value) {
   switch (M_getValueType(value.get())) {
-  case M_ValueType::M_DICT_VALUE: {
+  case M_DICT_VALUE: {
     M_AsyncDict *dict = M_getDictFromValue(value.get());
     py::dict pyDict;
     size_t size = M_getDictSize(dict);
@@ -64,7 +64,7 @@ py::object core::processValueResult(ValuePtr value) {
     M_freeDict(dict);
     return pyDict;
   }
-  case M_ValueType::M_LIST_VALUE: {
+  case M_LIST_VALUE: {
     M_AsyncList *list = M_getListFromValue(value.get());
     size_t size = M_getListSize(list);
     py::list pyList;
@@ -75,7 +75,7 @@ py::object core::processValueResult(ValuePtr value) {
     M_freeList(list);
     return pyList;
   }
-  case M_ValueType::M_TUPLE_VALUE: {
+  case M_TUPLE_VALUE: {
     M_AsyncTuple *tuple = M_getTupleFromValue(value.get());
     size_t size = M_getTupleSize(tuple);
     py::tuple pyTuple(size);
@@ -86,7 +86,7 @@ py::object core::processValueResult(ValuePtr value) {
     M_freeTuple(tuple);
     return pyTuple;
   }
-  case M_ValueType::M_NONE_VALUE:
+  case M_NONE_VALUE:
     return py::none();
   case M_STRING_VALUE:
     return py::cast(M_getStringFromValue(value.get()));
@@ -96,7 +96,7 @@ py::object core::processValueResult(ValuePtr value) {
     return py::cast(M_getDoubleFromValue(value.get()));
   case M_BOOL_VALUE:
     return py::cast(M_getBoolFromValue(value.get()));
-  case M_ValueType::M_TENSOR_VALUE: {
+  case M_TENSOR_VALUE: {
     TensorPtr tensorPtr{M_getTensorFromValue(value.get()), &M_freeTensor};
     return processTensorResult(std::move(tensorPtr));
   }
