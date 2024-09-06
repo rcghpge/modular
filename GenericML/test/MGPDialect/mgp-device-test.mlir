@@ -69,13 +69,13 @@ func.func @buffer_constant_load(%ctx : !mgp.context) {
 }
 
 //
-// mgp.buffer.alloc.dynamic
+// mgp.buffer.alloc
 //
 
-// CHECK-LABEL: @buffer_alloc_dynamic
-func.func @buffer_alloc_dynamic(%ctx : !mgp.context, %ch : !mef.chain, %size : index) {
-  // CHECK: %{{.*}} = mgp.buffer.alloc.dynamic %{{.*}}, %{{.*}}[1], %{{.*}} : !mgp.buffer<, <"cuda", 3>>
-  %buf = mgp.buffer.alloc.dynamic %ch, %ctx[1], %size : !mgp.buffer<, <"cuda", 3>>
+// CHECK-LABEL: @buffer_alloc
+func.func @buffer_alloc(%ctx : !mgp.context, %ch : !mef.chain, %size : index) {
+  // CHECK: %{{.*}} = mgp.buffer.alloc %{{.*}}, %{{.*}}[1], %{{.*}} : !mgp.buffer<, <"cuda", 3>>
+  %buf = mgp.buffer.alloc %ch, %ctx[1], %size : !mgp.buffer<, <"cuda", 3>>
   mef.output %buf : !mgp.buffer<, <"cuda", 3>>
 }
 

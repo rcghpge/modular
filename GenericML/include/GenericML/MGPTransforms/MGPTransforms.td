@@ -95,13 +95,13 @@ def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
 
     For example:
     ```mlir
-    %in1_buf = mgp.buffer.alloc.dynamic ... : !mgp.buffer<size1>
+    %in1_buf = mgp.buffer.alloc ... : !mgp.buffer<size1>
     %in1_ch = ... writer to %in1_buf ...
     %in2_bytes = ...
-    %in2_buf = mgp.buffer.alloc.dynamic ..., %in2_bytes
+    %in2_buf = mgp.buffer.alloc ..., %in2_bytes
     %in2_ch = ... writer to %in2_buf ...
     %out_bytes = ...
-    %out_buf = mgp.buffer.alloc.dynamic ..., %out_bytes
+    %out_buf = mgp.buffer.alloc ..., %out_bytes
     %ch1 = mgp.chain.create (%in1_ch, %in2_ch)
     %ch2 = mgp.buffer.concat %ch1, %out_buf, %in1_buf, %in2_buf : ...
     // where these are the only uses of %in1_buf and %in2_buf
@@ -109,7 +109,7 @@ def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
     is rewritten to:
     ```mlir
     %out_bytes = ...
-    %out_buf = mgp.buffer.alloc.dynamic %root_ch, %out_bytes
+    %out_buf = mgp.buffer.alloc %root_ch, %out_bytes
     %in2_spec = ...
     %in2_size = mgp.tensor_spec.size %in2_spec
     %in1_buf, %in2_buf = mgp.buffer.split %root_ch, %out_buf, %in2_size : ...
@@ -336,11 +336,11 @@ def PrepareDevicePrimitivesPass : Pass<"prepare-device-primitives", "MGP::ModelO
 
     For example:
     ```mlir
-      %buf = mgp.buffer.alloc.dynamic %ch, %ctx[1], %size: !mgp.buffer<<"cuda", 3>>
+      %buf = mgp.buffer.alloc %ch, %ctx[1], %size: !mgp.buffer<<"cuda", 3>>
     ```
     becomes:
     ```mlir
-      %buf = "mgp.buffer.alloc.dynamic.cuda" (%ch, %ctx)
+      %buf = "mgp.buffer.alloc.cuda" (%ch, %ctx)
                { aRuntimeSlot = 1 : ui64,
                  bRawAlign = kUnknownSize,
                  cDevice = 3 : ui64 }
@@ -357,7 +357,7 @@ def PrepareDevicePrimitivesPass : Pass<"prepare-device-primitives", "MGP::ModelO
 def ExplicitBufferLifetimesPass : Pass<"buffer-lifetimes", "MGP::ModelOp"> {
   let summary = "Inserts mgp.buffer.free ops based on the results of MGPBufferLifetimeAnalysis";
   let description = [{
-    This pass tries to insert an mgp.buffer.free op for each mgp.alloc.dynamic
+    This pass tries to insert an mgp.buffer.free op for each mgp.alloc
     at a location in the graph where it is guaranteed that there will be no more
     accesses to the buffer. If there is no such location before the end of the
     graph, no free will be inserted.
@@ -375,8 +375,8 @@ def ExplicitBufferLifetimesPass : Pass<"buffer-lifetimes", "MGP::ModelOp"> {
 def SimpleBufferReusePass : Pass<"simple-buffer-reuse", "MGP::ModelOp"> {
   let summary = "Reuses allocated buffers in simple cases";
   let description = [{
-    This pass replaces a mgp.buffer.alloc.dynamic op B with a
-    mgp.buffer.alloc.dynamic op A if the following conditions are met:
+    This pass replaces a mgp.buffer.alloc op B with a
+    mgp.buffer.alloc op A if the following conditions are met:
       1) all uses of A are guaranteed to execute before the first use of B
       2) A has the same runtime size SSA value as B
       3) A has the same input chain as B
@@ -387,9 +387,9 @@ def SimpleBufferReusePass : Pass<"simple-buffer-reuse", "MGP::ModelOp"> {
       %input = ...
       %inChain = ...
       %size = ...
-      %buf0 = mgp.buffer.alloc.dynamic %inChain, %ctx[1], %size, ...
-      %buf1 = mgp.buffer.alloc.dynamic %inChain, %ctx[1], %size, ...
-      %buf2 = mgp.buffer.alloc.dynamic %inChain, %ctx[1], %size, ...
+      %buf0 = mgp.buffer.alloc %inChain, %ctx[1], %size, ...
+      %buf1 = mgp.buffer.alloc %inChain, %ctx[1], %size, ...
+      %buf2 = mgp.buffer.alloc %inChain, %ctx[1], %size, ...
 
       %outChain_0 = mgp.kernel.execute %inChain ... (in %input, out %buf0)
       %outChain_1 = mgp.kernel.execute %outChain_0 ... (in %buf0, out %buf1)
@@ -400,8 +400,8 @@ def SimpleBufferReusePass : Pass<"simple-buffer-reuse", "MGP::ModelOp"> {
       %input = ...
       %inChain = ...
       %size = ...
-      %buf0 = mgp.buffer.alloc.dynamic %inChain, %ctx[1], %size, ...
-      %buf1 = mgp.buffer.alloc.dynamic %inChain, %ctx[1], %size, ...
+      %buf0 = mgp.buffer.alloc %inChain, %ctx[1], %size, ...
+      %buf1 = mgp.buffer.alloc %inChain, %ctx[1], %size, ...
 
       %outChain_0 = mgp.kernel.execute %inChain ... (in %input, out %buf0)
       %outChain_1 = mgp.kernel.execute %outChain_0 ... (in %buf0, out %buf1)

@@ -742,8 +742,8 @@ MOGraphLowering::lowerConstantExternal(MO::ConstantExternalOp constExternalOp) {
       chain, name, sizeInBytes, alignment);
   Value bufferSize =
       opLoweringState.create<mlir::index::ConstantOp>(sizeInBytes);
-  Value deviceBuffer = opLoweringState.bufferAllocDynamic(
-      chain, bufferSize, alignment, moTensorType, sizeInBytes);
+  Value deviceBuffer = opLoweringState.bufferAlloc(chain, bufferSize, alignment,
+                                                   moTensorType, sizeInBytes);
 
   // Use bufferTransferFromHost to also take care of the stream sync.
   // Note that this is needlessly conservative because the constant external's

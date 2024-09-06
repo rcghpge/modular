@@ -238,11 +238,10 @@ public:
                              TypedValue<TensorSpecType> tensorSpec) = 0;
 
   /// Returns the buffer of size. The alignment may be ignored for some devices.
-  virtual Value
-  bufferAllocDynamic(OpBuilder &builder, Location loc,
-                     TypedValue<ContextType> context, Value inChain, Value size,
-                     uint64_t alignment,
-                     std::optional<uint64_t> optSize = std::nullopt) = 0;
+  virtual Value bufferAlloc(OpBuilder &builder, Location loc,
+                            TypedValue<ContextType> context, Value inChain,
+                            Value size, uint64_t alignment,
+                            std::optional<uint64_t> optSize = std::nullopt) = 0;
 
   /// Returns the chain indicating when srcBuffer on the host device has been
   /// transferred to dstBuffer on this builder's device.
@@ -423,11 +422,10 @@ public:
                      Value buffer,
                      TypedValue<TensorSpecType> tensorSpec) override;
 
-  Value
-  bufferAllocDynamic(OpBuilder &builder, Location loc,
-                     TypedValue<ContextType> context, Value inChain, Value size,
-                     uint64_t alignment,
-                     std::optional<uint64_t> optSize = std::nullopt) override;
+  Value bufferAlloc(OpBuilder &builder, Location loc,
+                    TypedValue<ContextType> context, Value inChain, Value size,
+                    uint64_t alignment,
+                    std::optional<uint64_t> optSize = std::nullopt) override;
 
   Value bufferTransferFromHost(OpBuilder &builder, Location loc,
                                TypedValue<ContextType> context, Value inChain,

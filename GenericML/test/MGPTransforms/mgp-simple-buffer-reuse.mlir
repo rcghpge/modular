@@ -27,11 +27,11 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
 
   // We only expect 2 remaining allocs after the pass
 
-  // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc.dynamic {{.*}}
-  // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc.dynamic {{.*}}
-  %alloc0 = mgp.buffer.alloc.dynamic %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc1 = mgp.buffer.alloc.dynamic %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc2 = mgp.buffer.alloc.dynamic %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
+  // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc {{.*}}
+  // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
+  %alloc0 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
+  %alloc1 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
+  %alloc2 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
 
 
   // CHECK-NEXT: %[[CH0:.*]] = mgp.kernel.execute {{.*}} (in %[[INBUFFER]] : !mgp.buffer<>, out %[[ALLOC0]] : !mgp.buffer<>)
@@ -70,12 +70,12 @@ mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%weight
 
   // We still expect 3 remaining allocs after the pass
 
-  // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc.dynamic {{.*}}
-  // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc.dynamic {{.*}}
-  // CHECK-NEXT: %[[ALLOC2:.*]] = mgp.buffer.alloc.dynamic {{.*}}
-  %alloc0 = mgp.buffer.alloc.dynamic %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc1 = mgp.buffer.alloc.dynamic %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc2 = mgp.buffer.alloc.dynamic %arg0, %arg1[1], %allocSizeDifferent, align 16 : !mgp.buffer<>
+  // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc {{.*}}
+  // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
+  // CHECK-NEXT: %[[ALLOC2:.*]] = mgp.buffer.alloc {{.*}}
+  %alloc0 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
+  %alloc1 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
+  %alloc2 = mgp.buffer.alloc %arg0, %arg1[1], %allocSizeDifferent, align 16 : !mgp.buffer<>
 
 
   // CHECK-NEXT: %[[CH0:.*]] = mgp.kernel.execute {{.*}} (in %[[INBUFFER]] : !mgp.buffer<>, out %[[ALLOC0]] : !mgp.buffer<>)

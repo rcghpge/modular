@@ -645,8 +645,8 @@ FailureOr<BufferizedTensor> MOOpLoweringState::createBuffer(
   std::optional<uint64_t> optSize = tensorSpec.getType().getSizeInBytes();
 
   return BufferizedTensor(
-      bufferBuilder->bufferAllocDynamic(builder, loc, context, inChain,
-                                        numBytes, minimumCpuAlignment, optSize),
+      bufferBuilder->bufferAlloc(builder, loc, context, inChain, numBytes,
+                                 minimumCpuAlignment, optSize),
       tensorSpec);
 }
 

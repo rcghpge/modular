@@ -102,8 +102,7 @@ private:
 
 // Return a list of alloc uses including uses of aliases. If aliases cannot be
 // tracked, return an error.
-ErrorOr<SmallVector<Operation *>>
-getAllocUses(MGP::BufferAllocDynamicOp allocOp);
+ErrorOr<SmallVector<Operation *>> getAllocUses(MGP::BufferAllocOp allocOp);
 
 // Analysis pass to do dataflow analysis on buffer uses to assist
 // with memory planning

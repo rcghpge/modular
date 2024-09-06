@@ -50,7 +50,7 @@ static inline bool canFuseOp(Operation *op) {
   if (isa<MGP::SyncOp>(op))
     return false;
 
-  if (isa<MGP::BufferAllocDynamicOp>(*op))
+  if (isa<MGP::BufferAllocOp>(*op))
     return false;
 
   // Allow for custom ops starting with "testfuse." for testing purposes.

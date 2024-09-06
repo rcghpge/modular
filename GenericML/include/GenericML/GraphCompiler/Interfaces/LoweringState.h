@@ -703,12 +703,11 @@ struct MOOpLoweringState {
         ->bufferSetWithIndex(builder, loc, context, buffer, values);
   }
 
-  Value bufferAllocDynamic(TypedValue<MEF::ChainType> inChain, Value size,
-                           uint64_t align, Type moTensorType,
-                           std::optional<uint64_t> staticSize = std::nullopt) {
+  Value bufferAlloc(TypedValue<MEF::ChainType> inChain, Value size,
+                    uint64_t align, Type moTensorType,
+                    std::optional<uint64_t> staticSize = std::nullopt) {
     return getStorageBufferBuilder(moTensorType)
-        ->bufferAllocDynamic(builder, loc, context, inChain, size, align,
-                             staticSize);
+        ->bufferAlloc(builder, loc, context, inChain, size, align, staticSize);
   }
 };
 

@@ -262,7 +262,7 @@ void DependencyTree::dumpToDot(llvm::raw_ostream &os) const {
 
   // Draw alloc use edges
   for (auto &op : root->op->getBlock()->getOperations()) {
-    auto alloc = dyn_cast<MGP::BufferAllocDynamicOp>(op);
+    auto alloc = dyn_cast<MGP::BufferAllocOp>(op);
     if (!alloc)
       continue;
     auto uses = getAllocUses(alloc);
@@ -367,7 +367,7 @@ DependencyTree::findLCA(const SmallVector<Operation *> &nodes) const {
 }
 
 ErrorOr<SmallVector<Operation *>>
-M::MGP::getAllocUses(MGP::BufferAllocDynamicOp allocOp) {
+M::MGP::getAllocUses(MGP::BufferAllocOp allocOp) {
   // Determine the uses of the allocated buffer by searching through all direct
   // uses as well as those of possible aliases
 

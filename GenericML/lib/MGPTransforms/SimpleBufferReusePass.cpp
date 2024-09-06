@@ -38,11 +38,11 @@ class SimpleBufferReusePass
       // Map from alloc to its uses' lifetime range in the tree
       // narrow represents max(x.pre for x in uses), min(x.post for x in uses)
       // wide represents min(x.pre for x in uses), max(x.post for x in uses)
-      DenseMap<MGP::BufferAllocDynamicOp, LifetimeRange> narrowAllocRanges;
-      DenseMap<MGP::BufferAllocDynamicOp, LifetimeRange> wideAllocRanges;
+      DenseMap<MGP::BufferAllocOp, LifetimeRange> narrowAllocRanges;
+      DenseMap<MGP::BufferAllocOp, LifetimeRange> wideAllocRanges;
 
       // Populate alloc ranges with information from BufferLifetimeAnalysisPass
-      for (auto allocOp : block->getOps<MGP::BufferAllocDynamicOp>()) {
+      for (auto allocOp : block->getOps<MGP::BufferAllocOp>()) {
         auto allocUses = getAllocUses(allocOp);
 
         if (allocUses.isError() || allocUses->empty())
@@ -74,8 +74,8 @@ class SimpleBufferReusePass
         wideAllocRanges[allocOp] = {minPre, maxPost};
       }
 
-      SmallVector<MGP::BufferAllocDynamicOp> liveAllocs;
-      SmallVector<MGP::BufferAllocDynamicOp> replaced;
+      SmallVector<MGP::BufferAllocOp> liveAllocs;
+      SmallVector<MGP::BufferAllocOp> replaced;
 
       // In dataflow order, go through every alloc A in the block while
       // maintaining a set of live allocations
@@ -84,7 +84,7 @@ class SimpleBufferReusePass
       // live allocations and try to find a candidate C for reuse. If such a
       // candidate C exists, use alloc C as a replacement for alloc A
       for (auto op : getDataflowOrder(block)) {
-        auto curAlloc = dyn_cast<MGP::BufferAllocDynamicOp>(*op);
+        auto curAlloc = dyn_cast<MGP::BufferAllocOp>(*op);
         if (!curAlloc || !narrowAllocRanges.contains(curAlloc))
           continue;
 
@@ -101,7 +101,7 @@ class SimpleBufferReusePass
         // Go through all live allocations to see if there are any that the
         // current allocation can reuse
         auto toReuse =
-            llvm::find_if(liveAllocs, [&](MGP::BufferAllocDynamicOp candidate) {
+            llvm::find_if(liveAllocs, [&](MGP::BufferAllocOp candidate) {
               return candidate.getRuntimeSize() == curAlloc.getRuntimeSize() &&
                      candidate.getDevice() == curAlloc.getDevice() &&
                      candidate.getRawAlign() == curAlloc.getRawAlign() &&

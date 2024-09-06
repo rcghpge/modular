@@ -24,7 +24,7 @@ namespace M::MGP {
 #include "GenericML/MGPTransforms/MGPTransforms.h.inc"
 
 struct AllocInfo {
-  MGP::BufferAllocDynamicOp alloc;
+  MGP::BufferAllocOp alloc;
   Value runtimeSize;
   uint64_t alignment;
   uint64_t minPre;
@@ -52,7 +52,7 @@ bool isTriviallyComputable(Value v, DenseSet<Value> &trivial) {
   bool isTrivialOp =
       isa<MIP::MIPDialect>(*producer->getDialect()) ||
       isa<TensorExtractTensorSpecOp, CpuTensorSpecSizeOp, CpuTensorSpecCreateOp,
-          CpuTensorSpecDimsDynamicOp, BufferAllocDynamicOp>(*producer);
+          CpuTensorSpecDimsDynamicOp, BufferAllocOp>(*producer);
   if (!isTrivialOp)
     return false;
 
@@ -90,8 +90,7 @@ class DynamicMemoryPlanningPass
 
     DenseSet<Value> trivialVals;
 
-    for (auto allocOp :
-         execState.execute->getOps<MGP::BufferAllocDynamicOp>()) {
+    for (auto allocOp : execState.execute->getOps<MGP::BufferAllocOp>()) {
       // Ignore CPU allocations for now. Will be addressed by GRA-557
       if (allocOp.getDevice().getLabel() == "cpu")
         continue;
@@ -177,7 +176,7 @@ class DynamicMemoryPlanningPass
 
       // Create the "super-alloc" with the execute block's root chain as the
       // gating chain.
-      auto superAlloc = bufferBuilder->bufferAllocDynamic(
+      auto superAlloc = bufferBuilder->bufferAlloc(
           execState.builder, loc, execState.getContext(),
           execState.getRootChain(), bufferPlanOp.getHighWatermark(),
           totalAlignment);

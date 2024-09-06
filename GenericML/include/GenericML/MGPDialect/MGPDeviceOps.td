@@ -536,10 +536,10 @@ def BufferConstantLoadOp : MGP_DeviceOp<"buffer.constant.load", [
 }
 
 //===----------------------------------------------------------------------===//
-// BufferAllocDynamicOp
+// BufferAllocOp
 //===----------------------------------------------------------------------===//
 
-def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
+def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
     DeclareOpInterfaceMethods<MGP_HasRuntimeSlotOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
@@ -564,7 +564,7 @@ def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
       %size : index
       // Allocates %size bytes using the CUDA runtime from slot 5, which
       // should correspond to the CUDA GPU with virtual device id 3.
-      %buf = mgp.buffer.alloc.dynamic %ch, %ctx[5], %size : !mgp.buffer<, <"cuda", 3>>
+      %buf = mgp.buffer.alloc %ch, %ctx[5], %size : !mgp.buffer<, <"cuda", 3>>
       %buf : !mgp.buffer<, <"cuda", 3>>
     ```
   }];
@@ -587,11 +587,11 @@ def BufferAllocDynamicOp : MGP_DeviceOp<"buffer.alloc.dynamic", [
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-    uint64_t BufferAllocDynamicOp::getSlot() { return getARuntimeSlot(); }
+    uint64_t BufferAllocOp::getSlot() { return getARuntimeSlot(); }
 
-    uint64_t BufferAllocDynamicOp::getRawAlign() { return getBRawAlign(); }
+    uint64_t BufferAllocOp::getRawAlign() { return getBRawAlign(); }
 
-    M::DeviceRefAttr BufferAllocDynamicOp::getDevice() { return getCDevice(); }
+    M::DeviceRefAttr BufferAllocOp::getDevice() { return getCDevice(); }
   }];
 }
 

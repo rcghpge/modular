@@ -337,10 +337,10 @@ LogicalResult BufferConstantLoadOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
-// BufferAllocDynamicOp
+// BufferAllocOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult BufferAllocDynamicOp::verify() {
+LogicalResult BufferAllocOp::verify() {
   if (getCDevice() != getOutBuffer().getType().getDevice()) {
     return emitOpError("expected result buffer device does not match actual "
                        "result buffer device (")
@@ -352,7 +352,7 @@ LogicalResult BufferAllocDynamicOp::verify() {
   return verifyConsistentDevices(getOperation(), {getCDevice()});
 }
 
-// LogicalResult BufferAllocDynamicOp::inferReturnTypes(
+// LogicalResult BufferAllocOp::inferReturnTypes(
 //     MLIRContext *context, std::optional<Location> location, ValueRange
 //     operands, DictionaryAttr attributes, mlir::OpaqueProperties properties,
 //     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
@@ -367,7 +367,7 @@ LogicalResult BufferAllocDynamicOp::verify() {
 //   return success();
 // }
 
-void BufferAllocDynamicOp::setInChain(Value chain) {
+void BufferAllocOp::setInChain(Value chain) {
   getInChainMutable().assign(chain);
 }
 

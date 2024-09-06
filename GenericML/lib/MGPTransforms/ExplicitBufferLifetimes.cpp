@@ -37,12 +37,12 @@ class ExplicitBufferLifetimesPass
     markAnalysesPreserved<BufferLifetimeAnalysisPass>();
 
     modelOp->walk([&](Block *block) {
-      // Walk each block, then for each alloc.dynamic in each block, insert a
+      // Walk each block, then for each alloc in each block, insert a
       // buffer free at the op that is guaranteed to execute after all of the
       // alloc's uses
 
       for (Operation &op : block->getOperations()) {
-        auto allocOp = dyn_cast<MGP::BufferAllocDynamicOp>(op);
+        auto allocOp = dyn_cast<MGP::BufferAllocOp>(op);
         if (!allocOp)
           continue;
         numAllocs++;

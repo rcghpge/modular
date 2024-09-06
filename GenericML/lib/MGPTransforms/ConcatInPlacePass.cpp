@@ -97,9 +97,9 @@ class ConcatInPlacePass
         if (!bufferType.getOptSize()) {
           // Buffer does not have a statically known size.
           // We'll need to pass a size argument as an operand to the split.
-          if (auto allocDynamicOp = dyn_cast<MGP::BufferAllocDynamicOp>(
-                  inBuffer.getDefiningOp())) {
-            runtimeSizes.emplace_back(allocDynamicOp.getRuntimeSize());
+          if (auto allocOp =
+                  dyn_cast<MGP::BufferAllocOp>(inBuffer.getDefiningOp())) {
+            runtimeSizes.emplace_back(allocOp.getRuntimeSize());
           } else {
             ASSERT_STREAM(false, << "unexpected buffer allocation op "
                                  << *inBuffer.getDefiningOp());
