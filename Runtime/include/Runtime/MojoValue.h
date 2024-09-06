@@ -37,12 +37,18 @@ public:
   /// `data` is also owned and released by MojoValue (it must be allocated with
   /// malloc).
   MojoValue(void *data, DestructorFn destructor)
-      : data(data), destructor(destructor), owning(true) {}
+      : data(data), destructor(destructor), owning(true), shouldFree(true) {}
 
   /// Create a reference to an existing Mojo object. The object must outlive the
   /// lifetime of this MojoValue.
   static MojoValue createRef(void *data) {
-    return MojoValue(data, nullptr, false);
+    return MojoValue(data, nullptr, false, false);
+  }
+
+  /// Create a MojoValue with a destructor that frees the pointer. The default
+  /// free will not be called.
+  static MojoValue createSelfFree(void *data, DestructorFn destructor) {
+    return MojoValue(data, destructor, true, false);
   }
 
   ~MojoValue();
@@ -68,19 +74,25 @@ public:
   /// The caller is responsible for freeing the memory.
   void *take();
 
+  bool isOwned() const { return owning; }
+  bool destructorWillFree() const { return !shouldFree; }
+
   /// Swap `*this` and `rhs` objects.
   /// Required for the AsyncValue API.
   void swap(MojoValue &rhs);
 
 private:
-  MojoValue(void *data, DestructorFn destructor, bool owning)
-      : data(data), destructor(destructor), owning(owning) {}
+  MojoValue(void *data, DestructorFn destructor, bool owning, bool shouldFree)
+      : data(data), destructor(destructor), owning(owning),
+        shouldFree(shouldFree) {}
 
   void *data = nullptr;
   DestructorFn destructor = nullptr;
   /// Does the mojo value own this value. Data not freed and destructor not run
   /// if not owned.
   bool owning;
+  /// Should the mojovalue free its pointer.
+  bool shouldFree;
 };
 
 } // namespace M

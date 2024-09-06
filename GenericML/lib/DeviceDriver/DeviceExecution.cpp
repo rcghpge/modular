@@ -6,6 +6,7 @@
 
 #include "GenericML/DeviceDriver/DeviceExecution.h"
 #include "AsyncRT/Runtime/Algorithms.h"
+#include "Support/AssertStream.h"
 
 using namespace M;
 namespace {
@@ -72,8 +73,11 @@ getMojoValueFromAsyncValue(AnyAsyncValueRef outputValue) {
   // Take ownership of underlying mojo value.
   auto mojoValue = std::move(outputValue.get<MojoValue>());
   Driver::DriverMojoValue value;
+  ASSERT_STREAM(mojoValue.isOwned() && !mojoValue.destructorWillFree(),
+                "MojoValue must be owned and the destructor should not free");
   value.destructor = mojoValue.getDestructor();
   value.data = mojoValue.take();
+  // TODO: this is unsafe, need to copy owning too.
   return value;
 }
 
@@ -95,8 +99,9 @@ M::Driver::prepareInputs(Runtime &runtime,
     // Take mojo values. Here everything is completely opaque to
     // us. Directly pass this to mgp and we rely on op author to do the
     // right thing with it.
-    inputs.push_back(AnyAsyncValueRef::createReady<M::MojoValue>(
-        runtime, mojoValues->data, mojoValues->destructor));
+    MojoValue val(mojoValues->data, mojoValues->destructor);
+    inputs.push_back(
+        AnyAsyncValueRef::createReady<M::MojoValue>(runtime, std::move(val)));
   }
 
   return inputs;

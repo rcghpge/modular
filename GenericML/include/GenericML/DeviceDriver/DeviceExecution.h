@@ -20,7 +20,7 @@ namespace M::Driver {
 // mojo and mojo can interpret it as _CMojoValue.
 extern "C" struct DriverMojoValue {
   void *data;
-  M::MojoValue::DestructorFn destructor;
+  void (*destructor)(void *);
 };
 
 // Construct a DeviceMemory block to hold the provided tensor.
