@@ -36,7 +36,7 @@ def MO_TensorOpInterface : OpInterface<"MOTensorOpInterface"> {
   ];
 }
 
-def MO_MutableOpInterface : OpInterface<"MOMutableOpInterface"> {
+def MO_MutableOpInterface : OpInterface<"MOMutableOpInterface", [MemoryEffectsOpInterface]> {
   let description = [{
     Interface that all mo.mutable ops should implement, mainly providing typed
     accessors to the input buffer and input/output chains.

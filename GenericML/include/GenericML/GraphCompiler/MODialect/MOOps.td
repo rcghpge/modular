@@ -41,7 +41,7 @@ class MO_ControlOp<string mnemonic, list<Trait> traits = []>
   : MO_TensorOp<mnemonic, [MO_ControlOpInterface] # traits>;
 
 class MO_MutableOp<string mnemonic, list<Trait> traits = []>
-  : MO_Op<mnemonic, [MO_MutableOpInterface] # traits>;
+  : MO_Op<mnemonic, [MO_MutableOpInterface, DeclareOpInterfaceMethods<MemoryEffectsOpInterface>] # traits>;
 
 //===----------------------------------------------------------------------===//
 // IndexToTensorOp

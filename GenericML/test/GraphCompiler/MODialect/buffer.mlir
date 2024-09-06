@@ -11,14 +11,19 @@ mo.graph @buffer_type<D0, D1>(
 }
 
 // CHECK-LABEL: mo.graph @mutable_load
-// CHECK-SAME: ([[VARG0:[^ ]*]]: !mo.chain, [[VARG1:[^ ]*]]: !mo.buffer<[10, 20], f32>) {
+// CHECK-SAME: ([[VARG0:[^ ]*]]: !mo.chain, [[VARG1:[^ ]*]]: !mo.buffer<[10, 20], f32>)
 // CHECK-NEXT: [[VOUTCHAIN:[^ ]*]], [[VOUTTENSOR:[^ ]*]] = mo.mutable.load([[VARG0]], [[VARG1]]) : (!mo.chain, !mo.buffer<[10, 20], f32>) -> (!mo.chain, !mo.tensor<[10, 20], f32>)
+// CHECK-NEXT: mo.guard
 // CHECK-NEXT: mo.output
-mo.graph @mutable_load(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>) {
+mo.graph @mutable_load(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>) -> !mo.chain {
   %outChain, %tensor = mo.mutable.load(%ch, %buf) :
     (!mo.chain, !mo.buffer<[10, 20], f32>) ->
     (!mo.chain, !mo.tensor<[10, 20], f32>)
-  mo.output
+
+  // want to make sure the load doesn't get DCE'd
+  %ch1 = mo.guard[%ch](%outChain) : !mo.chain
+
+  mo.output %ch1 : !mo.chain
 }
 
 

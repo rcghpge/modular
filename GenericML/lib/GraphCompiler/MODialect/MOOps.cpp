@@ -3761,6 +3761,21 @@ LogicalResult CustomOp::verify() {
 // MO Mutable tensor operations
 //===----------------------------------------------------------------------===//
 
+void MutableLoadOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  effects.emplace_back(mlir::MemoryEffects::Read::get());
+}
+
+void MutableStoreOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  effects.emplace_back(mlir::MemoryEffects::Write::get());
+}
+
+void MutableStoreSliceOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  effects.emplace_back(mlir::MemoryEffects::Write::get());
+}
+
 LogicalResult MutableStoreSliceOp::verify() {
 
   // Copied wholesale from the mo.slice verifier
