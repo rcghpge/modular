@@ -88,27 +88,36 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
     return failure();
   auto &outputSpecs = *outputSpecsOr;
 
-  // Get the output !mo.tensor types from which we can calculate split sizes.
-  SmallVector<MO::TensorType> resultMoTypes =
-      MGP::castToMoTensorTypes(getResultTypes());
-
   // Build/collect inputs to the MGP buffer split op
-  SmallVector<Value> runtimeSizes;
-  SmallVector<std::optional<uint64_t>> outBufferSizes;
+  SmallVector<Value> outputBuffers;
+  Type indexTy = opLoweringState.builder.getIndexType();
+
+  Value offset = opLoweringState.create<mlir::index::ConstantOp>(0).getResult();
+  Value sliceSize;
   for (TypedValue<MGP::TensorSpecType> outSpec : outputSpecs) {
+    // Increment the offset for each iteration after the first.
+    if (sliceSize)
+      offset = opLoweringState.create<MIP::AddOp>(indexTy, offset, sliceSize);
+
     MGP::TensorSpecType outSpecTy = outSpec.getType();
     std::optional<uint64_t> bufferSize = outSpecTy.getSizeInBytes();
-    outBufferSizes.emplace_back(bufferSize);
-    if (!bufferSize.has_value()) {
-      runtimeSizes.emplace_back(
-          opLoweringState.create<MGP::CpuTensorSpecSizeOp>(
-              /*spec=*/outSpec));
-    }
-  }
 
-  SmallVector<Value> outputBuffers = opLoweringState.splitBorrow(
-      loweringState.getCurrentExecuteChain(), inputBuffer, runtimeSizes,
-      outBufferSizes, getInput().getType());
+    if (!bufferSize.has_value()) {
+      sliceSize = opLoweringState
+                      .create<MGP::CpuTensorSpecSizeOp>(
+                          /*spec=*/outSpec)
+                      .getResult();
+    } else {
+      sliceSize = opLoweringState.create<mlir::index::ConstantOp>(*bufferSize)
+                      .getResult();
+    }
+
+    Value outSlice =
+        opLoweringState
+            .create<MGP::BufferSliceOp>(inputBuffer, offset, sliceSize)
+            .getResult();
+    outputBuffers.push_back(outSlice);
+  }
 
   // The split can only be accessed once it's safe to access the inputs. Though
   // fine to perfom the actual split.
