@@ -11,6 +11,7 @@
 #include "GraphRT/MIPDialect/MIPDialect.h"
 #include "Support/AssertStream.h"
 #include <llvm/ADT/STLExtras.h>
+#include <mlir/Dialect/Index/IR/IndexDialect.h>
 #include <mlir/Dialect/Index/IR/IndexOps.h>
 #include <mlir/Support/LLVM.h>
 
@@ -183,7 +184,7 @@ ErrorOr<StringRef> MOGraphLoweringState::pocToMopIndexOp(KGEN::POC poc) {
   // TODO: support more opcodes
   switch (poc) {
   case KGEN::POC::Add:
-    return MIP::AddOp::getOperationName();
+    return mlir::index::AddOp::getOperationName();
   case KGEN::POC::Div:
     return MIP::DivOp::getOperationName();
   case KGEN::POC::EQ:
@@ -200,7 +201,7 @@ ErrorOr<StringRef> MOGraphLoweringState::pocToMopIndexOp(KGEN::POC poc) {
     return MIP::ModOp::getOperationName();
   case KGEN::POC::Mul:
   case KGEN::POC::MulNuw:
-    return MIP::MulOp::getOperationName();
+    return mlir::index::MulOp::getOperationName();
   case KGEN::POC::And:
     return MIP::AndOp::getOperationName();
   case KGEN::POC::Or:
@@ -231,7 +232,7 @@ MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
   // For potentially variadic binary ops
   //   add(a, b, c)
   //   ===>
-  //   mip.add(mip.add(a, b), c)
+  //   index.add(index.add(a, b), c)
   Value res = operands.front();
   do {
     operands = operands.drop_front();
@@ -253,7 +254,11 @@ Operation *MOGraphLoweringState::lowerIntAttr(OpBuilder &builder, Location loc,
 /// sequenced assert lowering helper functions
 namespace {
 
-bool isMipOp(Operation *op) { return isa<MIP::MIPDialect>(op->getDialect()); }
+bool isIndexOp(Operation *op) {
+  // TODO: remove isa<MIP::MIPDialect> after fully migrated to mlir::index.
+  return isa<mlir::index::IndexDialect>(op->getDialect()) ||
+         isa<MIP::MIPDialect>(op->getDialect());
+}
 
 DenseSet<Operation *> getAncestors(Operation *root) {
 
@@ -265,7 +270,7 @@ DenseSet<Operation *> getAncestors(Operation *root) {
   while (!worklist.empty()) {
     Operation *op = worklist.pop_back_val();
 
-    if (!op || !isMipOp(op))
+    if (!op || !isIndexOp(op))
       continue;
 
     ancestors.insert(op);
@@ -294,7 +299,7 @@ getBoundaryOpOperands(Operation *root,
 
     Operation *op = worklist.pop_back_val();
 
-    if (!op || !isMipOp(op) || prevAncestors.contains(op))
+    if (!op || !isIndexOp(op) || prevAncestors.contains(op))
       continue;
 
     for (auto &&opOperand : op->getOpOperands()) {

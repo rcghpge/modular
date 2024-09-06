@@ -65,7 +65,7 @@ mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%weight
   %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
   %allocSize = mip.nary.mul(%inDims#0, %inDims#1)
-  %allocSizeDifferent = mip.add %inDims#0, %inDims#1
+  %allocSizeDifferent = index.add %inDims#0, %inDims#1
 
 
   // We still expect 3 remaining allocs after the pass

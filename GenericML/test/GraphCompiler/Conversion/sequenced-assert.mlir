@@ -26,7 +26,7 @@ mo.graph @assert_sequence<D0, D1, D2, D3>(%arg0: !mo.tensor<[D0, D1], f32>, %arg
 
 // CHECK-LABEL: @needs_guard
 // CHECK: [[NEG1:%.*]] = index.constant -1
-// CHECK: [[DENOM:%.*]] = mip.add [[BS:%.*]], [[NEG1]]
+// CHECK: [[DENOM:%.*]] = index.add [[BS:%.*]], [[NEG1]]
 // CHECK: [[CH0:%.*]] = mgp.assert {{.*}} "error 1"
 // CHECK: mgp.guard [[CH0]], [[DENOM]]
 // CHECK: [[CH1:%.*]] = mgp.assert{{.*}} "error 2"
@@ -67,7 +67,7 @@ mo.graph @matching_conds<S2, C1_S2, RS, BC1, BC2, BC3, BC4>()
 
 // CHECK-LABEL @three_asserts
 // CHECK: [[NEG1:%.*]] = index.constant -1
-// CHECK: [[DENOM:%.*]] = mip.add [[BS:%.*]], [[NEG1]]
+// CHECK: [[DENOM:%.*]] = index.add [[BS:%.*]], [[NEG1]]
 // CHECK: [[CH0:%.*]] = mgp.assert {{.*}} "error 1"
 // CHECK-NOT: mgp.guard
 // CHECK: [[CH1:%.*]] = mgp.assert {{.*}} "error 2"

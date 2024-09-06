@@ -5,9 +5,9 @@
 // CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?xf32>)
 // CHECK:     %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[CTX]][0], %[[ARG2]] : !mgp.tensor<?x?xf32>
 // CHECK:     %[[DIMS:[^:]*]]:2 = mgp.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.tensor_spec<?x?xf32>
-// CHECK-DAG: %[[VAL1:[^:]*]] = mip.add %[[DIMS]]#0, %[[DIMS]]#1
+// CHECK-DAG: %[[VAL1:[^:]*]] = index.add %[[DIMS]]#0, %[[DIMS]]#1
 // CHECK-DAG: %[[VAL2:[^:]*]] = index.constant 2
-// CHECK:     %[[VAL3:[^:]*]] = mip.add %[[VAL1]], %[[VAL2]]
+// CHECK:     %[[VAL3:[^:]*]] = index.add %[[VAL1]], %[[VAL2]]
 mo.graph @add_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   kgen.param.declare A0 = <add(X, Y)>
   kgen.param.declare A1 = <add(Y, X)>
@@ -21,10 +21,10 @@ mo.graph @add_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
 // CHECK:     %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[CTX]][0], %[[ARG2]] : !mgp.tensor<?x?xf32>
 // CHECK:     %[[DIMS:[^:]*]]:2 = mgp.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.tensor_spec<?x?xf32>
 // CHECK-DAG: %[[VAL1:[^:]*]] = index.constant -1
-// CHECK-DAG: %[[VAL2:[^:]*]] = mip.mul %[[DIMS]]#1, %[[VAL1]]
-// CHECK-DAG: %[[VAL3:[^:]*]] = mip.add %[[VAL2]], %[[DIMS]]#0
+// CHECK-DAG: %[[VAL2:[^:]*]] = index.mul %[[DIMS]]#1, %[[VAL1]]
+// CHECK-DAG: %[[VAL3:[^:]*]] = index.add %[[VAL2]], %[[DIMS]]#0
 // CHECK-DAG: %[[VAL4:[^:]*]] = index.constant -3
-// CHECK-DAG: %[[VAL5:[^:]*]] = mip.add %[[DIMS]]#0, %[[VAL4]]
+// CHECK-DAG: %[[VAL5:[^:]*]] = index.add %[[DIMS]]#0, %[[VAL4]]
 mo.graph @sub_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   kgen.param.declare S0 = <sub(X, Y)>
   kgen.param.declare S1 = <sub(X, 3)>
@@ -36,9 +36,9 @@ mo.graph @sub_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
 // CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?xf32>)
 // CHECK:     %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[CTX]][0], %[[ARG2]] : !mgp.tensor<?x?xf32>
 // CHECK:     %[[DIMS:[^:]*]]:2 = mgp.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.tensor_spec<?x?xf32>
-// CHECK-DAG: %[[VAL1:[^:]*]] = mip.mul %[[DIMS]]#0, %[[DIMS]]#1
+// CHECK-DAG: %[[VAL1:[^:]*]] = index.mul %[[DIMS]]#0, %[[DIMS]]#1
 // CHECK-DAG: %[[VAL2:[^:]*]] = index.constant 2
-// CHECK:     %[[VAL3:[^:]*]] = mip.mul %[[VAL1]], %[[VAL2]]
+// CHECK:     %[[VAL3:[^:]*]] = index.mul %[[VAL1]], %[[VAL2]]
 mo.graph @mul_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   kgen.param.declare M0 = <mul_nuw(X, Y)>
   kgen.param.declare M1 = <mul_nuw(Y, X)>
@@ -156,9 +156,9 @@ mo.graph @bool_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
 // CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?x?xf32>)
 // CHECK:     %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[CTX]][0], %[[ARG2]] : !mgp.tensor<?x?x?xf32>
 // CHECK:     %[[DIMS:[^:]*]]:3 = mgp.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.tensor_spec<?x?x?xf32>
-// CHECK-DAG: %[[VAL1:[^:]*]] = mip.mul %[[DIMS]]#0, %[[DIMS]]#1
-// CHECK-DAG: %[[VAL2:[^:]*]] = mip.mul %[[DIMS]]#1, %[[DIMS]]#2
-// CHECK-DAG: %[[VAL3:[^:]*]] = mip.add %[[VAL1]], %[[VAL2]]
+// CHECK-DAG: %[[VAL1:[^:]*]] = index.mul %[[DIMS]]#0, %[[DIMS]]#1
+// CHECK-DAG: %[[VAL2:[^:]*]] = index.mul %[[DIMS]]#1, %[[DIMS]]#2
+// CHECK-DAG: %[[VAL3:[^:]*]] = index.add %[[VAL1]], %[[VAL2]]
 mo.graph @complex_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   kgen.param.declare C0 = <add(mul_nuw(X, Y), mul_nuw(Y, Z))>
   mo.output
@@ -169,8 +169,8 @@ mo.graph @complex_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
 // CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?x?xf32>)
 // CHECK: %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[CTX]][0], %[[ARG2]] : !mgp.tensor<?x?x?xf32>
 // CHECK: %[[DIMS:[^:]*]]:3 = mgp.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.tensor_spec<?x?x?xf32>
-// CHECK: %[[VAL1:[^:]*]] = mip.add %[[DIMS]]#0, %[[DIMS]]#1
-// CHECK: %[[VAL2:[^:]*]] = mip.add %[[VAL1]], %[[DIMS]]#2
+// CHECK: %[[VAL1:[^:]*]] = index.add %[[DIMS]]#0, %[[DIMS]]#1
+// CHECK: %[[VAL2:[^:]*]] = index.add %[[VAL1]], %[[DIMS]]#2
 mo.graph @variadic_exprs<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   kgen.param.declare C0 = <add(X, Y, Z)>
   mo.output
@@ -194,7 +194,7 @@ mo.graph @shape_attr<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
 // CHECK: %[[D0:[^:]*]] = mgp.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.tensor_spec<?x4xf32>
 // CHECK: %[[BUF:[^:]*]] = mgp.tensor.extract.buffer %[[CTX]][0], %[[INPUT]] : !mgp.tensor<?x4xf32>
 // CHECK: %[[TWO:[^:]*]] = index.constant 2
-// CHECK: %[[TWOd0:[^:]*]] = mip.mul %[[D0]], %[[TWO]]
+// CHECK: %[[TWOd0:[^:]*]] = index.mul %[[D0]], %[[TWO]]
 // CHECK: %[[OUT_SPEC:[^:]*]] = mgp.tensor_spec.create %[[TWOd0]] : !mgp.tensor_spec<?x2xf32>
 // CHECK: %[[OUT_TENSOR:[^:]*]] = mgp.tensor.create %{{.*}}, %[[CTX]][0], %[[BUF]], %[[OUT_SPEC]]  : !mgp.tensor<?x2xf32>
 // CHECK: mef.output %[[CHAIN]], %[[OUT_TENSOR]] : !mef.chain, !mgp.tensor<?x2xf32>

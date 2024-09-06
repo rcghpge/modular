@@ -10,8 +10,8 @@ mgp.model @remove_redundant_operands : mof devices [#M.device_ref<"cpu", 0>] ini
   %lhs = index.constant 42
   %rhs = index.constant -20
   %3 = mogg.generic.compiled.region (%lhs, %rhs, %lhs, %rhs) : (%arg2: index, %arg3: index, %arg4: index, %arg5: index) -> index{
-    %5 = mogg.call "mip.add"(%arg2, %arg3) {} : index, index -> index
-    %6 = mogg.call "mip.add"(%5, %arg4) {} : index, index -> index
+    %5 = mogg.call "index.add"(%arg2, %arg3) {} : index, index -> index
+    %6 = mogg.call "index.add"(%5, %arg4) {} : index, index -> index
     mogg.output %5 : index
   } {inOutSignature = #M.inout_sig<"">}
   %4 = mip.print.index %3, %0

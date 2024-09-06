@@ -891,11 +891,11 @@ LogicalResult MOGraphLowering::lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp) {
   };
 
   auto mul = [&](Value a, Value b) -> Value {
-    return opLoweringState.create<MIP::MulOp>(indexTy, a, b);
+    return opLoweringState.create<mlir::index::MulOp>(indexTy, a, b);
   };
 
   auto add = [&](Value a, Value b) -> Value {
-    return opLoweringState.create<MIP::AddOp>(indexTy, a, b);
+    return opLoweringState.create<mlir::index::AddOp>(indexTy, a, b);
   };
 
   auto div = [&](Value a, Value b) -> Value {
