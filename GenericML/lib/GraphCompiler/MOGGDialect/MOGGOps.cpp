@@ -90,14 +90,13 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // Build/collect inputs to the MGP buffer split op
   SmallVector<Value> outputBuffers;
-  Type indexTy = opLoweringState.builder.getIndexType();
 
   Value offset = opLoweringState.create<mlir::index::ConstantOp>(0).getResult();
   Value sliceSize;
   for (TypedValue<MGP::TensorSpecType> outSpec : outputSpecs) {
     // Increment the offset for each iteration after the first.
     if (sliceSize)
-      offset = opLoweringState.create<MIP::AddOp>(indexTy, offset, sliceSize);
+      offset = opLoweringState.create<mlir::index::AddOp>(offset, sliceSize);
 
     MGP::TensorSpecType outSpecTy = outSpec.getType();
     std::optional<uint64_t> bufferSize = outSpecTy.getSizeInBytes();

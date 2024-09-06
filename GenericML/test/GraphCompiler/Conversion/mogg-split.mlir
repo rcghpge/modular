@@ -18,9 +18,8 @@
 
 // CHECK-NEXT:   %[[SLICE:.*]] = mgp.buffer.slice %[[INPUT_BUF]], %[[ZERO]], %[[SPLIT_SIZE1]]
 
-// CHECK-NEXT:   %[[OFFSET:.*]] = mip.add %[[ZERO]], %[[SPLIT_SIZE1]]
 // CHECK-NEXT:   %[[SPLIT_SIZE2:.*]] = mgp.tensor_spec.size %[[SPLIT_SPEC2]]
-// CHECK-NEXT:   %[[SLICE2:.*]] = mgp.buffer.slice %[[INPUT_BUF]], %[[OFFSET]], %[[SPLIT_SIZE2]]
+// CHECK-NEXT:   %[[SLICE2:.*]] = mgp.buffer.slice %[[INPUT_BUF]], %[[SPLIT_SIZE1]], %[[SPLIT_SIZE2]]
 
 // CHECK-NEXT:   %[[SPLIT_TENSOR1:.*]] = mgp.tensor.create %[[CH]], %[[CTX]][0], %[[SLICE]], %[[SPLIT_SPEC1]]
 // CHECK-NEXT:   %[[SPLIT_TENSOR2:.*]] = mgp.tensor.create %[[CH]], %[[CTX]][0], %[[SLICE2]], %[[SPLIT_SPEC2]]
@@ -42,7 +41,7 @@ mo.graph @mogg_split<D0, D1, D2>(
 
 // CHECK-LABEL: mgp.model @mogg_split_chain_prop : mof
 
-// CHECK: } execute (%[[CH0:.*]]: !mef.chain, 
+// CHECK: } execute (%[[CH0:.*]]: !mef.chain,
 // CHECK: %[[CH1:.*]] = mogg.generic.compiled.region (%[[CH0]]
 
 // CHECK: %[[OUT_BUF1:.*]] = mgp.buffer.slice
@@ -51,9 +50,9 @@ mo.graph @mogg_split<D0, D1, D2>(
 // CHECK: %[[CH2:.*]] = grt.chain.create (%[[CH1]], %[[CH0]])
 // CHECK: %[[CH3:.*]] = grt.chain.create (%[[CH2]], %[[CH0]])
 
-// CHECK: mogg.generic.compiled.region (%[[CH3]], %{{.*}}, %[[OUT_BUF1]], 
+// CHECK: mogg.generic.compiled.region (%[[CH3]], %{{.*}}, %[[OUT_BUF1]],
 
-// CHECK: mogg.generic.compiled.region (%[[CH3]], %{{.*}}, %[[OUT_BUF2]], 
+// CHECK: mogg.generic.compiled.region (%[[CH3]], %{{.*}}, %[[OUT_BUF2]],
 
 mo.graph @mogg_split_chain_prop<D0, D1, D2>(
   %input: !mo.tensor<[D0, 8], f32>,
