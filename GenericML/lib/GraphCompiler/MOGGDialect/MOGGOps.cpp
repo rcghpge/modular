@@ -1202,8 +1202,6 @@ bool KernelOp::isInPlaceAlloc() {
   return false;
 }
 
-bool KernelOp::isInPlace() { return getIsInPlace(); }
-
 std::optional<Value> KernelOp::getInChain() {
   if (getNumOperands() == 0)
     return std::nullopt;
@@ -1369,36 +1367,15 @@ LogicalResult KernelOp::verify() {
   if (!chainIsLastIfPresent(getResults()))
     return emitError("Found an output chain that is not in the final position");
 
-  if (isInPlace()) {
+  bool hasMemoryEffects = getHasReadEffect() || getHasWriteEffect();
+  if (hasMemoryEffects) {
     if (llvm::count_if(getOperands(), isChain) != 1)
-      return emitError("In-place kernels must have exactly one input chain");
+      return emitError(
+          "Kernels with memory effects must have exactly one input chain");
 
     if (llvm::count_if(getResults(), isChain) != 1)
-      return emitError("In-place kernels must have exactly one output chain");
-  }
-
-  bool hasBufferOperand = llvm::count_if(getOperands(), [](Value val) {
-                            return isa<MO::BufferType>(val.getType());
-                          }) > 0;
-
-  if (hasBufferOperand) {
-    bool hasInOutChains = getOutChain() && getInChain();
-    // HACK: In general we do want to be checking that we have I/O chains in the
-    // presence of reading or reading + writing to a buffer. However in the case
-    // of lowered shape functions if the buffer input is not one of the data
-    // dependent inputs then there really isn't any need to have chains to allow
-    // sequencing since none of the actual contents of the underlying buffer are
-    // read. Such a case is the shape function for slices. Right now hackily
-    // check if the kernel derived from the shape slice based on the kernel
-    // summary string.
-    //
-    // TODO(GRA-957): Replace the isInPlace kernel attribute with more preceise
-    // 'hasBufferRead' and 'hasBufferWrite' attributes instead. This will allow
-    // the removal of the below hack.
-    if (this->getSummaryAttr().strref() != "slice_shape" && !hasInOutChains) {
       return emitError(
-          "Kernels with buffer inputs must have chain inputs and outputs");
-    }
+          "Kernels with MemoryEffects must have exactly one output chain");
   }
 
   return success();
@@ -1462,23 +1439,14 @@ void KernelOp::getEffects(
   bool hasWriteEffect = false;
   bool hasReadEffect = false;
 
-  if (isInPlace()) {
-    hasWriteEffect |= true;
+  if (getHasReadEffect())
     hasReadEffect |= true;
-  }
+
+  if (getHasWriteEffect())
+    hasWriteEffect |= true;
 
   if (!getOutputParamDecls().empty())
     hasWriteEffect |= true;
-
-  auto outChain = getOutChain();
-  if (outChain) {
-    for (auto &&user : outChain->getUsers()) {
-      if (isa<MO::MutableStoreOp>(user)) {
-        hasWriteEffect |= true;
-        hasReadEffect |= true;
-      }
-    }
-  }
 
   if (hasWriteEffect)
     effects.emplace_back(mlir::MemoryEffects::Write::get());

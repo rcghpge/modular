@@ -219,7 +219,8 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     OptionalAttr<StrAttr>:$summary,
     OptionalAttr<BoolAttr>:$isAsync,
     OptionalAttr<ArrayAttr>:$allocIndices,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$isInPlace
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect
   );
   let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Buffer, MO_Chain]>>:$results);
   let regions = (region SizedRegion<1>:$body);
@@ -310,9 +311,6 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
 
     /// Returns whether the kernel is a in-place allocated kernel
     bool isInPlaceAlloc();
-
-    /// Returns whether the kernel operates on one of its inputs in-place.
-    bool isInPlace();
 
     /// Returns the sole input chain (if present) and std::nullopt otherwise.
     std::optional<Value> getInChain();

@@ -114,7 +114,8 @@ KernelOp fuseMutableLoadWithKernel(OpBuilder &builder, MO::MutableLoadOp loadOp,
       /*isKGEN=*/kernelOp.getIsKGENAttr(),
       /*summary=*/kernelOp.getSummaryAttr(),
       /*isAsync=*/kernelOp.getIsAsyncAttr(),
-      /*allocIndices=*/kernelOp.getAllocIndicesAttr());
+      /*allocIndices=*/kernelOp.getAllocIndicesAttr(),
+      /*hasReadEffect*/ builder.getBoolAttr(true));
 
   // respect the old deviceRef if it was present
   if (auto deviceRef = kernelOp.getDeviceRef())
