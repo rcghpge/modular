@@ -34,6 +34,8 @@ public:
   CpuDevice() = default;
   ~CpuDevice() override = default;
 
+  int id() const override;
+
   std::string name() const override;
 };
 
@@ -87,7 +89,7 @@ public:
 
   static const CpuDeviceContext &cast(const DeviceContext &ctx);
 
-  static ErrorOr<CpuDeviceContextRef> create();
+  static ErrorOr<CpuDeviceContextRef> create(int id);
 };
 
 } // namespace M::AsyncRT

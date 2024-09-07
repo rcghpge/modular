@@ -41,7 +41,7 @@ public:
 
   const CUDADriver &driver() const;
 
-  CUdevice id() const;
+  int id() const override;
 
   std::string name() const override;
 
@@ -146,7 +146,7 @@ public:
 
   static const CUDADeviceContext &cast(const DeviceContext &ctx);
 
-  static ErrorOr<CUDADeviceContextRef> create();
+  static ErrorOr<CUDADeviceContextRef> create(int id);
 
 private:
   const CUDADriver &driver_;

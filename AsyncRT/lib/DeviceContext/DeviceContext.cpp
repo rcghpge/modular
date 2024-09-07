@@ -12,6 +12,7 @@
 
 #include "CPU/CpuDeviceContext.h"
 #include "CUDA/CUDADeviceContext.h"
+#include "llvm/ADT/Twine.h"
 
 #include <string.h>
 
@@ -46,15 +47,15 @@ DeviceContext::DeviceContext(const Device &device)
 
 const Device &DeviceContext::device() const { return *device_; }
 
-ErrorOr<DeviceContextRef> DeviceContext::create(const char *kind) {
+ErrorOr<DeviceContextRef> DeviceContext::create(const char *kind, int id) {
   // TODO(iposva): Implement dynamic registration mechanism.
   if (strcmp(kind, "cuda") == 0) {
-    return CUDADeviceContext::create();
+    return CUDADeviceContext::create(id);
   } else if (strcmp(kind, "cpu") == 0) {
-    return CpuDeviceContext::create();
+    return CpuDeviceContext::create(id);
   }
 
-  return DeviceContextRef();
+  return Error(llvm::Twine("Unsupported device kind: ") + kind);
 }
 
 } // namespace M::AsyncRT

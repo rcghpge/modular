@@ -28,6 +28,10 @@ public:
     SUCCESS = 0,
   };
 
+  Result DeviceGetName(char *name, int len, CUdevice dev) const {
+    return cuDeviceGetName_(name, len, dev);
+  }
+
   Result CtxCreate(CUcontext *pctx, unsigned int flags, CUdevice dev) const {
     return cuCtxCreate_v2_(pctx, flags, dev);
   }
@@ -103,6 +107,9 @@ private:
   Result Init(unsigned int flags) const { return cuInit_(flags); }
   using tcuInit = Result(unsigned int);
   tcuInit *cuInit_;
+
+  using tcuDeviceGetName = Result(char *, int, CUdevice);
+  tcuDeviceGetName *cuDeviceGetName_;
 
   using tcuCtxCreate_v2 = Result(CUcontext *, unsigned int, CUdevice);
   tcuCtxCreate_v2 *cuCtxCreate_v2_;

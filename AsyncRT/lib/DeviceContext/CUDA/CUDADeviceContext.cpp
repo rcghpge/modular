@@ -57,10 +57,17 @@ CUDADevice::CUDADevice(const CUDADriver &driver, CUdevice id)
 
 const CUDADriver &CUDADevice::driver() const { return driver_; }
 
-CUdevice CUDADevice::id() const { return id_; }
+int CUDADevice::id() const { return static_cast<int>(id_); }
 
 std::string CUDADevice::name() const {
-  // TODO(iposva): Return the actual device name and possibly id.
+  char char_data[256];
+
+  CUDADriver::Result cuda_result =
+      driver_.DeviceGetName(char_data, sizeof(char_data), id_);
+  if (cuda_result == CUDADriver::SUCCESS) {
+    // TODO(iposva): Possibly add the device id here.
+    return std::string(char_data);
+  }
   return "cuda";
 }
 
@@ -241,8 +248,7 @@ const CUDADeviceContext &CUDADeviceContext::cast(const DeviceContext &ctx) {
   return static_cast<const CUDADeviceContext &>(ctx);
 }
 
-ErrorOr<CUDADeviceContextRef> CUDADeviceContext::create() {
-  CUdevice id = 0; // By default we select the first device.
+ErrorOr<CUDADeviceContextRef> CUDADeviceContext::create(int id) {
   const CUDADriver *driver = CUDADriver::get();
   if (driver == nullptr) {
     // TODO(iposva): Surface driver initialization error.

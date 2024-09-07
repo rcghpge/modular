@@ -45,6 +45,7 @@ namespace M::AsyncRT {
 //
 // ===== CpuDevice ===== //
 //
+int CpuDevice::id() const { return 0; }
 
 std::string CpuDevice::name() const {
   // TODO(iposva): Return the actual device name.
@@ -146,13 +147,11 @@ const CpuDeviceContext &CpuDeviceContext::cast(const DeviceContext &ctx) {
   return static_cast<const CpuDeviceContext &>(ctx);
 }
 
-ErrorOr<CpuDeviceContextRef> CpuDeviceContext::create() {
-  CpuDeviceRef device = CpuDeviceRef::create();
-  if (!device) {
-    return Error("CPU device creation failed.");
+ErrorOr<CpuDeviceContextRef> CpuDeviceContext::create(int id) {
+  if (id != 0) {
+    return Error("CPU device only supports id == 0.");
   }
-
-  return CpuDeviceContextRef::create(*device);
+  return CpuDeviceContextRef::create(*CpuDeviceRef::create());
 }
 
 } // namespace M::AsyncRT

@@ -23,7 +23,8 @@ TEST(CUDADeviceContextTest, Smoke) {
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
 
-  EXPECT_EQ(ctx->device().name(), "cuda");
+  std::string device_name = ctx->device().name();
+  EXPECT_NE(device_name.find("NVIDIA"), std::string::npos) << device_name;
 }
 
 TEST(CUDADeviceContextTest, DeviceBuffers) {

@@ -37,6 +37,8 @@ class Device : public ReferenceCounted<Device> {
 public:
   virtual ~Device() = default;
 
+  virtual int id() const = 0;
+
   virtual std::string name() const = 0;
 
 protected:
@@ -143,7 +145,7 @@ public:
   // Synchronize asynchronous operations.
   virtual ErrorOrSuccess synchronize() const = 0;
 
-  static ErrorOr<DeviceContextRef> create(const char *kind);
+  static ErrorOr<DeviceContextRef> create(const char *kind, int id = 0);
 
 protected:
   DeviceContext(const Device &device);

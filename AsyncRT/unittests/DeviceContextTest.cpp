@@ -25,6 +25,18 @@ TEST(DeviceContextTest, Smoke) {
   EXPECT_EQ(ctx->device().name(), "cpu");
 }
 
+TEST(DeviceContextTest, CreationFailure) {
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu", 1);
+  EXPECT_TRUE(err_ctx);
+  EXPECT_EQ(strcmp(err_ctx.getError(), "CPU device only supports id == 0."), 0)
+      << err_ctx.getError();
+
+  err_ctx = DeviceContext::create("pcu");
+  EXPECT_TRUE(err_ctx);
+  EXPECT_EQ(strcmp(err_ctx.getError(), "Unsupported device kind: pcu"), 0)
+      << err_ctx.getError();
+}
+
 TEST(DeviceContextTest, DeviceBuffers) {
   ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu");
   EXPECT_FALSE(err_ctx) << err_ctx.getError() << "\n";
