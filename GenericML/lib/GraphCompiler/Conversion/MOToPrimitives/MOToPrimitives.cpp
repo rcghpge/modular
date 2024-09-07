@@ -899,7 +899,7 @@ LogicalResult MOGraphLowering::lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp) {
   };
 
   auto div = [&](Value a, Value b) -> Value {
-    return opLoweringState.create<MIP::DivOp>(indexTy, a, b);
+    return opLoweringState.create<mlir::index::DivSOp>(indexTy, a, b);
   };
 
   auto ifPositive = [&](Value check, Value yes, Value no) -> Value {

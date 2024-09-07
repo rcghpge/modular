@@ -186,7 +186,7 @@ ErrorOr<StringRef> MOGraphLoweringState::pocToMopIndexOp(KGEN::POC poc) {
   case KGEN::POC::Add:
     return mlir::index::AddOp::getOperationName();
   case KGEN::POC::Div:
-    return MIP::DivOp::getOperationName();
+    return mlir::index::DivSOp::getOperationName();
   case KGEN::POC::EQ:
     return MIP::EqualOp::getOperationName();
   case KGEN::POC::LT:
@@ -194,11 +194,11 @@ ErrorOr<StringRef> MOGraphLoweringState::pocToMopIndexOp(KGEN::POC poc) {
   case KGEN::POC::LE:
     return MIP::LessThanEqualOp::getOperationName();
   case KGEN::POC::Max:
-    return MIP::MaxOp::getOperationName();
+    return mlir::index::MaxSOp::getOperationName();
   case KGEN::POC::Min:
-    return MIP::MinOp::getOperationName();
+    return mlir::index::MinSOp::getOperationName();
   case KGEN::POC::Mod:
-    return MIP::ModOp::getOperationName();
+    return mlir::index::RemSOp::getOperationName();
   case KGEN::POC::Mul:
   case KGEN::POC::MulNuw:
     return mlir::index::MulOp::getOperationName();

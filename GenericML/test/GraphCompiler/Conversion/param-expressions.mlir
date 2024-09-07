@@ -51,10 +51,10 @@ mo.graph @mul_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
 // CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?xf32>)
 // CHECK:     %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[CTX]][0], %[[ARG2]] : !mgp.tensor<?x?xf32>
 // CHECK:     %[[DIMS:[^:]*]]:2 = mgp.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.tensor_spec<?x?xf32>
-// CHECK-DAG: %[[VAL1:[^:]*]] = mip.mod %[[DIMS]]#0, %[[DIMS]]#1
-// CHECK-DAG: %[[VAL2:[^:]*]] = mip.mod %[[DIMS]]#1, %[[DIMS]]#0
+// CHECK-DAG: %[[VAL1:[^:]*]] = index.rems %[[DIMS]]#0, %[[DIMS]]#1
+// CHECK-DAG: %[[VAL2:[^:]*]] = index.rems %[[DIMS]]#1, %[[DIMS]]#0
 // CHECK-DAG: %[[VAL3:[^:]*]] = index.constant 2
-// CHECK:     %[[VAL4:[^:]*]] = mip.mod %[[VAL1]], %[[VAL3]]
+// CHECK:     %[[VAL4:[^:]*]] = index.rems %[[VAL1]], %[[VAL3]]
 mo.graph @mod_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   kgen.param.declare M0 = <mod(X, Y)>
   kgen.param.declare M1 = <mod(Y, X)>
