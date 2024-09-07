@@ -11,6 +11,7 @@
 #include "GraphRT/MEFDialect/MEFDialect.h"
 #include "Init/Init.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
@@ -27,8 +28,8 @@ int main(int argc, char **argv) {
 
   DialectRegistry registry;
   MO::loadDialects(registry);
-  registry.insert<mlir::func::FuncDialect, MEF::MEFDialect, GRT::GRTDialect,
-                  MGP::MGPDialect>();
+  registry.insert<mlir::func::FuncDialect, mlir::arith::ArithDialect,
+                  MEF::MEFDialect, GRT::GRTDialect, MGP::MGPDialect>();
 
   MO::registerPasses();
 

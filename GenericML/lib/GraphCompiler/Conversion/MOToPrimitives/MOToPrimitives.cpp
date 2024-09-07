@@ -24,6 +24,7 @@
 #include "Support/ML/CommonAttributes.h"
 #include "Support/STLExtras.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include <cassert>
@@ -905,7 +906,8 @@ LogicalResult MOGraphLowering::lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp) {
   auto ifPositive = [&](Value check, Value yes, Value no) -> Value {
     auto cond =
         opLoweringState.create<MIP::LessThanOp>(i1Ty, check, constant(0));
-    return opLoweringState.create<MIP::SelectOp>(indexTy, cond, no, yes);
+    return opLoweringState.create<mlir::arith::SelectOp>(indexTy, cond, no,
+                                                         yes);
   };
 
   Value inChain =

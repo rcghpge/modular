@@ -11,6 +11,7 @@
 #include "GraphRT/MIPDialect/MIPDialect.h"
 #include "Support/AssertStream.h"
 #include <llvm/ADT/STLExtras.h>
+#include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/Index/IR/IndexDialect.h>
 #include <mlir/Dialect/Index/IR/IndexOps.h>
 #include <mlir/Support/LLVM.h>
@@ -203,13 +204,13 @@ ErrorOr<StringRef> MOGraphLoweringState::pocToMopIndexOp(KGEN::POC poc) {
   case KGEN::POC::MulNuw:
     return mlir::index::MulOp::getOperationName();
   case KGEN::POC::And:
-    return MIP::AndOp::getOperationName();
+    return mlir::arith::AndIOp::getOperationName();
   case KGEN::POC::Or:
-    return MIP::OrOp::getOperationName();
+    return mlir::arith::OrIOp::getOperationName();
   case KGEN::POC::Xor:
-    return MIP::XorOp::getOperationName();
+    return mlir::arith::XOrIOp::getOperationName();
   case KGEN::POC::Cond:
-    return MIP::SelectOp::getOperationName();
+    return mlir::arith::SelectOp::getOperationName();
   default:
     return Error(Twine("unsupported POC '") + stringifyPOC(poc) + "'");
   }
@@ -226,7 +227,7 @@ MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
   Type resTy = opAttr.getType();
 
   // For non binary op
-  if (opNameAttr == MIP::SelectOp::getOperationName())
+  if (opNameAttr == mlir::arith::SelectOp::getOperationName())
     return builder.create(loc, opNameAttr, operands, {resTy})->getResult(0);
 
   // For potentially variadic binary ops
@@ -256,7 +257,11 @@ namespace {
 
 bool isIndexOp(Operation *op) {
   // TODO: remove isa<MIP::MIPDialect> after fully migrated to mlir::index.
+  // We uses arith::AndI/OrI/XOrIOp instead of index::And/Or/XOr because they
+  // only IndexDialect operations only accept index-typed operands.
   return isa<mlir::index::IndexDialect>(op->getDialect()) ||
+         isa<mlir::arith::AndIOp, mlir::arith::OrIOp, mlir::arith::XOrIOp>(
+             op) ||
          isa<MIP::MIPDialect>(op->getDialect());
 }
 
