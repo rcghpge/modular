@@ -28,16 +28,18 @@ struct Device;
 struct CPUDeviceMemory;
 
 using DeviceMap = llvm::DenseMap<DeviceRef, RCRef<M::Driver::Device>>;
-struct DeviceMemory {
-  enum DeviceMemoryKind {
-    K_CPU,
-    K_CUDA,
-  };
 
+/// Kinds of devices that are supported.
+enum DeviceKind {
+  K_CPU,
+  K_CUDA,
+};
+
+struct DeviceMemory {
   /// Constructs and allocates DeviceMemory on `dev`, bumping the refcount
   /// of `dev`.
-  DeviceMemory(DeviceMemoryKind kind, void *allocatedPtr,
-               const TensorSpec &spec, Device *dev)
+  DeviceMemory(DeviceKind kind, void *allocatedPtr, const TensorSpec &spec,
+               Device *dev)
       : devicePtr(M::copyRCRef(dev)), ptr(allocatedPtr), spec(spec),
         kind(kind) {}
 
@@ -57,7 +59,7 @@ struct DeviceMemory {
 
   virtual ~DeviceMemory();
 
-  DeviceMemoryKind getKind() const { return kind; }
+  DeviceKind getKind() const { return kind; }
 
   const TensorSpec &getSpec() const { return spec; }
 
@@ -72,7 +74,7 @@ struct DeviceMemory {
 protected:
   void *ptr;
   M::TensorSpec spec;
-  const DeviceMemoryKind kind;
+  const DeviceKind kind;
   std::optional<llvm::unique_function<void(void *, const TensorSpec &spec)>>
       destructorFn = std::nullopt;
 };
@@ -124,6 +126,8 @@ struct Device : M::ReferenceCounted<Device> {
 
   /// Blocks until any pending async work on the device completes.
   virtual ErrorOrSuccess synchronize() = 0;
+
+  virtual DeviceKind getKind() const = 0;
 
   DeviceSpec deviceSpecification;
   std::string deviceDescription;
