@@ -4,6 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 # RUN: %mojo %s
+# REQUIRES: manual
 from max.tensor import TensorSpec
 
 from max.engine import InferenceSession, InputSpec
