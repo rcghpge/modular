@@ -1577,6 +1577,15 @@ LogicalResult ShapeToTensorOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// AlignmentPlaceholderOp
+//===----------------------------------------------------------------------===//
+
+void AlignmentPlaceholderOp::walkDefinitions(
+    function_ref<void(ParamDeclAttr, const ParamDefValue &)> walkDef) {
+  walkDef(getParamDecl(), {});
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

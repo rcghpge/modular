@@ -824,6 +824,36 @@ def MOGG_ReleaseMojoValueOp : MOGG_Op<"release_mojo_value"> {
   }];
 }
 
+def MOGG_AlignmentPlaceholderOp : MOGG_Op<"alignment_placeholder", [
+    DeclareOpInterfaceMethods<ParamOpInterface>]>, OneParamDecl {
+  let summary = "Inserts a placeholder for a value and the param name";
+  let description = [{
+    This is a placeholder for each input/output buffer's alignment parameter. 
+    All allocations and alignment becomes concrete in MGP. This placeholder 
+    associates a value operand and the param for alignment, so that information
+    about the input value and the parameter can be assosciated when the 
+    alignment is known. 
+
+    This must resolve to a `kgen.param_declare` with the specified name. 
+    Soft-fusion (seq fusion) will uniquify the name when fusing. 
+  
+    Example:
+    ```mlir
+      mogg.alignment_placeholder %operand, ALIGN_0
+    ```
+  }];
+
+  let arguments = (
+    ins AnyType:$operand, 
+    KGEN_ParamDeclAttr:$paramDecl
+  );
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:`
+      functional-type(operands, results)
+  }];
+
+}
+
 def MOGG_RuntimePlaceholderOp : MOGG_Op<"rt_placeholder", [Pure]> {
   let results = (outs AnyType:$result);
   let summary = "Returns a placeholder for the asyncrt runtime pointer";
