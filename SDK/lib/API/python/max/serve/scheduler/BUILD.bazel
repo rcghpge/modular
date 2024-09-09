@@ -1,0 +1,6 @@
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "scheduler",
+    srcs = glob(["*.py"]),
+)
