@@ -21,6 +21,7 @@
 #include "KGEN/CustomDialect/CustomDialect.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/MDialect/MAttrs.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 
 using namespace M;
 
@@ -135,6 +136,27 @@ void LowerPrimitivesPass::runOnOperation() {
   mod.walk([&](Operation *op) {
     Location opLoc = op->getLoc();
     OpBuilder builder{op};
+
+    // `arith.constant` might be created after constant folding, canonicalize
+    // them into `index.constant/index.bool.constant` accordingly.
+    if (auto arithConstOp = dyn_cast<mlir::arith::ConstantOp>(op)) {
+      Operation *indexConstOp = nullptr;
+      auto intAttr = dyn_cast<mlir::IntegerAttr>(arithConstOp.getValue());
+      if (arithConstOp.getType() == builder.getIndexType()) {
+        indexConstOp =
+            builder.create<mlir::index::ConstantOp>(opLoc, intAttr.getValue());
+      } else if (arithConstOp.getType() == builder.getI1Type()) {
+        indexConstOp = builder.create<mlir::index::BoolConstantOp>(
+            opLoc, builder.getBoolAttr(intAttr.getValue().getBoolValue()));
+      }
+      if (indexConstOp) {
+        op->replaceAllUsesWith(indexConstOp);
+        op->erase();
+        op = indexConstOp;
+        builder.setInsertionPoint(indexConstOp);
+      }
+      // else unhandled constant type
+    }
 
     if (isLowerableToGenericRegion(ctx, mojoLibraryAnalysis, op)) {
       // Create the MOGG generic region which contains the compiled MGP.
