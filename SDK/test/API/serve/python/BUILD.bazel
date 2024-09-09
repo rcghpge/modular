@@ -8,6 +8,7 @@ modular_py_test(
         requirement("pytest-asyncio"),
         requirement("hypothesis"),
         requirement("sseclient-py"),
+        requirement("transformers"),
         "//SDK/lib/API/python:max_serve",
     ],
 )
