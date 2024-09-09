@@ -6,9 +6,9 @@
 // dependency between the calculations performed between the two asserts
 
 // CHECK-LABEL: mgp.model @assert_sequence
-// CHECK:       [[COND0:%.*]] = mip.cmp.eq
+// CHECK:       [[COND0:%.*]] = index.cmp
 // CHECK:       [[CH0:%.*]] = mgp.assert [[COND0]], "D1 != D2"
-// CHECK:       [[COND1:%.*]] = mip.cmp.eq
+// CHECK:       [[COND1:%.*]] = index.cmp
 // CHECK-NOT:   mgp.guard
 // CHECK:       [[CH1:%.*]] = mgp.assert [[COND1]], "D2 != D3"
 mo.graph @assert_sequence<D0, D1, D2, D3>(%arg0: !mo.tensor<[D0, D1], f32>, %arg1: !mo.tensor<[D2, D3], f32>)

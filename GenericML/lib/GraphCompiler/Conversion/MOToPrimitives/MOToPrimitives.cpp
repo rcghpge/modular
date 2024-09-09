@@ -905,8 +905,8 @@ LogicalResult MOGraphLowering::lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp) {
   };
 
   auto ifPositive = [&](Value check, Value yes, Value no) -> Value {
-    auto cond =
-        opLoweringState.create<MIP::LessThanOp>(i1Ty, check, constant(0));
+    auto cond = opLoweringState.create<mlir::index::CmpOp>(
+        mlir::index::IndexCmpPredicate::SLT, check, constant(0));
     return opLoweringState.create<mlir::arith::SelectOp>(indexTy, cond, no,
                                                          yes);
   };

@@ -553,7 +553,7 @@ def GuardOp : MGP_Op<"guard", [
       %spec1:2 = mgp.tensor_spec.dims.dynamic %0 : !mgp.tensor_spec<?x?xf32>
       %spec2:2 = mgp.tensor_spec.dims.dynamic %2 : !mgp.tensor_spec<?x?xf32>
 
-      %cond = mip.cmp.eq %spec1#1, %spec2#0
+      %cond = index.cmp.eq %spec1#1, %spec2#0
 
       %chain = mgp.assert %cond, "D1 != D2"
       %Xp, %Yp = mgp.guard %chain, %X, %Y : !mgp.tensor<?x?xf32>, !mgp.tensor<?x?xf32>

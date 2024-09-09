@@ -189,11 +189,9 @@ ErrorOr<StringRef> MOGraphLoweringState::pocToMopIndexOp(KGEN::POC poc) {
   case KGEN::POC::Div:
     return mlir::index::DivSOp::getOperationName();
   case KGEN::POC::EQ:
-    return MIP::EqualOp::getOperationName();
   case KGEN::POC::LT:
-    return MIP::LessThanOp::getOperationName();
   case KGEN::POC::LE:
-    return MIP::LessThanEqualOp::getOperationName();
+    return mlir::index::CmpOp::getOperationName();
   case KGEN::POC::Max:
     return mlir::index::MaxSOp::getOperationName();
   case KGEN::POC::Min:
@@ -229,6 +227,27 @@ MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
   // For non binary op
   if (opNameAttr == mlir::arith::SelectOp::getOperationName())
     return builder.create(loc, opNameAttr, operands, {resTy})->getResult(0);
+
+  if (opNameAttr == mlir::index::CmpOp::getOperationName()) {
+    auto getIdxCmpPredicate = [](KGEN::POC poc) {
+      switch (poc) {
+      case KGEN::POC::EQ:
+        return mlir::index::IndexCmpPredicate::EQ;
+      case KGEN::POC::LT:
+        return mlir::index::IndexCmpPredicate::SLT;
+      case KGEN::POC::LE:
+        return mlir::index::IndexCmpPredicate::SLE;
+      default:
+        llvm_unreachable("unrecognized predicate");
+      }
+    };
+
+    assert(operands.size() == 2 && "Cmp Operation must be a binary operation");
+    return builder.create<mlir::index::CmpOp>(
+        loc, getIdxCmpPredicate(opAttr.getOpcode()),
+        /*lhs=*/operands.front(),
+        /*rhs=*/operands.back());
+  }
 
   // For potentially variadic binary ops
   //   add(a, b, c)

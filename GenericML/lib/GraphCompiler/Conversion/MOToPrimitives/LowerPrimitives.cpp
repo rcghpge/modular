@@ -106,6 +106,13 @@ DictionaryAttr LowerPrimitivesPass::getMoggCallAttrs(OpBuilder &builder,
                                            builder.getIndexAttr(shape.size())));
       attrs.push_back(
           builder.getNamedAttr(name, builder.getI64TensorAttr(shape)));
+    } else if (auto cmpPredAttr = dyn_cast<mlir::index::IndexCmpPredicateAttr>(
+                   attr.getValue())) {
+      // For IndexCmpPredicate, we stringify it and passed as a StringLiteral.
+      StringRef predStr =
+          mlir::index::stringifyIndexCmpPredicate(cmpPredAttr.getValue());
+      attrs.push_back(
+          builder.getNamedAttr("pred", builder.getStringAttr(predStr)));
     } else {
       attrs.push_back(attr);
     }

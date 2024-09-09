@@ -68,7 +68,7 @@ mgp.model @mip_div_ceil : mof devices [#M.device_ref<"cpu", 0>] init (%weights: 
 }
 
 // CHECK-LABEL: mgp.model @mip_cmp_eq
-// CHECK: mogg.call "mip.cmp.eq"
+// CHECK: mogg.call "index.cmp"({{.*}}) {pred = "eq"}
 mgp.model @mip_cmp_eq : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -78,14 +78,14 @@ mgp.model @mip_cmp_eq : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !m
   %ch0 = grt.chain.create ()
   %lhs = index.constant 4
   %rhs = index.constant 4
-  %res1 = mip.cmp.eq %lhs, %rhs
+  %res1 = index.cmp eq(%lhs, %rhs)
   %lhs1 = index.constant 2
-  %res2 = mip.cmp.eq %lhs1, %rhs
+  %res2 = index.cmp eq(%lhs1, %rhs)
   mef.output %ch0 : !mef.chain
 }
 
 // CHECK-LABEL: mgp.model @mip_cmp_lt
-// CHECK: mogg.call "mip.cmp.lt"
+// CHECK: mogg.call "index.cmp"({{.*}}) {pred = "slt"}
 mgp.model @mip_cmp_lt : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -95,15 +95,15 @@ mgp.model @mip_cmp_lt : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !m
   %ch0 = grt.chain.create ()
   %lhs = index.constant 4
   %rhs = index.constant 4
-  %res1 = mip.cmp.lt %lhs, %rhs
+  %res1 = index.cmp slt(%lhs, %rhs)
   %lhs1 = index.constant 2
-  %res2 = mip.cmp.lt %lhs1, %rhs
+  %res2 = index.cmp slt(%lhs1, %rhs)
   mef.output %ch0 : !mef.chain
 }
 
 
 // CHECK-LABEL: mgp.model @mip_cmp_le
-// CHECK: mogg.call "mip.cmp.le"
+// CHECK: mogg.call "index.cmp"({{.*}}) {pred = "sle"}
 mgp.model @mip_cmp_le : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -113,9 +113,9 @@ mgp.model @mip_cmp_le : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !m
   %ch0 = grt.chain.create ()
   %lhs = index.constant 5
   %rhs = index.constant 4
-  %res1 = mip.cmp.le %lhs, %rhs
+  %res1 = index.cmp sle(%lhs, %rhs)
   %lhs1 = index.constant 4
-  %res2 = mip.cmp.le %lhs1, %rhs
+  %res2 = index.cmp sle(%lhs1, %rhs)
   mef.output %ch0 : !mef.chain
 }
 
