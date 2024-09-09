@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --remove-redundant-operands | FileCheck %s
+// RUN: mo-opt %s -allow-unregistered-dialect --remove-redundant-operands | FileCheck %s
 
 mgp.model @remove_redundant_operands : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %0 = grt.chain.create ()
@@ -14,7 +14,7 @@ mgp.model @remove_redundant_operands : mof devices [#M.device_ref<"cpu", 0>] ini
     %6 = mogg.call "index.add"(%5, %arg4) {} : index, index -> index
     mogg.output %5 : index
   } {inOutSignature = #M.inout_sig<"....">}
-  %4 = mip.print.index %3, %0
+  %4 = "test.sink"(%3, %0) : (index, !mef.chain) -> !mef.chain
   mef.output %4 : !mef.chain
 }
 

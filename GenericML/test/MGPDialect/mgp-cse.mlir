@@ -66,8 +66,8 @@ mgp.model @tensor_spec_size : mof devices [#M.device_ref<"cpu", 0>] init (%weigh
   %spec = mgp.tensor.extract.tensor_spec %arg1[1], %inTensor: !mgp.tensor<1234x5678xf32>
   %size0 = mgp.tensor_spec.size %spec : !mgp.tensor_spec<1234x5678xf32>
   %size1 = mgp.tensor_spec.size %spec : !mgp.tensor_spec<1234x5678xf32>
-  %ch0 = mip.print.index %size0, %arg0
-  %ch1 = mip.print.index %size1, %ch0
+  %ch0 = "test.sink"(%size0, %arg0) : (index, !mef.chain) -> !mef.chain
+  %ch1 = "test.sink"(%size1, %ch0) : (index, !mef.chain) -> !mef.chain
   mef.output %ch1, %inTensor : !mef.chain, !mgp.tensor<1234x5678xf32>
 }
 

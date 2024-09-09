@@ -1,4 +1,4 @@
-// RUN: mo-opt --lower-mogg-region-compile %s | FileCheck %s
+// RUN: mo-opt -allow-unregistered-dialect --lower-mogg-region-compile %s | FileCheck %s
 
 // Jit compile kernels will output the function execution in a particular way,
 // we need to run a fixup pass over it to convert to the form MGP expects.
@@ -14,7 +14,7 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.op
   %1 = index.constant 42
   %2 = index.constant -20
   %3 = "mogg.execute_kernel"(%1, %2) {hasCuda=false, isAsync = false, kernelName = "__gen_0", outputParamDecls = #kgen<param.decls[]>, summary = "mogg.generic.compiled.region:14", usedParams = []} : (index, index) -> index
-  %4 = mip.print.index %3, %0
+  %4 = "test.sink"(%3, %0) : (index, !mef.chain) -> !mef.chain
   mef.output %4 : !mef.chain
 }
 
