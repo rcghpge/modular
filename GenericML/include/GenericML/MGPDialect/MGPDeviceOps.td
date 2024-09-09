@@ -196,8 +196,7 @@ def RuntimeCreateOp : MGP_DeviceOp<"runtime.create"> {
 def DeviceContextCreateOp : MGP_DeviceOp<"device.context.create"> {
   let summary = "Creates Mojo-side device context.";
   let description = [{
-    Runs Mojo initialization code to get a Mojo-side device context. This
-    context is stored in the runtime and passed to every kernel call. The
+    Store device context into the runtime and passed to every kernel call. The
     context is treated as an opaque pointer.
 
     device.context.create takes the KernelExecutionState in addition to the device
@@ -221,10 +220,10 @@ def DeviceContextCreateOp : MGP_DeviceOp<"device.context.create"> {
                        MGP_OpaqueType:$deviceContext,
                        UI64Attr:$aDeviceRuntimeSlot,   // 0
                        MGP_OptDeviceRefAttr:$bDevice); // 1
-  let results = (outs MGP_OpaqueType:$outDeviceContext);
+  let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $aDeviceRuntimeSlot `]` `,` $deviceContext`:` type($deviceContext)
-    ( `device` $bDevice^ )?  attr-dict `->` type($outDeviceContext)
+    ( `device` $bDevice^ )?  attr-dict
   }];
   let hasVerifier = 1;
   let extraClassDefinition = [{

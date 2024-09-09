@@ -53,12 +53,11 @@ CompileDiagnosticOrSuccess MGPDeviceSpecificDialect::makeBufferBuilder(
     inChain = deviceContextCreate.getOperand(0)
                   .getDefiningOp<MGP::RuntimeCreateOp>()
                   .getOutChain();
-  auto chainAndDevice = bufferBuilder->setupForModel(
+  auto chain = bufferBuilder->setupForModel(
       loweringState.getModelOp(), hostBufferBuilder,
       loweringState.getInitOpBuilder(), loweringState.getGraph()->getLoc(),
       inChain, loweringState.getInitDevice(bufferBuilder->device));
-  loweringState.setInitChain(chainAndDevice.first);
-  loweringState.setInitDevice(bufferBuilder->device, chainAndDevice.second);
+  loweringState.setInitChain(chain);
   loweringState.registerBufferBuilder(targetDevice, std::move(bufferBuilder));
   return success();
 }

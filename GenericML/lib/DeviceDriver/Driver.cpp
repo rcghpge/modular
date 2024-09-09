@@ -6,7 +6,9 @@
 
 #include "GenericML/DeviceDriver/Driver.h"
 #include "GenericML/DeviceDriver/Utils.h"
+#include "Kernels/DeviceContext.h"
 #include "Runtime/MojoValue.h"
+#include "Support/AssertStream.h"
 
 using namespace M::Driver;
 using namespace M;
@@ -82,6 +84,13 @@ MODULAR_API_EXPORT void *M_getData(DeviceMemory *deviceMem) {
   return deviceMem->data();
 }
 
+static void destroyDeviceContextQuiet(DeviceContext *ptr) {
+  [[maybe_unused]] auto err = destroyDeviceContext(ptr);
+  if (err.isError())
+    ASSERT_STREAM(err.isError(), "Destroying device context caused error: "
+                                     << err.takeError());
+}
+
 MODULAR_VISIBILITY_EXPORT ErrorOr<llvm::SmallVector<AnyAsyncValueRef>>
 M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
                                   const Driver::DeviceMap &deviceMap,
@@ -115,9 +124,16 @@ M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
         deviceContexts.push_back(AnyAsyncValueRef::createReady<MojoValue>(
             runtime, MojoValue::createRef(dev->tmpGetDeviceContext())));
       } else {
-        // This should be an error, but for now we'll default construct in MGP
+        ASSERT_STREAM(devRef.label == kCUDALabel,
+                      "Only cuda device context supported");
+        // In this case we use the device ref id as the device id. THIS IS NOT
+        // THE CASE WHEN THE DEVICE IS PASSED IN TO THE GRAPH.
+        auto dev = createDeviceContext(devRef.id);
+        if (dev.isError())
+          return dev.takeError();
         deviceContexts.push_back(AnyAsyncValueRef::createReady<MojoValue>(
-            runtime, MojoValue::createRef(nullptr)));
+            runtime, MojoValue::createSelfFree(dev.takeValue(),
+                                               destroyDeviceContextQuiet)));
       }
     }
   }
