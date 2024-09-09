@@ -885,7 +885,6 @@ LogicalResult MOGraphLowering::lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp) {
     return failure();
 
   auto indexTy = opLoweringState.builder.getIndexType();
-  auto i1Ty = opLoweringState.builder.getI1Type();
 
   // Arithmetic helpers
   auto constant = [&](int64_t val) -> Value {
