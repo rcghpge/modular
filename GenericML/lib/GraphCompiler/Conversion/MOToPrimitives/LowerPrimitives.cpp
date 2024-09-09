@@ -171,20 +171,20 @@ void LowerPrimitivesPass::runOnOperation() {
       operandSemantics.append(op->getNumOperands(),
                               InOutSignatureAttr::InOutSemantics::kNone);
 
-      bool hasCuda = false;
+      DeviceRefAttr device = MO::getDeviceOrDefaultAny(op);
       if (auto hasDeviceOp = dyn_cast<MGPHasDeviceOpInterface>(op))
-        hasCuda = hasDeviceOp.getDevice().getLabel() == kCUDALabel;
+        device = hasDeviceOp.getDevice();
       auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
           opLoc, op->getResultTypes(), op->getOperands(),
           KGEN::ParamDeclArrayAttr::get(ctx, {}),
           InOutSignatureAttr::get(ctx, operandSemantics), BoolAttr{}, // isKGEN
           StringAttr::get(ctx, op->getName().getStringRef()),         // summary
           BoolAttr::get(ctx, isAsync(op)),                            // isAsync
-          BoolAttr::get(ctx, hasCuda),                                // hasCuda
           BoolAttr::get(ctx, canFuseOp(op)),   // canFuseIntoOther
           BoolAttr::get(ctx, canFuseOp(op)),   // canBeFusedInto
           BoolAttr::get(ctx, canDuplicate(op)) // canDuplicate
       );
+      newKernel.setDeviceRef(device);
 
       mlir::Block &kernelBody = newKernel.getBody().emplaceBlock();
       builder.setInsertionPoint(&kernelBody, kernelBody.begin());

@@ -364,7 +364,6 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     OptionalAttr<BoolAttr>:$isKGEN,
     OptionalAttr<StrAttr>:$summary,
     OptionalAttr<BoolAttr>:$isAsync,
-    OptionalAttr<BoolAttr>:$hasCuda,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$canFuseIntoOther,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$canBeFusedInto,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$canDuplicate
@@ -828,15 +827,15 @@ def MOGG_AlignmentPlaceholderOp : MOGG_Op<"alignment_placeholder", [
     DeclareOpInterfaceMethods<ParamOpInterface>]>, OneParamDecl {
   let summary = "Inserts a placeholder for a value and the param name";
   let description = [{
-    This is a placeholder for each input/output buffer's alignment parameter. 
-    All allocations and alignment becomes concrete in MGP. This placeholder 
+    This is a placeholder for each input/output buffer's alignment parameter.
+    All allocations and alignment becomes concrete in MGP. This placeholder
     associates a value operand and the param for alignment, so that information
-    about the input value and the parameter can be assosciated when the 
-    alignment is known. 
+    about the input value and the parameter can be assosciated when the
+    alignment is known.
 
-    This must resolve to a `kgen.param_declare` with the specified name. 
-    Soft-fusion (seq fusion) will uniquify the name when fusing. 
-  
+    This must resolve to a `kgen.param_declare` with the specified name.
+    Soft-fusion (seq fusion) will uniquify the name when fusing.
+
     Example:
     ```mlir
       mogg.alignment_placeholder %operand, ALIGN_0
@@ -844,7 +843,7 @@ def MOGG_AlignmentPlaceholderOp : MOGG_Op<"alignment_placeholder", [
   }];
 
   let arguments = (
-    ins AnyType:$operand, 
+    ins AnyType:$operand,
     KGEN_ParamDeclAttr:$paramDecl
   );
   let assemblyFormat = [{
@@ -1046,8 +1045,8 @@ def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel", [
                        ArrayAttr:$usedParams,
                        MO_ParamDecls:$outputParamDecls,
                        StrAttr:$summary,
-                       BoolAttr:$isAsync,
-                       BoolAttr:$hasCuda);
+                       BoolAttr:$isAsync
+                       );
   let results = (outs Variadic<AnyType>:$results);
 }
 

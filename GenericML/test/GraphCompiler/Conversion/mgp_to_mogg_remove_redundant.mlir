@@ -13,7 +13,7 @@ mgp.model @remove_redundant_operands : mof devices [#M.device_ref<"cpu", 0>] ini
     %5 = mogg.call "index.add"(%arg2, %arg3) {} : index, index -> index
     %6 = mogg.call "index.add"(%5, %arg4) {} : index, index -> index
     mogg.output %5 : index
-  } {inOutSignature = #M.inout_sig<"....">}
+  } {device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"....">}
   %4 = "test.sink"(%3, %0) : (index, !mef.chain) -> !mef.chain
   mef.output %4 : !mef.chain
 }

@@ -94,12 +94,6 @@ static void fuseCompiledRegionsAndReplaceUses(
             .getIsAsync()
             .value_or(false);
       });
-  const bool hasCuda =
-      llvm::any_of(compiledRegionOpsToFuseTogether, [&](auto region) {
-        return cast<MOGG::GenericCompiledRegionOp>(region)
-            .getHasCuda()
-            .value_or(false);
-      });
   const bool canFuseIntoOther =
       llvm::all_of(compiledRegionOpsToFuseTogether, [&](auto region) {
         return cast<MOGG::GenericCompiledRegionOp>(region)
@@ -117,6 +111,16 @@ static void fuseCompiledRegionsAndReplaceUses(
     return cast<MOGG::GenericCompiledRegionOp>(region).getIsKGEN().value_or(
                false) == firstRegionOp.getIsKGEN().value_or(false);
   }));
+  DeviceRefAttr device = cast<MOGG::GenericCompiledRegionOp>(
+                             compiledRegionOpsToFuseTogether.front())
+                             .getDeviceRef();
+  // For now we set the device to be a cuda device if one exists.
+  for (auto region : compiledRegionOpsToFuseTogether) {
+    auto regionDevice =
+        cast<MOGG::GenericCompiledRegionOp>(region).getDeviceRef();
+    if (regionDevice.getLabel() == kCUDALabel)
+      device = regionDevice;
+  }
 
   auto ctx = firstRegionOp->getContext();
   OpBuilder builder(ctx);
@@ -132,8 +136,9 @@ static void fuseCompiledRegionsAndReplaceUses(
       InOutSignatureAttr::get(ctx, operandSemantics),
       firstRegionOp.getIsKGENAttr(),
       MOGG::getSummaryString(compiledRegionOpsToFuseTogether),
-      BoolAttr::get(ctx, isAsync), BoolAttr::get(ctx, hasCuda),
-      canFuseIntoOther, canBeFusedInto, canDuplicate);
+      BoolAttr::get(ctx, isAsync), canFuseIntoOther, canBeFusedInto,
+      canDuplicate);
+  fusedCompiledRegionOp.setDeviceRef(device);
   Block &newBody = fusedCompiledRegionOp.getBody().emplaceBlock();
   builder.setInsertionPoint(&newBody, newBody.begin());
 

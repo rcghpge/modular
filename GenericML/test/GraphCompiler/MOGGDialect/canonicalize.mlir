@@ -76,7 +76,7 @@ mo.graph @genericRegionChainCreate(%arg0: index, %arg1: index) {
 
    mogg.generic.compiled.region (%ch) : (%in : !mef.chain) {
     mogg.output
-  } { inOutSignature = #M.inout_sig<"."> }
+  } { device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"."> }
 
   mo.output
 }
@@ -93,7 +93,7 @@ mo.graph @genericRegionEmptyChain() {
 
    mogg.generic.compiled.region (%ch) : (%in : !mef.chain) {
     mogg.output
-  } { inOutSignature = #M.inout_sig<"."> }
+  } { device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"."> }
 
   mo.output
 }

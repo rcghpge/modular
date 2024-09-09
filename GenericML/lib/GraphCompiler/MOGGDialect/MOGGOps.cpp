@@ -605,7 +605,6 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // To match behavior before removing middle-jit (GRA-425)
   bool canBeFusedInto = false;
 
-  bool hasCuda = device.getLabel() != kCPULabel;
   // Later update the isAsync instead of hard-coding
   auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
       getLoc(), TypeRange{newKernelResTypes}, operands,
@@ -613,11 +612,11 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       getIsKGENAttr(),                                  // isKGEN
       getSummaryAttr(),                                 // summary
       BoolAttr::get(ctx, getIsAsync().value_or(false)), // isAsync
-      BoolAttr::get(ctx, hasCuda),                      // hasCuda
       BoolAttr::get(ctx, canFuseIntoOther),             // canFuseIntoOther
       BoolAttr::get(ctx, canBeFusedInto),               // canBeFusedInto
       BoolAttr::get(ctx, false)                         // canDuplicate
   );
+  newKernel.setDeviceRef(device);
 
   mlir::Block &kernelBody = newKernel.getBody().emplaceBlock();
   builder.setInsertionPoint(&kernelBody, kernelBody.begin());
@@ -1479,6 +1478,9 @@ LogicalResult GenericCompiledRegionOp::verify() {
 
   if (!llvm::equal(getOperandTypes(), body.getArgumentTypes()))
     return emitError("operand types must match region arguments");
+
+  if (!getDeviceRef())
+    return emitError("Compiled regions must have a device");
 
   return success();
 }

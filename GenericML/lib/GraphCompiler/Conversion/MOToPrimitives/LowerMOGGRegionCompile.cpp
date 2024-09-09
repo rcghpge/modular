@@ -122,14 +122,11 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
   if (!device)
     device = DeviceRefAttr::getDefault(ctx);
 
-  ASSERT_STREAM(device.getLabel() == kCPULabel,
-                << "Only CPU ExecuteCompiledOps can be lowered further");
-
   auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
       oldKernel.getLoc(), MEF::ChainType::get(ctx), resultTypes, context,
       loadChain, deviceContext, oldKernel->getOperands(), runtimeSlot,
       module_index, kernel_index, oldKernel.getSummary(),
-      oldKernel.getIsAsync(), oldKernel.getHasCuda(),
+      oldKernel.getIsAsync(), oldKernel.getDeviceRef().getLabel() == kCUDALabel,
       cuda_runtime_slot.value_or(0));
 
   uint64_t idx = 1;
@@ -255,7 +252,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
         inChain = lastDeviceModuleLoadOp[hostDevice].getOutChain();
       else
         inChain = lastDeviceRuntimeOp[hostDevice].getOutChain();
-      auto device = kernel.getHasCuda() ? cudaDevice : hostDevice;
+      auto device = kernel.getDeviceRef();
       Value inDeviceContext =
           deviceContexts.getDeviceContext(device, init.getParent());
       bool isCreator = inDeviceContext.getDefiningOp() == kernel;
@@ -292,7 +289,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       }
       auto inChain = builder.create<GRT::ChainCreateOp>(kernel.getLoc());
       Value inDeviceContext = deviceContexts.getDeviceContext(
-          kernel.getHasCuda() ? cudaDevice : hostDevice, execute.getParent());
+          kernel.getDeviceRef(), execute.getParent());
       rewriteExecuteCompiledOp(
           builder, executeContext, lastDeviceRuntimeOp[hostDevice].getSlot(),
           deviceModuleIndex[hostDevice],
