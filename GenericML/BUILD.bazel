@@ -1,20 +1,9 @@
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_filegroup", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "rpath_shim", "td_library")
 load("//bazel:config.bzl", "CONFIG_SECTION_LOCAL_DEFINES", "KERNELS_BUILD_TYPE_LOCAL_DEFINES")
 
 package(default_visibility = ["//visibility:public"])
-
-bool_flag(
-    name = "mogg_no_link",
-    build_setting_default = False,
-)
-
-config_setting(
-    name = "mogg_no_link_setting",
-    flag_values = {"//GenericML:mogg_no_link": "true"},
-)
 
 td_library(
     name = "InterfacesTdFiles",
@@ -721,6 +710,7 @@ modular_cc_library(
         ":Support",
         "//GraphRT:GRTDialect",
         "//GraphRT:MIPDialect",
+        "//Kernels/mojo/Mogg:MOGGLoader",
     ],
 )
 
@@ -739,36 +729,13 @@ modular_cc_library(
     name = "MOGGAnalysis",
     srcs = glob(["lib/GraphCompiler/MOGGDialect/Analysis/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/MOGGDialect/Analysis/*.h"]),
-    additional_compiler_inputs = select({
-        "//conditions:default": [
-            "//Kernels/mojo/Mogg:MOGG.mojo.h",
-            "//Kernels/mojo/Mogg:MOGGPrimitives.mojo.h",
-        ],
-        "//GenericML:mogg_no_link_setting": [],
-    }),
-    copts = ["-iquoteexternal/"] + select({
-        "//GenericML:mogg_no_link_setting": [
-            "-DMODULAR_MOGG_NO_LINK",
-        ],
-        "//conditions:default": [
-            "-DMOGG_MOJO_BINDING_H='\"$(location //Kernels/mojo/Mogg:MOGG.mojo.h)\"'",
-            "-DMOGG_PRIMITIVES_MOJO_BINDING_H='\"$(location //Kernels/mojo/Mogg:MOGGPrimitives.mojo.h)\"'",
-        ],
-    }),
-    data = select({
-        "//GenericML:mogg_no_link_setting": [
-            "//Kernels/mojo/Mogg:MOGG.lib.mlirbc",
-            "//Kernels/mojo/Mogg:MOGGPrimitives.lib.mlirbc",
-            "//Kernels/mojo/Mogg:MOGGPrimitives_debuginfo.lib.mlirbc",
-            "//Kernels/mojo/Mogg:MOGG_debuginfo.lib.mlirbc",
-        ],
-        "//conditions:default": [],
-    }),
+    copts = ["-iquoteexternal/"],
     deps = [
         ":GraphCompilerInterfaces",
         ":MOAnalysis",
         ":Support",
         "//KGEN:MojoParser",
+        "//Kernels/mojo/Mogg:MOGGLoader",
     ],
 )
 

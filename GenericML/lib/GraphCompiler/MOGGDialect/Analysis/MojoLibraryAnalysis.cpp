@@ -15,6 +15,9 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#ifndef MODULAR_CMAKE_BUILD
+#include "Kernels/mojo/Mogg/MOGGLoader.h"
+#endif // MODULAR_CMAKE_BUILD
 #include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
@@ -32,16 +35,10 @@
 // Define the embedded MLIR bytecode arrays in other compilation units to speed
 // up compile times.
 namespace M::MOGG::Embeddings {
-#ifdef MODULAR_MOGG_NO_LINK
 #ifdef MODULAR_CMAKE_BUILD
-extern llvm::StringRef sourceFilename;
-extern llvm::StringRef primitiveSourceFilename;
-#endif // MODULAR_CMAKE_BUILD
-#else  // MODULAR_MOGG_NO_LINK
 extern llvm::StringRef source;
 extern llvm::StringRef primitiveSource;
-#endif // MODULAR_MOGG_NO_LINK
-
+#endif // MODULAR_CMAKE_BUILD
 } // namespace M::MOGG::Embeddings
 
 using namespace M;
@@ -67,52 +64,36 @@ getFile(llvm::StringRef filepath) {
 
 static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
 getEmbeddingsSourceBuffer(bool withDebuginfo) {
-#ifdef MODULAR_MOGG_NO_LINK
-#ifndef MODULAR_CMAKE_BUILD
-  ErrorOr<KGEN::MojoConfig> config = KGEN::MojoConfig::open();
-  if (failed(config))
-    return config.takeError();
-
-  if (withDebuginfo)
-    return getFile(config->getMOGGLibDebuginfoPath());
-  return getFile(config->getMOGGLibPath());
-#else  // !MODULAR_CMAKE_BUILD
-  return toModularErrorOr(
-      llvm::MemoryBuffer::getFile(Embeddings::sourceFilename,
-                                  /*IsText=*/false,
-                                  /*RequiresNullTerminator=*/false));
-#endif // !MODULAR_CMAKE_BUILD
-#else  // MODULAR_MOGG_NO_LINK
+#ifdef MODULAR_CMAKE_BUILD
   return ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>(
       llvm::MemoryBuffer::getMemBuffer(Embeddings::source,
                                        "embedded MOGG bindings",
                                        /*RequiresNullTerminator=*/false));
-#endif // MODULAR_MOGG_NO_LINK
+#else  // !MODULAR_CMAKE_BUILD
+  return ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>(
+      llvm::MemoryBuffer::getMemBuffer(withDebuginfo
+                                           ? Embeddings::sourceWithDebugInfo()
+                                           : Embeddings::source(),
+                                       "embedded MOGG bindings",
+                                       /*RequiresNullTerminator=*/false));
+#endif // MODULAR_CMAKE_BUILD
 }
 
 static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
 getEmbeddingsPrimitiveSourceBuffer(bool withDebuginfo) {
-#ifdef MODULAR_MOGG_NO_LINK
-#ifndef MODULAR_CMAKE_BUILD
-  ErrorOr<KGEN::MojoConfig> config = KGEN::MojoConfig::open();
-  if (failed(config))
-    return config.takeError();
-
-  if (withDebuginfo)
-    return getFile(config->getMOGGPrimitivesLibDebuginfoPath());
-  return getFile(config->getMOGGPrimitivesLibPath());
-#else  // !MODULAR_CMAKE_BUILD
-  return toModularErrorOr(
-      llvm::MemoryBuffer::getFile(Embeddings::primitiveSourceFilename,
-                                  /*IsText=*/false,
-                                  /*RequiresNullTerminator=*/false));
-#endif // !MODULAR_CMAKE_BUILD
-#else  // MODULAR_MOGG_NO_LINK
+#ifdef MODULAR_CMAKE_BUILD
   return ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>(
       llvm::MemoryBuffer::getMemBuffer(Embeddings::primitiveSource,
                                        "embedded MOGG Primitives bindings",
                                        /*RequiresNullTerminator=*/false));
-#endif // MODULAR_MOGG_NO_LINK
+#else  // MODULAR_CMAKE_BUILD
+  return ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>(
+      llvm::MemoryBuffer::getMemBuffer(
+          withDebuginfo ? Embeddings::primitiveSourceWithDebugInfo()
+                        : Embeddings::primitiveSource(),
+          "embedded MOGG Primitives bindings",
+          /*RequiresNullTerminator=*/false));
+#endif // MODULAR_CMAKE_BUILD
 }
 
 static std::string
