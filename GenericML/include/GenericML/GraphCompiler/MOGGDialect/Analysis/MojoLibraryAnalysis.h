@@ -77,9 +77,7 @@ public:
 
   /// Looks up a registered Mojo symbol using the name that was used for
   /// registration.
-  inline KGEN::GeneratorOp getRegisteredMojoKernelFor(StringRef name) {
-    return getRegisteredMojoFunctionFor(name, registeredMojoKernelSymbol);
-  }
+  KGEN::GeneratorOp getRegisteredMojoKernelFor(StringRef name);
 
   /// Returns true if a registered Mojo symbol using the name exists.
   inline bool hasRegisteredMojoKernelFor(StringRef name) {
@@ -93,9 +91,7 @@ public:
 
   /// Looks up a registered Mojo shape function using the name that was used
   /// for registration.
-  inline KGEN::GeneratorOp getRegisteredMojoShapeFunctionFor(StringRef name) {
-    return getRegisteredMojoFunctionFor(name, registeredShapeFunctionSymbol);
-  }
+  KGEN::GeneratorOp getRegisteredMojoShapeFunctionFor(StringRef name);
 
   /// Looks up and returns a mojo function as is.
   KGEN::GeneratorOp getMojoFunctionNamed(StringRef name);
@@ -106,30 +102,19 @@ public:
                                StringRef parameterName);
 
   /// Returns true if the kernel is an elementwise kernel.
-  inline bool kernelIsElementwise(KGEN::GeneratorOp kernel) {
-    return kernel->hasAttr(KGEN::MOGGPreElab::Decorators::ELEMENTWISE.attr);
-  }
+  bool kernelIsElementwise(KGEN::GeneratorOp kernel);
 
   /// Returns true if the kernel is expecting to take indices as last arg.
-  inline bool kernelIsViewOp(KGEN::GeneratorOp kernel) {
-    return kernel->hasAttr(KGEN::MOGGPreElab::IS_VIEW_ATTR);
-  }
+  bool kernelIsViewOp(KGEN::GeneratorOp kernel);
 
   /// Returns true if the kernel is a view operation.
-  inline bool kernelTakesIndices(KGEN::GeneratorOp kernel) {
-    return kernel->hasAttr(KGEN::MOGGPreElab::Decorators::TAKES_INDICES.attr);
-  }
+  bool kernelTakesIndices(KGEN::GeneratorOp kernel);
 
   /// Returns true if the kernel implementation is in the deprecated Tensor API.
-  inline bool kernelUsesOldTensorAPI(KGEN::GeneratorOp kernel) {
-    return kernel->hasAttr(KGEN::MOGGPreElab::ALLOCS_ATTR) ||
-           kernel->hasAttr(KGEN::MOGGPreElab::SLICED_ATTR);
-  }
+  bool kernelUsesOldTensorAPI(KGEN::GeneratorOp kernel);
 
   /// Returns true if the kernel implementation is in the Tensor API.
-  inline bool kernelUsesKernelAPI(KGEN::GeneratorOp kernel) {
-    return kernel->hasAttr(KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel);
-  }
+  bool kernelUsesKernelAPI(KGEN::GeneratorOp kernel);
 
 private:
   /// Get the materialized mojo kernel. If the kernel is not materialized, the

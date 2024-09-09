@@ -21,11 +21,13 @@
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
-namespace M::MOGG {
+namespace M::KGEN {
+class ParamDeclareRegionOp;
+} // namespace M::KGEN
 
+namespace M::MOGG {
 SmallVector<KGEN::ParamDeclRefAttr>
 getKernelUsedParameters(MOGG::CompilableKernel kernel);
-
 } // namespace M::MOGG
 
 //===----------------------------------------------------------------------===//

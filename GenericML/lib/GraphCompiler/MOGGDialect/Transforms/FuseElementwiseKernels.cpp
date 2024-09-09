@@ -13,6 +13,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/POPDialect/POPTypes.h"
 #include "Runtime/Tensor/Tensor.h"
 #include "Support/AssertStream.h"

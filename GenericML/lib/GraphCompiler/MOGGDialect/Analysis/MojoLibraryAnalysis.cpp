@@ -516,3 +516,34 @@ Operation *MojoLibraryAnalysis::lookup(StringRef name) {
     return rawMojoKernel.at(name);
   return nullptr;
 }
+
+KGEN::GeneratorOp
+MojoLibraryAnalysis::getRegisteredMojoKernelFor(StringRef name) {
+  return getRegisteredMojoFunctionFor(name, registeredMojoKernelSymbol);
+}
+
+KGEN::GeneratorOp
+MojoLibraryAnalysis::getRegisteredMojoShapeFunctionFor(StringRef name) {
+  return getRegisteredMojoFunctionFor(name, registeredShapeFunctionSymbol);
+}
+
+bool MojoLibraryAnalysis::kernelIsElementwise(KGEN::GeneratorOp kernel) {
+  return kernel->hasAttr(KGEN::MOGGPreElab::Decorators::ELEMENTWISE.attr);
+}
+
+bool MojoLibraryAnalysis::kernelIsViewOp(KGEN::GeneratorOp kernel) {
+  return kernel->hasAttr(KGEN::MOGGPreElab::IS_VIEW_ATTR);
+}
+
+bool MojoLibraryAnalysis::kernelTakesIndices(KGEN::GeneratorOp kernel) {
+  return kernel->hasAttr(KGEN::MOGGPreElab::Decorators::TAKES_INDICES.attr);
+}
+
+bool MojoLibraryAnalysis::kernelUsesOldTensorAPI(KGEN::GeneratorOp kernel) {
+  return kernel->hasAttr(KGEN::MOGGPreElab::ALLOCS_ATTR) ||
+         kernel->hasAttr(KGEN::MOGGPreElab::SLICED_ATTR);
+}
+
+bool MojoLibraryAnalysis::kernelUsesKernelAPI(KGEN::GeneratorOp kernel) {
+  return kernel->hasAttr(KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel);
+}

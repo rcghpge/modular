@@ -13,7 +13,6 @@
 #include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
-#include "KGEN/KGENDialect/KGENOps.h"
 
 #include <functional>
 

@@ -13,6 +13,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GenericML/GraphCompiler/Matchers.h"
 #include "GenericML/Support/DataflowUtils.h"
+#include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/ML/Permutation.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"

@@ -11,7 +11,6 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENInterfaces.h"
-#include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/MDialect/MAttrs.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -28,6 +27,7 @@ class RewriterBase;
 namespace M::KGEN {
 class FuncOp;
 class GeneratorOp;
+class ParamDeclareOp;
 } // namespace M::KGEN
 
 namespace M::MO {

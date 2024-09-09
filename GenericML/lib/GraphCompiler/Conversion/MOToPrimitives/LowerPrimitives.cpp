@@ -18,6 +18,8 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MIPDialect/MIPDialect.h"
+#include "KGEN/CustomDialect/CustomDialect.h"
+#include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/MDialect/MAttrs.h"
 
 using namespace M;

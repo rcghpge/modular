@@ -14,6 +14,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
+#include "KGEN/KGENDialect/KGENOps.h"
 #include "Runtime/Tensor/Tensor.h"
 #include "Support/AssertStream.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"

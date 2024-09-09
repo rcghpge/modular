@@ -19,6 +19,7 @@
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "Support/AssertStream.h"
