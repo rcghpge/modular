@@ -44,9 +44,9 @@ mo.graph @mogg_split<D0, D1, D2>(
 // CHECK: %[[CH2:.*]] = grt.chain.create (%[[CH1]], %[[CH0]])
 // CHECK: %[[CH3:.*]] = grt.chain.create (%[[CH2]], %[[CH0]])
 
-// CHECK: mogg.generic.compiled.region (%[[CH3]], %{{.*}}, %[[SPLIT]]#0
+// CHECK: mogg.generic.compiled.region (%{{.*}}, %[[SPLIT]]#0, {{.*}}, %[[CH1]], %[[CH0]]
 
-// CHECK: mogg.generic.compiled.region (%[[CH3]], %{{.*}}, %[[SPLIT]]#1
+// CHECK: mogg.generic.compiled.region (%{{.*}}, %[[SPLIT]]#1, {{.*}}, %[[CH1]], %[[CH0]]
 
 mo.graph @mogg_split_chain_prop<D0, D1, D2>(
   %input: !mo.tensor<[D0, 8], f32>,

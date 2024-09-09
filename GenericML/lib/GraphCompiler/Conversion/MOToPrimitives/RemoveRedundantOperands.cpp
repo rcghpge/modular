@@ -8,12 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
-#include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "mlir/IR/IRMapping.h"
 
 #include "GraphRT/GRTDialect/GRTOps.h"
 
@@ -43,7 +40,7 @@ struct RemoveRedundantOperands
     OpBuilder builder(ctx);
     modelOp.walk([&](MOGG::GenericCompiledRegionOp regionOp) {
       SmallDenseMap<Value, Value> operandToFirstArg;
-      SmallVector<OpOperand *> operandsToRemove;
+      llvm::BitVector operandsToRemove(regionOp.getNumOperands());
       // Collapse all OpOperands that are duplicates and collapse all arguments
       // within region to use the same one, go in reverse order
       for (auto &operand : llvm::reverse(regionOp->getOpOperands())) {
@@ -54,12 +51,15 @@ struct RemoveRedundantOperands
           // the OpOperand to remove after the fact
           arg.replaceAllUsesWith(operandToFirstArg[operand.get()]);
           regionOp.getBody().eraseArgument(operand.getOperandNumber());
-          operandsToRemove.push_back(&operand);
+          operandsToRemove.set(operand.getOperandNumber());
         } else
           operandToFirstArg[operand.get()] = arg;
       }
-      for (auto operand : llvm::reverse(operandsToRemove))
-        regionOp->eraseOperand(operand->getOperandNumber());
+
+      regionOp->eraseOperands(operandsToRemove);
+
+      regionOp.setInOutSignatureAttr(
+          regionOp.getInOutSignature().remove(operandsToRemove));
     });
   }
 };

@@ -26,10 +26,10 @@
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringMap.h"
-#include <llvm/ADT/STLExtras.h>
 
 using namespace M;
 using namespace MOGG;
@@ -1456,6 +1456,98 @@ GenericCompiledRegionOp::getInOutSemantics(size_t index) {
       index < getNumOperands(),
       << "GenericCompiledRegionOp::getInOutSemantics index out of range.");
   return getInOutSignature()[index];
+}
+
+LogicalResult GenericCompiledRegionOp::verify() {
+  Region &body = getBody();
+
+  if (getOperands().size() != body.getNumArguments())
+    return emitError("number of operands and body arguments must match");
+
+  // There are a large number of unittests which use an empty
+  // InOutSignatureAttr. For now, allow them to pass verification.
+  // TODO: Update unittests and remove this guard.
+  if (getInOutSignature().size() != 0) {
+    if (getOperands().size() != getInOutSignature().size()) {
+      return emitError() << "inOutSignature size ("
+                         << getInOutSignature().size()
+                         << ") does not match number of operands ("
+                         << getOperands().size() << ")";
+    }
+  }
+
+  if (!llvm::equal(getOperandTypes(), body.getArgumentTypes()))
+    return emitError("operand types must match region arguments");
+
+  return success();
+}
+
+LogicalResult GenericCompiledRegionOp::canonicalize(GenericCompiledRegionOp op,
+                                                    PatternRewriter &rewriter) {
+  // Canonicalize sequences of grt.chain.create + mogg.generic.compiled.region
+  //
+  //     %ch = grt.chain.create(%0, %1)
+  //     mogg.generic.compiled.region(%ch)
+  //
+  // to
+  //
+  //     mogg.generic.compiled.region(%0, %1)
+  Region &body = op.getBody();
+
+  llvm::BitVector blockArgsToRemove(op.getNumOperands());
+  SmallVector<Value> operandsToKeep;
+  SmallVector<Value> newOperands;
+
+  // Collect all operands from grt.chain.create and their corresponding
+  // block arguments when the block argument is unused.
+  for (OpOperand &operand : op.getOperandsMutable()) {
+    BlockArgument bodyArgument = body.getArgument(operand.getOperandNumber());
+
+    auto chainCreateOp = operand.get().getDefiningOp<GRT::ChainCreateOp>();
+    // Only remove grt.chain.create operands whose corresponding body
+    // argument is unused.
+    if (!chainCreateOp || !bodyArgument.getUses().empty()) {
+      operandsToKeep.push_back(operand.get());
+      continue;
+    }
+
+    blockArgsToRemove.set(bodyArgument.getArgNumber());
+    newOperands.append(chainCreateOp.getOperands().begin(),
+                       chainCreateOp.getOperands().end());
+  }
+
+  if (blockArgsToRemove.none())
+    return failure();
+
+  SmallVector<Type> newTypes =
+      llvm::map_to_vector(newOperands, [](Value v) { return v.getType(); });
+
+  SmallVector<Location> newLocs =
+      llvm::map_to_vector(newOperands, [](Value v) { return v.getLoc(); });
+
+  rewriter.modifyOpInPlace(op, [&]() {
+    // Update the operands to [operandsToKeep; newOperands]
+    op.getOperandsMutable().clear();
+    op.getOperandsMutable().append(operandsToKeep);
+    op.getOperandsMutable().append(newOperands);
+
+    // Update the body block arguments
+    // Erase block that correspond to the removed chain arguments
+    Block &entryBlock = *op.getBody().begin();
+    entryBlock.eraseArguments(blockArgsToRemove);
+    entryBlock.addArguments(newTypes, newLocs);
+
+    // Update the InOutSignatureAttr by removing the entries corresponding
+    // to removed arguments and appending a `kNone` for each new argument.
+    SmallVector<InOutSignatureAttr::InOutSemantics> newSemantics(
+        newOperands.size(), InOutSignatureAttr::InOutSemantics::kNone);
+
+    InOutSignatureAttr oldSemantics = op.getInOutSignature();
+    op.setInOutSignatureAttr(
+        oldSemantics.remove(blockArgsToRemove).append(newSemantics));
+  });
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

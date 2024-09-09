@@ -13,7 +13,7 @@ mgp.model @remove_redundant_operands : mof devices [#M.device_ref<"cpu", 0>] ini
     %5 = mogg.call "index.add"(%arg2, %arg3) {} : index, index -> index
     %6 = mogg.call "index.add"(%5, %arg4) {} : index, index -> index
     mogg.output %5 : index
-  } {inOutSignature = #M.inout_sig<"">}
+  } {inOutSignature = #M.inout_sig<"....">}
   %4 = mip.print.index %3, %0
   mef.output %4 : !mef.chain
 }
@@ -22,3 +22,4 @@ mgp.model @remove_redundant_operands : mof devices [#M.device_ref<"cpu", 0>] ini
 // CHECK: %[[RES:[^ ]*]] = mogg.generic.compiled.region (%[[OP0:[^ ]*]], %[[OP1:[^ ]*]]) : (%[[ARG0:[^ ]*]]: index, %[[ARG1:[^ ]*]]: index) -> index{
 // CHECK-DAG: %[[INT0:[^ ]*]] = mogg.call{{.*}}(%[[ARG0]], %[[ARG1]])
 // CHECK-DAG: %[[INT1:[^ ]*]] = mogg.call{{.*}}(%[[INT0]], %[[ARG0]])
+// CHECK-DAG: inOutSignature = #M.inout_sig<"..">

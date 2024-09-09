@@ -137,6 +137,9 @@ void LowerPrimitivesPass::runOnOperation() {
     if (isLowerableToGenericRegion(ctx, mojoLibraryAnalysis, op)) {
       // Create the MOGG generic region which contains the compiled MGP.
       SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
+      operandSemantics.append(op->getNumOperands(),
+                              InOutSignatureAttr::InOutSemantics::kNone);
+
       bool hasCuda = false;
       if (auto hasDeviceOp = dyn_cast<MGPHasDeviceOpInterface>(op))
         hasCuda = hasDeviceOp.getDevice().getLabel() == kCUDALabel;
@@ -145,8 +148,8 @@ void LowerPrimitivesPass::runOnOperation() {
           KGEN::ParamDeclArrayAttr::get(ctx, {}),
           InOutSignatureAttr::get(ctx, operandSemantics), BoolAttr{}, // isKGEN
           StringAttr::get(ctx, op->getName().getStringRef()),         // summary
-          BoolAttr::get(ctx, isAsync(op)),     // isAsync // isAsync
-          BoolAttr::get(ctx, hasCuda),         // hasCuda
+          BoolAttr::get(ctx, isAsync(op)),                            // isAsync
+          BoolAttr::get(ctx, hasCuda),                                // hasCuda
           BoolAttr::get(ctx, canFuseOp(op)),   // canFuseIntoOther
           BoolAttr::get(ctx, canFuseOp(op)),   // canBeFusedInto
           BoolAttr::get(ctx, canDuplicate(op)) // canDuplicate

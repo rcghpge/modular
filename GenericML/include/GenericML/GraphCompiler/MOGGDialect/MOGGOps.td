@@ -322,7 +322,7 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
 
 def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     IsolatedFromAbove,
-    SingleBlock,
+    SingleBlockImplicitTerminator<"MOGG::OutputOp">,
     SymbolTable,
     DeclareOpInterfaceMethods<MOGG_CompilableKernel>,
     MO_HasDeviceInterface,
@@ -371,6 +371,8 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
   );
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$body);
+  let hasCanonicalizeMethod = 1;
+  let hasVerifier = 1;
 
   let assemblyFormat = [{
     custom<Kernel>($operands, type($operands), type($results), $body, $outputParamDecls) attr-dict
