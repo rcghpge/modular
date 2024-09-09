@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <stddef.h>
 #include <string>
+#include <vector>
 
 namespace M::AsyncRT {
 
@@ -25,13 +26,11 @@ class Device;
 class DeviceBuffer;
 class DeviceContext;
 class DeviceFunction;
-class DeviceFunctionArguments;
 
 using DeviceRef = RCRef<const Device>;
 using DeviceBufferRef = RCRef<const DeviceBuffer>;
 using DeviceContextRef = RCRef<const DeviceContext>;
 using DeviceFunctionRef = RCRef<const DeviceFunction>;
-using DeviceFunctionArgumentsRef = RCRef<const DeviceFunctionArguments>;
 
 class Device : public ReferenceCounted<Device> {
 public:
@@ -63,13 +62,61 @@ private:
   size_t elem_size_;
 };
 
-class DeviceFunctionArguments
-    : public ReferenceCounted<DeviceFunctionArguments> {
+class DeviceFunction : public ReferenceCounted<DeviceFunction> {
 public:
-  virtual ~DeviceFunctionArguments() = default;
+  enum ArgumentType : uint8_t;
+  class SignatureBuilder;
+  class Arguments;
+
+  using ArgumentsRef = RCRef<const Arguments>;
+
+  virtual ~DeviceFunction() = default;
+
+  const DeviceContext &context() const;
+
+  virtual const std::string &name() const = 0;
+
+  template <typename... Ts>
+  ArgumentsRef buildArguments(const Ts &...ts) const;
 
 protected:
-  DeviceFunctionArguments() = default;
+  DeviceFunction(const DeviceContext &context,
+                 const DeviceFunction::SignatureBuilder &signature);
+
+  virtual Arguments *allocateArguments(const DeviceFunction &fn) const = 0;
+
+private:
+  DeviceContextRef context_;
+  std::vector<ArgumentType> signature_;
+
+  ErrorOrSuccess checkSignatureAt(int index, ArgumentType arg_type) const;
+  static const char *typeName(ArgumentType arg_type);
+};
+
+class DeviceFunction::SignatureBuilder {
+public:
+  SignatureBuilder() = default;
+  ~SignatureBuilder() = default;
+
+  SignatureBuilder &addUInt64();
+  SignatureBuilder &addBuffer();
+
+private:
+  friend class DeviceFunction;
+
+  std::vector<ArgumentType> types_;
+};
+
+class DeviceFunction::Arguments
+    : public ReferenceCounted<DeviceFunction::Arguments> {
+public:
+  virtual ~Arguments() = default;
+
+  bool hasError() const;
+  const ErrorOrSuccess &getError() const;
+
+protected:
+  Arguments(const DeviceFunction &func);
 
   // The implementations of these methods are being called based on the
   // arguments being passed to the DeviceFunction::buildArguments() method.
@@ -80,6 +127,9 @@ protected:
 private:
   friend class DeviceFunction;
 
+  DeviceFunctionRef fn_;
+  ErrorOrSuccess err_;
+
   template <typename... Ts>
   void build(const Ts &...ts);
 
@@ -88,26 +138,10 @@ private:
 
   template <int index, typename T0>
   void pushArgs(const T0 &&t0);
-};
 
-class DeviceFunction : public ReferenceCounted<DeviceFunction> {
-public:
-  virtual ~DeviceFunction() = default;
-
-  const DeviceContext &context() const;
-
-  virtual const std::string &name() const = 0;
-
-  template <typename... Ts>
-  DeviceFunctionArgumentsRef buildArguments(const Ts &...ts) const;
-
-protected:
-  DeviceFunction(const DeviceContext &context);
-
-  virtual DeviceFunctionArguments *allocateArguments() const = 0;
-
-private:
-  DeviceContextRef context_;
+  // TODO: Add argument types incrementally as needed.
+  void checkArg(int index, const uint64_t &val);
+  void checkArg(int index, const DeviceBuffer &val);
 };
 
 class DeviceContext : public ReferenceCounted<DeviceContext> {
@@ -135,12 +169,14 @@ public:
 
   // DeviceFunction compilation and execution.
   virtual ErrorOr<DeviceFunctionRef>
-  compileFunction(const char *function_name, const void *data) const = 0;
+  compileFunction(const char *function_name,
+                  const DeviceFunction::SignatureBuilder &signature,
+                  const void *data) const = 0;
   virtual ErrorOrSuccess
   enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
                       uint32_t gridY, uint32_t gridZ, uint32_t blockX,
                       uint32_t blockY, uint32_t blockZ,
-                      const DeviceFunctionArguments &args) const = 0;
+                      const DeviceFunction::Arguments &args) const = 0;
 
   // Synchronize asynchronous operations.
   virtual ErrorOrSuccess synchronize() const = 0;
@@ -166,27 +202,27 @@ private:
 // Private template definitions used by external code.
 //
 template <typename... Ts>
-DeviceFunctionArgumentsRef
+DeviceFunction::ArgumentsRef
 DeviceFunction::buildArguments(const Ts &...ts) const {
-  DeviceFunctionArguments *args = allocateArguments();
+  Arguments *args = allocateArguments(*this);
   args->build(std::forward<const Ts>(ts)...);
-  return DeviceFunctionArgumentsRef::take(args);
+  return ArgumentsRef::take(args);
 }
 
 template <typename... Ts>
-void DeviceFunctionArguments::build(const Ts &...ts) {
+void DeviceFunction::Arguments::build(const Ts &...ts) {
   pushArgs<0>(std::forward<const Ts>(ts)...);
 }
 
 template <int index, typename T0, typename... T1s>
-void DeviceFunctionArguments::pushArgs(const T0 &&t0, const T1s &&...t1s) {
-  pushArg(index, t0);
+void DeviceFunction::Arguments::pushArgs(const T0 &&t0, const T1s &&...t1s) {
+  checkArg(index, t0);
   pushArgs<index + 1, const T1s...>(std::forward<const T1s>(t1s)...);
 }
 
 template <int index, typename T0>
-void DeviceFunctionArguments::pushArgs(const T0 &&t0) {
-  pushArg(index, t0);
+void DeviceFunction::Arguments::pushArgs(const T0 &&t0) {
+  checkArg(index, t0);
 }
 
 } // namespace M::AsyncRT

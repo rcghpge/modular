@@ -123,9 +123,9 @@ CpuDeviceContext::enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
   return success();
 }
 
-ErrorOr<DeviceFunctionRef>
-CpuDeviceContext::compileFunction(const char *function_name,
-                                  const void *data) const {
+ErrorOr<DeviceFunctionRef> CpuDeviceContext::compileFunction(
+    const char *function_name,
+    const DeviceFunction::SignatureBuilder &signature, const void *data) const {
   // Currently not implemented. Maybe never to be implemented.
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
@@ -133,7 +133,7 @@ CpuDeviceContext::compileFunction(const char *function_name,
 ErrorOrSuccess CpuDeviceContext::enqueueFunctionExec(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ,
-    const DeviceFunctionArguments &args) const {
+    const DeviceFunction::Arguments &args) const {
   // Currently not implemented. Maybe never to be implemented.
   RAISE_ERROR_MESSAGE("Unimplemented");
 }

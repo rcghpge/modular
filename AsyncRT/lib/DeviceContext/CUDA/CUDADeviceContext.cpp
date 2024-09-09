@@ -90,6 +90,10 @@ const CUDADeviceBuffer &CUDADeviceBuffer::cast(const DeviceBuffer &buf) {
 }
 
 // ===== CUDADeviceFunctionArguments ===== //
+CUDADeviceFunctionArguments::CUDADeviceFunctionArguments(
+    const CUDADeviceFunction &fn)
+    : DeviceFunction::Arguments(fn) {}
+
 void CUDADeviceFunctionArguments::pushArg(int index, const uint64_t &val) {
   arg_values_.push_back(reinterpret_cast<void *>(val));
 }
@@ -111,15 +115,16 @@ std::vector<void *> CUDADeviceFunctionArguments::cuda_args() const {
 }
 
 const CUDADeviceFunctionArguments &
-CUDADeviceFunctionArguments::cast(const DeviceFunctionArguments &args) {
+CUDADeviceFunctionArguments::cast(const DeviceFunction::Arguments &args) {
   return static_cast<const CUDADeviceFunctionArguments &>(args);
 }
 
 // ===== CUDADeviceFunction ===== //
-CUDADeviceFunction::CUDADeviceFunction(const CUDADeviceContext &context,
-                                       std::string name, CUmodule module,
-                                       CUfunction function)
-    : DeviceFunction(context), module_(module), function_(function),
+CUDADeviceFunction::CUDADeviceFunction(
+    const CUDADeviceContext &context, std::string name,
+    const DeviceFunction::SignatureBuilder &signature, CUmodule module,
+    CUfunction function)
+    : DeviceFunction(context, signature), module_(module), function_(function),
       name_(std::move(name)) {}
 
 CUDADeviceFunction::~CUDADeviceFunction() {
@@ -128,8 +133,9 @@ CUDADeviceFunction::~CUDADeviceFunction() {
   CUDA_CHECK(cuda_context.cuda_driver().ModuleUnload(module_));
 }
 
-DeviceFunctionArguments *CUDADeviceFunction::allocateArguments() const {
-  return new CUDADeviceFunctionArguments();
+DeviceFunction::Arguments *
+CUDADeviceFunction::allocateArguments(const DeviceFunction &fn) const {
+  return new CUDADeviceFunctionArguments(CUDADeviceFunction::cast(fn));
 }
 
 ErrorOrSuccess CUDADeviceFunction::cuda_callKernel(
@@ -209,9 +215,9 @@ CUDADeviceContext::enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
   return success();
 }
 
-ErrorOr<DeviceFunctionRef>
-CUDADeviceContext::compileFunction(const char *function_name,
-                                   const void *data) const {
+ErrorOr<DeviceFunctionRef> CUDADeviceContext::compileFunction(
+    const char *function_name,
+    const DeviceFunction::SignatureBuilder &signature, const void *data) const {
   std::cerr << "CUDADeviceContext::compileFunction(" << function_name << "):\n"
             << reinterpret_cast<const char *>(data) << "\n";
   CUmodule module;
@@ -221,13 +227,17 @@ CUDADeviceContext::compileFunction(const char *function_name,
   CUDA_CHECK_ERR(driver_.ModuleGetFunction(&function, module, function_name));
 
   return CUDADeviceFunctionRef::create(*this, std::string(function_name),
-                                       module, function);
+                                       signature, module, function);
 }
 
 ErrorOrSuccess CUDADeviceContext::enqueueFunctionExec(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ,
-    const DeviceFunctionArguments &args) const {
+    const DeviceFunction::Arguments &args) const {
+  if (args.hasError()) {
+    return Error(args.getError().getError());
+  }
+
   const auto &cuda_func = CUDADeviceFunction::cast(func);
 
   return cuda_func.cuda_callKernel(gridX, gridY, gridZ, blockX, blockY, blockZ,

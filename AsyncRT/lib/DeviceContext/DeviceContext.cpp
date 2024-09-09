@@ -34,10 +34,102 @@ size_t DeviceBuffer::elem_size() const { return elem_size_; }
 //
 // ===== DeviceFunction ===== //
 //
-DeviceFunction::DeviceFunction(const DeviceContext &context)
-    : context_(DeviceContextRef::copy(&context)) {}
+enum DeviceFunction::ArgumentType : uint8_t {
+  UNSET = 0, // This entry must be zero and first.
+  UINT8,
+  UINT16,
+  UINT32,
+  UINT64,
+  INT8,
+  INT16,
+  INT32,
+  INT64,
+  FP4,
+  FP8,
+  FP16,
+  FP32,
+  FP64,
+  BUFFER,
+  _NUM_ENTRIES_ // This entry must be last.
+};
+
+const char *DeviceFunction::typeName(ArgumentType arg_type) {
+  const char *type_names[] = {"unset",   "uint8",   "uint16",      "uint32",
+                              "uint64",  "int8",    "int16",       "int32",
+                              "int64",   "float4",  "float8",      "float16",
+                              "float32", "float64", "DeviceBuffer"};
+  static_assert(sizeof(type_names) ==
+                (static_cast<int>(_NUM_ENTRIES_) * sizeof(*type_names)));
+  int index = static_cast<int>(arg_type);
+  return ((index >= 0) && (index < _NUM_ENTRIES_)) ? type_names[index]
+                                                   : "unknown";
+}
+
+DeviceFunction::DeviceFunction(
+    const DeviceContext &context,
+    const DeviceFunction::SignatureBuilder &signature)
+    : context_(DeviceContextRef::copy(&context)), signature_(signature.types_) {
+}
 
 const DeviceContext &DeviceFunction::context() const { return *context_; }
+
+ErrorOrSuccess DeviceFunction::checkSignatureAt(int index,
+                                                ArgumentType arg_type) const {
+  int expected_size = signature_.size();
+  if ((index < 0) || index >= expected_size) {
+    return Error("Argument count mismatch at " + Twine(index + 1) +
+                 "th position: Expected " + Twine(expected_size) +
+                 " arguments.");
+  }
+  ArgumentType expected_type = signature_.at(index);
+  if (expected_type != arg_type) {
+    return Error(llvm::Twine("Argument mismatch at ") + Twine(index + 1) +
+                 "th position: Expected " + typeName(expected_type) + ", got " +
+                 typeName(arg_type) + ".");
+  }
+  return success();
+}
+
+//
+// ===== DeviceFunction::SignatureBuilder ===== //
+//
+DeviceFunction::SignatureBuilder &
+DeviceFunction::SignatureBuilder::addUInt64() {
+  types_.push_back(UINT64);
+  return *this;
+}
+
+DeviceFunction::SignatureBuilder &
+DeviceFunction::SignatureBuilder::addBuffer() {
+  types_.push_back(BUFFER);
+  return *this;
+}
+
+//
+// ===== DeviceFunction::Arguments ===== //
+//
+DeviceFunction::Arguments::Arguments(const DeviceFunction &fn)
+    : fn_(DeviceFunctionRef::copy(&fn)) {}
+
+bool DeviceFunction::Arguments::hasError() const { return err_.isError(); }
+
+const ErrorOrSuccess &DeviceFunction::Arguments::getError() const {
+  return err_;
+}
+
+void DeviceFunction::Arguments::checkArg(int index, const uint64_t &val) {
+  if (err_)
+    return;
+  err_ = fn_->checkSignatureAt(index, UINT64);
+  pushArg(index, val);
+}
+
+void DeviceFunction::Arguments::checkArg(int index, const DeviceBuffer &val) {
+  if (err_)
+    return;
+  err_ = fn_->checkSignatureAt(index, BUFFER);
+  pushArg(index, val);
+}
 
 //
 // ===== DeviceContext ===== //

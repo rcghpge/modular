@@ -184,8 +184,13 @@ $L__BB0_2:
   ASSERT_TRUE(ctx);
 
   std::cerr << "Compiling vec_add_ptx...\n";
+  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
+                                             .addBuffer()
+                                             .addBuffer()
+                                             .addBuffer()
+                                             .addUInt64();
   ErrorOr<DeviceFunctionRef> err_fun =
-      ctx->compileFunction("vec_add", vec_add_ptx);
+      ctx->compileFunction("vec_add", sig, vec_add_ptx);
   // Expecting for an error to be set in the case of CPU device context.
   ASSERT_TRUE(err_fun) << err_fun.getError() << "\n";
 }

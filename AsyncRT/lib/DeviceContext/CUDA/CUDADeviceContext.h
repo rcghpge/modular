@@ -64,9 +64,9 @@ private:
   CUdeviceptr dptr_;
 };
 
-class CUDADeviceFunctionArguments : public DeviceFunctionArguments {
+class CUDADeviceFunctionArguments : public DeviceFunction::Arguments {
 public:
-  CUDADeviceFunctionArguments() = default;
+  CUDADeviceFunctionArguments(const CUDADeviceFunction &fn);
   ~CUDADeviceFunctionArguments() override = default;
 
   void pushArg(int index, const uint64_t &val) override;
@@ -75,7 +75,7 @@ public:
   std::vector<void *> cuda_args() const;
 
   static const CUDADeviceFunctionArguments &
-  cast(const DeviceFunctionArguments &args);
+  cast(const DeviceFunction::Arguments &args);
 
 private:
   std::vector<void *> arg_values_;
@@ -85,12 +85,14 @@ private:
 class CUDADeviceFunction : public DeviceFunction {
 public:
   CUDADeviceFunction(const CUDADeviceContext &context, std::string name,
+                     const DeviceFunction::SignatureBuilder &signature,
                      CUmodule module, CUfunction function);
   ~CUDADeviceFunction() override;
 
   const std::string &name() const override;
 
-  DeviceFunctionArguments *allocateArguments() const override;
+  DeviceFunction::Arguments *
+  allocateArguments(const DeviceFunction &fn) const override;
 
   ErrorOrSuccess cuda_callKernel(uint32_t gridX, uint32_t gridY, uint32_t gridZ,
                                  uint32_t blockX, uint32_t blockY,
@@ -130,13 +132,15 @@ public:
                             const DeviceBuffer &src) const override;
 
   // DeviceFunction compilation and execution.
-  ErrorOr<DeviceFunctionRef> compileFunction(const char *function_name,
-                                             const void *data) const override;
+  ErrorOr<DeviceFunctionRef>
+  compileFunction(const char *function_name,
+                  const DeviceFunction::SignatureBuilder &signature,
+                  const void *data) const override;
   ErrorOrSuccess
   enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
                       uint32_t gridY, uint32_t gridZ, uint32_t blockX,
                       uint32_t blockY, uint32_t blockZ,
-                      const DeviceFunctionArguments &args) const override;
+                      const DeviceFunction::Arguments &args) const override;
 
   // Synchronize asynchronous operations.
   ErrorOrSuccess synchronize() const override;

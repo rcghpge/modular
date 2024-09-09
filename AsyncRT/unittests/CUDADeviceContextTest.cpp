@@ -174,8 +174,13 @@ $L__BB0_2:
   ASSERT_TRUE(ctx);
 
   std::cerr << "Compiling vec_add_ptx...\n";
+  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
+                                             .addBuffer()
+                                             .addBuffer()
+                                             .addBuffer()
+                                             .addUInt64();
   ErrorOr<DeviceFunctionRef> err_fun =
-      ctx->compileFunction("vec_add", vec_add_ptx);
+      ctx->compileFunction("vec_add", sig, vec_add_ptx);
   EXPECT_FALSE(err_fun) << err_fun.getError() << "\n";
   DeviceFunctionRef device_function = std::move(err_fun.get());
   EXPECT_TRUE(device_function);
@@ -198,10 +203,12 @@ $L__BB0_2:
   EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
   DeviceBufferRef in0_device = std::move(err_buf.get());
   EXPECT_TRUE(in0_device);
+
   err_buf = ctx->createBuffer(length, elem_size);
   EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
   DeviceBufferRef in1_device = std::move(err_buf.get());
   EXPECT_TRUE(in1_device);
+
   err_buf = ctx->createBuffer(length, elem_size);
   EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
   DeviceBufferRef out_device = std::move(err_buf.get());
@@ -222,10 +229,11 @@ $L__BB0_2:
       *device_function, length / block_dim, 1, 1, block_dim, 1, 1,
       *device_function->buildArguments(*out_device, *in0_device, *in1_device,
                                        length));
-
   EXPECT_FALSE(err) << err.getError() << "\n";
+
   err = ctx->enqueueCopyFromDevice(out_host, *out_device);
   EXPECT_FALSE(err) << err.getError() << "\n";
+
   err = ctx->synchronize();
   EXPECT_FALSE(err) << err.getError() << "\n";
 
@@ -235,6 +243,37 @@ $L__BB0_2:
     }
     EXPECT_EQ(out_host[i], static_cast<float>(i) + 2.0);
   }
+
+  // Check error cases of mismatched arguments being passed.
+  err = ctx->enqueueFunctionExec(
+      *device_function, length / block_dim, 1, 1, block_dim, 1, 1,
+      *device_function->buildArguments(*out_device, *in0_device, 12, length));
+  EXPECT_TRUE(err);
+  EXPECT_EQ(strcmp(err.getError(), "Argument mismatch at 3th position: "
+                                   "Expected DeviceBuffer, got uint64."),
+            0)
+      << err.getError();
+
+  err = ctx->enqueueFunctionExec(
+      *device_function, length / block_dim, 1, 1, block_dim, 1, 1,
+      *device_function->buildArguments(*out_device, *in0_device, *in1_device,
+                                       *in1_device));
+  EXPECT_TRUE(err);
+  EXPECT_EQ(strcmp(err.getError(), "Argument mismatch at 4th position: "
+                                   "Expected uint64, got DeviceBuffer."),
+            0)
+      << err.getError();
+
+  err = ctx->enqueueFunctionExec(
+      *device_function, length / block_dim, 1, 1, block_dim, 1, 1,
+      *device_function->buildArguments(*out_device, *in0_device, *in1_device,
+                                       length, length));
+  EXPECT_TRUE(err);
+  EXPECT_EQ(
+      strcmp(err.getError(),
+             "Argument count mismatch at 5th position: Expected 4 arguments."),
+      0)
+      << err.getError();
 
   free(out_host);
   free(in1_host);

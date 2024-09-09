@@ -76,13 +76,15 @@ public:
                             const DeviceBuffer &src) const override;
 
   // DeviceFunction compilation and execution.
-  ErrorOr<DeviceFunctionRef> compileFunction(const char *function_name,
-                                             const void *data) const override;
+  ErrorOr<DeviceFunctionRef>
+  compileFunction(const char *function_name,
+                  const DeviceFunction::SignatureBuilder &signature,
+                  const void *data) const override;
   ErrorOrSuccess
   enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
                       uint32_t gridY, uint32_t gridZ, uint32_t blockX,
                       uint32_t blockY, uint32_t blockZ,
-                      const DeviceFunctionArguments &args) const override;
+                      const DeviceFunction::Arguments &args) const override;
 
   // Synchronize asynchronous operations.
   ErrorOrSuccess synchronize() const override;
