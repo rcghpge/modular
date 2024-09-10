@@ -20,7 +20,6 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/MGPDialect/BufferBuilder.h"
 #include "GenericML/Support/Diagnostic.h"
-#include "GraphRT/MIPDialect/MIPOps.h"
 #include "Support/AssertStream.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/DialectInterface.h"

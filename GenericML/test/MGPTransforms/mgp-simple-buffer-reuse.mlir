@@ -23,7 +23,7 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
   %inTensorSpec = mgp.tensor.extract.tensor_spec %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
   %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
-  %allocSize = mip.nary.mul(%inDims#0, %inDims#1)
+  %allocSize = index.mul %inDims#0, %inDims#1
 
   // We only expect 2 remaining allocs after the pass
 
@@ -64,7 +64,7 @@ mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%weight
   %inTensorSpec = mgp.tensor.extract.tensor_spec %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
   %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
-  %allocSize = mip.nary.mul(%inDims#0, %inDims#1)
+  %allocSize = index.mul %inDims#0, %inDims#1
   %allocSizeDifferent = index.add %inDims#0, %inDims#1
 
 

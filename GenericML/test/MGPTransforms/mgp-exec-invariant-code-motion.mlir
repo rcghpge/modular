@@ -50,13 +50,14 @@ mgp.model @kgen_execute_kernel : mof devices [#M.device_ref<"cpu", 0>] init (%we
 //
 
 // CHECK-LABEL: mgp.model @matmul_packb : mof
-// CHECK-NEXT:  %{{.*}} = grt.chain.create ()
+// CHECK:       %{{.*}} = grt.chain.create ()
 // CHECK:       %[[CTX:.*]] = mgp.context.create 3
 // Lifted ops
 // CHECK-DAG:   %[[CH0:.*]] = mgp.runtime.create
 // CHECK-DAG:   %[[CONST_BUF:.*]] = mgp.buffer.constant %{{.*}}, %[[CTX]][1], #M.aligned_bytes<"0x0000803F0000803F0000803F0000803F", align 16> : !M.array<16xui8>
 // CHECK-DAG:   %[[IGNORED_CHAIN:.*]], %[[RES:.*]]:2 = mgp.kernel.execute %[[CH0]], %[[CTX]][1, 1], (0, 0), (), summary "matmul_pack_shape_func" out_dims 2
-// CHECK-DAG:   %[[BYTES:.*]] = mip.nary.mul(%[[RES]]#0, %[[RES]]#1) {constInt = 8 : si64}
+// CHECK-DAG:   %[[TMP:.*]] = index.mul
+// CHECK-DAG:   %[[BYTES:.*]] = index.mul
 // CHECK-DAG:   %[[PACKED_BUF:.*]] = mgp.buffer.alloc %[[CH0]], %[[CTX]][1], %[[BYTES]], align 16 : !mgp.buffer<>
 // CHECK-DAG:   %[[PACK_CH:.*]] = mgp.kernel.execute %[[CH0]], %[[CTX]][1, 1], (0, 0), (in %[[CONST_BUF]] : {{.*}}, out %[[PACKED_BUF]] : {{.*}}), summary "pack_b_ndbuffer"
 // Buffer caching
@@ -84,13 +85,16 @@ mgp.model @matmul_packb : mof devices [#M.device_ref<"cpu", 0>] init (%weights: 
   %const_buf = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000803F0000803F0000803F", align 16>
   %const_spec = mgp.tensor_spec.create  : !mgp.tensor_spec<2x2xf32>
   %res:3 = mgp.kernel.execute %ch0, %ctx[1, 1], (0, 0), (), summary "matmul_pack_shape_func" out_dims 2
-  %bytes = mip.nary.mul(%res#1, %res#2) {constInt = 8 : si64}
+  %c8 = index.constant 8
+  %tmp = index.mul %res#1, %res#2
+  %bytes = index.mul %c8, %tmp
   %packed_buf = mgp.buffer.alloc %ch0, %ctx[1], %bytes, align 16 : !mgp.buffer<>
   %ch2 = mgp.kernel.execute %ch0, %ctx[1, 1], (0, 0), (in %const_buf : !mgp.buffer<16>, out %packed_buf : !mgp.buffer<>), summary "pack_b_ndbuffer"
   %arg2_buf = mgp.tensor.extract.buffer %ctx[1], %arg2 : !mgp.tensor<?x2xf32>
   %arg2_spec = mgp.tensor.extract.tensor_spec %ctx[1], %arg2 : !mgp.tensor<?x2xf32>
   %arg2_dim0 = mgp.tensor_spec.dims.dynamic %arg2_spec : !mgp.tensor_spec<?x2xf32>
-  %bytes2 = mip.nary.mul(%arg2_dim0) {constInt = 16 : si64}
+  %c16 = index.constant 16
+  %bytes2 = index.mul %c16, %arg2_dim0
   %out_spec = mgp.tensor_spec.create %arg2_dim0 : !mgp.tensor_spec<?x2xf32>
   %out_buf = mgp.buffer.alloc %ch2, %ctx[1], %bytes2, align 16 : !mgp.buffer<>
   %ch3 = mgp.kernel.execute %ch2, %ctx[1, 1], (0, 0), (in %arg2_buf : !mgp.buffer<>, in %packed_buf : !mgp.buffer<>, out %out_buf : !mgp.buffer<>), summary "matmul"
@@ -118,7 +122,9 @@ mgp.model @non_pure_op : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !
   %const_spec = mgp.tensor_spec.create  : !mgp.tensor_spec<2x2xf32>
   %out_spec = "foo.side_effect_op"(%const_spec) : (!mgp.tensor_spec<2x2xf32>) -> !mgp.tensor_spec<?x?xf32>
   %out_dim0, %out_dim1 = mgp.tensor_spec.dims.dynamic %out_spec : !mgp.tensor_spec<?x?xf32>
-  %bytes = mip.nary.mul(%out_dim0, %out_dim1) {constInt = 8 : si64}
+  %c8 = index.constant 8
+  %tmp = index.mul %out_dim0, %out_dim1
+  %bytes = index.mul %c8, %tmp
   %out_buf = mgp.buffer.alloc %ch0, %ctx[1], %bytes, align 16 : !mgp.buffer<>
   %ch2 = "bar.side_effect_op"(%ch0, %const_buf, %const_spec, %out_buf, %out_spec) : (!mef.chain, !mgp.buffer<16>, !mgp.tensor_spec<2x2xf32>, !mgp.buffer<>, !mgp.tensor_spec<?x?xf32>) -> !mef.chain
   %out_tensor = mgp.tensor.create %ch2, %ctx[1], %out_buf, %out_spec  : !mgp.tensor<?x?xf32>
@@ -169,7 +175,8 @@ mgp.model @dont_lift_if_no_computation_saved : mof devices [#M.device_ref<"cpu",
 // CHECK-DAG:   %[[TRANSPOSE_CH:.*]] = mgp.kernel.execute %[[CH0]], %[[CTX]][1, 1], (0, 0), (in %[[WEIGHT_BUF]] : {{.*}}, in %[[PERM_BUF]] : {{.*}}, out %[[TRANSPOSE_BUF]] : {{.*}}), summary "transpose"
 //   matmul weights packing
 // CHECK-DAG:   %[[IGNORED_CH:.*]], %[[RES:.*]]:2 = mgp.kernel.execute %[[CH0]], %[[CTX]][1, 1], (0, 0), (), summary "matmul_pack_shape_func" out_dims 2
-// CHECK-DAG:   %[[BYTES:.*]] = mip.nary.mul(%[[RES]]#0, %[[RES]]#1) {constInt = 8 : si64}
+// CHECK-DAG:   %[[TMP:.*]] = index.mul
+// CHECK-DAG:   %[[BYTES:.*]] = index.mul
 // CHECK-DAG:   %[[PACK_BUF:.*]] = mgp.buffer.alloc %[[CH0]], %[[CTX]][1], %[[BYTES]], align 16 : !mgp.buffer<>
 // CHECK-DAG:   %[[PACK_CH:.*]] = mgp.kernel.execute %[[TRANSPOSE_CH]], %[[CTX]][1, 1], (0, 0), (in %[[TRANSPOSE_BUF]] : {{.*}}, out %[[PACK_BUF]] : {{.*}}), summary "pack_b_ndbuffer"
 // Chain merge to preserve control dependencies
@@ -210,7 +217,9 @@ mgp.model @intermediate_buffer : mof devices [#M.device_ref<"cpu", 0>] init (%we
 
   // matmul weights packing
   %res:3 = mgp.kernel.execute %ch0, %ctx[1, 1], (0, 0), (), summary "matmul_pack_shape_func" out_dims 2
-  %bytes = mip.nary.mul(%res#1, %res#2) {constInt = 8 : si64}
+  %c8 = index.constant 8
+  %tmp = index.mul %res#1, %res#2
+  %bytes = index.mul %c8, %tmp
   %packed_buf = mgp.buffer.alloc %ch0, %ctx[1], %bytes, align 16 : !mgp.buffer<>
   %packed_ch = mgp.kernel.execute %transpose_ch, %ctx[1, 1], (0, 0), (in %transpose_buf : !mgp.buffer<1600>, out %packed_buf : !mgp.buffer<>), summary "pack_b_ndbuffer"
   mef.output %packed_ch, %packed_buf : !mef.chain, !mgp.buffer<>
@@ -291,12 +300,13 @@ mgp.model @constant_buffer_used_in_both_init_and_exec : mof devices [#M.device_r
 
 // CHECK-LABEL: mgp.model @lift_non_trivial_buffer_op_without_liftable_user : mof
 // Old chains and context ops
-// CHECK-NEXT:  %{{.*}} = grt.chain.create ()
+// CHECK:       %{{.*}} = grt.chain.create ()
 // CHECK:       %[[CTX:.*]] = mgp.context.create 3
 // CHECK-DAG:   %[[CH0:.*]] = mgp.runtime.create
 // Lifted ops
 // CHECK-DAG:   %[[IGNORED_CH:.*]], %[[RES:.*]]:2 = mgp.kernel.execute %[[CH0]], %[[CTX]][1, 1], (0, 0), (), summary "foo" out_dims 2
-// CHECK-DAG:   %[[BYTES:.*]] = mip.nary.mul(%[[RES]]#0, %[[RES]]#1) {constInt = 16 : si64}
+// CHECK-DAG:   %[[TMP:.*]] = index.mul
+// CHECK-DAG:   %[[BYTES:.*]] = index.mul
 // CHECK-DAG:   %[[BUF:.*]] = mgp.buffer.alloc %[[CH0]], %[[CTX]][1], %[[BYTES]], align 32 : !mgp.buffer<>
 // (Redundant) Chain merge to preserve control dependencies
 // CHECK-DAG:   %[[BUF_ACTION_CH:.*]] = grt.chain.create ()
@@ -320,7 +330,9 @@ mgp.model @lift_non_trivial_buffer_op_without_liftable_user : mof devices [#M.de
 
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.buffer<>) {
   %res:3 = mgp.kernel.execute %ch0, %ctx[1, 1], (0, 0), (), summary "foo" out_dims 2
-  %bytes = mip.nary.mul(%res#1, %res#2) {constInt = 16 : si64}
+  %c16 = index.constant 16
+  %tmp = index.mul %res#1, %res#2
+  %bytes = index.mul %c16, %tmp
   %buf = mgp.buffer.alloc %ch0, %ctx[1], %bytes, align 32 : !mgp.buffer<>
   mef.output %ch0, %buf : !mef.chain, !mgp.buffer<>
 }
@@ -337,7 +349,7 @@ mgp.model @lift_non_trivial_buffer_op_without_liftable_user : mof devices [#M.de
 // Lifted ops
 // CHECK-DAG:   %[[BUF:.*]] = mgp.buffer.alloc %[[CH0]], %[[CTX]][1], %{{.*}}, align 16 : !mgp.buffer<100>
 // CHECK-DAG:   %[[OP_CH:.*]], %[[DIM:.*]] = mgp.kernel.execute %[[CH0]], %[[CTX]][1, 1], (0, 0), (out %[[BUF]] : {{.*}}), summary "foo" out_dims 1
-// CHECK-DAG:   %[[BYTES:.*]] = mip.nary.mul(%[[DIM]]) {constInt = 8 : si64}
+// CHECK-DAG:   %[[BYTES:.*]] = index.mul
 // CHECK-DAG:   %[[OUT_BUF:.*]] = mgp.buffer.alloc %[[CH0]], %[[CTX]][1], %[[BYTES]], align 32 : !mgp.buffer<>
 // Chain merge to preserve control dependencies (NOTE that it took the kernel output chain into account)
 // Buffer caching
@@ -364,7 +376,8 @@ mgp.model @collect_write_chains_for_lifted_buffer : mof devices [#M.device_ref<"
   %size = index.constant 100
   %buf = mgp.buffer.alloc %ch0, %ctx[1], %size, align 16 : !mgp.buffer<100>
   %res:2 = mgp.kernel.execute %ch0, %ctx[1, 1], (0, 0), (out %buf : !mgp.buffer<100>), summary "foo" out_dims 1
-  %bytes = mip.nary.mul(%res#1) {constInt = 8 : si64}
+  %c8 = index.constant 8
+  %bytes = index.mul %res#1, %c8
   %out_buf = mgp.buffer.alloc %ch0, %ctx[1], %bytes, align 32 : !mgp.buffer<>
   mef.output %ch0, %buf, %out_buf : !mef.chain, !mgp.buffer<100>, !mgp.buffer<>
 }
@@ -390,7 +403,8 @@ mgp.model @dont_lift_if_mutated_by_unliftable : mof devices [#M.device_ref<"cpu"
   %ch2, %dim0 = mgp.kernel.execute %ch0, %ctx[1, 1], (0, 0), (out %buf : !mgp.buffer<100>), summary "foo" out_dims 1
   %ch3 = "foo.side_effect_op"(%dim0) : (index) -> !mef.chain
   %ch4, %dim1 = mgp.kernel.execute %ch3, %ctx[1, 1], (0, 0), (out %buf : !mgp.buffer<100>), summary "foo" out_dims 1
-  %bytes = mip.nary.mul(%dim1) {constInt = 16 : si64}
+  %c16 = index.constant 16
+  %bytes = index.mul %dim1, %c16
   %out_buf = mgp.buffer.alloc %ch0, %ctx[1], %bytes, align 32 : !mgp.buffer<>
   mef.output %ch0, %buf, %out_buf : !mef.chain, !mgp.buffer<100>, !mgp.buffer<>
 }
@@ -406,7 +420,8 @@ mgp.model @dont_lift_if_mutated_by_unliftable : mof devices [#M.device_ref<"cpu"
 // CHECK-DAG:   %[[BUF0:.*]] = mgp.buffer.alloc %[[CH0]], %[[CTX]][1], %{{.*}}, align 64 : !mgp.buffer<2359296>
 // CHECK-DAG:   %[[CH2:.*]] = mgp.kernel.execute %[[CH0]], %[[CTX]][1, 1], (0, 0), (out %[[BUF0]] : !mgp.buffer<2359296>), summary "kernelA"
 // CHECK-DAG:   %[[CH3:.*]], %[[DIMS:.*]]:2 = mgp.kernel.execute %[[CH0]], %[[CTX]][1, 1], (0, 0), (), summary "shapeFunction" out_dims 2
-// CHECK-DAG:   %[[BYTES:.*]] = mip.nary.mul(%[[DIMS]]#0, %[[DIMS]]#1) {constInt = 8 : si64}
+// CHECK-DAG:   %[[TMP:.*]] = index.mul
+// CHECK-DAG:   %[[BYTES:.*]] = index.mul
 // CHECK-DAG:   %[[CH4:.*]] = grt.chain.create (%[[CH0]], %[[CH2]])
 // CHECK-DAG:   %[[BUF1:.*]] = mgp.buffer.alloc %[[CH4]], %[[CTX]][1], %[[BYTES]], align 64 : !mgp.buffer<>
 // CHECK-DAG:   %[[CH5:.*]] = mgp.kernel.execute %[[CH2]], %[[CTX]][1, 1], (0, 0), (in %[[BUF0]] : !mgp.buffer<2359296>, out %[[BUF1]] : !mgp.buffer<>), (%outDimensions#0, %outDimensions#1), summary "kernelB"
@@ -436,7 +451,9 @@ mgp.model @cloned_needed_indirectly : mof devices [#M.device_ref<"cpu", 0>] init
   %ch2 = mgp.kernel.execute %ch0, %ctx[1, 1], (0, 0), (out %1 : !mgp.buffer<2359296>), summary "kernelA"
   %ch3, %outDimensions:2 = mgp.kernel.execute %ch0, %ctx[1, 1], (0, 0), (), summary "shapeFunction" out_dims 2
   %2 = mgp.tensor_spec.create %outDimensions#0, %outDimensions#1 : !mgp.tensor_spec<?x?xf32>
-  %3 = mip.nary.mul(%outDimensions#0, %outDimensions#1) {constInt = 8 : si64}
+  %c8 = index.constant 8
+  %tmp = index.mul %outDimensions#0, %outDimensions#1
+  %3 = index.mul %tmp, %c8
   %4 = grt.chain.create (%ch0, %ch2)
   %5 = mgp.buffer.alloc %4, %ctx[1], %3, align 64 : !mgp.buffer<>
   %ch4 = mgp.kernel.execute %ch2, %ctx[1, 1], (0, 0), (in %1 : !mgp.buffer<2359296>, out %5 : !mgp.buffer<>), (%outDimensions#0, %outDimensions#1), summary "kernelB"

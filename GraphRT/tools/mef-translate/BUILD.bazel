@@ -8,7 +8,6 @@ modular_cc_binary(
         "//AsyncRT:RuntimeGlobals",
         "//GraphRT:GRTDialect",
         "//GraphRT:MEFToMLIR",
-        "//GraphRT:MIPDialect",
         "//GraphRT:MLIRToMEF",
         "//Support:Globals",
         "@llvm-project//mlir:IR",

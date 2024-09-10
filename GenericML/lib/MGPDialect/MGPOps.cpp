@@ -10,7 +10,6 @@
 
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/BufferBuilder.h"
-#include "GraphRT/include/GraphRT/MIPDialect/MIPOps.h"
 #include "Support/AssertStream.h"
 #include "Support/Compiler/ParserUtils.h"
 #include "Support/Compiler/VerifyUtils.h"

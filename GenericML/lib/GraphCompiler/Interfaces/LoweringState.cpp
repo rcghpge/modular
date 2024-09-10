@@ -8,7 +8,6 @@
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
-#include "GraphRT/MIPDialect/MIPDialect.h"
 #include "Support/AssertStream.h"
 #include <llvm/ADT/STLExtras.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
@@ -275,13 +274,10 @@ Operation *MOGraphLoweringState::lowerIntAttr(OpBuilder &builder, Location loc,
 namespace {
 
 bool isIndexOp(Operation *op) {
-  // TODO: remove isa<MIP::MIPDialect> after fully migrated to mlir::index.
   // We uses arith::AndI/OrI/XOrIOp instead of index::And/Or/XOr because they
   // only IndexDialect operations only accept index-typed operands.
   return isa<mlir::index::IndexDialect>(op->getDialect()) ||
-         isa<mlir::arith::AndIOp, mlir::arith::OrIOp, mlir::arith::XOrIOp>(
-             op) ||
-         isa<MIP::MIPDialect>(op->getDialect());
+         isa<mlir::arith::AndIOp, mlir::arith::OrIOp, mlir::arith::XOrIOp>(op);
 }
 
 DenseSet<Operation *> getAncestors(Operation *root) {

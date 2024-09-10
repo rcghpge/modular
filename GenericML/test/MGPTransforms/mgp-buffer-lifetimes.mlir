@@ -11,7 +11,7 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
   %inTensorSpec = mgp.tensor.extract.tensor_spec %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
   %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
-  %allocSize = mip.nary.mul(%inDims#0, %inDims#1)
+  %allocSize = index.mul %inDims#0, %inDims#1
   // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC2:.*]] = mgp.buffer.alloc {{.*}}
@@ -46,7 +46,7 @@ mgp.model @parallel : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp
   %inTensorSpec = mgp.tensor.extract.tensor_spec %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
   %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
-  %allocSize = mip.nary.mul(%inDims#0, %inDims#1)
+  %allocSize = index.mul %inDims#0, %inDims#1
   // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC2:.*]] = mgp.buffer.alloc {{.*}}
@@ -84,7 +84,7 @@ mgp.model @tensor_create_aliased : mof devices [#M.device_ref<"cpu", 0>] init (%
   %inTensorSpec = mgp.tensor.extract.tensor_spec %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
   %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
-  %allocSize = mip.nary.mul(%inDims#0, %inDims#1)
+  %allocSize = index.mul %inDims#0, %inDims#1
   // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC2:.*]] = mgp.buffer.alloc {{.*}}
@@ -130,7 +130,7 @@ mgp.model @nested_block : mof devices [#M.device_ref<"cpu", 0>] init (%weights: 
   %ifchain, %outbuf = grt.if %b1 (%arg0: !mef.chain, %arg1: !mgp.context, %inBuffer: !mgp.buffer<>, %inTensorSpec: !mgp.tensor_spec<?x?xf32>) -> (!mef.chain, !mgp.buffer<>) {
     %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
-    %allocSize = mip.nary.mul(%inDims#0, %inDims#1)
+    %allocSize = index.mul %inDims#0, %inDims#1
 
     // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc {{.*}}
     // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}

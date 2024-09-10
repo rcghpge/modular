@@ -12,10 +12,9 @@
 #include "GenericML/MGPTransforms/Utils.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFTypes.h"
-#include "GraphRT/MIPDialect/MIPOps.h"
-#include "llvm-project/llvm/include/llvm/ADT/SetOperations.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
+#include "llvm/ADT/SetOperations.h"
 
 #define EXCLUDED_TYPES MGP::ContextType, MEF::MEFChainTypeInterface
 

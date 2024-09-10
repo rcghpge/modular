@@ -410,7 +410,6 @@ modular_cc_library(
         ":MOSHDialect",
         ":Support",
         "//GraphRT:GRTDialect",
-        "//GraphRT:MIPDialect",
     ],
 )
 
@@ -574,7 +573,6 @@ modular_cc_library(
         ":RMODialectIncGen",
         ":RMODialectInterfacesIncGen",
         "//GraphRT:GRTDialect",
-        "//GraphRT:MIPDialect",
     ],
 )
 
@@ -709,7 +707,6 @@ modular_cc_library(
         ":MOGGDialectPassesIncGen",
         ":Support",
         "//GraphRT:GRTDialect",
-        "//GraphRT:MIPDialect",
         "//Kernels/mojo/Mogg:MOGGLoader",
     ],
 )
@@ -946,7 +943,6 @@ modular_cc_library(
         ":MGPDialectTypesIncGen",
         ":Support",
         "//GraphRT:GRTDialect",
-        "//GraphRT:MIPDialect",
     ],
 )
 
@@ -994,7 +990,6 @@ modular_cc_library(
         ":MGPTransformsIncGen",
         ":Support",
         "//GraphRT:MEFDialect",
-        "//GraphRT:MIPDialect",
         "@llvm-project//llvm:Support",
     ],
 )

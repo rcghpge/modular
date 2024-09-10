@@ -8,7 +8,6 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GraphRT/MEFDialect/MEFDialect.h"
-#include "GraphRT/MIPDialect/MIPDialect.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/IR/Builders.h"

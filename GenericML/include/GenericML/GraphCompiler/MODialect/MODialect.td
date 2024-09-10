@@ -27,7 +27,6 @@ def MODialect : Dialect {
   let cppNamespace = "::M::MO";
   let dependentDialects = [
     "M::MDialect",
-    "MIP::MIPDialect",
     "MOSH::MOSHDialect",
   ];
   let hasConstantMaterializer = 1;

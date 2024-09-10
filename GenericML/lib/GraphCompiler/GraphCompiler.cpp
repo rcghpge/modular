@@ -24,7 +24,6 @@
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "GenericML/Support/BlobLifetimeManager.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
-#include "GraphRT/MIPDialect/MIPDialect.h"
 #include "GraphRT/MLIRToMEF.h"
 #include "Support/ADT/ConcatenationTree.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -54,8 +53,8 @@ using namespace MO;
 
 void M::MO::loadDialects(mlir::DialectRegistry &registry) {
   registry.insert<MO::MODialect, MOQ::MOQDialect, MOSH::MOSHDialect,
-                  MIP::MIPDialect, MOGG::MOGGDialect, MGP::MGPDialect,
-                  GRT::GRTDialect, RMO::RMODialect>();
+                  MOGG::MOGGDialect, MGP::MGPDialect, GRT::GRTDialect,
+                  RMO::RMODialect>();
   M::registerAllKGENDialects(registry);
   M::registerKGENToLLVMTranslation(registry);
 }

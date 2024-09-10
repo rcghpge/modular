@@ -17,7 +17,6 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
-#include "GraphRT/MIPDialect/MIPDialect.h"
 #include "KGEN/CustomDialect/CustomDialect.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/MDialect/MAttrs.h"
@@ -57,7 +56,7 @@ static inline bool canFuseOp(Operation *op) {
     return false;
 
   // Allow for custom ops starting with "testfuse." for testing purposes.
-  return isa_and_nonnull<::M::MIP::MIPDialect, MGPDialect>(op->getDialect()) ||
+  return isa_and_nonnull<MGPDialect>(op->getDialect()) ||
          op->getName().getIdentifier().strref().starts_with("testfuse.");
 }
 
