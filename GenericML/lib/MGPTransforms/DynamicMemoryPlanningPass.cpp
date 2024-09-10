@@ -51,7 +51,6 @@ bool isTriviallyComputable(Value v, DenseSet<Value> &trivial) {
 
   // If the producing op isn't trivial, this isn't a trivial value
   bool isTrivialOp =
-      isa<mlir::index::IndexDialect>(*producer->getDialect()) ||
       isa<TensorExtractTensorSpecOp, CpuTensorSpecSizeOp, CpuTensorSpecCreateOp,
           CpuTensorSpecDimsDynamicOp, BufferAllocOp>(*producer);
   if (!isTrivialOp)
@@ -186,17 +185,9 @@ class DynamicMemoryPlanningPass
       // Since all planned runtimeSizes are not data-dependent, this shouldn't
       // introduce any graph cycles.
       for (size_t i = 0; i < allocs.size(); ++i) {
-        Value slice = execState.builder.create<BufferSliceOp>(
+        auto slice = execState.builder.create<BufferSliceOp>(
             loc, superAlloc, bufferPlanOp.getOffsets()[i],
             allocs[i].runtimeSize);
-
-        // Resolve potential type mismatch.
-        DeviceBufferType originalTp = allocs[i].alloc.getOutBuffer().getType();
-        std::optional<uint64_t> staticSz = originalTp.getOptSize();
-        if (staticSz)
-          slice = execState.builder.create<BufferResizeOp>(
-              loc, originalTp, slice, *staticSz, originalTp.getDevice());
-
         allocs[i].alloc.getOutBuffer().replaceAllUsesWith(slice);
       }
 
