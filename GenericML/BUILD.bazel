@@ -81,12 +81,12 @@ modular_cc_library(
 
 rpath_shim(
     name = "rpaths",
-    visibility = ["//visibility:private"],
-    deps = [
+    packages = [
         "//ModularFramework/tools/mof",
         "//ONNX/tools/onnx:monnx",
         "//PyTorch/tools/torch:mtorch",
     ],
+    visibility = ["//visibility:private"],
 )
 
 modular_cc_library(

@@ -25,8 +25,7 @@ modular_cc_binary(
 
 rpath_shim(
     name = "rpaths",
-    visibility = ["//visibility:private"],
-    deps = [
+    packages = [
         "//Faux/tools/faux",
         "//ModularFramework/tools/mof",
         "//ONNX/tools/onnx:monnx",
@@ -34,4 +33,5 @@ rpath_shim(
         "//PyTorch:TorchRuntimePlugins",
         "//PyTorch/tools/torch:mtorch",
     ],
+    visibility = ["//visibility:private"],
 )
