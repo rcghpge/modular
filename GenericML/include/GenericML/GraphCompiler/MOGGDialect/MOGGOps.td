@@ -1016,7 +1016,7 @@ def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
 }
 
 
-def MOGG_ExecuteCompiledOp : MOGG_LowerableOp<"execute_kernel", [
+def MOGG_ExecuteCompiledOp : MOGG_Op<"execute_kernel", [
    DeclareOpInterfaceMethods<MO_ParamDeclaration>,
    MO_HasDeviceInterface]> {
   let summary = "Executes a compiled kernel on a given device.";

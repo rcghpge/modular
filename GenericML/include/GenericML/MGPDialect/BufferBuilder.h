@@ -290,25 +290,6 @@ public:
              TypedValue<MEF::ChainType> inChain, ElementsAttr image,
              ArrayAttr functionSymbols, ArrayAttr constantSymbols) = 0;
 
-  /// Returns the chain indicating the given kernel has completed execution
-  /// on the given operands. Type parameters from the operand !mo.tensor types
-  /// must have already been lowered to their index typed dimensions. It is
-  /// possible for the kernel to return output dimensions, however this is
-  /// only used by synchronous shape functions.
-  ///
-  /// The kernel to execute is determined from the kernelName, which must
-  /// match one of the kernel names in the loaded archive. The summary may be
-  /// an arbitrary (and not necessarily unique) label for use in debugging
-  /// and profiling.
-  virtual Value
-  kernelExecute(OpBuilder &builder, Location loc,
-                TypedValue<ContextType> context, StringRef kernelName,
-                Value inChain, ArrayRef<Value> args,
-                ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
-                ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
-                SmallVectorImpl<Value> &outDimensions, StringRef summary,
-                bool isAsync) = 0;
-
   /// Places the given buffer into a freshly allocated slot within the
   /// given !mgp.context. Returns the chain which indicates when the buffer
   /// has been placed, and the index of the slot from which the buffer may
@@ -456,15 +437,6 @@ public:
   moduleLoad(OpBuilder &builder, Location loc, TypedValue<ContextType> context,
              TypedValue<MEF::ChainType> inChain, ElementsAttr image,
              ArrayAttr functionSymbols, ArrayAttr constantSymbols) override;
-
-  Value
-  kernelExecute(OpBuilder &builder, Location loc,
-                TypedValue<ContextType> context, StringRef kernelName,
-                Value inChain, ArrayRef<Value> args,
-                ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
-                ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
-                SmallVectorImpl<Value> &outDimensions, StringRef summary,
-                bool isAsync) override;
 
   Value chainCreate(OpBuilder &builder, Location loc,
                     ArrayRef<Value> inChains) override;

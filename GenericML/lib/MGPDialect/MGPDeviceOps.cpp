@@ -89,24 +89,6 @@ getRawSizeArrayAttr(Location location, DictionaryAttr attributes,
   return success();
 }
 
-/// Assigns to num from attribute with name in attrs. Assigns 0 if no such
-/// attribute.
-static LogicalResult getNumAttrOrDefault(Location location,
-                                         DictionaryAttr attributes,
-                                         StringAttr name, uint64_t &num) {
-  if (!attributes.contains(name)) {
-    num = 0;
-  } else {
-    auto numAttr = dyn_cast<IntegerAttr>(attributes.get(name));
-    if (!numAttr) {
-      return mlir::emitError(location, "expected a uint64_t for attribute '")
-             << name << "'";
-    }
-    num = numAttr.getUInt();
-  }
-  return success();
-}
-
 /// Assigns to elements from attribute with name in attrs.
 static LogicalResult getElementsAttr(Location location,
                                      DictionaryAttr attributes, StringAttr name,
@@ -948,68 +930,4 @@ LogicalResult DebugTensorPrintOp::verify() {
            << expectedBufferType << " vs " << getBuffer().getType() << ").";
   }
   return verifyConsistentDevices(getOperation(), {getCDevice()});
-}
-
-//===----------------------------------------------------------------------===//
-// KernelExecuteOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult KernelExecuteOp::verify() {
-  if (getEInOutSignature().size() != getArgs().size())
-    return emitOpError("kernel has ")
-           << getArgs().size()
-           << " arguments, but the in/out signature attribute has arity "
-           << getEInOutSignature().size() << ".";
-
-  for (auto [idx, arg] : llvm::enumerate(getArgs())) {
-    if (!isa<DeviceBufferType>(arg.getType()) &&
-        getEInOutSignature()[idx] != InOutSignatureAttr::kIn) {
-      return emitOpError("argument ") << idx
-                                      << " is not an !mgp.buffer type, so "
-                                         "must be marked as read-only.";
-    }
-  }
-
-  if (getINumOutDimensions() != getOutDimensions().size()) {
-    return emitOpError()
-           << "expected number of output dimensions attribute to be "
-           << getOutDimensions().size() << ", but given "
-           << getINumOutDimensions() << ".";
-  }
-
-  return verifyConsistentDevices(getOperation(),
-                                 {getFHostDevice(), getGOtherDevice()});
-}
-
-LogicalResult KernelExecuteOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  DeviceRefAttr otherDevice;
-  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                    attributes, getGOtherDeviceAttrName(name),
-                                    otherDevice)))
-    return failure();
-
-  uint64_t numOutDimensions = 0;
-  if (failed(getNumAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                 attributes, getINumOutDimensionsAttrName(name),
-                                 numOutDimensions)))
-    return failure();
-
-  inferredReturnTypes.emplace_back(MEF::ChainType::get(context));
-  while (numOutDimensions-- > 0)
-    inferredReturnTypes.emplace_back(IndexType::get(context));
-  return success();
-}
-
-InOutSignatureAttr::InOutSemantics
-KernelExecuteOp::getInOutSemantics(size_t index) {
-  assert(index < getNumOperands());
-  size_t firstArgsIndex = getTheContextMutable().getOperandNumber() + 1;
-  size_t endArgsIndex = firstArgsIndex + getArgs().size();
-  if (index < firstArgsIndex || index >= endArgsIndex)
-    return InOutSignatureAttr::kIn;
-  return getEInOutSignature()[index - firstArgsIndex];
 }

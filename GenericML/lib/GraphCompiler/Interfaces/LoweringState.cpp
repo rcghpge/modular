@@ -547,18 +547,6 @@ FailureOr<SmallVector<MOOutputStorage>> MOOpLoweringState::createOutputStorage(
   return bufferizedTensors;
 }
 
-Value MOOpLoweringState::kernelExecute(
-    StringRef kernelName, Value inChain, ArrayRef<Value> args,
-    ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
-    ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
-    SmallVectorImpl<Value> &outDimensions, StringRef summary, bool isAsync) {
-  MGP::BufferBuilder *bufferBuilder =
-      loweringState.getBufferBuilder(MO::getDeviceOrDefaultAny(opBeingLowered));
-  return bufferBuilder->kernelExecute(
-      builder, loc, context, kernelName, inChain, args, inOutSemantics,
-      inDimensions, numOutDimensions, outDimensions, summary, isAsync);
-}
-
 void MOOpLoweringState::createOutputs(
     Value inChain, SmallVector<MOOutputStorage> &loweredOutputsStorage) {
   if (auto kernel = dyn_cast<MOGG::KernelOp>(opBeingLowered)) {

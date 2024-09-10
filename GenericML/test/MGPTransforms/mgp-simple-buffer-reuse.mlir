@@ -34,14 +34,14 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
   %alloc2 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
 
 
-  // CHECK-NEXT: %[[CH0:.*]] = mgp.kernel.execute {{.*}} (in %[[INBUFFER]] : !mgp.buffer<>, out %[[ALLOC0]] : !mgp.buffer<>)
-  %outChain_0 = mgp.kernel.execute %arg0, %arg1[1, 1], (0, 1), (in %inBuffer : !mgp.buffer<>, out %alloc0 : !mgp.buffer<>), (%inDims#0, %inDims#1),  summary "" is_async true
-  // CHECK-NEXT: %[[CH1:.*]] = mgp.kernel.execute {{.*}} (in %[[ALLOC0]] : !mgp.buffer<>, out %[[ALLOC1]] : !mgp.buffer<>)
-  %outChain_1 = mgp.kernel.execute %outChain_0, %arg1[1, 1], (0, 1), (in %alloc0 : !mgp.buffer<>, out %alloc1 : !mgp.buffer<>), (%inDims#0, %inDims#1),  summary "" is_async true
-
+  // CHECK-NEXT: %[[CH0:.*]] = "kernel_execute"(%{{.*}}, %[[INBUFFER]], %[[ALLOC0]])
+  %outChain_0 = "kernel_execute"(%arg0, %inBuffer, %alloc0) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
+  // CHECK-NEXT: %[[CH1:.*]] = "kernel_execute"(%{{.*}}, %[[ALLOC0]], %[[ALLOC1]])
+  %outChain_1 = "kernel_execute"(%outChain_0, %alloc0, %alloc1) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
   // Check to make sure all uses of %alloc2 are replaced with %alloc0
-  // CHECK-NEXT: %[[CH2:.*]] = mgp.kernel.execute %[[CH1]], {{.*}} (in %[[ALLOC1]] : !mgp.buffer<>, out %[[ALLOC0]] : !mgp.buffer<>)
-  %outChain_2 = mgp.kernel.execute %outChain_1, %arg1[1, 1], (0, 1), (in %alloc1 : !mgp.buffer<>, out %alloc2 : !mgp.buffer<>), (%inDims#0, %inDims#1),  summary "" is_async true
+  // CHECK-NEXT: %[[CH2:.*]] = "kernel_execute"(%[[CH1]], %[[ALLOC1]], %[[ALLOC0]])
+  %outChain_2 = "kernel_execute"(%outChain_1, %alloc1, %alloc2) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
+
   // CHECK-NEXT: %[[OUTTENSOR:.*]] = mgp.tensor.create %[[CH2]], {{.*}}
   %outTensor = mgp.tensor.create %outChain_2, %arg1[1], %alloc2, %inTensorSpec : !mgp.tensor<?x?xf32>
   mef.output %arg0, %outTensor : !mef.chain, !mgp.tensor<?x?xf32>
@@ -78,12 +78,13 @@ mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%weight
   %alloc2 = mgp.buffer.alloc %arg0, %arg1[1], %allocSizeDifferent, align 16 : !mgp.buffer<>
 
 
-  // CHECK-NEXT: %[[CH0:.*]] = mgp.kernel.execute {{.*}} (in %[[INBUFFER]] : !mgp.buffer<>, out %[[ALLOC0]] : !mgp.buffer<>)
-  %outChain_0 = mgp.kernel.execute %arg0, %arg1[1, 1], (0, 1), (in %inBuffer : !mgp.buffer<>, out %alloc0 : !mgp.buffer<>), (%inDims#0, %inDims#1),  summary "" is_async true
-  // CHECK-NEXT: %[[CH1:.*]] = mgp.kernel.execute {{.*}} (in %[[ALLOC0]] : !mgp.buffer<>, out %[[ALLOC1]] : !mgp.buffer<>)
-  %outChain_1 = mgp.kernel.execute %outChain_0, %arg1[1, 1], (0, 1), (in %alloc0 : !mgp.buffer<>, out %alloc1 : !mgp.buffer<>), (%inDims#0, %inDims#1),  summary "" is_async true
-  // CHECK-NEXT: %[[CH2:.*]] = mgp.kernel.execute %[[CH1]], {{.*}} (in %[[ALLOC1]] : !mgp.buffer<>, out %[[ALLOC2]] : !mgp.buffer<>)
-  %outChain_2 = mgp.kernel.execute %outChain_1, %arg1[1, 1], (0, 1), (in %alloc1 : !mgp.buffer<>, out %alloc2 : !mgp.buffer<>), (%inDims#0, %inDims#1),  summary "" is_async true
+  // CHECK-NEXT: %[[CH0:.*]] = "kernel_execute"({{.*}}, %[[INBUFFER]], %[[ALLOC0]])
+  %outChain_0 = "kernel_execute"(%arg0, %inBuffer, %alloc0) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
+  // CHECK-NEXT: %[[CH1:.*]] = "kernel_execute"({{.*}}, %[[ALLOC0]], %[[ALLOC1]])
+  %outChain_1 = "kernel_execute"(%outChain_0, %alloc0, %alloc1) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
+  // CHECK-NEXT: %[[CH2:.*]] = "kernel_execute"(%[[CH1]], %[[ALLOC1]], %[[ALLOC2]])
+  %outChain_2 = "kernel_execute"(%outChain_1, %alloc1, %alloc2) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
+
   // CHECK-NEXT: %[[OUTTENSOR:.*]] = mgp.tensor.create %[[CH2]], {{.*}}
   %outTensor = mgp.tensor.create %outChain_2, %arg1[1], %alloc2, %inTensorSpec : !mgp.tensor<?x?xf32>
   mef.output %arg0, %outTensor : !mef.chain, !mgp.tensor<?x?xf32>

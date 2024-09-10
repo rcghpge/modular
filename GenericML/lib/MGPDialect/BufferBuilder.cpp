@@ -356,48 +356,6 @@ TypedValue<MEF::ChainType> MGPBufferBuilder::moduleLoad(
   return load;
 }
 
-Value MGPBufferBuilder::kernelExecute(
-    OpBuilder &builder, Location loc, TypedValue<ContextType> context,
-    StringRef kernelName, Value inChain, ArrayRef<Value> args,
-    ArrayRef<InOutSignatureAttr::InOutSemantics> inOutSemantics,
-    ArrayRef<Value> inDimensions, uint64_t numOutDimensions,
-    SmallVectorImpl<Value> &outDimensions, StringRef summary, bool isAsync) {
-  // Use the kernel name to determine the (module index, function index) pair
-  // on the host.
-  auto [moduleIndex, functionIndex] =
-      hostBufferBuilder->getFunction(kernelName);
-
-  auto inOutSignatureAttr =
-      InOutSignatureAttr::get(builder.getContext(), inOutSemantics);
-  std::string augmentedSummary =
-      this == hostBufferBuilder ? summary.str()
-                                : (Twine(summary) + "[" + device.getLabel() +
-                                   ":" + Twine(device.getId()) + "]")
-                                      .str();
-
-  auto executeOp = builder.create<KernelExecuteOp>(
-      loc,
-      /*inChain=*/inChain,
-      /*theContext=*/context,
-      /*args=*/args,
-      /*inDimensions=*/inDimensions,
-      /*aHostRuntimeSlot=*/hostBufferBuilder->runtimeSlot,
-      /*bOtherRuntimeSlot=*/runtimeSlot,
-      /*cHostModuleIndex=*/moduleIndex,
-      /*dHostFunctionIndex=*/functionIndex,
-      /*eInOutSignature=*/inOutSignatureAttr,
-      /*fHostDevice=*/hostBufferBuilder->device,
-      /*gOtherDevice=*/device,
-      /*hSummary=*/augmentedSummary,
-      /*iNumOutDimensions=*/numOutDimensions,
-      /*jIsAsync=*/isAsync);
-
-  for (Value outDimension : executeOp.getOutDimensions())
-    outDimensions.emplace_back(outDimension);
-
-  return executeOp.getOutChain();
-}
-
 Value MGPBufferBuilder::chainCreate(OpBuilder &builder, Location loc,
                                     ArrayRef<Value> inChains) {
   return builder.create<GRT::ChainCreateOp>(loc, inChains);

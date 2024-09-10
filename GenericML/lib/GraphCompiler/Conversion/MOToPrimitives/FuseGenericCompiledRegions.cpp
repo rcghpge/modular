@@ -304,8 +304,7 @@ static inline bool areCompatibleForFusion(Operation *parent, Operation *child) {
 static inline bool isComputationallySignificant(Operation *op) {
   if (auto asRegion = dyn_cast<MOGG::GenericCompiledRegionOp>(op))
     return !asRegion.getCanFuseIntoOther();
-
-  return isa<MGP::KernelExecuteOp>(op);
+  return false;
 }
 
 // SourceDestination sequence fusion is the simplest form of fusion: fuse things

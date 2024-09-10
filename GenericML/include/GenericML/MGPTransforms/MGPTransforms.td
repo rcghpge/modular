@@ -391,9 +391,9 @@ def SimpleBufferReusePass : Pass<"simple-buffer-reuse", "MGP::ModelOp"> {
       %buf1 = mgp.buffer.alloc %inChain, %ctx[1], %size, ...
       %buf2 = mgp.buffer.alloc %inChain, %ctx[1], %size, ...
 
-      %outChain_0 = mgp.kernel.execute %inChain ... (in %input, out %buf0)
-      %outChain_1 = mgp.kernel.execute %outChain_0 ... (in %buf0, out %buf1)
-      %outChain_2 = mgp.kernel.execute %outChain_1 ... (in %buf1, out %buf2)
+      %outChain_0 = use(%inChain, %input, %buf0)
+      %outChain_1 = use(%outChain_0, %buf0, %buf1)
+      %outChain_2 = use(%outChain_1, %buf1, %buf2)
     ```
     becomes:
     ```mlir
@@ -403,9 +403,9 @@ def SimpleBufferReusePass : Pass<"simple-buffer-reuse", "MGP::ModelOp"> {
       %buf0 = mgp.buffer.alloc %inChain, %ctx[1], %size, ...
       %buf1 = mgp.buffer.alloc %inChain, %ctx[1], %size, ...
 
-      %outChain_0 = mgp.kernel.execute %inChain ... (in %input, out %buf0)
-      %outChain_1 = mgp.kernel.execute %outChain_0 ... (in %buf0, out %buf1)
-      %outChain_2 = mgp.kernel.execute %outChain_1 ... (in %buf1, out %buf0)
+      %outChain_0 = use(%inChain, %input, %buf0)
+      %outChain_1 = use(%outChain_0, %buf0, %buf1)
+      %outChain_2 = use(%outChain_1, %buf1, %buf0)
     ```
 
   }];

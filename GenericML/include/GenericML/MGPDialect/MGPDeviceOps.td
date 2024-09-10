@@ -358,7 +358,6 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
 
 def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
 ]> {
   let summary = "Initializes a buffer from an external constant.";
@@ -422,7 +421,6 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
 
 def BufferConstantOp : MGP_DeviceOp<"buffer.constant", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
 ]> {
   let summary = "Allocates and initializes a buffer from a host attribute.";
@@ -1522,97 +1520,8 @@ def DebugTensorPrintOp : MGP_DeviceOp<"debug.tensor.print"> {
 }
 
 //===----------------------------------------------------------------------===//
-// KernelExecuteOp
+// SyncOp
 //===----------------------------------------------------------------------===//
-
-def KernelExecuteOp : MGP_DeviceOp<"kernel.execute", [
-    AttrSizedOperandSegments,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGP_KernelExecuteOpInterface>,
-    DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
-    DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
-]> {
-  let summary = "Executes a Mojo kernel.";
-  let description = [{
-    Executes the Mojo kernel with the given function and module index from the
-    loaded module at the given `!mgp.context` slot. The kernel entry point is
-    always executed on the host device, however it may in turn launch a kernel
-    for a non-host device. All arguments must reside on the devices the kernel
-    expects. Generally this means arguments are on the host device or on the
-    device for the operation.
-
-    Note that the summary attribute is only used for debugging and profiling.
-    The actual kernel to execute is determined only by the given module and
-    kernel indexes.
-
-    Example:
-    ```mlir
-    %ch0 : !mgp.chain<<"cuda", 3>>
-    %ctx : !mgp.context
-    %buf0 : !mgp.buffer<>
-    %buf1 : !mgp.buffer<, <"cuda", 3>>
-    %buf2 : !mgp.buffer<48, <"cuda", 3>>
-    %dim0 : index
-    %dim1 : index
-    // Launches a CUDA kernel via a host Mojo shim:
-    //  - The CUDA kernel will execute on the CUDA GPU with virtual device 3,
-    //    which has its runtime established in slot 5.
-    //  - The host shim can be retrieved from the module with index 7, kernel
-    //    with index 9, using the host runtime established in slot 4.
-    //  - The kernel takes two input buffers and one output buffer. The
-    //    first buffer resides on the host, the other two are on the GPU.
-    //  - The kernel takes two runtime dimensions.
-    %ch1 = mgp.generic.execute %ch0,
-             %ctx[4, 5], (7, 9),
-             (in %buf0 : !mgp.buffer<>,
-              in %buf1 : !mgp.buffer<, <"cuda", 3>>,
-              out %buf2 : !mgp.buffer<48, <"cuda", 3>>),
-             (%dim0, %dim1),
-             other <"cuda", 3> summary "kernel1" is_async false
-    %ch1 : !mgp.chain<<"cuda", 3>>
-    ```
-  }];
-
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
-  let arguments = (ins
-    ChainType:$inChain,
-    MGP_ContextType:$theContext,
-    Variadic<AnyTypeOf<[MGP_DeviceBufferType, MGP_List]>>:$args,
-    Variadic<Index>:$inDimensions,
-    UI64Attr:$aHostRuntimeSlot,                          // 0
-    UI64Attr:$bOtherRuntimeSlot,                         // 1
-    UI64Attr:$cHostModuleIndex,                          // 2
-    UI64Attr:$dHostFunctionIndex,                        // 3
-    M_InOutSignatureAttr:$eInOutSignature,               // 4
-    MGP_OptDeviceRefAttr:$fHostDevice,                   // 5
-    MGP_OptDeviceRefAttr:$gOtherDevice,                  // 6
-    StrAttr:$hSummary,                                   // 7
-    DefaultValuedAttr<UI64Attr, "0">:$iNumOutDimensions, // 8
-    DefaultValuedAttr<BoolAttr, "false">:$jIsAsync);     // 9
-  let results = (outs ChainType:$outChain,
-                      Variadic<Index>:$outDimensions);
-  let assemblyFormat = [{
-    $inChain `,`
-    $theContext `[` $aHostRuntimeSlot `,` $bOtherRuntimeSlot `]` `,`
-    `(` $cHostModuleIndex `,` $dHostFunctionIndex `)` `,`
-    custom<InOutArgsSignature>($args, type($args), $eInOutSignature) `,`
-    ( `(` $inDimensions^ `)` `,` )?
-    ( `host` $fHostDevice^ )?
-    custom<OptDeviceRef>("\"other\"", $gOtherDevice, type($inChain))
-    `summary` $hSummary
-    ( `out_dims` $iNumOutDimensions^ )?
-    ( `is_async` $jIsAsync^ )?
-    attr-dict
-  }];
-  let hasVerifier = 1;
-
-  let extraClassDefinition = [{
-    uint64_t KernelExecuteOp::getSlot() { return getBOtherRuntimeSlot(); }
-
-    M::DeviceRefAttr KernelExecuteOp::getDevice() { return getGOtherDevice(); }
-  }];
-}
 
 def MGP_SyncOp : MGP_DeviceOp<"sync",
   [DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>]

@@ -18,10 +18,8 @@
 #include "Support/AssertStream.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
 
 #include "./RelationDataflowAnalysis.h"
@@ -101,20 +99,7 @@ bool canBeConveyed(Operation *op) {
 /// Returns true if the result of op cannot be cached, but it is ok for the
 /// op to be executed in both the 'init' and 'execute' blocks. Doing so will
 /// allow downstream ops to also be lifted to the 'init' block.
-bool isRecomputableOp(Operation *op) {
-  // We'll allow all pure ops to be recomputed.
-  if (isPure(op))
-    return true;
-
-  // We also allow compiled kernels to be recomputed if they return indices,
-  // which signals they are just shape functions and side-effect free.
-  if (auto executeOp = dyn_cast<KernelExecuteOp>(op)) {
-    if (!executeOp.getOutDimensions().empty())
-      return true;
-  }
-
-  return false;
-}
+bool isRecomputableOp(Operation *op) { return isPure(op); }
 
 /// Returns true if the execution of op could be safely lifted or copied to
 /// the 'init' block without causing unintended side effects.
