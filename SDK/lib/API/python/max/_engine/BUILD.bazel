@@ -21,6 +21,7 @@ modular_pybind_extension(
         "//SDK:ModularFrameworkPython",
     ],
     deps = [
+        "//AsyncRT:Runtime",
         "//Support:Base",
     ],
 )
