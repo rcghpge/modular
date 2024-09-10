@@ -126,7 +126,7 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
     auto *runtime = loadContext(ctx)->get<AsyncRT::Runtime>();
 
     setTargetInfo(kgenModule, *targetInfoOr);
-    AsyncRT::AnyAsyncValueRef ready = compiler.runElaborationPipeline(
+    ErrorOrSuccess result = compiler.runElaborationPipeline(
         kgenModule, *targetInfoOr, *runtime, runtime->getReadyChain().copy(),
         Cache::CacheTelemetryContext::getTelemetryOnMissLambda(
             "StubCompiler::elaborateKGEN",
@@ -135,12 +135,8 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
         Cache::CacheTelemetryContext::getTelemetryOnHitLambda(
             "StubCompiler::elaborateKGEN"));
 
-    if (ready.isError()) {
-      AsyncRT::EncodedDiagnostic diag = ready.takeDiagnostic();
-      AsyncRT::DecodedLocation loc = diag.decodeLocation();
-      mlir::emitError(
-          FileLineColLoc::get(ctx, loc.filename, loc.line, loc.column),
-          diag.getMessage().get());
+    if (result.isError()) {
+      mlir::emitError(kgenModule.getLoc(), result.getError());
       res = failure();
     }
   }
