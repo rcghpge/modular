@@ -186,6 +186,7 @@ py_repl(
         "//SDK/lib/API/python:max_engine",
         "//SDK/lib/API/python:max_graph",
         "//SDK/lib/API/python:max_serve",
+        "//SDK/public/max-repo/pipelines/python:pipelines",
         requirement("hypothesis"),
         requirement("notebook"),
         requirement("pytest"),
