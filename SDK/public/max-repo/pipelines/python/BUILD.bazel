@@ -1,4 +1,5 @@
 load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_filegroup", "pkg_files")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -23,11 +24,21 @@ py_binary(
     ],
 )
 
-# TODO@gaz: Is this still used?
-# https://github.com/modularml/modular/pull/44976/
-filegroup(
-    name = "pipelines_python",
+pkg_files(
+    name = "python_files",
     srcs = glob([
-        "**/*.py",
-    ]),
+        "*.py",
+    ]) + [
+        ":requirements.txt",
+    ],
+)
+
+pkg_filegroup(
+    name = "pipelines_python",
+    srcs = [
+        ":python_files",
+        "//SDK/public/max-repo/pipelines/python/llama3:python_files",
+        "//SDK/public/max-repo/pipelines/python/text_streaming:python_files",
+        "//SDK/public/max-repo/pipelines/python/utils:python_files",
+    ],
 )

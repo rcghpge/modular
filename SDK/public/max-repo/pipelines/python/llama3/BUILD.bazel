@@ -1,4 +1,5 @@
 load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -16,4 +17,13 @@ py_library(
         "//SDK/lib/API/python:max_graph",
         "//SDK/public/max-repo/pipelines/python/utils",
     ],
+)
+
+pkg_files(
+    name = "python_files",
+    srcs = glob([
+        "**/*.py",
+    ]),
+    prefix = "llama3",
+    strip_prefix = strip_prefix.from_pkg(""),
 )
