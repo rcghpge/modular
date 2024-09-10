@@ -136,6 +136,9 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Get the rank of the tensor. Fails if not statically ranked.
     size_t getRank() const;
 
+    /// Get the rank of the tensor but scalars are considered rank 1.
+    size_t getRankNonZero() const;
+
     /// Checks if this type has a static shape, i.e. if the type is ranked and
     /// all dimensions have known size.
     bool hasStaticShape() const;

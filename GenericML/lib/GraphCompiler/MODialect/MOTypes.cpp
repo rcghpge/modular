@@ -490,6 +490,10 @@ size_t TensorType::getRank() const {
   return getTypedShapeAttr().getRank();
 }
 
+size_t TensorType::getRankNonZero() const {
+  return std::max<size_t>(1, getRank());
+}
+
 bool TensorType::hasStaticShape() const {
   return hasRank() && getTypedShapeAttr().isStatic();
 }
