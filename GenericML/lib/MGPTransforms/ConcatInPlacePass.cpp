@@ -14,6 +14,7 @@
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/AssertStream.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
@@ -70,68 +71,60 @@ class ConcatInPlacePass
         // The concat input buffers are not distinct.
         return;
 
-      // In the following we'll ignore the chains which guard the inBuffer
-      // alloc ops on the assumption the dependent chains to the concat
-      // indicate when the inBuffers are safe to read, and there's no additional
-      // dependency captured by the alloc chains.
-
-      // Collects the size attributes for the split, one for every concat
-      // input buffer.
-      SmallVector<std::optional<uint64_t>> optSizes;
-      optSizes.reserve(concatOp.getInBuffers().size());
-      // Collects the types of the split output buffers, one for every concat
-      // input buffer.
-      SmallVector<Type> bufferTypes;
-      bufferTypes.reserve(concatOp.getInBuffers().size());
-      // Collects the runtime size arguments for the split.
-      // Will only be populated for input buffers which don't have a statically
-      // known size, if any.
-      SmallVector<Value> runtimeSizes;
-
-      // For each concat input buffer...
-      for (Value inBuffer : concatOp.getInBuffers()) {
-        auto bufferType = dyn_cast<DeviceBufferType>(inBuffer.getType());
-        assert(bufferType);
-        optSizes.emplace_back(bufferType.getOptSize());
-        bufferTypes.emplace_back(bufferType);
-        if (!bufferType.getOptSize()) {
-          // Buffer does not have a statically known size.
-          // We'll need to pass a size argument as an operand to the split.
-          if (auto allocOp =
-                  dyn_cast<MGP::BufferAllocOp>(inBuffer.getDefiningOp())) {
-            runtimeSizes.emplace_back(allocOp.getRuntimeSize());
-          } else {
-            ASSERT_STREAM(false, << "unexpected buffer allocation op "
-                                 << *inBuffer.getDefiningOp());
-          }
-        }
-      }
-
-      BufferBuilder *bufferBuilder =
-          builderContext.getBufferBuilder(concatOp.getDevice());
-
-      // We need to ensure the output buffer will be available before any
-      // writers to the split result buffers. The easiest way is to just reset
-      // its input chain to be the root chain.
-      //
-      // TODO(#14781): We could be cleverer, for example by finding or
-      // constructing a pre-dominator chain to all the chains which gate
-      // writing to the split result buffers. That could be done by
-      // DeferAllocsPass
-      TypedValue<MEF::ChainType> rootChain =
-          getRootChainForBlock(concatOp->getBlock());
-      TypedValue<ContextType> context =
-          bufferBuilder->getContextForOp(concatOp);
-      execState.builder.setInsertionPoint(concatOp);
-      allocOutputOp.setInChain(rootChain);
-
       // We are now ready to create the split op.
       // For the moment, place it before the concat it will replace.
       execState.builder.setInsertionPoint(concatOp);
-      Value concatenatedBuffer = concatOp.getOutBuffer();
-      auto outBuffers = bufferBuilder->splitBorrow(
-          execState.builder, concatOp->getLoc(), context, rootChain,
-          concatenatedBuffer, runtimeSizes, optSizes);
+      Value concatBuffer = concatOp.getOutBuffer();
+
+      auto loc = concatOp.getLoc();
+
+      // Collects the runtime size arguments for the split.
+      SmallVector<Value> runtimeSizes;
+
+      BufferBuilder *bufferBuilder =
+          builderContext.getBufferBuilder(concatOp.getDevice());
+      OpBuilder &builder = execState.builder;
+
+      SmallVector<Value> outBuffers;
+      Value offset =
+          builder.create<mlir::index::ConstantOp>(loc, 0).getResult();
+      Value sliceSize = nullptr;
+
+      // For each concat input buffer...
+      for (Value inBuffer : concatOp.getInBuffers()) {
+        auto bufferType = cast<DeviceBufferType>(inBuffer.getType());
+
+        // Insert the slices just after the producing op for readability
+        if (auto op = inBuffer.getDefiningOp())
+          execState.builder.setInsertionPoint(op);
+
+        if (sliceSize)
+          offset = builder.create<mlir::index::AddOp>(loc, offset, sliceSize);
+
+        // We'll need to pass a size argument as an operand to the slice.
+        if (auto allocOp =
+                dyn_cast<MGP::BufferAllocOp>(inBuffer.getDefiningOp())) {
+          sliceSize = allocOp.getRuntimeSize();
+        } else {
+          ASSERT_STREAM(false, << "unexpected buffer allocation op "
+                               << *inBuffer.getDefiningOp());
+        }
+
+        Value outSlice = bufferBuilder->bufferSlice(builder, loc, concatBuffer,
+                                                    offset, sliceSize);
+
+        // BufferResizeOp
+        if (outSlice.getType() != inBuffer.getType()) {
+          outSlice = bufferBuilder->bufferResize(builder, loc, outSlice,
+                                                 *bufferType.getOptSize());
+        }
+
+        outBuffers.push_back(outSlice);
+      }
+
+      // Move the combined alloc to the top for readability.
+      concatBuffer.getDefiningOp()->moveBefore(
+          outBuffers.front().getDefiningOp());
 
       // The input buffers are now provided by the split.
       for (auto [origInBuffer, newOutBuffer] :
@@ -145,16 +138,6 @@ class ConcatInPlacePass
 
       // The concat is now dead.
       concatOp->erase();
-
-      // For readability, place the split input buffer allocation before the
-      // split itself.
-      moveAllBefore(concatenatedBuffer.getDefiningOp(),
-                    outBuffers.front().getDefiningOp());
-
-      // For readability, place the split before all the users of its output
-      // buffers.
-      moveAllBefore(outBuffers.front().getDefiningOp(),
-                    earliestUsingOp(outBuffers));
     });
   }
 };

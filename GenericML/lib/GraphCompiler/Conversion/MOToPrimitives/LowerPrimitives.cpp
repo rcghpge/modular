@@ -22,6 +22,8 @@
 #include "Support/MDialect/MAttrs.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 
+#include "mlir/Dialect/Index/IR/IndexDialect.h"
+
 using namespace M;
 
 namespace M::MGP {

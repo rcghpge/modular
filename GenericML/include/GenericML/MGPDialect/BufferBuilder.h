@@ -89,9 +89,9 @@ LogicalResult genericTensorCreateVerify(Operation *op, BufferType bufferType,
                                         TensorSpecType tensorSpecType,
                                         TensorType tensorType) {
   if (tensorSpecType != tensorType.getTensorSpec())
-    return op->emitOpError()
-           << "expected spec to match result tensor spec" << " ("
-           << tensorSpecType << " vs " << tensorType.getTensorSpec() << ")";
+    return op->emitOpError() << "expected spec to match result tensor spec"
+                             << " (" << tensorSpecType << " vs "
+                             << tensorType.getTensorSpec() << ")";
 
   BufferType expectedBufferType = BufferType::get(tensorType);
   bool bufferIsStatic = bufferType.getOptSize().has_value();
@@ -122,9 +122,9 @@ LogicalResult genericTensorExtractVerify(Operation *op, TensorType tensorType,
                                          TensorSpecType resultTensorSpecType) {
   if (tensorType.getTensorSpec() != resultTensorSpecType)
     return op->emitOpError()
-           << "expected the result spec to match tensor's spec" << " ("
-           << resultTensorSpecType << " vs " << tensorType.getTensorSpec()
-           << ")";
+           << "expected the result spec to match tensor's spec"
+           << " (" << resultTensorSpecType << " vs "
+           << tensorType.getTensorSpec() << ")";
   BufferType expectedBufferType = BufferType::get(tensorType);
   if (expectedBufferType != resultBufferType)
     return op->emitOpError()
@@ -273,8 +273,7 @@ public:
                              Value inBuffer) = 0;
 
   /// Returns alias to buffer with the size asserted
-  virtual Value bufferResize(OpBuilder &builder, Location loc,
-                             TypedValue<ContextType> context, Value inBuffer,
+  virtual Value bufferResize(OpBuilder &builder, Location loc, Value inBuffer,
                              uint64_t size) = 0;
 
   /// Return the chain indicating tensor, in the form of buffer and tensor spec,
@@ -445,8 +444,7 @@ public:
   Value bufferUnsize(OpBuilder &builder, Location loc,
                      TypedValue<ContextType> context, Value inBuffer) override;
 
-  Value bufferResize(OpBuilder &builder, Location loc,
-                     TypedValue<ContextType> context, Value inBuffer,
+  Value bufferResize(OpBuilder &builder, Location loc, Value inBuffer,
                      uint64_t size) override;
 
   Value debugTensorPrint(OpBuilder &builder, Location loc,

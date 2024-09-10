@@ -181,7 +181,7 @@ Value MGPBufferBuilder::tensorCreate(OpBuilder &builder, Location loc,
   std::optional<uint64_t> bufferOptSize = deviceBuffer.getType().getOptSize();
   if (specOptSize.has_value() && !bufferOptSize.has_value()) {
     deviceBuffer = cast<TypedValue<DeviceBufferType>>(
-        bufferResize(builder, loc, context, deviceBuffer, *specOptSize));
+        bufferResize(builder, loc, deviceBuffer, *specOptSize));
   } else if (!specOptSize.has_value() && bufferOptSize.has_value()) {
     deviceBuffer = cast<TypedValue<DeviceBufferType>>(
         bufferUnsize(builder, loc, context, deviceBuffer));
@@ -292,7 +292,6 @@ Value MGPBufferBuilder::bufferUnsize(OpBuilder &builder, Location loc,
 }
 
 Value MGPBufferBuilder::bufferResize(OpBuilder &builder, Location loc,
-                                     TypedValue<ContextType> context,
                                      Value inBuffer, uint64_t size) {
   return builder.create<BufferResizeOp>(
       loc,

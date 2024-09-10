@@ -6,12 +6,17 @@
 
 // CHECK-LABEL: mgp.model @dynamic_concat
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context
+// CHECK: %[[IDX_0:.*]] = index.constant 0
 // CHECK: %[[TOTAL_SIZE:.*]] = index.constant 64
 // CHECK: %[[SPLIT_SIZE:.*]] = index.constant 32
 // CHECK: %[[OUT_BUF:.*]] = mgp.buffer.alloc %[[CH0]], %[[CTX]][1], %[[TOTAL_SIZE]]
-// CHECK: %[[IN_BUFS:.*]]:2 = mgp.buffer.split.borrow %[[CH0]], %[[CTX]][1], %[[OUT_BUF]], %[[SPLIT_SIZE]] : !mgp.buffer<>  -> (!mgp.buffer<>, !mgp.buffer<32>)
-// CHECK: %[[CH2:.*]] = "add"(%[[CH0]], %{{.*}}, %{{.*}}, %[[IN_BUFS]]#0)
-// CHECK: %[[CH3:.*]] = "sub"(%[[CH0]], %{{.*}}, %{{.*}}, %[[IN_BUFS]]#1)
+
+// CHECK: %[[SLICE0:.*]] = mgp.buffer.slice %[[OUT_BUF]], %[[IDX_0]], %[[SPLIT_SIZE]]
+
+// CHECK: %[[CH2:.*]] = "add"(%[[CH0]], %{{.*}}, %{{.*}}, %[[SLICE0]])
+// CHECK: %[[SLICE1:.*]] = mgp.buffer.slice %[[OUT_BUF]], %[[SPLIT_SIZE]], %[[SPLIT_SIZE]]
+// CHECK: %[[RESIZED:.*]] = mgp.buffer.resize %[[SLICE1]] : !mgp.buffer<32>
+// CHECK: %[[CH3:.*]] = "sub"(%[[CH0]], %{{.*}}, %{{.*}}, %[[RESIZED]])
 // CHECK: %[[CH4:.*]] = grt.chain.create (%[[CH2]], %[[CH3]])
 // CHECK: %[[RESIZED_BUF:.*]] = mgp.buffer.resize %[[OUT_BUF]] : !mgp.buffer<64>
 // CHECK: %[[TEN:.*]] = mgp.tensor.create %[[CH4]], %[[CTX]][1], %[[RESIZED_BUF]], %{{.*}}
@@ -47,7 +52,8 @@ mgp.model @dynamic_concat : mof devices [#M.device_ref<"cpu", 0>] init (%weights
 //
 
 // CHECK-LABEL: mgp.model @concat_with_shared_input_buffer
-// CHECK: %{{.*}} = mgp.buffer.split.borrow
+// CHECK: %{{.*}} = mgp.buffer.slice
+// CHECK: %{{.*}} = mgp.buffer.slice
 
 mgp.model @concat_with_shared_input_buffer : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
@@ -76,7 +82,8 @@ mgp.model @concat_with_shared_input_buffer : mof devices [#M.device_ref<"cpu", 0
 //
 
 // CHECK-LABEL: mgp.model @non_trivial_chains
-// CHECK: %{{.*}} = mgp.buffer.split.borrow
+// CHECK: %{{.*}} = mgp.buffer.slice
+// CHECK: %{{.*}} = mgp.buffer.slice
 
 mgp.model @non_trivial_chains : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
