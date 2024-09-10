@@ -322,12 +322,6 @@ public:
                              TypedValue<ContextType> context, Value inChain,
                              Value outBuffer, ArrayRef<Value> inBuffers) = 0;
 
-  /// Split a buffer.
-  virtual SmallVector<Value>
-  splitBorrow(OpBuilder &builder, Location loc, TypedValue<ContextType> context,
-              Value inChain, Value inBuffer, ArrayRef<Value> runtimeSizes,
-              ArrayRef<std::optional<uint64_t>> outBufferSizes) = 0;
-
   virtual Value bufferSlice(OpBuilder &builder, Location loc, Value inBuffer,
                             Value offset, Value size) = 0;
 
@@ -454,11 +448,6 @@ public:
   Value bufferConcat(OpBuilder &builder, Location loc,
                      TypedValue<ContextType> context, Value inChain,
                      Value outBuffer, ArrayRef<Value> inBuffers) override;
-
-  SmallVector<Value>
-  splitBorrow(OpBuilder &builder, Location loc, TypedValue<ContextType> context,
-              Value inChain, Value inBuffer, ArrayRef<Value> runtimeSizes,
-              ArrayRef<std::optional<uint64_t>> outBufferSizes) override;
 
   Value bufferSlice(OpBuilder &builder, Location loc, Value inBuffer,
                     Value offset, Value size) override;

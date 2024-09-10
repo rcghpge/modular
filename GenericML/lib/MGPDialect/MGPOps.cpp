@@ -117,41 +117,6 @@ LogicalResult M::MGP::verifyConsistentDevices(
 // Custom parsers
 //===----------------------------------------------------------------------===//
 
-/// Parses an optional keyword and #M.device_ref into device, then assigns
-/// chains the type !mgp.chain<device>.
-static ParseResult parseOptDeviceRefImpl(OpAsmParser &p, StringRef keyword,
-                                         DeviceRefAttr &device,
-                                         ArrayRef<Type *> chains) {
-  if (succeeded(p.parseOptionalKeyword(keyword))) {
-    llvm::SMLoc loc;
-    if (p.getCurrentLocation(&loc))
-      return failure();
-    device = dyn_cast_if_present<DeviceRefAttr>(
-        DeviceRefAttr::parse(p, /*odsType=*/{}));
-    if (!device)
-      return p.emitError(loc, "expecting #M.device_ref attribute");
-  } else {
-    device = DeviceRefAttr::getDefault(p.getContext());
-  }
-  for (Type *chain : chains)
-    *chain = MEF::ChainType::get(p.getContext());
-  return success();
-}
-
-static ParseResult parseOptDeviceRef(OpAsmParser &p, StringRef keyword,
-                                     DeviceRefAttr &device, Type &chain) {
-  return parseOptDeviceRefImpl(p, keyword, device, {&chain});
-}
-
-static void printOptDeviceRef(OpAsmPrinter &p, Operation *op, StringRef keyword,
-                              DeviceRefAttr device, MEF::ChainType chain) {
-  if (device != DeviceRefAttr::getDefault(op->getContext())) {
-    p.printKeywordOrString(keyword);
-    p.getStream() << " ";
-    device.print(p);
-  }
-}
-
 /// Parses a !mgp.buffer type, extracts its raw size and device attributes,
 /// assigns chains the type !mgp.chain<device>.
 static ParseResult parseBufferTypeToRawSizeDeviceImpl(OpAsmParser &p,
@@ -356,47 +321,6 @@ static void printTensorTypeToDeviceBufferSpec(OpAsmPrinter &p, Operation *op,
                                               TensorSpecType tensorSpec,
                                               MEF::ChainType chain) {
   p << tensorType;
-}
-
-/// Parses a function type consisting of one input buffer and N output
-/// buffer types, all sharing the same device assigned to device, assigns
-/// outBufferRawSizes the raw sizes from the outBuffer types, and assigns chain
-/// the type !mgp.chain<device>.
-static ParseResult parseBufferTypesToBufferRawSizesDeviceOutBuffers(
-    OpAsmParser &p, Type &inBuffer, IntArrayElementsAttr &outBufferRawSizesAttr,
-    DeviceRefAttr &device, SmallVectorImpl<Type> &outBuffers, Type &chain) {
-  llvm::SMLoc loc;
-  if (p.getCurrentLocation(&loc) || p.parseType(inBuffer))
-    return failure();
-  auto inBufferType = dyn_cast<DeviceBufferType>(inBuffer);
-  if (!inBufferType)
-    return p.emitError(loc, "expected an !mgp.buffer type");
-  device = inBufferType.getDevice();
-  chain = MEF::ChainType::get(p.getContext());
-  SmallVector<APInt> rawDims;
-  if (p.getCurrentLocation(&loc) || p.parseArrowTypeList(outBuffers))
-    return failure();
-  rawDims.reserve(outBuffers.size());
-  for (const auto &outBuffer : outBuffers) {
-    auto outBufferType = dyn_cast<DeviceBufferType>(outBuffer);
-    if (!outBufferType)
-      return p.emitError(loc, "expected an !mgp.buffer type");
-    if (outBufferType.getDevice() != device)
-      return p.emitError(loc, "all !mgp.buffer types must agree on device");
-    rawDims.emplace_back(outBufferType.getRawSize().getValue());
-  }
-  Type ui64 = IntegerType::get(p.getContext(), 64, IntegerType::Unsigned);
-  outBufferRawSizesAttr = IntArrayElementsAttr::get(
-      ArrayType::get(static_cast<int64_t>(rawDims.size()), ui64), rawDims);
-  return success();
-}
-
-static void printBufferTypesToBufferRawSizesDeviceOutBuffers(
-    OpAsmPrinter &p, Operation *op, DeviceBufferType inBuffer,
-    IntArrayElementsAttr outBufferRawSizesAttr, DeviceRefAttr device,
-    TypeRange outBuffers, MEF::ChainType chain) {
-  p << inBuffer;
-  p.printArrowTypeList(outBuffers);
 }
 
 // Parses a function type consisting of N input buffers and one output

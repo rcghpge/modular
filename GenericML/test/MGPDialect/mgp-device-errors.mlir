@@ -48,19 +48,6 @@ func.func @buffer_unsize(%in_buf : !mgp.buffer<64, <"cuda", 3>>) {
 // -----
 
 //
-// mgp.buffer.split.borrow
-//
-
-func.func @buffer_split_mismatched_sizes(%ctx : !mgp.context, %ch0 : !mef.chain, %in_buf : !mgp.buffer<192, <"cuda", 3>>) {
-  // expected-error@+1 {{'mgp.buffer.split.borrow' op expected input buffer type does not match actual input buffer type ('!mgp.buffer<320, <"cuda", 3>>' vs '!mgp.buffer<192, <"cuda", 3>>').}}
-  %buf0, %buf1 = "mgp.buffer.split.borrow" (%ch0, %ctx, %in_buf) { aRuntimeSlot = 1 : ui64, bOutBufferRawSizes = #M.dense_array<64, 256> : !M.array<2xui64>, cDevice = #M.device_ref<"cuda", 3> }
-                   : (!mef.chain, !mgp.context, !mgp.buffer<192, <"cuda", 3>>) -> (!mgp.buffer<64, <"cuda", 3>>, !mgp.buffer<256, <"cuda", 3>>)
-  mef.output %buf0, %buf1 : !mgp.buffer<64, <"cuda", 3>>, !mgp.buffer<256, <"cuda", 3>>
-}
-
-// -----
-
-//
 // mgp.tensor.create
 //
 

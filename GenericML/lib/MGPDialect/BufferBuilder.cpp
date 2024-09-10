@@ -403,24 +403,6 @@ Value MGPBufferBuilder::bufferConcat(OpBuilder &builder, Location loc,
       /*bDevice=*/device);
 }
 
-SmallVector<Value> MGPBufferBuilder::splitBorrow(
-    OpBuilder &builder, Location loc, TypedValue<ContextType> context,
-    Value inChain, Value inBuffer, ArrayRef<Value> runtimeSizes,
-    ArrayRef<std::optional<uint64_t>> outBufferSizes) {
-  SmallVector<uint64_t> rawSizes;
-  for (auto optSize : outBufferSizes)
-    rawSizes.emplace_back(optSizeToRawSize(optSize));
-  return builder
-      .create<BufferSplitBorrowOp>(loc,
-                                   /*inChain=*/inChain,
-                                   /*theContext=*/context,
-                                   /*inBuffer=*/inBuffer,
-                                   /*runtimeSizes=*/runtimeSizes,
-                                   /*aRuntimeSlot=*/runtimeSlot,
-                                   /*bOutBufferRawSizes=*/rawSizes,
-                                   /*cDevice=*/device)
-      .getOutBuffers();
-}
 Value MGPBufferBuilder::bufferSlice(OpBuilder &builder, Location loc,
                                     Value inBuffer, Value offset, Value size) {
   return builder.create<BufferSliceOp>(

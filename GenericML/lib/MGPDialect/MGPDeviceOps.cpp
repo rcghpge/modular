@@ -73,22 +73,6 @@ static LogicalResult getRawSizeAttr(Location location,
   return success();
 }
 
-/// Appends to optSizes from array attribute with name in attrs.
-static LogicalResult
-getRawSizeArrayAttr(Location location, DictionaryAttr attributes,
-                    StringAttr name,
-                    SmallVectorImpl<std::optional<uint64_t>> &optSizes) {
-  auto arrayAttr =
-      dyn_cast_if_present<IntArrayElementsAttr>(attributes.get(name));
-  if (!arrayAttr) {
-    return mlir::emitError(location, "expected an array for attribute '")
-           << name << "'";
-  }
-  for (auto elem : arrayAttr.getValues())
-    optSizes.emplace_back(rawSizeToOptSize(elem.getZExtValue()));
-  return success();
-}
-
 /// Assigns to elements from attribute with name in attrs.
 static LogicalResult getElementsAttr(Location location,
                                      DictionaryAttr attributes, StringAttr name,
@@ -598,93 +582,6 @@ BufferConcatOp::getInOutSemantics(size_t index) {
   return index == getOutBufferMutable().getOperandNumber()
              ? InOutSignatureAttr::kOut
              : InOutSignatureAttr::kIn;
-}
-
-//===----------------------------------------------------------------------===//
-// BufferSplitBorrowOp
-//===----------------------------------------------------------------------===//
-
-void BufferSplitBorrowOp::build(
-    OpBuilder &odsBuilder, OperationState &odsState,
-    TypedValue<MEF::ChainType> inChain, TypedValue<ContextType> theContext,
-    TypedValue<DeviceBufferType> inBuffer,
-    ArrayRef<TypedValue<IndexType>> runtimeSizes, uint64_t aRuntimeSlot,
-    llvm::ArrayRef<std::optional<uint64_t>> bOutBufferOptSizes,
-    M::DeviceRefAttr cDevice) {
-  SmallVector<Type> resultBufferTypes;
-  SmallVector<uint64_t> outBufferRawSizes;
-  for (auto optSize : bOutBufferOptSizes) {
-    resultBufferTypes.emplace_back(DeviceBufferType::get(cDevice, optSize));
-    outBufferRawSizes.emplace_back(optSizeToRawSize(optSize));
-  }
-  SmallVector<Value> runtimeSizesAnyValue;
-  llvm::append_range(runtimeSizesAnyValue, runtimeSizes);
-  return build(odsBuilder, odsState, resultBufferTypes, inChain, theContext,
-               inBuffer, runtimeSizesAnyValue, aRuntimeSlot, outBufferRawSizes,
-               cDevice);
-}
-
-LogicalResult BufferSplitBorrowOp::verify() {
-  size_t numDynamic = llvm::count_if(getOutBuffers(), [](const Value &v) {
-    return !dyn_cast<DeviceBufferType>(v.getType()).getOptSize();
-  });
-  if (getRuntimeSizes().size() != numDynamic) {
-    return emitOpError("expected a runtime size operand for every output "
-                       "buffer with a dynamic size (given ")
-           << getRuntimeSizes().size() << " sizes, but need " << numDynamic
-           << " sizes).";
-  }
-
-  if (failed(verifyConsistentDevices(getOperation(), {getCDevice()})))
-    return failure();
-
-  if (!getInBuffer().getType().getOptSize())
-    // Nothing more to check if dynamically sized input buffer.
-    return success();
-
-  uint64_t outTotalSize = 0;
-  for (const auto &outBuffer : getOutBuffers()) {
-    auto outBufferType = dyn_cast<DeviceBufferType>(outBuffer.getType());
-    std::optional<uint64_t> optSize = outBufferType.getOptSize();
-    if (!optSize)
-      // Nothing more to check if at least one dynamically sized output
-      // buffer.
-      return success();
-    outTotalSize += *optSize;
-  }
-  auto expectedInBufferType = DeviceBufferType::get(
-      getCDevice(), std::optional<uint64_t>(outTotalSize));
-  if (getInBuffer().getType() != expectedInBufferType) {
-    return emitOpError("expected input buffer type does not match "
-                       "actual input buffer type (")
-           << expectedInBufferType << " vs " << getInBuffer().getType() << ").";
-  }
-  return success();
-}
-
-LogicalResult BufferSplitBorrowOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  SmallVector<std::optional<uint64_t>> optSizes;
-  if (failed(getRawSizeArrayAttr(
-          location.value_or(operands[0].getLoc()), attributes,
-          getBOutBufferRawSizesAttrName(name), optSizes)))
-    return failure();
-  DeviceRefAttr device;
-  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                    attributes, getCDeviceAttrName(name),
-                                    device)))
-    return failure();
-  for (auto optSize : optSizes)
-    inferredReturnTypes.emplace_back(DeviceBufferType::get(device, optSize));
-  return success();
-}
-
-bool BufferSplitBorrowOp::extendsLifetime(size_t operandIndex,
-                                          size_t resultIndex) {
-  return operandIndex == getInBufferMutable().getOperandNumber();
 }
 
 //===----------------------------------------------------------------------===//

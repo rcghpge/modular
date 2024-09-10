@@ -264,64 +264,6 @@ static void mgp_buffer_resize_cpu(AsyncValueRef<TensorBufferRef> inBuffer,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.buffer.split.borrow.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_buffer_split_borrow_cpu(
-    Chain inChain, StateContext &theContext,
-    AsyncValueRef<TensorBufferRef> inBuffer, RemainingArguments runtimeSizes,
-    RemainingResults outBuffers, MEFAttr<uint64_t> aRuntimeSlot,
-    MEFAttr<ArrayRef<uint64_t>> bOutBufferRawSizes, MEFAttr<uint64_t> cDeviceId,
-    Runtime &runtime, EncodedLocation loc) {
-  const size_t inSize = inBuffer->getSize();
-  size_t totalSize = 0; // total size of all output buffers processed so far
-  size_t runtimeSizeIndex = 0; // index of next runtimeSizes operand to use
-  SmallVector<TensorBufferRef> newBuffers;
-  // We'll have an entry in bOutBufferRawSizes for each output buffer, which
-  // will be either the output buffer's compile time size or the distinguished
-  // 'no value' value.
-  newBuffers.reserve(bOutBufferRawSizes.size());
-  for (uint64_t outBufferRawSize : *bOutBufferRawSizes) {
-    size_t outBufferRuntimeSize = rawSizeToRuntimeSize(outBufferRawSize);
-    size_t thisSize;
-    if (hasRuntimeSize(outBufferRuntimeSize)) {
-      // The size of this output buffer is known at compile time.
-      thisSize = outBufferRuntimeSize;
-    } else {
-      // The size of this output buffer in unknown at compile time, so
-      // must be taken from a runtimeSize operand value.
-      if (runtimeSizeIndex > runtimeSizes.size())
-        return std::move(outBuffers)
-            .setAllToError("mismatched runtimeSizes arity", loc);
-      thisSize = runtimeSizes[runtimeSizeIndex].get<size_t>();
-      runtimeSizeIndex++;
-    }
-
-    // Just stop creating results if it turns out the sizes don't line up, and
-    // we'll report failure below. Otherwise, create a 'safe' borrow from
-    // inBuffer, with the same mutability. Each borrow will take a reference to
-    // inBuffer, thus guaranteeing its lifetime will exceed each borrow.
-    if (totalSize + thisSize <= inSize)
-      newBuffers.emplace_back(
-          createBorrowedSlice(inBuffer.get(), totalSize, thisSize));
-    totalSize += thisSize;
-  }
-
-  if (totalSize != inBuffer->getSize()) {
-    return std::move(outBuffers)
-        .setAllToError(Twine("mgp.buffer.split.borrow.cpu input buffer "
-                             "size must be sum of output buffer sizes (") +
-                           Twine(inBuffer->getSize()) + " vs " +
-                           Twine(totalSize) + ")",
-                       loc);
-  }
-
-  for (auto [outBuffer, newBuffer] : llvm::zip(outBuffers.get(), newBuffers))
-    outBuffer = AnyAsyncValueRef::createReady<TensorBufferRef>(
-        runtime, std::move(newBuffer));
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.tensor.create.cpu
 //===----------------------------------------------------------------------===//
 
@@ -424,8 +366,6 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.buffer.get_cached.cpu",
                 mgp_buffer_get_cached_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.resize.cpu", mgp_buffer_resize_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.split.borrow.cpu",
-                mgp_buffer_split_borrow_cpu);
   ADD_PRIMITIVE(registry, "mgp.tensor.create.cpu", mgp_tensor_create_cpu);
   ADD_PRIMITIVE(registry, "mgp.tensor.extract.buffer.cpu",
                 mgp_tensor_extract_buffer_cpu);

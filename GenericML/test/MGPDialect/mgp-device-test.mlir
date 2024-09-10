@@ -197,24 +197,6 @@ func.func @buffer_concat_dynamic(%ctx : !mgp.context, %ch0 : !mef.chain, %out_bu
 }
 
 //
-// mgp.buffer.split.borrow
-//
-
-// CHECK-LABEL: @buffer_split_borrow_static
-func.func @buffer_split_borrow_static(%ctx : !mgp.context, %ch0 : !mef.chain, %in_buf : !mgp.buffer<192, <"cuda", 3>>) {
-  // CHECK: %{{.*}}:2 = mgp.buffer.split.borrow %{{.*}}, %{{.*}}[1], %{{.*}} : !mgp.buffer<192, <"cuda", 3>> -> (!mgp.buffer<64, <"cuda", 3>>, !mgp.buffer<128, <"cuda", 3>>)
-  %buf0, %buf1 = mgp.buffer.split.borrow %ch0, %ctx[1], %in_buf : !mgp.buffer<192, <"cuda", 3>> -> (!mgp.buffer<64, <"cuda", 3>>, !mgp.buffer<128, <"cuda", 3>>)
-  mef.output %buf0, %buf1 : !mgp.buffer<64, <"cuda", 3>>, !mgp.buffer<128, <"cuda", 3>>
-}
-
-// CHECK-LABEL: @buffer_split_borrow_dynamic
-func.func @buffer_split_borrow_dynamic(%ctx : !mgp.context, %ch0 : !mef.chain, %in_buf : !mgp.buffer<, <"cuda", 3>>, %size : index) {
-  // CHECK: %{{.*}}:2 = mgp.buffer.split.borrow %{{.*}}, %{{.*}}[1], %{{.*}}, %{{.*}} : !mgp.buffer<, <"cuda", 3>> -> (!mgp.buffer<64, <"cuda", 3>>, !mgp.buffer<, <"cuda", 3>>)
-  %buf0, %buf1 = mgp.buffer.split.borrow %ch0, %ctx[1], %in_buf, %size : !mgp.buffer<, <"cuda", 3>> -> (!mgp.buffer<64, <"cuda", 3>>, !mgp.buffer<, <"cuda", 3>>)
-  mef.output %buf0, %buf1 : !mgp.buffer<64, <"cuda", 3>>, !mgp.buffer<, <"cuda", 3>>
-}
-
-//
 // mgp.buffer.to_bool
 //
 

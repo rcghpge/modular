@@ -673,15 +673,6 @@ struct MOOpLoweringState {
         ->bufferSlice(builder, loc, inBuffer, offset, size);
   }
 
-  SmallVector<Value>
-  splitBorrow(Value inChain, Value inBuffer, ArrayRef<Value> runtimeSizes,
-              ArrayRef<std::optional<uint64_t>> outBufferSizes,
-              Type moTensorType) {
-    return getStorageBufferBuilder(moTensorType)
-        ->splitBorrow(builder, loc, context, inChain, inBuffer, runtimeSizes,
-                      outBufferSizes);
-  }
-
   Value bufferToBool(Value inChain, Value buffer, Type moTensorType) {
     return getStorageBufferBuilder(moTensorType)
         ->bufferToBool(builder, loc, context, inChain, buffer);
