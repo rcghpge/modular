@@ -190,11 +190,8 @@ void LowerPrimitivesPass::runOnOperation() {
       mlir::Block &kernelBody = newKernel.getBody().emplaceBlock();
       builder.setInsertionPoint(&kernelBody, kernelBody.begin());
 
-      llvm::SmallDenseMap<Value, Value> operandToArgMap;
-      for (Value operand : newKernel->getOperands()) {
-        operandToArgMap[operand] =
-            kernelBody.addArgument(operand.getType(), operand.getLoc());
-      }
+      for (Value operand : newKernel->getOperands())
+        kernelBody.addArgument(operand.getType(), operand.getLoc());
 
       KGEN::GeneratorOp kernel = nullptr;
 
