@@ -987,6 +987,7 @@ modular_cc_library(
     deps = [
         ":MGPDialect",
         ":MGPTransformsIncGen",
+        ":MOGGDialect",
         ":Support",
         "//GraphRT:MEFDialect",
         "@llvm-project//llvm:Support",

@@ -40,6 +40,23 @@ def MGP_BufferAllocOpInterface : OpInterface<"MGPBufferAllocOpInterface"> {
   ];
 }
 
+def MGP_BufferAliasOpInterface : OpInterface<"MGPBufferAliasOpInterface"> {
+  let description = [{
+    Interface for ops which will take an input buffer and alias it with the output directly
+  }];
+  let cppNamespace = "::M::MGP";
+  let methods = [
+    InterfaceMethod<
+      "Returns the aliased buffer.",
+      "mlir::Value", "getInBuffer", (ins)
+    >,
+    InterfaceMethod<
+      "Returns the alias to the buffer.",
+      "mlir::Value", "getOutBuffer", (ins)
+    >
+  ];
+}
+
 def MGP_LiftableBufferCreateOpInterface : OpInterface<"MGPLiftableBufferCreateOpInterface"> {
   let description = [{
     Interface for ops which may return a buffer as their only result and can be

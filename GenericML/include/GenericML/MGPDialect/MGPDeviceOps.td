@@ -908,6 +908,7 @@ def BufferUnsizeOp : MGP_Op<"buffer.unsize", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     // The result is a shallow copy of the input.
     DeclareOpInterfaceMethods<GRTMayAliasInterface>,
+    DeclareOpInterfaceMethods<MGP_BufferAliasOpInterface>,
 ]> {
   let summary = "Forget the size of a statically sized buffer.";
   let description = [{
@@ -942,6 +943,7 @@ def BufferResizeOp : MGP_Op<"buffer.resize", [
     // The result is a shallow copy of the input.
     DeclareOpInterfaceMethods<GRTMayAliasInterface>,
     DeclareOpInterfaceMethods<MGP_HasDeviceOpInterface>,
+    DeclareOpInterfaceMethods<MGP_BufferAliasOpInterface>,
 ]> {
   let summary = "Assert the size of a dynamically sized buffer.";
   let description = [{

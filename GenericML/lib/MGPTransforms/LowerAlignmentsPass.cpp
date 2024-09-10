@@ -1,0 +1,283 @@
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
+
+#include "GenericML/MGPTransforms/MGPTransforms.h"
+
+#include "./AsyncDataflowDependencies.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/MGPTransforms/Utils.h"
+#include "GraphRT/GRTDialect/GRTChainInterface.h"
+#include "GraphRT/GRTDialect/GRTOps.h"
+#include "GraphRT/MEFDialect/MEFTypes.h"
+#include "KGEN/KGENDialect/KGENOps.h"
+#include "Support/AlignedAlloc.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Dominance.h"
+#include "mlir/IR/IRMapping.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Pass/Pass.h"
+#include "llvm/ADT/STLExtras.h"
+#include <numeric>
+
+using namespace mlir;
+
+#define DEBUG_TYPE "mgp-lower-alignments-pass"
+
+namespace M::MGP {
+
+// Generate support code for LowerAlignmentsPass
+#define GEN_PASS_DEF_LOWERALIGNMENTSPASS
+#include "GenericML/MGPTransforms/MGPTransforms.h.inc"
+
+namespace {
+
+//===----------------------------------------------------------------------===//
+// LowerAlignmentsPass
+//===----------------------------------------------------------------------===//
+
+class LowerAlignmentsPass
+    : public impl::LowerAlignmentsPassBase<LowerAlignmentsPass> {
+  using LowerAlignmentsPassBase::LowerAlignmentsPassBase;
+
+  const int64_t kByteAlignment =
+      1; // Means we can't infer anything about alignment
+  const int64_t kDefaultAlignmentCpu =
+      kPreferredMemoryAlignment; // Automatically use allocator alignment -
+                                 // kPreferredMemoryAlignment
+  const int64_t kDefaultAlignmentGpu =
+      0; // 0 just means use whatever gpuMalloc provided
+
+  int64_t getDefaultAlignment(DeviceRefAttr deviceRef) {
+    if (deviceRef.getLabel() == kCPULabel)
+      return kDefaultAlignmentCpu;
+    else
+      return kDefaultAlignmentGpu;
+  }
+  // Create a new alignment mapping valid for the interior of a block given
+  // the alignmentMap of the scope of the parent Op.
+  // Args:
+  //      block - block to create alignmentMap for
+  //      parentScopeAlignment - parent scope alignment map. Must contain the
+  //      block
+  llvm::DenseMap<Value, int64_t> createBlockArgAlignments(
+      Block *block,
+      const llvm::DenseMap<Value, int64_t> &parentScopeAlignments) {
+    llvm::DenseMap<Value, int64_t> innerAlignments;
+    for (auto arg : block->getArguments()) {
+      // Populate default alignments for device types
+      if (auto deviceType = dyn_cast<MGPHasDeviceTypeInterface>(arg.getType()))
+        innerAlignments[arg] = getDefaultAlignment(deviceType.getDevice());
+      else
+        innerAlignments[arg] = kDefaultAlignmentCpu;
+      // If an outside operand exists and has scopedAlignments in the parent
+      // scope we copy that for internal args
+      if (block->getParentOp()->getNumOperands() > arg.getArgNumber()) {
+        auto operand = block->getParentOp()->getOperand(arg.getArgNumber());
+        if (parentScopeAlignments.contains(operand))
+          innerAlignments[arg] = parentScopeAlignments.at(operand);
+      }
+    }
+    return innerAlignments;
+  }
+
+  // Construct an argument dependency mapping for all values within a block.
+  // If value relies on the input arg directly, or implicitly, it is placed in
+  // the set.
+  //    block (...) (arg0, arg1, arg2)
+  //       val0 = ... arg0        val0 -> {arg0}
+  //       val1 = ... arg1, arg2  val1 -> {arg1, arg2}
+  //       val2 = ... val0, val1  val2 -> {arg0, arg1, arg2}
+  llvm::DenseMap<Value, DenseSet<Value>> getValueArgDependencies(Block *block) {
+    llvm::DenseMap<Value, DenseSet<Value>> results;
+    llvm::DenseSet<Value> args;
+    for (auto arg : block->getArguments())
+      args.insert(arg);
+    // Has to go in dependency order
+    for (auto op : getDataflowOrder(block))
+      for (auto res : op->getResults()) {
+        results[res] = {};
+        for (auto operand : op->getOperands())
+          if (results.contains(operand))
+            results[res].insert(results[operand].begin(),
+                                results[operand].end());
+          else if (args.contains(operand))
+            results[res].insert(operand);
+      }
+    return results;
+  }
+
+  // Populate the alignments for all the placeholder ops contained by operation
+  void
+  populateAlignmentsForOp(Operation *op,
+                          llvm::DenseMap<Value, int64_t> &parentScopeAlignments,
+                          OpBuilder &builder) {
+    for (auto &region : op->getRegions()) {
+      for (auto &block : region.getBlocks()) {
+        // Generate argument alignments the valueArg dependency
+        auto argAlignments =
+            createBlockArgAlignments(&block, parentScopeAlignments);
+        auto valueArgDep = getValueArgDependencies(&block);
+
+        auto replacePlaceholder =
+            [&](MOGG::AlignmentPlaceholderOp placeholderOp,
+                int64_t newAlignment) {
+              builder.setInsertionPoint(placeholderOp);
+              builder.create<KGEN::ParamDeclareOp>(
+                  placeholderOp.getLoc(), placeholderOp.getParamDecl(),
+                  builder.getIndexAttr(newAlignment));
+            };
+
+        // Traverse and replace all placeholders
+        op->walk([&](MOGG::AlignmentPlaceholderOp placeholderOp) {
+          auto operand = placeholderOp.getOperand();
+          assert(valueArgDep.contains(operand) &&
+                 "valueArgDep must contain the set of arg it depends on (can "
+                 "be empty)");
+          if (valueArgDep[operand].empty()) {
+            // If there are no argument it depends on, assume it is cpu (comes
+            // from kgen input placeholder)
+            replacePlaceholder(placeholderOp, kDefaultAlignmentCpu);
+          } else {
+            // Placeholder operand depend on arguments - infer from args. Always
+            // try to get GCD of alignment from inputs (2, 16, 8 will have GCD
+            // of 2)
+            int64_t alignment = argAlignments.at(*valueArgDep[operand].begin());
+            for (auto arg : valueArgDep[operand])
+              alignment = std::gcd(argAlignments.at(arg), alignment);
+            replacePlaceholder(placeholderOp, alignment);
+          }
+          placeholderOp.erase();
+        });
+      }
+    }
+  }
+
+  // Try to lower block in dataflow order and populate the alignments with
+  // additional information
+  void inferAndPopulateAlignments(Block *block,
+                                  llvm::DenseMap<Value, int64_t> alignmentMap,
+                                  llvm::DenseMap<std::tuple<uint64_t, uint64_t>,
+                                                 int64_t> &cacheAlignmentMap,
+                                  OpBuilder &builder) {
+    // lambda to set alignmentMap from raw alignment
+    auto setAlignmentFromRawAlignment = [&](uint64_t rawAlignment, Value value,
+                                            DeviceRefAttr deviceRef) {
+      // Priority order is alignment enforced by op > device
+      if (rawAlignment != kUnknownSize)
+        alignmentMap[value] = static_cast<int64_t>(rawAlignment);
+      else
+        alignmentMap[value] = getDefaultAlignment(deviceRef);
+    };
+
+    for (auto op : getDataflowOrder(block)) {
+      if (auto bufferOp = dyn_cast<MGP::BufferAllocOp>(op)) {
+        // Set from MGP Op
+        setAlignmentFromRawAlignment(bufferOp.getRawAlign(),
+                                     bufferOp.getOutBuffer(),
+                                     bufferOp.getDevice());
+      } else if (auto bufferOp = dyn_cast<MGP::BufferConstantOp>(op)) {
+        // Set from MGP Op
+        setAlignmentFromRawAlignment(bufferOp.getCRawAlign(),
+                                     bufferOp.getOutBuffer(),
+                                     bufferOp.getDevice());
+      } else if (auto bufferOp = dyn_cast<MGP::BufferConstantExternalOp>(op)) {
+        // Set from MGP Op
+        setAlignmentFromRawAlignment(bufferOp.getDAlign(),
+                                     bufferOp.getOutBuffer(),
+                                     bufferOp.getDevice());
+      } else if (auto bufferOp = dyn_cast<MGPBufferAliasOpInterface>(op)) {
+        // Pass-through
+        alignmentMap[bufferOp.getOutBuffer()] =
+            alignmentMap.at(bufferOp.getInBuffer());
+      } else if (auto bufferOp = dyn_cast<MGP::BufferCacheOp>(op)) {
+        // Pass-through to caching system
+        cacheAlignmentMap[{bufferOp.getSlot(), bufferOp.getBBufferSlot()}] =
+            alignmentMap.at(bufferOp.getBuffer());
+      } else if (auto bufferOp = dyn_cast<MGP::BufferGetCachedOp>(op)) {
+        // Pass-through from caching system
+        alignmentMap[bufferOp.getOutBuffer()] = cacheAlignmentMap.at(
+            {bufferOp.getSlot(), bufferOp.getBBufferSlot()});
+      } else if (auto extractBufferOp =
+                     dyn_cast<MGP::TensorExtractBufferOp>(op)) {
+        // Pass-through from Tensor Value if it is something we created.
+        // Otherwise, assume it comes from a fallback so default to cpu
+        if (alignmentMap.contains(extractBufferOp.getTensor()))
+          alignmentMap[extractBufferOp.getOutBuffer()] =
+              alignmentMap.at(extractBufferOp.getTensor());
+        else
+          alignmentMap[extractBufferOp.getOutBuffer()] = kDefaultAlignmentCpu;
+      } else if (auto createTensorOp = dyn_cast<MGP::TensorCreateOp>(op)) {
+        // Pass-through to Tensor Value
+        alignmentMap[createTensorOp.getOutTensor()] =
+            alignmentMap.at(createTensorOp.getBuffer());
+      } else if (auto guardOp = dyn_cast<MGP::GuardOp>(op)) {
+        // Pass-through
+        for (auto [input, output] :
+             llvm::zip(guardOp.getInputs(), guardOp.getResults()))
+          alignmentMap[output] = alignmentMap.at(input);
+      } else if (auto bufferOp = dyn_cast<MGP::BufferSliceOp>(op)) {
+        // offsetAlignment can be inferred from static index op input. Otherwise
+        // byteAlignment
+        int64_t offsetAlignment = kByteAlignment;
+        if (auto constOp =
+                bufferOp.getOffset().getDefiningOp<mlir::index::ConstantOp>())
+          offsetAlignment = constOp.getValue().getSExtValue();
+        alignmentMap[bufferOp.getOutBuffer()] =
+            std::gcd(alignmentMap.at(bufferOp.getInBuffer()), offsetAlignment);
+      } else if (isa<MOGG::GenericCompiledRegionOp>(op)) {
+        // Populate all alignments for GenericCompiledRegionOp
+        populateAlignmentsForOp(op, alignmentMap, builder);
+      } else if (op->getNumRegions()) {
+        // Recursively populate for interior blocks
+        for (auto &innerRegion : op->getRegions()) {
+          for (auto &innerBlock : innerRegion.getBlocks()) {
+            auto argAlignments =
+                createBlockArgAlignments(&innerBlock, alignmentMap);
+            inferAndPopulateAlignments(&innerBlock, argAlignments,
+                                       cacheAlignmentMap, builder);
+          }
+        }
+      }
+    }
+  }
+
+  // This populates alignment placeholders by doing a dataflow dependencies
+  // analysis Typical alignment assumes defaultAlignment which comes from device
+  // except in cases when MGP introduces ops that can invalidate alignment. In
+  // those cases, try to populate and keep track and populate alignment Several
+  // main types of behaviour: Conditional invalidation of alignment
+  //    conditionally from mgp.buffer.{split.borrow,slice}
+  // Pass-through + read
+  //    from mgp.buffer.{resize,unsize}
+  //    from a side-load mechanism using mgp.buffer.{cache/get_cached pair}
+  //    from mgp.tensor.{extract.buffer/create}
+  // Set alignment
+  //    from mgp.buffer.{alloc/constant/constant.external}
+  // Populate/Use alignment
+  //    from `GenericCompiledRegionOp`
+  void runOnOperation() override {
+    ModelOp modelOp = getOperation();
+    llvm::DenseMap<Value, int64_t> alignmentMap;
+    llvm::DenseMap<std::tuple<uint64_t, uint64_t>, int64_t> cacheAlignmentMap;
+    auto ctx = modelOp->getContext();
+    OpBuilder builder(ctx);
+    for (auto innerRegion : modelOp.getRegions()) {
+      for (auto &innerBlock : innerRegion->getBlocks()) {
+        auto argAlignments =
+            createBlockArgAlignments(&innerBlock, alignmentMap);
+        inferAndPopulateAlignments(&innerBlock, argAlignments,
+                                   cacheAlignmentMap, builder);
+      }
+    }
+    LLVM_DEBUG(llvm::dbgs() << "LowerAlignmentsPass: done\n");
+  }
+};
+
+} // namespace
+
+} // namespace M::MGP

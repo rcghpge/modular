@@ -327,6 +327,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addPass(MGP::createConcatInPlacePass());
   pm.addPass(MGP::createSimpleBufferReusePass());
+  // Note: LowerAlignmentsPass must be before Dynamic MemoryPlanning or it can
+  // erroneously pick up slices introduced by memory planning
+  pm.addPass(MGP::createLowerAlignmentsPass());
   pm.addPass(MGP::createDynamicMemoryPlanningPass());
   pm.addPass(MGP::createDeferAllocsPass());
   pm.addPass(MGP::createExecInvariantCodeMotionPass());
