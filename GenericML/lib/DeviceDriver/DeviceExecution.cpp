@@ -6,6 +6,7 @@
 
 #include "GenericML/DeviceDriver/DeviceExecution.h"
 #include "AsyncRT/Runtime/Algorithms.h"
+#include "GenericML/DeviceDriver/CPUDriver.h"
 #include "Support/AssertStream.h"
 
 using namespace M;
@@ -36,12 +37,34 @@ static M::Tensor getTensorFromDeviceMemory(AsyncRT::Runtime &runtime,
 }
 
 // Construct on-device memory to hold a provided tensor.
-Driver::DeviceMemory *M::Driver::constructDeviceMemoryFromTensor(
+ErrorOr<Driver::DeviceMemory *> M::Driver::constructDeviceMemoryFromTensor(
     M::ContextRef context, Driver::Device *device, M::Tensor tensor) {
 
   // Take ownership of underlying tensor storage.
   TensorBufferRef bufferRef = tensor.releaseBufferRef();
   AnyAsyncValueRef storageRef = bufferRef.getMemStorageHandle();
+
+  // We can have situations where the graph is attempting to return a value that
+  // will not outlive it. In these cases, we need to explicitly copy this value
+  // to a DeviceMemory object.
+  if (!storageRef) {
+    // If we hit a situation where we're returning a null storage ref on a GPU,
+    // we should just error out, since this situation should be impossible.
+    if (!llvm::isa<Driver::CPUDevice>(device))
+      return Error("Execution returned a null result on a GPU.");
+
+    ErrorOr<Driver::DeviceMemory *> memoryOr =
+        device->createDeviceMemory(tensor.getSpec());
+    if (memoryOr.isError())
+      return memoryOr.takeError();
+    Driver::DeviceMemory *memory = memoryOr.get();
+
+    void *tensorBuffer = bufferRef.getBuffer();
+    std::memcpy(memory->data(), tensorBuffer,
+                tensor.getSpec().getSizeInBytes());
+
+    return memory;
+  }
 
   AsyncRT::await(storageRef);
 
@@ -173,7 +196,7 @@ M::Driver::processTensorResults(llvm::MutableArrayRef<AnyAsyncValueRef> results,
   return outputs;
 }
 
-void M::Driver::passResultsToMojo(
+ErrorOrSuccess M::Driver::passResultsToMojo(
     MutableArrayRef<std::variant<M::Tensor, M::Driver::DriverMojoValue>>
         results,
     decltype(addTensorToOutputList) addTensorToOutputListFn,
@@ -183,10 +206,15 @@ void M::Driver::passResultsToMojo(
     if (std::holds_alternative<Tensor>(output)) {
       // Convert tensor back to device memory and call the callback we got from
       // mojo. Here we take ownership of output.
-      Driver::DeviceMemory *outputMemory =
+      ErrorOr<Driver::DeviceMemory *> outputMemoryOr =
           M::Driver::constructDeviceMemoryFromTensor(
               std::move(maxContext), device.getPointer(),
               std::move(std::get<M::Tensor>(output)));
+
+      if (outputMemoryOr.isError())
+        return outputMemoryOr.takeError();
+
+      Driver::DeviceMemory *outputMemory = outputMemoryOr.get();
       auto spec = outputMemory->getSpec();
       addTensorToOutputListFn(mojoContext, outputList, outputMemory, &spec);
     } else {
@@ -196,23 +224,5 @@ void M::Driver::passResultsToMojo(
                              std::get<DriverMojoValue>(output));
     }
   }
-}
-
-size_t M::Driver::processResults(
-    llvm::MutableArrayRef<AnyAsyncValueRef> results, M::ExecutableModel *model,
-    decltype(addTensorToOutputList) addTensorToOutputListFn,
-    decltype(addValueToOutputList) addValueToOutputListFn,
-    ContextRef maxContext, RCRef<M::Driver::Device> device, void *mojoContext,
-    void *outputList) {
-
-  auto outputsResolved =
-      processResults(results, model, maxContext.copy(), device.copy());
-
-  passResultsToMojo(outputsResolved, addTensorToOutputListFn,
-                    addValueToOutputListFn, mojoContext, outputList, maxContext,
-                    device);
-
-  // Return back the output count. This is mostly useful of verification on
-  // mojo side.
-  return outputsResolved.size();
+  return success();
 }

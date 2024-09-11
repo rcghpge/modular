@@ -25,9 +25,9 @@ extern "C" struct DriverMojoValue {
 
 // Construct a DeviceMemory block to hold the provided tensor.
 MODULAR_VISIBILITY_EXPORT
-Driver::DeviceMemory *constructDeviceMemoryFromTensor(M::ContextRef context,
-                                                      Driver::Device *device,
-                                                      M::Tensor tensor);
+ErrorOr<Driver::DeviceMemory *>
+constructDeviceMemoryFromTensor(M::ContextRef context, Driver::Device *device,
+                                M::Tensor tensor);
 
 // Fill output. These are defined and passed as a callback by mojo.
 void addTensorToOutputList(void *mojoExecutableGraph, void *outputList,
@@ -65,19 +65,11 @@ processTensorResults(llvm::MutableArrayRef<AnyAsyncValueRef> results,
 
 // Writes results to mojo callback function
 MODULAR_VISIBILITY_EXPORT
-void passResultsToMojo(
+ErrorOrSuccess passResultsToMojo(
     MutableArrayRef<std::variant<M::Tensor, DriverMojoValue>> results,
     decltype(addTensorToOutputList) addTensorToOutputListFn,
     decltype(addValueToOutputList) addValueToOutputListFn, void *mojoContext,
     void *outputList, ContextRef maxContext, RCRef<Driver::Device> device);
-
-// Writes results array back to mojo list.
-MODULAR_VISIBILITY_EXPORT size_t processResults(
-    llvm::MutableArrayRef<AnyAsyncValueRef> results, ExecutableModel *model,
-    decltype(addTensorToOutputList) addTensorToOutputListFn,
-    decltype(addValueToOutputList) addValueToOutputListFn,
-    ContextRef maxContext, RCRef<Device> device, void *mojoContext,
-    void *outputList);
 
 } // namespace M::Driver
 
