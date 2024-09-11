@@ -41,11 +41,13 @@ namespace M::MGP {
 
 namespace {
 
+using CompiledRegionBodyBuilder =
+    llvm::function_ref<ErrorOr<SmallVector<Value>>(OpBuilder &, Location,
+                                                   Operation *, ValueRange)>;
 struct LowerPrimitivesPass
     : public MGP::impl::LowerPrimitivesBase<LowerPrimitivesPass> {
   using LowerPrimitivesBase::LowerPrimitivesBase;
 
-  DictionaryAttr getMoggCallAttrs(OpBuilder &builder, Operation *op);
   void runOnOperation() override;
 };
 
@@ -89,8 +91,7 @@ isLowerableToGenericRegion(MLIRContext *ctx,
 }
 
 // Get a dictionary of the attributes for the lowered mogg call
-DictionaryAttr LowerPrimitivesPass::getMoggCallAttrs(OpBuilder &builder,
-                                                     Operation *op) {
+static DictionaryAttr getMoggCallAttrs(OpBuilder &builder, Operation *op) {
   SmallVector<NamedAttribute> attrs;
   for (auto &attr : op->getAttrs()) {
     if (auto devRefAttr = dyn_cast<DeviceRefAttr>(attr.getValue())) {
@@ -130,6 +131,139 @@ DictionaryAttr LowerPrimitivesPass::getMoggCallAttrs(OpBuilder &builder,
   return builder.getDictionaryAttr(attrs);
 }
 
+// Transfer a operation into a mogg.call.
+static ErrorOr<SmallVector<Value>>
+buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
+              MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
+
+  KGEN::GeneratorOp kernel = nullptr;
+  // Convert opaque inputs.
+  SmallVector<Value> inputs(args);
+  for (auto [idx, ty] : llvm::enumerate(args.getTypes())) {
+    if (!isa<MGP::OpaqueType>(ty))
+      continue;
+
+    // Need to add extra ops for opaque outputs.
+    // Load the type infos from the kernel.
+    if (!kernel)
+      kernel = mojoLibraryAnalysis.getRegisteredMojoKernelFor(
+          op->getName().getStringRef());
+    ASSERT_STREAM(kernel != nullptr, << "kernel `"
+                                     << op->getName().getStringRef()
+                                     << "` not found");
+    bool isRegisterType = kernel.getSignature().getArgConvention(idx) ==
+                          KGEN::ArgConvention::BorrowedInReg;
+
+    // Convert MGP value to opaque.
+    // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GRA-812).
+    Value val = inputs[idx];
+    auto moOpaqueTy = MO::OpaqueType::get(
+        kernel->getContext(),
+        StringAttr::get(kernel->getContext(), "OpaquePrimitive"), std::nullopt);
+    val = builder.create<MOGG::ToOpaqueFromMGPOp>(loc, moOpaqueTy, val);
+    inputs[idx] = builder.create<MOGG::ToKGENOp>(
+        loc, kernel.getFunctionType().getInput(idx), val,
+        /*shape=*/nullptr,
+        /*strides=*/nullptr, /*typeMethodDict=*/nullptr, isRegisterType);
+  }
+
+  // Add the call to the actual implementing function in mojo.
+  MOGG::CallOp call = builder.create<MOGG::CallOp>(
+      loc, op->getResultTypes(), op->getName().getStringRef(), inputs,
+      ArrayAttr{}, getMoggCallAttrs(builder, op));
+
+  SmallVector<Value> outputs(call->getResults());
+
+  // Handle ops that may extend buffer lifetimes
+  if (auto extendsLifetime = dyn_cast<GRT::GRTExtendsLifetimeInterface>(*op)) {
+    for (size_t resultIdx = 0; resultIdx < op->getNumResults(); ++resultIdx)
+      for (size_t operandIdx = 0; operandIdx < op->getNumOperands();
+           ++operandIdx)
+        if (extendsLifetime.extendsLifetime(operandIdx, resultIdx))
+          outputs[resultIdx] = builder
+                                   .create<MOGG::BufferBorrowOp>(
+                                       loc, op->getResultTypes(),
+                                       outputs[resultIdx], inputs[operandIdx])
+                                   ->getResult(0);
+  }
+
+  // Convert opaque outputs
+  for (auto [idx, ty] : llvm::enumerate(op->getResultTypes())) {
+    if (!isa<MGP::OpaqueType>(ty))
+      continue;
+
+    // Need to add extra ops for opaque outputs.
+    // Load the type infos from the kernel.
+    if (!kernel)
+      kernel = mojoLibraryAnalysis.getRegisteredMojoKernelFor(
+          op->getName().getStringRef());
+    ASSERT_STREAM(kernel != nullptr, << "kernel `"
+                                     << op->getName().getStringRef()
+                                     << "` not found");
+
+    FailureOr<DictionaryAttr> methodsDictAttrOr =
+        MOGG::buildMojoObjectInfosOutputMethodsDict(
+            kernel, ArrayRef<StringRef>{"__moveinit__", "__del__"});
+    if (failed(methodsDictAttrOr)) {
+      return Error("missing methods for the primitive output opaque type: "
+                   "__moveinit__ / __del__ not found");
+    }
+    bool isRegister = !kernel.getSignature().hasMemoryOnlyResult();
+
+    // Convert opaque to MGP value.
+    // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GRA-812).
+    Value val = outputs[idx];
+    auto moOpaqueTy = MO::OpaqueType::get(
+        kernel->getContext(),
+        StringAttr::get(kernel->getContext(), "OpaquePrimitive"), std::nullopt);
+    val = builder.create<MOGG::ToMOGGOp>(loc, moOpaqueTy, val,
+                                         /*shape=*/nullptr, /*strides=*/nullptr,
+                                         *methodsDictAttrOr, isRegister);
+    outputs[idx] = builder.create<MOGG::ToMGPFromOpaqueOp>(
+        loc, outputs[idx].getType(), val);
+  }
+  return outputs;
+}
+
+// Wrap a mogg.generic_compiled_region around the given operation.
+static ErrorOr<MOGG::GenericCompiledRegionOp>
+wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
+                        CompiledRegionBodyBuilder bodyBuilder) {
+  // Build compile region operation.
+  SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics(
+      op->getNumOperands(), InOutSignatureAttr::InOutSemantics::kNone);
+  auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
+      loc, op->getResultTypes(), op->getOperands(),
+      KGEN::ParamDeclArrayAttr::get(builder.getContext(), {}),
+      InOutSignatureAttr::get(builder.getContext(), operandSemantics),
+      BoolAttr{},                                          // isKGEN
+      builder.getStringAttr(op->getName().getStringRef()), // summary
+      builder.getBoolAttr(isAsync(op)),                    // isAsync
+      builder.getBoolAttr(canFuseOp(op)),                  // canFuseIntoOther
+      builder.getBoolAttr(canFuseOp(op)),                  // canBeFusedInto
+      builder.getBoolAttr(canDuplicate(op))                // canDuplicate
+  );
+
+  if (auto hasDeviceOp = dyn_cast<MGPHasDeviceOpInterface>(op))
+    newKernel.setDeviceRef(hasDeviceOp.getDevice());
+  else
+    newKernel.setDeviceRef(MO::getDeviceOrDefaultAny(op));
+
+  mlir::Block &kernelBody = newKernel.getBody().emplaceBlock();
+  for (Value operand : newKernel->getOperands())
+    kernelBody.addArgument(operand.getType(), operand.getLoc());
+
+  // Build the kernel body.
+  builder.setInsertionPoint(&kernelBody, kernelBody.begin());
+  ErrorOr<SmallVector<Value>> outputs =
+      bodyBuilder(builder, loc, op, kernelBody.getArguments());
+  if (outputs.isError())
+    return outputs.takeError();
+
+  builder.create<MOGG::OutputOp>(loc, outputs.takeValue());
+  return newKernel;
+};
+
 void LowerPrimitivesPass::runOnOperation() {
   ModuleOp mod = getOperation();
   MLIRContext *ctx = mod->getContext();
@@ -167,128 +301,22 @@ void LowerPrimitivesPass::runOnOperation() {
     }
 
     if (isLowerableToGenericRegion(ctx, mojoLibraryAnalysis, op)) {
-      // Create the MOGG generic region which contains the compiled MGP.
-      SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
-      operandSemantics.append(op->getNumOperands(),
-                              InOutSignatureAttr::InOutSemantics::kNone);
+      ErrorOr<MOGG::GenericCompiledRegionOp> newKernel =
+          wrapGenericRegionAround(
+              builder, opLoc, op,
+              [&mojoLibraryAnalysis](OpBuilder &builder, Location loc,
+                                     Operation *op, ValueRange inputs) {
+                return buildMOGGCall(builder, inputs, op, loc,
+                                     mojoLibraryAnalysis);
+              });
 
-      DeviceRefAttr device = MO::getDeviceOrDefaultAny(op);
-      if (auto hasDeviceOp = dyn_cast<MGPHasDeviceOpInterface>(op))
-        device = hasDeviceOp.getDevice();
-      auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
-          opLoc, op->getResultTypes(), op->getOperands(),
-          KGEN::ParamDeclArrayAttr::get(ctx, {}),
-          InOutSignatureAttr::get(ctx, operandSemantics), BoolAttr{}, // isKGEN
-          StringAttr::get(ctx, op->getName().getStringRef()),         // summary
-          BoolAttr::get(ctx, isAsync(op)),                            // isAsync
-          BoolAttr::get(ctx, canFuseOp(op)),   // canFuseIntoOther
-          BoolAttr::get(ctx, canFuseOp(op)),   // canBeFusedInto
-          BoolAttr::get(ctx, canDuplicate(op)) // canDuplicate
-      );
-      newKernel.setDeviceRef(device);
-
-      mlir::Block &kernelBody = newKernel.getBody().emplaceBlock();
-      builder.setInsertionPoint(&kernelBody, kernelBody.begin());
-
-      for (Value operand : newKernel->getOperands())
-        kernelBody.addArgument(operand.getType(), operand.getLoc());
-
-      KGEN::GeneratorOp kernel = nullptr;
-
-      // Convert opaque inputs.
-      SmallVector<Value> inputs(kernelBody.getArguments());
-      for (auto [idx, ty] : llvm::enumerate(newKernel.getOperandTypes())) {
-        if (!isa<MGP::OpaqueType>(ty))
-          continue;
-
-        // Need to add extra ops for opaque outputs.
-        // Load the type infos from the kernel.
-        if (!kernel)
-          kernel = mojoLibraryAnalysis.getRegisteredMojoKernelFor(
-              op->getName().getStringRef());
-        ASSERT_STREAM(kernel != nullptr, << "kernel `"
-                                         << op->getName().getStringRef()
-                                         << "` not found");
-        bool isRegisterType = kernel.getSignature().getArgConvention(idx) ==
-                              KGEN::ArgConvention::BorrowedInReg;
-
-        // Convert MGP value to opaque.
-        // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GRA-812).
-        Value val = inputs[idx];
-        auto moOpaqueTy = MO::OpaqueType::get(
-            kernel->getContext(),
-            StringAttr::get(kernel->getContext(), "OpaquePrimitive"),
-            std::nullopt);
-        val = builder.create<MOGG::ToOpaqueFromMGPOp>(opLoc, moOpaqueTy, val);
-        inputs[idx] = builder.create<MOGG::ToKGENOp>(
-            opLoc, kernel.getFunctionType().getInput(idx), val,
-            /*shape=*/nullptr,
-            /*strides=*/nullptr, /*typeMethodDict=*/nullptr, isRegisterType);
+      if (newKernel.isError()) {
+        op->emitError(newKernel.takeError().get());
+        signalPassFailure();
+        return;
       }
 
-      // Add the call to the actual implementing function in mojo.
-      MOGG::CallOp call = builder.create<MOGG::CallOp>(
-          opLoc, op->getResultTypes(), op->getName().getStringRef(), inputs,
-          ArrayAttr{}, getMoggCallAttrs(builder, op));
-
-      SmallVector<Value> outputs(call->getResults());
-
-      // Handle ops that may extend buffer lifetimes
-      if (auto extendsLifetime =
-              dyn_cast<GRT::GRTExtendsLifetimeInterface>(*op)) {
-        for (size_t resultIdx = 0; resultIdx < op->getNumResults(); ++resultIdx)
-          for (size_t operandIdx = 0; operandIdx < op->getNumOperands();
-               ++operandIdx)
-            if (extendsLifetime.extendsLifetime(operandIdx, resultIdx))
-              outputs[resultIdx] =
-                  builder
-                      .create<MOGG::BufferBorrowOp>(opLoc, op->getResultTypes(),
-                                                    outputs[resultIdx],
-                                                    inputs[operandIdx])
-                      ->getResult(0);
-      }
-
-      // Convert opaque outputs
-      for (auto [idx, ty] : llvm::enumerate(op->getResultTypes())) {
-        if (!isa<MGP::OpaqueType>(ty))
-          continue;
-
-        // Need to add extra ops for opaque outputs.
-        // Load the type infos from the kernel.
-        if (!kernel)
-          kernel = mojoLibraryAnalysis.getRegisteredMojoKernelFor(
-              op->getName().getStringRef());
-        ASSERT_STREAM(kernel != nullptr, << "kernel `"
-                                         << op->getName().getStringRef()
-                                         << "` not found");
-
-        FailureOr<DictionaryAttr> methodsDictAttrOr =
-            MOGG::buildMojoObjectInfosOutputMethodsDict(
-                kernel, ArrayRef<StringRef>{"__moveinit__", "__del__"});
-        if (failed(methodsDictAttrOr)) {
-          op->emitError("missing methods for the primitive output opaque type: "
-                        "__moveinit__ / __del__ not found");
-          signalPassFailure();
-          return;
-        }
-        bool isRegister = !kernel.getSignature().hasMemoryOnlyResult();
-
-        // Convert opaque to MGP value.
-        // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GRA-812).
-        Value val = outputs[idx];
-        auto moOpaqueTy = MO::OpaqueType::get(
-            kernel->getContext(),
-            StringAttr::get(kernel->getContext(), "OpaquePrimitive"),
-            std::nullopt);
-        val = builder.create<MOGG::ToMOGGOp>(
-            opLoc, moOpaqueTy, val, /*shape=*/nullptr, /*strides=*/nullptr,
-            *methodsDictAttrOr, isRegister);
-        outputs[idx] = builder.create<MOGG::ToMGPFromOpaqueOp>(
-            opLoc, outputs[idx].getType(), val);
-      }
-
-      builder.create<MOGG::OutputOp>(opLoc, outputs);
-      op->replaceAllUsesWith(newKernel);
+      op->replaceAllUsesWith(newKernel.takeValue());
       op->erase();
     }
   });
