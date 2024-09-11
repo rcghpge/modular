@@ -611,4 +611,18 @@ def MO_PadLikeTraits: TraitList<[
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]>;
 
+def MO_ConstantLike : MO_TensorOpInterfaceBase<"ConstantLike"> {
+  let description = [{
+    Interface for modeling constant operations.
+  }];
+
+  let methods = [
+    InterfaceMethod<"Get result tensor type",
+      "TensorType", "getType", (ins)>,
+    InterfaceMethod<"Get the result tensor as a TypedValue",
+      "TensorValue", "getResult", (ins), [{}],
+      [{ return ::llvm::cast<TensorValue>($_op.getResult(0)); }]>,
+  ];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_TD

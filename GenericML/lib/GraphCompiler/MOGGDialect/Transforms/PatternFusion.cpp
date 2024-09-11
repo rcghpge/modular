@@ -350,7 +350,7 @@ struct MatmulTranspBPattern
     // a `mo.mul`. Once we have layout inference across transpose op, we can
     // remove the check.
     if (auto weightDefOp = weight.getDefiningOp();
-        weightDefOp && !isa<MO::ConstantOp>(weightDefOp)) {
+        weightDefOp && !isa<MO::ConstantLike>(weightDefOp)) {
       return rewriter.notifyMatchFailure(
           op, "can't update layout for non-constant");
     }
@@ -382,13 +382,14 @@ struct MatmulTranspBPattern
 // matmuls operate on transposed pre-packed weights, which are faster on GPU
 // type architectures.
 struct ForceMatmulTransposeBForGPU
-    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::ConstantOp> {
+    : public MO::DeviceAwareRewritePattern<OpInterfaceRewritePattern,
+                                           MO::ConstantLike> {
   DeviceRefAttr targetDevice;
   ForceMatmulTransposeBForGPU(MLIRContext *ctx, DeviceRefAttr targetDevice)
       : DeviceAwareRewritePattern(ctx, 2), targetDevice(targetDevice) {}
 
   LogicalResult
-  deviceAwareMatchAndRewrite(MO::ConstantOp weights,
+  deviceAwareMatchAndRewrite(MO::ConstantLike weights,
                              MO::DeviceAwareRewriter &rewriter) const override {
     DeviceRefAttr defaultDevice =
         getGraphDevice(weights->getParentOfType<MO::GraphOp>(), targetDevice);
@@ -434,9 +435,9 @@ struct ForceMatmulTransposeBForGPU
     auto perm = rewriter.create<ConstantOp>(weights->getLoc(),
                                             SmallVector<int64_t>{1, 0});
     auto transposedWeights = rewriter.create<MO::TransposeOp>(
-        weights->getLoc(), newTransposeTy, weights, perm);
+        weights->getLoc(), newTransposeTy, weights.getResult(), perm);
 
-    rewriter.replaceAllUsesExcept(weights, transposedWeights,
+    rewriter.replaceAllUsesExcept(weights.getResult(), transposedWeights,
                                   transposedWeights);
     return success();
   }

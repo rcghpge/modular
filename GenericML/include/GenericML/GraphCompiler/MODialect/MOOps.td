@@ -457,6 +457,7 @@ def MO_RebindOp : MO_ControlOp<"rebind", [
 //===----------------------------------------------------------------------===//
 
 def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
+    MO_ConstantLike,
     Pure,
 ]> {
   let summary = "External constant operation";
@@ -489,6 +490,7 @@ def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
 
 def MO_ConstantOp : MO_TensorOp<"constant", [
     ConstantLike,
+    MO_ConstantLike,
     Pure,
     DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["preferResultsDevice"]>,
 ]> {
