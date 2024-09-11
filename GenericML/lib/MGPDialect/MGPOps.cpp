@@ -150,26 +150,6 @@ static void printBufferTypeToRawSizeDevice(OpAsmPrinter &p, Operation *op,
   p << buffer;
 }
 
-static ParseResult parseStaticBufferTypeToSizeDevice(OpAsmParser &p,
-                                                     Type &buffer,
-                                                     IntegerAttr &size,
-                                                     DeviceRefAttr &device) {
-  mlir::SMLoc loc;
-  if (p.getCurrentLocation(&loc) ||
-      parseBufferTypeToRawSizeDeviceImpl(p, buffer, size, device, {}))
-    return failure();
-  if (!rawSizeToOptSize(size.getUInt()))
-    return p.emitError(loc, "expecting statically sized !mgp.buffer type");
-  return success();
-}
-
-static void printStaticBufferTypeToSizeDevice(OpAsmPrinter &p, Operation *op,
-                                              DeviceBufferType buffer,
-                                              IntegerAttr rawSize,
-                                              DeviceRefAttr device) {
-  p << buffer;
-}
-
 static ParseResult parseStaticBufferTypeToSizeDeviceBuffer(
     OpAsmParser &p, Type &staticBuffer, IntegerAttr &size,
     DeviceRefAttr &device, Type &dynamicBuffer) {

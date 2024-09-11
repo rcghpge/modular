@@ -266,43 +266,6 @@ std::optional<uint64_t> BufferConstantOp::getOptAlign() {
 }
 
 //===----------------------------------------------------------------------===//
-// BufferConstantLoadOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult BufferConstantLoadOp::verify() {
-  if (!isValidPlainSize(getDSize()))
-    return emitOpError("invalid static size ") << getDSize() << ".";
-  if (!getOutBuffer().getType().getOptSize())
-    return emitOpError("expected output buffer to be statically sized.");
-  auto expectedBufferType =
-      DeviceBufferType::get(getEDevice(), std::optional<uint64_t>(getDSize()));
-  if (expectedBufferType != getOutBuffer().getType()) {
-    return emitOpError("expected result buffer type does not match actual "
-                       "result buffer type (")
-           << expectedBufferType << " vs " << getOutBuffer().getType() << ").";
-  }
-  return verifyConsistentDevices(getOperation(), {getEDevice()});
-}
-
-LogicalResult BufferConstantLoadOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  std::optional<uint64_t> optSize;
-  if (failed(getSizeAttr(location.value_or(operands[0].getLoc()), attributes,
-                         getDSizeAttrName(name), optSize)))
-    return failure();
-  DeviceRefAttr device;
-  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                    attributes, getEDeviceAttrName(name),
-                                    device)))
-    return failure();
-  inferredReturnTypes.emplace_back(DeviceBufferType::get(device, optSize));
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // BufferAllocOp
 //===----------------------------------------------------------------------===//
 

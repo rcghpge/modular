@@ -184,21 +184,6 @@ static void mgp_buffer_constant_cpu(Chain inChain, StateContext &theContext,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.buffer.constant.load.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_buffer_constant_load_cpu(StateContext &theContext,
-                                         Result<TensorBufferRef> outBuffer,
-                                         MEFAttr<uint64_t> aRuntimeSlot,
-                                         MEFAttr<uint64_t> bModuleIndex,
-                                         MEFAttr<uint64_t> cConstantIndex,
-                                         MEFAttr<uint64_t> dSize,
-                                         MEFAttr<uint64_t> eDeviceId) {
-  return std::move(outBuffer).setToError(
-      "mgp.buffer.constant.load.cpu is not supported");
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.buffer.cache.cpu
 //===----------------------------------------------------------------------===//
 
@@ -360,8 +345,6 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.runtime.create.cpu", mgp_runtime_create_cpu);
   ADD_PRIMITIVE(registry, "mgp.module.load.cpu", mgp_module_load_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.constant.cpu", mgp_buffer_constant_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.constant.load.cpu",
-                mgp_buffer_constant_load_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.cache.cpu", mgp_buffer_cache_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.get_cached.cpu",
                 mgp_buffer_get_cached_cpu);

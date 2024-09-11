@@ -58,17 +58,6 @@ func.func @buffer_constant(%ch: !mef.chain, %ctx : !mgp.context) {
 }
 
 //
-// mgp.buffer.constant.load
-//
-
-// CHECK-LABEL: @buffer_constant_load
-func.func @buffer_constant_load(%ctx : !mgp.context) {
-  // CHECK: %{{.*}} = mgp.buffer.constant.load %{{.*}}[1], (3, 7) : !mgp.buffer<124, <"cuda", 3>>
-  %buf = mgp.buffer.constant.load %ctx[1], (3, 7) : !mgp.buffer<124, <"cuda", 3>>
-  mef.output %buf : !mgp.buffer<124, <"cuda", 3>>
-}
-
-//
 // mgp.buffer.alloc
 //
 

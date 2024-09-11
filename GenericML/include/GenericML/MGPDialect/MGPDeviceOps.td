@@ -430,9 +430,6 @@ def BufferConstantOp : MGP_DeviceOp<"buffer.constant", [
     the compiled model). This may require a host-to-device copy, which may
     be asynchronous.
 
-    See also `mgp.buffer.constant.load` for loading a constant from a
-    compiled module for the device.
-
     Example:
     ```mlir
       %ctx : !mgp.context
@@ -480,55 +477,6 @@ def BufferConstantOp : MGP_DeviceOp<"buffer.constant", [
     M::DeviceRefAttr BufferConstantOp::getDevice() { return getDDevice(); }
 
     bool BufferConstantOp::isTrivial() { return getEIsTrivial(); }
-  }];
-}
-
-//===----------------------------------------------------------------------===//
-// BufferConstantLoadOp
-//===----------------------------------------------------------------------===//
-
-def BufferConstantLoadOp : MGP_DeviceOp<"buffer.constant.load", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    // TODO: #37615
-    /* DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>, */
-]> {
-  let summary = "Retrieves a constant from an already loaded module for device.";
-  let description = [{
-    Retrieves a buffer from loaded module with given module and constant index.
-    Generally speaking the cost of transferring the constant onto the device
-    has been paid for when the module was loaded.
-
-    Example:
-    ```mlir
-      %ctx : !mgp.context
-      // Returns buffer on CUDA GPU with virtual device id 3, which is
-      // associated with the CUDA runtime at slot 5. The constant is in
-      // the module loaded with index 0, and is at constant index 2.
-      %buf = mgp.buffer.constant.load %ctx[5], (0, 2) : !mgp.buffer<256, <"cuda", 3>>
-      %buf : !mgp.buffer<256, <"cuda", 3>>
-    ```
-  }];
-
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
-  let arguments = (ins MGP_ContextType:$theContext,
-                       UI64Attr:$aRuntimeSlot,         // 0
-                       UI64Attr:$bModuleIndex,         // 2
-                       UI64Attr:$cConstantIndex,       // 3
-                       UI64Attr:$dSize,                // 4
-                       MGP_OptDeviceRefAttr:$eDevice); // 5
-  let results = (outs MGP_DeviceBufferType:$outBuffer);
-  let assemblyFormat = [{
-    $theContext `[` $aRuntimeSlot `]` `,`
-    `(` $bModuleIndex `,` $cConstantIndex `)` attr-dict
-    `:` custom<StaticBufferTypeToSizeDevice>(type($outBuffer), $dSize,  $eDevice)
-  }];
-  let hasVerifier = 1;
-
-  let extraClassDefinition = [{
-    uint64_t BufferConstantLoadOp::getSlot() { return getARuntimeSlot(); }
-
-    M::DeviceRefAttr BufferConstantLoadOp::getDevice() { return getEDevice(); }
   }];
 }
 
