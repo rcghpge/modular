@@ -21,8 +21,8 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/MDialect/MAttrs.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
+#include "mlir/IR/IRMapping.h"
 
 using namespace M;
 
@@ -82,9 +82,9 @@ static inline bool canDuplicate(Operation *op) {
 
 // Anything we find a registry for, lower to generic regions
 static inline bool
-isLowerableToGenericRegion(MLIRContext *ctx,
-                           MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
-                           Operation *op) {
+isLowerableToMOGGCall(MLIRContext *ctx,
+                      MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
+                      Operation *op) {
   bool isRegistered = mojoLibraryAnalysis.hasRegisteredMojoKernelFor(
       op->getName().getStringRef());
   return isRegistered;
@@ -275,6 +275,23 @@ void LowerPrimitivesPass::runOnOperation() {
     return signalPassFailure();
   MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
 
+  auto moggCallBodyBuilder = [&mojoLibraryAnalysis](OpBuilder &builder,
+                                                    Location loc, Operation *op,
+                                                    ValueRange inputs) {
+    return buildMOGGCall(builder, inputs, op, loc, mojoLibraryAnalysis);
+  };
+
+  auto indexOperationBuilder =
+      [](OpBuilder &builder, Location loc, Operation *op,
+         ValueRange inputs) -> ErrorOr<SmallVector<Value>> {
+    // Simply clone the index operation into the compiled region.
+    mlir::IRMapping mapping;
+    for (auto [from, to] : llvm::zip_equal(op->getOperands(), inputs))
+      mapping.map(from, to);
+    Operation *newOp = builder.clone(*op, mapping);
+    return newOp->getResults();
+  };
+
   mod.walk([&](Operation *op) {
     Location opLoc = op->getLoc();
     OpBuilder builder{op};
@@ -300,15 +317,15 @@ void LowerPrimitivesPass::runOnOperation() {
       // else unhandled constant type
     }
 
-    if (isLowerableToGenericRegion(ctx, mojoLibraryAnalysis, op)) {
+    CompiledRegionBodyBuilder bodyBuilder(nullptr);
+    if (op->getDialect() && isa<mlir::index::IndexDialect>(op->getDialect()))
+      bodyBuilder = indexOperationBuilder;
+    else if (isLowerableToMOGGCall(ctx, mojoLibraryAnalysis, op))
+      bodyBuilder = moggCallBodyBuilder;
+
+    if (bodyBuilder) {
       ErrorOr<MOGG::GenericCompiledRegionOp> newKernel =
-          wrapGenericRegionAround(
-              builder, opLoc, op,
-              [&mojoLibraryAnalysis](OpBuilder &builder, Location loc,
-                                     Operation *op, ValueRange inputs) {
-                return buildMOGGCall(builder, inputs, op, loc,
-                                     mojoLibraryAnalysis);
-              });
+          wrapGenericRegionAround(builder, opLoc, op, bodyBuilder);
 
       if (newKernel.isError()) {
         op->emitError(newKernel.takeError().get());

@@ -5,7 +5,7 @@
 //--- index.constant will be tested throughtout the tests ---/
 
 // CHECK-LABEL: mgp.model @mip_add
-// CHECK: mogg.call "index.add"
+// CHECK: index.add
 mgp.model @mip_add : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -21,7 +21,7 @@ mgp.model @mip_add : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
 }
 
 // CHECK-LABEL: mgp.model @mip_div
-// CHECK: mogg.call "index.divs"
+// CHECK: index.divs
 mgp.model @mip_div : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -37,7 +37,7 @@ mgp.model @mip_div : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
 }
 
 // CHECK-LABEL: mgp.model @mip_div_ceil
-// CHECK: mogg.call "index.ceildivs"
+// CHECK: index.ceildivs
 mgp.model @mip_div_ceil : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -53,7 +53,7 @@ mgp.model @mip_div_ceil : mof devices [#M.device_ref<"cpu", 0>] init (%weights: 
 }
 
 // CHECK-LABEL: mgp.model @mip_cmp_eq
-// CHECK: mogg.call "index.cmp"({{.*}}) {pred = "eq"}
+// CHECK: index.cmp eq({{.*}})
 mgp.model @mip_cmp_eq : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -70,7 +70,7 @@ mgp.model @mip_cmp_eq : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !m
 }
 
 // CHECK-LABEL: mgp.model @mip_cmp_lt
-// CHECK: mogg.call "index.cmp"({{.*}}) {pred = "slt"}
+// CHECK: index.cmp slt({{.*}})
 mgp.model @mip_cmp_lt : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -88,7 +88,7 @@ mgp.model @mip_cmp_lt : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !m
 
 
 // CHECK-LABEL: mgp.model @mip_cmp_le
-// CHECK: mogg.call "index.cmp"({{.*}}) {pred = "sle"}
+// CHECK: index.cmp sle({{.*}})
 mgp.model @mip_cmp_le : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -106,7 +106,7 @@ mgp.model @mip_cmp_le : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !m
 
 
 // CHECK-LABEL: mgp.model @mip_max
-// CHECK: mogg.call "index.maxs"
+// CHECK: index.maxs
 mgp.model @mip_max : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -122,7 +122,7 @@ mgp.model @mip_max : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
 }
 
 // CHECK-LABEL: mgp.model @mip_min
-// CHECK: mogg.call "index.mins"
+// CHECK: index.mins
 mgp.model @mip_min : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -139,7 +139,7 @@ mgp.model @mip_min : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
 }
 
 // CHECK-LABEL: mgp.model @mip_mod
-// CHECK: mogg.call "index.rems"
+// CHECK: index.rems
 mgp.model @mip_mod : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -156,7 +156,7 @@ mgp.model @mip_mod : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
 }
 
 // CHECK-LABEL: mgp.model @mip_mul
-// CHECK: mogg.call "index.mul"
+// CHECK: index.mul
 mgp.model @mip_mul : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
