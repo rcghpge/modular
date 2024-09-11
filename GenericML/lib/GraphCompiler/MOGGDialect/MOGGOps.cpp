@@ -71,7 +71,6 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  ASSERT_STREAM(MO::isOnHost(*this), << "mogg.split is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, *this);
 
   // Gather the input buffer.
